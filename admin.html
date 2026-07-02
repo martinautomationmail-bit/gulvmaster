@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gulv Master — Admin Planlægning</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0F2240;--navy2:#1C3557;--steel:#2E5086;
+  --white:#fff;--ice:#F4F7FC;--ice2:#EFF4FC;--ink:#0F1923;--muted:#5A6A7E;--ghost:#94A3B8;
+  --border:#CBD5E1;--border2:#E2E8F0;
+  --lay-bg:#DBEAFE;--lay-fg:#1D4ED8;--lay-bar:#3B82F6;
+  --sand-bg:#DCFCE7;--sand-fg:#15803D;--sand-bar:#22C55E;
+  --paint-bg:#FEF9C3;--paint-fg:#92570A;--paint-bar:#EAB308;
+  --sub-bg:#EDE9FE;--sub-fg:#5B21B6;--sub-bar:#8B5CF6;
+  --other-bg:#F1F5F9;--other-fg:#475569;--other-bar:#94A3B8;
+  --radius:10px;--shadow:0 1px 3px rgba(0,0,0,.08),0 4px 12px rgba(0,0,0,.05);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--ice);color:var(--ink);min-height:100vh}
+
+/* NAV */
+.topnav{background:var(--navy);color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+.brand{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:700}
+.logo{width:28px;height:28px;background:var(--steel);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+.nav-tabs{display:flex;gap:2px;background:rgba(255,255,255,.08);border-radius:7px;padding:3px}
+.tab{padding:4px 12px;border-radius:5px;border:none;background:transparent;color:rgba(255,255,255,.6);font-size:12px;cursor:pointer;font-weight:500}
+.tab.active{background:rgba(255,255,255,.15);color:#fff}
+.tab:hover:not(.active){color:rgba(255,255,255,.9)}
+.nav-actions{display:flex;gap:6px;align-items:center}
+.nb{padding:5px 11px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;font-size:11px;cursor:pointer;white-space:nowrap}
+.nb:hover{background:rgba(255,255,255,.18)}
+.nb.sync{background:#059669;border-color:#059669}
+.nb.syncing{background:#6B7280;border-color:#6B7280;cursor:not-allowed}
+.nb.primary{background:#2563EB;border-color:#2563EB}
+
+.main{padding:14px 18px}
+.page{display:none}.page.active{display:block}
+.ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
+.ptitle{font-size:17px;font-weight:700;color:var(--navy)}
+.psub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px}
+.sc{background:var(--white);border-radius:var(--radius);border:1px solid var(--border2);padding:11px 13px;box-shadow:var(--shadow)}
+.sl{font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.sv{font-size:20px;font-weight:700;color:var(--navy)}
+.ss{font-size:10px;color:var(--ghost);margin-top:2px}
+.sc.ok .sv{color:#16A34A}.sc.warn .sv{color:#B45309}
+
+/* SYNC LOG */
+.slog{background:#0A1628;border-radius:8px;padding:10px;margin-bottom:10px;font-family:monospace;font-size:9px;color:#6EE7B7;max-height:80px;overflow-y:auto;display:none;line-height:1.7}
+.slog.show{display:block}
+.sl-ok{color:#86EFAC}.sl-err{color:#FCA5A5}.sl-info{color:#93C5FD}
+
+/* PLANNING BOARD */
+.board-layout{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start}
+.panel{background:var(--white);border-radius:var(--radius);border:1px solid var(--border2);box-shadow:var(--shadow);overflow:hidden}
+.panel-header{padding:11px 13px;border-bottom:1px solid var(--border2);background:var(--ice);display:flex;align-items:center;justify-content:space-between}
+.panel-title{font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px}
+.panel-body{padding:10px;overflow-y:auto;max-height:calc(100vh - 200px)}
+
+/* UNASSIGNED TASKS */
+.utask{background:var(--white);border:1px solid var(--border2);border-radius:8px;padding:9px 10px;margin-bottom:6px;cursor:grab;transition:box-shadow .15s;user-select:none}
+.utask:active{cursor:grabbing;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.utask.dragging{opacity:.4}
+.utask-name{font-size:11px;font-weight:700;color:var(--navy)}
+.utask-job{font-size:10px;color:var(--muted);margin-top:1px}
+.utask-meta{display:flex;gap:8px;margin-top:5px;flex-wrap:wrap}
+.utask-badge{font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600}
+.utask-date{font-size:9px;color:var(--ghost)}
+.search-input{width:100%;padding:7px 9px;border-radius:6px;border:1px solid var(--border);font-size:11px;outline:none;margin-bottom:8px}
+.search-input:focus{border-color:var(--steel)}
+
+/* WEEK BOARD */
+.week-nav-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.wbtn{padding:5px 12px;border-radius:16px;border:1px solid var(--border);background:var(--white);font-size:11px;cursor:pointer;color:var(--muted);font-weight:500}
+.wbtn:hover{border-color:var(--steel);color:var(--navy)}
+.wbtn.today{background:var(--navy);color:#fff;border-color:var(--navy)}
+.week-range{font-size:12px;font-weight:700;color:var(--navy)}
+.board-outer{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border2);background:var(--white);box-shadow:var(--shadow)}
+.btable{border-collapse:collapse;min-width:max-content}
+.btable th{padding:8px 9px;background:var(--navy);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;text-align:left;white-space:nowrap;position:sticky;top:0;z-index:10}
+.btable th.pth{min-width:130px;position:sticky;left:0;z-index:11;border-right:2px solid rgba(255,255,255,.15)}
+.btable th.wth{min-width:140px;text-align:center;border-left:1px solid rgba(255,255,255,.1)}
+.wth.today-col{background:var(--steel)!important}
+.wi{display:flex;flex-direction:column;align-items:center;gap:1px}
+.wi-num{font-size:10px;font-weight:700}
+.wi-dates{font-size:8px;opacity:.6}
+.btable td{vertical-align:top;border-bottom:1px solid var(--border2)}
+.btable tr:last-child td{border-bottom:none}
+.btable tbody tr:not(.total-row):hover td{background:var(--ice2)}
+.btable tbody tr:not(.total-row):hover td.pcell{background:var(--ice)!important}
+.pcell{padding:8px;background:var(--ice2)!important;position:sticky;left:0;z-index:5;border-right:2px solid var(--border2);min-width:130px}
+.pname{font-size:11px;font-weight:700;color:var(--navy)}
+.prole{font-size:9px;color:var(--muted)}
+.wcell{padding:5px 6px;min-width:140px;border-left:1px solid var(--border2);vertical-align:top}
+.wcell.today-col{background:#FAFBFF}
+.drop-zone{min-height:28px;border-radius:5px;transition:all .15s}
+.drop-zone.dg-over{background:#EFF6FF;border:2px dashed #2563EB}
+
+/* ASSIGNMENT PILLS */
+.apill{display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:5px;margin-bottom:2px;font-size:10px;cursor:grab;border:none;width:100%;text-align:left;user-select:none;transition:opacity .15s}
+.apill:active{cursor:grabbing}
+.apill.dragging{opacity:.4}
+.pn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.pd{font-size:8px;opacity:.7;background:rgba(0,0,0,.08);padding:1px 4px;border-radius:3px;flex-shrink:0}
+.del-x{flex-shrink:0;background:none;border:none;cursor:pointer;font-size:11px;opacity:.5;padding:0 2px}
+.del-x:hover{opacity:1}
+.pill-lay{background:var(--lay-bg);color:var(--lay-fg)}
+.pill-sand{background:var(--sand-bg);color:var(--sand-fg)}
+.pill-paint{background:var(--paint-bg);color:var(--paint-fg)}
+.pill-sub{background:var(--sub-bg);color:var(--sub-fg)}
+.pill-other{background:var(--other-bg);color:var(--other-fg)}
+.free-slot{display:flex;align-items:center;justify-content:center;min-height:26px}
+.free-b{font-size:9px;color:var(--free-fg,#16A34A);background:#F0FDF4;border:1px solid #BBF7D0;border-radius:4px;padding:2px 7px;font-weight:600}
+.ub{height:3px;background:var(--border2);border-radius:99px;overflow:hidden;margin-top:3px}
+.ub-fill{height:100%;border-radius:99px}
+.ut{font-size:8px;color:var(--muted);text-align:right;margin-top:1px}
+.add-b{display:flex;align-items:center;justify-content:center;width:100%;padding:2px;border:1px dashed var(--border);border-radius:4px;background:none;color:var(--ghost);font-size:9px;cursor:pointer;margin-top:2px}
+.add-b:hover{border-color:var(--steel);color:var(--steel);background:var(--ice)}
+.total-row td{background:var(--navy2)!important}
+.total-row .pcell{background:var(--navy)!important;color:#fff;font-size:10px;font-weight:700}
+.tc{display:block;padding:4px 6px;border-radius:5px;font-size:9px;font-weight:700;text-align:center}
+.u-free{background:#F0FDF4;color:#16A34A}.u-ok{background:#DBEAFE;color:#1E40AF}
+.u-warn{background:#FFFBEB;color:#B45309}.u-over{background:#FEF2F2;color:#B91C1C}
+
+/* USERS MANAGEMENT */
+.ugrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.ucard{background:var(--white);border-radius:var(--radius);border:1px solid var(--border2);padding:14px;box-shadow:var(--shadow)}
+.uc-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.uc-av{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.uc-name{font-size:13px;font-weight:700;color:var(--navy)}
+.uc-email{font-size:10px;color:var(--muted)}
+.uc-role{font-size:10px;font-weight:700;padding:2px 8px;border-radius:9px}
+.role-admin{background:#FEF3C7;color:#92400E}.role-emp{background:#DBEAFE;color:#1D4ED8}
+.uc-acts{display:flex;gap:6px}
+.ub2{padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:var(--ice);font-size:10px;cursor:pointer;color:var(--muted)}
+.ub2:hover{border-color:var(--steel);color:var(--navy)}
+.ub2.del{color:#EF4444;border-color:#FECACA}
+.ub2.del:hover{background:#FEF2F2}
+
+/* TIME LOGS */
+.tlog{background:var(--white);border-radius:var(--radius);border:1px solid var(--border2);overflow:hidden;box-shadow:var(--shadow)}
+.tlog table{width:100%;border-collapse:collapse}
+.tlog th{background:var(--navy);color:#fff;padding:8px 10px;font-size:9px;font-weight:700;text-align:left}
+.tlog td{padding:7px 10px;border-bottom:1px solid var(--border2);font-size:11px}
+.tlog tr:last-child td{border-bottom:none}
+.tlog tr:hover td{background:var(--ice2)}
+
+/* MODAL */
+.mo{display:none;position:fixed;inset:0;background:rgba(15,34,64,.45);z-index:500;align-items:center;justify-content:center}
+.mo.open{display:flex}
+.modal{background:var(--white);border-radius:13px;padding:22px;width:380px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto}
+.modal h3{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px}
+.fg{margin-bottom:10px}
+.fl{display:block;font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.fi,.fs{width:100%;padding:7px 9px;border-radius:6px;border:1px solid var(--border);font-size:12px;background:var(--ice);color:var(--ink);outline:none}
+.fi:focus,.fs:focus{border-color:var(--steel)}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mb{display:flex;gap:7px;justify-content:flex-end;margin-top:14px}
+.btn{padding:7px 13px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:var(--ice);color:var(--ink);font-weight:500}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+.btn.danger{background:#FEE2E2;color:#B91C1C;border-color:#FECACA}
+
+.toast{position:fixed;bottom:16px;right:16px;z-index:1000;background:var(--navy);color:#fff;padding:9px 15px;border-radius:8px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.2);transform:translateY(70px);opacity:0;transition:all .22s;pointer-events:none}
+.toast.show{transform:translateY(0);opacity:1}
+</style>
+</head>
+<body>
+<div style="display:none" id="app">
+
+<nav class="topnav">
+  <div class="brand"><div class="logo">🪵</div><span>Gulv Master — Admin</span></div>
+  <div class="nav-tabs">
+    <button class="tab active" data-page="plan">Planlægning</button>
+    <button class="tab" data-page="users">Medarbejdere</button>
+    <button class="tab" data-page="timelogs">Timer & Log</button>
+  </div>
+  <div class="nav-actions">
+    <span id="sync-ind" style="font-size:10px;color:rgba(255,255,255,.5);display:none"></span>
+    <button class="nb sync" id="sync-btn" onclick="syncNow()">⚡ Synk JT</button>
+    <button class="nb" onclick="goEmployee()">👤 Min side</button>
+    <button class="nb" onclick="logout()">Log ud</button>
+  </div>
+</nav>
+
+<div class="main">
+
+<!-- PLANNING PAGE -->
+<div id="page-plan" class="page active">
+  <div class="slog" id="slog"></div>
+  <div class="stats" id="stats"></div>
+  <div class="board-layout">
+    <!-- LEFT: Unassigned tasks pool -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">📥 Opgaver fra JobTread</span>
+        <span id="utask-count" style="font-size:10px;color:var(--muted)">0 opgaver</span>
+      </div>
+      <div class="panel-body">
+        <input class="search-input" id="task-search" placeholder="Søg opgave eller kunde..." oninput="renderUnassigned()">
+        <div id="utask-list"><div style="color:var(--muted);font-size:11px;text-align:center;padding:20px">Henter opgaver...</div></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Week board -->
+    <div>
+      <div class="week-nav-bar">
+        <button class="wbtn" onclick="shiftW(-1)">← Forrige</button>
+        <span class="week-range" id="wrange"></span>
+        <button class="wbtn" onclick="shiftW(1)">Næste →</button>
+        <button class="wbtn today" onclick="goThisWeek()">I dag</button>
+      </div>
+      <div class="board-outer">
+        <table class="btable"><thead id="bth"></thead><tbody id="btb"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- USERS PAGE -->
+<div id="page-users" class="page">
+  <div class="ph">
+    <div><div class="ptitle">Medarbejdere & Brugere</div><div class="psub">Opret og administrér login-adgang</div></div>
+    <button class="nb primary" onclick="openAddUser()">+ Ny bruger</button>
+  </div>
+  <div class="ugrid" id="ugrid"></div>
+</div>
+
+<!-- TIME LOGS PAGE -->
+<div id="page-timelogs" class="page">
+  <div class="ph"><div><div class="ptitle">Timer & Aktivitetslog</div><div class="psub">Alle registrerede timer fra medarbejdere</div></div></div>
+  <div class="tlog"><table>
+    <thead><tr><th>Medarbejder</th><th>Opgave</th><th>Kunde/Job</th><th>Start</th><th>Stop</th><th>Varighed</th></tr></thead>
+    <tbody id="tlog-tbody"></tbody>
+  </table></div>
+</div>
+
+</div><!-- /main -->
+</div><!-- /app -->
+
+<!-- USER MODAL -->
+<div class="mo" id="mo-user">
+  <div class="modal">
+    <h3 id="mo-user-title">Tilføj ny bruger</h3>
+    <div class="fr">
+      <div class="fg"><label class="fl">Fuldt navn</label><input class="fi" id="u-name" placeholder="Ahmed Chaib" /></div>
+      <div class="fg"><label class="fl">Initialer</label><input class="fi" id="u-initials" placeholder="AC" maxlength="3" /></div>
+    </div>
+    <div class="fg"><label class="fl">Email (bruges til login)</label><input class="fi" id="u-email" type="email" placeholder="ahmed@gulvmaster.dk" /></div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Adgangskode</label><input class="fi" id="u-pw" type="password" placeholder="Minimum 6 tegn" /></div>
+      <div class="fg"><label class="fl">Rolle</label>
+        <select class="fs" id="u-role">
+          <option value="employee">Medarbejder</option>
+          <option value="admin">Admin</option>
+        </select></div>
+    </div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Farve</label><input class="fi" id="u-color" type="color" value="#2563EB" /></div>
+      <div class="fg"><label class="fl">JT Member ID (valgfrit)</label><input class="fi" id="u-jtid" placeholder="22Pa7PKU..." /></div>
+    </div>
+    <div class="mb">
+      <button class="btn danger" id="u-del-btn" style="display:none;margin-right:auto" onclick="deactivateUser()">Deaktiver</button>
+      <button class="btn" onclick="closeMo('mo-user')">Annuller</button>
+      <button class="btn primary" onclick="saveUser()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- ASSIGN MODAL -->
+<div class="mo" id="mo-assign">
+  <div class="modal">
+    <h3>Tildel opgave</h3>
+    <div id="mo-task-info" style="background:var(--ice);border-radius:7px;padding:10px;margin-bottom:12px;font-size:12px"></div>
+    <div class="fg"><label class="fl">Medarbejder</label><select class="fs" id="a-user"></select></div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Uge</label><select class="fs" id="a-week"></select></div>
+      <div class="fg"><label class="fl">Dage</label><input class="fi" id="a-days" type="number" min="0.5" max="10" step="0.5" value="1" /></div>
+    </div>
+    <div class="fg"><label class="fl">Bemærkninger</label><input class="fi" id="a-notes" placeholder="Valgfrit..." /></div>
+    <div class="mb">
+      <button class="btn" onclick="closeMo('mo-assign')">Annuller</button>
+      <button class="btn primary" onclick="saveAssign()">Tildel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let token = localStorage.getItem('gm_token');
+let user = JSON.parse(localStorage.getItem('gm_user') || 'null');
+
+if (!token || !user || user.role !== 'admin') { window.location.href = '/'; }
+
+document.getElementById('app').style.display = 'block';
+
+let users = [], tasks = [], assignments = [], jtTasks = [];
+let weekOffset = 0;
+let dragTaskId = null, dragAssignId = null;
+let editUserId = null, assignTaskId = null;
+
+function logout() { localStorage.removeItem('gm_token'); localStorage.removeItem('gm_user'); window.location.href = '/'; }
+function goEmployee() { window.location.href = '/employee'; }
+function showToast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); }
+async function apiFetch(path, opts={}) {
+  const r = await fetch(API+path, { ...opts, headers: { 'Authorization':`Bearer ${token}`, 'Content-Type':'application/json', ...(opts.headers||{}) } });
+  if (r.status===401) { logout(); return null; }
+  return r.json();
+}
+function closeMo(id) { document.getElementById(id).classList.remove('open'); editUserId=null; assignTaskId=null; }
+
+// Week helpers
+function getWeekDays(offset=0) {
+  const today=new Date(), day=today.getDay()||7;
+  const mon=new Date(today); mon.setDate(today.getDate()-day+1+(offset*7)); mon.setHours(0,0,0,0);
+  return Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return d;});
+}
+function getWeekNum(d) {
+  const D=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const day=D.getUTCDay()||7; D.setUTCDate(D.getUTCDate()+4-day);
+  const y=new Date(Date.UTC(D.getUTCFullYear(),0,1));
+  return Math.ceil((((D-y)/86400000)+1)/7);
+}
+function wkey(d) { const m=new Date(d); const dy=m.getDay()||7; m.setDate(m.getDate()-dy+1); m.setHours(0,0,0,0); return `w${m.getFullYear()}-${String(getWeekNum(m)).padStart(2,'0')}`; }
+function isoD(d) { return d.toISOString().split('T')[0]; }
+function fmt(d) { return `${d.getDate()}/${d.getMonth()+1}`; }
+function isToday(d) { const t=new Date(); return d.getDate()===t.getDate()&&d.getMonth()===t.getMonth()&&d.getFullYear()===t.getFullYear(); }
+
+const TCFG = {
+  lay:{label:'Gulvlægning',cls:'lay'},sand:{label:'Gulvslibning',cls:'sand'},
+  paint:{label:'Malerservice',cls:'paint'},sub:{label:'Underlev.',cls:'sub'},other:{label:'Andet',cls:'other'}
+};
+
+function avi(name) { return name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase(); }
+function assignsFor(uid,wk) { return assignments.filter(a=>a.user_id===uid&&a.week_key===wk); }
+function bookedD(uid,wk) { return assignsFor(uid,wk).reduce((s,a)=>s+a.days,0); }
+
+// ── Sync ─────────────────────────────────────────────
+async function syncNow() {
+  const btn=document.getElementById('sync-btn');
+  btn.className='nb syncing'; btn.textContent='⏳ Synker...';
+  document.getElementById('slog').innerHTML=''; document.getElementById('slog').classList.add('show');
+  const addLog=(msg,cls)=>{const d=document.createElement('div');d.className=cls||'sl-info';d.textContent=`[${new Date().toLocaleTimeString('da-DK')}] ${msg}`;document.getElementById('slog').appendChild(d);document.getElementById('slog').scrollTop=9999;};
+  addLog('Starter synkronisering med JobTread...');
+  try {
+    const r = await apiFetch('/api/sync', {method:'POST'});
+    if (r?.ok) { addLog(`✓ ${r.count} tasks importeret fra JobTread`,'sl-ok'); showToast(`✅ Synk OK — ${r.count} tasks`); }
+    else { addLog(`Fejl: ${r?.error||'Ukendt'}`,'sl-err'); }
+    await loadAll();
+  } catch(e) { addLog(`Fejl: ${e.message}`,'sl-err'); }
+  btn.className='nb sync'; btn.textContent='⚡ Synk JT';
+  const ls=document.getElementById('sync-ind'); ls.style.display='block'; ls.textContent=`Synket: ${new Date().toLocaleTimeString('da-DK')}`;
+}
+
+// ── Load all data ─────────────────────────────────────
+async function loadAll() {
+  [users, jtTasks, assignments] = await Promise.all([
+    apiFetch('/api/users'),
+    apiFetch('/api/tasks'),
+    apiFetch('/api/assignments'),
+  ]);
+  users = users || []; jtTasks = jtTasks || []; assignments = assignments || [];
+  renderStats(); renderUnassigned(); renderBoard(); renderUsers();
+}
+
+// ── Stats ─────────────────────────────────────────────
+async function renderStats() {
+  const d = await apiFetch('/api/dashboard');
+  if (!d) return;
+  document.getElementById('stats').innerHTML = `
+    <div class="sc"><div class="sl">Tasks fra JT</div><div class="sv">${d.totalTasks}</div><div class="ss">Fremtidige</div></div>
+    <div class="sc ok"><div class="sl">Tildelt</div><div class="sv">${d.assigned}</div><div class="ss">Opgaver bookede</div></div>
+    <div class="sc warn"><div class="sl">Utildelt</div><div class="sv">${d.unassigned}</div><div class="ss">Klar til tildeling</div></div>
+    <div class="sc"><div class="sl">Medarbejdere</div><div class="sv">${d.employees}</div><div class="ss">Aktive</div></div>
+    <div class="sc"><div class="sl">Sidst synket</div><div class="sv" style="font-size:11px">${d.lastSync?.synced_at?.split('T')[0]||'Aldrig'}</div><div class="ss">${d.lastSync?.tasks_imported||0} tasks</div></div>
+  `;
+}
+
+// ── Unassigned tasks (left panel) ─────────────────────
+function renderUnassigned() {
+  const search = (document.getElementById('task-search')?.value||'').toLowerCase();
+  const assignedIds = new Set(assignments.map(a=>a.task_id));
+  const avail = jtTasks.filter(t => {
+    const dateOk = t.start_date >= new Date().toISOString().split('T')[0];
+    const nameOk = !search || t.job_name?.toLowerCase().includes(search) || t.name?.toLowerCase().includes(search);
+    return dateOk && nameOk;
+  });
+  document.getElementById('utask-count').textContent = `${avail.length} opgaver`;
+  const el = document.getElementById('utask-list');
+  if (!avail.length) { el.innerHTML=`<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px">Ingen opgaver — klik Synk JT for at hente</div>`; return; }
+  el.innerHTML = avail.map(t => {
+    const tc = TCFG[t.type_guess]||TCFG.other;
+    const isAssigned = assignedIds.has(t.id);
+    return `<div class="utask${isAssigned?' opacity:0.5':''}" draggable="true"
+      ondragstart="onTaskDS(event,'${t.id}')" ondragend="onTaskDE()"
+      onclick="openAssignModal('${t.id}')">
+      <div class="utask-name">${t.job_name||'Opgave'}</div>
+      <div class="utask-job">${t.name}</div>
+      <div class="utask-meta">
+        <span class="utask-badge" style="background:var(--${tc.cls}-bg);color:var(--${tc.cls}-fg)">${tc.label}</span>
+        <span class="utask-date">${t.start_date?.split('T')[0]||''} ${t.job_address?'· '+t.job_address.substring(0,25):''}</span>
+        ${isAssigned?'<span style="font-size:9px;color:#16A34A;font-weight:700">✓ Tildelt</span>':''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Board ─────────────────────────────────────────────
+function shiftW(n) { weekOffset += n; renderBoard(); }
+function goThisWeek() { weekOffset = 0; renderBoard(); }
+
+function renderBoard() {
+  const days = getWeekDays(weekOffset);
+  const wn = getWeekNum(days[0]);
+  document.getElementById('wrange').textContent = `Uge ${wn} — ${fmt(days[0])} / ${fmt(days[6])}`;
+
+  // Build header (Mon–Sun)
+  let hr = `<tr><th class="pth">Medarbejder</th>`;
+  days.forEach(d => {
+    const isT = isToday(d);
+    const dn = ['Søn','Man','Tir','Ons','Tor','Fre','Lør'][d.getDay()];
+    hr += `<th class="wth${isT?' today-col':''}" data-wk="${isoD(d)}"><div class="wi"><span class="wi-num">${dn} ${d.getDate()}/${d.getMonth()+1}</span></div></th>`;
+  });
+  document.getElementById('bth').innerHTML = hr+'</tr>';
+
+  const tbody = document.getElementById('btb');
+  tbody.innerHTML = '';
+  const activeUsers = users.filter(u=>u.role==='employee'&&u.active);
+
+  activeUsers.forEach(u => {
+    const ac = u.color||'#2563EB';
+    let cells = `<td class="pcell">
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="width:24px;height:24px;border-radius:50%;background:${ac}22;color:${ac};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">${u.initials||avi(u.name)}</div>
+        <div><div class="pname">${u.name.split(' ')[0]}</div><div class="prole">${u.name.split(' ').slice(1).join(' ')}</div></div>
+      </div></td>`;
+
+    days.forEach(d => {
+      const dk = isoD(d);
+      const dayAssigns = assignments.filter(a => a.user_id===u.id && a.start_date?.split('T')[0]<=dk && (a.end_date||a.start_date)?.split('T')[0]>=dk);
+      const booked = dayAssigns.reduce((s,a)=>s+a.days,0);
+      const isT = isToday(d);
+      let pills='';
+      dayAssigns.forEach(a => {
+        const tc = TCFG[a.type_guess]||TCFG.other;
+        pills += `<div class="apill pill-${tc.cls}" draggable="true"
+          data-aid="${a.id}"
+          ondragstart="onAssignDS(event,${a.id})" ondragend="onAssignDE()"
+          onclick="event.stopPropagation();openEditAssign(${a.id})">
+          <span class="pn" title="${a.job_name||a.task_name}">${a.job_name||a.task_name}</span>
+          <span class="pd">${a.days}d</span>
+          <button class="del-x" onclick="event.stopPropagation();deleteAssign(${a.id})" title="Fjern">×</button>
+        </div>`;
+      });
+      const free = dayAssigns.length===0 ? `<div class="free-slot"><span class="free-b">✓ Ledig</span></div>` : '';
+      const pct = Math.min(booked/5*100,100);
+      const barC = pct>=100?'#EF4444':pct>=80?'#EAB308':'#22C55E';
+      const util = booked>0 ? `<div class="ub"><div class="ub-fill" style="width:${pct}%;background:${barC}"></div></div>` : '';
+      cells += `<td class="wcell${isT?' today-col':''}">
+        <div class="drop-zone"
+          ondragover="onDO(event)" ondragleave="onDL(event)"
+          ondrop="onDrop(event,${u.id},'${dk}')">
+          ${free}${pills}${util}
+        </div></td>`;
+    });
+    tbody.innerHTML += `<tr>${cells}</tr>`;
+  });
+}
+
+// ── Drag from task pool ───────────────────────────────
+function onTaskDS(e,tid) { dragTaskId=tid; e.dataTransfer.effectAllowed='copy'; }
+function onTaskDE() { dragTaskId=null; document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over')); }
+
+// ── Drag assignment ───────────────────────────────────
+function onAssignDS(e,aid) { dragAssignId=aid; e.dataTransfer.effectAllowed='move'; }
+function onAssignDE() { dragAssignId=null; document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over')); }
+
+function onDO(e) { e.preventDefault(); e.currentTarget.classList.add('dg-over'); }
+function onDL(e) { e.currentTarget.classList.remove('dg-over'); }
+
+async function onDrop(e, uid, dateStr) {
+  e.preventDefault(); e.currentTarget.classList.remove('dg-over');
+  const wk = wkey(new Date(dateStr));
+
+  if (dragTaskId) {
+    // New assignment from task pool
+    const task = jtTasks.find(t=>t.id===dragTaskId);
+    if (!task) return;
+    const r = await apiFetch('/api/assignments', {method:'POST', body:JSON.stringify({task_id:dragTaskId, user_id:uid, week_key:wk, days:1})});
+    if (r?.ok) { showToast('✓ Opgave tildelt'); await loadAll(); }
+    dragTaskId=null;
+  } else if (dragAssignId) {
+    // Move existing assignment
+    const r = await apiFetch(`/api/assignments/${dragAssignId}`, {method:'PUT', body:JSON.stringify({user_id:uid, week_key:wk, days:1})});
+    if (r?.ok) { showToast('↔ Opgave flyttet'); await loadAll(); }
+    dragAssignId=null;
+  }
+}
+
+async function deleteAssign(id) {
+  if (!confirm('Fjern tildeling?')) return;
+  await apiFetch(`/api/assignments/${id}`, {method:'DELETE'});
+  showToast('Tildeling fjernet');
+  await loadAll();
+}
+
+// ── Assign modal ──────────────────────────────────────
+function openAssignModal(taskId) {
+  assignTaskId=taskId;
+  const task = jtTasks.find(t=>t.id===taskId);
+  if (!task) return;
+  document.getElementById('mo-task-info').innerHTML = `<b>${task.job_name||'Opgave'}</b><br>${task.name}<br><span style="color:var(--muted)">${task.job_address||''} · ${task.start_date?.split('T')[0]||''}</span>`;
+  document.getElementById('a-user').innerHTML = users.filter(u=>u.role==='employee'&&u.active).map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
+  const days=getWeekDays(weekOffset);
+  const wk=wkey(days[0]);
+  const wn=getWeekNum(days[0]);
+  document.getElementById('a-week').innerHTML = Array.from({length:8},(_,i)=>{const d=new Date(days[0]);d.setDate(d.getDate()+i*7);const w=getWeekNum(d);return`<option value="w${d.getFullYear()}-${String(w).padStart(2,'0')}"${i===0?' selected':''}>Uge ${w} (${fmt(d)})</option>`;}).join('');
+  document.getElementById('a-days').value='1';
+  document.getElementById('a-notes').value='';
+  document.getElementById('mo-assign').classList.add('open');
+}
+
+async function saveAssign() {
+  if (!assignTaskId) return;
+  const uid=parseInt(document.getElementById('a-user').value);
+  const wk=document.getElementById('a-week').value;
+  const days=parseFloat(document.getElementById('a-days').value)||1;
+  const notes=document.getElementById('a-notes').value.trim();
+  const r=await apiFetch('/api/assignments',{method:'POST',body:JSON.stringify({task_id:assignTaskId,user_id:uid,week_key:wk,days,notes})});
+  if(r?.ok){showToast('✓ Opgave tildelt');closeMo('mo-assign');await loadAll();}
+}
+
+function openEditAssign(id) {
+  const a=assignments.find(x=>x.id===id);if(!a)return;
+  assignTaskId=a.task_id;
+  const task=jtTasks.find(t=>t.id===a.task_id)||{job_name:a.job_name,name:a.task_name,job_address:a.job_address,start_date:a.start_date};
+  document.getElementById('mo-task-info').innerHTML=`<b>${task.job_name||'Opgave'}</b><br>${task.name}<br><span style="color:var(--muted)">${task.job_address||''}</span>`;
+  document.getElementById('a-user').innerHTML=users.filter(u=>u.role==='employee'&&u.active).map(u=>`<option value="${u.id}"${u.id===a.user_id?' selected':''}>${u.name}</option>`).join('');
+  document.getElementById('a-days').value=a.days;
+  document.getElementById('a-notes').value=a.notes||'';
+  document.getElementById('mo-assign').classList.add('open');
+}
+
+// ── Users ─────────────────────────────────────────────
+function renderUsers() {
+  document.getElementById('ugrid').innerHTML=users.map(u=>{
+    const ac=u.color||'#2563EB';
+    return `<div class="ucard">
+      <div class="uc-top">
+        <div class="uc-av" style="background:${ac}22;color:${ac}">${u.initials||avi(u.name)}</div>
+        <div style="flex:1;min-width:0">
+          <div class="uc-name">${u.name}</div>
+          <div class="uc-email">${u.email}</div>
+        </div>
+        <span class="uc-role ${u.role==='admin'?'role-admin':'role-emp'}">${u.role==='admin'?'Admin':'Medarbejder'}</span>
+      </div>
+      ${!u.active?'<div style="font-size:10px;color:#B91C1C;margin-bottom:6px">⛔ Deaktiveret</div>':''}
+      <div class="uc-acts">
+        <button class="ub2" onclick="openEditUser(${u.id})">✏ Rediger</button>
+        <button class="ub2" onclick="copyLoginInfo('${u.email}')">📋 Login-info</button>
+      </div></div>`;
+  }).join('');
+}
+
+function copyLoginInfo(email) {
+  navigator.clipboard.writeText(`Login: ${email}\nURL: ${window.location.origin}`);
+  showToast('Login-info kopieret til udklipsholder');
+}
+
+function openAddUser() {
+  editUserId=null;
+  document.getElementById('mo-user-title').textContent='Tilføj ny bruger';
+  ['u-name','u-email','u-pw','u-initials','u-jtid'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('u-role').value='employee';
+  document.getElementById('u-color').value='#2563EB';
+  document.getElementById('u-del-btn').style.display='none';
+  document.getElementById('mo-user').classList.add('open');
+  setTimeout(()=>document.getElementById('u-name').focus(),80);
+}
+
+function openEditUser(id) {
+  const u=users.find(x=>x.id===id);if(!u)return;
+  editUserId=id;
+  document.getElementById('mo-user-title').textContent='Rediger bruger';
+  document.getElementById('u-name').value=u.name;
+  document.getElementById('u-email').value=u.email;
+  document.getElementById('u-pw').value='';
+  document.getElementById('u-initials').value=u.initials||'';
+  document.getElementById('u-role').value=u.role;
+  document.getElementById('u-color').value=u.color||'#2563EB';
+  document.getElementById('u-jtid').value=u.jobtread_member_id||'';
+  document.getElementById('u-del-btn').style.display='inline-flex';
+  document.getElementById('mo-user').classList.add('open');
+}
+
+async function saveUser() {
+  const name=document.getElementById('u-name').value.trim();
+  const email=document.getElementById('u-email').value.trim();
+  const pw=document.getElementById('u-pw').value;
+  const role=document.getElementById('u-role').value;
+  const color=document.getElementById('u-color').value;
+  const initials=document.getElementById('u-initials').value.trim();
+  const jtid=document.getElementById('u-jtid').value.trim();
+  if(!name||!email){showToast('Udfyld navn og email');return;}
+  const body={name,email,role,color,initials,jobtread_member_id:jtid};
+  if(pw)body.password=pw;
+  let r;
+  if(editUserId){r=await apiFetch(`/api/users/${editUserId}`,{method:'PUT',body:JSON.stringify(body)});}
+  else{if(!pw){showToast('Adgangskode er påkrævet');return;}r=await apiFetch('/api/users',{method:'POST',body:JSON.stringify(body)});}
+  if(r?.ok||r?.id){showToast('✓ Bruger gemt');closeMo('mo-user');await loadAll();}
+  else{showToast(r?.error||'Fejl ved gem');}
+}
+
+async function deactivateUser() {
+  if(!editUserId)return;
+  if(!confirm('Deaktiver denne bruger? De kan ikke længere logge ind.'))return;
+  await apiFetch(`/api/users/${editUserId}`,{method:'PUT',body:JSON.stringify({active:0})});
+  showToast('Bruger deaktiveret');closeMo('mo-user');await loadAll();
+}
+
+// ── Time logs ─────────────────────────────────────────
+async function loadTimeLogs() {
+  const logs=await apiFetch('/api/time/all');
+  if(!logs)return;
+  document.getElementById('tlog-tbody').innerHTML=logs.map(l=>{
+    const mins=l.duration_minutes||0;
+    const h=Math.floor(mins/60),m=mins%60;
+    return `<tr>
+      <td style="font-weight:600">${l.user_name}</td>
+      <td>${l.task_name}</td>
+      <td>${l.job_name}</td>
+      <td style="font-size:10px">${l.started_at?.replace('T',' ').substring(0,16)||'—'}</td>
+      <td style="font-size:10px">${l.stopped_at?.replace('T',' ').substring(0,16)||'<span style="color:#16A34A;font-weight:700">Aktiv ⏱</span>'}</td>
+      <td style="font-weight:700">${l.stopped_at?`${h}t ${m}m`:'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Page nav ──────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.getElementById('page-'+b.dataset.page).classList.add('active');
+    b.classList.add('active');
+    if(b.dataset.page==='timelogs')loadTimeLogs();
+  });
+});
+
+['mo-user','mo-assign'].forEach(id=>{
+  document.getElementById(id).addEventListener('click',e=>{if(e.target===document.getElementById(id))closeMo(id);});
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){['mo-user','mo-assign'].forEach(closeMo);}});
+
+loadAll();
+</script>
+</body>
+</html>
