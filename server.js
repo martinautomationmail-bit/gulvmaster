@@ -36,7 +36,7 @@ const JT_GRANT = process.env.JT_GRANT_KEY || '';
 const JT_API = 'https://api.jobtread.com/pave';
 // JobTread paginerer lister. Its task query accepts 40 per page in this portal;
 // we fetch subsequent pages with nextPage instead of asking for 250 at once.
-const JT_PAGE_SIZE = Math.max(1, Math.min(20, Number.parseInt(process.env.JT_PAGE_SIZE || process.env.JT_TASK_LIMIT || '20', 10) || 20));
+const JT_PAGE_SIZE = Math.max(1, Math.min(40, Number.parseInt(process.env.JT_PAGE_SIZE || process.env.JT_TASK_LIMIT || '40', 10) || 40));
 const JT_MAX_PAGES = Math.max(1, Math.min(100, Number.parseInt(process.env.JT_MAX_PAGES || '100', 10) || 100));
 const JT_INCLUDE_TODOS = String(process.env.JT_INCLUDE_TODOS || 'true').toLowerCase() !== 'false';
 const JT_AUTO_SYNC = String(process.env.JT_AUTO_SYNC || 'true').toLowerCase() !== 'false';
@@ -556,8 +556,8 @@ function taskConnection(cursor, fields) {
 }
 
 function taskPagePayload(cursor) {
-  // Small payload: only task fields, no job or assignments.
-  // Job info is fetched separately via the jobs endpoint.
+  // Split into two separate small queries to avoid HTTP 413.
+  // Query 1: task dates + job info (no assignments)
   return {
     query: {
       $: { grantKey: JT_GRANT },
@@ -568,27 +568,8 @@ function taskPagePayload(cursor) {
           name: {},
           startDate: {},
           endDate: {},
-          job: { id: {} }
+          job: { id: {}, name: {}, location: { address: {} } }
         })
-      }
-    }
-  };
-}
-
-function jobsPagePayload(cursor) {
-  // Fetch all jobs with name+address separately to avoid 413
-  const args = { size: 50 };
-  if (cursor !== null && cursor !== undefined && cursor !== '') args.page = cursor;
-  return {
-    query: {
-      $: { grantKey: JT_GRANT },
-      organization: {
-        $: { id: JT_ORG },
-        jobs: {
-          $: args,
-          nextPage: {},
-          nodes: { id: {}, name: {}, location: { address: {} } }
-        }
       }
     }
   };
@@ -625,103 +606,132 @@ async function syncFromJT() {
   }
 
   try {
+    // ── PASS 1: Hent alle tasks (id + navn + datoer + job.id kun) ──
+    // Lille payload per side = ingen 413
     const allTasks = [];
-    const assigneeByTask = new Map();
-    const jobInfoMap = new Map(); // jobId -> {name, address}
     const seenTaskIds = new Set();
-    const seenCursors = new Set();
-    let cursor = null;
-    let pagesFetched = 0;
+    let cursor1 = undefined; // første kald: ingen page parameter
+    let pass1Pages = 0;
+    const MAX = JT_MAX_PAGES;
 
-    // Pass 1: fetch all tasks (id, name, dates, job.id only — tiny payload)
-    while (pagesFetched < JT_MAX_PAGES) {
-      const cursorKey = cursor === null ? '__first__' : String(cursor);
-      if (seenCursors.has(cursorKey)) break;
-      seenCursors.add(cursorKey);
-
-      const label = pagesFetched === 0 ? 'Tasks side 1' : `Tasks side ${pagesFetched + 1}`;
-      const taskData = await jtFetch(taskPagePayload(cursor), label);
-      const connection = taskConnectionFrom(taskData);
-      const pageTasks = Array.isArray(connection.nodes) ? connection.nodes : [];
-
-      for (const task of pageTasks) {
-        if (!task?.id || seenTaskIds.has(task.id)) continue;
-        seenTaskIds.add(task.id);
-        allTasks.push(task);
+    while (pass1Pages < MAX) {
+      const args1 = { size: JT_PAGE_SIZE, where: { and: [['targetType', 'job'], ['isGroup', false]] } };
+      if (cursor1 !== undefined && cursor1 !== null && cursor1 !== '') {
+        args1.page = cursor1;
       }
-
-      pagesFetched += 1;
-      const nextCursor = connection.nextPage;
-      if (!nextCursor) break;
-      cursor = nextCursor;
-    }
-
-    // Pass 2: fetch all jobs with name+address (separate small requests)
-    let jobCursor = null;
-    const seenJobCursors = new Set();
-    let jobPages = 0;
-    while (jobPages < 20) {
-      const cursorKey = jobCursor === null ? '__first__' : String(jobCursor);
-      if (seenJobCursors.has(cursorKey)) break;
-      seenJobCursors.add(cursorKey);
-
-      const jobData = await jtFetch(jobsPagePayload(jobCursor), `Jobs side ${jobPages + 1}`);
-      const jobConn = (((jobData || {}).query || {}).organization || {}).jobs || {};
-      const jobNodes = Array.isArray(jobConn.nodes) ? jobConn.nodes : [];
-
-      for (const job of jobNodes) {
-        if (job?.id) {
-          jobInfoMap.set(job.id, {
-            name: job.name || '',
-            address: job.location?.address || ''
-          });
+      const d1 = await jtFetch({
+        query: {
+          $: { grantKey: JT_GRANT },
+          organization: {
+            $: { id: JT_ORG },
+            tasks: {
+              $: args1,
+              nextPage: {},
+              nodes: { id: {}, name: {}, startDate: {}, endDate: {}, job: { id: {} } }
+            }
+          }
         }
+      }, pass1Pages === 0 ? 'Tasks side 1' : 'Tasks side ' + (pass1Pages + 1));
+
+      const conn1 = (d1?.query?.organization?.tasks) || {};
+      const nodes1 = Array.isArray(conn1.nodes) ? conn1.nodes : [];
+
+      for (const t of nodes1) {
+        if (!t?.id || seenTaskIds.has(t.id)) continue;
+        seenTaskIds.add(t.id);
+        allTasks.push(t);
       }
 
-      jobPages += 1;
-      const nextJobCursor = jobConn.nextPage;
-      if (!nextJobCursor) break;
-      jobCursor = nextJobCursor;
+      pass1Pages++;
+      const next1 = conn1.nextPage;
+      if (!next1 || next1 === '') break;
+      cursor1 = next1;
     }
 
-    // Pass 3: fetch assignments (small payload per page)
-    let assignCursor = null;
-    const seenAssignCursors = new Set();
-    let assignPages = 0;
-    while (assignPages < JT_MAX_PAGES) {
-      const cursorKey = assignCursor === null ? '__first__' : String(assignCursor);
-      if (seenAssignCursors.has(cursorKey)) break;
-      seenAssignCursors.add(cursorKey);
-
-      const assignData = await jtFetch(taskAssignPagePayload(assignCursor), `Assignments side ${assignPages + 1}`);
-      const conn2 = taskConnectionFrom(assignData);
-      const pageNodes = Array.isArray(conn2.nodes) ? conn2.nodes : [];
-
-      for (const task of pageNodes) {
-        if (!task?.id) continue;
-        const first = task?.taskAssignments?.nodes?.[0]?.membership?.user?.name;
-        if (first) assigneeByTask.set(task.id, first);
+    // ── PASS 2: Hent job-navne og adresser ──
+    const jobMap = new Map();
+    let cursor2 = undefined;
+    let pass2Pages = 0;
+    while (pass2Pages < 20) {
+      const args2 = { size: 50 };
+      if (cursor2 !== undefined && cursor2 !== null && cursor2 !== '') {
+        args2.page = cursor2;
       }
+      const d2 = await jtFetch({
+        query: {
+          $: { grantKey: JT_GRANT },
+          organization: {
+            $: { id: JT_ORG },
+            jobs: {
+              $: args2,
+              nextPage: {},
+              nodes: { id: {}, name: {}, location: { address: {} } }
+            }
+          }
+        }
+      }, 'Jobs side ' + (pass2Pages + 1));
 
-      assignPages += 1;
-      const nextAssignCursor = conn2.nextPage;
-      if (!nextAssignCursor) break;
-      assignCursor = nextAssignCursor;
+      const conn2 = (d2?.query?.organization?.jobs) || {};
+      const nodes2 = Array.isArray(conn2.nodes) ? conn2.nodes : [];
+      for (const j of nodes2) {
+        if (j?.id) jobMap.set(j.id, { name: j.name || '', address: j.location?.address || '' });
+      }
+      pass2Pages++;
+      const next2 = conn2.nextPage;
+      if (!next2 || next2 === '') break;
+      cursor2 = next2;
     }
 
+    // ── PASS 3: Hent assignments ──
+    const assigneeMap = new Map();
+    let cursor3 = undefined;
+    let pass3Pages = 0;
+    while (pass3Pages < MAX) {
+      const args3 = { size: JT_PAGE_SIZE, where: { and: [['targetType', 'job'], ['isGroup', false]] } };
+      if (cursor3 !== undefined && cursor3 !== null && cursor3 !== '') {
+        args3.page = cursor3;
+      }
+      const d3 = await jtFetch({
+        query: {
+          $: { grantKey: JT_GRANT },
+          organization: {
+            $: { id: JT_ORG },
+            tasks: {
+              $: args3,
+              nextPage: {},
+              nodes: {
+                id: {},
+                taskAssignments: { nodes: { membership: { user: { name: {} } } } }
+              }
+            }
+          }
+        }
+      }, 'Assignments side ' + (pass3Pages + 1));
+
+      const conn3 = (d3?.query?.organization?.tasks) || {};
+      const nodes3 = Array.isArray(conn3.nodes) ? conn3.nodes : [];
+      for (const t of nodes3) {
+        if (!t?.id) continue;
+        const name = t?.taskAssignments?.nodes?.[0]?.membership?.user?.name;
+        if (name) assigneeMap.set(t.id, name);
+      }
+      pass3Pages++;
+      const next3 = conn3.nextPage;
+      if (!next3 || next3 === '') break;
+      cursor3 = next3;
+    }
+
+    // ── UPSERT: Gem i jt_tasks — rører ALDRIG planning_bookings ──
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       for (const task of allTasks) {
         const jobId = task.job?.id || null;
-        const jobInfo = jobId ? (jobInfoMap.get(jobId) || {}) : {};
-        const customerName = String(jobInfo.name || '')
+        const ji = jobId ? (jobMap.get(jobId) || {}) : {};
+        const customerName = String(ji.name || '')
           .replace(/\s*[-\u2013]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i, '')
           .trim();
 
-        // Read-only JobTread import. This upsert touches jt_tasks only and
-        // intentionally NEVER changes planning_bookings, users, notes or
-        // any dates/assignments set in the portal.
         await client.query(`
           INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()},'jobtread')
@@ -741,12 +751,12 @@ async function syncFromJT() {
           task.id,
           task.name || '',
           jobId,
-          customerName || jobInfo.name || '',
-          jobInfo.address || '',
+          customerName || ji.name || '',
+          ji.address || '',
           task.startDate || null,
           task.endDate || task.startDate || null,
           guessType(task.name),
-          assigneeByTask.get(task.id) || null,
+          assigneeMap.get(task.id) || null,
           jobId ? `https://app.jobtread.com/jobs/${jobId}/schedule` : null
         ]);
       }
@@ -758,18 +768,17 @@ async function syncFromJT() {
       client.release();
     }
 
-    const undated = allTasks.filter(task => !task.startDate).length;
-    const capped = pagesFetched >= JT_MAX_PAGES && cursor !== null;
-    const capNotice = capped ? ` · stoppet efter sikkerhedsgrænse på ${JT_MAX_PAGES} sider` : '';
-    const message = `${allTasks.length} tasks synced fra ${pagesFetched} sider · ${undated} uden JobTread-dato${capNotice}`;
-    await writeSyncLog(allTasks.length, 'ok', message);
-    return { ok: true, count: allTasks.length, undated, pages: pagesFetched, pageSize: JT_PAGE_SIZE, capped };
+    const msg = `${allTasks.length} tasks synced · ${pass1Pages} task-sider · ${pass2Pages} job-sider · ${pass3Pages} assignment-sider`;
+    await writeSyncLog(allTasks.length, 'ok', msg);
+    return { ok: true, count: allTasks.length, pages: pass1Pages };
+
   } catch (error) {
-    const safeMessage = redactSecret(error?.message || 'Ukendt JobTread-fejl').slice(0, 1000);
-    await writeSyncLog(0, 'error', safeMessage);
-    return { ok: false, error: safeMessage };
+    const safeMsg = redactSecret(error?.message || 'Ukendt fejl').slice(0, 1000);
+    await writeSyncLog(0, 'error', safeMsg);
+    return { ok: false, error: safeMsg };
   }
 }
+
 
 app.post('/api/sync', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await syncFromJT();
