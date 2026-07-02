@@ -27,3 +27,9 @@ Under **Hold & vendors**: Tryk `+ Vendor-gruppe`, indtast firmanavn, og opret de
 ## Fagfiltre
 
 Sæt fx `Gulvslibning`, `Maler`, `Tømrer` eller `VVS / El` under et hold. Der kommer automatisk et filter i både Daglig plan og Kapacitet.
+
+---
+
+## Dagsrapport & JobTread-timer (v1.3)
+
+Se `README_DAGSREPORT.md` for den nye obligatoriske dagsrapport: timer, note og mindst ét billede, med sikker aflevering til JobTread via en server-side connector.
