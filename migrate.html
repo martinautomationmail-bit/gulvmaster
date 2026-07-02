@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Gulv Master — sikker dataflytning</title>
+  <style>
+    :root{--navy:#0f2240;--blue:#2563eb;--ink:#172033;--muted:#64748b;--line:#dbe3ee;--bg:#f4f7fb;--good:#047857;--bad:#b91c1c}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);min-height:100vh;display:grid;place-items:center;padding:28px}
+    .card{width:min(680px,100%);background:white;border:1px solid var(--line);box-shadow:0 18px 55px rgba(15,34,64,.12);border-radius:18px;overflow:hidden}.top{background:var(--navy);padding:25px 28px;color:white}.top h1{margin:0;font-size:23px;letter-spacing:-.5px}.top p{margin:7px 0 0;color:#c9d6ec;font-size:14px;line-height:1.5}.body{padding:28px}.rule{margin:0 0 22px;padding:13px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:11px;color:#1e3a8a;font-size:13px;line-height:1.55}.rule strong{display:block;margin-bottom:2px}.step{display:flex;gap:12px;margin:17px 0}.num{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:#e8effc;color:var(--blue);font-weight:800;flex:0 0 auto;font-size:13px}.step div{font-size:14px;line-height:1.5}.step b{display:block;color:var(--navy)}label{display:block;font-size:12px;color:var(--muted);font-weight:800;letter-spacing:.05em;text-transform:uppercase;margin:17px 0 7px}input{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:9px;font:inherit;color:var(--ink)}input:focus{outline:3px solid #dbeafe;border-color:#60a5fa}button{margin-top:19px;width:100%;border:0;border-radius:9px;background:var(--blue);color:white;font:800 14px inherit;padding:13px;cursor:pointer}button:hover{filter:brightness(.96)}button:disabled{opacity:.55;cursor:not-allowed}.status{display:none;margin-top:17px;border-radius:10px;padding:13px 14px;font-size:13px;line-height:1.5}.status.show{display:block}.status.loading{background:#eff6ff;color:#1e40af}.status.good{background:#ecfdf5;color:var(--good);border:1px solid #a7f3d0}.status.bad{background:#fef2f2;color:var(--bad);border:1px solid #fecaca}.counts{margin-top:10px;background:#fff;border:1px solid #a7f3d0;border-radius:8px;padding:10px}.footer{margin-top:20px;padding-top:17px;border-top:1px solid var(--line);font-size:12px;line-height:1.55;color:var(--muted)}.footer a{color:var(--blue);font-weight:700;text-decoration:none}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <section class="top"><h1>Flyt portalens data sikkert til Postgres</h1><p>Denne side bruges én gang. Din databasefil læses direkte i din egen Render-service og gemmes derefter i Render Postgres.</p></section>
+    <section class="body">
+      <div class="rule"><strong>Din .db-fil bliver ikke gemt i GitHub.</strong>Den uploades kun midlertidigt til den aktive Render-service, valideres, kopieres til Postgres og slettes igen med det samme.</div>
+      <div class="step"><span class="num">1</span><div><b>Find din downloadede fil</b>Vælg filen <code>gulvmaster.db</code>, som du lige hentede fra din nuværende portal.</div></div>
+      <div class="step"><span class="num">2</span><div><b>Indtast migrationskoden</b>Det er den samme værdi, som du sætter som <code>MIGRATION_SECRET</code> under Render → Environment.</div></div>
+      <div class="step"><span class="num">3</span><div><b>Start flytningen</b>Efter success beholder du samme login, medarbejdere, vendors, faggrupper og JobTread task-pool.</div></div>
+
+      <form id="form">
+        <label for="secret">Migrationskode</label>
+        <input id="secret" type="password" autocomplete="off" required placeholder="Din MIGRATION_SECRET">
+        <label for="database">SQLite databasefil</label>
+        <input id="database" type="file" accept=".db,.sqlite,.sqlite3,application/octet-stream" required>
+        <button id="submit" type="submit">Flyt data til Postgres</button>
+      </form>
+      <div id="status" class="status"></div>
+      <div class="footer">Efter en vellykket flytning: Gå til <a href="/">login</a>. Du kan derefter fjerne <code>MIGRATION_SECRET</code> fra Render Environment. Portalen er herefter kun afhængig af <code>DATABASE_URL</code>.</div>
+    </section>
+  </main>
+  <script>
+    const form=document.getElementById('form'),status=document.getElementById('status'),button=document.getElementById('submit');
+    function show(kind,message){status.className='status show '+kind;status.innerHTML=message}
+    form.addEventListener('submit',async(e)=>{
+      e.preventDefault(); const file=document.getElementById('database').files[0], secret=document.getElementById('secret').value;
+      if(!file)return show('bad','Vælg først din <code>gulvmaster.db</code>-fil.');
+      button.disabled=true;show('loading','Flytter data… Luk ikke siden imens.');
+      const body=new FormData();body.append('database',file);
+      try{
+        const response=await fetch('/api/migration/import-sqlite',{method:'POST',headers:{'x-migration-secret':secret},body});
+        const data=await response.json().catch(()=>({error:'Serveren returnerede ikke et gyldigt svar.'}));
+        if(!response.ok)throw new Error(data.error||'Flytningen fejlede.');
+        const s=data.summary||{};const lines=Object.entries(s).map(([key,value])=>`<div>${key}: <b>${value}</b></div>`).join('');
+        show('good','<strong>Data er flyttet til Render Postgres.</strong><div class="counts">'+lines+'</div><p>Gå nu til <a href="/">login</a> og test, at alt ser rigtigt ud.</p>');
+        form.style.display='none';
+      }catch(error){show('bad','<strong>Flytningen blev stoppet.</strong><br>'+String(error.message||error));button.disabled=false}
+    });
+  </script>
+</body>
+</html>

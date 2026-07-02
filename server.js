@@ -1,500 +1,881 @@
+'use strict';
+
+/*
+  Gulv Master — PostgreSQL edition
+  ------------------------------------------------------------
+  Rules built into this server:
+  1) GitHub contains code only.
+  2) Render Postgres owns all users, tasks, bookings, notes and capacity data.
+  3) JobTread sync is read-only input. It upserts jt_tasks only.
+     It NEVER creates, edits or deletes planning_bookings.
+  4) A one-time protected migration page imports the existing SQLite database
+     directly into Postgres without putting the .db file in GitHub.
+*/
+
 const express = require('express');
-const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const cors = require('cors');
 const path = require('path');
-const cron = require('node-cron');
 const crypto = require('crypto');
+const cron = require('node-cron');
+const multer = require('multer');
+const { Pool } = require('pg');
+const SqliteDatabase = require('better-sqlite3');
+const fs = require('fs');
+const os = require('os');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'gulvmaster2026hemmelig';
-const JT_ORG = process.env.JT_ORG_ID || '22PZCGuGrJnQ';
+const PORT = Number(process.env.PORT || 3000);
+const JWT_SECRET = process.env.JWT_SECRET || '';
+const DATABASE_URL = process.env.DATABASE_URL || '';
+const MIGRATION_SECRET = process.env.MIGRATION_SECRET || '';
+const JT_ORG = process.env.JT_ORG_ID || '';
 const JT_GRANT = process.env.JT_GRANT_KEY || '';
 const JT_API = 'https://api.jobtread.com/pave';
-// Import settings. The portal is your planning system, so JobTread dates are
-// reference data only. We deliberately also import tasks without a start date.
 const JT_TASK_LIMIT = Math.max(50, Math.min(500, Number.parseInt(process.env.JT_TASK_LIMIT || '250', 10) || 250));
 const JT_INCLUDE_TODOS = String(process.env.JT_INCLUDE_TODOS || 'true').toLowerCase() !== 'false';
+const JT_AUTO_SYNC = String(process.env.JT_AUTO_SYNC || 'true').toLowerCase() !== 'false';
 
-app.use(cors());
-app.use(express.json());
-app.use(express.static(__dirname));
-
-// ── DATABASE ──────────────────────────────────────────
-const db = new Database(path.join(__dirname, 'gulvmaster.db'));
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role TEXT DEFAULT 'employee',
-    color TEXT DEFAULT '#2563EB',
-    initials TEXT,
-    jobtread_name TEXT,
-    active INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS jt_tasks (
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    job_id TEXT,
-    job_name TEXT,
-    job_address TEXT,
-    start_date TEXT,
-    end_date TEXT,
-    type_guess TEXT,
-    raw_assignee_name TEXT,
-    jt_url TEXT,
-    synced_at TEXT DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS assignments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id TEXT NOT NULL,
-    user_id INTEGER NOT NULL,
-    week_key TEXT NOT NULL,
-    days REAL DEFAULT 1,
-    notes TEXT,
-    start_time TEXT,
-    start_date TEXT,
-    end_date TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(task_id, user_id, week_key)
-  );
-  -- Legacy assignments stays untouched for backwards compatibility.
-  -- All new manual planning lives in planning_bookings.
-  CREATE TABLE IF NOT EXISTS planning_bookings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id TEXT NOT NULL,
-    user_id INTEGER NOT NULL,
-    week_key TEXT NOT NULL,
-    days REAL DEFAULT 1,
-    notes TEXT,
-    start_time TEXT,
-    start_date TEXT NOT NULL,
-    end_date TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS time_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    task_id TEXT NOT NULL,
-    started_at TEXT,
-    stopped_at TEXT,
-    duration_minutes INTEGER,
-    notes TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS sync_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    synced_at TEXT DEFAULT (datetime('now')),
-    tasks_imported INTEGER DEFAULT 0,
-    status TEXT,
-    message TEXT
-  );
-`);
-
-// ── SAFE SCHEMA MIGRATIONS ─────────────────────────────
-// Existing data is preserved. JobTread data is only copied into the task pool;
-// it never creates or overwrites a manual plan.
-function hasColumn(table, column) {
-  return db.prepare('PRAGMA table_info(' + table + ')').all().some(function(c){ return c.name === column; });
+if (!DATABASE_URL) {
+  console.error('FATAL: DATABASE_URL mangler. Appen kan ikke starte uden Render Postgres.');
+  process.exit(1);
 }
-function addColumn(table, column, definition) {
-  if (!hasColumn(table, column)) db.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + column + ' ' + definition);
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET mangler.');
+  process.exit(1);
 }
-addColumn('users', 'worker_type', "TEXT DEFAULT 'employee'"); // employee | vendor
-addColumn('users', 'vendor_group', 'TEXT');
-addColumn('users', 'trade', 'TEXT');
-addColumn('users', 'weekly_capacity', 'REAL DEFAULT 5');
-addColumn('users', 'can_login', 'INTEGER DEFAULT 1');
-addColumn('jt_tasks', 'source', "TEXT DEFAULT 'jobtread'"); // jobtread | manual
-addColumn('jt_tasks', 'created_at', 'TEXT');
-addColumn('jt_tasks', 'customer_phone', 'TEXT'); // optional phone shown in the employee app
-addColumn('assignments', 'updated_at', 'TEXT');
-db.exec("CREATE INDEX IF NOT EXISTS idx_assignments_user_start ON assignments(user_id, start_date)");
-db.exec("CREATE INDEX IF NOT EXISTS idx_assignments_task ON assignments(task_id)");
-db.exec("CREATE INDEX IF NOT EXISTS idx_planning_bookings_user_start ON planning_bookings(user_id, start_date)");
-db.exec("CREATE INDEX IF NOT EXISTS idx_planning_bookings_task ON planning_bookings(task_id)");
-db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_source_start ON jt_tasks(source, start_date)");
 
-// ── SEED USERS ────────────────────────────────────────
-var defaultUsers = [
-  {name:'Martin Breinbjerg',    email:'martin@gulvmaster.dk', pw:'admin123',   role:'admin',     color:'#0F2240', ini:'MB', jtname:'Martin Breinbjerg'},
-  {name:'Ahmed Chaib Elharouzi',email:'ahmed@gulvmaster.dk',  pw:'ahmed123',   role:'employee',  color:'#2563EB', ini:'AC', jtname:'Ahmed Chaib Elharouzi'},
-  {name:'Adrian Sobon',         email:'adrian@gulvmaster.dk', pw:'adrian123',  role:'employee',  color:'#16A34A', ini:'AS', jtname:'Adrian Sobon'},
-  {name:'Kacper Michalski',     email:'kacper@gulvmaster.dk', pw:'kacper123',  role:'employee',  color:'#7C3AED', ini:'KM', jtname:'Kacper Pawel Michalski'},
-  {name:'Rafal Prus',           email:'rafal@gulvmaster.dk',  pw:'rafal123',   role:'employee',  color:'#EA580C', ini:'RP', jtname:'Rafal Prus'},
-  {name:'Martin Rinik',         email:'mrinik@gulvmaster.dk', pw:'martin123',  role:'employee',  color:'#0891B2', ini:'MR', jtname:'Martin Rinik'},
-  {name:'Sarah K',              email:'sarah@gulvmaster.dk',  pw:'sarah123',   role:'employee',  color:'#DB2777', ini:'SK', jtname:'Sarah K'},
-  {name:'Laerke Raschat',       email:'laerke@gulvmaster.dk', pw:'laerke123',  role:'employee',  color:'#65A30D', ini:'LR', jtname:'Laerke Raschat'},
-  {name:'AJB Gruppen APS',      email:'ajb@gulvmaster.dk',    pw:'ajb123',     role:'employee',  color:'#DC2626', ini:'AG', jtname:'AJB GRUPPEN APS'},
-  {name:'Novo-Gulvservice ApS', email:'novo@gulvmaster.dk',   pw:'novo123',    role:'employee',  color:'#9333EA', ini:'NG', jtname:'Novo-Gulvservice Aps'},
-  {name:'Mohammed (Ahmed)',      email:'mohammed@gulvmaster.dk',pw:'mo123',     role:'employee',  color:'#92400E', ini:'MA', jtname:'Mohammed ( Ahmed'},
-];
-defaultUsers.forEach(function(u) {
-  var exists = db.prepare('SELECT id FROM users WHERE email=?').get(u.email);
-  if (!exists) {
-    db.prepare('INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name) VALUES (?,?,?,?,?,?,?)')
-      .run(u.name, u.email, bcrypt.hashSync(u.pw,10), u.role, u.color, u.ini, u.jtname);
+app.disable('x-powered-by');
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false }));
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const lower = String(file.originalname || '').toLowerCase();
+    if (!lower.endsWith('.db') && !lower.endsWith('.sqlite') && !lower.endsWith('.sqlite3')) {
+      return cb(new Error('Vælg en SQLite databasefil (.db, .sqlite eller .sqlite3).'));
+    }
+    cb(null, true);
   }
 });
-console.log('Users ready');
 
-// Workforce metadata used by the capacity board.
-db.prepare("UPDATE users SET worker_type='employee', weekly_capacity=COALESCE(NULLIF(weekly_capacity,0),5) WHERE worker_type IS NULL OR worker_type=''").run();
-db.prepare("UPDATE users SET worker_type='vendor', vendor_group='AJB Gruppen APS', trade='Gulvlægning', weekly_capacity=5 WHERE email='ajb@gulvmaster.dk'").run();
-db.prepare("UPDATE users SET worker_type='vendor', vendor_group='Novo-Gulvservice ApS', trade='Gulvslibning', weekly_capacity=5 WHERE email='novo@gulvmaster.dk'").run();
-
-
-// ── SEED TASKS FROM JOBTREAD (fetched 2026-07-02) ─────
-var seedTasks = [
-  {id:'22PZhrywxeiv',name:'Slibning og behandling',job_id:'22PZhSyGmL3U',job_name:'Kasper Høybye',job_address:'Asminderødgade 19 Nørrebro',start_date:'2026-07-13',end_date:'2026-07-15',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-  {id:'22PZsV988nDs',name:'Gulvslibning',job_id:'22PZsUbJq3RY',job_name:'Emma Hallsenius',job_address:'Vedbendvej 11, hellerup',start_date:'2026-07-06',end_date:'2026-07-08',type_guess:'sand',raw_assignee_name:null},
-  {id:'22Pa2BWcpzHy',name:'2-3 x maling af vægge',job_id:'22Pa29X6Kvjh',job_name:'Mikael Tümmler',job_address:'4262',start_date:'2026-07-02',end_date:'2026-07-05',type_guess:'paint',raw_assignee_name:'Rafal Prus'},
-  {id:'22Pa2BWcqNCH',name:'2-3 x maling af lofter',job_id:'22Pa29X6Kvjh',job_name:'Mikael Tümmler',job_address:'4262',start_date:'2026-07-06',end_date:'2026-07-08',type_guess:'paint',raw_assignee_name:'Rafal Prus'},
-  {id:'22Pa2BWcqNCJ',name:'Let slib & 2-3 maling af fodpaneler',job_id:'22Pa29X6Kvjh',job_name:'Mikael Tümmler',job_address:'4262',start_date:'2026-07-09',end_date:'2026-07-10',type_guess:'paint',raw_assignee_name:'Rafal Prus'},
-  {id:'22Pa2BWcqNCK',name:'Let slib & 2-3 maling af gerigter',job_id:'22Pa29X6Kvjh',job_name:'Mikael Tümmler',job_address:'4262',start_date:'2026-07-11',end_date:'2026-07-13',type_guess:'paint',raw_assignee_name:'Rafal Prus'},
-  {id:'22Pa2BWcqNCL',name:'Let slib & 2-3 maling af døre',job_id:'22Pa29X6Kvjh',job_name:'Mikael Tümmler',job_address:'4262',start_date:'2026-07-14',end_date:'2026-07-14',type_guess:'paint',raw_assignee_name:'Rafal Prus'},
-  {id:'22Pa56SC3G5D',name:'Slibning af trappetrin',job_id:'22Pa56C5qCh9',job_name:'Lejlighedsrenovering Nynnevej',job_address:'Sølvgade 102, 1307 København',start_date:'2026-07-24',end_date:'2026-07-25',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-  {id:'22Pa7JR635Xp',name:'Slibning x oliering (Første sal)',job_id:'22Pa7JMyYntv',job_name:'Heidi Moon',job_address:'Hattensens Alle 21, 2000 Frederiksberg',start_date:'2026-07-20',end_date:'2026-07-22',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-  {id:'22Pa7Jfq2xkf',name:'Gulvslibning x3 Matlak',job_id:'22Pa7JdC64d7',job_name:'Richard Bonner',job_address:'Borups alle 132, 4.1',start_date:'2026-07-06',end_date:'2026-07-09',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-  {id:'22Pa7K6zSphZ',name:'Gulvslibning x3matlak',job_id:'22Pa7K56LXub',job_name:'Mathilde E',job_address:'Hundshøjvej 20, 3660 Stenløse',start_date:'2026-07-10',end_date:'2026-07-13',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-  {id:'22Pa7KRpu5cv',name:'Susanne Ring - Gulvslibning',job_id:'22Pa7KPFFBSc',job_name:'Susan Ring',job_address:'Ukendt',start_date:'2026-07-10',end_date:'2026-07-13',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-  {id:'22Pa7KwGPmzM',name:'Jesper - Gulvslibning',job_id:'22Pa7KcHJ9Q2',job_name:'Jesper Marcussen',job_address:'Holtegade 12, 5',start_date:'2026-07-08',end_date:'2026-07-10',type_guess:'sand',raw_assignee_name:'Novo-Gulvservice Aps'},
-  {id:'22Pa7LK6wFW4',name:'Karin winther - Gulvslibning',job_id:'22Pa7LGavCgQ',job_name:'Karin Winther',job_address:'Borups alle 6, 2200 kbh n',start_date:'2026-07-13',end_date:'2026-07-14',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-  {id:'22Pa7M9XxBgK',name:'Peter Thorn - Gulvslib',job_id:'22Pa7M7pbc4F',job_name:'Peter Thorn',job_address:'2680',start_date:'2026-07-16',end_date:'2026-07-20',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-  {id:'22Pa7SFws6CR',name:'Afmontering',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-01',end_date:'2026-07-02',type_guess:'lay',raw_assignee_name:null},
-  {id:'22Pa7SFws6CT',name:'Opretning af strøer',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-02',end_date:'2026-07-03',type_guess:'lay',raw_assignee_name:'AJB GRUPPEN APS'},
-  {id:'22Pa7SFws6CU',name:'Lægning af gulvspånplade',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-04',end_date:'2026-07-10',type_guess:'lay',raw_assignee_name:'AJB GRUPPEN APS'},
-  {id:'22Pa7SFws6CW',name:'Lægning af sildebensparket',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-21',end_date:'2026-07-28',type_guess:'lay',raw_assignee_name:'Martin Rinik'},
-  {id:'22Pa7SFwsT6s',name:'Finish & Afslutning',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-29',end_date:'2026-07-29',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
-  {id:'22Pa7SFwspzB',name:'Gennemgang af projektet',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-30',end_date:'2026-07-30',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
-  {id:'22Pa7SFwspzC',name:'Installation af gulvvarme',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-13',end_date:'2026-07-15',type_guess:'sub',raw_assignee_name:null},
-  {id:'22Pa7SFwspzD',name:'Lægning af 12mm gulvspånplade',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-16',end_date:'2026-07-20',type_guess:'lay',raw_assignee_name:'AJB GRUPPEN APS'},
-  {id:'22Pa7Tx8MjTK',name:'Lægning af sildebensparket',job_id:'22Pa7TuuF2Ju',job_name:'Rebecca Elmin',job_address:'Rahbeks Alle 16 st',start_date:'2026-07-10',end_date:'2026-07-19',type_guess:'lay',raw_assignee_name:'Kacper Pawel Michalski'},
-  {id:'22Pa7Tx8N8Mc',name:'Slibning & Behandling',job_id:'22Pa7TuuF2Ju',job_name:'Rebecca Elmin',job_address:'Rahbeks Alle 16 st',start_date:'2026-07-20',end_date:'2026-07-25',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-  {id:'22Pa7Tx8N8Md',name:'Opsætning af Fejelister',job_id:'22Pa7TuuF2Ju',job_name:'Rebecca Elmin',job_address:'Rahbeks Alle 16 st',start_date:'2026-07-27',end_date:'2026-07-28',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
-  {id:'22Pa7Tx8N8Mf',name:'Finish & Afslutning',job_id:'22Pa7TuuF2Ju',job_name:'Rebecca Elmin',job_address:'Rahbeks Alle 16 st',start_date:'2026-07-29',end_date:'2026-07-29',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
-  {id:'22Pa7Tx8NVFy',name:'Gennemgang af projektet',job_id:'22Pa7TuuF2Ju',job_name:'Rebecca Elmin',job_address:'Rahbeks Alle 16 st',start_date:'2026-07-30',end_date:'2026-07-30',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
-  {id:'22Pa7VJ7xVwC',name:'Opsætning af døre/fodpaneler',job_id:'22Pa7VGwXWVu',job_name:'Simon Tue',job_address:'Lillegade 33, Greve',start_date:'2026-07-13',end_date:'2026-07-15',type_guess:'lay',raw_assignee_name:'Martin Rinik'},
-  {id:'22Pa7WbmakYm',name:'Lægning af sildebensparket',job_id:'22Pa7VmGA26S',job_name:'Marie Louise Heneberg',job_address:'Nordstrands alle 19',start_date:'2026-07-09',end_date:'2026-07-13',type_guess:'lay',raw_assignee_name:'AJB GRUPPEN APS'},
-  {id:'22Pa7WbmakYn',name:'Slibning & Behandling',job_id:'22Pa7VmGA26S',job_name:'Marie Louise Heneberg',job_address:'Nordstrands alle 19',start_date:'2026-07-14',end_date:'2026-07-16',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-  {id:'22Pa7aAmE78g',name:'Afmontering',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-06',end_date:'2026-07-06',type_guess:'lay',raw_assignee_name:'Mohammed ( Ahmed'},
-  {id:'22Pa7aAmE78i',name:'Opretning af strøer',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-07',end_date:'2026-07-08',type_guess:'lay',raw_assignee_name:'Mohammed ( Ahmed'},
-  {id:'22Pa7aAmE78j',name:'Lægning af gulvspånplade',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-09',end_date:'2026-07-10',type_guess:'lay',raw_assignee_name:'Mohammed ( Ahmed'},
-  {id:'22Pa7aAmEU35',name:'Lægning af lvt gulv',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-11',end_date:'2026-07-13',type_guess:'lay',raw_assignee_name:'Mohammed ( Ahmed'},
-  {id:'22Pa7aAmEqvP',name:'Opsætning af fodpaneler',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-13',end_date:'2026-07-14',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
-  {id:'22Pa7aAmFDph',name:'Finish & Afslutning',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-15',end_date:'2026-07-15',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
-  {id:'22Pa7aAmFDpi',name:'Gennemgang af projektet',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-15',end_date:'2026-07-15',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
-  {id:'22Pa7b7DhVaM',name:'Lægning af sildebensparket',job_id:'22Pa7b25vDxb',job_name:'Sara Stief',job_address:'Oehlenschlægersgade 7 stth',start_date:'2026-07-06',end_date:'2026-07-08',type_guess:'lay',raw_assignee_name:'Martin Rinik'},
-  {id:'22Pa7b7DhVaN',name:'Slibning & Behandling',job_id:'22Pa7b25vDxb',job_name:'Sara Stief',job_address:'Oehlenschlægersgade 7 stth',start_date:'2026-07-10',end_date:'2026-07-13',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
-];
-
-var upsertTask = db.prepare("INSERT OR REPLACE INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))");
-var seedAll = db.transaction(function(list) {
-  list.forEach(function(t) {
-    upsertTask.run(t.id,t.name,t.job_id,t.job_name,t.job_address,t.start_date,t.end_date,t.type_guess,t.raw_assignee_name,'https://app.jobtread.com/jobs/'+t.job_id);
-  });
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  max: 5,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
 });
-seedAll(seedTasks);
-console.log('Tasks seeded: ' + seedTasks.length);
 
-// JobTread assignees are kept as suggestions only. Manual planning is never overwritten.
-function getWeekKey(dateStr) {
-  var d = new Date(dateStr);
-  var day = d.getDay()||7;
-  d.setDate(d.getDate()+4-day);
-  var y = new Date(Date.UTC(d.getFullYear(),0,1));
-  var wn = Math.ceil((((d-y)/86400000)+1)/7);
-  var mon = new Date(dateStr);
-  var md = mon.getDay();
-  mon.setDate(mon.getDate()-(md||7)+1);
-  return 'w'+mon.getFullYear()+'-'+String(wn).padStart(2,'0');
+function asyncRoute(handler) {
+  return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
 
-// ── AUTH ──────────────────────────────────────────────
-function auth(req, res, next) {
-  var h = req.headers.authorization;
-  if (!h) return res.status(401).json({error:'No token'});
-  try { req.user = jwt.verify(h.replace('Bearer ',''), JWT_SECRET); next(); }
-  catch(e) { res.status(401).json({error:'Invalid token'}); }
+function nowTextSQL() {
+  return "(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::text";
 }
-function adminOnly(req, res, next) {
-  if (req.user.role !== 'admin') return res.status(403).json({error:'Admin only'});
+
+async function initSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT DEFAULT 'employee',
+      color TEXT DEFAULT '#2563EB',
+      initials TEXT,
+      jobtread_name TEXT,
+      active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      worker_type TEXT DEFAULT 'employee',
+      vendor_group TEXT,
+      trade TEXT,
+      weekly_capacity DOUBLE PRECISION DEFAULT 5,
+      can_login INTEGER DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS jt_tasks (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      job_id TEXT,
+      job_name TEXT,
+      job_address TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      type_guess TEXT,
+      raw_assignee_name TEXT,
+      jt_url TEXT,
+      synced_at TEXT DEFAULT ${nowTextSQL()},
+      source TEXT DEFAULT 'jobtread',
+      created_at TEXT,
+      customer_phone TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS assignments (
+      id SERIAL PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      week_key TEXT NOT NULL,
+      days DOUBLE PRECISION DEFAULT 1,
+      notes TEXT,
+      start_time TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS planning_bookings (
+      id SERIAL PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      week_key TEXT NOT NULL,
+      days DOUBLE PRECISION DEFAULT 1,
+      notes TEXT,
+      start_time TEXT,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
+    CREATE TABLE IF NOT EXISTS time_logs (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      task_id TEXT NOT NULL,
+      started_at TEXT,
+      stopped_at TEXT,
+      duration_minutes INTEGER,
+      notes TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
+    CREATE TABLE IF NOT EXISTS sync_log (
+      id SERIAL PRIMARY KEY,
+      synced_at TEXT DEFAULT ${nowTextSQL()},
+      tasks_imported INTEGER DEFAULT 0,
+      status TEXT,
+      message TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS app_migrations (
+      name TEXT PRIMARY KEY,
+      completed_at TEXT DEFAULT ${nowTextSQL()},
+      details TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_assignments_user_start ON assignments(user_id, start_date);
+    CREATE INDEX IF NOT EXISTS idx_assignments_task ON assignments(task_id);
+    CREATE INDEX IF NOT EXISTS idx_planning_bookings_user_start ON planning_bookings(user_id, start_date);
+    CREATE INDEX IF NOT EXISTS idx_planning_bookings_task ON planning_bookings(task_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_source_start ON jt_tasks(source, start_date);
+  `);
+}
+
+function secureEqual(left, right) {
+  if (typeof left !== 'string' || typeof right !== 'string') return false;
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function requireMigrationSecret(req, res, next) {
+  if (!MIGRATION_SECRET) return res.status(503).json({ error: 'MIGRATION_SECRET mangler i Render Environment.' });
+  const secret = String(req.get('x-migration-secret') || '');
+  if (!secureEqual(secret, MIGRATION_SECRET)) return res.status(401).json({ error: 'Forkert migrationskode.' });
   next();
 }
 
-app.post('/api/auth/login', function(req, res) {
-  var user = db.prepare("SELECT * FROM users WHERE email=? AND active=1 AND COALESCE(can_login,1)=1").get(req.body.email);
-  if (!user || !bcrypt.compareSync(req.body.password, user.password_hash))
-    return res.status(401).json({error:'Forkert email eller adgangskode'});
-  var token = jwt.sign({id:user.id,name:user.name,role:user.role,email:user.email}, JWT_SECRET, {expiresIn:'30d'});
-  res.json({token:token, user:{id:user.id,name:user.name,role:user.role,email:user.email,color:user.color,initials:user.initials}});
-});
-
-app.get('/api/auth/me', auth, function(req, res) {
-  res.json(db.prepare('SELECT id,name,email,role,color,initials FROM users WHERE id=?').get(req.user.id));
-});
-
-// ── USERS / WORKFORCE ─────────────────────────────────
-app.get('/api/users', auth, adminOnly, function(req, res) {
-  res.json(db.prepare("SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,COALESCE(can_login,1) AS can_login FROM users ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END, CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END, vendor_group, name").all());
-});
-function generatedPlanningEmail(name) {
-  var slug=String(name||'vendor').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,35)||'vendor';
-  return slug+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,7)+'@planning.local';
+function getWeekKey(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = d.getDay() || 7;
+  d.setDate(d.getDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  const mon = new Date(`${dateStr}T12:00:00`);
+  const md = mon.getDay();
+  mon.setDate(mon.getDate() - (md || 7) + 1);
+  return `w${mon.getFullYear()}-${String(weekNo).padStart(2, '0')}`;
 }
-app.post('/api/users', auth, adminOnly, function(req, res) {
-  var b=req.body || {}, canLogin=b.can_login !== false;
-  if (!b.name) return res.status(400).json({error:'Navn mangler'});
-  if (canLogin && (!b.email || !b.password)) return res.status(400).json({error:'Email og adgangskode mangler for en bruger med login'});
-  try {
-    var ini=b.initials||b.name.split(' ').map(function(w){return w[0];}).join('').substring(0,3).toUpperCase();
-    var email=canLogin ? String(b.email).trim().toLowerCase() : generatedPlanningEmail(b.name);
-    var password=canLogin ? b.password : crypto.randomBytes(24).toString('hex');
-    var workerType=b.worker_type==='vendor'?'vendor':'employee';
-    var role=canLogin ? (b.role||'employee') : 'employee';
-    var r=db.prepare('INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(String(b.name).trim(),email,bcrypt.hashSync(password,10),role,b.color||'#2563EB',ini,b.jobtread_name||null,b.active===0?0:1,workerType,b.vendor_group||null,b.trade||null,Math.max(0,Number(b.weekly_capacity)||5),canLogin?1:0);
-    res.json({id:r.lastInsertRowid,ok:true});
-  } catch(e) {
-    if (e.message.includes('UNIQUE')) return res.status(400).json({error:'Email er allerede i brug'});
-    res.status(500).json({error:e.message});
-  }
-});
-app.put('/api/users/:id', auth, adminOnly, function(req, res) {
-  var u=db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);
-  if (!u) return res.status(404).json({error:'Bruger blev ikke fundet'});
-  var b=req.body || {}, canLogin=b.can_login !== undefined ? (b.can_login?1:0) : (u.can_login===undefined?1:u.can_login);
-  var next={
-    name:b.name !== undefined ? String(b.name).trim() : u.name,
-    email:canLogin && b.email !== undefined ? String(b.email).trim().toLowerCase() : u.email,
-    password_hash:b.password ? bcrypt.hashSync(b.password,10) : u.password_hash,
-    role:canLogin ? (b.role || u.role) : 'employee',
-    color:b.color || u.color,
-    initials:b.initials !== undefined ? b.initials : u.initials,
-    jobtread_name:b.jobtread_name !== undefined ? b.jobtread_name : u.jobtread_name,
-    active:b.active !== undefined ? (b.active?1:0) : u.active,
-    worker_type:b.worker_type === 'vendor' ? 'vendor' : (b.worker_type ? 'employee' : (u.worker_type || 'employee')),
-    vendor_group:b.vendor_group !== undefined ? b.vendor_group : u.vendor_group,
-    trade:b.trade !== undefined ? b.trade : u.trade,
-    weekly_capacity:b.weekly_capacity !== undefined ? Math.max(0,Number(b.weekly_capacity)||0) : (u.weekly_capacity || 5),
-    can_login:canLogin
-  };
-  if (canLogin && !next.email) return res.status(400).json({error:'Email mangler for login-bruger'});
-  db.prepare('UPDATE users SET name=?,email=?,password_hash=?,role=?,color=?,initials=?,jobtread_name=?,active=?,worker_type=?,vendor_group=?,trade=?,weekly_capacity=?,can_login=? WHERE id=?')
-    .run(next.name,next.email,next.password_hash,next.role,next.color,next.initials,next.jobtread_name,next.active,next.worker_type,next.vendor_group,next.trade,next.weekly_capacity,next.can_login,req.params.id);
-  res.json({ok:true});
-});
 
-// ── JOBTREAD LIVE SYNC (sekventielle kald) ────────────
-async function jtFetch(bodyObj) {
-  var mod = await import('node-fetch');
-  var fetch = mod.default;
-  var resp = await fetch(JT_API, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(bodyObj)
+function validDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function addWorkingDays(startDate, durationDays) {
+  const d = new Date(`${startDate}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return startDate;
+  const days = Math.max(1, Math.ceil(Number(durationDays) || 1));
+  let count = 1;
+  while (count < days) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0 && d.getDay() !== 6) count += 1;
+  }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function cleanTaskType(type) {
+  return ['lay', 'sand', 'paint', 'sub', 'other'].includes(type) ? type : 'other';
+}
+
+function guessType(name) {
+  const t = String(name || '').toLowerCase();
+  if (t.includes('slib') || t.includes('behandling')) return 'sand';
+  if (t.includes('mal') || t.includes('lak') || t.includes('maling')) return 'paint';
+  if (t.includes('vvs') || t.includes('varme')) return 'sub';
+  if (t.includes('gulv') || t.includes('parket') || t.includes('afmontering') || t.includes('spaan') || t.includes('stroer') || t.includes('laeg')) return 'lay';
+  return 'other';
+}
+
+function generatedPlanningEmail(name) {
+  const slug = String(name || 'vendor').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 35) || 'vendor';
+  return `${slug}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@planning.local`;
+}
+
+function auth(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header) return res.status(401).json({ error: 'No token' });
+  try {
+    req.user = jwt.verify(header.replace(/^Bearer\s+/i, ''), JWT_SECRET);
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+function adminOnly(req, res, next) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  next();
+}
+
+async function pgOne(sql, values = []) {
+  const result = await pool.query(sql, values);
+  return result.rows[0] || null;
+}
+
+// ── ONE-TIME SQLITE → POSTGRES IMPORT ───────────────────────
+const IMPORT_TABLES = {
+  users: ['id', 'name', 'email', 'password_hash', 'role', 'color', 'initials', 'jobtread_name', 'active', 'created_at', 'worker_type', 'vendor_group', 'trade', 'weekly_capacity', 'can_login'],
+  jt_tasks: ['id', 'name', 'job_id', 'job_name', 'job_address', 'start_date', 'end_date', 'type_guess', 'raw_assignee_name', 'jt_url', 'synced_at', 'source', 'created_at', 'customer_phone'],
+  assignments: ['id', 'task_id', 'user_id', 'week_key', 'days', 'notes', 'start_time', 'start_date', 'end_date', 'created_at', 'updated_at'],
+  planning_bookings: ['id', 'task_id', 'user_id', 'week_key', 'days', 'notes', 'start_time', 'start_date', 'end_date', 'created_at', 'updated_at'],
+  time_logs: ['id', 'user_id', 'task_id', 'started_at', 'stopped_at', 'duration_minutes', 'notes', 'created_at'],
+  sync_log: ['id', 'synced_at', 'tasks_imported', 'status', 'message']
+};
+
+function qIdent(name) {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
+function sqliteTableNames(sqlite) {
+  return new Set(sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(row => row.name));
+}
+
+function sqliteColumns(sqlite, table) {
+  return new Set(sqlite.prepare(`PRAGMA table_info(${qIdent(table)})`).all().map(row => row.name));
+}
+
+async function importSqliteBuffer(buffer) {
+  const tempPath = path.join(os.tmpdir(), `gulvmaster-import-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.db`);
+  fs.writeFileSync(tempPath, buffer, { mode: 0o600 });
+  let sqlite;
+  let client;
+
+  try {
+    sqlite = new SqliteDatabase(tempPath, { readonly: true, fileMustExist: true });
+    const integrity = sqlite.prepare('PRAGMA integrity_check').get();
+    if (!integrity || integrity.integrity_check !== 'ok') throw new Error('SQLite-filen er ikke sund: integrity_check fejlede.');
+
+    const tables = sqliteTableNames(sqlite);
+    if (!tables.has('users') || !tables.has('jt_tasks')) {
+      throw new Error('Denne database ligner ikke en Gulv Master portal-database (users eller jt_tasks mangler).');
+    }
+
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const done = await client.query("SELECT 1 FROM app_migrations WHERE name='sqlite_initial_import_20260702'");
+    if (done.rowCount) throw new Error('Importen er allerede gennemført. Der er ikke ændret noget.');
+
+    const existing = await client.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM users) AS users,
+        (SELECT COUNT(*)::int FROM jt_tasks) AS tasks,
+        (SELECT COUNT(*)::int FROM planning_bookings) AS bookings,
+        (SELECT COUNT(*)::int FROM assignments) AS assignments
+    `);
+    const counts = existing.rows[0];
+    if (Number(counts.users) || Number(counts.tasks) || Number(counts.bookings) || Number(counts.assignments)) {
+      throw new Error('Postgres indeholder allerede data. Importen blev stoppet for at undgå dubletter.');
+    }
+
+    const summary = {};
+    for (const [table, allowedColumns] of Object.entries(IMPORT_TABLES)) {
+      if (!tables.has(table)) {
+        summary[table] = 0;
+        continue;
+      }
+      const sourceColumns = sqliteColumns(sqlite, table);
+      const columns = allowedColumns.filter(column => sourceColumns.has(column));
+      const rows = sqlite.prepare(`SELECT ${columns.map(qIdent).join(', ')} FROM ${qIdent(table)}`).all();
+      summary[table] = rows.length;
+      if (!rows.length) continue;
+
+      const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+      const updateColumns = columns.filter(column => column !== 'id');
+      const conflict = table === 'jt_tasks'
+        ? `ON CONFLICT (id) DO UPDATE SET ${updateColumns.map(column => `${qIdent(column)}=EXCLUDED.${qIdent(column)}`).join(', ')}`
+        : `ON CONFLICT (id) DO UPDATE SET ${updateColumns.map(column => `${qIdent(column)}=EXCLUDED.${qIdent(column)}`).join(', ')}`;
+      const statement = `INSERT INTO ${qIdent(table)} (${columns.map(qIdent).join(', ')}) VALUES (${placeholders}) ${conflict}`;
+
+      for (const row of rows) {
+        await client.query(statement, columns.map(column => row[column] === undefined ? null : row[column]));
+      }
+    }
+
+    // Older portal versions used the legacy `assignments` table. Convert those
+    // rows into independent planning_bookings as an extra safety net. Existing
+    // planning_bookings are left untouched and we only add a row when the same
+    // legacy assignment has not already been represented.
+    const converted = await client.query(`
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,notes,start_time,start_date,end_date,created_at,updated_at)
+      SELECT
+        a.task_id,
+        a.user_id,
+        COALESCE(NULLIF(a.week_key,''), 'legacy'),
+        COALESCE(a.days,1),
+        a.notes,
+        a.start_time,
+        COALESCE(NULLIF(a.start_date,''), t.start_date),
+        COALESCE(NULLIF(a.end_date,''), NULLIF(a.start_date,''), t.end_date, t.start_date),
+        COALESCE(a.created_at, ${nowTextSQL()}),
+        COALESCE(a.updated_at, a.created_at, ${nowTextSQL()})
+      FROM assignments a
+      JOIN jt_tasks t ON t.id=a.task_id
+      WHERE COALESCE(NULLIF(a.start_date,''), t.start_date) IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM planning_bookings b
+          WHERE b.task_id=a.task_id
+            AND b.user_id=a.user_id
+            AND b.start_date=COALESCE(NULLIF(a.start_date,''), t.start_date)
+            AND COALESCE(b.start_time,'')=COALESCE(a.start_time,'')
+        )
+    `);
+    summary.legacy_assignments_converted = converted.rowCount || 0;
+
+    for (const table of ['users', 'assignments', 'planning_bookings', 'time_logs', 'sync_log']) {
+      await client.query(`
+        SELECT setval(
+          pg_get_serial_sequence('${table}', 'id'),
+          GREATEST(COALESCE((SELECT MAX(id) FROM ${table}), 1), 1),
+          true
+        )
+      `);
+    }
+
+    await client.query(
+      "INSERT INTO app_migrations (name, details) VALUES ('sqlite_initial_import_20260702', $1)",
+      [JSON.stringify(summary)]
+    );
+    await client.query('COMMIT');
+    return summary;
+  } catch (error) {
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
+    throw error;
+  } finally {
+    if (client) client.release();
+    if (sqlite) sqlite.close();
+    try { fs.unlinkSync(tempPath); } catch (_) {}
+  }
+}
+
+app.get('/api/migration/status', asyncRoute(async (req, res) => {
+  const done = await pgOne("SELECT completed_at, details FROM app_migrations WHERE name='sqlite_initial_import_20260702'");
+  const counts = await pgOne('SELECT (SELECT COUNT(*)::int FROM users) AS users, (SELECT COUNT(*)::int FROM jt_tasks) AS tasks, (SELECT COUNT(*)::int FROM planning_bookings) AS bookings');
+  res.json({ migrationConfigured: Boolean(MIGRATION_SECRET), imported: Boolean(done), counts, completedAt: done ? done.completed_at : null });
+}));
+
+app.post('/api/migration/import-sqlite', requireMigrationSecret, upload.single('database'), asyncRoute(async (req, res) => {
+  if (!req.file || !req.file.buffer) return res.status(400).json({ error: 'Vælg din gulvmaster.db-fil først.' });
+  const summary = await importSqliteBuffer(req.file.buffer);
+  res.json({ ok: true, summary });
+}));
+
+// ── AUTH ────────────────────────────────────────────────────
+app.post('/api/auth/login', asyncRoute(async (req, res) => {
+  const email = String((req.body || {}).email || '').trim().toLowerCase();
+  const password = String((req.body || {}).password || '');
+  const user = await pgOne('SELECT * FROM users WHERE email=$1 AND active=1 AND COALESCE(can_login,1)=1', [email]);
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    return res.status(401).json({ error: 'Forkert email eller adgangskode' });
+  }
+  const token = jwt.sign({ id: user.id, name: user.name, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+  res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email, color: user.color, initials: user.initials } });
+}));
+
+app.get('/api/auth/me', auth, asyncRoute(async (req, res) => {
+  const user = await pgOne('SELECT id,name,email,role,color,initials FROM users WHERE id=$1', [req.user.id]);
+  if (!user) return res.status(401).json({ error: 'Bruger ikke fundet' });
+  res.json(user);
+}));
+
+// ── USERS / WORKFORCE ───────────────────────────────────────
+app.get('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await pool.query(`
+    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,COALESCE(can_login,1) AS can_login
+    FROM users
+    ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END,
+             CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END,
+             vendor_group NULLS FIRST,
+             name
+  `);
+  res.json(result.rows);
+}));
+
+app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const canLogin = body.can_login !== false;
+  if (!body.name) return res.status(400).json({ error: 'Navn mangler' });
+  if (canLogin && (!body.email || !body.password)) return res.status(400).json({ error: 'Email og adgangskode mangler for en bruger med login' });
+
+  const initials = body.initials || String(body.name).split(' ').filter(Boolean).map(part => part[0]).join('').slice(0, 3).toUpperCase();
+  const email = canLogin ? String(body.email).trim().toLowerCase() : generatedPlanningEmail(body.name);
+  const password = canLogin ? String(body.password) : crypto.randomBytes(24).toString('hex');
+  const workerType = body.worker_type === 'vendor' ? 'vendor' : 'employee';
+  const role = canLogin ? (body.role || 'employee') : 'employee';
+  const weeklyCapacity = Math.max(0, Number(body.weekly_capacity) || 5);
+
+  try {
+    const result = await pool.query(`
+      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      RETURNING id
+    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0]);
+    res.json({ ok: true, id: result.rows[0].id });
+  } catch (error) {
+    if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
+    throw error;
+  }
+}));
+
+app.put('/api/users/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const id = Number(req.params.id);
+  const current = await pgOne('SELECT * FROM users WHERE id=$1', [id]);
+  if (!current) return res.status(404).json({ error: 'Bruger blev ikke fundet' });
+  const body = req.body || {};
+  const canLogin = body.can_login !== undefined ? (body.can_login ? 1 : 0) : Number(current.can_login || 1);
+  const next = {
+    name: body.name !== undefined ? String(body.name).trim() : current.name,
+    email: canLogin && body.email !== undefined ? String(body.email).trim().toLowerCase() : current.email,
+    password_hash: body.password ? bcrypt.hashSync(String(body.password), 10) : current.password_hash,
+    role: canLogin ? (body.role || current.role) : 'employee',
+    color: body.color || current.color,
+    initials: body.initials !== undefined ? body.initials : current.initials,
+    jobtread_name: body.jobtread_name !== undefined ? body.jobtread_name : current.jobtread_name,
+    active: body.active !== undefined ? (body.active ? 1 : 0) : current.active,
+    worker_type: body.worker_type === 'vendor' ? 'vendor' : (body.worker_type ? 'employee' : (current.worker_type || 'employee')),
+    vendor_group: body.vendor_group !== undefined ? body.vendor_group : current.vendor_group,
+    trade: body.trade !== undefined ? body.trade : current.trade,
+    weekly_capacity: body.weekly_capacity !== undefined ? Math.max(0, Number(body.weekly_capacity) || 0) : (Number(current.weekly_capacity) || 5),
+    can_login: canLogin
+  };
+  if (canLogin && !next.email) return res.status(400).json({ error: 'Email mangler for login-bruger' });
+  try {
+    await pool.query(`
+      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13
+      WHERE id=$14
+    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, id]);
+    res.json({ ok: true });
+  } catch (error) {
+    if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
+    throw error;
+  }
+}));
+
+// ── JOBTREAD LIVE SYNC ──────────────────────────────────────
+async function jtFetch(body) {
+  const response = await fetch(JT_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
   });
-  if (!resp.ok) throw new Error('HTTP '+resp.status);
-  var data = await resp.json();
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data = await response.json();
   if (data.error) throw new Error(JSON.stringify(data.error));
   return data;
 }
 
-function guessType(n) {
-  var t=(n||'').toLowerCase();
-  if (t.includes('slib')||t.includes('behandling')) return 'sand';
-  if (t.includes('mal')||t.includes('lak')||t.includes('maling')) return 'paint';
-  if (t.includes('vvs')||t.includes('varme')) return 'sub';
-  if (t.includes('gulv')||t.includes('parket')||t.includes('afmontering')||t.includes('spaan')||t.includes('stroer')||t.includes('laeg')) return 'lay';
-  return 'other';
+async function writeSyncLog(tasksImported, status, message) {
+  await pool.query(`INSERT INTO sync_log (tasks_imported,status,message,synced_at) VALUES ($1,$2,$3,${nowTextSQL()})`, [tasksImported, status, message]);
 }
 
 async function syncFromJT() {
-  var key = JT_GRANT;
-  if (!key) {
-    console.log('No grant key set');
-    db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(0,'error','Grant Key ikke sat. Gå til Render Settings → Environment og tilføj JT_GRANT_KEY');
-    return {ok:false,error:'Ingen Grant Key'};
+  if (!JT_GRANT) {
+    await writeSyncLog(0, 'error', 'Grant Key ikke sat. Tilføj JT_GRANT_KEY i Render Environment.');
+    return { ok: false, error: 'Ingen Grant Key' };
   }
-  console.log('=== JT Sync start ===');
+  if (!JT_ORG) {
+    await writeSyncLog(0, 'error', 'Organisation ID ikke sat. Tilføj JT_ORG_ID i Render Environment.');
+    return { ok: false, error: 'Ingen Organisation ID' };
+  }
+
   try {
-    // Import every non-group Task connected to a Job. There is intentionally
-    // no startDate range here: an undated JobTread Task is still a valid item
-    // in the portal's planning pool. JobTread data is read-only reference data;
-    // it never creates or changes an internal booking.
-    var where = {and:[['targetType','job'],['isGroup',false]]};
-    if (!JT_INCLUDE_TODOS) where.and.unshift(['isToDo',false]);
+    const where = { and: [['targetType', 'job'], ['isGroup', false]] };
+    if (!JT_INCLUDE_TODOS) where.and.unshift(['isToDo', false]);
 
-    // Step 1: tasks with job information. The limit is configurable in Render
-    // (JT_TASK_LIMIT) and defaults to 250 instead of the old hard limit of 40.
-    console.log('Step 1: importing up to '+JT_TASK_LIMIT+' JobTread tasks...');
-    var d1 = await jtFetch({query:{$:{grantKey:key},organization:{$:{id:JT_ORG},tasks:{$:{size:JT_TASK_LIMIT,where:where},nodes:{id:{},name:{},startDate:{},endDate:{},job:{id:{},name:{},location:{address:{}}}}}}}});
-    var tasks = (d1&&d1.query&&d1.query.organization&&d1.query.organization.tasks&&d1.query.organization.tasks.nodes)||[];
-    console.log('Tasks: '+tasks.length);
-
-    // Step 2: assignments
-    console.log('Step 2: assignments...');
-    var d2 = await jtFetch({query:{$:{grantKey:key},organization:{$:{id:JT_ORG},tasks:{$:{size:JT_TASK_LIMIT,where:where},nodes:{id:{},taskAssignments:{nodes:{membership:{user:{name:{}}}}}}}}}});
-    var assignMap = {};
-    var d2n = (d2&&d2.query&&d2.query.organization&&d2.query.organization.tasks&&d2.query.organization.tasks.nodes)||[];
-    d2n.forEach(function(t) {
-      if (t.taskAssignments&&t.taskAssignments.nodes&&t.taskAssignments.nodes[0]&&t.taskAssignments.nodes[0].membership&&t.taskAssignments.nodes[0].membership.user)
-        assignMap[t.id]=t.taskAssignments.nodes[0].membership.user.name;
+    // Read-only JobTread import. No planning_bookings query exists in this function.
+    const dataTasks = await jtFetch({
+      query: {
+        $: { grantKey: JT_GRANT },
+        organization: {
+          $: { id: JT_ORG },
+          tasks: {
+            $: { size: JT_TASK_LIMIT, where },
+            nodes: { id: {}, name: {}, startDate: {}, endDate: {}, job: { id: {}, name: {}, location: { address: {} } } }
+          }
+        }
+      }
     });
-    console.log('Assignments: '+Object.keys(assignMap).length);
+    const tasks = (((dataTasks || {}).query || {}).organization || {}).tasks?.nodes || [];
 
-    // Upsert
-    var ups = db.prepare("INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'),'jobtread') ON CONFLICT(id) DO UPDATE SET name=excluded.name,job_id=excluded.job_id,job_name=excluded.job_name,job_address=excluded.job_address,start_date=excluded.start_date,end_date=excluded.end_date,type_guess=excluded.type_guess,raw_assignee_name=excluded.raw_assignee_name,jt_url=excluded.jt_url,synced_at=datetime('now'),source='jobtread'");
-    var doAll = db.transaction(function(list) {
-      list.forEach(function(t) {
-        var ji = t.job||{};
-        var customer = (ji.name||'').replace(/\s*[-\u2013]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i,'').trim();
-        ups.run(t.id,t.name,ji.id||null,customer||ji.name||'',ji.location&&ji.location.address||'',t.startDate,t.endDate||t.startDate,guessType(t.name),assignMap[t.id]||null,'https://app.jobtread.com/jobs/'+(ji.id||'')+'/schedule');
-      });
+    const dataAssignments = await jtFetch({
+      query: {
+        $: { grantKey: JT_GRANT },
+        organization: {
+          $: { id: JT_ORG },
+          tasks: {
+            $: { size: JT_TASK_LIMIT, where },
+            nodes: { id: {}, taskAssignments: { nodes: { membership: { user: { name: {} } } } } }
+          }
+        }
+      }
     });
-    doAll(tasks);
+    const assignmentNodes = (((dataAssignments || {}).query || {}).organization || {}).tasks?.nodes || [];
+    const assigneeByTask = new Map();
+    assignmentNodes.forEach(task => {
+      const first = task?.taskAssignments?.nodes?.[0]?.membership?.user?.name;
+      if (first) assigneeByTask.set(task.id, first);
+    });
 
-    // JobTread sync updates task data only; it never changes manual assignments.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const task of tasks) {
+        const job = task.job || {};
+        const customerName = String(job.name || '').replace(/\s*[-–]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i, '').trim();
+        // customer_phone intentionally omitted from UPDATE: it belongs to your portal.
+        await client.query(`
+          INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()},'jobtread')
+          ON CONFLICT (id) DO UPDATE SET
+            name=EXCLUDED.name,
+            job_id=EXCLUDED.job_id,
+            job_name=EXCLUDED.job_name,
+            job_address=EXCLUDED.job_address,
+            start_date=EXCLUDED.start_date,
+            end_date=EXCLUDED.end_date,
+            type_guess=EXCLUDED.type_guess,
+            raw_assignee_name=EXCLUDED.raw_assignee_name,
+            jt_url=EXCLUDED.jt_url,
+            synced_at=EXCLUDED.synced_at,
+            source='jobtread'
+        `, [task.id, task.name || '', job.id || null, customerName || job.name || '', job.location?.address || '', task.startDate || null, task.endDate || task.startDate || null, guessType(task.name), assigneeByTask.get(task.id) || null, job.id ? `https://app.jobtread.com/jobs/${job.id}/schedule` : null]);
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      throw error;
+    } finally {
+      client.release();
+    }
 
-    var undated = tasks.filter(function(t){ return !t.startDate; }).length;
-    var summary = tasks.length+' tasks synced · '+undated+' uden JobTread-dato';
-    db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(tasks.length,'ok',summary);
-    console.log('=== Sync done: '+summary+' ===');
-    return {ok:true,count:tasks.length,undated:undated,limit:JT_TASK_LIMIT};
-  } catch(e) {
-    console.error('Sync error: '+e.message);
-    db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(0,'error',e.message);
-    return {ok:false,error:e.message};
+    const undated = tasks.filter(task => !task.startDate).length;
+    const message = `${tasks.length} tasks synced · ${undated} uden JobTread-dato`;
+    await writeSyncLog(tasks.length, 'ok', message);
+    return { ok: true, count: tasks.length, undated, limit: JT_TASK_LIMIT };
+  } catch (error) {
+    await writeSyncLog(0, 'error', error.message);
+    return { ok: false, error: error.message };
   }
 }
 
-app.post('/api/sync', auth, adminOnly, function(req,res) {
-  syncFromJT().then(function(r){res.json(r);}).catch(function(e){res.status(500).json({error:e.message});});
-});
-app.get('/api/sync/log', auth, adminOnly, function(req,res) {
-  res.json(db.prepare('SELECT * FROM sync_log ORDER BY synced_at DESC LIMIT 20').all());
-});
-if (JT_GRANT) cron.schedule('0 * * * *', function(){syncFromJT();});
+app.post('/api/sync', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await syncFromJT();
+  res.status(result.ok ? 200 : 500).json(result);
+}));
 
-// ── TASK POOL + INDEPENDENT MANUAL PLAN ───────────────
-// JobTread is read-only input. `planning_bookings` is intentionally a separate
-// table with no unique task/user/week rule: a task can be planned on several
-// people and dates. Old automatic assignments are deliberately not used.
-app.get('/api/tasks', auth, function(req,res) {
-  var rows=db.prepare(`
-    SELECT t.*, COUNT(b.id) AS assignment_count
+app.get('/api/sync/log', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await pool.query('SELECT * FROM sync_log ORDER BY id DESC LIMIT 20');
+  res.json(result.rows);
+}));
+
+// ── TASK POOL + INDEPENDENT MANUAL PLAN ──────────────────────
+app.get('/api/tasks', auth, asyncRoute(async (req, res) => {
+  const result = await pool.query(`
+    SELECT t.*, COUNT(b.id)::int AS assignment_count
     FROM jt_tasks t
     LEFT JOIN planning_bookings b ON b.task_id=t.id
     GROUP BY t.id
     ORDER BY CASE WHEN t.source='manual' THEN 0 ELSE 1 END,
              CASE WHEN t.start_date IS NULL OR t.start_date='' THEN 1 ELSE 0 END,
-             t.start_date ASC, t.job_name ASC
-  `).all();
-  res.json(rows);
-});
-function validDate(value) { return typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value); }
-function addWorkingDays(startDate, durationDays) {
-  var d=new Date(startDate+'T12:00:00'); if (Number.isNaN(d.getTime())) return startDate;
-  var days=Math.max(1,Math.ceil(Number(durationDays)||1)), count=1;
-  while (count<days) { d.setDate(d.getDate()+1); if (d.getDay()!==0 && d.getDay()!==6) count++; }
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+             t.start_date ASC NULLS LAST,
+             t.job_name ASC
+  `);
+  res.json(result.rows);
+}));
+
+app.post('/api/tasks/manual', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.job_name || !body.name || !validDate(body.start_date)) {
+    return res.status(400).json({ error: 'Kunde/projekt, opgave og startdato skal udfyldes' });
+  }
+  const days = Math.max(0.25, Math.min(60, Number(body.days) || 1));
+  const endDate = validDate(body.end_date) ? body.end_date : addWorkingDays(body.start_date, days);
+  const id = `manual-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+  await pool.query(`
+    INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
+    VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,NULL,NULL,${nowTextSQL()},'manual',${nowTextSQL()})
+  `, [id, String(body.name).trim(), String(body.job_name).trim(), body.job_address || '', body.customer_phone || null, body.start_date, endDate, cleanTaskType(body.type_guess)]);
+  res.json({ ok: true, id });
+}));
+
+app.put('/api/tasks/:id/customer-contact', auth, adminOnly, asyncRoute(async (req, res) => {
+  const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [req.params.id]);
+  if (!task) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
+  const phone = String((req.body || {}).customer_phone || '').trim().slice(0, 60);
+  await pool.query('UPDATE jt_tasks SET customer_phone=$1 WHERE id=$2', [phone || null, req.params.id]);
+  res.json({ ok: true, customer_phone: phone || null });
+}));
+
+app.delete('/api/tasks/manual/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const task = await client.query("SELECT id FROM jt_tasks WHERE id=$1 AND source='manual'", [req.params.id]);
+    if (!task.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Kun manuelle opgaver kan slettes her' });
+    }
+    await client.query('DELETE FROM planning_bookings WHERE task_id=$1', [req.params.id]);
+    await client.query('DELETE FROM jt_tasks WHERE id=$1', [req.params.id]);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+async function normalizeBooking(body) {
+  const booking = body || {};
+  const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [booking.task_id]);
+  if (!task) throw new Error('Opgaven blev ikke fundet');
+  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(booking.user_id)]);
+  if (!user) throw new Error('Medarbejderen eller holdet blev ikke fundet');
+  if (!validDate(booking.start_date)) throw new Error('Vælg en gyldig startdato');
+  const days = Math.max(0.25, Math.min(60, Number(booking.days) || 1));
+  const start = booking.start_date;
+  return {
+    task_id: booking.task_id,
+    user_id: Number(booking.user_id),
+    week_key: getWeekKey(start),
+    days,
+    notes: booking.notes ? String(booking.notes).slice(0, 1000) : null,
+    start_time: booking.start_time || null,
+    start_date: start,
+    end_date: validDate(booking.end_date) ? booking.end_date : addWorkingDays(start, days)
+  };
 }
-function cleanTaskType(type) { return ['lay','sand','paint','sub','other'].includes(type) ? type : 'other'; }
-app.post('/api/tasks/manual', auth, adminOnly, function(req,res) {
-  var b=req.body||{};
-  if (!b.job_name || !b.name || !validDate(b.start_date)) return res.status(400).json({error:'Kunde/projekt, opgave og startdato skal udfyldes'});
-  var days=Math.max(.25,Math.min(60,Number(b.days)||1)), end=validDate(b.end_date)?b.end_date:addWorkingDays(b.start_date,days);
-  var id='manual-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2));
-  db.prepare("INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'manual', datetime('now'))")
-    .run(id,String(b.name).trim(),null,String(b.job_name).trim(),b.job_address||'',b.customer_phone||null,b.start_date,end,cleanTaskType(b.type_guess),null,null,new Date().toISOString());
-  res.json({ok:true,id:id});
-});
-app.put('/api/tasks/:id/customer-contact', auth, adminOnly, function(req,res) {
-  var task=db.prepare('SELECT id FROM jt_tasks WHERE id=?').get(req.params.id);
-  if (!task) return res.status(404).json({error:'Opgaven blev ikke fundet'});
-  var phone=String((req.body||{}).customer_phone||'').trim().slice(0,60);
-  db.prepare('UPDATE jt_tasks SET customer_phone=? WHERE id=?').run(phone||null,req.params.id);
-  res.json({ok:true,customer_phone:phone||null});
-});
-app.delete('/api/tasks/manual/:id', auth, adminOnly, function(req,res) {
-  var task=db.prepare("SELECT id FROM jt_tasks WHERE id=? AND source='manual'").get(req.params.id);
-  if (!task) return res.status(404).json({error:'Kun manuelle opgaver kan slettes her'});
-  db.transaction(function(){ db.prepare('DELETE FROM planning_bookings WHERE task_id=?').run(req.params.id); db.prepare('DELETE FROM jt_tasks WHERE id=?').run(req.params.id); })();
-  res.json({ok:true});
-});
-function normalizeBooking(body) {
-  var b=body||{};
-  var task=db.prepare('SELECT id FROM jt_tasks WHERE id=?').get(b.task_id); if(!task) throw new Error('Opgaven blev ikke fundet');
-  var user=db.prepare("SELECT id FROM users WHERE id=? AND active=1 AND role='employee'").get(b.user_id); if(!user) throw new Error('Medarbejderen eller holdet blev ikke fundet');
-  if(!validDate(b.start_date)) throw new Error('Vælg en gyldig startdato');
-  var days=Math.max(.25,Math.min(60,Number(b.days)||1)), start=b.start_date;
-  return {task_id:b.task_id,user_id:Number(b.user_id),week_key:getWeekKey(start),days:days,notes:b.notes?String(b.notes).slice(0,1000):null,start_time:b.start_time||null,start_date:start,end_date:validDate(b.end_date)?b.end_date:addWorkingDays(start,days)};
+
+function bookingSelect(where = '') {
+  return `
+    SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
+           t.name AS task_name,t.job_name,t.job_address,t.customer_phone,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
+    FROM planning_bookings b
+    JOIN users u ON b.user_id=u.id
+    JOIN jt_tasks t ON b.task_id=t.id
+    ${where}
+  `;
 }
-function bookingSelect(where) {
-  return `SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
-    t.name AS task_name,t.job_name,t.job_address,t.customer_phone,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
-    FROM planning_bookings b JOIN users u ON b.user_id=u.id JOIN jt_tasks t ON b.task_id=t.id ${where||''}`;
+
+app.get('/api/assignments', auth, asyncRoute(async (req, res) => {
+  const isAdmin = req.user.role === 'admin';
+  const sql = `${bookingSelect(isAdmin ? '' : 'WHERE b.user_id=$1')} ORDER BY b.start_date ASC,b.id ASC`;
+  const result = await pool.query(sql, isAdmin ? [] : [req.user.id]);
+  res.json(result.rows);
+}));
+
+app.get('/api/assignments/my', auth, asyncRoute(async (req, res) => {
+  const result = await pool.query(`${bookingSelect('WHERE b.user_id=$1')} ORDER BY b.start_date ASC,b.id ASC`, [req.user.id]);
+  res.json(result.rows);
+}));
+
+app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
+  try {
+    const booking = await normalizeBooking(req.body);
+    const result = await pool.query(`
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,notes,start_time,start_date,end_date,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()})
+      RETURNING id
+    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.notes, booking.start_time, booking.start_date, booking.end_date]);
+    res.json({ ok: true, id: result.rows[0].id });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+}));
+
+app.put('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [Number(req.params.id)]);
+  if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  try {
+    const booking = await normalizeBooking({ ...current, ...(req.body || {}), task_id: current.task_id });
+    await pool.query(`
+      UPDATE planning_bookings
+      SET user_id=$1,week_key=$2,days=$3,notes=$4,start_time=$5,start_date=$6,end_date=$7,updated_at=${nowTextSQL()}
+      WHERE id=$8
+    `, [booking.user_id, booking.week_key, booking.days, booking.notes, booking.start_time, booking.start_date, booking.end_date, current.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+}));
+
+app.delete('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM planning_bookings WHERE id=$1', [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/plan', auth, adminOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM planning_bookings');
+  res.json({ ok: true });
+}));
+
+// ── TIME LOGS (legacy support) ───────────────────────────────
+app.post('/api/time/start', auth, asyncRoute(async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`
+      UPDATE time_logs
+      SET stopped_at=${nowTextSQL()},
+          duration_minutes=GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at::timestamptz))/60)::int)
+      WHERE user_id=$1 AND stopped_at IS NULL
+    `, [req.user.id]);
+    const result = await client.query(`
+      INSERT INTO time_logs (user_id,task_id,started_at)
+      VALUES ($1,$2,${nowTextSQL()})
+      RETURNING id
+    `, [req.user.id, (req.body || {}).task_id]);
+    await client.query('COMMIT');
+    res.json({ ok: true, id: result.rows[0].id });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+app.post('/api/time/stop', auth, asyncRoute(async (req, res) => {
+  const log = await pgOne('SELECT * FROM time_logs WHERE id=$1 AND user_id=$2', [Number((req.body || {}).log_id), req.user.id]);
+  if (!log) return res.status(404).json({ error: 'Not found' });
+  await pool.query(`
+    UPDATE time_logs
+    SET stopped_at=${nowTextSQL()},
+        duration_minutes=GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at::timestamptz))/60)::int),
+        notes=$1
+    WHERE id=$2
+  `, [(req.body || {}).notes || null, log.id]);
+  const updated = await pgOne('SELECT duration_minutes FROM time_logs WHERE id=$1', [log.id]);
+  res.json({ ok: true, duration_minutes: updated.duration_minutes });
+}));
+
+app.get('/api/time/active', auth, asyncRoute(async (req, res) => {
+  const result = await pool.query(`
+    SELECT tl.*,t.job_name,t.name AS task_name
+    FROM time_logs tl
+    JOIN jt_tasks t ON tl.task_id=t.id
+    WHERE tl.user_id=$1 AND tl.stopped_at IS NULL
+    ORDER BY tl.id DESC
+    LIMIT 1
+  `, [req.user.id]);
+  res.json(result.rows[0] || null);
+}));
+
+app.get('/api/time/all', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await pool.query(`
+    SELECT tl.*,u.name AS user_name,t.job_name,t.name AS task_name
+    FROM time_logs tl
+    JOIN users u ON tl.user_id=u.id
+    JOIN jt_tasks t ON tl.task_id=t.id
+    ORDER BY tl.id DESC
+    LIMIT 200
+  `);
+  res.json(result.rows);
+}));
+
+// ── DASHBOARD ─────────────────────────────────────────────────
+app.get('/api/dashboard', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await pgOne(`
+    SELECT
+      (SELECT COUNT(*)::int FROM jt_tasks) AS "totalTasks",
+      (SELECT COUNT(DISTINCT task_id)::int FROM planning_bookings) AS assigned,
+      (SELECT COUNT(*)::int FROM planning_bookings) AS bookings,
+      (SELECT COUNT(*)::int FROM users WHERE active=1 AND role='employee' AND COALESCE(worker_type,'employee')!='vendor') AS employees,
+      (SELECT COUNT(*)::int FROM users WHERE active=1 AND role='employee' AND worker_type='vendor') AS vendors,
+      (SELECT COUNT(*)::int FROM jt_tasks WHERE source='manual') AS manual
+  `);
+  const lastSync = await pgOne('SELECT * FROM sync_log ORDER BY id DESC LIMIT 1');
+  res.json({
+    ...result,
+    unassigned: Math.max(0, Number(result.totalTasks || 0) - Number(result.assigned || 0)),
+    lastSync
+  });
+}));
+
+app.get('/api/health', asyncRoute(async (req, res) => {
+  await pool.query('SELECT 1');
+  res.json({ ok: true, database: 'postgres' });
+}));
+
+// ── PAGES ─────────────────────────────────────────────────────
+function sendPage(filename) {
+  return (req, res) => res.sendFile(path.join(__dirname, filename));
 }
-app.get('/api/assignments', auth, function(req,res) {
-  var where=req.user.role!=='admin'?'WHERE b.user_id=?':'', q=bookingSelect(where)+' ORDER BY b.start_date ASC,b.id ASC';
-  res.json(req.user.role!=='admin'?db.prepare(q).all(req.user.id):db.prepare(q).all());
-});
-app.get('/api/assignments/my', auth, function(req,res) { res.json(db.prepare(bookingSelect('WHERE b.user_id=?')+' ORDER BY b.start_date ASC,b.id ASC').all(req.user.id)); });
-app.post('/api/assignments', auth, adminOnly, function(req,res) {
-  try { var b=normalizeBooking(req.body); var r=db.prepare("INSERT INTO planning_bookings (task_id,user_id,week_key,days,notes,start_time,start_date,end_date,updated_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))").run(b.task_id,b.user_id,b.week_key,b.days,b.notes,b.start_time,b.start_date,b.end_date); res.json({ok:true,id:r.lastInsertRowid}); }
-  catch(e){res.status(400).json({error:e.message});}
-});
-app.put('/api/assignments/:id', auth, adminOnly, function(req,res) {
-  try { var old=db.prepare('SELECT * FROM planning_bookings WHERE id=?').get(req.params.id); if(!old) return res.status(404).json({error:'Bookingen blev ikke fundet'}); var b=normalizeBooking(Object.assign({},old,req.body,{task_id:old.task_id})); db.prepare("UPDATE planning_bookings SET user_id=?,week_key=?,days=?,notes=?,start_time=?,start_date=?,end_date=?,updated_at=datetime('now') WHERE id=?").run(b.user_id,b.week_key,b.days,b.notes,b.start_time,b.start_date,b.end_date,req.params.id); res.json({ok:true}); }
-  catch(e){res.status(400).json({error:e.message});}
-});
-app.delete('/api/assignments/:id', auth, adminOnly, function(req,res) { db.prepare('DELETE FROM planning_bookings WHERE id=?').run(req.params.id); res.json({ok:true}); });
-app.delete('/api/plan', auth, adminOnly, function(req,res) { db.prepare('DELETE FROM planning_bookings').run(); res.json({ok:true}); });
+app.get('/migrate', sendPage('migrate.html'));
+app.get('/admin', sendPage('admin.html'));
+app.get('/employee', sendPage('employee.html'));
+app.get('/', sendPage('index.html'));
+app.get('*', sendPage('index.html'));
 
-// ── TIME ──────────────────────────────────────────────
-app.post('/api/time/start', auth, function(req,res) {
-  db.prepare("UPDATE time_logs SET stopped_at=datetime('now'),duration_minutes=CAST((julianday('now')-julianday(started_at))*1440 AS INTEGER) WHERE user_id=? AND stopped_at IS NULL").run(req.user.id);
-  var r=db.prepare("INSERT INTO time_logs (user_id,task_id,started_at) VALUES (?,?,datetime('now'))").run(req.user.id,req.body.task_id);
-  res.json({id:r.lastInsertRowid,ok:true});
-});
-app.post('/api/time/stop', auth, function(req,res) {
-  var log=db.prepare('SELECT * FROM time_logs WHERE id=? AND user_id=?').get(req.body.log_id,req.user.id);
-  if (!log) return res.status(404).json({error:'Not found'});
-  db.prepare("UPDATE time_logs SET stopped_at=datetime('now'),duration_minutes=CAST((julianday('now')-julianday(started_at))*1440 AS INTEGER),notes=? WHERE id=?").run(req.body.notes||null,req.body.log_id);
-  res.json({ok:true,duration_minutes:db.prepare('SELECT duration_minutes FROM time_logs WHERE id=?').get(req.body.log_id).duration_minutes});
-});
-app.get('/api/time/active', auth, function(req,res) {
-  res.json(db.prepare('SELECT tl.*,t.job_name,t.name as task_name FROM time_logs tl JOIN jt_tasks t ON tl.task_id=t.id WHERE tl.user_id=? AND tl.stopped_at IS NULL').get(req.user.id)||null);
-});
-app.get('/api/time/all', auth, adminOnly, function(req,res) {
-  res.json(db.prepare('SELECT tl.*,u.name as user_name,t.job_name,t.name as task_name FROM time_logs tl JOIN users u ON tl.user_id=u.id JOIN jt_tasks t ON tl.task_id=t.id ORDER BY tl.started_at DESC LIMIT 200').all());
+app.use((error, req, res, next) => {
+  console.error('Unhandled error:', error);
+  if (res.headersSent) return next(error);
+  const message = error instanceof multer.MulterError ? 'Upload fejlede: filen er for stor eller ugyldig.' : (error.message || 'Serverfejl');
+  res.status(500).json({ error: message });
 });
 
-// ── DASHBOARD ─────────────────────────────────────────
-app.get('/api/dashboard', auth, adminOnly, function(req,res) {
-  // Pool totals must include undated JobTread tasks too; they are exactly the
-  // tasks you still need to plan manually in the portal.
-  var total=db.prepare('SELECT COUNT(*) as n FROM jt_tasks').get();
-  var assigned=db.prepare('SELECT COUNT(DISTINCT task_id) as n FROM planning_bookings').get();
-  var bookings=db.prepare('SELECT COUNT(*) as n FROM planning_bookings').get();
-  var emps=db.prepare("SELECT COUNT(*) as n FROM users WHERE active=1 AND role='employee' AND COALESCE(worker_type,'employee')!='vendor'").get();
-  var vendors=db.prepare("SELECT COUNT(*) as n FROM users WHERE active=1 AND role='employee' AND worker_type='vendor'").get();
-  var manual=db.prepare("SELECT COUNT(*) as n FROM jt_tasks WHERE source='manual'").get();
-  var lastSync=db.prepare('SELECT * FROM sync_log ORDER BY synced_at DESC LIMIT 1').get();
-  res.json({totalTasks:total.n,assigned:assigned.n,bookings:bookings.n,unassigned:Math.max(0,total.n-assigned.n),manual:manual.n,employees:emps.n,vendors:vendors.n,lastSync:lastSync});
-});
+async function start() {
+  await pool.query('SELECT 1 AS connected');
+  await initSchema();
+  app.listen(PORT, () => {
+    console.log(`Gulv Master PostgreSQL kører på port ${PORT}`);
+    console.log('JobTread-synk er read-only: den kan aldrig ændre planning_bookings.');
+  });
+  if (JT_GRANT && JT_ORG && JT_AUTO_SYNC) {
+    setTimeout(() => syncFromJT().catch(error => console.error('Startup sync failed:', error.message)), 5000);
+    cron.schedule('0 * * * *', () => syncFromJT().catch(error => console.error('Scheduled sync failed:', error.message)));
+  }
+}
 
-// ── ROUTING ───────────────────────────────────────────
-app.get('/admin', function(req,res){res.sendFile(path.join(__dirname,'admin.html'));});
-app.get('/employee', function(req,res){res.sendFile(path.join(__dirname,'employee.html'));});
-app.get('*', function(req,res){res.sendFile(path.join(__dirname,'index.html'));});
-
-app.listen(PORT, function() {
-  console.log('Gulv Master korer pa port '+PORT);
-  if (JT_GRANT) setTimeout(function(){syncFromJT();},5000);
+start().catch(error => {
+  console.error('FATAL STARTUP ERROR:', error.message);
+  process.exit(1);
 });

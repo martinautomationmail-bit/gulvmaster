@@ -1,35 +1,80 @@
-# Gulv Master Portal v1.2
+# Gulv Master — sikker Postgres-version
 
-## Det vigtige i denne version
+Denne version flytter portalen væk fra en lokal SQLite-fil og over på Render Postgres.
 
-JobTread er kun en **read-only Task-pool**. Din interne plan lever i `planning_bookings` og synkronisering ændrer aldrig bookinger.
+## Det der er bygget ind
 
-Når serveren starter, oprettes `planning_bookings` automatisk som en ny, tom plan. Den gamle `assignments`-tabel bliver ikke slettet, men den bruges ikke længere. Det fjerner gamle automatiske tildelinger uden at slette dem fysisk.
+- `GitHub` = kun kode.
+- `Render Postgres` = medarbejdere, logins, vendors, faggrupper, JobTread task-pool, interne bookinger, noter og kapacitetsdata.
+- `JobTread-sync` opdaterer **kun** tabellen `jt_tasks`.
+- Synken kan ikke oprette, ændre eller slette `planning_bookings`.
+- `/migrate` er en beskyttet engangs-side, hvor du uploader din gamle `gulvmaster.db` direkte til din egen Render-service. Filen slettes fra serverens midlertidige mappe lige efter importen.
 
-## Deploy
+## VIGTIGT: Hvad den uploadede database indeholder
 
-1. Erstat projektfilerne med denne mappe.
-2. Commit/push til GitHub og deploy din Node/Render-service igen.
-3. Sæt mindst `JWT_SECRET`, `JT_GRANT_KEY` og `JT_ORG_ID` som Environment Variables.
-4. Log ind som admin og tryk **Synk JT**. Tasks vises i poolen, men ingen bliver booket automatisk.
+Den database, der blev eksporteret 2. juli 2026, indeholder:
 
-## Planlægning
+- 11 brugere / medarbejdere / vendors
+- 40 JobTread Tasks
+- 2 synk-loglinjer
+- 0 `planning_bookings`
+- 0 `assignments`
+- 0 `time_logs`
 
-- Drag fra opgavepool til **Daglig plan**: opretter én manuel booking på den dato og det hold, du valgte. Standard er 1 dag. Klik på bookingen for at ændre dage, tid og note.
-- Drag fra opgavepool til **Kapacitet**: opretter én manuel booking på mandag i den valgte uge. Flyt den derefter til præcis dag under Daglig plan.
-- En Task bliver i poolen efter den er booket, så du kan planlægge den flere steder.
-- Dragging af en eksisterende booking flytter kun netop den booking.
+Det betyder, at der ikke findes konkrete interne bookinger, noter eller timer i netop den databasefil, som kan flyttes. Alt den indeholder flyttes. Nye bookinger bliver fremover gemt permanent i Postgres.
 
-## Vendor-undergrupper
+## Deployment — kun browser, ingen Shell
 
-Under **Hold & vendors**: Tryk `+ Vendor-gruppe`, indtast firmanavn, og opret derefter den første undergruppe. Vendor-undergrupper behøver ikke login; de bruges kun som kapacitetsrækker.
+### 1. Erstat projektfiler i GitHub
 
-## Fagfiltre
+Upload/erstat alle filer i denne mappe i roden af dit GitHub-projekt:
 
-Sæt fx `Gulvslibning`, `Maler`, `Tømrer` eller `VVS / El` under et hold. Der kommer automatisk et filter i både Daglig plan og Kapacitet.
+- `server.js`
+- `package.json`
+- `index.html`
+- `admin.html`
+- `employee.html`
+- `migrate.html`
 
----
+Skriv fx commit-besked:
 
-## Dagsrapport & JobTread-timer (v1.3)
+`Flyt Gulv Master portal til Render Postgres`
 
-Se `README_DAGSREPORT.md` for den nye obligatoriske dagsrapport: timer, note og mindst ét billede, med sikker aflevering til JobTread via en server-side connector.
+### 2. Tilføj to Render Environment Variables
+
+På **Gulv Master webservicen** i Render:
+
+1. Gå til **Environment** → **Edit** → **Add Environment Variable**.
+2. Tilføj `DATABASE_URL`.
+   - Værdien skal være den **Internal Database URL** fra din Render Postgres database.
+   - Brug den nye credential `gulvmaster_portal_migration`.
+   - Gør dette i Render UI. Brug ikke Web Shell.
+3. Tilføj `MIGRATION_SECRET`.
+   - Vælg en lang hemmelig kode, fx din egen kombination af ord og tal.
+   - Den bruges kun én gang på `/migrate`.
+4. Vælg **Save only** mens GitHub-filerne ikke er skiftet endnu.
+
+### 3. Lad Render deploye GitHub-opdateringen
+
+Efter GitHub-commit deployer Render automatisk. Vent til deploy står som **Live**.
+
+### 4. Importér din gamle database én gang
+
+1. Åbn `https://gulvmaster.onrender.com/migrate`
+2. Indtast præcis samme `MIGRATION_SECRET`.
+3. Vælg den downloadede fil `gulvmaster.db`.
+4. Tryk **Flyt data til Postgres**.
+5. Vent på grøn success-besked.
+6. Gå til login og test admin/medarbejdersiden.
+
+### 5. Ryd op efter test
+
+Når login, medarbejdere og task-pool er kontrolleret:
+
+- Fjern `MIGRATION_SECRET` fra Render Environment.
+- Behold `DATABASE_URL` permanent.
+- Gem den gamle `gulvmaster.db` lokalt som ekstra backup, men upload den ikke til GitHub.
+
+## Stop-regel
+
+Deploy aldrig denne version, før `DATABASE_URL` er sat i Render. Serveren stopper bevidst ved opstart uden den, så den aldrig falder tilbage til en ny tom lokal database.
