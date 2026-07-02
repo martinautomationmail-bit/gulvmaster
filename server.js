@@ -556,9 +556,8 @@ function taskConnection(cursor, fields) {
 }
 
 function taskPagePayload(cursor) {
-  // Use one query per page, not separate "tasks" and "assignments" requests.
-  // The JobTread assignee is only display/reference data. It never causes
-  // internal portal bookings to be created or changed.
+  // Split into two separate small queries to avoid HTTP 413.
+  // Query 1: task dates + job info (no assignments)
   return {
     query: {
       $: { grantKey: JT_GRANT },
@@ -569,7 +568,22 @@ function taskPagePayload(cursor) {
           name: {},
           startDate: {},
           endDate: {},
-          job: { id: {}, name: {}, location: { address: {} } },
+          job: { id: {}, name: {}, location: { address: {} } }
+        })
+      }
+    }
+  };
+}
+
+function taskAssignPagePayload(cursor) {
+  // Query 2: assignments only (no job info)
+  return {
+    query: {
+      $: { grantKey: JT_GRANT },
+      organization: {
+        $: { id: JT_ORG },
+        tasks: taskConnection(cursor, {
+          id: {},
           taskAssignments: { nodes: { membership: { user: { name: {} } } } }
         })
       }
@@ -599,12 +613,13 @@ async function syncFromJT() {
     let cursor = null; // null = first page: no `page` parameter at all
     let pagesFetched = 0;
 
+    // Pass 1: fetch all task dates + job info (no assignments — keeps each page small)
     while (pagesFetched < JT_MAX_PAGES) {
       const cursorKey = cursor === null ? '__first__' : String(cursor);
       if (seenCursors.has(cursorKey)) break;
       seenCursors.add(cursorKey);
 
-      const label = pagesFetched === 0 ? 'Tasks første side' : `Tasks side ${pagesFetched + 1}`;
+      const label = pagesFetched === 0 ? 'Tasks første side (job-info)' : `Tasks side ${pagesFetched + 1} (job-info)`;
       const taskData = await jtFetch(taskPagePayload(cursor), label);
       const connection = taskConnectionFrom(taskData);
       const pageTasks = Array.isArray(connection.nodes) ? connection.nodes : [];
@@ -613,8 +628,6 @@ async function syncFromJT() {
         if (!task?.id || seenTaskIds.has(task.id)) continue;
         seenTaskIds.add(task.id);
         allTasks.push(task);
-        const first = task?.taskAssignments?.nodes?.[0]?.membership?.user?.name;
-        if (first) assigneeByTask.set(task.id, first);
       }
 
       pagesFetched += 1;
@@ -623,10 +636,33 @@ async function syncFromJT() {
         cursor = null;
         break;
       }
-
-      // Keep JobTread's returned cursor exactly as it came back. It is often
-      // an opaque ID rather than a numeric page number.
       cursor = nextCursor;
+    }
+
+    // Pass 2: fetch assignments separately (avoids 413 from combined payload)
+    let assignCursor = null;
+    const seenAssignCursors = new Set();
+    let assignPages = 0;
+    while (assignPages < JT_MAX_PAGES) {
+      const cursorKey = assignCursor === null ? '__first__' : String(assignCursor);
+      if (seenAssignCursors.has(cursorKey)) break;
+      seenAssignCursors.add(cursorKey);
+
+      const label = assignPages === 0 ? 'Assignments første side' : `Assignments side ${assignPages + 1}`;
+      const assignData = await jtFetch(taskAssignPagePayload(assignCursor), label);
+      const conn2 = taskConnectionFrom(assignData);
+      const pageNodes = Array.isArray(conn2.nodes) ? conn2.nodes : [];
+
+      for (const task of pageNodes) {
+        if (!task?.id) continue;
+        const first = task?.taskAssignments?.nodes?.[0]?.membership?.user?.name;
+        if (first) assigneeByTask.set(task.id, first);
+      }
+
+      assignPages += 1;
+      const nextAssignCursor = conn2.nextPage;
+      if (nextAssignCursor === null || nextAssignCursor === undefined || nextAssignCursor === '' || nextAssignCursor === false) break;
+      assignCursor = nextAssignCursor;
     }
 
     const client = await pool.connect();
