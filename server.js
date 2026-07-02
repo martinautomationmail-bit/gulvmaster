@@ -20,7 +20,9 @@ const crypto = require('crypto');
 const cron = require('node-cron');
 const multer = require('multer');
 const { Pool } = require('pg');
-const SqliteDatabase = require('better-sqlite3');
+// Uses Node's built-in SQLite reader only for the one-time migration upload.
+// This avoids native build issues on Render.
+const { DatabaseSync: SqliteDatabase } = require('node:sqlite');
 const fs = require('fs');
 const os = require('os');
 
@@ -285,7 +287,7 @@ async function importSqliteBuffer(buffer) {
   let client;
 
   try {
-    sqlite = new SqliteDatabase(tempPath, { readonly: true, fileMustExist: true });
+    sqlite = new SqliteDatabase(tempPath, { readOnly: true, enableForeignKeyConstraints: false });
     const integrity = sqlite.prepare('PRAGMA integrity_check').get();
     if (!integrity || integrity.integrity_check !== 'ok') throw new Error('SQLite-filen er ikke sund: integrity_check fejlede.');
 
@@ -869,9 +871,16 @@ async function start() {
     console.log(`Gulv Master PostgreSQL kører på port ${PORT}`);
     console.log('JobTread-synk er read-only: den kan aldrig ændre planning_bookings.');
   });
-  if (JT_GRANT && JT_ORG && JT_AUTO_SYNC) {
+  // During the first SQLite → Postgres migration, the database must stay empty.
+  // Otherwise a startup JobTread sync could add tasks and make the protected import
+  // stop to avoid duplicates. Sync is enabled automatically after the migration exists.
+  const migrationState = await pgOne("SELECT 1 FROM app_migrations WHERE name='sqlite_initial_import_20260702'");
+  const migrationPending = Boolean(MIGRATION_SECRET) && !migrationState;
+  if (JT_GRANT && JT_ORG && JT_AUTO_SYNC && !migrationPending) {
     setTimeout(() => syncFromJT().catch(error => console.error('Startup sync failed:', error.message)), 5000);
     cron.schedule('0 * * * *', () => syncFromJT().catch(error => console.error('Scheduled sync failed:', error.message)));
+  } else if (migrationPending) {
+    console.log('JobTread-sync er sat på pause, indtil den første SQLite-import er færdig.');
   }
 }
 
