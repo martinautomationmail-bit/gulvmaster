@@ -36,7 +36,7 @@ const JT_GRANT = process.env.JT_GRANT_KEY || '';
 const JT_API = 'https://api.jobtread.com/pave';
 // JobTread paginerer lister. Its task query accepts 40 per page in this portal;
 // we fetch subsequent pages with nextPage instead of asking for 250 at once.
-const JT_PAGE_SIZE = Math.max(1, Math.min(40, Number.parseInt(process.env.JT_PAGE_SIZE || process.env.JT_TASK_LIMIT || '40', 10) || 40));
+const JT_PAGE_SIZE = Math.max(1, Math.min(20, Number.parseInt(process.env.JT_PAGE_SIZE || process.env.JT_TASK_LIMIT || '20', 10) || 20));
 const JT_MAX_PAGES = Math.max(1, Math.min(100, Number.parseInt(process.env.JT_MAX_PAGES || '100', 10) || 100));
 const JT_INCLUDE_TODOS = String(process.env.JT_INCLUDE_TODOS || 'true').toLowerCase() !== 'false';
 const JT_AUTO_SYNC = String(process.env.JT_AUTO_SYNC || 'true').toLowerCase() !== 'false';
@@ -556,8 +556,8 @@ function taskConnection(cursor, fields) {
 }
 
 function taskPagePayload(cursor) {
-  // Split into two separate small queries to avoid HTTP 413.
-  // Query 1: task dates + job info (no assignments)
+  // Small payload: only task fields, no job or assignments.
+  // Job info is fetched separately via the jobs endpoint.
   return {
     query: {
       $: { grantKey: JT_GRANT },
@@ -568,8 +568,27 @@ function taskPagePayload(cursor) {
           name: {},
           startDate: {},
           endDate: {},
-          job: { id: {}, name: {}, location: { address: {} } }
+          job: { id: {} }
         })
+      }
+    }
+  };
+}
+
+function jobsPagePayload(cursor) {
+  // Fetch all jobs with name+address separately to avoid 413
+  const args = { size: 50 };
+  if (cursor !== null && cursor !== undefined && cursor !== '') args.page = cursor;
+  return {
+    query: {
+      $: { grantKey: JT_GRANT },
+      organization: {
+        $: { id: JT_ORG },
+        jobs: {
+          $: args,
+          nextPage: {},
+          nodes: { id: {}, name: {}, location: { address: {} } }
+        }
       }
     }
   };
@@ -608,18 +627,19 @@ async function syncFromJT() {
   try {
     const allTasks = [];
     const assigneeByTask = new Map();
+    const jobInfoMap = new Map(); // jobId -> {name, address}
     const seenTaskIds = new Set();
     const seenCursors = new Set();
-    let cursor = null; // null = first page: no `page` parameter at all
+    let cursor = null;
     let pagesFetched = 0;
 
-    // Pass 1: fetch all task dates + job info (no assignments — keeps each page small)
+    // Pass 1: fetch all tasks (id, name, dates, job.id only — tiny payload)
     while (pagesFetched < JT_MAX_PAGES) {
       const cursorKey = cursor === null ? '__first__' : String(cursor);
       if (seenCursors.has(cursorKey)) break;
       seenCursors.add(cursorKey);
 
-      const label = pagesFetched === 0 ? 'Tasks første side (job-info)' : `Tasks side ${pagesFetched + 1} (job-info)`;
+      const label = pagesFetched === 0 ? 'Tasks side 1' : `Tasks side ${pagesFetched + 1}`;
       const taskData = await jtFetch(taskPagePayload(cursor), label);
       const connection = taskConnectionFrom(taskData);
       const pageTasks = Array.isArray(connection.nodes) ? connection.nodes : [];
@@ -632,14 +652,39 @@ async function syncFromJT() {
 
       pagesFetched += 1;
       const nextCursor = connection.nextPage;
-      if (nextCursor === null || nextCursor === undefined || nextCursor === '' || nextCursor === false) {
-        cursor = null;
-        break;
-      }
+      if (!nextCursor) break;
       cursor = nextCursor;
     }
 
-    // Pass 2: fetch assignments separately (avoids 413 from combined payload)
+    // Pass 2: fetch all jobs with name+address (separate small requests)
+    let jobCursor = null;
+    const seenJobCursors = new Set();
+    let jobPages = 0;
+    while (jobPages < 20) {
+      const cursorKey = jobCursor === null ? '__first__' : String(jobCursor);
+      if (seenJobCursors.has(cursorKey)) break;
+      seenJobCursors.add(cursorKey);
+
+      const jobData = await jtFetch(jobsPagePayload(jobCursor), `Jobs side ${jobPages + 1}`);
+      const jobConn = (((jobData || {}).query || {}).organization || {}).jobs || {};
+      const jobNodes = Array.isArray(jobConn.nodes) ? jobConn.nodes : [];
+
+      for (const job of jobNodes) {
+        if (job?.id) {
+          jobInfoMap.set(job.id, {
+            name: job.name || '',
+            address: job.location?.address || ''
+          });
+        }
+      }
+
+      jobPages += 1;
+      const nextJobCursor = jobConn.nextPage;
+      if (!nextJobCursor) break;
+      jobCursor = nextJobCursor;
+    }
+
+    // Pass 3: fetch assignments (small payload per page)
     let assignCursor = null;
     const seenAssignCursors = new Set();
     let assignPages = 0;
@@ -648,8 +693,7 @@ async function syncFromJT() {
       if (seenAssignCursors.has(cursorKey)) break;
       seenAssignCursors.add(cursorKey);
 
-      const label = assignPages === 0 ? 'Assignments første side' : `Assignments side ${assignPages + 1}`;
-      const assignData = await jtFetch(taskAssignPagePayload(assignCursor), label);
+      const assignData = await jtFetch(taskAssignPagePayload(assignCursor), `Assignments side ${assignPages + 1}`);
       const conn2 = taskConnectionFrom(assignData);
       const pageNodes = Array.isArray(conn2.nodes) ? conn2.nodes : [];
 
@@ -661,7 +705,7 @@ async function syncFromJT() {
 
       assignPages += 1;
       const nextAssignCursor = conn2.nextPage;
-      if (nextAssignCursor === null || nextAssignCursor === undefined || nextAssignCursor === '' || nextAssignCursor === false) break;
+      if (!nextAssignCursor) break;
       assignCursor = nextAssignCursor;
     }
 
@@ -669,14 +713,15 @@ async function syncFromJT() {
     try {
       await client.query('BEGIN');
       for (const task of allTasks) {
-        const job = task.job || {};
-        const customerName = String(job.name || '')
-          .replace(/\s*[-–]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i, '')
+        const jobId = task.job?.id || null;
+        const jobInfo = jobId ? (jobInfoMap.get(jobId) || {}) : {};
+        const customerName = String(jobInfo.name || '')
+          .replace(/\s*[-\u2013]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i, '')
           .trim();
 
         // Read-only JobTread import. This upsert touches jt_tasks only and
-        // intentionally never changes customer_phone, planning_bookings,
-        // users, notes, dates chosen in the portal, vendors, or capacity.
+        // intentionally NEVER changes planning_bookings, users, notes or
+        // any dates/assignments set in the portal.
         await client.query(`
           INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()},'jobtread')
@@ -695,14 +740,14 @@ async function syncFromJT() {
         `, [
           task.id,
           task.name || '',
-          job.id || null,
-          customerName || job.name || '',
-          job.location?.address || '',
+          jobId,
+          customerName || jobInfo.name || '',
+          jobInfo.address || '',
           task.startDate || null,
           task.endDate || task.startDate || null,
           guessType(task.name),
           assigneeByTask.get(task.id) || null,
-          job.id ? `https://app.jobtread.com/jobs/${job.id}/schedule` : null
+          jobId ? `https://app.jobtread.com/jobs/${jobId}/schedule` : null
         ]);
       }
       await client.query('COMMIT');
