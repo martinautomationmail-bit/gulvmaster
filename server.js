@@ -34,7 +34,10 @@ const MIGRATION_SECRET = process.env.MIGRATION_SECRET || '';
 const JT_ORG = process.env.JT_ORG_ID || '';
 const JT_GRANT = process.env.JT_GRANT_KEY || '';
 const JT_API = 'https://api.jobtread.com/pave';
-const JT_TASK_LIMIT = Math.max(50, Math.min(500, Number.parseInt(process.env.JT_TASK_LIMIT || '250', 10) || 250));
+// JobTread paginerer lister. Its task query accepts 40 per page in this portal;
+// we fetch subsequent pages with nextPage instead of asking for 250 at once.
+const JT_PAGE_SIZE = Math.max(1, Math.min(40, Number.parseInt(process.env.JT_PAGE_SIZE || process.env.JT_TASK_LIMIT || '40', 10) || 40));
+const JT_MAX_PAGES = Math.max(1, Math.min(100, Number.parseInt(process.env.JT_MAX_PAGES || '100', 10) || 100));
 const JT_INCLUDE_TODOS = String(process.env.JT_INCLUDE_TODOS || 'true').toLowerCase() !== 'false';
 const JT_AUTO_SYNC = String(process.env.JT_AUTO_SYNC || 'true').toLowerCase() !== 'false';
 
@@ -500,20 +503,76 @@ app.put('/api/users/:id', auth, adminOnly, asyncRoute(async (req, res) => {
 }));
 
 // ── JOBTREAD LIVE SYNC ──────────────────────────────────────
-async function jtFetch(body) {
+function redactSecret(value) {
+  const text = String(value || '');
+  return JT_GRANT ? text.split(JT_GRANT).join('[REDACTED]') : text;
+}
+
+async function jtFetch(body, label = 'JobTread-kald') {
   const response = await fetch(JT_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const data = await response.json();
-  if (data.error) throw new Error(JSON.stringify(data.error));
-  return data;
+
+  const raw = await response.text();
+  let data = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch (_) {}
+
+  if (!response.ok) {
+    const detail = redactSecret(
+      data?.error?.message || data?.error || data?.message || raw || 'Ingen fejltekst fra JobTread.'
+    ).replace(/\s+/g, ' ').trim().slice(0, 900);
+    throw new Error(`${label}: HTTP ${response.status}${detail ? ` — ${detail}` : ''}`);
+  }
+  if (data?.error) {
+    throw new Error(`${label}: ${redactSecret(JSON.stringify(data.error)).slice(0, 900)}`);
+  }
+  return data || {};
 }
 
 async function writeSyncLog(tasksImported, status, message) {
   await pool.query(`INSERT INTO sync_log (tasks_imported,status,message,synced_at) VALUES ($1,$2,$3,${nowTextSQL()})`, [tasksImported, status, message]);
+}
+
+function taskConnection(page, fields) {
+  const where = { and: [['targetType', 'job'], ['isGroup', false]] };
+  if (!JT_INCLUDE_TODOS) where.and.unshift(['isToDo', false]);
+  return {
+    $: {
+      size: JT_PAGE_SIZE,
+      page: String(page),
+      where
+    },
+    nextPage: {},
+    nodes: fields
+  };
+}
+
+function taskPagePayload(page, includeAssignments = false) {
+  const nodes = includeAssignments
+    ? { id: {}, taskAssignments: { nodes: { membership: { user: { name: {} } } } } }
+    : {
+        id: {},
+        name: {},
+        startDate: {},
+        endDate: {},
+        job: { id: {}, name: {}, location: { address: {} } }
+      };
+
+  return {
+    query: {
+      $: { grantKey: JT_GRANT },
+      organization: {
+        $: { id: JT_ORG },
+        tasks: taskConnection(page, nodes)
+      }
+    }
+  };
+}
+
+function taskConnectionFrom(data) {
+  return (((data || {}).query || {}).organization || {}).tasks || {};
 }
 
 async function syncFromJT() {
@@ -527,50 +586,62 @@ async function syncFromJT() {
   }
 
   try {
-    const where = { and: [['targetType', 'job'], ['isGroup', false]] };
-    if (!JT_INCLUDE_TODOS) where.and.unshift(['isToDo', false]);
-
-    // Read-only JobTread import. No planning_bookings query exists in this function.
-    const dataTasks = await jtFetch({
-      query: {
-        $: { grantKey: JT_GRANT },
-        organization: {
-          $: { id: JT_ORG },
-          tasks: {
-            $: { size: JT_TASK_LIMIT, where },
-            nodes: { id: {}, name: {}, startDate: {}, endDate: {}, job: { id: {}, name: {}, location: { address: {} } } }
-          }
-        }
-      }
-    });
-    const tasks = (((dataTasks || {}).query || {}).organization || {}).tasks?.nodes || [];
-
-    const dataAssignments = await jtFetch({
-      query: {
-        $: { grantKey: JT_GRANT },
-        organization: {
-          $: { id: JT_ORG },
-          tasks: {
-            $: { size: JT_TASK_LIMIT, where },
-            nodes: { id: {}, taskAssignments: { nodes: { membership: { user: { name: {} } } } } }
-          }
-        }
-      }
-    });
-    const assignmentNodes = (((dataAssignments || {}).query || {}).organization || {}).tasks?.nodes || [];
+    const allTasks = [];
     const assigneeByTask = new Map();
-    assignmentNodes.forEach(task => {
-      const first = task?.taskAssignments?.nodes?.[0]?.membership?.user?.name;
-      if (first) assigneeByTask.set(task.id, first);
-    });
+    const seenTaskIds = new Set();
+    const seenPages = new Set();
+    let page = '1';
+    let pagesFetched = 0;
+
+    // Each page uses the known-safe size of 40. `nextPage` is JobTread's
+    // supported pagination signal. No internal booking table is referenced.
+    while (page && !seenPages.has(String(page)) && pagesFetched < JT_MAX_PAGES) {
+      seenPages.add(String(page));
+      const pageNumber = String(page);
+      const [taskData, assignmentData] = await Promise.all([
+        jtFetch(taskPagePayload(pageNumber, false), `Tasks side ${pageNumber}`),
+        jtFetch(taskPagePayload(pageNumber, true), `Assignments side ${pageNumber}`)
+      ]);
+
+      const taskConnectionData = taskConnectionFrom(taskData);
+      const assignmentConnectionData = taskConnectionFrom(assignmentData);
+      const pageTasks = Array.isArray(taskConnectionData.nodes) ? taskConnectionData.nodes : [];
+      const assignmentNodes = Array.isArray(assignmentConnectionData.nodes) ? assignmentConnectionData.nodes : [];
+
+      for (const task of pageTasks) {
+        if (task?.id && !seenTaskIds.has(task.id)) {
+          seenTaskIds.add(task.id);
+          allTasks.push(task);
+        }
+      }
+      for (const task of assignmentNodes) {
+        const first = task?.taskAssignments?.nodes?.[0]?.membership?.user?.name;
+        if (task?.id && first) assigneeByTask.set(task.id, first);
+      }
+
+      pagesFetched += 1;
+      const nextPage = taskConnectionData.nextPage;
+      page = nextPage === null || nextPage === undefined || nextPage === '' || nextPage === false
+        ? null
+        : String(nextPage);
+
+      // Defensive stop: prevents an accidental infinite loop if an API proxy
+      // returns the same page without a nextPage marker.
+      if (!pageTasks.length && !page) break;
+    }
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      for (const task of tasks) {
+      for (const task of allTasks) {
         const job = task.job || {};
-        const customerName = String(job.name || '').replace(/\s*[-–]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i, '').trim();
-        // customer_phone intentionally omitted from UPDATE: it belongs to your portal.
+        const customerName = String(job.name || '')
+          .replace(/\s*[-–]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i, '')
+          .trim();
+
+        // Read-only JobTread import. This upsert touches jt_tasks only and
+        // intentionally never changes customer_phone, planning_bookings,
+        // users, notes, dates chosen in the portal, vendors, or capacity.
         await client.query(`
           INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()},'jobtread')
@@ -586,7 +657,18 @@ async function syncFromJT() {
             jt_url=EXCLUDED.jt_url,
             synced_at=EXCLUDED.synced_at,
             source='jobtread'
-        `, [task.id, task.name || '', job.id || null, customerName || job.name || '', job.location?.address || '', task.startDate || null, task.endDate || task.startDate || null, guessType(task.name), assigneeByTask.get(task.id) || null, job.id ? `https://app.jobtread.com/jobs/${job.id}/schedule` : null]);
+        `, [
+          task.id,
+          task.name || '',
+          job.id || null,
+          customerName || job.name || '',
+          job.location?.address || '',
+          task.startDate || null,
+          task.endDate || task.startDate || null,
+          guessType(task.name),
+          assigneeByTask.get(task.id) || null,
+          job.id ? `https://app.jobtread.com/jobs/${job.id}/schedule` : null
+        ]);
       }
       await client.query('COMMIT');
     } catch (error) {
@@ -596,13 +678,17 @@ async function syncFromJT() {
       client.release();
     }
 
-    const undated = tasks.filter(task => !task.startDate).length;
-    const message = `${tasks.length} tasks synced · ${undated} uden JobTread-dato`;
-    await writeSyncLog(tasks.length, 'ok', message);
-    return { ok: true, count: tasks.length, undated, limit: JT_TASK_LIMIT };
+    const undated = allTasks.filter(task => !task.startDate).length;
+    const capNotice = pagesFetched >= JT_MAX_PAGES && page
+      ? ` · stoppet efter sikkerhedsgrænse på ${JT_MAX_PAGES} sider`
+      : '';
+    const message = `${allTasks.length} tasks synced fra ${pagesFetched} sider · ${undated} uden JobTread-dato${capNotice}`;
+    await writeSyncLog(allTasks.length, 'ok', message);
+    return { ok: true, count: allTasks.length, undated, pages: pagesFetched, pageSize: JT_PAGE_SIZE, capped: Boolean(capNotice) };
   } catch (error) {
-    await writeSyncLog(0, 'error', error.message);
-    return { ok: false, error: error.message };
+    const safeMessage = redactSecret(error?.message || 'Ukendt JobTread-fejl').slice(0, 1000);
+    await writeSyncLog(0, 'error', safeMessage);
+    return { ok: false, error: safeMessage };
   }
 }
 
