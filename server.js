@@ -5,18 +5,18 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const path = require('path');
 const cron = require('node-cron');
-
+ 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'gulvmaster2026hemmelig';
 const JT_ORG = process.env.JT_ORG_ID || '22PZCGuGrJnQ';
 const JT_GRANT = process.env.JT_GRANT_KEY || '';
 const JT_API = 'https://api.jobtread.com/pave';
-
+ 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
-
+ 
 // ── DATABASE ──────────────────────────────────────────
 const db = new Database(path.join(__dirname, 'gulvmaster.db'));
 db.exec(`
@@ -28,7 +28,7 @@ db.exec(`
     role TEXT DEFAULT 'employee',
     color TEXT DEFAULT '#2563EB',
     initials TEXT,
-    jobtread_member_id TEXT,
+    jobtread_name TEXT,
     active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now'))
   );
@@ -73,31 +73,111 @@ db.exec(`
     message TEXT
   );
 `);
-
-// Seed default users
-const adminExists = db.prepare("SELECT id FROM users WHERE role='admin'").get();
-if (!adminExists) {
-  const hash = bcrypt.hashSync('admin123', 10);
-  db.prepare("INSERT OR IGNORE INTO users (name,email,password_hash,role,color,initials) VALUES (?,?,?,?,?,?)")
-    .run('Martin Breinbjerg','martin@gulvmaster.dk',hash,'admin','#0F2240','MB');
-  // Pre-seed employees from JobTread
-  const employees = [
-    ['Ahmed Chaib Elharouzi','ahmed@gulvmaster.dk','ahmed123','employee','#2563EB','AC'],
-    ['Adrian Sobon','adrian@gulvmaster.dk','adrian123','employee','#16A34A','AS'],
-    ['Kacper Michalski','kacper@gulvmaster.dk','kacper123','employee','#7C3AED','KM'],
-    ['Rafal Prus','rafal@gulvmaster.dk','rafal123','employee','#EA580C','RP'],
-    ['Martin Rinik','mrinik@gulvmaster.dk','martin123','employee','#0891B2','MR'],
-    ['Sarah K','sarah@gulvmaster.dk','sarah123','employee','#DB2777','SK'],
-    ['Laerke Raschat','laerke@gulvmaster.dk','laerke123','employee','#65A30D','LR'],
-  ];
-  employees.forEach(function(e) {
-    var h = bcrypt.hashSync(e[2], 10);
-    db.prepare("INSERT OR IGNORE INTO users (name,email,password_hash,role,color,initials) VALUES (?,?,?,?,?,?)")
-      .run(e[0],e[1],h,e[3],e[4],e[5]);
+ 
+// ── SEED USERS ────────────────────────────────────────
+var defaultUsers = [
+  {name:'Martin Breinbjerg',    email:'martin@gulvmaster.dk', pw:'admin123',   role:'admin',     color:'#0F2240', ini:'MB', jtname:'Martin Breinbjerg'},
+  {name:'Ahmed Chaib Elharouzi',email:'ahmed@gulvmaster.dk',  pw:'ahmed123',   role:'employee',  color:'#2563EB', ini:'AC', jtname:'Ahmed Chaib Elharouzi'},
+  {name:'Adrian Sobon',         email:'adrian@gulvmaster.dk', pw:'adrian123',  role:'employee',  color:'#16A34A', ini:'AS', jtname:'Adrian Sobon'},
+  {name:'Kacper Michalski',     email:'kacper@gulvmaster.dk', pw:'kacper123',  role:'employee',  color:'#7C3AED', ini:'KM', jtname:'Kacper Pawel Michalski'},
+  {name:'Rafal Prus',           email:'rafal@gulvmaster.dk',  pw:'rafal123',   role:'employee',  color:'#EA580C', ini:'RP', jtname:'Rafal Prus'},
+  {name:'Martin Rinik',         email:'mrinik@gulvmaster.dk', pw:'martin123',  role:'employee',  color:'#0891B2', ini:'MR', jtname:'Martin Rinik'},
+  {name:'Sarah K',              email:'sarah@gulvmaster.dk',  pw:'sarah123',   role:'employee',  color:'#DB2777', ini:'SK', jtname:'Sarah K'},
+  {name:'Laerke Raschat',       email:'laerke@gulvmaster.dk', pw:'laerke123',  role:'employee',  color:'#65A30D', ini:'LR', jtname:'Laerke Raschat'},
+  {name:'AJB Gruppen APS',      email:'ajb@gulvmaster.dk',    pw:'ajb123',     role:'employee',  color:'#DC2626', ini:'AG', jtname:'AJB GRUPPEN APS'},
+  {name:'Novo-Gulvservice ApS', email:'novo@gulvmaster.dk',   pw:'novo123',    role:'employee',  color:'#9333EA', ini:'NG', jtname:'Novo-Gulvservice Aps'},
+  {name:'Mohammed (Ahmed)',      email:'mohammed@gulvmaster.dk',pw:'mo123',     role:'employee',  color:'#92400E', ini:'MA', jtname:'Mohammed ( Ahmed'},
+];
+defaultUsers.forEach(function(u) {
+  var exists = db.prepare('SELECT id FROM users WHERE email=?').get(u.email);
+  if (!exists) {
+    db.prepare('INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name) VALUES (?,?,?,?,?,?,?)')
+      .run(u.name, u.email, bcrypt.hashSync(u.pw,10), u.role, u.color, u.ini, u.jtname);
+  }
+});
+console.log('Users ready');
+ 
+// ── SEED TASKS FROM JOBTREAD (fetched 2026-07-02) ─────
+var seedTasks = [
+  {id:'22PZhrywxeiv',name:'Slibning og behandling',job_id:'22PZhSyGmL3U',job_name:'Kasper Høybye',job_address:'Asminderødgade 19 Nørrebro',start_date:'2026-07-13',end_date:'2026-07-15',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+  {id:'22PZsV988nDs',name:'Gulvslibning',job_id:'22PZsUbJq3RY',job_name:'Emma Hallsenius',job_address:'Vedbendvej 11, hellerup',start_date:'2026-07-06',end_date:'2026-07-08',type_guess:'sand',raw_assignee_name:null},
+  {id:'22Pa2BWcpzHy',name:'2-3 x maling af vægge',job_id:'22Pa29X6Kvjh',job_name:'Mikael Tümmler',job_address:'4262',start_date:'2026-07-02',end_date:'2026-07-05',type_guess:'paint',raw_assignee_name:'Rafal Prus'},
+  {id:'22Pa2BWcqNCH',name:'2-3 x maling af lofter',job_id:'22Pa29X6Kvjh',job_name:'Mikael Tümmler',job_address:'4262',start_date:'2026-07-06',end_date:'2026-07-08',type_guess:'paint',raw_assignee_name:'Rafal Prus'},
+  {id:'22Pa2BWcqNCJ',name:'Let slib & 2-3 maling af fodpaneler',job_id:'22Pa29X6Kvjh',job_name:'Mikael Tümmler',job_address:'4262',start_date:'2026-07-09',end_date:'2026-07-10',type_guess:'paint',raw_assignee_name:'Rafal Prus'},
+  {id:'22Pa2BWcqNCK',name:'Let slib & 2-3 maling af gerigter',job_id:'22Pa29X6Kvjh',job_name:'Mikael Tümmler',job_address:'4262',start_date:'2026-07-11',end_date:'2026-07-13',type_guess:'paint',raw_assignee_name:'Rafal Prus'},
+  {id:'22Pa2BWcqNCL',name:'Let slib & 2-3 maling af døre',job_id:'22Pa29X6Kvjh',job_name:'Mikael Tümmler',job_address:'4262',start_date:'2026-07-14',end_date:'2026-07-14',type_guess:'paint',raw_assignee_name:'Rafal Prus'},
+  {id:'22Pa56SC3G5D',name:'Slibning af trappetrin',job_id:'22Pa56C5qCh9',job_name:'Lejlighedsrenovering Nynnevej',job_address:'Sølvgade 102, 1307 København',start_date:'2026-07-24',end_date:'2026-07-25',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+  {id:'22Pa7JR635Xp',name:'Slibning x oliering (Første sal)',job_id:'22Pa7JMyYntv',job_name:'Heidi Moon',job_address:'Hattensens Alle 21, 2000 Frederiksberg',start_date:'2026-07-20',end_date:'2026-07-22',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+  {id:'22Pa7Jfq2xkf',name:'Gulvslibning x3 Matlak',job_id:'22Pa7JdC64d7',job_name:'Richard Bonner',job_address:'Borups alle 132, 4.1',start_date:'2026-07-06',end_date:'2026-07-09',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+  {id:'22Pa7K6zSphZ',name:'Gulvslibning x3matlak',job_id:'22Pa7K56LXub',job_name:'Mathilde E',job_address:'Hundshøjvej 20, 3660 Stenløse',start_date:'2026-07-10',end_date:'2026-07-13',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+  {id:'22Pa7KRpu5cv',name:'Susanne Ring - Gulvslibning',job_id:'22Pa7KPFFBSc',job_name:'Susan Ring',job_address:'Ukendt',start_date:'2026-07-10',end_date:'2026-07-13',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+  {id:'22Pa7KwGPmzM',name:'Jesper - Gulvslibning',job_id:'22Pa7KcHJ9Q2',job_name:'Jesper Marcussen',job_address:'Holtegade 12, 5',start_date:'2026-07-08',end_date:'2026-07-10',type_guess:'sand',raw_assignee_name:'Novo-Gulvservice Aps'},
+  {id:'22Pa7LK6wFW4',name:'Karin winther - Gulvslibning',job_id:'22Pa7LGavCgQ',job_name:'Karin Winther',job_address:'Borups alle 6, 2200 kbh n',start_date:'2026-07-13',end_date:'2026-07-14',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+  {id:'22Pa7M9XxBgK',name:'Peter Thorn - Gulvslib',job_id:'22Pa7M7pbc4F',job_name:'Peter Thorn',job_address:'2680',start_date:'2026-07-16',end_date:'2026-07-20',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+  {id:'22Pa7SFws6CR',name:'Afmontering',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-01',end_date:'2026-07-02',type_guess:'lay',raw_assignee_name:null},
+  {id:'22Pa7SFws6CT',name:'Opretning af strøer',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-02',end_date:'2026-07-03',type_guess:'lay',raw_assignee_name:'AJB GRUPPEN APS'},
+  {id:'22Pa7SFws6CU',name:'Lægning af gulvspånplade',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-04',end_date:'2026-07-10',type_guess:'lay',raw_assignee_name:'AJB GRUPPEN APS'},
+  {id:'22Pa7SFws6CW',name:'Lægning af sildebensparket',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-21',end_date:'2026-07-28',type_guess:'lay',raw_assignee_name:'Martin Rinik'},
+  {id:'22Pa7SFwsT6s',name:'Finish & Afslutning',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-29',end_date:'2026-07-29',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
+  {id:'22Pa7SFwspzB',name:'Gennemgang af projektet',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-30',end_date:'2026-07-30',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
+  {id:'22Pa7SFwspzC',name:'Installation af gulvvarme',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-13',end_date:'2026-07-15',type_guess:'sub',raw_assignee_name:null},
+  {id:'22Pa7SFwspzD',name:'Lægning af 12mm gulvspånplade',job_id:'22Pa7QvHbzfT',job_name:'Per Bo Austin',job_address:'Lundemarken 13, 4000 Roskilde',start_date:'2026-07-16',end_date:'2026-07-20',type_guess:'lay',raw_assignee_name:'AJB GRUPPEN APS'},
+  {id:'22Pa7Tx8MjTK',name:'Lægning af sildebensparket',job_id:'22Pa7TuuF2Ju',job_name:'Rebecca Elmin',job_address:'Rahbeks Alle 16 st',start_date:'2026-07-10',end_date:'2026-07-19',type_guess:'lay',raw_assignee_name:'Kacper Pawel Michalski'},
+  {id:'22Pa7Tx8N8Mc',name:'Slibning & Behandling',job_id:'22Pa7TuuF2Ju',job_name:'Rebecca Elmin',job_address:'Rahbeks Alle 16 st',start_date:'2026-07-20',end_date:'2026-07-25',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+  {id:'22Pa7Tx8N8Md',name:'Opsætning af Fejelister',job_id:'22Pa7TuuF2Ju',job_name:'Rebecca Elmin',job_address:'Rahbeks Alle 16 st',start_date:'2026-07-27',end_date:'2026-07-28',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
+  {id:'22Pa7Tx8N8Mf',name:'Finish & Afslutning',job_id:'22Pa7TuuF2Ju',job_name:'Rebecca Elmin',job_address:'Rahbeks Alle 16 st',start_date:'2026-07-29',end_date:'2026-07-29',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
+  {id:'22Pa7Tx8NVFy',name:'Gennemgang af projektet',job_id:'22Pa7TuuF2Ju',job_name:'Rebecca Elmin',job_address:'Rahbeks Alle 16 st',start_date:'2026-07-30',end_date:'2026-07-30',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
+  {id:'22Pa7VJ7xVwC',name:'Opsætning af døre/fodpaneler',job_id:'22Pa7VGwXWVu',job_name:'Simon Tue',job_address:'Lillegade 33, Greve',start_date:'2026-07-13',end_date:'2026-07-15',type_guess:'lay',raw_assignee_name:'Martin Rinik'},
+  {id:'22Pa7WbmakYm',name:'Lægning af sildebensparket',job_id:'22Pa7VmGA26S',job_name:'Marie Louise Heneberg',job_address:'Nordstrands alle 19',start_date:'2026-07-09',end_date:'2026-07-13',type_guess:'lay',raw_assignee_name:'AJB GRUPPEN APS'},
+  {id:'22Pa7WbmakYn',name:'Slibning & Behandling',job_id:'22Pa7VmGA26S',job_name:'Marie Louise Heneberg',job_address:'Nordstrands alle 19',start_date:'2026-07-14',end_date:'2026-07-16',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+  {id:'22Pa7aAmE78g',name:'Afmontering',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-06',end_date:'2026-07-06',type_guess:'lay',raw_assignee_name:'Mohammed ( Ahmed'},
+  {id:'22Pa7aAmE78i',name:'Opretning af strøer',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-07',end_date:'2026-07-08',type_guess:'lay',raw_assignee_name:'Mohammed ( Ahmed'},
+  {id:'22Pa7aAmE78j',name:'Lægning af gulvspånplade',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-09',end_date:'2026-07-10',type_guess:'lay',raw_assignee_name:'Mohammed ( Ahmed'},
+  {id:'22Pa7aAmEU35',name:'Lægning af lvt gulv',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-11',end_date:'2026-07-13',type_guess:'lay',raw_assignee_name:'Mohammed ( Ahmed'},
+  {id:'22Pa7aAmEqvP',name:'Opsætning af fodpaneler',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-13',end_date:'2026-07-14',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
+  {id:'22Pa7aAmFDph',name:'Finish & Afslutning',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-15',end_date:'2026-07-15',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
+  {id:'22Pa7aAmFDpi',name:'Gennemgang af projektet',job_id:'22Pa7a83UQtG',job_name:'Sara Pryds',job_address:'Engmarken 15, 2. Tv',start_date:'2026-07-15',end_date:'2026-07-15',type_guess:'lay',raw_assignee_name:'Ahmed Chaib Elharouzi'},
+  {id:'22Pa7b7DhVaM',name:'Lægning af sildebensparket',job_id:'22Pa7b25vDxb',job_name:'Sara Stief',job_address:'Oehlenschlægersgade 7 stth',start_date:'2026-07-06',end_date:'2026-07-08',type_guess:'lay',raw_assignee_name:'Martin Rinik'},
+  {id:'22Pa7b7DhVaN',name:'Slibning & Behandling',job_id:'22Pa7b25vDxb',job_name:'Sara Stief',job_address:'Oehlenschlægersgade 7 stth',start_date:'2026-07-10',end_date:'2026-07-13',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
+];
+ 
+var upsertTask = db.prepare("INSERT OR REPLACE INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))");
+var seedAll = db.transaction(function(list) {
+  list.forEach(function(t) {
+    upsertTask.run(t.id,t.name,t.job_id,t.job_name,t.job_address,t.start_date,t.end_date,t.type_guess,t.raw_assignee_name,'https://app.jobtread.com/jobs/'+t.job_id);
   });
-  console.log('Default users created');
+});
+seedAll(seedTasks);
+console.log('Tasks seeded: ' + seedTasks.length);
+ 
+// Auto-assign tasks to users based on JT assignee name
+function autoAssign() {
+  var tasks = db.prepare('SELECT * FROM jt_tasks WHERE raw_assignee_name IS NOT NULL').all();
+  tasks.forEach(function(t) {
+    var user = db.prepare('SELECT id FROM users WHERE jobtread_name=? AND active=1').get(t.raw_assignee_name);
+    if (!user) return;
+    var wk = getWeekKey(t.start_date);
+    var days = Math.max(1, Math.min(5, Math.round((new Date(t.end_date)-new Date(t.start_date))/86400000)+1));
+    try {
+      db.prepare('INSERT OR IGNORE INTO assignments (task_id,user_id,week_key,days) VALUES (?,?,?,?)').run(t.id,user.id,wk,days);
+    } catch(e) {}
+  });
+  console.log('Auto-assigned tasks to users');
 }
-
+autoAssign();
+ 
+function getWeekKey(dateStr) {
+  var d = new Date(dateStr);
+  var day = d.getDay()||7;
+  d.setDate(d.getDate()+4-day);
+  var y = new Date(Date.UTC(d.getFullYear(),0,1));
+  var wn = Math.ceil((((d-y)/86400000)+1)/7);
+  var mon = new Date(dateStr);
+  var md = mon.getDay();
+  mon.setDate(mon.getDate()-(md||7)+1);
+  return 'w'+mon.getFullYear()+'-'+String(wn).padStart(2,'0');
+}
+ 
 // ── AUTH ──────────────────────────────────────────────
 function auth(req, res, next) {
   var h = req.headers.authorization;
@@ -109,7 +189,7 @@ function adminOnly(req, res, next) {
   if (req.user.role !== 'admin') return res.status(403).json({error:'Admin only'});
   next();
 }
-
+ 
 app.post('/api/auth/login', function(req, res) {
   var user = db.prepare('SELECT * FROM users WHERE email=? AND active=1').get(req.body.email);
   if (!user || !bcrypt.compareSync(req.body.password, user.password_hash))
@@ -117,256 +197,185 @@ app.post('/api/auth/login', function(req, res) {
   var token = jwt.sign({id:user.id,name:user.name,role:user.role,email:user.email}, JWT_SECRET, {expiresIn:'30d'});
   res.json({token:token, user:{id:user.id,name:user.name,role:user.role,email:user.email,color:user.color,initials:user.initials}});
 });
-
+ 
 app.get('/api/auth/me', auth, function(req, res) {
   res.json(db.prepare('SELECT id,name,email,role,color,initials FROM users WHERE id=?').get(req.user.id));
 });
-
+ 
 // ── USERS ─────────────────────────────────────────────
 app.get('/api/users', auth, adminOnly, function(req, res) {
-  res.json(db.prepare('SELECT id,name,email,role,color,initials,jobtread_member_id,active FROM users ORDER BY role DESC,name').all());
+  res.json(db.prepare('SELECT id,name,email,role,color,initials,jobtread_name,active FROM users ORDER BY role DESC,name').all());
 });
-
 app.post('/api/users', auth, adminOnly, function(req, res) {
-  var b = req.body;
-  if (!b.name||!b.email||!b.password) return res.status(400).json({error:'Navn, email og kode påkrævet'});
+  var b=req.body;
+  if (!b.name||!b.email||!b.password) return res.status(400).json({error:'Mangler felter'});
   try {
-    var ini = b.initials || b.name.split(' ').map(function(w){return w[0];}).join('').substring(0,2).toUpperCase();
-    var r = db.prepare('INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_member_id) VALUES (?,?,?,?,?,?,?)')
-      .run(b.name, b.email, bcrypt.hashSync(b.password,10), b.role||'employee', b.color||'#2563EB', ini, b.jobtread_member_id||null);
+    var ini=b.initials||b.name.split(' ').map(function(w){return w[0];}).join('').substring(0,2).toUpperCase();
+    var r=db.prepare('INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name) VALUES (?,?,?,?,?,?,?)').run(b.name,b.email,bcrypt.hashSync(b.password,10),b.role||'employee',b.color||'#2563EB',ini,b.jobtread_name||null);
     res.json({id:r.lastInsertRowid,ok:true});
   } catch(e) {
-    if (e.message.includes('UNIQUE')) return res.status(400).json({error:'Email allerede i brug'});
+    if (e.message.includes('UNIQUE')) return res.status(400).json({error:'Email i brug'});
     res.status(500).json({error:e.message});
   }
 });
-
 app.put('/api/users/:id', auth, adminOnly, function(req, res) {
-  var u = db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);
+  var u=db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);
   if (!u) return res.status(404).json({error:'Ikke fundet'});
-  var b = req.body;
-  db.prepare('UPDATE users SET name=?,email=?,password_hash=?,role=?,color=?,initials=?,jobtread_member_id=?,active=? WHERE id=?')
-    .run(b.name||u.name, b.email||u.email, b.password?bcrypt.hashSync(b.password,10):u.password_hash,
-      b.role||u.role, b.color||u.color, b.initials||u.initials, b.jobtread_member_id||u.jobtread_member_id,
-      b.active!==undefined?b.active:u.active, req.params.id);
+  var b=req.body;
+  db.prepare('UPDATE users SET name=?,email=?,password_hash=?,role=?,color=?,initials=?,jobtread_name=?,active=? WHERE id=?').run(b.name||u.name,b.email||u.email,b.password?bcrypt.hashSync(b.password,10):u.password_hash,b.role||u.role,b.color||u.color,b.initials||u.initials,b.jobtread_name||u.jobtread_name,b.active!==undefined?b.active:u.active,req.params.id);
   res.json({ok:true});
 });
-
-// ── JOBTREAD SYNC — sequential calls to avoid 413 ────
-async function jtFetch(body) {
-  var nodeFetch = await import('node-fetch');
-  var fetch = nodeFetch.default;
+ 
+// ── JOBTREAD LIVE SYNC (sekventielle kald) ────────────
+async function jtFetch(bodyObj) {
+  var mod = await import('node-fetch');
+  var fetch = mod.default;
   var resp = await fetch(JT_API, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(body)
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(bodyObj)
   });
-  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  if (!resp.ok) throw new Error('HTTP '+resp.status);
   var data = await resp.json();
   if (data.error) throw new Error(JSON.stringify(data.error));
   return data;
 }
-
-function guessType(name) {
-  var t = (name||'').toLowerCase();
+ 
+function guessType(n) {
+  var t=(n||'').toLowerCase();
   if (t.includes('slib')||t.includes('behandling')) return 'sand';
   if (t.includes('mal')||t.includes('lak')||t.includes('maling')) return 'paint';
   if (t.includes('vvs')||t.includes('varme')) return 'sub';
   if (t.includes('gulv')||t.includes('parket')||t.includes('afmontering')||t.includes('spaan')||t.includes('stroer')||t.includes('laeg')) return 'lay';
   return 'other';
 }
-
+ 
 async function syncFromJT() {
-  console.log('=== Starting JT sync ===');
   var key = JT_GRANT;
   if (!key) {
-    console.log('No grant key — skipping sync');
-    db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(0,'error','Ingen Grant Key konfigureret i Environment Variables');
-    return {ok:false, error:'Ingen Grant Key'};
+    console.log('No grant key set');
+    db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(0,'error','Grant Key ikke sat. Gå til Render Settings → Environment og tilføj JT_GRANT_KEY');
+    return {ok:false,error:'Ingen Grant Key'};
   }
-
+  console.log('=== JT Sync start ===');
   try {
     var from = new Date().toISOString().split('T')[0];
-    var toD = new Date(Date.now() + 84*86400000);
-    var to = toD.toISOString().split('T')[0];
-    console.log('Date range: ' + from + ' to ' + to);
-
+    var to = new Date(Date.now()+84*86400000).toISOString().split('T')[0];
     var where = {and:[['isToDo',false],['targetType','job'],['startDate','>=',from],['startDate','<=',to],['isGroup',false]]};
-    var taskFields = {$:{size:60, where:where}};
-
-    // Step 1: task dates + names (small query)
-    console.log('Step 1: fetching task dates...');
-    var d1 = await jtFetch({query:{$:{grantKey:key}, organization:{$:{id:JT_ORG},
-      tasks:Object.assign({},taskFields,{nodes:{id:{},name:{},startDate:{},endDate:{}}})}}});
+ 
+    // Step 1: tasks med job info
+    console.log('Step 1: tasks...');
+    var d1 = await jtFetch({query:{$:{grantKey:key},organization:{$:{id:JT_ORG},tasks:{$:{size:40,where:where},nodes:{id:{},name:{},startDate:{},endDate:{},job:{id:{},name:{},location:{address:{}}}}}}}});
     var tasks = (d1&&d1.query&&d1.query.organization&&d1.query.organization.tasks&&d1.query.organization.tasks.nodes)||[];
-    console.log('Step 1 done: ' + tasks.length + ' tasks');
-
-    // Step 2: task→job links (separate small query)
-    console.log('Step 2: fetching task-job links...');
-    var d2 = await jtFetch({query:{$:{grantKey:key}, organization:{$:{id:JT_ORG},
-      tasks:Object.assign({},taskFields,{nodes:{id:{},targetId:{}}})}}});
-    var taskJobMap = {};
-    var d2nodes = (d2&&d2.query&&d2.query.organization&&d2.query.organization.tasks&&d2.query.organization.tasks.nodes)||[];
-    d2nodes.forEach(function(t){ taskJobMap[t.id]=t.targetId; });
-    console.log('Step 2 done');
-
-    // Step 3: assignments (separate small query)
-    console.log('Step 3: fetching assignments...');
-    var d3 = await jtFetch({query:{$:{grantKey:key}, organization:{$:{id:JT_ORG},
-      tasks:Object.assign({},taskFields,{nodes:{id:{},taskAssignments:{nodes:{membership:{user:{name:{}}}}}}})}}});
+    console.log('Tasks: '+tasks.length);
+ 
+    // Step 2: assignments
+    console.log('Step 2: assignments...');
+    var d2 = await jtFetch({query:{$:{grantKey:key},organization:{$:{id:JT_ORG},tasks:{$:{size:40,where:where},nodes:{id:{},taskAssignments:{nodes:{membership:{user:{name:{}}}}}}}}}});
     var assignMap = {};
-    var d3nodes = (d3&&d3.query&&d3.query.organization&&d3.query.organization.tasks&&d3.query.organization.tasks.nodes)||[];
-    d3nodes.forEach(function(t){
-      if (t.taskAssignments&&t.taskAssignments.nodes&&t.taskAssignments.nodes[0]) {
-        var u = t.taskAssignments.nodes[0].membership&&t.taskAssignments.nodes[0].membership.user;
-        if (u) assignMap[t.id] = u.name;
-      }
+    var d2n = (d2&&d2.query&&d2.query.organization&&d2.query.organization.tasks&&d2.query.organization.tasks.nodes)||[];
+    d2n.forEach(function(t) {
+      if (t.taskAssignments&&t.taskAssignments.nodes&&t.taskAssignments.nodes[0]&&t.taskAssignments.nodes[0].membership&&t.taskAssignments.nodes[0].membership.user)
+        assignMap[t.id]=t.taskAssignments.nodes[0].membership.user.name;
     });
-    console.log('Step 3 done: ' + Object.keys(assignMap).length + ' assignments');
-
-    // Step 4: job names + addresses
-    console.log('Step 4: fetching job names...');
-    var d4 = await jtFetch({query:{$:{grantKey:key}, organization:{$:{id:JT_ORG},
-      jobs:{$:{size:50}, nodes:{id:{},name:{},location:{address:{},name:{}}}}}}});
-    var jobMap = {};
-    var d4nodes = (d4&&d4.query&&d4.query.organization&&d4.query.organization.jobs&&d4.query.organization.jobs.nodes)||[];
-    d4nodes.forEach(function(j){
-      jobMap[j.id]={name:j.name, address:(j.location&&(j.location.address||j.location.name))||''};
-    });
-    console.log('Step 4 done: ' + d4nodes.length + ' jobs');
-
-    // Upsert into DB
-    var upsert = db.prepare(
-      "INSERT OR REPLACE INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at) "+
-      "VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))"
-    );
+    console.log('Assignments: '+Object.keys(assignMap).length);
+ 
+    // Upsert
+    var ups = db.prepare("INSERT OR REPLACE INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))");
     var doAll = db.transaction(function(list) {
       list.forEach(function(t) {
-        var jid = taskJobMap[t.id];
-        var ji = jobMap[jid]||{};
+        var ji = t.job||{};
         var customer = (ji.name||'').replace(/\s*[-\u2013]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i,'').trim();
-        upsert.run(
-          t.id, t.name, jid||null,
-          customer||ji.name||'',
-          ji.address||'',
-          t.startDate, t.endDate||t.startDate,
-          guessType(t.name),
-          assignMap[t.id]||null,
-          'https://app.jobtread.com/jobs/'+(jid||'')
-        );
+        ups.run(t.id,t.name,ji.id||null,customer||ji.name||'',ji.location&&ji.location.address||'',t.startDate,t.endDate||t.startDate,guessType(t.name),assignMap[t.id]||null,'https://app.jobtread.com/jobs/'+(ji.id||''));
       });
     });
     doAll(tasks);
-
-    db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(tasks.length,'ok',tasks.length+' tasks synced OK');
-    console.log('=== Sync complete: ' + tasks.length + ' tasks ===');
-    return {ok:true, count:tasks.length};
-
+ 
+    // Re-run auto-assign
+    autoAssign();
+ 
+    db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(tasks.length,'ok',tasks.length+' tasks synced');
+    console.log('=== Sync done: '+tasks.length+' ===');
+    return {ok:true,count:tasks.length};
   } catch(e) {
     console.error('Sync error: '+e.message);
     db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(0,'error',e.message);
-    return {ok:false, error:e.message};
+    return {ok:false,error:e.message};
   }
 }
-
-app.post('/api/sync', auth, adminOnly, function(req, res) {
-  syncFromJT().then(function(r){ res.json(r); }).catch(function(e){ res.status(500).json({error:e.message}); });
+ 
+app.post('/api/sync', auth, adminOnly, function(req,res) {
+  syncFromJT().then(function(r){res.json(r);}).catch(function(e){res.status(500).json({error:e.message});});
 });
-
-app.get('/api/sync/log', auth, adminOnly, function(req, res) {
+app.get('/api/sync/log', auth, adminOnly, function(req,res) {
   res.json(db.prepare('SELECT * FROM sync_log ORDER BY synced_at DESC LIMIT 20').all());
 });
-
-// Auto-sync every hour
-cron.schedule('0 * * * *', function(){ syncFromJT(); });
-
+cron.schedule('0 * * * *', function(){syncFromJT();});
+ 
 // ── TASKS ─────────────────────────────────────────────
-app.get('/api/tasks', auth, function(req, res) {
+app.get('/api/tasks', auth, function(req,res) {
   res.json(db.prepare('SELECT * FROM jt_tasks ORDER BY start_date ASC').all());
 });
-
+ 
 // ── ASSIGNMENTS ───────────────────────────────────────
-app.get('/api/assignments', auth, function(req, res) {
-  var q = 'SELECT a.*, u.name as user_name, u.color as user_color, u.initials as user_initials, '+
-    't.name as task_name, t.job_name, t.job_address, t.start_date, t.end_date, t.type_guess, t.jt_url, t.job_id '+
-    'FROM assignments a JOIN users u ON a.user_id=u.id JOIN jt_tasks t ON a.task_id=t.id';
-  if (req.user.role !== 'admin') q += ' WHERE a.user_id='+req.user.id;
-  q += ' ORDER BY t.start_date ASC';
+app.get('/api/assignments', auth, function(req,res) {
+  var q='SELECT a.*, u.name as user_name, u.color as user_color, u.initials as user_initials, t.name as task_name, t.job_name, t.job_address, t.start_date, t.end_date, t.type_guess, t.jt_url, t.job_id FROM assignments a JOIN users u ON a.user_id=u.id JOIN jt_tasks t ON a.task_id=t.id';
+  if (req.user.role!=='admin') q+=' WHERE a.user_id='+req.user.id;
+  q+=' ORDER BY t.start_date ASC';
   res.json(db.prepare(q).all());
 });
-
-app.get('/api/assignments/my', auth, function(req, res) {
-  res.json(db.prepare(
-    'SELECT a.*, t.name as task_name, t.job_name, t.job_address, t.start_date, t.end_date, t.type_guess, t.jt_url, t.job_id '+
-    'FROM assignments a JOIN jt_tasks t ON a.task_id=t.id WHERE a.user_id=? ORDER BY t.start_date ASC'
-  ).all(req.user.id));
+app.get('/api/assignments/my', auth, function(req,res) {
+  res.json(db.prepare('SELECT a.*, t.name as task_name, t.job_name, t.job_address, t.start_date, t.end_date, t.type_guess, t.jt_url, t.job_id FROM assignments a JOIN jt_tasks t ON a.task_id=t.id WHERE a.user_id=? ORDER BY t.start_date ASC').all(req.user.id));
 });
-
-app.post('/api/assignments', auth, adminOnly, function(req, res) {
+app.post('/api/assignments', auth, adminOnly, function(req,res) {
   try {
-    var r = db.prepare('INSERT OR REPLACE INTO assignments (task_id,user_id,week_key,days,notes) VALUES (?,?,?,?,?)')
-      .run(req.body.task_id, req.body.user_id, req.body.week_key, req.body.days||1, req.body.notes||null);
+    var r=db.prepare('INSERT OR REPLACE INTO assignments (task_id,user_id,week_key,days,notes) VALUES (?,?,?,?,?)').run(req.body.task_id,req.body.user_id,req.body.week_key,req.body.days||1,req.body.notes||null);
     res.json({id:r.lastInsertRowid,ok:true});
-  } catch(e){ res.status(500).json({error:e.message}); }
+  } catch(e){res.status(500).json({error:e.message});}
 });
-
-app.put('/api/assignments/:id', auth, adminOnly, function(req, res) {
-  db.prepare('UPDATE assignments SET user_id=?,week_key=?,days=?,notes=? WHERE id=?')
-    .run(req.body.user_id, req.body.week_key, req.body.days, req.body.notes||null, req.params.id);
+app.put('/api/assignments/:id', auth, adminOnly, function(req,res) {
+  db.prepare('UPDATE assignments SET user_id=?,week_key=?,days=?,notes=? WHERE id=?').run(req.body.user_id,req.body.week_key,req.body.days,req.body.notes||null,req.params.id);
   res.json({ok:true});
 });
-
-app.delete('/api/assignments/:id', auth, adminOnly, function(req, res) {
+app.delete('/api/assignments/:id', auth, adminOnly, function(req,res) {
   db.prepare('DELETE FROM assignments WHERE id=?').run(req.params.id);
   res.json({ok:true});
 });
-
-// ── TIME TRACKING ─────────────────────────────────────
-app.post('/api/time/start', auth, function(req, res) {
-  db.prepare("UPDATE time_logs SET stopped_at=datetime('now'), duration_minutes=CAST((julianday('now')-julianday(started_at))*1440 AS INTEGER) WHERE user_id=? AND stopped_at IS NULL")
-    .run(req.user.id);
-  var r = db.prepare("INSERT INTO time_logs (user_id,task_id,started_at) VALUES (?,?,datetime('now'))").run(req.user.id,req.body.task_id);
+ 
+// ── TIME ──────────────────────────────────────────────
+app.post('/api/time/start', auth, function(req,res) {
+  db.prepare("UPDATE time_logs SET stopped_at=datetime('now'),duration_minutes=CAST((julianday('now')-julianday(started_at))*1440 AS INTEGER) WHERE user_id=? AND stopped_at IS NULL").run(req.user.id);
+  var r=db.prepare("INSERT INTO time_logs (user_id,task_id,started_at) VALUES (?,?,datetime('now'))").run(req.user.id,req.body.task_id);
   res.json({id:r.lastInsertRowid,ok:true});
 });
-
-app.post('/api/time/stop', auth, function(req, res) {
-  var log = db.prepare('SELECT * FROM time_logs WHERE id=? AND user_id=?').get(req.body.log_id,req.user.id);
+app.post('/api/time/stop', auth, function(req,res) {
+  var log=db.prepare('SELECT * FROM time_logs WHERE id=? AND user_id=?').get(req.body.log_id,req.user.id);
   if (!log) return res.status(404).json({error:'Not found'});
-  db.prepare("UPDATE time_logs SET stopped_at=datetime('now'), duration_minutes=CAST((julianday('now')-julianday(started_at))*1440 AS INTEGER), notes=? WHERE id=?")
-    .run(req.body.notes||null, req.body.log_id);
-  var u = db.prepare('SELECT * FROM time_logs WHERE id=?').get(req.body.log_id);
-  res.json({ok:true,duration_minutes:u.duration_minutes});
+  db.prepare("UPDATE time_logs SET stopped_at=datetime('now'),duration_minutes=CAST((julianday('now')-julianday(started_at))*1440 AS INTEGER),notes=? WHERE id=?").run(req.body.notes||null,req.body.log_id);
+  res.json({ok:true,duration_minutes:db.prepare('SELECT duration_minutes FROM time_logs WHERE id=?').get(req.body.log_id).duration_minutes});
 });
-
-app.get('/api/time/active', auth, function(req, res) {
-  res.json(db.prepare('SELECT tl.*, t.job_name, t.name as task_name FROM time_logs tl JOIN jt_tasks t ON tl.task_id=t.id WHERE tl.user_id=? AND tl.stopped_at IS NULL').get(req.user.id)||null);
+app.get('/api/time/active', auth, function(req,res) {
+  res.json(db.prepare('SELECT tl.*,t.job_name,t.name as task_name FROM time_logs tl JOIN jt_tasks t ON tl.task_id=t.id WHERE tl.user_id=? AND tl.stopped_at IS NULL').get(req.user.id)||null);
 });
-
-app.get('/api/time/all', auth, adminOnly, function(req, res) {
-  res.json(db.prepare('SELECT tl.*, u.name as user_name, t.job_name, t.name as task_name FROM time_logs tl JOIN users u ON tl.user_id=u.id JOIN jt_tasks t ON tl.task_id=t.id ORDER BY tl.started_at DESC LIMIT 200').all());
-});
-
-// ── DASHBOARD ─────────────────────────────────────────
-app.get('/api/dashboard', auth, adminOnly, function(req, res) {
-  var today = new Date().toISOString().split('T')[0];
-  var total = db.prepare('SELECT COUNT(*) as n FROM jt_tasks WHERE start_date>=?').get(today);
-  var assigned = db.prepare('SELECT COUNT(DISTINCT task_id) as n FROM assignments').get();
-  var emps = db.prepare("SELECT COUNT(*) as n FROM users WHERE active=1 AND role='employee'").get();
-  var lastSync = db.prepare('SELECT * FROM sync_log ORDER BY synced_at DESC LIMIT 1').get();
-  res.json({totalTasks:total.n, assigned:assigned.n, unassigned:total.n-assigned.n, employees:emps.n, lastSync:lastSync});
-});
-
-// ── ROUTING ───────────────────────────────────────────
-app.get('/admin', function(req,res){ res.sendFile(path.join(__dirname,'admin.html')); });
-app.get('/employee', function(req,res){ res.sendFile(path.join(__dirname,'employee.html')); });
-app.get('*', function(req,res){ res.sendFile(path.join(__dirname,'index.html')); });
-
-app.listen(PORT, function() {
-  console.log('Gulv Master korer pa port ' + PORT);
-  if (JT_GRANT) {
-    setTimeout(function(){ syncFromJT(); }, 5000);
-  } else {
-    console.log('ADVARSEL: JT_GRANT_KEY er ikke sat i Environment Variables!');
-  }
+app.get('/api/time/all', auth, adminOnly, function(req,res) {
+  res.json(db.prepare('SELECT tl.*,u.name as user_name,t.job_name,t.name as task_name FROM time_logs tl JOIN users u ON tl.user_id=u.id JOIN jt_tasks t ON tl.task_id=t.id ORDER BY tl.started_at DESC LIMIT 200').all());
 });
  
+// ── DASHBOARD ─────────────────────────────────────────
+app.get('/api/dashboard', auth, adminOnly, function(req,res) {
+  var today=new Date().toISOString().split('T')[0];
+  var total=db.prepare('SELECT COUNT(*) as n FROM jt_tasks WHERE start_date>=?').get(today);
+  var assigned=db.prepare('SELECT COUNT(DISTINCT task_id) as n FROM assignments').get();
+  var emps=db.prepare("SELECT COUNT(*) as n FROM users WHERE active=1 AND role='employee'").get();
+  var lastSync=db.prepare('SELECT * FROM sync_log ORDER BY synced_at DESC LIMIT 1').get();
+  res.json({totalTasks:total.n,assigned:assigned.n,unassigned:total.n-assigned.n,employees:emps.n,lastSync:lastSync});
+});
+ 
+// ── ROUTING ───────────────────────────────────────────
+app.get('/admin', function(req,res){res.sendFile(path.join(__dirname,'admin.html'));});
+app.get('/employee', function(req,res){res.sendFile(path.join(__dirname,'employee.html'));});
+app.get('*', function(req,res){res.sendFile(path.join(__dirname,'index.html'));});
+ 
+app.listen(PORT, function() {
+  console.log('Gulv Master korer pa port '+PORT);
+  if (JT_GRANT) setTimeout(function(){syncFromJT();},5000);
+});
