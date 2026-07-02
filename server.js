@@ -5,18 +5,18 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const path = require('path');
 const cron = require('node-cron');
- 
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'gulvmaster2026hemmelig';
 const JT_ORG = process.env.JT_ORG_ID || '22PZCGuGrJnQ';
 const JT_GRANT = process.env.JT_GRANT_KEY || '';
 const JT_API = 'https://api.jobtread.com/pave';
- 
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
- 
+
 // ── DATABASE ──────────────────────────────────────────
 const db = new Database(path.join(__dirname, 'gulvmaster.db'));
 db.exec(`
@@ -52,6 +52,9 @@ db.exec(`
     week_key TEXT NOT NULL,
     days REAL DEFAULT 1,
     notes TEXT,
+    start_time TEXT,
+    start_date TEXT,
+    end_date TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     UNIQUE(task_id, user_id, week_key)
   );
@@ -73,7 +76,7 @@ db.exec(`
     message TEXT
   );
 `);
- 
+
 // ── SEED USERS ────────────────────────────────────────
 var defaultUsers = [
   {name:'Martin Breinbjerg',    email:'martin@gulvmaster.dk', pw:'admin123',   role:'admin',     color:'#0F2240', ini:'MB', jtname:'Martin Breinbjerg'},
@@ -96,7 +99,7 @@ defaultUsers.forEach(function(u) {
   }
 });
 console.log('Users ready');
- 
+
 // ── SEED TASKS FROM JOBTREAD (fetched 2026-07-02) ─────
 var seedTasks = [
   {id:'22PZhrywxeiv',name:'Slibning og behandling',job_id:'22PZhSyGmL3U',job_name:'Kasper Høybye',job_address:'Asminderødgade 19 Nørrebro',start_date:'2026-07-13',end_date:'2026-07-15',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
@@ -140,7 +143,7 @@ var seedTasks = [
   {id:'22Pa7b7DhVaM',name:'Lægning af sildebensparket',job_id:'22Pa7b25vDxb',job_name:'Sara Stief',job_address:'Oehlenschlægersgade 7 stth',start_date:'2026-07-06',end_date:'2026-07-08',type_guess:'lay',raw_assignee_name:'Martin Rinik'},
   {id:'22Pa7b7DhVaN',name:'Slibning & Behandling',job_id:'22Pa7b25vDxb',job_name:'Sara Stief',job_address:'Oehlenschlægersgade 7 stth',start_date:'2026-07-10',end_date:'2026-07-13',type_guess:'sand',raw_assignee_name:'Adrian Sobon'},
 ];
- 
+
 var upsertTask = db.prepare("INSERT OR REPLACE INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))");
 var seedAll = db.transaction(function(list) {
   list.forEach(function(t) {
@@ -149,7 +152,7 @@ var seedAll = db.transaction(function(list) {
 });
 seedAll(seedTasks);
 console.log('Tasks seeded: ' + seedTasks.length);
- 
+
 // Auto-assign tasks to users based on JT assignee name
 function autoAssign() {
   var tasks = db.prepare('SELECT * FROM jt_tasks WHERE raw_assignee_name IS NOT NULL').all();
@@ -165,7 +168,7 @@ function autoAssign() {
   console.log('Auto-assigned tasks to users');
 }
 autoAssign();
- 
+
 function getWeekKey(dateStr) {
   var d = new Date(dateStr);
   var day = d.getDay()||7;
@@ -177,7 +180,7 @@ function getWeekKey(dateStr) {
   mon.setDate(mon.getDate()-(md||7)+1);
   return 'w'+mon.getFullYear()+'-'+String(wn).padStart(2,'0');
 }
- 
+
 // ── AUTH ──────────────────────────────────────────────
 function auth(req, res, next) {
   var h = req.headers.authorization;
@@ -189,7 +192,7 @@ function adminOnly(req, res, next) {
   if (req.user.role !== 'admin') return res.status(403).json({error:'Admin only'});
   next();
 }
- 
+
 app.post('/api/auth/login', function(req, res) {
   var user = db.prepare('SELECT * FROM users WHERE email=? AND active=1').get(req.body.email);
   if (!user || !bcrypt.compareSync(req.body.password, user.password_hash))
@@ -197,11 +200,11 @@ app.post('/api/auth/login', function(req, res) {
   var token = jwt.sign({id:user.id,name:user.name,role:user.role,email:user.email}, JWT_SECRET, {expiresIn:'30d'});
   res.json({token:token, user:{id:user.id,name:user.name,role:user.role,email:user.email,color:user.color,initials:user.initials}});
 });
- 
+
 app.get('/api/auth/me', auth, function(req, res) {
   res.json(db.prepare('SELECT id,name,email,role,color,initials FROM users WHERE id=?').get(req.user.id));
 });
- 
+
 // ── USERS ─────────────────────────────────────────────
 app.get('/api/users', auth, adminOnly, function(req, res) {
   res.json(db.prepare('SELECT id,name,email,role,color,initials,jobtread_name,active FROM users ORDER BY role DESC,name').all());
@@ -225,7 +228,7 @@ app.put('/api/users/:id', auth, adminOnly, function(req, res) {
   db.prepare('UPDATE users SET name=?,email=?,password_hash=?,role=?,color=?,initials=?,jobtread_name=?,active=? WHERE id=?').run(b.name||u.name,b.email||u.email,b.password?bcrypt.hashSync(b.password,10):u.password_hash,b.role||u.role,b.color||u.color,b.initials||u.initials,b.jobtread_name||u.jobtread_name,b.active!==undefined?b.active:u.active,req.params.id);
   res.json({ok:true});
 });
- 
+
 // ── JOBTREAD LIVE SYNC (sekventielle kald) ────────────
 async function jtFetch(bodyObj) {
   var mod = await import('node-fetch');
@@ -239,7 +242,7 @@ async function jtFetch(bodyObj) {
   if (data.error) throw new Error(JSON.stringify(data.error));
   return data;
 }
- 
+
 function guessType(n) {
   var t=(n||'').toLowerCase();
   if (t.includes('slib')||t.includes('behandling')) return 'sand';
@@ -248,7 +251,7 @@ function guessType(n) {
   if (t.includes('gulv')||t.includes('parket')||t.includes('afmontering')||t.includes('spaan')||t.includes('stroer')||t.includes('laeg')) return 'lay';
   return 'other';
 }
- 
+
 async function syncFromJT() {
   var key = JT_GRANT;
   if (!key) {
@@ -261,13 +264,13 @@ async function syncFromJT() {
     var from = new Date().toISOString().split('T')[0];
     var to = new Date(Date.now()+84*86400000).toISOString().split('T')[0];
     var where = {and:[['isToDo',false],['targetType','job'],['startDate','>=',from],['startDate','<=',to],['isGroup',false]]};
- 
+
     // Step 1: tasks med job info
     console.log('Step 1: tasks...');
     var d1 = await jtFetch({query:{$:{grantKey:key},organization:{$:{id:JT_ORG},tasks:{$:{size:40,where:where},nodes:{id:{},name:{},startDate:{},endDate:{},job:{id:{},name:{},location:{address:{}}}}}}}});
     var tasks = (d1&&d1.query&&d1.query.organization&&d1.query.organization.tasks&&d1.query.organization.tasks.nodes)||[];
     console.log('Tasks: '+tasks.length);
- 
+
     // Step 2: assignments
     console.log('Step 2: assignments...');
     var d2 = await jtFetch({query:{$:{grantKey:key},organization:{$:{id:JT_ORG},tasks:{$:{size:40,where:where},nodes:{id:{},taskAssignments:{nodes:{membership:{user:{name:{}}}}}}}}}});
@@ -278,7 +281,7 @@ async function syncFromJT() {
         assignMap[t.id]=t.taskAssignments.nodes[0].membership.user.name;
     });
     console.log('Assignments: '+Object.keys(assignMap).length);
- 
+
     // Upsert
     var ups = db.prepare("INSERT OR REPLACE INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))");
     var doAll = db.transaction(function(list) {
@@ -289,10 +292,10 @@ async function syncFromJT() {
       });
     });
     doAll(tasks);
- 
+
     // Re-run auto-assign
     autoAssign();
- 
+
     db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(tasks.length,'ok',tasks.length+' tasks synced');
     console.log('=== Sync done: '+tasks.length+' ===');
     return {ok:true,count:tasks.length};
@@ -302,7 +305,7 @@ async function syncFromJT() {
     return {ok:false,error:e.message};
   }
 }
- 
+
 app.post('/api/sync', auth, adminOnly, function(req,res) {
   syncFromJT().then(function(r){res.json(r);}).catch(function(e){res.status(500).json({error:e.message});});
 });
@@ -310,12 +313,12 @@ app.get('/api/sync/log', auth, adminOnly, function(req,res) {
   res.json(db.prepare('SELECT * FROM sync_log ORDER BY synced_at DESC LIMIT 20').all());
 });
 cron.schedule('0 * * * *', function(){syncFromJT();});
- 
+
 // ── TASKS ─────────────────────────────────────────────
 app.get('/api/tasks', auth, function(req,res) {
   res.json(db.prepare('SELECT * FROM jt_tasks ORDER BY start_date ASC').all());
 });
- 
+
 // ── ASSIGNMENTS ───────────────────────────────────────
 app.get('/api/assignments', auth, function(req,res) {
   var q='SELECT a.*, u.name as user_name, u.color as user_color, u.initials as user_initials, t.name as task_name, t.job_name, t.job_address, t.start_date, t.end_date, t.type_guess, t.jt_url, t.job_id FROM assignments a JOIN users u ON a.user_id=u.id JOIN jt_tasks t ON a.task_id=t.id';
@@ -328,19 +331,19 @@ app.get('/api/assignments/my', auth, function(req,res) {
 });
 app.post('/api/assignments', auth, adminOnly, function(req,res) {
   try {
-    var r=db.prepare('INSERT OR REPLACE INTO assignments (task_id,user_id,week_key,days,notes) VALUES (?,?,?,?,?)').run(req.body.task_id,req.body.user_id,req.body.week_key,req.body.days||1,req.body.notes||null);
+    var r=db.prepare('INSERT OR REPLACE INTO assignments (task_id,user_id,week_key,days,notes,start_time,start_date,end_date) VALUES (?,?,?,?,?,?,?,?)').run(req.body.task_id,req.body.user_id,req.body.week_key,req.body.days||1,req.body.notes||null,req.body.start_time||null,req.body.start_date||null,req.body.end_date||null);
     res.json({id:r.lastInsertRowid,ok:true});
   } catch(e){res.status(500).json({error:e.message});}
 });
 app.put('/api/assignments/:id', auth, adminOnly, function(req,res) {
-  db.prepare('UPDATE assignments SET user_id=?,week_key=?,days=?,notes=? WHERE id=?').run(req.body.user_id,req.body.week_key,req.body.days,req.body.notes||null,req.params.id);
+  db.prepare('UPDATE assignments SET user_id=?,week_key=?,days=?,notes=?,start_time=?,start_date=?,end_date=? WHERE id=?').run(req.body.user_id,req.body.week_key,req.body.days,req.body.notes||null,req.body.start_time||null,req.body.start_date||null,req.body.end_date||null,req.params.id);
   res.json({ok:true});
 });
 app.delete('/api/assignments/:id', auth, adminOnly, function(req,res) {
   db.prepare('DELETE FROM assignments WHERE id=?').run(req.params.id);
   res.json({ok:true});
 });
- 
+
 // ── TIME ──────────────────────────────────────────────
 app.post('/api/time/start', auth, function(req,res) {
   db.prepare("UPDATE time_logs SET stopped_at=datetime('now'),duration_minutes=CAST((julianday('now')-julianday(started_at))*1440 AS INTEGER) WHERE user_id=? AND stopped_at IS NULL").run(req.user.id);
@@ -359,7 +362,7 @@ app.get('/api/time/active', auth, function(req,res) {
 app.get('/api/time/all', auth, adminOnly, function(req,res) {
   res.json(db.prepare('SELECT tl.*,u.name as user_name,t.job_name,t.name as task_name FROM time_logs tl JOIN users u ON tl.user_id=u.id JOIN jt_tasks t ON tl.task_id=t.id ORDER BY tl.started_at DESC LIMIT 200').all());
 });
- 
+
 // ── DASHBOARD ─────────────────────────────────────────
 app.get('/api/dashboard', auth, adminOnly, function(req,res) {
   var today=new Date().toISOString().split('T')[0];
@@ -369,12 +372,12 @@ app.get('/api/dashboard', auth, adminOnly, function(req,res) {
   var lastSync=db.prepare('SELECT * FROM sync_log ORDER BY synced_at DESC LIMIT 1').get();
   res.json({totalTasks:total.n,assigned:assigned.n,unassigned:total.n-assigned.n,employees:emps.n,lastSync:lastSync});
 });
- 
+
 // ── ROUTING ───────────────────────────────────────────
 app.get('/admin', function(req,res){res.sendFile(path.join(__dirname,'admin.html'));});
 app.get('/employee', function(req,res){res.sendFile(path.join(__dirname,'employee.html'));});
 app.get('*', function(req,res){res.sendFile(path.join(__dirname,'index.html'));});
- 
+
 app.listen(PORT, function() {
   console.log('Gulv Master korer pa port '+PORT);
   if (JT_GRANT) setTimeout(function(){syncFromJT();},5000);
