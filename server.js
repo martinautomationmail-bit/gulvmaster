@@ -597,131 +597,95 @@ function taskConnectionFrom(data) {
 
 async function syncFromJT() {
   if (!JT_GRANT) {
-    await writeSyncLog(0, 'error', 'Grant Key ikke sat. Tilføj JT_GRANT_KEY i Render Environment.');
+    await writeSyncLog(0, 'error', 'Grant Key ikke sat.');
     return { ok: false, error: 'Ingen Grant Key' };
   }
   if (!JT_ORG) {
-    await writeSyncLog(0, 'error', 'Organisation ID ikke sat. Tilføj JT_ORG_ID i Render Environment.');
+    await writeSyncLog(0, 'error', 'Organisation ID ikke sat.');
     return { ok: false, error: 'Ingen Organisation ID' };
   }
 
   try {
-    // ── PASS 1: Hent alle tasks (id + navn + datoer + job.id kun) ──
-    // Lille payload per side = ingen 413
+    // ── PASS 1: tasks (id + navn + datoer + job.id) ──
     const allTasks = [];
     const seenTaskIds = new Set();
-    let cursor1 = undefined; // første kald: ingen page parameter
-    let pass1Pages = 0;
-    const MAX = JT_MAX_PAGES;
+    let cur1 = undefined;
+    let p1 = 0;
 
-    while (pass1Pages < MAX) {
-      const args1 = { size: JT_PAGE_SIZE, where: { and: [['targetType', 'job'], ['isGroup', false]] } };
-      if (cursor1 !== undefined && cursor1 !== null && cursor1 !== '') {
-        args1.page = cursor1;
-      }
-      const d1 = await jtFetch({
-        query: {
-          $: { grantKey: JT_GRANT },
-          organization: {
-            $: { id: JT_ORG },
-            tasks: {
-              $: args1,
-              nextPage: {},
-              nodes: { id: {}, name: {}, startDate: {}, endDate: {}, job: { id: {} } }
-            }
-          }
-        }
-      }, pass1Pages === 0 ? 'Tasks side 1' : 'Tasks side ' + (pass1Pages + 1));
+    while (p1 < JT_MAX_PAGES) {
+      const args = { size: JT_PAGE_SIZE, where: { and: [['targetType', 'job'], ['isGroup', false]] } };
+      if (cur1) args.page = cur1;
 
-      const conn1 = (d1?.query?.organization?.tasks) || {};
-      const nodes1 = Array.isArray(conn1.nodes) ? conn1.nodes : [];
+      const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
+        tasks: { $: args, nextPage: {}, nodes: { id: {}, name: {}, startDate: {}, endDate: {}, job: { id: {} } } }
+      }}}, 'Tasks s.' + (p1+1));
 
-      for (const t of nodes1) {
+      // jtFetch returnerer {organization:{tasks:{...}}} — ingen query wrapper
+      const conn = d?.organization?.tasks || d?.query?.organization?.tasks || {};
+      const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
+
+      for (const t of nodes) {
         if (!t?.id || seenTaskIds.has(t.id)) continue;
         seenTaskIds.add(t.id);
         allTasks.push(t);
       }
-
-      pass1Pages++;
-      const next1 = conn1.nextPage;
-      if (!next1 || next1 === '') break;
-      cursor1 = next1;
+      p1++;
+      const next = conn.nextPage;
+      if (!next || next === '') break;
+      cur1 = next;
     }
 
-    // ── PASS 2: Hent job-navne og adresser ──
+    // ── PASS 2: jobs (navn + adresse) ──
     const jobMap = new Map();
-    let cursor2 = undefined;
-    let pass2Pages = 0;
-    while (pass2Pages < 20) {
-      const args2 = { size: 50 };
-      if (cursor2 !== undefined && cursor2 !== null && cursor2 !== '') {
-        args2.page = cursor2;
-      }
-      const d2 = await jtFetch({
-        query: {
-          $: { grantKey: JT_GRANT },
-          organization: {
-            $: { id: JT_ORG },
-            jobs: {
-              $: args2,
-              nextPage: {},
-              nodes: { id: {}, name: {}, location: { address: {} } }
-            }
-          }
-        }
-      }, 'Jobs side ' + (pass2Pages + 1));
+    let cur2 = undefined;
+    let p2 = 0;
 
-      const conn2 = (d2?.query?.organization?.jobs) || {};
-      const nodes2 = Array.isArray(conn2.nodes) ? conn2.nodes : [];
-      for (const j of nodes2) {
+    while (p2 < 20) {
+      const args = { size: 50 };
+      if (cur2) args.page = cur2;
+
+      const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
+        jobs: { $: args, nextPage: {}, nodes: { id: {}, name: {}, location: { address: {} } } }
+      }}}, 'Jobs s.' + (p2+1));
+
+      const conn = d?.organization?.jobs || d?.query?.organization?.jobs || {};
+      const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
+      for (const j of nodes) {
         if (j?.id) jobMap.set(j.id, { name: j.name || '', address: j.location?.address || '' });
       }
-      pass2Pages++;
-      const next2 = conn2.nextPage;
-      if (!next2 || next2 === '') break;
-      cursor2 = next2;
+      p2++;
+      const next = conn.nextPage;
+      if (!next || next === '') break;
+      cur2 = next;
     }
 
-    // ── PASS 3: Hent assignments ──
+    // ── PASS 3: assignments ──
     const assigneeMap = new Map();
-    let cursor3 = undefined;
-    let pass3Pages = 0;
-    while (pass3Pages < MAX) {
-      const args3 = { size: JT_PAGE_SIZE, where: { and: [['targetType', 'job'], ['isGroup', false]] } };
-      if (cursor3 !== undefined && cursor3 !== null && cursor3 !== '') {
-        args3.page = cursor3;
-      }
-      const d3 = await jtFetch({
-        query: {
-          $: { grantKey: JT_GRANT },
-          organization: {
-            $: { id: JT_ORG },
-            tasks: {
-              $: args3,
-              nextPage: {},
-              nodes: {
-                id: {},
-                taskAssignments: { nodes: { membership: { user: { name: {} } } } }
-              }
-            }
-          }
-        }
-      }, 'Assignments side ' + (pass3Pages + 1));
+    let cur3 = undefined;
+    let p3 = 0;
 
-      const conn3 = (d3?.query?.organization?.tasks) || {};
-      const nodes3 = Array.isArray(conn3.nodes) ? conn3.nodes : [];
-      for (const t of nodes3) {
+    while (p3 < JT_MAX_PAGES) {
+      const args = { size: JT_PAGE_SIZE, where: { and: [['targetType', 'job'], ['isGroup', false]] } };
+      if (cur3) args.page = cur3;
+
+      const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
+        tasks: { $: args, nextPage: {}, nodes: { id: {}, taskAssignments: { nodes: { membership: { user: { name: {} } } } } } }
+      }}}, 'Assign s.' + (p3+1));
+
+      const conn = d?.organization?.tasks || d?.query?.organization?.tasks || {};
+      const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
+      for (const t of nodes) {
         if (!t?.id) continue;
         const name = t?.taskAssignments?.nodes?.[0]?.membership?.user?.name;
         if (name) assigneeMap.set(t.id, name);
       }
-      pass3Pages++;
-      const next3 = conn3.nextPage;
-      if (!next3 || next3 === '') break;
-      cursor3 = next3;
+      p3++;
+      const next = conn.nextPage;
+      if (!next || next === '') break;
+      cur3 = next;
     }
 
-    // ── UPSERT: Gem i jt_tasks — rører ALDRIG planning_bookings ──
+    // ── UPSERT: kun jt_tasks — rører ALDRIG planning_bookings ──
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -736,41 +700,30 @@ async function syncFromJT() {
           INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()},'jobtread')
           ON CONFLICT (id) DO UPDATE SET
-            name=EXCLUDED.name,
-            job_id=EXCLUDED.job_id,
-            job_name=EXCLUDED.job_name,
-            job_address=EXCLUDED.job_address,
-            start_date=EXCLUDED.start_date,
-            end_date=EXCLUDED.end_date,
-            type_guess=EXCLUDED.type_guess,
-            raw_assignee_name=EXCLUDED.raw_assignee_name,
-            jt_url=EXCLUDED.jt_url,
-            synced_at=EXCLUDED.synced_at,
-            source='jobtread'
+            name=EXCLUDED.name, job_id=EXCLUDED.job_id, job_name=EXCLUDED.job_name,
+            job_address=EXCLUDED.job_address, start_date=EXCLUDED.start_date,
+            end_date=EXCLUDED.end_date, type_guess=EXCLUDED.type_guess,
+            raw_assignee_name=EXCLUDED.raw_assignee_name, jt_url=EXCLUDED.jt_url,
+            synced_at=EXCLUDED.synced_at, source='jobtread'
         `, [
-          task.id,
-          task.name || '',
-          jobId,
-          customerName || ji.name || '',
-          ji.address || '',
-          task.startDate || null,
-          task.endDate || task.startDate || null,
-          guessType(task.name),
-          assigneeMap.get(task.id) || null,
+          task.id, task.name || '', jobId,
+          customerName || ji.name || '', ji.address || '',
+          task.startDate || null, task.endDate || task.startDate || null,
+          guessType(task.name), assigneeMap.get(task.id) || null,
           jobId ? `https://app.jobtread.com/jobs/${jobId}/schedule` : null
         ]);
       }
       await client.query('COMMIT');
-    } catch (error) {
+    } catch (err) {
       try { await client.query('ROLLBACK'); } catch (_) {}
-      throw error;
+      throw err;
     } finally {
       client.release();
     }
 
-    const msg = `${allTasks.length} tasks synced · ${pass1Pages} task-sider · ${pass2Pages} job-sider · ${pass3Pages} assignment-sider`;
+    const msg = `${allTasks.length} tasks · ${p1} task-sider · ${p2} job-sider · ${p3} assignment-sider`;
     await writeSyncLog(allTasks.length, 'ok', msg);
-    return { ok: true, count: allTasks.length, pages: pass1Pages };
+    return { ok: true, count: allTasks.length, pages: p1 };
 
   } catch (error) {
     const safeMsg = redactSecret(error?.message || 'Ukendt fejl').slice(0, 1000);
