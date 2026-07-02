@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Gulv Master — Min Kalender</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0F2240;--navy2:#1C3557;--steel:#2E5086;
+  --white:#fff;--ice:#F4F7FC;--ink:#0F1923;--muted:#5A6A7E;--ghost:#94A3B8;
+  --border:#E2E8F0;
+  --lay:#3B82F6;--lay-bg:#DBEAFE;--lay-fg:#1D4ED8;
+  --sand:#22C55E;--sand-bg:#DCFCE7;--sand-fg:#15803D;
+  --paint:#EAB308;--paint-bg:#FEF9C3;--paint-fg:#92570A;
+  --sub:#8B5CF6;--sub-bg:#EDE9FE;--sub-fg:#5B21B6;
+  --other:#94A3B8;--other-bg:#F1F5F9;--other-fg:#475569;
+  --radius:12px;--shadow:0 2px 8px rgba(0,0,0,.08);--shadow-lg:0 8px 24px rgba(0,0,0,.12);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--ice);color:var(--ink);min-height:100vh}
+.topbar{background:var(--navy);color:#fff;padding:0 16px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 10px rgba(0,0,0,.2)}
+.topbar-brand{display:flex;align-items:center;gap:10px}
+.logo{width:32px;height:32px;background:var(--steel);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.brand-name{font-size:15px;font-weight:700}
+.user-info{display:flex;align-items:center;gap:10px}
+.avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.username{font-size:13px;font-weight:500}
+.logout-btn{padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;font-size:11px;cursor:pointer}
+
+/* ACTIVE TIMER BAR */
+.timer-bar{background:linear-gradient(135deg,#059669,#047857);color:#fff;padding:10px 16px;display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.timer-bar.active{display:flex}
+.timer-info{font-size:13px;font-weight:600}
+.timer-elapsed{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;font-family:monospace}
+.stop-btn{padding:7px 16px;border-radius:8px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.3);color:#fff;font-size:13px;font-weight:600;cursor:pointer}
+.stop-btn:hover{background:rgba(0,0,0,.3)}
+
+.main{padding:16px;max-width:700px;margin:0 auto}
+
+/* WEEK NAV */
+.week-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.week-label{font-size:17px;font-weight:700;color:var(--navy)}
+.week-sub{font-size:12px;color:var(--muted)}
+.week-btns{display:flex;gap:8px}
+.wbtn{padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--white);font-size:12px;cursor:pointer;color:var(--muted);font-weight:500;transition:all .15s}
+.wbtn:hover{border-color:var(--steel);color:var(--navy)}
+.wbtn.today{background:var(--navy);color:#fff;border-color:var(--navy)}
+
+/* DAY SECTIONS */
+.day-section{margin-bottom:12px}
+.day-header{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.day-name{font-size:13px;font-weight:700;color:var(--navy)}
+.day-date{font-size:12px;color:var(--muted)}
+.day-today-badge{background:#2563EB;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px}
+.task-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border);padding:14px;margin-bottom:8px;box-shadow:var(--shadow);transition:box-shadow .15s}
+.task-card:hover{box-shadow:var(--shadow-lg)}
+.task-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
+.task-title{font-size:14px;font-weight:700;color:var(--navy);line-height:1.3}
+.task-subtitle{font-size:11px;color:var(--muted);margin-top:2px}
+.type-badge{flex-shrink:0;padding:3px 9px;border-radius:12px;font-size:10px;font-weight:700}
+.task-meta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.meta-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+.meta-icon{font-size:13px}
+
+/* ACTION BUTTONS */
+.task-actions{display:flex;gap:8px;flex-wrap:wrap}
+.action-btn{flex:1;min-width:100px;padding:10px 12px;border-radius:9px;border:none;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:all .15s;text-decoration:none}
+.btn-timer{background:#059669;color:#fff}
+.btn-timer:hover{background:#047857}
+.btn-timer.running{background:#DC2626}
+.btn-timer.running:hover{background:#B91C1C}
+.btn-info{background:var(--navy);color:#fff}
+.btn-info:hover{background:var(--navy2)}
+.btn-maps{background:#F59E0B;color:#fff}
+.btn-maps:hover{background:#D97706}
+.btn-icon{font-size:16px}
+
+/* EMPTY STATE */
+.empty{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.empty h3{font-size:16px;font-weight:600;color:var(--navy);margin-bottom:6px}
+
+/* WEEK OVERVIEW PILLS */
+.week-overview{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:16px}
+.week-day-pill{background:var(--white);border-radius:8px;border:1px solid var(--border);padding:6px 4px;text-align:center;cursor:pointer;transition:all .15s}
+.week-day-pill:hover{border-color:var(--steel)}
+.week-day-pill.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.week-day-pill.has-tasks{border-bottom:3px solid #2563EB}
+.wdp-day{font-size:9px;font-weight:700;text-transform:uppercase;opacity:.7;margin-bottom:2px}
+.wdp-date{font-size:13px;font-weight:700}
+.wdp-count{font-size:9px;margin-top:2px}
+
+/* LOADING */
+.loading-state{text-align:center;padding:40px;color:var(--muted)}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:#2563EB;border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--navy);color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:var(--shadow-lg);opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap;z-index:1000}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="logo">🪵</div>
+    <div>
+      <div class="brand-name">Gulv Master</div>
+    </div>
+  </div>
+  <div class="user-info">
+    <div class="avatar" id="user-avatar" style="background:#2563EB22;color:#2563EB">?</div>
+    <span class="username" id="user-name">...</span>
+    <button class="logout-btn" onclick="logout()">Log ud</button>
+  </div>
+</div>
+
+<!-- Active timer bar -->
+<div class="timer-bar" id="timer-bar">
+  <div>
+    <div class="timer-info" id="timer-task-name">Ingen aktiv opgave</div>
+    <div style="font-size:11px;opacity:.8" id="timer-job-name"></div>
+  </div>
+  <div class="timer-elapsed" id="timer-elapsed">00:00:00</div>
+  <button class="stop-btn" onclick="stopTimer()">⏹ Stop timer</button>
+</div>
+
+<div class="main">
+  <!-- WEEK NAV -->
+  <div class="week-nav">
+    <div>
+      <div class="week-label" id="week-label">Indlæser...</div>
+      <div class="week-sub" id="week-sub"></div>
+    </div>
+    <div class="week-btns">
+      <button class="wbtn" onclick="changeWeek(-1)">← Forrige</button>
+      <button class="wbtn today" onclick="goToday()">I dag</button>
+      <button class="wbtn" onclick="changeWeek(1)">Næste →</button>
+    </div>
+  </div>
+
+  <!-- WEEK OVERVIEW -->
+  <div class="week-overview" id="week-overview"></div>
+
+  <!-- TASKS -->
+  <div id="tasks-container">
+    <div class="loading-state"><div class="spinner"></div>Henter dine opgaver...</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let token = localStorage.getItem('gm_token');
+let user = JSON.parse(localStorage.getItem('gm_user') || 'null');
+let assignments = [];
+let currentWeekOffset = 0;
+let activeTimerLog = null;
+let timerInterval = null;
+
+if (!token || !user) { window.location.href = '/'; }
+
+// Setup user display
+document.getElementById('user-name').textContent = user.name.split(' ')[0];
+document.getElementById('user-avatar').textContent = user.initials || user.name.split(' ').map(w=>w[0]).join('').substring(0,2);
+document.getElementById('user-avatar').style.background = (user.color||'#2563EB')+'22';
+document.getElementById('user-avatar').style.color = user.color||'#2563EB';
+
+function logout() { localStorage.removeItem('gm_token'); localStorage.removeItem('gm_user'); window.location.href = '/'; }
+function showToast(msg, dur=2500) { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur); }
+
+async function apiFetch(path, opts={}) {
+  const r = await fetch(API+path, { ...opts, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers||{}) } });
+  if (r.status === 401) { logout(); return null; }
+  return r.json();
+}
+
+// Week helpers
+function getWeekDays(offset=0) {
+  const today = new Date();
+  const day = today.getDay() || 7;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - day + 1 + (offset * 7));
+  monday.setHours(0,0,0,0);
+  const days = [];
+  for (let i=0; i<5; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    days.push(d);
+  }
+  return days;
+}
+function isoDate(d) { return d.toISOString().split('T')[0]; }
+function fmtDate(d) { return d.toLocaleDateString('da-DK', {weekday:'long', day:'numeric', month:'long'}); }
+function isToday(d) { const t=new Date(); return d.getDate()===t.getDate()&&d.getMonth()===t.getMonth()&&d.getFullYear()===t.getFullYear(); }
+
+const TYPE_CFG = {
+  lay:  {label:'Gulvlægning',  cls:'lay',   color:'#3B82F6'},
+  sand: {label:'Gulvslibning', cls:'sand',  color:'#22C55E'},
+  paint:{label:'Malerservice', cls:'paint', color:'#EAB308'},
+  sub:  {label:'Underlev.',    cls:'sub',   color:'#8B5CF6'},
+  other:{label:'Andet',        cls:'other', color:'#94A3B8'},
+};
+
+function typeStyle(type) {
+  const tc = TYPE_CFG[type] || TYPE_CFG.other;
+  return `background:var(--${tc.cls}-bg);color:var(--${tc.cls}-fg)`;
+}
+
+async function loadAssignments() {
+  const data = await apiFetch('/api/assignments/my');
+  if (data) assignments = data;
+}
+
+function getTasksForDay(dateStr) {
+  return assignments.filter(a => {
+    if (!a.start_date) return false;
+    const sd = a.start_date.split('T')[0];
+    const ed = (a.end_date||a.start_date).split('T')[0];
+    return dateStr >= sd && dateStr <= ed;
+  });
+}
+
+function renderWeek() {
+  const days = getWeekDays(currentWeekOffset);
+  const weekNum = (() => {
+    const d = new Date(days[0]);
+    const dayN = d.getDay()||7;
+    d.setDate(d.getDate()+4-dayN);
+    const y = new Date(Date.UTC(d.getFullYear(),0,1));
+    return Math.ceil((((d-y)/86400000)+1)/7);
+  })();
+  document.getElementById('week-label').textContent = `Uge ${weekNum}`;
+  document.getElementById('week-sub').textContent = `${days[0].toLocaleDateString('da-DK',{day:'numeric',month:'short'})} – ${days[4].toLocaleDateString('da-DK',{day:'numeric',month:'short',year:'numeric'})}`;
+
+  // Week overview pills
+  const dayNames = ['Man','Tir','Ons','Tor','Fre'];
+  document.getElementById('week-overview').innerHTML = days.map((d,i) => {
+    const tasks = getTasksForDay(isoDate(d));
+    const today = isToday(d);
+    return `<div class="week-day-pill${today?' active':''}${tasks.length>0?' has-tasks':''}" onclick="scrollToDay('${isoDate(d)}')">
+      <div class="wdp-day">${dayNames[i]}</div>
+      <div class="wdp-date">${d.getDate()}</div>
+      <div class="wdp-count">${tasks.length>0?tasks.length+'  opgave'+( tasks.length>1?'r':''):''}</div>
+    </div>`;
+  }).join('');
+
+  // Day sections
+  const container = document.getElementById('tasks-container');
+  let html = '';
+  let totalTasks = 0;
+  days.forEach(d => {
+    const tasks = getTasksForDay(isoDate(d));
+    totalTasks += tasks.length;
+    const today = isToday(d);
+    html += `<div class="day-section" id="day-${isoDate(d)}">
+      <div class="day-header">
+        <div class="day-name">${d.toLocaleDateString('da-DK',{weekday:'long'}).replace(/\b\w/,c=>c.toUpperCase())}</div>
+        <div class="day-date">${d.toLocaleDateString('da-DK',{day:'numeric',month:'long'})}</div>
+        ${today?'<span class="day-today-badge">I dag</span>':''}
+      </div>`;
+    if (tasks.length === 0) {
+      html += `<div style="background:#fff;border-radius:10px;border:1px solid var(--border);padding:14px 16px;color:var(--ghost);font-size:12px;text-align:center">Ingen opgaver denne dag</div>`;
+    } else {
+      tasks.forEach(a => {
+        const tc = TYPE_CFG[a.type_guess] || TYPE_CFG.other;
+        const isRunning = activeTimerLog?.task_id === a.task_id;
+        const mapsUrl = a.job_address ? `https://maps.google.com/?q=${encodeURIComponent(a.job_address)}` : null;
+        html += `<div class="task-card">
+          <div class="task-header">
+            <div>
+              <div class="task-title">${a.job_name||'Opgave'}</div>
+              <div class="task-subtitle">${a.task_name}</div>
+            </div>
+            <span class="type-badge" style="${typeStyle(a.type_guess)}">${tc.label}</span>
+          </div>
+          <div class="task-meta">
+            ${a.job_address?`<div class="meta-item"><span class="meta-icon">📍</span>${a.job_address}</div>`:''}
+            <div class="meta-item"><span class="meta-icon">📅</span>${a.start_date?a.start_date.split('T')[0]:''} ${a.end_date&&a.end_date!==a.start_date?'– '+a.end_date.split('T')[0]:''}</div>
+            <div class="meta-item"><span class="meta-icon">⏱</span>${a.days} dag${a.days!==1?'e':''}</div>
+          </div>
+          <div class="task-actions">
+            <button class="action-btn ${isRunning?'btn-timer running':'btn-timer'}" onclick="${isRunning?'stopTimer()':'startTimer(\''+a.task_id+'\',\''+a.id+'\')'}">
+              <span class="btn-icon">${isRunning?'⏹':'▶'}</span>
+              ${isRunning?'Stop timer':'Track timer'}
+            </button>
+            <a class="action-btn btn-info" href="${a.jt_url||'https://app.jobtread.com'}" target="_blank" rel="noopener">
+              <span class="btn-icon">📋</span>Læs om opgave
+            </a>
+            <a class="action-btn" style="background:#2563EB;color:#fff" href="https://app.jobtread.com/time" target="_blank" rel="noopener">
+              <span class="btn-icon">↗</span>JobTread timer
+            </a>
+            ${mapsUrl?`<a class="action-btn btn-maps" href="${mapsUrl}" target="_blank"><span class="btn-icon">🗺</span>Maps</a>`:''}
+          </div>
+        </div>`;
+      });
+    }
+    html += `</div>`;
+  });
+
+  if (totalTasks === 0) {
+    container.innerHTML = `<div class="empty">
+      <div class="empty-icon">📅</div>
+      <h3>Ingen opgaver denne uge</h3>
+      <p>Der er ikke planlagt nogen opgaver for dig denne uge.<br>Kontakt Martin hvis du forventer at have opgaver.</p>
+    </div>`;
+  } else {
+    container.innerHTML = html;
+  }
+
+  // Scroll to today
+  if (currentWeekOffset === 0) {
+    const today = isoDate(new Date());
+    setTimeout(() => document.getElementById('day-'+today)?.scrollIntoView({behavior:'smooth', block:'start'}), 100);
+  }
+}
+
+function scrollToDay(dateStr) {
+  document.getElementById('day-'+dateStr)?.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function changeWeek(dir) { currentWeekOffset += dir; renderWeek(); }
+function goToday() { currentWeekOffset = 0; renderWeek(); }
+
+// Timer functions
+async function startTimer(taskId, assignmentId) {
+  const data = await apiFetch('/api/time/start', { method:'POST', body: JSON.stringify({task_id: taskId}) });
+  if (data?.ok) {
+    activeTimerLog = { id: data.id, task_id: taskId, started_at: new Date().toISOString() };
+    await loadActiveTimer();
+    renderWeek();
+    showToast('⏱ Timer startet!');
+  }
+}
+
+async function stopTimer() {
+  if (!activeTimerLog) return;
+  const data = await apiFetch('/api/time/stop', { method:'POST', body: JSON.stringify({log_id: activeTimerLog.id}) });
+  if (data?.ok) {
+    const mins = data.duration_minutes || 0;
+    const h = Math.floor(mins/60), m = mins%60;
+    showToast(`✅ Timer stoppet — ${h}t ${m}m registreret`, 4000);
+    activeTimerLog = null;
+    clearInterval(timerInterval);
+    document.getElementById('timer-bar').classList.remove('active');
+    renderWeek();
+  }
+}
+
+async function loadActiveTimer() {
+  const data = await apiFetch('/api/time/active');
+  if (data) {
+    activeTimerLog = data;
+    document.getElementById('timer-bar').classList.add('active');
+    document.getElementById('timer-task-name').textContent = data.task_name || 'Opgave';
+    document.getElementById('timer-job-name').textContent = data.job_name || '';
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      if (!activeTimerLog) return;
+      const diff = Math.floor((new Date() - new Date(activeTimerLog.started_at)) / 1000);
+      const h = Math.floor(diff/3600), m = Math.floor((diff%3600)/60), s = diff%60;
+      document.getElementById('timer-elapsed').textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }, 1000);
+  } else {
+    document.getElementById('timer-bar').classList.remove('active');
+    clearInterval(timerInterval);
+  }
+}
+
+async function init() {
+  await loadAssignments();
+  await loadActiveTimer();
+  renderWeek();
+}
+
+init();
+</script>
+</body>
+</html>

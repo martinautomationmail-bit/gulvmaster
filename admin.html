@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gulv Master — Planlægning</title>
+<style>
+:root{
+  --navy:#0F2240;--navy2:#1C3557;--steel:#2E5086;--blue:#2563EB;--green:#059669;
+  --white:#fff;--ice:#F4F7FC;--ice2:#E8EFF8;--ink:#0F1923;--muted:#5A6A7E;--ghost:#94A3B8;
+  --border:#CBD5E1;--border2:#E2E8F0;--radius:10px;--shadow:0 1px 3px rgba(0,0,0,.08),0 4px 12px rgba(0,0,0,.05);
+  --lay-bg:#DBEAFE;--lay-fg:#1D4ED8;--sand-bg:#DCFCE7;--sand-fg:#15803D;--paint-bg:#FEF9C3;--paint-fg:#92570A;--sub-bg:#EDE9FE;--sub-fg:#5B21B6;--other-bg:#F1F5F9;--other-fg:#475569;
+}
+*{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:var(--ice);color:var(--ink);font-size:14px}
+button,input,select{font:inherit}.hidden{display:none!important}
+.nav{height:54px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.22)}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;white-space:nowrap}.logo{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;background:var(--steel)}
+.tabs{display:flex;gap:2px;background:rgba(255,255,255,.09);padding:3px;border-radius:7px;overflow-x:auto}.tab{border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap}.tab.active{color:#fff;background:rgba(255,255,255,.16)}
+.nav-actions{display:flex;align-items:center;gap:6px}.nav-btn,.btn{border:1px solid var(--border);background:#fff;border-radius:7px;padding:7px 11px;cursor:pointer;font-size:11px;font-weight:600;color:var(--ink)}.nav-btn{border-color:rgba(255,255,255,.23);background:rgba(255,255,255,.1);color:#fff}.nav-btn.green{background:#059669;border-color:#059669}.nav-btn.blue,.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.danger{color:#B91C1C;background:#FEF2F2;border-color:#FECACA}.btn.small{padding:4px 8px;font-size:10px}.btn:hover,.nav-btn:hover{filter:brightness(.96)}
+.main{padding:14px 16px}.page{display:none}.page.active{display:block}.page-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;margin:0 0 12px}.page-title{font-size:18px;font-weight:750;color:var(--navy)}.page-sub{font-size:11px;color:var(--muted);margin-top:3px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:0 0 12px}.stat{background:#fff;border:1px solid var(--border2);box-shadow:var(--shadow);border-radius:9px;padding:10px 12px}.stat-label{text-transform:uppercase;color:var(--muted);font-size:9px;font-weight:750;letter-spacing:.45px}.stat-value{font-size:20px;color:var(--navy);font-weight:750;margin-top:2px}.stat-sub{font-size:10px;color:var(--ghost);margin-top:1px}
+.slog{display:none;background:#0A1628;color:#C7D2FE;border-radius:8px;padding:9px 11px;max-height:92px;overflow:auto;margin:0 0 10px;font-family:ui-monospace,Menlo,monospace;font-size:10px;line-height:1.6}.slog.show{display:block}.ok{color:#86EFAC}.err{color:#FCA5A5}.info{color:#93C5FD}
+.board-layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:12px;align-items:start}.panel{background:#fff;border-radius:var(--radius);border:1px solid var(--border2);box-shadow:var(--shadow);overflow:hidden}.panel-head{padding:9px 10px;background:var(--ice);border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;align-items:center;gap:6px}.panel-title{font-size:10px;font-weight:800;letter-spacing:.45px;text-transform:uppercase;color:var(--navy)}.panel-body{padding:8px;max-height:calc(100vh - 210px);overflow:auto}
+.search{width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 8px;outline:none;font-size:11px;margin-bottom:7px}.search:focus{border-color:var(--blue)}.filter-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:7px}.chip{border:1px solid var(--border);background:#fff;padding:3px 7px;border-radius:14px;font-size:9px;cursor:pointer;color:var(--muted)}.chip.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.task-card{border:1px solid var(--border2);border-radius:7px;padding:8px;margin:0 0 6px;background:#fff;cursor:grab;user-select:none;transition:.16s}.task-card:hover{box-shadow:0 4px 14px rgba(15,34,64,.13);border-color:var(--steel)}.task-card.dragging,.assignment.dragging{opacity:.35}.task-name{font-size:11px;font-weight:750;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.task-sub{font-size:10px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.task-meta{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:5px}.badge{font-size:9px;font-weight:750;padding:2px 6px;border-radius:5px}.badge.lay,.assignment.lay{background:var(--lay-bg);color:var(--lay-fg)}.badge.sand,.assignment.sand{background:var(--sand-bg);color:var(--sand-fg)}.badge.paint,.assignment.paint{background:var(--paint-bg);color:var(--paint-fg)}.badge.sub,.assignment.sub{background:var(--sub-bg);color:var(--sub-fg)}.badge.other,.assignment.other{background:var(--other-bg);color:var(--other-fg)}.tag{font-size:9px;background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0;padding:1px 5px;border-radius:5px}.tag.manual{background:#FFF7ED;color:#C2410C;border-color:#FED7AA}.muted{font-size:9px;color:var(--ghost)}
+.week-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 0 9px}.week-label{font-size:13px;font-weight:750;color:var(--navy)}.hint{font-size:10px;color:var(--muted)}
+.board-outer{border:1px solid var(--border2);border-radius:var(--radius);overflow:auto;background:#fff;box-shadow:var(--shadow)}table{border-collapse:collapse}.daily-board{min-width:1050px;width:100%}.daily-board th{background:var(--navy);color:#fff;padding:8px 8px;font-size:9px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;z-index:5}.daily-board th.staff{position:sticky;left:0;z-index:7;text-align:left;min-width:170px;border-right:2px solid rgba(255,255,255,.18)}.daily-board th.today{background:var(--steel)}.daily-board td{border-bottom:1px solid var(--border2);vertical-align:top}.staff-cell{background:var(--ice)!important;position:sticky;left:0;z-index:4;border-right:2px solid var(--border2);min-width:170px;padding:8px}.staff-line{display:flex;align-items:center;gap:7px}.avatar{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;font-size:8px;font-weight:800;flex:0 0 auto}.staff-name{font-size:11px;font-weight:750;color:var(--navy)}.staff-role{font-size:9px;color:var(--muted);margin-top:1px}.group-row td{background:#F8FAFF;color:var(--navy2);font-size:10px;font-weight:800;padding:6px 8px}.day-cell{padding:5px;min-width:132px}.day-cell.today{background:#FBFDFF}.drop-zone{min-height:76px;border:1px dashed transparent;border-radius:6px;padding:2px;transition:.16s}.drop-zone.over{background:#EFF6FF;border-color:var(--blue)}.free{font-size:9px;color:#16A34A;text-align:center;padding:6px 3px}.capacity-line{font-size:8px;color:var(--muted);text-align:right;margin-top:2px}.capacity-line.overload{color:#B91C1C;font-weight:800}.assignment{border:0;border-radius:6px;width:100%;text-align:left;padding:5px 6px;margin-bottom:3px;cursor:grab;font-size:9px}.assign-title{display:flex;gap:3px;align-items:center;font-size:10px;font-weight:800}.assign-title span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.assign-sub{font-size:8px;opacity:.78;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}.assign-x{border:0;background:transparent;cursor:pointer;font-size:12px;line-height:1;color:inherit;opacity:.65}.assign-x:hover{opacity:1}.add-small{width:100%;border:1px dashed var(--border);background:#fff;color:var(--ghost);border-radius:4px;font-size:9px;padding:3px;cursor:pointer;margin-top:2px}
+.capacity-board{min-width:1200px;width:100%}.capacity-board th{background:var(--navy);color:#fff;padding:8px 8px;font-size:9px;position:sticky;top:0;z-index:5;text-align:center}.capacity-board th:first-child{position:sticky;left:0;z-index:7;min-width:185px;text-align:left;border-right:2px solid rgba(255,255,255,.18)}.capacity-board td{border-bottom:1px solid var(--border2);vertical-align:top}.capacity-board .staff-cell{min-width:185px}.cap-cell{padding:4px;min-width:126px}.cap-drop{min-height:70px;border-radius:6px;border:1px dashed transparent;padding:4px}.cap-drop.over{background:#EFF6FF;border-color:var(--blue)}.cap-number{text-align:center;font-size:10px;font-weight:800;padding:4px;border-radius:4px}.cap-free{background:#F0FDF4;color:#15803D}.cap-ok{background:#DBEAFE;color:#1D4ED8}.cap-warn{background:#FEF9C3;color:#92570A}.cap-over{background:#FEF2F2;color:#B91C1C}.cap-job{font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:grab;padding:2px 3px;border-radius:3px;margin-top:2px}.cap-job.lay{background:var(--lay-bg);color:var(--lay-fg)}.cap-job.sand{background:var(--sand-bg);color:var(--sand-fg)}.cap-job.paint{background:var(--paint-bg);color:var(--paint-fg)}.cap-job.sub{background:var(--sub-bg);color:var(--sub-fg)}.cap-job.other{background:var(--other-bg);color:var(--other-fg)}
+.people{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}.person-card{background:#fff;border:1px solid var(--border2);border-radius:10px;padding:12px;box-shadow:var(--shadow)}.person-top{display:flex;gap:8px;align-items:center}.person-name{font-size:12px;font-weight:800;color:var(--navy)}.person-email{font-size:10px;color:var(--muted);margin-top:2px}.person-detail{font-size:10px;color:var(--muted);padding:7px 8px;background:var(--ice);border-radius:6px;margin-top:9px;line-height:1.6}.person-actions{display:flex;gap:5px;margin-top:9px}
+.log-wrap{background:#fff;border:1px solid var(--border2);border-radius:var(--radius);overflow:auto;box-shadow:var(--shadow)}.logs{width:100%;min-width:720px}.logs th{background:var(--navy);color:#fff;padding:8px 9px;text-align:left;font-size:9px}.logs td{border-bottom:1px solid var(--border2);padding:8px 9px;font-size:11px}
+.mo{display:none;position:fixed;inset:0;z-index:200;background:rgba(15,34,64,.48);align-items:center;justify-content:center;padding:14px}.mo.open{display:flex}.modal{width:min(460px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:12px;padding:18px;box-shadow:0 18px 48px rgba(0,0,0,.25)}.modal h3{margin:0 0 13px;font-size:15px;color:var(--navy)}.form-group{margin:0 0 10px}.form-label{font-size:9px;text-transform:uppercase;font-weight:800;color:var(--muted);letter-spacing:.45px;display:block;margin-bottom:3px}.input,.select{border:1px solid var(--border);border-radius:6px;width:100%;padding:8px 9px;background:var(--ice);outline:none;font-size:12px}.input:focus,.select:focus{border-color:var(--blue);background:#fff}.form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.modal-actions{display:flex;gap:7px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}.assignment-info{background:var(--ice);border-radius:7px;padding:9px;font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:10px}.assignment-info strong{color:var(--navy)}
+.toast{position:fixed;bottom:16px;right:16px;background:var(--navy);color:#fff;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);padding:9px 12px;font-size:12px;transform:translateY(70px);opacity:0;transition:.2s;z-index:999}.toast.show{transform:translateY(0);opacity:1}
+@media(max-width:900px){.board-layout{grid-template-columns:1fr}.panel-body{max-height:280px}.nav{height:auto;min-height:54px;flex-wrap:wrap;padding:8px 12px}.tabs{order:3;width:100%;justify-content:center}.main{padding:10px}.form-row{grid-template-columns:1fr}.nav-actions{margin-left:auto}}
+</style>
+</head>
+<body>
+<div id="app" style="display:none">
+  <nav class="nav">
+    <div class="brand"><span class="logo">🪵</span><span>Gulv Master — Admin</span></div>
+    <div class="tabs">
+      <button class="tab active" data-page="plan">Daglig plan</button>
+      <button class="tab" data-page="capacity">Kapacitet</button>
+      <button class="tab" data-page="people">Hold & vendors</button>
+      <button class="tab" data-page="logs">Timer & log</button>
+    </div>
+    <div class="nav-actions">
+      <span id="sync-ind" class="muted" style="color:#C7D2FE"></span>
+      <button class="nav-btn green" id="sync-btn">⚡ Synk JT</button>
+      <button class="nav-btn" id="employee-link">👤 Min side</button>
+      <button class="nav-btn" id="logout-btn">Log ud</button>
+    </div>
+  </nav>
+
+  <main class="main">
+    <section class="page active" id="page-plan">
+      <div class="slog" id="sync-log"></div>
+      <div class="stats" id="stats"></div>
+      <div class="page-head">
+        <div><div class="page-title">Daglig planlægning</div><div class="page-sub">Træk en opgave fra venstre direkte ind på den medarbejder og dag, du ønsker. Planen er separat fra JobTread.</div></div>
+      </div>
+      <div class="board-layout">
+        <aside class="panel">
+          <div class="panel-head"><span class="panel-title">Opgavepool</span><button class="btn small primary" id="manual-task-btn">+ Manuel</button></div>
+          <div class="panel-body">
+            <input id="plan-search" class="search" placeholder="Søg kunde eller opgave">
+            <div class="filter-row" id="plan-status-filters"></div>
+            <div class="filter-row" id="plan-type-filters"></div>
+            <div id="plan-pool"></div>
+          </div>
+        </aside>
+        <section>
+          <div class="week-bar">
+            <button class="btn small" id="plan-prev">← Forrige</button><strong class="week-label" id="plan-label"></strong><button class="btn small" id="plan-next">Næste →</button><button class="btn small primary" id="plan-today">I dag</button><span class="hint">Klik på en booking for at redigere. Dobbeltklik på en opgave i poolen for detaljer.</span>
+          </div>
+          <div class="board-outer"><table class="daily-board"><thead id="daily-head"></thead><tbody id="daily-body"></tbody></table></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="page" id="page-capacity">
+      <div class="page-head"><div><div class="page-title">Kapacitetsboard</div><div class="page-sub">Medarbejdere står øverst. Vendors grupperes nedenunder. Tallene viser bookede dage / ugentlig kapacitet.</div></div></div>
+      <div class="board-layout">
+        <aside class="panel">
+          <div class="panel-head"><span class="panel-title">Opgavepool</span><button class="btn small primary" id="manual-task-btn-2">+ Manuel</button></div>
+          <div class="panel-body">
+            <input id="cap-search" class="search" placeholder="Søg kunde eller opgave">
+            <div class="filter-row" id="cap-status-filters"></div>
+            <div class="filter-row" id="cap-type-filters"></div>
+            <div id="cap-pool"></div>
+          </div>
+        </aside>
+        <section>
+          <div class="week-bar"><button class="btn small" id="cap-prev">← 8 uger</button><strong class="week-label" id="cap-label"></strong><button class="btn small" id="cap-next">8 uger →</button><button class="btn small primary" id="cap-today">I dag</button><span class="hint">Træk en opgave direkte til en uge. Den lander på mandag og kan efterfølgende flyttes i Daglig plan.</span></div>
+          <div class="board-outer"><table class="capacity-board"><thead id="cap-head"></thead><tbody id="cap-body"></tbody></table></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="page" id="page-people">
+      <div class="page-head"><div><div class="page-title">Hold & vendors</div><div class="page-sub">Opret medarbejdere, vendor-hold og undergrupper som separate kapacitetsrækker.</div></div><button class="btn primary" id="new-user-btn">+ Ny person / gruppe</button></div>
+      <div class="people" id="people-grid"></div>
+    </section>
+
+    <section class="page" id="page-logs">
+      <div class="page-head"><div><div class="page-title">Timer & log</div><div class="page-sub">Interne start/stop-timere fra medarbejderportalen.</div></div></div>
+      <div class="log-wrap"><table class="logs"><thead><tr><th>Medarbejder</th><th>Opgave</th><th>Kunde</th><th>Start</th><th>Stop</th><th>Varighed</th></tr></thead><tbody id="log-body"></tbody></table></div>
+    </section>
+  </main>
+</div>
+
+<div class="mo" id="assign-modal"><div class="modal">
+  <h3 id="assign-title">Tildel opgave</h3><div id="assign-info" class="assignment-info"></div>
+  <div class="form-group"><label class="form-label">Medarbejder / hold</label><select id="assign-user" class="select"></select></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">Startdato</label><input id="assign-date" type="date" class="input"></div><div class="form-group"><label class="form-label">Antal dage</label><input id="assign-days" type="number" min=".25" max="60" step=".25" class="input"></div></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">Mødetid</label><input id="assign-time" type="time" class="input"></div><div class="form-group"><label class="form-label">Status</label><input class="input" value="Planlagt" disabled></div></div>
+  <div class="form-group"><label class="form-label">Note til medarbejder</label><input id="assign-note" class="input" placeholder="Fx ring kunden 30 min før ankomst"></div>
+  <div class="modal-actions"><button class="btn danger hidden" id="delete-assignment">Fjern tildeling</button><button class="btn" id="close-assign">Annuller</button><button class="btn primary" id="save-assignment">Gem</button></div>
+</div></div>
+
+<div class="mo" id="manual-modal"><div class="modal">
+  <h3>Opret manuel opgave</h3><div class="assignment-info">Brug denne til opgaver, som endnu ikke ligger i JobTread. Du kan bagefter trække den ind på kapacitets- eller dagsboardet.</div>
+  <div class="form-group"><label class="form-label">Kunde / projekt</label><input id="manual-customer" class="input" placeholder="Fx Per Austin"></div>
+  <div class="form-group"><label class="form-label">Opgave</label><input id="manual-name" class="input" placeholder="Fx Montering af fodpaneler"></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">Fag</label><select id="manual-type" class="select"><option value="lay">Gulvlægning</option><option value="sand">Gulvslibning</option><option value="paint">Malerservice</option><option value="sub">Underleverandør</option><option value="other">Andet</option></select></div><div class="form-group"><label class="form-label">Dage</label><input id="manual-days" class="input" type="number" min=".25" max="60" step=".25" value="1"></div></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">Startdato</label><input id="manual-date" class="input" type="date"></div><div class="form-group"><label class="form-label">Adresse</label><input id="manual-address" class="input" placeholder="Valgfrit"></div></div>
+  <div class="modal-actions"><button class="btn" id="close-manual">Annuller</button><button class="btn primary" id="save-manual">Opret i opgavepool</button></div>
+</div></div>
+
+<div class="mo" id="user-modal"><div class="modal">
+  <h3 id="user-title">Ny medarbejder / gruppe</h3>
+  <div class="form-row"><div class="form-group"><label class="form-label">Navn</label><input id="user-name" class="input"></div><div class="form-group"><label class="form-label">Initialer</label><input id="user-initials" class="input" maxlength="3"></div></div>
+  <div class="form-group"><label class="form-label">E-mail (login)</label><input id="user-email" type="email" class="input"></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">Adgangskode</label><input id="user-password" type="password" class="input" placeholder="Påkrævet ved ny"></div><div class="form-group"><label class="form-label">Rolle</label><select id="user-role" class="select"><option value="employee">Medarbejder</option><option value="admin">Admin</option></select></div></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">Kapacitet pr. uge</label><input id="user-capacity" class="input" type="number" min="0" max="7" step=".5" value="5"></div><div class="form-group"><label class="form-label">Farve</label><input id="user-color" class="input" type="color" value="#2563EB"></div></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">Type</label><select id="user-worker-type" class="select"><option value="employee">Intern medarbejder</option><option value="vendor">Vendor / underleverandør</option></select></div><div class="form-group"><label class="form-label">Fagområde</label><select id="user-trade" class="select"><option value="">Vælg...</option><option value="Gulvlægning">Gulvlægning</option><option value="Gulvslibning">Gulvslibning</option><option value="Malerservice">Malerservice</option><option value="VVS / El">VVS / El</option><option value="Diverse">Diverse</option></select></div></div>
+  <div class="form-group"><label class="form-label">Vendor-gruppe</label><input id="user-vendor-group" class="input" placeholder="Fx AJB Gruppen APS (kun for vendors)"></div>
+  <div class="form-group"><label class="form-label">JobTread-navn (kun reference, bruges ikke automatisk)</label><input id="user-jt-name" class="input" placeholder="Fx Adrian Sobon"></div>
+  <div class="modal-actions"><button class="btn danger hidden" id="deactivate-user">Deaktiver</button><button class="btn" id="close-user">Annuller</button><button class="btn primary" id="save-user">Gem</button></div>
+</div></div>
+<div id="toast" class="toast"></div>
+
+<script>
+(function(){
+'use strict';
+var API='';
+var token=localStorage.getItem('gm_token');
+var me=JSON.parse(localStorage.getItem('gm_user')||'null');
+if(!token||!me||me.role!=='admin'){window.location.href='/';return;}
+document.getElementById('app').style.display='block';
+
+var users=[],tasks=[],assignments=[],planOffset=0,capOffset=0;
+var filters={plan:{status:'all',type:'all'},capacity:{status:'all',type:'all'}};
+var dragPayload=null, suppressClickUntil=0, assignCtx=null, editUserId=null;
+
+var TYPE={
+  lay:{label:'Gulvlægning'},sand:{label:'Gulvslibning'},paint:{label:'Malerservice'},sub:{label:'Underleverandør'},other:{label:'Andet'}
+};
+var DAYS=['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
+
+function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c];});}
+function isoDate(d){var x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);}
+function parseDate(s){return new Date(String(s).slice(0,10)+'T12:00:00');}
+function sameDate(a,b){return isoDate(a)===isoDate(b);}
+function monday(date){var d=new Date(date);d.setHours(0,0,0,0);var day=d.getDay()||7;d.setDate(d.getDate()-day+1);return d;}
+function addDays(date,n){var d=new Date(date);d.setDate(d.getDate()+n);return d;}
+function weekNo(date){var d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));var day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);var y=new Date(Date.UTC(d.getUTCFullYear(),0,1));return Math.ceil((((d-y)/86400000)+1)/7);}
+function weekKey(date){var m=monday(date);return 'w'+m.getFullYear()+'-'+String(weekNo(m)).padStart(2,'0');}
+function getWeekDays(offset){var start=monday(new Date());start=addDays(start,offset*7);return Array.from({length:7},function(_,i){return addDays(start,i);});}
+function getWeeks(offset,count){var start=monday(new Date());start=addDays(start,offset*7);return Array.from({length:count},function(_,i){return addDays(start,i*7);});}
+function isWeekend(d){var day=d.getDay();return day===0||day===6;}
+function isToday(d){return sameDate(d,new Date());}
+function toast(msg,icon){var el=document.getElementById('toast');el.innerHTML=(icon?'<span>'+icon+'</span> ':'')+escapeHtml(msg);el.classList.add('show');clearTimeout(el._timer);el._timer=setTimeout(function(){el.classList.remove('show');},2800);}
+function logout(){localStorage.removeItem('gm_token');localStorage.removeItem('gm_user');window.location.href='/';}
+async function api(path,opts){
+  opts=opts||{};
+  var headers=Object.assign({'Authorization':'Bearer '+token},opts.headers||{});
+  if(opts.body && !headers['Content-Type'])headers['Content-Type']='application/json';
+  try{
+    var r=await fetch(API+path,Object.assign({},opts,{headers:headers}));
+    var data=await r.json().catch(function(){return {error:'Ugyldigt svar fra serveren'};});
+    if(r.status===401){logout();return null;}
+    if(!r.ok)return Object.assign({ok:false},data);
+    return data;
+  }catch(e){toast('Kunne ikke forbinde til serveren','❌');return null;}
+}
+function workforce(){
+  return users.filter(function(u){return u.active && u.role==='employee';}).sort(function(a,b){
+    var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;
+    if(av!==bv)return av-bv;
+    return String(a.name).localeCompare(String(b.name),'da');
+  });
+}
+function groupedWorkforce(){
+  var all=workforce(), internal=all.filter(function(u){return u.worker_type!=='vendor';});
+  var groups={};
+  all.filter(function(u){return u.worker_type==='vendor';}).forEach(function(u){var g=u.vendor_group||'Øvrige vendors';(groups[g]=groups[g]||[]).push(u);});
+  return {internal:internal,groups:groups};
+}
+function taskDays(task){
+  if(!task||!task.start_date||!task.end_date)return 1;
+  var start=parseDate(task.start_date),end=parseDate(task.end_date),n=0;
+  for(var d=new Date(start);d<=end;d=addDays(d,1)){if(!isWeekend(d))n++;}
+  return Math.max(.25,Math.min(60,n||1));
+}
+function assignmentBusinessDates(a){
+  var start=parseDate(a.start_date||a.task_start_date),end=parseDate(a.end_date||a.start_date||a.task_start_date);
+  if(Number.isNaN(start)||Number.isNaN(end))return [];
+  var list=[];for(var d=new Date(start);d<=end;d=addDays(d,1)){if(!isWeekend(d))list.push(isoDate(d));}
+  return list.length?list:[isoDate(start)];
+}
+function dailyLoad(uid,dateString){
+  return assignments.filter(function(a){return Number(a.user_id)===Number(uid) && assignmentBusinessDates(a).indexOf(dateString)>-1;})
+    .reduce(function(sum,a){return sum+(Number(a.days)||1)/assignmentBusinessDates(a).length;},0);
+}
+function weeklyLoad(uid,weekStart){
+  var weekDates=Array.from({length:5},function(_,i){return isoDate(addDays(weekStart,i));});
+  return assignments.filter(function(a){return Number(a.user_id)===Number(uid);}).reduce(function(sum,a){
+    var dates=assignmentBusinessDates(a),match=dates.filter(function(d){return weekDates.indexOf(d)>-1;}).length;
+    return sum+((Number(a.days)||1)/dates.length)*match;
+  },0);
+}
+function utilClass(booked,capacity){var pct=capacity?booked/capacity:0;return pct<=0?'cap-free':pct<.7?'cap-ok':pct<=1?'cap-warn':'cap-over';}
+
+async function loadAll(){
+  var result=await Promise.all([api('/api/users'),api('/api/tasks'),api('/api/assignments'),api('/api/dashboard')]);
+  users=result[0]||[];tasks=result[1]||[];assignments=result[2]||[];
+  renderStats(result[3]||{});renderPlan();renderCapacity();renderPeople();
+  if(document.getElementById('page-logs').classList.contains('active'))loadLogs();
+}
+function renderStats(d){
+  document.getElementById('stats').innerHTML=
+    stat('Tasks i pool',d.totalTasks||0,'JobTread + manuelle')+
+    stat('Planlagte',d.assigned||0,'opgaver med booking')+
+    stat('Ikke planlagt',d.unassigned||0,'klar til drag & drop')+
+    stat('Manuelle',d.manual||0,'oprettet i portalen')+
+    stat('Interne',d.employees||0,'medarbejdere')+
+    stat('Vendors',d.vendors||0,'hold / underlev.');
+}
+function stat(label,value,sub){return '<div class="stat"><div class="stat-label">'+label+'</div><div class="stat-value">'+value+'</div><div class="stat-sub">'+sub+'</div></div>';}
+
+function filteredTasks(scope){
+  var search=(document.getElementById(scope==='plan'?'plan-search':'cap-search').value||'').trim().toLowerCase();
+  var f=filters[scope];
+  return tasks.filter(function(t){
+    var planned=Number(t.assignment_count||0)>0;
+    if(f.status==='open'&&planned)return false;
+    if(f.status==='planned'&&!planned)return false;
+    if(f.status==='manual'&&t.source!=='manual')return false;
+    if(f.type!=='all'&&t.type_guess!==f.type)return false;
+    if(search && !((t.name||'')+' '+(t.job_name||'')+' '+(t.job_address||'')).toLowerCase().includes(search))return false;
+    return true;
+  }).sort(function(a,b){return String(a.start_date||'').localeCompare(String(b.start_date||''));});
+}
+function renderFilterControls(scope){
+  var statusEl=document.getElementById(scope==='plan'?'plan-status-filters':'cap-status-filters');
+  var typeEl=document.getElementById(scope==='plan'?'plan-type-filters':'cap-type-filters');
+  var statuses=[['all','Alle'],['open','Ikke planlagt'],['planned','Planlagt'],['manual','Manuelle']];
+  statusEl.innerHTML=statuses.map(function(x){return '<button class="chip '+(filters[scope].status===x[0]?'active':'')+'" data-filter-scope="'+scope+'" data-filter-kind="status" data-filter-value="'+x[0]+'">'+x[1]+'</button>';}).join('');
+  var types=[['all','Alle fag'],['lay','Gulv'],['sand','Slib'],['paint','Maler'],['sub','Underlev.']];
+  typeEl.innerHTML=types.map(function(x){return '<button class="chip '+(filters[scope].type===x[0]?'active':'')+'" data-filter-scope="'+scope+'" data-filter-kind="type" data-filter-value="'+x[0]+'">'+x[1]+'</button>';}).join('');
+}
+function taskCard(task){
+  var type=TYPE[task.type_guess]||TYPE.other,planned=Number(task.assignment_count||0)>0;
+  return '<article class="task-card draggable-task" draggable="true" data-task-id="'+escapeHtml(task.id)+'" title="Træk til kalender. Klik for detaljer">'+
+    '<div class="task-name">'+escapeHtml(task.job_name||'Uden kunde')+'</div><div class="task-sub">'+escapeHtml(task.name||'Opgave')+'</div>'+
+    '<div class="task-meta"><span class="badge '+escapeHtml(task.type_guess||'other')+'">'+type.label+'</span>'+
+    (task.source==='manual'?'<span class="tag manual">Manuel</span>':'<span class="tag">JT</span>')+
+    (planned?'<span class="tag">✓ Planlagt</span>':'')+
+    '<span class="muted">'+escapeHtml((task.start_date||'').slice(5))+'</span></div></article>';
+}
+function renderPool(scope){
+  renderFilterControls(scope);
+  var el=document.getElementById(scope==='plan'?'plan-pool':'cap-pool'),list=filteredTasks(scope);
+  el.innerHTML=list.length?list.map(taskCard).join(''):'<div class="muted" style="padding:16px 4px;text-align:center">Ingen opgaver matcher filtreringen.</div>';
+}
+function renderPlan(){
+  renderPool('plan');
+  var days=getWeekDays(planOffset),thead='<tr><th class="staff">Medarbejder / hold</th>';
+  days.forEach(function(d){thead+='<th class="'+(isToday(d)?'today':'')+'">'+DAYS[d.getDay()]+'<br><span style="font-size:10px">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';});
+  document.getElementById('daily-head').innerHTML=thead+'</tr>';
+  document.getElementById('plan-label').textContent='Uge '+weekNo(days[0])+' · '+days[0].getDate()+'/'+(days[0].getMonth()+1)+' – '+days[6].getDate()+'/'+(days[6].getMonth()+1);
+  var grouped=groupedWorkforce(),html='';
+  function staffRow(u){
+    var color=u.color||'#2563EB',role=u.trade|| (u.worker_type==='vendor'?'Vendor':'Medarbejder');
+    var row='<tr><td class="staff-cell"><div class="staff-line"><div class="avatar" style="background:'+color+'22;color:'+color+'">'+escapeHtml(u.initials||u.name.slice(0,2))+'</div><div><div class="staff-name">'+escapeHtml(u.name)+'</div><div class="staff-role">'+escapeHtml(role)+' · '+(Number(u.weekly_capacity)||5)+' d/uge</div></div></div></td>';
+    days.forEach(function(d){
+      var ds=isoDate(d),items=assignments.filter(function(a){return Number(a.user_id)===Number(u.id)&&assignmentBusinessDates(a).indexOf(ds)>-1;});
+      var booked=dailyLoad(u.id,ds),cap=(Number(u.weekly_capacity)||5)/5,rem=cap-booked;
+      var pills=items.map(function(a){return assignmentPill(a);}).join('');
+      var free=items.length?'' : '<div class="free">✓ Ledig</div>';
+      row+='<td class="day-cell '+(isToday(d)?'today':'')+'"><div class="drop-zone drop-day" data-user-id="'+u.id+'" data-date="'+ds+'">'+free+pills+'<button class="add-small open-add" data-user-id="'+u.id+'" data-date="'+ds+'">+ Tilføj</button><div class="capacity-line '+(rem<-.01?'overload':'')+'">'+booked.toFixed(1)+' / '+cap.toFixed(1)+' d</div></div></td>';
+    });
+    return row+'</tr>';
+  }
+  grouped.internal.forEach(function(u){html+=staffRow(u);});
+  Object.keys(grouped.groups).sort().forEach(function(group){html+='<tr class="group-row"><td colspan="8">▾ '+escapeHtml(group)+' · '+grouped.groups[group].length+' hold</td></tr>';grouped.groups[group].forEach(function(u){html+=staffRow(u);});});
+  document.getElementById('daily-body').innerHTML=html||'<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted)">Opret medarbejdere eller vendors under Hold & vendors.</td></tr>';
+  wireBoardInteractions();
+}
+function assignmentPill(a){
+  var type=a.type_guess||'other';
+  return '<button class="assignment draggable-assignment '+type+'" draggable="true" data-assignment-id="'+a.id+'" title="Træk for at flytte · klik for at redigere">'+
+    '<div class="assign-title"><span>'+escapeHtml(a.job_name||a.task_name||'Opgave')+'</span><button class="assign-x remove-assignment" data-assignment-id="'+a.id+'" title="Fjern">×</button></div>'+
+    '<div class="assign-sub">'+escapeHtml(a.task_name||'')+(a.start_time?' · '+escapeHtml(a.start_time):'')+(a.notes?' · '+escapeHtml(a.notes):'')+'</div></button>';
+}
+function renderCapacity(){
+  renderPool('capacity');
+  var weeks=getWeeks(capOffset,10),head='<tr><th>Medarbejder / hold</th>';
+  weeks.forEach(function(m){head+='<th>Uge '+weekNo(m)+'<br><span style="font-size:8px;font-weight:500">'+m.getDate()+'/'+(m.getMonth()+1)+'–'+addDays(m,4).getDate()+'/'+(addDays(m,4).getMonth()+1)+'</span></th>';});
+  document.getElementById('cap-head').innerHTML=head+'</tr>';
+  document.getElementById('cap-label').textContent='10 ugers kapacitet fra uge '+weekNo(weeks[0]);
+  var grouped=groupedWorkforce(),html='';
+  function capRow(u){
+    var color=u.color||'#2563EB',role=u.trade|| (u.worker_type==='vendor'?'Vendor':'Medarbejder');
+    var row='<tr><td class="staff-cell"><div class="staff-line"><div class="avatar" style="background:'+color+'22;color:'+color+'">'+escapeHtml(u.initials||u.name.slice(0,2))+'</div><div><div class="staff-name">'+escapeHtml(u.name)+'</div><div class="staff-role">'+escapeHtml(role)+' · '+(Number(u.weekly_capacity)||5)+' d/uge</div></div></div></td>';
+    weeks.forEach(function(m){
+      var cap=Number(u.weekly_capacity)||5,booked=weeklyLoad(u.id,m),weekEnd=addDays(m,6);
+      var items=assignments.filter(function(a){return Number(a.user_id)===Number(u.id)&&assignmentBusinessDates(a).some(function(ds){var d=parseDate(ds);return d>=m&&d<=weekEnd;});});
+      var jobs=items.slice(0,3).map(function(a){return '<div class="cap-job draggable-assignment '+(a.type_guess||'other')+'" draggable="true" data-assignment-id="'+a.id+'" title="'+escapeHtml(a.job_name||a.task_name||'')+'">'+escapeHtml(a.job_name||a.task_name||'')+'</div>';}).join('');
+      if(items.length>3)jobs+='<div class="muted" style="text-align:center">+'+(items.length-3)+' mere</div>';
+      row+='<td class="cap-cell"><div class="cap-drop drop-week '+utilClass(booked,cap)+'" data-user-id="'+u.id+'" data-date="'+isoDate(m)+'"><div class="cap-number '+utilClass(booked,cap)+'">'+booked.toFixed(1)+' / '+cap.toFixed(1)+' d</div>'+jobs+'</div></td>';
+    });
+    return row+'</tr>';
+  }
+  grouped.internal.forEach(function(u){html+=capRow(u);});
+  Object.keys(grouped.groups).sort().forEach(function(group){html+='<tr class="group-row"><td colspan="11">▾ '+escapeHtml(group)+' · vendor-gruppe</td></tr>';grouped.groups[group].forEach(function(u){html+=capRow(u);});});
+  document.getElementById('cap-body').innerHTML=html||'<tr><td colspan="11" style="padding:20px;text-align:center;color:var(--muted)">Ingen aktive hold.</td></tr>';
+  wireBoardInteractions();
+}
+function wireBoardInteractions(){
+  document.querySelectorAll('.draggable-task').forEach(function(el){
+    el.addEventListener('dragstart',function(e){beginDrag(e,{kind:'task',taskId:el.dataset.taskId},el);});
+    el.addEventListener('dragend',endDrag);
+    el.addEventListener('click',function(){if(Date.now()<suppressClickUntil)return;openAssign({taskId:el.dataset.taskId,date:isoDate(monday(new Date()))});});
+  });
+  document.querySelectorAll('.draggable-assignment').forEach(function(el){
+    el.addEventListener('dragstart',function(e){e.stopPropagation();beginDrag(e,{kind:'assignment',assignmentId:el.dataset.assignmentId},el);});
+    el.addEventListener('dragend',endDrag);
+    el.addEventListener('click',function(e){if(e.target.closest('.remove-assignment'))return;if(Date.now()<suppressClickUntil)return;openAssign({assignmentId:el.dataset.assignmentId});});
+  });
+  document.querySelectorAll('.drop-day,.drop-week').forEach(function(el){
+    el.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='copy';el.classList.add('over');});
+    el.addEventListener('dragenter',function(e){e.preventDefault();el.classList.add('over');});
+    el.addEventListener('dragleave',function(e){if(!el.contains(e.relatedTarget))el.classList.remove('over');});
+    el.addEventListener('drop',function(e){e.preventDefault();el.classList.remove('over');handleDrop(e,Number(el.dataset.userId),el.dataset.date);});
+  });
+  document.querySelectorAll('.open-add').forEach(function(el){el.addEventListener('click',function(){openAssign({userId:Number(el.dataset.userId),date:el.dataset.date});});});
+  document.querySelectorAll('.remove-assignment').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();removeAssignment(Number(el.dataset.assignmentId));});});
+}
+function beginDrag(e,payload,el){
+  dragPayload=payload;suppressClickUntil=Date.now()+350;
+  try{e.dataTransfer.effectAllowed=payload.kind==='task'?'copy':'move';e.dataTransfer.setData('application/x-gulvmaster',JSON.stringify(payload));e.dataTransfer.setData('text/plain',JSON.stringify(payload));}catch(_){}
+  requestAnimationFrame(function(){el.classList.add('dragging');});
+}
+function endDrag(){setTimeout(function(){dragPayload=null;document.querySelectorAll('.dragging,.over').forEach(function(el){el.classList.remove('dragging','over');});},80);}
+function payloadFromEvent(e){
+  var raw='';
+  try{raw=e.dataTransfer.getData('application/x-gulvmaster')||e.dataTransfer.getData('text/plain');}catch(_){}
+  try{return raw?JSON.parse(raw):dragPayload;}catch(_){return dragPayload;}
+}
+async function handleDrop(e,userId,date){
+  var p=payloadFromEvent(e);if(!p)return;
+  if(p.kind==='task'){
+    var task=tasks.find(function(t){return t.id===p.taskId;});if(!task)return;
+    var r=await api('/api/assignments',{method:'POST',body:JSON.stringify({task_id:task.id,user_id:userId,start_date:date,days:taskDays(task)})});
+    if(r&&r.ok){toast(r.updated?'Eksisterende booking opdateret':'Opgave tildelt','✓');await loadAll();}else if(r){toast(r.error||'Kunne ikke tildele','❌');}
+  }else if(p.kind==='assignment'){
+    var a=assignments.find(function(x){return Number(x.id)===Number(p.assignmentId);});if(!a)return;
+    var moved=await api('/api/assignments/'+a.id,{method:'PUT',body:JSON.stringify({user_id:userId,start_date:date,days:a.days,notes:a.notes,start_time:a.start_time})});
+    if(moved&&moved.ok){toast('Opgave flyttet','↔');await loadAll();}else if(moved){toast(moved.error||'Kunne ikke flytte','❌');}
+  }
+}
+function openAssign(ctx){
+  assignCtx=ctx||{};var assignment=ctx.assignmentId?assignments.find(function(a){return Number(a.id)===Number(ctx.assignmentId);}):null;
+  var taskId=ctx.taskId || (assignment&&assignment.task_id),task=tasks.find(function(t){return t.id===taskId;});
+  document.getElementById('assign-title').textContent=assignment?'Rediger booking':'Tildel opgave';
+  document.getElementById('assign-info').innerHTML=task?'<strong>'+escapeHtml(task.job_name||task.name)+'</strong><br>'+escapeHtml(task.name||'')+'<br><span class="muted">'+escapeHtml(task.job_address||'')+'</span>':'<strong>Vælg en opgave fra poolen først.</strong>';
+  var worker=workforce();
+  document.getElementById('assign-user').innerHTML=worker.map(function(u){var selected=(assignment?Number(assignment.user_id)===Number(u.id):Number(ctx.userId)===Number(u.id))?' selected':'';return '<option value="'+u.id+'"'+selected+'>'+escapeHtml(u.name)+(u.trade?' · '+escapeHtml(u.trade):'')+'</option>';}).join('');
+  document.getElementById('assign-date').value=(assignment&&assignment.start_date||ctx.date||isoDate(new Date())).slice(0,10);
+  document.getElementById('assign-days').value=assignment?assignment.days:(task?taskDays(task):1);
+  document.getElementById('assign-time').value=assignment&&assignment.start_time||'';
+  document.getElementById('assign-note').value=assignment&&assignment.notes||'';
+  document.getElementById('delete-assignment').classList.toggle('hidden',!assignment);
+  document.getElementById('assign-modal').classList.add('open');
+}
+async function saveAssignment(){
+  var taskId=assignCtx.taskId || (assignCtx.assignmentId&&assignments.find(function(a){return Number(a.id)===Number(assignCtx.assignmentId);})||{}).task_id;
+  if(!taskId){toast('Vælg en opgave fra poolen først','⚠');return;}
+  var body={user_id:Number(document.getElementById('assign-user').value),start_date:document.getElementById('assign-date').value,days:Number(document.getElementById('assign-days').value)||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null};
+  var r=assignCtx.assignmentId?await api('/api/assignments/'+assignCtx.assignmentId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))});
+  if(r&&r.ok){closeModal('assign-modal');toast('Booking gemt','✓');await loadAll();}else if(r){toast(r.error||'Kunne ikke gemme','❌');}
+}
+async function removeAssignment(id){
+  if(!confirm('Fjern denne booking?'))return;
+  var r=await api('/api/assignments/'+id,{method:'DELETE'});if(r&&r.ok){closeModal('assign-modal');toast('Booking fjernet','🗑');await loadAll();}
+}
+function closeModal(id){document.getElementById(id).classList.remove('open');if(id==='assign-modal')assignCtx=null;}
+
+function renderPeople(){
+  var visible=users.filter(function(u){return u.active;});
+  document.getElementById('people-grid').innerHTML=visible.map(function(u){
+    var color=u.color||'#2563EB',type=u.worker_type==='vendor'?'Vendor':'Intern';
+    return '<article class="person-card"><div class="person-top"><div class="avatar" style="width:34px;height:34px;background:'+color+'22;color:'+color+'">'+escapeHtml(u.initials||u.name.slice(0,2))+'</div><div><div class="person-name">'+escapeHtml(u.name)+'</div><div class="person-email">'+escapeHtml(u.email)+'</div></div></div>'+
+      '<div class="person-detail"><strong>'+type+'</strong>'+(u.vendor_group?' · '+escapeHtml(u.vendor_group):'')+'<br>Fag: '+escapeHtml(u.trade||'Ikke sat')+'<br>Kapacitet: '+(Number(u.weekly_capacity)||5)+' dage/uge</div>'+
+      '<div class="person-actions"><button class="btn small edit-user" data-user-id="'+u.id+'">✏ Rediger</button><button class="btn small copy-user" data-user-email="'+escapeHtml(u.email)+'">📋 Login</button></div></article>';
+  }).join('')||'<p class="muted">Ingen aktive brugere.</p>';
+  document.querySelectorAll('.edit-user').forEach(function(b){b.addEventListener('click',function(){openUser(Number(b.dataset.userId));});});
+  document.querySelectorAll('.copy-user').forEach(function(b){b.addEventListener('click',function(){navigator.clipboard.writeText('URL: '+window.location.origin+'\\nEmail: '+b.dataset.userEmail);toast('Login-info kopieret','📋');});});
+}
+function openUser(id){
+  editUserId=id||null;var u=id?users.find(function(x){return Number(x.id)===Number(id);}):null;
+  document.getElementById('user-title').textContent=u?'Rediger person / gruppe':'Ny medarbejder / gruppe';
+  document.getElementById('user-name').value=u?u.name:'';
+  document.getElementById('user-initials').value=u?(u.initials||''):'';
+  document.getElementById('user-email').value=u?u.email:'';
+  document.getElementById('user-password').value='';
+  document.getElementById('user-role').value=u?u.role:'employee';
+  document.getElementById('user-color').value=u?(u.color||'#2563EB'):'#2563EB';
+  document.getElementById('user-capacity').value=u?(u.weekly_capacity||5):5;
+  document.getElementById('user-worker-type').value=u?(u.worker_type||'employee'):'employee';
+  document.getElementById('user-trade').value=u?(u.trade||''):'';
+  document.getElementById('user-vendor-group').value=u?(u.vendor_group||''):'';
+  document.getElementById('user-jt-name').value=u?(u.jobtread_name||''):'';
+  document.getElementById('deactivate-user').classList.toggle('hidden',!u);
+  document.getElementById('user-modal').classList.add('open');
+}
+async function saveUser(){
+  var name=document.getElementById('user-name').value.trim(),email=document.getElementById('user-email').value.trim(),password=document.getElementById('user-password').value;
+  if(!name||!email){toast('Navn og email er påkrævet','⚠');return;}
+  if(!editUserId&&!password){toast('Angiv en adgangskode til den nye bruger','⚠');return;}
+  var body={name:name,email:email,role:document.getElementById('user-role').value,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:Number(document.getElementById('user-capacity').value)||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value||null,jobtread_name:document.getElementById('user-jt-name').value.trim()||null};
+  if(password)body.password=password;
+  var r=editUserId?await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/users',{method:'POST',body:JSON.stringify(body)});
+  if(r&&(r.ok||r.id)){closeModal('user-modal');toast('Person gemt','✓');await loadAll();}else if(r){toast(r.error||'Kunne ikke gemme','❌');}
+}
+async function deactivateUser(){
+  if(!editUserId||!confirm('Deaktiver denne person?'))return;
+  var r=await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify({active:0})});
+  if(r&&r.ok){closeModal('user-modal');toast('Deaktiveret','🗑');await loadAll();}
+}
+function openManual(){document.getElementById('manual-date').value=isoDate(new Date());document.getElementById('manual-customer').value='';document.getElementById('manual-name').value='';document.getElementById('manual-address').value='';document.getElementById('manual-days').value='1';document.getElementById('manual-type').value='lay';document.getElementById('manual-modal').classList.add('open');}
+async function saveManual(){
+  var body={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),start_date:document.getElementById('manual-date').value,days:Number(document.getElementById('manual-days').value)||1,type_guess:document.getElementById('manual-type').value};
+  var r=await api('/api/tasks/manual',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){closeModal('manual-modal');toast('Manuel opgave lagt i poolen','✓');await loadAll();}else if(r){toast(r.error||'Kunne ikke oprette','❌');}
+}
+async function loadLogs(){
+  var logs=await api('/api/time/all');if(!logs)return;
+  document.getElementById('log-body').innerHTML=logs.map(function(l){var mins=Number(l.duration_minutes)||0;return '<tr><td>'+escapeHtml(l.user_name)+'</td><td>'+escapeHtml(l.task_name)+'</td><td>'+escapeHtml(l.job_name)+'</td><td>'+escapeHtml((l.started_at||'').replace('T',' ').slice(0,16))+'</td><td>'+escapeHtml((l.stopped_at||'').replace('T',' ').slice(0,16))+'</td><td>'+Math.floor(mins/60)+'t '+(mins%60)+'m</td></tr>';}).join('')||'<tr><td colspan="6" class="muted" style="padding:16px;text-align:center">Ingen registrerede timer endnu.</td></tr>';
+}
+async function syncNow(){
+  var btn=document.getElementById('sync-btn');btn.disabled=true;btn.textContent='⏳ Synker';
+  var log=document.getElementById('sync-log');log.innerHTML='';log.classList.add('show');
+  function add(message,kind){var d=document.createElement('div');d.className=kind||'info';d.textContent='['+new Date().toLocaleTimeString('da-DK')+'] '+message;log.appendChild(d);}
+  add('Henter Task-data fra JobTread. Din plan ændres ikke.','info');
+  var r=await api('/api/sync',{method:'POST'});
+  if(r&&r.ok){add(r.count+' Tasks synkroniseret uden at ændre tildelinger.','ok');toast('JobTread synk færdig','✅');document.getElementById('sync-ind').textContent='Synket '+new Date().toLocaleTimeString('da-DK');await loadAll();}else{add((r&&r.error)||'Synk fejlede','err');toast('Synk fejlede','❌');}
+  btn.disabled=false;btn.textContent='⚡ Synk JT';
+}
+function bindStatic(){
+  document.querySelectorAll('.tab').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});btn.classList.add('active');document.getElementById('page-'+btn.dataset.page).classList.add('active');if(btn.dataset.page==='logs')loadLogs();});});
+  document.getElementById('logout-btn').addEventListener('click',logout);document.getElementById('employee-link').addEventListener('click',function(){window.location.href='/employee';});document.getElementById('sync-btn').addEventListener('click',syncNow);
+  [['plan-search','plan'],['cap-search','capacity']].forEach(function(x){document.getElementById(x[0]).addEventListener('input',function(){renderPool(x[1]);wireBoardInteractions();});});
+  document.addEventListener('click',function(e){var f=e.target.closest('[data-filter-scope]');if(f){filters[f.dataset.filterScope][f.dataset.filterKind]=f.dataset.filterValue;if(f.dataset.filterScope==='plan')renderPlan();else renderCapacity();}});
+  document.getElementById('plan-prev').addEventListener('click',function(){planOffset--;renderPlan();});document.getElementById('plan-next').addEventListener('click',function(){planOffset++;renderPlan();});document.getElementById('plan-today').addEventListener('click',function(){planOffset=0;renderPlan();});
+  document.getElementById('cap-prev').addEventListener('click',function(){capOffset-=10;renderCapacity();});document.getElementById('cap-next').addEventListener('click',function(){capOffset+=10;renderCapacity();});document.getElementById('cap-today').addEventListener('click',function(){capOffset=0;renderCapacity();});
+  document.getElementById('manual-task-btn').addEventListener('click',openManual);document.getElementById('manual-task-btn-2').addEventListener('click',openManual);document.getElementById('close-manual').addEventListener('click',function(){closeModal('manual-modal');});document.getElementById('save-manual').addEventListener('click',saveManual);
+  document.getElementById('close-assign').addEventListener('click',function(){closeModal('assign-modal');});document.getElementById('save-assignment').addEventListener('click',saveAssignment);document.getElementById('delete-assignment').addEventListener('click',function(){if(assignCtx&&assignCtx.assignmentId)removeAssignment(assignCtx.assignmentId);});
+  document.getElementById('new-user-btn').addEventListener('click',function(){openUser();});document.getElementById('close-user').addEventListener('click',function(){closeModal('user-modal');});document.getElementById('save-user').addEventListener('click',saveUser);document.getElementById('deactivate-user').addEventListener('click',deactivateUser);
+  ['assign-modal','manual-modal','user-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+}
+bindStatic();loadAll();
+})();
+</script>
+</body>
+</html>

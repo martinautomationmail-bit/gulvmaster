@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gulv Master — Log ind</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:linear-gradient(135deg,#0F2240 0%,#1C3557 50%,#2E5086 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#fff;border-radius:16px;padding:40px 36px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.logo{display:flex;align-items:center;gap:12px;margin-bottom:32px;justify-content:center}
+.logo-icon{width:48px;height:48px;background:linear-gradient(135deg,#0F2240,#2E5086);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px}
+.logo-text{font-size:20px;font-weight:700;color:#0F2240}
+.logo-sub{font-size:12px;color:#5A6A7E;margin-top:1px}
+h2{font-size:22px;font-weight:700;color:#0F2240;margin-bottom:6px;text-align:center}
+.subtitle{font-size:13px;color:#5A6A7E;text-align:center;margin-bottom:28px}
+.fg{margin-bottom:16px}
+label{display:block;font-size:11px;font-weight:700;color:#5A6A7E;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+input{width:100%;padding:11px 14px;border-radius:8px;border:1.5px solid #CBD5E1;font-size:14px;color:#0F1923;outline:none;transition:border-color .15s}
+input:focus{border-color:#2563EB;background:#FAFBFF}
+.btn{width:100%;padding:13px;border-radius:9px;background:linear-gradient(135deg,#0F2240,#2E5086);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;transition:opacity .15s;margin-top:8px}
+.btn:hover{opacity:.9}
+.btn:disabled{opacity:.6;cursor:not-allowed}
+.error{background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:7px;padding:10px 13px;font-size:13px;margin-bottom:14px;display:none}
+.error.show{display:block}
+.footer{text-align:center;margin-top:24px;font-size:11px;color:#94A3B8}
+.loading{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-right:7px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-icon">🪵</div>
+    <div>
+      <div class="logo-text">Gulv Master</div>
+      <div class="logo-sub">Enterprise Platform</div>
+    </div>
+  </div>
+  <h2>Velkommen tilbage</h2>
+  <p class="subtitle">Log ind med din arbejds-email</p>
+  <div class="error" id="error"></div>
+  <div class="fg">
+    <label>Email</label>
+    <input type="email" id="email" placeholder="din@email.dk" autocomplete="email" />
+  </div>
+  <div class="fg">
+    <label>Adgangskode</label>
+    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" />
+  </div>
+  <button class="btn" id="login-btn" onclick="login()">Log ind</button>
+  <div class="footer">Gulv Master Enterprise © 2026</div>
+</div>
+<script>
+const API = '';
+document.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+
+// Auto-redirect if already logged in
+const token = localStorage.getItem('gm_token');
+const user = JSON.parse(localStorage.getItem('gm_user') || 'null');
+if (token && user) {
+  window.location.href = user.role === 'admin' ? '/admin' : '/employee';
+}
+
+async function login() {
+  const email = document.getElementById('email').value.trim();
+  const pass = document.getElementById('password').value;
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('error');
+  err.classList.remove('show');
+  if (!email || !pass) { showError('Udfyld email og adgangskode'); return; }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span>Logger ind...';
+  try {
+    const r = await fetch(`${API}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass })
+    });
+    const data = await r.json();
+    if (!r.ok) { showError(data.error || 'Login fejlede'); return; }
+    localStorage.setItem('gm_token', data.token);
+    localStorage.setItem('gm_user', JSON.stringify(data.user));
+    window.location.href = data.user.role === 'admin' ? '/admin' : '/employee';
+  } catch (e) {
+    showError('Kunne ikke forbinde til server');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Log ind';
+  }
+}
+function showError(msg) {
+  const el = document.getElementById('error');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+</script>
+</body>
+</html>
