@@ -6,8 +6,6 @@ const cors = require('cors');
 const path = require('path');
 const cron = require('node-cron');
 const crypto = require('crypto');
-const multer = require('multer');
-const { v2: cloudinary } = require('cloudinary');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,31 +13,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'gulvmaster2026hemmelig';
 const JT_ORG = process.env.JT_ORG_ID || '22PZCGuGrJnQ';
 const JT_GRANT = process.env.JT_GRANT_KEY || '';
 const JT_API = 'https://api.jobtread.com/pave';
-// Daily reports are stored in this app first, then delivered to a secure
-// JobTread connector. Use a Make custom webhook or your own server endpoint.
-// The connector must create the JobTread Time Entry and attach the photo URLs.
-const JT_REPORT_WEBHOOK_URL = process.env.JT_REPORT_WEBHOOK_URL || '';
-const JT_REPORT_WEBHOOK_SECRET = process.env.JT_REPORT_WEBHOOK_SECRET || '';
-const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || '';
-const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || '';
-const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET || '';
-const MAX_REPORT_PHOTOS = 5;
-const MAX_REPORT_PHOTO_BYTES = 10 * 1024 * 1024;
-
-if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET) {
-  cloudinary.config({ cloud_name: CLOUDINARY_CLOUD_NAME, api_key: CLOUDINARY_API_KEY, api_secret: CLOUDINARY_API_SECRET, secure: true });
-}
-
-const reportUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { files: MAX_REPORT_PHOTOS, fileSize: MAX_REPORT_PHOTO_BYTES },
-  fileFilter: function(req, file, cb) {
-    if (!/^image\/(jpeg|png|webp|heic|heif)$/i.test(file.mimetype || '')) {
-      return cb(new Error('Kun billeder (JPG, PNG, WEBP eller HEIC) er tilladt.'));
-    }
-    cb(null, true);
-  }
-});
 
 app.use(cors());
 app.use(express.json());
@@ -111,35 +84,6 @@ db.exec(`
     notes TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   );
-  CREATE TABLE IF NOT EXISTS daily_reports (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    booking_id INTEGER NOT NULL,
-    task_id TEXT NOT NULL,
-    job_id TEXT,
-    user_id INTEGER NOT NULL,
-    report_date TEXT NOT NULL,
-    hours REAL NOT NULL,
-    notes TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'queued',
-    jobtread_time_entry_id TEXT,
-    jobtread_daily_log_id TEXT,
-    jobtread_response TEXT,
-    sent_at TEXT,
-    error_message TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(booking_id, report_date)
-  );
-  CREATE TABLE IF NOT EXISTS daily_report_photos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    report_id INTEGER NOT NULL,
-    image_url TEXT NOT NULL,
-    cloudinary_public_id TEXT,
-    original_name TEXT,
-    mime_type TEXT,
-    bytes INTEGER,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
   CREATE TABLE IF NOT EXISTS sync_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     synced_at TEXT DEFAULT (datetime('now')),
@@ -165,21 +109,13 @@ addColumn('users', 'weekly_capacity', 'REAL DEFAULT 5');
 addColumn('users', 'can_login', 'INTEGER DEFAULT 1');
 addColumn('jt_tasks', 'source', "TEXT DEFAULT 'jobtread'"); // jobtread | manual
 addColumn('jt_tasks', 'created_at', 'TEXT');
+addColumn('jt_tasks', 'customer_phone', 'TEXT'); // optional phone shown in the employee app
 addColumn('assignments', 'updated_at', 'TEXT');
-addColumn('users', 'jobtread_user_id', 'TEXT');
-addColumn('daily_reports', 'jobtread_time_entry_id', 'TEXT');
-addColumn('daily_reports', 'jobtread_daily_log_id', 'TEXT');
-addColumn('daily_reports', 'jobtread_response', 'TEXT');
-addColumn('daily_reports', 'sent_at', 'TEXT');
-addColumn('daily_reports', 'error_message', 'TEXT');
 db.exec("CREATE INDEX IF NOT EXISTS idx_assignments_user_start ON assignments(user_id, start_date)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_assignments_task ON assignments(task_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_planning_bookings_user_start ON planning_bookings(user_id, start_date)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_planning_bookings_task ON planning_bookings(task_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_source_start ON jt_tasks(source, start_date)");
-db.exec("CREATE INDEX IF NOT EXISTS idx_reports_user_date ON daily_reports(user_id, report_date)");
-db.exec("CREATE INDEX IF NOT EXISTS idx_reports_status ON daily_reports(status)");
-db.exec("CREATE INDEX IF NOT EXISTS idx_report_photos_report ON daily_report_photos(report_id)");
 
 // ── SEED USERS ────────────────────────────────────────
 var defaultUsers = [
@@ -302,7 +238,7 @@ app.get('/api/auth/me', auth, function(req, res) {
 
 // ── USERS / WORKFORCE ─────────────────────────────────
 app.get('/api/users', auth, adminOnly, function(req, res) {
-  res.json(db.prepare("SELECT id,name,email,role,color,initials,jobtread_name,jobtread_user_id,active,worker_type,vendor_group,trade,weekly_capacity,COALESCE(can_login,1) AS can_login FROM users ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END, CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END, vendor_group, name").all());
+  res.json(db.prepare("SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,COALESCE(can_login,1) AS can_login FROM users ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END, CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END, vendor_group, name").all());
 });
 function generatedPlanningEmail(name) {
   var slug=String(name||'vendor').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,35)||'vendor';
@@ -318,8 +254,8 @@ app.post('/api/users', auth, adminOnly, function(req, res) {
     var password=canLogin ? b.password : crypto.randomBytes(24).toString('hex');
     var workerType=b.worker_type==='vendor'?'vendor':'employee';
     var role=canLogin ? (b.role||'employee') : 'employee';
-    var r=db.prepare('INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,jobtread_user_id,active,worker_type,vendor_group,trade,weekly_capacity,can_login) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(String(b.name).trim(),email,bcrypt.hashSync(password,10),role,b.color||'#2563EB',ini,b.jobtread_name||null,b.jobtread_user_id||null,b.active===0?0:1,workerType,b.vendor_group||null,b.trade||null,Math.max(0,Number(b.weekly_capacity)||5),canLogin?1:0);
+    var r=db.prepare('INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(String(b.name).trim(),email,bcrypt.hashSync(password,10),role,b.color||'#2563EB',ini,b.jobtread_name||null,b.active===0?0:1,workerType,b.vendor_group||null,b.trade||null,Math.max(0,Number(b.weekly_capacity)||5),canLogin?1:0);
     res.json({id:r.lastInsertRowid,ok:true});
   } catch(e) {
     if (e.message.includes('UNIQUE')) return res.status(400).json({error:'Email er allerede i brug'});
@@ -338,7 +274,6 @@ app.put('/api/users/:id', auth, adminOnly, function(req, res) {
     color:b.color || u.color,
     initials:b.initials !== undefined ? b.initials : u.initials,
     jobtread_name:b.jobtread_name !== undefined ? b.jobtread_name : u.jobtread_name,
-    jobtread_user_id:b.jobtread_user_id !== undefined ? b.jobtread_user_id : u.jobtread_user_id,
     active:b.active !== undefined ? (b.active?1:0) : u.active,
     worker_type:b.worker_type === 'vendor' ? 'vendor' : (b.worker_type ? 'employee' : (u.worker_type || 'employee')),
     vendor_group:b.vendor_group !== undefined ? b.vendor_group : u.vendor_group,
@@ -347,8 +282,8 @@ app.put('/api/users/:id', auth, adminOnly, function(req, res) {
     can_login:canLogin
   };
   if (canLogin && !next.email) return res.status(400).json({error:'Email mangler for login-bruger'});
-  db.prepare('UPDATE users SET name=?,email=?,password_hash=?,role=?,color=?,initials=?,jobtread_name=?,jobtread_user_id=?,active=?,worker_type=?,vendor_group=?,trade=?,weekly_capacity=?,can_login=? WHERE id=?')
-    .run(next.name,next.email,next.password_hash,next.role,next.color,next.initials,next.jobtread_name,next.jobtread_user_id,next.active,next.worker_type,next.vendor_group,next.trade,next.weekly_capacity,next.can_login,req.params.id);
+  db.prepare('UPDATE users SET name=?,email=?,password_hash=?,role=?,color=?,initials=?,jobtread_name=?,active=?,worker_type=?,vendor_group=?,trade=?,weekly_capacity=?,can_login=? WHERE id=?')
+    .run(next.name,next.email,next.password_hash,next.role,next.color,next.initials,next.jobtread_name,next.active,next.worker_type,next.vendor_group,next.trade,next.weekly_capacity,next.can_login,req.params.id);
   res.json({ok:true});
 });
 
@@ -411,7 +346,7 @@ async function syncFromJT() {
       list.forEach(function(t) {
         var ji = t.job||{};
         var customer = (ji.name||'').replace(/\s*[-\u2013]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i,'').trim();
-        ups.run(t.id,t.name,ji.id||null,customer||ji.name||'',ji.location&&ji.location.address||'',t.startDate,t.endDate||t.startDate,guessType(t.name),assignMap[t.id]||null,'https://app.jobtread.com/jobs/'+(ji.id||''));
+        ups.run(t.id,t.name,ji.id||null,customer||ji.name||'',ji.location&&ji.location.address||'',t.startDate,t.endDate||t.startDate,guessType(t.name),assignMap[t.id]||null,'https://app.jobtread.com/jobs/'+(ji.id||'')+'/schedule');
       });
     });
     doAll(tasks);
@@ -463,9 +398,16 @@ app.post('/api/tasks/manual', auth, adminOnly, function(req,res) {
   if (!b.job_name || !b.name || !validDate(b.start_date)) return res.status(400).json({error:'Kunde/projekt, opgave og startdato skal udfyldes'});
   var days=Math.max(.25,Math.min(60,Number(b.days)||1)), end=validDate(b.end_date)?b.end_date:addWorkingDays(b.start_date,days);
   var id='manual-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2));
-  db.prepare("INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'manual', datetime('now'))")
-    .run(id,String(b.name).trim(),null,String(b.job_name).trim(),b.job_address||'',b.start_date,end,cleanTaskType(b.type_guess),null,null,new Date().toISOString());
+  db.prepare("INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'manual', datetime('now'))")
+    .run(id,String(b.name).trim(),null,String(b.job_name).trim(),b.job_address||'',b.customer_phone||null,b.start_date,end,cleanTaskType(b.type_guess),null,null,new Date().toISOString());
   res.json({ok:true,id:id});
+});
+app.put('/api/tasks/:id/customer-contact', auth, adminOnly, function(req,res) {
+  var task=db.prepare('SELECT id FROM jt_tasks WHERE id=?').get(req.params.id);
+  if (!task) return res.status(404).json({error:'Opgaven blev ikke fundet'});
+  var phone=String((req.body||{}).customer_phone||'').trim().slice(0,60);
+  db.prepare('UPDATE jt_tasks SET customer_phone=? WHERE id=?').run(phone||null,req.params.id);
+  res.json({ok:true,customer_phone:phone||null});
 });
 app.delete('/api/tasks/manual/:id', auth, adminOnly, function(req,res) {
   var task=db.prepare("SELECT id FROM jt_tasks WHERE id=? AND source='manual'").get(req.params.id);
@@ -483,7 +425,7 @@ function normalizeBooking(body) {
 }
 function bookingSelect(where) {
   return `SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
-    t.name AS task_name,t.job_name,t.job_address,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
+    t.name AS task_name,t.job_name,t.job_address,t.customer_phone,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
     FROM planning_bookings b JOIN users u ON b.user_id=u.id JOIN jt_tasks t ON b.task_id=t.id ${where||''}`;
 }
 app.get('/api/assignments', auth, function(req,res) {
@@ -502,155 +444,23 @@ app.put('/api/assignments/:id', auth, adminOnly, function(req,res) {
 app.delete('/api/assignments/:id', auth, adminOnly, function(req,res) { db.prepare('DELETE FROM planning_bookings WHERE id=?').run(req.params.id); res.json({ok:true}); });
 app.delete('/api/plan', auth, adminOnly, function(req,res) { db.prepare('DELETE FROM planning_bookings').run(); res.json({ok:true}); });
 
-// ── DAILY REPORTS & JOBTREAD TIME ───────────────────────
-// There is deliberately no internal stopwatch. A worker can only submit a
-// report when hours, a written note and at least one photo are supplied.
-function hasReportStorage() {
-  return !!(CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
-}
-function hasReportDelivery() {
-  return !!JT_REPORT_WEBHOOK_URL;
-}
-function safeReportDate(v) { return validDate(v) ? v : null; }
-function uploadReportImage(file, reportKey) {
-  return new Promise(function(resolve, reject) {
-    if (!hasReportStorage()) return reject(new Error('Billedlager er ikke opsat. Kontakt administratoren.'));
-    var stream = cloudinary.uploader.upload_stream({
-      resource_type: 'image',
-      folder: 'gulv-master/dagsrapporter/' + reportKey,
-      use_filename: false,
-      unique_filename: true,
-      overwrite: false,
-      tags: ['gulv-master', 'daily-report']
-    }, function(error, result) {
-      if (error) return reject(new Error('Billedupload fejlede: ' + (error.message || 'ukendt fejl')));
-      resolve({ image_url: result.secure_url, cloudinary_public_id: result.public_id, bytes: result.bytes || file.size || null, mime_type: file.mimetype, original_name: file.originalname });
-    });
-    stream.end(file.buffer);
-  });
-}
-async function deliverReportToJobTread(payload) {
-  if (!hasReportDelivery()) {
-    throw new Error('JobTread-rapportforbindelsen er ikke opsat. Sæt JT_REPORT_WEBHOOK_URL på Render.');
-  }
-  var mod = await import('node-fetch');
-  var fetch = mod.default;
-  var response = await fetch(JT_REPORT_WEBHOOK_URL, {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, JT_REPORT_WEBHOOK_SECRET ? { 'x-gulvmaster-report-secret': JT_REPORT_WEBHOOK_SECRET } : {}),
-    body: JSON.stringify(payload)
-  });
-  var raw = await response.text();
-  var data = null;
-  try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = { raw: raw }; }
-  if (!response.ok || !data || data.ok !== true) {
-    throw new Error((data && (data.error || data.message)) || 'JobTread-connectoren bekræftede ikke, at Time Entry og dokumentation blev oprettet.');
-  }
-  return data;
-}
-function reportSelect(where) {
-  return `SELECT r.*, u.name AS user_name, u.email AS user_email, u.jobtread_name, u.jobtread_user_id,
-    t.name AS task_name, t.job_name, t.job_address, t.jt_url, t.job_id AS task_job_id,
-    b.start_date AS booking_start_date, b.end_date AS booking_end_date, b.notes AS booking_notes,
-    (SELECT COUNT(*) FROM daily_report_photos p WHERE p.report_id=r.id) AS photo_count
-    FROM daily_reports r
-    JOIN users u ON u.id=r.user_id
-    JOIN jt_tasks t ON t.id=r.task_id
-    JOIN planning_bookings b ON b.id=r.booking_id ${where || ''}`;
-}
-function reportPhotos(reportId) {
-  return db.prepare('SELECT id,image_url,original_name,mime_type,bytes FROM daily_report_photos WHERE report_id=? ORDER BY id ASC').all(reportId);
-}
-app.get('/api/reports/config', auth, function(req,res) {
-  res.json({ ready: hasReportStorage() && hasReportDelivery(), storage_ready: hasReportStorage(), jobtread_connector_ready: hasReportDelivery(), max_photos: MAX_REPORT_PHOTOS, max_photo_mb: MAX_REPORT_PHOTO_BYTES / 1024 / 1024 });
+// ── TIME ──────────────────────────────────────────────
+app.post('/api/time/start', auth, function(req,res) {
+  db.prepare("UPDATE time_logs SET stopped_at=datetime('now'),duration_minutes=CAST((julianday('now')-julianday(started_at))*1440 AS INTEGER) WHERE user_id=? AND stopped_at IS NULL").run(req.user.id);
+  var r=db.prepare("INSERT INTO time_logs (user_id,task_id,started_at) VALUES (?,?,datetime('now'))").run(req.user.id,req.body.task_id);
+  res.json({id:r.lastInsertRowid,ok:true});
 });
-app.get('/api/reports/my', auth, function(req,res) {
-  var rows = db.prepare(reportSelect('WHERE r.user_id=?') + ' ORDER BY r.report_date DESC,r.id DESC').all(req.user.id);
-  rows.forEach(function(r){ r.photos = reportPhotos(r.id); });
-  res.json(rows);
+app.post('/api/time/stop', auth, function(req,res) {
+  var log=db.prepare('SELECT * FROM time_logs WHERE id=? AND user_id=?').get(req.body.log_id,req.user.id);
+  if (!log) return res.status(404).json({error:'Not found'});
+  db.prepare("UPDATE time_logs SET stopped_at=datetime('now'),duration_minutes=CAST((julianday('now')-julianday(started_at))*1440 AS INTEGER),notes=? WHERE id=?").run(req.body.notes||null,req.body.log_id);
+  res.json({ok:true,duration_minutes:db.prepare('SELECT duration_minutes FROM time_logs WHERE id=?').get(req.body.log_id).duration_minutes});
 });
-app.get('/api/reports/admin', auth, adminOnly, function(req,res) {
-  var rows = db.prepare(reportSelect('') + ' ORDER BY r.created_at DESC,r.id DESC LIMIT 300').all();
-  rows.forEach(function(r){ r.photos = reportPhotos(r.id); });
-  res.json(rows);
+app.get('/api/time/active', auth, function(req,res) {
+  res.json(db.prepare('SELECT tl.*,t.job_name,t.name as task_name FROM time_logs tl JOIN jt_tasks t ON tl.task_id=t.id WHERE tl.user_id=? AND tl.stopped_at IS NULL').get(req.user.id)||null);
 });
-app.post('/api/reports', auth, function(req,res) {
-  reportUpload.array('photos', MAX_REPORT_PHOTOS)(req,res, async function(uploadErr) {
-    if (uploadErr) return res.status(400).json({error: uploadErr.message || 'Kunne ikke modtage billederne'});
-    try {
-      var body = req.body || {};
-      var bookingId = Number(body.booking_id);
-      var hours = Number(body.hours);
-      var notes = String(body.notes || '').trim();
-      var reportDate = safeReportDate(body.report_date);
-      var files = req.files || [];
-      if (!Number.isInteger(bookingId) || bookingId <= 0) throw new Error('Booking mangler');
-      if (!reportDate) throw new Error('Vælg en gyldig dato');
-      if (!Number.isFinite(hours) || hours < 0.25 || hours > 16) throw new Error('Timer skal være mellem 0,25 og 16');
-      if (notes.length < 10) throw new Error('Skriv mindst 10 tegn om dagens arbejde');
-      if (!files.length) throw new Error('Mindst ét foto er påkrævet');
-      if (!hasReportStorage()) throw new Error('Billedlager er ikke opsat endnu');
-      if (!hasReportDelivery()) throw new Error('JobTread-rapportforbindelsen er ikke opsat endnu');
-
-      var booking = db.prepare(bookingSelect('WHERE b.id=? AND b.user_id=?')).get(bookingId, req.user.id);
-      if (!booking) return res.status(403).json({error:'Du kan kun indberette på dine egne planlagte opgaver'});
-      if (reportDate < booking.start_date || reportDate > booking.end_date) throw new Error('Rapportdatoen ligger ikke i din planlagte booking');
-      var duplicate = db.prepare('SELECT id,status FROM daily_reports WHERE booking_id=? AND report_date=?').get(bookingId, reportDate);
-      if (duplicate && duplicate.status === 'sent') return res.status(409).json({error:'Dagsrapporten for denne opgave og dato er allerede sendt til JobTread'});
-      if (duplicate) throw new Error('Der findes allerede en rapport under behandling for denne dato');
-
-      var reportKey = 'booking-' + bookingId + '-' + reportDate + '-' + Date.now();
-      var uploaded = await Promise.all(files.map(function(file){ return uploadReportImage(file, reportKey); }));
-      var reportId = db.transaction(function() {
-        var r = db.prepare("INSERT INTO daily_reports (booking_id,task_id,job_id,user_id,report_date,hours,notes,status,updated_at) VALUES (?,?,?,?,?,?,?,'queued',datetime('now'))")
-          .run(bookingId, booking.task_id, booking.job_id || booking.task_job_id || null, req.user.id, reportDate, hours, notes);
-        var insertPhoto = db.prepare('INSERT INTO daily_report_photos (report_id,image_url,cloudinary_public_id,original_name,mime_type,bytes) VALUES (?,?,?,?,?,?)');
-        uploaded.forEach(function(photo) { insertPhoto.run(r.lastInsertRowid,photo.image_url,photo.cloudinary_public_id,photo.original_name,photo.mime_type,photo.bytes); });
-        return r.lastInsertRowid;
-      })();
-
-      var payload = {
-        event: 'gulvmaster.daily_report.created',
-        report: { id: reportId, date: reportDate, hours: hours, notes: notes, created_at: new Date().toISOString() },
-        worker: { id: req.user.id, name: booking.user_name, email: booking.user_email, jobtread_name: booking.jobtread_name, jobtread_user_id: booking.jobtread_user_id || null },
-        booking: { id: bookingId, start_date: booking.start_date, end_date: booking.end_date, meeting_time: booking.start_time || null, note: booking.notes || null },
-        task: { id: booking.task_id, name: booking.task_name, job_id: booking.job_id || booking.task_job_id || null, job_name: booking.job_name, address: booking.job_address, jobtread_url: booking.jt_url || null },
-        photos: uploaded.map(function(p){ return { url:p.image_url, filename:p.original_name, mime_type:p.mime_type }; })
-      };
-      try {
-        var delivery = await deliverReportToJobTread(payload);
-        db.prepare("UPDATE daily_reports SET status='sent',jobtread_time_entry_id=?,jobtread_daily_log_id=?,jobtread_response=?,sent_at=datetime('now'),error_message=NULL,updated_at=datetime('now') WHERE id=?")
-          .run(delivery.jobtread_time_entry_id || delivery.time_entry_id || null, delivery.jobtread_daily_log_id || delivery.daily_log_id || null, JSON.stringify(delivery).slice(0,10000), reportId);
-        return res.json({ok:true, report_id:reportId, status:'sent', message:'Timer, note og foto er sendt til JobTread.'});
-      } catch (deliveryErr) {
-        db.prepare("UPDATE daily_reports SET status='failed',error_message=?,updated_at=datetime('now') WHERE id=?").run(String(deliveryErr.message || deliveryErr).slice(0,1000), reportId);
-        return res.status(502).json({error:'Rapporten er gemt, men blev ikke sendt til JobTread: '+deliveryErr.message, report_id:reportId, retry_needed:true});
-      }
-    } catch (e) {
-      return res.status(400).json({error:e.message || 'Dagsrapporten kunne ikke sendes'});
-    }
-  });
-});
-app.post('/api/reports/:id/retry', auth, adminOnly, async function(req,res) {
-  try {
-    var report = db.prepare(reportSelect('WHERE r.id=?')).get(req.params.id);
-    if (!report) return res.status(404).json({error:'Rapporten blev ikke fundet'});
-    if (!hasReportDelivery()) return res.status(400).json({error:'JT_REPORT_WEBHOOK_URL mangler på Render'});
-    var photos = reportPhotos(report.id);
-    if (!photos.length) return res.status(400).json({error:'Rapporten mangler billeder'});
-    var payload = {
-      event:'gulvmaster.daily_report.retry',
-      report:{id:report.id,date:report.report_date,hours:report.hours,notes:report.notes,created_at:report.created_at},
-      worker:{id:report.user_id,name:report.user_name,email:report.user_email,jobtread_name:report.jobtread_name,jobtread_user_id:report.jobtread_user_id || null},
-      booking:{id:report.booking_id,start_date:report.booking_start_date,end_date:report.booking_end_date,note:report.booking_notes || null},
-      task:{id:report.task_id,name:report.task_name,job_id:report.job_id || report.task_job_id || null,job_name:report.job_name,address:report.job_address,jobtread_url:report.jt_url || null},
-      photos:photos.map(function(p){return {url:p.image_url,filename:p.original_name,mime_type:p.mime_type};})
-    };
-    var delivery = await deliverReportToJobTread(payload);
-    db.prepare("UPDATE daily_reports SET status='sent',jobtread_time_entry_id=?,jobtread_daily_log_id=?,jobtread_response=?,sent_at=datetime('now'),error_message=NULL,updated_at=datetime('now') WHERE id=?")
-      .run(delivery.jobtread_time_entry_id || delivery.time_entry_id || null, delivery.jobtread_daily_log_id || delivery.daily_log_id || null, JSON.stringify(delivery).slice(0,10000),report.id);
-    res.json({ok:true});
-  } catch(e) { res.status(502).json({error:e.message || 'Kunne ikke gensende'}); }
+app.get('/api/time/all', auth, adminOnly, function(req,res) {
+  res.json(db.prepare('SELECT tl.*,u.name as user_name,t.job_name,t.name as task_name FROM time_logs tl JOIN users u ON tl.user_id=u.id JOIN jt_tasks t ON tl.task_id=t.id ORDER BY tl.started_at DESC LIMIT 200').all());
 });
 
 // ── DASHBOARD ─────────────────────────────────────────
