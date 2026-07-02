@@ -535,37 +535,43 @@ async function writeSyncLog(tasksImported, status, message) {
   await pool.query(`INSERT INTO sync_log (tasks_imported,status,message,synced_at) VALUES ($1,$2,$3,${nowTextSQL()})`, [tasksImported, status, message]);
 }
 
-function taskConnection(page, fields) {
+function taskConnection(cursor, fields) {
   const where = { and: [['targetType', 'job'], ['isGroup', false]] };
   if (!JT_INCLUDE_TODOS) where.and.unshift(['isToDo', false]);
+
+  // Important: JobTread does NOT accept page: "1" as the first request for
+  // this tasks connection. The first request must omit `page` entirely.
+  // On later calls, the opaque cursor returned in `nextPage` is passed back
+  // unchanged as `page`.
+  const args = { size: JT_PAGE_SIZE, where };
+  if (cursor !== null && cursor !== undefined && cursor !== '') {
+    args.page = cursor;
+  }
+
   return {
-    $: {
-      size: JT_PAGE_SIZE,
-      page: String(page),
-      where
-    },
+    $: args,
     nextPage: {},
     nodes: fields
   };
 }
 
-function taskPagePayload(page, includeAssignments = false) {
-  const nodes = includeAssignments
-    ? { id: {}, taskAssignments: { nodes: { membership: { user: { name: {} } } } } }
-    : {
-        id: {},
-        name: {},
-        startDate: {},
-        endDate: {},
-        job: { id: {}, name: {}, location: { address: {} } }
-      };
-
+function taskPagePayload(cursor) {
+  // Use one query per page, not separate "tasks" and "assignments" requests.
+  // The JobTread assignee is only display/reference data. It never causes
+  // internal portal bookings to be created or changed.
   return {
     query: {
       $: { grantKey: JT_GRANT },
       organization: {
         $: { id: JT_ORG },
-        tasks: taskConnection(page, nodes)
+        tasks: taskConnection(cursor, {
+          id: {},
+          name: {},
+          startDate: {},
+          endDate: {},
+          job: { id: {}, name: {}, location: { address: {} } },
+          taskAssignments: { nodes: { membership: { user: { name: {} } } } }
+        })
       }
     }
   };
@@ -589,45 +595,38 @@ async function syncFromJT() {
     const allTasks = [];
     const assigneeByTask = new Map();
     const seenTaskIds = new Set();
-    const seenPages = new Set();
-    let page = '1';
+    const seenCursors = new Set();
+    let cursor = null; // null = first page: no `page` parameter at all
     let pagesFetched = 0;
 
-    // Each page uses the known-safe size of 40. `nextPage` is JobTread's
-    // supported pagination signal. No internal booking table is referenced.
-    while (page && !seenPages.has(String(page)) && pagesFetched < JT_MAX_PAGES) {
-      seenPages.add(String(page));
-      const pageNumber = String(page);
-      const [taskData, assignmentData] = await Promise.all([
-        jtFetch(taskPagePayload(pageNumber, false), `Tasks side ${pageNumber}`),
-        jtFetch(taskPagePayload(pageNumber, true), `Assignments side ${pageNumber}`)
-      ]);
+    while (pagesFetched < JT_MAX_PAGES) {
+      const cursorKey = cursor === null ? '__first__' : String(cursor);
+      if (seenCursors.has(cursorKey)) break;
+      seenCursors.add(cursorKey);
 
-      const taskConnectionData = taskConnectionFrom(taskData);
-      const assignmentConnectionData = taskConnectionFrom(assignmentData);
-      const pageTasks = Array.isArray(taskConnectionData.nodes) ? taskConnectionData.nodes : [];
-      const assignmentNodes = Array.isArray(assignmentConnectionData.nodes) ? assignmentConnectionData.nodes : [];
+      const label = pagesFetched === 0 ? 'Tasks første side' : `Tasks side ${pagesFetched + 1}`;
+      const taskData = await jtFetch(taskPagePayload(cursor), label);
+      const connection = taskConnectionFrom(taskData);
+      const pageTasks = Array.isArray(connection.nodes) ? connection.nodes : [];
 
       for (const task of pageTasks) {
-        if (task?.id && !seenTaskIds.has(task.id)) {
-          seenTaskIds.add(task.id);
-          allTasks.push(task);
-        }
-      }
-      for (const task of assignmentNodes) {
+        if (!task?.id || seenTaskIds.has(task.id)) continue;
+        seenTaskIds.add(task.id);
+        allTasks.push(task);
         const first = task?.taskAssignments?.nodes?.[0]?.membership?.user?.name;
-        if (task?.id && first) assigneeByTask.set(task.id, first);
+        if (first) assigneeByTask.set(task.id, first);
       }
 
       pagesFetched += 1;
-      const nextPage = taskConnectionData.nextPage;
-      page = nextPage === null || nextPage === undefined || nextPage === '' || nextPage === false
-        ? null
-        : String(nextPage);
+      const nextCursor = connection.nextPage;
+      if (nextCursor === null || nextCursor === undefined || nextCursor === '' || nextCursor === false) {
+        cursor = null;
+        break;
+      }
 
-      // Defensive stop: prevents an accidental infinite loop if an API proxy
-      // returns the same page without a nextPage marker.
-      if (!pageTasks.length && !page) break;
+      // Keep JobTread's returned cursor exactly as it came back. It is often
+      // an opaque ID rather than a numeric page number.
+      cursor = nextCursor;
     }
 
     const client = await pool.connect();
@@ -679,12 +678,11 @@ async function syncFromJT() {
     }
 
     const undated = allTasks.filter(task => !task.startDate).length;
-    const capNotice = pagesFetched >= JT_MAX_PAGES && page
-      ? ` · stoppet efter sikkerhedsgrænse på ${JT_MAX_PAGES} sider`
-      : '';
+    const capped = pagesFetched >= JT_MAX_PAGES && cursor !== null;
+    const capNotice = capped ? ` · stoppet efter sikkerhedsgrænse på ${JT_MAX_PAGES} sider` : '';
     const message = `${allTasks.length} tasks synced fra ${pagesFetched} sider · ${undated} uden JobTread-dato${capNotice}`;
     await writeSyncLog(allTasks.length, 'ok', message);
-    return { ok: true, count: allTasks.length, undated, pages: pagesFetched, pageSize: JT_PAGE_SIZE, capped: Boolean(capNotice) };
+    return { ok: true, count: allTasks.length, undated, pages: pagesFetched, pageSize: JT_PAGE_SIZE, capped };
   } catch (error) {
     const safeMessage = redactSecret(error?.message || 'Ukendt JobTread-fejl').slice(0, 1000);
     await writeSyncLog(0, 'error', safeMessage);
