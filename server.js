@@ -13,6 +13,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'gulvmaster2026hemmelig';
 const JT_ORG = process.env.JT_ORG_ID || '22PZCGuGrJnQ';
 const JT_GRANT = process.env.JT_GRANT_KEY || '';
 const JT_API = 'https://api.jobtread.com/pave';
+// Import settings. The portal is your planning system, so JobTread dates are
+// reference data only. We deliberately also import tasks without a start date.
+const JT_TASK_LIMIT = Math.max(50, Math.min(500, Number.parseInt(process.env.JT_TASK_LIMIT || '250', 10) || 250));
+const JT_INCLUDE_TODOS = String(process.env.JT_INCLUDE_TODOS || 'true').toLowerCase() !== 'false';
 
 app.use(cors());
 app.use(express.json());
@@ -319,19 +323,23 @@ async function syncFromJT() {
   }
   console.log('=== JT Sync start ===');
   try {
-    var from = new Date().toISOString().split('T')[0];
-    var to = new Date(Date.now()+84*86400000).toISOString().split('T')[0];
-    var where = {and:[['isToDo',false],['targetType','job'],['startDate','>=',from],['startDate','<=',to],['isGroup',false]]};
+    // Import every non-group Task connected to a Job. There is intentionally
+    // no startDate range here: an undated JobTread Task is still a valid item
+    // in the portal's planning pool. JobTread data is read-only reference data;
+    // it never creates or changes an internal booking.
+    var where = {and:[['targetType','job'],['isGroup',false]]};
+    if (!JT_INCLUDE_TODOS) where.and.unshift(['isToDo',false]);
 
-    // Step 1: tasks med job info
-    console.log('Step 1: tasks...');
-    var d1 = await jtFetch({query:{$:{grantKey:key},organization:{$:{id:JT_ORG},tasks:{$:{size:40,where:where},nodes:{id:{},name:{},startDate:{},endDate:{},job:{id:{},name:{},location:{address:{}}}}}}}});
+    // Step 1: tasks with job information. The limit is configurable in Render
+    // (JT_TASK_LIMIT) and defaults to 250 instead of the old hard limit of 40.
+    console.log('Step 1: importing up to '+JT_TASK_LIMIT+' JobTread tasks...');
+    var d1 = await jtFetch({query:{$:{grantKey:key},organization:{$:{id:JT_ORG},tasks:{$:{size:JT_TASK_LIMIT,where:where},nodes:{id:{},name:{},startDate:{},endDate:{},job:{id:{},name:{},location:{address:{}}}}}}}});
     var tasks = (d1&&d1.query&&d1.query.organization&&d1.query.organization.tasks&&d1.query.organization.tasks.nodes)||[];
     console.log('Tasks: '+tasks.length);
 
     // Step 2: assignments
     console.log('Step 2: assignments...');
-    var d2 = await jtFetch({query:{$:{grantKey:key},organization:{$:{id:JT_ORG},tasks:{$:{size:40,where:where},nodes:{id:{},taskAssignments:{nodes:{membership:{user:{name:{}}}}}}}}}});
+    var d2 = await jtFetch({query:{$:{grantKey:key},organization:{$:{id:JT_ORG},tasks:{$:{size:JT_TASK_LIMIT,where:where},nodes:{id:{},taskAssignments:{nodes:{membership:{user:{name:{}}}}}}}}}});
     var assignMap = {};
     var d2n = (d2&&d2.query&&d2.query.organization&&d2.query.organization.tasks&&d2.query.organization.tasks.nodes)||[];
     d2n.forEach(function(t) {
@@ -353,9 +361,11 @@ async function syncFromJT() {
 
     // JobTread sync updates task data only; it never changes manual assignments.
 
-    db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(tasks.length,'ok',tasks.length+' tasks synced');
-    console.log('=== Sync done: '+tasks.length+' ===');
-    return {ok:true,count:tasks.length};
+    var undated = tasks.filter(function(t){ return !t.startDate; }).length;
+    var summary = tasks.length+' tasks synced · '+undated+' uden JobTread-dato';
+    db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(tasks.length,'ok',summary);
+    console.log('=== Sync done: '+summary+' ===');
+    return {ok:true,count:tasks.length,undated:undated,limit:JT_TASK_LIMIT};
   } catch(e) {
     console.error('Sync error: '+e.message);
     db.prepare("INSERT INTO sync_log (tasks_imported,status,message) VALUES (?,?,?)").run(0,'error',e.message);
@@ -381,7 +391,9 @@ app.get('/api/tasks', auth, function(req,res) {
     FROM jt_tasks t
     LEFT JOIN planning_bookings b ON b.task_id=t.id
     GROUP BY t.id
-    ORDER BY CASE WHEN t.source='manual' THEN 0 ELSE 1 END, t.start_date ASC, t.job_name ASC
+    ORDER BY CASE WHEN t.source='manual' THEN 0 ELSE 1 END,
+             CASE WHEN t.start_date IS NULL OR t.start_date='' THEN 1 ELSE 0 END,
+             t.start_date ASC, t.job_name ASC
   `).all();
   res.json(rows);
 });
@@ -465,8 +477,9 @@ app.get('/api/time/all', auth, adminOnly, function(req,res) {
 
 // ── DASHBOARD ─────────────────────────────────────────
 app.get('/api/dashboard', auth, adminOnly, function(req,res) {
-  var today=new Date().toISOString().split('T')[0];
-  var total=db.prepare('SELECT COUNT(*) as n FROM jt_tasks WHERE start_date>=?').get(today);
+  // Pool totals must include undated JobTread tasks too; they are exactly the
+  // tasks you still need to plan manually in the portal.
+  var total=db.prepare('SELECT COUNT(*) as n FROM jt_tasks').get();
   var assigned=db.prepare('SELECT COUNT(DISTINCT task_id) as n FROM planning_bookings').get();
   var bookings=db.prepare('SELECT COUNT(*) as n FROM planning_bookings').get();
   var emps=db.prepare("SELECT COUNT(*) as n FROM users WHERE active=1 AND role='employee' AND COALESCE(worker_type,'employee')!='vendor'").get();
