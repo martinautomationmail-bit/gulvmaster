@@ -59,6 +59,21 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now')),
     UNIQUE(task_id, user_id, week_key)
   );
+  -- Legacy assignments stays untouched for backwards compatibility.
+  -- All new manual planning lives in planning_bookings.
+  CREATE TABLE IF NOT EXISTS planning_bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    week_key TEXT NOT NULL,
+    days REAL DEFAULT 1,
+    notes TEXT,
+    start_time TEXT,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
   CREATE TABLE IF NOT EXISTS time_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -91,11 +106,14 @@ addColumn('users', 'worker_type', "TEXT DEFAULT 'employee'"); // employee | vend
 addColumn('users', 'vendor_group', 'TEXT');
 addColumn('users', 'trade', 'TEXT');
 addColumn('users', 'weekly_capacity', 'REAL DEFAULT 5');
+addColumn('users', 'can_login', 'INTEGER DEFAULT 1');
 addColumn('jt_tasks', 'source', "TEXT DEFAULT 'jobtread'"); // jobtread | manual
 addColumn('jt_tasks', 'created_at', 'TEXT');
 addColumn('assignments', 'updated_at', 'TEXT');
 db.exec("CREATE INDEX IF NOT EXISTS idx_assignments_user_start ON assignments(user_id, start_date)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_assignments_task ON assignments(task_id)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_planning_bookings_user_start ON planning_bookings(user_id, start_date)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_planning_bookings_task ON planning_bookings(task_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_source_start ON jt_tasks(source, start_date)");
 
 // ── SEED USERS ────────────────────────────────────────
@@ -206,7 +224,7 @@ function adminOnly(req, res, next) {
 }
 
 app.post('/api/auth/login', function(req, res) {
-  var user = db.prepare('SELECT * FROM users WHERE email=? AND active=1').get(req.body.email);
+  var user = db.prepare("SELECT * FROM users WHERE email=? AND active=1 AND COALESCE(can_login,1)=1").get(req.body.email);
   if (!user || !bcrypt.compareSync(req.body.password, user.password_hash))
     return res.status(401).json({error:'Forkert email eller adgangskode'});
   var token = jwt.sign({id:user.id,name:user.name,role:user.role,email:user.email}, JWT_SECRET, {expiresIn:'30d'});
@@ -219,20 +237,24 @@ app.get('/api/auth/me', auth, function(req, res) {
 
 // ── USERS / WORKFORCE ─────────────────────────────────
 app.get('/api/users', auth, adminOnly, function(req, res) {
-  res.json(db.prepare("SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity FROM users ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END, CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END, vendor_group, name").all());
+  res.json(db.prepare("SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,COALESCE(can_login,1) AS can_login FROM users ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END, CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END, vendor_group, name").all());
 });
+function generatedPlanningEmail(name) {
+  var slug=String(name||'vendor').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,35)||'vendor';
+  return slug+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,7)+'@planning.local';
+}
 app.post('/api/users', auth, adminOnly, function(req, res) {
-  var b=req.body || {};
-  if (!b.name||!b.email||!b.password) return res.status(400).json({error:'Navn, email og adgangskode mangler'});
+  var b=req.body || {}, canLogin=b.can_login !== false;
+  if (!b.name) return res.status(400).json({error:'Navn mangler'});
+  if (canLogin && (!b.email || !b.password)) return res.status(400).json({error:'Email og adgangskode mangler for en bruger med login'});
   try {
-    var ini=b.initials||b.name.split(' ').map(function(w){return w[0];}).join('').substring(0,2).toUpperCase();
-    var r=db.prepare('INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(
-        b.name.trim(), b.email.trim().toLowerCase(), bcrypt.hashSync(b.password,10), b.role||'employee',
-        b.color||'#2563EB', ini, b.jobtread_name||null, b.active===0?0:1,
-        b.worker_type==='vendor'?'vendor':'employee', b.vendor_group||null, b.trade||null,
-        Math.max(0,Number(b.weekly_capacity)||5)
-      );
+    var ini=b.initials||b.name.split(' ').map(function(w){return w[0];}).join('').substring(0,3).toUpperCase();
+    var email=canLogin ? String(b.email).trim().toLowerCase() : generatedPlanningEmail(b.name);
+    var password=canLogin ? b.password : crypto.randomBytes(24).toString('hex');
+    var workerType=b.worker_type==='vendor'?'vendor':'employee';
+    var role=canLogin ? (b.role||'employee') : 'employee';
+    var r=db.prepare('INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(String(b.name).trim(),email,bcrypt.hashSync(password,10),role,b.color||'#2563EB',ini,b.jobtread_name||null,b.active===0?0:1,workerType,b.vendor_group||null,b.trade||null,Math.max(0,Number(b.weekly_capacity)||5),canLogin?1:0);
     res.json({id:r.lastInsertRowid,ok:true});
   } catch(e) {
     if (e.message.includes('UNIQUE')) return res.status(400).json({error:'Email er allerede i brug'});
@@ -242,12 +264,12 @@ app.post('/api/users', auth, adminOnly, function(req, res) {
 app.put('/api/users/:id', auth, adminOnly, function(req, res) {
   var u=db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);
   if (!u) return res.status(404).json({error:'Bruger blev ikke fundet'});
-  var b=req.body || {};
-  var next = {
+  var b=req.body || {}, canLogin=b.can_login !== undefined ? (b.can_login?1:0) : (u.can_login===undefined?1:u.can_login);
+  var next={
     name:b.name !== undefined ? String(b.name).trim() : u.name,
-    email:b.email !== undefined ? String(b.email).trim().toLowerCase() : u.email,
+    email:canLogin && b.email !== undefined ? String(b.email).trim().toLowerCase() : u.email,
     password_hash:b.password ? bcrypt.hashSync(b.password,10) : u.password_hash,
-    role:b.role || u.role,
+    role:canLogin ? (b.role || u.role) : 'employee',
     color:b.color || u.color,
     initials:b.initials !== undefined ? b.initials : u.initials,
     jobtread_name:b.jobtread_name !== undefined ? b.jobtread_name : u.jobtread_name,
@@ -255,10 +277,12 @@ app.put('/api/users/:id', auth, adminOnly, function(req, res) {
     worker_type:b.worker_type === 'vendor' ? 'vendor' : (b.worker_type ? 'employee' : (u.worker_type || 'employee')),
     vendor_group:b.vendor_group !== undefined ? b.vendor_group : u.vendor_group,
     trade:b.trade !== undefined ? b.trade : u.trade,
-    weekly_capacity:b.weekly_capacity !== undefined ? Math.max(0,Number(b.weekly_capacity)||0) : (u.weekly_capacity || 5)
+    weekly_capacity:b.weekly_capacity !== undefined ? Math.max(0,Number(b.weekly_capacity)||0) : (u.weekly_capacity || 5),
+    can_login:canLogin
   };
-  db.prepare('UPDATE users SET name=?,email=?,password_hash=?,role=?,color=?,initials=?,jobtread_name=?,active=?,worker_type=?,vendor_group=?,trade=?,weekly_capacity=? WHERE id=?')
-    .run(next.name,next.email,next.password_hash,next.role,next.color,next.initials,next.jobtread_name,next.active,next.worker_type,next.vendor_group,next.trade,next.weekly_capacity,req.params.id);
+  if (canLogin && !next.email) return res.status(400).json({error:'Email mangler for login-bruger'});
+  db.prepare('UPDATE users SET name=?,email=?,password_hash=?,role=?,color=?,initials=?,jobtread_name=?,active=?,worker_type=?,vendor_group=?,trade=?,weekly_capacity=?,can_login=? WHERE id=?')
+    .run(next.name,next.email,next.password_hash,next.role,next.color,next.initials,next.jobtread_name,next.active,next.worker_type,next.vendor_group,next.trade,next.weekly_capacity,next.can_login,req.params.id);
   res.json({ok:true});
 });
 
@@ -346,119 +370,71 @@ app.get('/api/sync/log', auth, adminOnly, function(req,res) {
 });
 if (JT_GRANT) cron.schedule('0 * * * *', function(){syncFromJT();});
 
-// ── TASKS ─────────────────────────────────────────────
-// Task pool: JobTread tasks are copied here. Manual tasks also live here.
-// Neither source can alter a planned assignment unless an admin moves it.
+// ── TASK POOL + INDEPENDENT MANUAL PLAN ───────────────
+// JobTread is read-only input. `planning_bookings` is intentionally a separate
+// table with no unique task/user/week rule: a task can be planned on several
+// people and dates. Old automatic assignments are deliberately not used.
 app.get('/api/tasks', auth, function(req,res) {
   var rows=db.prepare(`
-    SELECT t.*, COUNT(a.id) AS assignment_count
+    SELECT t.*, COUNT(b.id) AS assignment_count
     FROM jt_tasks t
-    LEFT JOIN assignments a ON a.task_id=t.id
+    LEFT JOIN planning_bookings b ON b.task_id=t.id
     GROUP BY t.id
     ORDER BY CASE WHEN t.source='manual' THEN 0 ELSE 1 END, t.start_date ASC, t.job_name ASC
   `).all();
   res.json(rows);
 });
-
-function validDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
+function validDate(value) { return typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value); }
 function addWorkingDays(startDate, durationDays) {
-  var d=new Date(startDate+'T12:00:00');
-  if (Number.isNaN(d.getTime())) return startDate;
+  var d=new Date(startDate+'T12:00:00'); if (Number.isNaN(d.getTime())) return startDate;
   var days=Math.max(1,Math.ceil(Number(durationDays)||1)), count=1;
-  while (count < days) {
-    d.setDate(d.getDate()+1);
-    if (d.getDay()!==0 && d.getDay()!==6) count++;
-  }
+  while (count<days) { d.setDate(d.getDate()+1); if (d.getDay()!==0 && d.getDay()!==6) count++; }
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
-function cleanTaskType(type) {
-  return ['lay','sand','paint','sub','other'].includes(type) ? type : 'other';
-}
+function cleanTaskType(type) { return ['lay','sand','paint','sub','other'].includes(type) ? type : 'other'; }
 app.post('/api/tasks/manual', auth, adminOnly, function(req,res) {
-  var b=req.body || {};
+  var b=req.body||{};
   if (!b.job_name || !b.name || !validDate(b.start_date)) return res.status(400).json({error:'Kunde/projekt, opgave og startdato skal udfyldes'});
-  var days=Math.max(0.25,Math.min(60,Number(b.days)||1));
-  var end=validDate(b.end_date) ? b.end_date : addWorkingDays(b.start_date,days);
-  var id='manual-'+(crypto.randomUUID ? crypto.randomUUID() : Date.now()+'-'+Math.random().toString(16).slice(2));
+  var days=Math.max(.25,Math.min(60,Number(b.days)||1)), end=validDate(b.end_date)?b.end_date:addWorkingDays(b.start_date,days);
+  var id='manual-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2));
   db.prepare("INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'manual', datetime('now'))")
     .run(id,String(b.name).trim(),null,String(b.job_name).trim(),b.job_address||'',b.start_date,end,cleanTaskType(b.type_guess),null,null,new Date().toISOString());
   res.json({ok:true,id:id});
 });
-app.put('/api/tasks/manual/:id', auth, adminOnly, function(req,res) {
-  var current=db.prepare("SELECT * FROM jt_tasks WHERE id=? AND source='manual'").get(req.params.id);
-  if (!current) return res.status(404).json({error:'Manuel opgave blev ikke fundet'});
-  var b=req.body || {}, start=validDate(b.start_date) ? b.start_date : current.start_date;
-  var days=Math.max(0.25,Math.min(60,Number(b.days)||1));
-  var end=validDate(b.end_date) ? b.end_date : addWorkingDays(start,days);
-  db.prepare("UPDATE jt_tasks SET job_name=?,name=?,job_address=?,start_date=?,end_date=?,type_guess=?,synced_at=datetime('now') WHERE id=?")
-    .run(b.job_name!==undefined?String(b.job_name).trim():current.job_name,b.name!==undefined?String(b.name).trim():current.name,b.job_address!==undefined?b.job_address:current.job_address,start,end,cleanTaskType(b.type_guess||current.type_guess),req.params.id);
-  res.json({ok:true});
-});
 app.delete('/api/tasks/manual/:id', auth, adminOnly, function(req,res) {
   var task=db.prepare("SELECT id FROM jt_tasks WHERE id=? AND source='manual'").get(req.params.id);
   if (!task) return res.status(404).json({error:'Kun manuelle opgaver kan slettes her'});
-  db.transaction(function(){
-    db.prepare('DELETE FROM assignments WHERE task_id=?').run(req.params.id);
-    db.prepare('DELETE FROM jt_tasks WHERE id=?').run(req.params.id);
-  })();
+  db.transaction(function(){ db.prepare('DELETE FROM planning_bookings WHERE task_id=?').run(req.params.id); db.prepare('DELETE FROM jt_tasks WHERE id=?').run(req.params.id); })();
   res.json({ok:true});
 });
-
-// ── ASSIGNMENTS ───────────────────────────────────────
-function normalizeAssignment(body) {
-  var b=body || {};
-  var task=db.prepare('SELECT id FROM jt_tasks WHERE id=?').get(b.task_id);
-  if (!task) throw new Error('Opgaven blev ikke fundet');
-  var user=db.prepare("SELECT id FROM users WHERE id=? AND active=1 AND role='employee'").get(b.user_id);
-  if (!user) throw new Error('Medarbejderen blev ikke fundet eller er deaktiveret');
-  if (!validDate(b.start_date)) throw new Error('Vælg en gyldig startdato');
-  var days=Math.max(0.25,Math.min(60,Number(b.days)||1)), start=b.start_date;
-  var end=validDate(b.end_date) ? b.end_date : addWorkingDays(start,days);
-  return {task_id:b.task_id,user_id:Number(b.user_id),week_key:getWeekKey(start),days:days,notes:b.notes?String(b.notes).slice(0,1000):null,start_time:b.start_time||null,start_date:start,end_date:end};
+function normalizeBooking(body) {
+  var b=body||{};
+  var task=db.prepare('SELECT id FROM jt_tasks WHERE id=?').get(b.task_id); if(!task) throw new Error('Opgaven blev ikke fundet');
+  var user=db.prepare("SELECT id FROM users WHERE id=? AND active=1 AND role='employee'").get(b.user_id); if(!user) throw new Error('Medarbejderen eller holdet blev ikke fundet');
+  if(!validDate(b.start_date)) throw new Error('Vælg en gyldig startdato');
+  var days=Math.max(.25,Math.min(60,Number(b.days)||1)), start=b.start_date;
+  return {task_id:b.task_id,user_id:Number(b.user_id),week_key:getWeekKey(start),days:days,notes:b.notes?String(b.notes).slice(0,1000):null,start_time:b.start_time||null,start_date:start,end_date:validDate(b.end_date)?b.end_date:addWorkingDays(start,days)};
 }
-function assignmentSelect(baseWhere) {
-  return `SELECT a.*, u.name as user_name, u.color as user_color, u.initials as user_initials,
-    u.worker_type, u.vendor_group, u.trade, u.weekly_capacity,
-    t.name as task_name, t.job_name, t.job_address, t.start_date as task_start_date, t.end_date as task_end_date,
-    t.type_guess, t.jt_url, t.job_id, t.source as task_source
-    FROM assignments a JOIN users u ON a.user_id=u.id JOIN jt_tasks t ON a.task_id=t.id ${baseWhere || ''}`;
+function bookingSelect(where) {
+  return `SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
+    t.name AS task_name,t.job_name,t.job_address,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
+    FROM planning_bookings b JOIN users u ON b.user_id=u.id JOIN jt_tasks t ON b.task_id=t.id ${where||''}`;
 }
 app.get('/api/assignments', auth, function(req,res) {
-  var where=req.user.role!=='admin' ? 'WHERE a.user_id=?' : '', q=assignmentSelect(where)+' ORDER BY a.start_date ASC, a.id ASC';
-  res.json(req.user.role!=='admin' ? db.prepare(q).all(req.user.id) : db.prepare(q).all());
+  var where=req.user.role!=='admin'?'WHERE b.user_id=?':'', q=bookingSelect(where)+' ORDER BY b.start_date ASC,b.id ASC';
+  res.json(req.user.role!=='admin'?db.prepare(q).all(req.user.id):db.prepare(q).all());
 });
-app.get('/api/assignments/my', auth, function(req,res) {
-  res.json(db.prepare(assignmentSelect('WHERE a.user_id=?')+' ORDER BY a.start_date ASC, a.id ASC').all(req.user.id));
-});
+app.get('/api/assignments/my', auth, function(req,res) { res.json(db.prepare(bookingSelect('WHERE b.user_id=?')+' ORDER BY b.start_date ASC,b.id ASC').all(req.user.id)); });
 app.post('/api/assignments', auth, adminOnly, function(req,res) {
-  try {
-    var a=normalizeAssignment(req.body);
-    var existing=db.prepare('SELECT id FROM assignments WHERE task_id=? AND user_id=? AND week_key=?').get(a.task_id,a.user_id,a.week_key);
-    if (existing) {
-      db.prepare("UPDATE assignments SET days=?,notes=?,start_time=?,start_date=?,end_date=?,updated_at=datetime('now') WHERE id=?").run(a.days,a.notes,a.start_time,a.start_date,a.end_date,existing.id);
-      return res.json({ok:true,id:existing.id,updated:true});
-    }
-    var r=db.prepare("INSERT INTO assignments (task_id,user_id,week_key,days,notes,start_time,start_date,end_date,updated_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))").run(a.task_id,a.user_id,a.week_key,a.days,a.notes,a.start_time,a.start_date,a.end_date);
-    res.json({id:r.lastInsertRowid,ok:true});
-  } catch(e) { res.status(400).json({error:e.message}); }
+  try { var b=normalizeBooking(req.body); var r=db.prepare("INSERT INTO planning_bookings (task_id,user_id,week_key,days,notes,start_time,start_date,end_date,updated_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))").run(b.task_id,b.user_id,b.week_key,b.days,b.notes,b.start_time,b.start_date,b.end_date); res.json({ok:true,id:r.lastInsertRowid}); }
+  catch(e){res.status(400).json({error:e.message});}
 });
 app.put('/api/assignments/:id', auth, adminOnly, function(req,res) {
-  try {
-    var old=db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id);
-    if (!old) return res.status(404).json({error:'Tildelingen blev ikke fundet'});
-    var a=normalizeAssignment(Object.assign({},old,req.body,{task_id:old.task_id}));
-    var clash=db.prepare('SELECT id FROM assignments WHERE task_id=? AND user_id=? AND week_key=? AND id<>?').get(a.task_id,a.user_id,a.week_key,req.params.id);
-    if (clash) return res.status(409).json({error:'Den samme opgave ligger allerede hos denne medarbejder i denne uge. Redigér den eksisterende tildeling i stedet.'});
-    db.prepare("UPDATE assignments SET user_id=?,week_key=?,days=?,notes=?,start_time=?,start_date=?,end_date=?,updated_at=datetime('now') WHERE id=?").run(a.user_id,a.week_key,a.days,a.notes,a.start_time,a.start_date,a.end_date,req.params.id);
-    res.json({ok:true});
-  } catch(e) { res.status(400).json({error:e.message}); }
+  try { var old=db.prepare('SELECT * FROM planning_bookings WHERE id=?').get(req.params.id); if(!old) return res.status(404).json({error:'Bookingen blev ikke fundet'}); var b=normalizeBooking(Object.assign({},old,req.body,{task_id:old.task_id})); db.prepare("UPDATE planning_bookings SET user_id=?,week_key=?,days=?,notes=?,start_time=?,start_date=?,end_date=?,updated_at=datetime('now') WHERE id=?").run(b.user_id,b.week_key,b.days,b.notes,b.start_time,b.start_date,b.end_date,req.params.id); res.json({ok:true}); }
+  catch(e){res.status(400).json({error:e.message});}
 });
-app.delete('/api/assignments/:id', auth, adminOnly, function(req,res) {
-  db.prepare('DELETE FROM assignments WHERE id=?').run(req.params.id);
-  res.json({ok:true});
-});
+app.delete('/api/assignments/:id', auth, adminOnly, function(req,res) { db.prepare('DELETE FROM planning_bookings WHERE id=?').run(req.params.id); res.json({ok:true}); });
+app.delete('/api/plan', auth, adminOnly, function(req,res) { db.prepare('DELETE FROM planning_bookings').run(); res.json({ok:true}); });
 
 // ── TIME ──────────────────────────────────────────────
 app.post('/api/time/start', auth, function(req,res) {
@@ -483,12 +459,13 @@ app.get('/api/time/all', auth, adminOnly, function(req,res) {
 app.get('/api/dashboard', auth, adminOnly, function(req,res) {
   var today=new Date().toISOString().split('T')[0];
   var total=db.prepare('SELECT COUNT(*) as n FROM jt_tasks WHERE start_date>=?').get(today);
-  var assigned=db.prepare('SELECT COUNT(DISTINCT task_id) as n FROM assignments').get();
-  var manual=db.prepare("SELECT COUNT(*) as n FROM jt_tasks WHERE source='manual'").get();
+  var assigned=db.prepare('SELECT COUNT(DISTINCT task_id) as n FROM planning_bookings').get();
+  var bookings=db.prepare('SELECT COUNT(*) as n FROM planning_bookings').get();
   var emps=db.prepare("SELECT COUNT(*) as n FROM users WHERE active=1 AND role='employee' AND COALESCE(worker_type,'employee')!='vendor'").get();
   var vendors=db.prepare("SELECT COUNT(*) as n FROM users WHERE active=1 AND role='employee' AND worker_type='vendor'").get();
+  var manual=db.prepare("SELECT COUNT(*) as n FROM jt_tasks WHERE source='manual'").get();
   var lastSync=db.prepare('SELECT * FROM sync_log ORDER BY synced_at DESC LIMIT 1').get();
-  res.json({totalTasks:total.n,assigned:assigned.n,unassigned:Math.max(0,total.n-assigned.n),manual:manual.n,employees:emps.n,vendors:vendors.n,lastSync:lastSync});
+  res.json({totalTasks:total.n,assigned:assigned.n,bookings:bookings.n,unassigned:Math.max(0,total.n-assigned.n),manual:manual.n,employees:emps.n,vendors:vendors.n,lastSync:lastSync});
 });
 
 // ── ROUTING ───────────────────────────────────────────

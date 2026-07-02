@@ -1,79 +1,29 @@
-# Gulv Master – medarbejderportal og kapacitetsboard
+# Gulv Master Portal v1.2
 
-Denne version bygger videre på Claude-koden og samler det i ét admin-system:
+## Det vigtige i denne version
 
-- **Daglig planlægning:** Træk Task fra opgavepoolen til en medarbejder og en specifik dag.
-- **Kapacitetsboard:** Træk samme Task til en medarbejder/et vendor-hold og en bestemt uge. Her kan du se bookede dage mod kapacitet.
-- **Medarbejdere øverst:** Interne medarbejdere vises altid før vendors.
-- **Vendor-grupper:** Vælg `Vendor / underleverandør` og en `Vendor-gruppe` under Hold & vendors. Eksempel:
-  - AJB Gruppen APS → Gulvlægning
-  - AJB Gruppen APS → Slibning
-  - Novo-Gulvservice → Slibning
-- **Manuelle opgaver:** Opret en manuel opgave i opgavepoolen og træk den ind på boardet.
-- **Ingen auto-tildeling:** JobTread synk importerer kun/fornyer Task-data. Den opretter ikke tildelinger og ændrer ikke din manuelle plan.
-- **Drag & drop:** Der bruges både `dataTransfer` og et fallback i browseren, så det virker stabilt på Chrome, Edge og Firefox.
-- **Medarbejderportal:** Medarbejdere ser kun deres egne bookinger. Der er både intern start/stop-timer og en knap, der åbner JobTread Time Tracking.
+JobTread er kun en **read-only Task-pool**. Din interne plan lever i `planning_bookings` og synkronisering ændrer aldrig bookinger.
 
-## Det vigtigste der er rettet
+Når serveren starter, oprettes `planning_bookings` automatisk som en ny, tom plan. Den gamle `assignments`-tabel bliver ikke slettet, men den bruges ikke længere. Det fjerner gamle automatiske tildelinger uden at slette dem fysisk.
 
-Den oprindelige `server.js` kørte `autoAssign()` ved opstart og igen efter JobTread-synk. Det er fjernet.
+## Deploy
 
-Den gamle drag & drop manglede `event.dataTransfer.setData(...)`. Flere browsere kræver dette for, at en drag-operation kan gennemføres. Den nye admin bruger både `application/x-gulvmaster` og `text/plain` som fallback.
+1. Erstat projektfilerne med denne mappe.
+2. Commit/push til GitHub og deploy din Node/Render-service igen.
+3. Sæt mindst `JWT_SECRET`, `JT_GRANT_KEY` og `JT_ORG_ID` som Environment Variables.
+4. Log ind som admin og tryk **Synk JT**. Tasks vises i poolen, men ingen bliver booket automatisk.
 
-`INSERT OR REPLACE` på assignments er erstattet med sikker opret/opdater-logik, så en eksisterende booking ikke bliver slettet og oprettet på ny med et nyt id.
+## Planlægning
 
-## Kør lokalt
+- Drag fra opgavepool til **Daglig plan**: opretter én manuel booking på den dato og det hold, du valgte. Standard er 1 dag. Klik på bookingen for at ændre dage, tid og note.
+- Drag fra opgavepool til **Kapacitet**: opretter én manuel booking på mandag i den valgte uge. Flyt den derefter til præcis dag under Daglig plan.
+- En Task bliver i poolen efter den er booket, så du kan planlægge den flere steder.
+- Dragging af en eksisterende booking flytter kun netop den booking.
 
-1. Åbn terminal i denne mappe.
-2. Kør:
+## Vendor-undergrupper
 
-```bash
-npm install
-cp .env.example .env
-npm start
-```
+Under **Hold & vendors**: Tryk `+ Vendor-gruppe`, indtast firmanavn, og opret derefter den første undergruppe. Vendor-undergrupper behøver ikke login; de bruges kun som kapacitetsrækker.
 
-3. Åbn:
+## Fagfiltre
 
-```text
-http://localhost:3000
-```
-
-## Vigtige environment variables
-
-Sæt disse før produktion:
-
-```text
-JWT_SECRET=<lang tilfældig hemmelig nøgle>
-JT_ORG_ID=22PZCGuGrJnQ
-JT_GRANT_KEY=<din JobTread Grant Key>
-```
-
-Gem aldrig `JT_GRANT_KEY` i GitHub eller i HTML-filer. Brug environment variables i den hosting-platform, du vælger.
-
-## Hosting
-
-Dette er en Node.js + SQLite-app og kan **ikke** køre via Netlify Drop som en almindelig HTML-fil.
-
-Brug fx Render, Railway eller en VPS. Vigtigt: SQLite-filen skal ligge på en persistent disk/volume. Uden persistent disk mister du brugere og planlægning ved redeploy.
-
-## Første login
-
-Koden har de eksisterende testbrugere fra den oprindelige server. Skift adgangskoder inden rigtige medarbejdere får adgang.
-
-## Sådan bruger du planlægningen
-
-1. Tryk **Synk JT**. Det opdaterer kun opgavepoolen.
-2. Find opgaven i venstre side.
-3. Træk den:
-   - til **Daglig plan** for specifik dato, eller
-   - til **Kapacitet** for den uge, den skal ligge i.
-4. Klik på en booking for at ændre antal dage, startdato, mødetid eller note.
-5. Klik `×` på en booking for at fjerne kun den interne booking. Det sletter ikke noget i JobTread.
-
-## Bemærkning om JobTread-timer
-
-Knapen **JobTread timer** sender medarbejderen til `https://app.jobtread.com/time`.
-Den interne start/stop-funktion gemmer stadig et internt tidslog i denne app.
-
-At sende timer automatisk ind i JobTread kræver en bekræftet JobTread API-mutation og de nødvendige API-rettigheder. Det er ikke blevet “faket” i denne version.
+Sæt fx `Gulvslibning`, `Maler`, `Tømrer` eller `VVS / El` under et hold. Der kommer automatisk et filter i både Daglig plan og Kapacitet.
