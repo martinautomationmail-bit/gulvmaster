@@ -117,14 +117,14 @@ button,input,select{font:inherit}
 .staff-role{font-size:9px;color:var(--muted);margin-top:1px}
 .group-row td{background:#F8FAFF;font-size:10px;font-weight:800;padding:5px 8px;color:var(--navy2);position:sticky;left:0}
 .group-toggle{border:0;background:transparent;color:var(--navy2);font-weight:800;cursor:pointer;padding:0;font-size:10px}
-.day-cell{padding:4px;min-width:128px}
+.day-cell{padding:4px;min-width:128px;overflow:visible}
 .day-cell.today-col{background:#FBFDFF}
-.drop-zone{min-height:70px;border:1px dashed transparent;border-radius:6px;padding:2px;transition:.14s}
+.drop-zone{min-height:70px;border:1px dashed transparent;border-radius:6px;padding:2px;transition:.14s;overflow:visible}
 .drop-zone.over{background:#EFF6FF;border-color:var(--blue)}
 .free-slot{font-size:9px;color:#16A34A;text-align:center;padding:5px 2px;opacity:.7}
 
 /* ASSIGNMENT PILLS (daily) */
-.assignment{border:0;border-radius:6px;width:100%;text-align:left;padding:5px 6px;margin-bottom:3px;cursor:grab;font-size:9px;position:relative}
+.assignment{border:0;border-radius:6px;width:100%;text-align:left;padding:5px 6px;margin-bottom:3px;cursor:grab;font-size:9px;position:relative;overflow:visible;box-sizing:border-box}
 .assignment.lay{background:var(--lay-bg);color:var(--lay-fg)}
 .assignment.sand{background:var(--sand-bg);color:var(--sand-fg)}
 .assignment.paint{background:var(--paint-bg);color:var(--paint-fg)}
@@ -607,14 +607,28 @@ function renderPool(scope){
   el.innerHTML=list.length?list.map(taskCard).join(''):'<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
 }
 
-// ASSIGNMENT PILL (daily)
+// ASSIGNMENT PILL (daily) - single day
 function assignPill(b){
-  var t=TYPE[b.type_guess||'other']||TYPE.other;
-  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'">'+
-    '<div class="assign-top"><span class="assign-name">'+esc(b.job_name||b.task_name||'Opgave')+'</span>'+
+  return assignPillSpan(b,1);
+}
+// ASSIGNMENT PILL spanning multiple visible days
+function assignPillSpan(b,spanDays){
+  var type=TYPE[b.type_guess||'other']||TYPE.other;
+  var daysLabel=+b.days>1?' <span style="font-size:8px;opacity:.75;background:rgba(0,0,0,.1);padding:1px 4px;border-radius:3px">'+b.days+'d</span>':'';
+  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'"'+
+    (spanDays>1?' style="position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(128px + 8px) - 10px);width:calc('+spanDays+'*(128px) + '+(spanDays-1)+'*8px - 10px);min-width:0"':'')+'>'+
+    '<div class="assign-top"><span class="assign-name">'+esc(b.job_name||b.task_name||'Opgave')+daysLabel+'</span>'+
     '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></div>'+
     (b.start_time?'<div class="assign-time">⏰ '+esc(b.start_time)+'</div>':'')+
     '<div class="assign-sub">'+esc(b.task_name||'')+(b.notes?' · '+esc(b.notes):'')+'</div>'+
+    '</div>';
+}
+// Pill for bookings continuing from a previous week
+function assignPillContinue(b){
+  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'" style="opacity:.75;border-left:3px solid currentColor">'+
+    '<div class="assign-top"><span class="assign-name">↩ '+esc(b.job_name||b.task_name||'Opgave')+'</span>'+
+    '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></div>'+
+    '<div class="assign-sub">Fortsat · '+esc(b.days)+'d total</div>'+
     '</div>';
 }
 
@@ -633,13 +647,42 @@ function renderPlan(){
       '<div class="avatar" style="background:'+c+'22;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</div>'+
       '<div><div class="staff-name">'+esc(u.name)+'</div><div class="staff-role">'+(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbej.'))+' · '+(+u.weekly_capacity||5)+' d</div></div>'+
       '</div></td>';
-    days.forEach(function(d){
+
+    // Track which bookings have already started (shown with span)
+    var shownBookings={};
+
+    days.forEach(function(d,di){
       var ds=iso(d),cap=(+u.weekly_capacity||5)/5,booked=dailyLoad(u.id,ds);
       var items=bookings.filter(function(b){return +b.user_id===+u.id&&workDates(b).indexOf(ds)>-1;});
+      var startingHere=items.filter(function(b){return (b.start_date||'').slice(0,10)===ds;});
+      var continuing=items.filter(function(b){return (b.start_date||'').slice(0,10)!==ds&&!shownBookings[b.id];});
+
+      var pillsHtml='';
+      items.forEach(function(b){
+        var wd=workDates(b);
+        var startIdx=wd.indexOf(ds);
+        var isStart=(b.start_date||'').slice(0,10)===ds;
+        if(isStart){
+          // Calculate how many of the remaining days in view this spans
+          var remaining=days.slice(di).map(iso);
+          var spanDays=0;
+          for(var ri=0;ri<remaining.length;ri++){if(wd.indexOf(remaining[ri])>-1)spanDays++;else break;}
+          spanDays=Math.max(1,spanDays);
+          shownBookings[b.id]=true;
+          // Multi-day pill: show with day count badge
+          pillsHtml+=assignPillSpan(b,spanDays);
+        } else if(!shownBookings[b.id]){
+          // Continuing from previous week - show abbreviated
+          shownBookings[b.id]=true;
+          pillsHtml+=assignPillContinue(b);
+        }
+        // If already shown (started earlier in view), show nothing — pill spans via width
+      });
+
+      var free=items.length===0?'<div class="free-slot">✓ Ledig</div>':'';
       cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'">'+
         '<div class="drop-zone" data-drop="day" data-user-id="'+u.id+'" data-date="'+ds+'">'+
-        (items.length?'':'<div class="free-slot">✓ Ledig</div>')+
-        items.map(assignPill).join('')+
+        free+pillsHtml+
         '<button class="add-small" data-action="add-booking" data-user-id="'+u.id+'" data-date="'+ds+'">+ Tilføj</button>'+
         '<div class="day-load'+(booked>cap?' overload':'')+'">'+booked.toFixed(1)+'/'+cap.toFixed(1)+'d</div>'+
         '</div></td>';
