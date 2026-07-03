@@ -141,8 +141,8 @@ button,input,select{font:inherit}
 .day-load.overload{color:#B91C1C;font-weight:800}
 .add-small{width:100%;border:1px dashed var(--border);background:#fff;color:var(--ghost);border-radius:4px;font-size:9px;padding:2px;cursor:pointer;margin-top:2px}
 .add-small:hover{border-color:var(--blue);color:var(--blue)}
-.cap-add-btn{display:block;width:100%;margin-top:4px;border:1px dashed var(--border);background:transparent;color:var(--ghost);border-radius:5px;font-size:10px;font-weight:600;padding:4px 2px;cursor:pointer;text-align:center;transition:.15s}
-.cap-add-btn:hover{border-color:var(--blue);color:var(--blue);background:#EFF6FF}
+.cap-add-btn{display:block;width:100%;margin-top:5px;border:1px dashed var(--border);background:transparent;color:var(--muted);border-radius:5px;font-size:10px;font-weight:600;padding:5px 4px;cursor:pointer;text-align:center;transition:.15s}
+.cap-add-btn:hover{border-color:var(--blue);color:var(--blue);background:#EFF6FF;border-style:solid}
 
 /* CAPACITY BOARD */
 .capacity-board{min-width:max-content;width:auto;border-collapse:collapse}
@@ -376,7 +376,11 @@ button,input,select{font:inherit}
 <!-- QUICK POP-UP (drop) -->
 <div class="quick-pop" id="quick-pop">
   <h4 id="qp-title">Booking</h4>
-  <div class="quick-task-name" id="qp-task-name"></div>
+  <div class="quick-task-name" id="qp-task-name" style="cursor:pointer" title="Klik for at vælge opgave"></div>
+  <div id="qp-task-select-wrap" style="display:none;margin-bottom:8px">
+    <label class="quick-label">Vælg opgave</label>
+    <select class="quick-select" id="qp-task-select"></select>
+  </div>
   <div class="quick-row">
     <div>
       <label class="quick-label">Medarbejder</label>
@@ -781,13 +785,23 @@ function populateQPUsers(selectedUid){
   document.getElementById('qp-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'"'+(+u.id===+selectedUid?' selected':'')+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
 }
 function openQuickPop(taskId,uid,dateStr,evt){
-  var t=tasks.find(function(x){return String(x.id)===String(taskId);});
+  var t=taskId?tasks.find(function(x){return String(x.id)===String(taskId);}):null;
   quickCtx={taskId:taskId,bookingId:null};
   document.getElementById('qp-title').textContent='Ny booking';
-  document.getElementById('qp-task-name').textContent=(t?((t.job_name||'')+(t.name?' — '+t.name:'')):'Opgave');
+  document.getElementById('qp-task-name').textContent=(t?((t.job_name||'')+(t.name?' — '+t.name:'')):'Vælg opgave fra pool →');
   populateQPUsers(uid);
   document.getElementById('qp-date').value=dateStr||iso(new Date());
   document.getElementById('qp-days').value=t&&t.start_date&&t.end_date?Math.max(1,Math.round((new Date(t.end_date)-new Date(t.start_date))/86400000)+1):'1';
+  // If no task pre-selected, show task dropdown
+  var wrap=document.getElementById('qp-task-select-wrap');
+  var sel=document.getElementById('qp-task-select');
+  if(!taskId){
+    wrap.style.display='block';
+    sel.innerHTML='<option value="">Vælg opgave...</option>'+tasks.filter(function(x){return x.start_date;}).sort(function(a,b){return String(a.start_date).localeCompare(String(b.start_date));}).map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.job_name||x.name||'')+(x.start_date?' ('+x.start_date.slice(0,10)+')':'')+'</option>';}).join('');
+    sel.onchange=function(){quickCtx.taskId=sel.value;document.getElementById('qp-task-name').textContent=sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:'';};
+  } else {
+    wrap.style.display='none';
+  }
   document.getElementById('qp-time').value='';
   document.getElementById('qp-note').value='';
   // Position pop-up near drop target
@@ -1014,7 +1028,7 @@ function bind(){
       if(act==='toggle-vendor'){var g=a.dataset.group;vendorExpanded[g]=vendorExpanded[g]===false;renderPlan();renderCapacity();}
       if(act==='add-subgroup')openUser(null,{vendorGroup:a.dataset.group});
       if(act==='scroll-week')scrollToWeek(a.dataset.week);
-      if(act==='add-booking')openAssign({userId:+a.dataset.userId,date:a.dataset.date});
+      if(act==='add-booking'){var el=document.querySelector('[data-action="add-booking"][data-user-id="'+a.dataset.userId+'"][data-date="'+a.dataset.date+'"]');openQuickPop(null,+a.dataset.userId,a.dataset.date,{clientX:a.getBoundingClientRect().left,clientY:a.getBoundingClientRect().top});}
       if(act==='remove-booking'){e.stopPropagation();removeBooking(+a.dataset.bookingId);}
       if(act==='edit-user')openUser(+a.dataset.userId);
       return;
