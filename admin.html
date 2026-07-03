@@ -5,75 +5,986 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gulv Master — Planlægning</title>
 <style>
-:root{--navy:#0F2240;--navy2:#1C3557;--steel:#2E5086;--blue:#2563EB;--green:#059669;--white:#fff;--ice:#F4F7FC;--ice2:#E8EFF8;--ink:#0F1923;--muted:#5A6A7E;--ghost:#94A3B8;--border:#CBD5E1;--border2:#E2E8F0;--radius:10px;--shadow:0 1px 3px rgba(0,0,0,.08),0 4px 12px rgba(0,0,0,.05);--lay-bg:#DBEAFE;--lay-fg:#1D4ED8;--sand-bg:#DCFCE7;--sand-fg:#15803D;--paint-bg:#FEF9C3;--paint-fg:#92570A;--sub-bg:#EDE9FE;--sub-fg:#5B21B6;--other-bg:#F1F5F9;--other-fg:#475569}
-*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:var(--ice);color:var(--ink);font-size:14px}button,input,select{font:inherit}.hidden{display:none!important}
-.nav{height:54px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.22)}.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;white-space:nowrap}.logo{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;background:var(--steel)}.tabs{display:flex;gap:2px;background:rgba(255,255,255,.09);padding:3px;border-radius:7px;overflow-x:auto}.tab{border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap}.tab.active{color:#fff;background:rgba(255,255,255,.16)}.nav-actions{display:flex;align-items:center;gap:6px}.nav-btn,.btn{border:1px solid var(--border);background:#fff;border-radius:7px;padding:7px 11px;cursor:pointer;font-size:11px;font-weight:650;color:var(--ink)}.nav-btn{border-color:rgba(255,255,255,.23);background:rgba(255,255,255,.1);color:#fff}.nav-btn.green{background:#059669;border-color:#059669}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.danger{color:#B91C1C;background:#FEF2F2;border-color:#FECACA}.btn.small{padding:4px 8px;font-size:10px}.btn:hover,.nav-btn:hover{filter:brightness(.96)}
-.main{padding:14px 16px}.page{display:none}.page.active{display:block}.page-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;margin:0 0 12px}.page-title{font-size:18px;font-weight:750;color:var(--navy)}.page-sub{font-size:11px;color:var(--muted);margin-top:3px}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:0 0 12px}.stat{background:#fff;border:1px solid var(--border2);box-shadow:var(--shadow);border-radius:9px;padding:10px 12px}.stat-label{text-transform:uppercase;color:var(--muted);font-size:9px;font-weight:750;letter-spacing:.45px}.stat-value{font-size:20px;color:var(--navy);font-weight:750;margin-top:2px}.stat-sub{font-size:10px;color:var(--ghost);margin-top:1px}.slog{display:none;background:#0A1628;color:#C7D2FE;border-radius:8px;padding:9px 11px;max-height:92px;overflow:auto;margin:0 0 10px;font-family:ui-monospace,Menlo,monospace;font-size:10px;line-height:1.6}.slog.show{display:block}.ok{color:#86EFAC}.err{color:#FCA5A5}.info{color:#93C5FD}
-.board-layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:12px;align-items:start}.panel{background:#fff;border-radius:var(--radius);border:1px solid var(--border2);box-shadow:var(--shadow);overflow:hidden}.panel-head{padding:9px 10px;background:var(--ice);border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;align-items:center;gap:6px}.panel-title{font-size:10px;font-weight:800;letter-spacing:.45px;text-transform:uppercase;color:var(--navy)}.panel-body{padding:8px;max-height:calc(100vh - 210px);overflow:auto}.search{width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 8px;outline:none;font-size:11px;margin-bottom:7px}.search:focus{border-color:var(--blue)}.filter-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:7px}.chip{border:1px solid var(--border);background:#fff;padding:3px 7px;border-radius:14px;font-size:9px;cursor:pointer;color:var(--muted)}.chip.active{background:var(--navy);border-color:var(--navy);color:#fff}.workforce-bar{display:flex;gap:5px;flex-wrap:wrap;margin:0 0 9px;padding:7px 8px;background:#fff;border:1px solid var(--border2);border-radius:8px}.workforce-label{font-size:9px;color:var(--muted);font-weight:800;text-transform:uppercase;padding:4px 2px}
-.task-card{border:1px solid var(--border2);border-radius:7px;padding:8px;margin:0 0 6px;background:#fff;cursor:grab;user-select:none;transition:.16s}.task-card:hover{box-shadow:0 4px 14px rgba(15,34,64,.13);border-color:var(--steel)}.task-card.dragging,.assignment.dragging,.cap-job.dragging{opacity:.35}.task-name{font-size:11px;font-weight:750;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.task-sub{font-size:10px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.task-meta{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:5px}.badge{font-size:9px;font-weight:750;padding:2px 6px;border-radius:5px}.badge.lay,.assignment.lay,.cap-job.lay{background:var(--lay-bg);color:var(--lay-fg)}.badge.sand,.assignment.sand,.cap-job.sand{background:var(--sand-bg);color:var(--sand-fg)}.badge.paint,.assignment.paint,.cap-job.paint{background:var(--paint-bg);color:var(--paint-fg)}.badge.sub,.assignment.sub,.cap-job.sub{background:var(--sub-bg);color:var(--sub-fg)}.badge.other,.assignment.other,.cap-job.other{background:var(--other-bg);color:var(--other-fg)}.tag{font-size:9px;background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0;padding:1px 5px;border-radius:5px}.tag.manual{background:#FFF7ED;color:#C2410C;border-color:#FED7AA}.muted{font-size:9px;color:var(--ghost)}
-.week-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 0 9px}.week-label{font-size:13px;font-weight:750;color:var(--navy)}.hint{font-size:10px;color:var(--muted)}.month-bar{display:flex;gap:4px;flex-wrap:wrap;margin:-2px 0 8px}.month-btn{background:#fff;border:1px solid var(--border);border-radius:13px;padding:3px 8px;font-size:9px;cursor:pointer;color:var(--muted)}.month-btn:hover{border-color:var(--steel);color:var(--navy)}
-.board-outer{border:1px solid var(--border2);border-radius:var(--radius);overflow:auto;background:#fff;box-shadow:var(--shadow)}table{border-collapse:collapse}.daily-board{min-width:1050px;width:100%}.daily-board th{background:var(--navy);color:#fff;padding:8px;font-size:9px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;z-index:5}.daily-board th.staff{position:sticky;left:0;z-index:7;text-align:left;min-width:170px;border-right:2px solid rgba(255,255,255,.18)}.daily-board th.today,.capacity-board th.today{background:var(--steel)}.daily-board td,.capacity-board td{border-bottom:1px solid var(--border2);vertical-align:top}.staff-cell{background:var(--ice)!important;position:sticky;left:0;z-index:4;border-right:2px solid var(--border2);min-width:170px;padding:8px}.staff-line{display:flex;align-items:center;gap:7px}.avatar{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;font-size:8px;font-weight:800;flex:0 0 auto}.staff-name{font-size:11px;font-weight:750;color:var(--navy)}.staff-role{font-size:9px;color:var(--muted);margin-top:1px}.group-row td{background:#F8FAFF;color:var(--navy2);font-size:10px;font-weight:800;padding:6px 8px}.group-toggle{border:0;background:transparent;color:var(--navy2);font-weight:800;cursor:pointer;padding:0;font-size:10px}.day-cell{padding:5px;min-width:132px}.day-cell.today{background:#FBFDFF}.drop-zone{min-height:76px;border:1px dashed transparent;border-radius:6px;padding:2px;transition:.16s}.drop-zone.over,.cap-drop.over{background:#EFF6FF;border-color:var(--blue)}.free{font-size:9px;color:#16A34A;text-align:center;padding:6px 3px}.capacity-line{font-size:8px;color:var(--muted);text-align:right;margin-top:2px}.capacity-line.overload{color:#B91C1C;font-weight:800}.assignment{border:0;border-radius:6px;width:100%;text-align:left;padding:5px 6px;margin-bottom:3px;cursor:grab;font-size:9px}.assign-title{display:flex;gap:3px;align-items:center;font-size:10px;font-weight:800}.assign-title span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.assign-sub{font-size:8px;opacity:.78;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}.assign-x{border:0;background:transparent;cursor:pointer;font-size:12px;line-height:1;color:inherit;opacity:.65}.assign-x:hover{opacity:1}.add-small{width:100%;border:1px dashed var(--border);background:#fff;color:var(--ghost);border-radius:4px;font-size:9px;padding:3px;cursor:pointer;margin-top:2px}
-.capacity-board{min-width:max-content;width:auto}.capacity-board th{background:var(--navy);color:#fff;padding:8px;font-size:9px;position:sticky;top:0;z-index:5;text-align:center;min-width:124px}.capacity-board th:first-child{position:sticky;left:0;z-index:7;min-width:195px;text-align:left;border-right:2px solid rgba(255,255,255,.18)}.capacity-board .staff-cell{min-width:195px}.cap-cell{padding:4px;min-width:124px}.cap-drop{min-height:70px;border-radius:6px;border:1px dashed transparent;padding:4px;transition:.16s}.cap-number{text-align:center;font-size:10px;font-weight:800;padding:4px;border-radius:4px}.cap-free{background:#F0FDF4;color:#15803D}.cap-ok{background:#DBEAFE;color:#1D4ED8}.cap-warn{background:#FEF9C3;color:#92570A}.cap-over{background:#FEF2F2;color:#B91C1C}.cap-job{font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:grab;padding:2px 3px;border-radius:3px;margin-top:2px}.group-summary{font-size:9px;text-align:center;padding:5px;background:#F8FAFF;color:var(--muted)}
-.people{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}.person-card,.vendor-card{background:#fff;border:1px solid var(--border2);border-radius:10px;padding:12px;box-shadow:var(--shadow)}.person-top{display:flex;gap:8px;align-items:center}.person-name{font-size:12px;font-weight:800;color:var(--navy)}.person-email{font-size:10px;color:var(--muted);margin-top:2px}.person-detail{font-size:10px;color:var(--muted);padding:7px 8px;background:var(--ice);border-radius:6px;margin-top:9px;line-height:1.6}.person-actions{display:flex;gap:5px;margin-top:9px}.vendor-card{grid-column:span 1}.vendor-head{display:flex;align-items:center;justify-content:space-between;gap:6px;border-bottom:1px solid var(--border2);padding-bottom:8px;margin-bottom:8px}.vendor-title{font-size:13px;font-weight:800;color:var(--navy)}.sub-team{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:6px 7px;background:var(--ice);border-radius:6px;margin-top:5px;font-size:10px}.sub-team-meta{color:var(--muted);font-size:9px}
-.log-wrap{background:#fff;border:1px solid var(--border2);border-radius:var(--radius);overflow:auto;box-shadow:var(--shadow)}.logs{width:100%;border-collapse:collapse;min-width:700px}.logs th{background:var(--navy);color:#fff;padding:8px;text-align:left;font-size:9px}.logs td{padding:8px;border-bottom:1px solid var(--border2);font-size:10px}.mo{display:none;position:fixed;inset:0;background:rgba(15,34,64,.5);z-index:200;align-items:center;justify-content:center;padding:12px}.mo.open{display:flex}.modal{width:420px;max-width:100%;max-height:92vh;overflow:auto;background:#fff;border-radius:12px;padding:18px;box-shadow:0 12px 32px rgba(0,0,0,.22)}.modal h3{font-size:15px;color:var(--navy);margin:0 0 12px}.form-group{margin-bottom:9px}.form-label{font-size:9px;font-weight:800;color:var(--muted);display:block;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}.input,.select{width:100%;padding:7px 8px;border:1px solid var(--border);background:var(--ice);border-radius:6px;outline:none;font-size:12px}.input:focus,.select:focus{border-color:var(--blue);background:#fff}.form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.modal-actions{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-top:13px}.assignment-info{padding:8px 9px;background:var(--ice);border-radius:7px;font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px}.toast{position:fixed;right:16px;bottom:16px;background:var(--navy);color:#fff;border-radius:8px;padding:9px 12px;font-size:11px;box-shadow:0 8px 24px rgba(0,0,0,.2);transform:translateY(80px);opacity:0;transition:.2s;z-index:300}.toast.show{transform:translateY(0);opacity:1}.login-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:9px}
-@media(max-width:980px){.board-layout{grid-template-columns:1fr}.panel-body{max-height:310px}.nav{height:auto;min-height:54px;flex-wrap:wrap;padding:8px 12px}.tabs{order:3;width:100%}.main{padding:10px}.form-row{grid-template-columns:1fr}.nav-actions{margin-left:auto}}
+:root{
+  --navy:#0F2240;--navy2:#1C3557;--steel:#2E5086;--blue:#2563EB;--green:#059669;
+  --white:#fff;--ice:#F4F7FC;--ice2:#E8EFF8;--ink:#0F1923;--muted:#5A6A7E;--ghost:#94A3B8;
+  --border:#CBD5E1;--border2:#E2E8F0;--radius:10px;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 12px rgba(0,0,0,.05);
+  --lay-bg:#DBEAFE;--lay-fg:#1D4ED8;--lay-bar:#3B82F6;
+  --sand-bg:#DCFCE7;--sand-fg:#15803D;--sand-bar:#22C55E;
+  --paint-bg:#FEF9C3;--paint-fg:#92570A;--paint-bar:#EAB308;
+  --sub-bg:#EDE9FE;--sub-fg:#5B21B6;--sub-bar:#8B5CF6;
+  --other-bg:#F1F5F9;--other-fg:#475569;--other-bar:#94A3B8;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:var(--ice);color:var(--ink);font-size:13px}
+button,input,select{font:inherit}
+.hidden{display:none!important}
+
+/* NAV */
+.nav{height:52px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;gap:10px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.22)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;white-space:nowrap}
+.logo{width:26px;height:26px;display:grid;place-items:center;border-radius:6px;background:var(--steel)}
+.tabs{display:flex;gap:2px;background:rgba(255,255,255,.09);padding:3px;border-radius:7px}
+.tab{border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500}
+.tab.active{color:#fff;background:rgba(255,255,255,.16)}
+.nav-actions{display:flex;align-items:center;gap:5px}
+.nb{border:1px solid rgba(255,255,255,.23);background:rgba(255,255,255,.1);color:#fff;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap}
+.nb.green{background:var(--green);border-color:var(--green)}
+.nb:hover{filter:brightness(1.1)}
+
+/* BUTTONS */
+.btn{border:1px solid var(--border);background:#fff;border-radius:7px;padding:6px 11px;cursor:pointer;font-size:11px;font-weight:600;color:var(--ink)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.danger{color:#B91C1C;background:#FEF2F2;border-color:#FECACA}
+.btn.small{padding:3px 8px;font-size:10px}
+.btn:hover{filter:brightness(.96)}
+
+/* LAYOUT */
+.main{padding:12px 14px}
+.page{display:none}.page.active{display:block}
+.page-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;margin:0 0 10px}
+.page-title{font-size:17px;font-weight:750;color:var(--navy)}
+.page-sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px;margin:0 0 10px}
+.stat{background:#fff;border:1px solid var(--border2);box-shadow:var(--shadow);border-radius:8px;padding:9px 11px}
+.stat-label{text-transform:uppercase;color:var(--muted);font-size:9px;font-weight:750;letter-spacing:.45px}
+.stat-value{font-size:19px;color:var(--navy);font-weight:750;margin-top:2px}
+.stat-sub{font-size:9px;color:var(--ghost);margin-top:1px}
+
+/* SYNC LOG */
+.slog{display:none;background:#0A1628;color:#C7D2FE;border-radius:8px;padding:8px 10px;max-height:80px;overflow:auto;margin:0 0 8px;font-family:ui-monospace,monospace;font-size:10px;line-height:1.6}
+.slog.show{display:block}
+.ok{color:#86EFAC}.err{color:#FCA5A5}.info{color:#93C5FD}
+
+/* BOARD LAYOUT */
+.board-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:11px;align-items:start}
+
+/* POOL PANEL */
+.panel{background:#fff;border-radius:var(--radius);border:1px solid var(--border2);box-shadow:var(--shadow);overflow:hidden}
+.panel-head{padding:8px 10px;background:var(--ice);border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;align-items:center;gap:5px}
+.panel-title{font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--navy)}
+.panel-body{padding:7px;max-height:calc(100vh - 200px);overflow:auto}
+.search{width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;outline:none;font-size:11px;margin-bottom:6px}
+.search:focus{border-color:var(--blue)}
+.filter-row{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px}
+.chip{border:1px solid var(--border);background:#fff;padding:2px 7px;border-radius:12px;font-size:9px;cursor:pointer;color:var(--muted)}
+.chip.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.workforce-bar{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 8px;padding:6px 7px;background:#fff;border:1px solid var(--border2);border-radius:7px}
+.workforce-label{font-size:9px;color:var(--muted);font-weight:800;text-transform:uppercase;padding:3px 2px}
+
+/* TASK CARDS */
+.task-card{border:1px solid var(--border2);border-radius:7px;padding:7px 8px;margin:0 0 5px;background:#fff;cursor:grab;user-select:none;transition:.14s}
+.task-card:hover{box-shadow:0 3px 12px rgba(15,34,64,.12);border-color:var(--steel)}
+.task-card.dragging{opacity:.35}
+.task-name{font-size:11px;font-weight:750;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-sub{font-size:9px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-meta{display:flex;gap:3px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.badge{font-size:8px;font-weight:750;padding:2px 5px;border-radius:4px}
+.badge.lay{background:var(--lay-bg);color:var(--lay-fg)}
+.badge.sand{background:var(--sand-bg);color:var(--sand-fg)}
+.badge.paint{background:var(--paint-bg);color:var(--paint-fg)}
+.badge.sub{background:var(--sub-bg);color:var(--sub-fg)}
+.badge.other{background:var(--other-bg);color:var(--other-fg)}
+.tag{font-size:8px;background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0;padding:1px 4px;border-radius:4px}
+.tag.manual{background:#FFF7ED;color:#C2410C;border-color:#FED7AA}
+.muted-sm{font-size:8px;color:var(--ghost)}
+
+/* WEEK NAV */
+.week-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.week-label{font-size:13px;font-weight:750;color:var(--navy)}
+.hint{font-size:10px;color:var(--muted)}
+.month-bar{display:flex;gap:3px;flex-wrap:wrap;margin:-2px 0 7px}
+.month-btn{background:#fff;border:1px solid var(--border);border-radius:12px;padding:3px 8px;font-size:9px;cursor:pointer;color:var(--muted)}
+.month-btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.month-btn:hover{border-color:var(--steel);color:var(--navy)}
+
+/* BOARD TABLE */
+.board-outer{border:1px solid var(--border2);border-radius:var(--radius);overflow:auto;background:#fff;box-shadow:var(--shadow)}
+
+/* DAILY PLAN */
+.daily-board{min-width:900px;width:100%;border-collapse:collapse}
+.daily-board th{background:var(--navy);color:#fff;padding:8px 7px;font-size:9px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;z-index:5;text-align:center}
+.daily-board th.staff-th{position:sticky;left:0;z-index:7;text-align:left;min-width:160px;border-right:2px solid rgba(255,255,255,.18)}
+.daily-board th.today-th{background:var(--steel)}
+.daily-board td{border-bottom:1px solid var(--border2);vertical-align:top}
+.staff-cell{background:var(--ice)!important;position:sticky;left:0;z-index:4;border-right:2px solid var(--border2);min-width:160px;padding:7px 8px}
+.staff-line{display:flex;align-items:center;gap:6px}
+.avatar{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:8px;font-weight:800;flex:0 0 auto}
+.staff-name{font-size:11px;font-weight:750;color:var(--navy)}
+.staff-role{font-size:9px;color:var(--muted);margin-top:1px}
+.group-row td{background:#F8FAFF;font-size:10px;font-weight:800;padding:5px 8px;color:var(--navy2);position:sticky;left:0}
+.group-toggle{border:0;background:transparent;color:var(--navy2);font-weight:800;cursor:pointer;padding:0;font-size:10px}
+.day-cell{padding:4px;min-width:128px}
+.day-cell.today-col{background:#FBFDFF}
+.drop-zone{min-height:70px;border:1px dashed transparent;border-radius:6px;padding:2px;transition:.14s}
+.drop-zone.over{background:#EFF6FF;border-color:var(--blue)}
+.free-slot{font-size:9px;color:#16A34A;text-align:center;padding:5px 2px;opacity:.7}
+
+/* ASSIGNMENT PILLS (daily) */
+.assignment{border:0;border-radius:6px;width:100%;text-align:left;padding:5px 6px;margin-bottom:3px;cursor:grab;font-size:9px;position:relative}
+.assignment.lay{background:var(--lay-bg);color:var(--lay-fg)}
+.assignment.sand{background:var(--sand-bg);color:var(--sand-fg)}
+.assignment.paint{background:var(--paint-bg);color:var(--paint-fg)}
+.assignment.sub{background:var(--sub-bg);color:var(--sub-fg)}
+.assignment.other{background:var(--other-bg);color:var(--other-fg)}
+.assignment.dragging{opacity:.35}
+.assign-top{display:flex;align-items:center;gap:2px}
+.assign-name{font-size:10px;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.assign-x{border:0;background:transparent;cursor:pointer;font-size:12px;line-height:1;color:inherit;opacity:.6;padding:0 1px;flex-shrink:0}
+.assign-x:hover{opacity:1}
+.assign-sub{font-size:8px;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.assign-time{font-size:8px;font-weight:700;opacity:.9}
+.day-load{font-size:8px;color:var(--muted);text-align:right;margin-top:2px}
+.day-load.overload{color:#B91C1C;font-weight:800}
+.add-small{width:100%;border:1px dashed var(--border);background:#fff;color:var(--ghost);border-radius:4px;font-size:9px;padding:2px;cursor:pointer;margin-top:2px}
+.add-small:hover{border-color:var(--blue);color:var(--blue)}
+
+/* CAPACITY BOARD */
+.capacity-board{min-width:max-content;width:auto;border-collapse:collapse}
+.capacity-board th{background:var(--navy);color:#fff;padding:7px 8px;font-size:9px;position:sticky;top:0;z-index:5;text-align:center;min-width:120px;white-space:nowrap}
+.capacity-board th:first-child{position:sticky;left:0;z-index:7;min-width:185px;text-align:left;border-right:2px solid rgba(255,255,255,.18)}
+.capacity-board th.today-th{background:var(--steel)}
+.capacity-board td{border-bottom:1px solid var(--border2);vertical-align:top}
+.capacity-board .staff-cell{min-width:185px}
+.cap-cell{padding:4px;min-width:120px}
+.cap-drop{min-height:68px;border-radius:6px;border:1px dashed transparent;padding:3px;transition:.14s}
+.cap-drop.over{background:#EFF6FF;border-color:var(--blue)}
+
+/* CAP SUMMARY ROW */
+.cap-num{text-align:center;font-size:10px;font-weight:800;padding:3px 4px;border-radius:4px;margin-bottom:3px}
+.cap-free{background:#F0FDF4;color:#15803D}
+.cap-ok{background:#DBEAFE;color:#1D4ED8}
+.cap-warn{background:#FEF9C3;color:#92570A}
+.cap-over{background:#FEF2F2;color:#B91C1C}
+
+/* CAP BAR */
+.cap-bar-wrap{height:4px;background:var(--border2);border-radius:99px;overflow:hidden;margin:2px 0 3px}
+.cap-bar{height:100%;border-radius:99px;transition:width .3s}
+
+/* CAP JOB PILLS */
+.cap-job{font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:grab;padding:3px 5px;border-radius:4px;margin-top:2px;font-weight:600;display:flex;align-items:center;gap:3px}
+.cap-job.lay{background:var(--lay-bg);color:var(--lay-fg)}
+.cap-job.sand{background:var(--sand-bg);color:var(--sand-fg)}
+.cap-job.paint{background:var(--paint-bg);color:var(--paint-fg)}
+.cap-job.sub{background:var(--sub-bg);color:var(--sub-fg)}
+.cap-job.other{background:var(--other-bg);color:var(--other-fg)}
+.cap-job.dragging{opacity:.35}
+.cap-job-name{flex:1;overflow:hidden;text-overflow:ellipsis}
+.cap-job-days{font-size:8px;opacity:.75;flex-shrink:0;background:rgba(0,0,0,.08);padding:1px 3px;border-radius:3px}
+.cap-job-x{border:0;background:transparent;cursor:pointer;font-size:11px;line-height:1;color:inherit;opacity:.5;padding:0;flex-shrink:0}
+.cap-job-x:hover{opacity:1}
+.group-summary-cell{text-align:center;font-size:9px;padding:3px 4px;color:var(--muted);background:#F8FAFF}
+
+/* PEOPLE */
+.people{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:9px}
+.person-card,.vendor-card{background:#fff;border:1px solid var(--border2);border-radius:9px;padding:11px;box-shadow:var(--shadow)}
+.person-top{display:flex;gap:7px;align-items:center}
+.person-name{font-size:12px;font-weight:800;color:var(--navy)}
+.person-email{font-size:9px;color:var(--muted);margin-top:1px}
+.person-detail{font-size:10px;color:var(--muted);padding:6px 7px;background:var(--ice);border-radius:5px;margin-top:8px;line-height:1.6}
+.person-actions{display:flex;gap:4px;margin-top:8px}
+.vendor-card{grid-column:span 1}
+.vendor-head{display:flex;align-items:center;justify-content:space-between;gap:6px;border-bottom:1px solid var(--border2);padding-bottom:7px;margin-bottom:7px}
+.vendor-title{font-size:13px;font-weight:800;color:var(--navy)}
+.sub-team{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:5px 6px;background:var(--ice);border-radius:5px;margin-top:4px;font-size:10px}
+.sub-team-meta{color:var(--muted);font-size:9px}
+
+/* LOGS */
+.log-wrap{background:#fff;border:1px solid var(--border2);border-radius:var(--radius);overflow:auto;box-shadow:var(--shadow)}
+.logs{width:100%;border-collapse:collapse;min-width:600px}
+.logs th{background:var(--navy);color:#fff;padding:7px 9px;text-align:left;font-size:9px}
+.logs td{padding:7px 9px;border-bottom:1px solid var(--border2);font-size:10px}
+
+/* QUICK POP-UP (drop + enter) */
+.quick-pop{display:none;position:fixed;z-index:400;background:#fff;border:1px solid var(--border2);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:14px;width:300px}
+.quick-pop.open{display:block}
+.quick-pop h4{font-size:12px;font-weight:750;color:var(--navy);margin:0 0 10px}
+.quick-task-name{font-size:11px;color:var(--muted);margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.quick-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px}
+.quick-label{font-size:9px;font-weight:700;color:var(--muted);display:block;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}
+.quick-input,.quick-select{width:100%;padding:6px 7px;border:1px solid var(--border);background:var(--ice);border-radius:5px;outline:none;font-size:11px}
+.quick-input:focus,.quick-select:focus{border-color:var(--blue);background:#fff}
+.quick-btns{display:flex;justify-content:flex-end;gap:6px;margin-top:10px}
+
+/* MODAL */
+.mo{display:none;position:fixed;inset:0;background:rgba(15,34,64,.5);z-index:200;align-items:center;justify-content:center;padding:12px}
+.mo.open{display:flex}
+.modal{width:400px;max-width:100%;max-height:92vh;overflow:auto;background:#fff;border-radius:12px;padding:16px;box-shadow:0 12px 32px rgba(0,0,0,.22)}
+.modal h3{font-size:14px;color:var(--navy);margin:0 0 11px;font-weight:750}
+.form-group{margin-bottom:8px}
+.form-label{font-size:9px;font-weight:800;color:var(--muted);display:block;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+.input,.select{width:100%;padding:6px 8px;border:1px solid var(--border);background:var(--ice);border-radius:6px;outline:none;font-size:12px}
+.input:focus,.select:focus{border-color:var(--blue);background:#fff}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.modal-actions{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-top:12px}
+.assign-info-box{padding:7px 8px;background:var(--ice);border-radius:6px;font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:9px}
+.login-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:8px}
+
+/* TOAST */
+.toast{position:fixed;right:14px;bottom:14px;background:var(--navy);color:#fff;border-radius:8px;padding:8px 12px;font-size:11px;box-shadow:0 8px 24px rgba(0,0,0,.2);transform:translateY(80px);opacity:0;transition:.2s;z-index:500;display:flex;align-items:center;gap:6px}
+.toast.show{transform:translateY(0);opacity:1}
+
+@media(max-width:900px){
+  .board-layout{grid-template-columns:1fr}
+  .panel-body{max-height:280px}
+  .nav{height:auto;min-height:52px;flex-wrap:wrap;padding:7px 10px}
+  .tabs{order:3;width:100%}
+  .nav-actions{margin-left:auto}
+}
 </style>
 </head>
 <body>
 <div id="app" style="display:none">
-<nav class="nav"><div class="brand"><span class="logo">🪵</span><span>Gulv Master — Admin</span></div><div class="tabs"><button class="tab active" data-page="plan">Daglig plan</button><button class="tab" data-page="capacity">Kapacitet</button><button class="tab" data-page="people">Hold & vendors</button><button class="tab" data-page="logs">Timer & log</button></div><div class="nav-actions"><span id="sync-ind" class="muted" style="color:#C7D2FE"></span><button class="nav-btn green" id="sync-btn">⚡ Synk JT</button><button class="nav-btn" id="employee-link">👤 Min side</button><button class="nav-btn" id="logout-btn">Log ud</button></div></nav>
+
+<nav class="nav">
+  <div class="brand"><span class="logo">🪵</span><span>Gulv Master — Admin</span></div>
+  <div class="tabs">
+    <button class="tab active" data-page="plan">Daglig plan</button>
+    <button class="tab" data-page="capacity">Kapacitet</button>
+    <button class="tab" data-page="people">Hold & vendors</button>
+    <button class="tab" data-page="logs">Timer & log</button>
+  </div>
+  <div class="nav-actions">
+    <span id="sync-ind" style="font-size:10px;color:rgba(255,255,255,.5)"></span>
+    <button class="nb green" id="sync-btn">⚡ Synk JT</button>
+    <button class="nb" id="employee-link">👤 Min side</button>
+    <button class="nb" id="logout-btn">Log ud</button>
+  </div>
+</nav>
+
 <main class="main">
-<section class="page active" id="page-plan"><div class="slog" id="sync-log"></div><div class="stats" id="stats"></div><div class="page-head"><div><div class="page-title">Daglig planlægning</div><div class="page-sub">JobTread Tasks er kun en opgavepool. Når du trækker en task, laver du selv en separat booking — JobTread-dato og assignee styrer ikke planen.</div></div><button class="btn danger small" id="clear-plan-btn">Ryd alle bookinger</button></div><div class="board-layout"><aside class="panel"><div class="panel-head"><span class="panel-title">Opgavepool</span><button class="btn small primary" data-action="manual">+ Manuel</button></div><div class="panel-body"><input id="plan-search" class="search" placeholder="Søg kunde eller opgave"><div class="filter-row" id="plan-status-filters"></div><div class="filter-row" id="plan-type-filters"></div><div id="plan-pool"></div></div></aside><section><div class="week-bar"><button class="btn small" id="plan-prev">← Forrige</button><strong class="week-label" id="plan-label"></strong><button class="btn small" id="plan-next">Næste →</button><button class="btn small primary" id="plan-today">I dag</button><span class="hint">Drop = 1 dag på valgt dato. Klik booking for dage, tid og note.</span></div><div class="workforce-bar" id="plan-workforce-filters"></div><div class="board-outer"><table class="daily-board"><thead id="daily-head"></thead><tbody id="daily-body"></tbody></table></div></section></div></section>
-<section class="page" id="page-capacity"><div class="page-head"><div><div class="page-title">Kapacitetsboard</div><div class="page-sub">Langt ugeboard med vandret scroll. Kapacitet viser bookede dage / den kapacitet, du selv har sat pr. person eller vendor-undergruppe.</div></div></div><div class="board-layout"><aside class="panel"><div class="panel-head"><span class="panel-title">Opgavepool</span><button class="btn small primary" data-action="manual">+ Manuel</button></div><div class="panel-body"><input id="cap-search" class="search" placeholder="Søg kunde eller opgave"><div class="filter-row" id="cap-status-filters"></div><div class="filter-row" id="cap-type-filters"></div><div id="cap-pool"></div></div></aside><section><div class="week-bar"><button class="btn small primary" id="cap-today">I dag</button><strong class="week-label">52 ugers kapacitet</strong><span class="hint">Drop i en uge laver en separat booking på mandag. Flyt den præcist i Daglig plan bagefter.</span></div><div class="month-bar" id="cap-months"></div><div class="workforce-bar" id="cap-workforce-filters"></div><div class="board-outer" id="capacity-scroll"><table class="capacity-board"><thead id="cap-head"></thead><tbody id="cap-body"></tbody></table></div></section></div></section>
-<section class="page" id="page-people"><div class="page-head"><div><div class="page-title">Hold & vendors</div><div class="page-sub">Interne medarbejdere kan have login. Vendor-undergrupper kan oprettes uden login og bruges kun til booking og kapacitet.</div></div><div style="display:flex;gap:6px"><button class="btn" id="new-vendor-group-btn">+ Vendor-gruppe</button><button class="btn primary" id="new-user-btn">+ Medarbejder</button></div></div><div class="people" id="people-grid"></div></section>
-<section class="page" id="page-logs"><div class="page-head"><div><div class="page-title">Timer & log</div><div class="page-sub">Interne start/stop-timere fra medarbejderportalen.</div></div></div><div class="log-wrap"><table class="logs"><thead><tr><th>Medarbejder</th><th>Opgave</th><th>Kunde</th><th>Start</th><th>Stop</th><th>Varighed</th></tr></thead><tbody id="log-body"></tbody></table></div></section>
-</main></div>
-<div class="mo" id="assign-modal"><div class="modal"><h3 id="assign-title">Tildel opgave</h3><div id="assign-info" class="assignment-info"></div><div class="form-group"><label class="form-label">Medarbejder / hold</label><select id="assign-user" class="select"></select></div><div class="form-row"><div class="form-group"><label class="form-label">Startdato</label><input id="assign-date" type="date" class="input"></div><div class="form-group"><label class="form-label">Antal dage</label><input id="assign-days" type="number" min=".25" max="60" step=".25" class="input"></div></div><div class="form-row"><div class="form-group"><label class="form-label">Mødetid</label><input id="assign-time" type="time" class="input"></div><div class="form-group"><label class="form-label">Plan</label><input class="input" value="Manuel booking" disabled></div></div><div class="form-group"><label class="form-label">Note til medarbejder</label><input id="assign-note" class="input" placeholder="Fx ring kunden 30 min før ankomst"></div><div class="modal-actions"><button class="btn danger hidden" id="delete-assignment">Fjern booking</button><button class="btn" id="close-assign">Annuller</button><button class="btn primary" id="save-assignment">Gem</button></div></div></div>
-<div class="mo" id="manual-modal"><div class="modal"><h3>Opret manuel opgave</h3><div class="assignment-info">Opgaven bliver lagt i samme pool som JobTread Tasks. Den er ikke booket, før du selv trækker den ind eller opretter en booking.</div><div class="form-group"><label class="form-label">Kunde / projekt</label><input id="manual-customer" class="input" placeholder="Fx Per Austin"></div><div class="form-group"><label class="form-label">Opgave</label><input id="manual-name" class="input" placeholder="Fx Montering af fodpaneler"></div><div class="form-row"><div class="form-group"><label class="form-label">Fag</label><select id="manual-type" class="select"><option value="lay">Gulvlægning</option><option value="sand">Gulvslibning</option><option value="paint">Malerservice</option><option value="sub">Underleverandør</option><option value="other">Andet</option></select></div><div class="form-group"><label class="form-label">Reference-dage</label><input id="manual-days" class="input" type="number" min=".25" max="60" step=".25" value="1"></div></div><div class="form-row"><div class="form-group"><label class="form-label">Reference-startdato</label><input id="manual-date" class="input" type="date"></div><div class="form-group"><label class="form-label">Adresse</label><input id="manual-address" class="input" placeholder="Valgfrit"></div></div><div class="modal-actions"><button class="btn" id="close-manual">Annuller</button><button class="btn primary" id="save-manual">Opret i opgavepool</button></div></div></div>
-<div class="mo" id="user-modal"><div class="modal"><h3 id="user-title">Ny medarbejder / undergruppe</h3><div class="form-row"><div class="form-group"><label class="form-label">Navn / undergruppenavn</label><input id="user-name" class="input" placeholder="Fx Slibe-hold"></div><div class="form-group"><label class="form-label">Initialer</label><input id="user-initials" class="input" maxlength="3"></div></div><label class="login-row"><input id="user-can-login" type="checkbox" checked> Denne person skal kunne logge ind</label><div id="login-fields"><div class="form-group"><label class="form-label">E-mail</label><input id="user-email" type="email" class="input"></div><div class="form-row"><div class="form-group"><label class="form-label">Adgangskode</label><input id="user-password" type="password" class="input" placeholder="Påkrævet ved ny login-bruger"></div><div class="form-group"><label class="form-label">Rolle</label><select id="user-role" class="select"><option value="employee">Medarbejder</option><option value="admin">Admin</option></select></div></div></div><div class="form-row"><div class="form-group"><label class="form-label">Kapacitet pr. uge</label><input id="user-capacity" class="input" type="number" min="0" max="14" step=".5" value="5"></div><div class="form-group"><label class="form-label">Farve</label><input id="user-color" class="input" type="color" value="#2563EB"></div></div><div class="form-row"><div class="form-group"><label class="form-label">Type</label><select id="user-worker-type" class="select"><option value="employee">Intern medarbejder</option><option value="vendor">Vendor / underleverandør</option></select></div><div class="form-group"><label class="form-label">Fagområde</label><input id="user-trade" class="input" list="trades" placeholder="Fx Tømrer"></div></div><datalist id="trades"><option>Gulvlægning</option><option>Gulvslibning</option><option>Malerservice</option><option>Tømrer</option><option>VVS / El</option><option>Diverse</option></datalist><div class="form-group"><label class="form-label">Vendor-gruppe</label><input id="user-vendor-group" class="input" placeholder="Fx AJB Gruppen APS"></div><div class="form-group"><label class="form-label">JobTread-navn (kun reference)</label><input id="user-jt-name" class="input" placeholder="Bruges aldrig til automatisk booking"></div><div class="modal-actions"><button class="btn danger hidden" id="deactivate-user">Deaktiver</button><button class="btn" id="close-user">Annuller</button><button class="btn primary" id="save-user">Gem</button></div></div></div>
+
+<!-- DAGLIG PLAN -->
+<section class="page active" id="page-plan">
+  <div class="slog" id="sync-log"></div>
+  <div class="stats" id="stats"></div>
+  <div class="page-head">
+    <div>
+      <div class="page-title">Daglig planlægning</div>
+      <div class="page-sub">Træk en opgave til en medarbejder → hurtig pop-up → Enter for at gemme. Klik på en booking for at redigere.</div>
+    </div>
+    <button class="btn danger small" id="clear-plan-btn">Ryd alle bookinger</button>
+  </div>
+  <div class="board-layout">
+    <aside class="panel">
+      <div class="panel-head">
+        <span class="panel-title">📥 Opgavepool</span>
+        <button class="btn small primary" data-action="manual">+ Manuel</button>
+      </div>
+      <div class="panel-body">
+        <input id="plan-search" class="search" placeholder="Søg kunde eller opgave">
+        <div class="filter-row" id="plan-status-filters"></div>
+        <div class="filter-row" id="plan-type-filters"></div>
+        <div id="plan-pool"></div>
+      </div>
+    </aside>
+    <section>
+      <div class="week-bar">
+        <button class="btn small" id="plan-prev">← Forrige</button>
+        <strong class="week-label" id="plan-label"></strong>
+        <button class="btn small" id="plan-next">Næste →</button>
+        <button class="btn small primary" id="plan-today">📍 I dag</button>
+        <span class="hint">Drop = pop-up åbner · Enter for at bekræfte</span>
+      </div>
+      <div class="workforce-bar" id="plan-workforce-filters"></div>
+      <div class="board-outer">
+        <table class="daily-board">
+          <thead id="daily-head"></thead>
+          <tbody id="daily-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</section>
+
+<!-- KAPACITET -->
+<section class="page" id="page-capacity">
+  <div class="page-head">
+    <div>
+      <div class="page-title">Kapacitetsboard</div>
+      <div class="page-sub">52 ugers overblik · Scroll vandret · Træk opgaver direkte på uger · Interne medarbejdere altid øverst</div>
+    </div>
+  </div>
+  <div class="board-layout">
+    <aside class="panel">
+      <div class="panel-head">
+        <span class="panel-title">📥 Opgavepool</span>
+        <button class="btn small primary" data-action="manual">+ Manuel</button>
+      </div>
+      <div class="panel-body">
+        <input id="cap-search" class="search" placeholder="Søg kunde eller opgave">
+        <div class="filter-row" id="cap-status-filters"></div>
+        <div class="filter-row" id="cap-type-filters"></div>
+        <div id="cap-pool"></div>
+      </div>
+    </aside>
+    <section>
+      <div class="week-bar">
+        <button class="btn small primary" id="cap-today">📍 I dag</button>
+        <strong class="week-label">52 ugers kapacitet</strong>
+        <span class="hint">Drop i en uge → pop-up åbner med dage + tid + note</span>
+      </div>
+      <div class="month-bar" id="cap-months"></div>
+      <div class="workforce-bar" id="cap-workforce-filters"></div>
+      <div class="board-outer" id="capacity-scroll">
+        <table class="capacity-board">
+          <thead id="cap-head"></thead>
+          <tbody id="cap-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</section>
+
+<!-- HOLD & VENDORS -->
+<section class="page" id="page-people">
+  <div class="page-head">
+    <div>
+      <div class="page-title">Hold & vendors</div>
+      <div class="page-sub">Interne medarbejdere kan have login. Vendor-undergrupper bruges til booking og kapacitet.</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn" id="new-vendor-group-btn">+ Vendor-gruppe</button>
+      <button class="btn primary" id="new-user-btn">+ Medarbejder</button>
+    </div>
+  </div>
+  <div class="people" id="people-grid"></div>
+</section>
+
+<!-- TIMER & LOG -->
+<section class="page" id="page-logs">
+  <div class="page-head">
+    <div><div class="page-title">Timer & log</div></div>
+  </div>
+  <div class="log-wrap">
+    <table class="logs">
+      <thead><tr><th>Medarbejder</th><th>Opgave</th><th>Kunde</th><th>Start</th><th>Stop</th><th>Varighed</th></tr></thead>
+      <tbody id="log-body"></tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+</div><!-- /app -->
+
+<!-- QUICK POP-UP (drop) -->
+<div class="quick-pop" id="quick-pop">
+  <h4 id="qp-title">Booking</h4>
+  <div class="quick-task-name" id="qp-task-name"></div>
+  <div class="quick-row">
+    <div>
+      <label class="quick-label">Medarbejder</label>
+      <select class="quick-select" id="qp-user"></select>
+    </div>
+    <div>
+      <label class="quick-label">Startdato</label>
+      <input class="quick-input" type="date" id="qp-date">
+    </div>
+  </div>
+  <div class="quick-row">
+    <div>
+      <label class="quick-label">Antal dage</label>
+      <input class="quick-input" type="number" id="qp-days" min=".25" max="60" step=".25" value="1">
+    </div>
+    <div>
+      <label class="quick-label">Mødetid</label>
+      <input class="quick-input" type="time" id="qp-time">
+    </div>
+  </div>
+  <div>
+    <label class="quick-label">Note til medarbejder</label>
+    <input class="quick-input" id="qp-note" placeholder="Fx ring kunden 30 min før...">
+  </div>
+  <div class="quick-btns">
+    <button class="btn small" id="qp-cancel">Annuller</button>
+    <button class="btn small primary" id="qp-save">Gem (Enter)</button>
+  </div>
+</div>
+
+<!-- FULL ASSIGN MODAL (click on booking) -->
+<div class="mo" id="assign-modal">
+  <div class="modal">
+    <h3 id="assign-title">Rediger booking</h3>
+    <div id="assign-info" class="assign-info-box"></div>
+    <div class="form-group">
+      <label class="form-label">Medarbejder / hold</label>
+      <select id="assign-user" class="select"></select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Startdato</label><input id="assign-date" type="date" class="input"></div>
+      <div class="form-group"><label class="form-label">Antal dage</label><input id="assign-days" type="number" min=".25" max="60" step=".25" class="input"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Mødetid</label><input id="assign-time" type="time" class="input"></div>
+      <div class="form-group"><label class="form-label">Reference (JT)</label><input class="input" id="assign-ref" disabled></div>
+    </div>
+    <div class="form-group"><label class="form-label">Note til medarbejder</label><input id="assign-note" class="input" placeholder="Fx ring kunden 30 min før ankomst"></div>
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="delete-assignment">Fjern booking</button>
+      <button class="btn" id="close-assign">Annuller</button>
+      <button class="btn primary" id="save-assignment">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- MANUAL TASK MODAL -->
+<div class="mo" id="manual-modal">
+  <div class="modal">
+    <h3>Opret manuel opgave</h3>
+    <div class="assign-info-box">Opgaven lægges i opgavepoolen — ikke booket endnu.</div>
+    <div class="form-group"><label class="form-label">Kunde / projekt</label><input id="manual-customer" class="input" placeholder="Fx Per Austin"></div>
+    <div class="form-group"><label class="form-label">Opgave</label><input id="manual-name" class="input" placeholder="Fx Montering af fodpaneler"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Fag</label>
+        <select id="manual-type" class="select">
+          <option value="lay">Gulvlægning</option><option value="sand">Gulvslibning</option>
+          <option value="paint">Malerservice</option><option value="sub">Underleverandør</option><option value="other">Andet</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Reference-dage</label><input id="manual-days" class="input" type="number" min=".25" max="60" step=".25" value="1"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Reference-startdato</label><input id="manual-date" class="input" type="date"></div>
+      <div class="form-group"><label class="form-label">Adresse</label><input id="manual-address" class="input" placeholder="Valgfrit"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-manual">Annuller</button>
+      <button class="btn primary" id="save-manual">Opret i opgavepool</button>
+    </div>
+  </div>
+</div>
+
+<!-- USER MODAL -->
+<div class="mo" id="user-modal">
+  <div class="modal">
+    <h3 id="user-title">Ny medarbejder</h3>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Navn</label><input id="user-name" class="input" placeholder="Fx Ahmed Chaib"></div>
+      <div class="form-group"><label class="form-label">Initialer</label><input id="user-initials" class="input" maxlength="3"></div>
+    </div>
+    <label class="login-row"><input id="user-can-login" type="checkbox" checked> Skal kunne logge ind</label>
+    <div id="login-fields">
+      <div class="form-group"><label class="form-label">E-mail</label><input id="user-email" type="email" class="input"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Adgangskode</label><input id="user-password" type="password" class="input" placeholder="Påkrævet ved ny bruger"></div>
+        <div class="form-group"><label class="form-label">Rolle</label>
+          <select id="user-role" class="select"><option value="employee">Medarbejder</option><option value="admin">Admin</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Kapacitet pr. uge (dage)</label><input id="user-capacity" class="input" type="number" min="0" max="14" step=".5" value="5"></div>
+      <div class="form-group"><label class="form-label">Farve</label><input id="user-color" class="input" type="color" value="#2563EB"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Type</label>
+        <select id="user-worker-type" class="select"><option value="employee">Intern medarbejder</option><option value="vendor">Vendor / underlev.</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">Fagområde</label>
+        <input id="user-trade" class="input" list="trades" placeholder="Fx Tømrer">
+        <datalist id="trades"><option>Gulvlægning</option><option>Gulvslibning</option><option>Malerservice</option><option>Tømrer</option><option>VVS / El</option><option>Diverse</option></datalist>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Vendor-gruppe</label><input id="user-vendor-group" class="input" placeholder="Fx AJB Gruppen APS"></div>
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="deactivate-user">Deaktiver</button>
+      <button class="btn" id="close-user">Annuller</button>
+      <button class="btn primary" id="save-user">Gem</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
+
 <script>
 (function(){'use strict';
-var API='',token=localStorage.getItem('gm_token'),me=JSON.parse(localStorage.getItem('gm_user')||'null');if(!token||!me||me.role!=='admin'){window.location.href='/';return;}document.getElementById('app').style.display='block';
-var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClickUntil=0,vendorExpanded={};
+var API='',token=localStorage.getItem('gm_token'),me=JSON.parse(localStorage.getItem('gm_user')||'null');
+if(!token||!me||me.role!=='admin'){window.location.href='/';return;}
+document.getElementById('app').style.display='block';
+
+var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={};
 var filters={plan:{status:'all',type:'all',team:'all'},capacity:{status:'all',type:'all',team:'all'}};
-var TYPE={lay:{label:'Gulvlægning'},sand:{label:'Gulvslibning'},paint:{label:'Malerservice'},sub:{label:'Underleverandør'},other:{label:'Andet'}};var DAYS=['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
-function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c];});}function iso(d){var x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);}function date(s){return new Date(String(s).slice(0,10)+'T12:00:00');}function mon(d){var x=new Date(d);x.setHours(0,0,0,0);var q=x.getDay()||7;x.setDate(x.getDate()-q+1);return x;}function add(d,n){var x=new Date(d);x.setDate(x.getDate()+n);return x;}function weekNo(d){var x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var q=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-q);var y=new Date(Date.UTC(x.getUTCFullYear(),0,1));return Math.ceil((((x-y)/86400000)+1)/7);}function today(d){return iso(d)===iso(new Date());}function key(d){var x=mon(d);return 'w'+x.getFullYear()+'-'+String(weekNo(x)).padStart(2,'0');}
-function toast(msg,ic){var el=document.getElementById('toast');el.innerHTML=(ic?'<span>'+ic+'</span> ':'')+esc(msg);el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(function(){el.classList.remove('show');},2600);}function logout(){localStorage.removeItem('gm_token');localStorage.removeItem('gm_user');window.location.href='/';}
-async function api(path,opts){opts=opts||{};var h=Object.assign({'Authorization':'Bearer '+token},opts.headers||{});if(opts.body&&!h['Content-Type'])h['Content-Type']='application/json';try{var r=await fetch(API+path,Object.assign({},opts,{headers:h}));var d=await r.json().catch(function(){return {error:'Ugyldigt serversvar'};});if(r.status===401){logout();return null;}return r.ok?d:Object.assign({ok:false},d);}catch(e){toast('Kunne ikke forbinde til serveren','❌');return null;}}
-function workingDates(b){var start=date(b.start_date),end=date(b.end_date||b.start_date),out=[];for(var d=new Date(start);d<=end;d=add(d,1)){if(d.getDay()!==0&&d.getDay()!==6)out.push(iso(d));}return out.length?out:[iso(start)];}function dailyLoad(uid,ds){return bookings.filter(function(b){return +b.user_id===+uid&&workingDates(b).indexOf(ds)>-1;}).reduce(function(n,b){return n+(+b.days||1)/workingDates(b).length;},0);}function weeklyLoad(uid,m){var days=[];for(var i=0;i<5;i++)days.push(iso(add(m,i)));return bookings.filter(function(b){return +b.user_id===+uid;}).reduce(function(n,b){var mcount=workingDates(b).filter(function(d){return days.indexOf(d)>-1;}).length;return n+((+b.days||1)/workingDates(b).length)*mcount;},0);}function util(booked,cap){var p=cap?booked/cap:0;return p<=0?'cap-free':p<.7?'cap-ok':p<=1?'cap-warn':'cap-over';}
-function teamList(scope){var f=filters[scope],all=users.filter(function(u){return u.active&&u.role==='employee';});if(f.team==='internal')all=all.filter(function(u){return u.worker_type!=='vendor';});else if(f.team==='vendors')all=all.filter(function(u){return u.worker_type==='vendor';});else if(f.team.indexOf('trade:')===0){var t=f.team.slice(6).toLowerCase();all=all.filter(function(u){return String(u.trade||'').toLowerCase()===t;});}var internal=all.filter(function(u){return u.worker_type!=='vendor';}).sort(function(a,b){return a.name.localeCompare(b.name,'da');}),groups={};all.filter(function(u){return u.worker_type==='vendor';}).sort(function(a,b){return a.name.localeCompare(b.name,'da');}).forEach(function(u){var g=u.vendor_group||'Øvrige vendors';(groups[g]=groups[g]||[]).push(u);});return {internal:internal,groups:groups};}
-function allTrades(){var seen={};users.filter(function(u){return u.active&&u.role==='employee'&&u.trade;}).forEach(function(u){seen[u.trade]=1;});return Object.keys(seen).sort(function(a,b){return a.localeCompare(b,'da');});}
-function filterTasks(scope){var f=filters[scope],search=(document.getElementById(scope==='plan'?'plan-search':'cap-search').value||'').toLowerCase().trim();return tasks.filter(function(t){var planned=+t.assignment_count>0;if(f.status==='open'&&planned)return false;if(f.status==='planned'&&!planned)return false;if(f.status==='manual'&&t.source!=='manual')return false;if(f.type!=='all'&&t.type_guess!==f.type)return false;var text=((t.job_name||'')+' '+(t.name||'')+' '+(t.job_address||'')).toLowerCase();return !search||text.indexOf(search)>-1;}).sort(function(a,b){return String(a.start_date||'').localeCompare(String(b.start_date||''));});}
-// The capacity page uses DOM ids starting with "cap-", while its state key is "capacity".
-// Keep the state name and the DOM prefix separate so the capacity render cannot abort.
-function scopeDom(scope){return scope==='capacity'?'cap':scope;}
-function filtersHTML(scope){var f=filters[scope],dom=scopeDom(scope),sts=[['all','Alle'],['open','Ikke planlagt'],['planned','Planlagt'],['manual','Manuelle']],tys=[['all','Alle fag'],['lay','Gulv'],['sand','Slib'],['paint','Maler'],['sub','Underlev.']];var statusEl=document.getElementById(dom+'-status-filters'),typeEl=document.getElementById(dom+'-type-filters');if(!statusEl||!typeEl)return;statusEl.innerHTML=sts.map(function(x){return '<button class="chip '+(f.status===x[0]?'active':'')+'" data-action="pool-filter" data-scope="'+scope+'" data-kind="status" data-value="'+x[0]+'">'+x[1]+'</button>';}).join('');typeEl.innerHTML=tys.map(function(x){return '<button class="chip '+(f.type===x[0]?'active':'')+'" data-action="pool-filter" data-scope="'+scope+'" data-kind="type" data-value="'+x[0]+'">'+x[1]+'</button>';}).join('');}
-function teamFilterHTML(scope){var f=filters[scope],dom=scopeDom(scope),items=[['all','Alle hold'],['internal','Interne'],['vendors','Vendors']].concat(allTrades().map(function(t){return ['trade:'+t,t];}));var el=document.getElementById(dom+'-workforce-filters');if(!el)return;el.innerHTML='<span class="workforce-label">Vis hold:</span>'+items.map(function(x){return '<button class="chip '+(f.team===x[0]?'active':'')+'" data-action="team-filter" data-scope="'+scope+'" data-value="'+esc(x[0])+'">'+esc(x[1])+'</button>';}).join('');}
-function taskCard(t){var type=TYPE[t.type_guess]||TYPE.other,planned=+t.assignment_count>0;return '<article class="task-card draggable-task" draggable="true" data-task-id="'+esc(t.id)+'" title="Træk til en medarbejder og dato"><div class="task-name">'+esc(t.job_name||'Uden kunde')+'</div><div class="task-sub">'+esc(t.name||'Opgave')+'</div><div class="task-meta"><span class="badge '+esc(t.type_guess||'other')+'">'+type.label+'</span><span class="tag '+(t.source==='manual'?'manual':'')+'">'+(t.source==='manual'?'Manuel':'JT')+'</span>'+(planned?'<span class="tag">✓ Planlagt '+t.assignment_count+'×</span>':'')+'<span class="muted">JT ref: '+esc((t.start_date||'—').slice(0,10))+'</span></div></article>';}
-function renderPool(scope){filtersHTML(scope);var list=filterTasks(scope),el=document.getElementById(scopeDom(scope)+'-pool');if(!el)return;el.innerHTML=list.length?list.map(taskCard).join(''):'<div class="muted" style="padding:16px 4px;text-align:center">Ingen opgaver matcher filtreringen.</div>';}
-function assignmentPill(b){return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'"><div class="assign-title"><span>'+esc(b.job_name||b.task_name||'Opgave')+'</span><button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'" title="Fjern">×</button></div><div class="assign-sub">'+esc(b.task_name||'')+(b.start_time?' · '+esc(b.start_time):'')+(b.notes?' · '+esc(b.notes):'')+'</div></div>';}
-function renderPlan(){renderPool('plan');teamFilterHTML('plan');var days=[];for(var i=0;i<7;i++)days.push(add(mon(add(new Date(),planOffset*7)),i));document.getElementById('plan-label').textContent='Uge '+weekNo(days[0])+' · '+days[0].getDate()+'/'+(days[0].getMonth()+1)+' – '+days[6].getDate()+'/'+(days[6].getMonth()+1);var head='<tr><th class="staff">Medarbejder / undergruppe</th>';days.forEach(function(d){head+='<th class="'+(today(d)?'today':'')+'">'+DAYS[d.getDay()]+'<br><span style="font-size:10px">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';});document.getElementById('daily-head').innerHTML=head+'</tr>';var grouped=teamList('plan'),html='';function row(u){var c=u.color||'#2563EB',role=u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'),cells='<tr><td class="staff-cell"><div class="staff-line"><div class="avatar" style="background:'+c+'22;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</div><div><div class="staff-name">'+esc(u.name)+'</div><div class="staff-role">'+esc(role)+' · '+(+u.weekly_capacity||5)+' d/uge</div></div></div></td>';days.forEach(function(d){var ds=iso(d),items=bookings.filter(function(b){return +b.user_id===+u.id&&workingDates(b).indexOf(ds)>-1;}),cap=(+u.weekly_capacity||5)/5,booked=dailyLoad(u.id,ds);cells+='<td class="day-cell '+(today(d)?'today':'')+'"><div class="drop-zone" data-drop="day" data-user-id="'+u.id+'" data-date="'+ds+'">'+(items.length?'':'<div class="free">✓ Ledig</div>')+items.map(assignmentPill).join('')+'<button class="add-small" data-action="add-booking" data-user-id="'+u.id+'" data-date="'+ds+'">+ Tilføj</button><div class="capacity-line '+(booked>cap?'overload':'')+'">'+booked.toFixed(1)+' / '+cap.toFixed(1)+' d</div></div></td>';});return cells+'</tr>';}
-grouped.internal.forEach(function(u){html+=row(u);});Object.keys(grouped.groups).sort().forEach(function(g){var isOpen=vendorExpanded[g]!==false;html+='<tr class="group-row"><td colspan="8"><button class="group-toggle" data-action="toggle-vendor" data-group="'+esc(g)+'">'+(isOpen?'▾':'▸')+' '+esc(g)+'</button> · '+grouped.groups[g].length+' undergrupper <button class="btn small" data-action="add-subgroup" data-group="'+esc(g)+'" style="margin-left:8px">+ Undergruppe</button></td></tr>';if(isOpen)grouped.groups[g].forEach(function(u){html+=row(u);});});document.getElementById('daily-body').innerHTML=html||'<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted)">Opret medarbejdere eller vendor-undergrupper under Hold & vendors.</td></tr>';}
-function capacityWeeks(){var out=[],m=mon(new Date());for(var i=0;i<52;i++)out.push(add(m,i*7));return out;}function renderCapacity(){renderPool('capacity');teamFilterHTML('capacity');var weeks=capacityWeeks(),head='<tr><th>Medarbejder / undergruppe</th>';weeks.forEach(function(m){head+='<th data-week-key="'+key(m)+'" class="'+(today(m)?'today':'')+'">Uge '+weekNo(m)+'<br><span style="font-size:8px;font-weight:500">'+m.getDate()+'/'+(m.getMonth()+1)+'–'+add(m,4).getDate()+'/'+(add(m,4).getMonth()+1)+'</span></th>';});document.getElementById('cap-head').innerHTML=head+'</tr>';var months={},monthButtons=[];weeks.forEach(function(m){var mk=m.getFullYear()+'-'+m.getMonth();if(!months[mk]){months[mk]=1;monthButtons.push({m:m,label:m.toLocaleDateString('da-DK',{month:'short',year:'numeric'})});}});document.getElementById('cap-months').innerHTML=monthButtons.map(function(x){return '<button class="month-btn" data-action="scroll-week" data-week="'+key(x.m)+'">'+esc(x.label)+'</button>';}).join('');var grouped=teamList('capacity'),html='';function row(u){var c=u.color||'#2563EB',role=u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'),r='<tr><td class="staff-cell"><div class="staff-line"><div class="avatar" style="background:'+c+'22;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</div><div><div class="staff-name">'+esc(u.name)+'</div><div class="staff-role">'+esc(role)+' · '+(+u.weekly_capacity||5)+' d/uge</div></div></div></td>';weeks.forEach(function(m){var cap=+u.weekly_capacity||5,booked=weeklyLoad(u.id,m),end=add(m,6),items=bookings.filter(function(b){return +b.user_id===+u.id&&workingDates(b).some(function(ds){var q=date(ds);return q>=m&&q<=end;});}),jobs=items.slice(0,3).map(function(b){return '<div class="cap-job draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'" title="'+esc(b.job_name||b.task_name||'')+'">'+esc(b.job_name||b.task_name||'')+'</div>';}).join('');if(items.length>3)jobs+='<div class="muted" style="text-align:center">+'+(items.length-3)+' mere</div>';r+='<td class="cap-cell"><div class="cap-drop '+util(booked,cap)+'" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'"><div class="cap-number '+util(booked,cap)+'">'+booked.toFixed(1)+' / '+cap.toFixed(1)+' d</div>'+jobs+'</div></td>';});return r+'</tr>';}
-grouped.internal.forEach(function(u){html+=row(u);});Object.keys(grouped.groups).sort().forEach(function(g){var arr=grouped.groups[g],open=vendorExpanded[g]!==false;html+='<tr class="group-row"><td class="staff-cell"><button class="group-toggle" data-action="toggle-vendor" data-group="'+esc(g)+'">'+(open?'▾':'▸')+' '+esc(g)+'</button><div class="staff-role">'+arr.length+' undergrupper <button class="btn small" data-action="add-subgroup" data-group="'+esc(g)+'">+ Tilføj</button></div></td>';weeks.forEach(function(m){var cap=arr.reduce(function(n,u){return n+(+u.weekly_capacity||5);},0),booked=arr.reduce(function(n,u){return n+weeklyLoad(u.id,m);},0);html+='<td class="group-summary '+util(booked,cap)+'">'+booked.toFixed(1)+' / '+cap.toFixed(1)+' d</td>';});html+='</tr>';if(open)arr.forEach(function(u){html+=row(u);});});document.getElementById('cap-body').innerHTML=html||'<tr><td style="padding:20px">Ingen aktive hold.</td></tr>';}
-function bookingOverlap(taskId,uid,ds,exceptId){return bookings.some(function(b){return String(b.task_id)===String(taskId)&&+b.user_id===+uid&&+b.id!==+exceptId&&workingDates(b).indexOf(ds)>-1;});}
-function beginDrag(e,payload){dragPayload=payload;suppressClickUntil=Date.now()+450;try{e.dataTransfer.effectAllowed=payload.kind==='task'?'copy':'move';e.dataTransfer.setData('text/plain',JSON.stringify(payload));}catch(_){}}function parsePayload(e){try{var raw=e.dataTransfer.getData('text/plain');return raw?JSON.parse(raw):dragPayload;}catch(_){return dragPayload;}}
-async function handleDrop(e,zone){if(dropBusy)return;var p=parsePayload(e);if(!p)return;dropBusy=true;try{var uid=+zone.dataset.userId,ds=zone.dataset.date;if(p.kind==='task'){if(bookingOverlap(p.taskId,uid,ds,0)){toast('Den samme task ligger allerede på dette hold denne dag','⚠');return;}var r=await api('/api/assignments',{method:'POST',body:JSON.stringify({task_id:p.taskId,user_id:uid,start_date:ds,days:1})});if(r&&r.ok){toast('Booking oprettet — 1 dag. Klik på den for at ændre.','✓');await loadAll();}else if(r)toast(r.error||'Kunne ikke oprette booking','❌');}else if(p.kind==='booking'){var b=bookings.find(function(x){return +x.id===+p.bookingId;});if(!b)return;if(+b.user_id===uid&&b.start_date===ds)return;var moved=await api('/api/assignments/'+b.id,{method:'PUT',body:JSON.stringify({user_id:uid,start_date:ds,days:b.days,notes:b.notes,start_time:b.start_time})});if(moved&&moved.ok){toast('Booking flyttet','↔');await loadAll();}else if(moved)toast(moved.error||'Kunne ikke flytte','❌');}}finally{dropBusy=false;dragPayload=null;document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});}}
-function openAssign(ctx){assignCtx=ctx||{};var b=ctx.bookingId?bookings.find(function(x){return +x.id===+ctx.bookingId;}):null,taskId=ctx.taskId||(b&&b.task_id),t=tasks.find(function(x){return String(x.id)===String(taskId)});document.getElementById('assign-title').textContent=b?'Rediger booking':'Planlæg opgave';document.getElementById('assign-info').innerHTML=t?'<strong>'+esc(t.job_name||t.name)+'</strong><br>'+esc(t.name||'')+'<br><span class="muted">JobTread-reference: '+esc(t.start_date||'—')+' · '+esc(t.job_address||'')+'</span>':'<strong>Vælg en task fra opgavepoolen først.</strong>';var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});document.getElementById('assign-user').innerHTML=workforce.map(function(u){var sel=(b?+b.user_id===+u.id:+ctx.userId===+u.id)?' selected':'';return '<option value="'+u.id+'"'+sel+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');document.getElementById('assign-date').value=(b?b.start_date:(ctx.date||iso(new Date()))).slice(0,10);document.getElementById('assign-days').value=b?b.days:1;document.getElementById('assign-time').value=b&&b.start_time||'';document.getElementById('assign-note').value=b&&b.notes||'';document.getElementById('delete-assignment').classList.toggle('hidden',!b);document.getElementById('assign-modal').classList.add('open');}
-async function saveAssignment(){var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);if(!taskId){toast('Vælg en task først','⚠');return;}var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null};var r=assignCtx.bookingId?await api('/api/assignments/'+assignCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))});if(r&&r.ok){closeModal('assign-modal');toast('Booking gemt','✓');await loadAll();}else if(r)toast(r.error||'Kunne ikke gemme','❌');}
-async function removeBooking(id){if(!confirm('Fjern denne booking?'))return;var r=await api('/api/assignments/'+id,{method:'DELETE'});if(r&&r.ok){closeModal('assign-modal');toast('Booking fjernet','🗑');await loadAll();}}
+var DAYS=['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
+var TYPE={lay:{label:'Gulvlægning',bar:'var(--lay-bar)'},sand:{label:'Gulvslibning',bar:'var(--sand-bar)'},paint:{label:'Malerservice',bar:'var(--paint-bar)'},sub:{label:'Underlev.',bar:'var(--sub-bar)'},other:{label:'Andet',bar:'var(--other-bar)'}};
+
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c];});}
+function iso(d){var x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);}
+function date(s){return new Date(String(s).slice(0,10)+'T12:00:00');}
+function mon(d){var x=new Date(d);x.setHours(0,0,0,0);var q=x.getDay()||7;x.setDate(x.getDate()-q+1);return x;}
+function add(d,n){var x=new Date(d);x.setDate(x.getDate()+n);return x;}
+function weekNo(d){var x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var q=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-q);var y=new Date(Date.UTC(x.getUTCFullYear(),0,1));return Math.ceil((((x-y)/86400000)+1)/7);}
+function isToday(d){return iso(d)===iso(new Date());}
+function weekKey(d){var x=mon(d);return 'w'+x.getFullYear()+'-'+String(weekNo(x)).padStart(2,'0');}
+function toast(msg,ic){var el=document.getElementById('toast');el.innerHTML=(ic?ic+' ':'')+esc(msg);el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(function(){el.classList.remove('show');},2600);}
+function logout(){localStorage.removeItem('gm_token');localStorage.removeItem('gm_user');window.location.href='/';}
+async function api(path,opts){
+  opts=opts||{};
+  var h=Object.assign({'Authorization':'Bearer '+token},opts.headers||{});
+  if(opts.body&&!h['Content-Type'])h['Content-Type']='application/json';
+  try{var r=await fetch(API+path,Object.assign({},opts,{headers:h}));var d=await r.json().catch(function(){return{error:'Ugyldigt svar'};});if(r.status===401){logout();return null;}return r.ok?d:Object.assign({ok:false},d);}
+  catch(e){toast('Netværksfejl','❌');return null;}
+}
+
+// Working dates for a booking
+function workDates(b){
+  var s=date(b.start_date),e=date(b.end_date||b.start_date),out=[];
+  for(var d=new Date(s);d<=e;d=add(d,1)){if(d.getDay()!==0&&d.getDay()!==6)out.push(iso(d));}
+  return out.length?out:[iso(s)];
+}
+function dailyLoad(uid,ds){
+  return bookings.filter(function(b){return +b.user_id===+uid&&workDates(b).indexOf(ds)>-1;})
+    .reduce(function(n,b){return n+(+b.days||1)/workDates(b).length;},0);
+}
+function weeklyLoad(uid,m){
+  var days=[];for(var i=0;i<5;i++)days.push(iso(add(m,i)));
+  return bookings.filter(function(b){return +b.user_id===+uid;})
+    .reduce(function(n,b){var c=workDates(b).filter(function(d){return days.indexOf(d)>-1;}).length;return n+((+b.days||1)/workDates(b).length)*c;},0);
+}
+function capClass(booked,cap){var p=cap?booked/cap:0;return p<=0?'cap-free':p<.7?'cap-ok':p<=1?'cap-warn':'cap-over';}
+function barColor(booked,cap){var p=cap?booked/cap:0;return p<=0?'var(--sand-bar)':p<.7?'var(--lay-bar)':p<=1?'var(--paint-bar)':'#EF4444';}
+
+function teamList(scope){
+  var f=filters[scope],all=users.filter(function(u){return u.active&&u.role==='employee';});
+  if(f.team==='internal')all=all.filter(function(u){return u.worker_type!=='vendor';});
+  else if(f.team==='vendors')all=all.filter(function(u){return u.worker_type==='vendor';});
+  else if(f.team.indexOf('trade:')===0){var t=f.team.slice(6).toLowerCase();all=all.filter(function(u){return String(u.trade||'').toLowerCase()===t;});}
+  var internal=all.filter(function(u){return u.worker_type!=='vendor';}).sort(function(a,b){return a.name.localeCompare(b.name,'da');});
+  var groups={};
+  all.filter(function(u){return u.worker_type==='vendor';}).sort(function(a,b){return a.name.localeCompare(b.name,'da');})
+    .forEach(function(u){var g=u.vendor_group||'Øvrige vendors';(groups[g]=groups[g]||[]).push(u);});
+  return{internal:internal,groups:groups};
+}
+function allTrades(){var s={};users.filter(function(u){return u.active&&u.trade;}).forEach(function(u){s[u.trade]=1;});return Object.keys(s).sort();}
+function filterTasks(scope){
+  var f=filters[scope],q=(document.getElementById(scope==='plan'?'plan-search':'cap-search').value||'').toLowerCase().trim();
+  return tasks.filter(function(t){
+    var planned=+t.assignment_count>0;
+    if(f.status==='open'&&planned)return false;
+    if(f.status==='planned'&&!planned)return false;
+    if(f.status==='manual'&&t.source!=='manual')return false;
+    if(f.type!=='all'&&t.type_guess!==f.type)return false;
+    var text=((t.job_name||'')+' '+(t.name||'')+' '+(t.job_address||'')).toLowerCase();
+    return !q||text.indexOf(q)>-1;
+  }).sort(function(a,b){return String(a.start_date||'').localeCompare(String(b.start_date||''));});
+}
+
+function filtersHTML(scope){
+  var f=filters[scope],dom=scope==='capacity'?'cap':scope;
+  var sts=[['all','Alle'],['open','Ikke planlagt'],['planned','Planlagt'],['manual','Manuelle']];
+  var tys=[['all','Alle fag'],['lay','Gulv'],['sand','Slib'],['paint','Maler'],['sub','Underlev.']];
+  var se=document.getElementById(dom+'-status-filters'),te=document.getElementById(dom+'-type-filters');
+  if(se)se.innerHTML=sts.map(function(x){return '<button class="chip'+(f.status===x[0]?' active':'')+'" data-action="pool-filter" data-scope="'+scope+'" data-kind="status" data-value="'+x[0]+'">'+x[1]+'</button>';}).join('');
+  if(te)te.innerHTML=tys.map(function(x){return '<button class="chip'+(f.type===x[0]?' active':'')+'" data-action="pool-filter" data-scope="'+scope+'" data-kind="type" data-value="'+x[0]+'">'+x[1]+'</button>';}).join('');
+}
+function teamFilterHTML(scope){
+  var f=filters[scope],dom=scope==='capacity'?'cap':scope;
+  var items=[['all','Alle hold'],['internal','Interne'],['vendors','Vendors']].concat(allTrades().map(function(t){return['trade:'+t,t];}));
+  var el=document.getElementById(dom+'-workforce-filters');
+  if(el)el.innerHTML='<span class="workforce-label">Vis:</span>'+items.map(function(x){return '<button class="chip'+(f.team===x[0]?' active':'')+'" data-action="team-filter" data-scope="'+scope+'" data-value="'+esc(x[0])+'">'+esc(x[1])+'</button>';}).join('');
+}
+
+function taskCard(t){
+  var type=TYPE[t.type_guess]||TYPE.other,planned=+t.assignment_count>0;
+  return '<article class="task-card draggable-task" draggable="true" data-task-id="'+esc(t.id)+'" title="'+esc(t.job_name||'')+'">'+
+    '<div class="task-name">'+esc(t.job_name||'Uden kunde')+'</div>'+
+    '<div class="task-sub">'+esc(t.name||'Opgave')+'</div>'+
+    '<div class="task-meta">'+
+      '<span class="badge '+esc(t.type_guess||'other')+'">'+type.label+'</span>'+
+      '<span class="tag'+(t.source==='manual'?' manual':'')+'">'+(t.source==='manual'?'Manuel':'JT')+'</span>'+
+      (planned?'<span class="tag">✓ '+t.assignment_count+'×</span>':'')+
+      '<span class="muted-sm">'+esc((t.start_date||'—').slice(0,10))+'</span>'+
+    '</div></article>';
+}
+function renderPool(scope){
+  filtersHTML(scope);
+  var dom=scope==='capacity'?'cap':scope;
+  var el=document.getElementById(dom+'-pool');
+  if(!el)return;
+  var list=filterTasks(scope);
+  el.innerHTML=list.length?list.map(taskCard).join(''):'<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
+}
+
+// ASSIGNMENT PILL (daily)
+function assignPill(b){
+  var t=TYPE[b.type_guess||'other']||TYPE.other;
+  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'">'+
+    '<div class="assign-top"><span class="assign-name">'+esc(b.job_name||b.task_name||'Opgave')+'</span>'+
+    '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></div>'+
+    (b.start_time?'<div class="assign-time">⏰ '+esc(b.start_time)+'</div>':'')+
+    '<div class="assign-sub">'+esc(b.task_name||'')+(b.notes?' · '+esc(b.notes):'')+'</div>'+
+    '</div>';
+}
+
+// RENDER DAILY PLAN
+function renderPlan(){
+  renderPool('plan');teamFilterHTML('plan');
+  var days=[];for(var i=0;i<7;i++)days.push(add(mon(add(new Date(),planOffset*7)),i));
+  document.getElementById('plan-label').textContent='Uge '+weekNo(days[0])+' · '+days[0].getDate()+'/'+(days[0].getMonth()+1)+' – '+days[6].getDate()+'/'+(days[6].getMonth()+1);
+  var head='<tr><th class="staff-th">Medarbejder / undergruppe</th>';
+  days.forEach(function(d){head+='<th class="'+(isToday(d)?'today-th':'')+'" style="min-width:128px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';});
+  document.getElementById('daily-head').innerHTML=head+'</tr>';
+  var grouped=teamList('plan'),html='';
+  function row(u){
+    var c=u.color||'#2563EB';
+    var cells='<tr><td class="staff-cell"><div class="staff-line">'+
+      '<div class="avatar" style="background:'+c+'22;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</div>'+
+      '<div><div class="staff-name">'+esc(u.name)+'</div><div class="staff-role">'+(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbej.'))+' · '+(+u.weekly_capacity||5)+' d</div></div>'+
+      '</div></td>';
+    days.forEach(function(d){
+      var ds=iso(d),cap=(+u.weekly_capacity||5)/5,booked=dailyLoad(u.id,ds);
+      var items=bookings.filter(function(b){return +b.user_id===+u.id&&workDates(b).indexOf(ds)>-1;});
+      cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'">'+
+        '<div class="drop-zone" data-drop="day" data-user-id="'+u.id+'" data-date="'+ds+'">'+
+        (items.length?'':'<div class="free-slot">✓ Ledig</div>')+
+        items.map(assignPill).join('')+
+        '<button class="add-small" data-action="add-booking" data-user-id="'+u.id+'" data-date="'+ds+'">+ Tilføj</button>'+
+        '<div class="day-load'+(booked>cap?' overload':'')+'">'+booked.toFixed(1)+'/'+cap.toFixed(1)+'d</div>'+
+        '</div></td>';
+    });
+    return cells+'</tr>';
+  }
+  grouped.internal.forEach(function(u){html+=row(u);});
+  Object.keys(grouped.groups).sort().forEach(function(g){
+    var isOpen=vendorExpanded[g]!==false;
+    html+='<tr class="group-row"><td colspan="8"><button class="group-toggle" data-action="toggle-vendor" data-group="'+esc(g)+'">'+(isOpen?'▾':'▸')+' '+esc(g)+'</button> · '+grouped.groups[g].length+' undergrupper <button class="btn small" data-action="add-subgroup" data-group="'+esc(g)+'" style="margin-left:7px">+ Undergruppe</button></td></tr>';
+    if(isOpen)grouped.groups[g].forEach(function(u){html+=row(u);});
+  });
+  document.getElementById('daily-body').innerHTML=html||'<tr><td colspan="8" style="padding:18px;text-align:center;color:var(--muted)">Opret medarbejdere under Hold & vendors.</td></tr>';
+}
+
+// RENDER CAPACITY
+function capacityWeeks(){var out=[],m=mon(new Date());for(var i=0;i<52;i++)out.push(add(m,i*7));return out;}
+function renderCapacity(){
+  renderPool('capacity');teamFilterHTML('capacity');
+  var weeks=capacityWeeks();
+  // Header
+  var head='<tr><th>Medarbejder / undergruppe</th>';
+  weeks.forEach(function(m){
+    var isCur=isToday(m)||weeks.indexOf(m)===0&&isToday(new Date())&&weekKey(new Date())===weekKey(m);
+    head+='<th data-week-key="'+weekKey(m)+'" class="'+(weekKey(m)===weekKey(new Date())?'today-th':'')+'">'+
+      'Uge '+weekNo(m)+'<br><span style="font-size:8px;font-weight:400">'+m.getDate()+'/'+(m.getMonth()+1)+'–'+add(m,4).getDate()+'/'+(add(m,4).getMonth()+1)+'</span></th>';
+  });
+  document.getElementById('cap-head').innerHTML=head+'</tr>';
+  // Month chips
+  var months={},mBtns=[];
+  weeks.forEach(function(m){var mk=m.getFullYear()+'-'+m.getMonth();if(!months[mk]){months[mk]=1;mBtns.push({m:m,label:m.toLocaleDateString('da-DK',{month:'short',year:'numeric'})});}});
+  var curMon=new Date().toLocaleDateString('da-DK',{month:'short',year:'numeric'});
+  document.getElementById('cap-months').innerHTML=mBtns.map(function(x){return '<button class="month-btn'+(x.label===curMon?' active':'')+'" data-action="scroll-week" data-week="'+weekKey(x.m)+'">'+esc(x.label)+'</button>';}).join('');
+  // Body
+  var grouped=teamList('capacity'),html='';
+  function row(u){
+    var c=u.color||'#2563EB';
+    var r='<tr><td class="staff-cell"><div class="staff-line">'+
+      '<div class="avatar" style="background:'+c+'22;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</div>'+
+      '<div><div class="staff-name">'+esc(u.name)+'</div><div class="staff-role">'+(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbej.'))+' · '+(+u.weekly_capacity||5)+' d</div></div>'+
+      '</div></td>';
+    weeks.forEach(function(m){
+      var cap=+u.weekly_capacity||5,booked=weeklyLoad(u.id,m),end=add(m,6);
+      var pct=cap?Math.min(booked/cap*100,100):0;
+      var cc=capClass(booked,cap);
+      var items=bookings.filter(function(b){return +b.user_id===+u.id&&workDates(b).some(function(ds){var q=date(ds);return q>=m&&q<=end;});});
+      var pills=items.slice(0,3).map(function(b){
+        return '<div class="cap-job draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'" title="'+esc(b.job_name||b.task_name||'')+'">'+
+          '<span class="cap-job-name">'+esc(b.job_name||b.task_name||'')+'</span>'+
+          '<span class="cap-job-days">'+esc(b.days)+'d</span>'+
+          '<button class="cap-job-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button>'+
+          '</div>';
+      }).join('');
+      if(items.length>3)pills+='<div style="font-size:8px;color:var(--muted);text-align:center">+'+( items.length-3)+' mere</div>';
+      r+='<td class="cap-cell">'+
+        '<div class="cap-drop '+(items.length?cc:'cap-free')+' draggable-task-target" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'">'+
+        '<div class="cap-num '+cc+'">'+booked.toFixed(1)+' / '+cap+' d</div>'+
+        '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+pct+'%;background:'+barColor(booked,cap)+'"></div></div>'+
+        pills+
+        '</div></td>';
+    });
+    return r+'</tr>';
+  }
+  // Internal first (always)
+  grouped.internal.forEach(function(u){html+=row(u);});
+  // Then vendor groups
+  Object.keys(grouped.groups).sort().forEach(function(g){
+    var arr=grouped.groups[g],open=vendorExpanded[g]!==false;
+    // Group summary row
+    html+='<tr class="group-row"><td class="staff-cell">'+
+      '<button class="group-toggle" data-action="toggle-vendor" data-group="'+esc(g)+'">'+(open?'▾':'▸')+' '+esc(g)+'</button>'+
+      ' <span style="color:var(--muted);font-size:9px">'+arr.length+' undergrupper</span>'+
+      ' <button class="btn small" data-action="add-subgroup" data-group="'+esc(g)+'" style="margin-left:6px">+ Tilføj</button>'+
+      '</td>';
+    weeks.forEach(function(m){
+      var cap=arr.reduce(function(n,u){return n+(+u.weekly_capacity||5);},0);
+      var booked=arr.reduce(function(n,u){return n+weeklyLoad(u.id,m);},0);
+      var pct=cap?Math.min(booked/cap*100,100):0;
+      var cc=capClass(booked,cap);
+      html+='<td class="group-summary-cell"><div class="cap-num '+cc+'">'+booked.toFixed(1)+'/'+cap+'d</div>'+
+        '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+pct+'%;background:'+barColor(booked,cap)+'"></div></div></td>';
+    });
+    html+='</tr>';
+    if(open)arr.forEach(function(u){html+=row(u);});
+  });
+  document.getElementById('cap-body').innerHTML=html||'<tr><td style="padding:18px;color:var(--muted)">Ingen aktive hold.</td></tr>';
+}
+
+// QUICK POP-UP
+var quickCtx=null;
+function populateQPUsers(selectedUid){
+  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
+  document.getElementById('qp-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'"'+(+u.id===+selectedUid?' selected':'')+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
+}
+function openQuickPop(taskId,uid,dateStr,evt){
+  var t=tasks.find(function(x){return String(x.id)===String(taskId);});
+  quickCtx={taskId:taskId,bookingId:null};
+  document.getElementById('qp-title').textContent='Ny booking';
+  document.getElementById('qp-task-name').textContent=(t?((t.job_name||'')+(t.name?' — '+t.name:'')):'Opgave');
+  populateQPUsers(uid);
+  document.getElementById('qp-date').value=dateStr||iso(new Date());
+  document.getElementById('qp-days').value=t&&t.start_date&&t.end_date?Math.max(1,Math.round((new Date(t.end_date)-new Date(t.start_date))/86400000)+1):'1';
+  document.getElementById('qp-time').value='';
+  document.getElementById('qp-note').value='';
+  // Position pop-up near drop target
+  var pop=document.getElementById('quick-pop');
+  var x=evt?Math.min(evt.clientX,window.innerWidth-310):window.innerWidth/2-150;
+  var y=evt?Math.min(evt.clientY,window.innerHeight-300):window.innerHeight/2-150;
+  pop.style.left=x+'px';pop.style.top=y+'px';
+  pop.classList.add('open');
+  setTimeout(function(){document.getElementById('qp-days').focus();document.getElementById('qp-days').select();},80);
+}
+function closeQuickPop(){document.getElementById('quick-pop').classList.remove('open');quickCtx=null;}
+async function saveQuickPop(){
+  if(!quickCtx)return;
+  var body={task_id:quickCtx.taskId,user_id:+document.getElementById('qp-user').value,start_date:document.getElementById('qp-date').value,days:+document.getElementById('qp-days').value||1,start_time:document.getElementById('qp-time').value||null,notes:document.getElementById('qp-note').value.trim()||null};
+  var r=await api('/api/assignments',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){closeQuickPop();toast('Booking gemt ✓','✓');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+
+// FULL ASSIGN MODAL
+function openAssign(ctx){
+  assignCtx=ctx||{};
+  var b=ctx.bookingId?bookings.find(function(x){return +x.id===+ctx.bookingId;}):null;
+  var taskId=ctx.taskId||(b&&b.task_id);
+  var t=tasks.find(function(x){return String(x.id)===String(taskId);});
+  document.getElementById('assign-title').textContent=b?'Rediger booking':'Planlæg opgave';
+  document.getElementById('assign-info').innerHTML=t?'<strong>'+esc(t.job_name||t.name)+'</strong><br>'+esc(t.name||'')+'<br><span style="color:var(--muted)">'+esc(t.job_address||'—')+'</span>':'<strong>Vælg en task fra opgavepoolen.</strong>';
+  document.getElementById('assign-ref').value=t?(t.start_date||'—'):'—';
+  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
+  document.getElementById('assign-user').innerHTML=workforce.map(function(u){var sel=(b?+b.user_id===+u.id:+ctx.userId===+u.id)?' selected':'';return '<option value="'+u.id+'"'+sel+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
+  document.getElementById('assign-date').value=(b?b.start_date:(ctx.date||iso(new Date()))).slice(0,10);
+  document.getElementById('assign-days').value=b?b.days:1;
+  document.getElementById('assign-time').value=b&&b.start_time||'';
+  document.getElementById('assign-note').value=b&&b.notes||'';
+  document.getElementById('delete-assignment').classList.toggle('hidden',!b);
+  document.getElementById('assign-modal').classList.add('open');
+}
+async function saveAssignment(){
+  var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);
+  if(!taskId){toast('Vælg en task','⚠');return;}
+  var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null};
+  var r=assignCtx.bookingId?await api('/api/assignments/'+assignCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))});
+  if(r&&r.ok){closeModal('assign-modal');toast('Booking gemt','✓');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function removeBooking(id){
+  if(!confirm('Fjern booking?'))return;
+  var r=await api('/api/assignments/'+id,{method:'DELETE'});
+  if(r&&r.ok){closeModal('assign-modal');toast('Fjernet','🗑');await loadAll();}
+}
+
+// DRAG & DROP
+function beginDrag(e,payload){dragPayload=payload;suppressClick=Date.now()+400;try{e.dataTransfer.effectAllowed=payload.kind==='task'?'copy':'move';e.dataTransfer.setData('text/plain',JSON.stringify(payload));}catch(_){}}
+function parsePayload(e){try{var r=e.dataTransfer.getData('text/plain');return r?JSON.parse(r):dragPayload;}catch(_){return dragPayload;}}
+async function handleDrop(e,zone){
+  if(dropBusy)return;dropBusy=true;
+  try{
+    var p=parsePayload(e);if(!p)return;
+    var uid=+zone.dataset.userId,ds=zone.dataset.date;
+    if(p.kind==='task'){
+      // Open quick pop instead of direct save
+      openQuickPop(p.taskId,uid,ds,e);
+    }else if(p.kind==='booking'){
+      var b=bookings.find(function(x){return +x.id===+p.bookingId;});
+      if(!b||( +b.user_id===uid&&b.start_date===ds))return;
+      var r=await api('/api/assignments/'+b.id,{method:'PUT',body:JSON.stringify({user_id:uid,start_date:ds,days:b.days,notes:b.notes,start_time:b.start_time})});
+      if(r&&r.ok){toast('Booking flyttet','↔');await loadAll();}
+      else if(r)toast(r.error||'Fejl','❌');
+    }
+  }finally{dropBusy=false;dragPayload=null;document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});}
+}
+
+// MANUAL TASK
+function openManual(){document.getElementById('manual-date').value=iso(new Date());['manual-customer','manual-name','manual-address'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('manual-days').value='1';document.getElementById('manual-type').value='lay';document.getElementById('manual-modal').classList.add('open');}
+async function saveManual(){
+  var b={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),start_date:document.getElementById('manual-date').value,days:+document.getElementById('manual-days').value||1,type_guess:document.getElementById('manual-type').value};
+  var r=await api('/api/tasks/manual',{method:'POST',body:JSON.stringify(b)});
+  if(r&&r.ok){closeModal('manual-modal');toast('Opgave i pool','✓');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+
+// SYNC
+async function syncNow(){
+  var b=document.getElementById('sync-btn');b.disabled=true;b.textContent='⏳ Synker';
+  var log=document.getElementById('sync-log');log.classList.add('show');log.innerHTML='';
+  function addLog(m,c){var d=document.createElement('div');d.className=c||'info';d.textContent='['+new Date().toLocaleTimeString('da-DK')+'] '+m;log.appendChild(d);}
+  addLog('Importerer kun Task-data fra JobTread. Ingen bookinger ændres.','info');
+  var r=await api('/api/sync',{method:'POST'});
+  if(r&&r.ok){addLog(r.count+' Tasks opdateret. Din plan er urørt.','ok');document.getElementById('sync-ind').textContent='Synket '+new Date().toLocaleTimeString('da-DK');toast('Synk færdig ✅');}
+  else addLog((r&&r.error)||'Synk fejlede','err');
+  b.disabled=false;b.textContent='⚡ Synk JT';
+  await loadAll();
+}
+async function clearPlan(){
+  if(!confirm('Ryd ALLE bookinger? Opgavepoolen bevares.'))return;
+  var r=await api('/api/plan',{method:'DELETE'});
+  if(r&&r.ok){toast('Planen ryddet 🧹');await loadAll();}
+}
+
+// PEOPLE
+function renderPeople(){
+  var intern=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type!=='vendor';}),vendors={};
+  users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type==='vendor';}).forEach(function(u){var g=u.vendor_group||'Øvrige vendors';(vendors[g]=vendors[g]||[]).push(u);});
+  var html=intern.map(function(u){
+    return '<article class="person-card"><div class="person-top"><div class="avatar" style="background:'+(u.color||'#2563EB')+'22;color:'+(u.color||'#2563EB')+'">'+esc(u.initials||u.name.slice(0,2))+'</div><div><div class="person-name">'+esc(u.name)+'</div><div class="person-email">'+(u.can_login?esc(u.email):'Ingen login')+'</div></div></div><div class="person-detail">Fag: '+esc(u.trade||'Ikke sat')+'<br>Kapacitet: '+(+u.weekly_capacity||5)+' dage/uge<br>'+(u.jobtread_name?'JT: '+esc(u.jobtread_name):'')+'</div><div class="person-actions"><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏ Rediger</button></div></article>';
+  }).join('');
+  Object.keys(vendors).sort().forEach(function(g){
+    html+='<article class="vendor-card"><div class="vendor-head"><div><div class="vendor-title">'+esc(g)+'</div><div class="muted-sm">Vendor-gruppe</div></div><button class="btn small primary" data-action="add-subgroup" data-group="'+esc(g)+'">+ Undergruppe</button></div>'+
+      vendors[g].map(function(u){return '<div class="sub-team"><div><strong>'+esc(u.name)+'</strong><div class="sub-team-meta">'+esc(u.trade||'Fag ikke sat')+' · '+(+u.weekly_capacity||5)+' d/uge'+(u.can_login?' · login':'')+'</div></div><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏</button></div>';}).join('')+'</article>';
+  });
+  document.getElementById('people-grid').innerHTML=html||'<p style="color:var(--muted)">Ingen aktive hold.</p>';
+}
+
+// USER MODAL
+function setLoginFields(){document.getElementById('login-fields').classList.toggle('hidden',!document.getElementById('user-can-login').checked);}
+function openUser(id,opts){
+  opts=opts||{};editUserId=id||null;
+  var u=id?users.find(function(x){return +x.id===+id;}):null;
+  document.getElementById('user-title').textContent=u?'Rediger medarbejder':(opts.vendorGroup?'Ny vendor-undergruppe':'Ny medarbejder');
+  document.getElementById('user-name').value=u?u.name:'';document.getElementById('user-initials').value=u?(u.initials||''):'';
+  document.getElementById('user-email').value=u&&u.can_login?u.email:'';document.getElementById('user-password').value='';
+  document.getElementById('user-role').value=u?u.role:'employee';document.getElementById('user-color').value=u?(u.color||'#2563EB'):'#2563EB';
+  document.getElementById('user-capacity').value=u?(u.weekly_capacity||5):5;document.getElementById('user-worker-type').value=u?(u.worker_type||'employee'):(opts.vendorGroup?'vendor':'employee');
+  document.getElementById('user-trade').value=u?(u.trade||''):'';document.getElementById('user-vendor-group').value=u?(u.vendor_group||''):(opts.vendorGroup||'');
+  document.getElementById('user-can-login').checked=u?!!u.can_login:!opts.vendorGroup;
+  document.getElementById('deactivate-user').classList.toggle('hidden',!u);
+  setLoginFields();document.getElementById('user-modal').classList.add('open');
+}
+async function saveUser(){
+  var name=document.getElementById('user-name').value.trim(),login=document.getElementById('user-can-login').checked,email=document.getElementById('user-email').value.trim(),pw=document.getElementById('user-password').value;
+  if(!name){toast('Navn mangler','⚠');return;}
+  if(login&&(!email||(!editUserId&&!pw))){toast('Email og kode mangler','⚠');return;}
+  var body={name:name,can_login:login,email:email,role:document.getElementById('user-role').value,password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null};
+  var r=editUserId?await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/users',{method:'POST',body:JSON.stringify(body)});
+  if(r&&(r.ok||r.id)){closeModal('user-modal');toast('Gemt','✓');await loadAll();}else if(r)toast(r.error||'Fejl','❌');
+}
+async function deactivateUser(){
+  if(!editUserId||!confirm('Deaktiver?'))return;
+  var r=await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify({active:0})});
+  if(r&&r.ok){closeModal('user-modal');toast('Deaktiveret','🗑');await loadAll();}
+}
+
+// LOGS
+async function loadLogs(){
+  var l=await api('/api/time/all');if(!l)return;
+  document.getElementById('log-body').innerHTML=l.map(function(x){var m=+x.duration_minutes||0;return '<tr><td>'+esc(x.user_name)+'</td><td>'+esc(x.task_name)+'</td><td>'+esc(x.job_name)+'</td><td>'+esc((x.started_at||'').replace('T',' ').slice(0,16))+'</td><td>'+esc((x.stopped_at||'').replace('T',' ').slice(0,16))+'</td><td>'+Math.floor(m/60)+'t '+m%60+'m</td></tr>';}).join('')||'<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--muted)">Ingen timer endnu.</td></tr>';
+}
+function scrollToWeek(wk){var h=document.querySelector('#cap-head th[data-week-key="'+wk+'"]');if(h)h.scrollIntoView({behavior:'smooth',block:'nearest',inline:'start'});}
+
+// LOAD ALL
+async function loadAll(){
+  var r=await Promise.all([api('/api/users'),api('/api/tasks'),api('/api/assignments'),api('/api/dashboard')]);
+  users=r[0]||[];tasks=r[1]||[];bookings=r[2]||[];
+  renderStats(r[3]||{});
+  try{renderPlan();}catch(e){console.error('Plan fejl',e);}
+  try{renderCapacity();}catch(e){console.error('Cap fejl',e);}
+  try{renderPeople();}catch(e){console.error('People fejl',e);}
+  if(document.getElementById('page-logs').classList.contains('active'))loadLogs();
+}
+function renderStats(d){
+  document.getElementById('stats').innerHTML=[['Tasks i pool',d.totalTasks||0,'JobTread + manuelle'],['Planlagte Tasks',d.assigned||0,'har mindst én booking'],['Bookinger',d.bookings||0,'uafhæng. planrækker'],['Ikke planlagt',d.unassigned||0,'klar i pool'],['Interne',d.employees||0,'medarbejdere'],['Vendors',d.vendors||0,'undergrupper']].map(function(x){return '<div class="stat"><div class="stat-label">'+x[0]+'</div><div class="stat-value">'+x[1]+'</div><div class="stat-sub">'+x[2]+'</div></div>';}).join('');
+}
 function closeModal(id){document.getElementById(id).classList.remove('open');if(id==='assign-modal')assignCtx=null;}
-function renderPeople(){var intern=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type!=='vendor';}),vendors={};users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type==='vendor';}).forEach(function(u){var g=u.vendor_group||'Øvrige vendors';(vendors[g]=vendors[g]||[]).push(u);});var html=intern.map(function(u){return '<article class="person-card"><div class="person-top"><div class="avatar" style="background:'+(u.color||'#2563EB')+'22;color:'+(u.color||'#2563EB')+'">'+esc(u.initials||u.name.slice(0,2))+'</div><div><div class="person-name">'+esc(u.name)+'</div><div class="person-email">'+(u.can_login?esc(u.email):'Ingen login')+'</div></div></div><div class="person-detail">Fag: '+esc(u.trade||'Ikke sat')+'<br>Kapacitet: '+(+u.weekly_capacity||5)+' dage/uge</div><div class="person-actions"><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏ Rediger</button></div></article>';}).join('');Object.keys(vendors).sort().forEach(function(g){html+='<article class="vendor-card"><div class="vendor-head"><div><div class="vendor-title">'+esc(g)+'</div><div class="muted">Vendor-gruppe og kapacitetshold</div></div><button class="btn small primary" data-action="add-subgroup" data-group="'+esc(g)+'">+ Undergruppe</button></div>'+vendors[g].map(function(u){return '<div class="sub-team"><div><strong>'+esc(u.name)+'</strong><div class="sub-team-meta">'+esc(u.trade||'Fag ikke sat')+' · '+(+u.weekly_capacity||5)+' d/uge'+(u.can_login?' · login':'')+'</div></div><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏</button></div>';}).join('')+'</article>';});document.getElementById('people-grid').innerHTML=html||'<p class="muted">Ingen aktive medarbejdere eller vendor-hold.</p>';}
-function setLoginFields(){document.getElementById('login-fields').classList.toggle('hidden',!document.getElementById('user-can-login').checked);}function openUser(id,opts){opts=opts||{};editUserId=id||null;var u=id?users.find(function(x){return +x.id===+id;}):null;document.getElementById('user-title').textContent=u?'Rediger medarbejder / undergruppe':(opts.vendorGroup?'Ny vendor-undergruppe':'Ny medarbejder');document.getElementById('user-name').value=u?u.name:'';document.getElementById('user-initials').value=u?(u.initials||''):'';document.getElementById('user-email').value=u&&u.can_login?u.email:'';document.getElementById('user-password').value='';document.getElementById('user-role').value=u?u.role:'employee';document.getElementById('user-color').value=u?(u.color||'#2563EB'):'#2563EB';document.getElementById('user-capacity').value=u?(u.weekly_capacity||5):5;document.getElementById('user-worker-type').value=u?(u.worker_type||'employee'):(opts.vendorGroup?'vendor':'employee');document.getElementById('user-trade').value=u?(u.trade||''):'';document.getElementById('user-vendor-group').value=u?(u.vendor_group||''):(opts.vendorGroup||'');document.getElementById('user-jt-name').value=u?(u.jobtread_name||''):'';document.getElementById('user-can-login').checked=u?!!u.can_login:!opts.vendorGroup;document.getElementById('deactivate-user').classList.toggle('hidden',!u);setLoginFields();document.getElementById('user-modal').classList.add('open');}
-async function saveUser(){var name=document.getElementById('user-name').value.trim(),login=document.getElementById('user-can-login').checked,email=document.getElementById('user-email').value.trim(),pw=document.getElementById('user-password').value;if(!name){toast('Navn mangler','⚠');return;}if(login&&(!email||(!editUserId&&!pw))){toast('Email og adgangskode mangler for login','⚠');return;}var body={name:name,can_login:login,email:email,role:document.getElementById('user-role').value,password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,jobtread_name:document.getElementById('user-jt-name').value.trim()||null};var r=editUserId?await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/users',{method:'POST',body:JSON.stringify(body)});if(r&&(r.ok||r.id)){closeModal('user-modal');toast('Hold gemt','✓');await loadAll();}else if(r)toast(r.error||'Kunne ikke gemme','❌');}
-async function deactivateUser(){if(!editUserId||!confirm('Deaktiver dette hold?'))return;var r=await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify({active:0})});if(r&&r.ok){closeModal('user-modal');toast('Deaktiveret','🗑');await loadAll();}}
-function openManual(){document.getElementById('manual-date').value=iso(new Date());document.getElementById('manual-customer').value='';document.getElementById('manual-name').value='';document.getElementById('manual-address').value='';document.getElementById('manual-days').value='1';document.getElementById('manual-type').value='lay';document.getElementById('manual-modal').classList.add('open');}async function saveManual(){var b={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),start_date:document.getElementById('manual-date').value,days:+document.getElementById('manual-days').value||1,type_guess:document.getElementById('manual-type').value};var r=await api('/api/tasks/manual',{method:'POST',body:JSON.stringify(b)});if(r&&r.ok){closeModal('manual-modal');toast('Opgave lagt i poolen — endnu ikke booket','✓');await loadAll();}else if(r)toast(r.error||'Kunne ikke oprette','❌');}
-async function loadLogs(){var l=await api('/api/time/all');if(!l)return;document.getElementById('log-body').innerHTML=l.map(function(x){var m=+x.duration_minutes||0;return '<tr><td>'+esc(x.user_name)+'</td><td>'+esc(x.task_name)+'</td><td>'+esc(x.job_name)+'</td><td>'+esc((x.started_at||'').replace('T',' ').slice(0,16))+'</td><td>'+esc((x.stopped_at||'').replace('T',' ').slice(0,16))+'</td><td>'+Math.floor(m/60)+'t '+m%60+'m</td></tr>';}).join('')||'<tr><td colspan="6" style="padding:16px;text-align:center" class="muted">Ingen timer endnu.</td></tr>';}
-async function syncNow(){var b=document.getElementById('sync-btn');b.disabled=true;b.textContent='⏳ Synker';var log=document.getElementById('sync-log');log.classList.add('show');log.innerHTML='';function addLog(m,c){var d=document.createElement('div');d.className=c||'info';d.textContent='['+new Date().toLocaleTimeString('da-DK')+'] '+m;log.appendChild(d);}addLog('Importerer kun Task-data fra JobTread. Ingen bookinger ændres.','info');var r=await api('/api/sync',{method:'POST'});if(r&&r.ok){addLog(r.count+' Tasks opdateret. Din plan er urørt.','ok');document.getElementById('sync-ind').textContent='Synket '+new Date().toLocaleTimeString('da-DK');toast('Synk færdig','✅');await loadAll();}else{addLog((r&&r.error)||'Synk fejlede','err');}b.disabled=false;b.textContent='⚡ Synk JT';}
-async function clearPlan(){if(!confirm('Ryd ALLE manuelle bookinger? JobTread Tasks og manuelle Tasks bliver liggende i poolen.'))return;var r=await api('/api/plan',{method:'DELETE'});if(r&&r.ok){toast('Planen er ryddet. Opgavepoolen er intakt.','🧹');await loadAll();}}
-function scrollToWeek(wk){var h=document.querySelector('#cap-head th[data-week-key="'+wk+'"]');if(h)h.scrollIntoView({behavior:'smooth',block:'nearest',inline:'start'});}async function loadAll(){var r=await Promise.all([api('/api/users'),api('/api/tasks'),api('/api/assignments'),api('/api/dashboard')]);users=r[0]||[];tasks=r[1]||[];bookings=r[2]||[];renderStats(r[3]||{});try{renderPlan();}catch(e){console.error('Daglig plan render-fejl',e);toast('Fejl ved Daglig plan','❌');}try{renderCapacity();}catch(e){console.error('Kapacitet render-fejl',e);toast('Fejl ved Kapacitet','❌');}try{renderPeople();}catch(e){console.error('Hold & vendors render-fejl',e);toast('Fejl ved Hold & vendors','❌');}if(document.getElementById('page-logs').classList.contains('active'))loadLogs();}function renderStats(d){document.getElementById('stats').innerHTML=[['Tasks i pool',d.totalTasks||0,'JobTread + manuelle'],['Planlagte Tasks',d.assigned||0,'har mindst én booking'],['Bookinger',d.bookings||0,'uafhængige planrækker'],['Ikke planlagt',d.unassigned||0,'klar i pool'],['Interne',d.employees||0,'medarbejdere'],['Vendors',d.vendors||0,'undergrupper']].map(function(x){return '<div class="stat"><div class="stat-label">'+x[0]+'</div><div class="stat-value">'+x[1]+'</div><div class="stat-sub">'+x[2]+'</div></div>';}).join('');}
-function bind(){document.querySelectorAll('.tab').forEach(function(b){b.addEventListener('click',function(){document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});b.classList.add('active');document.getElementById('page-'+b.dataset.page).classList.add('active');if(b.dataset.page==='logs')loadLogs();});});document.getElementById('logout-btn').onclick=logout;document.getElementById('employee-link').onclick=function(){window.location.href='/employee';};document.getElementById('sync-btn').onclick=syncNow;document.getElementById('clear-plan-btn').onclick=clearPlan;document.getElementById('plan-prev').onclick=function(){planOffset--;renderPlan();};document.getElementById('plan-next').onclick=function(){planOffset++;renderPlan();};document.getElementById('plan-today').onclick=function(){planOffset=0;renderPlan();};document.getElementById('cap-today').onclick=function(){scrollToWeek(key(mon(new Date())));};['plan','cap'].forEach(function(x){document.getElementById(x+'-search').addEventListener('input',function(){renderPool(x==='plan'?'plan':'capacity');});});document.getElementById('new-user-btn').onclick=function(){openUser();};document.getElementById('new-vendor-group-btn').onclick=function(){var g=prompt('Navn på vendor-gruppen, fx AJB Gruppen APS');if(g&&g.trim())openUser(null,{vendorGroup:g.trim()});};document.getElementById('user-can-login').onchange=setLoginFields;document.getElementById('close-assign').onclick=function(){closeModal('assign-modal');};document.getElementById('save-assignment').onclick=saveAssignment;document.getElementById('delete-assignment').onclick=function(){if(assignCtx&&assignCtx.bookingId)removeBooking(assignCtx.bookingId);};document.getElementById('close-manual').onclick=function(){closeModal('manual-modal');};document.getElementById('save-manual').onclick=saveManual;document.getElementById('close-user').onclick=function(){closeModal('user-modal');};document.getElementById('save-user').onclick=saveUser;document.getElementById('deactivate-user').onclick=deactivateUser;['assign-modal','manual-modal','user-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});document.addEventListener('dragstart',function(e){var task=e.target.closest('.draggable-task'),booking=e.target.closest('.draggable-assignment,.cap-job');if(task){beginDrag(e,{kind:'task',taskId:task.dataset.taskId});task.classList.add('dragging');}else if(booking){beginDrag(e,{kind:'booking',bookingId:booking.dataset.bookingId});booking.classList.add('dragging');}});document.addEventListener('dragend',function(){dragPayload=null;document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});});document.addEventListener('dragover',function(e){var z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.add('over');}});document.addEventListener('dragleave',function(e){var z=e.target.closest('[data-drop]');if(z&&!z.contains(e.relatedTarget))z.classList.remove('over');});document.addEventListener('drop',function(e){var z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.remove('over');handleDrop(e,z);}});document.addEventListener('click',function(e){var a=e.target.closest('[data-action]');if(!a)return;var act=a.dataset.action;if(act==='manual')openManual();if(act==='pool-filter'){filters[a.dataset.scope][a.dataset.kind]=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}if(act==='team-filter'){filters[a.dataset.scope].team=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}if(act==='toggle-vendor'){var g=a.dataset.group;vendorExpanded[g]=vendorExpanded[g]===false?true:false;renderPlan();renderCapacity();}if(act==='add-subgroup')openUser(null,{vendorGroup:a.dataset.group});if(act==='scroll-week')scrollToWeek(a.dataset.week);if(act==='add-booking')openAssign({userId:+a.dataset.userId,date:a.dataset.date});if(act==='remove-booking'){e.stopPropagation();removeBooking(+a.dataset.bookingId);}if(act==='edit-user')openUser(+a.dataset.userId);});document.addEventListener('dblclick',function(e){var t=e.target.closest('.draggable-task');if(t)openAssign({taskId:t.dataset.taskId,date:iso(new Date())});});document.addEventListener('click',function(e){if(Date.now()<suppressClickUntil)return;var b=e.target.closest('.draggable-assignment,.cap-job');if(b&&!e.target.closest('.assign-x'))openAssign({bookingId:+b.dataset.bookingId});});}
-bind();loadAll();
+
+// BIND ALL EVENTS
+function bind(){
+  // Tabs
+  document.querySelectorAll('.tab').forEach(function(b){b.addEventListener('click',function(){document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});b.classList.add('active');document.getElementById('page-'+b.dataset.page).classList.add('active');if(b.dataset.page==='logs')loadLogs();if(b.dataset.page==='capacity')setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);});});
+  // Nav
+  document.getElementById('logout-btn').onclick=logout;
+  document.getElementById('employee-link').onclick=function(){window.location.href='/employee';};
+  document.getElementById('sync-btn').onclick=syncNow;
+  document.getElementById('clear-plan-btn').onclick=clearPlan;
+  document.getElementById('plan-prev').onclick=function(){planOffset--;renderPlan();};
+  document.getElementById('plan-next').onclick=function(){planOffset++;renderPlan();};
+  document.getElementById('plan-today').onclick=function(){planOffset=0;renderPlan();};
+  document.getElementById('cap-today').onclick=function(){scrollToWeek(weekKey(new Date()));};
+  // Search
+  ['plan-search','cap-search'].forEach(function(id){document.getElementById(id).addEventListener('input',function(){renderPool(id==='plan-search'?'plan':'capacity');});});
+  // People
+  document.getElementById('new-user-btn').onclick=function(){openUser();};
+  document.getElementById('new-vendor-group-btn').onclick=function(){var g=prompt('Navn på vendor-gruppen:');if(g&&g.trim())openUser(null,{vendorGroup:g.trim()});};
+  document.getElementById('user-can-login').onchange=setLoginFields;
+  // Assign modal
+  document.getElementById('close-assign').onclick=function(){closeModal('assign-modal');};
+  document.getElementById('save-assignment').onclick=saveAssignment;
+  document.getElementById('delete-assignment').onclick=function(){if(assignCtx&&assignCtx.bookingId)removeBooking(assignCtx.bookingId);};
+  // Manual modal
+  document.getElementById('close-manual').onclick=function(){closeModal('manual-modal');};
+  document.getElementById('save-manual').onclick=saveManual;
+  // User modal
+  document.getElementById('close-user').onclick=function(){closeModal('user-modal');};
+  document.getElementById('save-user').onclick=saveUser;
+  document.getElementById('deactivate-user').onclick=deactivateUser;
+  // Quick pop
+  document.getElementById('qp-cancel').onclick=closeQuickPop;
+  document.getElementById('qp-save').onclick=saveQuickPop;
+  // Enter in quick pop
+  document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
+  // Modal backdrop
+  ['assign-modal','manual-modal','user-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+
+  // DRAG START
+  document.addEventListener('dragstart',function(e){
+    var task=e.target.closest('.draggable-task');
+    var booking=e.target.closest('.draggable-assignment,.cap-job');
+    if(task&&!e.target.closest('[data-action]')){beginDrag(e,{kind:'task',taskId:task.dataset.taskId});task.classList.add('dragging');}
+    else if(booking&&!e.target.closest('[data-action]')){beginDrag(e,{kind:'booking',bookingId:booking.dataset.bookingId});booking.classList.add('dragging');}
+  });
+  document.addEventListener('dragend',function(){dragPayload=null;document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});});
+  document.addEventListener('dragover',function(e){var z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.add('over');}});
+  document.addEventListener('dragleave',function(e){var z=e.target.closest('[data-drop]');if(z&&!z.contains(e.relatedTarget))z.classList.remove('over');});
+  document.addEventListener('drop',function(e){var z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.remove('over');handleDrop(e,z);}});
+
+  // CLICK DELEGATION
+  document.addEventListener('click',function(e){
+    if(Date.now()<suppressClick)return;
+    var a=e.target.closest('[data-action]');
+    if(a){
+      var act=a.dataset.action;
+      if(act==='manual')openManual();
+      if(act==='pool-filter'){filters[a.dataset.scope][a.dataset.kind]=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}
+      if(act==='team-filter'){filters[a.dataset.scope].team=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}
+      if(act==='toggle-vendor'){var g=a.dataset.group;vendorExpanded[g]=vendorExpanded[g]===false;renderPlan();renderCapacity();}
+      if(act==='add-subgroup')openUser(null,{vendorGroup:a.dataset.group});
+      if(act==='scroll-week')scrollToWeek(a.dataset.week);
+      if(act==='add-booking')openAssign({userId:+a.dataset.userId,date:a.dataset.date});
+      if(act==='remove-booking'){e.stopPropagation();removeBooking(+a.dataset.bookingId);}
+      if(act==='edit-user')openUser(+a.dataset.userId);
+      return;
+    }
+    // Click on assignment pill → open full edit modal
+    var b=e.target.closest('.draggable-assignment,.cap-job');
+    if(b&&!e.target.closest('.assign-x,.cap-job-x'))openAssign({bookingId:+b.dataset.bookingId});
+    // Dblclick on task card → open assign
+    var t=e.target.closest('.draggable-task');
+    if(t&&e.detail>=2)openAssign({taskId:t.dataset.taskId,date:iso(new Date())});
+  });
+}
+
+bind();
+loadAll();
 })();
-</script></body></html>
+</script>
+</body>
+</html>
