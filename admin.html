@@ -149,34 +149,34 @@ button,input,select{font:inherit}
 .capacity-board th.today-th{background:var(--steel)}
 .capacity-board td{border-bottom:1px solid var(--border2);vertical-align:top}
 .capacity-board .staff-cell{min-width:185px}
-.cap-cell{padding:4px;min-width:120px}
+.cap-cell{padding:4px;min-width:120px;vertical-align:top}
 .cap-drop{min-height:68px;border-radius:6px;border:1px dashed transparent;padding:3px;transition:.14s}
 .cap-drop.over{background:#EFF6FF;border-color:var(--blue)}
 
 /* CAP SUMMARY ROW */
-.cap-num{text-align:center;font-size:10px;font-weight:800;padding:3px 4px;border-radius:4px;margin-bottom:3px}
-.cap-free{background:#F0FDF4;color:#15803D}
-.cap-ok{background:#DBEAFE;color:#1D4ED8}
-.cap-warn{background:#FEF9C3;color:#92570A}
-.cap-over{background:#FEF2F2;color:#B91C1C}
+.cap-num{text-align:center;font-size:10px;font-weight:700;padding:2px 4px;margin-bottom:2px;color:var(--muted)}
+.cap-free{color:var(--ghost)}
+.cap-ok{color:var(--navy)}
+.cap-warn{color:#B45309}
+.cap-over{color:#B91C1C;font-weight:800}
 
 /* CAP BAR */
-.cap-bar-wrap{height:4px;background:var(--border2);border-radius:99px;overflow:hidden;margin:2px 0 3px}
+.cap-bar-wrap{height:3px;background:var(--border2);border-radius:99px;overflow:hidden;margin:2px 0 4px}
 .cap-bar{height:100%;border-radius:99px;transition:width .3s}
 
 /* CAP JOB PILLS */
-.cap-job{font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:grab;padding:3px 5px;border-radius:4px;margin-top:2px;font-weight:600;display:flex;align-items:center;gap:3px}
-.cap-job.lay{background:var(--lay-bg);color:var(--lay-fg)}
-.cap-job.sand{background:var(--sand-bg);color:var(--sand-fg)}
-.cap-job.paint{background:var(--paint-bg);color:var(--paint-fg)}
-.cap-job.sub{background:var(--sub-bg);color:var(--sub-fg)}
-.cap-job.other{background:var(--other-bg);color:var(--other-fg)}
+.cap-job{font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:grab;padding:3px 6px;border-radius:4px;margin-top:2px;font-weight:600;display:flex;align-items:center;gap:3px;background:#F1F5F9;color:var(--ink);border-left:3px solid var(--border)}
+.cap-job.lay{border-left-color:var(--lay-bar)}
+.cap-job.sand{border-left-color:var(--sand-bar)}
+.cap-job.paint{border-left-color:var(--paint-bar)}
+.cap-job.sub{border-left-color:var(--sub-bar)}
+.cap-job.other{border-left-color:var(--other-bar)}
 .cap-job.dragging{opacity:.35}
 .cap-job-name{flex:1;overflow:hidden;text-overflow:ellipsis}
 .cap-job-days{font-size:8px;opacity:.75;flex-shrink:0;background:rgba(0,0,0,.08);padding:1px 3px;border-radius:3px}
 .cap-job-x{border:0;background:transparent;cursor:pointer;font-size:11px;line-height:1;color:inherit;opacity:.5;padding:0;flex-shrink:0}
 .cap-job-x:hover{opacity:1}
-.group-summary-cell{text-align:center;font-size:9px;padding:3px 4px;color:var(--muted);background:#F8FAFF}
+.group-summary-cell{text-align:center;font-size:9px;padding:3px 4px;color:var(--muted);background:var(--ice)}
 
 /* PEOPLE */
 .people{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:9px}
@@ -713,14 +713,14 @@ function renderCapacity(){
       var pct=cap?Math.min(booked/cap*100,100):0;
       var cc=capClass(booked,cap);
       var items=bookings.filter(function(b){return +b.user_id===+u.id&&workDates(b).some(function(ds){var q=date(ds);return q>=m&&q<=end;});});
-      var pills=items.slice(0,3).map(function(b){
+      var pills=items.map(function(b){
         return '<div class="cap-job draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'" title="'+esc(b.job_name||b.task_name||'')+'">'+
           '<span class="cap-job-name">'+esc(b.job_name||b.task_name||'')+'</span>'+
           '<span class="cap-job-days">'+esc(b.days)+'d</span>'+
           '<button class="cap-job-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button>'+
           '</div>';
       }).join('');
-      if(items.length>3)pills+='<div style="font-size:8px;color:var(--muted);text-align:center">+'+( items.length-3)+' mere</div>';
+
       r+='<td class="cap-cell">'+
         '<div class="cap-drop '+(items.length?cc:'cap-free')+' draggable-task-target" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'">'+
         '<div class="cap-num '+cc+'">'+booked.toFixed(1)+' / '+cap+' d</div>'+
