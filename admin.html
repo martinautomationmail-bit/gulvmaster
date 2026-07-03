@@ -141,6 +141,8 @@ button,input,select{font:inherit}
 .day-load.overload{color:#B91C1C;font-weight:800}
 .add-small{width:100%;border:1px dashed var(--border);background:#fff;color:var(--ghost);border-radius:4px;font-size:9px;padding:2px;cursor:pointer;margin-top:2px}
 .add-small:hover{border-color:var(--blue);color:var(--blue)}
+.cap-add-btn{display:block;width:100%;margin-top:4px;border:1px dashed var(--border);background:transparent;color:var(--ghost);border-radius:5px;font-size:10px;font-weight:600;padding:4px 2px;cursor:pointer;text-align:center;transition:.15s}
+.cap-add-btn:hover{border-color:var(--blue);color:var(--blue);background:#EFF6FF}
 
 /* CAPACITY BOARD */
 .capacity-board{min-width:max-content;width:auto;border-collapse:collapse}
@@ -308,6 +310,7 @@ button,input,select{font:inherit}
       <div class="page-sub">52 ugers overblik · Scroll vandret · Træk opgaver direkte på uger · Interne medarbejdere altid øverst</div>
     </div>
   </div>
+  <div class="stats" id="cap-stats"></div>
   <div class="board-layout">
     <aside class="panel">
       <div class="panel-head">
@@ -700,6 +703,21 @@ function renderCapacity(){
   weeks.forEach(function(m){var mk=m.getFullYear()+'-'+m.getMonth();if(!months[mk]){months[mk]=1;mBtns.push({m:m,label:m.toLocaleDateString('da-DK',{month:'short',year:'numeric'})});}});
   var curMon=new Date().toLocaleDateString('da-DK',{month:'short',year:'numeric'});
   document.getElementById('cap-months').innerHTML=mBtns.map(function(x){return '<button class="month-btn'+(x.label===curMon?' active':'')+'" data-action="scroll-week" data-week="'+weekKey(x.m)+'">'+esc(x.label)+'</button>';}).join('');
+  // Render capacity stats
+  var capEl=document.getElementById('cap-stats');
+  if(capEl){
+    var allWorkers=users.filter(function(u){return u.active&&u.role==='employee';});
+    var w4=capacityWeeks().slice(0,4);
+    var totalCap=allWorkers.reduce(function(n,u){return n+(+u.weekly_capacity||5)*4;},0);
+    var totalBooked=w4.reduce(function(n,wk){return n+allWorkers.reduce(function(n2,u){return n2+weeklyLoad(u.id,wk);},0);},0);
+    var pct=totalCap>0?Math.round(totalBooked/totalCap*100):0;
+    var over=0;allWorkers.forEach(function(u){w4.forEach(function(wk){if(weeklyLoad(u.id,wk)>(+u.weekly_capacity||5))over++;});});
+    capEl.innerHTML=
+      '<div class="stat"><div class="stat-label">Kapacitet (4 uger)</div><div class="stat-value">'+totalCap+'</div><div class="stat-sub">mandage</div></div>'+
+      '<div class="stat"><div class="stat-label">Bookede mandage</div><div class="stat-value">'+totalBooked.toFixed(1)+'</div><div class="stat-sub">'+( totalCap-totalBooked).toFixed(1)+' fri</div></div>'+
+      '<div class="stat"><div class="stat-label">Udnyttelse</div><div class="stat-value'+(pct>80?' style="color:#B45309"':' style="color:#16A34A"')+'">'+pct+'%</div><div class="stat-sub">Mål &lt;80%</div></div>'+
+      '<div class="stat"><div class="stat-label">Sidst synket</div><div class="stat-value" style="font-size:12px">'+document.getElementById('sync-ind').textContent+'</div><div class="stat-sub">'+(over?over+' overbooket':'OK ✓')+'</div></div>';
+  }
   // Body
   var grouped=teamList('capacity'),html='';
   function row(u){
@@ -720,10 +738,11 @@ function renderCapacity(){
           '<button class="cap-job-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button>'+
           '</div>';
       }).join('');
+      pills+='<button class="cap-add-btn" data-action="add-booking" data-user-id="'+u.id+'" data-date="'+iso(m)+'">+ tilføj</button>';
 
       r+='<td class="cap-cell">'+
         '<div class="cap-drop '+(items.length?cc:'cap-free')+' draggable-task-target" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'">'+
-        '<div class="cap-num '+cc+'">'+booked.toFixed(1)+' / '+cap+' d</div>'+
+        '<div class="cap-num '+(booked>0?cc:'cap-free')+'">'+( booked>0?booked.toFixed(1)+' / '+cap+' d':'✓ Ledig')+'</div>'+
         '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+pct+'%;background:'+barColor(booked,cap)+'"></div></div>'+
         pills+
         '</div></td>';
