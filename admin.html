@@ -644,74 +644,95 @@ function renderPlan(){
   function row(u){
     var c=u.color||'#2563EB';
 
-    // PASS 1: beregn spans og skipDays FØR rendering
-    var skipDays={};
-    var dayBookings={};
-    days.forEach(function(d){ dayBookings[iso(d)]=[]; });
+    // PASS 1: For each day, find bookings that START that day + calculate span
+    // A booking with days=3 starting Monday spans Mon+Tue+Wed
+    // skipSet marks days that are "inside" a span so we don't render a <td> for them
+    var skipSet={};
+    var cellData={}; // ds -> {bookings:[{b,span}], continued:[b]}
+    days.forEach(function(d){ cellData[iso(d)]={starts:[],cont:[]}; });
 
     days.forEach(function(d,di){
       var ds=iso(d);
-      if(skipDays[ds]) return;
-
-      // Bookinger der starter i dag
+      // bookings starting exactly on this day
       bookings.filter(function(b){
-        return +b.user_id===+u.id && (b.start_date||'No').slice(0,10)===ds;
+        return +b.user_id===+u.id && String(b.start_date||'').slice(0,10)===ds;
       }).forEach(function(b){
-        var wd=workDates(b);
+        // how many consecutive visible days does this span?
+        var ndays=Math.max(1,Math.round(+b.days||1));
         var span=0;
-        for(var i=di;i<days.length;i++){
-          if(wd.indexOf(iso(days[i]))>-1) span++;
-          else break;
+        for(var i=di;i<days.length&&span<ndays;i++){
+          var dd=iso(days[i]);
+          // skip weekends
+          var dow=days[i].getDay();
+          if(dow===0||dow===6){ndays++;continue;}
+          span++;
         }
-        span=Math.max(1,span);
-        for(var i=1;i<span;i++){
-          if(di+i<days.length) skipDays[iso(days[di+i])]=b.id;
+        span=Math.min(span,days.length-di);
+        // mark inner days as skip
+        var counted=0;
+        for(var i=di+1;i<days.length&&counted<span-1;i++){
+          var dow2=days[i].getDay();
+          if(dow2===0||dow2===6)continue;
+          skipSet[iso(days[i])]=true;
+          counted++;
         }
-        dayBookings[ds].push({b:b,span:span,cont:false});
+        cellData[ds].starts.push({b:b,span:span});
       });
-
-      // Bookinger der startede FØR synlig uge men dækker denne dag
+      // bookings that started before this week but cover today (only on first visible day)
       if(di===0){
         bookings.filter(function(b){
           return +b.user_id===+u.id
-            && (b.start_date||'No').slice(0,10)<ds
+            && String(b.start_date||'').slice(0,10)<ds
             && workDates(b).indexOf(ds)>-1;
-        }).forEach(function(b){
-          dayBookings[ds].push({b:b,span:1,cont:true});
-        });
+        }).forEach(function(b){ cellData[ds].cont.push(b); });
       }
     });
 
-    // PASS 2: render — hop over skipDays
+    // PASS 2: render — one <td> per visible day, skip days inside a span
     var cells='<td class="staff-cell"><div class="staff-line">'+
       '<div class="avatar" style="background:'+c+'22;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</div>'+
-      '<div><div class="staff-name">'+esc(u.name)+'</div><div class="staff-role">'+(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbej.'))+' · '+(+u.weekly_capacity||5)+' d</div></div>'+
+      '<div><div class="staff-name">'+esc(u.name)+'</div>'+
+      '<div class="staff-role">'+(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbej.'))+' · '+(+u.weekly_capacity||5)+' d</div></div>'+
       '</div></td>';
 
     days.forEach(function(d,di){
       var ds=iso(d);
-      if(skipDays[ds]) return; // denne dag er del af en colspan — ingen <td>
+      // Skip weekend columns
+      if(d.getDay()===0||d.getDay()===6) return;
+      // Skip days that are inside a multi-day span
+      if(skipSet[ds]) return;
 
-      var cap=(+u.weekly_capacity||5)/5;
       var booked=dailyLoad(u.id,ds);
-      var bkgs=dayBookings[ds]||[];
-      var colspan=1;
-      if(bkgs.length===1 && !bkgs[0].cont && bkgs[0].span>1) colspan=bkgs[0].span;
+      var cap=(+u.weekly_capacity||5)/5;
+      var cd=cellData[ds]||{starts:[],cont:[]};
 
-      var pillsHtml='';
-      bkgs.forEach(function(item){
-        pillsHtml+=item.cont?assignPillContinue(item.b):assignPillSpan(item.b,item.span);
+      // colspan = span of the FIRST starting booking only (if no others)
+      // If multiple bookings start same day: no colspan, they stack
+      var colspan=1;
+      if(cd.starts.length===1 && cd.cont.length===0 && cd.starts[0].span>1){
+        colspan=cd.starts[0].span;
+      }
+
+      var pills='';
+      cd.cont.forEach(function(b){
+        pills+=assignPillContinue(b);
+      });
+      cd.starts.forEach(function(item){
+        pills+=assignPillSpan(item.b,item.span);
       });
 
-      var free=bkgs.length===0?'<div class="free-slot">✓ Ledig</div>':'';
-      var colAttr=colspan>1?' colspan="'+colspan+'"':'';      var borderStyle=colspan>1?'border-left:2px solid var(--blue);border-right:2px solid var(--blue);':'';
-      cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'"'+ colAttr+' style="min-width:128px;'+borderStyle+'">'+
+      var free=cd.starts.length===0&&cd.cont.length===0?'<div class="free-slot">✓ Ledig</div>':'';
+      var colAttr=colspan>1?' colspan="'+colspan+'"':'';
+      var highlight=colspan>1?'background:linear-gradient(90deg,rgba(37,99,235,.06),transparent);border-left:3px solid var(--blue);':'';
+
+      cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'"'+colAttr+' style="'+highlight+'">'+
         '<div class="drop-zone" data-drop="day" data-user-id="'+u.id+'" data-date="'+ds+'">'+
-        free+pillsHtml+
+        free+pills+
         '<button class="add-small" data-action="add-booking" data-user-id="'+u.id+'" data-date="'+ds+'">+ Tilføj</button>'+
-        '<div class="day-load'+(booked>cap?' overload':'')+'">'+booked.toFixed(1)+'/'+cap.toFixed(1)+'d</div>'+
+        '<div class="day-load'+(booked>cap?' overload':'')+' ">'+booked.toFixed(1)+'/'+cap.toFixed(1)+'d</div>'+
         '</div></td>';
     });
+
     return '<tr>'+cells+'</tr>';
   }
   grouped.internal.forEach(function(u){html+=row(u);});
