@@ -759,6 +759,38 @@ async function syncFromJT() {
       cur3 = next;
     }
 
+    // ── PASS 4: kundetelefon (best effort) ──
+    // JobTreads nøjagtige felt-navn for kundens telefonnummer kan variere efter
+    // jeres opsætning (customer/contact/account). Dette forsøg er isoleret i sit
+    // eget try/catch, så en evt. fejl her ALDRIG kan vælte resten af synken —
+    // den logges bare, og eksisterende/manuelt indtastede numre bevares.
+    const jobPhoneMap = new Map();
+    try {
+      let cur4;
+      let p4 = 0;
+      while (p4 < 20) {
+        const args = { size: 50 };
+        if (cur4) args.page = cur4;
+
+        const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
+          jobs: { $: args, nextPage: {}, nodes: { id: {}, customer: { name: {}, phone: {} } } }
+        }}}, 'Kundetelefon s.' + (p4 + 1));
+
+        const conn = d?.organization?.jobs || d?.query?.organization?.jobs || {};
+        const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
+        for (const j of nodes) {
+          const phone = j?.customer?.phone;
+          if (j?.id && phone) jobPhoneMap.set(j.id, String(phone).trim());
+        }
+        p4++;
+        const next = conn.nextPage;
+        if (!next || next === '') break;
+        cur4 = next;
+      }
+    } catch (phoneError) {
+      console.error('Kundetelefon-opslag fra JobTread fejlede (feltnavnet passer muligvis ikke til jeres opsætning):', phoneError.message);
+    }
+
     // ── UPSERT: kun jt_tasks — rører ALDRIG planning_bookings ──
     const client = await pool.connect();
     try {
@@ -769,19 +801,22 @@ async function syncFromJT() {
         const customerName = String(ji.name || '')
           .replace(/\s*[-\u2013]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i, '')
           .trim();
+        const phoneFromJT = jobId ? (jobPhoneMap.get(jobId) || null) : null;
 
         await client.query(`
-          INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()},'jobtread')
+          INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()},'jobtread')
           ON CONFLICT (id) DO UPDATE SET
             name=EXCLUDED.name, job_id=EXCLUDED.job_id, job_name=EXCLUDED.job_name,
-            job_address=EXCLUDED.job_address, start_date=EXCLUDED.start_date,
+            job_address=EXCLUDED.job_address,
+            customer_phone=COALESCE(EXCLUDED.customer_phone, jt_tasks.customer_phone),
+            start_date=EXCLUDED.start_date,
             end_date=EXCLUDED.end_date, type_guess=EXCLUDED.type_guess,
             raw_assignee_name=EXCLUDED.raw_assignee_name, jt_url=EXCLUDED.jt_url,
             synced_at=EXCLUDED.synced_at, source='jobtread'
         `, [
           task.id, task.name || '', jobId,
-          customerName || ji.name || '', ji.address || '',
+          customerName || ji.name || '', ji.address || '', phoneFromJT,
           task.startDate || null, task.endDate || task.startDate || null,
           guessType(task.name), assigneeMap.get(task.id) || null,
           jobId ? `https://app.jobtread.com/jobs/${jobId}/schedule` : null
