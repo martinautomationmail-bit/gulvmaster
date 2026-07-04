@@ -31,9 +31,9 @@ input:focus{border-color:#2563EB;background:#FAFBFF}
 <body>
 <div class="card">
   <div class="logo">
-    <div class="logo-icon">🪵</div>
+    <div class="logo-icon" id="brand-logo">🪵</div>
     <div>
-      <div class="logo-text">Gulv Master</div>
+      <div class="logo-text" id="brand-name">Gulv Master Enterprise ApS</div>
       <div class="logo-sub">Enterprise Platform</div>
     </div>
   </div>
@@ -54,6 +54,15 @@ input:focus{border-color:#2563EB;background:#FAFBFF}
 <script>
 const API = '';
 document.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+
+(async function loadBranding(){
+  try{
+    const r = await fetch(`${API}/api/settings`);
+    const d = await r.json();
+    if (d.company_name) document.getElementById('brand-name').textContent = d.company_name;
+    if (d.logo_url) document.getElementById('brand-logo').innerHTML = `<img src="${d.logo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`;
+  }catch(e){}
+})();
 
 // Auto-redirect if already logged in
 const token = localStorage.getItem('gm_token');

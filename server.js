@@ -51,7 +51,8 @@ if (!JWT_SECRET) {
 }
 
 app.disable('x-powered-by');
-app.use(express.json({ limit: '1mb' }));
+// 12mb: rummer base64 logo/avatar-billeder sendt som data-URI fra admin-UI'et.
+app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ extended: false }));
 
 const upload = multer({
@@ -176,6 +177,53 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_planning_bookings_user_start ON planning_bookings(user_id, start_date);
     CREATE INDEX IF NOT EXISTS idx_planning_bookings_task ON planning_bookings(task_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_source_start ON jt_tasks(source, start_date);
+  `);
+
+  // ── v2.1 tilføjelser: logo/avatar, opgavebeskrivelse, filer, ugenoter,
+  // og uafhængige "dage" for Daglig plan vs. Kapacitetsboard.
+  // ALTER ... ADD COLUMN IF NOT EXISTS er sikkert at køre igen og igen,
+  // så eksisterende databaser i produktion opgraderes uden datatab.
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS description TEXT;
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS capacity_days DOUBLE PRECISION;
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS job_files (
+      id SERIAL PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      category TEXT DEFAULT 'other',
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_files_task ON job_files(task_id);
+
+    CREATE TABLE IF NOT EXISTS library_files (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      category TEXT DEFAULT 'guide',
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
+    CREATE TABLE IF NOT EXISTS weekly_notes (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      week_key TEXT NOT NULL,
+      note TEXT,
+      updated_at TEXT DEFAULT ${nowTextSQL()},
+      UNIQUE(user_id, week_key)
+    );
+  `);
+
+  await pool.query(`
+    INSERT INTO app_settings (key, value) VALUES ('company_name', 'Gulv Master Enterprise ApS')
+    ON CONFLICT (key) DO NOTHING;
   `);
 }
 
@@ -420,19 +468,44 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
     return res.status(401).json({ error: 'Forkert email eller adgangskode' });
   }
   const token = jwt.sign({ id: user.id, name: user.name, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email, color: user.color, initials: user.initials } });
+  res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email, color: user.color, initials: user.initials, avatar_url: user.avatar_url } });
 }));
 
 app.get('/api/auth/me', auth, asyncRoute(async (req, res) => {
-  const user = await pgOne('SELECT id,name,email,role,color,initials FROM users WHERE id=$1', [req.user.id]);
+  const user = await pgOne('SELECT id,name,email,role,color,initials,avatar_url FROM users WHERE id=$1', [req.user.id]);
   if (!user) return res.status(401).json({ error: 'Bruger ikke fundet' });
   res.json(user);
+}));
+
+// ── VIRKSOMHEDSPROFIL (navn + logo til login-side og nav) ────
+app.get('/api/settings', asyncRoute(async (req, res) => {
+  const result = await pool.query('SELECT key,value FROM app_settings');
+  const map = {};
+  result.rows.forEach(row => { map[row.key] = row.value; });
+  res.json({
+    company_name: map.company_name || 'Gulv Master Enterprise ApS',
+    logo_url: map.logo_url || null
+  });
+}));
+
+app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const entries = [];
+  if (body.company_name !== undefined) entries.push(['company_name', String(body.company_name).trim().slice(0, 200)]);
+  if (body.logo_url !== undefined) entries.push(['logo_url', body.logo_url ? String(body.logo_url).slice(0, 3000000) : null]);
+  for (const [key, value] of entries) {
+    await pool.query(`
+      INSERT INTO app_settings (key, value) VALUES ($1,$2)
+      ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value
+    `, [key, value]);
+  }
+  res.json({ ok: true });
 }));
 
 // ── USERS / WORKFORCE ───────────────────────────────────────
 app.get('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await pool.query(`
-    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,COALESCE(can_login,1) AS can_login
+    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login
     FROM users
     ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END,
              CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END,
@@ -457,10 +530,10 @@ app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
 
   try {
     const result = await pool.query(`
-      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING id
-    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0]);
+    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null]);
     res.json({ ok: true, id: result.rows[0].id });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
@@ -487,14 +560,15 @@ app.put('/api/users/:id', auth, adminOnly, asyncRoute(async (req, res) => {
     vendor_group: body.vendor_group !== undefined ? body.vendor_group : current.vendor_group,
     trade: body.trade !== undefined ? body.trade : current.trade,
     weekly_capacity: body.weekly_capacity !== undefined ? Math.max(0, Number(body.weekly_capacity) || 0) : (Number(current.weekly_capacity) || 5),
-    can_login: canLogin
+    can_login: canLogin,
+    avatar_url: body.avatar_url !== undefined ? (body.avatar_url || null) : current.avatar_url
   };
   if (canLogin && !next.email) return res.status(400).json({ error: 'Email mangler for login-bruger' });
   try {
     await pool.query(`
-      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13
-      WHERE id=$14
-    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, id]);
+      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14
+      WHERE id=$15
+    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, id]);
     res.json({ ok: true });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
@@ -802,6 +876,152 @@ app.delete('/api/tasks/manual/:id', auth, adminOnly, asyncRoute(async (req, res)
   }
 }));
 
+// Bulk edit (masseredigering i Opgaveliste) — sætter fx fag på flere opgaver ad gangen.
+// VIGTIGT: denne route skal stå FØR '/api/tasks/:id', ellers vil Express matche
+// "bulk" som et :id-parameter og masseredigering vil aldrig blive ramt.
+app.put('/api/tasks/bulk', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
+  const patch = body.patch || {};
+  if (!ids.length) return res.status(400).json({ error: 'Ingen opgaver valgt' });
+  const sets = [];
+  const values = [];
+  if (patch.type_guess !== undefined) { values.push(cleanTaskType(patch.type_guess)); sets.push(`type_guess=$${values.length}`); }
+  if (patch.job_address !== undefined) { values.push(String(patch.job_address).trim()); sets.push(`job_address=$${values.length}`); }
+  if (!sets.length) return res.status(400).json({ error: 'Intet at opdatere' });
+  values.push(ids);
+  await pool.query(`UPDATE jt_tasks SET ${sets.join(', ')} WHERE id = ANY($${values.length})`, values);
+  res.json({ ok: true, updated: ids.length });
+}));
+
+// General task edit (Opgaveliste) — works for both JobTread and manual tasks.
+app.put('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
+  const body = req.body || {};
+  const next = {
+    job_name: body.job_name !== undefined ? String(body.job_name).trim() : current.job_name,
+    name: body.name !== undefined ? String(body.name).trim() : current.name,
+    job_address: body.job_address !== undefined ? String(body.job_address).trim() : current.job_address,
+    type_guess: body.type_guess !== undefined ? cleanTaskType(body.type_guess) : current.type_guess,
+    description: body.description !== undefined ? String(body.description).slice(0, 5000) : current.description,
+    customer_phone: body.customer_phone !== undefined ? String(body.customer_phone).trim().slice(0, 60) : current.customer_phone
+  };
+  await pool.query(`
+    UPDATE jt_tasks SET job_name=$1,name=$2,job_address=$3,type_guess=$4,description=$5,customer_phone=$6
+    WHERE id=$7
+  `, [next.job_name, next.name, next.job_address, next.type_guess, next.description, next.customer_phone || null, current.id]);
+  res.json({ ok: true });
+}));
+
+// Bulk delete (masse-slet i Opgaveliste) — fjerner opgaver + tilhørende bookinger/filer.
+app.post('/api/tasks/bulk-delete', auth, adminOnly, asyncRoute(async (req, res) => {
+  const ids = Array.isArray((req.body || {}).ids) ? req.body.ids.filter(Boolean) : [];
+  if (!ids.length) return res.status(400).json({ error: 'Ingen opgaver valgt' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM planning_bookings WHERE task_id = ANY($1)', [ids]);
+    await client.query('DELETE FROM job_files WHERE task_id = ANY($1)', [ids]);
+    const result = await client.query('DELETE FROM jt_tasks WHERE id = ANY($1)', [ids]);
+    await client.query('COMMIT');
+    res.json({ ok: true, deleted: result.rowCount });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+// Generel sletning af én opgave (både JobTread- og manuelle opgaver).
+app.delete('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM planning_bookings WHERE task_id=$1', [req.params.id]);
+    await client.query('DELETE FROM job_files WHERE task_id=$1', [req.params.id]);
+    const result = await client.query('DELETE FROM jt_tasks WHERE id=$1', [req.params.id]);
+    await client.query('COMMIT');
+    if (!result.rowCount) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
+    res.json({ ok: true });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+// ── FILER PÅ SAGEN (lægningsvejledninger, plantegninger m.m. pr. opgave) ──
+app.get('/api/tasks/:id/files', auth, asyncRoute(async (req, res) => {
+  const result = await pool.query('SELECT * FROM job_files WHERE task_id=$1 ORDER BY id DESC', [req.params.id]);
+  res.json(result.rows);
+}));
+
+app.post('/api/tasks/:id/files', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name || !body.url) return res.status(400).json({ error: 'Navn og link/fil skal udfyldes' });
+  const result = await pool.query(`
+    INSERT INTO job_files (task_id,name,url,category) VALUES ($1,$2,$3,$4) RETURNING id
+  `, [req.params.id, String(body.name).trim().slice(0, 200), String(body.url), body.category || 'other']);
+  res.json({ ok: true, id: result.rows[0].id });
+}));
+
+app.delete('/api/files/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM job_files WHERE id=$1', [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+// ── VEJLEDNING / FILBIBLIOTEK (generelle lægningsvejledninger m.m.) ──
+app.get('/api/library', auth, asyncRoute(async (req, res) => {
+  const result = await pool.query('SELECT * FROM library_files ORDER BY category, name');
+  res.json(result.rows);
+}));
+
+app.post('/api/library', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name || !body.url) return res.status(400).json({ error: 'Navn og link/fil skal udfyldes' });
+  const result = await pool.query(`
+    INSERT INTO library_files (name,url,category) VALUES ($1,$2,$3) RETURNING id
+  `, [String(body.name).trim().slice(0, 200), String(body.url), body.category || 'guide']);
+  res.json({ ok: true, id: result.rows[0].id });
+}));
+
+app.delete('/api/library/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM library_files WHERE id=$1', [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+// ── UGENTLIGE NOTER TIL MEDARBEJDER/VENDOR ───────────────────
+app.get('/api/notes/weekly', auth, adminOnly, asyncRoute(async (req, res) => {
+  const weekKey = String(req.query.week_key || '');
+  if (!weekKey) return res.status(400).json({ error: 'week_key mangler' });
+  const result = await pool.query('SELECT * FROM weekly_notes WHERE week_key=$1', [weekKey]);
+  res.json(result.rows);
+}));
+
+app.put('/api/notes/weekly', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const userId = Number(body.user_id);
+  const weekKey = String(body.week_key || '');
+  if (!userId || !weekKey) return res.status(400).json({ error: 'user_id og week_key skal udfyldes' });
+  const note = body.note ? String(body.note).slice(0, 2000) : null;
+  await pool.query(`
+    INSERT INTO weekly_notes (user_id,week_key,note,updated_at) VALUES ($1,$2,$3,${nowTextSQL()})
+    ON CONFLICT (user_id,week_key) DO UPDATE SET note=EXCLUDED.note, updated_at=${nowTextSQL()}
+  `, [userId, weekKey, note]);
+  res.json({ ok: true });
+}));
+
+app.get('/api/notes/my', auth, asyncRoute(async (req, res) => {
+  const weekKey = req.query.week_key ? String(req.query.week_key) : null;
+  const result = weekKey
+    ? await pool.query('SELECT * FROM weekly_notes WHERE user_id=$1 AND week_key=$2', [req.user.id, weekKey])
+    : await pool.query('SELECT * FROM weekly_notes WHERE user_id=$1 ORDER BY week_key DESC LIMIT 8', [req.user.id]);
+  res.json(result.rows);
+}));
+
 async function normalizeBooking(body) {
   const booking = body || {};
   const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [booking.task_id]);
@@ -810,12 +1030,20 @@ async function normalizeBooking(body) {
   if (!user) throw new Error('Medarbejderen eller holdet blev ikke fundet');
   if (!validDate(booking.start_date)) throw new Error('Vælg en gyldig startdato');
   const days = Math.max(0.25, Math.min(60, Number(booking.days) || 1));
+  // capacity_days er bevidst UAFHÆNGIG af days: Daglig plan bruger "days" til at
+  // lægge den faktiske arbejdsperiode (start/slutdato). Kapacitetsboard bruger
+  // "capacity_days" udelukkende til udnyttelsestal/analyse, så en ændring i det
+  // ene board ikke automatisk ændrer antal dage i det andet.
+  const capacityDays = booking.capacity_days !== undefined && booking.capacity_days !== null && booking.capacity_days !== ''
+    ? Math.max(0.25, Math.min(60, Number(booking.capacity_days) || days))
+    : days;
   const start = booking.start_date;
   return {
     task_id: booking.task_id,
     user_id: Number(booking.user_id),
     week_key: getWeekKey(start),
     days,
+    capacity_days: capacityDays,
     notes: booking.notes ? String(booking.notes).slice(0, 1000) : null,
     start_time: booking.start_time || null,
     start_date: start,
@@ -825,8 +1053,8 @@ async function normalizeBooking(body) {
 
 function bookingSelect(where = '') {
   return `
-    SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
-           t.name AS task_name,t.job_name,t.job_address,t.customer_phone,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
+    SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.avatar_url AS user_avatar_url,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
+           t.name AS task_name,t.job_name,t.job_address,t.customer_phone,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
     FROM planning_bookings b
     JOIN users u ON b.user_id=u.id
     JOIN jt_tasks t ON b.task_id=t.id
@@ -850,10 +1078,10 @@ app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
   try {
     const booking = await normalizeBooking(req.body);
     const result = await pool.query(`
-      INSERT INTO planning_bookings (task_id,user_id,week_key,days,notes,start_time,start_date,end_date,updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()})
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${nowTextSQL()})
       RETURNING id
-    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.notes, booking.start_time, booking.start_date, booking.end_date]);
+    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.start_time, booking.start_date, booking.end_date]);
     res.json({ ok: true, id: result.rows[0].id });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -867,9 +1095,9 @@ app.put('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => 
     const booking = await normalizeBooking({ ...current, ...(req.body || {}), task_id: current.task_id });
     await pool.query(`
       UPDATE planning_bookings
-      SET user_id=$1,week_key=$2,days=$3,notes=$4,start_time=$5,start_date=$6,end_date=$7,updated_at=${nowTextSQL()}
-      WHERE id=$8
-    `, [booking.user_id, booking.week_key, booking.days, booking.notes, booking.start_time, booking.start_date, booking.end_date, current.id]);
+      SET user_id=$1,week_key=$2,days=$3,capacity_days=$4,notes=$5,start_time=$6,start_date=$7,end_date=$8,updated_at=${nowTextSQL()}
+      WHERE id=$9
+    `, [booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.start_time, booking.start_date, booking.end_date, current.id]);
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error.message });
