@@ -116,7 +116,7 @@ loadBranding();
 function esc(s){return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),3000)}
 function logout(){localStorage.removeItem('gm_token');localStorage.removeItem('gm_user');location.href='/'}
-async function api(path,opts={}){const r=await fetch(path,{...opts,headers:{Authorization:'Bearer '+token,...(opts.headers||{})}});if(r.status===401){logout();return null}let d;try{d=await r.json()}catch(e){d={error:'Serveren returnerede et ugyldigt svar'}}return {ok:r.ok,status:r.status,data:d}}
+async function api(path,opts={}){const headers={Authorization:'Bearer '+token,...(opts.headers||{})};if(opts.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(path,{...opts,headers});if(r.status===401){logout();return null}let d;try{d=await r.json()}catch(e){d={error:'Serveren returnerede et ugyldigt svar'}}return {ok:r.ok,status:r.status,data:d}}
 function monday(d){let x=new Date(d);let day=x.getDay()||7;x.setDate(x.getDate()-day+1);x.setHours(0,0,0,0);return x}
 function iso(d){var x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10)}
 function getWeekDays(off){let m=monday(new Date());m.setDate(m.getDate()+off*7);return Array.from({length:5},(_,i)=>{let d=new Date(m);d.setDate(m.getDate()+i);return d})}
