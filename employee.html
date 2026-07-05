@@ -223,6 +223,7 @@ async function submitTaskRequest(){
   const date=document.getElementById('req-date').value;
   const days=+document.getElementById('req-days').value||1;
   const description=document.getElementById('req-description').value.trim();
+  console.log('[Anmod om opgave] læst fra felterne:',{jobName:jobName,date:date,days:days});
   if(!jobName){reqFeedback('Skriv hvad opgaven handler om','error');return}
   if(!date){reqFeedback('Vælg en dato','error');return}
   const btn=document.getElementById('req-submit-btn');
@@ -253,6 +254,7 @@ async function toggleTaskDone(id,done,btn){
   if(btn){btn.disabled=true;btn.textContent='Gemmer…';}
   try{
     const r=await api('/api/assignments/'+id+'/complete',{method:'PUT',body:JSON.stringify({completed:done})});
+    console.log('[Marker som færdig] svar fra server:',r);
     if(r&&r.ok){toast(done?'Markeret som færdig ✓':'Fortrudt');await loadAll();return}
     console.error('Complete-toggle failed:',r);
     toast((r&&r.data&&r.data.error)||'Kunne ikke opdatere — prøv igen');

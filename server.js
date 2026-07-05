@@ -1358,8 +1358,13 @@ app.get('/api/health', asyncRoute(async (req, res) => {
 }));
 
 // ── PAGES ─────────────────────────────────────────────────────
+// no-store: sikrer at browseren ALTID henter den nyeste version af siden
+// efter en deploy, i stedet for evt. at vise en cachet, forældet udgave.
 function sendPage(filename) {
-  return (req, res) => res.sendFile(path.join(__dirname, filename));
+  return (req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.sendFile(path.join(__dirname, filename));
+  };
 }
 app.get('/migrate', sendPage('migrate.html'));
 app.get('/admin', sendPage('admin.html'));
