@@ -782,8 +782,9 @@ async function syncFromJT() {
     // JobTreads nøjagtige felt-navn for kundens telefonnummer kan variere efter
     // jeres opsætning (customer/contact/account). Dette forsøg er isoleret i sit
     // eget try/catch, så en evt. fejl her ALDRIG kan vælte resten af synken —
-    // den logges bare, og eksisterende/manuelt indtastede numre bevares.
+    // fejlen vises i stedet i synk-loggen i appen, så den er nem at få øje på.
     const jobPhoneMap = new Map();
+    let phoneStatus;
     try {
       let cur4;
       let p4 = 0;
@@ -806,8 +807,10 @@ async function syncFromJT() {
         if (!next || next === '') break;
         cur4 = next;
       }
+      phoneStatus = jobPhoneMap.size ? `${jobPhoneMap.size} kundetlf. fundet` : 'kundetlf.-felt gav 0 numre (feltnavnet "customer.phone" findes muligvis ikke i jeres JobTread-opsætning)';
     } catch (phoneError) {
-      console.error('Kundetelefon-opslag fra JobTread fejlede (feltnavnet passer muligvis ikke til jeres opsætning):', phoneError.message);
+      phoneStatus = `kundetlf.-opslag fejlede: ${phoneError.message}`.slice(0, 300);
+      console.error('Kundetelefon-opslag fra JobTread fejlede:', phoneError.message);
     }
 
     // ── UPSERT: kun jt_tasks — rører ALDRIG planning_bookings ──
@@ -849,7 +852,7 @@ async function syncFromJT() {
       client.release();
     }
 
-    const msg = `${allTasks.length} tasks · ${p1} task-sider · ${p2} job-sider · ${p3} assignment-sider`;
+    const msg = `${allTasks.length} tasks · ${p1} task-sider · ${p2} job-sider · ${p3} assignment-sider · ${phoneStatus}`;
     await writeSyncLog(allTasks.length, 'ok', msg);
     return { ok: true, count: allTasks.length, pages: p1 };
 

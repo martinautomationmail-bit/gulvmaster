@@ -221,16 +221,21 @@ function reqFeedback(msg,kind){
   el.className='req-feedback show '+(kind||'');
 }
 async function submitTaskRequest(){
-  // Diagnostik: tæller om der findes flere elementer med samme id på siden.
-  // Hvis der er mere end 1, er noget udefra (fx en browser-udvidelse) årsagen.
-  const dupCount=document.querySelectorAll('[id="req-job-name"]').length;
-  const jobNameEl=reqField('req-job-name');
-  const jobName=jobNameEl?jobNameEl.value.trim():'';
-  const date=reqField('req-date').value;
-  const days=+reqField('req-days').value||1;
-  const description=reqField('req-description').value.trim();
-  console.log('[Anmod om opgave] diagnostik:',{jobName:jobName,date:date,days:days,elementerMedSammeId:dupCount});
-  if(!jobName){reqFeedback(dupCount>1?'Konflikt fundet på siden — genindlæs siden helt (Ctrl/Cmd+Shift+R) og prøv igen':'Skriv hvad opgaven handler om','error');return}
+  const formEl=document.querySelector('#request-modal form');
+  const fd=formEl?new FormData(formEl):null;
+  const rawJobName=fd?fd.get('gm_req_job_name_field'):null;
+  const rawDate=fd?fd.get('gm_req_date_field'):null;
+  const rawDays=fd?fd.get('gm_req_days_field'):null;
+  const rawDesc=fd?fd.get('gm_req_description_field'):null;
+  // Krydstjek: læs også direkte via .value. Hvis de to metoder er uenige,
+  // er der noget usædvanligt på færde med selve siden/DOM'en.
+  const directJobName=reqField('req-job-name')?reqField('req-job-name').value:null;
+  const jobName=String(rawJobName??directJobName??'').trim();
+  const date=String(rawDate??(reqField('req-date')?reqField('req-date').value:'')??'');
+  const days=+((rawDays??(reqField('req-days')?reqField('req-days').value:null))||1);
+  const description=String(rawDesc??(reqField('req-description')?reqField('req-description').value:'')??'').trim();
+  console.log('[Anmod om opgave] diagnostik:',{formData:{rawJobName,rawDate,rawDays},direkte:{directJobName},endeligtBrugt:{jobName,date,days}});
+  if(!jobName){reqFeedback('Skriv hvad opgaven handler om','error');return}
   if(!date){reqFeedback('Vælg en dato','error');return}
   const btn=document.getElementById('req-submit-btn');
   btn.disabled=true;btn.querySelector('.req-submit-label').textContent='Sender…';

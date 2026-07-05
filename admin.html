@@ -745,8 +745,9 @@ button,input,select{font:inherit}
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Reference-startdato</label><input id="manual-date" class="input" type="date"></div>
-      <div class="form-group"><label class="form-label">Adresse</label><input id="manual-address" class="input" placeholder="Valgfrit"></div>
+      <div class="form-group"><label class="form-label">Adresse <span style="opacity:.6;font-weight:500">(valgfrit)</span></label><input id="manual-address" class="input" placeholder="Valgfrit"></div>
     </div>
+    <div class="form-group"><label class="form-label">Kundetelefon <span style="opacity:.6;font-weight:500">(valgfrit)</span></label><input id="manual-phone" class="input" placeholder="Fx 12 34 56 78"></div>
     <div class="modal-actions">
       <button class="btn" id="close-manual">Annuller</button>
       <button class="btn primary" id="save-manual">Opret i opgavepool</button>
@@ -1233,9 +1234,9 @@ async function handleDrop(e,zone){
 }
 
 // MANUAL TASK
-function openManual(){document.getElementById('manual-date').value=iso(new Date());['manual-customer','manual-name','manual-address'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('manual-days').value='1';document.getElementById('manual-type').value='lay';document.getElementById('manual-modal').classList.add('open');}
+function openManual(){document.getElementById('manual-date').value=iso(new Date());['manual-customer','manual-name','manual-address','manual-phone'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('manual-days').value='1';document.getElementById('manual-type').value='lay';document.getElementById('manual-modal').classList.add('open');}
 async function saveManual(){
-  var b={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),start_date:document.getElementById('manual-date').value,days:+document.getElementById('manual-days').value||1,type_guess:document.getElementById('manual-type').value};
+  var b={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),customer_phone:document.getElementById('manual-phone').value.trim(),start_date:document.getElementById('manual-date').value,days:+document.getElementById('manual-days').value||1,type_guess:document.getElementById('manual-type').value};
   var r=await api('/api/tasks/manual',{method:'POST',body:JSON.stringify(b)});
   if(r&&r.ok){closeModal('manual-modal');toast('Opgave i pool','✓');await loadAll();}
   else if(r)toast(r.error||'Fejl','❌');
