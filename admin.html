@@ -152,9 +152,11 @@ button,input,select{font:inherit}
 
 /* CAPACITY BOARD */
 .capacity-board{min-width:max-content;width:auto;border-collapse:collapse}
-.capacity-board th{background:var(--navy);color:#fff;padding:7px 8px;font-size:9px;position:sticky;top:0;z-index:5;text-align:center;min-width:120px;white-space:nowrap}
+.capacity-board th{background:var(--navy);color:#fff;padding:9px 8px;font-size:9px;position:sticky;top:0;z-index:5;text-align:center;min-width:120px;white-space:nowrap}
 .capacity-board th:first-child{position:sticky;left:0;z-index:7;min-width:185px;text-align:left;border-right:2px solid rgba(255,255,255,.18)}
 .capacity-board th.today-th{background:var(--steel)}
+.cap-week-no{display:block;font-size:15px;font-weight:800;letter-spacing:.2px}
+.cap-week-range{display:block;font-size:11px;font-weight:700;color:#fff;opacity:.92;margin-top:2px}
 .capacity-board td{border-bottom:1px solid var(--border2);vertical-align:top}
 .capacity-board .staff-cell{min-width:185px}
 .cap-cell{padding:4px;min-width:120px;vertical-align:top}
@@ -258,6 +260,25 @@ button,input,select{font:inherit}
 .tl-handle::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:12px;border-radius:2px;background:rgba(255,255,255,.85);opacity:0;transition:opacity .1s}
 .tl-bar:hover .tl-handle::after{opacity:1}
 .tl-empty{padding:24px;text-align:center;color:var(--muted);font-size:12px}
+
+/* TIDSLINJE — HØJRE SIDE-PANEL */
+.tl-drawer{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:92vw;background:#fff;box-shadow:-16px 0 50px rgba(15,34,64,.28);z-index:150;transform:translateX(100%);transition:transform .25s cubic-bezier(.2,.9,.3,1);display:flex;flex-direction:column}
+.tl-drawer.open{transform:translateX(0)}
+.tl-drawer-head{display:flex;align-items:center;gap:12px;padding:20px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff}
+.tl-drawer-type-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 4px rgba(255,255,255,.15)}
+.tl-drawer-head-text{flex:1;min-width:0}
+.tl-drawer-title{font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-drawer-sub{font-size:11px;opacity:.75;margin-top:2px}
+.tl-drawer-close{border:0;background:rgba(255,255,255,.14);color:#fff;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:13px;flex-shrink:0}
+.tl-drawer-close:hover{background:rgba(255,255,255,.26)}
+.tl-drawer-body{flex:1;overflow:auto;padding:20px}
+.tld-section{margin-bottom:16px}
+.tld-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tld-label{display:block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:5px}
+.tld-static{font-size:12.5px;color:#334155;background:var(--ice);border-radius:8px;padding:9px 11px;line-height:1.5}
+.tl-drawer-footer{display:flex;gap:8px;padding:16px 20px;border-top:1px solid var(--border2);background:#fafbfc}
+.tl-drawer-footer .btn{flex:1;justify-content:center}
+@media(max-width:640px){.tl-drawer{width:100vw;max-width:100vw}}
 .avail-table{width:100%;border-collapse:collapse;min-width:900px}
 .avail-table th{background:var(--navy);color:#fff;padding:8px 9px;font-size:9px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;text-align:left}
 .avail-table th.person-th{position:sticky;left:0;z-index:2;min-width:170px}
@@ -358,22 +379,22 @@ button,input,select{font:inherit}
     <button class="tab" data-page="capacity">Kapacitet</button>
     <button class="tab" data-page="timeline">Tidslinje</button>
     <button class="tab" data-page="availability">Ledighedsoversigt</button>
-    <button class="tab" data-page="tasklist">Opgaveliste</button>
     <button class="tab" data-page="requests">Godkendelser<span class="tab-badge hidden" id="requests-badge">0</span></button>
-    <button class="tab" data-page="completed">Færdige opgaver</button>
+  </div>
+  <div class="nav-actions">
+    <span id="sync-ind" style="font-size:10px;color:rgba(255,255,255,.5)"></span>
+    <button class="nb green" id="sync-btn">⚡ Synk JT</button>
     <div class="navdrop" id="navdrop">
-      <button class="tab navdrop-btn" id="navdrop-btn">Min side ▾</button>
+      <button class="nb navdrop-btn" id="navdrop-btn">👤 Min side ▾</button>
       <div class="navdrop-menu" id="navdrop-menu">
+        <button class="navdrop-item" id="employee-link">👷 Mit skema</button>
+        <button class="navdrop-item" data-page="tasklist">📋 Opgaveliste</button>
+        <button class="navdrop-item" data-page="completed">✅ Færdige opgaver</button>
         <button class="navdrop-item" data-page="people">👥 Hold & vendors</button>
         <button class="navdrop-item" data-page="library">📁 Vejledning</button>
         <button class="navdrop-item" data-page="logs">⏱ Timer & log</button>
       </div>
     </div>
-  </div>
-  <div class="nav-actions">
-    <span id="sync-ind" style="font-size:10px;color:rgba(255,255,255,.5)"></span>
-    <button class="nb green" id="sync-btn">⚡ Synk JT</button>
-    <button class="nb" id="employee-link">👷 Mit skema</button>
     <button class="nb" id="logout-btn">Log ud</button>
   </div>
 </nav>
@@ -499,6 +520,44 @@ button,input,select{font:inherit}
   </div>
 </section>
 
+<!-- TIDSLINJE — HØJRE SIDE-PANEL (ClickUp-stil, blokerer ikke resten af tidslinjen) -->
+<div class="tl-drawer" id="tl-drawer">
+  <div class="tl-drawer-head">
+    <span class="tl-drawer-type-dot" id="tld-type-dot"></span>
+    <div class="tl-drawer-head-text">
+      <div class="tl-drawer-title" id="tld-title">Opgave</div>
+      <div class="tl-drawer-sub" id="tld-sub"></div>
+    </div>
+    <button class="tl-drawer-close" id="tld-close">✕</button>
+  </div>
+  <div class="tl-drawer-body">
+    <div class="tld-section">
+      <label class="tld-label">👤 Medarbejder / hold</label>
+      <select id="tld-user" class="req-input"></select>
+    </div>
+    <div class="tld-row">
+      <div class="tld-section"><label class="tld-label">📅 Startdato</label><input id="tld-date" type="date" class="req-input"></div>
+      <div class="tld-section"><label class="tld-label">🕐 Mødetid</label><input id="tld-time" type="time" class="req-input"></div>
+    </div>
+    <div class="tld-row">
+      <div class="tld-section"><label class="tld-label">📋 Dage (Daglig plan)</label><input id="tld-days" type="number" min=".25" max="60" step=".25" class="req-input"></div>
+      <div class="tld-section"><label class="tld-label">📊 Kapacitetsdage</label><input id="tld-capdays" type="number" min=".25" max="60" step=".25" class="req-input"></div>
+    </div>
+    <div class="tld-section">
+      <label class="tld-label">📍 Adresse</label>
+      <div class="tld-static" id="tld-address">—</div>
+    </div>
+    <div class="tld-section">
+      <label class="tld-label">📝 Note til medarbejder</label>
+      <textarea id="tld-note" class="req-input" rows="3" placeholder="Fx ring kunden 30 min før ankomst"></textarea>
+    </div>
+  </div>
+  <div class="tl-drawer-footer">
+    <button class="btn danger" id="tld-remove">Fjern booking</button>
+    <button class="btn" id="tld-copy">⧉ Kopiér</button>
+    <button class="btn primary" id="tld-save">Gem ændringer</button>
+  </div>
+</div>
 <!-- LEDIGHEDSOVERSIGT -->
 <section class="page" id="page-availability">
   <div class="page-head">
@@ -1006,7 +1065,7 @@ function renderCapacity(){
   weeks.forEach(function(m){
     var isCur=isToday(m)||weeks.indexOf(m)===0&&isToday(new Date())&&weekKey(new Date())===weekKey(m);
     head+='<th data-week-key="'+weekKey(m)+'" class="'+(weekKey(m)===weekKey(new Date())?'today-th':'')+'">'+
-      'Uge '+weekNo(m)+'<br><span style="font-size:8px;font-weight:400">'+m.getDate()+'/'+(m.getMonth()+1)+'–'+add(m,4).getDate()+'/'+(add(m,4).getMonth()+1)+'</span></th>';
+      '<span class="cap-week-no">Uge '+weekNo(m)+'</span><span class="cap-week-range">'+m.getDate()+'/'+(m.getMonth()+1)+' – '+add(m,4).getDate()+'/'+(add(m,4).getMonth()+1)+'</span></th>';
   });
   document.getElementById('cap-head').innerHTML=head+'</tr>';
   // Month chips
@@ -1189,6 +1248,48 @@ async function removeBooking(id){
   if(r&&r.ok){closeModal('assign-modal');toast('Fjernet','🗑');await loadAll();}
 }
 
+// TIDSLINJE — højre side-panel (erstatter den centrerede modal specifikt for Tidslinjen,
+// så resten af boardet forbliver synligt og brugbart mens panelet er åbent)
+var tlDrawerBookingId=null;
+function openTimelineDrawer(bookingId){
+  var b=bookings.find(function(x){return +x.id===+bookingId;});
+  if(!b)return;
+  tlDrawerBookingId=bookingId;
+  var type=TYPE[b.type_guess||'other']||TYPE.other;
+  document.getElementById('tld-type-dot').style.background=type.bar;
+  document.getElementById('tld-title').textContent=b.job_name||b.task_name||'Opgave';
+  document.getElementById('tld-sub').textContent=(b.task_name||'')+' · '+type.label;
+  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,c){var av=a.worker_type==='vendor'?1:0,cv=c.worker_type==='vendor'?1:0;return av-cv||a.name.localeCompare(c.name,'da');});
+  document.getElementById('tld-user').innerHTML=workforce.map(function(u){var sel=+b.user_id===+u.id?' selected':'';return '<option value="'+u.id+'"'+sel+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
+  document.getElementById('tld-date').value=String(b.start_date).slice(0,10);
+  document.getElementById('tld-time').value=b.start_time||'';
+  document.getElementById('tld-days').value=b.days;
+  document.getElementById('tld-capdays').value=capDaysOf(b);
+  document.getElementById('tld-address').textContent=b.job_address||'Ingen adresse registreret';
+  document.getElementById('tld-note').value=b.notes||'';
+  document.getElementById('tl-drawer').classList.add('open');
+}
+function closeTimelineDrawer(){document.getElementById('tl-drawer').classList.remove('open');tlDrawerBookingId=null;}
+async function saveTimelineDrawer(){
+  if(!tlDrawerBookingId)return;
+  var body={user_id:+document.getElementById('tld-user').value,start_date:document.getElementById('tld-date').value,start_time:document.getElementById('tld-time').value||null,days:+document.getElementById('tld-days').value||1,capacity_days:+document.getElementById('tld-capdays').value||1,notes:document.getElementById('tld-note').value.trim()||null};
+  var r=await api('/api/assignments/'+tlDrawerBookingId,{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Booking gemt','✓');closeTimelineDrawer();await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function removeTimelineDrawerBooking(){
+  if(!tlDrawerBookingId)return;
+  if(!confirm('Fjern booking?'))return;
+  var r=await api('/api/assignments/'+tlDrawerBookingId,{method:'DELETE'});
+  if(r&&r.ok){toast('Fjernet','🗑');closeTimelineDrawer();await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function copyTimelineDrawerBooking(){
+  if(!tlDrawerBookingId)return;
+  await copyBooking(tlDrawerBookingId);
+  closeTimelineDrawer();
+}
+
 // UGENTLIGE NOTER (sat i Daglig plan, læses af medarbejderen i deres kontrolpanel)
 var loadedNoteWeeks={};
 function ensureWeeklyNotesLoaded(wk){
@@ -1365,7 +1466,7 @@ function renderTimeline(){
       var who=timelineGroupBy==='type'?(b.user_name||''):'';
       var label=(b.job_name||b.task_name||'Opgave')+(who?' · '+who:'');
       var handles=interactive?'<span class="tl-handle tl-handle-left" data-edge="left"></span><span class="tl-handle tl-handle-right" data-edge="right"></span>':'';
-      return '<div class="tl-bar draggable-assignment '+esc(b.type_guess||'other')+'" draggable="'+(interactive?'true':'false')+'" data-booking-id="'+b.id+'" style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+type.bar+'" title="'+esc(label)+' · '+esc(b.days)+' dag(e)">'+handles+'<span class="tl-bar-label">'+esc(label)+'</span></div>';
+      return '<div class="tl-bar draggable-assignment '+esc(b.type_guess||'other')+'" draggable="'+(interactive?'true':'false')+'" data-action="open-timeline-drawer" data-booking-id="'+b.id+'" style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+type.bar+'" title="'+esc(label)+' · '+esc(b.days)+' dag(e)">'+handles+'<span class="tl-bar-label">'+esc(label)+'</span></div>';
     }).join('');
 
     var labelHTML;
@@ -1736,7 +1837,9 @@ function closeModal(id){document.getElementById(id).classList.remove('open');if(
 // BIND ALL EVENTS
 function bind(){
   // Tabs
-  function switchPage(page){
+  var VALID_PAGES=['plan','capacity','timeline','availability','tasklist','requests','completed','people','library','logs'];
+  function switchPage(page,skipHash){
+    if(VALID_PAGES.indexOf(page)===-1)page='plan';
     document.querySelectorAll('.tab,.navdrop-item').forEach(function(x){x.classList.remove('active');});
     document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});
     var tabBtn=document.querySelector('.tab[data-page="'+page+'"]');
@@ -1745,6 +1848,7 @@ function bind(){
     if(dropItem){dropItem.classList.add('active');document.getElementById('navdrop-btn').classList.add('active');}
     document.getElementById('page-'+page).classList.add('active');
     document.getElementById('navdrop-menu').classList.remove('open');
+    if(!skipHash&&location.hash.slice(1)!==page)history.replaceState(null,'','#'+page);
     if(page==='logs')loadLogs();
     if(page==='library')loadLibrary();
     if(page==='availability')renderAvailability();
@@ -1754,8 +1858,9 @@ function bind(){
     if(page==='completed')renderCompleted();
     if(page==='capacity')setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);
   }
+  window.addEventListener('hashchange',function(){switchPage(location.hash.slice(1));});
   document.querySelectorAll('.tab[data-page]').forEach(function(b){b.addEventListener('click',function(){switchPage(b.dataset.page);});});
-  document.querySelectorAll('.navdrop-item').forEach(function(b){b.addEventListener('click',function(){switchPage(b.dataset.page);});});
+  document.querySelectorAll('.navdrop-item[data-page]').forEach(function(b){b.addEventListener('click',function(){switchPage(b.dataset.page);});});
   document.getElementById('navdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('navdrop-menu').classList.toggle('open');});
   document.addEventListener('click',function(e){if(!e.target.closest('#navdrop'))document.getElementById('navdrop-menu').classList.remove('open');});
   // Nav
@@ -1792,6 +1897,10 @@ function bind(){
   document.getElementById('tl-next').onclick=function(){timelineOffset++;renderTimeline();};
   document.getElementById('tl-today').onclick=function(){timelineOffset=0;renderTimeline();};
   document.getElementById('tl-group-by').onchange=function(e){timelineGroupBy=e.target.value;renderTimeline();};
+  document.getElementById('tld-close').onclick=closeTimelineDrawer;
+  document.getElementById('tld-save').onclick=saveTimelineDrawer;
+  document.getElementById('tld-remove').onclick=removeTimelineDrawerBooking;
+  document.getElementById('tld-copy').onclick=copyTimelineDrawerBooking;
   // Assign modal
   document.getElementById('close-assign').onclick=function(){closeModal('assign-modal');};
   document.getElementById('save-assignment').onclick=saveAssignment;
@@ -1839,6 +1948,7 @@ function bind(){
       if(act==='remove-booking'){e.stopPropagation();removeBooking(+a.dataset.bookingId);}
       if(act==='copy-booking'){e.stopPropagation();copyBooking(+a.dataset.bookingId);}
       if(act==='edit-booking'){e.stopPropagation();openAssign({bookingId:+a.dataset.bookingId});}
+      if(act==='open-timeline-drawer'){e.stopPropagation();openTimelineDrawer(+a.dataset.bookingId);}
       if(act==='edit-user')openUser(+a.dataset.userId);
       if(act==='weekly-note'){e.stopPropagation();openWeeklyNote(+a.dataset.userId);}
       if(act==='edit-task'){e.stopPropagation();openTaskEdit(a.dataset.taskId);}
@@ -1861,6 +1971,9 @@ function bind(){
     var t=e.target.closest('.draggable-task');
     if(t&&e.detail>=2)openAssign({taskId:t.dataset.taskId,date:iso(new Date())});
   });
+  // Genskab den side, browserens adresse peger på (så en genindlæsning bliver på samme side)
+  var initialPage=location.hash.slice(1);
+  if(initialPage&&VALID_PAGES.indexOf(initialPage)>-1)switchPage(initialPage,true);
 }
 
 bind();
