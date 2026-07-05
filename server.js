@@ -219,6 +219,25 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()},
       UNIQUE(user_id, week_key)
     );
+
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS completed_at TEXT;
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS invoiced INTEGER DEFAULT 0;
+
+    CREATE TABLE IF NOT EXISTS task_requests (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      job_name TEXT NOT NULL,
+      description TEXT,
+      requested_date TEXT NOT NULL,
+      estimated_days DOUBLE PRECISION DEFAULT 1,
+      status TEXT DEFAULT 'pending',
+      admin_note TEXT,
+      resulting_booking_id INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      resolved_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_requests_status ON task_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_task_requests_user ON task_requests(user_id);
   `);
 
   await pool.query(`
@@ -1055,6 +1074,107 @@ app.get('/api/notes/my', auth, asyncRoute(async (req, res) => {
     ? await pool.query('SELECT * FROM weekly_notes WHERE user_id=$1 AND week_key=$2', [req.user.id, weekKey])
     : await pool.query('SELECT * FROM weekly_notes WHERE user_id=$1 ORDER BY week_key DESC LIMIT 8', [req.user.id]);
   res.json(result.rows);
+}));
+
+// ── MEDARBEJDER-ANMODNINGER (skal godkendes af admin) ────────
+// Medarbejderen beder om at få en opgave sat på sin kalender (typisk i morgen),
+// fx fordi de ved en kunde venter et sted, eller de mangler at nå noget.
+// Admin godkender/afviser; ved godkendelse oprettes en rigtig opgave + booking.
+app.post('/api/task-requests', auth, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const jobName = String(body.job_name || '').trim();
+  const requestedDate = body.requested_date;
+  if (!jobName) return res.status(400).json({ error: 'Skriv hvad opgaven handler om' });
+  if (!validDate(requestedDate)) return res.status(400).json({ error: 'Vælg en gyldig dato' });
+  const estimatedDays = Math.max(0.25, Math.min(10, Number(body.estimated_days) || 1));
+  const description = body.description ? String(body.description).slice(0, 2000) : null;
+  const result = await pool.query(`
+    INSERT INTO task_requests (user_id,job_name,description,requested_date,estimated_days,status,created_at)
+    VALUES ($1,$2,$3,$4,$5,'pending',${nowTextSQL()})
+    RETURNING id
+  `, [req.user.id, jobName, description, requestedDate, estimatedDays]);
+  res.json({ ok: true, id: result.rows[0].id });
+}));
+
+app.get('/api/task-requests/my', auth, asyncRoute(async (req, res) => {
+  const result = await pool.query('SELECT * FROM task_requests WHERE user_id=$1 ORDER BY created_at DESC LIMIT 25', [req.user.id]);
+  res.json(result.rows);
+}));
+
+app.get('/api/task-requests', auth, adminOnly, asyncRoute(async (req, res) => {
+  const status = req.query.status ? String(req.query.status) : null;
+  const result = status
+    ? await pool.query(`
+        SELECT r.*, u.name AS user_name, u.color AS user_color, u.initials AS user_initials
+        FROM task_requests r JOIN users u ON r.user_id=u.id WHERE r.status=$1 ORDER BY r.created_at DESC
+      `, [status])
+    : await pool.query(`
+        SELECT r.*, u.name AS user_name, u.color AS user_color, u.initials AS user_initials
+        FROM task_requests r JOIN users u ON r.user_id=u.id ORDER BY r.created_at DESC
+      `);
+  res.json(result.rows);
+}));
+
+app.put('/api/task-requests/:id/approve', auth, adminOnly, asyncRoute(async (req, res) => {
+  const reqRow = await pgOne('SELECT * FROM task_requests WHERE id=$1', [req.params.id]);
+  if (!reqRow) return res.status(404).json({ error: 'Anmodningen blev ikke fundet' });
+  if (reqRow.status !== 'pending') return res.status(400).json({ error: 'Anmodningen er allerede behandlet' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const taskId = 'req-' + reqRow.id + '-' + Date.now();
+    await client.query(`
+      INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,description,start_date,end_date,type_guess,synced_at,source,created_at)
+      VALUES ($1,'Medarbejder-anmodning',NULL,$2,'',$3,$4,$4,'other',${nowTextSQL()},'employee_request',${nowTextSQL()})
+    `, [taskId, reqRow.job_name, reqRow.description, reqRow.requested_date]);
+
+    const bookingResult = await client.query(`
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_date,end_date,updated_at)
+      VALUES ($1,$2,$3,$4,$4,$5,$6,$6,${nowTextSQL()})
+      RETURNING id
+    `, [taskId, reqRow.user_id, getWeekKey(reqRow.requested_date), reqRow.estimated_days, reqRow.description || null, reqRow.requested_date]);
+
+    await client.query(`
+      UPDATE task_requests SET status='approved', resulting_booking_id=$1, resolved_at=${nowTextSQL()} WHERE id=$2
+    `, [bookingResult.rows[0].id, reqRow.id]);
+    await client.query('COMMIT');
+    res.json({ ok: true, bookingId: bookingResult.rows[0].id });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+app.put('/api/task-requests/:id/reject', auth, adminOnly, asyncRoute(async (req, res) => {
+  const reqRow = await pgOne('SELECT * FROM task_requests WHERE id=$1', [req.params.id]);
+  if (!reqRow) return res.status(404).json({ error: 'Anmodningen blev ikke fundet' });
+  if (reqRow.status !== 'pending') return res.status(400).json({ error: 'Anmodningen er allerede behandlet' });
+  const adminNote = req.body && req.body.admin_note ? String(req.body.admin_note).slice(0, 500) : null;
+  await pool.query(`UPDATE task_requests SET status='rejected', admin_note=$1, resolved_at=${nowTextSQL()} WHERE id=$2`, [adminNote, reqRow.id]);
+  res.json({ ok: true });
+}));
+
+// ── OPGAVE FÆRDIG / FAKTURERING ───────────────────────────────
+// Medarbejderen kan markere sin egen booking som færdig. Admin kan altid.
+app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  if (req.user.role !== 'admin' && +current.user_id !== +req.user.id) {
+    return res.status(403).json({ error: 'Du kan kun markere dine egne opgaver' });
+  }
+  const completed = !!(req.body || {}).completed;
+  await pool.query(`UPDATE planning_bookings SET completed_at=${completed ? nowTextSQL() : 'NULL'} WHERE id=$1`, [current.id]);
+  res.json({ ok: true });
+}));
+
+app.put('/api/assignments/:id/invoice', auth, adminOnly, asyncRoute(async (req, res) => {
+  const invoiced = !!(req.body || {}).invoiced;
+  const result = await pool.query('UPDATE planning_bookings SET invoiced=$1 WHERE id=$2', [invoiced ? 1 : 0, req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  res.json({ ok: true });
 }));
 
 async function normalizeBooking(body) {

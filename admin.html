@@ -25,7 +25,13 @@ button,input,select{font:inherit}
 .nav{height:52px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;gap:10px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.22)}
 .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;white-space:nowrap}
 .logo{width:26px;height:26px;display:grid;place-items:center;border-radius:6px;background:var(--steel)}
-.tabs{display:flex;gap:2px;background:rgba(255,255,255,.09);padding:3px;border-radius:7px}
+.tabs{display:flex;gap:2px;background:rgba(255,255,255,.09);padding:3px;border-radius:7px;position:relative}
+.tab-badge{display:inline-block;margin-left:5px;background:#EF4444;color:#fff;font-size:9px;font-weight:800;border-radius:10px;padding:1px 6px;line-height:1.3}
+.navdrop{position:relative}
+.navdrop-menu{position:absolute;top:calc(100% + 6px);right:0;background:#fff;border-radius:9px;box-shadow:var(--shadow-lg,0 10px 30px rgba(0,0,0,.25));min-width:180px;padding:5px;display:none;z-index:60}
+.navdrop-menu.open{display:block}
+.navdrop-item{display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:8px 10px;font-size:12px;font-weight:700;color:var(--navy);background:none;border:0;border-radius:6px;cursor:pointer}
+.navdrop-item:hover{background:var(--ice)}
 .tab{border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500}
 .tab.active{color:#fff;background:rgba(255,255,255,.16)}
 .nav-actions{display:flex;align-items:center;gap:5px}
@@ -271,6 +277,21 @@ button,input,select{font:inherit}
 .status-pill{font-size:9px;font-weight:800;padding:2px 8px;border-radius:20px}
 .status-pill.planned{background:#DCFCE7;color:#15803D}
 .status-pill.open{background:#FEF9C3;color:#92570A}
+.status-pill.pending{background:#FEF9C3;color:#92570A}
+.status-pill.approved{background:#DCFCE7;color:#15803D}
+.status-pill.rejected{background:#FEE2E2;color:#B91C1C}
+
+/* GODKENDELSER */
+.requests-list{display:flex;flex-direction:column;gap:9px}
+.request-card{background:#fff;border:1px solid var(--border2);border-radius:10px;padding:12px 14px;box-shadow:var(--shadow);display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.request-main{flex:1;min-width:220px}
+.request-title{font-size:13px;font-weight:800;color:var(--navy);display:flex;align-items:center;gap:8px}
+.request-meta{font-size:10px;color:var(--muted);margin-top:3px}
+.request-desc{font-size:11px;color:#475569;margin-top:6px;background:var(--ice);border-radius:7px;padding:7px 9px;white-space:pre-wrap}
+.request-actions{display:flex;gap:6px;flex-shrink:0}
+.request-note{font-size:10px;color:#B91C1C;margin-top:5px}
+.completed-row.invoiced td{opacity:.55}
+.completed-check{width:16px;height:16px;cursor:pointer}
 
 /* VEJLEDNING / LIBRARY */
 .lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
@@ -336,14 +357,21 @@ button,input,select{font:inherit}
     <button class="tab" data-page="timeline">Tidslinje</button>
     <button class="tab" data-page="availability">Ledighedsoversigt</button>
     <button class="tab" data-page="tasklist">Opgaveliste</button>
-    <button class="tab" data-page="people">Hold & vendors</button>
-    <button class="tab" data-page="library">Vejledning</button>
-    <button class="tab" data-page="logs">Timer & log</button>
+    <button class="tab" data-page="requests">Godkendelser<span class="tab-badge hidden" id="requests-badge">0</span></button>
+    <button class="tab" data-page="completed">Færdige opgaver</button>
+    <div class="navdrop" id="navdrop">
+      <button class="tab navdrop-btn" id="navdrop-btn">Min side ▾</button>
+      <div class="navdrop-menu" id="navdrop-menu">
+        <button class="navdrop-item" data-page="people">👥 Hold & vendors</button>
+        <button class="navdrop-item" data-page="library">📁 Vejledning</button>
+        <button class="navdrop-item" data-page="logs">⏱ Timer & log</button>
+      </div>
+    </div>
   </div>
   <div class="nav-actions">
     <span id="sync-ind" style="font-size:10px;color:rgba(255,255,255,.5)"></span>
     <button class="nb green" id="sync-btn">⚡ Synk JT</button>
-    <button class="nb" id="employee-link">👤 Min side</button>
+    <button class="nb" id="employee-link">👷 Mit skema</button>
     <button class="nb" id="logout-btn">Log ud</button>
   </div>
 </nav>
@@ -523,6 +551,44 @@ button,input,select{font:inherit}
         <th>Kunde</th><th>Type</th><th>Person</th><th>Uge</th><th>Dage</th><th>Status</th><th>Adresse</th><th></th>
       </tr></thead>
       <tbody id="tasklist-body"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- GODKENDELSER (medarbejder-anmodninger) -->
+<section class="page" id="page-requests">
+  <div class="page-head">
+    <div>
+      <div class="page-title">Godkendelser</div>
+      <div class="page-sub">Opgaver medarbejdere selv har bedt om at få sat på deres kalender.</div>
+    </div>
+    <div class="filter-row" id="requests-filter">
+      <button class="chip active" data-action="requests-filter" data-value="pending">Afventer</button>
+      <button class="chip" data-action="requests-filter" data-value="approved">Godkendt</button>
+      <button class="chip" data-action="requests-filter" data-value="rejected">Afvist</button>
+      <button class="chip" data-action="requests-filter" data-value="all">Alle</button>
+    </div>
+  </div>
+  <div id="requests-list" class="requests-list"></div>
+</section>
+
+<!-- FÆRDIGE OPGAVER (til fakturering) -->
+<section class="page" id="page-completed">
+  <div class="page-head">
+    <div>
+      <div class="page-title">Færdige opgaver</div>
+      <div class="page-sub">Opgaver medarbejderne har markeret som færdige — klar til fakturering.</div>
+    </div>
+    <div class="filter-row">
+      <button class="chip active" data-action="completed-filter" data-value="open">Ikke faktureret</button>
+      <button class="chip" data-action="completed-filter" data-value="invoiced">Faktureret</button>
+      <button class="chip" data-action="completed-filter" data-value="all">Alle</button>
+    </div>
+  </div>
+  <div class="board-outer" style="overflow:auto">
+    <table class="task-table">
+      <thead><tr><th>Kunde</th><th>Opgave</th><th>Type</th><th>Medarbejder</th><th>Afsluttet</th><th>Dage</th><th>Faktureret</th><th></th></tr></thead>
+      <tbody id="completed-body"></tbody>
     </table>
   </div>
 </section>
@@ -742,6 +808,7 @@ document.getElementById('app').style.display='block';
 var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={};
 var settings={company_name:'Gulv Master Enterprise ApS',logo_url:null},library=[],selectedTaskIds={},weeklyNotesCache={};
 var timelineOffset=0,timelineGroupBy='user';
+var taskRequests=[],requestsFilter='pending',completedFilter='open';
 var filters={plan:{status:'all',type:'all',team:'all'},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'}};
 var DAYS=['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
 var TYPE={lay:{label:'Gulvlægning',bar:'var(--lay-bar)'},sand:{label:'Gulvslibning',bar:'var(--sand-bar)'},paint:{label:'Malerservice',bar:'var(--paint-bar)'},sub:{label:'Underlev.',bar:'var(--sub-bar)'},other:{label:'Andet',bar:'var(--other-bar)'}};
@@ -1461,6 +1528,81 @@ async function bulkSetType(){
   if(r&&r.ok){toast(r.updated+' opgaver opdateret','✓');document.getElementById('tasklist-bulk-type').value='';await loadAll();}else if(r)toast(r.error||'Fejl','❌');
 }
 
+// GODKENDELSER (medarbejder-anmodninger)
+async function refreshRequestsBadge(){
+  var pending=await api('/api/task-requests?status=pending');
+  var n=(pending||[]).length;
+  var el=document.getElementById('requests-badge');
+  el.textContent=n;
+  el.classList.toggle('hidden',n===0);
+}
+async function renderRequests(){
+  var list=await api('/api/task-requests'+(requestsFilter==='all'?'':'?status='+requestsFilter));
+  taskRequests=list||[];
+  var el=document.getElementById('requests-list');
+  if(!taskRequests.length){el.innerHTML='<p style="color:var(--muted);padding:16px">Ingen anmodninger her.</p>';return;}
+  var statusLabel={pending:'Afventer',approved:'Godkendt',rejected:'Afvist'};
+  el.innerHTML=taskRequests.map(function(r){
+    var actions=r.status==='pending'
+      ? '<button class="btn small primary" data-action="approve-request" data-id="'+r.id+'">✓ Godkend</button><button class="btn small danger" data-action="reject-request" data-id="'+r.id+'">✕ Afvis</button>'
+      : '';
+    return '<div class="request-card">'+
+      '<div class="request-main">'+
+        '<div class="request-title">'+esc(r.job_name)+' <span class="status-pill '+r.status+'">'+statusLabel[r.status]+'</span></div>'+
+        '<div class="request-meta">'+esc(r.user_name)+' · ønsket dato '+esc(String(r.requested_date).slice(0,10))+' · '+r.estimated_days+' dag(e)</div>'+
+        (r.description?'<div class="request-desc">'+esc(r.description)+'</div>':'')+
+        (r.admin_note?'<div class="request-note">Note til medarbejder: '+esc(r.admin_note)+'</div>':'')+
+      '</div>'+
+      '<div class="request-actions">'+actions+'</div>'+
+    '</div>';
+  }).join('');
+}
+async function approveRequest(id){
+  var r=await api('/api/task-requests/'+id+'/approve',{method:'PUT'});
+  if(r&&r.ok){toast('Godkendt — sat på kalenderen','✓');await refreshRequestsBadge();await renderRequests();await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function rejectRequest(id){
+  var note=prompt('Vil du give medarbejderen en kort besked om hvorfor (valgfrit)?','');
+  if(note===null)return;
+  var r=await api('/api/task-requests/'+id+'/reject',{method:'PUT',body:JSON.stringify({admin_note:note.trim()||null})});
+  if(r&&r.ok){toast('Afvist','✕');await refreshRequestsBadge();await renderRequests();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+
+// FÆRDIGE OPGAVER (fakturering)
+function renderCompleted(){
+  var body=document.getElementById('completed-body');if(!body)return;
+  var list=bookings.filter(function(b){return !!b.completed_at;}).filter(function(b){
+    if(completedFilter==='open')return !b.invoiced;
+    if(completedFilter==='invoiced')return !!b.invoiced;
+    return true;
+  }).sort(function(a,b){return String(b.completed_at).localeCompare(String(a.completed_at));});
+  body.innerHTML=list.map(function(b){
+    var type=TYPE[b.type_guess||'other']||TYPE.other;
+    return '<tr class="completed-row'+(b.invoiced?' invoiced':'')+'">'+
+      '<td><strong>'+esc(b.job_name||'')+'</strong></td>'+
+      '<td>'+esc(b.task_name||'')+'</td>'+
+      '<td><span class="badge '+esc(b.type_guess||'other')+'">'+type.label+'</span></td>'+
+      '<td>'+esc(b.user_name||'')+'</td>'+
+      '<td>'+esc(String(b.completed_at).slice(0,16).replace('T',' '))+'</td>'+
+      '<td>'+capDaysOf(b)+'d</td>'+
+      '<td style="text-align:center"><input type="checkbox" class="completed-check" data-action="toggle-invoiced" data-booking-id="'+b.id+'" '+(b.invoiced?'checked':'')+'></td>'+
+      '<td><button class="btn small" data-action="toggle-completed" data-booking-id="'+b.id+'" data-completed="0">↩ Fortryd</button></td>'+
+      '</tr>';
+  }).join('')||'<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted)">Ingen færdige opgaver her.</td></tr>';
+}
+async function toggleInvoiced(bookingId,invoiced){
+  var r=await api('/api/assignments/'+bookingId+'/invoice',{method:'PUT',body:JSON.stringify({invoiced:invoiced})});
+  if(r&&r.ok){toast(invoiced?'Markeret som faktureret':'Fjernet faktureret-mærke','✓');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function toggleCompleted(bookingId,completed){
+  var r=await api('/api/assignments/'+bookingId+'/complete',{method:'PUT',body:JSON.stringify({completed:completed})});
+  if(r&&r.ok){toast(completed?'Markeret som færdig':'Fortrudt','✓');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+
 // VEJLEDNING / FILBIBLIOTEK
 async function loadLibrary(){var l=await api('/api/library');library=l||[];renderLibrary();}
 function renderLibrary(){
@@ -1579,6 +1721,9 @@ async function loadAll(){
   if(document.getElementById('page-logs').classList.contains('active'))loadLogs();
   if(document.getElementById('page-library').classList.contains('active'))loadLibrary();
   if(document.getElementById('page-timeline').classList.contains('active'))renderTimeline();
+  refreshRequestsBadge();
+  if(document.getElementById('page-completed').classList.contains('active'))renderCompleted();
+  if(document.getElementById('page-requests').classList.contains('active'))renderRequests();
 }
 function renderStats(d){
   document.getElementById('stats').innerHTML=[['Tasks i pool',d.totalTasks||0,'JobTread + manuelle'],['Planlagte Tasks',d.assigned||0,'har mindst én booking'],['Bookinger',d.bookings||0,'uafhæng. planrækker'],['Ikke planlagt',d.unassigned||0,'klar i pool'],['Interne',d.employees||0,'medarbejdere'],['Vendors',d.vendors||0,'undergrupper']].map(function(x){return '<div class="stat"><div class="stat-label">'+x[0]+'</div><div class="stat-value">'+x[1]+'</div><div class="stat-sub">'+x[2]+'</div></div>';}).join('');
@@ -1588,7 +1733,28 @@ function closeModal(id){document.getElementById(id).classList.remove('open');if(
 // BIND ALL EVENTS
 function bind(){
   // Tabs
-  document.querySelectorAll('.tab').forEach(function(b){b.addEventListener('click',function(){document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});b.classList.add('active');document.getElementById('page-'+b.dataset.page).classList.add('active');if(b.dataset.page==='logs')loadLogs();if(b.dataset.page==='library')loadLibrary();if(b.dataset.page==='availability')renderAvailability();if(b.dataset.page==='tasklist')renderTaskList();if(b.dataset.page==='timeline')renderTimeline();if(b.dataset.page==='capacity')setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);});});
+  function switchPage(page){
+    document.querySelectorAll('.tab,.navdrop-item').forEach(function(x){x.classList.remove('active');});
+    document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});
+    var tabBtn=document.querySelector('.tab[data-page="'+page+'"]');
+    if(tabBtn)tabBtn.classList.add('active');
+    var dropItem=document.querySelector('.navdrop-item[data-page="'+page+'"]');
+    if(dropItem){dropItem.classList.add('active');document.getElementById('navdrop-btn').classList.add('active');}
+    document.getElementById('page-'+page).classList.add('active');
+    document.getElementById('navdrop-menu').classList.remove('open');
+    if(page==='logs')loadLogs();
+    if(page==='library')loadLibrary();
+    if(page==='availability')renderAvailability();
+    if(page==='tasklist')renderTaskList();
+    if(page==='timeline')renderTimeline();
+    if(page==='requests')renderRequests();
+    if(page==='completed')renderCompleted();
+    if(page==='capacity')setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);
+  }
+  document.querySelectorAll('.tab[data-page]').forEach(function(b){b.addEventListener('click',function(){switchPage(b.dataset.page);});});
+  document.querySelectorAll('.navdrop-item').forEach(function(b){b.addEventListener('click',function(){switchPage(b.dataset.page);});});
+  document.getElementById('navdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('navdrop-menu').classList.toggle('open');});
+  document.addEventListener('click',function(e){if(!e.target.closest('#navdrop'))document.getElementById('navdrop-menu').classList.remove('open');});
   // Nav
   document.getElementById('logout-btn').onclick=logout;
   document.getElementById('employee-link').onclick=function(){window.location.href='/employee';};
@@ -1677,6 +1843,12 @@ function bind(){
       if(act==='delete-task'){e.stopPropagation();deleteTask(a.dataset.taskId);}
       if(act==='delete-lib'){e.stopPropagation();deleteLibraryFile(+a.dataset.id);}
       if(act==='task-check'){e.stopPropagation();selectedTaskIds[a.dataset.taskId]=a.checked;}
+      if(act==='requests-filter'){requestsFilter=a.dataset.value;document.querySelectorAll('#requests-filter .chip').forEach(function(c){c.classList.toggle('active',c===a);});renderRequests();}
+      if(act==='completed-filter'){completedFilter=a.dataset.value;a.parentElement.querySelectorAll('.chip').forEach(function(c){c.classList.toggle('active',c===a);});renderCompleted();}
+      if(act==='approve-request'){e.stopPropagation();approveRequest(+a.dataset.id);}
+      if(act==='reject-request'){e.stopPropagation();rejectRequest(+a.dataset.id);}
+      if(act==='toggle-invoiced'){e.stopPropagation();toggleInvoiced(+a.dataset.bookingId,a.checked);}
+      if(act==='toggle-completed'){e.stopPropagation();toggleCompleted(+a.dataset.bookingId,a.dataset.completed==='1');}
       return;
     }
     // Click on assignment pill → open full edit modal

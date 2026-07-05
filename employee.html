@@ -24,11 +24,27 @@
 .file-item a:hover{text-decoration:underline}
 .file-cat{font-size:8px;font-weight:800;text-transform:uppercase;color:var(--muted);letter-spacing:.4px}
 .lib-btn{border:1px solid rgba(255,255,255,.28);border-radius:7px;padding:5px 9px;background:rgba(255,255,255,.1);color:#fff;font-size:11px;cursor:pointer}
+.req-label{display:block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:10px 0 4px}
+.req-input,.req-textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;box-sizing:border-box}
+.req-textarea{resize:vertical}
+.req-submit{width:100%;margin-top:14px;padding:11px;border:0;border-radius:9px;background:var(--navy);color:#fff;font-weight:800;font-size:13px;cursor:pointer}
+.req-submit:hover{filter:brightness(1.1)}
+.req-history{margin-top:16px;border-top:1px solid var(--border);padding-top:12px}
+.req-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;font-size:11px;border-bottom:1px solid #f1f5f9}
+.req-item:last-child{border-bottom:0}
+.req-status{font-size:9px;font-weight:800;border-radius:10px;padding:2px 8px}
+.req-status.pending{background:#FEF9C3;color:#92570A}
+.req-status.approved{background:#DCFCE7;color:#15803D}
+.req-status.rejected{background:#FEE2E2;color:#B91C1C}
+.task.done{opacity:.72}
+.task.done .task-title{text-decoration:line-through}
+.action.done-btn{background:#DCFCE7;color:#15803D}
+.action.undone-btn{background:#F1F5F9;color:#64748B}
 @media(max-width:560px){.main{padding:12px}.user-name{display:none}.week-buttons{gap:4px}.week-buttons .small-btn{padding:7px}.task{padding:12px}.topbar{padding:0 12px}.actions{grid-template-columns:1fr 1fr}.action{font-size:10px;padding:9px 6px}.week-nav{align-items:flex-start}.week-buttons{flex-wrap:wrap;justify-content:flex-end}.week-title{font-size:17px}}
 </style>
 </head>
 <body>
-<header class="topbar"><div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div><div class="user"><button class="lib-btn" onclick="openLibrary()">📁 Vejledning</button><span id="user-name" class="user-name"></span><span id="user-avatar" class="avatar">?</span><button class="logout" onclick="logout()">Log ud</button></div></header>
+<header class="topbar"><div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div><div class="user"><button class="lib-btn" onclick="openRequestModal()">📩 Anmod om opgave</button><button class="lib-btn" onclick="openLibrary()">📁 Vejledning</button><span id="user-name" class="user-name"></span><span id="user-avatar" class="avatar">?</span><button class="logout" onclick="logout()">Log ud</button></div></header>
 <main class="main">
   <div class="week-nav"><div><div id="week-label" class="week-title">Indlæser...</div><div id="week-sub" class="week-sub"></div></div><div class="week-buttons"><button id="whole-week-btn" class="small-btn primary" onclick="showWholeWeek()">Hele uge</button><button class="small-btn" onclick="changeWeek(-1)">←</button><button class="small-btn primary" onclick="goToday()">I dag</button><button class="small-btn" onclick="changeWeek(1)">→</button></div></div>
   <div id="week-overview" class="week-overview"></div>
@@ -38,6 +54,24 @@
 </main>
 <div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Note til opgaven</div><button class="modal-close" onclick="closeNote()">Luk</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div></div></div></div>
 <div id="library-modal" class="modal-backdrop" onclick="closeLibraryOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📁 Vejledninger & plantegninger</div><button class="modal-close" onclick="closeLibrary()">Luk</button></div><div class="modal-body" id="library-body"></div></div></div>
+<div id="request-modal" class="modal-backdrop" onclick="closeRequestOnBackdrop(event)">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">📩 Anmod om en opgave</div><button class="modal-close" onclick="closeRequestModal()">Luk</button></div>
+    <div class="modal-body">
+      <p style="font-size:11px;color:var(--muted);margin:0 0 12px">Brug denne, hvis du selv ved du skal nå noget hos en kunde — den sendes til godkendelse, og bliver først sat på din kalender, når den er godkendt.</p>
+      <label class="req-label">Kunde / opgave</label>
+      <input id="req-job-name" class="req-input" placeholder="Fx Jensen — mangler at slibe entré">
+      <label class="req-label">Hvorfor / beskrivelse</label>
+      <textarea id="req-description" class="req-textarea" rows="3" placeholder="Kort beskrivelse, evt. hvad du har lovet kunden"></textarea>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1"><label class="req-label">Dato</label><input id="req-date" type="date" class="req-input"></div>
+        <div style="flex:1"><label class="req-label">Antal dage</label><input id="req-days" type="number" min=".25" max="10" step=".25" class="req-input" value="1"></div>
+      </div>
+      <button class="req-submit" onclick="submitTaskRequest()">Send til godkendelse</button>
+      <div id="req-history"></div>
+    </div>
+  </div>
+</div>
 <div id="toast" class="toast"></div>
 <script>
 const token=localStorage.getItem('gm_token');
@@ -140,6 +174,50 @@ async function openLibrary(){
 function closeLibrary(){document.getElementById('library-modal').classList.remove('open')}
 function closeLibraryOnBackdrop(e){if(e.target===document.getElementById('library-modal'))closeLibrary()}
 
+function tomorrowISO(){const d=new Date();d.setDate(d.getDate()+1);return iso(d)}
+async function openRequestModal(){
+  document.getElementById('req-job-name').value='';
+  document.getElementById('req-description').value='';
+  document.getElementById('req-date').value=tomorrowISO();
+  document.getElementById('req-days').value='1';
+  document.getElementById('request-modal').classList.add('open');
+  loadRequestHistory();
+}
+function closeRequestModal(){document.getElementById('request-modal').classList.remove('open')}
+function closeRequestOnBackdrop(e){if(e.target===document.getElementById('request-modal'))closeRequestModal()}
+async function loadRequestHistory(){
+  const el=document.getElementById('req-history');
+  el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Henter…</p>';
+  try{
+    const r=await api('/api/task-requests/my');
+    const list=r&&r.ok?r.data:[];
+    if(!list||!list.length){el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Ingen anmodninger endnu.</p>';return;}
+    const labels={pending:'Afventer',approved:'Godkendt',rejected:'Afvist'};
+    el.innerHTML='<div class="req-label">Dine seneste anmodninger</div>'+list.map(x=>`<div class="req-item"><span>${esc(x.job_name)} — ${esc(String(x.requested_date).slice(0,10))}</span><span class="req-status ${x.status}">${labels[x.status]||x.status}</span></div>`).join('');
+  }catch(e){el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Kunne ikke hente anmodninger.</p>';}
+}
+async function submitTaskRequest(){
+  const jobName=document.getElementById('req-job-name').value.trim();
+  const date=document.getElementById('req-date').value;
+  const days=+document.getElementById('req-days').value||1;
+  const description=document.getElementById('req-description').value.trim();
+  if(!jobName){toast('Skriv hvad opgaven handler om');return}
+  if(!date){toast('Vælg en dato');return}
+  try{
+    const r=await api('/api/task-requests',{method:'POST',body:JSON.stringify({job_name:jobName,description,requested_date:date,estimated_days:days})});
+    if(r&&r.ok){toast('Sendt til godkendelse ✓');document.getElementById('req-job-name').value='';document.getElementById('req-description').value='';loadRequestHistory();}
+    else{toast((r&&r.data&&r.data.error)||'Kunne ikke sende anmodningen')}
+  }catch(e){toast('Kunne ikke sende anmodningen')}
+}
+
+async function toggleTaskDone(id,done){
+  try{
+    const r=await api('/api/assignments/'+id+'/complete',{method:'PUT',body:JSON.stringify({completed:done})});
+    if(r&&r.ok){toast(done?'Markeret som færdig ✓':'Fortrudt');await loadAll();}
+    else toast((r&&r.data&&r.data.error)||'Kunne ikke opdatere');
+  }catch(e){toast('Kunne ikke opdatere');}
+}
+
 function weekKeyOf(d){const x=new Date(d);x.setHours(12,0,0,0);const day=x.getDay()||7;x.setDate(x.getDate()+4-day);const yearStart=new Date(x.getFullYear(),0,1);const weekNo=Math.ceil((((x-yearStart)/86400000)+1)/7);const m=monday(d);return 'w'+m.getFullYear()+'-'+String(weekNo).padStart(2,'0')}
 async function renderWeeklyNote(){
   const wk=weekKeyOf(getWeekDays(weekOffset)[0]);
@@ -183,7 +261,9 @@ function render(){
       const noteId=Number(a.id)||0;
       const jobFilesLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files'):'https://app.jobtread.com';
       const timeChip=hasTime?`<span class="time-chip">⏰ ${esc(a.start_time)}</span>`:`<span class="time-chip untimed">🕓 Selv-planlagt</span>`;
-      out+=`<article class="task ${hasTime?'':'untimed'}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Opgave')}</div><div class="task-sub">${esc(a.task_name||'')}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}<span class="badge" style="background:${t[1]};color:${t[2]}">${t[0]}</span></div></div><div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Vejr hentes…</div><div class="detail-line planned">⏱ Planlagt: ${esc(a.days)} dag${Number(a.days)!==1?'e':''}</div></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Note til opgaven</button><a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Læs om opgaven</a><a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Filer på sagen</a><a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track dine timer</a></div></article>`;
+      const isDone=!!a.completed_at;
+      const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Fortryd (færdig)</button>`:`<button class="action done-btn" type="button" onclick="toggleTaskDone(${noteId},true)">✅ Marker som færdig</button>`;
+      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Opgave')}</div><div class="task-sub">${esc(a.task_name||'')}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}<span class="badge" style="background:${t[1]};color:${t[2]}">${t[0]}</span></div></div><div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Vejr hentes…</div><div class="detail-line planned">⏱ Planlagt: ${esc(a.days)} dag${Number(a.days)!==1?'e':''}</div></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Note til opgaven</button><a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Læs om opgaven</a><a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Filer på sagen</a><a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track dine timer</a>${doneBtn}</div></article>`;
     });}
     out+='</section>';});
   document.getElementById('tasks-container').innerHTML=total?out:'<div class="empty"><div class="empty-icon">📅</div><h3>Ingen opgaver i denne visning</h3><p>Vælg en anden dag eller vis hele ugen.</p></div>';
