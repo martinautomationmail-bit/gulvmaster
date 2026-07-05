@@ -779,15 +779,17 @@ async function syncFromJT() {
     }
 
     // ── PASS 4: kundetelefon (best effort) ──
-    // JobTreads nøjagtige felt-navn for kundens telefonnummer kan variere efter
-    // jeres opsætning. Vi prøver flere sandsynlige varianter efter hinanden —
-    // først med kun 1 job for at teste om feltet overhovedet findes, uden at
-    // risikere at vælte resten af synken. Fejl logges i synk-loggen i appen.
+    // JobTreads egen API-dokumentation (app.jobtread.com/docs) bekræfter at en
+    // "account" er kunden/vendoren, og at telefonnummeret sidder på en separat
+    // "Contact" i en "contacts"-forbindelse under kontoen — IKKE direkte på
+    // kontoen selv. Vi prøver flere sandsynlige stier med denne struktur.
     const PHONE_FIELD_CANDIDATES = [
-      { label: 'customer.phone', shape: { customer: { name: {}, phone: {} } }, read: j => j?.customer?.phone },
-      { label: 'account.phone', shape: { account: { name: {}, phone: {} } }, read: j => j?.account?.phone },
-      { label: 'customer.primaryContact.phone', shape: { customer: { name: {}, primaryContact: { phone: {} } } }, read: j => j?.customer?.primaryContact?.phone },
-      { label: 'contact.phone', shape: { contact: { name: {}, phone: {} } }, read: j => j?.contact?.phone }
+      { label: 'job.customer.contacts[0].phone', shape: { customer: { name: {}, contacts: { $: { size: 1 }, nodes: { name: {}, phone: {}, email: {} } } } }, read: j => j?.customer?.contacts?.nodes?.[0]?.phone },
+      { label: 'job.account.contacts[0].phone', shape: { account: { name: {}, contacts: { $: { size: 1 }, nodes: { name: {}, phone: {}, email: {} } } } }, read: j => j?.account?.contacts?.nodes?.[0]?.phone },
+      { label: 'job.customer.phone', shape: { customer: { name: {}, phone: {} } }, read: j => j?.customer?.phone },
+      { label: 'job.account.phone', shape: { account: { name: {}, phone: {} } }, read: j => j?.account?.phone },
+      { label: 'job.customer.primaryContact.phone', shape: { customer: { name: {}, primaryContact: { phone: {} } } }, read: j => j?.customer?.primaryContact?.phone },
+      { label: 'job.contact.phone', shape: { contact: { name: {}, phone: {} } }, read: j => j?.contact?.phone }
     ];
     const jobPhoneMap = new Map();
     let phoneStatus;
