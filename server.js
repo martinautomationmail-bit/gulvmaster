@@ -780,37 +780,57 @@ async function syncFromJT() {
 
     // ── PASS 4: kundetelefon (best effort) ──
     // JobTreads nøjagtige felt-navn for kundens telefonnummer kan variere efter
-    // jeres opsætning (customer/contact/account). Dette forsøg er isoleret i sit
-    // eget try/catch, så en evt. fejl her ALDRIG kan vælte resten af synken —
-    // fejlen vises i stedet i synk-loggen i appen, så den er nem at få øje på.
+    // jeres opsætning. Vi prøver flere sandsynlige varianter efter hinanden —
+    // først med kun 1 job for at teste om feltet overhovedet findes, uden at
+    // risikere at vælte resten af synken. Fejl logges i synk-loggen i appen.
+    const PHONE_FIELD_CANDIDATES = [
+      { label: 'customer.phone', shape: { customer: { name: {}, phone: {} } }, read: j => j?.customer?.phone },
+      { label: 'account.phone', shape: { account: { name: {}, phone: {} } }, read: j => j?.account?.phone },
+      { label: 'customer.primaryContact.phone', shape: { customer: { name: {}, primaryContact: { phone: {} } } }, read: j => j?.customer?.primaryContact?.phone },
+      { label: 'contact.phone', shape: { contact: { name: {}, phone: {} } }, read: j => j?.contact?.phone }
+    ];
     const jobPhoneMap = new Map();
     let phoneStatus;
-    try {
-      let cur4;
-      let p4 = 0;
-      while (p4 < 20) {
-        const args = { size: 50 };
-        if (cur4) args.page = cur4;
+    let workingCandidate = null;
+    for (const candidate of PHONE_FIELD_CANDIDATES) {
+      try {
+        await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
+          jobs: { $: { size: 1 }, nodes: { id: {}, ...candidate.shape } }
+        }}}, `Kundetlf.-test (${candidate.label})`);
+        workingCandidate = candidate;
+        break;
+      } catch (_) { /* denne variant findes ikke i jeres opsætning — prøv næste */ }
+    }
+    if (!workingCandidate) {
+      phoneStatus = `intet af de forsøgte felter (${PHONE_FIELD_CANDIDATES.map(c => c.label).join(', ')}) findes i jeres JobTread-opsætning`;
+    } else {
+      try {
+        let cur4;
+        let p4 = 0;
+        while (p4 < 20) {
+          const args = { size: 50 };
+          if (cur4) args.page = cur4;
 
-        const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
-          jobs: { $: args, nextPage: {}, nodes: { id: {}, customer: { name: {}, phone: {} } } }
-        }}}, 'Kundetelefon s.' + (p4 + 1));
+          const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
+            jobs: { $: args, nextPage: {}, nodes: { id: {}, ...workingCandidate.shape } }
+          }}}, 'Kundetelefon s.' + (p4 + 1));
 
-        const conn = d?.organization?.jobs || d?.query?.organization?.jobs || {};
-        const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
-        for (const j of nodes) {
-          const phone = j?.customer?.phone;
-          if (j?.id && phone) jobPhoneMap.set(j.id, String(phone).trim());
+          const conn = d?.organization?.jobs || d?.query?.organization?.jobs || {};
+          const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
+          for (const j of nodes) {
+            const phone = workingCandidate.read(j);
+            if (j?.id && phone) jobPhoneMap.set(j.id, String(phone).trim());
+          }
+          p4++;
+          const next = conn.nextPage;
+          if (!next || next === '') break;
+          cur4 = next;
         }
-        p4++;
-        const next = conn.nextPage;
-        if (!next || next === '') break;
-        cur4 = next;
+        phoneStatus = `felt "${workingCandidate.label}" virker — ${jobPhoneMap.size} kundetlf. fundet`;
+      } catch (phoneError) {
+        phoneStatus = `kundetlf.-opslag fejlede: ${phoneError.message}`.slice(0, 300);
+        console.error('Kundetelefon-opslag fra JobTread fejlede:', phoneError.message);
       }
-      phoneStatus = jobPhoneMap.size ? `${jobPhoneMap.size} kundetlf. fundet` : 'kundetlf.-felt gav 0 numre (feltnavnet "customer.phone" findes muligvis ikke i jeres JobTread-opsætning)';
-    } catch (phoneError) {
-      phoneStatus = `kundetlf.-opslag fejlede: ${phoneError.message}`.slice(0, 300);
-      console.error('Kundetelefon-opslag fra JobTread fejlede:', phoneError.message);
     }
 
     // ── UPSERT: kun jt_tasks — rører ALDRIG planning_bookings ──

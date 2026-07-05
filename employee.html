@@ -93,7 +93,7 @@
 <script>
 const token=localStorage.getItem('gm_token');
 const user=JSON.parse(localStorage.getItem('gm_user')||'null');
-let assignments=[],weekOffset=0,selectedDate=null;
+let assignments=[],weekOffset=0,selectedDate=(new Date().getDay()>=1&&new Date().getDay()<=5)?iso(new Date()):null;
 const bookingNotes=new Map();
 const weatherItems=new Map();
 const weeklyNoteCache=new Map();
@@ -144,27 +144,34 @@ function cityForWeather(address){
   const m=last.match(/^(\d{3,4})\s*(.+)$/);
   return m?m[2].trim():last;
 }
-async function getWeather(address,date){
-  if(!address) return '🌦️ Vejr kræver en adresse';
+const COPENHAGEN={latitude:55.6761,longitude:12.5683,label:'København (intet sted angivet)'};
+async function resolveWeatherPlace(address){
+  if(!address)return COPENHAGEN;
   const city=cityForWeather(address)||address;
-  const key=weatherKey(address,date);const cached=localStorage.getItem(key);
-  try{if(cached){const c=JSON.parse(cached);if(c&&c.savedAt&&Date.now()-c.savedAt<30*60*1000&&c.text)return c.text}}catch(e){}
   try{
     const geo=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=da&format=json&country=DK');
     let geoData=await geo.json(); let place=geoData&&geoData.results&&geoData.results[0];
     if(!place){
-      // Fallback: prøv uden landefilter, i tilfælde af at byen ligger uden for DK
       const geo2=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=da&format=json');
       geoData=await geo2.json(); place=geoData&&geoData.results&&geoData.results[0];
     }
-    if(!place) return '🌦️ Vejr ikke fundet for '+city;
+    if(place)return {latitude:place.latitude,longitude:place.longitude,label:null};
+  }catch(e){}
+  return COPENHAGEN; // Kunne ikke finde stedet — vis vejret for København i stedet for en fejl
+}
+async function getWeather(address,date){
+  const key=weatherKey(address||'kbh',date);const cached=localStorage.getItem(key);
+  try{if(cached){const c=JSON.parse(cached);if(c&&c.savedAt&&Date.now()-c.savedAt<30*60*1000&&c.text)return c.text}}catch(e){}
+  try{
+    const place=await resolveWeatherPlace(address);
     const url='https://api.open-meteo.com/v1/forecast?latitude='+encodeURIComponent(place.latitude)+'&longitude='+encodeURIComponent(place.longitude)+'&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FCopenhagen&start_date='+encodeURIComponent(date)+'&end_date='+encodeURIComponent(date);
     const res=await fetch(url); const data=await res.json(); const d=data&&data.daily;
     if(!d||!d.time||!d.time.length) return '🌦️ Vejrprognose er ikke tilgængelig';
-    const text=weatherText(d.weather_code&&d.weather_code[0],d.temperature_2m_max&&d.temperature_2m_max[0],d.temperature_2m_min&&d.temperature_2m_min[0],d.precipitation_probability_max&&d.precipitation_probability_max[0]);
+    let text=weatherText(d.weather_code&&d.weather_code[0],d.temperature_2m_max&&d.temperature_2m_max[0],d.temperature_2m_min&&d.temperature_2m_min[0],d.precipitation_probability_max&&d.precipitation_probability_max[0]);
+    if(place.label)text+=' (for '+place.label+')';
     try{localStorage.setItem(key,JSON.stringify({savedAt:Date.now(),text:text}))}catch(e){}
     return text;
-  }catch(e){return '🌦️ Vejr kunne ikke hentes'}
+  }catch(e){return '🌦️ Vejr kunne ikke hentes lige nu'}
 }
 async function hydrateWeather(){
   const nodes=[...document.querySelectorAll('[data-weather-id]')];
