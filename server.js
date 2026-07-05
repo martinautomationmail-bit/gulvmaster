@@ -778,61 +778,51 @@ async function syncFromJT() {
       cur3 = next;
     }
 
-    // ── PASS 4: kundetelefon (best effort) ──
-    // JobTreads egen API-dokumentation (app.jobtread.com/docs) bekræfter at en
-    // "account" er kunden/vendoren, og at telefonnummeret sidder på en separat
-    // "Contact" i en "contacts"-forbindelse under kontoen — IKKE direkte på
-    // kontoen selv. Vi prøver flere sandsynlige stier med denne struktur.
-    const PHONE_FIELD_CANDIDATES = [
-      { label: 'job.customer.contacts[0].phone', shape: { customer: { name: {}, contacts: { $: { size: 1 }, nodes: { name: {}, phone: {}, email: {} } } } }, read: j => j?.customer?.contacts?.nodes?.[0]?.phone },
-      { label: 'job.account.contacts[0].phone', shape: { account: { name: {}, contacts: { $: { size: 1 }, nodes: { name: {}, phone: {}, email: {} } } } }, read: j => j?.account?.contacts?.nodes?.[0]?.phone },
-      { label: 'job.customer.phone', shape: { customer: { name: {}, phone: {} } }, read: j => j?.customer?.phone },
-      { label: 'job.account.phone', shape: { account: { name: {}, phone: {} } }, read: j => j?.account?.phone },
-      { label: 'job.customer.primaryContact.phone', shape: { customer: { name: {}, primaryContact: { phone: {} } } }, read: j => j?.customer?.primaryContact?.phone },
-      { label: 'job.contact.phone', shape: { contact: { name: {}, phone: {} } }, read: j => j?.contact?.phone }
-    ];
+    // ── PASS 4: kundetelefon ──
+    // Bekræftet direkte mod jeres JobTread-organisation (introspektion + live test):
+    // job -> location -> account -> contacts -> customFieldValues, hvor
+    // customField.name === "Phone" (et brugerdefineret felt af typen phoneNumber
+    // på "customerContact"). Der er IKKE et fast "phone"-felt nogen steder —
+    // det er altid gemt som denne brugerdefinerede feltværdi.
     const jobPhoneMap = new Map();
     let phoneStatus;
-    let workingCandidate = null;
-    for (const candidate of PHONE_FIELD_CANDIDATES) {
-      try {
-        await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
-          jobs: { $: { size: 1 }, nodes: { id: {}, ...candidate.shape } }
-        }}}, `Kundetlf.-test (${candidate.label})`);
-        workingCandidate = candidate;
-        break;
-      } catch (_) { /* denne variant findes ikke i jeres opsætning — prøv næste */ }
-    }
-    if (!workingCandidate) {
-      phoneStatus = `intet af de forsøgte felter (${PHONE_FIELD_CANDIDATES.map(c => c.label).join(', ')}) findes i jeres JobTread-opsætning`;
-    } else {
-      try {
-        let cur4;
-        let p4 = 0;
-        while (p4 < 20) {
-          const args = { size: 50 };
-          if (cur4) args.page = cur4;
+    try {
+      let cur4;
+      let p4 = 0;
+      while (p4 < 20) {
+        const args = { size: 50 };
+        if (cur4) args.page = cur4;
 
-          const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
-            jobs: { $: args, nextPage: {}, nodes: { id: {}, ...workingCandidate.shape } }
-          }}}, 'Kundetelefon s.' + (p4 + 1));
+        const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
+          jobs: { $: args, nextPage: {}, nodes: { id: {},
+            location: { contact: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } },
+              account: { contacts: { $: { size: 5 }, nodes: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } } } } }
+          } }
+        }}}, 'Kundetelefon s.' + (p4 + 1));
 
-          const conn = d?.organization?.jobs || d?.query?.organization?.jobs || {};
-          const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
-          for (const j of nodes) {
-            const phone = workingCandidate.read(j);
-            if (j?.id && phone) jobPhoneMap.set(j.id, String(phone).trim());
+        const conn = d?.organization?.jobs || d?.query?.organization?.jobs || {};
+        const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
+        for (const j of nodes) {
+          const findPhone = (fieldValues) => (fieldValues || []).find(v => v?.customField?.name === 'Phone')?.value;
+          let phone = findPhone(j?.location?.contact?.customFieldValues?.nodes);
+          if (!phone) {
+            const accContacts = j?.location?.account?.contacts?.nodes || [];
+            for (const c of accContacts) {
+              phone = findPhone(c?.customFieldValues?.nodes);
+              if (phone) break;
+            }
           }
-          p4++;
-          const next = conn.nextPage;
-          if (!next || next === '') break;
-          cur4 = next;
+          if (j?.id && phone) jobPhoneMap.set(j.id, String(phone).trim());
         }
-        phoneStatus = `felt "${workingCandidate.label}" virker — ${jobPhoneMap.size} kundetlf. fundet`;
-      } catch (phoneError) {
-        phoneStatus = `kundetlf.-opslag fejlede: ${phoneError.message}`.slice(0, 300);
-        console.error('Kundetelefon-opslag fra JobTread fejlede:', phoneError.message);
+        p4++;
+        const next = conn.nextPage;
+        if (!next || next === '') break;
+        cur4 = next;
       }
+      phoneStatus = `${jobPhoneMap.size} kundetlf. fundet`;
+    } catch (phoneError) {
+      phoneStatus = `kundetlf.-opslag fejlede: ${phoneError.message}`.slice(0, 300);
+      console.error('Kundetelefon-opslag fra JobTread fejlede:', phoneError.message);
     }
 
     // ── UPSERT: kun jt_tasks — rører ALDRIG planning_bookings ──
