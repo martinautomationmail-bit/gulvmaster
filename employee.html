@@ -49,8 +49,9 @@
 .req-status.pending{background:#FEF9C3;color:#92570A}
 .req-status.approved{background:#DCFCE7;color:#15803D}
 .req-status.rejected{background:#FEE2E2;color:#B91C1C}
-.task.done{opacity:.72}
-.task.done .task-title{text-decoration:line-through}
+.task.done{opacity:.85;border-left:4px solid #16A34A;background:#F7FEF9;position:relative}
+.task.done .task-title{text-decoration:line-through;color:#15803D}
+.task.done::before{content:'✅ FÆRDIG';position:absolute;top:-9px;left:14px;background:#16A34A;color:#fff;font-size:9px;font-weight:800;letter-spacing:.4px;padding:2px 8px;border-radius:20px;box-shadow:0 2px 6px rgba(22,163,74,.4)}
 .action.done-btn{background:#DCFCE7;color:#15803D}
 .action.undone-btn{background:#F1F5F9;color:#64748B}
 @media(max-width:560px){.main{padding:12px}.user-name{display:none}.week-buttons{gap:4px}.week-buttons .small-btn{padding:7px}.task{padding:12px}.topbar{padding:0 12px}.actions{grid-template-columns:1fr 1fr}.action{font-size:10px;padding:9px 6px}.week-nav{align-items:flex-start}.week-buttons{flex-wrap:wrap;justify-content:flex-end}.week-title{font-size:17px}}
@@ -191,12 +192,13 @@ function closeLibrary(){document.getElementById('library-modal').classList.remov
 function closeLibraryOnBackdrop(e){if(e.target===document.getElementById('library-modal'))closeLibrary()}
 
 function tomorrowISO(){const d=new Date();d.setDate(d.getDate()+1);return iso(d)}
+function reqField(id){return document.querySelector('#request-modal #'+id)}
 async function openRequestModal(){
-  document.getElementById('req-job-name').value='';
-  document.getElementById('req-description').value='';
-  document.getElementById('req-date').value=tomorrowISO();
-  document.getElementById('req-days').value='1';
-  document.getElementById('req-feedback').className='req-feedback';
+  reqField('req-job-name').value='';
+  reqField('req-description').value='';
+  reqField('req-date').value=tomorrowISO();
+  reqField('req-days').value='1';
+  reqField('req-feedback').className='req-feedback';
   document.getElementById('request-modal').classList.add('open');
   loadRequestHistory();
 }
@@ -214,17 +216,21 @@ async function loadRequestHistory(){
   }catch(e){el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Kunne ikke hente anmodninger.</p>';}
 }
 function reqFeedback(msg,kind){
-  const el=document.getElementById('req-feedback');
+  const el=reqField('req-feedback');
   el.textContent=msg;
   el.className='req-feedback show '+(kind||'');
 }
 async function submitTaskRequest(){
-  const jobName=document.getElementById('req-job-name').value.trim();
-  const date=document.getElementById('req-date').value;
-  const days=+document.getElementById('req-days').value||1;
-  const description=document.getElementById('req-description').value.trim();
-  console.log('[Anmod om opgave] læst fra felterne:',{jobName:jobName,date:date,days:days});
-  if(!jobName){reqFeedback('Skriv hvad opgaven handler om','error');return}
+  // Diagnostik: tæller om der findes flere elementer med samme id på siden.
+  // Hvis der er mere end 1, er noget udefra (fx en browser-udvidelse) årsagen.
+  const dupCount=document.querySelectorAll('[id="req-job-name"]').length;
+  const jobNameEl=reqField('req-job-name');
+  const jobName=jobNameEl?jobNameEl.value.trim():'';
+  const date=reqField('req-date').value;
+  const days=+reqField('req-days').value||1;
+  const description=reqField('req-description').value.trim();
+  console.log('[Anmod om opgave] diagnostik:',{jobName:jobName,date:date,days:days,elementerMedSammeId:dupCount});
+  if(!jobName){reqFeedback(dupCount>1?'Konflikt fundet på siden — genindlæs siden helt (Ctrl/Cmd+Shift+R) og prøv igen':'Skriv hvad opgaven handler om','error');return}
   if(!date){reqFeedback('Vælg en dato','error');return}
   const btn=document.getElementById('req-submit-btn');
   btn.disabled=true;btn.querySelector('.req-submit-label').textContent='Sender…';
@@ -233,8 +239,8 @@ async function submitTaskRequest(){
     if(r&&r.ok){
       reqFeedback('Sendt til godkendelse ✓','success');
       toast('Sendt til godkendelse ✓');
-      document.getElementById('req-job-name').value='';
-      document.getElementById('req-description').value='';
+      reqField('req-job-name').value='';
+      reqField('req-description').value='';
       loadRequestHistory();
     } else {
       const msg=(r&&r.data&&r.data.error)||'Kunne ikke sende anmodningen — prøv igen om lidt';
@@ -249,20 +255,28 @@ async function submitTaskRequest(){
   }
 }
 
-async function toggleTaskDone(id,done,btn){
-  const original=btn?btn.textContent:null;
-  if(btn){btn.disabled=true;btn.textContent='Gemmer…';}
+async function toggleTaskDone(id,done){
+  const a=assignments.find(x=>+x.id===+id);
+  if(!a)return;
+  const previous=a.completed_at;
+  // Optimistisk opdatering: skift udseende MED DET SAMME, før serveren har svaret,
+  // så det aldrig føles som om der ikke sker noget når man trykker.
+  a.completed_at=done?new Date().toISOString():null;
+  render();
+  toast(done?'Markeret som færdig ✓':'Fortrudt ↩');
   try{
     const r=await api('/api/assignments/'+id+'/complete',{method:'PUT',body:JSON.stringify({completed:done})});
     console.log('[Marker som færdig] svar fra server:',r);
-    if(r&&r.ok){toast(done?'Markeret som færdig ✓':'Fortrudt');await loadAll();return}
-    console.error('Complete-toggle failed:',r);
-    toast((r&&r.data&&r.data.error)||'Kunne ikke opdatere — prøv igen');
+    if(!r||!r.ok){
+      a.completed_at=previous;render();
+      console.error('Complete-toggle failed:',r);
+      toast((r&&r.data&&r.data.error)||'Kunne ikke gemme — prøvede at fortryde ændringen');
+    }
   }catch(e){
+    a.completed_at=previous;render();
     console.error('Complete-toggle error:',e);
-    toast('Kunne ikke opdatere — tjek din forbindelse');
+    toast('Ingen forbindelse — ændringen blev ikke gemt');
   }
-  if(btn){btn.disabled=false;btn.textContent=original;}
 }
 
 function weekKeyOf(d){const x=new Date(d);x.setHours(12,0,0,0);const day=x.getDay()||7;x.setDate(x.getDate()+4-day);const yearStart=new Date(x.getFullYear(),0,1);const weekNo=Math.ceil((((x-yearStart)/86400000)+1)/7);const m=monday(d);return 'w'+m.getFullYear()+'-'+String(weekNo).padStart(2,'0')}
@@ -309,7 +323,7 @@ function render(){
       const jobFilesLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files'):'https://app.jobtread.com';
       const timeChip=hasTime?`<span class="time-chip">⏰ ${esc(a.start_time)}</span>`:`<span class="time-chip untimed">🕓 Selv-planlagt</span>`;
       const isDone=!!a.completed_at;
-      const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false,this)">↩ Fortryd (færdig)</button>`:`<button class="action done-btn" type="button" onclick="toggleTaskDone(${noteId},true,this)">✅ Marker som færdig</button>`;
+      const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Fortryd (færdig)</button>`:`<button class="action done-btn" type="button" onclick="toggleTaskDone(${noteId},true)">✅ Marker som færdig</button>`;
       out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Opgave')}</div><div class="task-sub">${esc(a.task_name||'')}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}<span class="badge" style="background:${t[1]};color:${t[2]}">${t[0]}</span></div></div><div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Vejr hentes…</div><div class="detail-line planned">⏱ Planlagt: ${esc(a.days)} dag${Number(a.days)!==1?'e':''}</div></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Note til opgaven</button><a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Læs om opgaven</a><a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Filer på sagen</a><a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track dine timer</a>${doneBtn}</div></article>`;
     });}
     out+='</section>';});
