@@ -23,6 +23,9 @@
 .req-head{background:linear-gradient(135deg,var(--navy),#1e3a6e)}
 .req-icon{display:inline-grid;place-items:center;width:24px;height:24px;background:rgba(255,255,255,.18);border-radius:8px;font-size:13px}
 .req-intro{font-size:11.5px;color:var(--muted);margin:0 0 14px;line-height:1.5;background:#F8FAFC;border-left:3px solid var(--accent,#2563eb);padding:8px 10px;border-radius:0 8px 8px 0}
+.req-tabs{display:flex;gap:6px;margin-bottom:14px;background:#F1F5F9;border-radius:10px;padding:4px}
+.req-tab{flex:1;border:0;background:none;padding:8px 6px;font-size:12px;font-weight:700;color:var(--muted);border-radius:8px;cursor:pointer;transition:.15s}
+.req-tab.active{background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.1)}
 .req-feedback{font-size:11.5px;font-weight:700;border-radius:8px;padding:0;max-height:0;overflow:hidden;opacity:0;transition:.2s;margin:0}
 .req-feedback.show{padding:9px 11px;max-height:60px;opacity:1;margin:10px 0 0}
 .req-feedback.error{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
@@ -78,21 +81,46 @@
 <div id="library-modal" class="modal-backdrop" onclick="closeLibraryOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📁 Vejledninger & plantegninger</div><button class="modal-close" onclick="closeLibrary()">Luk</button></div><div class="modal-body" id="library-body"></div></div></div>
 <div id="request-modal" class="modal-backdrop" onclick="closeRequestOnBackdrop(event)">
   <div class="modal req-modal">
-    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon">📩</span> Anmod om en opgave</div><button class="modal-close" onclick="closeRequestModal()">Luk</button></div>
+    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon" id="req-modal-icon">📩</span> <span id="req-modal-title">Anmod om en opgave</span></div><button class="modal-close" onclick="closeRequestModal()">Luk</button></div>
     <div class="modal-body">
-      <p class="req-intro">Brug denne, hvis du selv ved du skal nå noget hos en kunde — den sendes til godkendelse, og bliver først sat på din kalender, når den er godkendt.</p>
-      <form autocomplete="off" onsubmit="return false">
-        <label class="req-label">Kunde / opgave</label>
-        <input id="req-job-name" name="gm_req_job_name_field" class="req-input" placeholder="Fx Jensen — mangler at slibe entré" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false">
-        <label class="req-label">Hvorfor / beskrivelse</label>
-        <textarea id="req-description" name="gm_req_description_field" class="req-textarea" rows="3" placeholder="Kort beskrivelse, evt. hvad du har lovet kunden" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false"></textarea>
-        <div style="display:flex;gap:10px">
-          <div style="flex:1"><label class="req-label">Dato</label><input id="req-date" name="gm_req_date_field" type="date" class="req-input" autocomplete="off"></div>
-          <div style="flex:1"><label class="req-label">Antal dage</label><input id="req-days" name="gm_req_days_field" type="number" min=".25" max="10" step=".25" class="req-input" value="1" autocomplete="off"></div>
-        </div>
-        <div id="req-feedback" class="req-feedback"></div>
-        <button type="button" class="req-submit" id="req-submit-btn" onclick="submitTaskRequest()"><span class="req-submit-label">Send til godkendelse</span></button>
-      </form>
+      <div class="req-tabs">
+        <button type="button" class="req-tab active" id="req-tab-task" onclick="switchRequestTab('task')">📩 Opgave</button>
+        <button type="button" class="req-tab" id="req-tab-timeoff" onclick="switchRequestTab('timeoff')">🏖 Ferie / sygdom</button>
+      </div>
+      <div id="req-task-form">
+        <p class="req-intro">Brug denne, hvis du selv ved du skal nå noget hos en kunde — den sendes til godkendelse, og bliver først sat på din kalender, når den er godkendt.</p>
+        <form autocomplete="off" onsubmit="return false">
+          <label class="req-label">Kunde / opgave</label>
+          <input id="req-job-name" name="gm_req_job_name_field" class="req-input" placeholder="Fx Jensen — mangler at slibe entré" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false">
+          <label class="req-label">Hvorfor / beskrivelse</label>
+          <textarea id="req-description" name="gm_req_description_field" class="req-textarea" rows="3" placeholder="Kort beskrivelse, evt. hvad du har lovet kunden" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false"></textarea>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1"><label class="req-label">Dato</label><input id="req-date" name="gm_req_date_field" type="date" class="req-input" autocomplete="off"></div>
+            <div style="flex:1"><label class="req-label">Antal dage</label><input id="req-days" name="gm_req_days_field" type="number" min=".25" max="10" step=".25" class="req-input" value="1" autocomplete="off"></div>
+          </div>
+          <div id="req-feedback" class="req-feedback"></div>
+          <button type="button" class="req-submit" id="req-submit-btn" onclick="submitTaskRequest()"><span class="req-submit-label">Send til godkendelse</span></button>
+        </form>
+      </div>
+      <div id="req-timeoff-form" style="display:none">
+        <p class="req-intro">Bed om fri til ferie, sygdom eller andet fravær — din leder godkender det, og din kalender blokeres for de dage.</p>
+        <form autocomplete="off" onsubmit="return false">
+          <label class="req-label">Type</label>
+          <select id="off-type" class="req-input">
+            <option value="vacation">🏖 Ferie</option>
+            <option value="sick">🤒 Sygdom</option>
+            <option value="other">⛔ Andet fravær</option>
+          </select>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1"><label class="req-label">Fra dato</label><input id="off-start" type="date" class="req-input" autocomplete="off"></div>
+            <div style="flex:1"><label class="req-label">Til dato</label><input id="off-end" type="date" class="req-input" autocomplete="off"></div>
+          </div>
+          <label class="req-label">Note (valgfrit)</label>
+          <textarea id="off-note" class="req-textarea" rows="2" placeholder="Fx lægebesøg, familiebegivenhed osv." autocomplete="off"></textarea>
+          <div id="off-feedback" class="req-feedback"></div>
+          <button type="button" class="req-submit" id="off-submit-btn" onclick="submitTimeOffRequest()"><span class="req-submit-label">Send til godkendelse</span></button>
+        </form>
+      </div>
       <div id="req-history"></div>
     </div>
   </div>
@@ -214,8 +242,23 @@ async function openRequestModal(){
   reqField('req-date').value=tomorrowISO();
   reqField('req-days').value='1';
   reqField('req-feedback').className='req-feedback';
+  reqField('off-start').value=tomorrowISO();
+  reqField('off-end').value=tomorrowISO();
+  reqField('off-note').value='';
+  reqField('off-type').value='vacation';
+  reqField('off-feedback').className='req-feedback';
+  switchRequestTab('task');
   document.getElementById('request-modal').classList.add('open');
   loadRequestHistory();
+}
+function switchRequestTab(which){
+  const isTask=which==='task';
+  document.getElementById('req-tab-task').classList.toggle('active',isTask);
+  document.getElementById('req-tab-timeoff').classList.toggle('active',!isTask);
+  document.getElementById('req-task-form').style.display=isTask?'block':'none';
+  document.getElementById('req-timeoff-form').style.display=isTask?'none':'block';
+  document.getElementById('req-modal-icon').textContent=isTask?'📩':'🏖';
+  document.getElementById('req-modal-title').textContent=isTask?'Anmod om en opgave':'Anmod om ferie / sygdom';
 }
 function closeRequestModal(){document.getElementById('request-modal').classList.remove('open')}
 function closeRequestOnBackdrop(e){if(e.target===document.getElementById('request-modal'))closeRequestModal()}
@@ -223,12 +266,43 @@ async function loadRequestHistory(){
   const el=document.getElementById('req-history');
   el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Henter…</p>';
   try{
-    const r=await api('/api/task-requests/my');
-    const list=r&&r.ok?r.data:[];
-    if(!list||!list.length){el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Ingen anmodninger endnu.</p>';return;}
+    const [tr,or_]=await Promise.all([api('/api/task-requests/my'),api('/api/time-off/my')]);
+    const tasks_=(tr&&tr.ok?tr.data:[]).map(x=>({label:esc(x.job_name)+' — '+esc(String(x.requested_date).slice(0,10)),status:x.status,sort:x.created_at}));
+    const offs=(or_&&or_.ok?or_.data:[]).map(x=>({label:(x.type==='sick'?'🤒 Sygdom':x.type==='vacation'?'🏖 Ferie':'⛔ Fravær')+' — '+esc(String(x.start_date).slice(0,10))+' til '+esc(String(x.end_date).slice(0,10)),status:x.status,sort:x.created_at}));
+    const list=tasks_.concat(offs).sort((a,b)=>String(b.sort||'').localeCompare(String(a.sort||'')));
+    if(!list.length){el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Ingen anmodninger endnu.</p>';return;}
     const labels={pending:'Afventer',approved:'Godkendt',rejected:'Afvist'};
-    el.innerHTML='<div class="req-label">Dine seneste anmodninger</div>'+list.map(x=>`<div class="req-item"><span>${esc(x.job_name)} — ${esc(String(x.requested_date).slice(0,10))}</span><span class="req-status ${x.status}">${labels[x.status]||x.status}</span></div>`).join('');
+    el.innerHTML='<div class="req-label">Dine seneste anmodninger</div>'+list.map(x=>`<div class="req-item"><span>${x.label}</span><span class="req-status ${x.status}">${labels[x.status]||x.status}</span></div>`).join('');
   }catch(e){el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Kunne ikke hente anmodninger.</p>';}
+}
+async function submitTimeOffRequest(){
+  const type=reqField('off-type').value;
+  const start=reqField('off-start').value;
+  const end=reqField('off-end').value;
+  const note=reqField('off-note').value.trim();
+  const el=reqField('off-feedback');
+  function offFeedback(msg,kind){el.textContent=msg;el.className='req-feedback show '+(kind||'');}
+  if(!start||!end){offFeedback('Vælg både fra- og til-dato','error');return}
+  if(end<start){offFeedback('Til-dato skal være efter fra-dato','error');return}
+  const btn=document.getElementById('off-submit-btn');
+  btn.disabled=true;btn.querySelector('.req-submit-label').textContent='Sender…';
+  try{
+    const r=await api('/api/time-off',{method:'POST',body:JSON.stringify({type,start_date:start,end_date:end,note:note||null})});
+    if(r&&r.ok){
+      offFeedback('Sendt til godkendelse ✓','success');
+      toast('Sendt til godkendelse ✓');
+      reqField('off-note').value='';
+      loadRequestHistory();
+    } else {
+      offFeedback((r&&r.data&&r.data.error)||'Kunne ikke sende anmodningen','error');
+      console.error('Time-off request failed:',r);
+    }
+  }catch(e){
+    offFeedback('Kunne ikke sende anmodningen — tjek din forbindelse','error');
+    console.error('Time-off request error:',e);
+  }finally{
+    btn.disabled=false;btn.querySelector('.req-submit-label').textContent='Send til godkendelse';
+  }
 }
 function reqFeedback(msg,kind){
   const el=reqField('req-feedback');
@@ -344,7 +418,7 @@ function render(){
       const timeChip=hasTime?`<span class="time-chip">⏰ ${esc(a.start_time)}</span>`:`<span class="time-chip untimed">🕓 Selv-planlagt</span>`;
       const isDone=!!a.completed_at;
       const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Fortryd (færdig)</button>`:`<button class="action done-btn" type="button" onclick="toggleTaskDone(${noteId},true)">✅ Marker som færdig</button>`;
-      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Opgave')}</div><div class="task-sub">${esc(a.task_name||'')}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}<span class="badge" style="background:${t[1]};color:${t[2]}">${t[0]}</span></div></div><div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Vejr hentes…</div><div class="detail-line planned">⏱ Planlagt: ${esc(a.days)} dag${Number(a.days)!==1?'e':''}</div></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Note til opgaven</button><a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Læs om opgaven</a><a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Filer på sagen</a><a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track dine timer</a>${doneBtn}</div></article>`;
+      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Opgave')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Sag #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}<span class="badge" style="background:${t[1]};color:${t[2]}">${t[0]}</span></div></div><div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Vejr hentes…</div><div class="detail-line planned">⏱ Planlagt: ${esc(a.days)} dag${Number(a.days)!==1?'e':''}</div></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Note til opgaven</button><a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Læs om opgaven</a><a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Filer på sagen</a><a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track dine timer</a>${doneBtn}</div></article>`;
     });}
     out+='</section>';});
   document.getElementById('tasks-container').innerHTML=total?out:'<div class="empty"><div class="empty-icon">📅</div><h3>Ingen opgaver i denne visning</h3><p>Vælg en anden dag eller vis hele ugen.</p></div>';

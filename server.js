@@ -222,6 +222,23 @@ async function initSchema() {
 
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS completed_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS invoiced INTEGER DEFAULT 0;
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_number TEXT;
+
+    CREATE TABLE IF NOT EXISTS time_off (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      type TEXT DEFAULT 'vacation',
+      status TEXT DEFAULT 'pending',
+      note TEXT,
+      requested_by TEXT DEFAULT 'admin',
+      admin_note TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      resolved_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_time_off_user ON time_off(user_id, start_date, end_date);
+    CREATE INDEX IF NOT EXISTS idx_time_off_status ON time_off(status);
 
     CREATE TABLE IF NOT EXISTS task_requests (
       id SERIAL PRIMARY KEY,
@@ -738,13 +755,13 @@ async function syncFromJT() {
       if (cur2) args.page = cur2;
 
       const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
-        jobs: { $: args, nextPage: {}, nodes: { id: {}, name: {}, location: { address: {} } } }
+        jobs: { $: args, nextPage: {}, nodes: { id: {}, name: {}, number: {}, location: { address: {} } } }
       }}}, 'Jobs s.' + (p2+1));
 
       const conn = d?.organization?.jobs || d?.query?.organization?.jobs || {};
       const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
       for (const j of nodes) {
-        if (j?.id) jobMap.set(j.id, { name: j.name || '', address: j.location?.address || '' });
+        if (j?.id) jobMap.set(j.id, { name: j.name || '', address: j.location?.address || '', number: j.number != null ? String(j.number) : '' });
       }
       p2++;
       const next = conn.nextPage;
@@ -838,11 +855,12 @@ async function syncFromJT() {
         const phoneFromJT = jobId ? (jobPhoneMap.get(jobId) || null) : null;
 
         await client.query(`
-          INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()},'jobtread')
+          INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,job_number,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()},'jobtread')
           ON CONFLICT (id) DO UPDATE SET
             name=EXCLUDED.name, job_id=EXCLUDED.job_id, job_name=EXCLUDED.job_name,
             job_address=EXCLUDED.job_address,
+            job_number=COALESCE(EXCLUDED.job_number, jt_tasks.job_number),
             customer_phone=COALESCE(EXCLUDED.customer_phone, jt_tasks.customer_phone),
             start_date=EXCLUDED.start_date,
             end_date=EXCLUDED.end_date, type_guess=EXCLUDED.type_guess,
@@ -850,7 +868,7 @@ async function syncFromJT() {
             synced_at=EXCLUDED.synced_at, source='jobtread'
         `, [
           task.id, task.name || '', jobId,
-          customerName || ji.name || '', ji.address || '', phoneFromJT,
+          customerName || ji.name || '', ji.address || '', ji.number || null, phoneFromJT,
           task.startDate || null, task.endDate || task.startDate || null,
           guessType(task.name), assigneeMap.get(task.id) || null,
           jobId ? `https://app.jobtread.com/jobs/${jobId}/schedule` : null
@@ -910,9 +928,9 @@ app.post('/api/tasks/manual', auth, adminOnly, asyncRoute(async (req, res) => {
   const endDate = validDate(body.end_date) ? body.end_date : addWorkingDays(body.start_date, days);
   const id = `manual-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
   await pool.query(`
-    INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
-    VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,NULL,NULL,${nowTextSQL()},'manual',${nowTextSQL()})
-  `, [id, String(body.name).trim(), String(body.job_name).trim(), body.job_address || '', body.customer_phone || null, body.start_date, endDate, cleanTaskType(body.type_guess)]);
+    INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,job_number,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
+    VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,NULL,NULL,${nowTextSQL()},'manual',${nowTextSQL()})
+  `, [id, String(body.name).trim(), String(body.job_name).trim(), body.job_address || '', body.job_number || null, body.customer_phone || null, body.start_date, endDate, cleanTaskType(body.type_guess)]);
   res.json({ ok: true, id });
 }));
 
@@ -972,14 +990,15 @@ app.put('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
     job_name: body.job_name !== undefined ? String(body.job_name).trim() : current.job_name,
     name: body.name !== undefined ? String(body.name).trim() : current.name,
     job_address: body.job_address !== undefined ? String(body.job_address).trim() : current.job_address,
+    job_number: body.job_number !== undefined ? String(body.job_number).trim().slice(0, 60) : current.job_number,
     type_guess: body.type_guess !== undefined ? cleanTaskType(body.type_guess) : current.type_guess,
     description: body.description !== undefined ? String(body.description).slice(0, 5000) : current.description,
     customer_phone: body.customer_phone !== undefined ? String(body.customer_phone).trim().slice(0, 60) : current.customer_phone
   };
   await pool.query(`
-    UPDATE jt_tasks SET job_name=$1,name=$2,job_address=$3,type_guess=$4,description=$5,customer_phone=$6
-    WHERE id=$7
-  `, [next.job_name, next.name, next.job_address, next.type_guess, next.description, next.customer_phone || null, current.id]);
+    UPDATE jt_tasks SET job_name=$1,name=$2,job_address=$3,type_guess=$4,description=$5,customer_phone=$6,job_number=$7
+    WHERE id=$8
+  `, [next.job_name, next.name, next.job_address, next.type_guess, next.description, next.customer_phone || null, next.job_number || null, current.id]);
   res.json({ ok: true });
 }));
 
@@ -1172,6 +1191,80 @@ app.put('/api/task-requests/:id/reject', auth, adminOnly, asyncRoute(async (req,
   res.json({ ok: true });
 }));
 
+// ── FERIE / SYGDOM (blokerer medarbejderens kalender) ────────
+// Admin kan oprette direkte (bliver straks godkendt/blokeret). Medarbejdere kan
+// sende en anmodning (samme godkendelses-flow som opgave-anmodninger).
+function timeOffOverlaps(userId, startDate, endDate, excludeId) {
+  const params = [userId, endDate, startDate];
+  let sql = `SELECT * FROM time_off WHERE user_id=$1 AND status IN ('approved','pending') AND start_date<=$2 AND end_date>=$3`;
+  if (excludeId) { params.push(excludeId); sql += ` AND id<>$${params.length}`; }
+  return pool.query(sql, params);
+}
+
+app.get('/api/time-off', auth, adminOnly, asyncRoute(async (req, res) => {
+  const status = req.query.status ? String(req.query.status) : null;
+  const result = status
+    ? await pool.query(`
+        SELECT t.*, u.name AS user_name, u.color AS user_color, u.initials AS user_initials
+        FROM time_off t JOIN users u ON t.user_id=u.id WHERE t.status=$1 ORDER BY t.start_date DESC
+      `, [status])
+    : await pool.query(`
+        SELECT t.*, u.name AS user_name, u.color AS user_color, u.initials AS user_initials
+        FROM time_off t JOIN users u ON t.user_id=u.id ORDER BY t.start_date DESC
+      `);
+  res.json(result.rows);
+}));
+
+app.get('/api/time-off/my', auth, asyncRoute(async (req, res) => {
+  const result = await pool.query('SELECT * FROM time_off WHERE user_id=$1 ORDER BY start_date DESC LIMIT 25', [req.user.id]);
+  res.json(result.rows);
+}));
+
+// Bruges også af Daglig plan/Kapacitet/Ledighedsoversigt til at vise blokerede dage —
+// returnerer kun GODKENDTE perioder, for alle medarbejdere.
+app.get('/api/time-off/approved', auth, asyncRoute(async (req, res) => {
+  const result = await pool.query(`SELECT id,user_id,start_date,end_date,type,note FROM time_off WHERE status='approved' ORDER BY start_date`);
+  res.json(result.rows);
+}));
+
+app.post('/api/time-off', auth, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!validDate(body.start_date) || !validDate(body.end_date)) return res.status(400).json({ error: 'Vælg gyldige datoer' });
+  if (body.end_date < body.start_date) return res.status(400).json({ error: 'Slutdato skal være efter startdato' });
+  const isAdmin = req.user.role === 'admin';
+  const userId = isAdmin && body.user_id ? Number(body.user_id) : req.user.id;
+  const type = ['vacation', 'sick', 'other'].includes(body.type) ? body.type : 'vacation';
+  const note = body.note ? String(body.note).slice(0, 1000) : null;
+  const status = isAdmin ? 'approved' : 'pending';
+  const result = await pool.query(`
+    INSERT INTO time_off (user_id,start_date,end_date,type,status,note,requested_by,created_at,resolved_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()},${isAdmin ? nowTextSQL() : 'NULL'})
+    RETURNING id
+  `, [userId, body.start_date, body.end_date, type, status, note, isAdmin ? 'admin' : 'employee']);
+  res.json({ ok: true, id: result.rows[0].id, status });
+}));
+
+app.put('/api/time-off/:id/approve', auth, adminOnly, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT * FROM time_off WHERE id=$1', [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Anmodningen blev ikke fundet' });
+  await pool.query(`UPDATE time_off SET status='approved', resolved_at=${nowTextSQL()} WHERE id=$1`, [row.id]);
+  res.json({ ok: true });
+}));
+
+app.put('/api/time-off/:id/reject', auth, adminOnly, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT * FROM time_off WHERE id=$1', [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Anmodningen blev ikke fundet' });
+  const adminNote = req.body && req.body.admin_note ? String(req.body.admin_note).slice(0, 500) : null;
+  await pool.query(`UPDATE time_off SET status='rejected', admin_note=$1, resolved_at=${nowTextSQL()} WHERE id=$2`, [adminNote, row.id]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/time-off/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await pool.query('DELETE FROM time_off WHERE id=$1', [req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Blev ikke fundet' });
+  res.json({ ok: true });
+}));
+
 // ── OPGAVE FÆRDIG / FAKTURERING ───────────────────────────────
 // Medarbejderen kan markere sin egen booking som færdig. Admin kan altid.
 app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
@@ -1224,7 +1317,7 @@ async function normalizeBooking(body) {
 function bookingSelect(where = '') {
   return `
     SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.avatar_url AS user_avatar_url,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
-           t.name AS task_name,t.job_name,t.job_address,t.customer_phone,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
+           t.name AS task_name,t.job_name,t.job_address,t.job_number,t.customer_phone,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
     FROM planning_bookings b
     JOIN users u ON b.user_id=u.id
     JOIN jt_tasks t ON b.task_id=t.id
@@ -1252,7 +1345,12 @@ app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${nowTextSQL()})
       RETURNING id
     `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.start_time, booking.start_date, booking.end_date]);
-    res.json({ ok: true, id: result.rows[0].id });
+    let warning = null;
+    try {
+      const overlap = await timeOffOverlaps(booking.user_id, booking.start_date, booking.end_date);
+      if (overlap.rows.length) warning = 'Medarbejderen har registreret ferie/fravær i denne periode';
+    } catch (_) {}
+    res.json({ ok: true, id: result.rows[0].id, warning });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

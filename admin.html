@@ -128,6 +128,8 @@ button,input,select{font:inherit}
 .drop-zone{min-height:70px;border:1px dashed transparent;border-radius:6px;padding:2px;transition:.14s;overflow:visible}
 .drop-zone.over{background:#EFF6FF;border-color:var(--blue)}
 .free-slot{font-size:9px;color:#16A34A;text-align:center;padding:5px 2px;opacity:.7}
+.timeoff-cell{background:repeating-linear-gradient(45deg,#FEF3C7,#FEF3C7 8px,#FDE68A 8px,#FDE68A 16px);color:#92400E;font-size:10px;font-weight:800;text-align:center;padding:14px 4px;border-radius:6px;height:100%;display:flex;align-items:center;justify-content:center}
+.cap-timeoff-badge{background:#FDE68A;color:#92400E;font-size:9px;font-weight:800;border-radius:6px;padding:3px 6px;margin-bottom:4px;text-align:center}
 
 /* ASSIGNMENT PILLS (daily) */
 .assignment{border:0;border-radius:6px;width:100%;text-align:left;padding:5px 6px;margin-bottom:3px;cursor:grab;font-size:9px;position:relative;overflow:visible;box-sizing:border-box}
@@ -554,6 +556,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="tld-static" id="tld-address">—</div>
     </div>
     <div class="tld-section">
+      <label class="tld-label">📞 Kundetelefon</label>
+      <div class="tld-static" id="tld-phone">—</div>
+    </div>
+    <div class="tld-section">
       <label class="tld-label">📝 Note til medarbejder</label>
       <textarea id="tld-note" class="tld-input" rows="3" placeholder="Fx ring kunden 30 min før ankomst"></textarea>
     </div>
@@ -615,7 +621,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <table class="task-table">
       <thead><tr>
         <th><input type="checkbox" id="tasklist-check-header"></th>
-        <th>Kunde</th><th>Type</th><th>Person</th><th>Uge</th><th>Dage</th><th>Status</th><th>Adresse</th><th></th>
+        <th>Kunde</th><th>Sag #</th><th>Type</th><th>Person</th><th>Uge</th><th>Dage</th><th>Status</th><th>Adresse</th><th></th>
       </tr></thead>
       <tbody id="tasklist-body"></tbody>
     </table>
@@ -813,6 +819,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Adresse <span style="opacity:.6;font-weight:500">(valgfrit)</span></label><input id="manual-address" class="input" placeholder="Valgfrit"></div>
     </div>
     <div class="form-group"><label class="form-label">Kundetelefon <span style="opacity:.6;font-weight:500">(valgfrit)</span></label><input id="manual-phone" class="input" placeholder="Fx 12 34 56 78"></div>
+    <div class="form-group"><label class="form-label">Sagsnummer <span style="opacity:.6;font-weight:500">(valgfrit)</span></label><input id="manual-job-number" class="input" placeholder="Fx GM-2026-40"></div>
     <div class="modal-actions">
       <button class="btn" id="close-manual">Annuller</button>
       <button class="btn primary" id="save-manual">Opret i opgavepool</button>
@@ -877,6 +884,7 @@ var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dr
 var settings={company_name:'Gulv Master Enterprise ApS',logo_url:null},library=[],selectedTaskIds={},weeklyNotesCache={};
 var timelineOffset=0,timelineGroupBy='user';
 var taskRequests=[],requestsFilter='pending',completedFilter='open';
+var timeOffApproved=[],timeOffRequests=[];
 var filters={plan:{status:'all',type:'all',team:'all'},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'}};
 var DAYS=['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
 var TYPE={lay:{label:'Gulvlægning',bar:'var(--lay-bar)'},sand:{label:'Gulvslibning',bar:'var(--sand-bar)'},paint:{label:'Malerservice',bar:'var(--paint-bar)'},sub:{label:'Underlev.',bar:'var(--sub-bar)'},other:{label:'Andet',bar:'var(--other-bar)'}};
@@ -966,6 +974,7 @@ function taskCard(t){
     '<div class="task-meta">'+
       '<span class="badge '+esc(t.type_guess||'other')+'">'+type.label+'</span>'+
       '<span class="tag'+(t.source==='manual'?' manual':'')+'">'+(t.source==='manual'?'Manuel':'JT')+'</span>'+
+      (t.job_number?'<span class="tag" title="Sagsnummer">#'+esc(t.job_number)+'</span>':'')+
       (planned?'<span class="tag">✓ '+t.assignment_count+'×</span>':'')+
       '<span class="muted-sm">'+esc((t.start_date||'—').slice(0,10))+'</span>'+
     '</div></article>';
@@ -1007,6 +1016,10 @@ function assignPillContinue(b){
 }
 
 // RENDER DAILY PLAN
+function timeOffFor(userId,dateStr){
+  return timeOffApproved.find(function(t){return +t.user_id===+userId&&dateStr>=String(t.start_date).slice(0,10)&&dateStr<=String(t.end_date).slice(0,10);});
+}
+function timeOffLabel(t){return t.type==='sick'?'🤒 Sygdom':(t.type==='vacation'?'🏖 Ferie':'⛔ Fravær');}
 function renderPlan(){
   renderPool('plan');teamFilterHTML('plan');
   var days=[];for(var i=0;i<7;i++)days.push(add(mon(add(new Date(),planOffset*7)),i));
@@ -1033,6 +1046,12 @@ function renderPlan(){
       var ds=iso(d);
       var booked=dailyLoad(u.id,ds);
       var cap=(+u.weekly_capacity||5)/5;
+      var off=timeOffFor(u.id,ds);
+
+      if(off){
+        cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'"><div class="timeoff-cell" title="'+esc(off.note||'')+'">'+timeOffLabel(off)+'</div></td>';
+        return;
+      }
 
       // Find all bookings that cover this specific day
       var items=bookings.filter(function(b){
@@ -1118,8 +1137,13 @@ function renderCapacity(){
       }).join('');
       pills+='<button class="cap-add-btn" data-action="add-booking" data-user-id="'+u.id+'" data-date="'+iso(m)+'">+ tilføj</button>';
 
+      var weekDays=[];for(var wi=0;wi<5;wi++)weekDays.push(iso(add(m,wi)));
+      var offDays=weekDays.filter(function(ds){return timeOffFor(u.id,ds);});
+      var offBadge=offDays.length?'<div class="cap-timeoff-badge">'+timeOffLabel(timeOffFor(u.id,offDays[0]))+' · '+offDays.length+'d</div>':'';
+
       r+='<td class="cap-cell">'+
         '<div class="cap-drop '+(items.length?cc:'cap-free')+' draggable-task-target" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'">'+
+        offBadge+
         '<div class="cap-num '+(booked>0?cc:'cap-free')+'">'+( booked>0?booked.toFixed(1)+' / '+cap+' d':'✓ Ledig')+'</div>'+
         '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+pct+'%;background:'+barColor(booked,cap)+'"></div></div>'+
         pills+
@@ -1162,7 +1186,7 @@ function openQuickPop(taskId,uid,dateStr,evt){
   var t=taskId?tasks.find(function(x){return String(x.id)===String(taskId);}):null;
   quickCtx={taskId:taskId,bookingId:null};
   document.getElementById('qp-title').textContent='Ny booking';
-  document.getElementById('qp-task-name').textContent=(t?((t.job_name||'')+(t.name?' — '+t.name:'')):'Skriv en hurtig opgave, eller vælg fra poolen →');
+  document.getElementById('qp-task-name').textContent=(t?((t.job_name||'')+(t.name?' — '+t.name:'')+(t.job_number?' (#'+t.job_number+')':'')):'Skriv en hurtig opgave, eller vælg fra poolen →');
   populateQPUsers(uid);
   document.getElementById('qp-date').value=dateStr||iso(new Date());
   document.getElementById('qp-days').value=t&&t.start_date&&t.end_date?Math.max(1,Math.round((new Date(t.end_date)-new Date(t.start_date))/86400000)+1):'1';
@@ -1220,7 +1244,7 @@ function openAssign(ctx){
   var taskId=ctx.taskId||(b&&b.task_id);
   var t=tasks.find(function(x){return String(x.id)===String(taskId);});
   document.getElementById('assign-title').textContent=b?'Rediger booking':'Planlæg opgave';
-  document.getElementById('assign-info').innerHTML=t?'<strong>'+esc(t.job_name||t.name)+'</strong><br>'+esc(t.name||'')+'<br><span style="color:var(--muted)">'+esc(t.job_address||'—')+'</span>':'<strong>Vælg en task fra opgavepoolen.</strong>';
+  document.getElementById('assign-info').innerHTML=t?'<strong>'+esc(t.job_name||t.name)+'</strong>'+(t.job_number?' <span style="opacity:.7">· Sag #'+esc(t.job_number)+'</span>':'')+'<br>'+esc(t.name||'')+'<br><span style="color:var(--muted)">'+esc(t.job_address||'—')+'</span>'+(t.customer_phone?'<br>📞 <a href="tel:'+esc(t.customer_phone)+'">'+esc(t.customer_phone)+'</a>':'<br><span style="color:var(--muted)">📞 Intet kundetelefonnummer</span>'):'<strong>Vælg en task fra opgavepoolen.</strong>';
   document.getElementById('assign-ref').value=t?(t.start_date||'—'):'—';
   var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
   document.getElementById('assign-user').innerHTML=workforce.map(function(u){var sel=(b?+b.user_id===+u.id:+ctx.userId===+u.id)?' selected':'';return '<option value="'+u.id+'"'+sel+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
@@ -1264,7 +1288,7 @@ function openTimelineDrawer(bookingId){
   var type=TYPE[b.type_guess||'other']||TYPE.other;
   document.getElementById('tld-type-dot').style.background=type.bar;
   document.getElementById('tld-title').textContent=b.job_name||b.task_name||'Opgave';
-  document.getElementById('tld-sub').textContent=(b.task_name||'')+' · '+type.label;
+  document.getElementById('tld-sub').textContent=(b.task_name||'')+' · '+type.label+(b.job_number?' · Sag #'+b.job_number:'');
   var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,c){var av=a.worker_type==='vendor'?1:0,cv=c.worker_type==='vendor'?1:0;return av-cv||a.name.localeCompare(c.name,'da');});
   document.getElementById('tld-user').innerHTML=workforce.map(function(u){var sel=+b.user_id===+u.id?' selected':'';return '<option value="'+u.id+'"'+sel+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
   document.getElementById('tld-date').value=String(b.start_date).slice(0,10);
@@ -1272,6 +1296,7 @@ function openTimelineDrawer(bookingId){
   document.getElementById('tld-days').value=b.days;
   document.getElementById('tld-capdays').value=capDaysOf(b);
   document.getElementById('tld-address').textContent=b.job_address||'Ingen adresse registreret';
+  document.getElementById('tld-phone').innerHTML=b.customer_phone?'<a href="tel:'+esc(b.customer_phone)+'">'+esc(b.customer_phone)+'</a>':'Intet nummer registreret';
   document.getElementById('tld-note').value=b.notes||'';
   document.getElementById('tl-drawer').classList.add('open');
 }
@@ -1341,9 +1366,9 @@ async function handleDrop(e,zone){
 }
 
 // MANUAL TASK
-function openManual(){document.getElementById('manual-date').value=iso(new Date());['manual-customer','manual-name','manual-address','manual-phone'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('manual-days').value='1';document.getElementById('manual-type').value='lay';document.getElementById('manual-modal').classList.add('open');}
+function openManual(){document.getElementById('manual-date').value=iso(new Date());['manual-customer','manual-name','manual-address','manual-phone','manual-job-number'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('manual-days').value='1';document.getElementById('manual-type').value='lay';document.getElementById('manual-modal').classList.add('open');}
 async function saveManual(){
-  var b={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),customer_phone:document.getElementById('manual-phone').value.trim(),start_date:document.getElementById('manual-date').value,days:+document.getElementById('manual-days').value||1,type_guess:document.getElementById('manual-type').value};
+  var b={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),customer_phone:document.getElementById('manual-phone').value.trim(),job_number:document.getElementById('manual-job-number').value.trim(),start_date:document.getElementById('manual-date').value,days:+document.getElementById('manual-days').value||1,type_guess:document.getElementById('manual-type').value};
   var r=await api('/api/tasks/manual',{method:'POST',body:JSON.stringify(b)});
   if(r&&r.ok){closeModal('manual-modal');toast('Opgave i pool','✓');await loadAll();}
   else if(r)toast(r.error||'Fejl','❌');
@@ -1572,6 +1597,7 @@ function renderTaskList(){
     return '<tr>'+
       '<td><input type="checkbox" data-action="task-check" data-task-id="'+esc(t.id)+'" '+(selectedTaskIds[t.id]?'checked':'')+'></td>'+
       '<td><strong>'+esc(t.job_name||'Uden kunde')+'</strong><div class="muted-sm">'+esc(t.name||'')+'</div></td>'+
+      '<td>'+(t.job_number?esc(t.job_number):'<span class="muted-sm">—</span>')+'</td>'+
       '<td><span class="badge '+esc(t.type_guess||'other')+'">'+type.label+'</span></td>'+
       '<td>'+esc(info.person)+'</td>'+
       '<td>'+esc(info.week.replace('w',''))+'</td>'+
@@ -1580,7 +1606,7 @@ function renderTaskList(){
       '<td>'+esc(t.job_address||'—')+'</td>'+
       '<td style="white-space:nowrap"><button class="btn small" data-action="edit-task" data-task-id="'+esc(t.id)+'">✏</button> <button class="btn small" data-action="manage-files" data-task-id="'+esc(t.id)+'">📁</button> <button class="btn small danger" data-action="delete-task" data-task-id="'+esc(t.id)+'">🗑</button></td>'+
       '</tr>';
-  }).join('')||'<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">Ingen opgaver matcher.</td></tr>';
+  }).join('')||'<tr><td colspan="10" style="padding:16px;text-align:center;color:var(--muted)">Ingen opgaver matcher.</td></tr>';
 }
 function selectAllTasks(state){
   var q=(document.getElementById('tasklist-search').value||'').toLowerCase().trim();
@@ -1595,8 +1621,10 @@ async function openTaskEdit(id){
   var jobName=prompt('Kunde / projekt:',t.job_name||'');if(jobName===null)return;
   var name=prompt('Opgave:',t.name||'');if(name===null)return;
   var address=prompt('Adresse:',t.job_address||'');if(address===null)return;
+  var jobNumber=prompt('Sagsnummer:',t.job_number||'');if(jobNumber===null)return;
+  var phone=prompt('Kundetelefon:',t.customer_phone||'');if(phone===null)return;
   var desc=prompt('Beskrivelse (vises for medarbejderen under "Læs om opgaven"):',t.description||'');if(desc===null)return;
-  var r=await api('/api/tasks/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({job_name:jobName.trim(),name:name.trim(),job_address:address.trim(),description:desc})});
+  var r=await api('/api/tasks/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({job_name:jobName.trim(),name:name.trim(),job_address:address.trim(),job_number:jobNumber.trim(),customer_phone:phone.trim(),description:desc})});
   if(r&&r.ok){toast('Opgave opdateret','✓');await loadAll();}else if(r)toast(r.error||'Fejl','❌');
 }
 async function deleteTask(id){
@@ -1640,32 +1668,49 @@ async function bulkSetType(){
 
 // GODKENDELSER (medarbejder-anmodninger)
 async function refreshRequestsBadge(){
-  var pending=await api('/api/task-requests?status=pending');
-  var n=(pending||[]).length;
+  var r=await Promise.all([api('/api/task-requests?status=pending'),api('/api/time-off?status=pending')]);
+  var n=(r[0]||[]).length+(r[1]||[]).length;
   var el=document.getElementById('requests-badge');
   el.textContent=n;
   el.classList.toggle('hidden',n===0);
 }
 async function renderRequests(){
-  var list=await api('/api/task-requests'+(requestsFilter==='all'?'':'?status='+requestsFilter));
-  taskRequests=list||[];
+  var taskList=await api('/api/task-requests'+(requestsFilter==='all'?'':'?status='+requestsFilter));
+  var offList=await api('/api/time-off'+(requestsFilter==='all'?'':'?status='+requestsFilter));
+  taskRequests=taskList||[];
+  timeOffRequests=(offList||[]).filter(function(t){return t.requested_by==='employee';});
   var el=document.getElementById('requests-list');
-  if(!taskRequests.length){el.innerHTML='<p style="color:var(--muted);padding:16px">Ingen anmodninger her.</p>';return;}
   var statusLabel={pending:'Afventer',approved:'Godkendt',rejected:'Afvist'};
-  el.innerHTML=taskRequests.map(function(r){
+  var taskCards=taskRequests.map(function(r){
     var actions=r.status==='pending'
       ? '<button class="btn small primary" data-action="approve-request" data-id="'+r.id+'">✓ Godkend</button><button class="btn small danger" data-action="reject-request" data-id="'+r.id+'">✕ Afvis</button>'
       : '';
     return '<div class="request-card">'+
       '<div class="request-main">'+
-        '<div class="request-title">'+esc(r.job_name)+' <span class="status-pill '+r.status+'">'+statusLabel[r.status]+'</span></div>'+
+        '<div class="request-title">📋 '+esc(r.job_name)+' <span class="status-pill '+r.status+'">'+statusLabel[r.status]+'</span></div>'+
         '<div class="request-meta">'+esc(r.user_name)+' · ønsket dato '+esc(String(r.requested_date).slice(0,10))+' · '+r.estimated_days+' dag(e)</div>'+
         (r.description?'<div class="request-desc">'+esc(r.description)+'</div>':'')+
         (r.admin_note?'<div class="request-note">Note til medarbejder: '+esc(r.admin_note)+'</div>':'')+
       '</div>'+
       '<div class="request-actions">'+actions+'</div>'+
     '</div>';
-  }).join('');
+  });
+  var offCards=timeOffRequests.map(function(r){
+    var actions=r.status==='pending'
+      ? '<button class="btn small primary" data-action="approve-timeoff" data-id="'+r.id+'">✓ Godkend</button><button class="btn small danger" data-action="reject-timeoff" data-id="'+r.id+'">✕ Afvis</button>'
+      : '';
+    return '<div class="request-card">'+
+      '<div class="request-main">'+
+        '<div class="request-title">'+timeOffLabel(r)+' — '+esc(r.user_name)+' <span class="status-pill '+r.status+'">'+statusLabel[r.status]+'</span></div>'+
+        '<div class="request-meta">'+esc(String(r.start_date).slice(0,10))+' – '+esc(String(r.end_date).slice(0,10))+'</div>'+
+        (r.note?'<div class="request-desc">'+esc(r.note)+'</div>':'')+
+        (r.admin_note?'<div class="request-note">Note til medarbejder: '+esc(r.admin_note)+'</div>':'')+
+      '</div>'+
+      '<div class="request-actions">'+actions+'</div>'+
+    '</div>';
+  });
+  var all=taskCards.concat(offCards);
+  el.innerHTML=all.length?all.join(''):'<p style="color:var(--muted);padding:16px">Ingen anmodninger her.</p>';
 }
 async function approveRequest(id){
   var r=await api('/api/task-requests/'+id+'/approve',{method:'PUT'});
@@ -1677,6 +1722,44 @@ async function rejectRequest(id){
   if(note===null)return;
   var r=await api('/api/task-requests/'+id+'/reject',{method:'PUT',body:JSON.stringify({admin_note:note.trim()||null})});
   if(r&&r.ok){toast('Afvist','✕');await refreshRequestsBadge();await renderRequests();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+
+// FERIE / SYGDOM
+async function addTimeOff(userId){
+  var u=users.find(function(x){return +x.id===+userId;});
+  var start=prompt('Startdato for ferie/sygdom (ÅÅÅÅ-MM-DD) til '+(u?u.name:'medarbejderen')+':',iso(new Date()));
+  if(start===null)return;
+  var end=prompt('Slutdato (ÅÅÅÅ-MM-DD):',start);
+  if(end===null)return;
+  var type=prompt('Type: skriv "vacation" (ferie), "sick" (sygdom) eller "other" (andet)','vacation');
+  if(type===null)return;
+  var note=prompt('Note (valgfrit):','');
+  if(note===null)return;
+  var r=await api('/api/time-off',{method:'POST',body:JSON.stringify({user_id:userId,start_date:start.trim(),end_date:end.trim(),type:type.trim()||'vacation',note:note.trim()||null})});
+  if(r&&r.ok){toast('Ferie/fravær registreret','🏖');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function loadTimeOffRequests(){
+  var list=await api('/api/time-off?status=pending');
+  timeOffRequests=list||[];
+}
+async function approveTimeOff(id){
+  var r=await api('/api/time-off/'+id+'/approve',{method:'PUT'});
+  if(r&&r.ok){toast('Godkendt','✓');await refreshRequestsBadge();await renderRequests();await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function rejectTimeOff(id){
+  var note=prompt('Besked til medarbejderen (valgfrit)?','');
+  if(note===null)return;
+  var r=await api('/api/time-off/'+id+'/reject',{method:'PUT',body:JSON.stringify({admin_note:note.trim()||null})});
+  if(r&&r.ok){toast('Afvist','✕');await refreshRequestsBadge();await renderRequests();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function deleteTimeOff(id){
+  if(!confirm('Fjern denne ferie-/sygdomsperiode?'))return;
+  var r=await api('/api/time-off/'+id,{method:'DELETE'});
+  if(r&&r.ok){toast('Fjernet','🗑');await renderRequests();await loadAll();}
   else if(r)toast(r.error||'Fejl','❌');
 }
 
@@ -1746,11 +1829,11 @@ function renderPeople(){
   var html=intern.map(function(u){
     return '<article class="person-card"><div class="person-top">'+avatarOrInitials(u,38)+'<div><div class="person-name">'+esc(u.name)+'</div><div class="person-email">'+(u.can_login?esc(u.email):'Ingen login')+'</div><span class="role-pill">Medarbejder</span></div></div>'+
       '<div class="person-detail">Fag: '+esc(u.trade||'Ikke sat')+'<br>Kapacitet: '+(+u.weekly_capacity||5)+' dage/uge<br>'+(u.jobtread_name?'JT: '+esc(u.jobtread_name):'')+'</div>'+
-      '<div class="person-actions"><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏ Rediger</button></div></article>';
+      '<div class="person-actions"><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏ Rediger</button><button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖 Ferie/sygdom</button></div></article>';
   }).join('');
   Object.keys(vendors).sort().forEach(function(g){
     html+='<article class="vendor-card"><div class="vendor-head"><div class="vendor-title"><span class="vicon">'+esc(g.slice(0,1))+'</span>'+esc(g)+'</div><button class="btn small primary" data-action="add-subgroup" data-group="'+esc(g)+'">+ Undergruppe</button></div>'+
-      '<div class="vendor-subgrid">'+vendors[g].map(function(u){return '<div class="sub-team">'+avatarOrInitials(u,28)+'<div style="flex:1"><strong>'+esc(u.name)+'</strong><div class="sub-team-meta">'+esc(u.trade||'Fag ikke sat')+' · '+(+u.weekly_capacity||5)+' d/uge'+(u.can_login?' · login':'')+'</div></div><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏</button></div>';}).join('')+'</div></article>';
+      '<div class="vendor-subgrid">'+vendors[g].map(function(u){return '<div class="sub-team">'+avatarOrInitials(u,28)+'<div style="flex:1"><strong>'+esc(u.name)+'</strong><div class="sub-team-meta">'+esc(u.trade||'Fag ikke sat')+' · '+(+u.weekly_capacity||5)+' d/uge'+(u.can_login?' · login':'')+'</div></div><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏</button><button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖</button></div>';}).join('')+'</div></article>';
   });
   document.getElementById('people-grid').innerHTML=html||'<p style="color:var(--muted)">Ingen aktive hold.</p>';
 }
@@ -1820,8 +1903,8 @@ async function saveSettings(){
 
 // LOAD ALL
 async function loadAll(){
-  var r=await Promise.all([api('/api/users'),api('/api/tasks'),api('/api/assignments'),api('/api/dashboard')]);
-  users=r[0]||[];tasks=r[1]||[];bookings=r[2]||[];
+  var r=await Promise.all([api('/api/users'),api('/api/tasks'),api('/api/assignments'),api('/api/dashboard'),api('/api/time-off/approved')]);
+  users=r[0]||[];tasks=r[1]||[];bookings=r[2]||[];timeOffApproved=r[4]||[];
   renderStats(r[3]||{});
   try{renderPlan();}catch(e){console.error('Plan fejl',e);}
   try{renderCapacity();}catch(e){console.error('Cap fejl',e);}
@@ -1963,6 +2046,10 @@ function bind(){
       if(act==='delete-lib'){e.stopPropagation();deleteLibraryFile(+a.dataset.id);}
       if(act==='task-check'){e.stopPropagation();selectedTaskIds[a.dataset.taskId]=a.checked;}
       if(act==='requests-filter'){requestsFilter=a.dataset.value;document.querySelectorAll('#requests-filter .chip').forEach(function(c){c.classList.toggle('active',c===a);});renderRequests();}
+      if(act==='add-timeoff'){e.stopPropagation();addTimeOff(+a.dataset.userId);}
+      if(act==='approve-timeoff'){e.stopPropagation();approveTimeOff(+a.dataset.id);}
+      if(act==='reject-timeoff'){e.stopPropagation();rejectTimeOff(+a.dataset.id);}
+      if(act==='delete-timeoff'){e.stopPropagation();deleteTimeOff(+a.dataset.id);}
       if(act==='completed-filter'){completedFilter=a.dataset.value;a.parentElement.querySelectorAll('.chip').forEach(function(c){c.classList.toggle('active',c===a);});renderCompleted();}
       if(act==='approve-request'){e.stopPropagation();approveRequest(+a.dataset.id);}
       if(act==='reject-request'){e.stopPropagation();rejectRequest(+a.dataset.id);}
