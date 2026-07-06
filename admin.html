@@ -362,6 +362,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--border2)}
 .assign-info-box{padding:10px 12px;background:var(--ice);border-radius:9px;font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:14px}
+.manual-modal-modern{padding:0!important;overflow:hidden}
+.manual-modal-head{display:flex;align-items:center;gap:12px;padding:20px 22px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff}
+.manual-modal-icon{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:18px;flex-shrink:0}
+.manual-modal-title{font-size:15px;font-weight:800}
+.manual-modal-sub{font-size:11px;opacity:.75;margin-top:2px}
+.modal-body-pad{padding:20px 22px}
+.opt-tag{font-size:8px;font-weight:700;text-transform:uppercase;color:var(--muted);opacity:.7;letter-spacing:.3px;margin-left:2px}
+.manual-contact-box{background:var(--ice);border-radius:10px;padding:14px;margin-top:14px}
+.manual-contact-title{font-size:11px;font-weight:800;color:var(--navy);margin-bottom:10px}
+.manual-contact-box .form-row{margin-top:0}
+.manual-modal-modern .modal-actions{padding:14px 22px;margin-top:0}
 .login-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:10px}
 
 /* TOAST */
@@ -553,11 +564,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="tld-section">
       <label class="tld-label">📍 Adresse</label>
-      <div class="tld-static" id="tld-address">—</div>
+      <input id="tld-address" class="tld-input" placeholder="Gade, postnr, by">
     </div>
     <div class="tld-section">
       <label class="tld-label">📞 Kundetelefon</label>
-      <div class="tld-static" id="tld-phone">—</div>
+      <input id="tld-phone" class="tld-input" placeholder="Fx 12 34 56 78">
+    </div>
+    <div class="tld-section">
+      <label class="tld-label">🔢 Sagsnummer</label>
+      <input id="tld-job-number" class="tld-input" placeholder="Fx GM-2026-40">
     </div>
     <div class="tld-section">
       <label class="tld-label">📝 Note til medarbejder</label>
@@ -800,26 +815,37 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <!-- MANUAL TASK MODAL -->
 <div class="mo" id="manual-modal">
-  <div class="modal">
-    <h3>Opret manuel opgave</h3>
-    <div class="assign-info-box">Opgaven lægges i opgavepoolen — ikke booket endnu.</div>
-    <div class="form-group"><label class="form-label">Kunde / projekt</label><input id="manual-customer" class="input" placeholder="Fx Per Austin"></div>
-    <div class="form-group"><label class="form-label">Opgave</label><input id="manual-name" class="input" placeholder="Fx Montering af fodpaneler"></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Fag</label>
-        <select id="manual-type" class="select">
-          <option value="lay">Gulvlægning</option><option value="sand">Gulvslibning</option>
-          <option value="paint">Malerservice</option><option value="sub">Underleverandør</option><option value="other">Andet</option>
-        </select>
+  <div class="modal manual-modal-modern">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">📋</span>
+      <div><div class="manual-modal-title">Opret ny sag/opgave</div><div class="manual-modal-sub">Lægges i opgavepoolen — ikke booket endnu</div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Kunde / projekt</label>
+      <input id="manual-customer" class="input" placeholder="Fx Per Austin">
+      <label class="form-label" style="margin-top:12px">Opgave</label>
+      <input id="manual-name" class="input" placeholder="Fx Montering af fodpaneler">
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group"><label class="form-label">Fag</label>
+          <select id="manual-type" class="select">
+            <option value="lay">Gulvlægning</option><option value="sand">Gulvslibning</option>
+            <option value="paint">Malerservice</option><option value="sub">Underleverandør</option><option value="other">Andet</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Reference-dage</label><input id="manual-days" class="input" type="number" min=".25" max="60" step=".25" value="1"></div>
       </div>
-      <div class="form-group"><label class="form-label">Reference-dage</label><input id="manual-days" class="input" type="number" min=".25" max="60" step=".25" value="1"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Reference-startdato</label><input id="manual-date" class="input" type="date"></div>
+        <div class="form-group"><label class="form-label">Sagsnummer <span class="opt-tag">valgfrit</span></label><input id="manual-job-number" class="input" placeholder="Fx GM-2026-40"></div>
+      </div>
+      <div class="manual-contact-box">
+        <div class="manual-contact-title">📇 Kontaktoplysninger <span class="opt-tag">valgfrit</span></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">📍 Adresse</label><input id="manual-address" class="input" placeholder="Gade, postnr, by"></div>
+          <div class="form-group"><label class="form-label">📞 Kundetelefon</label><input id="manual-phone" class="input" placeholder="Fx 12 34 56 78"></div>
+        </div>
+      </div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Reference-startdato</label><input id="manual-date" class="input" type="date"></div>
-      <div class="form-group"><label class="form-label">Adresse <span style="opacity:.6;font-weight:500">(valgfrit)</span></label><input id="manual-address" class="input" placeholder="Valgfrit"></div>
-    </div>
-    <div class="form-group"><label class="form-label">Kundetelefon <span style="opacity:.6;font-weight:500">(valgfrit)</span></label><input id="manual-phone" class="input" placeholder="Fx 12 34 56 78"></div>
-    <div class="form-group"><label class="form-label">Sagsnummer <span style="opacity:.6;font-weight:500">(valgfrit)</span></label><input id="manual-job-number" class="input" placeholder="Fx GM-2026-40"></div>
     <div class="modal-actions">
       <button class="btn" id="close-manual">Annuller</button>
       <button class="btn primary" id="save-manual">Opret i opgavepool</button>
@@ -1280,32 +1306,38 @@ async function removeBooking(id){
 
 // TIDSLINJE — højre side-panel (erstatter den centrerede modal specifikt for Tidslinjen,
 // så resten af boardet forbliver synligt og brugbart mens panelet er åbent)
-var tlDrawerBookingId=null;
+var tlDrawerBookingId=null,tlDrawerTaskId=null;
 function openTimelineDrawer(bookingId){
   var b=bookings.find(function(x){return +x.id===+bookingId;});
   if(!b)return;
   tlDrawerBookingId=bookingId;
+  tlDrawerTaskId=b.task_id;
   var type=TYPE[b.type_guess||'other']||TYPE.other;
   document.getElementById('tld-type-dot').style.background=type.bar;
   document.getElementById('tld-title').textContent=b.job_name||b.task_name||'Opgave';
-  document.getElementById('tld-sub').textContent=(b.task_name||'')+' · '+type.label+(b.job_number?' · Sag #'+b.job_number:'');
+  document.getElementById('tld-sub').textContent=(b.task_name||'')+' · '+type.label;
   var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,c){var av=a.worker_type==='vendor'?1:0,cv=c.worker_type==='vendor'?1:0;return av-cv||a.name.localeCompare(c.name,'da');});
   document.getElementById('tld-user').innerHTML=workforce.map(function(u){var sel=+b.user_id===+u.id?' selected':'';return '<option value="'+u.id+'"'+sel+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
   document.getElementById('tld-date').value=String(b.start_date).slice(0,10);
   document.getElementById('tld-time').value=b.start_time||'';
   document.getElementById('tld-days').value=b.days;
   document.getElementById('tld-capdays').value=capDaysOf(b);
-  document.getElementById('tld-address').textContent=b.job_address||'Ingen adresse registreret';
-  document.getElementById('tld-phone').innerHTML=b.customer_phone?'<a href="tel:'+esc(b.customer_phone)+'">'+esc(b.customer_phone)+'</a>':'Intet nummer registreret';
+  document.getElementById('tld-address').value=b.job_address||'';
+  document.getElementById('tld-phone').value=b.customer_phone||'';
+  document.getElementById('tld-job-number').value=b.job_number||'';
   document.getElementById('tld-note').value=b.notes||'';
   document.getElementById('tl-drawer').classList.add('open');
 }
-function closeTimelineDrawer(){document.getElementById('tl-drawer').classList.remove('open');tlDrawerBookingId=null;}
+function closeTimelineDrawer(){document.getElementById('tl-drawer').classList.remove('open');tlDrawerBookingId=null;tlDrawerTaskId=null;}
 async function saveTimelineDrawer(){
   if(!tlDrawerBookingId)return;
   var body={user_id:+document.getElementById('tld-user').value,start_date:document.getElementById('tld-date').value,start_time:document.getElementById('tld-time').value||null,days:+document.getElementById('tld-days').value||1,capacity_days:+document.getElementById('tld-capdays').value||1,notes:document.getElementById('tld-note').value.trim()||null};
-  var r=await api('/api/assignments/'+tlDrawerBookingId,{method:'PUT',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Booking gemt','✓');closeTimelineDrawer();await loadAll();}
+  var taskBody={job_address:document.getElementById('tld-address').value.trim(),customer_phone:document.getElementById('tld-phone').value.trim(),job_number:document.getElementById('tld-job-number').value.trim()};
+  var calls=[api('/api/assignments/'+tlDrawerBookingId,{method:'PUT',body:JSON.stringify(body)})];
+  if(tlDrawerTaskId)calls.push(api('/api/tasks/'+encodeURIComponent(tlDrawerTaskId),{method:'PUT',body:JSON.stringify(taskBody)}));
+  var results=await Promise.all(calls);
+  var r=results[0];
+  if(r&&r.ok){toast('Gemt','✓');closeTimelineDrawer();await loadAll();}
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function removeTimelineDrawerBooking(){
