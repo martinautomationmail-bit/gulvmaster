@@ -385,6 +385,25 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .quick-input:focus,.quick-select:focus{border-color:var(--blue);background:#fff}
 .quick-btns{display:flex;justify-content:flex-end;gap:6px;padding:12px 16px;border-top:1px solid var(--border2);background:#fafbfc}
 
+
+/* HURTIG KAPACITETSRESERVATION (når en opgave trækkes fra poolen) */
+.capacity-drop-pop{display:none;position:fixed;z-index:460;width:312px;background:#fff;border:1px solid #D9E2F0;border-radius:16px;overflow:hidden;box-shadow:0 18px 50px rgba(15,34,64,.28)}
+.capacity-drop-pop.open{display:block;animation:gm-pop .18s cubic-bezier(.2,.9,.3,1.3)}
+.cdp-head{display:flex;align-items:center;gap:10px;padding:13px 15px;background:linear-gradient(135deg,#5B21B6,#7C3AED);color:#fff}
+.cdp-icon{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:rgba(255,255,255,.18);font-size:15px;flex:0 0 auto}
+.cdp-head h4{margin:0;font-size:13px;font-weight:850;color:#fff}
+.cdp-head p{margin:2px 0 0;font-size:9.5px;opacity:.8;line-height:1.25}
+.cdp-body{padding:14px 15px 12px}
+.cdp-task{font-size:11px;font-weight:850;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
+.cdp-target{display:flex;align-items:center;gap:6px;padding:8px 9px;border:1px solid #DDD6FE;background:#F5F3FF;color:#5B21B6;border-radius:9px;font-size:10px;font-weight:750;line-height:1.35;margin-bottom:13px}
+.cdp-label{display:block;font-size:9px;font-weight:850;color:var(--muted);letter-spacing:.42px;text-transform:uppercase;margin-bottom:5px}
+.cdp-days-wrap{display:flex;align-items:center;gap:8px;border:1.5px solid #C4B5FD;background:#FAFAFF;border-radius:10px;padding:5px 9px;transition:.15s}
+.cdp-days-wrap:focus-within{border-color:#7C3AED;box-shadow:0 0 0 3px rgba(124,58,237,.12);background:#fff}
+.cdp-days-input{flex:1;width:100%;border:0;outline:0;background:transparent;color:var(--navy);font-size:21px;line-height:1;font-weight:850;padding:3px 0}
+.cdp-days-unit{font-size:11px;color:#6D28D9;font-weight:800;padding-right:2px}
+.cdp-hint{font-size:9px;color:var(--muted);margin-top:8px;line-height:1.4}
+.cdp-actions{display:flex;justify-content:flex-end;gap:7px;padding:11px 15px;border-top:1px solid var(--border2);background:#FBFCFE}
+
 /* MODAL */
 .mo{display:none;position:fixed;inset:0;background:rgba(15,34,64,.55);backdrop-filter:blur(2px);z-index:200;align-items:center;justify-content:center;padding:16px}
 .mo.open{display:flex;animation:gm-fade .18s ease}
@@ -780,6 +799,28 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 </main>
 </div><!-- /app -->
+
+<!-- HURTIG KAPACITETSRESERVATION (drop fra opgavepool) -->
+<div class="capacity-drop-pop" id="capacity-drop-pop" role="dialog" aria-modal="true" aria-labelledby="cdp-title">
+  <div class="cdp-head">
+    <span class="cdp-icon">📊</span>
+    <div><h4 id="cdp-title">Reserver kapacitet</h4><p>Kun Kapacitetsboardet — påvirker ikke Daglig plan.</p></div>
+  </div>
+  <div class="cdp-body">
+    <div class="cdp-task" id="cdp-task">Opgave</div>
+    <div class="cdp-target" id="cdp-target">👷 Medarbejder · Uge</div>
+    <label class="cdp-label" for="cdp-days">Hvor mange dage skal reserveres?</label>
+    <div class="cdp-days-wrap">
+      <input class="cdp-days-input" id="cdp-days" type="number" min=".25" max="14" step=".25" value="1" inputmode="decimal" autocomplete="off">
+      <span class="cdp-days-unit">dage</span>
+    </div>
+    <div class="cdp-hint">Tryk <strong>Enter</strong> for at gemme. Du kan altid ændre det senere ved at klikke på blokken.</div>
+  </div>
+  <div class="cdp-actions">
+    <button class="btn small" id="cdp-cancel" type="button">Annuller</button>
+    <button class="btn small primary" id="cdp-save" type="button">Reservér ↵</button>
+  </div>
+</div>
 
 <!-- QUICK POP-UP (drop) -->
 <div class="quick-pop" id="quick-pop">
@@ -1521,6 +1562,52 @@ async function openWeeklyNote(userId){
   else if(r)toast(r.error||'Fejl','❌');
 }
 
+// HURTIG KAPACITETSRESERVATION (drop fra opgavepool)
+var capacityDropCtx=null;
+function capacityDropWeekLabel(weekStart){
+  var d=mon(date(weekStart));
+  return 'Uge '+weekNo(d)+' · '+d.getDate()+'/'+(d.getMonth()+1)+' – '+add(d,4).getDate()+'/'+(add(d,4).getMonth()+1);
+}
+function openCapacityDropPop(task,userId,weekStart,evt){
+  var u=users.find(function(x){return +x.id===+userId;});
+  capacityDropCtx={taskId:task.id,userId:+userId,weekStart:weekStart};
+  document.getElementById('cdp-task').textContent=(task.job_name||'Uden kunde')+(task.name?' — '+task.name:'');
+  document.getElementById('cdp-target').innerHTML='👷 '+esc(u?u.name:'Medarbejder')+' <span style="opacity:.5">•</span> 📅 '+esc(capacityDropWeekLabel(weekStart));
+  var days=document.getElementById('cdp-days');
+  days.value=suggestedCapacityDays(task);
+  var pop=document.getElementById('capacity-drop-pop');
+  var w=312,h=245;
+  var x=evt&&Number.isFinite(evt.clientX)?evt.clientX-w/2:(window.innerWidth-w)/2;
+  var y=evt&&Number.isFinite(evt.clientY)?evt.clientY-28:(window.innerHeight-h)/2;
+  x=Math.max(12,Math.min(x,window.innerWidth-w-12));
+  y=Math.max(12,Math.min(y,window.innerHeight-h-12));
+  pop.style.left=Math.round(x)+'px';
+  pop.style.top=Math.round(y)+'px';
+  pop.classList.add('open');
+  setTimeout(function(){days.focus();days.select();},40);
+}
+function closeCapacityDropPop(){
+  document.getElementById('capacity-drop-pop').classList.remove('open');
+  capacityDropCtx=null;
+}
+async function saveCapacityDropPop(){
+  if(!capacityDropCtx)return;
+  var input=document.getElementById('cdp-days');
+  var days=Number(input.value);
+  if(!isFinite(days)||days<.25){input.focus();input.select();toast('Skriv mindst 0,25 dag','⚠');return;}
+  days=Math.min(14,Math.round(days*4)/4);
+  input.value=days;
+  var btn=document.getElementById('cdp-save');
+  btn.disabled=true;btn.textContent='Gemmer…';
+  var r=await createCapacityReservation(capacityDropCtx.taskId,capacityDropCtx.userId,capacityDropCtx.weekStart,days,'',null);
+  btn.disabled=false;btn.textContent='Reservér ↵';
+  if(r&&r.ok){
+    closeCapacityDropPop();
+    toast('Kapacitet reserveret · '+days+' dag'+(days===1?'':'e'),'✓');
+    await loadAll();
+  }else if(r)toast(r.error||'Kunne ikke reservere kapacitet','❌');
+}
+
 // DRAG & DROP
 function beginDrag(e,payload){
   dragPayload=payload;suppressClick=Date.now()+400;
@@ -1555,13 +1642,12 @@ async function createCapacityReservation(taskId,userId,weekStart,days,label,note
     task_id:taskId,user_id:userId,week_start:weekStart,capacity_days:days,label:label||'',notes:notes||null
   })});
 }
-async function handleCapacityDrop(p,uid,ds){
+async function handleCapacityDrop(p,uid,ds,evt){
   if(p.kind==='task'){
     var t=tasks.find(function(x){return String(x.id)===String(p.taskId);});
     if(!t){toast('Opgaven blev ikke fundet','⚠');return;}
-    var created=await createCapacityReservation(t.id,uid,ds,suggestedCapacityDays(t),'',null);
-    if(created&&created.ok){toast('Kapacitet reserveret — klik på blokken for at redigere','✓');await loadAll();}
-    else if(created)toast(created.error||'Kunne ikke reservere kapacitet','❌');
+    // Pool → Kapacitet: spørg først om antal dage. Ingen daglig booking bliver oprettet.
+    openCapacityDropPop(t,uid,ds,evt);
     return;
   }
   if(p.kind==='booking'){
@@ -1588,7 +1674,7 @@ async function handleDrop(e,zone){
     var p=parsePayload(e);if(!p)return;
     var uid=+zone.dataset.userId,ds=zone.dataset.date;
     if(zone.dataset.drop==='week'){
-      await handleCapacityDrop(p,uid,ds);
+      await handleCapacityDrop(p,uid,ds,e);
     }else if(p.kind==='task'){
       openQuickPop(p.taskId,uid,ds,e);
     }else if(p.kind==='booking'){
@@ -2266,6 +2352,13 @@ function bind(){
   document.getElementById('close-capacity').onclick=function(){closeModal('capacity-modal');capacityCtx=null;};
   document.getElementById('save-capacity').onclick=saveCapacityReservation;
   document.getElementById('delete-capacity').onclick=deleteCapacityReservation;
+  // Hurtig popup efter drag fra opgavepool til Kapacitet
+  document.getElementById('cdp-cancel').onclick=closeCapacityDropPop;
+  document.getElementById('cdp-save').onclick=saveCapacityDropPop;
+  document.getElementById('capacity-drop-pop').addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();saveCapacityDropPop();}
+    if(e.key==='Escape'){e.preventDefault();closeCapacityDropPop();}
+  });
   // User modal
   document.getElementById('close-user').onclick=function(){closeModal('user-modal');};
   document.getElementById('save-user').onclick=saveUser;
