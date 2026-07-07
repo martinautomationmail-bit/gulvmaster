@@ -186,6 +186,11 @@ async function initSchema() {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS description TEXT;
+    -- Contact columns are safe to add on an existing Render Postgres database.
+    -- They let us keep a manual number protected from future JobTread syncs.
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_phone TEXT;
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_phone_source TEXT;
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_phone_synced_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS capacity_days DOUBLE PRECISION;
 
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -871,7 +876,8 @@ async function syncFromJTInner() {
     // Kundetelefon hentes IKKE her — det er en langsom, uafhængig proces (mange
     // ekstra JobTread-opslag pr. job), der ikke må kunne bremse eller vælte selve
     // synkroniseringen. Den køres i baggrunden efter vi allerede har svaret.
-    syncCustomerPhonesInBackground().catch(e => console.error('Baggrunds-telefonopslag fejlede:', e.message));
+    syncCustomerPhonesFromJT().catch(e => console.error('Baggrunds-telefonopslag fejlede:', e.message));
+    syncJobGeocodesInBackground().catch(e => console.error('Baggrunds-geokodning fejlede:', e.message));
 
     return { ok: true, count: allTasks.length, pages: p1 };
 
@@ -882,127 +888,264 @@ async function syncFromJTInner() {
   }
 }
 
-// ── KUNDETELEFON (baggrundsproces, adskilt fra selve synkroniseringen) ──
-// Bekræftet direkte mod jeres JobTread-organisation (introspektion + live test):
-// job -> location -> account -> contacts -> customFieldValues, hvor
-// customField.name === "Phone" (et brugerdefineret felt af typen phoneNumber
-// på "customerContact"). Der er IKKE et fast "phone"-felt nogen steder —
-// det er altid gemt som denne brugerdefinerede feltværdi.
+// ── KUNDEKONTAKT FRA JOBTREAD ───────────────────────────────
+// JobTread gemmer kundens telefon i customer-contact custom fields. Den tidligere
+// kode krævede feltet hed præcis "Phone" og bad om op til 50 tunge job-kontakter
+// pr. request. Det gav enten 0 fund eller HTTP 413 på større organisationer.
+// Denne version læser i små sider, matcher almindelige telefonfeltnavne fleksibelt
+// og beskytter et nummer, som kontoret selv har skrevet ind i portalen.
+const JT_CONTACT_JOB_PAGE_SIZE = Math.max(1, Math.min(10, Number.parseInt(process.env.JT_CONTACT_JOB_PAGE_SIZE || '5', 10) || 5));
+const JT_CONTACT_FIELD_PAGE_SIZE = Math.max(1, Math.min(20, Number.parseInt(process.env.JT_CONTACT_FIELD_PAGE_SIZE || '10', 10) || 10));
+const JT_CONTACTS_PER_ACCOUNT = Math.max(1, Math.min(20, Number.parseInt(process.env.JT_CONTACTS_PER_ACCOUNT || '10', 10) || 10));
+
 let phoneSyncRunning = false;
-async function syncCustomerPhonesInBackground() {
-  if (phoneSyncRunning) return { ok: false, error: 'Der kører allerede et telefonopslag' }; // undgå at to baggrundskørsler overlapper
+let geocodeSyncRunning = false;
+
+function listNodes(value) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.nodes)) return value.nodes;
+  return [];
+}
+
+function phoneFieldLabel(fieldValue) {
+  return String(
+    fieldValue?.customField?.name ||
+    fieldValue?.customField?.label ||
+    fieldValue?.field?.name ||
+    fieldValue?.name ||
+    ''
+  ).trim();
+}
+
+function isPhoneFieldLabel(label) {
+  const normalized = String(label || '').toLowerCase().replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return /(?:^|\s)(phone|telephone|mobile|mobil|telefon|tlf)(?:\s|$)/.test(normalized) ||
+    /phone\s*(number|no)?|mobile\s*(number|no)?|telefon\s*(nummer|nr)?|tlf\.?\s*(nummer|nr)?/.test(normalized);
+}
+
+function possiblePhone(value) {
+  const text = String(value == null ? '' : value).trim();
+  if (!text) return '';
+  // Keep a normal international/Danish dial string. We only accept values that
+  // actually look like a phone number, so a random custom-field value cannot be
+  // copied into the employee view.
+  const cleaned = text.replace(/(?:ext\.?|x)\s*\d+$/i, '').replace(/[\s().-]/g, '');
+  if (!/^\+?\d{6,18}$/.test(cleaned)) return '';
+  return cleaned;
+}
+
+function phonesFromValue(value, output = [], seen = new Set()) {
+  if (value == null || seen.has(value)) return output;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const text = String(value).trim();
+    const direct = possiblePhone(text);
+    if (direct) output.push(direct);
+    // Some JobTread custom values are serialised JSON. Parse that form as well.
+    if (typeof value === 'string' && /^[{[]/.test(text)) {
+      try { phonesFromValue(JSON.parse(text), output, seen); } catch (_) {}
+    }
+    return output;
+  }
+  if (typeof value !== 'object') return output;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    value.forEach(item => phonesFromValue(item, output, seen));
+    return output;
+  }
+  // Prefer explicit phone-like properties before walking any nested values.
+  ['phone', 'phoneNumber', 'mobile', 'mobilePhone', 'telephone', 'value', 'formattedValue', 'rawValue'].forEach(key => {
+    if (Object.prototype.hasOwnProperty.call(value, key)) phonesFromValue(value[key], output, seen);
+  });
+  return output;
+}
+
+function firstPhoneFromFields(fieldValues, stats) {
+  for (const fieldValue of listNodes(fieldValues)) {
+    stats.fields_scanned++;
+    const label = phoneFieldLabel(fieldValue);
+    if (!isPhoneFieldLabel(label)) continue;
+    stats.phone_fields_matched++;
+    const candidate = phonesFromValue(fieldValue?.value)[0] || '';
+    if (candidate) return { phone: candidate, label };
+  }
+  return null;
+}
+
+function phoneFromJobContact(job, stats) {
+  const containers = [];
+  const location = job?.location || {};
+  if (location?.contact) containers.push(location.contact);
+  const account = location?.account || {};
+  if (account?.primaryContact) containers.push(account.primaryContact);
+  listNodes(account?.contacts).forEach(contact => containers.push(contact));
+
+  for (const contact of containers) {
+    stats.contacts_scanned++;
+    const match = firstPhoneFromFields(contact?.customFieldValues, stats);
+    if (match) return match;
+  }
+  return null;
+}
+
+function jobContactFields() {
+  const customFieldValues = {
+    $: { size: JT_CONTACT_FIELD_PAGE_SIZE },
+    nodes: { value: {}, customField: { name: {} } }
+  };
+  return {
+    id: {},
+    location: {
+      address: {},
+      contact: { customFieldValues },
+      account: {
+        primaryContact: { customFieldValues },
+        contacts: { $: { size: JT_CONTACTS_PER_ACCOUNT }, nodes: { customFieldValues } }
+      }
+    }
+  };
+}
+
+async function syncCustomerPhonesFromJT() {
+  if (phoneSyncRunning) return { ok: false, error: 'Der kører allerede et telefonopslag' };
+  if (!JT_GRANT || !JT_ORG) return { ok: false, error: 'JobTread Grant Key eller Organisation ID mangler' };
+
   phoneSyncRunning = true;
-  const jobPhoneMap = new Map();
-  const jobAddressMap = new Map();
+  const phoneByJob = new Map();
+  const stats = { jobs_scanned: 0, contacts_scanned: 0, fields_scanned: 0, phone_fields_matched: 0, pages: 0 };
+
   try {
-    let cur4;
-    let p4 = 0;
-    while (p4 < 20) {
-      const args = { size: 50 };
-      if (cur4) args.page = cur4;
+    let cursor;
+    while (stats.pages < JT_MAX_PAGES) {
+      const args = { size: JT_CONTACT_JOB_PAGE_SIZE };
+      if (cursor) args.page = cursor;
 
-      const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
-        jobs: { $: args, nextPage: {}, nodes: { id: {},
-          location: { address: {}, contact: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } },
-            account: { primaryContact: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } },
-              contacts: { $: { size: 5 }, nodes: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } } } } }
-        } }
-      }}}, 'Kundetelefon s.' + (p4 + 1));
-
-      const conn = d?.organization?.jobs || d?.query?.organization?.jobs || {};
-      const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
-      for (const j of nodes) {
-        const findPhone = (fieldValues) => (fieldValues || []).find(v => v?.customField?.name === 'Phone')?.value;
-        let phone = findPhone(j?.location?.contact?.customFieldValues?.nodes);
-        if (!phone) phone = findPhone(j?.location?.account?.primaryContact?.customFieldValues?.nodes);
-        if (!phone) {
-          const accContacts = j?.location?.account?.contacts?.nodes || [];
-          for (const c of accContacts) {
-            phone = findPhone(c?.customFieldValues?.nodes);
-            if (phone) break;
+      const data = await jtFetch({
+        query: {
+          $: { grantKey: JT_GRANT },
+          organization: {
+            $: { id: JT_ORG },
+            jobs: { $: args, nextPage: {}, nodes: jobContactFields() }
           }
         }
-        if (j?.id && phone) jobPhoneMap.set(j.id, String(phone).trim());
-        if (j?.id && j?.location?.address) jobAddressMap.set(j.id, String(j.location.address).trim());
+      }, `Kundetelefon s.${stats.pages + 1}`);
+
+      const connection = data?.organization?.jobs || data?.query?.organization?.jobs || {};
+      const jobs = listNodes(connection);
+      for (const job of jobs) {
+        if (!job?.id) continue;
+        stats.jobs_scanned++;
+        const match = phoneFromJobContact(job, stats);
+        if (match?.phone) phoneByJob.set(String(job.id), match);
       }
-      p4++;
-      const next = conn.nextPage;
+
+      stats.pages++;
+      const next = connection.nextPage;
       if (!next || next === '') break;
-      cur4 = next;
+      cursor = next;
     }
 
-    // Skriv alle fundne numre i én batch — kun til opgaver der endnu ikke har et nummer,
-    // så et manuelt indtastet nummer aldrig bliver overskrevet.
     let updated = 0;
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      for (const [jobId, phone] of jobPhoneMap.entries()) {
-        const result = await client.query(
-          `UPDATE jt_tasks SET customer_phone=$1 WHERE job_id=$2 AND (customer_phone IS NULL OR customer_phone='')`,
-          [phone, jobId]
-        );
+      for (const [jobId, contact] of phoneByJob.entries()) {
+        // A manually entered contact is never overwritten. A previously synced
+        // value is refreshed, so a phone correction made in JobTread reaches
+        // every portal task linked to the same JobTread job.
+        const result = await client.query(`
+          UPDATE jt_tasks
+          SET customer_phone=$1,
+              customer_phone_source='jobtread',
+              customer_phone_synced_at=${nowTextSQL()}
+          WHERE job_id=$2
+            AND source='jobtread'
+            AND COALESCE(customer_phone_source,'') <> 'manual'
+            AND (
+              customer_phone IS NULL OR customer_phone='' OR
+              customer_phone_source='jobtread' OR customer_phone <> $1
+            )
+        `, [contact.phone, jobId]);
         updated += result.rowCount;
       }
       await client.query('COMMIT');
-    } catch (err) {
+    } catch (error) {
       try { await client.query('ROLLBACK'); } catch (_) {}
-      throw err;
+      throw error;
     } finally {
       client.release();
     }
 
-    // ── Geokodning (server-side, til vejret) ──
-    // Gøres HER på serveren i stedet for i hver medarbejders browser, fordi:
-    // 1) Nominatim (adresse-opslag) kræver en ordentlig identifikation og maks.
-    //    1 opslag/sekund — det er upålideligt at gøre fra mange forskellige
-    //    telefoner/browsere på samme tid.
-    // 2) Resultatet er det samme for alle — ingen grund til at slå det op igen
-    //    og igen for hver medarbejder, hver gang de åbner deres kalender.
-    // Kun jobs der IKKE allerede har koordinater bliver slået op, så gentagne
-    // kørsler er hurtige.
-    let geocoded = 0;
-    try {
-      const needsGeocode = await pool.query(
-        `SELECT DISTINCT job_id, job_address FROM jt_tasks WHERE job_id IS NOT NULL AND job_address IS NOT NULL AND job_address<>'' AND (job_lat IS NULL OR job_lng IS NULL)`
-      );
-      for (const row of needsGeocode.rows.slice(0, 60)) { // sikkerhedsloft pr. kørsel, resten tages næste gang
-        const address = jobAddressMap.get(row.job_id) || row.job_address;
-        try {
-          const geoRes = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&q=' + encodeURIComponent(address), {
-            headers: { 'User-Agent': 'GulvMasterEnterprise/1.0 (internal scheduling tool)' }
-          });
-          const geoData = await geoRes.json();
-          if (Array.isArray(geoData) && geoData[0]) {
-            await pool.query(`UPDATE jt_tasks SET job_lat=$1, job_lng=$2 WHERE job_id=$3`, [+geoData[0].lat, +geoData[0].lon, row.job_id]);
-            geocoded++;
-          }
-        } catch (_) { /* denne ene adresse fejlede — spring over, prøv igen næste kørsel */ }
-        await new Promise(r => setTimeout(r, 1100)); // Nominatims brugsvilkår: maks. 1 opslag/sekund
-      }
-    } catch (geoErr) {
-      console.error('Geokodning fejlede:', geoErr.message);
-    }
-
-    await writeSyncLog(0, 'ok', `Kundetelefon (baggrund): ${jobPhoneMap.size} numre fundet i JobTread, ${updated} opgaver opdateret. ${geocoded} adresser geokodet til vejret.`);
-    return { ok: true, found: jobPhoneMap.size, updated, geocoded };
+    const result = {
+      ok: true,
+      found: phoneByJob.size,
+      updated,
+      jobs_scanned: stats.jobs_scanned,
+      contacts_scanned: stats.contacts_scanned,
+      phone_fields_matched: stats.phone_fields_matched,
+      pages: stats.pages
+    };
+    await writeSyncLog(0, 'ok', `Kundetelefon: ${result.found} jobs med nummer, ${updated} task(s) opdateret. ${stats.jobs_scanned} jobs / ${stats.contacts_scanned} kontakter / ${stats.phone_fields_matched} telefonfelter gennemgået.`);
+    return result;
   } catch (phoneError) {
-    await writeSyncLog(0, 'error', `Kundetlf.-opslag fejlede: ${redactSecret(phoneError.message || '').slice(0, 300)}`);
-    console.error('Kundetelefon-opslag fra JobTread fejlede:', phoneError.message);
-    return { ok: false, error: redactSecret(phoneError.message || 'Ukendt fejl').slice(0, 500) };
+    const safeError = redactSecret(phoneError?.message || 'Ukendt fejl').slice(0, 600);
+    await writeSyncLog(0, 'error', `Kundetlf.-opslag fejlede: ${safeError}`);
+    console.error('Kundetelefon-opslag fra JobTread fejlede:', safeError);
+    return { ok: false, error: safeError };
   } finally {
     phoneSyncRunning = false;
   }
 }
 
-app.post('/api/sync-phones', auth, adminOnly, asyncRoute(async (req, res) => {
-  // Kører synkront (ikke i baggrunden) og venter på svaret, så du kan se
-  // PRÆCIS hvor mange numre der blev fundet/opdateret med det samme.
-  if (phoneSyncRunning) {
-    return res.status(409).json({ ok: false, error: 'Telefonopslag kører allerede — vent til det er færdigt.' });
+// Weather is intentionally separate from phone sync. Nominatim has a one-request-
+// per-second limit; making it part of /api/sync-phones could make the browser time
+// out before the phone numbers had been saved.
+async function syncJobGeocodesInBackground() {
+  if (geocodeSyncRunning) return { ok: false, skipped: true, error: 'Geokodning kører allerede' };
+  geocodeSyncRunning = true;
+  let geocoded = 0;
+  try {
+    const needsGeocode = await pool.query(`
+      SELECT DISTINCT job_id, job_address
+      FROM jt_tasks
+      WHERE job_id IS NOT NULL
+        AND job_address IS NOT NULL
+        AND job_address<>''
+        AND (job_lat IS NULL OR job_lng IS NULL)
+    `);
+
+    for (const row of needsGeocode.rows.slice(0, 60)) {
+      try {
+        const geoRes = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&q=' + encodeURIComponent(row.job_address), {
+          headers: { 'User-Agent': 'GulvMasterEnterprise/1.0 (internal scheduling tool)' }
+        });
+        const geoData = await geoRes.json();
+        if (Array.isArray(geoData) && geoData[0]) {
+          await pool.query(`UPDATE jt_tasks SET job_lat=$1, job_lng=$2 WHERE job_id=$3`, [+geoData[0].lat, +geoData[0].lon, row.job_id]);
+          geocoded++;
+        }
+      } catch (_) {
+        // One bad address must never stop the contact sync.
+      }
+      await new Promise(resolve => setTimeout(resolve, 1100));
+    }
+    if (geocoded) await writeSyncLog(0, 'ok', `Vejr-geokodning: ${geocoded} adresse(r) opdateret.`);
+    return { ok: true, geocoded };
+  } catch (error) {
+    console.error('Geokodning fejlede:', error.message);
+    return { ok: false, error: error.message };
+  } finally {
+    geocodeSyncRunning = false;
   }
-  const result = await syncCustomerPhonesInBackground();
-  res.status(result.ok ? 200 : 500).json(result);
+}
+
+app.post('/api/sync-phones', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await syncCustomerPhonesFromJT();
+  // Do not make the admin browser wait for weather. The phone rows have already
+  // been saved before this background process begins.
+  if (result.ok) {
+    syncJobGeocodesInBackground().catch(error => console.error('Baggrunds-geokodning fejlede:', error.message));
+  }
+  res.status(result.ok ? 200 : 500).json({ ...result, weather_sync_started: Boolean(result.ok) });
 }));
 
 app.post('/api/sync', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -1049,8 +1192,14 @@ app.put('/api/tasks/:id/customer-contact', auth, adminOnly, asyncRoute(async (re
   const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [req.params.id]);
   if (!task) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
   const phone = String((req.body || {}).customer_phone || '').trim().slice(0, 60);
-  await pool.query('UPDATE jt_tasks SET customer_phone=$1 WHERE id=$2', [phone || null, req.params.id]);
-  res.json({ ok: true, customer_phone: phone || null });
+  await pool.query(`
+    UPDATE jt_tasks
+    SET customer_phone=$1,
+        customer_phone_source=CASE WHEN $1='' THEN NULL ELSE 'manual' END,
+        customer_phone_synced_at=NULL
+    WHERE id=$2
+  `, [phone || '', req.params.id]);
+  res.json({ ok: true, customer_phone: phone || null, customer_phone_source: phone ? 'manual' : null });
 }));
 
 app.delete('/api/tasks/manual/:id', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -1107,9 +1256,22 @@ app.put('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
     customer_phone: body.customer_phone !== undefined ? String(body.customer_phone).trim().slice(0, 60) : current.customer_phone
   };
   await pool.query(`
-    UPDATE jt_tasks SET job_name=$1,name=$2,job_address=$3,type_guess=$4,description=$5,customer_phone=$6,job_number=$7
+    UPDATE jt_tasks
+    SET job_name=$1,name=$2,job_address=$3,type_guess=$4,description=$5,
+        customer_phone=$6,
+        customer_phone_source=CASE
+          WHEN $9::boolean AND COALESCE($6,'')<>'' THEN 'manual'
+          WHEN $9::boolean THEN NULL
+          ELSE customer_phone_source
+        END,
+        customer_phone_synced_at=CASE WHEN $9::boolean THEN NULL ELSE customer_phone_synced_at END,
+        job_number=$7
     WHERE id=$8
-  `, [next.job_name, next.name, next.job_address, next.type_guess, next.description, next.customer_phone || null, next.job_number || null, current.id]);
+  `, [
+    next.job_name, next.name, next.job_address, next.type_guess, next.description,
+    next.customer_phone || null, next.job_number || null, current.id,
+    body.customer_phone !== undefined
+  ]);
   res.json({ ok: true });
 }));
 

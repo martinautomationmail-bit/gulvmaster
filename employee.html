@@ -167,7 +167,7 @@ function tasksFor(date){return assignments.filter(a=>date>=String(a.start_date).
   return 0;
 })}
 function phoneValue(a){return String(a.customer_phone||a.job_phone||a.customer_phone_number||'').trim()}
-function phoneHref(phone){return 'tel:'+phone.replace(/[^+\d]/g,'')}
+function phoneHref(phone){return 'tel:'+String(phone||'').replace(/[^+\d]/g,'')}
 function taskLink(a){return a.jt_url||'https://app.jobtread.com'}
 function weatherKey(address,date){return 'gm-weather:'+date+':'+String(address||'').toLowerCase().trim()}
 function weatherText(code,max,min,rain){const m={0:['☀️','Clear'],1:['🌤️','Mostly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],45:['🌫️','Fog'],48:['🌫️','Rime fog'],51:['🌦️','Light drizzle'],53:['🌦️','Drizzle'],55:['🌧️','Heavy drizzle'],61:['🌦️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['❄️','Heavy snow'],80:['🌦️','Showers'],81:['🌧️','Rain showers'],82:['⛈️','Heavy showers'],95:['⛈️','Thunderstorm'],96:['⛈️','Thunderstorm with hail'],99:['⛈️','Severe thunderstorm']}[Number(code)]||['🌤️','Weather'];const temps=(Number.isFinite(Number(min))&&Number.isFinite(Number(max)))?`${Math.round(min)}–${Math.round(max)}°`:'Temperature unknown';const rainText=Number.isFinite(Number(rain))?` · ${Math.round(rain)}% rain`:'';return `${m[0]} ${m[1]} · ${temps}${rainText}`}

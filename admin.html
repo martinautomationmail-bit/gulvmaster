@@ -89,6 +89,7 @@ button,input,select{font:inherit}
 .task-card.dragging{opacity:.35}
 .task-name{font-size:11px;font-weight:750;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .task-sub{font-size:9px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-contact{margin:5px 0 0;font-size:11px;line-height:1.3}.task-phone-link{color:#0f766e;text-decoration:none;font-weight:700;white-space:nowrap}.task-phone-link:hover{text-decoration:underline}.assign-sub .task-phone-link{color:inherit;text-decoration:underline;font-weight:700}
 .task-meta{display:flex;gap:3px;align-items:center;flex-wrap:wrap;margin-top:4px}
 .badge{font-size:8px;font-weight:750;padding:2px 5px;border-radius:4px}
 .badge.lay{background:var(--lay-bg);color:var(--lay-fg)}
@@ -643,7 +644,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <table class="task-table">
       <thead><tr>
         <th><input type="checkbox" id="tasklist-check-header"></th>
-        <th>Kunde</th><th>Sag #</th><th>Type</th><th>Person</th><th>Uge</th><th>Dage</th><th>Status</th><th>Adresse</th><th></th>
+        <th>Kunde</th><th>Sag #</th><th>Telefon</th><th>Type</th><th>Person</th><th>Uge</th><th>Dage</th><th>Status</th><th>Adresse</th><th></th>
       </tr></thead>
       <tbody id="tasklist-body"></tbody>
     </table>
@@ -971,6 +972,8 @@ function weeklyLoad(uid,m){
 }
 function capClass(booked,cap){var p=cap?booked/cap:0;return p<=0?'cap-free':p<.7?'cap-ok':p<=1?'cap-warn':'cap-over';}
 function barColor(booked,cap){var p=cap?booked/cap:0;return p<=0?'var(--sand-bar)':p<.7?'var(--lay-bar)':p<=1?'var(--paint-bar)':'#EF4444';}
+function phoneHref(phone){return 'tel:'+String(phone||'').replace(/[^+\d]/g,'');}
+function phoneMarkup(phone,compact){if(!phone)return compact?'':'<span class="muted-sm">📞 Intet nummer</span>';return '<a class="task-phone-link" href="'+esc(phoneHref(phone))+'" onclick="event.stopPropagation()">📞 '+esc(phone)+'</a>';}
 
 function teamList(scope){
   var f=filters[scope],all=users.filter(function(u){return u.active&&u.role==='employee';});
@@ -1021,10 +1024,12 @@ function teamFilterHTML(scope){
 
 function taskCard(t){
   var type=TYPE[t.type_guess]||TYPE.other,planned=+t.assignment_count>0,completed=taskIsCompleted(t);
+  var contact=phoneMarkup(t.customer_phone,true);
   return '<article class="task-card draggable-task'+(completed?' completed':'')+'" draggable="true" data-task-id="'+esc(t.id)+'" title="'+esc(t.job_name||'')+'">'+
     (completed?'<div class="task-done-badge">✅ Færdiggjort</div>':'')+
     '<div class="task-name">'+esc(t.job_name||'Uden kunde')+'</div>'+
     '<div class="task-sub">'+esc(t.name||'Opgave')+'</div>'+
+    (contact?'<div class="task-contact">'+contact+'</div>':'')+
     '<div class="task-meta">'+
       '<span class="badge '+esc(t.type_guess||'other')+'">'+type.label+'</span>'+
       '<span class="tag'+(t.source==='manual'?' manual':'')+'">'+(t.source==='manual'?'Manuel':'JT')+'</span>'+
@@ -1057,7 +1062,7 @@ function assignPillSpan(b,spanDays){
     '<button class="pill-copy" title="Kopiér opgave" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>'+
     '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></span></div>'+
     (b.start_time?'<div class="assign-time">⏰ '+esc(b.start_time)+'</div>':'')+
-    '<div class="assign-sub">'+esc(b.task_name||'')+(b.notes?' · '+esc(b.notes):'')+'</div>'+
+    '<div class="assign-sub">'+esc(b.task_name||'')+(b.notes?' · '+esc(b.notes):'')+(b.customer_phone?' · '+phoneMarkup(b.customer_phone,true):'')+'</div>'+
     '</div>';
 }
 // Pill for bookings continuing from a previous week
@@ -1461,11 +1466,11 @@ async function syncPhonesNow(){
   var b=document.getElementById('sync-phones-btn');b.disabled=true;b.textContent='⏳ Henter…';
   var log=document.getElementById('sync-log');log.classList.add('show');
   function addLog(m,c){var d=document.createElement('div');d.className=c||'info';d.textContent='['+new Date().toLocaleTimeString('da-DK')+'] '+m;log.appendChild(d);}
-  addLog('Henter kundetelefonnumre + geokoder adresser til vejret — første kørsel kan tage et minut eller mere (maks. 60 adresser ad gangen pga. adressetjenestens fartgrænse). Vent venligst…','info');
+  addLog('Henter kundetelefoner fra JobTread i små sider. Vejr/adresser opdateres bagefter i baggrunden og forsinker ikke telefonerne.','info');
   var r=await api('/api/sync-phones',{method:'POST'});
   if(r&&r.ok){
-    addLog('Færdig: '+r.found+' numre fundet i JobTread, '+r.updated+' opgaver fik tilføjet et nummer, '+r.geocoded+' adresser geokodet.','ok');
-    toast(r.found+' numre, '+r.geocoded+' adresser ✅');
+    addLog('Færdig: '+r.found+' JobTread-sager med telefon, '+r.updated+' opgaver opdateret. Gennemgået '+r.jobs_scanned+' sager og '+r.contacts_scanned+' kontakter.'+(r.weather_sync_started?' Vejr-opslag fortsætter i baggrunden.':'') ,'ok');
+    toast(r.updated+' opgaver med telefon ✅');
     await loadAll();
   } else {
     addLog('Fejlede: '+((r&&r.error)||'Ukendt fejl — se konsollen (F12) for detaljer'),'err');
@@ -1686,6 +1691,7 @@ function renderTaskList(){
       '<td><input type="checkbox" data-action="task-check" data-task-id="'+esc(t.id)+'" '+(selectedTaskIds[t.id]?'checked':'')+'></td>'+
       '<td><strong>'+esc(t.job_name||'Uden kunde')+'</strong><div class="muted-sm">'+esc(t.name||'')+'</div></td>'+
       '<td>'+(t.job_number?esc(t.job_number):'<span class="muted-sm">—</span>')+'</td>'+
+      '<td>'+phoneMarkup(t.customer_phone,false)+'</td>'+
       '<td><span class="badge '+esc(t.type_guess||'other')+'">'+type.label+'</span></td>'+
       '<td>'+esc(info.person)+'</td>'+
       '<td>'+esc(info.week.replace('w',''))+'</td>'+
@@ -1694,7 +1700,7 @@ function renderTaskList(){
       '<td>'+esc(t.job_address||'—')+'</td>'+
       '<td style="white-space:nowrap"><button class="btn small" data-action="edit-task" data-task-id="'+esc(t.id)+'">✏</button> <button class="btn small" data-action="manage-files" data-task-id="'+esc(t.id)+'">📁</button> <button class="btn small danger" data-action="delete-task" data-task-id="'+esc(t.id)+'">🗑</button></td>'+
       '</tr>';
-  }).join('')||'<tr><td colspan="10" style="padding:16px;text-align:center;color:var(--muted)">Ingen opgaver matcher.</td></tr>';
+  }).join('')||'<tr><td colspan="11" style="padding:16px;text-align:center;color:var(--muted)">Ingen opgaver matcher.</td></tr>';
 }
 function selectAllTasks(state){
   var q=(document.getElementById('tasklist-search').value||'').toLowerCase().trim();
