@@ -618,18 +618,35 @@ function redactSecret(value) {
   return JT_GRANT ? text.split(JT_GRANT).join('[REDACTED]') : text;
 }
 
-async function jtFetch(body, label = 'JobTread-kald') {
-  const response = await fetch(JT_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+async function jtFetch(body, label = 'JobTread-kald', attempt = 1) {
+  const MAX_ATTEMPTS = 3;
+  let response, raw;
+  try {
+    response = await fetch(JT_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    raw = await response.text();
+  } catch (networkError) {
+    // Netværksfejl (timeout, DNS, afbrudt forbindelse) — prøv igen et par gange,
+    // så en enkelt forbigående udsving ikke vælter en hel synkronisering.
+    if (attempt < MAX_ATTEMPTS) {
+      await new Promise(r => setTimeout(r, attempt * 800));
+      return jtFetch(body, label, attempt + 1);
+    }
+    throw new Error(`${label}: netværksfejl efter ${MAX_ATTEMPTS} forsøg — ${networkError.message}`);
+  }
 
-  const raw = await response.text();
   let data = null;
   try { data = raw ? JSON.parse(raw) : null; } catch (_) {}
 
   if (!response.ok) {
+    // 429 (rate limit) og 5xx er ofte forbigående — prøv igen med lidt ventetid.
+    if ((response.status === 429 || response.status >= 500) && attempt < MAX_ATTEMPTS) {
+      await new Promise(r => setTimeout(r, attempt * 1000));
+      return jtFetch(body, label, attempt + 1);
+    }
     const detail = redactSecret(
       data?.error?.message || data?.error || data?.message || raw || 'Ingen fejltekst fra JobTread.'
     ).replace(/\s+/g, ' ').trim().slice(0, 900);
@@ -705,7 +722,20 @@ function taskConnectionFrom(data) {
   return (((data || {}).query || {}).organization || {}).tasks || {};
 }
 
+let mainSyncRunning = false;
 async function syncFromJT() {
+  if (mainSyncRunning) {
+    return { ok: false, error: 'Der kører allerede en synkronisering — vent til den er færdig og prøv igen.' };
+  }
+  mainSyncRunning = true;
+  try {
+    return await syncFromJTInner();
+  } finally {
+    mainSyncRunning = false;
+  }
+}
+
+async function syncFromJTInner() {
   if (!JT_GRANT) {
     await writeSyncLog(0, 'error', 'Grant Key ikke sat.');
     return { ok: false, error: 'Ingen Grant Key' };

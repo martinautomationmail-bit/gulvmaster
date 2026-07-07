@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="da">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Gulv Master — Min kalender</title>
+<title>Gulv Master — My Schedule</title>
 <style>
 :root{--navy:#0f2240;--navy2:#1c3557;--blue:#2563eb;--ice:#f4f7fc;--white:#fff;--ink:#0f1923;--muted:#5a6a7e;--ghost:#94a3b8;--border:#e2e8f0;--green:#059669;--amber:#d97706;--radius:13px;--shadow:0 2px 10px rgba(15,34,64,.08);--shadow-lg:0 16px 42px rgba(15,34,64,.22)}
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:var(--ice);color:var(--ink)}
@@ -58,7 +58,7 @@
 .req-status.rejected{background:#FEE2E2;color:#B91C1C}
 .task.done{opacity:.85;border-left:4px solid #16A34A;background:#F7FEF9;position:relative}
 .task.done .task-title{text-decoration:line-through;color:#15803D}
-.task.done::before{content:'✅ FÆRDIG';position:absolute;top:-9px;left:14px;background:#16A34A;color:#fff;font-size:9px;font-weight:800;letter-spacing:.4px;padding:2px 8px;border-radius:20px;box-shadow:0 2px 6px rgba(22,163,74,.4)}
+.task.done::before{content:'✅ DONE';position:absolute;top:-9px;left:14px;background:#16A34A;color:#fff;font-size:9px;font-weight:800;letter-spacing:.4px;padding:2px 8px;border-radius:20px;box-shadow:0 2px 6px rgba(22,163,74,.4)}
 .action.done-btn{background:#DCFCE7;color:#15803D}
 .action.undone-btn{background:#F1F5F9;color:#64748B}
 @media(max-width:560px){.main{padding:12px}.user-name{display:none}.week-buttons{gap:4px}.week-buttons .small-btn{padding:7px}.task{padding:12px}.topbar{padding:8px 12px}.actions{grid-template-columns:1fr 1fr}.action{font-size:10px;padding:9px 6px}.week-nav{align-items:flex-start}.week-buttons{flex-wrap:wrap;justify-content:flex-end}.week-title{font-size:17px}}
@@ -67,58 +67,58 @@
 <body>
 <header class="topbar">
   <div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div>
-  <div class="topbar-actions"><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Anmod om opgave</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Vejledning</span></button></div>
-  <div class="user"><span id="user-name" class="user-name"></span><span id="user-avatar" class="avatar">?</span><button class="logout" onclick="logout()">Log ud</button></div>
+  <div class="topbar-actions"><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button></div>
+  <div class="user"><span id="user-name" class="user-name"></span><span id="user-avatar" class="avatar">?</span><button class="logout" onclick="logout()">Log out</button></div>
 </header>
 <main class="main">
-  <div class="week-nav"><div><div id="week-label" class="week-title">Indlæser...</div><div id="week-sub" class="week-sub"></div></div><div class="week-buttons"><button id="whole-week-btn" class="small-btn primary" onclick="showWholeWeek()">Hele uge</button><button class="small-btn" onclick="changeWeek(-1)">←</button><button class="small-btn primary" onclick="goToday()">I dag</button><button class="small-btn" onclick="changeWeek(1)">→</button></div></div>
+  <div class="week-nav"><div><div id="week-label" class="week-title">Loading...</div><div id="week-sub" class="week-sub"></div></div><div class="week-buttons"><button id="whole-week-btn" class="small-btn primary" onclick="showWholeWeek()">Whole week</button><button class="small-btn" onclick="changeWeek(-1)">←</button><button class="small-btn primary" onclick="goToday()">Today</button><button class="small-btn" onclick="changeWeek(1)">→</button></div></div>
   <div id="week-overview" class="week-overview"></div>
   <div id="weekly-note-banner"></div>
   <div id="selected-notice"></div>
-  <div id="tasks-container"><div class="empty"><div class="empty-icon">⏳</div><h3>Henter dine opgaver...</h3></div></div>
+  <div id="tasks-container"><div class="empty"><div class="empty-icon">⏳</div><h3>Loading your tasks...</h3></div></div>
 </main>
-<div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Note til opgaven</div><button class="modal-close" onclick="closeNote()">Luk</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div></div></div></div>
-<div id="library-modal" class="modal-backdrop" onclick="closeLibraryOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📁 Vejledninger & plantegninger</div><button class="modal-close" onclick="closeLibrary()">Luk</button></div><div class="modal-body" id="library-body"></div></div></div>
+<div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div></div></div></div>
+<div id="library-modal" class="modal-backdrop" onclick="closeLibraryOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📁 Guides & floor plans</div><button class="modal-close" onclick="closeLibrary()">Close</button></div><div class="modal-body" id="library-body"></div></div></div>
 <div id="request-modal" class="modal-backdrop" onclick="closeRequestOnBackdrop(event)">
   <div class="modal req-modal">
-    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon" id="req-modal-icon">📩</span> <span id="req-modal-title">Anmod om en opgave</span></div><button class="modal-close" onclick="closeRequestModal()">Luk</button></div>
+    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon" id="req-modal-icon">📩</span> <span id="req-modal-title">Request a task</span></div><button class="modal-close" onclick="closeRequestModal()">Close</button></div>
     <div class="modal-body">
       <div class="req-tabs">
-        <button type="button" class="req-tab active" id="req-tab-task" onclick="switchRequestTab('task')">📩 Opgave</button>
-        <button type="button" class="req-tab" id="req-tab-timeoff" onclick="switchRequestTab('timeoff')">🏖 Ferie / sygdom</button>
+        <button type="button" class="req-tab active" id="req-tab-task" onclick="switchRequestTab('task')">📩 Task</button>
+        <button type="button" class="req-tab" id="req-tab-timeoff" onclick="switchRequestTab('timeoff')">🏖 Time off / sick</button>
       </div>
       <div id="req-task-form">
-        <p class="req-intro">Brug denne, hvis du selv ved du skal nå noget hos en kunde — den sendes til godkendelse, og bliver først sat på din kalender, når den er godkendt.</p>
+        <p class="req-intro">Use this if you already know you need to get something done at a customer's — it's sent for approval, and only lands on your calendar once it's approved.</p>
         <form autocomplete="off" onsubmit="return false">
-          <label class="req-label">Kunde / opgave</label>
-          <input id="req-job-name" name="gm_req_job_name_field" class="req-input" placeholder="Fx Jensen — mangler at slibe entré" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false">
-          <label class="req-label">Hvorfor / beskrivelse</label>
-          <textarea id="req-description" name="gm_req_description_field" class="req-textarea" rows="3" placeholder="Kort beskrivelse, evt. hvad du har lovet kunden" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false"></textarea>
+          <label class="req-label">Customer / task</label>
+          <input id="req-job-name" name="gm_req_job_name_field" class="req-input" placeholder="E.g. Jensen — hallway needs sanding" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false">
+          <label class="req-label">Why / description</label>
+          <textarea id="req-description" name="gm_req_description_field" class="req-textarea" rows="3" placeholder="Short description, e.g. what you promised the customer" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false"></textarea>
           <div style="display:flex;gap:10px">
-            <div style="flex:1"><label class="req-label">Dato</label><input id="req-date" name="gm_req_date_field" type="date" class="req-input" autocomplete="off"></div>
-            <div style="flex:1"><label class="req-label">Antal dage</label><input id="req-days" name="gm_req_days_field" type="number" min=".25" max="10" step=".25" class="req-input" value="1" autocomplete="off"></div>
+            <div style="flex:1"><label class="req-label">Date</label><input id="req-date" name="gm_req_date_field" type="date" class="req-input" autocomplete="off"></div>
+            <div style="flex:1"><label class="req-label">Number of days</label><input id="req-days" name="gm_req_days_field" type="number" min=".25" max="10" step=".25" class="req-input" value="1" autocomplete="off"></div>
           </div>
           <div id="req-feedback" class="req-feedback"></div>
-          <button type="button" class="req-submit" id="req-submit-btn" onclick="submitTaskRequest()"><span class="req-submit-label">Send til godkendelse</span></button>
+          <button type="button" class="req-submit" id="req-submit-btn" onclick="submitTaskRequest()"><span class="req-submit-label">Send for approval</span></button>
         </form>
       </div>
       <div id="req-timeoff-form" style="display:none">
-        <p class="req-intro">Bed om fri til ferie, sygdom eller andet fravær — din leder godkender det, og din kalender blokeres for de dage.</p>
+        <p class="req-intro">Request time off for vacation, sickness, or other leave — your manager approves it, and your calendar is blocked for those days.</p>
         <form autocomplete="off" onsubmit="return false">
           <label class="req-label">Type</label>
           <select id="off-type" class="req-input">
-            <option value="vacation">🏖 Ferie</option>
-            <option value="sick">🤒 Sygdom</option>
-            <option value="other">⛔ Andet fravær</option>
+            <option value="vacation">🏖 Vacation</option>
+            <option value="sick">🤒 Sick leave</option>
+            <option value="other">⛔ Other leave</option>
           </select>
           <div style="display:flex;gap:10px">
-            <div style="flex:1"><label class="req-label">Fra dato</label><input id="off-start" type="date" class="req-input" autocomplete="off"></div>
-            <div style="flex:1"><label class="req-label">Til dato</label><input id="off-end" type="date" class="req-input" autocomplete="off"></div>
+            <div style="flex:1"><label class="req-label">From date</label><input id="off-start" type="date" class="req-input" autocomplete="off"></div>
+            <div style="flex:1"><label class="req-label">To date</label><input id="off-end" type="date" class="req-input" autocomplete="off"></div>
           </div>
-          <label class="req-label">Note (valgfrit)</label>
-          <textarea id="off-note" class="req-textarea" rows="2" placeholder="Fx lægebesøg, familiebegivenhed osv." autocomplete="off"></textarea>
+          <label class="req-label">Note (optional)</label>
+          <textarea id="off-note" class="req-textarea" rows="2" placeholder="E.g. doctor's appointment, family event, etc." autocomplete="off"></textarea>
           <div id="off-feedback" class="req-feedback"></div>
-          <button type="button" class="req-submit" id="off-submit-btn" onclick="submitTimeOffRequest()"><span class="req-submit-label">Send til godkendelse</span></button>
+          <button type="button" class="req-submit" id="off-submit-btn" onclick="submitTimeOffRequest()"><span class="req-submit-label">Send for approval</span></button>
         </form>
       </div>
       <div id="req-history"></div>
@@ -135,7 +135,7 @@ const weatherItems=new Map();
 const weeklyNoteCache=new Map();
 const JOBTREAD_TIME_URL='https://app.jobtread.com/time';
 if(!token||!user)location.href='/';
-document.getElementById('user-name').textContent=(user.name||'').split(' ')[0]||'Medarbejder';
+document.getElementById('user-name').textContent=(user.name||'').split(' ')[0]||'Employee';
 if(user.avatar_url){document.getElementById('user-avatar').innerHTML='<img class="avatar-img" src="'+user.avatar_url+'">';}
 else{
   document.getElementById('user-avatar').textContent=user.initials||(user.name||'?').split(' ').map(x=>x[0]).join('').slice(0,2);
@@ -152,13 +152,13 @@ loadBranding();
 function esc(s){return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),3000)}
 function logout(){localStorage.removeItem('gm_token');localStorage.removeItem('gm_user');location.href='/'}
-async function api(path,opts={}){const headers={Authorization:'Bearer '+token,...(opts.headers||{})};if(opts.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(path,{...opts,headers});if(r.status===401){logout();return null}let d;try{d=await r.json()}catch(e){d={error:'Serveren returnerede et ugyldigt svar'}}return {ok:r.ok,status:r.status,data:d}}
+async function api(path,opts={}){const headers={Authorization:'Bearer '+token,...(opts.headers||{})};if(opts.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(path,{...opts,headers});if(r.status===401){logout();return null}let d;try{d=await r.json()}catch(e){d={error:'The server returned an invalid response'}}return {ok:r.ok,status:r.status,data:d}}
 function monday(d){let x=new Date(d);let day=x.getDay()||7;x.setDate(x.getDate()-day+1);x.setHours(0,0,0,0);return x}
 function iso(d){var x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10)}
 function getWeekDays(off){let m=monday(new Date());m.setDate(m.getDate()+off*7);return Array.from({length:7},(_,i)=>{let d=new Date(m);d.setDate(m.getDate()+i);return d})}
 function sameDay(d){let n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate()}
 function weekNumber(d){let x=new Date(d);let day=x.getDay()||7;x.setDate(x.getDate()+4-day);let y=new Date(Date.UTC(x.getFullYear(),0,1));return Math.ceil((((x-y)/86400000)+1)/7)}
-const TYPES={lay:['Gulvlægning','#dbeafe','#1d4ed8'],sand:['Gulvslibning','#dcfce7','#15803d'],paint:['Malerservice','#fef9c3','#92570a'],sub:['Underleverandør','#ede9fe','#5b21b6'],other:['Andet','#f1f5f9','#475569']};
+const TYPES={lay:['Flooring','#dbeafe','#1d4ed8'],sand:['Floor sanding','#dcfce7','#15803d'],paint:['Painting','#fef9c3','#92570a'],sub:['Subcontractor','#ede9fe','#5b21b6'],other:['Other','#f1f5f9','#475569']};
 function tasksFor(date){return assignments.filter(a=>date>=String(a.start_date).slice(0,10)&&date<=String(a.end_date||a.start_date).slice(0,10)).sort((a,b)=>{
   const ta=String(a.start_time||'').trim(),tb=String(b.start_time||'').trim();
   if(ta&&tb)return ta.localeCompare(tb);
@@ -170,30 +170,30 @@ function phoneValue(a){return String(a.customer_phone||a.job_phone||a.customer_p
 function phoneHref(phone){return 'tel:'+phone.replace(/[^+\d]/g,'')}
 function taskLink(a){return a.jt_url||'https://app.jobtread.com'}
 function weatherKey(address,date){return 'gm-weather:'+date+':'+String(address||'').toLowerCase().trim()}
-function weatherText(code,max,min,rain){const m={0:['☀️','Klart'],1:['🌤️','Mest klart'],2:['⛅','Let skyet'],3:['☁️','Overskyet'],45:['🌫️','Tåge'],48:['🌫️','Rimtåge'],51:['🌦️','Let støvregn'],53:['🌦️','Støvregn'],55:['🌧️','Kraftig støvregn'],61:['🌦️','Let regn'],63:['🌧️','Regn'],65:['🌧️','Kraftig regn'],71:['🌨️','Let sne'],73:['🌨️','Sne'],75:['❄️','Kraftig sne'],80:['🌦️','Byger'],81:['🌧️','Regnbyger'],82:['⛈️','Kraftige byger'],95:['⛈️','Tordenvejr'],96:['⛈️','Torden og hagl'],99:['⛈️','Kraftigt tordenvejr']}[Number(code)]||['🌤️','Vejr'];const temps=(Number.isFinite(Number(min))&&Number.isFinite(Number(max)))?`${Math.round(min)}–${Math.round(max)}°`:'Temperatur ukendt';const rainText=Number.isFinite(Number(rain))?` · ${Math.round(rain)}% regn`:'';return `${m[0]} ${m[1]} · ${temps}${rainText}`}
+function weatherText(code,max,min,rain){const m={0:['☀️','Clear'],1:['🌤️','Mostly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],45:['🌫️','Fog'],48:['🌫️','Rime fog'],51:['🌦️','Light drizzle'],53:['🌦️','Drizzle'],55:['🌧️','Heavy drizzle'],61:['🌦️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['❄️','Heavy snow'],80:['🌦️','Showers'],81:['🌧️','Rain showers'],82:['⛈️','Heavy showers'],95:['⛈️','Thunderstorm'],96:['⛈️','Thunderstorm with hail'],99:['⛈️','Severe thunderstorm']}[Number(code)]||['🌤️','Weather'];const temps=(Number.isFinite(Number(min))&&Number.isFinite(Number(max)))?`${Math.round(min)}–${Math.round(max)}°`:'Temperature unknown';const rainText=Number.isFinite(Number(rain))?` · ${Math.round(rain)}% rain`:'';return `${m[0]} ${m[1]} · ${temps}${rainText}`}
 function cityForWeather(address){
-  // Open-Meteo's geokodning kender kun bynavne/postnumre — ikke gadenavne+husnr.
-  // "Hollandsvej 44, 2800 Lyngby" -> "Lyngby" (med "2800 Lyngby" som fallback).
+  // Open-Meteo's geocoding only knows city/postal names — not street names+numbers.
+  // "Hollandsvej 44, 2800 Lyngby" -> "Lyngby" (with "2800 Lyngby" as fallback).
   const parts=String(address||'').split(',').map(p=>p.trim()).filter(Boolean);
   if(!parts.length)return '';
   const last=parts[parts.length-1];
   const m=last.match(/^(\d{3,4})\s*(.+)$/);
   return m?m[2].trim():last;
 }
-const COPENHAGEN={latitude:55.6761,longitude:12.5683,label:'København (intet sted angivet)'};
+const COPENHAGEN={latitude:55.6761,longitude:12.5683,label:'Copenhagen (no location given)'};
 async function resolveWeatherPlace(address){
   if(!address)return COPENHAGEN;
   const city=cityForWeather(address)||address;
   try{
-    const geo=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=da&format=json&country=DK');
+    const geo=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json&country=DK');
     let geoData=await geo.json(); let place=geoData&&geoData.results&&geoData.results[0];
     if(!place){
-      const geo2=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=da&format=json');
+      const geo2=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json');
       geoData=await geo2.json(); place=geoData&&geoData.results&&geoData.results[0];
     }
     if(place)return {latitude:place.latitude,longitude:place.longitude,label:null};
   }catch(e){}
-  return COPENHAGEN; // Kunne ikke finde stedet — vis vejret for København i stedet for en fejl
+  return COPENHAGEN; // Could not find the location — show Copenhagen's weather instead of an error
 }
 async function getWeather(address,date){
   const key=weatherKey(address||'kbh',date);const cached=localStorage.getItem(key);
@@ -202,12 +202,12 @@ async function getWeather(address,date){
     const place=await resolveWeatherPlace(address);
     const url='https://api.open-meteo.com/v1/forecast?latitude='+encodeURIComponent(place.latitude)+'&longitude='+encodeURIComponent(place.longitude)+'&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FCopenhagen&start_date='+encodeURIComponent(date)+'&end_date='+encodeURIComponent(date);
     const res=await fetch(url); const data=await res.json(); const d=data&&data.daily;
-    if(!d||!d.time||!d.time.length) return '🌦️ Vejrprognose er ikke tilgængelig';
+    if(!d||!d.time||!d.time.length) return '🌦️ Forecast not available';
     let text=weatherText(d.weather_code&&d.weather_code[0],d.temperature_2m_max&&d.temperature_2m_max[0],d.temperature_2m_min&&d.temperature_2m_min[0],d.precipitation_probability_max&&d.precipitation_probability_max[0]);
     if(place.label)text+=' (for '+place.label+')';
     try{localStorage.setItem(key,JSON.stringify({savedAt:Date.now(),text:text}))}catch(e){}
     return text;
-  }catch(e){return '🌦️ Vejr kunne ikke hentes lige nu'}
+  }catch(e){return '🌦️ Could not fetch the weather right now'}
 }
 async function hydrateWeather(){
   const nodes=[...document.querySelectorAll('[data-weather-id]')];
@@ -215,21 +215,21 @@ async function hydrateWeather(){
   nodes.forEach(n=>{const id=n.dataset.weatherId;const item=weatherItems.get(id);if(item)unique.set(id,item)});
   await Promise.all([...unique.entries()].map(async([id,item])=>{const text=await getWeather(item.address,item.date);document.querySelectorAll('[data-weather-id="'+CSS.escape(id)+'"]').forEach(el=>{el.textContent=text;el.classList.remove('loading')})}));
 }
-function openBookingNote(id){const x=bookingNotes.get(String(id))||{};document.getElementById('note-task').textContent=x.title||'Opgave';const note=String(x.note||'').trim();const nt=document.getElementById('note-text');nt.textContent=note||'Der er ikke tilføjet en note til denne booking endnu.';nt.classList.toggle('modal-empty',!note);document.getElementById('note-modal').classList.add('open')}
+function openBookingNote(id){const x=bookingNotes.get(String(id))||{};document.getElementById('note-task').textContent=x.title||'Task';const note=String(x.note||'').trim();const nt=document.getElementById('note-text');nt.textContent=note||'No note has been added to this booking yet.';nt.classList.toggle('modal-empty',!note);document.getElementById('note-modal').classList.add('open')}
 function closeNote(){document.getElementById('note-modal').classList.remove('open')}
 function closeNoteOnBackdrop(e){if(e.target===document.getElementById('note-modal'))closeNote()}
 
 async function openLibrary(){
   const body=document.getElementById('library-body');
-  body.innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  body.innerHTML='<p style="color:var(--muted)">Loading…</p>';
   document.getElementById('library-modal').classList.add('open');
   try{
     const r=await api('/api/library');
     const files=r&&r.ok?r.data:[];
-    if(!files||!files.length){body.innerHTML='<p class="modal-empty">Der er ikke tilføjet vejledninger endnu.</p>';return;}
-    const labels={guide:'Lægningsvejledning',plan:'Plantegning',other:'Fil'};
-    body.innerHTML=files.map(f=>'<div class="file-item"><div><span class="file-cat">'+esc(labels[f.category]||'Fil')+'</span><br><a href="'+esc(f.url)+'" target="_blank" rel="noopener">📄 '+esc(f.name)+'</a></div></div>').join('');
-  }catch(e){body.innerHTML='<p class="modal-empty">Filerne kunne ikke hentes.</p>';}
+    if(!files||!files.length){body.innerHTML='<p class="modal-empty">No guides have been added yet.</p>';return;}
+    const labels={guide:'Installation guide',plan:'Floor plan',other:'File'};
+    body.innerHTML=files.map(f=>'<div class="file-item"><div><span class="file-cat">'+esc(labels[f.category]||'File')+'</span><br><a href="'+esc(f.url)+'" target="_blank" rel="noopener">📄 '+esc(f.name)+'</a></div></div>').join('');
+  }catch(e){body.innerHTML='<p class="modal-empty">Could not load the files.</p>';}
 }
 function closeLibrary(){document.getElementById('library-modal').classList.remove('open')}
 function closeLibraryOnBackdrop(e){if(e.target===document.getElementById('library-modal'))closeLibrary()}
@@ -258,22 +258,22 @@ function switchRequestTab(which){
   document.getElementById('req-task-form').style.display=isTask?'block':'none';
   document.getElementById('req-timeoff-form').style.display=isTask?'none':'block';
   document.getElementById('req-modal-icon').textContent=isTask?'📩':'🏖';
-  document.getElementById('req-modal-title').textContent=isTask?'Anmod om en opgave':'Anmod om ferie / sygdom';
+  document.getElementById('req-modal-title').textContent=isTask?'Request a task':'Request time off / sick leave';
 }
 function closeRequestModal(){document.getElementById('request-modal').classList.remove('open')}
 function closeRequestOnBackdrop(e){if(e.target===document.getElementById('request-modal'))closeRequestModal()}
 async function loadRequestHistory(){
   const el=document.getElementById('req-history');
-  el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Henter…</p>';
+  el.innerHTML='<div class="req-label">Your recent requests</div><p style="color:var(--muted);font-size:11px">Loading…</p>';
   try{
     const [tr,or_]=await Promise.all([api('/api/task-requests/my'),api('/api/time-off/my')]);
     const tasks_=(tr&&tr.ok?tr.data:[]).map(x=>({label:esc(x.job_name)+' — '+esc(String(x.requested_date).slice(0,10)),status:x.status,sort:x.created_at}));
-    const offs=(or_&&or_.ok?or_.data:[]).map(x=>({label:(x.type==='sick'?'🤒 Sygdom':x.type==='vacation'?'🏖 Ferie':'⛔ Fravær')+' — '+esc(String(x.start_date).slice(0,10))+' til '+esc(String(x.end_date).slice(0,10)),status:x.status,sort:x.created_at}));
+    const offs=(or_&&or_.ok?or_.data:[]).map(x=>({label:(x.type==='sick'?'🤒 Sick leave':x.type==='vacation'?'🏖 Vacation':'⛔ Leave')+' — '+esc(String(x.start_date).slice(0,10))+' to '+esc(String(x.end_date).slice(0,10)),status:x.status,sort:x.created_at}));
     const list=tasks_.concat(offs).sort((a,b)=>String(b.sort||'').localeCompare(String(a.sort||'')));
-    if(!list.length){el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Ingen anmodninger endnu.</p>';return;}
-    const labels={pending:'Afventer',approved:'Godkendt',rejected:'Afvist'};
-    el.innerHTML='<div class="req-label">Dine seneste anmodninger</div>'+list.map(x=>`<div class="req-item"><span>${x.label}</span><span class="req-status ${x.status}">${labels[x.status]||x.status}</span></div>`).join('');
-  }catch(e){el.innerHTML='<div class="req-label">Dine seneste anmodninger</div><p style="color:var(--muted);font-size:11px">Kunne ikke hente anmodninger.</p>';}
+    if(!list.length){el.innerHTML='<div class="req-label">Your recent requests</div><p style="color:var(--muted);font-size:11px">No requests yet.</p>';return;}
+    const labels={pending:'Pending',approved:'Approved',rejected:'Rejected'};
+    el.innerHTML='<div class="req-label">Your recent requests</div>'+list.map(x=>`<div class="req-item"><span>${x.label}</span><span class="req-status ${x.status}">${labels[x.status]||x.status}</span></div>`).join('');
+  }catch(e){el.innerHTML='<div class="req-label">Your recent requests</div><p style="color:var(--muted);font-size:11px">Could not load requests.</p>';}
 }
 async function submitTimeOffRequest(){
   const type=reqField('off-type').value;
@@ -282,26 +282,26 @@ async function submitTimeOffRequest(){
   const note=reqField('off-note').value.trim();
   const el=reqField('off-feedback');
   function offFeedback(msg,kind){el.textContent=msg;el.className='req-feedback show '+(kind||'');}
-  if(!start||!end){offFeedback('Vælg både fra- og til-dato','error');return}
-  if(end<start){offFeedback('Til-dato skal være efter fra-dato','error');return}
+  if(!start||!end){offFeedback('Choose both a from- and to-date','error');return}
+  if(end<start){offFeedback('The to-date must be after the from-date','error');return}
   const btn=document.getElementById('off-submit-btn');
-  btn.disabled=true;btn.querySelector('.req-submit-label').textContent='Sender…';
+  btn.disabled=true;btn.querySelector('.req-submit-label').textContent='Sending…';
   try{
     const r=await api('/api/time-off',{method:'POST',body:JSON.stringify({type,start_date:start,end_date:end,note:note||null})});
     if(r&&r.ok){
-      offFeedback('Sendt til godkendelse ✓','success');
-      toast('Sendt til godkendelse ✓');
+      offFeedback('Sent for approval ✓','success');
+      toast('Sent for approval ✓');
       reqField('off-note').value='';
       loadRequestHistory();
     } else {
-      offFeedback((r&&r.data&&r.data.error)||'Kunne ikke sende anmodningen','error');
+      offFeedback((r&&r.data&&r.data.error)||'Could not send the request','error');
       console.error('Time-off request failed:',r);
     }
   }catch(e){
-    offFeedback('Kunne ikke sende anmodningen — tjek din forbindelse','error');
+    offFeedback('Could not send the request — check your connection','error');
     console.error('Time-off request error:',e);
   }finally{
-    btn.disabled=false;btn.querySelector('.req-submit-label').textContent='Send til godkendelse';
+    btn.disabled=false;btn.querySelector('.req-submit-label').textContent='Send for approval';
   }
 }
 function reqFeedback(msg,kind){
@@ -316,36 +316,36 @@ async function submitTaskRequest(){
   const rawDate=fd?fd.get('gm_req_date_field'):null;
   const rawDays=fd?fd.get('gm_req_days_field'):null;
   const rawDesc=fd?fd.get('gm_req_description_field'):null;
-  // Krydstjek: læs også direkte via .value. Hvis de to metoder er uenige,
-  // er der noget usædvanligt på færde med selve siden/DOM'en.
+  // Cross-check: also read directly via .value. If the two methods disagree,
+  // something unusual is going on with the page/DOM itself.
   const directJobName=reqField('req-job-name')?reqField('req-job-name').value:null;
   const jobName=String(rawJobName??directJobName??'').trim();
   const date=String(rawDate??(reqField('req-date')?reqField('req-date').value:'')??'');
   const days=+((rawDays??(reqField('req-days')?reqField('req-days').value:null))||1);
   const description=String(rawDesc??(reqField('req-description')?reqField('req-description').value:'')??'').trim();
-  console.log('[Anmod om opgave] diagnostik:',{formData:{rawJobName,rawDate,rawDays},direkte:{directJobName},endeligtBrugt:{jobName,date,days}});
-  if(!jobName){reqFeedback('Skriv hvad opgaven handler om','error');return}
-  if(!date){reqFeedback('Vælg en dato','error');return}
+  console.log('[Request task] diagnostics:',{formData:{rawJobName,rawDate,rawDays},direct:{directJobName},finalUsed:{jobName,date,days}});
+  if(!jobName){reqFeedback('Write what the task is about','error');return}
+  if(!date){reqFeedback('Choose a date','error');return}
   const btn=document.getElementById('req-submit-btn');
-  btn.disabled=true;btn.querySelector('.req-submit-label').textContent='Sender…';
+  btn.disabled=true;btn.querySelector('.req-submit-label').textContent='Sending…';
   try{
     const r=await api('/api/task-requests',{method:'POST',body:JSON.stringify({job_name:jobName,description,requested_date:date,estimated_days:days})});
     if(r&&r.ok){
-      reqFeedback('Sendt til godkendelse ✓','success');
-      toast('Sendt til godkendelse ✓');
+      reqFeedback('Sent for approval ✓','success');
+      toast('Sent for approval ✓');
       reqField('req-job-name').value='';
       reqField('req-description').value='';
       loadRequestHistory();
     } else {
-      const msg=(r&&r.data&&r.data.error)||'Kunne ikke sende anmodningen — prøv igen om lidt';
+      const msg=(r&&r.data&&r.data.error)||'Could not send the request — try again shortly';
       reqFeedback(msg,'error');
       console.error('Task request failed:',r);
     }
   }catch(e){
-    reqFeedback('Kunne ikke sende anmodningen — tjek din forbindelse','error');
+    reqFeedback('Could not send the request — check your connection','error');
     console.error('Task request error:',e);
   }finally{
-    btn.disabled=false;btn.querySelector('.req-submit-label').textContent='Send til godkendelse';
+    btn.disabled=false;btn.querySelector('.req-submit-label').textContent='Send for approval';
   }
 }
 
@@ -353,23 +353,23 @@ async function toggleTaskDone(id,done){
   const a=assignments.find(x=>+x.id===+id);
   if(!a)return;
   const previous=a.completed_at;
-  // Optimistisk opdatering: skift udseende MED DET SAMME, før serveren har svaret,
-  // så det aldrig føles som om der ikke sker noget når man trykker.
+  // Optimistic update: change appearance IMMEDIATELY, before the server has
+  // responded, so it never feels like nothing happened when you press it.
   a.completed_at=done?new Date().toISOString():null;
   render();
-  toast(done?'Markeret som færdig ✓':'Fortrudt ↩');
+  toast(done?'Marked as done ✓':'Undone ↩');
   try{
     const r=await api('/api/assignments/'+id+'/complete',{method:'PUT',body:JSON.stringify({completed:done})});
-    console.log('[Marker som færdig] svar fra server:',r);
+    console.log('[Mark as done] server response:',r);
     if(!r||!r.ok){
       a.completed_at=previous;render();
       console.error('Complete-toggle failed:',r);
-      toast((r&&r.data&&r.data.error)||'Kunne ikke gemme — prøvede at fortryde ændringen');
+      toast((r&&r.data&&r.data.error)||'Could not save — reverted the change');
     }
   }catch(e){
     a.completed_at=previous;render();
     console.error('Complete-toggle error:',e);
-    toast('Ingen forbindelse — ændringen blev ikke gemt');
+    toast('No connection — the change was not saved');
   }
 }
 
@@ -387,41 +387,41 @@ async function renderWeeklyNote(){
 }
 function paintWeeklyNote(note){
   const banner=document.getElementById('weekly-note-banner');
-  banner.innerHTML=note&&note.trim()?'<div class="wnote-banner"><b>Note fra kontoret denne uge</b>'+esc(note)+'</div>':'';
+  banner.innerHTML=note&&note.trim()?'<div class="wnote-banner"><b>Note from the office this week</b>'+esc(note)+'</div>':'';
 }
 
 function showWholeWeek(){selectedDate=null;render()}
 function selectDay(date){selectedDate=date;render()}
-function dayName(d){return d.toLocaleDateString('da-DK',{weekday:'long'}).replace(/^./,x=>x.toUpperCase())}
+function dayName(d){return d.toLocaleDateString('en-GB',{weekday:'long'})}
 function render(){
   const days=getWeekDays(weekOffset); if(selectedDate&&!days.some(d=>iso(d)===selectedDate))selectedDate=null;
-  document.getElementById('week-label').textContent='Uge '+weekNumber(days[0]);
-  document.getElementById('week-sub').textContent=days[0].toLocaleDateString('da-DK',{day:'numeric',month:'short'})+' – '+days[4].toLocaleDateString('da-DK',{day:'numeric',month:'short',year:'numeric'});
+  document.getElementById('week-label').textContent='Week '+weekNumber(days[0]);
+  document.getElementById('week-sub').textContent=days[0].toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' – '+days[4].toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
   document.getElementById('whole-week-btn').classList.toggle('primary',!selectedDate);
-  document.getElementById('week-overview').innerHTML=days.map((d,i)=>{const date=iso(d),list=tasksFor(date),active=selectedDate===date;return `<button class="day-chip ${active?'active':''} ${list.length?'has':''}" onclick="selectDay('${date}')"><div class="d1">${['Man','Tir','Ons','Tor','Fre','Lør','Søn'][i]}</div><div class="d2">${d.getDate()}</div><div class="d3">${list.length?list.length+' opg.':''}</div></button>`}).join('');
+  document.getElementById('week-overview').innerHTML=days.map((d,i)=>{const date=iso(d),list=tasksFor(date),active=selectedDate===date;return `<button class="day-chip ${active?'active':''} ${list.length?'has':''}" onclick="selectDay('${date}')"><div class="d1">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]}</div><div class="d2">${d.getDate()}</div><div class="d3">${list.length?list.length+' task'+(list.length!==1?'s':''):''}</div></button>`}).join('');
   const selected=selectedDate?days.filter(d=>iso(d)===selectedDate):days;
-  document.getElementById('selected-notice').innerHTML=selectedDate?`<div class="view-notice"><span>Viser kun <strong>${dayName(selected[0])} ${selected[0].toLocaleDateString('da-DK',{day:'numeric',month:'long'})}</strong>.</span><button onclick="showWholeWeek()">Vis hele uge</button></div>`:'';
+  document.getElementById('selected-notice').innerHTML=selectedDate?`<div class="view-notice"><span>Showing only <strong>${dayName(selected[0])} ${selected[0].toLocaleDateString('en-GB',{day:'numeric',month:'long'})}</strong>.</span><button onclick="showWholeWeek()">Show whole week</button></div>`:'';
   bookingNotes.clear();weatherItems.clear();
   let out='',total=0;
-  selected.forEach(d=>{const date=iso(d),list=tasksFor(date);total+=list.length;out+=`<section class="day-section" id="day-${date}"><div class="day-head"><span class="day-name">${dayName(d)}</span><span class="day-date">${d.toLocaleDateString('da-DK',{day:'numeric',month:'long'})}</span>${sameDay(d)?'<span class="today">I dag</span>':''}</div>`;
-    if(!list.length){out+='<div class="empty-day">Ingen planlagte opgaver</div>';}else{
+  selected.forEach(d=>{const date=iso(d),list=tasksFor(date);total+=list.length;out+=`<section class="day-section" id="day-${date}"><div class="day-head"><span class="day-name">${dayName(d)}</span><span class="day-date">${d.toLocaleDateString('en-GB',{day:'numeric',month:'long'})}</span>${sameDay(d)?'<span class="today">Today</span>':''}</div>`;
+    if(!list.length){out+='<div class="empty-day">No tasks scheduled</div>';}else{
       let shownUntimedHeader=false;
       list.forEach((a,idx)=>{
       const hasTime=!!String(a.start_time||'').trim();
-      if(!hasTime&&!shownUntimedHeader){shownUntimedHeader=true;out+='<div class="untimed-divider">⏳ Uden fast mødetid — du planlægger selv rækkefølgen</div>';}
-      const t=TYPES[a.type_guess]||TYPES.other;const address=String(a.job_address||'').trim();const phone=phoneValue(a);const maps=address?'https://maps.google.com/?q='+encodeURIComponent(address):'';const weatherId='w-'+String(a.id)+'-'+date.replace(/[^0-9]/g,'');weatherItems.set(weatherId,{address:address,date:date});bookingNotes.set(String(a.id),{note:a.notes,title:(a.job_name||'Opgave')+' — '+(a.task_name||'')});
-      const mapButton=maps?`<a class="action maps" href="${maps}" target="_blank" rel="noopener">📍 Maps</a>`:`<button class="action maps" type="button" onclick="toast('Adresse mangler på opgaven')">📍 Maps</button>`;
-      const addressMarkup=address?(maps?`<a href="${maps}" target="_blank" rel="noopener">${esc(address)}</a>`:esc(address)):'Adresse mangler';
-      const phoneMarkup=phone?`<a href="${esc(phoneHref(phone))}">${esc(phone)}</a>`:'<span>Kundetelefon ikke tilføjet</span>';
+      if(!hasTime&&!shownUntimedHeader){shownUntimedHeader=true;out+='<div class="untimed-divider">⏳ No fixed time — you decide the order</div>';}
+      const t=TYPES[a.type_guess]||TYPES.other;const address=String(a.job_address||'').trim();const phone=phoneValue(a);const maps=address?'https://maps.google.com/?q='+encodeURIComponent(address):'';const weatherId='w-'+String(a.id)+'-'+date.replace(/[^0-9]/g,'');weatherItems.set(weatherId,{address:address,date:date});bookingNotes.set(String(a.id),{note:a.notes,title:(a.job_name||'Task')+' — '+(a.task_name||'')});
+      const mapButton=maps?`<a class="action maps" href="${maps}" target="_blank" rel="noopener">📍 Maps</a>`:`<button class="action maps" type="button" onclick="toast('No address on this task')">📍 Maps</button>`;
+      const addressMarkup=address?(maps?`<a href="${maps}" target="_blank" rel="noopener">${esc(address)}</a>`:esc(address)):'No address';
+      const phoneMarkup=phone?`<a href="${esc(phoneHref(phone))}">${esc(phone)}</a>`:'<span>No customer phone number</span>';
       const noteId=Number(a.id)||0;
       const jobFilesLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files'):'https://app.jobtread.com';
-      const timeChip=hasTime?`<span class="time-chip">⏰ ${esc(a.start_time)}</span>`:`<span class="time-chip untimed">🕓 Selv-planlagt</span>`;
+      const timeChip=hasTime?`<span class="time-chip">⏰ ${esc(a.start_time)}</span>`:`<span class="time-chip untimed">🕓 Self-scheduled</span>`;
       const isDone=!!a.completed_at;
-      const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Fortryd (færdig)</button>`:`<button class="action done-btn" type="button" onclick="toggleTaskDone(${noteId},true)">✅ Marker som færdig</button>`;
-      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Opgave')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Sag #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}<span class="badge" style="background:${t[1]};color:${t[2]}">${t[0]}</span></div></div><div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Vejr hentes…</div><div class="detail-line planned">⏱ Planlagt: ${esc(a.days)} dag${Number(a.days)!==1?'e':''}</div></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Note til opgaven</button><a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Læs om opgaven</a><a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Filer på sagen</a><a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track dine timer</a>${doneBtn}</div></article>`;
+      const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:`<button class="action done-btn" type="button" onclick="toggleTaskDone(${noteId},true)">✅ Mark as done</button>`;
+      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}<span class="badge" style="background:${t[1]};color:${t[2]}">${t[0]}</span></div></div><div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Planned: ${esc(a.days)} day${Number(a.days)!==1?'s':''}</div></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button><a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Read about the task</a><a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Job files</a><a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track your time</a>${doneBtn}</div></article>`;
     });}
     out+='</section>';});
-  document.getElementById('tasks-container').innerHTML=total?out:'<div class="empty"><div class="empty-icon">📅</div><h3>Ingen opgaver i denne visning</h3><p>Vælg en anden dag eller vis hele ugen.</p></div>';
+  document.getElementById('tasks-container').innerHTML=total?out:'<div class="empty"><div class="empty-icon">📅</div><h3>No tasks in this view</h3><p>Choose another day or show the whole week.</p></div>';
   hydrateWeather();
   renderWeeklyNote();
 }
