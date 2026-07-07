@@ -223,6 +223,8 @@ async function initSchema() {
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS completed_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS invoiced INTEGER DEFAULT 0;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_number TEXT;
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_lat DOUBLE PRECISION;
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_lng DOUBLE PRECISION;
 
     CREATE TABLE IF NOT EXISTS time_off (
       id SERIAL PRIMARY KEY,
@@ -891,6 +893,7 @@ async function syncCustomerPhonesInBackground() {
   if (phoneSyncRunning) return { ok: false, error: 'Der kører allerede et telefonopslag' }; // undgå at to baggrundskørsler overlapper
   phoneSyncRunning = true;
   const jobPhoneMap = new Map();
+  const jobAddressMap = new Map();
   try {
     let cur4;
     let p4 = 0;
@@ -900,7 +903,7 @@ async function syncCustomerPhonesInBackground() {
 
       const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
         jobs: { $: args, nextPage: {}, nodes: { id: {},
-          location: { contact: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } },
+          location: { address: {}, contact: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } },
             account: { primaryContact: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } },
               contacts: { $: { size: 5 }, nodes: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } } } } }
         } }
@@ -920,6 +923,7 @@ async function syncCustomerPhonesInBackground() {
           }
         }
         if (j?.id && phone) jobPhoneMap.set(j.id, String(phone).trim());
+        if (j?.id && j?.location?.address) jobAddressMap.set(j.id, String(j.location.address).trim());
       }
       p4++;
       const next = conn.nextPage;
@@ -947,8 +951,41 @@ async function syncCustomerPhonesInBackground() {
     } finally {
       client.release();
     }
-    await writeSyncLog(0, 'ok', `Kundetelefon (baggrund): ${jobPhoneMap.size} numre fundet i JobTread, ${updated} opgaver opdateret.`);
-    return { ok: true, found: jobPhoneMap.size, updated };
+
+    // ── Geokodning (server-side, til vejret) ──
+    // Gøres HER på serveren i stedet for i hver medarbejders browser, fordi:
+    // 1) Nominatim (adresse-opslag) kræver en ordentlig identifikation og maks.
+    //    1 opslag/sekund — det er upålideligt at gøre fra mange forskellige
+    //    telefoner/browsere på samme tid.
+    // 2) Resultatet er det samme for alle — ingen grund til at slå det op igen
+    //    og igen for hver medarbejder, hver gang de åbner deres kalender.
+    // Kun jobs der IKKE allerede har koordinater bliver slået op, så gentagne
+    // kørsler er hurtige.
+    let geocoded = 0;
+    try {
+      const needsGeocode = await pool.query(
+        `SELECT DISTINCT job_id, job_address FROM jt_tasks WHERE job_id IS NOT NULL AND job_address IS NOT NULL AND job_address<>'' AND (job_lat IS NULL OR job_lng IS NULL)`
+      );
+      for (const row of needsGeocode.rows.slice(0, 60)) { // sikkerhedsloft pr. kørsel, resten tages næste gang
+        const address = jobAddressMap.get(row.job_id) || row.job_address;
+        try {
+          const geoRes = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&q=' + encodeURIComponent(address), {
+            headers: { 'User-Agent': 'GulvMasterEnterprise/1.0 (internal scheduling tool)' }
+          });
+          const geoData = await geoRes.json();
+          if (Array.isArray(geoData) && geoData[0]) {
+            await pool.query(`UPDATE jt_tasks SET job_lat=$1, job_lng=$2 WHERE job_id=$3`, [+geoData[0].lat, +geoData[0].lon, row.job_id]);
+            geocoded++;
+          }
+        } catch (_) { /* denne ene adresse fejlede — spring over, prøv igen næste kørsel */ }
+        await new Promise(r => setTimeout(r, 1100)); // Nominatims brugsvilkår: maks. 1 opslag/sekund
+      }
+    } catch (geoErr) {
+      console.error('Geokodning fejlede:', geoErr.message);
+    }
+
+    await writeSyncLog(0, 'ok', `Kundetelefon (baggrund): ${jobPhoneMap.size} numre fundet i JobTread, ${updated} opgaver opdateret. ${geocoded} adresser geokodet til vejret.`);
+    return { ok: true, found: jobPhoneMap.size, updated, geocoded };
   } catch (phoneError) {
     await writeSyncLog(0, 'error', `Kundetlf.-opslag fejlede: ${redactSecret(phoneError.message || '').slice(0, 300)}`);
     console.error('Kundetelefon-opslag fra JobTread fejlede:', phoneError.message);
@@ -1391,7 +1428,7 @@ async function normalizeBooking(body) {
 function bookingSelect(where = '') {
   return `
     SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.avatar_url AS user_avatar_url,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
-           t.name AS task_name,t.job_name,t.job_address,t.job_number,t.customer_phone,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
+           t.name AS task_name,t.job_name,t.job_address,t.job_number,t.job_lat,t.job_lng,t.customer_phone,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
     FROM planning_bookings b
     JOIN users u ON b.user_id=u.id
     JOIN jt_tasks t ON b.task_id=t.id

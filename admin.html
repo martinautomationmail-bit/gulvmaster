@@ -83,6 +83,8 @@ button,input,select{font:inherit}
 
 /* TASK CARDS */
 .task-card{border:1px solid var(--border2);border-radius:7px;padding:7px 8px;margin:0 0 5px;background:#fff;cursor:grab;user-select:none;transition:.14s}
+.task-card.completed{border-color:#86EFAC;background:#F0FDF4}
+.task-done-badge{font-size:8px;font-weight:800;color:#15803D;margin-bottom:3px}
 .task-card:hover{box-shadow:0 3px 12px rgba(15,34,64,.12);border-color:var(--steel)}
 .task-card.dragging{opacity:.35}
 .task-name{font-size:11px;font-weight:750;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -407,7 +409,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="nav-actions">
     <span id="sync-ind" style="font-size:10px;color:rgba(255,255,255,.5)"></span>
     <button class="nb green" id="sync-btn">⚡ Synk JT</button>
-    <button class="nb" id="sync-phones-btn" title="Kør kun kundetelefon-opslaget, med det samme, og se resultatet direkte">📞 Synk telefoner</button>
+    <button class="nb" id="sync-phones-btn" title="Henter kundetelefon + adresse-koordinater til vejret, med det samme, og viser resultatet direkte">📞 Synk telefon & vejr</button>
     <div class="navdrop" id="navdrop">
       <button class="nb navdrop-btn" id="navdrop-btn">👤 Min side ▾</button>
       <div class="navdrop-menu" id="navdrop-menu">
@@ -785,7 +787,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <label class="quick-label">Antal dage</label>
         <input class="quick-input" type="number" id="qp-days" min=".25" max="60" step=".25" value="1">
       </div>
-      <div>
+      <div id="qp-time-row">
         <label class="quick-label">Mødetid</label>
         <input class="quick-input" type="time" id="qp-time">
       </div>
@@ -982,22 +984,29 @@ function teamList(scope){
   return{internal:internal,groups:groups};
 }
 function allTrades(){var s={};users.filter(function(u){return u.active&&u.trade;}).forEach(function(u){s[u.trade]=1;});return Object.keys(s).sort();}
+function taskIsCompleted(t){return bookings.some(function(b){return b.task_id===t.id&&!!b.completed_at;});}
 function filterTasks(scope){
   var f=filters[scope],searchId={plan:'plan-search',capacity:'cap-search',timeline:'timeline-search'}[scope]||'plan-search',q=(document.getElementById(searchId).value||'').toLowerCase().trim();
   return tasks.filter(function(t){
+    var completed=taskIsCompleted(t);
+    if(f.status==='completed')return completed&&matchesQuery();
+    if(completed)return false; // færdiggjorte opgaver fylder ikke i de almindelige lister længere
     var planned=+t.assignment_count>0;
     if(f.status==='open'&&planned)return false;
     if(f.status==='planned'&&!planned)return false;
     if(f.status==='manual'&&t.source!=='manual')return false;
     if(f.type!=='all'&&t.type_guess!==f.type)return false;
-    var text=((t.job_name||'')+' '+(t.name||'')+' '+(t.job_address||'')).toLowerCase();
-    return !q||text.indexOf(q)>-1;
+    return matchesQuery();
+    function matchesQuery(){
+      var text=((t.job_name||'')+' '+(t.name||'')+' '+(t.job_address||'')).toLowerCase();
+      return !q||text.indexOf(q)>-1;
+    }
   }).sort(function(a,b){return String(a.start_date||'').localeCompare(String(b.start_date||''));});
 }
 
 function filtersHTML(scope){
   var f=filters[scope],dom=scope==='capacity'?'cap':scope;
-  var sts=[['all','Alle'],['open','Ikke planlagt'],['planned','Planlagt'],['manual','Manuelle']];
+  var sts=[['all','Alle'],['open','Ikke planlagt'],['planned','Planlagt'],['manual','Manuelle'],['completed','✅ Færdiggjort']];
   var tys=[['all','Alle fag'],['lay','Gulv'],['sand','Slib'],['paint','Maler'],['sub','Underlev.']];
   var se=document.getElementById(dom+'-status-filters'),te=document.getElementById(dom+'-type-filters');
   if(se)se.innerHTML=sts.map(function(x){return '<button class="chip'+(f.status===x[0]?' active':'')+'" data-action="pool-filter" data-scope="'+scope+'" data-kind="status" data-value="'+x[0]+'">'+x[1]+'</button>';}).join('');
@@ -1011,8 +1020,9 @@ function teamFilterHTML(scope){
 }
 
 function taskCard(t){
-  var type=TYPE[t.type_guess]||TYPE.other,planned=+t.assignment_count>0;
-  return '<article class="task-card draggable-task" draggable="true" data-task-id="'+esc(t.id)+'" title="'+esc(t.job_name||'')+'">'+
+  var type=TYPE[t.type_guess]||TYPE.other,planned=+t.assignment_count>0,completed=taskIsCompleted(t);
+  return '<article class="task-card draggable-task'+(completed?' completed':'')+'" draggable="true" data-task-id="'+esc(t.id)+'" title="'+esc(t.job_name||'')+'">'+
+    (completed?'<div class="task-done-badge">✅ Færdiggjort</div>':'')+
     '<div class="task-name">'+esc(t.job_name||'Uden kunde')+'</div>'+
     '<div class="task-sub">'+esc(t.name||'Opgave')+'</div>'+
     '<div class="task-meta">'+
@@ -1228,7 +1238,8 @@ function populateQPUsers(selectedUid){
 }
 function openQuickPop(taskId,uid,dateStr,evt){
   var t=taskId?tasks.find(function(x){return String(x.id)===String(taskId);}):null;
-  quickCtx={taskId:taskId,bookingId:null};
+  var inCapacity=document.getElementById('page-capacity').classList.contains('active');
+  quickCtx={taskId:taskId,bookingId:null,context:inCapacity?'capacity':'plan'};
   document.getElementById('qp-title').textContent='Ny booking';
   document.getElementById('qp-task-name').textContent=(t?((t.job_name||'')+(t.name?' — '+t.name:'')+(t.job_number?' (#'+t.job_number+')':'')):'Skriv en hurtig opgave, eller vælg fra poolen →');
   populateQPUsers(uid);
@@ -1237,6 +1248,10 @@ function openQuickPop(taskId,uid,dateStr,evt){
   // If no task pre-selected, show the quick-task field (primary) + task dropdown (secondary)
   var wrap=document.getElementById('qp-task-select-wrap');
   var sel=document.getElementById('qp-task-select');
+  // Mødetid og adresse/telefon/sagsnummer giver kun mening ved konkret dags-planlægning
+  // (Daglig plan) — i Kapacitet analyserer man på ugeniveau, så de skjules der.
+  document.getElementById('qp-time-row').style.display=inCapacity?'none':'';
+  document.getElementById('qp-quick-extra').style.display=inCapacity?'none':'';
   if(!taskId){
     wrap.style.display='block';
     sel.innerHTML='<option value="">— Ingen valgt (brug hurtig-opgaven ovenfor) —</option>'+tasks.filter(function(x){return x.start_date;}).sort(function(a,b){return String(a.start_date).localeCompare(String(b.start_date));}).map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.job_name||x.name||'')+(x.start_date?' ('+x.start_date.slice(0,10)+')':'')+'</option>';}).join('');
@@ -1443,21 +1458,21 @@ async function syncNow(){
   await loadAll();
 }
 async function syncPhonesNow(){
-  var b=document.getElementById('sync-phones-btn');b.disabled=true;b.textContent='⏳ Henter numre…';
+  var b=document.getElementById('sync-phones-btn');b.disabled=true;b.textContent='⏳ Henter…';
   var log=document.getElementById('sync-log');log.classList.add('show');
   function addLog(m,c){var d=document.createElement('div');d.className=c||'info';d.textContent='['+new Date().toLocaleTimeString('da-DK')+'] '+m;log.appendChild(d);}
-  addLog('Henter kundetelefonnumre fra JobTread — dette venter på et direkte svar (kan tage 10-30 sek.)…','info');
+  addLog('Henter kundetelefonnumre + geokoder adresser til vejret — første kørsel kan tage et minut eller mere (maks. 60 adresser ad gangen pga. adressetjenestens fartgrænse). Vent venligst…','info');
   var r=await api('/api/sync-phones',{method:'POST'});
   if(r&&r.ok){
-    addLog('Færdig: '+r.found+' numre fundet i JobTread, '+r.updated+' opgaver fik tilføjet et nummer.','ok');
-    toast(r.found+' numre fundet, '+r.updated+' opdateret ✅');
+    addLog('Færdig: '+r.found+' numre fundet i JobTread, '+r.updated+' opgaver fik tilføjet et nummer, '+r.geocoded+' adresser geokodet.','ok');
+    toast(r.found+' numre, '+r.geocoded+' adresser ✅');
     await loadAll();
   } else {
     addLog('Fejlede: '+((r&&r.error)||'Ukendt fejl — se konsollen (F12) for detaljer'),'err');
-    toast('Telefonopslag fejlede — se loggen','❌');
+    toast('Opslag fejlede — se loggen','❌');
     console.error('Phone sync failed:',r);
   }
-  b.disabled=false;b.textContent='📞 Synk telefoner';
+  b.disabled=false;b.textContent='📞 Synk telefon & vejr';
 }
 async function clearPlan(){
   if(!confirm('Ryd ALLE bookinger? Opgavepoolen bevares.'))return;

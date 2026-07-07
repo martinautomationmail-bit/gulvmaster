@@ -181,18 +181,19 @@ function cityForWeather(address){
   return m?m[2].trim():last;
 }
 const COPENHAGEN={latitude:55.6761,longitude:12.5683,label:'Copenhagen (no location given)'};
-async function resolveWeatherPlace(address){
+async function resolveWeatherPlace(address,lat,lng){
+  // Bedste kilde: koordinater allerede beregnet på serveren under synkroniseringen
+  // (pålideligt, sker kun én gang for alle, i stedet for i hver browser).
+  if(Number.isFinite(Number(lat))&&Number.isFinite(Number(lng)))return {latitude:+lat,longitude:+lng,label:null};
   if(!address)return COPENHAGEN;
-  // Pass 1: try the FULL address in a proper street-level geocoder. This handles
-  // addresses like "Rahbeks Alle 16 st" that have no comma/city/postal code at
-  // all — the simple city-name lookup below can't do anything with those.
+  // Fallback 1: prøv den fulde adresse i en gadeniveau-geokoder direkte fra browseren
+  // (bruges kun hvis serveren ikke har nået at geokode denne adresse endnu).
   try{
     const full=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&q='+encodeURIComponent(address));
     const fullData=await full.json();
     if(Array.isArray(fullData)&&fullData[0])return {latitude:+fullData[0].lat,longitude:+fullData[0].lon,label:null};
   }catch(e){}
-  // Pass 2: fall back to guessing a city/postal name from the address text and
-  // looking that up (works even if pass 1's service is unreachable).
+  // Fallback 2: gæt en by/postnummer ud fra adresseteksten og slå det op i stedet.
   const city=cityForWeather(address)||address;
   try{
     const geo=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json&country=DK');
@@ -205,11 +206,11 @@ async function resolveWeatherPlace(address){
   }catch(e){}
   return COPENHAGEN; // Could not find the location — show Copenhagen's weather instead of an error
 }
-async function getWeather(address,date){
+async function getWeather(address,date,lat,lng){
   const key=weatherKey(address||'kbh',date);const cached=localStorage.getItem(key);
   try{if(cached){const c=JSON.parse(cached);if(c&&c.savedAt&&Date.now()-c.savedAt<30*60*1000&&c.text)return c.text}}catch(e){}
   try{
-    const place=await resolveWeatherPlace(address);
+    const place=await resolveWeatherPlace(address,lat,lng);
     const url='https://api.open-meteo.com/v1/forecast?latitude='+encodeURIComponent(place.latitude)+'&longitude='+encodeURIComponent(place.longitude)+'&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FCopenhagen&start_date='+encodeURIComponent(date)+'&end_date='+encodeURIComponent(date);
     const res=await fetch(url); const data=await res.json(); const d=data&&data.daily;
     if(!d||!d.time||!d.time.length) return '🌦️ Forecast not available';
@@ -223,7 +224,7 @@ async function hydrateWeather(){
   const nodes=[...document.querySelectorAll('[data-weather-id]')];
   const unique=new Map();
   nodes.forEach(n=>{const id=n.dataset.weatherId;const item=weatherItems.get(id);if(item)unique.set(id,item)});
-  await Promise.all([...unique.entries()].map(async([id,item])=>{const text=await getWeather(item.address,item.date);document.querySelectorAll('[data-weather-id="'+CSS.escape(id)+'"]').forEach(el=>{el.textContent=text;el.classList.remove('loading')})}));
+  await Promise.all([...unique.entries()].map(async([id,item])=>{const text=await getWeather(item.address,item.date,item.lat,item.lng);document.querySelectorAll('[data-weather-id="'+CSS.escape(id)+'"]').forEach(el=>{el.textContent=text;el.classList.remove('loading')})}));
 }
 function openBookingNote(id){const x=bookingNotes.get(String(id))||{};document.getElementById('note-task').textContent=x.title||'Task';const note=String(x.note||'').trim();const nt=document.getElementById('note-text');nt.textContent=note||'No note has been added to this booking yet.';nt.classList.toggle('modal-empty',!note);document.getElementById('note-modal').classList.add('open')}
 function closeNote(){document.getElementById('note-modal').classList.remove('open')}
@@ -419,7 +420,7 @@ function render(){
       list.forEach((a,idx)=>{
       const hasTime=!!String(a.start_time||'').trim();
       if(!hasTime&&!shownUntimedHeader){shownUntimedHeader=true;out+='<div class="untimed-divider">⏳ No fixed time — you decide the order</div>';}
-      const t=TYPES[a.type_guess]||TYPES.other;const address=String(a.job_address||'').trim();const phone=phoneValue(a);const maps=address?'https://maps.google.com/?q='+encodeURIComponent(address):'';const weatherId='w-'+String(a.id)+'-'+date.replace(/[^0-9]/g,'');weatherItems.set(weatherId,{address:address,date:date});bookingNotes.set(String(a.id),{note:a.notes,title:(a.job_name||'Task')+' — '+(a.task_name||'')});
+      const t=TYPES[a.type_guess]||TYPES.other;const address=String(a.job_address||'').trim();const phone=phoneValue(a);const maps=address?'https://maps.google.com/?q='+encodeURIComponent(address):'';const weatherId='w-'+String(a.id)+'-'+date.replace(/[^0-9]/g,'');weatherItems.set(weatherId,{address:address,date:date,lat:a.job_lat,lng:a.job_lng});bookingNotes.set(String(a.id),{note:a.notes,title:(a.job_name||'Task')+' — '+(a.task_name||'')});
       const mapButton=maps?`<a class="action maps" href="${maps}" target="_blank" rel="noopener">📍 Maps</a>`:`<button class="action maps" type="button" onclick="toast('No address on this task')">📍 Maps</button>`;
       const addressMarkup=address?(maps?`<a href="${maps}" target="_blank" rel="noopener">${esc(address)}</a>`:esc(address)):'No address';
       const phoneMarkup=phone?`<a href="${esc(phoneHref(phone))}">${esc(phone)}</a>`:'<span>No customer phone number</span>';
