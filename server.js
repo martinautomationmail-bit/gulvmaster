@@ -888,7 +888,7 @@ async function syncFromJTInner() {
 // det er altid gemt som denne brugerdefinerede feltværdi.
 let phoneSyncRunning = false;
 async function syncCustomerPhonesInBackground() {
-  if (phoneSyncRunning) return; // undgå at to baggrundskørsler overlapper
+  if (phoneSyncRunning) return { ok: false, error: 'Der kører allerede et telefonopslag' }; // undgå at to baggrundskørsler overlapper
   phoneSyncRunning = true;
   const jobPhoneMap = new Map();
   try {
@@ -948,13 +948,25 @@ async function syncCustomerPhonesInBackground() {
       client.release();
     }
     await writeSyncLog(0, 'ok', `Kundetelefon (baggrund): ${jobPhoneMap.size} numre fundet i JobTread, ${updated} opgaver opdateret.`);
+    return { ok: true, found: jobPhoneMap.size, updated };
   } catch (phoneError) {
     await writeSyncLog(0, 'error', `Kundetlf.-opslag fejlede: ${redactSecret(phoneError.message || '').slice(0, 300)}`);
     console.error('Kundetelefon-opslag fra JobTread fejlede:', phoneError.message);
+    return { ok: false, error: redactSecret(phoneError.message || 'Ukendt fejl').slice(0, 500) };
   } finally {
     phoneSyncRunning = false;
   }
 }
+
+app.post('/api/sync-phones', auth, adminOnly, asyncRoute(async (req, res) => {
+  // Kører synkront (ikke i baggrunden) og venter på svaret, så du kan se
+  // PRÆCIS hvor mange numre der blev fundet/opdateret med det samme.
+  if (phoneSyncRunning) {
+    return res.status(409).json({ ok: false, error: 'Telefonopslag kører allerede — vent til det er færdigt.' });
+  }
+  const result = await syncCustomerPhonesInBackground();
+  res.status(result.ok ? 200 : 500).json(result);
+}));
 
 app.post('/api/sync', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await syncFromJT();

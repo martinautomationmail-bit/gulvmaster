@@ -183,6 +183,16 @@ function cityForWeather(address){
 const COPENHAGEN={latitude:55.6761,longitude:12.5683,label:'Copenhagen (no location given)'};
 async function resolveWeatherPlace(address){
   if(!address)return COPENHAGEN;
+  // Pass 1: try the FULL address in a proper street-level geocoder. This handles
+  // addresses like "Rahbeks Alle 16 st" that have no comma/city/postal code at
+  // all — the simple city-name lookup below can't do anything with those.
+  try{
+    const full=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&q='+encodeURIComponent(address));
+    const fullData=await full.json();
+    if(Array.isArray(fullData)&&fullData[0])return {latitude:+fullData[0].lat,longitude:+fullData[0].lon,label:null};
+  }catch(e){}
+  // Pass 2: fall back to guessing a city/postal name from the address text and
+  // looking that up (works even if pass 1's service is unreachable).
   const city=cityForWeather(address)||address;
   try{
     const geo=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json&country=DK');

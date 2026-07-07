@@ -407,6 +407,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="nav-actions">
     <span id="sync-ind" style="font-size:10px;color:rgba(255,255,255,.5)"></span>
     <button class="nb green" id="sync-btn">⚡ Synk JT</button>
+    <button class="nb" id="sync-phones-btn" title="Kør kun kundetelefon-opslaget, med det samme, og se resultatet direkte">📞 Synk telefoner</button>
     <div class="navdrop" id="navdrop">
       <button class="nb navdrop-btn" id="navdrop-btn">👤 Min side ▾</button>
       <div class="navdrop-menu" id="navdrop-menu">
@@ -1441,6 +1442,23 @@ async function syncNow(){
   b.disabled=false;b.textContent='⚡ Synk JT';
   await loadAll();
 }
+async function syncPhonesNow(){
+  var b=document.getElementById('sync-phones-btn');b.disabled=true;b.textContent='⏳ Henter numre…';
+  var log=document.getElementById('sync-log');log.classList.add('show');
+  function addLog(m,c){var d=document.createElement('div');d.className=c||'info';d.textContent='['+new Date().toLocaleTimeString('da-DK')+'] '+m;log.appendChild(d);}
+  addLog('Henter kundetelefonnumre fra JobTread — dette venter på et direkte svar (kan tage 10-30 sek.)…','info');
+  var r=await api('/api/sync-phones',{method:'POST'});
+  if(r&&r.ok){
+    addLog('Færdig: '+r.found+' numre fundet i JobTread, '+r.updated+' opgaver fik tilføjet et nummer.','ok');
+    toast(r.found+' numre fundet, '+r.updated+' opdateret ✅');
+    await loadAll();
+  } else {
+    addLog('Fejlede: '+((r&&r.error)||'Ukendt fejl — se konsollen (F12) for detaljer'),'err');
+    toast('Telefonopslag fejlede — se loggen','❌');
+    console.error('Phone sync failed:',r);
+  }
+  b.disabled=false;b.textContent='📞 Synk telefoner';
+}
 async function clearPlan(){
   if(!confirm('Ryd ALLE bookinger? Opgavepoolen bevares.'))return;
   var r=await api('/api/plan',{method:'DELETE'});
@@ -2011,6 +2029,7 @@ function bind(){
   document.getElementById('logout-btn').onclick=logout;
   document.getElementById('employee-link').onclick=function(){window.location.href='/employee';};
   document.getElementById('sync-btn').onclick=syncNow;
+  document.getElementById('sync-phones-btn').onclick=syncPhonesNow;
   document.getElementById('clear-plan-btn').onclick=clearPlan;
   document.getElementById('plan-prev').onclick=function(){planOffset--;renderPlan();};
   document.getElementById('plan-next').onclick=function(){planOffset++;renderPlan();};
