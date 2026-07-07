@@ -338,15 +338,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .logs td{padding:7px 9px;border-bottom:1px solid var(--border2);font-size:10px}
 
 /* QUICK POP-UP (drop + enter) */
-.quick-pop{display:none;position:fixed;z-index:400;background:#fff;border:1px solid var(--border2);border-radius:14px;box-shadow:0 16px 40px rgba(15,34,64,.28);padding:18px;width:310px}
+.quick-pop{display:none;position:fixed;z-index:400;background:#fff;border:1px solid var(--border2);border-radius:14px;box-shadow:0 16px 40px rgba(15,34,64,.28);width:320px;overflow:hidden;padding:0}
 .quick-pop.open{display:block;animation:gm-pop .18s cubic-bezier(.2,.9,.3,1.3)}
-.quick-pop h4{font-size:13px;font-weight:800;color:var(--navy);margin:0 0 12px;padding-bottom:10px;border-bottom:1px solid var(--border2)}
+.qp-head{display:flex;align-items:center;gap:9px;padding:13px 16px;background:linear-gradient(135deg,var(--navy),#1e3a6e)}
+.qp-head-icon{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:13px;flex-shrink:0}
+.quick-pop h4{font-size:13px;font-weight:800;color:#fff;margin:0}
+.qp-body{padding:16px}
+.qp-quick-extra{background:var(--ice);border-radius:8px;padding:9px;margin:8px 0}
 .quick-task-name{font-size:11px;color:var(--muted);margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .quick-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px}
 .quick-label{font-size:9px;font-weight:700;color:var(--muted);display:block;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}
 .quick-input,.quick-select{width:100%;padding:6px 7px;border:1px solid var(--border);background:var(--ice);border-radius:5px;outline:none;font-size:11px}
 .quick-input:focus,.quick-select:focus{border-color:var(--blue);background:#fff}
-.quick-btns{display:flex;justify-content:flex-end;gap:6px;margin-top:10px}
+.quick-btns{display:flex;justify-content:flex-end;gap:6px;padding:12px 16px;border-top:1px solid var(--border2);background:#fafbfc}
 
 /* MODAL */
 .mo{display:none;position:fixed;inset:0;background:rgba(15,34,64,.55);backdrop-filter:blur(2px);z-index:200;align-items:center;justify-content:center;padding:16px}
@@ -745,37 +749,50 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <!-- QUICK POP-UP (drop) -->
 <div class="quick-pop" id="quick-pop">
-  <h4 id="qp-title">Booking</h4>
-  <div class="quick-task-name" id="qp-task-name" style="cursor:pointer" title="Klik for at vælge opgave"></div>
-  <div id="qp-task-select-wrap" style="display:none;margin-bottom:8px">
-    <label class="quick-label">Hurtig opgave (skriv et navn — behøver ikke betyde noget specifikt)</label>
-    <input class="quick-input" id="qp-new-task" placeholder="Fx Fejl og mangler hos Jensen" autofocus>
-    <label class="quick-label" style="margin-top:6px">…eller vælg en eksisterende opgave fra poolen i stedet</label>
-    <select class="quick-select" id="qp-task-select"><option value="">— Ingen valgt (brug hurtig-opgaven ovenfor) —</option></select>
+  <div class="qp-head">
+    <span class="qp-head-icon">⚡</span>
+    <h4 id="qp-title">Booking</h4>
   </div>
-  <div class="quick-row">
-    <div>
-      <label class="quick-label">Medarbejder</label>
-      <select class="quick-select" id="qp-user"></select>
+  <div class="qp-body">
+    <div class="quick-task-name" id="qp-task-name" style="cursor:pointer" title="Klik for at vælge opgave"></div>
+    <div id="qp-task-select-wrap" style="display:none;margin-bottom:8px">
+      <label class="quick-label">Hurtig opgave (skriv et navn — behøver ikke betyde noget specifikt)</label>
+      <input class="quick-input" id="qp-new-task" placeholder="Fx Fejl og mangler hos Jensen" autofocus>
+      <div class="qp-quick-extra" id="qp-quick-extra">
+        <div class="quick-row">
+          <div><label class="quick-label">📍 Adresse <span class="opt-tag">valgfrit</span></label><input class="quick-input" id="qp-new-address" placeholder="Gade, postnr, by"></div>
+          <div><label class="quick-label">📞 Telefon <span class="opt-tag">valgfrit</span></label><input class="quick-input" id="qp-new-phone" placeholder="Fx 12 34 56 78"></div>
+        </div>
+        <label class="quick-label">🔢 Sagsnummer <span class="opt-tag">valgfrit</span></label>
+        <input class="quick-input" id="qp-new-job-number" placeholder="Fx GM-2026-40">
+      </div>
+      <label class="quick-label" style="margin-top:6px">…eller vælg en eksisterende opgave fra poolen i stedet</label>
+      <select class="quick-select" id="qp-task-select"><option value="">— Ingen valgt (brug hurtig-opgaven ovenfor) —</option></select>
+    </div>
+    <div class="quick-row">
+      <div>
+        <label class="quick-label">Medarbejder</label>
+        <select class="quick-select" id="qp-user"></select>
+      </div>
+      <div>
+        <label class="quick-label">Startdato</label>
+        <input class="quick-input" type="date" id="qp-date">
+      </div>
+    </div>
+    <div class="quick-row">
+      <div>
+        <label class="quick-label">Antal dage</label>
+        <input class="quick-input" type="number" id="qp-days" min=".25" max="60" step=".25" value="1">
+      </div>
+      <div>
+        <label class="quick-label">Mødetid</label>
+        <input class="quick-input" type="time" id="qp-time">
+      </div>
     </div>
     <div>
-      <label class="quick-label">Startdato</label>
-      <input class="quick-input" type="date" id="qp-date">
+      <label class="quick-label">Note til medarbejder</label>
+      <input class="quick-input" id="qp-note" placeholder="Fx ring kunden 30 min før...">
     </div>
-  </div>
-  <div class="quick-row">
-    <div>
-      <label class="quick-label">Antal dage</label>
-      <input class="quick-input" type="number" id="qp-days" min=".25" max="60" step=".25" value="1">
-    </div>
-    <div>
-      <label class="quick-label">Mødetid</label>
-      <input class="quick-input" type="time" id="qp-time">
-    </div>
-  </div>
-  <div>
-    <label class="quick-label">Note til medarbejder</label>
-    <input class="quick-input" id="qp-note" placeholder="Fx ring kunden 30 min før...">
   </div>
   <div class="quick-btns">
     <button class="btn small" id="qp-cancel">Annuller</button>
@@ -1224,6 +1241,9 @@ function openQuickPop(taskId,uid,dateStr,evt){
     sel.innerHTML='<option value="">— Ingen valgt (brug hurtig-opgaven ovenfor) —</option>'+tasks.filter(function(x){return x.start_date;}).sort(function(a,b){return String(a.start_date).localeCompare(String(b.start_date));}).map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.job_name||x.name||'')+(x.start_date?' ('+x.start_date.slice(0,10)+')':'')+'</option>';}).join('');
     sel.onchange=function(){quickCtx.taskId=sel.value;document.getElementById('qp-task-name').textContent=sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:'';if(sel.value)document.getElementById('qp-new-task').value='';};
     document.getElementById('qp-new-task').value='';
+    document.getElementById('qp-new-address').value='';
+    document.getElementById('qp-new-phone').value='';
+    document.getElementById('qp-new-job-number').value='';
   } else {
     wrap.style.display='none';
   }
@@ -1231,7 +1251,7 @@ function openQuickPop(taskId,uid,dateStr,evt){
   document.getElementById('qp-note').value='';
   // Position pop-up near drop target
   var pop=document.getElementById('quick-pop');
-  var x=evt?Math.min(evt.clientX,window.innerWidth-310):window.innerWidth/2-150;
+  var x=evt?Math.min(evt.clientX,window.innerWidth-330):window.innerWidth/2-160;
   var y=evt?Math.min(evt.clientY,window.innerHeight-300):window.innerHeight/2-150;
   pop.style.left=x+'px';pop.style.top=y+'px';
   pop.classList.add('open');
@@ -1251,6 +1271,9 @@ async function saveQuickPop(){
   if(!taskId&&newTaskEl&&newTaskEl.value.trim()){
     var created=await api('/api/tasks/manual',{method:'POST',body:JSON.stringify({
       job_name:newTaskEl.value.trim(),name:'Hurtig opgave',type_guess:'other',
+      job_address:document.getElementById('qp-new-address').value.trim(),
+      customer_phone:document.getElementById('qp-new-phone').value.trim(),
+      job_number:document.getElementById('qp-new-job-number').value.trim(),
       start_date:document.getElementById('qp-date').value,days:+document.getElementById('qp-days').value||1
     })});
     if(!created||!created.ok){toast((created&&created.error)||'Kunne ikke oprette opgaven','❌');return;}

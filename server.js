@@ -795,53 +795,6 @@ async function syncFromJT() {
       cur3 = next;
     }
 
-    // ── PASS 4: kundetelefon ──
-    // Bekræftet direkte mod jeres JobTread-organisation (introspektion + live test):
-    // job -> location -> account -> contacts -> customFieldValues, hvor
-    // customField.name === "Phone" (et brugerdefineret felt af typen phoneNumber
-    // på "customerContact"). Der er IKKE et fast "phone"-felt nogen steder —
-    // det er altid gemt som denne brugerdefinerede feltværdi.
-    const jobPhoneMap = new Map();
-    let phoneStatus;
-    try {
-      let cur4;
-      let p4 = 0;
-      while (p4 < 20) {
-        const args = { size: 50 };
-        if (cur4) args.page = cur4;
-
-        const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
-          jobs: { $: args, nextPage: {}, nodes: { id: {},
-            location: { contact: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } },
-              account: { contacts: { $: { size: 5 }, nodes: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } } } } }
-          } }
-        }}}, 'Kundetelefon s.' + (p4 + 1));
-
-        const conn = d?.organization?.jobs || d?.query?.organization?.jobs || {};
-        const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
-        for (const j of nodes) {
-          const findPhone = (fieldValues) => (fieldValues || []).find(v => v?.customField?.name === 'Phone')?.value;
-          let phone = findPhone(j?.location?.contact?.customFieldValues?.nodes);
-          if (!phone) {
-            const accContacts = j?.location?.account?.contacts?.nodes || [];
-            for (const c of accContacts) {
-              phone = findPhone(c?.customFieldValues?.nodes);
-              if (phone) break;
-            }
-          }
-          if (j?.id && phone) jobPhoneMap.set(j.id, String(phone).trim());
-        }
-        p4++;
-        const next = conn.nextPage;
-        if (!next || next === '') break;
-        cur4 = next;
-      }
-      phoneStatus = `${jobPhoneMap.size} kundetlf. fundet`;
-    } catch (phoneError) {
-      phoneStatus = `kundetlf.-opslag fejlede: ${phoneError.message}`.slice(0, 300);
-      console.error('Kundetelefon-opslag fra JobTread fejlede:', phoneError.message);
-    }
-
     // ── UPSERT: kun jt_tasks — rører ALDRIG planning_bookings ──
     const client = await pool.connect();
     try {
@@ -852,23 +805,21 @@ async function syncFromJT() {
         const customerName = String(ji.name || '')
           .replace(/\s*[-\u2013]\s*(gulvl.gning|gulvslib|maler.*|slibning|service|renovering|t.mrer).*/i, '')
           .trim();
-        const phoneFromJT = jobId ? (jobPhoneMap.get(jobId) || null) : null;
 
         await client.query(`
-          INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,job_number,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()},'jobtread')
+          INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,job_number,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()},'jobtread')
           ON CONFLICT (id) DO UPDATE SET
             name=EXCLUDED.name, job_id=EXCLUDED.job_id, job_name=EXCLUDED.job_name,
             job_address=EXCLUDED.job_address,
             job_number=COALESCE(EXCLUDED.job_number, jt_tasks.job_number),
-            customer_phone=COALESCE(EXCLUDED.customer_phone, jt_tasks.customer_phone),
             start_date=EXCLUDED.start_date,
             end_date=EXCLUDED.end_date, type_guess=EXCLUDED.type_guess,
             raw_assignee_name=EXCLUDED.raw_assignee_name, jt_url=EXCLUDED.jt_url,
             synced_at=EXCLUDED.synced_at, source='jobtread'
         `, [
           task.id, task.name || '', jobId,
-          customerName || ji.name || '', ji.address || '', ji.number || null, phoneFromJT,
+          customerName || ji.name || '', ji.address || '', ji.number || null,
           task.startDate || null, task.endDate || task.startDate || null,
           guessType(task.name), assigneeMap.get(task.id) || null,
           jobId ? `https://app.jobtread.com/jobs/${jobId}/schedule` : null
@@ -882,8 +833,14 @@ async function syncFromJT() {
       client.release();
     }
 
-    const msg = `${allTasks.length} tasks · ${p1} task-sider · ${p2} job-sider · ${p3} assignment-sider · ${phoneStatus}`;
+    const msg = `${allTasks.length} tasks · ${p1} task-sider · ${p2} job-sider · ${p3} assignment-sider · kundetlf. hentes i baggrunden…`;
     await writeSyncLog(allTasks.length, 'ok', msg);
+
+    // Kundetelefon hentes IKKE her — det er en langsom, uafhængig proces (mange
+    // ekstra JobTread-opslag pr. job), der ikke må kunne bremse eller vælte selve
+    // synkroniseringen. Den køres i baggrunden efter vi allerede har svaret.
+    syncCustomerPhonesInBackground().catch(e => console.error('Baggrunds-telefonopslag fejlede:', e.message));
+
     return { ok: true, count: allTasks.length, pages: p1 };
 
   } catch (error) {
@@ -893,6 +850,81 @@ async function syncFromJT() {
   }
 }
 
+// ── KUNDETELEFON (baggrundsproces, adskilt fra selve synkroniseringen) ──
+// Bekræftet direkte mod jeres JobTread-organisation (introspektion + live test):
+// job -> location -> account -> contacts -> customFieldValues, hvor
+// customField.name === "Phone" (et brugerdefineret felt af typen phoneNumber
+// på "customerContact"). Der er IKKE et fast "phone"-felt nogen steder —
+// det er altid gemt som denne brugerdefinerede feltværdi.
+let phoneSyncRunning = false;
+async function syncCustomerPhonesInBackground() {
+  if (phoneSyncRunning) return; // undgå at to baggrundskørsler overlapper
+  phoneSyncRunning = true;
+  const jobPhoneMap = new Map();
+  try {
+    let cur4;
+    let p4 = 0;
+    while (p4 < 20) {
+      const args = { size: 50 };
+      if (cur4) args.page = cur4;
+
+      const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
+        jobs: { $: args, nextPage: {}, nodes: { id: {},
+          location: { contact: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } },
+            account: { primaryContact: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } },
+              contacts: { $: { size: 5 }, nodes: { customFieldValues: { $: { size: 10 }, nodes: { value: {}, customField: { name: {} } } } } } } }
+        } }
+      }}}, 'Kundetelefon s.' + (p4 + 1));
+
+      const conn = d?.organization?.jobs || d?.query?.organization?.jobs || {};
+      const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
+      for (const j of nodes) {
+        const findPhone = (fieldValues) => (fieldValues || []).find(v => v?.customField?.name === 'Phone')?.value;
+        let phone = findPhone(j?.location?.contact?.customFieldValues?.nodes);
+        if (!phone) phone = findPhone(j?.location?.account?.primaryContact?.customFieldValues?.nodes);
+        if (!phone) {
+          const accContacts = j?.location?.account?.contacts?.nodes || [];
+          for (const c of accContacts) {
+            phone = findPhone(c?.customFieldValues?.nodes);
+            if (phone) break;
+          }
+        }
+        if (j?.id && phone) jobPhoneMap.set(j.id, String(phone).trim());
+      }
+      p4++;
+      const next = conn.nextPage;
+      if (!next || next === '') break;
+      cur4 = next;
+    }
+
+    // Skriv alle fundne numre i én batch — kun til opgaver der endnu ikke har et nummer,
+    // så et manuelt indtastet nummer aldrig bliver overskrevet.
+    let updated = 0;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const [jobId, phone] of jobPhoneMap.entries()) {
+        const result = await client.query(
+          `UPDATE jt_tasks SET customer_phone=$1 WHERE job_id=$2 AND (customer_phone IS NULL OR customer_phone='')`,
+          [phone, jobId]
+        );
+        updated += result.rowCount;
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      throw err;
+    } finally {
+      client.release();
+    }
+    await writeSyncLog(0, 'ok', `Kundetelefon (baggrund): ${jobPhoneMap.size} numre fundet i JobTread, ${updated} opgaver opdateret.`);
+  } catch (phoneError) {
+    await writeSyncLog(0, 'error', `Kundetlf.-opslag fejlede: ${redactSecret(phoneError.message || '').slice(0, 300)}`);
+    console.error('Kundetelefon-opslag fra JobTread fejlede:', phoneError.message);
+  } finally {
+    phoneSyncRunning = false;
+  }
+}
 
 app.post('/api/sync', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await syncFromJT();
