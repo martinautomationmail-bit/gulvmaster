@@ -15,6 +15,7 @@
   --paint-bg:#FEF9C3;--paint-fg:#92570A;--paint-bar:#EAB308;
   --sub-bg:#EDE9FE;--sub-fg:#5B21B6;--sub-bar:#8B5CF6;
   --other-bg:#F1F5F9;--other-fg:#475569;--other-bar:#94A3B8;
+  --nav-height:52px;--capacity-header-top:calc(var(--nav-height) + 8px);
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:var(--ice);color:var(--ink);font-size:13px}
@@ -112,6 +113,22 @@ button,input,select{font:inherit}
 
 /* BOARD TABLE */
 .board-outer{border:1px solid var(--border2);border-radius:var(--radius);overflow-x:auto;overflow-y:visible;background:#fff;box-shadow:var(--shadow)}
+/* Keeps the capacity week headers visible while scrolling the long board. */
+#capacity-scroll{position:relative;isolation:isolate;scroll-behavior:smooth}
+#capacity-scroll .capacity-board th{position:sticky;top:var(--capacity-header-top);box-shadow:0 2px 0 rgba(15,34,64,.12),0 6px 14px rgba(15,34,64,.10)}
+#capacity-scroll .capacity-board th:first-child{z-index:9}
+.capacity-reservation{background:#F5F3FF!important;border-left-color:#7C3AED!important;color:#4C1D95!important}
+.capacity-reservation .cap-job-days{background:rgba(124,58,237,.12)!important}
+.capacity-context{display:flex;align-items:center;gap:7px;padding:8px 10px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:9px;color:#5B21B6;font-size:10px;font-weight:700;margin:0 0 8px}
+.capacity-modal-note{font-size:10px;color:var(--muted);line-height:1.45;margin:-2px 0 12px}
+.capacity-chip{display:inline-flex;align-items:center;gap:4px;background:#F5F3FF;color:#5B21B6;border:1px solid #DDD6FE;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:800}
+.task-completion-section{margin:8px 0 6px;padding:7px 8px;border-radius:8px;background:#F0FDF4;border:1px solid #BBF7D0;color:#166534;font-size:10px;font-weight:800}
+.task-card.completed{cursor:default}.task-card.completed:hover{border-color:#86EFAC;box-shadow:none}
+/* quieter, more premium interactive elements */
+.panel,.stat,.board-outer{box-shadow:0 1px 2px rgba(15,34,64,.06),0 8px 24px rgba(15,34,64,.045)}
+.btn,.chip,.month-btn,.task-card,.cap-job{transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease,background .14s ease}
+.btn:hover,.month-btn:hover{transform:translateY(-1px)}
+@media(max-width:760px){#capacity-scroll .capacity-board th{top:var(--nav-height)}}
 
 /* DAILY PLAN */
 .daily-board{min-width:900px;width:100%;border-collapse:collapse}
@@ -484,7 +501,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <aside class="panel">
       <div class="panel-head">
         <span class="panel-title">📥 Opgavepool</span>
-        <button class="btn small primary" data-action="manual">+ Manuel</button>
+        <button class="btn small primary" data-action="capacity-add">+ Kapacitetsblok</button>
       </div>
       <div class="panel-body">
         <input id="cap-search" class="search" placeholder="Søg kunde eller opgave">
@@ -497,7 +514,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="week-bar">
         <button class="btn small primary" id="cap-today">📍 I dag</button>
         <strong class="week-label">52 ugers kapacitet</strong>
-        <span class="hint">Drop i en uge → pop-up åbner med dage + tid + note</span>
+        <span class="hint">Træk en opgave på en uge, eller opret en enkel kapacitetsblok. Ingen mødetid.</span>
       </div>
       <div class="month-bar" id="cap-months"></div>
       <div class="workforce-bar" id="cap-workforce-filters"></div>
@@ -673,7 +690,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="page-head">
     <div>
       <div class="page-title">Færdige opgaver</div>
-      <div class="page-sub">Opgaver medarbejderne har markeret som færdige — klar til fakturering.</div>
+      <div class="page-sub">Det er den eneste permanente hjemadresse for afsluttede opgaver. Når medarbejderen afslutter, forsvinder opgaven fra “Alle” og lander her.</div>
     </div>
     <div class="filter-row">
       <button class="chip active" data-action="completed-filter" data-value="open">Ikke faktureret</button>
@@ -801,6 +818,33 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="quick-btns">
     <button class="btn small" id="qp-cancel">Annuller</button>
     <button class="btn small primary" id="qp-save">Gem (Enter)</button>
+  </div>
+</div>
+
+<!-- CAPACITY-ONLY MODAL -->
+<div class="mo" id="capacity-modal">
+  <div class="modal">
+    <h3 id="capacity-title">Reservér kapacitet</h3>
+    <div class="capacity-context" id="capacity-context">📊 Denne reservation vises kun på kapacitetsboardet — ikke i Daglig plan eller hos medarbejderen.</div>
+    <div class="capacity-modal-note">Vælg medarbejder, uge og hvor mange kapacitetsdage der skal reserveres. Mødetid, adresse, telefon og sagsnummer hører kun til i Daglig plan eller Tidslinje.</div>
+    <div class="form-group">
+      <label class="form-label">Medarbejder / hold</label>
+      <select id="capacity-user" class="select"></select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Uge</label><select id="capacity-week" class="select"></select></div>
+      <div class="form-group"><label class="form-label">Kapacitetsdage</label><input id="capacity-days" type="number" min=".25" max="14" step=".25" class="input" value="1"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Titel <span class="opt-tag">valgfrit</span></label>
+      <input id="capacity-label" class="input" placeholder="Fx Reserveret til opstart / intern opgave">
+    </div>
+    <div class="form-group"><label class="form-label">Intern note <span class="opt-tag">valgfrit</span></label><input id="capacity-note" class="input" placeholder="Fx afventer kundens endelige dato"></div>
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="delete-capacity">Fjern reservation</button>
+      <button class="btn" id="close-capacity">Annuller</button>
+      <button class="btn primary" id="save-capacity">Gem kapacitet</button>
+    </div>
   </div>
 </div>
 
@@ -961,7 +1005,7 @@ function workDates(b){
   return out.length?out:[iso(s)];
 }
 function dailyLoad(uid,ds){
-  return bookings.filter(function(b){return +b.user_id===+uid&&workDates(b).indexOf(ds)>-1;})
+  return bookings.filter(function(b){return !isCapacityBooking(b)&&+b.user_id===+uid&&workDates(b).indexOf(ds)>-1;})
     .reduce(function(n,b){return n+(+b.days||1)/workDates(b).length;},0);
 }
 function capDaysOf(b){return (b.capacity_days!==null&&b.capacity_days!==undefined&&b.capacity_days!=='')?+b.capacity_days:(+b.days||1);}
@@ -987,7 +1031,9 @@ function teamList(scope){
   return{internal:internal,groups:groups};
 }
 function allTrades(){var s={};users.filter(function(u){return u.active&&u.trade;}).forEach(function(u){s[u.trade]=1;});return Object.keys(s).sort();}
-function taskIsCompleted(t){return bookings.some(function(b){return b.task_id===t.id&&!!b.completed_at;});}
+function isCapacityBooking(b){return String(b.planning_mode||'daily')==='capacity';}
+function dailyBookingsForTask(t){return bookings.filter(function(b){return b.task_id===t.id&&!isCapacityBooking(b);});}
+function taskIsCompleted(t){var rows=dailyBookingsForTask(t);return rows.length>0&&rows.every(function(b){return !!b.completed_at;});}
 function filterTasks(scope){
   var f=filters[scope],searchId={plan:'plan-search',capacity:'cap-search',timeline:'timeline-search'}[scope]||'plan-search',q=(document.getElementById(searchId).value||'').toLowerCase().trim();
   return tasks.filter(function(t){
@@ -1025,8 +1071,8 @@ function teamFilterHTML(scope){
 function taskCard(t){
   var type=TYPE[t.type_guess]||TYPE.other,planned=+t.assignment_count>0,completed=taskIsCompleted(t);
   var contact=phoneMarkup(t.customer_phone,true);
-  return '<article class="task-card draggable-task'+(completed?' completed':'')+'" draggable="true" data-task-id="'+esc(t.id)+'" title="'+esc(t.job_name||'')+'">'+
-    (completed?'<div class="task-done-badge">✅ Færdiggjort</div>':'')+
+  return '<article class="task-card '+(completed?'completed':'draggable-task')+'" '+(completed?'':'draggable="true"')+' '+(completed?'':'data-task-id="'+esc(t.id)+'"')+' title="'+esc(t.job_name||'')+'">'+
+    (completed?'<div class="task-done-badge">✅ Færdiggjort · '+(bookings.filter(function(b){return b.task_id===t.id&&!!b.completed_at&&!isCapacityBooking(b)&&!b.invoiced;}).length?'Klar til faktura':'Faktureret')+'</div>':'')+
     '<div class="task-name">'+esc(t.job_name||'Uden kunde')+'</div>'+
     '<div class="task-sub">'+esc(t.name||'Opgave')+'</div>'+
     (contact?'<div class="task-contact">'+contact+'</div>':'')+
@@ -1044,7 +1090,8 @@ function renderPool(scope){
   var el=document.getElementById(dom+'-pool');
   if(!el)return;
   var list=filterTasks(scope);
-  el.innerHTML=list.length?list.map(taskCard).join(''):'<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
+  var section=filters[scope].status==='completed'?'<div class="task-completion-section">✅ Færdiggjort · klar til faktura eller allerede faktureret</div>':'';
+  el.innerHTML=list.length?section+list.map(taskCard).join(''):'<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
 }
 
 // ASSIGNMENT PILL (daily) - single day
@@ -1114,7 +1161,7 @@ function renderPlan(){
 
       // Find all bookings that cover this specific day
       var items=bookings.filter(function(b){
-        return +b.user_id===+u.id && workDates(b).indexOf(ds)>-1;
+        return !isCapacityBooking(b) && +b.user_id===+u.id && workDates(b).indexOf(ds)>-1;
       });
 
       var pills=items.map(function(b){ return assignPill(b); }).join('');
@@ -1187,14 +1234,16 @@ function renderCapacity(){
       var cc=capClass(booked,cap);
       var items=bookings.filter(function(b){return +b.user_id===+u.id&&workDates(b).some(function(ds){var q=date(ds);return q>=m&&q<=end;});});
       var pills=items.map(function(b){
-        return '<div class="cap-job draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'" title="'+esc(b.job_name||b.task_name||'')+'">'+
-          '<span class="cap-job-name">'+esc(b.job_name||b.task_name||'')+'</span>'+
+        var capacityOnly=isCapacityBooking(b);
+        var label=capacityOnly?(b.capacity_label||b.task_name||'Kapacitetsreservation'):(b.job_name||b.task_name||'');
+        return '<div class="cap-job '+(capacityOnly?'capacity-reservation':'draggable-assignment '+esc(b.type_guess||'other'))+'" '+(capacityOnly?'':'draggable="true"')+' data-booking-id="'+b.id+'" title="'+esc(label)+'">'+
+          '<span class="cap-job-name">'+(capacityOnly?'◌ ':'')+esc(label)+'</span>'+
           '<span class="cap-job-days">'+capDaysOf(b)+'d</span>'+
-          '<button class="pill-copy" title="Kopiér" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>'+
+          (capacityOnly?'':'<button class="pill-copy" title="Kopiér" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>')+
           '<button class="cap-job-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button>'+
           '</div>';
       }).join('');
-      pills+='<button class="cap-add-btn" data-action="add-booking" data-user-id="'+u.id+'" data-date="'+iso(m)+'">+ tilføj</button>';
+      pills+='<button class="cap-add-btn" data-action="add-capacity" data-user-id="'+u.id+'" data-date="'+iso(m)+'">+ reservér</button>';
 
       var weekDays=[];for(var wi=0;wi<5;wi++)weekDays.push(iso(add(m,wi)));
       var offDays=weekDays.filter(function(ds){return timeOffFor(u.id,ds);});
@@ -1233,6 +1282,45 @@ function renderCapacity(){
     if(open)arr.forEach(function(u){html+=row(u);});
   });
   document.getElementById('cap-body').innerHTML=html||'<tr><td style="padding:18px;color:var(--muted)">Ingen aktive hold.</td></tr>';
+}
+
+// CAPACITY-ONLY RESERVATIONS
+var capacityCtx=null;
+function capacityWeekOptions(selected){
+  return capacityWeeks().map(function(m){var key=iso(m),label='Uge '+weekNo(m)+' · '+m.getDate()+'/'+(m.getMonth()+1)+' – '+add(m,4).getDate()+'/'+(add(m,4).getMonth()+1);return '<option value="'+key+'"'+(key===selected?' selected':'')+'>'+label+'</option>';}).join('');
+}
+function populateCapacityUsers(selectedUid){
+  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
+  document.getElementById('capacity-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'"'+(+u.id===+selectedUid?' selected':'')+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
+}
+function openCapacityModal(opts){
+  opts=opts||{};var b=opts.booking||null;var taskId=opts.taskId||(b&&b.task_id)||null;var t=taskId?tasks.find(function(x){return String(x.id)===String(taskId);}):null;
+  capacityCtx={bookingId:b&&b.id||null,taskId:taskId};
+  document.getElementById('capacity-title').textContent=b?'Rediger kapacitetsreservation':(t?'Reservér kapacitet for opgave':'Reservér kapacitet');
+  document.getElementById('capacity-context').innerHTML=t?'📊 <span>Kapacitet for <strong>'+esc((t.job_name||'')+(t.name?' — '+t.name:''))+'</strong>. Den vises ikke i Daglig plan eller hos medarbejderen.</span>':'📊 <span>Denne reservation vises kun på kapacitetsboardet — ikke i Daglig plan eller hos medarbejderen.</span>';
+  populateCapacityUsers(b?b.user_id:opts.userId);
+  var week=iso(mon(date((b&&b.start_date)||opts.weekStart||iso(new Date()))));
+  document.getElementById('capacity-week').innerHTML=capacityWeekOptions(week);
+  document.getElementById('capacity-days').value=b?capDaysOf(b):1;
+  document.getElementById('capacity-label').value=b?(b.capacity_label||''):(t?'': 'Kapacitetsreservation');
+  document.getElementById('capacity-note').value=b&&b.notes||'';
+  document.getElementById('delete-capacity').classList.toggle('hidden',!b);
+  document.getElementById('capacity-modal').classList.add('open');
+}
+async function saveCapacityReservation(){
+  if(!capacityCtx)return;
+  var body={user_id:+document.getElementById('capacity-user').value,week_start:document.getElementById('capacity-week').value,capacity_days:+document.getElementById('capacity-days').value||1,label:document.getElementById('capacity-label').value.trim(),notes:document.getElementById('capacity-note').value.trim()||null};
+  if(capacityCtx.taskId)body.task_id=capacityCtx.taskId;
+  var r=capacityCtx.bookingId?await api('/api/capacity-reservations/'+capacityCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/capacity-reservations',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){closeModal('capacity-modal');capacityCtx=null;toast('Kapacitet gemt','✓');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function deleteCapacityReservation(){
+  if(!capacityCtx||!capacityCtx.bookingId)return;
+  if(!confirm('Fjern kapacitetsreservationen?'))return;
+  var r=await api('/api/assignments/'+capacityCtx.bookingId,{method:'DELETE'});
+  if(r&&r.ok){closeModal('capacity-modal');capacityCtx=null;toast('Kapacitet fjernet','🗑');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
 }
 
 // QUICK POP-UP
@@ -1311,6 +1399,7 @@ async function saveQuickPop(){
 function openAssign(ctx){
   assignCtx=ctx||{};
   var b=ctx.bookingId?bookings.find(function(x){return +x.id===+ctx.bookingId;}):null;
+  if(b&&isCapacityBooking(b)){openCapacityModal({booking:b});return;}
   var taskId=ctx.taskId||(b&&b.task_id);
   var t=tasks.find(function(x){return String(x.id)===String(taskId);});
   document.getElementById('assign-title').textContent=b?'Rediger booking':'Planlæg opgave';
@@ -1427,8 +1516,9 @@ async function handleDrop(e,zone){
     var p=parsePayload(e);if(!p)return;
     var uid=+zone.dataset.userId,ds=zone.dataset.date;
     if(p.kind==='task'){
-      // Open quick pop instead of direct save
-      openQuickPop(p.taskId,uid,ds,e);
+      // Capacity is week-based only. Daily plan keeps the detailed quick pop-up.
+      if(zone.dataset.drop==='week')openCapacityModal({taskId:p.taskId,userId:uid,weekStart:ds});
+      else openQuickPop(p.taskId,uid,ds,e);
     }else if(p.kind==='booking'){
       var b=bookings.find(function(x){return +x.id===+p.bookingId;});
       if(!b||( +b.user_id===uid&&b.start_date===ds))return;
@@ -1548,6 +1638,7 @@ function renderTimeline(){
   var rowsHTML='';
   groups.forEach(function(g){
     var rowBookings=bookings.filter(function(b){
+      if(isCapacityBooking(b))return false;
       if(timelineGroupBy==='type')return (b.type_guess||'other')===g.key;
       return +b.user_id===+g.key;
     }).filter(function(b){
@@ -1666,7 +1757,7 @@ document.addEventListener('mouseup',async function(e){
   else{if(resp)toast(resp.error||'Fejl','❌');renderTimeline();}
 });
 function taskAssignedInfo(t){
-  var b=bookings.filter(function(x){return x.task_id===t.id;});
+  var b=bookings.filter(function(x){return x.task_id===t.id&&!isCapacityBooking(x);});
   if(!b.length)return{person:t.raw_assignee_name||'Ikke tildelt',week:t.start_date?weekKey(date(t.start_date)):'—',days:t.start_date&&t.end_date?Math.max(1,Math.round((date(t.end_date)-date(t.start_date))/86400000)+1):1,planned:false};
   var names=Array.from(new Set(b.map(function(x){return x.user_name;})));
   var totalDays=b.reduce(function(n,x){return n+(+x.days||1);},0);
@@ -1678,6 +1769,7 @@ function renderTaskList(){
   var typeF=document.getElementById('tasklist-type-filter').value;
   var statusF=document.getElementById('tasklist-status-filter').value;
   var list=tasks.filter(function(t){
+    if(taskIsCompleted(t))return false; // completed work lives only in Færdige opgaver / completed pool.
     var info=taskAssignedInfo(t);
     if(typeF!=='all'&&t.type_guess!==typeF)return false;
     if(statusF==='planned'&&!info.planned)return false;
@@ -1860,7 +1952,7 @@ async function deleteTimeOff(id){
 // FÆRDIGE OPGAVER (fakturering)
 function renderCompleted(){
   var body=document.getElementById('completed-body');if(!body)return;
-  var list=bookings.filter(function(b){return !!b.completed_at;}).filter(function(b){
+  var list=bookings.filter(function(b){return !isCapacityBooking(b)&&!!b.completed_at;}).filter(function(b){
     if(completedFilter==='open')return !b.invoiced;
     if(completedFilter==='invoiced')return !!b.invoiced;
     return true;
@@ -2017,8 +2109,10 @@ function renderStats(d){
 }
 function closeModal(id){document.getElementById(id).classList.remove('open');if(id==='assign-modal')assignCtx=null;}
 
+function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.documentElement.style.setProperty('--nav-height',Math.ceil(n.getBoundingClientRect().height)+'px');}
 // BIND ALL EVENTS
 function bind(){
+  syncStickyOffsets();window.addEventListener('resize',syncStickyOffsets);
   // Tabs
   var VALID_PAGES=['plan','capacity','timeline','availability','tasklist','requests','completed','people','library','logs'];
   function switchPage(page,skipHash){
@@ -2092,6 +2186,10 @@ function bind(){
   // Manual modal
   document.getElementById('close-manual').onclick=function(){closeModal('manual-modal');};
   document.getElementById('save-manual').onclick=saveManual;
+  // Capacity-only modal
+  document.getElementById('close-capacity').onclick=function(){closeModal('capacity-modal');capacityCtx=null;};
+  document.getElementById('save-capacity').onclick=saveCapacityReservation;
+  document.getElementById('delete-capacity').onclick=deleteCapacityReservation;
   // User modal
   document.getElementById('close-user').onclick=function(){closeModal('user-modal');};
   document.getElementById('save-user').onclick=saveUser;
@@ -2102,7 +2200,7 @@ function bind(){
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
   // Modal backdrop
-  ['assign-modal','manual-modal','user-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -2123,6 +2221,8 @@ function bind(){
     if(a){
       var act=a.dataset.action;
       if(act==='manual')openManual();
+      if(act==='capacity-add')openCapacityModal({weekStart:iso(mon(new Date()))});
+      if(act==='add-capacity')openCapacityModal({userId:+a.dataset.userId,weekStart:a.dataset.date});
       if(act==='pool-filter'){filters[a.dataset.scope][a.dataset.kind]=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}
       if(act==='team-filter'){filters[a.dataset.scope].team=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}
       if(act==='toggle-vendor'){var g=a.dataset.group;vendorExpanded[g]=vendorExpanded[g]===false;renderPlan();renderCapacity();}

@@ -192,6 +192,11 @@ async function initSchema() {
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_phone_source TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_phone_synced_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS capacity_days DOUBLE PRECISION;
+    -- Capacity-only reservations deliberately live outside the daily plan.
+    -- Existing bookings stay daily by default, so this upgrade has no effect on prior plans.
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS planning_mode TEXT DEFAULT 'daily';
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS capacity_label TEXT;
+    CREATE INDEX IF NOT EXISTS idx_planning_bookings_mode ON planning_bookings(planning_mode);
 
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
@@ -299,6 +304,16 @@ function getWeekKey(dateStr) {
 
 function validDate(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+// Capacity is planned by week, never by a meeting time or a particular day.
+// We still save the Monday/Friday internally so existing reporting remains compatible.
+function mondayOfDate(value) {
+  const d = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = d.getDay() || 7;
+  d.setDate(d.getDate() - day + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function addWorkingDays(startDate, durationDays) {
@@ -1161,9 +1176,10 @@ app.get('/api/sync/log', auth, adminOnly, asyncRoute(async (req, res) => {
 // ── TASK POOL + INDEPENDENT MANUAL PLAN ──────────────────────
 app.get('/api/tasks', auth, asyncRoute(async (req, res) => {
   const result = await pool.query(`
-    SELECT t.*, COUNT(b.id)::int AS assignment_count
+    SELECT t.*, COUNT(b.id) FILTER (WHERE COALESCE(b.planning_mode,'daily') <> 'capacity')::int AS assignment_count
     FROM jt_tasks t
     LEFT JOIN planning_bookings b ON b.task_id=t.id
+    WHERE COALESCE(t.source,'jobtread') <> 'capacity'
     GROUP BY t.id
     ORDER BY CASE WHEN t.source='manual' THEN 0 ELSE 1 END,
              CASE WHEN t.start_date IS NULL OR t.start_date='' THEN 1 ELSE 0 END,
@@ -1186,6 +1202,72 @@ app.post('/api/tasks/manual', auth, adminOnly, asyncRoute(async (req, res) => {
     VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,NULL,NULL,${nowTextSQL()},'manual',${nowTextSQL()})
   `, [id, String(body.name).trim(), String(body.job_name).trim(), body.job_address || '', body.job_number || null, body.customer_phone || null, body.start_date, endDate, cleanTaskType(body.type_guess)]);
   res.json({ ok: true, id });
+}));
+
+// ── CAPACITY-ONLY RESERVATIONS ────────────────────────────────
+// These blocks are intentionally separate from Daily plan / Employee schedule.
+// They reserve a person's weekly availability without creating a meeting time,
+// address, telephone number or JobTread case number.
+app.post('/api/capacity-reservations', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const weekStart = mondayOfDate(String(body.week_start || ''));
+  if (!weekStart) return res.status(400).json({ error: 'Vælg en gyldig uge' });
+  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id)]);
+  if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
+  const capacityDays = Math.max(0.25, Math.min(14, Number(body.capacity_days) || 1));
+  const note = body.notes ? String(body.notes).slice(0, 1000) : null;
+  const requestedLabel = String(body.label || '').trim().slice(0, 120);
+  const existingTaskId = body.task_id ? String(body.task_id) : null;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    let taskId = existingTaskId;
+    let taskLabel = requestedLabel;
+    if (taskId) {
+      const task = await client.query("SELECT id,job_name,name FROM jt_tasks WHERE id=$1 AND COALESCE(source,'jobtread') <> 'capacity'", [taskId]);
+      if (!task.rowCount) throw new Error('Opgaven blev ikke fundet');
+      taskLabel = taskLabel || [task.rows[0].job_name, task.rows[0].name].filter(Boolean).join(' — ') || 'Kapacitetsreservation';
+    } else {
+      taskId = `capacity-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+      taskLabel = taskLabel || 'Kapacitetsreservation';
+      await client.query(`
+        INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
+        VALUES ($1,$2,NULL,'Kapacitetsreserve','',$3,$4,'other',NULL,NULL,${nowTextSQL()},'capacity',${nowTextSQL()})
+      `, [taskId, taskLabel, weekStart, addWorkingDays(weekStart, 5)]);
+    }
+    const endDate = addWorkingDays(weekStart, 5);
+    const result = await client.query(`
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,planning_mode,capacity_label,updated_at)
+      VALUES ($1,$2,$3,5,$4,$5,NULL,$6,$7,'capacity',$8,${nowTextSQL()})
+      RETURNING id
+    `, [taskId, user.id, getWeekKey(weekStart), capacityDays, note, weekStart, endDate, taskLabel]);
+    await client.query('COMMIT');
+    res.json({ ok: true, id: result.rows[0].id });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    res.status(400).json({ error: error.message || 'Kapacitetsreservationen kunne ikke gemmes' });
+  } finally {
+    client.release();
+  }
+}));
+
+app.put('/api/capacity-reservations/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne("SELECT * FROM planning_bookings WHERE id=$1 AND COALESCE(planning_mode,'daily')='capacity'", [Number(req.params.id)]);
+  if (!current) return res.status(404).json({ error: 'Kapacitetsreservationen blev ikke fundet' });
+  const body = req.body || {};
+  const weekStart = mondayOfDate(String(body.week_start || current.start_date || ''));
+  if (!weekStart) return res.status(400).json({ error: 'Vælg en gyldig uge' });
+  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id || current.user_id)]);
+  if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
+  const capacityDays = Math.max(0.25, Math.min(14, Number(body.capacity_days) || current.capacity_days || 1));
+  const label = String(body.label !== undefined ? body.label : (current.capacity_label || '')).trim().slice(0, 120) || 'Kapacitetsreservation';
+  const note = body.notes !== undefined ? (body.notes ? String(body.notes).slice(0,1000) : null) : current.notes;
+  await pool.query(`
+    UPDATE planning_bookings
+    SET user_id=$1,week_key=$2,days=5,capacity_days=$3,notes=$4,start_time=NULL,start_date=$5,end_date=$6,capacity_label=$7,updated_at=${nowTextSQL()}
+    WHERE id=$8
+  `, [user.id, getWeekKey(weekStart), capacityDays, note, weekStart, addWorkingDays(weekStart, 5), label, current.id]);
+  res.json({ ok: true });
 }));
 
 app.put('/api/tasks/:id/customer-contact', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -1546,15 +1628,20 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'admin' && +current.user_id !== +req.user.id) {
     return res.status(403).json({ error: 'Du kan kun markere dine egne opgaver' });
   }
+  if (String(current.planning_mode || 'daily') === 'capacity') {
+    return res.status(400).json({ error: 'En kapacitetsreservation kan ikke markeres som færdig' });
+  }
   const completed = !!(req.body || {}).completed;
   await pool.query(`UPDATE planning_bookings SET completed_at=${completed ? nowTextSQL() : 'NULL'} WHERE id=$1`, [current.id]);
   res.json({ ok: true });
 }));
 
 app.put('/api/assignments/:id/invoice', auth, adminOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  if (String(current.planning_mode || 'daily') === 'capacity') return res.status(400).json({ error: 'En kapacitetsreservation kan ikke faktureres' });
   const invoiced = !!(req.body || {}).invoiced;
-  const result = await pool.query('UPDATE planning_bookings SET invoiced=$1 WHERE id=$2', [invoiced ? 1 : 0, req.params.id]);
-  if (!result.rowCount) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  await pool.query('UPDATE planning_bookings SET invoiced=$1 WHERE id=$2', [invoiced ? 1 : 0, req.params.id]);
   res.json({ ok: true });
 }));
 
@@ -1606,7 +1693,8 @@ app.get('/api/assignments', auth, asyncRoute(async (req, res) => {
 }));
 
 app.get('/api/assignments/my', auth, asyncRoute(async (req, res) => {
-  const result = await pool.query(`${bookingSelect('WHERE b.user_id=$1')} ORDER BY b.start_date ASC,b.id ASC`, [req.user.id]);
+  // Employees only see actual daily work. Capacity-only blocks are an admin planning tool.
+  const result = await pool.query(`${bookingSelect("WHERE b.user_id=$1 AND COALESCE(b.planning_mode,'daily') <> 'capacity'")} ORDER BY b.start_date ASC,b.id ASC`, [req.user.id]);
   res.json(result.rows);
 }));
 
@@ -1646,12 +1734,38 @@ app.put('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => 
 }));
 
 app.delete('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => {
-  await pool.query('DELETE FROM planning_bookings WHERE id=$1', [Number(req.params.id)]);
-  res.json({ ok: true });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query('SELECT * FROM planning_bookings WHERE id=$1', [Number(req.params.id)]);
+    if (!current.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+    }
+    const row = current.rows[0];
+    await client.query('DELETE FROM planning_bookings WHERE id=$1', [row.id]);
+    // A manually created capacity block owns a hidden helper task. Remove it when
+    // the last reservation is deleted so the database does not collect ghosts.
+    if (String(row.planning_mode || 'daily') === 'capacity') {
+      await client.query(`
+        DELETE FROM jt_tasks t
+        WHERE t.id=$1 AND t.source='capacity'
+          AND NOT EXISTS (SELECT 1 FROM planning_bookings b WHERE b.task_id=t.id)
+      `, [row.task_id]);
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
 }));
 
 app.delete('/api/plan', auth, adminOnly, asyncRoute(async (req, res) => {
-  await pool.query('DELETE FROM planning_bookings');
+  // Do not erase long-range capacity reservations when clearing the day-to-day plan.
+  await pool.query("DELETE FROM planning_bookings WHERE COALESCE(planning_mode,'daily') <> 'capacity'");
   res.json({ ok: true });
 }));
 
