@@ -113,10 +113,17 @@ button,input,select{font:inherit}
 
 /* BOARD TABLE */
 .board-outer{border:1px solid var(--border2);border-radius:var(--radius);overflow-x:auto;overflow-y:visible;background:#fff;box-shadow:var(--shadow)}
-/* Keeps the capacity week headers visible while scrolling the long board. */
-#capacity-scroll{position:relative;isolation:isolate;scroll-behavior:smooth}
-#capacity-scroll .capacity-board th{position:sticky;top:var(--capacity-header-top);box-shadow:0 2px 0 rgba(15,34,64,.12),0 6px 14px rgba(15,34,64,.10)}
-#capacity-scroll .capacity-board th:first-child{z-index:9}
+/* Capacity board owns its own vertical scroll. This keeps the week header visible
+   without creating a blank gap above the table when the page itself scrolls. */
+#capacity-scroll{position:relative;isolation:isolate;scroll-behavior:smooth;overflow:auto;height:calc(100vh - 332px);min-height:380px;max-height:720px;scrollbar-gutter:stable both-edges}
+#capacity-scroll .capacity-board th{position:sticky;top:0;z-index:8;box-shadow:0 2px 0 rgba(15,34,64,.12),0 6px 14px rgba(15,34,64,.10)}
+#capacity-scroll .capacity-board th:first-child{left:0;z-index:12}
+#capacity-scroll .capacity-board .staff-cell{z-index:5}
+#capacity-scroll .capacity-board .group-row .staff-cell{z-index:6}
+#capacity-scroll .capacity-board .cap-drop{min-height:78px}
+#capacity-scroll .capacity-board .cap-drop.over{background:#E0ECFF;border-color:var(--blue);box-shadow:inset 0 0 0 1px rgba(37,99,235,.15)}
+#capacity-scroll.drag-active .cap-drop{border-color:#BFDBFE;background:#FAFCFF}
+#capacity-scroll.drag-active .cap-drop:hover{border-color:var(--blue);background:#EFF6FF}
 .capacity-reservation{background:#F5F3FF!important;border-left-color:#7C3AED!important;color:#4C1D95!important}
 .capacity-reservation .cap-job-days{background:rgba(124,58,237,.12)!important}
 .capacity-context{display:flex;align-items:center;gap:7px;padding:8px 10px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:9px;color:#5B21B6;font-size:10px;font-weight:700;margin:0 0 8px}
@@ -128,7 +135,6 @@ button,input,select{font:inherit}
 .panel,.stat,.board-outer{box-shadow:0 1px 2px rgba(15,34,64,.06),0 8px 24px rgba(15,34,64,.045)}
 .btn,.chip,.month-btn,.task-card,.cap-job{transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease,background .14s ease}
 .btn:hover,.month-btn:hover{transform:translateY(-1px)}
-@media(max-width:760px){#capacity-scroll .capacity-board th{top:var(--nav-height)}}
 
 /* DAILY PLAN */
 .daily-board{min-width:900px;width:100%;border-collapse:collapse}
@@ -208,7 +214,14 @@ button,input,select{font:inherit}
 .cap-job-days{font-size:8px;opacity:.75;flex-shrink:0;background:rgba(0,0,0,.08);padding:1px 3px;border-radius:3px}
 .cap-job-x{border:0;background:transparent;cursor:pointer;font-size:11px;line-height:1;color:inherit;opacity:.5;padding:0;flex-shrink:0}
 .cap-job-x:hover{opacity:1}
+/* Capacity drag-and-drop is intentionally obvious: dropping only creates a capacity reservation. */
+#cap-pool .task-card{border-left:3px solid var(--blue);cursor:grab}
+#cap-pool .task-card:active{cursor:grabbing}
+.task-drag-hint{display:flex;align-items:center;gap:4px;margin-top:5px;padding-top:4px;border-top:1px solid var(--border2);font-size:8px;font-weight:800;color:var(--blue);letter-spacing:.05px}
+.cap-drop.over .cap-add-btn{border-color:var(--blue);color:var(--blue);background:#DBEAFE}
 .group-summary-cell{text-align:center;font-size:9px;padding:3px 4px;color:var(--muted);background:var(--ice)}
+@media(max-width:1000px){#capacity-scroll{height:calc(100vh - 360px);min-height:330px}.board-layout{grid-template-columns:230px minmax(0,1fr)}}
+@media(max-width:760px){#capacity-scroll{height:calc(100vh - 310px);min-height:320px}.board-layout{grid-template-columns:1fr}.panel-body{max-height:280px}}
 
 /* PEOPLE — modern cards */
 .settings-card{background:linear-gradient(135deg,var(--navy),var(--steel));border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);margin:0 0 12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;color:#fff}
@@ -493,7 +506,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="page-head">
     <div>
       <div class="page-title">Kapacitetsboard</div>
-      <div class="page-sub">52 ugers overblik · Scroll vandret · Træk opgaver direkte på uger · Interne medarbejdere altid øverst</div>
+      <div class="page-sub">52 ugers overblik · Scroll i boardet · Træk opgaver fra poolen direkte på en uge · Interne medarbejdere altid øverst</div>
     </div>
   </div>
   <div class="stats" id="cap-stats"></div>
@@ -514,7 +527,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="week-bar">
         <button class="btn small primary" id="cap-today">📍 I dag</button>
         <strong class="week-label">52 ugers kapacitet</strong>
-        <span class="hint">Træk en opgave på en uge, eller opret en enkel kapacitetsblok. Ingen mødetid.</span>
+        <span class="hint">Træk en opgave fra poolen direkte på en uge. Den oprettes kun som kapacitetsreservation — ikke i Daglig plan eller hos medarbejderen.</span>
       </div>
       <div class="month-bar" id="cap-months"></div>
       <div class="workforce-bar" id="cap-workforce-filters"></div>
@@ -1068,8 +1081,9 @@ function teamFilterHTML(scope){
   if(el)el.innerHTML='<span class="workforce-label">Vis:</span>'+items.map(function(x){return '<button class="chip'+(f.team===x[0]?' active':'')+'" data-action="team-filter" data-scope="'+scope+'" data-value="'+esc(x[0])+'">'+esc(x[1])+'</button>';}).join('');
 }
 
-function taskCard(t){
+function taskCard(t,scope){
   var type=TYPE[t.type_guess]||TYPE.other,planned=+t.assignment_count>0,completed=taskIsCompleted(t);
+  var capacityHint=scope==='capacity'&&!completed?'<div class="task-drag-hint">⠿ Træk direkte til den ønskede uge</div>':'';
   var contact=phoneMarkup(t.customer_phone,true);
   return '<article class="task-card '+(completed?'completed':'draggable-task')+'" '+(completed?'':'draggable="true"')+' '+(completed?'':'data-task-id="'+esc(t.id)+'"')+' title="'+esc(t.job_name||'')+'">'+
     (completed?'<div class="task-done-badge">✅ Færdiggjort · '+(bookings.filter(function(b){return b.task_id===t.id&&!!b.completed_at&&!isCapacityBooking(b)&&!b.invoiced;}).length?'Klar til faktura':'Faktureret')+'</div>':'')+
@@ -1082,7 +1096,7 @@ function taskCard(t){
       (t.job_number?'<span class="tag" title="Sagsnummer">#'+esc(t.job_number)+'</span>':'')+
       (planned?'<span class="tag">✓ '+t.assignment_count+'×</span>':'')+
       '<span class="muted-sm">'+esc((t.start_date||'—').slice(0,10))+'</span>'+
-    '</div></article>';
+    '</div>'+capacityHint+'</article>';
 }
 function renderPool(scope){
   filtersHTML(scope);
@@ -1091,7 +1105,7 @@ function renderPool(scope){
   if(!el)return;
   var list=filterTasks(scope);
   var section=filters[scope].status==='completed'?'<div class="task-completion-section">✅ Færdiggjort · klar til faktura eller allerede faktureret</div>':'';
-  el.innerHTML=list.length?section+list.map(taskCard).join(''):'<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
+  el.innerHTML=list.length?section+list.map(function(t){return taskCard(t,scope);}).join(''):'<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
 }
 
 // ASSIGNMENT PILL (daily) - single day
@@ -1236,7 +1250,7 @@ function renderCapacity(){
       var pills=items.map(function(b){
         var capacityOnly=isCapacityBooking(b);
         var label=capacityOnly?(b.capacity_label||b.task_name||'Kapacitetsreservation'):(b.job_name||b.task_name||'');
-        return '<div class="cap-job '+(capacityOnly?'capacity-reservation':'draggable-assignment '+esc(b.type_guess||'other'))+'" '+(capacityOnly?'':'draggable="true"')+' data-booking-id="'+b.id+'" title="'+esc(label)+'">'+
+        return '<div class="cap-job '+(capacityOnly?'capacity-reservation':'draggable-assignment '+esc(b.type_guess||'other'))+'" draggable="true" data-booking-id="'+b.id+'" title="'+esc(label)+' — træk for at flytte eller kopiere til en anden uge">'+
           '<span class="cap-job-name">'+(capacityOnly?'◌ ':'')+esc(label)+'</span>'+
           '<span class="cap-job-days">'+capDaysOf(b)+'d</span>'+
           (capacityOnly?'':'<button class="pill-copy" title="Kopiér" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>')+
@@ -1508,17 +1522,75 @@ async function openWeeklyNote(userId){
 }
 
 // DRAG & DROP
-function beginDrag(e,payload){dragPayload=payload;suppressClick=Date.now()+400;try{e.dataTransfer.effectAllowed=payload.kind==='task'?'copy':'move';e.dataTransfer.setData('text/plain',JSON.stringify(payload));}catch(_){}}
-function parsePayload(e){try{var r=e.dataTransfer.getData('text/plain');return r?JSON.parse(r):dragPayload;}catch(_){return dragPayload;}}
+function beginDrag(e,payload){
+  dragPayload=payload;suppressClick=Date.now()+400;
+  document.getElementById('capacity-scroll').classList.add('drag-active');
+  try{
+    var serialized=JSON.stringify(payload);
+    e.dataTransfer.effectAllowed=payload.kind==='task'?'copy':'move';
+    e.dataTransfer.setData('application/x-gm-planner',serialized);
+    e.dataTransfer.setData('text/plain',serialized);
+  }catch(_){}
+}
+function parsePayload(e){
+  try{
+    var r=e.dataTransfer.getData('application/x-gm-planner')||e.dataTransfer.getData('text/plain');
+    return r?JSON.parse(r):dragPayload;
+  }catch(_){return dragPayload;}
+}
+function businessDaysBetween(start,end){
+  if(!start||!end)return 1;
+  var cursor=mon(date(start)),last=date(end),count=0;
+  if(isNaN(cursor)||isNaN(last))return 1;
+  for(var guard=0;cursor<=last&&guard<90;guard++,cursor=add(cursor,1))if(cursor.getDay()!==0&&cursor.getDay()!==6)count++;
+  return Math.max(1,count);
+}
+function suggestedCapacityDays(task,fallback){
+  var n=Number(task&&(task.capacity_days!==undefined?task.capacity_days:task.days));
+  if(!isFinite(n)||n<=0)n=Number(fallback)||businessDaysBetween(task&&task.start_date,task&&task.end_date);
+  return Math.max(.25,Math.min(14,Math.round(n*4)/4));
+}
+async function createCapacityReservation(taskId,userId,weekStart,days,label,notes){
+  return api('/api/capacity-reservations',{method:'POST',body:JSON.stringify({
+    task_id:taskId,user_id:userId,week_start:weekStart,capacity_days:days,label:label||'',notes:notes||null
+  })});
+}
+async function handleCapacityDrop(p,uid,ds){
+  if(p.kind==='task'){
+    var t=tasks.find(function(x){return String(x.id)===String(p.taskId);});
+    if(!t){toast('Opgaven blev ikke fundet','⚠');return;}
+    var created=await createCapacityReservation(t.id,uid,ds,suggestedCapacityDays(t),'',null);
+    if(created&&created.ok){toast('Kapacitet reserveret — klik på blokken for at redigere','✓');await loadAll();}
+    else if(created)toast(created.error||'Kunne ikke reservere kapacitet','❌');
+    return;
+  }
+  if(p.kind==='booking'){
+    var b=bookings.find(function(x){return +x.id===+p.bookingId;});
+    if(!b)return;
+    if(isCapacityBooking(b)){
+      if(+b.user_id===uid&&String(b.start_date).slice(0,10)===ds)return;
+      var moved=await api('/api/capacity-reservations/'+b.id,{method:'PUT',body:JSON.stringify({
+        user_id:uid,week_start:ds,capacity_days:capDaysOf(b),label:b.capacity_label||b.task_name||'',notes:b.notes||null
+      })});
+      if(moved&&moved.ok){toast('Kapacitetsblok flyttet','↔');await loadAll();}
+      else if(moved)toast(moved.error||'Kunne ikke flytte kapacitetsblokken','❌');
+      return;
+    }
+    // A daily booking dropped in Capacity becomes a capacity-only COPY. The daily plan is untouched.
+    var copied=await createCapacityReservation(b.task_id,uid,ds,suggestedCapacityDays(null,capDaysOf(b)),'',b.notes||null);
+    if(copied&&copied.ok){toast('Kapacitet kopieret — Daglig plan er ikke ændret','✓');await loadAll();}
+    else if(copied)toast(copied.error||'Kunne ikke kopiere til kapacitet','❌');
+  }
+}
 async function handleDrop(e,zone){
   if(dropBusy)return;dropBusy=true;
   try{
     var p=parsePayload(e);if(!p)return;
     var uid=+zone.dataset.userId,ds=zone.dataset.date;
-    if(p.kind==='task'){
-      // Capacity is week-based only. Daily plan keeps the detailed quick pop-up.
-      if(zone.dataset.drop==='week')openCapacityModal({taskId:p.taskId,userId:uid,weekStart:ds});
-      else openQuickPop(p.taskId,uid,ds,e);
+    if(zone.dataset.drop==='week'){
+      await handleCapacityDrop(p,uid,ds);
+    }else if(p.kind==='task'){
+      openQuickPop(p.taskId,uid,ds,e);
     }else if(p.kind==='booking'){
       var b=bookings.find(function(x){return +x.id===+p.bookingId;});
       if(!b||( +b.user_id===uid&&b.start_date===ds))return;
@@ -1528,7 +1600,11 @@ async function handleDrop(e,zone){
       if(r&&r.ok){toast('Booking flyttet','↔');await loadAll();}
       else if(r)toast(r.error||'Fejl','❌');
     }
-  }finally{dropBusy=false;dragPayload=null;document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});}
+  }finally{
+    dropBusy=false;dragPayload=null;
+    document.getElementById('capacity-scroll').classList.remove('drag-active');
+    document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});
+  }
 }
 
 // MANUAL TASK
@@ -2065,7 +2141,7 @@ async function loadLogs(){
   var l=await api('/api/time/all');if(!l)return;
   document.getElementById('log-body').innerHTML=l.map(function(x){var m=+x.duration_minutes||0;return '<tr><td>'+esc(x.user_name)+'</td><td>'+esc(x.task_name)+'</td><td>'+esc(x.job_name)+'</td><td>'+esc((x.started_at||'').replace('T',' ').slice(0,16))+'</td><td>'+esc((x.stopped_at||'').replace('T',' ').slice(0,16))+'</td><td>'+Math.floor(m/60)+'t '+m%60+'m</td></tr>';}).join('')||'<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--muted)">Ingen timer endnu.</td></tr>';
 }
-function scrollToWeek(wk){var h=document.querySelector('#cap-head th[data-week-key="'+wk+'"]');if(h)h.scrollIntoView({behavior:'smooth',block:'nearest',inline:'start'});}
+function scrollToWeek(wk){var scroller=document.getElementById('capacity-scroll'),h=document.querySelector('#cap-head th[data-week-key="'+wk+'"]');if(scroller&&h)scroller.scrollTo({left:Math.max(0,h.offsetLeft-185),behavior:'smooth'});}
 
 // FILE → base64 data-URI (bruges til logo/avatar da der ikke er permanent fil-lager på Render)
 function fileToDataURL(file){return new Promise(function(resolve,reject){var r=new FileReader();r.onload=function(){resolve(r.result);};r.onerror=reject;r.readAsDataURL(file);});}
@@ -2206,10 +2282,10 @@ function bind(){
   document.addEventListener('dragstart',function(e){
     var task=e.target.closest('.draggable-task');
     var booking=e.target.closest('.draggable-assignment,.cap-job');
-    if(task&&!e.target.closest('[data-action]')){beginDrag(e,{kind:'task',taskId:task.dataset.taskId});task.classList.add('dragging');}
-    else if(booking&&!e.target.closest('[data-action]')){beginDrag(e,{kind:'booking',bookingId:booking.dataset.bookingId});booking.classList.add('dragging');}
+    if(task&&!e.target.closest('a,button,input,select,textarea,[data-action]')){beginDrag(e,{kind:'task',taskId:task.dataset.taskId});task.classList.add('dragging');}
+    else if(booking&&!e.target.closest('a,button,input,select,textarea,[data-action]')){beginDrag(e,{kind:'booking',bookingId:booking.dataset.bookingId});booking.classList.add('dragging');}
   });
-  document.addEventListener('dragend',function(){dragPayload=null;document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});});
+  document.addEventListener('dragend',function(){dragPayload=null;document.getElementById('capacity-scroll').classList.remove('drag-active');document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});});
   document.addEventListener('dragover',function(e){var z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.add('over');}});
   document.addEventListener('dragleave',function(e){var z=e.target.closest('[data-drop]');if(z&&!z.contains(e.relatedTarget))z.classList.remove('over');});
   document.addEventListener('drop',function(e){var z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.remove('over');handleDrop(e,z);}});
