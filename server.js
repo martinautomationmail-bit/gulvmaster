@@ -19,6 +19,7 @@ const path = require('path');
 const crypto = require('crypto');
 const cron = require('node-cron');
 const multer = require('multer');
+const nodemailer = require('nodemailer');
 const { Pool } = require('pg');
 // Uses Node's built-in SQLite reader only for the one-time migration upload.
 // This avoids native build issues on Render.
@@ -235,6 +236,19 @@ async function initSchema() {
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_number TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_lat DOUBLE PRECISION;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_lng DOUBLE PRECISION;
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_email TEXT;
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_email_source TEXT;
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_email_synced_at TEXT;
+
+    CREATE TABLE IF NOT EXISTS completion_emails (
+      id SERIAL PRIMARY KEY,
+      booking_id INTEGER,
+      task_id TEXT,
+      to_email TEXT,
+      status TEXT,
+      error TEXT,
+      sent_at TEXT DEFAULT ${nowTextSQL()}
+    );
 
     CREATE TABLE IF NOT EXISTS notes_widget (
       user_id INTEGER PRIMARY KEY,
@@ -561,6 +575,10 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
   const entries = [];
   if (body.company_name !== undefined) entries.push(['company_name', String(body.company_name).trim().slice(0, 200)]);
   if (body.logo_url !== undefined) entries.push(['logo_url', body.logo_url ? String(body.logo_url).slice(0, 3000000) : null]);
+  if (body.completion_email_subject !== undefined) entries.push(['completion_email_subject', String(body.completion_email_subject).slice(0, 300)]);
+  if (body.completion_email_body !== undefined) entries.push(['completion_email_body', String(body.completion_email_body).slice(0, 5000)]);
+  if (body.cleaning_pdf_base64 !== undefined) entries.push(['cleaning_pdf_base64', body.cleaning_pdf_base64 ? String(body.cleaning_pdf_base64).slice(0, 15000000) : null]);
+  if (body.cleaning_pdf_filename !== undefined) entries.push(['cleaning_pdf_filename', body.cleaning_pdf_filename ? String(body.cleaning_pdf_filename).slice(0, 200) : null]);
   for (const [key, value] of entries) {
     await pool.query(`
       INSERT INTO app_settings (key, value) VALUES ($1,$2)
@@ -568,6 +586,49 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
     `, [key, value]);
   }
   res.json({ ok: true });
+}));
+
+app.get('/api/settings/completion-email', auth, adminOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query(
+    "SELECT key,value FROM app_settings WHERE key IN ('completion_email_subject','completion_email_body','cleaning_pdf_filename')"
+  );
+  const map = {};
+  rows.rows.forEach(r => { map[r.key] = r.value; });
+  const pdfRow = await pgOne("SELECT value FROM app_settings WHERE key='cleaning_pdf_base64'");
+  res.json({
+    subject: map.completion_email_subject || 'Vi er færdige hos dig — {kunde}',
+    body: map.completion_email_body || 'Hej,\n\nVi vil gerne informere dig om, at vi nu er færdige med arbejdet hos dig ({opgave}).\n\nVedhæftet finder du en vejledning til efterbehandling/rengøring.\n\nMange tak for denne gang!\n\nVenlig hilsen\n{firma}',
+    has_pdf: !!(pdfRow && pdfRow.value),
+    pdf_filename: map.cleaning_pdf_filename || null,
+    mail_configured: !!getMailTransport()
+  });
+}));
+
+app.post('/api/settings/test-completion-email', auth, adminOnly, asyncRoute(async (req, res) => {
+  const toEmail = String((req.body || {}).to || '').trim();
+  if (!toEmail) return res.status(400).json({ error: 'Skriv en e-mailadresse at teste med' });
+  const transport = getMailTransport();
+  if (!transport) return res.status(400).json({ error: 'SMTP er ikke sat op endnu (mangler miljøvariabler på serveren)' });
+  try {
+    // Til en ren test sender vi direkte med skabelonen, uden at kræve en rigtig opgave:
+    const settingsRows = await pool.query(
+      "SELECT key,value FROM app_settings WHERE key IN ('company_name','completion_email_subject','completion_email_body','cleaning_pdf_base64','cleaning_pdf_filename')"
+    );
+    const settings = {};
+    settingsRows.rows.forEach(r => { settings[r.key] = r.value; });
+    const companyName = settings.company_name || 'Gulv Master Enterprise ApS';
+    const subject = (settings.completion_email_subject || 'Vi er færdige hos dig — {kunde}').replace('{kunde}', 'Test-kunde').replace('{firma}', companyName);
+    const bodyTemplate = settings.completion_email_body || 'Hej,\n\nDette er en TEST af færdig-mailen.\n\nVenlig hilsen\n{firma}';
+    const bodyText = bodyTemplate.replace('{opgave}', 'Test-opgave').replace('{kunde}', 'Test-kunde').replace('{firma}', companyName);
+    const attachments = [];
+    if (settings.cleaning_pdf_base64) {
+      attachments.push({ filename: settings.cleaning_pdf_filename || 'test.pdf', content: Buffer.from(settings.cleaning_pdf_base64, 'base64'), contentType: 'application/pdf' });
+    }
+    await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: toEmail, subject: '[TEST] ' + subject, text: bodyText, attachments });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: redactSecret(e.message || 'Ukendt fejl').slice(0, 500) });
+  }
 }));
 
 // ── USERS / WORKFORCE ───────────────────────────────────────
@@ -692,6 +753,79 @@ async function jtFetch(body, label = 'JobTread-kald', attempt = 1) {
 
 async function writeSyncLog(tasksImported, status, message) {
   await pool.query(`INSERT INTO sync_log (tasks_imported,status,message,synced_at) VALUES ($1,$2,$3,${nowTextSQL()})`, [tasksImported, status, message]);
+}
+
+// ── FÆRDIG-MAIL TIL KUNDEN (afsendes når en medarbejder markerer en opgave færdig) ──
+// Kræver SMTP-oplysninger sat som miljøvariabler på Render:
+//   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM (valgfri, ellers bruges SMTP_USER)
+// Uden dem er funktionen bevidst en stille no-op — resten af appen påvirkes ikke.
+let mailTransport;
+function getMailTransport() {
+  if (mailTransport !== undefined) return mailTransport;
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    mailTransport = null;
+    return mailTransport;
+  }
+  mailTransport = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: Number(process.env.SMTP_PORT) === 465,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  });
+  return mailTransport;
+}
+
+async function sendCompletionEmail(booking) {
+  const transport = getMailTransport();
+  if (!transport) return; // Ikke sat op endnu — spring stille over.
+
+  const task = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [booking.task_id]);
+  const toEmail = task?.customer_email;
+  if (!toEmail) return; // Ingen e-mail registreret på denne kunde — intet at sende til.
+
+  const settingsRows = await pool.query(
+    "SELECT key,value FROM app_settings WHERE key IN ('company_name','completion_email_subject','completion_email_body','cleaning_pdf_base64','cleaning_pdf_filename')"
+  );
+  const settings = {};
+  settingsRows.rows.forEach(r => { settings[r.key] = r.value; });
+
+  const companyName = settings.company_name || 'Gulv Master Enterprise ApS';
+  const jobName = task?.job_name || 'din opgave';
+  const subject = (settings.completion_email_subject || 'Vi er færdige hos dig — {kunde}')
+    .replace('{kunde}', jobName).replace('{firma}', companyName);
+  const bodyTemplate = settings.completion_email_body ||
+    'Hej,\n\nVi vil gerne informere dig om, at vi nu er færdige med arbejdet hos dig ({opgave}).\n\nVedhæftet finder du en vejledning til efterbehandling/rengøring.\n\nMange tak for denne gang!\n\nVenlig hilsen\n{firma}';
+  const bodyText = bodyTemplate.replace('{opgave}', jobName).replace('{kunde}', jobName).replace('{firma}', companyName);
+  const bodyHtml = bodyText.split('\n').map(line => line ? `<p>${line.replace(/</g, '&lt;')}</p>` : '<br>').join('');
+
+  const attachments = [];
+  if (settings.cleaning_pdf_base64) {
+    attachments.push({
+      filename: settings.cleaning_pdf_filename || 'Rengoering-og-efterbehandling.pdf',
+      content: Buffer.from(settings.cleaning_pdf_base64, 'base64'),
+      contentType: 'application/pdf'
+    });
+  }
+
+  let status = 'sent', error = null;
+  try {
+    await transport.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: toEmail,
+      subject,
+      text: bodyText,
+      html: bodyHtml,
+      attachments
+    });
+  } catch (e) {
+    status = 'error';
+    error = redactSecret(e.message || 'Ukendt fejl').slice(0, 500);
+    console.error('Kunne ikke sende færdig-mail:', error);
+  }
+  await pool.query(
+    'INSERT INTO completion_emails (booking_id,task_id,to_email,status,error,sent_at) VALUES ($1,$2,$3,$4,$5,' + nowTextSQL() + ')',
+    [booking.id, booking.task_id, toEmail, status, error]
+  );
 }
 
 function taskConnection(cursor, fields) {
@@ -1030,13 +1164,75 @@ function jobContactFields() {
   };
 }
 
+function possibleEmail(value) {
+  const text = String(value == null ? '' : value).trim();
+  if (!text) return '';
+  const match = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  return match ? match[0].toLowerCase() : '';
+}
+
+function isEmailFieldLabel(label) {
+  const normalized = String(label || '').toLowerCase().replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return /(?:^|\s)(email|e mail|mail)(?:\s|$)/.test(normalized);
+}
+
+function emailsFromValue(value, output = [], seen = new Set()) {
+  if (value == null || seen.has(value)) return output;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const text = String(value).trim();
+    const direct = possibleEmail(text);
+    if (direct) output.push(direct);
+    if (typeof value === 'string' && /^[{[]/.test(text)) {
+      try { emailsFromValue(JSON.parse(text), output, seen); } catch (_) {}
+    }
+    return output;
+  }
+  if (typeof value !== 'object') return output;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    value.forEach(item => emailsFromValue(item, output, seen));
+    return output;
+  }
+  ['email', 'emailAddress', 'value', 'formattedValue', 'rawValue'].forEach(key => {
+    if (Object.prototype.hasOwnProperty.call(value, key)) emailsFromValue(value[key], output, seen);
+  });
+  return output;
+}
+
+function firstEmailFromFields(fieldValues, stats) {
+  for (const fieldValue of listNodes(fieldValues)) {
+    const label = phoneFieldLabel(fieldValue);
+    if (!isEmailFieldLabel(label)) continue;
+    stats.email_fields_matched = (stats.email_fields_matched || 0) + 1;
+    const candidate = emailsFromValue(fieldValue?.value)[0] || '';
+    if (candidate) return { email: candidate, label };
+  }
+  return null;
+}
+
+function emailFromJobContact(job, stats) {
+  const containers = [];
+  const location = job?.location || {};
+  if (location?.contact) containers.push(location.contact);
+  const account = location?.account || {};
+  if (account?.primaryContact) containers.push(account.primaryContact);
+  listNodes(account?.contacts).forEach(contact => containers.push(contact));
+
+  for (const contact of containers) {
+    const match = firstEmailFromFields(contact?.customFieldValues, stats);
+    if (match) return match;
+  }
+  return null;
+}
+
 async function syncCustomerPhonesFromJT() {
   if (phoneSyncRunning) return { ok: false, error: 'Der kører allerede et telefonopslag' };
   if (!JT_GRANT || !JT_ORG) return { ok: false, error: 'JobTread Grant Key eller Organisation ID mangler' };
 
   phoneSyncRunning = true;
   const phoneByJob = new Map();
-  const stats = { jobs_scanned: 0, contacts_scanned: 0, fields_scanned: 0, phone_fields_matched: 0, pages: 0 };
+  const emailByJob = new Map();
+  const stats = { jobs_scanned: 0, contacts_scanned: 0, fields_scanned: 0, phone_fields_matched: 0, email_fields_matched: 0, pages: 0 };
 
   try {
     let cursor;
@@ -1059,8 +1255,10 @@ async function syncCustomerPhonesFromJT() {
       for (const job of jobs) {
         if (!job?.id) continue;
         stats.jobs_scanned++;
-        const match = phoneFromJobContact(job, stats);
-        if (match?.phone) phoneByJob.set(String(job.id), match);
+        const phoneMatch = phoneFromJobContact(job, stats);
+        if (phoneMatch?.phone) phoneByJob.set(String(job.id), phoneMatch);
+        const emailMatch = emailFromJobContact(job, stats);
+        if (emailMatch?.email) emailByJob.set(String(job.id), emailMatch);
       }
 
       stats.pages++;
@@ -1092,6 +1290,23 @@ async function syncCustomerPhonesFromJT() {
         `, [contact.phone, jobId]);
         updated += result.rowCount;
       }
+      let emailUpdated = 0;
+      for (const [jobId, contact] of emailByJob.entries()) {
+        const result = await client.query(`
+          UPDATE jt_tasks
+          SET customer_email=$1,
+              customer_email_source='jobtread',
+              customer_email_synced_at=${nowTextSQL()}
+          WHERE job_id=$2
+            AND source='jobtread'
+            AND COALESCE(customer_email_source,'') <> 'manual'
+            AND (
+              customer_email IS NULL OR customer_email='' OR
+              customer_email_source='jobtread' OR customer_email <> $1
+            )
+        `, [contact.email, jobId]);
+        emailUpdated += result.rowCount;
+      }
       await client.query('COMMIT');
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch (_) {}
@@ -1104,12 +1319,14 @@ async function syncCustomerPhonesFromJT() {
       ok: true,
       found: phoneByJob.size,
       updated,
+      email_found: emailByJob.size,
       jobs_scanned: stats.jobs_scanned,
       contacts_scanned: stats.contacts_scanned,
       phone_fields_matched: stats.phone_fields_matched,
+      email_fields_matched: stats.email_fields_matched,
       pages: stats.pages
     };
-    await writeSyncLog(0, 'ok', `Kundetelefon: ${result.found} jobs med nummer, ${updated} task(s) opdateret. ${stats.jobs_scanned} jobs / ${stats.contacts_scanned} kontakter / ${stats.phone_fields_matched} telefonfelter gennemgået.`);
+    await writeSyncLog(0, 'ok', `Kundetelefon: ${result.found} jobs med nummer, ${updated} task(s) opdateret. Kunde-e-mail: ${emailByJob.size} jobs med e-mail fundet. ${stats.jobs_scanned} jobs / ${stats.contacts_scanned} kontakter gennemgået.`);
     return result;
   } catch (phoneError) {
     const safeError = redactSecret(phoneError?.message || 'Ukendt fejl').slice(0, 600);
@@ -1666,6 +1883,9 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
   const completed = !!(req.body || {}).completed;
   await pool.query(`UPDATE planning_bookings SET completed_at=${completed ? nowTextSQL() : 'NULL'} WHERE id=$1`, [current.id]);
   res.json({ ok: true });
+  if (completed) {
+    sendCompletionEmail(current).catch(e => console.error('Færdig-mail fejlede:', e.message));
+  }
 }));
 
 app.put('/api/assignments/:id/invoice', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -1709,7 +1929,7 @@ async function normalizeBooking(body) {
 function bookingSelect(where = '') {
   return `
     SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.avatar_url AS user_avatar_url,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
-           t.name AS task_name,t.job_name,t.job_address,t.job_number,t.job_lat,t.job_lng,t.customer_phone,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
+           t.name AS task_name,t.job_name,t.job_address,t.job_number,t.job_lat,t.job_lng,t.customer_phone,t.customer_email,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
     FROM planning_bookings b
     JOIN users u ON b.user_id=u.id
     JOIN jt_tasks t ON b.task_id=t.id

@@ -232,6 +232,13 @@ button,input,select{font:inherit}
 .settings-card input[type=text]{padding:7px 9px;border-radius:7px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;font-size:12px;min-width:220px;outline:none}
 .settings-card input[type=text]::placeholder{color:rgba(255,255,255,.6)}
 .settings-card input[type=file]{font-size:10px;color:#fff}
+.email-settings-card{background:#fff;border:1px solid var(--border2);border-radius:12px;padding:16px;box-shadow:var(--shadow);margin:0 0 12px}
+.email-settings-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px}
+.email-settings-title{font-size:13px;font-weight:800;color:var(--navy)}
+.email-settings-sub{font-size:10.5px;color:var(--muted);margin-top:2px;max-width:520px}
+.mail-status-pill{font-size:9px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap;background:#F1F5F9;color:var(--muted)}
+.mail-status-pill.ok{background:#DCFCE7;color:#15803D}
+.mail-status-pill.off{background:#FEE2E2;color:#B91C1C}
 
 .people{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
 .person-card,.vendor-card{background:#fff;border:1px solid var(--border2);border-radius:14px;padding:14px;box-shadow:var(--shadow);transition:.15s}
@@ -808,6 +815,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div><label>Logo</label><input type="file" id="settings-logo-file" accept="image/*"></div>
       <button class="btn primary small" id="settings-save-btn">Gem virksomhedsprofil</button>
     </div>
+  </div>
+  <div class="email-settings-card">
+    <div class="email-settings-head">
+      <div><div class="email-settings-title">📧 Færdig-mail til kunden</div><div class="email-settings-sub">Sendes automatisk til kundens e-mail, når en medarbejder markerer en opgave som færdig — med jeres rengørings-PDF vedhæftet.</div></div>
+      <span class="mail-status-pill" id="mail-status-pill">Tjekker…</span>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Emne <span class="opt-tag">{kunde} og {firma} indsættes automatisk</span></label><input id="email-subject" class="input" placeholder="Vi er færdige hos dig — {kunde}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Besked <span class="opt-tag">{opgave}, {kunde}, {firma} indsættes automatisk</span></label><textarea id="email-body" class="input" rows="6" style="font-family:inherit"></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Rengørings-PDF (vedhæftes automatisk)</label><input id="email-pdf-file" type="file" accept="application/pdf" class="input"><div class="muted-sm" id="email-pdf-current" style="margin-top:4px"></div></div>
+      <div class="form-group"><label class="form-label">Send test-mail til</label><div style="display:flex;gap:6px"><input id="email-test-to" class="input" placeholder="din@mail.dk"><button class="btn small" id="email-test-btn">Send test</button></div></div>
+    </div>
+    <div class="modal-actions" style="padding:0;border:0;margin-top:10px"><button class="btn primary small" id="email-save-btn">Gem mail-indstillinger</button></div>
   </div>
   <div class="people" id="people-grid"></div>
 </section>
@@ -2323,13 +2345,46 @@ function applySettingsToUI(){
   if(settings.logo_url){logoEl.innerHTML='<img src="'+settings.logo_url+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">';prevEl.innerHTML='<img src="'+settings.logo_url+'">';}
   else{logoEl.textContent='🪵';prevEl.textContent='🪵';}
 }
-async function loadSettings(){var s=await api('/api/settings');if(s)settings=s;applySettingsToUI();}
+async function loadSettings(){var s=await api('/api/settings');if(s)settings=s;applySettingsToUI();loadEmailSettings();}
 async function saveSettings(){
   var body={company_name:document.getElementById('settings-company-name').value.trim()||'Gulv Master Enterprise ApS'};
   var file=document.getElementById('settings-logo-file').files[0];
   if(file)body.logo_url=await fileToDataURL(file);
   var r=await api('/api/settings',{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){toast('Virksomhedsprofil gemt','✓');await loadSettings();}else if(r)toast(r.error||'Fejl','❌');
+}
+
+// FÆRDIG-MAIL TIL KUNDEN
+async function loadEmailSettings(){
+  var s=await api('/api/settings/completion-email');
+  if(!s)return;
+  document.getElementById('email-subject').value=s.subject||'';
+  document.getElementById('email-body').value=s.body||'';
+  document.getElementById('email-pdf-current').textContent=s.has_pdf?('📎 '+(s.pdf_filename||'PDF uploadet')):'Ingen PDF uploadet endnu';
+  var pill=document.getElementById('mail-status-pill');
+  if(s.mail_configured){pill.textContent='✓ Mail er sat op';pill.className='mail-status-pill ok';}
+  else{pill.textContent='⚠ SMTP mangler at blive sat op på serveren';pill.className='mail-status-pill off';}
+}
+async function saveEmailSettings(){
+  var body={completion_email_subject:document.getElementById('email-subject').value.trim(),completion_email_body:document.getElementById('email-body').value};
+  var file=document.getElementById('email-pdf-file').files[0];
+  if(file){
+    var dataUri=await fileToDataURL(file);
+    body.cleaning_pdf_base64=dataUri.split(',')[1]||'';
+    body.cleaning_pdf_filename=file.name;
+  }
+  var r=await api('/api/settings',{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Mail-indstillinger gemt','✓');document.getElementById('email-pdf-file').value='';await loadEmailSettings();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function sendTestCompletionEmail(){
+  var to=document.getElementById('email-test-to').value.trim();
+  if(!to){toast('Skriv en e-mailadresse først','⚠');return;}
+  var btn=document.getElementById('email-test-btn');btn.disabled=true;btn.textContent='Sender…';
+  var r=await api('/api/settings/test-completion-email',{method:'POST',body:JSON.stringify({to:to})});
+  if(r&&r.ok)toast('Test-mail sendt til '+to,'✓');
+  else toast((r&&r.error)||'Kunne ikke sende','❌');
+  btn.disabled=false;btn.textContent='Send test';
 }
 
 // LOAD ALL
@@ -2420,6 +2475,8 @@ function bind(){
   document.getElementById('user-avatar-clear').onclick=function(){document.getElementById('user-avatar-file').value='';updateAvatarPreview(null);};
   // Virksomhedsprofil
   document.getElementById('settings-save-btn').onclick=saveSettings;
+  document.getElementById('email-save-btn').onclick=saveEmailSettings;
+  document.getElementById('email-test-btn').onclick=sendTestCompletionEmail;
   // Opgaveliste
   ['tasklist-search','tasklist-type-filter','tasklist-status-filter'].forEach(function(id){document.getElementById(id).addEventListener('input',renderTaskList);});
   document.getElementById('tasklist-select-all').onclick=function(){selectAllTasks(true);};
