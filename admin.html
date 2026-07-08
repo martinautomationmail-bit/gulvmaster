@@ -546,6 +546,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="week-bar">
         <button class="btn small primary" id="cap-today">📍 I dag</button>
         <strong class="week-label">52 ugers kapacitet</strong>
+        <select id="cap-groupby" class="select" style="width:auto">
+          <option value="user">Gruppér: Medarbejder</option>
+          <option value="trade">Gruppér: Fag</option>
+        </select>
         <span class="hint">Træk en opgave fra poolen direkte på en uge. Den oprettes kun som kapacitetsreservation — ikke i Daglig plan eller hos medarbejderen.</span>
       </div>
       <div class="month-bar" id="cap-months"></div>
@@ -1027,7 +1031,7 @@ document.getElementById('app').style.display='block';
 
 var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={};
 var settings={company_name:'Gulv Master Enterprise ApS',logo_url:null},library=[],selectedTaskIds={},weeklyNotesCache={};
-var timelineOffset=0,timelineGroupBy='user';
+var timelineOffset=0,timelineGroupBy='user',capacityGroupBy='user';
 var taskRequests=[],requestsFilter='pending',completedFilter='open';
 var timeOffApproved=[],timeOffRequests=[];
 var filters={plan:{status:'all',type:'all',team:'all'},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'}};
@@ -1275,6 +1279,32 @@ function renderCapacity(){
       '<div class="stat"><div class="stat-label">Sidst synket</div><div class="stat-value" style="font-size:12px">'+document.getElementById('sync-ind').textContent+'</div><div class="stat-sub">'+(over?over+' overbooket':'OK ✓')+'</div></div>';
   }
   // Body
+  if(capacityGroupBy==='trade'){
+    var html2='';
+    allTrades().forEach(function(trade){
+      var members=users.filter(function(u){return u.active&&u.role==='employee'&&u.trade===trade;});
+      if(!members.length)return;
+      html2+='<tr class="group-row"><td class="staff-cell">'+
+        '<div class="staff-line"><div class="avatar" style="background:#2563EB22;color:#2563EB">'+esc(trade.slice(0,2).toUpperCase())+'</div>'+
+        '<div><div class="staff-name">'+esc(trade)+'</div><div class="staff-role">'+members.length+' medarbejder'+(members.length!==1?'e':'')+'</div></div></div>'+
+        '</td>';
+      weeks.forEach(function(m){
+        var cap=members.reduce(function(n,u){return n+(+u.weekly_capacity||5);},0);
+        var booked=members.reduce(function(n,u){return n+weeklyLoad(u.id,m);},0);
+        var free=Math.max(0,cap-booked);
+        var pct=cap?Math.min(booked/cap*100,100):0;
+        var cc=capClass(booked,cap);
+        html2+='<td class="cap-cell"><div class="cap-drop '+(free<=0?cc:'cap-free')+'">'+
+          '<div class="cap-num '+(free<=0?cc:'cap-free')+'">'+(free<=0?'Fuldt':free.toFixed(1)+' d fri')+'</div>'+
+          '<div class="muted-sm" style="text-align:center;margin-top:2px">'+booked.toFixed(1)+' / '+cap+' d booket</div>'+
+          '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+pct+'%;background:'+barColor(booked,cap)+'"></div></div>'+
+          '</div></td>';
+      });
+      html2+='</tr>';
+    });
+    document.getElementById('cap-body').innerHTML=html2||'<tr><td style="padding:18px;color:var(--muted)">Ingen fag registreret på aktive medarbejdere endnu.</td></tr>';
+    return;
+  }
   var grouped=teamList('capacity'),html='';
   function row(u){
     var c=u.color||'#2563EB';
@@ -2312,6 +2342,7 @@ function bind(){
   document.getElementById('plan-next').onclick=function(){planOffset++;renderPlan();};
   document.getElementById('plan-today').onclick=function(){planOffset=0;renderPlan();};
   document.getElementById('cap-today').onclick=function(){scrollToWeek(weekKey(new Date()));};
+  document.getElementById('cap-groupby').onchange=function(e){capacityGroupBy=e.target.value;renderCapacity();};
   // Search
   ['plan-search','cap-search','timeline-search'].forEach(function(id){document.getElementById(id).addEventListener('input',function(){renderPool(id==='plan-search'?'plan':(id==='cap-search'?'capacity':'timeline'));});});
   // People
