@@ -236,6 +236,16 @@ async function initSchema() {
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_lat DOUBLE PRECISION;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_lng DOUBLE PRECISION;
 
+    CREATE TABLE IF NOT EXISTS notes_widget (
+      user_id INTEGER PRIMARY KEY,
+      content TEXT,
+      pos_x INTEGER DEFAULT 80,
+      pos_y INTEGER DEFAULT 80,
+      width INTEGER DEFAULT 320,
+      height INTEGER DEFAULT 320,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     CREATE TABLE IF NOT EXISTS time_off (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL,
@@ -1210,11 +1220,12 @@ app.post('/api/tasks/manual', auth, adminOnly, asyncRoute(async (req, res) => {
 // address, telephone number or JobTread case number.
 app.post('/api/capacity-reservations', auth, adminOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
-  const weekStart = mondayOfDate(String(body.week_start || ''));
-  if (!weekStart) return res.status(400).json({ error: 'Vælg en gyldig uge' });
+  const startDate = validDate(String(body.week_start || '')) ? String(body.week_start) : null;
+  if (!startDate) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
   const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id)]);
   if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
-  const capacityDays = Math.max(0.25, Math.min(14, Number(body.capacity_days) || 1));
+  const capacityDays = Math.max(0.25, Math.min(60, Number(body.capacity_days) || 1));
+  const endDate = addWorkingDays(startDate, capacityDays);
   const note = body.notes ? String(body.notes).slice(0, 1000) : null;
   const requestedLabel = String(body.label || '').trim().slice(0, 120);
   const existingTaskId = body.task_id ? String(body.task_id) : null;
@@ -1233,14 +1244,13 @@ app.post('/api/capacity-reservations', auth, adminOnly, asyncRoute(async (req, r
       await client.query(`
         INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
         VALUES ($1,$2,NULL,'Kapacitetsreserve','',$3,$4,'other',NULL,NULL,${nowTextSQL()},'capacity',${nowTextSQL()})
-      `, [taskId, taskLabel, weekStart, addWorkingDays(weekStart, 5)]);
+      `, [taskId, taskLabel, startDate, endDate]);
     }
-    const endDate = addWorkingDays(weekStart, 5);
     const result = await client.query(`
       INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,planning_mode,capacity_label,updated_at)
       VALUES ($1,$2,$3,5,$4,$5,NULL,$6,$7,'capacity',$8,${nowTextSQL()})
       RETURNING id
-    `, [taskId, user.id, getWeekKey(weekStart), capacityDays, note, weekStart, endDate, taskLabel]);
+    `, [taskId, user.id, getWeekKey(startDate), capacityDays, note, startDate, endDate, taskLabel]);
     await client.query('COMMIT');
     res.json({ ok: true, id: result.rows[0].id });
   } catch (error) {
@@ -1255,18 +1265,19 @@ app.put('/api/capacity-reservations/:id', auth, adminOnly, asyncRoute(async (req
   const current = await pgOne("SELECT * FROM planning_bookings WHERE id=$1 AND COALESCE(planning_mode,'daily')='capacity'", [Number(req.params.id)]);
   if (!current) return res.status(404).json({ error: 'Kapacitetsreservationen blev ikke fundet' });
   const body = req.body || {};
-  const weekStart = mondayOfDate(String(body.week_start || current.start_date || ''));
-  if (!weekStart) return res.status(400).json({ error: 'Vælg en gyldig uge' });
+  const startDate = validDate(String(body.week_start || current.start_date || '')) ? String(body.week_start || current.start_date) : null;
+  if (!startDate) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
   const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id || current.user_id)]);
   if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
-  const capacityDays = Math.max(0.25, Math.min(14, Number(body.capacity_days) || current.capacity_days || 1));
+  const capacityDays = Math.max(0.25, Math.min(60, Number(body.capacity_days) || current.capacity_days || 1));
+  const endDate = addWorkingDays(startDate, capacityDays);
   const label = String(body.label !== undefined ? body.label : (current.capacity_label || '')).trim().slice(0, 120) || 'Kapacitetsreservation';
   const note = body.notes !== undefined ? (body.notes ? String(body.notes).slice(0,1000) : null) : current.notes;
   await pool.query(`
     UPDATE planning_bookings
     SET user_id=$1,week_key=$2,days=5,capacity_days=$3,notes=$4,start_time=NULL,start_date=$5,end_date=$6,capacity_label=$7,updated_at=${nowTextSQL()}
     WHERE id=$8
-  `, [user.id, getWeekKey(weekStart), capacityDays, note, weekStart, addWorkingDays(weekStart, 5), label, current.id]);
+  `, [user.id, getWeekKey(startDate), capacityDays, note, startDate, endDate, label, current.id]);
   res.json({ ok: true });
 }));
 
@@ -1543,6 +1554,27 @@ app.put('/api/task-requests/:id/reject', auth, adminOnly, asyncRoute(async (req,
   if (reqRow.status !== 'pending') return res.status(400).json({ error: 'Anmodningen er allerede behandlet' });
   const adminNote = req.body && req.body.admin_note ? String(req.body.admin_note).slice(0, 500) : null;
   await pool.query(`UPDATE task_requests SET status='rejected', admin_note=$1, resolved_at=${nowTextSQL()} WHERE id=$2`, [adminNote, reqRow.id]);
+  res.json({ ok: true });
+}));
+
+// ── FLYDENDE NOTE-BLOK (personlig scratch-pad, gemmes pr. bruger) ──
+app.get('/api/notes-widget', auth, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT * FROM notes_widget WHERE user_id=$1', [req.user.id]);
+  res.json(row || { user_id: req.user.id, content: '', pos_x: 80, pos_y: 80, width: 320, height: 320 });
+}));
+
+app.put('/api/notes-widget', auth, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const content = body.content !== undefined ? String(body.content).slice(0, 200000) : '';
+  const posX = Number.isFinite(Number(body.pos_x)) ? Math.round(Number(body.pos_x)) : 80;
+  const posY = Number.isFinite(Number(body.pos_y)) ? Math.round(Number(body.pos_y)) : 80;
+  const width = Number.isFinite(Number(body.width)) ? Math.round(Number(body.width)) : 320;
+  const height = Number.isFinite(Number(body.height)) ? Math.round(Number(body.height)) : 320;
+  await pool.query(`
+    INSERT INTO notes_widget (user_id,content,pos_x,pos_y,width,height,updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,${nowTextSQL()})
+    ON CONFLICT (user_id) DO UPDATE SET content=EXCLUDED.content, pos_x=EXCLUDED.pos_x, pos_y=EXCLUDED.pos_y, width=EXCLUDED.width, height=EXCLUDED.height, updated_at=${nowTextSQL()}
+  `, [req.user.id, content, posX, posY, width, height]);
   res.json({ ok: true });
 }));
 

@@ -296,6 +296,22 @@ button,input,select{font:inherit}
 .tl-bar:hover .tl-handle::after{opacity:1}
 .tl-empty{padding:24px;text-align:center;color:var(--muted);font-size:12px}
 
+/* FLYDENDE NOTE-BLOK */
+.note-widget{position:fixed;display:none;flex-direction:column;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;box-shadow:0 16px 44px rgba(15,34,64,.32);z-index:500;min-width:220px;min-height:160px;overflow:hidden}
+.note-widget.open{display:flex}
+.note-widget.minimized .note-widget-toolbar,.note-widget.minimized .note-widget-body,.note-widget.minimized .note-widget-resize{display:none}
+.note-widget-head{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#FBBF24;color:#78350F;font-size:12px;font-weight:800;cursor:grab;user-select:none;flex-shrink:0}
+.note-widget-head:active{cursor:grabbing}
+.note-widget-min,.note-widget-close{border:0;background:rgba(120,53,15,.14);color:#78350F;width:20px;height:20px;border-radius:5px;cursor:pointer;font-size:11px;line-height:1}
+.note-widget-min:hover,.note-widget-close:hover{background:rgba(120,53,15,.26)}
+.note-widget-toolbar{display:flex;gap:4px;align-items:center;padding:6px 8px;background:#FEF3C7;border-bottom:1px solid #FDE68A;flex-shrink:0;flex-wrap:wrap}
+.note-widget-toolbar button{border:1px solid #FDE68A;background:#fff;width:24px;height:24px;border-radius:5px;cursor:pointer;font-size:11px}
+.note-widget-toolbar button:hover{background:#FEF3C7}
+.note-widget-toolbar select{border:1px solid #FDE68A;background:#fff;border-radius:5px;font-size:10px;padding:3px 4px}
+.note-widget-body{flex:1;overflow:auto;padding:12px;font-size:13px;line-height:1.5;outline:none;color:#451a03}
+.note-widget-body:empty:before{content:attr(placeholder);color:#B45309;opacity:.55}
+.note-widget-resize{position:absolute;right:2px;bottom:2px;width:16px;height:16px;cursor:nwse-resize;color:#B45309;font-size:11px;display:flex;align-items:center;justify-content:center;opacity:.6}
+
 /* TIDSLINJE — HØJRE SIDE-PANEL */
 .tl-drawer{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:92vw;background:#fff;box-shadow:-16px 0 50px rgba(15,34,64,.28);z-index:150;transform:translateX(100%);transition:transform .25s cubic-bezier(.2,.9,.3,1);display:flex;flex-direction:column}
 .tl-drawer.open{transform:translateX(0)}
@@ -471,9 +487,40 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="navdrop-item" data-page="logs">⏱ Timer & log</button>
       </div>
     </div>
+    <button class="nb" id="note-widget-btn">📝 Note</button>
     <button class="nb" id="logout-btn">Log ud</button>
   </div>
 </nav>
+
+<!-- FLYDENDE NOTE-BLOK — personlig kladdeblok, kan flyttes og ændres i størrelse -->
+<div class="note-widget" id="note-widget">
+  <div class="note-widget-head" id="note-widget-drag">
+    <span>📝 Note</span>
+    <div style="display:flex;gap:4px">
+      <button class="note-widget-min" id="note-widget-min" title="Minimér">—</button>
+      <button class="note-widget-close" id="note-widget-close" title="Luk">✕</button>
+    </div>
+  </div>
+  <div class="note-widget-toolbar">
+    <button type="button" data-cmd="bold" title="Fed"><b>B</b></button>
+    <button type="button" data-cmd="italic" title="Kursiv"><i>I</i></button>
+    <button type="button" data-cmd="underline" title="Understreget"><u>U</u></button>
+    <select id="note-font-name" title="Skrifttype">
+      <option value="Arial">Arial</option>
+      <option value="Georgia">Georgia</option>
+      <option value="'Courier New'">Courier</option>
+      <option value="Verdana">Verdana</option>
+    </select>
+    <select id="note-font-size" title="Skriftstørrelse">
+      <option value="2">Lille</option>
+      <option value="3" selected>Normal</option>
+      <option value="5">Stor</option>
+      <option value="7">Kæmpe</option>
+    </select>
+  </div>
+  <div class="note-widget-body" id="note-widget-body" contenteditable="true" spellcheck="false" placeholder="Skriv løse noter, huskelister, planlægning..."></div>
+  <div class="note-widget-resize" id="note-widget-resize">⤡</div>
+</div>
 
 <main class="main">
 
@@ -890,8 +937,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <select id="capacity-user" class="select"></select>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Uge</label><select id="capacity-week" class="select"></select></div>
-      <div class="form-group"><label class="form-label">Kapacitetsdage</label><input id="capacity-days" type="number" min=".25" max="14" step=".25" class="input" value="1"></div>
+      <div class="form-group"><label class="form-label">Startdato</label><input id="capacity-week" type="date" class="input"></div>
+      <div class="form-group"><label class="form-label">Kapacitetsdage <span style="opacity:.6;font-weight:500">(kan strække sig over flere uger)</span></label><input id="capacity-days" type="number" min=".25" max="60" step=".25" class="input" value="1"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Titel <span class="opt-tag">valgfrit</span></label>
@@ -1263,20 +1310,27 @@ function renderCapacity(){
   weeks.forEach(function(m){var mk=m.getFullYear()+'-'+m.getMonth();if(!months[mk]){months[mk]=1;mBtns.push({m:m,label:m.toLocaleDateString('da-DK',{month:'short',year:'numeric'})});}});
   var curMon=new Date().toLocaleDateString('da-DK',{month:'short',year:'numeric'});
   document.getElementById('cap-months').innerHTML=mBtns.map(function(x){return '<button class="month-btn'+(x.label===curMon?' active':'')+'" data-action="scroll-week" data-week="'+weekKey(x.m)+'">'+esc(x.label)+'</button>';}).join('');
-  // Render capacity stats
+  // Render capacity stats — frie dage pr. fag i DENNE måned (skifter automatisk måned for måned)
   var capEl=document.getElementById('cap-stats');
   if(capEl){
-    var allWorkers=users.filter(function(u){return u.active&&u.role==='employee';});
-    var w4=capacityWeeks().slice(0,4);
-    var totalCap=allWorkers.reduce(function(n,u){return n+(+u.weekly_capacity||5)*4;},0);
-    var totalBooked=w4.reduce(function(n,wk){return n+allWorkers.reduce(function(n2,u){return n2+weeklyLoad(u.id,wk);},0);},0);
-    var pct=totalCap>0?Math.round(totalBooked/totalCap*100):0;
-    var over=0;allWorkers.forEach(function(u){w4.forEach(function(wk){if(weeklyLoad(u.id,wk)>(+u.weekly_capacity||5))over++;});});
-    capEl.innerHTML=
-      '<div class="stat"><div class="stat-label">Kapacitet (4 uger)</div><div class="stat-value">'+totalCap+'</div><div class="stat-sub">mandage</div></div>'+
-      '<div class="stat"><div class="stat-label">Bookede mandage</div><div class="stat-value">'+totalBooked.toFixed(1)+'</div><div class="stat-sub">'+( totalCap-totalBooked).toFixed(1)+' fri</div></div>'+
-      '<div class="stat"><div class="stat-label">Udnyttelse</div><div class="stat-value'+(pct>80?' style="color:#B45309"':' style="color:#16A34A"')+'">'+pct+'%</div><div class="stat-sub">Mål &lt;80%</div></div>'+
-      '<div class="stat"><div class="stat-label">Sidst synket</div><div class="stat-value" style="font-size:12px">'+document.getElementById('sync-ind').textContent+'</div><div class="stat-sub">'+(over?over+' overbooket':'OK ✓')+'</div></div>';
+    var now=new Date(),monthLabel=now.toLocaleDateString('da-DK',{month:'long',year:'numeric'});
+    var monthWeeks=capacityWeeks().filter(function(m){return m.getMonth()===now.getMonth()&&m.getFullYear()===now.getFullYear();});
+    var tradeStats=allTrades().map(function(trade){
+      var members=users.filter(function(u){return u.active&&u.role==='employee'&&u.trade===trade;});
+      var free=0,cap=0;
+      monthWeeks.forEach(function(m){
+        var wCap=members.reduce(function(n,u){return n+(+u.weekly_capacity||5);},0);
+        var wBooked=members.reduce(function(n,u){return n+weeklyLoad(u.id,m);},0);
+        cap+=wCap;
+        free+=Math.max(0,wCap-wBooked);
+      });
+      return {trade:trade,free:free,cap:cap,members:members.length};
+    }).filter(function(x){return x.members>0;}).sort(function(a,b){return b.cap-a.cap;}).slice(0,4);
+    capEl.innerHTML=tradeStats.length?tradeStats.map(function(x){
+      return '<div class="stat"><div class="stat-label">'+esc(x.trade)+' · '+esc(monthLabel)+'</div>'+
+        '<div class="stat-value" style="color:'+(x.free<=0?'#B91C1C':x.free<5?'#B45309':'#16A34A')+'">'+x.free.toFixed(1)+'</div>'+
+        '<div class="stat-sub">frie dage af '+x.cap.toFixed(0)+' · '+x.members+' medarb.</div></div>';
+    }).join(''):'<div class="stat"><div class="stat-label">Fag</div><div class="stat-value" style="font-size:13px">Ingen fag sat endnu</div><div class="stat-sub">Sæt "Fag" på medarbejdere i Hold & vendors</div></div>';
   }
   // Body
   if(capacityGroupBy==='trade'){
@@ -1384,8 +1438,7 @@ function openCapacityModal(opts){
   document.getElementById('capacity-title').textContent=b?'Rediger kapacitetsreservation':(t?'Reservér kapacitet for opgave':'Reservér kapacitet');
   document.getElementById('capacity-context').innerHTML=t?'📊 <span>Kapacitet for <strong>'+esc((t.job_name||'')+(t.name?' — '+t.name:''))+'</strong>. Den vises ikke i Daglig plan eller hos medarbejderen.</span>':'📊 <span>Denne reservation vises kun på kapacitetsboardet — ikke i Daglig plan eller hos medarbejderen.</span>';
   populateCapacityUsers(b?b.user_id:opts.userId);
-  var week=iso(mon(date((b&&b.start_date)||opts.weekStart||iso(new Date()))));
-  document.getElementById('capacity-week').innerHTML=capacityWeekOptions(week);
+  document.getElementById('capacity-week').value=iso(date((b&&b.start_date)||opts.weekStart||iso(new Date())));
   document.getElementById('capacity-days').value=b?capDaysOf(b):1;
   document.getElementById('capacity-label').value=b?(b.capacity_label||''):(t?'': 'Kapacitetsreservation');
   document.getElementById('capacity-note').value=b&&b.notes||'';
@@ -2297,7 +2350,21 @@ async function loadAll(){
   if(document.getElementById('page-requests').classList.contains('active'))renderRequests();
 }
 function renderStats(d){
-  document.getElementById('stats').innerHTML=[['Tasks i pool',d.totalTasks||0,'JobTread + manuelle'],['Planlagte Tasks',d.assigned||0,'har mindst én booking'],['Bookinger',d.bookings||0,'uafhæng. planrækker'],['Ikke planlagt',d.unassigned||0,'klar i pool'],['Interne',d.employees||0,'medarbejdere'],['Vendors',d.vendors||0,'undergrupper']].map(function(x){return '<div class="stat"><div class="stat-label">'+x[0]+'</div><div class="stat-value">'+x[1]+'</div><div class="stat-sub">'+x[2]+'</div></div>';}).join('');
+  var today=iso(new Date());
+  var overdue=tasks.filter(function(t){return +t.assignment_count===0&&t.start_date&&String(t.start_date).slice(0,10)<today;}).length;
+  var items=[
+    ['Ikke planlagt',d.unassigned||0,'klik for at se dem','open'],
+    ['Overskredet & uplanlagt',overdue,overdue?'⚠ kræver handling nu':'ingen — flot!','open',overdue>0],
+    ['Planlagte Tasks',d.assigned||0,'har mindst én booking','planned'],
+    ['Tasks i pool',d.totalTasks||0,'JobTread + manuelle','all'],
+    ['Interne',d.employees||0,'medarbejdere',null],
+    ['Vendors',d.vendors||0,'undergrupper',null]
+  ];
+  document.getElementById('stats').innerHTML=items.map(function(x){
+    var clickable=x[3]?' data-action="goto-tasklist" data-filter="'+x[3]+'" style="cursor:pointer"':'';
+    var warn=x[4]?' style="color:#B91C1C"':'';
+    return '<div class="stat"'+clickable+'><div class="stat-label">'+x[0]+'</div><div class="stat-value"'+warn+'>'+x[1]+'</div><div class="stat-sub">'+x[2]+'</div></div>';
+  }).join('');
 }
 function closeModal(id){document.getElementById(id).classList.remove('open');if(id==='assign-modal')assignCtx=null;}
 
@@ -2421,6 +2488,7 @@ function bind(){
     if(a){
       var act=a.dataset.action;
       if(act==='manual')openManual();
+      if(act==='goto-tasklist'){var sf=document.getElementById('tasklist-status-filter');if(sf)sf.value=a.dataset.filter;switchPage('tasklist');}
       if(act==='capacity-add')openCapacityModal({weekStart:iso(mon(new Date()))});
       if(act==='add-capacity')openCapacityModal({userId:+a.dataset.userId,weekStart:a.dataset.date});
       if(act==='pool-filter'){filters[a.dataset.scope][a.dataset.kind]=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}
@@ -2463,6 +2531,81 @@ function bind(){
   var initialPage=location.hash.slice(1);
   if(initialPage&&VALID_PAGES.indexOf(initialPage)>-1)switchPage(initialPage,true);
 }
+
+// FLYDENDE NOTE-BLOK
+var noteWidgetState={pos_x:80,pos_y:80,width:320,height:320};
+var noteSaveTimer=null;
+function noteWidgetEl(){return document.getElementById('note-widget');}
+async function loadNoteWidget(){
+  var r=await api('/api/notes-widget');
+  if(r){
+    noteWidgetState={pos_x:r.pos_x||80,pos_y:r.pos_y||80,width:r.width||320,height:r.height||320};
+    document.getElementById('note-widget-body').innerHTML=r.content||'';
+  }
+  applyNoteWidgetPosition();
+}
+function applyNoteWidgetPosition(){
+  var el=noteWidgetEl();
+  el.style.left=Math.max(0,Math.min(window.innerWidth-60,noteWidgetState.pos_x))+'px';
+  el.style.top=Math.max(0,Math.min(window.innerHeight-60,noteWidgetState.pos_y))+'px';
+  el.style.width=noteWidgetState.width+'px';
+  el.style.height=noteWidgetState.height+'px';
+}
+function saveNoteWidgetSoon(){
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer=setTimeout(function(){
+    api('/api/notes-widget',{method:'PUT',body:JSON.stringify({
+      content:document.getElementById('note-widget-body').innerHTML,
+      pos_x:noteWidgetState.pos_x,pos_y:noteWidgetState.pos_y,
+      width:noteWidgetState.width,height:noteWidgetState.height
+    })});
+  },700);
+}
+function initNoteWidget(){
+  var el=noteWidgetEl(),body=document.getElementById('note-widget-body');
+  document.getElementById('note-widget-btn').onclick=function(){
+    el.classList.toggle('open');
+    if(el.classList.contains('open'))loadNoteWidget();
+  };
+  document.getElementById('note-widget-close').onclick=function(){el.classList.remove('open');};
+  document.getElementById('note-widget-min').onclick=function(){el.classList.toggle('minimized');};
+  body.addEventListener('input',saveNoteWidgetSoon);
+  document.querySelectorAll('.note-widget-toolbar button[data-cmd]').forEach(function(btn){
+    btn.onclick=function(){body.focus();document.execCommand(btn.dataset.cmd,false,null);saveNoteWidgetSoon();};
+  });
+  document.getElementById('note-font-name').onchange=function(e){body.focus();document.execCommand('fontName',false,e.target.value);saveNoteWidgetSoon();};
+  document.getElementById('note-font-size').onchange=function(e){body.focus();document.execCommand('fontSize',false,e.target.value);saveNoteWidgetSoon();};
+  // Træk i headeren for at flytte
+  var drag=document.getElementById('note-widget-drag'),dragging=null;
+  drag.addEventListener('mousedown',function(e){
+    if(e.target.closest('button'))return;
+    dragging={startX:e.clientX,startY:e.clientY,origX:noteWidgetState.pos_x,origY:noteWidgetState.pos_y};
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove',function(e){
+    if(dragging){
+      noteWidgetState.pos_x=dragging.origX+(e.clientX-dragging.startX);
+      noteWidgetState.pos_y=dragging.origY+(e.clientY-dragging.startY);
+      applyNoteWidgetPosition();
+    }
+    if(resizing){
+      noteWidgetState.width=Math.max(220,resizing.origW+(e.clientX-resizing.startX));
+      noteWidgetState.height=Math.max(160,resizing.origH+(e.clientY-resizing.startY));
+      applyNoteWidgetPosition();
+    }
+  });
+  document.addEventListener('mouseup',function(){
+    if(dragging){dragging=null;saveNoteWidgetSoon();}
+    if(resizing){resizing=null;saveNoteWidgetSoon();}
+  });
+  // Træk i hjørnet for at ændre størrelse
+  var resizeHandle=document.getElementById('note-widget-resize'),resizing=null;
+  resizeHandle.addEventListener('mousedown',function(e){
+    resizing={startX:e.clientX,startY:e.clientY,origW:noteWidgetState.width,origH:noteWidgetState.height};
+    e.preventDefault();e.stopPropagation();
+  });
+}
+initNoteWidget();
 
 bind();
 loadSettings();
