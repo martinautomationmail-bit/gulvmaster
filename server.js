@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const cron = require('node-cron');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
+const DEFAULT_CLEANING_PDF_BASE64 = require('./cleaning-pdf-base64');
 const { Pool } = require('pg');
 // Uses Node's built-in SQLite reader only for the one-time migration upload.
 // This avoids native build issues on Render.
@@ -197,6 +198,7 @@ async function initSchema() {
     -- Existing bookings stay daily by default, so this upgrade has no effect on prior plans.
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS planning_mode TEXT DEFAULT 'daily';
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS capacity_label TEXT;
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS documented_at TEXT;
     CREATE INDEX IF NOT EXISTS idx_planning_bookings_mode ON planning_bookings(planning_mode);
 
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -250,6 +252,27 @@ async function initSchema() {
       sent_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS is_visit INTEGER DEFAULT 0;
+
+    CREATE TABLE IF NOT EXISTS customer_visits (
+      id SERIAL PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      booking_id INTEGER,
+      customer_name TEXT,
+      address TEXT,
+      phone TEXT,
+      email TEXT,
+      room_size TEXT,
+      floor_type_wanted TEXT,
+      notes TEXT,
+      recommended_solution TEXT,
+      estimated_price TEXT,
+      filled_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_visits_task ON customer_visits(task_id);
+
     CREATE TABLE IF NOT EXISTS notes_widget (
       user_id INTEGER PRIMARY KEY,
       content TEXT,
@@ -297,6 +320,30 @@ async function initSchema() {
     INSERT INTO app_settings (key, value) VALUES ('company_name', 'Gulv Master Enterprise ApS')
     ON CONFLICT (key) DO NOTHING;
   `);
+
+  // Seed standard pleje-/rengørings-PDF'en og en dansk standardtekst, så
+  // færdig-mailen er klar til brug uden at admin skal uploade noget manuelt.
+  // Parametriseret (ikke string-interpolation), fordi base64-strengen er stor.
+  await pool.query(`
+    INSERT INTO app_settings (key, value) VALUES ('cleaning_pdf_base64', $1)
+    ON CONFLICT (key) DO NOTHING;
+  `, [DEFAULT_CLEANING_PDF_BASE64]);
+  await pool.query(`
+    INSERT INTO app_settings (key, value) VALUES ('cleaning_pdf_filename', 'Pleje-og-vedligeholdelsesvejledning-Gulv-Master.pdf')
+    ON CONFLICT (key) DO NOTHING;
+  `);
+  await pool.query(`
+    INSERT INTO app_settings (key, value) VALUES ('completion_email_subject', 'Vi er færdige hos dig — {kunde}')
+    ON CONFLICT (key) DO NOTHING;
+  `);
+  await pool.query(`
+    INSERT INTO app_settings (key, value) VALUES ('completion_email_body', $1)
+    ON CONFLICT (key) DO NOTHING;
+  `, [
+    'Hej,\n\nVi vil gerne informere dig om, at vi nu er færdige med arbejdet hos dig ({opgave}).\n\n' +
+    'Vedhæftet finder du vores pleje- og vedligeholdelsesvejledning, som beskriver hvordan du bedst passer på dit nybehandlede gulv den første tid.\n\n' +
+    'Mange tak for denne gang — vi håber du bliver glad for resultatet!\n\nVenlig hilsen\n{firma}'
+  ]);
 }
 
 function secureEqual(left, right) {
@@ -350,6 +397,77 @@ function addWorkingDays(startDate, durationDays) {
     if (d.getDay() !== 0 && d.getDay() !== 6) count += 1;
   }
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// ── UGENTLIG KAPACITETS-BEREGNING (server-side, matcher klientens weeklyLoad) ──
+function workDatesForBooking(startDate, endDate) {
+  const s = new Date(`${startDate}T12:00:00`);
+  const e = new Date(`${endDate || startDate}T12:00:00`);
+  const out = [];
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) {
+      out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    }
+  }
+  return out.length ? out : [startDate];
+}
+
+function weekdayDates(weekMonday) {
+  const d = new Date(`${weekMonday}T12:00:00`);
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    const x = new Date(d);
+    x.setDate(d.getDate() + i);
+    out.push(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`);
+  }
+  return out;
+}
+
+async function weeklyLoadForUser(userId, weekMonday, excludeBookingId) {
+  const days = weekdayDates(weekMonday);
+  const rows = await pool.query('SELECT id,days,capacity_days,start_date,end_date FROM planning_bookings WHERE user_id=$1', [userId]);
+  let load = 0;
+  for (const b of rows.rows) {
+    if (excludeBookingId && Number(b.id) === Number(excludeBookingId)) continue;
+    const wd = workDatesForBooking(b.start_date, b.end_date);
+    const overlap = wd.filter(d => days.includes(d)).length;
+    if (overlap > 0) {
+      const capDays = b.capacity_days != null && b.capacity_days !== '' ? Number(b.capacity_days) : (Number(b.days) || 1);
+      load += (capDays / wd.length) * overlap;
+    }
+  }
+  return load;
+}
+
+// Fordeler et ønsket antal kapacitetsdage ud over så mange uger som nødvendigt,
+// og fylder hver uges RESTERENDE kapacitet op før resten rykker videre til
+// næste uge — i stedet for at proppe alle dagene ind i den første uge.
+async function splitCapacityAcrossWeeks(userId, weeklyCapacity, startDate, totalDays, excludeBookingId) {
+  const segments = [];
+  let remaining = Math.max(0.25, Number(totalDays) || 1);
+  let weekStart = mondayOfDate(startDate);
+  let guard = 0;
+  while (remaining > 0.001 && guard < 26) { // sikkerhedsloft: maks ~ét halvt år frem
+    guard++;
+    const alreadyBooked = await weeklyLoadForUser(userId, weekStart, excludeBookingId);
+    const capThisWeek = Math.max(0, weeklyCapacity - alreadyBooked);
+    const takeThisWeek = Math.min(remaining, capThisWeek > 0.001 ? capThisWeek : remaining, 5);
+    if (takeThisWeek > 0.001) {
+      const segmentStart = segments.length === 0 ? startDate : weekStart;
+      const segmentEnd = addWorkingDays(segmentStart, takeThisWeek);
+      segments.push({ start_date: segmentStart, end_date: segmentEnd, capacity_days: Math.round(takeThisWeek * 4) / 4, week_key: getWeekKey(weekStart) });
+      remaining -= takeThisWeek;
+    }
+    const next = new Date(`${weekStart}T12:00:00`);
+    next.setDate(next.getDate() + 7);
+    weekStart = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+  }
+  // Hvis medarbejderen aldrig har ledig kapacitet (fx alt allerede overbooket),
+  // så læg i det mindste ÉN samlet blok ind i stedet for slet ingenting.
+  if (!segments.length) {
+    segments.push({ start_date: startDate, end_date: addWorkingDays(startDate, totalDays), capacity_days: totalDays, week_key: getWeekKey(startDate) });
+  }
+  return segments;
 }
 
 function cleanTaskType(type) {
@@ -756,9 +874,18 @@ async function writeSyncLog(tasksImported, status, message) {
 }
 
 // ── FÆRDIG-MAIL TIL KUNDEN (afsendes når en medarbejder markerer en opgave færdig) ──
-// Kræver SMTP-oplysninger sat som miljøvariabler på Render:
-//   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM (valgfri, ellers bruges SMTP_USER)
-// Uden dem er funktionen bevidst en stille no-op — resten af appen påvirkes ikke.
+// To måder at sætte det op på — brug den der er nemmest for jer:
+//
+// A) Resend (anbefales — ingen Workspace-administrator-godkendelse nødvendig):
+//    Opret gratis på resend.com, verificér jeres domæne (eller brug deres test-adresse
+//    til at komme i gang med det samme), og sæt kun ÉN miljøvariabel på Render:
+//      RESEND_API_KEY
+//    (valgfrit: RESEND_FROM, ellers bruges "Gulv Master <onboarding@resend.dev>")
+//
+// B) Almindelig SMTP (kræver at jeres mailudbyder tillader App Passwords):
+//      SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM (valgfri)
+//
+// Er ingen af delene sat op, er funktionen bevidst en stille no-op.
 let mailTransport;
 function getMailTransport() {
   if (mailTransport !== undefined) return mailTransport;
@@ -775,9 +902,43 @@ function getMailTransport() {
   return mailTransport;
 }
 
-async function sendCompletionEmail(booking) {
+function mailIsConfigured() {
+  return !!process.env.RESEND_API_KEY || !!getMailTransport();
+}
+
+async function sendMailUniversal({ to, subject, text, html, attachments }) {
+  if (process.env.RESEND_API_KEY) {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM || 'Gulv Master <onboarding@resend.dev>',
+        to: [to],
+        subject,
+        text,
+        html,
+        attachments: (attachments || []).map(a => ({
+          filename: a.filename,
+          content: a.content.toString('base64')
+        }))
+      })
+    });
+    if (!response.ok) {
+      const raw = await response.text();
+      throw new Error(`Resend HTTP ${response.status}: ${raw.slice(0, 400)}`);
+    }
+    return;
+  }
   const transport = getMailTransport();
-  if (!transport) return; // Ikke sat op endnu — spring stille over.
+  if (!transport) throw new Error('Hverken RESEND_API_KEY eller SMTP er sat op');
+  await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, text, html, attachments });
+}
+
+async function sendCompletionEmail(booking) {
+  if (!mailIsConfigured()) return; // Ikke sat op endnu — spring stille over.
 
   const task = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [booking.task_id]);
   const toEmail = task?.customer_email;
@@ -809,14 +970,7 @@ async function sendCompletionEmail(booking) {
 
   let status = 'sent', error = null;
   try {
-    await transport.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to: toEmail,
-      subject,
-      text: bodyText,
-      html: bodyHtml,
-      attachments
-    });
+    await sendMailUniversal({ to: toEmail, subject, text: bodyText, html: bodyHtml, attachments });
   } catch (e) {
     status = 'error';
     error = redactSecret(e.message || 'Ukendt fejl').slice(0, 500);
@@ -826,6 +980,48 @@ async function sendCompletionEmail(booking) {
     'INSERT INTO completion_emails (booking_id,task_id,to_email,status,error,sent_at) VALUES ($1,$2,$3,$4,$5,' + nowTextSQL() + ')',
     [booking.id, booking.task_id, toEmail, status, error]
   );
+}
+
+// ── ZAPIER-WEBHOOK VED FÆRDIG OPGAVE ──
+// Alternativ/supplement til den direkte mail — nyttig hvis I hellere vil sende
+// rengørings-mailen via jeres eget Gmail/Outlook gennem Zapier (undgår helt
+// SMTP-opsætning/Workspace-administrator-godkendelse). Sæt miljøvariablen
+// ZAPIER_WEBHOOK_URL til en "Catch Hook"-URL fra en Zapier "Webhooks by
+// Zapier"-trigger, så kan I bygge resten af automatiseringen i Zapier selv
+// (fx: send Gmail med jeres egen skabelon og vedhæftning).
+async function sendCompletionWebhook(booking) {
+  const url = process.env.ZAPIER_WEBHOOK_URL;
+  if (!url) return; // Ikke sat op — spring stille over.
+
+  const task = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [booking.task_id]);
+  const user = await pgOne('SELECT name FROM users WHERE id=$1', [booking.user_id]);
+  const settingsRow = await pgOne("SELECT value FROM app_settings WHERE key='company_name'");
+
+  const payload = {
+    event: 'task_completed',
+    company_name: settingsRow?.value || 'Gulv Master Enterprise ApS',
+    task_id: booking.task_id,
+    booking_id: booking.id,
+    job_name: task?.job_name || null,
+    job_number: task?.job_number || null,
+    job_address: task?.job_address || null,
+    customer_email: task?.customer_email || null,
+    customer_phone: task?.customer_phone || null,
+    completed_by: user?.name || null,
+    completed_at: new Date().toISOString(),
+    jobtread_url: task?.jt_url || null
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error(`Zapier webhook HTTP ${response.status}`);
+  } catch (e) {
+    console.error('Kunne ikke sende Zapier-webhook:', e.message);
+  }
 }
 
 function taskConnection(cursor, fields) {
@@ -1439,18 +1635,24 @@ app.post('/api/capacity-reservations', auth, adminOnly, asyncRoute(async (req, r
   const body = req.body || {};
   const startDate = validDate(String(body.week_start || '')) ? String(body.week_start) : null;
   if (!startDate) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
-  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id)]);
+  const user = await pgOne("SELECT id,weekly_capacity FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id)]);
   if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
   const capacityDays = Math.max(0.25, Math.min(60, Number(body.capacity_days) || 1));
-  const endDate = addWorkingDays(startDate, capacityDays);
+  const weeklyCapacity = Number(user.weekly_capacity) || 5;
   const note = body.notes ? String(body.notes).slice(0, 1000) : null;
   const requestedLabel = String(body.label || '').trim().slice(0, 120);
   const existingTaskId = body.task_id ? String(body.task_id) : null;
+
+  // Fordel dagene ud over lige så mange uger som nødvendigt — fylder hver uges
+  // resterende kapacitet op først, i stedet for at proppe alt ind i uge 1.
+  const segments = await splitCapacityAcrossWeeks(user.id, weeklyCapacity, startDate, capacityDays);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     let taskId = existingTaskId;
     let taskLabel = requestedLabel;
+    const overallEnd = segments[segments.length - 1].end_date;
     if (taskId) {
       const task = await client.query("SELECT id,job_name,name FROM jt_tasks WHERE id=$1 AND COALESCE(source,'jobtread') <> 'capacity'", [taskId]);
       if (!task.rowCount) throw new Error('Opgaven blev ikke fundet');
@@ -1461,15 +1663,22 @@ app.post('/api/capacity-reservations', auth, adminOnly, asyncRoute(async (req, r
       await client.query(`
         INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
         VALUES ($1,$2,NULL,'Kapacitetsreserve','',$3,$4,'other',NULL,NULL,${nowTextSQL()},'capacity',${nowTextSQL()})
-      `, [taskId, taskLabel, startDate, endDate]);
+      `, [taskId, taskLabel, startDate, overallEnd]);
     }
-    const result = await client.query(`
-      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,planning_mode,capacity_label,updated_at)
-      VALUES ($1,$2,$3,5,$4,$5,NULL,$6,$7,'capacity',$8,${nowTextSQL()})
-      RETURNING id
-    `, [taskId, user.id, getWeekKey(startDate), capacityDays, note, startDate, endDate, taskLabel]);
+    const insertedIds = [];
+    for (const seg of segments) {
+      const result = await client.query(`
+        INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,planning_mode,capacity_label,updated_at)
+        VALUES ($1,$2,$3,5,$4,$5,NULL,$6,$7,'capacity',$8,${nowTextSQL()})
+        RETURNING id
+      `, [taskId, user.id, seg.week_key, seg.capacity_days, note, seg.start_date, seg.end_date, taskLabel]);
+      insertedIds.push(result.rows[0].id);
+    }
     await client.query('COMMIT');
-    res.json({ ok: true, id: result.rows[0].id });
+    const splitNote = segments.length > 1
+      ? `Fordelt over ${segments.length} uger (${segments.map(s => s.capacity_days + 'd').join(' + ')}), da medarbejderens uge-kapacitet ikke rakte til det hele på én gang.`
+      : null;
+    res.json({ ok: true, id: insertedIds[0], ids: insertedIds, weeks: segments.length, split_note: splitNote });
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
     res.status(400).json({ error: error.message || 'Kapacitetsreservationen kunne ikke gemmes' });
@@ -1774,6 +1983,80 @@ app.put('/api/task-requests/:id/reject', auth, adminOnly, asyncRoute(async (req,
   res.json({ ok: true });
 }));
 
+// ── KUNDEBESØG (hurtig booking + fast opfølgningsformular) ──
+app.post('/api/customer-visits/book', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const customerName = String(body.customer_name || '').trim();
+  if (!customerName) return res.status(400).json({ error: 'Skriv kundens navn' });
+  if (!validDate(String(body.date || ''))) return res.status(400).json({ error: 'Vælg en gyldig dato' });
+  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id)]);
+  if (!user) return res.status(400).json({ error: 'Vælg hvem der tager besøget' });
+
+  const taskId = `visit-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+  const address = body.address ? String(body.address).trim().slice(0, 300) : '';
+  const phone = body.phone ? String(body.phone).trim().slice(0, 60) : '';
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`
+      INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,is_visit,created_at)
+      VALUES ($1,'Kundebesøg',NULL,$2,$3,$4,$5,$5,'other',NULL,NULL,${nowTextSQL()},'manual',1,${nowTextSQL()})
+    `, [taskId, customerName, address, phone || null, body.date]);
+    const booking = await client.query(`
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,planning_mode,updated_at)
+      VALUES ($1,$2,$3,1,1,$4,$5,$6,$6,'daily',${nowTextSQL()})
+      RETURNING id
+    `, [taskId, user.id, getWeekKey(body.date), body.notes ? String(body.notes).slice(0, 500) : null, body.time || null, body.date]);
+    await client.query(`
+      INSERT INTO customer_visits (task_id,booking_id,customer_name,address,phone,created_at,updated_at)
+      VALUES ($1,$2,$3,$4,$5,${nowTextSQL()},${nowTextSQL()})
+    `, [taskId, booking.rows[0].id, customerName, address, phone]);
+    await client.query('COMMIT');
+    res.json({ ok: true, task_id: taskId, booking_id: booking.rows[0].id });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    res.status(400).json({ error: error.message || 'Kundebesøget kunne ikke oprettes' });
+  } finally {
+    client.release();
+  }
+}));
+
+app.get('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT * FROM customer_visits WHERE task_id=$1', [req.params.taskId]);
+  res.json(row || null);
+}));
+
+app.put('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const existing = await pgOne('SELECT * FROM customer_visits WHERE task_id=$1', [req.params.taskId]);
+  const fields = {
+    customer_name: body.customer_name !== undefined ? String(body.customer_name).trim().slice(0, 200) : existing?.customer_name || '',
+    address: body.address !== undefined ? String(body.address).trim().slice(0, 300) : existing?.address || '',
+    phone: body.phone !== undefined ? String(body.phone).trim().slice(0, 60) : existing?.phone || '',
+    email: body.email !== undefined ? String(body.email).trim().slice(0, 200) : existing?.email || '',
+    room_size: body.room_size !== undefined ? String(body.room_size).trim().slice(0, 100) : existing?.room_size || '',
+    floor_type_wanted: body.floor_type_wanted !== undefined ? String(body.floor_type_wanted).trim().slice(0, 200) : existing?.floor_type_wanted || '',
+    notes: body.notes !== undefined ? String(body.notes).slice(0, 3000) : existing?.notes || '',
+    recommended_solution: body.recommended_solution !== undefined ? String(body.recommended_solution).slice(0, 2000) : existing?.recommended_solution || '',
+    estimated_price: body.estimated_price !== undefined ? String(body.estimated_price).trim().slice(0, 100) : existing?.estimated_price || ''
+  };
+  if (existing) {
+    await pool.query(`
+      UPDATE customer_visits SET customer_name=$1,address=$2,phone=$3,email=$4,room_size=$5,floor_type_wanted=$6,notes=$7,recommended_solution=$8,estimated_price=$9,filled_by=$10,updated_at=${nowTextSQL()}
+      WHERE task_id=$11
+    `, [fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, req.user.id, req.params.taskId]);
+  } else {
+    await pool.query(`
+      INSERT INTO customer_visits (task_id,customer_name,address,phone,email,room_size,floor_type_wanted,notes,recommended_solution,estimated_price,filled_by,created_at,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()},${nowTextSQL()})
+    `, [req.params.taskId, fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, req.user.id]);
+  }
+  // Hold også selve opgaven (jt_tasks) opdateret, så navn/adresse/telefon følger med overalt i appen.
+  await pool.query(`UPDATE jt_tasks SET job_name=$1, job_address=$2, customer_phone=$3 WHERE id=$4 AND is_visit=1`, [fields.customer_name, fields.address, fields.phone || null, req.params.taskId]);
+  res.json({ ok: true });
+}));
+
 // ── FLYDENDE NOTE-BLOK (personlig scratch-pad, gemmes pr. bruger) ──
 app.get('/api/notes-widget', auth, asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM notes_widget WHERE user_id=$1', [req.user.id]);
@@ -1881,10 +2164,22 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
     return res.status(400).json({ error: 'En kapacitetsreservation kan ikke markeres som færdig' });
   }
   const completed = !!(req.body || {}).completed;
-  await pool.query(`UPDATE planning_bookings SET completed_at=${completed ? nowTextSQL() : 'NULL'} WHERE id=$1`, [current.id]);
+  const documented = !!(req.body || {}).documented;
+  const docNote = (req.body || {}).doc_note ? String((req.body || {}).doc_note).slice(0, 500) : null;
+  await pool.query(
+    `UPDATE planning_bookings SET completed_at=${completed ? nowTextSQL() : 'NULL'}, documented_at=${completed && documented ? nowTextSQL() : (completed ? 'documented_at' : 'NULL')} WHERE id=$1`,
+    [current.id]
+  );
+  if (completed && docNote) {
+    await pool.query(
+      `UPDATE planning_bookings SET notes=TRIM(BOTH E'\n' FROM COALESCE(notes,'') || E'\n\nDokumentation: ' || $1) WHERE id=$2`,
+      [docNote, current.id]
+    );
+  }
   res.json({ ok: true });
   if (completed) {
     sendCompletionEmail(current).catch(e => console.error('Færdig-mail fejlede:', e.message));
+    sendCompletionWebhook(current).catch(e => console.error('Zapier-webhook fejlede:', e.message));
   }
 }));
 
@@ -1929,7 +2224,7 @@ async function normalizeBooking(body) {
 function bookingSelect(where = '') {
   return `
     SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.avatar_url AS user_avatar_url,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
-           t.name AS task_name,t.job_name,t.job_address,t.job_number,t.job_lat,t.job_lng,t.customer_phone,t.customer_email,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
+           t.name AS task_name,t.job_name,t.job_address,t.job_number,t.job_lat,t.job_lng,t.customer_phone,t.customer_email,t.is_visit,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
     FROM planning_bookings b
     JOIN users u ON b.user_id=u.id
     JOIN jt_tasks t ON b.task_id=t.id

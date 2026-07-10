@@ -561,6 +561,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <strong class="week-label" id="plan-label"></strong>
         <button class="btn small" id="plan-next">Næste →</button>
         <button class="btn small primary" id="plan-today">📍 I dag</button>
+        <button class="btn small" id="book-visit-btn">📅 Book kundebesøg</button>
         <span class="hint">Drop = pop-up åbner · Enter for at bekræfte</span>
       </div>
       <div class="workforce-bar" id="plan-workforce-filters"></div>
@@ -790,7 +791,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
   <div class="board-outer" style="overflow:auto">
     <table class="task-table">
-      <thead><tr><th>Kunde</th><th>Opgave</th><th>Type</th><th>Medarbejder</th><th>Afsluttet</th><th>Dage</th><th>Faktureret</th><th></th></tr></thead>
+      <thead><tr><th>Kunde</th><th>Opgave</th><th>Type</th><th>Medarbejder</th><th>Afsluttet</th><th>Dage</th><th>Dokumentation</th><th>Faktureret</th><th></th></tr></thead>
       <tbody id="completed-body"></tbody>
     </table>
   </div>
@@ -971,6 +972,70 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn danger hidden" id="delete-capacity">Fjern reservation</button>
       <button class="btn" id="close-capacity">Annuller</button>
       <button class="btn primary" id="save-capacity">Gem kapacitet</button>
+    </div>
+  </div>
+</div>
+
+<!-- BOOK KUNDEBESØG (hurtig) -->
+<div class="mo" id="visit-book-modal">
+  <div class="modal manual-modal-modern">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">📅</span>
+      <div><div class="manual-modal-title">Book kundebesøg</div><div class="manual-modal-sub">Opretter en hurtig booking — udfyld selve besøgsformularen bagefter</div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Kundens navn</label>
+      <input id="visit-customer" class="input" placeholder="Fx Peter Lindgren">
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group"><label class="form-label">Dato</label><input id="visit-date" type="date" class="input"></div>
+        <div class="form-group"><label class="form-label">Tidspunkt <span class="opt-tag">valgfrit</span></label><input id="visit-time" type="time" class="input"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Hvem tager besøget</label><select id="visit-user" class="select"></select></div>
+        <div class="form-group"><label class="form-label">Telefon <span class="opt-tag">valgfrit</span></label><input id="visit-phone" class="input" placeholder="Fx 12 34 56 78"></div>
+      </div>
+      <label class="form-label">Adresse <span class="opt-tag">valgfrit</span></label>
+      <input id="visit-address" class="input" placeholder="Gade, postnr, by">
+      <label class="form-label" style="margin-top:12px">Note <span class="opt-tag">valgfrit</span></label>
+      <input id="visit-notes" class="input" placeholder="Fx aftalt telefonisk, ring 15 min før">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-visit-book">Annuller</button>
+      <button class="btn primary" id="save-visit-book">Book besøg</button>
+    </div>
+  </div>
+</div>
+
+<!-- BESØGSFORMULAR (fast, udfyldes efter besøget) -->
+<div class="mo" id="visit-form-modal">
+  <div class="modal manual-modal-modern" style="max-width:640px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">📋</span>
+      <div><div class="manual-modal-title">Besøgsformular</div><div class="manual-modal-sub">Udfyld efter kundebesøget, så alt er samlet ét sted</div></div>
+    </div>
+    <div class="modal-body-pad">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Kundens navn</label><input id="vf-name" class="input"></div>
+        <div class="form-group"><label class="form-label">Telefon</label><input id="vf-phone" class="input"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Adresse</label><input id="vf-address" class="input"></div>
+        <div class="form-group"><label class="form-label">E-mail <span class="opt-tag">valgfrit</span></label><input id="vf-email" class="input"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Rummets størrelse</label><input id="vf-room-size" class="input" placeholder="Fx 24 m²"></div>
+        <div class="form-group"><label class="form-label">Ønsket gulvtype</label><input id="vf-floor-type" class="input" placeholder="Fx eg plankegulv, olieret"></div>
+      </div>
+      <label class="form-label">Observationer / noter fra besøget</label>
+      <textarea id="vf-notes" class="input" rows="3" placeholder="Fx underlagets stand, fugt, niveauforskelle, adgangsforhold"></textarea>
+      <label class="form-label" style="margin-top:12px">Anbefalet løsning</label>
+      <textarea id="vf-solution" class="input" rows="2" placeholder="Hvad anbefaler I kunden?"></textarea>
+      <label class="form-label" style="margin-top:12px">Estimeret pris <span class="opt-tag">valgfrit</span></label>
+      <input id="vf-price" class="input" placeholder="Fx 18.000 - 22.000 kr.">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-visit-form">Luk</button>
+      <button class="btn primary" id="save-visit-form">Gem formular</button>
     </div>
   </div>
 </div>
@@ -1208,9 +1273,12 @@ function taskCard(t,scope){
       '<span class="badge '+esc(t.type_guess||'other')+'">'+type.label+'</span>'+
       '<span class="tag'+(t.source==='manual'?' manual':'')+'">'+(t.source==='manual'?'Manuel':'JT')+'</span>'+
       (t.job_number?'<span class="tag" title="Sagsnummer">#'+esc(t.job_number)+'</span>':'')+
+      (t.is_visit?'<span class="tag" style="background:#FEF3C7;color:#92400E">📅 Besøg</span>':'')+
       (planned?'<span class="tag">✓ '+t.assignment_count+'×</span>':'')+
       '<span class="muted-sm">'+esc((t.start_date||'—').slice(0,10))+'</span>'+
-    '</div>'+capacityHint+'</article>';
+    '</div>'+capacityHint+
+    (t.is_visit?'<button class="btn small" style="width:100%;margin-top:6px" data-action="open-visit-form" data-task-id="'+esc(t.id)+'">📋 Besøgsformular</button>':'')+
+    '</article>';
 }
 function renderPool(scope){
   filtersHTML(scope);
@@ -1357,12 +1425,12 @@ function renderCapacity(){
   // Body
   if(capacityGroupBy==='trade'){
     var html2='';
-    allTrades().forEach(function(trade){
-      var members=users.filter(function(u){return u.active&&u.role==='employee'&&u.trade===trade;});
-      if(!members.length)return;
-      html2+='<tr class="group-row"><td class="staff-cell">'+
-        '<div class="staff-line"><div class="avatar" style="background:#2563EB22;color:#2563EB">'+esc(trade.slice(0,2).toUpperCase())+'</div>'+
-        '<div><div class="staff-name">'+esc(trade)+'</div><div class="staff-role">'+members.length+' medarbejder'+(members.length!==1?'e':'')+'</div></div></div>'+
+    function renderTradeRow(trade,members,isVendor){
+      if(!members.length)return '';
+      var iconBg=isVendor?'#7C3AED22':'#2563EB22',iconColor=isVendor?'#7C3AED':'#2563EB';
+      var row='<tr class="group-row"><td class="staff-cell">'+
+        '<div class="staff-line"><div class="avatar" style="background:'+iconBg+';color:'+iconColor+'">'+esc(trade.slice(0,2).toUpperCase())+'</div>'+
+        '<div><div class="staff-name">'+esc(trade)+(isVendor?' <span class="muted-sm">(Ekstern)</span>':' <span class="muted-sm">(Intern)</span>')+'</div><div class="staff-role">'+members.length+' medarbejder'+(members.length!==1?'e':'')+'</div></div></div>'+
         '</td>';
       weeks.forEach(function(m){
         var cap=members.reduce(function(n,u){return n+(+u.weekly_capacity||5);},0);
@@ -1370,13 +1438,19 @@ function renderCapacity(){
         var free=Math.max(0,cap-booked);
         var pct=cap?Math.min(booked/cap*100,100):0;
         var cc=capClass(booked,cap);
-        html2+='<td class="cap-cell"><div class="cap-drop '+(free<=0?cc:'cap-free')+'">'+
+        row+='<td class="cap-cell"><div class="cap-drop '+(free<=0?cc:'cap-free')+'">'+
           '<div class="cap-num '+(free<=0?cc:'cap-free')+'">'+(free<=0?'Fuldt':free.toFixed(1)+' d fri')+'</div>'+
           '<div class="muted-sm" style="text-align:center;margin-top:2px">'+booked.toFixed(1)+' / '+cap+' d booket</div>'+
           '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+pct+'%;background:'+barColor(booked,cap)+'"></div></div>'+
           '</div></td>';
       });
-      html2+='</tr>';
+      return row+'</tr>';
+    }
+    allTrades().forEach(function(trade){
+      var internal=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type!=='vendor'&&u.trade===trade;});
+      var external=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type==='vendor'&&u.trade===trade;});
+      html2+=renderTradeRow(trade,internal,false);
+      html2+=renderTradeRow(trade,external,true);
     });
     document.getElementById('cap-body').innerHTML=html2||'<tr><td style="padding:18px;color:var(--muted)">Ingen fag registreret på aktive medarbejdere endnu.</td></tr>';
     return;
@@ -1397,9 +1471,11 @@ function renderCapacity(){
       var pills=items.map(function(b){
         var capacityOnly=isCapacityBooking(b);
         var label=capacityOnly?(b.capacity_label||b.task_name||'Kapacitetsreservation'):(b.job_name||b.task_name||'');
-        return '<div class="cap-job '+(capacityOnly?'capacity-reservation':'draggable-assignment '+esc(b.type_guess||'other'))+'" draggable="true" data-booking-id="'+b.id+'" title="'+esc(label)+' — træk for at flytte eller kopiere til en anden uge">'+
+        var wd=workDates(b),overlapInThisWeek=wd.filter(function(ds){var q=date(ds);return q>=m&&q<=end;}).length;
+        var daysThisWeek=Math.round((capDaysOf(b)/wd.length)*overlapInThisWeek*4)/4;
+        return '<div class="cap-job '+(capacityOnly?'capacity-reservation':'draggable-assignment '+esc(b.type_guess||'other'))+'" draggable="true" data-booking-id="'+b.id+'" title="'+esc(label)+' — '+daysThisWeek+' d denne uge (i alt '+capDaysOf(b)+' d) — træk for at flytte eller kopiere til en anden uge">'+
           '<span class="cap-job-name">'+(capacityOnly?'◌ ':'')+esc(label)+'</span>'+
-          '<span class="cap-job-days">'+capDaysOf(b)+'d</span>'+
+          '<span class="cap-job-days">'+daysThisWeek+'d</span>'+
           (capacityOnly?'':'<button class="pill-copy" title="Kopiér" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>')+
           '<button class="cap-job-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button>'+
           '</div>';
@@ -1472,7 +1548,11 @@ async function saveCapacityReservation(){
   var body={user_id:+document.getElementById('capacity-user').value,week_start:document.getElementById('capacity-week').value,capacity_days:+document.getElementById('capacity-days').value||1,label:document.getElementById('capacity-label').value.trim(),notes:document.getElementById('capacity-note').value.trim()||null};
   if(capacityCtx.taskId)body.task_id=capacityCtx.taskId;
   var r=capacityCtx.bookingId?await api('/api/capacity-reservations/'+capacityCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/capacity-reservations',{method:'POST',body:JSON.stringify(body)});
-  if(r&&r.ok){closeModal('capacity-modal');capacityCtx=null;toast('Kapacitet gemt','✓');await loadAll();}
+  if(r&&r.ok){
+    closeModal('capacity-modal');capacityCtx=null;
+    toast(r.split_note?('Gemt — '+r.split_note):'Kapacitet gemt','✓');
+    await loadAll();
+  }
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function deleteCapacityReservation(){
@@ -1800,6 +1880,72 @@ async function handleDrop(e,zone){
 
 // MANUAL TASK
 function openManual(){document.getElementById('manual-date').value=iso(new Date());['manual-customer','manual-name','manual-address','manual-phone','manual-job-number'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('manual-days').value='1';document.getElementById('manual-type').value='lay';document.getElementById('manual-modal').classList.add('open');}
+
+// KUNDEBESØG
+function openVisitBookModal(){
+  document.getElementById('visit-date').value=iso(new Date());
+  ['visit-customer','visit-time','visit-phone','visit-address','visit-notes'].forEach(function(id){document.getElementById(id).value='';});
+  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
+  document.getElementById('visit-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
+  document.getElementById('visit-book-modal').classList.add('open');
+}
+async function saveVisitBooking(){
+  var name=document.getElementById('visit-customer').value.trim();
+  if(!name){toast('Skriv kundens navn','⚠');return;}
+  var body={
+    customer_name:name,
+    date:document.getElementById('visit-date').value,
+    time:document.getElementById('visit-time').value||null,
+    user_id:+document.getElementById('visit-user').value,
+    phone:document.getElementById('visit-phone').value.trim(),
+    address:document.getElementById('visit-address').value.trim(),
+    notes:document.getElementById('visit-notes').value.trim()
+  };
+  var r=await api('/api/customer-visits/book',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){
+    closeModal('visit-book-modal');
+    toast('Kundebesøg booket ✓','📅');
+    await loadAll();
+    openVisitFormModal(r.task_id); // klar til at blive udfyldt med det samme, hvis man allerede ved noget
+  } else if(r)toast(r.error||'Fejl','❌');
+}
+var visitFormTaskId=null;
+async function openVisitFormModal(taskId){
+  visitFormTaskId=taskId;
+  var t=tasks.find(function(x){return x.id===taskId;});
+  ['vf-name','vf-phone','vf-address','vf-email','vf-room-size','vf-floor-type','vf-notes','vf-solution','vf-price'].forEach(function(id){document.getElementById(id).value='';});
+  if(t){document.getElementById('vf-name').value=t.job_name||'';document.getElementById('vf-phone').value=t.customer_phone||'';document.getElementById('vf-address').value=t.job_address||'';}
+  var existing=await api('/api/customer-visits/'+encodeURIComponent(taskId));
+  if(existing){
+    document.getElementById('vf-name').value=existing.customer_name||(t?t.job_name:'')||'';
+    document.getElementById('vf-phone').value=existing.phone||'';
+    document.getElementById('vf-address').value=existing.address||'';
+    document.getElementById('vf-email').value=existing.email||'';
+    document.getElementById('vf-room-size').value=existing.room_size||'';
+    document.getElementById('vf-floor-type').value=existing.floor_type_wanted||'';
+    document.getElementById('vf-notes').value=existing.notes||'';
+    document.getElementById('vf-solution').value=existing.recommended_solution||'';
+    document.getElementById('vf-price').value=existing.estimated_price||'';
+  }
+  document.getElementById('visit-form-modal').classList.add('open');
+}
+async function saveVisitForm(){
+  if(!visitFormTaskId)return;
+  var body={
+    customer_name:document.getElementById('vf-name').value.trim(),
+    phone:document.getElementById('vf-phone').value.trim(),
+    address:document.getElementById('vf-address').value.trim(),
+    email:document.getElementById('vf-email').value.trim(),
+    room_size:document.getElementById('vf-room-size').value.trim(),
+    floor_type_wanted:document.getElementById('vf-floor-type').value.trim(),
+    notes:document.getElementById('vf-notes').value,
+    recommended_solution:document.getElementById('vf-solution').value,
+    estimated_price:document.getElementById('vf-price').value.trim()
+  };
+  var r=await api('/api/customer-visits/'+encodeURIComponent(visitFormTaskId),{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Besøgsformular gemt ✓','✓');closeModal('visit-form-modal');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
 async function saveManual(){
   var b={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),customer_phone:document.getElementById('manual-phone').value.trim(),job_number:document.getElementById('manual-job-number').value.trim(),start_date:document.getElementById('manual-date').value,days:+document.getElementById('manual-days').value||1,type_guess:document.getElementById('manual-type').value};
   var r=await api('/api/tasks/manual',{method:'POST',body:JSON.stringify(b)});
@@ -2226,6 +2372,7 @@ function renderCompleted(){
   }).sort(function(a,b){return String(b.completed_at).localeCompare(String(a.completed_at));});
   body.innerHTML=list.map(function(b){
     var type=TYPE[b.type_guess||'other']||TYPE.other;
+    var docBadge=b.documented_at?'<span class="tag" style="background:#DCFCE7;color:#15803D" title="Fugtmåling, gulvniveau og andre forhold bekræftet dokumenteret">✓ Dokumenteret</span>':'<span class="tag" style="background:#FEF3C7;color:#92400E" title="Medarbejderen bekræftede ikke dokumentationstjeklisten ved afslutning">⚠ Ikke bekræftet</span>';
     return '<tr class="completed-row'+(b.invoiced?' invoiced':'')+'">'+
       '<td><strong>'+esc(b.job_name||'')+'</strong></td>'+
       '<td>'+esc(b.task_name||'')+'</td>'+
@@ -2233,10 +2380,11 @@ function renderCompleted(){
       '<td>'+esc(b.user_name||'')+'</td>'+
       '<td>'+esc(String(b.completed_at).slice(0,16).replace('T',' '))+'</td>'+
       '<td>'+capDaysOf(b)+'d</td>'+
+      '<td>'+docBadge+'</td>'+
       '<td style="text-align:center"><input type="checkbox" class="completed-check" data-action="toggle-invoiced" data-booking-id="'+b.id+'" '+(b.invoiced?'checked':'')+'></td>'+
       '<td><button class="btn small" data-action="toggle-completed" data-booking-id="'+b.id+'" data-completed="0">↩ Fortryd</button></td>'+
       '</tr>';
-  }).join('')||'<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted)">Ingen færdige opgaver her.</td></tr>';
+  }).join('')||'<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">Ingen færdige opgaver her.</td></tr>';
 }
 async function toggleInvoiced(bookingId,invoiced){
   var r=await api('/api/assignments/'+bookingId+'/invoice',{method:'PUT',body:JSON.stringify({invoiced:invoiced})});
@@ -2458,6 +2606,11 @@ function bind(){
   document.getElementById('logout-btn').onclick=logout;
   document.getElementById('employee-link').onclick=function(){window.location.href='/employee';};
   document.getElementById('sync-btn').onclick=syncNow;
+  document.getElementById('book-visit-btn').onclick=openVisitBookModal;
+  document.getElementById('close-visit-book').onclick=function(){closeModal('visit-book-modal');};
+  document.getElementById('save-visit-book').onclick=saveVisitBooking;
+  document.getElementById('close-visit-form').onclick=function(){closeModal('visit-form-modal');};
+  document.getElementById('save-visit-form').onclick=saveVisitForm;
   document.getElementById('sync-phones-btn').onclick=syncPhonesNow;
   document.getElementById('clear-plan-btn').onclick=clearPlan;
   document.getElementById('plan-prev').onclick=function(){planOffset--;renderPlan();};
@@ -2545,6 +2698,7 @@ function bind(){
     if(a){
       var act=a.dataset.action;
       if(act==='manual')openManual();
+      if(act==='open-visit-form'){e.stopPropagation();openVisitFormModal(a.dataset.taskId);}
       if(act==='goto-tasklist'){var sf=document.getElementById('tasklist-status-filter');if(sf)sf.value=a.dataset.filter;switchPage('tasklist');}
       if(act==='capacity-add')openCapacityModal({weekStart:iso(mon(new Date()))});
       if(act==='add-capacity')openCapacityModal({userId:+a.dataset.userId,weekStart:a.dataset.date});

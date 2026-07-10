@@ -23,6 +23,11 @@
 .req-head{background:linear-gradient(135deg,var(--navy),#1e3a6e)}
 .req-icon{display:inline-grid;place-items:center;width:24px;height:24px;background:rgba(255,255,255,.18);border-radius:8px;font-size:13px}
 .req-intro{font-size:11.5px;color:var(--muted);margin:0 0 14px;line-height:1.5;background:#F8FAFC;border-left:3px solid var(--accent,#2563eb);padding:8px 10px;border-radius:0 8px 8px 0}
+.doc-check{display:flex;align-items:flex-start;gap:11px;padding:12px;border:1.5px solid var(--border,#E2E8F0);border-radius:10px;margin-bottom:9px;cursor:pointer;transition:.15s}
+.doc-check:has(input:checked){background:#F0FDF4;border-color:#86EFAC}
+.doc-check input{width:19px;height:19px;flex-shrink:0;margin-top:1px;accent-color:#16A34A}
+.doc-check span{font-size:12.5px;line-height:1.45;color:var(--ink,#0f172a)}
+.doc-check span strong{display:block;font-size:13px;margin-bottom:1px}
 .req-tabs{display:flex;gap:6px;margin-bottom:14px;background:#F1F5F9;border-radius:10px;padding:4px}
 .req-tab{flex:1;border:0;background:none;padding:8px 6px;font-size:12px;font-weight:700;color:var(--muted);border-radius:8px;cursor:pointer;transition:.15s}
 .req-tab.active{background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.1)}
@@ -123,6 +128,22 @@
         </form>
       </div>
       <div id="req-history"></div>
+    </div>
+  </div>
+</div>
+<div id="doc-modal" class="modal-backdrop" onclick="closeDocOnBackdrop(event)">
+  <div class="modal doc-modal">
+    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon">📋</span> Bekræft opgaven er færdig</div><button class="modal-close" onclick="closeDocModal()">Luk</button></div>
+    <div class="modal-body">
+      <p class="req-intro">Før opgaven markeres som færdig, skal du bekræfte at følgende er dokumenteret — det er vigtigt for sagen og for kunden.</p>
+      <label class="doc-check"><input type="checkbox" id="doc-moisture"><span><strong>Fugtmålinger</strong><br>Fugtprocent i underlag/gulv er målt og noteret</span></label>
+      <label class="doc-check"><input type="checkbox" id="doc-level"><span><strong>Niveau af gulvet</strong><br>Gulvets niveau/planhed er tjekket og dokumenteret</span></label>
+      <label class="doc-check"><input type="checkbox" id="doc-other"><span><strong>Andre forhold</strong><br>Evt. skader, afvigelser eller særlige forhold er noteret</span></label>
+      <label class="req-label" style="margin-top:14px">Kort note <span style="opacity:.6;font-weight:500">(valgfrit)</span></label>
+      <textarea id="doc-note" class="req-textarea" rows="2" placeholder="Fx alt som forventet, ingen bemærkninger"></textarea>
+      <div id="doc-feedback" class="req-feedback"></div>
+      <button type="button" class="req-submit" id="doc-confirm-btn" onclick="confirmDocumentationAndComplete()"><span class="req-submit-label">Bekræft & upload filer på sagen →</span></button>
+      <p style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0 0">Åbner JobTreads filer for denne sag i en ny fane, så du kan lægge billeder/dokumenter ind med det rigtige tag.</p>
     </div>
   </div>
 </div>
@@ -361,7 +382,7 @@ async function submitTaskRequest(){
   }
 }
 
-async function toggleTaskDone(id,done){
+async function toggleTaskDone(id,done,documented,docNote){
   const a=assignments.find(x=>+x.id===+id);
   if(!a)return;
   const previous=a.completed_at;
@@ -371,7 +392,7 @@ async function toggleTaskDone(id,done){
   render();
   toast(done?'Marked as done ✓':'Undone ↩');
   try{
-    const r=await api('/api/assignments/'+id+'/complete',{method:'PUT',body:JSON.stringify({completed:done})});
+    const r=await api('/api/assignments/'+id+'/complete',{method:'PUT',body:JSON.stringify({completed:done,documented:!!documented,doc_note:docNote||null})});
     console.log('[Mark as done] server response:',r);
     if(!r||!r.ok){
       a.completed_at=previous;render();
@@ -382,6 +403,40 @@ async function toggleTaskDone(id,done){
     a.completed_at=previous;render();
     console.error('Complete-toggle error:',e);
     toast('No connection — the change was not saved');
+  }
+}
+
+// DOKUMENTATIONS-BEKRÆFTELSE (skal bekræftes før en opgave kan markeres færdig)
+let docModalTaskId=null;
+function openDocModal(id){
+  docModalTaskId=id;
+  document.getElementById('doc-moisture').checked=false;
+  document.getElementById('doc-level').checked=false;
+  document.getElementById('doc-other').checked=false;
+  document.getElementById('doc-note').value='';
+  document.getElementById('doc-feedback').className='req-feedback';
+  document.getElementById('doc-modal').classList.add('open');
+}
+function closeDocModal(){document.getElementById('doc-modal').classList.remove('open');docModalTaskId=null;}
+function closeDocOnBackdrop(e){if(e.target===document.getElementById('doc-modal'))closeDocModal();}
+async function confirmDocumentationAndComplete(){
+  const feedback=document.getElementById('doc-feedback');
+  const allChecked=document.getElementById('doc-moisture').checked&&document.getElementById('doc-level').checked&&document.getElementById('doc-other').checked;
+  if(!allChecked){
+    feedback.textContent='Bekræft alle tre punkter, før du fortsætter';
+    feedback.className='req-feedback show error';
+    return;
+  }
+  const id=docModalTaskId;
+  const a=assignments.find(x=>+x.id===+id);
+  const note=document.getElementById('doc-note').value.trim();
+  closeDocModal();
+  await toggleTaskDone(id,true,true,note);
+  // Åbn JobTreads filer for denne sag, så billeder/dokumenter kan lægges direkte ind med det rigtige tag.
+  if(a&&a.job_id){
+    window.open('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files','_blank');
+  }else{
+    toast('Ingen JobTread-sag koblet på denne opgave — filer kan ikke åbnes automatisk');
   }
 }
 
@@ -429,7 +484,7 @@ function render(){
       const jobFilesLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files'):'https://app.jobtread.com';
       const timeChip=hasTime?`<span class="time-chip">⏰ ${esc(a.start_time)}</span>`:`<span class="time-chip untimed">🕓 Self-scheduled</span>`;
       const isDone=!!a.completed_at;
-      const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:`<button class="action done-btn" type="button" onclick="toggleTaskDone(${noteId},true)">✅ Mark as done</button>`;
+      const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:`<button class="action done-btn" type="button" onclick="openDocModal(${noteId})">✅ Mark as done</button>`;
       out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}<span class="badge" style="background:${t[1]};color:${t[2]}">${t[0]}</span></div></div><div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Planned: ${esc(a.days)} day${Number(a.days)!==1?'s':''}</div></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button><a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Read about the task</a><a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Job files</a><a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track your time</a>${doneBtn}</div></article>`;
     });}
     out+='</section>';});
