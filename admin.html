@@ -128,6 +128,13 @@ button,input,select{font:inherit}
 .capacity-reservation .cap-job-days{background:rgba(124,58,237,.12)!important}
 .capacity-context{display:flex;align-items:center;gap:7px;padding:8px 10px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:9px;color:#5B21B6;font-size:10px;font-weight:700;margin:0 0 8px}
 .capacity-modal-note{font-size:10px;color:var(--muted);line-height:1.45;margin:-2px 0 12px}
+.checklist-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:6px}
+.checklist-item.done{background:#F0FDF4;border-color:#86EFAC}
+.checklist-item.done .checklist-item-title{text-decoration:line-through;opacity:.65}
+.checklist-item input[type=checkbox]{width:17px;height:17px;accent-color:#16A34A;flex-shrink:0}
+.checklist-item-title{flex:1;font-size:12px}
+.checklist-item-del{border:0;background:transparent;cursor:pointer;opacity:.5;font-size:13px}
+.checklist-item-del:hover{opacity:1}
 .capacity-chip{display:inline-flex;align-items:center;gap:4px;background:#F5F3FF;color:#5B21B6;border:1px solid #DDD6FE;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:800}
 .task-completion-section{margin:8px 0 6px;padding:7px 8px;border-radius:8px;background:#F0FDF4;border:1px solid #BBF7D0;color:#166534;font-size:10px;font-weight:800}
 .task-card.completed{cursor:default}.task-card.completed:hover{border-color:#86EFAC;box-shadow:none}
@@ -976,6 +983,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
+<!-- TJEKPUNKTER PÅ EN OPGAVE -->
+<div class="mo" id="checklist-modal">
+  <div class="modal">
+    <h3>☑ Tjekpunkter</h3>
+    <div class="capacity-modal-note" id="checklist-task-label"></div>
+    <div id="checklist-items" style="margin:12px 0"></div>
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><input id="checklist-new-title" class="input" placeholder="Fx Tag billede af fugtmåler før opstart"></div>
+      <button class="btn primary small" id="checklist-add-btn" style="align-self:flex-end;margin-bottom:14px">+ Tilføj</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-checklist">Luk</button>
+    </div>
+  </div>
+</div>
+
 <!-- BOOK KUNDEBESØG (hurtig) -->
 <div class="mo" id="visit-book-modal">
   <div class="modal manual-modal-modern">
@@ -1278,6 +1301,7 @@ function taskCard(t,scope){
       '<span class="muted-sm">'+esc((t.start_date||'—').slice(0,10))+'</span>'+
     '</div>'+capacityHint+
     (t.is_visit?'<button class="btn small" style="width:100%;margin-top:6px" data-action="open-visit-form" data-task-id="'+esc(t.id)+'">📋 Besøgsformular</button>':'')+
+    '<button class="btn small" style="width:100%;margin-top:4px" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjekpunkter</button>'+
     '</article>';
 }
 function renderPool(scope){
@@ -1425,12 +1449,12 @@ function renderCapacity(){
   // Body
   if(capacityGroupBy==='trade'){
     var html2='';
-    function renderTradeRow(trade,members,isVendor){
+    function renderGroupRow(label,members,isVendor){
       if(!members.length)return '';
       var iconBg=isVendor?'#7C3AED22':'#2563EB22',iconColor=isVendor?'#7C3AED':'#2563EB';
       var row='<tr class="group-row"><td class="staff-cell">'+
-        '<div class="staff-line"><div class="avatar" style="background:'+iconBg+';color:'+iconColor+'">'+esc(trade.slice(0,2).toUpperCase())+'</div>'+
-        '<div><div class="staff-name">'+esc(trade)+(isVendor?' <span class="muted-sm">(Ekstern)</span>':' <span class="muted-sm">(Intern)</span>')+'</div><div class="staff-role">'+members.length+' medarbejder'+(members.length!==1?'e':'')+'</div></div></div>'+
+        '<div class="staff-line"><div class="avatar" style="background:'+iconBg+';color:'+iconColor+'">'+esc(label.slice(0,2).toUpperCase())+'</div>'+
+        '<div><div class="staff-name">'+esc(label)+'</div><div class="staff-role">'+members.length+' medarbejder'+(members.length!==1?'e':'')+'</div></div></div>'+
         '</td>';
       weeks.forEach(function(m){
         var cap=members.reduce(function(n,u){return n+(+u.weekly_capacity||5);},0);
@@ -1446,13 +1470,30 @@ function renderCapacity(){
       });
       return row+'</tr>';
     }
+    function sectionHeader(label){return '<tr class="group-section-row"><td colspan="'+(weeks.length+1)+'" style="padding:10px 14px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--ice)">'+label+'</td></tr>';}
+
+    // Interne — grupperet efter Fag (som før)
+    html2+=sectionHeader('👷 Interne medarbejdere — efter fag');
+    var internalRows='';
     allTrades().forEach(function(trade){
       var internal=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type!=='vendor'&&u.trade===trade;});
-      var external=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type==='vendor'&&u.trade===trade;});
-      html2+=renderTradeRow(trade,internal,false);
-      html2+=renderTradeRow(trade,external,true);
+      internalRows+=renderGroupRow(trade,internal,false);
     });
-    document.getElementById('cap-body').innerHTML=html2||'<tr><td style="padding:18px;color:var(--muted)">Ingen fag registreret på aktive medarbejdere endnu.</td></tr>';
+    html2+=internalRows||'<tr><td colspan="'+(weeks.length+1)+'" style="padding:14px;color:var(--muted)">Ingen fag registreret på interne medarbejdere endnu.</td></tr>';
+
+    // Eksterne — grupperet efter Vendor-gruppe (det felt vendors faktisk bruger,
+    // fremfor "Fag" som sjældent er udfyldt på eksterne).
+    html2+=sectionHeader('🔧 Eksterne / vendors — efter vendor-gruppe');
+    var vendorGroups={};
+    users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type==='vendor';}).forEach(function(u){
+      var g=u.vendor_group||u.trade||'Vendor (ugrupperet)';
+      (vendorGroups[g]=vendorGroups[g]||[]).push(u);
+    });
+    var externalRows='';
+    Object.keys(vendorGroups).sort().forEach(function(g){externalRows+=renderGroupRow(g,vendorGroups[g],true);});
+    html2+=externalRows||'<tr><td colspan="'+(weeks.length+1)+'" style="padding:14px;color:var(--muted)">Ingen aktive eksterne/vendors endnu.</td></tr>';
+
+    document.getElementById('cap-body').innerHTML=html2;
     return;
   }
   var grouped=teamList('capacity'),html='';
@@ -1880,6 +1921,48 @@ async function handleDrop(e,zone){
 
 // MANUAL TASK
 function openManual(){document.getElementById('manual-date').value=iso(new Date());['manual-customer','manual-name','manual-address','manual-phone','manual-job-number'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('manual-days').value='1';document.getElementById('manual-type').value='lay';document.getElementById('manual-modal').classList.add('open');}
+
+// TJEKPUNKTER PÅ EN OPGAVE
+var checklistTaskId=null;
+async function openChecklistModal(taskId){
+  checklistTaskId=taskId;
+  var t=tasks.find(function(x){return x.id===taskId;});
+  document.getElementById('checklist-task-label').textContent=t?((t.job_name||'')+' — '+(t.name||'')):'';
+  document.getElementById('checklist-new-title').value='';
+  await renderChecklistItems();
+  document.getElementById('checklist-modal').classList.add('open');
+}
+async function renderChecklistItems(){
+  var el=document.getElementById('checklist-items');
+  el.innerHTML='<p class="muted-sm">Henter…</p>';
+  var items=await api('/api/tasks/'+encodeURIComponent(checklistTaskId)+'/checklist');
+  if(!items||!items.length){el.innerHTML='<p class="muted-sm">Ingen tjekpunkter endnu — tilføj et nedenfor.</p>';return;}
+  el.innerHTML=items.map(function(it){
+    return '<div class="checklist-item'+(it.done?' done':'')+'">'+
+      '<input type="checkbox" '+(it.done?'checked':'')+' data-action="toggle-checklist-item" data-id="'+it.id+'">'+
+      '<span class="checklist-item-title">'+esc(it.title)+'</span>'+
+      '<button class="checklist-item-del" data-action="delete-checklist-item" data-id="'+it.id+'" title="Slet">×</button>'+
+      '</div>';
+  }).join('');
+}
+async function addChecklistItem(){
+  var title=document.getElementById('checklist-new-title').value.trim();
+  if(!title)return;
+  var r=await api('/api/tasks/'+encodeURIComponent(checklistTaskId)+'/checklist',{method:'POST',body:JSON.stringify({title:title})});
+  if(r&&r.ok){document.getElementById('checklist-new-title').value='';await renderChecklistItems();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function toggleChecklistItem(id,done){
+  var r=await api('/api/checklist/'+id,{method:'PUT',body:JSON.stringify({done:done})});
+  if(r&&r.ok)await renderChecklistItems();
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function deleteChecklistItem(id){
+  if(!confirm('Slet dette tjekpunkt?'))return;
+  var r=await api('/api/checklist/'+id,{method:'DELETE'});
+  if(r&&r.ok)await renderChecklistItems();
+  else if(r)toast(r.error||'Fejl','❌');
+}
 
 // KUNDEBESØG
 function openVisitBookModal(){
@@ -2607,6 +2690,9 @@ function bind(){
   document.getElementById('employee-link').onclick=function(){window.location.href='/employee';};
   document.getElementById('sync-btn').onclick=syncNow;
   document.getElementById('book-visit-btn').onclick=openVisitBookModal;
+  document.getElementById('close-checklist').onclick=function(){closeModal('checklist-modal');};
+  document.getElementById('checklist-add-btn').onclick=addChecklistItem;
+  document.getElementById('checklist-new-title').addEventListener('keydown',function(e){if(e.key==='Enter')addChecklistItem();});
   document.getElementById('close-visit-book').onclick=function(){closeModal('visit-book-modal');};
   document.getElementById('save-visit-book').onclick=saveVisitBooking;
   document.getElementById('close-visit-form').onclick=function(){closeModal('visit-form-modal');};
@@ -2699,6 +2785,9 @@ function bind(){
       var act=a.dataset.action;
       if(act==='manual')openManual();
       if(act==='open-visit-form'){e.stopPropagation();openVisitFormModal(a.dataset.taskId);}
+      if(act==='open-checklist'){e.stopPropagation();openChecklistModal(a.dataset.taskId);}
+      if(act==='toggle-checklist-item'){e.stopPropagation();toggleChecklistItem(+a.dataset.id,a.checked);}
+      if(act==='delete-checklist-item'){e.stopPropagation();deleteChecklistItem(+a.dataset.id);}
       if(act==='goto-tasklist'){var sf=document.getElementById('tasklist-status-filter');if(sf)sf.value=a.dataset.filter;switchPage('tasklist');}
       if(act==='capacity-add')openCapacityModal({weekStart:iso(mon(new Date()))});
       if(act==='add-capacity')openCapacityModal({userId:+a.dataset.userId,weekStart:a.dataset.date});

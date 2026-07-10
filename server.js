@@ -252,6 +252,18 @@ async function initSchema() {
       sent_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    CREATE TABLE IF NOT EXISTS task_checklist_items (
+      id SERIAL PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      done INTEGER DEFAULT 0,
+      done_by INTEGER,
+      done_at TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_checklist_task ON task_checklist_items(task_id);
+
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS is_visit INTEGER DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS customer_visits (
@@ -451,10 +463,16 @@ async function splitCapacityAcrossWeeks(userId, weeklyCapacity, startDate, total
     guard++;
     const alreadyBooked = await weeklyLoadForUser(userId, weekStart, excludeBookingId);
     const capThisWeek = Math.max(0, weeklyCapacity - alreadyBooked);
-    const takeThisWeek = Math.min(remaining, capThisWeek > 0.001 ? capThisWeek : remaining, 5);
+    const takeThisWeek = Math.min(remaining, capThisWeek > 0.001 ? capThisWeek : remaining);
     if (takeThisWeek > 0.001) {
       const segmentStart = segments.length === 0 ? startDate : weekStart;
-      const segmentEnd = addWorkingDays(segmentStart, takeThisWeek);
+      // Slutdatoen er altid ugens fredag. capacity_days er en belastnings-mængde
+      // (kan sagtens være >5 for en medarbejder med høj ugekapacitet), ikke et
+      // bogstaveligt antal kalenderdage — matcher hvordan udnyttelsen allerede
+      // beregnes proportionalt (capacity_days / antal hverdage i intervallet).
+      const fri = new Date(`${weekStart}T12:00:00`);
+      fri.setDate(fri.getDate() + 4);
+      const segmentEnd = `${fri.getFullYear()}-${String(fri.getMonth() + 1).padStart(2, '0')}-${String(fri.getDate()).padStart(2, '0')}`;
       segments.push({ start_date: segmentStart, end_date: segmentEnd, capacity_days: Math.round(takeThisWeek * 4) / 4, week_key: getWeekKey(weekStart) });
       remaining -= takeThisWeek;
     }
@@ -718,15 +736,14 @@ app.get('/api/settings/completion-email', auth, adminOnly, asyncRoute(async (req
     body: map.completion_email_body || 'Hej,\n\nVi vil gerne informere dig om, at vi nu er færdige med arbejdet hos dig ({opgave}).\n\nVedhæftet finder du en vejledning til efterbehandling/rengøring.\n\nMange tak for denne gang!\n\nVenlig hilsen\n{firma}',
     has_pdf: !!(pdfRow && pdfRow.value),
     pdf_filename: map.cleaning_pdf_filename || null,
-    mail_configured: !!getMailTransport()
+    mail_configured: mailIsConfigured()
   });
 }));
 
 app.post('/api/settings/test-completion-email', auth, adminOnly, asyncRoute(async (req, res) => {
   const toEmail = String((req.body || {}).to || '').trim();
   if (!toEmail) return res.status(400).json({ error: 'Skriv en e-mailadresse at teste med' });
-  const transport = getMailTransport();
-  if (!transport) return res.status(400).json({ error: 'SMTP er ikke sat op endnu (mangler miljøvariabler på serveren)' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'Hverken Resend eller SMTP er sat op endnu (mangler miljøvariabler på serveren)' });
   try {
     // Til en ren test sender vi direkte med skabelonen, uden at kræve en rigtig opgave:
     const settingsRows = await pool.query(
@@ -742,7 +759,7 @@ app.post('/api/settings/test-completion-email', auth, adminOnly, asyncRoute(asyn
     if (settings.cleaning_pdf_base64) {
       attachments.push({ filename: settings.cleaning_pdf_filename || 'test.pdf', content: Buffer.from(settings.cleaning_pdf_base64, 'base64'), contentType: 'application/pdf' });
     }
-    await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: toEmail, subject: '[TEST] ' + subject, text: bodyText, attachments });
+    await sendMailUniversal({ to: toEmail, subject: '[TEST] ' + subject, text: bodyText, attachments });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: redactSecret(e.message || 'Ukendt fejl').slice(0, 500) });
@@ -1980,6 +1997,39 @@ app.put('/api/task-requests/:id/reject', auth, adminOnly, asyncRoute(async (req,
   if (reqRow.status !== 'pending') return res.status(400).json({ error: 'Anmodningen er allerede behandlet' });
   const adminNote = req.body && req.body.admin_note ? String(req.body.admin_note).slice(0, 500) : null;
   await pool.query(`UPDATE task_requests SET status='rejected', admin_note=$1, resolved_at=${nowTextSQL()} WHERE id=$2`, [adminNote, reqRow.id]);
+  res.json({ ok: true });
+}));
+
+// ── TJEKPUNKTER PÅ EN OPGAVE (sub-opgaver, fx krav om dokumentation) ──
+app.get('/api/tasks/:id/checklist', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM task_checklist_items WHERE task_id=$1 ORDER BY id ASC', [req.params.id]);
+  res.json(rows.rows);
+}));
+
+app.post('/api/tasks/:id/checklist', auth, adminOnly, asyncRoute(async (req, res) => {
+  const title = String((req.body || {}).title || '').trim();
+  if (!title) return res.status(400).json({ error: 'Skriv hvad tjekpunktet handler om' });
+  const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [req.params.id]);
+  if (!task) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
+  const result = await pool.query(`
+    INSERT INTO task_checklist_items (task_id,title,created_by,created_at) VALUES ($1,$2,$3,${nowTextSQL()}) RETURNING id
+  `, [req.params.id, title.slice(0, 300), req.user.id]);
+  res.json({ ok: true, id: result.rows[0].id });
+}));
+
+app.put('/api/checklist/:id', auth, asyncRoute(async (req, res) => {
+  const item = await pgOne('SELECT * FROM task_checklist_items WHERE id=$1', [req.params.id]);
+  if (!item) return res.status(404).json({ error: 'Tjekpunktet blev ikke fundet' });
+  const done = !!(req.body || {}).done;
+  await pool.query(
+    `UPDATE task_checklist_items SET done=$1, done_by=$2, done_at=${done ? nowTextSQL() : 'NULL'} WHERE id=$3`,
+    [done ? 1 : 0, done ? req.user.id : null, item.id]
+  );
+  res.json({ ok: true });
+}));
+
+app.delete('/api/checklist/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM task_checklist_items WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
