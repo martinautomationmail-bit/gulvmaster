@@ -1085,6 +1085,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Reference (JT)</label><input class="input" id="assign-ref" disabled></div>
     </div>
     <div class="form-group"><label class="form-label">Note til medarbejder</label><input id="assign-note" class="input" placeholder="Fx ring kunden 30 min før ankomst"></div>
+    <div class="form-group">
+      <label class="form-label">☑ Tjekpunkter for denne opgave</label>
+      <div id="assign-checklist-items" style="margin-bottom:8px"></div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1"><input id="assign-checklist-new" class="input" placeholder="Fx Tag billede af fugtmåler før opstart"></div>
+        <button class="btn small" type="button" id="assign-checklist-add-btn" style="align-self:flex-end;margin-bottom:14px">+ Tilføj</button>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn danger hidden" id="delete-assignment">Fjern booking</button>
       <button class="btn" id="close-assign">Annuller</button>
@@ -1695,6 +1703,8 @@ function openAssign(ctx){
   document.getElementById('assign-note').value=b&&b.notes||'';
   document.getElementById('delete-assignment').classList.toggle('hidden',!b);
   document.getElementById('assign-modal').classList.add('open');
+  document.getElementById('assign-checklist-new').value='';
+  renderChecklistItems('assign-checklist-items',taskId);
 }
 async function saveAssignment(){
   var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);
@@ -1929,38 +1939,41 @@ async function openChecklistModal(taskId){
   var t=tasks.find(function(x){return x.id===taskId;});
   document.getElementById('checklist-task-label').textContent=t?((t.job_name||'')+' — '+(t.name||'')):'';
   document.getElementById('checklist-new-title').value='';
-  await renderChecklistItems();
+  await renderChecklistItems('checklist-items',taskId);
   document.getElementById('checklist-modal').classList.add('open');
 }
-async function renderChecklistItems(){
-  var el=document.getElementById('checklist-items');
+async function renderChecklistItems(containerId,taskId){
+  var el=document.getElementById(containerId);
+  if(!el)return;
+  if(!taskId){el.innerHTML='<p class="muted-sm">Vælg en task fra opgavepoolen først.</p>';return;}
   el.innerHTML='<p class="muted-sm">Henter…</p>';
-  var items=await api('/api/tasks/'+encodeURIComponent(checklistTaskId)+'/checklist');
+  var items=await api('/api/tasks/'+encodeURIComponent(taskId)+'/checklist');
   if(!items||!items.length){el.innerHTML='<p class="muted-sm">Ingen tjekpunkter endnu — tilføj et nedenfor.</p>';return;}
   el.innerHTML=items.map(function(it){
     return '<div class="checklist-item'+(it.done?' done':'')+'">'+
-      '<input type="checkbox" '+(it.done?'checked':'')+' data-action="toggle-checklist-item" data-id="'+it.id+'">'+
+      '<input type="checkbox" '+(it.done?'checked':'')+' data-action="toggle-checklist-item" data-id="'+it.id+'" data-container="'+containerId+'" data-task-id="'+esc(taskId)+'">'+
       '<span class="checklist-item-title">'+esc(it.title)+'</span>'+
-      '<button class="checklist-item-del" data-action="delete-checklist-item" data-id="'+it.id+'" title="Slet">×</button>'+
+      '<button class="checklist-item-del" data-action="delete-checklist-item" data-id="'+it.id+'" data-container="'+containerId+'" data-task-id="'+esc(taskId)+'" title="Slet">×</button>'+
       '</div>';
   }).join('');
 }
-async function addChecklistItem(){
-  var title=document.getElementById('checklist-new-title').value.trim();
-  if(!title)return;
-  var r=await api('/api/tasks/'+encodeURIComponent(checklistTaskId)+'/checklist',{method:'POST',body:JSON.stringify({title:title})});
-  if(r&&r.ok){document.getElementById('checklist-new-title').value='';await renderChecklistItems();}
+async function addChecklistItem(containerId,taskId,inputId){
+  var input=document.getElementById(inputId);
+  var title=input.value.trim();
+  if(!title||!taskId)return;
+  var r=await api('/api/tasks/'+encodeURIComponent(taskId)+'/checklist',{method:'POST',body:JSON.stringify({title:title})});
+  if(r&&r.ok){input.value='';await renderChecklistItems(containerId,taskId);}
   else if(r)toast(r.error||'Fejl','❌');
 }
-async function toggleChecklistItem(id,done){
+async function toggleChecklistItem(id,done,containerId,taskId){
   var r=await api('/api/checklist/'+id,{method:'PUT',body:JSON.stringify({done:done})});
-  if(r&&r.ok)await renderChecklistItems();
+  if(r&&r.ok)await renderChecklistItems(containerId,taskId);
   else if(r)toast(r.error||'Fejl','❌');
 }
-async function deleteChecklistItem(id){
+async function deleteChecklistItem(id,containerId,taskId){
   if(!confirm('Slet dette tjekpunkt?'))return;
   var r=await api('/api/checklist/'+id,{method:'DELETE'});
-  if(r&&r.ok)await renderChecklistItems();
+  if(r&&r.ok)await renderChecklistItems(containerId,taskId);
   else if(r)toast(r.error||'Fejl','❌');
 }
 
@@ -2691,8 +2704,10 @@ function bind(){
   document.getElementById('sync-btn').onclick=syncNow;
   document.getElementById('book-visit-btn').onclick=openVisitBookModal;
   document.getElementById('close-checklist').onclick=function(){closeModal('checklist-modal');};
-  document.getElementById('checklist-add-btn').onclick=addChecklistItem;
-  document.getElementById('checklist-new-title').addEventListener('keydown',function(e){if(e.key==='Enter')addChecklistItem();});
+  document.getElementById('checklist-add-btn').onclick=function(){addChecklistItem('checklist-items',checklistTaskId,'checklist-new-title');};
+  document.getElementById('checklist-new-title').addEventListener('keydown',function(e){if(e.key==='Enter')addChecklistItem('checklist-items',checklistTaskId,'checklist-new-title');});
+  document.getElementById('assign-checklist-add-btn').onclick=function(){var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);addChecklistItem('assign-checklist-items',taskId,'assign-checklist-new');};
+  document.getElementById('assign-checklist-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);addChecklistItem('assign-checklist-items',taskId,'assign-checklist-new');}});
   document.getElementById('close-visit-book').onclick=function(){closeModal('visit-book-modal');};
   document.getElementById('save-visit-book').onclick=saveVisitBooking;
   document.getElementById('close-visit-form').onclick=function(){closeModal('visit-form-modal');};
@@ -2786,8 +2801,8 @@ function bind(){
       if(act==='manual')openManual();
       if(act==='open-visit-form'){e.stopPropagation();openVisitFormModal(a.dataset.taskId);}
       if(act==='open-checklist'){e.stopPropagation();openChecklistModal(a.dataset.taskId);}
-      if(act==='toggle-checklist-item'){e.stopPropagation();toggleChecklistItem(+a.dataset.id,a.checked);}
-      if(act==='delete-checklist-item'){e.stopPropagation();deleteChecklistItem(+a.dataset.id);}
+      if(act==='toggle-checklist-item'){e.stopPropagation();toggleChecklistItem(+a.dataset.id,a.checked,a.dataset.container,a.dataset.taskId);}
+      if(act==='delete-checklist-item'){e.stopPropagation();deleteChecklistItem(+a.dataset.id,a.dataset.container,a.dataset.taskId);}
       if(act==='goto-tasklist'){var sf=document.getElementById('tasklist-status-filter');if(sf)sf.value=a.dataset.filter;switchPage('tasklist');}
       if(act==='capacity-add')openCapacityModal({weekStart:iso(mon(new Date()))});
       if(act==='add-capacity')openCapacityModal({userId:+a.dataset.userId,weekStart:a.dataset.date});
