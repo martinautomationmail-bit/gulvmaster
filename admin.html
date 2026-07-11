@@ -24,7 +24,8 @@ button,input,select{font:inherit}
 
 /* NAV */
 .nav{height:52px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;gap:10px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.22)}
-.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;white-space:nowrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;white-space:nowrap;cursor:pointer;border:0;background:none;padding:0;color:inherit;font-family:inherit}
+.brand:hover{opacity:.82}
 .logo{width:26px;height:26px;display:grid;place-items:center;border-radius:6px;background:var(--steel)}
 .tabs{display:flex;gap:2px;background:rgba(255,255,255,.09);padding:3px;border-radius:7px;position:relative}
 .tab-badge{display:inline-block;margin-left:5px;background:#EF4444;color:#fff;font-size:9px;font-weight:800;border-radius:10px;padding:1px 6px;line-height:1.3}
@@ -76,9 +77,18 @@ button,input,select{font:inherit}
 .panel-body{padding:7px;max-height:calc(100vh - 200px);overflow:auto}
 .search{width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;outline:none;font-size:11px;margin-bottom:6px}
 .search:focus{border-color:var(--blue)}
-.filter-row{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px}
-.chip{border:1px solid var(--border);background:#fff;padding:2px 7px;border-radius:12px;font-size:9px;cursor:pointer;color:var(--muted)}
-.chip.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.filter-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.chip{border:1px solid var(--border);background:#fff;padding:4px 10px;border-radius:99px;font-size:10px;font-weight:600;cursor:pointer;color:var(--muted);line-height:1.4;box-shadow:0 1px 1px rgba(15,34,64,.03)}
+.chip:hover{border-color:var(--blue);color:var(--blue);transform:translateY(-1px)}
+.chip.active{background:var(--navy);border-color:var(--navy);color:#fff;box-shadow:0 2px 6px rgba(15,34,64,.25)}
+.chip.active:hover{color:#fff;transform:none}
+/* Opgavepool-filtre: samlet, adskilt kort med tydelige sektions-labels i stedet for
+   filter-rows der bare flød løst under søgefeltet. */
+.pool-filters{background:var(--ice);border:1px solid var(--border2);border-radius:10px;padding:9px 10px 3px;margin-bottom:10px}
+.pool-filter-label{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 4px 2px}
+.pool-search-wrap{position:relative;margin-bottom:9px}
+.pool-search-wrap .search{margin-bottom:0;padding-left:26px;border-radius:8px;background:#fff}
+.pool-search-wrap::before{content:'🔍';position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:10px;opacity:.55;pointer-events:none}
 .workforce-bar{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 8px;padding:6px 7px;background:#fff;border:1px solid var(--border2);border-radius:7px}
 .workforce-label{font-size:9px;color:var(--muted);font-weight:800;text-transform:uppercase;padding:3px 2px}
 
@@ -211,11 +221,9 @@ button,input,select{font:inherit}
 
 /* CAP JOB PILLS */
 .cap-job{font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:grab;padding:3px 6px;border-radius:4px;margin-top:2px;font-weight:600;display:flex;align-items:center;gap:3px;background:#F1F5F9;color:var(--ink);border-left:3px solid var(--border)}
-.cap-job.lay{border-left-color:var(--lay-bar)}
-.cap-job.sand{border-left-color:var(--sand-bar)}
-.cap-job.paint{border-left-color:var(--paint-bar)}
-.cap-job.sub{border-left-color:var(--sub-bar)}
-.cap-job.other{border-left-color:var(--other-bar)}
+/* Kapacitetsboardet viser bevidst ÉN ensartet farve for alle booket opgaver — uanset fag —
+   så tavlen forbliver rolig og overskuelig. Fag-farver bruges kun i Daglig plan/Ugeplan. */
+.cap-job.cap-job-task{border-left-color:var(--blue);background:#EFF6FF}
 .cap-job.dragging{opacity:.35}
 .cap-job-name{flex:1;overflow:hidden;text-overflow:ellipsis}
 .cap-job-days{font-size:8px;opacity:.75;flex-shrink:0;background:rgba(0,0,0,.08);padding:1px 3px;border-radius:3px}
@@ -478,7 +486,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <div id="app" style="display:none">
 
 <nav class="nav">
-  <div class="brand"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></div>
+  <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
   <div class="tabs">
     <button class="tab active" data-page="plan">Daglig plan</button>
     <button class="tab" data-page="capacity">Kapacitet</button>
@@ -556,9 +564,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="btn small primary" data-action="manual">+ Manuel</button>
       </div>
       <div class="panel-body">
-        <input id="plan-search" class="search" placeholder="Søg kunde eller opgave">
-        <div class="filter-row" id="plan-status-filters"></div>
-        <div class="filter-row" id="plan-type-filters"></div>
+        <div class="pool-search-wrap"><input id="plan-search" class="search" placeholder="Søg kunde eller opgave"></div>
+        <div class="pool-filters">
+          <div class="pool-filter-label">Status</div>
+          <div class="filter-row" id="plan-status-filters"></div>
+          <div class="pool-filter-label">Fag</div>
+          <div class="filter-row" id="plan-type-filters"></div>
+        </div>
         <div id="plan-pool"></div>
       </div>
     </aside>
@@ -598,9 +610,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="btn small primary" data-action="capacity-add">+ Kapacitetsblok</button>
       </div>
       <div class="panel-body">
-        <input id="cap-search" class="search" placeholder="Søg kunde eller opgave">
-        <div class="filter-row" id="cap-status-filters"></div>
-        <div class="filter-row" id="cap-type-filters"></div>
+        <div class="pool-search-wrap"><input id="cap-search" class="search" placeholder="Søg kunde eller opgave"></div>
+        <div class="pool-filters">
+          <div class="pool-filter-label">Status</div>
+          <div class="filter-row" id="cap-status-filters"></div>
+          <div class="pool-filter-label">Fag</div>
+          <div class="filter-row" id="cap-type-filters"></div>
+        </div>
         <div id="cap-pool"></div>
       </div>
     </aside>
@@ -650,9 +666,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="btn small primary" data-action="manual">+ Manuel</button>
       </div>
       <div class="panel-body">
-        <input id="timeline-search" class="search" placeholder="Søg kunde eller opgave">
-        <div class="filter-row" id="timeline-status-filters"></div>
-        <div class="filter-row" id="timeline-type-filters"></div>
+        <div class="pool-search-wrap"><input id="timeline-search" class="search" placeholder="Søg kunde eller opgave"></div>
+        <div class="pool-filters">
+          <div class="pool-filter-label">Status</div>
+          <div class="filter-row" id="timeline-status-filters"></div>
+          <div class="pool-filter-label">Fag</div>
+          <div class="filter-row" id="timeline-type-filters"></div>
+        </div>
         <div id="timeline-pool"></div>
       </div>
     </aside>
@@ -694,12 +714,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <input id="tld-phone" class="tld-input" placeholder="Fx 12 34 56 78">
     </div>
     <div class="tld-section">
+      <label class="tld-label">📧 Kunde-email</label>
+      <input id="tld-email" type="email" class="tld-input" placeholder="kunde@mail.dk">
+    </div>
+    <div class="tld-section">
       <label class="tld-label">🔢 Sagsnummer</label>
       <input id="tld-job-number" class="tld-input" placeholder="Fx GM-2026-40">
     </div>
     <div class="tld-section">
       <label class="tld-label">📝 Note til medarbejder</label>
       <textarea id="tld-note" class="tld-input" rows="3" placeholder="Fx ring kunden 30 min før ankomst"></textarea>
+    </div>
+    <div class="tld-section">
+      <label class="tld-label">☑ Tjekpunkter</label>
+      <div id="tld-checklist-items" style="margin-bottom:8px"></div>
+      <div class="tld-row">
+        <div style="flex:1"><input id="tld-checklist-new" class="tld-input" placeholder="Fx Tag billede af fugtmåler før opstart"></div>
+        <button class="btn small" type="button" id="tld-checklist-add-btn" style="align-self:flex-end">+ Tilføj</button>
+      </div>
     </div>
   </div>
   <div class="tl-drawer-footer">
@@ -839,6 +871,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="modal-actions" style="padding:0;border:0;margin-top:10px"><button class="btn primary small" id="email-save-btn">Gem mail-indstillinger</button></div>
   </div>
+  <div class="email-settings-card">
+    <div class="email-settings-head">
+      <div><div class="email-settings-title">🎨 Fag & farver</div><div class="email-settings-sub">Styrer farverne på opgaver i Daglig plan/Ugeplan og på opgavekortene. Kapacitetsboardet bruger bevidst én ensartet farve for alle opgaver, uanset fag.</div></div>
+    </div>
+    <div id="task-types-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+    <div class="form-row" style="align-items:flex-end">
+      <div class="form-group"><label class="form-label">Nyt fag/faggruppe</label><input id="new-type-label" class="input" placeholder="Fx VVS / El"></div>
+      <div class="form-group" style="max-width:90px"><label class="form-label">Farve</label><input id="new-type-color" class="input" type="color" value="#2563EB"></div>
+      <button class="btn primary small" id="add-type-btn" style="margin-bottom:14px">+ Tilføj fag</button>
+    </div>
+  </div>
   <div class="people" id="people-grid"></div>
 </section>
 
@@ -874,6 +917,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <table class="logs">
       <thead><tr><th>Medarbejder</th><th>Opgave</th><th>Kunde</th><th>Start</th><th>Stop</th><th>Varighed</th></tr></thead>
       <tbody id="log-body"></tbody>
+    </table>
+  </div>
+
+  <div class="page-head" style="margin-top:26px">
+    <div><div class="page-title">📧 Mail-log</div><div class="page-sub">Alle færdig-mails til kunder — så I kan se hvad der rent faktisk blev sendt, og hvad der fejlede eller blev sprunget over.</div></div>
+    <div class="filter-row" id="mail-log-filters">
+      <button class="chip active" data-action="mail-log-filter" data-value="all">Alle</button>
+      <button class="chip" data-action="mail-log-filter" data-value="sent">✓ Sendt</button>
+      <button class="chip" data-action="mail-log-filter" data-value="error">✕ Fejlet</button>
+      <button class="chip" data-action="mail-log-filter" data-value="skipped">⚠ Sprunget over</button>
+    </div>
+  </div>
+  <div class="log-wrap">
+    <table class="logs">
+      <thead><tr><th>Tidspunkt</th><th>Sag / opgave</th><th>Til e-mail</th><th>Status</th><th>Detaljer</th></tr></thead>
+      <tbody id="mail-log-body"></tbody>
     </table>
   </div>
 </section>
@@ -983,6 +1042,32 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
+<!-- FERIE / SYGDOM — HURTIG-REDIGERING FRA DAGLIG PLAN / KAPACITET -->
+<div class="mo" id="timeoff-modal">
+  <div class="modal">
+    <h3 id="timeoff-title">Ferie / fravær</h3>
+    <div class="capacity-modal-note" id="timeoff-user-label"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Startdato</label><input id="timeoff-start" type="date" class="input"></div>
+      <div class="form-group"><label class="form-label">Slutdato</label><input id="timeoff-end" type="date" class="input"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Type</label>
+      <select id="timeoff-type" class="select">
+        <option value="vacation">🏖 Ferie</option>
+        <option value="sick">🤒 Sygdom</option>
+        <option value="other">⛔ Andet fravær</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Note <span class="opt-tag">valgfrit</span></label><input id="timeoff-note" class="input" placeholder="Fx lægeaftale, halv dag osv."></div>
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="delete-timeoff-btn">Fjern periode</button>
+      <button class="btn" id="close-timeoff">Annuller</button>
+      <button class="btn primary" id="save-timeoff-btn">Gem</button>
+    </div>
+  </div>
+</div>
+
 <!-- TJEKPUNKTER PÅ EN OPGAVE -->
 <div class="mo" id="checklist-modal">
   <div class="modal">
@@ -1085,6 +1170,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Reference (JT)</label><input class="input" id="assign-ref" disabled></div>
     </div>
     <div class="form-group"><label class="form-label">Note til medarbejder</label><input id="assign-note" class="input" placeholder="Fx ring kunden 30 min før ankomst"></div>
+    <div class="form-group"><label class="form-label">📧 Kunde-email <span class="opt-tag">bruges til færdig-mail</span></label><input id="assign-email" type="email" class="input" placeholder="kunde@mail.dk"></div>
     <div class="form-group">
       <label class="form-label">☑ Tjekpunkter for denne opgave</label>
       <div id="assign-checklist-items" style="margin-bottom:8px"></div>
@@ -1131,6 +1217,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="form-row">
           <div class="form-group"><label class="form-label">📍 Adresse</label><input id="manual-address" class="input" placeholder="Gade, postnr, by"></div>
           <div class="form-group"><label class="form-label">📞 Kundetelefon</label><input id="manual-phone" class="input" placeholder="Fx 12 34 56 78"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">📧 Kunde-email <span class="opt-tag">bruges til færdig-mail</span></label><input id="manual-email" type="email" class="input" placeholder="kunde@mail.dk"></div>
         </div>
       </div>
     </div>
@@ -1201,7 +1290,49 @@ var taskRequests=[],requestsFilter='pending',completedFilter='open';
 var timeOffApproved=[],timeOffRequests=[];
 var filters={plan:{status:'all',type:'all',team:'all'},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'}};
 var DAYS=['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
-var TYPE={lay:{label:'Gulvlægning',bar:'var(--lay-bar)'},sand:{label:'Gulvslibning',bar:'var(--sand-bar)'},paint:{label:'Malerservice',bar:'var(--paint-bar)'},sub:{label:'Underlev.',bar:'var(--sub-bar)'},other:{label:'Andet',bar:'var(--other-bar)'}};
+// Standard-fag/farver — bruges som fallback indtil /api/task-types er hentet,
+// og hvis serveren af en eller anden grund ikke har nogen fag registreret.
+var TYPE={lay:{label:'Gulvlægning',bar:'#3B82F6'},sand:{label:'Gulvslibning',bar:'#22C55E'},paint:{label:'Malerservice',bar:'#EAB308'},sub:{label:'Underlev.',bar:'#8B5CF6'},other:{label:'Andet',bar:'#94A3B8'}};
+var taskTypesList=Object.keys(TYPE).map(function(k){return {key:k,label:TYPE[k].label,color:TYPE[k].bar};});
+async function loadTaskTypes(){
+  var list=await api('/api/task-types');
+  if(!list||!list.length)return;
+  taskTypesList=list;
+  var next={};
+  list.forEach(function(t){next[t.key]={label:t.label,bar:t.color};});
+  if(!next.other)next.other={label:'Andet',bar:'#94A3B8'};
+  TYPE=next;
+}
+function renderTaskTypesAdmin(){
+  var el=document.getElementById('task-types-list');if(!el)return;
+  el.innerHTML=taskTypesList.map(function(t){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--ice);border-radius:8px">'+
+      '<input type="color" value="'+esc(t.color)+'" data-action="type-color" data-key="'+esc(t.key)+'" style="width:28px;height:28px;padding:0;border:0;background:none;cursor:pointer">'+
+      '<input class="input" value="'+esc(t.label)+'" data-action="type-label" data-key="'+esc(t.key)+'" style="flex:1;font-size:12px;padding:5px 8px">'+
+      (t.key==='other'?'<span class="opt-tag" style="margin-right:8px">standard</span>':'<button class="btn small danger" data-action="delete-type" data-key="'+esc(t.key)+'">🗑</button>')+
+      '</div>';
+  }).join('')||'<p class="muted-sm">Ingen fag endnu.</p>';
+}
+async function saveTaskTypeField(key,field,value){
+  var body={};body[field]=value;
+  var r=await api('/api/task-types/'+encodeURIComponent(key),{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){await loadTaskTypes();renderTaskTypesAdmin();renderPlan();renderCapacity();renderPeople();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function addTaskType(){
+  var label=document.getElementById('new-type-label').value.trim();
+  var color=document.getElementById('new-type-color').value;
+  if(!label){toast('Skriv et navn på faget','⚠');return;}
+  var r=await api('/api/task-types',{method:'POST',body:JSON.stringify({label:label,color:color})});
+  if(r&&r.ok){document.getElementById('new-type-label').value='';toast('Fag tilføjet — vises nu som farve/filter','✓');await loadTaskTypes();renderTaskTypesAdmin();renderPlan();renderCapacity();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function deleteTaskType(key){
+  if(!confirm('Slet dette fag? Det kan ikke slettes hvis det bruges på en opgave.'))return;
+  var r=await api('/api/task-types/'+encodeURIComponent(key),{method:'DELETE'});
+  if(r&&r.ok){toast('Fag slettet','🗑');await loadTaskTypes();renderTaskTypesAdmin();renderPlan();renderCapacity();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
 
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c];});}
 function iso(d){var x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);}
@@ -1257,16 +1388,21 @@ function allTrades(){var s={};users.filter(function(u){return u.active&&u.trade;
 function isCapacityBooking(b){return String(b.planning_mode||'daily')==='capacity';}
 function dailyBookingsForTask(t){return bookings.filter(function(b){return b.task_id===t.id&&!isCapacityBooking(b);});}
 function taskIsCompleted(t){var rows=dailyBookingsForTask(t);return rows.length>0&&rows.every(function(b){return !!b.completed_at;});}
+// En opgave regnes som "faktureret" når alle dens (færdiggjorte) bookinger er markeret faktureret.
+// Bruges til at rydde helt op i Opgavepool, når man har trykket "faktureret" i Færdige opgaver.
+function taskIsInvoiced(t){var rows=dailyBookingsForTask(t);return rows.length>0&&rows.every(function(b){return !!b.invoiced;});}
 function filterTasks(scope){
   var f=filters[scope],searchId={plan:'plan-search',capacity:'cap-search',timeline:'timeline-search'}[scope]||'plan-search',q=(document.getElementById(searchId).value||'').toLowerCase().trim();
   return tasks.filter(function(t){
     var completed=taskIsCompleted(t);
+    if(completed&&taskIsInvoiced(t))return false; // faktureret → fjernet helt fra Opgavepool, uanset filter
     if(f.status==='completed')return completed&&matchesQuery();
     if(completed)return false; // færdiggjorte opgaver fylder ikke i de almindelige lister længere
     var planned=+t.assignment_count>0;
     if(f.status==='open'&&planned)return false;
     if(f.status==='planned'&&!planned)return false;
     if(f.status==='manual'&&t.source!=='manual')return false;
+    if(f.status==='visit'&&!t.is_visit)return false;
     if(f.type!=='all'&&t.type_guess!==f.type)return false;
     return matchesQuery();
     function matchesQuery(){
@@ -1278,11 +1414,13 @@ function filterTasks(scope){
 
 function filtersHTML(scope){
   var f=filters[scope],dom=scope==='capacity'?'cap':scope;
-  var sts=[['all','Alle'],['open','Ikke planlagt'],['planned','Planlagt'],['manual','Manuelle'],['completed','✅ Færdiggjort']];
-  var tys=[['all','Alle fag'],['lay','Gulv'],['sand','Slib'],['paint','Maler'],['sub','Underlev.']];
+  var sts=[['all','Alle'],['open','Ikke planlagt'],['planned','Planlagt'],['manual','Manuelle'],['visit','📅 Kundebesøg'],['completed','✅ Færdiggjort']];
+  // Fag-filtrene bygges dynamisk ud fra Fag & farver (Hold & vendors), så nye fag man
+  // opretter der automatisk dukker op som filter her — ingen hårdkodet liste længere.
+  var tys=[['all','Alle fag']].concat(taskTypesList.map(function(t){return [t.key,t.label];}));
   var se=document.getElementById(dom+'-status-filters'),te=document.getElementById(dom+'-type-filters');
   if(se)se.innerHTML=sts.map(function(x){return '<button class="chip'+(f.status===x[0]?' active':'')+'" data-action="pool-filter" data-scope="'+scope+'" data-kind="status" data-value="'+x[0]+'">'+x[1]+'</button>';}).join('');
-  if(te)te.innerHTML=tys.map(function(x){return '<button class="chip'+(f.type===x[0]?' active':'')+'" data-action="pool-filter" data-scope="'+scope+'" data-kind="type" data-value="'+x[0]+'">'+x[1]+'</button>';}).join('');
+  if(te)te.innerHTML=tys.map(function(x){var dot=x[0]==='all'?'':'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+((TYPE[x[0]]||{}).bar||'#94A3B8')+';margin-right:4px"></span>';return '<button class="chip'+(f.type===x[0]?' active':'')+'" data-action="pool-filter" data-scope="'+scope+'" data-kind="type" data-value="'+x[0]+'">'+dot+x[1]+'</button>';}).join('');
 }
 function teamFilterHTML(scope){
   var f=filters[scope],dom=scope==='capacity'?'cap':scope;
@@ -1301,7 +1439,7 @@ function taskCard(t,scope){
     '<div class="task-sub">'+esc(t.name||'Opgave')+'</div>'+
     (contact?'<div class="task-contact">'+contact+'</div>':'')+
     '<div class="task-meta">'+
-      '<span class="badge '+esc(t.type_guess||'other')+'">'+type.label+'</span>'+
+      '<span class="badge '+esc(t.type_guess||'other')+'" style="background:'+(type.bar||'#94A3B8')+'22;color:'+(type.bar||'#94A3B8')+'">'+type.label+'</span>'+
       '<span class="tag'+(t.source==='manual'?' manual':'')+'">'+(t.source==='manual'?'Manuel':'JT')+'</span>'+
       (t.job_number?'<span class="tag" title="Sagsnummer">#'+esc(t.job_number)+'</span>':'')+
       (t.is_visit?'<span class="tag" style="background:#FEF3C7;color:#92400E">📅 Besøg</span>':'')+
@@ -1326,12 +1464,18 @@ function renderPool(scope){
 function assignPill(b){
   return assignPillSpan(b,1);
 }
+// Bygger inline farve-styling ud fra fagets farve, så det virker for BÅDE de 4 indbyggede
+// fag og ethvert brugerdefineret fag/faggruppe man tilføjer under "Fag & farver".
+function typeColorStyle(type){
+  var c=type.bar||'#94A3B8';
+  return 'background:'+c+'1A;color:'+c+';border-left:3px solid '+c+';';
+}
 // ASSIGNMENT PILL spanning multiple visible days
 function assignPillSpan(b,spanDays){
   var type=TYPE[b.type_guess||'other']||TYPE.other;
   var daysLabel=+b.days>1?' <span style="font-size:8px;opacity:.75;background:rgba(0,0,0,.1);padding:1px 4px;border-radius:3px">'+b.days+'d</span>':'';
-  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'"'+
-    (spanDays>1?' style="position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(128px + 8px) - 10px);width:calc('+spanDays+'*(128px) + '+(spanDays-1)+'*8px - 10px);min-width:0"':'')+'>'+
+  var extraStyle=typeColorStyle(type)+(spanDays>1?'position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(128px + 8px) - 10px);width:calc('+spanDays+'*(128px) + '+(spanDays-1)+'*8px - 10px);min-width:0':'');
+  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'" style="'+extraStyle+'">'+
     '<div class="assign-top"><span class="assign-name">'+esc(b.job_name||b.task_name||'Opgave')+daysLabel+'</span>'+
     '<span style="display:flex;gap:2px;flex-shrink:0">'+
     '<button class="pill-copy" title="Kopiér opgave" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>'+
@@ -1342,7 +1486,8 @@ function assignPillSpan(b,spanDays){
 }
 // Pill for bookings continuing from a previous week
 function assignPillContinue(b){
-  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'" style="opacity:.75;border-left:3px solid currentColor">'+
+  var type=TYPE[b.type_guess||'other']||TYPE.other;
+  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'" style="opacity:.75;'+typeColorStyle(type)+'">'+
     '<div class="assign-top"><span class="assign-name">↩ '+esc(b.job_name||b.task_name||'Opgave')+'</span>'+
     '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></div>'+
     '<div class="assign-sub">Fortsat · '+esc(b.days)+'d total</div>'+
@@ -1383,7 +1528,7 @@ function renderPlan(){
       var off=timeOffFor(u.id,ds);
 
       if(off){
-        cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'"><div class="timeoff-cell" title="'+esc(off.note||'')+'">'+timeOffLabel(off)+'</div></td>';
+        cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'"><div class="timeoff-cell" title="Klik for at redigere eller fjerne — '+esc(off.note||'')+'" data-action="edit-timeoff-day" data-user-id="'+u.id+'" data-off-id="'+off.id+'" style="cursor:pointer">'+timeOffLabel(off)+'</div></td>';
         return;
       }
 
@@ -1398,7 +1543,10 @@ function renderPlan(){
       cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'">'+
         '<div class="drop-zone" data-drop="day" data-user-id="'+u.id+'" data-date="'+ds+'">'+
         free+pills+
+        '<div style="display:flex;gap:4px;align-items:center">'+
         '<button class="add-small" data-action="add-booking" data-user-id="'+u.id+'" data-date="'+ds+'">+ Tilføj</button>'+
+        '<button class="add-small" title="Registrér ferie/sygdom denne dag" data-action="add-timeoff-day" data-user-id="'+u.id+'" data-date="'+ds+'">🏖</button>'+
+        '</div>'+
         '<div class="day-load'+(booked>cap?' overload':'')+' ">'+booked.toFixed(1)+'/'+cap.toFixed(1)+'d</div>'+
         '</div></td>';
     });
@@ -1522,7 +1670,7 @@ function renderCapacity(){
         var label=capacityOnly?(b.capacity_label||b.task_name||'Kapacitetsreservation'):(b.job_name||b.task_name||'');
         var wd=workDates(b),overlapInThisWeek=wd.filter(function(ds){var q=date(ds);return q>=m&&q<=end;}).length;
         var daysThisWeek=Math.round((capDaysOf(b)/wd.length)*overlapInThisWeek*4)/4;
-        return '<div class="cap-job '+(capacityOnly?'capacity-reservation':'draggable-assignment '+esc(b.type_guess||'other'))+'" draggable="true" data-booking-id="'+b.id+'" title="'+esc(label)+' — '+daysThisWeek+' d denne uge (i alt '+capDaysOf(b)+' d) — træk for at flytte eller kopiere til en anden uge">'+
+        return '<div class="cap-job '+(capacityOnly?'capacity-reservation':'draggable-assignment cap-job-task')+'" draggable="true" data-booking-id="'+b.id+'" title="'+esc(label)+' — '+daysThisWeek+' d denne uge (i alt '+capDaysOf(b)+' d) — træk for at flytte eller kopiere til en anden uge">'+
           '<span class="cap-job-name">'+(capacityOnly?'◌ ':'')+esc(label)+'</span>'+
           '<span class="cap-job-days">'+daysThisWeek+'d</span>'+
           (capacityOnly?'':'<button class="pill-copy" title="Kopiér" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>')+
@@ -1533,7 +1681,8 @@ function renderCapacity(){
 
       var weekDays=[];for(var wi=0;wi<5;wi++)weekDays.push(iso(add(m,wi)));
       var offDays=weekDays.filter(function(ds){return timeOffFor(u.id,ds);});
-      var offBadge=offDays.length?'<div class="cap-timeoff-badge">'+timeOffLabel(timeOffFor(u.id,offDays[0]))+' · '+offDays.length+'d</div>':'';
+      var firstOff=offDays.length?timeOffFor(u.id,offDays[0]):null;
+      var offBadge=offDays.length?'<div class="cap-timeoff-badge" title="Klik for at redigere eller fjerne" data-action="edit-timeoff-day" data-user-id="'+u.id+'" data-off-id="'+firstOff.id+'" style="cursor:pointer">'+timeOffLabel(firstOff)+' · '+offDays.length+'d</div>':'';
 
       r+='<td class="cap-cell">'+
         '<div class="cap-drop '+(items.length?cc:'cap-free')+' draggable-task-target" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'">'+
@@ -1541,6 +1690,7 @@ function renderCapacity(){
         '<div class="cap-num '+(booked>0?cc:'cap-free')+'">'+( booked>0?booked.toFixed(1)+' / '+cap+' d':'✓ Ledig')+'</div>'+
         '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+pct+'%;background:'+barColor(booked,cap)+'"></div></div>'+
         pills+
+        (offDays.length?'':'<button class="cap-add-btn" title="Registrér ferie/sygdom denne uge" data-action="add-timeoff-day" data-user-id="'+u.id+'" data-date="'+iso(m)+'" data-week-end="'+iso(add(m,4))+'">🏖 Ferie</button>')+
         '</div></td>';
     });
     return r+'</tr>';
@@ -1701,6 +1851,7 @@ function openAssign(ctx){
   document.getElementById('assign-capacity-days').value=b?capDaysOf(b):1;
   document.getElementById('assign-time').value=b&&b.start_time||'';
   document.getElementById('assign-note').value=b&&b.notes||'';
+  document.getElementById('assign-email').value=(t&&t.customer_email)||'';
   document.getElementById('delete-assignment').classList.toggle('hidden',!b);
   document.getElementById('assign-modal').classList.add('open');
   document.getElementById('assign-checklist-new').value='';
@@ -1710,8 +1861,11 @@ async function saveAssignment(){
   var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);
   if(!taskId){toast('Vælg en task','⚠');return;}
   var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,capacity_days:+document.getElementById('assign-capacity-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null};
-  var r=assignCtx.bookingId?await api('/api/assignments/'+assignCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))});
-  if(r&&r.ok){closeModal('assign-modal');toast('Booking gemt','✓');await loadAll();}
+  var calls=[assignCtx.bookingId?api('/api/assignments/'+assignCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))})];
+  calls.push(api('/api/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({customer_email:document.getElementById('assign-email').value.trim()})}));
+  var results=await Promise.all(calls);
+  var r=results[0];
+  if(r&&(r.ok||r.id)){closeModal('assign-modal');toast('Booking gemt','✓');await loadAll();}
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function copyBooking(id){
@@ -1748,15 +1902,18 @@ function openTimelineDrawer(bookingId){
   document.getElementById('tld-capdays').value=capDaysOf(b);
   document.getElementById('tld-address').value=b.job_address||'';
   document.getElementById('tld-phone').value=b.customer_phone||'';
+  document.getElementById('tld-email').value=b.customer_email||'';
   document.getElementById('tld-job-number').value=b.job_number||'';
   document.getElementById('tld-note').value=b.notes||'';
+  document.getElementById('tld-checklist-new').value='';
+  renderChecklistItems('tld-checklist-items',b.task_id);
   document.getElementById('tl-drawer').classList.add('open');
 }
 function closeTimelineDrawer(){document.getElementById('tl-drawer').classList.remove('open');tlDrawerBookingId=null;tlDrawerTaskId=null;}
 async function saveTimelineDrawer(){
   if(!tlDrawerBookingId)return;
   var body={user_id:+document.getElementById('tld-user').value,start_date:document.getElementById('tld-date').value,start_time:document.getElementById('tld-time').value||null,days:+document.getElementById('tld-days').value||1,capacity_days:+document.getElementById('tld-capdays').value||1,notes:document.getElementById('tld-note').value.trim()||null};
-  var taskBody={job_address:document.getElementById('tld-address').value.trim(),customer_phone:document.getElementById('tld-phone').value.trim(),job_number:document.getElementById('tld-job-number').value.trim()};
+  var taskBody={job_address:document.getElementById('tld-address').value.trim(),customer_phone:document.getElementById('tld-phone').value.trim(),customer_email:document.getElementById('tld-email').value.trim(),job_number:document.getElementById('tld-job-number').value.trim()};
   var calls=[api('/api/assignments/'+tlDrawerBookingId,{method:'PUT',body:JSON.stringify(body)})];
   if(tlDrawerTaskId)calls.push(api('/api/tasks/'+encodeURIComponent(tlDrawerTaskId),{method:'PUT',body:JSON.stringify(taskBody)}));
   var results=await Promise.all(calls);
@@ -1930,7 +2087,15 @@ async function handleDrop(e,zone){
 }
 
 // MANUAL TASK
-function openManual(){document.getElementById('manual-date').value=iso(new Date());['manual-customer','manual-name','manual-address','manual-phone','manual-job-number'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('manual-days').value='1';document.getElementById('manual-type').value='lay';document.getElementById('manual-modal').classList.add('open');}
+function openManual(){
+  document.getElementById('manual-date').value=iso(new Date());
+  ['manual-customer','manual-name','manual-address','manual-phone','manual-email','manual-job-number'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('manual-days').value='1';
+  var typeSel=document.getElementById('manual-type');
+  typeSel.innerHTML=taskTypesList.map(function(t){return '<option value="'+esc(t.key)+'">'+esc(t.label)+'</option>';}).join('');
+  typeSel.value=(taskTypesList[0]||{}).key||'lay';
+  document.getElementById('manual-modal').classList.add('open');
+}
 
 // TJEKPUNKTER PÅ EN OPGAVE
 var checklistTaskId=null;
@@ -2043,7 +2208,7 @@ async function saveVisitForm(){
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function saveManual(){
-  var b={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),customer_phone:document.getElementById('manual-phone').value.trim(),job_number:document.getElementById('manual-job-number').value.trim(),start_date:document.getElementById('manual-date').value,days:+document.getElementById('manual-days').value||1,type_guess:document.getElementById('manual-type').value};
+  var b={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),customer_phone:document.getElementById('manual-phone').value.trim(),customer_email:document.getElementById('manual-email').value.trim(),job_number:document.getElementById('manual-job-number').value.trim(),start_date:document.getElementById('manual-date').value,days:+document.getElementById('manual-days').value||1,type_guess:document.getElementById('manual-type').value};
   var r=await api('/api/tasks/manual',{method:'POST',body:JSON.stringify(b)});
   if(r&&r.ok){closeModal('manual-modal');toast('Opgave i pool','✓');await loadAll();}
   else if(r)toast(r.error||'Fejl','❌');
@@ -2318,8 +2483,9 @@ async function openTaskEdit(id){
   var address=prompt('Adresse:',t.job_address||'');if(address===null)return;
   var jobNumber=prompt('Sagsnummer:',t.job_number||'');if(jobNumber===null)return;
   var phone=prompt('Kundetelefon:',t.customer_phone||'');if(phone===null)return;
+  var email=prompt('Kunde-email (bruges til færdig-mail):',t.customer_email||'');if(email===null)return;
   var desc=prompt('Beskrivelse (vises for medarbejderen under "Læs om opgaven"):',t.description||'');if(desc===null)return;
-  var r=await api('/api/tasks/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({job_name:jobName.trim(),name:name.trim(),job_address:address.trim(),job_number:jobNumber.trim(),customer_phone:phone.trim(),description:desc})});
+  var r=await api('/api/tasks/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({job_name:jobName.trim(),name:name.trim(),job_address:address.trim(),job_number:jobNumber.trim(),customer_phone:phone.trim(),customer_email:email.trim(),description:desc})});
   if(r&&r.ok){toast('Opgave opdateret','✓');await loadAll();}else if(r)toast(r.error||'Fejl','❌');
 }
 async function deleteTask(id){
@@ -2421,18 +2587,47 @@ async function rejectRequest(id){
 }
 
 // FERIE / SYGDOM
-async function addTimeOff(userId){
+// Hurtig-redigering: kan åbnes fra personkortet, fra en dag i Daglig plan, eller fra en uge i Kapacitet.
+// timeOffModalCtx husker om vi redigerer en eksisterende periode (delete-knap vises) eller opretter en ny.
+var timeOffModalCtx=null;
+function addTimeOff(userId){openTimeOffModal(userId,iso(new Date()));}
+function openTimeOffModal(userId,dateStr,existing,endDateStr){
   var u=users.find(function(x){return +x.id===+userId;});
-  var start=prompt('Startdato for ferie/sygdom (ÅÅÅÅ-MM-DD) til '+(u?u.name:'medarbejderen')+':',iso(new Date()));
-  if(start===null)return;
-  var end=prompt('Slutdato (ÅÅÅÅ-MM-DD):',start);
-  if(end===null)return;
-  var type=prompt('Type: skriv "vacation" (ferie), "sick" (sygdom) eller "other" (andet)','vacation');
-  if(type===null)return;
-  var note=prompt('Note (valgfrit):','');
-  if(note===null)return;
-  var r=await api('/api/time-off',{method:'POST',body:JSON.stringify({user_id:userId,start_date:start.trim(),end_date:end.trim(),type:type.trim()||'vacation',note:note.trim()||null})});
-  if(r&&r.ok){toast('Ferie/fravær registreret','🏖');await loadAll();}
+  timeOffModalCtx={userId:userId,offId:existing?existing.id:null};
+  document.getElementById('timeoff-title').textContent=existing?'Rediger ferie/fravær':'Registrér ferie/fravær';
+  document.getElementById('timeoff-user-label').textContent=(u?u.name:'Medarbejderen')+(existing?' — klik "Fjern periode" for at slette, eller ret datoer/type og gem.':' — vælg periode og type.');
+  document.getElementById('timeoff-start').value=existing?String(existing.start_date).slice(0,10):(dateStr||iso(new Date()));
+  document.getElementById('timeoff-end').value=existing?String(existing.end_date).slice(0,10):(endDateStr||dateStr||iso(new Date()));
+  document.getElementById('timeoff-type').value=existing?existing.type:'vacation';
+  document.getElementById('timeoff-note').value=existing?(existing.note||''):'';
+  document.getElementById('delete-timeoff-btn').classList.toggle('hidden',!existing);
+  document.getElementById('timeoff-modal').classList.add('open');
+}
+function openTimeOffModalByOffId(userId,offId){
+  var off=timeOffApproved.find(function(t){return +t.id===+offId;});
+  openTimeOffModal(userId,off?String(off.start_date).slice(0,10):iso(new Date()),off);
+}
+async function saveTimeOffModal(){
+  if(!timeOffModalCtx)return;
+  var body={
+    user_id:timeOffModalCtx.userId,
+    start_date:document.getElementById('timeoff-start').value,
+    end_date:document.getElementById('timeoff-end').value,
+    type:document.getElementById('timeoff-type').value,
+    note:document.getElementById('timeoff-note').value.trim()||null
+  };
+  if(!body.start_date||!body.end_date){toast('Vælg start- og slutdato','⚠');return;}
+  var r=timeOffModalCtx.offId
+    ? await api('/api/time-off/'+timeOffModalCtx.offId,{method:'PUT',body:JSON.stringify(body)})
+    : await api('/api/time-off',{method:'POST',body:JSON.stringify(body)});
+  if(r&&(r.ok||r.id)){closeModal('timeoff-modal');toast('Ferie/fravær gemt','🏖');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function deleteTimeOffModal(){
+  if(!timeOffModalCtx||!timeOffModalCtx.offId)return;
+  if(!confirm('Fjern denne ferie-/sygdomsperiode?'))return;
+  var r=await api('/api/time-off/'+timeOffModalCtx.offId,{method:'DELETE'});
+  if(r&&r.ok){closeModal('timeoff-modal');toast('Fjernet','🗑');await loadAll();}
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function loadTimeOffRequests(){
@@ -2472,7 +2667,7 @@ function renderCompleted(){
     return '<tr class="completed-row'+(b.invoiced?' invoiced':'')+'">'+
       '<td><strong>'+esc(b.job_name||'')+'</strong></td>'+
       '<td>'+esc(b.task_name||'')+'</td>'+
-      '<td><span class="badge '+esc(b.type_guess||'other')+'">'+type.label+'</span></td>'+
+      '<td><span class="badge '+esc(b.type_guess||'other')+'" style="background:'+(type.bar||'#94A3B8')+'22;color:'+(type.bar||'#94A3B8')+'">'+type.label+'</span></td>'+
       '<td>'+esc(b.user_name||'')+'</td>'+
       '<td>'+esc(String(b.completed_at).slice(0,16).replace('T',' '))+'</td>'+
       '<td>'+capDaysOf(b)+'d</td>'+
@@ -2575,6 +2770,33 @@ async function deactivateUser(){
 async function loadLogs(){
   var l=await api('/api/time/all');if(!l)return;
   document.getElementById('log-body').innerHTML=l.map(function(x){var m=+x.duration_minutes||0;return '<tr><td>'+esc(x.user_name)+'</td><td>'+esc(x.task_name)+'</td><td>'+esc(x.job_name)+'</td><td>'+esc((x.started_at||'').replace('T',' ').slice(0,16))+'</td><td>'+esc((x.stopped_at||'').replace('T',' ').slice(0,16))+'</td><td>'+Math.floor(m/60)+'t '+m%60+'m</td></tr>';}).join('')||'<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--muted)">Ingen timer endnu.</td></tr>';
+  await loadMailLog();
+}
+
+// MAIL-LOG — viser hver forsøgt kunde-mail (færdig-mail), om den blev sendt, fejlede, eller sprunget over
+var mailLogItems=[],mailLogFilter='all';
+async function loadMailLog(){
+  var l=await api('/api/completion-emails');
+  mailLogItems=l||[];
+  renderMailLog();
+}
+function mailLogStatusBadge(status){
+  if(status==='sent')return '<span class="tag" style="background:#DCFCE7;color:#15803D">✓ Sendt</span>';
+  if(status==='error')return '<span class="tag" style="background:#FEE2E2;color:#B91C1C">✕ Fejlet</span>';
+  return '<span class="tag" style="background:#FEF3C7;color:#92400E">⚠ Sprunget over</span>';
+}
+function renderMailLog(){
+  var body=document.getElementById('mail-log-body');if(!body)return;
+  var list=mailLogItems.filter(function(x){return mailLogFilter==='all'||x.status===mailLogFilter;});
+  body.innerHTML=list.map(function(x){
+    return '<tr>'+
+      '<td>'+esc(String(x.sent_at||'').replace('T',' ').slice(0,16))+'</td>'+
+      '<td><strong>'+esc(x.job_name||x.task_name||'—')+'</strong>'+(x.task_name&&x.job_name?'<div class="muted-sm">'+esc(x.task_name)+'</div>':'')+'</td>'+
+      '<td>'+esc(x.to_email||'—')+'</td>'+
+      '<td>'+mailLogStatusBadge(x.status)+'</td>'+
+      '<td>'+esc(x.error||'')+'</td>'+
+      '</tr>';
+  }).join('')||'<tr><td colspan="5" style="padding:14px;text-align:center;color:var(--muted)">Ingen mails logget endnu.</td></tr>';
 }
 function scrollToWeek(wk){var scroller=document.getElementById('capacity-scroll'),h=document.querySelector('#cap-head th[data-week-key="'+wk+'"]');if(scroller&&h)scroller.scrollTo({left:Math.max(0,h.offsetLeft-185),behavior:'smooth'});}
 
@@ -2708,6 +2930,9 @@ function bind(){
   document.getElementById('checklist-new-title').addEventListener('keydown',function(e){if(e.key==='Enter')addChecklistItem('checklist-items',checklistTaskId,'checklist-new-title');});
   document.getElementById('assign-checklist-add-btn').onclick=function(){var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);addChecklistItem('assign-checklist-items',taskId,'assign-checklist-new');};
   document.getElementById('assign-checklist-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);addChecklistItem('assign-checklist-items',taskId,'assign-checklist-new');}});
+  // Tidslinje-panelets tjekpunkter
+  document.getElementById('tld-checklist-add-btn').onclick=function(){if(tlDrawerTaskId)addChecklistItem('tld-checklist-items',tlDrawerTaskId,'tld-checklist-new');};
+  document.getElementById('tld-checklist-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();if(tlDrawerTaskId)addChecklistItem('tld-checklist-items',tlDrawerTaskId,'tld-checklist-new');}});
   document.getElementById('close-visit-book').onclick=function(){closeModal('visit-book-modal');};
   document.getElementById('save-visit-book').onclick=saveVisitBooking;
   document.getElementById('close-visit-form').onclick=function(){closeModal('visit-form-modal');};
@@ -2761,6 +2986,17 @@ function bind(){
   document.getElementById('close-capacity').onclick=function(){closeModal('capacity-modal');capacityCtx=null;};
   document.getElementById('save-capacity').onclick=saveCapacityReservation;
   document.getElementById('delete-capacity').onclick=deleteCapacityReservation;
+  // Ferie/fravær-modal (Daglig plan, Kapacitet og personkort)
+  document.getElementById('close-timeoff').onclick=function(){closeModal('timeoff-modal');timeOffModalCtx=null;};
+  document.getElementById('save-timeoff-btn').onclick=saveTimeOffModal;
+  document.getElementById('delete-timeoff-btn').onclick=deleteTimeOffModal;
+  // Fag & farver
+  document.getElementById('add-type-btn').onclick=addTaskType;
+  document.getElementById('task-types-list').addEventListener('change',function(e){
+    var t=e.target;
+    if(t.dataset.action==='type-color')saveTaskTypeField(t.dataset.key,'color',t.value);
+    if(t.dataset.action==='type-label')saveTaskTypeField(t.dataset.key,'label',t.value.trim());
+  });
   // Hurtig popup efter drag fra opgavepool til Kapacitet
   document.getElementById('cdp-cancel').onclick=closeCapacityDropPop;
   document.getElementById('cdp-save').onclick=saveCapacityDropPop;
@@ -2825,14 +3061,19 @@ function bind(){
       if(act==='task-check'){e.stopPropagation();selectedTaskIds[a.dataset.taskId]=a.checked;}
       if(act==='requests-filter'){requestsFilter=a.dataset.value;document.querySelectorAll('#requests-filter .chip').forEach(function(c){c.classList.toggle('active',c===a);});renderRequests();}
       if(act==='add-timeoff'){e.stopPropagation();addTimeOff(+a.dataset.userId);}
+      if(act==='add-timeoff-day'){e.stopPropagation();openTimeOffModal(+a.dataset.userId,a.dataset.date,null,a.dataset.weekEnd);}
+      if(act==='edit-timeoff-day'){e.stopPropagation();openTimeOffModalByOffId(+a.dataset.userId,+a.dataset.offId);}
       if(act==='approve-timeoff'){e.stopPropagation();approveTimeOff(+a.dataset.id);}
       if(act==='reject-timeoff'){e.stopPropagation();rejectTimeOff(+a.dataset.id);}
       if(act==='delete-timeoff'){e.stopPropagation();deleteTimeOff(+a.dataset.id);}
       if(act==='completed-filter'){completedFilter=a.dataset.value;a.parentElement.querySelectorAll('.chip').forEach(function(c){c.classList.toggle('active',c===a);});renderCompleted();}
+      if(act==='mail-log-filter'){mailLogFilter=a.dataset.value;a.parentElement.querySelectorAll('.chip').forEach(function(c){c.classList.toggle('active',c===a);});renderMailLog();}
       if(act==='approve-request'){e.stopPropagation();approveRequest(+a.dataset.id);}
       if(act==='reject-request'){e.stopPropagation();rejectRequest(+a.dataset.id);}
       if(act==='toggle-invoiced'){e.stopPropagation();toggleInvoiced(+a.dataset.bookingId,a.checked);}
       if(act==='toggle-completed'){e.stopPropagation();toggleCompleted(+a.dataset.bookingId,a.dataset.completed==='1');}
+      if(act==='delete-type'){e.stopPropagation();deleteTaskType(a.dataset.key);}
+      if(act==='brand-home')switchPage('plan');
       return;
     }
     // Click on assignment pill → open full edit modal
@@ -2924,7 +3165,7 @@ initNoteWidget();
 
 bind();
 loadSettings();
-loadAll();
+loadTaskTypes().then(function(){renderTaskTypesAdmin();return loadAll();});
 })();
 </script>
 </body>

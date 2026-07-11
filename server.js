@@ -295,6 +295,22 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- Fag/faggrupper og deres farve — styrer opgave-farverne i Daglig plan/Ugeplan og på
+    -- opgavekortene. Kapacitetsboardet bruger bevidst ÉN ensartet farve uanset fag.
+    CREATE TABLE IF NOT EXISTS task_types (
+      key TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      color TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0
+    );
+    INSERT INTO task_types (key,label,color,sort_order) VALUES
+      ('lay','Gulvlægning','#3B82F6',1),
+      ('sand','Gulvslibning','#22C55E',2),
+      ('paint','Malerservice','#EAB308',3),
+      ('sub','Underlev.','#8B5CF6',4),
+      ('other','Andet','#94A3B8',99)
+    ON CONFLICT (key) DO NOTHING;
+
     CREATE TABLE IF NOT EXISTS time_off (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL,
@@ -766,6 +782,72 @@ app.post('/api/settings/test-completion-email', auth, adminOnly, asyncRoute(asyn
   }
 }));
 
+// Log over afsendte/fejlede færdig-mails — så man kan se om en kunde-mail
+// rent faktisk kom afsted, og hvad fejlen var hvis ikke.
+app.get('/api/completion-emails', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await pool.query(`
+    SELECT ce.id, ce.booking_id, ce.task_id, ce.to_email, ce.status, ce.error, ce.sent_at,
+           t.job_name, t.name AS task_name, u.name AS user_name
+    FROM completion_emails ce
+    LEFT JOIN jt_tasks t ON t.id = ce.task_id
+    LEFT JOIN planning_bookings pb ON pb.id = ce.booking_id
+    LEFT JOIN users u ON u.id = pb.user_id
+    ORDER BY ce.sent_at DESC
+    LIMIT 300
+  `);
+  res.json(result.rows);
+}));
+
+// ── FAG & FARVER (opgave-typer) ─────────────────────────────
+// Styrer hvilke fag/faggrupper der findes, og hvilken farve hver af dem har i
+// Daglig plan/Ugeplan og på opgavekortene. Kapacitetsboardet bruger bevidst
+// ÉN ensartet farve for alle opgaver (uanset fag), så den forbliver rolig at overskue.
+app.get('/api/task-types', auth, asyncRoute(async (req, res) => {
+  const result = await pool.query('SELECT key,label,color,sort_order FROM task_types ORDER BY sort_order,label');
+  res.json(result.rows);
+}));
+
+function slugifyTypeKey(label) {
+  return String(label || '').toLowerCase()
+    .replace(/[æå]/g, 'a').replace(/ø/g, 'o')
+    .replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '').slice(0, 40) || `fag-${Date.now()}`;
+}
+
+app.post('/api/task-types', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const label = String(body.label || '').trim().slice(0, 60);
+  if (!label) return res.status(400).json({ error: 'Skriv et navn på faget' });
+  const color = /^#[0-9A-Fa-f]{6}$/.test(body.color || '') ? body.color : '#2563EB';
+  let key = slugifyTypeKey(body.key || label);
+  const existing = await pgOne('SELECT key FROM task_types WHERE key=$1', [key]);
+  if (existing) key = `${key}-${Date.now().toString(36)}`;
+  const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0) AS m FROM task_types');
+  await pool.query(
+    'INSERT INTO task_types (key,label,color,sort_order) VALUES ($1,$2,$3,$4)',
+    [key, label, color, (Number(maxOrder?.m) || 0) + 1]
+  );
+  res.json({ ok: true, key });
+}));
+
+app.put('/api/task-types/:key', auth, adminOnly, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT * FROM task_types WHERE key=$1', [req.params.key]);
+  if (!row) return res.status(404).json({ error: 'Faget blev ikke fundet' });
+  const body = req.body || {};
+  const label = body.label !== undefined ? String(body.label).trim().slice(0, 60) || row.label : row.label;
+  const color = body.color !== undefined ? (/^#[0-9A-Fa-f]{6}$/.test(body.color) ? body.color : row.color) : row.color;
+  await pool.query('UPDATE task_types SET label=$1,color=$2 WHERE key=$3', [label, color, row.key]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/task-types/:key', auth, adminOnly, asyncRoute(async (req, res) => {
+  if (req.params.key === 'other') return res.status(400).json({ error: '"Andet" kan ikke slettes — den bruges som standardfarve' });
+  const inUse = await pgOne('SELECT id FROM jt_tasks WHERE type_guess=$1 LIMIT 1', [req.params.key]);
+  if (inUse) return res.status(400).json({ error: 'Faget er i brug på mindst én opgave — skift deres fag først' });
+  const result = await pool.query('DELETE FROM task_types WHERE key=$1', [req.params.key]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Faget blev ikke fundet' });
+  res.json({ ok: true });
+}));
+
 // ── USERS / WORKFORCE ───────────────────────────────────────
 app.get('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await pool.query(`
@@ -955,11 +1037,25 @@ async function sendMailUniversal({ to, subject, text, html, attachments }) {
 }
 
 async function sendCompletionEmail(booking) {
-  if (!mailIsConfigured()) return; // Ikke sat op endnu — spring stille over.
+  if (!mailIsConfigured()) {
+    // Ikke sat op endnu — log det stille, så det kan ses i mail-loggen i stedet for at forsvinde sporløst.
+    await pool.query(
+      'INSERT INTO completion_emails (booking_id,task_id,to_email,status,error,sent_at) VALUES ($1,$2,$3,$4,$5,' + nowTextSQL() + ')',
+      [booking.id, booking.task_id, null, 'skipped', 'Mail er ikke sat op på serveren (RESEND_API_KEY/SMTP mangler)']
+    );
+    return;
+  }
 
   const task = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [booking.task_id]);
   const toEmail = task?.customer_email;
-  if (!toEmail) return; // Ingen e-mail registreret på denne kunde — intet at sende til.
+  if (!toEmail) {
+    // Ingen e-mail registreret på denne kunde — log det, så man kan opdage manglende kunde-mails.
+    await pool.query(
+      'INSERT INTO completion_emails (booking_id,task_id,to_email,status,error,sent_at) VALUES ($1,$2,$3,$4,$5,' + nowTextSQL() + ')',
+      [booking.id, booking.task_id, null, 'skipped', 'Ingen e-mail registreret på kunden']
+    );
+    return;
+  }
 
   const settingsRows = await pool.query(
     "SELECT key,value FROM app_settings WHERE key IN ('company_name','completion_email_subject','completion_email_body','cleaning_pdf_base64','cleaning_pdf_filename')"
@@ -1637,10 +1733,11 @@ app.post('/api/tasks/manual', auth, adminOnly, asyncRoute(async (req, res) => {
   const days = Math.max(0.25, Math.min(60, Number(body.days) || 1));
   const endDate = validDate(body.end_date) ? body.end_date : addWorkingDays(body.start_date, days);
   const id = `manual-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+  const customerEmail = String(body.customer_email || '').trim().slice(0, 200) || null;
   await pool.query(`
-    INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,job_number,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
-    VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,NULL,NULL,${nowTextSQL()},'manual',${nowTextSQL()})
-  `, [id, String(body.name).trim(), String(body.job_name).trim(), body.job_address || '', body.job_number || null, body.customer_phone || null, body.start_date, endDate, cleanTaskType(body.type_guess)]);
+    INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,job_number,customer_phone,customer_email,customer_email_source,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
+    VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL,NULL,${nowTextSQL()},'manual',${nowTextSQL()})
+  `, [id, String(body.name).trim(), String(body.job_name).trim(), body.job_address || '', body.job_number || null, body.customer_phone || null, customerEmail, customerEmail ? 'manual' : null, body.start_date, endDate, cleanTaskType(body.type_guess)]);
   res.json({ ok: true, id });
 }));
 
@@ -1727,15 +1824,31 @@ app.put('/api/capacity-reservations/:id', auth, adminOnly, asyncRoute(async (req
 app.put('/api/tasks/:id/customer-contact', auth, adminOnly, asyncRoute(async (req, res) => {
   const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [req.params.id]);
   if (!task) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
-  const phone = String((req.body || {}).customer_phone || '').trim().slice(0, 60);
-  await pool.query(`
-    UPDATE jt_tasks
-    SET customer_phone=$1,
-        customer_phone_source=CASE WHEN $1='' THEN NULL ELSE 'manual' END,
-        customer_phone_synced_at=NULL
-    WHERE id=$2
-  `, [phone || '', req.params.id]);
-  res.json({ ok: true, customer_phone: phone || null, customer_phone_source: phone ? 'manual' : null });
+  const body = req.body || {};
+  const phone = String(body.customer_phone || '').trim().slice(0, 60);
+  const emailProvided = body.customer_email !== undefined;
+  const email = String(body.customer_email || '').trim().slice(0, 200);
+  if (emailProvided) {
+    await pool.query(`
+      UPDATE jt_tasks
+      SET customer_phone=$1,
+          customer_phone_source=CASE WHEN $1='' THEN NULL ELSE 'manual' END,
+          customer_phone_synced_at=NULL,
+          customer_email=$2,
+          customer_email_source=CASE WHEN $2='' THEN NULL ELSE 'manual' END,
+          customer_email_synced_at=NULL
+      WHERE id=$3
+    `, [phone || '', email || '', req.params.id]);
+  } else {
+    await pool.query(`
+      UPDATE jt_tasks
+      SET customer_phone=$1,
+          customer_phone_source=CASE WHEN $1='' THEN NULL ELSE 'manual' END,
+          customer_phone_synced_at=NULL
+      WHERE id=$2
+    `, [phone || '', req.params.id]);
+  }
+  res.json({ ok: true, customer_phone: phone || null, customer_phone_source: phone ? 'manual' : null, customer_email: emailProvided ? (email || null) : undefined });
 }));
 
 app.delete('/api/tasks/manual/:id', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -1789,7 +1902,8 @@ app.put('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
     job_number: body.job_number !== undefined ? String(body.job_number).trim().slice(0, 60) : current.job_number,
     type_guess: body.type_guess !== undefined ? cleanTaskType(body.type_guess) : current.type_guess,
     description: body.description !== undefined ? String(body.description).slice(0, 5000) : current.description,
-    customer_phone: body.customer_phone !== undefined ? String(body.customer_phone).trim().slice(0, 60) : current.customer_phone
+    customer_phone: body.customer_phone !== undefined ? String(body.customer_phone).trim().slice(0, 60) : current.customer_phone,
+    customer_email: body.customer_email !== undefined ? String(body.customer_email).trim().slice(0, 200) : current.customer_email
   };
   await pool.query(`
     UPDATE jt_tasks
@@ -1801,12 +1915,21 @@ app.put('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
           ELSE customer_phone_source
         END,
         customer_phone_synced_at=CASE WHEN $9::boolean THEN NULL ELSE customer_phone_synced_at END,
-        job_number=$7
+        job_number=$7,
+        customer_email=$10,
+        customer_email_source=CASE
+          WHEN $11::boolean AND COALESCE($10,'')<>'' THEN 'manual'
+          WHEN $11::boolean THEN NULL
+          ELSE customer_email_source
+        END,
+        customer_email_synced_at=CASE WHEN $11::boolean THEN NULL ELSE customer_email_synced_at END
     WHERE id=$8
   `, [
     next.job_name, next.name, next.job_address, next.type_guess, next.description,
     next.customer_phone || null, next.job_number || null, current.id,
-    body.customer_phone !== undefined
+    body.customer_phone !== undefined,
+    next.customer_email || null,
+    body.customer_email !== undefined
   ]);
   res.json({ ok: true });
 }));
@@ -2179,6 +2302,25 @@ app.post('/api/time-off', auth, asyncRoute(async (req, res) => {
     RETURNING id
   `, [userId, body.start_date, body.end_date, type, status, note, isAdmin ? 'admin' : 'employee']);
   res.json({ ok: true, id: result.rows[0].id, status });
+}));
+
+// Redigér en eksisterende ferie-/fraværsperiode direkte (bruges fra hurtig-redigering
+// i Daglig plan / Kapacitet, hvor man vil kunne ændre dage, skifte til syg, osv. med det samme).
+app.put('/api/time-off/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT * FROM time_off WHERE id=$1', [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Blev ikke fundet' });
+  const body = req.body || {};
+  const startDate = body.start_date !== undefined ? String(body.start_date) : row.start_date;
+  const endDate = body.end_date !== undefined ? String(body.end_date) : row.end_date;
+  if (!validDate(startDate) || !validDate(endDate)) return res.status(400).json({ error: 'Vælg gyldige datoer' });
+  if (endDate < startDate) return res.status(400).json({ error: 'Slutdato skal være efter startdato' });
+  const type = body.type !== undefined ? (['vacation', 'sick', 'other'].includes(body.type) ? body.type : 'vacation') : row.type;
+  const note = body.note !== undefined ? (body.note ? String(body.note).slice(0, 1000) : null) : row.note;
+  await pool.query(
+    `UPDATE time_off SET start_date=$1, end_date=$2, type=$3, note=$4, status='approved', resolved_at=${nowTextSQL()} WHERE id=$5`,
+    [startDate, endDate, type, note, row.id]
+  );
+  res.json({ ok: true });
 }));
 
 app.put('/api/time-off/:id/approve', auth, adminOnly, asyncRoute(async (req, res) => {
