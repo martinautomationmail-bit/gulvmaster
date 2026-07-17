@@ -333,6 +333,16 @@ button,input,select{font:inherit}
 .note-widget-body{flex:1;overflow:auto;padding:12px;font-size:13px;line-height:1.5;outline:none;color:#451a03}
 .note-widget-body:empty:before{content:attr(placeholder);color:#B45309;opacity:.55}
 .note-widget-resize{position:absolute;right:2px;bottom:2px;width:16px;height:16px;cursor:nwse-resize;color:#B45309;font-size:11px;display:flex;align-items:center;justify-content:center;opacity:.6}
+.note-widget-tabs{display:flex;align-items:center;gap:2px;padding:6px 6px 0;background:#FEF3C7;flex-shrink:0;overflow-x:auto}
+.nw-tab{display:flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;font-weight:700;color:#92400E;background:transparent;border:0;border-radius:7px 7px 0 0;cursor:pointer;white-space:nowrap;opacity:.65}
+.nw-tab.active{background:#FFFBEB;opacity:1}
+.nw-tab-close{opacity:.5;font-size:10px;padding:1px}
+.nw-tab-close:hover{opacity:1}
+.nw-tab-add{padding:5px 8px;font-size:13px;font-weight:800;color:#92400E;background:transparent;border:0;cursor:pointer;opacity:.6}
+.nw-tab-add:hover{opacity:1}
+.nw-check{display:flex;align-items:flex-start;gap:7px;margin:3px 0}
+.nw-check input[type=checkbox]{width:16px;height:16px;margin-top:1px;accent-color:#16A34A;flex-shrink:0;cursor:pointer}
+.nw-check.done span{text-decoration:line-through;opacity:.55}
 
 /* TIDSLINJE — HØJRE SIDE-PANEL */
 .tl-drawer{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:92vw;background:#fff;box-shadow:-16px 0 50px rgba(15,34,64,.28);z-index:150;transform:translateX(100%);transition:transform .25s cubic-bezier(.2,.9,.3,1);display:flex;flex-direction:column}
@@ -523,10 +533,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="note-widget-close" id="note-widget-close" title="Luk">✕</button>
     </div>
   </div>
+  <div class="note-widget-tabs" id="note-widget-tabs"></div>
   <div class="note-widget-toolbar">
     <button type="button" data-cmd="bold" title="Fed"><b>B</b></button>
     <button type="button" data-cmd="italic" title="Kursiv"><i>I</i></button>
     <button type="button" data-cmd="underline" title="Understreget"><u>U</u></button>
+    <button type="button" id="note-check-btn" title="Tilføj afkrydsningsfelt">☑</button>
     <select id="note-font-name" title="Skrifttype">
       <option value="Arial">Arial</option>
       <option value="Georgia">Georgia</option>
@@ -747,7 +759,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="page-title">Ledighedsoversigt</div>
       <div class="page-sub">Hvem har ledige dage? Baseret på kapacitetsdage pr. uge (Kapacitetsboard).</div>
     </div>
+    <select id="avail-groupby" class="select" style="width:auto">
+      <option value="user">Gruppér: Medarbejder</option>
+      <option value="trade">Gruppér: Fag</option>
+    </select>
   </div>
+  <div class="workforce-bar" id="availability-workforce-filters"></div>
   <div class="board-outer" style="overflow:auto">
     <table class="avail-table">
       <thead id="avail-head"></thead>
@@ -1084,6 +1101,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
+<!-- SLET ÉN DAG ELLER HELE BOOKINGEN -->
+<div class="mo" id="delete-day-modal">
+  <div class="modal" style="max-width:420px">
+    <h3 id="delete-day-title">Slet booking</h3>
+    <p class="capacity-modal-note">Denne booking dækker flere dage. Vil du fjerne en enkelt dag, eller hele bookingen?</p>
+    <div id="delete-day-days" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('delete-day-modal')">Annuller</button>
+      <button class="btn danger" id="delete-day-all">🗑 Slet alle dage</button>
+    </div>
+  </div>
+</div>
+
 <!-- BOOK KUNDEBESØG (hurtig) -->
 <div class="mo" id="visit-book-modal">
   <div class="modal manual-modal-modern">
@@ -1267,6 +1297,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <div class="form-group"><label class="form-label">Vendor-gruppe</label><input id="user-vendor-group" class="input" placeholder="Fx AJB Gruppen APS"></div>
+    <div class="form-group"><label class="form-label">Privat mail <span class="opt-tag">til kalender-notifikationer, kan afvige fra login-mail</span></label><input id="user-personal-email" type="email" class="input" placeholder="Fx ahmed@privat.dk"></div>
+    <label class="login-row"><input id="user-notify-changes" type="checkbox"> Send en mail til den private adresse, når kalenderen ændres</label>
     <div class="modal-actions">
       <button class="btn danger hidden" id="deactivate-user">Deaktiver</button>
       <button class="btn" id="close-user">Annuller</button>
@@ -1288,7 +1320,8 @@ var settings={company_name:'Gulv Master Enterprise ApS',logo_url:null},library=[
 var timelineOffset=0,timelineGroupBy='user',capacityGroupBy='user';
 var taskRequests=[],requestsFilter='pending',completedFilter='open';
 var timeOffApproved=[],timeOffRequests=[];
-var filters={plan:{status:'all',type:'all',team:'all'},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'}};
+var filters={plan:{status:'all',type:'all',team:'all'},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'},availability:{status:'all',type:'all',team:'all'}};
+var availGroupBy='user';
 var DAYS=['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
 // Standard-fag/farver — bruges som fallback indtil /api/task-types er hentet,
 // og hvis serveren af en eller anden grund ikke har nogen fag registreret.
@@ -1877,9 +1910,34 @@ async function copyBooking(id){
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function removeBooking(id){
-  if(!confirm('Fjern booking?'))return;
-  var r=await api('/api/assignments/'+id,{method:'DELETE'});
-  if(r&&r.ok){closeModal('assign-modal');toast('Fjernet','🗑');await loadAll();}
+  var b=bookings.find(function(x){return +x.id===+id;});
+  if(!b){toast('Bookingen blev ikke fundet','❌');return;}
+  var dates=isCapacityBooking(b)?[]:workDates(b);
+  if(dates.length<=1){
+    if(!confirm('Fjern booking?'))return;
+    var r=await api('/api/assignments/'+id,{method:'DELETE'});
+    if(r&&r.ok){closeModal('assign-modal');toast('Fjernet','🗑');await loadAll();}
+    else if(r)toast(r.error||'Fejl','❌');
+    return;
+  }
+  openDeleteDayChoice(b,dates);
+}
+async function deleteBookingDay(id,date,scope){
+  var url='/api/assignments/'+id+(scope==='day'?('?date='+encodeURIComponent(date)+'&scope=day'):'');
+  var r=await api(url,{method:'DELETE'});
+  closeModal('delete-day-modal');
+  if(r&&r.ok){closeModal('assign-modal');toast(scope==='day'?'Den ene dag fjernet':'Hele bookingen fjernet','🗑');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+function openDeleteDayChoice(b,dates){
+  var label=b.job_name||b.task_name||'Opgaven';
+  document.getElementById('delete-day-title').textContent='Slet "'+label+'" — '+dates.length+' dage';
+  document.getElementById('delete-day-days').innerHTML=dates.map(function(ds){
+    var d=date(ds);
+    return '<button class="btn small" data-action="delete-booking-day" data-booking-id="'+b.id+'" data-date="'+ds+'">Kun '+d.getDate()+'/'+(d.getMonth()+1)+'</button>';
+  }).join('');
+  document.getElementById('delete-day-all').onclick=function(){deleteBookingDay(b.id,null,'all');};
+  document.getElementById('delete-day-modal').classList.add('open');
 }
 
 // TIDSLINJE — højre side-panel (erstatter den centrerede modal specifikt for Tidslinjen,
@@ -2253,9 +2311,41 @@ async function clearPlan(){
 function renderAvailability(){
   var head=document.getElementById('avail-head'),body=document.getElementById('avail-body');
   if(!head||!body)return;
+  teamFilterHTML('availability');
   var weeks=capacityWeeks().slice(0,8);
   head.innerHTML='<tr><th class="person-th">Person</th>'+weeks.map(function(m){return '<th>Uge '+weekNo(m)+'<br><span style="font-size:8px;font-weight:400">'+m.getDate()+'/'+(m.getMonth()+1)+'–'+add(m,4).getDate()+'/'+(add(m,4).getMonth()+1)+'</span></th>';}).join('')+'</tr>';
-  var all=users.filter(function(u){return u.active&&u.role==='employee';});
+
+  var team=filters.availability.team;
+  var all=users.filter(function(u){
+    if(!u.active||u.role!=='employee')return false;
+    if(team==='internal')return u.worker_type!=='vendor';
+    if(team==='vendors')return u.worker_type==='vendor';
+    if(team.indexOf('trade:')===0)return u.trade===team.slice(6);
+    return true;
+  });
+
+  if(availGroupBy==='trade'){
+    function tradeRow(label,members){
+      if(!members.length)return '';
+      var cells=weeks.map(function(m){
+        var cap=members.reduce(function(n,u){return n+(+u.weekly_capacity||5);},0);
+        var booked=members.reduce(function(n,u){return n+weeklyLoad(u.id,m);},0);
+        var free=Math.max(0,cap-booked);
+        var cls=free<=0?'avail-full':(free>=cap?'avail-free':'avail-partial');
+        var label2=free<=0?'Fuldt':(free>=cap?'Ledig':free.toFixed(1).replace('.0','')+'d ledig');
+        return '<td class="'+cls+'">'+label2+'</td>';
+      }).join('');
+      return '<tr><td class="person-td"><strong>'+esc(label)+'</strong><br><span style="font-size:9px;color:var(--muted);font-weight:500">'+members.length+' medarbejder'+(members.length!==1?'e':'')+'</span></td>'+cells+'</tr>';
+    }
+    var html='';
+    allTrades().forEach(function(trade){
+      html+=tradeRow(trade+' (Intern)',all.filter(function(u){return u.worker_type!=='vendor'&&u.trade===trade;}));
+      html+=tradeRow(trade+' (Ekstern)',all.filter(function(u){return u.worker_type==='vendor'&&u.trade===trade;}));
+    });
+    body.innerHTML=html||'<tr><td style="padding:16px;color:var(--muted)">Ingen fag matcher dette filter.</td></tr>';
+    return;
+  }
+
   var internal=all.filter(function(u){return u.worker_type!=='vendor';}).sort(function(a,b){return a.name.localeCompare(b.name,'da');});
   var vendors=all.filter(function(u){return u.worker_type==='vendor';}).sort(function(a,b){return a.name.localeCompare(b.name,'da');});
   function row(u){
@@ -2268,7 +2358,7 @@ function renderAvailability(){
     }).join('');
     return '<tr><td class="person-td"><strong>'+esc(u.name)+'</strong><br><span style="font-size:9px;color:var(--muted);font-weight:500">'+(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+'</span></td>'+cells+'</tr>';
   }
-  body.innerHTML=internal.concat(vendors).map(row).join('')||'<tr><td style="padding:16px;color:var(--muted)">Ingen aktive hold.</td></tr>';
+  body.innerHTML=internal.concat(vendors).map(row).join('')||'<tr><td style="padding:16px;color:var(--muted)">Ingen aktive hold matcher dette filter.</td></tr>';
 }
 
 // TIDSLINJE (Gantt) — grupperet efter medarbejder ELLER fag/type
@@ -2747,6 +2837,8 @@ function openUser(id,opts){
   document.getElementById('user-capacity').value=u?(u.weekly_capacity||5):5;document.getElementById('user-worker-type').value=u?(u.worker_type||'employee'):(opts.vendorGroup?'vendor':'employee');
   document.getElementById('user-trade').value=u?(u.trade||''):'';document.getElementById('user-vendor-group').value=u?(u.vendor_group||''):(opts.vendorGroup||'');
   document.getElementById('user-can-login').checked=u?!!u.can_login:!opts.vendorGroup;
+  document.getElementById('user-personal-email').value=u?(u.personal_email||''):'';
+  document.getElementById('user-notify-changes').checked=u?!!u.notify_schedule_changes:false;
   document.getElementById('user-avatar-file').value='';
   updateAvatarPreview(u?u.avatar_url:null);
   document.getElementById('deactivate-user').classList.toggle('hidden',!u);
@@ -2756,7 +2848,7 @@ async function saveUser(){
   var name=document.getElementById('user-name').value.trim(),login=document.getElementById('user-can-login').checked,email=document.getElementById('user-email').value.trim(),pw=document.getElementById('user-password').value;
   if(!name){toast('Navn mangler','⚠');return;}
   if(login&&(!email||(!editUserId&&!pw))){toast('Email og kode mangler','⚠');return;}
-  var body={name:name,can_login:login,email:email,role:document.getElementById('user-role').value,password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,avatar_url:document.getElementById('user-avatar-url').value||null};
+  var body={name:name,can_login:login,email:email,role:document.getElementById('user-role').value,password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,avatar_url:document.getElementById('user-avatar-url').value||null,personal_email:document.getElementById('user-personal-email').value.trim()||null,notify_schedule_changes:document.getElementById('user-notify-changes').checked};
   var r=editUserId?await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/users',{method:'POST',body:JSON.stringify(body)});
   if(r&&(r.ok||r.id)){closeModal('user-modal');toast('Gemt','✓');await loadAll();}else if(r)toast(r.error||'Fejl','❌');
 }
@@ -2944,6 +3036,7 @@ function bind(){
   document.getElementById('plan-today').onclick=function(){planOffset=0;renderPlan();};
   document.getElementById('cap-today').onclick=function(){scrollToWeek(weekKey(new Date()));};
   document.getElementById('cap-groupby').onchange=function(e){capacityGroupBy=e.target.value;renderCapacity();};
+  document.getElementById('avail-groupby').onchange=function(e){availGroupBy=e.target.value;renderAvailability();};
   // Search
   ['plan-search','cap-search','timeline-search'].forEach(function(id){document.getElementById(id).addEventListener('input',function(){renderPool(id==='plan-search'?'plan':(id==='cap-search'?'capacity':'timeline'));});});
   // People
@@ -3043,12 +3136,13 @@ function bind(){
       if(act==='capacity-add')openCapacityModal({weekStart:iso(mon(new Date()))});
       if(act==='add-capacity')openCapacityModal({userId:+a.dataset.userId,weekStart:a.dataset.date});
       if(act==='pool-filter'){filters[a.dataset.scope][a.dataset.kind]=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}
-      if(act==='team-filter'){filters[a.dataset.scope].team=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}
+      if(act==='team-filter'){filters[a.dataset.scope].team=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else if(a.dataset.scope==='availability')renderAvailability();else renderCapacity();}
       if(act==='toggle-vendor'){var g=a.dataset.group;vendorExpanded[g]=vendorExpanded[g]===false;renderPlan();renderCapacity();}
       if(act==='add-subgroup')openUser(null,{vendorGroup:a.dataset.group});
       if(act==='scroll-week')scrollToWeek(a.dataset.week);
       if(act==='add-booking'){var el=document.querySelector('[data-action="add-booking"][data-user-id="'+a.dataset.userId+'"][data-date="'+a.dataset.date+'"]');openQuickPop(null,+a.dataset.userId,a.dataset.date,{clientX:a.getBoundingClientRect().left,clientY:a.getBoundingClientRect().top});}
       if(act==='remove-booking'){e.stopPropagation();removeBooking(+a.dataset.bookingId);}
+      if(act==='delete-booking-day'){e.stopPropagation();deleteBookingDay(+a.dataset.bookingId,a.dataset.date,'day');}
       if(act==='copy-booking'){e.stopPropagation();copyBooking(+a.dataset.bookingId);}
       if(act==='edit-booking'){e.stopPropagation();openAssign({bookingId:+a.dataset.bookingId});}
       if(act==='open-timeline-drawer'){e.stopPropagation();openTimelineDrawer(+a.dataset.bookingId);}
@@ -3091,14 +3185,79 @@ function bind(){
 // FLYDENDE NOTE-BLOK
 var noteWidgetState={pos_x:80,pos_y:80,width:320,height:320};
 var noteSaveTimer=null;
+var noteTabs=[];
+var activeNoteTabId=null;
 function noteWidgetEl(){return document.getElementById('note-widget');}
 async function loadNoteWidget(){
   var r=await api('/api/notes-widget');
-  if(r){
-    noteWidgetState={pos_x:r.pos_x||80,pos_y:r.pos_y||80,width:r.width||320,height:r.height||320};
-    document.getElementById('note-widget-body').innerHTML=r.content||'';
-  }
+  if(r)noteWidgetState={pos_x:r.pos_x||80,pos_y:r.pos_y||80,width:r.width||320,height:r.height||320};
   applyNoteWidgetPosition();
+  await loadNoteTabs();
+}
+async function loadNoteTabs(){
+  var tabs=await api('/api/note-tabs');
+  noteTabs=tabs||[];
+  if(!noteTabs.length)return;
+  if(!activeNoteTabId||!noteTabs.some(function(t){return t.id===activeNoteTabId;}))activeNoteTabId=noteTabs[0].id;
+  renderNoteTabs();
+  loadActiveNoteTabContent();
+}
+function renderNoteTabs(){
+  var wrap=document.getElementById('note-widget-tabs');
+  wrap.innerHTML=noteTabs.map(function(t){
+    return '<button type="button" class="nw-tab'+(t.id===activeNoteTabId?' active':'')+'" data-tab-id="'+t.id+'">'+
+      '<span data-action="switch-note-tab">'+esc(t.title)+'</span>'+
+      (noteTabs.length>1?'<span class="nw-tab-close" data-action="delete-note-tab" title="Slet fane">×</span>':'')+
+      '</button>';
+  }).join('')+'<button type="button" class="nw-tab-add" id="note-tab-add" title="Ny fane">+</button>';
+  wrap.querySelectorAll('[data-action="switch-note-tab"]').forEach(function(el){
+    el.onclick=function(){switchNoteTab(+el.closest('.nw-tab').dataset.tabId);};
+  });
+  wrap.querySelectorAll('[data-action="delete-note-tab"]').forEach(function(el){
+    el.onclick=function(e){e.stopPropagation();deleteNoteTab(+el.closest('.nw-tab').dataset.tabId);};
+  });
+  document.getElementById('note-tab-add').onclick=addNoteTab;
+}
+function loadActiveNoteTabContent(){
+  var tab=noteTabs.find(function(t){return t.id===activeNoteTabId;});
+  document.getElementById('note-widget-body').innerHTML=tab?(tab.content||''):'';
+}
+function switchNoteTab(id){
+  saveActiveNoteTabNow();
+  activeNoteTabId=id;
+  renderNoteTabs();
+  loadActiveNoteTabContent();
+}
+async function addNoteTab(){
+  var tab=await api('/api/note-tabs',{method:'POST',body:JSON.stringify({})});
+  if(tab&&tab.id){noteTabs.push(tab);activeNoteTabId=tab.id;renderNoteTabs();loadActiveNoteTabContent();}
+}
+async function deleteNoteTab(id){
+  if(!confirm('Slet denne note-fane? Kan ikke fortrydes.'))return;
+  var r=await api('/api/note-tabs/'+id,{method:'DELETE'});
+  if(r&&r.ok){
+    noteTabs=noteTabs.filter(function(t){return t.id!==id;});
+    if(activeNoteTabId===id)activeNoteTabId=noteTabs.length?noteTabs[0].id:null;
+    renderNoteTabs();
+    loadActiveNoteTabContent();
+  }
+}
+function saveActiveNoteTabNow(){
+  if(!activeNoteTabId)return;
+  api('/api/note-tabs/'+activeNoteTabId,{method:'PUT',body:JSON.stringify({content:document.getElementById('note-widget-body').innerHTML})});
+}
+function saveNoteWidgetSoon(){
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer=setTimeout(saveActiveNoteTabNow,700);
+}
+function savePositionSoon(){
+  clearTimeout(window._noteWidgetPosTimer);
+  window._noteWidgetPosTimer=setTimeout(function(){
+    api('/api/notes-widget',{method:'PUT',body:JSON.stringify({
+      pos_x:noteWidgetState.pos_x,pos_y:noteWidgetState.pos_y,
+      width:noteWidgetState.width,height:noteWidgetState.height
+    })});
+  },400);
 }
 function applyNoteWidgetPosition(){
   var el=noteWidgetEl();
@@ -3107,15 +3266,12 @@ function applyNoteWidgetPosition(){
   el.style.width=noteWidgetState.width+'px';
   el.style.height=noteWidgetState.height+'px';
 }
-function saveNoteWidgetSoon(){
-  clearTimeout(noteSaveTimer);
-  noteSaveTimer=setTimeout(function(){
-    api('/api/notes-widget',{method:'PUT',body:JSON.stringify({
-      content:document.getElementById('note-widget-body').innerHTML,
-      pos_x:noteWidgetState.pos_x,pos_y:noteWidgetState.pos_y,
-      width:noteWidgetState.width,height:noteWidgetState.height
-    })});
-  },700);
+function insertNoteCheckbox(){
+  var body=document.getElementById('note-widget-body');
+  body.focus();
+  var html='<div class="nw-check" contenteditable="false"><input type="checkbox" onclick="this.closest(\'.nw-check\').classList.toggle(\'done\',this.checked);saveNoteWidgetSoon();"> <span contenteditable="true">Nyt punkt</span></div><div><br></div>';
+  document.execCommand('insertHTML',false,html);
+  saveNoteWidgetSoon();
 }
 function initNoteWidget(){
   var el=noteWidgetEl(),body=document.getElementById('note-widget-body');
@@ -3123,9 +3279,10 @@ function initNoteWidget(){
     el.classList.toggle('open');
     if(el.classList.contains('open'))loadNoteWidget();
   };
-  document.getElementById('note-widget-close').onclick=function(){el.classList.remove('open');};
+  document.getElementById('note-widget-close').onclick=function(){saveActiveNoteTabNow();el.classList.remove('open');};
   document.getElementById('note-widget-min').onclick=function(){el.classList.toggle('minimized');};
   body.addEventListener('input',saveNoteWidgetSoon);
+  document.getElementById('note-check-btn').onclick=insertNoteCheckbox;
   document.querySelectorAll('.note-widget-toolbar button[data-cmd]').forEach(function(btn){
     btn.onclick=function(){body.focus();document.execCommand(btn.dataset.cmd,false,null);saveNoteWidgetSoon();};
   });
@@ -3145,14 +3302,14 @@ function initNoteWidget(){
       applyNoteWidgetPosition();
     }
     if(resizing){
-      noteWidgetState.width=Math.max(220,resizing.origW+(e.clientX-resizing.startX));
-      noteWidgetState.height=Math.max(160,resizing.origH+(e.clientY-resizing.startY));
+      noteWidgetState.width=Math.max(240,resizing.origW+(e.clientX-resizing.startX));
+      noteWidgetState.height=Math.max(200,resizing.origH+(e.clientY-resizing.startY));
       applyNoteWidgetPosition();
     }
   });
   document.addEventListener('mouseup',function(){
-    if(dragging){dragging=null;saveNoteWidgetSoon();}
-    if(resizing){resizing=null;saveNoteWidgetSoon();}
+    if(dragging){dragging=null;savePositionSoon();}
+    if(resizing){resizing=null;savePositionSoon();}
   });
   // Træk i hjørnet for at ændre størrelse
   var resizeHandle=document.getElementById('note-widget-resize'),resizing=null;

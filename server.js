@@ -187,6 +187,8 @@ async function initSchema() {
   // så eksisterende databaser i produktion opgraderes uden datatab.
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_email TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_schedule_changes INTEGER DEFAULT 0;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS description TEXT;
     -- Contact columns are safe to add on an existing Render Postgres database.
     -- They let us keep a manual number protected from future JobTread syncs.
@@ -284,6 +286,17 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_customer_visits_task ON customer_visits(task_id);
+
+    CREATE TABLE IF NOT EXISTS note_tabs (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      title TEXT DEFAULT 'Note',
+      content TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_note_tabs_user ON note_tabs(user_id, sort_order);
 
     CREATE TABLE IF NOT EXISTS notes_widget (
       user_id INTEGER PRIMARY KEY,
@@ -851,7 +864,7 @@ app.delete('/api/task-types/:key', auth, adminOnly, asyncRoute(async (req, res) 
 // ── USERS / WORKFORCE ───────────────────────────────────────
 app.get('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await pool.query(`
-    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login
+    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes
     FROM users
     ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END,
              CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END,
@@ -876,10 +889,10 @@ app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
 
   try {
     const result = await pool.query(`
-      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url,personal_email,notify_schedule_changes)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       RETURNING id
-    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null]);
+    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0]);
     res.json({ ok: true, id: result.rows[0].id });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
@@ -907,14 +920,16 @@ app.put('/api/users/:id', auth, adminOnly, asyncRoute(async (req, res) => {
     trade: body.trade !== undefined ? body.trade : current.trade,
     weekly_capacity: body.weekly_capacity !== undefined ? Math.max(0, Number(body.weekly_capacity) || 0) : (Number(current.weekly_capacity) || 5),
     can_login: canLogin,
-    avatar_url: body.avatar_url !== undefined ? (body.avatar_url || null) : current.avatar_url
+    avatar_url: body.avatar_url !== undefined ? (body.avatar_url || null) : current.avatar_url,
+    personal_email: body.personal_email !== undefined ? (body.personal_email || null) : current.personal_email,
+    notify_schedule_changes: body.notify_schedule_changes !== undefined ? (body.notify_schedule_changes ? 1 : 0) : current.notify_schedule_changes
   };
   if (canLogin && !next.email) return res.status(400).json({ error: 'Email mangler for login-bruger' });
   try {
     await pool.query(`
-      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14
-      WHERE id=$15
-    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, id]);
+      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14,personal_email=$15,notify_schedule_changes=$16
+      WHERE id=$17
+    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, next.personal_email, next.notify_schedule_changes, id]);
     res.json({ ok: true });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
@@ -1137,6 +1152,26 @@ async function sendCompletionWebhook(booking) {
   }
 }
 
+// ── MAIL TIL MEDARBEJDER/VENDOR VED ÆNDRING AF DERES KALENDER ──
+// Kun aktiv hvis den enkelte medarbejder har slået det til (notify_schedule_changes)
+// OG har en privat mailadresse registreret. Sendes stille i baggrunden — påvirker
+// aldrig selve gemningen af bookingen, uanset om mailen lykkes eller ej.
+async function sendScheduleChangeEmail(userId, summary) {
+  try {
+    if (!mailIsConfigured()) return;
+    const user = await pgOne('SELECT * FROM users WHERE id=$1', [userId]);
+    if (!user || !user.notify_schedule_changes || !user.personal_email) return;
+    const settingsRow = await pgOne("SELECT value FROM app_settings WHERE key='company_name'");
+    const companyName = settingsRow?.value || 'Gulv Master Enterprise ApS';
+    const subject = `Din kalender er blevet opdateret — ${companyName}`;
+    const text = `Hej ${user.name},\n\n${summary}\n\nLog ind på din side for at se hele din kalender.\n\nVenlig hilsen\n${companyName}`;
+    const html = text.split('\n').map(line => line ? `<p>${line.replace(/</g, '&lt;')}</p>` : '<br>').join('');
+    await sendMailUniversal({ to: user.personal_email, subject, text, html });
+  } catch (e) {
+    console.error('Kunne ikke sende kalender-ændrings-mail:', e.message);
+  }
+}
+
 function taskConnection(cursor, fields) {
   const where = { and: [['targetType', 'job'], ['isGroup', false]] };
   if (!JT_INCLUDE_TODOS) where.and.unshift(['isToDo', false]);
@@ -1168,6 +1203,7 @@ function taskPagePayload(cursor) {
         tasks: taskConnection(cursor, {
           id: {},
           name: {},
+          description: {},
           startDate: {},
           endDate: {},
           job: { id: {}, name: {}, location: { address: {} } }
@@ -1312,12 +1348,13 @@ async function syncFromJTInner() {
           .trim();
 
         await client.query(`
-          INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,job_number,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()},'jobtread')
+          INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,job_number,description,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()},'jobtread')
           ON CONFLICT (id) DO UPDATE SET
             name=EXCLUDED.name, job_id=EXCLUDED.job_id, job_name=EXCLUDED.job_name,
             job_address=EXCLUDED.job_address,
             job_number=COALESCE(EXCLUDED.job_number, jt_tasks.job_number),
+            description=COALESCE(NULLIF(EXCLUDED.description,''), jt_tasks.description),
             start_date=EXCLUDED.start_date,
             end_date=EXCLUDED.end_date, type_guess=EXCLUDED.type_guess,
             raw_assignee_name=EXCLUDED.raw_assignee_name, jt_url=EXCLUDED.jt_url,
@@ -1325,6 +1362,7 @@ async function syncFromJTInner() {
         `, [
           task.id, task.name || '', jobId,
           customerName || ji.name || '', ji.address || '', ji.number || null,
+          task.description || '',
           task.startDate || null, task.endDate || task.startDate || null,
           guessType(task.name), assigneeMap.get(task.id) || null,
           jobId ? `https://app.jobtread.com/jobs/${jobId}/schedule` : null
@@ -2231,23 +2269,65 @@ app.put('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
 }));
 
 // ── FLYDENDE NOTE-BLOK (personlig scratch-pad, gemmes pr. bruger) ──
+// notes-widget holder kun position/størrelse på selve boksen.
+// Indholdet ligger i note_tabs — én bruger kan have flere faner.
 app.get('/api/notes-widget', auth, asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM notes_widget WHERE user_id=$1', [req.user.id]);
-  res.json(row || { user_id: req.user.id, content: '', pos_x: 80, pos_y: 80, width: 320, height: 320 });
+  res.json(row || { user_id: req.user.id, pos_x: 80, pos_y: 80, width: 320, height: 320 });
 }));
 
 app.put('/api/notes-widget', auth, asyncRoute(async (req, res) => {
   const body = req.body || {};
-  const content = body.content !== undefined ? String(body.content).slice(0, 200000) : '';
   const posX = Number.isFinite(Number(body.pos_x)) ? Math.round(Number(body.pos_x)) : 80;
   const posY = Number.isFinite(Number(body.pos_y)) ? Math.round(Number(body.pos_y)) : 80;
   const width = Number.isFinite(Number(body.width)) ? Math.round(Number(body.width)) : 320;
   const height = Number.isFinite(Number(body.height)) ? Math.round(Number(body.height)) : 320;
   await pool.query(`
     INSERT INTO notes_widget (user_id,content,pos_x,pos_y,width,height,updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,${nowTextSQL()})
-    ON CONFLICT (user_id) DO UPDATE SET content=EXCLUDED.content, pos_x=EXCLUDED.pos_x, pos_y=EXCLUDED.pos_y, width=EXCLUDED.width, height=EXCLUDED.height, updated_at=${nowTextSQL()}
-  `, [req.user.id, content, posX, posY, width, height]);
+    VALUES ($1,'',$2,$3,$4,$5,${nowTextSQL()})
+    ON CONFLICT (user_id) DO UPDATE SET pos_x=EXCLUDED.pos_x, pos_y=EXCLUDED.pos_y, width=EXCLUDED.width, height=EXCLUDED.height, updated_at=${nowTextSQL()}
+  `, [req.user.id, posX, posY, width, height]);
+  res.json({ ok: true });
+}));
+
+app.get('/api/note-tabs', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM note_tabs WHERE user_id=$1 ORDER BY sort_order ASC, id ASC', [req.user.id]);
+  if (!rows.rows.length) {
+    // Migrer evt. gammelt enkelt-note-indhold ind som første fane, hvis det findes.
+    const old = await pgOne('SELECT content FROM notes_widget WHERE user_id=$1', [req.user.id]);
+    const created = await pool.query(`
+      INSERT INTO note_tabs (user_id,title,content,sort_order,created_at,updated_at)
+      VALUES ($1,'Note 1',$2,0,${nowTextSQL()},${nowTextSQL()}) RETURNING *
+    `, [req.user.id, old?.content || '']);
+    return res.json(created.rows);
+  }
+  res.json(rows.rows);
+}));
+
+app.post('/api/note-tabs', auth, asyncRoute(async (req, res) => {
+  const existing = await pool.query('SELECT COALESCE(MAX(sort_order),-1) AS m FROM note_tabs WHERE user_id=$1', [req.user.id]);
+  const nextOrder = Number(existing.rows[0].m) + 1;
+  const title = String((req.body || {}).title || ('Note ' + (nextOrder + 1))).slice(0, 60);
+  const result = await pool.query(`
+    INSERT INTO note_tabs (user_id,title,content,sort_order,created_at,updated_at)
+    VALUES ($1,$2,'',$3,${nowTextSQL()},${nowTextSQL()}) RETURNING *
+  `, [req.user.id, title, nextOrder]);
+  res.json(result.rows[0]);
+}));
+
+app.put('/api/note-tabs/:id', auth, asyncRoute(async (req, res) => {
+  const tab = await pgOne('SELECT * FROM note_tabs WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+  if (!tab) return res.status(404).json({ error: 'Fanen blev ikke fundet' });
+  const body = req.body || {};
+  const title = body.title !== undefined ? String(body.title).slice(0, 60) : tab.title;
+  const content = body.content !== undefined ? String(body.content).slice(0, 200000) : tab.content;
+  await pool.query(`UPDATE note_tabs SET title=$1, content=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [title, content, tab.id]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/note-tabs/:id', auth, asyncRoute(async (req, res) => {
+  const result = await pool.query('DELETE FROM note_tabs WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Fanen blev ikke fundet' });
   res.json({ ok: true });
 }));
 
@@ -2384,9 +2464,9 @@ app.put('/api/assignments/:id/invoice', auth, adminOnly, asyncRoute(async (req, 
   res.json({ ok: true });
 }));
 
-async function normalizeBooking(body) {
+async function normalizeBooking(body, isNew) {
   const booking = body || {};
-  const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [booking.task_id]);
+  const task = await pgOne('SELECT id,description FROM jt_tasks WHERE id=$1', [booking.task_id]);
   if (!task) throw new Error('Opgaven blev ikke fundet');
   const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(booking.user_id)]);
   if (!user) throw new Error('Medarbejderen eller holdet blev ikke fundet');
@@ -2400,13 +2480,21 @@ async function normalizeBooking(body) {
     ? Math.max(0.25, Math.min(60, Number(booking.capacity_days) || days))
     : days;
   const start = booking.start_date;
+  // Ingen note angivet af admin, OG dette er en helt ny booking? Så lægger vi
+  // automatisk JobTreads egen opgavebeskrivelse ind i stedet, så den følger med
+  // ned til medarbejderen uden manuel indtastning. Ved redigering af en
+  // eksisterende booking rører vi ALDRIG noten uopfordret (så en admin altid
+  // kan slette/tømme en note uden at den bliver genskabt).
+  const explicitNote = booking.notes !== undefined && booking.notes !== null ? String(booking.notes).trim() : '';
+  const fallbackNote = (isNew && !explicitNote && task.description) ? String(task.description).trim() : '';
+  const finalNote = explicitNote || fallbackNote;
   return {
     task_id: booking.task_id,
     user_id: Number(booking.user_id),
     week_key: getWeekKey(start),
     days,
     capacity_days: capacityDays,
-    notes: booking.notes ? String(booking.notes).slice(0, 1000) : null,
+    notes: finalNote ? finalNote.slice(0, 1000) : null,
     start_time: booking.start_time || null,
     start_date: start,
     end_date: validDate(booking.end_date) ? booking.end_date : addWorkingDays(start, days)
@@ -2437,9 +2525,26 @@ app.get('/api/assignments/my', auth, asyncRoute(async (req, res) => {
   res.json(result.rows);
 }));
 
+// Medarbejdere kan selv hente en opgave fra poolen ind på deres egen dag —
+// uden om admin. Kan KUN booke sig selv (user_id tvinges til den loggede ind
+// bruger), uanset hvad der evt. sendes med i request'en.
+app.post('/api/assignments/self', auth, asyncRoute(async (req, res) => {
+  try {
+    const booking = await normalizeBooking({ ...(req.body || {}), user_id: req.user.id }, true);
+    const result = await pool.query(`
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${nowTextSQL()})
+      RETURNING id
+    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.start_time, booking.start_date, booking.end_date]);
+    res.json({ ok: true, id: result.rows[0].id });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+}));
+
 app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
   try {
-    const booking = await normalizeBooking(req.body);
+    const booking = await normalizeBooking(req.body, true);
     const result = await pool.query(`
       INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,updated_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${nowTextSQL()})
@@ -2451,6 +2556,8 @@ app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
       if (overlap.rows.length) warning = 'Medarbejderen har registreret ferie/fravær i denne periode';
     } catch (_) {}
     res.json({ ok: true, id: result.rows[0].id, warning });
+    sendScheduleChangeEmail(booking.user_id, `Du har fået en ny opgave sat på din kalender: ${String(booking.start_date).slice(0,10)}.`)
+      .catch(e => console.error('Kalender-mail fejlede:', e.message));
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -2467,6 +2574,14 @@ app.put('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => 
       WHERE id=$9
     `, [booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.start_time, booking.start_date, booking.end_date, current.id]);
     res.json({ ok: true });
+    if (String(current.planning_mode || 'daily') !== 'capacity') {
+      sendScheduleChangeEmail(booking.user_id, `Din kalender er blevet opdateret: opgaven den ${String(booking.start_date).slice(0,10)} er ændret.`)
+        .catch(e => console.error('Kalender-mail fejlede:', e.message));
+      if (Number(current.user_id) !== Number(booking.user_id)) {
+        sendScheduleChangeEmail(current.user_id, `En opgave er blevet flyttet væk fra din kalender.`)
+          .catch(e => console.error('Kalender-mail fejlede:', e.message));
+      }
+    }
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -2482,7 +2597,52 @@ app.delete('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) 
       return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
     }
     const row = current.rows[0];
-    await client.query('DELETE FROM planning_bookings WHERE id=$1', [row.id]);
+    const scope = String(req.query.scope || 'all');
+    const targetDate = validDate(String(req.query.date || '')) ? String(req.query.date) : null;
+
+    if (scope === 'day' && targetDate && String(row.planning_mode || 'daily') !== 'capacity') {
+      const workDates = workDatesForBooking(row.start_date, row.end_date);
+      const idx = workDates.indexOf(targetDate);
+      if (idx === -1 || workDates.length <= 1) {
+        // Kun én dag i alt, eller datoen findes slet ikke i intervallet — så er der
+        // reelt intet at splitte, slet hele bookingen som normalt.
+        await client.query('DELETE FROM planning_bookings WHERE id=$1', [row.id]);
+      } else {
+        const originalDays = Number(row.days) || workDates.length;
+        const perDay = originalDays / workDates.length;
+        const before = workDates.slice(0, idx);
+        const after = workDates.slice(idx + 1);
+        if (before.length) {
+          await client.query(
+            `UPDATE planning_bookings SET end_date=$1, days=$2, updated_at=${nowTextSQL()} WHERE id=$3`,
+            [before[before.length - 1], Math.round(before.length * perDay * 4) / 4, row.id]
+          );
+        }
+        if (after.length) {
+          if (before.length) {
+            // Begge sider har dage tilbage — den ene bevares (opdateret ovenfor),
+            // den anden oprettes som en ny, selvstændig booking.
+            await client.query(`
+              INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,planning_mode,updated_at)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()})
+            `, [row.task_id, row.user_id, getWeekKey(after[0]), Math.round(after.length * perDay * 4) / 4, row.capacity_days, row.notes, row.start_time, after[0], after[after.length - 1], row.planning_mode || 'daily']);
+          } else {
+            // Den slettede dag var den FØRSTE — hele bookingen rykkes bare til at
+            // starte efter den, ingen splitning nødvendig.
+            await client.query(
+              `UPDATE planning_bookings SET start_date=$1, week_key=$2, days=$3, updated_at=${nowTextSQL()} WHERE id=$4`,
+              [after[0], getWeekKey(after[0]), Math.round(after.length * perDay * 4) / 4, row.id]
+            );
+          }
+        } else if (!before.length) {
+          // Bælte-tilfælde (bør ikke ske givet tjekket ovenfor) — slet for en sikkerheds skyld.
+          await client.query('DELETE FROM planning_bookings WHERE id=$1', [row.id]);
+        }
+      }
+    } else {
+      await client.query('DELETE FROM planning_bookings WHERE id=$1', [row.id]);
+    }
+
     // A manually created capacity block owns a hidden helper task. Remove it when
     // the last reservation is deleted so the database does not collect ghosts.
     if (String(row.planning_mode || 'daily') === 'capacity') {
@@ -2494,6 +2654,10 @@ app.delete('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) 
     }
     await client.query('COMMIT');
     res.json({ ok: true });
+    if (String(row.planning_mode || 'daily') !== 'capacity') {
+      sendScheduleChangeEmail(row.user_id, `En opgave er blevet fjernet fra din kalender (${String(row.start_date).slice(0,10)}).`)
+        .catch(e => console.error('Kalender-mail fejlede:', e.message));
+    }
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
     throw error;

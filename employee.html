@@ -65,6 +65,10 @@
 .req-submit:hover{filter:brightness(1.1)}
 .req-history{margin-top:16px;border-top:1px solid var(--border);padding-top:12px}
 .req-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;font-size:11px;border-bottom:1px solid #f1f5f9}
+.ft-result{padding:11px 12px;border:1px solid var(--border,#E2E8F0);border-radius:10px;margin-bottom:7px;cursor:pointer;transition:.15s}
+.ft-result:hover{background:#F8FAFC;border-color:#94A3B8}
+.ft-result-title{font-weight:700;font-size:13px}
+.ft-result-sub{font-size:11.5px;color:var(--muted,#64748b);margin-top:2px}
 .req-item:last-child{border-bottom:0}
 .req-status{font-size:9px;font-weight:800;border-radius:10px;padding:2px 8px}
 .req-status.pending{background:#FEF9C3;color:#92570A}
@@ -82,7 +86,7 @@
 <body>
 <header class="topbar">
   <div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div>
-  <div class="topbar-actions"><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button></div>
+  <div class="topbar-actions"><button class="lib-btn" onclick="openFindTask()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find a task</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button></div>
   <div class="user"><span id="user-name" class="user-name"></span><span id="user-avatar" class="avatar">?</span><button class="logout" onclick="logout()">Log out</button></div>
 </header>
 <main class="main">
@@ -94,6 +98,28 @@
 </main>
 <div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div></div></div></div>
 <div id="library-modal" class="modal-backdrop" onclick="closeLibraryOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📁 Guides & floor plans</div><button class="modal-close" onclick="closeLibrary()">Close</button></div><div class="modal-body" id="library-body"></div></div></div>
+<div id="find-task-modal" class="modal-backdrop" onclick="closeFindTaskOnBackdrop(event)">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">🔍 Find a task</div><button class="modal-close" onclick="closeFindTask()">Close</button></div>
+    <div class="modal-body">
+      <p class="req-intro">Were you sent out to a job on short notice? Search the task pool below and add it straight to your own day — no need to call the office.</p>
+      <input id="ft-search" class="req-input" placeholder="Search by customer name, address, or job..." autocomplete="off" oninput="renderFindTaskResults()">
+      <div id="ft-results" style="margin:12px 0;max-height:260px;overflow:auto"></div>
+      <div id="ft-picker" style="display:none">
+        <div id="ft-picked-label" style="font-weight:700;font-size:13px;margin-bottom:10px"></div>
+        <label class="req-label">Date</label>
+        <input id="ft-date" type="date" class="req-input">
+        <label class="req-label">Number of days</label>
+        <input id="ft-days" type="number" min=".25" max="30" step=".25" value="1" class="req-input">
+        <div id="ft-feedback" class="req-feedback"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button type="button" class="req-submit" style="background:#E2E8F0;color:#334155" onclick="cancelFindTaskPick()">← Back to list</button>
+          <button type="button" class="req-submit" id="ft-confirm-btn" onclick="confirmFindTaskAssign()">Add to my day</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="request-modal" class="modal-backdrop" onclick="closeRequestOnBackdrop(event)">
   <div class="modal req-modal">
     <div class="modal-head req-head"><div class="modal-title"><span class="req-icon" id="req-modal-icon">📩</span> <span id="req-modal-title">Request a task</span></div><button class="modal-close" onclick="closeRequestModal()">Close</button></div>
@@ -275,6 +301,63 @@ async function toggleMyChecklistItem(id,done){
 function openBookingNote(id){const x=bookingNotes.get(String(id))||{};document.getElementById('note-task').textContent=x.title||'Task';const note=String(x.note||'').trim();const nt=document.getElementById('note-text');nt.textContent=note||'No note has been added to this booking yet.';nt.classList.toggle('modal-empty',!note);document.getElementById('note-modal').classList.add('open')}
 function closeNote(){document.getElementById('note-modal').classList.remove('open')}
 function closeNoteOnBackdrop(e){if(e.target===document.getElementById('note-modal'))closeNote()}
+
+// FIND A TASK — lets an employee self-assign an unplanned pool task to their own day
+let ftAllTasks=[],ftPickedTask=null;
+async function openFindTask(){
+  document.getElementById('ft-search').value='';
+  document.getElementById('ft-picker').style.display='none';
+  document.getElementById('ft-results').style.display='block';
+  document.getElementById('find-task-modal').classList.add('open');
+  const r=await api('/api/tasks');
+  ftAllTasks=(r&&r.ok?r.data:[])||[];
+  renderFindTaskResults();
+}
+function closeFindTask(){document.getElementById('find-task-modal').classList.remove('open');}
+function closeFindTaskOnBackdrop(e){if(e.target===document.getElementById('find-task-modal'))closeFindTask();}
+function renderFindTaskResults(){
+  const q=document.getElementById('ft-search').value.trim().toLowerCase();
+  const el=document.getElementById('ft-results');
+  let list=ftAllTasks;
+  if(q)list=list.filter(t=>((t.job_name||'')+' '+(t.name||'')+' '+(t.job_address||'')).toLowerCase().includes(q));
+  list=list.slice(0,40);
+  if(!list.length){el.innerHTML='<p style="color:var(--muted);font-size:12px;text-align:center;padding:20px 0">No matching tasks found.</p>';return;}
+  el.innerHTML=list.map(t=>`<div class="ft-result" onclick="pickFindTask('${t.id}')"><div class="ft-result-title">${esc(t.job_name||'No customer')}</div><div class="ft-result-sub">${esc(t.name||'')}${t.job_address?' · '+esc(t.job_address):''}${t.job_number?' · #'+esc(t.job_number):''}</div></div>`).join('');
+}
+function pickFindTask(taskId){
+  ftPickedTask=ftAllTasks.find(t=>t.id===taskId);
+  if(!ftPickedTask)return;
+  document.getElementById('ft-picked-label').textContent=(ftPickedTask.job_name||'')+' — '+(ftPickedTask.name||'');
+  document.getElementById('ft-date').value=iso(new Date());
+  document.getElementById('ft-days').value='1';
+  document.getElementById('ft-feedback').className='req-feedback';
+  document.getElementById('ft-results').style.display='none';
+  document.getElementById('ft-picker').style.display='block';
+}
+function cancelFindTaskPick(){
+  ftPickedTask=null;
+  document.getElementById('ft-picker').style.display='none';
+  document.getElementById('ft-results').style.display='block';
+}
+async function confirmFindTaskAssign(){
+  if(!ftPickedTask)return;
+  const dateVal=document.getElementById('ft-date').value;
+  const days=+document.getElementById('ft-days').value||1;
+  const fb=document.getElementById('ft-feedback');
+  if(!dateVal){fb.textContent='Choose a date';fb.className='req-feedback show error';return;}
+  const btn=document.getElementById('ft-confirm-btn');
+  btn.disabled=true;btn.textContent='Adding…';
+  const r=await api('/api/assignments/self',{method:'POST',body:JSON.stringify({task_id:ftPickedTask.id,start_date:dateVal,days:days})});
+  if(r&&r.ok){
+    toast('Added to your day ✓');
+    closeFindTask();
+    await loadAll();
+  } else {
+    fb.textContent=(r&&r.data&&r.data.error)||'Could not add this task';
+    fb.className='req-feedback show error';
+  }
+  btn.disabled=false;btn.textContent='Add to my day';
+}
 
 async function openLibrary(){
   const body=document.getElementById('library-body');
