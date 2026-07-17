@@ -1398,7 +1398,7 @@ function dailyLoad(uid,ds){
 function capDaysOf(b){return (b.capacity_days!==null&&b.capacity_days!==undefined&&b.capacity_days!=='')?+b.capacity_days:(+b.days||1);}
 function weeklyLoad(uid,m){
   var days=[];for(var i=0;i<5;i++)days.push(iso(add(m,i)));
-  return bookings.filter(function(b){return +b.user_id===+uid;})
+  return bookings.filter(function(b){return isCapacityBooking(b)&&+b.user_id===+uid;})
     .reduce(function(n,b){var c=workDates(b).filter(function(d){return days.indexOf(d)>-1;}).length;return n+(capDaysOf(b)/workDates(b).length)*c;},0);
 }
 function capClass(booked,cap){var p=cap?booked/cap:0;return p<=0?'cap-free':p<.7?'cap-ok':p<=1?'cap-warn':'cap-over';}
@@ -1697,7 +1697,7 @@ function renderCapacity(){
       var cap=+u.weekly_capacity||5,booked=weeklyLoad(u.id,m),end=add(m,6);
       var pct=cap?Math.min(booked/cap*100,100):0;
       var cc=capClass(booked,cap);
-      var items=bookings.filter(function(b){return +b.user_id===+u.id&&workDates(b).some(function(ds){var q=date(ds);return q>=m&&q<=end;});});
+      var items=bookings.filter(function(b){return isCapacityBooking(b)&&+b.user_id===+u.id&&workDates(b).some(function(ds){var q=date(ds);return q>=m&&q<=end;});});
       var pills=items.map(function(b){
         var capacityOnly=isCapacityBooking(b);
         var label=capacityOnly?(b.capacity_label||b.task_name||'Kapacitetsreservation'):(b.job_name||b.task_name||'');

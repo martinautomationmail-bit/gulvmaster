@@ -2468,7 +2468,7 @@ async function normalizeBooking(body, isNew) {
   const booking = body || {};
   const task = await pgOne('SELECT id,description FROM jt_tasks WHERE id=$1', [booking.task_id]);
   if (!task) throw new Error('Opgaven blev ikke fundet');
-  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(booking.user_id)]);
+  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1", [Number(booking.user_id)]);
   if (!user) throw new Error('Medarbejderen eller holdet blev ikke fundet');
   if (!validDate(booking.start_date)) throw new Error('Vælg en gyldig startdato');
   const days = Math.max(0.25, Math.min(60, Number(booking.days) || 1));
