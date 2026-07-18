@@ -189,6 +189,25 @@ async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_email TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_schedule_changes INTEGER DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS jt_vendor_account_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_users_jt_vendor ON users(jt_vendor_account_id);
+
+    CREATE TABLE IF NOT EXISTS gantt_tasks (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      job_name TEXT,
+      name TEXT,
+      description TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      progress REAL DEFAULT 0,
+      is_group INTEGER DEFAULT 0,
+      parent_task_id TEXT,
+      position TEXT,
+      depends_on TEXT,
+      synced_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_gantt_tasks_job ON gantt_tasks(job_id);
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS description TEXT;
     -- Contact columns are safe to add on an existing Render Postgres database.
     -- They let us keep a manual number protected from future JobTread syncs.
@@ -1384,6 +1403,7 @@ async function syncFromJTInner() {
     // synkroniseringen. Den køres i baggrunden efter vi allerede har svaret.
     syncCustomerPhonesFromJT().catch(e => console.error('Baggrunds-telefonopslag fejlede:', e.message));
     syncJobGeocodesInBackground().catch(e => console.error('Baggrunds-geokodning fejlede:', e.message));
+    syncVendorsFromJT().catch(e => console.error('Baggrunds-vendor-synk fejlede:', e.message));
 
     return { ok: true, count: allTasks.length, pages: p1 };
 
@@ -1726,6 +1746,234 @@ async function syncJobGeocodesInBackground() {
     geocodeSyncRunning = false;
   }
 }
+
+// ── AUTOMATISK VENDOR-SYNK ──
+// Henter alle "vendor"-konti fra JobTread og opretter/opdaterer dem som
+// underleverandører i Hold & vendors, så de ikke skal oprettes manuelt to
+// steder. Rører ALDRIG en vendor, der allerede findes og er redigeret manuelt
+// (fx tilføjet Fag, kapacitet, privat mail) — opdaterer kun navnet, hvis det
+// er ændret i JobTread, og opretter aldrig dubletter.
+let vendorSyncRunning = false;
+async function syncVendorsFromJT() {
+  if (vendorSyncRunning) return { ok: false, skipped: true };
+  if (!JT_GRANT || !JT_ORG) return { ok: false, error: 'JobTread er ikke sat op' };
+  vendorSyncRunning = true;
+  let created = 0, renamed = 0;
+  try {
+    let cursor, page = 0;
+    const seen = [];
+    while (page < 20) {
+      const args = { size: 100, where: ['type', 'vendor'] };
+      if (cursor) args.page = cursor;
+      const data = await jtFetch({
+        query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, accounts: { $: args, nextPage: {}, nodes: { id: {}, name: {} } } } }
+      }, `Vendor-synk s.${page + 1}`);
+      const conn = data?.organization?.accounts || data?.query?.organization?.accounts || {};
+      const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
+      for (const acc of nodes) {
+        if (!acc?.id || !acc?.name) continue;
+        seen.push(acc.id);
+        const name = String(acc.name).trim().slice(0, 200);
+        const existing = await pgOne('SELECT id,name FROM users WHERE jt_vendor_account_id=$1', [acc.id]);
+        if (existing) {
+          if (existing.name !== name) {
+            await pool.query('UPDATE users SET name=$1, vendor_group=$1 WHERE id=$2', [name, existing.id]);
+            renamed++;
+          }
+        } else {
+          // Undgå dubletter hvis en vendor med samme navn allerede blev oprettet manuelt
+          // (før denne funktion fandtes) — kobl den til JobTread i stedet for at lave en ny.
+          const byName = await pgOne("SELECT id FROM users WHERE worker_type='vendor' AND jt_vendor_account_id IS NULL AND lower(name)=lower($1)", [name]);
+          if (byName) {
+            await pool.query('UPDATE users SET jt_vendor_account_id=$1 WHERE id=$2', [acc.id, byName.id]);
+          } else {
+            const initials = name.split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'VE';
+            await pool.query(`
+              INSERT INTO users (name,role,color,initials,active,worker_type,vendor_group,weekly_capacity,can_login,jt_vendor_account_id)
+              VALUES ($1,'employee','#7C3AED',$2,1,'vendor',$1,5,0,$3)
+            `, [name, initials, acc.id]);
+            created++;
+          }
+        }
+      }
+      page++;
+      const next = conn.nextPage;
+      if (!next || next === '') break;
+      cursor = next;
+    }
+    if (created || renamed) await writeSyncLog(0, 'ok', `Vendor-synk: ${created} nye underleverandører oprettet, ${renamed} omdøbt.`);
+    return { ok: true, created, renamed };
+  } catch (error) {
+    console.error('Vendor-synk fejlede:', error.message);
+    return { ok: false, error: error.message };
+  } finally {
+    vendorSyncRunning = false;
+  }
+}
+
+// ── GANTT-KORT (1:1 med et JobTread-job, tovejs-synkroniseret) ──
+// Uafhængig af Daglig plan / Kapacitet — arbejder direkte på selve JobTread-jobbets
+// egne opgaver, datoer og afhængigheder (taskDependencies), og skriver ændringer
+// tilbage til JobTread med det samme via updateTask/createTask.
+function safeJsonParse(text, fallback) {
+  try { return JSON.parse(text); } catch (_) { return fallback; }
+}
+
+async function fetchGanttTasksFromJT(jobId) {
+  const data = await jtFetch({
+    query: {
+      $: { grantKey: JT_GRANT },
+      job: {
+        $: { id: jobId },
+        id: {}, name: {},
+        tasks: {
+          $: { size: 200, where: ['isToDo', false] },
+          nodes: {
+            id: {}, name: {}, description: {}, startDate: {}, endDate: {},
+            progress: {}, isGroup: {}, position: {},
+            parentTask: { id: {} },
+            taskDependencies: { $: { size: 20 }, nodes: { dependsOnTask: { id: {} } } }
+          }
+        }
+      }
+    }
+  }, 'Gantt: hent job-opgaver');
+  const job = data?.job || data?.query?.job;
+  if (!job) throw new Error('Jobbet blev ikke fundet i JobTread');
+  const tasks = (job.tasks?.nodes || []).map(t => ({
+    id: t.id,
+    name: t.name || '',
+    description: t.description || '',
+    start_date: t.startDate || null,
+    end_date: t.endDate || t.startDate || null,
+    progress: t.progress != null ? Number(t.progress) : 0,
+    is_group: !!t.isGroup,
+    parent_task_id: t.parentTask?.id || null,
+    position: t.position || '',
+    depends_on: (t.taskDependencies?.nodes || []).map(d => d.dependsOnTask?.id).filter(Boolean)
+  }));
+  return { jobName: job.name || '', tasks };
+}
+
+async function syncGanttJob(jobId) {
+  const { jobName, tasks } = await fetchGanttTasksFromJT(jobId);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM gantt_tasks WHERE job_id=$1', [jobId]);
+    for (const t of tasks) {
+      await client.query(`
+        INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,synced_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()})
+      `, [t.id, jobId, jobName, t.name, t.description, t.start_date, t.end_date, t.progress, t.is_group ? 1 : 0, t.parent_task_id, t.position, JSON.stringify(t.depends_on)]);
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+  return { jobName, count: tasks.length };
+}
+
+app.get('/api/gantt/job-search', auth, asyncRoute(async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.json([]);
+  const rows = await pool.query(`
+    SELECT DISTINCT job_id, job_name, job_number
+    FROM jt_tasks
+    WHERE job_id IS NOT NULL AND (job_name ILIKE $1 OR job_number ILIKE $1)
+    ORDER BY job_name ASC LIMIT 20
+  `, [`%${q}%`]);
+  res.json(rows.rows);
+}));
+
+app.get('/api/gantt/job/:jobId', auth, asyncRoute(async (req, res) => {
+  let rows = await pool.query('SELECT * FROM gantt_tasks WHERE job_id=$1 ORDER BY position ASC, id ASC', [req.params.jobId]);
+  if (!rows.rowCount) {
+    // Første gang dette job åbnes — hent live fra JobTread med det samme.
+    try {
+      await syncGanttJob(req.params.jobId);
+      rows = await pool.query('SELECT * FROM gantt_tasks WHERE job_id=$1 ORDER BY position ASC, id ASC', [req.params.jobId]);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  }
+  res.json(rows.rows.map(r => ({ ...r, depends_on: safeJsonParse(r.depends_on, []) })));
+}));
+
+app.post('/api/gantt/job/:jobId/sync', auth, adminOnly, asyncRoute(async (req, res) => {
+  try {
+    const result = await syncGanttJob(req.params.jobId);
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+}));
+
+app.put('/api/gantt/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM gantt_tasks WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
+  const body = req.body || {};
+  const next = {
+    name: body.name !== undefined ? String(body.name).trim() : current.name,
+    start_date: body.start_date !== undefined ? body.start_date : current.start_date,
+    end_date: body.end_date !== undefined ? body.end_date : current.end_date,
+    progress: body.progress !== undefined ? Math.max(0, Math.min(1, Number(body.progress))) : current.progress
+  };
+  // Skriv til JobTread FØRST — hvis det fejler, skal vi ikke gemme en lokal
+  // version der er ude af trit med den rigtige sag.
+  try {
+    await jtFetch({
+      query: {
+        $: { grantKey: JT_GRANT },
+        updateTask: {
+          $: { id: current.id, name: next.name, startDate: next.start_date, endDate: next.end_date, progress: next.progress, notify: false }
+        }
+      }
+    }, 'Gantt: opdatér opgave i JobTread');
+  } catch (error) {
+    return res.status(400).json({ error: 'Kunne ikke opdatere i JobTread: ' + error.message });
+  }
+  await pool.query(`
+    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, synced_at=${nowTextSQL()} WHERE id=$5
+  `, [next.name, next.start_date, next.end_date, next.progress, current.id]);
+  res.json({ ok: true });
+}));
+
+app.post('/api/gantt/job/:jobId/tasks', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const name = String(body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Skriv et navn til opgaven' });
+  if (!validDate(body.start_date)) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
+  let createdId;
+  try {
+    const result = await jtFetch({
+      query: {
+        $: { grantKey: JT_GRANT },
+        createTask: {
+          $: {
+            targetId: req.params.jobId, targetType: 'job', name,
+            startDate: body.start_date, endDate: body.end_date || body.start_date,
+            isToDo: false, notify: false,
+            ...(body.depends_on ? { dependsOnTasks: [{ id: body.depends_on }] } : {})
+          },
+          createdTask: { id: {} }
+        }
+      }
+    }, 'Gantt: opret opgave i JobTread');
+    createdId = result?.createTask?.createdTask?.id;
+    if (!createdId) throw new Error('JobTread returnerede intet id');
+  } catch (error) {
+    return res.status(400).json({ error: 'Kunne ikke oprette i JobTread: ' + error.message });
+  }
+  await pool.query(`
+    INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,synced_at)
+    VALUES ($1,$2,(SELECT job_name FROM gantt_tasks WHERE job_id=$2 LIMIT 1),$3,'',$4,$5,0,0,NULL,'',$6,${nowTextSQL()})
+  `, [createdId, req.params.jobId, name, body.start_date, body.end_date || body.start_date, JSON.stringify(body.depends_on ? [body.depends_on] : [])]);
+  res.json({ ok: true, id: createdId });
+}));
 
 app.post('/api/sync-phones', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await syncCustomerPhonesFromJT();
