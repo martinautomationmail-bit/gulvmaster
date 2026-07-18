@@ -371,9 +371,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .avail-table{width:100%;border-collapse:collapse;min-width:900px}
 
 /* GANTT */
-.gantt-job-picker{max-width:520px;margin:0 0 18px}
-.gantt-job-picker #gantt-job-results{margin-top:8px;max-height:280px;overflow:auto}
-.gantt-job-result{padding:10px 12px;border:1px solid var(--border2);border-radius:9px;margin-bottom:6px;cursor:pointer;background:#fff}
+.gantt-job-picker{max-width:900px;margin:0 0 18px}
+.gantt-job-picker #gantt-job-results{margin-top:8px;max-height:640px;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gantt-job-group-header{grid-column:1/-1;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:12px 2px 2px;border-top:1px solid var(--border2)}
+.gantt-job-group-header:first-child{border-top:0;padding-top:0}
+.gantt-job-result{padding:10px 12px;border:1px solid var(--border2);border-radius:9px;cursor:pointer;background:#fff}
 .gantt-job-result:hover{background:var(--ice);border-color:#94A3B8}
 .gantt-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .gantt-chart{display:flex;min-width:max-content}
@@ -813,7 +815,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
   <div class="gantt-job-picker" id="gantt-job-picker">
-    <input id="gantt-job-search" class="input" placeholder="Søg efter kunde/sag for at åbne dens Gantt-kort..." autocomplete="off">
+    <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <input id="gantt-job-search" class="input" placeholder="Filtrér — skriv for at indsnævre listen..." autocomplete="off" style="flex:1;min-width:220px">
+      <select id="gantt-group-by" class="select" style="width:auto">
+        <option value="none">Gruppér: Ingen</option>
+        <option value="trade">Gruppér: Faggruppe</option>
+        <option value="letter">Gruppér: A-Å</option>
+      </select>
+    </div>
     <div id="gantt-job-results"></div>
   </div>
   <div id="gantt-board-wrap" style="display:none">
@@ -2382,23 +2391,53 @@ async function clearPlan(){
 // LEDIGHEDSOVERSIGT
 // GANTT — 1:1 med et JobTread-job
 var ganttState={jobId:null,jobName:'',tasks:[],dayWidth:32,rangeStart:null,rangeDays:60};
-function initGanttPage(){
+var ganttAllJobs=[],ganttGroupBy='none';
+async function initGanttPage(){
   document.getElementById('gantt-job-picker').style.display='block';
   document.getElementById('gantt-board-wrap').style.display='none';
   var input=document.getElementById('gantt-job-search');
-  input.value='';document.getElementById('gantt-job-results').innerHTML='';
-  input.oninput=debounce(searchGanttJobs,300);
-  input.focus();
+  input.value='';
+  input.oninput=renderGanttJobList;
+  document.getElementById('gantt-group-by').onchange=function(e){ganttGroupBy=e.target.value;renderGanttJobList();};
+  document.getElementById('gantt-job-results').innerHTML='<p class="muted-sm">Henter sager…</p>';
+  var r=await api('/api/gantt/jobs');
+  ganttAllJobs=r||[];
+  renderGanttJobList();
 }
-function debounce(fn,ms){var t;return function(){clearTimeout(t);var a=arguments;t=setTimeout(function(){fn.apply(null,a);},ms);};}
-async function searchGanttJobs(){
-  var q=document.getElementById('gantt-job-search').value.trim();
+var TRADE_LABELS={lay:'Gulvlægning',sand:'Gulvslibning',paint:'Malerservice',sub:'Underleverandør',other:'Andet / ukendt'};
+function renderGanttJobList(){
+  var q=document.getElementById('gantt-job-search').value.trim().toLowerCase();
   var el=document.getElementById('gantt-job-results');
-  if(q.length<2){el.innerHTML='';return;}
-  var r=await api('/api/gantt/job-search?q='+encodeURIComponent(q));
-  var list=r||[];
+  var list=ganttAllJobs;
+  if(q)list=list.filter(function(j){return ((j.job_name||'')+' '+(j.job_number||'')+' '+(j.job_address||'')).toLowerCase().indexOf(q)>-1;});
   if(!list.length){el.innerHTML='<p class="muted-sm">Ingen sager matcher.</p>';return;}
-  el.innerHTML=list.map(function(j){return '<div class="gantt-job-result" data-job-id="'+esc(j.job_id)+'" data-job-name="'+esc(j.job_name||'')+'"><strong>'+esc(j.job_name||'Uden navn')+'</strong>'+(j.job_number?' <span class="muted-sm">#'+esc(j.job_number)+'</span>':'')+'</div>';}).join('');
+
+  function cardHtml(j){
+    return '<div class="gantt-job-result" data-job-id="'+esc(j.job_id)+'" data-job-name="'+esc(j.job_name||'')+'">'+
+      '<strong>'+esc(j.job_name||'Uden navn')+'</strong>'+(j.job_number?' <span class="muted-sm">#'+esc(j.job_number)+'</span>':'')+
+      '<div class="muted-sm">'+(j.task_count||0)+' opgave'+(j.task_count!==1?'r':'')+(j.job_address?' · '+esc(j.job_address):'')+'</div>'+
+      '</div>';
+  }
+
+  var html='';
+  if(ganttGroupBy==='trade'){
+    var groups={};
+    list.forEach(function(j){var k=j.trade||'other';(groups[k]=groups[k]||[]).push(j);});
+    Object.keys(groups).sort(function(a,b){return (TRADE_LABELS[a]||a).localeCompare(TRADE_LABELS[b]||b,'da');}).forEach(function(k){
+      html+='<div class="gantt-job-group-header">'+(TRADE_LABELS[k]||k)+' ('+groups[k].length+')</div>';
+      groups[k].sort(function(a,b){return (a.job_name||'').localeCompare(b.job_name||'','da');}).forEach(function(j){html+=cardHtml(j);});
+    });
+  }else if(ganttGroupBy==='letter'){
+    var groups2={};
+    list.forEach(function(j){var k=(j.job_name||'#').trim().charAt(0).toUpperCase()||'#';(groups2[k]=groups2[k]||[]).push(j);});
+    Object.keys(groups2).sort().forEach(function(k){
+      html+='<div class="gantt-job-group-header">'+k+'</div>';
+      groups2[k].sort(function(a,b){return (a.job_name||'').localeCompare(b.job_name||'','da');}).forEach(function(j){html+=cardHtml(j);});
+    });
+  }else{
+    list.slice().sort(function(a,b){return (a.job_name||'').localeCompare(b.job_name||'','da');}).forEach(function(j){html+=cardHtml(j);});
+  }
+  el.innerHTML=html;
   el.querySelectorAll('.gantt-job-result').forEach(function(row){
     row.onclick=function(){openGanttJob(row.dataset.jobId,row.dataset.jobName);};
   });

@@ -1820,27 +1820,42 @@ function safeJsonParse(text, fallback) {
 }
 
 async function fetchGanttTasksFromJT(jobId) {
-  const data = await jtFetch({
-    query: {
-      $: { grantKey: JT_GRANT },
-      job: {
-        $: { id: jobId },
-        id: {}, name: {},
-        tasks: {
-          $: { size: 200, where: ['isToDo', false] },
-          nodes: {
-            id: {}, name: {}, description: {}, startDate: {}, endDate: {},
-            progress: {}, isGroup: {}, position: {},
-            parentTask: { id: {} },
-            taskDependencies: { $: { size: 20 }, nodes: { dependsOnTask: { id: {} } } }
+  let jobName = '';
+  const allTasks = [];
+  let cursor, page = 0;
+  while (page < 10) {
+    const args = { size: 100, where: ['isToDo', false] };
+    if (cursor) args.page = cursor;
+    const data = await jtFetch({
+      query: {
+        $: { grantKey: JT_GRANT },
+        job: {
+          $: { id: jobId },
+          id: {}, name: {},
+          tasks: {
+            $: args,
+            nextPage: {},
+            nodes: {
+              id: {}, name: {}, description: {}, startDate: {}, endDate: {},
+              progress: {}, isGroup: {}, position: {},
+              parentTask: { id: {} },
+              taskDependencies: { $: { size: 20 }, nodes: { dependsOnTask: { id: {} } } }
+            }
           }
         }
       }
-    }
-  }, 'Gantt: hent job-opgaver');
-  const job = data?.job || data?.query?.job;
-  if (!job) throw new Error('Jobbet blev ikke fundet i JobTread');
-  const tasks = (job.tasks?.nodes || []).map(t => ({
+    }, `Gantt: hent job-opgaver s.${page + 1}`);
+    const job = data?.job || data?.query?.job;
+    if (!job) throw new Error('Jobbet blev ikke fundet i JobTread');
+    jobName = job.name || jobName;
+    const nodes = job.tasks?.nodes || [];
+    allTasks.push(...nodes);
+    page++;
+    const next = job.tasks?.nextPage;
+    if (!next || next === '') break;
+    cursor = next;
+  }
+  const tasks = allTasks.map(t => ({
     id: t.id,
     name: t.name || '',
     description: t.description || '',
@@ -1852,7 +1867,7 @@ async function fetchGanttTasksFromJT(jobId) {
     position: t.position || '',
     depends_on: (t.taskDependencies?.nodes || []).map(d => d.dependsOnTask?.id).filter(Boolean)
   }));
-  return { jobName: job.name || '', tasks };
+  return { jobName, tasks };
 }
 
 async function syncGanttJob(jobId) {
@@ -1877,15 +1892,24 @@ async function syncGanttJob(jobId) {
   return { jobName, count: tasks.length };
 }
 
-app.get('/api/gantt/job-search', auth, asyncRoute(async (req, res) => {
-  const q = String(req.query.q || '').trim();
-  if (!q) return res.json([]);
+app.get('/api/gantt/jobs', auth, asyncRoute(async (req, res) => {
+  // Henter ALLE kendte sager på én gang (ikke kun søgeresultater), inkl. det
+  // fag der oftest går igen på sagens opgaver — så admin kan bladre/gruppere
+  // med det samme uden at skulle vide/skrive kundens navn i forvejen.
   const rows = await pool.query(`
-    SELECT DISTINCT job_id, job_name, job_number
+    SELECT
+      job_id,
+      MAX(job_name) AS job_name,
+      MAX(job_number) AS job_number,
+      MAX(job_address) AS job_address,
+      MODE() WITHIN GROUP (ORDER BY type_guess) AS trade,
+      COUNT(*)::int AS task_count,
+      MAX(synced_at) AS last_synced
     FROM jt_tasks
-    WHERE job_id IS NOT NULL AND (job_name ILIKE $1 OR job_number ILIKE $1)
-    ORDER BY job_name ASC LIMIT 20
-  `, [`%${q}%`]);
+    WHERE job_id IS NOT NULL AND job_id <> ''
+    GROUP BY job_id
+    ORDER BY MAX(job_name) ASC
+  `);
   res.json(rows.rows);
 }));
 
