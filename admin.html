@@ -401,6 +401,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .gantt-bar-handle.left{left:0}
 .gantt-bar-handle.right{right:0}
 .gantt-dep-svg{position:absolute;inset:0;pointer-events:none;overflow:visible}
+.gd-modal{padding:0!important;overflow:hidden}
+.gd-head{display:flex;align-items:center;gap:12px;padding:18px 22px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff}
+.gd-head-icon{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:16px;flex-shrink:0}
+.gd-head-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;opacity:.7;margin-bottom:3px}
+.gd-name-input{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:7px;color:#fff;font-size:15px;font-weight:700;padding:5px 9px;width:100%}
+.gd-name-input:focus{background:rgba(255,255,255,.2);outline:none}
+.gd-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;background:var(--ice);border-radius:10px;padding:12px}
+.gd-info-label{font-size:9px;font-weight:800;text-transform:uppercase;color:var(--muted);letter-spacing:.04em;margin-bottom:3px}
+.gd-info-value a{color:#1d4ed8;font-weight:600}
+.gantt-group-row .gantt-bar{background:#0F2A1C}
+.gantt-group-row .gantt-list-row{background:#F0FDF4;font-weight:800}
+.gantt-expand-toggle{margin-right:5px;font-size:10px;color:var(--muted);width:12px;display:inline-block}
 .avail-table th{background:var(--navy);color:#fff;padding:8px 9px;font-size:9px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;text-align:left}
 .avail-table th.person-th{position:sticky;left:0;z-index:2;min-width:170px}
 .avail-table td{border-bottom:1px solid var(--border2);padding:8px 9px;font-size:11px;font-weight:700;text-align:left}
@@ -831,6 +843,23 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn small" id="gantt-change-job">← Skift sag</button>
       <strong id="gantt-job-title" style="font-size:13px"></strong>
       <span style="flex:1"></span>
+      <span id="gantt-all-filters" style="display:none;gap:8px">
+        <select id="gantt-trade-filter" class="select" style="width:auto">
+          <option value="all">🎨 Alle fag</option>
+          <option value="lay">Gulvlægning</option>
+          <option value="sand">Gulvslibning</option>
+          <option value="paint">Malerservice</option>
+          <option value="sub">Underleverandør</option>
+          <option value="other">Andet</option>
+        </select>
+        <select id="gantt-period-filter" class="select" style="width:auto">
+          <option value="all">Hele perioden</option>
+          <option value="this-week">Denne uge</option>
+          <option value="next-week">Næste uge</option>
+          <option value="this-month">Denne måned</option>
+          <option value="next-month">Næste måned</option>
+        </select>
+      </span>
       <button class="btn small" id="gantt-add-task-btn">+ Ny opgave</button>
       <button class="btn small primary" id="gantt-sync-btn">🔄 Synk med JobTread</button>
     </div>
@@ -857,14 +886,29 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
-<!-- GANTT-OPGAVE DETALJER (fra JobTread) -->
+<!-- GANTT-OPGAVE DETALJER (fra JobTread, redigerbar) -->
 <div class="mo" id="gantt-detail-modal">
-  <div class="modal" style="max-width:520px">
-    <h3 id="gd-title">Opgave</h3>
-    <div id="gd-body" style="font-size:12.5px;line-height:1.6"></div>
+  <div class="modal gd-modal" style="max-width:560px">
+    <div class="gd-head">
+      <span class="gd-head-icon">📋</span>
+      <div><div class="gd-head-title" id="gd-job-label"></div><input id="gd-name-input" class="gd-name-input"></div>
+    </div>
+    <div class="modal-body-pad">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Startdato</label><input id="gd-start-input" type="date" class="input"></div>
+        <div class="form-group"><label class="form-label">Slutdato</label><input id="gd-end-input" type="date" class="input"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Fremgang <span id="gd-progress-label" class="opt-tag"></span></label><input id="gd-progress-input" type="range" min="0" max="100" step="5" style="width:100%"></div>
+      <div class="gd-info-grid">
+        <div><div class="gd-info-label">📞 Kundetelefon</div><div id="gd-phone" class="gd-info-value"></div></div>
+        <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="gd-email" class="gd-info-value"></div></div>
+      </div>
+      <div id="gd-desc-wrap" style="display:none"><div class="gd-info-label">Beskrivelse (fra JobTread)</div><div id="gd-desc" class="gd-info-value" style="white-space:pre-wrap"></div></div>
+    </div>
     <div class="modal-actions">
       <button class="btn" id="gantt-detail-close">Luk</button>
-      <a class="btn primary" id="gd-jt-link" href="#" target="_blank" rel="noopener">Åbn i JobTread ↗</a>
+      <a class="btn" id="gd-jt-link" href="#" target="_blank" rel="noopener">Åbn i JobTread ↗</a>
+      <button class="btn primary" id="gd-save-btn">Gem ændringer</button>
     </div>
   </div>
 </div>
@@ -2459,6 +2503,7 @@ async function openGanttJob(jobId,jobName){
   ganttState.jobId=jobId;ganttState.jobName=jobName;ganttState.allMode=false;
   document.getElementById('gantt-job-title').textContent=jobName;
   document.getElementById('gantt-add-task-btn').style.display='';
+  document.getElementById('gantt-all-filters').style.display='none';
   document.getElementById('gantt-job-picker').style.display='none';
   document.getElementById('gantt-board-wrap').style.display='block';
   document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter fra JobTread…</p>';
@@ -2471,17 +2516,60 @@ async function openGanttAllTasks(){
   ganttState.jobId=null;ganttState.jobName='Alle opgaver';ganttState.allMode=true;
   document.getElementById('gantt-job-title').textContent='📊 Alle opgaver (alle sager)';
   document.getElementById('gantt-add-task-btn').style.display='none';
+  document.getElementById('gantt-all-filters').style.display='flex';
   document.getElementById('gantt-job-picker').style.display='none';
   document.getElementById('gantt-board-wrap').style.display='block';
-  document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter…</p>';
+  document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter (kan tage lidt tid første gang — henter hele organisationen fra JobTread)…</p>';
   var r=await api('/api/gantt/all-tasks');
   if(!r){toast('Kunne ikke hente opgaverne','❌');return;}
   ganttState.tasks=r;
   renderGanttChart();
 }
+var ganttAllFilters={trade:'all',period:'all'};
+var ganttExpandedJobs={};
+function ganttFilteredTasks(){
+  if(!ganttState.allMode)return ganttState.tasks;
+  var list=ganttState.tasks;
+  if(ganttAllFilters.trade!=='all')list=list.filter(function(t){return (t.type_guess||'other')===ganttAllFilters.trade;});
+  if(ganttAllFilters.period!=='all'){
+    var now=new Date(),rs,re;
+    if(ganttAllFilters.period==='this-week'){rs=mon(now);re=add(rs,6);}
+    else if(ganttAllFilters.period==='next-week'){rs=add(mon(now),7);re=add(rs,6);}
+    else if(ganttAllFilters.period==='this-month'){rs=new Date(now.getFullYear(),now.getMonth(),1);re=new Date(now.getFullYear(),now.getMonth()+1,0);}
+    else if(ganttAllFilters.period==='next-month'){rs=new Date(now.getFullYear(),now.getMonth()+1,1);re=new Date(now.getFullYear(),now.getMonth()+2,0);}
+    list=list.filter(function(t){
+      var s=t.start_date?date(t.start_date):null,e=t.end_date?date(t.end_date):s;
+      if(!s)return false;
+      return s<=re&&e>=rs;
+    });
+  }
+  return list;
+}
+// Bygger de rækker der reelt skal vises: i "alle opgaver"-tilstand vises én
+// samlet gruppe-række pr. sag (med en bjælke der spænder over alt på sagen) —
+// klik for at folde ud og se de enkelte opgaver under kunden.
+function ganttDisplayRows(){
+  var filtered=ganttFilteredTasks();
+  if(!ganttState.allMode)return filtered.map(function(t){return {type:'task',task:t};});
+  var byJob={};
+  filtered.forEach(function(t){(byJob[t.job_id]=byJob[t.job_id]||[]).push(t);});
+  var rows=[];
+  Object.keys(byJob).sort(function(a,b){return (byJob[a][0].job_name||'').localeCompare(byJob[b][0].job_name||'','da');}).forEach(function(jobId){
+    var group=byJob[jobId];
+    var starts=group.map(function(t){return t.start_date;}).filter(Boolean);
+    var ends=group.map(function(t){return t.end_date;}).filter(Boolean);
+    var minD=starts.reduce(function(a,b){return a<b?a:b;});
+    var maxD=ends.reduce(function(a,b){return a>b?a:b;});
+    var expanded=!!ganttExpandedJobs[jobId];
+    rows.push({type:'group',jobId:jobId,jobName:group[0].job_name,jobNumber:group[0].job_number,count:group.length,start_date:minD,end_date:maxD,expanded:expanded});
+    if(expanded)group.forEach(function(t){rows.push({type:'task',task:t});});
+  });
+  return rows;
+}
 function ganttDateRange(){
-  var starts=ganttState.tasks.map(function(t){return t.start_date;}).filter(Boolean);
-  var ends=ganttState.tasks.map(function(t){return t.end_date;}).filter(Boolean);
+  var pool=ganttFilteredTasks();
+  var starts=pool.map(function(t){return t.start_date;}).filter(Boolean);
+  var ends=pool.map(function(t){return t.end_date;}).filter(Boolean);
   var today=iso(new Date());
   var minD=starts.length?starts.reduce(function(a,b){return a<b?a:b;}):today;
   var maxD=ends.length?ends.reduce(function(a,b){return a>b?a:b;}):today;
@@ -2491,7 +2579,8 @@ function ganttDateRange(){
 }
 function renderGanttChart(){
   var el=document.getElementById('gantt-chart');
-  if(!ganttState.tasks.length){el.innerHTML='<p class="muted-sm" style="padding:20px">Ingen planlagte opgaver på denne sag endnu. Tryk "+ Ny opgave" for at oprette den første.</p>';return;}
+  var rows=ganttDisplayRows();
+  if(!rows.length){el.innerHTML='<p class="muted-sm" style="padding:20px">Ingen opgaver matcher.'+(ganttState.allMode?'':' Tryk "+ Ny opgave" for at oprette den første.')+'</p>';return;}
   var range=ganttDateRange();ganttState.rangeStart=range.start;ganttState.rangeDays=range.days;
   var dw=ganttState.dayWidth,todayIso=iso(new Date());
 
@@ -2508,19 +2597,36 @@ function renderGanttChart(){
 
   var listRows='<div class="gantt-list-head">Opgave</div>';
   var timelineRows='';
-  var idToIndex={};
-  ganttState.tasks.forEach(function(t,idx){idToIndex[t.id]=idx;});
+  var idToRowIndex={};
+  rows.forEach(function(r,idx){if(r.type==='task')idToRowIndex[r.task.id]=idx;});
 
-  ganttState.tasks.forEach(function(t){
-    var subLabel=ganttState.allMode?(t.job_name||''):null;
-    listRows+='<div class="gantt-list-row'+(t.is_group?' is-group':'')+'" title="'+esc(t.name)+'" data-detail-task-id="'+t.id+'" style="cursor:pointer">'+
-      '<span style="overflow:hidden;text-overflow:ellipsis">'+(subLabel?'<b>'+esc(subLabel)+'</b> — ':'')+esc(t.name||'Uden navn')+'</span>'+
+  rows.forEach(function(row,idx){
+    if(row.type==='group'){
+      listRows+='<div class="gantt-list-row is-group" data-toggle-job="'+esc(row.jobId)+'" style="cursor:pointer">'+
+        '<span class="gantt-expand-toggle">'+(row.expanded?'▾':'▸')+'</span>'+
+        '<span style="overflow:hidden;text-overflow:ellipsis">'+esc(row.jobName||'Uden navn')+(row.jobNumber?' <span class="muted-sm">#'+esc(row.jobNumber)+'</span>':'')+'</span>'+
+        '<span class="muted-sm" style="margin-left:auto;flex-shrink:0">'+row.count+' opg.</span>'+
+        '</div>';
+      var s=date(row.start_date),e=date(row.end_date);
+      var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
+      timelineRows+='<div class="gantt-row gantt-group-row" data-toggle-job="'+esc(row.jobId)+'" style="cursor:pointer">'+
+        '<div class="gantt-row-bg">'+bgCols+'</div>'+
+        '<div class="gantt-bar" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(row.jobName)+' — '+row.count+' opgaver">'+
+          '<span class="gantt-bar-label">'+esc(row.jobName||'')+' ('+row.count+')</span>'+
+        '</div>'+
+      '</div>';
+      return;
+    }
+    var t=row.task;
+    var subLabel=ganttState.allMode?null:null;
+    listRows+='<div class="gantt-list-row'+(t.is_group?' is-group':'')+(ganttState.allMode?' gantt-sub-row':'')+'" title="'+esc(t.name)+'" data-detail-task-id="'+t.id+'" style="cursor:pointer'+(ganttState.allMode?';padding-left:26px':'')+'">'+
+      '<span style="overflow:hidden;text-overflow:ellipsis">'+esc(t.name||'Uden navn')+'</span>'+
       '<input type="number" class="gantt-progress-input" min="0" max="100" value="'+Math.round((t.progress||0)*100)+'" data-task-id="'+t.id+'" title="Fremgang %">'+
       '</div>';
-    var s=t.start_date?date(t.start_date):range.start,e=t.end_date?date(t.end_date):s;
-    var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
-    var left=offset*dw,width=span*dw-4;
-    timelineRows+='<div class="gantt-row" data-row-index="'+idToIndex[t.id]+'">'+
+    var s2=t.start_date?date(t.start_date):range.start,e2=t.end_date?date(t.end_date):s2;
+    var offset2=Math.round((s2-range.start)/86400000),span2=Math.max(1,Math.round((e2-s2)/86400000)+1);
+    var left=offset2*dw,width=span2*dw-4;
+    timelineRows+='<div class="gantt-row" data-row-index="'+idx+'">'+
       '<div class="gantt-row-bg">'+bgCols+'</div>'+
       '<div class="gantt-bar'+(t.is_group?' is-group':'')+'" data-task-id="'+t.id+'" style="left:'+left+'px;width:'+width+'px" title="'+esc(t.name)+' ('+(t.start_date||'?')+' – '+(t.end_date||'?')+')">'+
         '<div class="gantt-bar-progress" style="width:'+Math.round((t.progress||0)*100)+'%"></div>'+
@@ -2531,13 +2637,15 @@ function renderGanttChart(){
     '</div>';
   });
 
-  var svgW=range.days*dw,svgH=ganttState.tasks.length*38;
+  var svgW=range.days*dw,svgH=rows.length*38;
   var deps='';
-  ganttState.tasks.forEach(function(t,idx){
+  rows.forEach(function(row,idx){
+    if(row.type!=='task')return;
+    var t=row.task;
     (t.depends_on||[]).forEach(function(depId){
-      var depIdx=idToIndex[depId];
-      if(depIdx===undefined)return;
-      var depTask=ganttState.tasks[depIdx];
+      var depIdx=idToRowIndex[depId];
+      if(depIdx===undefined)return; // afhængigheden er skjult (foldet sammen eller filtreret væk)
+      var depTask=rows[depIdx].task;
       var depEnd=depTask.end_date?date(depTask.end_date):range.start;
       var myStart=t.start_date?date(t.start_date):range.start;
       var x1=(Math.round((depEnd-range.start)/86400000)+1)*dw,y1=depIdx*38+19;
@@ -2560,6 +2668,13 @@ function renderGanttChart(){
   bindGanttInteractions();
 }
 function bindGanttInteractions(){
+  document.querySelectorAll('[data-toggle-job]').forEach(function(el){
+    el.addEventListener('click',function(){
+      var jobId=el.dataset.toggleJob;
+      ganttExpandedJobs[jobId]=!ganttExpandedJobs[jobId];
+      renderGanttChart();
+    });
+  });
   document.querySelectorAll('.gantt-progress-input').forEach(function(inp){
     inp.onchange=function(){
       var pct=Math.max(0,Math.min(100,+inp.value||0));
@@ -2639,22 +2754,49 @@ async function saveGanttTaskChange(taskId,changes){
     await openGanttJob(ganttState.jobId,ganttState.jobName);
   }
 }
+var ganttDetailTaskId=null;
 function openGanttTaskDetail(taskId){
   var t=ganttState.tasks.find(function(x){return x.id===taskId;});
   if(!t)return;
-  document.getElementById('gd-title').textContent=t.name||'Opgave';
+  ganttDetailTaskId=taskId;
+  document.getElementById('gd-job-label').textContent=(ganttState.allMode&&t.job_name)?(t.job_name+(t.job_number?' · #'+t.job_number:'')):'Opgave';
+  document.getElementById('gd-name-input').value=t.name||'';
+  document.getElementById('gd-start-input').value=(t.start_date||'').slice(0,10);
+  document.getElementById('gd-end-input').value=(t.end_date||'').slice(0,10);
+  document.getElementById('gd-progress-input').value=Math.round((t.progress||0)*100);
+  document.getElementById('gd-progress-label').textContent=Math.round((t.progress||0)*100)+'%';
   var phone=t.job_phone,email=t.job_email;
-  var rows=[];
-  if(ganttState.allMode&&t.job_name)rows.push(['Sag',esc(t.job_name)+(t.job_number?' (#'+esc(t.job_number)+')':'')]);
-  rows.push(['Periode',esc(t.start_date||'?')+' – '+esc(t.end_date||'?')]);
-  rows.push(['Fremgang',Math.round((t.progress||0)*100)+'%']);
-  rows.push(['Kundetelefon',phone?'<a href="tel:'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="muted-sm">Ikke registreret</span>']);
-  rows.push(['Kunde-mail',email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>']);
-  if(t.description)rows.push(['Beskrivelse',esc(t.description).replace(/\n/g,'<br>')]);
-  document.getElementById('gd-body').innerHTML=rows.map(function(r){return '<div style="margin-bottom:8px"><div class="muted-sm" style="text-transform:uppercase;font-size:9px;font-weight:800;letter-spacing:.04em;margin-bottom:2px">'+r[0]+'</div><div>'+r[1]+'</div></div>';}).join('');
+  document.getElementById('gd-phone').innerHTML=phone?'<a href="tel:'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
+  document.getElementById('gd-email').innerHTML=email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
+  var descWrap=document.getElementById('gd-desc-wrap');
+  if(t.description){descWrap.style.display='block';document.getElementById('gd-desc').textContent=t.description;}else{descWrap.style.display='none';}
   var jobId=t.job_id||ganttState.jobId;
   document.getElementById('gd-jt-link').href=jobId?('https://app.jobtread.com/jobs/'+encodeURIComponent(jobId)+'/schedule'):'#';
   document.getElementById('gantt-detail-modal').classList.add('open');
+}
+document.addEventListener('input',function(e){
+  if(e.target&&e.target.id==='gd-progress-input')document.getElementById('gd-progress-label').textContent=e.target.value+'%';
+});
+async function saveGanttDetailEdit(){
+  if(!ganttDetailTaskId)return;
+  var changes={
+    name:document.getElementById('gd-name-input').value.trim(),
+    start_date:document.getElementById('gd-start-input').value,
+    end_date:document.getElementById('gd-end-input').value,
+    progress:(+document.getElementById('gd-progress-input').value||0)/100
+  };
+  if(!changes.name){toast('Navn må ikke være tomt','⚠');return;}
+  closeModal('gantt-detail-modal');
+  if(ganttState.allMode){
+    // I "alle opgaver"-visningen skriver vi stadig direkte til JobTread (id'et
+    // er det samme rigtige opgave-id), men genindlæser hele oversigten bagefter
+    // i stedet for kun ét jobs Gantt-kort.
+    var r=await api('/api/gantt/tasks/'+encodeURIComponent(ganttDetailTaskId),{method:'PUT',body:JSON.stringify(changes)});
+    if(r&&r.ok){toast('Gemt i JobTread ✓','✓');await openGanttAllTasks();}
+    else toast((r&&r.error)||'Kunne ikke gemme','❌');
+  }else{
+    await saveGanttTaskChange(ganttDetailTaskId,changes);
+  }
 }
 function openGanttAddTask(){
   document.getElementById('gt-name').value='';
@@ -2672,8 +2814,16 @@ async function saveGanttNewTask(){
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function syncGanttNow(){
-  if(ganttState.allMode){await openGanttAllTasks();toast('Opdateret ✓','✓');return;}
-  var btn=document.getElementById('gantt-sync-btn');btn.disabled=true;btn.textContent='⏳ Synker…';
+  var btn=document.getElementById('gantt-sync-btn');
+  if(ganttState.allMode){
+    btn.disabled=true;btn.textContent='⏳ Synker hele organisationen…';
+    var r2=await api('/api/gantt/sync-all',{method:'POST'});
+    if(r2&&r2.ok){toast(r2.count+' opgaver synket fra JobTread','✓');await openGanttAllTasks();}
+    else toast((r2&&r2.error)||'Synk fejlede','❌');
+    btn.disabled=false;btn.textContent='🔄 Synk med JobTread';
+    return;
+  }
+  btn.disabled=true;btn.textContent='⏳ Synker…';
   var r=await api('/api/gantt/job/'+encodeURIComponent(ganttState.jobId)+'/sync',{method:'POST'});
   if(r&&r.ok){toast(r.count+' opgaver synket fra JobTread','✓');await openGanttJob(ganttState.jobId,ganttState.jobName);}
   else toast((r&&r.error)||'Synk fejlede','❌');
@@ -3413,6 +3563,9 @@ function bind(){
   document.getElementById('gantt-change-job').onclick=initGanttPage;
   document.getElementById('gantt-all-tasks-btn').onclick=openGanttAllTasks;
   document.getElementById('gantt-detail-close').onclick=function(){closeModal('gantt-detail-modal');};
+  document.getElementById('gd-save-btn').onclick=saveGanttDetailEdit;
+  document.getElementById('gantt-trade-filter').onchange=function(e){ganttAllFilters.trade=e.target.value;renderGanttChart();};
+  document.getElementById('gantt-period-filter').onchange=function(e){ganttAllFilters.period=e.target.value;renderGanttChart();};
   document.getElementById('gantt-add-task-btn').onclick=openGanttAddTask;
   document.getElementById('gantt-task-cancel').onclick=function(){closeModal('gantt-task-modal');};
   document.getElementById('gantt-task-save').onclick=saveGanttNewTask;

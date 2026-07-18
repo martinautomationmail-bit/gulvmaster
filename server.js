@@ -212,6 +212,8 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_gantt_tasks_job ON gantt_tasks(job_id);
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_phone TEXT;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_email TEXT;
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS type_guess TEXT;
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_number TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS description TEXT;
     -- Contact columns are safe to add on an existing Render Postgres database.
     -- They let us keep a manual number protected from future JobTread syncs.
@@ -1881,6 +1883,71 @@ async function fetchGanttTasksFromJT(jobId) {
   return { jobName, tasks, phone, email };
 }
 
+// Henter og cacher ALLE opgaver på tværs af HELE organisationen (ikke kun ét
+// job), inkl. rigtige before/after-afhængigheder og fremgang, til "Se alle
+// opgaver"-visningen. Bruger samme upsert-lager (gantt_tasks) som det
+// enkelte jobs Gantt-kort, så begge visninger nyder godt af hinandens data.
+let ganttAllSyncRunning = false;
+async function syncAllGanttTasksFromJT() {
+  if (ganttAllSyncRunning) return { ok: false, skipped: true };
+  if (!JT_GRANT || !JT_ORG) return { ok: false, error: 'JobTread er ikke sat op' };
+  ganttAllSyncRunning = true;
+  let count = 0;
+  try {
+    let cursor, page = 0;
+    while (page < JT_MAX_PAGES) {
+      const args = { size: JT_PAGE_SIZE, where: { and: [['targetType', 'job'], ['isGroup', false], ['isToDo', false]] } };
+      if (cursor) args.page = cursor;
+      const data = await jtFetch({
+        query: {
+          $: { grantKey: JT_GRANT },
+          organization: {
+            $: { id: JT_ORG },
+            tasks: {
+              $: args,
+              nextPage: {},
+              nodes: {
+                id: {}, name: {}, description: {}, startDate: {}, endDate: {},
+                progress: {}, isGroup: {}, position: {},
+                parentTask: { id: {} },
+                job: { id: {}, name: {}, number: {} },
+                taskDependencies: { $: { size: 20 }, nodes: { dependsOnTask: { id: {} } } }
+              }
+            }
+          }
+        }
+      }, `Gantt: hent alle opgaver s.${page + 1}`);
+      const conn = data?.organization?.tasks || data?.query?.organization?.tasks || {};
+      const nodes = Array.isArray(conn.nodes) ? conn.nodes : [];
+      for (const t of nodes) {
+        if (!t?.id || !t?.job?.id || !t.startDate) continue;
+        const dependsOn = (t.taskDependencies?.nodes || []).map(d => d.dependsOnTask?.id).filter(Boolean);
+        await pool.query(`
+          INSERT INTO gantt_tasks (id,job_id,job_name,job_number,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,type_guess,synced_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,${nowTextSQL()})
+          ON CONFLICT (id) DO UPDATE SET
+            job_id=EXCLUDED.job_id, job_name=EXCLUDED.job_name, job_number=EXCLUDED.job_number,
+            name=EXCLUDED.name, description=EXCLUDED.description,
+            start_date=EXCLUDED.start_date, end_date=EXCLUDED.end_date, progress=EXCLUDED.progress,
+            is_group=EXCLUDED.is_group, parent_task_id=EXCLUDED.parent_task_id, position=EXCLUDED.position,
+            depends_on=EXCLUDED.depends_on, type_guess=EXCLUDED.type_guess, synced_at=${nowTextSQL()}
+        `, [t.id, t.job.id, t.job.name || '', t.job.number != null ? String(t.job.number) : null, t.name || '', t.description || '', t.startDate, t.endDate || t.startDate, t.progress != null ? Number(t.progress) : 0, t.isGroup ? 1 : 0, t.parentTask?.id || null, t.position || '', JSON.stringify(dependsOn), guessType(t.name)]);
+        count++;
+      }
+      page++;
+      const next = conn.nextPage;
+      if (!next || next === '') break;
+      cursor = next;
+    }
+    return { ok: true, count };
+  } catch (error) {
+    console.error('Gantt: alle-opgaver-synk fejlede:', error.message);
+    return { ok: false, error: error.message };
+  } finally {
+    ganttAllSyncRunning = false;
+  }
+}
+
 async function syncGanttJob(jobId) {
   const { jobName, tasks, phone, email } = await fetchGanttTasksFromJT(jobId);
   const client = await pool.connect();
@@ -1925,25 +1992,38 @@ app.get('/api/gantt/jobs', auth, asyncRoute(async (req, res) => {
 }));
 
 app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
-  // Kombineret tidslinje over ALLE opgaver på tværs af alle sager — bruger
-  // den almindelige daglige synk-data (opdateres ved "⚡ Synk JT"), så det ikke
-  // kræver en tung ekstra hentning af hele organisationen fra JobTread.
-  // Bemærk: denne visning har ikke afhængigheder/fremgang (kun det enkelte
-  // job-Gantt-kort har det, da det henter direkte og friskt fra JobTread).
+  let count = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks');
+  if (!count || !count.n) {
+    const r = await syncAllGanttTasksFromJT();
+    if (!r.ok && !r.skipped) return res.status(400).json({ error: r.error || 'Kunne ikke hente opgaverne' });
+  }
   const rows = await pool.query(`
-    SELECT id, job_id, job_name, job_number, name, description, start_date, end_date, type_guess, customer_phone, customer_email
-    FROM jt_tasks
-    WHERE job_id IS NOT NULL AND start_date IS NOT NULL
-      AND COALESCE(source,'jobtread') NOT IN ('capacity')
-    ORDER BY job_name ASC, start_date ASC
-    LIMIT 500
+    SELECT g.*, COALESCE(g.job_phone, t.customer_phone) AS resolved_phone, COALESCE(g.job_email, t.customer_email) AS resolved_email
+    FROM gantt_tasks g
+    LEFT JOIN jt_tasks t ON t.job_id = g.job_id AND t.customer_phone IS NOT NULL
+    ORDER BY g.job_name ASC, g.start_date ASC
+    LIMIT 2000
   `);
-  res.json(rows.rows.map(r => ({
-    id: r.id, job_id: r.job_id, job_name: r.job_name, job_number: r.job_number,
-    name: r.name, description: r.description, start_date: r.start_date, end_date: r.end_date || r.start_date,
-    progress: 0, is_group: false, parent_task_id: null, depends_on: [],
-    job_phone: r.customer_phone, job_email: r.customer_email, type_guess: r.type_guess
-  })));
+  const seen = new Set();
+  const out = [];
+  for (const r of rows.rows) {
+    if (seen.has(r.id)) continue; // LEFT JOIN kan give flere rækker pr. opgave — behold kun én
+    seen.add(r.id);
+    out.push({
+      id: r.id, job_id: r.job_id, job_name: r.job_name, job_number: r.job_number,
+      name: r.name, description: r.description, start_date: r.start_date, end_date: r.end_date,
+      progress: r.progress, is_group: !!r.is_group, parent_task_id: r.parent_task_id,
+      depends_on: safeJsonParse(r.depends_on, []), type_guess: r.type_guess,
+      job_phone: r.resolved_phone, job_email: r.resolved_email
+    });
+  }
+  res.json(out);
+}));
+
+app.post('/api/gantt/sync-all', auth, adminOnly, asyncRoute(async (req, res) => {
+  const r = await syncAllGanttTasksFromJT();
+  if (!r.ok) return res.status(400).json({ error: r.error || 'Synk fejlede' });
+  res.json(r);
 }));
 
 app.get('/api/gantt/job/:jobId', auth, asyncRoute(async (req, res) => {
