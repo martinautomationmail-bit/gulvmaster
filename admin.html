@@ -813,6 +813,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="page-title">Gantt</div>
       <div class="page-sub">Et Gantt-kort direkte på et JobTread-job — ændringer skrives med det samme tilbage til JobTread, og omvendt ved synk.</div>
     </div>
+    <button class="btn primary" id="gantt-all-tasks-btn">📊 Se alle opgaver</button>
   </div>
   <div class="gantt-job-picker" id="gantt-job-picker">
     <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
@@ -852,6 +853,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions">
       <button class="btn" id="gantt-task-cancel">Annuller</button>
       <button class="btn primary" id="gantt-task-save">Opret i JobTread</button>
+    </div>
+  </div>
+</div>
+
+<!-- GANTT-OPGAVE DETALJER (fra JobTread) -->
+<div class="mo" id="gantt-detail-modal">
+  <div class="modal" style="max-width:520px">
+    <h3 id="gd-title">Opgave</h3>
+    <div id="gd-body" style="font-size:12.5px;line-height:1.6"></div>
+    <div class="modal-actions">
+      <button class="btn" id="gantt-detail-close">Luk</button>
+      <a class="btn primary" id="gd-jt-link" href="#" target="_blank" rel="noopener">Åbn i JobTread ↗</a>
     </div>
   </div>
 </div>
@@ -2389,8 +2402,8 @@ async function clearPlan(){
 }
 
 // LEDIGHEDSOVERSIGT
-// GANTT — 1:1 med et JobTread-job
-var ganttState={jobId:null,jobName:'',tasks:[],dayWidth:32,rangeStart:null,rangeDays:60};
+// GANTT — 1:1 med et JobTread-job (eller "Se alle opgaver" på tværs af alle sager)
+var ganttState={jobId:null,jobName:'',tasks:[],dayWidth:32,rangeStart:null,rangeDays:60,allMode:false};
 var ganttAllJobs=[],ganttGroupBy='none';
 async function initGanttPage(){
   document.getElementById('gantt-job-picker').style.display='block';
@@ -2443,13 +2456,26 @@ function renderGanttJobList(){
   });
 }
 async function openGanttJob(jobId,jobName){
-  ganttState.jobId=jobId;ganttState.jobName=jobName;
+  ganttState.jobId=jobId;ganttState.jobName=jobName;ganttState.allMode=false;
   document.getElementById('gantt-job-title').textContent=jobName;
+  document.getElementById('gantt-add-task-btn').style.display='';
   document.getElementById('gantt-job-picker').style.display='none';
   document.getElementById('gantt-board-wrap').style.display='block';
   document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter fra JobTread…</p>';
   var r=await api('/api/gantt/job/'+encodeURIComponent(jobId));
   if(!r||r.error){toast((r&&r.error)||'Kunne ikke hente jobbet','❌');document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Kunne ikke hente data.</p>';return;}
+  ganttState.tasks=r;
+  renderGanttChart();
+}
+async function openGanttAllTasks(){
+  ganttState.jobId=null;ganttState.jobName='Alle opgaver';ganttState.allMode=true;
+  document.getElementById('gantt-job-title').textContent='📊 Alle opgaver (alle sager)';
+  document.getElementById('gantt-add-task-btn').style.display='none';
+  document.getElementById('gantt-job-picker').style.display='none';
+  document.getElementById('gantt-board-wrap').style.display='block';
+  document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter…</p>';
+  var r=await api('/api/gantt/all-tasks');
+  if(!r){toast('Kunne ikke hente opgaverne','❌');return;}
   ganttState.tasks=r;
   renderGanttChart();
 }
@@ -2486,8 +2512,9 @@ function renderGanttChart(){
   ganttState.tasks.forEach(function(t,idx){idToIndex[t.id]=idx;});
 
   ganttState.tasks.forEach(function(t){
-    listRows+='<div class="gantt-list-row'+(t.is_group?' is-group':'')+'" title="'+esc(t.name)+'">'+
-      '<span style="overflow:hidden;text-overflow:ellipsis">'+esc(t.name||'Uden navn')+'</span>'+
+    var subLabel=ganttState.allMode?(t.job_name||''):null;
+    listRows+='<div class="gantt-list-row'+(t.is_group?' is-group':'')+'" title="'+esc(t.name)+'" data-detail-task-id="'+t.id+'" style="cursor:pointer">'+
+      '<span style="overflow:hidden;text-overflow:ellipsis">'+(subLabel?'<b>'+esc(subLabel)+'</b> — ':'')+esc(t.name||'Uden navn')+'</span>'+
       '<input type="number" class="gantt-progress-input" min="0" max="100" value="'+Math.round((t.progress||0)*100)+'" data-task-id="'+t.id+'" title="Fremgang %">'+
       '</div>';
     var s=t.start_date?date(t.start_date):range.start,e=t.end_date?date(t.end_date):s;
@@ -2538,6 +2565,13 @@ function bindGanttInteractions(){
       var pct=Math.max(0,Math.min(100,+inp.value||0));
       saveGanttTaskChange(inp.dataset.taskId,{progress:pct/100});
     };
+    inp.onclick=function(e){e.stopPropagation();};
+  });
+  document.querySelectorAll('.gantt-list-row[data-detail-task-id]').forEach(function(row){
+    row.addEventListener('click',function(e){
+      if(e.target.tagName==='INPUT')return;
+      openGanttTaskDetail(row.dataset.detailTaskId);
+    });
   });
   document.querySelectorAll('.gantt-bar').forEach(function(bar){
     var taskId=bar.dataset.taskId;
@@ -2553,13 +2587,14 @@ function bindGanttInteractions(){
 var ganttDrag=null;
 function startGanttDrag(e,bar,taskId,mode){
   e.preventDefault();
-  ganttDrag={taskId:taskId,bar:bar,mode:mode,startX:e.clientX,origLeft:parseInt(bar.style.left),origWidth:parseInt(bar.style.width)};
+  ganttDrag={taskId:taskId,bar:bar,mode:mode,startX:e.clientX,origLeft:parseInt(bar.style.left),origWidth:parseInt(bar.style.width),moved:false};
   document.addEventListener('mousemove',onGanttDragMove);
   document.addEventListener('mouseup',onGanttDragEnd);
 }
 function onGanttDragMove(e){
   if(!ganttDrag)return;
   var dx=e.clientX-ganttDrag.startX,dw=ganttState.dayWidth;
+  if(Math.abs(dx)>4)ganttDrag.moved=true;
   var snapped=Math.round(dx/dw)*dw;
   if(ganttDrag.mode==='move'){
     ganttDrag.bar.style.left=(ganttDrag.origLeft+snapped)+'px';
@@ -2574,6 +2609,12 @@ function onGanttDragEnd(){
   if(!ganttDrag)return;
   document.removeEventListener('mousemove',onGanttDragMove);
   document.removeEventListener('mouseup',onGanttDragEnd);
+  if(!ganttDrag.moved){
+    // Ingen reel trækning — det var et klik, åbn detaljer i stedet.
+    openGanttTaskDetail(ganttDrag.taskId);
+    ganttDrag=null;
+    return;
+  }
   var dw=ganttState.dayWidth;
   var left=parseInt(ganttDrag.bar.style.left),width=parseInt(ganttDrag.bar.style.width);
   var startOffset=Math.round(left/dw),spanDays=Math.max(1,Math.round((width+4)/dw));
@@ -2583,11 +2624,37 @@ function onGanttDragEnd(){
   ganttDrag=null;
 }
 async function saveGanttTaskChange(taskId,changes){
+  if(ganttState.allMode){toast('Dato-ændringer skal laves inde på selve sagens Gantt-kort, ikke i "Alle opgaver"-visningen','⚠');renderGanttChart();return;}
   var t=ganttState.tasks.find(function(x){return x.id===taskId;});
   if(t)Object.assign(t,changes);
+  renderGanttChart(); // optimistisk, mens vi venter på JobTread
   var r=await api('/api/gantt/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify(changes)});
-  if(r&&r.ok){toast('Gemt i JobTread ✓','✓');renderGanttChart();}
-  else{toast((r&&r.error)||'Kunne ikke gemme i JobTread','❌');await openGanttJob(ganttState.jobId,ganttState.jobName);}
+  if(r&&r.ok){
+    toast('Gemt i JobTread ✓','✓');
+    // JobTread kan have rykket AFHÆNGIGE opgaver automatisk (before/after-kæder)
+    // — genhent hele sagen, så de kaskade-flyttede opgaver også opdaterer sig her.
+    await openGanttJob(ganttState.jobId,ganttState.jobName);
+  } else {
+    toast((r&&r.error)||'Kunne ikke gemme i JobTread','❌');
+    await openGanttJob(ganttState.jobId,ganttState.jobName);
+  }
+}
+function openGanttTaskDetail(taskId){
+  var t=ganttState.tasks.find(function(x){return x.id===taskId;});
+  if(!t)return;
+  document.getElementById('gd-title').textContent=t.name||'Opgave';
+  var phone=t.job_phone,email=t.job_email;
+  var rows=[];
+  if(ganttState.allMode&&t.job_name)rows.push(['Sag',esc(t.job_name)+(t.job_number?' (#'+esc(t.job_number)+')':'')]);
+  rows.push(['Periode',esc(t.start_date||'?')+' – '+esc(t.end_date||'?')]);
+  rows.push(['Fremgang',Math.round((t.progress||0)*100)+'%']);
+  rows.push(['Kundetelefon',phone?'<a href="tel:'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="muted-sm">Ikke registreret</span>']);
+  rows.push(['Kunde-mail',email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>']);
+  if(t.description)rows.push(['Beskrivelse',esc(t.description).replace(/\n/g,'<br>')]);
+  document.getElementById('gd-body').innerHTML=rows.map(function(r){return '<div style="margin-bottom:8px"><div class="muted-sm" style="text-transform:uppercase;font-size:9px;font-weight:800;letter-spacing:.04em;margin-bottom:2px">'+r[0]+'</div><div>'+r[1]+'</div></div>';}).join('');
+  var jobId=t.job_id||ganttState.jobId;
+  document.getElementById('gd-jt-link').href=jobId?('https://app.jobtread.com/jobs/'+encodeURIComponent(jobId)+'/schedule'):'#';
+  document.getElementById('gantt-detail-modal').classList.add('open');
 }
 function openGanttAddTask(){
   document.getElementById('gt-name').value='';
@@ -2605,6 +2672,7 @@ async function saveGanttNewTask(){
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function syncGanttNow(){
+  if(ganttState.allMode){await openGanttAllTasks();toast('Opdateret ✓','✓');return;}
   var btn=document.getElementById('gantt-sync-btn');btn.disabled=true;btn.textContent='⏳ Synker…';
   var r=await api('/api/gantt/job/'+encodeURIComponent(ganttState.jobId)+'/sync',{method:'POST'});
   if(r&&r.ok){toast(r.count+' opgaver synket fra JobTread','✓');await openGanttJob(ganttState.jobId,ganttState.jobName);}
@@ -3343,6 +3411,8 @@ function bind(){
   document.getElementById('cap-groupby').onchange=function(e){capacityGroupBy=e.target.value;renderCapacity();};
   document.getElementById('avail-groupby').onchange=function(e){availGroupBy=e.target.value;renderAvailability();};
   document.getElementById('gantt-change-job').onclick=initGanttPage;
+  document.getElementById('gantt-all-tasks-btn').onclick=openGanttAllTasks;
+  document.getElementById('gantt-detail-close').onclick=function(){closeModal('gantt-detail-modal');};
   document.getElementById('gantt-add-task-btn').onclick=openGanttAddTask;
   document.getElementById('gantt-task-cancel').onclick=function(){closeModal('gantt-task-modal');};
   document.getElementById('gantt-task-save').onclick=saveGanttNewTask;

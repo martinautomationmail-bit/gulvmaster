@@ -205,9 +205,13 @@ async function initSchema() {
       parent_task_id TEXT,
       position TEXT,
       depends_on TEXT,
+      job_phone TEXT,
+      job_email TEXT,
       synced_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_gantt_tasks_job ON gantt_tasks(job_id);
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_phone TEXT;
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_email TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS description TEXT;
     -- Contact columns are safe to add on an existing Render Postgres database.
     -- They let us keep a manual number protected from future JobTread syncs.
@@ -1821,8 +1825,10 @@ function safeJsonParse(text, fallback) {
 
 async function fetchGanttTasksFromJT(jobId) {
   let jobName = '';
+  let phone = null, email = null;
   const allTasks = [];
   let cursor, page = 0;
+  const stats = {};
   while (page < 10) {
     const args = { size: 100, where: ['isToDo', false] };
     if (cursor) args.page = cursor;
@@ -1832,6 +1838,7 @@ async function fetchGanttTasksFromJT(jobId) {
         job: {
           $: { id: jobId },
           id: {}, name: {},
+          ...(page === 0 ? jobContactFields() : {}),
           tasks: {
             $: args,
             nextPage: {},
@@ -1848,6 +1855,10 @@ async function fetchGanttTasksFromJT(jobId) {
     const job = data?.job || data?.query?.job;
     if (!job) throw new Error('Jobbet blev ikke fundet i JobTread');
     jobName = job.name || jobName;
+    if (page === 0) {
+      phone = phoneFromJobContact(job, stats)?.phone || null;
+      email = emailFromJobContact(job, stats)?.email || null;
+    }
     const nodes = job.tasks?.nodes || [];
     allTasks.push(...nodes);
     page++;
@@ -1867,20 +1878,20 @@ async function fetchGanttTasksFromJT(jobId) {
     position: t.position || '',
     depends_on: (t.taskDependencies?.nodes || []).map(d => d.dependsOnTask?.id).filter(Boolean)
   }));
-  return { jobName, tasks };
+  return { jobName, tasks, phone, email };
 }
 
 async function syncGanttJob(jobId) {
-  const { jobName, tasks } = await fetchGanttTasksFromJT(jobId);
+  const { jobName, tasks, phone, email } = await fetchGanttTasksFromJT(jobId);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM gantt_tasks WHERE job_id=$1', [jobId]);
     for (const t of tasks) {
       await client.query(`
-        INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,synced_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()})
-      `, [t.id, jobId, jobName, t.name, t.description, t.start_date, t.end_date, t.progress, t.is_group ? 1 : 0, t.parent_task_id, t.position, JSON.stringify(t.depends_on)]);
+        INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,job_phone,job_email,synced_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,${nowTextSQL()})
+      `, [t.id, jobId, jobName, t.name, t.description, t.start_date, t.end_date, t.progress, t.is_group ? 1 : 0, t.parent_task_id, t.position, JSON.stringify(t.depends_on), phone, email]);
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -1889,7 +1900,7 @@ async function syncGanttJob(jobId) {
   } finally {
     client.release();
   }
-  return { jobName, count: tasks.length };
+  return { jobName, count: tasks.length, phone, email };
 }
 
 app.get('/api/gantt/jobs', auth, asyncRoute(async (req, res) => {
@@ -1911,6 +1922,28 @@ app.get('/api/gantt/jobs', auth, asyncRoute(async (req, res) => {
     ORDER BY MAX(job_name) ASC
   `);
   res.json(rows.rows);
+}));
+
+app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
+  // Kombineret tidslinje over ALLE opgaver på tværs af alle sager — bruger
+  // den almindelige daglige synk-data (opdateres ved "⚡ Synk JT"), så det ikke
+  // kræver en tung ekstra hentning af hele organisationen fra JobTread.
+  // Bemærk: denne visning har ikke afhængigheder/fremgang (kun det enkelte
+  // job-Gantt-kort har det, da det henter direkte og friskt fra JobTread).
+  const rows = await pool.query(`
+    SELECT id, job_id, job_name, job_number, name, description, start_date, end_date, type_guess, customer_phone, customer_email
+    FROM jt_tasks
+    WHERE job_id IS NOT NULL AND start_date IS NOT NULL
+      AND COALESCE(source,'jobtread') NOT IN ('capacity')
+    ORDER BY job_name ASC, start_date ASC
+    LIMIT 500
+  `);
+  res.json(rows.rows.map(r => ({
+    id: r.id, job_id: r.job_id, job_name: r.job_name, job_number: r.job_number,
+    name: r.name, description: r.description, start_date: r.start_date, end_date: r.end_date || r.start_date,
+    progress: 0, is_group: false, parent_task_id: null, depends_on: [],
+    job_phone: r.customer_phone, job_email: r.customer_email, type_guess: r.type_guess
+  })));
 }));
 
 app.get('/api/gantt/job/:jobId', auth, asyncRoute(async (req, res) => {
@@ -1953,16 +1986,26 @@ app.put('/api/gantt/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => 
       query: {
         $: { grantKey: JT_GRANT },
         updateTask: {
-          $: { id: current.id, name: next.name, startDate: next.start_date, endDate: next.end_date, progress: next.progress, notify: false }
+          $: { id: current.id, name: next.name, startDate: next.start_date, endDate: next.end_date, progress: next.progress, notify: false, updateDependentTasks: true }
         }
       }
     }, 'Gantt: opdatér opgave i JobTread');
   } catch (error) {
     return res.status(400).json({ error: 'Kunne ikke opdatere i JobTread: ' + error.message });
   }
-  await pool.query(`
-    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, synced_at=${nowTextSQL()} WHERE id=$5
-  `, [next.name, next.start_date, next.end_date, next.progress, current.id]);
+  // JobTread rykker automatisk afhængige opgaver (updateDependentTasks:true) —
+  // så vi genhenter HELE jobbet i stedet for kun at rette denne ene opgave
+  // lokalt, ellers ville de kaskade-flyttede opgaver ikke opdatere sig i vores
+  // eget Gantt-kort før næste manuelle synk.
+  try {
+    await syncGanttJob(current.job_id);
+  } catch (error) {
+    // Selve JobTread-opdateringen lykkedes — kun genhentningen fejlede. Gem i
+    // det mindste denne ene opgave lokalt, så UI'en ikke falder helt tilbage.
+    await pool.query(`
+      UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, synced_at=${nowTextSQL()} WHERE id=$5
+    `, [next.name, next.start_date, next.end_date, next.progress, current.id]);
+  }
   res.json({ ok: true });
 }));
 
