@@ -543,8 +543,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
   <div class="tabs">
     <button class="tab active" data-page="plan">Daglig plan</button>
-    <button class="tab" data-page="capacity">Kapacitet</button>
     <button class="tab" data-page="timeline">Tidslinje</button>
+    <button class="tab" data-page="capacity">Kapacitet</button>
     <button class="tab" data-page="availability">Ledighedsoversigt</button>
     <button class="tab" data-page="gantt">Gantt</button>
     <button class="tab" data-page="requests">Godkendelser<span class="tab-badge hidden" id="requests-badge">0</span></button>
@@ -792,6 +792,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
   <div class="tl-drawer-footer">
+    <button class="btn" id="tld-toggle-done">✅ Markér som færdig</button>
     <button class="btn danger" id="tld-remove">Fjern booking</button>
     <button class="btn" id="tld-copy">⧉ Kopiér</button>
     <button class="btn primary" id="tld-save">Gem ændringer</button>
@@ -1641,13 +1642,28 @@ function typeColorStyle(type){
   var c=type.bar||'#94A3B8';
   return 'background:'+c+'1A;color:'+c+';border-left:3px solid '+c+';';
 }
+// Fælles farve-regel: en booking der er meldt færdig (completed_at sat) skal ALTID
+// vises grøn/"done" — i Daglig plan, Tidslinje og Gantt — uanset fag-farve, indtil
+// den er faktureret. Brug denne i stedet for typeColorStyle() alle steder en booking
+// (ikke bare et løst "fag") skal farvelægges, så vi ikke får tre forskellige regler.
+var DONE_COLOR='#16A34A';
+function bookingColorStyle(b,type){
+  if(b&&b.completed_at){
+    return 'background:'+DONE_COLOR+'1A;color:'+DONE_COLOR+';border-left:3px solid '+DONE_COLOR+';';
+  }
+  return typeColorStyle(type);
+}
+function bookingBarColor(b,type){
+  return (b&&b.completed_at)?DONE_COLOR:type.bar;
+}
 // ASSIGNMENT PILL spanning multiple visible days
 function assignPillSpan(b,spanDays){
   var type=TYPE[b.type_guess||'other']||TYPE.other;
   var daysLabel=+b.days>1?' <span style="font-size:8px;opacity:.75;background:rgba(0,0,0,.1);padding:1px 4px;border-radius:3px">'+b.days+'d</span>':'';
-  var extraStyle=typeColorStyle(type)+(spanDays>1?'position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(128px + 8px) - 10px);width:calc('+spanDays+'*(128px) + '+(spanDays-1)+'*8px - 10px);min-width:0':'');
-  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'" style="'+extraStyle+'">'+
-    '<div class="assign-top"><span class="assign-name">'+esc(b.job_name||b.task_name||'Opgave')+daysLabel+'</span>'+
+  var isDone=!!b.completed_at;
+  var extraStyle=bookingColorStyle(b,type)+(spanDays>1?'position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(128px + 8px) - 10px);width:calc('+spanDays+'*(128px) + '+(spanDays-1)+'*8px - 10px);min-width:0':'');
+  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+(isDone?' is-done':'')+'" draggable="true" data-booking-id="'+b.id+'" style="'+extraStyle+'">'+
+    '<div class="assign-top"><span class="assign-name">'+(isDone?'✅ ':'')+esc(b.job_name||b.task_name||'Opgave')+daysLabel+'</span>'+
     '<span style="display:flex;gap:2px;flex-shrink:0">'+
     '<button class="pill-copy" title="Kopiér opgave" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>'+
     '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></span></div>'+
@@ -1658,7 +1674,7 @@ function assignPillSpan(b,spanDays){
 // Pill for bookings continuing from a previous week
 function assignPillContinue(b){
   var type=TYPE[b.type_guess||'other']||TYPE.other;
-  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+'" draggable="true" data-booking-id="'+b.id+'" style="opacity:.75;'+typeColorStyle(type)+'">'+
+  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+(b.completed_at?' is-done':'')+'" draggable="true" data-booking-id="'+b.id+'" style="opacity:.75;'+bookingColorStyle(b,type)+'">'+
     '<div class="assign-top"><span class="assign-name">↩ '+esc(b.job_name||b.task_name||'Opgave')+'</span>'+
     '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></div>'+
     '<div class="assign-sub">Fortsat · '+esc(b.days)+'d total</div>'+
@@ -2103,7 +2119,17 @@ function openTimelineDrawer(bookingId){
   document.getElementById('tld-note').value=b.notes||'';
   document.getElementById('tld-checklist-new').value='';
   renderChecklistItems('tld-checklist-items',b.task_id);
+  var doneBtn=document.getElementById('tld-toggle-done');
+  doneBtn.textContent=b.completed_at?'↩ Fortryd (sæt til ikke-færdig)':'✅ Markér som færdig';
+  doneBtn.className=b.completed_at?'btn':'btn primary';
   document.getElementById('tl-drawer').classList.add('open');
+}
+async function toggleTimelineDrawerDone(){
+  if(!tlDrawerBookingId)return;
+  var b=bookings.find(function(x){return +x.id===+tlDrawerBookingId;});
+  if(!b)return;
+  await toggleCompleted(tlDrawerBookingId,!b.completed_at);
+  closeTimelineDrawer();
 }
 function closeTimelineDrawer(){document.getElementById('tl-drawer').classList.remove('open');tlDrawerBookingId=null;tlDrawerTaskId=null;}
 async function saveTimelineDrawer(){
@@ -2967,7 +2993,8 @@ function renderTimeline(){
       var who=timelineGroupBy==='type'?(b.user_name||''):'';
       var label=(b.job_name||b.task_name||'Opgave')+(who?' · '+who:'');
       var handles=interactive?'<span class="tl-handle tl-handle-left" data-edge="left"></span><span class="tl-handle tl-handle-right" data-edge="right"></span>':'';
-      return '<div class="tl-bar draggable-assignment '+esc(b.type_guess||'other')+'" draggable="'+(interactive?'true':'false')+'" data-action="open-timeline-drawer" data-booking-id="'+b.id+'" style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+type.bar+'" title="'+esc(label)+' · '+esc(b.days)+' dag(e)">'+handles+'<span class="tl-bar-label">'+esc(label)+'</span></div>';
+      var isDone=!!b.completed_at;
+      return '<div class="tl-bar draggable-assignment '+esc(b.type_guess||'other')+(isDone?' is-done':'')+'" draggable="'+(interactive?'true':'false')+'" data-action="open-timeline-drawer" data-booking-id="'+b.id+'" style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+bookingBarColor(b,type)+'" title="'+esc(label)+(isDone?' · ✅ Færdig':'')+' · '+esc(b.days)+' dag(e)">'+handles+'<span class="tl-bar-label">'+(isDone?'✅ ':'')+esc(label)+'</span></div>';
     }).join('');
 
     var labelHTML;
@@ -3601,6 +3628,7 @@ function bind(){
   document.getElementById('tld-save').onclick=saveTimelineDrawer;
   document.getElementById('tld-remove').onclick=removeTimelineDrawerBooking;
   document.getElementById('tld-copy').onclick=copyTimelineDrawerBooking;
+  document.getElementById('tld-toggle-done').onclick=toggleTimelineDrawerDone;
   // Assign modal
   document.getElementById('close-assign').onclick=function(){closeModal('assign-modal');};
   document.getElementById('save-assignment').onclick=saveAssignment;
