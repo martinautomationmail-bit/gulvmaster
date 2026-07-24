@@ -263,6 +263,7 @@ async function initSchema() {
 
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS completed_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS invoiced INTEGER DEFAULT 0;
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS status_flag TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_number TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_lat DOUBLE PRECISION;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_lng DOUBLE PRECISION;
@@ -2856,7 +2857,7 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
   const documented = !!(req.body || {}).documented;
   const docNote = (req.body || {}).doc_note ? String((req.body || {}).doc_note).slice(0, 500) : null;
   await pool.query(
-    `UPDATE planning_bookings SET completed_at=${completed ? nowTextSQL() : 'NULL'}, documented_at=${completed && documented ? nowTextSQL() : (completed ? 'documented_at' : 'NULL')} WHERE id=$1`,
+    `UPDATE planning_bookings SET completed_at=${completed ? nowTextSQL() : 'NULL'}, documented_at=${completed && documented ? nowTextSQL() : (completed ? 'documented_at' : 'NULL')}${completed ? ", status_flag=NULL" : ""} WHERE id=$1`,
     [current.id]
   );
   if (completed && docNote) {
@@ -2870,6 +2871,19 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
     sendCompletionEmail(current).catch(e => console.error('Færdig-mail fejlede:', e.message));
     sendCompletionWebhook(current).catch(e => console.error('Zapier-webhook fejlede:', e.message));
   }
+}));
+
+// En booking kan have én af tre "opmærksomheds"-statusser der ikke betyder færdig:
+// venter (afvent), bagud, eller aflyst. Færdig håndteres stadig af /complete ovenfor,
+// da den også trigger faktura-flowet og færdig-mailen — de to systemer må ikke blandes.
+const BOOKING_STATUS_FLAGS = ['waiting', 'behind', 'cancelled'];
+app.put('/api/assignments/:id/status', auth, adminOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  const raw = (req.body || {}).status_flag;
+  const value = BOOKING_STATUS_FLAGS.includes(raw) ? raw : null;
+  await pool.query('UPDATE planning_bookings SET status_flag=$1 WHERE id=$2', [value, current.id]);
+  res.json({ ok: true, status_flag: value });
 }));
 
 app.put('/api/assignments/:id/invoice', auth, adminOnly, asyncRoute(async (req, res) => {
