@@ -84,7 +84,7 @@ button,input,select{font:inherit}
 .chip.active:hover{color:#fff;transform:none}
 /* Opgavepool-filtre: samlet, adskilt kort med tydelige sektions-labels i stedet for
    filter-rows der bare flød løst under søgefeltet. */
-.pool-filters{background:var(--ice);border:1px solid var(--border2);border-radius:10px;padding:9px 10px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;align-items:center}
+.pool-filters{background:var(--ice);border:1px solid var(--border2);border-radius:10px;padding:8px 9px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:5px 8px;align-items:center}
 .pool-filter-label{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0}
 .pool-filter-select{width:100%;font-size:11.5px;font-weight:700;color:var(--navy);background:#fff;border:1px solid var(--border2);border-radius:8px;padding:6px 8px;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236B7280'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:22px;transition:border-color .15s}
 .pool-filter-select:hover{border-color:#94A3B8}
@@ -368,8 +368,11 @@ button,input,select{font:inherit}
 select.tld-input{background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23667' stroke-width='2'%3e%3cpath d='M6 9l6 6 6-6'/%3e%3c/svg%3e");background-repeat:no-repeat;background-position:right 10px center;background-size:16px;padding-right:34px;cursor:pointer}
 textarea.tld-input{resize:vertical;font-family:inherit;line-height:1.5}
 input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
-.tl-drawer-footer{display:flex;gap:8px;padding:16px 20px;border-top:1px solid var(--border2);background:#fafbfc}
-.tl-drawer-footer .btn{flex:1;justify-content:center}
+.tl-drawer-footer{display:flex;flex-direction:column;gap:8px;padding:16px 20px;border-top:1px solid var(--border2);background:#fafbfc}
+.tld-footer-row{display:flex;gap:8px}
+.tld-footer-row .btn{flex:1}
+.tl-drawer-footer .btn{height:38px;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-size:11.5px;padding:0 10px;border-radius:9px;overflow:hidden;text-overflow:ellipsis}
+.tld-footer-primary{height:42px!important;font-size:12.5px!important;font-weight:700}
 @media(max-width:640px){.tl-drawer{width:100vw;max-width:100vw}}
 .avail-table{width:100%;border-collapse:collapse;min-width:900px}
 
@@ -513,13 +516,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .modal{width:420px;max-width:100%;max-height:92vh;overflow:auto;background:#fff;border-radius:16px;padding:22px;box-shadow:0 20px 60px rgba(15,34,64,.32);animation:gm-pop .22s cubic-bezier(.2,.9,.3,1.3)}
 @keyframes gm-fade{from{opacity:0}to{opacity:1}}
 @keyframes gm-pop{from{opacity:0;transform:scale(.94) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
-.modal h3{font-size:15px;color:var(--navy);margin:0 0 16px;font-weight:800;padding-bottom:12px;border-bottom:1px solid var(--border2)}
+.modal h3{font-size:16px;color:var(--navy);margin:-22px -22px 18px;padding:18px 22px 16px;font-weight:800;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff;border-radius:16px 16px 0 0}
 .form-group{margin-bottom:12px}
 .form-label{font-size:9px;font-weight:800;color:var(--muted);display:block;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
 .input,.select{width:100%;padding:9px 11px;border:1.5px solid var(--border);background:var(--ice);border-radius:8px;outline:none;font-size:12.5px;box-sizing:border-box;transition:.15s}
 .input:focus,.select:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--border2)}
+.modal-actions .btn,.gd-modal .modal-actions .btn{height:38px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px;border-radius:9px;font-size:11.5px;white-space:nowrap}
+.modal-actions .btn.primary{font-weight:700}
 .assign-info-box{padding:10px 12px;background:var(--ice);border-radius:9px;font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:14px}
 .manual-modal-modern{padding:0!important;overflow:hidden}
 .manual-modal-head{display:flex;align-items:center;gap:12px;padding:20px 22px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff}
@@ -808,10 +813,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
   <div class="tl-drawer-footer">
-    <button class="btn" id="tld-toggle-done">✅ Markér som færdig</button>
-    <button class="btn danger" id="tld-remove">Fjern booking</button>
-    <button class="btn" id="tld-copy">⧉ Kopiér</button>
-    <button class="btn primary" id="tld-save">Gem ændringer</button>
+    <button class="btn primary tld-footer-primary" id="tld-save">Gem ændringer</button>
+    <div class="tld-footer-row">
+      <button class="btn" id="tld-toggle-done">✅ Færdig</button>
+      <button class="btn" id="tld-copy">⧉ Kopiér</button>
+      <button class="btn danger" id="tld-remove">🗑 Fjern</button>
+    </div>
   </div>
 </div>
 <!-- LEDIGHEDSOVERSIGT -->
@@ -2667,7 +2674,7 @@ function renderGanttChart(){
       var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
       timelineRows+='<div class="gantt-row gantt-group-row" data-toggle-job="'+esc(row.jobId)+'" style="cursor:pointer">'+
         '<div class="gantt-row-bg">'+bgCols+'</div>'+
-        '<div class="gantt-bar" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(row.jobName)+' — '+row.count+' opgaver">'+
+        '<div class="gantt-bar" data-job-id="'+esc(row.jobId)+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(row.jobName)+' — '+row.count+' opgaver — træk for at flytte hele sagen">'+
           '<span class="gantt-bar-label">'+esc(row.jobName||'')+' ('+row.count+')</span>'+
         '</div>'+
       '</div>';
@@ -2744,7 +2751,7 @@ function bindGanttInteractions(){
       openGanttTaskDetail(row.dataset.detailTaskId);
     });
   });
-  document.querySelectorAll('.gantt-bar').forEach(function(bar){
+  document.querySelectorAll('.gantt-bar[data-task-id]').forEach(function(bar){
     var taskId=bar.dataset.taskId;
     bar.addEventListener('mousedown',function(e){
       if(e.target.classList.contains('gantt-bar-handle'))return;
@@ -2752,6 +2759,12 @@ function bindGanttInteractions(){
     });
     bar.querySelectorAll('.gantt-bar-handle').forEach(function(h){
       h.addEventListener('mousedown',function(e){e.stopPropagation();startGanttDrag(e,bar,taskId,h.dataset.handle);});
+    });
+  });
+  document.querySelectorAll('.gantt-bar[data-job-id]').forEach(function(bar){
+    bar.addEventListener('mousedown',function(e){
+      e.stopPropagation();
+      startGanttGroupDrag(e,bar,bar.dataset.jobId);
     });
   });
 }
@@ -2793,6 +2806,49 @@ function onGanttDragEnd(){
   var newEnd=iso(add(date(newStart),spanDays-1));
   saveGanttTaskChange(ganttDrag.taskId,{start_date:newStart,end_date:newEnd});
   ganttDrag=null;
+}
+var ganttGroupDrag=null;
+function startGanttGroupDrag(e,bar,jobId){
+  e.preventDefault();
+  var tasksInJob=ganttState.tasks.filter(function(t){return String(t.job_id||ganttState.jobId)===String(jobId);});
+  ganttGroupDrag={jobId:jobId,bar:bar,startX:e.clientX,origLeft:parseInt(bar.style.left),moved:false,taskIds:tasksInJob.map(function(t){return t.id;})};
+  document.addEventListener('mousemove',onGanttGroupDragMove);
+  document.addEventListener('mouseup',onGanttGroupDragEnd);
+}
+function onGanttGroupDragMove(e){
+  if(!ganttGroupDrag)return;
+  var dx=e.clientX-ganttGroupDrag.startX,dw=ganttState.dayWidth;
+  if(Math.abs(dx)>4)ganttGroupDrag.moved=true;
+  var snapped=Math.round(dx/dw)*dw;
+  ganttGroupDrag.bar.style.left=(ganttGroupDrag.origLeft+snapped)+'px';
+}
+async function onGanttGroupDragEnd(e){
+  if(!ganttGroupDrag)return;
+  document.removeEventListener('mousemove',onGanttGroupDragMove);
+  document.removeEventListener('mouseup',onGanttGroupDragEnd);
+  var g=ganttGroupDrag;ganttGroupDrag=null;
+  if(!g.moved){
+    // Intet reelt træk — det var et klik. Lad det almindelige data-toggle-job
+    // click-flow (på hele rækken) folde ud/sammen, så vi ikke toggler dobbelt.
+    return;
+  }
+  var dw=ganttState.dayWidth;
+  var deltaDays=Math.round((parseInt(g.bar.style.left)-g.origLeft)/dw);
+  if(!deltaDays){renderGanttChart();return;}
+  toast('Flytter '+g.taskIds.length+' opgaver …','⏳');
+  var results=await Promise.all(g.taskIds.map(function(taskId){
+    var t=ganttState.tasks.find(function(x){return x.id===taskId;});
+    if(!t)return Promise.resolve(null);
+    var newStart=iso(add(date(t.start_date),deltaDays));
+    var newEnd=iso(add(date(t.end_date||t.start_date),deltaDays));
+    t.start_date=newStart;t.end_date=newEnd; // optimistisk, lokalt
+    return api('/api/gantt/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({start_date:newStart,end_date:newEnd})});
+  }));
+  var failed=results.filter(function(r){return !r||!r.ok;}).length;
+  if(failed)toast(failed+' af '+results.length+' opgaver kunne ikke flyttes','❌');
+  else toast('Hele sagen flyttet ✓','✓');
+  if(ganttState.allMode)await openGanttAllTasks();
+  else await openGanttJob(ganttState.jobId,ganttState.jobName);
 }
 async function saveGanttTaskChange(taskId,changes){
   var t=ganttState.tasks.find(function(x){return x.id===taskId;});
@@ -3712,8 +3768,8 @@ function bind(){
   document.addEventListener('dragstart',function(e){
     var task=e.target.closest('.draggable-task');
     var booking=e.target.closest('.draggable-assignment,.cap-job');
-    if(task&&!e.target.closest('a,button,input,select,textarea,[data-action]')){beginDrag(e,{kind:'task',taskId:task.dataset.taskId});task.classList.add('dragging');}
-    else if(booking&&!e.target.closest('a,button,input,select,textarea,[data-action]')){beginDrag(e,{kind:'booking',bookingId:booking.dataset.bookingId});booking.classList.add('dragging');}
+    if(task&&!e.target.closest('a,button,input,select,textarea')){beginDrag(e,{kind:'task',taskId:task.dataset.taskId});task.classList.add('dragging');}
+    else if(booking&&!e.target.closest('a,button,input,select,textarea')){beginDrag(e,{kind:'booking',bookingId:booking.dataset.bookingId});booking.classList.add('dragging');}
   });
   document.addEventListener('dragend',function(){dragPayload=null;document.getElementById('capacity-scroll').classList.remove('drag-active');document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});});
   document.addEventListener('dragover',function(e){var z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.add('over');}});
