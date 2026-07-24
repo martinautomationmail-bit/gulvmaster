@@ -212,6 +212,7 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_gantt_tasks_job ON gantt_tasks(job_id);
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_phone TEXT;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_email TEXT;
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_address TEXT;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS type_guess TEXT;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_number TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS description TEXT;
@@ -553,6 +554,20 @@ function guessType(name) {
   if (t.includes('vvs') || t.includes('varme')) return 'sub';
   if (t.includes('gulv') || t.includes('parket') || t.includes('afmontering') || t.includes('spaan') || t.includes('stroer') || t.includes('laeg')) return 'lay';
   return 'other';
+}
+
+// JobTreads eget job-niveau custom field "Projekt Type" (id 22PZehK6FjNh) er den
+// RIGTIGE faggruppe, sat af sælgeren på sagen — langt mere pålidelig end at gætte
+// ud fra opgavenavnet. Bruges når den findes; ellers falder vi tilbage til guessType().
+const PROJEKT_TYPE_FIELD_ID = '22PZehK6FjNh';
+const PROJEKT_TYPE_TO_TYPE_GUESS = { 'Gulvslibning': 'sand', 'Gulvlægning': 'lay', 'Maler': 'paint', 'Enterprise': 'other' };
+function projektTypeFromJob(job) {
+  const nodes = listNodes(job?.customFieldValues);
+  for (const fv of nodes) {
+    const label = fv?.customField?.name;
+    if (label === 'Projekt Type' && fv?.value) return PROJEKT_TYPE_TO_TYPE_GUESS[fv.value] || null;
+  }
+  return null;
 }
 
 function generatedPlanningEmail(name) {
@@ -1827,7 +1842,7 @@ function safeJsonParse(text, fallback) {
 
 async function fetchGanttTasksFromJT(jobId) {
   let jobName = '';
-  let phone = null, email = null;
+  let phone = null, email = null, address = null, jobTypeGuess = null;
   const allTasks = [];
   let cursor, page = 0;
   const stats = {};
@@ -1841,6 +1856,7 @@ async function fetchGanttTasksFromJT(jobId) {
           $: { id: jobId },
           id: {}, name: {},
           ...(page === 0 ? jobContactFields() : {}),
+          ...(page === 0 ? { customFieldValues: { $: { size: 20 }, nodes: { value: {}, customField: { name: {} } } } } : {}),
           tasks: {
             $: args,
             nextPage: {},
@@ -1860,6 +1876,8 @@ async function fetchGanttTasksFromJT(jobId) {
     if (page === 0) {
       phone = phoneFromJobContact(job, stats)?.phone || null;
       email = emailFromJobContact(job, stats)?.email || null;
+      address = job?.location?.address || null;
+      jobTypeGuess = projektTypeFromJob(job);
     }
     const nodes = job.tasks?.nodes || [];
     allTasks.push(...nodes);
@@ -1878,9 +1896,10 @@ async function fetchGanttTasksFromJT(jobId) {
     is_group: !!t.isGroup,
     parent_task_id: t.parentTask?.id || null,
     position: t.position || '',
-    depends_on: (t.taskDependencies?.nodes || []).map(d => d.dependsOnTask?.id).filter(Boolean)
+    depends_on: (t.taskDependencies?.nodes || []).map(d => d.dependsOnTask?.id).filter(Boolean),
+    type_guess: jobTypeGuess || guessType(t.name)
   }));
-  return { jobName, tasks, phone, email };
+  return { jobName, tasks, phone, email, address };
 }
 
 // Henter og cacher ALLE opgaver på tværs af HELE organisationen (ikke kun ét
@@ -1910,7 +1929,7 @@ async function syncAllGanttTasksFromJT() {
                 id: {}, name: {}, description: {}, startDate: {}, endDate: {},
                 progress: {}, isGroup: {}, position: {},
                 parentTask: { id: {} },
-                job: { id: {}, name: {}, number: {} },
+                job: { id: {}, name: {}, number: {}, location: { address: {} }, customFieldValues: { $: { size: 20 }, nodes: { value: {}, customField: { name: {} } } } },
                 taskDependencies: { $: { size: 20 }, nodes: { dependsOnTask: { id: {} } } }
               }
             }
@@ -1922,16 +1941,18 @@ async function syncAllGanttTasksFromJT() {
       for (const t of nodes) {
         if (!t?.id || !t?.job?.id || !t.startDate) continue;
         const dependsOn = (t.taskDependencies?.nodes || []).map(d => d.dependsOnTask?.id).filter(Boolean);
+        const jobAddress = t.job?.location?.address || null;
+        const jobType = projektTypeFromJob(t.job) || guessType(t.name);
         await pool.query(`
-          INSERT INTO gantt_tasks (id,job_id,job_name,job_number,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,type_guess,synced_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,${nowTextSQL()})
+          INSERT INTO gantt_tasks (id,job_id,job_name,job_number,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,type_guess,job_address,synced_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,${nowTextSQL()})
           ON CONFLICT (id) DO UPDATE SET
             job_id=EXCLUDED.job_id, job_name=EXCLUDED.job_name, job_number=EXCLUDED.job_number,
             name=EXCLUDED.name, description=EXCLUDED.description,
             start_date=EXCLUDED.start_date, end_date=EXCLUDED.end_date, progress=EXCLUDED.progress,
             is_group=EXCLUDED.is_group, parent_task_id=EXCLUDED.parent_task_id, position=EXCLUDED.position,
-            depends_on=EXCLUDED.depends_on, type_guess=EXCLUDED.type_guess, synced_at=${nowTextSQL()}
-        `, [t.id, t.job.id, t.job.name || '', t.job.number != null ? String(t.job.number) : null, t.name || '', t.description || '', t.startDate, t.endDate || t.startDate, t.progress != null ? Number(t.progress) : 0, t.isGroup ? 1 : 0, t.parentTask?.id || null, t.position || '', JSON.stringify(dependsOn), guessType(t.name)]);
+            depends_on=EXCLUDED.depends_on, type_guess=EXCLUDED.type_guess, job_address=EXCLUDED.job_address, synced_at=${nowTextSQL()}
+        `, [t.id, t.job.id, t.job.name || '', t.job.number != null ? String(t.job.number) : null, t.name || '', t.description || '', t.startDate, t.endDate || t.startDate, t.progress != null ? Number(t.progress) : 0, t.isGroup ? 1 : 0, t.parentTask?.id || null, t.position || '', JSON.stringify(dependsOn), jobType, jobAddress]);
         count++;
       }
       page++;
@@ -1949,16 +1970,16 @@ async function syncAllGanttTasksFromJT() {
 }
 
 async function syncGanttJob(jobId) {
-  const { jobName, tasks, phone, email } = await fetchGanttTasksFromJT(jobId);
+  const { jobName, tasks, phone, email, address } = await fetchGanttTasksFromJT(jobId);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM gantt_tasks WHERE job_id=$1', [jobId]);
     for (const t of tasks) {
       await client.query(`
-        INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,job_phone,job_email,synced_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,${nowTextSQL()})
-      `, [t.id, jobId, jobName, t.name, t.description, t.start_date, t.end_date, t.progress, t.is_group ? 1 : 0, t.parent_task_id, t.position, JSON.stringify(t.depends_on), phone, email]);
+        INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,job_phone,job_email,job_address,type_guess,synced_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,${nowTextSQL()})
+      `, [t.id, jobId, jobName, t.name, t.description, t.start_date, t.end_date, t.progress, t.is_group ? 1 : 0, t.parent_task_id, t.position, JSON.stringify(t.depends_on), phone, email, address, t.type_guess]);
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -1967,7 +1988,7 @@ async function syncGanttJob(jobId) {
   } finally {
     client.release();
   }
-  return { jobName, count: tasks.length, phone, email };
+  return { jobName, count: tasks.length, phone, email, address };
 }
 
 app.get('/api/gantt/jobs', auth, asyncRoute(async (req, res) => {
@@ -1998,7 +2019,8 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
     if (!r.ok && !r.skipped) return res.status(400).json({ error: r.error || 'Kunne ikke hente opgaverne' });
   }
   const rows = await pool.query(`
-    SELECT g.*, COALESCE(g.job_phone, t.customer_phone) AS resolved_phone, COALESCE(g.job_email, t.customer_email) AS resolved_email
+    SELECT g.*, COALESCE(g.job_phone, t.customer_phone) AS resolved_phone, COALESCE(g.job_email, t.customer_email) AS resolved_email,
+           COALESCE(g.job_address, t.job_address) AS resolved_address
     FROM gantt_tasks g
     LEFT JOIN jt_tasks t ON t.job_id = g.job_id AND t.customer_phone IS NOT NULL
     ORDER BY g.job_name ASC, g.start_date ASC
@@ -2014,7 +2036,7 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
       name: r.name, description: r.description, start_date: r.start_date, end_date: r.end_date,
       progress: r.progress, is_group: !!r.is_group, parent_task_id: r.parent_task_id,
       depends_on: safeJsonParse(r.depends_on, []), type_guess: r.type_guess,
-      job_phone: r.resolved_phone, job_email: r.resolved_email
+      job_phone: r.resolved_phone, job_email: r.resolved_email, job_address: r.resolved_address
     });
   }
   res.json(out);

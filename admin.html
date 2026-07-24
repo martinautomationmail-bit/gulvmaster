@@ -84,8 +84,11 @@ button,input,select{font:inherit}
 .chip.active:hover{color:#fff;transform:none}
 /* Opgavepool-filtre: samlet, adskilt kort med tydelige sektions-labels i stedet for
    filter-rows der bare flød løst under søgefeltet. */
-.pool-filters{background:var(--ice);border:1px solid var(--border2);border-radius:10px;padding:9px 10px 3px;margin-bottom:10px}
-.pool-filter-label{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 4px 2px}
+.pool-filters{background:var(--ice);border:1px solid var(--border2);border-radius:10px;padding:9px 10px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;align-items:center}
+.pool-filter-label{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0}
+.pool-filter-select{width:100%;font-size:11.5px;font-weight:700;color:var(--navy);background:#fff;border:1px solid var(--border2);border-radius:8px;padding:6px 8px;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236B7280'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:22px;transition:border-color .15s}
+.pool-filter-select:hover{border-color:#94A3B8}
+.pool-filter-select:focus{outline:none;border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .pool-search-wrap{position:relative;margin-bottom:9px}
 .pool-search-wrap .search{margin-bottom:0;padding-left:26px;border-radius:8px;background:#fff}
 .pool-search-wrap::before{content:'🔍';position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:10px;opacity:.55;pointer-events:none}
@@ -402,14 +405,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .gantt-bar-handle.right{right:0}
 .gantt-dep-svg{position:absolute;inset:0;pointer-events:none;overflow:visible}
 .gd-modal{padding:0!important;overflow:hidden}
-.gd-head{display:flex;align-items:center;gap:12px;padding:18px 22px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff}
-.gd-head-icon{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:16px;flex-shrink:0}
-.gd-head-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;opacity:.7;margin-bottom:3px}
-.gd-name-input{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:7px;color:#fff;font-size:15px;font-weight:700;padding:5px 9px;width:100%}
-.gd-name-input:focus{background:rgba(255,255,255,.2);outline:none}
-.gd-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;background:var(--ice);border-radius:10px;padding:12px}
-.gd-info-label{font-size:9px;font-weight:800;text-transform:uppercase;color:var(--muted);letter-spacing:.04em;margin-bottom:3px}
-.gd-info-value a{color:#1d4ed8;font-weight:600}
+.gd-head{display:flex;align-items:center;gap:12px;padding:20px 24px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff}
+.gd-head-icon{width:38px;height:38px;border-radius:11px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:17px;flex-shrink:0}
+.gd-head-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;opacity:.72;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.gd-type-badge{display:inline-block;font-size:9px;font-weight:800;text-transform:none;letter-spacing:0;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,.18)}
+.gd-name-input{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#fff;font-size:16px;font-weight:700;padding:7px 10px;width:100%;transition:background .15s,border-color .15s}
+.gd-name-input:focus{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5);outline:none}
+.gd-progress-row{display:flex;align-items:center;gap:12px;margin-top:2px}
+.gd-progress-row input[type=range]{flex:1;accent-color:#2563EB;height:6px}
+.gd-progress-pct{font-size:13px;font-weight:800;color:var(--navy);min-width:38px;text-align:right}
+.gd-info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px;background:var(--ice);border-radius:12px;padding:14px}
+@media(max-width:520px){.gd-info-grid{grid-template-columns:1fr}}
+.gd-info-label{font-size:9px;font-weight:800;text-transform:uppercase;color:var(--muted);letter-spacing:.05em;margin-bottom:4px;display:flex;align-items:center;gap:4px}
+.gd-info-value{font-size:12.5px;font-weight:600;color:var(--navy);line-height:1.4}
+.gd-info-value a{color:#1d4ed8;font-weight:600;text-decoration:none}
+.gd-info-value a:hover{text-decoration:underline}
+.gd-info-value.muted-sm{font-weight:500}
 .gantt-group-row .gantt-bar{background:#0F2A1C}
 .gantt-group-row .gantt-list-row{background:#F0FDF4;font-weight:800}
 .gantt-expand-toggle{margin-right:5px;font-size:10px;color:var(--muted);width:12px;display:inline-block}
@@ -760,7 +771,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="tld-row">
       <div class="tld-section"><label class="tld-label">📋 Dage (Daglig plan)</label><input id="tld-days" type="number" min=".25" max="60" step=".25" class="tld-input"></div>
-      <div class="tld-section"><label class="tld-label">📊 Kapacitetsdage</label><input id="tld-capdays" type="number" min=".25" max="60" step=".25" class="tld-input"></div>
+    </div>
+    <div class="tld-section">
+      <label class="tld-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
+        <input type="checkbox" id="tld-capacity-toggle" style="width:auto">📊 Reservér også kapacitet <span style="opacity:.6;font-weight:500">(valgfrit, adskilt fra Daglig plan)</span>
+      </label>
+      <input id="tld-capdays" type="number" min=".25" max="60" step=".25" class="tld-input" style="display:none;margin-top:6px">
     </div>
     <div class="tld-section">
       <label class="tld-label">📍 Adresse</label>
@@ -889,22 +905,25 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <!-- GANTT-OPGAVE DETALJER (fra JobTread, redigerbar) -->
 <div class="mo" id="gantt-detail-modal">
-  <div class="modal gd-modal" style="max-width:560px">
+  <div class="modal gd-modal" style="max-width:580px">
     <div class="gd-head">
       <span class="gd-head-icon">📋</span>
-      <div><div class="gd-head-title" id="gd-job-label"></div><input id="gd-name-input" class="gd-name-input"></div>
+      <div style="flex:1"><div class="gd-head-title"><span id="gd-job-label"></span><span class="gd-type-badge" id="gd-type-badge" style="display:none"></span></div><input id="gd-name-input" class="gd-name-input"></div>
     </div>
     <div class="modal-body-pad">
       <div class="form-row">
         <div class="form-group"><label class="form-label">Startdato</label><input id="gd-start-input" type="date" class="input"></div>
         <div class="form-group"><label class="form-label">Slutdato</label><input id="gd-end-input" type="date" class="input"></div>
       </div>
-      <div class="form-group"><label class="form-label">Fremgang <span id="gd-progress-label" class="opt-tag"></span></label><input id="gd-progress-input" type="range" min="0" max="100" step="5" style="width:100%"></div>
+      <div class="form-group"><label class="form-label">Fremgang</label>
+        <div class="gd-progress-row"><input id="gd-progress-input" type="range" min="0" max="100" step="5"><span class="gd-progress-pct" id="gd-progress-pct-label">0%</span></div>
+      </div>
       <div class="gd-info-grid">
         <div><div class="gd-info-label">📞 Kundetelefon</div><div id="gd-phone" class="gd-info-value"></div></div>
         <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="gd-email" class="gd-info-value"></div></div>
+        <div><div class="gd-info-label">📍 Adresse</div><div id="gd-address" class="gd-info-value"></div></div>
       </div>
-      <div id="gd-desc-wrap" style="display:none"><div class="gd-info-label">Beskrivelse (fra JobTread)</div><div id="gd-desc" class="gd-info-value" style="white-space:pre-wrap"></div></div>
+      <div id="gd-desc-wrap" style="display:none;margin-top:14px"><div class="gd-info-label">Beskrivelse (fra JobTread)</div><div id="gd-desc" class="gd-info-value" style="white-space:pre-wrap"></div></div>
     </div>
     <div class="modal-actions">
       <button class="btn" id="gantt-detail-close">Luk</button>
@@ -1330,9 +1349,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Startdato</label><input id="assign-date" type="date" class="input"></div>
       <div class="form-group"><label class="form-label">Antal dage (Daglig plan)</label><input id="assign-days" type="number" min=".25" max="60" step=".25" class="input"></div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Kapacitetsdage (Kapacitetsboard)</label><input id="assign-capacity-days" type="number" min=".25" max="60" step=".25" class="input"></div>
-      <div class="form-group"><label class="form-label" style="opacity:.6">Uafhængig af Daglig plan</label></div>
+    <div class="form-group" id="assign-capacity-toggle-wrap">
+      <label class="form-label" style="display:flex;align-items:center;gap:7px;cursor:pointer">
+        <input type="checkbox" id="assign-capacity-toggle" style="width:auto">
+        📊 Reservér også kapacitet på Kapacitetsboardet <span style="opacity:.6;font-weight:500">(valgfrit — helt adskilt fra Daglig plan, sker kun hvis du krydser af her)</span>
+      </label>
+      <div class="form-row" id="assign-capacity-fields" style="display:none;margin-top:8px">
+        <div class="form-group"><label class="form-label">Kapacitetsdage</label><input id="assign-capacity-days" type="number" min=".25" max="60" step=".25" class="input"></div>
+      </div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Mødetid</label><input id="assign-time" type="time" class="input"></div>
@@ -1591,8 +1615,8 @@ function filtersHTML(scope){
   // opretter der automatisk dukker op som filter her — ingen hårdkodet liste længere.
   var tys=[['all','Alle fag']].concat(taskTypesList.map(function(t){return [t.key,t.label];}));
   var se=document.getElementById(dom+'-status-filters'),te=document.getElementById(dom+'-type-filters');
-  if(se)se.innerHTML=sts.map(function(x){return '<button class="chip'+(f.status===x[0]?' active':'')+'" data-action="pool-filter" data-scope="'+scope+'" data-kind="status" data-value="'+x[0]+'">'+x[1]+'</button>';}).join('');
-  if(te)te.innerHTML=tys.map(function(x){var dot=x[0]==='all'?'':'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+((TYPE[x[0]]||{}).bar||'#94A3B8')+';margin-right:4px"></span>';return '<button class="chip'+(f.type===x[0]?' active':'')+'" data-action="pool-filter" data-scope="'+scope+'" data-kind="type" data-value="'+x[0]+'">'+dot+x[1]+'</button>';}).join('');
+  if(se)se.innerHTML='<select class="pool-filter-select" data-scope="'+scope+'" data-kind="status">'+sts.map(function(x){return '<option value="'+x[0]+'"'+(f.status===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select>';
+  if(te)te.innerHTML='<select class="pool-filter-select" data-scope="'+scope+'" data-kind="type">'+tys.map(function(x){return '<option value="'+x[0]+'"'+(f.type===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select>';
 }
 function teamFilterHTML(scope){
   var f=filters[scope],dom=scope==='capacity'?'cap':scope;
@@ -2036,6 +2060,8 @@ function openAssign(ctx){
   document.getElementById('assign-date').value=(b?b.start_date:(ctx.date||iso(new Date()))).slice(0,10);
   document.getElementById('assign-days').value=b?b.days:1;
   document.getElementById('assign-capacity-days').value=b?capDaysOf(b):1;
+  document.getElementById('assign-capacity-toggle').checked=false;
+  document.getElementById('assign-capacity-fields').style.display='none';
   document.getElementById('assign-time').value=b&&b.start_time||'';
   document.getElementById('assign-note').value=b&&b.notes||'';
   document.getElementById('assign-email').value=(t&&t.customer_email)||'';
@@ -2047,7 +2073,8 @@ function openAssign(ctx){
 async function saveAssignment(){
   var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);
   if(!taskId){toast('Vælg en task','⚠');return;}
-  var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,capacity_days:+document.getElementById('assign-capacity-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null};
+  var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null};
+  if(document.getElementById('assign-capacity-toggle').checked){body.capacity_days=+document.getElementById('assign-capacity-days').value||1;}
   var calls=[assignCtx.bookingId?api('/api/assignments/'+assignCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))})];
   calls.push(api('/api/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({customer_email:document.getElementById('assign-email').value.trim()})}));
   var results=await Promise.all(calls);
@@ -2112,6 +2139,8 @@ function openTimelineDrawer(bookingId){
   document.getElementById('tld-time').value=b.start_time||'';
   document.getElementById('tld-days').value=b.days;
   document.getElementById('tld-capdays').value=capDaysOf(b);
+  document.getElementById('tld-capacity-toggle').checked=false;
+  document.getElementById('tld-capdays').style.display='none';
   document.getElementById('tld-address').value=b.job_address||'';
   document.getElementById('tld-phone').value=b.customer_phone||'';
   document.getElementById('tld-email').value=b.customer_email||'';
@@ -2134,7 +2163,8 @@ async function toggleTimelineDrawerDone(){
 function closeTimelineDrawer(){document.getElementById('tl-drawer').classList.remove('open');tlDrawerBookingId=null;tlDrawerTaskId=null;}
 async function saveTimelineDrawer(){
   if(!tlDrawerBookingId)return;
-  var body={user_id:+document.getElementById('tld-user').value,start_date:document.getElementById('tld-date').value,start_time:document.getElementById('tld-time').value||null,days:+document.getElementById('tld-days').value||1,capacity_days:+document.getElementById('tld-capdays').value||1,notes:document.getElementById('tld-note').value.trim()||null};
+  var body={user_id:+document.getElementById('tld-user').value,start_date:document.getElementById('tld-date').value,start_time:document.getElementById('tld-time').value||null,days:+document.getElementById('tld-days').value||1,notes:document.getElementById('tld-note').value.trim()||null};
+  if(document.getElementById('tld-capacity-toggle').checked){body.capacity_days=+document.getElementById('tld-capdays').value||1;}
   var taskBody={job_address:document.getElementById('tld-address').value.trim(),customer_phone:document.getElementById('tld-phone').value.trim(),customer_email:document.getElementById('tld-email').value.trim(),job_number:document.getElementById('tld-job-number').value.trim()};
   var calls=[api('/api/assignments/'+tlDrawerBookingId,{method:'PUT',body:JSON.stringify(body)})];
   if(tlDrawerTaskId)calls.push(api('/api/tasks/'+encodeURIComponent(tlDrawerTaskId),{method:'PUT',body:JSON.stringify(taskBody)}));
@@ -2765,7 +2795,6 @@ function onGanttDragEnd(){
   ganttDrag=null;
 }
 async function saveGanttTaskChange(taskId,changes){
-  if(ganttState.allMode){toast('Dato-ændringer skal laves inde på selve sagens Gantt-kort, ikke i "Alle opgaver"-visningen','⚠');renderGanttChart();return;}
   var t=ganttState.tasks.find(function(x){return x.id===taskId;});
   if(t)Object.assign(t,changes);
   renderGanttChart(); // optimistisk, mens vi venter på JobTread
@@ -2773,11 +2802,14 @@ async function saveGanttTaskChange(taskId,changes){
   if(r&&r.ok){
     toast('Gemt i JobTread ✓','✓');
     // JobTread kan have rykket AFHÆNGIGE opgaver automatisk (before/after-kæder)
-    // — genhent hele sagen, så de kaskade-flyttede opgaver også opdaterer sig her.
-    await openGanttJob(ganttState.jobId,ganttState.jobName);
+    // — genhent, så de kaskade-flyttede opgaver også opdaterer sig her, i den
+    // visning vi faktisk står i (ét job eller "Alle opgaver").
+    if(ganttState.allMode)await openGanttAllTasks();
+    else await openGanttJob(ganttState.jobId,ganttState.jobName);
   } else {
     toast((r&&r.error)||'Kunne ikke gemme i JobTread','❌');
-    await openGanttJob(ganttState.jobId,ganttState.jobName);
+    if(ganttState.allMode)await openGanttAllTasks();
+    else await openGanttJob(ganttState.jobId,ganttState.jobName);
   }
 }
 var ganttDetailTaskId=null;
@@ -2790,10 +2822,14 @@ function openGanttTaskDetail(taskId){
   document.getElementById('gd-start-input').value=(t.start_date||'').slice(0,10);
   document.getElementById('gd-end-input').value=(t.end_date||'').slice(0,10);
   document.getElementById('gd-progress-input').value=Math.round((t.progress||0)*100);
-  document.getElementById('gd-progress-label').textContent=Math.round((t.progress||0)*100)+'%';
-  var phone=t.job_phone,email=t.job_email;
+  document.getElementById('gd-progress-pct-label').textContent=Math.round((t.progress||0)*100)+'%';
+  var phone=t.job_phone,email=t.job_email,address=t.job_address;
   document.getElementById('gd-phone').innerHTML=phone?'<a href="tel:'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
   document.getElementById('gd-email').innerHTML=email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
+  document.getElementById('gd-address').innerHTML=address?esc(address):'<span class="muted-sm">Ikke registreret</span>';
+  var typeBadge=document.getElementById('gd-type-badge');
+  if(t.type_guess&&TYPE[t.type_guess]){typeBadge.style.display='inline-block';typeBadge.textContent=TYPE[t.type_guess].label;}
+  else{typeBadge.style.display='none';}
   var descWrap=document.getElementById('gd-desc-wrap');
   if(t.description){descWrap.style.display='block';document.getElementById('gd-desc').textContent=t.description;}else{descWrap.style.display='none';}
   var jobId=t.job_id||ganttState.jobId;
@@ -2801,7 +2837,7 @@ function openGanttTaskDetail(taskId){
   document.getElementById('gantt-detail-modal').classList.add('open');
 }
 document.addEventListener('input',function(e){
-  if(e.target&&e.target.id==='gd-progress-input')document.getElementById('gd-progress-label').textContent=e.target.value+'%';
+  if(e.target&&e.target.id==='gd-progress-input')document.getElementById('gd-progress-pct-label').textContent=e.target.value+'%';
 });
 async function saveGanttDetailEdit(){
   if(!ganttDetailTaskId)return;
@@ -3629,9 +3665,11 @@ function bind(){
   document.getElementById('tld-remove').onclick=removeTimelineDrawerBooking;
   document.getElementById('tld-copy').onclick=copyTimelineDrawerBooking;
   document.getElementById('tld-toggle-done').onclick=toggleTimelineDrawerDone;
+  document.getElementById('tld-capacity-toggle').onchange=function(e){document.getElementById('tld-capdays').style.display=e.target.checked?'block':'none';};
   // Assign modal
   document.getElementById('close-assign').onclick=function(){closeModal('assign-modal');};
   document.getElementById('save-assignment').onclick=saveAssignment;
+  document.getElementById('assign-capacity-toggle').onchange=function(e){document.getElementById('assign-capacity-fields').style.display=e.target.checked?'flex':'none';};
   document.getElementById('delete-assignment').onclick=function(){if(assignCtx&&assignCtx.bookingId)removeBooking(assignCtx.bookingId);};
   // Manual modal
   document.getElementById('close-manual').onclick=function(){closeModal('manual-modal');};
@@ -3681,6 +3719,14 @@ function bind(){
   document.addEventListener('dragover',function(e){var z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.add('over');}});
   document.addEventListener('dragleave',function(e){var z=e.target.closest('[data-drop]');if(z&&!z.contains(e.relatedTarget))z.classList.remove('over');});
   document.addEventListener('drop',function(e){var z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.remove('over');handleDrop(e,z);}});
+  document.addEventListener('change',function(e){
+    var sel=e.target.closest('.pool-filter-select');
+    if(!sel)return;
+    filters[sel.dataset.scope][sel.dataset.kind]=sel.value;
+    if(sel.dataset.scope==='plan')renderPlan();
+    else if(sel.dataset.scope==='timeline')renderTimeline();
+    else renderCapacity();
+  });
 
   // CLICK DELEGATION
   document.addEventListener('click',function(e){
