@@ -321,6 +321,9 @@ button,input,select{font:inherit}
 /* COPY BUTTON on pills */
 .pill-copy{border:0;background:rgba(0,0,0,.08);cursor:pointer;font-size:9px;line-height:1;color:inherit;opacity:.6;padding:2px 4px;border-radius:3px;flex-shrink:0}
 .pill-copy:hover{opacity:1;background:rgba(0,0,0,.16)}
+.pill-reorder{display:flex;flex-direction:column;gap:1px;flex-shrink:0}
+.pill-order-btn{border:0;background:rgba(0,0,0,.08);cursor:pointer;font-size:6px;line-height:1;color:inherit;opacity:.55;padding:1px 3px;border-radius:2px}
+.pill-order-btn:hover{opacity:1;background:rgba(0,0,0,.16)}
 
 /* TIDSLINJE (Gantt) */
 .tl-outer{overflow:auto;background:#fff;border:1px solid var(--border2);border-radius:10px;box-shadow:var(--shadow)}
@@ -1777,8 +1780,8 @@ function renderPool(scope){
 }
 
 // ASSIGNMENT PILL (daily) - single day
-function assignPill(b){
-  return assignPillSpan(b,1);
+function assignPill(b,ds,canUp,canDown){
+  return assignPillSpan(b,1,ds,canUp,canDown);
 }
 // Bygger inline farve-styling ud fra fagets farve, så det virker for BÅDE de 4 indbyggede
 // fag og ethvert brugerdefineret fag/faggruppe man tilføjer under "Fag & farver".
@@ -1813,14 +1816,20 @@ function bookingStatusIcon(b){
   return '';
 }
 // ASSIGNMENT PILL spanning multiple visible days
-function assignPillSpan(b,spanDays){
+function assignPillSpan(b,spanDays,ds,canUp,canDown){
   var type=TYPE[b.type_guess||'other']||TYPE.other;
   var daysLabel=+b.days>1?' <span style="font-size:8px;opacity:.75;background:rgba(0,0,0,.1);padding:1px 4px;border-radius:3px">'+b.days+'d</span>':'';
   var isDone=!!b.completed_at;
   var extraStyle=bookingColorStyle(b,type)+(spanDays>1?'position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(128px + 8px) - 10px);width:calc('+spanDays+'*(128px) + '+(spanDays-1)+'*8px - 10px);min-width:0':'');
+  // ▲▼ til manuel rækkefølge — vises kun når opgaven IKKE har et mødetidspunkt, da
+  // tidspunkt-satte opgaver altid sorterer kronologisk af sig selv.
+  var reorderBtns=(ds&&!b.start_time)?('<span class="pill-reorder">'+
+    (canUp?'<button class="pill-order-btn" title="Flyt op" data-action="move-booking" data-booking-id="'+b.id+'" data-date="'+ds+'" data-dir="up">▲</button>':'')+
+    (canDown?'<button class="pill-order-btn" title="Flyt ned" data-action="move-booking" data-booking-id="'+b.id+'" data-date="'+ds+'" data-dir="down">▼</button>':'')+
+    '</span>'):'';
   return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+(isDone?' is-done':'')+'" draggable="true" data-booking-id="'+b.id+'" style="'+extraStyle+'">'+
     '<div class="assign-top"><span class="assign-name">'+bookingStatusIcon(b)+esc(b.job_name||b.task_name||'Opgave')+daysLabel+'</span>'+
-    '<span style="display:flex;gap:2px;flex-shrink:0">'+
+    '<span style="display:flex;gap:2px;flex-shrink:0">'+reorderBtns+
     '<button class="pill-copy" title="Kopiér opgave" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>'+
     '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></span></div>'+
     (b.start_time?'<div class="assign-time">⏰ '+esc(b.start_time)+'</div>':'')+
@@ -1879,8 +1888,16 @@ function renderPlan(){
       var items=bookings.filter(function(b){
         return !isCapacityBooking(b) && +b.user_id===+u.id && workDates(b).indexOf(ds)>-1;
       });
+      // Rækkefølge: opgaver MED mødetidspunkt vises altid i klokkeslæt-orden først;
+      // opgaver uden tidspunkt beholder den rækkefølge du selv har sat med ▲▼.
+      items.sort(function(a,b){
+        if(a.start_time&&b.start_time)return a.start_time.localeCompare(b.start_time);
+        if(a.start_time&&!b.start_time)return -1;
+        if(!a.start_time&&b.start_time)return 1;
+        return (+a.sort_order||0)-(+b.sort_order||0)||(+a.id-+b.id);
+      });
 
-      var pills=items.map(function(b){ return assignPill(b); }).join('');
+      var pills=items.map(function(b,idx){ return assignPill(b,ds,idx>0,idx<items.length-1); }).join('');
       var free=items.length===0?'<div class="free-slot">✓ Ledig</div>':'';
 
       cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'">'+
@@ -4103,6 +4120,7 @@ function bind(){
       if(act==='save-notif-rule')saveNotifRule(a.closest('.notif-rule-row'));
       if(act==='open-notif'){api('/api/notifications/'+a.dataset.notifId+'/read',{method:'PUT'}).then(function(){refreshNotifBell();if(a.dataset.link)switchPage(a.dataset.link.replace('#',''));});}
       if(act==='mark-all-read'){e.stopPropagation();api('/api/notifications/read-all',{method:'PUT'}).then(function(){refreshNotifBell();});}
+      if(act==='move-booking'){e.stopPropagation();api('/api/assignments/'+a.dataset.bookingId+'/move',{method:'PUT',body:JSON.stringify({direction:a.dataset.dir,date:a.dataset.date})}).then(function(r){if(r&&r.ok)loadAll();else if(r)toast(r.error||'Fejl','❌');});}
       if(act==='capacity-add')openCapacityModal({weekStart:iso(mon(new Date()))});
       if(act==='add-capacity')openCapacityModal({userId:+a.dataset.userId,weekStart:a.dataset.date});
       if(act==='pool-filter'){filters[a.dataset.scope][a.dataset.kind]=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}

@@ -227,6 +227,7 @@ async function initSchema() {
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS planning_mode TEXT DEFAULT 'daily';
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS capacity_label TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS documented_at TEXT;
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
     CREATE INDEX IF NOT EXISTS idx_planning_bookings_mode ON planning_bookings(planning_mode);
 
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -2920,6 +2921,30 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
     sendCompletionEmail(current).catch(e => console.error('Færdig-mail fejlede:', e.message));
     sendCompletionWebhook(current).catch(e => console.error('Zapier-webhook fejlede:', e.message));
   }
+}));
+
+// En booking kan flyttes manuelt op/ned i rækkefølgen for én bestemt dag. Bruges når
+// admin selv vil bestemme rækkefølgen medarbejderen ser opgaverne i den dag — uafhængigt
+// af mødetidspunkt. Sætter man et mødetidspunkt (start_time), tager visningen automatisk
+// over og sorterer efter klokkeslæt i stedet (håndteres i frontend'en).
+app.put('/api/assignments/:id/move', auth, adminOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  const dir = (req.body || {}).direction === 'down' ? 1 : -1;
+  const forDate = (req.body || {}).date || current.start_date;
+  const siblings = await pool.query(`
+    SELECT id,sort_order FROM planning_bookings
+    WHERE user_id=$1 AND start_date<=$2 AND end_date>=$2 AND COALESCE(planning_mode,'daily')='daily'
+    ORDER BY COALESCE(start_time,'99:99') ASC, COALESCE(sort_order,0) ASC, id ASC
+  `, [current.user_id, forDate]);
+  const list = siblings.rows;
+  const idx = list.findIndex(r => +r.id === +current.id);
+  const swapIdx = idx + dir;
+  if (idx < 0 || swapIdx < 0 || swapIdx >= list.length) return res.json({ ok: true });
+  const a = list[idx], b = list[swapIdx];
+  await pool.query('UPDATE planning_bookings SET sort_order=$1 WHERE id=$2', [b.sort_order, a.id]);
+  await pool.query('UPDATE planning_bookings SET sort_order=$1 WHERE id=$2', [a.sort_order, b.id]);
+  res.json({ ok: true });
 }));
 
 // En booking kan have én af tre "opmærksomheds"-statusser der ikke betyder færdig:
