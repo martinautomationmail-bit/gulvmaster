@@ -234,6 +234,55 @@ async function initSchema() {
       value TEXT
     );
 
+    -- SKABELONER: genbrugelige opgave-typer med standard varighed/fag/tjekpunkter,
+    -- så en tilbagevendende opgavetype kan trækkes ind i poolen med ét klik.
+    CREATE TABLE IF NOT EXISTS task_templates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      type_guess TEXT DEFAULT 'other',
+      default_days DOUBLE PRECISION DEFAULT 1,
+      checklist_items TEXT DEFAULT '[]',
+      notes_template TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
+    -- NOTIFIKATIONER: en simpel regel pr. hændelsestype (event_key), med kanal
+    -- (in-app og/eller e-mail) og om den er slået til. Redigeres fra en indstillingsside.
+    CREATE TABLE IF NOT EXISTS notification_rules (
+      event_key TEXT PRIMARY KEY,
+      label TEXT,
+      inapp_enabled INTEGER DEFAULT 1,
+      email_enabled INTEGER DEFAULT 0,
+      email_to TEXT,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id SERIAL PRIMARY KEY,
+      event_key TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT,
+      link TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      read_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+
+    -- KUNDE-KOMMUNIKATION: log for planlagt/påmindelse-mails til kunden (adskilt fra
+    -- completion_emails, som allerede findes til færdig-mailen).
+    CREATE TABLE IF NOT EXISTS customer_schedule_emails (
+      id SERIAL PRIMARY KEY,
+      booking_id INTEGER,
+      task_id TEXT,
+      kind TEXT NOT NULL, -- 'scheduled' | 'reminder'
+      to_email TEXT,
+      status TEXT,
+      error TEXT,
+      sent_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS scheduled_email_sent_at TEXT;
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS reminder_email_sent_at TEXT;
+
     CREATE TABLE IF NOT EXISTS job_files (
       id SERIAL PRIMARY KEY,
       task_id TEXT NOT NULL,
@@ -2989,6 +3038,8 @@ app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
     res.json({ ok: true, id: result.rows[0].id, warning });
     sendScheduleChangeEmail(booking.user_id, `Du har fået en ny opgave sat på din kalender: ${String(booking.start_date).slice(0,10)}.`)
       .catch(e => console.error('Kalender-mail fejlede:', e.message));
+    sendScheduledEmail({ id: result.rows[0].id, task_id: booking.task_id, start_date: booking.start_date, start_time: booking.start_time })
+      .catch(e => console.error('Kunde-planlagt-mail fejlede:', e.message));
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -3194,6 +3245,296 @@ app.get('/api/health', asyncRoute(async (req, res) => {
 // ── PAGES ─────────────────────────────────────────────────────
 // no-store: sikrer at browseren ALTID henter den nyeste version af siden
 // efter en deploy, i stedet for evt. at vise en cachet, forældet udgave.
+// ══════════════════════════════════════════════════════════════
+// SKABELONER — genbrugelige opgavetyper
+// ══════════════════════════════════════════════════════════════
+app.get('/api/templates', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM task_templates ORDER BY name ASC');
+  res.json(rows.rows.map(r => ({ ...r, checklist_items: safeJsonParse(r.checklist_items, []) })));
+}));
+app.post('/api/templates', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
+  const days = Math.max(0.25, Math.min(60, Number(body.default_days) || 1));
+  const checklist = Array.isArray(body.checklist_items) ? body.checklist_items.map(x => String(x).slice(0, 200)) : [];
+  const r = await pool.query(`
+    INSERT INTO task_templates (name,type_guess,default_days,checklist_items,notes_template,updated_at)
+    VALUES ($1,$2,$3,$4,$5,${nowTextSQL()}) RETURNING id
+  `, [String(body.name).trim().slice(0, 200), cleanTaskType(body.type_guess), days, JSON.stringify(checklist), body.notes_template ? String(body.notes_template).slice(0, 1000) : null]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/templates/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const days = Math.max(0.25, Math.min(60, Number(body.default_days) || 1));
+  const checklist = Array.isArray(body.checklist_items) ? body.checklist_items.map(x => String(x).slice(0, 200)) : [];
+  const r = await pool.query(`
+    UPDATE task_templates SET name=$1,type_guess=$2,default_days=$3,checklist_items=$4,notes_template=$5,updated_at=${nowTextSQL()}
+    WHERE id=$6
+  `, [String(body.name || '').trim().slice(0, 200), cleanTaskType(body.type_guess), days, JSON.stringify(checklist), body.notes_template ? String(body.notes_template).slice(0, 1000) : null, req.params.id]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  res.json({ ok: true });
+}));
+app.delete('/api/templates/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM task_templates WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ══════════════════════════════════════════════════════════════
+// NOTIFIKATIONER — konfigurerbare regler + log
+// ══════════════════════════════════════════════════════════════
+const NOTIFICATION_EVENTS = [
+  { event_key: 'pool_aging', label: 'Opgave har ligget uplanlagt i mere end 5 dage' },
+  { event_key: 'booking_behind', label: 'En booking er markeret "Bagud"' },
+  { event_key: 'booking_waiting', label: 'En booking er markeret "Afvent" i mere end 3 dage' },
+  { event_key: 'employee_overbooked', label: 'En medarbejder er overbooket i en kommende uge' },
+  { event_key: 'unbilled_completed', label: 'Færdigmeldt opgave venter stadig på fakturering' },
+  { event_key: 'jt_sync_failed', label: 'JobTread-synkronisering fejlede' }
+];
+async function ensureNotificationRulesSeeded() {
+  for (const ev of NOTIFICATION_EVENTS) {
+    await pool.query(
+      `INSERT INTO notification_rules (event_key,label,inapp_enabled,email_enabled) VALUES ($1,$2,1,0) ON CONFLICT (event_key) DO UPDATE SET label=EXCLUDED.label`,
+      [ev.event_key, ev.label]
+    );
+  }
+}
+async function createNotification(eventKey, title, body, link) {
+  const rule = await pgOne('SELECT * FROM notification_rules WHERE event_key=$1', [eventKey]);
+  if (!rule || rule.inapp_enabled) {
+    await pool.query('INSERT INTO notifications (event_key,title,body,link) VALUES ($1,$2,$3,$4)', [eventKey, title, body || null, link || null]);
+  }
+  if (rule && rule.email_enabled && rule.email_to && mailIsConfigured()) {
+    try {
+      await sendMailUniversal({ to: rule.email_to, subject: '[Gulv Master] ' + title, text: body || title, html: '<p>' + (body || title).replace(/</g, '&lt;') + '</p>' });
+    } catch (e) { console.error('Notifikations-mail fejlede:', e.message); }
+  }
+}
+app.get('/api/notification-settings', auth, adminOnly, asyncRoute(async (req, res) => {
+  await ensureNotificationRulesSeeded();
+  const rows = await pool.query('SELECT * FROM notification_rules ORDER BY event_key ASC');
+  res.json(rows.rows);
+}));
+app.put('/api/notification-settings/:eventKey', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const r = await pool.query(`
+    UPDATE notification_rules SET inapp_enabled=$1,email_enabled=$2,email_to=$3,updated_at=${nowTextSQL()} WHERE event_key=$4
+  `, [body.inapp_enabled ? 1 : 0, body.email_enabled ? 1 : 0, body.email_to ? String(body.email_to).trim().slice(0, 200) : null, req.params.eventKey]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Ukendt hændelsestype' });
+  res.json({ ok: true });
+}));
+app.get('/api/notifications', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 100');
+  res.json(rows.rows);
+}));
+app.put('/api/notifications/:id/read', auth, asyncRoute(async (req, res) => {
+  await pool.query(`UPDATE notifications SET read_at=${nowTextSQL()} WHERE id=$1`, [req.params.id]);
+  res.json({ ok: true });
+}));
+app.put('/api/notifications/read-all', auth, asyncRoute(async (req, res) => {
+  await pool.query(`UPDATE notifications SET read_at=${nowTextSQL()} WHERE read_at IS NULL`);
+  res.json({ ok: true });
+}));
+
+// Scanner der kigger på tilstanden af poolen/bookinger og opretter notifikationer for
+// det den finder — kaldes af et cron-job. Undgår dubletter ved kun at kigge på nye
+// tilfælde siden sidste scan (simpel — ingen "allerede notificeret"-tabel endnu, så
+// den kører med en vis grad af "kan gentage sig" fremfor at risikere at overse noget).
+async function runNotificationScan() {
+  await ensureNotificationRulesSeeded();
+  try {
+    const agingPool = await pool.query(`
+      SELECT t.id, t.job_name, t.name FROM jt_tasks t
+      WHERE t.start_date IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM planning_bookings b WHERE b.task_id=t.id AND COALESCE(b.planning_mode,'daily')='daily')
+        AND t.created_at < ${nowTextSQL()} - INTERVAL '5 days'
+      LIMIT 20
+    `).catch(() => ({ rows: [] }));
+    if (agingPool.rows.length) {
+      await createNotification('pool_aging', agingPool.rows.length + ' opgave(r) har ligget uplanlagt i over 5 dage', agingPool.rows.slice(0, 5).map(t => t.job_name + ' — ' + t.name).join(', '), '#plan');
+    }
+  } catch (e) { console.error('Notifikationsscan (pool_aging) fejlede:', e.message); }
+
+  try {
+    const behind = await pool.query(`SELECT COUNT(*)::int AS n FROM planning_bookings WHERE status_flag='behind'`);
+    if (behind.rows[0].n > 0) await createNotification('booking_behind', behind.rows[0].n + ' booking(er) er markeret "Bagud"', null, '#timeline');
+  } catch (e) { console.error('Notifikationsscan (behind) fejlede:', e.message); }
+
+  try {
+    const unbilled = await pool.query(`SELECT COUNT(*)::int AS n FROM planning_bookings WHERE completed_at IS NOT NULL AND COALESCE(invoiced,0)=0`);
+    if (unbilled.rows[0].n > 0) await createNotification('unbilled_completed', unbilled.rows[0].n + ' færdigmeldt(e) opgave(r) venter på fakturering', null, '#plan');
+  } catch (e) { console.error('Notifikationsscan (unbilled) fejlede:', e.message); }
+
+  try {
+    const overbooked = await pool.query(`
+      SELECT u.id,u.name,u.weekly_capacity,b.week_key,SUM(b.days) AS booked
+      FROM planning_bookings b JOIN users u ON b.user_id=u.id
+      WHERE COALESCE(b.planning_mode,'daily')='daily' AND b.week_key >= TO_CHAR(CURRENT_DATE,'IYYY-"W"IW')
+      GROUP BY u.id,u.name,u.weekly_capacity,b.week_key
+      HAVING SUM(b.days) > COALESCE(u.weekly_capacity,5)
+      LIMIT 20
+    `).catch(() => ({ rows: [] }));
+    if (overbooked.rows.length) {
+      await createNotification('employee_overbooked', overbooked.rows.length + ' medarbejder(e) er overbooket i en kommende uge',
+        overbooked.rows.slice(0, 5).map(r => r.name + ' (' + r.week_key + ')').join(', '), '#capacity');
+    }
+  } catch (e) { console.error('Notifikationsscan (overbooked) fejlede:', e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════
+// KOMMANDOCENTER — samlet overblik, kapacitetsprognose, nøgletal
+// ══════════════════════════════════════════════════════════════
+app.get('/api/dashboard/overview', auth, adminOnly, asyncRoute(async (req, res) => {
+  const poolOpen = await pool.query(`
+    SELECT COUNT(*)::int AS n, MIN(t.created_at) AS oldest FROM jt_tasks t
+    WHERE t.start_date IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM planning_bookings b WHERE b.task_id=t.id AND COALESCE(b.planning_mode,'daily')='daily')
+  `);
+  const statusCounts = await pool.query(`
+    SELECT COALESCE(status_flag,'none') AS status_flag, COUNT(*)::int AS n
+    FROM planning_bookings WHERE completed_at IS NULL AND COALESCE(planning_mode,'daily')='daily' AND status_flag IS NOT NULL
+    GROUP BY status_flag
+  `);
+  const unbilled = await pool.query(`SELECT COUNT(*)::int AS n FROM planning_bookings WHERE completed_at IS NOT NULL AND COALESCE(invoiced,0)=0`);
+  const overbooked = await pool.query(`
+    SELECT u.id,u.name,u.color,u.initials,b.week_key,SUM(b.days) AS booked,COALESCE(u.weekly_capacity,5) AS capacity
+    FROM planning_bookings b JOIN users u ON b.user_id=u.id
+    WHERE COALESCE(b.planning_mode,'daily')='daily' AND b.week_key >= TO_CHAR(CURRENT_DATE,'IYYY-"W"IW')
+    GROUP BY u.id,u.name,u.color,u.initials,b.week_key,u.weekly_capacity
+    HAVING SUM(b.days) > COALESCE(u.weekly_capacity,5)
+    ORDER BY b.week_key ASC LIMIT 20
+  `);
+  const notif = await pool.query('SELECT COUNT(*)::int AS n FROM notifications WHERE read_at IS NULL');
+  res.json({
+    pool_open_count: poolOpen.rows[0].n,
+    pool_oldest: poolOpen.rows[0].oldest,
+    status_counts: statusCounts.rows,
+    unbilled_completed_count: unbilled.rows[0].n,
+    overbooked_employees: overbooked.rows,
+    unread_notifications: notif.rows[0].n
+  });
+}));
+
+app.get('/api/dashboard/capacity-forecast', auth, adminOnly, asyncRoute(async (req, res) => {
+  // 8 uger frem, grupperet pr. fag: samlet teamkapacitet (dage/uge) vs. bookede dage.
+  const weeks = [];
+  const today = new Date();
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(today); d.setDate(d.getDate() + i * 7);
+    const iso = d.toISOString().slice(0, 10);
+    weeks.push(iso);
+  }
+  const capByTrade = await pool.query(`
+    SELECT COALESCE(NULLIF(trade,''),'Ukendt fag') AS trade, SUM(COALESCE(weekly_capacity,5)) AS capacity
+    FROM users WHERE active=1 AND role='employee' GROUP BY trade
+  `);
+  const bookedByTradeWeek = await pool.query(`
+    SELECT COALESCE(NULLIF(u.trade,''),'Ukendt fag') AS trade, b.week_key, SUM(b.days) AS booked
+    FROM planning_bookings b JOIN users u ON b.user_id=u.id
+    WHERE COALESCE(b.planning_mode,'daily')='daily'
+    GROUP BY trade, b.week_key
+  `);
+  res.json({ weeks, capacity_by_trade: capByTrade.rows, booked_by_trade_week: bookedByTradeWeek.rows });
+}));
+
+app.get('/api/dashboard/kpis', auth, adminOnly, asyncRoute(async (req, res) => {
+  const utilization = await pool.query(`
+    SELECT u.id,u.name,u.color,COALESCE(u.weekly_capacity,5) AS capacity,
+           COALESCE(SUM(b.days) FILTER (WHERE b.week_key = TO_CHAR(CURRENT_DATE,'IYYY-"W"IW')),0) AS booked_this_week
+    FROM users u LEFT JOIN planning_bookings b ON b.user_id=u.id AND COALESCE(b.planning_mode,'daily')='daily'
+    WHERE u.active=1 AND u.role='employee'
+    GROUP BY u.id,u.name,u.color,u.weekly_capacity ORDER BY u.name ASC
+  `);
+  const avgTurnaround = await pool.query(`
+    SELECT AVG(EXTRACT(EPOCH FROM (completed_at::timestamp - start_date::timestamp)) / 86400.0) AS avg_days
+    FROM planning_bookings WHERE completed_at IS NOT NULL AND start_date IS NOT NULL
+  `).catch(() => ({ rows: [{ avg_days: null }] }));
+  const statusBreakdown = await pool.query(`
+    SELECT COALESCE(status_flag,CASE WHEN completed_at IS NOT NULL THEN 'completed' ELSE 'normal' END) AS status, COUNT(*)::int AS n
+    FROM planning_bookings WHERE COALESCE(planning_mode,'daily')='daily' GROUP BY status
+  `);
+  const tradeVolume = await pool.query(`
+    SELECT COALESCE(NULLIF(type_guess,''),'other') AS type_guess, COUNT(*)::int AS n
+    FROM planning_bookings WHERE COALESCE(planning_mode,'daily')='daily' AND start_date >= (CURRENT_DATE - INTERVAL '60 days')
+    GROUP BY type_guess
+  `).catch(() => ({ rows: [] }));
+  res.json({
+    utilization: utilization.rows,
+    avg_turnaround_days: avgTurnaround.rows[0]?.avg_days ? Number(avgTurnaround.rows[0].avg_days).toFixed(1) : null,
+    status_breakdown: statusBreakdown.rows,
+    trade_volume_60d: tradeVolume.rows
+  });
+}));
+
+// ══════════════════════════════════════════════════════════════
+// GEOGRAFISK FORSLAG — hvilken medarbejder er tættest på i forvejen
+// (afstandsberegning, ikke fuld rute-optimering — se svar i chatten)
+// ══════════════════════════════════════════════════════════════
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+app.get('/api/geo-suggest', auth, adminOnly, asyncRoute(async (req, res) => {
+  const taskId = req.query.taskId;
+  const date = req.query.date;
+  const task = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [taskId]);
+  if (!task || !task.job_lat || !task.job_lng) return res.json({ suggestions: [] });
+  const nearby = await pool.query(`
+    SELECT b.user_id, u.name, u.color, t.job_lat, t.job_lng, t.job_name
+    FROM planning_bookings b JOIN users u ON b.user_id=u.id JOIN jt_tasks t ON b.task_id=t.id
+    WHERE COALESCE(b.planning_mode,'daily')='daily' AND b.start_date=$1 AND t.job_lat IS NOT NULL AND t.job_lng IS NOT NULL
+  `, [date || task.start_date]);
+  const byUser = {};
+  for (const r of nearby.rows) {
+    const dist = haversineKm(Number(task.job_lat), Number(task.job_lng), Number(r.job_lat), Number(r.job_lng));
+    if (!byUser[r.user_id] || dist < byUser[r.user_id].distance_km) {
+      byUser[r.user_id] = { user_id: r.user_id, name: r.name, color: r.color, distance_km: Math.round(dist * 10) / 10, near_job: r.job_name };
+    }
+  }
+  const suggestions = Object.values(byUser).sort((a, b) => a.distance_km - b.distance_km).slice(0, 5);
+  res.json({ suggestions });
+}));
+
+// ══════════════════════════════════════════════════════════════
+// KUNDE-KOMMUNIKATION — planlagt-mail og påmindelse dagen før
+// ══════════════════════════════════════════════════════════════
+async function sendScheduledEmail(booking) {
+  if (!mailIsConfigured()) return;
+  const task = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [booking.task_id]);
+  const toEmail = task?.customer_email;
+  if (!toEmail) return;
+  const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
+  const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
+  const dateLabel = new Date(booking.start_date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' });
+  const subject = `Din opgave er planlagt til ${dateLabel} — ${companyName}`;
+  const text = `Hej,\n\nVi har planlagt din opgave (${task?.job_name || ''}) til ${dateLabel}${booking.start_time ? ' kl. ' + booking.start_time : ''}.\n\nVi giver besked igen dagen før vi kommer, og når vi er færdige.\n\nVenlig hilsen\n${companyName}`;
+  let status = 'sent', error = null;
+  try { await sendMailUniversal({ to: toEmail, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') }); }
+  catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
+  await pool.query('INSERT INTO customer_schedule_emails (booking_id,task_id,kind,to_email,status,error) VALUES ($1,$2,$3,$4,$5,$6)', [booking.id, booking.task_id, 'scheduled', toEmail, status, error]);
+  await pool.query(`UPDATE planning_bookings SET scheduled_email_sent_at=${nowTextSQL()} WHERE id=$1`, [booking.id]);
+}
+async function sendReminderEmails() {
+  if (!mailIsConfigured()) return;
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const iso = tomorrow.toISOString().slice(0, 10);
+  const rows = await pool.query(`
+    SELECT b.*, t.job_name, t.customer_email FROM planning_bookings b JOIN jt_tasks t ON b.task_id=t.id
+    WHERE b.start_date=$1 AND COALESCE(b.planning_mode,'daily')='daily' AND b.reminder_email_sent_at IS NULL AND t.customer_email IS NOT NULL
+  `, [iso]);
+  const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
+  const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
+  for (const b of rows.rows) {
+    const subject = `Vi kommer i morgen — ${companyName}`;
+    const text = `Hej,\n\nVi vil bare give dig besked om, at vi kommer i morgen${b.start_time ? ' kl. ' + b.start_time : ''} og udfører (${b.job_name}).\n\nVenlig hilsen\n${companyName}`;
+    let status = 'sent', error = null;
+    try { await sendMailUniversal({ to: b.customer_email, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') }); }
+    catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
+    await pool.query('INSERT INTO customer_schedule_emails (booking_id,task_id,kind,to_email,status,error) VALUES ($1,$2,$3,$4,$5,$6)', [b.id, b.task_id, 'reminder', b.customer_email, status, error]);
+    await pool.query(`UPDATE planning_bookings SET reminder_email_sent_at=${nowTextSQL()} WHERE id=$1`, [b.id]);
+  }
+}
+
 function sendPage(filename) {
   return (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -3231,6 +3572,9 @@ async function start() {
   } else if (migrationPending) {
     console.log('JobTread-sync er sat på pause, indtil den første SQLite-import er færdig.');
   }
+  // Kunde-påmindelse dagen før (kl. 15:00) og notifikationsscan (hver time).
+  cron.schedule('0 15 * * *', () => sendReminderEmails().catch(e => console.error('Påmindelses-mails fejlede:', e.message)));
+  cron.schedule('15 * * * *', () => runNotificationScan().catch(e => console.error('Notifikationsscan fejlede:', e.message)));
 }
 
 start().catch(error => {
