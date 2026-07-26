@@ -324,6 +324,12 @@ button,input,select{font:inherit}
 .pill-reorder{display:flex;flex-direction:column;gap:1px;flex-shrink:0}
 .pill-order-btn{border:0;background:rgba(0,0,0,.08);cursor:pointer;font-size:6px;line-height:1;color:inherit;opacity:.55;padding:1px 3px;border-radius:2px}
 .pill-order-btn:hover{opacity:1;background:rgba(0,0,0,.16)}
+.customer-suggest-menu{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:9px;box-shadow:0 12px 32px rgba(0,0,0,.14);z-index:50;max-height:220px;overflow:auto;margin-top:4px}
+.customer-suggest-item{padding:9px 11px;cursor:pointer;border-bottom:1px solid var(--border2);font-size:11.5px}
+.customer-suggest-item:last-child{border-bottom:0}
+.customer-suggest-item:hover{background:var(--ice)}
+.customer-suggest-name{font-weight:700;color:var(--navy)}
+.customer-suggest-sub{font-size:10px;color:var(--muted);margin-top:1px}
 
 /* TIDSLINJE (Gantt) */
 .tl-outer{overflow:auto;background:#fff;border:1px solid var(--border2);border-radius:10px;box-shadow:var(--shadow)}
@@ -909,6 +915,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <option value="cancelled" style="background:#F1F5F9;color:#475569">🚫 Aflyst</option>
     </select>
     <button class="btn primary tld-footer-primary" id="tld-save">Gem ændringer</button>
+    <button class="btn tld-footer-primary" id="tld-send-mail" style="background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8">✉️ Send planlægningsmail til kunde</button>
+    <div id="tld-mail-status" class="opt-tag" style="text-align:center"></div>
     <div class="tld-footer-row">
       <button class="btn" id="tld-copy">⧉ Kopiér</button>
       <button class="btn danger" id="tld-remove">🗑 Fjern</button>
@@ -1453,6 +1461,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <option value="cancelled" style="background:#F1F5F9;color:#475569">🚫 Aflyst</option>
       </select>
     </div>
+    <div class="form-group" id="assign-mail-wrap" style="display:none">
+      <button class="btn" type="button" id="assign-send-mail" style="width:100%;background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8">✉️ Send planlægningsmail til kunde</button>
+      <div id="assign-mail-status" class="opt-tag" style="text-align:center;display:block;margin-top:4px"></div>
+    </div>
     <div class="form-group">
       <label class="form-label">Medarbejder / hold</label>
       <select id="assign-user" class="select"></select>
@@ -1500,8 +1512,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div><div class="manual-modal-title">Opret ny sag/opgave</div><div class="manual-modal-sub">Lægges i opgavepoolen — ikke booket endnu</div></div>
     </div>
     <div class="modal-body-pad">
-      <label class="form-label">Kunde / projekt</label>
-      <input id="manual-customer" class="input" placeholder="Fx Per Austin">
+      <label class="form-label">Kunde / projekt <span class="opt-tag">skriv frit, eller søg for at genbruge en tidligere kunde</span></label>
+      <div style="position:relative">
+        <input id="manual-customer" class="input" placeholder="Fx Per Austin — begynd at skrive for at søge" autocomplete="off">
+        <div id="manual-customer-suggestions" class="customer-suggest-menu" style="display:none"></div>
+      </div>
       <label class="form-label" style="margin-top:12px">Opgave</label>
       <input id="manual-name" class="input" placeholder="Fx Montering af fodpaneler">
       <div class="form-row" style="margin-top:12px">
@@ -1531,6 +1546,39 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions">
       <button class="btn" id="close-manual">Annuller</button>
       <button class="btn primary" id="save-manual">Opret i opgavepool</button>
+    </div>
+  </div>
+</div>
+
+<div class="mo" id="tpldrop-modal">
+  <div class="modal manual-modal-modern" style="max-width:480px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">📐</span>
+      <div><div class="manual-modal-title">Hvilken kunde gælder skabelonen?</div><div class="manual-modal-sub" id="tpldrop-sub"></div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Kunde / projekt <span class="opt-tag">søg for at genbruge en tidligere kunde</span></label>
+      <div style="position:relative">
+        <input id="tpldrop-customer" class="input" placeholder="Fx Per Austin — begynd at skrive for at søge" autocomplete="off">
+        <div id="tpldrop-customer-suggestions" class="customer-suggest-menu" style="display:none"></div>
+      </div>
+      <label class="form-label" style="margin-top:12px">Opgave</label>
+      <input id="tpldrop-name" class="input">
+      <div class="manual-contact-box" style="margin-top:12px">
+        <div class="manual-contact-title">📇 Kontaktoplysninger <span class="opt-tag">udfyldes automatisk ved søgning</span></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">📍 Adresse</label><input id="tpldrop-address" class="input"></div>
+          <div class="form-group"><label class="form-label">📞 Kundetelefon</label><input id="tpldrop-phone" class="input"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">📧 Kunde-email</label><input id="tpldrop-email" type="email" class="input"></div>
+          <div class="form-group"><label class="form-label">Dage</label><input id="tpldrop-days" type="number" min=".25" max="60" step=".25" class="input"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-tpldrop">Annuller</button>
+      <button class="btn primary" id="save-tpldrop">Opret og book</button>
     </div>
   </div>
 </div>
@@ -1731,7 +1779,7 @@ function filterTasks(scope){
 
 function filtersHTML(scope){
   var f=filters[scope],dom=scope==='capacity'?'cap':scope;
-  var sts=[['all','Alle'],['open','Ikke planlagt'],['planned','Planlagt'],['manual','Manuelle'],['visit','📅 Kundebesøg'],['completed','✅ Færdiggjort']];
+  var sts=[['all','Alle'],['open','Ikke planlagt'],['planned','Planlagt'],['manual','Manuelle'],['visit','📅 Kundebesøg'],['completed','✅ Færdiggjort'],['templates','📐 Skabeloner']];
   // Fag-filtrene bygges dynamisk ud fra Fag & farver (Hold & vendors), så nye fag man
   // opretter der automatisk dukker op som filter her — ingen hårdkodet liste længere.
   var tys=[['all','Alle fag']].concat(taskTypesList.map(function(t){return [t.key,t.label];}));
@@ -1769,11 +1817,22 @@ function taskCard(t,scope){
     '<button class="btn small" style="width:100%;margin-top:4px" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjekpunkter</button>'+
     '</article>';
 }
+function templateCard(t){
+  return '<article class="task-card template-pool-card" draggable="true" data-template-id="'+t.id+'" title="Træk ud på en dag">'+
+    '<div class="task-name">📐 '+esc(t.name)+'</div>'+
+    '<div class="task-sub">'+esc((TYPE[t.type_guess]||{}).label||t.type_guess)+' · '+t.default_days+' dage'+(t.checklist_items.length?' · '+t.checklist_items.length+' tjekpunkter':'')+'</div>'+
+    '<div class="task-drag-hint">⠿ Træk ud på en dag — du bliver spurgt om kunden</div>'+
+    '</article>';
+}
 function renderPool(scope){
   filtersHTML(scope);
   var dom=scope==='capacity'?'cap':scope;
   var el=document.getElementById(dom+'-pool');
   if(!el)return;
+  if(filters[scope].status==='templates'){
+    el.innerHTML=templatesCache.length?templatesCache.map(templateCard).join(''):'<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen skabeloner endnu — opret en under "Skabeloner" i Min side.</div>';
+    return;
+  }
   var list=filterTasks(scope);
   var section=filters[scope].status==='completed'?'<div class="task-completion-section">✅ Færdiggjort · klar til faktura eller allerede faktureret</div>':'';
   el.innerHTML=list.length?section+list.map(function(t){return taskCard(t,scope);}).join(''):'<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
@@ -2217,6 +2276,8 @@ function openAssign(ctx){
   document.getElementById('delete-assignment').classList.toggle('hidden',!b);
   document.getElementById('assign-status-wrap').style.display=b?'block':'none';
   document.getElementById('assign-status-select').value=b?(b.completed_at?'completed':(b.status_flag||'')):'';
+  document.getElementById('assign-mail-wrap').style.display=b?'block':'none';
+  if(b)document.getElementById('assign-mail-status').textContent=b.scheduled_email_sent_at?'✓ Sendt '+timeAgo(b.scheduled_email_sent_at):(b.customer_email?'Endnu ikke sendt':'Kunden har ingen e-mail registreret');
   document.getElementById('assign-modal').classList.add('open');
   document.getElementById('assign-checklist-new').value='';
   renderChecklistItems('assign-checklist-items',taskId);
@@ -2311,7 +2372,20 @@ function openTimelineDrawer(bookingId){
   document.getElementById('tld-checklist-new').value='';
   renderChecklistItems('tld-checklist-items',b.task_id);
   document.getElementById('tld-status-select').value=b.completed_at?'completed':(b.status_flag||'');
+  document.getElementById('tld-mail-status').textContent=b.scheduled_email_sent_at?'✓ Planlægningsmail sendt '+timeAgo(b.scheduled_email_sent_at):(b.customer_email?'Endnu ikke sendt':'Kunden har ingen e-mail registreret');
   document.getElementById('tl-drawer').classList.add('open');
+}
+async function sendScheduledEmailForBooking(bookingId,alreadySent){
+  if(alreadySent&&!confirm('Der er allerede sendt en planlægningsmail for denne opgave. Send den igen?'))return;
+  var r=await api('/api/assignments/'+bookingId+'/send-scheduled-email',{method:'POST'});
+  if(r&&r.ok){
+    toast('Planlægningsmail sendt ✓','✉️');
+    await loadAll();
+    var b=bookings.find(function(x){return +x.id===+bookingId;});
+    var sentTxt=b&&b.scheduled_email_sent_at?'✓ Sendt '+timeAgo(b.scheduled_email_sent_at):'✓ Sendt lige nu';
+    if(document.getElementById('tl-drawer').classList.contains('open')&&+tlDrawerBookingId===+bookingId)document.getElementById('tld-mail-status').textContent=sentTxt;
+    if(document.getElementById('assign-modal').classList.contains('open')&&assignCtx&&+assignCtx.bookingId===+bookingId)document.getElementById('assign-mail-status').textContent=sentTxt;
+  }else if(r)toast(r.error||'Kunne ikke sende mailen','❌');
 }
 async function applyBookingStatus(bookingId,val){
   var b=bookings.find(function(x){return +x.id===+bookingId;});
@@ -2492,6 +2566,8 @@ async function handleDrop(e,zone){
       await handleCapacityDrop(p,uid,ds,e);
     }else if(p.kind==='task'){
       openQuickPop(p.taskId,uid,ds,e);
+    }else if(p.kind==='template'){
+      openTemplateDropModal(p.templateId,uid,ds);
     }else if(p.kind==='booking'){
       var b=bookings.find(function(x){return +x.id===+p.bookingId;});
       if(!b||( +b.user_id===uid&&b.start_date===ds))return;
@@ -2516,7 +2592,87 @@ function openManual(){
   var typeSel=document.getElementById('manual-type');
   typeSel.innerHTML=taskTypesList.map(function(t){return '<option value="'+esc(t.key)+'">'+esc(t.label)+'</option>';}).join('');
   typeSel.value=(taskTypesList[0]||{}).key||'lay';
+  document.getElementById('manual-customer-suggestions').style.display='none';
   document.getElementById('manual-modal').classList.add('open');
+}
+// KUNDESØGNING — søger tidligere sager op på navn og udfylder adresse/tlf/email
+var customerSearchTimer=null;
+function bindCustomerSearch(inputId,menuId,fillFn){
+  var input=document.getElementById(inputId),menu=document.getElementById(menuId);
+  if(!input||!menu)return;
+  input.addEventListener('input',function(){
+    clearTimeout(customerSearchTimer);
+    var q=input.value.trim();
+    if(q.length<2){menu.style.display='none';return;}
+    customerSearchTimer=setTimeout(function(){
+      api('/api/customers/search?q='+encodeURIComponent(q)).then(function(r){
+        if(!r||!r.length){menu.style.display='none';return;}
+        menu.innerHTML=r.map(function(c,i){
+          return '<div class="customer-suggest-item" data-idx="'+i+'"><div class="customer-suggest-name">'+esc(c.job_name)+'</div><div class="customer-suggest-sub">'+esc(c.job_address||'Ingen adresse')+(c.customer_phone?' · '+esc(c.customer_phone):'')+'</div></div>';
+        }).join('');
+        menu.style.display='block';
+        menu.querySelectorAll('.customer-suggest-item').forEach(function(el){
+          el.onclick=function(){fillFn(r[+el.dataset.idx]);menu.style.display='none';};
+        });
+      });
+    },250);
+  });
+  document.addEventListener('click',function(e){if(!e.target.closest('#'+inputId)&&!e.target.closest('#'+menuId))menu.style.display='none';});
+}
+function initCustomerSearch(){
+  bindCustomerSearch('manual-customer','manual-customer-suggestions',function(c){
+    document.getElementById('manual-customer').value=c.job_name;
+    document.getElementById('manual-address').value=c.job_address||'';
+    document.getElementById('manual-phone').value=c.customer_phone||'';
+    document.getElementById('manual-email').value=c.customer_email||'';
+  });
+  bindCustomerSearch('tpldrop-customer','tpldrop-customer-suggestions',function(c){
+    document.getElementById('tpldrop-customer').value=c.job_name;
+    document.getElementById('tpldrop-address').value=c.job_address||'';
+    document.getElementById('tpldrop-phone').value=c.customer_phone||'';
+    document.getElementById('tpldrop-email').value=c.customer_email||'';
+  });
+}
+var tpldropCtx=null;
+function openTemplateDropModal(templateId,uid,ds){
+  var t=templatesCache.find(function(x){return +x.id===+templateId;});
+  if(!t){toast('Skabelonen blev ikke fundet','⚠');return;}
+  var u=users.find(function(x){return +x.id===+uid;});
+  tpldropCtx={templateId:templateId,uid:uid,ds:ds,checklist:t.checklist_items,typeGuess:t.type_guess,notes:t.notes_template};
+  document.getElementById('tpldrop-sub').textContent=(u?u.name+' · ':'')+ds;
+  document.getElementById('tpldrop-customer').value='';
+  document.getElementById('tpldrop-address').value='';
+  document.getElementById('tpldrop-phone').value='';
+  document.getElementById('tpldrop-email').value='';
+  document.getElementById('tpldrop-name').value=t.name;
+  document.getElementById('tpldrop-days').value=t.default_days;
+  document.getElementById('tpldrop-customer-suggestions').style.display='none';
+  document.getElementById('tpldrop-modal').classList.add('open');
+}
+async function saveTemplateDrop(){
+  if(!tpldropCtx)return;
+  var customer=document.getElementById('tpldrop-customer').value.trim();
+  if(!customer){toast('Angiv kundens navn','⚠');return;}
+  var body={
+    job_name:customer,name:document.getElementById('tpldrop-name').value.trim(),
+    job_address:document.getElementById('tpldrop-address').value.trim(),
+    customer_phone:document.getElementById('tpldrop-phone').value.trim(),
+    customer_email:document.getElementById('tpldrop-email').value.trim(),
+    start_date:tpldropCtx.ds,days:+document.getElementById('tpldrop-days').value||1,
+    type_guess:tpldropCtx.typeGuess,user_id:tpldropCtx.uid,notes:tpldropCtx.notes||null
+  };
+  var r=await api('/api/tasks/manual-and-book',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){
+    toast('Opgave oprettet og booket ✓','✓');
+    if(tpldropCtx.checklist&&tpldropCtx.checklist.length){
+      for(var i=0;i<tpldropCtx.checklist.length;i++){
+        await api('/api/tasks/'+encodeURIComponent(r.id)+'/checklist',{method:'POST',body:JSON.stringify({title:tpldropCtx.checklist[i]})}).catch(function(){});
+      }
+    }
+    closeModal('tpldrop-modal');
+    tpldropCtx=null;
+    await loadAll();
+  }else if(r)toast(r.error||'Fejl','❌');
 }
 
 // TJEKPUNKTER PÅ EN OPGAVE
@@ -3968,6 +4124,7 @@ function bind(){
   document.getElementById('notifdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('notifdrop-menu').classList.toggle('open');refreshNotifBell();});
   document.addEventListener('click',function(e){if(!e.target.closest('#notifdrop'))document.getElementById('notifdrop-menu').classList.remove('open');});
   document.getElementById('new-template-btn').onclick=function(){openTemplateEditor(null);};
+  initCustomerSearch();
   refreshNotifBell();
   setInterval(refreshNotifBell,90000);
   // Nav
@@ -4037,7 +4194,9 @@ function bind(){
   document.getElementById('tld-remove').onclick=removeTimelineDrawerBooking;
   document.getElementById('tld-copy').onclick=copyTimelineDrawerBooking;
   document.getElementById('tld-status-select').onchange=applyTimelineDrawerStatus;
+  document.getElementById('tld-send-mail').onclick=function(){if(tlDrawerBookingId){var b=bookings.find(function(x){return +x.id===+tlDrawerBookingId;});sendScheduledEmailForBooking(tlDrawerBookingId,!!(b&&b.scheduled_email_sent_at));}};
   document.getElementById('assign-status-select').onchange=function(e){if(assignCtx&&assignCtx.bookingId){applyBookingStatus(assignCtx.bookingId,e.target.value);closeModal('assign-modal');}};
+  document.getElementById('assign-send-mail').onclick=function(){if(assignCtx&&assignCtx.bookingId){var b=bookings.find(function(x){return +x.id===+assignCtx.bookingId;});sendScheduledEmailForBooking(assignCtx.bookingId,!!(b&&b.scheduled_email_sent_at));}};
   document.getElementById('tld-capacity-toggle').onchange=function(e){document.getElementById('tld-capdays').style.display=e.target.checked?'block':'none';};
   // Assign modal
   document.getElementById('close-assign').onclick=function(){closeModal('assign-modal');};
@@ -4047,6 +4206,8 @@ function bind(){
   // Manual modal
   document.getElementById('close-manual').onclick=function(){closeModal('manual-modal');};
   document.getElementById('save-manual').onclick=saveManual;
+  document.getElementById('close-tpldrop').onclick=function(){closeModal('tpldrop-modal');tpldropCtx=null;};
+  document.getElementById('save-tpldrop').onclick=saveTemplateDrop;
   // Capacity-only modal
   document.getElementById('close-capacity').onclick=function(){closeModal('capacity-modal');capacityCtx=null;};
   document.getElementById('save-capacity').onclick=saveCapacityReservation;
@@ -4084,8 +4245,10 @@ function bind(){
   // DRAG START
   document.addEventListener('dragstart',function(e){
     var task=e.target.closest('.draggable-task');
+    var tpl=e.target.closest('.template-pool-card');
     var booking=e.target.closest('.draggable-assignment,.cap-job');
     if(task&&!e.target.closest('a,button,input,select,textarea')){beginDrag(e,{kind:'task',taskId:task.dataset.taskId});task.classList.add('dragging');}
+    else if(tpl&&!e.target.closest('a,button,input,select,textarea')){beginDrag(e,{kind:'template',templateId:tpl.dataset.templateId});tpl.classList.add('dragging');}
     else if(booking&&!e.target.closest('a,button,input,select,textarea')){beginDrag(e,{kind:'booking',bookingId:booking.dataset.bookingId});booking.classList.add('dragging');}
   });
   document.addEventListener('dragend',function(){dragPayload=null;document.getElementById('capacity-scroll').classList.remove('drag-active');document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});});
@@ -4310,7 +4473,7 @@ initNoteWidget();
 
 bind();
 loadSettings();
-loadTaskTypes().then(function(){renderTaskTypesAdmin();return loadAll();});
+loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();return loadAll();});
 })();
 </script>
 </body>

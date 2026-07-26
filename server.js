@@ -2247,6 +2247,39 @@ app.post('/api/tasks/manual', auth, adminOnly, asyncRoute(async (req, res) => {
   res.json({ ok: true, id });
 }));
 
+// Skabelon-træk direkte ud på en dag: opretter opgaven (som ovenfor) OG booker den på
+// den medarbejder/dato den blev sluppet på, i én omgang — så man undgår to separate
+// trin når man trækker en skabelon ud i Daglig plan.
+app.post('/api/tasks/manual-and-book', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.job_name || !body.name || !validDate(body.start_date) || !body.user_id) {
+    return res.status(400).json({ error: 'Kunde/projekt, opgave, medarbejder og startdato skal udfyldes' });
+  }
+  const days = Math.max(0.25, Math.min(60, Number(body.days) || 1));
+  const endDate = validDate(body.end_date) ? body.end_date : addWorkingDays(body.start_date, days);
+  const id = `manual-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+  const customerEmail = String(body.customer_email || '').trim().slice(0, 200) || null;
+  await pool.query(`
+    INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,job_number,customer_phone,customer_email,customer_email_source,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
+    VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL,NULL,${nowTextSQL()},'manual',${nowTextSQL()})
+  `, [id, String(body.name).trim(), String(body.job_name).trim(), body.job_address || '', body.job_number || null, body.customer_phone || null, customerEmail, customerEmail ? 'manual' : null, body.start_date, endDate, cleanTaskType(body.type_guess)]);
+  try {
+    const booking = await normalizeBooking({ task_id: id, user_id: body.user_id, start_date: body.start_date, days, notes: body.notes || null }, true);
+    const result = await pool.query(`
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,notes,start_date,end_date,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()}) RETURNING id
+    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.notes, booking.start_date, booking.end_date]);
+    res.json({ ok: true, id, booking_id: result.rows[0].id });
+    sendScheduleChangeEmail(booking.user_id, `Du har fået en ny opgave sat på din kalender: ${String(booking.start_date).slice(0,10)}.`)
+      .catch(e => console.error('Kalender-mail fejlede:', e.message));
+    // OBS: kunde-mailen sendes IKKE automatisk længere — admin sender den bevidst
+    // via "Send planlægningsmail"-knappen, så en opgave der planlægges flere gange
+    // ikke spammer kunden med gentagne mails.
+  } catch (error) {
+    res.json({ ok: true, id, warning: 'Opgaven blev oprettet, men kunne ikke bookes automatisk: ' + error.message });
+  }
+}));
+
 // ── CAPACITY-ONLY RESERVATIONS ────────────────────────────────
 // These blocks are intentionally separate from Daily plan / Employee schedule.
 // They reserve a person's weekly availability without creating a meeting time,
@@ -3063,8 +3096,7 @@ app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
     res.json({ ok: true, id: result.rows[0].id, warning });
     sendScheduleChangeEmail(booking.user_id, `Du har fået en ny opgave sat på din kalender: ${String(booking.start_date).slice(0,10)}.`)
       .catch(e => console.error('Kalender-mail fejlede:', e.message));
-    sendScheduledEmail({ id: result.rows[0].id, task_id: booking.task_id, start_date: booking.start_date, start_time: booking.start_time })
-      .catch(e => console.error('Kunde-planlagt-mail fejlede:', e.message));
+    // OBS: kunde-mailen sendes IKKE automatisk længere — se /send-scheduled-email nedenfor.
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -3273,6 +3305,25 @@ app.get('/api/health', asyncRoute(async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 // SKABELONER — genbrugelige opgavetyper
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// KUNDESØGNING — til manuel opgave-oprettelse: slå en tidligere kunde op på navn og
+// få adresse/telefon/e-mail med det samme, i stedet for at skrive det hele selv.
+// Bygger på allerede synkroniserede JobTread-sager (jt_tasks), da der ikke findes en
+// selvstændig "kunde"-tabel i dag — job_name er reelt kundenavnet på sagen.
+// ══════════════════════════════════════════════════════════════
+app.get('/api/customers/search', auth, adminOnly, asyncRoute(async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.json([]);
+  const rows = await pool.query(`
+    SELECT DISTINCT ON (job_name, job_address) job_name, job_address, job_number, customer_phone, customer_email, job_lat, job_lng
+    FROM jt_tasks
+    WHERE job_name ILIKE $1 AND job_name IS NOT NULL AND job_name <> ''
+    ORDER BY job_name, job_address, created_at DESC
+    LIMIT 12
+  `, [`%${q}%`]);
+  res.json(rows.rows);
+}));
+
 app.get('/api/templates', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM task_templates ORDER BY name ASC');
   res.json(rows.rows.map(r => ({ ...r, checklist_items: safeJsonParse(r.checklist_items, []) })));
@@ -3524,10 +3575,10 @@ app.get('/api/geo-suggest', auth, adminOnly, asyncRoute(async (req, res) => {
 // KUNDE-KOMMUNIKATION — planlagt-mail og påmindelse dagen før
 // ══════════════════════════════════════════════════════════════
 async function sendScheduledEmail(booking) {
-  if (!mailIsConfigured()) return;
+  if (!mailIsConfigured()) return { sent: false, reason: 'E-mail er ikke konfigureret på serveren' };
   const task = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [booking.task_id]);
   const toEmail = task?.customer_email;
-  if (!toEmail) return;
+  if (!toEmail) return { sent: false, reason: 'Kunden har ingen e-mail registreret' };
   const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
   const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
   const dateLabel = new Date(booking.start_date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -3538,14 +3589,31 @@ async function sendScheduledEmail(booking) {
   catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
   await pool.query('INSERT INTO customer_schedule_emails (booking_id,task_id,kind,to_email,status,error) VALUES ($1,$2,$3,$4,$5,$6)', [booking.id, booking.task_id, 'scheduled', toEmail, status, error]);
   await pool.query(`UPDATE planning_bookings SET scheduled_email_sent_at=${nowTextSQL()} WHERE id=$1`, [booking.id]);
+  return status === 'sent' ? { sent: true } : { sent: false, reason: error };
 }
+
+// Manuel udsendelse — admin trykker selv, i stedet for at hver booking automatisk
+// sender en mail. Undgår at kunden får 5 mails hvis sagen bliver planlagt/redigeret
+// flere gange. Kræver et bekræftende klik igen hvis der allerede er sendt én (se
+// scheduled_email_sent_at i svaret, som frontend'en bruger til at vise en advarsel).
+app.post('/api/assignments/:id/send-scheduled-email', auth, adminOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  const result = await sendScheduledEmail(current);
+  if (!result.sent) return res.status(400).json({ error: result.reason || 'Kunne ikke sende mailen' });
+  res.json({ ok: true });
+}));
+
 async function sendReminderEmails() {
   if (!mailIsConfigured()) return;
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const iso = tomorrow.toISOString().slice(0, 10);
+  // DISTINCT ON (task_id): hvis samme opgave ved en fejl er booket flere gange samme
+  // dag, skal kunden kun have ÉN påmindelse, ikke én pr. duplikeret booking-række.
   const rows = await pool.query(`
-    SELECT b.*, t.job_name, t.customer_email FROM planning_bookings b JOIN jt_tasks t ON b.task_id=t.id
+    SELECT DISTINCT ON (b.task_id) b.*, t.job_name, t.customer_email FROM planning_bookings b JOIN jt_tasks t ON b.task_id=t.id
     WHERE b.start_date=$1 AND COALESCE(b.planning_mode,'daily')='daily' AND b.reminder_email_sent_at IS NULL AND t.customer_email IS NOT NULL
+    ORDER BY b.task_id, b.id ASC
   `, [iso]);
   const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
   const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
@@ -3556,7 +3624,9 @@ async function sendReminderEmails() {
     try { await sendMailUniversal({ to: b.customer_email, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') }); }
     catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
     await pool.query('INSERT INTO customer_schedule_emails (booking_id,task_id,kind,to_email,status,error) VALUES ($1,$2,$3,$4,$5,$6)', [b.id, b.task_id, 'reminder', b.customer_email, status, error]);
-    await pool.query(`UPDATE planning_bookings SET reminder_email_sent_at=${nowTextSQL()} WHERE id=$1`, [b.id]);
+    // Marker ALLE bookinger for samme opgave+dato som sendt, ikke kun den ene, så en
+    // evt. duplikeret booking ikke selv trigger endnu en påmindelse i morgen.
+    await pool.query(`UPDATE planning_bookings SET reminder_email_sent_at=${nowTextSQL()} WHERE task_id=$1 AND start_date=$2`, [b.task_id, iso]);
   }
 }
 
