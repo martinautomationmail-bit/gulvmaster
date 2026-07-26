@@ -34,6 +34,13 @@ button,input,select{font:inherit}
 .navdrop-menu.open{display:block}
 .navdrop-item{display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:8px 10px;font-size:12px;font-weight:700;color:var(--navy);background:none;border:0;border-radius:6px;cursor:pointer}
 .navdrop-item:hover{background:var(--ice)}
+.filter-dropdown{position:relative}
+.filter-dropdown-btn{width:100%;text-align:left;justify-content:flex-start;font-weight:700}
+.filter-dropdown-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,.18);border:1px solid var(--border2);max-height:260px;overflow:auto;padding:5px;display:none;z-index:60}
+.filter-dropdown-menu.open{display:block}
+.filter-dropdown-item{display:block;width:100%;text-align:left;padding:8px 10px;font-size:11.5px;font-weight:600;color:var(--navy);background:none;border:0;border-radius:6px;cursor:pointer}
+.filter-dropdown-item:hover{background:var(--ice)}
+.filter-dropdown-item.active{background:#EFF6FF;color:#1D4ED8;font-weight:800}
 .tab{border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500}
 .tab.active{color:#fff;background:rgba(255,255,255,.16)}
 .nav-actions{display:flex;align-items:center;gap:5px}
@@ -117,7 +124,7 @@ button,input,select{font:inherit}
 .chip.active:hover{color:#fff;transform:none}
 /* Opgavepool-filtre: samlet, adskilt kort med tydelige sektions-labels i stedet for
    filter-rows der bare flød løst under søgefeltet. */
-.pool-filters{background:var(--ice);border:1px solid var(--border2);border-radius:10px;padding:8px 9px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:5px 8px;align-items:center}
+.pool-filters{background:transparent;border:0;padding:0;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
 .pool-filter-label{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0}
 .pool-filter-select{width:100%;font-size:11.5px;font-weight:700;color:var(--navy);background:#fff;border:1px solid var(--border2);border-radius:8px;padding:6px 8px;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236B7280'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:22px;transition:border-color .15s}
 .pool-filter-select:hover{border-color:#94A3B8}
@@ -755,9 +762,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div>
       <div class="page-title">Daglig planlægning</div>
     </div>
-    <button class="btn danger small" id="clear-plan-btn">Ryd alle bookinger</button>
   </div>
-  <div class="board-layout">
+  <div class="board-layout" style="margin-top:14px">
     <aside class="panel">
       <div class="panel-head">
         <span class="panel-title">📥 Opgavepool</span>
@@ -765,13 +771,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div class="panel-body">
         <div class="pool-search-wrap"><input id="plan-search" class="search" placeholder="Søg kunde eller opgave"></div>
-        <button type="button" class="btn small smart-sort-toggle" style="width:100%;margin-bottom:8px" onclick="toggleSmartSort()"></button>
         <div class="pool-filters">
-          <div class="pool-filter-label">Status</div>
           <div class="filter-row" id="plan-status-filters"></div>
-          <div class="pool-filter-label">Fag</div>
           <div class="filter-row" id="plan-type-filters"></div>
         </div>
+        <button class="btn small" id="book-visit-btn" style="width:100%;margin-bottom:8px">📅 Book kundebesøg</button>
         <div id="plan-pool"></div>
       </div>
     </aside>
@@ -781,7 +785,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <strong class="week-label" id="plan-label"></strong>
         <button class="btn small" id="plan-next">Næste →</button>
         <button class="btn small primary" id="plan-today">📍 I dag</button>
-        <button class="btn small" id="book-visit-btn">📅 Book kundebesøg</button>
       </div>
       <div class="workforce-bar" id="plan-workforce-filters"></div>
       <div class="board-outer">
@@ -814,11 +817,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div class="panel-body">
         <div class="pool-search-wrap"><input id="cap-search" class="search" placeholder="Søg kunde eller opgave"></div>
-        <button type="button" class="btn small smart-sort-toggle" style="width:100%;margin-bottom:8px" onclick="toggleSmartSort()"></button>
         <div class="pool-filters">
-          <div class="pool-filter-label">Status</div>
           <div class="filter-row" id="cap-status-filters"></div>
-          <div class="pool-filter-label">Fag</div>
           <div class="filter-row" id="cap-type-filters"></div>
         </div>
         <div id="cap-pool"></div>
@@ -867,9 +867,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="panel-body">
         <div class="pool-search-wrap"><input id="timeline-search" class="search" placeholder="Søg kunde eller opgave"></div>
         <div class="pool-filters">
-          <div class="pool-filter-label">Status</div>
           <div class="filter-row" id="timeline-status-filters"></div>
-          <div class="pool-filter-label">Fag</div>
           <div class="filter-row" id="timeline-type-filters"></div>
         </div>
         <div id="timeline-pool"></div>
@@ -1316,7 +1314,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="modal">
     <h3 id="capacity-title">Reservér kapacitet</h3>
     <div class="capacity-context" id="capacity-context">📊 Denne reservation vises kun på kapacitetsboardet — ikke i Daglig plan eller hos medarbejderen.</div>
-    <div class="capacity-modal-note">Vælg medarbejder, uge og hvor mange kapacitetsdage der skal reserveres. Mødetid, adresse, telefon og sagsnummer hører kun til i Daglig plan eller Tidslinje.</div>
     <div class="form-group">
       <label class="form-label">Medarbejder / hold</label>
       <select id="capacity-user" class="select"></select>
@@ -1853,22 +1850,15 @@ function filterTasks(scope){
       return !q||text.indexOf(q)>-1;
     }
   }).sort(function(a,b){
-    if(!smartSortEnabled())return String(a.start_date||'').localeCompare(String(b.start_date||''));
-    // Smart prioritering: uplanlagte opgaver før planlagte, og blandt dem den der
-    // haster mest (ældst startdato / har ligget længst) øverst — så listen fortæller
-    // dig hvad der skal planlægges NU i stedet for bare at være alfabetisk/tilfældig.
+    // Uplanlagte opgaver før planlagte, og blandt dem den der haster mest (ældst
+    // startdato / har ligget længst) øverst — så listen fortæller dig hvad der skal
+    // planlægges NU i stedet for bare at være alfabetisk/tilfældig.
     var ap=+a.assignment_count>0?1:0,bp=+b.assignment_count>0?1:0;
     if(ap!==bp)return ap-bp;
     var ad=String(a.start_date||'9999'),bd=String(b.start_date||'9999');
     if(ad!==bd)return ad.localeCompare(bd);
     return String(a.created_at||'').localeCompare(String(b.created_at||''));
   });
-}
-function smartSortEnabled(){return localStorage.getItem('gm-smart-sort')!=='off';}
-function toggleSmartSort(){
-  localStorage.setItem('gm-smart-sort',smartSortEnabled()?'off':'on');
-  document.querySelectorAll('.smart-sort-toggle').forEach(function(b){b.textContent=smartSortEnabled()?'🔀 Smart sortering: Til':'🔀 Smart sortering: Fra';b.classList.toggle('active',smartSortEnabled());});
-  renderPlan();renderCapacity();
 }
 
 function filtersHTML(scope){
@@ -1878,8 +1868,15 @@ function filtersHTML(scope){
   // opretter der automatisk dukker op som filter her — ingen hårdkodet liste længere.
   var tys=[['all','Alle fag']].concat(taskTypesList.map(function(t){return [t.key,t.label];}));
   var se=document.getElementById(dom+'-status-filters'),te=document.getElementById(dom+'-type-filters');
-  if(se)se.innerHTML='<select class="pool-filter-select" data-scope="'+scope+'" data-kind="status">'+sts.map(function(x){return '<option value="'+x[0]+'"'+(f.status===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select>';
-  if(te)te.innerHTML='<select class="pool-filter-select" data-scope="'+scope+'" data-kind="type">'+tys.map(function(x){return '<option value="'+x[0]+'"'+(f.type===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select>';
+  if(se)se.innerHTML=filterDropdownHTML(scope,'status','Status',sts,f.status);
+  if(te)te.innerHTML=filterDropdownHTML(scope,'type','Fag',tys,f.type);
+}
+function filterDropdownHTML(scope,kind,label,options,current){
+  var cur=options.find(function(x){return x[0]===current;})||options[0];
+  return '<div class="filter-dropdown" data-scope="'+scope+'" data-kind="'+kind+'">'+
+    '<button type="button" class="btn small filter-dropdown-btn" data-action="filter-dropdown-toggle" style="width:100%">'+esc(label)+': '+esc(cur[1])+' ▾</button>'+
+    '<div class="filter-dropdown-menu">'+options.map(function(x){return '<button type="button" class="filter-dropdown-item'+(x[0]===current?' active':'')+'" data-action="filter-dropdown-select" data-scope="'+scope+'" data-kind="'+kind+'" data-value="'+esc(x[0])+'">'+esc(x[1])+'</button>';}).join('')+'</div>'+
+    '</div>';
 }
 function teamFilterHTML(scope){
   var f=filters[scope],dom=scope==='capacity'?'cap':scope;
@@ -2092,7 +2089,8 @@ function renderCapacity(){
   var months={},mBtns=[];
   weeks.forEach(function(m){var mk=m.getFullYear()+'-'+m.getMonth();if(!months[mk]){months[mk]=1;mBtns.push({m:m,label:m.toLocaleDateString('da-DK',{month:'short',year:'numeric'})});}});
   var curMon=new Date().toLocaleDateString('da-DK',{month:'short',year:'numeric'});
-  document.getElementById('cap-months').innerHTML=mBtns.map(function(x){return '<button class="month-btn'+(x.label===curMon?' active':'')+'" data-action="scroll-week" data-week="'+weekKey(x.m)+'">'+esc(x.label)+'</button>';}).join('');
+  document.getElementById('cap-months').innerHTML='<select class="select cap-month-select" id="cap-month-select" style="width:auto;min-width:140px">'+mBtns.map(function(x){return '<option value="'+weekKey(x.m)+'"'+(x.label===curMon?' selected':'')+'>'+esc(x.label)+'</option>';}).join('')+'</select>';
+  document.getElementById('cap-month-select').onchange=function(e){scrollToWeek(e.target.value);};
   // Render capacity stats — frie dage pr. fag i DENNE måned (skifter automatisk måned for måned)
   var capEl=document.getElementById('cap-stats');
   if(capEl){
@@ -4351,6 +4349,7 @@ function bind(){
   document.addEventListener('click',function(e){if(!e.target.closest('#navdrop'))document.getElementById('navdrop-menu').classList.remove('open');});
   document.getElementById('notifdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('notifdrop-menu').classList.toggle('open');refreshNotifBell();});
   document.addEventListener('click',function(e){if(!e.target.closest('#notifdrop'))document.getElementById('notifdrop-menu').classList.remove('open');});
+  document.addEventListener('click',function(e){if(!e.target.closest('.filter-dropdown'))document.querySelectorAll('.filter-dropdown-menu.open').forEach(function(m){m.classList.remove('open');});});
   document.getElementById('new-template-btn').onclick=function(){openTemplateEditor(null);};
   document.getElementById('new-email-template-btn').onclick=function(){openEmailTemplateEditor(null);};
   document.getElementById('close-email-tpl-edit').onclick=function(){closeModal('email-tpl-edit-modal');};
@@ -4364,7 +4363,7 @@ function bind(){
   };
   document.getElementById('tpl-edit-checklist-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();document.getElementById('tpl-edit-checklist-add').click();}});
   initCustomerSearch();
-  document.querySelectorAll('.smart-sort-toggle').forEach(function(b){b.textContent=smartSortEnabled()?'🔀 Smart sortering: Til':'🔀 Smart sortering: Fra';b.classList.toggle('active',smartSortEnabled());});
+  // Smart sortering af Opgavepoolen er nu altid slået til (ingen til/fra-knap længere).
   // Museknap-scroll: konverterer lodret hjulscroll til vandret scroll i de brede
   // kalenderboards (Kapacitet, Daglig plan, Tidslinje), så en almindelig mus (ikke kun
   // trackpad) kan navigere sidelæns uden at skulle bruge scrollbaren.
@@ -4396,7 +4395,7 @@ function bind(){
   document.getElementById('close-visit-form').onclick=function(){closeModal('visit-form-modal');};
   document.getElementById('save-visit-form').onclick=saveVisitForm;
   document.getElementById('sync-phones-btn').onclick=syncPhonesNow;
-  document.getElementById('clear-plan-btn').onclick=clearPlan;
+  // "Ryd alle bookinger"-knappen er fjernet fra UI (for let at trykke på ved en fejl) —
   document.getElementById('plan-prev').onclick=function(){planOffset--;renderPlan();};
   document.getElementById('plan-next').onclick=function(){planOffset++;renderPlan();};
   document.getElementById('plan-today').onclick=function(){planOffset=0;renderPlan();};
@@ -4542,6 +4541,21 @@ function bind(){
       if(act==='save-notif-rule')saveNotifRule(a.closest('.notif-rule-row'));
       if(act==='open-notif'){api('/api/notifications/'+a.dataset.notifId+'/read',{method:'PUT'}).then(function(){refreshNotifBell();if(a.dataset.link)switchPage(a.dataset.link.replace('#',''));});}
       if(act==='mark-all-read'){e.stopPropagation();api('/api/notifications/read-all',{method:'PUT'}).then(function(){refreshNotifBell();});}
+      if(act==='filter-dropdown-toggle'){
+        e.stopPropagation();
+        var menu=a.parentElement.querySelector('.filter-dropdown-menu');
+        var wasOpen=menu.classList.contains('open');
+        document.querySelectorAll('.filter-dropdown-menu.open').forEach(function(m){m.classList.remove('open');});
+        if(!wasOpen)menu.classList.add('open');
+      }
+      if(act==='filter-dropdown-select'){
+        e.stopPropagation();
+        filters[a.dataset.scope][a.dataset.kind]=a.dataset.value;
+        a.closest('.filter-dropdown-menu').classList.remove('open');
+        if(a.dataset.scope==='plan')renderPlan();
+        else if(a.dataset.scope==='timeline')renderTimeline();
+        else renderCapacity();
+      }
       if(act==='move-booking'){e.stopPropagation();api('/api/assignments/'+a.dataset.bookingId+'/move',{method:'PUT',body:JSON.stringify({direction:a.dataset.dir,date:a.dataset.date})}).then(function(r){if(r&&r.ok)loadAll();else if(r)toast(r.error||'Fejl','❌');});}
       if(act==='capacity-add')openCapacityModal({weekStart:iso(mon(new Date()))});
       if(act==='add-capacity')openCapacityModal({userId:+a.dataset.userId,weekStart:a.dataset.date});
