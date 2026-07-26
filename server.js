@@ -190,6 +190,8 @@ async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_email TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_schedule_changes INTEGER DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS jt_vendor_account_id TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires TEXT;
     CREATE INDEX IF NOT EXISTS idx_users_jt_vendor ON users(jt_vendor_account_id);
 
     CREATE TABLE IF NOT EXISTS gantt_tasks (
@@ -977,6 +979,29 @@ app.get('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
   res.json(result.rows);
 }));
 
+const PUBLIC_APP_URL = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || 'https://gulvmaster.onrender.com';
+async function createPasswordResetToken(userId) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const hashed = crypto.createHash('sha256').update(rawToken).digest('hex');
+  const expires = new Date(Date.now() + 72 * 3600 * 1000).toISOString();
+  await pool.query('UPDATE users SET password_reset_token=$1, password_reset_expires=$2 WHERE id=$3', [hashed, expires, userId]);
+  return rawToken;
+}
+async function sendLoginGuideEmail(user, rawToken) {
+  if (!mailIsConfigured()) return { sent: false, reason: 'E-mail er ikke konfigureret på serveren' };
+  const to = user.personal_email || user.email;
+  if (!to) return { sent: false, reason: 'Medarbejderen har ingen e-mail' };
+  const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
+  const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
+  const link = `${PUBLIC_APP_URL}/set-password?token=${rawToken}`;
+  const subject = `Velkommen — sæt din adgangskode (${companyName})`;
+  const text = `Hej ${user.name},\n\nDu er nu oprettet i vores planlægningssystem.\n\nLogin: ${user.email}\n\nKlik her for at sætte din egen adgangskode (linket virker i 72 timer):\n${link}\n\nEfter du har sat din adgangskode, kan du logge ind på ${PUBLIC_APP_URL}/employee\n\nVenlig hilsen\n${companyName}`;
+  try {
+    await sendMailUniversal({ to, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') });
+    return { sent: true };
+  } catch (e) { return { sent: false, reason: redactSecret(e.message || '').slice(0, 500) }; }
+}
+
 app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
   const canLogin = body.can_login !== false;
@@ -997,10 +1022,43 @@ app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
       RETURNING id
     `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0]);
     res.json({ ok: true, id: result.rows[0].id });
+    // Send login-vejledning, så medarbejderen selv kan sætte sin adgangskode —
+    // kun relevant for brugere der faktisk kan logge ind.
+    if (canLogin) {
+      (async () => {
+        const newUser = await pgOne('SELECT * FROM users WHERE id=$1', [result.rows[0].id]);
+        const token = await createPasswordResetToken(newUser.id);
+        const r = await sendLoginGuideEmail(newUser, token);
+        if (!r.sent) console.error('Login-vejledning kunne ikke sendes:', r.reason);
+      })().catch(e => console.error('Login-vejledning fejlede:', e.message));
+    }
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
     throw error;
   }
+}));
+
+// Manuel gensendelse af login-vejledningen (fx hvis medarbejderen har mistet mailen).
+app.post('/api/users/:id/send-login-guide', auth, adminOnly, asyncRoute(async (req, res) => {
+  const user = await pgOne('SELECT * FROM users WHERE id=$1', [req.params.id]);
+  if (!user) return res.status(404).json({ error: 'Medarbejderen blev ikke fundet' });
+  if (!user.can_login) return res.status(400).json({ error: 'Denne bruger kan ikke logge ind' });
+  const token = await createPasswordResetToken(user.id);
+  const r = await sendLoginGuideEmail(user, token);
+  if (!r.sent) return res.status(400).json({ error: r.reason || 'Kunne ikke sende mailen' });
+  res.json({ ok: true });
+}));
+
+// Offentligt (uden login) — bruges af set-password-siden til selv at vælge en ny adgangskode.
+app.post('/api/set-password', asyncRoute(async (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password || String(password).length < 6) return res.status(400).json({ error: 'Adgangskoden skal være mindst 6 tegn' });
+  const hashed = crypto.createHash('sha256').update(String(token)).digest('hex');
+  const user = await pgOne('SELECT * FROM users WHERE password_reset_token=$1', [hashed]);
+  if (!user) return res.status(400).json({ error: 'Linket er ugyldigt eller allerede brugt' });
+  if (!user.password_reset_expires || new Date(user.password_reset_expires) < new Date()) return res.status(400).json({ error: 'Linket er udløbet — bed om et nyt' });
+  await pool.query('UPDATE users SET password_hash=$1, password_reset_token=NULL, password_reset_expires=NULL WHERE id=$2', [bcrypt.hashSync(String(password), 10), user.id]);
+  res.json({ ok: true });
 }));
 
 app.put('/api/users/:id', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -3705,6 +3763,7 @@ function sendPage(filename) {
   };
 }
 app.get('/migrate', sendPage('migrate.html'));
+app.get('/set-password', sendPage('set-password.html'));
 app.get('/admin', sendPage('admin.html'));
 app.get('/employee', sendPage('employee.html'));
 app.get('/', sendPage('index.html'));

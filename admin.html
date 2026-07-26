@@ -126,6 +126,7 @@ button,input,select{font:inherit}
 .pool-search-wrap .search{margin-bottom:0;padding-left:26px;border-radius:8px;background:#fff}
 .pool-search-wrap::before{content:'🔍';position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:10px;opacity:.55;pointer-events:none}
 .workforce-bar{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 8px;padding:6px 7px;background:#fff;border:1px solid var(--border2);border-radius:7px}
+.workforce-bar .workforce-select{width:auto;min-width:160px}
 .workforce-label{font-size:9px;color:var(--muted);font-weight:800;text-transform:uppercase;padding:3px 2px}
 
 /* TASK CARDS */
@@ -706,6 +707,34 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
   <div id="templates-list" class="dash-panel"></div>
 
+  <div class="email-settings-card">
+    <div class="email-settings-head">
+      <div><div class="email-settings-title">🎨 Fag & farver</div><div class="email-settings-sub">Styrer farverne på opgaver i Daglig plan/Ugeplan og på opgavekortene. Kapacitetsboardet bruger bevidst én ensartet farve for alle opgaver, uanset fag.</div></div>
+    </div>
+    <div id="task-types-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+    <div class="form-row" style="align-items:flex-end">
+      <div class="form-group"><label class="form-label">Nyt fag/faggruppe</label><input id="new-type-label" class="input" placeholder="Fx VVS / El"></div>
+      <div class="form-group" style="max-width:90px"><label class="form-label">Farve</label><input id="new-type-color" class="input" type="color" value="#2563EB"></div>
+      <button class="btn primary small" id="add-type-btn" style="margin-bottom:14px">+ Tilføj fag</button>
+    </div>
+  </div>
+
+  <div class="email-settings-card">
+    <div class="email-settings-head">
+      <div><div class="email-settings-title">📧 Færdig-mail til kunden</div><div class="email-settings-sub">Sendes automatisk til kundens e-mail, når en medarbejder markerer en opgave som færdig — med jeres rengørings-PDF vedhæftet.</div></div>
+      <span class="mail-status-pill" id="mail-status-pill">Tjekker…</span>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Emne <span class="opt-tag">{kunde} og {firma} indsættes automatisk</span></label><input id="email-subject" class="input" placeholder="Vi er færdige hos dig — {kunde}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Besked <span class="opt-tag">{opgave}, {kunde}, {firma} indsættes automatisk</span></label><textarea id="email-body" class="input" rows="6" style="font-family:inherit"></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Rengørings-PDF (vedhæftes automatisk)</label><input id="email-pdf-file" type="file" accept="application/pdf" class="input"><div class="muted-sm" id="email-pdf-current" style="margin-top:4px"></div></div>
+      <div class="form-group"><label class="form-label">Send test-mail til</label><div style="display:flex;gap:6px"><input id="email-test-to" class="input" placeholder="din@mail.dk"><button class="btn small" id="email-test-btn">Send test</button></div></div>
+    </div>
+    <div class="modal-actions" style="padding:0;border:0;margin-top:10px"><button class="btn primary small" id="email-save-btn">Gem mail-indstillinger</button></div>
+  </div>
+
   <div class="page-head" style="margin-top:28px"><h2>📧 Mail-skabeloner</h2><p class="page-sub">Forskellige varianter af kunde-mailen — vælges når du trykker "Send planlægningsmail".</p>
     <button class="nb blue" id="new-email-template-btn">+ Ny mail-skabelon</button>
   </div>
@@ -725,7 +754,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="page-head">
     <div>
       <div class="page-title">Daglig planlægning</div>
-      <div class="page-sub">Træk en opgave til en medarbejder → hurtig pop-up → Enter for at gemme. Klik på en booking for at redigere.</div>
     </div>
     <button class="btn danger small" id="clear-plan-btn">Ryd alle bookinger</button>
   </div>
@@ -737,6 +765,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div class="panel-body">
         <div class="pool-search-wrap"><input id="plan-search" class="search" placeholder="Søg kunde eller opgave"></div>
+        <button type="button" class="btn small smart-sort-toggle" style="width:100%;margin-bottom:8px" onclick="toggleSmartSort()"></button>
         <div class="pool-filters">
           <div class="pool-filter-label">Status</div>
           <div class="filter-row" id="plan-status-filters"></div>
@@ -753,7 +782,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="btn small" id="plan-next">Næste →</button>
         <button class="btn small primary" id="plan-today">📍 I dag</button>
         <button class="btn small" id="book-visit-btn">📅 Book kundebesøg</button>
-        <span class="hint">Drop = pop-up åbner · Enter for at bekræfte</span>
       </div>
       <div class="workforce-bar" id="plan-workforce-filters"></div>
       <div class="board-outer">
@@ -771,8 +799,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="page-head">
     <div>
       <div class="page-title">Kapacitetsboard</div>
-      <div class="page-sub">52 ugers overblik · Scroll i boardet · Træk opgaver fra poolen direkte på en uge · Interne medarbejdere altid øverst</div>
     </div>
+    <select id="cap-groupby" class="select" style="width:auto">
+      <option value="user">Gruppér: Medarbejder</option>
+      <option value="trade">Gruppér: Fag</option>
+    </select>
   </div>
   <div class="stats" id="cap-stats"></div>
   <div class="board-layout">
@@ -783,6 +814,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div class="panel-body">
         <div class="pool-search-wrap"><input id="cap-search" class="search" placeholder="Søg kunde eller opgave"></div>
+        <button type="button" class="btn small smart-sort-toggle" style="width:100%;margin-bottom:8px" onclick="toggleSmartSort()"></button>
         <div class="pool-filters">
           <div class="pool-filter-label">Status</div>
           <div class="filter-row" id="cap-status-filters"></div>
@@ -796,11 +828,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="week-bar">
         <button class="btn small primary" id="cap-today">📍 I dag</button>
         <strong class="week-label">52 ugers kapacitet</strong>
-        <select id="cap-groupby" class="select" style="width:auto">
-          <option value="user">Gruppér: Medarbejder</option>
-          <option value="trade">Gruppér: Fag</option>
-        </select>
-        <span class="hint">Træk en opgave fra poolen direkte på en uge. Den oprettes kun som kapacitetsreservation — ikke i Daglig plan eller hos medarbejderen.</span>
       </div>
       <div class="month-bar" id="cap-months"></div>
       <div class="workforce-bar" id="cap-workforce-filters"></div>
@@ -819,7 +846,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="page-head">
     <div>
       <div class="page-title">Tidslinje</div>
-      <div class="page-sub">Gruppér efter Medarbejder for fuld interaktion: træk for at flytte, træk i kanten for at strække, klik for at åbne, klik på tom plads for at oprette, eller træk en opgave fra poolen direkte ud. "Fag/type"-visningen er til overblik (klik for at åbne).</div>
+      <div class="page-sub"></div>
     </div>
     <div style="display:flex;gap:6px;align-items:center">
       <select id="tl-group-by" class="select" style="width:auto">
@@ -1143,32 +1170,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div><label>Virksomhedsnavn</label><input type="text" id="settings-company-name" placeholder="Gulv Master Enterprise ApS"></div>
       <div><label>Logo</label><input type="file" id="settings-logo-file" accept="image/*"></div>
       <button class="btn primary small" id="settings-save-btn">Gem virksomhedsprofil</button>
-    </div>
-  </div>
-  <div class="email-settings-card">
-    <div class="email-settings-head">
-      <div><div class="email-settings-title">📧 Færdig-mail til kunden</div><div class="email-settings-sub">Sendes automatisk til kundens e-mail, når en medarbejder markerer en opgave som færdig — med jeres rengørings-PDF vedhæftet.</div></div>
-      <span class="mail-status-pill" id="mail-status-pill">Tjekker…</span>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Emne <span class="opt-tag">{kunde} og {firma} indsættes automatisk</span></label><input id="email-subject" class="input" placeholder="Vi er færdige hos dig — {kunde}"></div>
-    </div>
-    <div class="form-group"><label class="form-label">Besked <span class="opt-tag">{opgave}, {kunde}, {firma} indsættes automatisk</span></label><textarea id="email-body" class="input" rows="6" style="font-family:inherit"></textarea></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Rengørings-PDF (vedhæftes automatisk)</label><input id="email-pdf-file" type="file" accept="application/pdf" class="input"><div class="muted-sm" id="email-pdf-current" style="margin-top:4px"></div></div>
-      <div class="form-group"><label class="form-label">Send test-mail til</label><div style="display:flex;gap:6px"><input id="email-test-to" class="input" placeholder="din@mail.dk"><button class="btn small" id="email-test-btn">Send test</button></div></div>
-    </div>
-    <div class="modal-actions" style="padding:0;border:0;margin-top:10px"><button class="btn primary small" id="email-save-btn">Gem mail-indstillinger</button></div>
-  </div>
-  <div class="email-settings-card">
-    <div class="email-settings-head">
-      <div><div class="email-settings-title">🎨 Fag & farver</div><div class="email-settings-sub">Styrer farverne på opgaver i Daglig plan/Ugeplan og på opgavekortene. Kapacitetsboardet bruger bevidst én ensartet farve for alle opgaver, uanset fag.</div></div>
-    </div>
-    <div id="task-types-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
-    <div class="form-row" style="align-items:flex-end">
-      <div class="form-group"><label class="form-label">Nyt fag/faggruppe</label><input id="new-type-label" class="input" placeholder="Fx VVS / El"></div>
-      <div class="form-group" style="max-width:90px"><label class="form-label">Farve</label><input id="new-type-color" class="input" type="color" value="#2563EB"></div>
-      <button class="btn primary small" id="add-type-btn" style="margin-bottom:14px">+ Tilføj fag</button>
     </div>
   </div>
   <div class="people" id="people-grid"></div>
@@ -1852,6 +1853,7 @@ function filterTasks(scope){
       return !q||text.indexOf(q)>-1;
     }
   }).sort(function(a,b){
+    if(!smartSortEnabled())return String(a.start_date||'').localeCompare(String(b.start_date||''));
     // Smart prioritering: uplanlagte opgaver før planlagte, og blandt dem den der
     // haster mest (ældst startdato / har ligget længst) øverst — så listen fortæller
     // dig hvad der skal planlægges NU i stedet for bare at være alfabetisk/tilfældig.
@@ -1861,6 +1863,12 @@ function filterTasks(scope){
     if(ad!==bd)return ad.localeCompare(bd);
     return String(a.created_at||'').localeCompare(String(b.created_at||''));
   });
+}
+function smartSortEnabled(){return localStorage.getItem('gm-smart-sort')!=='off';}
+function toggleSmartSort(){
+  localStorage.setItem('gm-smart-sort',smartSortEnabled()?'off':'on');
+  document.querySelectorAll('.smart-sort-toggle').forEach(function(b){b.textContent=smartSortEnabled()?'🔀 Smart sortering: Til':'🔀 Smart sortering: Fra';b.classList.toggle('active',smartSortEnabled());});
+  renderPlan();renderCapacity();
 }
 
 function filtersHTML(scope){
@@ -1875,9 +1883,9 @@ function filtersHTML(scope){
 }
 function teamFilterHTML(scope){
   var f=filters[scope],dom=scope==='capacity'?'cap':scope;
-  var items=[['all','Alle hold'],['internal','Interne'],['vendors','Vendors']].concat(allTrades().map(function(t){return['trade:'+t,t];}));
+  var items=[['all','Vis: Alle hold'],['internal','Vis: Interne'],['vendors','Vis: Vendors']].concat(allTrades().map(function(t){return['trade:'+t,'Vis: '+t];}));
   var el=document.getElementById(dom+'-workforce-filters');
-  if(el)el.innerHTML='<span class="workforce-label">Vis:</span>'+items.map(function(x){return '<button class="chip'+(f.team===x[0]?' active':'')+'" data-action="team-filter" data-scope="'+scope+'" data-value="'+esc(x[0])+'">'+esc(x[1])+'</button>';}).join('');
+  if(el)el.innerHTML='<select class="pool-filter-select workforce-select" data-action-scope="'+scope+'">'+items.map(function(x){return '<option value="'+esc(x[0])+'"'+(f.team===x[0]?' selected':'')+'>'+esc(x[1])+'</option>';}).join('')+'</select>';
 }
 
 function taskCard(t,scope){
@@ -4136,7 +4144,7 @@ function renderPeople(){
   var html=intern.map(function(u){
     return '<article class="person-card"><div class="person-top">'+avatarOrInitials(u,38)+'<div><div class="person-name">'+esc(u.name)+'</div><div class="person-email">'+(u.can_login?esc(u.email):'Ingen login')+'</div><span class="role-pill">Medarbejder</span></div></div>'+
       '<div class="person-detail">Fag: '+esc(u.trade||'Ikke sat')+'<br>Kapacitet: '+(+u.weekly_capacity||5)+' dage/uge<br>'+(u.jobtread_name?'JT: '+esc(u.jobtread_name):'')+'</div>'+
-      '<div class="person-actions"><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏ Rediger</button><button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖 Ferie/sygdom</button></div></article>';
+      '<div class="person-actions"><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏ Rediger</button><button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖 Ferie/sygdom</button>'+(u.can_login?'<button class="btn small" data-action="send-login-guide" data-user-id="'+u.id+'" title="Send en mail med link til at sætte egen adgangskode">🔑 Login-vejledning</button>':'')+'</div></article>';
   }).join('');
   Object.keys(vendors).sort().forEach(function(g){
     html+='<article class="vendor-card"><div class="vendor-head"><div class="vendor-title"><span class="vicon">'+esc(g.slice(0,1))+'</span>'+esc(g)+'</div><button class="btn small primary" data-action="add-subgroup" data-group="'+esc(g)+'">+ Undergruppe</button></div>'+
@@ -4356,6 +4364,18 @@ function bind(){
   };
   document.getElementById('tpl-edit-checklist-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();document.getElementById('tpl-edit-checklist-add').click();}});
   initCustomerSearch();
+  document.querySelectorAll('.smart-sort-toggle').forEach(function(b){b.textContent=smartSortEnabled()?'🔀 Smart sortering: Til':'🔀 Smart sortering: Fra';b.classList.toggle('active',smartSortEnabled());});
+  // Museknap-scroll: konverterer lodret hjulscroll til vandret scroll i de brede
+  // kalenderboards (Kapacitet, Daglig plan, Tidslinje), så en almindelig mus (ikke kun
+  // trackpad) kan navigere sidelæns uden at skulle bruge scrollbaren.
+  document.querySelectorAll('.board-outer,#tl-outer').forEach(function(el){
+    el.addEventListener('wheel',function(e){
+      if(Math.abs(e.deltaY)>Math.abs(e.deltaX)&&el.scrollWidth>el.clientWidth){
+        el.scrollLeft+=e.deltaY;
+        e.preventDefault();
+      }
+    },{passive:false});
+  });
   refreshNotifBell();
   setInterval(refreshNotifBell,90000);
   // Nav
@@ -4489,6 +4509,12 @@ function bind(){
   document.addEventListener('change',function(e){
     var sel=e.target.closest('.pool-filter-select');
     if(!sel)return;
+    if(sel.classList.contains('workforce-select')){
+      var sc=sel.dataset.actionScope;
+      filters[sc].team=sel.value;
+      if(sc==='plan')renderPlan();else if(sc==='availability')renderAvailability();else renderCapacity();
+      return;
+    }
     filters[sel.dataset.scope][sel.dataset.kind]=sel.value;
     if(sel.dataset.scope==='plan')renderPlan();
     else if(sel.dataset.scope==='timeline')renderTimeline();
@@ -4531,6 +4557,13 @@ function bind(){
       if(act==='edit-booking'){e.stopPropagation();openAssign({bookingId:+a.dataset.bookingId});}
       if(act==='open-timeline-drawer'){e.stopPropagation();openTimelineDrawer(+a.dataset.bookingId);}
       if(act==='edit-user')openUser(+a.dataset.userId);
+      if(act==='send-login-guide'){
+        a.disabled=true;a.textContent='Sender…';
+        api('/api/users/'+a.dataset.userId+'/send-login-guide',{method:'POST'}).then(function(r){
+          if(r&&r.ok)toast('Login-vejledning sendt ✓','✉️');else if(r)toast(r.error||'Kunne ikke sende mailen','❌');
+          a.disabled=false;a.textContent='🔑 Login-vejledning';
+        });
+      }
       if(act==='weekly-note'){e.stopPropagation();openWeeklyNote(+a.dataset.userId);}
       if(act==='edit-task'){e.stopPropagation();openTaskEdit(a.dataset.taskId);}
       if(act==='manage-files'){e.stopPropagation();manageTaskFiles(a.dataset.taskId);}
