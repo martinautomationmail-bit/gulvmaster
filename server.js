@@ -248,6 +248,18 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- MAIL-SKABELONER: forskellige varianter af kunde-mailen (fx "Planlagt", "Haster",
+    -- "Genplanlagt"), med variabler ({{kunde}}, {{opgave}}, {{dato}}, {{tidspunkt}},
+    -- {{medarbejder}}, {{fag}}, {{adresse}}, {{firma}}) der udfyldes ved afsendelse.
+    CREATE TABLE IF NOT EXISTS email_templates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     -- NOTIFIKATIONER: en simpel regel pr. hændelsestype (event_key), med kanal
     -- (in-app og/eller e-mail) og om den er slået til. Redigeres fra en indstillingsside.
     CREATE TABLE IF NOT EXISTS notification_rules (
@@ -3356,6 +3368,35 @@ app.delete('/api/templates/:id', auth, adminOnly, asyncRoute(async (req, res) =>
 }));
 
 // ══════════════════════════════════════════════════════════════
+// MAIL-SKABELONER — varianter af kunde-mailen
+// ══════════════════════════════════════════════════════════════
+const DEFAULT_EMAIL_VARS = ['{{kunde}}', '{{opgave}}', '{{fag}}', '{{dato}}', '{{tidspunkt}}', '{{medarbejder}}', '{{adresse}}', '{{firma}}'];
+app.get('/api/email-templates', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM email_templates ORDER BY name ASC');
+  res.json(rows.rows);
+}));
+app.post('/api/email-templates', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name || !body.subject || !body.body) return res.status(400).json({ error: 'Navn, emne og indhold skal udfyldes' });
+  const r = await pool.query(`
+    INSERT INTO email_templates (name,subject,body,updated_at) VALUES ($1,$2,$3,${nowTextSQL()}) RETURNING id
+  `, [String(body.name).trim().slice(0, 200), String(body.subject).trim().slice(0, 300), String(body.body).slice(0, 5000)]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/email-templates/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const r = await pool.query(`
+    UPDATE email_templates SET name=$1,subject=$2,body=$3,updated_at=${nowTextSQL()} WHERE id=$4
+  `, [String(body.name || '').trim().slice(0, 200), String(body.subject || '').trim().slice(0, 300), String(body.body || '').slice(0, 5000), req.params.id]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  res.json({ ok: true });
+}));
+app.delete('/api/email-templates/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM email_templates WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ══════════════════════════════════════════════════════════════
 // NOTIFIKATIONER — konfigurerbare regler + log
 // ══════════════════════════════════════════════════════════════
 const NOTIFICATION_EVENTS = [
@@ -3574,7 +3615,10 @@ app.get('/api/geo-suggest', auth, adminOnly, asyncRoute(async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 // KUNDE-KOMMUNIKATION — planlagt-mail og påmindelse dagen før
 // ══════════════════════════════════════════════════════════════
-async function sendScheduledEmail(booking) {
+function fillEmailVars(str, vars) {
+  return String(str || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, key) => (vars[key] !== undefined && vars[key] !== null && vars[key] !== '') ? vars[key] : m);
+}
+async function sendScheduledEmail(booking, templateId) {
   if (!mailIsConfigured()) return { sent: false, reason: 'E-mail er ikke konfigureret på serveren' };
   const task = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [booking.task_id]);
   const toEmail = task?.customer_email;
@@ -3582,8 +3626,31 @@ async function sendScheduledEmail(booking) {
   const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
   const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
   const dateLabel = new Date(booking.start_date).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' });
-  const subject = `Din opgave er planlagt til ${dateLabel} — ${companyName}`;
-  const text = `Hej,\n\nVi har planlagt din opgave (${task?.job_name || ''}) til ${dateLabel}${booking.start_time ? ' kl. ' + booking.start_time : ''}.\n\nVi giver besked igen dagen før vi kommer, og når vi er færdige.\n\nVenlig hilsen\n${companyName}`;
+  let userName = '';
+  if (booking.user_id) {
+    const u = await pgOne('SELECT name FROM users WHERE id=$1', [booking.user_id]);
+    userName = u?.name || '';
+  }
+  let tradeLabel = '';
+  if (task?.type_guess) {
+    const tt = await pgOne('SELECT label FROM task_types WHERE key=$1', [task.type_guess]);
+    tradeLabel = tt?.label || task.type_guess;
+  }
+  const vars = {
+    kunde: task?.job_name || '', opgave: task?.name || '', fag: tradeLabel,
+    dato: dateLabel, tidspunkt: booking.start_time || '', medarbejder: userName,
+    adresse: task?.job_address || '', firma: companyName
+  };
+  let subject, text;
+  if (templateId) {
+    const tpl = await pgOne('SELECT * FROM email_templates WHERE id=$1', [templateId]);
+    if (!tpl) return { sent: false, reason: 'Mail-skabelonen blev ikke fundet' };
+    subject = fillEmailVars(tpl.subject, vars);
+    text = fillEmailVars(tpl.body, vars);
+  } else {
+    subject = `Din opgave er planlagt til ${dateLabel} — ${companyName}`;
+    text = `Hej,\n\nVi har planlagt din opgave (${task?.job_name || ''}) til ${dateLabel}${booking.start_time ? ' kl. ' + booking.start_time : ''}.\n\nVi giver besked igen dagen før vi kommer, og når vi er færdige.\n\nVenlig hilsen\n${companyName}`;
+  }
   let status = 'sent', error = null;
   try { await sendMailUniversal({ to: toEmail, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') }); }
   catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
@@ -3596,10 +3663,11 @@ async function sendScheduledEmail(booking) {
 // sender en mail. Undgår at kunden får 5 mails hvis sagen bliver planlagt/redigeret
 // flere gange. Kræver et bekræftende klik igen hvis der allerede er sendt én (se
 // scheduled_email_sent_at i svaret, som frontend'en bruger til at vise en advarsel).
+// Body kan indeholde template_id, hvis admin har valgt en bestemt mail-skabelon.
 app.post('/api/assignments/:id/send-scheduled-email', auth, adminOnly, asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
-  const result = await sendScheduledEmail(current);
+  const result = await sendScheduledEmail(current, (req.body || {}).template_id || null);
   if (!result.sent) return res.status(400).json({ error: result.reason || 'Kunne ikke sende mailen' });
   res.json({ ok: true });
 }));

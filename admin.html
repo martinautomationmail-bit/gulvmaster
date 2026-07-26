@@ -701,10 +701,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <!-- SKABELONER -->
 <section class="page" id="page-templates">
-  <div class="page-head"><h2>📐 Skabeloner</h2><p class="page-sub">Genbrugelige opgavetyper til tilbagevendende arbejde.</p>
+  <div class="page-head"><h2>📐 Opgave-skabeloner</h2><p class="page-sub">Genbrugelige opgavetyper til tilbagevendende arbejde.</p>
     <button class="nb blue" id="new-template-btn">+ Ny skabelon</button>
   </div>
   <div id="templates-list" class="dash-panel"></div>
+
+  <div class="page-head" style="margin-top:28px"><h2>📧 Mail-skabeloner</h2><p class="page-sub">Forskellige varianter af kunde-mailen — vælges når du trykker "Send planlægningsmail".</p>
+    <button class="nb blue" id="new-email-template-btn">+ Ny mail-skabelon</button>
+  </div>
+  <div id="email-templates-list" class="dash-panel"></div>
 </section>
 
 <!-- NOTIFIKATIONSINDSTILLINGER -->
@@ -1255,8 +1260,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="qp-body">
     <div class="quick-task-name" id="qp-task-name" style="cursor:pointer" title="Klik for at vælge opgave"></div>
     <div id="qp-task-select-wrap" style="display:none;margin-bottom:8px">
-      <label class="quick-label">Hurtig opgave (skriv et navn — behøver ikke betyde noget specifikt)</label>
-      <input class="quick-input" id="qp-new-task" placeholder="Fx Fejl og mangler hos Jensen" autofocus>
+      <label class="quick-label" id="qp-new-task-label">Opgave</label>
+      <div style="position:relative">
+        <input class="quick-input" id="qp-new-task" placeholder="Fx Fejl og mangler hos Jensen — eller skriv kundens navn for at søge" autocomplete="off" autofocus>
+        <div id="qp-new-task-suggestions" class="customer-suggest-menu" style="display:none"></div>
+      </div>
+      <label class="quick-label" style="margin-top:6px">…eller vælg en eksisterende opgave fra poolen — udfylder felterne nedenfor automatisk (du kan stadig rette dem)</label>
+      <select class="quick-select" id="qp-task-select"><option value="">🆕 Ny opgave (udfyld info nedenfor)</option></select>
       <div class="qp-quick-extra" id="qp-quick-extra">
         <div class="quick-row">
           <div><label class="quick-label">📍 Adresse <span class="opt-tag">valgfrit</span></label><input class="quick-input" id="qp-new-address" placeholder="Gade, postnr, by"></div>
@@ -1265,8 +1275,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <label class="quick-label">🔢 Sagsnummer <span class="opt-tag">valgfrit</span></label>
         <input class="quick-input" id="qp-new-job-number" placeholder="Fx GM-2026-40">
       </div>
-      <label class="quick-label" style="margin-top:6px">…eller vælg en eksisterende opgave fra poolen i stedet</label>
-      <select class="quick-select" id="qp-task-select"><option value="">— Ingen valgt (brug hurtig-opgaven ovenfor) —</option></select>
     </div>
     <div class="quick-row">
       <div>
@@ -1292,6 +1300,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <label class="quick-label">Note til medarbejder</label>
       <input class="quick-input" id="qp-note" placeholder="Fx ring kunden 30 min før...">
     </div>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;cursor:pointer">
+      <input type="checkbox" id="qp-send-mail" style="width:auto"> ✉️ Send planlægningsmail til kunden med det samme
+    </label>
   </div>
   <div class="quick-btns">
     <button class="btn small" id="qp-cancel">Annuller</button>
@@ -1575,10 +1586,85 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="form-group"><label class="form-label">Dage</label><input id="tpldrop-days" type="number" min=".25" max="60" step=".25" class="input"></div>
         </div>
       </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11.5px;cursor:pointer">
+        <input type="checkbox" id="tpldrop-send-mail" style="width:auto"> ✉️ Send planlægningsmail til kunden med det samme
+      </label>
     </div>
     <div class="modal-actions">
       <button class="btn" id="close-tpldrop">Annuller</button>
       <button class="btn primary" id="save-tpldrop">Opret og book</button>
+    </div>
+  </div>
+</div>
+
+<!-- SKABELON-REDIGERING -->
+<div class="mo" id="tpl-edit-modal">
+  <div class="modal manual-modal-modern" style="max-width:480px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">📐</span>
+      <div><div class="manual-modal-title" id="tpl-edit-title">Ny skabelon</div><div class="manual-modal-sub">Bruges når du trækker skabelonen ud på en dag</div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Navn</label>
+      <input id="tpl-edit-name" class="input" placeholder="Fx Standard gulvslibning">
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group"><label class="form-label">Fag</label><select id="tpl-edit-type" class="select"></select></div>
+        <div class="form-group"><label class="form-label">Standard antal dage</label><input id="tpl-edit-days" type="number" min=".25" max="60" step=".25" class="input" value="1"></div>
+      </div>
+      <label class="form-label" style="margin-top:12px">Note-skabelon <span class="opt-tag">valgfrit — sættes som note til medarbejder</span></label>
+      <input id="tpl-edit-notes" class="input" placeholder="Fx Ring kunden 30 min før ankomst">
+      <label class="form-label" style="margin-top:12px">☑ Tjekpunkter</label>
+      <div id="tpl-edit-checklist" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input id="tpl-edit-checklist-new" class="input" placeholder="Fx Tag billede af fugtmåler" style="flex:1">
+        <button class="btn small" type="button" id="tpl-edit-checklist-add">+ Tilføj</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-tpl-edit">Annuller</button>
+      <button class="btn primary" id="save-tpl-edit">Gem skabelon</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIL-SKABELON-REDIGERING -->
+<div class="mo" id="email-tpl-edit-modal">
+  <div class="modal manual-modal-modern" style="max-width:540px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">📧</span>
+      <div><div class="manual-modal-title" id="email-tpl-edit-title">Ny mail-skabelon</div><div class="manual-modal-sub">Sendes til kunden når du trykker "Send planlægningsmail"</div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Navn <span class="opt-tag">kun til internt brug</span></label>
+      <input id="email-tpl-name" class="input" placeholder="Fx Standard planlagt">
+      <label class="form-label" style="margin-top:12px">Emnelinje</label>
+      <input id="email-tpl-subject" class="input" placeholder="Fx Din opgave er planlagt til {{dato}}">
+      <label class="form-label" style="margin-top:12px">Indhold</label>
+      <textarea id="email-tpl-body" class="input" rows="7" placeholder="Hej,&#10;&#10;Vi har planlagt din opgave ({{opgave}}) til {{dato}}{{tidspunkt}}...&#10;&#10;Venlig hilsen&#10;{{firma}}"></textarea>
+      <div class="geo-hint" style="margin-top:8px">
+        <b>Variabler du kan bruge — klik for at indsætte:</b><br>
+        <div id="email-tpl-var-buttons" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-email-tpl-edit">Annuller</button>
+      <button class="btn primary" id="save-email-tpl-edit">Gem mail-skabelon</button>
+    </div>
+  </div>
+</div>
+
+<!-- VÆLG MAIL-SKABELON VED AFSENDELSE -->
+<div class="mo" id="email-send-modal">
+  <div class="modal manual-modal-modern" style="max-width:420px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">✉️</span>
+      <div><div class="manual-modal-title">Hvilken mail vil du sende?</div><div class="manual-modal-sub" id="email-send-sub"></div></div>
+    </div>
+    <div class="modal-body-pad">
+      <div id="email-send-options" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-email-send">Annuller</button>
     </div>
   </div>
 </div>
@@ -2205,8 +2291,32 @@ function openQuickPop(taskId,uid,dateStr,evt){
   document.getElementById('qp-quick-extra').style.display=inCapacity?'none':'';
   if(!taskId){
     wrap.style.display='block';
-    sel.innerHTML='<option value="">— Ingen valgt (brug hurtig-opgaven ovenfor) —</option>'+tasks.filter(function(x){return x.start_date;}).sort(function(a,b){return String(a.start_date).localeCompare(String(b.start_date));}).map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.job_name||x.name||'')+(x.start_date?' ('+x.start_date.slice(0,10)+')':'')+'</option>';}).join('');
-    sel.onchange=function(){quickCtx.taskId=sel.value;document.getElementById('qp-task-name').textContent=sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:'';if(sel.value)document.getElementById('qp-new-task').value='';};
+    sel.innerHTML='<option value="">🆕 Ny opgave (udfyld info nedenfor)</option>'+tasks.filter(function(x){return x.start_date;}).sort(function(a,b){return String(a.start_date).localeCompare(String(b.start_date));}).map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.job_name||x.name||'')+(x.start_date?' ('+x.start_date.slice(0,10)+')':'')+'</option>';}).join('');
+    sel.value='';
+    sel.onchange=function(){
+      quickCtx.taskId=sel.value||null;
+      var chosen=sel.value?tasks.find(function(x){return String(x.id)===String(sel.value);}):null;
+      if(chosen){
+        // Fra pool: navnet vises som kontekst (redigeres ikke her — det er en eksisterende
+        // opgave), men adresse/telefon/sagsnummer udfyldes og kan STADIG rettes.
+        document.getElementById('qp-new-task-label').textContent='Valgt opgave';
+        document.getElementById('qp-new-task').value=(chosen.job_name||'')+(chosen.name?' — '+chosen.name:'');
+        document.getElementById('qp-new-task').disabled=true;
+        document.getElementById('qp-new-address').value=chosen.job_address||'';
+        document.getElementById('qp-new-phone').value=chosen.customer_phone||'';
+        document.getElementById('qp-new-job-number').value=chosen.job_number||'';
+      }else{
+        document.getElementById('qp-new-task-label').textContent='Opgave';
+        document.getElementById('qp-new-task').disabled=false;
+        document.getElementById('qp-new-task').value='';
+        document.getElementById('qp-new-address').value='';
+        document.getElementById('qp-new-phone').value='';
+        document.getElementById('qp-new-job-number').value='';
+        document.getElementById('qp-new-task').focus();
+      }
+    };
+    document.getElementById('qp-new-task-label').textContent='Opgave';
+    document.getElementById('qp-new-task').disabled=false;
     document.getElementById('qp-new-task').value='';
     document.getElementById('qp-new-address').value='';
     document.getElementById('qp-new-phone').value='';
@@ -2215,6 +2325,7 @@ function openQuickPop(taskId,uid,dateStr,evt){
     wrap.style.display='none';
   }
   document.getElementById('qp-time').value='';
+  document.getElementById('qp-send-mail').checked=false;
   document.getElementById('qp-note').value='';
   // Position pop-up near drop target
   var pop=document.getElementById('quick-pop');
@@ -2245,11 +2356,25 @@ async function saveQuickPop(){
     })});
     if(!created||!created.ok){toast((created&&created.error)||'Kunne ikke oprette opgaven','❌');return;}
     taskId=created.id;
+  } else if(taskId){
+    // En eksisterende pool-opgave er valgt — hvis adresse/telefon/sagsnummer er rettet
+    // i felterne, gemmes rettelsen på selve opgaven, så den følger med fremover.
+    var orig=tasks.find(function(x){return String(x.id)===String(taskId);});
+    var newAddr=document.getElementById('qp-new-address').value.trim();
+    var newPhone=document.getElementById('qp-new-phone').value.trim();
+    var newJobNum=document.getElementById('qp-new-job-number').value.trim();
+    if(orig&&(newAddr!==(orig.job_address||'')||newPhone!==(orig.customer_phone||'')||newJobNum!==(orig.job_number||''))){
+      await api('/api/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({job_address:newAddr,customer_phone:newPhone,job_number:newJobNum})}).catch(function(){});
+    }
   }
-  if(!taskId){toast('Vælg eller opret en opgave','⚠');return;}
+  if(!taskId){toast('Skriv en opgave, eller vælg en fra poolen','⚠');return;}
   var body={task_id:taskId,user_id:+document.getElementById('qp-user').value,start_date:document.getElementById('qp-date').value,days:+document.getElementById('qp-days').value||1,start_time:document.getElementById('qp-time').value||null,notes:document.getElementById('qp-note').value.trim()||null};
   var r=await api('/api/assignments',{method:'POST',body:JSON.stringify(body)});
-  if(r&&r.ok){closeQuickPop();toast('Booking gemt ✓','✓');await loadAll();}
+  if(r&&r.ok){
+    var wantsMail=document.getElementById('qp-send-mail').checked;
+    closeQuickPop();toast('Booking gemt ✓','✓');await loadAll();
+    if(wantsMail&&r.id)await sendScheduledEmailForBooking(r.id,false);
+  }
   else if(r)toast(r.error||'Fejl','❌');
 }
 
@@ -2377,7 +2502,24 @@ function openTimelineDrawer(bookingId){
 }
 async function sendScheduledEmailForBooking(bookingId,alreadySent){
   if(alreadySent&&!confirm('Der er allerede sendt en planlægningsmail for denne opgave. Send den igen?'))return;
-  var r=await api('/api/assignments/'+bookingId+'/send-scheduled-email',{method:'POST'});
+  if(!emailTemplatesCache.length)await loadEmailTemplates();
+  if(!emailTemplatesCache.length){
+    // Ingen skabeloner oprettet — send bare standardmailen uden at spørge.
+    await doSendScheduledEmail(bookingId,null);
+    return;
+  }
+  document.getElementById('email-send-sub').textContent='Vælg hvilken mail kunden skal have';
+  var opts=[['','Standard (uden skabelon)']].concat(emailTemplatesCache.map(function(t){return [t.id,t.name];}));
+  document.getElementById('email-send-options').innerHTML=opts.map(function(o){
+    return '<button type="button" class="btn" style="width:100%;text-align:left;justify-content:flex-start" data-send-template="'+o[0]+'">'+esc(o[1])+'</button>';
+  }).join('');
+  document.getElementById('email-send-options').querySelectorAll('[data-send-template]').forEach(function(b){
+    b.onclick=function(){closeModal('email-send-modal');doSendScheduledEmail(bookingId,b.dataset.sendTemplate||null);};
+  });
+  document.getElementById('email-send-modal').classList.add('open');
+}
+async function doSendScheduledEmail(bookingId,templateId){
+  var r=await api('/api/assignments/'+bookingId+'/send-scheduled-email',{method:'POST',body:JSON.stringify({template_id:templateId||null})});
   if(r&&r.ok){
     toast('Planlægningsmail sendt ✓','✉️');
     await loadAll();
@@ -2632,6 +2774,12 @@ function initCustomerSearch(){
     document.getElementById('tpldrop-phone').value=c.customer_phone||'';
     document.getElementById('tpldrop-email').value=c.customer_email||'';
   });
+  bindCustomerSearch('qp-new-task','qp-new-task-suggestions',function(c){
+    document.getElementById('qp-new-task').value=c.job_name;
+    document.getElementById('qp-new-address').value=c.job_address||'';
+    document.getElementById('qp-new-phone').value=c.customer_phone||'';
+    document.getElementById('qp-new-job-number').value=c.job_number||'';
+  });
 }
 var tpldropCtx=null;
 function openTemplateDropModal(templateId,uid,ds){
@@ -2647,12 +2795,14 @@ function openTemplateDropModal(templateId,uid,ds){
   document.getElementById('tpldrop-name').value=t.name;
   document.getElementById('tpldrop-days').value=t.default_days;
   document.getElementById('tpldrop-customer-suggestions').style.display='none';
+  document.getElementById('tpldrop-send-mail').checked=false;
   document.getElementById('tpldrop-modal').classList.add('open');
 }
 async function saveTemplateDrop(){
   if(!tpldropCtx)return;
   var customer=document.getElementById('tpldrop-customer').value.trim();
   if(!customer){toast('Angiv kundens navn','⚠');return;}
+  var wantsMail=document.getElementById('tpldrop-send-mail').checked;
   var body={
     job_name:customer,name:document.getElementById('tpldrop-name').value.trim(),
     job_address:document.getElementById('tpldrop-address').value.trim(),
@@ -2672,6 +2822,7 @@ async function saveTemplateDrop(){
     closeModal('tpldrop-modal');
     tpldropCtx=null;
     await loadAll();
+    if(wantsMail&&r.booking_id)await sendScheduledEmailForBooking(r.booking_id,false);
   }else if(r)toast(r.error||'Fejl','❌');
 }
 
@@ -3827,6 +3978,48 @@ async function refreshNotifBell(){
 // SKABELONER
 // ══════════════════════════════════════════════════════════════
 var templatesCache=[];
+var emailTemplatesCache=[];
+var EMAIL_VARS=[['{{kunde}}','Kunde/sagsnavn'],['{{opgave}}','Opgavenavn'],['{{fag}}','Fag'],['{{dato}}','Dato'],['{{tidspunkt}}','Tidspunkt'],['{{medarbejder}}','Medarbejder'],['{{adresse}}','Adresse'],['{{firma}}','Firmanavn']];
+async function loadEmailTemplates(){
+  var t=await api('/api/email-templates');
+  emailTemplatesCache=t||[];
+  var el=document.getElementById('email-templates-list');
+  if(!el)return;
+  el.innerHTML=emailTemplatesCache.length?emailTemplatesCache.map(function(t){
+    return '<div class="template-row"><div><div class="dash-row-title">'+esc(t.name)+'</div><div class="dash-row-sub">'+esc(t.subject)+'</div></div>'+
+      '<span style="display:flex;gap:6px"><button class="btn small" data-action="edit-email-template" data-template-id="'+t.id+'">✏</button><button class="btn small danger" data-action="delete-email-template" data-template-id="'+t.id+'">🗑</button></span></div>';
+  }).join(''):'<div class="dash-empty">Ingen mail-skabeloner endnu — opret den første. Uden nogen skabeloner sendes en simpel standardmail.</div>';
+}
+function openEmailTemplateEditor(tpl){
+  emailTplEditCtx=tpl?tpl.id:null;
+  document.getElementById('email-tpl-edit-title').textContent=tpl?'Redigér mail-skabelon':'Ny mail-skabelon';
+  document.getElementById('email-tpl-name').value=tpl?tpl.name:'';
+  document.getElementById('email-tpl-subject').value=tpl?tpl.subject:'Din opgave er planlagt til {{dato}} — {{firma}}';
+  document.getElementById('email-tpl-body').value=tpl?tpl.body:'Hej,\n\nVi har planlagt din opgave ({{opgave}}) til {{dato}}{{tidspunkt}}.\n\nVi giver besked igen dagen før vi kommer, og når vi er færdige.\n\nVenlig hilsen\n{{firma}}';
+  var btnWrap=document.getElementById('email-tpl-var-buttons');
+  btnWrap.innerHTML=EMAIL_VARS.map(function(v){return '<button type="button" class="btn small" data-insert-var="'+esc(v[0])+'" title="'+esc(v[1])+'">'+esc(v[0])+'</button>';}).join('');
+  btnWrap.querySelectorAll('[data-insert-var]').forEach(function(b){
+    b.onclick=function(){
+      var ta=document.getElementById('email-tpl-body');
+      var pos=ta.selectionStart||ta.value.length;
+      ta.value=ta.value.slice(0,pos)+b.dataset.insertVar+ta.value.slice(pos);
+      ta.focus();ta.selectionStart=ta.selectionEnd=pos+b.dataset.insertVar.length;
+    };
+  });
+  document.getElementById('email-tpl-edit-modal').classList.add('open');
+}
+var emailTplEditCtx=null;
+async function saveEmailTemplateEditor(){
+  var name=document.getElementById('email-tpl-name').value.trim();
+  var subject=document.getElementById('email-tpl-subject').value.trim();
+  var body=document.getElementById('email-tpl-body').value.trim();
+  if(!name||!subject||!body){toast('Udfyld navn, emne og indhold','⚠');return;}
+  var payload={name:name,subject:subject,body:body};
+  var call=emailTplEditCtx?api('/api/email-templates/'+emailTplEditCtx,{method:'PUT',body:JSON.stringify(payload)}):api('/api/email-templates',{method:'POST',body:JSON.stringify(payload)});
+  var r=await call;
+  if(r&&r.ok){toast('Mail-skabelon gemt ✓','✓');closeModal('email-tpl-edit-modal');await loadEmailTemplates();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
 async function loadTemplates(){
   var t=await api('/api/templates');
   templatesCache=t||[];
@@ -3836,16 +4029,43 @@ async function loadTemplates(){
       '<span style="display:flex;gap:6px"><button class="btn small primary" data-action="use-template" data-template-id="'+t.id+'">Brug</button><button class="btn small" data-action="edit-template" data-template-id="'+t.id+'">✏</button><button class="btn small danger" data-action="delete-template" data-template-id="'+t.id+'">🗑</button></span></div>';
   }).join(''):'<div class="dash-empty">Ingen skabeloner endnu — opret den første.</div>';
 }
+var tplEditCtx=null,tplEditChecklist=[];
+function renderTplEditChecklist(){
+  var el=document.getElementById('tpl-edit-checklist');
+  el.innerHTML=tplEditChecklist.length?tplEditChecklist.map(function(t,i){
+    return '<div style="display:flex;align-items:center;gap:6px;background:var(--ice);border-radius:7px;padding:6px 8px"><span style="flex:1;font-size:11.5px">☑ '+esc(t)+'</span><button type="button" class="btn small danger" data-tpl-checklist-remove="'+i+'">×</button></div>';
+  }).join(''):'<div class="dash-empty" style="padding:8px">Ingen tjekpunkter endnu</div>';
+  el.querySelectorAll('[data-tpl-checklist-remove]').forEach(function(b){
+    b.onclick=function(){tplEditChecklist.splice(+b.dataset.tplChecklistRemove,1);renderTplEditChecklist();};
+  });
+}
 function openTemplateEditor(tpl){
-  var name=prompt('Navn på skabelon:',tpl?tpl.name:'');
-  if(!name)return;
-  var days=+prompt('Standard antal dage:',tpl?tpl.default_days:1)||1;
-  var checklistRaw=prompt('Tjekpunkter (adskil med komma):',tpl?tpl.checklist_items.join(', '):'');
-  var checklist=(checklistRaw||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
-  var typeGuess=prompt('Fag (nøgle, fx lay/sand/paint/sub/other):',tpl?tpl.type_guess:'lay')||'other';
-  var body={name:name,default_days:days,checklist_items:checklist,type_guess:typeGuess};
-  var call=tpl?api('/api/templates/'+tpl.id,{method:'PUT',body:JSON.stringify(body)}):api('/api/templates',{method:'POST',body:JSON.stringify(body)});
-  call.then(function(r){if(r&&r.ok){toast('Skabelon gemt','✓');loadTemplates();}else if(r)toast(r.error||'Fejl','❌');});
+  tplEditCtx=tpl?tpl.id:null;
+  tplEditChecklist=tpl?tpl.checklist_items.slice():[];
+  document.getElementById('tpl-edit-title').textContent=tpl?'Redigér skabelon':'Ny skabelon';
+  document.getElementById('tpl-edit-name').value=tpl?tpl.name:'';
+  document.getElementById('tpl-edit-days').value=tpl?tpl.default_days:1;
+  document.getElementById('tpl-edit-notes').value=tpl?(tpl.notes_template||''):'';
+  var sel=document.getElementById('tpl-edit-type');
+  sel.innerHTML=taskTypesList.map(function(t){return '<option value="'+esc(t.key)+'">'+esc(t.label)+'</option>';}).join('');
+  sel.value=tpl?tpl.type_guess:((taskTypesList[0]||{}).key||'lay');
+  document.getElementById('tpl-edit-checklist-new').value='';
+  renderTplEditChecklist();
+  document.getElementById('tpl-edit-modal').classList.add('open');
+}
+async function saveTemplateEditor(){
+  var name=document.getElementById('tpl-edit-name').value.trim();
+  if(!name){toast('Skriv et navn til skabelonen','⚠');return;}
+  var body={
+    name:name,default_days:+document.getElementById('tpl-edit-days').value||1,
+    type_guess:document.getElementById('tpl-edit-type').value,
+    notes_template:document.getElementById('tpl-edit-notes').value.trim()||null,
+    checklist_items:tplEditChecklist
+  };
+  var call=tplEditCtx?api('/api/templates/'+tplEditCtx,{method:'PUT',body:JSON.stringify(body)}):api('/api/templates',{method:'POST',body:JSON.stringify(body)});
+  var r=await call;
+  if(r&&r.ok){toast('Skabelon gemt ✓','✓');closeModal('tpl-edit-modal');await loadTemplates();renderPool('plan');}
+  else if(r)toast(r.error||'Fejl','❌');
 }
 function useTemplate(id){
   var t=templatesCache.find(function(x){return +x.id===+id;});
@@ -4113,7 +4333,7 @@ function bind(){
     if(page==='completed')renderCompleted();
     if(page==='capacity')setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);
     if(page==='dashboard')loadDashboard();
-    if(page==='templates')loadTemplates();
+    if(page==='templates'){loadTemplates();loadEmailTemplates();}
     if(page==='notif-settings')loadNotificationSettings();
   }
   window.addEventListener('hashchange',function(){switchPage(location.hash.slice(1));});
@@ -4124,6 +4344,17 @@ function bind(){
   document.getElementById('notifdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('notifdrop-menu').classList.toggle('open');refreshNotifBell();});
   document.addEventListener('click',function(e){if(!e.target.closest('#notifdrop'))document.getElementById('notifdrop-menu').classList.remove('open');});
   document.getElementById('new-template-btn').onclick=function(){openTemplateEditor(null);};
+  document.getElementById('new-email-template-btn').onclick=function(){openEmailTemplateEditor(null);};
+  document.getElementById('close-email-tpl-edit').onclick=function(){closeModal('email-tpl-edit-modal');};
+  document.getElementById('save-email-tpl-edit').onclick=saveEmailTemplateEditor;
+  document.getElementById('close-email-send').onclick=function(){closeModal('email-send-modal');};
+  document.getElementById('close-tpl-edit').onclick=function(){closeModal('tpl-edit-modal');};
+  document.getElementById('save-tpl-edit').onclick=saveTemplateEditor;
+  document.getElementById('tpl-edit-checklist-add').onclick=function(){
+    var el=document.getElementById('tpl-edit-checklist-new');
+    if(el.value.trim()){tplEditChecklist.push(el.value.trim());el.value='';renderTplEditChecklist();el.focus();}
+  };
+  document.getElementById('tpl-edit-checklist-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();document.getElementById('tpl-edit-checklist-add').click();}});
   initCustomerSearch();
   refreshNotifBell();
   setInterval(refreshNotifBell,90000);
@@ -4280,6 +4511,8 @@ function bind(){
       if(act==='use-template')useTemplate(+a.dataset.templateId);
       if(act==='edit-template')openTemplateEditor(templatesCache.find(function(x){return +x.id===+a.dataset.templateId;}));
       if(act==='delete-template'){if(confirm('Slet denne skabelon?'))api('/api/templates/'+a.dataset.templateId,{method:'DELETE'}).then(function(){loadTemplates();});}
+      if(act==='edit-email-template')openEmailTemplateEditor(emailTemplatesCache.find(function(x){return +x.id===+a.dataset.templateId;}));
+      if(act==='delete-email-template'){if(confirm('Slet denne mail-skabelon?'))api('/api/email-templates/'+a.dataset.templateId,{method:'DELETE'}).then(function(){loadEmailTemplates();});}
       if(act==='save-notif-rule')saveNotifRule(a.closest('.notif-rule-row'));
       if(act==='open-notif'){api('/api/notifications/'+a.dataset.notifId+'/read',{method:'PUT'}).then(function(){refreshNotifBell();if(a.dataset.link)switchPage(a.dataset.link.replace('#',''));});}
       if(act==='mark-all-read'){e.stopPropagation();api('/api/notifications/read-all',{method:'PUT'}).then(function(){refreshNotifBell();});}
@@ -4473,7 +4706,7 @@ initNoteWidget();
 
 bind();
 loadSettings();
-loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();return loadAll();});
+loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmailTemplates();return loadAll();});
 })();
 </script>
 </body>
