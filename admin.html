@@ -35,7 +35,7 @@ button,input,select{font:inherit}
 .navdrop-item{display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:8px 10px;font-size:12px;font-weight:700;color:var(--navy);background:none;border:0;border-radius:6px;cursor:pointer}
 .navdrop-item:hover{background:var(--ice)}
 .filter-dropdown{position:relative}
-.filter-dropdown-btn{width:100%;text-align:left;justify-content:flex-start;font-weight:700}
+.filter-dropdown-btn{width:100%;text-align:center;justify-content:center;font-weight:700}
 .filter-dropdown-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,.18);border:1px solid var(--border2);max-height:260px;overflow:auto;padding:5px;display:none;z-index:60}
 .filter-dropdown-menu.open{display:block}
 .filter-dropdown-item{display:block;width:100%;text-align:left;padding:8px 10px;font-size:11.5px;font-weight:600;color:var(--navy);background:none;border:0;border-radius:6px;cursor:pointer}
@@ -773,11 +773,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="panel-body">
         <div class="pool-search-wrap"><input id="plan-search" class="search" placeholder="Søg kunde eller opgave"></div>
         <button class="btn small primary" data-action="manual" style="width:100%;margin-bottom:8px">+ Manuel opgave</button>
+        <button class="btn small" id="book-visit-btn" style="width:100%;margin-bottom:8px">📅 Book kundebesøg</button>
         <div class="pool-filters">
           <div class="filter-row" id="plan-status-filters"></div>
           <div class="filter-row" id="plan-type-filters"></div>
         </div>
-        <button class="btn small" id="book-visit-btn" style="width:100%;margin-bottom:8px">📅 Book kundebesøg</button>
         <div id="plan-pool"></div>
       </div>
     </aside>
@@ -2093,7 +2093,7 @@ function renderCapacity(){
   var months={},mBtns=[];
   weeks.forEach(function(m){var mk=m.getFullYear()+'-'+m.getMonth();if(!months[mk]){months[mk]=1;mBtns.push({m:m,label:m.toLocaleDateString('da-DK',{month:'short',year:'numeric'})});}});
   var curMon=new Date().toLocaleDateString('da-DK',{month:'short',year:'numeric'});
-  document.getElementById('cap-months').innerHTML='<select class="select cap-month-select" id="cap-month-select" style="width:auto;min-width:140px">'+mBtns.map(function(x){return '<option value="'+weekKey(x.m)+'"'+(x.label===curMon?' selected':'')+'>'+esc(x.label)+'</option>';}).join('')+'</select>';
+  document.getElementById('cap-months').innerHTML='<select class="pool-filter-select cap-month-select" id="cap-month-select" style="width:auto;min-width:140px">'+mBtns.map(function(x){return '<option value="'+weekKey(x.m)+'"'+(x.label===curMon?' selected':'')+'>'+esc(x.label)+'</option>';}).join('')+'</select>';
   document.getElementById('cap-month-select').onchange=function(e){scrollToWeek(e.target.value);};
   // Render capacity stats — frie dage pr. fag i DENNE måned (skifter automatisk måned for måned)
   var capEl=document.getElementById('cap-stats');
@@ -4512,6 +4512,7 @@ function bind(){
   document.addEventListener('change',function(e){
     var sel=e.target.closest('.pool-filter-select');
     if(!sel)return;
+    if(sel.classList.contains('cap-month-select'))return; // har sin egen onchange
     if(sel.classList.contains('workforce-select')){
       var sc=sel.dataset.actionScope;
       filters[sc].team=sel.value;
