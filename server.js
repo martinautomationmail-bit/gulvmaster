@@ -236,6 +236,19 @@ async function initSchema() {
       note TEXT,
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
+
+    -- SYSTEMLOG: én fælles logbog for alt der kører automatisk i baggrunden (JobTread-
+    -- synk hver time, notifikationsscan, m.fl.) — så admin kan se om noget fejler
+    -- stille, uden at skulle ind i Renders serverlogs.
+    CREATE TABLE IF NOT EXISTS system_log (
+      id SERIAL PRIMARY KEY,
+      source TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'info',
+      message TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_system_log_created ON system_log(created_at DESC);
+
     CREATE INDEX IF NOT EXISTS idx_users_jt_vendor ON users(jt_vendor_account_id);
 
     CREATE TABLE IF NOT EXISTS gantt_tasks (
@@ -757,6 +770,18 @@ async function pgOne(sql, values = []) {
   return result.rows[0] || null;
 }
 
+// Skriver til systemloggen, så admin kan se hvad der er kørt automatisk i baggrunden
+// — synk, notifikationsscan osv. — uden at skulle ind i Renders serverlogs. Fejler
+// den selv, printes bare en konsol-advarsel; systemloggen må aldrig kunne vælte en
+// baggrundsopgave.
+async function logSystemEvent(source, level, message) {
+  try {
+    await pool.query('INSERT INTO system_log (source, level, message) VALUES ($1,$2,$3)', [source, level, String(message).slice(0, 2000)]);
+  } catch (e) {
+    console.error('Kunne ikke skrive til systemlog:', e.message);
+  }
+}
+
 // ── ONE-TIME SQLITE → POSTGRES IMPORT ───────────────────────
 const IMPORT_TABLES = {
   users: ['id', 'name', 'email', 'password_hash', 'role', 'color', 'initials', 'jobtread_name', 'active', 'created_at', 'worker_type', 'vendor_group', 'trade', 'weekly_capacity', 'can_login'],
@@ -1007,6 +1032,22 @@ app.post('/api/settings/test-completion-email', auth, adminOnly, asyncRoute(asyn
   }
 }));
 
+// Log over kunde-planlægnings/påmindelsesmails — så du selv kan se PRÆCIS hvornår
+// hver mail blev sendt, og bekræfte at "vi kommer i morgen" kun sendes når du selv
+// trykker (tidsstemplerne vil klumpe sig om det tidspunkt du trykkede, ikke kl. 15
+// hver dag, hvis det virker som det skal).
+app.get('/api/customer-schedule-emails', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await pool.query(`
+    SELECT cse.id, cse.booking_id, cse.task_id, cse.kind, cse.to_email, cse.status, cse.error, cse.sent_at,
+           t.job_name, t.name AS task_name
+    FROM customer_schedule_emails cse
+    LEFT JOIN jt_tasks t ON t.id = cse.task_id
+    ORDER BY cse.sent_at DESC
+    LIMIT 300
+  `);
+  res.json(result.rows);
+}));
+
 // Log over afsendte/fejlede færdig-mails — så man kan se om en kunde-mail
 // rent faktisk kom afsted, og hvad fejlen var hvis ikke.
 app.get('/api/completion-emails', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -1022,6 +1063,7 @@ app.get('/api/completion-emails', auth, adminOnly, asyncRoute(async (req, res) =
   `);
   res.json(result.rows);
 }));
+
 
 // ── FAG & FARVER (opgave-typer) ─────────────────────────────
 // Styrer hvilke fag/faggrupper der findes, og hvilken farve hver af dem har i
@@ -2392,6 +2434,18 @@ app.get('/api/sync/log', auth, adminOnly, asyncRoute(async (req, res) => {
   res.json(result.rows);
 }));
 
+// Samlet systemlog: JobTread-synk + alt andet der kører automatisk i baggrunden
+// (notifikationsscan m.fl.), sorteret nyest først, så det hele kan ses ét sted.
+app.get('/api/system-log', auth, adminOnly, asyncRoute(async (req, res) => {
+  const syncRows = await pool.query('SELECT id, synced_at AS created_at, status AS level, message, tasks_imported FROM sync_log ORDER BY id DESC LIMIT 100');
+  const eventRows = await pool.query('SELECT id, created_at, level, message, source FROM system_log ORDER BY id DESC LIMIT 100');
+  const combined = [
+    ...syncRows.rows.map(r => ({ source: 'jobtread_sync', level: r.level === 'ok' ? 'info' : r.level, message: r.message + (r.tasks_imported ? ` (${r.tasks_imported} opgaver)` : ''), created_at: r.created_at })),
+    ...eventRows.rows.map(r => ({ source: r.source, level: r.level, message: r.message, created_at: r.created_at }))
+  ].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  res.json(combined.slice(0, 150));
+}));
+
 // ── TASK POOL + INDEPENDENT MANUAL PLAN ──────────────────────
 app.get('/api/tasks', auth, asyncRoute(async (req, res) => {
   const result = await pool.query(`
@@ -3659,7 +3713,8 @@ async function runNotificationScan() {
       await createNotification('employee_overbooked', overbooked.rows.length + ' medarbejder(e) er overbooket i en kommende uge',
         overbooked.rows.slice(0, 5).map(r => r.name + ' (' + r.week_key + ')').join(', '), '#capacity');
     }
-  } catch (e) { console.error('Notifikationsscan (overbooked) fejlede:', e.message); }
+  } catch (e) { console.error('Notifikationsscan (overbooked) fejlede:', e.message); logSystemEvent('notification_scan', 'error', 'Delvist fejl (overbooked): ' + e.message); }
+  await logSystemEvent('notification_scan', 'info', 'Scan gennemført uden fejl.');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -4095,8 +4150,8 @@ async function start() {
   const migrationState = await pgOne("SELECT 1 FROM app_migrations WHERE name='sqlite_initial_import_20260702'");
   const migrationPending = Boolean(MIGRATION_SECRET) && !migrationState;
   if (JT_GRANT && JT_ORG && JT_AUTO_SYNC && !migrationPending) {
-    setTimeout(() => syncFromJT().catch(error => console.error('Startup sync failed:', error.message)), 5000);
-    cron.schedule('0 * * * *', () => syncFromJT().catch(error => console.error('Scheduled sync failed:', error.message)));
+    setTimeout(() => syncFromJT().catch(error => { console.error('Startup sync failed:', error.message); logSystemEvent('jobtread_sync', 'error', 'Opstarts-synk fejlede: ' + error.message); }), 5000);
+    cron.schedule('0 * * * *', () => syncFromJT().catch(error => { console.error('Scheduled sync failed:', error.message); logSystemEvent('jobtread_sync', 'error', 'Planlagt synk (hver time) fejlede: ' + error.message); }));
   } else if (migrationPending) {
     console.log('JobTread-sync er sat på pause, indtil den første SQLite-import er færdig.');
   }
@@ -4104,7 +4159,7 @@ async function start() {
   // kun når admin selv trykker på knappen (se POST /api/customer-emails/send-reminders
   // nedenfor). Notifikationsscanneren kører stadig automatisk, det er intern info,
   // ikke noget der går ud til kunder.
-  cron.schedule('15 * * * *', () => runNotificationScan().catch(e => console.error('Notifikationsscan fejlede:', e.message)));
+  cron.schedule('15 * * * *', () => runNotificationScan().catch(e => { console.error('Notifikationsscan fejlede:', e.message); logSystemEvent('notification_scan', 'error', 'Notifikationsscan fejlede: ' + e.message); }));
 }
 
 start().catch(error => {
