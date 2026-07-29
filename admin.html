@@ -49,6 +49,8 @@ button,input,select{font:inherit}
 .nb.blue{background:var(--blue);border-color:var(--blue)}
 .dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px}
 .kpi-card{background:#fff;border:1px solid var(--border2);box-shadow:var(--shadow);border-radius:10px;padding:12px 14px}
+.tab-btn-sm{border:1px solid var(--border2);background:#fff;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;margin-right:6px}
+.tab-btn-sm.active{background:var(--navy);color:#fff;border-color:var(--navy)}
 .kpi-card .kpi-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:6px}
 .kpi-card .kpi-value{font-size:24px;font-weight:800;color:var(--navy);line-height:1}
 .kpi-card .kpi-sub{font-size:10px;color:var(--muted);margin-top:4px}
@@ -622,6 +624,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="tab" data-page="availability">Ledighedsoversigt</button>
     <button class="tab" data-page="gantt">Gantt</button>
     <button class="tab" data-page="requests">Godkendelser<span class="tab-badge hidden" id="requests-badge">0</span></button>
+    <button class="tab hidden" data-page="finance" id="finance-tab-btn">💰 Økonomi</button>
   </div>
   <div class="nav-actions">
     <div class="navdrop" id="notifdrop">
@@ -756,6 +759,61 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div id="notif-settings-list" class="dash-panel"></div>
 </section>
 
+<!-- ØKONOMI (kun for is_finance_admin) -->
+<section class="page" id="page-finance">
+  <div class="page-head">
+    <div><h2>💰 Økonomi</h2></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn small" id="finance-email-report-btn">📧 Send rapport til min mail</button>
+      <button class="btn small primary" id="finance-refresh-btn">🔄 Genindlæs fra JobTread</button>
+    </div>
+  </div>
+  <div class="tabs" style="margin-bottom:16px">
+    <button class="tab-btn-sm active" data-fintab="oversigt">Oversigt</button>
+    <button class="tab-btn-sm" data-fintab="omsaetning">Omsætning pr. fag</button>
+    <button class="tab-btn-sm" data-fintab="fakturaer">Fakturaer</button>
+    <button class="tab-btn-sm" data-fintab="udgifter">Udgifter</button>
+    <button class="tab-btn-sm" data-fintab="adgang">Adgang</button>
+  </div>
+
+  <div class="fintabpage active" id="fintab-oversigt">
+    <div class="grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px">
+      <div class="kpi-card"><div class="card-eyebrow">Aktuelt øjebliksbillede</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+          <div><label class="form-label">Lunar Hovedkonto</label><input type="number" id="fin-bank-hoved" class="input"></div>
+          <div><label class="form-label">Lunar moms</label><input type="number" id="fin-bank-moms" class="input"></div>
+          <div><label class="form-label">Lunar forbrug</label><input type="number" id="fin-bank-forbrug" class="input"></div>
+          <div><label class="form-label">Tilgodehavender <span class="opt-tag">live fra fakturaer</span></label><div id="fin-tilgode-display" style="font-weight:800;color:var(--navy);font-size:16px"></div></div>
+        </div>
+        <button class="btn small primary" style="width:100%;margin-top:10px" id="fin-save-snapshot-btn">💾 Gem snapshot af i dag</button>
+        <div id="fin-snapshot-history" style="margin-top:10px;font-size:11px"></div>
+      </div>
+      <div class="kpi-card" id="fin-month-current"></div>
+      <div class="kpi-card" id="fin-month-next"></div>
+    </div>
+  </div>
+
+  <div class="fintabpage" id="fintab-omsaetning" style="display:none">
+    <div id="fin-revenue-months" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px"></div>
+  </div>
+
+  <div class="fintabpage" id="fintab-fakturaer" style="display:none">
+    <table>
+      <thead><tr><th>Kunde</th><th>Faktura</th><th class="num">Ekskl. moms</th><th class="num">Inkl. moms</th><th class="num">Saldo</th><th>Status</th><th>Note</th></tr></thead>
+      <tbody id="fin-invoices-body"></tbody>
+    </table>
+  </div>
+
+  <div class="fintabpage" id="fintab-udgifter" style="display:none">
+    <div id="fin-expense-categories"></div>
+  </div>
+
+  <div class="fintabpage" id="fintab-adgang" style="display:none">
+    <p class="muted-sm" style="margin-bottom:12px">Kun brugere herunder kan se Økonomi. Kun admin-konti kan få adgang.</p>
+    <div id="fin-access-list"></div>
+  </div>
+</section>
+
 <!-- DAGLIG PLAN -->
 <section class="page active" id="page-plan">
   <div class="slog" id="sync-log"></div>
@@ -787,6 +845,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <strong class="week-label" id="plan-label"></strong>
         <button class="btn small" id="plan-next">Næste →</button>
         <button class="btn small primary" id="plan-today">📍 I dag</button>
+        <button class="btn small" id="send-reminders-btn" title="Sender kun til kunder booket i morgen, som ikke allerede har fået denne mail">✉️ Send "vi kommer i morgen"</button>
       </div>
       <div class="workforce-bar" id="plan-workforce-filters"></div>
       <div class="board-outer">
@@ -1464,6 +1523,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <h3 id="assign-title">Rediger booking</h3>
     <div id="assign-info" class="assign-info-box"></div>
     <div id="assign-geo-hint" class="geo-hint" style="display:none"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">📍 Adresse <span class="opt-tag">ret hvis JobTread har forkert/mangler</span></label><input id="assign-address" class="input" placeholder="Gade, postnr, by"></div>
+      <div class="form-group"><label class="form-label">📞 Kundetelefon <span class="opt-tag">ret hvis JobTread har forkert/mangler</span></label><input id="assign-phone" class="input" placeholder="Fx 12 34 56 78"></div>
+    </div>
     <div class="form-group" id="assign-status-wrap">
       <label class="form-label">Status</label>
       <select id="assign-status-select" class="tld-status-select">
@@ -1725,6 +1788,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 var API='',token=localStorage.getItem('gm_token'),me=JSON.parse(localStorage.getItem('gm_user')||'null');
 if(!token||!me||me.role!=='admin'){window.location.href='/';return;}
 document.getElementById('app').style.display='block';
+(async function(){
+  try{
+    var r=await fetch((API||'')+'/api/auth/me',{headers:{'Authorization':'Bearer '+token}});
+    if(r.ok){var fresh=await r.json();me=Object.assign({},me,fresh);localStorage.setItem('gm_user',JSON.stringify(me));
+      document.getElementById('finance-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
+  }catch(e){}
+})();
 
 var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={};
 var settings={company_name:'Gulv Master Enterprise ApS',logo_url:null},library=[],selectedTaskIds={},weeklyNotesCache={};
@@ -2396,7 +2466,9 @@ function openAssign(ctx){
   var taskId=ctx.taskId||(b&&b.task_id);
   var t=tasks.find(function(x){return String(x.id)===String(taskId);});
   document.getElementById('assign-title').textContent=b?'Rediger booking':'Planlæg opgave';
-  document.getElementById('assign-info').innerHTML=t?'<strong>'+esc(t.job_name||t.name)+'</strong>'+(t.job_number?' <span style="opacity:.7">· Sag #'+esc(t.job_number)+'</span>':'')+'<br>'+esc(t.name||'')+'<br><span style="color:var(--muted)">'+esc(t.job_address||'—')+'</span>'+(t.customer_phone?'<br>📞 <a href="tel:'+esc(t.customer_phone)+'">'+esc(t.customer_phone)+'</a>':'<br><span style="color:var(--muted)">📞 Intet kundetelefonnummer</span>'):'<strong>Vælg en task fra opgavepoolen.</strong>';
+  document.getElementById('assign-info').innerHTML=t?'<strong>'+esc(t.job_name||t.name)+'</strong>'+(t.job_number?' <span style="opacity:.7">· Sag #'+esc(t.job_number)+'</span>':'')+'<br>'+esc(t.name||''):'<strong>Vælg en task fra opgavepoolen.</strong>';
+  document.getElementById('assign-address').value=t?(t.job_address||''):'';
+  document.getElementById('assign-phone').value=t?(t.customer_phone||''):'';
   document.getElementById('assign-ref').value=t?(t.start_date||'—'):'—';
   var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
   document.getElementById('assign-user').innerHTML=workforce.map(function(u){var sel=(b?+b.user_id===+u.id:+ctx.userId===+u.id)?' selected':'';return '<option value="'+u.id+'"'+sel+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
@@ -2434,7 +2506,7 @@ async function saveAssignment(){
   var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null};
   if(document.getElementById('assign-capacity-toggle').checked){body.capacity_days=+document.getElementById('assign-capacity-days').value||1;}
   var calls=[assignCtx.bookingId?api('/api/assignments/'+assignCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))})];
-  calls.push(api('/api/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({customer_email:document.getElementById('assign-email').value.trim()})}));
+  calls.push(api('/api/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({customer_email:document.getElementById('assign-email').value.trim(),job_address:document.getElementById('assign-address').value.trim(),customer_phone:document.getElementById('assign-phone').value.trim()})}));
   var results=await Promise.all(calls);
   var r=results[0];
   if(r&&(r.ok||r.id)){closeModal('assign-modal');toast('Booking gemt','✓');await loadAll();}
@@ -4113,6 +4185,190 @@ function saveNotifRule(row){
   });
 }
 
+// ══════════════════════════════════════════════════════════════
+// ØKONOMI
+// ══════════════════════════════════════════════════════════════
+var finRevenue=null,finInvoices=[],finExpenses=[];
+document.querySelectorAll('[data-fintab]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('[data-fintab]').forEach(function(b){b.classList.remove('active');});
+    document.querySelectorAll('.fintabpage').forEach(function(p){p.style.display='none';});
+    btn.classList.add('active');
+    document.getElementById('fintab-'+btn.dataset.fintab).style.display='block';
+  });
+});
+async function loadFinance(){
+  var el=document.getElementById('fin-month-current');
+  el.innerHTML='<div class="dash-empty">Henter live data fra JobTread…</div>';
+  var revenueP=api('/api/finance/revenue');
+  var invoicesP=api('/api/finance/invoices');
+  var expensesP=api('/api/finance/expenses');
+  var snapshotsP=api('/api/finance/bank-snapshots');
+  finRevenue=await revenueP; finInvoices=(await invoicesP)||[]; finExpenses=(await expensesP)||[];
+  var snapshots=(await snapshotsP)||[];
+  renderFinOverview(snapshots);
+  renderFinRevenue();
+  renderFinInvoices();
+  renderFinExpenses();
+  renderFinAccessList();
+}
+function finExpenseTotal(){var t=0;finExpenses.forEach(function(c){c.items.forEach(function(i){t+=(+i.amount||0);});});return t;}
+function finTilgodehavende(){return finInvoices.filter(function(i){return i.overrideStatus==='unpaid';}).reduce(function(s,i){return s+(+i.priceWithTax||0);},0);}
+function krFmt(n){return (n===null||n===undefined||isNaN(n))?'–':Math.round(n).toLocaleString('da-DK')+' kr';}
+
+function renderFinOverview(snapshots){
+  var latest=snapshots[0];
+  document.getElementById('fin-bank-hoved').value=latest?latest.hovedkonto:'';
+  document.getElementById('fin-bank-moms').value=latest?latest.moms:'';
+  document.getElementById('fin-bank-forbrug').value=latest?latest.forbrug:'';
+  document.getElementById('fin-tilgode-display').textContent=krFmt(finTilgodehavende());
+  document.getElementById('fin-snapshot-history').innerHTML=snapshots.slice(0,6).map(function(s){
+    return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border2)"><span class="muted-sm">'+s.snap_date+'</span><b>'+krFmt(+s.hovedkonto+ +s.moms+ +s.forbrug+ +s.tilgodehavende)+'</b></div>';
+  }).join('')||'<div class="dash-empty">Ingen snapshots endnu.</div>';
+
+  var months=finRevenue?Object.keys(finRevenue).sort():[];
+  var todayKey=iso(new Date()).slice(0,7);
+  var curKey=months.find(function(m){return m===todayKey;})||months[1];
+  var nextKey=months[months.indexOf(curKey)+1];
+  var udg=finExpenseTotal();
+  function monthBox(mk,label){
+    if(!mk||!finRevenue[mk])return '<div class="dash-empty">Ingen data</div>';
+    var m=finRevenue[mk],moms=m.total*0.25,res=m.total-udg-moms;
+    return '<div class="card-eyebrow">'+label+'</div><div style="font-size:20px;font-weight:900;color:var(--navy);margin:4px 0">'+krFmt(m.total)+'</div>'+
+      '<div class="muted-sm">'+m.jobs.length+' sager'+(m.missingBudgetCount?' · '+m.missingBudgetCount+' uden budget':'')+'</div>'+
+      '<div style="margin-top:8px;font-size:12px;display:flex;flex-direction:column;gap:3px">'+
+      '<div style="display:flex;justify-content:space-between"><span>Udgifter</span><b>'+krFmt(udg)+'</b></div>'+
+      '<div style="display:flex;justify-content:space-between"><span>Moms (25%)</span><b>'+krFmt(moms)+'</b></div>'+
+      '<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border2);padding-top:4px;margin-top:4px"><span>Resultat</span><b style="color:'+(res<0?'#B91C1C':'#003509')+'">'+krFmt(res)+'</b></div></div>';
+  }
+  document.getElementById('fin-month-current').innerHTML=monthBox(curKey,'Indeværende måned ('+curKey+')');
+  document.getElementById('fin-month-next').innerHTML=monthBox(nextKey,'Næste måned ('+nextKey+')');
+}
+document.getElementById('fin-save-snapshot-btn').onclick=async function(){
+  var body={hovedkonto:+document.getElementById('fin-bank-hoved').value||0,moms:+document.getElementById('fin-bank-moms').value||0,forbrug:+document.getElementById('fin-bank-forbrug').value||0,tilgodehavende:finTilgodehavende()};
+  var r=await api('/api/finance/bank-snapshots',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Snapshot gemt ✓','💾');var s=await api('/api/finance/bank-snapshots');renderFinOverview(s||[]);}
+  else if(r)toast(r.error||'Fejl','❌');
+};
+document.getElementById('finance-refresh-btn').onclick=loadFinance;
+document.getElementById('finance-email-report-btn').onclick=async function(){
+  var r=await api('/api/finance/email-report',{method:'POST'});
+  if(r&&r.ok)toast('Rapport sendt til din mail ✓','📧');else if(r)toast(r.error||'Fejl','❌');
+};
+
+function renderFinRevenue(){
+  var el=document.getElementById('fin-revenue-months');
+  if(!finRevenue){el.innerHTML='<div class="dash-empty">Kunne ikke hente data.</div>';return;}
+  var months=Object.keys(finRevenue).sort();
+  el.innerHTML=months.map(function(mk){
+    var m=finRevenue[mk];
+    var fagRows=Object.keys(m.byFag).map(function(f){
+      return '<tr><td>'+esc(f)+'</td><td class="num">'+m.byFag[f].count+'</td><td class="num">'+krFmt(m.byFag[f].sum)+'</td></tr>';
+    }).join('');
+    var jobRows=m.jobs.map(function(j){
+      return '<div class="dash-row"><div><div class="dash-row-title">'+esc(j.name)+(j.hasOverride?' <span class="opt-tag">rettet</span>':'')+'</div><div class="dash-row-sub">'+esc(j.fag)+'</div></div>'+
+        '<span style="display:flex;align-items:center;gap:6px">'+(j.value===null?'<span class="opt-tag" style="color:#B45309">intet budget</span>':krFmt(j.value))+
+        '<button class="btn small fin-job-edit-btn" data-jobid="'+j.jobId+'" data-jobname="'+esc(j.name)+'" data-jobval="'+(j.value===null?'':j.value)+'">✏</button></span></div>';
+    }).join('');
+    return '<div class="card"><h4 style="font-size:16px;margin-bottom:8px">'+mk+'</h4>'+
+      '<table><thead><tr><th>Fag</th><th class="num">Sager</th><th class="num">Kr.</th></tr></thead><tbody>'+fagRows+
+      '<tr class="total-row"><td>Total</td><td class="num">'+m.jobs.length+'</td><td class="num">'+krFmt(m.total)+'</td></tr></tbody></table>'+
+      '<div style="margin-top:10px;max-height:220px;overflow:auto">'+jobRows+'</div></div>';
+  }).join('');
+  el.querySelectorAll('[data-jobid]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var amount=prompt('Ret budgetværdi for "'+btn.dataset.jobname+'" (kr, ekskl. moms). Lad stå tomt for at rydde rettelsen, skriv "udelad" for at udelukke sagen helt:',btn.dataset.jobval);
+      if(amount===null)return;
+      var body={};
+      if(amount.trim().toLowerCase()==='udelad'){body={excluded:true};}
+      else{body={amount:amount.trim()===''?null:amount.trim()};}
+      api('/api/finance/job-override/'+encodeURIComponent(btn.dataset.jobid),{method:'PUT',body:JSON.stringify(body)}).then(function(r){
+        if(r&&r.ok){toast('Rettet ✓','✓');loadFinance();}else if(r)toast(r.error||'Fejl','❌');
+      });
+    });
+  });
+}
+
+function renderFinInvoices(){
+  var tbody=document.getElementById('fin-invoices-body');
+  tbody.innerHTML=finInvoices.map(function(inv,idx){
+    return '<tr><td>'+esc(inv.customer)+'</td><td class="muted-sm">'+esc(inv.fullName)+'</td>'+
+      '<td class="num">'+krFmt(inv.price)+'</td><td class="num">'+krFmt(inv.priceWithTax)+'</td><td class="num">'+krFmt(inv.balance)+'</td>'+
+      '<td><select class="input fin-inv-status" data-idx="'+idx+'" style="width:auto">'+
+        '<option value="paid" '+(inv.overrideStatus==='paid'?'selected':'')+'>✓ Betalt</option>'+
+        '<option value="unpaid" '+(inv.overrideStatus==='unpaid'?'selected':'')+'>Udestående</option>'+
+        '<option value="unclear" '+(inv.overrideStatus==='unclear'?'selected':'')+'>⚠ Uafklaret</option>'+
+      '</select></td>'+
+      '<td><input class="input fin-inv-note" data-idx="'+idx+'" value="'+esc(inv.note)+'" placeholder="Note..." style="width:160px"></td></tr>';
+  }).join('')||'<tr><td colspan="7" class="muted-sm">Ingen fakturaer fundet.</td></tr>';
+  tbody.querySelectorAll('.fin-inv-status').forEach(function(sel){
+    sel.addEventListener('change',function(e){saveFinInvoice(finInvoices[e.target.dataset.idx],e.target.value,null);});
+  });
+  tbody.querySelectorAll('.fin-inv-note').forEach(function(inp){
+    inp.addEventListener('change',function(e){saveFinInvoice(finInvoices[e.target.dataset.idx],null,e.target.value);});
+  });
+}
+async function saveFinInvoice(inv,status,note){
+  var body={status:status||inv.overrideStatus,note:note!==null?note:inv.note};
+  var r=await api('/api/finance/invoices/'+encodeURIComponent(inv.id),{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){inv.overrideStatus=body.status;inv.note=body.note;toast('Gemt ✓','✓');renderFinOverview(await api('/api/finance/bank-snapshots')||[]);}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+
+function renderFinExpenses(){
+  var el=document.getElementById('fin-expense-categories');
+  el.innerHTML=finExpenses.map(function(cat){
+    var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
+    return '<div class="exp-cat" style="border:1px solid var(--border2);border-radius:12px;margin-bottom:16px;overflow:hidden">'+
+      '<div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--ice)"><b>'+esc(cat.name)+'</b><b>'+krFmt(catTotal)+'</b></div>'+
+      '<div style="padding:8px 14px">'+cat.items.map(function(it){
+        return '<div style="display:grid;grid-template-columns:28px 1fr 120px 32px;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border2)" data-id="'+it.id+'">'+
+          '<input type="checkbox" class="fin-exp-paid" '+(it.paid?'checked':'')+'>'+
+          '<input class="input fin-exp-name" value="'+esc(it.name)+'" style="border:0;background:none">'+
+          '<input type="number" class="input fin-exp-amount" value="'+it.amount+'" style="text-align:right;border:0;background:none">'+
+          '<button class="btn small danger fin-exp-del">×</button></div>';
+      }).join('')+'</div>'+
+      '<div style="padding:0 14px 12px"><button class="btn small" data-catid="'+cat.id+'" data-action="fin-add-expense">+ Tilføj</button></div></div>';
+  }).join('');
+  el.querySelectorAll('[data-id]').forEach(function(row){
+    var id=row.dataset.id;
+    row.querySelector('.fin-exp-paid').addEventListener('change',function(e){saveFinExpense(id,row,{paid:e.target.checked});});
+    row.querySelector('.fin-exp-name').addEventListener('change',function(){saveFinExpense(id,row,{});});
+    row.querySelector('.fin-exp-amount').addEventListener('change',function(){saveFinExpense(id,row,{});});
+    row.querySelector('.fin-exp-del').addEventListener('click',function(){
+      if(confirm('Slet denne udgift?'))api('/api/finance/expenses/'+id,{method:'DELETE'}).then(function(){loadFinance();});
+    });
+  });
+  el.querySelectorAll('[data-action="fin-add-expense"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      api('/api/finance/expenses',{method:'POST',body:JSON.stringify({category_id:btn.dataset.catid,name:'Ny udgift',amount:0})}).then(function(){loadFinance();});
+    });
+  });
+}
+async function saveFinExpense(id,row,extra){
+  var body=Object.assign({name:row.querySelector('.fin-exp-name').value,amount:row.querySelector('.fin-exp-amount').value,paid:row.querySelector('.fin-exp-paid').checked},extra);
+  var r=await api('/api/finance/expenses/'+id,{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Gemt','✓');renderFinOverview(await api('/api/finance/bank-snapshots')||[]);}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+
+function renderFinAccessList(){
+  var el=document.getElementById('fin-access-list');
+  var admins=users.filter(function(u){return u.role==='admin';});
+  el.innerHTML=admins.map(function(u){
+    return '<div class="dash-row"><div class="dash-row-title">'+esc(u.name)+'</div>'+
+      '<label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" class="fin-access-cb" data-uid="'+u.id+'" '+(u.is_finance_admin?'checked':'')+(u.id===me.id?' disabled title="Du kan ikke fjerne din egen adgang herfra"':'')+'> Har adgang</label></div>';
+  }).join('')||'<div class="dash-empty">Ingen admin-brugere fundet.</div>';
+  el.querySelectorAll('.fin-access-cb').forEach(function(cb){
+    cb.addEventListener('change',function(e){
+      api('/api/users/'+e.target.dataset.uid+'/finance-access',{method:'PUT',body:JSON.stringify({grant:e.target.checked})}).then(function(r){
+        if(r&&r.ok)toast('Opdateret ✓','✓');else if(r)toast((r&&r.error)||'Fejl','❌');
+      });
+    });
+  });
+}
+
+
 // VEJLEDNING / FILBIBLIOTEK
 async function loadLibrary(){var l=await api('/api/library');library=l||[];renderLibrary();}
 function renderLibrary(){
@@ -4321,7 +4577,7 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 function bind(){
   syncStickyOffsets();window.addEventListener('resize',syncStickyOffsets);
   // Tabs
-  var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','library','logs','templates','notif-settings'];
+  var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','library','logs','templates','notif-settings','finance'];
   function switchPage(page,skipHash){
     if(VALID_PAGES.indexOf(page)===-1)page='plan';
     document.querySelectorAll('.tab,.navdrop-item').forEach(function(x){x.classList.remove('active');});
@@ -4345,6 +4601,7 @@ function bind(){
     if(page==='dashboard')loadDashboard();
     if(page==='templates'){loadTemplates();loadEmailTemplates();}
     if(page==='notif-settings')loadNotificationSettings();
+    if(page==='finance'){if(!me.is_finance_admin){toast('Du har ikke adgang til Økonomi','🔒');switchPage('plan');return;}loadFinance();}
   }
   window.addEventListener('hashchange',function(){switchPage(location.hash.slice(1));});
   document.querySelectorAll('.tab[data-page]').forEach(function(b){b.addEventListener('click',function(){switchPage(b.dataset.page);});});
@@ -4403,6 +4660,14 @@ function bind(){
   document.getElementById('plan-prev').onclick=function(){planOffset--;renderPlan();};
   document.getElementById('plan-next').onclick=function(){planOffset++;renderPlan();};
   document.getElementById('plan-today').onclick=function(){planOffset=0;renderPlan();};
+  document.getElementById('send-reminders-btn').onclick=async function(){
+    if(!confirm('Send "vi kommer i morgen" til alle kunder der er booket i morgen, og som ikke allerede har fået den?'))return;
+    var btn=this;btn.disabled=true;btn.textContent='Sender…';
+    var r=await api('/api/customer-emails/send-reminders',{method:'POST'});
+    btn.disabled=false;btn.textContent='✉️ Send "vi kommer i morgen"';
+    if(r&&r.ok)toast('Sendt til '+r.sent+' af '+r.candidates+' kunder','✉️');
+    else if(r)toast(r.error||'Kunne ikke sende','❌');
+  };
   document.getElementById('cap-today').onclick=function(){scrollToWeek(weekKey(new Date()));};
   document.getElementById('cap-groupby').onchange=function(e){capacityGroupBy=e.target.value;renderCapacity();};
   document.getElementById('avail-groupby').onchange=function(e){availGroupBy=e.target.value;renderAvailability();};

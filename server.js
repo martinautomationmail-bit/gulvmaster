@@ -192,6 +192,50 @@ async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS jt_vendor_account_id TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_finance_admin INTEGER DEFAULT 0;
+
+    -- ØKONOMI: kun synligt/tilgængeligt for brugere med is_finance_admin=1 (se
+    -- financeOnly-middleware). Alt her er bevidst adskilt fra den almindelige
+    -- planlægning, så en almindelig admin ikke ved et uheld kan se/ændre det.
+    CREATE TABLE IF NOT EXISTS finance_expense_categories (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS finance_expenses (
+      id SERIAL PRIMARY KEY,
+      category_id INTEGER REFERENCES finance_expense_categories(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      amount DOUBLE PRECISION DEFAULT 0,
+      paid INTEGER DEFAULT 0,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS finance_bank_snapshots (
+      id SERIAL PRIMARY KEY,
+      snap_date TEXT UNIQUE NOT NULL,
+      hovedkonto DOUBLE PRECISION DEFAULT 0,
+      moms DOUBLE PRECISION DEFAULT 0,
+      forbrug DOUBLE PRECISION DEFAULT 0,
+      tilgodehavende DOUBLE PRECISION DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    -- Manuel status/note pr. JobTread-faktura (dokument-id), da JobTread/Billy ikke
+    -- altid er opdateret — det er her admin selv retter "betalt/udestående/uafklaret".
+    CREATE TABLE IF NOT EXISTS finance_invoice_overrides (
+      document_id TEXT PRIMARY KEY,
+      status TEXT DEFAULT 'unpaid',
+      note TEXT,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    -- Manuel korrektion/udelukkelse af en sags budgetværdi i omsætningsberegningen
+    -- (fx en tastefejl i JobTread, eller en sag der mangler budget helt).
+    CREATE TABLE IF NOT EXISTS finance_job_overrides (
+      job_id TEXT PRIMARY KEY,
+      amount DOUBLE PRECISION,
+      excluded INTEGER DEFAULT 0,
+      note TEXT,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
     CREATE INDEX IF NOT EXISTS idx_users_jt_vendor ON users(jt_vendor_account_id);
 
     CREATE TABLE IF NOT EXISTS gantt_tasks (
@@ -476,6 +520,45 @@ async function initSchema() {
     'Vedhæftet finder du vores pleje- og vedligeholdelsesvejledning, som beskriver hvordan du bedst passer på dit nybehandlede gulv den første tid.\n\n' +
     'Mange tak for denne gang — vi håber du bliver glad for resultatet!\n\nVenlig hilsen\n{firma}'
   ]);
+
+  // ── ØKONOMI: engangs-bootstrap ──────────────────────────────
+  // Ingen har adgang til Økonomi-sektionen som standard. Første gang serveren
+  // starter uden at NOGEN har flaget, gives det automatisk til den admin med
+  // lavest id (typisk den oprindelige ejer-konto) — så der er nogen der kan
+  // tildele/fjerne adgang til andre via brugerfladen bagefter. Kører kun én
+  // gang: så snart én bruger har flaget, rører dette aldrig ved det igen.
+  const financeAdminCount = await pgOne('SELECT COUNT(*)::int AS n FROM users WHERE is_finance_admin=1');
+  if (financeAdminCount && financeAdminCount.n === 0) {
+    const firstAdmin = await pgOne("SELECT id FROM users WHERE role='admin' ORDER BY id ASC LIMIT 1");
+    if (firstAdmin) {
+      await pool.query('UPDATE users SET is_finance_admin=1 WHERE id=$1', [firstAdmin.id]);
+      console.log(`Økonomi-adgang tildelt automatisk til bruger #${firstAdmin.id} (første admin) — kan ændres under Hold & vendors.`);
+    }
+  }
+
+  // Seed standard udgiftskategorier/-poster, kun hvis tabellen er helt tom —
+  // rører aldrig ved data admin selv har rettet siden.
+  const expenseCatCount = await pgOne('SELECT COUNT(*)::int AS n FROM finance_expense_categories');
+  if (expenseCatCount && expenseCatCount.n === 0) {
+    const seedCats = [
+      ['Faste udgifter', ['Bank gebyrer:399', 'Jobtread:2100', 'Chat GPT:150', 'Shopify:920', 'Close:1400', 'Microsoft Drive:70', 'Google Drive/Gmail:500', 'Billy & Økonomic (regn.):600', 'Wordpress:350', 'Internet og telefoni:999', 'Forsikring:8000', 'Husleje:14000', 'Revisor:4250', 'Løn – Kontor/admin:60000']],
+      ['Samarbejdspartner', ['Dania VVS:0', 'MK gulvservice:5000', 'Præsidentgulve:0', 'Patrick Nørager:0', 'JAHTEK (maj):5000', 'Marcin Amagerbyg:0', 'Amir:10000', 'Novo:10000']],
+      ['Leverandør', ['Scandinovia:85000', 'Cmv:5000', 'Stark:90000', 'Floorcoat:5000', 'PPG:25000']],
+      ['Løn & Personale', ['Løn – gulvsliber:45000', 'Løn – maler:25000', 'Forsikring:8000', 'Løn – gulvlæggere:100000', 'Forsikring:8000']],
+      ['Marketing', ['Google Ads:26000', 'Nordic Ad Partner:9000', 'Esben:5000', 'Amplifly Marketing:30000']],
+      ['Transport', ['Benzin:10000', 'Parkering:6000', 'Parkering:6000', 'Forsikring:5000', 'Bro:3500']],
+    ];
+    for (let ci = 0; ci < seedCats.length; ci++) {
+      const [catName, items] = seedCats[ci];
+      const catResult = await pool.query('INSERT INTO finance_expense_categories (name, sort_order) VALUES ($1,$2) RETURNING id', [catName, ci]);
+      const catId = catResult.rows[0].id;
+      for (const item of items) {
+        const [itemName, amountStr] = item.split(':');
+        await pool.query('INSERT INTO finance_expenses (category_id, name, amount) VALUES ($1,$2,$3)', [catId, itemName, Number(amountStr) || 0]);
+      }
+    }
+    console.log('Standard udgiftskategorier oprettet under Økonomi.');
+  }
 }
 
 function secureEqual(left, right) {
@@ -656,6 +739,19 @@ function adminOnly(req, res, next) {
   next();
 }
 
+// Økonomi er bevidst strengere end almindelig adminOnly: den slår altid databasen
+// op live i stedet for at stole på JWT'en (som kan være op til 30 dage gammel og
+// derfor ikke nødvendigvis afspejler at nogens adgang lige er blevet fjernet).
+async function financeOnly(req, res, next) {
+  try {
+    const row = await pgOne('SELECT is_finance_admin FROM users WHERE id=$1 AND active=1', [req.user.id]);
+    if (!row || !row.is_finance_admin) return res.status(403).json({ error: 'Ingen adgang til Økonomi' });
+    next();
+  } catch (error) {
+    res.status(500).json({ error: 'Kunne ikke tjekke adgang' });
+  }
+}
+
 async function pgOne(sql, values = []) {
   const result = await pool.query(sql, values);
   return result.rows[0] || null;
@@ -820,13 +916,24 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
     return res.status(401).json({ error: 'Forkert email eller adgangskode' });
   }
   const token = jwt.sign({ id: user.id, name: user.name, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email, color: user.color, initials: user.initials, avatar_url: user.avatar_url } });
+  res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email, color: user.color, initials: user.initials, avatar_url: user.avatar_url, is_finance_admin: !!user.is_finance_admin } });
 }));
 
 app.get('/api/auth/me', auth, asyncRoute(async (req, res) => {
-  const user = await pgOne('SELECT id,name,email,role,color,initials,avatar_url FROM users WHERE id=$1', [req.user.id]);
+  const user = await pgOne('SELECT id,name,email,role,color,initials,avatar_url,is_finance_admin FROM users WHERE id=$1', [req.user.id]);
   if (!user) return res.status(401).json({ error: 'Bruger ikke fundet' });
   res.json(user);
+}));
+
+// Kun en eksisterende Økonomi-bruger kan give/fjerne adgang for andre — forhindrer
+// at en almindelig admin selv kan tildele sig selv adgang til de følsomme tal.
+app.put('/api/users/:id/finance-access', auth, financeOnly, asyncRoute(async (req, res) => {
+  const grant = !!(req.body || {}).grant;
+  const target = await pgOne('SELECT id,role FROM users WHERE id=$1', [req.params.id]);
+  if (!target) return res.status(404).json({ error: 'Brugeren blev ikke fundet' });
+  if (target.role !== 'admin') return res.status(400).json({ error: 'Kun admin-brugere kan få adgang til Økonomi' });
+  await pool.query('UPDATE users SET is_finance_admin=$1 WHERE id=$2', [grant ? 1 : 0, target.id]);
+  res.json({ ok: true });
 }));
 
 // ── VIRKSOMHEDSPROFIL (navn + logo til login-side og nav) ────
@@ -969,7 +1076,7 @@ app.delete('/api/task-types/:key', auth, adminOnly, asyncRoute(async (req, res) 
 // ── USERS / WORKFORCE ───────────────────────────────────────
 app.get('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await pool.query(`
-    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes
+    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin
     FROM users
     ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END,
              CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END,
@@ -3731,7 +3838,7 @@ app.post('/api/assignments/:id/send-scheduled-email', auth, adminOnly, asyncRout
 }));
 
 async function sendReminderEmails() {
-  if (!mailIsConfigured()) return;
+  if (!mailIsConfigured()) return { sent: 0, reason: 'E-mail er ikke konfigureret på serveren' };
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const iso = tomorrow.toISOString().slice(0, 10);
   // DISTINCT ON (task_id): hvis samme opgave ved en fejl er booket flere gange samme
@@ -3743,18 +3850,217 @@ async function sendReminderEmails() {
   `, [iso]);
   const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
   const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
+  let sentCount = 0;
   for (const b of rows.rows) {
     const subject = `Vi kommer i morgen — ${companyName}`;
     const text = `Hej,\n\nVi vil bare give dig besked om, at vi kommer i morgen${b.start_time ? ' kl. ' + b.start_time : ''} og udfører (${b.job_name}).\n\nVenlig hilsen\n${companyName}`;
     let status = 'sent', error = null;
-    try { await sendMailUniversal({ to: b.customer_email, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') }); }
+    try { await sendMailUniversal({ to: b.customer_email, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') }); sentCount++; }
     catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
     await pool.query('INSERT INTO customer_schedule_emails (booking_id,task_id,kind,to_email,status,error) VALUES ($1,$2,$3,$4,$5,$6)', [b.id, b.task_id, 'reminder', b.customer_email, status, error]);
     // Marker ALLE bookinger for samme opgave+dato som sendt, ikke kun den ene, så en
     // evt. duplikeret booking ikke selv trigger endnu en påmindelse i morgen.
     await pool.query(`UPDATE planning_bookings SET reminder_email_sent_at=${nowTextSQL()} WHERE task_id=$1 AND start_date=$2`, [b.task_id, iso]);
   }
+  return { sent: sentCount, candidates: rows.rows.length };
 }
+
+// Manuel udløser — admin trykker selv når de vil sende "vi kommer i morgen" til alle
+// kunder der er booket i morgen og ikke allerede har fået den. Ingen automatisk cron.
+app.post('/api/customer-emails/send-reminders', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await sendReminderEmails();
+  res.json({ ok: true, ...result });
+}));
+
+// ══════════════════════════════════════════════════════════════
+// ØKONOMI — kun for brugere med is_finance_admin=1 (se financeOnly)
+// ══════════════════════════════════════════════════════════════
+
+// Henter alle opgaver med planlagt startdato i et vindue omkring nu, og bygger
+// "hvilke sager har arbejde i gang i måned X" pr. faggruppe — samme metode som
+// blev aftalt manuelt: aktiv måned = opgavens startdato, ikke JobTreads eget
+// Status-felt (som i praksis ikke bliver opdateret løbende).
+async function fetchFinanceJobsByMonth() {
+  const today = new Date();
+  const rangeStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const rangeEnd = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+  const fmt = d => d.toISOString().slice(0, 10);
+  const allTasks = [];
+  let cursor, page = 0;
+  while (page < 10) {
+    const args = { size: 100, where: { and: [['startDate', '>=', fmt(rangeStart)], ['startDate', '<=', fmt(rangeEnd)], ['isGroup', false]] } };
+    if (cursor) args.page = cursor;
+    const data = await jtFetch({
+      query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, tasks: {
+        $: args, nextPage: {},
+        nodes: {
+          startDate: {}, endDate: {},
+          job: { id: {}, name: {}, costItems: { sum: { $: 'price' } }, customFieldValues: { $: { size: 5, where: [['customField', 'name'], 'Projekt Type'] }, nodes: { value: {} } } }
+        }
+      } } }
+    }, 'Økonomi: hent opgaver i vindue');
+    const nodes = data?.organization?.tasks?.nodes || [];
+    allTasks.push(...nodes);
+    const next = data?.organization?.tasks?.nextPage;
+    if (!next) break;
+    cursor = next;
+    page++;
+  }
+
+  const overridesResult = await pool.query('SELECT * FROM finance_job_overrides');
+  const overrides = {};
+  for (const row of overridesResult.rows) overrides[row.job_id] = row;
+
+  const monthKeys = [-1, 0, 1].map(offset => {
+    const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+    return d.toISOString().slice(0, 7);
+  });
+  const buckets = {};
+  for (const mk of monthKeys) buckets[mk] = {};
+
+  for (const t of allTasks) {
+    if (!t.job || !t.startDate) continue;
+    const mk = t.startDate.slice(0, 7);
+    if (!buckets[mk]) continue;
+    if (buckets[mk][t.job.id]) continue;
+    const override = overrides[t.job.id];
+    let value = t.job.costItems?.sum ?? null;
+    let excluded = false;
+    if (override) {
+      if (override.excluded) excluded = true;
+      else if (override.amount !== null && override.amount !== undefined) value = override.amount;
+    }
+    const fag = t.job.customFieldValues?.nodes?.[0]?.value || 'Ukendt';
+    buckets[mk][t.job.id] = { jobId: t.job.id, name: t.job.name, fag, value, excluded, hasOverride: !!override };
+  }
+
+  const result = {};
+  for (const mk of monthKeys) {
+    const jobs = Object.values(buckets[mk]).filter(j => !j.excluded);
+    const byFag = {};
+    let total = 0;
+    for (const j of jobs) {
+      byFag[j.fag] = byFag[j.fag] || { count: 0, sum: 0 };
+      byFag[j.fag].count++;
+      byFag[j.fag].sum += j.value || 0;
+      total += j.value || 0;
+    }
+    result[mk] = { jobs, byFag, total, missingBudgetCount: jobs.filter(j => j.value === null).length };
+  }
+  return result;
+}
+
+app.get('/api/finance/revenue', auth, financeOnly, asyncRoute(async (req, res) => {
+  const data = await fetchFinanceJobsByMonth();
+  res.json(data);
+}));
+
+app.put('/api/finance/job-override/:jobId', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const amount = body.amount === '' || body.amount === null || body.amount === undefined ? null : Number(body.amount);
+  const excluded = !!body.excluded;
+  const note = body.note ? String(body.note).slice(0, 500) : null;
+  await pool.query(`
+    INSERT INTO finance_job_overrides (job_id,amount,excluded,note,updated_at) VALUES ($1,$2,$3,$4,${nowTextSQL()})
+    ON CONFLICT (job_id) DO UPDATE SET amount=$2,excluded=$3,note=$4,updated_at=${nowTextSQL()}
+  `, [req.params.jobId, amount, excluded ? 1 : 0, note]);
+  res.json({ ok: true });
+}));
+
+// ── Fakturaer: live fra JobTread + manuel status-override (Billy/bank er ikke
+// tilgængelig via API, så status rettes manuelt af admin og gemmes her).
+app.get('/api/finance/invoices', auth, financeOnly, asyncRoute(async (req, res) => {
+  const data = await jtFetch({
+    query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, documents: {
+      $: { size: 100, sortBy: [{ field: 'createdAt', order: 'desc' }], where: ['type', 'customerInvoice'] },
+      count: {},
+      nodes: { id: {}, fullName: {}, createdAt: {}, price: {}, priceWithTax: {}, balance: {}, status: {}, job: { id: {}, name: {}, location: { account: { name: {} } } } }
+    } } }
+  }, 'Økonomi: hent fakturaer');
+  const nodes = data?.organization?.documents?.nodes || [];
+  const overridesResult = await pool.query('SELECT * FROM finance_invoice_overrides');
+  const overrides = {};
+  for (const row of overridesResult.rows) overrides[row.document_id] = row;
+  const invoices = nodes.filter(d => d.status !== 'denied').map(d => ({
+    id: d.id, fullName: d.fullName, customer: d.job?.location?.account?.name || d.job?.name || '',
+    createdAt: d.createdAt, price: d.price, priceWithTax: d.priceWithTax, balance: d.balance, jtStatus: d.status,
+    overrideStatus: overrides[d.id]?.status || (d.balance === 0 ? 'paid' : 'unpaid'),
+    note: overrides[d.id]?.note || ''
+  }));
+  res.json(invoices);
+}));
+
+app.put('/api/finance/invoices/:documentId', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const status = ['paid', 'unpaid', 'unclear'].includes(body.status) ? body.status : 'unpaid';
+  const note = body.note ? String(body.note).slice(0, 500) : null;
+  await pool.query(`
+    INSERT INTO finance_invoice_overrides (document_id,status,note,updated_at) VALUES ($1,$2,$3,${nowTextSQL()})
+    ON CONFLICT (document_id) DO UPDATE SET status=$2,note=$3,updated_at=${nowTextSQL()}
+  `, [req.params.documentId, status, note]);
+  res.json({ ok: true });
+}));
+
+// ── Faste udgifter ──
+app.get('/api/finance/expenses', auth, financeOnly, asyncRoute(async (req, res) => {
+  const cats = await pool.query('SELECT * FROM finance_expense_categories ORDER BY sort_order ASC');
+  const items = await pool.query('SELECT * FROM finance_expenses ORDER BY id ASC');
+  const byCategory = cats.rows.map(c => ({ ...c, items: items.rows.filter(i => i.category_id === c.id) }));
+  res.json(byCategory);
+}));
+app.post('/api/finance/expenses', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.category_id || !body.name) return res.status(400).json({ error: 'Kategori og navn skal udfyldes' });
+  const r = await pool.query('INSERT INTO finance_expenses (category_id,name,amount,paid) VALUES ($1,$2,$3,$4) RETURNING id', [body.category_id, String(body.name).slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/finance/expenses/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  await pool.query(`UPDATE finance_expenses SET name=$1,amount=$2,paid=$3,updated_at=${nowTextSQL()} WHERE id=$4`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, req.params.id]);
+  res.json({ ok: true });
+}));
+app.delete('/api/finance/expenses/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM finance_expenses WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── Bank-snapshots (erstatter manuel indtastning hver gang — gemmes rigtigt i databasen) ──
+app.get('/api/finance/bank-snapshots', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM finance_bank_snapshots ORDER BY snap_date DESC LIMIT 24');
+  res.json(rows.rows);
+}));
+app.post('/api/finance/bank-snapshots', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const today = new Date().toISOString().slice(0, 10);
+  await pool.query(`
+    INSERT INTO finance_bank_snapshots (snap_date,hovedkonto,moms,forbrug,tilgodehavende) VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (snap_date) DO UPDATE SET hovedkonto=$2,moms=$3,forbrug=$4,tilgodehavende=$5
+  `, [today, Number(body.hovedkonto) || 0, Number(body.moms) || 0, Number(body.forbrug) || 0, Number(body.tilgodehavende) || 0]);
+  res.json({ ok: true });
+}));
+
+// ── Send dagens rapport til egen mail — genbruger den eksisterende mail-opsætning ──
+app.post('/api/finance/email-report', auth, financeOnly, asyncRoute(async (req, res) => {
+  const to = req.user.email;
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
+  const revenue = await fetchFinanceJobsByMonth();
+  const expensesRows = await pool.query('SELECT fe.name,fe.amount,fe.paid,fc.name AS cat FROM finance_expenses fe JOIN finance_expense_categories fc ON fe.category_id=fc.id');
+  const totalExpenses = expensesRows.rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+  const months = Object.keys(revenue).sort();
+  const lines = ['Økonomi-rapport — Gulv Master', ''];
+  for (const mk of months) {
+    const m = revenue[mk];
+    lines.push(`${mk}: omsætning ${Math.round(m.total).toLocaleString('da-DK')} kr (${m.jobs.length} sager, ${m.missingBudgetCount} uden budget)`);
+  }
+  lines.push('', `Faste udgifter i alt: ${Math.round(totalExpenses).toLocaleString('da-DK')} kr`);
+  const text = lines.join('\n');
+  try {
+    await sendMailUniversal({ to, subject: 'Økonomi-rapport — Gulv Master', text, html: '<pre style="font-family:inherit">' + text.replace(/</g, '&lt;') + '</pre>' });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Kunne ikke sende mailen: ' + error.message });
+  }
+}));
 
 function sendPage(filename) {
   return (req, res) => {
@@ -3794,8 +4100,10 @@ async function start() {
   } else if (migrationPending) {
     console.log('JobTread-sync er sat på pause, indtil den første SQLite-import er færdig.');
   }
-  // Kunde-påmindelse dagen før (kl. 15:00) og notifikationsscan (hver time).
-  cron.schedule('0 15 * * *', () => sendReminderEmails().catch(e => console.error('Påmindelses-mails fejlede:', e.message)));
+  // OBS: kunde-påmindelsen ("vi kommer i morgen") sendes IKKE automatisk længere —
+  // kun når admin selv trykker på knappen (se POST /api/customer-emails/send-reminders
+  // nedenfor). Notifikationsscanneren kører stadig automatisk, det er intern info,
+  // ikke noget der går ud til kunder.
   cron.schedule('15 * * * *', () => runNotificationScan().catch(e => console.error('Notifikationsscan fejlede:', e.message)));
 }
 
