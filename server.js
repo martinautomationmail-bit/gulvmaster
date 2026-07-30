@@ -210,6 +210,24 @@ async function initSchema() {
       paid INTEGER DEFAULT 0,
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
+
+    -- PRIVAT BUDGET: samme mønster som Udgifter, men brugeren må selv oprette/slette
+    -- kategorier (ikke kun rette poster i faste kategorier) — det skal kunne udbygges
+    -- frit (Indtægt, Opsparing, Gæld, Aktier, Ønskeliste, osv.).
+    CREATE TABLE IF NOT EXISTS private_budget_categories (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS private_budget_items (
+      id SERIAL PRIMARY KEY,
+      category_id INTEGER REFERENCES private_budget_categories(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      amount DOUBLE PRECISION DEFAULT 0,
+      note TEXT,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     CREATE TABLE IF NOT EXISTS finance_bank_snapshots (
       id SERIAL PRIMARY KEY,
       snap_date TEXT UNIQUE NOT NULL,
@@ -571,6 +589,27 @@ async function initSchema() {
       }
     }
     console.log('Standard udgiftskategorier oprettet under Økonomi.');
+  }
+
+  const privateBudgetCatCount = await pgOne('SELECT COUNT(*)::int AS n FROM private_budget_categories');
+  if (privateBudgetCatCount && privateBudgetCatCount.n === 0) {
+    const seedPrivateCats = [
+      ['Indtægt', ['Løn:11200', 'Dubai:15000']],
+      ['Faste udgifter', ['Mad:3500', 'Intrum:400', 'SU gæld:250', 'Eos:500', 'Fitness:599', 'Travling:1000', 'Sjov og ballade:1000', 'Tennis:100', 'Boksning:399']],
+      ['Malta', ['Husleje:9400', 'Sundhedsforsikring Malta:0', 'Internet:150', 'scooter:50']],
+      ['Opsparing & Cash', ['Konto:5000', 'Demets Account:4500', 'Opsparing:5000', 'Tøj:15000', 'Adrian:50000', 'Cashgulvmaster:0', 'Cash me:46000', 'Dubai:16000']],
+      ['Gælds poster', ['September rejse:3000', 'December/Januar rejse:15000', 'Maltetisk ID:2500', 'Mor:28000', 'air bnb extra:30000']],
+    ];
+    for (let ci = 0; ci < seedPrivateCats.length; ci++) {
+      const [catName, items] = seedPrivateCats[ci];
+      const catResult = await pool.query('INSERT INTO private_budget_categories (name, sort_order) VALUES ($1,$2) RETURNING id', [catName, ci]);
+      const catId = catResult.rows[0].id;
+      for (const item of items) {
+        const [itemName, amountStr] = item.split(':');
+        await pool.query('INSERT INTO private_budget_items (category_id, name, amount) VALUES ($1,$2,$3)', [catId, itemName, Number(amountStr) || 0]);
+      }
+    }
+    console.log('Privat budget-startdata oprettet — tilføj/ret/slet frit under Økonomi → Privat budget.');
   }
 }
 
@@ -4076,6 +4115,47 @@ app.put('/api/finance/expenses/:id', auth, financeOnly, asyncRoute(async (req, r
 }));
 app.delete('/api/finance/expenses/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM finance_expenses WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── Privat budget: fuldt frit redigerbart — kategorier kan oprettes/omdøbes/slettes,
+// ikke kun poster inde i faste kategorier (modsat den almindelige Udgifter-fane).
+app.get('/api/finance/private-budget', auth, financeOnly, asyncRoute(async (req, res) => {
+  const cats = await pool.query('SELECT * FROM private_budget_categories ORDER BY sort_order ASC, id ASC');
+  const items = await pool.query('SELECT * FROM private_budget_items ORDER BY id ASC');
+  const byCategory = cats.rows.map(c => ({ ...c, items: items.rows.filter(i => i.category_id === c.id) }));
+  res.json(byCategory);
+}));
+app.post('/api/finance/private-budget/category', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
+  const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0)::int AS m FROM private_budget_categories');
+  const r = await pool.query('INSERT INTO private_budget_categories (name, sort_order) VALUES ($1,$2) RETURNING id', [String(body.name).slice(0, 200), (maxOrder ? maxOrder.m : 0) + 1]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/finance/private-budget/category/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
+  await pool.query('UPDATE private_budget_categories SET name=$1 WHERE id=$2', [String(body.name).slice(0, 200), req.params.id]);
+  res.json({ ok: true });
+}));
+app.delete('/api/finance/private-budget/category/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM private_budget_categories WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+app.post('/api/finance/private-budget/item', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.category_id || !body.name) return res.status(400).json({ error: 'Kategori og navn skal udfyldes' });
+  const r = await pool.query('INSERT INTO private_budget_items (category_id,name,amount,note) VALUES ($1,$2,$3,$4) RETURNING id', [body.category_id, String(body.name).slice(0, 200), Number(body.amount) || 0, body.note ? String(body.note).slice(0, 500) : null]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/finance/private-budget/item/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  await pool.query(`UPDATE private_budget_items SET name=$1,amount=$2,note=$3,updated_at=${nowTextSQL()} WHERE id=$4`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.note ? String(body.note).slice(0, 500) : null, req.params.id]);
+  res.json({ ok: true });
+}));
+app.delete('/api/finance/private-budget/item/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM private_budget_items WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 

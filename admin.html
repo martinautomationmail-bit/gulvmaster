@@ -192,6 +192,8 @@ button,input,select{font:inherit}
 .task-card{border:1px solid var(--border2);border-radius:7px;padding:7px 8px;margin:0 0 5px;background:#fff;cursor:grab;user-select:none;transition:.14s}
 .task-card.completed{border-color:#86EFAC;background:#F0FDF4}
 .task-done-badge{font-size:8px;font-weight:800;color:#15803D;margin-bottom:3px}
+.task-mark-done-btn{position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;border:1.5px solid #86EFAC;background:#DCFCE7;color:#15803D;font-weight:900;font-size:13px;cursor:pointer;line-height:1;z-index:2}
+.task-mark-done-btn:hover{background:#15803D;color:#fff;border-color:#15803D}
 .task-overdue{border-left:3px solid #DC2626!important}
 .task-overdue-badge{font-size:8px;font-weight:800;color:#B91C1C;margin-bottom:3px}
 .task-card:hover{box-shadow:0 3px 12px rgba(15,34,64,.12);border-color:var(--steel)}
@@ -822,6 +824,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="tab-btn-sm" data-fintab="fakturaer">Fakturaer</button>
     <button class="tab-btn-sm" data-fintab="udgifter">Udgifter</button>
     <button class="tab-btn-sm" data-fintab="adgang">Adgang</button>
+    <button class="tab-btn-sm" data-fintab="privatbudget">Privat budget</button>
   </div>
 
   <div class="fintabpage active" id="fintab-oversigt">
@@ -861,6 +864,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <p class="muted-sm" style="margin-bottom:12px">Kun brugere herunder kan se Økonomi. Kun admin-konti kan få adgang.</p>
     <div class="fin-card"><div id="fin-access-list"></div></div>
   </div>
+
+  <div class="fintabpage" id="fintab-privatbudget" style="display:none">
+    <p class="muted-sm" style="margin-bottom:12px">Frit redigerbart — ret beløb, tilføj/slet poster, og opret helt nye kategorier efter behov.</p>
+    <button class="fin-add-btn" id="fin-add-private-cat-btn">+ Ny kategori</button>
+    <div id="fin-private-budget-categories"></div>
+  </div>
 </section>
 
 <!-- DAGLIG PLAN -->
@@ -897,7 +906,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="btn small" id="send-reminders-btn" title="Sender kun til kunder booket i morgen, som ikke allerede har fået denne mail">✉️ Send "vi kommer i morgen"</button>
       </div>
       <div class="workforce-bar" id="plan-workforce-filters"></div>
-      <div class="board-outer">
+      <div class="board-outer" id="plan-board-outer">
         <table class="daily-board">
           <thead id="daily-head"></thead>
           <tbody id="daily-body"></tbody>
@@ -2037,7 +2046,8 @@ function taskCard(t,scope){
   var overdue=!planned&&!completed&&t.start_date&&String(t.start_date).slice(0,10)<iso(new Date());
   var capacityHint=scope==='capacity'&&!completed?'<div class="task-drag-hint">⠿ Træk direkte til den ønskede uge</div>':'';
   var contact=phoneMarkup(t.customer_phone,true);
-  return '<article class="task-card '+(completed?'completed':'draggable-task')+(overdue?' task-overdue':'')+'" '+(completed?'':'draggable="true"')+' '+(completed?'':'data-task-id="'+esc(t.id)+'"')+' title="'+esc(t.job_name||'')+'">'+
+  return '<article class="task-card '+(completed?'completed':'draggable-task')+(overdue?' task-overdue':'')+'" '+(completed?'':'draggable="true"')+' '+(completed?'':'data-task-id="'+esc(t.id)+'"')+' title="'+esc(t.job_name||'')+'" style="position:relative">'+
+    (planned&&!completed?'<button class="task-mark-done-btn" data-action="mark-task-done" data-task-id="'+esc(t.id)+'" title="Markér opgaven som færdig — fjerner den fra poolen">✓</button>':'')+
     (completed?'<div class="task-done-badge">✅ Færdiggjort · '+(bookings.filter(function(b){return b.task_id===t.id&&!!b.completed_at&&!isCapacityBooking(b)&&!b.invoiced;}).length?'Klar til faktura':'Faktureret')+'</div>':'')+
     (overdue?'<div class="task-overdue-badge">⚠ Startdato overskredet — planlæg snarest</div>':'')+
     '<div class="task-name">'+esc(t.job_name||'Uden kunde')+'</div>'+
@@ -2054,6 +2064,21 @@ function taskCard(t,scope){
     (t.is_visit?'<button class="btn small" style="width:100%;margin-top:6px" data-action="open-visit-form" data-task-id="'+esc(t.id)+'">📋 Besøgsformular</button>':'')+
     '<button class="btn small" style="width:100%;margin-top:4px" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjekpunkter</button>'+
     '</article>';
+}
+// Markér alle dagens bookinger for en opgave som færdige direkte fra Opgavepoolen,
+// uden at skulle ind i Daglig plan/Tidslinje først. Opgaven forsvinder herefter fra
+// de almindelige lister (se filterTasks) og kan findes under status-filteret "✅ Færdiggjort".
+async function markTaskDoneFromPool(taskId){
+  var t=tasks.find(function(x){return String(x.id)===String(taskId);});
+  if(!t)return;
+  var rows=dailyBookingsForTask(t).filter(function(b){return !b.completed_at;});
+  if(!rows.length){toast('Ingen aktive bookinger at markere færdige','⚠');return;}
+  if(!confirm('Markér "'+(t.job_name||t.name)+'" som færdig? Den fjernes fra Opgavepoolen og lægges under "✅ Færdiggjort".'))return;
+  for(var i=0;i<rows.length;i++){
+    await api('/api/assignments/'+rows[i].id+'/complete',{method:'PUT',body:JSON.stringify({completed:true})});
+  }
+  toast('Markeret som færdig ✓','✅');
+  await loadAll();
 }
 function templateCard(t){
   return '<article class="task-card template-pool-card" draggable="true" data-template-id="'+t.id+'" title="Træk ud på en dag">'+
@@ -4277,14 +4302,18 @@ async function loadFinance(){
   var invoicesP=api('/api/finance/invoices');
   var expensesP=api('/api/finance/expenses');
   var snapshotsP=api('/api/finance/bank-snapshots');
+  var privateBudgetP=api('/api/finance/private-budget');
   finRevenue=await revenueP; finInvoices=(await invoicesP)||[]; finExpenses=(await expensesP)||[];
+  finPrivateBudget=(await privateBudgetP)||[];
   var snapshots=(await snapshotsP)||[];
   renderFinOverview(snapshots);
   renderFinRevenue();
   renderFinInvoices();
   renderFinExpenses();
   renderFinAccessList();
+  renderFinPrivateBudget();
 }
+var finPrivateBudget=[];
 function finExpenseTotal(){var t=0;finExpenses.forEach(function(c){c.items.forEach(function(i){t+=(+i.amount||0);});});return t;}
 function finTilgodehavende(){return finInvoices.filter(function(i){return i.overrideStatus==='unpaid';}).reduce(function(s,i){return s+(+i.priceWithTax||0);},0);}
 function krFmt(n){return (n===null||n===undefined||isNaN(n))?'–':Math.round(n).toLocaleString('da-DK')+' kr';}
@@ -4423,6 +4452,68 @@ async function saveFinExpense(id,row,extra){
   if(r&&r.ok){toast('Gemt','✓');renderFinExpenses();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);}
   else if(r)toast(r.error||'Fejl','❌');
 }
+
+// PRIVAT BUDGET — samme visuelle mønster som Udgifter, men med fri kategori-styring
+// (opret/omdøb/slet hele sektioner, ikke kun poster inde i dem).
+function renderFinPrivateBudget(){
+  var el=document.getElementById('fin-private-budget-categories');
+  if(!el)return;
+  el.innerHTML=finPrivateBudget.map(function(cat){
+    var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
+    return '<div class="fin-cat-card">'+
+      '<div class="fin-cat-head">'+
+        '<input type="text" class="fin-privcat-name" data-catid="'+cat.id+'" value="'+esc(cat.name)+'" style="background:transparent;border:0;color:inherit;font-weight:800;font-size:13px;width:200px">'+
+        '<span style="display:flex;align-items:center;gap:10px">'+krFmt(catTotal)+
+        '<button class="fin-del-btn" data-action="fin-del-private-cat" data-catid="'+cat.id+'" title="Slet hele kategorien">×</button></span></div>'+
+      '<div class="fin-cat-body">'+cat.items.map(function(it){
+        return '<div class="fin-exp-row" style="grid-template-columns:1fr 120px 34px" data-id="'+it.id+'">'+
+          '<input type="text" class="fin-priv-name" value="'+esc(it.name)+'">'+
+          '<input type="number" class="fin-priv-amount" value="'+it.amount+'">'+
+          '<button class="fin-del-btn fin-priv-del">×</button></div>';
+      }).join('')+'</div>'+
+      '<div style="padding:0 16px"><button class="fin-add-btn" data-catid="'+cat.id+'" data-action="fin-add-private-item">+ Tilføj post</button></div></div>';
+  }).join('')||'<div class="fin-empty">Ingen kategorier endnu — tryk "+ Ny kategori" for at starte.</div>';
+
+  el.querySelectorAll('[data-id]').forEach(function(row){
+    var id=row.dataset.id;
+    row.querySelector('.fin-priv-name').addEventListener('change',function(){saveFinPrivateItem(id,row);});
+    row.querySelector('.fin-priv-amount').addEventListener('change',function(){saveFinPrivateItem(id,row);});
+    row.querySelector('.fin-priv-del').addEventListener('click',function(){
+      if(confirm('Slet denne post?'))api('/api/finance/private-budget/item/'+id,{method:'DELETE'}).then(function(){loadFinance();});
+    });
+  });
+  el.querySelectorAll('.fin-privcat-name').forEach(function(inp){
+    inp.addEventListener('change',function(e){
+      api('/api/finance/private-budget/category/'+e.target.dataset.catid,{method:'PUT',body:JSON.stringify({name:e.target.value})}).then(function(r){
+        if(r&&r.ok)toast('Omdøbt ✓','✓');else if(r)toast(r.error||'Fejl','❌');
+      });
+    });
+  });
+  el.querySelectorAll('[data-action="fin-del-private-cat"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      if(confirm('Slet hele kategorien og alle dens poster? Kan ikke fortrydes.'))
+        api('/api/finance/private-budget/category/'+btn.dataset.catid,{method:'DELETE'}).then(function(){loadFinance();});
+    });
+  });
+  el.querySelectorAll('[data-action="fin-add-private-item"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      api('/api/finance/private-budget/item',{method:'POST',body:JSON.stringify({category_id:btn.dataset.catid,name:'Ny post',amount:0})}).then(function(){loadFinance();});
+    });
+  });
+}
+async function saveFinPrivateItem(id,row){
+  var body={name:row.querySelector('.fin-priv-name').value,amount:row.querySelector('.fin-priv-amount').value};
+  var r=await api('/api/finance/private-budget/item/'+id,{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Gemt','✓');renderFinPrivateBudget();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+document.getElementById('fin-add-private-cat-btn').addEventListener('click',function(){
+  var name=prompt('Navn på ny kategori (fx "Investeringer", "Ønskeliste"):');
+  if(!name||!name.trim())return;
+  api('/api/finance/private-budget/category',{method:'POST',body:JSON.stringify({name:name.trim()})}).then(function(r){
+    if(r&&r.ok){toast('Kategori oprettet ✓','✓');loadFinance();}else if(r)toast(r.error||'Fejl','❌');
+  });
+});
 
 function renderFinAccessList(){
   var el=document.getElementById('fin-access-list');
@@ -4731,15 +4822,27 @@ function bind(){
   document.getElementById('tpl-edit-checklist-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();document.getElementById('tpl-edit-checklist-add').click();}});
   initCustomerSearch();
   // Smart sortering af Opgavepoolen er nu altid slået til (ingen til/fra-knap længere).
-  // Museknap-scroll: konverterer lodret hjulscroll til vandret scroll i de brede
-  // kalenderboards (Kapacitet, Daglig plan, Tidslinje), så en almindelig mus (ikke kun
-  // trackpad) kan navigere sidelæns uden at skulle bruge scrollbaren.
+  // Museknap-scroll: FEJL RETTET — den gamle version omdirigerede ALT lodret
+  // hjulscroll til vandret scroll, hvilket blokerede almindelig side-scroll ned,
+  // fordi musen næsten altid står over boardet (det fylder det meste af skærmen).
+  // Nu reagerer den KUN på ægte vandret intention (Shift+hjul, eller et trackpad
+  // der allerede sender en vandret bevægelse) — lodret scroll går altid igennem
+  // uhindret til siden.
   document.querySelectorAll('.board-outer,#tl-outer').forEach(function(el){
     el.addEventListener('wheel',function(e){
-      if(Math.abs(e.deltaY)>Math.abs(e.deltaX)&&el.scrollWidth>el.clientWidth){
-        el.scrollLeft+=e.deltaY;
-        e.preventDefault();
+      var wantsHorizontal=e.shiftKey||Math.abs(e.deltaX)>Math.abs(e.deltaY);
+      if(!wantsHorizontal||el.scrollWidth<=el.clientWidth)return; // lad lodret scroll gå videre til siden
+      var delta=e.shiftKey?e.deltaY:e.deltaX;
+      var atRightEdge=el.scrollLeft+el.clientWidth>=el.scrollWidth-2;
+      var atLeftEdge=el.scrollLeft<=2;
+      if(el.id==='plan-board-outer'){
+        // Daglig plan viser kun én uge ad gangen — når man scroller forbi kanten,
+        // føles det som om det "stopper ved ugen". Fortsæt i stedet til næste/forrige uge.
+        if(delta>0&&atRightEdge){e.preventDefault();document.getElementById('plan-next').click();return;}
+        if(delta<0&&atLeftEdge){e.preventDefault();document.getElementById('plan-prev').click();return;}
       }
+      el.scrollLeft+=delta;
+      e.preventDefault();
     },{passive:false});
   });
   refreshNotifBell();
@@ -4905,6 +5008,7 @@ function bind(){
       if(act==='manual')openManual();
       if(act==='open-visit-form'){e.stopPropagation();openVisitFormModal(a.dataset.taskId);}
       if(act==='open-checklist'){e.stopPropagation();openChecklistModal(a.dataset.taskId);}
+      if(act==='mark-task-done'){e.stopPropagation();markTaskDoneFromPool(a.dataset.taskId);}
       if(act==='toggle-checklist-item'){e.stopPropagation();toggleChecklistItem(+a.dataset.id,a.checked,a.dataset.container,a.dataset.taskId);}
       if(act==='delete-checklist-item'){e.stopPropagation();deleteChecklistItem(+a.dataset.id,a.dataset.container,a.dataset.taskId);}
       if(act==='goto-tasklist'){var sf=document.getElementById('tasklist-status-filter');if(sf)sf.value=a.dataset.filter;switchPage('tasklist');}
