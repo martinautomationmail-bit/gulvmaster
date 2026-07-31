@@ -903,6 +903,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div class="fintabpage" id="fintab-omsaetning" style="display:none">
+    <div id="fin-revenue-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px"></div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <select class="fin-status" id="fin-revenue-period" style="width:auto">
         <option value="1,1">Sidste, denne og næste måned (standard)</option>
@@ -920,6 +921,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div class="fintabpage" id="fintab-fakturaer" style="display:none">
+    <div id="fin-invoices-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px"></div>
     <div class="fin-card">
       <div class="fin-eyebrow">Automatiske rykker-mails</div>
       <p class="fin-muted" style="margin:-4px 0 12px">Slået fra som standard. Sender kun rigtige mails til kunder, hvis den er slået til her.</p>
@@ -949,6 +951,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div class="fintabpage" id="fintab-udgifter" style="display:none">
+    <div id="fin-expense-kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px"></div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
       <label class="form-label" style="margin:0">Måned</label>
       <input type="month" id="fin-expense-month" class="input" style="width:auto">
@@ -963,6 +966,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div class="fintabpage" id="fintab-privatbudget" style="display:none">
+    <div id="fin-privatbudget-kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px"></div>
     <p class="muted-sm" style="margin-bottom:12px">Frit redigerbart — ret beløb, tilføj/slet poster, og opret helt nye kategorier efter behov.</p>
     <button class="fin-add-btn" id="fin-add-private-cat-btn">+ Ny kategori</button>
     <div id="fin-private-budget-categories" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start"></div>
@@ -4751,7 +4755,30 @@ document.getElementById('finance-email-report-btn').onclick=async function(){
 
 var finFagFilter={};
 var finRevenueDateFrom=null,finRevenueDateTo=null;
+function renderFinRevenueKpis(){
+  var el=document.getElementById('fin-revenue-kpis');
+  if(!el||!finRevenue)return;
+  var allJobs=[];
+  Object.keys(finRevenue).forEach(function(mk){allJobs=allJobs.concat(finRevenue[mk].jobs);});
+  allJobs=allJobs.filter(function(j){
+    if(finRevenueDateFrom&&(!j.startDate||j.startDate<finRevenueDateFrom))return false;
+    if(finRevenueDateTo&&(!j.startDate||j.startDate>finRevenueDateTo))return false;
+    return true;
+  });
+  var totalOms=allJobs.reduce(function(s,j){return s+(j.value||0);},0);
+  var missing=allJobs.filter(function(j){return j.value===null;}).length;
+  var manual=allJobs.filter(function(j){return j.manual;}).length;
+  function card(label,value,sub){
+    return '<div class="fin-card"><div class="fin-eyebrow">'+label+'</div><div class="fin-kpi-value" style="font-size:22px">'+value+'</div>'+(sub?'<div class="fin-kpi-sub">'+sub+'</div>':'')+'</div>';
+  }
+  el.innerHTML=
+    card('Sager i alt',allJobs.length,'på tværs af den valgte periode')+
+    card('Samlet omsætning',krFmt(totalOms))+
+    card('Uden budget',missing,missing?'ret dem under "Noter"':'alle har en pris ✓')+
+    card('Manuelle linjer',manual,'tilføjet direkte her');
+}
 function renderFinRevenue(){
+  renderFinRevenueKpis();
   var el=document.getElementById('fin-revenue-months');
   if(!finRevenue){el.innerHTML='<div class="fin-empty">Kunne ikke hente data.</div>';return;}
   var months=Object.keys(finRevenue).sort();
@@ -4852,7 +4879,25 @@ function finInvoicesFiltered(){
   if(finInvoiceDateFilter==='week'){cut=new Date(now);cut.setDate(cut.getDate()-7);}
   return finInvoices.filter(function(inv){return inv.createdAt&&new Date(inv.createdAt)>=cut;});
 }
+function renderFinInvoiceKpis(){
+  var el=document.getElementById('fin-invoices-kpis');
+  if(!el)return;
+  function bucket(status){return finInvoices.filter(function(i){return i.overrideStatus===status;});}
+  var paid=bucket('paid'),partial=bucket('partial'),unpaid=bucket('unpaid'),unclear=bucket('unclear');
+  function sum(list,field){return list.reduce(function(s,i){return s+(i[field]||0);},0);}
+  function card(label,count,amount,cls){
+    return '<div class="fin-card"><div class="fin-eyebrow">'+label+'</div>'+
+      '<div class="fin-kpi-value '+(cls||'')+'" style="font-size:22px">'+count+'</div>'+
+      '<div class="fin-kpi-sub">'+krFmt(amount)+'</div></div>';
+  }
+  el.innerHTML=
+    card('✓ Betalt',paid.length,sum(paid,'priceWithTax'))+
+    card('◐ Delvist betalt',partial.length,sum(partial,'remaining'))+
+    card('Udestående',unpaid.length,sum(unpaid,'priceWithTax'))+
+    card('⚠ Uafklaret',unclear.length,sum(unclear,'priceWithTax'));
+}
 function renderFinInvoices(){
+  renderFinInvoiceKpis();
   var tbody=document.getElementById('fin-invoices-body');
   var list=finInvoicesFiltered();
   tbody.innerHTML=list.map(function(inv){
@@ -4906,7 +4951,21 @@ async function saveFinInvoice(inv,status,note,paidAmount){
   else if(r)toast(r.error||'Fejl','❌');
 }
 
+function renderFinExpenseKpis(){
+  var el=document.getElementById('fin-expense-kpis');
+  if(!el)return;
+  var allItems=[];
+  finExpenses.forEach(function(cat){allItems=allItems.concat(cat.items);});
+  var total=allItems.reduce(function(s,i){return s+(+i.amount||0);},0);
+  var paidSum=allItems.filter(function(i){return i.paid;}).reduce(function(s,i){return s+(+i.amount||0);},0);
+  var remaining=total-paidSum;
+  function card(label,value,cls){
+    return '<div class="fin-card"><div class="fin-eyebrow">'+label+'</div><div class="fin-kpi-value '+(cls||'')+'" style="font-size:24px">'+krFmt(value)+'</div></div>';
+  }
+  el.innerHTML=card('Samlede udgifter',total)+card('Betalt',paidSum,'pos')+card('Mangler at betale',remaining,remaining>0?'neg':'pos');
+}
 function renderFinExpenses(){
+  renderFinExpenseKpis();
   var el=document.getElementById('fin-expense-categories');
   document.getElementById('fin-expense-month').value=finExpenseMonth;
   var todayMonth=new Date().toISOString().slice(0,7);
@@ -4963,7 +5022,22 @@ async function saveFinExpense(id,row,extra){
 
 // PRIVAT BUDGET — samme visuelle mønster som Udgifter, men med fri kategori-styring
 // (opret/omdøb/slet hele sektioner, ikke kun poster inde i dem).
+function renderFinPrivateBudgetKpis(){
+  var el=document.getElementById('fin-privatbudget-kpis');
+  if(!el)return;
+  var income=0,other=0;
+  finPrivateBudget.forEach(function(cat){
+    var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
+    if(/indt[æa]gt/i.test(cat.name))income+=catTotal;else other+=catTotal;
+  });
+  var net=income-other;
+  function card(label,value,cls){
+    return '<div class="fin-card"><div class="fin-eyebrow">'+label+'</div><div class="fin-kpi-value '+(cls||'')+'" style="font-size:24px">'+krFmt(value)+'</div></div>';
+  }
+  el.innerHTML=card('Indtægt',income,'pos')+card('Alt andet (udgifter, gæld, opsparing mv.)',other)+card('Netto',net,net>=0?'pos':'neg');
+}
 function renderFinPrivateBudget(){
+  renderFinPrivateBudgetKpis();
   var el=document.getElementById('fin-private-budget-categories');
   if(!el)return;
   el.innerHTML=finPrivateBudget.map(function(cat){
