@@ -84,13 +84,13 @@ button,input,select{font:inherit}
 #page-finance select.fin-status.st-partial{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
 #page-finance .fin-note-input{border:1.5px solid var(--border);border-radius:7px;padding:6px 8px;font-size:11.5px;width:100%;background:#fff}
 #page-finance .fin-cat-card{background:#fff;border:1px solid var(--border2);border-radius:12px;margin-bottom:14px;overflow:hidden;box-shadow:0 4px 16px rgba(15,34,64,.06)}
-#page-finance .fin-cat-card.fin-resizable{resize:both;overflow:auto;width:340px;min-width:260px;min-height:180px;max-width:100%;margin-bottom:0;cursor:default}
+#page-finance .fin-resizable{resize:both;overflow:auto;width:340px;min-width:260px;min-height:180px;max-width:100%;margin-bottom:0;cursor:default}
 #page-finance .fin-cat-card.fin-resizable .fin-cat-head{cursor:grab}
 #page-finance .fin-cat-card.fin-resizable.fin-dragging{opacity:.4}
 #page-finance .fin-cat-card.fin-resizable.fin-drop-target{outline:2px dashed var(--blue);outline-offset:2px}
-#page-finance .fin-cat-head{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:var(--ice);font-weight:800;color:var(--navy);font-size:13px}
-#page-finance .fin-cat-body{padding:4px 16px}
-#page-finance .fin-exp-row{display:grid;grid-template-columns:24px 1fr 120px 34px;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2)}
+#page-finance .fin-cat-head{display:flex;justify-content:space-between;align-items:center;padding:13px 20px;background:var(--ice);font-weight:800;color:var(--navy);font-size:13px}
+#page-finance .fin-cat-body{padding:8px 20px}
+#page-finance .fin-exp-row{display:grid;grid-template-columns:24px 1fr 120px 34px;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border2)}
 #page-finance .fin-exp-row:last-of-type{border-bottom:none}
 #page-finance .fin-exp-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--blue);cursor:pointer}
 #page-finance .fin-exp-row input[type=text],#page-finance .fin-exp-row input[type=number]{border:1.5px solid transparent;background:transparent;border-radius:6px;padding:5px 7px;font-size:12.5px;font-family:inherit;color:var(--ink)}
@@ -874,12 +874,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div class="fintabpage" id="fintab-omsaetning" style="display:none">
-    <select class="fin-status" id="fin-revenue-period" style="width:auto;margin-bottom:14px">
-      <option value="1,1">Sidste, denne og næste måned (standard)</option>
-      <option value="3,1">Sidste 3 måneder</option>
-      <option value="6,1">Sidste 6 måneder</option>
-      <option value="12,1">Hele året (12 mdr. bagud)</option>
-    </select>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <select class="fin-status" id="fin-revenue-period" style="width:auto">
+        <option value="1,1">Sidste, denne og næste måned (standard)</option>
+        <option value="3,1">Sidste 3 måneder</option>
+        <option value="6,1">Sidste 6 måneder</option>
+        <option value="12,1">Hele året (12 mdr. bagud)</option>
+      </select>
+      <span class="fin-muted">Vis kun opgaver med startdato:</span>
+      <input type="date" id="fin-revenue-date-from" class="input" style="width:auto">
+      <span class="fin-muted">til</span>
+      <input type="date" id="fin-revenue-date-to" class="input" style="width:auto">
+      <button class="btn small" id="fin-revenue-date-clear">✕ Ryd datofilter</button>
+    </div>
     <div id="fin-revenue-months" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px"></div>
   </div>
 
@@ -907,12 +914,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <option value="year">Dette år</option>
     </select>
     <table class="fin-table">
-      <thead><tr><th>Kunde</th><th>Faktura</th><th class="fin-num">Ekskl. moms</th><th class="fin-num">Inkl. moms</th><th class="fin-num">Saldo</th><th>Status</th><th>Note</th></tr></thead>
+      <thead><tr><th>Kunde</th><th>Faktura</th><th class="fin-num">Ekskl. moms</th><th class="fin-num">Inkl. moms</th><th class="fin-num">Saldo</th><th>Status</th><th>Note</th><th>Rykker</th></tr></thead>
       <tbody id="fin-invoices-body"></tbody>
     </table>
   </div>
 
   <div class="fintabpage" id="fintab-udgifter" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <label class="form-label" style="margin:0">Måned</label>
+      <input type="month" id="fin-expense-month" class="input" style="width:auto">
+      <span class="fin-muted" id="fin-expense-month-hint"></span>
+    </div>
     <div id="fin-expense-categories" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start"></div>
   </div>
 
@@ -2060,6 +2072,33 @@ function makeFinBoxesDraggable(container,boxSelector,onReorder){
       var order=Array.prototype.slice.call(container.querySelectorAll(boxSelector)).map(function(c){return c.dataset.dragId;});
       if(onReorder)onReorder(order);
     });
+  });
+}
+// Gemmer den størrelse Martin selv trækker en boks til (nederste højre hjørne, browserens
+// indbyggede resize:both) — ellers sprang den tilbage til standardstørrelsen ved genindlæsning.
+function makeFinBoxesResizable(container,boxSelector,panel){
+  container.querySelectorAll(boxSelector).forEach(function(card){
+    if(card._finResizeObserved)return;
+    card._finResizeObserved=true;
+    var saveTimer=null;
+    new ResizeObserver(function(){
+      clearTimeout(saveTimer);
+      saveTimer=setTimeout(function(){
+        var id=card.dataset.dragId;
+        if(!id)return;
+        api('/api/finance/panel-box-size',{method:'PUT',body:JSON.stringify({panel:panel,boxId:id,width:card.offsetWidth,height:card.offsetHeight})});
+      },600);
+    }).observe(card);
+  });
+}
+async function applyFinPanelBoxSizes(panel,containerId,boxSelector){
+  var sizes=await api('/api/finance/panel-box-size/'+panel);
+  if(!sizes)return;
+  var container=document.getElementById(containerId);
+  if(!container)return;
+  container.querySelectorAll(boxSelector).forEach(function(card){
+    var s=sizes[card.dataset.dragId];
+    if(s&&s.width&&s.height){card.style.width=s.width+'px';card.style.height=s.height+'px';}
   });
 }
 function logout(){localStorage.removeItem('gm_token');localStorage.removeItem('gm_user');window.location.href='/';}
@@ -4444,19 +4483,26 @@ document.querySelectorAll('[data-fintab]').forEach(function(btn){
     document.getElementById('fintab-'+btn.dataset.fintab).style.display='block';
   });
 });
+var finExpenseMonth=new Date().toISOString().slice(0,7);
 async function loadFinance(){
   var el=document.getElementById('fin-month-current');
   el.innerHTML='<div class="dash-empty">Henter live data fra JobTread…</div>';
   var revenueP=api('/api/finance/revenue');
   var invoicesP=api('/api/finance/invoices');
-  var expensesP=api('/api/finance/expenses');
+  var expensesP=api('/api/finance/expenses?month='+finExpenseMonth);
   var snapshotsP=api('/api/finance/bank-snapshots');
   var privateBudgetP=api('/api/finance/private-budget');
   var dunningSettingsP=api('/api/finance/dunning-settings');
   var dunningLogP=api('/api/finance/dunning-log');
-  finRevenue=await revenueP; finInvoices=(await invoicesP)||[]; finExpenses=(await expensesP)||[];
+  finRevenue=await revenueP; finInvoices=(await invoicesP)||[];
+  var expensesResult=await expensesP;
+  finExpenses=(expensesResult&&expensesResult.categories)||[];
   finPrivateBudget=(await privateBudgetP)||[];
   var snapshots=(await snapshotsP)||[];
+  // Hent det rigtige udgiftstal for HVER af de tre måneder grafen viser, i stedet for
+  // at antage samme beløb overalt.
+  var revMonths=finRevenue?Object.keys(finRevenue).sort():[];
+  finExpenseTotalsByMonth=revMonths.length?(await api('/api/finance/expenses-totals?months='+revMonths.join(','))||{}):{};
   renderFinOverview(snapshots);
   renderFinRevenue();
   renderFinInvoices();
@@ -4465,14 +4511,17 @@ async function loadFinance(){
   renderFinPrivateBudget();
   renderFinDunning(await dunningSettingsP,(await dunningLogP)||[]);
   await applyFinPanelOrder('oversigt','fin-oversigt-boxes','.fin-resizable');
+  await applyFinPanelBoxSizes('oversigt','fin-oversigt-boxes','.fin-resizable');
   if(!window._finOversigtDragBound){
     window._finOversigtDragBound=true;
     var oversigtEl=document.getElementById('fin-oversigt-boxes');
     makeFinBoxesDraggable(oversigtEl,'.fin-resizable',function(order){
       api('/api/finance/panel-order',{method:'PUT',body:JSON.stringify({panel:'oversigt',order:order})});
     });
+    makeFinBoxesResizable(oversigtEl,'.fin-resizable','oversigt');
   }
 }
+var finExpenseTotalsByMonth={};
 // Genskaber den rækkefølge Martin sidst trak boksene til, ved at flytte DOM-elementer
 // (identificeret via data-drag-id) i den gemte rækkefølge — kaldes efter statisk markup
 // er sat op, før den nye drag-lytter bindes.
@@ -4533,10 +4582,13 @@ function renderFinOverview(snapshots){
   var curKey=months.find(function(m){return m===todayKey;})||months[1];
   var prevKey=months[months.indexOf(curKey)-1];
   var nextKey=months[months.indexOf(curKey)+1];
-  var udg=finExpenseTotal();
+  function udgForMonth(mk){
+    if(mk&&finExpenseTotalsByMonth&&finExpenseTotalsByMonth[mk]!=null)return finExpenseTotalsByMonth[mk];
+    return mk===finExpenseMonth?finExpenseTotal():0;
+  }
   function monthBox(mk,label){
     if(!mk||!finRevenue[mk])return '<div class="fin-empty">Ingen data</div>';
-    var m=finRevenue[mk],moms=m.total*0.25,res=m.total-udg-moms;
+    var m=finRevenue[mk],udg=udgForMonth(mk),moms=m.total*0.25,res=m.total-udg-moms;
     return '<div class="fin-eyebrow">'+label+'</div><div class="fin-kpi-value">'+krFmt(m.total)+'</div>'+
       '<div class="fin-kpi-sub">'+m.jobs.length+' sager'+(m.missingBudgetCount?' · '+m.missingBudgetCount+' uden budget':'')+'</div>'+
       '<div style="margin-top:14px">'+
@@ -4546,7 +4598,7 @@ function renderFinOverview(snapshots){
   }
   document.getElementById('fin-month-current').innerHTML=monthBox(curKey,'Indeværende måned ('+curKey+')');
   document.getElementById('fin-month-next').innerHTML=monthBox(nextKey,'Næste måned ('+nextKey+')');
-  renderFinTrendChart(prevKey,curKey,nextKey,udg);
+  renderFinTrendChart(prevKey,curKey,nextKey,udgForMonth);
 }
 // Forgangen måned: rigtig omsætning = betalte + delvist betalte fakturaer UDSTEDT den
 // måned (delvis tæller kun det faktisk modtagne beløb). Indeværende/næste måned bruger
@@ -4561,7 +4613,7 @@ function finInvoiceRevenueForMonth(mk){
   },0);
 }
 var finTrendChartInstance=null;
-function renderFinTrendChart(prevKey,curKey,nextKey,udg){
+function renderFinTrendChart(prevKey,curKey,nextKey,udgForMonth){
   var canvas=document.getElementById('fin-trend-chart');
   if(!canvas||typeof Chart==='undefined')return;
   var labels=[],omsD=[],udgD=[],resD=[];
@@ -4569,6 +4621,7 @@ function renderFinTrendChart(prevKey,curKey,nextKey,udg){
     var mk=pair[0];
     if(!mk){labels.push(pair[1]);omsD.push(0);udgD.push(0);resD.push(0);return;}
     var oms=mk===prevKey?finInvoiceRevenueForMonth(mk):((finRevenue[mk]||{}).total||0);
+    var udg=udgForMonth(mk);
     var res=oms-udg-oms*0.25;
     labels.push(pair[1]+' ('+mk+')');omsD.push(oms);udgD.push(udg);resD.push(res);
   });
@@ -4592,6 +4645,19 @@ document.getElementById('fin-save-snapshot-btn').onclick=async function(){
   else if(r)toast(r.error||'Fejl','❌');
 };
 document.getElementById('finance-refresh-btn').onclick=loadFinance;
+document.getElementById('fin-revenue-date-from').addEventListener('change',function(e){finRevenueDateFrom=e.target.value||null;renderFinRevenue();});
+document.getElementById('fin-revenue-date-to').addEventListener('change',function(e){finRevenueDateTo=e.target.value||null;renderFinRevenue();});
+document.getElementById('fin-revenue-date-clear').addEventListener('click',function(){
+  finRevenueDateFrom=null;finRevenueDateTo=null;
+  document.getElementById('fin-revenue-date-from').value='';
+  document.getElementById('fin-revenue-date-to').value='';
+  renderFinRevenue();
+});
+document.getElementById('fin-expense-month').addEventListener('change',function(e){
+  if(!e.target.value)return;
+  finExpenseMonth=e.target.value;
+  loadFinance();
+});
 document.getElementById('fin-invoice-date-filter').addEventListener('change',function(e){finInvoiceDateFilter=e.target.value;renderFinInvoices();});
 document.getElementById('fin-revenue-period').addEventListener('change',async function(e){
   var parts=e.target.value.split(',');
@@ -4608,12 +4674,25 @@ document.getElementById('finance-email-report-btn').onclick=async function(){
 };
 
 var finFagFilter={};
+var finRevenueDateFrom=null,finRevenueDateTo=null;
 function renderFinRevenue(){
   var el=document.getElementById('fin-revenue-months');
   if(!finRevenue){el.innerHTML='<div class="fin-empty">Kunne ikke hente data.</div>';return;}
   var months=Object.keys(finRevenue).sort();
   el.innerHTML=months.map(function(mk){
-    var m=finRevenue[mk];
+    var mAll=finRevenue[mk];
+    // Dato-filter: kun sager hvis planlagte startdato falder i det valgte interval.
+    var dateFilteredJobs=mAll.jobs.filter(function(j){
+      if(finRevenueDateFrom&&(!j.startDate||j.startDate<finRevenueDateFrom))return false;
+      if(finRevenueDateTo&&(!j.startDate||j.startDate>finRevenueDateTo))return false;
+      return true;
+    });
+    var byFag={},total=0;
+    dateFilteredJobs.forEach(function(j){
+      byFag[j.fag]=byFag[j.fag]||{count:0,sum:0};
+      byFag[j.fag].count++;byFag[j.fag].sum+=(j.value||0);total+=(j.value||0);
+    });
+    var m={jobs:dateFilteredJobs,byFag:byFag,total:total,missingBudgetCount:dateFilteredJobs.filter(function(j){return j.value===null;}).length};
     var activeFag=finFagFilter[mk];
     var fagRows=Object.keys(m.byFag).map(function(f){
       return '<tr class="fin-fag-row-clickable'+(activeFag===f?' fin-fag-active':'')+'" data-month="'+mk+'" data-fag="'+esc(f)+'"><td>'+esc(f)+'</td><td class="fin-num">'+m.byFag[f].count+'</td><td class="fin-num">'+krFmt(m.byFag[f].sum)+'</td></tr>';
@@ -4621,7 +4700,7 @@ function renderFinRevenue(){
     var visibleJobs=activeFag?m.jobs.filter(function(j){return j.fag===activeFag;}):m.jobs;
     var jobRows=visibleJobs.map(function(j){
       var editAttrs='data-jobid="'+j.jobId+'" data-jobname="'+esc(j.name)+'" data-jobval="'+(j.value===null?'':j.value)+'" data-manual="'+(j.manual?'1':'0')+'" data-manualid="'+(j.manualId||'')+'"';
-      return '<div class="fin-job-row"><div><b>'+esc(j.name)+'</b>'+(j.hasOverride?' <span class="fin-badge ok">rettet</span>':'')+(j.manual?' <span class="fin-badge ok">manuel</span>':'')+'<div class="fin-muted">'+esc(j.fag)+'</div></div>'+
+      return '<div class="fin-job-row"><div><b>'+esc(j.name)+'</b>'+(j.hasOverride?' <span class="fin-badge ok">rettet</span>':'')+(j.manual?' <span class="fin-badge ok">manuel</span>':'')+'<div class="fin-muted">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div></div>'+
         '<span style="display:flex;align-items:center;gap:4px;white-space:nowrap">'+(j.value===null?'<span class="fin-badge">intet budget</span>':krFmt(j.value))+
         '<button class="fin-edit-btn fin-job-edit-btn" '+editAttrs+' title="Ret beløb">✏</button>'+
         '<button class="fin-edit-btn fin-job-del-btn" '+editAttrs+' title="'+(j.manual?'Slet linjen':'Udeluk fra beregningen')+'" style="color:#B91C1C">🗑</button></span></div>';
@@ -4706,6 +4785,7 @@ function renderFinInvoices(){
       '<div style="margin-top:4px;display:flex;gap:6px;align-items:center">'+
         '<input type="number" class="fin-note-input fin-inv-paidamount" data-idx="'+idx+'" value="'+(inv.paidAmount!==null?inv.paidAmount:'')+'" placeholder="Betalt beløb" style="width:110px">'+
         '<span class="fin-muted">rest: '+(inv.remaining!==null?krFmt(inv.remaining):'–')+'</span></div>':'';
+    var canDun=inv.overrideStatus==='unpaid'||inv.overrideStatus==='partial';
     return '<tr><td><b>'+esc(inv.customer)+'</b></td><td class="fin-muted">'+esc(inv.fullName)+' · '+esc((inv.createdAt||'').slice(0,10))+'</td>'+
       '<td class="fin-num">'+krFmt(inv.price)+'</td><td class="fin-num">'+krFmt(inv.priceWithTax)+'</td><td class="fin-num">'+krFmt(inv.balance)+'</td>'+
       '<td><select class="fin-status st-'+inv.overrideStatus+' fin-inv-status" data-idx="'+idx+'">'+
@@ -4714,8 +4794,9 @@ function renderFinInvoices(){
         '<option value="unpaid" '+(inv.overrideStatus==='unpaid'?'selected':'')+'>Udestående</option>'+
         '<option value="unclear" '+(inv.overrideStatus==='unclear'?'selected':'')+'>⚠ Uafklaret</option>'+
       '</select>'+partialInfo+'</td>'+
-      '<td><input class="fin-note-input fin-inv-note" data-idx="'+idx+'" value="'+esc(inv.note)+'" placeholder="Note..."></td></tr>';
-  }).join('')||'<tr><td colspan="7" class="fin-empty">Ingen fakturaer i denne periode.</td></tr>';
+      '<td><input class="fin-note-input fin-inv-note" data-idx="'+idx+'" value="'+esc(inv.note)+'" placeholder="Note..."></td>'+
+      '<td>'+(canDun?'<button class="btn small fin-send-rykker-btn" data-idx="'+idx+'">✉️ Send rykker</button>':'<span class="fin-muted">—</span>')+'</td></tr>';
+  }).join('')||'<tr><td colspan="8" class="fin-empty">Ingen fakturaer i denne periode.</td></tr>';
   tbody.querySelectorAll('.fin-inv-status').forEach(function(sel){
     sel.addEventListener('change',function(e){saveFinInvoice(finInvoices[e.target.dataset.idx],e.target.value,null,undefined);});
   });
@@ -4725,16 +4806,35 @@ function renderFinInvoices(){
   tbody.querySelectorAll('.fin-inv-paidamount').forEach(function(inp){
     inp.addEventListener('change',function(e){saveFinInvoice(finInvoices[e.target.dataset.idx],'partial',null,e.target.value);});
   });
+  tbody.querySelectorAll('.fin-send-rykker-btn').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var inv=finInvoices[btn.dataset.idx];
+      if(!await gmConfirm('Send en rykker-mail til '+inv.customer+' nu, for "'+inv.fullName+'"?'))return;
+      btn.disabled=true;btn.textContent='Sender…';
+      var r=await api('/api/finance/dunning-send/'+encodeURIComponent(inv.id),{method:'POST'});
+      btn.disabled=false;btn.textContent='✉️ Send rykker';
+      if(r&&r.ok)toast('Rykker '+r.level+' sendt til '+r.toEmail,'✓');
+      else if(r)toast(r.error||'Kunne ikke sende','❌');
+    });
+  });
 }
 async function saveFinInvoice(inv,status,note,paidAmount){
   var body={status:status||inv.overrideStatus,note:note!==null&&note!==undefined?note:inv.note,paidAmount:paidAmount!==undefined?paidAmount:inv.paidAmount};
   var r=await api('/api/finance/invoices/'+encodeURIComponent(inv.id),{method:'PUT',body:JSON.stringify(body)});
-  if(r&&r.ok){inv.overrideStatus=body.status;inv.note=body.note;inv.paidAmount=body.paidAmount!==''&&body.paidAmount!==null?+body.paidAmount:null;toast('Gemt ✓','✓');renderFinInvoices();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);}
+  if(r&&r.ok){
+    inv.overrideStatus=body.status;inv.note=body.note;
+    inv.paidAmount=body.paidAmount!==''&&body.paidAmount!==null?+body.paidAmount:null;
+    inv.remaining=(inv.overrideStatus==='partial'&&inv.paidAmount!=null)?Math.max(0,(inv.priceWithTax||0)-inv.paidAmount):null;
+    toast('Gemt ✓','✓');renderFinInvoices();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);
+  }
   else if(r)toast(r.error||'Fejl','❌');
 }
 
 function renderFinExpenses(){
   var el=document.getElementById('fin-expense-categories');
+  document.getElementById('fin-expense-month').value=finExpenseMonth;
+  var todayMonth=new Date().toISOString().slice(0,7);
+  document.getElementById('fin-expense-month-hint').textContent=finExpenseMonth===todayMonth?'Indeværende måned':(finExpenseMonth<todayMonth?'Historisk måned':'Fremtidig måned');
   el.innerHTML=finExpenses.map(function(cat){
     var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
     return '<div class="fin-cat-card fin-resizable" draggable="true" data-drag-id="'+cat.id+'">'+
@@ -4745,8 +4845,8 @@ function renderFinExpenses(){
           '<input type="text" class="fin-exp-name" value="'+esc(it.name)+'">'+
           '<input type="number" class="fin-exp-amount" value="'+it.amount+'">'+
           '<button class="fin-del-btn fin-exp-del">×</button></div>';
-      }).join('')+'</div>'+
-      '<div style="padding:0 16px"><button class="fin-add-btn" data-catid="'+cat.id+'" data-action="fin-add-expense">+ Tilføj udgift</button></div></div>';
+      }).join('')+(cat.items.length?'':'<div class="fin-empty">Ingen poster denne måned.</div>')+'</div>'+
+      '<div style="padding:0 20px 14px"><button class="fin-add-btn" style="width:100%" data-catid="'+cat.id+'" data-action="fin-add-expense">+ Tilføj udgift</button></div></div>';
   }).join('');
   el.querySelectorAll('[data-id]').forEach(function(row){
     var id=row.dataset.id;
@@ -4759,19 +4859,29 @@ function renderFinExpenses(){
   });
   el.querySelectorAll('[data-action="fin-add-expense"]').forEach(function(btn){
     btn.addEventListener('click',function(){
-      api('/api/finance/expenses',{method:'POST',body:JSON.stringify({category_id:btn.dataset.catid,name:'Ny udgift',amount:0})}).then(function(){loadFinance();});
+      api('/api/finance/expenses',{method:'POST',body:JSON.stringify({category_id:btn.dataset.catid,name:'Ny udgift',amount:0,month_key:finExpenseMonth})}).then(function(){loadFinance();});
     });
   });
   applyFinPanelOrder('udgifter','fin-expense-categories','.fin-resizable').then(function(){
     makeFinBoxesDraggable(el,'.fin-resizable',function(order){
       api('/api/finance/panel-order',{method:'PUT',body:JSON.stringify({panel:'udgifter',order:order})});
     });
+    applyFinPanelBoxSizes('udgifter','fin-expense-categories','.fin-resizable').then(function(){
+      makeFinBoxesResizable(el,'.fin-resizable','udgifter');
+    });
   });
 }
 async function saveFinExpense(id,row,extra){
   var body=Object.assign({name:row.querySelector('.fin-exp-name').value,amount:row.querySelector('.fin-exp-amount').value,paid:row.querySelector('.fin-exp-paid').checked},extra);
   var r=await api('/api/finance/expenses/'+id,{method:'PUT',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Gemt','✓');renderFinExpenses();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);}
+  if(r&&r.ok){
+    // Opdater den lokale kopi FØR gentegning — ellers gentegner vi med gammel data,
+    // og ændringen (fx afkrydsningen) ser ud til at "hoppe tilbage" med det samme.
+    finExpenses.forEach(function(cat){cat.items.forEach(function(it){
+      if(String(it.id)===String(id)){it.name=body.name;it.amount=+body.amount||0;it.paid=body.paid;}
+    });});
+    toast('Gemt','✓');renderFinExpenses();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);
+  }
   else if(r)toast(r.error||'Fejl','❌');
 }
 
@@ -4793,13 +4903,16 @@ function renderFinPrivateBudget(){
           '<input type="number" class="fin-priv-amount" value="'+it.amount+'">'+
           '<button class="fin-del-btn fin-priv-del">×</button></div>';
       }).join('')+'</div>'+
-      '<div style="padding:0 16px 12px"><button class="fin-add-btn" data-catid="'+cat.id+'" data-action="fin-add-private-item">+ Tilføj post</button></div></div>';
+      '<div style="padding:0 20px 14px"><button class="fin-add-btn" style="width:100%" data-catid="'+cat.id+'" data-action="fin-add-private-item">+ Tilføj post</button></div></div>';
   }).join('')||'<div class="fin-empty">Ingen kategorier endnu — tryk "+ Ny kategori" for at starte.</div>';
 
   // Træk i kortets navnelinje for at omarrangere — grib i hjørnet for at strække.
   el.querySelectorAll('.fin-cat-card.fin-resizable').forEach(function(card){card.dataset.dragId=card.dataset.catid;});
   makeFinBoxesDraggable(el,'.fin-cat-card.fin-resizable',function(order){
     api('/api/finance/private-budget/reorder',{method:'PUT',body:JSON.stringify({order:order})});
+  });
+  applyFinPanelBoxSizes('privatbudget','fin-private-budget-categories','.fin-cat-card.fin-resizable').then(function(){
+    makeFinBoxesResizable(el,'.fin-cat-card.fin-resizable','privatbudget');
   });
 
   el.querySelectorAll('[data-id]').forEach(function(row){
@@ -4832,7 +4945,12 @@ function renderFinPrivateBudget(){
 async function saveFinPrivateItem(id,row){
   var body={name:row.querySelector('.fin-priv-name').value,amount:row.querySelector('.fin-priv-amount').value};
   var r=await api('/api/finance/private-budget/item/'+id,{method:'PUT',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Gemt','✓');renderFinPrivateBudget();}
+  if(r&&r.ok){
+    finPrivateBudget.forEach(function(cat){cat.items.forEach(function(it){
+      if(String(it.id)===String(id)){it.name=body.name;it.amount=+body.amount||0;}
+    });});
+    toast('Gemt','✓');renderFinPrivateBudget();
+  }
   else if(r)toast(r.error||'Fejl','❌');
 }
 document.getElementById('fin-add-private-cat-btn').addEventListener('click',async function(){

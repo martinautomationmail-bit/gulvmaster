@@ -208,8 +208,15 @@ async function initSchema() {
       name TEXT NOT NULL,
       amount DOUBLE PRECISION DEFAULT 0,
       paid INTEGER DEFAULT 0,
+      month_key TEXT,
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
+    -- Fandtes allerede uden month_key — tilføj eksplicit (samme fejl som paid_amount
+    -- ovenfor: CREATE TABLE IF NOT EXISTS rører ikke en allerede-eksisterende tabel).
+    ALTER TABLE finance_expenses ADD COLUMN IF NOT EXISTS month_key TEXT;
+    -- Alt der blev oprettet før månedsopdeling fandtes, mærkes med indeværende måned,
+    -- så det ikke bare forsvinder fra visningen.
+    UPDATE finance_expenses SET month_key=TO_CHAR(CURRENT_DATE,'YYYY-MM') WHERE month_key IS NULL;
 
     -- PRIVAT BUDGET: samme mønster som Udgifter, men brugeren må selv oprette/slette
     -- kategorier (ikke kun rette poster i faste kategorier) — det skal kunne udbygges
@@ -246,6 +253,10 @@ async function initSchema() {
       paid_amount DOUBLE PRECISION,
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
+    -- Tabellen fandtes allerede fra en tidligere version uden paid_amount — CREATE
+    -- TABLE IF NOT EXISTS rører ikke en tabel der allerede findes, så kolonnen skal
+    -- tilføjes eksplicit her, ellers fejler "delvist betalt" på produktion.
+    ALTER TABLE finance_invoice_overrides ADD COLUMN IF NOT EXISTS paid_amount DOUBLE PRECISION;
     -- Manuel korrektion/udelukkelse af en sags budgetværdi i omsætningsberegningen
     -- (fx en tastefejl i JobTread, eller en sag der mangler budget helt).
     CREATE TABLE IF NOT EXISTS finance_job_overrides (
@@ -292,6 +303,16 @@ async function initSchema() {
       panel TEXT PRIMARY KEY,
       order_json TEXT NOT NULL,
       updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    -- Husker den størrelse Martin selv har trukket en boks til (bredde/højde), så den
+    -- ikke springer tilbage til standardstørrelsen ved genindlæsning.
+    CREATE TABLE IF NOT EXISTS finance_panel_box_size (
+      panel TEXT NOT NULL,
+      box_id TEXT NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      updated_at TEXT DEFAULT ${nowTextSQL()},
+      PRIMARY KEY (panel, box_id)
     );
 
     -- SYSTEMLOG: én fælles logbog for alt der kører automatisk i baggrunden (JobTread-
@@ -624,7 +645,7 @@ async function initSchema() {
       const catId = catResult.rows[0].id;
       for (const item of items) {
         const [itemName, amountStr] = item.split(':');
-        await pool.query('INSERT INTO finance_expenses (category_id, name, amount) VALUES ($1,$2,$3)', [catId, itemName, Number(amountStr) || 0]);
+        await pool.query('INSERT INTO finance_expenses (category_id, name, amount, month_key) VALUES ($1,$2,$3,$4)', [catId, itemName, Number(amountStr) || 0, new Date().toISOString().slice(0, 7)]);
       }
     }
     console.log('Standard udgiftskategorier oprettet under Økonomi.');
@@ -4069,7 +4090,7 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
       else if (override.amount !== null && override.amount !== undefined) value = override.amount;
     }
     const fag = t.job.customFieldValues?.nodes?.[0]?.value || 'Ukendt';
-    buckets[mk][t.job.id] = { jobId: t.job.id, name: t.job.name, fag, value, excluded, hasOverride: !!override };
+    buckets[mk][t.job.id] = { jobId: t.job.id, name: t.job.name, fag, value, excluded, hasOverride: !!override, startDate: t.startDate };
   }
 
   const manualRows = await pool.query('SELECT * FROM finance_manual_revenue WHERE month_key = ANY($1)', [monthKeys]);
@@ -4095,6 +4116,28 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
 // ── RYKKER-MAILS (dunning) — kun aktiv hvis admin selv har slået den til under
 // Økonomi → Fakturaer. Sender Rykker 1 efter X dage, Rykker 2 efter Y dage, med et
 // gebyr lagt til hver gang. Sender aldrig samme niveau to gange for samme faktura.
+async function sendDunningEmailForInvoice(inv, targetLevel, settings, companyName) {
+  let toEmail = null;
+  if (inv.jobId) {
+    const taskRow = await pgOne('SELECT customer_email FROM jt_tasks WHERE job_id=$1 AND customer_email IS NOT NULL LIMIT 1', [inv.jobId]);
+    toEmail = taskRow?.customer_email || null;
+  }
+  if (!toEmail) return { sent: false, reason: 'Ingen kunde-e-mail fundet for denne sag' };
+
+  const owed = inv.overrideStatus === 'partial' && inv.remaining != null ? inv.remaining : inv.priceWithTax;
+  const totalWithFee = owed + settings.fee_amount;
+  const subject = `Rykker ${targetLevel} — ${inv.fullName} — ${companyName}`;
+  const text = `Hej,\n\nVi kan se at ${inv.fullName} på ${Math.round(owed).toLocaleString('da-DK')} kr. stadig ikke er betalt.\n\n` +
+    `Dette er rykker ${targetLevel}. Der er tillagt et rykkergebyr på ${Math.round(settings.fee_amount).toLocaleString('da-DK')} kr.\n\n` +
+    `Nyt beløb i alt: ${Math.round(totalWithFee).toLocaleString('da-DK')} kr.\n\nBetal venligst hurtigst muligt.\n\nVenlig hilsen\n${companyName}`;
+  let status = 'sent', error = null;
+  try {
+    await sendMailUniversal({ to: toEmail, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') });
+  } catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
+  await pool.query('INSERT INTO finance_dunning_log (document_id,level,to_email,status,error) VALUES ($1,$2,$3,$4,$5)', [inv.id, targetLevel, toEmail, status, error]);
+  return status === 'sent' ? { sent: true, level: targetLevel, toEmail } : { sent: false, reason: error };
+}
+
 async function runDunningScan(triggeredManually) {
   const settings = await pgOne('SELECT * FROM finance_dunning_settings WHERE id=1');
   if (!settings || (!settings.enabled && !triggeredManually)) return { ran: false, reason: 'Slået fra' };
@@ -4114,30 +4157,32 @@ async function runDunningScan(triggeredManually) {
     if (daysOld >= settings.days_rykker2 && !sentLevels.includes(2) && sentLevels.includes(1)) targetLevel = 2;
     else if (daysOld >= settings.days_rykker1 && !sentLevels.includes(1)) targetLevel = 1;
     if (!targetLevel) continue;
-
-    let toEmail = null;
-    if (inv.jobId) {
-      const taskRow = await pgOne('SELECT customer_email FROM jt_tasks WHERE job_id=$1 AND customer_email IS NOT NULL LIMIT 1', [inv.jobId]);
-      toEmail = taskRow?.customer_email || null;
-    }
-    if (!toEmail) { skippedNoEmail++; continue; }
-
-    const owed = inv.overrideStatus === 'partial' && inv.remaining != null ? inv.remaining : inv.priceWithTax;
-    const totalWithFee = owed + settings.fee_amount;
-    const subject = `Rykker ${targetLevel} — ${inv.fullName} — ${companyName}`;
-    const text = `Hej,\n\nVi kan se at ${inv.fullName} på ${Math.round(owed).toLocaleString('da-DK')} kr. stadig ikke er betalt.\n\n` +
-      `Dette er rykker ${targetLevel}. Der er tillagt et rykkergebyr på ${Math.round(settings.fee_amount).toLocaleString('da-DK')} kr.\n\n` +
-      `Nyt beløb i alt: ${Math.round(totalWithFee).toLocaleString('da-DK')} kr.\n\nBetal venligst hurtigst muligt.\n\nVenlig hilsen\n${companyName}`;
-    let status = 'sent', error = null;
-    try {
-      await sendMailUniversal({ to: toEmail, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') });
-      if (targetLevel === 1) sent1++; else sent2++;
-    } catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
-    await pool.query('INSERT INTO finance_dunning_log (document_id,level,to_email,status,error) VALUES ($1,$2,$3,$4,$5)', [inv.id, targetLevel, toEmail, status, error]);
+    const result = await sendDunningEmailForInvoice(inv, targetLevel, settings, companyName);
+    if (result.sent) { if (targetLevel === 1) sent1++; else sent2++; }
+    else if (result.reason === 'Ingen kunde-e-mail fundet for denne sag') skippedNoEmail++;
   }
   await logSystemEvent('dunning_scan', 'info', `Rykker-scan: ${sent1} rykker 1, ${sent2} rykker 2 sendt, ${skippedNoEmail} sprunget over (ingen e-mail).`);
   return { ran: true, sent1, sent2, skippedNoEmail };
 }
+
+// Manuel afsendelse for ÉN faktura — uanset dag-tærskler, og uanset til/fra-knappen.
+// Vælger automatisk næste niveau (1 hvis intet sendt endnu, ellers 2).
+app.post('/api/finance/dunning-send/:documentId', auth, financeOnly, asyncRoute(async (req, res) => {
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
+  const invoices = await fetchFinanceInvoices();
+  const inv = invoices.find(i => i.id === req.params.documentId);
+  if (!inv) return res.status(404).json({ error: 'Faktura ikke fundet' });
+  const settings = await pgOne('SELECT * FROM finance_dunning_settings WHERE id=1');
+  const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
+  const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
+  const logRows = await pool.query('SELECT level FROM finance_dunning_log WHERE document_id=$1 AND status=$2', [inv.id, 'sent']);
+  const sentLevels = logRows.rows.map(r => r.level);
+  const targetLevel = !sentLevels.includes(1) ? 1 : (!sentLevels.includes(2) ? 2 : null);
+  if (!targetLevel) return res.status(400).json({ error: 'Der er allerede sendt både rykker 1 og 2 for denne faktura' });
+  const result = await sendDunningEmailForInvoice(inv, targetLevel, settings, companyName);
+  if (!result.sent) return res.status(400).json({ error: result.reason });
+  res.json({ ok: true, level: targetLevel, toEmail: result.toEmail });
+}));
 
 app.get('/api/finance/dunning-settings', auth, financeOnly, asyncRoute(async (req, res) => {
   res.json(await pgOne('SELECT * FROM finance_dunning_settings WHERE id=1'));
@@ -4168,6 +4213,22 @@ app.put('/api/finance/panel-order', auth, financeOnly, asyncRoute(async (req, re
     INSERT INTO finance_panel_order (panel,order_json,updated_at) VALUES ($1,$2,${nowTextSQL()})
     ON CONFLICT (panel) DO UPDATE SET order_json=$2,updated_at=${nowTextSQL()}
   `, [body.panel, JSON.stringify(body.order)]);
+  res.json({ ok: true });
+}));
+
+app.get('/api/finance/panel-box-size/:panel', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT box_id,width,height FROM finance_panel_box_size WHERE panel=$1', [req.params.panel]);
+  const out = {};
+  for (const r of rows.rows) out[r.box_id] = { width: r.width, height: r.height };
+  res.json(out);
+}));
+app.put('/api/finance/panel-box-size', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.panel || !body.boxId || !body.width || !body.height) return res.status(400).json({ error: 'panel, boxId, width og height skal udfyldes' });
+  await pool.query(`
+    INSERT INTO finance_panel_box_size (panel,box_id,width,height,updated_at) VALUES ($1,$2,$3,$4,${nowTextSQL()})
+    ON CONFLICT (panel,box_id) DO UPDATE SET width=$3,height=$4,updated_at=${nowTextSQL()}
+  `, [body.panel, body.boxId, Math.round(body.width), Math.round(body.height)]);
   res.json({ ok: true });
 }));
 
@@ -4249,15 +4310,40 @@ app.put('/api/finance/invoices/:documentId', auth, financeOnly, asyncRoute(async
 
 // ── Faste udgifter ──
 app.get('/api/finance/expenses', auth, financeOnly, asyncRoute(async (req, res) => {
+  const monthKey = /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
   const cats = await pool.query('SELECT * FROM finance_expense_categories ORDER BY sort_order ASC');
-  const items = await pool.query('SELECT * FROM finance_expenses ORDER BY id ASC');
+  let items = await pool.query('SELECT * FROM finance_expenses WHERE month_key=$1 ORDER BY id ASC', [monthKey]);
+  // Ny/tom måned: klon poster (navn + beløb) fra den seneste tidligere måned der HAR
+  // data, som udgangspunkt — undgår at skulle genindtaste 30 linjer hver måned. Betalt-
+  // status nulstilles altid, da det er en ny måneds regninger.
+  if (items.rows.length === 0) {
+    const prior = await pgOne("SELECT month_key FROM finance_expenses WHERE month_key < $1 ORDER BY month_key DESC LIMIT 1", [monthKey]);
+    if (prior) {
+      const priorItems = await pool.query('SELECT * FROM finance_expenses WHERE month_key=$1', [prior.month_key]);
+      for (const it of priorItems.rows) {
+        await pool.query('INSERT INTO finance_expenses (category_id,name,amount,paid,month_key) VALUES ($1,$2,$3,0,$4)', [it.category_id, it.name, it.amount, monthKey]);
+      }
+      items = await pool.query('SELECT * FROM finance_expenses WHERE month_key=$1 ORDER BY id ASC', [monthKey]);
+    }
+  }
   const byCategory = cats.rows.map(c => ({ ...c, items: items.rows.filter(i => i.category_id === c.id) }));
-  res.json(byCategory);
+  res.json({ month: monthKey, categories: byCategory });
+}));
+// Bruges af Oversigt-graffen til at hente det rigtige udgiftstal pr. måned, i stedet
+// for at antage samme beløb hver måned.
+app.get('/api/finance/expenses-totals', auth, financeOnly, asyncRoute(async (req, res) => {
+  const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
+  const out = {};
+  for (const mk of months) {
+    const row = await pgOne('SELECT COALESCE(SUM(amount),0)::float AS total FROM finance_expenses WHERE month_key=$1', [mk]);
+    out[mk] = row ? row.total : 0;
+  }
+  res.json(out);
 }));
 app.post('/api/finance/expenses', auth, financeOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
-  if (!body.category_id || !body.name) return res.status(400).json({ error: 'Kategori og navn skal udfyldes' });
-  const r = await pool.query('INSERT INTO finance_expenses (category_id,name,amount,paid) VALUES ($1,$2,$3,$4) RETURNING id', [body.category_id, String(body.name).slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0]);
+  if (!body.category_id || !body.name || !body.month_key) return res.status(400).json({ error: 'Kategori, navn og måned skal udfyldes' });
+  const r = await pool.query('INSERT INTO finance_expenses (category_id,name,amount,paid,month_key) VALUES ($1,$2,$3,$4,$5) RETURNING id', [body.category_id, String(body.name).slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, body.month_key]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 app.put('/api/finance/expenses/:id', auth, financeOnly, asyncRoute(async (req, res) => {
