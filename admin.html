@@ -5435,51 +5435,17 @@ function bind(){
   };
   document.getElementById('tpl-edit-checklist-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();document.getElementById('tpl-edit-checklist-add').click();}});
   initCustomerSearch();
-  // Museknap-scroll — HELT OMSKREVET til den mest robuste udgave:
-  // Al scroll (lodret OG vandret) går nu 100% gennem browserens egen native scroll —
-  // vi rører ALDRIG scrollLeft manuelt og kalder ALDRIG preventDefault(). Det er det
-  // der gjorde det "mega langsomt/i stykker" før: at drive scrollLeft manuelt via JS
-  // konkurrerer med browserens egen smooth/momentum-scroll og føles hakkende.
-  // Til gengæld: i Daglig plan (som kun viser én uge) kigger vi PASSIVT med på om man
-  // bliver ved med at prøve at scrolle forbi kanten (flere hjul-tick i træk mens man
-  // allerede er ved kanten) — kun DA springer den til næste/forrige uge, uden at det
-  // nogensinde har blokeret eller ændret selve scrollet.
-  // Museknap-scroll — 3. forsøg, fundamentalt anderledes metode:
-  // Rå "wheel"-deltaX-tal opfører sig for forskelligt på tværs af mus/trackpad/OS til
-  // at gætte pålideligt på. I stedet lytter vi nu på selve "scroll"-hændelsen (den
-  // ÆGTE, bekræftede scroll-position browseren rent faktisk har rullet til) og venter
-  // til bevægelsen falder til ro (ingen nye scroll-hændelser i 220ms — dvs. brugeren har
-  // sluppet/er stoppet), og tjekker DA om man landede ved kanten OG var på vej DERHEN
-  // (ikke bare befandt sig der fra en frisk indlæsning, hvor scrollLeft altid starter i 0).
-  (function(){
-    var planOuter=document.getElementById('plan-board-outer');
-    if(!planOuter)return;
-    var lastLeft=0,settleTimer=null,cooldownUntil=0;
-    planOuter.addEventListener('scroll',function(){
-      var cur=planOuter.scrollLeft;
-      var movedRight=cur>lastLeft,movedLeft=cur<lastLeft;
-      lastLeft=cur;
-      clearTimeout(settleTimer);
-      settleTimer=setTimeout(function(){
-        if(Date.now()<cooldownUntil)return;
-        if(planOuter.scrollWidth<=planOuter.clientWidth)return;
-        var atRight=cur+planOuter.clientWidth>=planOuter.scrollWidth-2;
-        var atLeft=cur<=2;
-        if(atRight&&movedRight){
-          cooldownUntil=Date.now()+900;
-          document.getElementById('plan-next').click();
-          requestAnimationFrame(function(){planOuter.scrollLeft=0;lastLeft=0;});
-        }else if(atLeft&&movedLeft){
-          cooldownUntil=Date.now()+900;
-          document.getElementById('plan-prev').click();
-          requestAnimationFrame(function(){planOuter.scrollLeft=planOuter.scrollWidth;lastLeft=planOuter.scrollLeft;});
-        }
-      },220);
-      // Bemærk: ingen preventDefault noget sted, ingen manuel scrollLeft-styring
-      // undervejs i selve scrollet — kun EFTER det har lagt sig, og kun for at
-      // nulstille den nye uges startposition.
-    },{passive:true});
-  })();
+  // Museknap-scroll: HELT nativt, ingen JS-indblanding overhovedet.
+  // Der har været tre forsøg på at få scroll til automatisk at skifte uge ved kanten
+  // (wheel-delta-gæt, akkumuleret overscroll, scroll-position-baseret settle-check) —
+  // alle endte med at fejle på tværs af forskellige mus/trackpad-opsætninger, det
+  // seneste ved at min egen "nulstil til Mandag ved ugeskift"-kode (scrollLeft=0 med
+  // scroll-behavior:smooth) skabte en vedvarende strøm af scroll-hændelser der enten
+  // aldrig faldt til ro, eller i værste fald udløste et fejlagtigt "skift tilbage til
+  // forrige uge" lige efter landingen. Løsningen er at IKKE forsøge at gætte brugerens
+  // intention via scroll — al scroll (lodret og vandret) er nu 100% browser-nativt og
+  // upåvirket, og ugeskift sker udelukkende via Forrige/Næste-knapperne, som altid
+  // virker upåklageligt og øjeblikkeligt.
   refreshNotifBell();
   setInterval(refreshNotifBell,90000);
   // TRÆKBARE POPUPS: virker på alle .modal-bokse i hele programmet uden at skulle
