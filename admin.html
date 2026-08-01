@@ -256,6 +256,10 @@ button,input,select{font:inherit}
    modsætning til Kapacitet der har sin egen afgrænsede, glidende scroll-boks. Det er
    grunden til at de føltes forskellige — nu matcher Daglig plan Kapacitet 1:1. */
 #plan-board-outer{position:relative;isolation:isolate;overflow-y:auto;scroll-behavior:smooth;height:calc(100vh - 332px);min-height:380px;max-height:720px;scrollbar-gutter:stable both-edges}
+.plan-week-toast{position:fixed;top:120px;left:50%;transform:translateX(-50%) translateY(-14px) scale(.92);opacity:0;pointer-events:none;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff;font-size:13px;font-weight:800;padding:10px 20px;border-radius:999px;box-shadow:0 12px 32px rgba(15,34,64,.35);z-index:300;transition:opacity .25s cubic-bezier(.2,.9,.3,1.3),transform .25s cubic-bezier(.2,.9,.3,1.3);letter-spacing:.02em}
+.plan-week-toast.show{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
+@keyframes plan-label-pulse{0%{transform:scale(1);color:var(--navy)}35%{transform:scale(1.12);color:var(--blue)}100%{transform:scale(1);color:var(--navy)}}
+.plan-label-pulse{display:inline-block;animation:plan-label-pulse .5s ease}
 @media(max-width:1000px){#plan-board-outer{height:calc(100vh - 360px);min-height:330px}}
 @media(max-width:760px){#plan-board-outer{height:calc(100vh - 310px);min-height:320px}}
 /* Capacity board owns its own vertical scroll. This keeps the week header visible
@@ -901,28 +905,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div class="fin-card fin-resizable" draggable="true" data-drag-id="month-current" id="fin-month-current"></div>
       <div class="fin-card fin-resizable" draggable="true" data-drag-id="month-next" id="fin-month-next"></div>
-      <div class="fin-card fin-resizable" draggable="true" data-drag-id="trend-chart" style="width:520px">
-        <div class="fin-eyebrow">Omsætning vs. udgifter — sidste, denne og næste måned</div>
-        <p class="fin-muted" style="margin:-4px 0 12px">Forgangen måned = betalte/delvist betalte fakturaer udstedt den måned. Indeværende måned = aktive opgaver ud fra planlagte startdatoer. Næste måned = allerede bookede opgaver.</p>
-        <div style="position:relative;height:220px"><canvas id="fin-trend-chart"></canvas></div>
-      </div>
     </div>
 
-    <div class="fin-card" style="margin-top:16px;width:100%">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-        <div class="fin-eyebrow" style="margin:0">Året i overblik — omsætning vs. udgifter, januar til december</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap" id="fin-year-fag-filter">
-          <button class="tab-btn-sm active" data-fag="alle">Alle fag</button>
-          <button class="tab-btn-sm" data-fag="Gulvlægning">Gulvlægning</button>
-          <button class="tab-btn-sm" data-fag="Maler">Maler</button>
-          <button class="tab-btn-sm" data-fag="Gulvslibning">Gulvslibning</button>
-          <button class="tab-btn-sm" data-fag="Andet">Andet</button>
-        </div>
-      </div>
-      <p class="fin-muted" style="margin:-2px 0 12px">Klik på en søjle for at se hvilke sager der ligger bag den måneds tal.</p>
-      <div style="position:relative;height:280px"><canvas id="fin-year-chart"></canvas></div>
-      <div id="fin-year-detail" style="margin-top:14px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px">
+      <div class="fin-eyebrow" style="margin:0">Grafer</div>
+      <button class="fin-add-btn" id="fin-add-widget-btn">+ Tilføj graf</button>
     </div>
+    <div id="fin-widgets-container" style="display:flex;flex-direction:column;gap:16px"></div>
   </div>
 
   <div class="fintabpage" id="fintab-omsaetning" style="display:none">
@@ -1728,6 +1717,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 </div>
 
 <!-- FULL ASSIGN MODAL (click on booking) -->
+<div class="mo" id="fin-widget-picker-modal">
+  <div class="modal" style="width:420px">
+    <h3>Tilføj graf</h3>
+    <div id="fin-widget-picker-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
+    <div class="modal-actions" style="display:flex;justify-content:flex-end;padding:0;border:0">
+      <button class="btn small" id="fin-widget-picker-cancel">Luk</button>
+    </div>
+  </div>
+</div>
 <div class="mo" id="gm-dialog-modal">
   <div class="modal" style="width:380px">
     <h3 id="gm-dialog-title">Bekræft</h3>
@@ -2518,7 +2516,7 @@ function bindPlanScrollTracking(){
   var outer=document.getElementById('plan-board-outer');
   if(!outer||outer._planScrollBound)return;
   outer._planScrollBound=true;
-  var settleTimer=null;
+  var settleTimer=null,isFirstDetection=true;
   outer.addEventListener('scroll',function(){
     clearTimeout(settleTimer);
     settleTimer=setTimeout(function(){
@@ -2531,12 +2529,40 @@ function bindPlanScrollTracking(){
       var mk=target.dataset.planMonday;
       if(!mk)return;
       var d=new Date(mk+'T00:00:00');
-      if(planCurrentWeekStart&&iso(planCurrentWeekStart)===mk)return;
+      if(planCurrentWeekStart&&iso(planCurrentWeekStart)===mk){isFirstDetection=false;return;}
       planCurrentWeekStart=d;
       updatePlanWeekLabel(d);
       ensureWeeklyNotesLoaded(weekKey(d));
+      if(!isFirstDetection)showPlanWeekToast(d); // ikke ved allerførste indlæsning, kun ved reelt skift
+      isFirstDetection=false;
     },150);
   },{passive:true});
+}
+// Moderne, kort flash der viser hvilken uge man er landet på når man scroller hen
+// over en ugegrænse — pulserer på selve label'en og skyder en flydende "pille" op,
+// der fader ud af sig selv. Ingen klik krævet, forstyrrer intet.
+var planWeekToastTimer=null;
+function showPlanWeekToast(mondayDate){
+  var label=document.getElementById('plan-label');
+  if(label){
+    label.classList.remove('plan-label-pulse');
+    void label.offsetWidth; // genstart CSS-animationen selvom klassen allerede sad der
+    label.classList.add('plan-label-pulse');
+  }
+  var toast=document.getElementById('plan-week-toast');
+  if(!toast){
+    toast=document.createElement('div');
+    toast.id='plan-week-toast';
+    toast.className='plan-week-toast';
+    document.getElementById('page-plan').appendChild(toast);
+  }
+  var sunday=add(mondayDate,6);
+  toast.textContent='📅 Uge '+weekNo(mondayDate)+' · '+mondayDate.getDate()+'/'+(mondayDate.getMonth()+1)+' – '+sunday.getDate()+'/'+(sunday.getMonth()+1);
+  toast.classList.remove('show');
+  void toast.offsetWidth;
+  toast.classList.add('show');
+  clearTimeout(planWeekToastTimer);
+  planWeekToastTimer=setTimeout(function(){toast.classList.remove('show');},1400);
 }
 
 // RENDER CAPACITY
@@ -4793,8 +4819,8 @@ function renderFinOverview(snapshots){
   }
   document.getElementById('fin-month-current').innerHTML=monthBox(curKey,'Indeværende måned ('+curKey+')');
   document.getElementById('fin-month-next').innerHTML=monthBox(nextKey,'Løbende måned ('+nextKey+')',curResultForCumulative);
-  renderFinTrendChart(prevKey,curKey,nextKey,udgForMonth);
-  renderFinYearChart();
+  finLastTrendArgs={prevKey:prevKey,curKey:curKey,nextKey:nextKey,udgForMonth:udgForMonth};
+  loadFinWidgets();
 }
 // Forgangen måned: rigtig omsætning = betalte + delvist betalte fakturaer UDSTEDT den
 // måned (delvis tæller kun det faktisk modtagne beløb). Indeværende/næste måned bruger
@@ -4808,8 +4834,83 @@ function finInvoiceRevenueForMonth(mk){
     return s+(inv.overrideStatus==='partial'?(inv.paidAmount||0):(inv.priceWithTax||0));
   },0);
 }
-var finTrendChartInstance=null;
-var finYearData=null,finYearFag='alle',finYearChartInstance=null;
+// ══════════════════════════════════════════════════════════════
+// OVERSIGT — selvvalgte graf-widgets (tilføj/fjern frit)
+// ══════════════════════════════════════════════════════════════
+var finTrendChartInstance=null,finYearData=null,finYearFag='alle',finYearChartInstance=null,finFagPieInstance=null,finInvoiceStatusInstance=null,finExpensePieInstance=null;
+var finWidgetList=[],finLastTrendArgs=null;
+
+var FIN_WIDGET_TYPES={
+  trend:{label:'Omsætning vs. udgifter (sidste/denne/næste måned)',render:renderTrendWidget},
+  year:{label:'Året i overblik (jan-dec, fag-filter, klik for detaljer)',render:renderYearWidget},
+  fag_pie:{label:'Omsætning pr. fag denne måned (cirkeldiagram)',render:renderFagPieWidget},
+  invoice_status:{label:'Fakturastatus-fordeling (betalt/udestående/mv.)',render:renderInvoiceStatusWidget},
+  expense_pie:{label:'Udgifter pr. kategori denne måned (cirkeldiagram)',render:renderExpensePieWidget}
+};
+
+async function loadFinWidgets(){
+  var r=await api('/api/finance/dashboard-widgets');
+  finWidgetList=r||[];
+  var container=document.getElementById('fin-widgets-container');
+  if(!container)return;
+  container.innerHTML=finWidgetList.map(function(w){
+    var def=FIN_WIDGET_TYPES[w.widget_type];
+    return '<div class="fin-card" style="width:100%" id="fin-widget-'+w.id+'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="fin-eyebrow" style="margin:0">'+(def?esc(def.label):esc(w.widget_type))+'</div>'+
+      '<button class="fin-del-btn" data-action="fin-remove-widget" data-id="'+w.id+'" title="Fjern denne graf">×</button></div>'+
+      '<div class="fin-widget-body" id="fin-widget-body-'+w.id+'"></div></div>';
+  }).join('')||'<div class="fin-empty">Ingen grafer tilføjet — tryk "+ Tilføj graf" for at starte.</div>';
+  container.querySelectorAll('[data-action="fin-remove-widget"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      if(!await gmConfirm('Fjern denne graf? Du kan altid tilføje den igen bagefter.'))return;
+      await api('/api/finance/dashboard-widgets/'+btn.dataset.id,{method:'DELETE'});
+      loadFinWidgets();
+    });
+  });
+  finWidgetList.forEach(function(w){
+    var def=FIN_WIDGET_TYPES[w.widget_type];
+    var body=document.getElementById('fin-widget-body-'+w.id);
+    if(def&&body)def.render(body,w.id);
+  });
+}
+document.getElementById('fin-add-widget-btn').addEventListener('click',function(){
+  var list=document.getElementById('fin-widget-picker-list');
+  var existingTypes=finWidgetList.map(function(w){return w.widget_type;});
+  var available=Object.keys(FIN_WIDGET_TYPES).filter(function(t){return existingTypes.indexOf(t)===-1;});
+  list.innerHTML=available.length?available.map(function(t){
+    return '<button class="btn small" style="text-align:left;justify-content:flex-start" data-action="fin-pick-widget" data-type="'+t+'">+ '+esc(FIN_WIDGET_TYPES[t].label)+'</button>';
+  }).join(''):'<div class="fin-empty">Alle tilgængelige grafer er allerede tilføjet.</div>';
+  list.querySelectorAll('[data-action="fin-pick-widget"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      await api('/api/finance/dashboard-widgets',{method:'POST',body:JSON.stringify({widget_type:btn.dataset.type})});
+      document.getElementById('fin-widget-picker-modal').style.display='none';
+      loadFinWidgets();
+    });
+  });
+  document.getElementById('fin-widget-picker-modal').style.display='flex';
+});
+document.getElementById('fin-widget-picker-cancel').addEventListener('click',function(){
+  document.getElementById('fin-widget-picker-modal').style.display='none';
+});
+
+function renderYearWidget(body){
+  body.innerHTML='<div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-bottom:6px" id="fin-year-fag-filter">'+
+    ['alle','Gulvlægning','Maler','Gulvslibning','Andet'].map(function(f){
+      return '<button class="tab-btn-sm'+(f==='alle'?' active':'')+'" data-fag="'+f+'">'+(f==='alle'?'Alle fag':f)+'</button>';
+    }).join('')+'</div>'+
+    '<p class="fin-muted" style="margin:-2px 0 12px">Klik på en søjle for at se hvilke sager der ligger bag den måneds tal.</p>'+
+    '<div style="position:relative;height:280px"><canvas id="fin-year-chart"></canvas></div>'+
+    '<div id="fin-year-detail" style="margin-top:14px"></div>';
+  body.querySelectorAll('#fin-year-fag-filter [data-fag]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      body.querySelectorAll('#fin-year-fag-filter [data-fag]').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');
+      finYearFag=btn.dataset.fag;
+      renderFinYearChart();
+    });
+  });
+  renderFinYearChart();
+}
 async function renderFinYearChart(){
   var canvas=document.getElementById('fin-year-chart');
   if(!canvas||typeof Chart==='undefined')return;
@@ -4867,17 +4968,51 @@ function renderFinYearDetail(mk){
       return '<div class="fin-job-row"><div><b>'+esc(j.name)+'</b><div class="fin-muted">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div></div>'+(j.value===null?'<span class="fin-badge">intet budget</span>':krFmt(j.value))+'</div>';
     }).join(''):'<div class="fin-empty">Ingen sager i denne måned'+(finYearFag!=='alle'?' for dette fag':'')+'.</div>')+'</div>';
 }
-document.querySelectorAll('#fin-year-fag-filter [data-fag]').forEach(function(btn){
-  btn.addEventListener('click',function(){
-    document.querySelectorAll('#fin-year-fag-filter [data-fag]').forEach(function(b){b.classList.remove('active');});
-    btn.classList.add('active');
-    finYearFag=btn.dataset.fag;
-    renderFinYearChart();
-  });
-});
-function renderFinTrendChart(prevKey,curKey,nextKey,udgForMonth){
-  var canvas=document.getElementById('fin-trend-chart');
+
+function renderFagPieWidget(body){
+  body.innerHTML='<p class="fin-muted" style="margin:-2px 0 12px">Baseret på indeværende måneds planlagte sager.</p><div style="position:relative;height:260px"><canvas id="fin-fag-pie-chart"></canvas></div>';
+  var canvas=document.getElementById('fin-fag-pie-chart');
+  if(!canvas||typeof Chart==='undefined'||!finLastTrendArgs)return;
+  var m=finRevenue&&finRevenue[finLastTrendArgs.curKey];
+  var byFag=m?m.byFag:{};
+  var labels=Object.keys(byFag),data=labels.map(function(f){return byFag[f].sum;});
+  var colors=['#1D4ED8','#15803D','#B45309','#7C3AED','#9AA3B2','#DC2626'];
+  if(finFagPieInstance)finFagPieInstance.destroy();
+  finFagPieInstance=new Chart(canvas,{type:'doughnut',data:{labels:labels,datasets:[{data:data,backgroundColor:colors}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
+}
+function renderInvoiceStatusWidget(body){
+  body.innerHTML='<p class="fin-muted" style="margin:-2px 0 12px">Alle fakturaer fra JobTread, fordelt på status.</p><div style="position:relative;height:260px"><canvas id="fin-invoice-status-chart"></canvas></div>';
+  var canvas=document.getElementById('fin-invoice-status-chart');
   if(!canvas||typeof Chart==='undefined')return;
+  var buckets={'Betalt':0,'Delvist betalt':0,'Udestående':0,'Uafklaret':0};
+  (finInvoices||[]).forEach(function(i){
+    if(i.overrideStatus==='paid')buckets['Betalt']++;
+    else if(i.overrideStatus==='partial')buckets['Delvist betalt']++;
+    else if(i.overrideStatus==='unpaid')buckets['Udestående']++;
+    else buckets['Uafklaret']++;
+  });
+  if(finInvoiceStatusInstance)finInvoiceStatusInstance.destroy();
+  finInvoiceStatusInstance=new Chart(canvas,{type:'doughnut',data:{labels:Object.keys(buckets),datasets:[{data:Object.values(buckets),backgroundColor:['#15803D','#1D4ED8','#DC2626','#B45309']}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
+}
+function renderExpensePieWidget(body){
+  body.innerHTML='<p class="fin-muted" style="margin:-2px 0 12px">Udgifter for den måned der aktuelt er valgt under Udgifter-fanen ('+esc(finExpenseMonth)+').</p><div style="position:relative;height:260px"><canvas id="fin-expense-pie-chart"></canvas></div>';
+  var canvas=document.getElementById('fin-expense-pie-chart');
+  if(!canvas||typeof Chart==='undefined')return;
+  var labels=(finExpenses||[]).map(function(c){return c.name;});
+  var data=(finExpenses||[]).map(function(c){return c.items.reduce(function(s,i){return s+(+i.amount||0);},0);});
+  var colors=['#1D4ED8','#15803D','#B45309','#7C3AED','#9AA3B2','#DC2626'];
+  if(finExpensePieInstance)finExpensePieInstance.destroy();
+  finExpensePieInstance=new Chart(canvas,{type:'doughnut',data:{labels:labels,datasets:[{data:data,backgroundColor:colors}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
+}
+function renderTrendWidget(body){
+  body.innerHTML='<p class="fin-muted" style="margin:-2px 0 12px">Forgangen måned = betalte/delvist betalte fakturaer udstedt den måned. Indeværende måned = aktive opgaver ud fra planlagte startdatoer. Næste måned = allerede bookede opgaver.</p>'+
+    '<div style="position:relative;height:220px"><canvas id="fin-trend-chart"></canvas></div>';
+  renderFinTrendChart();
+}
+function renderFinTrendChart(){
+  var canvas=document.getElementById('fin-trend-chart');
+  if(!canvas||typeof Chart==='undefined'||!finLastTrendArgs)return;
+  var prevKey=finLastTrendArgs.prevKey,curKey=finLastTrendArgs.curKey,nextKey=finLastTrendArgs.nextKey,udgForMonth=finLastTrendArgs.udgForMonth;
   var labels=[],omsD=[],udgD=[],resD=[];
   [[prevKey,'Sidste måned'],[curKey,'Indeværende måned'],[nextKey,'Næste måned']].forEach(function(pair){
     var mk=pair[0];

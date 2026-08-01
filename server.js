@@ -314,6 +314,14 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()},
       PRIMARY KEY (panel, box_id)
     );
+    -- Selvvalgte graf-widgets i Oversigt — kan tilføjes/fjernes frit. Seedes én gang
+    -- med de to grafer der fandtes i forvejen (trend + year), så ingen mister noget.
+    CREATE TABLE IF NOT EXISTS finance_dashboard_widgets (
+      id SERIAL PRIMARY KEY,
+      widget_type TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
 
     -- SYSTEMLOG: én fælles logbog for alt der kører automatisk i baggrunden (JobTread-
     -- synk hver time, notifikationsscan, m.fl.) — så admin kan se om noget fejler
@@ -677,6 +685,11 @@ async function initSchema() {
   }
 
   await pool.query('INSERT INTO finance_dunning_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING');
+
+  const widgetCount = await pgOne('SELECT COUNT(*)::int AS n FROM finance_dashboard_widgets');
+  if (widgetCount && widgetCount.n === 0) {
+    await pool.query("INSERT INTO finance_dashboard_widgets (widget_type, sort_order) VALUES ('trend', 0), ('year', 1)");
+  }
 }
 
 function secureEqual(left, right) {
@@ -4291,6 +4304,25 @@ app.get('/api/finance/year-overview', auth, financeOnly, asyncRoute(async (req, 
   }
   res.json({ year, months: result });
 }));
+
+// ── Selvvalgte graf-widgets i Oversigt ──
+app.get('/api/finance/dashboard-widgets', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM finance_dashboard_widgets ORDER BY sort_order ASC, id ASC');
+  res.json(rows.rows);
+}));
+app.post('/api/finance/dashboard-widgets', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const allowed = ['trend', 'year', 'fag_pie', 'invoice_status', 'expense_pie'];
+  if (!allowed.includes(body.widget_type)) return res.status(400).json({ error: 'Ukendt graftype' });
+  const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),-1)::int AS m FROM finance_dashboard_widgets');
+  const r = await pool.query('INSERT INTO finance_dashboard_widgets (widget_type, sort_order) VALUES ($1,$2) RETURNING id', [body.widget_type, (maxOrder ? maxOrder.m : -1) + 1]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.delete('/api/finance/dashboard-widgets/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM finance_dashboard_widgets WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
 
 app.put('/api/finance/job-override/:jobId', auth, financeOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
