@@ -3300,8 +3300,16 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
   }
   res.json({ ok: true });
   if (completed) {
-    sendCompletionEmail(current).catch(e => console.error('Færdig-mail fejlede:', e.message));
-    sendCompletionWebhook(current).catch(e => console.error('Zapier-webhook fejlede:', e.message));
+    // FEJL RETTET: kunden fik "Vi er færdige hos dig"-mailen to gange — fordi begge
+    // metoder kørte samtidig: den direkte mail OG Zapier-webhook'en (som i praksis er
+    // sat op til selv at sende en færdig-mail via Gmail/Outlook). De to var tænkt som
+    // ALTERNATIVER til hinanden, ikke noget der skulle køre parallelt. Nu bruges kun
+    // Zapier når den er konfigureret; ellers sendes mailen direkte som normalt.
+    if (process.env.ZAPIER_WEBHOOK_URL) {
+      sendCompletionWebhook(current).catch(e => console.error('Zapier-webhook fejlede:', e.message));
+    } else {
+      sendCompletionEmail(current).catch(e => console.error('Færdig-mail fejlede:', e.message));
+    }
   }
 }));
 
