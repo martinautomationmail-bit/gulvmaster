@@ -5444,36 +5444,40 @@ function bind(){
   // bliver ved med at prøve at scrolle forbi kanten (flere hjul-tick i træk mens man
   // allerede er ved kanten) — kun DA springer den til næste/forrige uge, uden at det
   // nogensinde har blokeret eller ændret selve scrollet.
+  // Museknap-scroll — 3. forsøg, fundamentalt anderledes metode:
+  // Rå "wheel"-deltaX-tal opfører sig for forskelligt på tværs af mus/trackpad/OS til
+  // at gætte pålideligt på. I stedet lytter vi nu på selve "scroll"-hændelsen (den
+  // ÆGTE, bekræftede scroll-position browseren rent faktisk har rullet til) og venter
+  // til bevægelsen falder til ro (ingen nye scroll-hændelser i 220ms — dvs. brugeren har
+  // sluppet/er stoppet), og tjekker DA om man landede ved kanten OG var på vej DERHEN
+  // (ikke bare befandt sig der fra en frisk indlæsning, hvor scrollLeft altid starter i 0).
   (function(){
-    var overRight=0,overLeft=0,resetTimer=null,cooldownUntil=0;
     var planOuter=document.getElementById('plan-board-outer');
     if(!planOuter)return;
-    planOuter.addEventListener('wheel',function(e){
-      if(planOuter.scrollWidth<=planOuter.clientWidth)return;
-      var dx=e.deltaX;
-      if(!dx)return;
-      var now=Date.now();
-      if(now<cooldownUntil)return; // en enkelt scroll-bevægelse må kun skifte ÉN uge — ikke flere på stribe
-      var atRight=planOuter.scrollLeft+planOuter.clientWidth>=planOuter.scrollWidth-1;
-      var atLeft=planOuter.scrollLeft<=1;
-      clearTimeout(resetTimer);
-      resetTimer=setTimeout(function(){overRight=0;overLeft=0;},450);
-      if(dx>0&&atRight){
-        overRight+=dx;overLeft=0;
-        if(overRight>180){
-          overRight=0;cooldownUntil=now+700;
+    var lastLeft=0,settleTimer=null,cooldownUntil=0;
+    planOuter.addEventListener('scroll',function(){
+      var cur=planOuter.scrollLeft;
+      var movedRight=cur>lastLeft,movedLeft=cur<lastLeft;
+      lastLeft=cur;
+      clearTimeout(settleTimer);
+      settleTimer=setTimeout(function(){
+        if(Date.now()<cooldownUntil)return;
+        if(planOuter.scrollWidth<=planOuter.clientWidth)return;
+        var atRight=cur+planOuter.clientWidth>=planOuter.scrollWidth-2;
+        var atLeft=cur<=2;
+        if(atRight&&movedRight){
+          cooldownUntil=Date.now()+900;
           document.getElementById('plan-next').click();
-          setTimeout(function(){planOuter.scrollLeft=0;},0); // ny uge starter ikke fastlåst ved kanten
-        }
-      }else if(dx<0&&atLeft){
-        overLeft+=dx;overRight=0;
-        if(overLeft<-180){
-          overLeft=0;cooldownUntil=now+700;
+          requestAnimationFrame(function(){planOuter.scrollLeft=0;lastLeft=0;});
+        }else if(atLeft&&movedLeft){
+          cooldownUntil=Date.now()+900;
           document.getElementById('plan-prev').click();
-          setTimeout(function(){planOuter.scrollLeft=planOuter.scrollWidth;},0);
+          requestAnimationFrame(function(){planOuter.scrollLeft=planOuter.scrollWidth;lastLeft=planOuter.scrollLeft;});
         }
-      }else{overRight=0;overLeft=0;}
-      // Bemærk: ingen preventDefault, ingen scrollLeft-ændring undervejs — scrollet er 100% nativt hele tiden.
+      },220);
+      // Bemærk: ingen preventDefault noget sted, ingen manuel scrollLeft-styring
+      // undervejs i selve scrollet — kun EFTER det har lagt sig, og kun for at
+      // nulstille den nye uges startposition.
     },{passive:true});
   })();
   refreshNotifBell();
