@@ -493,6 +493,10 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_task_checklist_task ON task_checklist_items(task_id);
 
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS is_visit INTEGER DEFAULT 0;
+    -- Manuel "færdig"-markering for opgaver der IKKE er booket endnu (ingen booking at
+    -- sætte completed_at på) — så ✓-knappen i Opgavepool kan virke på alle opgaver,
+    -- ikke kun planlagte.
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS manually_completed_at TEXT;
 
     CREATE TABLE IF NOT EXISTS customer_visits (
       id SERIAL PRIMARY KEY,
@@ -3286,6 +3290,15 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
     sendCompletionEmail(current).catch(e => console.error('Færdig-mail fejlede:', e.message));
     sendCompletionWebhook(current).catch(e => console.error('Zapier-webhook fejlede:', e.message));
   }
+}));
+
+// Manuel færdig-markering for en UPLANLAGT opgave (ingen booking findes endnu at
+// sætte completed_at på). Bruges af ✓-knappen i Opgavepool for opgaver der aldrig
+// er blevet booket.
+app.put('/api/tasks/:id/manual-complete', auth, adminOnly, asyncRoute(async (req, res) => {
+  const completed = !!(req.body || {}).completed;
+  await pool.query(`UPDATE jt_tasks SET manually_completed_at=${completed ? nowTextSQL() : 'NULL'} WHERE id=$1`, [req.params.id]);
+  res.json({ ok: true });
 }));
 
 // En booking kan flyttes manuelt op/ned i rækkefølgen for én bestemt dag. Bruges når
