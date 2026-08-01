@@ -293,6 +293,7 @@ button,input,select{font:inherit}
 .daily-board th{background:var(--navy);color:#fff;padding:8px 7px;font-size:9px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;z-index:5;text-align:center}
 .daily-board th.staff-th{position:sticky;left:0;z-index:7;text-align:left;min-width:160px;border-right:2px solid rgba(255,255,255,.18)}
 .daily-board th.today-th{background:var(--steel)}
+.daily-board th.plan-week-boundary,.day-cell.plan-week-boundary{border-left:2px solid var(--border)}
 .daily-board td{border-bottom:1px solid var(--border2);vertical-align:top}
 .staff-cell{background:var(--ice)!important;position:sticky;left:0;z-index:4;border-right:2px solid var(--border2);min-width:160px;padding:7px 8px}
 .staff-line{display:flex;align-items:center;gap:6px}
@@ -2385,13 +2386,23 @@ function timeOffFor(userId,dateStr){
 function timeOffLabel(t){return t.type==='sick'?'🤒 Sygdom':(t.type==='vacation'?'🏖 Ferie':'⛔ Fravær');}
 function renderPlan(){
   renderPool('plan');teamFilterHTML('plan');
-  var days=[];for(var i=0;i<7;i++)days.push(add(mon(add(new Date(),planOffset*7)),i));
-  document.getElementById('plan-label').textContent='Uge '+weekNo(days[0])+' · '+days[0].getDate()+'/'+(days[0].getMonth()+1)+' – '+days[6].getDate()+'/'+(days[6].getMonth()+1);
+  // FIKS: viste tidligere kun 7 dage (én uge) ad gangen, hvorfor der intet var at
+  // scrolle ind i ved kanten — modsat Kapacitet, som renderer 52 uger på én gang og
+  // derfor scroller helt frit. Viser nu 3 uger (forrige + nuværende + næste) som ét
+  // sammenhængende sæt kolonner, så der altid er en hel uges buffer at scrolle ind i
+  // i begge retninger, uden nogen JS-scroll-detektion overhovedet.
+  var centerMonday=mon(add(new Date(),planOffset*7));
+  var days=[];for(var i=-7;i<14;i++)days.push(add(centerMonday,i));
+  var curWeekStart=days[7];
+  document.getElementById('plan-label').textContent='Uge '+weekNo(curWeekStart)+' · '+curWeekStart.getDate()+'/'+(curWeekStart.getMonth()+1)+' – '+days[13].getDate()+'/'+(days[13].getMonth()+1)+' (+/- 1 uge synlig)';
   var head='<tr><th class="staff-th">Medarbejder / undergruppe</th>';
-  days.forEach(function(d){head+='<th class="'+(isToday(d)?'today-th':'')+'" style="min-width:128px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';});
+  days.forEach(function(d,i){
+    var weekBoundary=i>0&&d.getDay()===1; // tynd adskillelseslinje ved hver ny uges mandag
+    head+='<th class="'+(isToday(d)?'today-th':'')+(weekBoundary?' plan-week-boundary':'')+'" style="min-width:128px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';
+  });
   document.getElementById('daily-head').innerHTML=head+'</tr>';
   var grouped=teamList('plan'),html='';
-  var curWeekKey=weekKey(days[0]);
+  var curWeekKey=weekKey(curWeekStart);
   ensureWeeklyNotesLoaded(curWeekKey);
   function row(u){
     var c=u.color||'#2563EB';
@@ -2405,14 +2416,15 @@ function renderPlan(){
       (hasNote?'<div class="wnote-banner">'+esc(hasNote)+'</div>':'')+
       '</div></div></td>';
 
-    days.forEach(function(d){
+    days.forEach(function(d,i){
       var ds=iso(d);
       var booked=dailyLoad(u.id,ds);
       var cap=(+u.weekly_capacity||5)/5;
       var off=timeOffFor(u.id,ds);
+      var weekBoundary=i>0&&d.getDay()===1;
 
       if(off){
-        cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'"><div class="timeoff-cell" title="Klik for at redigere eller fjerne — '+esc(off.note||'')+'" data-action="edit-timeoff-day" data-user-id="'+u.id+'" data-off-id="'+off.id+'" style="cursor:pointer">'+timeOffLabel(off)+'</div></td>';
+        cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+(weekBoundary?' plan-week-boundary':'')+'"><div class="timeoff-cell" title="Klik for at redigere eller fjerne — '+esc(off.note||'')+'" data-action="edit-timeoff-day" data-user-id="'+u.id+'" data-off-id="'+off.id+'" style="cursor:pointer">'+timeOffLabel(off)+'</div></td>';
         return;
       }
 
@@ -2432,7 +2444,7 @@ function renderPlan(){
       var pills=items.map(function(b,idx){ return assignPill(b,ds,idx>0,idx<items.length-1); }).join('');
       var free=items.length===0?'<div class="free-slot">✓ Ledig</div>':'';
 
-      cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+'">'+
+      cells+='<td class="day-cell'+(isToday(d)?' today-col':'')+(weekBoundary?' plan-week-boundary':'')+'">'+
         '<div class="drop-zone" data-drop="day" data-user-id="'+u.id+'" data-date="'+ds+'">'+
         free+pills+
         '<div style="display:flex;gap:4px;align-items:center">'+
@@ -2448,10 +2460,22 @@ function renderPlan(){
   grouped.internal.forEach(function(u){html+=row(u);});
   Object.keys(grouped.groups).sort().forEach(function(g){
     var isOpen=vendorExpanded[g]===true;
-    html+='<tr class="group-row"><td colspan="8"><button class="group-toggle" data-action="toggle-vendor" data-group="'+esc(g)+'">'+(isOpen?'▾':'▸')+' '+esc(g)+'</button> · '+grouped.groups[g].length+' undergrupper <button class="btn small" data-action="add-subgroup" data-group="'+esc(g)+'" style="margin-left:7px">+ Undergruppe</button></td></tr>';
+    html+='<tr class="group-row"><td colspan="22"><button class="group-toggle" data-action="toggle-vendor" data-group="'+esc(g)+'">'+(isOpen?'▾':'▸')+' '+esc(g)+'</button> · '+grouped.groups[g].length+' undergrupper <button class="btn small" data-action="add-subgroup" data-group="'+esc(g)+'" style="margin-left:7px">+ Undergruppe</button></td></tr>';
     if(isOpen)grouped.groups[g].forEach(function(u){html+=row(u);});
   });
-  document.getElementById('daily-body').innerHTML=html||'<tr><td colspan="8" style="padding:18px;text-align:center;color:var(--muted)">Opret medarbejdere under Hold & vendors.</td></tr>';
+  document.getElementById('daily-body').innerHTML=html||'<tr><td colspan="22" style="padding:18px;text-align:center;color:var(--muted)">Opret medarbejdere under Hold & vendors.</td></tr>';
+  // Centrer visningen på den "aktuelle" uge (dag 7-13 i arrayet) ved indlæsning, så
+  // man starter midt i bufferen og kan scrolle begge veje med det samme.
+  requestAnimationFrame(function(){
+    var outer=document.getElementById('plan-board-outer');
+    var todayTh=document.querySelector('#daily-head .today-th');
+    if(outer&&todayTh){
+      outer.scrollLeft=Math.max(0,todayTh.offsetLeft-40);
+    }else if(outer){
+      var ths=document.querySelectorAll('#daily-head th');
+      if(ths[7])outer.scrollLeft=Math.max(0,ths[7].offsetLeft-40);
+    }
+  });
 }
 
 // RENDER CAPACITY
