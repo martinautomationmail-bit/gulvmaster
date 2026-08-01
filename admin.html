@@ -907,6 +907,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div style="position:relative;height:220px"><canvas id="fin-trend-chart"></canvas></div>
       </div>
     </div>
+
+    <div class="fin-card" style="margin-top:16px;width:100%">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+        <div class="fin-eyebrow" style="margin:0">Året i overblik — omsætning vs. udgifter, januar til december</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap" id="fin-year-fag-filter">
+          <button class="tab-btn-sm active" data-fag="alle">Alle fag</button>
+          <button class="tab-btn-sm" data-fag="Gulvlægning">Gulvlægning</button>
+          <button class="tab-btn-sm" data-fag="Maler">Maler</button>
+          <button class="tab-btn-sm" data-fag="Gulvslibning">Gulvslibning</button>
+          <button class="tab-btn-sm" data-fag="Andet">Andet</button>
+        </div>
+      </div>
+      <p class="fin-muted" style="margin:-2px 0 12px">Klik på en søjle for at se hvilke sager der ligger bag den måneds tal.</p>
+      <div style="position:relative;height:280px"><canvas id="fin-year-chart"></canvas></div>
+      <div id="fin-year-detail" style="margin-top:14px"></div>
+    </div>
   </div>
 
   <div class="fintabpage" id="fintab-omsaetning" style="display:none">
@@ -2384,25 +2400,24 @@ function timeOffFor(userId,dateStr){
   return timeOffApproved.find(function(t){return +t.user_id===+userId&&dateStr>=String(t.start_date).slice(0,10)&&dateStr<=String(t.end_date).slice(0,10);});
 }
 function timeOffLabel(t){return t.type==='sick'?'🤒 Sygdom':(t.type==='vacation'?'🏖 Ferie':'⛔ Fravær');}
+// Samme model som Kapacitet: alle 52 uger fra indeværende uge og frem renderes på én
+// gang, så scroll er 100% nativt og uendeligt i praksis — ingen kunstig uge-detektion
+// nødvendig for selve scrollet. "Uge X"-labelen og ugenoter følger i stedet med hvor
+// du RENT FAKTISK har scrollet hen (planCurrentWeekStart), ikke en fast tæller.
+function planAllDays(){var out=[],m=mon(new Date());for(var i=0;i<364;i++)out.push(add(m,i));return out;}
+var planCurrentWeekStart=null;
 function renderPlan(){
   renderPool('plan');teamFilterHTML('plan');
-  // FIKS: viste tidligere kun 7 dage (én uge) ad gangen, hvorfor der intet var at
-  // scrolle ind i ved kanten — modsat Kapacitet, som renderer 52 uger på én gang og
-  // derfor scroller helt frit. Viser nu 3 uger (forrige + nuværende + næste) som ét
-  // sammenhængende sæt kolonner, så der altid er en hel uges buffer at scrolle ind i
-  // i begge retninger, uden nogen JS-scroll-detektion overhovedet.
-  var centerMonday=mon(add(new Date(),planOffset*7));
-  var days=[];for(var i=-7;i<14;i++)days.push(add(centerMonday,i));
-  var curWeekStart=days[7];
-  document.getElementById('plan-label').textContent='Uge '+weekNo(curWeekStart)+' · '+curWeekStart.getDate()+'/'+(curWeekStart.getMonth()+1)+' – '+days[13].getDate()+'/'+(days[13].getMonth()+1)+' (+/- 1 uge synlig)';
+  var days=planAllDays();
+  if(!planCurrentWeekStart)planCurrentWeekStart=days[0];
   var head='<tr><th class="staff-th">Medarbejder / undergruppe</th>';
   days.forEach(function(d,i){
     var weekBoundary=i>0&&d.getDay()===1; // tynd adskillelseslinje ved hver ny uges mandag
-    head+='<th class="'+(isToday(d)?'today-th':'')+(weekBoundary?' plan-week-boundary':'')+'" style="min-width:128px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';
+    head+='<th class="'+(isToday(d)?'today-th':'')+(weekBoundary?' plan-week-boundary':'')+'" data-plan-monday="'+(d.getDay()===1?iso(d):'')+'" style="min-width:128px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';
   });
   document.getElementById('daily-head').innerHTML=head+'</tr>';
   var grouped=teamList('plan'),html='';
-  var curWeekKey=weekKey(curWeekStart);
+  var curWeekKey=weekKey(planCurrentWeekStart);
   ensureWeeklyNotesLoaded(curWeekKey);
   function row(u){
     var c=u.color||'#2563EB';
@@ -2464,18 +2479,64 @@ function renderPlan(){
     if(isOpen)grouped.groups[g].forEach(function(u){html+=row(u);});
   });
   document.getElementById('daily-body').innerHTML=html||'<tr><td colspan="22" style="padding:18px;text-align:center;color:var(--muted)">Opret medarbejdere under Hold & vendors.</td></tr>';
-  // Centrer visningen på den "aktuelle" uge (dag 7-13 i arrayet) ved indlæsning, så
-  // man starter midt i bufferen og kan scrolle begge veje med det samme.
-  requestAnimationFrame(function(){
-    var outer=document.getElementById('plan-board-outer');
-    var todayTh=document.querySelector('#daily-head .today-th');
-    if(outer&&todayTh){
-      outer.scrollLeft=Math.max(0,todayTh.offsetLeft-40);
-    }else if(outer){
-      var ths=document.querySelectorAll('#daily-head th');
-      if(ths[7])outer.scrollLeft=Math.max(0,ths[7].offsetLeft-40);
-    }
-  });
+  updatePlanWeekLabel(planCurrentWeekStart);
+  // Scroller kun til "i dag" ved allerførste indlæsning — IKKE ved hver gentegning
+  // (som sker jævnligt når data opdateres), ellers ville brugerens scrollposition
+  // konstant blive nulstillet under dem.
+  if(!window._planInitialScrollDone){
+    window._planInitialScrollDone=true;
+    requestAnimationFrame(function(){
+      var outer=document.getElementById('plan-board-outer');
+      var todayTh=document.querySelector('#daily-head .today-th');
+      if(outer&&todayTh)outer.scrollLeft=Math.max(0,todayTh.offsetLeft-40);
+    });
+  }
+  bindPlanScrollTracking();
+}
+function updatePlanWeekLabel(mondayDate){
+  var sunday=add(mondayDate,6);
+  document.getElementById('plan-label').textContent='Uge '+weekNo(mondayDate)+' · '+mondayDate.getDate()+'/'+(mondayDate.getMonth()+1)+' – '+sunday.getDate()+'/'+(sunday.getMonth()+1);
+}
+// Følger PASSIVT med på hvor du rent faktisk har scrollet hen (ren native scroll,
+// aldrig preventDefault/manuel scrollLeft) og opdaterer labelen + hvilken uges note
+// "🗒"-knappen redigerer, så Forrige/Næste bagefter tager udgangspunkt i den uge du
+// kigger på — ikke en fast, urelateret tæller.
+// Springer til den NÆSTE/FORRIGE mandag ift. den uge du aktuelt kigger på (ikke en
+// fast tæller) — hvis du selv har scrollet til uge 37, går "Næste" til uge 38.
+function planScrollByWeeks(dir){
+  var outer=document.getElementById('plan-board-outer');
+  if(!outer)return;
+  var mondays=Array.prototype.slice.call(document.querySelectorAll('#daily-head th[data-plan-monday]')).filter(function(th){return th.dataset.planMonday;});
+  if(!mondays.length)return;
+  var curKey=planCurrentWeekStart?iso(planCurrentWeekStart):mondays[0].dataset.planMonday;
+  var idx=mondays.findIndex(function(th){return th.dataset.planMonday===curKey;});
+  if(idx===-1)idx=0;
+  var targetIdx=Math.max(0,Math.min(mondays.length-1,idx+dir));
+  outer.scrollTo({left:Math.max(0,mondays[targetIdx].offsetLeft-40),behavior:'smooth'});
+}
+function bindPlanScrollTracking(){
+  var outer=document.getElementById('plan-board-outer');
+  if(!outer||outer._planScrollBound)return;
+  outer._planScrollBound=true;
+  var settleTimer=null;
+  outer.addEventListener('scroll',function(){
+    clearTimeout(settleTimer);
+    settleTimer=setTimeout(function(){
+      var mondays=Array.prototype.slice.call(document.querySelectorAll('#daily-head th[data-plan-monday]')).filter(function(th){return th.dataset.planMonday;});
+      if(!mondays.length)return;
+      var target=mondays[0];
+      for(var i=0;i<mondays.length;i++){
+        if(mondays[i].offsetLeft<=outer.scrollLeft+60)target=mondays[i];else break;
+      }
+      var mk=target.dataset.planMonday;
+      if(!mk)return;
+      var d=new Date(mk+'T00:00:00');
+      if(planCurrentWeekStart&&iso(planCurrentWeekStart)===mk)return;
+      planCurrentWeekStart=d;
+      updatePlanWeekLabel(d);
+      ensureWeeklyNotesLoaded(weekKey(d));
+    },150);
+  },{passive:true});
 }
 
 // RENDER CAPACITY
@@ -2997,7 +3058,7 @@ function ensureWeeklyNotesLoaded(wk){
   });
 }
 async function openWeeklyNote(userId){
-  var wk=weekKey(mon(add(new Date(),planOffset*7)));
+  var wk=weekKey(planCurrentWeekStart||mon(new Date()));
   var current=weeklyNotesCache[userId+':'+wk]||'';
   var u=users.find(function(x){return +x.id===+userId;});
   var text=await gmPrompt('Ugenote til '+(u?u.name:'medarbejderen')+' — uge '+wk.replace('w','')+'\n(vises i medarbejderens kontrolpanel for denne uge):',current);
@@ -4707,20 +4768,33 @@ function renderFinOverview(snapshots){
     if(mk&&finExpenseTotalsByMonth&&finExpenseTotalsByMonth[mk]!=null)return finExpenseTotalsByMonth[mk];
     return mk===finExpenseMonth?finExpenseTotal():0;
   }
-  function monthBox(mk,label){
+  function monthBox(mk,label,cumulativeFrom){
     if(!mk||!finRevenue[mk])return '<div class="fin-empty">Ingen data</div>';
     var m=finRevenue[mk],udg=udgForMonth(mk),moms=m.total*0.25,res=m.total-udg-moms;
+    var cumulativeRow='';
+    if(cumulativeFrom!=null){
+      var cumulative=cumulativeFrom+res;
+      cumulativeRow='<div class="fin-row" style="border-top:1px dashed var(--border2);padding-top:8px;margin-top:4px"><span>Aktuelle måneds resultat</span><b>'+krFmt(cumulativeFrom)+'</b></div>'+
+        '<div class="fin-row total"><span>Løbende bundlinje (denne + aktuelle)</span><b class="'+(cumulative<0?'neg':'pos')+'" style="font-size:16px">'+krFmt(cumulative)+'</b></div>';
+    }
     return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div class="fin-eyebrow" style="margin:0">'+label+'</div><span class="fin-badge-live">Live fra JobTread</span></div>'+
       '<div class="fin-kpi-value" style="font-size:28px">'+krFmt(m.total)+'</div>'+
       '<div class="fin-kpi-sub">'+m.jobs.length+' sager'+(m.missingBudgetCount?' · '+m.missingBudgetCount+' uden budget':'')+'</div>'+
       '<div style="margin-top:14px">'+
       '<div class="fin-row"><span>Udgifter</span><b>'+krFmt(udg)+'</b></div>'+
       '<div class="fin-row"><span>Moms (25%)</span><b>'+krFmt(moms)+'</b></div>'+
-      '<div class="fin-row total"><span>Resultat</span><b class="'+(res<0?'neg':'pos')+'" style="font-size:16px">'+krFmt(res)+'</b></div></div>';
+      '<div class="fin-row total"><span>Resultat</span><b class="'+(res<0?'neg':'pos')+'" style="font-size:16px">'+krFmt(res)+'</b></div>'+
+      cumulativeRow+'</div>';
+  }
+  var curResultForCumulative=null;
+  if(curKey&&finRevenue[curKey]){
+    var mCur=finRevenue[curKey],udgCur=udgForMonth(curKey);
+    curResultForCumulative=mCur.total-udgCur-mCur.total*0.25;
   }
   document.getElementById('fin-month-current').innerHTML=monthBox(curKey,'Indeværende måned ('+curKey+')');
-  document.getElementById('fin-month-next').innerHTML=monthBox(nextKey,'Næste måned ('+nextKey+')');
+  document.getElementById('fin-month-next').innerHTML=monthBox(nextKey,'Løbende måned ('+nextKey+')',curResultForCumulative);
   renderFinTrendChart(prevKey,curKey,nextKey,udgForMonth);
+  renderFinYearChart();
 }
 // Forgangen måned: rigtig omsætning = betalte + delvist betalte fakturaer UDSTEDT den
 // måned (delvis tæller kun det faktisk modtagne beløb). Indeværende/næste måned bruger
@@ -4735,6 +4809,72 @@ function finInvoiceRevenueForMonth(mk){
   },0);
 }
 var finTrendChartInstance=null;
+var finYearData=null,finYearFag='alle',finYearChartInstance=null;
+async function renderFinYearChart(){
+  var canvas=document.getElementById('fin-year-chart');
+  if(!canvas||typeof Chart==='undefined')return;
+  if(!finYearData){
+    var r=await api('/api/finance/year-overview');
+    if(!r)return;
+    finYearData=r;
+  }
+  var monthKeys=Object.keys(finYearData.months).sort();
+  var MAANEDER=['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+  var labels=[],omsD=[],udgD=[];
+  monthKeys.forEach(function(mk,i){
+    var m=finYearData.months[mk];
+    var oms=finYearFag==='alle'?(m.total||0):finYearFagSum(m,finYearFag);
+    labels.push(MAANEDER[i]);
+    omsD.push(oms);
+    udgD.push(m.expenses||0);
+  });
+  if(finYearChartInstance)finYearChartInstance.destroy();
+  finYearChartInstance=new Chart(canvas,{
+    type:'bar',
+    data:{labels:labels,datasets:[
+      {label:'Omsætning'+(finYearFag!=='alle'?' ('+finYearFag+')':''),data:omsD,backgroundColor:'#1D4ED8',borderRadius:5,maxBarThickness:38},
+      {label:'Udgifter',data:udgD,backgroundColor:'#DC2626',borderRadius:5,maxBarThickness:38}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      onClick:function(evt,elements){
+        if(!elements.length)return;
+        var idx=elements[0].index;
+        renderFinYearDetail(monthKeys[idx]);
+      },
+      plugins:{legend:{position:'bottom'}},
+      scales:{y:{ticks:{callback:function(v){return (v/1000)+'k';}}}}}
+  });
+  renderFinYearDetail(monthKeys.find(function(mk){return mk===iso(new Date()).slice(0,7);})||monthKeys[0]);
+}
+function finYearFagSum(m,fag){
+  var sum=0;
+  Object.keys(m.byFag||{}).forEach(function(f){
+    var isMatch=fag==='Andet'?!['Gulvlægning','Maler','Gulvslibning'].includes(f):f===fag;
+    if(isMatch)sum+=m.byFag[f].sum;
+  });
+  return sum;
+}
+function renderFinYearDetail(mk){
+  var el=document.getElementById('fin-year-detail');
+  if(!el||!finYearData||!finYearData.months[mk])return;
+  var m=finYearData.months[mk];
+  var jobs=finYearFag==='alle'?m.jobs:m.jobs.filter(function(j){
+    return finYearFag==='Andet'?!['Gulvlægning','Maler','Gulvslibning'].includes(j.fag):j.fag===finYearFag;
+  });
+  var total=jobs.reduce(function(s,j){return s+(j.value||0);},0);
+  el.innerHTML='<div class="fin-eyebrow" style="margin-bottom:8px">'+mk+(finYearFag!=='alle'?' · '+finYearFag:'')+' — '+jobs.length+' sag(er), '+krFmt(total)+'</div>'+
+    '<div class="fin-card" style="max-height:220px;overflow:auto;padding-top:8px">'+(jobs.length?jobs.map(function(j){
+      return '<div class="fin-job-row"><div><b>'+esc(j.name)+'</b><div class="fin-muted">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div></div>'+(j.value===null?'<span class="fin-badge">intet budget</span>':krFmt(j.value))+'</div>';
+    }).join(''):'<div class="fin-empty">Ingen sager i denne måned'+(finYearFag!=='alle'?' for dette fag':'')+'.</div>')+'</div>';
+}
+document.querySelectorAll('#fin-year-fag-filter [data-fag]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('#fin-year-fag-filter [data-fag]').forEach(function(b){b.classList.remove('active');});
+    btn.classList.add('active');
+    finYearFag=btn.dataset.fag;
+    renderFinYearChart();
+  });
+});
 function renderFinTrendChart(prevKey,curKey,nextKey,udgForMonth){
   var canvas=document.getElementById('fin-trend-chart');
   if(!canvas||typeof Chart==='undefined')return;
@@ -4766,7 +4906,7 @@ document.getElementById('fin-save-snapshot-btn').onclick=async function(){
   if(r&&r.ok){toast('Snapshot gemt ✓','💾');var s=await api('/api/finance/bank-snapshots');renderFinOverview(s||[]);}
   else if(r)toast(r.error||'Fejl','❌');
 };
-document.getElementById('finance-refresh-btn').onclick=loadFinance;
+document.getElementById('finance-refresh-btn').onclick=function(){finYearData=null;loadFinance();};
 document.getElementById('fin-revenue-date-from').addEventListener('change',function(e){finRevenueDateFrom=e.target.value||null;renderFinRevenue();});
 document.getElementById('fin-revenue-date-to').addEventListener('change',function(e){finRevenueDateTo=e.target.value||null;renderFinRevenue();});
 document.getElementById('fin-revenue-date-clear').addEventListener('click',function(){
@@ -5530,9 +5670,13 @@ function bind(){
   document.getElementById('save-visit-form').onclick=saveVisitForm;
   document.getElementById('sync-phones-btn').onclick=syncPhonesNow;
   // "Ryd alle bookinger"-knappen er fjernet fra UI (for let at trykke på ved en fejl) —
-  document.getElementById('plan-prev').onclick=function(){planOffset--;renderPlan();};
-  document.getElementById('plan-next').onclick=function(){planOffset++;renderPlan();};
-  document.getElementById('plan-today').onclick=function(){planOffset=0;renderPlan();};
+  document.getElementById('plan-prev').onclick=function(){planScrollByWeeks(-1);};
+  document.getElementById('plan-next').onclick=function(){planScrollByWeeks(1);};
+  document.getElementById('plan-today').onclick=function(){
+    var outer=document.getElementById('plan-board-outer');
+    var todayTh=document.querySelector('#daily-head .today-th');
+    if(outer&&todayTh)outer.scrollTo({left:Math.max(0,todayTh.offsetLeft-40),behavior:'smooth'});
+  };
   document.getElementById('send-reminders-btn').onclick=async function(){
     if(!await gmConfirm('Send "vi kommer i morgen" til alle kunder der er booket i morgen, og som ikke allerede har fået den?'))return;
     var btn=this;btn.disabled=true;btn.textContent='Sender…';

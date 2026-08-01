@@ -4268,6 +4268,30 @@ app.get('/api/finance/revenue', auth, financeOnly, asyncRoute(async (req, res) =
   res.json(data);
 }));
 
+// Hele kalenderåret (januar-december) i ét kald — bruges af årsgrafen i Oversigt.
+// Omsætning er sagsbudget-baseret (samme metode som resten af Omsætning pr. fag),
+// så fag-opdelingen er tilgængelig for alle 12 måneder ensartet. Udgifter hentes fra
+// de månedsopdelte udgiftsposter under Udgifter-fanen.
+app.get('/api/finance/year-overview', auth, financeOnly, asyncRoute(async (req, res) => {
+  const today = new Date();
+  const year = Math.min(today.getFullYear() + 1, Math.max(today.getFullYear() - 3, Number(req.query.year) || today.getFullYear()));
+  const isCurrentYear = year === today.getFullYear();
+  const monthsBack = isCurrentYear ? today.getMonth() : (year < today.getFullYear() ? 11 : 0);
+  const monthsForward = isCurrentYear ? (11 - today.getMonth()) : (year > today.getFullYear() ? 11 : 0);
+  const revenue = await fetchFinanceJobsByMonth(monthsBack, monthsForward);
+  const monthKeys = [];
+  for (let m = 0; m < 12; m++) monthKeys.push(`${year}-${String(m + 1).padStart(2, '0')}`);
+  const expenseRows = await pool.query('SELECT month_key, COALESCE(SUM(amount),0)::float AS total FROM finance_expenses WHERE month_key = ANY($1) GROUP BY month_key', [monthKeys]);
+  const expenseByMonth = {};
+  for (const r of expenseRows.rows) expenseByMonth[r.month_key] = r.total;
+  const result = {};
+  for (const mk of monthKeys) {
+    const m = revenue[mk];
+    result[mk] = { total: m ? m.total : null, byFag: m ? m.byFag : {}, jobs: m ? m.jobs : [], expenses: expenseByMonth[mk] || 0, hasData: !!m };
+  }
+  res.json({ year, months: result });
+}));
+
 app.put('/api/finance/job-override/:jobId', auth, financeOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
   const amount = body.amount === '' || body.amount === null || body.amount === undefined ? null : Number(body.amount);
