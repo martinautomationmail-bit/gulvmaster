@@ -633,9 +633,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .logs td{padding:7px 9px;border-bottom:1px solid var(--border2);font-size:10px}
 
 /* QUICK POP-UP (drop + enter) */
-.quick-pop{display:none;position:fixed;z-index:400;background:#fff;border:1px solid var(--border2);border-radius:14px;box-shadow:0 16px 40px rgba(15,34,64,.28);width:320px;overflow:hidden;padding:0}
+.quick-pop{display:none;position:fixed;z-index:400;background:#fff;border:1px solid var(--border2);border-radius:14px;box-shadow:0 16px 40px rgba(15,34,64,.28);width:320px;max-height:calc(100vh - 24px);overflow-y:auto;overflow-x:hidden;padding:0}
 .quick-pop.open{display:block;animation:gm-pop .18s cubic-bezier(.2,.9,.3,1.3)}
-.qp-head{display:flex;align-items:center;gap:9px;padding:13px 16px;background:linear-gradient(135deg,var(--navy),#1e3a6e)}
+.qp-head{display:flex;align-items:center;gap:9px;padding:13px 16px;background:linear-gradient(135deg,var(--navy),#1e3a6e);cursor:grab;user-select:none}
 .qp-head-icon{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:13px;flex-shrink:0}
 .quick-pop h4{font-size:13px;font-weight:800;color:#fff;margin:0}
 .qp-body{padding:16px}
@@ -649,9 +649,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 
 /* HURTIG KAPACITETSRESERVATION (når en opgave trækkes fra poolen) */
-.capacity-drop-pop{display:none;position:fixed;z-index:460;width:312px;background:#fff;border:1px solid #D9E2F0;border-radius:16px;overflow:hidden;box-shadow:0 18px 50px rgba(15,34,64,.28)}
+.capacity-drop-pop{display:none;position:fixed;z-index:460;width:312px;max-height:calc(100vh - 24px);overflow-y:auto;overflow-x:hidden;background:#fff;border:1px solid #D9E2F0;border-radius:16px;box-shadow:0 18px 50px rgba(15,34,64,.28)}
 .capacity-drop-pop.open{display:block;animation:gm-pop .18s cubic-bezier(.2,.9,.3,1.3)}
-.cdp-head{display:flex;align-items:center;gap:10px;padding:13px 15px;background:linear-gradient(135deg,#5B21B6,#7C3AED);color:#fff}
+.cdp-head{display:flex;align-items:center;gap:10px;padding:13px 15px;background:linear-gradient(135deg,#5B21B6,#7C3AED);color:#fff;cursor:grab;user-select:none}
 .cdp-icon{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:rgba(255,255,255,.18);font-size:15px;flex:0 0 auto}
 .cdp-head h4{margin:0;font-size:13px;font-weight:850;color:#fff}
 .cdp-head p{margin:2px 0 0;font-size:9.5px;opacity:.8;line-height:1.25}
@@ -2796,6 +2796,26 @@ function populateQPUsers(selectedUid){
   var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
   document.getElementById('qp-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'"'+(+u.id===+selectedUid?' selected':'')+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
 }
+// Fælles, robust positionering til flydende popups (Ny booking, Kapacitets-reservation
+// m.fl.) — FEJL RETTET: den gamle version gættede en fast antaget højde (fx 300px) og
+// klemte kun toppen af skærmen, ikke bunden. Var popup'ens RIGTIGE indhold højere end
+// gættet (hvilket det ofte var), endte den delvist uden for skærmen uden mulighed for
+// at scrolle ned til resten. Nu måles den faktiske, renderede størrelse, og popup'en
+// klemmes ind inden for skærmen i begge retninger — samt har en scroll-sikkerhedsnet i
+// CSS, hvis den alligevel skulle være højere end skærmen på meget små skærme.
+function positionFloatingPopup(pop,evt,centerOnCursor){
+  pop.style.visibility='hidden';
+  pop.style.transform=''; // nulstil evt. tidligere trukket position
+  pop.classList.add('open');
+  var w=pop.offsetWidth||320,h=pop.offsetHeight||300,margin=12;
+  var x=evt&&Number.isFinite(evt.clientX)?(centerOnCursor?evt.clientX-w/2:evt.clientX):(window.innerWidth-w)/2;
+  var y=evt&&Number.isFinite(evt.clientY)?(centerOnCursor?evt.clientY-28:evt.clientY):(window.innerHeight-h)/2;
+  x=Math.max(margin,Math.min(x,window.innerWidth-w-margin));
+  y=Math.max(margin,Math.min(y,window.innerHeight-h-margin));
+  pop.style.left=Math.round(x)+'px';
+  pop.style.top=Math.round(y)+'px';
+  pop.style.visibility='';
+}
 function openQuickPop(taskId,uid,dateStr,evt){
   var t=taskId?tasks.find(function(x){return String(x.id)===String(taskId);}):null;
   var inCapacity=document.getElementById('page-capacity').classList.contains('active');
@@ -2850,12 +2870,9 @@ function openQuickPop(taskId,uid,dateStr,evt){
   document.getElementById('qp-time').value='';
   document.getElementById('qp-send-mail').checked=false;
   document.getElementById('qp-note').value='';
-  // Position pop-up near drop target
+  // Position pop-up near drop target — måler den faktiske størrelse, se positionFloatingPopup.
   var pop=document.getElementById('quick-pop');
-  var x=evt?Math.min(evt.clientX,window.innerWidth-330):window.innerWidth/2-160;
-  var y=evt?Math.min(evt.clientY,window.innerHeight-300):window.innerHeight/2-150;
-  pop.style.left=x+'px';pop.style.top=y+'px';
-  pop.classList.add('open');
+  positionFloatingPopup(pop,evt,false);
   setTimeout(function(){
     // Uden forvalgt opgave: sæt fokus i hurtig-opgave-feltet, så man bare kan skrive og trykke Enter.
     var target=!taskId?document.getElementById('qp-new-task'):document.getElementById('qp-days');
@@ -3132,14 +3149,7 @@ function openCapacityDropPop(task,userId,weekStart,evt){
   var days=document.getElementById('cdp-days');
   days.value=suggestedCapacityDays(task);
   var pop=document.getElementById('capacity-drop-pop');
-  var w=312,h=245;
-  var x=evt&&Number.isFinite(evt.clientX)?evt.clientX-w/2:(window.innerWidth-w)/2;
-  var y=evt&&Number.isFinite(evt.clientY)?evt.clientY-28:(window.innerHeight-h)/2;
-  x=Math.max(12,Math.min(x,window.innerWidth-w-12));
-  y=Math.max(12,Math.min(y,window.innerHeight-h-12));
-  pop.style.left=Math.round(x)+'px';
-  pop.style.top=Math.round(y)+'px';
-  pop.classList.add('open');
+  positionFloatingPopup(pop,evt,true);
   setTimeout(function(){days.focus();days.select();},40);
 }
 function closeCapacityDropPop(){
@@ -5777,9 +5787,9 @@ function bind(){
   (function(){
     var dragEl=null,startX=0,startY=0,startTX=0,startTY=0;
     document.addEventListener('mousedown',function(e){
-      var handle=e.target.closest('.modal h3, .modal .gd-head');
+      var handle=e.target.closest('.modal h3, .modal .gd-head, .qp-head, .cdp-head');
       if(!handle)return;
-      var modal=handle.closest('.modal');
+      var modal=handle.closest('.modal, .quick-pop, .capacity-drop-pop');
       if(!modal)return;
       var isInteractive=e.target.closest('input,textarea,select,button,a,label');
       if(isInteractive)return;
