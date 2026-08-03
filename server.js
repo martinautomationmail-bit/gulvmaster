@@ -2244,7 +2244,7 @@ async function fetchGanttTasksFromJT(jobId) {
           $: { id: jobId },
           id: {}, name: {},
           ...(page === 0 ? jobContactFields() : {}),
-          ...(page === 0 ? { customFieldValues: { $: { size: 20 }, nodes: { value: {}, customField: { name: {} } } } } : {}),
+          ...(page === 0 ? { customFieldValues: { $: { size: 3, where: [['customField', 'name'], 'Projekt Type'] }, nodes: { value: {}, customField: { name: {} } } } } : {}),
           tasks: {
             $: args,
             nextPage: {},
@@ -2317,7 +2317,7 @@ async function syncAllGanttTasksFromJT() {
                 id: {}, name: {}, description: {}, startDate: {}, endDate: {},
                 progress: {}, isGroup: {}, position: {},
                 parentTask: { id: {} },
-                job: { id: {}, name: {}, number: {}, location: { address: {} }, customFieldValues: { $: { size: 20 }, nodes: { value: {}, customField: { name: {} } } } },
+                job: { id: {}, name: {}, number: {}, location: { address: {} }, customFieldValues: { $: { size: 3, where: [['customField', 'name'], 'Projekt Type'] }, nodes: { value: {}, customField: { name: {} } } } },
                 taskDependencies: { $: { size: 20 }, nodes: { dependsOnTask: { id: {} } } }
               }
             }
