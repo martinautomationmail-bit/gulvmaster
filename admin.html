@@ -3767,8 +3767,25 @@ function renderGanttChart(){
       var myStart=t.start_date?date(t.start_date):range.start;
       var x1=(Math.round((depEnd-range.start)/86400000)+1)*dw,y1=depIdx*GANTT_ROW_H+22;
       var x2=Math.round((myStart-range.start)/86400000)*dw,y2=idx*GANTT_ROW_H+22;
-      var midX=x1+Math.max(10,(x2-x1)/2);
-      deps+='<path d="M'+x1+' '+y1+' C '+midX+' '+y1+', '+midX+' '+y2+', '+x2+' '+y2+'" stroke="#94A3B8" stroke-width="1.5" fill="none" marker-end="url(#ganttArrow)"/>';
+      // FEJL RETTET: kurven brugte tidligere et kontrolpunkt midt mellem x1 og x2 —
+      // for opgaver langt fra hinanden (mange rækker/dage imellem) gav det én lang,
+      // skæv diagonal streg i stedet for en pæn bue. Nu er "hvor meget den svinger ud"
+      // et fast, lille interval uanset afstand, så den altid ser rolig og ensartet ud —
+      // ligesom i rigtige Gantt-værktøjer.
+      var pad=Math.max(18,Math.min(46,Math.abs(x2-x1)*.35));
+      var c1x=x1+pad,c2x=x2-pad;
+      var path;
+      if(x2>=x1+pad*2){
+        // Almindeligt tilfælde: målet ligger til højre — blød S-kurve med fast udsving.
+        path='M'+x1+' '+y1+' C '+c1x+' '+y1+', '+c2x+' '+y2+', '+x2+' '+y2;
+      }else{
+        // Målet ligger tæt på eller til venstre for kilden — før linjen pænt uden om i
+        // stedet for at lade kurven vride sig ind over sig selv.
+        var loopY=(y1+y2)/2;
+        path='M'+x1+' '+y1+' C '+(x1+pad)+' '+y1+', '+(x1+pad)+' '+loopY+', '+(x1+pad*.6)+' '+loopY+
+             ' S '+(x2-pad)+' '+y2+', '+x2+' '+y2;
+      }
+      deps+='<path d="'+path+'" stroke="#94A3B8" stroke-width="1.5" fill="none" marker-end="url(#ganttArrow)"/>';
     });
   });
 
