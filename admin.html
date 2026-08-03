@@ -960,6 +960,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div id="fin-dunning-log" style="margin-top:14px"></div>
     </div>
+    <div class="fin-card">
+      <div class="fin-eyebrow">🏦 Automatisk bankafstemning</div>
+      <p class="fin-muted" style="margin:-4px 0 12px">Upload et bankudtog (PDF, Excel eller CSV — fx fra Lunar), så matches indbetalinger automatisk mod udestående fakturaer på beløb, kundenavn og sagsnummer. Intet markeres betalt før du selv har bekræftet det.</p>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <input type="file" id="fin-bank-upload-input" accept=".pdf,.xlsx,.xls,.csv" style="display:none">
+        <button class="btn small primary" id="fin-bank-upload-btn">📤 Upload bankudtog</button>
+        <span class="fin-muted" id="fin-bank-upload-hint">Excel/CSV-eksport læses mest pålideligt — PDF er et fornuftigt forsøg, men tjek altid gennem forslagene.</span>
+      </div>
+      <div id="fin-bank-results" style="margin-top:16px"></div>
+    </div>
     <select class="fin-status" id="fin-invoice-date-filter" style="width:auto;margin-bottom:10px">
       <option value="all">Alle datoer</option>
       <option value="week">Seneste uge</option>
@@ -2181,7 +2191,8 @@ function logout(){localStorage.removeItem('gm_token');localStorage.removeItem('g
 async function api(path,opts){
   opts=opts||{};
   var h=Object.assign({'Authorization':'Bearer '+token},opts.headers||{});
-  if(opts.body&&!h['Content-Type'])h['Content-Type']='application/json';
+  var isFormData=typeof FormData!=='undefined'&&opts.body instanceof FormData;
+  if(opts.body&&!h['Content-Type']&&!isFormData)h['Content-Type']='application/json';
   try{var r=await fetch(API+path,Object.assign({},opts,{headers:h}));var d=await r.json().catch(function(){return{error:'Ugyldigt svar'};});if(r.status===401){logout();return null;}return r.ok?d:Object.assign({ok:false},d);}
   catch(e){toast('Netværksfejl','❌');return null;}
 }
@@ -4871,6 +4882,78 @@ document.getElementById('fin-dunning-run-btn').addEventListener('click',async fu
     loadFinance();
   });
 });
+// BANKAFSTEMNING
+var finBankTxns=[];
+document.getElementById('fin-bank-upload-btn').addEventListener('click',function(){document.getElementById('fin-bank-upload-input').click();});
+document.getElementById('fin-bank-upload-input').addEventListener('change',async function(e){
+  var file=e.target.files[0];
+  if(!file)return;
+  var btn=document.getElementById('fin-bank-upload-btn');
+  var origLabel=btn.textContent;
+  btn.disabled=true;btn.textContent='Læser fil…';
+  var fd=new FormData();fd.append('file',file);
+  var r=await api('/api/finance/bank-statement/parse',{method:'POST',body:fd});
+  btn.disabled=false;btn.textContent=origLabel;
+  e.target.value='';
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke læse filen','❌');return;}
+  finBankTxns=r.transactions.map(function(t,i){t._localId=i;t._selected=t.matches.length&&t.matches[0].score>=50;t._chosenIdx=0;return t;});
+  toast('Fandt '+r.count+' transaktion(er) i filen','✓');
+  renderFinBankResults();
+});
+function renderFinBankResults(){
+  var el=document.getElementById('fin-bank-results');
+  if(!finBankTxns.length){el.innerHTML='';return;}
+  var payments=finBankTxns.filter(function(t){return t.amount>0;});
+  var withMatch=payments.filter(function(t){return t.matches.length;});
+  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+    '<div class="fin-eyebrow" style="margin:0">'+payments.length+' indbetalinger fundet · '+withMatch.length+' med forslag til match</div>'+
+    '<button class="btn small primary" id="fin-bank-apply-btn">✓ Anvend markerede matches</button></div>';
+  html+='<div style="display:flex;flex-direction:column;gap:8px;max-height:480px;overflow:auto">';
+  payments.forEach(function(t){
+    var best=t.matches[t._chosenIdx]||null;
+    var conf=best?(best.score>=70?'høj':best.score>=40?'mellem':'lav'):null;
+    var confColor=conf==='høj'?'#15803D':conf==='mellem'?'#B45309':'#B91C1C';
+    html+='<div class="fin-job-row" style="align-items:flex-start;flex-direction:column;gap:8px;background:'+(t._selected?'#F0FDF4':'#fff')+'">'+
+      '<div style="display:flex;justify-content:space-between;width:100%;align-items:center">'+
+      '<div><b>'+esc(t.text)+'</b><div class="fin-muted">'+esc(t.date)+'</div></div>'+
+      '<div style="display:flex;align-items:center;gap:10px">'+krFmt(t.amount)+
+      (t.matches.length?'<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-bank-select="'+t._localId+'" '+(t._selected?'checked':'')+'> markér</label>':'<span class="fin-badge">intet forslag</span>')+
+      '</div></div>';
+    if(t.matches.length){
+      html+='<div style="width:100%;display:flex;align-items:center;gap:8px">'+
+        '<select class="fin-status" data-bank-match-select="'+t._localId+'" style="width:auto;flex:1">'+
+        t.matches.map(function(m,i){return '<option value="'+i+'" '+(i===t._chosenIdx?'selected':'')+'>'+esc(m.customer||m.fullName)+' — '+krFmt(m.remaining!=null?m.remaining:m.priceWithTax)+' ('+m.reasons.join(', ')+')</option>';}).join('')+
+        '</select><span class="fin-badge" style="background:'+confColor+'22;color:'+confColor+'">'+conf+' sikkerhed</span></div>';
+    }
+    html+='</div>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
+  el.querySelectorAll('[data-bank-select]').forEach(function(cb){
+    cb.addEventListener('change',function(){finBankTxns[+cb.dataset.bankSelect]._selected=cb.checked;});
+  });
+  el.querySelectorAll('[data-bank-match-select]').forEach(function(sel){
+    sel.addEventListener('change',function(){finBankTxns[+sel.dataset.bankMatchSelect]._chosenIdx=+sel.value;renderFinBankResults();});
+  });
+  document.getElementById('fin-bank-apply-btn').addEventListener('click',async function(){
+    var toApply=payments.filter(function(t){return t._selected&&t.matches[t._chosenIdx];});
+    if(!toApply.length){toast('Ingen matches markeret','⚠');return;}
+    if(!await gmConfirm('Markér '+toApply.length+' faktura(er) som betalt/delvist betalt ud fra de valgte matches?'))return;
+    var btn=this;btn.disabled=true;btn.textContent='Anvender…';
+    for(var i=0;i<toApply.length;i++){
+      var t=toApply[i],m=t.matches[t._chosenIdx];
+      var invAmount=m.remaining!=null?m.remaining:m.priceWithTax;
+      var isFull=Math.abs(invAmount-t.amount)<1;
+      var body=isFull?{status:'paid'}:{status:'partial',paidAmount:t.amount};
+      await api('/api/finance/invoices/'+m.documentId,{method:'PUT',body:JSON.stringify(body)});
+    }
+    btn.disabled=false;btn.textContent='✓ Anvend markerede matches';
+    toast('Fakturaer opdateret ✓','✓');
+    finBankTxns=finBankTxns.filter(function(t){return toApply.indexOf(t)===-1;});
+    renderFinBankResults();
+    loadFinance();
+  });
+}
 var finPrivateBudget=[];
 function finExpenseTotal(){var t=0;finExpenses.forEach(function(c){c.items.forEach(function(i){t+=(+i.amount||0);});});return t;}
 function finTilgodehavende(){return finInvoices.filter(function(i){return i.overrideStatus==='unpaid';}).reduce(function(s,i){return s+(+i.priceWithTax||0);},0);}
@@ -4946,7 +5029,8 @@ var FIN_WIDGET_TYPES={
   year:{label:'Året i overblik (jan-dec, fag-filter, klik for detaljer)',render:renderYearWidget},
   fag_pie:{label:'Omsætning pr. fag denne måned (cirkeldiagram)',render:renderFagPieWidget},
   invoice_status:{label:'Fakturastatus-fordeling (betalt/udestående/mv.)',render:renderInvoiceStatusWidget},
-  expense_pie:{label:'Udgifter pr. kategori denne måned (cirkeldiagram)',render:renderExpensePieWidget}
+  expense_pie:{label:'Udgifter pr. kategori denne måned (cirkeldiagram)',render:renderExpensePieWidget},
+  vat_deadline:{label:'Moms-påmindelse — nedtælling til frist (kvartalsmoms)',render:renderVatDeadlineWidget}
 };
 
 async function loadFinWidgets(){
@@ -5104,6 +5188,59 @@ function renderExpensePieWidget(body){
   var colors=['#1D4ED8','#15803D','#B45309','#7C3AED','#9AA3B2','#DC2626'];
   if(finExpensePieInstance)finExpensePieInstance.destroy();
   finExpensePieInstance=new Chart(canvas,{type:'doughnut',data:{labels:labels,datasets:[{data:data,backgroundColor:colors}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
+}
+// MOMS-PÅMINDELSE (kvartalsmoms) — dansk regel: fristen for et kvartal er den 1. i den
+// måned der ligger 3 måneder efter kvartalets udløb (fx 1. kvartal jan-mar → frist 1.
+// juni). Finder automatisk den næste ubetalte frist og estimerer momsbeløbet ud fra
+// omsætningen i kvartalets måneder (samme kilde som årsgrafen).
+function vatQuarterInfo(year,q){
+  var endMonth=q*3+2; // 0-indekseret (2=marts, 5=juni, 8=september, 11=december)
+  var deadlineMonth=(endMonth+3)%12;
+  var deadlineYear=year+Math.floor((endMonth+3)/12);
+  return {year:year,q:q,startMonth:q*3,endMonth:endMonth,deadline:new Date(deadlineYear,deadlineMonth,1)};
+}
+function nextVatDeadline(){
+  var now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  var curQ=Math.floor(now.getMonth()/3),candidates=[];
+  for(var i=-1;i<=1;i++){
+    var q=curQ+i,y=now.getFullYear();
+    while(q<0){q+=4;y-=1;}
+    while(q>3){q-=4;y+=1;}
+    candidates.push(vatQuarterInfo(y,q));
+  }
+  candidates.sort(function(a,b){return a.deadline-b.deadline;});
+  for(var j=0;j<candidates.length;j++){if(candidates[j].deadline>=today)return candidates[j];}
+  return candidates[candidates.length-1];
+}
+async function renderVatDeadlineWidget(body){
+  var info=nextVatDeadline();
+  var today=new Date();today.setHours(0,0,0,0);
+  var daysLeft=Math.round((info.deadline-today)/86400000);
+  var KVT=['1. kvartal (jan-mar)','2. kvartal (apr-jun)','3. kvartal (jul-sep)','4. kvartal (okt-dec)'];
+  var urgent=daysLeft<=14;
+  body.innerHTML='<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">'+
+    '<div style="width:76px;height:76px;border-radius:50%;background:'+(urgent?'#FEF2F2':'#EFF6FF')+';display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;border:2px solid '+(urgent?'#FCA5A5':'#BFDBFE')+'">'+
+      '<div style="font-size:22px;font-weight:900;color:'+(urgent?'#B91C1C':'#1D4ED8')+'">'+daysLeft+'</div><div style="font-size:8px;font-weight:700;color:'+(urgent?'#B91C1C':'#1D4ED8')+';text-transform:uppercase">dage</div></div>'+
+    '<div style="flex:1;min-width:200px">'+
+      '<div style="font-size:13px;font-weight:800;color:var(--navy)">'+KVT[info.q]+' '+info.year+'</div>'+
+      '<div class="fin-muted" style="margin:2px 0 8px">Momsfrist: <b>'+info.deadline.getDate()+'/'+(info.deadline.getMonth()+1)+'-'+info.deadline.getFullYear()+'</b>'+(urgent?' — nærmer sig, husk at sætte penge til side':'')+'</div>'+
+      '<div id="fin-vat-estimate" class="fin-eyebrow" style="margin:0">Udregner estimat...</div>'+
+    '</div></div>';
+  var MAANEDER=['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
+  var estEl=document.getElementById('fin-vat-estimate');
+  if(!finYearData){var r=await api('/api/finance/year-overview');if(r)finYearData=r;}
+  if(!finYearData||finYearData.year!==info.year){
+    estEl.innerHTML='Estimat kun tilgængeligt for indeværende år — se selv omsætningen for '+KVT[info.q]+' '+info.year+' i Omsætning pr. fag.';
+    return;
+  }
+  var monthKeys=Object.keys(finYearData.months).sort();
+  var quarterTotal=0,monthLabels=[];
+  for(var m=info.startMonth;m<=info.endMonth;m++){
+    var mk=monthKeys[m];
+    if(mk){quarterTotal+=(finYearData.months[mk].total||0);monthLabels.push(MAANEDER[m]);}
+  }
+  var vatEstimate=quarterTotal*0.25;
+  estEl.innerHTML='<div class="fin-kpi-value" style="font-size:22px">'+krFmt(vatEstimate)+'</div><div class="fin-kpi-sub">Estimeret moms at sætte til side — 25% af '+krFmt(quarterTotal)+' i omsætning ('+monthLabels.join('+')+')</div>';
 }
 function renderTrendWidget(body){
   body.innerHTML='<p class="fin-muted" style="margin:-2px 0 12px">Forgangen måned = betalte/delvist betalte fakturaer udstedt den måned. Indeværende måned = aktive opgaver ud fra planlagte startdatoer. Næste måned = allerede bookede opgaver.</p>'+

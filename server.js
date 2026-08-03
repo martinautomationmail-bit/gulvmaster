@@ -20,6 +20,8 @@ const crypto = require('crypto');
 const cron = require('node-cron');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
+const XLSX = require('xlsx');
+const pdfParse = require('pdf-parse');
 const DEFAULT_CLEANING_PDF_BASE64 = require('./cleaning-pdf-base64');
 const { Pool } = require('pg');
 // Uses Node's built-in SQLite reader only for the one-time migration upload.
@@ -64,6 +66,19 @@ const upload = multer({
     const lower = String(file.originalname || '').toLowerCase();
     if (!lower.endsWith('.db') && !lower.endsWith('.sqlite') && !lower.endsWith('.sqlite3')) {
       return cb(new Error('Vælg en SQLite databasefil (.db, .sqlite eller .sqlite3).'));
+    }
+    cb(null, true);
+  }
+});
+// Separat upload-håndtering til bankudtog (PDF/Excel/CSV) — bruges af den automatiske
+// bankafstemning under Økonomi → Fakturaer.
+const uploadBankStatement = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const lower = String(file.originalname || '').toLowerCase();
+    if (!/\.(pdf|xlsx|xls|csv)$/.test(lower)) {
+      return cb(new Error('Vælg en PDF-, Excel- (.xlsx/.xls) eller CSV-fil.'));
     }
     cb(null, true);
   }
@@ -4320,7 +4335,7 @@ app.get('/api/finance/dashboard-widgets', auth, financeOnly, asyncRoute(async (r
 }));
 app.post('/api/finance/dashboard-widgets', auth, financeOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
-  const allowed = ['trend', 'year', 'fag_pie', 'invoice_status', 'expense_pie'];
+  const allowed = ['trend', 'year', 'fag_pie', 'invoice_status', 'expense_pie', 'vat_deadline'];
   if (!allowed.includes(body.widget_type)) return res.status(400).json({ error: 'Ukendt graftype' });
   const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),-1)::int AS m FROM finance_dashboard_widgets');
   const r = await pool.query('INSERT INTO finance_dashboard_widgets (widget_type, sort_order) VALUES ($1,$2) RETURNING id', [body.widget_type, (maxOrder ? maxOrder.m : -1) + 1]);
@@ -4351,7 +4366,7 @@ async function fetchFinanceInvoices() {
     query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, documents: {
       $: { size: 100, sortBy: [{ field: 'createdAt', order: 'desc' }], where: ['type', 'customerInvoice'] },
       count: {},
-      nodes: { id: {}, fullName: {}, createdAt: {}, price: {}, priceWithTax: {}, balance: {}, status: {}, job: { id: {}, name: {}, location: { account: { name: {} } } } }
+      nodes: { id: {}, fullName: {}, createdAt: {}, price: {}, priceWithTax: {}, balance: {}, status: {}, job: { id: {}, name: {}, number: {}, location: { account: { name: {} } } } }
     } } }
   }, 'Økonomi: hent fakturaer');
   const nodes = data?.organization?.documents?.nodes || [];
@@ -4362,7 +4377,7 @@ async function fetchFinanceInvoices() {
     const ov = overrides[d.id];
     const remaining = ov?.status === 'partial' && ov?.paid_amount != null ? Math.max(0, (d.priceWithTax || 0) - ov.paid_amount) : null;
     return {
-      id: d.id, fullName: d.fullName, customer: d.job?.location?.account?.name || d.job?.name || '', jobId: d.job?.id || null,
+      id: d.id, fullName: d.fullName, customer: d.job?.location?.account?.name || d.job?.name || '', jobId: d.job?.id || null, jobNumber: d.job?.number || '',
       createdAt: d.createdAt, price: d.price, priceWithTax: d.priceWithTax, balance: d.balance, jtStatus: d.status,
       overrideStatus: ov?.status || (d.balance === 0 ? 'paid' : 'unpaid'),
       note: ov?.note || '', paidAmount: ov?.paid_amount ?? null, remaining
@@ -4383,6 +4398,123 @@ app.put('/api/finance/invoices/:documentId', auth, financeOnly, asyncRoute(async
     ON CONFLICT (document_id) DO UPDATE SET status=$2,note=$3,paid_amount=$4,updated_at=${nowTextSQL()}
   `, [req.params.documentId, status, note, paidAmount]);
   res.json({ ok: true });
+}));
+
+// ══════════════════════════════════════════════════════════════
+// AUTOMATISK BANKAFSTEMNING — upload et bankudtog (PDF/Excel/CSV fra fx Lunar), få det
+// læst og matchet mod udestående fakturaer på beløb, kundenavn og sagsnummer. Intet
+// anvendes automatisk — Martin bekræfter hvert match, før en faktura markeres betalt.
+function parseDanishAmount(raw) {
+  if (raw === null || raw === undefined) return null;
+  let s = String(raw).trim().replace(/kr\.?/i, '').replace(/\s/g, '').replace(/^\+/, '');
+  if (!s) return null;
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (s.includes(',')) s = s.replace(',', '.');
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+}
+function parseDanishDate(raw) {
+  if (raw === null || raw === undefined) return null;
+  const s = String(raw).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2,4})/);
+  if (!m) return null;
+  let [, d, mo, y] = m;
+  if (y.length === 2) y = (Number(y) > 50 ? '19' : '20') + y;
+  const iso = `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : null;
+}
+function parseBankStatementPdfText(text) {
+  const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const lineRe = /^(\d{1,2}[.\-\/]\d{1,2}[.\-\/]\d{2,4})\s+(.+?)\s+(-?[\d.,]+)\s*(?:kr\.?)?$/i;
+  const txns = [];
+  for (const line of lines) {
+    const m = line.match(lineRe);
+    if (!m) continue;
+    const dateIso = parseDanishDate(m[1]);
+    const amount = parseDanishAmount(m[3]);
+    if (dateIso && amount !== null) txns.push({ date: dateIso, text: m[2].trim(), amount });
+  }
+  return txns;
+}
+function parseBankStatementSpreadsheet(buffer) {
+  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+  let headerRowIdx = -1, dateCol = -1, textCol = -1, amountCol = -1;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const row = (rows[i] || []).map(c => String(c).toLowerCase());
+    const dIdx = row.findIndex(c => /dato|date/.test(c));
+    const tIdx = row.findIndex(c => /tekst|beskrivelse|besked|text|description/.test(c));
+    const aIdx = row.findIndex(c => /bel[øo]b|amount/.test(c));
+    if (dIdx > -1 && aIdx > -1) { headerRowIdx = i; dateCol = dIdx; textCol = tIdx; amountCol = aIdx; break; }
+  }
+  const startRow = headerRowIdx > -1 ? headerRowIdx + 1 : 0;
+  const dc = dateCol > -1 ? dateCol : 0, tc = textCol > -1 ? textCol : 1, ac = amountCol > -1 ? amountCol : 2;
+  const txns = [];
+  for (let i = startRow; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || !row.length) continue;
+    const dateIso = parseDanishDate(row[dc]);
+    const amount = parseDanishAmount(row[ac]);
+    if (dateIso && amount !== null) txns.push({ date: dateIso, text: String(row[tc] || '').trim(), amount });
+  }
+  return txns;
+}
+function normalizeForMatch(s) {
+  return String(s || '').toLowerCase()
+    .replace(/æ/g, 'ae').replace(/ø/g, 'oe').replace(/å/g, 'aa')
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function matchTransactionsToInvoices(transactions, invoices) {
+  const candidates = invoices.filter(inv => inv.overrideStatus !== 'paid');
+  return transactions.map(txn => {
+    if (!(txn.amount > 0)) return { ...txn, matches: [] }; // kun indbetalinger (positive beløb) giver mening at matche
+    const txnNorm = normalizeForMatch(txn.text);
+    const sagsMatch = txn.text.match(/GM[-\s]?(\d{2,4})[-\s]?(\d+)/i);
+    const sagsNorm = sagsMatch ? sagsMatch[0].toUpperCase().replace(/\s/g, '') : null;
+    const scored = candidates.map(inv => {
+      let score = 0; const reasons = [];
+      const invAmount = inv.remaining !== null && inv.remaining !== undefined ? inv.remaining : inv.priceWithTax;
+      const diff = Math.abs((invAmount || 0) - txn.amount);
+      if (diff < 1) { score += 50; reasons.push('Beløb matcher præcist'); }
+      else if (diff < 5) { score += 30; reasons.push('Beløb matcher (lille afvigelse)'); }
+      const custNorm = normalizeForMatch(inv.customer);
+      if (custNorm && txnNorm.includes(custNorm)) { score += 35; reasons.push('Kundenavn fundet i teksten'); }
+      else if (custNorm) {
+        const words = custNorm.split(' ').filter(w => w.length >= 3);
+        const hits = words.filter(w => txnNorm.includes(w)).length;
+        if (words.length && hits) { score += Math.round(20 * hits / words.length); reasons.push('Delvist kundenavn-match'); }
+      }
+      if (sagsNorm && inv.jobNumber && sagsNorm.replace('GM-', '').includes(String(inv.jobNumber).replace(/^GM-?/i, ''))) {
+        score += 30; reasons.push('Sagsnummer fundet i teksten');
+      }
+      return { documentId: inv.id, customer: inv.customer, fullName: inv.fullName, jobNumber: inv.jobNumber, priceWithTax: inv.priceWithTax, remaining: inv.remaining, overrideStatus: inv.overrideStatus, score, reasons };
+    }).filter(m => m.score >= 25).sort((a, b) => b.score - a.score).slice(0, 3);
+    return { ...txn, matches: scored };
+  });
+}
+app.post('/api/finance/bank-statement/parse', auth, financeOnly, uploadBankStatement.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Ingen fil modtaget' });
+  const lower = String(req.file.originalname || '').toLowerCase();
+  let transactions = [];
+  try {
+    if (lower.endsWith('.pdf')) {
+      const parsed = await pdfParse(req.file.buffer);
+      transactions = parseBankStatementPdfText(parsed.text);
+    } else {
+      transactions = parseBankStatementSpreadsheet(req.file.buffer);
+    }
+  } catch (e) {
+    return res.status(400).json({ error: 'Kunne ikke læse filen: ' + e.message });
+  }
+  if (!transactions.length) {
+    return res.status(400).json({ error: 'Fandt ingen genkendelige transaktioner i filen. Prøv evt. en Excel/CSV-eksport i stedet for PDF — det læses langt mere pålideligt.' });
+  }
+  const invoices = await fetchFinanceInvoices();
+  const matched = matchTransactionsToInvoices(transactions, invoices);
+  res.json({ transactions: matched, count: transactions.length });
 }));
 
 // ── Faste udgifter ──
