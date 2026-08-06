@@ -436,10 +436,12 @@ async function initSchema() {
       title TEXT NOT NULL,
       body TEXT,
       link TEXT,
+      user_id INTEGER,
       created_at TEXT DEFAULT ${nowTextSQL()},
       read_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
 
     -- KUNDE-KOMMUNIKATION: log for planlagt/påmindelse-mails til kunden (adskilt fra
     -- completion_emails, som allerede findes til færdig-mailen).
@@ -520,6 +522,7 @@ async function initSchema() {
     -- sætte completed_at på) — så ✓-knappen i Opgavepool kan virke på alle opgaver,
     -- ikke kun planlagte.
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS manually_completed_at TEXT;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS user_id INTEGER;
 
     CREATE TABLE IF NOT EXISTS customer_visits (
       id SERIAL PRIMARY KEY,
@@ -3501,6 +3504,24 @@ app.put('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => 
         sendScheduleChangeEmail(current.user_id, `En opgave er blevet flyttet væk fra din kalender.`)
           .catch(e => console.error('Kalender-mail fejlede:', e.message));
       }
+      // SKUB-LIGNENDE IN-APP BESKED: rammer kun medarbejderens eget kontrolpanel, og
+      // kun hvis ændringen reelt påvirker I DAG eller I MORGEN — en mail kan ligge
+      // uåbnet, men en besked i selve appen fanger dem næste gang de kigger på deres
+      // dag, uden at spamme dem med ændringer langt ude i fremtiden.
+      const affectsNearTerm = isTodayOrTomorrow(current.start_date) || isTodayOrTomorrow(booking.start_date);
+      if (affectsNearTerm) {
+        const dayChanged = String(current.start_date) !== String(booking.start_date);
+        const timeChanged = String(current.start_time || '') !== String(booking.start_time || '');
+        const whenLabel = dayLabelForNotif(booking.start_date);
+        let msg;
+        if (dayChanged) msg = `Din opgave er flyttet til ${whenLabel} (${String(booking.start_date).slice(0,10)}).`;
+        else if (timeChanged) msg = `Din opgave ${whenLabel} er flyttet til kl. ${booking.start_time || '?'}.`;
+        else msg = `Din opgave ${whenLabel} er blevet opdateret.`;
+        notifyEmployee(booking.user_id, 'Din plan er ændret', msg, '#plan').catch(() => {});
+        if (Number(current.user_id) !== Number(booking.user_id) && isTodayOrTomorrow(current.start_date)) {
+          notifyEmployee(current.user_id, 'Opgave fjernet fra din plan', `En opgave ${dayLabelForNotif(current.start_date)} er flyttet væk fra din kalender.`, '#plan').catch(() => {});
+        }
+      }
     }
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -3577,6 +3598,9 @@ app.delete('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) 
     if (String(row.planning_mode || 'daily') !== 'capacity') {
       sendScheduleChangeEmail(row.user_id, `En opgave er blevet fjernet fra din kalender (${String(row.start_date).slice(0,10)}).`)
         .catch(e => console.error('Kalender-mail fejlede:', e.message));
+      if (isTodayOrTomorrow(row.start_date)) {
+        notifyEmployee(row.user_id, 'Opgave fjernet fra din plan', `Din opgave ${dayLabelForNotif(row.start_date)} er fjernet fra din kalender.`, '#plan').catch(() => {});
+      }
     }
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
@@ -3795,6 +3819,31 @@ async function createNotification(eventKey, title, body, link) {
     } catch (e) { console.error('Notifikations-mail fejlede:', e.message); }
   }
 }
+// Skub-lignende in-app besked direkte til ÉN medarbejder (fx "din opgave i morgen er
+// flyttet") — adskilt fra de admin-brede notifikationer ovenfor, som styres af
+// notification_rules og vises i admin-panelets klokke. Denne rammer kun medarbejderens
+// eget kontrolpanel.
+function isTodayOrTomorrow(dateStr) {
+  if (!dateStr) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const d = new Date(String(dateStr).slice(0, 10) + 'T00:00:00');
+  return d.getTime() === today.getTime() || d.getTime() === tomorrow.getTime();
+}
+function dayLabelForNotif(dateStr) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(String(dateStr).slice(0, 10) + 'T00:00:00');
+  const diffDays = Math.round((d - today) / 86400000);
+  if (diffDays === 0) return 'i dag';
+  if (diffDays === 1) return 'i morgen';
+  return 'den ' + String(dateStr).slice(0, 10);
+}
+async function notifyEmployee(userId, title, body, link) {
+  if (!userId) return;
+  try {
+    await pool.query('INSERT INTO notifications (event_key,title,body,link,user_id) VALUES ($1,$2,$3,$4,$5)', ['employee_schedule_change', title, body || null, link || null, userId]);
+  } catch (e) { console.error('Medarbejder-notifikation fejlede:', e.message); }
+}
 app.get('/api/notification-settings', auth, adminOnly, asyncRoute(async (req, res) => {
   await ensureNotificationRulesSeeded();
   const rows = await pool.query('SELECT * FROM notification_rules ORDER BY event_key ASC');
@@ -3809,7 +3858,9 @@ app.put('/api/notification-settings/:eventKey', auth, adminOnly, asyncRoute(asyn
   res.json({ ok: true });
 }));
 app.get('/api/notifications', auth, asyncRoute(async (req, res) => {
-  const rows = await pool.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 100');
+  // Kun de admin-brede notifikationer her — medarbejder-rettede beskeder (user_id sat)
+  // hentes i stedet via /api/my-notifications, så de to ikke blandes sammen.
+  const rows = await pool.query('SELECT * FROM notifications WHERE user_id IS NULL ORDER BY created_at DESC LIMIT 100');
   res.json(rows.rows);
 }));
 app.put('/api/notifications/:id/read', auth, asyncRoute(async (req, res) => {
@@ -3817,7 +3868,20 @@ app.put('/api/notifications/:id/read', auth, asyncRoute(async (req, res) => {
   res.json({ ok: true });
 }));
 app.put('/api/notifications/read-all', auth, asyncRoute(async (req, res) => {
-  await pool.query(`UPDATE notifications SET read_at=${nowTextSQL()} WHERE read_at IS NULL`);
+  await pool.query(`UPDATE notifications SET read_at=${nowTextSQL()} WHERE read_at IS NULL AND user_id IS NULL`);
+  res.json({ ok: true });
+}));
+// Medarbejderens egne beskeder (fx planændringer der rammer i dag/i morgen).
+app.get('/api/my-notifications', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50', [req.user.id]);
+  res.json(rows.rows);
+}));
+app.put('/api/my-notifications/:id/read', auth, asyncRoute(async (req, res) => {
+  await pool.query(`UPDATE notifications SET read_at=${nowTextSQL()} WHERE id=$1 AND user_id=$2`, [req.params.id, req.user.id]);
+  res.json({ ok: true });
+}));
+app.put('/api/my-notifications/read-all', auth, asyncRoute(async (req, res) => {
+  await pool.query(`UPDATE notifications SET read_at=${nowTextSQL()} WHERE read_at IS NULL AND user_id=$1`, [req.user.id]);
   res.json({ ok: true });
 }));
 
@@ -4335,7 +4399,7 @@ app.get('/api/finance/dashboard-widgets', auth, financeOnly, asyncRoute(async (r
 }));
 app.post('/api/finance/dashboard-widgets', auth, financeOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
-  const allowed = ['trend', 'year', 'fag_pie', 'invoice_status', 'expense_pie', 'vat_deadline'];
+  const allowed = ['trend', 'year', 'fag_pie', 'invoice_status', 'expense_pie', 'vat_deadline', 'todo_today'];
   if (!allowed.includes(body.widget_type)) return res.status(400).json({ error: 'Ukendt graftype' });
   const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),-1)::int AS m FROM finance_dashboard_widgets');
   const r = await pool.query('INSERT INTO finance_dashboard_widgets (widget_type, sort_order) VALUES ($1,$2) RETURNING id', [body.widget_type, (maxOrder ? maxOrder.m : -1) + 1]);

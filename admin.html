@@ -33,6 +33,7 @@ button,input,select{font:inherit}
 .navdrop-menu{position:absolute;top:calc(100% + 6px);right:0;background:#fff;border-radius:9px;box-shadow:var(--shadow-lg,0 10px 30px rgba(0,0,0,.25));min-width:180px;padding:5px;display:none;z-index:60}
 .navdrop-menu.open{display:block}
 .navdrop-item{display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:8px 10px;font-size:12px;font-weight:700;color:var(--navy);background:none;border:0;border-radius:6px;cursor:pointer}
+.navdrop-item.active{background:var(--ice);color:var(--blue)}
 .navdrop-item:hover{background:var(--ice)}
 .filter-dropdown{position:relative}
 .filter-dropdown-btn{width:100%;text-align:center;justify-content:center;font-weight:700}
@@ -43,6 +44,15 @@ button,input,select{font:inherit}
 .filter-dropdown-item.active{background:#EFF6FF;color:#1D4ED8;font-weight:800}
 .tab{border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500}
 .tab.active{color:#fff;background:rgba(255,255,255,.16)}
+.tab-navdrop{display:flex;align-items:center;gap:0}
+.tab-navdrop .tab{padding-right:4px;border-radius:5px 0 0 5px}
+.tab-navdrop .navdrop-caret{border:0;background:transparent;color:rgba(255,255,255,.5);border-radius:0 5px 5px 0;padding:4px 6px;font-size:9px;cursor:pointer}
+.tab-navdrop .navdrop-caret:hover{color:#fff;background:rgba(255,255,255,.1)}
+.tab-navdrop .navdrop-menu{left:0;right:auto;min-width:170px}
+.navdrop-btn.active{color:#fff;background:rgba(255,255,255,.16)}
+.tab-navdrop:has(.navdrop-btn.active) .tab{color:#fff;background:rgba(255,255,255,.16);border-radius:5px 0 0 5px}
+.navdrop-btn.has-pending-dot{position:relative}
+.navdrop-btn.has-pending-dot::after{content:'';position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#EF4444;border:1.5px solid var(--navy,#0F2A4A)}
 .nav-actions{display:flex;align-items:center;gap:5px}
 .nb{border:1px solid rgba(255,255,255,.23);background:rgba(255,255,255,.1);color:#fff;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap}
 .nb.green{background:var(--green);border-color:var(--green)}
@@ -255,7 +265,7 @@ button,input,select{font:inherit}
 /* Daglig plan brugte hidtil hele SIDENS scroll (overflow-y:visible ovenfor), i
    modsætning til Kapacitet der har sin egen afgrænsede, glidende scroll-boks. Det er
    grunden til at de føltes forskellige — nu matcher Daglig plan Kapacitet 1:1. */
-#plan-board-outer{position:relative;isolation:isolate;overflow-y:auto;scroll-behavior:smooth;height:calc(100vh - 332px);min-height:380px;max-height:720px;scrollbar-gutter:stable both-edges}
+#plan-board-outer{position:relative;isolation:isolate;overflow-y:auto;scroll-behavior:smooth;height:calc(100vh - 260px);min-height:420px;max-height:1400px;scrollbar-gutter:stable both-edges}
 .plan-week-toast{position:fixed;top:120px;left:50%;transform:translateX(-50%) translateY(-14px) scale(.92);opacity:0;pointer-events:none;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff;font-size:13px;font-weight:800;padding:10px 20px;border-radius:999px;box-shadow:0 12px 32px rgba(15,34,64,.35);z-index:300;transition:opacity .25s cubic-bezier(.2,.9,.3,1.3),transform .25s cubic-bezier(.2,.9,.3,1.3);letter-spacing:.02em}
 .plan-week-toast.show{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
 @keyframes plan-label-pulse{0%{transform:scale(1);color:var(--navy)}35%{transform:scale(1.12);color:var(--blue)}100%{transform:scale(1);color:var(--navy)}}
@@ -264,7 +274,7 @@ button,input,select{font:inherit}
 @media(max-width:760px){#plan-board-outer{height:calc(100vh - 310px);min-height:320px}}
 /* Capacity board owns its own vertical scroll. This keeps the week header visible
    without creating a blank gap above the table when the page itself scrolls. */
-#capacity-scroll{position:relative;isolation:isolate;scroll-behavior:smooth;overflow:auto;height:calc(100vh - 332px);min-height:380px;max-height:720px;scrollbar-gutter:stable both-edges}
+#capacity-scroll{position:relative;isolation:isolate;scroll-behavior:smooth;overflow:auto;height:calc(100vh - 260px);min-height:420px;max-height:1400px;scrollbar-gutter:stable both-edges}
 #capacity-scroll .capacity-board th{position:sticky;top:0;z-index:8;box-shadow:0 2px 0 rgba(15,34,64,.12),0 6px 14px rgba(15,34,64,.10)}
 #capacity-scroll .capacity-board th:first-child{left:0;z-index:12}
 #capacity-scroll .capacity-board .staff-cell{z-index:5}
@@ -723,16 +733,29 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
   <div class="tabs">
-    <button class="tab" data-page="dashboard">🎯 Kommandocenter</button>
-    <button class="tab active" data-page="plan">Daglig plan</button>
-    <button class="tab" data-page="timeline">Tidslinje</button>
-    <button class="tab" data-page="capacity">Kapacitet</button>
-    <button class="tab" data-page="availability">Ledighedsoversigt</button>
+    <button class="tab" data-page="dashboard">Kommandocenter</button>
+    <div class="navdrop tab-navdrop" id="plan-subdrop">
+      <button class="tab active" data-page="plan">Daglig plan</button>
+      <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle">▾</button>
+      <div class="navdrop-menu">
+        <button class="navdrop-item" data-page="timeline">Tidslinje</button>
+      </div>
+    </div>
+    <div class="navdrop tab-navdrop" id="capacity-subdrop">
+      <button class="tab" data-page="capacity">Kapacitet</button>
+      <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle">▾</button>
+      <div class="navdrop-menu">
+        <button class="navdrop-item" data-page="availability">Ledighedsoversigt</button>
+      </div>
+    </div>
     <button class="tab" data-page="gantt">Gantt</button>
-    <button class="tab" data-page="requests">Godkendelser<span class="tab-badge hidden" id="requests-badge">0</span></button>
     <button class="tab hidden" data-page="finance" id="finance-tab-btn">💰 Økonomi</button>
   </div>
   <div class="nav-actions">
+    <div class="navdrop" id="globalsearch">
+      <input id="global-search-input" placeholder="🔍 Søg sag, kunde eller medarbejder..." autocomplete="off" style="width:230px;padding:7px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;font-size:12px">
+      <div class="navdrop-menu" id="global-search-results" style="width:360px;max-height:420px;overflow:auto;display:none"></div>
+    </div>
     <div class="navdrop" id="notifdrop">
       <button class="nb navdrop-btn" id="notifdrop-btn">🔔<span class="tab-badge hidden" id="notif-badge">0</span></button>
       <div class="navdrop-menu" id="notifdrop-menu" style="width:340px;max-height:420px;overflow:auto"></div>
@@ -745,6 +768,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="navdrop-menu" id="navdrop-menu">
         <button class="navdrop-item" id="employee-link">👷 Mit skema</button>
         <button class="navdrop-item" data-page="tasklist">📋 Opgaveliste</button>
+        <button class="navdrop-item" data-page="requests">✅ Godkendelser<span class="tab-badge hidden" id="requests-badge">0</span></button>
         <button class="navdrop-item" data-page="completed">✅ Færdige opgaver</button>
         <button class="navdrop-item" data-page="people">👥 Hold & vendors</button>
         <button class="navdrop-item" data-page="library">📁 Vejledning</button>
@@ -977,8 +1001,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <option value="quarter">Seneste kvartal</option>
       <option value="year">Dette år</option>
     </select>
+    <div id="fin-inv-bulk-bar" style="display:none;align-items:center;gap:10px;background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;margin-bottom:10px">
+      <span id="fin-inv-bulk-count" style="font-weight:800;font-size:12.5px"></span>
+      <select id="fin-inv-bulk-action" style="border-radius:7px;border:0;padding:6px 8px;font-size:12px">
+        <option value="paid">✓ Markér betalt</option>
+        <option value="unpaid">Markér udestående</option>
+        <option value="unclear">⚠ Markér uafklaret</option>
+        <option value="rykker">✉️ Send rykker til valgte</option>
+      </select>
+      <button class="btn small primary" id="fin-inv-bulk-apply">Anvend</button>
+      <button class="btn small" id="fin-inv-bulk-clear" style="background:rgba(255,255,255,.15);color:#fff">Fravælg alle</button>
+    </div>
     <table class="fin-table">
-      <thead><tr><th>Kunde</th><th>Faktura</th><th class="fin-num">Ekskl. moms</th><th class="fin-num">Inkl. moms</th><th class="fin-num">Saldo</th><th>Status</th><th>Note</th><th>Rykker</th></tr></thead>
+      <thead><tr><th style="width:30px"><input type="checkbox" id="fin-inv-select-all"></th><th>Kunde</th><th>Faktura</th><th class="fin-num">Ekskl. moms</th><th class="fin-num">Inkl. moms</th><th class="fin-num">Saldo</th><th>Status</th><th>Note</th><th>Rykker</th></tr></thead>
       <tbody id="fin-invoices-body"></tbody>
     </table>
   </div>
@@ -1031,6 +1066,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="pool-filters">
           <div class="filter-row" id="plan-status-filters"></div>
           <div class="filter-row" id="plan-type-filters"></div>
+        </div>
+        <div id="pool-bulk-bar" style="display:none;flex-direction:column;gap:6px;background:var(--navy);color:#fff;padding:9px 10px;border-radius:9px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span id="pool-bulk-count" style="font-weight:800;font-size:11.5px"></span>
+            <button id="pool-bulk-clear" style="background:none;border:0;color:rgba(255,255,255,.7);font-size:11px;cursor:pointer">Fravælg</button>
+          </div>
+          <button class="btn small" id="pool-bulk-done-btn" style="width:100%;background:#DCFCE7;color:#15803D">✓ Markér valgte som færdige</button>
+          <button class="btn small" id="pool-bulk-assign-btn" style="width:100%;background:rgba(255,255,255,.15);color:#fff">📌 Tildel valgte til medarbejder...</button>
         </div>
         <div id="plan-pool"></div>
       </div>
@@ -1754,6 +1797,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 </div>
+<div class="mo" id="pool-bulk-assign-modal">
+  <div class="modal" style="width:360px">
+    <h3>Tildel valgte opgaver</h3>
+    <div id="pool-bulk-assign-count" class="fin-muted" style="margin-bottom:12px"></div>
+    <label class="form-label">Medarbejder</label>
+    <select id="pool-bulk-assign-user" class="input" style="margin-bottom:10px"></select>
+    <label class="form-label">Startdato</label>
+    <input type="date" id="pool-bulk-assign-date" class="input" style="margin-bottom:14px">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn small" id="pool-bulk-assign-cancel">Annullér</button>
+      <button class="btn small primary" id="pool-bulk-assign-confirm">Tildel</button>
+    </div>
+  </div>
+</div>
 <div class="mo" id="gm-dialog-modal">
   <div class="modal" style="width:380px">
     <h3 id="gm-dialog-title">Bekræft</h3>
@@ -2043,7 +2100,7 @@ document.getElementById('app').style.display='block';
   }catch(e){}
 })();
 
-var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={};
+var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={},poolSelected={};
 var settings={company_name:'Gulv Master Enterprise ApS',logo_url:null},library=[],selectedTaskIds={},weeklyNotesCache={};
 var timelineOffset=0,timelineGroupBy='user',capacityGroupBy='user';
 var taskRequests=[],requestsFilter='pending',completedFilter='open';
@@ -2295,7 +2352,9 @@ function taskCard(t,scope){
   var overdue=!planned&&!completed&&t.start_date&&String(t.start_date).slice(0,10)<iso(new Date());
   var capacityHint=scope==='capacity'&&!completed?'<div class="task-drag-hint">⠿ Træk direkte til den ønskede uge</div>':'';
   var contact=phoneMarkup(t.customer_phone,true);
+  var bulkCb=(scope==='plan'&&!completed)?'<input type="checkbox" class="pool-select-cb" data-task-id="'+esc(t.id)+'" '+(poolSelected[t.id]?'checked':'')+' style="position:absolute;top:8px;left:8px;width:16px;height:16px;z-index:3;cursor:pointer">':'';
   return '<article class="task-card '+(completed?'completed':'draggable-task')+(overdue?' task-overdue':'')+'" '+(completed?'':'draggable="true"')+' '+(completed?'':'data-task-id="'+esc(t.id)+'"')+' title="'+esc(t.job_name||'')+'" style="position:relative">'+
+    bulkCb+
     (!completed?'<button class="task-mark-done-btn" data-action="mark-task-done" data-task-id="'+esc(t.id)+'" title="Markér opgaven som færdig — fjerner den fra poolen">✓</button>':'')+
     (completed?'<div class="task-done-badge">✅ Færdiggjort · '+(bookings.filter(function(b){return b.task_id===t.id&&!!b.completed_at&&!isCapacityBooking(b)&&!b.invoiced;}).length?'Klar til faktura':'Faktureret')+'</div>':'')+
     (overdue?'<div class="task-overdue-badge">⚠ Startdato overskredet — planlæg snarest</div>':'')+
@@ -2312,6 +2371,7 @@ function taskCard(t,scope){
     '</div>'+capacityHint+
     (t.is_visit?'<button class="btn small" style="width:100%;margin-top:6px" data-action="open-visit-form" data-task-id="'+esc(t.id)+'">📋 Besøgsformular</button>':'')+
     '<button class="btn small" style="width:100%;margin-top:4px" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjekpunkter</button>'+
+    (t.job_id?'<a class="btn small" style="width:100%;margin-top:4px;display:block;text-align:center;text-decoration:none;background:#EFF6FF;color:#1D4ED8" href="https://app.jobtread.com/jobs/'+esc(t.job_id)+'/documents" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧾 Add Invoice</a>':'')+
     '</article>';
 }
 // Markér alle dagens bookinger for en opgave som færdige direkte fra Opgavepoolen,
@@ -2353,7 +2413,54 @@ function renderPool(scope){
   var list=filterTasks(scope);
   var section=filters[scope].status==='completed'?'<div class="task-completion-section">✅ Færdiggjort · klar til faktura eller allerede faktureret</div>':'';
   el.innerHTML=list.length?section+list.map(function(t){return taskCard(t,scope);}).join(''):'<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
+  if(scope==='plan'){
+    // Ryd valg af opgaver der ikke længere er synlige (fx filtreret væk eller markeret færdig).
+    var visibleIds={};list.forEach(function(t){visibleIds[t.id]=true;});
+    Object.keys(poolSelected).forEach(function(id){if(!visibleIds[id])delete poolSelected[id];});
+    el.querySelectorAll('.pool-select-cb').forEach(function(cb){
+      cb.addEventListener('click',function(e){e.stopPropagation();});
+      cb.addEventListener('change',function(){
+        if(cb.checked)poolSelected[cb.dataset.taskId]=true;else delete poolSelected[cb.dataset.taskId];
+        updatePoolBulkBar();
+      });
+    });
+    updatePoolBulkBar();
+  }
 }
+function updatePoolBulkBar(){
+  var bar=document.getElementById('pool-bulk-bar');
+  if(!bar)return;
+  var count=Object.keys(poolSelected).length;
+  bar.style.display=count?'flex':'none';
+  var countEl=document.getElementById('pool-bulk-count');
+  if(countEl)countEl.textContent=count+' opgave(r) valgt';
+}
+function openPoolBulkAssignModal(){
+  var count=Object.keys(poolSelected).length;
+  document.getElementById('pool-bulk-assign-count').textContent=count+' opgave(r) tildeles samme medarbejder og dato.';
+  var sel=document.getElementById('pool-bulk-assign-user');
+  sel.innerHTML=users.filter(function(u){return u.active!==false;}).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  document.getElementById('pool-bulk-assign-date').value=iso(new Date());
+  document.getElementById('pool-bulk-assign-modal').classList.add('open');
+}
+document.getElementById('pool-bulk-assign-cancel').addEventListener('click',function(){document.getElementById('pool-bulk-assign-modal').classList.remove('open');});
+document.getElementById('pool-bulk-assign-confirm').addEventListener('click',async function(){
+  var ids=Object.keys(poolSelected);
+  var userId=+document.getElementById('pool-bulk-assign-user').value;
+  var dateVal=document.getElementById('pool-bulk-assign-date').value;
+  if(!userId||!dateVal){toast('Vælg både medarbejder og dato','⚠');return;}
+  var btn=this;btn.disabled=true;btn.textContent='Tildeler…';
+  var okCount=0;
+  for(var i=0;i<ids.length;i++){
+    var r=await api('/api/assignments',{method:'POST',body:JSON.stringify({task_id:ids[i],user_id:userId,start_date:dateVal,days:1})});
+    if(r&&r.ok)okCount++;
+  }
+  btn.disabled=false;btn.textContent='Tildel';
+  document.getElementById('pool-bulk-assign-modal').classList.remove('open');
+  poolSelected={};
+  toast(okCount+' af '+ids.length+' opgave(r) tildelt ✓','✓');
+  await loadAll();
+});
 
 // ASSIGNMENT PILL (daily) - single day
 function assignPill(b,ds,canUp,canDown){
@@ -2507,7 +2614,11 @@ function renderPlan(){
   }
   grouped.internal.forEach(function(u){html+=row(u);});
   Object.keys(grouped.groups).sort().forEach(function(g){
-    var isOpen=vendorExpanded[g]===true;
+    // FEJL RETTET: grupper var altid sammenfoldet som standard — selv når man
+    // specifikt valgte "Vis: Vendors", så boardet virkede helt tomt. Nu foldes
+    // grupperne automatisk ud, når man aktivt har filtreret til vendors/et fag.
+    var forceOpen=filters.plan.team==='vendors'||filters.plan.team.indexOf('trade:')===0;
+    var isOpen=vendorExpanded[g]===true||(forceOpen&&vendorExpanded[g]!==false);
     html+='<tr class="group-row"><td colspan="365"><button class="group-toggle" data-action="toggle-vendor" data-group="'+esc(g)+'">'+(isOpen?'▾':'▸')+' '+esc(g)+'</button> · '+grouped.groups[g].length+' undergrupper <button class="btn small" data-action="add-subgroup" data-group="'+esc(g)+'" style="margin-left:7px">+ Undergruppe</button></td></tr>';
     if(isOpen)grouped.groups[g].forEach(function(u){html+=row(u);});
   });
@@ -2750,7 +2861,9 @@ function renderCapacity(){
   grouped.internal.forEach(function(u){html+=row(u);});
   // Then vendor groups
   Object.keys(grouped.groups).sort().forEach(function(g){
-    var arr=grouped.groups[g],open=vendorExpanded[g]===true;
+    var arr=grouped.groups[g];
+    var forceOpen=filters.capacity.team==='vendors'||filters.capacity.team.indexOf('trade:')===0;
+    var open=vendorExpanded[g]===true||(forceOpen&&vendorExpanded[g]!==false);
     // Group summary row
     html+='<tr class="group-row"><td class="staff-cell">'+
       '<button class="group-toggle" data-action="toggle-vendor" data-group="'+esc(g)+'">'+(open?'▾':'▸')+' '+esc(g)+'</button>'+
@@ -4355,6 +4468,10 @@ async function refreshRequestsBadge(){
   var el=document.getElementById('requests-badge');
   el.textContent=n;
   el.classList.toggle('hidden',n===0);
+  // Godkendelser flyttet ind under Min side — vis en lille prik på selve knappen, så
+  // ventende godkendelser stadig er synlige uden at skulle åbne dropdownen først.
+  var navBtn=document.getElementById('navdrop-btn');
+  if(navBtn)navBtn.classList.toggle('has-pending-dot',n>0);
 }
 async function renderRequests(){
   var taskList=await api('/api/task-requests'+(requestsFilter==='all'?'':'?status='+requestsFilter));
@@ -4752,7 +4869,7 @@ function saveNotifRule(row){
 // ══════════════════════════════════════════════════════════════
 // ØKONOMI
 // ══════════════════════════════════════════════════════════════
-var finRevenue=null,finInvoices=[],finExpenses=[];
+var finRevenue=null,finInvoices=[],finExpenses=[],finInvSelected={};
 document.querySelectorAll('[data-fintab]').forEach(function(btn){
   btn.addEventListener('click',function(){
     document.querySelectorAll('[data-fintab]').forEach(function(b){b.classList.remove('active');});
@@ -5025,6 +5142,7 @@ var finTrendChartInstance=null,finYearData=null,finYearFag='alle',finYearChartIn
 var finWidgetList=[],finLastTrendArgs=null;
 
 var FIN_WIDGET_TYPES={
+  todo_today:{label:'📋 Hvad skal jeg gøre i dag — samlet overblik',render:renderTodoTodayWidget},
   trend:{label:'Omsætning vs. udgifter (sidste/denne/næste måned)',render:renderTrendWidget},
   year:{label:'Året i overblik (jan-dec, fag-filter, klik for detaljer)',render:renderYearWidget},
   fag_pie:{label:'Omsætning pr. fag denne måned (cirkeldiagram)',render:renderFagPieWidget},
@@ -5211,6 +5329,47 @@ function nextVatDeadline(){
   candidates.sort(function(a,b){return a.deadline-b.deadline;});
   for(var j=0;j<candidates.length;j++){if(candidates[j].deadline>=today)return candidates[j];}
   return candidates[candidates.length-1];
+}
+// "HVAD SKAL JEG GØRE I DAG" — samler det vigtigste ét sted i stedet for at skulle
+// tjekke Fakturaer, Noter og moms-fristen hver for sig hver morgen.
+async function renderTodoTodayWidget(body){
+  body.innerHTML='<div class="fin-muted">Samler overblik...</div>';
+  var items=[];
+  // 1) Udestående/uafklarede fakturaer der trænger til opfølgning
+  var unpaid=(finInvoices||[]).filter(function(i){return i.overrideStatus==='unpaid'||i.overrideStatus==='unclear';});
+  if(unpaid.length){
+    var unpaidSum=unpaid.reduce(function(s,i){return s+(i.priceWithTax||0);},0);
+    items.push({icon:'🧾',color:'#B91C1C',bg:'#FEF2F2',title:unpaid.length+' faktura(er) trænger til opfølgning',sub:krFmt(unpaidSum)+' i alt — se under Fakturaer',tab:'fakturaer'});
+  }
+  // 2) Sager uden budget sat (fra indeværende måneds omsætning)
+  var curKey=iso(new Date()).slice(0,7);
+  var missing=finRevenue&&finRevenue[curKey]?finRevenue[curKey].jobs.filter(function(j){return j.value===null;}):[];
+  if(missing.length){
+    items.push({icon:'📋',color:'#B45309',bg:'#FFFBEB',title:missing.length+' sag(er) mangler budget',sub:'Ret dem under Noter & datakvalitet',tab:'noter'});
+  }
+  // 3) Moms-frist hvis den nærmer sig
+  var vatInfo=nextVatDeadline();
+  var today0=new Date();today0.setHours(0,0,0,0);
+  var vatDays=Math.round((vatInfo.deadline-today0)/86400000);
+  if(vatDays<=21){
+    items.push({icon:'💸',color:vatDays<=7?'#B91C1C':'#B45309',bg:vatDays<=7?'#FEF2F2':'#FFFBEB',title:'Momsfrist om '+vatDays+' dage',sub:vatInfo.deadline.getDate()+'/'+(vatInfo.deadline.getMonth()+1)+'-'+vatInfo.deadline.getFullYear()+' — husk at sætte penge til side',tab:'oversigt'});
+  }
+  if(!items.length){
+    body.innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:28px;margin-bottom:6px">✅</div><div class="fin-eyebrow" style="margin:0">Intet der kræver handling lige nu</div></div>';
+    return;
+  }
+  body.innerHTML=items.map(function(it){
+    return '<div data-action="todo-jump" data-tab="'+it.tab+'" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:'+it.bg+';margin-bottom:8px;cursor:pointer">'+
+      '<div style="font-size:20px">'+it.icon+'</div>'+
+      '<div style="flex:1"><div style="font-weight:800;font-size:13px;color:'+it.color+'">'+it.title+'</div><div class="fin-muted" style="margin-top:1px">'+it.sub+'</div></div>'+
+      '<div style="color:'+it.color+'">→</div></div>';
+  }).join('');
+  body.querySelectorAll('[data-action="todo-jump"]').forEach(function(el){
+    el.addEventListener('click',function(){
+      var tabBtn=document.querySelector('[data-fintab="'+el.dataset.tab+'"]');
+      if(tabBtn)tabBtn.click();
+    });
+  });
 }
 async function renderVatDeadlineWidget(body){
   var info=nextVatDeadline();
@@ -5462,7 +5621,7 @@ function renderFinInvoices(){
         '<input type="number" class="fin-note-input fin-inv-paidamount" data-idx="'+idx+'" value="'+(inv.paidAmount!==null?inv.paidAmount:'')+'" placeholder="Betalt beløb" style="width:110px">'+
         '<span class="fin-muted">rest: '+(inv.remaining!==null?krFmt(inv.remaining):'–')+'</span></div>':'';
     var canDun=inv.overrideStatus==='unpaid'||inv.overrideStatus==='partial';
-    return '<tr><td><b>'+esc(inv.customer)+'</b></td><td class="fin-muted">'+esc(inv.fullName)+' · '+esc((inv.createdAt||'').slice(0,10))+'</td>'+
+    return '<tr><td><input type="checkbox" class="fin-inv-select" data-inv-id="'+esc(inv.id)+'" '+(finInvSelected[inv.id]?'checked':'')+'></td><td><b>'+esc(inv.customer)+'</b></td><td class="fin-muted">'+esc(inv.fullName)+' · '+esc((inv.createdAt||'').slice(0,10))+'</td>'+
       '<td class="fin-num">'+krFmt(inv.price)+'</td><td class="fin-num">'+krFmt(inv.priceWithTax)+'</td><td class="fin-num">'+krFmt(inv.balance)+'</td>'+
       '<td><select class="fin-status st-'+inv.overrideStatus+' fin-inv-status" data-idx="'+idx+'">'+
         '<option value="paid" '+(inv.overrideStatus==='paid'?'selected':'')+'>✓ Betalt</option>'+
@@ -5472,7 +5631,13 @@ function renderFinInvoices(){
       '</select>'+partialInfo+'</td>'+
       '<td><input class="fin-note-input fin-inv-note" data-idx="'+idx+'" value="'+esc(inv.note)+'" placeholder="Note..."></td>'+
       '<td>'+(canDun?'<button class="btn small fin-send-rykker-btn" data-idx="'+idx+'">✉️ Send rykker</button>':'<span class="fin-muted">—</span>')+'</td></tr>';
-  }).join('')||'<tr><td colspan="8" class="fin-empty">Ingen fakturaer i denne periode.</td></tr>';
+  }).join('')||'<tr><td colspan="9" class="fin-empty">Ingen fakturaer i denne periode.</td></tr>';
+  tbody.querySelectorAll('.fin-inv-select').forEach(function(cb){
+    cb.addEventListener('change',function(){
+      if(cb.checked)finInvSelected[cb.dataset.invId]=true;else delete finInvSelected[cb.dataset.invId];
+      updateFinInvBulkBar();
+    });
+  });
   tbody.querySelectorAll('.fin-inv-status').forEach(function(sel){
     sel.addEventListener('change',function(e){saveFinInvoice(finInvoices[e.target.dataset.idx],e.target.value,null,undefined);});
   });
@@ -5493,7 +5658,53 @@ function renderFinInvoices(){
       else if(r)toast(r.error||'Kunne ikke sende','❌');
     });
   });
+  updateFinInvBulkBar();
+  var selectAllCb=document.getElementById('fin-inv-select-all');
+  selectAllCb.checked=list.length>0&&list.every(function(inv){return finInvSelected[inv.id];});
 }
+// MASSEVALG — vælg flere fakturaer på én gang og anvend samme handling på dem alle
+// i stedet for at skulle klikke igennem hver enkelt.
+function updateFinInvBulkBar(){
+  var count=Object.keys(finInvSelected).length;
+  var bar=document.getElementById('fin-inv-bulk-bar');
+  bar.style.display=count?'flex':'none';
+  document.getElementById('fin-inv-bulk-count').textContent=count+' faktura(er) valgt';
+}
+document.getElementById('fin-inv-select-all').addEventListener('change',function(e){
+  var checked=e.target.checked;
+  finInvoicesFiltered().forEach(function(inv){if(checked)finInvSelected[inv.id]=true;else delete finInvSelected[inv.id];});
+  renderFinInvoices();
+});
+document.getElementById('fin-inv-bulk-clear').addEventListener('click',function(){finInvSelected={};renderFinInvoices();});
+document.getElementById('fin-inv-bulk-apply').addEventListener('click',async function(){
+  var ids=Object.keys(finInvSelected);
+  if(!ids.length)return;
+  var action=document.getElementById('fin-inv-bulk-action').value;
+  var selectedInvoices=finInvoices.filter(function(inv){return finInvSelected[inv.id];});
+  if(action==='rykker'){
+    var dunnable=selectedInvoices.filter(function(inv){return inv.overrideStatus==='unpaid'||inv.overrideStatus==='partial';});
+    if(!dunnable.length){toast('Ingen af de valgte kan få en rykker (skal være udestående/delvist betalt)','⚠');return;}
+    if(!await gmConfirm('Send rykker-mail til '+dunnable.length+' kunde(r) nu?'))return;
+    var btn=this;btn.disabled=true;btn.textContent='Sender…';
+    var sent=0;
+    for(var i=0;i<dunnable.length;i++){
+      var r=await api('/api/finance/dunning-send/'+encodeURIComponent(dunnable[i].id),{method:'POST'});
+      if(r&&r.ok)sent++;
+    }
+    btn.disabled=false;btn.textContent='Anvend';
+    toast('Rykker sendt til '+sent+' af '+dunnable.length,'✓');
+  }else{
+    if(!await gmConfirm('Sæt status til "'+action+'" for '+ids.length+' faktura(er)?'))return;
+    var btn2=this;btn2.disabled=true;btn2.textContent='Anvender…';
+    for(var j=0;j<selectedInvoices.length;j++){
+      await api('/api/finance/invoices/'+encodeURIComponent(selectedInvoices[j].id),{method:'PUT',body:JSON.stringify({status:action,note:selectedInvoices[j].note,paidAmount:null})});
+    }
+    btn2.disabled=false;btn2.textContent='Anvend';
+    toast('Status opdateret for '+ids.length+' faktura(er)','✓');
+  }
+  finInvSelected={};
+  loadFinance();
+});
 async function saveFinInvoice(inv,status,note,paidAmount){
   var body={status:status||inv.overrideStatus,note:note!==null&&note!==undefined?note:inv.note,paidAmount:paidAmount!==undefined?paidAmount:inv.paidAmount};
   var r=await api('/api/finance/invoices/'+encodeURIComponent(inv.id),{method:'PUT',body:JSON.stringify(body)});
@@ -5933,9 +6144,14 @@ function bind(){
     var tabBtn=document.querySelector('.tab[data-page="'+page+'"]');
     if(tabBtn)tabBtn.classList.add('active');
     var dropItem=document.querySelector('.navdrop-item[data-page="'+page+'"]');
-    if(dropItem){dropItem.classList.add('active');document.getElementById('navdrop-btn').classList.add('active');}
+    if(dropItem){
+      dropItem.classList.add('active');
+      var parentDrop=dropItem.closest('.navdrop');
+      var parentBtn=parentDrop?parentDrop.querySelector('.navdrop-btn'):null;
+      if(parentBtn)parentBtn.classList.add('active');
+    }
     document.getElementById('page-'+page).classList.add('active');
-    document.getElementById('navdrop-menu').classList.remove('open');
+    document.querySelectorAll('.navdrop-menu.open').forEach(function(m){m.classList.remove('open');});
     if(!skipHash&&location.hash.slice(1)!==page)history.replaceState(null,'','#'+page);
     if(page==='logs')loadLogs();
     if(page==='library')loadLibrary();
@@ -5957,7 +6173,89 @@ function bind(){
   document.getElementById('navdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('navdrop-menu').classList.toggle('open');});
   document.addEventListener('click',function(e){if(!e.target.closest('#navdrop'))document.getElementById('navdrop-menu').classList.remove('open');});
   document.getElementById('notifdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('notifdrop-menu').classList.toggle('open');refreshNotifBell();});
+  // GLOBAL SØGNING — søger på tværs af opgaver/sager og medarbejdere uden at skulle
+  // vide hvilken side (Daglig plan/Gantt/Tidslinje/Kapacitet) tingen findes på.
+  var globalSearchTimer=null;
+  document.getElementById('global-search-input').addEventListener('input',function(e){
+    clearTimeout(globalSearchTimer);
+    var q=e.target.value.trim();
+    var resEl=document.getElementById('global-search-results');
+    if(!q){resEl.style.display='none';return;}
+    globalSearchTimer=setTimeout(function(){renderGlobalSearchResults(q);},120);
+  });
+  document.getElementById('global-search-input').addEventListener('focus',function(e){
+    if(e.target.value.trim())renderGlobalSearchResults(e.target.value.trim());
+  });
+  document.addEventListener('click',function(e){
+    if(!e.target.closest('#globalsearch'))document.getElementById('global-search-results').style.display='none';
+  });
+  function renderGlobalSearchResults(q){
+    var ql=q.toLowerCase();
+    var resEl=document.getElementById('global-search-results');
+    var matchedTaskIds={};
+    var taskResults=tasks.filter(function(t){
+      if(t.manually_completed_at)return false;
+      var hay=((t.job_name||'')+' '+(t.name||'')+' '+(t.job_number||'')+' '+(t.customer_name||'')).toLowerCase();
+      var hit=hay.indexOf(ql)>-1;
+      if(hit)matchedTaskIds[t.id]=true;
+      return hit;
+    }).slice(0,6);
+    var userResults=users.filter(function(u){return (u.name||'').toLowerCase().indexOf(ql)>-1;}).slice(0,5);
+    if(!taskResults.length&&!userResults.length){
+      resEl.innerHTML='<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">Intet fundet for "'+esc(q)+'"</div>';
+      resEl.style.display='block';return;
+    }
+    var html='';
+    if(taskResults.length){
+      html+='<div style="padding:6px 10px 2px;font-size:9px;font-weight:800;text-transform:uppercase;color:var(--muted)">Sager & opgaver</div>';
+      html+=taskResults.map(function(t){
+        return '<div class="navdrop-item" data-action="gsearch-task" data-task-id="'+esc(t.id)+'" style="padding:8px 10px;cursor:pointer;border-radius:6px"><b style="font-size:12px">'+esc(t.job_name||t.name)+'</b><div style="font-size:10.5px;color:var(--muted)">'+esc(t.name||'')+(t.job_number?' · '+esc(t.job_number):'')+'</div></div>';
+      }).join('');
+    }
+    if(userResults.length){
+      html+='<div style="padding:6px 10px 2px;font-size:9px;font-weight:800;text-transform:uppercase;color:var(--muted)">Medarbejdere</div>';
+      html+=userResults.map(function(u){
+        return '<div class="navdrop-item" data-action="gsearch-user" data-user-id="'+esc(u.id)+'" style="padding:8px 10px;cursor:pointer;border-radius:6px"><b style="font-size:12px">'+esc(u.name)+'</b><div style="font-size:10.5px;color:var(--muted)">'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+'</div></div>';
+      }).join('');
+    }
+    resEl.innerHTML=html;
+    resEl.style.display='block';
+    resEl.querySelectorAll('[data-action="gsearch-task"]').forEach(function(el){
+      el.addEventListener('mouseenter',function(){el.style.background='var(--ice)';});
+      el.addEventListener('mouseleave',function(){el.style.background='';});
+      el.addEventListener('click',function(){
+        document.getElementById('global-search-results').style.display='none';
+        document.getElementById('global-search-input').value='';
+        switchPage('plan');
+        var t=tasks.find(function(x){return String(x.id)===el.dataset.taskId;});
+        var searchVal=t?(t.job_name||t.name||''):'';
+        document.getElementById('plan-search').value=searchVal;
+        renderPool('plan');
+      });
+    });
+    resEl.querySelectorAll('[data-action="gsearch-user"]').forEach(function(el){
+      el.addEventListener('mouseenter',function(){el.style.background='var(--ice)';});
+      el.addEventListener('mouseleave',function(){el.style.background='';});
+      el.addEventListener('click',function(){
+        document.getElementById('global-search-results').style.display='none';
+        document.getElementById('global-search-input').value='';
+        openUser(el.dataset.userId);
+      });
+    });
+  }
   document.addEventListener('click',function(e){if(!e.target.closest('#notifdrop'))document.getElementById('notifdrop-menu').classList.remove('open');});
+  // Nye undermenuer i navigationen (Tidslinje under Daglig plan, Ledighedsoversigt under Kapacitet)
+  document.querySelectorAll('[data-action="tab-caret-toggle"]').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var menu=btn.parentElement.querySelector('.navdrop-menu');
+      document.querySelectorAll('.tab-navdrop .navdrop-menu.open').forEach(function(m){if(m!==menu)m.classList.remove('open');});
+      menu.classList.toggle('open');
+    });
+  });
+  document.addEventListener('click',function(e){
+    if(!e.target.closest('.tab-navdrop'))document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
+  });
   document.addEventListener('click',function(e){if(!e.target.closest('.filter-dropdown'))document.querySelectorAll('.filter-dropdown-menu.open').forEach(function(m){m.classList.remove('open');});});
   document.getElementById('new-template-btn').onclick=function(){openTemplateEditor(null);};
   document.getElementById('new-email-template-btn').onclick=function(){openEmailTemplateEditor(null);};
@@ -6043,6 +6341,28 @@ function bind(){
   document.getElementById('save-visit-form').onclick=saveVisitForm;
   document.getElementById('sync-phones-btn').onclick=syncPhonesNow;
   // "Ryd alle bookinger"-knappen er fjernet fra UI (for let at trykke på ved en fejl) —
+  document.getElementById('pool-bulk-clear').addEventListener('click',function(){poolSelected={};renderPool('plan');});
+  document.getElementById('pool-bulk-done-btn').addEventListener('click',async function(){
+    var ids=Object.keys(poolSelected);
+    if(!ids.length)return;
+    if(!await gmConfirm('Markér '+ids.length+' opgave(r) som færdige? De fjernes fra poolen.'))return;
+    var btn=this;btn.disabled=true;btn.textContent='Markerer…';
+    for(var i=0;i<ids.length;i++){
+      var t=tasks.find(function(x){return String(x.id)===ids[i];});
+      if(!t)continue;
+      var rows=dailyBookingsForTask(t).filter(function(b){return !b.completed_at;});
+      if(rows.length){for(var j=0;j<rows.length;j++)await api('/api/assignments/'+rows[j].id+'/complete',{method:'PUT',body:JSON.stringify({completed:true})});}
+      else await api('/api/tasks/'+encodeURIComponent(t.id)+'/manual-complete',{method:'PUT',body:JSON.stringify({completed:true})});
+    }
+    btn.disabled=false;btn.textContent='✓ Markér valgte som færdige';
+    poolSelected={};
+    toast(ids.length+' opgave(r) markeret som færdige ✓','✅');
+    await loadAll();
+  });
+  document.getElementById('pool-bulk-assign-btn').addEventListener('click',function(){
+    if(!Object.keys(poolSelected).length)return;
+    openPoolBulkAssignModal();
+  });
   document.getElementById('plan-prev').onclick=function(){planScrollByWeeks(-1);};
   document.getElementById('plan-next').onclick=function(){planScrollByWeeks(1);};
   document.getElementById('plan-today').onclick=function(){

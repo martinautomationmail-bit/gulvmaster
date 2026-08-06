@@ -92,7 +92,12 @@
 <body>
 <header class="topbar">
   <div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div>
-  <div class="topbar-actions"><button class="lib-btn" onclick="openFindTask()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find a task</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button></div>
+  <div class="topbar-actions"><button class="lib-btn" onclick="openFindTask()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find a task</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button>
+    <div style="position:relative;display:inline-block">
+      <button class="lib-btn" id="notif-bell-btn" onclick="toggleNotifDropdown()"><span class="lib-btn-icon">🔔</span><span id="notif-bell-count" style="display:none;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;margin-left:4px"></span></button>
+      <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:300px;max-height:360px;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(15,34,64,.25);z-index:500;color:#1a1a1a"></div>
+    </div>
+  </div>
   <div class="user"><span id="user-name" class="user-name"></span><span id="user-avatar" class="avatar">?</span><button class="logout" onclick="logout()">Log out</button></div>
 </header>
 <main class="main">
@@ -630,6 +635,63 @@ function render(){
 function changeWeek(n){weekOffset+=n;selectedDate=null;render()}
 function goToday(){weekOffset=0;selectedDate=iso(new Date());render()}
 async function loadAll(){const a=await api('/api/assignments/my');assignments=a&&a.ok?a.data:[];render()}
+// SKUB-LIGNENDE NOTIFIKATIONER: poller hvert 60. sekund for nye beskeder om
+// planændringer (fx "din opgave i morgen er flyttet"). Ingen ægte OS-push (det kræver
+// en service worker + browser-tilladelse, som er et større, separat stykke arbejde) —
+// men fanger ændringer inden for et minut, mens man har appen åben, og viser en
+// øjeblikkelig toast + en rød tæller på klokken.
+var myNotifs=[],lastSeenNotifIds={};
+async function refreshMyNotifications(showToastForNew){
+  var r=await api('/api/my-notifications');
+  if(!r||!r.ok)return;
+  var list=r.data||[];
+  if(showToastForNew){
+    var isFirstLoad=Object.keys(lastSeenNotifIds).length===0;
+    list.forEach(function(n){
+      if(!lastSeenNotifIds[n.id]&&!isFirstLoad)toast(n.title+(n.body?': '+n.body:''));
+    });
+  }
+  list.forEach(function(n){lastSeenNotifIds[n.id]=true;});
+  myNotifs=list;
+  renderNotifBell();
+}
+function renderNotifBell(){
+  var unread=myNotifs.filter(function(n){return !n.read_at;});
+  var badge=document.getElementById('notif-bell-count');
+  if(unread.length){badge.style.display='inline-block';badge.textContent=unread.length;}
+  else badge.style.display='none';
+  var dd=document.getElementById('notif-dropdown');
+  if(dd.style.display!=='none')renderNotifDropdownList();
+}
+function renderNotifDropdownList(){
+  var dd=document.getElementById('notif-dropdown');
+  if(!myNotifs.length){dd.innerHTML='<div style="padding:18px;text-align:center;color:#94a3b8;font-size:12px">Ingen beskeder endnu</div>';return;}
+  dd.innerHTML=myNotifs.map(function(n){
+    return '<div onclick="markNotifRead('+n.id+')" style="padding:12px 14px;border-bottom:1px solid #F1F5F9;cursor:pointer;background:'+(n.read_at?'#fff':'#EFF6FF')+'">'+
+      '<div style="font-weight:800;font-size:12px;color:#1a1a1a">'+(n.read_at?'':'🔵 ')+esc(n.title)+'</div>'+
+      (n.body?'<div style="font-size:11.5px;color:#475569;margin-top:2px">'+esc(n.body)+'</div>':'')+
+      '<div style="font-size:9.5px;color:#94a3b8;margin-top:4px">'+esc(String(n.created_at||'').slice(0,16).replace('T',' '))+'</div></div>';
+  }).join('');
+}
+function toggleNotifDropdown(){
+  var dd=document.getElementById('notif-dropdown');
+  var willOpen=dd.style.display==='none';
+  dd.style.display=willOpen?'block':'none';
+  if(willOpen)renderNotifDropdownList();
+}
+function markNotifRead(id){
+  api('/api/my-notifications/'+id+'/read',{method:'PUT'});
+  var n=myNotifs.find(function(x){return x.id===id;});
+  if(n)n.read_at=new Date().toISOString();
+  renderNotifBell();
+}
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#notif-bell-btn')&&!e.target.closest('#notif-dropdown')){
+    document.getElementById('notif-dropdown').style.display='none';
+  }
+});
+refreshMyNotifications(false);
+setInterval(function(){refreshMyNotifications(true);},60000);
 // Holder de klæbende dag-overskrifter lige under topbaren, uanset om topbaren
 // er 1 eller 2 linjer høj (den ombryder på smalle skærme/mange handlinger).
 function syncTopbarHeight(){
