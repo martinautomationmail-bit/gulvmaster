@@ -20,8 +20,12 @@ const crypto = require('crypto');
 const cron = require('node-cron');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
-const XLSX = require('xlsx');
-const pdfParse = require('pdf-parse');
+// FEJLSIKRING: hvis xlsx eller pdf-parse af en eller anden grund ikke kunne installeres
+// korrekt på serveren (fx en afvigelse i build-miljøet), skal det IKKE vælte hele
+// appen — kun bankafstemnings-featuren, som i så fald simpelthen ikke er tilgængelig.
+let XLSX = null, pdfParse = null;
+try { XLSX = require('xlsx'); } catch (e) { console.error('ADVARSEL: xlsx kunne ikke indlæses — bankafstemning (Excel/CSV) er utilgængelig:', e.message); }
+try { pdfParse = require('pdf-parse'); } catch (e) { console.error('ADVARSEL: pdf-parse kunne ikke indlæses — bankafstemning (PDF) er utilgængelig:', e.message); }
 const DEFAULT_CLEANING_PDF_BASE64 = require('./cleaning-pdf-base64');
 const { Pool } = require('pg');
 // Uses Node's built-in SQLite reader only for the one-time migration upload.
@@ -4503,6 +4507,7 @@ function parseBankStatementPdfText(text) {
   return txns;
 }
 function parseBankStatementSpreadsheet(buffer) {
+  if (!XLSX) throw new Error('Excel/CSV-læsning er ikke tilgængelig på serveren lige nu — kontakt support.');
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
@@ -4565,6 +4570,7 @@ app.post('/api/finance/bank-statement/parse', auth, financeOnly, uploadBankState
   let transactions = [];
   try {
     if (lower.endsWith('.pdf')) {
+      if (!pdfParse) return res.status(400).json({ error: 'PDF-læsning er ikke tilgængelig på serveren lige nu — prøv en Excel/CSV-eksport i stedet.' });
       const parsed = await pdfParse(req.file.buffer);
       transactions = parseBankStatementPdfText(parsed.text);
     } else {
