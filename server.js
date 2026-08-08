@@ -445,7 +445,6 @@ async function initSchema() {
       read_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
-    
 
     -- KUNDE-KOMMUNIKATION: log for planlagt/påmindelse-mails til kunden (adskilt fra
     -- completion_emails, som allerede findes til færdig-mailen).
@@ -527,6 +526,12 @@ async function initSchema() {
     -- ikke kun planlagte.
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS manually_completed_at TEXT;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS user_id INTEGER;
+    -- FEJL RETTET: dette index lå tidligere oppe ved CREATE TABLE-blokken, men for en
+    -- database hvor "notifications" allerede fandtes (som her), er CREATE TABLE IF NOT
+    -- EXISTS en no-op — så kolonnen "user_id" fandtes slet ikke endnu på det tidspunkt
+    -- i migrationen. Serveren crashede derfor hver gang med "column user_id does not
+    -- exist". Indexet oprettes nu EFTER ALTER TABLE her, hvor kolonnen med sikkerhed
+    -- findes, uanset om tabellen er ny eller eksisterede i forvejen.
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS customer_visits (
@@ -2450,7 +2455,11 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
       job_phone: r.resolved_phone, job_email: r.resolved_email, job_address: r.resolved_address
     });
   }
-  res.json(out);
+  // SIKKERHED: viser tydeligt hvor friske data er, så man aldrig er i tvivl om man
+  // kigger på noget der blev flyttet i JobTread for nyligt, men endnu ikke er hentet
+  // ned hertil — i stedet for at det bare stille viser forældede datoer.
+  const lastSynced = await pgOne('SELECT MAX(synced_at) AS t FROM gantt_tasks');
+  res.json({ tasks: out, lastSyncedAt: lastSynced?.t || null });
 }));
 
 app.post('/api/gantt/sync-all', auth, adminOnly, asyncRoute(async (req, res) => {

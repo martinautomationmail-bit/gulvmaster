@@ -1346,6 +1346,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </span>
       <button class="btn small" id="gantt-add-task-btn">+ Ny opgave</button>
       <button class="btn small primary" id="gantt-sync-btn">🔄 Synk med JobTread</button>
+      <div id="gantt-sync-freshness" style="font-size:10px;font-weight:700;margin-top:4px;text-align:right"></div>
     </div>
     <div class="board-outer" style="overflow:auto">
       <div id="gantt-chart"></div>
@@ -3771,9 +3772,23 @@ async function openGanttAllTasks(){
   document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter (kan tage lidt tid første gang — henter hele organisationen fra JobTread)…</p>';
   var r=await api('/api/gantt/all-tasks');
   if(!r){toast('Kunne ikke hente opgaverne','❌');return;}
-  ganttState.tasks=r;
+  ganttState.tasks=r.tasks||[];
+  renderGanttSyncFreshness(r.lastSyncedAt);
   renderGanttChart();
 }
+var ganttLastSyncedAt=null;
+function renderGanttSyncFreshness(lastSyncedAt){
+  if(lastSyncedAt!==undefined)ganttLastSyncedAt=lastSyncedAt;
+  var el=document.getElementById('gantt-sync-freshness');
+  if(!el)return;
+  if(!ganttLastSyncedAt){el.textContent='Aldrig synkroniseret endnu';el.style.color='#B91C1C';return;}
+  var mins=Math.round((Date.now()-new Date(ganttLastSyncedAt).getTime())/60000);
+  var label=mins<1?'lige nu':mins<60?mins+' min. siden':mins<1440?Math.round(mins/60)+' t. siden':Math.round(mins/1440)+' dage siden';
+  el.textContent='Sidst hentet fra JobTread: '+label;
+  // Rødt hvis det er over 2 timer siden — så man aldrig antager data er friske, uden at se det.
+  el.style.color=mins>120?'#B91C1C':(mins>30?'#B45309':'#15803D');
+}
+setInterval(function(){if(ganttLastSyncedAt)renderGanttSyncFreshness();},30000);
 var ganttAllFilters={trade:'all',period:'all',search:'',customFrom:'',customTo:''};
 var ganttExpandedJobs={};
 function ganttFilteredTasks(){
