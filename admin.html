@@ -231,8 +231,24 @@ button,input,select{font:inherit}
 .task-card{border:1px solid var(--border2);border-radius:7px;padding:7px 8px;margin:0 0 5px;background:#fff;cursor:grab;user-select:none;transition:.14s}
 .task-card.completed{border-color:#86EFAC;background:#F0FDF4}
 .task-done-badge{font-size:8px;font-weight:800;color:#15803D;margin-bottom:3px}
-.task-mark-done-btn{position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;border:1.5px solid #86EFAC;background:#DCFCE7;color:#15803D;font-weight:900;font-size:13px;cursor:pointer;line-height:1;z-index:2}
+.task-card-head{display:flex;align-items:flex-start;gap:7px;margin-bottom:2px}
+.task-card-title-block{flex:1;min-width:0}
+.pool-select-cb{flex-shrink:0;width:16px;height:16px;margin-top:1px;cursor:pointer;accent-color:#2563EB;border-radius:4px}
+.task-mark-done-btn{flex-shrink:0;width:22px;height:22px;border-radius:50%;border:1.5px solid #86EFAC;background:#DCFCE7;color:#15803D;font-weight:900;font-size:12px;cursor:pointer;line-height:1;padding:0}
 .task-mark-done-btn:hover{background:#15803D;color:#fff;border-color:#15803D}
+.pool-bulk-bar{display:none;flex-direction:column;gap:10px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff;padding:14px;border-radius:14px;margin-bottom:10px;box-shadow:0 8px 20px rgba(15,34,64,.22)}
+.pool-bulk-bar-top{display:flex;justify-content:space-between;align-items:center}
+#pool-bulk-count{font-weight:800;font-size:12.5px;display:flex;align-items:center;gap:6px}
+#pool-bulk-count::before{content:'✓';display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.2);font-size:10px}
+.pool-bulk-clear-btn{background:rgba(255,255,255,.12);border:0;color:rgba(255,255,255,.85);font-size:10.5px;font-weight:600;cursor:pointer;padding:5px 10px;border-radius:20px;transition:.15s}
+.pool-bulk-clear-btn:hover{background:rgba(255,255,255,.22);color:#fff}
+.pool-bulk-bar-actions{display:flex;flex-direction:column;gap:7px}
+.pool-bulk-action-btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;border:0;border-radius:9px;padding:9px 10px;font-size:11.5px;font-weight:700;cursor:pointer;transition:.15s}
+.pool-bulk-action-btn span{font-size:13px}
+.pool-bulk-action-btn.done{background:#DCFCE7;color:#15803D}
+.pool-bulk-action-btn.done:hover{background:#BBF7D0}
+.pool-bulk-action-btn.assign{background:rgba(255,255,255,.14);color:#fff}
+.pool-bulk-action-btn.assign:hover{background:rgba(255,255,255,.24)}
 .task-overdue{border-left:3px solid #DC2626!important}
 .task-overdue-badge{font-size:8px;font-weight:800;color:#B91C1C;margin-bottom:3px}
 .task-card:hover{box-shadow:0 3px 12px rgba(15,34,64,.12);border-color:var(--steel)}
@@ -1068,13 +1084,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="filter-row" id="plan-status-filters"></div>
           <div class="filter-row" id="plan-type-filters"></div>
         </div>
-        <div id="pool-bulk-bar" style="display:none;flex-direction:column;gap:6px;background:var(--navy);color:#fff;padding:9px 10px;border-radius:9px;margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span id="pool-bulk-count" style="font-weight:800;font-size:11.5px"></span>
-            <button id="pool-bulk-clear" style="background:none;border:0;color:rgba(255,255,255,.7);font-size:11px;cursor:pointer">Fravælg</button>
+        <div id="pool-bulk-bar" class="pool-bulk-bar">
+          <div class="pool-bulk-bar-top">
+            <span id="pool-bulk-count"></span>
+            <button id="pool-bulk-clear" class="pool-bulk-clear-btn">Fravælg alle</button>
           </div>
-          <button class="btn small" id="pool-bulk-done-btn" style="width:100%;background:#DCFCE7;color:#15803D">✓ Markér valgte som færdige</button>
-          <button class="btn small" id="pool-bulk-assign-btn" style="width:100%;background:rgba(255,255,255,.15);color:#fff">📌 Tildel valgte til medarbejder...</button>
+          <div class="pool-bulk-bar-actions">
+            <button id="pool-bulk-done-btn" class="pool-bulk-action-btn done"><span>✓</span>Markér som færdige</button>
+            <button id="pool-bulk-assign-btn" class="pool-bulk-action-btn assign"><span>📌</span>Tildel til medarbejder</button>
+          </div>
         </div>
         <div id="plan-pool"></div>
       </div>
@@ -2353,14 +2371,18 @@ function taskCard(t,scope){
   var overdue=!planned&&!completed&&t.start_date&&String(t.start_date).slice(0,10)<iso(new Date());
   var capacityHint=scope==='capacity'&&!completed?'<div class="task-drag-hint">⠿ Træk direkte til den ønskede uge</div>':'';
   var contact=phoneMarkup(t.customer_phone,true);
-  var bulkCb=(scope==='plan'&&!completed)?'<input type="checkbox" class="pool-select-cb" data-task-id="'+esc(t.id)+'" '+(poolSelected[t.id]?'checked':'')+' style="position:absolute;top:8px;left:8px;width:16px;height:16px;z-index:3;cursor:pointer">':'';
-  return '<article class="task-card '+(completed?'completed':'draggable-task')+(overdue?' task-overdue':'')+'" '+(completed?'':'draggable="true"')+' '+(completed?'':'data-task-id="'+esc(t.id)+'"')+' title="'+esc(t.job_name||'')+'" style="position:relative">'+
-    bulkCb+
-    (!completed?'<button class="task-mark-done-btn" data-action="mark-task-done" data-task-id="'+esc(t.id)+'" title="Markér opgaven som færdig — fjerner den fra poolen">✓</button>':'')+
+  var showBulkCb=scope==='plan'&&!completed;
+  return '<article class="task-card '+(completed?'completed':'draggable-task')+(overdue?' task-overdue':'')+'" '+(completed?'':'draggable="true"')+' '+(completed?'':'data-task-id="'+esc(t.id)+'"')+' title="'+esc(t.job_name||'')+'">'+
+    '<div class="task-card-head">'+
+      (showBulkCb?'<input type="checkbox" class="pool-select-cb" data-task-id="'+esc(t.id)+'" '+(poolSelected[t.id]?'checked':'')+'>':'')+
+      '<div class="task-card-title-block">'+
+        '<div class="task-name">'+esc(t.job_name||'Uden kunde')+'</div>'+
+        '<div class="task-sub">'+esc(t.name||'Opgave')+'</div>'+
+      '</div>'+
+      (!completed?'<button class="task-mark-done-btn" data-action="mark-task-done" data-task-id="'+esc(t.id)+'" title="Markér opgaven som færdig — fjerner den fra poolen">✓</button>':'')+
+    '</div>'+
     (completed?'<div class="task-done-badge">✅ Færdiggjort · '+(bookings.filter(function(b){return b.task_id===t.id&&!!b.completed_at&&!isCapacityBooking(b)&&!b.invoiced;}).length?'Klar til faktura':'Faktureret')+'</div>':'')+
     (overdue?'<div class="task-overdue-badge">⚠ Startdato overskredet — planlæg snarest</div>':'')+
-    '<div class="task-name">'+esc(t.job_name||'Uden kunde')+'</div>'+
-    '<div class="task-sub">'+esc(t.name||'Opgave')+'</div>'+
     (contact?'<div class="task-contact">'+contact+'</div>':'')+
     '<div class="task-meta">'+
       '<span class="badge '+esc(t.type_guess||'other')+'" style="background:'+(type.bar||'#94A3B8')+'22;color:'+(type.bar||'#94A3B8')+'">'+type.label+'</span>'+
