@@ -445,7 +445,7 @@ async function initSchema() {
       read_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+    
 
     -- KUNDE-KOMMUNIKATION: log for planlagt/påmindelse-mails til kunden (adskilt fra
     -- completion_emails, som allerede findes til færdig-mailen).
@@ -527,6 +527,7 @@ async function initSchema() {
     -- ikke kun planlagte.
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS manually_completed_at TEXT;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS user_id INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS customer_visits (
       id SERIAL PRIMARY KEY,
