@@ -2633,6 +2633,10 @@ app.post('/api/tasks/manual', auth, adminOnly, asyncRoute(async (req, res) => {
 // trin når man trækker en skabelon ud i Daglig plan.
 app.post('/api/tasks/manual-and-book', auth, adminOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
+  // FEJL RETTET: krævede tidligere at ALLE felter var udfyldt for at gemme en
+  // skabelon-drop, selv i Kapacitet hvor kun navn + medarbejder + startdato reelt
+  // giver mening — adresse/telefon/e-mail er valgfrit, ligesom i den almindelige
+  // "+ Manuel opgave"-formular.
   if (!body.job_name || !body.name || !validDate(body.start_date) || !body.user_id) {
     return res.status(400).json({ error: 'Kunde/projekt, opgave, medarbejder og startdato skal udfyldes' });
   }
@@ -2645,6 +2649,24 @@ app.post('/api/tasks/manual-and-book', auth, adminOnly, asyncRoute(async (req, r
     VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL,NULL,${nowTextSQL()},'manual',${nowTextSQL()})
   `, [id, String(body.name).trim(), String(body.job_name).trim(), body.job_address || '', body.job_number || null, body.customer_phone || null, customerEmail, customerEmail ? 'manual' : null, body.start_date, endDate, cleanTaskType(body.type_guess)]);
   try {
+    if (body.is_capacity) {
+      // Booker som kapacitetsreservation (blokerer dage, ingen bestemt mødetid) i
+      // stedet for en almindelig dags-booking — matcher at skabelonen blev trukket
+      // ind i Kapacitet, ikke Daglig plan.
+      const user = await pgOne("SELECT id,weekly_capacity FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id)]);
+      if (!user) throw new Error('Medarbejderen blev ikke fundet');
+      const weeklyCapacity = Number(user.weekly_capacity) || 5;
+      const segments = await splitCapacityAcrossWeeks(user.id, weeklyCapacity, body.start_date, days);
+      let firstBookingId = null;
+      for (const seg of segments) {
+        const result = await pool.query(`
+          INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_date,end_date,planning_mode,updated_at)
+          VALUES ($1,$2,$3,5,$4,$5,$6,$7,'capacity',${nowTextSQL()}) RETURNING id
+        `, [id, user.id, seg.week_key, seg.capacity_days, body.notes || null, seg.start_date, seg.end_date]);
+        if (!firstBookingId) firstBookingId = result.rows[0].id;
+      }
+      return res.json({ ok: true, id, booking_id: firstBookingId });
+    }
     const booking = await normalizeBooking({ task_id: id, user_id: body.user_id, start_date: body.start_date, days, notes: body.notes || null }, true);
     const result = await pool.query(`
       INSERT INTO planning_bookings (task_id,user_id,week_key,days,notes,start_date,end_date,updated_at)
@@ -2742,7 +2764,7 @@ app.put('/api/capacity-reservations/:id', auth, adminOnly, asyncRoute(async (req
 }));
 
 app.put('/api/tasks/:id/customer-contact', auth, adminOnly, asyncRoute(async (req, res) => {
-  const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [req.params.id]);
+  const task = await pgOne('SELECT id, job_id FROM jt_tasks WHERE id=$1', [req.params.id]);
   if (!task) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
   const body = req.body || {};
   const phone = String(body.customer_phone || '').trim().slice(0, 60);
@@ -2767,6 +2789,17 @@ app.put('/api/tasks/:id/customer-contact', auth, adminOnly, asyncRoute(async (re
           customer_phone_synced_at=NULL
       WHERE id=$2
     `, [phone || '', req.params.id]);
+  }
+  // AUTO-UDFYLDNING: se samme forklaring ved /api/tasks/:id ovenfor — telefon og
+  // e-mail hører til kunden/sagen, ikke den enkelte opgave, så det spredes til alle
+  // andre opgaver under samme sag med det samme.
+  if (task.job_id) {
+    if (phone) {
+      await pool.query(`UPDATE jt_tasks SET customer_phone=$1, customer_phone_source='manual', customer_phone_synced_at=NULL WHERE job_id=$2 AND id<>$3`, [phone, task.job_id, req.params.id]);
+    }
+    if (emailProvided && email) {
+      await pool.query(`UPDATE jt_tasks SET customer_email=$1, customer_email_source='manual', customer_email_synced_at=NULL WHERE job_id=$2 AND id<>$3`, [email, task.job_id, req.params.id]);
+    }
   }
   res.json({ ok: true, customer_phone: phone || null, customer_phone_source: phone ? 'manual' : null, customer_email: emailProvided ? (email || null) : undefined });
 }));
@@ -2851,6 +2884,30 @@ app.put('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
     next.customer_email || null,
     body.customer_email !== undefined
   ]);
+  // AUTO-UDFYLDNING: telefon, adresse og e-mail hører til KUNDEN/sagen, ikke den
+  // enkelte opgave — så når en admin selv udfylder ét af disse felter manuelt på én
+  // opgave, spredes det automatisk til alle andre opgaver under samme sag (job_id),
+  // så man ikke skal indtaste det samme flere gange for hver enkelt opgave.
+  if (current.job_id) {
+    const propagateSets = [];
+    const propagateValues = [];
+    if (body.customer_phone !== undefined && next.customer_phone) {
+      propagateValues.push(next.customer_phone);
+      propagateSets.push(`customer_phone=$${propagateValues.length}`, `customer_phone_source='manual'`, `customer_phone_synced_at=NULL`);
+    }
+    if (body.job_address !== undefined && next.job_address) {
+      propagateValues.push(next.job_address);
+      propagateSets.push(`job_address=$${propagateValues.length}`);
+    }
+    if (body.customer_email !== undefined && next.customer_email) {
+      propagateValues.push(next.customer_email);
+      propagateSets.push(`customer_email=$${propagateValues.length}`, `customer_email_source='manual'`, `customer_email_synced_at=NULL`);
+    }
+    if (propagateSets.length) {
+      propagateValues.push(current.job_id, current.id);
+      await pool.query(`UPDATE jt_tasks SET ${propagateSets.join(', ')} WHERE job_id=$${propagateValues.length - 1} AND id<>$${propagateValues.length}`, propagateValues);
+    }
+  }
   res.json({ ok: true });
 }));
 

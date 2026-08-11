@@ -302,6 +302,7 @@ button,input,select{font:inherit}
 .capacity-reservation{background:#F5F3FF!important;border-left-color:#7C3AED!important;color:#4C1D95!important}
 .capacity-reservation .cap-job-days{background:rgba(124,58,237,.12)!important}
 .capacity-context{display:flex;align-items:center;gap:7px;padding:8px 10px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:9px;color:#5B21B6;font-size:10px;font-weight:700;margin:0 0 8px}
+.capacity-jt-hint{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 11px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;color:#92400E;font-size:11px;font-weight:600;margin:-6px 0 12px}
 .capacity-modal-note{font-size:10px;color:var(--muted);line-height:1.45;margin:-2px 0 12px}
 .checklist-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:6px}
 .checklist-item.done{background:#F0FDF4;border-color:#86EFAC}
@@ -1675,6 +1676,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Startdato</label><input id="capacity-week" type="date" class="input"></div>
       <div class="form-group"><label class="form-label">Kapacitetsdage <span style="opacity:.6;font-weight:500">(kan strække sig over flere uger)</span></label><input id="capacity-days" type="number" min=".25" max="60" step=".25" class="input" value="1"></div>
     </div>
+    <div id="capacity-jt-date-hint" class="capacity-jt-hint" style="display:none"></div>
     <div class="form-group">
       <label class="form-label">Titel <span class="opt-tag">valgfrit</span></label>
       <input id="capacity-label" class="input" placeholder="Fx Reserveret til opstart / intern opgave">
@@ -1975,7 +1977,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="form-group"><label class="form-label">Dage</label><input id="tpldrop-days" type="number" min=".25" max="60" step=".25" class="input"></div>
         </div>
       </div>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11.5px;cursor:pointer">
+      <label id="tpldrop-send-mail-row" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11.5px;cursor:pointer">
         <input type="checkbox" id="tpldrop-send-mail" style="width:auto"> ✉️ Send planlægningsmail til kunden med det samme
       </label>
     </div>
@@ -2923,11 +2925,25 @@ function openCapacityModal(opts){
   document.getElementById('capacity-title').textContent=b?'Rediger kapacitetsreservation':(t?'Reservér kapacitet for opgave':'Reservér kapacitet');
   document.getElementById('capacity-context').innerHTML=t?'📊 <span>Kapacitet for <strong>'+esc((t.job_name||'')+(t.name?' — '+t.name:''))+'</strong>. Den vises ikke i Daglig plan eller hos medarbejderen.</span>':'📊 <span>Denne reservation vises kun på kapacitetsboardet — ikke i Daglig plan eller hos medarbejderen.</span>';
   populateCapacityUsers(b?b.user_id:opts.userId);
-  document.getElementById('capacity-week').value=iso(date((b&&b.start_date)||opts.weekStart||iso(new Date())));
+  var weekVal=iso(date((b&&b.start_date)||opts.weekStart||iso(new Date())));
+  document.getElementById('capacity-week').value=weekVal;
   document.getElementById('capacity-days').value=b?capDaysOf(b):1;
   document.getElementById('capacity-label').value=b?(b.capacity_label||''):(t?'': 'Kapacitetsreservation');
   document.getElementById('capacity-note').value=b&&b.notes||'';
   document.getElementById('delete-capacity').classList.toggle('hidden',!b);
+  // FEJL RETTET: her stod tidligere kun den uge reservationen var trukket til — uden
+  // nogen reference til opgavens FAKTISKE planlagte dato i JobTread. Så en kollega der
+  // åbnede en gammel reservation, havde ingen måde at se om ugen stadig var korrekt.
+  // Viser nu tydeligt JobTread-datoen med en knap til at rette det med ét klik.
+  var jtHint=document.getElementById('capacity-jt-date-hint');
+  var jtDate=t&&t.start_date?String(t.start_date).slice(0,10):null;
+  if(jtDate&&jtDate!==weekVal){
+    jtHint.style.display='flex';
+    jtHint.innerHTML='<span>📅 JobTread siger denne opgave starter <strong>'+esc(jtDate.slice(8,10)+'/'+jtDate.slice(5,7)+'-'+jtDate.slice(0,4))+'</strong> — reservationen står til en anden dato.</span><button type="button" class="btn small" id="capacity-use-jt-date">Brug JobTread-dato</button>';
+    document.getElementById('capacity-use-jt-date').onclick=function(){document.getElementById('capacity-week').value=jtDate;jtHint.style.display='none';};
+  }else{
+    jtHint.style.display='none';
+  }
   document.getElementById('capacity-modal').classList.add('open');
 }
 async function saveCapacityReservation(){
@@ -3380,7 +3396,7 @@ async function handleCapacityDrop(p,uid,ds,evt){
     // FEJL RETTET: skabelon-drop blev tidligere overhovedet ikke håndteret i
     // Kapacitet — intet skete når man slap den. Genbruger samme skabelon-flow som
     // Daglig plan, så en skabelon droppet i Kapacitet nu rent faktisk opretter opgaven.
-    openTemplateDropModal(p.templateId,uid,ds);
+    openTemplateDropModal(p.templateId,uid,ds,true);
     return;
   }
   if(p.kind==='booking'){
@@ -3499,12 +3515,12 @@ function initCustomerSearch(){
   });
 }
 var tpldropCtx=null;
-function openTemplateDropModal(templateId,uid,ds){
+function openTemplateDropModal(templateId,uid,ds,isCapacity){
   var t=templatesCache.find(function(x){return +x.id===+templateId;});
   if(!t){toast('Skabelonen blev ikke fundet','⚠');return;}
   var u=users.find(function(x){return +x.id===+uid;});
-  tpldropCtx={templateId:templateId,uid:uid,ds:ds,checklist:t.checklist_items,typeGuess:t.type_guess,notes:t.notes_template};
-  document.getElementById('tpldrop-sub').textContent=(u?u.name+' · ':'')+ds;
+  tpldropCtx={templateId:templateId,uid:uid,ds:ds,checklist:t.checklist_items,typeGuess:t.type_guess,notes:t.notes_template,isCapacity:!!isCapacity};
+  document.getElementById('tpldrop-sub').textContent=(u?u.name+' · ':'')+ds+(isCapacity?' · reserverer kapacitet (ingen fast mødetid)':'');
   document.getElementById('tpldrop-customer').value='';
   document.getElementById('tpldrop-address').value='';
   document.getElementById('tpldrop-phone').value='';
@@ -3513,12 +3529,13 @@ function openTemplateDropModal(templateId,uid,ds){
   document.getElementById('tpldrop-days').value=t.default_days;
   document.getElementById('tpldrop-customer-suggestions').style.display='none';
   document.getElementById('tpldrop-send-mail').checked=false;
+  document.getElementById('tpldrop-send-mail-row').style.display=isCapacity?'none':'flex';
   document.getElementById('tpldrop-modal').classList.add('open');
 }
 async function saveTemplateDrop(){
   if(!tpldropCtx)return;
   var customer=document.getElementById('tpldrop-customer').value.trim();
-  if(!customer){toast('Angiv kundens navn','⚠');return;}
+  if(!customer){toast('Angiv kundens navn — resten er valgfrit','⚠');return;}
   var wantsMail=document.getElementById('tpldrop-send-mail').checked;
   var body={
     job_name:customer,name:document.getElementById('tpldrop-name').value.trim(),
@@ -3526,11 +3543,12 @@ async function saveTemplateDrop(){
     customer_phone:document.getElementById('tpldrop-phone').value.trim(),
     customer_email:document.getElementById('tpldrop-email').value.trim(),
     start_date:tpldropCtx.ds,days:+document.getElementById('tpldrop-days').value||1,
-    type_guess:tpldropCtx.typeGuess,user_id:tpldropCtx.uid,notes:tpldropCtx.notes||null
+    type_guess:tpldropCtx.typeGuess,user_id:tpldropCtx.uid,notes:tpldropCtx.notes||null,
+    is_capacity:!!tpldropCtx.isCapacity
   };
   var r=await api('/api/tasks/manual-and-book',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
-    toast('Opgave oprettet og booket ✓','✓');
+    toast(tpldropCtx.isCapacity?'Kapacitet reserveret ✓':'Opgave oprettet og booket ✓','✓');
     if(tpldropCtx.checklist&&tpldropCtx.checklist.length){
       for(var i=0;i<tpldropCtx.checklist.length;i++){
         await api('/api/tasks/'+encodeURIComponent(r.id)+'/checklist',{method:'POST',body:JSON.stringify({title:tpldropCtx.checklist[i]})}).catch(function(){});
@@ -3929,25 +3947,34 @@ function renderGanttChart(){
       var myStart=t.start_date?date(t.start_date):range.start;
       var x1=(Math.round((depEnd-range.start)/86400000)+1)*dw,y1=depIdx*GANTT_ROW_H+22;
       var x2=Math.round((myStart-range.start)/86400000)*dw,y2=idx*GANTT_ROW_H+22;
-      // FEJL RETTET: kurven brugte tidligere et kontrolpunkt midt mellem x1 og x2 —
-      // for opgaver langt fra hinanden (mange rækker/dage imellem) gav det én lang,
-      // skæv diagonal streg i stedet for en pæn bue. Nu er "hvor meget den svinger ud"
-      // et fast, lille interval uanset afstand, så den altid ser rolig og ensartet ud —
-      // ligesom i rigtige Gantt-værktøjer.
-      var pad=Math.max(18,Math.min(46,Math.abs(x2-x1)*.35));
-      var c1x=x1+pad,c2x=x2-pad;
+      // OMBYGGET til rette vinkler med afrundede hjørner, ligesom JobTreads egen
+      // Gantt-visning — i stedet for en fri-svævende kurve. Ser meget mere "teknisk
+      // tegning" ud og er nemmere at følge med øjnene fra kant til kant.
+      var r=6,gap=14;
+      var midX=x1+Math.max(gap,Math.min((x2-x1)/2,26));
       var path;
-      if(x2>=x1+pad*2){
-        // Almindeligt tilfælde: målet ligger til højre — blød S-kurve med fast udsving.
-        path='M'+x1+' '+y1+' C '+c1x+' '+y1+', '+c2x+' '+y2+', '+x2+' '+y2;
+      if(x2>=x1+gap*2&&Math.abs(y2-y1)>1){
+        var vSign=y2>y1?1:-1;
+        path='M'+x1+' '+y1+
+             ' L'+(midX-r)+' '+y1+
+             ' Q'+midX+' '+y1+' '+midX+' '+(y1+r*vSign)+
+             ' L'+midX+' '+(y2-r*vSign)+
+             ' Q'+midX+' '+y2+' '+(midX+r)+' '+y2+
+             ' L'+x2+' '+y2;
+      }else if(x2>=x1+gap*2){
+        path='M'+x1+' '+y1+' L'+x2+' '+y2; // samme række, sjældent, bare en lige streg
       }else{
-        // Målet ligger tæt på eller til venstre for kilden — før linjen pænt uden om i
-        // stedet for at lade kurven vride sig ind over sig selv.
-        var loopY=(y1+y2)/2;
-        path='M'+x1+' '+y1+' C '+(x1+pad)+' '+y1+', '+(x1+pad)+' '+loopY+', '+(x1+pad*.6)+' '+loopY+
-             ' S '+(x2-pad)+' '+y2+', '+x2+' '+y2;
+        // Målet ligger tæt på eller til venstre for kilden — før linjen pænt uden om
+        // med samme afrundede hjørne-stil i stedet for at vride sig ind over sig selv.
+        var loopX=x1+gap,vSign2=y2>y1?1:-1,midY=(y1+y2)/2;
+        path='M'+x1+' '+y1+
+             ' L'+(loopX-r)+' '+y1+' Q'+loopX+' '+y1+' '+loopX+' '+(y1+r*vSign2)+
+             ' L'+loopX+' '+(midY-r)+' Q'+loopX+' '+midY+' '+(loopX-r)+' '+midY+
+             ' L'+(x2-gap+r)+' '+midY+' Q'+(x2-gap)+' '+midY+' '+(x2-gap)+' '+(midY+r*vSign2)+
+             ' L'+(x2-gap)+' '+(y2-r*vSign2)+' Q'+(x2-gap)+' '+y2+' '+(x2-gap+r)+' '+y2+
+             ' L'+x2+' '+y2;
       }
-      deps+='<path d="'+path+'" stroke="#94A3B8" stroke-width="1.5" fill="none" marker-end="url(#ganttArrow)"/>';
+      deps+='<path d="'+path+'" stroke="#3B82F6" stroke-width="1.75" fill="none" marker-end="url(#ganttArrow)"/>';
     });
   });
 
@@ -3957,7 +3984,7 @@ function renderGanttChart(){
       '<div class="gantt-week-head">'+weekCols+'</div>'+
       '<div class="gantt-timeline-head">'+headCols+'</div>'+
       '<div style="position:relative">'+timelineRows+
-        '<svg class="gantt-dep-svg" width="'+svgW+'" height="'+svgH+'"><defs><marker id="ganttArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94A3B8"/></marker></defs>'+deps+'</svg>'+
+        '<svg class="gantt-dep-svg" width="'+svgW+'" height="'+svgH+'"><defs><marker id="ganttArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#3B82F6"/></marker></defs>'+deps+'</svg>'+
       '</div>'+
     '</div>'+
   '</div>';
