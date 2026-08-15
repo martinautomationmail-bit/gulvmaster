@@ -4668,8 +4668,19 @@ function matchTransactionsToInvoices(transactions, invoices) {
       let score = 0; const reasons = [];
       const invAmount = inv.remaining !== null && inv.remaining !== undefined ? inv.remaining : inv.priceWithTax;
       const diff = Math.abs((invAmount || 0) - txn.amount);
-      if (diff < 1) { score += 50; reasons.push('Beløb matcher præcist'); }
-      else if (diff < 5) { score += 30; reasons.push('Beløb matcher (lille afvigelse)'); }
+      if (diff < 1) { score += 45; reasons.push('Beløb matcher præcist'); }
+      else if (diff < 5) { score += 35; reasons.push('Beløb matcher (lille afvigelse)'); }
+      else if (invAmount > 0) {
+        // Fanger delvise betalinger/krediteringer — beløbet behøver ikke matche
+        // præcist, kunden kan have betalt for lidt eller fået en delvis kreditering.
+        // Jo tættere de to beløb er, jo mere point, men det stopper aldrig helt en
+        // ellers stærk navne-match, bare fordi beløbet afviger.
+        const ratio = Math.min(txn.amount, invAmount) / Math.max(txn.amount, invAmount);
+        if (ratio >= 0.25) {
+          score += Math.round(ratio * 22);
+          reasons.push(txn.amount < invAmount ? 'Beløb lavere end fakturaen — muligvis delvis betaling' : 'Beløb højere end forventet — tjek for kreditering/flere fakturaer');
+        }
+      }
       const custNorm = normalizeForMatch(inv.customer);
       if (custNorm && txnNorm.includes(custNorm)) { score += 35; reasons.push('Kundenavn fundet i teksten'); }
       else if (custNorm) {
@@ -4677,11 +4688,18 @@ function matchTransactionsToInvoices(transactions, invoices) {
         const hits = words.filter(w => txnNorm.includes(w)).length;
         if (words.length && hits) { score += Math.round(20 * hits / words.length); reasons.push('Delvist kundenavn-match'); }
       }
+      const fullNameNorm = normalizeForMatch(inv.fullName);
+      if (fullNameNorm && txnNorm.includes(fullNameNorm)) { score += 22; reasons.push('Fakturanavn fundet i teksten'); }
+      else if (fullNameNorm) {
+        const words = fullNameNorm.split(' ').filter(w => w.length >= 3);
+        const hits = words.filter(w => txnNorm.includes(w)).length;
+        if (words.length && hits) { score += Math.round(16 * hits / words.length); reasons.push('Delvist fakturanavn-match'); }
+      }
       if (sagsNorm && inv.jobNumber && sagsNorm.replace('GM-', '').includes(String(inv.jobNumber).replace(/^GM-?/i, ''))) {
         score += 30; reasons.push('Sagsnummer fundet i teksten');
       }
-      return { documentId: inv.id, customer: inv.customer, fullName: inv.fullName, jobNumber: inv.jobNumber, priceWithTax: inv.priceWithTax, remaining: inv.remaining, overrideStatus: inv.overrideStatus, score, reasons };
-    }).filter(m => m.score >= 25).sort((a, b) => b.score - a.score).slice(0, 3);
+      return { documentId: inv.id, customer: inv.customer, fullName: inv.fullName, jobNumber: inv.jobNumber, priceWithTax: inv.priceWithTax, remaining: inv.remaining, overrideStatus: inv.overrideStatus, accountId: inv.accountId, score, reasons };
+    }).filter(m => m.score >= 22).sort((a, b) => b.score - a.score).slice(0, 3);
     return { ...txn, matches: scored };
   });
 }
