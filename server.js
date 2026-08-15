@@ -1724,7 +1724,7 @@ async function syncFromJTInner() {
       if (cur1) args.page = cur1;
 
       const d = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
-        tasks: { $: args, nextPage: {}, nodes: { id: {}, name: {}, startDate: {}, endDate: {}, job: { id: {} } } }
+        tasks: { $: args, nextPage: {}, nodes: { id: {}, name: {}, description: {}, startDate: {}, endDate: {}, job: { id: {} } } }
       }}}, 'Tasks s.' + (p1+1));
 
       // jtFetch returnerer {organization:{tasks:{...}}} — ingen query wrapper
@@ -4501,7 +4501,7 @@ async function fetchFinanceInvoices() {
     query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, documents: {
       $: { size: 100, sortBy: [{ field: 'createdAt', order: 'desc' }], where: ['type', 'customerInvoice'] },
       count: {},
-      nodes: { id: {}, fullName: {}, createdAt: {}, price: {}, priceWithTax: {}, balance: {}, status: {}, job: { id: {}, name: {}, number: {}, location: { account: { name: {} } } } }
+      nodes: { id: {}, fullName: {}, createdAt: {}, price: {}, priceWithTax: {}, balance: {}, status: {}, job: { id: {}, name: {}, number: {}, location: { account: { id: {}, name: {} } } } }
     } } }
   }, 'Økonomi: hent fakturaer');
   const nodes = data?.organization?.documents?.nodes || [];
@@ -4512,12 +4512,50 @@ async function fetchFinanceInvoices() {
     const ov = overrides[d.id];
     const remaining = ov?.status === 'partial' && ov?.paid_amount != null ? Math.max(0, (d.priceWithTax || 0) - ov.paid_amount) : null;
     return {
-      id: d.id, fullName: d.fullName, customer: d.job?.location?.account?.name || d.job?.name || '', jobId: d.job?.id || null, jobNumber: d.job?.number || '',
+      id: d.id, fullName: d.fullName, customer: d.job?.location?.account?.name || d.job?.name || '', accountId: d.job?.location?.account?.id || null, jobId: d.job?.id || null, jobNumber: d.job?.number || '',
       createdAt: d.createdAt, price: d.price, priceWithTax: d.priceWithTax, balance: d.balance, jtStatus: d.status,
       overrideStatus: ov?.status || (d.balance === 0 ? 'paid' : 'unpaid'),
       note: ov?.note || '', paidAmount: ov?.paid_amount ?? null, remaining
     };
   });
+}
+// SKRIV BETALING TILBAGE TIL JOBTREAD — bevidst en 2-trins proces der matcher deres
+// egen API: (1) opret selve betalingen ("credit"), (2) knyt den til den specifikke
+// faktura med et beløb. Bruges KUN når admin selv har afkrydset det — aldrig
+// automatisk — fordi det skriver rigtige, permanente finansielle data i JobTread.
+async function writePaymentToJobTread(documentId, accountId, amount, note) {
+  if (!accountId) throw new Error('Fakturaen har ingen tilknyttet kundekonto i JobTread — kan ikke registrere betaling der.');
+  const paidAt = new Date().toISOString();
+  const paymentData = await jtFetch({
+    query: {
+      $: { grantKey: JT_GRANT },
+      createPayment: {
+        $: {
+          organizationId: JT_ORG,
+          accountId,
+          amount,
+          paidAt,
+          type: 'credit',
+          source: 'Gulv Master-portal',
+          description: note || 'Registreret via Gulv Master-portalen',
+          attemptAutoMatch: false
+        },
+        createdPayment: { id: {} }
+      }
+    }
+  }, 'Økonomi: opret betaling i JobTread');
+  const paymentId = paymentData?.createPayment?.createdPayment?.id;
+  if (!paymentId) throw new Error('JobTread returnerede ikke et betalings-id');
+  await jtFetch({
+    query: {
+      $: { grantKey: JT_GRANT },
+      createDocumentPayment: {
+        $: { documentId, paymentId, amount, isLinkedToQbo: false },
+        createdDocumentPayment: { id: {} }
+      }
+    }
+  }, 'Økonomi: knyt betaling til faktura i JobTread');
+  return paymentId;
 }
 app.get('/api/finance/invoices', auth, financeOnly, asyncRoute(async (req, res) => {
   res.json(await fetchFinanceInvoices());
@@ -4532,6 +4570,22 @@ app.put('/api/finance/invoices/:documentId', auth, financeOnly, asyncRoute(async
     INSERT INTO finance_invoice_overrides (document_id,status,note,paid_amount,updated_at) VALUES ($1,$2,$3,$4,${nowTextSQL()})
     ON CONFLICT (document_id) DO UPDATE SET status=$2,note=$3,paid_amount=$4,updated_at=${nowTextSQL()}
   `, [req.params.documentId, status, note, paidAmount]);
+  // Kun hvis admin selv har bedt om det — se writePaymentToJobTread ovenfor for hvorfor.
+  if (body.syncToJobtread && (status === 'paid' || status === 'partial')) {
+    try {
+      const invoices = await fetchFinanceInvoices();
+      const inv = invoices.find(i => i.id === req.params.documentId);
+      if (!inv) throw new Error('Fakturaen blev ikke fundet');
+      const amountToWrite = status === 'paid' ? inv.priceWithTax : paidAmount;
+      if (!(amountToWrite > 0)) throw new Error('Ugyldigt beløb at registrere');
+      await writePaymentToJobTread(req.params.documentId, inv.accountId, amountToWrite, note);
+      return res.json({ ok: true, jobtreadSynced: true });
+    } catch (error) {
+      // Status-ændringen i vores egen database er allerede gemt og lykkedes — kun
+      // selve JobTread-delen fejlede, så det rapporteres tydeligt, ikke skjules.
+      return res.json({ ok: true, jobtreadSynced: false, jobtreadError: error.message });
+    }
+  }
   res.json({ ok: true });
 }));
 
