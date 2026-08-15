@@ -5835,12 +5835,24 @@ document.getElementById('fin-inv-bulk-apply').addEventListener('click',async fun
 });
 async function saveFinInvoice(inv,status,note,paidAmount){
   var body={status:status||inv.overrideStatus,note:note!==null&&note!==undefined?note:inv.note,paidAmount:paidAmount!==undefined?paidAmount:inv.paidAmount};
+  // Kun spørg når status rent faktisk BLIVER betalt/delvist — ikke ved hver eneste
+  // notefelt-ændring, og aldrig automatisk, da det skriver en rigtig betaling i JobTread.
+  var becamePaid=(body.status==='paid'||body.status==='partial')&&inv.overrideStatus!==body.status;
+  if(becamePaid){
+    body.syncToJobtread=await gmConfirm('Skal denne betaling også registreres i JobTread (opretter en rigtig betalingspostering der)?');
+  }
   var r=await api('/api/finance/invoices/'+encodeURIComponent(inv.id),{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){
     inv.overrideStatus=body.status;inv.note=body.note;
     inv.paidAmount=body.paidAmount!==''&&body.paidAmount!==null?+body.paidAmount:null;
     inv.remaining=(inv.overrideStatus==='partial'&&inv.paidAmount!=null)?Math.max(0,(inv.priceWithTax||0)-inv.paidAmount):null;
-    toast('Gemt ✓','✓');renderFinInvoices();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);
+    if(body.syncToJobtread){
+      if(r.jobtreadSynced)toast('Gemt ✓ — også registreret i JobTread','✓');
+      else toast('Gemt her, men JobTread-delen fejlede: '+(r.jobtreadError||'ukendt fejl'),'⚠');
+    }else{
+      toast('Gemt ✓','✓');
+    }
+    renderFinInvoices();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);
   }
   else if(r)toast(r.error||'Fejl','❌');
 }
