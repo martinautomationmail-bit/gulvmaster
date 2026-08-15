@@ -236,6 +236,16 @@ button,input,select{font:inherit}
 .pool-select-cb{flex-shrink:0;width:16px;height:16px;margin-top:1px;cursor:pointer;accent-color:#2563EB;border-radius:4px}
 .task-mark-done-btn{flex-shrink:0;width:22px;height:22px;border-radius:50%;border:1.5px solid #86EFAC;background:#DCFCE7;color:#15803D;font-weight:900;font-size:12px;cursor:pointer;line-height:1;padding:0}
 .task-mark-done-btn:hover{background:#15803D;color:#fff;border-color:#15803D}
+.pool-group{border:1px solid var(--border2);border-radius:9px;margin-bottom:6px;overflow:hidden}
+.pool-group-head{width:100%;display:flex;align-items:center;gap:7px;padding:9px 10px;background:#fff;border:0;cursor:pointer;text-align:left}
+.pool-group-head:hover{background:var(--ice)}
+.pool-group-caret{font-size:10px;color:var(--muted);flex-shrink:0}
+.pool-group-name{flex:1;font-size:11.5px;font-weight:750;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pool-group-count{flex-shrink:0;font-size:9.5px;font-weight:800;color:#fff;background:var(--blue,#2563EB);border-radius:20px;padding:1px 7px}
+.pool-group-flag{flex-shrink:0;font-size:9px;font-weight:800;border-radius:20px;padding:1px 6px}
+.pool-group-flag.overdue{background:#FEF2F2;color:#B91C1C}
+.pool-group-flag.missing{background:#FFFBEB;padding:1px 5px}
+.pool-group-body{padding:6px;background:var(--ice)}
 .pool-bulk-bar{display:none;flex-direction:column;gap:10px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff;padding:14px;border-radius:14px;margin-bottom:10px;box-shadow:0 8px 20px rgba(15,34,64,.22)}
 .pool-bulk-bar-top{display:flex;justify-content:space-between;align-items:center}
 #pool-bulk-count{font-weight:800;font-size:12.5px;display:flex;align-items:center;gap:6px}
@@ -749,7 +759,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-06.1</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-11.1</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -1076,6 +1086,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <aside class="panel">
       <div class="panel-head">
         <span class="panel-title">📥 Opgavepool</span>
+        <button class="btn small primary" id="plan-group-toggle" title="Skift mellem gruppering pr. kunde og flad liste">👥 Pr. kunde</button>
       </div>
       <div class="panel-body">
         <div class="pool-search-wrap"><input id="plan-search" class="search" placeholder="Søg kunde eller opgave"></div>
@@ -2427,6 +2438,8 @@ function templateCard(t){
     '<div class="task-drag-hint">⠿ Træk ud på en dag — du bliver spurgt om kunden</div>'+
     '</article>';
 }
+var poolGroupedMode={plan:true,capacity:false,timeline:false};
+var poolGroupExpanded={};
 function renderPool(scope){
   filtersHTML(scope);
   var dom=scope==='capacity'?'cap':scope;
@@ -2438,7 +2451,20 @@ function renderPool(scope){
   }
   var list=filterTasks(scope);
   var section=filters[scope].status==='completed'?'<div class="task-completion-section">✅ Færdiggjort · klar til faktura eller allerede faktureret</div>':'';
-  el.innerHTML=list.length?section+list.map(function(t){return taskCard(t,scope);}).join(''):'<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
+  if(!list.length){
+    el.innerHTML='<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
+  }else if(poolGroupedMode[scope]){
+    el.innerHTML=section+renderPoolGrouped(list,scope);
+  }else{
+    el.innerHTML=section+list.map(function(t){return taskCard(t,scope);}).join('');
+  }
+  el.querySelectorAll('[data-action="toggle-pool-group"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var key=btn.dataset.groupKey;
+      poolGroupExpanded[key]=!poolGroupExpanded[key];
+      renderPool(scope);
+    });
+  });
   if(scope==='plan'){
     // Ryd valg af opgaver der ikke længere er synlige (fx filtreret væk eller markeret færdig).
     var visibleIds={};list.forEach(function(t){visibleIds[t.id]=true;});
@@ -2452,6 +2478,35 @@ function renderPool(scope){
     });
     updatePoolBulkBar();
   }
+}
+// GRUPPERET PR. KUNDE/SAG: i stedet for én lang flad liste af opgaver, vises kunder
+// samlet — klik for at folde ud og se deres opgaver. Gør det langt hurtigere at få
+// overblik når samme kunde har flere opgaver spredt i poolen, og er stedet hvor man
+// nu udfylder tlf/adresse (som automatisk spredes til alle opgaver på samme sag).
+function renderPoolGrouped(list,scope){
+  var groups={},order=[];
+  list.forEach(function(t){
+    var key=t.job_id?('job:'+t.job_id):('name:'+(t.job_name||'Uden kunde'));
+    if(!groups[key]){groups[key]={label:t.job_name||'Uden kunde',tasks:[],overdue:0,planned:0};order.push(key);}
+    groups[key].tasks.push(t);
+    if(!taskIsCompleted(t)&&+t.assignment_count<=0&&t.start_date&&String(t.start_date).slice(0,10)<iso(new Date()))groups[key].overdue++;
+    if(+t.assignment_count>0)groups[key].planned++;
+  });
+  return order.map(function(key){
+    var g=groups[key];
+    var isOpen=poolGroupExpanded[key]===true;
+    var missingContact=g.tasks.some(function(t){return !t.job_address||!t.customer_phone;});
+    return '<div class="pool-group">'+
+      '<button class="pool-group-head" data-action="toggle-pool-group" data-group-key="'+esc(key)+'">'+
+        '<span class="pool-group-caret">'+(isOpen?'▾':'▸')+'</span>'+
+        '<span class="pool-group-name">'+esc(g.label)+'</span>'+
+        '<span class="pool-group-count">'+g.tasks.length+'</span>'+
+        (g.overdue?'<span class="pool-group-flag overdue" title="Overskredet startdato">⚠ '+g.overdue+'</span>':'')+
+        (missingContact?'<span class="pool-group-flag missing" title="Mangler adresse/telefon på mindst én opgave">📵</span>':'')+
+      '</button>'+
+      (isOpen?'<div class="pool-group-body">'+g.tasks.map(function(t){return taskCard(t,scope);}).join('')+'</div>':'')+
+      '</div>';
+  }).join('');
 }
 function updatePoolBulkBar(){
   var bar=document.getElementById('pool-bulk-bar');
@@ -3547,6 +3602,14 @@ async function saveTemplateDrop(){
     is_capacity:!!tpldropCtx.isCapacity
   };
   var r=await api('/api/tasks/manual-and-book',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok&&r.warning){
+    // FEJL RETTET: opgaven kan godt oprettes selvom selve bookingen fejler bagved
+    // (fx hvis kapacitetsberegningen støder på et problem) — før viste vi bare
+    // "✓ reserveret" alligevel, så man aldrig opdagede at intet reelt blev booket.
+    toast('Opgaven blev oprettet, men IKKE booket: '+r.warning,'❌');
+    closeModal('tpldrop-modal');tpldropCtx=null;await loadAll();
+    return;
+  }
   if(r&&r.ok){
     toast(tpldropCtx.isCapacity?'Kapacitet reserveret ✓':'Opgave oprettet og booket ✓','✓');
     if(tpldropCtx.checklist&&tpldropCtx.checklist.length){
@@ -6407,6 +6470,12 @@ function bind(){
   document.getElementById('sync-phones-btn').onclick=syncPhonesNow;
   // "Ryd alle bookinger"-knappen er fjernet fra UI (for let at trykke på ved en fejl) —
   document.getElementById('pool-bulk-clear').addEventListener('click',function(){poolSelected={};renderPool('plan');});
+  document.getElementById('plan-group-toggle').addEventListener('click',function(){
+    poolGroupedMode.plan=!poolGroupedMode.plan;
+    this.textContent=poolGroupedMode.plan?'👥 Pr. kunde':'📋 Flad liste';
+    this.classList.toggle('primary',poolGroupedMode.plan);
+    renderPool('plan');
+  });
   document.getElementById('pool-bulk-done-btn').addEventListener('click',async function(){
     var ids=Object.keys(poolSelected);
     if(!ids.length)return;
