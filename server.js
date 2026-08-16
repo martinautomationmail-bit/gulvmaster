@@ -4779,7 +4779,12 @@ function normalizeForMatch(s) {
     .replace(/[^a-z0-9]+/g, ' ').trim();
 }
 function matchTransactionsToInvoices(transactions, invoices) {
-  const candidates = invoices.filter(inv => inv.overrideStatus !== 'paid');
+  // FEJL RETTET: udelukkede tidligere alle allerede-betalte fakturaer fra matchningen
+  // — så en indbetaling der reelt hørte til en faktura JobTread allerede havde
+  // registreret som betalt, viste bare "intet forslag" i stedet for at blive
+  // genkendt. Det gjorde bankudtoget langt mere forvirrende end nødvendigt, fordi
+  // størstedelen af "uforklarede" posteringer reelt bare var allerede afklarede.
+  const candidates = invoices;
   return transactions.map(txn => {
     if (!(txn.amount > 0)) return { ...txn, matches: [] }; // kun indbetalinger (positive beløb) giver mening at matche
     const txnNorm = normalizeForMatch(txn.text);
@@ -4819,6 +4824,7 @@ function matchTransactionsToInvoices(transactions, invoices) {
       if (sagsNorm && inv.jobNumber && sagsNorm.replace('GM-', '').includes(String(inv.jobNumber).replace(/^GM-?/i, ''))) {
         score += 30; reasons.push('Sagsnummer fundet i teksten');
       }
+      if (inv.overrideStatus === 'paid') { score -= 10; reasons.push('Fakturaen er allerede registreret betalt'); }
       return { documentId: inv.id, customer: inv.customer, fullName: inv.fullName, jobId: inv.jobId, jobNumber: inv.jobNumber, priceWithTax: inv.priceWithTax, remaining: inv.remaining, overrideStatus: inv.overrideStatus, accountId: inv.accountId, score, reasons };
     }).filter(m => m.score >= 22).sort((a, b) => b.score - a.score).slice(0, 3);
     return { ...txn, matches: scored };

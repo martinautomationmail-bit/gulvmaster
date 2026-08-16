@@ -156,6 +156,7 @@ button,input,select{font:inherit}
 .fin-recon-txn.active{border-color:var(--blue,#2563EB);background:#EFF6FF;box-shadow:0 0 0 2px rgba(37,99,235,.12)}
 .fin-recon-match-chip{margin-top:7px;font-size:10.5px;font-weight:700;background:var(--ice);border:1px solid var(--border2);border-radius:20px;padding:4px 10px;display:inline-flex;align-items:center;gap:6px}
 .fin-recon-match-chip.picked{background:#DCFCE7;border-color:#86EFAC;color:#15803D}
+.fin-recon-match-chip.already-paid{background:#F0FDFA;border-color:#99F6E4;color:#0F766E}
 .fin-recon-match-chip button{background:none;border:0;cursor:pointer;font-size:10px;color:inherit;opacity:.7}
 .fin-recon-match-chip button:hover{opacity:1}
 .fin-recon-hint{margin-top:7px;font-size:10.5px;color:var(--muted);font-style:italic}
@@ -5206,7 +5207,7 @@ document.getElementById('fin-bank-upload-input').addEventListener('change',async
   btn.disabled=false;btn.textContent=origLabel;
   e.target.value='';
   if(!r||r.error){toast((r&&r.error)||'Kunne ikke læse filen','❌');return;}
-  finBankTxns=r.transactions.map(function(t,i){t._localId=i;t._selected=t.matches.length&&t.matches[0].score>=50;t._chosenIdx=0;return t;});
+  finBankTxns=r.transactions.map(function(t,i){t._localId=i;var top=t.matches[0];t._selected=top&&(top.score>=50||top.overrideStatus==='paid');t._chosenIdx=0;return t;});
   finBankStatusFilter='open';
   var alreadyCount=finBankTxns.filter(function(t){return t.alreadyReconciled;}).length;
   toast('Fandt '+r.count+' transaktion(er)'+(alreadyCount?' — '+alreadyCount+' er allerede bogført fra tidligere':''),'✓');
@@ -5316,6 +5317,8 @@ function renderFinBankResults(){
     if(manual){
       html+='<div class="fin-recon-match-chip picked">📌 '+esc(manual.customer||'')+(manual.fullName?' — '+esc(manual.fullName):'')+' — '+krFmt(manual.remaining!=null?manual.remaining:manual.priceWithTax)+
         '<button data-bank-clear-manual="'+t._localId+'" title="Fjern valg" onclick="event.stopPropagation()">✕</button></div>';
+    }else if(best&&best.overrideStatus==='paid'){
+      html+='<div class="fin-recon-match-chip already-paid">✅ Matcher allerede betalt faktura — '+esc(best.customer||'')+' — intet at gøre, bare bekræft</div>';
     }else if(best){
       html+='<div class="fin-recon-match-chip" style="border-color:'+confColor+'44;color:'+confColor+'">🔎 '+esc(best.customer||'')+' — '+krFmt(best.remaining!=null?best.remaining:best.priceWithTax)+' · '+conf+' sikkerhed</div>';
     }else{
