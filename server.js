@@ -350,6 +350,14 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- Flytter en sags omsætning til en anden måned end dens rigtige startdato tilsiger
+    -- — fx når en sag udskydes pga. vejret og reelt hører til næste måned i regnskabet.
+    CREATE TABLE IF NOT EXISTS finance_job_month_overrides (
+      job_id TEXT PRIMARY KEY,
+      month_key TEXT NOT NULL,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     -- SYSTEMLOG: én fælles logbog for alt der kører automatisk i baggrunden (JobTread-
     -- synk hver time, notifikationsscan, m.fl.) — så admin kan se om noget fejler
     -- stille, uden at skulle ind i Renders serverlogs.
@@ -4245,7 +4253,16 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
         $: args, nextPage: {},
         nodes: {
           startDate: {}, endDate: {},
-          job: { id: {}, name: {}, costItems: { sum: { $: 'price' } }, customFieldValues: { $: { size: 5, where: [['customField', 'name'], 'Projekt Type'] }, nodes: { value: {} } } }
+          job: { id: {}, name: {},
+            // FEJL RETTET: brugte tidligere JobTreads egen sum af ALLE cost items på
+            // sagen — men en sag kan sagtens have flere konkurrerende tilbud (fx 2-4
+            // stk.), og kun ét af dem er det kunden reelt har godkendt. De andre
+            // tælles nu IKKE med, uanset om JobTread selv har "includeInBudget" sat på
+            // dem (det viste sig ikke at være pålideligt — det kan stå på flere
+            // ikke-godkendte tilbud samtidig). Kun cost items uden noget dokument
+            // (interne linjer) eller hvor dokumentet er godkendt tælles med.
+            costItems: { $: { size: 100 }, nodes: { price: {}, document: { status: {} } } },
+            customFieldValues: { $: { size: 5, where: [['customField', 'name'], 'Projekt Type'] }, nodes: { value: {} } } }
         }
       } } }
     }, 'Økonomi: hent opgaver i vindue');
@@ -4260,29 +4277,39 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   const overridesResult = await pool.query('SELECT * FROM finance_job_overrides');
   const overrides = {};
   for (const row of overridesResult.rows) overrides[row.job_id] = row;
+  const monthOverridesResult = await pool.query('SELECT * FROM finance_job_month_overrides');
+  const monthOverrides = {};
+  for (const row of monthOverridesResult.rows) monthOverrides[row.job_id] = row.month_key;
 
   const monthKeys = [];
   for (let offset = -monthsBack; offset <= monthsForward; offset++) {
     const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
     monthKeys.push(d.toISOString().slice(0, 7));
   }
+  // En sag der er flyttet til en måned uden for det normale vindue (fx langt frem i
+  // tiden) skal stadig kunne ses — udvider derfor vinduet med den måned i stedet for
+  // stille at ignorere flytningen.
+  for (const mk of Object.values(monthOverrides)) if (!monthKeys.includes(mk)) monthKeys.push(mk);
+  monthKeys.sort();
   const buckets = {};
   for (const mk of monthKeys) buckets[mk] = {};
 
   for (const t of allTasks) {
     if (!t.job || !t.startDate) continue;
-    const mk = t.startDate.slice(0, 7);
+    const naturalMk = t.startDate.slice(0, 7);
+    const mk = monthOverrides[t.job.id] || naturalMk;
     if (!buckets[mk]) continue;
     if (buckets[mk][t.job.id]) continue;
     const override = overrides[t.job.id];
-    let value = t.job.costItems?.sum ?? null;
+    const approvedCostItems = (t.job.costItems?.nodes || []).filter(ci => !ci.document || ci.document.status === 'approved');
+    let value = approvedCostItems.length ? approvedCostItems.reduce((s, ci) => s + (ci.price || 0), 0) : null;
     let excluded = false;
     if (override) {
       if (override.excluded) excluded = true;
       else if (override.amount !== null && override.amount !== undefined) value = override.amount;
     }
     const fag = t.job.customFieldValues?.nodes?.[0]?.value || 'Ukendt';
-    buckets[mk][t.job.id] = { jobId: t.job.id, name: t.job.name, fag, value, excluded, hasOverride: !!override, startDate: t.startDate };
+    buckets[mk][t.job.id] = { jobId: t.job.id, name: t.job.name, fag, value, excluded, hasOverride: !!override, startDate: t.startDate, monthMoved: mk !== naturalMk, naturalMonth: naturalMk };
   }
 
   const manualRows = await pool.query('SELECT * FROM finance_manual_revenue WHERE month_key = ANY($1)', [monthKeys]);
@@ -4440,6 +4467,19 @@ app.delete('/api/finance/manual-revenue/:id', auth, financeOnly, asyncRoute(asyn
   res.json({ ok: true });
 }));
 
+app.put('/api/finance/job-month-override/:jobId', auth, financeOnly, asyncRoute(async (req, res) => {
+  const monthKey = String(req.body?.monthKey || '').trim();
+  if (!monthKey) {
+    await pool.query('DELETE FROM finance_job_month_overrides WHERE job_id=$1', [req.params.jobId]);
+    return res.json({ ok: true });
+  }
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) return res.status(400).json({ error: 'Ugyldig måned' });
+  await pool.query(`
+    INSERT INTO finance_job_month_overrides (job_id,month_key,updated_at) VALUES ($1,$2,${nowTextSQL()})
+    ON CONFLICT (job_id) DO UPDATE SET month_key=$2,updated_at=${nowTextSQL()}
+  `, [req.params.jobId, monthKey]);
+  res.json({ ok: true });
+}));
 app.get('/api/finance/job-status-marks', auth, financeOnly, asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT job_key, status FROM finance_job_status_marks');
   const out = {};
@@ -4725,7 +4765,7 @@ function matchTransactionsToInvoices(transactions, invoices) {
       if (sagsNorm && inv.jobNumber && sagsNorm.replace('GM-', '').includes(String(inv.jobNumber).replace(/^GM-?/i, ''))) {
         score += 30; reasons.push('Sagsnummer fundet i teksten');
       }
-      return { documentId: inv.id, customer: inv.customer, fullName: inv.fullName, jobNumber: inv.jobNumber, priceWithTax: inv.priceWithTax, remaining: inv.remaining, overrideStatus: inv.overrideStatus, accountId: inv.accountId, score, reasons };
+      return { documentId: inv.id, customer: inv.customer, fullName: inv.fullName, jobId: inv.jobId, jobNumber: inv.jobNumber, priceWithTax: inv.priceWithTax, remaining: inv.remaining, overrideStatus: inv.overrideStatus, accountId: inv.accountId, score, reasons };
     }).filter(m => m.score >= 22).sort((a, b) => b.score - a.score).slice(0, 3);
     return { ...txn, matches: scored };
   });

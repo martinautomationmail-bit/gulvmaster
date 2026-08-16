@@ -137,6 +137,7 @@ button,input,select{font:inherit}
 .fin-status-dot{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(0,0,0,.12);cursor:pointer;padding:0;opacity:.45;transition:.15s}
 .fin-status-dot:hover{opacity:.85;transform:scale(1.15)}
 .fin-status-dot.active{opacity:1;border-color:#fff;box-shadow:0 0 0 1.5px rgba(0,0,0,.35)}
+.fin-move-month-select{font-size:9.5px;font-weight:700;border:1px solid var(--border2);border-radius:6px;padding:2px 4px;background:#fff;color:var(--navy);cursor:pointer;max-width:80px}
 .fin-month-card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(15,34,64,.06);border:1px solid #EEF0F3}
 .fin-month-head{padding:14px 12px;text-align:center;background:linear-gradient(135deg,#F8FAFC,#EEF2F7);border-bottom:1px solid #EEF0F3}
 .fin-month-head-current{background:linear-gradient(135deg,var(--navy),#1e3a6e)}
@@ -5180,7 +5181,8 @@ function renderFinBankResults(){
     '<div class="fin-eyebrow" style="margin:0">'+payments.length+' indbetalinger fundet · '+withMatch.length+' med forslag til match</div>'+
     '<div style="display:flex;align-items:center;gap:12px">'+
       '<label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer"><input type="checkbox" id="fin-bank-sync-jt" style="width:auto"> Skriv også betalingerne til JobTread</label>'+
-      '<button class="btn small primary" id="fin-bank-apply-btn">✓ Anvend markerede matches</button></div></div>';
+      '<button class="btn small primary" id="fin-bank-apply-btn">✓ Anvend markerede matches</button>'+
+      '<button class="fin-edit-btn" id="fin-bank-close-btn" title="Luk resultatlisten">✕</button></div></div>';
   html+='<div style="display:flex;flex-direction:column;gap:8px;max-height:480px;overflow:auto">';
   payments.forEach(function(t){
     var best=t.matches[t._chosenIdx]||null;
@@ -5193,15 +5195,18 @@ function renderFinBankResults(){
       (t.matches.length?'<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-bank-select="'+t._localId+'" '+(t._selected?'checked':'')+'> markér</label>':'<span class="fin-badge">intet forslag</span>')+
       '</div></div>';
     if(t.matches.length){
-      html+='<div style="width:100%;display:flex;align-items:center;gap:8px">'+
-        '<select class="fin-status" data-bank-match-select="'+t._localId+'" style="width:auto;flex:1">'+
-        t.matches.map(function(m,i){return '<option value="'+i+'" '+(i===t._chosenIdx?'selected':'')+'>'+esc(m.customer||m.fullName)+' — '+krFmt(m.remaining!=null?m.remaining:m.priceWithTax)+' ('+m.reasons.join(', ')+')</option>';}).join('')+
-        '</select><span class="fin-badge" style="background:'+confColor+'22;color:'+confColor+'">'+conf+' sikkerhed</span></div>';
+      html+='<div style="width:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+        '<select class="fin-status" data-bank-match-select="'+t._localId+'" style="width:auto;flex:1;min-width:220px">'+
+        t.matches.map(function(m,i){return '<option value="'+i+'" '+(i===t._chosenIdx?'selected':'')+'>'+esc(m.customer||'')+(m.fullName?' — '+esc(m.fullName):'')+' — '+krFmt(m.remaining!=null?m.remaining:m.priceWithTax)+' ('+m.reasons.join(', ')+')</option>';}).join('')+
+        '</select><span class="fin-badge" style="background:'+confColor+'22;color:'+confColor+'">'+conf+' sikkerhed</span>'+
+        (best&&best.jobId?'<a href="https://app.jobtread.com/jobs/'+esc(best.jobId)+'/documents" target="_blank" rel="noopener" class="btn small" style="text-decoration:none">🔗 Tjek i JobTread</a>':'')+
+        '</div>';
     }
     html+='</div>';
   });
   html+='</div>';
   el.innerHTML=html;
+  document.getElementById('fin-bank-close-btn').addEventListener('click',function(){finBankTxns=[];renderFinBankResults();});
   el.querySelectorAll('[data-bank-select]').forEach(function(cb){
     cb.addEventListener('change',function(){finBankTxns[+cb.dataset.bankSelect]._selected=cb.checked;});
   });
@@ -5693,12 +5698,15 @@ function renderFinRevenue(){
       var dots=Object.keys(STATUS_META).map(function(k){
         return '<button class="fin-status-dot'+(st===k?' active':'')+'" data-job-status-key="'+esc(jobKey)+'" data-job-status-val="'+k+'" style="background:'+STATUS_META[k].dot+'" title="'+STATUS_META[k].label+'"></button>';
       }).join('');
+      var otherMonths=months.filter(function(x){return x!==mk;});
+      var moveBtn=(j.jobId&&!j.manual&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" title="Flyt sagen til en anden måned"><option value="">→ flyt</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+'</option>';}).join('')+'</select>'):'';
       return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'" '+(stMeta?'style="background:'+stMeta.bg+(st==='invoiced'?';color:#fff':'')+'"':'')+'>'+
-        '<div><b>'+esc(j.name)+'</b>'+(j.hasOverride?' <span class="fin-badge ok">rettet</span>':'')+(j.manual?' <span class="fin-badge ok">manuel</span>':'')+(stMeta?' <span class="fin-badge" style="background:'+stMeta.color+';color:'+(st==='invoiced'?'#166534':'#fff')+'">'+stMeta.label+'</span>':'')+
+        '<div><b>'+esc(j.name)+'</b>'+(j.hasOverride?' <span class="fin-badge ok">rettet</span>':'')+(j.manual?' <span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?' <span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(stMeta?' <span class="fin-badge" style="background:'+stMeta.color+';color:'+(st==='invoiced'?'#166534':'#fff')+'">'+stMeta.label+'</span>':'')+
         '<div class="fin-muted" style="'+(st==='invoiced'?'color:rgba(255,255,255,.75)':'')+'">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div></div>'+
         '<span style="display:flex;align-items:center;gap:6px;white-space:nowrap">'+
         '<span class="fin-status-dots">'+dots+'</span>'+
         (j.value===null?'<span class="fin-badge">intet budget</span>':krFmt(j.value))+
+        moveBtn+
         '<button class="fin-edit-btn fin-job-edit-btn" '+editAttrs+' title="Ret beløb">✏</button>'+
         '<button class="fin-edit-btn fin-job-del-btn" '+editAttrs+' title="'+(j.manual?'Slet linjen':'Udeluk fra beregningen')+'" style="color:#B91C1C">🗑</button></span></div>';
     }).join('');
@@ -5723,6 +5731,15 @@ function renderFinRevenue(){
       if(newVal)finJobStatusMarks[key]=newVal;else delete finJobStatusMarks[key];
       api('/api/finance/job-status-marks/'+encodeURIComponent(key),{method:'PUT',body:JSON.stringify({status:newVal})});
       renderFinRevenue();
+    });
+  });
+  el.querySelectorAll('.fin-move-month-select').forEach(function(sel){
+    sel.addEventListener('click',function(e){e.stopPropagation();});
+    sel.addEventListener('change',async function(){
+      var targetMonth=sel.value;
+      if(!targetMonth)return;
+      var r=await api('/api/finance/job-month-override/'+encodeURIComponent(sel.dataset.jobid),{method:'PUT',body:JSON.stringify({monthKey:targetMonth})});
+      if(r&&r.ok){toast('Sag flyttet ✓','✓');loadFinance();}else if(r)toast(r.error||'Fejl','❌');
     });
   });
   el.querySelectorAll('.fin-fag-row-clickable').forEach(function(row){
