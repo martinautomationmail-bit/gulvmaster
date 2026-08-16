@@ -358,6 +358,19 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- Husker hvilke bankposteringer der allerede er matchet og anvendt, så de ikke
+    -- dukker op som "nye" igen næste gang samme (eller et overlappende) bankudtog
+    -- uploades — svarer til Billys "Åbne / Afstemt"-faner.
+    CREATE TABLE IF NOT EXISTS finance_bank_reconciled (
+      external_id TEXT PRIMARY KEY,
+      txn_date TEXT,
+      txn_text TEXT,
+      txn_amount NUMERIC,
+      document_id TEXT,
+      customer TEXT,
+      reconciled_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     -- SYSTEMLOG: én fælles logbog for alt der kører automatisk i baggrunden (JobTread-
     -- synk hver time, notifikationsscan, m.fl.) — så admin kan se om noget fejler
     -- stille, uden at skulle ind i Renders serverlogs.
@@ -4721,7 +4734,8 @@ function parseBankStatementPdfText(text) {
     if (!m) continue;
     const dateIso = parseDanishDate(m[1]);
     const amount = parseDanishAmount(m[3]);
-    if (dateIso && amount !== null) txns.push({ date: dateIso, text: m[2].trim(), amount });
+    const txnText = m[2].trim();
+    if (dateIso && amount !== null) txns.push({ date: dateIso, text: txnText, amount, externalId: bankTxnFingerprint(dateIso, txnText, amount) });
   }
   return txns;
 }
@@ -4730,13 +4744,14 @@ function parseBankStatementSpreadsheet(buffer) {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
-  let headerRowIdx = -1, dateCol = -1, textCol = -1, amountCol = -1;
+  let headerRowIdx = -1, dateCol = -1, textCol = -1, amountCol = -1, idCol = -1;
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     const row = (rows[i] || []).map(c => String(c).toLowerCase());
     const dIdx = row.findIndex(c => /dato|date/.test(c));
     const tIdx = row.findIndex(c => /tekst|beskrivelse|besked|text|title|narrative|memo|reference/.test(c));
     const aIdx = row.findIndex(c => /bel[øo]b|amount/.test(c));
-    if (dIdx > -1 && aIdx > -1) { headerRowIdx = i; dateCol = dIdx; textCol = tIdx; amountCol = aIdx; break; }
+    const iIdx = row.findIndex(c => /transaction ?id|transaktions?id|reference ?nr/.test(c));
+    if (dIdx > -1 && aIdx > -1) { headerRowIdx = i; dateCol = dIdx; textCol = tIdx; amountCol = aIdx; idCol = iIdx; break; }
   }
   const startRow = headerRowIdx > -1 ? headerRowIdx + 1 : 0;
   const dc = dateCol > -1 ? dateCol : 0, tc = textCol > -1 ? textCol : 1, ac = amountCol > -1 ? amountCol : 2;
@@ -4746,9 +4761,17 @@ function parseBankStatementSpreadsheet(buffer) {
     if (!row || !row.length) continue;
     const dateIso = parseDanishDate(row[dc]);
     const amount = parseDanishAmount(row[ac]);
-    if (dateIso && amount !== null) txns.push({ date: dateIso, text: String(row[tc] || '').trim(), amount });
+    const text = String(row[tc] || '').trim();
+    // Brug bankens egen transaktions-id hvis den findes i filen — ellers en stabil
+    // "fingeraftryk" af dato+tekst+beløb, så vi kan genkende samme postering igen
+    // ved en senere upload og huske at den allerede er bogført.
+    const externalId = (idCol > -1 && row[idCol]) ? String(row[idCol]).trim() : null;
+    if (dateIso && amount !== null) txns.push({ date: dateIso, text, amount, externalId: externalId || bankTxnFingerprint(dateIso, text, amount) });
   }
   return txns;
+}
+function bankTxnFingerprint(date, text, amount) {
+  return crypto.createHash('sha1').update(`${date}|${text}|${amount}`).digest('hex').slice(0, 24);
 }
 function normalizeForMatch(s) {
   return String(s || '').toLowerCase()
@@ -4819,11 +4842,27 @@ app.post('/api/finance/bank-statement/parse', auth, financeOnly, uploadBankState
   if (!transactions.length) {
     return res.status(400).json({ error: 'Fandt ingen genkendelige transaktioner i filen. Prøv evt. en Excel/CSV-eksport i stedet for PDF — det læses langt mere pålideligt.' });
   }
+  const reconciledRows = await pool.query('SELECT * FROM finance_bank_reconciled WHERE external_id = ANY($1)', [transactions.map(t => t.externalId)]);
+  const reconciledByExternalId = {};
+  for (const row of reconciledRows.rows) reconciledByExternalId[row.external_id] = row;
   const invoices = await fetchFinanceInvoices();
-  const matched = matchTransactionsToInvoices(transactions, invoices);
+  const matched = matchTransactionsToInvoices(transactions, invoices).map(t => {
+    const rec = reconciledByExternalId[t.externalId];
+    return rec ? { ...t, alreadyReconciled: { customer: rec.customer, reconciledAt: rec.reconciled_at, documentId: rec.document_id } } : t;
+  });
   res.json({ transactions: matched, count: transactions.length });
 }));
 
+app.post('/api/finance/bank-statement/mark-reconciled', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.externalId) return res.status(400).json({ error: 'Mangler transaktions-id' });
+  await pool.query(`
+    INSERT INTO finance_bank_reconciled (external_id,txn_date,txn_text,txn_amount,document_id,customer,reconciled_at)
+    VALUES ($1,$2,$3,$4,$5,$6,${nowTextSQL()})
+    ON CONFLICT (external_id) DO UPDATE SET document_id=$5,customer=$6,reconciled_at=${nowTextSQL()}
+  `, [body.externalId, body.date || null, body.text || null, body.amount || null, body.documentId || null, body.customer || null]);
+  res.json({ ok: true });
+}));
 // ── Faste udgifter ──
 app.get('/api/finance/expenses', auth, financeOnly, asyncRoute(async (req, res) => {
   const monthKey = /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);

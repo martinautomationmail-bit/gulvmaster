@@ -140,6 +140,15 @@ button,input,select{font:inherit}
 .fin-move-month-select{font-size:9.5px;font-weight:700;border:1px solid var(--border2);border-radius:6px;padding:2px 4px;background:#fff;color:var(--navy);cursor:pointer;max-width:80px}
 .fin-search-result-btn{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--border2);border-radius:7px;padding:7px 9px;font-size:11.5px;color:var(--navy);cursor:pointer}
 .fin-search-result-btn:hover{background:var(--ice);border-color:#94A3B8}
+.fin-recon-hero{background:linear-gradient(135deg,var(--navy),#1e3a6e);border-radius:16px;padding:20px 22px;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;box-shadow:0 8px 24px rgba(15,34,64,.18)}
+.fin-recon-hero-title{color:#fff;font-size:18px;font-weight:800;margin-bottom:4px}
+.fin-recon-hero-sub{color:rgba(255,255,255,.8);font-size:11.5px;max-width:520px;margin:0}
+.fin-recon-status-tabs{display:inline-flex;background:var(--ice);border-radius:10px;padding:3px;gap:2px;margin-bottom:14px}
+.fin-recon-status-tab{border:0;background:transparent;padding:7px 16px;border-radius:8px;font-size:11.5px;font-weight:700;color:var(--muted);cursor:pointer}
+.fin-recon-status-tab.active{background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(15,34,64,.12)}
+.fin-recon-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.fin-recon-txn.reconciled{opacity:.65;background:#F8FAFC;cursor:default}
+.fin-recon-txn.reconciled:hover{border-color:var(--border2)}
 .fin-recon-layout{display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start}
 .fin-recon-left{display:flex;flex-direction:column;gap:7px;max-height:600px;overflow:auto;padding-right:2px}
 .fin-recon-txn{border:1.5px solid var(--border2);border-radius:10px;padding:10px 12px;background:#fff;cursor:pointer;transition:.12s}
@@ -977,6 +986,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="tab-btn-sm active" data-fintab="oversigt">📊 Oversigt</button>
     <button class="tab-btn-sm" data-fintab="omsaetning">💰 Omsætning pr. fag</button>
     <button class="tab-btn-sm" data-fintab="fakturaer">🧾 Fakturaer</button>
+    <button class="tab-btn-sm" data-fintab="bankafstemning">🏦 Bankafstemning</button>
+    <button class="tab-btn-sm" data-fintab="rykkere">✉️ Rykkere</button>
     <button class="tab-btn-sm" data-fintab="udgifter">📖 Udgifter</button>
     <button class="tab-btn-sm" data-fintab="adgang">🔒 Adgang</button>
     <button class="tab-btn-sm" data-fintab="privatbudget">👤 Privat budget</button>
@@ -1031,31 +1042,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
   <div class="fintabpage" id="fintab-fakturaer" style="display:none">
     <div id="fin-invoices-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px"></div>
-    <div class="fin-card">
-      <div class="fin-eyebrow">Automatiske rykker-mails</div>
-      <p class="fin-muted" style="margin:-4px 0 12px">Slået fra som standard. Sender kun rigtige mails til kunder, hvis den er slået til her.</p>
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="fin-dunning-enabled" style="width:18px;height:18px"> <b>Send automatiske rykkere</b></label>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
-        <div><label class="form-label">Rykker 1 efter (dage)</label><input type="number" id="fin-dunning-days1" class="input"></div>
-        <div><label class="form-label">Rykker 2 efter (dage)</label><input type="number" id="fin-dunning-days2" class="input"></div>
-        <div><label class="form-label">Rykkergebyr (kr.)</label><input type="number" id="fin-dunning-fee" class="input"></div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn small primary" id="fin-dunning-save-btn">Gem indstillinger</button>
-        <button class="btn small" id="fin-dunning-run-btn">▶ Kør scan nu (test)</button>
-      </div>
-      <div id="fin-dunning-log" style="margin-top:14px"></div>
-    </div>
-    <div class="fin-card">
-      <div class="fin-eyebrow">🏦 Automatisk bankafstemning</div>
-      <p class="fin-muted" style="margin:-4px 0 12px">Upload et bankudtog (PDF, Excel eller CSV — fx fra Lunar), så matches indbetalinger automatisk mod udestående fakturaer på beløb, kundenavn og sagsnummer. Intet markeres betalt før du selv har bekræftet det.</p>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <input type="file" id="fin-bank-upload-input" accept=".pdf,.xlsx,.xls,.csv" style="display:none">
-        <button class="btn small primary" id="fin-bank-upload-btn">📤 Upload bankudtog</button>
-        <span class="fin-muted" id="fin-bank-upload-hint">Excel/CSV-eksport læses mest pålideligt — PDF er et fornuftigt forsøg, men tjek altid gennem forslagene.</span>
-      </div>
-      <div id="fin-bank-results" style="margin-top:16px"></div>
-    </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <input type="text" id="fin-invoice-search" class="input" placeholder="🔍 Søg kunde, beløb eller fakturanr..." style="max-width:280px">
       <select class="fin-status" id="fin-invoice-date-filter" style="width:auto">
@@ -1088,6 +1074,39 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <thead><tr><th style="width:30px"><input type="checkbox" id="fin-inv-select-all"></th><th>Kunde</th><th>Faktura</th><th class="fin-num">Ekskl. moms</th><th class="fin-num">Inkl. moms</th><th class="fin-num">Saldo</th><th>Status</th><th>Note</th><th>Rykker</th></tr></thead>
       <tbody id="fin-invoices-body"></tbody>
     </table>
+  </div>
+
+  <div class="fintabpage" id="fintab-bankafstemning" style="display:none">
+    <div class="fin-recon-hero">
+      <div>
+        <div class="fin-recon-hero-title">🏦 Bankafstemning</div>
+        <p class="fin-recon-hero-sub">Upload et bankudtog (PDF, Excel eller CSV — fx fra Lunar), så matches indbetalinger automatisk mod udestående fakturaer på beløb, kundenavn og sagsnummer. Intet markeres betalt før du selv har bekræftet det.</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <input type="file" id="fin-bank-upload-input" accept=".pdf,.xlsx,.xls,.csv" style="display:none">
+        <button class="btn small primary" id="fin-bank-upload-btn">📤 Upload bankudtog</button>
+        <span class="fin-muted" id="fin-bank-upload-hint" style="color:rgba(255,255,255,.75)">Excel/CSV læses mest pålideligt.</span>
+      </div>
+    </div>
+    <div id="fin-bank-results" style="margin-top:16px"></div>
+  </div>
+
+  <div class="fintabpage" id="fintab-rykkere" style="display:none">
+    <div class="fin-card">
+      <div class="fin-eyebrow">✉️ Automatiske rykker-mails</div>
+      <p class="fin-muted" style="margin:-4px 0 12px">Slået fra som standard. Sender kun rigtige mails til kunder, hvis den er slået til her.</p>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="fin-dunning-enabled" style="width:18px;height:18px"> <b>Send automatiske rykkere</b></label>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
+        <div><label class="form-label">Rykker 1 efter (dage)</label><input type="number" id="fin-dunning-days1" class="input"></div>
+        <div><label class="form-label">Rykker 2 efter (dage)</label><input type="number" id="fin-dunning-days2" class="input"></div>
+        <div><label class="form-label">Rykkergebyr (kr.)</label><input type="number" id="fin-dunning-fee" class="input"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn small primary" id="fin-dunning-save-btn">Gem indstillinger</button>
+        <button class="btn small" id="fin-dunning-run-btn">▶ Kør scan nu (test)</button>
+      </div>
+      <div id="fin-dunning-log" style="margin-top:14px"></div>
+    </div>
   </div>
 
   <div class="fintabpage" id="fintab-udgifter" style="display:none">
@@ -5174,7 +5193,7 @@ document.getElementById('fin-dunning-run-btn').addEventListener('click',async fu
   });
 });
 // BANKAFSTEMNING
-var finBankTxns=[],finBankActiveTxnId=null,finBankSearchQuery='';
+var finBankTxns=[],finBankActiveTxnId=null,finBankSearchQuery='',finBankStatusFilter='open',finBankLeftSearch='',finBankSort='date-desc',finBankDateFilter='all';
 document.getElementById('fin-bank-upload-btn').addEventListener('click',function(){document.getElementById('fin-bank-upload-input').click();});
 document.getElementById('fin-bank-upload-input').addEventListener('change',async function(e){
   var file=e.target.files[0];
@@ -5188,7 +5207,9 @@ document.getElementById('fin-bank-upload-input').addEventListener('change',async
   e.target.value='';
   if(!r||r.error){toast((r&&r.error)||'Kunne ikke læse filen','❌');return;}
   finBankTxns=r.transactions.map(function(t,i){t._localId=i;t._selected=t.matches.length&&t.matches[0].score>=50;t._chosenIdx=0;return t;});
-  toast('Fandt '+r.count+' transaktion(er) i filen','✓');
+  finBankStatusFilter='open';
+  var alreadyCount=finBankTxns.filter(function(t){return t.alreadyReconciled;}).length;
+  toast('Fandt '+r.count+' transaktion(er)'+(alreadyCount?' — '+alreadyCount+' er allerede bogført fra tidligere':''),'✓');
   renderFinBankResults();
 });
 function renderFinBankRightList(){
@@ -5203,30 +5224,84 @@ function renderFinBankRightList(){
   candidates=candidates.slice(0,60);
   if(!candidates.length)return '<div class="fin-muted" style="padding:10px">Ingen fakturaer matcher.</div>';
   return candidates.map(function(inv){
+    var statusLbl=inv.overrideStatus==='partial'?'◐ Delvist betalt':inv.overrideStatus==='unclear'?'⚠ Uafklaret':'Udestående';
     return '<button class="fin-recon-right-item" data-bank-pick-manual data-inv-id="'+esc(inv.id)+'">'+
       '<div>'+esc(inv.customer)+'</div>'+
       (inv.fullName?'<div class="fin-muted">'+esc(inv.fullName)+'</div>':'')+
-      '<div class="fin-recon-right-amount">'+krFmt(inv.remaining!=null?inv.remaining:inv.priceWithTax)+'</div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px">'+
+      '<span class="fin-muted" style="font-size:9.5px">'+statusLbl+'</span>'+
+      '<span class="fin-recon-right-amount">'+krFmt(inv.remaining!=null?inv.remaining:inv.priceWithTax)+'</span></div>'+
       '</button>';
   }).join('');
 }
 function renderFinBankResults(){
   var el=document.getElementById('fin-bank-results');
   if(!finBankTxns.length){el.innerHTML='';return;}
-  var payments=finBankTxns.filter(function(t){return t.amount>0;});
-  var withMatch=payments.filter(function(t){return t.matches.length||t._manualMatch;});
-  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
-    '<div class="fin-eyebrow" style="margin:0">'+payments.length+' indbetalinger fundet · '+withMatch.length+' med forslag til match</div>'+
+  var allPayments=finBankTxns.filter(function(t){return t.amount>0;});
+  var openPayments=allPayments.filter(function(t){return !t.alreadyReconciled;});
+  var reconciledPayments=allPayments.filter(function(t){return t.alreadyReconciled;});
+  var withMatch=openPayments.filter(function(t){return t.matches.length||t._manualMatch;});
+  var visible=finBankStatusFilter==='reconciled'?reconciledPayments:openPayments;
+  // BILLY-STIL FILTRE: dato, søgning og sortering på selve posteringerne til venstre,
+  // ikke kun på fakturaerne til højre.
+  if(finBankLeftSearch.trim()){
+    var lq=finBankLeftSearch.trim().toLowerCase();
+    visible=visible.filter(function(t){return (t.text||'').toLowerCase().indexOf(lq)>-1||String(t.amount).indexOf(lq)>-1;});
+  }
+  if(finBankDateFilter!=='all'){
+    var cut=new Date();
+    if(finBankDateFilter==='week')cut.setDate(cut.getDate()-7);
+    if(finBankDateFilter==='month')cut.setMonth(cut.getMonth()-1);
+    if(finBankDateFilter==='quarter')cut.setMonth(cut.getMonth()-3);
+    visible=visible.filter(function(t){return new Date(t.date)>=cut;});
+  }
+  visible=visible.slice().sort(function(a,b){
+    if(finBankSort==='date-desc')return a.date<b.date?1:-1;
+    if(finBankSort==='date-asc')return a.date>b.date?1:-1;
+    if(finBankSort==='amount-desc')return b.amount-a.amount;
+    if(finBankSort==='amount-asc')return a.amount-b.amount;
+    return 0;
+  });
+  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:10px">'+
+    '<div class="fin-eyebrow" style="margin:0">'+openPayments.length+' åbne indbetalinger · '+withMatch.length+' med forslag til match</div>'+
     '<div style="display:flex;align-items:center;gap:12px">'+
       '<label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer"><input type="checkbox" id="fin-bank-sync-jt" style="width:auto"> Skriv også betalingerne til JobTread</label>'+
       '<button class="btn small primary" id="fin-bank-apply-btn">✓ Anvend markerede matches</button>'+
       '<button class="fin-edit-btn" id="fin-bank-close-btn" title="Luk resultatlisten">✕</button></div></div>';
+  html+='<div class="fin-recon-status-tabs">'+
+    '<button class="fin-recon-status-tab'+(finBankStatusFilter==='open'?' active':'')+'" data-bank-status-tab="open">Åbne ('+openPayments.length+')</button>'+
+    '<button class="fin-recon-status-tab'+(finBankStatusFilter==='reconciled'?' active':'')+'" data-bank-status-tab="reconciled">Afstemt ('+reconciledPayments.length+')</button>'+
+    '</div>';
+  html+='<div class="fin-recon-toolbar">'+
+    '<input type="text" class="input" id="fin-recon-left-search" placeholder="🔍 Søg beløb eller beskrivelse..." value="'+esc(finBankLeftSearch)+'" style="max-width:220px">'+
+    '<select class="fin-status" id="fin-recon-date-filter" style="width:auto">'+
+      '<option value="all"'+(finBankDateFilter==='all'?' selected':'')+'>Al tid</option>'+
+      '<option value="week"'+(finBankDateFilter==='week'?' selected':'')+'>Seneste uge</option>'+
+      '<option value="month"'+(finBankDateFilter==='month'?' selected':'')+'>Seneste måned</option>'+
+      '<option value="quarter"'+(finBankDateFilter==='quarter'?' selected':'')+'>Seneste kvartal</option>'+
+    '</select>'+
+    '<select class="fin-status" id="fin-recon-sort" style="width:auto">'+
+      '<option value="date-desc"'+(finBankSort==='date-desc'?' selected':'')+'>Dato (ny til gammel)</option>'+
+      '<option value="date-asc"'+(finBankSort==='date-asc'?' selected':'')+'>Dato (gammel til ny)</option>'+
+      '<option value="amount-desc"'+(finBankSort==='amount-desc'?' selected':'')+'>Beløb (højt til lavt)</option>'+
+      '<option value="amount-asc"'+(finBankSort==='amount-asc'?' selected':'')+'>Beløb (lavt til højt)</option>'+
+    '</select></div>';
   // TO-PANEL LAYOUT (samme princip som Billys afstemningsside): venstre = bankposteringer
   // man klikker sig igennem, højre = ét fast, søgbart panel med alle åbne fakturaer man
   // trækker/klikker match'et fra — i stedet for et separat søgefelt pr. linje.
   html+='<div class="fin-recon-layout">';
   html+='<div class="fin-recon-left">';
-  payments.forEach(function(t){
+  if(!visible.length)html+='<div class="fin-muted" style="padding:16px;text-align:center">Ingen posteringer matcher filtrene.</div>';
+  visible.forEach(function(t){
+    if(finBankStatusFilter==='reconciled'){
+      html+='<div class="fin-recon-txn reconciled">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+        '<div><b>'+esc(t.text)+'</b><div class="fin-muted">'+esc(t.date)+'</div></div>'+
+        '<div style="text-align:right">'+krFmt(t.amount)+'</div></div>'+
+        '<div class="fin-recon-match-chip picked">✓ Bogført'+(t.alreadyReconciled.customer?' — '+esc(t.alreadyReconciled.customer):'')+'</div>'+
+        '</div>';
+      return;
+    }
     var manual=t._manualMatch;
     var best=manual||t.matches[t._chosenIdx]||null;
     var conf=manual?null:(best?(best.score>=70?'høj':best.score>=40?'mellem':'lav'):null);
@@ -5249,14 +5324,23 @@ function renderFinBankResults(){
     html+='</div>';
   });
   html+='</div>';
-  html+='<div class="fin-recon-right">'+
-    '<div class="fin-recon-right-head">'+(finBankActiveTxnId!=null?'Vælg faktura til den markerede postering':'Klik en postering til venstre for at matche')+'</div>'+
-    '<input type="text" class="input" id="fin-recon-search" placeholder="🔍 Søg kunde, fakturanr eller beløb..." value="'+esc(finBankSearchQuery||'')+'" style="margin-bottom:8px">'+
-    '<div class="fin-recon-right-list">'+renderFinBankRightList()+'</div>'+
-    '</div>';
+  if(finBankStatusFilter==='open'){
+    html+='<div class="fin-recon-right">'+
+      '<div class="fin-recon-right-head">'+(finBankActiveTxnId!=null?'Vælg faktura til den markerede postering':'Klik en postering til venstre for at matche')+'</div>'+
+      '<input type="text" class="input" id="fin-recon-search" placeholder="🔍 Søg kunde, fakturanr eller beløb..." value="'+esc(finBankSearchQuery||'')+'" style="margin-bottom:8px">'+
+      '<div class="fin-recon-right-list">'+renderFinBankRightList()+'</div>'+
+      '</div>';
+  }
   html+='</div>';
   el.innerHTML=html;
   document.getElementById('fin-bank-close-btn').addEventListener('click',function(){finBankTxns=[];finBankActiveTxnId=null;renderFinBankResults();});
+  el.querySelectorAll('[data-bank-status-tab]').forEach(function(btn){
+    btn.addEventListener('click',function(){finBankStatusFilter=btn.dataset.bankStatusTab;finBankActiveTxnId=null;renderFinBankResults();});
+  });
+  var leftSearchInp=document.getElementById('fin-recon-left-search');
+  leftSearchInp.addEventListener('input',function(){finBankLeftSearch=leftSearchInp.value;renderFinBankResults();});
+  document.getElementById('fin-recon-date-filter').addEventListener('change',function(e){finBankDateFilter=e.target.value;renderFinBankResults();});
+  document.getElementById('fin-recon-sort').addEventListener('change',function(e){finBankSort=e.target.value;renderFinBankResults();});
   el.querySelectorAll('[data-bank-select]').forEach(function(cb){
     cb.addEventListener('change',function(){finBankTxns[+cb.dataset.bankSelect]._selected=cb.checked;});
   });
@@ -5274,7 +5358,7 @@ function renderFinBankResults(){
     });
   });
   var searchInp=document.getElementById('fin-recon-search');
-  searchInp.addEventListener('input',function(){
+  if(searchInp)searchInp.addEventListener('input',function(){
     finBankSearchQuery=searchInp.value;
     el.querySelector('.fin-recon-right-list').innerHTML=renderFinBankRightList();
     el.querySelectorAll('[data-bank-pick-manual]').forEach(bindManualPick);
@@ -5293,7 +5377,7 @@ function renderFinBankResults(){
     });
   }
   document.getElementById('fin-bank-apply-btn').addEventListener('click',async function(){
-    var toApply=payments.filter(function(t){return t._selected&&(t._manualMatch||t.matches[t._chosenIdx]);});
+    var toApply=openPayments.filter(function(t){return t._selected&&(t._manualMatch||t.matches[t._chosenIdx]);});
     if(!toApply.length){toast('Ingen matches markeret','⚠');return;}
     var syncJt=document.getElementById('fin-bank-sync-jt').checked;
     if(!await gmConfirm('Markér '+toApply.length+' faktura(er) som betalt/delvist betalt ud fra de valgte matches?'+(syncJt?' Betalingerne oprettes også i JobTread.':'')))return;
@@ -5307,11 +5391,13 @@ function renderFinBankResults(){
       body.syncToJobtread=syncJt;
       var r=await api('/api/finance/invoices/'+m.documentId,{method:'PUT',body:JSON.stringify(body)});
       if(syncJt&&r&&!r.jobtreadSynced)jtFailures.push(m.customer+': '+(r.jobtreadError||'ukendt fejl'));
+      // Husk denne postering som bogført, så den ikke dukker op som "ny" ved næste upload.
+      await api('/api/finance/bank-statement/mark-reconciled',{method:'POST',body:JSON.stringify({externalId:t.externalId,date:t.date,text:t.text,amount:t.amount,documentId:m.documentId,customer:m.customer})});
+      t.alreadyReconciled={customer:m.customer};
     }
     btn.disabled=false;btn.textContent='✓ Anvend markerede matches';
     if(jtFailures.length)toast('Fakturaer opdateret her, men '+jtFailures.length+' fejlede mod JobTread: '+jtFailures.slice(0,2).join('; '),'⚠');
     else toast('Fakturaer opdateret ✓'+(syncJt?' — også i JobTread':''),'✓');
-    finBankTxns=finBankTxns.filter(function(t){return toApply.indexOf(t)===-1;});
     renderFinBankResults();
     loadFinance();
   });
