@@ -4248,21 +4248,14 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   while (page < 20) {
     const args = { size: 100, where: { and: [['startDate', '>=', fmt(rangeStart)], ['startDate', '<=', fmt(rangeEnd)], ['isGroup', false]] } };
     if (cursor) args.page = cursor;
+    // Let opgave-forespørgsel uden cost items — det er det der holder den hurtig og
+    // fejlfri, ligesom før. Selve budget-beregningen hentes i et separat trin nedenfor.
     const data = await jtFetch({
       query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, tasks: {
         $: args, nextPage: {},
         nodes: {
           startDate: {}, endDate: {},
-          job: { id: {}, name: {},
-            // FEJL RETTET: brugte tidligere JobTreads egen sum af ALLE cost items på
-            // sagen — men en sag kan sagtens have flere konkurrerende tilbud (fx 2-4
-            // stk.), og kun ét af dem er det kunden reelt har godkendt. De andre
-            // tælles nu IKKE med, uanset om JobTread selv har "includeInBudget" sat på
-            // dem (det viste sig ikke at være pålideligt — det kan stå på flere
-            // ikke-godkendte tilbud samtidig). Kun cost items uden noget dokument
-            // (interne linjer) eller hvor dokumentet er godkendt tælles med.
-            costItems: { $: { size: 100 }, nodes: { price: {}, document: { status: {} } } },
-            customFieldValues: { $: { size: 5, where: [['customField', 'name'], 'Projekt Type'] }, nodes: { value: {} } } }
+          job: { id: {}, name: {}, customFieldValues: { $: { size: 5, where: [['customField', 'name'], 'Projekt Type'] }, nodes: { value: {} } } }
         }
       } } }
     }, 'Økonomi: hent opgaver i vindue');
@@ -4272,6 +4265,44 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     if (!next) break;
     cursor = next;
     page++;
+  }
+
+  // FEJL RETTET (to fejl fundet samme dag): (1) at hente hver enkelt cost item pr.
+  // opgave gav "Request Entity Too Large" hos JobTread så snart der var mere end en
+  // håndfuld opgaver i vinduet — hele Omsætning pr. fag og Fakturaer gik i sort. (2)
+  // selv når det virkede, kunne samme sag have sine cost items gengivet TO gange
+  // (basis-linjer + et godkendt tilbud med identiske beløb), så beløbet blev talt
+  // dobbelt. Løsningen er at bruge JobTreads egne SUM/COUNT-aggregater filtreret på
+  // dokumentstatus i stedet for at hente listen af linjer — ingen af de to fejl kan
+  // opstå når vi aldrig henter de enkelte linjer, kun tre tal pr. sag.
+  const uniqueJobIds = [...new Set(allTasks.filter(t => t.job).map(t => t.job.id))];
+  const approvedSumByJob = {}, documentedCountByJob = {}, totalSumByJob = {};
+  const BATCH = 50;
+  for (let i = 0; i < uniqueJobIds.length; i += BATCH) {
+    const idBatch = uniqueJobIds.slice(i, i + BATCH);
+    const [approvedData, countData] = await Promise.all([
+      jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
+        $: { size: idBatch.length, where: ['id', 'in', idBatch] },
+        nodes: { id: {}, costItems: { $: { where: [['document', 'status'], 'approved'] }, sum: { $: 'price' } } }
+      } } } }, 'Økonomi: godkendt budget pr. sag'),
+      jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
+        $: { size: idBatch.length, where: ['id', 'in', idBatch] },
+        nodes: { id: {}, costItems: { $: { where: [['document', 'status'], '!=', null] }, count: {} } }
+      } } } }, 'Økonomi: tilbud-status pr. sag')
+    ]);
+    for (const j of approvedData?.organization?.jobs?.nodes || []) approvedSumByJob[j.id] = j.costItems.sum;
+    for (const j of countData?.organization?.jobs?.nodes || []) documentedCountByJob[j.id] = j.costItems.count;
+  }
+  // Fald tilbage til rå cost-item-sum KUN for sager der slet ikke har noget tilbud
+  // endnu (interne linjer uden formelt dokument) — ellers ville de altid vise "intet budget".
+  const fallbackJobIds = uniqueJobIds.filter(id => !documentedCountByJob[id]);
+  for (let i = 0; i < fallbackJobIds.length; i += BATCH) {
+    const idBatch = fallbackJobIds.slice(i, i + BATCH);
+    const totalData = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
+      $: { size: idBatch.length, where: ['id', 'in', idBatch] },
+      nodes: { id: {}, costItems: { sum: { $: 'price' } } }
+    } } } }, 'Økonomi: rå sum pr. sag uden tilbud');
+    for (const j of totalData?.organization?.jobs?.nodes || []) totalSumByJob[j.id] = j.costItems.sum;
   }
 
   const overridesResult = await pool.query('SELECT * FROM finance_job_overrides');
@@ -4301,8 +4332,8 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     if (!buckets[mk]) continue;
     if (buckets[mk][t.job.id]) continue;
     const override = overrides[t.job.id];
-    const approvedCostItems = (t.job.costItems?.nodes || []).filter(ci => !ci.document || ci.document.status === 'approved');
-    let value = approvedCostItems.length ? approvedCostItems.reduce((s, ci) => s + (ci.price || 0), 0) : null;
+    const hasAnyDocument = !!documentedCountByJob[t.job.id];
+    let value = hasAnyDocument ? (approvedSumByJob[t.job.id] ?? null) : (totalSumByJob[t.job.id] ?? null);
     let excluded = false;
     if (override) {
       if (override.excluded) excluded = true;
