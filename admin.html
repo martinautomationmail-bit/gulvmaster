@@ -131,7 +131,20 @@ button,input,select{font:inherit}
 #page-finance .fin-del-btn:hover{background:#FEE2E2}
 #page-finance .fin-add-btn{border:1.5px dashed var(--border);background:transparent;color:var(--muted);font-size:11.5px;font-weight:700;padding:8px 12px;border-radius:8px;cursor:pointer;margin:8px 0 14px}
 #page-finance .fin-add-btn:hover{border-color:var(--blue);color:var(--blue);background:var(--ice)}
-#page-finance .fin-job-row{display:flex;justify-content:space-between;align-items:center;padding:7px 6px;border-bottom:1px solid var(--border2);font-size:11.5px}
+#page-finance .fin-job-row{display:flex;justify-content:space-between;align-items:center;padding:7px 6px;border-bottom:1px solid var(--border2);font-size:11.5px;border-radius:6px;transition:background .15s}
+.fin-job-status-marked{margin:2px 0;border-bottom-color:transparent!important}
+.fin-status-dots{display:flex;gap:3px;flex-shrink:0}
+.fin-status-dot{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(0,0,0,.12);cursor:pointer;padding:0;opacity:.45;transition:.15s}
+.fin-status-dot:hover{opacity:.85;transform:scale(1.15)}
+.fin-status-dot.active{opacity:1;border-color:#fff;box-shadow:0 0 0 1.5px rgba(0,0,0,.35)}
+.fin-month-card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(15,34,64,.06);border:1px solid #EEF0F3}
+.fin-month-head{padding:14px 12px;text-align:center;background:linear-gradient(135deg,#F8FAFC,#EEF2F7);border-bottom:1px solid #EEF0F3}
+.fin-month-head-current{background:linear-gradient(135deg,var(--navy),#1e3a6e)}
+.fin-month-name{font-size:15px;font-weight:800;color:var(--navy);text-transform:capitalize}
+.fin-month-head-current .fin-month-name{color:#fff}
+.fin-month-badge{display:inline-block;margin-top:4px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;background:rgba(255,255,255,.2);color:#fff;padding:2px 9px;border-radius:20px}
+.fin-month-card .fin-table{width:100%}
+.fin-month-body{padding:12px}
 #page-finance .fin-job-row:last-child{border-bottom:none}
 #page-finance .fin-edit-btn{border:1px solid var(--border);background:#fff;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:11px;margin-left:8px}
 #page-finance .fin-edit-btn:hover{background:var(--ice)}
@@ -981,7 +994,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div id="fin-revenue-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px"></div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <select class="fin-status" id="fin-revenue-period" style="width:auto">
-        <option value="1,1">Sidste, denne og næste måned (standard)</option>
+        <option value="0,2">Denne, næste og måneden efter (standard)</option>
+        <option value="1,1">Sidste, denne og næste måned</option>
         <option value="3,1">Sidste 3 måneder</option>
         <option value="6,1">Sidste 6 måneder</option>
         <option value="12,1">Hele året (12 mdr. bagud)</option>
@@ -1022,13 +1036,23 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div id="fin-bank-results" style="margin-top:16px"></div>
     </div>
-    <select class="fin-status" id="fin-invoice-date-filter" style="width:auto;margin-bottom:10px">
-      <option value="all">Alle datoer</option>
-      <option value="week">Seneste uge</option>
-      <option value="month">Seneste måned</option>
-      <option value="quarter">Seneste kvartal</option>
-      <option value="year">Dette år</option>
-    </select>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <input type="text" id="fin-invoice-search" class="input" placeholder="🔍 Søg kunde, beløb eller fakturanr..." style="max-width:280px">
+      <select class="fin-status" id="fin-invoice-date-filter" style="width:auto">
+        <option value="all">Alle datoer</option>
+        <option value="week">Seneste uge</option>
+        <option value="month">Seneste måned</option>
+        <option value="quarter">Seneste kvartal</option>
+        <option value="year">Dette år</option>
+      </select>
+      <select class="fin-status" id="fin-invoice-status-filter" style="width:auto">
+        <option value="all">Alle statusser</option>
+        <option value="paid">✓ Betalt</option>
+        <option value="partial">◐ Delvist betalt</option>
+        <option value="unpaid">Udestående</option>
+        <option value="unclear">⚠ Uafklaret</option>
+      </select>
+    </div>
     <div id="fin-inv-bulk-bar" style="display:none;align-items:center;gap:10px;background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;margin-bottom:10px">
       <span id="fin-inv-bulk-count" style="font-weight:800;font-size:12.5px"></span>
       <select id="fin-inv-bulk-action" style="border-radius:7px;border:0;padding:6px 8px;font-size:12px">
@@ -4997,7 +5021,7 @@ function saveNotifRule(row){
 // ══════════════════════════════════════════════════════════════
 // ØKONOMI
 // ══════════════════════════════════════════════════════════════
-var finRevenue=null,finInvoices=[],finExpenses=[],finInvSelected={};
+var finRevenue=null,finInvoices=[],finExpenses=[],finInvSelected={},finJobStatusMarks={};
 document.querySelectorAll('[data-fintab]').forEach(function(btn){
   btn.addEventListener('click',function(){
     document.querySelectorAll('[data-fintab]').forEach(function(b){b.classList.remove('active');});
@@ -5010,14 +5034,16 @@ var finExpenseMonth=new Date().toISOString().slice(0,7);
 async function loadFinance(){
   var el=document.getElementById('fin-month-current');
   el.innerHTML='<div class="dash-empty">Henter live data fra JobTread…</div>';
-  var revenueP=api('/api/finance/revenue');
+  var revenueP=api('/api/finance/revenue?monthsBack=0&monthsForward=2');
   var invoicesP=api('/api/finance/invoices');
   var expensesP=api('/api/finance/expenses?month='+finExpenseMonth);
   var snapshotsP=api('/api/finance/bank-snapshots');
   var privateBudgetP=api('/api/finance/private-budget');
   var dunningSettingsP=api('/api/finance/dunning-settings');
   var dunningLogP=api('/api/finance/dunning-log');
+  var jobStatusMarksP=api('/api/finance/job-status-marks');
   finRevenue=await revenueP; finInvoices=(await invoicesP)||[];
+  finJobStatusMarks=(await jobStatusMarksP)||{};
   var expensesResult=await expensesP;
   finExpenses=(expensesResult&&expensesResult.categories)||[];
   finPrivateBudget=(await privateBudgetP)||[];
@@ -5588,6 +5614,12 @@ document.getElementById('fin-expense-month').addEventListener('change',function(
   loadFinance();
 });
 document.getElementById('fin-invoice-date-filter').addEventListener('change',function(e){finInvoiceDateFilter=e.target.value;renderFinInvoices();});
+document.getElementById('fin-invoice-status-filter').addEventListener('change',function(e){finInvoiceStatusFilter=e.target.value;renderFinInvoices();});
+var finInvoiceSearchTimer=null;
+document.getElementById('fin-invoice-search').addEventListener('input',function(e){
+  clearTimeout(finInvoiceSearchTimer);
+  finInvoiceSearchTimer=setTimeout(function(){finInvoiceSearch=e.target.value;renderFinInvoices();},200);
+});
 document.getElementById('fin-revenue-period').addEventListener('change',async function(e){
   var parts=e.target.value.split(',');
   var el=document.getElementById('fin-revenue-months');
@@ -5630,7 +5662,10 @@ function renderFinRevenue(){
   renderFinRevenueKpis();
   var el=document.getElementById('fin-revenue-months');
   if(!finRevenue){el.innerHTML='<div class="fin-empty">Kunne ikke hente data.</div>';return;}
+  var MAANEDE_FULDE=['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'];
+  var thisMonthKey=iso(new Date()).slice(0,7);
   var months=Object.keys(finRevenue).sort();
+  var STATUS_META={running:{label:'Kørende',color:'#15803D',bg:'#DCFCE7',dot:'#4ADE80'},invoiced:{label:'Faktureret',color:'#fff',bg:'#166534',dot:'#166534'},hold:{label:'På hold',color:'#92400E',bg:'#FEF9C3',dot:'#FACC15'}};
   el.innerHTML=months.map(function(mk){
     var mAll=finRevenue[mk];
     // Dato-filter: kun sager hvis planlagte startdato falder i det valgte interval.
@@ -5651,19 +5686,45 @@ function renderFinRevenue(){
     }).join('');
     var visibleJobs=activeFag?m.jobs.filter(function(j){return j.fag===activeFag;}):m.jobs;
     var jobRows=visibleJobs.map(function(j){
+      var jobKey=j.jobId?('job:'+j.jobId):('manual:'+j.manualId);
+      var st=finJobStatusMarks[jobKey];
+      var stMeta=st?STATUS_META[st]:null;
       var editAttrs='data-jobid="'+j.jobId+'" data-jobname="'+esc(j.name)+'" data-jobval="'+(j.value===null?'':j.value)+'" data-manual="'+(j.manual?'1':'0')+'" data-manualid="'+(j.manualId||'')+'"';
-      return '<div class="fin-job-row"><div><b>'+esc(j.name)+'</b>'+(j.hasOverride?' <span class="fin-badge ok">rettet</span>':'')+(j.manual?' <span class="fin-badge ok">manuel</span>':'')+'<div class="fin-muted">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div></div>'+
-        '<span style="display:flex;align-items:center;gap:4px;white-space:nowrap">'+(j.value===null?'<span class="fin-badge">intet budget</span>':krFmt(j.value))+
+      var dots=Object.keys(STATUS_META).map(function(k){
+        return '<button class="fin-status-dot'+(st===k?' active':'')+'" data-job-status-key="'+esc(jobKey)+'" data-job-status-val="'+k+'" style="background:'+STATUS_META[k].dot+'" title="'+STATUS_META[k].label+'"></button>';
+      }).join('');
+      return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'" '+(stMeta?'style="background:'+stMeta.bg+(st==='invoiced'?';color:#fff':'')+'"':'')+'>'+
+        '<div><b>'+esc(j.name)+'</b>'+(j.hasOverride?' <span class="fin-badge ok">rettet</span>':'')+(j.manual?' <span class="fin-badge ok">manuel</span>':'')+(stMeta?' <span class="fin-badge" style="background:'+stMeta.color+';color:'+(st==='invoiced'?'#166534':'#fff')+'">'+stMeta.label+'</span>':'')+
+        '<div class="fin-muted" style="'+(st==='invoiced'?'color:rgba(255,255,255,.75)':'')+'">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div></div>'+
+        '<span style="display:flex;align-items:center;gap:6px;white-space:nowrap">'+
+        '<span class="fin-status-dots">'+dots+'</span>'+
+        (j.value===null?'<span class="fin-badge">intet budget</span>':krFmt(j.value))+
         '<button class="fin-edit-btn fin-job-edit-btn" '+editAttrs+' title="Ret beløb">✏</button>'+
         '<button class="fin-edit-btn fin-job-del-btn" '+editAttrs+' title="'+(j.manual?'Slet linjen':'Udeluk fra beregningen')+'" style="color:#B91C1C">🗑</button></span></div>';
     }).join('');
     var jobsHeader=activeFag?'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px"><b class="fin-muted">Kun "'+esc(activeFag)+'" ('+visibleJobs.length+' sager)</b><button class="fin-edit-btn" data-action="fin-clear-fag-filter" data-month="'+mk+'" title="Vis alle fag igen">✕</button></div>':'';
-    return '<div><table class="fin-table" style="margin-bottom:10px"><thead><tr><th colspan="3">'+mk+'</th></tr><tr><th>Fag <span class="fin-muted" style="text-transform:none;font-weight:400">(klik for at filtrere)</span></th><th class="fin-num">Sager</th><th class="fin-num">Kr.</th></tr></thead><tbody>'+fagRows+
+    var isCur=mk===thisMonthKey;
+    var monthNum=+mk.slice(5,7)-1,yearNum=mk.slice(0,4);
+    var headHtml='<div class="fin-month-head'+(isCur?' fin-month-head-current':'')+'">'+
+      '<div class="fin-month-name">'+MAANEDE_FULDE[monthNum]+' '+yearNum+'</div>'+
+      (isCur?'<span class="fin-month-badge">Denne måned</span>':'')+
+      '</div>';
+    return '<div class="fin-month-card">'+headHtml+'<div class="fin-month-body"><table class="fin-table" style="margin-bottom:10px"><thead><tr><th>Fag <span class="fin-muted" style="text-transform:none;font-weight:400">(klik for at filtrere)</span></th><th class="fin-num">Sager</th><th class="fin-num">Kr.</th></tr></thead><tbody>'+fagRows+
       '<tr class="fin-total-row"><td>Total</td><td class="fin-num">'+m.jobs.length+'</td><td class="fin-num">'+krFmt(m.total)+'</td></tr></tbody></table>'+
       jobsHeader+
       '<div class="fin-card" style="max-height:260px;overflow:auto;padding-top:8px">'+(jobRows||'<div class="fin-empty">Ingen sager</div>')+'</div>'+
-      '<button class="fin-add-btn" data-action="fin-add-manual-revenue" data-month="'+mk+'" style="width:100%">+ Tilføj sag manuelt</button></div>';
+      '<button class="fin-add-btn" data-action="fin-add-manual-revenue" data-month="'+mk+'" style="width:100%">+ Tilføj sag manuelt</button></div></div>';
   }).join('');
+  el.querySelectorAll('[data-job-status-key]').forEach(function(dot){
+    dot.addEventListener('click',function(){
+      var key=dot.dataset.jobStatusKey,val=dot.dataset.jobStatusVal;
+      var turningOff=finJobStatusMarks[key]===val;
+      var newVal=turningOff?'':val;
+      if(newVal)finJobStatusMarks[key]=newVal;else delete finJobStatusMarks[key];
+      api('/api/finance/job-status-marks/'+encodeURIComponent(key),{method:'PUT',body:JSON.stringify({status:newVal})});
+      renderFinRevenue();
+    });
+  });
   el.querySelectorAll('.fin-fag-row-clickable').forEach(function(row){
     row.addEventListener('click',function(){
       var mk=row.dataset.month,f=row.dataset.fag;
@@ -5719,14 +5780,26 @@ function renderFinRevenue(){
 }
 
 var finInvoiceDateFilter='all';
+var finInvoiceStatusFilter='all',finInvoiceSearch='';
 function finInvoicesFiltered(){
-  if(finInvoiceDateFilter==='all')return finInvoices;
-  var now=new Date(),cut=null;
-  if(finInvoiceDateFilter==='month')cut=new Date(now.getFullYear(),now.getMonth(),1);
-  if(finInvoiceDateFilter==='quarter')cut=new Date(now.getFullYear(),now.getMonth()-3,1);
-  if(finInvoiceDateFilter==='year')cut=new Date(now.getFullYear(),0,1);
-  if(finInvoiceDateFilter==='week'){cut=new Date(now);cut.setDate(cut.getDate()-7);}
-  return finInvoices.filter(function(inv){return inv.createdAt&&new Date(inv.createdAt)>=cut;});
+  var list=finInvoices;
+  if(finInvoiceDateFilter!=='all'){
+    var now=new Date(),cut=null;
+    if(finInvoiceDateFilter==='month')cut=new Date(now.getFullYear(),now.getMonth(),1);
+    if(finInvoiceDateFilter==='quarter')cut=new Date(now.getFullYear(),now.getMonth()-3,1);
+    if(finInvoiceDateFilter==='year')cut=new Date(now.getFullYear(),0,1);
+    if(finInvoiceDateFilter==='week'){cut=new Date(now);cut.setDate(cut.getDate()-7);}
+    list=list.filter(function(inv){return inv.createdAt&&new Date(inv.createdAt)>=cut;});
+  }
+  if(finInvoiceStatusFilter!=='all')list=list.filter(function(inv){return inv.overrideStatus===finInvoiceStatusFilter;});
+  if(finInvoiceSearch.trim()){
+    var q=finInvoiceSearch.trim().toLowerCase();
+    list=list.filter(function(inv){
+      var hay=((inv.customer||'')+' '+(inv.fullName||'')+' '+(inv.jobNumber||'')+' '+(inv.priceWithTax||'')+' '+(inv.price||'')+' '+(inv.balance||'')).toLowerCase();
+      return hay.indexOf(q)>-1;
+    });
+  }
+  return list;
 }
 function renderFinInvoiceKpis(){
   var el=document.getElementById('fin-invoices-kpis');

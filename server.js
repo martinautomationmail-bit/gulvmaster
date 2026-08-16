@@ -342,6 +342,14 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- Manuel farve-markering pr. sag i Omsætning pr. fag (kørende/faktureret/på hold)
+    -- — rent visuel hjælp, påvirker ikke selve omsætningstallene.
+    CREATE TABLE IF NOT EXISTS finance_job_status_marks (
+      job_key TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     -- SYSTEMLOG: én fælles logbog for alt der kører automatisk i baggrunden (JobTread-
     -- synk hver time, notifikationsscan, m.fl.) — så admin kan se om noget fejler
     -- stille, uden at skulle ind i Renders serverlogs.
@@ -4432,8 +4440,27 @@ app.delete('/api/finance/manual-revenue/:id', auth, financeOnly, asyncRoute(asyn
   res.json({ ok: true });
 }));
 
+app.get('/api/finance/job-status-marks', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT job_key, status FROM finance_job_status_marks');
+  const out = {};
+  for (const r of rows.rows) out[r.job_key] = r.status;
+  res.json(out);
+}));
+app.put('/api/finance/job-status-marks/:jobKey', auth, financeOnly, asyncRoute(async (req, res) => {
+  const status = String(req.body?.status || '').trim();
+  if (!status) {
+    await pool.query('DELETE FROM finance_job_status_marks WHERE job_key=$1', [req.params.jobKey]);
+    return res.json({ ok: true });
+  }
+  if (!['running', 'invoiced', 'hold'].includes(status)) return res.status(400).json({ error: 'Ugyldig status' });
+  await pool.query(`
+    INSERT INTO finance_job_status_marks (job_key,status,updated_at) VALUES ($1,$2,${nowTextSQL()})
+    ON CONFLICT (job_key) DO UPDATE SET status=$2,updated_at=${nowTextSQL()}
+  `, [req.params.jobKey, status]);
+  res.json({ ok: true });
+}));
 app.get('/api/finance/revenue', auth, financeOnly, asyncRoute(async (req, res) => {
-  const monthsBack = Math.min(12, Math.max(1, Number(req.query.monthsBack) || 1));
+  const monthsBack = Math.min(12, Math.max(0, Number(req.query.monthsBack) || 0));
   const monthsForward = Math.min(6, Math.max(1, Number(req.query.monthsForward) || 1));
   const data = await fetchFinanceJobsByMonth(monthsBack, monthsForward);
   res.json(data);
@@ -4636,7 +4663,7 @@ function parseBankStatementSpreadsheet(buffer) {
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     const row = (rows[i] || []).map(c => String(c).toLowerCase());
     const dIdx = row.findIndex(c => /dato|date/.test(c));
-    const tIdx = row.findIndex(c => /tekst|beskrivelse|besked|text|description/.test(c));
+    const tIdx = row.findIndex(c => /tekst|beskrivelse|besked|text|title|narrative|memo|reference/.test(c));
     const aIdx = row.findIndex(c => /bel[øo]b|amount/.test(c));
     if (dIdx > -1 && aIdx > -1) { headerRowIdx = i; dateCol = dIdx; textCol = tIdx; amountCol = aIdx; break; }
   }
