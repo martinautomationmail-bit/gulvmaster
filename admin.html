@@ -277,7 +277,7 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:9px;flex-shrink:0;vertical-align:middle;margin-bottom:2px}
 .bly-mail-icon{color:var(--bly-sub);font-size:11px;margin-left:6px}
 .bly-tag{display:inline-flex;align-items:center;font-size:9.5px;font-weight:800;color:var(--bly-sub);background:var(--ice);border-radius:5px;padding:2px 6px;margin-right:6px;text-transform:uppercase;letter-spacing:.03em}
-.bly-desc{color:var(--bly-sub);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
+.bly-desc-inner{color:var(--bly-sub);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .bly-status-select{border:1px solid transparent;background:transparent;border-radius:7px;padding:5px 8px;font-size:11.5px;font-weight:700;cursor:pointer;appearance:none;color:inherit}
 .bly-status-select:hover{border-color:var(--bly-border)}
 .bly-status-cell.paid{color:var(--bly-dot-paid)}
@@ -296,7 +296,7 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-util-row a{color:var(--bly-accent);text-decoration:none;font-weight:700}
 .bly-layout{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
 @media(max-width:980px){.bly-layout{grid-template-columns:1fr}}
-.bly-col{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:16px}
+.bly-col{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:22px}
 .bly-col-logo{text-align:center;padding:8px 0 16px;color:#C7CBD1;font-weight:900;font-size:15px;letter-spacing:.08em;text-transform:uppercase;user-select:none}
 .bly-col-logo.gm{color:#003509;opacity:.35}
 .bly-txn-list{display:flex;flex-direction:column;gap:10px;max-height:640px;overflow:auto;padding-right:2px}
@@ -305,14 +305,14 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-txn-card>*:last-child{border-radius:0 0 var(--bly-r-md) var(--bly-r-md)}
 .bly-txn-card.reconciled{opacity:.7;cursor:default}
 .bly-txn-card.active{border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
-.bly-txn-main{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px 14px;min-height:22px}
+.bly-txn-main{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:18px 34px;min-height:22px}
 .bly-txn-main>div:first-child{min-width:0;flex:1}
 .bly-txn-desc{font-weight:700;font-size:12.5px;color:var(--bly-ink);line-height:1.4;word-break:break-word;display:block}
 .bly-txn-date{font-size:10.5px;color:var(--bly-sub);margin-top:3px;display:block}
 .bly-txn-amount{font-weight:800;font-size:13px;white-space:nowrap;display:block}
 .bly-txn-amount.neg{color:var(--bly-dot-overdue)}
 .bly-txn-amount.pos{color:var(--bly-dot-paid)}
-.bly-txn-zone{background:#FAFAFB;border-top:1px dashed var(--bly-border);padding:11px 14px}
+.bly-txn-zone{background:#FAFAFB;border-top:1px dashed var(--bly-border);padding:14px 34px}
 .bly-txn-zone.matched{background:#F0FDF4;border-top-color:#BBF7D0}
 .bly-txn-zone.paid-already{background:#F0FDFA;border-top-color:#99F6E4}
 .bly-txn-zone-hint{font-size:10.5px;color:var(--bly-sub);margin-bottom:2px}
@@ -5618,7 +5618,7 @@ function renderFinBankResults(){
     // Postering der intet har med en faktura at gøre (løn, interne overførsler osv.)
     // — fjern den fra listen permanent, i stedet for at den bliver ved med at ligge
     // som "intet forslag" hver eneste gang man uploader et nyt udtog.
-    html+='<div style="padding:0 14px 10px"><button class="bly-ignore-link" data-bank-ignore="'+t._localId+'" onclick="event.stopPropagation()" title="Denne postering har intet med en faktura at gøre">🗑 Ikke relevant</button></div>';
+    html+='<div style="padding:0 34px 14px"><button class="bly-ignore-link" data-bank-ignore="'+t._localId+'" onclick="event.stopPropagation()" title="Denne postering har intet med en faktura at gøre">🗑 Ikke relevant</button></div>';
     html+='</div>';
   });
   html+='</div></div>';
@@ -6567,7 +6567,7 @@ function renderFinInvoices(){
     var canDun=inv.overrideStatus==='unpaid'||inv.overrideStatus==='partial';
     return '<tr class="bly-row"><td><input type="checkbox" class="fin-inv-select" data-inv-id="'+esc(inv.id)+'" '+(finInvSelected[inv.id]?'checked':'')+'></td>'+
       '<td><span class="bly-status-dot" style="background:'+FIN_STATUS_DOT[inv.overrideStatus]+'"></span><b>'+esc(inv.customer)+'</b>'+(inv.jobId?' <a href="https://app.jobtread.com/jobs/'+esc(inv.jobId)+'/documents" target="_blank" rel="noopener" class="fin-edit-btn fin-edit-btn-icon" title="Åbn sagen i JobTread">🔗</a>':'')+'</td>'+
-      '<td class="bly-desc" title="'+esc(inv.fullName)+'">'+esc(inv.fullName)+' <span style="color:var(--bly-sub)">· '+esc((inv.createdAt||'').slice(0,10))+'</span></td>'+
+      '<td><div class="bly-desc-inner" title="'+esc(inv.fullName)+'">'+esc(inv.fullName)+' <span style="color:var(--bly-sub)">· '+esc((inv.createdAt||'').slice(0,10))+'</span></div></td>'+
       '<td class="bly-num">'+krFmt(inv.price)+'</td><td class="bly-num">'+krFmt(inv.priceWithTax)+'</td><td class="bly-num">'+krFmt(inv.balance)+'</td>'+
       '<td class="bly-status-cell '+inv.overrideStatus+'"><select class="bly-status-select fin-inv-status" data-idx="'+idx+'">'+
         '<option value="paid" '+(inv.overrideStatus==='paid'?'selected':'')+'>✓ Betalt</option>'+
