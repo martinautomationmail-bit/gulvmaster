@@ -164,7 +164,7 @@ button,input,select{font:inherit}
 .fin-recon-bank-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px}
 .fin-recon-bank-text{font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:12px;font-weight:700;color:var(--navy);word-break:break-word}
 .fin-recon-ref{background:#FEF3C7;color:#92400E;border-radius:4px;padding:0 3px;font-weight:800}
-.fin-recon-name-match{display:inline-flex;align-items:center;gap:4px;background:#DCFCE7;color:#15803D;border-radius:20px;padding:2px 8px;font-size:9.5px;font-weight:800;margin-left:6px}
+.bly-name-match{display:inline-flex;align-items:center;gap:4px;background:#DCFCE7;color:#15803D;border-radius:20px;padding:2px 8px;font-size:9.5px;font-weight:800;margin-left:6px}
 .fin-recon-quickpick{margin-top:8px;border-top:1px dashed var(--border2);padding-top:8px}
 .fin-recon-quickpick-label{font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px}
 .fin-recon-quickpick-input{width:100%;margin-bottom:6px;font-size:11.5px;padding:6px 8px}
@@ -202,6 +202,136 @@ button,input,select{font:inherit}
 .fin-fagbar-track{background:var(--ice);border-radius:6px;height:9px;overflow:hidden}
 .fin-fagbar-fill{height:100%;border-radius:6px;transition:width .25s ease}
 .fin-fagbar-total{display:flex;justify-content:space-between;font-weight:800;color:var(--navy);padding:10px 6px 2px;margin-top:6px;border-top:2px solid var(--border2);font-size:12.5px}
+/* ===================================================================
+   BILLY-STIL MAKEOVER — kun Fakturaer + Bankafstemning (scoped med
+   #fintab-fakturaer / #fintab-bankafstemning + egne .bly-* klasser, så
+   Oversigt/Udgifter/Privatbudget/Noter osv, som stadig bruger .fin-card
+   og .fin-table, IKKE påvirkes af denne redesign).
+   =================================================================== */
+:root{
+  --bly-ink:#111318;--bly-sub:#6B7280;--bly-border:#E5E7EB;--bly-border-soft:#EEF0F3;
+  --bly-accent:#4F46E5;--bly-accent-soft:#EEF2FF;--bly-hover:#F5F3FF;
+  --bly-dot-total:#0F172A;--bly-dot-draft:#6366F1;--bly-dot-overdue:#DC2626;
+  --bly-dot-unpaid:#D97706;--bly-dot-paid:#16A34A;
+  --bly-r-lg:16px;--bly-r-md:12px;--bly-r-sm:8px;--bly-r-pill:999px;
+}
+#fintab-fakturaer,#fintab-bankafstemning{color:var(--bly-ink);font-family:inherit}
+/* Page head */
+.bly-pagehead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.bly-pagehead h2{font-size:26px;font-weight:800;color:var(--bly-ink);margin:0;letter-spacing:-.01em}
+.bly-pagehead .sub{font-size:12px;color:var(--bly-sub);margin-top:4px}
+/* Generic pill/rounded control used everywhere: search boxes, filter buttons, dropdowns */
+.bly-ctl{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:9px 13px;font-size:12.5px;font-weight:600;color:var(--bly-ink);cursor:pointer;white-space:nowrap;transition:border-color .12s,box-shadow .12s}
+.bly-ctl:hover{border-color:#C7CBD1}
+.bly-ctl.active,.bly-ctl:focus-within{border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+input.bly-search{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:9px 13px 9px 34px;font-size:12.5px;font-weight:500;color:var(--bly-ink);background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="%23949AA6" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>') 11px center no-repeat;transition:border-color .12s,box-shadow .12s}
+input.bly-search:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:9px 30px 9px 13px;font-size:12.5px;font-weight:600;color:var(--bly-ink);background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="%23949AA6" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>') calc(100% - 10px) center no-repeat;cursor:pointer}
+.bly-btn{display:inline-flex;align-items:center;gap:7px;background:var(--bly-ink);color:#fff;border:0;border-radius:var(--bly-r-pill);padding:10px 18px;font-size:12.5px;font-weight:700;cursor:pointer}
+.bly-btn:hover{background:#000}
+.bly-btn.outline{background:#fff;color:var(--bly-ink);border:1px solid var(--bly-border)}
+.bly-btn.outline:hover{border-color:#C7CBD1}
+/* KPI overblik-kort */
+.bly-kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+.bly-kpi-card{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:16px 18px;cursor:pointer;text-align:left;transition:border-color .12s,box-shadow .12s}
+.bly-kpi-card:hover{border-color:#C7CBD1}
+.bly-kpi-card.active{border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+.bly-kpi-label{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--bly-sub);margin-bottom:10px}
+.bly-kpi-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.bly-kpi-value{font-size:23px;font-weight:800;color:var(--bly-ink);line-height:1.1;letter-spacing:-.01em}
+.bly-kpi-value .unit{font-size:12px;font-weight:700;color:var(--bly-sub);margin-left:3px}
+/* Toolbar */
+.bly-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.bly-toolbar-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.bly-toolbar-title{font-size:15px;font-weight:800;color:var(--bly-ink)}
+.bly-toolbar-count{font-size:13px;font-weight:500;color:var(--bly-sub)}
+.bly-toolbar-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* Periode-popover (Regnskabsår-stil kalenderdropdown) */
+.bly-period{position:relative;display:inline-block}
+.bly-period-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:40;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);box-shadow:0 20px 45px rgba(15,17,24,.14);padding:16px;width:340px}
+.bly-period-tabs{display:flex;background:var(--ice);border-radius:var(--bly-r-sm);padding:3px;margin-bottom:14px}
+.bly-period-tab{flex:1;border:0;background:transparent;border-radius:7px;padding:7px 4px;font-size:11.5px;font-weight:700;color:var(--bly-sub);cursor:pointer}
+.bly-period-tab.active{background:#fff;color:var(--bly-ink);box-shadow:0 1px 4px rgba(15,17,24,.12)}
+.bly-period-years{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.bly-period-year{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);padding:9px 4px;font-size:12.5px;font-weight:700;color:var(--bly-ink);cursor:pointer;text-align:center}
+.bly-period-year:hover{border-color:#C7CBD1}
+.bly-period-year.active{background:var(--bly-accent);border-color:var(--bly-accent);color:#fff}
+.bly-period-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--bly-sub);margin-bottom:8px}
+.bly-period-range{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.bly-period-range input{flex:1;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:8px 10px;font-size:12px}
+.bly-period-month input{width:100%;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:9px 10px;font-size:12.5px;margin-bottom:4px}
+/* Faktura-tabel */
+table.bly-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);overflow:hidden}
+table.bly-table th{text-align:left;padding:11px 14px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--bly-sub);border-bottom:1px solid var(--bly-border-soft);background:#fff}
+table.bly-table th.num{text-align:right}
+table.bly-table td{padding:13px 14px;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px;color:var(--bly-ink);vertical-align:middle}
+table.bly-table tr:last-child td{border-bottom:none}
+table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
+.bly-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bly-status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:9px;flex-shrink:0}
+.bly-mail-icon{color:var(--bly-sub);font-size:11px;margin-left:6px}
+.bly-tag{display:inline-flex;align-items:center;font-size:9.5px;font-weight:800;color:var(--bly-sub);background:var(--ice);border-radius:5px;padding:2px 6px;margin-right:6px;text-transform:uppercase;letter-spacing:.03em}
+.bly-desc{color:var(--bly-sub);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
+.bly-status-select{border:1px solid transparent;background:transparent;border-radius:7px;padding:5px 8px;font-size:11.5px;font-weight:700;cursor:pointer;appearance:none;color:inherit}
+.bly-status-select:hover{border-color:var(--bly-border)}
+.bly-status-cell.paid{color:var(--bly-dot-paid)}
+.bly-status-cell.partial{color:var(--bly-dot-draft)}
+.bly-status-cell.unpaid{color:var(--bly-dot-unpaid)}
+.bly-status-cell.unclear{color:var(--bly-dot-overdue)}
+/* BANKAFSTEMNING */
+.bly-bank-topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.bly-account-pill{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:10px 14px;font-size:13.5px;font-weight:700;color:var(--bly-ink)}
+.bly-account-pill .dim{color:var(--bly-sub);font-weight:500}
+.bly-segtabs{display:flex;gap:22px;border-bottom:1px solid var(--bly-border-soft);margin-bottom:14px}
+.bly-segtab{border:0;background:transparent;padding:0 0 11px;font-size:13px;font-weight:700;color:var(--bly-sub);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.bly-segtab.active{color:var(--bly-ink);border-bottom-color:var(--bly-ink)}
+.bly-util-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--bly-sub);margin-bottom:14px}
+.bly-util-row .left{display:flex;align-items:center;gap:14px}
+.bly-util-row a{color:var(--bly-accent);text-decoration:none;font-weight:700}
+.bly-layout{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
+@media(max-width:980px){.bly-layout{grid-template-columns:1fr}}
+.bly-col{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:16px}
+.bly-col-logo{text-align:center;padding:8px 0 16px;color:#C7CBD1;font-weight:900;font-size:15px;letter-spacing:.08em;text-transform:uppercase;user-select:none}
+.bly-col-logo.gm{color:#003509;opacity:.35}
+.bly-txn-list{display:flex;flex-direction:column;gap:10px;max-height:640px;overflow:auto;padding-right:2px}
+.bly-txn-card{border:1.5px solid var(--bly-border);border-radius:var(--bly-r-md);overflow:hidden;background:#fff;cursor:pointer}
+.bly-txn-card.reconciled{opacity:.7;cursor:default}
+.bly-txn-card.active{border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+.bly-txn-main{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px 14px}
+.bly-txn-desc{font-weight:700;font-size:12.5px;color:var(--bly-ink)}
+.bly-txn-date{font-size:10.5px;color:var(--bly-sub);margin-top:3px}
+.bly-txn-amount{font-weight:800;font-size:13px;white-space:nowrap}
+.bly-txn-amount.neg{color:var(--bly-dot-overdue)}
+.bly-txn-amount.pos{color:var(--bly-dot-paid)}
+.bly-txn-zone{background:#FAFAFB;border-top:1px dashed var(--bly-border);padding:11px 14px}
+.bly-txn-zone.matched{background:#F0FDF4;border-top-color:#BBF7D0}
+.bly-txn-zone.paid-already{background:#F0FDFA;border-top-color:#99F6E4}
+.bly-txn-zone-hint{font-size:10.5px;color:var(--bly-sub);margin-bottom:2px}
+.bly-txn-zone-links{display:flex;gap:14px;font-size:11px;font-weight:700}
+.bly-txn-zone-links a,.bly-txn-zone-links button{color:var(--bly-accent);text-decoration:none;background:none;border:0;padding:0;cursor:pointer;font:inherit}
+.bly-txn-picked{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;font-weight:700;color:#15803D}
+.bly-txn-picked button{background:none;border:0;color:#15803D;opacity:.7;cursor:pointer;font-size:10px}
+.bly-quicksearch{width:100%;border:1px solid var(--bly-border);border-radius:7px;padding:7px 9px 7px 28px;font-size:11.5px;margin-bottom:6px;background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="%23949AA6" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>') 8px center no-repeat}
+.bly-quickpick-item{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;background:#fff;border:1px solid var(--bly-border);border-radius:7px;padding:6px 9px;font-size:11px;cursor:pointer;text-align:left;margin-top:4px}
+.bly-quickpick-item:hover{border-color:var(--bly-accent);background:var(--bly-accent-soft)}
+.bly-ignore-link{margin-top:8px;font-size:10px;font-weight:700;color:var(--bly-sub);background:none;border:0;cursor:pointer;padding:0}
+.bly-ignore-link:hover{color:var(--bly-dot-overdue)}
+.bly-right-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.bly-right-title{font-size:14px;font-weight:800;color:var(--bly-ink)}
+.bly-right-tags{display:flex;gap:6px;margin-bottom:12px}
+.bly-right-tag{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-pill);padding:6px 13px;font-size:11px;font-weight:700;color:var(--bly-sub);cursor:pointer}
+.bly-right-tag.active{background:var(--bly-ink);border-color:var(--bly-ink);color:#fff}
+.bly-right-sort{display:flex;gap:12px;font-size:11px;font-weight:700;margin-bottom:10px}
+.bly-right-sort button{background:none;border:0;padding:0;cursor:pointer;color:var(--bly-sub)}
+.bly-right-sort button.active{color:var(--bly-ink);text-decoration:underline}
+.bly-right-list{display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto}
+.bly-right-card{position:relative;border:1.5px solid #BBF7D0;background:#fff;border-radius:var(--bly-r-md);padding:11px 13px;cursor:pointer;text-align:left;width:100%}
+.bly-right-card:hover{border-color:var(--bly-dot-paid);background:#F0FDF4}
+.bly-right-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.bly-right-card .name{font-weight:700;font-size:12px;color:var(--bly-ink)}
+.bly-right-card .sub{font-size:10.5px;color:var(--bly-sub);margin-top:2px}
+.bly-right-card .amt{font-weight:800;font-size:12.5px;white-space:nowrap}
+.bly-right-card .search-ico{position:absolute;top:9px;right:11px;font-size:11px;color:var(--bly-sub)}
 #page-finance .fin-job-row:last-child{border-bottom:none}
 #page-finance .fin-edit-btn{border:1px solid var(--border);background:#fff;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:11px;margin-left:8px}
 #page-finance .fin-edit-btn:hover{background:var(--ice)}
@@ -1105,24 +1235,27 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div class="fintabpage" id="fintab-fakturaer" style="display:none">
-    <div class="fin-eyebrow" style="margin-bottom:10px">Overblik</div>
-    <div id="fin-invoices-kpis" class="fin-inv-kpi-row"></div>
-    <div class="fin-toolbar-card">
-      <div class="fin-toolbar-row">
-        <span class="fin-inv-count" id="fin-inv-count-label">Fakturaer</span>
-        <input type="text" id="fin-invoice-search" class="input fin-toolbar-search" placeholder="🔍 Søg kunde, beløb eller fakturanr...">
-        <input type="month" id="fin-invoice-month-filter" class="input" style="width:auto" title="Filtrér på en bestemt måned">
-        <select class="fin-status" id="fin-invoice-date-filter" style="width:auto">
-          <option value="all">Al tid</option>
-          <option value="week">Seneste uge</option>
-          <option value="month">Seneste måned</option>
-          <option value="quarter">Seneste kvartal</option>
-          <option value="year">Dette år</option>
-        </select>
-        <button class="btn small" id="fin-invoice-filter-clear">✕ Ryd filtre</button>
+    <div class="bly-pagehead">
+      <div>
+        <h2>Fakturaer</h2>
+        <div class="sub">Live udtræk fra JobTread — status og opfølgning styres her</div>
       </div>
     </div>
-    <div id="fin-inv-bulk-bar" style="display:none;align-items:center;gap:10px;background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;margin-bottom:10px">
+    <div id="fin-invoices-kpis" class="bly-kpi-row"></div>
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left">
+        <span class="bly-toolbar-title" id="fin-inv-count-label">Fakturaer</span>
+        <input type="text" id="fin-invoice-search" class="bly-search" placeholder="Søg...">
+      </div>
+      <div class="bly-toolbar-right">
+        <div class="bly-period" style="position:relative">
+          <button class="bly-ctl" id="fin-period-btn" type="button">📅 <span id="fin-period-label">Alt tid</span></button>
+          <div class="bly-period-pop" id="fin-period-pop" style="display:none"></div>
+        </div>
+        <button class="bly-ctl" id="fin-invoice-filter-clear" type="button" title="Ryd alle filtre">✕ Ryd filtre</button>
+      </div>
+    </div>
+    <div id="fin-inv-bulk-bar" style="display:none;align-items:center;gap:10px;background:var(--bly-ink);color:#fff;padding:10px 16px;border-radius:var(--bly-r-sm);margin-bottom:10px">
       <span id="fin-inv-bulk-count" style="font-weight:800;font-size:12.5px"></span>
       <select id="fin-inv-bulk-action" style="border-radius:7px;border:0;padding:6px 8px;font-size:12px">
         <option value="paid">✓ Markér betalt</option>
@@ -1133,25 +1266,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn small primary" id="fin-inv-bulk-apply">Anvend</button>
       <button class="btn small" id="fin-inv-bulk-clear" style="background:rgba(255,255,255,.15);color:#fff">Fravælg alle</button>
     </div>
-    <table class="fin-table fin-table-invoices">
-      <thead><tr><th style="width:30px"><input type="checkbox" id="fin-inv-select-all"></th><th>Kunde</th><th>Faktura</th><th class="fin-num">Ekskl. moms</th><th class="fin-num">Inkl. moms</th><th class="fin-num">Saldo</th><th>Status</th><th>Note</th><th>Rykker</th></tr></thead>
+    <table class="bly-table">
+      <thead><tr><th style="width:30px"><input type="checkbox" id="fin-inv-select-all"></th><th>Kunde</th><th>Faktura</th><th class="num">Ekskl. moms</th><th class="num">Inkl. moms</th><th class="num">Saldo</th><th>Status</th><th>Note</th><th>Rykker</th></tr></thead>
       <tbody id="fin-invoices-body"></tbody>
     </table>
   </div>
 
   <div class="fintabpage" id="fintab-bankafstemning" style="display:none">
-    <div class="fin-recon-hero">
-      <div>
-        <div class="fin-recon-hero-title">🏦 Bankafstemning</div>
-        <p class="fin-recon-hero-sub">Upload et bankudtog (PDF, Excel eller CSV — fx fra Lunar), så matches indbetalinger automatisk mod udestående fakturaer på beløb, kundenavn og sagsnummer. Intet markeres betalt før du selv har bekræftet det.</p>
-      </div>
+    <div class="bly-bank-topbar">
+      <div class="bly-account-pill">🏦 Bankafstemning <span class="dim">· Lunar</span></div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <input type="file" id="fin-bank-upload-input" accept=".pdf,.xlsx,.xls,.csv" style="display:none">
-        <button class="btn small primary" id="fin-bank-upload-btn">📤 Upload bankudtog</button>
-        <span class="fin-muted" id="fin-bank-upload-hint" style="color:rgba(255,255,255,.75)">Excel/CSV læses mest pålideligt.</span>
+        <button class="bly-btn outline" id="fin-bank-upload-btn" type="button">📤 Importér bankudtog</button>
+        <span class="bly-toolbar-count" id="fin-bank-upload-hint">PDF, Excel eller CSV — fx fra Lunar</span>
       </div>
     </div>
-    <div id="fin-bank-results" style="margin-top:16px"></div>
+    <div id="fin-bank-results" style="margin-top:4px"></div>
   </div>
 
   <div class="fintabpage" id="fintab-rykkere" style="display:none">
@@ -5278,6 +5408,7 @@ document.getElementById('fin-dunning-run-btn').addEventListener('click',async fu
 });
 // BANKAFSTEMNING
 var finBankTxns=[],finBankActiveTxnId=null,finBankSearchQuery='',finBankStatusFilter='open',finBankLeftSearch='',finBankSort='date-desc',finBankDateFilter='all',finBankSessionLoaded=false;
+var finBankRightSort='date',finBankRightTag='fakturaer';
 document.getElementById('fin-bank-upload-btn').addEventListener('click',function(){document.getElementById('fin-bank-upload-input').click();});
 document.getElementById('fin-bank-upload-input').addEventListener('change',async function(e){
   var file=e.target.files[0];
@@ -5332,15 +5463,18 @@ function renderFinBankRightList(){
     });
   }
   candidates=candidates.slice(0,60);
+  if(finBankRightSort==='amount')candidates=candidates.slice().sort(function(a,b){return (b.remaining!=null?b.remaining:b.priceWithTax)-(a.remaining!=null?a.remaining:a.priceWithTax);});
+  else candidates=candidates.slice().sort(function(a,b){return (b.createdAt||'')<(a.createdAt||'')?-1:1;});
   if(!candidates.length)return '<div class="fin-muted" style="padding:10px">Ingen fakturaer matcher.</div>';
   return candidates.map(function(inv){
     var statusLbl=inv.overrideStatus==='partial'?'◐ Delvist betalt':inv.overrideStatus==='unclear'?'⚠ Uafklaret':'Udestående';
-    return '<button class="fin-recon-right-item" data-bank-pick-manual data-inv-id="'+esc(inv.id)+'">'+
-      '<div>'+esc(inv.customer)+'</div>'+
-      (inv.fullName?'<div class="fin-muted">'+esc(inv.fullName)+'</div>':'')+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px">'+
-      '<span class="fin-muted" style="font-size:9.5px">'+statusLbl+'</span>'+
-      '<span class="fin-recon-right-amount">'+krFmt(inv.remaining!=null?inv.remaining:inv.priceWithTax)+'</span></div>'+
+    var amt=inv.remaining!=null?inv.remaining:inv.priceWithTax;
+    return '<button class="bly-right-card" data-bank-pick-manual data-inv-id="'+esc(inv.id)+'">'+
+      '<span class="search-ico">🔎</span>'+
+      '<div class="bly-right-card-top"><div><div class="name">'+esc(inv.customer)+'</div>'+
+      (inv.fullName?'<div class="sub">'+esc(inv.fullName)+'</div>':'')+'</div>'+
+      '<div class="amt '+(amt<0?'neg':'pos')+'" style="color:'+(inv.overrideStatus==='unclear'?'var(--bly-dot-overdue)':inv.overrideStatus==='partial'?'var(--bly-dot-draft)':'var(--bly-dot-unpaid)')+'">'+krFmt(amt)+'</div></div>'+
+      (inv.overrideStatus==='unclear'?'<span class="bly-tag" style="margin-top:6px">'+statusLbl+'</span>':'')+
       '</button>';
   }).join('');
 }
@@ -5372,77 +5506,81 @@ function renderFinBankResults(){
     if(finBankSort==='amount-asc')return a.amount-b.amount;
     return 0;
   });
-  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:10px">'+
-    '<div class="fin-eyebrow" style="margin:0">'+openPayments.length+' åbne indbetalinger · '+withMatch.length+' med forslag til match</div>'+
-    '<div style="display:flex;align-items:center;gap:12px">'+
-      '<label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer"><input type="checkbox" id="fin-bank-sync-jt" style="width:auto"> Skriv også betalingerne til JobTread</label>'+
-      '<button class="btn small primary" id="fin-bank-apply-btn">✓ Anvend markerede matches</button>'+
-      '<button class="fin-edit-btn" id="fin-bank-close-btn" title="Luk resultatlisten">✕</button></div></div>';
-  html+='<div class="fin-recon-status-tabs">'+
-    '<button class="fin-recon-status-tab'+(finBankStatusFilter==='open'?' active':'')+'" data-bank-status-tab="open">Åbne ('+openPayments.length+')</button>'+
-    '<button class="fin-recon-status-tab'+(finBankStatusFilter==='reconciled'?' active':'')+'" data-bank-status-tab="reconciled">Afstemt ('+reconciledPayments.length+')</button>'+
-    '</div>';
-  html+='<div class="fin-recon-toolbar">'+
-    '<input type="text" class="input" id="fin-recon-left-search" placeholder="🔍 Søg beløb eller beskrivelse..." value="'+esc(finBankLeftSearch)+'" style="max-width:220px">'+
-    '<select class="fin-status" id="fin-recon-date-filter" style="width:auto">'+
-      '<option value="all"'+(finBankDateFilter==='all'?' selected':'')+'>Al tid</option>'+
-      '<option value="week"'+(finBankDateFilter==='week'?' selected':'')+'>Seneste uge</option>'+
-      '<option value="month"'+(finBankDateFilter==='month'?' selected':'')+'>Seneste måned</option>'+
-      '<option value="quarter"'+(finBankDateFilter==='quarter'?' selected':'')+'>Seneste kvartal</option>'+
-    '</select>'+
-    '<select class="fin-status" id="fin-recon-sort" style="width:auto">'+
-      '<option value="date-desc"'+(finBankSort==='date-desc'?' selected':'')+'>Dato (ny til gammel)</option>'+
-      '<option value="date-asc"'+(finBankSort==='date-asc'?' selected':'')+'>Dato (gammel til ny)</option>'+
-      '<option value="amount-desc"'+(finBankSort==='amount-desc'?' selected':'')+'>Beløb (højt til lavt)</option>'+
-      '<option value="amount-asc"'+(finBankSort==='amount-asc'?' selected':'')+'>Beløb (lavt til højt)</option>'+
-    '</select></div>';
-  // TO-PANEL LAYOUT (samme princip som Billys afstemningsside): venstre = bankposteringer
-  // man klikker sig igennem, højre = ét fast, søgbart panel med alle åbne fakturaer man
-  // trækker/klikker match'et fra — i stedet for et separat søgefelt pr. linje.
-  html+='<div class="fin-recon-layout">';
-  html+='<div class="fin-recon-left">';
+  var html='<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bly-border-soft);margin-bottom:14px">'+
+    '<div class="bly-segtabs" style="border-bottom:0;margin-bottom:0">'+
+    '<button class="bly-segtab'+(finBankStatusFilter==='open'?' active':'')+'" data-bank-status-tab="open">Åbne ('+openPayments.length+')</button>'+
+    '<button class="bly-segtab'+(finBankStatusFilter==='reconciled'?' active':'')+'" data-bank-status-tab="reconciled">Afstemt ('+reconciledPayments.length+')</button>'+
+    '</div>'+
+    '<button class="fin-edit-btn" id="fin-bank-close-btn" title="Luk denne visning">✕</button></div>';
+  html+='<div class="bly-toolbar" style="margin-bottom:12px">'+
+    '<div class="bly-toolbar-left">'+
+      '<input type="text" class="bly-search" id="fin-recon-left-search" placeholder="Søg beløb eller beskrivelse..." value="'+esc(finBankLeftSearch)+'" style="max-width:230px">'+
+      '<select class="bly-select bly-ctl" id="fin-recon-date-filter">'+
+        '<option value="all"'+(finBankDateFilter==='all'?' selected':'')+'>Al tid</option>'+
+        '<option value="week"'+(finBankDateFilter==='week'?' selected':'')+'>Seneste uge</option>'+
+        '<option value="month"'+(finBankDateFilter==='month'?' selected':'')+'>Seneste måned</option>'+
+        '<option value="quarter"'+(finBankDateFilter==='quarter'?' selected':'')+'>Seneste kvartal</option>'+
+      '</select>'+
+      '<select class="bly-select bly-ctl" id="fin-recon-sort">'+
+        '<option value="date-desc"'+(finBankSort==='date-desc'?' selected':'')+'>Dato (ny til gammel)</option>'+
+        '<option value="date-asc"'+(finBankSort==='date-asc'?' selected':'')+'>Dato (gammel til ny)</option>'+
+        '<option value="amount-desc"'+(finBankSort==='amount-desc'?' selected':'')+'>Beløb (højt til lavt)</option>'+
+        '<option value="amount-asc"'+(finBankSort==='amount-asc'?' selected':'')+'>Beløb (lavt til højt)</option>'+
+      '</select>'+
+    '</div>'+
+    '<div class="bly-util-row" style="margin:0"><div class="left">'+
+      '<span>'+openPayments.length+' banklinjer</span>'+
+      (finBankStatusFilter==='open'?'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--bly-ink);font-weight:600"><input type="checkbox" id="fin-bank-sync-jt" style="width:auto"> Skriv til JobTread</label>':'')+
+    '</div>'+
+    (finBankStatusFilter==='open'?('<button class="bly-btn" id="fin-bank-apply-btn" type="button">✓ Accepter '+withMatch.filter(function(t){return t._selected;}).length+' forslag</button>'+
+      '<button class="bly-btn outline" id="fin-bank-download-btn" type="button">⬇ Download</button>'):'')+
+    '</div></div>';
+  // TO-KOLONNE LAYOUT (samme princip som Billys afstemningsside): venstre = bankposteringer
+  // fra jeres egen bank (Lunar), højre = jeres egne åbne fakturaer man klikker/søger
+  // matchet frem fra — hver postering er delt i to: selve linjen + en "match-zone".
+  html+='<div class="bly-layout">';
+  html+='<div class="bly-col"><div class="bly-col-logo">LUNAR</div><div class="bly-txn-list">';
   if(!visible.length)html+='<div class="fin-muted" style="padding:16px;text-align:center">Ingen posteringer matcher filtrene.</div>';
   visible.forEach(function(t){
     if(finBankStatusFilter==='reconciled'){
       var rec=t.alreadyReconciled||{};
       var isIgnored=rec.kind==='ignored';
       var recJobId=rec.jobId||(rec.documentId?(finInvoices.find(function(i){return i.id===rec.documentId;})||{}).jobId:null);
-      html+='<div class="fin-recon-txn reconciled">'+
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
-        '<div><div class="fin-recon-bank-label">Fra banken</div><b class="fin-recon-bank-text">'+finHighlightRefs(t.text)+'</b><div class="fin-muted">'+esc(t.date)+'</div></div>'+
-        '<div style="text-align:right">'+krFmt(t.amount)+'</div></div>'+
-        '<div class="fin-recon-match-chip picked" style="justify-content:space-between;width:100%">'+
+      html+='<div class="bly-txn-card reconciled">'+
+        '<div class="bly-txn-main"><div><div class="bly-txn-desc">'+finHighlightRefs(t.text)+'</div><div class="bly-txn-date">'+esc(t.date)+'</div></div>'+
+        '<div class="bly-txn-amount pos">'+krFmt(t.amount)+'</div></div>'+
+        '<div class="bly-txn-zone matched"><div class="bly-txn-picked">'+
           '<span>'+(isIgnored?'✕ Markeret ikke relevant':'✓ Bogført'+(rec.customer?' — '+esc(rec.customer):''))+'</span>'+
-          '<span style="display:flex;gap:6px;align-items:center">'+
+          '<span style="display:flex;gap:10px;align-items:center">'+
           (rec.documentId&&recJobId?'<a href="https://app.jobtread.com/jobs/'+esc(recJobId)+'/documents" target="_blank" rel="noopener" title="Åbn fakturaen i JobTread">🔗</a>':'')+
-          '<button data-bank-unreconcile="'+esc(t.externalId)+'" title="Fortryd — flyt tilbage til Åbne">↩ Fortryd</button>'+
-          '</span></div>'+
+          '<button data-bank-unreconcile="'+esc(t.externalId)+'">↩ Fortryd</button>'+
+          '</span></div></div>'+
         '</div>';
       return;
     }
     var manual=t._manualMatch;
     var best=manual||t.matches[t._chosenIdx]||null;
     var conf=manual?null:(best?(best.score>=70?'høj':best.score>=40?'mellem':'lav'):null);
-    var confColor=conf==='høj'?'#15803D':conf==='mellem'?'#B45309':'#B91C1C';
+    var confColor=conf==='høj'?'var(--bly-dot-paid)':conf==='mellem'?'var(--bly-dot-unpaid)':'var(--bly-dot-overdue)';
     var isActive=finBankActiveTxnId===t._localId;
-    html+='<div class="fin-recon-txn'+(isActive?' active':'')+'" data-bank-activate="'+t._localId+'">'+
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
-      '<div><div class="fin-recon-bank-label">Fra banken</div><b class="fin-recon-bank-text">'+finHighlightRefs(t.text)+'</b><div class="fin-muted">'+esc(t.date)+'</div></div>'+
-      '<div style="text-align:right">'+krFmt(t.amount)+
-      (best?'<div><label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:10.5px;justify-content:flex-end"><input type="checkbox" data-bank-select="'+t._localId+'" '+(t._selected?'checked':'')+' onclick="event.stopPropagation()"> markér</label></div>':'<span class="fin-badge">intet forslag</span>')+
+    html+='<div class="bly-txn-card'+(isActive?' active':'')+'" data-bank-activate="'+t._localId+'">'+
+      '<div class="bly-txn-main"><div><div class="bly-txn-desc">'+finHighlightRefs(t.text)+'</div><div class="bly-txn-date">'+esc(t.date)+'</div></div>'+
+      '<div style="text-align:right"><div class="bly-txn-amount pos">'+krFmt(t.amount)+'</div>'+
+      (best?'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:10.5px;justify-content:flex-end;margin-top:4px;color:var(--bly-sub)"><input type="checkbox" data-bank-select="'+t._localId+'" '+(t._selected?'checked':'')+' onclick="event.stopPropagation()"> markér</label>':'')+
       '</div></div>';
     if(manual){
-      html+='<div class="fin-recon-match-chip picked">📌 '+esc(manual.customer||'')+(manual.fullName?' — '+esc(manual.fullName):'')+' — '+krFmt(manual.remaining!=null?manual.remaining:manual.priceWithTax)+
-        '<button data-bank-clear-manual="'+t._localId+'" title="Fjern valg" onclick="event.stopPropagation()">✕</button></div>';
+      html+='<div class="bly-txn-zone matched"><div class="bly-txn-picked">📌 '+esc(manual.customer||'')+(manual.fullName?' — '+esc(manual.fullName):'')+' — '+krFmt(manual.remaining!=null?manual.remaining:manual.priceWithTax)+
+        '<button data-bank-clear-manual="'+t._localId+'" title="Fjern valg">✕ Fjern</button></div></div>';
     }else if(best&&best.overrideStatus==='paid'){
-      html+='<div class="fin-recon-match-chip already-paid">✅ Matcher allerede betalt faktura — '+esc(best.customer||'')+' — intet at gøre, bare bekræft</div>';
+      html+='<div class="bly-txn-zone paid-already"><div class="bly-txn-picked" style="color:#0F766E">✅ Matcher allerede betalt faktura — '+esc(best.customer||'')+'</div></div>';
     }else if(best){
-      html+='<div class="fin-recon-match-chip" style="border-color:'+confColor+'44;color:'+confColor+'">🔎 '+esc(best.customer||'')+' — '+krFmt(best.remaining!=null?best.remaining:best.priceWithTax)+' · '+conf+' sikkerhed'+
-        (finBankNameMatches(t,best)?'<span class="fin-recon-name-match">✓ navn matcher banken</span>':'')+'</div>';
+      html+='<div class="bly-txn-zone matched" style="background:#fff;border-top-color:var(--bly-border)">'+
+        '<div class="bly-txn-picked" style="color:'+confColor+'">🔎 '+esc(best.customer||'')+' — '+krFmt(best.remaining!=null?best.remaining:best.priceWithTax)+' · '+conf+' sikkerhed'+
+        (finBankNameMatches(t,best)?'<span class="bly-name-match">✓ navn matcher</span>':'')+'</div></div>';
     }else{
       // I stedet for en passiv "klik her, vælg til højre"-tekst: en direkte søgbar
-      // vælger lige under posteringen, så man kan finde og vælge fakturaen med det
-      // samme uden først at skulle klikke posteringen aktiv og kigge til højre.
+      // vælger i selve match-zonen, så man kan finde og vælge fakturaen med det
+      // samme uden først at skulle klikke posteringen aktiv og kigge et andet sted hen.
       var quickQ=(t._quickSearch||'').trim().toLowerCase();
       var quickCandidates=finInvoices.filter(function(inv){return inv.overrideStatus!=='paid';});
       if(quickQ){
@@ -5457,31 +5595,51 @@ function renderFinBankResults(){
         });
       }
       quickCandidates=quickCandidates.slice(0,4);
-      html+='<div class="fin-recon-quickpick">'+
-        '<div class="fin-recon-quickpick-label">Intet automatisk forslag — søg og vælg direkte:</div>'+
-        '<input type="text" class="input fin-recon-quickpick-input" data-bank-quicksearch="'+t._localId+'" placeholder="🔍 Søg kunde, fakturanr eller beløb..." value="'+esc(t._quickSearch||'')+'" onclick="event.stopPropagation()">'+
-        '<div class="fin-recon-quickpick-list">'+(quickCandidates.length?quickCandidates.map(function(inv){
-          return '<button class="fin-recon-quickpick-item" data-bank-quickpick="'+t._localId+'" data-inv-id="'+esc(inv.id)+'" onclick="event.stopPropagation()">'+
+      html+='<div class="bly-txn-zone">'+
+        '<div class="bly-txn-zone-hint">Intet automatisk forslag — søg og vælg direkte:</div>'+
+        '<input type="text" class="bly-quicksearch" data-bank-quicksearch="'+t._localId+'" placeholder="Søg kunde, fakturanr eller beløb..." value="'+esc(t._quickSearch||'')+'" onclick="event.stopPropagation()">'+
+        (quickCandidates.length?quickCandidates.map(function(inv){
+          return '<button class="bly-quickpick-item" data-bank-quickpick="'+t._localId+'" data-inv-id="'+esc(inv.id)+'" onclick="event.stopPropagation()">'+
             '<span>'+esc(inv.customer)+(inv.fullName?' · '+esc(inv.fullName):'')+'</span>'+
             '<b>'+krFmt(inv.remaining!=null?inv.remaining:inv.priceWithTax)+'</b></button>';
-        }).join(''):'<div class="fin-muted" style="padding:4px 2px">Ingen fakturaer matcher søgningen.</div>')+'</div></div>';
+        }).join(''):'<div class="fin-muted" style="padding:4px 2px">Ingen fakturaer matcher søgningen.</div>')+'</div>';
     }
     // Postering der intet har med en faktura at gøre (løn, interne overførsler osv.)
     // — fjern den fra listen permanent, i stedet for at den bliver ved med at ligge
     // som "intet forslag" hver eneste gang man uploader et nyt udtog.
-    html+='<button class="fin-recon-ignore-btn" data-bank-ignore="'+t._localId+'" onclick="event.stopPropagation()" title="Denne postering har intet med en faktura at gøre">🗑 Ikke relevant</button>';
+    html+='<div style="padding:0 14px 10px"><button class="bly-ignore-link" data-bank-ignore="'+t._localId+'" onclick="event.stopPropagation()" title="Denne postering har intet med en faktura at gøre">🗑 Ikke relevant</button></div>';
     html+='</div>';
   });
-  html+='</div>';
+  html+='</div></div>';
   if(finBankStatusFilter==='open'){
-    html+='<div class="fin-recon-right">'+
-      '<div class="fin-recon-right-head">'+(finBankActiveTxnId!=null?'Vælg faktura til den markerede postering':'Klik en postering til venstre for at matche')+'</div>'+
-      '<input type="text" class="input" id="fin-recon-search" placeholder="🔍 Søg kunde, fakturanr eller beløb..." value="'+esc(finBankSearchQuery||'')+'" style="margin-bottom:8px">'+
-      '<div class="fin-recon-right-list">'+renderFinBankRightList()+'</div>'+
+    html+='<div class="bly-col"><div class="bly-col-logo gm">GULV MASTER</div>'+
+      '<div class="bly-right-head"><div class="bly-right-title">Ikke-afstemte fakturaer ('+finInvoices.filter(function(i){return i.overrideStatus!=='paid';}).length+')</div></div>'+
+      '<div class="bly-right-tags"><button class="bly-right-tag active" type="button">Fakturaer</button></div>'+
+      '<div class="bly-txn-zone-hint" style="margin:-4px 0 8px">'+(finBankActiveTxnId!=null?'Klik en faktura herunder for at matche den til den markerede postering til venstre.':'Tip: klik en postering til venstre for at vælge den her — eller brug søgefeltet direkte under posteringen.')+'</div>'+
+      '<input type="text" class="bly-search" id="fin-recon-search" placeholder="Søg kunde, fakturanr eller beløb..." value="'+esc(finBankSearchQuery||'')+'" style="width:100%;margin-bottom:10px">'+
+      '<div class="bly-right-sort">Sortér efter: '+
+        '<button data-bank-right-sort="date" class="'+(finBankRightSort==='date'?'active':'')+'" type="button">Dato</button> · '+
+        '<button data-bank-right-sort="amount" class="'+(finBankRightSort==='amount'?'active':'')+'" type="button">Beløb</button></div>'+
+      '<div class="bly-right-list">'+renderFinBankRightList()+'</div>'+
       '</div>';
   }
   html+='</div>';
   el.innerHTML=html;
+  if(finBankStatusFilter==='open'){
+    var dlBtn=document.getElementById('fin-bank-download-btn');
+    if(dlBtn)dlBtn.addEventListener('click',function(){
+      var rows=[['Dato','Beskrivelse','Beløb']].concat(openPayments.map(function(t){return [t.date,t.text,t.amount];}));
+      var csv=rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(';');}).join('\n');
+      var blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+      var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='bankafstemning.csv';a.click();
+    });
+    el.querySelectorAll('[data-bank-right-sort]').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        finBankRightSort=btn.dataset.bankRightSort;
+        renderFinBankResults();
+      });
+    });
+  }
   if(finBankQuickFocus!=null){
     var qFocusInp=el.querySelector('[data-bank-quicksearch="'+finBankQuickFocus.id+'"]');
     if(qFocusInp){qFocusInp.focus();try{qFocusInp.setSelectionRange(finBankQuickFocus.pos,finBankQuickFocus.pos);}catch(e){}}
@@ -5553,7 +5711,7 @@ function renderFinBankResults(){
   var searchInp=document.getElementById('fin-recon-search');
   if(searchInp)searchInp.addEventListener('input',function(){
     finBankSearchQuery=searchInp.value;
-    el.querySelector('.fin-recon-right-list').innerHTML=renderFinBankRightList();
+    el.querySelector('.bly-right-list').innerHTML=renderFinBankRightList();
     el.querySelectorAll('[data-bank-pick-manual]').forEach(bindManualPick);
   });
   el.querySelectorAll('[data-bank-pick-manual]').forEach(bindManualPick);
@@ -5569,10 +5727,12 @@ function renderFinBankResults(){
       renderFinBankResults();
     });
   }
-  document.getElementById('fin-bank-apply-btn').addEventListener('click',async function(){
+  var applyBtn=document.getElementById('fin-bank-apply-btn');
+  if(applyBtn)applyBtn.addEventListener('click',async function(){
     var toApply=openPayments.filter(function(t){return t._selected&&(t._manualMatch||t.matches[t._chosenIdx]);});
     if(!toApply.length){toast('Ingen matches markeret','⚠');return;}
-    var syncJt=document.getElementById('fin-bank-sync-jt').checked;
+    var syncJtEl=document.getElementById('fin-bank-sync-jt');
+    var syncJt=syncJtEl?syncJtEl.checked:false;
     if(!await gmConfirm('Markér '+toApply.length+' faktura(er) som betalt/delvist betalt ud fra de valgte matches?'+(syncJt?' Betalingerne oprettes også i JobTread.':'')))return;
     var btn=this;btn.disabled=true;btn.textContent='Anvender…';
     var jtFailures=[];
@@ -5977,19 +6137,26 @@ document.getElementById('fin-expense-month').addEventListener('change',function(
   finExpenseMonth=e.target.value;
   loadFinance();
 });
-document.getElementById('fin-invoice-date-filter').addEventListener('change',function(e){finInvoiceDateFilter=e.target.value;renderFinInvoices();});
-document.getElementById('fin-invoice-month-filter').addEventListener('change',function(e){finInvoiceMonthFilter=e.target.value;renderFinInvoices();});
 document.getElementById('fin-invoice-filter-clear').addEventListener('click',function(){
-  finInvoiceDateFilter='all';finInvoiceStatusFilter='all';finInvoiceSearch='';finInvoiceMonthFilter='';
-  document.getElementById('fin-invoice-date-filter').value='all';
+  finInvoiceStatusFilter='all';finInvoiceSearch='';finInvoiceMonthFilter='';finInvoiceYearFilter='';finInvoiceQuarterFilter='';finInvoiceRangeFrom='';finInvoiceRangeTo='';
   document.getElementById('fin-invoice-search').value='';
-  document.getElementById('fin-invoice-month-filter').value='';
   renderFinInvoices();
 });
 var finInvoiceSearchTimer=null;
 document.getElementById('fin-invoice-search').addEventListener('input',function(e){
   clearTimeout(finInvoiceSearchTimer);
   finInvoiceSearchTimer=setTimeout(function(){finInvoiceSearch=e.target.value;renderFinInvoices();},200);
+});
+document.getElementById('fin-period-btn').addEventListener('click',function(e){
+  e.stopPropagation();
+  var pop=document.getElementById('fin-period-pop');
+  var opening=pop.style.display==='none';
+  pop.style.display=opening?'block':'none';
+  if(opening)renderFinPeriodPopover();
+});
+document.addEventListener('click',function(e){
+  var pop=document.getElementById('fin-period-pop');
+  if(pop&&pop.style.display!=='none'&&!pop.contains(e.target)&&e.target.id!=='fin-period-btn')pop.style.display='none';
 });
 document.getElementById('fin-revenue-period').addEventListener('change',async function(e){
   var parts=e.target.value.split(',');
@@ -6215,23 +6382,36 @@ function renderFinRevenue(){
   });
 }
 
-var finInvoiceDateFilter='all';
-var finInvoiceStatusFilter='all',finInvoiceSearch='',finInvoiceMonthFilter='';
+var finInvoiceStatusFilter='all',finInvoiceSearch='';
+var finInvoiceMonthFilter='',finInvoiceYearFilter='',finInvoiceQuarterFilter='';
+var finInvoiceRangeFrom='',finInvoiceRangeTo='';
+var finPeriodTab='year';
+var finPeriodYearPage=null;
+var MAANEDE_KORT=['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
 // opts.ignoreStatus=true bruges af KPI-kortene, som skal vise hvor mange
 // fakturaer der ligger i HVER status ud fra dato/søgning — uafhængigt af
 // hvilket statuskort der aktuelt er valgt, ellers ville de andre kort altid vise 0.
 function finInvoicesFiltered(opts){
   opts=opts||{};
   var list=finInvoices;
-  if(finInvoiceMonthFilter){
+  if(finInvoiceRangeFrom||finInvoiceRangeTo){
+    list=list.filter(function(inv){
+      var d=(inv.createdAt||'').slice(0,10);
+      if(!d)return false;
+      if(finInvoiceRangeFrom&&d<finInvoiceRangeFrom)return false;
+      if(finInvoiceRangeTo&&d>finInvoiceRangeTo)return false;
+      return true;
+    });
+  }else if(finInvoiceMonthFilter){
     list=list.filter(function(inv){return inv.createdAt&&(inv.createdAt||'').slice(0,7)===finInvoiceMonthFilter;});
-  }else if(finInvoiceDateFilter!=='all'){
-    var now=new Date(),cut=null;
-    if(finInvoiceDateFilter==='month')cut=new Date(now.getFullYear(),now.getMonth(),1);
-    if(finInvoiceDateFilter==='quarter')cut=new Date(now.getFullYear(),now.getMonth()-3,1);
-    if(finInvoiceDateFilter==='year')cut=new Date(now.getFullYear(),0,1);
-    if(finInvoiceDateFilter==='week'){cut=new Date(now);cut.setDate(cut.getDate()-7);}
-    list=list.filter(function(inv){return inv.createdAt&&new Date(inv.createdAt)>=cut;});
+  }else if(finInvoiceQuarterFilter){
+    var qp=finInvoiceQuarterFilter.split('-Q'),qy=qp[0],qn=+qp[1],qStartM=(qn-1)*3+1,qEndM=qStartM+2;
+    var qFrom=qy+'-'+String(qStartM).padStart(2,'0')+'-01';
+    var qEndDate=new Date(+qy,qEndM,0);
+    var qTo=qy+'-'+String(qEndM).padStart(2,'0')+'-'+String(qEndDate.getDate()).padStart(2,'0');
+    list=list.filter(function(inv){var d=(inv.createdAt||'').slice(0,10);return d&&d>=qFrom&&d<=qTo;});
+  }else if(finInvoiceYearFilter){
+    list=list.filter(function(inv){return inv.createdAt&&(inv.createdAt||'').slice(0,4)===finInvoiceYearFilter;});
   }
   if(!opts.ignoreStatus&&finInvoiceStatusFilter!=='all')list=list.filter(function(inv){return inv.overrideStatus===finInvoiceStatusFilter;});
   if(finInvoiceSearch.trim()){
@@ -6243,6 +6423,95 @@ function finInvoicesFiltered(opts){
   }
   return list;
 }
+function finPeriodLabel(){
+  if(finInvoiceRangeFrom||finInvoiceRangeTo)return (finInvoiceRangeFrom||'…')+' – '+(finInvoiceRangeTo||'…');
+  if(finInvoiceMonthFilter)return MAANEDE_KORT[+finInvoiceMonthFilter.slice(5,7)-1]+' '+finInvoiceMonthFilter.slice(0,4);
+  if(finInvoiceQuarterFilter)return 'Kvartal '+finInvoiceQuarterFilter.split('-Q')[1]+' · '+finInvoiceQuarterFilter.split('-Q')[0];
+  if(finInvoiceYearFilter)return 'Regnskabsår: '+finInvoiceYearFilter;
+  return 'Alt tid';
+}
+function finPeriodClearAll(){
+  finInvoiceMonthFilter='';finInvoiceYearFilter='';finInvoiceQuarterFilter='';finInvoiceRangeFrom='';finInvoiceRangeTo='';
+}
+// Billy-stil kalender-dropdown: Måned / Kvartal / Regnskabsår / Alt tid, plus et
+// friere datointerval nederst der altid kan bruges uanset hvilken fane der er valgt.
+function renderFinPeriodPopover(){
+  var pop=document.getElementById('fin-period-pop');
+  if(!pop)return;
+  var curYear=new Date().getFullYear();
+  if(finPeriodYearPage===null)finPeriodYearPage=Math.floor((( +finInvoiceYearFilter||curYear)-curYear+2)/10)*10+curYear-2;
+  var yearsStart=finPeriodYearPage;
+  var years=[];for(var i=0;i<9;i++)years.push(yearsStart+i);
+  var tabs=['month','quarter','year','all'];
+  var tabLabels={month:'Måned',quarter:'Kvartal',year:'Regnskabsår',all:'Alt tid'};
+  var html='<div class="bly-period-tabs">'+tabs.map(function(t){
+    return '<button class="bly-period-tab'+(finPeriodTab===t?' active':'')+'" data-period-tab="'+t+'" type="button">'+tabLabels[t]+'</button>';
+  }).join('')+'</div>';
+  if(finPeriodTab==='month'){
+    html+='<div class="bly-period-month"><input type="month" id="fin-period-month-input" value="'+esc(finInvoiceMonthFilter)+'"></div>';
+  }else if(finPeriodTab==='quarter'){
+    var qy=finInvoiceQuarterFilter?finInvoiceQuarterFilter.split('-Q')[0]:String(curYear);
+    var qn=finInvoiceQuarterFilter?finInvoiceQuarterFilter.split('-Q')[1]:'';
+    html+='<div class="bly-period-label">Vælg år</div><div class="bly-period-years" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px">'+
+      [qy-1,qy,+qy+1].map(function(y){return '<button class="bly-period-year'+(String(y)===qy?' active':'')+'" data-period-qyear="'+y+'" type="button">'+y+'</button>';}).join('')+'</div>'+
+      '<div class="bly-period-label">Vælg kvartal</div><div class="bly-period-years">'+
+      ['1','2','3','4'].map(function(n){return '<button class="bly-period-year'+(qn===n?' active':'')+'" data-period-qnum="'+n+'" data-period-qyear-cur="'+qy+'" type="button">Q'+n+'</button>';}).join('')+'</div>';
+  }else if(finPeriodTab==='year'){
+    html+='<div class="bly-period-label">'+yearsStart+' – '+(yearsStart+8)+' <span data-period-year-prev style="cursor:pointer">‹</span> <span data-period-year-next style="cursor:pointer">›</span></div>'+
+      '<div class="bly-period-years">'+years.map(function(y){
+        return '<button class="bly-period-year'+(String(y)===finInvoiceYearFilter?' active':'')+'" data-period-year="'+y+'" type="button">'+y+'</button>';
+      }).join('')+'</div>';
+  }
+  html+='<div class="bly-period-label" style="margin-top:4px">Datointerval</div>'+
+    '<div class="bly-period-range"><input type="date" id="fin-period-range-from" value="'+esc(finInvoiceRangeFrom)+'"><span class="fin-muted">–</span><input type="date" id="fin-period-range-to" value="'+esc(finInvoiceRangeTo)+'"></div>'+
+    '<button class="bly-btn" id="fin-period-apply" type="button" style="width:100%;justify-content:center">Anvend</button>';
+  pop.innerHTML=html;
+  pop.querySelectorAll('[data-period-tab]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      finPeriodTab=btn.dataset.periodTab;
+      if(finPeriodTab==='all'){
+        finPeriodClearAll();pop.style.display='none';renderFinInvoices();
+        document.getElementById('fin-period-label').textContent=finPeriodLabel();
+        return;
+      }
+      renderFinPeriodPopover();
+    });
+  });
+  var monthInp=document.getElementById('fin-period-month-input');
+  if(monthInp)monthInp.addEventListener('change',function(){
+    finPeriodClearAll();finInvoiceMonthFilter=monthInp.value;
+    document.getElementById('fin-period-pop').style.display='none';
+    renderFinInvoices();document.getElementById('fin-period-label').textContent=finPeriodLabel();
+  });
+  pop.querySelectorAll('[data-period-year]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      finPeriodClearAll();finInvoiceYearFilter=btn.dataset.periodYear;
+      pop.style.display='none';renderFinInvoices();document.getElementById('fin-period-label').textContent=finPeriodLabel();
+    });
+  });
+  var prevY=pop.querySelector('[data-period-year-prev]'),nextY=pop.querySelector('[data-period-year-next]');
+  if(prevY)prevY.addEventListener('click',function(){finPeriodYearPage-=9;renderFinPeriodPopover();});
+  if(nextY)nextY.addEventListener('click',function(){finPeriodYearPage+=9;renderFinPeriodPopover();});
+  pop.querySelectorAll('[data-period-qyear]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var y=btn.dataset.periodQyear,curQ=finInvoiceQuarterFilter?finInvoiceQuarterFilter.split('-Q')[1]:'1';
+      finInvoiceQuarterFilter=y+'-Q'+curQ;renderFinPeriodPopover();
+    });
+  });
+  pop.querySelectorAll('[data-period-qnum]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      finPeriodClearAll();finInvoiceQuarterFilter=btn.dataset.periodQyearCur+'-Q'+btn.dataset.periodQnum;
+      pop.style.display='none';renderFinInvoices();document.getElementById('fin-period-label').textContent=finPeriodLabel();
+    });
+  });
+  document.getElementById('fin-period-apply').addEventListener('click',function(){
+    var from=document.getElementById('fin-period-range-from').value,to=document.getElementById('fin-period-range-to').value;
+    if(from||to){finPeriodClearAll();finInvoiceRangeFrom=from;finInvoiceRangeTo=to;}
+    else if(finPeriodTab==='all'){finPeriodClearAll();}
+    pop.style.display='none';renderFinInvoices();document.getElementById('fin-period-label').textContent=finPeriodLabel();
+  });
+}
+var FIN_STATUS_DOT={all:'var(--bly-dot-total)',paid:'var(--bly-dot-paid)',partial:'var(--bly-dot-draft)',unpaid:'var(--bly-dot-unpaid)',unclear:'var(--bly-dot-overdue)'};
 function renderFinInvoiceKpis(){
   var el=document.getElementById('fin-invoices-kpis');
   if(!el)return;
@@ -6253,19 +6522,18 @@ function renderFinInvoiceKpis(){
   function bucket(status){return base.filter(function(i){return i.overrideStatus===status;});}
   var paid=bucket('paid'),partial=bucket('partial'),unpaid=bucket('unpaid'),unclear=bucket('unclear');
   function sum(list,field){return list.reduce(function(s,i){return s+(i[field]||0);},0);}
-  function card(status,label,dotColor,count,amount){
+  function card(status,label,count,amount){
     var active=finInvoiceStatusFilter===status;
-    return '<button class="fin-inv-kpi-card'+(active?' active':'')+'" data-inv-kpi-status="'+status+'" type="button">'+
-      '<div class="fin-inv-kpi-label"><span class="fin-inv-kpi-dot" style="background:'+dotColor+'"></span>'+label+'</div>'+
-      '<div class="fin-inv-kpi-amount">'+krFmt(amount)+'</div>'+
-      '<div class="fin-kpi-sub">'+count+' faktura'+(count===1?'':'er')+'</div></button>';
+    return '<button class="bly-kpi-card'+(active?' active':'')+'" data-inv-kpi-status="'+status+'" type="button">'+
+      '<div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:'+FIN_STATUS_DOT[status]+'"></span>'+count+' '+label+'</div>'+
+      '<div class="bly-kpi-value">'+krFmt(amount)+'</div></button>';
   }
   el.innerHTML=
-    card('all','Alle','#0F2240',base.length,sum(base,'priceWithTax'))+
-    card('paid','✓ Betalt','#15803D',paid.length,sum(paid,'priceWithTax'))+
-    card('partial','◐ Delvist betalt','#1D4ED8',partial.length,sum(partial,'remaining'))+
-    card('unpaid','Udestående','#B91C1C',unpaid.length,sum(unpaid,'priceWithTax'))+
-    card('unclear','⚠ Uafklaret','#92400E',unclear.length,sum(unclear,'priceWithTax'));
+    card('all','Fakturaer',base.length,sum(base,'priceWithTax'))+
+    card('partial','Delvist betalt',partial.length,sum(partial,'remaining'))+
+    card('unclear','Uafklaret',unclear.length,sum(unclear,'priceWithTax'))+
+    card('unpaid','Udestående',unpaid.length,sum(unpaid,'priceWithTax'))+
+    card('paid','Betalte',paid.length,sum(paid,'priceWithTax'));
   el.querySelectorAll('[data-inv-kpi-status]').forEach(function(btn){
     btn.addEventListener('click',function(){
       finInvoiceStatusFilter=btn.dataset.invKpiStatus;
@@ -6286,16 +6554,18 @@ function renderFinInvoices(){
         '<input type="number" class="fin-note-input fin-inv-paidamount" data-idx="'+idx+'" value="'+(inv.paidAmount!==null?inv.paidAmount:'')+'" placeholder="Betalt beløb" style="width:110px">'+
         '<span class="fin-muted">rest: '+(inv.remaining!==null?krFmt(inv.remaining):'–')+'</span></div>':'';
     var canDun=inv.overrideStatus==='unpaid'||inv.overrideStatus==='partial';
-    return '<tr><td><input type="checkbox" class="fin-inv-select" data-inv-id="'+esc(inv.id)+'" '+(finInvSelected[inv.id]?'checked':'')+'></td><td><b>'+esc(inv.customer)+'</b>'+(inv.jobId?' <a href="https://app.jobtread.com/jobs/'+esc(inv.jobId)+'/documents" target="_blank" rel="noopener" class="fin-edit-btn fin-edit-btn-icon" title="Åbn sagen i JobTread">🔗</a>':'')+'</td><td class="fin-muted">'+esc(inv.fullName)+' · '+esc((inv.createdAt||'').slice(0,10))+'</td>'+
-      '<td class="fin-num">'+krFmt(inv.price)+'</td><td class="fin-num">'+krFmt(inv.priceWithTax)+'</td><td class="fin-num">'+krFmt(inv.balance)+'</td>'+
-      '<td><select class="fin-status st-'+inv.overrideStatus+' fin-inv-status" data-idx="'+idx+'">'+
+    return '<tr class="bly-row"><td><input type="checkbox" class="fin-inv-select" data-inv-id="'+esc(inv.id)+'" '+(finInvSelected[inv.id]?'checked':'')+'></td>'+
+      '<td><span class="bly-status-dot" style="background:'+FIN_STATUS_DOT[inv.overrideStatus]+'"></span><b>'+esc(inv.customer)+'</b>'+(inv.jobId?' <a href="https://app.jobtread.com/jobs/'+esc(inv.jobId)+'/documents" target="_blank" rel="noopener" class="fin-edit-btn fin-edit-btn-icon" title="Åbn sagen i JobTread">🔗</a>':'')+'</td>'+
+      '<td class="bly-desc" title="'+esc(inv.fullName)+'">'+esc(inv.fullName)+' <span style="color:var(--bly-sub)">· '+esc((inv.createdAt||'').slice(0,10))+'</span></td>'+
+      '<td class="bly-num">'+krFmt(inv.price)+'</td><td class="bly-num">'+krFmt(inv.priceWithTax)+'</td><td class="bly-num">'+krFmt(inv.balance)+'</td>'+
+      '<td class="bly-status-cell '+inv.overrideStatus+'"><select class="bly-status-select fin-inv-status" data-idx="'+idx+'">'+
         '<option value="paid" '+(inv.overrideStatus==='paid'?'selected':'')+'>✓ Betalt</option>'+
         '<option value="partial" '+(inv.overrideStatus==='partial'?'selected':'')+'>◐ Delvist betalt</option>'+
         '<option value="unpaid" '+(inv.overrideStatus==='unpaid'?'selected':'')+'>Udestående</option>'+
         '<option value="unclear" '+(inv.overrideStatus==='unclear'?'selected':'')+'>⚠ Uafklaret</option>'+
       '</select>'+partialInfo+'</td>'+
-      '<td><input class="fin-note-input fin-inv-note" data-idx="'+idx+'" value="'+esc(inv.note)+'" placeholder="Note..."></td>'+
-      '<td>'+(canDun?'<button class="btn small fin-send-rykker-btn" data-idx="'+idx+'">✉️ Send rykker</button>':'<span class="fin-muted">—</span>')+'</td></tr>';
+      '<td><input class="fin-note-input fin-inv-note" data-idx="'+idx+'" value="'+esc(inv.note)+'" placeholder="Note..." style="border:1px solid transparent;background:transparent;font-size:11.5px;width:100%;padding:4px 6px;border-radius:6px" onfocus="this.style.borderColor=\'var(--bly-border)\'" onblur="this.style.borderColor=\'transparent\'"></td>'+
+      '<td>'+(canDun?'<button class="btn small fin-send-rykker-btn" data-idx="'+idx+'">✉️ Send rykker</button>':(inv.overrideStatus==='paid'?'<span class="bly-mail-icon">✉ sendt</span>':'<span class="fin-muted">—</span>'))+'</td></tr>';
   }).join('')||'<tr><td colspan="9" class="fin-empty">Ingen fakturaer i denne periode.</td></tr>';
   tbody.querySelectorAll('.fin-inv-select').forEach(function(cb){
     cb.addEventListener('change',function(){
