@@ -825,7 +825,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <button class="tab" data-page="gantt">Gantt</button>
-    <button class="tab hidden" data-page="finance" id="finance-tab-btn">💰 Økonomi</button>
+    <div class="navdrop tab-navdrop hidden" id="finance-subdrop">
+      <button class="tab" data-page="finance" id="finance-tab-btn">💰 Økonomi</button>
+      <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle">▾</button>
+      <div class="navdrop-menu">
+        <button class="navdrop-item" data-page="finance" data-fintab-jump="oversigt">📊 Oversigt</button>
+        <button class="navdrop-item" data-page="finance" data-fintab-jump="omsaetning">💰 Omsætning pr. fag</button>
+        <button class="navdrop-item" data-page="finance" data-fintab-jump="fakturaer">🧾 Fakturaer</button>
+        <button class="navdrop-item" data-page="finance" data-fintab-jump="bankafstemning">🏦 Bankafstemning</button>
+        <button class="navdrop-item" data-page="finance" data-fintab-jump="rykkere">✉️ Rykkere</button>
+        <button class="navdrop-item" data-page="finance" data-fintab-jump="udgifter">📖 Udgifter</button>
+        <button class="navdrop-item" data-page="finance" data-fintab-jump="adgang">🔒 Adgang</button>
+        <button class="navdrop-item" data-page="finance" data-fintab-jump="privatbudget">👤 Privat budget</button>
+        <button class="navdrop-item" data-page="finance" data-fintab-jump="noter">⚠️ Noter &amp; datakvalitet</button>
+      </div>
+    </div>
   </div>
   <div class="nav-actions">
     <div class="navdrop" id="globalsearch">
@@ -2205,7 +2219,7 @@ document.getElementById('app').style.display='block';
   try{
     var r=await fetch((API||'')+'/api/auth/me',{headers:{'Authorization':'Bearer '+token}});
     if(r.ok){var fresh=await r.json();me=Object.assign({},me,fresh);localStorage.setItem('gm_user',JSON.stringify(me));
-      document.getElementById('finance-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
+      document.getElementById('finance-subdrop').classList.toggle('hidden',!me.is_finance_admin);}
   }catch(e){}
 })();
 
@@ -5129,6 +5143,10 @@ async function loadFinance(){
   renderFinPrivateBudget();
   renderFinDunning(await dunningSettingsP,(await dunningLogP)||[]);
   renderFinNoter();
+  // Genindlæser evt. gemt bankudtog HER — efter finInvoices er sat — i stedet for kun
+  // fra selve fane-skiftet, som kunne nå at køre FØR denne funktion var færdig og
+  // dermed vise en tom fakturaliste i højre panel, selvom transaktionerne var der.
+  await loadFinBankSessionIfNeeded();
   await applyFinPanelOrder('oversigt','fin-oversigt-boxes','.fin-resizable');
   await applyFinPanelBoxSizes('oversigt','fin-oversigt-boxes','.fin-resizable');
   if(!window._finOversigtDragBound){
@@ -6749,13 +6767,35 @@ function bind(){
     });
   }
   document.addEventListener('click',function(e){if(!e.target.closest('#notifdrop'))document.getElementById('notifdrop-menu').classList.remove('open');});
-  // Nye undermenuer i navigationen (Tidslinje under Daglig plan, Ledighedsoversigt under Kapacitet)
+  // Nye undermenuer i navigationen (Tidslinje under Daglig plan, Ledighedsoversigt under
+  // Kapacitet, Økonomi-underfaner) — åbnes nu ved HOVER over hele menu-gruppen, ikke kun
+  // ved klik på den lille pil, med en kort forsinkelse ved museleave så det ikke lukker
+  // hvis man er på vej ned til selve menuen.
+  document.querySelectorAll('.tab-navdrop').forEach(function(group){
+    var closeTimer=null;
+    var menu=group.querySelector('.navdrop-menu');
+    group.addEventListener('mouseenter',function(){
+      clearTimeout(closeTimer);
+      document.querySelectorAll('.tab-navdrop .navdrop-menu.open').forEach(function(m){if(m!==menu)m.classList.remove('open');});
+      menu.classList.add('open');
+    });
+    group.addEventListener('mouseleave',function(){
+      closeTimer=setTimeout(function(){menu.classList.remove('open');},180);
+    });
+  });
   document.querySelectorAll('[data-action="tab-caret-toggle"]').forEach(function(btn){
     btn.addEventListener('click',function(e){
       e.stopPropagation();
       var menu=btn.parentElement.querySelector('.navdrop-menu');
       document.querySelectorAll('.tab-navdrop .navdrop-menu.open').forEach(function(m){if(m!==menu)m.classList.remove('open');});
       menu.classList.toggle('open');
+    });
+  });
+  document.querySelectorAll('[data-fintab-jump]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      switchPage('finance');
+      switchFintab(btn.dataset.fintabJump);
+      document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
     });
   });
   document.addEventListener('click',function(e){
