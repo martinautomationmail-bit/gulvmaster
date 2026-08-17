@@ -217,9 +217,10 @@ button,input,select{font:inherit}
 }
 #fintab-fakturaer,#fintab-bankafstemning{color:var(--bly-ink);font-family:inherit}
 /* .main kun har 14px sidemargin globalt (deles med Daglig plan/Kapacitet/Gantt,
-   som har brug for pladsen) — Økonomi-siden får ekstra luft i siderne herudover,
-   så den ikke er strukket helt ud til kanten som resten af appen. */
-#page-finance{padding:2px 26px 26px}
+   som har brug for pladsen) — Økonomi-siden får markant mere luft i siderne
+   herudover, så den ikke er strukket helt ud til kanten som resten af appen. */
+#page-finance{padding:2px 110px 48px}
+@media(max-width:1200px){#page-finance{padding:2px 32px 32px}}
 /* Page head */
 .bly-pagehead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;flex-wrap:wrap}
 .bly-pagehead h2{font-size:26px;font-weight:800;color:var(--bly-ink);margin:0;letter-spacing:-.01em}
@@ -299,7 +300,9 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-col-logo{text-align:center;padding:8px 0 16px;color:#C7CBD1;font-weight:900;font-size:15px;letter-spacing:.08em;text-transform:uppercase;user-select:none}
 .bly-col-logo.gm{color:#003509;opacity:.35}
 .bly-txn-list{display:flex;flex-direction:column;gap:10px;max-height:640px;overflow:auto;padding-right:2px}
-.bly-txn-card{border:1.5px solid var(--bly-border);border-radius:var(--bly-r-md);overflow:hidden;background:#fff;cursor:pointer}
+.bly-txn-card{border:1.5px solid var(--bly-border);border-radius:var(--bly-r-md);background:#fff;cursor:pointer;min-height:24px}
+.bly-txn-card>*:first-child{border-radius:var(--bly-r-md) var(--bly-r-md) 0 0}
+.bly-txn-card>*:last-child{border-radius:0 0 var(--bly-r-md) var(--bly-r-md)}
 .bly-txn-card.reconciled{opacity:.7;cursor:default}
 .bly-txn-card.active{border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
 .bly-txn-main{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px 14px;min-height:22px}
@@ -337,7 +340,8 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-right-card .name{font-weight:700;font-size:12px;color:var(--bly-ink)}
 .bly-right-card .sub{font-size:10.5px;color:var(--bly-sub);margin-top:2px}
 .bly-right-card .amt{font-weight:800;font-size:12.5px;white-space:nowrap}
-.bly-right-card .search-ico{position:absolute;top:9px;right:11px;font-size:11px;color:var(--bly-sub)}
+.bly-right-card .jt-link{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:6px;font-size:10px;color:var(--bly-sub);text-decoration:none;border-radius:5px;vertical-align:middle}
+.bly-right-card .jt-link:hover{background:var(--bly-hover);color:var(--bly-accent)}
 #page-finance .fin-job-row:last-child{border-bottom:none}
 #page-finance .fin-edit-btn{border:1px solid var(--border);background:#fff;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:11px;margin-left:8px}
 #page-finance .fin-edit-btn:hover{background:var(--ice)}
@@ -5476,8 +5480,9 @@ function renderFinBankRightList(){
     var statusLbl=inv.overrideStatus==='partial'?'◐ Delvist betalt':inv.overrideStatus==='unclear'?'⚠ Uafklaret':'Udestående';
     var amt=inv.remaining!=null?inv.remaining:inv.priceWithTax;
     return '<button class="bly-right-card" data-bank-pick-manual data-inv-id="'+esc(inv.id)+'">'+
-      '<span class="search-ico">🔎</span>'+
-      '<div class="bly-right-card-top"><div><div class="name">'+esc(inv.customer)+'</div>'+
+      '<div class="bly-right-card-top"><div><div class="name">'+esc(inv.customer)+
+      (inv.jobId?'<a href="https://app.jobtread.com/jobs/'+esc(inv.jobId)+'/documents" target="_blank" rel="noopener" class="jt-link" title="Åbn fakturaen i JobTread" onclick="event.stopPropagation()">🔗</a>':'')+
+      '</div>'+
       (inv.fullName?'<div class="sub">'+esc(inv.fullName)+'</div>':'')+'</div>'+
       '<div class="amt '+(amt<0?'neg':'pos')+'" style="color:'+(inv.overrideStatus==='unclear'?'var(--bly-dot-overdue)':inv.overrideStatus==='partial'?'var(--bly-dot-draft)':'var(--bly-dot-unpaid)')+'">'+krFmt(amt)+'</div></div>'+
       (inv.overrideStatus==='unclear'?'<span class="bly-tag" style="margin-top:6px">'+statusLbl+'</span>':'')+
