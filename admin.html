@@ -59,7 +59,8 @@ button,input,select{font:inherit}
 .nb.blue{background:var(--blue);border-color:var(--blue)}
 .dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px}
 .kpi-card{background:#fff;border:1px solid var(--border2);box-shadow:var(--shadow);border-radius:10px;padding:12px 14px}
-.tab-btn-sm{border:1px solid var(--border2);background:#fff;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;margin-right:6px}
+.tab-btn-sm{border:1px solid var(--border2);background:#fff;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;margin-right:6px;text-decoration:none;display:inline-block}
+.tab-btn-sm:visited{color:var(--muted)}
 .tab-btn-sm.active{background:var(--navy);color:#fff;border-color:var(--navy)}
 
 /* ÉKONOMI — dedikeret styling, da siden ikke må arve generiske/tomme klasser */
@@ -160,6 +161,10 @@ button,input,select{font:inherit}
 .fin-recon-match-chip button{background:none;border:0;cursor:pointer;font-size:10px;color:inherit;opacity:.7}
 .fin-recon-match-chip button:hover{opacity:1}
 .fin-recon-hint{margin-top:7px;font-size:10.5px;color:var(--muted);font-style:italic}
+.fin-recon-ignore-btn{margin-top:7px;font-size:10px;font-weight:700;background:none;border:1px dashed var(--border2);border-radius:8px;padding:4px 10px;color:var(--muted);cursor:pointer}
+.fin-recon-ignore-btn:hover{border-color:#B91C1C;color:#B91C1C}
+.fin-recon-match-chip.picked a,.fin-recon-match-chip.picked button[data-bank-unreconcile]{font-size:10px;font-weight:700;text-decoration:none;color:inherit;background:none;border:0;cursor:pointer;opacity:.8}
+.fin-recon-match-chip.picked a:hover,.fin-recon-match-chip.picked button[data-bank-unreconcile]:hover{opacity:1}
 .fin-recon-right{position:sticky;top:8px;border:1px solid var(--border2);border-radius:12px;background:var(--ice);padding:12px;max-height:600px;display:flex;flex-direction:column}
 .fin-recon-right-head{font-size:11px;font-weight:800;color:var(--navy);margin-bottom:8px}
 .fin-recon-right-list{overflow:auto;display:flex;flex-direction:column;gap:6px;flex:1}
@@ -984,15 +989,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
   <div class="tabs fin-pill-tabs" style="margin-bottom:16px">
-    <button class="tab-btn-sm active" data-fintab="oversigt">📊 Oversigt</button>
-    <button class="tab-btn-sm" data-fintab="omsaetning">💰 Omsætning pr. fag</button>
-    <button class="tab-btn-sm" data-fintab="fakturaer">🧾 Fakturaer</button>
-    <button class="tab-btn-sm" data-fintab="bankafstemning">🏦 Bankafstemning</button>
-    <button class="tab-btn-sm" data-fintab="rykkere">✉️ Rykkere</button>
-    <button class="tab-btn-sm" data-fintab="udgifter">📖 Udgifter</button>
-    <button class="tab-btn-sm" data-fintab="adgang">🔒 Adgang</button>
-    <button class="tab-btn-sm" data-fintab="privatbudget">👤 Privat budget</button>
-    <button class="tab-btn-sm" data-fintab="noter">⚠️ Noter &amp; datakvalitet</button>
+    <a class="tab-btn-sm active" data-fintab="oversigt" href="#finance/oversigt">📊 Oversigt</a>
+    <a class="tab-btn-sm" data-fintab="omsaetning" href="#finance/omsaetning">💰 Omsætning pr. fag</a>
+    <a class="tab-btn-sm" data-fintab="fakturaer" href="#finance/fakturaer">🧾 Fakturaer</a>
+    <a class="tab-btn-sm" data-fintab="bankafstemning" href="#finance/bankafstemning">🏦 Bankafstemning</a>
+    <a class="tab-btn-sm" data-fintab="rykkere" href="#finance/rykkere">✉️ Rykkere</a>
+    <a class="tab-btn-sm" data-fintab="udgifter" href="#finance/udgifter">📖 Udgifter</a>
+    <a class="tab-btn-sm" data-fintab="adgang" href="#finance/adgang">🔒 Adgang</a>
+    <a class="tab-btn-sm" data-fintab="privatbudget" href="#finance/privatbudget">👤 Privat budget</a>
+    <a class="tab-btn-sm" data-fintab="noter" href="#finance/noter">⚠️ Noter &amp; datakvalitet</a>
   </div>
 
   <div class="fintabpage active" id="fintab-oversigt">
@@ -1037,6 +1042,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <span class="fin-muted">til</span>
       <input type="date" id="fin-revenue-date-to" class="input" style="width:auto">
       <button class="btn small" id="fin-revenue-date-clear">✕ Ryd datofilter</button>
+      <select class="fin-status" id="fin-revenue-status-filter" style="width:auto">
+        <option value="all">Alle sager</option>
+        <option value="running">🟢 Kun kørende</option>
+        <option value="invoiced">🟢 Kun faktureret</option>
+        <option value="hold">🟡 Kun på hold</option>
+        <option value="unmarked">Kun umarkerede</option>
+      </select>
     </div>
     <div id="fin-revenue-months" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px"></div>
   </div>
@@ -5062,12 +5074,29 @@ function saveNotifRule(row){
 // ØKONOMI
 // ══════════════════════════════════════════════════════════════
 var finRevenue=null,finInvoices=[],finExpenses=[],finInvSelected={},finJobStatusMarks={};
+function switchFintab(name){
+  var btn=document.querySelector('[data-fintab="'+name+'"]');
+  if(!btn)name='oversigt';
+  document.querySelectorAll('[data-fintab]').forEach(function(b){b.classList.remove('active');});
+  document.querySelectorAll('.fintabpage').forEach(function(p){p.style.display='none';});
+  var activeBtn=document.querySelector('[data-fintab="'+name+'"]');
+  if(activeBtn)activeBtn.classList.add('active');
+  var page=document.getElementById('fintab-'+name);
+  if(page)page.style.display='block';
+  if(name==='bankafstemning'&&typeof loadFinBankSessionIfNeeded==='function')loadFinBankSessionIfNeeded();
+  // replaceState (i modsætning til at sætte location.hash) udløser IKKE et nyt
+  // hashchange-event, så selve fane-skiftet her genindlæser ikke hele Økonomi-siden.
+  if(location.hash.slice(1)!=='finance/'+name)history.replaceState(null,'','#finance/'+name);
+}
 document.querySelectorAll('[data-fintab]').forEach(function(btn){
-  btn.addEventListener('click',function(){
-    document.querySelectorAll('[data-fintab]').forEach(function(b){b.classList.remove('active');});
-    document.querySelectorAll('.fintabpage').forEach(function(p){p.style.display='none';});
-    btn.classList.add('active');
-    document.getElementById('fintab-'+btn.dataset.fintab).style.display='block';
+  btn.addEventListener('click',function(e){
+    // Ctrl/Cmd-klik, shift-klik og midterklik skal stadig åbne i ny fane/vindue som
+    // normalt — kun et almindeligt venstreklik skifter fane inline på siden.
+    // Højreklik → "Åbn i ny fane" rammer aldrig denne handler og virker derfor altid,
+    // fordi browseren bruger href'en direkte uden om click-eventet.
+    if(e.metaKey||e.ctrlKey||e.shiftKey||e.button===1)return;
+    e.preventDefault();
+    switchFintab(btn.dataset.fintab);
   });
 });
 var finExpenseMonth=new Date().toISOString().slice(0,7);
@@ -5194,7 +5223,7 @@ document.getElementById('fin-dunning-run-btn').addEventListener('click',async fu
   });
 });
 // BANKAFSTEMNING
-var finBankTxns=[],finBankActiveTxnId=null,finBankSearchQuery='',finBankStatusFilter='open',finBankLeftSearch='',finBankSort='date-desc',finBankDateFilter='all';
+var finBankTxns=[],finBankActiveTxnId=null,finBankSearchQuery='',finBankStatusFilter='open',finBankLeftSearch='',finBankSort='date-desc',finBankDateFilter='all',finBankSessionLoaded=false;
 document.getElementById('fin-bank-upload-btn').addEventListener('click',function(){document.getElementById('fin-bank-upload-input').click();});
 document.getElementById('fin-bank-upload-input').addEventListener('change',async function(e){
   var file=e.target.files[0];
@@ -5209,10 +5238,22 @@ document.getElementById('fin-bank-upload-input').addEventListener('change',async
   if(!r||r.error){toast((r&&r.error)||'Kunne ikke læse filen','❌');return;}
   finBankTxns=r.transactions.map(function(t,i){t._localId=i;var top=t.matches[0];t._selected=top&&(top.score>=50||top.overrideStatus==='paid');t._chosenIdx=0;return t;});
   finBankStatusFilter='open';
-  var alreadyCount=finBankTxns.filter(function(t){return t.alreadyReconciled;}).length;
+  var alreadyCount=finBankTxns.filter(function(t){return t.amount>0&&t.alreadyReconciled;}).length;
   toast('Fandt '+r.count+' transaktion(er)'+(alreadyCount?' — '+alreadyCount+' er allerede bogført fra tidligere':''),'✓');
   renderFinBankResults();
 });
+// Genindlæser automatisk det senest uploadede bankudtog, så man ikke behøver uploade
+// det igen bare fordi man har genindlæst browseren eller skiftet fane og er kommet
+// tilbage — det ligger gemt server-side indtil næste fil uploades.
+async function loadFinBankSessionIfNeeded(){
+  if(finBankSessionLoaded||finBankTxns.length)return;
+  finBankSessionLoaded=true;
+  var r=await api('/api/finance/bank-statement/session');
+  if(r&&r.transactions&&r.transactions.length){
+    finBankTxns=r.transactions.map(function(t,i){t._localId=i;if(t._chosenIdx===undefined)t._chosenIdx=0;if(t._selected===undefined){var top=t.matches[0];t._selected=top&&(top.score>=50||top.overrideStatus==='paid');}return t;});
+    renderFinBankResults();
+  }
+}
 function renderFinBankRightList(){
   var q=(finBankSearchQuery||'').trim().toLowerCase();
   var candidates=finInvoices.filter(function(inv){return inv.overrideStatus!=='paid';});
@@ -5295,11 +5336,19 @@ function renderFinBankResults(){
   if(!visible.length)html+='<div class="fin-muted" style="padding:16px;text-align:center">Ingen posteringer matcher filtrene.</div>';
   visible.forEach(function(t){
     if(finBankStatusFilter==='reconciled'){
+      var rec=t.alreadyReconciled||{};
+      var isIgnored=rec.kind==='ignored';
+      var recJobId=rec.jobId||(rec.documentId?(finInvoices.find(function(i){return i.id===rec.documentId;})||{}).jobId:null);
       html+='<div class="fin-recon-txn reconciled">'+
         '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
         '<div><b>'+esc(t.text)+'</b><div class="fin-muted">'+esc(t.date)+'</div></div>'+
         '<div style="text-align:right">'+krFmt(t.amount)+'</div></div>'+
-        '<div class="fin-recon-match-chip picked">✓ Bogført'+(t.alreadyReconciled.customer?' — '+esc(t.alreadyReconciled.customer):'')+'</div>'+
+        '<div class="fin-recon-match-chip picked" style="justify-content:space-between;width:100%">'+
+          '<span>'+(isIgnored?'✕ Markeret ikke relevant':'✓ Bogført'+(rec.customer?' — '+esc(rec.customer):''))+'</span>'+
+          '<span style="display:flex;gap:6px;align-items:center">'+
+          (rec.documentId&&recJobId?'<a href="https://app.jobtread.com/jobs/'+esc(recJobId)+'/documents" target="_blank" rel="noopener" title="Åbn fakturaen i JobTread">🔗</a>':'')+
+          '<button data-bank-unreconcile="'+esc(t.externalId)+'" title="Fortryd — flyt tilbage til Åbne">↩ Fortryd</button>'+
+          '</span></div>'+
         '</div>';
       return;
     }
@@ -5324,6 +5373,10 @@ function renderFinBankResults(){
     }else{
       html+='<div class="fin-recon-hint">Klik her, vælg så en faktura til højre →</div>';
     }
+    // Postering der intet har med en faktura at gøre (løn, interne overførsler osv.)
+    // — fjern den fra listen permanent, i stedet for at den bliver ved med at ligge
+    // som "intet forslag" hver eneste gang man uploader et nyt udtog.
+    html+='<button class="fin-recon-ignore-btn" data-bank-ignore="'+t._localId+'" onclick="event.stopPropagation()" title="Denne postering har intet med en faktura at gøre">🗑 Ikke relevant</button>';
     html+='</div>';
   });
   html+='</div>';
@@ -5357,6 +5410,27 @@ function renderFinBankResults(){
     btn.addEventListener('click',function(){
       var t=finBankTxns[+btn.dataset.bankClearManual];
       t._manualMatch=null;t._selected=false;
+      renderFinBankResults();
+    });
+  });
+  el.querySelectorAll('[data-bank-ignore]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var t=finBankTxns[+btn.dataset.bankIgnore];
+      if(!t)return;
+      btn.disabled=true;btn.textContent='Fjerner…';
+      await api('/api/finance/bank-statement/mark-reconciled',{method:'POST',body:JSON.stringify({externalId:t.externalId,date:t.date,text:t.text,amount:t.amount,kind:'ignored'})});
+      t.alreadyReconciled={kind:'ignored'};
+      toast('Markeret som ikke relevant ✓','✓');
+      renderFinBankResults();
+    });
+  });
+  el.querySelectorAll('[data-bank-unreconcile]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var t=finBankTxns.find(function(x){return x.externalId===btn.dataset.bankUnreconcile;});
+      if(!t)return;
+      await api('/api/finance/bank-statement/unreconcile',{method:'POST',body:JSON.stringify({externalId:t.externalId})});
+      delete t.alreadyReconciled;
+      toast('Fortrudt — ligger nu under Åbne igen ✓','✓');
       renderFinBankResults();
     });
   });
@@ -5396,7 +5470,7 @@ function renderFinBankResults(){
       if(syncJt&&r&&!r.jobtreadSynced)jtFailures.push(m.customer+': '+(r.jobtreadError||'ukendt fejl'));
       // Husk denne postering som bogført, så den ikke dukker op som "ny" ved næste upload.
       await api('/api/finance/bank-statement/mark-reconciled',{method:'POST',body:JSON.stringify({externalId:t.externalId,date:t.date,text:t.text,amount:t.amount,documentId:m.documentId,customer:m.customer})});
-      t.alreadyReconciled={customer:m.customer};
+      t.alreadyReconciled={customer:m.customer,documentId:m.documentId,jobId:m.jobId,kind:'matched'};
     }
     btn.disabled=false;btn.textContent='✓ Anvend markerede matches';
     if(jtFailures.length)toast('Fakturaer opdateret her, men '+jtFailures.length+' fejlede mod JobTread: '+jtFailures.slice(0,2).join('; '),'⚠');
@@ -5781,6 +5855,7 @@ document.getElementById('fin-revenue-date-clear').addEventListener('click',funct
   document.getElementById('fin-revenue-date-to').value='';
   renderFinRevenue();
 });
+document.getElementById('fin-revenue-status-filter').addEventListener('change',function(e){finRevenueStatusFilter=e.target.value;renderFinRevenue();});
 document.getElementById('fin-expense-month').addEventListener('change',function(e){
   if(!e.target.value)return;
   finExpenseMonth=e.target.value;
@@ -5808,7 +5883,7 @@ document.getElementById('finance-email-report-btn').onclick=async function(){
 };
 
 var finFagFilter={};
-var finRevenueDateFrom=null,finRevenueDateTo=null;
+var finRevenueDateFrom=null,finRevenueDateTo=null,finRevenueStatusFilter='all';
 function renderFinRevenueKpis(){
   var el=document.getElementById('fin-revenue-kpis');
   if(!el||!finRevenue)return;
@@ -5845,6 +5920,12 @@ function renderFinRevenue(){
     var dateFilteredJobs=mAll.jobs.filter(function(j){
       if(finRevenueDateFrom&&(!j.startDate||j.startDate<finRevenueDateFrom))return false;
       if(finRevenueDateTo&&(!j.startDate||j.startDate>finRevenueDateTo))return false;
+      if(finRevenueStatusFilter!=='all'){
+        var jk=j.jobId?('job:'+j.jobId):('manual:'+j.manualId);
+        var jst=finJobStatusMarks[jk];
+        if(finRevenueStatusFilter==='unmarked'){if(jst)return false;}
+        else if(jst!==finRevenueStatusFilter)return false;
+      }
       return true;
     });
     var byFag={},total=0;
@@ -5867,7 +5948,7 @@ function renderFinRevenue(){
         return '<button class="fin-status-dot'+(st===k?' active':'')+'" data-job-status-key="'+esc(jobKey)+'" data-job-status-val="'+k+'" style="background:'+STATUS_META[k].dot+'" title="'+STATUS_META[k].label+'"></button>';
       }).join('');
       var otherMonths=months.filter(function(x){return x!==mk;});
-      var moveBtn=(j.jobId&&!j.manual&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" title="Flyt sagen til en anden måned"><option value="">→ flyt</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+'</option>';}).join('')+'</select>'):'';
+      var moveBtn=(j.jobId&&!j.manual&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" data-cur-month="'+mk+'" title="Flyt sagen til en anden måned"><option value="">→ flyt</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+'</option>';}).join('')+'</select>'):'';
       return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'" '+(stMeta?'style="background:'+stMeta.bg+(st==='invoiced'?';color:#fff':'')+'"':'')+'>'+
         '<div><b>'+esc(j.name)+'</b>'+(j.hasOverride?' <span class="fin-badge ok">rettet</span>':'')+(j.manual?' <span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?' <span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(stMeta?' <span class="fin-badge" style="background:'+stMeta.color+';color:'+(st==='invoiced'?'#166534':'#fff')+'">'+stMeta.label+'</span>':'')+
         '<div class="fin-muted" style="'+(st==='invoiced'?'color:rgba(255,255,255,.75)':'')+'">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div></div>'+
@@ -5906,8 +5987,23 @@ function renderFinRevenue(){
     sel.addEventListener('change',async function(){
       var targetMonth=sel.value;
       if(!targetMonth)return;
-      var r=await api('/api/finance/job-month-override/'+encodeURIComponent(sel.dataset.jobid),{method:'PUT',body:JSON.stringify({monthKey:targetMonth})});
-      if(r&&r.ok){toast('Sag flyttet ✓','✓');loadFinance();}else if(r)toast(r.error||'Fejl','❌');
+      var curMonth=sel.dataset.curMonth,jobId=sel.dataset.jobid;
+      var r=await api('/api/finance/job-month-override/'+encodeURIComponent(jobId),{method:'PUT',body:JSON.stringify({monthKey:targetMonth})});
+      if(r&&r.ok){
+        // Opdaterer kun data lokalt i stedet for at genindlæse hele siden (loadFinance)
+        // — det ville tage flere sekunder og hive JobTread-data igen for ingenting.
+        if(!finRevenue[targetMonth])finRevenue[targetMonth]={jobs:[]};
+        var srcJobs=finRevenue[curMonth].jobs;
+        var idx=srcJobs.findIndex(function(j){return j.jobId===jobId;});
+        if(idx>-1){
+          var job=srcJobs.splice(idx,1)[0];
+          job.monthMoved=true;
+          job.naturalMonth=job.naturalMonth||curMonth;
+          finRevenue[targetMonth].jobs.push(job);
+        }
+        toast('Sag flyttet ✓','✓');
+        renderFinRevenue();
+      }else if(r)toast(r.error||'Fejl','❌');
     });
   });
   el.querySelectorAll('.fin-fag-row-clickable').forEach(function(row){
@@ -6014,7 +6110,7 @@ function renderFinInvoices(){
         '<input type="number" class="fin-note-input fin-inv-paidamount" data-idx="'+idx+'" value="'+(inv.paidAmount!==null?inv.paidAmount:'')+'" placeholder="Betalt beløb" style="width:110px">'+
         '<span class="fin-muted">rest: '+(inv.remaining!==null?krFmt(inv.remaining):'–')+'</span></div>':'';
     var canDun=inv.overrideStatus==='unpaid'||inv.overrideStatus==='partial';
-    return '<tr><td><input type="checkbox" class="fin-inv-select" data-inv-id="'+esc(inv.id)+'" '+(finInvSelected[inv.id]?'checked':'')+'></td><td><b>'+esc(inv.customer)+'</b></td><td class="fin-muted">'+esc(inv.fullName)+' · '+esc((inv.createdAt||'').slice(0,10))+'</td>'+
+    return '<tr><td><input type="checkbox" class="fin-inv-select" data-inv-id="'+esc(inv.id)+'" '+(finInvSelected[inv.id]?'checked':'')+'></td><td><b>'+esc(inv.customer)+'</b>'+(inv.jobId?' <a href="https://app.jobtread.com/jobs/'+esc(inv.jobId)+'/documents" target="_blank" rel="noopener" class="fin-edit-btn" title="Åbn sagen i JobTread" style="text-decoration:none;display:inline-flex;padding:1px 6px;font-size:10px">🔗</a>':'')+'</td><td class="fin-muted">'+esc(inv.fullName)+' · '+esc((inv.createdAt||'').slice(0,10))+'</td>'+
       '<td class="fin-num">'+krFmt(inv.price)+'</td><td class="fin-num">'+krFmt(inv.priceWithTax)+'</td><td class="fin-num">'+krFmt(inv.balance)+'</td>'+
       '<td><select class="fin-status st-'+inv.overrideStatus+' fin-inv-status" data-idx="'+idx+'">'+
         '<option value="paid" '+(inv.overrideStatus==='paid'?'selected':'')+'>✓ Betalt</option>'+
@@ -6572,7 +6668,11 @@ function bind(){
     if(page==='notif-settings')loadNotificationSettings();
     if(page==='finance'){if(!me.is_finance_admin){toast('Du har ikke adgang til Økonomi','🔒');switchPage('plan');return;}loadFinance();}
   }
-  window.addEventListener('hashchange',function(){switchPage(location.hash.slice(1));});
+  window.addEventListener('hashchange',function(){
+    var parts=location.hash.slice(1).split('/');
+    switchPage(parts[0]);
+    if(parts[0]==='finance'&&parts[1])switchFintab(parts[1]);
+  });
   document.querySelectorAll('.tab[data-page]').forEach(function(b){b.addEventListener('click',function(){switchPage(b.dataset.page);});});
   document.querySelectorAll('.navdrop-item[data-page]').forEach(function(b){b.addEventListener('click',function(){switchPage(b.dataset.page);});});
   document.getElementById('navdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('navdrop-menu').classList.toggle('open');});
@@ -7013,8 +7113,12 @@ function bind(){
     if(t&&e.detail>=2)openAssign({taskId:t.dataset.taskId,date:iso(new Date())});
   });
   // Genskab den side, browserens adresse peger på (så en genindlæsning bliver på samme side)
-  var initialPage=location.hash.slice(1);
-  if(initialPage&&VALID_PAGES.indexOf(initialPage)>-1)switchPage(initialPage,true);
+  var initialParts=location.hash.slice(1).split('/');
+  var initialPage=initialParts[0];
+  if(initialPage&&VALID_PAGES.indexOf(initialPage)>-1){
+    switchPage(initialPage,true);
+    if(initialPage==='finance'&&initialParts[1])switchFintab(initialParts[1]);
+  }
 }
 
 // FLYDENDE NOTE-BLOK

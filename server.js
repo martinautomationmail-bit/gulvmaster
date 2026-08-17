@@ -360,7 +360,9 @@ async function initSchema() {
 
     -- Husker hvilke bankposteringer der allerede er matchet og anvendt, så de ikke
     -- dukker op som "nye" igen næste gang samme (eller et overlappende) bankudtog
-    -- uploades — svarer til Billys "Åbne / Afstemt"-faner.
+    -- uploades — svarer til Billys "Åbne / Afstemt"-faner. "kind" skelner mellem en
+    -- rigtig faktura-match og en postering der bevidst er fjernet som irrelevant
+    -- (fx løn, interne overførsler) — begge dele skal huskes på tværs af uploads.
     CREATE TABLE IF NOT EXISTS finance_bank_reconciled (
       external_id TEXT PRIMARY KEY,
       txn_date TEXT,
@@ -368,7 +370,19 @@ async function initSchema() {
       txn_amount NUMERIC,
       document_id TEXT,
       customer TEXT,
+      kind TEXT DEFAULT 'matched',
       reconciled_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    ALTER TABLE finance_bank_reconciled ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'matched';
+
+    -- Gemmer det senest uploadede bankudtog (med alle match-forslag) server-side, så
+    -- man kan forlade siden eller genindlæse browseren uden at skulle uploade filen
+    -- igen — den ligger her indtil næste fil uploades og overskriver den.
+    CREATE TABLE IF NOT EXISTS finance_bank_session (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      filename TEXT,
+      transactions_json TEXT,
+      uploaded_at TEXT DEFAULT ${nowTextSQL()}
     );
 
     -- SYSTEMLOG: én fælles logbog for alt der kører automatisk i baggrunden (JobTread-
@@ -4253,6 +4267,8 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   monthsBack = monthsBack != null ? monthsBack : 1;
   monthsForward = monthsForward != null ? monthsForward : 1;
   const today = new Date();
+  const todayIso = today.toISOString().slice(0, 10);
+  const currentMonthKey = todayIso.slice(0, 7);
   const rangeStart = new Date(today.getFullYear(), today.getMonth() - monthsBack, 1);
   const rangeEnd = new Date(today.getFullYear(), today.getMonth() + monthsForward + 1, 0);
   const fmt = d => d.toISOString().slice(0, 10);
@@ -4280,6 +4296,42 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     page++;
   }
 
+  // Byg ét sæt data pr. sag (ikke pr. opgave) — bruges til placeringslogikken nedenfor.
+  // "isActiveNow": har sagen en opgave der løber henover i dag, uanset hvornår den startede.
+  const jobInfo = {};
+  for (const t of allTasks) {
+    if (!t.job || !t.startDate) continue;
+    const jobId = t.job.id;
+    if (!jobInfo[jobId]) jobInfo[jobId] = { name: t.job.name, fag: t.job.customFieldValues?.nodes?.[0]?.value || 'Ukendt', earliestStart: t.startDate, isActiveNow: false };
+    else if (t.startDate < jobInfo[jobId].earliestStart) jobInfo[jobId].earliestStart = t.startDate;
+    if (t.startDate <= todayIso && (!t.endDate || t.endDate >= todayIso)) jobInfo[jobId].isActiveNow = true;
+  }
+  const uniqueJobIds = Object.keys(jobInfo);
+
+  // Henter fakturadatoer pr. sag — bruges til at placere FÆRDIGE (tidligere) måneder
+  // efter hvornår sagen faktisk blev faktureret, ikke hvornår opgaven oprindeligt stod
+  // til at starte (fx pga. udskydelser undervejs).
+  const invoiceMonthsByJob = {};
+  let invCursor, invPage = 0;
+  while (invPage < 20) {
+    const invArgs = { size: 100, where: { and: [['type', 'customerInvoice'], ['createdAt', '>=', fmt(rangeStart)], ['createdAt', '<=', fmt(rangeEnd)]] } };
+    if (invCursor) invArgs.page = invCursor;
+    const invData = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, documents: {
+      $: invArgs, nextPage: {}, nodes: { createdAt: {}, job: { id: {} } }
+    } } } }, 'Økonomi: fakturadatoer i vindue');
+    const invNodes = invData?.organization?.documents?.nodes || [];
+    for (const d of invNodes) {
+      if (!d.job || !d.createdAt) continue;
+      const mk = d.createdAt.slice(0, 7);
+      if (!invoiceMonthsByJob[d.job.id]) invoiceMonthsByJob[d.job.id] = new Set();
+      invoiceMonthsByJob[d.job.id].add(mk);
+    }
+    const invNext = invData?.organization?.documents?.nextPage;
+    if (!invNext) break;
+    invCursor = invNext;
+    invPage++;
+  }
+
   // FEJL RETTET (to fejl fundet samme dag): (1) at hente hver enkelt cost item pr.
   // opgave gav "Request Entity Too Large" hos JobTread så snart der var mere end en
   // håndfuld opgaver i vinduet — hele Omsætning pr. fag og Fakturaer gik i sort. (2)
@@ -4288,7 +4340,6 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   // dobbelt. Løsningen er at bruge JobTreads egne SUM/COUNT-aggregater filtreret på
   // dokumentstatus i stedet for at hente listen af linjer — ingen af de to fejl kan
   // opstå når vi aldrig henter de enkelte linjer, kun tre tal pr. sag.
-  const uniqueJobIds = [...new Set(allTasks.filter(t => t.job).map(t => t.job.id))];
   const approvedSumByJob = {}, documentedCountByJob = {}, totalSumByJob = {};
   const BATCH = 50;
   for (let i = 0; i < uniqueJobIds.length; i += BATCH) {
@@ -4338,22 +4389,45 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   const buckets = {};
   for (const mk of monthKeys) buckets[mk] = {};
 
-  for (const t of allTasks) {
-    if (!t.job || !t.startDate) continue;
-    const naturalMk = t.startDate.slice(0, 7);
-    const mk = monthOverrides[t.job.id] || naturalMk;
-    if (!buckets[mk]) continue;
-    if (buckets[mk][t.job.id]) continue;
-    const override = overrides[t.job.id];
-    const hasAnyDocument = !!documentedCountByJob[t.job.id];
-    let value = hasAnyDocument ? (approvedSumByJob[t.job.id] ?? null) : (totalSumByJob[t.job.id] ?? null);
+  // PLACERINGSLOGIK — tre forskellige regler afhængig af om måneden er fortid, nutid
+  // eller fremtid, fordi "hvornår hører denne sag til" betyder noget forskelligt alt
+  // efter hvor i forløbet sagen er:
+  //  • Tidligere måneder: placeres efter hvornår sagen rent faktisk blev FAKTURERET
+  //    (ikke hvornår opgaven oprindeligt stod til at starte).
+  //  • Denne måned: aktive sager lige nu, sager der starter denne måned, ELLER sager
+  //    der er blevet faktureret denne måned.
+  //  • Fremtidige måneder: kun sager med et godkendt (accepteret) tilbud planlagt til
+  //    den måned — et upåbegyndt/ikke-godkendt tilbud skal ikke tælle med i en
+  //    fremtidig omsætningsprognose.
+  for (const jobId of uniqueJobIds) {
+    const info = jobInfo[jobId];
+    const naturalMk = info.isActiveNow ? currentMonthKey : info.earliestStart.slice(0, 7);
+    const invoiceMonths = invoiceMonthsByJob[jobId] ? Array.from(invoiceMonthsByJob[jobId]).sort() : [];
+    const hasAnyDocument = !!documentedCountByJob[jobId];
+    const hasApprovedBudget = hasAnyDocument && approvedSumByJob[jobId] != null;
+
+    let bucketMk;
+    if (invoiceMonths.includes(currentMonthKey)) {
+      bucketMk = currentMonthKey;
+    } else if (naturalMk < currentMonthKey) {
+      const pastInvoiceMonths = invoiceMonths.filter(m => m < currentMonthKey);
+      bucketMk = pastInvoiceMonths.length ? pastInvoiceMonths[pastInvoiceMonths.length - 1] : naturalMk;
+    } else if (naturalMk === currentMonthKey) {
+      bucketMk = currentMonthKey;
+    } else {
+      bucketMk = hasApprovedBudget ? naturalMk : null;
+    }
+
+    const mk = monthOverrides[jobId] || bucketMk;
+    if (mk == null || !buckets[mk]) continue;
+    const override = overrides[jobId];
+    let value = hasAnyDocument ? (approvedSumByJob[jobId] ?? null) : (totalSumByJob[jobId] ?? null);
     let excluded = false;
     if (override) {
       if (override.excluded) excluded = true;
       else if (override.amount !== null && override.amount !== undefined) value = override.amount;
     }
-    const fag = t.job.customFieldValues?.nodes?.[0]?.value || 'Ukendt';
-    buckets[mk][t.job.id] = { jobId: t.job.id, name: t.job.name, fag, value, excluded, hasOverride: !!override, startDate: t.startDate, monthMoved: mk !== naturalMk, naturalMonth: naturalMk };
+    buckets[mk][jobId] = { jobId, name: info.name, fag: info.fag, value, excluded, hasOverride: !!override, startDate: info.earliestStart, monthMoved: mk !== bucketMk, naturalMonth: bucketMk };
   }
 
   const manualRows = await pool.query('SELECT * FROM finance_manual_revenue WHERE month_key = ANY($1)', [monthKeys]);
@@ -4854,19 +4928,39 @@ app.post('/api/finance/bank-statement/parse', auth, financeOnly, uploadBankState
   const invoices = await fetchFinanceInvoices();
   const matched = matchTransactionsToInvoices(transactions, invoices).map(t => {
     const rec = reconciledByExternalId[t.externalId];
-    return rec ? { ...t, alreadyReconciled: { customer: rec.customer, reconciledAt: rec.reconciled_at, documentId: rec.document_id } } : t;
+    return rec ? { ...t, alreadyReconciled: { customer: rec.customer, reconciledAt: rec.reconciled_at, documentId: rec.document_id, kind: rec.kind || 'matched' } } : t;
   });
-  res.json({ transactions: matched, count: transactions.length });
+  // Gemmer filen server-side, så man kan forlade siden eller genindlæse browseren
+  // uden at skulle uploade den samme fil igen — den ligger her indtil næste upload.
+  await pool.query(`
+    INSERT INTO finance_bank_session (id,filename,transactions_json,uploaded_at) VALUES (1,$1,$2,${nowTextSQL()})
+    ON CONFLICT (id) DO UPDATE SET filename=$1,transactions_json=$2,uploaded_at=${nowTextSQL()}
+  `, [req.file.originalname || null, JSON.stringify(matched)]);
+  res.json({ transactions: matched, count: transactions.length, filename: req.file.originalname });
+}));
+app.get('/api/finance/bank-statement/session', auth, financeOnly, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT * FROM finance_bank_session WHERE id=1');
+  if (!row) return res.json({ transactions: null });
+  let transactions = [];
+  try { transactions = JSON.parse(row.transactions_json || '[]'); } catch (e) { transactions = []; }
+  res.json({ transactions, filename: row.filename, uploadedAt: row.uploaded_at });
 }));
 
 app.post('/api/finance/bank-statement/mark-reconciled', auth, financeOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.externalId) return res.status(400).json({ error: 'Mangler transaktions-id' });
+  const kind = body.kind === 'ignored' ? 'ignored' : 'matched';
   await pool.query(`
-    INSERT INTO finance_bank_reconciled (external_id,txn_date,txn_text,txn_amount,document_id,customer,reconciled_at)
-    VALUES ($1,$2,$3,$4,$5,$6,${nowTextSQL()})
-    ON CONFLICT (external_id) DO UPDATE SET document_id=$5,customer=$6,reconciled_at=${nowTextSQL()}
-  `, [body.externalId, body.date || null, body.text || null, body.amount || null, body.documentId || null, body.customer || null]);
+    INSERT INTO finance_bank_reconciled (external_id,txn_date,txn_text,txn_amount,document_id,customer,kind,reconciled_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()})
+    ON CONFLICT (external_id) DO UPDATE SET document_id=$5,customer=$6,kind=$7,reconciled_at=${nowTextSQL()}
+  `, [body.externalId, body.date || null, body.text || null, body.amount || null, body.documentId || null, body.customer || null, kind]);
+  res.json({ ok: true });
+}));
+app.post('/api/finance/bank-statement/unreconcile', auth, financeOnly, asyncRoute(async (req, res) => {
+  const externalId = String(req.body?.externalId || '');
+  if (!externalId) return res.status(400).json({ error: 'Mangler transaktions-id' });
+  await pool.query('DELETE FROM finance_bank_reconciled WHERE external_id=$1', [externalId]);
   res.json({ ok: true });
 }));
 // ── Faste udgifter ──
