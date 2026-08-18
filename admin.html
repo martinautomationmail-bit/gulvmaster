@@ -256,12 +256,15 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-omsaetning .fin-eyebrow{font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--bly-sub);margin-bottom:10px}
 #page-finance #fintab-omsaetning .fin-kpi-value{color:var(--bly-ink);letter-spacing:-.01em}
 #page-finance #fintab-omsaetning .fin-kpi-sub{color:var(--bly-sub)}
-#page-finance #fintab-omsaetning .fin-month-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);box-shadow:none;overflow:visible}
-#page-finance #fintab-omsaetning .fin-month-head{background:none;padding:16px 20px;border-bottom:1px solid var(--bly-border-soft);text-align:left;display:flex;align-items:center;justify-content:space-between;border-radius:var(--bly-r-lg) var(--bly-r-lg) 0 0}
-#page-finance #fintab-omsaetning .fin-month-head-current{background:var(--bly-accent-soft)}
-#page-finance #fintab-omsaetning .fin-month-name{font-size:14.5px;font-weight:800;color:var(--bly-ink)}
+.om-months-center{max-width:760px;margin:0 auto;padding:0 40px}
+@media(max-width:900px){.om-months-center{padding:0 16px}}
+#page-finance #fintab-omsaetning .fin-month-card{background:none;border:0;border-radius:0;box-shadow:none;overflow:visible;margin-bottom:36px}
+#page-finance #fintab-omsaetning .fin-month-card:last-child{margin-bottom:0}
+#page-finance #fintab-omsaetning .fin-month-head{background:none;padding:0 0 14px;border-bottom:1.5px solid var(--bly-border-soft);text-align:left;display:flex;align-items:center;justify-content:space-between;border-radius:0;margin-bottom:16px}
+#page-finance #fintab-omsaetning .fin-month-head-current{background:none}
+#page-finance #fintab-omsaetning .fin-month-name{font-size:19px;font-weight:800;color:var(--bly-ink)}
 #page-finance #fintab-omsaetning .fin-month-badge{font-size:10px;font-weight:800;color:var(--bly-accent);background:#fff;padding:3px 10px;border-radius:var(--bly-r-pill);border:1px solid var(--bly-accent)}
-#page-finance #fintab-omsaetning .fin-month-body{padding:16px 20px}
+#page-finance #fintab-omsaetning .fin-month-body{padding:0}
 #page-finance #fintab-omsaetning .fin-fagbar-row{padding:9px 8px;border-radius:var(--bly-r-sm)}
 #page-finance #fintab-omsaetning .fin-fagbar-row:hover{background:var(--bly-hover)}
 #page-finance #fintab-omsaetning .fin-fagbar-row.active{background:var(--bly-accent-soft)}
@@ -277,6 +280,7 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-omsaetning .om-row-name{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:13.5px}
 #page-finance #fintab-omsaetning .om-row-amount{font-weight:800;font-size:13.5px;white-space:nowrap;padding-top:1px}
 #page-finance #fintab-omsaetning .om-row-bottom{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+#page-finance #fintab-omsaetning .om-reason-note{margin-left:8px;font-size:10.5px;font-weight:600;color:var(--bly-accent);cursor:help;border-bottom:1px dashed var(--bly-accent)}
 #page-finance #fintab-omsaetning .om-row-controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 #page-finance #fintab-omsaetning .fin-status-dots{gap:5px}
 #page-finance #fintab-omsaetning .fin-status-dot{width:13px;height:13px}
@@ -1026,7 +1030,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-18.7</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-18.8</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -1261,10 +1265,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div class="fintabpage" id="fintab-omsaetning" style="display:none">
+   <div class="om-months-center">
     <div id="fin-revenue-kpis" class="bly-kpi-row" style="grid-template-columns:repeat(4,1fr)"></div>
     <div class="bly-toolbar-left" style="margin-bottom:14px">
       <select class="fin-status bly-select" id="fin-revenue-period" style="width:auto">
-        <option value="0,2">Denne, næste og måneden efter (standard)</option>
+        <option value="0,1">Denne og næste måned (standard)</option>
+        <option value="0,2">Denne, næste og måneden efter</option>
         <option value="1,1">Sidste, denne og næste måned</option>
         <option value="3,1">Sidste 3 måneder</option>
         <option value="6,1">Sidste 6 måneder</option>
@@ -1283,7 +1289,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <option value="unmarked">Kun umarkerede</option>
       </select>
     </div>
-    <div id="fin-revenue-months" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px"></div>
+    <div id="fin-revenue-months"></div>
+   </div>
   </div>
 
   <div class="fintabpage" id="fintab-fakturaer" style="display:none">
@@ -5335,7 +5342,7 @@ var finExpenseMonth=new Date().toISOString().slice(0,7);
 async function loadFinance(){
   var el=document.getElementById('fin-month-current');
   el.innerHTML='<div class="dash-empty">Henter live data fra JobTread…</div>';
-  var revenueP=api('/api/finance/revenue?monthsBack=0&monthsForward=2');
+  var revenueP=api('/api/finance/revenue?monthsBack=0&monthsForward=1');
   var invoicesP=api('/api/finance/invoices');
   var expensesP=api('/api/finance/expenses?month='+finExpenseMonth);
   var snapshotsP=api('/api/finance/bank-snapshots');
@@ -6314,15 +6321,16 @@ function renderFinRevenue(){
       var otherMonths=months.filter(function(x){return x!==mk;});
       var moveBtn=(j.jobId&&!j.manual&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" data-cur-month="'+mk+'" title="Flyt sagen til en anden måned"><option value="">→ flyt</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+'</option>';}).join('')+'</select>'):'';
       var jtBtn=(j.jobId?'<a href="https://app.jobtread.com/jobs/'+esc(j.jobId)+'/documents" target="_blank" rel="noopener" class="fin-edit-btn" title="Åbn sagen i JobTread">🔗</a>':'');
-      var srcLbl={invoice:'kilde: faktura',order:'kilde: godkendt tilbud',costItems:'kilde: rå linjer (intet godkendt tilbud endnu)'}[j.valueSource]||'';
+      var srcLbl={invoice:'Beløb inkl. moms — hentet fra godkendt faktura',order:'Beløb inkl. moms — hentet fra godkendt/accepteret tilbud (ingen faktura endnu)',costItems:'Beløb inkl. moms — estimeret (25% lagt til) ud fra rå linjer, da der ikke er noget godkendt tilbud endnu'}[j.valueSource]||'';
       var badges=(j.hasOverride?'<span class="fin-badge ok">rettet</span>':'')+(j.manual?'<span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?'<span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(j.priceMismatch?'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Godkendt tilbud og faktura afviger mere end 15% — tjek om der blev lavet mere/mindre end aftalt">⚠ tilbud ≠ faktura</span>':'')+(stMeta?'<span class="fin-badge" style="background:'+stMeta.color+';color:'+(st==='invoiced'?'#166534':'#fff')+'">'+stMeta.label+'</span>':'');
+      var reasonNote=j.placementReason?'<span class="om-reason-note" title="'+esc(j.placementReason)+'">ⓘ hvorfor her?</span>':'';
       return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'" '+(stMeta?'style="background:'+stMeta.bg+(st==='invoiced'?';color:#fff':'')+'"':'')+'>'+
         '<div class="om-row-top">'+
           '<div class="om-row-name"><b>'+esc(j.name)+'</b>'+badges+'</div>'+
           '<div class="om-row-amount">'+(j.value===null?'<span class="fin-badge">intet budget</span>':'<span'+(srcLbl?' title="'+srcLbl+'"':'')+'>'+krFmt(j.value)+'</span>')+'</div>'+
         '</div>'+
         '<div class="om-row-bottom">'+
-          '<div class="fin-muted" style="'+(st==='invoiced'?'color:rgba(255,255,255,.75)':'')+'">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div>'+
+          '<div class="fin-muted" style="'+(st==='invoiced'?'color:rgba(255,255,255,.75)':'')+'">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+reasonNote+'</div>'+
           '<div class="om-row-controls">'+
             '<span class="fin-status-dots">'+dots+'</span>'+
             moveBtn+jtBtn+

@@ -4353,14 +4353,16 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     const idBatch = uniqueJobIds.slice(i, i + BATCH);
     const docsData = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
       $: { size: idBatch.length, where: ['id', 'in', idBatch] },
-      nodes: { id: {}, documents: { $: { size: 20, where: ['type', 'in', ['customerOrder', 'customerInvoice']] }, nodes: { type: {}, status: {}, price: {} } } }
+      nodes: { id: {}, documents: { $: { size: 20, where: ['type', 'in', ['customerOrder', 'customerInvoice']] }, nodes: { type: {}, status: {}, price: {}, priceWithTax: {} } } }
     } } } }, 'Økonomi: tilbud/ordre/faktura pr. sag');
     for (const j of docsData?.organization?.jobs?.nodes || []) {
       const docs = j.documents?.nodes || [];
       const invoices = docs.filter(d => d.type === 'customerInvoice' && d.status === 'approved');
       const orders = docs.filter(d => d.type === 'customerOrder' && d.status === 'approved');
-      const invSum = invoices.reduce((s, d) => s + (d.price || 0), 0);
-      const orderSum = orders.reduce((s, d) => s + (d.price || 0), 0);
+      // Martin vil have tallene INKL. moms (priceWithTax), ikke ekskl. (price) — bruges
+      // konsekvent til både summen og mismatch-tjekket herunder.
+      const invSum = invoices.reduce((s, d) => s + (d.priceWithTax != null ? d.priceWithTax : (d.price || 0)), 0);
+      const orderSum = orders.reduce((s, d) => s + (d.priceWithTax != null ? d.priceWithTax : (d.price || 0)), 0);
       let value = null, source = null;
       if (invoices.length) { value = invSum; source = 'invoice'; }
       else if (orders.length) { value = orderSum; source = 'order'; }
@@ -4378,7 +4380,11 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
       $: { size: idBatch.length, where: ['id', 'in', idBatch] },
       nodes: { id: {}, costItems: { sum: { $: 'price' } } }
     } } } }, 'Økonomi: rå sum pr. sag uden tilbud');
-    for (const j of totalData?.organization?.jobs?.nodes || []) totalSumByJob[j.id] = j.costItems.sum;
+    // Cost items har ikke deres eget moms-felt (de er interne budgetlinjer, ikke et
+    // kundevendt dokument) — her er der intet godkendt tilbud/faktura at læse momsen fra
+    // endnu, så beløbet estimeres med 25% moms lagt til, så det stemmer overens med resten
+    // af tallene, der nu alle er inkl. moms.
+    for (const j of totalData?.organization?.jobs?.nodes || []) totalSumByJob[j.id] = j.costItems.sum != null ? j.costItems.sum * 1.25 : null;
   }
 
   const overridesResult = await pool.query('SELECT * FROM finance_job_overrides');
@@ -4419,20 +4425,34 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     const hasAnyDocument = !!revInfo.hasDocument;
     const hasApprovedBudget = hasAnyDocument && revInfo.value != null;
 
-    let bucketMk;
+    // PLACERINGSÅRSAG — en klar, læsbar sætning der forklarer PRÆCIS hvorfor sagen
+    // landede i denne måned, så Martin hurtigt kan validere om det er korrekt (i stedet
+    // for at skulle regne den komplicerede logik ovenfor ud i hovedet hver gang).
+    let bucketMk, reason;
     if (invoiceMonths.includes(currentMonthKey)) {
       bucketMk = currentMonthKey;
+      reason = 'Der er lavet en faktura på sagen i denne måned.';
     } else if (naturalMk < currentMonthKey) {
       const pastInvoiceMonths = invoiceMonths.filter(m => m < currentMonthKey);
-      bucketMk = pastInvoiceMonths.length ? pastInvoiceMonths[pastInvoiceMonths.length - 1] : naturalMk;
+      if (pastInvoiceMonths.length) {
+        bucketMk = pastInvoiceMonths[pastInvoiceMonths.length - 1];
+        reason = 'Placeret efter seneste faktura (' + bucketMk + ') — sagens opgaver startede oprindeligt ' + naturalMk + '.';
+      } else {
+        bucketMk = naturalMk;
+        reason = 'Ingen faktura fundet endnu — placeret efter sagens oprindelige startdato (' + naturalMk + ').';
+      }
     } else if (naturalMk === currentMonthKey) {
       bucketMk = currentMonthKey;
+      reason = info.isActiveNow ? 'Sagen har en opgave der kører lige nu (henover dags dato).' : 'Sagens tidligste opgave starter denne måned (' + naturalMk + ').';
     } else {
       bucketMk = hasApprovedBudget ? naturalMk : null;
+      reason = hasApprovedBudget ? 'Fremtidig måned — medtaget fordi der er et godkendt tilbud/faktura på sagen (' + (revInfo.source === 'invoice' ? 'faktura' : 'tilbud') + ').' : 'Fremtidig måned uden godkendt tilbud endnu — sagen vises ikke.';
     }
 
-    const mk = monthOverrides[jobId] || bucketMk;
+    const manualOverrideMk = monthOverrides[jobId];
+    const mk = manualOverrideMk || bucketMk;
     if (mk == null || !buckets[mk]) continue;
+    if (manualOverrideMk) reason = 'Manuelt flyttet hertil af dig. (Ville ellers automatisk have ligget i ' + bucketMk + ': ' + reason.charAt(0).toLowerCase() + reason.slice(1) + ')';
     const override = overrides[jobId];
     let value = hasAnyDocument ? (revInfo.value ?? null) : (totalSumByJob[jobId] ?? null);
     let excluded = false;
@@ -4440,7 +4460,7 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
       if (override.excluded) excluded = true;
       else if (override.amount !== null && override.amount !== undefined) value = override.amount;
     }
-    buckets[mk][jobId] = { jobId, name: info.name, fag: info.fag, value, excluded, hasOverride: !!override, startDate: info.earliestStart, monthMoved: mk !== bucketMk, naturalMonth: bucketMk, valueSource: hasAnyDocument ? revInfo.source : (value != null ? 'costItems' : null), priceMismatch: !!revInfo.priceMismatch };
+    buckets[mk][jobId] = { jobId, name: info.name, fag: info.fag, value, excluded, hasOverride: !!override, startDate: info.earliestStart, monthMoved: mk !== bucketMk, naturalMonth: bucketMk, valueSource: hasAnyDocument ? revInfo.source : (value != null ? 'costItems' : null), priceMismatch: !!revInfo.priceMismatch, placementReason: reason };
   }
 
   const manualRows = await pool.query('SELECT * FROM finance_manual_revenue WHERE month_key = ANY($1)', [monthKeys]);
@@ -4448,7 +4468,7 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   const result = {};
   for (const mk of monthKeys) {
     const jobs = Object.values(buckets[mk]).filter(j => !j.excluded);
-    const manualForMonth = manualRows.rows.filter(r => r.month_key === mk).map(r => ({ jobId: 'manual-' + r.id, manualId: r.id, name: r.name, fag: r.fag, value: r.amount, excluded: false, hasOverride: false, manual: true }));
+    const manualForMonth = manualRows.rows.filter(r => r.month_key === mk).map(r => ({ jobId: 'manual-' + r.id, manualId: r.id, name: r.name, fag: r.fag, value: r.amount, excluded: false, hasOverride: false, manual: true, placementReason: 'Tilføjet manuelt direkte i denne måned af dig.' }));
     const allJobs = jobs.concat(manualForMonth);
     const byFag = {};
     let total = 0;
