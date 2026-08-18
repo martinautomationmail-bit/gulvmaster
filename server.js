@@ -4332,34 +4332,46 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     invPage++;
   }
 
-  // FEJL RETTET (to fejl fundet samme dag): (1) at hente hver enkelt cost item pr.
-  // opgave gav "Request Entity Too Large" hos JobTread så snart der var mere end en
-  // håndfuld opgaver i vinduet — hele Omsætning pr. fag og Fakturaer gik i sort. (2)
-  // selv når det virkede, kunne samme sag have sine cost items gengivet TO gange
-  // (basis-linjer + et godkendt tilbud med identiske beløb), så beløbet blev talt
-  // dobbelt. Løsningen er at bruge JobTreads egne SUM/COUNT-aggregater filtreret på
-  // dokumentstatus i stedet for at hente listen af linjer — ingen af de to fejl kan
-  // opstå når vi aldrig henter de enkelte linjer, kun tre tal pr. sag.
-  const approvedSumByJob = {}, documentedCountByJob = {}, totalSumByJob = {};
+  // FEJL RETTET (tre fejl fundet, seneste den vigtigste): (1) at hente hver enkelt
+  // cost item pr. opgave gav "Request Entity Too Large" hos JobTread så snart der var
+  // mere end en håndfuld opgaver i vinduet. (2) at summere cost items filtreret på
+  // "document.status=approved" tæller forkert, fordi EN sag typisk har FLERE godkendte
+  // dokumenter i sit forløb (tilbud → ordre → faktura), og JobTread kopierer linjerne
+  // over på hvert nyt dokument — så samme linjer bliver talt 2-3 gange, fordi de findes
+  // på flere godkendte dokumenter samtidig (set direkte i data for "Mie Deign", hvor
+  // reelt 25.060 kr blev vist som 50.120 kr fordi ordre + faktura begge var "approved").
+  // LØSNING: brug dokumentets EGET price-felt i stedet for at summere linjer på tværs
+  // af dokumenter. Prioritet: (a) godkendt/approved FAKTURA — det er det der faktisk er
+  // faktureret, og kan afvige fra tilbuddet hvis der blev lavet mere/mindre end aftalt;
+  // (b) hvis ingen faktura endnu, brug den godkendte/accepterede ORDRE (tilbud); (c) hvis
+  // intet af det findes, fald tilbage til rå cost-item-sum (interne linjer uden dokument).
+  // Hvis både ordre og faktura findes men beløbene afviger markant (>15%), flages sagen
+  // (priceMismatch) i stedet for stiltiende at vælge det ene — så det kan tjekkes manuelt.
+  const jobRevenueInfo = {}, totalSumByJob = {};
   const BATCH = 50;
   for (let i = 0; i < uniqueJobIds.length; i += BATCH) {
     const idBatch = uniqueJobIds.slice(i, i + BATCH);
-    const [approvedData, countData] = await Promise.all([
-      jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
-        $: { size: idBatch.length, where: ['id', 'in', idBatch] },
-        nodes: { id: {}, costItems: { $: { where: [['document', 'status'], 'approved'] }, sum: { $: 'price' } } }
-      } } } }, 'Økonomi: godkendt budget pr. sag'),
-      jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
-        $: { size: idBatch.length, where: ['id', 'in', idBatch] },
-        nodes: { id: {}, costItems: { $: { where: [['document', 'status'], '!=', null] }, count: {} } }
-      } } } }, 'Økonomi: tilbud-status pr. sag')
-    ]);
-    for (const j of approvedData?.organization?.jobs?.nodes || []) approvedSumByJob[j.id] = j.costItems.sum;
-    for (const j of countData?.organization?.jobs?.nodes || []) documentedCountByJob[j.id] = j.costItems.count;
+    const docsData = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
+      $: { size: idBatch.length, where: ['id', 'in', idBatch] },
+      nodes: { id: {}, documents: { $: { size: 20, where: ['type', 'in', ['customerOrder', 'customerInvoice']] }, nodes: { type: {}, status: {}, price: {} } } }
+    } } } }, 'Økonomi: tilbud/ordre/faktura pr. sag');
+    for (const j of docsData?.organization?.jobs?.nodes || []) {
+      const docs = j.documents?.nodes || [];
+      const invoices = docs.filter(d => d.type === 'customerInvoice' && d.status === 'approved');
+      const orders = docs.filter(d => d.type === 'customerOrder' && d.status === 'approved');
+      const invSum = invoices.reduce((s, d) => s + (d.price || 0), 0);
+      const orderSum = orders.reduce((s, d) => s + (d.price || 0), 0);
+      let value = null, source = null;
+      if (invoices.length) { value = invSum; source = 'invoice'; }
+      else if (orders.length) { value = orderSum; source = 'order'; }
+      const priceMismatch = !!(invoices.length && orders.length && orderSum > 0 && Math.abs(invSum - orderSum) / orderSum > 0.15);
+      jobRevenueInfo[j.id] = { value, source, hasDocument: invoices.length > 0 || orders.length > 0, priceMismatch };
+    }
   }
-  // Fald tilbage til rå cost-item-sum KUN for sager der slet ikke har noget tilbud
-  // endnu (interne linjer uden formelt dokument) — ellers ville de altid vise "intet budget".
-  const fallbackJobIds = uniqueJobIds.filter(id => !documentedCountByJob[id]);
+  // Fald tilbage til rå cost-item-sum KUN for sager der slet ikke har nogen godkendt
+  // ordre eller faktura endnu (interne linjer uden formelt dokument) — ellers ville de
+  // altid vise "intet budget".
+  const fallbackJobIds = uniqueJobIds.filter(id => !jobRevenueInfo[id]?.hasDocument);
   for (let i = 0; i < fallbackJobIds.length; i += BATCH) {
     const idBatch = fallbackJobIds.slice(i, i + BATCH);
     const totalData = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
@@ -4403,8 +4415,9 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     const info = jobInfo[jobId];
     const naturalMk = info.isActiveNow ? currentMonthKey : info.earliestStart.slice(0, 7);
     const invoiceMonths = invoiceMonthsByJob[jobId] ? Array.from(invoiceMonthsByJob[jobId]).sort() : [];
-    const hasAnyDocument = !!documentedCountByJob[jobId];
-    const hasApprovedBudget = hasAnyDocument && approvedSumByJob[jobId] != null;
+    const revInfo = jobRevenueInfo[jobId] || {};
+    const hasAnyDocument = !!revInfo.hasDocument;
+    const hasApprovedBudget = hasAnyDocument && revInfo.value != null;
 
     let bucketMk;
     if (invoiceMonths.includes(currentMonthKey)) {
@@ -4421,13 +4434,13 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     const mk = monthOverrides[jobId] || bucketMk;
     if (mk == null || !buckets[mk]) continue;
     const override = overrides[jobId];
-    let value = hasAnyDocument ? (approvedSumByJob[jobId] ?? null) : (totalSumByJob[jobId] ?? null);
+    let value = hasAnyDocument ? (revInfo.value ?? null) : (totalSumByJob[jobId] ?? null);
     let excluded = false;
     if (override) {
       if (override.excluded) excluded = true;
       else if (override.amount !== null && override.amount !== undefined) value = override.amount;
     }
-    buckets[mk][jobId] = { jobId, name: info.name, fag: info.fag, value, excluded, hasOverride: !!override, startDate: info.earliestStart, monthMoved: mk !== bucketMk, naturalMonth: bucketMk };
+    buckets[mk][jobId] = { jobId, name: info.name, fag: info.fag, value, excluded, hasOverride: !!override, startDate: info.earliestStart, monthMoved: mk !== bucketMk, naturalMonth: bucketMk, valueSource: hasAnyDocument ? revInfo.source : (value != null ? 'costItems' : null), priceMismatch: !!revInfo.priceMismatch };
   }
 
   const manualRows = await pool.query('SELECT * FROM finance_manual_revenue WHERE month_key = ANY($1)', [monthKeys]);
