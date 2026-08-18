@@ -1032,7 +1032,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-18.9</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-18.10</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -6281,7 +6281,7 @@ function renderFinRevenue(){
   var MAANEDE_FULDE=['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'];
   var thisMonthKey=iso(new Date()).slice(0,7);
   var months=Object.keys(finRevenue).sort();
-  var STATUS_META={running:{label:'Kørende',color:'#15803D',bg:'#DCFCE7',dot:'#4ADE80'},invoiced:{label:'Faktureret',color:'#fff',bg:'#166534',dot:'#166534'},hold:{label:'På hold',color:'#92400E',bg:'#FEF9C3',dot:'#FACC15'},done:{label:'Færdig',color:'#1D4ED8',bg:'#DBEAFE',dot:'#3B82F6'}};
+  var STATUS_META={running:{label:'Kørende',color:'#15803D',bg:'#DCFCE7',dot:'#4ADE80'},invoiced:{label:'Faktureret',color:'#6D28D9',bg:'#EDE9FE',dot:'#8B5CF6'},hold:{label:'På hold',color:'#92400E',bg:'#FEF9C3',dot:'#FACC15'},done:{label:'Færdig',color:'#1D4ED8',bg:'#DBEAFE',dot:'#3B82F6'}};
   el.innerHTML=months.map(function(mk){
     var mAll=finRevenue[mk];
     // Dato-filter: kun sager hvis planlagte startdato falder i det valgte interval.
@@ -6323,16 +6323,18 @@ function renderFinRevenue(){
       var otherMonths=months.filter(function(x){return x!==mk;});
       var moveBtn=(j.jobId&&!j.manual&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" data-cur-month="'+mk+'" title="Flyt sagen til en anden måned"><option value="">→ flyt</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+'</option>';}).join('')+'</select>'):'';
       var jtBtn=(j.jobId?'<a href="https://app.jobtread.com/jobs/'+esc(j.jobId)+'/documents" target="_blank" rel="noopener" class="fin-edit-btn" title="Åbn sagen i JobTread">🔗</a>':'');
+      var SRC_META={invoice:{label:'Faktura',bg:'#DCFCE7',color:'#166534'},order:{label:'Tilbud accept',bg:'#DBEAFE',color:'#1D4ED8'},costItems:{label:'Budget (est.)',bg:'#FEF3C7',color:'#92400E'}};
+      var srcMeta=SRC_META[j.valueSource];
       var srcLbl={invoice:'Beløb inkl. moms — hentet fra godkendt faktura',order:'Beløb inkl. moms — hentet fra godkendt/accepteret tilbud (ingen faktura endnu)',costItems:'Beløb inkl. moms — estimeret (25% lagt til) ud fra rå linjer, da der ikke er noget godkendt tilbud endnu'}[j.valueSource]||'';
-      var badges=(j.hasOverride?'<span class="fin-badge ok">rettet</span>':'')+(j.manual?'<span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?'<span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(j.priceMismatch?'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Godkendt tilbud og faktura afviger mere end 15% — tjek om der blev lavet mere/mindre end aftalt">⚠ tilbud ≠ faktura</span>':'')+(stMeta?'<span class="fin-badge" style="background:'+stMeta.color+';color:'+(st==='invoiced'?'#166534':'#fff')+'">'+stMeta.label+'</span>':'');
-      var reasonNote=j.placementReason?'<span class="om-reason-note" title="'+esc(j.placementReason)+'">ⓘ hvorfor her?</span>':'';
-      return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'" '+(stMeta?'style="background:'+stMeta.bg+(st==='invoiced'?';color:#fff':'')+'"':'')+'>'+
+      var reasonBadge=srcMeta?'<span class="fin-badge" style="background:'+srcMeta.bg+';color:'+srcMeta.color+'"'+(j.placementReason?' title="'+esc(j.placementReason)+'"':'')+'>'+srcMeta.label+'</span>':'';
+      var badges=reasonBadge+(j.hasOverride?'<span class="fin-badge ok">rettet</span>':'')+(j.manual?'<span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?'<span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(j.priceMismatch?'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Godkendt tilbud og faktura afviger mere end 15% — tjek om der blev lavet mere/mindre end aftalt">⚠ tilbud ≠ faktura</span>':'')+(stMeta?'<span class="fin-badge" style="background:'+stMeta.color+';color:#fff">'+stMeta.label+'</span>':'');
+      return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'" '+(stMeta?'style="background:'+stMeta.bg+'"':'')+'>'+
         '<div class="om-row-top">'+
           '<div class="om-row-name"><b>'+esc(j.name)+'</b>'+badges+'</div>'+
           '<div class="om-row-amount">'+(j.value===null?'<span class="fin-badge">intet budget</span>':'<span'+(srcLbl?' title="'+srcLbl+'"':'')+'>'+krFmt(j.value)+'</span>')+'</div>'+
         '</div>'+
         '<div class="om-row-bottom">'+
-          '<div class="fin-muted" style="'+(st==='invoiced'?'color:rgba(255,255,255,.75)':'')+'">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+reasonNote+'</div>'+
+          '<div class="fin-muted">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div>'+
           '<div class="om-row-controls">'+
             '<span class="fin-status-dots">'+dots+'</span>'+
             moveBtn+jtBtn+
