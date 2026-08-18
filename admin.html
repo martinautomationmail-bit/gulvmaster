@@ -270,9 +270,18 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-omsaetning .fin-fagbar-track{background:var(--bly-border-soft);border-radius:var(--bly-r-pill);height:7px}
 #page-finance #fintab-omsaetning .fin-fagbar-fill{border-radius:var(--bly-r-pill)}
 #page-finance #fintab-omsaetning .fin-fagbar-total{border-top:1.5px solid var(--bly-border-soft);color:var(--bly-ink);font-size:13px;padding:12px 6px 2px}
-#page-finance #fintab-omsaetning .fin-job-row{padding:12px 10px;border-bottom:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm);font-size:12.5px}
+#page-finance #fintab-omsaetning .fin-job-row{display:flex;flex-direction:column;align-items:stretch;gap:9px;padding:16px 14px;border-bottom:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm);font-size:12.5px}
 #page-finance #fintab-omsaetning .fin-job-row:hover{background:var(--bly-hover)}
 #page-finance #fintab-omsaetning .fin-job-row:last-child{border-bottom:0}
+#page-finance #fintab-omsaetning .om-row-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+#page-finance #fintab-omsaetning .om-row-name{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:13.5px}
+#page-finance #fintab-omsaetning .om-row-amount{font-weight:800;font-size:13.5px;white-space:nowrap;padding-top:1px}
+#page-finance #fintab-omsaetning .om-row-bottom{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+#page-finance #fintab-omsaetning .om-row-controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+#page-finance #fintab-omsaetning .fin-status-dots{gap:5px}
+#page-finance #fintab-omsaetning .fin-status-dot{width:13px;height:13px}
+#page-finance #fintab-omsaetning .fin-badge{margin:0}
+#page-finance #fintab-omsaetning .fin-move-month-select{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:6px 10px;font-size:11px;font-weight:600;color:var(--bly-ink);background:#fff}
 #page-finance #fintab-omsaetning .fin-add-btn{border:1.5px dashed var(--bly-border);color:var(--bly-sub);border-radius:var(--bly-r-sm);font-weight:700;background:transparent}
 #page-finance #fintab-omsaetning .fin-add-btn:hover{border-color:var(--bly-accent);color:var(--bly-accent)}
 #page-finance #fintab-omsaetning .fin-badge{background:var(--bly-accent-soft);color:var(--bly-accent);border-radius:var(--bly-r-pill);font-weight:700;text-transform:none;letter-spacing:0;font-size:10px}
@@ -1017,7 +1026,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-18.6</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-18.7</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -6306,15 +6315,21 @@ function renderFinRevenue(){
       var moveBtn=(j.jobId&&!j.manual&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" data-cur-month="'+mk+'" title="Flyt sagen til en anden måned"><option value="">→ flyt</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+'</option>';}).join('')+'</select>'):'';
       var jtBtn=(j.jobId?'<a href="https://app.jobtread.com/jobs/'+esc(j.jobId)+'/documents" target="_blank" rel="noopener" class="fin-edit-btn" title="Åbn sagen i JobTread">🔗</a>':'');
       var srcLbl={invoice:'kilde: faktura',order:'kilde: godkendt tilbud',costItems:'kilde: rå linjer (intet godkendt tilbud endnu)'}[j.valueSource]||'';
+      var badges=(j.hasOverride?'<span class="fin-badge ok">rettet</span>':'')+(j.manual?'<span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?'<span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(j.priceMismatch?'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Godkendt tilbud og faktura afviger mere end 15% — tjek om der blev lavet mere/mindre end aftalt">⚠ tilbud ≠ faktura</span>':'')+(stMeta?'<span class="fin-badge" style="background:'+stMeta.color+';color:'+(st==='invoiced'?'#166534':'#fff')+'">'+stMeta.label+'</span>':'');
       return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'" '+(stMeta?'style="background:'+stMeta.bg+(st==='invoiced'?';color:#fff':'')+'"':'')+'>'+
-        '<div><b>'+esc(j.name)+'</b>'+(j.hasOverride?' <span class="fin-badge ok">rettet</span>':'')+(j.manual?' <span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?' <span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(j.priceMismatch?' <span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Godkendt tilbud og faktura afviger mere end 15% — tjek om der blev lavet mere/mindre end aftalt">⚠ tilbud ≠ faktura</span>':'')+(stMeta?' <span class="fin-badge" style="background:'+stMeta.color+';color:'+(st==='invoiced'?'#166534':'#fff')+'">'+stMeta.label+'</span>':'')+
-        '<div class="fin-muted" style="'+(st==='invoiced'?'color:rgba(255,255,255,.75)':'')+'">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div></div>'+
-        '<span style="display:flex;align-items:center;gap:6px;white-space:nowrap">'+
-        '<span class="fin-status-dots">'+dots+'</span>'+
-        (j.value===null?'<span class="fin-badge">intet budget</span>':'<span'+(srcLbl?' title="'+srcLbl+'"':'')+'>'+krFmt(j.value)+'</span>')+
-        moveBtn+jtBtn+
-        '<button class="fin-edit-btn fin-job-edit-btn" '+editAttrs+' title="Ret beløb">✏</button>'+
-        '<button class="fin-edit-btn fin-job-del-btn" '+editAttrs+' title="'+(j.manual?'Slet linjen':'Udeluk fra beregningen')+'" style="color:#B91C1C">🗑</button></span></div>';
+        '<div class="om-row-top">'+
+          '<div class="om-row-name"><b>'+esc(j.name)+'</b>'+badges+'</div>'+
+          '<div class="om-row-amount">'+(j.value===null?'<span class="fin-badge">intet budget</span>':'<span'+(srcLbl?' title="'+srcLbl+'"':'')+'>'+krFmt(j.value)+'</span>')+'</div>'+
+        '</div>'+
+        '<div class="om-row-bottom">'+
+          '<div class="fin-muted" style="'+(st==='invoiced'?'color:rgba(255,255,255,.75)':'')+'">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div>'+
+          '<div class="om-row-controls">'+
+            '<span class="fin-status-dots">'+dots+'</span>'+
+            moveBtn+jtBtn+
+            '<button class="fin-edit-btn fin-job-edit-btn" '+editAttrs+' title="Ret beløb">✏</button>'+
+            '<button class="fin-edit-btn fin-job-del-btn" '+editAttrs+' title="'+(j.manual?'Slet linjen':'Udeluk fra beregningen')+'" style="color:#B91C1C">🗑</button>'+
+          '</div>'+
+        '</div></div>';
     }).join('');
     var jobsHeader=activeFag?'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px"><b class="fin-muted">Kun "'+esc(activeFag)+'" ('+visibleJobs.length+' sager)</b><button class="fin-edit-btn" data-action="fin-clear-fag-filter" data-month="'+mk+'" title="Vis alle fag igen">✕</button></div>':'';
     // Sagslisten er som standard skjult — kun fag-analysen er synlig med det samme.
