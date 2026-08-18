@@ -256,6 +256,8 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-omsaetning .fin-eyebrow{font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--bly-sub);margin-bottom:10px}
 #page-finance #fintab-omsaetning .fin-kpi-value{color:var(--bly-ink);letter-spacing:-.01em}
 #page-finance #fintab-omsaetning .fin-kpi-sub{color:var(--bly-sub)}
+.bly-dash-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+@media(max-width:860px){.bly-dash-grid{grid-template-columns:1fr}}
 .om-months-center{max-width:1180px;margin:0 auto;padding:0 40px}
 @media(max-width:900px){.om-months-center{padding:0 16px}}
 #fin-revenue-months{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;align-items:start}
@@ -1032,7 +1034,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-18.10</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-18.11</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -1240,6 +1242,26 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div class="fintabpage active" id="fintab-oversigt">
+    <div id="fin-billy-top" style="margin-bottom:28px">
+      <div class="bly-col" style="margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:16px">
+          <div style="font-size:19px;font-weight:800;color:var(--bly-ink)">Resultat i DKK <span class="fin-muted" style="font-weight:600;font-size:12px;margin-left:4px">inkl. moms</span></div>
+          <div id="fin-result-kpis" style="display:flex;gap:26px;flex-wrap:wrap"></div>
+        </div>
+        <div style="position:relative;height:260px"><canvas id="fin-result-chart"></canvas></div>
+      </div>
+      <div class="bly-dash-grid">
+        <div class="bly-col" id="fin-card-fakturaer"></div>
+        <div class="bly-col" id="fin-card-bank"></div>
+        <div class="bly-col" id="fin-card-moms"></div>
+        <div class="bly-col" id="fin-card-todo"></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin:8px 0 20px">
+      <div style="flex:1;height:1px;background:var(--bly-border-soft)"></div>
+      <span class="fin-muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Detaljer &amp; manuelle tal</span>
+      <div style="flex:1;height:1px;background:var(--bly-border-soft)"></div>
+    </div>
     <div id="fin-oversigt-boxes" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
       <div class="fin-card fin-resizable" draggable="true" data-drag-id="bank">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -5870,6 +5892,108 @@ function renderFinOverview(snapshots){
   document.getElementById('fin-month-next').innerHTML=monthBox(nextKey,'Løbende måned ('+nextKey+')',curResultForCumulative);
   finLastTrendArgs={prevKey:prevKey,curKey:curKey,nextKey:nextKey,udgForMonth:udgForMonth};
   loadFinWidgets();
+  renderFinResultChart();
+  renderFinInvoiceCard();
+  renderFinBankCard(snapshots);
+  renderFinMomsCard();
+  renderFinTodoCard();
+}
+// ══════════════════════════════════════════════════════════════
+// OVERSIGT — Billy-stil topsektion: samlet resultat-graf + de 4 faste
+// kort (Fakturaer/Bank/Moms/Opgaver), bygget oven på de samme datakilder
+// som resten af Økonomi-fanerne. Rent tilføjet ovenpå det gamle
+// snapshot-/graf-widget-system nedenfor — intet af det er fjernet.
+// ══════════════════════════════════════════════════════════════
+async function renderFinResultChart(){
+  var canvas=document.getElementById('fin-result-chart');
+  if(!canvas||typeof Chart==='undefined')return;
+  if(!finYearData){var r=await api('/api/finance/year-overview');if(r)finYearData=r;}
+  var kpiEl=document.getElementById('fin-result-kpis');
+  if(!finYearData){if(kpiEl)kpiEl.innerHTML='';return;}
+  var monthKeys=Object.keys(finYearData.months).sort();
+  var MAANEDER=['jan.','feb.','mar.','apr.','maj','jun.','jul.','aug.','sep.','okt.','nov.','dec.'];
+  var labels=[],oms=[],udgNeg=[],resultat=[],totalOms=0,totalUdg=0;
+  monthKeys.forEach(function(mk,i){
+    var m=finYearData.months[mk],o=m.total||0,u=m.expenses||0;
+    labels.push(MAANEDER[i]);oms.push(o);udgNeg.push(-u);resultat.push(o-u);
+    totalOms+=o;totalUdg+=u;
+  });
+  if(kpiEl)kpiEl.innerHTML=
+    '<div><div class="fin-muted" style="font-size:11px;font-weight:700">Omsætning</div><div style="font-size:19px;font-weight:800;color:#15803D">'+krFmt(totalOms)+'</div></div>'+
+    '<div><div class="fin-muted" style="font-size:11px;font-weight:700">Udgifter</div><div style="font-size:19px;font-weight:800;color:#DC2626">−'+krFmt(totalUdg)+'</div></div>'+
+    '<div><div class="fin-muted" style="font-size:11px;font-weight:700">Resultat</div><div style="font-size:19px;font-weight:800;color:var(--bly-ink)">'+krFmt(totalOms-totalUdg)+'</div></div>';
+  if(finResultChartInstance)finResultChartInstance.destroy();
+  finResultChartInstance=new Chart(canvas,{
+    data:{labels:labels,datasets:[
+      {type:'bar',label:'Omsætning',data:oms,backgroundColor:'#4ADE80',borderRadius:4,stack:'r',maxBarThickness:34,order:2},
+      {type:'bar',label:'Udgifter',data:udgNeg,backgroundColor:'#FCA5A5',borderRadius:4,stack:'r',maxBarThickness:34,order:2},
+      {type:'line',label:'Resultat',data:resultat,borderColor:'#C9CDD6',backgroundColor:'transparent',tension:.4,pointRadius:3,pointBackgroundColor:'#fff',pointBorderColor:'#9AA3B2',borderWidth:2,order:1,spanGaps:true}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{y:{stacked:true,grid:{color:'#F0F1F3'},ticks:{callback:function(v){return Math.abs(v)>=1000?(v/1000)+'k':v;}}},x:{stacked:true,grid:{display:false}}},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+krFmt(Math.abs(ctx.parsed.y||0));}}}}}
+  });
+}
+function finInvBoxHtml(color,bg,n,label,sum){
+  return '<div><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="width:18px;height:18px;border-radius:50%;background:'+bg+';color:'+color+';font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+n+'</span><span class="fin-muted" style="font-size:11.5px;font-weight:600">'+label+'</span></div><div style="font-size:19px;font-weight:800;color:var(--bly-ink)">'+krFmt(sum)+'</div></div>';
+}
+function renderFinInvoiceCard(){
+  var el=document.getElementById('fin-card-fakturaer');
+  if(!el)return;
+  var b={unpaid:{n:0,sum:0},partial:{n:0,sum:0},unclear:{n:0,sum:0}};
+  (finInvoices||[]).forEach(function(i){
+    if(i.overrideStatus==='unpaid'){b.unpaid.n++;b.unpaid.sum+=(i.priceWithTax||0);}
+    else if(i.overrideStatus==='partial'){b.partial.n++;b.partial.sum+=(i.remaining!=null?i.remaining:((i.priceWithTax||0)-(i.paidAmount||0)));}
+    else if(i.overrideStatus==='unclear'){b.unclear.n++;b.unclear.sum+=(i.priceWithTax||0);}
+  });
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Fakturaer</div><button class="bly-btn outline small" data-action="fin-goto-fakturaer">Opret faktura</button></div>'+
+    '<div style="display:flex;gap:28px;flex-wrap:wrap">'+
+    finInvBoxHtml('#DC2626','#FEF2F2',b.unpaid.n,'Udestående',b.unpaid.sum)+
+    finInvBoxHtml('#B45309','#FFFBEB',b.partial.n,'Delvist betalt',b.partial.sum)+
+    finInvBoxHtml('#6B7280','#F3F4F6',b.unclear.n,'Uafklaret',b.unclear.sum)+
+    '</div>';
+  var btn=el.querySelector('[data-action="fin-goto-fakturaer"]');
+  if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="fakturaer"]');if(t)t.click();});
+}
+function renderFinBankCard(snapshots){
+  var el=document.getElementById('fin-card-bank');
+  if(!el)return;
+  var latest=(snapshots&&snapshots[0])||null;
+  var saldo=latest?(+latest.hovedkonto||0):null;
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Bank</div><button class="bly-btn outline small" data-action="fin-goto-bank">Gå til bankafstemning</button></div>'+
+    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Lunar Hovedkonto'+(latest?' · seneste snapshot '+esc(latest.snap_date):' — intet snapshot endnu')+'</div>'+
+    '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(saldo!=null?krFmt(saldo):'–')+'</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft)"><span class="fin-muted" style="font-size:12px">Tilgodehavende (live)</span><b style="font-size:14px">'+krFmt(finTilgodehavende())+'</b></div>';
+  var btn=el.querySelector('[data-action="fin-goto-bank"]');
+  if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="bankafstemning"]');if(t)t.click();});
+}
+async function renderFinMomsCard(){
+  var el=document.getElementById('fin-card-moms');
+  if(!el)return;
+  var info=nextVatDeadline();
+  var today=new Date();today.setHours(0,0,0,0);
+  var daysLeft=Math.round((info.deadline-today)/86400000);
+  var KVT=['1. kvartal','2. kvartal','3. kvartal','4. kvartal'];
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Moms <span class="fin-muted" style="font-weight:600;font-size:11px">(estimat)</span></div></div>'+
+    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+KVT[info.q]+' '+info.year+'</div>'+
+    '<div id="fin-moms-amount" style="font-size:26px;font-weight:800;color:#DC2626;margin-bottom:14px">Udregner…</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft)"><span class="fin-muted" style="font-size:12px">Frist</span><b style="font-size:14px">'+daysLeft+' dage · '+info.deadline.getDate()+'/'+(info.deadline.getMonth()+1)+'-'+info.deadline.getFullYear()+'</b></div>';
+  if(!finYearData){var r=await api('/api/finance/year-overview');if(r)finYearData=r;}
+  var amtEl=document.getElementById('fin-moms-amount');
+  if(!amtEl)return;
+  if(!finYearData||finYearData.year!==info.year){amtEl.textContent='Se Omsætning pr. fag';amtEl.style.fontSize='14px';return;}
+  var monthKeys=Object.keys(finYearData.months).sort(),quarterTotal=0;
+  for(var m=info.startMonth;m<=info.endMonth;m++){var mk=monthKeys[m];if(mk)quarterTotal+=(finYearData.months[mk].total||0);}
+  amtEl.textContent=krFmt(quarterTotal*0.25);
+}
+async function renderFinTodoCard(){
+  var el=document.getElementById('fin-card-todo');
+  if(!el)return;
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Opgaver</div><button class="bly-btn outline small" id="fin-todo-note-btn">+ Ny note</button></div><div id="fin-todo-card-body"></div>';
+  var noteBtn=document.getElementById('fin-todo-note-btn');
+  if(noteBtn)noteBtn.addEventListener('click',function(){var b=document.getElementById('note-widget-btn');if(b)b.click();});
+  var body=document.getElementById('fin-todo-card-body');
+  if(body)await renderTodoTodayWidget(body);
 }
 // Forgangen måned: rigtig omsætning = betalte + delvist betalte fakturaer UDSTEDT den
 // måned (delvis tæller kun det faktisk modtagne beløb). Indeværende/næste måned bruger
@@ -5886,7 +6010,7 @@ function finInvoiceRevenueForMonth(mk){
 // ══════════════════════════════════════════════════════════════
 // OVERSIGT — selvvalgte graf-widgets (tilføj/fjern frit)
 // ══════════════════════════════════════════════════════════════
-var finTrendChartInstance=null,finYearData=null,finYearFag='alle',finYearChartInstance=null,finFagPieInstance=null,finInvoiceStatusInstance=null,finExpensePieInstance=null;
+var finTrendChartInstance=null,finYearData=null,finYearFag='alle',finYearChartInstance=null,finFagPieInstance=null,finInvoiceStatusInstance=null,finExpensePieInstance=null,finResultChartInstance=null;
 var finWidgetList=[],finLastTrendArgs=null;
 
 var FIN_WIDGET_TYPES={
