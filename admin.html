@@ -299,8 +299,8 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-col{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:22px}
 .bly-col-logo{text-align:center;padding:8px 0 16px;color:#C7CBD1;font-weight:900;font-size:15px;letter-spacing:.08em;text-transform:uppercase;user-select:none}
 .bly-col-logo.gm{color:#003509;opacity:.35}
-.bly-txn-list{display:flex;flex-direction:column;gap:10px;max-height:640px;overflow:auto;padding-right:2px;contain:layout}
-.bly-txn-card{border:1.5px solid var(--bly-border);border-radius:var(--bly-r-md);background:#fff;cursor:pointer;min-height:24px;contain:content;transform:translateZ(0);isolation:isolate}
+.bly-txn-list{display:flex;flex-direction:column;gap:10px;max-height:640px;overflow:auto;padding-right:2px}
+.bly-txn-card{border:1.5px solid var(--bly-border);border-radius:var(--bly-r-md);background:#fff;cursor:pointer;min-height:24px}
 .bly-txn-card>*:first-child{border-radius:var(--bly-r-md) var(--bly-r-md) 0 0}
 .bly-txn-card>*:last-child{border-radius:0 0 var(--bly-r-md) var(--bly-r-md)}
 .bly-txn-card.reconciled{opacity:.7;cursor:default}
@@ -984,7 +984,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-11.1</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-18.1</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -5494,9 +5494,10 @@ function renderFinBankResults(){
   if(!finBankTxns.length){el.innerHTML='';return;}
   var allPayments=finBankTxns.filter(function(t){return t.amount>0;});
   var openPayments=allPayments.filter(function(t){return !t.alreadyReconciled;});
-  var reconciledPayments=allPayments.filter(function(t){return t.alreadyReconciled;});
+  var reconciledPayments=allPayments.filter(function(t){return t.alreadyReconciled&&t.alreadyReconciled.kind!=='ignored';});
+  var ignoredPayments=allPayments.filter(function(t){return t.alreadyReconciled&&t.alreadyReconciled.kind==='ignored';});
   var withMatch=openPayments.filter(function(t){return t.matches.length||t._manualMatch;});
-  var visible=finBankStatusFilter==='reconciled'?reconciledPayments:openPayments;
+  var visible=finBankStatusFilter==='reconciled'?reconciledPayments:finBankStatusFilter==='ignored'?ignoredPayments:openPayments;
   // BILLY-STIL FILTRE: dato, søgning og sortering på selve posteringerne til venstre,
   // ikke kun på fakturaerne til højre.
   if(finBankLeftSearch.trim()){
@@ -5521,6 +5522,7 @@ function renderFinBankResults(){
     '<div class="bly-segtabs" style="border-bottom:0;margin-bottom:0">'+
     '<button class="bly-segtab'+(finBankStatusFilter==='open'?' active':'')+'" data-bank-status-tab="open">Åbne ('+openPayments.length+')</button>'+
     '<button class="bly-segtab'+(finBankStatusFilter==='reconciled'?' active':'')+'" data-bank-status-tab="reconciled">Afstemt ('+reconciledPayments.length+')</button>'+
+    '<button class="bly-segtab'+(finBankStatusFilter==='ignored'?' active':'')+'" data-bank-status-tab="ignored">Ikke relevant ('+ignoredPayments.length+')</button>'+
     '</div>'+
     '<button class="fin-edit-btn" id="fin-bank-close-btn" title="Luk denne visning">✕</button></div>';
   html+='<div class="bly-toolbar" style="margin-bottom:12px">'+
@@ -5540,7 +5542,7 @@ function renderFinBankResults(){
       '</select>'+
     '</div>'+
     '<div class="bly-util-row" style="margin:0"><div class="left">'+
-      '<span>'+openPayments.length+' banklinjer</span>'+
+      '<span>'+visible.length+' banklinjer</span>'+
       (finBankStatusFilter==='open'?'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--bly-ink);font-weight:600"><input type="checkbox" id="fin-bank-sync-jt" style="width:auto"> Skriv til JobTread</label>':'')+
     '</div>'+
     (finBankStatusFilter==='open'?('<button class="bly-btn" id="fin-bank-apply-btn" type="button">✓ Accepter '+withMatch.filter(function(t){return t._selected;}).length+' forslag</button>'+
@@ -5553,18 +5555,18 @@ function renderFinBankResults(){
   html+='<div class="bly-col"><div class="bly-col-logo">LUNAR</div><div class="bly-txn-list">';
   if(!visible.length)html+='<div class="fin-muted" style="padding:16px;text-align:center">Ingen posteringer matcher filtrene.</div>';
   visible.forEach(function(t){
-    if(finBankStatusFilter==='reconciled'){
+    if(finBankStatusFilter==='reconciled'||finBankStatusFilter==='ignored'){
       var rec=t.alreadyReconciled||{};
       var isIgnored=rec.kind==='ignored';
       var recJobId=rec.jobId||(rec.documentId?(finInvoices.find(function(i){return i.id===rec.documentId;})||{}).jobId:null);
       html+='<div class="bly-txn-card reconciled">'+
         '<div class="bly-txn-main"><div><div class="bly-txn-desc">'+finHighlightRefs(t.text)+'</div><div class="bly-txn-date">'+esc(t.date)+'</div></div>'+
         '<div class="bly-txn-amount pos">'+krFmt(t.amount)+'</div></div>'+
-        '<div class="bly-txn-zone matched"><div class="bly-txn-picked">'+
+        '<div class="bly-txn-zone'+(isIgnored?'':' matched')+'"'+(isIgnored?' style="background:#F9FAFB;border-top-color:var(--bly-border)"':'')+'><div class="bly-txn-picked"'+(isIgnored?' style="color:var(--bly-sub)"':'')+'>'+
           '<span>'+(isIgnored?'✕ Markeret ikke relevant':'✓ Bogført'+(rec.customer?' — '+esc(rec.customer):''))+'</span>'+
           '<span style="display:flex;gap:10px;align-items:center">'+
           (rec.documentId&&recJobId?'<a href="https://app.jobtread.com/jobs/'+esc(recJobId)+'/documents" target="_blank" rel="noopener" title="Åbn fakturaen i JobTread">🔗</a>':'')+
-          '<button data-bank-unreconcile="'+esc(t.externalId)+'">↩ Fortryd</button>'+
+          '<button data-bank-unreconcile="'+esc(t.externalId)+'" title="'+(isIgnored?'Læg tilbage under Åbne':'Fortryd afstemning')+'">↩ Fortryd</button>'+
           '</span></div></div>'+
         '</div>';
       return;
