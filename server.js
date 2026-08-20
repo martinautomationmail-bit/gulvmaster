@@ -236,6 +236,18 @@ async function initSchema() {
     -- Alt der blev oprettet før månedsopdeling fandtes, mærkes med indeværende måned,
     -- så det ikke bare forsvinder fra visningen.
     UPDATE finance_expenses SET month_key=TO_CHAR(CURRENT_DATE,'YYYY-MM') WHERE month_key IS NULL;
+    -- HURTIG MÅNEDS-UDGIFT (Martin: "kan jeg bare manuelt indskrive en måned bagud hvad
+    -- vores udgifter har været?") — et bevidst LET alternativ til at skulle udspecificere
+    -- hver post i Udgifter-fanen for hver tidligere måned. Findes der en række her for en
+    -- given måned, VINDER den over den udspecificerede sum for den måned (se
+    -- /api/finance/expenses-totals) — så man kan hurtigt proppe ét samlet tal ind for de
+    -- måneder man ikke gider/nåede at udspecificere, og stadig gå tilbage og udspecificere
+    -- senere ved bare at slette override'en igen.
+    CREATE TABLE IF NOT EXISTS finance_expense_month_totals (
+      month_key TEXT PRIMARY KEY,
+      amount DOUBLE PRECISION DEFAULT 0,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
 
     -- PRIVAT BUDGET: samme mønster som Udgifter, men brugeren må selv oprette/slette
     -- kategorier (ikke kun rette poster i faste kategorier) — det skal kunne udbygges
@@ -5022,11 +5034,48 @@ app.get('/api/finance/expenses', auth, financeOnly, asyncRoute(async (req, res) 
 app.get('/api/finance/expenses-totals', auth, financeOnly, asyncRoute(async (req, res) => {
   const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
   const out = {};
+  if (!months.length) return res.json(out);
+  const overrideRows = await pool.query('SELECT month_key, amount FROM finance_expense_month_totals WHERE month_key = ANY($1)', [months]);
+  const overrides = {};
+  for (const r of overrideRows.rows) overrides[r.month_key] = r.amount;
   for (const mk of months) {
+    if (overrides[mk] != null) { out[mk] = overrides[mk]; continue; }
     const row = await pgOne('SELECT COALESCE(SUM(amount),0)::float AS total FROM finance_expenses WHERE month_key=$1', [mk]);
     out[mk] = row ? row.total : 0;
   }
   res.json(out);
+}));
+// HURTIG MÅNEDS-UDGIFT — se kommentar ved CREATE TABLE finance_expense_month_totals.
+// Returnerer BÅDE override-beløbet (hvis sat) OG den udspecificerede sum, så frontenden
+// kan vise "X kr (manuelt sat) — ville ellers have været Y kr fra Udgifter-fanen".
+app.get('/api/finance/expense-month-totals', auth, financeOnly, asyncRoute(async (req, res) => {
+  const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
+  const out = {};
+  if (!months.length) return res.json(out);
+  const overrideRows = await pool.query('SELECT month_key, amount FROM finance_expense_month_totals WHERE month_key = ANY($1)', [months]);
+  const overrides = {};
+  for (const r of overrideRows.rows) overrides[r.month_key] = r.amount;
+  for (const mk of months) {
+    const row = await pgOne('SELECT COALESCE(SUM(amount),0)::float AS total FROM finance_expenses WHERE month_key=$1', [mk]);
+    out[mk] = { override: overrides[mk] != null ? overrides[mk] : null, itemized: row ? row.total : 0 };
+  }
+  res.json(out);
+}));
+app.put('/api/finance/expense-month-totals/:month', auth, financeOnly, asyncRoute(async (req, res) => {
+  const mk = req.params.month;
+  if (!/^\d{4}-\d{2}$/.test(mk)) return res.status(400).json({ error: 'Ugyldig måned' });
+  const amount = Number((req.body || {}).amount);
+  if (!Number.isFinite(amount)) return res.status(400).json({ error: 'Ugyldigt beløb' });
+  await pool.query(`
+    INSERT INTO finance_expense_month_totals (month_key,amount,updated_at) VALUES ($1,$2,${nowTextSQL()})
+    ON CONFLICT (month_key) DO UPDATE SET amount=$2,updated_at=${nowTextSQL()}
+  `, [mk, amount]);
+  res.json({ ok: true });
+}));
+app.delete('/api/finance/expense-month-totals/:month', auth, financeOnly, asyncRoute(async (req, res) => {
+  const mk = req.params.month;
+  await pool.query('DELETE FROM finance_expense_month_totals WHERE month_key=$1', [mk]);
+  res.json({ ok: true });
 }));
 app.post('/api/finance/expenses', auth, financeOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};

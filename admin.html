@@ -355,6 +355,10 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-txn-card>*:last-child{border-radius:0 0 var(--bly-r-md) var(--bly-r-md)}
 .bly-txn-card.reconciled{opacity:.7;cursor:default}
 .bly-txn-card.active{border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+.bly-txn-card[draggable="true"]{cursor:grab}
+.bly-txn-card[draggable="true"]:active{cursor:grabbing}
+.bly-txn-card.dragging{opacity:.4}
+.bly-txn-card.drag-over{border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft);background:var(--bly-accent-soft)}
 .bly-txn-main{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:18px 34px;min-height:22px}
 .bly-txn-main>div:first-child{min-width:0;flex:1}
 .bly-txn-desc{font-weight:700;font-size:12.5px;color:var(--bly-ink);line-height:1.4;word-break:break-word;display:block}
@@ -386,6 +390,10 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-right-list{display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto}
 .bly-right-card{position:relative;border:1.5px solid #BBF7D0;background:#fff;border-radius:var(--bly-r-md);padding:11px 13px;cursor:pointer;text-align:left;width:100%;flex-shrink:0}
 .bly-right-card:hover{border-color:var(--bly-dot-paid);background:#F0FDF4}
+.bly-right-card[draggable="true"]{cursor:grab}
+.bly-right-card[draggable="true"]:active{cursor:grabbing}
+.bly-right-card.dragging{opacity:.4}
+.bly-right-card.drag-over{border-color:var(--bly-dot-paid);box-shadow:0 0 0 3px #DCFCE7;background:#F0FDF4}
 .bly-right-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
 .bly-right-card .name{font-weight:700;font-size:12px;color:var(--bly-ink)}
 .bly-right-card .sub{font-size:10.5px;color:var(--bly-sub);margin-top:2px}
@@ -1034,7 +1042,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-18.11</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-20.1</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -1246,9 +1254,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="bly-col" style="margin-bottom:20px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:16px">
           <div style="font-size:19px;font-weight:800;color:var(--bly-ink)">Resultat i DKK <span class="fin-muted" style="font-weight:600;font-size:12px;margin-left:4px">inkl. moms</span></div>
-          <div id="fin-result-kpis" style="display:flex;gap:26px;flex-wrap:wrap"></div>
+          <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+            <div id="fin-result-kpis" style="display:flex;gap:26px;flex-wrap:wrap"></div>
+            <button class="bly-btn outline small" id="fin-quickexp-toggle">✏️ Ret udgifter pr. måned</button>
+          </div>
         </div>
         <div style="position:relative;height:260px"><canvas id="fin-result-chart"></canvas></div>
+        <div id="fin-quickexp-panel" style="display:none;margin-top:20px;padding-top:18px;border-top:1px solid var(--bly-border-soft)">
+          <p class="fin-muted" style="margin:0 0 12px">Hurtig indtastning af udgifter for en måned — bruges fx til at proppe et samlet tal ind for tidligere måneder, uden at skulle udspecificere hver post under Udgifter. Et manuelt tal her vinder altid over den udspecificerede sum.</p>
+          <div id="fin-quickexp-rows" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px"></div>
+        </div>
       </div>
       <div class="bly-dash-grid">
         <div class="bly-col" id="fin-card-fakturaer"></div>
@@ -2954,16 +2969,22 @@ function timeOffFor(userId,dateStr){
   return timeOffApproved.find(function(t){return +t.user_id===+userId&&dateStr>=String(t.start_date).slice(0,10)&&dateStr<=String(t.end_date).slice(0,10);});
 }
 function timeOffLabel(t){return t.type==='sick'?'🤒 Sygdom':(t.type==='vacation'?'🏖 Ferie':'⛔ Fravær');}
-// Samme model som Kapacitet: alle 52 uger fra indeværende uge og frem renderes på én
-// gang, så scroll er 100% nativt og uendeligt i praksis — ingen kunstig uge-detektion
-// nødvendig for selve scrollet. "Uge X"-labelen og ugenoter følger i stedet med hvor
-// du RENT FAKTISK har scrollet hen (planCurrentWeekStart), ikke en fast tæller.
-function planAllDays(){var out=[],m=mon(new Date());for(var i=0;i<364;i++)out.push(add(m,i));return out;}
+// Samme model som Kapacitet: 26 uger bagud + 52 uger frem fra indeværende uge renderes
+// på én gang, så scroll er 100% nativt og uendeligt i praksis — ingen kunstig
+// uge-detektion nødvendig for selve scrollet. "Uge X"-labelen og ugenoter følger i
+// stedet med hvor du RENT FAKTISK har scrollet hen (planCurrentWeekStart), ikke en fast
+// tæller. Martin: "Pt kan jeg kun gå 1 uge tilbage det duer ikke" — der var reelt INGEN
+// uger bagud før (kun det der lige tilfældigvis lå i indeværende uge før i dag), fordi
+// hele tabellen startede ved mandag i denne uge. Nu er der en historisk buffer at rulle
+// tilbage i, og planCurrentWeekStart initialiseres eksplicit til DENNE uge (ikke
+// days[0], som nu peger 26 uger tilbage) så visningen stadig åbner ved i dag som før.
+var PLAN_WEEKS_BACK=26,PLAN_WEEKS_FORWARD=52;
+function planAllDays(){var out=[],m=add(mon(new Date()),-PLAN_WEEKS_BACK*7);for(var i=0;i<(PLAN_WEEKS_BACK+PLAN_WEEKS_FORWARD)*7;i++)out.push(add(m,i));return out;}
 var planCurrentWeekStart=null;
 function renderPlan(){
   renderPool('plan');teamFilterHTML('plan');
   var days=planAllDays();
-  if(!planCurrentWeekStart)planCurrentWeekStart=days[0];
+  if(!planCurrentWeekStart)planCurrentWeekStart=mon(new Date());
   var curWk=weekKey(planCurrentWeekStart);
   var head='<tr class="plan-week-superhead"><th class="staff-th-spacer"></th>';
   for(var w=0;w<days.length;w+=7){
@@ -3144,7 +3165,9 @@ function showPlanWeekToast(mondayDate){
 }
 
 // RENDER CAPACITY
-function capacityWeeks(){var out=[],m=mon(new Date());for(var i=0;i<52;i++)out.push(add(m,i*7));return out;}
+// Samme bagud-buffer som Daglig plan (se kommentar ved planAllDays) — 26 uger bagud
+// + 52 uger frem, i stedet for kun fremad fra i dag.
+function capacityWeeks(){var out=[],m=add(mon(new Date()),-PLAN_WEEKS_BACK*7);for(var i=0;i<PLAN_WEEKS_BACK+PLAN_WEEKS_FORWARD;i++)out.push(add(m,i*7));return out;}
 function renderCapacity(){
   renderPool('capacity');teamFilterHTML('capacity');
   var weeks=capacityWeeks();
@@ -5552,7 +5575,7 @@ function renderFinBankRightList(){
   return candidates.map(function(inv){
     var statusLbl=inv.overrideStatus==='partial'?'◐ Delvist betalt':inv.overrideStatus==='unclear'?'⚠ Uafklaret':'Udestående';
     var amt=inv.remaining!=null?inv.remaining:inv.priceWithTax;
-    return '<button class="bly-right-card" data-bank-pick-manual data-inv-id="'+esc(inv.id)+'">'+
+    return '<button class="bly-right-card" draggable="true" data-bank-pick-manual data-inv-id="'+esc(inv.id)+'">'+
       '<div class="bly-right-card-top"><div><div class="name">'+esc(inv.customer)+
       (inv.jobId?'<a href="https://app.jobtread.com/jobs/'+esc(inv.jobId)+'/documents" target="_blank" rel="noopener" class="jt-link" title="Åbn fakturaen i JobTread" onclick="event.stopPropagation()">🔗</a>':'')+
       '</div>'+
@@ -5561,6 +5584,19 @@ function renderFinBankRightList(){
       (inv.overrideStatus==='unclear'?'<span class="bly-tag" style="margin-top:6px">'+statusLbl+'</span>':'')+
       '</button>';
   }).join('');
+}
+// Fælles match-funktion — kaldes både fra klik (i højre liste og quicksearch-listen
+// under en postering) og nu også fra træk-og-slip, så alle tre input-metoder giver
+// præcis samme resultat.
+function applyBankManualMatch(txnLocalId,invId){
+  var t=finBankTxns[txnLocalId];
+  var inv=finInvoices.find(function(i){return i.id===invId;});
+  if(!inv||!t)return;
+  t._manualMatch={documentId:inv.id,customer:inv.customer,fullName:inv.fullName,jobId:inv.jobId,priceWithTax:inv.priceWithTax,remaining:inv.remaining};
+  t._selected=true;
+  finBankActiveTxnId=null;
+  finBankQuickFocus=null;
+  renderFinBankResults();
 }
 function renderFinBankResults(){
   var el=document.getElementById('fin-bank-results');
@@ -5649,7 +5685,7 @@ function renderFinBankResults(){
     var conf=manual?null:(best?(best.score>=70?'høj':best.score>=40?'mellem':'lav'):null);
     var confColor=conf==='høj'?'var(--bly-dot-paid)':conf==='mellem'?'var(--bly-dot-unpaid)':'var(--bly-dot-overdue)';
     var isActive=finBankActiveTxnId===t._localId;
-    html+='<div class="bly-txn-card'+(isActive?' active':'')+'" data-bank-activate="'+t._localId+'">'+
+    html+='<div class="bly-txn-card'+(isActive?' active':'')+'" draggable="true" data-bank-activate="'+t._localId+'">'+
       '<div class="bly-txn-main"><div><div class="bly-txn-desc">'+finHighlightRefs(t.text)+'</div><div class="bly-txn-date">'+esc(t.date)+'</div></div>'+
       '<div style="text-align:right"><div class="bly-txn-amount pos">'+krFmt(t.amount)+'</div>'+
       (best?'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:10.5px;justify-content:flex-end;margin-top:4px;color:var(--bly-sub)"><input type="checkbox" data-bank-select="'+t._localId+'" '+(t._selected?'checked':'')+' onclick="event.stopPropagation()"> markér</label>':'')+
@@ -5701,7 +5737,7 @@ function renderFinBankResults(){
     html+='<div class="bly-col"><div class="bly-col-logo gm">GULV MASTER</div>'+
       '<div class="bly-right-head"><div class="bly-right-title">Ikke-afstemte fakturaer ('+finInvoices.filter(function(i){return i.overrideStatus!=='paid';}).length+')</div></div>'+
       '<div class="bly-right-tags"><button class="bly-right-tag active" type="button">Fakturaer</button></div>'+
-      '<div class="bly-txn-zone-hint" style="margin:-4px 0 8px">'+(finBankActiveTxnId!=null?'Klik en faktura herunder for at matche den til den markerede postering til venstre.':'Tip: klik en postering til venstre for at vælge den her — eller brug søgefeltet direkte under posteringen.')+'</div>'+
+      '<div class="bly-txn-zone-hint" style="margin:-4px 0 8px">'+(finBankActiveTxnId!=null?'Klik en faktura herunder for at matche den til den markerede postering til venstre — eller træk kortene i hinanden, det virker begge veje.':'Tip: klik en postering til venstre for at vælge den her, brug søgefeltet direkte under posteringen, eller træk en postering og en faktura sammen.')+'</div>'+
       '<input type="text" class="bly-search" id="fin-recon-search" placeholder="Søg kunde, fakturanr eller beløb..." value="'+esc(finBankSearchQuery||'')+'" style="width:100%;margin-bottom:10px">'+
       '<div class="bly-right-sort">Sortér efter: '+
         '<button data-bank-right-sort="date" class="'+(finBankRightSort==='date'?'active':'')+'" type="button">Dato</button> · '+
@@ -5740,13 +5776,43 @@ function renderFinBankResults(){
   });
   el.querySelectorAll('[data-bank-quickpick]').forEach(function(btn){
     btn.addEventListener('click',function(){
-      var t=finBankTxns[+btn.dataset.bankQuickpick];
-      var inv=finInvoices.find(function(i){return i.id===btn.dataset.invId;});
-      if(!inv||!t)return;
-      t._manualMatch={documentId:inv.id,customer:inv.customer,fullName:inv.fullName,jobId:inv.jobId,priceWithTax:inv.priceWithTax,remaining:inv.remaining};
-      t._selected=true;
-      finBankQuickFocus=null;
-      renderFinBankResults();
+      applyBankManualMatch(+btn.dataset.bankQuickpick,btn.dataset.invId);
+    });
+  });
+  // TRÆK-OG-SLIP MATCHING — supplement til klik og søg: en postering til venstre og en
+  // faktura til højre kan trækkes sammen (i begge retninger) for at danne samme match
+  // som klik-flowet laver, via samme applyBankManualMatch()-funktion. Kun de åbne,
+  // utafstemte kort er trækbare (draggable="true" sættes kun i den gren af markup'et).
+  el.querySelectorAll('.bly-txn-card[draggable="true"]').forEach(function(card){
+    card.addEventListener('dragstart',function(e){
+      e.dataTransfer.setData('text/plain','txn:'+card.dataset.bankActivate);
+      e.dataTransfer.effectAllowed='move';
+      card.classList.add('dragging');
+    });
+    card.addEventListener('dragend',function(){card.classList.remove('dragging');});
+    card.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='move';card.classList.add('drag-over');});
+    card.addEventListener('dragleave',function(){card.classList.remove('drag-over');});
+    card.addEventListener('drop',function(e){
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      var payload=e.dataTransfer.getData('text/plain');
+      if(payload.indexOf('inv:')===0)applyBankManualMatch(+card.dataset.bankActivate,payload.slice(4));
+    });
+  });
+  el.querySelectorAll('.bly-right-card[draggable="true"]').forEach(function(card){
+    card.addEventListener('dragstart',function(e){
+      e.dataTransfer.setData('text/plain','inv:'+card.dataset.invId);
+      e.dataTransfer.effectAllowed='move';
+      card.classList.add('dragging');
+    });
+    card.addEventListener('dragend',function(){card.classList.remove('dragging');});
+    card.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='move';card.classList.add('drag-over');});
+    card.addEventListener('dragleave',function(){card.classList.remove('drag-over');});
+    card.addEventListener('drop',function(e){
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      var payload=e.dataTransfer.getData('text/plain');
+      if(payload.indexOf('txn:')===0)applyBankManualMatch(+payload.slice(4),card.dataset.invId);
     });
   });
   document.getElementById('fin-bank-close-btn').addEventListener('click',function(){finBankTxns=[];finBankActiveTxnId=null;renderFinBankResults();});
@@ -5803,14 +5869,8 @@ function renderFinBankResults(){
   el.querySelectorAll('[data-bank-pick-manual]').forEach(bindManualPick);
   function bindManualPick(btn){
     btn.addEventListener('click',function(){
-      if(finBankActiveTxnId==null){toast('Klik først på en postering til venstre','⚠');return;}
-      var t=finBankTxns[finBankActiveTxnId];
-      var inv=finInvoices.find(function(i){return i.id===btn.dataset.invId;});
-      if(!inv||!t)return;
-      t._manualMatch={documentId:inv.id,customer:inv.customer,fullName:inv.fullName,jobId:inv.jobId,priceWithTax:inv.priceWithTax,remaining:inv.remaining};
-      t._selected=true;
-      finBankActiveTxnId=null;
-      renderFinBankResults();
+      if(finBankActiveTxnId==null){toast('Klik først på en postering til venstre — eller træk kortene sammen','⚠');return;}
+      applyBankManualMatch(finBankActiveTxnId,btn.dataset.invId);
     });
   }
   var applyBtn=document.getElementById('fin-bank-apply-btn');
@@ -5904,17 +5964,34 @@ function renderFinOverview(snapshots){
 // som resten af Økonomi-fanerne. Rent tilføjet ovenpå det gamle
 // snapshot-/graf-widget-system nedenfor — intet af det er fjernet.
 // ══════════════════════════════════════════════════════════════
+// Resultat-grafen bruger BEVIDST en anden (langt lettere og mere pålidelig) datakilde
+// end "Omsætning pr. fag": her grupperes de RIGTIGE fakturaer (finInvoices — allerede
+// hentet ved sideindlæsning) efter fakturadato, i stedet for sagernes planlagte budget
+// via den tunge JobTread-årsforespørgsel (som kunne fejle/timeoute over 12 måneder og
+// give en tom graf). Udgifter hentes stadig fra jeres egne månedstal under Udgifter-fanen.
+async function finInvoiceMonthTotals(monthKeys){
+  var byMonth={};
+  (finInvoices||[]).forEach(function(inv){
+    if(!inv.createdAt)return;
+    var mk=inv.createdAt.slice(0,7);
+    if(monthKeys.indexOf(mk)===-1)return;
+    byMonth[mk]=(byMonth[mk]||0)+(inv.priceWithTax||0);
+  });
+  return byMonth;
+}
 async function renderFinResultChart(){
   var canvas=document.getElementById('fin-result-chart');
   if(!canvas||typeof Chart==='undefined')return;
-  if(!finYearData){var r=await api('/api/finance/year-overview');if(r)finYearData=r;}
   var kpiEl=document.getElementById('fin-result-kpis');
-  if(!finYearData){if(kpiEl)kpiEl.innerHTML='';return;}
-  var monthKeys=Object.keys(finYearData.months).sort();
+  var year=new Date().getFullYear();
+  var monthKeys=[];
+  for(var mi=0;mi<12;mi++)monthKeys.push(year+'-'+String(mi+1).padStart(2,'0'));
+  var omsByMonth=await finInvoiceMonthTotals(monthKeys);
+  var expByMonth=await api('/api/finance/expenses-totals?months='+monthKeys.join(','))||{};
   var MAANEDER=['jan.','feb.','mar.','apr.','maj','jun.','jul.','aug.','sep.','okt.','nov.','dec.'];
   var labels=[],oms=[],udgNeg=[],resultat=[],totalOms=0,totalUdg=0;
   monthKeys.forEach(function(mk,i){
-    var m=finYearData.months[mk],o=m.total||0,u=m.expenses||0;
+    var o=omsByMonth[mk]||0,u=expByMonth[mk]||0;
     labels.push(MAANEDER[i]);oms.push(o);udgNeg.push(-u);resultat.push(o-u);
     totalOms+=o;totalUdg+=u;
   });
@@ -5978,12 +6055,14 @@ async function renderFinMomsCard(){
     '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+KVT[info.q]+' '+info.year+'</div>'+
     '<div id="fin-moms-amount" style="font-size:26px;font-weight:800;color:#DC2626;margin-bottom:14px">Udregner…</div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft)"><span class="fin-muted" style="font-size:12px">Frist</span><b style="font-size:14px">'+daysLeft+' dage · '+info.deadline.getDate()+'/'+(info.deadline.getMonth()+1)+'-'+info.deadline.getFullYear()+'</b></div>';
-  if(!finYearData){var r=await api('/api/finance/year-overview');if(r)finYearData=r;}
   var amtEl=document.getElementById('fin-moms-amount');
   if(!amtEl)return;
-  if(!finYearData||finYearData.year!==info.year){amtEl.textContent='Se Omsætning pr. fag';amtEl.style.fontSize='14px';return;}
-  var monthKeys=Object.keys(finYearData.months).sort(),quarterTotal=0;
-  for(var m=info.startMonth;m<=info.endMonth;m++){var mk=monthKeys[m];if(mk)quarterTotal+=(finYearData.months[mk].total||0);}
+  // Samme lette datakilde som Resultat-grafen: rigtige fakturaer i kvartalets måneder,
+  // ikke sagernes planlagte budget — momsen skal jo betales af det I faktisk har faktureret.
+  var qMonthKeys=[];
+  for(var m=info.startMonth;m<=info.endMonth;m++)qMonthKeys.push(info.year+'-'+String(m+1).padStart(2,'0'));
+  var qByMonth=await finInvoiceMonthTotals(qMonthKeys);
+  var quarterTotal=qMonthKeys.reduce(function(s,mk){return s+(qByMonth[mk]||0);},0);
   amtEl.textContent=krFmt(quarterTotal*0.25);
 }
 async function renderFinTodoCard(){
@@ -5994,6 +6073,63 @@ async function renderFinTodoCard(){
   if(noteBtn)noteBtn.addEventListener('click',function(){var b=document.getElementById('note-widget-btn');if(b)b.click();});
   var body=document.getElementById('fin-todo-card-body');
   if(body)await renderTodoTodayWidget(body);
+}
+// HURTIG UDGIFT PR. MÅNED — Martin: "kan jeg bare manuelt indskrive en måned bagud hvad
+// vores udgifter har været?". Et let alternativ til at skulle udspecificere hver post
+// under Udgifter for hver tidligere måned. Et gemt tal her vinder altid over den
+// udspecificerede sum (se server: /api/finance/expenses-totals).
+var finQuickExpMonthKeys=null;
+document.getElementById('fin-quickexp-toggle').addEventListener('click',function(){
+  var panel=document.getElementById('fin-quickexp-panel');
+  var open=panel.style.display!=='none';
+  panel.style.display=open?'none':'block';
+  if(!open)renderFinQuickExpensePanel();
+});
+async function renderFinQuickExpensePanel(){
+  var rowsEl=document.getElementById('fin-quickexp-rows');
+  if(!rowsEl)return;
+  rowsEl.innerHTML='<div class="fin-muted">Henter…</div>';
+  var year=new Date().getFullYear();
+  var MAANEDER=['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+  var monthKeys=[];
+  for(var mi=0;mi<12;mi++)monthKeys.push(year+'-'+String(mi+1).padStart(2,'0'));
+  finQuickExpMonthKeys=monthKeys;
+  var data=await api('/api/finance/expense-month-totals?months='+monthKeys.join(','))||{};
+  rowsEl.innerHTML=monthKeys.map(function(mk,i){
+    var d=data[mk]||{override:null,itemized:0};
+    var isOverridden=d.override!=null;
+    var val=isOverridden?d.override:d.itemized;
+    return '<div style="border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:10px 12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:12px">'+MAANEDER[i]+'</b>'+
+      (isOverridden?'<span class="fin-badge ok" title="Manuelt sat — ville ellers have været '+krFmt(d.itemized)+' fra Udgifter-fanen">manuelt</span>':'<span class="fin-muted" style="font-size:10px">fra Udgifter-fanen</span>')+'</div>'+
+      '<div style="display:flex;gap:6px">'+
+      '<input type="number" class="input bly-input" style="flex:1;width:auto" data-quickexp-month="'+mk+'" value="'+(val||'')+'" placeholder="0">'+
+      '<button class="bly-btn small" data-action="fin-quickexp-save" data-month="'+mk+'" title="Gem">💾</button>'+
+      (isOverridden?'<button class="bly-btn outline small" data-action="fin-quickexp-clear" data-month="'+mk+'" title="Slet override — brug udspecificeret sum igen">↩</button>':'')+
+      '</div></div>';
+  }).join('');
+  rowsEl.querySelectorAll('[data-action="fin-quickexp-save"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var mk=btn.dataset.month;
+      var input=rowsEl.querySelector('input[data-quickexp-month="'+mk+'"]');
+      var amount=Number(input.value);
+      if(!Number.isFinite(amount)){toast('Ugyldigt beløb','⚠');return;}
+      await api('/api/finance/expense-month-totals/'+mk,{method:'PUT',body:JSON.stringify({amount:amount})});
+      toast('Gemt ✓','💾');
+      await renderFinQuickExpensePanel();
+      renderFinResultChart();
+    });
+  });
+  rowsEl.querySelectorAll('[data-action="fin-quickexp-clear"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var mk=btn.dataset.month;
+      if(!await gmConfirm('Slet det manuelle tal for denne måned og brug den udspecificerede sum fra Udgifter-fanen igen?'))return;
+      await api('/api/finance/expense-month-totals/'+mk,{method:'DELETE'});
+      toast('Nulstillet ✓','↩');
+      await renderFinQuickExpensePanel();
+      renderFinResultChart();
+    });
+  });
 }
 // Forgangen måned: rigtig omsætning = betalte + delvist betalte fakturaer UDSTEDT den
 // måned (delvis tæller kun det faktisk modtagne beløb). Indeværende/næste måned bruger
