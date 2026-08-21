@@ -275,6 +275,24 @@ async function initSchema() {
       tilgodehavende DOUBLE PRECISION DEFAULT 0,
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
+
+    -- PROFIT-ANALYSE — et fast snapshot pr. måned (typisk taget d. 15., se cron
+    -- nedenfor), så tidligere måneders tal IKKE ændrer sig bagefter, selvom fx flere
+    -- fakturaer eller udgifter registreres senere. Det giver Martin et ærligt
+    -- måned-for-måned-sammenligningsgrundlag, i stedet for at historikken bevæger sig
+    -- under fødderne på ham hver gang han kigger tilbage.
+    CREATE TABLE IF NOT EXISTS profit_snapshots (
+      id SERIAL PRIMARY KEY,
+      month_key TEXT UNIQUE NOT NULL,
+      snap_date TEXT NOT NULL,
+      expenses DOUBLE PRECISION DEFAULT 0,
+      bank_cash DOUBLE PRECISION,
+      invoices_sent DOUBLE PRECISION DEFAULT 0,
+      invoices_pending DOUBLE PRECISION DEFAULT 0,
+      bottom_line DOUBLE PRECISION DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
     -- Bagudgående måneders "rigtige" udgiftstal — Martin uploader en bank-CSV/Excel
     -- PR. MÅNED (adskilt fra den løbende bankafstemnings-session ovenfor, som kun
     -- husker den nyeste fil og bruges til fakturamatching). Her gemmes hver måneds
@@ -5258,6 +5276,58 @@ app.post('/api/finance/bank-snapshots', auth, financeOnly, asyncRoute(async (req
   res.json({ ok: true });
 }));
 
+// ── PROFIT-ANALYSE — månedligt snapshot til bunden af Oversigt-dashboardet ──
+// Samler fire tal for indeværende måned: udgifter, cash i banken (seneste snapshot),
+// fakturaer der REELT er sendt denne måned (rigtige JobTread-fakturaer), og fakturaer
+// der ifølge Omsætning pr. fag-pipelinen STADIG mangler at blive sendt denne måned
+// (sager med et godkendt tilbud/budget, men endnu ingen godkendt faktura). Bundlinje
+// = (sendt + mangler at sende) − udgifter, altså den fulde forventede måned, ikke kun
+// det der allerede er faktureret.
+async function computeMonthlyProfitSnapshot() {
+  const monthKey = new Date().toISOString().slice(0, 7);
+
+  const expRow = await pgOne('SELECT COALESCE(SUM(amount),0)::float AS total FROM finance_expenses WHERE month_key=$1', [monthKey]);
+  const expenses = expRow ? expRow.total : 0;
+
+  const bankSnap = await pgOne('SELECT * FROM finance_bank_snapshots ORDER BY snap_date DESC LIMIT 1');
+  const bankCash = bankSnap ? (Number(bankSnap.hovedkonto) || 0) + (Number(bankSnap.moms) || 0) + (Number(bankSnap.forbrug) || 0) : null;
+
+  const invoices = await fetchFinanceInvoices();
+  const invoicesSent = invoices
+    .filter(i => i.createdAt && i.createdAt.slice(0, 7) === monthKey)
+    .reduce((s, i) => s + (i.priceWithTax || 0), 0);
+
+  const revenue = await fetchFinanceJobsByMonth(0, 0);
+  const monthJobs = (revenue[monthKey] && revenue[monthKey].jobs) || [];
+  const invoicesPending = monthJobs
+    .filter(j => j.valueSource !== 'invoice')
+    .reduce((s, j) => s + (j.value || 0), 0);
+
+  const bottomLine = (invoicesSent + invoicesPending) - expenses;
+
+  return { monthKey, expenses, bankCash, invoicesSent, invoicesPending, bottomLine };
+}
+async function saveMonthlyProfitSnapshot() {
+  const snap = await computeMonthlyProfitSnapshot();
+  const today = new Date().toISOString().slice(0, 10);
+  await pool.query(`
+    INSERT INTO profit_snapshots (month_key,snap_date,expenses,bank_cash,invoices_sent,invoices_pending,bottom_line,updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()})
+    ON CONFLICT (month_key) DO UPDATE SET snap_date=$2,expenses=$3,bank_cash=$4,invoices_sent=$5,invoices_pending=$6,bottom_line=$7,updated_at=${nowTextSQL()}
+  `, [snap.monthKey, today, snap.expenses, snap.bankCash, snap.invoicesSent, snap.invoicesPending, snap.bottomLine]);
+  return snap;
+}
+app.get('/api/finance/profit-snapshots', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM profit_snapshots ORDER BY month_key ASC');
+  res.json(rows.rows);
+}));
+// Manuel "Gem nu"-knap — bruges også automatisk af den månedlige cron nedenfor d. 15.
+// Idempotent: kører man den flere gange samme måned, opdateres blot samme række.
+app.post('/api/finance/profit-snapshots/save-now', auth, financeOnly, asyncRoute(async (req, res) => {
+  const snap = await saveMonthlyProfitSnapshot();
+  res.json({ ok: true, snapshot: snap });
+}));
+
 // ── Send dagens rapport til egen mail — genbruger den eksisterende mail-opsætning ──
 app.post('/api/finance/email-report', auth, financeOnly, asyncRoute(async (req, res) => {
   const to = req.user.email;
@@ -5326,6 +5396,10 @@ async function start() {
   cron.schedule('15 * * * *', () => runNotificationScan().catch(e => { console.error('Notifikationsscan fejlede:', e.message); logSystemEvent('notification_scan', 'error', 'Notifikationsscan fejlede: ' + e.message); }));
   // Rykker-scan kl. 10 hver dag — runDunningScan tjekker selv om det er slået til.
   cron.schedule('0 10 * * *', () => runDunningScan(false).catch(e => { console.error('Rykker-scan fejlede:', e.message); logSystemEvent('dunning_scan', 'error', 'Rykker-scan fejlede: ' + e.message); }));
+  // Profit-analyse — gemmer et fast snapshot af indeværende måned kl. 08 d. 15. hver
+  // måned, så Martin kan sammenligne måned for måned uden at tallene ændrer sig
+  // bagefter. Kan også udløses manuelt via "Gem nu"-knappen i Oversigt.
+  cron.schedule('0 8 15 * *', () => saveMonthlyProfitSnapshot().catch(e => { console.error('Profit-snapshot fejlede:', e.message); logSystemEvent('profit_snapshot', 'error', 'Månedligt profit-snapshot fejlede: ' + e.message); }));
 }
 
 start().catch(error => {

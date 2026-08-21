@@ -1388,6 +1388,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="fin-add-btn" id="fin-add-widget-btn">+ Tilføj graf</button>
     </div>
     <div id="fin-widgets-container" style="display:flex;flex-direction:column;gap:16px"></div>
+
+    <div class="bly-col" id="fin-profit-module" style="margin-top:20px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:16px">
+        <div>
+          <div style="font-size:19px;font-weight:800;color:var(--bly-ink)">📊 Profit-analyse</div>
+          <div class="fin-muted" style="font-size:11px;margin-top:2px">Fast snapshot pr. måned (tages automatisk d. 15.) — så du kan sammenligne måned for måned</div>
+        </div>
+        <button class="bly-btn outline small" id="fin-profit-save-now">💾 Gem snapshot nu</button>
+      </div>
+      <div id="fin-profit-table"></div>
+    </div>
   </div>
 
   <div class="fintabpage" id="fintab-omsaetning" style="display:none">
@@ -2210,6 +2221,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn" id="close-timeoff">Annuller</button>
       <button class="btn primary" id="save-timeoff-btn">Gem</button>
     </div>
+  </div>
+</div>
+
+<!-- FERIE-GODKENDELSE — BLOKERENDE POPUP VED SIDE-LOAD. Ingen luk-knap/baggrundsklik med vilje:
+     admin skal tage stilling til hver ventende ferie-/fraværsanmodning, før popup'en forsvinder. -->
+<div class="mo" id="timeoff-block-modal" style="z-index:400">
+  <div class="modal" style="max-width:540px">
+    <h3>🏖 Ventende ferie-/fraværsanmodninger</h3>
+    <div class="capacity-modal-note">Du skal godkende eller afvise hver anmodning, før du kan fortsætte.</div>
+    <div id="timeoff-block-list" style="margin:14px 0 4px;display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -5238,6 +5259,44 @@ async function deleteTimeOff(id){
   else if(r)toast(r.error||'Fejl','❌');
 }
 
+// FERIE-GODKENDELSE — BLOKERENDE POPUP VED SIDE-LOAD
+// Køres kun ved initial boot (ikke ved hver loadAll-refresh, ellers ville popup'en
+// dukke op igen efter enhver almindelig handling). Så længe der er mindst én ventende
+// medarbejder-anmodning om ferie/fravær, forbliver popup'en åben — der er ingen
+// luk/annuller-knap og intet baggrundsklik, så admin skal tage stilling til dem alle.
+async function checkPendingTimeOffPopup(){
+  var list=await api('/api/time-off?status=pending');
+  var pending=(list||[]).filter(function(t){return t.requested_by==='employee';});
+  var modal=document.getElementById('timeoff-block-modal');
+  if(!pending.length){modal.classList.remove('open');return;}
+  document.getElementById('timeoff-block-list').innerHTML=pending.map(function(r){
+    return '<div class="request-card">'+
+      '<div class="request-main">'+
+        '<div class="request-title">'+timeOffLabel(r)+' — '+esc(r.user_name)+'</div>'+
+        '<div class="request-meta">'+esc(String(r.start_date).slice(0,10))+' – '+esc(String(r.end_date).slice(0,10))+'</div>'+
+        (r.note?'<div class="request-desc">'+esc(r.note)+'</div>':'')+
+      '</div>'+
+      '<div class="request-actions">'+
+        '<button class="btn small primary" data-action="block-approve-timeoff" data-id="'+r.id+'">✓ Godkend</button>'+
+        '<button class="btn small danger" data-action="block-reject-timeoff" data-id="'+r.id+'">✕ Afvis</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+  modal.classList.add('open');
+}
+async function blockApproveTimeOff(id){
+  var r=await api('/api/time-off/'+id+'/approve',{method:'PUT'});
+  if(r&&r.ok){toast('Godkendt — sat på kalenderen','✓');await refreshRequestsBadge();await checkPendingTimeOffPopup();await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function blockRejectTimeOff(id){
+  var note=await gmPrompt('Besked til medarbejderen (valgfrit)?','');
+  if(note===null)return;
+  var r=await api('/api/time-off/'+id+'/reject',{method:'PUT',body:JSON.stringify({admin_note:note.trim()||null})});
+  if(r&&r.ok){toast('Afvist','✕');await refreshRequestsBadge();await checkPendingTimeOffPopup();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+
 // FÆRDIGE OPGAVER (fakturering)
 function renderCompleted(){
   var body=document.getElementById('completed-body');if(!body)return;
@@ -6099,7 +6158,60 @@ function renderFinOverview(snapshots){
   renderFinBankCard(snapshots);
   renderFinMomsCard();
   renderFinTodoCard();
+  loadProfitSnapshots();
 }
+// ══════════════════════════════════════════════════════════════
+// PROFIT-ANALYSE — fast måned-for-måned snapshot nederst i Oversigt (se
+// computeMonthlyProfitSnapshot/saveMonthlyProfitSnapshot i server.js). Viser udgifter,
+// bank-cash (seneste snapshot), fakturaer der reelt ER sendt denne måned, fakturaer der
+// ifølge Omsætning pr. fag-pipelinen stadig MANGLER at blive sendt, og bundlinjen af de
+// to sammenlagt minus udgifter. Snapshottet ændrer sig ikke bagefter, selvom nye
+// fakturaer/udgifter kommer til — det er pointen, så historikken er stabil.
+var MAANEDER_KORT=['jan.','feb.','mar.','apr.','maj','jun.','jul.','aug.','sep.','okt.','nov.','dec.'];
+function profitMonthLabel(mk){var p=mk.split('-');return MAANEDER_KORT[+p[1]-1]+' '+p[0];}
+async function loadProfitSnapshots(){
+  var el=document.getElementById('fin-profit-table');
+  if(!el)return;
+  var rows=await api('/api/finance/profit-snapshots')||[];
+  if(!rows.length){
+    el.innerHTML='<p class="fin-muted" style="padding:10px 0">Intet snapshot endnu — det næste tages automatisk d. 15. i måneden, eller tryk "Gem snapshot nu" for at tage ét med det samme.</p>';
+    return;
+  }
+  var html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+
+    '<thead><tr style="text-align:left;border-bottom:1px solid var(--bly-border-soft)">'+
+    '<th style="padding:8px 10px;color:var(--muted);font-weight:700">Måned</th>'+
+    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Udgifter</th>'+
+    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Cash i banken</th>'+
+    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Fakturaer sendt</th>'+
+    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Skal sendes</th>'+
+    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Bundlinje</th>'+
+    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">vs. forrige mdr.</th>'+
+    '</tr></thead><tbody>'+
+    rows.map(function(r,i){
+      var prev=i>0?rows[i-1]:null;
+      var delta=prev?(+r.bottom_line-+prev.bottom_line):null;
+      var deltaHtml=delta==null?'<span class="fin-muted">–</span>':
+        (delta>=0?'<span style="color:#15803D;font-weight:700">▲ '+krFmt(delta)+'</span>':'<span style="color:#DC2626;font-weight:700">▼ '+krFmt(Math.abs(delta))+'</span>');
+      return '<tr style="border-bottom:1px solid var(--bly-border-soft)">'+
+        '<td style="padding:9px 10px;font-weight:700">'+profitMonthLabel(r.month_key)+'</td>'+
+        '<td style="padding:9px 10px;text-align:right;color:#DC2626">−'+krFmt(r.expenses)+'</td>'+
+        '<td style="padding:9px 10px;text-align:right">'+(r.bank_cash!=null?krFmt(r.bank_cash):'–')+'</td>'+
+        '<td style="padding:9px 10px;text-align:right;color:#15803D">'+krFmt(r.invoices_sent)+'</td>'+
+        '<td style="padding:9px 10px;text-align:right;color:#B45309">'+krFmt(r.invoices_pending)+'</td>'+
+        '<td style="padding:9px 10px;text-align:right;font-weight:800">'+krFmt(r.bottom_line)+'</td>'+
+        '<td style="padding:9px 10px;text-align:right">'+deltaHtml+'</td>'+
+      '</tr>';
+    }).join('')+
+    '</tbody></table></div>';
+  el.innerHTML=html;
+}
+document.getElementById('fin-profit-save-now').addEventListener('click',async function(){
+  var btn=this;btn.disabled=true;var origText=btn.textContent;btn.textContent='Gemmer…';
+  var r=await api('/api/finance/profit-snapshots/save-now',{method:'POST'});
+  btn.disabled=false;btn.textContent=origText;
+  if(r&&r.ok){toast('Snapshot gemt for '+profitMonthLabel(r.snapshot.monthKey),'💾');await loadProfitSnapshots();}
+  else if(r)toast(r.error||'Fejl','❌');
+});
 // ══════════════════════════════════════════════════════════════
 // OVERSIGT — Billy-stil topsektion: samlet resultat-graf + de 4 faste
 // kort (Fakturaer/Bank/Moms/Opgaver), bygget oven på de samme datakilder
@@ -8402,6 +8514,8 @@ function bind(){
       if(act==='edit-timeoff-day'){e.stopPropagation();openTimeOffModalByOffId(+a.dataset.userId,+a.dataset.offId);}
       if(act==='approve-timeoff'){e.stopPropagation();approveTimeOff(+a.dataset.id);}
       if(act==='reject-timeoff'){e.stopPropagation();rejectTimeOff(+a.dataset.id);}
+      if(act==='block-approve-timeoff'){e.stopPropagation();blockApproveTimeOff(+a.dataset.id);}
+      if(act==='block-reject-timeoff'){e.stopPropagation();blockRejectTimeOff(+a.dataset.id);}
       if(act==='delete-timeoff'){e.stopPropagation();deleteTimeOff(+a.dataset.id);}
       if(act==='completed-filter'){completedFilter=a.dataset.value;a.parentElement.querySelectorAll('.chip').forEach(function(c){c.classList.toggle('active',c===a);});renderCompleted();}
       if(act==='mail-log-filter'){mailLogFilter=a.dataset.value;a.parentElement.querySelectorAll('.chip').forEach(function(c){c.classList.toggle('active',c===a);});renderMailLog();}
@@ -8570,7 +8684,7 @@ initNoteWidget();
 
 bind();
 loadSettings();
-loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmailTemplates();return loadAll();});
+loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmailTemplates();return loadAll();}).then(function(){checkPendingTimeOffPopup();});
 })();
 </script>
 </body>
