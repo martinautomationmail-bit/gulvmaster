@@ -277,6 +277,8 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-omsaetning .fin-fagbar-track{background:var(--bly-border-soft);border-radius:var(--bly-r-pill);height:7px}
 #page-finance #fintab-omsaetning .fin-fagbar-fill{border-radius:var(--bly-r-pill)}
 #page-finance #fintab-omsaetning .fin-fagbar-total{border-top:1.5px solid var(--bly-border-soft);color:var(--bly-ink);font-size:13px;padding:12px 6px 2px}
+#page-finance #fintab-omsaetning .fin-status-totals{padding:2px 6px 0}
+#page-finance #fintab-omsaetning .fin-status-total-row{display:flex;justify-content:space-between;font-size:11px;color:var(--bly-sub);padding:3px 0}
 #page-finance #fintab-omsaetning .fin-job-row{display:flex;flex-direction:column;align-items:stretch;gap:9px;padding:16px 14px;border-bottom:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm);font-size:12.5px}
 #page-finance #fintab-omsaetning .fin-job-row:hover{background:var(--bly-hover)}
 #page-finance #fintab-omsaetning .fin-job-row:last-child{border-bottom:0}
@@ -1042,7 +1044,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-20.1</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-20.3</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -6499,6 +6501,25 @@ document.getElementById('finance-email-report-btn').onclick=async function(){
 var finFagFilter={};
 var finRevenueExpanded={};
 var finRevenueDateFrom=null,finRevenueDateTo=null,finRevenueStatusFilter='all';
+var finJobSearch={},finJobSearchFocus=null;
+// ÉN fælles kilde til status-navne/-farver — bruges både til status-prikkerne/badges
+// på hver sagslinje OG til at bygge "Alle sager"-filtret, så de to aldrig kan komme ud
+// af trit igen (det var præcis det der var galt: filtret havde gamle navne/manglede
+// "Færdig", fordi det var en separat, statisk liste der ikke fulgte med).
+var FIN_STATUS_META={
+  running:{label:'Kørende',color:'#15803D',bg:'#DCFCE7',dot:'#4ADE80',emoji:'🟢'},
+  invoiced:{label:'Fakturaer',color:'#6D28D9',bg:'#EDE9FE',dot:'#8B5CF6',emoji:'🟣'},
+  hold:{label:'På hold',color:'#92400E',bg:'#FEF9C3',dot:'#FACC15',emoji:'🟡'},
+  done:{label:'Færdig',color:'#1D4ED8',bg:'#DBEAFE',dot:'#3B82F6',emoji:'🔵'}
+};
+(function(){
+  var sel=document.getElementById('fin-revenue-status-filter');
+  if(!sel)return;
+  sel.innerHTML='<option value="all">Alle sager</option>'+Object.keys(FIN_STATUS_META).map(function(k){
+    var s=FIN_STATUS_META[k];
+    return '<option value="'+k+'">'+s.emoji+' Kun '+s.label.charAt(0).toLowerCase()+s.label.slice(1)+'</option>';
+  }).join('')+'<option value="unmarked">Kun umarkerede</option>';
+})();
 // Fast, deterministisk farve pr. fag (samme fag = samme farve hver gang) — genbruger
 // de eksisterende faggruppe-farvetokens fra planlægningstavlen i stedet for at opfinde nye.
 var FIN_FAG_PALETTE=[
@@ -6541,7 +6562,7 @@ function renderFinRevenue(){
   var MAANEDE_FULDE=['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'];
   var thisMonthKey=iso(new Date()).slice(0,7);
   var months=Object.keys(finRevenue).sort();
-  var STATUS_META={running:{label:'Kørende',color:'#15803D',bg:'#DCFCE7',dot:'#4ADE80'},invoiced:{label:'Faktureret',color:'#6D28D9',bg:'#EDE9FE',dot:'#8B5CF6'},hold:{label:'På hold',color:'#92400E',bg:'#FEF9C3',dot:'#FACC15'},done:{label:'Færdig',color:'#1D4ED8',bg:'#DBEAFE',dot:'#3B82F6'}};
+  var STATUS_META=FIN_STATUS_META;
   el.innerHTML=months.map(function(mk){
     var mAll=finRevenue[mk];
     // Dato-filter: kun sager hvis planlagte startdato falder i det valgte interval.
@@ -6562,6 +6583,25 @@ function renderFinRevenue(){
       byFag[j.fag].count++;byFag[j.fag].sum+=(j.value||0);total+=(j.value||0);
     });
     var m={jobs:dateFilteredJobs,byFag:byFag,total:total,missingBudgetCount:dateFilteredJobs.filter(function(j){return j.value===null;}).length};
+    // STATUS-SUBTOTALER (Total færdige/fakturaer/kørende/på hold) — beregnes bevidst ud
+    // fra det dato-filtrerede sæt UDEN status-filtret lagt oveni, ellers ville man kun
+    // nogensinde se ét tal her (det der matcher den valgte "Alle sager"-dropdown) i
+    // stedet for en reel fordeling på tværs af alle statusser til sammenligning.
+    var statusTotals={};
+    Object.keys(FIN_STATUS_META).forEach(function(k){statusTotals[k]={n:0,sum:0};});
+    mAll.jobs.forEach(function(j){
+      if(finRevenueDateFrom&&(!j.startDate||j.startDate<finRevenueDateFrom))return;
+      if(finRevenueDateTo&&(!j.startDate||j.startDate>finRevenueDateTo))return;
+      var jobKey=j.jobId?('job:'+j.jobId):('manual:'+j.manualId);
+      var st=finJobStatusMarks[jobKey];
+      if(st&&statusTotals[st]){statusTotals[st].n++;statusTotals[st].sum+=(j.value||0);}
+    });
+    var STATUS_TOTAL_LABEL={done:'Total færdige',invoiced:'Total fakturaer',running:'Total kørende',hold:'Total på hold'};
+    var statusBreakdown=['done','invoiced','running','hold'].map(function(k){
+      if(k==='hold'&&statusTotals[k].n===0)return '';
+      var s=statusTotals[k];
+      return '<div class="fin-status-total-row"><span>'+FIN_STATUS_META[k].emoji+' '+STATUS_TOTAL_LABEL[k]+'</span><span>'+s.n+' sag'+(s.n===1?'':'er')+' · '+krFmt(s.sum)+'</span></div>';
+    }).join('');
     var activeFag=finFagFilter[mk];
     var maxFagSum=Math.max.apply(null,Object.keys(m.byFag).map(function(f){return m.byFag[f].sum;}).concat([0]))||1;
     var fagBars=Object.keys(m.byFag).sort(function(a,b){return m.byFag[b].sum-m.byFag[a].sum;}).map(function(f){
@@ -6571,6 +6611,15 @@ function renderFinRevenue(){
         '<div class="fin-fagbar-track"><div class="fin-fagbar-fill" style="width:'+barPct+'%;background:'+col.bar+'"></div></div></div>';
     }).join('')||'<div class="fin-empty">Ingen sager i denne periode</div>';
     var visibleJobs=activeFag?m.jobs.filter(function(j){return j.fag===activeFag;}):m.jobs;
+    // SØG PÅ NAVN/BELØB — kun relevant når man rent faktisk kigger på en sagsliste (fag
+    // valgt eller "vis sager i detaljer" åbnet), ellers er der intet at søge i endnu.
+    var jobSearchQ=(finJobSearch[mk]||'').trim().toLowerCase();
+    if(jobSearchQ){
+      visibleJobs=visibleJobs.filter(function(j){
+        var hay=(j.name||'').toLowerCase()+' '+(j.value!=null?(String(j.value)+' '+krFmt(j.value)).toLowerCase():'');
+        return hay.indexOf(jobSearchQ)>-1;
+      });
+    }
     var expanded=!!finRevenueExpanded[mk]||!!activeFag;
     var jobRows=visibleJobs.map(function(j){
       var jobKey=j.jobId?('job:'+j.jobId):('manual:'+j.manualId);
@@ -6604,10 +6653,14 @@ function renderFinRevenue(){
         '</div></div>';
     }).join('');
     var jobsHeader=activeFag?'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px"><b class="fin-muted">Kun "'+esc(activeFag)+'" ('+visibleJobs.length+' sager)</b><button class="fin-edit-btn" data-action="fin-clear-fag-filter" data-month="'+mk+'" title="Vis alle fag igen">✕</button></div>':'';
+    // Søgefelt på navn/beløb — vises når sagslisten er åben (fag valgt eller "vis sager i
+    // detaljer" trykket), så man hurtigt kan finde en bestemt sag i stedet for at scrolle
+    // ned igennem en lang liste, fx efter at have klikket "Gulvslibning" og fået 16 sager.
+    var jobSearchBox=expanded?'<div style="padding:0 4px 8px"><input type="text" class="input bly-input" style="width:100%" placeholder="🔍 Søg navn eller beløb..." data-job-search-month="'+mk+'" value="'+esc(finJobSearch[mk]||'')+'"></div>':'';
     // Sagslisten er som standard skjult — kun fag-analysen er synlig med det samme.
     // Det holder kortene rene og overskuelige; man folder selv ud når man vil ned i detaljen.
     var jobsSection=expanded?
-      (jobsHeader+'<div class="fin-card" style="padding-top:8px;margin-top:4px">'+(jobRows||'<div class="fin-empty">Ingen sager</div>')+'</div>'+
+      (jobsHeader+jobSearchBox+'<div class="fin-card" style="padding-top:8px;margin-top:4px">'+(jobRows||(jobSearchQ?'<div class="fin-empty">Ingen sager matcher "'+esc(finJobSearch[mk])+'"</div>':'<div class="fin-empty">Ingen sager</div>'))+'</div>'+
         (activeFag?'':'<button class="fin-add-btn" data-action="fin-toggle-jobs" data-month="'+mk+'" style="width:100%">▲ Skjul sagerne igen</button>')):
       '<button class="fin-add-btn" data-action="fin-toggle-jobs" data-month="'+mk+'" style="width:100%">▾ Vis '+m.jobs.length+' sag'+(m.jobs.length===1?'':'er')+' i detaljer</button>';
     var isCur=mk===thisMonthKey;
@@ -6618,10 +6671,24 @@ function renderFinRevenue(){
       '</div>';
     return '<div class="fin-month-card">'+headHtml+'<div class="fin-month-body">'+
       '<div class="fin-fagbar-list">'+fagBars+'</div>'+
+      (statusBreakdown?'<div class="fin-status-totals">'+statusBreakdown+'</div>':'')+
       '<div class="fin-fagbar-total"><span>Total</span><span>'+m.jobs.length+' sager · '+krFmt(m.total)+'</span></div>'+
       '<button class="fin-add-btn" data-action="fin-add-manual-revenue" data-month="'+mk+'" style="width:100%;margin-top:6px">+ Tilføj sag manuelt</button>'+
       '<div style="margin-top:12px">'+jobsSection+'</div></div></div>';
   }).join('');
+  // Genskab fokus + markørposition i søgefeltet efter gentegning — ellers ville man
+  // miste fokus efter hvert eneste tastetryk (samme mønster som bank-quicksearch).
+  if(finJobSearchFocus){
+    var jsFocusInp=el.querySelector('[data-job-search-month="'+finJobSearchFocus.month+'"]');
+    if(jsFocusInp){jsFocusInp.focus();try{jsFocusInp.setSelectionRange(finJobSearchFocus.pos,finJobSearchFocus.pos);}catch(e){}}
+  }
+  el.querySelectorAll('[data-job-search-month]').forEach(function(inp){
+    inp.addEventListener('input',function(){
+      finJobSearch[inp.dataset.jobSearchMonth]=inp.value;
+      finJobSearchFocus={month:inp.dataset.jobSearchMonth,pos:inp.selectionStart};
+      renderFinRevenue();
+    });
+  });
   el.querySelectorAll('[data-job-status-key]').forEach(function(dot){
     dot.addEventListener('click',function(){
       var key=dot.dataset.jobStatusKey,val=dot.dataset.jobStatusVal;
