@@ -1134,7 +1134,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.2</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.3</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -1345,7 +1345,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div id="fin-billy-top" style="margin-bottom:28px">
       <div class="bly-col" style="margin-bottom:20px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:16px">
-          <div style="font-size:19px;font-weight:800;color:var(--bly-ink)">Resultat i DKK <span class="fin-muted" style="font-weight:600;font-size:12px;margin-left:4px">inkl. moms</span></div>
+          <div>
+            <div style="font-size:19px;font-weight:800;color:var(--bly-ink)">Resultat i DKK <span class="fin-muted" style="font-weight:600;font-size:12px;margin-left:4px">inkl. moms</span></div>
+            <div class="fin-muted" style="font-size:11px;margin-top:2px">Bagud = faktiske tal (bank-CSV hvis uploadet, ellers Udgifter-fanen) · Fremad = forecast (Udgifter-fanen)</div>
+          </div>
           <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
             <div id="fin-result-kpis" style="display:flex;gap:26px;flex-wrap:wrap"></div>
             <button class="bly-btn outline small" id="fin-quickexp-toggle">✏️ Ret udgifter pr. måned</button>
@@ -1353,7 +1356,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         </div>
         <div style="position:relative;height:260px"><canvas id="fin-result-chart"></canvas></div>
         <div id="fin-quickexp-panel" style="display:none;margin-top:20px;padding-top:18px;border-top:1px solid var(--bly-border-soft)">
-          <p class="fin-muted" style="margin:0 0 12px">Hurtig indtastning af udgifter for en måned — bruges fx til at proppe et samlet tal ind for tidligere måneder, uden at skulle udspecificere hver post under Udgifter. Et manuelt tal her vinder altid over den udspecificerede sum.</p>
+          <p class="fin-muted" style="margin:0 0 12px">Hurtig indtastning af udgifter for en måned — bruges fx til at proppe et samlet tal ind for tidligere måneder, uden at skulle udspecificere hver post under Udgifter. For bagudgående måneder kan du i stedet uploade bankens CSV/Excel-udskrift (📄) — så bruges summen af alle hævninger den måned automatisk. Prioritet: manuelt tal &gt; bank-CSV &gt; udspecificeret sum.</p>
+          <input type="file" id="fin-quickexp-upload-input" accept=".csv,.xlsx,.xls,.pdf" style="display:none">
           <div id="fin-quickexp-rows" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px"></div>
         </div>
       </div>
@@ -1370,20 +1374,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div style="flex:1;height:1px;background:var(--bly-border-soft)"></div>
     </div>
     <div id="fin-oversigt-boxes" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
-      <div class="fin-card fin-resizable" draggable="true" data-drag-id="bank">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div class="fin-eyebrow" style="margin:0">Aktuelt øjebliksbillede</div>
-          <span class="fin-badge-manual">Indtast selv</span>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <div><label class="form-label">Lunar Hovedkonto</label><input type="number" id="fin-bank-hoved" class="input"></div>
-          <div><label class="form-label">Lunar moms</label><input type="number" id="fin-bank-moms" class="input"></div>
-          <div><label class="form-label">Lunar forbrug</label><input type="number" id="fin-bank-forbrug" class="input"></div>
-          <div><label class="form-label">Tilgodehavender <span class="fin-badge-live">Live</span></label><div class="fin-kpi-value" style="font-size:18px" id="fin-tilgode-display">–</div></div>
-        </div>
-        <button class="btn small primary" style="width:100%;margin-top:12px" id="fin-save-snapshot-btn">💾 Gem snapshot af i dag</button>
-        <div id="fin-snapshot-history" style="margin-top:10px"></div>
-      </div>
       <div class="fin-card fin-resizable" draggable="true" data-drag-id="month-current" id="fin-month-current"></div>
       <div class="fin-card fin-resizable" draggable="true" data-drag-id="month-next" id="fin-month-next"></div>
     </div>
@@ -2318,6 +2308,27 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div id="fin-widget-picker-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
     <div class="modal-actions" style="display:flex;justify-content:flex-end;padding:0;border:0">
       <button class="btn small" id="fin-widget-picker-cancel">Luk</button>
+    </div>
+  </div>
+</div>
+<!-- Lunar-snapshot-popup — erstatter den gamle "Aktuelt øjebliksbillede"-kolonne på
+     Oversigt. Samme felter/id'er/endpoint som før, bare i en popup i stedet for en
+     permanent kolonne, så Bank-kortet i toppen ikke duplikeres af en tavs kolonne
+     længere nede som alligevel viste det samme. -->
+<div class="mo" id="fin-bank-snapshot-modal">
+  <div class="modal" style="width:400px">
+    <h3>Registrér dagens Lunar-tal</h3>
+    <p class="fin-muted" style="margin:0 0 14px">Indtast selv — bruges til "Bank"-kortet på Oversigt.</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div><label class="form-label">Lunar Hovedkonto</label><input type="number" id="fin-bank-hoved" class="input"></div>
+      <div><label class="form-label">Lunar moms</label><input type="number" id="fin-bank-moms" class="input"></div>
+      <div><label class="form-label">Lunar forbrug</label><input type="number" id="fin-bank-forbrug" class="input"></div>
+      <div><label class="form-label">Tilgodehavender <span class="fin-badge-live">Live</span></label><div class="fin-kpi-value" style="font-size:18px" id="fin-tilgode-display">–</div></div>
+    </div>
+    <div id="fin-snapshot-history" style="margin-top:14px"></div>
+    <div class="modal-actions">
+      <button class="btn small" id="fin-bank-snapshot-cancel">Luk</button>
+      <button class="btn small primary" id="fin-save-snapshot-btn">💾 Gem snapshot af i dag</button>
     </div>
   </div>
 </div>
@@ -6182,12 +6193,18 @@ function renderFinBankCard(snapshots){
   if(!el)return;
   var latest=(snapshots&&snapshots[0])||null;
   var saldo=latest?(+latest.hovedkonto||0):null;
-  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Bank</div><button class="bly-btn outline small" data-action="fin-goto-bank">Gå til bankafstemning</button></div>'+
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Bank</div>'+
+    '<div style="display:flex;align-items:center;gap:6px">'+
+    '<button class="bly-btn outline small" data-action="fin-open-bank-snapshot" title="Registrér dagens Lunar-tal" style="padding:8px 10px">✏️</button>'+
+    '<button class="bly-btn outline small" data-action="fin-goto-bank">Gå til bankafstemning</button>'+
+    '</div></div>'+
     '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Lunar Hovedkonto'+(latest?' · seneste snapshot '+esc(latest.snap_date):' — intet snapshot endnu')+'</div>'+
     '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(saldo!=null?krFmt(saldo):'–')+'</div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft)"><span class="fin-muted" style="font-size:12px">Tilgodehavende (live)</span><b style="font-size:14px">'+krFmt(finTilgodehavende())+'</b></div>';
   var btn=el.querySelector('[data-action="fin-goto-bank"]');
   if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="bankafstemning"]');if(t)t.click();});
+  var snapBtn=el.querySelector('[data-action="fin-open-bank-snapshot"]');
+  if(snapBtn)snapBtn.addEventListener('click',function(){document.getElementById('fin-bank-snapshot-modal').classList.add('open');});
 }
 async function renderFinMomsCard(){
   var el=document.getElementById('fin-card-moms');
@@ -6230,6 +6247,7 @@ document.getElementById('fin-quickexp-toggle').addEventListener('click',function
   panel.style.display=open?'none':'block';
   if(!open)renderFinQuickExpensePanel();
 });
+var finQuickExpUploadTargetMonth=null;
 async function renderFinQuickExpensePanel(){
   var rowsEl=document.getElementById('fin-quickexp-rows');
   if(!rowsEl)return;
@@ -6239,18 +6257,34 @@ async function renderFinQuickExpensePanel(){
   var monthKeys=[];
   for(var mi=0;mi<12;mi++)monthKeys.push(year+'-'+String(mi+1).padStart(2,'0'));
   finQuickExpMonthKeys=monthKeys;
+  var currentMonthKey=iso(new Date()).slice(0,7);
   var data=await api('/api/finance/expense-month-totals?months='+monthKeys.join(','))||{};
+  var bankData=await api('/api/finance/bank-statement/month-totals?months='+monthKeys.join(','))||{};
   rowsEl.innerHTML=monthKeys.map(function(mk,i){
     var d=data[mk]||{override:null,itemized:0};
+    var bank=bankData[mk]||null;
+    var isPast=mk<currentMonthKey;
     var isOverridden=d.override!=null;
-    var val=isOverridden?d.override:d.itemized;
+    var val,badge;
+    if(isOverridden){
+      val=d.override;
+      badge='<span class="fin-badge ok" title="Manuelt sat — ville ellers have været '+krFmt(bank?bank.expenseTotal:d.itemized)+'">manuelt</span>';
+    }else if(bank&&isPast){
+      val=bank.expenseTotal;
+      badge='<span class="fin-badge ok" style="background:#DBEAFE;color:#1D4ED8" title="'+bank.count+' transaktioner · '+esc(bank.filename||'upload')+' · '+esc((bank.uploadedAt||'').slice(0,10))+'">📄 bank-CSV</span>';
+    }else{
+      val=d.itemized;
+      badge='<span class="fin-muted" style="font-size:10px">fra Udgifter-fanen</span>';
+    }
+    var uploadBtn=isPast?'<button class="bly-btn outline small" data-action="fin-quickexp-upload" data-month="'+mk+'" title="Upload bankudskrift (CSV/Excel/PDF) for denne måned">📄</button>':'';
+    var deleteCsvBtn=(bank&&isPast)?'<button class="bly-btn outline small" data-action="fin-quickexp-delete-csv" data-month="'+mk+'" title="Slet den uploadede udskrift">🗑</button>':'';
     return '<div style="border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:10px 12px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:12px">'+MAANEDER[i]+'</b>'+
-      (isOverridden?'<span class="fin-badge ok" title="Manuelt sat — ville ellers have været '+krFmt(d.itemized)+' fra Udgifter-fanen">manuelt</span>':'<span class="fin-muted" style="font-size:10px">fra Udgifter-fanen</span>')+'</div>'+
-      '<div style="display:flex;gap:6px">'+
-      '<input type="number" class="input bly-input" style="flex:1;width:auto" data-quickexp-month="'+mk+'" value="'+(val||'')+'" placeholder="0">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:12px">'+MAANEDER[i]+'</b>'+badge+'</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+      '<input type="number" class="input bly-input" style="flex:1;width:auto;min-width:80px" data-quickexp-month="'+mk+'" value="'+(val||'')+'" placeholder="0">'+
       '<button class="bly-btn small" data-action="fin-quickexp-save" data-month="'+mk+'" title="Gem">💾</button>'+
-      (isOverridden?'<button class="bly-btn outline small" data-action="fin-quickexp-clear" data-month="'+mk+'" title="Slet override — brug udspecificeret sum igen">↩</button>':'')+
+      (isOverridden?'<button class="bly-btn outline small" data-action="fin-quickexp-clear" data-month="'+mk+'" title="Slet override — brug bank-CSV/udspecificeret sum igen">↩</button>':'')+
+      uploadBtn+deleteCsvBtn+
       '</div></div>';
   }).join('');
   rowsEl.querySelectorAll('[data-action="fin-quickexp-save"]').forEach(function(btn){
@@ -6268,14 +6302,42 @@ async function renderFinQuickExpensePanel(){
   rowsEl.querySelectorAll('[data-action="fin-quickexp-clear"]').forEach(function(btn){
     btn.addEventListener('click',async function(){
       var mk=btn.dataset.month;
-      if(!await gmConfirm('Slet det manuelle tal for denne måned og brug den udspecificerede sum fra Udgifter-fanen igen?'))return;
+      if(!await gmConfirm('Slet det manuelle tal for denne måned og brug bank-CSV/udspecificeret sum igen?'))return;
       await api('/api/finance/expense-month-totals/'+mk,{method:'DELETE'});
       toast('Nulstillet ✓','↩');
       await renderFinQuickExpensePanel();
       renderFinResultChart();
     });
   });
+  rowsEl.querySelectorAll('[data-action="fin-quickexp-upload"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      finQuickExpUploadTargetMonth=btn.dataset.month;
+      document.getElementById('fin-quickexp-upload-input').click();
+    });
+  });
+  rowsEl.querySelectorAll('[data-action="fin-quickexp-delete-csv"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var mk=btn.dataset.month;
+      if(!await gmConfirm('Slet den uploadede bankudskrift for denne måned? Udgiftstallet falder tilbage til manuel override/udspecificeret sum.'))return;
+      await api('/api/finance/bank-statement/month/'+mk,{method:'DELETE'});
+      toast('Slettet ✓','🗑');
+      await renderFinQuickExpensePanel();
+      renderFinResultChart();
+    });
+  });
 }
+document.getElementById('fin-quickexp-upload-input').addEventListener('change',async function(e){
+  var file=e.target.files[0];
+  var mk=finQuickExpUploadTargetMonth;
+  e.target.value='';
+  if(!file||!mk)return;
+  var fd=new FormData();fd.append('file',file);fd.append('month',mk);
+  var r=await api('/api/finance/bank-statement/upload-month',{method:'POST',body:fd});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke læse filen','❌');return;}
+  toast('Fandt '+r.count+' transaktion(er) · '+krFmt(r.expenseTotal)+' i udgifter for måneden','✓');
+  await renderFinQuickExpensePanel();
+  renderFinResultChart();
+});
 // Forgangen måned: rigtig omsætning = betalte + delvist betalte fakturaer UDSTEDT den
 // måned (delvis tæller kun det faktisk modtagne beløb). Indeværende/næste måned bruger
 // stadig sagernes budget (fra fetchFinanceJobsByMonth), da fakturaer typisk ikke er
@@ -6588,9 +6650,16 @@ function renderFinTrendChart(){
 document.getElementById('fin-save-snapshot-btn').onclick=async function(){
   var body={hovedkonto:+document.getElementById('fin-bank-hoved').value||0,moms:+document.getElementById('fin-bank-moms').value||0,forbrug:+document.getElementById('fin-bank-forbrug').value||0,tilgodehavende:finTilgodehavende()};
   var r=await api('/api/finance/bank-snapshots',{method:'POST',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Snapshot gemt ✓','💾');var s=await api('/api/finance/bank-snapshots');renderFinOverview(s||[]);}
+  if(r&&r.ok){
+    toast('Snapshot gemt ✓','💾');
+    var s=await api('/api/finance/bank-snapshots');
+    renderFinOverview(s||[]);
+    renderFinBankCard(s||[]);
+    closeModal('fin-bank-snapshot-modal');
+  }
   else if(r)toast(r.error||'Fejl','❌');
 };
+document.getElementById('fin-bank-snapshot-cancel').addEventListener('click',function(){closeModal('fin-bank-snapshot-modal');});
 document.getElementById('finance-refresh-btn').onclick=function(){finYearData=null;loadFinance();};
 document.getElementById('fin-revenue-date-from').addEventListener('change',function(e){finRevenueDateFrom=e.target.value||null;renderFinRevenue();});
 document.getElementById('fin-revenue-date-to').addEventListener('change',function(e){finRevenueDateTo=e.target.value||null;renderFinRevenue();});
@@ -6862,9 +6931,11 @@ function renderFinRevenue(){
         (activeFag?'':'<button class="fin-add-btn" data-action="fin-toggle-jobs" data-month="'+mk+'" style="width:100%">▲ Skjul sagerne igen</button>')):
       '<button class="fin-add-btn" data-action="fin-toggle-jobs" data-month="'+mk+'" style="width:100%">▾ Vis '+m.jobs.length+' sag'+(m.jobs.length===1?'':'er')+' i detaljer</button>';
     var isCur=mk===thisMonthKey;
+    var isPastMonth=mk<thisMonthKey;
     var monthNum=+mk.slice(5,7)-1,yearNum=mk.slice(0,4);
+    var actualBadge=isPastMonth?'<span class="fin-badge ok" title="Kun sager med en godkendt faktura tæller med her — sager uden faktura vises ikke i en overstået måned">✓ Faktisk</span>':'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Baseret på budget/tilbud — bliver til det faktiske tal når sagen faktureres">📈 Forecast</span>';
     var headHtml='<div class="fin-month-head'+(isCur?' fin-month-head-current':'')+'">'+
-      '<div class="fin-month-name">'+MAANEDE_FULDE[monthNum]+' '+yearNum+'</div>'+
+      '<div class="fin-month-name">'+MAANEDE_FULDE[monthNum]+' '+yearNum+' '+actualBadge+'</div>'+
       (isCur?'<span class="fin-month-badge">Denne måned</span>':'')+
       '</div>';
     return '<div class="fin-month-card">'+headHtml+'<div class="fin-month-body">'+

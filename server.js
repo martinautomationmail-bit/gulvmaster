@@ -275,6 +275,22 @@ async function initSchema() {
       tilgodehavende DOUBLE PRECISION DEFAULT 0,
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
+    -- Bagudgående måneders "rigtige" udgiftstal — Martin uploader en bank-CSV/Excel
+    -- PR. MÅNED (adskilt fra den løbende bankafstemnings-session ovenfor, som kun
+    -- husker den nyeste fil og bruges til fakturamatching). Her gemmes hver måneds
+    -- upload permanent under sin egen month_key, så tidligere måneder ikke forsvinder
+    -- når en ny fil uploades for en anden måned. expense_total = summen af alle
+    -- hævninger (negative beløb) i udskriften — bruges som det faktiske udgiftstal
+    -- for den måned i stedet for Udgift-modulets planlagte/manuelt indtastede poster.
+    CREATE TABLE IF NOT EXISTS finance_bank_month_statements (
+      month_key TEXT PRIMARY KEY,
+      filename TEXT,
+      transactions_json TEXT,
+      expense_total DOUBLE PRECISION DEFAULT 0,
+      income_total DOUBLE PRECISION DEFAULT 0,
+      txn_count INTEGER DEFAULT 0,
+      uploaded_at TEXT DEFAULT ${nowTextSQL()}
+    );
     -- Manuel status/note pr. JobTread-faktura (dokument-id), da JobTread/Billy ikke
     -- altid er opdateret — det er her admin selv retter "betalt/udestående/uafklaret".
     CREATE TABLE IF NOT EXISTS finance_invoice_overrides (
@@ -4479,7 +4495,12 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
 
   const result = {};
   for (const mk of monthKeys) {
-    const jobs = Object.values(buckets[mk]).filter(j => !j.excluded);
+    let jobs = Object.values(buckets[mk]).filter(j => !j.excluded);
+    // BAGUDGÅENDE MÅNEDER = FAKTISKE TAL, IKKE FORECAST. En måned der allerede er
+    // overstået skal kun vise sager der reelt ER faktureret — ikke et budget/tilbud-
+    // estimat der aldrig blev til en rigtig faktura. Fremtidige/indeværende måneder
+    // beholder budget/tilbud-estimatet som forecast, som før.
+    if (mk < currentMonthKey) jobs = jobs.filter(j => j.valueSource === 'invoice');
     const manualForMonth = manualRows.rows.filter(r => r.month_key === mk).map(r => ({ jobId: 'manual-' + r.id, manualId: r.id, name: r.name, fag: r.fag, value: r.amount, excluded: false, hasOverride: false, manual: true, placementReason: 'Tilføjet manuelt direkte i denne måned af dig.' }));
     const allJobs = jobs.concat(manualForMonth);
     const byFag = {};
@@ -4727,14 +4748,30 @@ app.put('/api/finance/job-override/:jobId', auth, financeOnly, asyncRoute(async 
 // ── Fakturaer: live fra JobTread + manuel status-override (Billy/bank er ikke
 // tilgængelig via API, så status rettes manuelt af admin og gemmes her).
 async function fetchFinanceInvoices() {
-  const data = await jtFetch({
-    query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, documents: {
-      $: { size: 100, sortBy: [{ field: 'createdAt', order: 'desc' }], where: ['type', 'customerInvoice'] },
-      count: {},
-      nodes: { id: {}, fullName: {}, createdAt: {}, price: {}, priceWithTax: {}, balance: {}, status: {}, job: { id: {}, name: {}, number: {}, location: { account: { id: {}, name: {} } } } }
-    } } }
-  }, 'Økonomi: hent fakturaer');
-  const nodes = data?.organization?.documents?.nodes || [];
+  // FIK KUN DE NYESTE 100 FAKTURAER FØR — uden sideskift (nextPage) faldt alt ældre end
+  // faktura #101 helt ud af datasættet. Det gjorde bl.a. moms-estimatet og Resultat-grafen
+  // stille og roligt forkerte for alle måneder der lå længere tilbage end de ~100 seneste
+  // fakturaer (fx viste et helt kvartal 0 kr, selvom der var fakturaer i det). Nu bladres
+  // der igennem alle sider ligesom de øvrige JobTread-forespørgsler i denne fil.
+  let cursor, page = 0, nodes = [];
+  while (page < 30) {
+    const args = { size: 100, sortBy: [{ field: 'createdAt', order: 'desc' }], where: ['type', 'customerInvoice'] };
+    if (cursor) args.page = cursor;
+    const data = await jtFetch({
+      query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, documents: {
+        $: args,
+        nextPage: {},
+        nodes: { id: {}, fullName: {}, createdAt: {}, price: {}, priceWithTax: {}, balance: {}, status: {}, job: { id: {}, name: {}, number: {}, location: { account: { id: {}, name: {} } } } }
+      } } }
+    }, `Økonomi: hent fakturaer s.${page + 1}`);
+    const conn = data?.organization?.documents || {};
+    const pageNodes = Array.isArray(conn.nodes) ? conn.nodes : [];
+    nodes = nodes.concat(pageNodes);
+    page++;
+    const next = conn.nextPage;
+    if (!next || next === '' || !pageNodes.length) break;
+    cursor = next;
+  }
   const overridesResult = await pool.query('SELECT * FROM finance_invoice_overrides');
   const overrides = {};
   for (const row of overridesResult.rows) overrides[row.document_id] = row;
@@ -4991,6 +5028,58 @@ app.get('/api/finance/bank-statement/session', auth, financeOnly, asyncRoute(asy
   res.json({ transactions, filename: row.filename, uploadedAt: row.uploaded_at });
 }));
 
+// ── Bagudgående måneders "rigtige" udgifter fra bank-CSV/Excel — se kommentar ved
+// CREATE TABLE finance_bank_month_statements. Bevidst ADSKILT fra
+// /api/finance/bank-statement/parse ovenfor (som kun husker én fil ad
+// gangen og bruges til fakturamatching) — her uploader man én fil PR. MÅNED, og den
+// gemmes permanent under den måned, så man kan bygge et helt års rigtige udgiftstal op
+// måned for måned uden at nyere uploads sletter ældre måneders data.
+app.post('/api/finance/bank-statement/upload-month', auth, financeOnly, uploadBankStatement.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Ingen fil modtaget' });
+  const monthKey = String(req.body?.month || req.query?.month || '');
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) return res.status(400).json({ error: 'Ugyldig eller manglende måned' });
+  const lower = String(req.file.originalname || '').toLowerCase();
+  let transactions = [];
+  try {
+    if (lower.endsWith('.pdf')) {
+      if (!pdfParse) return res.status(400).json({ error: 'PDF-læsning er ikke tilgængelig på serveren lige nu — prøv en Excel/CSV-eksport i stedet.' });
+      const parsed = await pdfParse(req.file.buffer);
+      transactions = parseBankStatementPdfText(parsed.text);
+    } else {
+      transactions = parseBankStatementSpreadsheet(req.file.buffer);
+    }
+  } catch (e) {
+    return res.status(400).json({ error: 'Kunne ikke læse filen: ' + e.message });
+  }
+  if (!transactions.length) {
+    return res.status(400).json({ error: 'Fandt ingen genkendelige transaktioner i filen. Prøv evt. en Excel/CSV-eksport i stedet for PDF.' });
+  }
+  // "Alle hævninger tæller" — summerer samtlige negative posteringer (penge ud af
+  // kontoen) i den valgte måned som udgifter, uanset hvad de dækker over. Simpelt og
+  // hurtigt, men bemærk at det derfor også inkluderer fx moms-betalinger, lån og
+  // interne overførsler — ikke kun "rene" driftsudgifter.
+  let expenseTotal = 0, incomeTotal = 0;
+  transactions.forEach(t => { if (t.amount < 0) expenseTotal += Math.abs(t.amount); else incomeTotal += t.amount; });
+  await pool.query(`
+    INSERT INTO finance_bank_month_statements (month_key,filename,transactions_json,expense_total,income_total,txn_count,uploaded_at)
+    VALUES ($1,$2,$3,$4,$5,$6,${nowTextSQL()})
+    ON CONFLICT (month_key) DO UPDATE SET filename=$2,transactions_json=$3,expense_total=$4,income_total=$5,txn_count=$6,uploaded_at=${nowTextSQL()}
+  `, [monthKey, req.file.originalname || null, JSON.stringify(transactions), expenseTotal, incomeTotal, transactions.length]);
+  res.json({ ok: true, month: monthKey, expenseTotal, incomeTotal, count: transactions.length, filename: req.file.originalname });
+}));
+app.get('/api/finance/bank-statement/month-totals', auth, financeOnly, asyncRoute(async (req, res) => {
+  const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
+  const out = {};
+  if (!months.length) return res.json(out);
+  const rows = await pool.query('SELECT month_key,filename,expense_total,income_total,txn_count,uploaded_at FROM finance_bank_month_statements WHERE month_key = ANY($1)', [months]);
+  for (const r of rows.rows) out[r.month_key] = { filename: r.filename, expenseTotal: r.expense_total, incomeTotal: r.income_total, count: r.txn_count, uploadedAt: r.uploaded_at };
+  res.json(out);
+}));
+app.delete('/api/finance/bank-statement/month/:month', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM finance_bank_month_statements WHERE month_key=$1', [req.params.month]);
+  res.json({ ok: true });
+}));
+
 app.post('/api/finance/bank-statement/mark-reconciled', auth, financeOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.externalId) return res.status(400).json({ error: 'Mangler transaktions-id' });
@@ -5035,11 +5124,24 @@ app.get('/api/finance/expenses-totals', auth, financeOnly, asyncRoute(async (req
   const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
   const out = {};
   if (!months.length) return res.json(out);
+  const currentMonthKey = new Date().toISOString().slice(0, 7);
   const overrideRows = await pool.query('SELECT month_key, amount FROM finance_expense_month_totals WHERE month_key = ANY($1)', [months]);
   const overrides = {};
   for (const r of overrideRows.rows) overrides[r.month_key] = r.amount;
+  // Bagudgående måneders faktiske udgifter fra en uploadet bank-CSV/Excel (se
+  // finance_bank_month_statements) — kun relevant for måneder der allerede er
+  // overstået. Prioritet: manuel override > bank-CSV (kun bagud) > udspecificerede
+  // poster fra Udgifter-fanen. Fremtidige/indeværende måneder rører aldrig CSV-tallet,
+  // da det jo netop er forecast (planlagte/manuelt indtastede poster).
+  const pastMonths = months.filter(mk => mk < currentMonthKey && overrides[mk] == null);
+  const bankTotals = {};
+  if (pastMonths.length) {
+    const bankRows = await pool.query('SELECT month_key, expense_total FROM finance_bank_month_statements WHERE month_key = ANY($1)', [pastMonths]);
+    for (const r of bankRows.rows) bankTotals[r.month_key] = r.expense_total;
+  }
   for (const mk of months) {
     if (overrides[mk] != null) { out[mk] = overrides[mk]; continue; }
+    if (bankTotals[mk] != null) { out[mk] = bankTotals[mk]; continue; }
     const row = await pgOne('SELECT COALESCE(SUM(amount),0)::float AS total FROM finance_expenses WHERE month_key=$1', [mk]);
     out[mk] = row ? row.total : 0;
   }
