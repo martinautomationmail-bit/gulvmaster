@@ -297,6 +297,96 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-omsaetning .fin-badge{background:var(--bly-accent-soft);color:var(--bly-accent);border-radius:var(--bly-r-pill);font-weight:700;text-transform:none;letter-spacing:0;font-size:10px}
 #page-finance #fintab-omsaetning .fin-badge.ok{background:#DCFCE7;color:#15803D}
 #page-finance #fintab-omsaetning .fin-status-dot{border-radius:50%;border:1.5px solid var(--bly-border-soft)}
+/* Udgifter — redesign (Billy-stil): måned-navigation, søg/filter, KPI'er m. trend,
+   fordelingsbar, kort-visning og liste-visning. Erstatter det gamle enkeltkolonne-layout. */
+#page-finance #fintab-udgifter{color:var(--bly-ink);font-family:inherit}
+#page-finance #fintab-udgifter .udg-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:18px}
+#page-finance #fintab-udgifter .udg-title{font-size:22px;font-weight:800;margin:0;letter-spacing:-.01em;color:var(--bly-ink)}
+#page-finance #fintab-udgifter .udg-sub{font-size:12px;color:var(--bly-sub);margin-top:4px}
+#page-finance #fintab-udgifter .udg-month-nav{display:inline-flex;align-items:center;gap:2px;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-pill);padding:4px}
+#page-finance #fintab-udgifter .udg-month-nav button{width:28px;height:28px;border-radius:50%;border:0;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--bly-ink);font-size:14px}
+#page-finance #fintab-udgifter .udg-month-nav button:hover:not(:disabled){background:var(--bly-hover)}
+#page-finance #fintab-udgifter .udg-month-nav button:disabled{opacity:.35;cursor:default}
+#page-finance #fintab-udgifter .udg-month-nav .udg-month-label{padding:0 10px;font-weight:700;font-size:12.5px;min-width:110px;text-align:center;display:inline-block}
+#page-finance #fintab-udgifter .udg-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+#page-finance #fintab-udgifter .udg-toolbar-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#page-finance #fintab-udgifter .udg-toolbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#page-finance #fintab-udgifter .udg-btn{display:inline-flex;align-items:center;gap:7px;background:var(--bly-ink);color:#fff;border:0;border-radius:var(--bly-r-pill);padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer}
+#page-finance #fintab-udgifter .udg-btn.outline{background:#fff;color:var(--bly-ink);border:1px solid var(--bly-border)}
+#page-finance #fintab-udgifter .udg-btn.outline.dashed{border-style:dashed;color:var(--bly-sub)}
+#page-finance #fintab-udgifter .udg-btn:hover{opacity:.88}
+#page-finance #fintab-udgifter .udg-search{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:8px 12px 8px 32px;font-size:12.5px;font-weight:500;color:var(--bly-ink);background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="%23949AA6" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>') 10px center no-repeat;width:220px}
+#page-finance #fintab-udgifter .udg-search:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+#page-finance #fintab-udgifter .udg-select{appearance:none;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:8px 28px 8px 12px;font-size:12.5px;font-weight:600;color:var(--bly-ink);background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="%23949AA6" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>') calc(100% - 9px) center no-repeat;cursor:pointer}
+#page-finance #fintab-udgifter .udg-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-pill);padding:8px 14px;font-size:12px;font-weight:700;color:var(--bly-sub);cursor:pointer;user-select:none}
+#page-finance #fintab-udgifter .udg-chip.active{border-color:var(--bly-dot-unpaid);color:var(--bly-dot-unpaid);background:#FEF3E2}
+#page-finance #fintab-udgifter .udg-view-toggle{display:inline-flex;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-pill);padding:3px;gap:2px}
+#page-finance #fintab-udgifter .udg-view-toggle button{border:0;background:transparent;border-radius:var(--bly-r-pill);padding:7px 14px;font-size:12px;font-weight:700;color:var(--bly-sub);cursor:pointer}
+#page-finance #fintab-udgifter .udg-view-toggle button.active{background:var(--bly-ink);color:#fff}
+#page-finance #fintab-udgifter .udg-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+#page-finance #fintab-udgifter .udg-kpi-card{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:16px 18px}
+#page-finance #fintab-udgifter .udg-kpi-label{font-size:12px;font-weight:600;color:var(--bly-sub);margin-bottom:10px}
+#page-finance #fintab-udgifter .udg-kpi-value{font-size:22px;font-weight:800;letter-spacing:-.01em}
+#page-finance #fintab-udgifter .udg-kpi-sub{font-size:11px;color:var(--bly-sub);margin-top:6px}
+#page-finance #fintab-udgifter .udg-trend{font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:var(--bly-r-pill)}
+#page-finance #fintab-udgifter .udg-trend-bad{color:#DC2626;background:#FEF2F2}
+#page-finance #fintab-udgifter .udg-trend-good{color:#16A34A;background:#F0FDF4}
+#page-finance #fintab-udgifter .udg-breakdown{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:18px 20px;margin-bottom:22px}
+#page-finance #fintab-udgifter .udg-breakdown-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+#page-finance #fintab-udgifter .udg-breakdown-head h3{font-size:14px;font-weight:800;margin:0}
+#page-finance #fintab-udgifter .udg-breakdown-head span{font-size:11.5px;color:var(--bly-sub)}
+#page-finance #fintab-udgifter .udg-bd-row{display:grid;grid-template-columns:150px 1fr 100px;align-items:center;gap:12px;padding:6px 0}
+#page-finance #fintab-udgifter .udg-bd-name{font-size:12.5px;font-weight:700}
+#page-finance #fintab-udgifter .udg-bd-track{background:var(--bly-border-soft);border-radius:var(--bly-r-pill);height:9px;overflow:hidden}
+#page-finance #fintab-udgifter .udg-bd-fill{height:100%;border-radius:var(--bly-r-pill);background:var(--bly-accent)}
+#page-finance #fintab-udgifter .udg-bd-amt{font-size:12px;font-weight:700;text-align:right;color:var(--bly-ink)}
+#page-finance #fintab-udgifter .udg-bd-pct{font-size:10.5px;color:var(--bly-sub);font-weight:600;text-align:right}
+#page-finance #fintab-udgifter .udg-cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+#page-finance #fintab-udgifter .udg-cat-card{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);overflow:hidden;display:flex;flex-direction:column}
+#page-finance #fintab-udgifter .udg-cat-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--bly-border-soft)}
+#page-finance #fintab-udgifter .udg-cat-head .name{font-weight:800;font-size:13px}
+#page-finance #fintab-udgifter .udg-cat-head .amt{font-weight:800;font-size:13px}
+#page-finance #fintab-udgifter .udg-cat-body{padding:6px 10px;flex:1}
+#page-finance #fintab-udgifter .udg-exp-row{display:grid;grid-template-columns:20px 1fr 90px 26px;align-items:center;gap:8px;padding:7px 6px;border-radius:8px;border-left:3px solid transparent}
+#page-finance #fintab-udgifter .udg-exp-row:hover{background:var(--bly-hover)}
+#page-finance #fintab-udgifter .udg-exp-row.unpaid{border-left-color:var(--bly-dot-unpaid)}
+#page-finance #fintab-udgifter .udg-exp-row.paid .udg-exp-name,#page-finance #fintab-udgifter .udg-exp-row.paid .udg-exp-amt{color:var(--bly-sub);text-decoration:line-through;text-decoration-color:var(--bly-border)}
+#page-finance #fintab-udgifter .udg-exp-row input[type=checkbox]{width:15px;height:15px;accent-color:var(--bly-dot-paid);cursor:pointer}
+#page-finance #fintab-udgifter .udg-exp-name{border:0;background:transparent;font-size:12.5px;font-weight:600;color:var(--bly-ink);padding:3px 4px;border-radius:6px}
+#page-finance #fintab-udgifter .udg-exp-name:focus{outline:none;background:#fff;box-shadow:0 0 0 2px var(--bly-accent-soft)}
+#page-finance #fintab-udgifter .udg-exp-amt{border:0;background:transparent;font-size:12.5px;font-weight:700;text-align:right;padding:3px 4px;border-radius:6px;color:var(--bly-ink)}
+#page-finance #fintab-udgifter .udg-exp-amt:focus{outline:none;background:#fff;box-shadow:0 0 0 2px var(--bly-accent-soft)}
+#page-finance #fintab-udgifter .udg-exp-del{border:0;background:transparent;color:var(--bly-sub);cursor:pointer;font-size:15px;border-radius:6px;width:24px;height:24px}
+#page-finance #fintab-udgifter .udg-exp-del:hover{background:#FEF2F2;color:#DC2626}
+#page-finance #fintab-udgifter .udg-quickadd-row{display:flex;gap:6px;padding:8px 12px 12px}
+#page-finance #fintab-udgifter .udg-quickadd-row input{flex:1;border:1.5px dashed var(--bly-border);border-radius:var(--bly-r-sm);padding:7px 9px;font-size:12px;background:transparent}
+#page-finance #fintab-udgifter .udg-quickadd-row input:focus{outline:none;border-style:solid;border-color:var(--bly-accent);background:#fff}
+#page-finance #fintab-udgifter .udg-quickadd-row input.amt{max-width:80px}
+#page-finance #fintab-udgifter .udg-quickadd-row button{border:0;background:var(--bly-accent-soft);color:var(--bly-accent);border-radius:var(--bly-r-sm);padding:0 12px;font-weight:800;cursor:pointer}
+#page-finance #fintab-udgifter .udg-list-view{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);overflow:hidden;display:none}
+#page-finance #fintab-udgifter .udg-list-view.active{display:block}
+#page-finance #fintab-udgifter .udg-table{width:100%;border-collapse:collapse}
+#page-finance #fintab-udgifter .udg-table thead th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--bly-sub);padding:12px 14px;border-bottom:1.5px solid var(--bly-border-soft);cursor:pointer;user-select:none}
+#page-finance #fintab-udgifter .udg-table thead th.num{text-align:right}
+#page-finance #fintab-udgifter .udg-table thead th:hover{color:var(--bly-ink)}
+#page-finance #fintab-udgifter .udg-table tbody tr{border-bottom:1px solid var(--bly-border-soft)}
+#page-finance #fintab-udgifter .udg-table tbody tr:hover{background:var(--bly-hover)}
+#page-finance #fintab-udgifter .udg-table tbody tr.unpaid td:first-child{box-shadow:inset 3px 0 0 var(--bly-dot-unpaid)}
+#page-finance #fintab-udgifter .udg-table tbody tr.paid td{color:var(--bly-sub)}
+#page-finance #fintab-udgifter .udg-table tbody tr.paid .t-name{text-decoration:line-through;text-decoration-color:var(--bly-border)}
+#page-finance #fintab-udgifter .udg-table td{padding:9px 14px;font-size:12.5px}
+#page-finance #fintab-udgifter .udg-table td.num{text-align:right;font-weight:700}
+#page-finance #fintab-udgifter .udg-table td.t-cat{color:var(--bly-sub);font-weight:600}
+#page-finance #fintab-udgifter .udg-table td.t-cat span{background:var(--bly-border-soft);border-radius:var(--bly-r-pill);padding:2px 9px;font-size:10.5px;font-weight:700;color:var(--bly-ink)}
+#page-finance #fintab-udgifter .udg-table input[type=checkbox]{width:15px;height:15px;accent-color:var(--bly-dot-paid);cursor:pointer}
+#page-finance #fintab-udgifter .udg-t-del{border:0;background:transparent;color:var(--bly-sub);cursor:pointer;font-size:15px;border-radius:6px;width:24px;height:24px}
+#page-finance #fintab-udgifter .udg-t-del:hover{background:#FEF2F2;color:#DC2626}
+#page-finance #fintab-udgifter .udg-list-quickadd{display:flex;gap:8px;padding:14px;background:var(--ice);align-items:center}
+#page-finance #fintab-udgifter .udg-list-quickadd select,#page-finance #fintab-udgifter .udg-list-quickadd input{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:8px 10px;font-size:12.5px;background:#fff}
+#page-finance #fintab-udgifter .udg-list-quickadd input.name{flex:1}
+#page-finance #fintab-udgifter .udg-list-quickadd input.amt{width:110px}
+#page-finance #fintab-udgifter .udg-empty-hint{padding:20px;text-align:center;color:var(--bly-sub);font-size:12px}
+@media(max-width:980px){#page-finance #fintab-udgifter .udg-kpi-row{grid-template-columns:repeat(2,1fr)}#page-finance #fintab-udgifter .udg-cat-grid{grid-template-columns:1fr}}
 /* Toolbar */
 .bly-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .bly-toolbar-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -1044,7 +1134,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-20.3</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.1</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -1403,13 +1493,58 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div class="fintabpage" id="fintab-udgifter" style="display:none">
-    <div id="fin-expense-kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px"></div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <label class="form-label" style="margin:0">Måned</label>
-      <input type="month" id="fin-expense-month" class="input" style="width:auto">
-      <span class="fin-muted" id="fin-expense-month-hint"></span>
+    <div class="udg-head">
+      <div>
+        <h2 class="udg-title">Udgifter</h2>
+        <div class="udg-sub">Se, rediger og tilføj udgifter hurtigt — sammenlign måned for måned</div>
+      </div>
+      <div class="udg-month-nav">
+        <button type="button" id="udg-month-prev" title="Forrige måned">‹</button>
+        <span class="udg-month-label" id="udg-month-label"></span>
+        <button type="button" id="udg-month-next" title="Næste måned">›</button>
+      </div>
     </div>
-    <div id="fin-expense-categories" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start"></div>
+    <div class="udg-toolbar">
+      <div class="udg-toolbar-left">
+        <input type="text" class="udg-search" id="udg-search" placeholder="Søg efter navn eller beløb...">
+        <select class="udg-select" id="udg-cat-filter"><option value="">Alle kategorier</option></select>
+        <div class="udg-chip" id="udg-unpaid-chip">⏳ Kun ubetalte</div>
+      </div>
+      <div class="udg-toolbar-right">
+        <button type="button" class="udg-btn outline dashed" id="udg-copy-last">⤺ Kopiér fra sidste måned</button>
+        <div class="udg-view-toggle">
+          <button type="button" id="udg-view-cards" class="active">Kort</button>
+          <button type="button" id="udg-view-list">Liste</button>
+        </div>
+        <button type="button" class="udg-btn" id="udg-add-expense">+ Ny udgift</button>
+      </div>
+    </div>
+    <div class="udg-kpi-row" id="fin-expense-kpis"></div>
+    <div class="udg-breakdown">
+      <div class="udg-breakdown-head"><h3>Fordeling pr. kategori</h3><span>Størst forbrug øverst</span></div>
+      <div id="udg-bd-rows"></div>
+    </div>
+    <div class="udg-cat-grid" id="fin-expense-categories"></div>
+    <div class="udg-list-view" id="udg-list-view">
+      <table class="udg-table">
+        <thead>
+          <tr>
+            <th style="width:34px"></th>
+            <th data-sort="cat">Kategori</th>
+            <th data-sort="name">Navn</th>
+            <th class="num" data-sort="amount">Beløb</th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody id="udg-list-body"></tbody>
+      </table>
+      <div class="udg-list-quickadd">
+        <select id="udg-la-cat"></select>
+        <input type="text" class="name" id="udg-la-name" placeholder="Navn på udgift...">
+        <input type="number" class="amt" id="udg-la-amt" placeholder="Beløb">
+        <button type="button" class="udg-btn" id="udg-la-add">+ Tilføj</button>
+      </div>
+    </div>
   </div>
 
   <div class="fintabpage" id="fintab-adgang" style="display:none">
@@ -5388,6 +5523,14 @@ document.querySelectorAll('[data-fintab]').forEach(function(btn){
   });
 });
 var finExpenseMonth=new Date().toISOString().slice(0,7);
+// --- Udgifter redesign: filter/søg/visnings-state + cache til måned-over-måned trend ---
+var finExpenseSearch='',finExpenseCatFilter='',finExpenseUnpaidOnly=false,finExpenseView='cards';
+var finExpenseSortCol=null,finExpenseSortDir=1;
+var finExpensePrevTotalsCache={};
+var UDG_MONTH_NAMES=['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+function finExpenseMonthLabel(mk){var y=+mk.slice(0,4),m=+mk.slice(5,7);return UDG_MONTH_NAMES[m-1]+' '+y;}
+function finExpenseAdjMonthKey(mk,delta){var y=+mk.slice(0,4),m=+mk.slice(5,7)-1+delta;y+=Math.floor(m/12);m=((m%12)+12)%12;return y+'-'+String(m+1).padStart(2,'0');}
+function finExpensePrevMonthKey(mk){return finExpenseAdjMonthKey(mk,-1);}
 async function loadFinance(){
   var el=document.getElementById('fin-month-current');
   el.innerHTML='<div class="dash-empty">Henter live data fra JobTread…</div>';
@@ -6458,10 +6601,65 @@ document.getElementById('fin-revenue-date-clear').addEventListener('click',funct
   renderFinRevenue();
 });
 document.getElementById('fin-revenue-status-filter').addEventListener('change',function(e){finRevenueStatusFilter=e.target.value;renderFinRevenue();});
-document.getElementById('fin-expense-month').addEventListener('change',function(e){
-  if(!e.target.value)return;
-  finExpenseMonth=e.target.value;
+document.getElementById('udg-month-prev').addEventListener('click',function(){
+  finExpenseMonth=finExpenseAdjMonthKey(finExpenseMonth,-1);loadFinance();
+});
+document.getElementById('udg-month-next').addEventListener('click',function(){
+  finExpenseMonth=finExpenseAdjMonthKey(finExpenseMonth,1);loadFinance();
+});
+document.getElementById('udg-search').addEventListener('input',function(e){
+  finExpenseSearch=e.target.value;renderFinExpenseBody();
+});
+document.getElementById('udg-cat-filter').addEventListener('change',function(e){
+  finExpenseCatFilter=e.target.value;renderFinExpenseBody();
+});
+document.getElementById('udg-unpaid-chip').addEventListener('click',function(){
+  finExpenseUnpaidOnly=!finExpenseUnpaidOnly;
+  this.classList.toggle('active',finExpenseUnpaidOnly);
+  renderFinExpenseBody();
+});
+document.getElementById('udg-view-cards').addEventListener('click',function(){
+  finExpenseView='cards';
+  document.getElementById('udg-view-cards').classList.add('active');
+  document.getElementById('udg-view-list').classList.remove('active');
+  document.getElementById('fin-expense-categories').style.display='grid';
+  document.getElementById('udg-list-view').classList.remove('active');
+});
+document.getElementById('udg-view-list').addEventListener('click',function(){
+  finExpenseView='list';
+  document.getElementById('udg-view-list').classList.add('active');
+  document.getElementById('udg-view-cards').classList.remove('active');
+  document.getElementById('fin-expense-categories').style.display='none';
+  document.getElementById('udg-list-view').classList.add('active');
+});
+document.getElementById('udg-add-expense').addEventListener('click',function(){
+  document.getElementById('udg-view-list').click();
+  document.getElementById('udg-la-name').focus();
+});
+document.getElementById('udg-la-add').addEventListener('click',function(){finExpenseQuickAdd();});
+document.getElementById('udg-la-name').addEventListener('keydown',function(e){if(e.key==='Enter')finExpenseQuickAdd();});
+document.getElementById('udg-la-amt').addEventListener('keydown',function(e){if(e.key==='Enter')finExpenseQuickAdd();});
+document.getElementById('udg-copy-last').addEventListener('click',async function(){
+  var prevMk=finExpensePrevMonthKey(finExpenseMonth);
+  if(!(await gmConfirm('Kopiér alle poster fra '+finExpenseMonthLabel(prevMk)+' ind i '+finExpenseMonthLabel(finExpenseMonth)+' som nye, ubetalte poster?')))return;
+  var prevResult=await api('/api/finance/expenses?month='+prevMk);
+  var prevCats=(prevResult&&prevResult.categories)||[];
+  var jobs=[];
+  prevCats.forEach(function(c){c.items.forEach(function(it){
+    jobs.push(api('/api/finance/expenses',{method:'POST',body:JSON.stringify({category_id:c.id,name:it.name,amount:it.amount,month_key:finExpenseMonth})}));
+  });});
+  if(!jobs.length){toast('Ingen poster at kopiere fra sidste måned','⚠');return;}
+  await Promise.all(jobs);
+  toast('Kopieret ✓','✓');
   loadFinance();
+});
+document.querySelectorAll('#udg-list-view th[data-sort]').forEach(function(th){
+  th.addEventListener('click',function(){
+    var col=th.dataset.sort;
+    finExpenseSortDir=(finExpenseSortCol===col)?-finExpenseSortDir:1;
+    finExpenseSortCol=col;
+    renderFinExpenseBody();
+  });
 });
 document.getElementById('fin-invoice-filter-clear').addEventListener('click',function(){
   finInvoiceStatusFilter='all';finInvoiceSearch='';finInvoiceMonthFilter='';finInvoiceYearFilter='';finInvoiceQuarterFilter='';finInvoiceRangeFrom='';finInvoiceRangeTo='';
@@ -7066,73 +7264,200 @@ async function saveFinInvoice(inv,status,note,paidAmount){
   else if(r)toast(r.error||'Fejl','❌');
 }
 
-function renderFinExpenseKpis(){
+// ---- Udgifter — hjælpefunktioner (fladt array, filtrering, sortering) ----
+function finExpenseAllFlat(){
+  var out=[];
+  finExpenses.forEach(function(cat){
+    cat.items.forEach(function(it){
+      out.push({id:it.id,catId:cat.id,catName:cat.name,name:it.name,amount:+it.amount||0,paid:!!it.paid});
+    });
+  });
+  return out;
+}
+function finExpensePassesFilter(item){
+  if(finExpenseCatFilter&&String(item.catId)!==String(finExpenseCatFilter))return false;
+  if(finExpenseUnpaidOnly&&item.paid)return false;
+  if(finExpenseSearch){
+    var q=finExpenseSearch.trim().toLowerCase();
+    var hay=(item.name+' '+item.amount+' '+krFmt(item.amount)).toLowerCase();
+    if(hay.indexOf(q)===-1)return false;
+  }
+  return true;
+}
+function finExpenseSortItems(items){
+  if(!finExpenseSortCol)return items;
+  var col=finExpenseSortCol,dir=finExpenseSortDir;
+  return items.slice().sort(function(a,b){
+    var av=col==='amount'?a.amount:(col==='cat'?a.catName:a.name);
+    var bv=col==='amount'?b.amount:(col==='cat'?b.catName:b.name);
+    if(av<bv)return -1*dir;
+    if(av>bv)return 1*dir;
+    return 0;
+  });
+}
+function finExpenseEnsurePrevTotal(mk,cb){
+  var pmk=finExpensePrevMonthKey(mk);
+  if(finExpensePrevTotalsCache[pmk]!=null){cb(finExpensePrevTotalsCache[pmk]);return;}
+  api('/api/finance/expenses-totals?months='+pmk).then(function(r){
+    finExpensePrevTotalsCache[pmk]=(r&&r[pmk]!=null)?r[pmk]:0;
+    cb(finExpensePrevTotalsCache[pmk]);
+  });
+}
+function finExpenseCard(label,valueHtml,subHtml){
+  return '<div class="udg-kpi-card"><div class="udg-kpi-label">'+label+'</div><div class="udg-kpi-value">'+valueHtml+'</div>'+(subHtml?'<div class="udg-kpi-sub">'+subHtml+'</div>':'')+'</div>';
+}
+function renderFinExpenseKpiRow(){
   var el=document.getElementById('fin-expense-kpis');
   if(!el)return;
-  var allItems=[];
-  finExpenses.forEach(function(cat){allItems=allItems.concat(cat.items);});
-  var total=allItems.reduce(function(s,i){return s+(+i.amount||0);},0);
-  var paidSum=allItems.filter(function(i){return i.paid;}).reduce(function(s,i){return s+(+i.amount||0);},0);
+  var flat=finExpenseAllFlat();
+  var total=flat.reduce(function(s,i){return s+i.amount;},0);
+  var paidSum=flat.filter(function(i){return i.paid;}).reduce(function(s,i){return s+i.amount;},0);
   var remaining=total-paidSum;
-  function card(label,value,cls){
-    return '<div class="fin-card"><div class="fin-eyebrow">'+label+'</div><div class="fin-kpi-value '+(cls||'')+'" style="font-size:24px">'+krFmt(value)+'</div></div>';
+  var byCat={};
+  finExpenses.forEach(function(c){byCat[c.id]=c.items.reduce(function(s,i){return s+(+i.amount||0);},0);});
+  var top=null;
+  finExpenses.forEach(function(c){var v=byCat[c.id]||0;if(!top||v>top.v)top={name:c.name,v:v};});
+  var pmk=finExpensePrevMonthKey(finExpenseMonth);
+  var trendSub='Ingen tidligere måned at sammenligne med';
+  if(finExpensePrevTotalsCache[pmk]!=null){
+    var prevTotal=finExpensePrevTotalsCache[pmk];
+    var diff=total-prevTotal;
+    if(prevTotal>0&&diff!==0){
+      var pct=Math.round(diff/prevTotal*100);
+      var cls=diff>0?'udg-trend-bad':'udg-trend-good';
+      trendSub='<span class="udg-trend '+cls+'">'+(diff>0?'▲':'▼')+' '+Math.abs(pct)+'% vs. sidste måned</span>';
+    }else if(prevTotal===0&&total>0){
+      trendSub='<span class="udg-trend udg-trend-bad">Nyt beløb — ingen udgifter sidste måned</span>';
+    }else{
+      trendSub='Uændret i forhold til sidste måned';
+    }
+  }else{
+    finExpenseEnsurePrevTotal(finExpenseMonth,function(){renderFinExpenseKpiRow();});
   }
-  el.innerHTML=card('Samlede udgifter',total)+card('Betalt',paidSum,'pos')+card('Mangler at betale',remaining,remaining>0?'neg':'pos');
+  el.innerHTML=
+    finExpenseCard('Samlede udgifter',krFmt(total),trendSub)+
+    finExpenseCard('Betalt',krFmt(paidSum),flat.filter(function(i){return i.paid;}).length+' poster markeret betalt')+
+    finExpenseCard('Mangler at betale',krFmt(remaining),flat.filter(function(i){return !i.paid;}).length+' poster afventer')+
+    finExpenseCard('Største kategori',top?esc(top.name):'—',top?krFmt(top.v):'');
 }
-function renderFinExpenses(){
-  renderFinExpenseKpis();
+function renderFinExpenseBreakdown(){
+  var el=document.getElementById('udg-bd-rows');
+  if(!el)return;
+  var total=0,rows=finExpenses.map(function(c){var v=c.items.reduce(function(s,i){return s+(+i.amount||0);},0);total+=v;return{name:c.name,v:v};});
+  rows.sort(function(a,b){return b.v-a.v;});
+  var max=rows.length?rows[0].v:1;
+  el.innerHTML=rows.map(function(r){
+    var pct=total?Math.round(r.v/total*100):0;
+    var w=max?Math.max(3,Math.round(r.v/max*100)):0;
+    return '<div class="udg-bd-row"><div class="udg-bd-name">'+esc(r.name)+'</div><div class="udg-bd-track"><div class="udg-bd-fill" style="width:'+w+'%"></div></div><div><div class="udg-bd-amt">'+krFmt(r.v)+'</div><div class="udg-bd-pct">'+pct+'% af total</div></div></div>';
+  }).join('')||'<div class="udg-empty-hint">Ingen udgiftskategorier endnu.</div>';
+}
+function renderFinExpenseCardGrid(){
   var el=document.getElementById('fin-expense-categories');
-  document.getElementById('fin-expense-month').value=finExpenseMonth;
-  var todayMonth=new Date().toISOString().slice(0,7);
-  document.getElementById('fin-expense-month-hint').textContent=finExpenseMonth===todayMonth?'Indeværende måned':(finExpenseMonth<todayMonth?'Historisk måned':'Fremtidig måned');
+  if(!el)return;
   el.innerHTML=finExpenses.map(function(cat){
     var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
-    return '<div class="fin-cat-card fin-resizable" draggable="true" data-drag-id="'+cat.id+'">'+
-      '<div class="fin-cat-head"><span>'+esc(cat.name)+'</span><span>'+krFmt(catTotal)+'</span></div>'+
-      '<div class="fin-cat-body">'+cat.items.map(function(it){
-        return '<div class="fin-exp-row" data-id="'+it.id+'">'+
-          '<input type="checkbox" class="fin-exp-paid" '+(it.paid?'checked':'')+'>'+
-          '<input type="text" class="fin-exp-name" value="'+esc(it.name)+'">'+
-          '<input type="number" class="fin-exp-amount" value="'+it.amount+'">'+
-          '<button class="fin-del-btn fin-exp-del">×</button></div>';
-      }).join('')+(cat.items.length?'':'<div class="fin-empty">Ingen poster denne måned.</div>')+'</div>'+
-      '<div style="padding:0 20px 14px"><button class="fin-add-btn" style="width:100%" data-catid="'+cat.id+'" data-action="fin-add-expense">+ Tilføj udgift</button></div></div>';
-  }).join('');
+    var items=cat.items.filter(function(it){return finExpensePassesFilter({catId:cat.id,name:it.name,amount:+it.amount||0,paid:!!it.paid});});
+    var rowsHtml=items.length?items.map(function(it){
+      return '<div class="udg-exp-row '+(it.paid?'paid':'unpaid')+'" data-id="'+it.id+'">'+
+        '<input type="checkbox" class="udg-exp-paid" '+(it.paid?'checked':'')+'>'+
+        '<input type="text" class="udg-exp-name" value="'+esc(it.name)+'">'+
+        '<input type="number" class="udg-exp-amt" value="'+it.amount+'">'+
+        '<button class="udg-exp-del">×</button></div>';
+    }).join(''):'<div class="udg-empty-hint">Ingen poster matcher.</div>';
+    return '<div class="udg-cat-card">'+
+      '<div class="udg-cat-head"><span class="name">'+esc(cat.name)+'</span><span class="amt">'+krFmt(catTotal)+'</span></div>'+
+      '<div class="udg-cat-body">'+rowsHtml+'</div>'+
+      '<div class="udg-quickadd-row"><input type="text" placeholder="+ Ny post..." data-qa-name="'+cat.id+'"><input type="number" class="amt" placeholder="kr" data-qa-amt="'+cat.id+'"><button data-qa-btn="'+cat.id+'">Tilføj</button></div>'+
+      '</div>';
+  }).join('')||'<div class="udg-empty-hint">Ingen udgiftskategorier endnu.</div>';
   el.querySelectorAll('[data-id]').forEach(function(row){
     var id=row.dataset.id;
-    row.querySelector('.fin-exp-paid').addEventListener('change',function(e){saveFinExpense(id,row,{paid:e.target.checked});});
-    row.querySelector('.fin-exp-name').addEventListener('change',function(){saveFinExpense(id,row,{});});
-    row.querySelector('.fin-exp-amount').addEventListener('change',function(){saveFinExpense(id,row,{});});
-    row.querySelector('.fin-exp-del').addEventListener('click',async function(){
-      if(await gmConfirm('Slet denne udgift?'))api('/api/finance/expenses/'+id,{method:'DELETE'}).then(async function(){loadFinance();});
-    });
+    row.querySelector('.udg-exp-paid').addEventListener('change',function(e){finExpenseUpdateItem(id,{paid:e.target.checked});});
+    row.querySelector('.udg-exp-name').addEventListener('change',function(e){finExpenseUpdateItem(id,{name:e.target.value});});
+    row.querySelector('.udg-exp-amt').addEventListener('change',function(e){finExpenseUpdateItem(id,{amount:e.target.value});});
+    row.querySelector('.udg-exp-del').addEventListener('click',function(){finExpenseDeleteItem(id);});
   });
-  el.querySelectorAll('[data-action="fin-add-expense"]').forEach(function(btn){
+  el.querySelectorAll('[data-qa-btn]').forEach(function(btn){
+    var catId=btn.dataset.qaBtn;
     btn.addEventListener('click',function(){
-      api('/api/finance/expenses',{method:'POST',body:JSON.stringify({category_id:btn.dataset.catid,name:'Ny udgift',amount:0,month_key:finExpenseMonth})}).then(function(){loadFinance();});
-    });
-  });
-  applyFinPanelOrder('udgifter','fin-expense-categories','.fin-resizable').then(function(){
-    makeFinBoxesDraggable(el,'.fin-resizable',function(order){
-      api('/api/finance/panel-order',{method:'PUT',body:JSON.stringify({panel:'udgifter',order:order})});
-    });
-    applyFinPanelBoxSizes('udgifter','fin-expense-categories','.fin-resizable').then(function(){
-      makeFinBoxesResizable(el,'.fin-resizable','udgifter');
+      var nameEl=el.querySelector('[data-qa-name="'+catId+'"]'),amtEl=el.querySelector('[data-qa-amt="'+catId+'"]');
+      var name=nameEl.value.trim();
+      if(!name)return;
+      finExpenseAddItem(catId,name,amtEl.value);
     });
   });
 }
-async function saveFinExpense(id,row,extra){
-  var body=Object.assign({name:row.querySelector('.fin-exp-name').value,amount:row.querySelector('.fin-exp-amount').value,paid:row.querySelector('.fin-exp-paid').checked},extra);
+function renderFinExpenseListBody(){
+  var body=document.getElementById('udg-list-body');
+  if(!body)return;
+  var items=finExpenseSortItems(finExpenseAllFlat().filter(finExpensePassesFilter));
+  if(!items.length){
+    body.innerHTML='<tr><td colspan="5" class="udg-empty-hint">Ingen poster matcher filteret.</td></tr>';
+  }else{
+    body.innerHTML=items.map(function(it){
+      return '<tr class="'+(it.paid?'paid':'unpaid')+'" data-id="'+it.id+'">'+
+        '<td><input type="checkbox" class="udg-t-paid" '+(it.paid?'checked':'')+'></td>'+
+        '<td class="t-cat"><span>'+esc(it.catName)+'</span></td>'+
+        '<td class="t-name">'+esc(it.name)+'</td>'+
+        '<td class="num">'+krFmt(it.amount)+'</td>'+
+        '<td><button class="udg-t-del">×</button></td></tr>';
+    }).join('');
+  }
+  body.querySelectorAll('tr[data-id]').forEach(function(tr){
+    var id=tr.dataset.id;
+    tr.querySelector('.udg-t-paid').addEventListener('change',function(e){finExpenseUpdateItem(id,{paid:e.target.checked});});
+    tr.querySelector('.udg-t-del').addEventListener('click',function(){finExpenseDeleteItem(id);});
+  });
+}
+function renderFinExpenseBody(){
+  renderFinExpenseKpiRow();
+  renderFinExpenseBreakdown();
+  renderFinExpenseCardGrid();
+  renderFinExpenseListBody();
+}
+function renderFinExpenses(){
+  document.getElementById('udg-month-label').textContent=finExpenseMonthLabel(finExpenseMonth);
+  var catFilterEl=document.getElementById('udg-cat-filter');
+  catFilterEl.innerHTML='<option value="">Alle kategorier</option>'+finExpenses.map(function(c){return '<option value="'+c.id+'"'+(String(finExpenseCatFilter)===String(c.id)?' selected':'')+'>'+esc(c.name)+'</option>';}).join('');
+  var laCatEl=document.getElementById('udg-la-cat');
+  laCatEl.innerHTML=finExpenses.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('');
+  document.getElementById('udg-month-prev').disabled=false;
+  renderFinExpenseBody();
+}
+async function finExpenseFindItem(id){
+  var found=null;
+  finExpenses.forEach(function(cat){cat.items.forEach(function(it){if(String(it.id)===String(id))found={cat:cat,item:it};});});
+  return found;
+}
+async function finExpenseUpdateItem(id,patch){
+  var found=await finExpenseFindItem(id);
+  if(!found)return;
+  var body=Object.assign({name:found.item.name,amount:found.item.amount,paid:!!found.item.paid},patch);
   var r=await api('/api/finance/expenses/'+id,{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){
     // Opdater den lokale kopi FØR gentegning — ellers gentegner vi med gammel data,
     // og ændringen (fx afkrydsningen) ser ud til at "hoppe tilbage" med det samme.
-    finExpenses.forEach(function(cat){cat.items.forEach(function(it){
-      if(String(it.id)===String(id)){it.name=body.name;it.amount=+body.amount||0;it.paid=body.paid;}
-    });});
-    toast('Gemt','✓');renderFinExpenses();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);
-  }
-  else if(r)toast(r.error||'Fejl','❌');
+    found.item.name=body.name;found.item.amount=+body.amount||0;found.item.paid=!!body.paid;
+    toast('Gemt','✓');renderFinExpenseBody();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);
+  }else if(r)toast(r.error||'Fejl','❌');
+}
+async function finExpenseDeleteItem(id){
+  if(!(await gmConfirm('Slet denne udgift?')))return;
+  var r=await api('/api/finance/expenses/'+id,{method:'DELETE'});
+  if(r&&r.ok)loadFinance();else if(r)toast(r.error||'Fejl','❌');
+}
+async function finExpenseAddItem(catId,name,amount){
+  var r=await api('/api/finance/expenses',{method:'POST',body:JSON.stringify({category_id:catId,name:name,amount:+amount||0,month_key:finExpenseMonth})});
+  if(r&&r.ok)loadFinance();else if(r)toast(r.error||'Fejl','❌');
+}
+function finExpenseQuickAdd(){
+  var catId=document.getElementById('udg-la-cat').value;
+  var name=document.getElementById('udg-la-name').value.trim();
+  var amt=document.getElementById('udg-la-amt').value;
+  if(!catId||!name)return;
+  finExpenseAddItem(catId,name,amt);
+  document.getElementById('udg-la-name').value='';document.getElementById('udg-la-amt').value='';
 }
 
 // PRIVAT BUDGET — samme visuelle mønster som Udgifter, men med fri kategori-styring
