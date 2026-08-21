@@ -387,6 +387,21 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-udgifter .udg-list-quickadd input.amt{width:110px}
 #page-finance #fintab-udgifter .udg-empty-hint{padding:20px;text-align:center;color:var(--bly-sub);font-size:12px}
 @media(max-width:980px){#page-finance #fintab-udgifter .udg-kpi-row{grid-template-columns:repeat(2,1fr)}#page-finance #fintab-udgifter .udg-cat-grid{grid-template-columns:1fr}}
+/* Lunar-snapshot-popup — Billy-stil i stedet for det gamle mørkeblå modal-header-look
+   som resten af appens ældre modaler bruger. Scoped til denne ene modal, så de andre
+   (endnu ikke redesignede) modaler i appen ikke rammes. */
+#fin-bank-snapshot-modal .modal{border-radius:var(--bly-r-lg);padding:26px}
+#fin-bank-snapshot-modal .modal h3{background:none;color:var(--bly-ink);margin:0 0 4px;padding:0;border-radius:0;font-size:18px;font-weight:800;cursor:default}
+#fin-bank-snapshot-modal .bly-modal-sub{font-size:12px;color:var(--bly-sub);margin:0 0 20px}
+#fin-bank-snapshot-modal .bly-field-label{font-size:11px;font-weight:700;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;display:block}
+#fin-bank-snapshot-modal .bly-field-input{width:100%;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:10px 12px;font-size:13px;font-weight:600;color:var(--bly-ink);background:#fff;box-sizing:border-box}
+#fin-bank-snapshot-modal .bly-field-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+#fin-bank-snapshot-modal .bly-total-row{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:var(--bly-accent-soft);border-radius:var(--bly-r-md);margin:16px 0 12px}
+#fin-bank-snapshot-modal .bly-total-label{font-size:12px;font-weight:700;color:var(--bly-accent)}
+#fin-bank-snapshot-modal .bly-total-value{font-size:20px;font-weight:800;color:var(--bly-ink)}
+#fin-bank-snapshot-modal .bly-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--bly-border-soft)}
+#fin-bank-snapshot-modal .fin-snap-item{display:flex;justify-content:space-between;font-size:12px;color:var(--bly-sub);padding:5px 0;border-bottom:1px solid var(--bly-border-soft)}
+#fin-bank-snapshot-modal .fin-snap-item b{color:var(--bly-ink)}
 /* Toolbar */
 .bly-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .bly-toolbar-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -1134,7 +1149,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.3</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.4</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -1368,17 +1383,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-col" id="fin-card-todo"></div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;margin:8px 0 20px">
-      <div style="flex:1;height:1px;background:var(--bly-border-soft)"></div>
-      <span class="fin-muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Detaljer &amp; manuelle tal</span>
-      <div style="flex:1;height:1px;background:var(--bly-border-soft)"></div>
-    </div>
-    <div id="fin-oversigt-boxes" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
-      <div class="fin-card fin-resizable" draggable="true" data-drag-id="month-current" id="fin-month-current"></div>
-      <div class="fin-card fin-resizable" draggable="true" data-drag-id="month-next" id="fin-month-next"></div>
-    </div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 10px">
       <div class="fin-eyebrow" style="margin:0">Grafer</div>
       <button class="fin-add-btn" id="fin-add-widget-btn">+ Tilføj graf</button>
     </div>
@@ -2316,19 +2321,23 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      permanent kolonne, så Bank-kortet i toppen ikke duplikeres af en tavs kolonne
      længere nede som alligevel viste det samme. -->
 <div class="mo" id="fin-bank-snapshot-modal">
-  <div class="modal" style="width:400px">
+  <div class="modal bly-snapshot-modal" style="width:420px">
     <h3>Registrér dagens Lunar-tal</h3>
-    <p class="fin-muted" style="margin:0 0 14px">Indtast selv — bruges til "Bank"-kortet på Oversigt.</p>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <div><label class="form-label">Lunar Hovedkonto</label><input type="number" id="fin-bank-hoved" class="input"></div>
-      <div><label class="form-label">Lunar moms</label><input type="number" id="fin-bank-moms" class="input"></div>
-      <div><label class="form-label">Lunar forbrug</label><input type="number" id="fin-bank-forbrug" class="input"></div>
-      <div><label class="form-label">Tilgodehavender <span class="fin-badge-live">Live</span></label><div class="fin-kpi-value" style="font-size:18px" id="fin-tilgode-display">–</div></div>
+    <p class="bly-modal-sub">Indtast selv — bruges til "Bank"-kortet på Oversigt.</p>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div><label class="bly-field-label">Lunar Hovedkonto</label><input type="number" id="fin-bank-hoved" class="bly-field-input"></div>
+      <div><label class="bly-field-label">Lunar moms</label><input type="number" id="fin-bank-moms" class="bly-field-input"></div>
+      <div><label class="bly-field-label">Lunar forbrug</label><input type="number" id="fin-bank-forbrug" class="bly-field-input"></div>
     </div>
-    <div id="fin-snapshot-history" style="margin-top:14px"></div>
-    <div class="modal-actions">
-      <button class="btn small" id="fin-bank-snapshot-cancel">Luk</button>
-      <button class="btn small primary" id="fin-save-snapshot-btn">💾 Gem snapshot af i dag</button>
+    <div class="bly-total-row">
+      <span class="bly-total-label">Samlet beholdning (de 3 konti)</span>
+      <span class="bly-total-value" id="fin-snapshot-total-display">–</span>
+    </div>
+    <div><label class="bly-field-label">Tilgodehavender <span class="fin-badge-live">Live</span></label><div class="bly-total-value" style="font-size:18px" id="fin-tilgode-display">–</div></div>
+    <div id="fin-snapshot-history" style="margin-top:16px"></div>
+    <div class="bly-modal-actions">
+      <button class="bly-btn outline" id="fin-bank-snapshot-cancel">Luk</button>
+      <button class="bly-btn" id="fin-save-snapshot-btn">💾 Gem snapshot af i dag</button>
     </div>
   </div>
 </div>
@@ -5543,8 +5552,6 @@ function finExpenseMonthLabel(mk){var y=+mk.slice(0,4),m=+mk.slice(5,7);return U
 function finExpenseAdjMonthKey(mk,delta){var y=+mk.slice(0,4),m=+mk.slice(5,7)-1+delta;y+=Math.floor(m/12);m=((m%12)+12)%12;return y+'-'+String(m+1).padStart(2,'0');}
 function finExpensePrevMonthKey(mk){return finExpenseAdjMonthKey(mk,-1);}
 async function loadFinance(){
-  var el=document.getElementById('fin-month-current');
-  el.innerHTML='<div class="dash-empty">Henter live data fra JobTread…</div>';
   var revenueP=api('/api/finance/revenue?monthsBack=0&monthsForward=1');
   var invoicesP=api('/api/finance/invoices');
   var expensesP=api('/api/finance/expenses?month='+finExpenseMonth);
@@ -5575,16 +5582,6 @@ async function loadFinance(){
   // fra selve fane-skiftet, som kunne nå at køre FØR denne funktion var færdig og
   // dermed vise en tom fakturaliste i højre panel, selvom transaktionerne var der.
   await loadFinBankSessionIfNeeded();
-  await applyFinPanelOrder('oversigt','fin-oversigt-boxes','.fin-resizable');
-  await applyFinPanelBoxSizes('oversigt','fin-oversigt-boxes','.fin-resizable');
-  if(!window._finOversigtDragBound){
-    window._finOversigtDragBound=true;
-    var oversigtEl=document.getElementById('fin-oversigt-boxes');
-    makeFinBoxesDraggable(oversigtEl,'.fin-resizable',function(order){
-      api('/api/finance/panel-order',{method:'PUT',body:JSON.stringify({panel:'oversigt',order:order})});
-    });
-    makeFinBoxesResizable(oversigtEl,'.fin-resizable','oversigt');
-  }
 }
 var finExpenseTotalsByMonth={};
 // Genskaber den rækkefølge Martin sidst trak boksene til, ved at flytte DOM-elementer
@@ -6062,11 +6059,21 @@ function finExpenseTotal(){var t=0;finExpenses.forEach(function(c){c.items.forEa
 function finTilgodehavende(){return finInvoices.filter(function(i){return i.overrideStatus==='unpaid';}).reduce(function(s,i){return s+(+i.priceWithTax||0);},0);}
 function krFmt(n){return (n===null||n===undefined||isNaN(n))?'–':Math.round(n).toLocaleString('da-DK')+' kr';}
 
+function finSnapshotUpdateTotal(){
+  var el=document.getElementById('fin-snapshot-total-display');
+  if(!el)return;
+  var h=+document.getElementById('fin-bank-hoved').value||0,m=+document.getElementById('fin-bank-moms').value||0,f=+document.getElementById('fin-bank-forbrug').value||0;
+  el.textContent=krFmt(h+m+f);
+}
+['fin-bank-hoved','fin-bank-moms','fin-bank-forbrug'].forEach(function(id){
+  document.getElementById(id).addEventListener('input',finSnapshotUpdateTotal);
+});
 function renderFinOverview(snapshots){
   var latest=snapshots[0];
   document.getElementById('fin-bank-hoved').value=latest?latest.hovedkonto:'';
   document.getElementById('fin-bank-moms').value=latest?latest.moms:'';
   document.getElementById('fin-bank-forbrug').value=latest?latest.forbrug:'';
+  finSnapshotUpdateTotal();
   document.getElementById('fin-tilgode-display').textContent=krFmt(finTilgodehavende());
   document.getElementById('fin-snapshot-history').innerHTML=snapshots.length?snapshots.slice(0,6).map(function(s){
     return '<div class="fin-snap-item"><span class="fin-muted">'+s.snap_date+'</span><b>'+krFmt(+s.hovedkonto+ +s.moms+ +s.forbrug+ +s.tilgodehavende)+'</b></div>';
@@ -6081,31 +6088,10 @@ function renderFinOverview(snapshots){
     if(mk&&finExpenseTotalsByMonth&&finExpenseTotalsByMonth[mk]!=null)return finExpenseTotalsByMonth[mk];
     return mk===finExpenseMonth?finExpenseTotal():0;
   }
-  function monthBox(mk,label,cumulativeFrom){
-    if(!mk||!finRevenue[mk])return '<div class="fin-empty">Ingen data</div>';
-    var m=finRevenue[mk],udg=udgForMonth(mk),moms=m.total*0.25,res=m.total-udg-moms;
-    var cumulativeRow='';
-    if(cumulativeFrom!=null){
-      var cumulative=cumulativeFrom+res;
-      cumulativeRow='<div class="fin-row" style="border-top:1px dashed var(--border2);padding-top:8px;margin-top:4px"><span>Aktuelle måneds resultat</span><b>'+krFmt(cumulativeFrom)+'</b></div>'+
-        '<div class="fin-row total"><span>Løbende bundlinje (denne + aktuelle)</span><b class="'+(cumulative<0?'neg':'pos')+'" style="font-size:16px">'+krFmt(cumulative)+'</b></div>';
-    }
-    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div class="fin-eyebrow" style="margin:0">'+label+'</div><span class="fin-badge-live">Live fra JobTread</span></div>'+
-      '<div class="fin-kpi-value" style="font-size:28px">'+krFmt(m.total)+'</div>'+
-      '<div class="fin-kpi-sub">'+m.jobs.length+' sager'+(m.missingBudgetCount?' · '+m.missingBudgetCount+' uden budget':'')+'</div>'+
-      '<div style="margin-top:14px">'+
-      '<div class="fin-row"><span>Udgifter</span><b>'+krFmt(udg)+'</b></div>'+
-      '<div class="fin-row"><span>Moms (25%)</span><b>'+krFmt(moms)+'</b></div>'+
-      '<div class="fin-row total"><span>Resultat</span><b class="'+(res<0?'neg':'pos')+'" style="font-size:16px">'+krFmt(res)+'</b></div>'+
-      cumulativeRow+'</div>';
-  }
-  var curResultForCumulative=null;
-  if(curKey&&finRevenue[curKey]){
-    var mCur=finRevenue[curKey],udgCur=udgForMonth(curKey);
-    curResultForCumulative=mCur.total-udgCur-mCur.total*0.25;
-  }
-  document.getElementById('fin-month-current').innerHTML=monthBox(curKey,'Indeværende måned ('+curKey+')');
-  document.getElementById('fin-month-next').innerHTML=monthBox(nextKey,'Løbende måned ('+nextKey+')',curResultForCumulative);
+  // De to "Indeværende måned"/"Løbende måned"-kort der plejede at stå her er fjernet —
+  // de duplikerede bare det Resultat-grafen og Bank-/Fakturaer-kortene i toppen allerede
+  // viser. curKey/nextKey/prevKey/udgForMonth bruges stadig af finLastTrendArgs herunder,
+  // som "Grafer"-widget-systemet (+ Tilføj graf) trækker på.
   finLastTrendArgs={prevKey:prevKey,curKey:curKey,nextKey:nextKey,udgForMonth:udgForMonth};
   loadFinWidgets();
   renderFinResultChart();
@@ -6192,15 +6178,24 @@ function renderFinBankCard(snapshots){
   var el=document.getElementById('fin-card-bank');
   if(!el)return;
   var latest=(snapshots&&snapshots[0])||null;
-  var saldo=latest?(+latest.hovedkonto||0):null;
+  var hoved=latest?(+latest.hovedkonto||0):null;
+  var moms=latest?(+latest.moms||0):null;
+  var forbrug=latest?(+latest.forbrug||0):null;
+  var total=latest?((+latest.hovedkonto||0)+(+latest.moms||0)+(+latest.forbrug||0)):null;
+  function acctBox(label,val){
+    return '<div style="flex:1;min-width:0"><div class="fin-muted" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin-bottom:3px">'+label+'</div><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">'+(val!=null?krFmt(val):'–')+'</div></div>';
+  }
   el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Bank</div>'+
     '<div style="display:flex;align-items:center;gap:6px">'+
     '<button class="bly-btn outline small" data-action="fin-open-bank-snapshot" title="Registrér dagens Lunar-tal" style="padding:8px 10px">✏️</button>'+
     '<button class="bly-btn outline small" data-action="fin-goto-bank">Gå til bankafstemning</button>'+
     '</div></div>'+
-    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Lunar Hovedkonto'+(latest?' · seneste snapshot '+esc(latest.snap_date):' — intet snapshot endnu')+'</div>'+
-    '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(saldo!=null?krFmt(saldo):'–')+'</div>'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft)"><span class="fin-muted" style="font-size:12px">Tilgodehavende (live)</span><b style="font-size:14px">'+krFmt(finTilgodehavende())+'</b></div>';
+    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Samlet beholdning (3 konti)'+(latest?' · seneste snapshot '+esc(latest.snap_date):' — intet snapshot endnu')+'</div>'+
+    '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(total!=null?krFmt(total):'–')+'</div>'+
+    '<div style="display:flex;gap:16px;padding:12px 0;border-top:1px solid var(--bly-border-soft);border-bottom:1px solid var(--bly-border-soft);margin-bottom:12px">'+
+    acctBox('Hovedkonto',hoved)+acctBox('Moms',moms)+acctBox('Forbrug',forbrug)+
+    '</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center"><span class="fin-muted" style="font-size:12px">Tilgodehavende (live)</span><b style="font-size:14px">'+krFmt(finTilgodehavende())+'</b></div>';
   var btn=el.querySelector('[data-action="fin-goto-bank"]');
   if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="bankafstemning"]');if(t)t.click();});
   var snapBtn=el.querySelector('[data-action="fin-open-bank-snapshot"]');
@@ -6215,8 +6210,9 @@ async function renderFinMomsCard(){
   var KVT=['1. kvartal','2. kvartal','3. kvartal','4. kvartal'];
   el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Moms <span class="fin-muted" style="font-weight:600;font-size:11px">(estimat)</span></div></div>'+
     '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+KVT[info.q]+' '+info.year+'</div>'+
-    '<div id="fin-moms-amount" style="font-size:26px;font-weight:800;color:#DC2626;margin-bottom:14px">Udregner…</div>'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft)"><span class="fin-muted" style="font-size:12px">Frist</span><b style="font-size:14px">'+daysLeft+' dage · '+info.deadline.getDate()+'/'+(info.deadline.getMonth()+1)+'-'+info.deadline.getFullYear()+'</b></div>';
+    '<div id="fin-moms-amount" style="font-size:26px;font-weight:800;color:#DC2626;margin-bottom:4px">Udregner…</div>'+
+    '<div id="fin-moms-empty-note" class="fin-muted" style="font-size:10.5px;display:none;margin-bottom:10px">Ingen fakturaer registreret i JobTread for denne periode — tjek om det stemmer, eller om der mangler data.</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft);margin-top:10px"><span class="fin-muted" style="font-size:12px">Frist</span><b style="font-size:14px">'+daysLeft+' dage · '+info.deadline.getDate()+'/'+(info.deadline.getMonth()+1)+'-'+info.deadline.getFullYear()+'</b></div>';
   var amtEl=document.getElementById('fin-moms-amount');
   if(!amtEl)return;
   // Samme lette datakilde som Resultat-grafen: rigtige fakturaer i kvartalets måneder,
@@ -6226,6 +6222,11 @@ async function renderFinMomsCard(){
   var qByMonth=await finInvoiceMonthTotals(qMonthKeys);
   var quarterTotal=qMonthKeys.reduce(function(s,mk){return s+(qByMonth[mk]||0);},0);
   amtEl.textContent=krFmt(quarterTotal*0.25);
+  // 0 kr kan sagtens være korrekt (fx hvis der reelt ingen fakturaer er i JobTread for
+  // perioden endnu) — men det ser ud som en fejl uden forklaring, så vis en tydelig
+  // note i stedet for at lade det stå som et bart "0 kr".
+  var noteEl=document.getElementById('fin-moms-empty-note');
+  if(noteEl)noteEl.style.display=quarterTotal===0?'block':'none';
 }
 async function renderFinTodoCard(){
   var el=document.getElementById('fin-card-todo');
