@@ -1134,7 +1134,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.1</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.2</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -6888,13 +6888,23 @@ function renderFinRevenue(){
     });
   });
   el.querySelectorAll('[data-job-status-key]').forEach(function(dot){
-    dot.addEventListener('click',function(){
+    dot.addEventListener('click',async function(){
       var key=dot.dataset.jobStatusKey,val=dot.dataset.jobStatusVal;
       var turningOff=finJobStatusMarks[key]===val;
       var newVal=turningOff?'':val;
+      var prevVal=finJobStatusMarks[key];
       if(newVal)finJobStatusMarks[key]=newVal;else delete finJobStatusMarks[key];
-      api('/api/finance/job-status-marks/'+encodeURIComponent(key),{method:'PUT',body:JSON.stringify({status:newVal})});
       renderFinRevenue();
+      // Afventer svaret fra serveren — hvis den afviser statussen (fx en ny status der
+      // ikke er lagt til i backendens whitelist endnu), ruller vi den lokale ændring
+      // tilbage OG viser en fejl med det samme, i stedet for at markeringen bare stille
+      // og roligt forsvinder igen ved næste genindlæsning uden nogen forklaring.
+      var r=await api('/api/finance/job-status-marks/'+encodeURIComponent(key),{method:'PUT',body:JSON.stringify({status:newVal})});
+      if(!r||r.error){
+        if(prevVal)finJobStatusMarks[key]=prevVal;else delete finJobStatusMarks[key];
+        toast((r&&r.error)?r.error:'Kunne ikke gemme status — prøv igen','❌');
+        renderFinRevenue();
+      }
     });
   });
   el.querySelectorAll('.fin-move-month-select').forEach(function(sel){

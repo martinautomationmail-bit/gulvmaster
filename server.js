@@ -4655,7 +4655,7 @@ app.put('/api/finance/job-status-marks/:jobKey', auth, financeOnly, asyncRoute(a
     await pool.query('DELETE FROM finance_job_status_marks WHERE job_key=$1', [req.params.jobKey]);
     return res.json({ ok: true });
   }
-  if (!['running', 'invoiced', 'hold'].includes(status)) return res.status(400).json({ error: 'Ugyldig status' });
+  if (!['running', 'invoiced', 'hold', 'done'].includes(status)) return res.status(400).json({ error: 'Ugyldig status' });
   await pool.query(`
     INSERT INTO finance_job_status_marks (job_key,status,updated_at) VALUES ($1,$2,${nowTextSQL()})
     ON CONFLICT (job_key) DO UPDATE SET status=$2,updated_at=${nowTextSQL()}
