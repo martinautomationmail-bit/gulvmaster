@@ -1149,7 +1149,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.4</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.5</span>
   <div class="tabs">
     <button class="tab" data-page="dashboard">Kommandocenter</button>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -6130,27 +6130,48 @@ async function renderFinResultChart(){
   for(var mi=0;mi<12;mi++)monthKeys.push(year+'-'+String(mi+1).padStart(2,'0'));
   var omsByMonth=await finInvoiceMonthTotals(monthKeys);
   var expByMonth=await api('/api/finance/expenses-totals?months='+monthKeys.join(','))||{};
+  // FORECAST FOR INDEVÆRENDE/FREMTIDIGE MÅNEDER UDEN RIGTIGE FAKTURAER — uden en rigtig
+  // faktura endnu viste grafen bare 0 kr resten af året. Nu hentes budget/tilbud-tallet fra
+  // "Omsætning pr. fag"s egen beregning (samme datakilde/logik som den fane) for de måneder,
+  // så resten af året vises som forecast i stedet for at være blankt. Bagudgående måneder
+  // rører vi IKKE her — dem er kun rigtige, fakturerede tal (se fetchFinanceJobsByMonth).
+  var todayKey=iso(new Date()).slice(0,7);
+  var forecastByMonth={};
+  var forecastNeeded=monthKeys.filter(function(mk){return mk>=todayKey&&(omsByMonth[mk]||0)===0;});
+  if(forecastNeeded.length){
+    // Serveren tillader max 6 måneder frem pr. kald — dækker langt de fleste tilfælde
+    // (resten af et kalenderår fra august og frem er fx kun 4 måneder).
+    var fc=await api('/api/finance/revenue?monthsBack=0&monthsForward=6');
+    if(fc)Object.keys(fc).forEach(function(mk){forecastByMonth[mk]=fc[mk].total||0;});
+  }
   var MAANEDER=['jan.','feb.','mar.','apr.','maj','jun.','jul.','aug.','sep.','okt.','nov.','dec.'];
-  var labels=[],oms=[],udgNeg=[],resultat=[],totalOms=0,totalUdg=0;
+  var labels=[],oms=[],omsColors=[],udgNeg=[],resultat=[],totalOms=0,totalUdg=0,anyForecast=false;
+  var ACTUAL_COLOR='#4ADE80',FORECAST_COLOR='#BBF7D0';
   monthKeys.forEach(function(mk,i){
-    var o=omsByMonth[mk]||0,u=expByMonth[mk]||0;
-    labels.push(MAANEDER[i]);oms.push(o);udgNeg.push(-u);resultat.push(o-u);
+    var o=omsByMonth[mk]||0,u=expByMonth[mk]||0,isForecast=false;
+    if(o===0&&mk>=todayKey&&forecastByMonth[mk]>0){o=forecastByMonth[mk];isForecast=true;anyForecast=true;}
+    labels.push(MAANEDER[i]+(isForecast?' (forecast)':''));
+    oms.push(o);omsColors.push(isForecast?FORECAST_COLOR:ACTUAL_COLOR);
+    udgNeg.push(-u);resultat.push(o-u);
     totalOms+=o;totalUdg+=u;
   });
   if(kpiEl)kpiEl.innerHTML=
-    '<div><div class="fin-muted" style="font-size:11px;font-weight:700">Omsætning</div><div style="font-size:19px;font-weight:800;color:#15803D">'+krFmt(totalOms)+'</div></div>'+
+    '<div><div class="fin-muted" style="font-size:11px;font-weight:700">Omsætning'+(anyForecast?' <span style="color:#16A34A">(inkl. forecast)</span>':'')+'</div><div style="font-size:19px;font-weight:800;color:#15803D">'+krFmt(totalOms)+'</div></div>'+
     '<div><div class="fin-muted" style="font-size:11px;font-weight:700">Udgifter</div><div style="font-size:19px;font-weight:800;color:#DC2626">−'+krFmt(totalUdg)+'</div></div>'+
     '<div><div class="fin-muted" style="font-size:11px;font-weight:700">Resultat</div><div style="font-size:19px;font-weight:800;color:var(--bly-ink)">'+krFmt(totalOms-totalUdg)+'</div></div>';
   if(finResultChartInstance)finResultChartInstance.destroy();
   finResultChartInstance=new Chart(canvas,{
     data:{labels:labels,datasets:[
-      {type:'bar',label:'Omsætning',data:oms,backgroundColor:'#4ADE80',borderRadius:4,stack:'r',maxBarThickness:34,order:2},
+      {type:'bar',label:'Omsætning',data:oms,backgroundColor:omsColors,borderRadius:4,stack:'r',maxBarThickness:34,order:2},
       {type:'bar',label:'Udgifter',data:udgNeg,backgroundColor:'#FCA5A5',borderRadius:4,stack:'r',maxBarThickness:34,order:2},
       {type:'line',label:'Resultat',data:resultat,borderColor:'#C9CDD6',backgroundColor:'transparent',tension:.4,pointRadius:3,pointBackgroundColor:'#fff',pointBorderColor:'#9AA3B2',borderWidth:2,order:1,spanGaps:true}
     ]},
     options:{responsive:true,maintainAspectRatio:false,
       scales:{y:{stacked:true,grid:{color:'#F0F1F3'},ticks:{callback:function(v){return Math.abs(v)>=1000?(v/1000)+'k':v;}}},x:{stacked:true,grid:{display:false}}},
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+krFmt(Math.abs(ctx.parsed.y||0));}}}}}
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){
+        var isFc=ctx.datasetIndex===0&&omsColors[ctx.dataIndex]===FORECAST_COLOR;
+        return ctx.dataset.label+(isFc?' (forecast — budget/tilbud)':'')+': '+krFmt(Math.abs(ctx.parsed.y||0));
+      }}}}}
   });
 }
 function finInvBoxHtml(color,bg,n,label,sum){
@@ -6192,27 +6213,38 @@ function renderFinBankCard(snapshots){
     '</div></div>'+
     '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Samlet beholdning (3 konti)'+(latest?' · seneste snapshot '+esc(latest.snap_date):' — intet snapshot endnu')+'</div>'+
     '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(total!=null?krFmt(total):'–')+'</div>'+
-    '<div style="display:flex;gap:16px;padding:12px 0;border-top:1px solid var(--bly-border-soft);border-bottom:1px solid var(--bly-border-soft);margin-bottom:12px">'+
+    '<div style="display:flex;gap:16px;padding:12px 0;border-top:1px solid var(--bly-border-soft)">'+
     acctBox('Hovedkonto',hoved)+acctBox('Moms',moms)+acctBox('Forbrug',forbrug)+
-    '</div>'+
-    '<div style="display:flex;justify-content:space-between;align-items:center"><span class="fin-muted" style="font-size:12px">Tilgodehavende (live)</span><b style="font-size:14px">'+krFmt(finTilgodehavende())+'</b></div>';
+    '</div>';
   var btn=el.querySelector('[data-action="fin-goto-bank"]');
   if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="bankafstemning"]');if(t)t.click();});
   var snapBtn=el.querySelector('[data-action="fin-open-bank-snapshot"]');
   if(snapBtn)snapBtn.addEventListener('click',function(){document.getElementById('fin-bank-snapshot-modal').classList.add('open');});
 }
+var finMomsYear=null,finMomsQ=null;
 async function renderFinMomsCard(){
   var el=document.getElementById('fin-card-moms');
   if(!el)return;
-  var info=nextVatDeadline();
+  if(finMomsYear==null){var d0=nextVatDeadline();finMomsYear=d0.year;finMomsQ=d0.q;}
+  var info=vatQuarterInfo(finMomsYear,finMomsQ);
   var today=new Date();today.setHours(0,0,0,0);
   var daysLeft=Math.round((info.deadline-today)/86400000);
   var KVT=['1. kvartal','2. kvartal','3. kvartal','4. kvartal'];
-  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Moms <span class="fin-muted" style="font-weight:600;font-size:11px">(estimat)</span></div></div>'+
-    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+KVT[info.q]+' '+info.year+'</div>'+
+  var fristHtml=daysLeft>=0?(daysLeft+' dage · '+info.deadline.getDate()+'/'+(info.deadline.getMonth()+1)+'-'+info.deadline.getFullYear()):('Frist overskredet · '+info.deadline.getDate()+'/'+(info.deadline.getMonth()+1)+'-'+info.deadline.getFullYear());
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Moms <span class="fin-muted" style="font-weight:600;font-size:11px">(estimat)</span></div>'+
+    '<div class="udg-month-nav" style="padding:3px"><button type="button" id="fin-moms-prev" title="Forrige kvartal" style="width:24px;height:24px;border-radius:50%;border:0;background:transparent;cursor:pointer">‹</button><span style="padding:0 6px;font-weight:700;font-size:11px">'+KVT[info.q]+' '+info.year+'</span><button type="button" id="fin-moms-next" title="Næste kvartal" style="width:24px;height:24px;border-radius:50%;border:0;background:transparent;cursor:pointer">›</button></div>'+
+    '</div>'+
     '<div id="fin-moms-amount" style="font-size:26px;font-weight:800;color:#DC2626;margin-bottom:4px">Udregner…</div>'+
     '<div id="fin-moms-empty-note" class="fin-muted" style="font-size:10.5px;display:none;margin-bottom:10px">Ingen fakturaer registreret i JobTread for denne periode — tjek om det stemmer, eller om der mangler data.</div>'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft);margin-top:10px"><span class="fin-muted" style="font-size:12px">Frist</span><b style="font-size:14px">'+daysLeft+' dage · '+info.deadline.getDate()+'/'+(info.deadline.getMonth()+1)+'-'+info.deadline.getFullYear()+'</b></div>';
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft);margin-top:10px"><span class="fin-muted" style="font-size:12px">Frist</span><b style="font-size:14px">'+fristHtml+'</b></div>';
+  document.getElementById('fin-moms-prev').addEventListener('click',function(){
+    finMomsQ--;if(finMomsQ<0){finMomsQ=3;finMomsYear--;}
+    renderFinMomsCard();
+  });
+  document.getElementById('fin-moms-next').addEventListener('click',function(){
+    finMomsQ++;if(finMomsQ>3){finMomsQ=0;finMomsYear++;}
+    renderFinMomsCard();
+  });
   var amtEl=document.getElementById('fin-moms-amount');
   if(!amtEl)return;
   // Samme lette datakilde som Resultat-grafen: rigtige fakturaer i kvartalets måneder,
