@@ -402,6 +402,30 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #fin-bank-snapshot-modal .bly-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--bly-border-soft)}
 #fin-bank-snapshot-modal .fin-snap-item{display:flex;justify-content:space-between;font-size:12px;color:var(--bly-sub);padding:5px 0;border-bottom:1px solid var(--bly-border-soft)}
 #fin-bank-snapshot-modal .fin-snap-item b{color:var(--bly-ink)}
+/* NY BOOKING / REDIGER BOOKING — samme Billy-modernisering, ét skridt videre ud i
+   appen (bruges fra BÅDE Daglig plan og Kapacitet, da de deler denne ene modal).
+   Scoped til #assign-modal, så feltenes id'er/JS-bindinger er 100% uændrede — kun
+   det visuelle. Ingen andre (endnu ikke redesignede) modaler i appen påvirkes. */
+#assign-modal .modal{border-radius:var(--bly-r-lg);padding:26px;box-shadow:0 24px 60px rgba(15,17,24,.18)}
+#assign-modal .modal h3{background:none;color:var(--bly-ink);margin:0 0 18px;padding:0;border-radius:0;font-size:19px;font-weight:800;letter-spacing:-.01em;cursor:default}
+#assign-modal .form-label{font-size:11px;font-weight:700;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
+#assign-modal .form-group{margin-bottom:14px}
+#assign-modal .opt-tag{color:var(--bly-sub);opacity:1;text-transform:none;font-weight:600;letter-spacing:0}
+#assign-modal .input,#assign-modal .select,#assign-modal .tld-status-select,#assign-modal .bly-textarea{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);padding:10px 12px;font-size:13px;font-weight:500;color:var(--bly-ink);transition:border-color .12s,box-shadow .12s;height:auto}
+#assign-modal .input:focus,#assign-modal .select:focus,#assign-modal .tld-status-select:focus,#assign-modal .bly-textarea:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+#assign-modal .bly-textarea{width:100%;resize:vertical;min-height:88px;font-family:inherit;line-height:1.5;box-sizing:border-box}
+#assign-modal .assign-info-box{background:var(--bly-accent-soft);border-radius:var(--bly-r-md);color:var(--bly-ink);font-size:11.5px;padding:12px 14px}
+#assign-modal .geo-hint{border-radius:var(--bly-r-md)}
+#assign-modal .checklist-item{border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm)}
+#assign-modal .checklist-item.done{background:#F0FDF4;border-color:#BBF7D0}
+#assign-modal .modal-actions{border-top:1px solid var(--bly-border-soft);margin-top:20px;padding-top:16px}
+#assign-modal .btn{border-radius:var(--bly-r-pill);padding:10px 18px;font-size:12.5px;font-weight:700;border:1px solid var(--bly-border);background:#fff;color:var(--bly-ink)}
+#assign-modal .btn:hover{border-color:#C7CBD1}
+#assign-modal .btn.primary{background:var(--bly-ink);border-color:var(--bly-ink);color:#fff}
+#assign-modal .btn.primary:hover{background:#000}
+#assign-modal .btn.danger{background:#FEF2F2;border-color:#FECACA;color:#B91C1C}
+#assign-modal .btn.small{padding:7px 12px;font-size:11.5px}
+#assign-modal .form-row{gap:12px}
 /* Toolbar */
 .bly-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .bly-toolbar-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -760,6 +784,7 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .assign-x{border:0;background:transparent;cursor:pointer;font-size:12px;line-height:1;color:inherit;opacity:.6;padding:0 1px;flex-shrink:0}
 .assign-x:hover{opacity:1}
 .assign-sub{font-size:8px;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.assign-note-dot{font-size:8px;opacity:.85;flex-shrink:0;cursor:help}
 .assign-time{font-size:8px;font-weight:700;opacity:.9}
 .day-load{font-size:8px;color:var(--muted);text-align:right;margin-top:2px}
 .day-load.overload{color:#B91C1C;font-weight:800}
@@ -2431,7 +2456,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Mødetid</label><input id="assign-time" type="time" class="input"></div>
       <div class="form-group"><label class="form-label">Reference (JT)</label><input class="input" id="assign-ref" disabled></div>
     </div>
-    <div class="form-group"><label class="form-label">Note til medarbejder</label><input id="assign-note" class="input" placeholder="Fx ring kunden 30 min før ankomst"></div>
+    <div class="form-group"><label class="form-label">Note til medarbejder</label><textarea id="assign-note" class="input bly-textarea" rows="4" placeholder="Fx ring kunden 30 min før ankomst"></textarea></div>
     <div class="form-group"><label class="form-label">📧 Kunde-email <span class="opt-tag">bruges til færdig-mail</span></label><input id="assign-email" type="email" class="input" placeholder="kunde@mail.dk"></div>
     <div class="form-group">
       <label class="form-label">☑ Tjekpunkter for denne opgave</label>
@@ -3123,13 +3148,18 @@ function assignPillSpan(b,spanDays,ds,canUp,canDown){
     (canUp?'<button class="pill-order-btn" title="Flyt op" data-action="move-booking" data-booking-id="'+b.id+'" data-date="'+ds+'" data-dir="up">▲</button>':'')+
     (canDown?'<button class="pill-order-btn" title="Flyt ned" data-action="move-booking" data-booking-id="'+b.id+'" data-date="'+ds+'" data-dir="down">▼</button>':'')+
     '</span>'):'';
-  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+(isDone?' is-done':'')+'" draggable="true" data-booking-id="'+b.id+'" style="'+extraStyle+'">'+
-    '<div class="assign-top"><span class="assign-name">'+bookingStatusIcon(b)+esc(b.job_name||b.task_name||'Opgave')+daysLabel+'</span>'+
+  // NOTEN vises IKKE længere inline i pillen — en lang note fik hele kortet (og dermed
+  // dagskolonnen, som ikke er bredde-begrænset) til at strække sig helt ud. Nu vises den
+  // kun som hover-tooltip (samme mønster som Kapacitet-boardets pills) plus et lille 📝
+  // -ikon ved navnet, så det stadig er synligt at der ER en note, uden at kortet vokser.
+  var noteIcon=b.notes?' <span class="assign-note-dot" title="'+esc(b.notes)+'">📝</span>':'';
+  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+(isDone?' is-done':'')+'" draggable="true" data-booking-id="'+b.id+'" style="'+extraStyle+'"'+(b.notes?' title="📝 '+esc(b.notes)+'"':'')+'>'+
+    '<div class="assign-top"><span class="assign-name">'+bookingStatusIcon(b)+esc(b.job_name||b.task_name||'Opgave')+daysLabel+noteIcon+'</span>'+
     '<span style="display:flex;gap:2px;flex-shrink:0">'+reorderBtns+
     '<button class="pill-copy" title="Kopiér opgave" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>'+
     '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></span></div>'+
     (b.start_time?'<div class="assign-time">⏰ '+esc(b.start_time)+'</div>':'')+
-    '<div class="assign-sub">'+esc(b.task_name||'')+(b.notes?' · '+esc(b.notes):'')+(b.customer_phone?' · '+phoneMarkup(b.customer_phone,true):'')+'</div>'+
+    '<div class="assign-sub">'+esc(b.task_name||'')+(b.customer_phone?' · '+phoneMarkup(b.customer_phone,true):'')+'</div>'+
     '</div>';
 }
 // Pill for bookings continuing from a previous week
