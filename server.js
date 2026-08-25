@@ -481,6 +481,10 @@ async function initSchema() {
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS capacity_label TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS documented_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+    -- Link + billede på noten til medarbejderen (fx tegning, foto, video-link) — vist
+    -- i "Note til medarbejder"-popup'en i Daglig plan og i medarbejderens eget system.
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS note_link TEXT;
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS note_image TEXT;
     CREATE INDEX IF NOT EXISTS idx_planning_bookings_mode ON planning_bookings(planning_mode);
 
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -3546,6 +3550,19 @@ app.put('/api/assignments/:id/invoice', auth, adminOnly, asyncRoute(async (req, 
   res.json({ ok: true });
 }));
 
+// Renser et link fra "Note til medarbejder"-feltet: tilføjer https:// hvis
+// admin har glemt protokollen, og afviser stille og roligt værdier der
+// tydeligvis ikke er et link (fx bare tekst) i stedet for at fejle hele gemningen.
+function cleanNoteLink(value) {
+  if (value === undefined) return undefined;
+  if (!value) return null;
+  let s = String(value).trim();
+  if (!s) return null;
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  if (!/^https?:\/\/[^\s]+\.[^\s]+/i.test(s)) return null;
+  return s.slice(0, 1000);
+}
+
 async function normalizeBooking(body, isNew) {
   const booking = body || {};
   const task = await pgOne('SELECT id,description FROM jt_tasks WHERE id=$1', [booking.task_id]);
@@ -3570,6 +3587,14 @@ async function normalizeBooking(body, isNew) {
   const explicitNote = booking.notes !== undefined && booking.notes !== null ? String(booking.notes).trim() : '';
   const fallbackNote = (isNew && !explicitNote && task.description) ? String(task.description).trim() : '';
   const finalNote = explicitNote || fallbackNote;
+  // Link + billede der hører til noten (fx et link til en tegning, eller et foto).
+  // Rører ALDRIG uopfordret, ligesom noteteksten ovenfor — sendes de ikke med i
+  // request'en (fx fra en af de andre hurtig-popups), bevares den eksisterende værdi
+  // fordi kaldene til normalizeBooking() ved redigering allerede har merget dem ind.
+  const noteLink = cleanNoteLink(booking.note_link);
+  const noteImage = booking.note_image !== undefined
+    ? (booking.note_image ? String(booking.note_image).slice(0, 3000000) : null)
+    : null;
   return {
     task_id: booking.task_id,
     user_id: Number(booking.user_id),
@@ -3577,6 +3602,8 @@ async function normalizeBooking(body, isNew) {
     days,
     capacity_days: capacityDays,
     notes: finalNote ? finalNote.slice(0, 1000) : null,
+    note_link: noteLink === undefined ? null : noteLink,
+    note_image: noteImage,
     start_time: booking.start_time || null,
     start_date: start,
     end_date: validDate(booking.end_date) ? booking.end_date : addWorkingDays(start, days)
@@ -3614,10 +3641,10 @@ app.post('/api/assignments/self', auth, asyncRoute(async (req, res) => {
   try {
     const booking = await normalizeBooking({ ...(req.body || {}), user_id: req.user.id }, true);
     const result = await pool.query(`
-      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${nowTextSQL()})
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_image,start_time,start_date,end_date,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()})
       RETURNING id
-    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.start_time, booking.start_date, booking.end_date]);
+    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_image, booking.start_time, booking.start_date, booking.end_date]);
     res.json({ ok: true, id: result.rows[0].id });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -3628,10 +3655,10 @@ app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
   try {
     const booking = await normalizeBooking(req.body, true);
     const result = await pool.query(`
-      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${nowTextSQL()})
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_image,start_time,start_date,end_date,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()})
       RETURNING id
-    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.start_time, booking.start_date, booking.end_date]);
+    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_image, booking.start_time, booking.start_date, booking.end_date]);
     let warning = null;
     try {
       const overlap = await timeOffOverlaps(booking.user_id, booking.start_date, booking.end_date);
@@ -3653,9 +3680,9 @@ app.put('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => 
     const booking = await normalizeBooking({ ...current, ...(req.body || {}), task_id: current.task_id });
     await pool.query(`
       UPDATE planning_bookings
-      SET user_id=$1,week_key=$2,days=$3,capacity_days=$4,notes=$5,start_time=$6,start_date=$7,end_date=$8,updated_at=${nowTextSQL()}
-      WHERE id=$9
-    `, [booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.start_time, booking.start_date, booking.end_date, current.id]);
+      SET user_id=$1,week_key=$2,days=$3,capacity_days=$4,notes=$5,note_link=$6,note_image=$7,start_time=$8,start_date=$9,end_date=$10,updated_at=${nowTextSQL()}
+      WHERE id=$11
+    `, [booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_image, booking.start_time, booking.start_date, booking.end_date, current.id]);
     res.json({ ok: true });
     if (String(current.planning_mode || 'daily') !== 'capacity') {
       sendScheduleChangeEmail(booking.user_id, `Din kalender er blevet opdateret: opgaven den ${String(booking.start_date).slice(0,10)} er ændret.`)

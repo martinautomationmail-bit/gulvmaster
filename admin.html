@@ -426,6 +426,13 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #assign-modal .btn.danger{background:#FEF2F2;border-color:#FECACA;color:#B91C1C}
 #assign-modal .btn.small{padding:7px 12px;font-size:11.5px}
 #assign-modal .form-row{gap:12px}
+/* Link + billede under "Note til medarbejder" — vist i Daglig plan-popup'en og
+   sendt med ned til medarbejderens eget system (employee.html). */
+.note-attach-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.note-attach-row .input{margin:0}
+.note-image-btn{display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+#assign-note-image-hint{opacity:.6}
+.note-image-preview{display:block;max-width:100%;max-height:160px;border-radius:8px;border:1px solid var(--bly-border,#E5E7EB);margin-top:8px;object-fit:contain}
 /* ══════════════════════════════════════════════════════════════
    HEADER — Billy-stil opgradering af topbaren. GLOBAL (gælder alle
    sider), da headeren er fælles for hele appen. Kun visuelt — ingen
@@ -1029,7 +1036,7 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .capacity-board th:first-child{position:sticky;left:0;z-index:7;min-width:185px;text-align:left;border-right:2px solid rgba(255,255,255,.18)}
 .capacity-board th.today-th{background:var(--steel)}
 .cap-week-no{display:block;font-size:15px;font-weight:800;letter-spacing:.2px}
-.cap-week-range{display:block;font-size:11px;font-weight:700;color:#fff;opacity:.92;margin-top:2px}
+.cap-week-range{display:block;font-size:11px;font-weight:700;color:inherit;opacity:.75;margin-top:2px}
 .capacity-board td{border-bottom:1px solid var(--border2);vertical-align:top}
 .capacity-board .staff-cell{min-width:185px}
 .cap-cell{padding:4px;min-width:120px;vertical-align:top}
@@ -2686,7 +2693,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Mødetid</label><input id="assign-time" type="time" class="input"></div>
       <div class="form-group"><label class="form-label">Reference (JT)</label><input class="input" id="assign-ref" disabled></div>
     </div>
-    <div class="form-group"><label class="form-label">Note til medarbejder</label><textarea id="assign-note" class="input bly-textarea" rows="4" placeholder="Fx ring kunden 30 min før ankomst"></textarea></div>
+    <div class="form-group">
+      <label class="form-label">Note til medarbejder</label>
+      <textarea id="assign-note" class="input bly-textarea" rows="4" placeholder="Fx ring kunden 30 min før ankomst"></textarea>
+      <div class="note-attach-row">
+        <input id="assign-note-link" class="input" type="url" placeholder="🔗 Link (valgfrit) — fx tegning, video eller dokument">
+      </div>
+      <div class="note-attach-row note-attach-image-row">
+        <label class="btn small note-image-btn" for="assign-note-image-file">🖼️ Vedhæft billede</label>
+        <input id="assign-note-image-file" type="file" accept="image/*" style="display:none">
+        <button type="button" class="btn small" id="assign-note-image-clear" style="display:none">Fjern billede</button>
+        <span class="opt-tag" id="assign-note-image-hint">valgfrit — medarbejderen kan se det i deres eget system</span>
+      </div>
+      <img id="assign-note-image-preview" class="note-image-preview" style="display:none">
+      <input type="hidden" id="assign-note-image-data">
+    </div>
     <div class="form-group"><label class="form-label">📧 Kunde-email <span class="opt-tag">bruges til færdig-mail</span></label><input id="assign-email" type="email" class="input" placeholder="kunde@mail.dk"></div>
     <div class="form-group">
       <label class="form-label">☑ Tjekpunkter for denne opgave</label>
@@ -3084,6 +3105,23 @@ function dailyLoad(uid,ds){
   return bookings.filter(function(b){return !isCapacityBooking(b)&&+b.user_id===+uid&&workDates(b).indexOf(ds)>-1;})
     .reduce(function(n,b){return n+(+b.days||1)/workDates(b).length;},0);
 }
+// Bygger ét opslag "bruger:dato" -> liste af (ikke-kapacitets-)bookinger, i stedet
+// for at scanne HELE bookings-arrayet igen for hver eneste dag/medarbejder-celle i
+// Daglig plan (som ellers giver uger×medarbejdere×bookinger sammenligninger og bliver
+// mærkbart langsommere jo flere bookinger der ophobes over tid). Bygges én gang pr.
+// renderPlan()-kald og bruges til alle celler i det kald.
+function indexDailyBookings(list){
+  var idx={};
+  list.forEach(function(b){
+    if(isCapacityBooking(b))return;
+    var uid=+b.user_id;
+    workDates(b).forEach(function(ds){
+      var k=uid+':'+ds;
+      (idx[k]=idx[k]||[]).push(b);
+    });
+  });
+  return idx;
+}
 function capDaysOf(b){return (b.capacity_days!==null&&b.capacity_days!==undefined&&b.capacity_days!=='')?+b.capacity_days:(+b.days||1);}
 function weeklyLoad(uid,m){
   var days=[];for(var i=0;i<5;i++)days.push(iso(add(m,i)));
@@ -3438,6 +3476,7 @@ function renderPlan(){
   var grouped=teamList('plan'),html='';
   var curWeekKey=weekKey(planCurrentWeekStart);
   ensureWeeklyNotesLoaded(curWeekKey);
+  var dailyIndex=indexDailyBookings(bookings);
   function row(u){
     var c=u.color||'#2563EB';
     var avatarHTML=u.avatar_url?'<img class="avatar-img" src="'+u.avatar_url+'">':'<div class="avatar" style="background:'+c+'22;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</div>';
@@ -3452,7 +3491,6 @@ function renderPlan(){
 
     days.forEach(function(d,i){
       var ds=iso(d);
-      var booked=dailyLoad(u.id,ds);
       var cap=(+u.weekly_capacity||5)/5;
       var off=timeOffFor(u.id,ds);
       var weekBoundary=i>0&&d.getDay()===1;
@@ -3462,10 +3500,10 @@ function renderPlan(){
         return;
       }
 
-      // Find all bookings that cover this specific day
-      var items=bookings.filter(function(b){
-        return !isCapacityBooking(b) && +b.user_id===+u.id && workDates(b).indexOf(ds)>-1;
-      });
+      // Find all bookings that cover this specific day (via det forudberegnede opslag,
+      // i stedet for at scanne hele bookings-arrayet igen for hver celle)
+      var items=(dailyIndex[(+u.id)+':'+ds]||[]).slice();
+      var booked=items.reduce(function(n,b){return n+(+b.days||1)/workDates(b).length;},0);
       // Rækkefølge: opgaver MED mødetidspunkt vises altid i klokkeslæt-orden først;
       // opgaver uden tidspunkt beholder den rækkefølge du selv har sat med ▲▼.
       items.sort(function(a,b){
@@ -3950,6 +3988,12 @@ async function saveQuickPop(){
 }
 
 // FULL ASSIGN MODAL
+function setAssignNoteImage(dataUrl){
+  document.getElementById('assign-note-image-data').value=dataUrl||'';
+  var img=document.getElementById('assign-note-image-preview');
+  img.src=dataUrl||'';img.style.display=dataUrl?'block':'none';
+  document.getElementById('assign-note-image-clear').style.display=dataUrl?'inline-flex':'none';
+}
 function openAssign(ctx){
   assignCtx=ctx||{};
   var b=ctx.bookingId?bookings.find(function(x){return +x.id===+ctx.bookingId;}):null;
@@ -3970,6 +4014,9 @@ function openAssign(ctx){
   document.getElementById('assign-capacity-fields').style.display='none';
   document.getElementById('assign-time').value=b&&b.start_time||'';
   document.getElementById('assign-note').value=b&&b.notes||'';
+  document.getElementById('assign-note-link').value=b&&b.note_link||'';
+  document.getElementById('assign-note-image-file').value='';
+  setAssignNoteImage(b&&b.note_image||null);
   document.getElementById('assign-email').value=(t&&t.customer_email)||'';
   document.getElementById('delete-assignment').classList.toggle('hidden',!b);
   document.getElementById('assign-status-wrap').style.display=b?'block':'none';
@@ -3994,7 +4041,7 @@ function openAssign(ctx){
 async function saveAssignment(){
   var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);
   if(!taskId){toast('Vælg en task','⚠');return;}
-  var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null};
+  var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null,note_link:document.getElementById('assign-note-link').value.trim()||null,note_image:document.getElementById('assign-note-image-data').value||null};
   if(document.getElementById('assign-capacity-toggle').checked){body.capacity_days=+document.getElementById('assign-capacity-days').value||1;}
   var calls=[assignCtx.bookingId?api('/api/assignments/'+assignCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))})];
   calls.push(api('/api/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({customer_email:document.getElementById('assign-email').value.trim(),job_address:document.getElementById('assign-address').value.trim(),customer_phone:document.getElementById('assign-phone').value.trim()})}));
@@ -8204,6 +8251,27 @@ function scrollToWeek(wk){var scroller=document.getElementById('capacity-scroll'
 
 // FILE → base64 data-URI (bruges til logo/avatar da der ikke er permanent fil-lager på Render)
 function fileToDataURL(file){return new Promise(function(resolve,reject){var r=new FileReader();r.onload=function(){resolve(r.result);};r.onerror=reject;r.readAsDataURL(file);});}
+// Skalerer et uploadet billede ned til maks maxDim px og komprimerer det som JPEG,
+// så en note-billede fra en telefonkamera (der let er 4000×3000 px / 4-8 MB) ikke
+// sendes rå til serveren og databasen — det ville både gøre gemningen langsom og
+// bidrage til den generelle langsomhed i appen.
+function resizeImageFile(file,maxDim,quality){
+  maxDim=maxDim||1000;quality=quality||0.72;
+  return fileToDataURL(file).then(function(dataUrl){
+    return new Promise(function(resolve){
+      var img=new Image();
+      img.onload=function(){
+        var w=img.width,h=img.height,scale=Math.min(1,maxDim/Math.max(w,h));
+        var cw=Math.max(1,Math.round(w*scale)),ch=Math.max(1,Math.round(h*scale));
+        var canvas=document.createElement('canvas');canvas.width=cw;canvas.height=ch;
+        var ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,cw,ch);
+        try{resolve(canvas.toDataURL('image/jpeg',quality));}catch(e){resolve(dataUrl);}
+      };
+      img.onerror=function(){resolve(dataUrl);};
+      img.src=dataUrl;
+    });
+  });
+}
 
 // VIRKSOMHEDSPROFIL (logo + navn — bruges på login-siden og i nav)
 function applySettingsToUI(){
@@ -8260,11 +8328,18 @@ async function loadAll(){
   var r=await Promise.all([api('/api/users'),api('/api/tasks'),api('/api/assignments'),api('/api/dashboard'),api('/api/time-off/approved')]);
   users=r[0]||[];tasks=r[1]||[];bookings=r[2]||[];timeOffApproved=r[4]||[];
   renderStats(r[3]||{});
-  try{renderPlan();}catch(e){console.error('Plan fejl',e);}
-  try{renderCapacity();}catch(e){console.error('Cap fejl',e);}
-  try{renderPeople();}catch(e){console.error('People fejl',e);}
-  try{renderAvailability();}catch(e){console.error('Ledighed fejl',e);}
-  try{renderTaskList();}catch(e){console.error('Opgaveliste fejl',e);}
+  // Genrender kun den side der rent faktisk vises lige nu — at genopbygge ALLE
+  // boards (Daglig plan/Kapacitet/Hold/Ledighed/Opgaveliste) ved HVER handling i
+  // hele appen, uanset hvilken fane man kigger på, var en stor del af grunden til
+  // at appen føltes langsommere og langsommere jo mere data der ophobede sig.
+  // switchPage() genrenderer den relevante side med det samme når man skifter
+  // fane, så man aldrig ser forældede data.
+  var activePageEl=document.querySelector('.page.active'),activePageId=activePageEl?activePageEl.id:'';
+  try{if(activePageId==='page-plan')renderPlan();}catch(e){console.error('Plan fejl',e);}
+  try{if(activePageId==='page-capacity')renderCapacity();}catch(e){console.error('Cap fejl',e);}
+  try{if(activePageId==='page-people')renderPeople();}catch(e){console.error('People fejl',e);}
+  try{if(activePageId==='page-availability')renderAvailability();}catch(e){console.error('Ledighed fejl',e);}
+  try{if(activePageId==='page-tasklist')renderTaskList();}catch(e){console.error('Opgaveliste fejl',e);}
   if(document.getElementById('page-logs').classList.contains('active'))loadLogs();
   if(document.getElementById('page-library').classList.contains('active'))loadLibrary();
   if(document.getElementById('page-timeline').classList.contains('active'))renderTimeline();
@@ -8321,7 +8396,13 @@ function bind(){
     if(page==='timeline')renderTimeline();
     if(page==='requests')renderRequests();
     if(page==='completed')renderCompleted();
-    if(page==='capacity')setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);
+    // Daglig plan/Kapacitet/Hold genrenderes nu KUN når man rent faktisk skifter til
+    // dem (se loadAll() — den genrenderer heller kun den side der er aktiv), så data
+    // altid er friske ved fane-skift uden at hver handling i hele appen skal betale
+    // for at genopbygge alle boards på én gang.
+    if(page==='plan'){try{renderPlan();}catch(e){console.error('Plan fejl',e);}}
+    if(page==='people'){try{renderPeople();}catch(e){console.error('People fejl',e);}}
+    if(page==='capacity'){try{renderCapacity();}catch(e){console.error('Cap fejl',e);}setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);}
     if(page==='dashboard')loadDashboard();
     if(page==='templates'){loadTemplates();loadEmailTemplates();}
     if(page==='notif-settings')loadNotificationSettings();
@@ -8600,7 +8681,7 @@ function bind(){
   document.getElementById('new-user-btn').onclick=function(){openUser();};
   document.getElementById('new-vendor-group-btn').onclick=async function(){var g=await gmPrompt('Navn på vendor-gruppen:');if(g&&g.trim())openUser(null,{vendorGroup:g.trim()});};
   document.getElementById('user-can-login').onchange=setLoginFields;
-  document.getElementById('user-avatar-file').addEventListener('change',async function(e){var f=e.target.files[0];if(!f)return;updateAvatarPreview(await fileToDataURL(f));});
+  document.getElementById('user-avatar-file').addEventListener('change',async function(e){var f=e.target.files[0];if(!f)return;updateAvatarPreview(await resizeImageFile(f,400,.75));});
   document.getElementById('user-avatar-clear').onclick=function(){document.getElementById('user-avatar-file').value='';updateAvatarPreview(null);};
   // Virksomhedsprofil
   document.getElementById('settings-save-btn').onclick=saveSettings;
@@ -8635,6 +8716,13 @@ function bind(){
   document.getElementById('save-assignment').onclick=saveAssignment;
   document.getElementById('assign-capacity-toggle').onchange=function(e){document.getElementById('assign-capacity-fields').style.display=e.target.checked?'flex':'none';};
   document.getElementById('delete-assignment').onclick=function(){if(assignCtx&&assignCtx.bookingId)removeBooking(assignCtx.bookingId);};
+  document.getElementById('assign-note-image-file').addEventListener('change',async function(e){
+    var f=e.target.files[0];if(!f)return;
+    if(!/^image\//.test(f.type)){toast('Vælg en billedfil','⚠');e.target.value='';return;}
+    var dataUrl=await resizeImageFile(f,1000,.72);
+    setAssignNoteImage(dataUrl);
+  });
+  document.getElementById('assign-note-image-clear').onclick=function(){document.getElementById('assign-note-image-file').value='';setAssignNoteImage(null);};
   // Manual modal
   document.getElementById('close-manual').onclick=function(){closeModal('manual-modal');};
   document.getElementById('save-manual').onclick=saveManual;
@@ -8865,12 +8953,31 @@ async function deleteNoteTab(id){
   }
 }
 function saveActiveNoteTabNow(){
-  if(!activeNoteTabId)return;
-  api('/api/note-tabs/'+activeNoteTabId,{method:'PUT',body:JSON.stringify({content:document.getElementById('note-widget-body').innerHTML})});
+  if(!activeNoteTabId)return Promise.resolve();
+  return api('/api/note-tabs/'+activeNoteTabId,{method:'PUT',body:JSON.stringify({content:document.getElementById('note-widget-body').innerHTML})});
 }
 function saveNoteWidgetSoon(){
   clearTimeout(noteSaveTimer);
   noteSaveTimer=setTimeout(saveActiveNoteTabNow,700);
+}
+// FLERE FANER/VINDUER ÅBNE SAMTIDIG kan give "tabte" note-ændringer: hvis note-
+// blokken står åben i to faner, og du skifter væk fra én fane midt i en 700ms
+// debounce, kan den anden (forældede) fane senere gemme OVEN I det du lige har
+// skrevet. De to funktioner herunder lukker det hul: 1) gem STRAKS (uden at vente
+// på de 700ms) når fanen skjules/mister fokus, så der ikke ligger en uskrevet
+// ændring og vente når du forlader fanen, og 2) hent altid det NYESTE indhold fra
+// serveren når fanen igen bliver synlig/aktiv, så du aldrig skriver videre oven på
+// en forældet kopi, der senere ville overskrive det en anden fane har gemt.
+function flushNoteWidgetNow(){
+  if(!noteSaveTimer)return;
+  clearTimeout(noteSaveTimer);noteSaveTimer=null;
+  saveActiveNoteTabNow();
+}
+async function refreshNoteWidgetOnFocus(){
+  var el=noteWidgetEl();
+  if(!el||!el.classList.contains('open'))return;
+  if(noteSaveTimer){clearTimeout(noteSaveTimer);noteSaveTimer=null;await saveActiveNoteTabNow();}
+  await loadNoteTabs();
 }
 function savePositionSoon(){
   clearTimeout(window._noteWidgetPosTimer);
@@ -8904,6 +9011,16 @@ function initNoteWidget(){
   document.getElementById('note-widget-close').onclick=function(){saveActiveNoteTabNow();el.classList.remove('open');};
   document.getElementById('note-widget-min').onclick=function(){el.classList.toggle('minimized');};
   body.addEventListener('input',saveNoteWidgetSoon);
+  // Se kommentaren ved flushNoteWidgetNow()/refreshNoteWidgetOnFocus() ovenfor —
+  // dækker både fane-skift i browseren og skift mellem flere ÅBNE vinduer/faner
+  // med denne side, som er der hvor note-tab data ellers kunne gå tabt.
+  window.addEventListener('blur',flushNoteWidgetNow);
+  window.addEventListener('pagehide',flushNoteWidgetNow);
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='hidden')flushNoteWidgetNow();
+    else if(document.visibilityState==='visible')refreshNoteWidgetOnFocus();
+  });
+  window.addEventListener('focus',refreshNoteWidgetOnFocus);
   document.getElementById('note-check-btn').onclick=insertNoteCheckbox;
   document.querySelectorAll('.note-widget-toolbar button[data-cmd]').forEach(function(btn){
     btn.onclick=function(){body.focus();document.execCommand(btn.dataset.cmd,false,null);saveNoteWidgetSoon();};
