@@ -32,7 +32,7 @@ button,input,select{font:inherit}
 .navdrop{position:relative}
 .navdrop-menu{position:absolute;top:calc(100% + 6px);right:0;background:#fff;border-radius:9px;box-shadow:var(--shadow-lg,0 10px 30px rgba(0,0,0,.25));min-width:180px;padding:5px;display:none;z-index:60}
 .navdrop-menu.open{display:block}
-.navdrop-item{display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:8px 10px;font-size:12px;font-weight:700;color:var(--navy);background:none;border:0;border-radius:6px;cursor:pointer}
+.navdrop-item{display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:8px 10px;font-size:12px;font-weight:700;color:var(--navy);background:none;border:0;border-radius:6px;cursor:pointer;text-decoration:none;box-sizing:border-box}
 .navdrop-item.active{background:var(--ice);color:var(--blue)}
 .navdrop-item:hover{background:var(--ice)}
 .filter-dropdown{position:relative}
@@ -42,7 +42,7 @@ button,input,select{font:inherit}
 .filter-dropdown-item{display:block;width:100%;text-align:left;padding:8px 10px;font-size:11.5px;font-weight:600;color:var(--navy);background:none;border:0;border-radius:6px;cursor:pointer}
 .filter-dropdown-item:hover{background:var(--ice)}
 .filter-dropdown-item.active{background:#EFF6FF;color:#1D4ED8;font-weight:800}
-.tab{border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500}
+.tab{display:inline-block;border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;text-decoration:none;box-sizing:border-box}
 .tab.active{color:#fff;background:rgba(255,255,255,.16)}
 .tab-navdrop{display:flex;align-items:center;gap:0}
 .tab-navdrop .tab{padding-right:4px;border-radius:5px 0 0 5px}
@@ -426,13 +426,42 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #assign-modal .btn.danger{background:#FEF2F2;border-color:#FECACA;color:#B91C1C}
 #assign-modal .btn.small{padding:7px 12px;font-size:11.5px}
 #assign-modal .form-row{gap:12px}
-/* Link + billede under "Note til medarbejder" — vist i Daglig plan-popup'en og
-   sendt med ned til medarbejderens eget system (employee.html). */
-.note-attach-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+/* Link + vedhæftninger (billeder/PDF, ubegrænset antal inden for grænserne i
+   cleanNoteAttachments) under "Note til medarbejder" — vist i Daglig plan- og
+   Kapacitet-popup'erne og sendt med ned til medarbejderens eget system
+   (employee.html). Delt mellem #assign-modal og #quick-pop. */
+.note-attach-row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
 .note-attach-row .input{margin:0}
 .note-image-btn{display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
-#assign-note-image-hint{opacity:.6}
-.note-image-preview{display:block;max-width:100%;max-height:160px;border-radius:8px;border:1px solid var(--bly-border,#E5E7EB);margin-top:8px;object-fit:contain}
+.note-attach-hint{opacity:.6}
+.note-att-grid{display:flex;flex-wrap:wrap;gap:9px;margin-top:9px}
+.note-att-item{position:relative;width:60px}
+.note-att-item img{width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--bly-border,#E5E7EB);display:block;background:#F5F5F5}
+.note-att-pdf{width:60px;height:60px;border-radius:8px;border:1px solid var(--bly-border,#E5E7EB);background:#FEF2F2;display:flex;align-items:center;justify-content:center;font-size:22px}
+.note-att-name{display:block;font-size:8.5px;color:var(--bly-sub,#6B7280);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;text-align:center}
+.note-att-remove{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:1px solid var(--bly-border,#E5E7EB);background:#fff;color:#B91C1C;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.note-att-remove:hover{background:#FEF2F2}
+/* HURTIG-POPUP (drop fra opgavepoolen, "Ny booking") — samme Billy-modernisering
+   som Ny booking/Rediger booking-modalen (#assign-modal) ovenfor, i stedet for det
+   gamle mørkeblå modal-header-look. Scoped til #quick-pop, så feltenes id'er/
+   JS-bindinger er 100% uændrede — kun det visuelle. */
+#quick-pop{border-radius:var(--bly-r-lg);border:1px solid var(--bly-border);box-shadow:0 24px 60px rgba(15,17,24,.18)}
+#quick-pop .qp-head{background:#fff;border-bottom:1px solid var(--bly-border-soft);padding:16px 20px 15px}
+#quick-pop .qp-head-icon{background:var(--bly-accent-soft);color:var(--bly-accent)}
+#quick-pop h4{color:var(--bly-ink);font-size:15px;font-weight:800;letter-spacing:-.01em}
+#quick-pop .qp-body{padding:18px 20px}
+#quick-pop .qp-body>*{margin-bottom:12px}
+#quick-pop .qp-body>*:last-child{margin-bottom:0}
+#quick-pop .quick-task-name{color:var(--bly-sub);font-size:11.5px;margin-bottom:12px}
+#quick-pop .quick-row{margin-bottom:0}
+#quick-pop .quick-label{color:var(--bly-sub);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
+#quick-pop .quick-input,#quick-pop .quick-select{background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:9px 11px;font-size:12.5px;font-weight:500;color:var(--bly-ink);transition:border-color .12s,box-shadow .12s}
+#quick-pop .quick-input:focus,#quick-pop .quick-select:focus{outline:none;border-color:var(--bly-accent);background:#fff;box-shadow:0 0 0 3px var(--bly-accent-soft)}
+#quick-pop .quick-btns{border-top:1px solid var(--bly-border-soft);background:#fff;padding:14px 20px}
+#quick-pop .btn{border-radius:var(--bly-r-pill);padding:9px 16px;font-size:12px;font-weight:700;border:1px solid var(--bly-border);background:#fff;color:var(--bly-ink)}
+#quick-pop .btn:hover{border-color:#C7CBD1}
+#quick-pop .btn.primary{background:var(--bly-ink);border-color:var(--bly-ink);color:#fff}
+#quick-pop .btn.primary:hover{background:#000}
 /* ══════════════════════════════════════════════════════════════
    HEADER — Billy-stil opgradering af topbaren. GLOBAL (gælder alle
    sider), da headeren er fælles for hele appen. Kun visuelt — ingen
@@ -814,7 +843,7 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .notif-rule-label{font-size:12px;font-weight:600;color:var(--navy);flex:1;min-width:220px}
 .notif-toggle-group{display:flex;gap:14px;align-items:center;font-size:10.5px}
 .notif-toggle-group label{display:flex;align-items:center;gap:4px;cursor:pointer}
-.geo-hint{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:8px 10px;font-size:11px;color:#166534;margin-top:8px}
+.geo-hint{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:var(--bly-r-md);padding:8px 10px;font-size:11px;color:#166534;margin-top:8px}
 .geo-hint b{color:#15803D}
 .forecast-bar-track{background:var(--ice);border-radius:5px;height:8px;overflow:hidden;flex:1}
 .forecast-bar-fill{height:100%;border-radius:5px}
@@ -827,6 +856,15 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .btn.danger{color:#B91C1C;background:#FEF2F2;border-color:#FECACA}
 .btn.small{padding:3px 8px;font-size:10px}
 .btn:hover{filter:brightness(.96)}
+/* Knapper INDE I popups følger Billy-stilen (afrundet pille, mørk primær-knap i
+   stedet for blå) — scoped til .mo, så knapper i resten af programmet (værktøjslinjer,
+   sidehoveder osv.) ikke ændres, kun selve popup-vinduerne. */
+.mo .btn{border-radius:var(--bly-r-pill);padding:10px 18px;font-size:12.5px;font-weight:700;border:1px solid var(--bly-border);background:#fff;color:var(--bly-ink)}
+.mo .btn:hover{border-color:#C7CBD1;filter:none}
+.mo .btn.primary{background:var(--bly-ink);border-color:var(--bly-ink);color:#fff}
+.mo .btn.primary:hover{background:#000}
+.mo .btn.danger{background:#FEF2F2;border-color:#FECACA;color:#B91C1C}
+.mo .btn.small{padding:7px 12px;font-size:11.5px}
 
 /* LAYOUT */
 .main{padding:12px 14px}
@@ -939,11 +977,16 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 
 /* BOARD TABLE */
 .board-outer{border:1px solid var(--border2);border-radius:var(--radius);overflow-x:auto;overflow-y:visible;background:#fff;box-shadow:var(--shadow)}
+/* Skjuler boardet helt kort mens vi placerer den vandrette scroll ved "i dag" ved
+   allerførste indlæsning — undgår at man ser tabellen "hoppe"/glide fra uge 1
+   hen til i dag (visibility:hidden bevarer layout, så offsetLeft-udregningen stadig
+   er korrekt, i modsætning til display:none). */
+#plan-board-outer.plan-positioning{visibility:hidden}
 /* Daglig plan brugte hidtil hele SIDENS scroll (overflow-y:visible ovenfor), i
    modsætning til Kapacitet der har sin egen afgrænsede, glidende scroll-boks. Det er
    grunden til at de føltes forskellige — nu matcher Daglig plan Kapacitet 1:1. */
 #plan-board-outer{position:relative;isolation:isolate;overflow-y:auto;scroll-behavior:smooth;height:calc(100vh - 260px);min-height:420px;max-height:1400px;scrollbar-gutter:stable both-edges}
-.plan-week-toast{position:fixed;top:120px;left:50%;transform:translateX(-50%) translateY(-14px) scale(.92);opacity:0;pointer-events:none;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff;font-size:13px;font-weight:800;padding:10px 20px;border-radius:999px;box-shadow:0 12px 32px rgba(15,34,64,.35);z-index:300;transition:opacity .25s cubic-bezier(.2,.9,.3,1.3),transform .25s cubic-bezier(.2,.9,.3,1.3);letter-spacing:.02em}
+.plan-week-toast{position:fixed;top:120px;left:50%;transform:translateX(-50%) translateY(-14px) scale(.92);opacity:0;pointer-events:none;background:var(--bly-ink);color:#fff;font-size:13px;font-weight:800;padding:10px 20px;border-radius:999px;box-shadow:0 12px 32px rgba(15,17,24,.28);z-index:300;transition:opacity .25s cubic-bezier(.2,.9,.3,1.3),transform .25s cubic-bezier(.2,.9,.3,1.3);letter-spacing:.02em}
 .plan-week-toast.show{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
 @keyframes plan-label-pulse{0%{transform:scale(1);color:var(--navy)}35%{transform:scale(1.12);color:var(--blue)}100%{transform:scale(1);color:var(--navy)}}
 .plan-label-pulse{display:inline-block;animation:plan-label-pulse .5s ease}
@@ -965,8 +1008,8 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .capacity-context{display:flex;align-items:center;gap:7px;padding:8px 10px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:9px;color:#5B21B6;font-size:10px;font-weight:700;margin:0 0 8px}
 .capacity-jt-hint{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 11px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;color:#92400E;font-size:11px;font-weight:600;margin:-6px 0 12px}
 .capacity-modal-note{font-size:10px;color:var(--muted);line-height:1.45;margin:-2px 0 12px}
-.checklist-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:6px}
-.checklist-item.done{background:#F0FDF4;border-color:#86EFAC}
+.checklist-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm);margin-bottom:6px}
+.checklist-item.done{background:#F0FDF4;border-color:#BBF7D0}
 .checklist-item.done .checklist-item-title{text-decoration:line-through;opacity:.65}
 .checklist-item input[type=checkbox]{width:17px;height:17px;accent-color:#16A34A;flex-shrink:0}
 .checklist-item-title{flex:1;font-size:12px}
@@ -991,7 +1034,10 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .plan-week-pill-cell{border-right:1px solid rgba(15,34,64,.06)}
 .plan-week-pill{display:flex;align-items:center;justify-content:center;gap:4px;height:30px;font-size:11px;font-weight:800;letter-spacing:.02em;text-transform:none;color:var(--muted);background:var(--ice)}
 .plan-week-pill-range{font-size:9px;font-weight:600;opacity:.75}
-.plan-week-pill.current{background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff;box-shadow:inset 0 -2px 0 var(--blue)}
+/* Uge-pillen for den uge man kigger på — var før en mørk marineblå gradient, skiftet
+   til en lys Billy-accentfarve så den matcher resten af det nye design i stedet for
+   at skille sig grimt ud. */
+.plan-week-pill.current{background:var(--bly-accent-soft);color:var(--bly-accent);box-shadow:inset 0 -2px 0 var(--bly-accent)}
 .daily-board td{border-bottom:1px solid var(--border2);vertical-align:top}
 .staff-cell{background:var(--ice)!important;position:sticky;left:0;z-index:4;border-right:2px solid var(--border2);min-width:160px;padding:7px 8px}
 .staff-line{display:flex;align-items:center;gap:6px}
@@ -1217,8 +1263,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .tld-footer-row .btn{flex:1}
 .tl-drawer-footer .btn{height:38px;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-size:11.5px;padding:0 10px;border-radius:9px;overflow:hidden;text-overflow:ellipsis}
 .tld-footer-primary{height:42px!important;font-size:12.5px!important;font-weight:700}
-.tld-status-select{height:40px;border-radius:9px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:700;padding:0 10px;cursor:pointer;width:100%}
-.tld-status-select:focus{outline:none;border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.tld-status-select{height:40px;border-radius:var(--bly-r-sm);border:1px solid var(--bly-border);background:#fff;color:var(--bly-ink);font-size:12px;font-weight:700;padding:0 10px;cursor:pointer;width:100%}
+.tld-status-select:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
 @media(max-width:640px){.tl-drawer{width:100vw;max-width:100vw}}
 .avail-table{width:100%;border-collapse:collapse;min-width:900px}
 
@@ -1343,48 +1389,59 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 
 /* HURTIG KAPACITETSRESERVATION (når en opgave trækkes fra poolen) */
-.capacity-drop-pop{display:none;position:fixed;z-index:460;width:312px;max-height:calc(100vh - 24px);overflow-y:auto;overflow-x:hidden;background:#fff;border:1px solid #D9E2F0;border-radius:16px;box-shadow:0 18px 50px rgba(15,34,64,.28)}
+.capacity-drop-pop{display:none;position:fixed;z-index:460;width:312px;max-height:calc(100vh - 24px);overflow-y:auto;overflow-x:hidden;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);box-shadow:0 24px 60px rgba(15,17,24,.18)}
 .capacity-drop-pop.open{display:block;animation:gm-pop .18s cubic-bezier(.2,.9,.3,1.3)}
-.cdp-head{display:flex;align-items:center;gap:10px;padding:13px 15px;background:linear-gradient(135deg,#5B21B6,#7C3AED);color:#fff;cursor:grab;user-select:none}
-.cdp-icon{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:rgba(255,255,255,.18);font-size:15px;flex:0 0 auto}
-.cdp-head h4{margin:0;font-size:13px;font-weight:850;color:#fff}
-.cdp-head p{margin:2px 0 0;font-size:9.5px;opacity:.8;line-height:1.25}
+/* Billy-stil ligesom #quick-pop — flad, lys header i stedet for den gamle lilla
+   gradient. Selve lilla accentfarven beholdes til "kapacitet"-elementerne (samme
+   farve som .capacity-reservation bruger andre steder i appen), kun selve
+   header-"chrome'en" moderniseres. */
+.cdp-head{display:flex;align-items:center;gap:10px;padding:13px 15px;background:#fff;border-bottom:1px solid var(--bly-border-soft);cursor:grab;user-select:none}
+.cdp-icon{width:30px;height:30px;border-radius:var(--bly-r-sm);display:grid;place-items:center;background:#F5F3FF;color:#7C3AED;font-size:15px;flex:0 0 auto}
+.cdp-head h4{margin:0;font-size:13px;font-weight:850;color:var(--bly-ink)}
+.cdp-head p{margin:2px 0 0;font-size:9.5px;color:var(--bly-sub);opacity:1;line-height:1.25}
 .cdp-body{padding:14px 15px 12px}
-.cdp-task{font-size:11px;font-weight:850;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
-.cdp-target{display:flex;align-items:center;gap:6px;padding:8px 9px;border:1px solid #DDD6FE;background:#F5F3FF;color:#5B21B6;border-radius:9px;font-size:10px;font-weight:750;line-height:1.35;margin-bottom:13px}
-.cdp-label{display:block;font-size:9px;font-weight:850;color:var(--muted);letter-spacing:.42px;text-transform:uppercase;margin-bottom:5px}
-.cdp-days-wrap{display:flex;align-items:center;gap:8px;border:1.5px solid #C4B5FD;background:#FAFAFF;border-radius:10px;padding:5px 9px;transition:.15s}
+.cdp-task{font-size:11px;font-weight:850;color:var(--bly-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
+.cdp-target{display:flex;align-items:center;gap:6px;padding:8px 9px;border:1px solid #DDD6FE;background:#F5F3FF;color:#5B21B6;border-radius:var(--bly-r-sm);font-size:10px;font-weight:750;line-height:1.35;margin-bottom:13px}
+.cdp-label{display:block;font-size:9px;font-weight:850;color:var(--bly-sub);letter-spacing:.42px;text-transform:uppercase;margin-bottom:5px}
+.cdp-days-wrap{display:flex;align-items:center;gap:8px;border:1.5px solid #C4B5FD;background:#FAFAFF;border-radius:var(--bly-r-sm);padding:5px 9px;transition:.15s}
 .cdp-days-wrap:focus-within{border-color:#7C3AED;box-shadow:0 0 0 3px rgba(124,58,237,.12);background:#fff}
-.cdp-days-input{flex:1;width:100%;border:0;outline:0;background:transparent;color:var(--navy);font-size:21px;line-height:1;font-weight:850;padding:3px 0}
+.cdp-days-input{flex:1;width:100%;border:0;outline:0;background:transparent;color:var(--bly-ink);font-size:21px;line-height:1;font-weight:850;padding:3px 0}
 .cdp-days-unit{font-size:11px;color:#6D28D9;font-weight:800;padding-right:2px}
-.cdp-hint{font-size:9px;color:var(--muted);margin-top:8px;line-height:1.4}
-.cdp-actions{display:flex;justify-content:flex-end;gap:7px;padding:11px 15px;border-top:1px solid var(--border2);background:#FBFCFE}
+.cdp-hint{font-size:9px;color:var(--bly-sub);margin-top:8px;line-height:1.4}
+.cdp-actions{display:flex;justify-content:flex-end;gap:7px;padding:11px 15px;border-top:1px solid var(--bly-border-soft);background:#FBFCFE}
+.capacity-drop-pop .btn{border-radius:var(--bly-r-pill);padding:8px 15px;font-size:11.5px;font-weight:700;border:1px solid var(--bly-border);background:#fff;color:var(--bly-ink)}
+.capacity-drop-pop .btn:hover{border-color:#C7CBD1;filter:none}
+.capacity-drop-pop .btn.primary{background:#7C3AED;border-color:#7C3AED;color:#fff}
+.capacity-drop-pop .btn.primary:hover{background:#6D28D9}
 
-/* MODAL */
-.mo{display:none;position:fixed;inset:0;background:rgba(15,34,64,.55);backdrop-filter:blur(2px);z-index:200;align-items:center;justify-content:center;padding:16px}
+/* MODAL — Billy-design, gælder nu som standard for ALLE popups i programmet (ikke
+   kun de tidligere enkeltvis-tilrettede #assign-modal/#fin-bank-snapshot-modal — de
+   scopede regler for dem herunder står stadig, men gentager nu bare det samme). Den
+   gamle mørkeblå gradient-header er erstattet af en ren, lys Billy-header. */
+.mo{display:none;position:fixed;inset:0;background:rgba(17,19,24,.5);backdrop-filter:blur(2px);z-index:200;align-items:center;justify-content:center;padding:16px}
 .mo.open{display:flex;animation:gm-fade .18s ease}
-.modal{width:420px;max-width:100%;max-height:92vh;overflow:auto;background:#fff;border-radius:16px;padding:22px;box-shadow:0 20px 60px rgba(15,34,64,.32);animation:gm-pop .22s cubic-bezier(.2,.9,.3,1.3)}
+.modal{width:420px;max-width:100%;max-height:92vh;overflow:auto;background:#fff;border-radius:var(--bly-r-lg);padding:26px;box-shadow:0 24px 60px rgba(15,17,24,.18);animation:gm-pop .22s cubic-bezier(.2,.9,.3,1.3)}
 @keyframes gm-fade{from{opacity:0}to{opacity:1}}
 @keyframes gm-pop{from{opacity:0;transform:scale(.94) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
-.modal h3{font-size:16px;color:var(--navy);margin:-22px -22px 18px;padding:18px 22px 16px;font-weight:800;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff;border-radius:16px 16px 0 0;cursor:grab;user-select:none}
+.modal h3{font-size:19px;color:var(--bly-ink);margin:0 0 18px;padding:0;font-weight:800;letter-spacing:-.01em;background:none;border-radius:0;cursor:grab;user-select:none}
 .modal.gm-dragging{cursor:grabbing}
 .modal.gm-dragging h3{cursor:grabbing}
 .form-group{margin-bottom:12px}
-.form-label{font-size:9px;font-weight:800;color:var(--muted);display:block;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
-.input,.select{width:100%;padding:9px 11px;border:1.5px solid var(--border);background:var(--ice);border-radius:8px;outline:none;font-size:12.5px;box-sizing:border-box;transition:.15s}
-.input:focus,.select:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.form-label{font-size:11px;font-weight:700;color:var(--bly-sub);display:block;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
+.input,.select{width:100%;padding:10px 12px;border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);outline:none;font-size:12.5px;font-weight:500;color:var(--bly-ink);box-sizing:border-box;transition:border-color .12s,box-shadow .12s}
+.input:focus,.select:focus{border-color:var(--bly-accent);background:#fff;box-shadow:0 0 0 3px var(--bly-accent-soft)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--border2)}
-.modal-actions .btn,.gd-modal .modal-actions .btn{height:38px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px;border-radius:9px;font-size:11.5px;white-space:nowrap}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--bly-border-soft)}
+.modal-actions .btn,.gd-modal .modal-actions .btn{height:38px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px;border-radius:var(--bly-r-pill);font-size:11.5px;white-space:nowrap}
 .modal-actions .btn.primary{font-weight:700}
-.assign-info-box{padding:10px 12px;background:var(--ice);border-radius:9px;font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:14px}
+.assign-info-box{padding:12px 14px;background:var(--bly-accent-soft);border-radius:var(--bly-r-md);font-size:11.5px;color:var(--bly-ink);line-height:1.6;margin-bottom:14px}
 .manual-modal-modern{padding:0!important;overflow:hidden}
-.manual-modal-head{display:flex;align-items:center;gap:12px;padding:20px 22px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff}
-.manual-modal-icon{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:18px;flex-shrink:0}
-.manual-modal-title{font-size:15px;font-weight:800}
-.manual-modal-sub{font-size:11px;opacity:.75;margin-top:2px}
-.modal-body-pad{padding:20px 22px}
-.opt-tag{font-size:8px;font-weight:700;text-transform:uppercase;color:var(--muted);opacity:.7;letter-spacing:.3px;margin-left:2px}
+.manual-modal-head{display:flex;align-items:center;gap:12px;padding:22px 26px;background:#fff;color:var(--bly-ink);border-bottom:1px solid var(--bly-border-soft)}
+.manual-modal-icon{width:38px;height:38px;border-radius:var(--bly-r-md);background:var(--bly-accent-soft);color:var(--bly-accent);display:grid;place-items:center;font-size:18px;flex-shrink:0}
+.manual-modal-title{font-size:16px;font-weight:800;color:var(--bly-ink);letter-spacing:-.01em}
+.manual-modal-sub{font-size:11.5px;color:var(--bly-sub);margin-top:2px}
+.modal-body-pad{padding:22px 26px}
+.opt-tag{font-size:9px;font-weight:700;text-transform:uppercase;color:var(--bly-sub);opacity:1;letter-spacing:.3px;margin-left:2px}
 .manual-contact-box{background:var(--ice);border-radius:10px;padding:14px;margin-top:14px}
 .manual-contact-title{font-size:11px;font-weight:800;color:var(--navy);margin-bottom:10px}
 .manual-contact-box .form-row{margin-top:0}
@@ -1413,35 +1470,35 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
   <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.5</span>
   <div class="tabs">
-    <button class="tab" data-page="dashboard">Kommandocenter</button>
+    <a class="tab" href="#dashboard" data-page="dashboard">Kommandocenter</a>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
-      <button class="tab active" data-page="plan">Daglig plan</button>
+      <a class="tab active" href="#plan" data-page="plan">Daglig plan</a>
       <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle">▾</button>
       <div class="navdrop-menu">
-        <button class="navdrop-item" data-page="timeline">Tidslinje</button>
+        <a class="navdrop-item" href="#timeline" data-page="timeline">Tidslinje</a>
       </div>
     </div>
     <div class="navdrop tab-navdrop" id="capacity-subdrop">
-      <button class="tab" data-page="capacity">Kapacitet</button>
+      <a class="tab" href="#capacity" data-page="capacity">Kapacitet</a>
       <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle">▾</button>
       <div class="navdrop-menu">
-        <button class="navdrop-item" data-page="availability">Ledighedsoversigt</button>
+        <a class="navdrop-item" href="#availability" data-page="availability">Ledighedsoversigt</a>
       </div>
     </div>
-    <button class="tab" data-page="gantt">Gantt</button>
+    <a class="tab" href="#gantt" data-page="gantt">Gantt</a>
     <div class="navdrop tab-navdrop hidden" id="finance-subdrop">
-      <button class="tab" data-page="finance" id="finance-tab-btn">💰 Økonomi</button>
+      <a class="tab" href="#finance" data-page="finance" id="finance-tab-btn">💰 Økonomi</a>
       <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle">▾</button>
       <div class="navdrop-menu">
-        <button class="navdrop-item" data-page="finance" data-fintab-jump="oversigt">📊 Oversigt</button>
-        <button class="navdrop-item" data-page="finance" data-fintab-jump="omsaetning">💰 Omsætning pr. fag</button>
-        <button class="navdrop-item" data-page="finance" data-fintab-jump="fakturaer">🧾 Fakturaer</button>
-        <button class="navdrop-item" data-page="finance" data-fintab-jump="bankafstemning">🏦 Bankafstemning</button>
-        <button class="navdrop-item" data-page="finance" data-fintab-jump="rykkere">✉️ Rykkere</button>
-        <button class="navdrop-item" data-page="finance" data-fintab-jump="udgifter">📖 Udgifter</button>
-        <button class="navdrop-item" data-page="finance" data-fintab-jump="adgang">🔒 Adgang</button>
-        <button class="navdrop-item" data-page="finance" data-fintab-jump="privatbudget">👤 Privat budget</button>
-        <button class="navdrop-item" data-page="finance" data-fintab-jump="noter">⚠️ Noter &amp; datakvalitet</button>
+        <a class="navdrop-item" href="#finance/oversigt" data-page="finance" data-fintab-jump="oversigt">📊 Oversigt</a>
+        <a class="navdrop-item" href="#finance/omsaetning" data-page="finance" data-fintab-jump="omsaetning">💰 Omsætning pr. fag</a>
+        <a class="navdrop-item" href="#finance/fakturaer" data-page="finance" data-fintab-jump="fakturaer">🧾 Fakturaer</a>
+        <a class="navdrop-item" href="#finance/bankafstemning" data-page="finance" data-fintab-jump="bankafstemning">🏦 Bankafstemning</a>
+        <a class="navdrop-item" href="#finance/rykkere" data-page="finance" data-fintab-jump="rykkere">✉️ Rykkere</a>
+        <a class="navdrop-item" href="#finance/udgifter" data-page="finance" data-fintab-jump="udgifter">📖 Udgifter</a>
+        <a class="navdrop-item" href="#finance/adgang" data-page="finance" data-fintab-jump="adgang">🔒 Adgang</a>
+        <a class="navdrop-item" href="#finance/privatbudget" data-page="finance" data-fintab-jump="privatbudget">👤 Privat budget</a>
+        <a class="navdrop-item" href="#finance/noter" data-page="finance" data-fintab-jump="noter">⚠️ Noter &amp; datakvalitet</a>
       </div>
     </div>
   </div>
@@ -1460,15 +1517,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="navdrop" id="navdrop">
       <button class="nb navdrop-btn" id="navdrop-btn">👤 Min side ▾</button>
       <div class="navdrop-menu" id="navdrop-menu">
-        <button class="navdrop-item" id="employee-link">👷 Mit skema</button>
-        <button class="navdrop-item" data-page="tasklist">📋 Opgaveliste</button>
-        <button class="navdrop-item" data-page="requests">✅ Godkendelser<span class="tab-badge hidden" id="requests-badge">0</span></button>
-        <button class="navdrop-item" data-page="completed">✅ Færdige opgaver</button>
-        <button class="navdrop-item" data-page="people">👥 Hold & vendors</button>
-        <button class="navdrop-item" data-page="library">📁 Vejledning</button>
-        <button class="navdrop-item" data-page="logs">⏱ Timer & log</button>
-        <button class="navdrop-item" data-page="templates">📐 Skabeloner</button>
-        <button class="navdrop-item" data-page="notif-settings">⚙️ Notifikationsindstillinger</button>
+        <a class="navdrop-item" id="employee-link" href="/employee">👷 Mit skema</a>
+        <a class="navdrop-item" href="#tasklist" data-page="tasklist">📋 Opgaveliste</a>
+        <a class="navdrop-item" href="#requests" data-page="requests">✅ Godkendelser<span class="tab-badge hidden" id="requests-badge">0</span></a>
+        <a class="navdrop-item" href="#completed" data-page="completed">✅ Færdige opgaver</a>
+        <a class="navdrop-item" href="#people" data-page="people">👥 Hold & vendors</a>
+        <a class="navdrop-item" href="#library" data-page="library">📁 Vejledning</a>
+        <a class="navdrop-item" href="#logs" data-page="logs">⏱ Timer & log</a>
+        <a class="navdrop-item" href="#templates" data-page="templates">📐 Skabeloner</a>
+        <a class="navdrop-item" href="#notif-settings" data-page="notif-settings">⚙️ Notifikationsindstillinger</a>
       </div>
     </div>
     <button class="nb" id="note-widget-btn">📝 Note</button>
@@ -2422,6 +2479,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div>
       <label class="quick-label">Note til medarbejder</label>
       <input class="quick-input" id="qp-note" placeholder="Fx ring kunden 30 min før...">
+      <div class="note-attach-row">
+        <input id="qp-note-link" class="quick-input" type="url" placeholder="🔗 Link (valgfrit)" style="flex:1">
+      </div>
+      <div class="note-attach-row note-attach-file-row">
+        <label class="btn small note-image-btn" for="qp-note-files">📎 Vedhæft filer</label>
+        <input id="qp-note-files" type="file" accept="image/*,application/pdf" multiple style="display:none">
+        <span class="opt-tag" id="qp-note-attach-count"></span>
+      </div>
+      <div class="note-att-grid" id="qp-note-attachments"></div>
     </div>
     <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;cursor:pointer">
       <input type="checkbox" id="qp-send-mail" style="width:auto"> ✉️ Send planlægningsmail til kunden med det samme
@@ -2530,17 +2596,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="modal manual-modal-modern">
     <div class="manual-modal-head">
       <span class="manual-modal-icon">📅</span>
-      <div><div class="manual-modal-title">Book kundebesøg</div><div class="manual-modal-sub">Opretter en hurtig booking — udfyld selve besøgsformularen bagefter</div></div>
+      <div><div class="manual-modal-title">Book kundebesøg</div><div class="manual-modal-sub">Opretter opgaven i poolen — vælg selv medarbejder og tidspunkt når du trækker den ud på kalenderen</div></div>
     </div>
     <div class="modal-body-pad">
       <label class="form-label">Kundens navn</label>
       <input id="visit-customer" class="input" placeholder="Fx Peter Lindgren">
       <div class="form-row" style="margin-top:12px">
-        <div class="form-group"><label class="form-label">Dato</label><input id="visit-date" type="date" class="input"></div>
-        <div class="form-group"><label class="form-label">Tidspunkt <span class="opt-tag">valgfrit</span></label><input id="visit-time" type="time" class="input"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Hvem tager besøget</label><select id="visit-user" class="select"></select></div>
+        <div class="form-group"><label class="form-label">Dato <span class="opt-tag">ca. — vælges endeligt ved udtræk</span></label><input id="visit-date" type="date" class="input"></div>
         <div class="form-group"><label class="form-label">Telefon <span class="opt-tag">valgfrit</span></label><input id="visit-phone" class="input" placeholder="Fx 12 34 56 78"></div>
       </div>
       <label class="form-label">Adresse <span class="opt-tag">valgfrit</span></label>
@@ -2550,7 +2612,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="modal-actions">
       <button class="btn" id="close-visit-book">Annuller</button>
-      <button class="btn primary" id="save-visit-book">Book besøg</button>
+      <button class="btn primary" id="save-visit-book">Opret i pool</button>
     </div>
   </div>
 </div>
@@ -2699,14 +2761,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="note-attach-row">
         <input id="assign-note-link" class="input" type="url" placeholder="🔗 Link (valgfrit) — fx tegning, video eller dokument">
       </div>
-      <div class="note-attach-row note-attach-image-row">
-        <label class="btn small note-image-btn" for="assign-note-image-file">🖼️ Vedhæft billede</label>
-        <input id="assign-note-image-file" type="file" accept="image/*" style="display:none">
-        <button type="button" class="btn small" id="assign-note-image-clear" style="display:none">Fjern billede</button>
-        <span class="opt-tag" id="assign-note-image-hint">valgfrit — medarbejderen kan se det i deres eget system</span>
+      <div class="note-attach-row note-attach-file-row">
+        <label class="btn small note-image-btn" for="assign-note-files">📎 Vedhæft filer</label>
+        <input id="assign-note-files" type="file" accept="image/*,application/pdf" multiple style="display:none">
+        <span class="opt-tag" id="assign-note-attach-count"></span>
+        <span class="opt-tag note-attach-hint">billeder + PDF · medarbejderen kan se dem i deres eget system</span>
       </div>
-      <img id="assign-note-image-preview" class="note-image-preview" style="display:none">
-      <input type="hidden" id="assign-note-image-data">
+      <div class="note-att-grid" id="assign-note-attachments"></div>
     </div>
     <div class="form-group"><label class="form-label">📧 Kunde-email <span class="opt-tag">bruges til færdig-mail</span></label><input id="assign-email" type="email" class="input" placeholder="kunde@mail.dk"></div>
     <div class="form-group">
@@ -3462,6 +3523,12 @@ function renderPlan(){
   var days=planAllDays();
   if(!planCurrentWeekStart)planCurrentWeekStart=mon(new Date());
   var curWk=weekKey(planCurrentWeekStart);
+  // Skjuler boardet mens vi bygger + placerer det ved "i dag" allerførste gang det
+  // vises, så man ikke ser den brede tabel "glide"/hoppe hen over skærmen (se
+  // .plan-positioning i CSS'en og opryddelsen længere nede).
+  var _planFirstPaint=!window._planInitialScrollDone;
+  var _planOuterEl=document.getElementById('plan-board-outer');
+  if(_planFirstPaint&&_planOuterEl)_planOuterEl.classList.add('plan-positioning');
   var head='<tr class="plan-week-superhead"><th class="staff-th-spacer"></th>';
   for(var w=0;w<days.length;w+=7){
     var wm=days[w];
@@ -3549,7 +3616,12 @@ function renderPlan(){
     requestAnimationFrame(function(){
       var outer=document.getElementById('plan-board-outer');
       var todayTh=document.querySelector('#daily-head .today-th');
-      if(outer&&todayTh)outer.scrollLeft=Math.max(0,todayTh.offsetLeft-40);
+      // behavior:'instant' (IKKE 'smooth', som #plan-board-outer ellers bruger til
+      // Forrige/Næste-knapperne) — ellers animerer browseren en lang, hakkende
+      // glidetur hen over ~26 ugers kolonner samtidig med at hele tabellen stadig
+      // bliver bygget, hvilket er præcis det der så ud som "scroller frem og tilbage".
+      if(outer&&todayTh)outer.scrollTo({left:Math.max(0,todayTh.offsetLeft-40),behavior:'instant'});
+      if(outer)outer.classList.remove('plan-positioning');
     });
   }
   bindPlanScrollTracking();
@@ -3939,6 +4011,9 @@ function openQuickPop(taskId,uid,dateStr,evt){
   document.getElementById('qp-time').value='';
   document.getElementById('qp-send-mail').checked=false;
   document.getElementById('qp-note').value='';
+  document.getElementById('qp-note-link').value='';
+  document.getElementById('qp-note-files').value='';
+  setNoteAttachments('qp',[]);
   // Position pop-up near drop target — måler den faktiske størrelse, se positionFloatingPopup.
   var pop=document.getElementById('quick-pop');
   positionFloatingPopup(pop,evt,false);
@@ -3977,7 +4052,7 @@ async function saveQuickPop(){
     }
   }
   if(!taskId){toast('Skriv en opgave, eller vælg en fra poolen','⚠');return;}
-  var body={task_id:taskId,user_id:+document.getElementById('qp-user').value,start_date:document.getElementById('qp-date').value,days:+document.getElementById('qp-days').value||1,start_time:document.getElementById('qp-time').value||null,notes:document.getElementById('qp-note').value.trim()||null};
+  var body={task_id:taskId,user_id:+document.getElementById('qp-user').value,start_date:document.getElementById('qp-date').value,days:+document.getElementById('qp-days').value||1,start_time:document.getElementById('qp-time').value||null,notes:document.getElementById('qp-note').value.trim()||null,note_link:document.getElementById('qp-note-link').value.trim()||null,note_attachments:noteAttachState('qp')};
   var r=await api('/api/assignments',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
     var wantsMail=document.getElementById('qp-send-mail').checked;
@@ -3987,13 +4062,55 @@ async function saveQuickPop(){
   else if(r)toast(r.error||'Fejl','❌');
 }
 
-// FULL ASSIGN MODAL
-function setAssignNoteImage(dataUrl){
-  document.getElementById('assign-note-image-data').value=dataUrl||'';
-  var img=document.getElementById('assign-note-image-preview');
-  img.src=dataUrl||'';img.style.display=dataUrl?'block':'none';
-  document.getElementById('assign-note-image-clear').style.display=dataUrl?'inline-flex':'none';
+// VEDHÆFTNINGER (billeder + PDF'er) på "Note til medarbejder" — delt mellem
+// #assign-modal (prefix "assign") og #quick-pop (prefix "qp"), så begge popups kan
+// vedhæfte lige så mange filer man vil, inden for de grænser serveren også håndhæver
+// (cleanNoteAttachments i server.js — maks 8 filer / ~15MB tekst i alt, så én tung
+// note ikke selv bliver en del af den langsomhed vi lige har rettet andre steder).
+var NOTE_ATTACH_MAX_FILES=8, NOTE_ATTACH_MAX_PDF_BYTES=6*1024*1024, NOTE_ATTACH_MAX_TOTAL_CHARS=14000000;
+var noteAttachLists={};
+function noteAttachState(prefix){ return noteAttachLists[prefix]=noteAttachLists[prefix]||[]; }
+function setNoteAttachments(prefix,list){ noteAttachLists[prefix]=(list||[]).slice(); renderNoteAttachments(prefix); }
+function renderNoteAttachments(prefix){
+  var list=noteAttachState(prefix);
+  var el=document.getElementById(prefix+'-note-attachments');
+  if(!el)return;
+  el.innerHTML=list.map(function(a,i){
+    var thumb=a.type==='pdf'?'<div class="note-att-pdf">📄</div>':'<img src="'+a.data+'">';
+    return '<div class="note-att-item">'+thumb+'<button type="button" class="note-att-remove" data-idx="'+i+'" title="Fjern">×</button><span class="note-att-name" title="'+esc(a.name||'')+'">'+esc(a.name||'')+'</span></div>';
+  }).join('');
+  el.querySelectorAll('.note-att-remove').forEach(function(btn){
+    btn.onclick=function(){noteAttachState(prefix).splice(+btn.dataset.idx,1);renderNoteAttachments(prefix);};
+  });
+  var countEl=document.getElementById(prefix+'-note-attach-count');
+  if(countEl)countEl.textContent=list.length?list.length+' fil'+(list.length===1?'':'er'):'';
 }
+async function addNoteAttachmentFiles(prefix,files){
+  var list=noteAttachState(prefix);
+  var totalChars=list.reduce(function(n,a){return n+(a.data?a.data.length:0);},0);
+  for(var i=0;i<files.length;i++){
+    var f=files[i];
+    if(list.length>=NOTE_ATTACH_MAX_FILES){toast('Maks '+NOTE_ATTACH_MAX_FILES+' filer pr. note','⚠');break;}
+    var isPdf=f.type==='application/pdf'||/\.pdf$/i.test(f.name||'');
+    var isImage=/^image\//.test(f.type);
+    if(!isImage&&!isPdf){toast('"'+f.name+'" er hverken billede eller PDF','⚠');continue;}
+    if(isPdf&&f.size>NOTE_ATTACH_MAX_PDF_BYTES){toast('"'+f.name+'" er for stor (maks '+(NOTE_ATTACH_MAX_PDF_BYTES/1024/1024)+' MB)','⚠');continue;}
+    var dataUrl=isImage?await resizeImageFile(f,1400,.75):await fileToDataURL(f);
+    if(totalChars+dataUrl.length>NOTE_ATTACH_MAX_TOTAL_CHARS){toast('Vedhæftningerne fylder for meget samlet — fjern en eller gør billeder mindre','⚠');break;}
+    totalChars+=dataUrl.length;
+    list.push({name:f.name||(isPdf?'dokument.pdf':'billede.jpg'),type:isPdf?'pdf':'image',data:dataUrl});
+  }
+  renderNoteAttachments(prefix);
+}
+function wireNoteAttachInput(prefix){
+  var input=document.getElementById(prefix+'-note-files');
+  if(!input)return;
+  input.addEventListener('change',async function(e){
+    if(e.target.files&&e.target.files.length)await addNoteAttachmentFiles(prefix,e.target.files);
+    e.target.value='';
+  });
+}
+// FULL ASSIGN MODAL
 function openAssign(ctx){
   assignCtx=ctx||{};
   var b=ctx.bookingId?bookings.find(function(x){return +x.id===+ctx.bookingId;}):null;
@@ -4015,8 +4132,10 @@ function openAssign(ctx){
   document.getElementById('assign-time').value=b&&b.start_time||'';
   document.getElementById('assign-note').value=b&&b.notes||'';
   document.getElementById('assign-note-link').value=b&&b.note_link||'';
-  document.getElementById('assign-note-image-file').value='';
-  setAssignNoteImage(b&&b.note_image||null);
+  document.getElementById('assign-note-files').value='';
+  var existingAttachments=[];
+  if(b&&b.note_attachments){try{existingAttachments=JSON.parse(b.note_attachments)||[];}catch(e){existingAttachments=[];}}
+  setNoteAttachments('assign',existingAttachments);
   document.getElementById('assign-email').value=(t&&t.customer_email)||'';
   document.getElementById('delete-assignment').classList.toggle('hidden',!b);
   document.getElementById('assign-status-wrap').style.display=b?'block':'none';
@@ -4041,7 +4160,7 @@ function openAssign(ctx){
 async function saveAssignment(){
   var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);
   if(!taskId){toast('Vælg en task','⚠');return;}
-  var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null,note_link:document.getElementById('assign-note-link').value.trim()||null,note_image:document.getElementById('assign-note-image-data').value||null};
+  var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null,note_link:document.getElementById('assign-note-link').value.trim()||null,note_attachments:noteAttachState('assign')};
   if(document.getElementById('assign-capacity-toggle').checked){body.capacity_days=+document.getElementById('assign-capacity-days').value||1;}
   var calls=[assignCtx.bookingId?api('/api/assignments/'+assignCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))})];
   calls.push(api('/api/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({customer_email:document.getElementById('assign-email').value.trim(),job_address:document.getElementById('assign-address').value.trim(),customer_phone:document.getElementById('assign-phone').value.trim()})}));
@@ -4517,11 +4636,16 @@ async function deleteChecklistItem(id,containerId,taskId){
 }
 
 // KUNDEBESØG
+// FEJL RETTET (dobbelt registrering): "Book kundebesøg" spurgte tidligere om BÅDE dato
+// OG hvilken medarbejder der skulle tage besøget — og bookede opgaven med det samme.
+// Men opgaven lå SAMTIDIG i Opgavepoolen som alt andet, så trak man den ud på en
+// medarbejder/dag bagefter (som man plejer), oprettede det en ANDEN booking oveni.
+// Nu opretter denne popup kun selve opgaven i poolen (dato er valgfri/vejledende,
+// ligesom ved en almindelig manuel opgave) — medarbejder + endelig dato/tid vælges
+// først (og kun én gang) når opgaven trækkes ud på kalenderen.
 function openVisitBookModal(){
   document.getElementById('visit-date').value=iso(new Date());
-  ['visit-customer','visit-time','visit-phone','visit-address','visit-notes'].forEach(function(id){document.getElementById(id).value='';});
-  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
-  document.getElementById('visit-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
+  ['visit-customer','visit-phone','visit-address','visit-notes'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('visit-book-modal').classList.add('open');
 }
 async function saveVisitBooking(){
@@ -4530,8 +4654,6 @@ async function saveVisitBooking(){
   var body={
     customer_name:name,
     date:document.getElementById('visit-date').value,
-    time:document.getElementById('visit-time').value||null,
-    user_id:+document.getElementById('visit-user').value,
     phone:document.getElementById('visit-phone').value.trim(),
     address:document.getElementById('visit-address').value.trim(),
     notes:document.getElementById('visit-notes').value.trim()
@@ -4539,7 +4661,7 @@ async function saveVisitBooking(){
   var r=await api('/api/customer-visits/book',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
     closeModal('visit-book-modal');
-    toast('Kundebesøg booket ✓','📅');
+    toast('Kundebesøg oprettet i pool — træk den ud på en medarbejder/dag ✓','📅');
     await loadAll();
     openVisitFormModal(r.task_id); // klar til at blive udfyldt med det samme, hvis man allerede ved noget
   } else if(r)toast(r.error||'Fejl','❌');
@@ -8413,8 +8535,12 @@ function bind(){
     switchPage(parts[0]);
     if(parts[0]==='finance'&&parts[1])switchFintab(parts[1]);
   });
-  document.querySelectorAll('.tab[data-page]').forEach(function(b){b.addEventListener('click',function(){switchPage(b.dataset.page);});});
-  document.querySelectorAll('.navdrop-item[data-page]').forEach(function(b){b.addEventListener('click',function(){switchPage(b.dataset.page);});});
+  // .tab/.navdrop-item er nu rigtige <a href="#side">-links (i stedet for <button>),
+  // så man kan højreklikke og åbne en side i en ny fane/vindue. Venstreklik håndteres
+  // stadig 100% af switchPage() som før — preventDefault stopper kun browserens egen
+  // hash-navigation (og dermed en ekstra, overflødig hashchange-baseret genrendering).
+  document.querySelectorAll('.tab[data-page]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();switchPage(b.dataset.page);});});
+  document.querySelectorAll('.navdrop-item[data-page]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();switchPage(b.dataset.page);});});
   document.getElementById('navdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('navdrop-menu').classList.toggle('open');});
   document.addEventListener('click',function(e){if(!e.target.closest('#navdrop'))document.getElementById('navdrop-menu').classList.remove('open');});
   document.getElementById('notifdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('notifdrop-menu').classList.toggle('open');refreshNotifBell();});
@@ -8514,7 +8640,8 @@ function bind(){
     });
   });
   document.querySelectorAll('[data-fintab-jump]').forEach(function(btn){
-    btn.addEventListener('click',function(){
+    btn.addEventListener('click',function(e){
+      e.preventDefault();
       switchPage('finance');
       switchFintab(btn.dataset.fintabJump);
       document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
@@ -8591,7 +8718,6 @@ function bind(){
   })();
   // Nav
   document.getElementById('logout-btn').onclick=logout;
-  document.getElementById('employee-link').onclick=function(){window.location.href='/employee';};
   document.getElementById('sync-btn').onclick=syncNow;
   document.getElementById('book-visit-btn').onclick=openVisitBookModal;
   document.getElementById('close-checklist').onclick=function(){closeModal('checklist-modal');};
@@ -8716,13 +8842,8 @@ function bind(){
   document.getElementById('save-assignment').onclick=saveAssignment;
   document.getElementById('assign-capacity-toggle').onchange=function(e){document.getElementById('assign-capacity-fields').style.display=e.target.checked?'flex':'none';};
   document.getElementById('delete-assignment').onclick=function(){if(assignCtx&&assignCtx.bookingId)removeBooking(assignCtx.bookingId);};
-  document.getElementById('assign-note-image-file').addEventListener('change',async function(e){
-    var f=e.target.files[0];if(!f)return;
-    if(!/^image\//.test(f.type)){toast('Vælg en billedfil','⚠');e.target.value='';return;}
-    var dataUrl=await resizeImageFile(f,1000,.72);
-    setAssignNoteImage(dataUrl);
-  });
-  document.getElementById('assign-note-image-clear').onclick=function(){document.getElementById('assign-note-image-file').value='';setAssignNoteImage(null);};
+  wireNoteAttachInput('assign');
+  wireNoteAttachInput('qp');
   // Manual modal
   document.getElementById('close-manual').onclick=function(){closeModal('manual-modal');};
   document.getElementById('save-manual').onclick=saveManual;

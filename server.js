@@ -59,8 +59,10 @@ if (!JWT_SECRET) {
 }
 
 app.disable('x-powered-by');
-// 12mb: rummer base64 logo/avatar-billeder sendt som data-URI fra admin-UI'et.
-app.use(express.json({ limit: '12mb' }));
+// 20mb: rummer base64 logo/avatar-billeder OG op til 8 note-vedhæftninger
+// (billeder/PDF'er, maks ~15mb tekst i alt, se cleanNoteAttachments) sendt som
+// data-URI'er fra admin-UI'et.
+app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: false }));
 
 const upload = multer({
@@ -484,7 +486,10 @@ async function initSchema() {
     -- Link + billede på noten til medarbejderen (fx tegning, foto, video-link) — vist
     -- i "Note til medarbejder"-popup'en i Daglig plan og i medarbejderens eget system.
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS note_link TEXT;
-    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS note_image TEXT;
+    -- Vedhæftninger (billeder + PDF'er) på noten, gemt som en JSON-liste af
+    -- {name,type,data} — data er en base64 data-URI, ligesom logo/avatar-billeder,
+    -- da der ikke er permanent fil-lager på Render.
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS note_attachments TEXT;
     CREATE INDEX IF NOT EXISTS idx_planning_bookings_mode ON planning_bookings(planning_mode);
 
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -3227,17 +3232,23 @@ app.delete('/api/checklist/:id', auth, adminOnly, asyncRoute(async (req, res) =>
 }));
 
 // ── KUNDEBESØG (hurtig booking + fast opfølgningsformular) ──
+// FEJL RETTET (dobbelt registrering): denne route bookede tidligere opgaven på en
+// medarbejder/dato med det samme (planning_bookings-række), OG opgaven blev samtidig
+// vist i Opgavepoolen som alt andet — trak man den ud derfra på en medarbejder/dag
+// bagefter (helt normal brug af poolen), oprettede det en ANDEN booking af samme
+// opgave oveni. Nu opretter "Book kundebesøg" kun selve jt_tasks-opgaven (ligesom en
+// almindelig manuel opgave) — den rigtige booking sker først (og kun én gang) når
+// opgaven trækkes ud på den medarbejder/dag den faktisk skal ligge hos.
 app.post('/api/customer-visits/book', auth, adminOnly, asyncRoute(async (req, res) => {
   const body = req.body || {};
   const customerName = String(body.customer_name || '').trim();
   if (!customerName) return res.status(400).json({ error: 'Skriv kundens navn' });
   if (!validDate(String(body.date || ''))) return res.status(400).json({ error: 'Vælg en gyldig dato' });
-  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id)]);
-  if (!user) return res.status(400).json({ error: 'Vælg hvem der tager besøget' });
 
   const taskId = `visit-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
   const address = body.address ? String(body.address).trim().slice(0, 300) : '';
   const phone = body.phone ? String(body.phone).trim().slice(0, 60) : '';
+  const notes = body.notes ? String(body.notes).trim().slice(0, 500) : '';
 
   const client = await pool.connect();
   try {
@@ -3246,17 +3257,12 @@ app.post('/api/customer-visits/book', auth, adminOnly, asyncRoute(async (req, re
       INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,is_visit,created_at)
       VALUES ($1,'Kundebesøg',NULL,$2,$3,$4,$5,$5,'other',NULL,NULL,${nowTextSQL()},'manual',1,${nowTextSQL()})
     `, [taskId, customerName, address, phone || null, body.date]);
-    const booking = await client.query(`
-      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,planning_mode,updated_at)
-      VALUES ($1,$2,$3,1,1,$4,$5,$6,$6,'daily',${nowTextSQL()})
-      RETURNING id
-    `, [taskId, user.id, getWeekKey(body.date), body.notes ? String(body.notes).slice(0, 500) : null, body.time || null, body.date]);
     await client.query(`
-      INSERT INTO customer_visits (task_id,booking_id,customer_name,address,phone,created_at,updated_at)
+      INSERT INTO customer_visits (task_id,customer_name,address,phone,notes,created_at,updated_at)
       VALUES ($1,$2,$3,$4,$5,${nowTextSQL()},${nowTextSQL()})
-    `, [taskId, booking.rows[0].id, customerName, address, phone]);
+    `, [taskId, customerName, address, phone, notes || null]);
     await client.query('COMMIT');
-    res.json({ ok: true, task_id: taskId, booking_id: booking.rows[0].id });
+    res.json({ ok: true, task_id: taskId });
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
     res.status(400).json({ error: error.message || 'Kundebesøget kunne ikke oprettes' });
@@ -3563,6 +3569,42 @@ function cleanNoteLink(value) {
   return s.slice(0, 1000);
 }
 
+// Renser vedhæftninger (billeder/PDF'er) på "Note til medarbejder". Accepterer enten
+// et array (friskt fra klienten ved gem) eller en allerede-gemt JSON-streng (når
+// PUT-endpointet merger den eksisterende booking ind, se normalizeBooking nedenfor)
+// — begge dele normaliseres til den samme, rensede JSON-streng. Grænserne (8 filer,
+// ~15MB tekst i alt) matcher den samme størrelsesorden appen allerede bruger til
+// base64-filer andre steder (fx cleaning_pdf_base64), så én tung note ikke selv
+// bliver en del af den langsomhed vi lige har rettet andre steder i appen.
+function cleanNoteAttachments(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  let arr;
+  if (Array.isArray(value)) {
+    arr = value;
+  } else if (typeof value === 'string') {
+    if (!value.trim()) return null;
+    try { arr = JSON.parse(value); } catch (e) { return null; }
+  } else {
+    return null;
+  }
+  if (!Array.isArray(arr)) return null;
+  const MAX_ITEMS = 8;
+  const MAX_ITEM_CHARS = 9000000;
+  const MAX_TOTAL_CHARS = 15000000;
+  const cleaned = [];
+  let total = 0;
+  for (const a of arr) {
+    if (cleaned.length >= MAX_ITEMS) break;
+    if (!a || typeof a !== 'object' || !a.data) continue;
+    const data = String(a.data).slice(0, MAX_ITEM_CHARS);
+    if (total + data.length > MAX_TOTAL_CHARS) break;
+    total += data.length;
+    cleaned.push({ name: String(a.name || '').slice(0, 200), type: a.type === 'pdf' ? 'pdf' : 'image', data });
+  }
+  return cleaned.length ? JSON.stringify(cleaned) : null;
+}
+
 async function normalizeBooking(body, isNew) {
   const booking = body || {};
   const task = await pgOne('SELECT id,description FROM jt_tasks WHERE id=$1', [booking.task_id]);
@@ -3587,14 +3629,13 @@ async function normalizeBooking(body, isNew) {
   const explicitNote = booking.notes !== undefined && booking.notes !== null ? String(booking.notes).trim() : '';
   const fallbackNote = (isNew && !explicitNote && task.description) ? String(task.description).trim() : '';
   const finalNote = explicitNote || fallbackNote;
-  // Link + billede der hører til noten (fx et link til en tegning, eller et foto).
-  // Rører ALDRIG uopfordret, ligesom noteteksten ovenfor — sendes de ikke med i
-  // request'en (fx fra en af de andre hurtig-popups), bevares den eksisterende værdi
-  // fordi kaldene til normalizeBooking() ved redigering allerede har merget dem ind.
+  // Link + vedhæftninger der hører til noten (fx et link til en tegning, eller
+  // billeder/PDF'er). Rører ALDRIG uopfordret, ligesom noteteksten ovenfor — sendes
+  // de ikke med i request'en (fx fra en af de andre hurtig-popups), bevares den
+  // eksisterende værdi fordi kaldene til normalizeBooking() ved redigering allerede
+  // har merget dem ind.
   const noteLink = cleanNoteLink(booking.note_link);
-  const noteImage = booking.note_image !== undefined
-    ? (booking.note_image ? String(booking.note_image).slice(0, 3000000) : null)
-    : null;
+  const noteAttachments = cleanNoteAttachments(booking.note_attachments);
   return {
     task_id: booking.task_id,
     user_id: Number(booking.user_id),
@@ -3603,7 +3644,7 @@ async function normalizeBooking(body, isNew) {
     capacity_days: capacityDays,
     notes: finalNote ? finalNote.slice(0, 1000) : null,
     note_link: noteLink === undefined ? null : noteLink,
-    note_image: noteImage,
+    note_attachments: noteAttachments === undefined ? null : noteAttachments,
     start_time: booking.start_time || null,
     start_date: start,
     end_date: validDate(booking.end_date) ? booking.end_date : addWorkingDays(start, days)
@@ -3641,10 +3682,10 @@ app.post('/api/assignments/self', auth, asyncRoute(async (req, res) => {
   try {
     const booking = await normalizeBooking({ ...(req.body || {}), user_id: req.user.id }, true);
     const result = await pool.query(`
-      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_image,start_time,start_date,end_date,updated_at)
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_attachments,start_time,start_date,end_date,updated_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()})
       RETURNING id
-    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_image, booking.start_time, booking.start_date, booking.end_date]);
+    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_attachments, booking.start_time, booking.start_date, booking.end_date]);
     res.json({ ok: true, id: result.rows[0].id });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -3655,10 +3696,10 @@ app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
   try {
     const booking = await normalizeBooking(req.body, true);
     const result = await pool.query(`
-      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_image,start_time,start_date,end_date,updated_at)
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_attachments,start_time,start_date,end_date,updated_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()})
       RETURNING id
-    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_image, booking.start_time, booking.start_date, booking.end_date]);
+    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_attachments, booking.start_time, booking.start_date, booking.end_date]);
     let warning = null;
     try {
       const overlap = await timeOffOverlaps(booking.user_id, booking.start_date, booking.end_date);
@@ -3680,9 +3721,9 @@ app.put('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => 
     const booking = await normalizeBooking({ ...current, ...(req.body || {}), task_id: current.task_id });
     await pool.query(`
       UPDATE planning_bookings
-      SET user_id=$1,week_key=$2,days=$3,capacity_days=$4,notes=$5,note_link=$6,note_image=$7,start_time=$8,start_date=$9,end_date=$10,updated_at=${nowTextSQL()}
+      SET user_id=$1,week_key=$2,days=$3,capacity_days=$4,notes=$5,note_link=$6,note_attachments=$7,start_time=$8,start_date=$9,end_date=$10,updated_at=${nowTextSQL()}
       WHERE id=$11
-    `, [booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_image, booking.start_time, booking.start_date, booking.end_date, current.id]);
+    `, [booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_attachments, booking.start_time, booking.start_date, booking.end_date, current.id]);
     res.json({ ok: true });
     if (String(current.planning_mode || 'daily') !== 'capacity') {
       sendScheduleChangeEmail(booking.user_id, `Din kalender er blevet opdateret: opgaven den ${String(booking.start_date).slice(0,10)} er ændret.`)
