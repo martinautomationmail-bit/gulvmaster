@@ -3002,7 +3002,7 @@ document.getElementById('app').style.display='block';
   }catch(e){}
 })();
 
-var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={},poolSelected={};
+var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={},poolSelected={},assignAttachmentsReady=true;
 var settings={company_name:'Gulv Master Enterprise ApS',logo_url:null},library=[],selectedTaskIds={},weeklyNotesCache={};
 var timelineOffset=0,timelineGroupBy='user',capacityGroupBy='user';
 var taskRequests=[],requestsFilter='pending',completedFilter='open';
@@ -3506,17 +3506,43 @@ function timeOffFor(userId,dateStr){
   return timeOffApproved.find(function(t){return +t.user_id===+userId&&dateStr>=String(t.start_date).slice(0,10)&&dateStr<=String(t.end_date).slice(0,10);});
 }
 function timeOffLabel(t){return t.type==='sick'?'🤒 Sygdom':(t.type==='vacation'?'🏖 Ferie':'⛔ Fravær');}
-// Samme model som Kapacitet: 26 uger bagud + 52 uger frem fra indeværende uge renderes
-// på én gang, så scroll er 100% nativt og uendeligt i praksis — ingen kunstig
-// uge-detektion nødvendig for selve scrollet. "Uge X"-labelen og ugenoter følger i
-// stedet med hvor du RENT FAKTISK har scrollet hen (planCurrentWeekStart), ikke en fast
-// tæller. Martin: "Pt kan jeg kun gå 1 uge tilbage det duer ikke" — der var reelt INGEN
-// uger bagud før (kun det der lige tilfældigvis lå i indeværende uge før i dag), fordi
-// hele tabellen startede ved mandag i denne uge. Nu er der en historisk buffer at rulle
-// tilbage i, og planCurrentWeekStart initialiseres eksplicit til DENNE uge (ikke
-// days[0], som nu peger 26 uger tilbage) så visningen stadig åbner ved i dag som før.
+// PLAN_WEEKS_BACK/FORWARD er den ABSOLUTTE grænse Kapacitet altid renderer (uændret —
+// se capacityWeeks() nedenfor). Martin: "Pt kan jeg kun gå 1 uge tilbage det duer ikke",
+// dengang der reelt slet ingen historisk buffer var — den grænse skal stadig kunne nås.
+//
+// Daglig plan brugte tidligere HELE denne 26+52-ugers buffer (546 dage × alle
+// medarbejdere) allerede ved allerførste åbning, hver eneste gang — det var en stor del
+// af grunden til de lange ventetider. Nu starter Daglig plan i stedet med et lille,
+// let vindue omkring i dag (planWinBack/planWinForward) og UDVIDER det først når man
+// rent faktisk ruller/klikker sig hen imod kanten — via planEnsureWindow() nedenfor,
+// kaldt både fra pile-knapperne (planScrollByWeeks) og fra selve scrollet
+// (bindPlanScrollTracking). Man kan stadig nå de samme 26 uger tilbage / 52 frem som
+// før, det sker bare gradvist i stedet for alt på én gang.
 var PLAN_WEEKS_BACK=26,PLAN_WEEKS_FORWARD=52;
-function planAllDays(){var out=[],m=add(mon(new Date()),-PLAN_WEEKS_BACK*7);for(var i=0;i<(PLAN_WEEKS_BACK+PLAN_WEEKS_FORWARD)*7;i++)out.push(add(m,i));return out;}
+var planWinBack=4,planWinForward=10;
+function planAllDays(){var out=[],m=add(mon(new Date()),-planWinBack*7);for(var i=0;i<(planWinBack+planWinForward)*7;i++)out.push(add(m,i));return out;}
+// Udvider planWinBack/planWinForward (op til PLAN_WEEKS_BACK/FORWARD) og gentegner
+// boardet — men bevarer scrollpositionen ift. en "anker"-mandag, så man ikke ser
+// tabellen "hoppe" til et helt andet sted, bare fordi der lige blev tilføjet flere
+// uger til venstre for det man kigger på.
+function planEnsureWindow(weeksBackNeeded,weeksForwardNeeded,anchorKey){
+  var changed=false;
+  if(weeksBackNeeded>planWinBack){planWinBack=Math.min(PLAN_WEEKS_BACK,weeksBackNeeded);changed=true;}
+  if(weeksForwardNeeded>planWinForward){planWinForward=Math.min(PLAN_WEEKS_FORWARD,weeksForwardNeeded);changed=true;}
+  if(!changed)return false;
+  var outer=document.getElementById('plan-board-outer');
+  var anchorOffset=null,anchorScrollLeft=null;
+  if(outer&&anchorKey){
+    var anchorTh=document.querySelector('#daily-head th[data-plan-monday="'+anchorKey+'"]');
+    if(anchorTh){anchorOffset=anchorTh.offsetLeft;anchorScrollLeft=outer.scrollLeft;}
+  }
+  renderPlan();
+  if(outer&&anchorKey&&anchorOffset!==null){
+    var newTh=document.querySelector('#daily-head th[data-plan-monday="'+anchorKey+'"]');
+    if(newTh)outer.scrollTo({left:Math.max(0,newTh.offsetLeft-(anchorOffset-anchorScrollLeft)),behavior:'instant'});
+  }
+  return true;
+}
 var planCurrentWeekStart=null;
 function renderPlan(){
   renderPool('plan');teamFilterHTML('plan');
@@ -3647,6 +3673,16 @@ function planScrollByWeeks(dir){
   var mondays=Array.prototype.slice.call(document.querySelectorAll('#daily-head th[data-plan-monday]')).filter(function(th){return th.dataset.planMonday;});
   if(!mondays.length)return;
   var curKey=planCurrentWeekStart?iso(planCurrentWeekStart):mondays[0].dataset.planMonday;
+  // Nærmer vi os kanten af det vindue der rent faktisk er indlæst/tegnet lige nu?
+  // Udvid det (planEnsureWindow) FØR vi rent faktisk scroller derhen, så "Forrige/
+  // Næste" aldrig bare stopper ved kanten af den lille startbuffer.
+  var weeksFromToday=Math.round((date(curKey)-mon(new Date()))/(7*86400000))+dir;
+  var neededBack=weeksFromToday<=-(planWinBack-2)?planWinBack+8:0;
+  var neededForward=weeksFromToday>=(planWinForward-2)?planWinForward+8:0;
+  if(neededBack||neededForward){
+    planEnsureWindow(neededBack,neededForward,curKey);
+    mondays=Array.prototype.slice.call(document.querySelectorAll('#daily-head th[data-plan-monday]')).filter(function(th){return th.dataset.planMonday;});
+  }
   var idx=mondays.findIndex(function(th){return th.dataset.planMonday===curKey;});
   if(idx===-1)idx=0;
   var targetIdx=Math.max(0,Math.min(mondays.length-1,idx+dir));
@@ -3668,6 +3704,15 @@ function bindPlanScrollTracking(){
     var mk=target.dataset.planMonday;
     if(!mk)return;
     var d=new Date(mk+'T00:00:00');
+    // Nærmer man sig kanten af det vindue der er indlæst/tegnet lige nu (ved ALMINDELIG
+    // native scroll, ikke kun pilene)? Udvid stille og roligt i baggrunden, så det føles
+    // som uendelig scroll i praksis, uden at man nogensinde rammer en synlig "mur".
+    var scrollMax=outer.scrollWidth-outer.clientWidth,edgeBuffer=3*128;
+    if(outer.scrollLeft<edgeBuffer&&planWinBack<PLAN_WEEKS_BACK){
+      planEnsureWindow(planWinBack+8,0,mk);
+    }else if(scrollMax-outer.scrollLeft<edgeBuffer&&planWinForward<PLAN_WEEKS_FORWARD){
+      planEnsureWindow(0,planWinForward+8,mk);
+    }
     if(planCurrentWeekStart&&iso(planCurrentWeekStart)===mk){isFirstDetection=false;return;}
     planCurrentWeekStart=d;
     updatePlanWeekLabel(d);
@@ -4007,6 +4052,17 @@ function openQuickPop(taskId,uid,dateStr,evt){
     document.getElementById('qp-new-job-number').value='';
   } else {
     wrap.style.display='none';
+    // FEJL RETTET (adresse/telefon forsvandt): når en opgave trækkes direkte fra
+    // poolen ud på en dag (den almindelige måde i Daglig plan), blev disse felter
+    // FØR aldrig udfyldt her — de stod tilbage med hvad end der var skrevet i dem
+    // sidste gang quick-pop var åben (ofte tomt). Da "Book"-knappen sammenligner
+    // felterne med opgavens rigtige adresse/telefon og gemmer forskellen, endte det
+    // med at OVERSKRIVE opgavens rigtige adresse/telefon/sagsnummer med tomt hver
+    // gang — det var derfor adressen "forsvandt" efter planlægning. Udfyldes nu altid
+    // korrekt fra selve opgaven, ligesom når man vælger den fra dropdownen ovenfor.
+    document.getElementById('qp-new-address').value=t?(t.job_address||''):'';
+    document.getElementById('qp-new-phone').value=t?(t.customer_phone||''):'';
+    document.getElementById('qp-new-job-number').value=t?(t.job_number||''):'';
   }
   document.getElementById('qp-time').value='';
   document.getElementById('qp-send-mail').checked=false;
@@ -4133,9 +4189,28 @@ function openAssign(ctx){
   document.getElementById('assign-note').value=b&&b.notes||'';
   document.getElementById('assign-note-link').value=b&&b.note_link||'';
   document.getElementById('assign-note-files').value='';
-  var existingAttachments=[];
-  if(b&&b.note_attachments){try{existingAttachments=JSON.parse(b.note_attachments)||[];}catch(e){existingAttachments=[];}}
-  setNoteAttachments('assign',existingAttachments);
+  // Vedhæftninger (billeder/PDF'er) sendes IKKE længere med i den store bookings-liste
+  // (se FEJL RETTET-kommentaren ved GET /api/assignments i server.js — det var det der
+  // gjorde Daglig plan så langsom at åbne) — hentes nu kun her, når man rent faktisk
+  // åbner denne popup, og kun hvis bookingen overhovedet HAR vedhæftninger.
+  // assignAttachmentsReady holder styr på om vi rent faktisk KENDER de nuværende
+  // vedhæftninger endnu — "Gem" venter med at sende noget som helst om vedhæftninger
+  // før dette er sandt, ellers ville et klik på Gem MENS hentningen stadig kører kunne
+  // nå at overskrive de rigtige vedhæftninger med en tom liste.
+  setNoteAttachments('assign',[]);
+  assignAttachmentsReady=!(b&&b.has_note_attachments);
+  if(b&&b.has_note_attachments){
+    api('/api/assignments/'+b.id+'/note').then(function(r){
+      // Popup kan være lukket/skiftet til en anden booking mens vi ventede — undgå at
+      // proppe forældede vedhæftninger ind i en popup der nu viser noget andet.
+      if(!assignCtx||+assignCtx.bookingId!==+b.id)return;
+      assignAttachmentsReady=true;
+      if(noteAttachState('assign').length)return; // brugeren nåede selv at tilføje noget imens — rør ikke ved det
+      var att=[];
+      if(r&&r.note_attachments){try{att=JSON.parse(r.note_attachments)||[];}catch(e){att=[];}}
+      setNoteAttachments('assign',att);
+    });
+  }
   document.getElementById('assign-email').value=(t&&t.customer_email)||'';
   document.getElementById('delete-assignment').classList.toggle('hidden',!b);
   document.getElementById('assign-status-wrap').style.display=b?'block':'none';
@@ -4160,10 +4235,17 @@ function openAssign(ctx){
 async function saveAssignment(){
   var taskId=assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id);
   if(!taskId){toast('Vælg en task','⚠');return;}
+  if(!assignAttachmentsReady){toast('Henter eksisterende vedhæftninger — prøv lige igen om et øjeblik','⏳');return;}
   var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null,note_link:document.getElementById('assign-note-link').value.trim()||null,note_attachments:noteAttachState('assign')};
   if(document.getElementById('assign-capacity-toggle').checked){body.capacity_days=+document.getElementById('assign-capacity-days').value||1;}
   var calls=[assignCtx.bookingId?api('/api/assignments/'+assignCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))})];
-  calls.push(api('/api/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({customer_email:document.getElementById('assign-email').value.trim(),job_address:document.getElementById('assign-address').value.trim(),customer_phone:document.getElementById('assign-phone').value.trim()})}));
+  // FEJL RETTET (adresse/telefon kunne blive slettet): sender kun adresse/telefon/
+  // e-mail videre hvis opgaven rent faktisk blev fundet ved åbning af popup'en — ellers
+  // risikerede et sjældent opslags-problem at overskrive den rigtige adresse/telefon
+  // med tomme felter, uden at man selv havde rettet noget.
+  if(tasks.some(function(x){return String(x.id)===String(taskId);})){
+    calls.push(api('/api/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({customer_email:document.getElementById('assign-email').value.trim(),job_address:document.getElementById('assign-address').value.trim(),customer_phone:document.getElementById('assign-phone').value.trim()})}));
+  }
   var results=await Promise.all(calls);
   var r=results[0];
   if(r&&(r.ok||r.id)){closeModal('assign-modal');toast('Booking gemt','✓');await loadAll();}
@@ -4465,10 +4547,17 @@ async function handleDrop(e,zone){
         // naturlige genindlæsning i stedet for at blokere denne interaktion.
         b.user_id=uid;b.start_date=ds;b.end_date=newEnd;
         renderTimeline();
-        var r2=await api('/api/assignments/'+b.id,{method:'PUT',body:JSON.stringify({user_id:uid,start_date:ds,end_date:newEnd,days:b.days,notes:b.notes,start_time:b.start_time})});
+        // FEJL RETTET (note med link/vedhæftninger kunne forsvinde): sendte før
+        // "notes:b.notes" med — hvis DENNE fane havde en forældet kopi af bookingen
+        // (fx fordi noten lige var blevet tilføjet/rettet i en anden fane, eller bare
+        // ikke var genindlæst endnu), overskrev et almindeligt træk-og-flyt noten med
+        // den forældede (ofte tomme) værdi. note_link/note_attachments blev allerede
+        // udeladt her af samme grund — nu udelades "notes" på samme måde, så serveren
+        // bevarer den AKTUELLE, gemte note i stedet for at stole på fanens egen cache.
+        var r2=await api('/api/assignments/'+b.id,{method:'PUT',body:JSON.stringify({user_id:uid,start_date:ds,end_date:newEnd,days:b.days,start_time:b.start_time})});
         if(!r2||!r2.ok){toast((r2&&r2.error)||'Kunne ikke gemme — prøv igen','❌');await loadAll();}
       }else{
-        var r=await api('/api/assignments/'+b.id,{method:'PUT',body:JSON.stringify({user_id:uid,start_date:ds,end_date:newEnd,days:b.days,notes:b.notes,start_time:b.start_time})});
+        var r=await api('/api/assignments/'+b.id,{method:'PUT',body:JSON.stringify({user_id:uid,start_date:ds,end_date:newEnd,days:b.days,start_time:b.start_time})});
         if(r&&r.ok){toast('Booking flyttet','↔');await loadAll();}
         else if(r)toast(r.error||'Fejl','❌');
       }

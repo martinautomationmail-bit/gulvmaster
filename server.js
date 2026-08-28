@@ -2984,9 +2984,15 @@ app.put('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
   ]);
   // AUTO-UDFYLDNING: telefon, adresse og e-mail hører til KUNDEN/sagen, ikke den
   // enkelte opgave — så når en admin selv udfylder ét af disse felter manuelt på én
-  // opgave, spredes det automatisk til alle andre opgaver under samme sag (job_id),
-  // så man ikke skal indtaste det samme flere gange for hver enkelt opgave.
-  if (current.job_id) {
+  // opgave, spredes det automatisk til alle andre opgaver under samme sag, så man
+  // ikke skal indtaste det samme flere gange for hver enkelt opgave/booking.
+  // FEJL RETTET: spredte tidligere KUN til andre opgaver med samme job_id — men
+  // manuelt oprettede opgaver (almindelig "opret opgave manuelt", "Book kundebesøg",
+  // skabelon-træk) har ALTID job_id=NULL, så for dem virkede spredningen aldrig,
+  // selvom det er størstedelen af Martins daglige opgaver. Har opgaven intet job_id,
+  // spreder vi nu i stedet til andre job_id-løse opgaver med samme kundenavn
+  // (job_name) — den bedste tilgængelige "samme sag"-nøgle uden et rigtigt job_id.
+  {
     const propagateSets = [];
     const propagateValues = [];
     if (body.customer_phone !== undefined && next.customer_phone) {
@@ -3002,8 +3008,15 @@ app.put('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
       propagateSets.push(`customer_email=$${propagateValues.length}`, `customer_email_source='manual'`, `customer_email_synced_at=NULL`);
     }
     if (propagateSets.length) {
-      propagateValues.push(current.job_id, current.id);
-      await pool.query(`UPDATE jt_tasks SET ${propagateSets.join(', ')} WHERE job_id=$${propagateValues.length - 1} AND id<>$${propagateValues.length}`, propagateValues);
+      if (current.job_id) {
+        const values = propagateValues.slice();
+        values.push(current.job_id, current.id);
+        await pool.query(`UPDATE jt_tasks SET ${propagateSets.join(', ')} WHERE job_id=$${values.length - 1} AND id<>$${values.length}`, values);
+      } else if (current.job_name && current.job_name.trim()) {
+        const values = propagateValues.slice();
+        values.push(current.job_name.trim(), current.id);
+        await pool.query(`UPDATE jt_tasks SET ${propagateSets.join(', ')} WHERE job_id IS NULL AND lower(trim(job_name))=lower($${values.length - 1}) AND id<>$${values.length}`, values);
+      }
     }
   }
   res.json({ ok: true });
@@ -3662,11 +3675,34 @@ function bookingSelect(where = '') {
   `;
 }
 
+// FEJL RETTET (Daglig plan brugte 30-60 sek. om at åbne): denne route hentede FØR
+// hele "note_attachments"-feltet (billeder/PDF'er som base64, op til ~15MB PR.
+// booking) med for HVER ENESTE booking der nogensinde er oprettet — hver gang appen
+// gør noget som helst (loadAll() kaldes efter stort set enhver handling i hele
+// appen). Med bare en håndfuld bookinger med vedhæftede billeder bliver den samlede
+// JSON-besked kæmpestor, og det er den — ikke selve antallet af bookinger — der reelt
+// stod for de lange ventetider. Selve vedhæftningerne bruges kun ét sted i admin-UI'et
+// (redigér-booking-popup'en), så de sendes nu KUN med der, via en ny, lille
+// GET /api/assignments/:id/note — resten af appen nøjes med et let "has_note_attachments"-
+// flag, der er nok til fx et 📎-ikon, uden at slæbe selve billeddataen med hele tiden.
 app.get('/api/assignments', auth, asyncRoute(async (req, res) => {
   const isAdmin = req.user.role === 'admin';
   const sql = `${bookingSelect(isAdmin ? '' : 'WHERE b.user_id=$1')} ORDER BY b.start_date ASC,b.id ASC`;
   const result = await pool.query(sql, isAdmin ? [] : [req.user.id]);
-  res.json(result.rows);
+  const rows = result.rows.map(r => {
+    const hasAttachments = !!(r.note_attachments && String(r.note_attachments).trim() && String(r.note_attachments).trim() !== 'null');
+    return { ...r, note_attachments: null, has_note_attachments: hasAttachments };
+  });
+  res.json(rows);
+}));
+
+// Henter den fulde note (tekst + link + vedhæftninger) for ÉN booking — bruges når
+// admin rent faktisk åbner "Rediger booking"-popup'en, i stedet for at slæbe alle
+// vedhæftninger med i den store liste ovenfor.
+app.get('/api/assignments/:id/note', auth, adminOnly, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT notes, note_link, note_attachments FROM planning_bookings WHERE id=$1', [Number(req.params.id)]);
+  if (!row) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  res.json(row);
 }));
 
 app.get('/api/assignments/my', auth, asyncRoute(async (req, res) => {
