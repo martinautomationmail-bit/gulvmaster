@@ -1469,6 +1469,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .ch-stat b{display:block;font-size:20px;color:var(--bly-ink)}
 .ch-stat span{font-size:10.5px;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.03em}
 .ch-stats{display:flex;gap:22px}
+.ch-portal-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:14px 20px;margin-bottom:18px}
+.ch-portal-label{font-size:12px;font-weight:700;color:var(--bly-ink);white-space:nowrap}
 .ch-job-card{background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);padding:14px 16px;margin-bottom:12px}
 .ch-job-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
 .ch-job-title{font-weight:700;font-size:13.5px;color:var(--bly-ink)}
@@ -1707,6 +1709,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Send test-mail til</label><div style="display:flex;gap:6px"><input id="email-test-to" class="input" placeholder="din@mail.dk"><button class="btn small" id="email-test-btn">Send test</button></div></div>
     </div>
     <div class="modal-actions" style="padding:0;border:0;margin-top:10px"><button class="btn primary small" id="email-save-btn">Gem mail-indstillinger</button></div>
+  </div>
+
+  <div class="email-settings-card" style="margin-top:16px">
+    <div class="email-settings-head">
+      <div><div class="email-settings-title">📲 Push- og SMS-notifikationer</div><div class="email-settings-sub">Push til medarbejdere (ny/ændret opgave) virker altid, uden opsætning. SMS til kunder ("din montør kommer") og medarbejdere kræver en SMS-udbyder — se forklaring nedenfor.</div></div>
+      <span class="mail-status-pill" id="push-status-pill">Tjekker…</span>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">SMS-status</label><div><span class="mail-status-pill" id="sms-status-pill">Tjekker…</span></div></div>
+      <div class="form-group"><label class="form-label">Send test-SMS til</label><div style="display:flex;gap:6px"><input id="sms-test-to" class="input" placeholder="Fx 12345678"><button class="btn small" id="sms-test-btn">Send test</button></div></div>
+    </div>
+    <div class="hint" style="margin-top:6px">For at aktivere SMS skal en af disse miljøvariabler sættes på serveren (Render → Environment): <b>GATEWAYAPI_API_TOKEN</b> (dansk udbyder, gatewayapi.com — anbefalet, billigst for danske numre) <i>eller</i> <b>TWILIO_ACCOUNT_SID</b> + <b>TWILIO_AUTH_TOKEN</b> + <b>TWILIO_FROM_NUMBER</b>. Push kræver ingen opsætning — det virker allerede, når en medarbejder trykker "Slå notifikationer til" på deres side.</div>
   </div>
 
   <div class="page-head" style="margin-top:28px"><h2>📧 Mail-skabeloner</h2><p class="page-sub">Forskellige varianter af kunde-mailen — vælges når du trykker "Send planlægningsmail".</p>
@@ -2005,7 +2019,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="btn small" id="plan-print-btn" title="Udskriv ugeplanen eller gem den som PDF">🖨️ Print ugeplan</button>
         <button class="btn small" id="plan-team-overview-btn" title="Se hvor alle medarbejdere er en given dag">👥 Hvor er alle</button>
         <button class="btn small" id="plan-route-map-btn" title="Kort over dagens ruter, eller alle projekter I nogensinde har haft">🗺️ Ruter & kort</button>
-        <button class="btn small" id="send-reminders-btn" title="Sender kun til kunder booket i morgen, som ikke allerede har fået denne mail">✉️ Send "vi kommer i morgen"</button>
+        <button class="btn small" id="send-reminders-btn" title="Sender mail + SMS (med montørens navn) til kunder booket i morgen, som ikke allerede har fået det">✉️ Send "vi kommer i morgen"</button>
       </div>
       <div class="workforce-bar" id="plan-workforce-filters"></div>
       <div class="board-outer" id="plan-board-outer">
@@ -3146,7 +3160,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="form-group"><label class="form-label">Vendor-gruppe</label><input id="user-vendor-group" class="input" placeholder="Fx AJB Gruppen APS"></div>
     <div class="form-group"><label class="form-label">Privat mail <span class="opt-tag">til kalender-notifikationer, kan afvige fra login-mail</span></label><input id="user-personal-email" type="email" class="input" placeholder="Fx ahmed@privat.dk"></div>
-    <label class="login-row"><input id="user-notify-changes" type="checkbox"> Send en mail til den private adresse, når kalenderen ændres</label>
+    <div class="form-group"><label class="form-label">Mobilnummer <span class="opt-tag">til push/SMS ved ny/ændret opgave</span></label><input id="user-phone" type="tel" class="input" placeholder="Fx 12345678"></div>
+    <label class="login-row"><input id="user-notify-changes" type="checkbox"> Send besked (mail + evt. SMS) til medarbejderen, når kalenderen ændres</label>
+    <div class="hint" style="margin:-4px 0 4px">Push-notifikationer i selve appen kræver ikke dette flueben — de virker automatisk, når medarbejderen selv trykker "Slå notifikationer til" på sin telefon/pc.</div>
     <div class="modal-actions">
       <button class="btn danger hidden" id="deactivate-user">Deaktiver</button>
       <button class="btn" id="close-user">Annuller</button>
@@ -8898,6 +8914,14 @@ function renderCustomerHistoryProfile(data,name){
       '<div class="ch-stat"><b>'+doneCount+'</b><span>Afsluttet</span></div>'+
       '<div class="ch-stat"><b>'+bookings.length+'</b><span>Bookinger</span></div>'+
     '</div>'+
+  '</div>'+
+  '<div class="ch-portal-row">'+
+    '<span class="ch-portal-label">🔗 Kundeportal <span class="opt-tag">ét fast link, viser hele pipelinen + timeline, ingen login</span></span>'+
+    '<div style="display:flex;gap:6px;flex:1;min-width:220px">'+
+      '<input id="ch-portal-link-input" class="input" readonly placeholder="Tryk \'Hent link\'" style="font-size:11px;flex:1" onclick="this.select()">'+
+      '<button class="btn small" type="button" id="ch-portal-link-btn">Hent link</button>'+
+      '<button class="btn small" type="button" id="ch-portal-copy-btn" style="display:none">📋 Kopiér</button>'+
+    '</div>'+
   '</div>';
   var jobsHtml=tasks.map(function(t){
     var tb=(byTask[t.id]||[]).slice().sort(function(a,b){return (b.start_date||'').localeCompare(a.start_date||'');});
@@ -8915,6 +8939,24 @@ function renderCustomerHistoryProfile(data,name){
     '</div>';
   }).join('');
   wrap.innerHTML=header+jobsHtml;
+  document.getElementById('ch-portal-link-btn').onclick=function(){fetchCustomerPortalLink(name);};
+  document.getElementById('ch-portal-copy-btn').onclick=copyCustomerPortalLink;
+}
+async function fetchCustomerPortalLink(name){
+  var btn=document.getElementById('ch-portal-link-btn');
+  btn.disabled=true;btn.textContent='Henter…';
+  var r=await api('/api/customers/portal-link?name='+encodeURIComponent(name));
+  btn.disabled=false;btn.textContent='Hent link';
+  if(r&&r.ok){
+    document.getElementById('ch-portal-link-input').value=r.url;
+    document.getElementById('ch-portal-copy-btn').style.display='inline-flex';
+  } else if(r)toast(r.error||'Kunne ikke hente link','❌');
+}
+function copyCustomerPortalLink(){
+  var input=document.getElementById('ch-portal-link-input');
+  if(!input.value)return;
+  input.select();
+  navigator.clipboard&&navigator.clipboard.writeText(input.value).then(function(){toast('Link kopieret','📋');}).catch(function(){document.execCommand('copy');toast('Link kopieret','📋');});
 }
 
 // USER MODAL
@@ -8935,6 +8977,7 @@ function openUser(id,opts){
   document.getElementById('user-trade').value=u?(u.trade||''):'';document.getElementById('user-vendor-group').value=u?(u.vendor_group||''):(opts.vendorGroup||'');
   document.getElementById('user-can-login').checked=u?!!u.can_login:!opts.vendorGroup;
   document.getElementById('user-personal-email').value=u?(u.personal_email||''):'';
+  document.getElementById('user-phone').value=u?(u.phone||''):'';
   document.getElementById('user-notify-changes').checked=u?!!u.notify_schedule_changes:false;
   document.getElementById('user-avatar-file').value='';
   updateAvatarPreview(u?u.avatar_url:null);
@@ -8945,7 +8988,7 @@ async function saveUser(){
   var name=document.getElementById('user-name').value.trim(),login=document.getElementById('user-can-login').checked,email=document.getElementById('user-email').value.trim(),pw=document.getElementById('user-password').value;
   if(!name){toast('Navn mangler','⚠');return;}
   if(login&&(!email||(!editUserId&&!pw))){toast('Email og kode mangler','⚠');return;}
-  var body={name:name,can_login:login,email:email,role:document.getElementById('user-role').value,password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,avatar_url:document.getElementById('user-avatar-url').value||null,personal_email:document.getElementById('user-personal-email').value.trim()||null,notify_schedule_changes:document.getElementById('user-notify-changes').checked};
+  var body={name:name,can_login:login,email:email,role:document.getElementById('user-role').value,password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,avatar_url:document.getElementById('user-avatar-url').value||null,personal_email:document.getElementById('user-personal-email').value.trim()||null,phone:document.getElementById('user-phone').value.trim()||null,notify_schedule_changes:document.getElementById('user-notify-changes').checked};
   var r=editUserId?await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/users',{method:'POST',body:JSON.stringify(body)});
   if(r&&(r.ok||r.id)){closeModal('user-modal');toast('Gemt','✓');await loadAll();}else if(r)toast(r.error||'Fejl','❌');
 }
@@ -9055,7 +9098,26 @@ function applySettingsToUI(){
   if(settings.logo_url){logoEl.innerHTML='<img src="'+settings.logo_url+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">';prevEl.innerHTML='<img src="'+settings.logo_url+'">';}
   else{logoEl.textContent='🪵';prevEl.textContent='🪵';}
 }
-async function loadSettings(){var s=await api('/api/settings');if(s)settings=s;applySettingsToUI();loadEmailSettings();}
+async function loadSettings(){var s=await api('/api/settings');if(s)settings=s;applySettingsToUI();loadEmailSettings();loadNotificationChannels();}
+// PUSH/SMS-STATUS — samme mønster som mail-status-pillen ovenfor.
+async function loadNotificationChannels(){
+  var s=await api('/api/settings/notification-channels');
+  if(!s)return;
+  var pushPill=document.getElementById('push-status-pill');
+  pushPill.textContent='✓ Push virker (ingen opsætning krævet)';pushPill.className='mail-status-pill ok';
+  var smsPill=document.getElementById('sms-status-pill');
+  if(s.sms_configured){smsPill.textContent='✓ SMS er sat op ('+s.sms_provider+')';smsPill.className='mail-status-pill ok';}
+  else{smsPill.textContent='⚠ SMS er ikke sat op endnu';smsPill.className='mail-status-pill off';}
+}
+async function sendTestSms(){
+  var to=document.getElementById('sms-test-to').value.trim();
+  if(!to){toast('Skriv et telefonnummer først','⚠');return;}
+  var btn=document.getElementById('sms-test-btn');btn.disabled=true;btn.textContent='Sender…';
+  var r=await api('/api/settings/test-sms',{method:'POST',body:JSON.stringify({to:to})});
+  if(r&&r.ok)toast('Test-SMS sendt til '+to,'✓');
+  else toast((r&&r.error)||'Kunne ikke sende','❌');
+  btn.disabled=false;btn.textContent='Send test';
+}
 async function saveSettings(){
   var body={company_name:document.getElementById('settings-company-name').value.trim()||'Gulv Master Enterprise ApS'};
   var file=document.getElementById('settings-logo-file').files[0];
@@ -9455,7 +9517,10 @@ function bind(){
     var btn=this;btn.disabled=true;btn.textContent='Sender…';
     var r=await api('/api/customer-emails/send-reminders',{method:'POST'});
     btn.disabled=false;btn.textContent='✉️ Send "vi kommer i morgen"';
-    if(r&&r.ok)toast('Sendt til '+r.sent+' af '+r.candidates+' kunder','✉️');
+    if(r&&r.ok){
+      var smsPart=(r.sms_sent||r.sms_candidates)?(' + SMS til '+r.sms_sent+' af '+r.sms_candidates):(r.sms_reason?' (SMS: '+r.sms_reason+')':'');
+      toast('Mail sendt til '+r.sent+' af '+r.candidates+' kunder'+smsPart,'✉️');
+    }
     else if(r)toast(r.error||'Kunne ikke sende','❌');
   };
   document.getElementById('cap-today').onclick=function(){scrollToWeek(weekKey(new Date()));};
@@ -9494,6 +9559,7 @@ function bind(){
   document.getElementById('settings-save-btn').onclick=saveSettings;
   document.getElementById('email-save-btn').onclick=saveEmailSettings;
   document.getElementById('email-test-btn').onclick=sendTestCompletionEmail;
+  document.getElementById('sms-test-btn').onclick=sendTestSms;
   // Opgaveliste
   ['tasklist-search','tasklist-type-filter','tasklist-status-filter'].forEach(function(id){document.getElementById(id).addEventListener('input',renderTaskList);});
   document.getElementById('tasklist-select-all').onclick=function(){selectAllTasks(true);};

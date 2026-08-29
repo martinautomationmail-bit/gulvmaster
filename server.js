@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const cron = require('node-cron');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
+const webpush = require('web-push');
 // FEJLSIKRING: hvis xlsx eller pdf-parse af en eller anden grund ikke kunne installeres
 // korrekt på serveren (fx en afvigelse i build-miljøet), skal det IKKE vælte hele
 // appen — kun bankafstemnings-featuren, som i så fald simpelthen ikke er tilgængelig.
@@ -558,6 +559,46 @@ async function initSchema() {
     );
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS scheduled_email_sent_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS reminder_email_sent_at TEXT;
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS sms_reminder_sent_at TEXT;
+
+    -- PUSH/SMS-NOTIFIKATIONER (medarbejder-push + kunde-SMS "din montør kommer").
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_push_subs_endpoint ON push_subscriptions(endpoint);
+    CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
+
+    -- KUNDEPORTAL 2.0 — ét permanent link pr. kunde (identificeret ved job_name,
+    -- samme konvention som Kundehistorik og kundesøgning bruger), i stedet for det
+    -- gamle link der kun dækkede én enkelt booking. customer_key er den normaliserede
+    -- (lowercase/trimmet) nøgle vi matcher på; job_name er visningsnavnet.
+    CREATE TABLE IF NOT EXISTS customer_portal_tokens (
+      id SERIAL PRIMARY KEY,
+      customer_key TEXT NOT NULL,
+      job_name TEXT NOT NULL,
+      token TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_portal_key ON customer_portal_tokens(customer_key);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_portal_token ON customer_portal_tokens(token);
+
+    CREATE TABLE IF NOT EXISTS customer_schedule_sms (
+      id SERIAL PRIMARY KEY,
+      booking_id INTEGER,
+      task_id TEXT,
+      kind TEXT NOT NULL, -- 'reminder'
+      to_phone TEXT,
+      status TEXT,
+      error TEXT,
+      sent_at TEXT DEFAULT ${nowTextSQL()}
+    );
 
     CREATE TABLE IF NOT EXISTS job_files (
       id SERIAL PRIMARY KEY,
@@ -1281,6 +1322,27 @@ app.post('/api/settings/test-completion-email', auth, adminOnly, asyncRoute(asyn
   }
 }));
 
+// SMS & PUSH — status-panel i indstillinger, så det er tydeligt hvad der virker
+// uden konfiguration (push, gratis) og hvad der kræver en SMS-udbyder (betalt).
+app.get('/api/settings/notification-channels', auth, adminOnly, asyncRoute(async (req, res) => {
+  res.json({
+    push_configured: true, // web push kræver ingen ekstern konto — virker altid
+    sms_configured: smsIsConfigured(),
+    sms_provider: process.env.GATEWAYAPI_API_TOKEN ? 'GatewayAPI' : (process.env.TWILIO_ACCOUNT_SID ? 'Twilio' : null)
+  });
+}));
+app.post('/api/settings/test-sms', auth, adminOnly, asyncRoute(async (req, res) => {
+  const to = String((req.body || {}).to || '').trim();
+  if (!to) return res.status(400).json({ error: 'Skriv et telefonnummer at teste med' });
+  if (!smsIsConfigured()) return res.status(400).json({ error: 'SMS er ikke sat op endnu (mangler GATEWAYAPI_API_TOKEN eller TWILIO_* i Render Environment)' });
+  try {
+    await sendSmsUniversal({ to, message: 'Gulv Master: Dette er en test-SMS fra jeres planlægningssystem.' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: redactSecret(e.message || 'Ukendt fejl').slice(0, 500) });
+  }
+}));
+
 // Log over kunde-planlægnings/påmindelsesmails — så du selv kan se PRÆCIS hvornår
 // hver mail blev sendt, og bekræfte at "vi kommer i morgen" kun sendes når du selv
 // trykker (tidsstemplerne vil klumpe sig om det tidspunkt du trykkede, ikke kl. 15
@@ -1367,7 +1429,7 @@ app.delete('/api/task-types/:key', auth, adminOnly, asyncRoute(async (req, res) 
 // ── USERS / WORKFORCE ───────────────────────────────────────
 app.get('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await pool.query(`
-    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin
+    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,phone,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin
     FROM users
     ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END,
              CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END,
@@ -1378,6 +1440,61 @@ app.get('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
 }));
 
 const PUBLIC_APP_URL = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || 'https://gulvmaster.onrender.com';
+
+// ══════════════════════════════════════════════════════════════
+// WEB PUSH — push-notifikationer til medarbejdere (fx "din plan er ændret")
+// direkte i browseren/telefonen, uden nogen ekstern konto eller omkostning.
+// VAPID-nøglerne herunder identificerer BARE denne server som afsender — de er
+// ikke hemmelige på samme måde som et API-nøgle-login, men kan override's via
+// miljøvariabler hvis Martin nogensinde vil rotere dem. Genereret én gang med
+// `npx web-push generate-vapid-keys`.
+// ══════════════════════════════════════════════════════════════
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BBJi09LVC9PlnJte2pPDqvp599AnTmDROKayvISt1tgEU-J2n6rt3VotnnZ2SdG1AIujyudIpSU2r3huVy39aHE';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'Z8TUYwi6XOfHLqxKSoSDlEZN8gEnZLlOQBoM1HlAH2o';
+webpush.setVapidDetails('mailto:info@gulvmaster.dk', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+
+// Sender en push-besked til ALLE enheder én medarbejder har tilmeldt (kan sagtens
+// være flere — telefon + pc). Rydder selv op i døde abonnementer (410/404 = bruger
+// har afinstalleret/blokeret notifikationer på den enhed).
+async function sendPushToUser(userId, title, body, url) {
+  if (!userId) return;
+  let subs;
+  try { subs = await pool.query('SELECT * FROM push_subscriptions WHERE user_id=$1', [userId]); }
+  catch (e) { console.error('Kunne ikke hente push-abonnementer:', e.message); return; }
+  const payload = JSON.stringify({ title, body: body || '', url: url || '/employee' });
+  for (const s of subs.rows) {
+    try {
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
+    } catch (e) {
+      if (e.statusCode === 404 || e.statusCode === 410) {
+        await pool.query('DELETE FROM push_subscriptions WHERE id=$1', [s.id]).catch(() => {});
+      } else {
+        console.error('Push-afsendelse fejlede:', e.message);
+      }
+    }
+  }
+}
+
+app.get('/api/push/public-key', auth, (req, res) => res.json({ publicKey: VAPID_PUBLIC_KEY }));
+
+app.post('/api/push/subscribe', auth, asyncRoute(async (req, res) => {
+  const sub = req.body || {};
+  if (!sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
+    return res.status(400).json({ error: 'Ugyldigt push-abonnement' });
+  }
+  await pool.query(`
+    INSERT INTO push_subscriptions (user_id,endpoint,p256dh,auth) VALUES ($1,$2,$3,$4)
+    ON CONFLICT (endpoint) DO UPDATE SET user_id=EXCLUDED.user_id, p256dh=EXCLUDED.p256dh, auth=EXCLUDED.auth
+  `, [req.user.id, sub.endpoint, sub.keys.p256dh, sub.keys.auth]);
+  res.json({ ok: true });
+}));
+
+app.post('/api/push/unsubscribe', auth, asyncRoute(async (req, res) => {
+  const endpoint = (req.body || {}).endpoint;
+  if (endpoint) await pool.query('DELETE FROM push_subscriptions WHERE endpoint=$1 AND user_id=$2', [endpoint, req.user.id]);
+  res.json({ ok: true });
+}));
+
 async function createPasswordResetToken(userId) {
   const rawToken = crypto.randomBytes(32).toString('hex');
   const hashed = crypto.createHash('sha256').update(rawToken).digest('hex');
@@ -1415,10 +1532,10 @@ app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
 
   try {
     const result = await pool.query(`
-      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url,personal_email,notify_schedule_changes)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url,personal_email,notify_schedule_changes,phone)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
       RETURNING id
-    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0]);
+    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0, body.phone ? String(body.phone).trim().slice(0, 30) : null]);
     res.json({ ok: true, id: result.rows[0].id });
     // Send login-vejledning, så medarbejderen selv kan sætte sin adgangskode —
     // kun relevant for brugere der faktisk kan logge ind.
@@ -1481,14 +1598,15 @@ app.put('/api/users/:id', auth, adminOnly, asyncRoute(async (req, res) => {
     can_login: canLogin,
     avatar_url: body.avatar_url !== undefined ? (body.avatar_url || null) : current.avatar_url,
     personal_email: body.personal_email !== undefined ? (body.personal_email || null) : current.personal_email,
-    notify_schedule_changes: body.notify_schedule_changes !== undefined ? (body.notify_schedule_changes ? 1 : 0) : current.notify_schedule_changes
+    notify_schedule_changes: body.notify_schedule_changes !== undefined ? (body.notify_schedule_changes ? 1 : 0) : current.notify_schedule_changes,
+    phone: body.phone !== undefined ? (body.phone ? String(body.phone).trim().slice(0, 30) : null) : current.phone
   };
   if (canLogin && !next.email) return res.status(400).json({ error: 'Email mangler for login-bruger' });
   try {
     await pool.query(`
-      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14,personal_email=$15,notify_schedule_changes=$16
-      WHERE id=$17
-    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, next.personal_email, next.notify_schedule_changes, id]);
+      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14,personal_email=$15,notify_schedule_changes=$16,phone=$17
+      WHERE id=$18
+    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, next.personal_email, next.notify_schedule_changes, next.phone, id]);
     res.json({ ok: true });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
@@ -1608,6 +1726,66 @@ async function sendMailUniversal({ to, subject, text, html, attachments }) {
   const transport = getMailTransport();
   if (!transport) throw new Error('Hverken RESEND_API_KEY eller SMTP er sat op');
   await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, text, html, attachments });
+}
+
+// ══════════════════════════════════════════════════════════════
+// SMS — samme "graceful degradation"-mønster som mail ovenfor: virker slet
+// ikke før nogen sætter miljøvariabler på serveren, men fejler aldrig hårdt.
+// To udbydere understøttet (den første fundne miljøvariabel vinder):
+//   A) GatewayAPI (dansk, billig, simpel REST-API) — GATEWAYAPI_API_TOKEN, valgfri GATEWAYAPI_SENDER
+//   B) Twilio (international) — TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+// Ingen SDK'er tilføjet — begge kaldes direkte via fetch, ligesom Resend ovenfor.
+// ══════════════════════════════════════════════════════════════
+function smsIsConfigured() {
+  return !!process.env.GATEWAYAPI_API_TOKEN || !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER);
+}
+// Normaliserer til E.164. Antager dansk nummer (8 cifre, intet landekode) hvis
+// intet andet er angivet — dækker langt de fleste kunder/medarbejdere her.
+function normalizePhone(raw) {
+  let p = String(raw || '').trim().replace(/[\s.\-()]/g, '');
+  if (!p) return null;
+  if (p.startsWith('00')) p = '+' + p.slice(2);
+  if (!p.startsWith('+')) p = (p.replace(/\D/g, '').length === 8) ? '+45' + p.replace(/\D/g, '') : '+' + p.replace(/\D/g, '');
+  return /^\+\d{8,15}$/.test(p) ? p : null;
+}
+async function sendSmsUniversal({ to, message }) {
+  const phone = normalizePhone(to);
+  if (!phone) throw new Error('Ugyldigt eller manglende telefonnummer');
+  if (process.env.GATEWAYAPI_API_TOKEN) {
+    const response = await fetch('https://gatewayapi.com/rest/mtsms', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(process.env.GATEWAYAPI_API_TOKEN + ':').toString('base64'),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: (process.env.GATEWAYAPI_SENDER || 'GulvMaster').slice(0, 11),
+        message,
+        recipients: [{ msisdn: Number(phone.replace('+', '')) }]
+      })
+    });
+    if (!response.ok) {
+      const raw = await response.text().catch(() => '');
+      throw new Error(`GatewayAPI HTTP ${response.status}: ${raw.slice(0, 300)}`);
+    }
+    return;
+  }
+  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+    const sid = process.env.TWILIO_ACCOUNT_SID;
+    const auth = Buffer.from(sid + ':' + process.env.TWILIO_AUTH_TOKEN).toString('base64');
+    const params = new URLSearchParams({ To: phone, From: process.env.TWILIO_FROM_NUMBER, Body: message });
+    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic ' + auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params
+    });
+    if (!response.ok) {
+      const raw = await response.text().catch(() => '');
+      throw new Error(`Twilio HTTP ${response.status}: ${raw.slice(0, 300)}`);
+    }
+    return;
+  }
+  throw new Error('Hverken GATEWAYAPI_API_TOKEN eller TWILIO_* er sat op på serveren');
 }
 
 async function sendCompletionEmail(booking) {
@@ -2787,6 +2965,7 @@ app.post('/api/tasks/manual-and-book', auth, adminOnly, asyncRoute(async (req, r
     res.json({ ok: true, id, booking_id: result.rows[0].id });
     sendScheduleChangeEmail(booking.user_id, `Du har fået en ny opgave sat på din kalender: ${String(booking.start_date).slice(0,10)}.`)
       .catch(e => console.error('Kalender-mail fejlede:', e.message));
+    notifyEmployee(booking.user_id, 'Ny opgave i din plan', `Du er sat på en opgave ${dayLabelForNotif(booking.start_date)} (${String(booking.start_date).slice(0,10)}).`, '#plan').catch(() => {});
     // OBS: kunde-mailen sendes IKKE automatisk længere — admin sender den bevidst
     // via "Send planlægningsmail"-knappen, så en opgave der planlægges flere gange
     // ikke spammer kunden med gentagne mails.
@@ -3758,6 +3937,11 @@ app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
     res.json({ ok: true, id: result.rows[0].id, warning });
     sendScheduleChangeEmail(booking.user_id, `Du har fået en ny opgave sat på din kalender: ${String(booking.start_date).slice(0,10)}.`)
       .catch(e => console.error('Kalender-mail fejlede:', e.message));
+    // Push/in-app-besked om den nye tildeling — i modsætning til selve
+    // plan-ÆNDRINGER (se PUT nedenfor) sendes denne ALTID, uanset hvor langt ude i
+    // fremtiden opgaven ligger, fordi det er første gang medarbejderen overhovedet
+    // ser den. En dags-booking langt ude i fremtiden er stadig ny information nu.
+    notifyEmployee(booking.user_id, 'Ny opgave i din plan', `Du er sat på en opgave ${dayLabelForNotif(booking.start_date)} (${String(booking.start_date).slice(0,10)}).`, '#plan').catch(() => {});
     // OBS: kunde-mailen sendes IKKE automatisk længere — se /send-scheduled-email nedenfor.
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -4151,11 +4335,24 @@ function dayLabelForNotif(dateStr) {
   if (diffDays === 1) return 'i morgen';
   return 'den ' + String(dateStr).slice(0, 10);
 }
+// Sender IKKE kun en in-app-besked mere — rammer nu også push (altid, hvis
+// medarbejderen har tilmeldt en enhed) og SMS (kun hvis medarbejderen selv har
+// slået "notify_schedule_changes" til OG har et telefonnummer registreret —
+// samme opt-in-logik der allerede styrer den personlige e-mail-besked ovenfor).
 async function notifyEmployee(userId, title, body, link) {
   if (!userId) return;
   try {
     await pool.query('INSERT INTO notifications (event_key,title,body,link,user_id) VALUES ($1,$2,$3,$4,$5)', ['employee_schedule_change', title, body || null, link || null, userId]);
   } catch (e) { console.error('Medarbejder-notifikation fejlede:', e.message); }
+  sendPushToUser(userId, title, body, PUBLIC_APP_URL + '/employee' + (link || '')).catch(e => console.error('Push til medarbejder fejlede:', e.message));
+  if (smsIsConfigured()) {
+    try {
+      const user = await pgOne('SELECT phone, notify_schedule_changes FROM users WHERE id=$1', [userId]);
+      if (user && user.notify_schedule_changes && user.phone) {
+        await sendSmsUniversal({ to: user.phone, message: `Gulv Master: ${title}${body ? ' — ' + body : ''}` });
+      }
+    } catch (e) { console.error('SMS til medarbejder fejlede:', e.message); }
+  }
 }
 app.get('/api/notification-settings', auth, adminOnly, asyncRoute(async (req, res) => {
   await ensureNotificationRulesSeeded();
@@ -4410,6 +4607,44 @@ async function getOrCreateBookingToken(bookingId) {
 function portalLinkFor(token) {
   return `${PUBLIC_APP_URL}/portal/${token}`;
 }
+
+// KUNDEPORTAL 2.0 — ét PERMANENT link pr. kunde (i modsætning til linket ovenfor,
+// som kun dækker én booking). Kunden identificeres ved job_name, præcis som
+// Kundehistorik og kundesøgning allerede gør — der findes ikke en selvstændig
+// "kunde"-tabel i dag. Linket oprettes automatisk første gang det bliver brugt
+// (enten når admin trykker "Hent kundeportal-link", eller stille i baggrunden når
+// en planlægnings-/påmindelsesbesked sendes) og er derefter det SAMME for alle
+// kundens fremtidige opgaver — admin skal ikke længere selv hente et nyt link
+// hver gang der bookes noget nyt.
+async function getOrCreateCustomerPortalToken(jobName) {
+  const key = String(jobName || '').trim().toLowerCase();
+  if (!key) return null;
+  const existing = await pgOne('SELECT token FROM customer_portal_tokens WHERE customer_key=$1', [key]);
+  if (existing) return existing.token;
+  const token = crypto.randomBytes(20).toString('hex');
+  try {
+    await pool.query(
+      'INSERT INTO customer_portal_tokens (customer_key,job_name,token) VALUES ($1,$2,$3) ON CONFLICT (customer_key) DO NOTHING',
+      [key, String(jobName).trim(), token]
+    );
+  } catch (e) { console.error('Kunne ikke oprette kundeportal-token:', e.message); }
+  // Læs tilbage i stedet for blot at antage vores eget token vandt — hvis to kald
+  // ramte samtidig (usandsynligt, men billigt at være sikker), skal begge ende med
+  // det SAMME link, ikke to forskellige.
+  const row = await pgOne('SELECT token FROM customer_portal_tokens WHERE customer_key=$1', [key]);
+  return row ? row.token : token;
+}
+function customerPortalLinkFor(token) {
+  return `${PUBLIC_APP_URL}/kunde/${token}`;
+}
+app.get('/api/customers/portal-link', auth, adminOnly, asyncRoute(async (req, res) => {
+  const name = String(req.query.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Mangler kundenavn' });
+  const token = await getOrCreateCustomerPortalToken(name);
+  if (!token) return res.status(400).json({ error: 'Kunne ikke oprette link' });
+  res.json({ ok: true, url: customerPortalLinkFor(token) });
+}));
+
 async function sendScheduledEmail(booking, templateId) {
   if (!mailIsConfigured()) return { sent: false, reason: 'E-mail er ikke konfigureret på serveren' };
   const task = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [booking.task_id]);
@@ -4428,8 +4663,12 @@ async function sendScheduledEmail(booking, templateId) {
     const tt = await pgOne('SELECT label FROM task_types WHERE key=$1', [task.type_guess]);
     tradeLabel = tt?.label || task.type_guess;
   }
-  const portalToken = await getOrCreateBookingToken(booking.id);
-  const portalLink = portalToken ? portalLinkFor(portalToken) : '';
+  // Sender nu det PERMANENTE kundeportal-link (dækker alle kundens opgaver,
+  // pipeline + timeline) i stedet for det gamle link der kun viste denne ene
+  // booking — kunden får dermed automatisk sin faste side, uden admin skal gøre
+  // noget særligt, første gang der overhovedet sendes en mail til dem.
+  const portalToken = task?.job_name ? await getOrCreateCustomerPortalToken(task.job_name) : null;
+  const portalLink = portalToken ? customerPortalLinkFor(portalToken) : '';
   const vars = {
     kunde: task?.job_name || '', opgave: task?.name || '', fag: tradeLabel,
     dato: dateLabel, tidspunkt: booking.start_time || '', medarbejder: userName,
@@ -4493,8 +4732,8 @@ async function sendReminderEmails() {
   const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
   let sentCount = 0;
   for (const b of rows.rows) {
-    const portalToken = await getOrCreateBookingToken(b.id);
-    const portalLink = portalToken ? portalLinkFor(portalToken) : '';
+    const portalToken = b.job_name ? await getOrCreateCustomerPortalToken(b.job_name) : null;
+    const portalLink = portalToken ? customerPortalLinkFor(portalToken) : '';
     const subject = `Vi kommer i morgen — ${companyName}`;
     const text = `Hej,\n\nVi vil bare give dig besked om, at vi kommer i morgen${b.start_time ? ' kl. ' + b.start_time : ''} og udfører (${b.job_name}).` +
       (portalLink ? `\n\nDu kan altid se status på din opgave her: ${portalLink}` : '') +
@@ -4510,11 +4749,49 @@ async function sendReminderEmails() {
   return { sent: sentCount, candidates: rows.rows.length };
 }
 
+// "Din montør kommer i morgen"-SMS — samme kandidat-logik som mail-påmindelsen
+// ovenfor (én pr. opgave, kun i morgens bookinger, kun daglige bookinger — ikke
+// kapacitetsblokke), men kræver customer_phone i stedet for customer_email, og
+// har sit eget "allerede sendt"-flag (sms_reminder_sent_at) så de to kanaler ikke
+// blokerer hinanden — en kunde med både e-mail og telefon skal gerne have begge.
+async function sendReminderSms() {
+  if (!smsIsConfigured()) return { sent: 0, reason: 'SMS er ikke konfigureret på serveren (GATEWAYAPI_API_TOKEN/TWILIO_*)' };
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const iso = tomorrow.toISOString().slice(0, 10);
+  const rows = await pool.query(`
+    SELECT DISTINCT ON (b.task_id) b.*, t.job_name, t.customer_phone, u.name AS user_name
+    FROM planning_bookings b
+    JOIN jt_tasks t ON b.task_id=t.id
+    LEFT JOIN users u ON b.user_id=u.id
+    WHERE b.start_date=$1 AND COALESCE(b.planning_mode,'daily')='daily' AND b.sms_reminder_sent_at IS NULL AND t.customer_phone IS NOT NULL AND trim(t.customer_phone)<>''
+    ORDER BY b.task_id, b.id ASC
+  `, [iso]);
+  const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
+  const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise';
+  let sentCount = 0;
+  for (const b of rows.rows) {
+    const portalToken = b.job_name ? await getOrCreateCustomerPortalToken(b.job_name) : null;
+    const portalLink = portalToken ? customerPortalLinkFor(portalToken) : '';
+    const montorLine = b.user_name ? `Din montør ${b.user_name} kommer` : 'Vi kommer';
+    const message = `${companyName}: ${montorLine} i morgen${b.start_time ? ' kl. ' + b.start_time : ''} og udfører "${b.job_name}".${portalLink ? ' Status: ' + portalLink : ''}`;
+    let status = 'sent', error = null;
+    try { await sendSmsUniversal({ to: b.customer_phone, message }); sentCount++; }
+    catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
+    await pool.query('INSERT INTO customer_schedule_sms (booking_id,task_id,kind,to_phone,status,error) VALUES ($1,$2,$3,$4,$5,$6)', [b.id, b.task_id, 'reminder', b.customer_phone, status, error]);
+    await pool.query(`UPDATE planning_bookings SET sms_reminder_sent_at=${nowTextSQL()} WHERE task_id=$1 AND start_date=$2`, [b.task_id, iso]);
+  }
+  return { sent: sentCount, candidates: rows.rows.length };
+}
+
 // Manuel udløser — admin trykker selv når de vil sende "vi kommer i morgen" til alle
 // kunder der er booket i morgen og ikke allerede har fået den. Ingen automatisk cron.
+// Sender BÅDE mail og SMS i samme kald (hver kanal er selvstændigt fejlsikret —
+// mangler SMS-opsætning, sendes mailen stadig, og omvendt).
 app.post('/api/customer-emails/send-reminders', auth, adminOnly, asyncRoute(async (req, res) => {
-  const result = await sendReminderEmails();
-  res.json({ ok: true, ...result });
+  const emailResult = await sendReminderEmails();
+  let smsResult = { sent: 0, reason: 'SMS er ikke konfigureret på serveren (GATEWAYAPI_API_TOKEN/TWILIO_*)' };
+  try { smsResult = await sendReminderSms(); } catch (e) { smsResult = { sent: 0, reason: e.message }; }
+  res.json({ ok: true, ...emailResult, sms_sent: smsResult.sent, sms_candidates: smsResult.candidates || 0, sms_reason: smsResult.reason || null });
 }));
 
 // ══════════════════════════════════════════════════════════════
@@ -5682,6 +5959,150 @@ ${row.user_name ? `<div class="row"><div class="ico">👷</div><div><div class="
   res.send(html);
 }));
 
+// ══════════════════════════════════════════════════════════════
+// KUNDEPORTAL 2.0 — /kunde/:token. Modsat /portal/:token ovenfor (som kun viser ÉN
+// booking) viser denne siden ALT hvad kunden nogensinde har haft hos os, med et
+// pipeline-overblik og en kronologisk timeline — samme data og samme
+// status-logik som den interne Kundehistorik-side i admin, bare kundevendt og
+// uden login. Linket er permanent: samme kunde, samme link, for altid.
+// ══════════════════════════════════════════════════════════════
+app.get('/kunde/:token', asyncRoute(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
+  const tokenRow = await pgOne('SELECT job_name FROM customer_portal_tokens WHERE token=$1', [req.params.token]);
+  if (!tokenRow) return res.status(404).send(portalNotFoundPage());
+  const settingsRow = await pgOne("SELECT value FROM app_settings WHERE key='company_name'");
+  const companyName = settingsRow?.value || 'Gulv Master Enterprise';
+
+  const tasksRes = await pool.query(`
+    SELECT id,name,job_name,job_address,job_number,start_date,end_date,created_at
+    FROM jt_tasks
+    WHERE lower(trim(job_name))=lower(trim($1))
+    ORDER BY start_date DESC NULLS LAST, created_at DESC
+  `, [tokenRow.job_name]);
+  const tasks = tasksRes.rows;
+  let bookings = [];
+  if (tasks.length) {
+    const bookingsRes = await pool.query(`
+      SELECT b.id,b.task_id,b.start_date,b.end_date,b.start_time,b.completed_at,u.name AS user_name
+      FROM planning_bookings b
+      LEFT JOIN users u ON b.user_id=u.id
+      WHERE b.task_id = ANY($1::text[]) AND COALESCE(b.planning_mode,'daily')='daily'
+      ORDER BY b.start_date DESC NULLS LAST, b.id DESC
+    `, [tasks.map(t => t.id)]);
+    bookings = bookingsRes.rows;
+  }
+  const byTask = {};
+  bookings.forEach(b => { (byTask[b.task_id] = byTask[b.task_id] || []).push(b); });
+  const todayIso = new Date().toISOString().slice(0, 10);
+  function statusForTask(tb) {
+    if (!tb.length) return { key: 'pending', label: '🕓 Afventer planlægning', bg: '#F1F5F9', fg: '#475569' };
+    if (tb.every(b => b.completed_at)) return { key: 'done', label: '✅ Afsluttet', bg: '#DCFCE7', fg: '#15803D' };
+    if (tb.some(b => !b.completed_at && todayIso >= String(b.start_date).slice(0, 10) && todayIso <= String(b.end_date || b.start_date).slice(0, 10))) {
+      return { key: 'active', label: '🔧 I gang', bg: '#FEF3C7', fg: '#92400E' };
+    }
+    if (tb.some(b => !b.completed_at && String(b.start_date).slice(0, 10) > todayIso)) return { key: 'planned', label: '📅 Planlagt', bg: '#DBEAFE', fg: '#1D4ED8' };
+    return { key: 'active', label: '🔧 I gang', bg: '#FEF3C7', fg: '#92400E' };
+  }
+  const fmt = (d) => new Date(d).toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+  const doneCount = tasks.filter(t => { const tb = byTask[t.id] || []; return tb.length && tb.every(b => b.completed_at); }).length;
+
+  const pipelineGroups = [
+    { key: 'active', label: '🔧 I gang' },
+    { key: 'planned', label: '📅 Planlagt' },
+    { key: 'pending', label: '🕓 Afventer planlægning' },
+    { key: 'done', label: '✅ Afsluttet' }
+  ];
+  const pipelineHtml = pipelineGroups.map(group => {
+    const jobsInGroup = tasks.filter(t => statusForTask(byTask[t.id] || []).key === group.key);
+    if (!jobsInGroup.length) return '';
+    const cards = jobsInGroup.map(t => {
+      const tb = (byTask[t.id] || []).slice().sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')));
+      const st = statusForTask(tb);
+      const dateRange = t.start_date ? (t.end_date && t.end_date !== t.start_date ? `${fmt(t.start_date)} – ${fmt(t.end_date)}` : fmt(t.start_date)) : '';
+      const montor = tb.find(b => b.user_name)?.user_name;
+      return `<div class="job-card">
+        <div class="job-top"><div class="job-title">${esc(t.job_name || t.name || 'Opgave')}</div><span class="pill" style="background:${st.bg};color:${st.fg}">${st.label}</span></div>
+        ${dateRange ? `<div class="job-meta">📅 ${esc(dateRange)}</div>` : ''}
+        ${t.job_address ? `<div class="job-meta">📍 ${esc(t.job_address)}</div>` : ''}
+        ${montor ? `<div class="job-meta">👷 ${esc(montor)}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="group"><div class="group-label">${group.label} <span class="group-count">${jobsInGroup.length}</span></div>${cards}</div>`;
+  }).join('') || '<div class="empty">Ingen opgaver fundet endnu.</div>';
+
+  const timelineRows = bookings.slice().sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || ''))).map(b => {
+    const task = tasks.find(t => t.id === b.task_id);
+    return `<div class="tl-row">
+      <div class="tl-dot ${b.completed_at ? 'done' : ''}"></div>
+      <div class="tl-body">
+        <div class="tl-date">${fmt(b.start_date)}${b.start_time ? ' · kl. ' + esc(b.start_time) : ''}${b.completed_at ? ' · ✅ Afsluttet' : ''}</div>
+        <div class="tl-title">${esc((task && (task.job_name || task.name)) || 'Opgave')}</div>
+        ${b.user_name ? `<div class="tl-sub">👷 ${esc(b.user_name)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">Ingen bookinger endnu.</div>';
+
+  const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Din side hos ${esc(companyName)}</title><style>
+:root{--ink:#111318;--sub:#6B7280;--border:#E5E7EB;--accent:#4F46E5;--accent-soft:#EEF2FF}
+*{box-sizing:border-box}
+body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:var(--ink);margin:0;padding:24px 14px 40px;min-height:100vh}
+.wrap{max-width:520px;margin:0 auto}
+.brand{font-size:12.5px;font-weight:800;color:var(--accent);letter-spacing:.02em;text-transform:uppercase;margin-bottom:10px;text-align:center}
+h1{font-size:20px;margin:0 0 14px;text-align:center}
+.stats{display:flex;gap:8px;margin-bottom:16px}
+.stat{flex:1;background:#fff;border-radius:14px;padding:12px;text-align:center;box-shadow:0 6px 20px rgba(15,17,24,.06)}
+.stat b{display:block;font-size:20px}
+.stat span{font-size:10.5px;color:var(--sub);font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+.tabs{display:flex;gap:6px;background:#E9ECF5;border-radius:12px;padding:4px;margin-bottom:16px}
+.tab{flex:1;text-align:center;padding:9px;border-radius:9px;font-size:12.5px;font-weight:800;cursor:pointer;color:var(--sub)}
+.tab.active{background:#fff;color:var(--accent);box-shadow:0 2px 8px rgba(15,17,24,.08)}
+.panel{display:none}.panel.active{display:block}
+.group{margin-bottom:18px}
+.group-label{font-size:11.5px;font-weight:800;color:var(--sub);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px}
+.group-count{background:#E5E7EB;border-radius:999px;padding:1px 7px;font-size:10px}
+.job-card{background:#fff;border-radius:14px;padding:14px;margin-bottom:8px;box-shadow:0 4px 16px rgba(15,17,24,.06)}
+.job-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px}
+.job-title{font-weight:800;font-size:14px}
+.pill{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.job-meta{font-size:12px;color:var(--sub);margin-top:3px}
+.tl-row{display:flex;gap:10px;padding:0 0 16px}
+.tl-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);margin-top:4px;flex-shrink:0}
+.tl-dot.done{background:#22C55E}
+.tl-date{font-size:10.5px;color:var(--sub);font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+.tl-title{font-weight:800;font-size:13.5px;margin-top:2px}
+.tl-sub{font-size:12px;color:var(--sub);margin-top:2px}
+.empty{text-align:center;color:var(--sub);font-size:13px;padding:24px 0}
+.foot{text-align:center;font-size:11.5px;color:var(--sub);margin-top:20px}
+</style></head><body><div class="wrap">
+<div class="brand">${esc(companyName)}</div>
+<h1>Hej ${esc(tokenRow.job_name)} 👋</h1>
+<div class="stats">
+  <div class="stat"><b>${tasks.length}</b><span>Opgaver</span></div>
+  <div class="stat"><b>${doneCount}</b><span>Afsluttet</span></div>
+  <div class="stat"><b>${bookings.length}</b><span>Besøg</span></div>
+</div>
+<div class="tabs">
+  <div class="tab active" id="tab-pipeline" onclick="showTab('pipeline')">Oversigt</div>
+  <div class="tab" id="tab-timeline" onclick="showTab('timeline')">Timeline</div>
+</div>
+<div class="panel active" id="panel-pipeline">${pipelineHtml}</div>
+<div class="panel" id="panel-timeline">${timelineRows}</div>
+<div class="foot">Spørgsmål? Kontakt ${esc(companyName)} direkte.</div>
+</div>
+<script>
+function showTab(name){
+  document.getElementById('tab-pipeline').classList.toggle('active',name==='pipeline');
+  document.getElementById('tab-timeline').classList.toggle('active',name==='timeline');
+  document.getElementById('panel-pipeline').classList.toggle('active',name==='pipeline');
+  document.getElementById('panel-timeline').classList.toggle('active',name==='timeline');
+}
+</script>
+</body></html>`;
+  res.send(html);
+}));
+
 function sendPage(filename) {
   return (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -5692,6 +6113,20 @@ app.get('/migrate', sendPage('migrate.html'));
 app.get('/set-password', sendPage('set-password.html'));
 app.get('/admin', sendPage('admin.html'));
 app.get('/employee', sendPage('employee.html'));
+// Service worker skal ligge på roden (ikke i en undermappe) for at få lov til at
+// kontrollere hele sitet ("scope") — ellers kan den kun styre /sw-mappen.
+app.get('/sw.js', (req, res) => {
+  res.set('Content-Type', 'application/javascript; charset=utf-8');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Service-Worker-Allowed', '/');
+  res.sendFile(path.join(__dirname, 'sw.js'));
+});
+app.get('/manifest.webmanifest', (req, res) => {
+  res.set('Content-Type', 'application/manifest+json; charset=utf-8');
+  res.sendFile(path.join(__dirname, 'manifest.webmanifest'));
+});
+app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));
+app.get('/icon-512.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-512.png')));
 app.get('/', sendPage('index.html'));
 app.get('*', sendPage('index.html'));
 

@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Gulv Master — My Schedule</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0f2240">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <style>
 :root{--navy:#0f2240;--navy2:#1c3557;--blue:#2563eb;--ice:#f4f7fc;--white:#fff;--ink:#0f1923;--muted:#5a6a7e;--ghost:#94a3b8;--border:#e2e8f0;--green:#059669;--amber:#d97706;--radius:13px;--shadow:0 2px 10px rgba(15,34,64,.08);--shadow-lg:0 16px 42px rgba(15,34,64,.22)}
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:var(--ice);color:var(--ink)}
@@ -115,6 +118,7 @@
       <button class="lib-btn" id="notif-bell-btn" onclick="toggleNotifDropdown()"><span class="lib-btn-icon">🔔</span><span id="notif-bell-count" style="display:none;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;margin-left:4px"></span></button>
       <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:300px;max-height:360px;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(15,34,64,.25);z-index:500;color:#1a1a1a"></div>
     </div>
+    <button class="lib-btn" id="push-enable-btn" style="display:none" onclick="enablePushNotifications()" title="Få besked med det samme på telefonen/pc'en når din plan bliver ændret"><span class="lib-btn-icon">📲</span><span class="lib-btn-label"> Slå notifikationer til</span></button>
   </div>
   <div class="user"><span id="user-name" class="user-name"></span><span id="user-avatar" class="avatar">?</span><button class="logout" onclick="logout()">Log out</button></div>
 </header>
@@ -738,6 +742,63 @@ document.addEventListener('click',function(e){
 });
 refreshMyNotifications(false);
 setInterval(function(){refreshMyNotifications(true);},60000);
+
+// ÆGTE PUSH-NOTIFIKATIONER: virker selvom appen er lukket/telefonen er i lommen —
+// i modsætning til pollingen ovenfor, som kun opdager nyt mens siden er åben.
+// Kræver at browseren understøtter det (gør på stort set alt undtagen iPhone/iPad
+// medmindre siden er "føjet til hjemmeskærm" — det er en begrænsning i Apples
+// Safari, ikke noget vi kan omgå herfra).
+function urlBase64ToUint8Array(base64String){
+  var padding='='.repeat((4-base64String.length%4)%4);
+  var base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+  var rawData=atob(base64),outputArray=new Uint8Array(rawData.length);
+  for(var i=0;i<rawData.length;++i)outputArray[i]=rawData.charCodeAt(i);
+  return outputArray;
+}
+function pushSupported(){return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;}
+async function registerPushServiceWorker(){
+  try{return await navigator.serviceWorker.register('/sw.js');}
+  catch(e){console.error('Service worker kunne ikke registreres',e);return null;}
+}
+async function enablePushNotifications(){
+  if(!pushSupported()){toast('Din browser understøtter desværre ikke push-notifikationer','⚠');return;}
+  var btn=document.getElementById('push-enable-btn');
+  btn.disabled=true;
+  try{
+    var permission=await Notification.requestPermission();
+    if(permission!=='granted'){toast('Du sagde nej til notifikationer — du kan slå det til igen i browserens indstillinger','⚠');btn.disabled=false;return;}
+    var reg=await registerPushServiceWorker();
+    if(!reg){btn.disabled=false;return;}
+    var keyRes=await api('/api/push/public-key');
+    if(!keyRes||!keyRes.ok){toast('Kunne ikke hente notifikations-nøgle fra serveren','❌');btn.disabled=false;return;}
+    var sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(keyRes.data.publicKey)});
+    await api('/api/push/subscribe',{method:'POST',body:JSON.stringify(sub.toJSON())});
+    toast('Notifikationer er slået til 🎉','✓');
+    btn.style.display='none';
+  }catch(e){console.error('Push-tilmelding fejlede',e);toast('Kunne ikke slå notifikationer til','❌');}
+  btn.disabled=false;
+}
+async function initPushUi(){
+  if(!pushSupported())return;
+  if(Notification.permission==='denied')return; // brugeren har sagt nej — spam ikke med knappen
+  if(Notification.permission==='granted'){
+    // Allerede givet tilladelse tidligere (fx på denne enhed før) — sørg stille for
+    // at abonnementet rent faktisk er gemt på serveren, uden at genvise knappen.
+    var reg=await registerPushServiceWorker();
+    if(!reg)return;
+    var existing=await reg.pushManager.getSubscription();
+    if(!existing){
+      var keyRes=await api('/api/push/public-key');
+      if(keyRes&&keyRes.ok){
+        try{existing=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(keyRes.data.publicKey)});}catch(e){}
+      }
+    }
+    if(existing)api('/api/push/subscribe',{method:'POST',body:JSON.stringify(existing.toJSON())});
+    return;
+  }
+  document.getElementById('push-enable-btn').style.display='inline-flex';
+}
+initPushUi();
 // Holder de klæbende dag-overskrifter lige under topbaren, uanset om topbaren
 // er 1 eller 2 linjer høj (den ombryder på smalle skærme/mange handlinger).
 function syncTopbarHeight(){
