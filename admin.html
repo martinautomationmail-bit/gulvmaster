@@ -1433,6 +1433,56 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .team-ov-badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:var(--bly-r-pill)}
 .team-ov-badge.free{background:#DCFCE7;color:#15803D}
 .team-ov-badge.off{background:#FEF3C7;color:#92400E}
+/* RUTEKORT (Leaflet/OpenStreetMap) — dagens ruter pr. medarbejder + alle
+   projekter nogensinde. Bruger jt_tasks.job_lat/job_lng, som allerede blev
+   geokodet i baggrunden til vejr-visningen — se syncJobGeocodesInBackground()
+   i server.js (nu udvidet til også at dække manuelle opgaver/kundebesøg). */
+.rm-tabs{display:flex;gap:6px;margin:-6px 0 14px}
+.rm-tab{border:1px solid var(--bly-border);background:#fff;color:var(--bly-sub);font-weight:700;font-size:12px;padding:7px 14px;border-radius:var(--bly-r-pill);cursor:pointer}
+.rm-tab.active{background:var(--bly-accent);border-color:var(--bly-accent);color:#fff}
+.rm-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.rm-toolbar .input{max-width:160px}
+.rm-body{display:flex;gap:14px;height:min(60vh,520px)}
+.rm-map{flex:1;border-radius:var(--bly-r-md);overflow:hidden;border:1px solid var(--bly-border);min-width:0;background:#EEF0F3}
+.rm-sidebar{width:260px;flex-shrink:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.rm-emp-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);font-size:12px;cursor:pointer;transition:background .12s,opacity .12s}
+.rm-emp-row:hover{background:var(--bly-hover)}
+.rm-emp-row.dim{opacity:.35}
+.rm-emp-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.rm-emp-name{font-weight:700;color:var(--bly-ink)}
+.rm-emp-sub{font-size:10.5px;color:var(--bly-sub);margin-top:1px}
+.rm-job-popup{font-size:12px;line-height:1.5}
+.rm-job-popup b{display:block;margin-bottom:2px}
+@media (max-width:720px){.rm-body{flex-direction:column;height:auto}.rm-map{height:320px}.rm-sidebar{width:auto;max-height:200px}}
+/* KUNDEHISTORIK */
+.ch-search-wrap{position:relative;max-width:440px;margin-bottom:22px}
+.ch-search-results{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);box-shadow:0 10px 28px rgba(15,17,24,.12);max-height:280px;overflow-y:auto;z-index:30;display:none}
+.ch-search-results.open{display:block}
+.ch-result-row{padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bly-border-soft)}
+.ch-result-row:last-child{border-bottom:none}
+.ch-result-row:hover{background:var(--bly-hover)}
+.ch-result-sub{font-size:11px;color:var(--bly-sub);margin-top:1px}
+.ch-header{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:18px 20px;margin-bottom:18px}
+.ch-header h2{margin:0 0 6px;font-size:19px;color:var(--bly-ink)}
+.ch-header-meta{font-size:12.5px;color:var(--bly-sub);line-height:1.8}
+.ch-stat{text-align:center}
+.ch-stat b{display:block;font-size:20px;color:var(--bly-ink)}
+.ch-stat span{font-size:10.5px;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.03em}
+.ch-stats{display:flex;gap:22px}
+.ch-job-card{background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);padding:14px 16px;margin-bottom:12px}
+.ch-job-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.ch-job-title{font-weight:700;font-size:13.5px;color:var(--bly-ink)}
+.ch-job-sub{font-size:11px;color:var(--bly-sub);margin-top:2px}
+.ch-badge{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:var(--bly-r-pill)}
+.ch-badge.done{background:#DCFCE7;color:#15803D}
+.ch-badge.active{background:#DBEAFE;color:#1D4ED8}
+.ch-jt-link{font-size:11.5px;color:var(--bly-accent);text-decoration:none;font-weight:700;white-space:nowrap}
+.ch-jt-link:hover{text-decoration:underline}
+.ch-booking-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--bly-border-soft);font-size:12px}
+.ch-booking-row:first-of-type{border-top:1px dashed var(--bly-border);margin-top:8px}
+.ch-booking-dot{width:9px;height:9px;border-radius:50%;margin-top:4px;flex-shrink:0}
+.ch-booking-note{color:var(--bly-sub);margin-top:2px;font-size:11px}
+.ch-empty{color:var(--bly-sub);font-size:13px;padding:30px 0;text-align:center}
 .mo{display:none;position:fixed;inset:0;background:rgba(17,19,24,.5);backdrop-filter:blur(2px);z-index:200;align-items:center;justify-content:center;padding:16px}
 .mo.open{display:flex;animation:gm-fade .18s ease}
 .modal{width:420px;max-width:100%;max-height:92vh;overflow:auto;background:#fff;border-radius:var(--bly-r-lg);padding:26px;box-shadow:0 24px 60px rgba(15,17,24,.18);animation:gm-pop .22s cubic-bezier(.2,.9,.3,1.3)}
@@ -1477,6 +1527,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
 </head>
 <body>
 <div id="app" style="display:none">
@@ -1537,6 +1592,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#requests" data-page="requests">✅ Godkendelser<span class="tab-badge hidden" id="requests-badge">0</span></a>
         <a class="navdrop-item" href="#completed" data-page="completed">✅ Færdige opgaver</a>
         <a class="navdrop-item" href="#people" data-page="people">👥 Hold & vendors</a>
+        <a class="navdrop-item" href="#customer-history" data-page="customer-history">👤 Kundehistorik</a>
         <a class="navdrop-item" href="#library" data-page="library">📁 Vejledning</a>
         <a class="navdrop-item" href="#logs" data-page="logs">⏱ Timer & log</a>
         <a class="navdrop-item" href="#templates" data-page="templates">📐 Skabeloner</a>
@@ -1948,6 +2004,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="btn small primary" id="plan-today">📍 I dag</button>
         <button class="btn small" id="plan-print-btn" title="Udskriv ugeplanen eller gem den som PDF">🖨️ Print ugeplan</button>
         <button class="btn small" id="plan-team-overview-btn" title="Se hvor alle medarbejdere er en given dag">👥 Hvor er alle</button>
+        <button class="btn small" id="plan-route-map-btn" title="Kort over dagens ruter, eller alle projekter I nogensinde har haft">🗺️ Ruter & kort</button>
         <button class="btn small" id="send-reminders-btn" title="Sender kun til kunder booket i morgen, som ikke allerede har fået denne mail">✉️ Send "vi kommer i morgen"</button>
       </div>
       <div class="workforce-bar" id="plan-workforce-filters"></div>
@@ -2347,6 +2404,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="people" id="people-grid"></div>
 </section>
 
+<!-- KUNDEHISTORIK -->
+<section class="page" id="page-customer-history">
+  <div class="page-head">
+    <div>
+      <div class="page-title">👤 Kundehistorik</div>
+      <div class="page-sub">Søg en kunde og se alle deres tidligere og kommende jobs, bookinger og noter samlet ét sted, i stedet for spredt ud på hver enkelt opgave.</div>
+    </div>
+  </div>
+  <div class="ch-search-wrap">
+    <input id="ch-search-input" class="input" placeholder="Søg kunde på navn…" autocomplete="off">
+    <div id="ch-search-results" class="ch-search-results"></div>
+  </div>
+  <div id="ch-profile"></div>
+</section>
+
 <!-- VEJLEDNING / FILBIBLIOTEK -->
 <section class="page" id="page-library">
   <div class="page-head">
@@ -2373,6 +2445,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <!-- TIMER & LOG -->
 <section class="page" id="page-logs">
   <div class="page-head">
+    <div><div class="page-title">💾 Databackup</div><div class="page-sub">Hent en frisk kopi af al jeres data (kunder, opgaver, bookinger, økonomi m.m.) som fil — en billig forsikring hvis noget nogensinde skulle gå galt, uden at skulle stole 100% på Render. Store vedhæftede filer (billeder/PDF på noter) er udeladt, så filen altid er hurtig at hente.</div></div>
+    <button class="btn primary" id="backup-download-btn">💾 Download backup</button>
+  </div>
+
+  <div class="page-head" style="margin-top:26px">
     <div><div class="page-title">Timer & log</div></div>
   </div>
   <div class="log-wrap">
@@ -2706,6 +2783,34 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
+<!-- RUTEKORT: dagens ruter pr. medarbejder + alle projekter nogensinde -->
+<div class="mo" id="route-map-modal">
+  <div class="modal" style="max-width:1080px;width:96vw">
+    <h3>🗺️ Ruter &amp; kort</h3>
+    <div class="rm-tabs">
+      <button class="rm-tab active" id="rm-tab-day">Dagens ruter</button>
+      <button class="rm-tab" id="rm-tab-all">Alle projekter nogensinde</button>
+    </div>
+    <div class="rm-toolbar" id="rm-toolbar-day">
+      <button class="btn small" id="rm-day-prev">← Forrige dag</button>
+      <input type="date" id="rm-day-date" class="input">
+      <button class="btn small" id="rm-day-next">Næste dag →</button>
+      <button class="btn small primary" id="rm-day-today">📍 I dag</button>
+    </div>
+    <div class="rm-toolbar" id="rm-toolbar-all" style="display:none">
+      <span class="capacity-modal-note" id="rm-all-status" style="margin:0;flex:1">—</span>
+      <button class="btn small primary" id="rm-all-fetch">🔄 Hent flere adresser</button>
+    </div>
+    <div class="rm-body">
+      <div id="rm-map" class="rm-map"></div>
+      <div id="rm-sidebar" class="rm-sidebar"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('route-map-modal')">Luk</button>
+    </div>
+  </div>
+</div>
+
 <!-- FULL ASSIGN MODAL (click on booking) -->
 <div class="mo" id="fin-widget-picker-modal">
   <div class="modal" style="width:420px">
@@ -2788,6 +2893,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="form-group" id="assign-mail-wrap" style="display:none">
       <button class="btn" type="button" id="assign-send-mail" style="width:100%;background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8">✉️ Send planlægningsmail til kunde</button>
       <div id="assign-mail-status" class="opt-tag" style="text-align:center;display:block;margin-top:4px"></div>
+    </div>
+    <div class="form-group" id="assign-portal-wrap" style="display:none">
+      <label class="form-label">🔗 Status-link til kunden <span class="opt-tag">ingen login — kan sendes i SMS eller mail</span></label>
+      <div style="display:flex;gap:6px">
+        <input id="assign-portal-link-input" class="input" readonly placeholder="Tryk 'Hent link'" style="font-size:11px;flex:1" onclick="this.select()">
+        <button class="btn small" type="button" id="assign-portal-link-btn">Hent link</button>
+        <button class="btn small" type="button" id="assign-portal-copy-btn" style="display:none">📋 Kopiér</button>
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Medarbejder / hold</label>
@@ -3842,6 +3955,132 @@ function renderTeamOverview(){
   }).join('')||'<div class="capacity-modal-note">Ingen aktive medarbejdere fundet.</div>';
   document.getElementById('team-overview-list').innerHTML=html;
 }
+// RUTEKORT — "Dagens ruter" (nummererede stop pr. medarbejder, forbundet med en
+// linje i deres egen farve) + "Alle projekter nogensinde" (klyngede prikker for
+// hver adresse vi nogensinde har haft et projekt på). Bruger Leaflet + gratis
+// OpenStreetMap/CARTO-kortfliser — ingen API-nøgle, ingen løbende regning.
+// Koordinater kommer fra jt_tasks.job_lat/job_lng (allerede geokodet i baggrunden
+// til vejr-visningen), og "Dagens ruter" har derfor ALT sit data i forvejen via
+// bookings — kun "Alle projekter" og "Hent flere adresser" kalder serveren.
+var routeMapState={map:null,mode:'day',dayStr:null,dayLayer:null,allLayer:null,allJobs:null,dayUserPts:{}};
+function ensureRouteMap(){
+  if(!routeMapState.map){
+    routeMapState.map=L.map('rm-map',{scrollWheelZoom:true}).setView([56.2,10.5],7);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>-bidragydere &copy; <a href="https://carto.com/attributions" target="_blank">CARTO</a>',
+      maxZoom:19
+    }).addTo(routeMapState.map);
+    document.getElementById('rm-sidebar').addEventListener('click',function(e){
+      var row=e.target.closest('.rm-emp-row');
+      if(!row||routeMapState.mode!=='day')return;
+      var pts=routeMapState.dayUserPts[row.dataset.rmUser];
+      if(pts&&pts.length)routeMapState.map.fitBounds(L.latLngBounds(pts).pad(.3));
+    });
+  }
+  return routeMapState.map;
+}
+function openRouteMapModal(){
+  routeMapState.dayStr=iso(new Date());
+  document.getElementById('rm-day-date').value=routeMapState.dayStr;
+  document.getElementById('route-map-modal').classList.add('open');
+  setRouteMapTab('day');
+  setTimeout(function(){ensureRouteMap().invalidateSize();},60);
+}
+function setRouteMapTab(mode){
+  routeMapState.mode=mode;
+  document.getElementById('rm-tab-day').classList.toggle('active',mode==='day');
+  document.getElementById('rm-tab-all').classList.toggle('active',mode==='all');
+  document.getElementById('rm-toolbar-day').style.display=mode==='day'?'':'none';
+  document.getElementById('rm-toolbar-all').style.display=mode==='all'?'':'none';
+  ensureRouteMap();
+  setTimeout(function(){
+    routeMapState.map.invalidateSize();
+    if(mode==='day')drawRouteMapDay();else loadRouteMapAllJobs();
+  },30);
+}
+function drawRouteMapDay(){
+  var map=ensureRouteMap();
+  if(routeMapState.allLayer){map.removeLayer(routeMapState.allLayer);routeMapState.allLayer=null;}
+  if(routeMapState.dayLayer)map.removeLayer(routeMapState.dayLayer);
+  var ds=routeMapState.dayStr,dailyIndex=indexDailyBookings(bookings),employees=planTeamFlat();
+  var group=L.layerGroup(),sidebarHtml='',missingCount=0;
+  routeMapState.dayUserPts={};
+  employees.forEach(function(u){
+    var items=(dailyIndex[(+u.id)+':'+ds]||[]).slice().sort(function(a,b){
+      if(a.start_time&&b.start_time)return a.start_time.localeCompare(b.start_time);
+      if(a.start_time&&!b.start_time)return -1;
+      if(!a.start_time&&b.start_time)return 1;
+      return 0;
+    });
+    if(!items.length)return;
+    var color=u.color||'#2563EB',pts=[],stopsHtml='';
+    items.forEach(function(b){
+      if(!b.job_lat||!b.job_lng){missingCount++;return;}
+      var ll=[+b.job_lat,+b.job_lng];
+      pts.push(ll);
+      var num=pts.length;
+      var icon=L.divIcon({className:'',html:'<div style="background:'+color+';color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)">'+num+'</div>',iconSize:[22,22],iconAnchor:[11,11]});
+      var popup='<div class="rm-job-popup"><b>'+esc(b.job_name||b.task_name||'Opgave')+'</b>'+(b.start_time?esc(b.start_time)+'<br>':'')+esc(b.job_address||'')+(b.customer_phone?'<br>📞 '+esc(b.customer_phone):'')+'</div>';
+      L.marker(ll,{icon:icon}).bindPopup(popup).addTo(group);
+      stopsHtml+='<div class="rm-emp-sub">'+num+'. '+(b.start_time?esc(b.start_time)+' · ':'')+esc(b.job_name||b.task_name||'Opgave')+'</div>';
+    });
+    if(pts.length>1)L.polyline(pts,{color:color,weight:3,opacity:.75,dashArray:'6 6'}).addTo(group);
+    if(pts.length){
+      routeMapState.dayUserPts[u.id]=pts;
+      sidebarHtml+='<div class="rm-emp-row" data-rm-user="'+u.id+'"><div class="rm-emp-dot" style="background:'+color+'"></div><div><div class="rm-emp-name">'+esc(u.name)+'</div>'+stopsHtml+'</div></div>';
+    }
+  });
+  map.addLayer(group);
+  routeMapState.dayLayer=group;
+  var missingNote=missingCount?('<div class="capacity-modal-note" style="margin-top:10px">⚠️ '+missingCount+' opgave(r) denne dag mangler stadig en kortlagt adresse — prøv fanen "Alle projekter nogensinde" og tryk "Hent flere adresser".</div>'):'';
+  document.getElementById('rm-sidebar').innerHTML=(sidebarHtml||'<div class="capacity-modal-note">Ingen planlagte opgaver med adresse denne dag.</div>')+missingNote;
+  var allPts=[];Object.keys(routeMapState.dayUserPts).forEach(function(k){allPts=allPts.concat(routeMapState.dayUserPts[k]);});
+  if(allPts.length)map.fitBounds(L.latLngBounds(allPts).pad(.2));else map.setView([56.2,10.5],7);
+}
+async function loadRouteMapAllJobs(){
+  document.getElementById('rm-all-status').textContent='Indlæser…';
+  var r=await api('/api/geo-all-jobs');
+  if(!r||r.ok===false){document.getElementById('rm-all-status').textContent='Kunne ikke hente kortdata';return;}
+  routeMapState.allJobs=r.jobs||[];
+  document.getElementById('rm-all-status').textContent=r.missing_count>0?(routeMapState.allJobs.length+' adresser kortlagt · '+r.missing_count+' mangler stadig'):(routeMapState.allJobs.length+' adresser kortlagt ✓');
+  drawRouteMapAll();
+}
+function drawRouteMapAll(){
+  var map=ensureRouteMap();
+  if(routeMapState.dayLayer){map.removeLayer(routeMapState.dayLayer);routeMapState.dayLayer=null;}
+  if(routeMapState.allLayer)map.removeLayer(routeMapState.allLayer);
+  var cluster=L.markerClusterGroup();
+  (routeMapState.allJobs||[]).forEach(function(j){
+    if(!j.job_lat||!j.job_lng)return;
+    var names=(j.job_names||[]).slice(0,5).join(', ')||'Ukendt opgavenavn';
+    var popup='<div class="rm-job-popup"><b>'+esc(j.job_address||'')+'</b>'+esc(names)+(j.cnt>1?' ('+j.cnt+' gange)':'')+(j.last_date?'<br><span style="color:var(--bly-sub)">Sidst: '+esc(String(j.last_date).slice(0,10))+'</span>':'')+'</div>';
+    cluster.addLayer(L.marker([+j.job_lat,+j.job_lng]).bindPopup(popup));
+  });
+  map.addLayer(cluster);
+  routeMapState.allLayer=cluster;
+  document.getElementById('rm-sidebar').innerHTML='<div class="capacity-modal-note">Kortet viser hver adresse I nogensinde har haft et projekt på. Klik en prik for detaljer — flere adresser tæt på hinanden samles i et tal, indtil du zoomer ind.</div>';
+  if(cluster.getLayers().length)map.fitBounds(cluster.getBounds().pad(.15));
+}
+async function rmFetchMoreAddresses(){
+  var btn=document.getElementById('rm-all-fetch');
+  btn.disabled=true;btn.textContent='Henter…';
+  try{
+    var remaining=1,guard=0;
+    while(remaining>0&&guard<200){
+      guard++;
+      var r=await api('/api/geocode-jobs',{method:'POST',body:JSON.stringify({limit:25})});
+      if(!r)break;
+      if(r.skipped){await new Promise(function(res){setTimeout(res,1500);});continue;}
+      if(r.ok===false){toast(r.error||'Geokodning fejlede','⚠️');break;}
+      remaining=r.remaining||0;
+      document.getElementById('rm-all-status').textContent=remaining>0?(remaining+' adresse(r) mangler stadig — henter flere…'):'Alle adresser er nu kortlagt ✓';
+      await loadRouteMapAllJobs();
+    }
+    if(remaining===0)toast('Alle adresser er nu kortlagt ✓','✅');
+  }finally{
+    btn.disabled=false;btn.textContent='🔄 Hent flere adresser';
+  }
+}
 // Følger PASSIVT med på hvor du rent faktisk har scrollet hen (ren native scroll,
 // aldrig preventDefault/manuel scrollLeft) og opdaterer labelen + hvilken uges note
 // "🗒"-knappen redigerer, så Forrige/Næste bagefter tager udgangspunkt i den uge du
@@ -4398,6 +4637,10 @@ function openAssign(ctx){
   document.getElementById('assign-status-select').value=b?(b.completed_at?'completed':(b.status_flag||'')):'';
   document.getElementById('assign-mail-wrap').style.display=b?'block':'none';
   if(b)document.getElementById('assign-mail-status').textContent=b.scheduled_email_sent_at?'✓ Sendt '+timeAgo(b.scheduled_email_sent_at):(b.customer_email?'Endnu ikke sendt':'Kunden har ingen e-mail registreret');
+  document.getElementById('assign-portal-wrap').style.display=b?'block':'none';
+  document.getElementById('assign-portal-link-input').value='';
+  document.getElementById('assign-portal-link-input').placeholder="Tryk 'Hent link'";
+  document.getElementById('assign-portal-copy-btn').style.display='none';
   document.getElementById('assign-modal').classList.add('open');
   document.getElementById('assign-checklist-new').value='';
   renderChecklistItems('assign-checklist-items',taskId);
@@ -4530,6 +4773,58 @@ async function doSendScheduledEmail(bookingId,templateId){
     if(document.getElementById('tl-drawer').classList.contains('open')&&+tlDrawerBookingId===+bookingId)document.getElementById('tld-mail-status').textContent=sentTxt;
     if(document.getElementById('assign-modal').classList.contains('open')&&assignCtx&&+assignCtx.bookingId===+bookingId)document.getElementById('assign-mail-status').textContent=sentTxt;
   }else if(r)toast(r.error||'Kunne ikke sende mailen','❌');
+}
+// KUNDEPORTAL — henter (og opretter ved behov, første gang) det offentlige
+// status-link for den booking der aktuelt er åben i assign-modal, så det kan
+// kopieres og sendes manuelt (SMS, chat) uafhængigt af om der sendes en mail.
+async function fetchAssignPortalLink(){
+  if(!assignCtx||!assignCtx.bookingId){toast('Gem bookingen først','⚠️');return;}
+  var btn=document.getElementById('assign-portal-link-btn');
+  btn.disabled=true;btn.textContent='Henter…';
+  var r=await api('/api/assignments/'+assignCtx.bookingId+'/portal-link');
+  btn.disabled=false;btn.textContent='Hent link';
+  if(r&&r.ok){
+    document.getElementById('assign-portal-link-input').value=r.url;
+    document.getElementById('assign-portal-copy-btn').style.display='';
+  }else if(r)toast(r.error||'Kunne ikke hente linket','❌');
+}
+function copyAssignPortalLink(){
+  var input=document.getElementById('assign-portal-link-input');
+  if(!input.value)return;
+  input.select();
+  var done=function(){toast('Link kopieret ✓','📋');};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(input.value).then(done).catch(function(){document.execCommand('copy');done();});
+  else{document.execCommand('copy');done();}
+}
+// DATABACKUP — henter en frisk, komplet eksport af alle tabeller som én JSON-fil.
+// Bruger rå fetch (ikke api()-helperen), fordi vi skal have selve fil-blob'en ud
+// i stedet for et parset JSON-svar, for at kunne udløse en download.
+async function downloadBackup(){
+  var btn=document.getElementById('backup-download-btn');
+  var origText=btn.textContent;
+  btn.disabled=true;btn.textContent='Genererer backup…';
+  try{
+    var r=await fetch(API+'/api/backup/export',{headers:{'Authorization':'Bearer '+token}});
+    if(!r.ok){
+      var errBody=await r.json().catch(function(){return{};});
+      toast(errBody.error||'Kunne ikke hente backup','❌');
+      return;
+    }
+    var blob=await r.blob();
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='gulvmaster-backup-'+iso(new Date())+'.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},4000);
+    toast('Backup hentet ✓','💾');
+  }catch(e){
+    toast('Netværksfejl — kunne ikke hente backup','❌');
+  }finally{
+    btn.disabled=false;btn.textContent=origText;
+  }
 }
 async function applyBookingStatus(bookingId,val){
   var b=bookings.find(function(x){return +x.id===+bookingId;});
@@ -8535,6 +8830,93 @@ function renderPeople(){
   document.getElementById('people-grid').innerHTML=html||'<p style="color:var(--muted)">Ingen aktive hold.</p>';
 }
 
+// KUNDEHISTORIK — samler alle jobs/bookinger/noter for én kunde (identificeret
+// ved job_name, ligesom den eksisterende kunde-søgning ved manuel opgave-
+// oprettelse — der findes ikke en selvstændig "kunde"-tabel i systemet).
+function fmtDaDate(s){if(!s)return'';var d=date(s);return d.getDate()+'/'+(d.getMonth()+1)+'-'+d.getFullYear();}
+function chDedupSearchResults(rows){
+  var seen={},out=[];
+  rows.forEach(function(r){
+    var k=(r.job_name||'').toLowerCase();
+    if(seen[k])return;
+    seen[k]=true;out.push(r);
+  });
+  return out;
+}
+async function chRunSearch(q){
+  var box=document.getElementById('ch-search-results');
+  if(!q||q.length<2){box.classList.remove('open');box.innerHTML='';return;}
+  var rows=await api('/api/customers/search?q='+encodeURIComponent(q));
+  if(!rows||!rows.length){box.classList.remove('open');box.innerHTML='<div class="ch-result-row" style="cursor:default;color:var(--bly-sub)">Ingen kunder fundet</div>';return;}
+  var list=chDedupSearchResults(rows);
+  box.innerHTML=list.map(function(r){
+    return '<div class="ch-result-row" data-ch-name="'+esc(r.job_name)+'"><div>'+esc(r.job_name)+'</div>'+
+      (r.job_address||r.customer_phone?'<div class="ch-result-sub">'+esc(r.job_address||'')+(r.job_address&&r.customer_phone?' · ':'')+esc(r.customer_phone||'')+'</div>':'')+
+      '</div>';
+  }).join('');
+  box.classList.add('open');
+  box.querySelectorAll('.ch-result-row[data-ch-name]').forEach(function(row){
+    row.onclick=function(){
+      document.getElementById('ch-search-input').value=row.dataset.chName;
+      box.classList.remove('open');
+      loadCustomerHistory(row.dataset.chName);
+    };
+  });
+}
+async function loadCustomerHistory(name){
+  var wrap=document.getElementById('ch-profile');
+  wrap.innerHTML='<div class="ch-empty">Henter…</div>';
+  var r=await api('/api/customers/history?name='+encodeURIComponent(name));
+  if(!r||r.ok===false){wrap.innerHTML='<div class="ch-empty">Kunne ikke hente kundehistorik.</div>';return;}
+  renderCustomerHistoryProfile(r,name);
+}
+function renderCustomerHistoryProfile(data,name){
+  var wrap=document.getElementById('ch-profile');
+  var tasks=data.tasks||[],bookings=data.bookings||[];
+  if(!tasks.length){wrap.innerHTML='<div class="ch-empty">Ingen jobs fundet for "'+esc(name)+'".</div>';return;}
+  var byTask={};
+  bookings.forEach(function(b){(byTask[b.task_id]=byTask[b.task_id]||[]).push(b);});
+  var phone='',email='',addresses=[];
+  tasks.forEach(function(t){
+    if(!phone&&t.customer_phone)phone=t.customer_phone;
+    if(!email&&t.customer_email)email=t.customer_email;
+    if(t.job_address&&addresses.indexOf(t.job_address)===-1)addresses.push(t.job_address);
+  });
+  var doneCount=0;
+  tasks.forEach(function(t){
+    var tb=byTask[t.id]||[];
+    if(tb.length&&tb.every(function(b){return !!b.completed_at;}))doneCount++;
+  });
+  var header='<div class="ch-header">'+
+    '<div><h2>'+esc(name)+'</h2><div class="ch-header-meta">'+
+    (phone?phoneMarkup(phone,false)+'<br>':'')+
+    (email?'✉️ '+esc(email)+'<br>':'')+
+    (addresses.length?'📍 '+addresses.map(esc).join(' · '):'')+
+    '</div></div>'+
+    '<div class="ch-stats">'+
+      '<div class="ch-stat"><b>'+tasks.length+'</b><span>Jobs</span></div>'+
+      '<div class="ch-stat"><b>'+doneCount+'</b><span>Afsluttet</span></div>'+
+      '<div class="ch-stat"><b>'+bookings.length+'</b><span>Bookinger</span></div>'+
+    '</div>'+
+  '</div>';
+  var jobsHtml=tasks.map(function(t){
+    var tb=(byTask[t.id]||[]).slice().sort(function(a,b){return (b.start_date||'').localeCompare(a.start_date||'');});
+    var allDone=tb.length&&tb.every(function(b){return !!b.completed_at;});
+    var badge=tb.length?(allDone?'<span class="ch-badge done">✅ Afsluttet</span>':'<span class="ch-badge active">🔧 Aktiv</span>'):'<span class="ch-badge active">Ikke booket</span>';
+    var dateRange=t.start_date?((!t.end_date||t.start_date===t.end_date)?fmtDaDate(t.start_date):fmtDaDate(t.start_date)+' – '+fmtDaDate(t.end_date)):'';
+    var bookingsHtml=tb.map(function(b){
+      var noteHtml=b.notes?'<div class="ch-booking-note">📝 '+esc(b.notes.length>140?b.notes.slice(0,140)+'…':b.notes)+(b.note_link?' · 🔗 link':'')+(b.has_note_attachments?' · 📎':'')+'</div>':'';
+      return '<div class="ch-booking-row"><div class="ch-booking-dot" style="background:'+(b.user_color||'#2563EB')+'"></div><div style="flex:1"><div>'+fmtDaDate(b.start_date)+(b.start_time?' kl. '+esc(b.start_time):'')+' · '+esc(b.user_name||'')+(b.completed_at?' · ✅':'')+'</div>'+noteHtml+'</div></div>';
+    }).join('');
+    return '<div class="ch-job-card"><div class="ch-job-top"><div><div class="ch-job-title">'+esc(t.job_name||t.name||'Opgave')+(t.job_number?' · #'+esc(t.job_number):'')+'</div>'+
+      '<div class="ch-job-sub">'+esc(dateRange)+(t.job_address?' · '+esc(t.job_address):'')+'</div></div>'+
+      '<div style="display:flex;gap:8px;align-items:center">'+badge+(t.jt_url?'<a class="ch-jt-link" href="'+esc(t.jt_url)+'" target="_blank" rel="noopener">Åbn i JobTread ↗</a>':'')+'</div></div>'+
+      (bookingsHtml||'<div class="ch-booking-note" style="margin-top:8px">Ingen bookinger endnu.</div>')+
+    '</div>';
+  }).join('');
+  wrap.innerHTML=header+jobsHtml;
+}
+
 // USER MODAL
 function setLoginFields(){document.getElementById('login-fields').classList.toggle('hidden',!document.getElementById('user-can-login').checked);}
 function updateAvatarPreview(url){
@@ -8763,7 +9145,7 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 function bind(){
   syncStickyOffsets();window.addEventListener('resize',syncStickyOffsets);
   // Tabs
-  var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','library','logs','templates','notif-settings','finance'];
+  var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance'];
   function switchPage(page,skipHash){
     if(VALID_PAGES.indexOf(page)===-1)page='plan';
     document.querySelectorAll('.tab,.navdrop-item').forEach(function(x){x.classList.remove('active');});
@@ -8794,6 +9176,7 @@ function bind(){
     // for at genopbygge alle boards på én gang.
     if(page==='plan'){try{renderPlan();}catch(e){console.error('Plan fejl',e);}}
     if(page==='people'){try{renderPeople();}catch(e){console.error('People fejl',e);}}
+    if(page==='customer-history'){var chIn=document.getElementById('ch-search-input');if(chIn)setTimeout(function(){chIn.focus();},50);}
     if(page==='capacity'){try{renderCapacity();}catch(e){console.error('Cap fejl',e);}setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);}
     if(page==='dashboard')loadDashboard();
     if(page==='templates'){loadTemplates();loadEmailTemplates();}
@@ -8829,6 +9212,16 @@ function bind(){
   });
   document.addEventListener('click',function(e){
     if(!e.target.closest('#globalsearch'))document.getElementById('global-search-results').style.display='none';
+  });
+  // KUNDEHISTORIK — søgefelt med samme debounce-mønster som globalsøgningen ovenfor.
+  var chSearchTimer=null;
+  document.getElementById('ch-search-input').addEventListener('input',function(e){
+    clearTimeout(chSearchTimer);
+    var q=e.target.value.trim();
+    chSearchTimer=setTimeout(function(){chRunSearch(q);},150);
+  });
+  document.addEventListener('click',function(e){
+    if(!e.target.closest('.ch-search-wrap'))document.getElementById('ch-search-results').classList.remove('open');
   });
   function renderGlobalSearchResults(q){
     var ql=q.toLowerCase();
@@ -9049,6 +9442,14 @@ function bind(){
   document.getElementById('team-overview-prev').onclick=function(){teamOverviewDateStr=iso(add(date(teamOverviewDateStr),-1));renderTeamOverview();};
   document.getElementById('team-overview-next').onclick=function(){teamOverviewDateStr=iso(add(date(teamOverviewDateStr),1));renderTeamOverview();};
   document.getElementById('team-overview-today').onclick=function(){teamOverviewDateStr=iso(new Date());renderTeamOverview();};
+  document.getElementById('plan-route-map-btn').onclick=openRouteMapModal;
+  document.getElementById('rm-tab-day').onclick=function(){setRouteMapTab('day');};
+  document.getElementById('rm-tab-all').onclick=function(){setRouteMapTab('all');};
+  document.getElementById('rm-day-date').onchange=function(){routeMapState.dayStr=this.value;drawRouteMapDay();};
+  document.getElementById('rm-day-prev').onclick=function(){routeMapState.dayStr=iso(add(date(routeMapState.dayStr),-1));document.getElementById('rm-day-date').value=routeMapState.dayStr;drawRouteMapDay();};
+  document.getElementById('rm-day-next').onclick=function(){routeMapState.dayStr=iso(add(date(routeMapState.dayStr),1));document.getElementById('rm-day-date').value=routeMapState.dayStr;drawRouteMapDay();};
+  document.getElementById('rm-day-today').onclick=function(){routeMapState.dayStr=iso(new Date());document.getElementById('rm-day-date').value=routeMapState.dayStr;drawRouteMapDay();};
+  document.getElementById('rm-all-fetch').onclick=rmFetchMoreAddresses;
   document.getElementById('send-reminders-btn').onclick=async function(){
     if(!await gmConfirm('Send "vi kommer i morgen" til alle kunder der er booket i morgen, og som ikke allerede har fået den?'))return;
     var btn=this;btn.disabled=true;btn.textContent='Sender…';
@@ -9116,6 +9517,9 @@ function bind(){
   document.getElementById('tld-send-mail').onclick=function(){if(tlDrawerBookingId){var b=bookings.find(function(x){return +x.id===+tlDrawerBookingId;});sendScheduledEmailForBooking(tlDrawerBookingId,!!(b&&b.scheduled_email_sent_at));}};
   document.getElementById('assign-status-select').onchange=function(e){if(assignCtx&&assignCtx.bookingId){applyBookingStatus(assignCtx.bookingId,e.target.value);closeModal('assign-modal');}};
   document.getElementById('assign-send-mail').onclick=function(){if(assignCtx&&assignCtx.bookingId){var b=bookings.find(function(x){return +x.id===+assignCtx.bookingId;});sendScheduledEmailForBooking(assignCtx.bookingId,!!(b&&b.scheduled_email_sent_at));}};
+  document.getElementById('assign-portal-link-btn').onclick=fetchAssignPortalLink;
+  document.getElementById('assign-portal-copy-btn').onclick=copyAssignPortalLink;
+  document.getElementById('backup-download-btn').onclick=downloadBackup;
   document.getElementById('tld-capacity-toggle').onchange=function(e){document.getElementById('tld-capdays').style.display=e.target.checked?'block':'none';};
   // Assign modal
   document.getElementById('close-assign').onclick=function(){closeModal('assign-modal');};
@@ -9161,7 +9565,7 @@ function bind(){
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
   // Modal backdrop
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){

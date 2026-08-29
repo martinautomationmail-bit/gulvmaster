@@ -589,6 +589,11 @@ async function initSchema() {
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS completed_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS invoiced INTEGER DEFAULT 0;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS status_flag TEXT;
+    -- KUNDEPORTAL: unik, uigætteligt token pr. booking — giver adgang til en
+    -- offentlig statusside (dato/tidspunkt/status) uden login. Oprettes først når
+    -- nogen rent faktisk beder om linket (se getOrCreateBookingToken).
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS public_token TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_planning_bookings_public_token ON planning_bookings(public_token) WHERE public_token IS NOT NULL;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_number TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_lat DOUBLE PRECISION;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS job_lng DOUBLE PRECISION;
@@ -2243,37 +2248,46 @@ async function syncCustomerPhonesFromJT() {
 // Weather is intentionally separate from phone sync. Nominatim has a one-request-
 // per-second limit; making it part of /api/sync-phones could make the browser time
 // out before the phone numbers had been saved.
-async function syncJobGeocodesInBackground() {
+async function syncJobGeocodesInBackground(limit) {
   if (geocodeSyncRunning) return { ok: false, skipped: true, error: 'Geokodning kører allerede' };
   geocodeSyncRunning = true;
   let geocoded = 0;
   try {
+    // FEJL RETTET: filtrerede tidligere på "job_id IS NOT NULL", dvs. kun
+    // JobTread-synkede jobs blev nogensinde geokodet — manuelle opgaver og
+    // kundebesøg (job_id IS NULL) manglede derfor helt på "alle projekter"-
+    // kortet i Ruter & kort. Grupperer nu i stedet efter selve adressen, så
+    // ÉN geokodning dækker alle rækker (JobTread-job ELLER manuel) der deler
+    // den samme adresse — det sparer også kald til Nominatim.
     const needsGeocode = await pool.query(`
-      SELECT DISTINCT job_id, job_address
+      SELECT DISTINCT job_address
       FROM jt_tasks
-      WHERE job_id IS NOT NULL
-        AND job_address IS NOT NULL
-        AND job_address<>''
+      WHERE job_address IS NOT NULL
+        AND trim(job_address)<>''
         AND (job_lat IS NULL OR job_lng IS NULL)
     `);
+    const batch = needsGeocode.rows.slice(0, limit || 60);
 
-    for (const row of needsGeocode.rows.slice(0, 60)) {
+    for (const row of batch) {
       try {
         const geoRes = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&q=' + encodeURIComponent(row.job_address), {
           headers: { 'User-Agent': 'GulvMasterEnterprise/1.0 (internal scheduling tool)' }
         });
         const geoData = await geoRes.json();
         if (Array.isArray(geoData) && geoData[0]) {
-          await pool.query(`UPDATE jt_tasks SET job_lat=$1, job_lng=$2 WHERE job_id=$3`, [+geoData[0].lat, +geoData[0].lon, row.job_id]);
+          await pool.query(`UPDATE jt_tasks SET job_lat=$1, job_lng=$2 WHERE job_address=$3 AND (job_lat IS NULL OR job_lng IS NULL)`, [+geoData[0].lat, +geoData[0].lon, row.job_address]);
           geocoded++;
         }
       } catch (_) {
         // One bad address must never stop the contact sync.
       }
+      // Nominatims brugsvilkår tillader maks. 1 opslag i sekundet — denne pause
+      // gælder uanset om kaldet kommer fra telefon-synk eller "Hent flere
+      // adresser"-knappen på rutekortet, så vi aldrig kan overskride den.
       await new Promise(resolve => setTimeout(resolve, 1100));
     }
-    if (geocoded) await writeSyncLog(0, 'ok', `Vejr-geokodning: ${geocoded} adresse(r) opdateret.`);
-    return { ok: true, geocoded };
+    if (geocoded) await writeSyncLog(0, 'ok', `Geokodning: ${geocoded} adresse(r) opdateret.`);
+    return { ok: true, geocoded, remaining: Math.max(0, needsGeocode.rows.length - batch.length) };
   } catch (error) {
     console.error('Geokodning fejlede:', error.message);
     return { ok: false, error: error.message };
@@ -3993,6 +4007,41 @@ app.get('/api/customers/search', auth, adminOnly, asyncRoute(async (req, res) =>
   res.json(rows.rows);
 }));
 
+// ══════════════════════════════════════════════════════════════
+// KUNDEHISTORIK — samler ALT vi har på én kunde (identificeret ved job_name,
+// præcis som /api/customers/search ovenfor — der findes ikke en selvstændig
+// "kunde"-tabel). Henter hvert job/sag kunden nogensinde har haft, og alle
+// bookinger/noter under dem, på tværs af tid. Fakturering/økonomi er BEVIDST
+// ikke forsøgt genskabt her — Økonomi-modulet er et separat, komplekst system
+// (bankafstemning, manuel omsætning, overstyringer m.m.), og et forkert tal på
+// en kundeside er værre end intet tal. I stedet linkes der ud til JobTread
+// (jt_url), som er den faktiske kilde til fakturaer, pr. job.
+// ══════════════════════════════════════════════════════════════
+app.get('/api/customers/history', auth, adminOnly, asyncRoute(async (req, res) => {
+  const name = String(req.query.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Mangler kundenavn' });
+  const tasks = await pool.query(`
+    SELECT id,name,job_id,job_name,job_address,job_number,customer_phone,customer_email,
+           is_visit,type_guess,start_date,end_date,jt_url,source,created_at
+    FROM jt_tasks
+    WHERE lower(trim(job_name))=lower(trim($1))
+    ORDER BY start_date DESC NULLS LAST, created_at DESC
+  `, [name]);
+  if (!tasks.rows.length) return res.json({ tasks: [], bookings: [] });
+  const taskIds = tasks.rows.map(t => t.id);
+  const bookings = await pool.query(`
+    SELECT b.id,b.task_id,b.user_id,b.start_date,b.end_date,b.days,b.start_time,b.notes,b.note_link,
+           b.completed_at,b.planning_mode,b.capacity_label,
+           (b.note_attachments IS NOT NULL AND trim(b.note_attachments)<>'' AND trim(b.note_attachments)<>'null') AS has_note_attachments,
+           u.name AS user_name, u.color AS user_color
+    FROM planning_bookings b
+    JOIN users u ON b.user_id=u.id
+    WHERE b.task_id = ANY($1::text[])
+    ORDER BY b.start_date DESC NULLS LAST, b.id DESC
+  `, [taskIds]);
+  res.json({ tasks: tasks.rows, bookings: bookings.rows });
+}));
+
 app.get('/api/templates', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM task_templates ORDER BY name ASC');
   res.json(rows.rows.map(r => ({ ...r, checklist_items: safeJsonParse(r.checklist_items, []) })));
@@ -4311,10 +4360,55 @@ app.get('/api/geo-suggest', auth, adminOnly, asyncRoute(async (req, res) => {
 }));
 
 // ══════════════════════════════════════════════════════════════
+// RUTEKORT — "Dagens ruter" bruger job_lat/job_lng der allerede følger med på
+// hver booking via bookingSelect() (ingen ny endpoint nødvendig for den del).
+// De to endpoints herunder dækker resten: at hente flere adressers placering
+// på forespørgsel (i stedet for kun som bivirkning af telefon-synk), og at
+// vise ALLE projekt-adresser nogensinde til "Alle projekter"-kortet.
+// ══════════════════════════════════════════════════════════════
+app.post('/api/geocode-jobs', auth, adminOnly, asyncRoute(async (req, res) => {
+  const limit = Math.min(40, Math.max(1, +(req.body && req.body.limit) || 25));
+  const result = await syncJobGeocodesInBackground(limit);
+  res.status(result.ok || result.skipped ? 200 : 500).json(result);
+}));
+app.get('/api/geo-all-jobs', auth, adminOnly, asyncRoute(async (req, res) => {
+  const jobs = await pool.query(`
+    SELECT job_address, job_lat, job_lng,
+           array_agg(DISTINCT job_name) FILTER (WHERE job_name IS NOT NULL AND job_name<>'') AS job_names,
+           COUNT(*)::int AS cnt,
+           MAX(start_date) AS last_date
+    FROM jt_tasks
+    WHERE job_lat IS NOT NULL AND job_lng IS NOT NULL
+    GROUP BY job_address, job_lat, job_lng
+    ORDER BY last_date DESC NULLS LAST
+  `);
+  const missing = await pgOne(`
+    SELECT COUNT(DISTINCT job_address)::int AS n FROM jt_tasks
+    WHERE job_address IS NOT NULL AND trim(job_address)<>'' AND (job_lat IS NULL OR job_lng IS NULL)
+  `);
+  res.json({ jobs: jobs.rows, missing_count: missing ? missing.n : 0 });
+}));
+
+// ══════════════════════════════════════════════════════════════
 // KUNDE-KOMMUNIKATION — planlagt-mail og påmindelse dagen før
 // ══════════════════════════════════════════════════════════════
 function fillEmailVars(str, vars) {
   return String(str || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, key) => (vars[key] !== undefined && vars[key] !== null && vars[key] !== '') ? vars[key] : m);
+}
+// KUNDEPORTAL — opretter (kun første gang) et uigætteligt token for en booking,
+// så den offentlige statusside (/portal/:token) kan slå den op uden login.
+// Bruges både når en mail til kunden sendes (linket flettes ind som {{link}})
+// og når admin selv beder om linket via "🔗 Hent kunde-status-link" i popup'en.
+async function getOrCreateBookingToken(bookingId) {
+  const row = await pgOne('SELECT public_token FROM planning_bookings WHERE id=$1', [bookingId]);
+  if (!row) return null;
+  if (row.public_token) return row.public_token;
+  const token = crypto.randomBytes(20).toString('hex');
+  await pool.query('UPDATE planning_bookings SET public_token=$1 WHERE id=$2', [token, bookingId]);
+  return token;
+}
+function portalLinkFor(token) {
+  return `${PUBLIC_APP_URL}/portal/${token}`;
 }
 async function sendScheduledEmail(booking, templateId) {
   if (!mailIsConfigured()) return { sent: false, reason: 'E-mail er ikke konfigureret på serveren' };
@@ -4334,10 +4428,12 @@ async function sendScheduledEmail(booking, templateId) {
     const tt = await pgOne('SELECT label FROM task_types WHERE key=$1', [task.type_guess]);
     tradeLabel = tt?.label || task.type_guess;
   }
+  const portalToken = await getOrCreateBookingToken(booking.id);
+  const portalLink = portalToken ? portalLinkFor(portalToken) : '';
   const vars = {
     kunde: task?.job_name || '', opgave: task?.name || '', fag: tradeLabel,
     dato: dateLabel, tidspunkt: booking.start_time || '', medarbejder: userName,
-    adresse: task?.job_address || '', firma: companyName
+    adresse: task?.job_address || '', firma: companyName, link: portalLink
   };
   let subject, text;
   if (templateId) {
@@ -4347,7 +4443,9 @@ async function sendScheduledEmail(booking, templateId) {
     text = fillEmailVars(tpl.body, vars);
   } else {
     subject = `Din opgave er planlagt til ${dateLabel} — ${companyName}`;
-    text = `Hej,\n\nVi har planlagt din opgave (${task?.job_name || ''}) til ${dateLabel}${booking.start_time ? ' kl. ' + booking.start_time : ''}.\n\nVi giver besked igen dagen før vi kommer, og når vi er færdige.\n\nVenlig hilsen\n${companyName}`;
+    text = `Hej,\n\nVi har planlagt din opgave (${task?.job_name || ''}) til ${dateLabel}${booking.start_time ? ' kl. ' + booking.start_time : ''}.\n\nVi giver besked igen dagen før vi kommer, og når vi er færdige.` +
+      (portalLink ? `\n\nDu kan altid se status på din opgave her: ${portalLink}` : '') +
+      `\n\nVenlig hilsen\n${companyName}`;
   }
   let status = 'sent', error = null;
   try { await sendMailUniversal({ to: toEmail, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') }); }
@@ -4370,6 +4468,16 @@ app.post('/api/assignments/:id/send-scheduled-email', auth, adminOnly, asyncRout
   res.json({ ok: true });
 }));
 
+// Henter (og opretter ved behov) det offentlige kundelink for én booking, til
+// "🔗 Hent kunde-status-link"-knappen i booking-popup'en — uafhængigt af om der
+// nogensinde sendes en mail, så du fx også kan sende linket manuelt via SMS.
+app.get('/api/assignments/:id/portal-link', auth, adminOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT id FROM planning_bookings WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  const token = await getOrCreateBookingToken(current.id);
+  res.json({ ok: true, url: portalLinkFor(token) });
+}));
+
 async function sendReminderEmails() {
   if (!mailIsConfigured()) return { sent: 0, reason: 'E-mail er ikke konfigureret på serveren' };
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
@@ -4385,8 +4493,12 @@ async function sendReminderEmails() {
   const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
   let sentCount = 0;
   for (const b of rows.rows) {
+    const portalToken = await getOrCreateBookingToken(b.id);
+    const portalLink = portalToken ? portalLinkFor(portalToken) : '';
     const subject = `Vi kommer i morgen — ${companyName}`;
-    const text = `Hej,\n\nVi vil bare give dig besked om, at vi kommer i morgen${b.start_time ? ' kl. ' + b.start_time : ''} og udfører (${b.job_name}).\n\nVenlig hilsen\n${companyName}`;
+    const text = `Hej,\n\nVi vil bare give dig besked om, at vi kommer i morgen${b.start_time ? ' kl. ' + b.start_time : ''} og udfører (${b.job_name}).` +
+      (portalLink ? `\n\nDu kan altid se status på din opgave her: ${portalLink}` : '') +
+      `\n\nVenlig hilsen\n${companyName}`;
     let status = 'sent', error = null;
     try { await sendMailUniversal({ to: b.customer_email, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') }); sentCount++; }
     catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
@@ -5453,6 +5565,121 @@ app.post('/api/finance/email-report', auth, financeOnly, asyncRoute(async (req, 
   } catch (error) {
     res.status(500).json({ error: 'Kunne ikke sende mailen: ' + error.message });
   }
+}));
+
+// ══════════════════════════════════════════════════════════════
+// DATABACKUP — admin trykker selv på "Download backup" i Timer & log-siden;
+// ingen automatisk skema/e-mail (bevidst valg, se svar i chatten). Finder ALLE
+// tabeller dynamisk via Postgres' egen katalog i stedet for en hårdkodet liste,
+// så en tabel der tilføjes senere automatisk kommer med i backuppen uden at
+// nogen skal huske at opdatere denne kode. Meget store felter (fx base64-
+// vedhæftninger på noter) erstattes med en kort note i stedet for at blive
+// taget med, så filen altid er hurtig at generere og hente.
+// ══════════════════════════════════════════════════════════════
+app.get('/api/backup/export', auth, adminOnly, asyncRoute(async (req, res) => {
+  const MAX_FIELD_LEN = 200000;
+  let truncatedFields = 0;
+  const tablesResult = await pool.query(`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_schema='public' AND table_type='BASE TABLE'
+    ORDER BY table_name
+  `);
+  const data = {};
+  for (const { table_name } of tablesResult.rows) {
+    const rows = await pool.query(`SELECT * FROM "${table_name}"`);
+    data[table_name] = rows.rows.map((row) => {
+      const out = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (typeof value === 'string' && value.length > MAX_FIELD_LEN) {
+          out[key] = `[UDELADT FRA BACKUP — ${value.length} tegn, sandsynligvis en vedhæftet fil eller stort dokument]`;
+          truncatedFields++;
+        } else {
+          out[key] = value;
+        }
+      }
+      return out;
+    });
+  }
+  const payload = {
+    app: 'Gulv Master Enterprise',
+    generated_at: new Date().toISOString(),
+    generated_by: req.user.email || req.user.id,
+    table_count: Object.keys(data).length,
+    truncated_fields: truncatedFields,
+    data
+  };
+  const filename = `gulvmaster-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(JSON.stringify(payload));
+}));
+
+// ══════════════════════════════════════════════════════════════
+// KUNDEPORTAL — offentlig statusside, ingen login. Skal stå FØR de generelle
+// sendPage/catch-all-ruter nedenfor (ellers ville "app.get('*', ...)" allerede
+// have grebet '/portal/:token' og altid returneret index.html i stedet).
+// ══════════════════════════════════════════════════════════════
+function portalNotFoundPage() {
+  return `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Link ikke fundet</title><style>
+body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:#111318;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}
+.card{background:#fff;border-radius:16px;padding:32px 24px;max-width:380px;box-shadow:0 8px 30px rgba(15,17,24,.08)}
+h1{font-size:18px;margin:0 0 8px}
+p{font-size:13.5px;color:#6B7280;line-height:1.5;margin:0}
+</style></head><body><div class="card"><h1>🔍 Linket blev ikke fundet</h1><p>Dette link er enten forkert, eller booking er blevet slettet. Kontakt os hvis du er i tvivl.</p></div></body></html>`;
+}
+app.get('/portal/:token', asyncRoute(async (req, res) => {
+  const row = await pgOne(`
+    SELECT b.id,b.start_date,b.end_date,b.start_time,b.completed_at,
+           t.job_name,t.job_address,
+           u.name AS user_name
+    FROM planning_bookings b
+    JOIN jt_tasks t ON b.task_id=t.id
+    LEFT JOIN users u ON b.user_id=u.id
+    WHERE b.public_token=$1
+  `, [req.params.token]);
+  res.set('Cache-Control', 'no-store');
+  if (!row) return res.status(404).send(portalNotFoundPage());
+  const settingsRow = await pgOne("SELECT value FROM app_settings WHERE key='company_name'");
+  const companyName = settingsRow?.value || 'Gulv Master Enterprise';
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const startIso = String(row.start_date).slice(0, 10), endIso = String(row.end_date || row.start_date).slice(0, 10);
+  let statusLabel, statusBg, statusFg;
+  if (row.completed_at) { statusLabel = '✅ Afsluttet'; statusBg = '#DCFCE7'; statusFg = '#15803D'; }
+  else if (todayIso >= startIso && todayIso <= endIso) { statusLabel = '🔧 Vi er hos dig i dag'; statusBg = '#FEF3C7'; statusFg = '#92400E'; }
+  else { statusLabel = '📅 Planlagt'; statusBg = '#DBEAFE'; statusFg = '#1D4ED8'; }
+  const fmt = (d) => new Date(d).toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const dateLabel = startIso === endIso ? fmt(startIso) : `${fmt(startIso)} – ${fmt(endIso)}`;
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
+  const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Status på din opgave — ${esc(companyName)}</title><style>
+:root{--ink:#111318;--sub:#6B7280;--border:#E5E7EB;--accent:#4F46E5}
+*{box-sizing:border-box}
+body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:var(--ink);margin:0;padding:28px 16px;min-height:100vh}
+.wrap{max-width:440px;margin:0 auto}
+.brand{font-size:12.5px;font-weight:800;color:var(--accent);letter-spacing:.02em;text-transform:uppercase;margin-bottom:14px;text-align:center}
+.card{background:#fff;border-radius:18px;padding:26px 22px;box-shadow:0 10px 34px rgba(15,17,24,.09)}
+.status{display:inline-block;font-size:13px;font-weight:800;padding:6px 14px;border-radius:999px;background:${statusBg};color:${statusFg};margin-bottom:16px}
+h1{font-size:19px;margin:0 0 4px;line-height:1.3}
+.row{display:flex;gap:10px;padding:12px 0;border-top:1px solid var(--border)}
+.row:first-of-type{border-top:none;margin-top:6px}
+.row .ico{font-size:16px;width:22px;flex-shrink:0;text-align:center}
+.row .lbl{font-size:10.5px;color:var(--sub);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
+.row .val{font-size:14px;font-weight:600}
+.foot{text-align:center;font-size:11.5px;color:var(--sub);margin-top:18px}
+</style></head><body><div class="wrap">
+<div class="brand">${esc(companyName)}</div>
+<div class="card">
+<span class="status">${statusLabel}</span>
+<h1>${esc(row.job_name || 'Din opgave')}</h1>
+<div class="row"><div class="ico">📅</div><div><div class="lbl">Dato</div><div class="val">${esc(dateLabel)}</div></div></div>
+<div class="row"><div class="ico">🕒</div><div><div class="lbl">Tidspunkt</div><div class="val">${row.start_time ? esc(row.start_time) : 'Vi kontakter dig med et præcist tidspunkt'}</div></div></div>
+${row.job_address ? `<div class="row"><div class="ico">📍</div><div><div class="lbl">Adresse</div><div class="val">${esc(row.job_address)}</div></div></div>` : ''}
+${row.user_name ? `<div class="row"><div class="ico">👷</div><div><div class="lbl">Din montør</div><div class="val">${esc(row.user_name)}</div></div></div>` : ''}
+</div>
+<div class="foot">Spørgsmål? Kontakt ${esc(companyName)} direkte.</div>
+</div></body></html>`;
+  res.send(html);
 }));
 
 function sendPage(filename) {
