@@ -1418,6 +1418,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
    kun de tidligere enkeltvis-tilrettede #assign-modal/#fin-bank-snapshot-modal — de
    scopede regler for dem herunder står stadig, men gentager nu bare det samme). Den
    gamle mørkeblå gradient-header er erstattet af en ren, lys Billy-header. */
+/* PRINT UGEPLAN + "HVOR ER ALLE" (medarbejderoversigt) — Martins ønske om en
+   printbar ugeplan til opslagstavlen samt et hurtigt overblik over hvor alle
+   medarbejdere/vendors befinder sig en given dag. */
+.pw-check-label{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;color:var(--bly-ink)}
+.pw-check-label input{width:16px;height:16px}
+.team-ov-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.team-ov-nav .input{max-width:160px}
+.team-ov-list{display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow-y:auto}
+.team-ov-row{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);background:#fff}
+.team-ov-who{display:flex;align-items:center;gap:8px;min-width:130px;font-weight:700;font-size:12.5px;color:var(--bly-ink)}
+.team-ov-body{flex:1;display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--bly-ink)}
+.team-ov-task{line-height:1.4}
+.team-ov-badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:var(--bly-r-pill)}
+.team-ov-badge.free{background:#DCFCE7;color:#15803D}
+.team-ov-badge.off{background:#FEF3C7;color:#92400E}
 .mo{display:none;position:fixed;inset:0;background:rgba(17,19,24,.5);backdrop-filter:blur(2px);z-index:200;align-items:center;justify-content:center;padding:16px}
 .mo.open{display:flex;animation:gm-fade .18s ease}
 .modal{width:420px;max-width:100%;max-height:92vh;overflow:auto;background:#fff;border-radius:var(--bly-r-lg);padding:26px;box-shadow:0 24px 60px rgba(15,17,24,.18);animation:gm-pop .22s cubic-bezier(.2,.9,.3,1.3)}
@@ -1931,6 +1946,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <strong class="week-label" id="plan-label"></strong>
         <button class="btn small" id="plan-next">Næste →</button>
         <button class="btn small primary" id="plan-today">📍 I dag</button>
+        <button class="btn small" id="plan-print-btn" title="Udskriv ugeplanen eller gem den som PDF">🖨️ Print ugeplan</button>
+        <button class="btn small" id="plan-team-overview-btn" title="Se hvor alle medarbejdere er en given dag">👥 Hvor er alle</button>
         <button class="btn small" id="send-reminders-btn" title="Sender kun til kunder booket i morgen, som ikke allerede har fået denne mail">✉️ Send "vi kommer i morgen"</button>
       </div>
       <div class="workforce-bar" id="plan-workforce-filters"></div>
@@ -2647,6 +2664,44 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions">
       <button class="btn" id="close-visit-form">Luk</button>
       <button class="btn primary" id="save-visit-form">Gem formular</button>
+    </div>
+  </div>
+</div>
+
+<!-- PRINT UGEPLAN -->
+<div class="mo" id="print-week-modal">
+  <div class="modal" style="max-width:440px">
+    <h3>🖨️ Print ugeplan</h3>
+    <div class="capacity-modal-note" id="print-week-range">Uge —</div>
+    <label class="form-label">Format</label>
+    <select id="print-week-format" class="select">
+      <option value="day">Samlet oversigt (dag for dag)</option>
+      <option value="user">Pr. medarbejder</option>
+    </select>
+    <label class="pw-check-label">
+      <input type="checkbox" id="print-week-contact" checked> Inkludér adresse og telefonnummer
+    </label>
+    <div class="capacity-modal-note" style="margin-top:10px">Åbner en printvenlig side i en ny fane — du kan udskrive den direkte eller vælge "Gem som PDF" i printdialogen.</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('print-week-modal')">Annuller</button>
+      <button class="btn primary" id="print-week-go">🖨️ Generér & print</button>
+    </div>
+  </div>
+</div>
+
+<!-- HVOR ER ALLE (medarbejderoversigt pr. dag) -->
+<div class="mo" id="team-overview-modal">
+  <div class="modal" style="max-width:580px">
+    <h3>👥 Hvor er alle?</h3>
+    <div class="team-ov-nav">
+      <button class="btn small" id="team-overview-prev">← Forrige dag</button>
+      <input type="date" id="team-overview-date" class="input">
+      <button class="btn small" id="team-overview-next">Næste dag →</button>
+      <button class="btn small primary" id="team-overview-today">📍 I dag</button>
+    </div>
+    <div id="team-overview-list" class="team-ov-list"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('team-overview-modal')">Luk</button>
     </div>
   </div>
 </div>
@@ -3641,12 +3696,17 @@ function renderPlan(){
     window._planInitialScrollDone=true;
     requestAnimationFrame(function(){
       var outer=document.getElementById('plan-board-outer');
-      var todayTh=document.querySelector('#daily-head .today-th');
+      // FEJL RETTET: brugte tidligere ".today-th" (dagens EGEN dag-kolonne) som mål —
+      // det skubber ugens tidligere dage uden for skærmen når "i dag" ligger sidst i
+      // ugen (fx fredag), så man kom til at se NÆSTE uge i stedet for hele den
+      // nuværende uge. Nu bruges mandag i den uge vi er i som mål, så hele
+      // ugen (man-søn) er synlig med det samme.
+      var curMondayTh=document.querySelector('#daily-head th[data-plan-monday="'+iso(mon(new Date()))+'"]');
       // behavior:'instant' (IKKE 'smooth', som #plan-board-outer ellers bruger til
       // Forrige/Næste-knapperne) — ellers animerer browseren en lang, hakkende
       // glidetur hen over ~26 ugers kolonner samtidig med at hele tabellen stadig
       // bliver bygget, hvilket er præcis det der så ud som "scroller frem og tilbage".
-      if(outer&&todayTh)outer.scrollTo({left:Math.max(0,todayTh.offsetLeft-40),behavior:'instant'});
+      if(outer&&curMondayTh)outer.scrollTo({left:Math.max(0,curMondayTh.offsetLeft-40),behavior:'instant'});
       if(outer)outer.classList.remove('plan-positioning');
     });
   }
@@ -3660,6 +3720,127 @@ function updatePlanWeekPillHighlight(mk){
   document.querySelectorAll('.plan-week-pill.current').forEach(function(p){p.classList.remove('current');});
   var pill=document.querySelector('.plan-week-pill[data-plan-week-monday="'+mk+'"]');
   if(pill)pill.classList.add('current');
+}
+// Slår "internal" + alle vendor-grupper (i samme rækkefølge som selve boardet)
+// sammen til én flad liste — bruges af både print-ugeplan og "Hvor er alle",
+// så de viser præcis de samme medarbejdere/vendors som Daglig Plan lige nu.
+function planTeamFlat(){
+  var t=teamList('plan'),out=t.internal.slice();
+  Object.keys(t.groups).sort().forEach(function(g){out=out.concat(t.groups[g]);});
+  return out;
+}
+// PRINT UGEPLAN — bygger en selvstændig, printvenlig side i et nyt vindue ud fra
+// den uge man aktuelt kigger på i Daglig Plan, og åbner browserens printdialog.
+// Ingen PDF-bibliotek nødvendigt: "Gem som PDF" i printdialogen dækker det behov.
+function openPrintWeekModal(){
+  var monday=planCurrentWeekStart||mon(new Date()),sunday=add(monday,6);
+  document.getElementById('print-week-range').textContent='Uge '+weekNo(monday)+' · '+monday.getDate()+'/'+(monday.getMonth()+1)+' – '+sunday.getDate()+'/'+(sunday.getMonth()+1);
+  document.getElementById('print-week-modal').classList.add('open');
+}
+function generatePrintWeek(){
+  var format=document.getElementById('print-week-format').value;
+  var withContact=document.getElementById('print-week-contact').checked;
+  var monday=planCurrentWeekStart||mon(new Date());
+  var days=[];for(var i=0;i<7;i++)days.push(add(monday,i));
+  var dailyIndex=indexDailyBookings(bookings);
+  var employees=planTeamFlat();
+  function sortItems(a,b){
+    if(a.start_time&&b.start_time)return a.start_time.localeCompare(b.start_time);
+    if(a.start_time&&!b.start_time)return -1;
+    if(!a.start_time&&b.start_time)return 1;
+    return 0;
+  }
+  function cellHtml(u,d){
+    var ds=iso(d),off=timeOffFor(u.id,ds);
+    if(off)return '<div class="pw-off">'+esc(timeOffLabel(off))+'</div>';
+    var items=(dailyIndex[(+u.id)+':'+ds]||[]).slice().sort(sortItems);
+    if(!items.length)return '<div class="pw-free">Ledig</div>';
+    return items.map(function(b){
+      var time=b.start_time?'<b>'+esc(b.start_time)+'</b> · ':'';
+      var name=esc(b.job_name||b.task_name||'Opgave');
+      var extra=[];
+      if(withContact){
+        if(b.job_address)extra.push(esc(b.job_address));
+        if(b.customer_phone)extra.push('Tlf. '+esc(b.customer_phone));
+      }
+      return '<div class="pw-task">'+time+name+(extra.length?'<div class="pw-task-sub">'+extra.join(' · ')+'</div>':'')+'</div>';
+    }).join('');
+  }
+  var title='Ugeplan · Uge '+weekNo(monday)+' · '+monday.getDate()+'/'+(monday.getMonth()+1)+'–'+add(monday,6).getDate()+'/'+(add(monday,6).getMonth()+1)+' '+monday.getFullYear();
+  var body='';
+  if(format==='day'){
+    days.forEach(function(d){
+      var rows=employees.map(function(u){return '<tr><td class="pw-emp">'+esc(u.name)+'</td><td>'+cellHtml(u,d)+'</td></tr>';}).join('');
+      body+='<div class="pw-section"><h2>'+DAYS[d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1)+'</h2><table><tbody>'+rows+'</tbody></table></div>';
+    });
+  }else{
+    employees.forEach(function(u){
+      var rows=days.map(function(d){return '<tr><td class="pw-emp">'+DAYS[d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1)+'</td><td>'+cellHtml(u,d)+'</td></tr>';}).join('');
+      body+='<div class="pw-section"><h2>'+esc(u.name)+'</h2><table><tbody>'+rows+'</tbody></table></div>';
+    });
+  }
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+
+    'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111318;margin:24px;font-size:12.5px}'+
+    'h1{font-size:18px;margin:0 0 4px}.pw-sub{color:#6B7280;font-size:11px;margin:0 0 22px}'+
+    '.pw-section{margin-bottom:22px;page-break-inside:avoid}'+
+    '.pw-section h2{font-size:14px;border-bottom:2px solid #111318;padding-bottom:4px;margin:0 0 8px}'+
+    'table{width:100%;border-collapse:collapse}'+
+    'td{border-bottom:1px solid #E5E7EB;padding:6px 8px;vertical-align:top;font-size:12px}'+
+    '.pw-emp{width:150px;font-weight:700;white-space:nowrap}'+
+    '.pw-task{margin-bottom:4px}.pw-task-sub{color:#6B7280;font-size:10.5px}'+
+    '.pw-free{color:#16A34A;font-weight:700}.pw-off{color:#92400E;font-weight:700}'+
+    '@media print{body{margin:10mm}}'+
+    '</style></head><body>'+
+    '<h1>'+esc(title)+'</h1><div class="pw-sub">Gulv Master Enterprise · Genereret '+esc(new Date().toLocaleString('da-DK'))+'</div>'+
+    body+'</body></html>';
+  var win=window.open('','_blank');
+  if(!win){toast('Din browser blokerede popup-vinduet — tillad popups for denne side','⚠️');return;}
+  win.document.open();win.document.write(html);win.document.close();
+  win.onafterprint=function(){win.close();};
+  setTimeout(function(){win.focus();win.print();},300);
+  closeModal('print-week-modal');
+}
+// "HVOR ER ALLE" — hurtigt overblik over hvor hver medarbejder/vendor befinder
+// sig en given dag (adresse + tid + telefon), uafhængigt af hvilken uge man
+// har rullet hen til i selve Daglig Plan.
+var teamOverviewDateStr=null;
+function openTeamOverviewModal(){
+  teamOverviewDateStr=iso(new Date());
+  document.getElementById('team-overview-date').value=teamOverviewDateStr;
+  renderTeamOverview();
+  document.getElementById('team-overview-modal').classList.add('open');
+}
+function renderTeamOverview(){
+  var ds=teamOverviewDateStr;
+  document.getElementById('team-overview-date').value=ds;
+  var dailyIndex=indexDailyBookings(bookings);
+  var employees=planTeamFlat();
+  var html=employees.map(function(u){
+    var c=u.color||'#2563EB';
+    var avatarHTML=u.avatar_url?'<img class="avatar-img" src="'+esc(u.avatar_url)+'">':'<div class="avatar" style="background:'+c+'22;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</div>';
+    var off=timeOffFor(u.id,ds),body;
+    if(off){
+      body='<span class="team-ov-badge off">'+esc(timeOffLabel(off))+'</span>';
+    }else{
+      var items=(dailyIndex[(+u.id)+':'+ds]||[]).slice().sort(function(a,b){
+        if(a.start_time&&b.start_time)return a.start_time.localeCompare(b.start_time);
+        if(a.start_time&&!b.start_time)return -1;
+        if(!a.start_time&&b.start_time)return 1;
+        return 0;
+      });
+      if(!items.length){
+        body='<span class="team-ov-badge free">✓ Ledig</span>';
+      }else{
+        body=items.map(function(b){
+          var time=b.start_time?'<b>'+esc(b.start_time)+'</b> · ':'';
+          var addr=b.job_address?' · '+esc(b.job_address):'';
+          return '<div class="team-ov-task">'+time+esc(b.job_name||b.task_name||'Opgave')+addr+(b.customer_phone?' · '+phoneMarkup(b.customer_phone,true):'')+'</div>';
+        }).join('');
+      }
+    }
+    return '<div class="team-ov-row"><div class="team-ov-who">'+avatarHTML+'<span>'+esc(u.name)+'</span></div><div class="team-ov-body">'+body+'</div></div>';
+  }).join('')||'<div class="capacity-modal-note">Ingen aktive medarbejdere fundet.</div>';
+  document.getElementById('team-overview-list').innerHTML=html;
 }
 // Følger PASSIVT med på hvor du rent faktisk har scrollet hen (ren native scroll,
 // aldrig preventDefault/manuel scrollLeft) og opdaterer labelen + hvilken uges note
@@ -8855,9 +9036,19 @@ function bind(){
   document.getElementById('plan-next').onclick=function(){planScrollByWeeks(1);};
   document.getElementById('plan-today').onclick=function(){
     var outer=document.getElementById('plan-board-outer');
-    var todayTh=document.querySelector('#daily-head .today-th');
-    if(outer&&todayTh)outer.scrollTo({left:Math.max(0,todayTh.offsetLeft-40),behavior:'smooth'});
+    // Samme rettelse som ved førstegangsindlæsning: mål mandag i indeværende uge
+    // (ikke selve "i dag"-kolonnen), så hele den aktuelle uge vises — ikke kun
+    // halerne af den plus næste uge.
+    var curMondayTh=document.querySelector('#daily-head th[data-plan-monday="'+iso(mon(new Date()))+'"]');
+    if(outer&&curMondayTh)outer.scrollTo({left:Math.max(0,curMondayTh.offsetLeft-40),behavior:'smooth'});
   };
+  document.getElementById('plan-print-btn').onclick=openPrintWeekModal;
+  document.getElementById('print-week-go').onclick=generatePrintWeek;
+  document.getElementById('plan-team-overview-btn').onclick=openTeamOverviewModal;
+  document.getElementById('team-overview-date').onchange=function(){teamOverviewDateStr=this.value;renderTeamOverview();};
+  document.getElementById('team-overview-prev').onclick=function(){teamOverviewDateStr=iso(add(date(teamOverviewDateStr),-1));renderTeamOverview();};
+  document.getElementById('team-overview-next').onclick=function(){teamOverviewDateStr=iso(add(date(teamOverviewDateStr),1));renderTeamOverview();};
+  document.getElementById('team-overview-today').onclick=function(){teamOverviewDateStr=iso(new Date());renderTeamOverview();};
   document.getElementById('send-reminders-btn').onclick=async function(){
     if(!await gmConfirm('Send "vi kommer i morgen" til alle kunder der er booket i morgen, og som ikke allerede har fået den?'))return;
     var btn=this;btn.disabled=true;btn.textContent='Sender…';
@@ -8970,7 +9161,7 @@ function bind(){
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
   // Modal backdrop
-  ['assign-modal','manual-modal','user-modal','capacity-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
