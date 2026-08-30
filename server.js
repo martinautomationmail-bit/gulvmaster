@@ -564,6 +564,11 @@ async function initSchema() {
     -- PUSH/SMS-NOTIFIKATIONER (medarbejder-push + kunde-SMS "din montør kommer").
     ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
 
+    -- HOLDOVERBLIK & KORT I MEDARBEJDER-APPEN: kun medarbejdere Martin selv har
+    -- krydset af (fx en mester) kan åbne kortet og se hvor kollegerne er booket,
+    -- og hvad de er tilknyttet resten af ugen. Admin har altid adgang uanset dette flag.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS can_view_team_overview INTEGER DEFAULT 0;
+
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL,
@@ -1231,13 +1236,13 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
     return res.status(401).json({ error: 'Forkert email eller adgangskode' });
   }
   const token = jwt.sign({ id: user.id, name: user.name, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email, color: user.color, initials: user.initials, avatar_url: user.avatar_url, is_finance_admin: !!user.is_finance_admin } });
+  res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email, color: user.color, initials: user.initials, avatar_url: user.avatar_url, is_finance_admin: !!user.is_finance_admin, can_view_team_overview: !!user.can_view_team_overview } });
 }));
 
 app.get('/api/auth/me', auth, asyncRoute(async (req, res) => {
-  const user = await pgOne('SELECT id,name,email,role,color,initials,avatar_url,is_finance_admin FROM users WHERE id=$1', [req.user.id]);
+  const user = await pgOne('SELECT id,name,email,role,color,initials,avatar_url,is_finance_admin,can_view_team_overview FROM users WHERE id=$1', [req.user.id]);
   if (!user) return res.status(401).json({ error: 'Bruger ikke fundet' });
-  res.json(user);
+  res.json({ ...user, is_finance_admin: !!user.is_finance_admin, can_view_team_overview: !!user.can_view_team_overview });
 }));
 
 // Kun en eksisterende Økonomi-bruger kan give/fjerne adgang for andre — forhindrer
@@ -1429,7 +1434,7 @@ app.delete('/api/task-types/:key', auth, adminOnly, asyncRoute(async (req, res) 
 // ── USERS / WORKFORCE ───────────────────────────────────────
 app.get('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await pool.query(`
-    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,phone,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin
+    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,phone,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin,COALESCE(can_view_team_overview,0) AS can_view_team_overview
     FROM users
     ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END,
              CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END,
@@ -1532,10 +1537,10 @@ app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
 
   try {
     const result = await pool.query(`
-      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url,personal_email,notify_schedule_changes,phone)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url,personal_email,notify_schedule_changes,phone,can_view_team_overview)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       RETURNING id
-    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0, body.phone ? String(body.phone).trim().slice(0, 30) : null]);
+    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0, body.phone ? String(body.phone).trim().slice(0, 30) : null, body.can_view_team_overview ? 1 : 0]);
     res.json({ ok: true, id: result.rows[0].id });
     // Send login-vejledning, så medarbejderen selv kan sætte sin adgangskode —
     // kun relevant for brugere der faktisk kan logge ind.
@@ -1599,14 +1604,15 @@ app.put('/api/users/:id', auth, adminOnly, asyncRoute(async (req, res) => {
     avatar_url: body.avatar_url !== undefined ? (body.avatar_url || null) : current.avatar_url,
     personal_email: body.personal_email !== undefined ? (body.personal_email || null) : current.personal_email,
     notify_schedule_changes: body.notify_schedule_changes !== undefined ? (body.notify_schedule_changes ? 1 : 0) : current.notify_schedule_changes,
-    phone: body.phone !== undefined ? (body.phone ? String(body.phone).trim().slice(0, 30) : null) : current.phone
+    phone: body.phone !== undefined ? (body.phone ? String(body.phone).trim().slice(0, 30) : null) : current.phone,
+    can_view_team_overview: body.can_view_team_overview !== undefined ? (body.can_view_team_overview ? 1 : 0) : Number(current.can_view_team_overview || 0)
   };
   if (canLogin && !next.email) return res.status(400).json({ error: 'Email mangler for login-bruger' });
   try {
     await pool.query(`
-      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14,personal_email=$15,notify_schedule_changes=$16,phone=$17
-      WHERE id=$18
-    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, next.personal_email, next.notify_schedule_changes, next.phone, id]);
+      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14,personal_email=$15,notify_schedule_changes=$16,phone=$17,can_view_team_overview=$18
+      WHERE id=$19
+    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, next.personal_email, next.notify_schedule_changes, next.phone, next.can_view_team_overview, id]);
     res.json({ ok: true });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
@@ -3038,8 +3044,11 @@ app.put('/api/capacity-reservations/:id', auth, adminOnly, asyncRoute(async (req
   const current = await pgOne("SELECT * FROM planning_bookings WHERE id=$1 AND COALESCE(planning_mode,'daily')='capacity'", [Number(req.params.id)]);
   if (!current) return res.status(404).json({ error: 'Kapacitetsreservationen blev ikke fundet' });
   const body = req.body || {};
-  const startDate = validDate(String(body.week_start || current.start_date || '')) ? String(body.week_start || current.start_date) : null;
-  if (!startDate) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
+  const rawStartDate = validDate(String(body.week_start || current.start_date || '')) ? String(body.week_start || current.start_date) : null;
+  if (!rawStartDate) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
+  // Kapacitet planlægges pr. uge, aldrig en bestemt ugedag — snap altid til ugens
+  // mandag her, uanset hvad klienten sender, ligesom oprettelsen (splitCapacityAcrossWeeks) gør.
+  const startDate = mondayOfDate(rawStartDate) || rawStartDate;
   const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id || current.user_id)]);
   if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
   const capacityDays = Math.max(0.25, Math.min(60, Number(body.capacity_days) || current.capacity_days || 1));
@@ -3887,6 +3896,51 @@ app.get('/api/assignments', auth, asyncRoute(async (req, res) => {
     return { ...r, note_attachments: null, has_note_attachments: hasAttachments };
   });
   res.json(rows);
+}));
+
+// HOLDOVERBLIK & KORT — læst-adgang for admin ELLER for de medarbejdere Martin har
+// krydset af (can_view_team_overview), typisk en mester. Returnerer, for én uge ad
+// gangen: hvor hver medarbejder er booket i dag (til kortet, med koordinater) og hvad
+// de er tilknyttet resten af ugen (til listen) — bevidst afgrænset til én uge i stedet
+// for at sende hele appens bookinger, som /api/assignments gør for admin.
+app.get('/api/team/overview', auth, asyncRoute(async (req, res) => {
+  const requester = await pgOne('SELECT id, role, can_view_team_overview FROM users WHERE id=$1', [req.user.id]);
+  if (!requester || (requester.role !== 'admin' && !requester.can_view_team_overview)) {
+    return res.status(403).json({ error: 'You do not have access to the team overview' });
+  }
+  const dateStr = validDate(String(req.query.date || '')) ? String(req.query.date) : new Date().toISOString().slice(0, 10);
+  const weekStart = mondayOfDate(dateStr) || dateStr;
+  const weekStartDate = new Date(`${weekStart}T12:00:00`);
+  const weekEndDate = new Date(weekStartDate);
+  weekEndDate.setDate(weekEndDate.getDate() + 6);
+  const weekEnd = weekEndDate.toISOString().slice(0, 10);
+
+  const employeesRes = await pool.query("SELECT id,name,color,initials,avatar_url,trade FROM users WHERE active=1 AND role='employee' ORDER BY name");
+  const byUser = {};
+  employeesRes.rows.forEach(u => { byUser[u.id] = { ...u, today: [], week: {} }; });
+
+  const bookingsRes = await pool.query(bookingSelect(`
+    WHERE COALESCE(b.planning_mode,'daily')='daily' AND b.start_date <= $2 AND COALESCE(b.end_date, b.start_date) >= $1
+  `), [weekStart, weekEnd]);
+
+  for (const b of bookingsRes.rows) {
+    const bucket = byUser[b.user_id];
+    if (!bucket) continue; // vendor/inaktiv medarbejder — vises ikke i holdoverblikket
+    const item = { job_name: b.job_name, task_name: b.task_name, job_address: b.job_address, job_lat: b.job_lat, job_lng: b.job_lng, start_time: b.start_time };
+    let d = new Date(`${String(b.start_date).slice(0, 10)}T12:00:00`);
+    const endD = new Date(`${String(b.end_date || b.start_date).slice(0, 10)}T12:00:00`);
+    while (d <= endD) {
+      if (d.getDay() !== 0 && d.getDay() !== 6) { // spring weekender over, ligesom admins egen workDates()
+        const ds = d.toISOString().slice(0, 10);
+        if (ds >= weekStart && ds <= weekEnd) {
+          (bucket.week[ds] = bucket.week[ds] || []).push(item);
+          if (ds === dateStr) bucket.today.push(item);
+        }
+      }
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  res.json({ date: dateStr, weekStart, weekEnd, employees: Object.values(byUser) });
 }));
 
 // Henter den fulde note (tekst + link + vedhæftninger) for ÉN booking — bruges når
@@ -5975,7 +6029,7 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
   const companyName = settingsRow?.value || 'Gulv Master Enterprise';
 
   const tasksRes = await pool.query(`
-    SELECT id,name,job_name,job_address,job_number,start_date,end_date,created_at
+    SELECT id,name,job_id,job_name,job_address,job_number,start_date,end_date,created_at
     FROM jt_tasks
     WHERE lower(trim(job_name))=lower(trim($1))
     ORDER BY start_date DESC NULLS LAST, created_at DESC
@@ -5992,6 +6046,36 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     `, [tasks.map(t => t.id)]);
     bookings = bookingsRes.rows;
   }
+
+  // FAKTURAER & TILBUD — hentes LIVE fra JobTread hver gang siden åbnes (ligesom
+  // Økonomi-modulet i admin gør), i stedet for at bygge en helt ny synk-pipeline
+  // bare for denne side. Fejler JobTread-kaldet (nede, timeout osv.), skal resten
+  // af portalsiden stadig virke — derfor er dette pakket for sig selv.
+  const jobIds = [...new Set(tasks.map(t => t.job_id).filter(Boolean))];
+  let documents = [], documentsError = null;
+  if (jobIds.length && JT_ORG && JT_GRANT) {
+    try {
+      const docsData = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
+        $: { size: jobIds.length, where: ['id', 'in', jobIds] },
+        nodes: { id: {}, name: {}, documents: { $: { size: 20, where: ['type', 'in', ['customerOrder', 'customerInvoice']] }, nodes: { type: {}, status: {}, price: {}, priceWithTax: {}, createdAt: {} } } }
+      } } } }, 'Kundeportal: hent tilbud/fakturaer');
+      for (const j of docsData?.organization?.jobs?.nodes || []) {
+        for (const d of j.documents?.nodes || []) documents.push({ ...d, jobName: j.name });
+      }
+    } catch (e) { documentsError = e.message; console.error('Kundeportal: kunne ikke hente tilbud/fakturaer:', e.message); }
+  }
+
+  // PROJEKT-TIDSLINJE — læses direkte fra gantt_tasks (samme tabel som admins
+  // Gantt-kort), IKKE fra planning_bookings. Det er bevidst: kunden skal se det
+  // samme projektforløb Martin selv redigerer i Gantt-kortet, og det skal opdatere
+  // sig selv, næste gang han synker det job i admin — uden at kundeportalen selv
+  // rammer JobTread (det gør admin allerede, når han trykker "Synk").
+  let projectTasks = [];
+  if (jobIds.length) {
+    const ganttRes = await pool.query('SELECT * FROM gantt_tasks WHERE job_id = ANY($1::text[]) ORDER BY job_id, position ASC, id ASC', [jobIds]);
+    projectTasks = ganttRes.rows;
+  }
+
   const byTask = {};
   bookings.forEach(b => { (byTask[b.task_id] = byTask[b.task_id] || []).push(b); });
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -6031,17 +6115,104 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     return `<div class="group"><div class="group-label">${group.label} <span class="group-count">${jobsInGroup.length}</span></div>${cards}</div>`;
   }).join('') || '<div class="empty">Ingen opgaver fundet endnu.</div>';
 
-  const timelineRows = bookings.slice().sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || ''))).map(b => {
-    const task = tasks.find(t => t.id === b.task_id);
-    return `<div class="tl-row">
-      <div class="tl-dot ${b.completed_at ? 'done' : ''}"></div>
-      <div class="tl-body">
-        <div class="tl-date">${fmt(b.start_date)}${b.start_time ? ' · kl. ' + esc(b.start_time) : ''}${b.completed_at ? ' · ✅ Afsluttet' : ''}</div>
-        <div class="tl-title">${esc((task && (task.job_name || task.name)) || 'Opgave')}</div>
-        ${b.user_name ? `<div class="tl-sub">👷 ${esc(b.user_name)}</div>` : ''}
+  // TIDSLINJE — bygget som en statisk (skrivebeskyttet) udgave af det samme
+  // Gantt-kort-layout som admin bruger (dag/uge-gitter + vandrette bjælker),
+  // så kunden ser "samme tidslinje, samme layout" som i admin, bare uden
+  // træk/slip eller afhængighedspile som ikke giver mening for en kunde.
+  let ganttScrollToday = 0, ganttDayWidth = 34;
+  const ganttHtml = (() => {
+    const tasksWithDates = projectTasks.filter(t => t.start_date);
+    if (!tasksWithDates.length) {
+      return '<div class="empty">Projektets tidslinje er ikke synkroniseret endnu — kontakt ' + esc(companyName) + ' hvis den mangler i et stykke tid.</div>';
+    }
+    const multiJob = new Set(tasksWithDates.map(t => t.job_id)).size > 1;
+    const jobNameById = {};
+    tasks.forEach(t => { if (t.job_id) jobNameById[t.job_id] = t.job_name; });
+    const parseIso = (s) => new Date(String(s).slice(0, 10) + 'T00:00:00');
+    const starts = tasksWithDates.map(t => parseIso(t.start_date));
+    const ends = tasksWithDates.map(t => parseIso(t.end_date || t.start_date));
+    const today = new Date(todayIso + 'T00:00:00');
+    let rangeStart = new Date(Math.min(...starts, today));
+    let rangeEnd = new Date(Math.max(...ends, today));
+    rangeStart.setDate(rangeStart.getDate() - 3);
+    rangeEnd.setDate(rangeEnd.getDate() + 5);
+    const totalDays = Math.max(1, Math.round((rangeEnd - rangeStart) / 86400000) + 1);
+    const dw = totalDays <= 45 ? 34 : (totalDays <= 90 ? 20 : 10);
+    ganttDayWidth = dw;
+    const showDayLabels = dw >= 20;
+    const DAYABBR = ['Sø', 'Ma', 'Ti', 'On', 'To', 'Fr', 'Lø'];
+    const weekNoOf = (d) => {
+      const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const dayNum = dt.getUTCDay() || 7;
+      dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+      return Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
+    };
+    let headCols = '', weekCols = '', bgCols = '', curWeekSpan = 0, curWeekLabel = '';
+    const flushWeek = () => { if (curWeekSpan > 0) weekCols += `<div class="g-week-col" style="width:${curWeekSpan * dw}px">${curWeekLabel}</div>`; };
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(rangeStart); d.setDate(d.getDate() + i);
+      const iso = d.toISOString().slice(0, 10);
+      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+      const isToday = iso === todayIso;
+      if (isToday) ganttScrollToday = i * dw;
+      headCols += `<div class="g-day-col${isWeekend ? ' weekend' : ''}${isToday ? ' today' : ''}" style="width:${dw}px">${showDayLabels ? DAYABBR[d.getDay()] + '<br>' + d.getDate() : ''}</div>`;
+      bgCols += `<div class="g-bg-col${isWeekend ? ' weekend' : ''}${isToday ? ' today' : ''}" style="width:${dw}px"></div>`;
+      if (d.getDay() === 1 || i === 0) { flushWeek(); curWeekSpan = 0; curWeekLabel = 'Uge ' + weekNoOf(d); }
+      curWeekSpan++;
+    }
+    flushWeek();
+    const sorted = tasksWithDates.slice().sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || '')));
+    let listRows = '';
+    let barRows = '';
+    sorted.forEach(t => {
+      const label = t.name || 'Opgave';
+      const jobLabel = multiJob ? (jobNameById[t.job_id] || '') : '';
+      listRows += `<div class="g-list-row"><div class="g-list-row-title">${esc(label)}</div>${jobLabel ? `<div class="g-list-row-sub">${esc(jobLabel)}</div>` : ''}</div>`;
+      const s = parseIso(t.start_date), e = parseIso(t.end_date || t.start_date);
+      const offset = Math.round((s - rangeStart) / 86400000);
+      const span = Math.max(1, Math.round((e - s) / 86400000) + 1);
+      // Kun to farver, bevidst — kunden skal ikke bruge tid på at afkode nuancer:
+      // grøn når opgaven er markeret 100% færdig i Gantt-kortet, ellers grå.
+      const done = Number(t.progress || 0) >= 1;
+      const barColor = done ? '#22C55E' : '#94A3B8';
+      barRows += `<div class="g-row"><div class="g-row-bg">${bgCols}</div><div class="g-bar" style="left:${offset * dw}px;width:${Math.max(dw - 4, span * dw - 4)}px;background:${barColor}" title="${esc(label)}${jobLabel ? ' · ' + esc(jobLabel) : ''} (${t.start_date} – ${t.end_date || t.start_date})">${dw >= 22 ? `<span class="g-bar-label">${esc(label)}</span>` : ''}</div></div>`;
+    });
+    return `<div class="gantt-scroll" id="gantt-scroll"><div class="g-chart">
+      <div class="g-list"><div class="g-list-head">Projektforløb</div>${listRows}</div>
+      <div class="g-timeline" style="width:${totalDays * dw}px">
+        <div class="g-week-head">${weekCols}</div>
+        <div class="g-timeline-head">${headCols}</div>
+        <div>${barRows}</div>
       </div>
-    </div>`;
-  }).join('') || '<div class="empty">Ingen bookinger endnu.</div>';
+    </div></div>
+    <div class="gantt-legend"><span><i style="background:#22C55E"></i> Færdig</span><span><i style="background:#94A3B8"></i> Ikke færdig endnu</span></div>`;
+  })();
+
+  // FAKTURAER & TILBUD-fanen
+  const STATUS_LABELS = {
+    approved: { label: 'Godkendt', bg: '#DCFCE7', fg: '#15803D' },
+    pending: { label: 'Afventer', bg: '#FEF3C7', fg: '#92400E' },
+    denied: { label: 'Afvist', bg: '#FEE2E2', fg: '#B91C1C' }
+  };
+  const fmtKr = (n) => (n == null ? '' : Math.round(n).toLocaleString('da-DK') + ' kr.');
+  const docsHtml = (() => {
+    if (!documents.length) {
+      if (documentsError) return '<div class="empty">Kunne ikke hente tilbud/fakturaer lige nu. Prøv at genindlæse siden om lidt.</div>';
+      return '<div class="empty">Ingen tilbud eller fakturaer endnu.</div>';
+    }
+    return documents.slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).map(d => {
+      const st = STATUS_LABELS[d.status] || { label: d.status || '', bg: '#F1F5F9', fg: '#475569' };
+      const isInvoice = d.type === 'customerInvoice';
+      const price = d.priceWithTax != null ? d.priceWithTax : d.price;
+      return `<div class="job-card">
+        <div class="job-top"><div class="job-title">${isInvoice ? '🧾 Faktura' : '📄 Tilbud'}</div><span class="pill" style="background:${st.bg};color:${st.fg}">${st.label}</span></div>
+        ${d.jobName ? `<div class="job-meta">${esc(d.jobName)}</div>` : ''}
+        ${price != null ? `<div class="job-meta doc-price">${fmtKr(price)}</div>` : ''}
+        ${d.createdAt ? `<div class="job-meta">📅 ${esc(fmt(d.createdAt))}</div>` : ''}
+      </div>`;
+    }).join('');
+  })();
 
   const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Din side hos ${esc(companyName)}</title><style>
@@ -6067,14 +6238,32 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 .job-title{font-weight:800;font-size:14px}
 .pill{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
 .job-meta{font-size:12px;color:var(--sub);margin-top:3px}
-.tl-row{display:flex;gap:10px;padding:0 0 16px}
-.tl-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);margin-top:4px;flex-shrink:0}
-.tl-dot.done{background:#22C55E}
-.tl-date{font-size:10.5px;color:var(--sub);font-weight:700;text-transform:uppercase;letter-spacing:.02em}
-.tl-title{font-weight:800;font-size:13.5px;margin-top:2px}
-.tl-sub{font-size:12px;color:var(--sub);margin-top:2px}
+.doc-price{font-weight:800;color:var(--ink);font-size:13px}
 .empty{text-align:center;color:var(--sub);font-size:13px;padding:24px 0}
 .foot{text-align:center;font-size:11.5px;color:var(--sub);margin-top:20px}
+.gantt-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:14px;background:#fff}
+.g-chart{display:flex;min-width:max-content}
+.g-list{width:150px;flex-shrink:0;border-right:1px solid #F0F1F4;position:sticky;left:0;background:#fff;z-index:3}
+.g-list-head{height:56px;box-sizing:border-box;display:flex;align-items:flex-end;padding:0 10px 8px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.02em;color:#A1A8B3;border-bottom:1px solid #F0F1F4}
+.g-list-row{height:38px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;padding:0 10px;border-bottom:1px solid #F5F6F8;overflow:hidden}
+.g-list-row-title{font-size:11px;font-weight:800;color:#1F2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-list-row-sub{font-size:9.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-timeline{position:relative}
+.g-week-head{height:22px;box-sizing:border-box;display:flex;background:#FAFBFC;border-bottom:1px solid #F0F1F4}
+.g-week-col{flex-shrink:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#3D4759;border-left:1px solid #F0F1F4}
+.g-timeline-head{height:34px;box-sizing:border-box;display:flex;background:#fff;border-bottom:1px solid #F0F1F4}
+.g-day-col{flex-shrink:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:8.5px;color:#A1A8B3;font-weight:700;line-height:1.15;border-right:1px solid #F5F6F8;text-align:center}
+.g-day-col.weekend{background:#FAFBFC}
+.g-day-col.today{color:var(--accent)}
+.g-row{height:38px;position:relative}
+.g-row-bg{position:absolute;inset:0;display:flex;border-bottom:1px solid #F5F6F8}
+.g-bg-col{flex-shrink:0;box-sizing:border-box;border-right:1px solid #FAFBFC}
+.g-bg-col.weekend{background:#FAFBFC}
+.g-bg-col.today{background:#EEF2FF}
+.g-bar{position:absolute;top:6px;height:26px;border-radius:13px;display:flex;align-items:center;padding:0 10px;box-shadow:0 2px 6px rgba(15,17,24,.12)}
+.g-bar-label{color:#fff;font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gantt-legend{display:flex;gap:16px;justify-content:center;margin-top:8px;font-size:11px;color:var(--sub)}
+.gantt-legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:middle}
 </style></head><body><div class="wrap">
 <div class="brand">${esc(companyName)}</div>
 <h1>Hej ${esc(tokenRow.job_name)} 👋</h1>
@@ -6086,17 +6275,23 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 <div class="tabs">
   <div class="tab active" id="tab-pipeline" onclick="showTab('pipeline')">Oversigt</div>
   <div class="tab" id="tab-timeline" onclick="showTab('timeline')">Timeline</div>
+  <div class="tab" id="tab-docs" onclick="showTab('docs')">Fakturaer</div>
 </div>
 <div class="panel active" id="panel-pipeline">${pipelineHtml}</div>
-<div class="panel" id="panel-timeline">${timelineRows}</div>
+<div class="panel" id="panel-timeline">${ganttHtml}</div>
+<div class="panel" id="panel-docs">${docsHtml}</div>
 <div class="foot">Spørgsmål? Kontakt ${esc(companyName)} direkte.</div>
 </div>
 <script>
 function showTab(name){
-  document.getElementById('tab-pipeline').classList.toggle('active',name==='pipeline');
-  document.getElementById('tab-timeline').classList.toggle('active',name==='timeline');
-  document.getElementById('panel-pipeline').classList.toggle('active',name==='pipeline');
-  document.getElementById('panel-timeline').classList.toggle('active',name==='timeline');
+  ['pipeline','timeline','docs'].forEach(function(n){
+    document.getElementById('tab-'+n).classList.toggle('active',n===name);
+    document.getElementById('panel-'+n).classList.toggle('active',n===name);
+  });
+  if(name==='timeline'){
+    var sc=document.getElementById('gantt-scroll');
+    if(sc) sc.scrollLeft=Math.max(0,${ganttScrollToday}-${ganttDayWidth}*2);
+  }
 }
 </script>
 </body></html>`;
