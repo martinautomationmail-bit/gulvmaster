@@ -496,7 +496,7 @@ function closeLibraryOnBackdrop(e){if(e.target===document.getElementById('librar
 // PÅKRÆVET som dokumentation), tilføje billeder til sagen, og udfylde
 // KS-formularer Martin har bygget.
 // ══════════════════════════════════════════════════════════════
-let pmState={view:'list',projects:[],current:null,qaTemplates:[],qaAnswering:null};
+let pmState={view:'list',projects:[],current:null,qaTemplates:[],qaAnswering:null,contactTemplates:[],contactAnswering:null};
 function openProjectsModal(){
   pmState.view='list';
   document.getElementById('projects-modal').classList.add('open');
@@ -551,7 +551,8 @@ function pmRenderDetail(){
     <div class="actions" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
       <button class="action time" type="button" onclick="pmOpenTimeForm()">⏱ Registrér tid</button>
       <button class="action files" type="button" onclick="pmOpenPhotoForm()">📷 Tilføj billede</button>
-      <button class="action qc" type="button" style="grid-column:1/-1" onclick="pmOpenQaPicker()">🛡 Udfyld KS-formular</button>
+      <button class="action qc" type="button" onclick="pmOpenQaPicker()">🛡 Udfyld KS-formular</button>
+      <button class="action qc" type="button" onclick="pmOpenContactPicker()">📇 Kontaktformular</button>
     </div>
     <div class="tm-section-label">Dine seneste tidsregistreringer</div>
     ${entriesHtml}
@@ -681,6 +682,61 @@ async function pmSubmitQa(){
     if(r&&r.ok){toast('KS-formular indsendt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmq-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
   }catch(e){pmFeedback('pmq-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
+}
+async function pmOpenContactPicker(){
+  pmState.view='contact-picker';
+  document.getElementById('pm-title').textContent='📇 Vælg kontaktformular';
+  const body=document.getElementById('pm-body');
+  body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p style="color:var(--muted)">Henter…</p>';
+  const r=await api('/api/contact-form-templates');
+  pmState.contactTemplates=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
+  if(!pmState.contactTemplates.length){body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p class="modal-empty">Der er ikke oprettet nogen kontaktformularer endnu.</p>';return}
+  body.innerHTML=`<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>`+
+    pmState.contactTemplates.map(t=>`<div class="ft-result" onclick="pmOpenContactForm(${t.id})"><div class="ft-result-title">${esc(t.name)}</div><div class="ft-result-sub">${(t.fields||[]).length} felter</div></div>`).join('');
+}
+function pmOpenContactForm(templateId){
+  const t=pmState.contactTemplates.find(x=>x.id===templateId);
+  if(!t)return;
+  pmState.contactAnswering=t;
+  pmState.view='contact-form';
+  document.getElementById('pm-title').textContent=esc(t.name);
+  const fieldsHtml=(t.fields||[]).map((f,i)=>{
+    if(f.type==='check')return `<label class="doc-check"><input type="checkbox" data-contact-idx="${i}"><span><strong>${esc(f.label)}</strong></span></label>`;
+    if(f.type==='number')return `<label class="req-label">${esc(f.label)}</label><input class="req-input" type="number" data-contact-idx="${i}">`;
+    if(f.type==='photo')return `<label class="req-label">${esc(f.label)}</label><input class="req-input" type="file" accept="image/*" capture="environment" data-contact-idx="${i}">`;
+    return `<label class="req-label">${esc(f.label)}</label><input class="req-input" data-contact-idx="${i}">`;
+  }).join('');
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmOpenContactPicker()" style="margin-bottom:12px">← Tilbage</button>
+    ${fieldsHtml}
+    <div id="pmc-feedback" class="req-feedback"></div>
+    <button class="req-submit" type="button" id="pmc-submit" onclick="pmSubmitContact()">Indsend kontaktformular</button>
+  `;
+}
+async function pmSubmitContact(){
+  const t=pmState.contactAnswering;
+  const btn=document.getElementById('pmc-submit');btn.disabled=true;btn.textContent='Indsender…';
+  try{
+    const answers=[];
+    for(let i=0;i<(t.fields||[]).length;i++){
+      const f=t.fields[i];
+      const el=document.querySelector('[data-contact-idx="'+i+'"]');
+      let value=null;
+      if(f.type==='check')value=el.checked;
+      else if(f.type==='photo'){
+        const file=el.files[0];
+        if(file){
+          const dataUrl=await pmReadFileAsDataUrl(file);
+          const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'contact/'+pmState.current.id})});
+          value=(up&&up.ok)?up.data.url:null;
+        }
+      } else value=el.value;
+      answers.push({label:f.label,type:f.type,value});
+    }
+    const r=await api('/api/projects/'+pmState.current.id+'/contact-form-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers})});
+    if(r&&r.ok){toast('Kontaktformular indsendt ✓');await pmOpenProject(pmState.current.id)}
+    else{pmFeedback('pmc-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
+  }catch(e){pmFeedback('pmc-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
 }
 
 function tomorrowISO(){const d=new Date();d.setDate(d.getDate()+1);return iso(d)}

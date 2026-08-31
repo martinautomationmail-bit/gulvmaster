@@ -1037,6 +1037,27 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_project_photos_project ON project_photos(project_id);
+
+    -- ── KONTAKTFORMULAR: samme mønster som KS-skabeloner ovenfor —
+    -- Martin bygger felterne, medarbejdere udfylder pr. projekt (fx
+    -- kundens kontaktoplysninger indhentet på stedet). ─────────────────
+    CREATE TABLE IF NOT EXISTS contact_form_templates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      fields JSONB NOT NULL DEFAULT '[]',
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS contact_form_submissions (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      template_id INTEGER,
+      template_name TEXT,
+      answers JSONB NOT NULL DEFAULT '[]',
+      submitted_by INTEGER,
+      submitted_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_contact_form_submissions_project ON contact_form_submissions(project_id);
   `);
 
   await pool.query(`
@@ -4601,16 +4622,17 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
 app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
-  const [tasks, photos, timeEntries, qaSubmissions, quoteLines] = await Promise.all([
+  const [tasks, photos, timeEntries, qaSubmissions, contactSubmissions, quoteLines] = await Promise.all([
     pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 ORDER BY position ASC, id ASC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM project_photos WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM time_entries WHERE project_id=$1 ORDER BY entry_date DESC, id DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM qa_submissions WHERE project_id=$1 ORDER BY submitted_at DESC', [req.params.id]).then(r => r.rows),
+    pool.query('SELECT * FROM contact_form_submissions WHERE project_id=$1 ORDER BY submitted_at DESC', [req.params.id]).then(r => r.rows),
     project.quote_id
       ? pool.query('SELECT id, description FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id]).then(r => r.rows)
       : Promise.resolve([])
   ]);
-  res.json({ ...project, tasks, photos, time_entries: timeEntries, qa_submissions: qaSubmissions, quote_line_options: quoteLines });
+  res.json({ ...project, tasks, photos, time_entries: timeEntries, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines });
 }));
 
 app.put('/api/projects/:id', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -4783,6 +4805,92 @@ app.post('/api/projects/:id/qa-submissions', auth, asyncRoute(async (req, res) =
 app.delete('/api/qa-submissions/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM qa_submissions WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
+}));
+
+// ── KONTAKTFORMULAR — samme mønster som KS-skabeloner ovenfor, blot en
+// separat skabelon-/besvarelses-tabel så de to formål ikke blandes sammen. ──
+app.get('/api/contact-form-templates', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM contact_form_templates ORDER BY name');
+  res.json(rows.rows.map(r => ({ ...r, fields: typeof r.fields === 'string' ? safeJsonParse(r.fields, []) : (r.fields || []) })));
+}));
+
+app.post('/api/contact-form-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Skriv et navn til formularen' });
+  const fields = Array.isArray(b.fields) ? b.fields : [];
+  const r = await pool.query('INSERT INTO contact_form_templates (name,fields) VALUES ($1,$2) RETURNING id', [name, JSON.stringify(fields)]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.put('/api/contact-form-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM contact_form_templates WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Formularen blev ikke fundet' });
+  const b = req.body || {};
+  await pool.query(`UPDATE contact_form_templates SET name=$1, fields=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.fields !== undefined ? JSON.stringify(b.fields) : current.fields,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/contact-form-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM contact_form_templates WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.post('/api/projects/:id/contact-form-submissions', auth, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const answers = Array.isArray(b.answers) ? b.answers : [];
+  if (!answers.length) return res.status(400).json({ error: 'Udfyld mindst ét felt' });
+  const r = await pool.query(`
+    INSERT INTO contact_form_submissions (project_id,template_id,template_name,answers,submitted_by)
+    VALUES ($1,$2,$3,$4,$5) RETURNING id
+  `, [req.params.id, b.template_id || null, b.template_name || null, JSON.stringify(answers), req.user.id]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.delete('/api/contact-form-submissions/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM contact_form_submissions WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── HURTIG FAKTURERING FRA TIDSREGISTRERING — tager en registrering (evt.
+// med indkøbte materialer) og lægger den som ny linje/linjer på sagens
+// faktura, klar til Martin blot skal sætte prisen og sende. Kræver at
+// tilbuddet allerede er konverteret til faktura — der findes bevidst ingen
+// "opret tom faktura"-vej i systemet, faktura skabes altid fra et tilbud. ──
+app.post('/api/projects/:id/time-entries/:entryId/invoice', auth, financeOnly, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  if (!project.invoice_id) return res.status(400).json({ error: 'Sagen har endnu ingen faktura — konvertér tilbuddet til faktura under Tilbud & Faktura først' });
+  const entry = await pgOne('SELECT * FROM time_entries WHERE id=$1 AND project_id=$2', [req.params.entryId, req.params.id]);
+  if (!entry) return res.status(404).json({ error: 'Tidsregistreringen blev ikke fundet' });
+  const invoice = await pgOne('SELECT * FROM invoices WHERE id=$1', [project.invoice_id]);
+  if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  const posRes = await pgOne('SELECT COALESCE(MAX(position),-1)::int AS maxpos FROM invoice_lines WHERE invoice_id=$1', [invoice.id]);
+  let pos = posRes.maxpos + 1;
+  const hours = Math.round((Number(entry.minutes) / 60) * 100) / 100;
+  await pool.query(`
+    INSERT INTO invoice_lines (invoice_id,description,unit,quantity,cost_price,sell_price,position,product_type)
+    VALUES ($1,$2,'timer',$3,0,0,$4,'service')
+  `, [invoice.id, entry.note, hours, pos]);
+  pos++;
+  if (entry.bought_materials) {
+    await pool.query(`
+      INSERT INTO invoice_lines (invoice_id,description,unit,quantity,cost_price,sell_price,position,product_type)
+      VALUES ($1,$2,'stk',1,0,0,$3,'materialer')
+    `, [invoice.id, 'Materialer: ' + entry.bought_materials, pos]);
+  }
+  const lines = (await pool.query('SELECT * FROM invoice_lines WHERE invoice_id=$1', [invoice.id])).rows;
+  const totals = computeTotals(lines, Number(invoice.tax_rate), Number(invoice.discount_pct) || 0);
+  await pool.query(`UPDATE invoices SET subtotal=$1, tax_amount=$2, total=$3, updated_at=${nowTextSQL()} WHERE id=$4`,
+    [totals.subtotal, totals.taxAmount, totals.total, invoice.id]);
+  await refreshInvoiceStatus(invoice.id);
+  res.json({ ok: true, invoice_id: invoice.id });
 }));
 
 // ══════════════════════════════════════════════════════════════
@@ -6808,6 +6916,10 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, financeOnly, asyncRoute(asy
     `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', Number(l.discount_pct) || 0]);
   }
   await pool.query(`UPDATE quotes SET status='converted', converted_invoice_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [invoiceId, quote.id]);
+  // Sagen (projektet) blev oprettet da kunden underskrev tilbuddet — nu hvor
+  // der findes en faktura, kobles den på projektet, så "Tilføj til faktura"
+  // fra tidsregistreringer og "Se faktura"-linket i sags-dashboardet virker.
+  await pool.query(`UPDATE projects SET invoice_id=$1, updated_at=${nowTextSQL()} WHERE quote_id=$2`, [invoiceId, quote.id]);
   res.json({ ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber });
 }));
 

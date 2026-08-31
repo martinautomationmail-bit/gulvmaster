@@ -2151,6 +2151,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="bly-segtabs" id="proj-tabs">
     <button class="bly-segtab active" data-projtab="list" type="button">🏗️ Projekter</button>
     <button class="bly-segtab" data-projtab="qa-templates" type="button">📋 KS-skabeloner</button>
+    <button class="bly-segtab" data-projtab="contact-templates" type="button">📇 Kontaktformularer</button>
   </div>
 
   <div class="projtabpage" id="projtab-list">
@@ -2171,6 +2172,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <table class="bly-table">
       <thead><tr><th>Navn</th><th class="num">Felter</th><th style="width:90px"></th></tr></thead>
       <tbody id="qa-templates-body"></tbody>
+    </table>
+  </div>
+
+  <div class="projtabpage" id="projtab-contact-templates" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Kontaktformularer</span></div>
+      <div class="bly-toolbar-right"><button class="bly-btn" id="contact-new-template-btn" type="button">+ Ny kontaktformular</button></div>
+    </div>
+    <div class="hint" style="margin-bottom:14px">Felterne medarbejderne udfylder på sagen — fx kundens navn, telefon og e-mail, indhentet på stedet.</div>
+    <table class="bly-table">
+      <thead><tr><th>Navn</th><th class="num">Felter</th><th style="width:90px"></th></tr></thead>
+      <tbody id="contact-templates-body"></tbody>
     </table>
   </div>
 </section>
@@ -2212,6 +2225,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
+<!-- KONTAKTFORMULAR-MODAL — Martin bygger de felter medarbejderne skal udfylde -->
+<div class="mo" id="contact-template-modal">
+  <div class="modal" style="max-width:600px;width:94vw">
+    <h3 id="contact-template-modal-title">Ny kontaktformular</h3>
+    <div class="form-group"><label class="form-label">Navn</label><input id="cft-name" class="input" placeholder="Fx Kontaktoplysninger ved opstart"></div>
+    <div class="form-group">
+      <label class="form-label">Felter</label>
+      <div id="cft-fields"></div>
+      <button class="bly-btn outline small" id="cft-add-field" type="button">+ Tilføj felt</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="cft-delete">Slet</button>
+      <button class="btn" id="cft-cancel">Annuller</button>
+      <button class="btn primary" id="cft-save">Gem kontaktformular</button>
+    </div>
+  </div>
+</div>
+
 <!-- PROJEKT-DASHBOARD — sagens Gantt (kun for denne sag), billeder, tid, KS -->
 <div class="mo" id="project-detail-modal">
   <div class="modal" style="max-width:1100px;width:96vw;max-height:92vh;display:flex;flex-direction:column;padding:0">
@@ -2227,6 +2258,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <option value="archived">Arkiveret</option>
         </select>
         <a id="pd-quote-link" class="bly-btn outline" href="#" target="_blank" style="display:none">📄 Se tilbud</a>
+        <a id="pd-invoice-link" class="bly-btn outline" href="#" target="_blank" style="display:none">🧾 Se faktura</a>
         <button class="qz-icon-btn" id="pd-close-btn" type="button" title="Luk">✕</button>
       </div>
     </div>
@@ -2236,6 +2268,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-segtab" data-pdtab="photos" type="button">📷 Billeder</button>
         <button class="bly-segtab" data-pdtab="time" type="button">⏱️ Tidsregistrering</button>
         <button class="bly-segtab" data-pdtab="qa" type="button">📋 Kvalitetssikring</button>
+        <button class="bly-segtab" data-pdtab="contact" type="button">📇 Kontaktformular</button>
       </div>
     </div>
     <div style="padding:16px 22px 22px;overflow:auto;flex:1">
@@ -2247,6 +2280,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <button class="bly-btn" id="pd-new-task-btn" type="button">+ Ny opgave</button>
           </div>
         </div>
+        <div id="pd-gantt-strip" style="overflow-x:auto;margin-bottom:16px"></div>
         <div id="pd-tasks-body"></div>
       </div>
       <div class="pdtabpage" id="pdtab-photos" style="display:none">
@@ -2259,13 +2293,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="pdtabpage" id="pdtab-time" style="display:none">
         <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Tidsregistreringer</span></div></div>
         <table class="bly-table">
-          <thead><tr><th>Dato</th><th>Medarbejder</th><th class="num">Min.</th><th>Note</th><th>Post</th><th>Materialer</th><th>Billede</th><th style="width:40px"></th></tr></thead>
+          <thead><tr><th>Dato</th><th>Medarbejder</th><th class="num">Min.</th><th>Note</th><th>Post</th><th>Materialer</th><th>Billede</th><th style="width:90px"></th></tr></thead>
           <tbody id="pd-time-body"></tbody>
         </table>
       </div>
       <div class="pdtabpage" id="pdtab-qa" style="display:none">
         <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Indsendte KS-formularer</span></div></div>
         <div id="pd-qa-body"></div>
+      </div>
+      <div class="pdtabpage" id="pdtab-contact" style="display:none">
+        <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Indsendte kontaktformularer</span></div></div>
+        <div id="pd-contact-body"></div>
       </div>
     </div>
   </div>
@@ -10330,7 +10368,7 @@ function bind(){
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
   // Modal backdrop
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','project-detail-modal','doc-tpl-edit-modal','doc-send-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','project-detail-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -10964,6 +11002,11 @@ function initProjectsModule(){
     document.getElementById('qat-cancel').addEventListener('click',function(){closeModal('qa-template-modal');});
     document.getElementById('qat-save').addEventListener('click',saveQaTemplate);
     document.getElementById('qat-delete').addEventListener('click',deleteQaTemplate);
+    document.getElementById('contact-new-template-btn').addEventListener('click',function(){openContactTemplateModal();});
+    document.getElementById('cft-add-field').addEventListener('click',function(){cftAddFieldRow();});
+    document.getElementById('cft-cancel').addEventListener('click',function(){closeModal('contact-template-modal');});
+    document.getElementById('cft-save').addEventListener('click',saveContactTemplate);
+    document.getElementById('cft-delete').addEventListener('click',deleteContactTemplate);
     document.getElementById('pd-close-btn').addEventListener('click',function(){closeModal('project-detail-modal');});
     document.getElementById('pd-status-select').addEventListener('change',savePdStatus);
     document.getElementById('pd-convert-lines-btn').addEventListener('click',pdConvertLines);
@@ -10974,11 +11017,13 @@ function initProjectsModule(){
   }
   loadPjProjects().then(renderPjProjects);
   loadPjQaTemplates().then(renderPjQaTemplates);
+  loadPjContactTemplates().then(renderPjContactTemplates);
 }
 function switchProjTab(name){
   document.querySelectorAll('#proj-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.projtab===name);});
   document.getElementById('projtab-list').style.display=name==='list'?'':'none';
   document.getElementById('projtab-qa-templates').style.display=name==='qa-templates'?'':'none';
+  document.getElementById('projtab-contact-templates').style.display=name==='contact-templates'?'':'none';
 }
 async function loadPjProjects(){var r=await api('/api/projects');pjProjects=Array.isArray(r)?r:[];}
 function renderPjProjects(){
@@ -11010,8 +11055,11 @@ async function openProjectDetail(id){
   var qlink=document.getElementById('pd-quote-link');
   if(d.quote_id){qlink.style.display='inline-flex';qlink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/quotes/'+d.quote_id+'/pdf');};}
   else qlink.style.display='none';
+  var ilink=document.getElementById('pd-invoice-link');
+  if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
+  else ilink.style.display='none';
   switchPdTab('tasks');
-  renderPdTasks();renderPdPhotos();renderPdTime();renderPdQa();
+  renderPdTasks();renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdQa();renderPdContact();
   document.getElementById('project-detail-modal').classList.add('open');
 }
 async function reloadPdCurrent(){
@@ -11019,12 +11067,15 @@ async function reloadPdCurrent(){
   var d=await api('/api/projects/'+pjCurrent.id);
   if(!d||d.error)return;
   pjCurrent=d;
-  renderPdTasks();renderPdPhotos();renderPdTime();renderPdQa();
+  var ilink=document.getElementById('pd-invoice-link');
+  if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
+  else ilink.style.display='none';
+  renderPdTasks();renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdQa();renderPdContact();
   await loadPjProjects();renderPjProjects();
 }
 function switchPdTab(name){
   document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdtab===name);});
-  ['tasks','photos','time','qa'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
+  ['tasks','photos','time','qa','contact'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
 }
 async function savePdStatus(){
   if(!pjCurrent)return;
@@ -11045,6 +11096,97 @@ function pdTaskBarStyle(t){
   var left=Math.max(0,(s-minT)/span*100);
   var width=Math.max(3,(e-s)/span*100);
   return 'left:'+left.toFixed(1)+'%;width:'+width.toFixed(1)+'%';
+}
+// ── SAGS-GANTT — samme visuelle stil/CSS-klasser som hoved-Gantt'et (siden
+// "Gantt"), men udelukkende denne sags opgaver, og gemmer LOKALT via
+// /api/projects/:id/tasks/:taskId i stedet for at skrive til JobTread. ──
+var pdGanttState={dayWidth:28,rangeStart:null},pdGanttDrag=null;
+function pdGanttDateRange(){
+  var tasks=pjCurrent.tasks||[];
+  var starts=tasks.map(function(t){return t.start_date;}).filter(Boolean);
+  var ends=tasks.map(function(t){return t.end_date;}).filter(Boolean);
+  var today=iso(new Date());
+  var minD=starts.length?starts.reduce(function(a,b){return a<b?a:b;}):today;
+  var maxD=ends.length?ends.reduce(function(a,b){return a>b?a:b;}):today;
+  var start=add(date(minD),-2),end=add(date(maxD),7);
+  var days=Math.max(21,Math.round((end-start)/86400000)+1);
+  return {start:start,days:Math.min(days,120)};
+}
+function renderPdGanttStrip(){
+  var el=document.getElementById('pd-gantt-strip');
+  var tasks=(pjCurrent.tasks||[]).slice().sort(function(a,b){return (a.start_date||'').localeCompare(b.start_date||'');});
+  if(!tasks.length){el.innerHTML='';return;}
+  var range=pdGanttDateRange();pdGanttState.rangeStart=range.start;
+  var dw=pdGanttState.dayWidth,todayIso=iso(new Date());
+  var DAYABBR=['Sø','Ma','Ti','On','To','Fr','Lø'];
+  var headCols='',bgCols='';
+  for(var i=0;i<range.days;i++){
+    var d=add(range.start,i),wk=d.getDay()===0||d.getDay()===6;
+    headCols+='<div class="gantt-day-col'+(wk?' weekend':'')+(iso(d)===todayIso?' today':'')+'" style="width:'+dw+'px">'+DAYABBR[d.getDay()]+'<br>'+(iso(d)===todayIso?'<span>'+d.getDate()+'</span>':d.getDate())+'</div>';
+    bgCols+='<div class="gantt-bg-col'+(wk?' weekend':'')+'" style="width:'+dw+'px"></div>';
+  }
+  var listRows='<div class="gantt-list-head">Opgave</div>',timelineRows='';
+  tasks.forEach(function(t){
+    listRows+='<div class="gantt-list-row" title="'+esc(t.name)+'"><span style="overflow:hidden;text-overflow:ellipsis">'+esc(t.name||'Uden navn')+'</span></div>';
+    var s=t.start_date?date(t.start_date):range.start,e=t.end_date?date(t.end_date):s;
+    var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
+    timelineRows+='<div class="gantt-row">'+
+      '<div class="gantt-row-bg">'+bgCols+'</div>'+
+      '<div class="gantt-bar" data-pd-task-id="'+t.id+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(t.name)+' ('+(t.start_date||'?')+' – '+(t.end_date||'?')+') — træk for at flytte, træk i kanten for at ændre varighed">'+
+        '<div class="gantt-bar-progress" style="width:'+Math.round((t.progress||0)*100)+'%"></div>'+
+        '<span class="gantt-bar-label">'+esc(t.name||'')+'</span>'+
+        '<div class="gantt-bar-handle left" data-handle="left"></div>'+
+        '<div class="gantt-bar-handle right" data-handle="right"></div>'+
+      '</div></div>';
+  });
+  el.innerHTML='<div class="gantt-chart"><div class="gantt-list">'+listRows+'</div>'+
+    '<div class="gantt-timeline" style="width:'+(range.days*dw)+'px">'+
+      '<div class="gantt-timeline-head">'+headCols+'</div>'+
+      '<div style="position:relative">'+timelineRows+'</div>'+
+    '</div></div>';
+  document.querySelectorAll('#pd-gantt-strip .gantt-bar[data-pd-task-id]').forEach(function(bar){
+    var taskId=bar.dataset.pdTaskId;
+    bar.addEventListener('mousedown',function(e){
+      if(e.target.classList.contains('gantt-bar-handle'))return;
+      startPdGanttDrag(e,bar,taskId,'move');
+    });
+    bar.querySelectorAll('.gantt-bar-handle').forEach(function(h){
+      h.addEventListener('mousedown',function(e){e.stopPropagation();startPdGanttDrag(e,bar,taskId,h.dataset.handle);});
+    });
+  });
+}
+function startPdGanttDrag(e,bar,taskId,mode){
+  e.preventDefault();
+  pdGanttDrag={taskId:taskId,bar:bar,mode:mode,startX:e.clientX,origLeft:parseInt(bar.style.left),origWidth:parseInt(bar.style.width),moved:false};
+  document.addEventListener('mousemove',onPdGanttDragMove);
+  document.addEventListener('mouseup',onPdGanttDragEnd);
+}
+function onPdGanttDragMove(e){
+  if(!pdGanttDrag)return;
+  var dx=e.clientX-pdGanttDrag.startX,dw=pdGanttState.dayWidth;
+  if(Math.abs(dx)>4)pdGanttDrag.moved=true;
+  var snapped=Math.round(dx/dw)*dw;
+  if(pdGanttDrag.mode==='move'){pdGanttDrag.bar.style.left=(pdGanttDrag.origLeft+snapped)+'px';}
+  else if(pdGanttDrag.mode==='right'){pdGanttDrag.bar.style.width=Math.max(dw-4,pdGanttDrag.origWidth+snapped)+'px';}
+  else if(pdGanttDrag.mode==='left'){
+    var newLeft=pdGanttDrag.origLeft+snapped,newWidth=pdGanttDrag.origWidth-snapped;
+    if(newWidth>=dw-4){pdGanttDrag.bar.style.left=newLeft+'px';pdGanttDrag.bar.style.width=newWidth+'px';}
+  }
+}
+async function onPdGanttDragEnd(){
+  if(!pdGanttDrag)return;
+  document.removeEventListener('mousemove',onPdGanttDragMove);
+  document.removeEventListener('mouseup',onPdGanttDragEnd);
+  if(!pdGanttDrag.moved){pdGanttDrag=null;return;}
+  var dw=pdGanttState.dayWidth;
+  var left=parseInt(pdGanttDrag.bar.style.left),width=parseInt(pdGanttDrag.bar.style.width);
+  var startOffset=Math.round(left/dw),spanDays=Math.max(1,Math.round((width+4)/dw));
+  var newStart=iso(add(pdGanttState.rangeStart,startOffset));
+  var newEnd=iso(add(date(newStart),spanDays-1));
+  var taskId=pdGanttDrag.taskId;
+  pdGanttDrag=null;
+  await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({start_date:newStart,end_date:newEnd})});
+  reloadPdCurrent();
 }
 function renderPdTasks(){
   var box=document.getElementById('pd-tasks-body');
@@ -11144,7 +11286,10 @@ function renderPdTime(){
       +'<td>'+esc(t.quote_line_id?(lineById[t.quote_line_id]||'–'):'–')+'</td>'
       +'<td>'+esc(t.bought_materials||'–')+'</td>'
       +'<td>'+(t.photo_url?'<a href="'+esc(t.photo_url)+'" target="_blank">📷 Se</a>':'–')+'</td>'
-      +'<td><button class="qz-icon-btn" data-action="pd-time-delete" data-id="'+t.id+'" title="Slet">🗑</button></td>'
+      +'<td><div class="qz-row-actions">'
+      +'<button class="qz-icon-btn" data-action="pd-time-invoice" data-id="'+t.id+'" title="Tilføj til faktura som ny linje">🧾→</button>'
+      +'<button class="qz-icon-btn" data-action="pd-time-delete" data-id="'+t.id+'" title="Slet">🗑</button>'
+      +'</div></td>'
       +'</tr>';
   }).join('');
   Array.prototype.forEach.call(body.querySelectorAll('[data-action="pd-time-delete"]'),function(btn){
@@ -11152,6 +11297,13 @@ function renderPdTime(){
       if(!await gmConfirm('Slet tidsregistreringen?'))return;
       await api('/api/projects/'+pjCurrent.id+'/time-entries/'+btn.dataset.id,{method:'DELETE'});
       reloadPdCurrent();
+    };
+  });
+  Array.prototype.forEach.call(body.querySelectorAll('[data-action="pd-time-invoice"]'),function(btn){
+    btn.onclick=async function(){
+      var r=await api('/api/projects/'+pjCurrent.id+'/time-entries/'+btn.dataset.id+'/invoice',{method:'POST'});
+      if(r&&r.ok){toast('Tilføjet til fakturaen ✓','✓');closeModal('project-detail-modal');await loadQzInvoices();renderQzInvoices();openInvoiceDetail(r.invoice_id);}
+      else toast((r&&r.error)||'Kunne ikke tilføje til fakturaen','❌');
     };
   });
 }
@@ -11179,6 +11331,92 @@ function renderPdQa(){
       reloadPdCurrent();
     };
   });
+}
+function renderPdContact(){
+  var box=document.getElementById('pd-contact-body');
+  var subs=pjCurrent.contact_form_submissions||[];
+  if(!subs.length){box.innerHTML='<div class="sub" style="padding:16px 0">Ingen kontaktformularer indsendt endnu.</div>';return;}
+  box.innerHTML=subs.map(function(s){
+    var answers=(typeof s.answers==='string'?JSON.parse(s.answers):s.answers)||[];
+    var rows=answers.map(function(a){
+      var val=a.type==='photo'&&a.value?('<a href="'+esc(a.value)+'" target="_blank">📷 Se billede</a>'):esc(a.value===true?'Ja':a.value===false?'Nej':(a.value||'–'));
+      return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px"><span>'+esc(a.label)+'</span><span>'+val+'</span></div>';
+    }).join('');
+    var subUname=(users.find(function(x){return +x.id===+s.submitted_by;})||{}).name||'–';
+    return '<div style="border:1px solid var(--bly-border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+      +'<div style="font-weight:700">'+esc(s.template_name||'Kontaktformular')+' <span class="sub" style="font-weight:400">· '+esc(String(s.submitted_at||'').slice(0,16).replace('T',' '))+' af '+esc(subUname)+'</span></div>'
+      +'<button class="qz-icon-btn" data-action="pd-contact-delete" data-id="'+s.id+'" title="Slet">🗑</button>'
+      +'</div>'+rows+'</div>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-contact-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet denne kontaktformular?'))return;
+      await api('/api/contact-form-submissions/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+}
+// KONTAKTFORMULAR-skabelon-builder (samme mønster som KS-skabeloner)
+var pjContactTemplates=[],cftEditingId=null;
+function loadPjContactTemplates(){return api('/api/contact-form-templates').then(function(r){pjContactTemplates=Array.isArray(r)?r:[];});}
+function renderPjContactTemplates(){
+  var body=document.getElementById('contact-templates-body');
+  if(!body)return;
+  if(!pjContactTemplates.length){body.innerHTML='<tr><td colspan="3" style="text-align:center;color:var(--bly-sub);padding:24px">Ingen kontaktformularer endnu</td></tr>';return;}
+  body.innerHTML=pjContactTemplates.map(function(t){
+    return '<tr><td>'+esc(t.name)+'</td><td class="num">'+((t.fields||[]).length)+'</td>'
+      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openContactTemplateModal('+t.id+')" title="Redigér">✎</button></div></td></tr>';
+  }).join('');
+}
+function cftAddFieldRow(field){
+  var wrap=document.getElementById('cft-fields');
+  var row=document.createElement('div');
+  row.className='qat-field-row';
+  row.style.cssText='display:flex;gap:6px;margin-bottom:6px;align-items:center';
+  row.innerHTML='<input class="input cft-field-label" placeholder="Feltnavn, fx \'Telefonnummer\'" style="flex:1">'
+    +'<select class="select cft-field-type" style="width:120px">'
+      +'<option value="text">Tekst</option>'
+      +'<option value="number">Tal</option>'
+      +'<option value="check">Afkrydsning</option>'
+      +'<option value="photo">Billede</option>'
+    +'</select>'
+    +'<button class="qz-icon-btn cft-remove-field" type="button" title="Fjern">✕</button>';
+  if(field){
+    row.querySelector('.cft-field-label').value=field.label||'';
+    row.querySelector('.cft-field-type').value=field.type||'text';
+  }
+  row.querySelector('.cft-remove-field').onclick=function(){row.remove();};
+  wrap.appendChild(row);
+}
+function openContactTemplateModal(id){
+  var t=id?pjContactTemplates.find(function(x){return x.id===id;}):null;
+  cftEditingId=id||null;
+  document.getElementById('contact-template-modal-title').textContent=t?'Redigér kontaktformular':'Ny kontaktformular';
+  document.getElementById('cft-name').value=t?t.name:'';
+  document.getElementById('cft-fields').innerHTML='';
+  ((t&&t.fields)||[]).forEach(function(f){cftAddFieldRow(f);});
+  if(!t){cftAddFieldRow({label:'Navn',type:'text'});cftAddFieldRow({label:'Telefonnummer',type:'text'});cftAddFieldRow({label:'E-mail',type:'text'});}
+  document.getElementById('cft-delete').classList.toggle('hidden',!t);
+  document.getElementById('contact-template-modal').classList.add('open');
+}
+async function saveContactTemplate(){
+  var name=document.getElementById('cft-name').value.trim();
+  if(!name){toast('Navn mangler','⚠️');return;}
+  var fields=Array.prototype.slice.call(document.querySelectorAll('#cft-fields .qat-field-row')).map(function(row){
+    return {label:row.querySelector('.cft-field-label').value.trim(),type:row.querySelector('.cft-field-type').value};
+  }).filter(function(f){return f.label;});
+  if(!fields.length){toast('Tilføj mindst ét felt','⚠️');return;}
+  var body={name:name,fields:fields};
+  var r=cftEditingId?await api('/api/contact-form-templates/'+cftEditingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/contact-form-templates',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Kontaktformular gemt','✓');closeModal('contact-template-modal');await loadPjContactTemplates();renderPjContactTemplates();}
+  else toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+async function deleteContactTemplate(){
+  if(!cftEditingId)return;
+  if(!await gmConfirm('Slet kontaktformularen? Tidligere indsendte besvarelser bevares.'))return;
+  var r=await api('/api/contact-form-templates/'+cftEditingId,{method:'DELETE'});
+  if(r&&r.ok){toast('Slettet','🗑');closeModal('contact-template-modal');await loadPjContactTemplates();renderPjContactTemplates();}
 }
 // KS-skabelon-builder
 function loadPjQaTemplates(){return api('/api/qa-templates').then(function(r){pjQaTemplates=Array.isArray(r)?r:[];});}
@@ -11799,6 +12037,30 @@ function bindQuotesModuleEvents(){
   document.getElementById('iv-void-btn').addEventListener('click',voidIvInvoice);
   document.getElementById('iv-pdf-link').addEventListener('click',function(e){e.preventDefault();if(ivState.id)qzOpenPdf('/api/invoices/'+ivState.id+'/pdf');});
 }
+
+// Hele denne fil kører inde i ÉN stor lukning (se '(function(){"use strict";'
+// helt i toppen af scriptet) — det er bevidst, så alle funktioner kan dele
+// f.eks. "token"/"me"/"API" uden at forurene window med hundredvis af navne.
+// MEN: HTML genereret som tekststrenge (fx '<tr onclick="openProjectDetail('+id+')">')
+// afvikles af browseren i GLOBAL scope når man klikker — den kan IKKE se navne
+// inde i denne lukning. Derfor skal ethvert funktionsnavn der bruges i et
+// onclick="..."-attribut eksplicit eksporteres til window herunder. Glemmer
+// man et navn her, virker knappen/rækken bare slet ikke ved klik (ingen fejl
+// synlig for brugeren, kun en "ikke defineret"-fejl i browserens konsol) —
+// tjek derfor denne liste igen hvis du tilføjer et nyt onclick="funktion(...)".
+window.closeModal=closeModal;
+window.deleteIvPayment=deleteIvPayment;
+window.deleteQzQuote=deleteQzQuote;
+window.deleteQzTemplate=deleteQzTemplate;
+window.openContactTemplateModal=openContactTemplateModal;
+window.openCrmModal=openCrmModal;
+window.openInvoiceDetail=openInvoiceDetail;
+window.openProductModal=openProductModal;
+window.openProjectDetail=openProjectDetail;
+window.openQaTemplateModal=openQaTemplateModal;
+window.openQuoteEditor=openQuoteEditor;
+window.openTemplateModal=openTemplateModal;
+window.useTemplateForNewQuote=useTemplateForNewQuote;
 
 bind();
 loadSettings();
