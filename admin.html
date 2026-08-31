@@ -2304,6 +2304,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-segtab active" data-pdtab="tasks" type="button">📅 Opgaver</button>
         <button class="bly-segtab" data-pdtab="photos" type="button">📷 Billeder</button>
         <button class="bly-segtab" data-pdtab="time" type="button">⏱️ Tidsregistrering</button>
+        <button class="bly-segtab" data-pdtab="materials" type="button">🧾 Materialer</button>
         <button class="bly-segtab" data-pdtab="qa" type="button">📋 Kvalitetssikring</button>
         <button class="bly-segtab" data-pdtab="contact" type="button">📇 Kontaktformular</button>
       </div>
@@ -2332,6 +2333,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <table class="bly-table">
           <thead><tr><th>Dato</th><th>Medarbejder</th><th class="num">Min.</th><th>Note</th><th>Post</th><th>Materialer</th><th>Billede</th><th style="width:90px"></th></tr></thead>
           <tbody id="pd-time-body"></tbody>
+        </table>
+      </div>
+      <div class="pdtabpage" id="pdtab-materials" style="display:none">
+        <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Materialer</span></div></div>
+        <table class="bly-table">
+          <thead><tr><th>Dato</th><th>Medarbejder</th><th>Butik</th><th class="num">Pris</th><th>Note</th><th>Kvittering</th><th style="width:90px"></th></tr></thead>
+          <tbody id="pd-materials-body"></tbody>
         </table>
       </div>
       <div class="pdtabpage" id="pdtab-qa" style="display:none">
@@ -11277,7 +11285,7 @@ async function openProjectDetail(id){
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
   switchPdTab('tasks');
-  renderPdTasks();renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdQa();renderPdContact();
+  renderPdTasks();renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQa();renderPdContact();
   // Genindlæs den delte opgavepool (tasks-variablen) her, så "Tilføj til
   // Kapacitetsbordet" og tjekpunkter på en netop oprettet/redigeret sags-opgave
   // altid har den friske spejl-række fra jt_tasks at slå op i.
@@ -11296,13 +11304,13 @@ async function reloadPdCurrent(){
   var ilink=document.getElementById('pd-invoice-link');
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
-  renderPdTasks();renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdQa();renderPdContact();
+  renderPdTasks();renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQa();renderPdContact();
   await loadPjProjects();renderPjProjects();
   loadAll();
 }
 function switchPdTab(name){
   document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdtab===name);});
-  ['tasks','photos','time','qa','contact'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
+  ['tasks','photos','time','materials','qa','contact'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
 }
 async function savePdStatus(){
   if(!pjCurrent)return;
@@ -11569,6 +11577,40 @@ function renderPdTime(){
   Array.prototype.forEach.call(body.querySelectorAll('[data-action="pd-time-invoice"]'),function(btn){
     btn.onclick=async function(){
       var r=await api('/api/projects/'+pjCurrent.id+'/time-entries/'+btn.dataset.id+'/invoice',{method:'POST'});
+      if(r&&r.ok){toast('Tilføjet til fakturaen ✓','✓');await loadQzInvoices();renderQzInvoices();openInvoiceDetail(r.invoice_id);}
+      else toast((r&&r.error)||'Kunne ikke tilføje til fakturaen','❌');
+    };
+  });
+}
+function renderPdMaterials(){
+  var body=document.getElementById('pd-materials-body');
+  var mats=pjCurrent.materials||[];
+  if(!mats.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen materialer registreret endnu</td></tr>';return;}
+  body.innerHTML=mats.map(function(m){
+    var uname=(users.find(function(x){return +x.id===+m.user_id;})||{}).name||'–';
+    return '<tr>'
+      +'<td>'+esc(fmtDaDate(m.created_at))+'</td>'
+      +'<td>'+esc(uname)+'</td>'
+      +'<td>'+esc(m.store||'–')+'</td>'
+      +'<td class="num">'+krFmt(Number(m.price))+'</td>'
+      +'<td>'+esc(m.note||'–')+'</td>'
+      +'<td>'+(m.receipt_photo_url?'<a href="'+esc(m.receipt_photo_url)+'" target="_blank">📷 Se</a>':'–')+'</td>'
+      +'<td><div class="qz-row-actions">'
+      +'<button class="qz-icon-btn" data-action="pd-materials-invoice" data-id="'+m.id+'" title="Tilføj til faktura som ny linje">🧾→</button>'
+      +'<button class="qz-icon-btn" data-action="pd-materials-delete" data-id="'+m.id+'" title="Slet">🗑</button>'
+      +'</div></td>'
+      +'</tr>';
+  }).join('');
+  Array.prototype.forEach.call(body.querySelectorAll('[data-action="pd-materials-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet materialeposten?'))return;
+      await api('/api/projects/'+pjCurrent.id+'/materials/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+  Array.prototype.forEach.call(body.querySelectorAll('[data-action="pd-materials-invoice"]'),function(btn){
+    btn.onclick=async function(){
+      var r=await api('/api/projects/'+pjCurrent.id+'/materials/'+btn.dataset.id+'/invoice',{method:'POST'});
       if(r&&r.ok){toast('Tilføjet til fakturaen ✓','✓');await loadQzInvoices();renderQzInvoices();openInvoiceDetail(r.invoice_id);}
       else toast((r&&r.error)||'Kunne ikke tilføje til fakturaen','❌');
     };

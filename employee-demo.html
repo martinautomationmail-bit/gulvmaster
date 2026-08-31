@@ -546,18 +546,60 @@ function pmRenderDetail(){
   const entriesHtml=myEntries.length?myEntries.map(t=>`
     <div class="file-item"><div><span class="file-cat">${esc(fmtPmDate(t.entry_date))} · ${t.minutes} min</span><br><span style="font-size:12px">${esc(t.note)}</span></div></div>
   `).join(''):'<p class="modal-empty" style="margin:8px 0;padding:14px">Du har ikke registreret tid på denne sag endnu.</p>';
+  const myMaterials=(p.materials||[]).filter(m=>+m.user_id===+user.id).slice(0,8);
+  const materialsHtml=myMaterials.length?myMaterials.map(m=>`
+    <div class="file-item"><div><span class="file-cat">${esc(fmtPmDate(m.created_at))}${m.store?' · '+esc(m.store):''}</span><br><span style="font-size:12px">${Math.round(Number(m.price)).toLocaleString('da-DK')} kr${m.note?' · '+esc(m.note):''}</span></div></div>
+  `).join(''):'<p class="modal-empty" style="margin:8px 0;padding:14px">Du har ikke registreret nogen materialer på denne sag endnu.</p>';
   body.innerHTML=`
     <button class="small-btn" onclick="pmRenderList()" style="margin-bottom:12px">← Alle projekter</button>
     ${p.customer_address?`<div class="detail-line" style="margin-bottom:10px">📍 <span>${esc(p.customer_address)}</span></div>`:''}
     <div class="actions" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
       <button class="action time" type="button" onclick="pmOpenTimeForm()">⏱ Registrér tid</button>
+      <button class="action files" type="button" onclick="pmOpenMaterialsForm()">🧾 Materialer</button>
       <button class="action files" type="button" onclick="pmOpenPhotoForm()">📷 Tilføj billede</button>
       <button class="action qc" type="button" onclick="pmOpenQaPicker()">🛡 Udfyld KS-formular</button>
       <button class="action qc" type="button" onclick="pmOpenContactPicker()">📇 Kontaktformular</button>
     </div>
     <div class="tm-section-label">Dine seneste tidsregistreringer</div>
     ${entriesHtml}
+    <div class="tm-section-label" style="margin-top:14px">Dine seneste materialer</div>
+    ${materialsHtml}
   `;
+}
+function pmOpenMaterialsForm(){
+  pmState.view='materials-form';
+  document.getElementById('pm-title').textContent='🧾 Materialer';
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>
+    <label class="req-label">Billede af regningen/fakturaen — påkrævet</label>
+    <input class="req-input" type="file" accept="image/*" capture="environment" id="pmm-photo">
+    <label class="req-label">Pris (kr.)</label>
+    <input class="req-input" type="number" step="0.01" min="0" id="pmm-price" placeholder="Fx 340">
+    <label class="req-label">Butik / leverandør</label>
+    <input class="req-input" id="pmm-store" placeholder="Fx Bilka, Silvan, XL-Byg">
+    <label class="req-label">Note — valgfrit</label>
+    <input class="req-input" id="pmm-note" placeholder="Fx 'Lim og 2 spande spartelmasse'">
+    <div id="pmm-feedback" class="req-feedback"></div>
+    <button class="req-submit" type="button" id="pmm-submit" onclick="pmSubmitMaterials()">Gem materiale</button>
+  `;
+}
+async function pmSubmitMaterials(){
+  const file=document.getElementById('pmm-photo').files[0];
+  const price=Number(document.getElementById('pmm-price').value);
+  const store=document.getElementById('pmm-store').value.trim();
+  const note=document.getElementById('pmm-note').value.trim();
+  if(!file){pmFeedback('pmm-feedback','Upload et billede af regningen/fakturaen',false);return}
+  if(!price||price<=0){pmFeedback('pmm-feedback','Angiv prisen',false);return}
+  if(!store){pmFeedback('pmm-feedback','Angiv hvilken butik/leverandør',false);return}
+  const btn=document.getElementById('pmm-submit');btn.disabled=true;btn.textContent='Gemmer…';
+  try{
+    const dataUrl=await pmReadFileAsDataUrl(file);
+    const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
+    if(!up||!up.ok){pmFeedback('pmm-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade billedet',false);btn.disabled=false;btn.textContent='Gem materiale';return}
+    const r=await api('/api/projects/'+pmState.current.id+'/materials',{method:'POST',body:JSON.stringify({price,store,note:note||null,receipt_photo_url:up.data.url})});
+    if(r&&r.ok){toast('Materiale gemt ✓');await pmOpenProject(pmState.current.id)}
+    else{pmFeedback('pmm-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem materiale'}
+  }catch(e){pmFeedback('pmm-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem materiale'}
 }
 function pmOpenTimeForm(){
   pmState.view='time-form';
@@ -754,22 +796,32 @@ async function pmOpenProjectFor(projectId){
   return true;
 }
 async function openProjectDashboard(projectId){
+  if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
   document.getElementById('projects-modal').classList.add('open');
   document.getElementById('pm-title').textContent='Henter…';
   document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
   if(await pmOpenProjectFor(projectId))pmRenderDetail();
 }
 async function openTimeFormForTask(projectId){
+  if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
   document.getElementById('projects-modal').classList.add('open');
   document.getElementById('pm-title').textContent='Henter…';
   document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
   if(await pmOpenProjectFor(projectId))pmOpenTimeForm();
 }
 async function openQaPickerForTask(projectId){
+  if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
   document.getElementById('projects-modal').classList.add('open');
   document.getElementById('pm-title').textContent='Henter…';
   document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
   if(await pmOpenProjectFor(projectId))pmOpenQaPicker();
+}
+async function openMaterialsFormForTask(projectId){
+  if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
+  document.getElementById('projects-modal').classList.add('open');
+  document.getElementById('pm-title').textContent='Henter…';
+  document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  if(await pmOpenProjectFor(projectId))pmOpenMaterialsForm();
 }
 
 function tomorrowISO(){const d=new Date();d.setDate(d.getDate()+1);return iso(d)}
@@ -940,11 +992,14 @@ async function confirmDocumentationAndComplete(){
   const note=document.getElementById('doc-note').value.trim();
   closeDocModal();
   await toggleTaskDone(id,true,true,note);
-  // Åbn JobTreads filer for denne sag, så billeder/dokumenter kan lægges direkte ind med det rigtige tag.
-  if(a&&a.job_id){
+  // Åbn JobTreads filer for denne sag, så billeder/dokumenter kan lægges direkte ind
+  // med det rigtige tag — men KUN for "gamle" opgaver der ikke hører til en sag i
+  // Martins eget program (task_project_id). Sags-opgaver har intet rigtigt
+  // JobTread-job at åbne filer for, så der skal hverken åbnes et vindue eller vises
+  // en forvirrende "ingen JobTread-sag koblet"-besked — "Mark as done" er da simpelthen
+  // færdig, som den skal være.
+  if(a&&a.job_id&&!a.task_project_id){
     window.open('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files','_blank');
-  }else{
-    toast('Ingen JobTread-sag koblet på denne opgave — filer kan ikke åbnes automatisk');
   }
 }
 
@@ -984,14 +1039,11 @@ function render(){
       list.forEach((a,idx)=>{
       const hasTime=!!String(a.start_time||'').trim();
       if(!hasTime&&!shownUntimedHeader){shownUntimedHeader=true;out+='<div class="untimed-divider">⏳ No fixed time — you decide the order</div>';}
-      const t=TYPES[a.type_guess]||TYPES.other;const address=String(a.job_address||'').trim();const phone=phoneValue(a);const maps=address?'https://maps.google.com/?q='+encodeURIComponent(address):'';const weatherId='w-'+String(a.id)+'-'+date.replace(/[^0-9]/g,'');weatherItems.set(weatherId,{address:address,date:date,lat:a.job_lat,lng:a.job_lng});bookingNotes.set(String(a.id),{note:a.notes,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||'')});
+      const t=TYPES[a.type_guess]||TYPES.other;const address=String(a.job_address||'').trim();const phone=phoneValue(a);const maps=address?'https://maps.google.com/?q='+encodeURIComponent(address):'';const weatherId='w-'+String(a.id)+'-'+date.replace(/[^0-9]/g,'');weatherItems.set(weatherId,{address:address,date:date,lat:a.job_lat,lng:a.job_lng});bookingNotes.set(String(a.id),{note:a.task_project_id?(a.task_description||a.notes):a.notes,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||'')});
       const mapButton=maps?`<a class="action maps" href="${maps}" target="_blank" rel="noopener">📍 Maps</a>`:`<button class="action maps" type="button" onclick="toast('No address on this task')">📍 Maps</button>`;
       const addressMarkup=address?(maps?`<a href="${maps}" target="_blank" rel="noopener">${esc(address)}</a>`:esc(address)):'No address';
       const phoneMarkup=phone?`<a href="${esc(phoneHref(phone))}">${esc(phone)}</a>`:'<span>No customer phone number</span>';
       const noteId=Number(a.id)||0;
-      const jobFilesLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files'):'https://app.jobtread.com';
-      const jobBillLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/documents'):'https://app.jobtread.com';
-      const jobFormsLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/forms'):'https://app.jobtread.com';
       const timeChip=hasTime?`<span class="time-chip">⏰ ${esc(a.start_time)}</span>`:`<span class="time-chip untimed">🕓 Self-scheduled</span>`;
       const isDone=!!a.completed_at;
       // En "hel dag" bookes som 1.0 i planlægningen, og regnes her som 9 timers arbejde
@@ -1000,24 +1052,21 @@ function render(){
       const hoursLabel=(hoursNum%1===0?hoursNum:hoursNum.toFixed(2).replace(/0+$/,'').replace(/\.$/,'').replace('.',',')) + ' timer';
       const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:`<button class="action done-btn" type="button" onclick="openDocModal(${noteId})">✅ Mark as done</button>`;
       const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse fra JobTread'}</div><div class="task-description-body">${esc(a.task_description).replace(/\n/g,'<br>')}</div></div>`:'';
-      // DEMO: en opgave der hører til en sag (task_project_id sat — se
-      // mirrorProjectTaskToPool i server.js) styres nu fra Martins eget program,
-      // IKKE fra JobTread. Der findes intet rigtigt JobTread-job at linke til, så
-      // "Read about the task"/"Job files"/"Upload Bill" giver ikke mening her —
-      // og "Track your time"/"Kvalitetskontrol form" åbner en formular i selve
-      // appen (mod sagen) i stedet for at sende medarbejderen ud til JobTread.
+      // DEMO: alle opgaver styres nu fra Martins eget program, IKKE fra
+      // JobTread — "Read about the task"/"Job files"/"Upload Bill" er fjernet
+      // (der er intet rigtigt JobTread-job at linke til), og "Registrér
+      // tid"/"Udfyld KS-formular"/"Materialer" åbner altid en formular i selve
+      // appen, sat direkte på opgavens sag. Har opgaven (endnu) ingen sag
+      // koblet på (task_project_id), viser knapperne en venlig besked i
+      // stedet for at fejle — se guard i openProjectDashboard() m.fl.
       const isCaseTask=!!a.task_project_id;
-      const billIcon=isCaseTask?'':`<a class="upload-bill-icon" href="${esc(jobBillLink)}" target="_blank" rel="noopener" title="Upload regning på denne opgave i JobTread">🧾 Upload Bill</a>`;
       const caseIcon=isCaseTask?`<span class="upload-bill-icon" style="background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE" title="Denne opgave hører til en sag i dit eget program">📁 Sag</span>`:'';
-      const caseActions=isCaseTask?`
+      const caseActions=`
         <button class="action info" type="button" onclick="openProjectDashboard(${a.task_project_id})">🔗 Se sagen</button>
         <button class="action time" type="button" onclick="openTimeFormForTask(${a.task_project_id})">⏱ Registrér tid</button>
-        <button class="action qc" type="button" onclick="openQaPickerForTask(${a.task_project_id})">🛡 Udfyld KS-formular</button>`:`
-        <a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Read about the task</a>
-        <a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Job files</a>
-        <a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track your time</a>
-        <a class="action qc" href="${esc(jobFormsLink)}" target="_blank" rel="noopener">🛡 Kvalitetskontrol form</a>`;
-      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}${billIcon}${caseIcon}</div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button>${caseActions}<button class="action rules" type="button" onclick="openRulesModal()">📜 Regler og lovgivning</button>${doneBtn}</div></article>`;
+        <button class="action qc" type="button" onclick="openQaPickerForTask(${a.task_project_id})">🛡 Udfyld KS-formular</button>
+        <button class="action files" type="button" onclick="openMaterialsFormForTask(${a.task_project_id})">🧾 Materialer</button>`;
+      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}${caseIcon}</div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button>${caseActions}<button class="action rules" type="button" onclick="openRulesModal()">📜 Regler og lovgivning</button>${doneBtn}</div></article>`;
     });}
     out+='</section>';});
   document.getElementById('tasks-container').innerHTML=total?out:'<div class="empty"><div class="empty-icon">📅</div><h3>No tasks in this view</h3><p>Choose another day or show the whole week.</p></div>';

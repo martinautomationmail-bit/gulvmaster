@@ -1072,6 +1072,21 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_time_entries_project ON time_entries(project_id);
+
+    -- ── MATERIALER: strukturerede indkøb (kvitteringsbillede + pris + butik)
+    -- knyttet til en sag — erstatter det gamle "Upload Bill"-link ud til
+    -- JobTread på sags-opgaver, som der intet rigtigt JobTread-job er for.
+    CREATE TABLE IF NOT EXISTS project_materials (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL,
+      price NUMERIC NOT NULL DEFAULT 0,
+      store TEXT,
+      note TEXT,
+      receipt_photo_url TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_materials_project ON project_materials(project_id);
     CREATE TABLE IF NOT EXISTS project_photos (
       id SERIAL PRIMARY KEY,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -4701,17 +4716,18 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
 app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
-  const [tasks, photos, timeEntries, qaSubmissions, contactSubmissions, quoteLines] = await Promise.all([
+  const [tasks, photos, timeEntries, materials, qaSubmissions, contactSubmissions, quoteLines] = await Promise.all([
     pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 ORDER BY position ASC, id ASC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM project_photos WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM time_entries WHERE project_id=$1 ORDER BY entry_date DESC, id DESC', [req.params.id]).then(r => r.rows),
+    pool.query('SELECT * FROM project_materials WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM qa_submissions WHERE project_id=$1 ORDER BY submitted_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM contact_form_submissions WHERE project_id=$1 ORDER BY submitted_at DESC', [req.params.id]).then(r => r.rows),
     project.quote_id
       ? pool.query('SELECT id, description FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id]).then(r => r.rows)
       : Promise.resolve([])
   ]);
-  res.json({ ...project, tasks, photos, time_entries: timeEntries, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines });
+  res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines });
 }));
 
 app.put('/api/projects/:id', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -4848,6 +4864,60 @@ app.post('/api/projects/:id/time-entries', auth, asyncRoute(async (req, res) => 
 app.delete('/api/projects/:id/time-entries/:entryId', auth, financeOnly, asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM time_entries WHERE id=$1 AND project_id=$2', [req.params.entryId, req.params.id]);
   res.json({ ok: true });
+}));
+
+// ── MATERIALER — erstatter det gamle "Upload Bill"-link ud til JobTread på
+// sags-opgaver (der findes intet rigtigt JobTread-job at koble en regning på).
+// Kræver et kvitteringsbillede, pris og butik/leverandør, så Martin bagefter
+// kan trække posten ind som en fakturalinje med ét klik (se .../invoice nedenfor,
+// som følger nøjagtig samme mønster som .../time-entries/:entryId/invoice).
+app.post('/api/projects/:id/materials', auth, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const price = Number(b.price);
+  const store = String(b.store || '').trim();
+  if (!b.receipt_photo_url) return res.status(400).json({ error: 'Upload et billede af regningen/fakturaen' });
+  if (!price || price <= 0) return res.status(400).json({ error: 'Angiv prisen' });
+  if (!store) return res.status(400).json({ error: 'Angiv hvilken butik/leverandør' });
+  const r = await pool.query(`
+    INSERT INTO project_materials (project_id,user_id,price,store,note,receipt_photo_url)
+    VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
+  `, [req.params.id, req.user.id, price, store, b.note || null, b.receipt_photo_url]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.delete('/api/projects/:id/materials/:materialId', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM project_materials WHERE id=$1 AND project_id=$2', [req.params.materialId, req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── HURTIG FAKTURERING FRA MATERIALER — samme mønster som
+// .../time-entries/:entryId/invoice: lægger materialeposten som ny linje på
+// sagens faktura. Modsat tidsregistreringer (hvor beløbet sættes til 0/0, fordi
+// timeprisen skal fastsættes af Martin) sætter vi her både cost- og salgspris
+// til den registrerede pris, da den ER den faktiske udgift — Martin kan justere
+// avancen bagefter på selve fakturalinjen, hvis materialerne skal videresælges
+// med tillæg.
+app.post('/api/projects/:id/materials/:materialId/invoice', auth, financeOnly, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
+  if (!project.invoice_id) return res.status(400).json({ error: 'Sagen har endnu ingen faktura — konvertér tilbuddet til faktura under Tilbud & Faktura først' });
+  const mat = await pgOne('SELECT * FROM project_materials WHERE id=$1 AND project_id=$2', [req.params.materialId, req.params.id]);
+  if (!mat) return res.status(404).json({ error: 'Materiale-posten blev ikke fundet' });
+  const invoice = await pgOne('SELECT * FROM invoices WHERE id=$1', [project.invoice_id]);
+  const posRes = await pgOne('SELECT COALESCE(MAX(position),-1)::int AS maxpos FROM invoice_lines WHERE invoice_id=$1', [invoice.id]);
+  const pos = posRes.maxpos + 1;
+  const desc = 'Materialer' + (mat.store ? ' — ' + mat.store : '') + (mat.note ? ' (' + mat.note + ')' : '');
+  await pool.query(`
+    INSERT INTO invoice_lines (invoice_id,description,unit,quantity,cost_price,sell_price,position,product_type)
+    VALUES ($1,$2,'stk',1,$3,$3,$4,'materialer')
+  `, [invoice.id, desc, mat.price, pos]);
+  const lines = (await pool.query('SELECT * FROM invoice_lines WHERE invoice_id=$1', [invoice.id])).rows;
+  const totals = computeTotals(lines, Number(invoice.tax_rate), Number(invoice.discount_pct) || 0);
+  await pool.query(`UPDATE invoices SET subtotal=$1, tax_amount=$2, total=$3, updated_at=${nowTextSQL()} WHERE id=$4`, [totals.subtotal, totals.taxAmount, totals.total, invoice.id]);
+  await refreshInvoiceStatus(invoice.id);
+  res.json({ ok: true, invoice_id: invoice.id });
 }));
 
 // ── KVALITETSSIKRING — Martin bygger formularer (skabeloner med felter),
