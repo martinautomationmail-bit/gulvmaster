@@ -21,6 +21,7 @@ const cron = require('node-cron');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
 const webpush = require('web-push');
+const PDFDocument = require('pdfkit');
 // FEJLSIKRING: hvis xlsx eller pdf-parse af en eller anden grund ikke kunne installeres
 // korrekt på serveren (fx en afvigelse i build-miljøet), skal det IKKE vælte hele
 // appen — kun bankafstemnings-featuren, som i så fald simpelthen ikke er tilgængelig.
@@ -770,6 +771,120 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_task_requests_status ON task_requests(status);
     CREATE INDEX IF NOT EXISTS idx_task_requests_user ON task_requests(user_id);
+
+    -- ═══════════════════════════════════════════════════════════════════
+    -- TILBUD & FAKTURA — eget produktkatalog (cost/salgspris/avance), egne
+    -- tilbud/fakturaer med linjer, og delbetalinger pr. faktura. Bevidst
+    -- adskilt fra JobTread's egne dokumenter (customerOrder/customerInvoice) —
+    -- JobTread understøtter ikke delbetalinger, som er hele pointen her.
+    -- Produktkataloget kan engangs-importeres fra JobTread's costItems, men
+    -- lever og redigeres derefter 100% lokalt.
+    -- ═══════════════════════════════════════════════════════════════════
+    CREATE TABLE IF NOT EXISTS products (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      sku TEXT,
+      unit TEXT DEFAULT 'stk',
+      cost_price NUMERIC NOT NULL DEFAULT 0,
+      sell_price NUMERIC NOT NULL DEFAULT 0,
+      category TEXT,
+      active INTEGER DEFAULT 1,
+      jt_cost_item_id TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
+    CREATE INDEX IF NOT EXISTS idx_products_jt_cost_item ON products(jt_cost_item_id);
+
+    CREATE TABLE IF NOT EXISTS doc_counters (
+      kind TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      seq INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (kind, year)
+    );
+
+    CREATE TABLE IF NOT EXISTS quotes (
+      id SERIAL PRIMARY KEY,
+      quote_number TEXT UNIQUE,
+      job_name TEXT,
+      job_id TEXT,
+      customer_address TEXT,
+      customer_phone TEXT,
+      customer_email TEXT,
+      status TEXT NOT NULL DEFAULT 'draft', -- draft, sent, accepted, declined, converted
+      subtotal NUMERIC NOT NULL DEFAULT 0,
+      tax_rate NUMERIC NOT NULL DEFAULT 25,
+      tax_amount NUMERIC NOT NULL DEFAULT 0,
+      total NUMERIC NOT NULL DEFAULT 0,
+      notes TEXT,
+      valid_until TEXT,
+      created_by INTEGER,
+      converted_invoice_id INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
+    CREATE INDEX IF NOT EXISTS idx_quotes_job_name ON quotes(job_name);
+
+    CREATE TABLE IF NOT EXISTS quote_lines (
+      id SERIAL PRIMARY KEY,
+      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+      product_id INTEGER,
+      description TEXT NOT NULL,
+      unit TEXT DEFAULT 'stk',
+      quantity NUMERIC NOT NULL DEFAULT 1,
+      cost_price NUMERIC NOT NULL DEFAULT 0,
+      sell_price NUMERIC NOT NULL DEFAULT 0,
+      position INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_quote_lines_quote ON quote_lines(quote_id);
+
+    CREATE TABLE IF NOT EXISTS invoices (
+      id SERIAL PRIMARY KEY,
+      invoice_number TEXT UNIQUE,
+      quote_id INTEGER,
+      job_name TEXT,
+      job_id TEXT,
+      customer_address TEXT,
+      customer_phone TEXT,
+      customer_email TEXT,
+      status TEXT NOT NULL DEFAULT 'unpaid', -- unpaid, partial, paid, void
+      subtotal NUMERIC NOT NULL DEFAULT 0,
+      tax_rate NUMERIC NOT NULL DEFAULT 25,
+      tax_amount NUMERIC NOT NULL DEFAULT 0,
+      total NUMERIC NOT NULL DEFAULT 0,
+      notes TEXT,
+      due_date TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+    CREATE INDEX IF NOT EXISTS idx_invoices_job_name ON invoices(job_name);
+
+    CREATE TABLE IF NOT EXISTS invoice_lines (
+      id SERIAL PRIMARY KEY,
+      invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+      product_id INTEGER,
+      description TEXT NOT NULL,
+      unit TEXT DEFAULT 'stk',
+      quantity NUMERIC NOT NULL DEFAULT 1,
+      cost_price NUMERIC NOT NULL DEFAULT 0,
+      sell_price NUMERIC NOT NULL DEFAULT 0,
+      position INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice ON invoice_lines(invoice_id);
+
+    CREATE TABLE IF NOT EXISTS invoice_payments (
+      id SERIAL PRIMARY KEY,
+      invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+      amount NUMERIC NOT NULL,
+      paid_at TEXT NOT NULL,
+      method TEXT,
+      note TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invoice_id);
   `);
 
   await pool.query(`
@@ -1263,7 +1378,15 @@ app.get('/api/settings', asyncRoute(async (req, res) => {
   result.rows.forEach(row => { map[row.key] = row.value; });
   res.json({
     company_name: map.company_name || 'Gulv Master Enterprise ApS',
-    logo_url: map.logo_url || null
+    logo_url: map.logo_url || null,
+    company_address: map.company_address || '',
+    company_cvr: map.company_cvr || '',
+    company_phone: map.company_phone || '',
+    company_email: map.company_email || '',
+    company_bank_reg: map.company_bank_reg || '',
+    company_bank_account: map.company_bank_account || '',
+    invoice_footer_note: map.invoice_footer_note || '',
+    default_tax_rate: map.default_tax_rate || '25'
   });
 }));
 
@@ -1272,6 +1395,14 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
   const entries = [];
   if (body.company_name !== undefined) entries.push(['company_name', String(body.company_name).trim().slice(0, 200)]);
   if (body.logo_url !== undefined) entries.push(['logo_url', body.logo_url ? String(body.logo_url).slice(0, 3000000) : null]);
+  if (body.company_address !== undefined) entries.push(['company_address', String(body.company_address).slice(0, 500)]);
+  if (body.company_cvr !== undefined) entries.push(['company_cvr', String(body.company_cvr).slice(0, 50)]);
+  if (body.company_phone !== undefined) entries.push(['company_phone', String(body.company_phone).slice(0, 50)]);
+  if (body.company_email !== undefined) entries.push(['company_email', String(body.company_email).slice(0, 200)]);
+  if (body.company_bank_reg !== undefined) entries.push(['company_bank_reg', String(body.company_bank_reg).slice(0, 20)]);
+  if (body.company_bank_account !== undefined) entries.push(['company_bank_account', String(body.company_bank_account).slice(0, 30)]);
+  if (body.invoice_footer_note !== undefined) entries.push(['invoice_footer_note', String(body.invoice_footer_note).slice(0, 1000)]);
+  if (body.default_tax_rate !== undefined) entries.push(['default_tax_rate', String(Number(body.default_tax_rate) || 25)]);
   if (body.completion_email_subject !== undefined) entries.push(['completion_email_subject', String(body.completion_email_subject).slice(0, 300)]);
   if (body.completion_email_body !== undefined) entries.push(['completion_email_body', String(body.completion_email_body).slice(0, 5000)]);
   if (body.cleaning_pdf_base64 !== undefined) entries.push(['cleaning_pdf_base64', body.cleaning_pdf_base64 ? String(body.cleaning_pdf_base64).slice(0, 15000000) : null]);
@@ -5896,6 +6027,444 @@ app.post('/api/finance/email-report', auth, financeOnly, asyncRoute(async (req, 
   } catch (error) {
     res.status(500).json({ error: 'Kunne ikke sende mailen: ' + error.message });
   }
+}));
+
+// ══════════════════════════════════════════════════════════════
+// TILBUD & FAKTURA — eget produktkatalog + tilbud/faktura-system med
+// delbetalinger, adskilt fra JobTread's egne dokumenter (se financeOnly
+// ovenfor). Kun for brugere med is_finance_admin=1, ligesom resten af Økonomi.
+// ══════════════════════════════════════════════════════════════
+async function nextDocNumber(kind, prefix) {
+  const year = new Date().getFullYear();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const row = await client.query('SELECT seq FROM doc_counters WHERE kind=$1 AND year=$2 FOR UPDATE', [kind, year]);
+    const seq = (row.rows[0]?.seq || 0) + 1;
+    await client.query(`
+      INSERT INTO doc_counters (kind, year, seq) VALUES ($1,$2,$3)
+      ON CONFLICT (kind, year) DO UPDATE SET seq=$3
+    `, [kind, year, seq]);
+    await client.query('COMMIT');
+    return `${prefix}-${year}-${String(seq).padStart(4, '0')}`;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function computeTotals(lines, taxRate) {
+  const subtotal = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.sell_price) || 0), 0);
+  const taxAmount = subtotal * (Number(taxRate) || 0) / 100;
+  return { subtotal, taxAmount, total: subtotal + taxAmount };
+}
+
+async function getCompanyInfo() {
+  const rows = await pool.query(`
+    SELECT key,value FROM app_settings WHERE key IN
+    ('company_name','logo_url','company_address','company_cvr','company_phone','company_email','company_bank_reg','company_bank_account','invoice_footer_note','default_tax_rate')
+  `);
+  const map = {};
+  rows.rows.forEach(r => { map[r.key] = r.value; });
+  return {
+    name: map.company_name || 'Gulv Master Enterprise ApS',
+    logoUrl: map.logo_url || null,
+    address: map.company_address || '',
+    cvr: map.company_cvr || '',
+    phone: map.company_phone || '',
+    email: map.company_email || '',
+    bankReg: map.company_bank_reg || '',
+    bankAccount: map.company_bank_account || '',
+    footerNote: map.invoice_footer_note || '',
+    defaultTaxRate: Number(map.default_tax_rate) || 25
+  };
+}
+
+// ── PRODUKTER ────────────────────────────────────────────────
+app.get('/api/products', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM products WHERE active=1 ORDER BY category NULLS LAST, name');
+  res.json(rows.rows);
+}));
+
+app.post('/api/products', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
+  const r = await pool.query(`
+    INSERT INTO products (name,description,sku,unit,cost_price,sell_price,category)
+    VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
+  `, [String(b.name).trim(), b.description || null, b.sku || null, b.unit || 'stk', Number(b.cost_price) || 0, Number(b.sell_price) || 0, b.category || null]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.put('/api/products/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const current = await pgOne('SELECT * FROM products WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Produktet blev ikke fundet' });
+  await pool.query(`
+    UPDATE products SET name=$1,description=$2,sku=$3,unit=$4,cost_price=$5,sell_price=$6,category=$7,updated_at=${nowTextSQL()}
+    WHERE id=$8
+  `, [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.description !== undefined ? b.description : current.description,
+    b.sku !== undefined ? b.sku : current.sku,
+    b.unit !== undefined ? b.unit : current.unit,
+    b.cost_price !== undefined ? Number(b.cost_price) || 0 : current.cost_price,
+    b.sell_price !== undefined ? Number(b.sell_price) || 0 : current.sell_price,
+    b.category !== undefined ? b.category : current.category,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/products/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  // Slet ikke rigtigt — historiske tilbud/fakturaer refererer stadig til product_id,
+  // og skal blive ved med at vise korrekt selv efter produktet er "slettet".
+  await pool.query('UPDATE products SET active=0 WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// Engangs-import fra JobTread's costItems — bevidst IKKE en løbende synkronisering
+// (se svar i chatten): henter alt organisationen har brugt af cost items på tværs af
+// jobs, og lægger de unikke navne ind som et udgangspunkt for jeres eget katalog.
+// Køres kun når admin selv trykker på knappen, aldrig automatisk.
+app.post('/api/products/import-from-jobtread', auth, financeOnly, asyncRoute(async (req, res) => {
+  if (!JT_ORG || !JT_GRANT) return res.status(400).json({ error: 'JobTread er ikke sat op på serveren' });
+  // JobTread har ikke en selvstændig "produktkatalog"-type — cost items på tværs
+  // af alle jobs bruges i stedet, hvor en cost item enten ER en genbrugelig skabelon
+  // (organizationCostItem er tom, og den har sin egen unitCost/unitPrice), eller er
+  // en KOPI af én, brugt på et konkret job (organizationCostItem peger på skabelonen,
+  // og har typisk ikke sin egen pris). Vi importerer kun items med reelle pris-data,
+  // dedupliceret på navn — kopier uden egen pris springes over, da skabelonen med
+  // samme navn allerede giver den rigtige cost/salgspris.
+  const seen = new Map(); // navn (lowercase) -> {name,unit,cost,price,jtId,isTemplate}
+  let page = null;
+  let guard = 0;
+  try {
+    do {
+      guard++;
+      const data = await jtFetch({
+        query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, costItems: {
+          $: { size: 100, page: page || undefined },
+          nextPage: {},
+          nodes: { id: {}, name: {}, unit: { name: {} }, unitCost: {}, unitPrice: {}, organizationCostItem: { id: {} } }
+        } } }
+      }, 'Produktimport: hent cost items fra JobTread');
+      const conn = data?.organization?.costItems;
+      for (const n of conn?.nodes || []) {
+        if (!n.name) continue;
+        if (n.unitCost == null && n.unitPrice == null) continue; // job-kopi uden egen pris — spring over
+        const key = n.name.toLowerCase().trim();
+        const isTemplate = !n.organizationCostItem;
+        const existing = seen.get(key);
+        if (!existing || (isTemplate && !existing.isTemplate)) {
+          seen.set(key, { name: n.name, unit: n.unit?.name || 'stk', cost: Number(n.unitCost) || 0, price: Number(n.unitPrice) || 0, jtId: n.id, isTemplate });
+        }
+      }
+      page = conn?.nextPage || null;
+    } while (page && guard < 200);
+  } catch (error) {
+    return res.status(400).json({ error: 'Kunne ikke hente fra JobTread: ' + error.message });
+  }
+  let imported = 0, skipped = 0;
+  for (const item of seen.values()) {
+    const existing = item.jtId
+      ? await pgOne('SELECT id FROM products WHERE jt_cost_item_id=$1', [item.jtId])
+      : await pgOne('SELECT id FROM products WHERE lower(trim(name))=lower(trim($1)) AND jt_cost_item_id IS NULL', [item.name]);
+    if (existing) { skipped++; continue; }
+    await pool.query(`
+      INSERT INTO products (name,unit,cost_price,sell_price,jt_cost_item_id) VALUES ($1,$2,$3,$4,$5)
+    `, [item.name, item.unit, item.cost, item.price, item.jtId]);
+    imported++;
+  }
+  res.json({ ok: true, imported, skipped, total_found: seen.size });
+}));
+
+// ── TILBUD ───────────────────────────────────────────────────
+async function loadQuoteFull(id) {
+  const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [id]);
+  if (!quote) return null;
+  const lines = await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [id]);
+  return { ...quote, lines: lines.rows };
+}
+
+app.get('/api/quotes', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM quotes ORDER BY created_at DESC, id DESC');
+  res.json(rows.rows);
+}));
+
+app.get('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const quote = await loadQuoteFull(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  res.json(quote);
+}));
+
+async function saveQuoteLines(quoteId, lines) {
+  await pool.query('DELETE FROM quote_lines WHERE quote_id=$1', [quoteId]);
+  let pos = 0;
+  for (const l of (lines || [])) {
+    if (!l.description) continue;
+    await pool.query(`
+      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `, [quoteId, l.product_id || null, String(l.description).trim(), l.unit || 'stk', Number(l.quantity) || 1, Number(l.cost_price) || 0, Number(l.sell_price) || 0, pos++]);
+  }
+}
+
+app.post('/api/quotes', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const company = await getCompanyInfo();
+  const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : company.defaultTaxRate;
+  const totals = computeTotals(b.lines || [], taxRate);
+  const quoteNumber = await nextDocNumber('quote', 'TIL');
+  const r = await pool.query(`
+    INSERT INTO quotes (quote_number,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,valid_until,created_by)
+    VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8,$9,$10,$11,$12,$13) RETURNING id
+  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes || null, b.valid_until || null, req.user.id]);
+  await saveQuoteLines(r.rows[0].id, b.lines);
+  res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber });
+}));
+
+app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM quotes WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const b = req.body || {};
+  const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : current.tax_rate;
+  const totals = computeTotals(b.lines !== undefined ? b.lines : await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1', [req.params.id]).then(r => r.rows), taxRate);
+  await pool.query(`
+    UPDATE quotes SET job_name=$1,job_id=$2,customer_address=$3,customer_phone=$4,customer_email=$5,subtotal=$6,tax_rate=$7,tax_amount=$8,total=$9,notes=$10,valid_until=$11,updated_at=${nowTextSQL()}
+    WHERE id=$12
+  `, [
+    b.job_name !== undefined ? b.job_name : current.job_name,
+    b.job_id !== undefined ? b.job_id : current.job_id,
+    b.customer_address !== undefined ? b.customer_address : current.customer_address,
+    b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
+    b.customer_email !== undefined ? b.customer_email : current.customer_email,
+    totals.subtotal, taxRate, totals.taxAmount, totals.total,
+    b.notes !== undefined ? b.notes : current.notes,
+    b.valid_until !== undefined ? b.valid_until : current.valid_until,
+    req.params.id
+  ]);
+  if (b.lines !== undefined) await saveQuoteLines(req.params.id, b.lines);
+  res.json({ ok: true });
+}));
+
+app.put('/api/quotes/:id/status', auth, financeOnly, asyncRoute(async (req, res) => {
+  const status = String((req.body || {}).status || '');
+  if (!['draft', 'sent', 'accepted', 'declined'].includes(status)) return res.status(400).json({ error: 'Ugyldig status' });
+  const r = await pool.query(`UPDATE quotes SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2 AND status <> 'converted'`, [status, req.params.id]);
+  if (!r.rowCount) return res.status(400).json({ error: 'Tilbuddet findes ikke, eller er allerede konverteret til en faktura' });
+  res.json({ ok: true });
+}));
+
+app.delete('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const r = await pool.query(`DELETE FROM quotes WHERE id=$1 AND status <> 'converted'`, [req.params.id]);
+  if (!r.rowCount) return res.status(400).json({ error: 'Kan ikke slette et tilbud der er konverteret til faktura' });
+  res.json({ ok: true });
+}));
+
+app.post('/api/quotes/:id/convert-to-invoice', auth, financeOnly, asyncRoute(async (req, res) => {
+  const quote = await loadQuoteFull(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  if (quote.status === 'converted') return res.status(400).json({ error: 'Tilbuddet er allerede konverteret' });
+  const invoiceNumber = await nextDocNumber('invoice', 'FAK');
+  const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 14);
+  const r = await pool.query(`
+    INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,due_date)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13) RETURNING id
+  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, quote.subtotal, quote.tax_rate, quote.tax_amount, quote.total, quote.notes, dueDate.toISOString().slice(0, 10)]);
+  const invoiceId = r.rows[0].id;
+  let pos = 0;
+  for (const l of quote.lines) {
+    await pool.query(`
+      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++]);
+  }
+  await pool.query(`UPDATE quotes SET status='converted', converted_invoice_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [invoiceId, quote.id]);
+  res.json({ ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber });
+}));
+
+// ── FAKTURA + DELBETALINGER ──────────────────────────────────
+async function loadInvoiceFull(id) {
+  const invoice = await pgOne('SELECT * FROM invoices WHERE id=$1', [id]);
+  if (!invoice) return null;
+  const lines = await pool.query('SELECT * FROM invoice_lines WHERE invoice_id=$1 ORDER BY position ASC, id ASC', [id]);
+  const payments = await pool.query('SELECT * FROM invoice_payments WHERE invoice_id=$1 ORDER BY paid_at ASC, id ASC', [id]);
+  const paidTotal = payments.rows.reduce((s, p) => s + Number(p.amount), 0);
+  return { ...invoice, lines: lines.rows, payments: payments.rows, paid_total: paidTotal, remaining: Number(invoice.total) - paidTotal };
+}
+async function refreshInvoiceStatus(invoiceId) {
+  const invoice = await pgOne('SELECT total FROM invoices WHERE id=$1', [invoiceId]);
+  if (!invoice) return;
+  const sum = await pgOne('SELECT COALESCE(SUM(amount),0) AS paid FROM invoice_payments WHERE invoice_id=$1', [invoiceId]);
+  const paid = Number(sum.paid);
+  const total = Number(invoice.total);
+  const status = paid <= 0 ? 'unpaid' : (paid >= total ? 'paid' : 'partial');
+  await pool.query(`UPDATE invoices SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2 AND status <> 'void'`, [status, invoiceId]);
+}
+
+app.get('/api/invoices', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT i.*, COALESCE((SELECT SUM(amount) FROM invoice_payments p WHERE p.invoice_id=i.id),0) AS paid_total
+    FROM invoices i ORDER BY i.created_at DESC, i.id DESC
+  `);
+  res.json(rows.rows.map(r => ({ ...r, remaining: Number(r.total) - Number(r.paid_total) })));
+}));
+
+app.get('/api/invoices/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const invoice = await loadInvoiceFull(req.params.id);
+  if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  res.json(invoice);
+}));
+
+app.put('/api/invoices/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM invoices WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  const b = req.body || {};
+  await pool.query(`
+    UPDATE invoices SET notes=$1, due_date=$2, customer_address=$3, customer_phone=$4, customer_email=$5, updated_at=${nowTextSQL()}
+    WHERE id=$6
+  `, [
+    b.notes !== undefined ? b.notes : current.notes,
+    b.due_date !== undefined ? b.due_date : current.due_date,
+    b.customer_address !== undefined ? b.customer_address : current.customer_address,
+    b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
+    b.customer_email !== undefined ? b.customer_email : current.customer_email,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+
+app.post('/api/invoices/:id/payments', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const amount = Number(b.amount);
+  if (!amount || amount <= 0) return res.status(400).json({ error: 'Angiv et gyldigt beløb' });
+  const invoice = await pgOne('SELECT id FROM invoices WHERE id=$1', [req.params.id]);
+  if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  await pool.query(`
+    INSERT INTO invoice_payments (invoice_id,amount,paid_at,method,note) VALUES ($1,$2,$3,$4,$5)
+  `, [req.params.id, amount, validDate(b.paid_at) ? b.paid_at : new Date().toISOString().slice(0, 10), b.method || null, b.note || null]);
+  await refreshInvoiceStatus(req.params.id);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/invoices/:id/payments/:paymentId', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM invoice_payments WHERE id=$1 AND invoice_id=$2', [req.params.paymentId, req.params.id]);
+  await refreshInvoiceStatus(req.params.id);
+  res.json({ ok: true });
+}));
+
+app.put('/api/invoices/:id/void', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query(`UPDATE invoices SET status='void', updated_at=${nowTextSQL()} WHERE id=$1`, [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── PDF-GENERERING (tilbud + faktura) — pdfkit, ingen headless browser
+// nødvendig, så det er hurtigt og virker uden ekstra opsætning på serveren. ──
+function drawDocumentPdf(doc, kind, record, company) {
+  const isInvoice = kind === 'invoice';
+  const accent = '#4F46E5';
+  doc.fontSize(20).fillColor('#111318').text(company.name, 40, 40);
+  doc.fontSize(9).fillColor('#6B7280');
+  const addrLines = [company.address, company.cvr ? `CVR ${company.cvr}` : '', company.phone, company.email].filter(Boolean);
+  addrLines.forEach((l, i) => doc.text(l, 40, 66 + i * 12));
+
+  doc.fontSize(22).fillColor(accent).text(isInvoice ? 'FAKTURA' : 'TILBUD', 350, 40, { width: 200, align: 'right' });
+  doc.fontSize(10).fillColor('#111318').text(isInvoice ? record.invoice_number : record.quote_number, 350, 68, { width: 200, align: 'right' });
+  doc.fontSize(9).fillColor('#6B7280').text(`Dato: ${String(record.created_at || '').slice(0, 10)}`, 350, 84, { width: 200, align: 'right' });
+  if (isInvoice && record.due_date) doc.text(`Forfaldsdato: ${record.due_date}`, 350, 98, { width: 200, align: 'right' });
+  if (!isInvoice && record.valid_until) doc.text(`Gyldig til: ${record.valid_until}`, 350, 98, { width: 200, align: 'right' });
+
+  let y = 140;
+  doc.fontSize(10).fillColor('#111318').text('Til:', 40, y);
+  y += 14;
+  if (record.job_name) { doc.fontSize(11).text(record.job_name, 40, y); y += 14; }
+  if (record.customer_address) { doc.fontSize(9).fillColor('#6B7280').text(record.customer_address, 40, y); y += 12; }
+  if (record.customer_phone) { doc.fontSize(9).fillColor('#6B7280').text('Tlf. ' + record.customer_phone, 40, y); y += 12; }
+  if (record.customer_email) { doc.fontSize(9).fillColor('#6B7280').text(record.customer_email, 40, y); y += 12; }
+
+  y = Math.max(y + 20, 210);
+  doc.rect(40, y, 515, 20).fill('#F4F6FB');
+  doc.fontSize(9).fillColor('#374151');
+  doc.text('Beskrivelse', 48, y + 6);
+  doc.text('Antal', 320, y + 6, { width: 50, align: 'right' });
+  doc.text('Enhedspris', 380, y + 6, { width: 80, align: 'right' });
+  doc.text('I alt', 470, y + 6, { width: 75, align: 'right' });
+  y += 26;
+  doc.fontSize(9.5).fillColor('#111318');
+  (record.lines || []).forEach(l => {
+    const lineTotal = Number(l.quantity) * Number(l.sell_price);
+    const nameHeight = doc.heightOfString(l.description, { width: 260 });
+    doc.text(l.description, 48, y, { width: 260 });
+    doc.text(String(l.quantity) + ' ' + (l.unit || ''), 320, y, { width: 50, align: 'right' });
+    doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 380, y, { width: 80, align: 'right' });
+    doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
+    y += Math.max(nameHeight, 14) + 6;
+    doc.moveTo(40, y - 3).lineTo(555, y - 3).strokeColor('#EEF0F3').stroke();
+  });
+
+  y += 10;
+  const totalsX = 380;
+  doc.fontSize(9.5).fillColor('#6B7280').text('Subtotal', totalsX, y, { width: 80, align: 'right' });
+  doc.fillColor('#111318').text(Math.round(Number(record.subtotal)).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
+  y += 16;
+  doc.fillColor('#6B7280').text(`Moms (${record.tax_rate}%)`, totalsX, y, { width: 80, align: 'right' });
+  doc.fillColor('#111318').text(Math.round(Number(record.tax_amount)).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
+  y += 18;
+  doc.rect(totalsX, y - 3, 165, 22).fill(accent);
+  doc.fillColor('#fff').fontSize(11).text('Total', totalsX + 8, y + 3);
+  doc.text(Math.round(Number(record.total)).toLocaleString('da-DK') + ' kr', 470, y + 3, { width: 75, align: 'right' });
+  y += 30;
+
+  if (isInvoice && record.paid_total > 0) {
+    doc.fontSize(9.5).fillColor('#15803D').text('Betalt', totalsX, y, { width: 80, align: 'right' });
+    doc.text('-' + Math.round(Number(record.paid_total)).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
+    y += 16;
+    doc.fontSize(10).fillColor('#B91C1C').text('Restbeløb', totalsX, y, { width: 80, align: 'right' });
+    doc.text(Math.round(Number(record.remaining)).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
+    y += 20;
+  }
+
+  if (record.notes) {
+    y += 16;
+    doc.fontSize(9).fillColor('#6B7280').text(record.notes, 40, y, { width: 515 });
+    y += doc.heightOfString(record.notes, { width: 515 }) + 10;
+  }
+
+  if (isInvoice && (company.bankReg || company.bankAccount)) {
+    y += 10;
+    doc.fontSize(9).fillColor('#6B7280').text(`Betaling: Reg. ${company.bankReg}  Konto ${company.bankAccount}`, 40, y);
+    y += 14;
+  }
+  if (company.footerNote) {
+    doc.fontSize(8).fillColor('#9CA3AF').text(company.footerNote, 40, 780, { width: 515, align: 'center' });
+  }
+}
+
+app.get('/api/quotes/:id/pdf', auth, financeOnly, asyncRoute(async (req, res) => {
+  const quote = await loadQuoteFull(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const company = await getCompanyInfo();
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `inline; filename="${quote.quote_number}.pdf"`);
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  doc.pipe(res);
+  drawDocumentPdf(doc, 'quote', quote, company);
+  doc.end();
+}));
+
+app.get('/api/invoices/:id/pdf', auth, financeOnly, asyncRoute(async (req, res) => {
+  const invoice = await loadInvoiceFull(req.params.id);
+  if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  const company = await getCompanyInfo();
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `inline; filename="${invoice.invoice_number}.pdf"`);
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  doc.pipe(res);
+  drawDocumentPdf(doc, 'invoice', invoice, company);
+  doc.end();
 }));
 
 // ══════════════════════════════════════════════════════════════
