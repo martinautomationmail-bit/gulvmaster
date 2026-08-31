@@ -812,6 +812,17 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qz-margin.good{color:var(--bly-dot-paid)}
 .qz-margin.low{color:var(--bly-dot-overdue)}
 .qz-row-actions{display:flex;gap:6px;justify-content:flex-end}
+/* Rigtige <a href="#..."> i tabelrækker — giver højreklik-"åbn i ny fane" og
+   ctrl/cmd-klik "gratis" via browserens egen linkhåndtering, i stedet for kun
+   onclick på en enkelt lille ikon-knap. Dækker hele cellen, ikke kun teksten. */
+.bly-table .row-link{display:block;color:inherit;text-decoration:none;cursor:pointer}
+.bly-table .row-link:hover{color:inherit}
+/* Produkt-søgning: flervalg med afkrydsning på tværs af flere søgninger, i
+   stedet for kun ét produkt ad gangen. */
+.qz-multiselect-bar{display:flex;flex-direction:column;gap:6px;padding:9px 10px;background:var(--bly-accent-soft);border-bottom:1px solid var(--bly-border-soft);font-size:11px;color:var(--bly-ink);line-height:1.5}
+.qz-multiselect-bar button{align-self:flex-start;margin-top:2px}
+.qe-customer-result label{display:flex;align-items:center;gap:8px;cursor:pointer;margin:0}
+.qe-customer-result input[type="checkbox"]{flex-shrink:0;width:16px;height:16px}
 .qz-icon-btn{border:1px solid var(--bly-border);background:#fff;border-radius:7px;width:28px;height:28px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
 .qz-icon-btn:hover{background:var(--bly-hover);border-color:var(--bly-accent)}
 .qe-body{display:grid;grid-template-columns:1.35fr 1fr;gap:18px;flex:1;min-height:0;padding:18px 22px;overflow:hidden}
@@ -2052,6 +2063,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="bly-segtab" data-qztab="templates" type="button">📑 Skabeloner</button>
     <button class="bly-segtab" data-qztab="quotes" type="button">📝 Tilbud</button>
     <button class="bly-segtab" data-qztab="invoices" type="button">🧾 Fakturaer</button>
+    <button class="bly-segtab" data-qztab="mailtemplates" type="button">✉️ Mail-skabeloner</button>
   </div>
 
   <div class="qztabpage" id="qztab-products">
@@ -2097,6 +2109,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <table class="bly-table">
       <thead><tr><th>Nr.</th><th>Kunde/sag</th><th>Dato</th><th>Forfald</th><th>Status</th><th class="num">Total</th><th class="num">Betalt</th><th class="num">Rest</th><th style="width:90px"></th></tr></thead>
       <tbody id="qz-invoices-body"></tbody>
+    </table>
+  </div>
+
+  <div class="qztabpage" id="qztab-mailtemplates" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Mail-skabeloner til tilbud &amp; faktura</span></div>
+      <div class="bly-toolbar-right"><button class="bly-btn" id="doc-tpl-new-btn" type="button">+ Ny mail-skabelon</button></div>
+    </div>
+    <div class="hint" style="margin-bottom:14px">Bruges når du trykker "📧 Send til kunde" på et tilbud eller en faktura. Skrevet i HTML — PDF'en vedhæftes automatisk, og kundens portal-link (hvor de kan se alt og underskrive) kan sættes ind som en variabel.</div>
+    <table class="bly-table">
+      <thead><tr><th>Navn</th><th>Emne</th><th style="width:90px"></th></tr></thead>
+      <tbody id="doc-tpl-body"></tbody>
     </table>
   </div>
 </section>
@@ -3165,6 +3189,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="bly-btn outline" id="qe-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
         <button class="bly-btn outline" id="qe-share-btn" type="button" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
         <button class="bly-btn outline" id="qe-request-btn" type="button" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
+        <button class="bly-btn outline" id="qe-send-btn" type="button" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
         <button class="bly-btn outline" id="qe-convert-btn" type="button" style="display:none">➜ Konvertér til faktura</button>
         <button class="bly-btn" id="qe-save-btn" type="button">💾 Gem</button>
         <button class="qz-icon-btn" id="qe-close-btn" type="button" title="Luk">✕</button>
@@ -3246,7 +3271,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="modal" style="max-width:760px;width:94vw">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <h3 id="iv-title" style="margin:0">Faktura</h3>
-      <a class="bly-btn outline small" id="iv-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
+      <div style="display:flex;gap:8px">
+        <a class="bly-btn outline small" id="iv-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
+        <button class="bly-btn outline small" id="iv-send-btn" type="button" title="Send fakturaen som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
+      </div>
     </div>
     <div class="sub" id="iv-subtitle" style="margin-bottom:16px"></div>
     <div class="iv-balance-card">
@@ -3565,6 +3593,64 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="modal-actions">
       <button class="btn" id="close-email-send">Annuller</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIL-SKABELON TIL TILBUD/FAKTURA — REDIGERING (HTML) -->
+<div class="mo" id="doc-tpl-edit-modal">
+  <div class="modal manual-modal-modern" style="max-width:900px;width:96vw;max-height:90vh;overflow:auto">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">✉️</span>
+      <div><div class="manual-modal-title" id="doc-tpl-edit-title">Ny mail-skabelon</div><div class="manual-modal-sub">Bruges når du sender et tilbud eller en faktura til en kunde — PDF'en vedhæftes automatisk</div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Navn <span class="opt-tag">kun til internt brug</span></label>
+      <input id="doc-tpl-name" class="input" placeholder="Fx Standard tilbud">
+      <label class="form-label" style="margin-top:12px">Emnelinje</label>
+      <input id="doc-tpl-subject" class="input" placeholder="Fx Dit tilbud {{dokument_nr}} fra {{firma}}">
+      <div class="geo-hint" style="margin-top:8px">
+        <b>Variabler du kan bruge — klik for at indsætte i emne eller indhold:</b><br>
+        <div id="doc-tpl-var-buttons" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px"></div>
+      </div>
+      <div class="form-row" style="align-items:flex-start;margin-top:12px">
+        <div class="form-group" style="flex:1">
+          <label class="form-label">HTML-indhold</label>
+          <textarea id="doc-tpl-body" class="input" rows="16" style="font-family:monospace;font-size:11.5px;resize:vertical" placeholder="&lt;p&gt;Hej {{kunde}},&lt;/p&gt;&lt;p&gt;Her er dit tilbud &lt;b&gt;{{dokument_nr}}&lt;/b&gt; p&aring; &lt;b&gt;{{total}}&lt;/b&gt;.&lt;/p&gt;&lt;p&gt;Se og underskriv her: &lt;a href=&quot;{{underskriv_link}}&quot;&gt;{{underskriv_link}}&lt;/a&gt;&lt;/p&gt;&lt;p&gt;Se alle dine tilbud, fakturaer og planlagte opgaver p&aring; din side: &lt;a href=&quot;{{link}}&quot;&gt;{{link}}&lt;/a&gt;&lt;/p&gt;"></textarea>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label class="form-label">Forhåndsvisning</label>
+          <iframe id="doc-tpl-preview" style="width:100%;height:352px;border:1px solid var(--border2);border-radius:10px;background:#fff"></iframe>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn danger" id="doc-tpl-delete" style="display:none">Slet</button>
+      <button class="btn" id="close-doc-tpl-edit">Annuller</button>
+      <button class="btn primary" id="save-doc-tpl-edit">Gem mail-skabelon</button>
+    </div>
+  </div>
+</div>
+
+<!-- SEND TILBUD/FAKTURA TIL KUNDE -->
+<div class="mo" id="doc-send-modal">
+  <div class="modal manual-modal-modern" style="max-width:520px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">📧</span>
+      <div><div class="manual-modal-title" id="doc-send-title">Send til kunde</div><div class="manual-modal-sub" id="doc-send-sub"></div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Til e-mail</label>
+      <input id="doc-send-to" class="input" type="email" placeholder="kunde@eksempel.dk">
+      <label class="form-label" style="margin-top:12px">Mail-skabelon</label>
+      <select id="doc-send-template" class="select"></select>
+      <label class="form-label" style="margin-top:12px">Forhåndsvisning</label>
+      <div id="doc-send-preview" style="border:1px solid var(--border2);border-radius:10px;padding:12px;max-height:280px;overflow:auto;background:var(--ice);font-size:12.5px"></div>
+      <div class="geo-hint" style="margin-top:8px">📎 PDF'en vedhæftes automatisk til mailen.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-doc-send">Annuller</button>
+      <button class="btn primary" id="doc-send-confirm-btn">📧 Send</button>
     </div>
   </div>
 </div>
@@ -6970,6 +7056,128 @@ async function saveEmailTemplateEditor(){
   if(r&&r.ok){toast('Mail-skabelon gemt ✓','✓');closeModal('email-tpl-edit-modal');await loadEmailTemplates();}
   else if(r)toast(r.error||'Fejl','❌');
 }
+
+// ── MAIL-SKABELONER TIL TILBUD/FAKTURA (HTML) — bruges ved "Send til kunde" ──
+var docMailTemplatesCache=[];
+var DOC_EMAIL_VARS=[['{{kunde}}','Kunde/sagsnavn'],['{{dokument_nr}}','Tilbuds-/fakturanummer'],['{{total}}','Totalbeløb'],['{{gyldig_til}}','Gyldig til (kun tilbud)'],['{{forfald}}','Forfaldsdato (kun faktura)'],['{{restbeloeb}}','Restbeløb (kun faktura)'],['{{firma}}','Firmanavn'],['{{link}}','Link til kundens portal (alle tilbud/fakturaer/opgaver)'],['{{underskriv_link}}','Direkte link til at underskrive (kun tilbud)']];
+function fillDocEmailVarsClient(str,vars){
+  return String(str||'').replace(/\{\{\s*(\w+)\s*\}\}/g,function(m,key){return (key in vars)?String(vars[key]):m;});
+}
+async function loadDocMailTemplates(){
+  var t=await api('/api/document-email-templates');
+  docMailTemplatesCache=t||[];
+  renderDocMailTemplatesTable();
+}
+function renderDocMailTemplatesTable(){
+  var el=document.getElementById('doc-tpl-body');
+  if(!el)return;
+  el.innerHTML=docMailTemplatesCache.length?docMailTemplatesCache.map(function(t){
+    return '<tr><td>'+esc(t.name)+'</td><td>'+esc(t.subject)+'</td><td style="text-align:right;white-space:nowrap"><button class="btn small" data-action="edit-doc-tpl" data-doc-tpl-id="'+t.id+'">✏</button> <button class="btn small danger" data-action="delete-doc-tpl" data-doc-tpl-id="'+t.id+'">🗑</button></td></tr>';
+  }).join(''):'<tr><td colspan="3" class="dash-empty">Ingen mail-skabeloner endnu — opret den første. Uden nogen skabeloner sendes en simpel standardmail.</td></tr>';
+}
+var docTplEditCtx=null;
+function docTplSampleVars(){
+  return {kunde:'Jens Jensen',dokument_nr:'TIL-2026-014',total:krFmt(24500),gyldig_til:'2026-09-30',forfald:'2026-09-15',restbeloeb:krFmt(12250),firma:settings.company_name||'Dit firma',link:'https://eksempel.dk/kunde/xxxxxxxx',underskriv_link:'https://eksempel.dk/tilbud/xxxxxxxx'};
+}
+function docTplUpdatePreview(){
+  var vars=docTplSampleVars();
+  var subject=fillDocEmailVarsClient(document.getElementById('doc-tpl-subject').value,vars);
+  var body=fillDocEmailVarsClient(document.getElementById('doc-tpl-body').value,vars);
+  var frame=document.getElementById('doc-tpl-preview');
+  frame.srcdoc='<div style="font-family:Arial,sans-serif;font-size:13px;color:#222;padding:6px"><b>Emne:</b> '+esc(subject)+'<hr style="margin:8px 0;border:none;border-top:1px solid #ddd">'+body+'</div>';
+}
+function openDocTplEditor(tpl){
+  docTplEditCtx=tpl?tpl.id:null;
+  document.getElementById('doc-tpl-edit-title').textContent=tpl?'Redigér mail-skabelon':'Ny mail-skabelon';
+  document.getElementById('doc-tpl-name').value=tpl?tpl.name:'';
+  document.getElementById('doc-tpl-subject').value=tpl?tpl.subject:'Dit tilbud {{dokument_nr}} fra {{firma}}';
+  document.getElementById('doc-tpl-body').value=tpl?tpl.body_html:'<p>Hej {{kunde}},</p><p>Her er dit tilbud <b>{{dokument_nr}}</b> på <b>{{total}}</b> — vedhæftet som PDF.</p><p>Du kan se og underskrive online her: <a href="{{underskriv_link}}">{{underskriv_link}}</a></p><p>Du kan altid se alle dine tilbud, fakturaer og planlagte opgaver på din side: <a href="{{link}}">{{link}}</a></p><p>Mvh<br>{{firma}}</p>';
+  document.getElementById('doc-tpl-delete').style.display=tpl?'inline-flex':'none';
+  var btnWrap=document.getElementById('doc-tpl-var-buttons');
+  btnWrap.innerHTML=DOC_EMAIL_VARS.map(function(v){return '<button type="button" class="btn small" data-insert-doc-var="'+esc(v[0])+'" title="'+esc(v[1])+'">'+esc(v[0])+'</button>';}).join('');
+  btnWrap.querySelectorAll('[data-insert-doc-var]').forEach(function(b){
+    b.onclick=function(){
+      var subjEl=document.getElementById('doc-tpl-subject'),bodyEl=document.getElementById('doc-tpl-body');
+      var ta=(document.activeElement===subjEl)?subjEl:bodyEl;
+      var pos=ta.selectionStart||ta.value.length;
+      ta.value=ta.value.slice(0,pos)+b.dataset.insertDocVar+ta.value.slice(pos);
+      ta.focus();ta.selectionStart=ta.selectionEnd=pos+b.dataset.insertDocVar.length;
+      docTplUpdatePreview();
+    };
+  });
+  docTplUpdatePreview();
+  document.getElementById('doc-tpl-edit-modal').classList.add('open');
+}
+async function saveDocTplEditor(){
+  var name=document.getElementById('doc-tpl-name').value.trim();
+  var subject=document.getElementById('doc-tpl-subject').value.trim();
+  var body_html=document.getElementById('doc-tpl-body').value.trim();
+  if(!name||!subject||!body_html){toast('Udfyld navn, emne og indhold','⚠');return;}
+  var payload={name:name,subject:subject,body_html:body_html};
+  var call=docTplEditCtx?api('/api/document-email-templates/'+docTplEditCtx,{method:'PUT',body:JSON.stringify(payload)}):api('/api/document-email-templates',{method:'POST',body:JSON.stringify(payload)});
+  var r=await call;
+  if(r&&r.ok){toast('Mail-skabelon gemt ✓','✓');closeModal('doc-tpl-edit-modal');await loadDocMailTemplates();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function deleteDocTplEditor(){
+  if(!docTplEditCtx)return;
+  if(!await gmConfirm('Slet denne mail-skabelon?'))return;
+  var r=await api('/api/document-email-templates/'+docTplEditCtx,{method:'DELETE'});
+  if(r&&r.ok){toast('Mail-skabelon slettet','🗑');closeModal('doc-tpl-edit-modal');await loadDocMailTemplates();}
+}
+
+// ── SEND TILBUD/FAKTURA TIL KUNDE (PDF vedhæftet + link til kundens portal) ──
+var docSendCtx={kind:null,id:null,record:null};
+async function openDocSendModal(kind,id){
+  if(!docMailTemplatesCache.length)await loadDocMailTemplates();
+  var rec=await api('/api/'+(kind==='quote'?'quotes':'invoices')+'/'+id);
+  if(!rec||rec.error){toast('Kunne ikke hente dokumentet','❌');return;}
+  docSendCtx={kind:kind,id:id,record:rec};
+  document.getElementById('doc-send-title').textContent=kind==='quote'?'Send tilbud til kunde':'Send faktura til kunde';
+  document.getElementById('doc-send-sub').textContent=(kind==='quote'?rec.quote_number:rec.invoice_number)||'';
+  document.getElementById('doc-send-to').value=rec.customer_email||'';
+  var sel=document.getElementById('doc-send-template');
+  sel.innerHTML=['<option value="">Standard (uden skabelon)</option>'].concat(docMailTemplatesCache.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>';})).join('');
+  sel.value='';
+  docSendUpdatePreview();
+  document.getElementById('doc-send-modal').classList.add('open');
+}
+function docSendUpdatePreview(){
+  var rec=docSendCtx.record;if(!rec)return;
+  var kind=docSendCtx.kind;
+  var tplId=document.getElementById('doc-send-template').value;
+  var tpl=tplId?docMailTemplatesCache.find(function(t){return String(t.id)===String(tplId);}):null;
+  var vars={
+    kunde:rec.job_name||'',dokument_nr:(kind==='quote'?rec.quote_number:rec.invoice_number)||'',total:krFmt(Number(rec.total)),
+    gyldig_til:kind==='quote'?(rec.valid_until||''):'',forfald:kind==='invoice'?(rec.due_date||''):'',
+    restbeloeb:kind==='invoice'?krFmt(Number(rec.remaining)):'',firma:settings.company_name||'',
+    link:'(sættes automatisk ved afsendelse)',underskriv_link:kind==='quote'?'(sættes automatisk ved afsendelse)':''
+  };
+  var subject,body;
+  if(tpl){subject=fillDocEmailVarsClient(tpl.subject,vars);body=fillDocEmailVarsClient(tpl.body_html,vars);}
+  else{
+    subject=(kind==='quote'?'Dit tilbud '+vars.dokument_nr:'Din faktura '+vars.dokument_nr)+' fra '+vars.firma;
+    body='<p>Hej '+esc(vars.kunde)+',</p><p>Her er din'+(kind==='quote'?'t tilbud':' faktura')+' <b>'+esc(vars.dokument_nr)+'</b> på <b>'+esc(vars.total)+'</b> — vedhæftet som PDF.</p><p>Link til din side med alle tilbud, fakturaer og planlagte opgaver medsendes automatisk.</p>';
+  }
+  document.getElementById('doc-send-preview').innerHTML='<div><b>Emne:</b> '+esc(subject)+'</div><hr style="margin:8px 0;border:none;border-top:1px solid var(--border2)">'+body;
+}
+async function confirmDocSend(){
+  var to=document.getElementById('doc-send-to').value.trim();
+  if(!to){toast('Angiv en modtager-mail','⚠️');return;}
+  var tplId=document.getElementById('doc-send-template').value;
+  var btn=document.getElementById('doc-send-confirm-btn');
+  btn.disabled=true;btn.textContent='Sender…';
+  var path='/api/'+(docSendCtx.kind==='quote'?'quotes':'invoices')+'/'+docSendCtx.id+'/send';
+  var r=await api(path,{method:'POST',body:JSON.stringify({to:to,template_id:tplId||undefined})});
+  btn.disabled=false;btn.textContent='📧 Send';
+  if(r&&r.ok){
+    toast('Sendt ✓','✓');
+    closeModal('doc-send-modal');
+    if(docSendCtx.kind==='quote'){await loadQzQuotes();renderQzQuotes();if(qeState.id===docSendCtx.id)await openQuoteEditor(docSendCtx.id);}
+    else{await loadQzInvoices();renderQzInvoices();}
+  } else toast((r&&r.error)||'Kunne ikke sende mailen','❌');
+}
+
 async function loadTemplates(){
   var t=await api('/api/templates');
   templatesCache=t||[];
@@ -9724,6 +9932,11 @@ function bind(){
     var parts=location.hash.slice(1).split('/');
     switchPage(parts[0]);
     if(parts[0]==='finance'&&parts[1])switchFintab(parts[1]);
+    // Dyb-link til et enkelt tilbud/faktura — #quotes/tilbud/123 eller
+    // #quotes/faktura/123 — bruges af de rigtige <a href>-links i tabellerne,
+    // så højreklik "åbn i ny fane" og ctrl/cmd-klik virker som forventet.
+    if(parts[0]==='quotes'&&parts[1]==='tilbud'&&parts[2])openQuoteEditor(Number(parts[2]));
+    if(parts[0]==='quotes'&&parts[1]==='faktura'&&parts[2])openInvoiceDetail(Number(parts[2]));
   });
   // .tab/.navdrop-item er nu rigtige <a href="#side">-links (i stedet for <button>),
   // så man kan højreklikke og åbne en side i en ny fane/vindue. Venstreklik håndteres
@@ -9855,6 +10068,17 @@ function bind(){
   document.getElementById('new-email-template-btn').onclick=function(){openEmailTemplateEditor(null);};
   document.getElementById('close-email-tpl-edit').onclick=function(){closeModal('email-tpl-edit-modal');};
   document.getElementById('save-email-tpl-edit').onclick=saveEmailTemplateEditor;
+  document.getElementById('doc-tpl-new-btn').addEventListener('click',function(){openDocTplEditor(null);});
+  document.getElementById('close-doc-tpl-edit').onclick=function(){closeModal('doc-tpl-edit-modal');};
+  document.getElementById('save-doc-tpl-edit').onclick=saveDocTplEditor;
+  document.getElementById('doc-tpl-delete').onclick=deleteDocTplEditor;
+  document.getElementById('doc-tpl-subject').addEventListener('input',docTplUpdatePreview);
+  document.getElementById('doc-tpl-body').addEventListener('input',docTplUpdatePreview);
+  document.getElementById('close-doc-send').onclick=function(){closeModal('doc-send-modal');};
+  document.getElementById('doc-send-confirm-btn').onclick=confirmDocSend;
+  document.getElementById('doc-send-template').addEventListener('change',docSendUpdatePreview);
+  document.getElementById('qe-send-btn').addEventListener('click',function(){if(qeState.id)openDocSendModal('quote',qeState.id);});
+  document.getElementById('iv-send-btn').addEventListener('click',function(){if(ivState.id)openDocSendModal('invoice',ivState.id);});
   document.getElementById('close-email-send').onclick=function(){closeModal('email-send-modal');};
   document.getElementById('close-tpl-edit').onclick=function(){closeModal('tpl-edit-modal');};
   document.getElementById('save-tpl-edit').onclick=saveTemplateEditor;
@@ -10106,7 +10330,7 @@ function bind(){
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
   // Modal backdrop
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','project-detail-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','project-detail-modal','doc-tpl-edit-modal','doc-send-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -10156,6 +10380,8 @@ function bind(){
       if(act==='delete-template'){if(await gmConfirm('Slet denne skabelon?'))api('/api/templates/'+a.dataset.templateId,{method:'DELETE'}).then(async function(){loadTemplates();});}
       if(act==='edit-email-template')openEmailTemplateEditor(emailTemplatesCache.find(function(x){return +x.id===+a.dataset.templateId;}));
       if(act==='delete-email-template'){if(await gmConfirm('Slet denne mail-skabelon?'))api('/api/email-templates/'+a.dataset.templateId,{method:'DELETE'}).then(function(){loadEmailTemplates();});}
+      if(act==='edit-doc-tpl')openDocTplEditor(docMailTemplatesCache.find(function(x){return +x.id===+a.dataset.docTplId;}));
+      if(act==='delete-doc-tpl'){if(await gmConfirm('Slet denne mail-skabelon?'))api('/api/document-email-templates/'+a.dataset.docTplId,{method:'DELETE'}).then(function(){loadDocMailTemplates();});}
       if(act==='save-notif-rule')saveNotifRule(a.closest('.notif-rule-row'));
       if(act==='open-notif'){api('/api/notifications/'+a.dataset.notifId+'/read',{method:'PUT'}).then(function(){refreshNotifBell();if(a.dataset.link)switchPage(a.dataset.link.replace('#',''));});}
       if(act==='mark-all-read'){e.stopPropagation();api('/api/notifications/read-all',{method:'PUT'}).then(function(){refreshNotifBell();});}
@@ -10235,6 +10461,9 @@ function bind(){
   if(initialPage&&VALID_PAGES.indexOf(initialPage)>-1){
     switchPage(initialPage,true);
     if(initialPage==='finance'&&initialParts[1])switchFintab(initialParts[1]);
+    // Åbnet direkte via et #quotes/tilbud/123-link (fx højreklik → åbn i ny fane)
+    if(initialPage==='quotes'&&initialParts[1]==='tilbud'&&initialParts[2])openQuoteEditor(Number(initialParts[2]));
+    if(initialPage==='quotes'&&initialParts[1]==='faktura'&&initialParts[2])openInvoiceDetail(Number(initialParts[2]));
   }
 }
 
@@ -10448,7 +10677,8 @@ async function loadQzTemplates(){var r=await api('/api/quote-templates');qzTempl
 function switchQzTab(name){
   qzActiveTab=name;
   document.querySelectorAll('#qz-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
-  ['products','templates','quotes','invoices'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
+  ['products','templates','quotes','invoices','mailtemplates'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
+  if(name==='mailtemplates')loadDocMailTemplates();
 }
 
 // ── FÆLLES LINJE-EDITOR — genbruges af både tilbudseditoren og
@@ -10528,25 +10758,65 @@ function qzMakeBlankLine(product){
     discount_pct:0
   };
 }
+// Flervalg af produkter: hver søgeboks (qe-product-results / qzt-product-results)
+// har sin egen "kurv" af afkrydsede produkter, der huskes på tværs af flere
+// søgninger (skriv "gulv", kryds 2 af; skriv "lim", kryds 1 af osv.), og
+// tilføjes som linjer samlet når man trykker "+ Tilføj valgte".
+var qzProductSearchSelections={};
+function qzMultiSelectFor(resultsId){
+  if(!qzProductSearchSelections[resultsId])qzProductSearchSelections[resultsId]={};
+  return qzProductSearchSelections[resultsId];
+}
 function qzRunProductSearch(inputId,resultsId,onPick){
   var q=document.getElementById(inputId).value.trim().toLowerCase();
   var box=document.getElementById(resultsId);
-  if(!q){box.style.display='none';box.innerHTML='';return;}
-  var matches=qzProducts.filter(function(p){return p.name.toLowerCase().indexOf(q)>-1||(p.category||'').toLowerCase().indexOf(q)>-1;}).slice(0,8);
-  if(!matches.length){box.innerHTML='<div class="qe-customer-result" style="cursor:default;color:var(--bly-sub)">Ingen produkter fundet</div>';box.style.display='block';return;}
-  box.innerHTML=matches.map(function(p){
-    var pct=qzMarginPct(Number(p.cost_price),Number(p.sell_price));
-    return '<div class="qe-customer-result" data-pid="'+p.id+'"><b>'+esc(p.name)+'</b> <span class="qz-margin '+qzMarginClass(pct)+'" style="float:right">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span><br><span style="color:var(--bly-sub)">'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+(p.category?' · '+esc(p.category):'')+' · '+krFmt(Number(p.sell_price))+'</span></div>';
-  }).join('');
+  var sel=qzMultiSelectFor(resultsId);
+  var selIds=Object.keys(sel);
+  if(!q&&!selIds.length){box.style.display='none';box.innerHTML='';return;}
+  var matches=q?qzProducts.filter(function(p){return p.name.toLowerCase().indexOf(q)>-1||(p.category||'').toLowerCase().indexOf(q)>-1;}).slice(0,8):[];
+  var barHtml=selIds.length?(
+    '<div class="qz-multiselect-bar"><span>'+selIds.length+' valgt: '+selIds.map(function(id){return esc((sel[id]&&sel[id].name)||'');}).join(', ')+'</span>'
+    +'<button type="button" class="bly-btn small" data-action="qz-confirm-multiselect">+ Tilføj '+selIds.length+' linje'+(selIds.length===1?'':'r')+'</button></div>'
+  ):'';
+  var resultsHtml='';
+  if(q){
+    resultsHtml=matches.length?matches.map(function(p){
+      var pct=qzMarginPct(Number(p.cost_price),Number(p.sell_price));
+      var checked=sel[p.id]?' checked':'';
+      return '<div class="qe-customer-result" data-pid="'+p.id+'"><label>'
+        +'<input type="checkbox" data-pid-check="'+p.id+'"'+checked+'>'
+        +'<span style="flex:1"><b>'+esc(p.name)+'</b> <span class="qz-margin '+qzMarginClass(pct)+'" style="float:right">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span><br><span style="color:var(--bly-sub)">'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+(p.category?' · '+esc(p.category):'')+' · '+krFmt(Number(p.sell_price))+'</span></span>'
+        +'</label></div>';
+    }).join(''):'<div class="qe-customer-result" style="cursor:default;color:var(--bly-sub)">Ingen produkter fundet</div>';
+  }
+  box.innerHTML=barHtml+resultsHtml;
   box.style.display='block';
-  Array.prototype.forEach.call(box.querySelectorAll('.qe-customer-result[data-pid]'),function(elx){
-    elx.onclick=function(){
-      var p=qzProducts.find(function(x){return x.id===Number(elx.dataset.pid);});
-      if(p)onPick(p);
-      document.getElementById(inputId).value='';
-      box.style.display='none';
+  Array.prototype.forEach.call(box.querySelectorAll('[data-pid-check]'),function(cb){
+    cb.onchange=function(){
+      var pid=Number(cb.getAttribute('data-pid-check'));
+      var p=qzProducts.find(function(x){return x.id===pid;});
+      if(!p)return;
+      if(cb.checked)sel[pid]=p; else delete sel[pid];
+      qzRunProductSearch(inputId,resultsId,onPick);
+      document.getElementById(inputId).focus();
     };
   });
+  Array.prototype.forEach.call(box.querySelectorAll('.qe-customer-result[data-pid]'),function(elx){
+    elx.onclick=function(e){
+      if(e.target.tagName==='INPUT')return;
+      var cb=elx.querySelector('[data-pid-check]');
+      cb.checked=!cb.checked;
+      cb.onchange();
+    };
+  });
+  var confirmBtn=box.querySelector('[data-action="qz-confirm-multiselect"]');
+  if(confirmBtn)confirmBtn.onclick=function(e){
+    e.stopPropagation();
+    Object.keys(sel).forEach(function(id){onPick(sel[id]);});
+    qzProductSearchSelections[resultsId]={};
+    document.getElementById(inputId).value='';
+    box.style.display='none';box.innerHTML='';
+  };
 }
 function qzCloseAllPops(){
   ['qe-customer-results','qe-product-results','qzt-product-results'].forEach(function(id){
@@ -11004,6 +11274,7 @@ function renderQzTemplates(){
 function openTemplateModal(id){
   var t=id?qzTemplates.find(function(x){return x.id===id;}):null;
   qztState={id:id||null,lines:t?(t.lines||[]).map(function(l){return Object.assign({},l);}):[]};
+  qzProductSearchSelections['qzt-product-results']={};
   document.getElementById('qzt-title').textContent=t?'Redigér skabelon':'Ny skabelon';
   document.getElementById('qzt-name').value=t?t.name:'';
   document.getElementById('qzt-description').value=t?(t.description||''):'';
@@ -11055,12 +11326,14 @@ function renderQzQuotes(){
   var body=document.getElementById('qz-quotes-body');
   if(!list.length){body.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen tilbud fundet':'Ingen tilbud endnu')+'</td></tr>';return;}
   body.innerHTML=list.map(function(x){
+    var href='#quotes/tilbud/'+x.id;
+    var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
     return '<tr>'
-      +'<td>'+esc(x.quote_number||'–')+'</td>'
-      +'<td>'+esc(x.job_name||'–')+'</td>'
-      +'<td>'+esc(String(x.created_at||'').slice(0,10))+'</td>'
-      +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
-      +'<td class="num">'+krFmt(Number(x.total))+'</td>'
+      +'<td>'+a(esc(x.quote_number||'–'))+'</td>'
+      +'<td>'+a(esc(x.job_name||'–'))+'</td>'
+      +'<td>'+a(esc(String(x.created_at||'').slice(0,10)))+'</td>'
+      +'<td>'+a(qzStatusDot(QZ_QUOTE_STATUS,x.status))+'</td>'
+      +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
       +'<td><div class="qz-row-actions">'
       +'<button class="qz-icon-btn" onclick="openQuoteEditor('+x.id+')" title="Åbn">✎</button>'
       +(x.status!=='converted'?'<button class="qz-icon-btn" onclick="deleteQzQuote('+x.id+')" title="Slet">🗑</button>':'')
@@ -11090,6 +11363,7 @@ function qePopulateStatusSelect(current){
 }
 async function openQuoteEditor(id){
   qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null};
+  qzProductSearchSelections['qe-product-results']={};
   document.getElementById('qe-customer-search').value='';
   document.getElementById('qe-customer-address').value='';
   document.getElementById('qe-customer-phone').value='';
@@ -11103,6 +11377,7 @@ async function openQuoteEditor(id){
   document.getElementById('qe-pdf-link').style.display='none';
   document.getElementById('qe-share-btn').style.display='none';
   document.getElementById('qe-request-btn').style.display='none';
+  document.getElementById('qe-send-btn').style.display='none';
   if(id){
     var qd=await api('/api/quotes/'+id);
     if(!qd||qd.error){toast('Kunne ikke hente tilbuddet','❌');return;}
@@ -11126,6 +11401,7 @@ async function openQuoteEditor(id){
     document.getElementById('qe-convert-btn').style.display=qd.status==='converted'?'none':'inline-flex';
     document.getElementById('qe-share-btn').style.display=qd.status==='converted'?'none':'inline-flex';
     document.getElementById('qe-request-btn').style.display='inline-flex';
+    document.getElementById('qe-send-btn').style.display='inline-flex';
     if(qd.status==='converted')toast('Dette tilbud er konverteret til en faktura','ℹ️');
   } else {
     document.getElementById('qe-title').textContent='Nyt tilbud';
@@ -11260,7 +11536,11 @@ async function saveQuoteEditor(){
   if(r&&r.ok){
     toast('Tilbud gemt','✓');
     await loadQzQuotes();renderQzQuotes();
-    closeModal('quote-editor-modal');
+    // Bevidst IKKE closeModal her — Martin skal kunne fortsætte med det samme:
+    // åbne PDF'en, kopiere kundelinket eller sende prisforespørgsler. Genindlæs
+    // editoren med det gemte id, så alle knapper (som kun vises når id er sat)
+    // dukker op med det samme uden at man skal lede tilbuddet frem igen.
+    await openQuoteEditor(qeState.id||r.id);
   } else toast((r&&r.error)||'Kunne ikke gemme tilbuddet','❌');
 }
 async function convertQuoteToInvoice(){
@@ -11388,15 +11668,17 @@ function renderQzInvoices(){
   var body=document.getElementById('qz-invoices-body');
   if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen fakturaer fundet':'Ingen fakturaer endnu')+'</td></tr>';return;}
   body.innerHTML=list.map(function(x){
+    var href='#quotes/faktura/'+x.id;
+    var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
     return '<tr>'
-      +'<td>'+esc(x.invoice_number||'–')+'</td>'
-      +'<td>'+esc(x.job_name||'–')+'</td>'
-      +'<td>'+esc(String(x.created_at||'').slice(0,10))+'</td>'
-      +'<td>'+esc(x.due_date||'–')+'</td>'
-      +'<td>'+qzStatusDot(QZ_INVOICE_STATUS,x.status)+'</td>'
-      +'<td class="num">'+krFmt(Number(x.total))+'</td>'
-      +'<td class="num">'+krFmt(Number(x.paid_total))+'</td>'
-      +'<td class="num">'+krFmt(Number(x.remaining))+'</td>'
+      +'<td>'+a(esc(x.invoice_number||'–'))+'</td>'
+      +'<td>'+a(esc(x.job_name||'–'))+'</td>'
+      +'<td>'+a(esc(String(x.created_at||'').slice(0,10)))+'</td>'
+      +'<td>'+a(esc(x.due_date||'–'))+'</td>'
+      +'<td>'+a(qzStatusDot(QZ_INVOICE_STATUS,x.status))+'</td>'
+      +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
+      +'<td class="num">'+a(krFmt(Number(x.paid_total)))+'</td>'
+      +'<td class="num">'+a(krFmt(Number(x.remaining)))+'</td>'
       +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openInvoiceDetail('+x.id+')" title="Åbn">✎</button></div></td>'
       +'</tr>';
   }).join('');

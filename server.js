@@ -930,6 +930,15 @@ async function initSchema() {
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS signature_data TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_accept_token ON quotes(accept_token) WHERE accept_token IS NOT NULL;
 
+    -- MAIL-SKABELONER TIL TILBUD/FAKTURA (HTML) — adskilt fra email_templates
+    -- ovenfor (som er til booking-/planlægningsmails med andre variabler).
+    -- body_html er RÅ HTML som skrives direkte i mailen, ikke tekst der
+    -- auto-konverteres til <p>-tags.
+    CREATE TABLE IF NOT EXISTS document_email_templates (
+      id SERIAL PRIMARY KEY, name TEXT NOT NULL, subject TEXT NOT NULL, body_html TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}, updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     -- ── PRISFORESPØRGSLER til leverandører (kun materiale-linjer, uden priser)
     -- og BLANKE TILBUD til underleverandører (alle linjer, uden priser) — samme
     -- mekanik, forskellig linje-udvælgelse og modtager-antal. ──────────────
@@ -4871,6 +4880,32 @@ app.delete('/api/email-templates/:id', auth, adminOnly, asyncRoute(async (req, r
   res.json({ ok: true });
 }));
 
+// ── MAIL-SKABELONER TIL TILBUD/FAKTURA (HTML) ──
+app.get('/api/document-email-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM document_email_templates ORDER BY name ASC');
+  res.json(rows.rows);
+}));
+app.post('/api/document-email-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name || !body.subject || !body.body_html) return res.status(400).json({ error: 'Navn, emne og indhold skal udfyldes' });
+  const r = await pool.query(`
+    INSERT INTO document_email_templates (name,subject,body_html,updated_at) VALUES ($1,$2,$3,${nowTextSQL()}) RETURNING id
+  `, [String(body.name).trim().slice(0, 200), String(body.subject).trim().slice(0, 300), String(body.body_html).slice(0, 40000)]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/document-email-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const r = await pool.query(`
+    UPDATE document_email_templates SET name=$1,subject=$2,body_html=$3,updated_at=${nowTextSQL()} WHERE id=$4
+  `, [String(body.name || '').trim().slice(0, 200), String(body.subject || '').trim().slice(0, 300), String(body.body_html || '').slice(0, 40000), req.params.id]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  res.json({ ok: true });
+}));
+app.delete('/api/document-email-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM document_email_templates WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
 // ══════════════════════════════════════════════════════════════
 // NOTIFIKATIONER — konfigurerbare regler + log
 // ══════════════════════════════════════════════════════════════
@@ -6955,6 +6990,31 @@ function drawDocumentPdf(doc, kind, record, company) {
     doc.fontSize(8).fillColor('#9CA3AF').text(company.footerNote, 40, 780, { width: 515, align: 'center' });
   }
 }
+// Samler PDF'en i hukommelsen i stedet for at streame den direkte til et
+// HTTP-svar — bruges når PDF'en skal vedhæftes en mail i stedet for vises i
+// browseren.
+function renderDocumentPdfBuffer(kind, record, company) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      drawDocumentPdf(doc, kind, record, company);
+      doc.end();
+    } catch (e) { reject(e); }
+  });
+}
+function stripHtmlToText(html) {
+  return String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
 
 app.get('/api/quotes/:id/pdf', auth, financeOnly, asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
@@ -7004,6 +7064,105 @@ app.get('/api/quotes/:id/share-link', auth, financeOnly, asyncRoute(async (req, 
     await pool.query('UPDATE quotes SET accept_token=$1 WHERE id=$2', [token, req.params.id]);
   }
   res.json({ ok: true, url: `${PUBLIC_APP_URL}/tilbud/${token}` });
+}));
+
+// Til forskel fra fillEmailVars (bruges til booking-mails, se ovenfor) skriver
+// denne TOM streng når nøglen findes men er tom/irrelevant for dokumenttypen
+// (fx {{forfald}} på et tilbud) — ellers ville skabelonen vise "{{forfald}}"
+// bogstaveligt i mailen, hvis en admin bruger samme skabelon til begge typer.
+function fillDocEmailVars(str, vars) {
+  return String(str || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, key) => (key in vars) ? String(vars[key]) : m);
+}
+const DOC_EMAIL_VARS = [
+  ['{{kunde}}', 'Kunde/sagsnavn'], ['{{dokument_nr}}', 'Tilbuds-/fakturanummer'], ['{{total}}', 'Totalbeløb'],
+  ['{{gyldig_til}}', 'Gyldig til (kun tilbud)'], ['{{forfald}}', 'Forfaldsdato (kun faktura)'], ['{{restbeloeb}}', 'Restbeløb (kun faktura)'],
+  ['{{firma}}', 'Firmanavn'], ['{{link}}', 'Link til kundens portal (alle tilbud/fakturaer/opgaver)'],
+  ['{{underskriv_link}}', 'Direkte link til at underskrive (kun tilbud)']
+];
+
+app.post('/api/quotes/:id/send', auth, financeOnly, asyncRoute(async (req, res) => {
+  const quote = await loadQuoteFull(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const b = req.body || {};
+  const to = String(b.to || quote.customer_email || '').trim();
+  if (!to) return res.status(400).json({ error: 'Ingen modtager-mail angivet — udfyld kundens e-mail på tilbuddet, eller angiv en her' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
+  let acceptToken = quote.accept_token;
+  if (!acceptToken) {
+    acceptToken = crypto.randomBytes(20).toString('hex');
+    await pool.query('UPDATE quotes SET accept_token=$1 WHERE id=$2', [acceptToken, quote.id]);
+  }
+  const company = await getCompanyInfo();
+  const portalToken = quote.job_name ? await getOrCreateCustomerPortalToken(quote.job_name) : null;
+  const signLink = `${PUBLIC_APP_URL}/tilbud/${acceptToken}`;
+  const portalLink = portalToken ? customerPortalLinkFor(portalToken) : signLink;
+  const vars = {
+    kunde: quote.job_name || '', dokument_nr: quote.quote_number, total: krFmtServer(quote.total),
+    gyldig_til: quote.valid_until || '', forfald: '', restbeloeb: '', firma: company.name,
+    link: portalLink, underskriv_link: signLink
+  };
+  let subject, bodyHtml;
+  if (b.template_id) {
+    const tpl = await pgOne('SELECT * FROM document_email_templates WHERE id=$1', [b.template_id]);
+    if (!tpl) return res.status(404).json({ error: 'Mail-skabelonen blev ikke fundet' });
+    subject = fillDocEmailVars(tpl.subject, vars);
+    bodyHtml = fillDocEmailVars(tpl.body_html, vars);
+  } else {
+    subject = `Dit tilbud ${quote.quote_number} fra ${company.name}`;
+    bodyHtml = `<p>Hej ${escPublic(quote.job_name || '')},</p><p>Her er dit tilbud <b>${escPublic(quote.quote_number)}</b> på <b>${krFmtServer(quote.total)}</b> — vedhæftet som PDF.</p><p>Du kan se og underskrive tilbuddet online her: <a href="${signLink}">${signLink}</a></p><p>Du kan altid se alle dine tilbud, fakturaer og planlagte opgaver på din side: <a href="${portalLink}">${portalLink}</a></p><p>Mvh<br>${escPublic(company.name)}</p>`;
+  }
+  let pdfBuffer;
+  try { pdfBuffer = await renderDocumentPdfBuffer('quote', quote, company); }
+  catch (e) { return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message }); }
+  try {
+    await sendMailUniversal({
+      to, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml),
+      attachments: [{ filename: quote.quote_number + '.pdf', content: pdfBuffer }]
+    });
+  } catch (e) {
+    return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
+  }
+  if (quote.status === 'draft') await pool.query(`UPDATE quotes SET status='sent', updated_at=${nowTextSQL()} WHERE id=$1`, [quote.id]);
+  res.json({ ok: true });
+}));
+
+app.post('/api/invoices/:id/send', auth, financeOnly, asyncRoute(async (req, res) => {
+  const invoice = await loadInvoiceFull(req.params.id);
+  if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  const b = req.body || {};
+  const to = String(b.to || invoice.customer_email || '').trim();
+  if (!to) return res.status(400).json({ error: 'Ingen modtager-mail angivet — udfyld kundens e-mail på fakturaen, eller angiv en her' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
+  const company = await getCompanyInfo();
+  const portalToken = invoice.job_name ? await getOrCreateCustomerPortalToken(invoice.job_name) : null;
+  const portalLink = portalToken ? customerPortalLinkFor(portalToken) : PUBLIC_APP_URL;
+  const vars = {
+    kunde: invoice.job_name || '', dokument_nr: invoice.invoice_number, total: krFmtServer(invoice.total),
+    gyldig_til: '', forfald: invoice.due_date || '', restbeloeb: krFmtServer(invoice.remaining), firma: company.name,
+    link: portalLink, underskriv_link: ''
+  };
+  let subject, bodyHtml;
+  if (b.template_id) {
+    const tpl = await pgOne('SELECT * FROM document_email_templates WHERE id=$1', [b.template_id]);
+    if (!tpl) return res.status(404).json({ error: 'Mail-skabelonen blev ikke fundet' });
+    subject = fillDocEmailVars(tpl.subject, vars);
+    bodyHtml = fillDocEmailVars(tpl.body_html, vars);
+  } else {
+    subject = `Din faktura ${invoice.invoice_number} fra ${company.name}`;
+    bodyHtml = `<p>Hej ${escPublic(invoice.job_name || '')},</p><p>Her er din faktura <b>${escPublic(invoice.invoice_number)}</b> på <b>${krFmtServer(invoice.total)}</b>${invoice.due_date ? ', med forfald ' + escPublic(invoice.due_date) : ''} — vedhæftet som PDF.</p><p>Du kan altid se alle dine tilbud, fakturaer og planlagte opgaver på din side: <a href="${portalLink}">${portalLink}</a></p><p>Mvh<br>${escPublic(company.name)}</p>`;
+  }
+  let pdfBuffer;
+  try { pdfBuffer = await renderDocumentPdfBuffer('invoice', invoice, company); }
+  catch (e) { return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message }); }
+  try {
+    await sendMailUniversal({
+      to, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml),
+      attachments: [{ filename: invoice.invoice_number + '.pdf', content: pdfBuffer }]
+    });
+  } catch (e) {
+    return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
+  }
+  res.json({ ok: true });
 }));
 
 app.get('/tilbud/:token', asyncRoute(async (req, res) => {
@@ -7496,6 +7655,19 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     } catch (e) { documentsError = e.message; console.error('Kundeportal: kunne ikke hente tilbud/fakturaer:', e.message); }
   }
 
+  // EGNE TILBUD & FAKTURAER (vores Postgres-tabeller, se Tilbud & Faktura-modulet
+  // i admin) — matchet på samme normaliserede job_name som resten af portalen.
+  // Dette er nu den PRIMÆRE kilde; JobTread-dokumenterne ovenfor vises kun som
+  // fallback for sager der endnu ikke bruger det nye tilbuds-/fakturamodul.
+  const ourQuotes = (await pool.query(
+    `SELECT * FROM quotes WHERE lower(trim(job_name))=lower(trim($1)) ORDER BY created_at DESC`,
+    [tokenRow.job_name]
+  )).rows;
+  const ourInvoices = (await pool.query(
+    `SELECT * FROM invoices WHERE lower(trim(job_name))=lower(trim($1)) ORDER BY created_at DESC`,
+    [tokenRow.job_name]
+  )).rows;
+
   // PROJEKT-TIDSLINJE — læses direkte fra gantt_tasks (samme tabel som admins
   // Gantt-kort), IKKE fra planning_bookings. Det er bevidst: kunden skal se det
   // samme projektforløb Martin selv redigerer i Gantt-kortet, og det skal opdatere
@@ -7627,7 +7799,46 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     denied: { label: 'Afvist', bg: '#FEE2E2', fg: '#B91C1C' }
   };
   const fmtKr = (n) => (n == null ? '' : Math.round(n).toLocaleString('da-DK') + ' kr.');
+  const QUOTE_STATUS_LABELS = {
+    draft: { label: 'Kladde', bg: '#F1F5F9', fg: '#475569' },
+    sent: { label: 'Afventer din accept', bg: '#FEF3C7', fg: '#92400E' },
+    accepted: { label: '✅ Underskrevet', bg: '#DCFCE7', fg: '#15803D' },
+    declined: { label: 'Afvist', bg: '#FEE2E2', fg: '#B91C1C' },
+    converted: { label: '✅ Godkendt & faktureret', bg: '#DCFCE7', fg: '#15803D' }
+  };
+  const INVOICE_STATUS_LABELS = {
+    unpaid: { label: 'Ikke betalt', bg: '#FEF3C7', fg: '#92400E' },
+    partial: { label: 'Delvist betalt', bg: '#FEF3C7', fg: '#92400E' },
+    paid: { label: '✅ Betalt', bg: '#DCFCE7', fg: '#15803D' },
+    void: { label: 'Annulleret', bg: '#FEE2E2', fg: '#B91C1C' }
+  };
+  const ourQuotesHtml = ourQuotes.map(q => {
+    const st = QUOTE_STATUS_LABELS[q.status] || { label: q.status, bg: '#F1F5F9', fg: '#475569' };
+    const needsSignature = q.status === 'draft' || q.status === 'sent';
+    return `<div class="job-card">
+      <div class="job-top"><div class="job-title">📄 Tilbud ${esc(q.quote_number)}</div><span class="pill" style="background:${st.bg};color:${st.fg}">${st.label}</span></div>
+      <div class="job-meta doc-price">${fmtKr(Number(q.total))}</div>
+      <div class="job-meta">📅 ${esc(fmt(q.created_at))}${q.valid_until ? ' · Gyldig til ' + esc(q.valid_until) : ''}</div>
+      ${needsSignature && q.accept_token
+        ? `<a class="doc-action doc-action-sign" href="/tilbud/${esc(q.accept_token)}">✍️ Se &amp; underskriv tilbud →</a>`
+        : `<a class="doc-action" href="/kunde/${esc(req.params.token)}/tilbud/${q.id}/pdf" target="_blank" rel="noopener">📄 Se PDF →</a>`}
+    </div>`;
+  }).join('');
+  const ourInvoicesHtml = ourInvoices.map(inv => {
+    const st = INVOICE_STATUS_LABELS[inv.status] || { label: inv.status, bg: '#F1F5F9', fg: '#475569' };
+    return `<div class="job-card">
+      <div class="job-top"><div class="job-title">🧾 Faktura ${esc(inv.invoice_number)}</div><span class="pill" style="background:${st.bg};color:${st.fg}">${st.label}</span></div>
+      <div class="job-meta doc-price">${fmtKr(Number(inv.total))}${Number(inv.paid_total) > 0 ? ' · betalt ' + fmtKr(Number(inv.paid_total)) : ''}</div>
+      <div class="job-meta">📅 ${esc(fmt(inv.created_at))}${inv.due_date ? ' · Forfald ' + esc(inv.due_date) : ''}</div>
+      <a class="doc-action" href="/kunde/${esc(req.params.token)}/faktura/${inv.id}/pdf" target="_blank" rel="noopener">📄 Se PDF →</a>
+    </div>`;
+  }).join('');
+  const hasOwnDocs = ourQuotes.length > 0 || ourInvoices.length > 0;
   const docsHtml = (() => {
+    if (hasOwnDocs) {
+      return (ourQuotes.length ? `<div class="group"><div class="group-label">Tilbud <span class="group-count">${ourQuotes.length}</span></div>${ourQuotesHtml}</div>` : '')
+        + (ourInvoices.length ? `<div class="group"><div class="group-label">Fakturaer <span class="group-count">${ourInvoices.length}</span></div>${ourInvoicesHtml}</div>` : '');
+    }
     if (!documents.length) {
       if (documentsError) return '<div class="empty">Kunne ikke hente tilbud/fakturaer lige nu. Prøv at genindlæse siden om lidt.</div>';
       return '<div class="empty">Ingen tilbud eller fakturaer endnu.</div>';
@@ -7670,6 +7881,9 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 .pill{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
 .job-meta{font-size:12px;color:var(--sub);margin-top:3px}
 .doc-price{font-weight:800;color:var(--ink);font-size:13px}
+.doc-action{display:inline-block;margin-top:9px;font-size:12px;font-weight:800;color:var(--accent);text-decoration:none}
+.doc-action:hover{text-decoration:underline}
+.doc-action-sign{background:var(--accent-soft);color:var(--accent);padding:7px 12px;border-radius:9px;margin-top:10px}
 .empty{text-align:center;color:var(--sub);font-size:13px;padding:24px 0}
 .foot{text-align:center;font-size:11.5px;color:var(--sub);margin-top:20px}
 .gantt-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:14px;background:#fff}
@@ -7706,7 +7920,7 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 <div class="tabs">
   <div class="tab active" id="tab-pipeline" onclick="showTab('pipeline')">Oversigt</div>
   <div class="tab" id="tab-timeline" onclick="showTab('timeline')">Timeline</div>
-  <div class="tab" id="tab-docs" onclick="showTab('docs')">Fakturaer</div>
+  <div class="tab" id="tab-docs" onclick="showTab('docs')">Tilbud &amp; Faktura</div>
 </div>
 <div class="panel active" id="panel-pipeline">${pipelineHtml}</div>
 <div class="panel" id="panel-timeline">${ganttHtml}</div>
@@ -7727,6 +7941,40 @@ function showTab(name){
 </script>
 </body></html>`;
   res.send(html);
+}));
+
+// PDF-download scopet til kundeportal-tokenet — kunden har allerede det trygge
+// link, så vi tjekker blot at tilbuddet/fakturaen faktisk hører til SAMME
+// job_name som portalen, før vi sender PDF'en, i stedet for at kræve login.
+app.get('/kunde/:token/tilbud/:quoteId/pdf', asyncRoute(async (req, res) => {
+  const tokenRow = await pgOne('SELECT job_name FROM customer_portal_tokens WHERE token=$1', [req.params.token]);
+  if (!tokenRow) return res.status(404).send(portalNotFoundPage());
+  const quote = await loadQuoteFull(req.params.quoteId);
+  if (!quote || String(quote.job_name || '').trim().toLowerCase() !== String(tokenRow.job_name || '').trim().toLowerCase()) {
+    return res.status(404).send(portalNotFoundPage());
+  }
+  const company = await getCompanyInfo();
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `inline; filename="${quote.quote_number}.pdf"`);
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  doc.pipe(res);
+  drawDocumentPdf(doc, 'quote', quote, company);
+  doc.end();
+}));
+app.get('/kunde/:token/faktura/:invoiceId/pdf', asyncRoute(async (req, res) => {
+  const tokenRow = await pgOne('SELECT job_name FROM customer_portal_tokens WHERE token=$1', [req.params.token]);
+  if (!tokenRow) return res.status(404).send(portalNotFoundPage());
+  const invoice = await loadInvoiceFull(req.params.invoiceId);
+  if (!invoice || String(invoice.job_name || '').trim().toLowerCase() !== String(tokenRow.job_name || '').trim().toLowerCase()) {
+    return res.status(404).send(portalNotFoundPage());
+  }
+  const company = await getCompanyInfo();
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `inline; filename="${invoice.invoice_number}.pdf"`);
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  doc.pipe(res);
+  drawDocumentPdf(doc, 'invoice', invoice, company);
+  doc.end();
 }));
 
 function sendPage(filename) {
