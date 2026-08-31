@@ -1072,6 +1072,20 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_time_entries_project ON time_entries(project_id);
+    ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS photo_urls JSONB NOT NULL DEFAULT '[]';
+    ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS created_by INTEGER;
+    ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS updated_at TEXT;
+
+    -- ── KS-SKABELON PR. SAG: Martin kan begrænse hvilke KS-skabeloner en
+    -- medarbejder må udfylde på en given sag. Ingen rækker for en sag =
+    -- alle skabeloner tilladt (bagudkompatibelt), for at undgå at gamle
+    -- sager pludselig mister alle deres KS-formularer. ──────────────────
+    CREATE TABLE IF NOT EXISTS project_qa_templates (
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      qa_template_id INTEGER NOT NULL REFERENCES qa_templates(id) ON DELETE CASCADE,
+      PRIMARY KEY (project_id, qa_template_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_qa_templates_project ON project_qa_templates(project_id);
 
     -- ── MATERIALER: strukturerede indkøb (kvitteringsbillede + pris + butik)
     -- knyttet til en sag — erstatter det gamle "Upload Bill"-link ud til
@@ -1410,6 +1424,18 @@ async function financeOnly(req, res, next) {
 async function pgOne(sql, values = []) {
   const result = await pool.query(sql, values);
   return result.rows[0] || null;
+}
+
+// Bruges når en handling skal tillades ekstra ting FOR økonomi/kontor-brugere
+// (fx registrere/rette tid for en anden medarbejder), men uden at hele endpointet
+// skal spærres med financeOnly for almindelige medarbejdere der bruger den normale del.
+async function isFinanceAdmin(userId) {
+  try {
+    const row = await pgOne('SELECT is_finance_admin FROM users WHERE id=$1 AND active=1', [userId]);
+    return !!(row && row.is_finance_admin);
+  } catch (error) {
+    return false;
+  }
 }
 
 // Skriver til systemloggen, så admin kan se hvad der er kørt automatisk i baggrunden
@@ -4702,12 +4728,16 @@ async function mirrorProjectTaskToPool(id, project, fields) {
   ]);
 }
 app.get('/api/projects', auth, asyncRoute(async (req, res) => {
+  // Pris/tilbudsbeløb sendes KUN med til kontor/økonomi-brugere (til søgning/visning
+  // i admin.html's Projekter-liste) — aldrig til employee/employee-demo, som deler
+  // dette samme endpoint til deres sagsliste og ikke må se priser.
+  const includePrice = await isFinanceAdmin(req.user.id);
   const rows = await pool.query(`
-    SELECT p.*, q.quote_number,
+    SELECT p.*, q.quote_number${includePrice ? ', q.total AS quote_total, i.total AS invoice_total' : ''},
       (SELECT COUNT(*)::int FROM gantt_tasks WHERE project_id=p.id) AS task_count,
       (SELECT COUNT(*)::int FROM time_entries WHERE project_id=p.id) AS time_entry_count,
       (SELECT COUNT(*)::int FROM project_photos WHERE project_id=p.id) AS photo_count
-    FROM projects p LEFT JOIN quotes q ON q.id = p.quote_id
+    FROM projects p LEFT JOIN quotes q ON q.id = p.quote_id${includePrice ? ' LEFT JOIN invoices i ON i.id = p.invoice_id' : ''}
     ORDER BY p.created_at DESC
   `);
   res.json(rows.rows);
@@ -4716,7 +4746,7 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
 app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
-  const [tasks, photos, timeEntries, materials, qaSubmissions, contactSubmissions, quoteLines] = await Promise.all([
+  const [tasks, photos, timeEntries, materials, qaSubmissions, contactSubmissions, quoteLines, qaTemplateIds] = await Promise.all([
     pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 ORDER BY position ASC, id ASC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM project_photos WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM time_entries WHERE project_id=$1 ORDER BY entry_date DESC, id DESC', [req.params.id]).then(r => r.rows),
@@ -4725,9 +4755,24 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
     pool.query('SELECT * FROM contact_form_submissions WHERE project_id=$1 ORDER BY submitted_at DESC', [req.params.id]).then(r => r.rows),
     project.quote_id
       ? pool.query('SELECT id, description FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id]).then(r => r.rows)
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    pool.query('SELECT qa_template_id FROM project_qa_templates WHERE project_id=$1', [req.params.id]).then(r => r.rows.map(x => x.qa_template_id))
   ]);
-  res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines });
+  res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds });
+}));
+
+// Kontoret vælger hvilke KS-skabeloner der er tilgængelige for medarbejderen på DENNE
+// sag. Ingen rækker gemt = ingen begrænsning (alle skabeloner tilladt, bagudkompatibelt).
+app.put('/api/projects/:id/qa-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const ids = Array.isArray(req.body && req.body.template_ids) ? req.body.template_ids.map(Number).filter(Boolean) : [];
+  await pool.query('DELETE FROM project_qa_templates WHERE project_id=$1', [req.params.id]);
+  if (ids.length) {
+    const values = ids.map((_, i) => `($1,$${i + 2})`).join(',');
+    await pool.query(`INSERT INTO project_qa_templates (project_id, qa_template_id) VALUES ${values} ON CONFLICT DO NOTHING`, [req.params.id, ...ids]);
+  }
+  res.json({ ok: true });
 }));
 
 app.put('/api/projects/:id', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -4850,15 +4895,50 @@ app.post('/api/projects/:id/time-entries', auth, asyncRoute(async (req, res) => 
   const b = req.body || {};
   const note = String(b.note || '').trim();
   const minutes = Number(b.minutes);
+  // Billeder: understøt både det gamle enkelt-felt (photo_url) og en liste (photo_urls).
+  // En medarbejders egen registrering kræver stadig mindst ét billede som dokumentation.
+  // Kontorets manuelle registreringer (finance/admin, evt. for en anden medarbejder)
+  // kan undtagelsesvist gemmes uden billede, da de typisk indtastes efterfølgende.
+  let photoUrls = Array.isArray(b.photo_urls) ? b.photo_urls.filter(Boolean).map(String) : [];
+  if (!photoUrls.length && b.photo_url) photoUrls = [String(b.photo_url)];
+  // Valgfri user_id: kun kontor/økonomi-brugere må registrere tid FOR en anden medarbejder.
+  let targetUserId = req.user.id;
+  if (b.user_id && Number(b.user_id) !== req.user.id) {
+    if (!(await isFinanceAdmin(req.user.id))) return res.status(403).json({ error: 'Kun kontoret kan registrere tid for andre medarbejdere' });
+    targetUserId = Number(b.user_id);
+  }
+  const isManualByOffice = targetUserId !== req.user.id || (b.manual && await isFinanceAdmin(req.user.id));
   if (!note) return res.status(400).json({ error: 'Skriv en note om det udførte arbejde' });
-  if (!b.photo_url) return res.status(400).json({ error: 'Upload et billede som dokumentation' });
+  if (!photoUrls.length && !isManualByOffice) return res.status(400).json({ error: 'Upload et billede som dokumentation' });
   if (!minutes || minutes <= 0) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt' });
   const entryDate = validDate(b.entry_date) ? b.entry_date : new Date().toISOString().slice(0, 10);
   const r = await pool.query(`
-    INSERT INTO time_entries (project_id,user_id,minutes,note,photo_url,bought_materials,quote_line_id,entry_date)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
-  `, [req.params.id, req.user.id, Math.round(minutes), note, b.photo_url, b.bought_materials || null, b.quote_line_id || null, entryDate]);
+    INSERT INTO time_entries (project_id,user_id,minutes,note,photo_url,photo_urls,bought_materials,quote_line_id,entry_date,created_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id
+  `, [req.params.id, targetUserId, Math.round(minutes), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, req.user.id]);
   res.json({ ok: true, id: r.rows[0].id });
+}));
+
+// Redigering er forbeholdt kontoret/økonomi — en medarbejder kan ikke selv rette en
+// registrering bagefter, kun oprette og (indirekte, via kontoret) få den rettet.
+app.put('/api/projects/:id/time-entries/:entryId', auth, financeOnly, asyncRoute(async (req, res) => {
+  const existing = await pgOne('SELECT id FROM time_entries WHERE id=$1 AND project_id=$2', [req.params.entryId, req.params.id]);
+  if (!existing) return res.status(404).json({ error: 'Tidsregistreringen blev ikke fundet' });
+  const b = req.body || {};
+  const note = String(b.note || '').trim();
+  const minutes = Number(b.minutes);
+  if (!note) return res.status(400).json({ error: 'Skriv en note om det udførte arbejde' });
+  if (!minutes || minutes <= 0) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt' });
+  if (!b.user_id) return res.status(400).json({ error: 'Vælg en medarbejder' });
+  const entryDate = validDate(b.entry_date) ? b.entry_date : new Date().toISOString().slice(0, 10);
+  let photoUrls = Array.isArray(b.photo_urls) ? b.photo_urls.filter(Boolean).map(String) : [];
+  if (!photoUrls.length && b.photo_url) photoUrls = [String(b.photo_url)];
+  await pool.query(`
+    UPDATE time_entries SET user_id=$1, minutes=$2, note=$3, photo_url=$4, photo_urls=$5,
+      bought_materials=$6, quote_line_id=$7, entry_date=$8, updated_at=${nowTextSQL()}
+    WHERE id=$9 AND project_id=$10
+  `, [Number(b.user_id), Math.round(minutes), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, req.params.entryId, req.params.id]);
+  res.json({ ok: true });
 }));
 
 app.delete('/api/projects/:id/time-entries/:entryId', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -4923,7 +5003,17 @@ app.post('/api/projects/:id/materials/:materialId/invoice', auth, financeOnly, a
 // ── KVALITETSSIKRING — Martin bygger formularer (skabeloner med felter),
 // medarbejdere udfylder dem under et projekt. ──────
 app.get('/api/qa-templates', auth, asyncRoute(async (req, res) => {
-  const rows = await pool.query('SELECT * FROM qa_templates ORDER BY name');
+  // ?project_id=X: brugt af medarbejder-appen for kun at vise de skabeloner kontoret
+  // har tildelt DEN sag. Har sagen ingen tildelinger endnu, vises alle (bagudkompatibelt).
+  let rows;
+  if (req.query.project_id) {
+    const assignedIds = await pool.query('SELECT qa_template_id FROM project_qa_templates WHERE project_id=$1', [req.query.project_id]).then(r => r.rows.map(x => x.qa_template_id));
+    rows = assignedIds.length
+      ? await pool.query('SELECT * FROM qa_templates WHERE id = ANY($1::int[]) ORDER BY name', [assignedIds])
+      : await pool.query('SELECT * FROM qa_templates ORDER BY name');
+  } else {
+    rows = await pool.query('SELECT * FROM qa_templates ORDER BY name');
+  }
   res.json(rows.rows.map(r => ({ ...r, fields: typeof r.fields === 'string' ? safeJsonParse(r.fields, []) : (r.fields || []) })));
 }));
 
