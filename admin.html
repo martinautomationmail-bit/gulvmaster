@@ -747,6 +747,13 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-segtabs{display:flex;gap:22px;border-bottom:1px solid var(--bly-border-soft);margin-bottom:14px}
 .bly-segtab{border:0;background:transparent;padding:0 0 11px;font-size:13px;font-weight:700;color:var(--bly-sub);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
 .bly-segtab.active{color:var(--bly-ink);border-bottom-color:var(--bly-ink)}
+.qz-more-drop{position:relative;margin-bottom:-11px}
+.qz-more-caret{font-size:9px}
+.qz-more-menu{display:none;position:absolute;top:calc(100% + 8px);left:0;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);box-shadow:0 12px 32px rgba(15,17,24,.14);padding:6px;min-width:190px;z-index:40}
+.qz-more-menu.open{display:block}
+.qz-more-item{display:block;width:100%;text-align:left;border:0;background:none;padding:9px 10px;font-size:13px;font-weight:600;color:var(--bly-ink);border-radius:8px;cursor:pointer}
+.qz-more-item:hover{background:var(--bly-accent-soft)}
+.qz-more-item.active{background:var(--bly-accent-soft);color:var(--bly-accent)}
 .pd-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .pd-photo-thumb{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bly-border-soft);aspect-ratio:1/1;background:#F4F6FB}
 .pd-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
@@ -1616,6 +1623,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .form-label{font-size:11px;font-weight:700;color:var(--bly-sub);display:block;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
 .input,.select{width:100%;padding:10px 12px;border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);outline:none;font-size:12.5px;font-weight:500;color:var(--bly-ink);box-sizing:border-box;transition:border-color .12s,box-shadow .12s}
 .input:focus,.select:focus{border-color:var(--bly-accent);background:#fff;box-shadow:0 0 0 3px var(--bly-accent-soft)}
+.rte-wrap{display:flex;flex-direction:column;gap:0}
+.rte-toolbar{display:flex;gap:4px;margin-bottom:5px}
+.rte-btn{width:28px;height:28px;border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);color:var(--bly-sub);font-size:12px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:border-color .12s,color .12s}
+.rte-btn:hover{border-color:var(--bly-accent);color:var(--bly-accent)}
+.rte-editable{min-height:52px;line-height:1.5;overflow-y:auto;cursor:text}
+.rte-editable:empty:before{content:attr(data-placeholder);color:#9CA3AF}
+.rte-editable a{color:var(--bly-accent)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--bly-border-soft)}
 .modal-actions .btn,.gd-modal .modal-actions .btn{height:38px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px;border-radius:var(--bly-r-pill);font-size:11.5px;white-space:nowrap}
@@ -2104,14 +2118,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div><h2>Tilbud &amp; Faktura</h2><div class="sub">Eget produktkatalog, tilbudseditor med live PDF-forhåndsvisning, og fakturaer med delbetalinger</div></div>
   </div>
   <div class="bly-segtabs" id="qz-tabs">
-    <button class="bly-segtab active" data-qztab="products" type="button">📦 Produkter</button>
-    <button class="bly-segtab" data-qztab="templates" type="button">📑 Skabeloner</button>
-    <button class="bly-segtab" data-qztab="quotes" type="button">📝 Tilbud</button>
+    <button class="bly-segtab active" data-qztab="quotes" type="button">📝 Tilbud</button>
     <button class="bly-segtab" data-qztab="invoices" type="button">🧾 Fakturaer</button>
-    <button class="bly-segtab" data-qztab="mailtemplates" type="button">✉️ Mail-skabeloner</button>
+    <div class="qz-more-drop" id="qz-more-drop">
+      <button class="bly-segtab qz-more-btn" id="qz-more-btn" type="button">⋯ Mere <span class="qz-more-caret">▾</span></button>
+      <div class="qz-more-menu" id="qz-more-menu">
+        <button class="qz-more-item" data-qztab="products" type="button">📦 Produkter</button>
+        <button class="qz-more-item" data-qztab="templates" type="button">📑 Skabeloner</button>
+        <button class="qz-more-item" data-qztab="mailtemplates" type="button">✉️ Mail-skabeloner</button>
+      </div>
+    </div>
   </div>
 
-  <div class="qztabpage" id="qztab-products">
+  <div class="qztabpage" id="qztab-products" style="display:none">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title">Produkter</span><input type="text" id="qz-product-search" class="bly-search" placeholder="Søg i produkter..."></div>
       <div class="bly-toolbar-right">
@@ -2136,10 +2155,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </table>
   </div>
 
-  <div class="qztabpage" id="qztab-quotes" style="display:none">
+  <div class="qztabpage" id="qztab-quotes">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-quotes-count">Tilbud</span><input type="text" id="qz-quote-search" class="bly-search" placeholder="Søg i tilbud..."></div>
       <div class="bly-toolbar-right"><button class="bly-btn" id="qz-new-quote-btn" type="button">+ Nyt tilbud</button></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 14px">
+      <div class="bly-segtabs" id="qz-quotes-status-filter" style="border-bottom:0;margin-bottom:0;gap:14px"></div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="muted-sm">Dato:</span>
+        <input type="date" id="qz-quotes-date-from" class="input" style="width:auto">
+        <span class="muted-sm">til</span>
+        <input type="date" id="qz-quotes-date-to" class="input" style="width:auto">
+        <button class="btn small" id="qz-quotes-date-clear" type="button">✕ Ryd</button>
+      </div>
     </div>
     <table class="bly-table">
       <thead><tr><th>Nr.</th><th>Kunde/sag</th><th>Dato</th><th>Status</th><th class="num">Total</th><th style="width:140px"></th></tr></thead>
@@ -2150,6 +2179,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="qztabpage" id="qztab-invoices" style="display:none">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-invoices-count">Fakturaer</span><input type="text" id="qz-invoice-search" class="bly-search" placeholder="Søg i fakturaer..."></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 14px">
+      <div class="bly-segtabs" id="qz-invoices-status-filter" style="border-bottom:0;margin-bottom:0;gap:14px"></div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="muted-sm">Dato:</span>
+        <input type="date" id="qz-invoices-date-from" class="input" style="width:auto">
+        <span class="muted-sm">til</span>
+        <input type="date" id="qz-invoices-date-to" class="input" style="width:auto">
+        <button class="btn small" id="qz-invoices-date-clear" type="button">✕ Ryd</button>
+      </div>
     </div>
     <table class="bly-table">
       <thead><tr><th>Nr.</th><th>Kunde/sag</th><th>Dato</th><th>Forfald</th><th>Status</th><th class="num">Total</th><th class="num">Betalt</th><th class="num">Rest</th><th style="width:90px"></th></tr></thead>
@@ -3576,6 +3615,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="bly-btn outline small" id="iv-add-credit-btn" type="button">+ Ny kreditnota</button>
 
+    <div class="form-group" style="margin-top:18px"><label class="form-label">Betingelser / note <span class="opt-tag">valgfrit — vises nederst på PDF'en og hos kunden</span></label><textarea id="iv-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
+
     <div class="form-group" id="iv-activity-wrap" style="margin-top:18px">
       <label class="form-label">🕓 Tidslinje</label>
       <div id="iv-activity-list" class="doc-activity-list"></div>
@@ -4065,6 +4106,73 @@ async function deleteTaskType(key){
 }
 
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c];});}
+
+// ── LILLE RIG-TEKST-EDITOR (fed skrift + links) TIL NOTER I TILBUD/FAKTURA ──
+// Erstatter visuelt en almindelig <textarea id="X"> med en contenteditable-boks
+// + værktøjslinje (Fed / Link), MEN uden at ændre en eneste af de mange
+// eksisterende steder i koden der læser/sætter "document.getElementById('X').value"
+// — det trick der gør det muligt er at omdefinere selve .value-egenskaben på
+// DEN SPECIFIKKE textarea-node, så get/set transparent går til/fra
+// contenteditable-boksens innerHTML (som nu er den "rigtige" HTML med
+// <b>/<br>/<a href> i stedet for ren tekst). Serveren saniterer indholdet ved
+// gem (se sanitizeRichText i server.js), så det er sikkert at vise direkte
+// både i PDF'en og på kundens online side.
+function makeRichField(id){
+  var ta=document.getElementById(id);
+  if(!ta||ta.dataset.rteInit)return;
+  ta.dataset.rteInit='1';
+  var seed=ta.value||'';
+  ta.style.display='none';
+  var wrap=document.createElement('div');
+  wrap.className='rte-wrap';
+  wrap.innerHTML='<div class="rte-toolbar"><button type="button" class="rte-btn" data-cmd="bold" title="Fed skrift"><b>F</b></button><button type="button" class="rte-btn" data-cmd="link" title="Indsæt link">🔗</button></div>';
+  var editable=document.createElement('div');
+  editable.className='rte-editable input';
+  editable.contentEditable='true';
+  if(ta.placeholder)editable.setAttribute('data-placeholder',ta.placeholder);
+  if(ta.rows)editable.style.minHeight=(Math.max(2,ta.rows)*20)+'px';
+  wrap.appendChild(editable);
+  ta.parentNode.insertBefore(wrap,ta.nextSibling);
+  var internal=seed;
+  var syncingFromValue=false;
+  Object.defineProperty(ta,'value',{
+    get:function(){return internal;},
+    set:function(v){internal=v||'';syncingFromValue=true;editable.innerHTML=internal;syncingFromValue=false;},
+    configurable:true
+  });
+  if(seed)editable.innerHTML=seed;
+  // Enhver eksisterende "document.getElementById('X').addEventListener('input'/'change',...)"
+  // andetsteds i koden (fx den lille live-forhåndsvisning af tilbuddet) lyttede oprindeligt på
+  // selve <textarea>'en — men den er nu skjult og modtager aldrig rigtige bruger-events. Derfor
+  // sender vi et syntetisk 'input'/'change'-event videre PÅ textarea'en, hver gang
+  // contenteditable-boksen ændrer sig, så al eksisterende reaktiv kode fortsætter uændret.
+  editable.addEventListener('input',function(){
+    if(syncingFromValue)return;
+    internal=editable.innerHTML;
+    ta.dispatchEvent(new Event('input'));
+  });
+  editable.addEventListener('blur',function(){ta.dispatchEvent(new Event('change'));});
+  var toolbar=wrap.querySelector('.rte-toolbar');
+  // Uden dette ville selve KLIKKET på en værktøjslinje-knap først flytte fokus væk fra
+  // editable-boksen (browserens normale opførsel), hvilket ville nå at udløse et 'blur'
+  // (og dermed en evt. gem-ved-blur, se fx saveIvNotes) FØR knappens klik-handler nedenfor
+  // overhovedet har nået at anvende fed skrift/link — så det gemte ville mangle formateringen.
+  // preventDefault på selve museklikket forhindrer fokusskiftet, så editable ALDRIG mister
+  // fokus, og document.execCommand nedenfor virker på det rigtige, stadig-fokuserede felt.
+  toolbar.addEventListener('mousedown',function(e){e.preventDefault();});
+  toolbar.addEventListener('click',function(e){
+    var btn=e.target.closest('.rte-btn');if(!btn)return;
+    editable.focus();
+    var cmd=btn.getAttribute('data-cmd');
+    if(cmd==='bold'){document.execCommand('bold');}
+    else if(cmd==='link'){
+      var url=window.prompt('Link-adresse (https://...)','https://');
+      if(url&&url.trim())document.execCommand('createLink',false,url.trim());
+    }
+    internal=editable.innerHTML;
+    ta.dispatchEvent(new Event('input'));
+  });
+}
 function iso(d){var x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);}
 function date(s){return new Date(String(s).slice(0,10)+'T12:00:00');}
 function mon(d){var x=new Date(d);x.setHours(0,0,0,0);var q=x.getDay()||7;x.setDate(x.getDate()-q+1);return x;}
@@ -10102,6 +10210,8 @@ function applySettingsToUI(){
   document.getElementById('settings-company-iban').value=settings.company_iban||'';
   document.getElementById('settings-company-swift').value=settings.company_swift||'';
   document.getElementById('settings-invoice-footer').value=settings.invoice_footer_note||'';
+  makeRichField('settings-quote-top-note');
+  makeRichField('settings-quote-bottom-note');
   document.getElementById('settings-quote-top-note').value=settings.quote_top_note_default||'';
   document.getElementById('settings-quote-bottom-note').value=settings.quote_bottom_note_default||'';
   var logoEl=document.getElementById('nav-logo'),prevEl=document.getElementById('settings-logo-preview');
@@ -11014,7 +11124,8 @@ initNoteWidget();
 // (ikke JobTreads egne dokumenter), fordi JobTread ikke understøtter
 // delbetalinger.
 // ══════════════════════════════════════════════════════════════
-var qzProducts=[],qzQuotes=[],qzInvoices=[],qzTemplates=[],qzActiveTab='products',qzInitialized=false,qzEditingProductId=null;
+var qzProducts=[],qzQuotes=[],qzInvoices=[],qzTemplates=[],qzActiveTab='quotes',qzInitialized=false,qzEditingProductId=null;
+var qzQuoteStatusFilter='all',qzInvoiceStatusFilter='all';
 var qeState={id:null,lines:[],jobName:'',quoteNumber:null,taxRate:25,lastStatus:'draft',customerId:null};
 var qztState={id:null,lines:[]};
 var ivState={id:null};
@@ -11046,9 +11157,18 @@ async function loadQzQuotes(){var r=await api('/api/quotes');qzQuotes=Array.isAr
 async function loadQzInvoices(){var r=await api('/api/invoices');qzInvoices=Array.isArray(r)?r:[];}
 async function loadQzTemplates(){var r=await api('/api/quote-templates');qzTemplates=Array.isArray(r)?r:[];}
 
+var QZ_MORE_TABS=['products','templates','mailtemplates'];
 function switchQzTab(name){
   qzActiveTab=name;
-  document.querySelectorAll('#qz-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
+  document.querySelectorAll('#qz-tabs > .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
+  // "Mere"-knappen (Produkter/Skabeloner/Mail-skabeloner) er flyttet ud af de altid-synlige
+  // faner og ind i en lille dropdown — se qz-more-drop/-menu/-btn ovenfor i #qz-tabs. Selve
+  // knappen skal fremstå "aktiv" (samme underline-stil som en almindelig fane) når en af
+  // dens undersider er den aktuelt viste, så man stadig kan se hvor man er.
+  var isMoreTab=QZ_MORE_TABS.indexOf(name)>-1;
+  document.getElementById('qz-more-btn').classList.toggle('active',isMoreTab);
+  document.querySelectorAll('.qz-more-item').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
+  document.getElementById('qz-more-menu').classList.remove('open');
   ['products','templates','quotes','invoices','mailtemplates'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
   if(name==='mailtemplates'){loadDocMailTemplates();loadDocTplAssignments();}
 }
@@ -11119,7 +11239,7 @@ function qzRefreshLineDisplay(lines,idx,prefix){
   var marginEl=document.getElementById(prefix+'-line-margin-'+idx);
   if(marginEl){marginEl.className='qe-line-margin qz-margin '+qzMarginClass(pct);marginEl.textContent=pct===null?'Avance: –':('Avance: '+pct.toFixed(0)+'% · DB '+krFmt((sell-cost)*qty));}
 }
-function makeLinesFieldHandler(getLines,prefix,onChange){
+function makeLinesFieldHandler(getLines,prefix,onChange,renderLinesFn){
   return function(e){
     var t=e.target;
     if(!t.classList.contains('qe-line-field'))return;
@@ -11128,6 +11248,13 @@ function makeLinesFieldHandler(getLines,prefix,onChange){
     var l=lines[idx];if(!l)return;
     if(field==='description'||field==='unit'||field==='product_type'||field==='discount_type'){l[field]=t.value;if(field==='discount_type')qzRefreshLineDisplay(lines,idx,prefix);}
     else{l[field]=Number(t.value)||0;qzRefreshLineDisplay(lines,idx,prefix);}
+    // Live produkt-søgning DIREKTE i linjens eget beskrivelsesfelt — ikke kun i det
+    // separate søgefelt i toppen. Kun for almindelige linjer (ikke tekst-/overskriftslinjer,
+    // som ikke har pris-felter at udfylde). Kun på selve 'input'-eventet (mens man skriver),
+    // ikke 'change' (som også fyrer ved blur) — ellers dukker boksen forkert op igen efter valg.
+    if(field==='description'&&l.line_type!=='text'&&e.type==='input'&&renderLinesFn){
+      qzShowLineAutocomplete(t,lines,idx,prefix,renderLinesFn);
+    }
     if(onChange)onChange();
   };
 }
@@ -11221,6 +11348,68 @@ function qzRunProductSearch(inputId,resultsId,onPick){
 function qzCloseAllPops(){
   ['qe-customer-results','qe-product-results','qzt-product-results'].forEach(function(id){
     var box=document.getElementById(id);if(box)box.style.display='none';
+  });
+  qzHideLineAutocomplete();
+}
+// ── LINJE-AUTOCOMPLETE — søger i produktdatabasen direkte fra en almindelig linjes
+// eget beskrivelsesfelt (ikke kun via det separate søgefelt i toppen af tilbuddet).
+// Ét klik på et forslag udfylder PRÆCIS den linje (pris/enhed/type/product_id) — i
+// modsætning til topboksens flervalgs-"kurv", som tilføjer NYE linjer. Delt floating
+// dropdown (tilføjes til <body> første gang den bruges), genbruges af både
+// tilbudseditoren (qe-) og skabelon-editoren (qzt-), da kun én af dem er åben ad gangen.
+function qzGetLineAcBox(){
+  var box=document.getElementById('qz-line-ac');
+  if(!box){
+    box=document.createElement('div');
+    box.id='qz-line-ac';
+    box.className='qe-customer-results';
+    box.style.display='none';
+    document.body.appendChild(box);
+  }
+  return box;
+}
+function qzHideLineAutocomplete(){
+  var box=document.getElementById('qz-line-ac');
+  if(box){box.style.display='none';box.innerHTML='';}
+}
+function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn){
+  var q=inputEl.value.trim().toLowerCase();
+  if(!q){qzHideLineAutocomplete();return;}
+  var matches=qzProducts.filter(function(p){return p.name.toLowerCase().indexOf(q)>-1||(p.category||'').toLowerCase().indexOf(q)>-1;}).slice(0,8);
+  if(!matches.length){qzHideLineAutocomplete();return;}
+  var box=qzGetLineAcBox();
+  box.innerHTML=matches.map(function(p){
+    var pct=qzMarginPct(Number(p.cost_price),Number(p.sell_price));
+    return '<div class="qe-customer-result" data-pid="'+p.id+'"><b>'+esc(p.name)+'</b> <span class="qz-margin '+qzMarginClass(pct)+'" style="float:right">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span><br><span style="color:var(--bly-sub)">'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+(p.category?' · '+esc(p.category):'')+' · '+krFmt(Number(p.sell_price))+'</span></div>';
+  }).join('');
+  var r=inputEl.getBoundingClientRect();
+  box.style.position='fixed';
+  box.style.top=(r.bottom+4)+'px';
+  box.style.left=r.left+'px';
+  box.style.width=Math.max(r.width,240)+'px';
+  box.style.right='auto';
+  // Skal ligge OVEN PÅ tilbudseditorens modal (.mo.open har z-index:200) — den
+  // genbrugte .qe-customer-results-klasse har kun z-index:30, som ellers ville
+  // placere boksen BAG modalens egne felter og gøre den umulig at klikke på.
+  box.style.zIndex='500';
+  box.style.display='block';
+  Array.prototype.forEach.call(box.querySelectorAll('[data-pid]'),function(elx){
+    // mousedown+preventDefault (ikke click) — så inputfeltet ALDRIG når at miste fokus
+    // (blur) inden valget er registreret. Samme fælde som er beskrevet ved
+    // click-udenfor-lytteren nedenfor: rækkefølgen af events må ikke give en
+    // race hvor boksen lukker sig selv, før klikket er nået frem.
+    elx.onmousedown=function(e){
+      e.preventDefault();
+      var pid=Number(elx.dataset.pid);
+      var p=qzProducts.find(function(x){return x.id===pid;});
+      if(!p)return;
+      var l=lines[idx];if(!l)return;
+      l.product_id=p.id;l.description=p.name;l.unit=p.unit||'stk';
+      l.cost_price=Number(p.cost_price)||0;l.sell_price=Number(p.sell_price)||0;
+      l.product_type=qzType(p.product_type);
+      qzHideLineAutocomplete();
+      renderLinesFn();
+    };
   });
 }
 
@@ -12377,9 +12566,35 @@ async function useTemplateForNewQuote(id){
 }
 
 // ── TILBUD — liste ───────────────────────────────────────────
+// Status-filterpiller (samme mønster som finBankStatusFilter i Økonomi-modulet) +
+// datointerval — filtrerer client-side i det allerede indlæste qzQuotes-array, ingen
+// ny server-forespørgsel nødvendig.
+function renderQzQuoteStatusFilter(){
+  var box=document.getElementById('qz-quotes-status-filter');
+  var order=['draft','sent','accepted','declined','converted'];
+  var html='<button class="bly-segtab'+(qzQuoteStatusFilter==='all'?' active':'')+'" data-qz-quote-status="all" type="button">Alle ('+qzQuotes.length+')</button>';
+  html+=order.map(function(s){
+    var n=qzQuotes.filter(function(x){return x.status===s;}).length;
+    return '<button class="bly-segtab'+(qzQuoteStatusFilter===s?' active':'')+'" data-qz-quote-status="'+s+'" type="button">'+esc(QZ_QUOTE_STATUS[s].label)+' ('+n+')</button>';
+  }).join('');
+  box.innerHTML=html;
+  box.querySelectorAll('[data-qz-quote-status]').forEach(function(b){
+    b.onclick=function(){qzQuoteStatusFilter=b.dataset.qzQuoteStatus;renderQzQuotes();};
+  });
+}
 function renderQzQuotes(){
+  renderQzQuoteStatusFilter();
   var q=(document.getElementById('qz-quote-search').value||'').trim().toLowerCase();
-  var list=qzQuotes.filter(function(x){return !q||(x.job_name||'').toLowerCase().indexOf(q)>-1||(x.quote_number||'').toLowerCase().indexOf(q)>-1;});
+  var dateFrom=document.getElementById('qz-quotes-date-from').value;
+  var dateTo=document.getElementById('qz-quotes-date-to').value;
+  var list=qzQuotes.filter(function(x){
+    if(q&&(x.job_name||'').toLowerCase().indexOf(q)===-1&&(x.quote_number||'').toLowerCase().indexOf(q)===-1)return false;
+    if(qzQuoteStatusFilter!=='all'&&x.status!==qzQuoteStatusFilter)return false;
+    var d=String(x.created_at||'').slice(0,10);
+    if(dateFrom&&d<dateFrom)return false;
+    if(dateTo&&d>dateTo)return false;
+    return true;
+  });
   document.getElementById('qz-quotes-count').textContent='Tilbud ('+list.length+')';
   var body=document.getElementById('qz-quotes-body');
   if(!list.length){body.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen tilbud fundet':'Ingen tilbud endnu')+'</td></tr>';return;}
@@ -12612,7 +12827,7 @@ function qeRenderPreview(){
     +'<div><div class="qe-pdf-doctype">TILBUD</div><div class="qe-pdf-docnum">'+esc(docNum)+'</div><div class="qe-pdf-meta">Dato: '+todayStr+(validUntil?'<br>Gyldig til: '+esc(validUntil):'')+'</div></div>'
     +'</div>'
     +'<div class="qe-pdf-to"><b>Til:</b><br>'+(custName?esc(custName)+'<br>':'')+(custAddr?esc(custAddr)+'<br>':'')+(custPhone?'Tlf. '+esc(custPhone)+'<br>':'')+(custEmail?esc(custEmail):'')+'</div>'
-    +(topNote?'<div class="qe-pdf-notes" style="margin:6px 0 10px">'+esc(topNote).replace(/\n/g,'<br>')+'</div>':'')
+    +(topNote?'<div class="qe-pdf-notes" style="margin:6px 0 10px">'+topNote+'</div>':'')
     +'<table class="qe-pdf-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'
     +'<div class="qe-pdf-totals">'
     +(t.discountAmount>0?'<div class="qe-pdf-totals-row"><span>Rabat ('+(t.docDiscountType==='fixed'?krFmt(t.docDiscountPct):t.docDiscountPct+'%')+')</span><span>-'+krFmt(t.discountAmount)+'</span></div>':'')
@@ -12620,7 +12835,7 @@ function qeRenderPreview(){
     +'<div class="qe-pdf-totals-row"><span>Moms ('+t.taxRate+'%)</span><span>'+krFmt(t.taxAmount)+'</span></div>'
     +'<div class="qe-pdf-totals-row grand"><span>Total</span><span>'+krFmt(t.total)+'</span></div>'
     +'</div>'
-    +(notes?'<div class="qe-pdf-notes">'+esc(notes).replace(/\n/g,'<br>')+'</div>':'');
+    +(notes?'<div class="qe-pdf-notes">'+notes+'</div>':'');
 }
 function qeRecalc(){qeRenderTotals();qeRenderPreview();}
 function qeRunCustomerSearch(q){
@@ -12801,9 +13016,32 @@ async function qeApplyTemplate(id){
 }
 
 // ── FAKTURAER + DELBETALINGER ────────────────────────────────
+function renderQzInvoiceStatusFilter(){
+  var box=document.getElementById('qz-invoices-status-filter');
+  var order=['unpaid','partial','paid','void'];
+  var html='<button class="bly-segtab'+(qzInvoiceStatusFilter==='all'?' active':'')+'" data-qz-invoice-status="all" type="button">Alle ('+qzInvoices.length+')</button>';
+  html+=order.map(function(s){
+    var n=qzInvoices.filter(function(x){return x.status===s;}).length;
+    return '<button class="bly-segtab'+(qzInvoiceStatusFilter===s?' active':'')+'" data-qz-invoice-status="'+s+'" type="button">'+esc(QZ_INVOICE_STATUS[s].label)+' ('+n+')</button>';
+  }).join('');
+  box.innerHTML=html;
+  box.querySelectorAll('[data-qz-invoice-status]').forEach(function(b){
+    b.onclick=function(){qzInvoiceStatusFilter=b.dataset.qzInvoiceStatus;renderQzInvoices();};
+  });
+}
 function renderQzInvoices(){
+  renderQzInvoiceStatusFilter();
   var q=(document.getElementById('qz-invoice-search').value||'').trim().toLowerCase();
-  var list=qzInvoices.filter(function(x){return !q||(x.job_name||'').toLowerCase().indexOf(q)>-1||(x.invoice_number||'').toLowerCase().indexOf(q)>-1;});
+  var dateFrom=document.getElementById('qz-invoices-date-from').value;
+  var dateTo=document.getElementById('qz-invoices-date-to').value;
+  var list=qzInvoices.filter(function(x){
+    if(q&&(x.job_name||'').toLowerCase().indexOf(q)===-1&&(x.invoice_number||'').toLowerCase().indexOf(q)===-1)return false;
+    if(qzInvoiceStatusFilter!=='all'&&x.status!==qzInvoiceStatusFilter)return false;
+    var d=String(x.created_at||'').slice(0,10);
+    if(dateFrom&&d<dateFrom)return false;
+    if(dateTo&&d>dateTo)return false;
+    return true;
+  });
   document.getElementById('qz-invoices-count').textContent='Fakturaer ('+list.length+')';
   var body=document.getElementById('qz-invoices-body');
   if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen fakturaer fundet':'Ingen fakturaer endnu')+'</td></tr>';return;}
@@ -12830,6 +13068,7 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-title').textContent=inv.invoice_number;
   document.getElementById('iv-subtitle').textContent=(inv.job_name||'')+' · '+(QZ_INVOICE_STATUS[inv.status]?QZ_INVOICE_STATUS[inv.status].label:inv.status);
   document.getElementById('iv-due-date').value=inv.due_date||'';
+  document.getElementById('iv-notes').value=inv.notes||'';
   document.getElementById('iv-total').textContent=krFmt(Number(inv.total));
   document.getElementById('iv-paid').textContent=krFmt(Number(inv.paid_total));
   document.getElementById('iv-credited-tile').style.display=Number(inv.credited_total)>0?'':'none';
@@ -12896,6 +13135,13 @@ async function saveIvDueDate(){
   if(r&&r.ok){toast('Forfaldsdato opdateret','✓');await loadQzInvoices();renderQzInvoices();loadDocActivity('invoice',ivState.id,'iv-activity-list');}
   else toast((r&&r.error)||'Kunne ikke opdatere forfaldsdato','❌');
 }
+async function saveIvNotes(){
+  if(!ivState.id)return;
+  var val=document.getElementById('iv-notes').value.trim()||null;
+  var r=await api('/api/invoices/'+ivState.id,{method:'PUT',body:JSON.stringify({notes:val})});
+  if(r&&r.ok){toast('Note gemt','✓');loadDocActivity('invoice',ivState.id,'iv-activity-list');}
+  else toast((r&&r.error)||'Kunne ikke gemme noten','❌');
+}
 async function voidIvInvoice(){
   if(!await gmConfirm('Annullér denne faktura? Den vil blive markeret som annulleret.'))return;
   var r=await api('/api/invoices/'+ivState.id+'/void',{method:'PUT'});
@@ -12904,13 +13150,29 @@ async function voidIvInvoice(){
 
 // ── EVENT-BINDING (køres kun én gang) ────────────────────────
 function bindQuotesModuleEvents(){
-  document.querySelectorAll('#qz-tabs .bly-segtab').forEach(function(b){
+  document.querySelectorAll('#qz-tabs > .bly-segtab').forEach(function(b){
     b.addEventListener('click',function(){switchQzTab(b.dataset.qztab);});
+  });
+  document.getElementById('qz-more-btn').addEventListener('click',function(e){
+    e.stopPropagation();
+    document.getElementById('qz-more-menu').classList.toggle('open');
+  });
+  document.querySelectorAll('.qz-more-item').forEach(function(b){
+    b.addEventListener('click',function(){switchQzTab(b.dataset.qztab);});
+  });
+  document.addEventListener('click',function(e){
+    if(!e.target.closest('#qz-more-drop'))document.getElementById('qz-more-menu').classList.remove('open');
   });
   document.getElementById('qz-product-search').addEventListener('input',renderQzProducts);
   document.getElementById('qz-template-search').addEventListener('input',renderQzTemplates);
   document.getElementById('qz-quote-search').addEventListener('input',renderQzQuotes);
   document.getElementById('qz-invoice-search').addEventListener('input',renderQzInvoices);
+  document.getElementById('qz-quotes-date-from').addEventListener('change',renderQzQuotes);
+  document.getElementById('qz-quotes-date-to').addEventListener('change',renderQzQuotes);
+  document.getElementById('qz-quotes-date-clear').addEventListener('click',function(){document.getElementById('qz-quotes-date-from').value='';document.getElementById('qz-quotes-date-to').value='';renderQzQuotes();});
+  document.getElementById('qz-invoices-date-from').addEventListener('change',renderQzInvoices);
+  document.getElementById('qz-invoices-date-to').addEventListener('change',renderQzInvoices);
+  document.getElementById('qz-invoices-date-clear').addEventListener('click',function(){document.getElementById('qz-invoices-date-from').value='';document.getElementById('qz-invoices-date-to').value='';renderQzInvoices();});
   document.getElementById('qz-new-product-btn').addEventListener('click',function(){openProductModal(null);});
   document.getElementById('qzp-cancel').addEventListener('click',function(){closeModal('qz-product-modal');});
   document.getElementById('qzp-save').addEventListener('click',saveQzProduct);
@@ -12928,11 +13190,14 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzt-product-search').addEventListener('input',function(){
     qzRunProductSearch('qzt-product-search','qzt-product-results',function(p){qztAddLine(p);});
   });
-  var qztFieldHandler=makeLinesFieldHandler(function(){return qztState.lines;},'qzt',null);
+  var qztFieldHandler=makeLinesFieldHandler(function(){return qztState.lines;},'qzt',null,function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');});
   document.getElementById('qzt-lines').addEventListener('input',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('change',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
 
+  makeRichField('qe-top-note');
+  makeRichField('qe-notes');
+  makeRichField('iv-notes');
   document.getElementById('qz-new-quote-btn').addEventListener('click',function(){openQuoteEditor(null);});
   document.getElementById('qe-close-btn').addEventListener('click',function(){closeModal('quote-editor-modal');});
   document.getElementById('qe-save-btn').addEventListener('click',saveQuoteEditor);
@@ -12957,7 +13222,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-product-search').addEventListener('input',function(){
     qzRunProductSearch('qe-product-search','qe-product-results',function(p){qeAddLine(p);});
   });
-  var qeFieldHandler=makeLinesFieldHandler(function(){return qeState.lines;},'qe',qeRecalc);
+  var qeFieldHandler=makeLinesFieldHandler(function(){return qeState.lines;},'qe',qeRecalc,renderQeLines);
   document.getElementById('qe-lines').addEventListener('input',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('change',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
@@ -12984,10 +13249,23 @@ function bindQuotesModuleEvents(){
     var inside=path.some(function(node){return node.classList&&node.classList.contains('qe-customer-pop');});
     if(!inside)qzCloseAllPops();
   });
+  // Linje-autocomplet-boksen sidder for sig selv (den er ikke pakket ind i en
+  // .qe-customer-pop, da den skal kunne dukke op under HVILKEN SOM HELST linjes
+  // beskrivelsesfelt) — derfor sin egen lille klik-udenfor-lukker: forbliv åben ved klik
+  // i selve dropdown'en eller tilbage i det felt der åbnede den, luk ellers.
+  document.addEventListener('click',function(e){
+    var path=e.composedPath?e.composedPath():[e.target];
+    var inside=path.some(function(node){
+      return node.id==='qz-line-ac'||(node.classList&&node.classList.contains('qe-line-field')&&node.dataset&&node.dataset.field==='description');
+    });
+    if(!inside)qzHideLineAutocomplete();
+  });
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')qzHideLineAutocomplete();});
 
   document.getElementById('iv-add-payment-btn').addEventListener('click',addIvPayment);
   document.getElementById('iv-add-credit-btn').addEventListener('click',addIvCreditNote);
   document.getElementById('iv-due-date').addEventListener('change',saveIvDueDate);
+  document.getElementById('iv-notes').addEventListener('change',saveIvNotes);
   document.getElementById('iv-void-btn').addEventListener('click',voidIvInvoice);
   document.getElementById('iv-pdf-link').addEventListener('click',function(e){e.preventDefault();if(ivState.id)qzOpenPdf('/api/invoices/'+ivState.id+'/pdf');});
 }

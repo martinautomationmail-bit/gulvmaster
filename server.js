@@ -1696,8 +1696,8 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
   if (body.company_iban !== undefined) entries.push(['company_iban', String(body.company_iban).slice(0, 40)]);
   if (body.company_swift !== undefined) entries.push(['company_swift', String(body.company_swift).slice(0, 20)]);
   if (body.invoice_footer_note !== undefined) entries.push(['invoice_footer_note', String(body.invoice_footer_note).slice(0, 1000)]);
-  if (body.quote_top_note_default !== undefined) entries.push(['quote_top_note_default', String(body.quote_top_note_default).slice(0, 2000)]);
-  if (body.quote_bottom_note_default !== undefined) entries.push(['quote_bottom_note_default', String(body.quote_bottom_note_default).slice(0, 2000)]);
+  if (body.quote_top_note_default !== undefined) entries.push(['quote_top_note_default', sanitizeRichText(String(body.quote_top_note_default).slice(0, 2000))]);
+  if (body.quote_bottom_note_default !== undefined) entries.push(['quote_bottom_note_default', sanitizeRichText(String(body.quote_bottom_note_default).slice(0, 2000))]);
   if (body.default_tax_rate !== undefined) entries.push(['default_tax_rate', String(Number(body.default_tax_rate) || 25)]);
   if (body.completion_email_subject !== undefined) entries.push(['completion_email_subject', String(body.completion_email_subject).slice(0, 300)]);
   if (body.completion_email_body !== undefined) entries.push(['completion_email_body', String(body.completion_email_body).slice(0, 5000)]);
@@ -7262,7 +7262,7 @@ app.post('/api/quotes', auth, financeOnly, asyncRoute(async (req, res) => {
   const r = await pool.query(`
     INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token)
     VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id
-  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes || null, b.top_note || null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken]);
+  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken]);
   await saveQuoteLines(r.rows[0].id, b.lines);
   logDocActivity('quote', r.rows[0].id, 'created', req.user.name, null);
   res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber });
@@ -7287,8 +7287,8 @@ app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
     b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
     b.customer_email !== undefined ? b.customer_email : current.customer_email,
     totals.subtotal, taxRate, totals.taxAmount, totals.total,
-    b.notes !== undefined ? b.notes : current.notes,
-    b.top_note !== undefined ? b.top_note : current.top_note,
+    b.notes !== undefined ? sanitizeRichText(b.notes) : current.notes,
+    b.top_note !== undefined ? sanitizeRichText(b.top_note) : current.top_note,
     b.internal_note !== undefined ? b.internal_note : current.internal_note,
     b.valid_until !== undefined ? b.valid_until : current.valid_until,
     discountPct,
@@ -7403,7 +7403,7 @@ app.put('/api/invoices/:id', auth, financeOnly, asyncRoute(async (req, res) => {
     UPDATE invoices SET notes=$1, due_date=$2, customer_address=$3, customer_phone=$4, customer_email=$5, updated_at=${nowTextSQL()}
     WHERE id=$6
   `, [
-    b.notes !== undefined ? b.notes : current.notes,
+    b.notes !== undefined ? sanitizeRichText(b.notes) : current.notes,
     b.due_date !== undefined ? b.due_date : current.due_date,
     b.customer_address !== undefined ? b.customer_address : current.customer_address,
     b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
@@ -7549,47 +7549,169 @@ function logoDataUriToBuffer(logoUrl) {
   if (!m) return null;
   try { return Buffer.from(m[2], 'base64'); } catch (e) { return null; }
 }
+// ── RIG TEKST (fed skrift, links) I NOTER ────────────────────────────────
+// Noter i tilbud/faktura gemmes som et lille tilladt HTML-undersæt (kun
+// <b>/<strong>, <br>, <a href="...">) og renderes to steder: her til PDF
+// (parses om til PDFKit-tekstkørsler nedenfor) og direkte som innerHTML på
+// kundens online side. Derfor saniteres teksten HER, ved gem (se kald i
+// quote/faktura/indstillings-routerne), én gang for alle, så begge visninger
+// er sikre uanset hvad der oprindeligt blev indtastet i editoren.
+function sanitizeRichText(html) {
+  if (!html) return '';
+  let s = String(html);
+  s = s.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  s = s.replace(/<a\s+[^>]*href\s*=\s*"([^"]*)"[^>]*>/gi, (m, href) => {
+    const safe = /^(https?:|mailto:)/i.test(href.trim()) ? href.trim() : '';
+    return safe ? `<a href="${safe.replace(/"/g, '&quot;')}" target="_blank" rel="noopener">` : '<a>';
+  });
+  s = s.replace(/<(?!\/?(b|strong|br|a)\b)[^>]*>/gi, '');
+  return s.trim();
+}
+
+// Ren tekst-udgave af en rig-tekst-note (bruges til højde-beregning og andre
+// steder der ikke kan/skal vise HTML, fx sms/notifikations-tekster).
+function richTextToPlain(html) {
+  return String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+}
+
+// Tegner sanitizeRichText's HTML-undersæt som PDFKit-tekstkørsler (fed skrift
+// og klikbare, understregede links), linje for linje (<br> = ny linje). x/y
+// er startpunktet, width bruges til PDFKit's egen ombrydning inden for hver
+// kørsels-kæde. Returnerer Y-positionen efter det tegnede indhold, til brug i
+// resten af funktionens manuelt styrede y-cursor.
+function renderRichText(doc, html, x, y, width, opts) {
+  opts = opts || {};
+  const fontSize = opts.fontSize || 9;
+  const color = opts.color || '#374151';
+  const lineGap = opts.lineGap !== undefined ? opts.lineGap : 2;
+  const lines = String(html || '').split(/<br\s*\/?>/i);
+  let curY = y;
+  lines.forEach((lineHtml) => {
+    if (!lineHtml.trim()) {
+      doc.font('Helvetica').fontSize(fontSize).fillColor(color).text(' ', x, curY, { width, lineGap });
+      curY = doc.y;
+      return;
+    }
+    const runs = [];
+    let boldDepth = 0, href = null;
+    const re = /<(\/?)(b|strong|a)(?:\s+href="([^"]*)")?[^>]*>|([^<]+)/gi;
+    let m;
+    while ((m = re.exec(lineHtml))) {
+      if (m[4] !== undefined) {
+        const text = m[4].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+        if (text) runs.push({ text, bold: boldDepth > 0, href: href || undefined });
+      } else {
+        const closing = m[1] === '/', tag = m[2].toLowerCase();
+        if (tag === 'b' || tag === 'strong') boldDepth += closing ? -1 : 1;
+        if (tag === 'a') href = closing ? null : (m[3] || null);
+      }
+    }
+    if (!runs.length) runs.push({ text: '', bold: false });
+    runs.forEach((run, i) => {
+      const isFirst = i === 0, isLast = i === runs.length - 1;
+      doc.font(run.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize).fillColor(run.href ? '#4F46E5' : color);
+      const textOpts = { width, lineGap, continued: !isLast };
+      if (run.href) { textOpts.link = run.href; textOpts.underline = true; }
+      if (isFirst) doc.text(run.text, x, curY, textOpts);
+      else doc.text(run.text, textOpts);
+    });
+    curY = doc.y;
+  });
+  doc.font('Helvetica');
+  return curY;
+}
+
+// ── FÆLLES PDF-HEADER/FOOTER (moderne "Billy"-stil) ──────────────────────
+// Logoet får lov at føre alene (intet firmanavn ved siden af når der er et
+// logo) — kun hvis der IKKE er uploadet et logo endnu vises navnet i stedet,
+// så headeren ikke står helt tom. Returnerer Y hvor næste indhold kan starte.
+function drawDocHeader(doc, docLabel, docNumber, metaLines, accent, company) {
+  const logoBuf = logoDataUriToBuffer(company.logoUrl);
+  if (logoBuf) {
+    try { doc.image(logoBuf, 40, 34, { fit: [66, 66] }); } catch (e) { /* korrupt billede — spring logoet over */ }
+  } else {
+    doc.font('Helvetica-Bold').fontSize(18).fillColor('#111318').text(company.name, 40, 54);
+    doc.font('Helvetica');
+  }
+  doc.fontSize(23).fillColor(accent).text(docLabel, 340, 40, { width: 215, align: 'right' });
+  doc.fontSize(10).fillColor('#111318').text(docNumber, 340, 71, { width: 215, align: 'right' });
+  doc.fontSize(9).fillColor('#9CA3AF');
+  metaLines.forEach((l, i) => doc.text(l, 340, 87 + i * 13, { width: 215, align: 'right' }));
+  const y = 122;
+  doc.moveTo(40, y).lineTo(555, y).strokeColor('#EEF0F3').lineWidth(1).stroke();
+  return y + 24;
+}
+
+// "Fra:" (Gulv Master selv) i venstre kolonne og "Til:" (kunden) i højre —
+// som Martin bad om, i stedet for kun "Til:" som før.
+function drawFraTilBlock(doc, y, company, record) {
+  const colW = 235;
+  doc.font('Helvetica').fontSize(8).fillColor('#9CA3AF').text('FRA', 40, y, { characterSpacing: 0.5 });
+  doc.text('TIL', 305, y, { characterSpacing: 0.5 });
+  let leftY = y + 14, rightY = y + 14;
+  doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#111318').text(company.name, 40, leftY, { width: colW });
+  leftY += 14;
+  doc.font('Helvetica').fontSize(9).fillColor('#6B7280');
+  [company.address, company.cvr ? `CVR ${company.cvr}` : '', company.phone, company.email].filter(Boolean).forEach((l) => { doc.text(l, 40, leftY, { width: colW }); leftY += 12; });
+
+  const rightName = record.job_name || '';
+  if (rightName) {
+    doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#111318').text(rightName, 305, rightY, { width: colW });
+    rightY += 14;
+  }
+  doc.font('Helvetica').fontSize(9).fillColor('#6B7280');
+  [record.customer_address, record.customer_phone ? 'Tlf. ' + record.customer_phone : '', record.customer_email].filter(Boolean).forEach((l) => { doc.text(l, 305, rightY, { width: colW }); rightY += 12; });
+
+  return Math.max(leftY, rightY) + 12;
+}
+
+// Fælles centreret bund-footer: CVR + betalingsoplysninger (bankreg/konto,
+// IBAN/SWIFT) samlet og centreret, plus en evt. fri footer-note derunder —
+// som Martin bad om ("firmaets [betalings]data centeret i bunden").
+function drawDocFooter(doc, company) {
+  const parts = [];
+  if (company.cvr) parts.push(`CVR ${company.cvr}`);
+  if (company.bankReg || company.bankAccount) parts.push(`Reg. ${company.bankReg}  Konto ${company.bankAccount}`);
+  if (company.iban) parts.push(`IBAN ${company.iban}`);
+  if (company.swift) parts.push(`SWIFT/BIC ${company.swift}`);
+  let y = 763;
+  if (parts.length) {
+    doc.moveTo(190, y).lineTo(405, y).strokeColor('#EEF0F3').lineWidth(1).stroke();
+    y += 9;
+    doc.font('Helvetica').fontSize(8).fillColor('#9CA3AF').text(parts.join('   ·   '), 40, y, { width: 515, align: 'center' });
+    y += 13;
+  }
+  if (company.footerNote) {
+    doc.font('Helvetica').fontSize(8).fillColor('#B7BCC5').text(company.footerNote, 40, y, { width: 515, align: 'center' });
+  }
+}
+
 function drawDocumentPdf(doc, kind, record, company) {
   const isInvoice = kind === 'invoice';
   const accent = '#4F46E5';
-  const logoBuf = logoDataUriToBuffer(company.logoUrl);
-  const textX = logoBuf ? 96 : 40;
-  if (logoBuf) {
-    try { doc.image(logoBuf, 40, 36, { fit: [48, 48] }); } catch (e) { /* korrupt billede — spring logoet over */ }
-  }
-  doc.fontSize(20).fillColor('#111318').text(company.name, textX, 40);
-  doc.fontSize(9).fillColor('#6B7280');
-  const addrLines = [company.address, company.cvr ? `CVR ${company.cvr}` : '', company.phone, company.email].filter(Boolean);
-  addrLines.forEach((l, i) => doc.text(l, textX, 66 + i * 12));
+  const metaLines = [`Dato: ${String(record.created_at || '').slice(0, 10)}`];
+  if (isInvoice && record.due_date) metaLines.push(`Forfaldsdato: ${record.due_date}`);
+  if (!isInvoice && record.valid_until) metaLines.push(`Gyldig til: ${record.valid_until}`);
+  let y = drawDocHeader(doc, isInvoice ? 'FAKTURA' : 'TILBUD', isInvoice ? record.invoice_number : record.quote_number, metaLines, accent, company);
 
-  doc.fontSize(22).fillColor(accent).text(isInvoice ? 'FAKTURA' : 'TILBUD', 350, 40, { width: 200, align: 'right' });
-  doc.fontSize(10).fillColor('#111318').text(isInvoice ? record.invoice_number : record.quote_number, 350, 68, { width: 200, align: 'right' });
-  doc.fontSize(9).fillColor('#6B7280').text(`Dato: ${String(record.created_at || '').slice(0, 10)}`, 350, 84, { width: 200, align: 'right' });
-  if (isInvoice && record.due_date) doc.text(`Forfaldsdato: ${record.due_date}`, 350, 98, { width: 200, align: 'right' });
-  if (!isInvoice && record.valid_until) doc.text(`Gyldig til: ${record.valid_until}`, 350, 98, { width: 200, align: 'right' });
-
-  let y = 140;
-  doc.fontSize(10).fillColor('#111318').text('Til:', 40, y);
-  y += 14;
-  if (record.job_name) { doc.fontSize(11).text(record.job_name, 40, y); y += 14; }
-  if (record.customer_address) { doc.fontSize(9).fillColor('#6B7280').text(record.customer_address, 40, y); y += 12; }
-  if (record.customer_phone) { doc.fontSize(9).fillColor('#6B7280').text('Tlf. ' + record.customer_phone, 40, y); y += 12; }
-  if (record.customer_email) { doc.fontSize(9).fillColor('#6B7280').text(record.customer_email, 40, y); y += 12; }
+  y = drawFraTilBlock(doc, y, company, record);
 
   if (!isInvoice && record.top_note) {
-    y += 10;
-    doc.fontSize(9).fillColor('#374151').text(record.top_note, 40, y, { width: 515 });
-    y += doc.heightOfString(record.top_note, { width: 515 }) + 4;
+    const noteH = doc.heightOfString(richTextToPlain(record.top_note), { width: 495 });
+    doc.roundedRect(40, y, 515, noteH + 20, 8).fill('#F7F8FC');
+    renderRichText(doc, record.top_note, 50, y + 10, 495, { color: '#374151' });
+    y += noteH + 32;
   }
 
-  y = Math.max(y + 20, 210);
-  doc.rect(40, y, 515, 20).fill('#F4F6FB');
-  doc.fontSize(9).fillColor('#374151');
-  doc.text('Beskrivelse', 48, y + 6);
-  doc.text('Antal', 320, y + 6, { width: 50, align: 'right' });
-  doc.text('Enhedspris', 380, y + 6, { width: 80, align: 'right' });
-  doc.text('I alt', 470, y + 6, { width: 75, align: 'right' });
-  y += 26;
+  y = Math.max(y + 6, 222);
+  doc.roundedRect(40, y, 515, 24, 6).fill('#F4F6FB');
+  doc.font('Helvetica').fontSize(9).fillColor('#374151');
+  doc.text('Beskrivelse', 52, y + 8);
+  doc.text('Antal', 320, y + 8, { width: 50, align: 'right' });
+  doc.text('Enhedspris', 380, y + 8, { width: 80, align: 'right' });
+  doc.text('I alt', 457, y + 8, { width: 80, align: 'right' });
+  y += 32;
   doc.fontSize(9.5).fillColor('#111318');
   let rawSubtotal = 0;
   (record.lines || []).forEach(l => {
@@ -7597,8 +7719,8 @@ function drawDocumentPdf(doc, kind, record, company) {
       const h = doc.heightOfString(l.description, { width: 507 });
       doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#111318').text(l.description, 48, y, { width: 507 });
       doc.font('Helvetica');
-      y += h + 10;
-      doc.moveTo(40, y - 3).lineTo(555, y - 3).strokeColor('#EEF0F3').stroke();
+      y += h + 12;
+      doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#EEF0F3').stroke();
       return;
     }
     const lineDiscType = l.discount_type === 'fixed' ? 'fixed' : 'pct';
@@ -7609,15 +7731,16 @@ function drawDocumentPdf(doc, kind, record, company) {
     rawSubtotal += lineTotal;
     const lineDiscLabel = lineDiscVal ? (lineDiscType === 'fixed' ? ` (-${Math.round(lineDiscVal).toLocaleString('da-DK')} kr)` : ` (-${lineDiscVal}%)`) : '';
     const nameHeight = doc.heightOfString(l.description, { width: 260 });
+    doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
     doc.text(l.description, 48, y, { width: 260 });
     doc.text(String(l.quantity) + ' ' + (l.unit || '') + lineDiscLabel, 320, y, { width: 50, align: 'right' });
     doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 380, y, { width: 80, align: 'right' });
-    doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
-    y += Math.max(nameHeight, 14) + 6;
-    doc.moveTo(40, y - 3).lineTo(555, y - 3).strokeColor('#EEF0F3').stroke();
+    doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
+    y += Math.max(nameHeight, 14) + 8;
+    doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#EEF0F3').stroke();
   });
 
-  y += 10;
+  y += 12;
   const totalsX = 380;
   const docDiscountType = record.discount_type === 'fixed' ? 'fixed' : 'pct';
   const docDiscountPct = Number(record.discount_pct) || 0;
@@ -7625,38 +7748,40 @@ function drawDocumentPdf(doc, kind, record, company) {
   const docDiscountLabel = docDiscountType === 'fixed' ? `${Math.round(docDiscountPct).toLocaleString('da-DK')} kr` : `${docDiscountPct}%`;
   if (docDiscountAmount > 0) {
     doc.fontSize(9.5).fillColor('#6B7280').text(`Rabat (${docDiscountLabel})`, totalsX, y, { width: 80, align: 'right' });
-    doc.fillColor('#DC2626').text('-' + Math.round(docDiscountAmount).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
+    doc.fillColor('#DC2626').text('-' + Math.round(docDiscountAmount).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
     y += 16;
   }
   doc.fontSize(9.5).fillColor('#6B7280').text('Subtotal', totalsX, y, { width: 80, align: 'right' });
-  doc.fillColor('#111318').text(Math.round(Number(record.subtotal)).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
+  doc.fillColor('#111318').text(Math.round(Number(record.subtotal)).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
   y += 16;
   doc.fillColor('#6B7280').text(`Moms (${record.tax_rate}%)`, totalsX, y, { width: 80, align: 'right' });
-  doc.fillColor('#111318').text(Math.round(Number(record.tax_amount)).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
-  y += 18;
-  doc.rect(totalsX, y - 3, 165, 22).fill(accent);
-  doc.fillColor('#fff').fontSize(11).text('Total', totalsX + 8, y + 3);
-  doc.text(Math.round(Number(record.total)).toLocaleString('da-DK') + ' kr', 470, y + 3, { width: 75, align: 'right' });
-  y += 30;
+  doc.fillColor('#111318').text(Math.round(Number(record.tax_amount)).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
+  y += 20;
+  doc.roundedRect(totalsX, y - 4, 165, 24, 6).fill(accent);
+  doc.fillColor('#fff').fontSize(11).text('Total', totalsX + 10, y + 3);
+  doc.text(Math.round(Number(record.total)).toLocaleString('da-DK') + ' kr', 457, y + 3, { width: 80, align: 'right' });
+  y += 32;
 
   if (isInvoice && record.paid_total > 0) {
     doc.fontSize(9.5).fillColor('#15803D').text('Betalt', totalsX, y, { width: 80, align: 'right' });
-    doc.text('-' + Math.round(Number(record.paid_total)).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
+    doc.text('-' + Math.round(Number(record.paid_total)).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
     y += 16;
     doc.fontSize(10).fillColor('#B91C1C').text('Restbeløb', totalsX, y, { width: 80, align: 'right' });
-    doc.text(Math.round(Number(record.remaining)).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
+    doc.text(Math.round(Number(record.remaining)).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
     y += 20;
   }
 
   if (record.notes) {
-    y += 16;
-    doc.fontSize(9).fillColor('#6B7280').text(record.notes, 40, y, { width: 515 });
-    y += doc.heightOfString(record.notes, { width: 515 }) + 10;
+    y += 12;
+    const noteH = doc.heightOfString(richTextToPlain(record.notes), { width: 495 });
+    doc.roundedRect(40, y, 515, noteH + 20, 8).fill('#F7F8FC');
+    renderRichText(doc, record.notes, 50, y + 10, 495, { color: '#374151' });
+    y += noteH + 30;
   }
 
   if (!isInvoice && record.status === 'accepted' && record.signed_name) {
     y += 8;
-    doc.fontSize(9).fillColor('#15803D').text(`✓ Accepteret af ${record.signed_name} den ${String(record.signed_at || '').slice(0, 16).replace('T', ' ')}`, 40, y, { width: 515 });
+    doc.font('Helvetica').fontSize(9).fillColor('#15803D').text(`✓ Accepteret af ${record.signed_name} den ${String(record.signed_at || '').slice(0, 16).replace('T', ' ')}`, 40, y, { width: 515 });
     y += 15;
     if (record.signature_data && /^data:image\/(png|jpeg);base64,/.test(record.signature_data)) {
       try {
@@ -7667,50 +7792,29 @@ function drawDocumentPdf(doc, kind, record, company) {
     }
   }
 
-  if (isInvoice && (company.bankReg || company.bankAccount)) {
-    y += 10;
-    doc.fontSize(9).fillColor('#6B7280').text(`Betaling: Reg. ${company.bankReg}  Konto ${company.bankAccount}`, 40, y);
-    y += 14;
-  }
-  if (isInvoice && (company.iban || company.swift)) {
-    doc.fontSize(9).fillColor('#6B7280').text(`${company.iban ? 'IBAN ' + company.iban : ''}${company.iban && company.swift ? '  ' : ''}${company.swift ? 'SWIFT/BIC ' + company.swift : ''}`, 40, y);
-    y += 14;
-  }
-  if (company.footerNote) {
-    doc.fontSize(8).fillColor('#9CA3AF').text(company.footerNote, 40, 780, { width: 515, align: 'center' });
-  }
+  drawDocFooter(doc, company);
 }
 // Kreditnotaer er beløbs-/begrundelses-baserede (ikke linje-baserede som
 // tilbud/faktura), så de har deres egen, langt enklere tegne-funktion frem for
-// at genbruge drawDocumentPdf's linje-tabel.
+// at genbruge drawDocumentPdf's linje-tabel. Bruger samme fælles header/footer
+// som tilbud/faktura for et ensartet, moderne udtryk.
 function drawCreditNotePdf(doc, creditNote, invoice, company) {
   const accent = '#DC2626';
-  const logoBuf = logoDataUriToBuffer(company.logoUrl);
-  const textX = logoBuf ? 96 : 40;
-  if (logoBuf) {
-    try { doc.image(logoBuf, 40, 36, { fit: [48, 48] }); } catch (e) { /* korrupt billede — spring logoet over */ }
-  }
-  doc.fontSize(20).fillColor('#111318').text(company.name, textX, 40);
-  doc.fontSize(9).fillColor('#6B7280');
-  const addrLines = [company.address, company.cvr ? `CVR ${company.cvr}` : '', company.phone, company.email].filter(Boolean);
-  addrLines.forEach((l, i) => doc.text(l, textX, 66 + i * 12));
+  const metaLines = [`Dato: ${String(creditNote.created_at || '').slice(0, 10)}`, `Vedr. faktura: ${invoice ? invoice.invoice_number : ''}`];
+  let y = drawDocHeader(doc, 'KREDITNOTA', creditNote.credit_note_number, metaLines, accent, company);
 
-  doc.fontSize(22).fillColor(accent).text('KREDITNOTA', 350, 40, { width: 200, align: 'right' });
-  doc.fontSize(10).fillColor('#111318').text(creditNote.credit_note_number, 350, 68, { width: 200, align: 'right' });
-  doc.fontSize(9).fillColor('#6B7280').text(`Dato: ${String(creditNote.created_at || '').slice(0, 10)}`, 350, 84, { width: 200, align: 'right' });
-  doc.text(`Vedr. faktura: ${invoice ? invoice.invoice_number : ''}`, 350, 98, { width: 200, align: 'right' });
-
-  let y = 140;
-  doc.fontSize(10).fillColor('#111318').text('Til:', 40, y);
+  doc.font('Helvetica').fontSize(8).fillColor('#9CA3AF').text('TIL', 40, y);
   y += 14;
-  if (invoice && invoice.job_name) { doc.fontSize(11).text(invoice.job_name, 40, y); y += 14; }
-  if (invoice && invoice.customer_address) { doc.fontSize(9).fillColor('#6B7280').text(invoice.customer_address, 40, y); y += 12; }
+  if (invoice && invoice.job_name) { doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#111318').text(invoice.job_name, 40, y); y += 14; }
+  doc.font('Helvetica').fontSize(9).fillColor('#6B7280');
+  if (invoice && invoice.customer_address) { doc.text(invoice.customer_address, 40, y); y += 12; }
 
-  y = Math.max(y + 30, 210);
-  doc.rect(40, y, 515, 60).fill('#FEF2F2');
-  doc.fontSize(9.5).fillColor('#6B7280').text('Krediteret beløb', 56, y + 12);
-  doc.fontSize(20).fillColor(accent).text(Math.round(Number(creditNote.amount)).toLocaleString('da-DK') + ' kr', 56, y + 28);
-  y += 80;
+  y = Math.max(y + 20, 210);
+  doc.roundedRect(40, y, 515, 64, 10).fill('#FEF2F2');
+  doc.fontSize(9.5).fillColor('#6B7280').text('Krediteret beløb', 56, y + 14);
+  doc.font('Helvetica-Bold').fontSize(20).fillColor(accent).text(Math.round(Number(creditNote.amount)).toLocaleString('da-DK') + ' kr', 56, y + 30);
+  doc.font('Helvetica');
+  y += 84;
 
   if (creditNote.reason) {
     doc.fontSize(9).fillColor('#374151').text('Begrundelse:', 40, y);
@@ -7719,9 +7823,7 @@ function drawCreditNotePdf(doc, creditNote, invoice, company) {
     y += doc.heightOfString(creditNote.reason, { width: 515 }) + 10;
   }
 
-  if (company.footerNote) {
-    doc.fontSize(8).fillColor('#9CA3AF').text(company.footerNote, 40, 780, { width: 515, align: 'center' });
-  }
+  drawDocFooter(doc, company);
 }
 // Samler PDF'en i hukommelsen i stedet for at streame den direkte til et
 // HTTP-svar — bruges når PDF'en skal vedhæftes en mail i stedet for vises i
@@ -8027,11 +8129,16 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:#111318;margin:0;padding:24px 16px 60px}
   .wrap{max-width:640px;margin:0 auto}
   .card{background:#fff;border-radius:16px;padding:28px 24px;box-shadow:0 8px 30px rgba(15,17,24,.08);margin-bottom:16px}
-  .head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:10px}
-  .company{font-size:18px;font-weight:800}
-  .company-sub{font-size:11px;color:#6B7280;margin-top:4px;line-height:1.6}
-  .doctype{font-size:20px;font-weight:800;color:#4F46E5;text-align:right}
-  .docmeta{font-size:11px;color:#6B7280;text-align:right;margin-top:2px}
+  .doc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid #EEF0F3;margin-bottom:20px}
+  .company-logo-lg{max-width:170px;max-height:60px;object-fit:contain}
+  .company-name-fallback{font-size:19px;font-weight:800}
+  .doctype{font-size:21px;font-weight:800;color:#4F46E5;text-align:right}
+  .docmeta{font-size:11px;color:#9CA3AF;text-align:right;margin-top:4px;line-height:1.7}
+  .fratil{display:flex;gap:24px;flex-wrap:wrap;margin:0 0 18px}
+  .fratil>div{flex:1;min-width:190px}
+  .fratil-label{font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:.05em;margin-bottom:6px}
+  .fratil-name{font-size:14px;font-weight:700;margin-bottom:3px}
+  .fratil-line{font-size:12px;color:#6B7280;line-height:1.6}
   table{width:100%;border-collapse:collapse;font-size:13px;margin:14px 0}
   th{text-align:left;background:#F4F6FB;padding:8px 10px;font-size:11px;color:#374151}
   th.num,td.num{text-align:right}
@@ -8052,16 +8159,21 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   .sig-preview{margin-top:10px;background:#fff;border-radius:8px;padding:8px;display:inline-block}
   .sig-preview img{max-width:280px;display:block}
   .declined-box{background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:12px;padding:16px;font-size:13.5px}
-  .notes{margin-top:16px;font-size:12px;color:#6B7280;white-space:pre-wrap}
-  .company-head{display:flex;align-items:center;gap:10px}
-  .company-logo{width:44px;height:44px;border-radius:9px;object-fit:cover;flex-shrink:0}
+  .notecard{margin:14px 0;font-size:12.5px;color:#374151;background:#F7F8FC;border-radius:10px;padding:14px 16px;line-height:1.6;word-break:break-word}
+  .notecard a{color:#4F46E5}
+  .pagefooter{max-width:640px;margin:0 auto;text-align:center;font-size:11px;color:#9CA3AF;padding:6px 8px 0;line-height:1.8}
+  .pagefooter .note{color:#C6CBD3;font-size:10.5px;margin-top:4px}
 </style></head><body><div class="wrap">
 <div class="card">
-  <div class="head">
-    <div class="company-head">${company.logoUrl ? `<img class="company-logo" src="${esc(company.logoUrl)}" alt="">` : ''}<div><div class="company">${esc(company.name)}</div><div class="company-sub">${[company.address, company.cvr ? ('CVR ' + company.cvr) : '', company.phone, company.email].filter(Boolean).map(esc).join('<br>')}</div></div></div>
+  <div class="doc-top">
+    ${company.logoUrl ? `<img class="company-logo-lg" src="${esc(company.logoUrl)}" alt="${esc(company.name)}">` : `<div class="company-name-fallback">${esc(company.name)}</div>`}
     <div><div class="doctype">TILBUD</div><div class="docmeta">${esc(quote.quote_number)}<br>Dato: ${esc(String(quote.created_at || '').slice(0, 10))}${quote.valid_until ? `<br>Gyldig til: ${esc(quote.valid_until)}` : ''}</div></div>
   </div>
-  ${quote.job_name ? `<div style="font-size:13px;margin-bottom:14px"><b>Til:</b> ${esc(quote.job_name)}${quote.customer_address ? '<br>' + esc(quote.customer_address) : ''}</div>` : ''}
+  <div class="fratil">
+    <div><div class="fratil-label">FRA</div><div class="fratil-name">${esc(company.name)}</div>${[company.address, company.cvr ? 'CVR ' + company.cvr : '', company.phone, company.email].filter(Boolean).map(l => `<div class="fratil-line">${esc(l)}</div>`).join('')}</div>
+    <div><div class="fratil-label">TIL</div>${quote.job_name ? `<div class="fratil-name">${esc(quote.job_name)}</div>` : ''}${[quote.customer_address, quote.customer_phone ? 'Tlf. ' + quote.customer_phone : '', quote.customer_email].filter(Boolean).map(l => `<div class="fratil-line">${esc(l)}</div>`).join('')}</div>
+  </div>
+  ${quote.top_note ? `<div class="notecard">${quote.top_note}</div>` : ''}
   <table><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead><tbody>${rowsHtml}</tbody></table>
   <div class="totals">
     ${discountAmount > 0 ? `<div class="totals-row"><span>Rabat (${docDiscLabel})</span><span>-${krFmtServer(discountAmount)}</span></div>` : ''}
@@ -8069,9 +8181,10 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
     <div class="totals-row"><span>Moms (${quote.tax_rate}%)</span><span>${krFmtServer(quote.tax_amount)}</span></div>
     <div class="totals-row grand"><span>Total</span><span>${krFmtServer(quote.total)}</span></div>
   </div>
-  ${quote.notes ? `<div class="notes">${esc(quote.notes)}</div>` : ''}
+  ${quote.notes ? `<div class="notecard">${quote.notes}</div>` : ''}
 </div>
 <div class="card">${statusBlock}</div>
+${(company.cvr || company.bankReg || company.bankAccount || company.iban || company.swift || company.footerNote) ? `<div class="pagefooter">${[company.cvr ? 'CVR ' + company.cvr : '', (company.bankReg || company.bankAccount) ? ('Reg. ' + company.bankReg + '  Konto ' + company.bankAccount) : '', company.iban ? 'IBAN ' + company.iban : '', company.swift ? 'SWIFT/BIC ' + company.swift : ''].filter(Boolean).map(esc).join('  ·  ')}${company.footerNote ? `<div class="note">${esc(company.footerNote)}</div>` : ''}</div>` : ''}
 </div>
 <script>
 var TOKEN=${JSON.stringify(req.params.token)};
