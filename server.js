@@ -867,6 +867,14 @@ async function initSchema() {
     ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'service';
     ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS discount_pct NUMERIC NOT NULL DEFAULT 0;
     ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS discount_type TEXT NOT NULL DEFAULT 'pct';
+    -- 'item' (almindelig linje med antal/pris) eller 'text' (ren tekst-/overskriftslinje,
+    -- ingen antal/pris — bruges til at bryde et langt tilbud op med overskrifter/noter).
+    ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS line_type TEXT NOT NULL DEFAULT 'item';
+    -- Note i TOPPEN af tilbuddet (under kundeoplysninger) — adskilt fra "notes" som vises
+    -- i BUNDEN (typisk betingelser). Begge kan forudfyldes fra en standardtekst i
+    -- Indstillinger (quote_top_note_default/quote_bottom_note_default), men redigeres frit
+    -- pr. tilbud herfra.
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS top_note TEXT;
 
     CREATE TABLE IF NOT EXISTS invoices (
       id SERIAL PRIMARY KEY,
@@ -905,6 +913,10 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice ON invoice_lines(invoice_id);
     ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'service';
     ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS discount_pct NUMERIC NOT NULL DEFAULT 0;
+    -- Samme 'item'/'text' skelnen som quote_lines (se ovenfor) — nødvendig fordi en
+    -- tekst-/overskriftslinje på et tilbud kan konverteres videre til en faktura, og
+    -- skal blive ved med at vises som ren tekst dér også, ikke som en 0 kr.-varelinje.
+    ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS line_type TEXT NOT NULL DEFAULT 'item';
 
     CREATE TABLE IF NOT EXISTS invoice_payments (
       id SERIAL PRIMARY KEY,
@@ -944,6 +956,24 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_document_activity_doc ON document_activity(doc_type, doc_id);
+
+    -- ARKIVEREDE TILBUDSVERSIONER — hver gang et tilbud sendes til kunden, gemmes den
+    -- PRÆCISE PDF (som byte-blob) og et JSON-øjebliksbillede af data på det tidspunkt,
+    -- så et tilbud altid kan redigeres og gensendes (uden at skulle oprette et nyt tilbud
+    -- hver gang kunden ændrer mening) UDEN at en tidligere given pris/version nogensinde
+    -- kan gå tabt eller ændres i baglommen. Render har intet permanent fillager, så
+    -- PDF'en gemmes direkte i databasen (BYTEA), ikke som en fil på disken.
+    CREATE TABLE IF NOT EXISTS quote_sends (
+      id SERIAL PRIMARY KEY,
+      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+      version_number INTEGER NOT NULL,
+      sent_at TEXT DEFAULT ${nowTextSQL()},
+      sent_by TEXT,
+      recipient TEXT,
+      pdf_snapshot BYTEA,
+      snapshot_data JSONB
+    );
+    CREATE INDEX IF NOT EXISTS idx_quote_sends_quote ON quote_sends(quote_id);
 
     -- ── CRM: eget kundekartotek (parallelt med JobTread-sagssøgningen, som
     -- Tilbud/Faktura-editoren stadig kan bruge) — så Martin kan oprette kunder
@@ -1643,7 +1673,11 @@ app.get('/api/settings', asyncRoute(async (req, res) => {
     company_email: map.company_email || '',
     company_bank_reg: map.company_bank_reg || '',
     company_bank_account: map.company_bank_account || '',
+    company_iban: map.company_iban || '',
+    company_swift: map.company_swift || '',
     invoice_footer_note: map.invoice_footer_note || '',
+    quote_top_note_default: map.quote_top_note_default || '',
+    quote_bottom_note_default: map.quote_bottom_note_default || '',
     default_tax_rate: map.default_tax_rate || '25'
   });
 }));
@@ -1659,7 +1693,11 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
   if (body.company_email !== undefined) entries.push(['company_email', String(body.company_email).slice(0, 200)]);
   if (body.company_bank_reg !== undefined) entries.push(['company_bank_reg', String(body.company_bank_reg).slice(0, 20)]);
   if (body.company_bank_account !== undefined) entries.push(['company_bank_account', String(body.company_bank_account).slice(0, 30)]);
+  if (body.company_iban !== undefined) entries.push(['company_iban', String(body.company_iban).slice(0, 40)]);
+  if (body.company_swift !== undefined) entries.push(['company_swift', String(body.company_swift).slice(0, 20)]);
   if (body.invoice_footer_note !== undefined) entries.push(['invoice_footer_note', String(body.invoice_footer_note).slice(0, 1000)]);
+  if (body.quote_top_note_default !== undefined) entries.push(['quote_top_note_default', String(body.quote_top_note_default).slice(0, 2000)]);
+  if (body.quote_bottom_note_default !== undefined) entries.push(['quote_bottom_note_default', String(body.quote_bottom_note_default).slice(0, 2000)]);
   if (body.default_tax_rate !== undefined) entries.push(['default_tax_rate', String(Number(body.default_tax_rate) || 25)]);
   if (body.completion_email_subject !== undefined) entries.push(['completion_email_subject', String(body.completion_email_subject).slice(0, 300)]);
   if (body.completion_email_body !== undefined) entries.push(['completion_email_body', String(body.completion_email_body).slice(0, 5000)]);
@@ -6950,7 +6988,7 @@ function computeTotals(lines, taxRate, discount) {
 async function getCompanyInfo() {
   const rows = await pool.query(`
     SELECT key,value FROM app_settings WHERE key IN
-    ('company_name','logo_url','company_address','company_cvr','company_phone','company_email','company_bank_reg','company_bank_account','invoice_footer_note','default_tax_rate')
+    ('company_name','logo_url','company_address','company_cvr','company_phone','company_email','company_bank_reg','company_bank_account','company_iban','company_swift','invoice_footer_note','default_tax_rate')
   `);
   const map = {};
   rows.rows.forEach(r => { map[r.key] = r.value; });
@@ -6963,6 +7001,8 @@ async function getCompanyInfo() {
     email: map.company_email || '',
     bankReg: map.company_bank_reg || '',
     bankAccount: map.company_bank_account || '',
+    iban: map.company_iban || '',
+    swift: map.company_swift || '',
     footerNote: map.invoice_footer_note || '',
     defaultTaxRate: Number(map.default_tax_rate) || 25
   };
@@ -7165,10 +7205,11 @@ async function saveQuoteLines(quoteId, lines) {
   let pos = 0;
   for (const l of (lines || [])) {
     if (!l.description) continue;
+    const isText = l.line_type === 'text';
     await pool.query(`
-      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-    `, [quoteId, l.product_id || null, String(l.description).trim(), l.unit || 'stk', Number(l.quantity) || 1, Number(l.cost_price) || 0, Number(l.sell_price) || 0, pos++, l.product_type === 'materialer' ? 'materialer' : 'service', Number(l.discount_pct) || 0, l.discount_type === 'fixed' ? 'fixed' : 'pct']);
+      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type,line_type)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    `, [quoteId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), l.discount_type === 'fixed' ? 'fixed' : 'pct', isText ? 'text' : 'item']);
   }
 }
 
@@ -7182,9 +7223,9 @@ app.post('/api/quotes', auth, financeOnly, asyncRoute(async (req, res) => {
   const quoteNumber = await nextDocNumber('quote', 'TIL');
   const acceptToken = crypto.randomBytes(20).toString('hex');
   const r = await pool.query(`
-    INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id
-  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes || null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken]);
+    INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id
+  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes || null, b.top_note || null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken]);
   await saveQuoteLines(r.rows[0].id, b.lines);
   logDocActivity('quote', r.rows[0].id, 'created', req.user.name, null);
   res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber });
@@ -7199,8 +7240,8 @@ app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   const discountType = b.discount_type !== undefined ? (b.discount_type === 'fixed' ? 'fixed' : 'pct') : (current.discount_type === 'fixed' ? 'fixed' : 'pct');
   const totals = computeTotals(b.lines !== undefined ? b.lines : await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1', [req.params.id]).then(r => r.rows), taxRate, { value: discountPct, type: discountType });
   await pool.query(`
-    UPDATE quotes SET job_name=$1,job_id=$2,customer_id=$3,customer_address=$4,customer_phone=$5,customer_email=$6,subtotal=$7,tax_rate=$8,tax_amount=$9,total=$10,notes=$11,internal_note=$12,valid_until=$13,discount_pct=$14,discount_type=$15,updated_at=${nowTextSQL()}
-    WHERE id=$16
+    UPDATE quotes SET job_name=$1,job_id=$2,customer_id=$3,customer_address=$4,customer_phone=$5,customer_email=$6,subtotal=$7,tax_rate=$8,tax_amount=$9,total=$10,notes=$11,top_note=$12,internal_note=$13,valid_until=$14,discount_pct=$15,discount_type=$16,updated_at=${nowTextSQL()}
+    WHERE id=$17
   `, [
     b.job_name !== undefined ? b.job_name : current.job_name,
     b.job_id !== undefined ? b.job_id : current.job_id,
@@ -7210,6 +7251,7 @@ app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
     b.customer_email !== undefined ? b.customer_email : current.customer_email,
     totals.subtotal, taxRate, totals.taxAmount, totals.total,
     b.notes !== undefined ? b.notes : current.notes,
+    b.top_note !== undefined ? b.top_note : current.top_note,
     b.internal_note !== undefined ? b.internal_note : current.internal_note,
     b.valid_until !== undefined ? b.valid_until : current.valid_until,
     discountPct,
@@ -7259,9 +7301,9 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, financeOnly, asyncRoute(asy
   let pos = 0;
   for (const l of quote.lines) {
     await pool.query(`
-      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', equivalentLinePct(l)]);
+      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', equivalentLinePct(l), l.line_type === 'text' ? 'text' : 'item']);
   }
   await pool.query(`UPDATE quotes SET status='converted', converted_invoice_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [invoiceId, quote.id]);
   // Sagen (projektet) blev oprettet da kunden underskrev tilbuddet — nu hvor
@@ -7497,6 +7539,12 @@ function drawDocumentPdf(doc, kind, record, company) {
   if (record.customer_phone) { doc.fontSize(9).fillColor('#6B7280').text('Tlf. ' + record.customer_phone, 40, y); y += 12; }
   if (record.customer_email) { doc.fontSize(9).fillColor('#6B7280').text(record.customer_email, 40, y); y += 12; }
 
+  if (!isInvoice && record.top_note) {
+    y += 10;
+    doc.fontSize(9).fillColor('#374151').text(record.top_note, 40, y, { width: 515 });
+    y += doc.heightOfString(record.top_note, { width: 515 }) + 4;
+  }
+
   y = Math.max(y + 20, 210);
   doc.rect(40, y, 515, 20).fill('#F4F6FB');
   doc.fontSize(9).fillColor('#374151');
@@ -7508,6 +7556,14 @@ function drawDocumentPdf(doc, kind, record, company) {
   doc.fontSize(9.5).fillColor('#111318');
   let rawSubtotal = 0;
   (record.lines || []).forEach(l => {
+    if (l.line_type === 'text') {
+      const h = doc.heightOfString(l.description, { width: 507 });
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#111318').text(l.description, 48, y, { width: 507 });
+      doc.font('Helvetica');
+      y += h + 10;
+      doc.moveTo(40, y - 3).lineTo(555, y - 3).strokeColor('#EEF0F3').stroke();
+      return;
+    }
     const lineDiscType = l.discount_type === 'fixed' ? 'fixed' : 'pct';
     const lineDiscVal = Number(l.discount_pct) || 0;
     const gross = Number(l.quantity) * Number(l.sell_price);
@@ -7577,6 +7633,10 @@ function drawDocumentPdf(doc, kind, record, company) {
   if (isInvoice && (company.bankReg || company.bankAccount)) {
     y += 10;
     doc.fontSize(9).fillColor('#6B7280').text(`Betaling: Reg. ${company.bankReg}  Konto ${company.bankAccount}`, 40, y);
+    y += 14;
+  }
+  if (isInvoice && (company.iban || company.swift)) {
+    doc.fontSize(9).fillColor('#6B7280').text(`${company.iban ? 'IBAN ' + company.iban : ''}${company.iban && company.swift ? '  ' : ''}${company.swift ? 'SWIFT/BIC ' + company.swift : ''}`, 40, y);
     y += 14;
   }
   if (company.footerNote) {
@@ -7812,7 +7872,33 @@ app.post('/api/quotes/:id/send', auth, financeOnly, asyncRoute(async (req, res) 
   }
   if (quote.status === 'draft') await pool.query(`UPDATE quotes SET status='sent', updated_at=${nowTextSQL()} WHERE id=$1`, [quote.id]);
   logDocActivity('quote', quote.id, 'sent', req.user.name, `til ${to}`);
+  // ARKIVERING — gem den PRÆCISE PDF (som blev sendt) + et datasnapshot som en ny
+  // nummereret version, så tilbuddet altid kan redigeres/gensendes videre uden at en
+  // tidligere given pris/PDF nogensinde forsvinder eller ændres i baglommen. Fejler
+  // arkiveringen af en eller anden grund, må det IKKE vælte selve afsendelsen — mailen
+  // er allerede sendt til kunden på dette tidspunkt.
+  try {
+    const mx = await pgOne('SELECT COALESCE(MAX(version_number),0) AS mx FROM quote_sends WHERE quote_id=$1', [quote.id]);
+    const versionNumber = Number(mx.mx) + 1;
+    await pool.query(
+      'INSERT INTO quote_sends (quote_id,version_number,sent_by,recipient,pdf_snapshot,snapshot_data) VALUES ($1,$2,$3,$4,$5,$6)',
+      [quote.id, versionNumber, req.user.name, to, pdfBuffer, JSON.stringify(quote)]
+    );
+  } catch (e) { console.error('Kunne ikke arkivere tilbudsversion:', e.message); }
   res.json({ ok: true });
+}));
+
+app.get('/api/quotes/:id/sends', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT id,version_number,sent_at,sent_by,recipient FROM quote_sends WHERE quote_id=$1 ORDER BY version_number DESC', [req.params.id]);
+  res.json(rows.rows);
+}));
+
+app.get('/api/quotes/:id/sends/:sendId/pdf', auth, financeOnly, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT pdf_snapshot,version_number FROM quote_sends WHERE id=$1 AND quote_id=$2', [req.params.sendId, req.params.id]);
+  if (!row || !row.pdf_snapshot) return res.status(404).json({ error: 'Den arkiverede PDF-version blev ikke fundet' });
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `inline; filename="tilbud-v${row.version_number}.pdf"`);
+  res.send(row.pdf_snapshot);
 }));
 
 app.post('/api/invoices/:id/send', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -8017,6 +8103,22 @@ app.post('/api/public/quotes/:token/accept', asyncRoute(async (req, res) => {
   } catch (e) {
     // Selve accepten er allerede gemt — en fejl her må ikke vælte kundens kvittering.
   }
+  // AUTOMATISK VELKOMSTMAIL — sender kundens PERMANENTE kundeportal-link (alle
+  // tilbud/fakturaer/opgaver ét sted) med det samme kunden har accepteret, så de ikke
+  // længere skal bruge det midlertidige underskrifts-link. Fejler mailen (fx ikke
+  // konfigureret), må det aldrig vælte selve accept-kvitteringen, som allerede er gemt.
+  try {
+    if (quote.customer_email && mailIsConfigured()) {
+      const company = await getCompanyInfo();
+      const portalToken = quote.job_name ? await getOrCreateCustomerPortalToken(quote.job_name) : null;
+      const portalLink = portalToken ? customerPortalLinkFor(portalToken) : PUBLIC_APP_URL;
+      const firstName = name.split(' ')[0];
+      const subject = `Tak for din accept, ${firstName}! 🎉`;
+      const bodyHtml = `<p>Hej ${escPublic(firstName)},</p><p>Tusind tak fordi du har accepteret tilbuddet <b>${escPublic(quote.quote_number)}</b> hos ${escPublic(company.name)} — vi glæder os til at komme i gang! 🛠️</p><p>Du kan altid følge dit projekt og se alle dine tilbud og fakturaer på din helt egen side her, uden at skulle logge ind:</p><p><a href="${escPublic(portalLink)}">${escPublic(portalLink)}</a></p><p>Gem gerne linket — det er dit permanente overblik fremover.</p><p>Har du spørgsmål, er du altid velkommen til at kontakte os.</p><p>Mange hilsner<br>${escPublic(company.name)}</p>`;
+      await sendMailUniversal({ to: quote.customer_email, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml) });
+      logDocActivity('quote', quote.id, 'accepted_email_sent', 'System', `til ${quote.customer_email}`);
+    }
+  } catch (e) { console.error('Kunne ikke sende accept-kvitteringsmail:', e.message); }
   res.json({ ok: true, project_id: projectId });
 }));
 

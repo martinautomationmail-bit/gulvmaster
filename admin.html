@@ -837,6 +837,9 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-customer-result:hover{background:var(--bly-hover)}
 .qe-lines-head{display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px}
 .qe-line{border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:12px;margin-bottom:8px;background:#FAFAFB}
+.qe-line-text{background:var(--bly-accent-soft);border-color:#C7D2FE}
+.qe-line-text .qe-line-top{grid-template-columns:1fr 30px;margin-bottom:0}
+.qe-line-text input.qe-line-field{font-weight:700;color:var(--bly-ink)}
 .qe-line-top{display:grid;grid-template-columns:1fr 80px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
 .qe-line-nums{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .qe-line-num-label{font-size:9px;color:var(--bly-sub);font-weight:700;text-transform:uppercase}
@@ -2912,8 +2915,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div><label>E-mail</label><input type="email" id="settings-company-email" placeholder="info@gulvmaster.dk"></div>
         <div><label>Bank reg.nr.</label><input type="text" id="settings-company-bank-reg" placeholder="1234"></div>
         <div><label>Bank kontonr.</label><input type="text" id="settings-company-bank-account" placeholder="1234567890"></div>
+        <div><label>IBAN <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><input type="text" id="settings-company-iban" placeholder="DK5000400440116243"></div>
+        <div><label>SWIFT/BIC <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><input type="text" id="settings-company-swift" placeholder="NDEADKKK"></div>
       </div>
       <div><label>Footer-note på fakturaer <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit — vises nederst på PDF'en</span></label><textarea id="settings-invoice-footer" rows="2" style="width:100%;resize:vertical" placeholder="Fx betalingsbetingelser eller en tak-hilsen"></textarea></div>
+      <div class="sc-fields-grid">
+        <div><label>Standardtekst øverst på nye tilbud <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit — udfyldes automatisk, kan altid rettes pr. tilbud</span></label><textarea id="settings-quote-top-note" rows="2" style="width:100%;resize:vertical"></textarea></div>
+        <div><label>Standard betingelser nederst på nye tilbud <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><textarea id="settings-quote-bottom-note" rows="2" style="width:100%;resize:vertical"></textarea></div>
+      </div>
       <button class="btn primary small" id="settings-save-btn">Gem virksomhedsprofil</button>
     </div>
   </div>
@@ -3369,7 +3378,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <input id="qzt-product-search" class="qe-input" placeholder="Søg produkt og tilføj...">
           <div class="qe-customer-results" id="qzt-product-results"></div>
         </div>
-        <button class="bly-btn outline small" id="qzt-add-blank-line" type="button">+ Fri linje</button>
+        <button class="bly-btn outline small" id="qzt-add-blank-line" type="button">+ Tilføj linje</button>
+        <button class="bly-btn outline small" id="qzt-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
       </div>
     </div>
     <div id="qzt-lines" style="max-height:360px;overflow:auto"></div>
@@ -3419,6 +3429,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div><label class="qe-label">Rabat på hele tilbuddet</label><div style="display:flex;gap:6px"><input id="qe-doc-discount" type="number" step="0.1" min="0" class="qe-input" value="0" style="flex:1;min-width:0"><select id="qe-doc-discount-type" class="qe-input" style="flex:0 0 64px;padding:0 2px" title="Rabattype"><option value="pct">%</option><option value="fixed">kr</option></select></div></div>
           <div><label class="qe-label">Indsæt fra skabelon <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><select id="qe-template-picker" class="qe-input"><option value="">Vælg en skabelon...</option></select></div>
         </div>
+        <div class="form-group" style="margin-top:10px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger</span></label><textarea id="qe-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
 
         <div class="qe-lines-head">
           <span class="qe-label" style="margin:0">Linjer</span>
@@ -3427,7 +3438,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
               <input id="qe-product-search" class="qe-input" placeholder="Søg produkt og tilføj...">
               <div class="qe-customer-results" id="qe-product-results"></div>
             </div>
-            <button class="bly-btn outline small" id="qe-add-blank-line" type="button">+ Fri linje</button>
+            <button class="bly-btn outline small" id="qe-add-blank-line" type="button">+ Tilføj linje</button>
+            <button class="bly-btn outline small" id="qe-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
             <button class="bly-btn outline small" id="qe-save-as-template-btn" type="button" title="Gem de nuværende linjer som en skabelon">💾 Gem som skabelon</button>
           </div>
         </div>
@@ -3436,8 +3448,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="qe-totals" id="qe-totals"></div>
         <div class="qe-cost-summary" id="qe-cost-summary"></div>
 
-        <div class="form-group" style="margin-top:14px"><label class="form-label">Note til kunden <span class="opt-tag">valgfrit — vises på PDF'en</span></label><textarea id="qe-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
+        <div class="form-group" style="margin-top:14px"><label class="form-label">Betingelser / note i bunden <span class="opt-tag">valgfrit — vises nederst på PDF'en</span></label><textarea id="qe-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
         <div class="form-group" style="margin-top:10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px"><label class="form-label" style="color:#92400E">🔒 Intern note <span class="opt-tag" style="text-transform:none;font-weight:400;color:#92400E">kun jer — kunden ser den ALDRIG</span></label><textarea id="qe-internal-note" class="input" rows="2" style="resize:vertical" placeholder="Fx: kunden får gratis fugefyld med, aftalt telefonisk d. ..."></textarea></div>
+        <div class="form-group" id="qe-versions-wrap" style="margin-top:14px;display:none">
+          <label class="form-label">📄 Sendte versioner <span class="opt-tag" style="text-transform:none;font-weight:400">den arkiverede PDF som faktisk blev sendt — ændres aldrig</span></label>
+          <div id="qe-versions-list" class="doc-activity-list"></div>
+        </div>
         <div class="form-group" id="qe-activity-wrap" style="margin-top:14px;display:none">
           <label class="form-label">🕓 Tidslinje</label>
           <div id="qe-activity-list" class="doc-activity-list"></div>
@@ -10041,7 +10057,11 @@ function applySettingsToUI(){
   document.getElementById('settings-company-email').value=settings.company_email||'';
   document.getElementById('settings-company-bank-reg').value=settings.company_bank_reg||'';
   document.getElementById('settings-company-bank-account').value=settings.company_bank_account||'';
+  document.getElementById('settings-company-iban').value=settings.company_iban||'';
+  document.getElementById('settings-company-swift').value=settings.company_swift||'';
   document.getElementById('settings-invoice-footer').value=settings.invoice_footer_note||'';
+  document.getElementById('settings-quote-top-note').value=settings.quote_top_note_default||'';
+  document.getElementById('settings-quote-bottom-note').value=settings.quote_bottom_note_default||'';
   var logoEl=document.getElementById('nav-logo'),prevEl=document.getElementById('settings-logo-preview');
   if(settings.logo_url){logoEl.innerHTML='<img src="'+settings.logo_url+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">';prevEl.innerHTML='<img src="'+settings.logo_url+'">';}
   else{logoEl.textContent='🪵';prevEl.textContent='🪵';}
@@ -10075,7 +10095,11 @@ async function saveSettings(){
     company_email:document.getElementById('settings-company-email').value.trim(),
     company_bank_reg:document.getElementById('settings-company-bank-reg').value.trim(),
     company_bank_account:document.getElementById('settings-company-bank-account').value.trim(),
-    invoice_footer_note:document.getElementById('settings-invoice-footer').value.trim()
+    company_iban:document.getElementById('settings-company-iban').value.trim(),
+    company_swift:document.getElementById('settings-company-swift').value.trim(),
+    invoice_footer_note:document.getElementById('settings-invoice-footer').value.trim(),
+    quote_top_note_default:document.getElementById('settings-quote-top-note').value.trim(),
+    quote_bottom_note_default:document.getElementById('settings-quote-bottom-note').value.trim()
   };
   var file=document.getElementById('settings-logo-file').files[0];
   if(file)body.logo_url=await fileToDataURL(file);
@@ -10991,6 +11015,13 @@ function qzLineDiscountAmount(l,gross){
   return gross*Math.max(0,Math.min(val,100))/100;
 }
 function qzLineRowHtml(l,idx,prefix){
+  if(l.line_type==='text'){
+    return '<div class="qe-line qe-line-text" data-idx="'+idx+'">'
+      +'<div class="qe-line-top">'
+      +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="description" value="'+esc(l.description||'')+'" placeholder="Overskrift eller note — brydes ind i tilbuddet som ren tekst">'
+      +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
+      +'</div></div>';
+  }
   var qty=Number(l.quantity)||0,sell=Number(l.sell_price)||0,cost=Number(l.cost_price)||0;
   var lineDisc=Number(l.discount_pct)||0;
   var discType=l.discount_type==='fixed'?'fixed':'pct';
@@ -11071,8 +11102,14 @@ function qzMakeBlankLine(product){
     sell_price:product?Number(product.sell_price):0,
     product_type:product?qzType(product.product_type):'service',
     discount_pct:0,
-    discount_type:'pct'
+    discount_type:'pct',
+    line_type:'item'
   };
+}
+// Ren tekst-/overskriftslinje — ingen antal/pris, bruges til at bryde et langt tilbud
+// op med overskrifter eller frie noter mellem produktlinjerne.
+function qzMakeTextLine(){
+  return {product_id:null,description:'',unit:'',quantity:0,cost_price:0,sell_price:0,product_type:'service',discount_pct:0,discount_type:'pct',line_type:'text'};
 }
 // Flervalg af produkter: hver søgeboks (qe-product-results / qzt-product-results)
 // har sin egen "kurv" af afkrydsede produkter, der huskes på tværs af flere
@@ -12263,7 +12300,8 @@ var DOC_ACTIVITY_LABELS={
   void:{icon:'⛔',label:'Annulleret'},
   credit_note_added:{icon:'🧾',label:'Kreditnota oprettet'},
   credit_note_removed:{icon:'🗑️',label:'Kreditnota fjernet'},
-  credit_note_sent:{icon:'📧',label:'Kreditnota sendt til kunden'}
+  credit_note_sent:{icon:'📧',label:'Kreditnota sendt til kunden'},
+  accepted_email_sent:{icon:'🎉',label:'Velkomstmail med kundeportal sendt'}
 };
 function fmtActivityWhen(ts){
   if(!ts)return'';
@@ -12285,6 +12323,22 @@ function renderDocActivity(containerId,rows){
 async function loadDocActivity(docType,id,containerId){
   var rows=await api('/api/'+(docType==='quote'?'quotes':'invoices')+'/'+id+'/activity');
   renderDocActivity(containerId,Array.isArray(rows)?rows:[]);
+}
+// ARKIVEREDE TILBUDSVERSIONER — den PRÆCISE PDF (og hvem der sendte den, og hvornår)
+// for hver gang tilbuddet er blevet sendt, så en tidligere given pris/version altid
+// kan findes frem igen, uanset hvad der efterfølgende redigeres i det levende tilbud.
+async function loadQeVersions(id){
+  var wrap=document.getElementById('qe-versions-wrap');
+  var rows=await api('/api/quotes/'+id+'/sends');
+  if(!Array.isArray(rows)||!rows.length){wrap.style.display='none';return;}
+  wrap.style.display='';
+  document.getElementById('qe-versions-list').innerHTML=rows.map(function(s){
+    return '<div class="doc-activity-row"><div><div class="doc-activity-what">📄 Version '+s.version_number+'</div><div class="doc-activity-meta">Sendt af '+esc(s.sent_by||'–')+' til '+esc(s.recipient||'–')+'</div></div>'
+      +'<div style="display:flex;align-items:center;gap:8px"><span class="doc-activity-when">'+fmtActivityWhen(s.sent_at)+'</span><button type="button" class="qz-icon-btn" data-send-id="'+s.id+'" title="Åbn den sendte PDF">📄</button></div></div>';
+  }).join('');
+  Array.prototype.forEach.call(document.querySelectorAll('#qe-versions-list [data-send-id]'),function(btn){
+    btn.onclick=function(){qzOpenPdf('/api/quotes/'+id+'/sends/'+btn.dataset.sendId+'/pdf');};
+  });
 }
 
 // ── TILBUDSEDITOR — delt skærm med live PDF-forhåndsvisning ──
@@ -12312,6 +12366,7 @@ async function openQuoteEditor(id){
   document.getElementById('qe-doc-discount-type').value='pct';
   document.getElementById('qe-template-picker').value='';
   document.getElementById('qe-notes').value='';
+  document.getElementById('qe-top-note').value='';
   document.getElementById('qe-internal-note').value='';
   document.getElementById('qe-customer-results').style.display='none';
   document.getElementById('qe-convert-btn').style.display='none';
@@ -12320,6 +12375,7 @@ async function openQuoteEditor(id){
   document.getElementById('qe-request-btn').style.display='none';
   document.getElementById('qe-send-btn').style.display='none';
   document.getElementById('qe-activity-wrap').style.display=id?'':'none';
+  document.getElementById('qe-versions-wrap').style.display='none';
   if(id){
     var qd=await api('/api/quotes/'+id);
     if(!qd||qd.error){toast('Kunne ikke hente tilbuddet','❌');return;}
@@ -12328,7 +12384,7 @@ async function openQuoteEditor(id){
     qeState.jobName=qd.job_name||'';
     qeState.lastStatus=qd.status;
     qeState.customerId=qd.customer_id||null;
-    qeState.lines=(qd.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:l.discount_type==='fixed'?'fixed':'pct'};});
+    qeState.lines=(qd.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:l.discount_type==='fixed'?'fixed':'pct',line_type:l.line_type==='text'?'text':'item'};});
     document.getElementById('qe-customer-search').value=qd.job_name||'';
     document.getElementById('qe-customer-address').value=qd.customer_address||'';
     document.getElementById('qe-customer-phone').value=qd.customer_phone||'';
@@ -12337,8 +12393,10 @@ async function openQuoteEditor(id){
     document.getElementById('qe-doc-discount').value=Number(qd.discount_pct)||0;
     document.getElementById('qe-doc-discount-type').value=qd.discount_type==='fixed'?'fixed':'pct';
     document.getElementById('qe-notes').value=qd.notes||'';
+    document.getElementById('qe-top-note').value=qd.top_note||'';
     document.getElementById('qe-internal-note').value=qd.internal_note||'';
     loadDocActivity('quote',id,'qe-activity-list');
+    loadQeVersions(id);
     document.getElementById('qe-title').textContent=qd.quote_number;
     document.getElementById('qe-subtitle').textContent='Oprettet '+String(qd.created_at||'').slice(0,10);
     qePopulateStatusSelect(qd.status);
@@ -12352,6 +12410,12 @@ async function openQuoteEditor(id){
     document.getElementById('qe-title').textContent='Nyt tilbud';
     document.getElementById('qe-subtitle').textContent='';
     qePopulateStatusSelect('draft');
+    // Nye tilbud starter med 3 åbne linjefelter — man skal ikke trykke "+ Tilføj linje"
+    // bare for at komme i gang. Samt forudfyld top-/bundnote fra standardteksten i
+    // Indstillinger, hvis Martin har sat en (kan altid rettes/slettes for dette tilbud).
+    qeState.lines=[qzMakeBlankLine(null),qzMakeBlankLine(null),qzMakeBlankLine(null)];
+    document.getElementById('qe-top-note').value=settings.quote_top_note_default||'';
+    document.getElementById('qe-notes').value=settings.quote_bottom_note_default||'';
   }
   renderQeLines();
   qeRecalc();
@@ -12412,7 +12476,11 @@ function qeRenderPreview(){
   var custEmail=document.getElementById('qe-customer-email').value.trim();
   var validUntil=document.getElementById('qe-valid-until').value;
   var notes=document.getElementById('qe-notes').value.trim();
+  var topNote=document.getElementById('qe-top-note').value.trim();
   var rowsHtml=qeState.lines.map(function(l){
+    if(l.line_type==='text'){
+      return '<tr><td colspan="4" style="font-weight:800;padding-top:12px;border-top:none">'+esc(l.description||'')+'</td></tr>';
+    }
     var qty=Number(l.quantity)||0,disc=Number(l.discount_pct)||0;
     var gross=qty*(Number(l.sell_price)||0);
     var lineTotal=gross-qzLineDiscountAmount(l,gross);
@@ -12425,6 +12493,7 @@ function qeRenderPreview(){
     +'<div><div class="qe-pdf-doctype">TILBUD</div><div class="qe-pdf-docnum">'+esc(docNum)+'</div><div class="qe-pdf-meta">Dato: '+todayStr+(validUntil?'<br>Gyldig til: '+esc(validUntil):'')+'</div></div>'
     +'</div>'
     +'<div class="qe-pdf-to"><b>Til:</b><br>'+(custName?esc(custName)+'<br>':'')+(custAddr?esc(custAddr)+'<br>':'')+(custPhone?'Tlf. '+esc(custPhone)+'<br>':'')+(custEmail?esc(custEmail):'')+'</div>'
+    +(topNote?'<div class="qe-pdf-notes" style="margin:6px 0 10px">'+esc(topNote).replace(/\n/g,'<br>')+'</div>':'')
     +'<table class="qe-pdf-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'
     +'<div class="qe-pdf-totals">'
     +(t.discountAmount>0?'<div class="qe-pdf-totals-row"><span>Rabat ('+(t.docDiscountType==='fixed'?krFmt(t.docDiscountPct):t.docDiscountPct+'%')+')</span><span>-'+krFmt(t.discountAmount)+'</span></div>':'')
@@ -12477,6 +12546,7 @@ async function saveQuoteEditor(){
     customer_email:document.getElementById('qe-customer-email').value.trim()||null,
     valid_until:document.getElementById('qe-valid-until').value||null,
     notes:document.getElementById('qe-notes').value.trim()||null,
+    top_note:document.getElementById('qe-top-note').value.trim()||null,
     internal_note:document.getElementById('qe-internal-note').value.trim()||null,
     tax_rate:qeState.taxRate,
     discount_pct:Number(document.getElementById('qe-doc-discount').value)||0,
@@ -12648,6 +12718,7 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-remaining').textContent=krFmt(Number(inv.remaining));
   document.getElementById('iv-lines-preview').innerHTML='<table class="bly-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Salgspris</th><th class="num">I alt</th></tr></thead><tbody>'
     +(inv.lines||[]).map(function(l){
+      if(l.line_type==='text')return '<tr><td colspan="4" style="font-weight:800">'+esc(l.description||'')+'</td></tr>';
       var lt=(Number(l.quantity)||0)*(Number(l.sell_price)||0);
       return '<tr><td>'+esc(l.description)+'</td><td class="num">'+(Number(l.quantity)||0)+' '+esc(l.unit||'')+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lt)+'</td></tr>';
     }).join('')+'</tbody></table>';
@@ -12734,6 +12805,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzt-save').addEventListener('click',saveQzTemplate);
   document.getElementById('qzt-delete').addEventListener('click',deleteQzTemplateFromModal);
   document.getElementById('qzt-add-blank-line').addEventListener('click',function(){qztAddLine(null);});
+  document.getElementById('qzt-add-text-line').addEventListener('click',function(){qztState.lines.push(qzMakeTextLine());qzRenderLines('qzt-lines',qztState.lines,'qzt');});
   document.getElementById('qzt-product-search').addEventListener('input',function(){
     qzRunProductSearch('qzt-product-search','qzt-product-results',function(p){qztAddLine(p);});
   });
@@ -12754,6 +12826,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-status-select').addEventListener('change',qeStatusChanged);
   document.getElementById('qe-pdf-link').addEventListener('click',function(e){e.preventDefault();if(qeState.id)qzOpenPdf('/api/quotes/'+qeState.id+'/pdf');});
   document.getElementById('qe-add-blank-line').addEventListener('click',function(){qeAddLine(null);});
+  document.getElementById('qe-add-text-line').addEventListener('click',function(){qeState.lines.push(qzMakeTextLine());renderQeLines();qeRecalc();});
   document.getElementById('qe-save-as-template-btn').addEventListener('click',qeSaveCurrentAsTemplate);
   document.getElementById('qe-template-picker').addEventListener('change',function(e){
     var id=Number(e.target.value);
@@ -12776,11 +12849,21 @@ function bindQuotesModuleEvents(){
     qeCustomerSearchTimer=setTimeout(function(){qeRunCustomerSearch(q);},150);
     qeRecalc();
   });
-  ['qe-customer-address','qe-customer-phone','qe-customer-email','qe-valid-until','qe-notes'].forEach(function(id){
+  ['qe-customer-address','qe-customer-phone','qe-customer-email','qe-valid-until','qe-notes','qe-top-note'].forEach(function(id){
     document.getElementById(id).addEventListener('input',qeRecalc);
   });
+  // Bruger e.composedPath() (ikke e.target.closest()) — når man krydser et produkt af i
+  // multi-select-søgeboksen, gentegner qzRunProductSearch boksens innerHTML SYNKRONT i
+  // checkbox'ens egen change-handler, hvilket frakobler det klikkede element fra DOM'et
+  // FØR click-eventet er færdigt med at boble op hertil. e.target.closest() fejler så
+  // fejlagtigt (det frakoblede element har ingen forælder-kæde længere) og lukkede
+  // boksen efter hvert eneste valg. composedPath() er låst fast ved event-afsendelse og
+  // rammes ikke af den efterfølgende DOM-udskiftning. Samme fejlmønster/løsning som
+  // Gantt-datovælgerens klik-udenfor-luk (se pdtd-daterange-pop).
   document.addEventListener('click',function(e){
-    if(!e.target.closest('.qe-customer-pop'))qzCloseAllPops();
+    var path=e.composedPath?e.composedPath():[e.target];
+    var inside=path.some(function(node){return node.classList&&node.classList.contains('qe-customer-pop');});
+    if(!inside)qzCloseAllPops();
   });
 
   document.getElementById('iv-add-payment-btn').addEventListener('click',addIvPayment);
