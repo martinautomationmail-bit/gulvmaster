@@ -845,6 +845,9 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
     CREATE INDEX IF NOT EXISTS idx_quotes_job_name ON quotes(job_name);
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS discount_pct NUMERIC NOT NULL DEFAULT 0;
+    -- 'pct' (procent, 0-100) eller 'fixed' (fast kronebeløb) — styrer hvordan
+    -- discount_pct-værdien ovenfor skal fortolkes. Se komment ved computeTotals().
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS discount_type TEXT NOT NULL DEFAULT 'pct';
 
     CREATE TABLE IF NOT EXISTS quote_lines (
       id SERIAL PRIMARY KEY,
@@ -860,6 +863,7 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_quote_lines_quote ON quote_lines(quote_id);
     ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'service';
     ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS discount_pct NUMERIC NOT NULL DEFAULT 0;
+    ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS discount_type TEXT NOT NULL DEFAULT 'pct';
 
     CREATE TABLE IF NOT EXISTS invoices (
       id SERIAL PRIMARY KEY,
@@ -924,6 +928,10 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
+    -- Firmakunder: "Navn" bruges som firmanavn når is_company er sat, plus et
+    -- CVR-nummer. Frivilligt for private kunder (is_company=0, cvr=NULL).
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_company INTEGER DEFAULT 0;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cvr TEXT;
 
     -- ── E-SIGNATUR på tilbud: fast link pr. tilbud kunden kan acceptere og
     -- underskrive (tegnet signatur + navn + IP/tidspunkt som bevis). ────
@@ -4582,23 +4590,29 @@ app.get('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) => 
 app.post('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
+  const isCompany = !!b.is_company;
+  const cvr = isCompany && b.cvr ? String(b.cvr).trim().slice(0, 20) : null;
   const r = await pool.query(`
-    INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id
-  `, [String(b.name).trim(), b.email || null, b.phone || null, b.address || null, b.notes || null]);
+    INSERT INTO customers (name,email,phone,address,notes,is_company,cvr) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
+  `, [String(b.name).trim(), b.email || null, b.phone || null, b.address || null, b.notes || null, isCompany ? 1 : 0, cvr]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 app.put('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM customers WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
   const b = req.body || {};
+  const isCompany = b.is_company !== undefined ? !!b.is_company : !!current.is_company;
+  const cvr = b.cvr !== undefined ? (isCompany && b.cvr ? String(b.cvr).trim().slice(0, 20) : null) : current.cvr;
   await pool.query(`
-    UPDATE customers SET name=$1,email=$2,phone=$3,address=$4,notes=$5,updated_at=${nowTextSQL()} WHERE id=$6
+    UPDATE customers SET name=$1,email=$2,phone=$3,address=$4,notes=$5,is_company=$6,cvr=$7,updated_at=${nowTextSQL()} WHERE id=$8
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
     b.email !== undefined ? b.email : current.email,
     b.phone !== undefined ? b.phone : current.phone,
     b.address !== undefined ? b.address : current.address,
     b.notes !== undefined ? b.notes : current.notes,
+    isCompany ? 1 : 0,
+    cvr,
     req.params.id
   ]);
   res.json({ ok: true });
@@ -6649,16 +6663,50 @@ async function nextDocNumber(kind, prefix) {
 
 // rawSubtotal = sum efter evt. rabat PR. LINJE, men før rabat på hele dokumentet.
 // subtotal (det der gemmes i DB, og vises som "Subtotal" på PDF'en) = efter BEGGE rabatter, før moms.
-function computeTotals(lines, taxRate, discountPct) {
-  const dPct = Number(discountPct) || 0;
+//
+// Rabat-type (Martin ønsker rabat enten som % eller som et fast kronebeløb, både
+// pr. linje og for hele tilbuddet): for at undgå en migrering af eksisterende
+// data genbruges den eksisterende discount_pct-kolonne til at holde VÆRDIEN
+// uanset type (enten en procentsats 0-100, eller et rent kronebeløb), og en ny
+// sideløbende discount_type-kolonne ('pct'|'fixed') styrer fortolkningen.
+// Rækker/dokumenter uden discount_type (fx eksisterende tilbud fra før denne
+// funktion, eller fakturaer — som slet ikke har fået denne udvidelse) falder
+// automatisk tilbage til 'pct', så al tidligere opførsel er uændret.
+function lineDiscountAmount(l, gross) {
+  const type = l && l.discount_type === 'fixed' ? 'fixed' : 'pct';
+  const val = Number(l && l.discount_pct) || 0;
+  if (type === 'fixed') return Math.max(0, Math.min(val, gross));
+  return gross * Math.max(0, Math.min(val, 100)) / 100;
+}
+// equivalentLinePct: bruges når en linje med fast kronerabat skal repræsenteres
+// et sted der kun forstår procent-rabat (pt. kun ved konvertering til faktura).
+function equivalentLinePct(l) {
+  if (!l || l.discount_type !== 'fixed') return Number(l && l.discount_pct) || 0;
+  const gross = (Number(l.quantity) || 0) * (Number(l.sell_price) || 0);
+  if (gross <= 0) return 0;
+  return lineDiscountAmount(l, gross) / gross * 100;
+}
+function computeTotals(lines, taxRate, discount) {
+  // discount kan enten være et rent tal (bagudkompatibelt — tolkes som %), eller
+  // et objekt {value,type} hvor type er 'pct' eller 'fixed'.
+  let dValue, dType;
+  if (discount && typeof discount === 'object') {
+    dValue = Number(discount.value) || 0;
+    dType = discount.type === 'fixed' ? 'fixed' : 'pct';
+  } else {
+    dValue = Number(discount) || 0;
+    dType = 'pct';
+  }
   let rawSubtotal = 0, costTotal = 0;
   for (const l of (lines || [])) {
     const qty = Number(l.quantity) || 0, sell = Number(l.sell_price) || 0, cost = Number(l.cost_price) || 0;
-    const lineDisc = Number(l.discount_pct) || 0;
-    rawSubtotal += qty * sell * (1 - lineDisc / 100);
+    const gross = qty * sell;
+    rawSubtotal += gross - lineDiscountAmount(l, gross);
     costTotal += qty * cost;
   }
-  const discountAmount = rawSubtotal * dPct / 100;
+  const discountAmount = dType === 'fixed'
+    ? Math.max(0, Math.min(dValue, rawSubtotal))
+    : rawSubtotal * Math.max(0, Math.min(dValue, 100)) / 100;
   const subtotal = rawSubtotal - discountAmount;
   const taxAmount = subtotal * (Number(taxRate) || 0) / 100;
   return { subtotal, rawSubtotal, discountAmount, taxAmount, total: subtotal + taxAmount, costTotal };
@@ -6883,9 +6931,9 @@ async function saveQuoteLines(quoteId, lines) {
   for (const l of (lines || [])) {
     if (!l.description) continue;
     await pool.query(`
-      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-    `, [quoteId, l.product_id || null, String(l.description).trim(), l.unit || 'stk', Number(l.quantity) || 1, Number(l.cost_price) || 0, Number(l.sell_price) || 0, pos++, l.product_type === 'materialer' ? 'materialer' : 'service', Number(l.discount_pct) || 0]);
+      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    `, [quoteId, l.product_id || null, String(l.description).trim(), l.unit || 'stk', Number(l.quantity) || 1, Number(l.cost_price) || 0, Number(l.sell_price) || 0, pos++, l.product_type === 'materialer' ? 'materialer' : 'service', Number(l.discount_pct) || 0, l.discount_type === 'fixed' ? 'fixed' : 'pct']);
   }
 }
 
@@ -6894,13 +6942,14 @@ app.post('/api/quotes', auth, financeOnly, asyncRoute(async (req, res) => {
   const company = await getCompanyInfo();
   const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : company.defaultTaxRate;
   const discountPct = Number(b.discount_pct) || 0;
-  const totals = computeTotals(b.lines || [], taxRate, discountPct);
+  const discountType = b.discount_type === 'fixed' ? 'fixed' : 'pct';
+  const totals = computeTotals(b.lines || [], taxRate, { value: discountPct, type: discountType });
   const quoteNumber = await nextDocNumber('quote', 'TIL');
   const acceptToken = crypto.randomBytes(20).toString('hex');
   const r = await pool.query(`
-    INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,valid_until,created_by,discount_pct,accept_token)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
-  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes || null, b.valid_until || null, req.user.id, discountPct, acceptToken]);
+    INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,valid_until,created_by,discount_pct,discount_type,accept_token)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id
+  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken]);
   await saveQuoteLines(r.rows[0].id, b.lines);
   res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber });
 }));
@@ -6911,10 +6960,11 @@ app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   const b = req.body || {};
   const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : current.tax_rate;
   const discountPct = b.discount_pct !== undefined ? Number(b.discount_pct) || 0 : Number(current.discount_pct) || 0;
-  const totals = computeTotals(b.lines !== undefined ? b.lines : await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1', [req.params.id]).then(r => r.rows), taxRate, discountPct);
+  const discountType = b.discount_type !== undefined ? (b.discount_type === 'fixed' ? 'fixed' : 'pct') : (current.discount_type === 'fixed' ? 'fixed' : 'pct');
+  const totals = computeTotals(b.lines !== undefined ? b.lines : await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1', [req.params.id]).then(r => r.rows), taxRate, { value: discountPct, type: discountType });
   await pool.query(`
-    UPDATE quotes SET job_name=$1,job_id=$2,customer_id=$3,customer_address=$4,customer_phone=$5,customer_email=$6,subtotal=$7,tax_rate=$8,tax_amount=$9,total=$10,notes=$11,valid_until=$12,discount_pct=$13,updated_at=${nowTextSQL()}
-    WHERE id=$14
+    UPDATE quotes SET job_name=$1,job_id=$2,customer_id=$3,customer_address=$4,customer_phone=$5,customer_email=$6,subtotal=$7,tax_rate=$8,tax_amount=$9,total=$10,notes=$11,valid_until=$12,discount_pct=$13,discount_type=$14,updated_at=${nowTextSQL()}
+    WHERE id=$15
   `, [
     b.job_name !== undefined ? b.job_name : current.job_name,
     b.job_id !== undefined ? b.job_id : current.job_id,
@@ -6926,6 +6976,7 @@ app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
     b.notes !== undefined ? b.notes : current.notes,
     b.valid_until !== undefined ? b.valid_until : current.valid_until,
     discountPct,
+    discountType,
     req.params.id
   ]);
   if (b.lines !== undefined) await saveQuoteLines(req.params.id, b.lines);
@@ -6952,17 +7003,26 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, financeOnly, asyncRoute(asy
   if (quote.status === 'converted') return res.status(400).json({ error: 'Tilbuddet er allerede konverteret' });
   const invoiceNumber = await nextDocNumber('invoice', 'FAK');
   const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 14);
+  // Fakturaer understøtter (endnu) kun rabat i %, så en evt. fast kronerabat fra
+  // tilbuddet omregnes her til den procentsats der giver samme kronebeløb. De
+  // faktiske beløb (subtotal/moms/total) kopieres uændret fra tilbuddet
+  // nedenfor, så fakturaens totaler er korrekte uanset rabat-type — kun
+  // rabat-TEKSTEN og linjetotalerne på selve fakturaen regnes om til procent.
+  const quoteTotalsForInvoice = computeTotals(quote.lines, quote.tax_rate, { value: Number(quote.discount_pct) || 0, type: quote.discount_type });
+  const equivDocDiscountPct = quoteTotalsForInvoice.rawSubtotal > 0
+    ? (quoteTotalsForInvoice.discountAmount / quoteTotalsForInvoice.rawSubtotal * 100)
+    : 0;
   const r = await pool.query(`
     INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,due_date,discount_pct)
     VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14) RETURNING id
-  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, quote.subtotal, quote.tax_rate, quote.tax_amount, quote.total, quote.notes, dueDate.toISOString().slice(0, 10), Number(quote.discount_pct) || 0]);
+  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, quote.subtotal, quote.tax_rate, quote.tax_amount, quote.total, quote.notes, dueDate.toISOString().slice(0, 10), equivDocDiscountPct]);
   const invoiceId = r.rows[0].id;
   let pos = 0;
   for (const l of quote.lines) {
     await pool.query(`
       INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', Number(l.discount_pct) || 0]);
+    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', equivalentLinePct(l)]);
   }
   await pool.query(`UPDATE quotes SET status='converted', converted_invoice_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [invoiceId, quote.id]);
   // Sagen (projektet) blev oprettet da kunden underskrev tilbuddet — nu hvor
@@ -7082,12 +7142,16 @@ function drawDocumentPdf(doc, kind, record, company) {
   doc.fontSize(9.5).fillColor('#111318');
   let rawSubtotal = 0;
   (record.lines || []).forEach(l => {
-    const lineDisc = Number(l.discount_pct) || 0;
-    const lineTotal = Number(l.quantity) * Number(l.sell_price) * (1 - lineDisc / 100);
+    const lineDiscType = l.discount_type === 'fixed' ? 'fixed' : 'pct';
+    const lineDiscVal = Number(l.discount_pct) || 0;
+    const gross = Number(l.quantity) * Number(l.sell_price);
+    const lineDiscAmt = lineDiscountAmount(l, gross);
+    const lineTotal = gross - lineDiscAmt;
     rawSubtotal += lineTotal;
+    const lineDiscLabel = lineDiscVal ? (lineDiscType === 'fixed' ? ` (-${Math.round(lineDiscVal).toLocaleString('da-DK')} kr)` : ` (-${lineDiscVal}%)`) : '';
     const nameHeight = doc.heightOfString(l.description, { width: 260 });
     doc.text(l.description, 48, y, { width: 260 });
-    doc.text(String(l.quantity) + ' ' + (l.unit || '') + (lineDisc ? ` (-${lineDisc}%)` : ''), 320, y, { width: 50, align: 'right' });
+    doc.text(String(l.quantity) + ' ' + (l.unit || '') + lineDiscLabel, 320, y, { width: 50, align: 'right' });
     doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 380, y, { width: 80, align: 'right' });
     doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
     y += Math.max(nameHeight, 14) + 6;
@@ -7096,10 +7160,12 @@ function drawDocumentPdf(doc, kind, record, company) {
 
   y += 10;
   const totalsX = 380;
+  const docDiscountType = record.discount_type === 'fixed' ? 'fixed' : 'pct';
   const docDiscountPct = Number(record.discount_pct) || 0;
-  const docDiscountAmount = docDiscountPct ? rawSubtotal * docDiscountPct / 100 : 0;
+  const docDiscountAmount = docDiscountType === 'fixed' ? Math.max(0, Math.min(docDiscountPct, rawSubtotal)) : (docDiscountPct ? rawSubtotal * docDiscountPct / 100 : 0);
+  const docDiscountLabel = docDiscountType === 'fixed' ? `${Math.round(docDiscountPct).toLocaleString('da-DK')} kr` : `${docDiscountPct}%`;
   if (docDiscountAmount > 0) {
-    doc.fontSize(9.5).fillColor('#6B7280').text(`Rabat (${docDiscountPct}%)`, totalsX, y, { width: 80, align: 'right' });
+    doc.fontSize(9.5).fillColor('#6B7280').text(`Rabat (${docDiscountLabel})`, totalsX, y, { width: 80, align: 'right' });
     doc.fillColor('#DC2626').text('-' + Math.round(docDiscountAmount).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
     y += 16;
   }
@@ -7333,12 +7399,17 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   if (!quote) return res.status(404).send(portalNotFoundPage());
   const lines = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [quote.id])).rows;
   const company = await getCompanyInfo();
-  const rawSubtotal = lines.reduce((s, l) => s + Number(l.quantity) * Number(l.sell_price) * (1 - (Number(l.discount_pct) || 0) / 100), 0);
-  const discountAmount = Number(quote.discount_pct) ? rawSubtotal * Number(quote.discount_pct) / 100 : 0;
+  const rawSubtotal = lines.reduce((s, l) => s + (Number(l.quantity) * Number(l.sell_price) - lineDiscountAmount(l, Number(l.quantity) * Number(l.sell_price))), 0);
+  const docDiscType = quote.discount_type === 'fixed' ? 'fixed' : 'pct';
+  const discountAmount = docDiscType === 'fixed' ? Math.max(0, Math.min(Number(quote.discount_pct) || 0, rawSubtotal)) : (Number(quote.discount_pct) ? rawSubtotal * Number(quote.discount_pct) / 100 : 0);
+  const docDiscLabel = docDiscType === 'fixed' ? `${Math.round(Number(quote.discount_pct) || 0).toLocaleString('da-DK')} kr` : `${Number(quote.discount_pct) || 0}%`;
   const rowsHtml = lines.map(l => {
+    const discType = l.discount_type === 'fixed' ? 'fixed' : 'pct';
     const disc = Number(l.discount_pct) || 0;
-    const lineTotal = Number(l.quantity) * Number(l.sell_price) * (1 - disc / 100);
-    return `<tr><td>${esc(l.description)}</td><td class="num">${Number(l.quantity)} ${esc(l.unit || '')}${disc ? ` (-${disc}%)` : ''}</td><td class="num">${krFmtServer(l.sell_price)}</td><td class="num">${krFmtServer(lineTotal)}</td></tr>`;
+    const gross = Number(l.quantity) * Number(l.sell_price);
+    const lineTotal = gross - lineDiscountAmount(l, gross);
+    const discLabel = disc ? (discType === 'fixed' ? ` (-${Math.round(disc).toLocaleString('da-DK')} kr)` : ` (-${disc}%)`) : '';
+    return `<tr><td>${esc(l.description)}</td><td class="num">${Number(l.quantity)} ${esc(l.unit || '')}${discLabel}</td><td class="num">${krFmtServer(l.sell_price)}</td><td class="num">${krFmtServer(lineTotal)}</td></tr>`;
   }).join('');
   const statusBlock = (() => {
     if (quote.status === 'accepted') {
@@ -7400,7 +7471,7 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   ${quote.job_name ? `<div style="font-size:13px;margin-bottom:14px"><b>Til:</b> ${esc(quote.job_name)}${quote.customer_address ? '<br>' + esc(quote.customer_address) : ''}</div>` : ''}
   <table><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead><tbody>${rowsHtml}</tbody></table>
   <div class="totals">
-    ${discountAmount > 0 ? `<div class="totals-row"><span>Rabat (${quote.discount_pct}%)</span><span>-${krFmtServer(discountAmount)}</span></div>` : ''}
+    ${discountAmount > 0 ? `<div class="totals-row"><span>Rabat (${docDiscLabel})</span><span>-${krFmtServer(discountAmount)}</span></div>` : ''}
     <div class="totals-row"><span>Subtotal</span><span>${krFmtServer(quote.subtotal)}</span></div>
     <div class="totals-row"><span>Moms (${quote.tax_rate}%)</span><span>${krFmtServer(quote.tax_amount)}</span></div>
     <div class="totals-row grand"><span>Total</span><span>${krFmtServer(quote.total)}</span></div>
@@ -8178,9 +8249,35 @@ app.use((error, req, res, next) => {
   res.status(500).json({ error: message });
 });
 
+// ÉNGANGS-EFTERUDFYLDNING: sags-opgaver (gantt_tasks med project_id) der blev
+// oprettet FØR mirrorProjectTaskToPool() fandtes, har ingen spejl-række i
+// jt_tasks — så de kan hverken ses i Opgavepool eller bookes på Kapacitetsboardet
+// ("Opgaven blev ikke fundet"). Kører ved hver opstart, men er billig og
+// no-op'er for alt der allerede er spejlet (LEFT JOIN ... WHERE jt.id IS NULL).
+async function backfillProjectTaskMirrors() {
+  // OBS: "gt.id" og "p.id" hedder begge "id" — de må IKKE begge selectes som
+  // p.*/gt.* uden alias, for så vinder den sidste af de to i det resulterende
+  // JS-objekt (node-postgres kollapser dubletnavne), og man ender med at
+  // "opgavens id" i virkeligheden er sagens id. Derfor eksplicitte aliaser her.
+  const rows = await pool.query(`
+    SELECT gt.id AS gt_id, gt.name AS gt_name, gt.start_date AS gt_start, gt.end_date AS gt_end, gt.description AS gt_desc,
+           p.id AS p_id, p.name AS p_name, p.customer_address AS p_address, p.customer_phone AS p_phone, p.customer_email AS p_email
+    FROM gantt_tasks gt
+    JOIN projects p ON p.id = gt.project_id
+    LEFT JOIN jt_tasks jt ON jt.id = gt.id
+    WHERE gt.project_id IS NOT NULL AND jt.id IS NULL
+  `);
+  for (const r of rows.rows) {
+    const project = { id: r.p_id, name: r.p_name, customer_address: r.p_address, customer_phone: r.p_phone, customer_email: r.p_email };
+    await mirrorProjectTaskToPool(r.gt_id, project, { name: r.gt_name, start_date: r.gt_start, end_date: r.gt_end, description: r.gt_desc || '' });
+  }
+  if (rows.rowCount) console.log(`Efterudfyldte ${rows.rowCount} sags-opgave(r) i Opgavepoolen (oprettet før dette fandtes).`);
+}
+
 async function start() {
   await pool.query('SELECT 1 AS connected');
   await initSchema();
+  await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
   app.listen(PORT, () => {
     console.log(`Gulv Master PostgreSQL kører på port ${PORT}`);
     console.log('JobTread-synk er read-only: den kan aldrig ændre planning_bookings.');
