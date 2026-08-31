@@ -53,7 +53,62 @@ button,input,select{font:inherit}
 .tab-navdrop:has(.navdrop-btn.active) .tab{color:#fff;background:rgba(255,255,255,.16);border-radius:5px 0 0 5px}
 .navdrop-btn.has-pending-dot{position:relative}
 .navdrop-btn.has-pending-dot::after{content:'';position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#EF4444;border:1.5px solid var(--navy,#0F2A4A)}
-.nav-actions{display:flex;align-items:center;gap:5px}
+.nav-actions{display:flex;align-items:center;gap:5px;margin-left:auto}
+
+/* SIDEBAR — Billy-stil venstre navigation, erstatter den gamle vandrette
+   faneblads-menu (.tabs). Selve routingen (switchPage/.tab/.navdrop-item/
+   .page) er 100% uændret — sidebaren genbruger nøjagtig de samme klasser og
+   data-page-attributter, den er bare lagt om til et lodret layout, så alt
+   klik/hash/dybt-link-logik i switchPage()/bind() virker uændret. */
+:root{--sidebar-w:216px;--sidebar-w-collapsed:60px}
+.app-shell{display:flex;align-items:stretch;min-height:100vh}
+.sidebar{width:var(--sidebar-w);flex:0 0 auto;background:var(--navy);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;overflow-x:hidden;z-index:90;transition:width .15s ease;box-shadow:2px 0 12px rgba(0,0,0,.14)}
+.sidebar-head{display:flex;align-items:center;gap:6px;padding:14px 12px 10px;flex-shrink:0}
+.sidebar-head .brand{color:#fff;flex:1;min-width:0}
+.sidebar-brand-name{overflow:hidden;text-overflow:ellipsis}
+.sidebar-toggle{border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;border-radius:6px;width:24px;height:24px;flex-shrink:0;display:grid;place-items:center;cursor:pointer;font-size:11px;transition:transform .15s ease}
+.sidebar-toggle:hover{background:rgba(255,255,255,.18)}
+.sidebar-nav{display:flex;flex-direction:column;gap:2px;padding:6px 10px;flex:1}
+.sidebar-nav .tab{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:7px;width:100%}
+.sidebar-nav .tab.active{color:#fff;background:rgba(255,255,255,.16)}
+.sidebar-nav .tab:hover{color:#fff;background:rgba(255,255,255,.08)}
+.stab-icon{width:16px;text-align:center;flex-shrink:0;font-size:13px}
+.stab-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-nav .tab-navdrop{display:flex;flex-direction:column;gap:0;align-items:stretch}
+.sidebar-nav .tab-navdrop .stab-row{display:flex;align-items:center;gap:2px}
+.sidebar-nav .tab-navdrop .tab{flex:1;min-width:0;border-radius:7px;padding-right:6px}
+.sidebar-nav .tab-navdrop .navdrop-caret{border:0;background:transparent;color:rgba(255,255,255,.45);border-radius:6px;padding:6px 7px;font-size:9px;cursor:pointer;flex-shrink:0}
+.sidebar-nav .tab-navdrop .navdrop-caret:hover{color:#fff;background:rgba(255,255,255,.1)}
+.sidebar-nav .tab-navdrop:has(.navdrop-btn.active) .stab-row .tab{color:#fff;background:rgba(255,255,255,.16);border-radius:7px}
+.sidebar-nav .navdrop-menu{position:static;display:none;background:transparent;box-shadow:none;padding:2px 0 4px 25px;margin:0;min-width:0;border-radius:0;width:auto}
+.sidebar-nav .navdrop-menu.open{display:flex;flex-direction:column;gap:1px}
+.sidebar-nav .navdrop-item{color:rgba(255,255,255,.62);font-weight:600;font-size:11.5px;padding:6px 8px}
+.sidebar-nav .navdrop-item:hover{color:#fff;background:rgba(255,255,255,.08)}
+.sidebar-nav .navdrop-item.active{color:#fff;background:rgba(255,255,255,.14)}
+.sidebar-foot{padding:10px 14px;font-size:9px;color:rgba(255,255,255,.35);border-top:1px solid rgba(255,255,255,.09);flex-shrink:0}
+.app-content{flex:1;min-width:0}
+
+body.sidebar-collapsed .sidebar{width:var(--sidebar-w-collapsed)}
+body.sidebar-collapsed .sidebar-head{justify-content:center;padding:14px 6px 10px}
+body.sidebar-collapsed .sidebar-brand-name,
+body.sidebar-collapsed .stab-label,
+body.sidebar-collapsed .sidebar-foot,
+body.sidebar-collapsed .sidebar-nav .navdrop-caret,
+body.sidebar-collapsed .sidebar-nav .navdrop-menu{display:none}
+body.sidebar-collapsed .sidebar-head .brand{flex:0}
+body.sidebar-collapsed .sidebar-toggle{transform:rotate(180deg)}
+body.sidebar-collapsed .sidebar-nav .tab,
+body.sidebar-collapsed .sidebar-nav .tab-navdrop .tab{justify-content:center;padding-left:0;padding-right:0}
+
+@media(max-width:900px){
+  .sidebar{position:fixed;left:0;top:0;width:var(--sidebar-w-collapsed)}
+  .sidebar .sidebar-brand-name,.sidebar .stab-label,.sidebar .sidebar-foot,.sidebar .navdrop-caret,.sidebar .navdrop-menu{display:none}
+  .sidebar .sidebar-nav .tab{justify-content:center;padding-left:0;padding-right:0}
+  .app-content{margin-left:var(--sidebar-w-collapsed)}
+  body.sidebar-collapsed .sidebar{width:0;overflow:hidden}
+  body.sidebar-collapsed .app-content{margin-left:0}
+}
+
 .nb{border:1px solid rgba(255,255,255,.23);background:rgba(255,255,255,.1);color:#fff;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap}
 .nb.green{background:var(--green);border-color:var(--green)}
 .nb.blue{background:var(--blue);border-color:var(--blue)}
@@ -1657,8 +1712,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   .board-layout{grid-template-columns:1fr}
   .panel-body{max-height:280px}
   .nav{height:auto;min-height:52px;flex-wrap:wrap;padding:7px 10px}
-  .tabs{order:3;width:100%}
-  .nav-actions{margin-left:auto}
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -1671,29 +1724,38 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <body>
 <div id="app" style="display:none">
 
-<nav class="nav">
-  <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-31.1</span>
-  <div class="tabs">
-    <a class="tab" href="#dashboard" data-page="dashboard">Kommandocenter</a>
+<div class="app-shell">
+<aside class="sidebar" id="app-sidebar">
+  <div class="sidebar-head">
+    <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name" class="sidebar-brand-name">Gulv Master — Admin</span></button>
+    <button class="sidebar-toggle" id="sidebar-toggle-btn" type="button" title="Fold sidebar ind/ud">‹</button>
+  </div>
+  <nav class="sidebar-nav">
+    <a class="tab" href="#dashboard" data-page="dashboard"><span class="stab-icon">🧭</span><span class="stab-label">Kommandocenter</span></a>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
-      <a class="tab active" href="#plan" data-page="plan">Daglig plan</a>
-      <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle">▾</button>
+      <div class="stab-row">
+        <a class="tab active" href="#plan" data-page="plan"><span class="stab-icon">📅</span><span class="stab-label">Daglig plan</span></a>
+        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
+      </div>
       <div class="navdrop-menu">
-        <a class="navdrop-item" href="#timeline" data-page="timeline">Tidslinje</a>
+        <a class="navdrop-item" href="#timeline" data-page="timeline">🕒 Tidslinje</a>
       </div>
     </div>
     <div class="navdrop tab-navdrop" id="capacity-subdrop">
-      <a class="tab" href="#capacity" data-page="capacity">Kapacitet</a>
-      <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle">▾</button>
+      <div class="stab-row">
+        <a class="tab" href="#capacity" data-page="capacity"><span class="stab-icon">📊</span><span class="stab-label">Kapacitet</span></a>
+        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
+      </div>
       <div class="navdrop-menu">
-        <a class="navdrop-item" href="#availability" data-page="availability">Ledighedsoversigt</a>
+        <a class="navdrop-item" href="#availability" data-page="availability">🟢 Ledighedsoversigt</a>
       </div>
     </div>
-    <a class="tab" href="#gantt" data-page="gantt">Gantt</a>
+    <a class="tab" href="#gantt" data-page="gantt"><span class="stab-icon">📶</span><span class="stab-label">Gantt</span></a>
     <div class="navdrop tab-navdrop hidden" id="finance-subdrop">
-      <a class="tab" href="#finance" data-page="finance" id="finance-tab-btn">💰 Økonomi</a>
-      <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle">▾</button>
+      <div class="stab-row">
+        <a class="tab" href="#finance" data-page="finance" id="finance-tab-btn"><span class="stab-icon">💰</span><span class="stab-label">Økonomi</span></a>
+        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
+      </div>
       <div class="navdrop-menu">
         <a class="navdrop-item" href="#finance/oversigt" data-page="finance" data-fintab-jump="oversigt">📊 Oversigt</a>
         <a class="navdrop-item" href="#finance/omsaetning" data-page="finance" data-fintab-jump="omsaetning">💰 Omsætning pr. fag</a>
@@ -1706,10 +1768,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#finance/noter" data-page="finance" data-fintab-jump="noter">⚠️ Noter &amp; datakvalitet</a>
       </div>
     </div>
-    <a class="tab hidden" href="#quotes" data-page="quotes" id="quotes-tab-btn">🧾 Tilbud &amp; Faktura</a>
-    <a class="tab hidden" href="#customers" data-page="customers" id="customers-tab-btn">👥 Kunder</a>
-    <a class="tab hidden" href="#projects" data-page="projects" id="projects-tab-btn">🏗️ Projekter</a>
-  </div>
+    <a class="tab hidden" href="#quotes" data-page="quotes" id="quotes-tab-btn"><span class="stab-icon">🧾</span><span class="stab-label">Tilbud &amp; Faktura</span></a>
+    <a class="tab hidden" href="#customers" data-page="customers" id="customers-tab-btn"><span class="stab-icon">👥</span><span class="stab-label">Kunder</span></a>
+    <a class="tab hidden" href="#projects" data-page="projects" id="projects-tab-btn"><span class="stab-icon">🏗️</span><span class="stab-label">Projekter</span></a>
+  </nav>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-31.1</span></div>
+</aside>
+<div class="app-content">
+<nav class="nav">
   <div class="nav-actions">
     <div class="navdrop" id="globalsearch">
       <input id="global-search-input" placeholder="🔍 Søg sag, kunde eller medarbejder..." autocomplete="off" style="width:230px;padding:7px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;font-size:12px">
@@ -2163,11 +2229,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 14px">
       <div class="bly-segtabs" id="qz-quotes-status-filter" style="border-bottom:0;margin-bottom:0;gap:14px"></div>
       <div style="display:flex;align-items:center;gap:6px">
-        <span class="muted-sm">Dato:</span>
-        <input type="date" id="qz-quotes-date-from" class="input" style="width:auto">
-        <span class="muted-sm">til</span>
-        <input type="date" id="qz-quotes-date-to" class="input" style="width:auto">
-        <button class="btn small" id="qz-quotes-date-clear" type="button">✕ Ryd</button>
+        <div class="bly-period" style="position:relative">
+          <button class="bly-ctl" id="qz-quotes-period-btn" type="button">📅 <span id="qz-quotes-period-label">Alt tid</span></button>
+          <div class="bly-period-pop" id="qz-quotes-period-pop" style="display:none"></div>
+        </div>
       </div>
     </div>
     <table class="bly-table">
@@ -2183,11 +2248,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 14px">
       <div class="bly-segtabs" id="qz-invoices-status-filter" style="border-bottom:0;margin-bottom:0;gap:14px"></div>
       <div style="display:flex;align-items:center;gap:6px">
-        <span class="muted-sm">Dato:</span>
-        <input type="date" id="qz-invoices-date-from" class="input" style="width:auto">
-        <span class="muted-sm">til</span>
-        <input type="date" id="qz-invoices-date-to" class="input" style="width:auto">
-        <button class="btn small" id="qz-invoices-date-clear" type="button">✕ Ryd</button>
+        <div class="bly-period" style="position:relative">
+          <button class="bly-ctl" id="qz-invoices-period-btn" type="button">📅 <span id="qz-invoices-period-label">Alt tid</span></button>
+          <div class="bly-period-pop" id="qz-invoices-period-pop" style="display:none"></div>
+        </div>
       </div>
     </div>
     <table class="bly-table">
@@ -2872,10 +2936,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <span id="pdtd-progress-value" style="font-size:12.5px;font-weight:700;color:var(--bly-ink);width:38px;text-align:right">0%</span>
         </div>
       </div>
-      <div class="gd-info-grid">
-        <div><div class="gd-info-label">📞 Kundetelefon</div><div id="pdtd-phone" class="gd-info-value"></div></div>
-        <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="pdtd-email" class="gd-info-value"></div></div>
-      </div>
       <div class="form-group" style="margin-top:14px"><label class="form-label">Note</label><textarea id="pdtd-note-input" class="input" rows="3" placeholder="Fx særlige forhold på pladsen, adgang, aftaler med kunden..."></textarea></div>
       <div class="form-group" style="margin-top:14px">
         <label class="form-label">Tjekpunkter</label>
@@ -2884,6 +2944,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <input id="pdtd-checklist-new" class="input" placeholder="Fx Tag billede før opstart" style="flex:1">
           <button class="btn small" type="button" id="pdtd-checklist-add-btn">+ Tilføj</button>
         </div>
+      </div>
+      <div class="gd-info-grid" style="margin-top:22px">
+        <div style="grid-column:1/-1;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Kundekontakt</div>
+        <div><div class="gd-info-label">📞 Kundetelefon</div><div id="pdtd-phone" class="gd-info-value"></div></div>
+        <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="pdtd-email" class="gd-info-value"></div></div>
       </div>
     </div>
     <div class="modal-actions">
@@ -9008,6 +9073,13 @@ document.getElementById('fin-period-btn').addEventListener('click',function(e){
   pop.style.display=opening?'block':'none';
   if(opening)renderFinPeriodPopover();
 });
+// Klik inde i selve popoveren (fx skift mellem Måned/Kvartal/Regnskabsår) må
+// ikke boble op til dokument-lytteren nedenfor — den genopbygger
+// pop.innerHTML, så det oprindelige e.target ikke længere findes i
+// popoverens DOM når "klik udenfor lukker den"-tjekket kører, og popoveren
+// lukkede sig selv i samme klik den skulle reagere på (fundet ved test af
+// den tilsvarende nye filter i Tilbud & Faktura, som genbruger dette mønster).
+document.getElementById('fin-period-pop').addEventListener('click',function(e){e.stopPropagation();});
 document.addEventListener('click',function(e){
   var pop=document.getElementById('fin-period-pop');
   if(pop&&pop.style.display!=='none'&&!pop.contains(e.target)&&e.target.id!=='fin-period-btn')pop.style.display='none';
@@ -10348,7 +10420,7 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail'];
 function switchPage(page,skipHash){
   if(VALID_PAGES.indexOf(page)===-1)page='plan';
-  document.querySelectorAll('.tab,.navdrop-item').forEach(function(x){x.classList.remove('active');});
+  document.querySelectorAll('.tab,.navdrop-item,.navdrop-btn').forEach(function(x){x.classList.remove('active');});
   document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});
   var tabBtn=document.querySelector('.tab[data-page="'+page+'"]');
   if(tabBtn)tabBtn.classList.add('active');
@@ -10398,6 +10470,18 @@ function switchPage(page,skipHash){
 }
 function bind(){
   syncStickyOffsets();window.addEventListener('resize',syncStickyOffsets);
+  // SIDEBAR — fold ind/ud (Billy-stil venstre navigation, erstatter den
+  // gamle vandrette topmenu). Tilstanden gemmes pr. browser så den ikke
+  // hopper frem og tilbage ved hvert sideskift/genindlæsning.
+  (function(){
+    var toggleBtn=document.getElementById('sidebar-toggle-btn');
+    if(!toggleBtn)return;
+    if(localStorage.getItem('gm_sidebar_collapsed')==='1')document.body.classList.add('sidebar-collapsed');
+    toggleBtn.addEventListener('click',function(){
+      var collapsed=document.body.classList.toggle('sidebar-collapsed');
+      localStorage.setItem('gm_sidebar_collapsed',collapsed?'1':'0');
+    });
+  })();
   // Tabs
   window.addEventListener('hashchange',function(){
     var parts=location.hash.slice(1).split('/');
@@ -11126,6 +11210,130 @@ initNoteWidget();
 // ══════════════════════════════════════════════════════════════
 var qzProducts=[],qzQuotes=[],qzInvoices=[],qzTemplates=[],qzActiveTab='quotes',qzInitialized=false,qzEditingProductId=null;
 var qzQuoteStatusFilter='all',qzInvoiceStatusFilter='all';
+var qzQuotePeriodFilter=null,qzInvoicePeriodFilter=null;
+// Genanvendelig Billy-stil dato-filter (Måned/Kvartal/Regnskabsår/Alt tid + frit
+// datointerval) — samme mønster som Økonomi-siden (fin-period), men pakket ind
+// som en lille fabrik så Tilbud og Faktura kan have hver sin uden kodeduplikering.
+function makeBlyPeriodFilter(btnId,popId,labelId,onChange){
+  var st={tab:'all',yearPage:null,month:'',year:'',quarter:'',from:'',to:''};
+  function label(){
+    if(st.from||st.to)return (st.from||'…')+' – '+(st.to||'…');
+    if(st.month)return MAANEDE_KORT[+st.month.slice(5,7)-1]+' '+st.month.slice(0,4);
+    if(st.quarter)return 'Kvartal '+st.quarter.split('-Q')[1]+' · '+st.quarter.split('-Q')[0];
+    if(st.year)return 'Regnskabsår: '+st.year;
+    return 'Alt tid';
+  }
+  function clearAll(){st.month='';st.year='';st.quarter='';st.from='';st.to='';}
+  function updateLabel(){var el=document.getElementById(labelId);if(el)el.textContent=label();}
+  function matches(dateStr){
+    var d=String(dateStr||'').slice(0,10);
+    if(st.from||st.to){
+      if(!d)return false;
+      if(st.from&&d<st.from)return false;
+      if(st.to&&d>st.to)return false;
+      return true;
+    }else if(st.month){
+      return d.slice(0,7)===st.month;
+    }else if(st.quarter){
+      var qp=st.quarter.split('-Q'),qy=qp[0],qn=+qp[1],qStartM=(qn-1)*3+1,qEndM=qStartM+2;
+      if(!d||d.slice(0,4)!==qy)return false;
+      var m=+d.slice(5,7);
+      return m>=qStartM&&m<=qEndM;
+    }else if(st.year){
+      return d.slice(0,4)===st.year;
+    }
+    return true;
+  }
+  function renderPopover(){
+    var pop=document.getElementById(popId);
+    if(!pop)return;
+    var curYear=new Date().getFullYear();
+    if(st.yearPage===null)st.yearPage=Math.floor(((+st.year||curYear)-curYear+2)/10)*10+curYear-2;
+    var yearsStart=st.yearPage;
+    var years=[];for(var i=0;i<9;i++)years.push(yearsStart+i);
+    var tabs=['month','quarter','year','all'];
+    var tabLabels={month:'Måned',quarter:'Kvartal',year:'Regnskabsår',all:'Alt tid'};
+    var html='<div class="bly-period-tabs">'+tabs.map(function(t){
+      return '<button class="bly-period-tab'+(st.tab===t?' active':'')+'" data-period-tab="'+t+'" type="button">'+tabLabels[t]+'</button>';
+    }).join('')+'</div>';
+    if(st.tab==='month'){
+      html+='<div class="bly-period-month"><input type="month" id="'+btnId+'-month-input" value="'+esc(st.month)+'"></div>';
+    }else if(st.tab==='quarter'){
+      var qy=st.quarter?st.quarter.split('-Q')[0]:String(curYear);
+      var qn=st.quarter?st.quarter.split('-Q')[1]:'';
+      html+='<div class="bly-period-label">Vælg år</div><div class="bly-period-years" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px">'+
+        [qy-1,qy,+qy+1].map(function(y){return '<button class="bly-period-year'+(String(y)===qy?' active':'')+'" data-period-qyear="'+y+'" type="button">'+y+'</button>';}).join('')+'</div>'+
+        '<div class="bly-period-label">Vælg kvartal</div><div class="bly-period-years">'+
+        ['1','2','3','4'].map(function(n){return '<button class="bly-period-year'+(qn===n?' active':'')+'" data-period-qnum="'+n+'" data-period-qyear-cur="'+qy+'" type="button">Q'+n+'</button>';}).join('')+'</div>';
+    }else if(st.tab==='year'){
+      html+='<div class="bly-period-label">'+yearsStart+' – '+(yearsStart+8)+' <span data-period-year-prev style="cursor:pointer">‹</span> <span data-period-year-next style="cursor:pointer">›</span></div>'+
+        '<div class="bly-period-years">'+years.map(function(y){
+          return '<button class="bly-period-year'+(String(y)===st.year?' active':'')+'" data-period-year="'+y+'" type="button">'+y+'</button>';
+        }).join('')+'</div>';
+    }
+    html+='<div class="bly-period-label" style="margin-top:4px">Datointerval</div>'+
+      '<div class="bly-period-range"><input type="date" id="'+btnId+'-range-from" value="'+esc(st.from)+'"><span class="fin-muted">–</span><input type="date" id="'+btnId+'-range-to" value="'+esc(st.to)+'"></div>'+
+      '<button class="bly-btn" id="'+btnId+'-apply" type="button" style="width:100%;justify-content:center">Anvend</button>';
+    pop.innerHTML=html;
+    pop.querySelectorAll('[data-period-tab]').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        st.tab=btn.dataset.periodTab;
+        if(st.tab==='all'){clearAll();pop.style.display='none';updateLabel();onChange();return;}
+        renderPopover();
+      });
+    });
+    var monthInp=document.getElementById(btnId+'-month-input');
+    if(monthInp)monthInp.addEventListener('change',function(){
+      clearAll();st.month=monthInp.value;
+      pop.style.display='none';updateLabel();onChange();
+    });
+    pop.querySelectorAll('[data-period-year]').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        clearAll();st.year=btn.dataset.periodYear;
+        pop.style.display='none';updateLabel();onChange();
+      });
+    });
+    var prevY=pop.querySelector('[data-period-year-prev]'),nextY=pop.querySelector('[data-period-year-next]');
+    if(prevY)prevY.addEventListener('click',function(){st.yearPage-=9;renderPopover();});
+    if(nextY)nextY.addEventListener('click',function(){st.yearPage+=9;renderPopover();});
+    pop.querySelectorAll('[data-period-qyear]').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        var y=btn.dataset.periodQyear,curQ=st.quarter?st.quarter.split('-Q')[1]:'1';
+        st.quarter=y+'-Q'+curQ;renderPopover();
+      });
+    });
+    pop.querySelectorAll('[data-period-qnum]').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        clearAll();st.quarter=btn.dataset.periodQyearCur+'-Q'+btn.dataset.periodQnum;
+        pop.style.display='none';updateLabel();onChange();
+      });
+    });
+    document.getElementById(btnId+'-apply').addEventListener('click',function(){
+      var from=document.getElementById(btnId+'-range-from').value,to=document.getElementById(btnId+'-range-to').value;
+      if(from||to){clearAll();st.from=from;st.to=to;}
+      else if(st.tab==='all'){clearAll();}
+      pop.style.display='none';updateLabel();onChange();
+    });
+  }
+  document.getElementById(btnId).addEventListener('click',function(e){
+    e.stopPropagation();
+    var pop=document.getElementById(popId);
+    var opening=pop.style.display==='none';
+    pop.style.display=opening?'block':'none';
+    if(opening)renderPopover();
+  });
+  // Klik inde i selve popoveren (fx skift mellem Måned/Kvartal/Regnskabsår)
+  // må ikke boble op til dokument-lytteren nedenfor, for den genopbygger
+  // pop.innerHTML — så det oprindelige e.target findes ikke længere i
+  // popoverens DOM når "klik udenfor lukker den"-tjekket når frem til at
+  // køre, og popoveren lukkede sig selv i samme klik den skulle reagere på.
+  document.getElementById(popId).addEventListener('click',function(e){e.stopPropagation();});
+  document.addEventListener('click',function(e){
+    var pop=document.getElementById(popId);
+    if(pop&&pop.style.display!=='none'&&!pop.contains(e.target)&&e.target.id!==btnId)pop.style.display='none';
+  });
+  return {matches:matches,label:label,clear:function(){clearAll();updateLabel();}};
+}
 var qeState={id:null,lines:[],jobName:'',quoteNumber:null,taxRate:25,lastStatus:'draft',customerId:null};
 var qztState={id:null,lines:[]};
 var ivState={id:null};
@@ -12585,14 +12793,10 @@ function renderQzQuoteStatusFilter(){
 function renderQzQuotes(){
   renderQzQuoteStatusFilter();
   var q=(document.getElementById('qz-quote-search').value||'').trim().toLowerCase();
-  var dateFrom=document.getElementById('qz-quotes-date-from').value;
-  var dateTo=document.getElementById('qz-quotes-date-to').value;
   var list=qzQuotes.filter(function(x){
     if(q&&(x.job_name||'').toLowerCase().indexOf(q)===-1&&(x.quote_number||'').toLowerCase().indexOf(q)===-1)return false;
     if(qzQuoteStatusFilter!=='all'&&x.status!==qzQuoteStatusFilter)return false;
-    var d=String(x.created_at||'').slice(0,10);
-    if(dateFrom&&d<dateFrom)return false;
-    if(dateTo&&d>dateTo)return false;
+    if(qzQuotePeriodFilter&&!qzQuotePeriodFilter.matches(x.created_at))return false;
     return true;
   });
   document.getElementById('qz-quotes-count').textContent='Tilbud ('+list.length+')';
@@ -12823,7 +13027,7 @@ function qeRenderPreview(){
   }).join('')||'<tr><td colspan="4" style="text-align:center;color:#9CA3AF;padding:14px">Ingen linjer endnu</td></tr>';
   document.getElementById('qe-preview').innerHTML=
      '<div class="qe-pdf-head">'
-    +'<div style="display:flex;align-items:center;gap:8px">'+(settings.logo_url?'<img src="'+settings.logo_url+'" style="width:36px;height:36px;border-radius:7px;object-fit:cover;flex-shrink:0">':'')+'<div><div class="qe-pdf-company">'+esc(settings.company_name||'Gulv Master Enterprise ApS')+'</div><div class="qe-pdf-company-sub">'+addrLines.map(function(l){return esc(l);}).join('<br>')+'</div></div></div>'
+    +'<div style="display:flex;align-items:center;gap:8px">'+(settings.logo_url?'<img src="'+settings.logo_url+'" style="max-width:96px;max-height:56px;object-fit:contain;flex-shrink:0">':'')+'<div><div class="qe-pdf-company">'+esc(settings.company_name||'Gulv Master Enterprise ApS')+'</div><div class="qe-pdf-company-sub">'+addrLines.map(function(l){return esc(l);}).join('<br>')+'</div></div></div>'
     +'<div><div class="qe-pdf-doctype">TILBUD</div><div class="qe-pdf-docnum">'+esc(docNum)+'</div><div class="qe-pdf-meta">Dato: '+todayStr+(validUntil?'<br>Gyldig til: '+esc(validUntil):'')+'</div></div>'
     +'</div>'
     +'<div class="qe-pdf-to"><b>Til:</b><br>'+(custName?esc(custName)+'<br>':'')+(custAddr?esc(custAddr)+'<br>':'')+(custPhone?'Tlf. '+esc(custPhone)+'<br>':'')+(custEmail?esc(custEmail):'')+'</div>'
@@ -13032,14 +13236,10 @@ function renderQzInvoiceStatusFilter(){
 function renderQzInvoices(){
   renderQzInvoiceStatusFilter();
   var q=(document.getElementById('qz-invoice-search').value||'').trim().toLowerCase();
-  var dateFrom=document.getElementById('qz-invoices-date-from').value;
-  var dateTo=document.getElementById('qz-invoices-date-to').value;
   var list=qzInvoices.filter(function(x){
     if(q&&(x.job_name||'').toLowerCase().indexOf(q)===-1&&(x.invoice_number||'').toLowerCase().indexOf(q)===-1)return false;
     if(qzInvoiceStatusFilter!=='all'&&x.status!==qzInvoiceStatusFilter)return false;
-    var d=String(x.created_at||'').slice(0,10);
-    if(dateFrom&&d<dateFrom)return false;
-    if(dateTo&&d>dateTo)return false;
+    if(qzInvoicePeriodFilter&&!qzInvoicePeriodFilter.matches(x.created_at))return false;
     return true;
   });
   document.getElementById('qz-invoices-count').textContent='Fakturaer ('+list.length+')';
@@ -13167,12 +13367,8 @@ function bindQuotesModuleEvents(){
   document.getElementById('qz-template-search').addEventListener('input',renderQzTemplates);
   document.getElementById('qz-quote-search').addEventListener('input',renderQzQuotes);
   document.getElementById('qz-invoice-search').addEventListener('input',renderQzInvoices);
-  document.getElementById('qz-quotes-date-from').addEventListener('change',renderQzQuotes);
-  document.getElementById('qz-quotes-date-to').addEventListener('change',renderQzQuotes);
-  document.getElementById('qz-quotes-date-clear').addEventListener('click',function(){document.getElementById('qz-quotes-date-from').value='';document.getElementById('qz-quotes-date-to').value='';renderQzQuotes();});
-  document.getElementById('qz-invoices-date-from').addEventListener('change',renderQzInvoices);
-  document.getElementById('qz-invoices-date-to').addEventListener('change',renderQzInvoices);
-  document.getElementById('qz-invoices-date-clear').addEventListener('click',function(){document.getElementById('qz-invoices-date-from').value='';document.getElementById('qz-invoices-date-to').value='';renderQzInvoices();});
+  qzQuotePeriodFilter=makeBlyPeriodFilter('qz-quotes-period-btn','qz-quotes-period-pop','qz-quotes-period-label',function(){renderQzQuotes();});
+  qzInvoicePeriodFilter=makeBlyPeriodFilter('qz-invoices-period-btn','qz-invoices-period-pop','qz-invoices-period-label',function(){renderQzInvoices();});
   document.getElementById('qz-new-product-btn').addEventListener('click',function(){openProductModal(null);});
   document.getElementById('qzp-cancel').addEventListener('click',function(){closeModal('qz-product-modal');});
   document.getElementById('qzp-save').addEventListener('click',saveQzProduct);

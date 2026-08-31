@@ -82,9 +82,6 @@
 .doc-check input{width:19px;height:19px;flex-shrink:0;margin-top:1px;accent-color:#16A34A}
 .doc-check span{font-size:12.5px;line-height:1.45;color:var(--ink,#0f172a)}
 .doc-check span strong{display:block;font-size:13px;margin-bottom:1px}
-.req-tabs{display:flex;gap:6px;margin-bottom:14px;background:#F1F5F9;border-radius:10px;padding:4px}
-.req-tab{flex:1;border:0;background:none;padding:8px 6px;font-size:12px;font-weight:700;color:var(--muted);border-radius:8px;cursor:pointer;transition:.15s}
-.req-tab.active{background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.1)}
 .req-feedback{font-size:11.5px;font-weight:700;border-radius:8px;padding:0;max-height:0;overflow:hidden;opacity:0;transition:.2s;margin:0}
 .req-feedback.show{padding:9px 11px;max-height:60px;opacity:1;margin:10px 0 0}
 .req-feedback.error{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
@@ -138,7 +135,7 @@
 <div style="background:#4F46E5;color:#fff;text-align:center;font-size:12px;font-weight:700;padding:7px 10px">🧪 DEMO — kun til gennemgang. Opgaver der hører til en sag har "🔗 Se sagen"/"⏱ Registrér tid"/"🛡 Udfyld KS-formular" i stedet for links til JobTread. Den rigtige /employee er upåvirket.</div>
 <header class="topbar">
   <div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div>
-  <div class="topbar-actions"><button class="lib-btn" onclick="openFindTask()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find a task</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button><button class="lib-btn" onclick="openProjectsModal()"><span class="lib-btn-icon">🏗️</span><span class="lib-btn-label"> Projekter</span></button>
+  <div class="topbar-actions"><button class="lib-btn" onclick="openFindTask()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find a task</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">🏖</span><span class="lib-btn-label"> Time off / sick</span></button><button class="lib-btn" onclick="openMyHours()"><span class="lib-btn-icon">⏱</span><span class="lib-btn-label"> Mine timer</span></button><button class="lib-btn" onclick="openProjectsModal()"><span class="lib-btn-icon">🏗️</span><span class="lib-btn-label"> Projekter</span></button>
     <div style="position:relative;display:inline-block">
       <button class="lib-btn" id="notif-bell-btn" onclick="toggleNotifDropdown()"><span class="lib-btn-icon">🔔</span><span id="notif-bell-count" style="display:none;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;margin-left:4px"></span></button>
       <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:300px;max-height:360px;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(17,19,24,.25);z-index:500;color:#1a1a1a"></div>
@@ -156,7 +153,6 @@
   <div id="tasks-container"><div class="empty"><div class="empty-icon">⏳</div><h3>Loading your tasks...</h3></div></div>
 </main>
 <div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div></div></div></div>
-<div id="library-modal" class="modal-backdrop" onclick="closeLibraryOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📁 Guides & floor plans</div><button class="modal-close" onclick="closeLibrary()">Close</button></div><div class="modal-body" id="library-body"></div></div></div>
 <!-- PROJEKTER — sager der er blevet til efter en kunde har underskrevet et
      tilbud. Herfra kan medarbejdere registrere tid (note + billede påkrævet),
      tilføje billeder til sagen, og udfylde KS-formularer. -->
@@ -164,6 +160,12 @@
   <div class="modal" style="width:min(520px,96vw)">
     <div class="modal-head"><div class="modal-title" id="pm-title">🏗️ Projekter</div><button class="modal-close" onclick="closeProjectsModal()">Close</button></div>
     <div class="modal-body" id="pm-body"></div>
+  </div>
+</div>
+<div id="my-hours-modal" class="modal-backdrop" onclick="closeMyHoursOnBackdrop(event)">
+  <div class="modal" style="width:min(560px,96vw)">
+    <div class="modal-head"><div class="modal-title">⏱ Mine timer</div><button class="modal-close" onclick="closeMyHours()">Close</button></div>
+    <div class="modal-body" id="my-hours-body" style="max-height:74vh"></div>
   </div>
 </div>
 <div id="team-map-modal" class="modal-backdrop" onclick="closeTeamMapOnBackdrop(event)">
@@ -206,28 +208,9 @@
 </div>
 <div id="request-modal" class="modal-backdrop" onclick="closeRequestOnBackdrop(event)">
   <div class="modal req-modal">
-    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon" id="req-modal-icon">📩</span> <span id="req-modal-title">Request a task</span></div><button class="modal-close" onclick="closeRequestModal()">Close</button></div>
+    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon" id="req-modal-icon">🏖</span> <span id="req-modal-title">Request time off / sick leave</span></div><button class="modal-close" onclick="closeRequestModal()">Close</button></div>
     <div class="modal-body">
-      <div class="req-tabs">
-        <button type="button" class="req-tab active" id="req-tab-task" onclick="switchRequestTab('task')">📩 Task</button>
-        <button type="button" class="req-tab" id="req-tab-timeoff" onclick="switchRequestTab('timeoff')">🏖 Time off / sick</button>
-      </div>
-      <div id="req-task-form">
-        <p class="req-intro">Use this if you already know you need to get something done at a customer's — it's sent for approval, and only lands on your calendar once it's approved.</p>
-        <form autocomplete="off" onsubmit="return false">
-          <label class="req-label">Customer / task</label>
-          <input id="req-job-name" name="gm_req_job_name_field" class="req-input" placeholder="E.g. Jensen — hallway needs sanding" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false">
-          <label class="req-label">Why / description</label>
-          <textarea id="req-description" name="gm_req_description_field" class="req-textarea" rows="3" placeholder="Short description, e.g. what you promised the customer" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false"></textarea>
-          <div style="display:flex;gap:10px">
-            <div style="flex:1"><label class="req-label">Date</label><input id="req-date" name="gm_req_date_field" type="date" class="req-input" autocomplete="off"></div>
-            <div style="flex:1"><label class="req-label">Number of days</label><input id="req-days" name="gm_req_days_field" type="number" min=".25" max="10" step=".25" class="req-input" value="1" autocomplete="off"></div>
-          </div>
-          <div id="req-feedback" class="req-feedback"></div>
-          <button type="button" class="req-submit" id="req-submit-btn" onclick="submitTaskRequest()"><span class="req-submit-label">Send for approval</span></button>
-        </form>
-      </div>
-      <div id="req-timeoff-form" style="display:none">
+      <div id="req-timeoff-form">
         <p class="req-intro">Request time off for vacation, sickness, or other leave — your manager approves it, and your calendar is blocked for those days.</p>
         <form autocomplete="off" onsubmit="return false">
           <label class="req-label">Type</label>
@@ -480,21 +463,6 @@ async function confirmFindTaskAssign(){
   }
   btn.disabled=false;btn.textContent='Add to my day';
 }
-
-async function openLibrary(){
-  const body=document.getElementById('library-body');
-  body.innerHTML='<p style="color:var(--muted)">Loading…</p>';
-  document.getElementById('library-modal').classList.add('open');
-  try{
-    const r=await api('/api/library');
-    const files=r&&r.ok?r.data:[];
-    if(!files||!files.length){body.innerHTML='<p class="modal-empty">No guides have been added yet.</p>';return;}
-    const labels={guide:'Installation guide',plan:'Floor plan',other:'File'};
-    body.innerHTML=files.map(f=>'<div class="file-item"><div><span class="file-cat">'+esc(labels[f.category]||'File')+'</span><br><a href="'+esc(f.url)+'" target="_blank" rel="noopener">📄 '+esc(f.name)+'</a></div></div>').join('');
-  }catch(e){body.innerHTML='<p class="modal-empty">Could not load the files.</p>';}
-}
-function closeLibrary(){document.getElementById('library-modal').classList.remove('open')}
-function closeLibraryOnBackdrop(e){if(e.target===document.getElementById('library-modal'))closeLibrary()}
 
 // ══════════════════════════════════════════════════════════════
 // PROJEKTER — sager der bliver oprettet automatisk når en kunde underskriver
@@ -892,31 +860,91 @@ async function openMaterialsFormForTask(projectId){
 function tomorrowISO(){const d=new Date();d.setDate(d.getDate()+1);return iso(d)}
 function reqField(id){return document.querySelector('#request-modal #'+id)}
 async function openRequestModal(){
-  reqField('req-job-name').value='';
-  reqField('req-description').value='';
-  reqField('req-date').value=tomorrowISO();
-  reqField('req-days').value='1';
-  reqField('req-feedback').className='req-feedback';
   reqField('off-start').value=tomorrowISO();
   reqField('off-end').value=tomorrowISO();
   reqField('off-note').value='';
   reqField('off-type').value='vacation';
   reqField('off-feedback').className='req-feedback';
-  switchRequestTab('task');
   document.getElementById('request-modal').classList.add('open');
   loadRequestHistory();
 }
-function switchRequestTab(which){
-  const isTask=which==='task';
-  document.getElementById('req-tab-task').classList.toggle('active',isTask);
-  document.getElementById('req-tab-timeoff').classList.toggle('active',!isTask);
-  document.getElementById('req-task-form').style.display=isTask?'block':'none';
-  document.getElementById('req-timeoff-form').style.display=isTask?'none':'block';
-  document.getElementById('req-modal-icon').textContent=isTask?'📩':'🏖';
-  document.getElementById('req-modal-title').textContent=isTask?'Request a task':'Request time off / sick leave';
-}
 function closeRequestModal(){document.getElementById('request-modal').classList.remove('open')}
 function closeRequestOnBackdrop(e){if(e.target===document.getElementById('request-modal'))closeRequestModal()}
+
+// ── MINE TIMER — samlet oversigt over ALLE egne tidsregistreringer på tværs
+// af sager (ikke kun de seneste 8 på én sag som sags-detaljen viser), med
+// mulighed for selv at rette/slette en registrering man har lavet en fejl i.
+// Redigering er bevidst begrænset til minutter/note/dato — billeder, købte
+// materialer og evt. tilbudslinje kan kun kontoret rette (se server.js).
+let myHoursEntries=[], myHoursEditingId=null;
+async function openMyHours(){
+  document.getElementById('my-hours-modal').classList.add('open');
+  myHoursEditingId=null;
+  await loadMyHours();
+}
+function closeMyHours(){document.getElementById('my-hours-modal').classList.remove('open')}
+function closeMyHoursOnBackdrop(e){if(e.target===document.getElementById('my-hours-modal'))closeMyHours()}
+async function loadMyHours(){
+  const body=document.getElementById('my-hours-body');
+  body.innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  try{
+    const r=await api('/api/time-entries/mine');
+    myHoursEntries=r&&r.ok?r.data:[];
+    renderMyHours();
+  }catch(e){body.innerHTML='<p class="modal-empty">Kunne ikke hente dine timer.</p>';}
+}
+function renderMyHours(){
+  const body=document.getElementById('my-hours-body');
+  if(!myHoursEntries.length){body.innerHTML='<p class="modal-empty">Du har ikke registreret nogen timer endnu.</p>';return}
+  const totalMin=myHoursEntries.reduce((s,t)=>s+(Number(t.minutes)||0),0);
+  const totalH=(totalMin/60).toFixed(1).replace('.0','').replace('.',',');
+  body.innerHTML='<div class="tm-section-label">I alt registreret: '+totalH+' timer</div>'
+    +myHoursEntries.map(t=>{
+      if(myHoursEditingId===t.id){
+        return `<div class="file-item" style="display:block">
+          <label class="req-label">Dato</label>
+          <input type="date" id="mh-edit-date" class="req-input" value="${esc(String(t.entry_date).slice(0,10))}">
+          <label class="req-label">Minutter</label>
+          <input type="number" min="1" step="1" id="mh-edit-minutes" class="req-input" value="${Number(t.minutes)||0}">
+          <label class="req-label">Note</label>
+          <textarea id="mh-edit-note" class="req-textarea" rows="2">${esc(t.note)}</textarea>
+          <div id="mh-edit-feedback" class="req-feedback"></div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="req-submit" type="button" onclick="saveMyHoursEdit(${t.id})" style="flex:1">Gem</button>
+            <button class="small-btn" type="button" onclick="cancelMyHoursEdit()">Annullér</button>
+          </div>
+        </div>`;
+      }
+      return `<div class="file-item">
+        <div><span class="file-cat">${esc(fmtPmDate(t.entry_date))} · ${esc(t.project_name)} · ${Number(t.minutes)||0} min</span><br><span style="font-size:12px">${esc(t.note)}</span></div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="small-btn" type="button" onclick="startMyHoursEdit(${t.id})" title="Ret">✏️</button>
+          <button class="small-btn" type="button" onclick="deleteMyHoursEntry(${t.id})" title="Slet">🗑️</button>
+        </div>
+      </div>`;
+    }).join('');
+}
+function startMyHoursEdit(id){myHoursEditingId=id;renderMyHours();}
+function cancelMyHoursEdit(){myHoursEditingId=null;renderMyHours();}
+async function saveMyHoursEdit(id){
+  const dateVal=document.getElementById('mh-edit-date').value;
+  const minutesVal=Number(document.getElementById('mh-edit-minutes').value);
+  const noteVal=document.getElementById('mh-edit-note').value.trim();
+  const fb=document.getElementById('mh-edit-feedback');
+  function fbShow(msg){fb.textContent=msg;fb.className='req-feedback show error';}
+  if(!noteVal){fbShow('Skriv en note');return}
+  if(!minutesVal||minutesVal<=0){fbShow('Angiv gyldige minutter');return}
+  const r=await api('/api/time-entries/'+id,{method:'PUT',body:JSON.stringify({minutes:minutesVal,note:noteVal,entry_date:dateVal})});
+  if(r&&r.ok){toast('Registrering opdateret ✓');myHoursEditingId=null;await loadMyHours();}
+  else fbShow((r&&r.data&&r.data.error)||'Kunne ikke gemme ændringen');
+}
+async function deleteMyHoursEntry(id){
+  if(!confirm('Slet denne tidsregistrering?'))return;
+  const r=await api('/api/time-entries/'+id,{method:'DELETE'});
+  if(r&&r.ok){toast('Registrering slettet 🗑');await loadMyHours();}
+  else toast((r&&r.data&&r.data.error)||'Kunne ikke slette registreringen');
+}
+
 async function loadRequestHistory(){
   const el=document.getElementById('req-history');
   el.innerHTML='<div class="req-label">Your recent requests</div><p style="color:var(--muted);font-size:11px">Loading…</p>';
@@ -959,51 +987,6 @@ async function submitTimeOffRequest(){
     btn.disabled=false;btn.querySelector('.req-submit-label').textContent='Send for approval';
   }
 }
-function reqFeedback(msg,kind){
-  const el=reqField('req-feedback');
-  el.textContent=msg;
-  el.className='req-feedback show '+(kind||'');
-}
-async function submitTaskRequest(){
-  const formEl=document.querySelector('#request-modal form');
-  const fd=formEl?new FormData(formEl):null;
-  const rawJobName=fd?fd.get('gm_req_job_name_field'):null;
-  const rawDate=fd?fd.get('gm_req_date_field'):null;
-  const rawDays=fd?fd.get('gm_req_days_field'):null;
-  const rawDesc=fd?fd.get('gm_req_description_field'):null;
-  // Cross-check: also read directly via .value. If the two methods disagree,
-  // something unusual is going on with the page/DOM itself.
-  const directJobName=reqField('req-job-name')?reqField('req-job-name').value:null;
-  const jobName=String(rawJobName??directJobName??'').trim();
-  const date=String(rawDate??(reqField('req-date')?reqField('req-date').value:'')??'');
-  const days=+((rawDays??(reqField('req-days')?reqField('req-days').value:null))||1);
-  const description=String(rawDesc??(reqField('req-description')?reqField('req-description').value:'')??'').trim();
-  console.log('[Request task] diagnostics:',{formData:{rawJobName,rawDate,rawDays},direct:{directJobName},finalUsed:{jobName,date,days}});
-  if(!jobName){reqFeedback('Write what the task is about','error');return}
-  if(!date){reqFeedback('Choose a date','error');return}
-  const btn=document.getElementById('req-submit-btn');
-  btn.disabled=true;btn.querySelector('.req-submit-label').textContent='Sending…';
-  try{
-    const r=await api('/api/task-requests',{method:'POST',body:JSON.stringify({job_name:jobName,description,requested_date:date,estimated_days:days})});
-    if(r&&r.ok){
-      reqFeedback('Sent for approval ✓','success');
-      toast('Sent for approval ✓');
-      reqField('req-job-name').value='';
-      reqField('req-description').value='';
-      loadRequestHistory();
-    } else {
-      const msg=(r&&r.data&&r.data.error)||'Could not send the request — try again shortly';
-      reqFeedback(msg,'error');
-      console.error('Task request failed:',r);
-    }
-  }catch(e){
-    reqFeedback('Could not send the request — check your connection','error');
-    console.error('Task request error:',e);
-  }finally{
-    btn.disabled=false;btn.querySelector('.req-submit-label').textContent='Send for approval';
-  }
-}
-
 async function toggleTaskDone(id,done,documented,docNote){
   const a=assignments.find(x=>+x.id===+id);
   if(!a)return;

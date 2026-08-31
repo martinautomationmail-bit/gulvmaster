@@ -5021,6 +5021,53 @@ app.delete('/api/projects/:id/time-entries/:entryId', auth, financeOnly, asyncRo
   res.json({ ok: true });
 }));
 
+// ── MINE TIDSREGISTRERINGER — medarbejderens egen samlede oversigt på tværs
+// af alle sager ("Mine timer"), så de kan se alt de har indberettet ét sted
+// og selv rette en fejl (forkert antal minutter/note/dato), i stedet for at
+// skulle bede kontoret om det. Bevidst afgrænset ift. ovenstående kontor-vej:
+// en medarbejder må kun se/rette/slette SINE EGNE registreringer (tjekket her
+// server-side via entry.user_id===req.user.id), og må ikke omregistrere en
+// post til en anden medarbejder eller ændre billeder/materialer/tilbudslinje
+// — det kræver stadig kontorets fulde redigeringsvej ovenfor.
+app.get('/api/time-entries/mine', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT te.*, p.name AS project_name
+    FROM time_entries te
+    JOIN projects p ON p.id = te.project_id
+    WHERE te.user_id = $1
+    ORDER BY te.entry_date DESC, te.created_at DESC, te.id DESC
+  `, [req.user.id]);
+  res.json(rows.rows);
+}));
+
+app.put('/api/time-entries/:entryId', auth, asyncRoute(async (req, res) => {
+  const existing = await pgOne('SELECT * FROM time_entries WHERE id=$1', [req.params.entryId]);
+  if (!existing) return res.status(404).json({ error: 'Tidsregistreringen blev ikke fundet' });
+  if (Number(existing.user_id) !== req.user.id && !(await isFinanceAdmin(req.user.id))) {
+    return res.status(403).json({ error: 'Du kan kun rette dine egne registreringer' });
+  }
+  const b = req.body || {};
+  const note = String(b.note || '').trim();
+  const minutes = Number(b.minutes);
+  if (!note) return res.status(400).json({ error: 'Skriv en note om det udførte arbejde' });
+  if (!minutes || minutes <= 0) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt' });
+  const entryDate = validDate(b.entry_date) ? b.entry_date : existing.entry_date;
+  await pool.query(`
+    UPDATE time_entries SET minutes=$1, note=$2, entry_date=$3, updated_at=${nowTextSQL()} WHERE id=$4
+  `, [Math.round(minutes), note, entryDate, req.params.entryId]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/time-entries/:entryId', auth, asyncRoute(async (req, res) => {
+  const existing = await pgOne('SELECT user_id FROM time_entries WHERE id=$1', [req.params.entryId]);
+  if (!existing) return res.status(404).json({ error: 'Tidsregistreringen blev ikke fundet' });
+  if (Number(existing.user_id) !== req.user.id && !(await isFinanceAdmin(req.user.id))) {
+    return res.status(403).json({ error: 'Du kan kun slette dine egne registreringer' });
+  }
+  await pool.query('DELETE FROM time_entries WHERE id=$1', [req.params.entryId]);
+  res.json({ ok: true });
+}));
+
 // ── MATERIALER — erstatter det gamle "Upload Bill"-link ud til JobTread på
 // sags-opgaver (der findes intet rigtigt JobTread-job at koble en regning på).
 // Kræver et kvitteringsbillede, pris og butik/leverandør, så Martin bagefter
@@ -7629,7 +7676,7 @@ function renderRichText(doc, html, x, y, width, opts) {
 function drawDocHeader(doc, docLabel, docNumber, metaLines, accent, company) {
   const logoBuf = logoDataUriToBuffer(company.logoUrl);
   if (logoBuf) {
-    try { doc.image(logoBuf, 40, 34, { fit: [66, 66] }); } catch (e) { /* korrupt billede — spring logoet over */ }
+    try { doc.image(logoBuf, 40, 26, { fit: [104, 104] }); } catch (e) { /* korrupt billede — spring logoet over */ }
   } else {
     doc.font('Helvetica-Bold').fontSize(18).fillColor('#111318').text(company.name, 40, 54);
     doc.font('Helvetica');
@@ -7638,7 +7685,7 @@ function drawDocHeader(doc, docLabel, docNumber, metaLines, accent, company) {
   doc.fontSize(10).fillColor('#111318').text(docNumber, 340, 71, { width: 215, align: 'right' });
   doc.fontSize(9).fillColor('#9CA3AF');
   metaLines.forEach((l, i) => doc.text(l, 340, 87 + i * 13, { width: 215, align: 'right' }));
-  const y = 122;
+  const y = 150;
   doc.moveTo(40, y).lineTo(555, y).strokeColor('#EEF0F3').lineWidth(1).stroke();
   return y + 24;
 }
@@ -8130,7 +8177,7 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   .wrap{max-width:640px;margin:0 auto}
   .card{background:#fff;border-radius:16px;padding:28px 24px;box-shadow:0 8px 30px rgba(15,17,24,.08);margin-bottom:16px}
   .doc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid #EEF0F3;margin-bottom:20px}
-  .company-logo-lg{max-width:170px;max-height:60px;object-fit:contain}
+  .company-logo-lg{max-width:260px;max-height:96px;object-fit:contain}
   .company-name-fallback{font-size:19px;font-weight:800}
   .doctype{font-size:21px;font-weight:800;color:#4F46E5;text-align:right}
   .docmeta{font-size:11px;color:#9CA3AF;text-align:right;margin-top:4px;line-height:1.7}
