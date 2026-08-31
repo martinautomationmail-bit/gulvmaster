@@ -2244,12 +2244,23 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 </div>
 
 <!-- PROJEKT-DASHBOARD — sagens Gantt (kun for denne sag), billeder, tid, KS -->
-<div class="mo" id="project-detail-modal">
-  <div class="modal" style="max-width:1100px;width:96vw;max-height:92vh;display:flex;flex-direction:column;padding:0">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--bly-border-soft);flex-shrink:0">
+<!-- PROJEKT-SIDE — helt egen side (ikke popup), så der er plads nok til at
+     arbejde i sagen. Navigeres til via #project-detail/<id> (se switchPage/
+     hashchange), præcis som Økonomi-underfaner (#finance/...) og tilbud/faktura
+     dyb-links (#quotes/tilbud/...). ID'et på wrapperen SKAL være "page-project-detail"
+     (page-<navnet i VALID_PAGES>), det er konventionen switchPage() bruger til at
+     vise/skjule sider. -->
+<section class="page" id="page-project-detail">
+  <div class="page-head">
+    <div>
+      <button class="bly-btn outline small" id="pd-back-btn" type="button">← Tilbage til Projekter</button>
+    </div>
+  </div>
+  <div class="pd-page-card" style="background:#fff;border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,17,24,.08);overflow:hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--bly-border-soft)">
       <div>
-        <div style="font-size:15px;font-weight:800;color:var(--bly-ink)" id="pd-title">Projekt</div>
-        <div class="sub" id="pd-subtitle" style="font-size:11px"></div>
+        <div style="font-size:19px;font-weight:800;color:var(--bly-ink)" id="pd-title">Projekt</div>
+        <div class="sub" id="pd-subtitle" style="font-size:12px;margin-top:2px"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <select id="pd-status-select" class="select" style="width:auto">
@@ -2259,10 +2270,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         </select>
         <a id="pd-quote-link" class="bly-btn outline" href="#" target="_blank" style="display:none">📄 Se tilbud</a>
         <a id="pd-invoice-link" class="bly-btn outline" href="#" target="_blank" style="display:none">🧾 Se faktura</a>
-        <button class="qz-icon-btn" id="pd-close-btn" type="button" title="Luk">✕</button>
       </div>
     </div>
-    <div style="padding:14px 22px 0;flex-shrink:0">
+    <div style="padding:14px 22px 0">
       <div class="bly-segtabs" id="pd-tabs">
         <button class="bly-segtab active" data-pdtab="tasks" type="button">📅 Opgaver</button>
         <button class="bly-segtab" data-pdtab="photos" type="button">📷 Billeder</button>
@@ -2271,7 +2281,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-segtab" data-pdtab="contact" type="button">📇 Kontaktformular</button>
       </div>
     </div>
-    <div style="padding:16px 22px 22px;overflow:auto;flex:1">
+    <div style="padding:16px 22px 22px">
       <div class="pdtabpage" id="pdtab-tasks">
         <div class="bly-toolbar">
           <div class="bly-toolbar-left"><span class="bly-toolbar-title">Opgaver i sagen</span></div>
@@ -2307,7 +2317,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
   </div>
-</div>
+</section>
 
 <!-- DAGLIG PLAN -->
 <section class="page active" id="page-plan">
@@ -2648,6 +2658,45 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn" id="gantt-detail-close">Luk</button>
       <a class="btn" id="gd-jt-link" href="#" target="_blank" rel="noopener">Åbn i JobTread ↗</a>
       <button class="btn primary" id="gd-save-btn">Gem ændringer</button>
+    </div>
+  </div>
+</div>
+
+<!-- SAGS-OPGAVE DETALJER — åbnes ved klik (uden at trække) på en bjælke i
+     sags-Gantt'et eller via 🔎-knappen i opgavelisten. Samme idé som
+     gantt-detail-modal ovenfor, men for en opgave der hører til en sag: viser
+     kundens tlf/mail (fra selve sagen), en fri note, tjekpunkter (genbruger
+     checklist-modalens generiske add/toggle/slet) og en genvej til at booke
+     opgaven på Kapacitetsboardet. -->
+<div class="mo" id="pd-task-detail-modal">
+  <div class="modal gd-modal" style="max-width:560px">
+    <div class="gd-head">
+      <span class="gd-head-icon">📋</span>
+      <div style="flex:1"><div class="gd-head-title">Opgave i sagen</div><input id="pdtd-name-input" class="gd-name-input"></div>
+    </div>
+    <div class="modal-body-pad">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Startdato</label><input id="pdtd-start-input" type="date" class="input"></div>
+        <div class="form-group"><label class="form-label">Slutdato</label><input id="pdtd-end-input" type="date" class="input"></div>
+      </div>
+      <div class="gd-info-grid">
+        <div><div class="gd-info-label">📞 Kundetelefon</div><div id="pdtd-phone" class="gd-info-value"></div></div>
+        <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="pdtd-email" class="gd-info-value"></div></div>
+      </div>
+      <div class="form-group" style="margin-top:14px"><label class="form-label">Note</label><textarea id="pdtd-note-input" class="input" rows="3" placeholder="Fx særlige forhold på pladsen, adgang, aftaler med kunden..."></textarea></div>
+      <div class="form-group" style="margin-top:14px">
+        <label class="form-label">Tjekpunkter</label>
+        <div id="pdtd-checklist-items" style="margin-bottom:8px"></div>
+        <div style="display:flex;gap:8px">
+          <input id="pdtd-checklist-new" class="input" placeholder="Fx Tag billede før opstart" style="flex:1">
+          <button class="btn small" type="button" id="pdtd-checklist-add-btn">+ Tilføj</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="pdtd-close-btn">Luk</button>
+      <button class="btn" id="pdtd-capacity-btn" type="button">📊 Tilføj til Kapacitetsbordet</button>
+      <button class="btn primary" id="pdtd-save-btn" type="button">Gem</button>
     </div>
   </div>
 </div>
@@ -4046,7 +4095,7 @@ function taskCard(t,scope){
     (contact?'<div class="task-contact">'+contact+'</div>':'')+
     '<div class="task-meta">'+
       '<span class="badge '+esc(t.type_guess||'other')+'" style="background:'+(type.bar||'#94A3B8')+'22;color:'+(type.bar||'#94A3B8')+'">'+type.label+'</span>'+
-      '<span class="tag'+(t.source==='manual'?' manual':'')+'">'+(t.source==='manual'?'Manuel':'JT')+'</span>'+
+      '<span class="tag'+(t.source==='manual'||t.source==='project'?' manual':'')+'">'+(t.source==='project'?'📁 Sag':(t.source==='manual'?'Manuel':'JT'))+'</span>'+
       (t.job_number?'<span class="tag" title="Sagsnummer">#'+esc(t.job_number)+'</span>':'')+
       (t.is_visit?'<span class="tag" style="background:#FEF3C7;color:#92400E">📅 Besøg</span>':'')+
       (planned?'<span class="tag">✓ '+t.assignment_count+'×</span>':'')+
@@ -4054,6 +4103,7 @@ function taskCard(t,scope){
     '</div>'+capacityHint+
     (t.is_visit?'<button class="btn small" style="width:100%;margin-top:6px" data-action="open-visit-form" data-task-id="'+esc(t.id)+'">📋 Besøgsformular</button>':'')+
     '<button class="btn small" style="width:100%;margin-top:4px" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjekpunkter</button>'+
+    (t.project_id?'<button class="btn small" style="width:100%;margin-top:4px" data-action="pool-open-project" data-project-id="'+esc(t.project_id)+'">🔗 Åbn sagen</button>':'')+
     (t.job_id?'<a class="btn small" style="width:100%;margin-top:4px;display:block;text-align:center;text-decoration:none;background:#EFF6FF;color:#1D4ED8" href="https://app.jobtread.com/jobs/'+esc(t.job_id)+'/documents" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧾 Add Invoice</a>':'')+
     '</article>';
 }
@@ -9922,50 +9972,67 @@ function closeModal(id){document.getElementById(id).classList.remove('open');if(
 
 function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.documentElement.style.setProperty('--nav-height',Math.ceil(n.getBoundingClientRect().height)+'px');}
 // BIND ALL EVENTS
+// VALID_PAGES/switchPage flyttet ud af bind() og op på IIFE-topniveau (marts-
+// sessionen der tilføjede "#project-detail/<id>"-siden): openProjectDetail()
+// er selv en topniveau-funktion (kaldes bl.a. via window.openProjectDetail fra
+// et onclick="..."-attribut, se eksport-listen sidst i filen) og skal kunne
+// kalde switchPage() for at vise sags-siden — det kunne den ikke da switchPage
+// kun var en PRIVAT funktion inde i bind() (fanget med en rigtig browser-test,
+// ikke kun en syntakstjek — samme disciplin som ved "kan ikke åbne en sag"-
+// rettelsen). Adfærden er uændret, kun hvor funktionen er defineret.
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance','quotes','customers','projects','project-detail'];
+function switchPage(page,skipHash){
+  if(VALID_PAGES.indexOf(page)===-1)page='plan';
+  document.querySelectorAll('.tab,.navdrop-item').forEach(function(x){x.classList.remove('active');});
+  document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});
+  var tabBtn=document.querySelector('.tab[data-page="'+page+'"]');
+  if(tabBtn)tabBtn.classList.add('active');
+  var dropItem=document.querySelector('.navdrop-item[data-page="'+page+'"]');
+  if(dropItem){
+    dropItem.classList.add('active');
+    var parentDrop=dropItem.closest('.navdrop');
+    var parentBtn=parentDrop?parentDrop.querySelector('.navdrop-btn'):null;
+    if(parentBtn)parentBtn.classList.add('active');
+  }
+  document.getElementById('page-'+page).classList.add('active');
+  document.querySelectorAll('.navdrop-menu.open').forEach(function(m){m.classList.remove('open');});
+  if(!skipHash&&location.hash.slice(1)!==page)history.replaceState(null,'','#'+page);
+  if(page==='logs')loadLogs();
+  if(page==='library')loadLibrary();
+  if(page==='availability')renderAvailability();
+  if(page==='gantt')initGanttPage();
+  if(page==='tasklist')renderTaskList();
+  if(page==='timeline')renderTimeline();
+  if(page==='requests')renderRequests();
+  if(page==='completed')renderCompleted();
+  // Daglig plan/Kapacitet/Hold genrenderes nu KUN når man rent faktisk skifter til
+  // dem (se loadAll() — den genrenderer heller kun den side der er aktiv), så data
+  // altid er friske ved fane-skift uden at hver handling i hele appen skal betale
+  // for at genopbygge alle boards på én gang.
+  if(page==='plan'){try{renderPlan();}catch(e){console.error('Plan fejl',e);}}
+  if(page==='people'){try{renderPeople();}catch(e){console.error('People fejl',e);}}
+  if(page==='customer-history'){var chIn=document.getElementById('ch-search-input');if(chIn)setTimeout(function(){chIn.focus();},50);}
+  if(page==='capacity'){try{renderCapacity();}catch(e){console.error('Cap fejl',e);}setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);}
+  if(page==='dashboard')loadDashboard();
+  if(page==='templates'){loadTemplates();loadEmailTemplates();}
+  if(page==='notif-settings')loadNotificationSettings();
+  if(page==='finance'){if(!me.is_finance_admin){toast('Du har ikke adgang til Økonomi','🔒');switchPage('plan');return;}loadFinance();}
+  if(page==='quotes'){if(!me.is_finance_admin){toast('Du har ikke adgang til Tilbud & Faktura','🔒');switchPage('plan');return;}initQuotesModule();}
+  if(page==='customers'){if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');switchPage('plan');return;}initCrmModule();}
+  if(page==='projects'){if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');switchPage('plan');return;}initProjectsModule();}
+  // initProjectsModule() binder bl.a. "← Tilbage til Projekter"-knappen og alt
+  // andet på selve sags-siden (fanerne, "+ Ny opgave", opgave-detalje-modalens
+  // knapper...). Uden dette kald her virkede INGEN af de knapper hvis man kom
+  // direkte ind på #project-detail/<id> — fx ved en genindlæsning af siden,
+  // eller et delt/bogmærket link — for switchPage('projects') (som normalt
+  // binder dem) bliver aldrig kaldt i det tilfælde. Fanget med en rigtig
+  // browser-test (genindlæs-siden-scenariet), ikke kun ved at klikke sig ind
+  // via Projekter-listen, hvor det ved et tilfælde allerede var bundet.
+  if(page==='project-detail'){if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');switchPage('plan');return;}initProjectsModule();}
+}
 function bind(){
   syncStickyOffsets();window.addEventListener('resize',syncStickyOffsets);
   // Tabs
-  var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance','quotes','customers','projects'];
-  function switchPage(page,skipHash){
-    if(VALID_PAGES.indexOf(page)===-1)page='plan';
-    document.querySelectorAll('.tab,.navdrop-item').forEach(function(x){x.classList.remove('active');});
-    document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});
-    var tabBtn=document.querySelector('.tab[data-page="'+page+'"]');
-    if(tabBtn)tabBtn.classList.add('active');
-    var dropItem=document.querySelector('.navdrop-item[data-page="'+page+'"]');
-    if(dropItem){
-      dropItem.classList.add('active');
-      var parentDrop=dropItem.closest('.navdrop');
-      var parentBtn=parentDrop?parentDrop.querySelector('.navdrop-btn'):null;
-      if(parentBtn)parentBtn.classList.add('active');
-    }
-    document.getElementById('page-'+page).classList.add('active');
-    document.querySelectorAll('.navdrop-menu.open').forEach(function(m){m.classList.remove('open');});
-    if(!skipHash&&location.hash.slice(1)!==page)history.replaceState(null,'','#'+page);
-    if(page==='logs')loadLogs();
-    if(page==='library')loadLibrary();
-    if(page==='availability')renderAvailability();
-    if(page==='gantt')initGanttPage();
-    if(page==='tasklist')renderTaskList();
-    if(page==='timeline')renderTimeline();
-    if(page==='requests')renderRequests();
-    if(page==='completed')renderCompleted();
-    // Daglig plan/Kapacitet/Hold genrenderes nu KUN når man rent faktisk skifter til
-    // dem (se loadAll() — den genrenderer heller kun den side der er aktiv), så data
-    // altid er friske ved fane-skift uden at hver handling i hele appen skal betale
-    // for at genopbygge alle boards på én gang.
-    if(page==='plan'){try{renderPlan();}catch(e){console.error('Plan fejl',e);}}
-    if(page==='people'){try{renderPeople();}catch(e){console.error('People fejl',e);}}
-    if(page==='customer-history'){var chIn=document.getElementById('ch-search-input');if(chIn)setTimeout(function(){chIn.focus();},50);}
-    if(page==='capacity'){try{renderCapacity();}catch(e){console.error('Cap fejl',e);}setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);}
-    if(page==='dashboard')loadDashboard();
-    if(page==='templates'){loadTemplates();loadEmailTemplates();}
-    if(page==='notif-settings')loadNotificationSettings();
-    if(page==='finance'){if(!me.is_finance_admin){toast('Du har ikke adgang til Økonomi','🔒');switchPage('plan');return;}loadFinance();}
-    if(page==='quotes'){if(!me.is_finance_admin){toast('Du har ikke adgang til Tilbud & Faktura','🔒');switchPage('plan');return;}initQuotesModule();}
-    if(page==='customers'){if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');switchPage('plan');return;}initCrmModule();}
-    if(page==='projects'){if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');switchPage('plan');return;}initProjectsModule();}
-  }
   window.addEventListener('hashchange',function(){
     var parts=location.hash.slice(1).split('/');
     switchPage(parts[0]);
@@ -9975,6 +10042,11 @@ function bind(){
     // så højreklik "åbn i ny fane" og ctrl/cmd-klik virker som forventet.
     if(parts[0]==='quotes'&&parts[1]==='tilbud'&&parts[2])openQuoteEditor(Number(parts[2]));
     if(parts[0]==='quotes'&&parts[1]==='faktura'&&parts[2])openInvoiceDetail(Number(parts[2]));
+    // Dyb-link til en enkelt sag — #project-detail/42 — sat af openProjectDetail()
+    // selv (den bruger replaceState, ikke location.hash=, for ikke at trigge endnu
+    // et hashchange-kald oveni sit eget fetch), men skal også virke ved genindlæsning
+    // eller "åbn i ny fane" fra en rigtig <a href>.
+    if(parts[0]==='project-detail'&&parts[1])openProjectDetail(Number(parts[1]));
   });
   // .tab/.navdrop-item er nu rigtige <a href="#side">-links (i stedet for <button>),
   // så man kan højreklikke og åbne en side i en ny fane/vindue. Venstreklik håndteres
@@ -10368,7 +10440,7 @@ function bind(){
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
   // Modal backdrop
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','project-detail-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -10408,6 +10480,7 @@ function bind(){
       if(act==='manual')openManual();
       if(act==='open-visit-form'){e.stopPropagation();openVisitFormModal(a.dataset.taskId);}
       if(act==='open-checklist'){e.stopPropagation();openChecklistModal(a.dataset.taskId);}
+      if(act==='pool-open-project'){e.stopPropagation();if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');}else{openProjectDetail(+a.dataset.projectId);}}
       if(act==='mark-task-done'){e.stopPropagation();markTaskDoneFromPool(a.dataset.taskId);}
       if(act==='toggle-checklist-item'){e.stopPropagation();toggleChecklistItem(+a.dataset.id,a.checked,a.dataset.container,a.dataset.taskId);}
       if(act==='delete-checklist-item'){e.stopPropagation();deleteChecklistItem(+a.dataset.id,a.dataset.container,a.dataset.taskId);}
@@ -10502,6 +10575,7 @@ function bind(){
     // Åbnet direkte via et #quotes/tilbud/123-link (fx højreklik → åbn i ny fane)
     if(initialPage==='quotes'&&initialParts[1]==='tilbud'&&initialParts[2])openQuoteEditor(Number(initialParts[2]));
     if(initialPage==='quotes'&&initialParts[1]==='faktura'&&initialParts[2])openInvoiceDetail(Number(initialParts[2]));
+    if(initialPage==='project-detail'&&initialParts[1])openProjectDetail(Number(initialParts[1]));
   }
 }
 
@@ -11007,12 +11081,24 @@ function initProjectsModule(){
     document.getElementById('cft-cancel').addEventListener('click',function(){closeModal('contact-template-modal');});
     document.getElementById('cft-save').addEventListener('click',saveContactTemplate);
     document.getElementById('cft-delete').addEventListener('click',deleteContactTemplate);
-    document.getElementById('pd-close-btn').addEventListener('click',function(){closeModal('project-detail-modal');});
+    document.getElementById('pd-back-btn').addEventListener('click',function(){switchPage('projects');});
     document.getElementById('pd-status-select').addEventListener('change',savePdStatus);
     document.getElementById('pd-convert-lines-btn').addEventListener('click',pdConvertLines);
     document.getElementById('pd-new-task-btn').addEventListener('click',function(){pdAddTaskRow();});
     document.getElementById('pd-photo-input').addEventListener('change',pdUploadPhoto);
     document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){switchPdTab(b.dataset.pdtab);});});
+    document.getElementById('pdtd-close-btn').addEventListener('click',function(){closeModal('pd-task-detail-modal');});
+    document.getElementById('pdtd-save-btn').addEventListener('click',savePdTaskDetail);
+    document.getElementById('pdtd-checklist-add-btn').addEventListener('click',function(){addChecklistItem('pdtd-checklist-items',pdTaskDetailId,'pdtd-checklist-new');});
+    document.getElementById('pdtd-capacity-btn').addEventListener('click',function(){
+      if(!pdTaskDetailId)return;
+      var id=pdTaskDetailId;
+      closeModal('pd-task-detail-modal');
+      // Opgaven blev lige spejlet ind i den delte tasks-pool server-side (se
+      // mirrorProjectTaskToPool i server.js) — loadAll() i openProjectDetail/
+      // reloadPdCurrent sørger for at "tasks" allerede kender den.
+      openCapacityModal({taskId:id});
+    });
     pjInitialized=true;
   }
   loadPjProjects().then(renderPjProjects);
@@ -11060,7 +11146,15 @@ async function openProjectDetail(id){
   else ilink.style.display='none';
   switchPdTab('tasks');
   renderPdTasks();renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdQa();renderPdContact();
-  document.getElementById('project-detail-modal').classList.add('open');
+  // Genindlæs den delte opgavepool (tasks-variablen) her, så "Tilføj til
+  // Kapacitetsbordet" og tjekpunkter på en netop oprettet/redigeret sags-opgave
+  // altid har den friske spejl-række fra jt_tasks at slå op i.
+  loadAll();
+  // Egen side (ikke popup) — se kommentaren ved <section id="page-project-detail">.
+  // replaceState (ikke location.hash=) for ikke selv at trigge et ekstra
+  // hashchange-kald, som ville kalde openProjectDetail() igen oveni sig selv.
+  switchPage('project-detail',true);
+  if(location.hash.slice(1)!=='project-detail/'+id)history.replaceState(null,'','#project-detail/'+id);
 }
 async function reloadPdCurrent(){
   if(!pjCurrent)return;
@@ -11072,6 +11166,7 @@ async function reloadPdCurrent(){
   else ilink.style.display='none';
   renderPdTasks();renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdQa();renderPdContact();
   await loadPjProjects();renderPjProjects();
+  loadAll();
 }
 function switchPdTab(name){
   document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdtab===name);});
@@ -11177,7 +11272,12 @@ async function onPdGanttDragEnd(){
   if(!pdGanttDrag)return;
   document.removeEventListener('mousemove',onPdGanttDragMove);
   document.removeEventListener('mouseup',onPdGanttDragEnd);
-  if(!pdGanttDrag.moved){pdGanttDrag=null;return;}
+  if(!pdGanttDrag.moved){
+    // Ingen reel træk-bevægelse — det var bare et klik på bjælken. I det
+    // almindelige Gantt (siden "Gantt") åbner det opgavens detaljer, så det
+    // gør vi også her.
+    var clickedId=pdGanttDrag.taskId;pdGanttDrag=null;openPdTaskDetail(clickedId);return;
+  }
   var dw=pdGanttState.dayWidth;
   var left=parseInt(pdGanttDrag.bar.style.left),width=parseInt(pdGanttDrag.bar.style.width);
   var startOffset=Math.round(left/dw),spanDays=Math.max(1,Math.round((width+4)/dw));
@@ -11199,6 +11299,7 @@ function renderPdTasks(){
       +'<input class="input pd-task-end" type="date" value="'+esc(t.end_date||t.start_date||'')+'" style="width:130px">'
       +'<div class="pd-task-bar-wrap"><div class="pd-task-bar" style="'+pdTaskBarStyle(t)+'"></div></div>'
       +'<input class="input pd-task-progress" type="number" min="0" max="100" step="5" value="'+Math.round((Number(t.progress)||0)*100)+'" style="width:60px" title="Fremdrift %">'
+      +'<button class="qz-icon-btn" data-action="pd-task-open" title="Åbn — note, tjekpunkter, kapacitet">🔎</button>'
       +'<button class="qz-icon-btn" data-action="pd-task-delete" title="Slet">🗑</button>'
       +'</div>';
   }).join('');
@@ -11216,12 +11317,46 @@ function renderPdTasks(){
     row.querySelector('.pd-task-start').addEventListener('change',save);
     row.querySelector('.pd-task-end').addEventListener('change',save);
     row.querySelector('.pd-task-progress').addEventListener('change',save);
+    row.querySelector('[data-action="pd-task-open"]').addEventListener('click',function(){openPdTaskDetail(id);});
     row.querySelector('[data-action="pd-task-delete"]').addEventListener('click',async function(){
       if(!await gmConfirm('Slet opgaven?'))return;
       await api('/api/projects/'+pjCurrent.id+'/tasks/'+id,{method:'DELETE'});
       reloadPdCurrent();
     });
   });
+}
+// ── SAGS-OPGAVE DETALJER — note, kundekontakt, tjekpunkter, "tilføj til
+// Kapacitetsbordet". Åbnes fra 🔎-knappen i opgavelisten eller ved klik (uden
+// træk) på en bjælke i sags-Gantt'et. ──
+var pdTaskDetailId=null;
+function openPdTaskDetail(taskId){
+  var t=(pjCurrent.tasks||[]).find(function(x){return x.id===taskId;});
+  if(!t)return;
+  pdTaskDetailId=taskId;
+  document.getElementById('pdtd-name-input').value=t.name||'';
+  document.getElementById('pdtd-start-input').value=(t.start_date||'').slice(0,10);
+  document.getElementById('pdtd-end-input').value=(t.end_date||t.start_date||'').slice(0,10);
+  var phone=pjCurrent.customer_phone,email=pjCurrent.customer_email;
+  document.getElementById('pdtd-phone').innerHTML=phone?'<a href="tel:'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
+  document.getElementById('pdtd-email').innerHTML=email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
+  document.getElementById('pdtd-note-input').value=t.description||'';
+  document.getElementById('pdtd-checklist-new').value='';
+  renderChecklistItems('pdtd-checklist-items',taskId);
+  document.getElementById('pd-task-detail-modal').classList.add('open');
+}
+async function savePdTaskDetail(){
+  if(!pdTaskDetailId)return;
+  var name=document.getElementById('pdtd-name-input').value.trim();
+  if(!name){toast('Navn må ikke være tomt','⚠');return;}
+  var body={
+    name:name,
+    start_date:document.getElementById('pdtd-start-input').value,
+    end_date:document.getElementById('pdtd-end-input').value||document.getElementById('pdtd-start-input').value,
+    description:document.getElementById('pdtd-note-input').value
+  };
+  var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+pdTaskDetailId,{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){closeModal('pd-task-detail-modal');toast('Gemt ✓','✓');reloadPdCurrent();}
+  else toast((r&&r.error)||'Kunne ikke gemme','❌');
 }
 async function pdAddTaskRow(){
   var today=iso(new Date());
@@ -11302,7 +11437,7 @@ function renderPdTime(){
   Array.prototype.forEach.call(body.querySelectorAll('[data-action="pd-time-invoice"]'),function(btn){
     btn.onclick=async function(){
       var r=await api('/api/projects/'+pjCurrent.id+'/time-entries/'+btn.dataset.id+'/invoice',{method:'POST'});
-      if(r&&r.ok){toast('Tilføjet til fakturaen ✓','✓');closeModal('project-detail-modal');await loadQzInvoices();renderQzInvoices();openInvoiceDetail(r.invoice_id);}
+      if(r&&r.ok){toast('Tilføjet til fakturaen ✓','✓');await loadQzInvoices();renderQzInvoices();openInvoiceDetail(r.invoice_id);}
       else toast((r&&r.error)||'Kunne ikke tilføje til fakturaen','❌');
     };
   });

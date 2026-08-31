@@ -481,6 +481,11 @@ async function initSchema() {
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_phone TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_phone_source TEXT;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS customer_phone_synced_at TEXT;
+    -- En sags-opgave (gantt_tasks med project_id) får en "spejl"-række herinde med
+    -- SAMME id, så den automatisk optræder i Opgavepool/Kapacitet/Daglig plan
+    -- ligesom en JobTread-opgave — se mirrorProjectTaskToPool() i server.js.
+    -- project_id lader poolens kort vise "🔗 Åbn sagen" og linke tilbage.
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS project_id INTEGER;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS capacity_days DOUBLE PRECISION;
     -- Capacity-only reservations deliberately live outside the daily plan.
     -- Existing bookings stay daily by default, so this upgrade has no effect on prior plans.
@@ -4173,7 +4178,12 @@ async function normalizeBooking(body, isNew) {
 function bookingSelect(where = '') {
   return `
     SELECT b.*,u.name AS user_name,u.color AS user_color,u.initials AS user_initials,u.avatar_url AS user_avatar_url,u.worker_type,u.vendor_group,u.trade,u.weekly_capacity,u.can_login,
-           t.name AS task_name,t.job_name,t.job_address,t.job_number,t.job_lat,t.job_lng,t.customer_phone,t.customer_email,t.is_visit,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source
+           t.name AS task_name,t.job_name,t.job_address,t.job_number,t.job_lat,t.job_lng,t.customer_phone,t.customer_email,t.is_visit,t.description AS task_description,t.start_date AS task_start_date,t.end_date AS task_end_date,t.type_guess,t.jt_url,t.job_id,t.source AS task_source,
+           -- Sat når opgaven kommer fra en sag (mirrorProjectTaskToPool i stedet for
+           -- en rigtig JobTread-synk) — bruges af employee-demo.html til at vise
+           -- "spor tid"/"kvalitetssikring" som en formular i selve appen (mod sagen)
+           -- i stedet for et link ud til JobTread, som der intet rigtigt job er for.
+           t.project_id AS task_project_id
     FROM planning_bookings b
     JOIN users u ON b.user_id=u.id
     JOIN jt_tasks t ON b.task_id=t.id
@@ -4607,6 +4617,30 @@ app.delete('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, r
 // Bevidst KUN 'auth' (ikke financeOnly) — medarbejdere skal kunne se listen af
 // projekter i employee.html for at vælge hvilken sag de tidsregistrerer på.
 // Svaret indeholder ingen priser/tilbudsbeløb, kun navn/status/tæller.
+//
+// Spejler en sags-opgave (gantt_tasks-række med project_id) ind i jt_tasks med
+// SAMME id, så den automatisk dukker op i Opgavepool/Kapacitet/Daglig plan —
+// helt gratis får den dermed også tjekpunkter (task_checklist_items er allerede
+// id-agnostisk, ingen FK) og "Tilføj til Kapacitetsbordet" (openCapacityModal på
+// klienten slår bare taskId op i den delte tasks-liste). UPSERT, så både opret
+// og redigér kan kalde samme funktion uden at skulle vide om rækken findes.
+async function mirrorProjectTaskToPool(id, project, fields) {
+  await pool.query(`
+    INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,customer_email,customer_email_source,start_date,end_date,description,synced_at,source,created_at,project_id)
+    VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()},'project',${nowTextSQL()},$11)
+    ON CONFLICT (id) DO UPDATE SET
+      name=EXCLUDED.name, job_name=EXCLUDED.job_name, job_address=EXCLUDED.job_address,
+      customer_phone=EXCLUDED.customer_phone, customer_email=EXCLUDED.customer_email,
+      start_date=EXCLUDED.start_date, end_date=EXCLUDED.end_date, description=EXCLUDED.description,
+      synced_at=${nowTextSQL()}
+  `, [
+    id, fields.name, project.name, project.customer_address || null,
+    project.customer_phone || null, project.customer_email || null,
+    project.customer_email ? 'project' : null,
+    fields.start_date, fields.end_date || fields.start_date, fields.description || '',
+    project.id
+  ]);
+}
 app.get('/api/projects', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT p.*, q.quote_number,
@@ -4673,6 +4707,7 @@ app.post('/api/projects/:id/convert-quote-lines', auth, financeOnly, asyncRoute(
       INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,source_quote_line_id,synced_at)
       VALUES ($1,$2,$3,$4,'',$5,$5,0,0,$6,$7,$8,${nowTextSQL()})
     `, [id, 'project-' + project.id, project.name, l.description, today, String(pos), req.params.id, l.id]);
+    await mirrorProjectTaskToPool(id, project, { name: l.description, start_date: today, end_date: today, description: '' });
     pos++;
     created++;
   }
@@ -4680,7 +4715,7 @@ app.post('/api/projects/:id/convert-quote-lines', auth, financeOnly, asyncRoute(
 }));
 
 app.post('/api/projects/:id/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
-  const project = await pgOne('SELECT id, name FROM projects WHERE id=$1', [req.params.id]);
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   const b = req.body || {};
   const name = String(b.name || '').trim();
@@ -4688,30 +4723,44 @@ app.post('/api/projects/:id/tasks', auth, financeOnly, asyncRoute(async (req, re
   if (!validDate(b.start_date)) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
   const countRes = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks WHERE project_id=$1', [req.params.id]);
   const id = 'p' + crypto.randomBytes(12).toString('hex');
+  const startDate = b.start_date, endDate = b.end_date || b.start_date;
   await pool.query(`
     INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,synced_at)
     VALUES ($1,$2,$3,$4,'',$5,$6,0,0,$7,$8,${nowTextSQL()})
-  `, [id, 'project-' + project.id, project.name, name, b.start_date, b.end_date || b.start_date, String(countRes ? countRes.n : 0), req.params.id]);
+  `, [id, 'project-' + project.id, project.name, name, startDate, endDate, String(countRes ? countRes.n : 0), req.params.id]);
+  await mirrorProjectTaskToPool(id, project, { name, start_date: startDate, end_date: endDate, description: '' });
   res.json({ ok: true, id });
 }));
 
 app.put('/api/projects/:id/tasks/:taskId', auth, financeOnly, asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM gantt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
   if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   const b = req.body || {};
+  const merged = {
+    name: b.name !== undefined ? String(b.name).trim() : current.name,
+    start_date: b.start_date !== undefined ? b.start_date : current.start_date,
+    end_date: b.end_date !== undefined ? b.end_date : current.end_date,
+    progress: b.progress !== undefined ? Math.max(0, Math.min(1, Number(b.progress))) : current.progress,
+    // "Note" på opgaven — samme description-felt der bruges i det almindelige
+    // Gantt-opgave-detaljevindue (gd-desc), vist i sagens opgave-detaljer.
+    description: b.description !== undefined ? String(b.description).slice(0, 2000) : (current.description || '')
+  };
   await pool.query(`
-    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, synced_at=${nowTextSQL()} WHERE id=$5
-  `, [
-    b.name !== undefined ? String(b.name).trim() : current.name,
-    b.start_date !== undefined ? b.start_date : current.start_date,
-    b.end_date !== undefined ? b.end_date : current.end_date,
-    b.progress !== undefined ? Math.max(0, Math.min(1, Number(b.progress))) : current.progress,
-    req.params.taskId
-  ]);
+    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, synced_at=${nowTextSQL()} WHERE id=$6
+  `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, req.params.taskId]);
+  if (project) await mirrorProjectTaskToPool(req.params.taskId, project, merged);
   res.json({ ok: true });
 }));
 
 app.delete('/api/projects/:id/tasks/:taskId', auth, financeOnly, asyncRoute(async (req, res) => {
+  // Rydder også op i poolen (og alt der peger på opgaven dér) — ellers ville en
+  // slettet sags-opgave blive hængende som en "spøgelses"-opgave i Opgavepool/
+  // Kapacitet/Daglig plan, siden de tabeller ikke har nogen FK til gantt_tasks.
+  await pool.query('DELETE FROM task_checklist_items WHERE task_id=$1', [req.params.taskId]);
+  await pool.query('DELETE FROM planning_bookings WHERE task_id=$1', [req.params.taskId]);
+  await pool.query('DELETE FROM assignments WHERE task_id=$1', [req.params.taskId]);
+  await pool.query('DELETE FROM jt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
   await pool.query('DELETE FROM gantt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
   res.json({ ok: true });
 }));
@@ -8099,6 +8148,12 @@ app.get('/migrate', sendPage('migrate.html'));
 app.get('/set-password', sendPage('set-password.html'));
 app.get('/admin', sendPage('admin.html'));
 app.get('/employee', sendPage('employee.html'));
+// DEMO — viser hvordan employee.html kunne se ud hvis "⏱ Track your time" og
+// "🛡 Kvalitetskontrol form" åbnede en formular i selve appen (mod den sag
+// opgaven hører til) i stedet for at sende medarbejderen ud til JobTread. Helt
+// separat fil/rute fra /employee, så det rigtige medarbejder-login er 100%
+// upåvirket — kun til Martins egen gennemgang.
+app.get('/employee-demo', sendPage('employee-demo.html'));
 // Service worker skal ligge på roden (ikke i en undermappe) for at få lov til at
 // kontrollere hele sitet ("scope") — ellers kan den kun styre /sw-mappen.
 app.get('/sw.js', (req, res) => {

@@ -1,0 +1,1222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Gulv Master — My Schedule (DEMO)</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0f2240">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--navy:#0f2240;--navy2:#1c3557;--blue:#2563eb;--ice:#f4f7fc;--white:#fff;--ink:#0f1923;--muted:#5a6a7e;--ghost:#94a3b8;--border:#e2e8f0;--green:#059669;--amber:#d97706;--radius:13px;--shadow:0 2px 10px rgba(15,34,64,.08);--shadow-lg:0 16px 42px rgba(15,34,64,.22)}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:var(--ice);color:var(--ink)}
+.topbar{min-height:58px;background:var(--navy);color:#fff;padding:8px 16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;position:sticky;top:0;z-index:20;box-shadow:0 2px 10px rgba(0,0,0,.2)}.brand{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:750;flex-shrink:0}.logo{width:31px;height:31px;border-radius:8px;background:#2e5086;display:grid;place-items:center;flex-shrink:0}.user{display:flex;align-items:center;gap:8px;flex-shrink:0}.avatar{width:31px;height:31px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800;flex-shrink:0}.avatar-img{border-radius:50%;flex-shrink:0}.logout{border:1px solid rgba(255,255,255,.28);border-radius:7px;padding:5px 9px;background:rgba(255,255,255,.1);color:#fff;font-size:11px;cursor:pointer;white-space:nowrap}
+.topbar-actions{display:flex;gap:8px;flex-wrap:wrap;order:3;flex-basis:100%}
+@media(min-width:701px){.topbar-actions{order:2;flex-basis:auto;flex:1;justify-content:center}}
+.main{max-width:800px;margin:0 auto;padding:16px}.week-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 13px}.week-title{font-weight:800;font-size:18px;color:var(--navy)}.week-sub{font-size:11px;color:var(--muted);margin-top:2px}.week-buttons{display:flex;gap:5px;align-items:center}.small-btn{border:1px solid var(--border);background:#fff;border-radius:8px;padding:7px 9px;font-weight:650;font-size:11px;cursor:pointer;color:var(--muted)}.small-btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+.week-overview{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:15px}.day-chip{background:#fff;border:1px solid var(--border);border-radius:9px;padding:7px 3px;text-align:center;cursor:pointer}.day-chip.active{background:var(--navy);border-color:var(--navy);color:#fff}.day-chip.has{border-bottom:3px solid var(--blue)}.day-chip .d1{font-size:9px;font-weight:800;opacity:.72}.day-chip .d2{font-size:15px;font-weight:800}.day-chip .d3{font-size:9px;min-height:12px;margin-top:2px}
+.view-notice{background:#eaf1ff;border:1px solid #c7d7ff;color:#174ea6;border-radius:9px;padding:8px 10px;margin:0 0 14px;font-size:11px;font-weight:650;display:flex;align-items:center;justify-content:space-between;gap:8px}.view-notice button{border:none;background:transparent;color:#174ea6;font-weight:800;font-size:11px;cursor:pointer;text-decoration:underline}
+/* Dag-sektioner i "hele ugen"-visningen: hver dag får en tydelig, klæbende overskrift
+   (position:sticky), så man altid kan se hvilken dag man kigger på mens man scroller,
+   samt en farvet venstrekant og luft omkring, så et dageskifte er tydeligt at få øje på. */
+.day-section{margin:0 0 26px;scroll-margin-top:calc(var(--topbar-h,58px) + 10px);border-left:3px solid var(--border);padding-left:10px}
+.day-section.today-section{border-left-color:var(--blue)}
+.day-head{display:flex;align-items:center;gap:7px;margin:0 0 10px;position:sticky;top:var(--topbar-h,58px);z-index:15;background:var(--ice);padding:8px 10px;border-radius:9px;box-shadow:0 2px 6px rgba(15,34,64,.07);border:1px solid var(--border)}
+.day-name{font-size:15px;font-weight:800;color:var(--navy)}
+.day-date{font-size:12px;color:var(--muted)}
+.today{background:var(--blue);color:#fff;font-size:9px;border-radius:9px;padding:2px 7px;font-weight:800}
+.empty-day{background:#fff;border:1px solid var(--border);color:var(--ghost);border-radius:10px;text-align:center;padding:14px;font-size:12px}
+.task{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);margin:0 0 9px}.task.untimed{border-left:3px solid var(--ghost)}.task-head{display:flex;justify-content:space-between;gap:10px}.task-title{font-weight:800;font-size:15px;color:var(--navy);line-height:1.25}.task-sub{font-size:11px;color:var(--muted);margin-top:3px}.badge{font-size:8px;font-weight:800;border-radius:8px;padding:3px 6px;white-space:nowrap;line-height:1.15;height:max-content;max-width:105px;text-align:center}.time-chip{font-size:9px;font-weight:800;background:var(--navy);color:#fff;border-radius:8px;padding:2px 7px;white-space:nowrap}.time-chip.untimed{background:#F1F5F9;color:var(--muted)}
+/* FLERDAGES-TIDSLINJE — en opgave der spænder over flere dage vises som et separat kort
+   HVER dag i ugevisningen (se tasksFor()), så uden noget ekstra ville medarbejderen kun se
+   "dagens skive" og ikke opdage at det egentlig er én sammenhængende sag over fx 4 dage.
+   Denne bjælke gør hele forløbet synligt på hvert enkelt kort: ét segment pr. dag i sagen,
+   med tydelig markering af hvilken dag man kigger på nu, plus start- og slutdato. Vises kun
+   for opgaver der faktisk spænder over mere end én dag — en enkeltdags-opgave har intet at
+   vise et forløb af.*/
+.task-timeline{margin:11px 0 0;padding:10px 11px;background:#F8FAFC;border:1px solid var(--border);border-radius:10px}
+.task-timeline-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:7px}
+.task-timeline-label{font-size:10.5px;font-weight:800;color:var(--navy);white-space:nowrap}
+.task-timeline-range{font-size:9.5px;color:var(--muted);white-space:nowrap}
+.task-timeline-track{display:flex;gap:3px}
+.task-timeline-seg{height:7px;border-radius:4px;flex:1;background:#E2E8F0;min-width:6px}
+.task-timeline-seg.tl-past{background:#94A3B8}
+.task-timeline-seg.tl-today{background:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.22)}
+.task-timeline-seg.tl-future{background:#E2E8F0}
+.task.done .task-timeline{background:#F0FDF4;border-color:#BBF7D0}
+.task.done .task-timeline-seg.tl-past,.task.done .task-timeline-seg.tl-today{background:#16A34A;box-shadow:none}.upload-bill-icon{font-size:9px;font-weight:800;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:2px 7px;white-space:nowrap;text-decoration:none;display:inline-block}.upload-bill-icon:hover{background:#FEF3C7}.untimed-divider{font-size:10px;font-weight:700;color:var(--muted);background:#F1F5F9;border:1px dashed var(--border);border-radius:8px;padding:6px 10px;margin:0 0 9px}.job-details{margin:11px 0 12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px 0;display:grid;gap:6px}.detail-line{display:flex;align-items:flex-start;gap:6px;font-size:11px;color:var(--muted);line-height:1.35}.detail-line a{color:#1d4ed8;text-decoration:none;font-weight:650}.detail-line a:hover{text-decoration:underline}.detail-line.planned{color:#475569}.weather-line{font-size:11px;color:var(--muted)}.weather-line.loading{color:var(--ghost)}.task-checklist{margin:0 0 10px}.task-checklist:empty{display:none}.task-description{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin:0 0 12px}.task-description-label{font-size:9.5px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px}.task-description-body{font-size:12.5px;color:#78350F;line-height:1.5;white-space:pre-line}.tc-title{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}.tc-item{display:flex;align-items:center;gap:8px;padding:7px 9px;background:#F8FAFC;border-radius:8px;margin-bottom:5px}.tc-item.done{background:#F0FDF4}.tc-item.done span{text-decoration:line-through;opacity:.6}.tc-item input{width:17px;height:17px;accent-color:#16A34A;flex-shrink:0}.tc-item span{font-size:12px;color:var(--navy)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.action{border:0;border-radius:9px;padding:10px 8px;font-size:11px;font-weight:800;min-height:42px;display:flex;align-items:center;justify-content:center;gap:5px;cursor:pointer;text-decoration:none;text-align:center}.action.maps{background:#f59e0b;color:#fff}.action.note{background:#eaf1ff;color:#174ea6}.action.info{background:var(--navy);color:#fff}.action.files{background:#7c3aed;color:#fff}.action.time{background:var(--green);color:#fff}.action.qc{background:#0891b2;color:#fff}.action.rules{background:#334155;color:#fff}.action:hover{filter:brightness(.97);transform:translateY(-1px)}
+.empty{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:38px 20px;text-align:center;color:var(--muted)}.empty-icon{font-size:40px}.empty h3{color:var(--navy);margin:7px 0 4px;font-size:16px}.toast{position:fixed;bottom:18px;left:50%;transform:translate(-50%,80px);background:var(--navy);color:#fff;padding:10px 14px;border-radius:9px;box-shadow:var(--shadow-lg);font-size:12px;opacity:0;transition:.22s;z-index:300}.toast.show{transform:translate(-50%,0);opacity:1}
+/* TEAM & MAP — read-only "who's where" view for employees Martin has flagged
+   (e.g. a foreman). Reuses the same job_lat/job_lng data as the admin route map,
+   scoped server-side to just this week so no full data dump is needed. */
+.tm-nav{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tm-date-input{border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;flex:1;min-width:120px}
+.tm-map{height:260px;border-radius:12px;border:1px solid var(--border);margin-bottom:16px;background:#eef2f7}
+.tm-section-label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:4px 0 8px}
+.tm-person{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px}
+.tm-person-head{display:flex;align-items:center;gap:8px;font-weight:800;color:var(--navy);font-size:13px;margin-bottom:8px}
+.tm-day-row{display:flex;gap:8px;padding:4px 0;border-top:1px dashed var(--border)}
+.tm-day-row:first-of-type{border-top:none}
+.tm-day-label{width:64px;flex-shrink:0;font-size:10.5px;font-weight:800;color:var(--muted);padding-top:2px}
+.tm-day-items{flex:1;font-size:12px;color:var(--ink)}
+.tm-day-item{margin-bottom:3px}
+.tm-day-item .tm-time{font-weight:800;color:var(--navy)}
+.tm-day-free{color:var(--ghost);font-style:italic;font-size:11.5px}
+.tm-pin-popup{font-size:12px}.tm-pin-popup b{color:var(--navy)}
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,34,64,.55);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;padding:18px;z-index:250}.modal-backdrop.open{display:flex;animation:gm-fade .18s ease}.modal{width:min(450px,100%);background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(15,34,64,.35);overflow:hidden;animation:gm-pop .22s cubic-bezier(.2,.9,.3,1.3)}.modal-head{background:var(--navy);color:#fff;padding:13px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px}.modal-title{font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px}.modal-close{border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:7px;padding:5px 8px;font-size:12px;cursor:pointer;transition:.15s}.modal-close:hover{background:rgba(255,255,255,.24)}.modal-body{padding:18px;max-height:70vh;overflow:auto}.modal-task{font-size:12px;font-weight:800;color:var(--navy);margin-bottom:9px}.modal-note{font-size:13px;line-height:1.55;color:#334155;white-space:pre-wrap;background:#f8fafc;border:1px solid var(--border);border-radius:9px;padding:12px}.modal-empty{color:var(--ghost);font-style:italic}.modal-note-link{margin-top:10px}.modal-note-link a{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#1D4ED8;text-decoration:none;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 12px}.modal-note-link a:hover{background:#DBEAFE}.modal-note-attachments{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.modal-note-att{display:block;width:76px;text-decoration:none}.modal-note-att img{width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block;cursor:zoom-in}.modal-note-att-pdf{width:76px;height:76px;border-radius:10px;border:1px solid var(--border);background:#FEF2F2;display:flex;align-items:center;justify-content:center;font-size:28px}.modal-note-att-name{display:block;font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;text-align:center}
+@keyframes gm-fade{from{opacity:0}to{opacity:1}}
+@keyframes gm-pop{from{opacity:0;transform:scale(.94) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.req-head{background:linear-gradient(135deg,var(--navy),#1e3a6e)}
+.req-icon{display:inline-grid;place-items:center;width:24px;height:24px;background:rgba(255,255,255,.18);border-radius:8px;font-size:13px}
+.req-intro{font-size:11.5px;color:var(--muted);margin:0 0 14px;line-height:1.5;background:#F8FAFC;border-left:3px solid var(--accent,#2563eb);padding:8px 10px;border-radius:0 8px 8px 0}
+.doc-check{display:flex;align-items:flex-start;gap:11px;padding:12px;border:1.5px solid var(--border,#E2E8F0);border-radius:10px;margin-bottom:9px;cursor:pointer;transition:.15s}
+.doc-check:has(input:checked){background:#F0FDF4;border-color:#86EFAC}
+.doc-check input{width:19px;height:19px;flex-shrink:0;margin-top:1px;accent-color:#16A34A}
+.doc-check span{font-size:12.5px;line-height:1.45;color:var(--ink,#0f172a)}
+.doc-check span strong{display:block;font-size:13px;margin-bottom:1px}
+.req-tabs{display:flex;gap:6px;margin-bottom:14px;background:#F1F5F9;border-radius:10px;padding:4px}
+.req-tab{flex:1;border:0;background:none;padding:8px 6px;font-size:12px;font-weight:700;color:var(--muted);border-radius:8px;cursor:pointer;transition:.15s}
+.req-tab.active{background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.req-feedback{font-size:11.5px;font-weight:700;border-radius:8px;padding:0;max-height:0;overflow:hidden;opacity:0;transition:.2s;margin:0}
+.req-feedback.show{padding:9px 11px;max-height:60px;opacity:1;margin:10px 0 0}
+.req-feedback.error{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+.req-feedback.success{background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0}
+.req-submit:disabled{opacity:.6;cursor:default}
+.avatar-img{width:31px;height:31px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,.4)}
+.wnote-banner{background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412;border-radius:10px;padding:10px 12px;margin:0 0 14px;font-size:12px;line-height:1.5}
+.wnote-banner b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;opacity:.85}
+.file-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:9px;margin-bottom:7px}
+.file-item a{font-size:12px;font-weight:700;color:#1d4ed8;text-decoration:none}
+.file-item a:hover{text-decoration:underline}
+.file-cat{font-size:8px;font-weight:800;text-transform:uppercase;color:var(--muted);letter-spacing:.4px}
+.lib-btn{border:1px solid rgba(255,255,255,.28);border-radius:7px;padding:6px 10px;background:rgba(255,255,255,.1);color:#fff;font-size:11px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center}
+@media(max-width:420px){.lib-btn-label{display:none}.lib-btn{padding:7px 9px;font-size:13px}}
+@media(max-width:480px){.week-overview{gap:3px}.day-chip{padding:5px 1px}.day-chip .d1{font-size:8px}.day-chip .d2{font-size:12px}.day-chip .d3{font-size:7px;min-height:9px}}
+.req-label{display:block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:12px 0 5px}
+.req-input,.req-textarea{width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;box-sizing:border-box;transition:.15s;background:#fcfcfd}
+.req-input:focus,.req-textarea:focus{outline:none;border-color:var(--navy);background:#fff;box-shadow:0 0 0 3px rgba(15,34,64,.08)}
+.req-textarea{resize:vertical}
+.req-submit{width:100%;margin-top:16px;padding:12px;border:0;border-radius:10px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(15,34,64,.28);transition:.15s}
+.req-submit:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(15,34,64,.35)}
+.req-submit:active{transform:translateY(0)}
+.req-submit:hover{filter:brightness(1.1)}
+.req-history{margin-top:16px;border-top:1px solid var(--border);padding-top:12px}
+.req-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;font-size:11px;border-bottom:1px solid #f1f5f9}
+.ft-result{padding:11px 12px;border:1px solid var(--border,#E2E8F0);border-radius:10px;margin-bottom:7px;cursor:pointer;transition:.15s}
+.ft-result:hover{background:#F8FAFC;border-color:#94A3B8}
+.ft-result-title{font-weight:700;font-size:13px}
+.ft-result-sub{font-size:11.5px;color:var(--muted,#64748b);margin-top:2px}
+.req-item:last-child{border-bottom:0}
+.req-status{font-size:9px;font-weight:800;border-radius:10px;padding:2px 8px}
+.req-status.pending{background:#FEF9C3;color:#92570A}
+.req-status.approved{background:#DCFCE7;color:#15803D}
+.req-status.rejected{background:#FEE2E2;color:#B91C1C}
+.task.done{opacity:.85;border-left:4px solid #16A34A;background:#F7FEF9;position:relative}
+.task.done .task-title{text-decoration:line-through;color:#15803D}
+.task.done::before{content:'✅ DONE';position:absolute;top:-9px;left:14px;background:#16A34A;color:#fff;font-size:9px;font-weight:800;letter-spacing:.4px;padding:2px 8px;border-radius:20px;box-shadow:0 2px 6px rgba(22,163,74,.4)}
+.action.done-btn{background:#DCFCE7;color:#15803D}
+.rules-link-card{display:flex;align-items:center;gap:14px;background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:14px;padding:14px 16px;margin-bottom:10px;text-decoration:none;color:inherit;transition:.15s;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.rules-link-card:hover{border-color:#334155;background:#F1F5F9;transform:translateY(-1px);box-shadow:0 6px 16px rgba(15,23,42,.1)}
+.rules-link-card strong{font-size:14px;color:#0F172A}
+.rules-link-icon{font-size:24px;flex-shrink:0}
+.rules-link-sub{font-size:11.5px;color:#64748B}
+.rules-link-arrow{margin-left:auto;font-size:16px;color:#94A3B8;flex-shrink:0}
+.action.undone-btn{background:#F1F5F9;color:#64748B}
+@media(max-width:560px){.main{padding:12px}.user-name{display:none}.week-buttons{gap:4px}.week-buttons .small-btn{padding:7px}.task{padding:12px}.topbar{padding:8px 12px}.actions{grid-template-columns:1fr 1fr}.action{font-size:10px;padding:9px 6px}.week-nav{align-items:flex-start}.week-buttons{flex-wrap:wrap;justify-content:flex-end}.week-title{font-size:17px}}
+.task.done{background:linear-gradient(135deg,#F0FDF4,#fff)}.task{box-shadow:0 1px 2px rgba(15,34,64,.05),0 8px 20px rgba(15,34,64,.035)}.task:hover{transform:translateY(-1px)}
+</style>
+</head>
+<body>
+<div style="background:#1D4ED8;color:#fff;text-align:center;font-size:12px;font-weight:700;padding:7px 10px">🧪 DEMO — kun til gennemgang. Opgaver der hører til en sag har "🔗 Se sagen"/"⏱ Registrér tid"/"🛡 Udfyld KS-formular" i stedet for links til JobTread. Den rigtige /employee er upåvirket.</div>
+<header class="topbar">
+  <div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div>
+  <div class="topbar-actions"><button class="lib-btn" onclick="openFindTask()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find a task</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button><button class="lib-btn" onclick="openProjectsModal()"><span class="lib-btn-icon">🏗️</span><span class="lib-btn-label"> Projekter</span></button>
+    <div style="position:relative;display:inline-block">
+      <button class="lib-btn" id="notif-bell-btn" onclick="toggleNotifDropdown()"><span class="lib-btn-icon">🔔</span><span id="notif-bell-count" style="display:none;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;margin-left:4px"></span></button>
+      <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:300px;max-height:360px;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(15,34,64,.25);z-index:500;color:#1a1a1a"></div>
+    </div>
+    <button class="lib-btn" id="push-enable-btn" style="display:none" onclick="enablePushNotifications()" title="Få besked med det samme på telefonen/pc'en når din plan bliver ændret"><span class="lib-btn-icon">📲</span><span class="lib-btn-label"> Slå notifikationer til</span></button>
+    <button class="lib-btn" id="team-map-btn" style="display:none" onclick="openTeamMap()" title="See where the team is working and what everyone has on this week"><span class="lib-btn-icon">🗺️</span><span class="lib-btn-label"> Team &amp; map</span></button>
+  </div>
+  <div class="user"><span id="user-name" class="user-name"></span><span id="user-avatar" class="avatar">?</span><button class="logout" onclick="logout()">Log out</button></div>
+</header>
+<main class="main">
+  <div class="week-nav"><div><div id="week-label" class="week-title">Loading...</div><div id="week-sub" class="week-sub"></div></div><div class="week-buttons"><button id="whole-week-btn" class="small-btn primary" onclick="showWholeWeek()">Whole week</button><button class="small-btn" onclick="changeWeek(-1)">←</button><button class="small-btn primary" onclick="goToday()">Today</button><button class="small-btn" onclick="changeWeek(1)">→</button></div></div>
+  <div id="week-overview" class="week-overview"></div>
+  <div id="weekly-note-banner"></div>
+  <div id="selected-notice"></div>
+  <div id="tasks-container"><div class="empty"><div class="empty-icon">⏳</div><h3>Loading your tasks...</h3></div></div>
+</main>
+<div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div></div></div></div>
+<div id="library-modal" class="modal-backdrop" onclick="closeLibraryOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📁 Guides & floor plans</div><button class="modal-close" onclick="closeLibrary()">Close</button></div><div class="modal-body" id="library-body"></div></div></div>
+<!-- PROJEKTER — sager der er blevet til efter en kunde har underskrevet et
+     tilbud. Herfra kan medarbejdere registrere tid (note + billede påkrævet),
+     tilføje billeder til sagen, og udfylde KS-formularer. -->
+<div id="projects-modal" class="modal-backdrop" onclick="closeProjectsOnBackdrop(event)">
+  <div class="modal" style="width:min(520px,96vw)">
+    <div class="modal-head"><div class="modal-title" id="pm-title">🏗️ Projekter</div><button class="modal-close" onclick="closeProjectsModal()">Close</button></div>
+    <div class="modal-body" id="pm-body"></div>
+  </div>
+</div>
+<div id="team-map-modal" class="modal-backdrop" onclick="closeTeamMapOnBackdrop(event)">
+  <div class="modal" style="width:min(760px,96vw)">
+    <div class="modal-head"><div class="modal-title">🗺️ Team &amp; map</div><button class="modal-close" onclick="closeTeamMap()">Close</button></div>
+    <div class="modal-body" style="max-height:80vh">
+      <div class="tm-nav">
+        <button class="small-btn" id="tm-prev">← Prev day</button>
+        <input type="date" id="tm-date" class="tm-date-input">
+        <button class="small-btn" id="tm-next">Next day →</button>
+        <button class="small-btn primary" id="tm-today">Today</button>
+      </div>
+      <div id="tm-map" class="tm-map"></div>
+      <div class="tm-section-label">This week, by person</div>
+      <div id="tm-week-list"></div>
+    </div>
+  </div>
+</div>
+<div id="find-task-modal" class="modal-backdrop" onclick="closeFindTaskOnBackdrop(event)">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">🔍 Find a task</div><button class="modal-close" onclick="closeFindTask()">Close</button></div>
+    <div class="modal-body">
+      <p class="req-intro">Were you sent out to a job on short notice? Search the task pool below and add it straight to your own day — no need to call the office.</p>
+      <input id="ft-search" class="req-input" placeholder="Search by customer name, address, or job..." autocomplete="off" oninput="renderFindTaskResults()">
+      <div id="ft-results" style="margin:12px 0;max-height:260px;overflow:auto"></div>
+      <div id="ft-picker" style="display:none">
+        <div id="ft-picked-label" style="font-weight:700;font-size:13px;margin-bottom:10px"></div>
+        <label class="req-label">Date</label>
+        <input id="ft-date" type="date" class="req-input">
+        <label class="req-label">Number of days</label>
+        <input id="ft-days" type="number" min=".25" max="30" step=".25" value="1" class="req-input">
+        <div id="ft-feedback" class="req-feedback"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button type="button" class="req-submit" style="background:#E2E8F0;color:#334155" onclick="cancelFindTaskPick()">← Back to list</button>
+          <button type="button" class="req-submit" id="ft-confirm-btn" onclick="confirmFindTaskAssign()">Add to my day</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="request-modal" class="modal-backdrop" onclick="closeRequestOnBackdrop(event)">
+  <div class="modal req-modal">
+    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon" id="req-modal-icon">📩</span> <span id="req-modal-title">Request a task</span></div><button class="modal-close" onclick="closeRequestModal()">Close</button></div>
+    <div class="modal-body">
+      <div class="req-tabs">
+        <button type="button" class="req-tab active" id="req-tab-task" onclick="switchRequestTab('task')">📩 Task</button>
+        <button type="button" class="req-tab" id="req-tab-timeoff" onclick="switchRequestTab('timeoff')">🏖 Time off / sick</button>
+      </div>
+      <div id="req-task-form">
+        <p class="req-intro">Use this if you already know you need to get something done at a customer's — it's sent for approval, and only lands on your calendar once it's approved.</p>
+        <form autocomplete="off" onsubmit="return false">
+          <label class="req-label">Customer / task</label>
+          <input id="req-job-name" name="gm_req_job_name_field" class="req-input" placeholder="E.g. Jensen — hallway needs sanding" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false">
+          <label class="req-label">Why / description</label>
+          <textarea id="req-description" name="gm_req_description_field" class="req-textarea" rows="3" placeholder="Short description, e.g. what you promised the customer" autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false"></textarea>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1"><label class="req-label">Date</label><input id="req-date" name="gm_req_date_field" type="date" class="req-input" autocomplete="off"></div>
+            <div style="flex:1"><label class="req-label">Number of days</label><input id="req-days" name="gm_req_days_field" type="number" min=".25" max="10" step=".25" class="req-input" value="1" autocomplete="off"></div>
+          </div>
+          <div id="req-feedback" class="req-feedback"></div>
+          <button type="button" class="req-submit" id="req-submit-btn" onclick="submitTaskRequest()"><span class="req-submit-label">Send for approval</span></button>
+        </form>
+      </div>
+      <div id="req-timeoff-form" style="display:none">
+        <p class="req-intro">Request time off for vacation, sickness, or other leave — your manager approves it, and your calendar is blocked for those days.</p>
+        <form autocomplete="off" onsubmit="return false">
+          <label class="req-label">Type</label>
+          <select id="off-type" class="req-input">
+            <option value="vacation">🏖 Vacation</option>
+            <option value="sick">🤒 Sick leave</option>
+            <option value="other">⛔ Other leave</option>
+          </select>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1"><label class="req-label">From date</label><input id="off-start" type="date" class="req-input" autocomplete="off"></div>
+            <div style="flex:1"><label class="req-label">To date</label><input id="off-end" type="date" class="req-input" autocomplete="off"></div>
+          </div>
+          <label class="req-label">Note (optional)</label>
+          <textarea id="off-note" class="req-textarea" rows="2" placeholder="E.g. doctor's appointment, family event, etc." autocomplete="off"></textarea>
+          <div id="off-feedback" class="req-feedback"></div>
+          <button type="button" class="req-submit" id="off-submit-btn" onclick="submitTimeOffRequest()"><span class="req-submit-label">Send for approval</span></button>
+        </form>
+      </div>
+      <div id="req-history"></div>
+    </div>
+  </div>
+</div>
+<div id="doc-modal" class="modal-backdrop" onclick="closeDocOnBackdrop(event)">
+  <div class="modal doc-modal">
+    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon">📋</span> Bekræft opgaven er færdig</div><button class="modal-close" onclick="closeDocModal()">Luk</button></div>
+    <div class="modal-body">
+      <p class="req-intro">Før opgaven markeres som færdig, skal du bekræfte at følgende er dokumenteret — det er vigtigt for sagen og for kunden.</p>
+      <label class="doc-check"><input type="checkbox" id="doc-moisture"><span><strong>Fugtmålinger</strong><br>Fugtprocent i underlag/gulv er målt og noteret</span></label>
+      <label class="doc-check"><input type="checkbox" id="doc-level"><span><strong>Niveau af gulvet</strong><br>Gulvets niveau/planhed er tjekket og dokumenteret</span></label>
+      <label class="doc-check"><input type="checkbox" id="doc-other"><span><strong>Andre forhold</strong><br>Evt. skader, afvigelser eller særlige forhold er noteret</span></label>
+      <label class="req-label" style="margin-top:14px">Kort note <span style="opacity:.6;font-weight:500">(valgfrit)</span></label>
+      <textarea id="doc-note" class="req-textarea" rows="2" placeholder="Fx alt som forventet, ingen bemærkninger"></textarea>
+      <div id="doc-feedback" class="req-feedback"></div>
+      <button type="button" class="req-submit" id="doc-confirm-btn" onclick="confirmDocumentationAndComplete()"><span class="req-submit-label">Bekræft & upload filer på sagen →</span></button>
+      <p style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0 0">Åbner JobTreads filer for denne sag i en ny fane, så du kan lægge billeder/dokumenter ind med det rigtige tag.</p>
+    </div>
+  </div>
+</div>
+<div id="rules-modal" class="modal-backdrop" onclick="closeRulesOnBackdrop(event)">
+  <div class="modal rules-modal">
+    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon">📜</span> Regler og lovgivning</div><button class="modal-close" onclick="closeRulesModal()">Luk</button></div>
+    <div class="modal-body">
+      <p class="req-intro">Vælg det fagområde der er relevant for din opgave.</p>
+      <a class="rules-link-card" href="https://www.danskindustri.dk/medlemsforeninger/gulvbranchen/gulvfakta/" target="_blank" rel="noopener"><span class="rules-link-icon">🪵</span><span><strong>Gulvlægning</strong><br><span class="rules-link-sub">Gulvfakta — Dansk Industri</span></span><span class="rules-link-arrow">↗</span></a>
+      <a class="rules-link-card" href="https://www.danskindustri.dk/medlemsforeninger/gulvbranchen/gulvfakta/" target="_blank" rel="noopener"><span class="rules-link-icon">🌀</span><span><strong>Gulvslibning</strong><br><span class="rules-link-sub">Gulvfakta — Dansk Industri</span></span><span class="rules-link-arrow">↗</span></a>
+      <a class="rules-link-card" href="https://mba.malermestre.dk/?utm_source=chatgpt.com" target="_blank" rel="noopener"><span class="rules-link-icon">🎨</span><span><strong>Maler</strong><br><span class="rules-link-sub">Malerbogen</span></span><span class="rules-link-arrow">↗</span></a>
+      <a class="rules-link-card" href="https://traeinfo.dk/kategori/traehandboeger/" target="_blank" rel="noopener"><span class="rules-link-icon">🪚</span><span><strong>Tømrer</strong><br><span class="rules-link-sub">Træinfo — trähåndbøger</span></span><span class="rules-link-arrow">↗</span></a>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+<script>
+const token=localStorage.getItem('gm_token');
+const user=JSON.parse(localStorage.getItem('gm_user')||'null');
+let assignments=[],weekOffset=0,selectedDate=iso(new Date());
+const bookingNotes=new Map();
+const weatherItems=new Map();
+const weeklyNoteCache=new Map();
+const JOBTREAD_TIME_URL='https://app.jobtread.com/time';
+if(!token||!user)location.href='/';
+document.getElementById('user-name').textContent=(user.name||'').split(' ')[0]||'Employee';
+if(user.avatar_url){document.getElementById('user-avatar').innerHTML='<img class="avatar-img" src="'+user.avatar_url+'">';}
+else{
+  document.getElementById('user-avatar').textContent=user.initials||(user.name||'?').split(' ').map(x=>x[0]).join('').slice(0,2);
+  document.getElementById('user-avatar').style.background=(user.color||'#2563eb')+'22';
+  document.getElementById('user-avatar').style.color=user.color||'#2563eb';
+}
+async function loadBranding(){
+  try{const r=await fetch('/api/settings');const d=await r.json();
+    if(d.company_name)document.getElementById('tb-name').textContent=d.company_name;
+    if(d.logo_url)document.getElementById('tb-logo').innerHTML='<img src="'+d.logo_url+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">';
+  }catch(e){}
+}
+loadBranding();
+function esc(s){return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),3000)}
+function logout(){localStorage.removeItem('gm_token');localStorage.removeItem('gm_user');location.href='/'}
+async function api(path,opts={}){const headers={Authorization:'Bearer '+token,...(opts.headers||{})};if(opts.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(path,{...opts,headers});if(r.status===401){logout();return null}let d;try{d=await r.json()}catch(e){d={error:'The server returned an invalid response'}}return {ok:r.ok,status:r.status,data:d}}
+function monday(d){let x=new Date(d);let day=x.getDay()||7;x.setDate(x.getDate()-day+1);x.setHours(0,0,0,0);return x}
+function iso(d){var x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10)}
+function getWeekDays(off){let m=monday(new Date());m.setDate(m.getDate()+off*7);return Array.from({length:7},(_,i)=>{let d=new Date(m);d.setDate(m.getDate()+i);return d})}
+function sameDay(d){let n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate()}
+function weekNumber(d){let x=new Date(d);let day=x.getDay()||7;x.setDate(x.getDate()+4-day);let y=new Date(Date.UTC(x.getFullYear(),0,1));return Math.ceil((((x-y)/86400000)+1)/7)}
+const TYPES={lay:['Flooring','#dbeafe','#1d4ed8'],sand:['Floor sanding','#dcfce7','#15803d'],paint:['Painting','#fef9c3','#92570a'],sub:['Subcontractor','#ede9fe','#5b21b6'],other:['Other','#f1f5f9','#475569']};
+function tasksFor(date){return assignments.filter(a=>date>=String(a.start_date).slice(0,10)&&date<=String(a.end_date||a.start_date).slice(0,10)).sort((a,b)=>{
+  const ta=String(a.start_time||'').trim(),tb=String(b.start_time||'').trim();
+  if(ta&&tb)return ta.localeCompare(tb);
+  if(ta&&!tb)return -1;
+  if(!ta&&tb)return 1;
+  return 0;
+})}
+// FLERDAGES-TIDSLINJE — se CSS-kommentaren ved .task-timeline for hvorfor. Returnerer
+// tom streng for enkeltdags-opgaver (intet forløb at vise). For meget lange forløb
+// (>20 dage) skiftes fra ét-segment-pr-dag til én sammenhængende procent-bjælke, så
+// stribemønsteret ikke bliver ulæseligt sammenklemt på en smal telefonskærm.
+function fmtShortDate(d){return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}
+function taskTimelineHtml(a,currentDate){
+  const start=String(a.start_date||'').slice(0,10),end=String(a.end_date||a.start_date||'').slice(0,10);
+  if(!start||!end||start===end)return '';
+  const startD=new Date(start+'T00:00:00'),endD=new Date(end+'T00:00:00');
+  const totalDays=Math.round((endD-startD)/86400000)+1;
+  if(totalDays<2)return '';
+  const curD=new Date(currentDate+'T00:00:00');
+  let dayIndex=Math.round((curD-startD)/86400000)+1;
+  if(dayIndex<1)dayIndex=1; if(dayIndex>totalDays)dayIndex=totalDays;
+  let track;
+  if(totalDays<=20){
+    track=Array.from({length:totalDays},(_,i)=>{
+      const idx=i+1,cls=idx<dayIndex?'tl-past':idx===dayIndex?'tl-today':'tl-future';
+      return `<span class="task-timeline-seg ${cls}" title="Day ${idx} of ${totalDays}"></span>`;
+    }).join('');
+  }else{
+    const pct=Math.max(0,Math.min(100,Math.round(((dayIndex-1)/(totalDays-1))*100)));
+    track=`<span class="task-timeline-seg tl-past" style="flex:${pct} 0 0"></span><span class="task-timeline-seg tl-today" style="flex:0 0 4px"></span><span class="task-timeline-seg tl-future" style="flex:${100-pct} 0 0"></span>`;
+  }
+  return `<div class="task-timeline"><div class="task-timeline-top"><span class="task-timeline-label">📅 Day ${dayIndex} of ${totalDays}</span><span class="task-timeline-range">${fmtShortDate(startD)} → ${fmtShortDate(endD)}</span></div><div class="task-timeline-track">${track}</div></div>`;
+}
+function phoneValue(a){return String(a.customer_phone||a.job_phone||a.customer_phone_number||'').trim()}
+function phoneHref(phone){return 'tel:'+String(phone||'').replace(/[^+\d]/g,'')}
+function taskLink(a){return a.jt_url||'https://app.jobtread.com'}
+function weatherKey(address,date){return 'gm-weather:'+date+':'+String(address||'').toLowerCase().trim()}
+function weatherText(code,max,min,rain){const m={0:['☀️','Clear'],1:['🌤️','Mostly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],45:['🌫️','Fog'],48:['🌫️','Rime fog'],51:['🌦️','Light drizzle'],53:['🌦️','Drizzle'],55:['🌧️','Heavy drizzle'],61:['🌦️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['❄️','Heavy snow'],80:['🌦️','Showers'],81:['🌧️','Rain showers'],82:['⛈️','Heavy showers'],95:['⛈️','Thunderstorm'],96:['⛈️','Thunderstorm with hail'],99:['⛈️','Severe thunderstorm']}[Number(code)]||['🌤️','Weather'];const temps=(Number.isFinite(Number(min))&&Number.isFinite(Number(max)))?`${Math.round(min)}–${Math.round(max)}°`:'Temperature unknown';const rainText=Number.isFinite(Number(rain))?` · ${Math.round(rain)}% rain`:'';return `${m[0]} ${m[1]} · ${temps}${rainText}`}
+function cityForWeather(address){
+  // Open-Meteo's geocoding only knows city/postal names — not street names+numbers.
+  // "Hollandsvej 44, 2800 Lyngby" -> "Lyngby" (with "2800 Lyngby" as fallback).
+  const parts=String(address||'').split(',').map(p=>p.trim()).filter(Boolean);
+  if(!parts.length)return '';
+  const last=parts[parts.length-1];
+  const m=last.match(/^(\d{3,4})\s*(.+)$/);
+  return m?m[2].trim():last;
+}
+const COPENHAGEN={latitude:55.6761,longitude:12.5683,label:'Copenhagen (no location given)'};
+async function resolveWeatherPlace(address,lat,lng){
+  // Bedste kilde: koordinater allerede beregnet på serveren under synkroniseringen
+  // (pålideligt, sker kun én gang for alle, i stedet for i hver browser).
+  if(Number.isFinite(Number(lat))&&Number.isFinite(Number(lng)))return {latitude:+lat,longitude:+lng,label:null};
+  if(!address)return COPENHAGEN;
+  // Fallback 1: prøv den fulde adresse i en gadeniveau-geokoder direkte fra browseren
+  // (bruges kun hvis serveren ikke har nået at geokode denne adresse endnu).
+  try{
+    const full=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&q='+encodeURIComponent(address));
+    const fullData=await full.json();
+    if(Array.isArray(fullData)&&fullData[0])return {latitude:+fullData[0].lat,longitude:+fullData[0].lon,label:null};
+  }catch(e){}
+  // Fallback 2: gæt en by/postnummer ud fra adresseteksten og slå det op i stedet.
+  const city=cityForWeather(address)||address;
+  try{
+    const geo=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json&country=DK');
+    let geoData=await geo.json(); let place=geoData&&geoData.results&&geoData.results[0];
+    if(!place){
+      const geo2=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json');
+      geoData=await geo2.json(); place=geoData&&geoData.results&&geoData.results[0];
+    }
+    if(place)return {latitude:place.latitude,longitude:place.longitude,label:null};
+  }catch(e){}
+  return COPENHAGEN; // Could not find the location — show Copenhagen's weather instead of an error
+}
+async function getWeather(address,date,lat,lng){
+  const key=weatherKey(address||'kbh',date);const cached=localStorage.getItem(key);
+  try{if(cached){const c=JSON.parse(cached);if(c&&c.savedAt&&Date.now()-c.savedAt<30*60*1000&&c.text)return c.text}}catch(e){}
+  try{
+    const place=await resolveWeatherPlace(address,lat,lng);
+    const url='https://api.open-meteo.com/v1/forecast?latitude='+encodeURIComponent(place.latitude)+'&longitude='+encodeURIComponent(place.longitude)+'&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FCopenhagen&start_date='+encodeURIComponent(date)+'&end_date='+encodeURIComponent(date);
+    const res=await fetch(url); const data=await res.json(); const d=data&&data.daily;
+    if(!d||!d.time||!d.time.length) return '🌦️ Forecast not available';
+    let text=weatherText(d.weather_code&&d.weather_code[0],d.temperature_2m_max&&d.temperature_2m_max[0],d.temperature_2m_min&&d.temperature_2m_min[0],d.precipitation_probability_max&&d.precipitation_probability_max[0]);
+    if(place.label)text+=' (for '+place.label+')';
+    try{localStorage.setItem(key,JSON.stringify({savedAt:Date.now(),text:text}))}catch(e){}
+    return text;
+  }catch(e){return '🌦️ Could not fetch the weather right now'}
+}
+async function hydrateWeather(){
+  const nodes=[...document.querySelectorAll('[data-weather-id]')];
+  const unique=new Map();
+  nodes.forEach(n=>{const id=n.dataset.weatherId;const item=weatherItems.get(id);if(item)unique.set(id,item)});
+  await Promise.all([...unique.entries()].map(async([id,item])=>{const text=await getWeather(item.address,item.date,item.lat,item.lng);document.querySelectorAll('[data-weather-id="'+CSS.escape(id)+'"]').forEach(el=>{el.textContent=text;el.classList.remove('loading')})}));
+}
+async function hydrateChecklists(){
+  const nodes=[...document.querySelectorAll('[data-checklist-task-id]')];
+  const uniqueTaskIds=[...new Set(nodes.map(n=>n.dataset.checklistTaskId).filter(Boolean))];
+  await Promise.all(uniqueTaskIds.map(async(taskId)=>{
+    const r=await api('/api/tasks/'+encodeURIComponent(taskId)+'/checklist');
+    const items=r&&r.ok?r.data:null;
+    if(!items||!items.length)return;
+    const html='<div class="tc-title">✓ To document for this task</div>'+items.map(it=>`<div class="tc-item ${it.done?'done':''}"><input type="checkbox" ${it.done?'checked':''} onchange="toggleMyChecklistItem(${it.id},this.checked)"><span>${esc(it.title)}</span></div>`).join('');
+    document.querySelectorAll('[data-checklist-task-id="'+CSS.escape(taskId)+'"]').forEach(el=>{el.innerHTML=html;});
+  }));
+}
+async function toggleMyChecklistItem(id,done){
+  const r=await api('/api/checklist/'+id,{method:'PUT',body:JSON.stringify({done:done})});
+  if(!r||!r.ok)toast('Could not save — try again');
+}
+function openBookingNote(id){const x=bookingNotes.get(String(id))||{};document.getElementById('note-task').textContent=x.title||'Task';const note=String(x.note||'').trim();const nt=document.getElementById('note-text');nt.textContent=note||'No note has been added to this booking yet.';nt.classList.toggle('modal-empty',!note);const linkWrap=document.getElementById('note-link-wrap'),linkEl=document.getElementById('note-link');if(x.link){linkEl.href=x.link;linkWrap.style.display='block';}else{linkWrap.style.display='none';}let attachments=[];if(x.attachments){try{attachments=JSON.parse(x.attachments)||[];}catch(e){attachments=[];}}const attEl=document.getElementById('note-attachments');attEl.innerHTML=attachments.map(a=>{const name=esc(a.name||(a.type==='pdf'?'document.pdf':'image'));return a.type==='pdf'?`<a class="modal-note-att" href="${esc(a.data)}" target="_blank" rel="noopener noreferrer"><div class="modal-note-att-pdf">📄</div><span class="modal-note-att-name" title="${name}">${name}</span></a>`:`<a class="modal-note-att" href="${esc(a.data)}" target="_blank" rel="noopener noreferrer"><img src="${esc(a.data)}" alt="${name}"><span class="modal-note-att-name" title="${name}">${name}</span></a>`;}).join('');document.getElementById('note-modal').classList.add('open')}
+function closeNote(){document.getElementById('note-modal').classList.remove('open')}
+function closeNoteOnBackdrop(e){if(e.target===document.getElementById('note-modal'))closeNote()}
+
+// FIND A TASK — lets an employee self-assign an unplanned pool task to their own day
+let ftAllTasks=[],ftPickedTask=null;
+async function openFindTask(){
+  document.getElementById('ft-search').value='';
+  document.getElementById('ft-picker').style.display='none';
+  document.getElementById('ft-results').style.display='block';
+  document.getElementById('find-task-modal').classList.add('open');
+  const r=await api('/api/tasks');
+  ftAllTasks=(r&&r.ok?r.data:[])||[];
+  renderFindTaskResults();
+}
+function closeFindTask(){document.getElementById('find-task-modal').classList.remove('open');}
+function closeFindTaskOnBackdrop(e){if(e.target===document.getElementById('find-task-modal'))closeFindTask();}
+function renderFindTaskResults(){
+  const q=document.getElementById('ft-search').value.trim().toLowerCase();
+  const el=document.getElementById('ft-results');
+  let list=ftAllTasks;
+  if(q)list=list.filter(t=>((t.job_name||'')+' '+(t.name||'')+' '+(t.job_address||'')).toLowerCase().includes(q));
+  list=list.slice(0,40);
+  if(!list.length){el.innerHTML='<p style="color:var(--muted);font-size:12px;text-align:center;padding:20px 0">No matching tasks found.</p>';return;}
+  el.innerHTML=list.map(t=>`<div class="ft-result" onclick="pickFindTask('${t.id}')"><div class="ft-result-title">${esc(t.job_name||'No customer')}</div><div class="ft-result-sub">${esc(t.name||'')}${t.job_address?' · '+esc(t.job_address):''}${t.job_number?' · #'+esc(t.job_number):''}</div></div>`).join('');
+}
+function pickFindTask(taskId){
+  ftPickedTask=ftAllTasks.find(t=>t.id===taskId);
+  if(!ftPickedTask)return;
+  document.getElementById('ft-picked-label').textContent=(ftPickedTask.job_name||'')+' — '+(ftPickedTask.name||'');
+  document.getElementById('ft-date').value=iso(new Date());
+  document.getElementById('ft-days').value='1';
+  document.getElementById('ft-feedback').className='req-feedback';
+  document.getElementById('ft-results').style.display='none';
+  document.getElementById('ft-picker').style.display='block';
+}
+function cancelFindTaskPick(){
+  ftPickedTask=null;
+  document.getElementById('ft-picker').style.display='none';
+  document.getElementById('ft-results').style.display='block';
+}
+async function confirmFindTaskAssign(){
+  if(!ftPickedTask)return;
+  const dateVal=document.getElementById('ft-date').value;
+  const days=+document.getElementById('ft-days').value||1;
+  const fb=document.getElementById('ft-feedback');
+  if(!dateVal){fb.textContent='Choose a date';fb.className='req-feedback show error';return;}
+  const btn=document.getElementById('ft-confirm-btn');
+  btn.disabled=true;btn.textContent='Adding…';
+  const r=await api('/api/assignments/self',{method:'POST',body:JSON.stringify({task_id:ftPickedTask.id,start_date:dateVal,days:days})});
+  if(r&&r.ok){
+    toast('Added to your day ✓');
+    closeFindTask();
+    await loadAll();
+  } else {
+    fb.textContent=(r&&r.data&&r.data.error)||'Could not add this task';
+    fb.className='req-feedback show error';
+  }
+  btn.disabled=false;btn.textContent='Add to my day';
+}
+
+async function openLibrary(){
+  const body=document.getElementById('library-body');
+  body.innerHTML='<p style="color:var(--muted)">Loading…</p>';
+  document.getElementById('library-modal').classList.add('open');
+  try{
+    const r=await api('/api/library');
+    const files=r&&r.ok?r.data:[];
+    if(!files||!files.length){body.innerHTML='<p class="modal-empty">No guides have been added yet.</p>';return;}
+    const labels={guide:'Installation guide',plan:'Floor plan',other:'File'};
+    body.innerHTML=files.map(f=>'<div class="file-item"><div><span class="file-cat">'+esc(labels[f.category]||'File')+'</span><br><a href="'+esc(f.url)+'" target="_blank" rel="noopener">📄 '+esc(f.name)+'</a></div></div>').join('');
+  }catch(e){body.innerHTML='<p class="modal-empty">Could not load the files.</p>';}
+}
+function closeLibrary(){document.getElementById('library-modal').classList.remove('open')}
+function closeLibraryOnBackdrop(e){if(e.target===document.getElementById('library-modal'))closeLibrary()}
+
+// ══════════════════════════════════════════════════════════════
+// PROJEKTER — sager der bliver oprettet automatisk når en kunde underskriver
+// et tilbud. Herfra kan medarbejdere registrere tid (note + billede
+// PÅKRÆVET som dokumentation), tilføje billeder til sagen, og udfylde
+// KS-formularer Martin har bygget.
+// ══════════════════════════════════════════════════════════════
+let pmState={view:'list',projects:[],current:null,qaTemplates:[],qaAnswering:null,contactTemplates:[],contactAnswering:null};
+function openProjectsModal(){
+  pmState.view='list';
+  document.getElementById('projects-modal').classList.add('open');
+  pmLoadList();
+}
+function closeProjectsModal(){document.getElementById('projects-modal').classList.remove('open')}
+function closeProjectsOnBackdrop(e){if(e.target===document.getElementById('projects-modal'))closeProjectsModal()}
+function pmFeedback(id,msg,ok){const el=document.getElementById(id);el.textContent=msg;el.className='req-feedback show '+(ok?'success':'error')}
+function pmReadFileAsDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
+function fmtPmDate(d){if(!d)return '';const parts=String(d).slice(0,10).split('-');return parts.length===3?parts[2]+'/'+parts[1]:d}
+async function pmLoadList(){
+  const body=document.getElementById('pm-body');
+  document.getElementById('pm-title').textContent='🏗️ Projekter';
+  body.innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  const r=await api('/api/projects');
+  pmState.projects=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
+  pmRenderList();
+}
+function pmRenderList(){
+  pmState.view='list';
+  document.getElementById('pm-title').textContent='🏗️ Projekter';
+  const body=document.getElementById('pm-body');
+  const STATUS={active:'🔧 Aktivt',done:'✅ Afsluttet',archived:'📦 Arkiveret'};
+  const list=pmState.projects.filter(p=>p.status!=='archived');
+  if(!list.length){body.innerHTML='<p class="modal-empty">Ingen projekter endnu — de oprettes automatisk når en kunde underskriver et tilbud.</p>';return;}
+  body.innerHTML=list.map(p=>`
+    <div class="ft-result" onclick="pmOpenProject(${p.id})">
+      <div class="ft-result-title">${esc(p.name)}</div>
+      <div class="ft-result-sub">${STATUS[p.status]||esc(p.status)}${p.customer_address?' · '+esc(p.customer_address):''}</div>
+    </div>`).join('');
+}
+async function pmOpenProject(id){
+  const body=document.getElementById('pm-body');
+  body.innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  const r=await api('/api/projects/'+id);
+  if(!r||!r.ok){toast('Kunne ikke hente projektet');pmRenderList();return;}
+  pmState.current=r.data;
+  pmRenderDetail();
+}
+function pmRenderDetail(){
+  pmState.view='detail';
+  const p=pmState.current;
+  document.getElementById('pm-title').textContent=esc(p.name);
+  const body=document.getElementById('pm-body');
+  const myEntries=(p.time_entries||[]).filter(t=>+t.user_id===+user.id).slice(0,8);
+  const entriesHtml=myEntries.length?myEntries.map(t=>`
+    <div class="file-item"><div><span class="file-cat">${esc(fmtPmDate(t.entry_date))} · ${t.minutes} min</span><br><span style="font-size:12px">${esc(t.note)}</span></div></div>
+  `).join(''):'<p class="modal-empty" style="margin:8px 0;padding:14px">Du har ikke registreret tid på denne sag endnu.</p>';
+  body.innerHTML=`
+    <button class="small-btn" onclick="pmRenderList()" style="margin-bottom:12px">← Alle projekter</button>
+    ${p.customer_address?`<div class="detail-line" style="margin-bottom:10px">📍 <span>${esc(p.customer_address)}</span></div>`:''}
+    <div class="actions" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+      <button class="action time" type="button" onclick="pmOpenTimeForm()">⏱ Registrér tid</button>
+      <button class="action files" type="button" onclick="pmOpenPhotoForm()">📷 Tilføj billede</button>
+      <button class="action qc" type="button" onclick="pmOpenQaPicker()">🛡 Udfyld KS-formular</button>
+      <button class="action qc" type="button" onclick="pmOpenContactPicker()">📇 Kontaktformular</button>
+    </div>
+    <div class="tm-section-label">Dine seneste tidsregistreringer</div>
+    ${entriesHtml}
+  `;
+}
+function pmOpenTimeForm(){
+  pmState.view='time-form';
+  document.getElementById('pm-title').textContent='⏱ Registrér tid';
+  const p=pmState.current;
+  const lineOptions=(p.quote_line_options||[]).map(l=>`<option value="${l.id}">${esc(l.description)}</option>`).join('');
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>
+    <label class="req-label">Dato</label>
+    <input class="req-input" type="date" id="pmt-date" value="${iso(new Date())}">
+    <label class="req-label">Minutter brugt</label>
+    <input class="req-input" type="number" id="pmt-minutes" min="1" placeholder="Fx 120">
+    <label class="req-label">Note — hvad blev der lavet</label>
+    <textarea class="req-textarea" id="pmt-note" rows="3" placeholder="Beskriv det udførte arbejde..."></textarea>
+    <label class="req-label">Billede — påkrævet som dokumentation</label>
+    <input class="req-input" type="file" accept="image/*" capture="environment" id="pmt-photo">
+    <label class="req-label">Post fra tilbud — valgfrit</label>
+    <select class="req-input" id="pmt-line"><option value="">Ingen valgt</option>${lineOptions}</select>
+    <label class="req-label">Købt materialer — valgfrit</label>
+    <input class="req-input" id="pmt-materials" placeholder="Fx 'Lim, 2 spande, Bilka, 340 kr'">
+    <div id="pmt-feedback" class="req-feedback"></div>
+    <button class="req-submit" type="button" id="pmt-submit" onclick="pmSubmitTime()">Gem tidsregistrering</button>
+  `;
+}
+async function pmSubmitTime(){
+  const minutes=Number(document.getElementById('pmt-minutes').value);
+  const note=document.getElementById('pmt-note').value.trim();
+  const file=document.getElementById('pmt-photo').files[0];
+  const date=document.getElementById('pmt-date').value;
+  const lineId=document.getElementById('pmt-line').value;
+  const materials=document.getElementById('pmt-materials').value.trim();
+  if(!minutes||minutes<=0){pmFeedback('pmt-feedback','Angiv hvor mange minutter der er brugt',false);return}
+  if(!note){pmFeedback('pmt-feedback','Skriv en note om det udførte arbejde',false);return}
+  if(!file){pmFeedback('pmt-feedback','Upload et billede som dokumentation',false);return}
+  const btn=document.getElementById('pmt-submit');btn.disabled=true;btn.textContent='Gemmer…';
+  try{
+    const dataUrl=await pmReadFileAsDataUrl(file);
+    const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
+    if(!up||!up.ok){pmFeedback('pmt-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade billedet',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
+    const r=await api('/api/projects/'+pmState.current.id+'/time-entries',{method:'POST',body:JSON.stringify({minutes,note,photo_url:up.data.url,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date})});
+    if(r&&r.ok){toast('Tid registreret ✓');await pmOpenProject(pmState.current.id)}
+    else{pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
+  }catch(e){pmFeedback('pmt-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
+}
+function pmOpenPhotoForm(){
+  pmState.view='photo-form';
+  document.getElementById('pm-title').textContent='📷 Tilføj billede';
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>
+    <label class="req-label">Billede</label>
+    <input class="req-input" type="file" accept="image/*" capture="environment" id="pmp-photo">
+    <label class="req-label">Note — valgfrit</label>
+    <input class="req-input" id="pmp-caption" placeholder="Fx 'Efter slibning, stue'">
+    <div id="pmp-feedback" class="req-feedback"></div>
+    <button class="req-submit" type="button" id="pmp-submit" onclick="pmSubmitPhoto()">Upload billede</button>
+  `;
+}
+async function pmSubmitPhoto(){
+  const file=document.getElementById('pmp-photo').files[0];
+  const caption=document.getElementById('pmp-caption').value.trim();
+  if(!file){pmFeedback('pmp-feedback','Vælg et billede',false);return}
+  const btn=document.getElementById('pmp-submit');btn.disabled=true;btn.textContent='Uploader…';
+  try{
+    const dataUrl=await pmReadFileAsDataUrl(file);
+    const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
+    if(!up||!up.ok){pmFeedback('pmp-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade billedet',false);btn.disabled=false;btn.textContent='Upload billede';return}
+    const r=await api('/api/projects/'+pmState.current.id+'/photos',{method:'POST',body:JSON.stringify({url:up.data.url,caption:caption||null})});
+    if(r&&r.ok){toast('Billede tilføjet ✓');await pmOpenProject(pmState.current.id)}
+    else{pmFeedback('pmp-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Upload billede'}
+  }catch(e){pmFeedback('pmp-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Upload billede'}
+}
+async function pmOpenQaPicker(){
+  pmState.view='qa-picker';
+  document.getElementById('pm-title').textContent='🛡 Vælg KS-formular';
+  const body=document.getElementById('pm-body');
+  body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p style="color:var(--muted)">Henter…</p>';
+  const r=await api('/api/qa-templates');
+  pmState.qaTemplates=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
+  if(!pmState.qaTemplates.length){body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p class="modal-empty">Der er ikke oprettet nogen KS-skabeloner endnu.</p>';return}
+  body.innerHTML=`<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>`+
+    pmState.qaTemplates.map(t=>`<div class="ft-result" onclick="pmOpenQaForm(${t.id})"><div class="ft-result-title">${esc(t.name)}</div><div class="ft-result-sub">${(t.fields||[]).length} felter</div></div>`).join('');
+}
+function pmOpenQaForm(templateId){
+  const t=pmState.qaTemplates.find(x=>x.id===templateId);
+  if(!t)return;
+  pmState.qaAnswering=t;
+  pmState.view='qa-form';
+  document.getElementById('pm-title').textContent=esc(t.name);
+  const fieldsHtml=(t.fields||[]).map((f,i)=>{
+    if(f.type==='check')return `<label class="doc-check"><input type="checkbox" data-qa-idx="${i}"><span><strong>${esc(f.label)}</strong></span></label>`;
+    if(f.type==='number')return `<label class="req-label">${esc(f.label)}</label><input class="req-input" type="number" data-qa-idx="${i}">`;
+    if(f.type==='photo')return `<label class="req-label">${esc(f.label)}</label><input class="req-input" type="file" accept="image/*" capture="environment" data-qa-idx="${i}">`;
+    return `<label class="req-label">${esc(f.label)}</label><input class="req-input" data-qa-idx="${i}">`;
+  }).join('');
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmOpenQaPicker()" style="margin-bottom:12px">← Tilbage</button>
+    ${fieldsHtml}
+    <div id="pmq-feedback" class="req-feedback"></div>
+    <button class="req-submit" type="button" id="pmq-submit" onclick="pmSubmitQa()">Indsend KS-formular</button>
+  `;
+}
+async function pmSubmitQa(){
+  const t=pmState.qaAnswering;
+  const btn=document.getElementById('pmq-submit');btn.disabled=true;btn.textContent='Indsender…';
+  try{
+    const answers=[];
+    for(let i=0;i<(t.fields||[]).length;i++){
+      const f=t.fields[i];
+      const el=document.querySelector('[data-qa-idx="'+i+'"]');
+      let value=null;
+      if(f.type==='check')value=el.checked;
+      else if(f.type==='photo'){
+        const file=el.files[0];
+        if(file){
+          const dataUrl=await pmReadFileAsDataUrl(file);
+          const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'qa/'+pmState.current.id})});
+          value=(up&&up.ok)?up.data.url:null;
+        }
+      } else value=el.value;
+      answers.push({label:f.label,type:f.type,value});
+    }
+    const r=await api('/api/projects/'+pmState.current.id+'/qa-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers})});
+    if(r&&r.ok){toast('KS-formular indsendt ✓');await pmOpenProject(pmState.current.id)}
+    else{pmFeedback('pmq-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
+  }catch(e){pmFeedback('pmq-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
+}
+async function pmOpenContactPicker(){
+  pmState.view='contact-picker';
+  document.getElementById('pm-title').textContent='📇 Vælg kontaktformular';
+  const body=document.getElementById('pm-body');
+  body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p style="color:var(--muted)">Henter…</p>';
+  const r=await api('/api/contact-form-templates');
+  pmState.contactTemplates=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
+  if(!pmState.contactTemplates.length){body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p class="modal-empty">Der er ikke oprettet nogen kontaktformularer endnu.</p>';return}
+  body.innerHTML=`<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>`+
+    pmState.contactTemplates.map(t=>`<div class="ft-result" onclick="pmOpenContactForm(${t.id})"><div class="ft-result-title">${esc(t.name)}</div><div class="ft-result-sub">${(t.fields||[]).length} felter</div></div>`).join('');
+}
+function pmOpenContactForm(templateId){
+  const t=pmState.contactTemplates.find(x=>x.id===templateId);
+  if(!t)return;
+  pmState.contactAnswering=t;
+  pmState.view='contact-form';
+  document.getElementById('pm-title').textContent=esc(t.name);
+  const fieldsHtml=(t.fields||[]).map((f,i)=>{
+    if(f.type==='check')return `<label class="doc-check"><input type="checkbox" data-contact-idx="${i}"><span><strong>${esc(f.label)}</strong></span></label>`;
+    if(f.type==='number')return `<label class="req-label">${esc(f.label)}</label><input class="req-input" type="number" data-contact-idx="${i}">`;
+    if(f.type==='photo')return `<label class="req-label">${esc(f.label)}</label><input class="req-input" type="file" accept="image/*" capture="environment" data-contact-idx="${i}">`;
+    return `<label class="req-label">${esc(f.label)}</label><input class="req-input" data-contact-idx="${i}">`;
+  }).join('');
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmOpenContactPicker()" style="margin-bottom:12px">← Tilbage</button>
+    ${fieldsHtml}
+    <div id="pmc-feedback" class="req-feedback"></div>
+    <button class="req-submit" type="button" id="pmc-submit" onclick="pmSubmitContact()">Indsend kontaktformular</button>
+  `;
+}
+async function pmSubmitContact(){
+  const t=pmState.contactAnswering;
+  const btn=document.getElementById('pmc-submit');btn.disabled=true;btn.textContent='Indsender…';
+  try{
+    const answers=[];
+    for(let i=0;i<(t.fields||[]).length;i++){
+      const f=t.fields[i];
+      const el=document.querySelector('[data-contact-idx="'+i+'"]');
+      let value=null;
+      if(f.type==='check')value=el.checked;
+      else if(f.type==='photo'){
+        const file=el.files[0];
+        if(file){
+          const dataUrl=await pmReadFileAsDataUrl(file);
+          const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'contact/'+pmState.current.id})});
+          value=(up&&up.ok)?up.data.url:null;
+        }
+      } else value=el.value;
+      answers.push({label:f.label,type:f.type,value});
+    }
+    const r=await api('/api/projects/'+pmState.current.id+'/contact-form-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers})});
+    if(r&&r.ok){toast('Kontaktformular indsendt ✓');await pmOpenProject(pmState.current.id)}
+    else{pmFeedback('pmc-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
+  }catch(e){pmFeedback('pmc-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
+}
+// ══════════════════════════════════════════════════════════════
+// DEMO — genveje INDE FRA en dags-opgave og direkte ind i sags-modulet
+// ovenfor. Dagens opgaveliste (render(), øverst i filen) kalder disse tre i
+// stedet for at linke ud til JobTread, når opgaven hører til en sag
+// (a.task_project_id sat). Genbruger 100% af det eksisterende sags-modul —
+// åbner bare direkte på det relevante skærmbillede i stedet for at starte ved
+// projektlisten, fordi medarbejderen allerede har valgt en bestemt opgave.
+// ══════════════════════════════════════════════════════════════
+async function pmOpenProjectFor(projectId){
+  const r=await api('/api/projects/'+projectId);
+  if(!r||!r.ok){toast('Kunne ikke hente sagen');return false}
+  pmState.current=r.data;
+  return true;
+}
+async function openProjectDashboard(projectId){
+  document.getElementById('projects-modal').classList.add('open');
+  document.getElementById('pm-title').textContent='Henter…';
+  document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  if(await pmOpenProjectFor(projectId))pmRenderDetail();
+}
+async function openTimeFormForTask(projectId){
+  document.getElementById('projects-modal').classList.add('open');
+  document.getElementById('pm-title').textContent='Henter…';
+  document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  if(await pmOpenProjectFor(projectId))pmOpenTimeForm();
+}
+async function openQaPickerForTask(projectId){
+  document.getElementById('projects-modal').classList.add('open');
+  document.getElementById('pm-title').textContent='Henter…';
+  document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  if(await pmOpenProjectFor(projectId))pmOpenQaPicker();
+}
+
+function tomorrowISO(){const d=new Date();d.setDate(d.getDate()+1);return iso(d)}
+function reqField(id){return document.querySelector('#request-modal #'+id)}
+async function openRequestModal(){
+  reqField('req-job-name').value='';
+  reqField('req-description').value='';
+  reqField('req-date').value=tomorrowISO();
+  reqField('req-days').value='1';
+  reqField('req-feedback').className='req-feedback';
+  reqField('off-start').value=tomorrowISO();
+  reqField('off-end').value=tomorrowISO();
+  reqField('off-note').value='';
+  reqField('off-type').value='vacation';
+  reqField('off-feedback').className='req-feedback';
+  switchRequestTab('task');
+  document.getElementById('request-modal').classList.add('open');
+  loadRequestHistory();
+}
+function switchRequestTab(which){
+  const isTask=which==='task';
+  document.getElementById('req-tab-task').classList.toggle('active',isTask);
+  document.getElementById('req-tab-timeoff').classList.toggle('active',!isTask);
+  document.getElementById('req-task-form').style.display=isTask?'block':'none';
+  document.getElementById('req-timeoff-form').style.display=isTask?'none':'block';
+  document.getElementById('req-modal-icon').textContent=isTask?'📩':'🏖';
+  document.getElementById('req-modal-title').textContent=isTask?'Request a task':'Request time off / sick leave';
+}
+function closeRequestModal(){document.getElementById('request-modal').classList.remove('open')}
+function closeRequestOnBackdrop(e){if(e.target===document.getElementById('request-modal'))closeRequestModal()}
+async function loadRequestHistory(){
+  const el=document.getElementById('req-history');
+  el.innerHTML='<div class="req-label">Your recent requests</div><p style="color:var(--muted);font-size:11px">Loading…</p>';
+  try{
+    const [tr,or_]=await Promise.all([api('/api/task-requests/my'),api('/api/time-off/my')]);
+    const tasks_=(tr&&tr.ok?tr.data:[]).map(x=>({label:esc(x.job_name)+' — '+esc(String(x.requested_date).slice(0,10)),status:x.status,sort:x.created_at}));
+    const offs=(or_&&or_.ok?or_.data:[]).map(x=>({label:(x.type==='sick'?'🤒 Sick leave':x.type==='vacation'?'🏖 Vacation':'⛔ Leave')+' — '+esc(String(x.start_date).slice(0,10))+' to '+esc(String(x.end_date).slice(0,10)),status:x.status,sort:x.created_at}));
+    const list=tasks_.concat(offs).sort((a,b)=>String(b.sort||'').localeCompare(String(a.sort||'')));
+    if(!list.length){el.innerHTML='<div class="req-label">Your recent requests</div><p style="color:var(--muted);font-size:11px">No requests yet.</p>';return;}
+    const labels={pending:'Pending',approved:'Approved',rejected:'Rejected'};
+    el.innerHTML='<div class="req-label">Your recent requests</div>'+list.map(x=>`<div class="req-item"><span>${x.label}</span><span class="req-status ${x.status}">${labels[x.status]||x.status}</span></div>`).join('');
+  }catch(e){el.innerHTML='<div class="req-label">Your recent requests</div><p style="color:var(--muted);font-size:11px">Could not load requests.</p>';}
+}
+async function submitTimeOffRequest(){
+  const type=reqField('off-type').value;
+  const start=reqField('off-start').value;
+  const end=reqField('off-end').value;
+  const note=reqField('off-note').value.trim();
+  const el=reqField('off-feedback');
+  function offFeedback(msg,kind){el.textContent=msg;el.className='req-feedback show '+(kind||'');}
+  if(!start||!end){offFeedback('Choose both a from- and to-date','error');return}
+  if(end<start){offFeedback('The to-date must be after the from-date','error');return}
+  const btn=document.getElementById('off-submit-btn');
+  btn.disabled=true;btn.querySelector('.req-submit-label').textContent='Sending…';
+  try{
+    const r=await api('/api/time-off',{method:'POST',body:JSON.stringify({type,start_date:start,end_date:end,note:note||null})});
+    if(r&&r.ok){
+      offFeedback('Sent for approval ✓','success');
+      toast('Sent for approval ✓');
+      reqField('off-note').value='';
+      loadRequestHistory();
+    } else {
+      offFeedback((r&&r.data&&r.data.error)||'Could not send the request','error');
+      console.error('Time-off request failed:',r);
+    }
+  }catch(e){
+    offFeedback('Could not send the request — check your connection','error');
+    console.error('Time-off request error:',e);
+  }finally{
+    btn.disabled=false;btn.querySelector('.req-submit-label').textContent='Send for approval';
+  }
+}
+function reqFeedback(msg,kind){
+  const el=reqField('req-feedback');
+  el.textContent=msg;
+  el.className='req-feedback show '+(kind||'');
+}
+async function submitTaskRequest(){
+  const formEl=document.querySelector('#request-modal form');
+  const fd=formEl?new FormData(formEl):null;
+  const rawJobName=fd?fd.get('gm_req_job_name_field'):null;
+  const rawDate=fd?fd.get('gm_req_date_field'):null;
+  const rawDays=fd?fd.get('gm_req_days_field'):null;
+  const rawDesc=fd?fd.get('gm_req_description_field'):null;
+  // Cross-check: also read directly via .value. If the two methods disagree,
+  // something unusual is going on with the page/DOM itself.
+  const directJobName=reqField('req-job-name')?reqField('req-job-name').value:null;
+  const jobName=String(rawJobName??directJobName??'').trim();
+  const date=String(rawDate??(reqField('req-date')?reqField('req-date').value:'')??'');
+  const days=+((rawDays??(reqField('req-days')?reqField('req-days').value:null))||1);
+  const description=String(rawDesc??(reqField('req-description')?reqField('req-description').value:'')??'').trim();
+  console.log('[Request task] diagnostics:',{formData:{rawJobName,rawDate,rawDays},direct:{directJobName},finalUsed:{jobName,date,days}});
+  if(!jobName){reqFeedback('Write what the task is about','error');return}
+  if(!date){reqFeedback('Choose a date','error');return}
+  const btn=document.getElementById('req-submit-btn');
+  btn.disabled=true;btn.querySelector('.req-submit-label').textContent='Sending…';
+  try{
+    const r=await api('/api/task-requests',{method:'POST',body:JSON.stringify({job_name:jobName,description,requested_date:date,estimated_days:days})});
+    if(r&&r.ok){
+      reqFeedback('Sent for approval ✓','success');
+      toast('Sent for approval ✓');
+      reqField('req-job-name').value='';
+      reqField('req-description').value='';
+      loadRequestHistory();
+    } else {
+      const msg=(r&&r.data&&r.data.error)||'Could not send the request — try again shortly';
+      reqFeedback(msg,'error');
+      console.error('Task request failed:',r);
+    }
+  }catch(e){
+    reqFeedback('Could not send the request — check your connection','error');
+    console.error('Task request error:',e);
+  }finally{
+    btn.disabled=false;btn.querySelector('.req-submit-label').textContent='Send for approval';
+  }
+}
+
+async function toggleTaskDone(id,done,documented,docNote){
+  const a=assignments.find(x=>+x.id===+id);
+  if(!a)return;
+  const previous=a.completed_at;
+  // Optimistic update: change appearance IMMEDIATELY, before the server has
+  // responded, so it never feels like nothing happened when you press it.
+  a.completed_at=done?new Date().toISOString():null;
+  render();
+  toast(done?'Marked as done ✓':'Undone ↩');
+  try{
+    const r=await api('/api/assignments/'+id+'/complete',{method:'PUT',body:JSON.stringify({completed:done,documented:!!documented,doc_note:docNote||null})});
+    console.log('[Mark as done] server response:',r);
+    if(!r||!r.ok){
+      a.completed_at=previous;render();
+      console.error('Complete-toggle failed:',r);
+      toast((r&&r.data&&r.data.error)||'Could not save — reverted the change');
+    }
+  }catch(e){
+    a.completed_at=previous;render();
+    console.error('Complete-toggle error:',e);
+    toast('No connection — the change was not saved');
+  }
+}
+
+// DOKUMENTATIONS-BEKRÆFTELSE (skal bekræftes før en opgave kan markeres færdig)
+let docModalTaskId=null;
+function openDocModal(id){
+  docModalTaskId=id;
+  document.getElementById('doc-moisture').checked=false;
+  document.getElementById('doc-level').checked=false;
+  document.getElementById('doc-other').checked=false;
+  document.getElementById('doc-note').value='';
+  document.getElementById('doc-feedback').className='req-feedback';
+  document.getElementById('doc-modal').classList.add('open');
+}
+function closeDocModal(){document.getElementById('doc-modal').classList.remove('open');docModalTaskId=null;}
+function closeDocOnBackdrop(e){if(e.target===document.getElementById('doc-modal'))closeDocModal();}
+function openRulesModal(){document.getElementById('rules-modal').classList.add('open');}
+function closeRulesModal(){document.getElementById('rules-modal').classList.remove('open');}
+function closeRulesOnBackdrop(e){if(e.target===document.getElementById('rules-modal'))closeRulesModal();}
+async function confirmDocumentationAndComplete(){
+  const feedback=document.getElementById('doc-feedback');
+  const allChecked=document.getElementById('doc-moisture').checked&&document.getElementById('doc-level').checked&&document.getElementById('doc-other').checked;
+  if(!allChecked){
+    feedback.textContent='Bekræft alle tre punkter, før du fortsætter';
+    feedback.className='req-feedback show error';
+    return;
+  }
+  const id=docModalTaskId;
+  const a=assignments.find(x=>+x.id===+id);
+  const note=document.getElementById('doc-note').value.trim();
+  closeDocModal();
+  await toggleTaskDone(id,true,true,note);
+  // Åbn JobTreads filer for denne sag, så billeder/dokumenter kan lægges direkte ind med det rigtige tag.
+  if(a&&a.job_id){
+    window.open('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files','_blank');
+  }else{
+    toast('Ingen JobTread-sag koblet på denne opgave — filer kan ikke åbnes automatisk');
+  }
+}
+
+function weekKeyOf(d){const x=new Date(d);x.setHours(12,0,0,0);const day=x.getDay()||7;x.setDate(x.getDate()+4-day);const yearStart=new Date(x.getFullYear(),0,1);const weekNo=Math.ceil((((x-yearStart)/86400000)+1)/7);const m=monday(d);return 'w'+m.getFullYear()+'-'+String(weekNo).padStart(2,'0')}
+async function renderWeeklyNote(){
+  const wk=weekKeyOf(getWeekDays(weekOffset)[0]);
+  const banner=document.getElementById('weekly-note-banner');
+  if(weeklyNoteCache.has(wk)){paintWeeklyNote(weeklyNoteCache.get(wk));return;}
+  try{
+    const r=await api('/api/notes/my?week_key='+encodeURIComponent(wk));
+    const note=r&&r.ok&&r.data&&r.data[0]?r.data[0].note:null;
+    weeklyNoteCache.set(wk,note);
+    paintWeeklyNote(note);
+  }catch(e){}
+}
+function paintWeeklyNote(note){
+  const banner=document.getElementById('weekly-note-banner');
+  banner.innerHTML=note&&note.trim()?'<div class="wnote-banner"><b>Note from the office this week</b>'+esc(note)+'</div>':'';
+}
+
+function showWholeWeek(){selectedDate=null;render()}
+function selectDay(date){selectedDate=date;render()}
+function dayName(d){return d.toLocaleDateString('en-GB',{weekday:'long'})}
+function render(){
+  const days=getWeekDays(weekOffset); if(selectedDate&&!days.some(d=>iso(d)===selectedDate))selectedDate=null;
+  document.getElementById('week-label').textContent='Week '+weekNumber(days[0]);
+  document.getElementById('week-sub').textContent=days[0].toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' – '+days[4].toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  document.getElementById('whole-week-btn').classList.toggle('primary',!selectedDate);
+  document.getElementById('week-overview').innerHTML=days.map((d,i)=>{const date=iso(d),list=tasksFor(date),active=selectedDate===date;return `<button class="day-chip ${active?'active':''} ${list.length?'has':''}" onclick="selectDay('${date}')"><div class="d1">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]}</div><div class="d2">${d.getDate()}</div><div class="d3">${list.length?list.length+' task'+(list.length!==1?'s':''):''}</div></button>`}).join('');
+  const selected=selectedDate?days.filter(d=>iso(d)===selectedDate):days;
+  document.getElementById('selected-notice').innerHTML=selectedDate?`<div class="view-notice"><span>Showing only <strong>${dayName(selected[0])} ${selected[0].toLocaleDateString('en-GB',{day:'numeric',month:'long'})}</strong>.</span><button onclick="showWholeWeek()">Show whole week</button></div>`:'';
+  bookingNotes.clear();weatherItems.clear();
+  let out='',total=0;
+  selected.forEach(d=>{const date=iso(d),list=tasksFor(date);total+=list.length;out+=`<section class="day-section${sameDay(d)?' today-section':''}" id="day-${date}"><div class="day-head"><span class="day-name">${dayName(d)}</span><span class="day-date">${d.toLocaleDateString('en-GB',{day:'numeric',month:'long'})}</span>${sameDay(d)?'<span class="today">Today</span>':''}</div>`;
+    if(!list.length){out+='<div class="empty-day">No tasks scheduled</div>';}else{
+      let shownUntimedHeader=false;
+      list.forEach((a,idx)=>{
+      const hasTime=!!String(a.start_time||'').trim();
+      if(!hasTime&&!shownUntimedHeader){shownUntimedHeader=true;out+='<div class="untimed-divider">⏳ No fixed time — you decide the order</div>';}
+      const t=TYPES[a.type_guess]||TYPES.other;const address=String(a.job_address||'').trim();const phone=phoneValue(a);const maps=address?'https://maps.google.com/?q='+encodeURIComponent(address):'';const weatherId='w-'+String(a.id)+'-'+date.replace(/[^0-9]/g,'');weatherItems.set(weatherId,{address:address,date:date,lat:a.job_lat,lng:a.job_lng});bookingNotes.set(String(a.id),{note:a.notes,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||'')});
+      const mapButton=maps?`<a class="action maps" href="${maps}" target="_blank" rel="noopener">📍 Maps</a>`:`<button class="action maps" type="button" onclick="toast('No address on this task')">📍 Maps</button>`;
+      const addressMarkup=address?(maps?`<a href="${maps}" target="_blank" rel="noopener">${esc(address)}</a>`:esc(address)):'No address';
+      const phoneMarkup=phone?`<a href="${esc(phoneHref(phone))}">${esc(phone)}</a>`:'<span>No customer phone number</span>';
+      const noteId=Number(a.id)||0;
+      const jobFilesLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files'):'https://app.jobtread.com';
+      const jobBillLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/documents'):'https://app.jobtread.com';
+      const jobFormsLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/forms'):'https://app.jobtread.com';
+      const timeChip=hasTime?`<span class="time-chip">⏰ ${esc(a.start_time)}</span>`:`<span class="time-chip untimed">🕓 Self-scheduled</span>`;
+      const isDone=!!a.completed_at;
+      // En "hel dag" bookes som 1.0 i planlægningen, og regnes her som 9 timers arbejde
+      // (i stedet for at vise et abstrakt "dage"-tal, som ikke sagde medarbejderne noget).
+      const hoursNum=Math.round(Number(a.days||1)*9*4)/4;
+      const hoursLabel=(hoursNum%1===0?hoursNum:hoursNum.toFixed(2).replace(/0+$/,'').replace(/\.$/,'').replace('.',',')) + ' timer';
+      const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:`<button class="action done-btn" type="button" onclick="openDocModal(${noteId})">✅ Mark as done</button>`;
+      const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse fra JobTread'}</div><div class="task-description-body">${esc(a.task_description).replace(/\n/g,'<br>')}</div></div>`:'';
+      // DEMO: en opgave der hører til en sag (task_project_id sat — se
+      // mirrorProjectTaskToPool i server.js) styres nu fra Martins eget program,
+      // IKKE fra JobTread. Der findes intet rigtigt JobTread-job at linke til, så
+      // "Read about the task"/"Job files"/"Upload Bill" giver ikke mening her —
+      // og "Track your time"/"Kvalitetskontrol form" åbner en formular i selve
+      // appen (mod sagen) i stedet for at sende medarbejderen ud til JobTread.
+      const isCaseTask=!!a.task_project_id;
+      const billIcon=isCaseTask?'':`<a class="upload-bill-icon" href="${esc(jobBillLink)}" target="_blank" rel="noopener" title="Upload regning på denne opgave i JobTread">🧾 Upload Bill</a>`;
+      const caseIcon=isCaseTask?`<span class="upload-bill-icon" style="background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE" title="Denne opgave hører til en sag i dit eget program">📁 Sag</span>`:'';
+      const caseActions=isCaseTask?`
+        <button class="action info" type="button" onclick="openProjectDashboard(${a.task_project_id})">🔗 Se sagen</button>
+        <button class="action time" type="button" onclick="openTimeFormForTask(${a.task_project_id})">⏱ Registrér tid</button>
+        <button class="action qc" type="button" onclick="openQaPickerForTask(${a.task_project_id})">🛡 Udfyld KS-formular</button>`:`
+        <a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Read about the task</a>
+        <a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Job files</a>
+        <a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track your time</a>
+        <a class="action qc" href="${esc(jobFormsLink)}" target="_blank" rel="noopener">🛡 Kvalitetskontrol form</a>`;
+      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}${billIcon}${caseIcon}</div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button>${caseActions}<button class="action rules" type="button" onclick="openRulesModal()">📜 Regler og lovgivning</button>${doneBtn}</div></article>`;
+    });}
+    out+='</section>';});
+  document.getElementById('tasks-container').innerHTML=total?out:'<div class="empty"><div class="empty-icon">📅</div><h3>No tasks in this view</h3><p>Choose another day or show the whole week.</p></div>';
+  hydrateWeather();
+  hydrateChecklists();
+  renderWeeklyNote();
+  syncTopbarHeight();
+}
+function changeWeek(n){weekOffset+=n;selectedDate=null;render()}
+function goToday(){weekOffset=0;selectedDate=iso(new Date());render()}
+async function loadAll(){const a=await api('/api/assignments/my');assignments=a&&a.ok?a.data:[];render()}
+// SKUB-LIGNENDE NOTIFIKATIONER: poller hvert 60. sekund for nye beskeder om
+// planændringer (fx "din opgave i morgen er flyttet"). Ingen ægte OS-push (det kræver
+// en service worker + browser-tilladelse, som er et større, separat stykke arbejde) —
+// men fanger ændringer inden for et minut, mens man har appen åben, og viser en
+// øjeblikkelig toast + en rød tæller på klokken.
+var myNotifs=[],lastSeenNotifIds={};
+async function refreshMyNotifications(showToastForNew){
+  var r=await api('/api/my-notifications');
+  if(!r||!r.ok)return;
+  var list=r.data||[];
+  if(showToastForNew){
+    var isFirstLoad=Object.keys(lastSeenNotifIds).length===0;
+    list.forEach(function(n){
+      if(!lastSeenNotifIds[n.id]&&!isFirstLoad)toast(n.title+(n.body?': '+n.body:''));
+    });
+  }
+  list.forEach(function(n){lastSeenNotifIds[n.id]=true;});
+  myNotifs=list;
+  renderNotifBell();
+}
+function renderNotifBell(){
+  var unread=myNotifs.filter(function(n){return !n.read_at;});
+  var badge=document.getElementById('notif-bell-count');
+  if(unread.length){badge.style.display='inline-block';badge.textContent=unread.length;}
+  else badge.style.display='none';
+  var dd=document.getElementById('notif-dropdown');
+  if(dd.style.display!=='none')renderNotifDropdownList();
+}
+function renderNotifDropdownList(){
+  var dd=document.getElementById('notif-dropdown');
+  if(!myNotifs.length){dd.innerHTML='<div style="padding:18px;text-align:center;color:#94a3b8;font-size:12px">Ingen beskeder endnu</div>';return;}
+  dd.innerHTML=myNotifs.map(function(n){
+    return '<div onclick="markNotifRead('+n.id+')" style="padding:12px 14px;border-bottom:1px solid #F1F5F9;cursor:pointer;background:'+(n.read_at?'#fff':'#EFF6FF')+'">'+
+      '<div style="font-weight:800;font-size:12px;color:#1a1a1a">'+(n.read_at?'':'🔵 ')+esc(n.title)+'</div>'+
+      (n.body?'<div style="font-size:11.5px;color:#475569;margin-top:2px">'+esc(n.body)+'</div>':'')+
+      '<div style="font-size:9.5px;color:#94a3b8;margin-top:4px">'+esc(String(n.created_at||'').slice(0,16).replace('T',' '))+'</div></div>';
+  }).join('');
+}
+function toggleNotifDropdown(){
+  var dd=document.getElementById('notif-dropdown');
+  var willOpen=dd.style.display==='none';
+  dd.style.display=willOpen?'block':'none';
+  if(willOpen)renderNotifDropdownList();
+}
+function markNotifRead(id){
+  api('/api/my-notifications/'+id+'/read',{method:'PUT'});
+  var n=myNotifs.find(function(x){return x.id===id;});
+  if(n)n.read_at=new Date().toISOString();
+  renderNotifBell();
+}
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#notif-bell-btn')&&!e.target.closest('#notif-dropdown')){
+    document.getElementById('notif-dropdown').style.display='none';
+  }
+});
+refreshMyNotifications(false);
+setInterval(function(){refreshMyNotifications(true);},60000);
+
+// ÆGTE PUSH-NOTIFIKATIONER: virker selvom appen er lukket/telefonen er i lommen —
+// i modsætning til pollingen ovenfor, som kun opdager nyt mens siden er åben.
+// Kræver at browseren understøtter det (gør på stort set alt undtagen iPhone/iPad
+// medmindre siden er "føjet til hjemmeskærm" — det er en begrænsning i Apples
+// Safari, ikke noget vi kan omgå herfra).
+function urlBase64ToUint8Array(base64String){
+  var padding='='.repeat((4-base64String.length%4)%4);
+  var base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+  var rawData=atob(base64),outputArray=new Uint8Array(rawData.length);
+  for(var i=0;i<rawData.length;++i)outputArray[i]=rawData.charCodeAt(i);
+  return outputArray;
+}
+function pushSupported(){return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;}
+async function registerPushServiceWorker(){
+  try{return await navigator.serviceWorker.register('/sw.js');}
+  catch(e){console.error('Service worker kunne ikke registreres',e);return null;}
+}
+async function enablePushNotifications(){
+  if(!pushSupported()){toast('Din browser understøtter desværre ikke push-notifikationer','⚠');return;}
+  var btn=document.getElementById('push-enable-btn');
+  btn.disabled=true;
+  try{
+    var permission=await Notification.requestPermission();
+    if(permission!=='granted'){toast('Du sagde nej til notifikationer — du kan slå det til igen i browserens indstillinger','⚠');btn.disabled=false;return;}
+    var reg=await registerPushServiceWorker();
+    if(!reg){btn.disabled=false;return;}
+    var keyRes=await api('/api/push/public-key');
+    if(!keyRes||!keyRes.ok){toast('Kunne ikke hente notifikations-nøgle fra serveren','❌');btn.disabled=false;return;}
+    var sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(keyRes.data.publicKey)});
+    await api('/api/push/subscribe',{method:'POST',body:JSON.stringify(sub.toJSON())});
+    toast('Notifikationer er slået til 🎉','✓');
+    btn.style.display='none';
+  }catch(e){console.error('Push-tilmelding fejlede',e);toast('Kunne ikke slå notifikationer til','❌');}
+  btn.disabled=false;
+}
+async function initPushUi(){
+  if(!pushSupported())return;
+  if(Notification.permission==='denied')return; // brugeren har sagt nej — spam ikke med knappen
+  if(Notification.permission==='granted'){
+    // Allerede givet tilladelse tidligere (fx på denne enhed før) — sørg stille for
+    // at abonnementet rent faktisk er gemt på serveren, uden at genvise knappen.
+    var reg=await registerPushServiceWorker();
+    if(!reg)return;
+    var existing=await reg.pushManager.getSubscription();
+    if(!existing){
+      var keyRes=await api('/api/push/public-key');
+      if(keyRes&&keyRes.ok){
+        try{existing=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(keyRes.data.publicKey)});}catch(e){}
+      }
+    }
+    if(existing)api('/api/push/subscribe',{method:'POST',body:JSON.stringify(existing.toJSON())});
+    return;
+  }
+  document.getElementById('push-enable-btn').style.display='inline-flex';
+}
+initPushUi();
+
+// TEAM & MAP — only shown to employees Martin has explicitly flagged (or admins).
+// The flag can change without the person logging out again, so we re-check it
+// against the server on load instead of trusting the possibly-stale localStorage copy.
+async function refreshTeamOverviewAccess(){
+  var r=await api('/api/auth/me');
+  if(!r||!r.ok)return;
+  var can=!!r.data.can_view_team_overview||user.role==='admin';
+  document.getElementById('team-map-btn').style.display=can?'inline-flex':'none';
+}
+refreshTeamOverviewAccess();
+
+var teamMap={map:null,markers:null,dateStr:null};
+function openTeamMap(){
+  teamMap.dateStr=iso(new Date());
+  document.getElementById('tm-date').value=teamMap.dateStr;
+  document.getElementById('team-map-modal').classList.add('open');
+  if(!teamMap.map){
+    teamMap.map=L.map('tm-map',{scrollWheelZoom:false}).setView([56.2,10.5],7);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap, &copy; CARTO',maxZoom:19}).addTo(teamMap.map);
+    teamMap.markers=L.layerGroup().addTo(teamMap.map);
+  }
+  setTimeout(function(){teamMap.map.invalidateSize();},60);
+  loadTeamOverview();
+}
+function closeTeamMap(){document.getElementById('team-map-modal').classList.remove('open')}
+function closeTeamMapOnBackdrop(e){if(e.target===document.getElementById('team-map-modal'))closeTeamMap()}
+var TM_DAY_NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+async function loadTeamOverview(){
+  document.getElementById('tm-week-list').innerHTML='<p style="color:var(--muted)">Loading…</p>';
+  var r=await api('/api/team/overview?date='+encodeURIComponent(teamMap.dateStr));
+  if(!r||!r.ok){document.getElementById('tm-week-list').innerHTML='<p style="color:var(--muted)">'+((r&&r.data&&r.data.error)||'Could not load the team overview.')+'</p>';return;}
+  var d=r.data;
+  teamMap.markers.clearLayers();
+  var pts=[];
+  (d.employees||[]).forEach(function(emp){
+    var color=emp.color||'#2563eb';
+    (emp.today||[]).forEach(function(item){
+      if(item.job_lat==null||item.job_lng==null)return;
+      var pt=[+item.job_lat,+item.job_lng];
+      pts.push(pt);
+      L.circleMarker(pt,{radius:9,color:'#fff',weight:2,fillColor:color,fillOpacity:.95}).addTo(teamMap.markers)
+        .bindPopup('<div class="tm-pin-popup"><b>'+esc(emp.name)+'</b><br>'+esc(item.job_name||item.task_name||'Task')+(item.start_time?' · '+esc(item.start_time):'')+(item.job_address?'<br>'+esc(item.job_address):'')+'</div>');
+    });
+  });
+  if(pts.length)teamMap.map.fitBounds(L.latLngBounds(pts).pad(.3));
+  var weekDates=[];for(var i=0;i<7;i++){var dt=new Date(d.weekStart+'T12:00:00');dt.setDate(dt.getDate()+i);weekDates.push(iso(dt));}
+  var html=(d.employees||[]).map(function(emp){
+    var color=emp.color||'#2563eb';
+    var rows=weekDates.map(function(ds){
+      var items=emp.week&&emp.week[ds]||[];
+      var dt=new Date(ds+'T12:00:00');
+      var label=TM_DAY_NAMES[dt.getDay()]+' '+dt.getDate()+'/'+(dt.getMonth()+1)+(ds===teamMap.dateStr?' •':'');
+      var body=items.length?items.map(function(it){return '<div class="tm-day-item">'+(it.start_time?'<span class="tm-time">'+esc(it.start_time)+'</span> · ':'')+esc(it.job_name||it.task_name||'Task')+(it.job_address?' · '+esc(it.job_address):'')+'</div>';}).join(''):'<div class="tm-day-free">Free</div>';
+      return '<div class="tm-day-row"><div class="tm-day-label">'+label+'</div><div class="tm-day-items">'+body+'</div></div>';
+    }).join('');
+    return '<div class="tm-person"><div class="tm-person-head"><span style="width:9px;height:9px;border-radius:50%;background:'+color+';display:inline-block"></span>'+esc(emp.name)+'</div>'+rows+'</div>';
+  }).join('')||'<p style="color:var(--muted)">No active employees found.</p>';
+  document.getElementById('tm-week-list').innerHTML=html;
+}
+function tmShiftDay(n){var d=new Date(teamMap.dateStr+'T12:00:00');d.setDate(d.getDate()+n);teamMap.dateStr=iso(d);document.getElementById('tm-date').value=teamMap.dateStr;loadTeamOverview();}
+document.getElementById('tm-prev').onclick=function(){tmShiftDay(-1);};
+document.getElementById('tm-next').onclick=function(){tmShiftDay(1);};
+document.getElementById('tm-today').onclick=function(){teamMap.dateStr=iso(new Date());document.getElementById('tm-date').value=teamMap.dateStr;loadTeamOverview();};
+document.getElementById('tm-date').onchange=function(){teamMap.dateStr=this.value;loadTeamOverview();};
+// Holder de klæbende dag-overskrifter lige under topbaren, uanset om topbaren
+// er 1 eller 2 linjer høj (den ombryder på smalle skærme/mange handlinger).
+function syncTopbarHeight(){
+  var bar=document.querySelector('.topbar');
+  if(bar)document.documentElement.style.setProperty('--topbar-h',bar.offsetHeight+'px');
+}
+window.addEventListener('resize',syncTopbarHeight);
+loadAll();
+syncTopbarHeight();
+</script>
+</body>
+</html>
