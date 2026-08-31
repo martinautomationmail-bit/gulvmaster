@@ -132,7 +132,7 @@
 <body>
 <header class="topbar">
   <div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div>
-  <div class="topbar-actions"><button class="lib-btn" onclick="openFindTask()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find a task</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button>
+  <div class="topbar-actions"><button class="lib-btn" onclick="openFindTask()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find a task</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button><button class="lib-btn" onclick="openProjectsModal()"><span class="lib-btn-icon">🏗️</span><span class="lib-btn-label"> Projekter</span></button>
     <div style="position:relative;display:inline-block">
       <button class="lib-btn" id="notif-bell-btn" onclick="toggleNotifDropdown()"><span class="lib-btn-icon">🔔</span><span id="notif-bell-count" style="display:none;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;margin-left:4px"></span></button>
       <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:300px;max-height:360px;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(15,34,64,.25);z-index:500;color:#1a1a1a"></div>
@@ -151,6 +151,15 @@
 </main>
 <div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div></div></div></div>
 <div id="library-modal" class="modal-backdrop" onclick="closeLibraryOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📁 Guides & floor plans</div><button class="modal-close" onclick="closeLibrary()">Close</button></div><div class="modal-body" id="library-body"></div></div></div>
+<!-- PROJEKTER — sager der er blevet til efter en kunde har underskrevet et
+     tilbud. Herfra kan medarbejdere registrere tid (note + billede påkrævet),
+     tilføje billeder til sagen, og udfylde KS-formularer. -->
+<div id="projects-modal" class="modal-backdrop" onclick="closeProjectsOnBackdrop(event)">
+  <div class="modal" style="width:min(520px,96vw)">
+    <div class="modal-head"><div class="modal-title" id="pm-title">🏗️ Projekter</div><button class="modal-close" onclick="closeProjectsModal()">Close</button></div>
+    <div class="modal-body" id="pm-body"></div>
+  </div>
+</div>
 <div id="team-map-modal" class="modal-backdrop" onclick="closeTeamMapOnBackdrop(event)">
   <div class="modal" style="width:min(760px,96vw)">
     <div class="modal-head"><div class="modal-title">🗺️ Team &amp; map</div><button class="modal-close" onclick="closeTeamMap()">Close</button></div>
@@ -480,6 +489,199 @@ async function openLibrary(){
 }
 function closeLibrary(){document.getElementById('library-modal').classList.remove('open')}
 function closeLibraryOnBackdrop(e){if(e.target===document.getElementById('library-modal'))closeLibrary()}
+
+// ══════════════════════════════════════════════════════════════
+// PROJEKTER — sager der bliver oprettet automatisk når en kunde underskriver
+// et tilbud. Herfra kan medarbejdere registrere tid (note + billede
+// PÅKRÆVET som dokumentation), tilføje billeder til sagen, og udfylde
+// KS-formularer Martin har bygget.
+// ══════════════════════════════════════════════════════════════
+let pmState={view:'list',projects:[],current:null,qaTemplates:[],qaAnswering:null};
+function openProjectsModal(){
+  pmState.view='list';
+  document.getElementById('projects-modal').classList.add('open');
+  pmLoadList();
+}
+function closeProjectsModal(){document.getElementById('projects-modal').classList.remove('open')}
+function closeProjectsOnBackdrop(e){if(e.target===document.getElementById('projects-modal'))closeProjectsModal()}
+function pmFeedback(id,msg,ok){const el=document.getElementById(id);el.textContent=msg;el.className='req-feedback show '+(ok?'success':'error')}
+function pmReadFileAsDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
+function fmtPmDate(d){if(!d)return '';const parts=String(d).slice(0,10).split('-');return parts.length===3?parts[2]+'/'+parts[1]:d}
+async function pmLoadList(){
+  const body=document.getElementById('pm-body');
+  document.getElementById('pm-title').textContent='🏗️ Projekter';
+  body.innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  const r=await api('/api/projects');
+  pmState.projects=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
+  pmRenderList();
+}
+function pmRenderList(){
+  pmState.view='list';
+  document.getElementById('pm-title').textContent='🏗️ Projekter';
+  const body=document.getElementById('pm-body');
+  const STATUS={active:'🔧 Aktivt',done:'✅ Afsluttet',archived:'📦 Arkiveret'};
+  const list=pmState.projects.filter(p=>p.status!=='archived');
+  if(!list.length){body.innerHTML='<p class="modal-empty">Ingen projekter endnu — de oprettes automatisk når en kunde underskriver et tilbud.</p>';return;}
+  body.innerHTML=list.map(p=>`
+    <div class="ft-result" onclick="pmOpenProject(${p.id})">
+      <div class="ft-result-title">${esc(p.name)}</div>
+      <div class="ft-result-sub">${STATUS[p.status]||esc(p.status)}${p.customer_address?' · '+esc(p.customer_address):''}</div>
+    </div>`).join('');
+}
+async function pmOpenProject(id){
+  const body=document.getElementById('pm-body');
+  body.innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  const r=await api('/api/projects/'+id);
+  if(!r||!r.ok){toast('Kunne ikke hente projektet');pmRenderList();return;}
+  pmState.current=r.data;
+  pmRenderDetail();
+}
+function pmRenderDetail(){
+  pmState.view='detail';
+  const p=pmState.current;
+  document.getElementById('pm-title').textContent=esc(p.name);
+  const body=document.getElementById('pm-body');
+  const myEntries=(p.time_entries||[]).filter(t=>+t.user_id===+user.id).slice(0,8);
+  const entriesHtml=myEntries.length?myEntries.map(t=>`
+    <div class="file-item"><div><span class="file-cat">${esc(fmtPmDate(t.entry_date))} · ${t.minutes} min</span><br><span style="font-size:12px">${esc(t.note)}</span></div></div>
+  `).join(''):'<p class="modal-empty" style="margin:8px 0;padding:14px">Du har ikke registreret tid på denne sag endnu.</p>';
+  body.innerHTML=`
+    <button class="small-btn" onclick="pmRenderList()" style="margin-bottom:12px">← Alle projekter</button>
+    ${p.customer_address?`<div class="detail-line" style="margin-bottom:10px">📍 <span>${esc(p.customer_address)}</span></div>`:''}
+    <div class="actions" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+      <button class="action time" type="button" onclick="pmOpenTimeForm()">⏱ Registrér tid</button>
+      <button class="action files" type="button" onclick="pmOpenPhotoForm()">📷 Tilføj billede</button>
+      <button class="action qc" type="button" style="grid-column:1/-1" onclick="pmOpenQaPicker()">🛡 Udfyld KS-formular</button>
+    </div>
+    <div class="tm-section-label">Dine seneste tidsregistreringer</div>
+    ${entriesHtml}
+  `;
+}
+function pmOpenTimeForm(){
+  pmState.view='time-form';
+  document.getElementById('pm-title').textContent='⏱ Registrér tid';
+  const p=pmState.current;
+  const lineOptions=(p.quote_line_options||[]).map(l=>`<option value="${l.id}">${esc(l.description)}</option>`).join('');
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>
+    <label class="req-label">Dato</label>
+    <input class="req-input" type="date" id="pmt-date" value="${iso(new Date())}">
+    <label class="req-label">Minutter brugt</label>
+    <input class="req-input" type="number" id="pmt-minutes" min="1" placeholder="Fx 120">
+    <label class="req-label">Note — hvad blev der lavet</label>
+    <textarea class="req-textarea" id="pmt-note" rows="3" placeholder="Beskriv det udførte arbejde..."></textarea>
+    <label class="req-label">Billede — påkrævet som dokumentation</label>
+    <input class="req-input" type="file" accept="image/*" capture="environment" id="pmt-photo">
+    <label class="req-label">Post fra tilbud — valgfrit</label>
+    <select class="req-input" id="pmt-line"><option value="">Ingen valgt</option>${lineOptions}</select>
+    <label class="req-label">Købt materialer — valgfrit</label>
+    <input class="req-input" id="pmt-materials" placeholder="Fx 'Lim, 2 spande, Bilka, 340 kr'">
+    <div id="pmt-feedback" class="req-feedback"></div>
+    <button class="req-submit" type="button" id="pmt-submit" onclick="pmSubmitTime()">Gem tidsregistrering</button>
+  `;
+}
+async function pmSubmitTime(){
+  const minutes=Number(document.getElementById('pmt-minutes').value);
+  const note=document.getElementById('pmt-note').value.trim();
+  const file=document.getElementById('pmt-photo').files[0];
+  const date=document.getElementById('pmt-date').value;
+  const lineId=document.getElementById('pmt-line').value;
+  const materials=document.getElementById('pmt-materials').value.trim();
+  if(!minutes||minutes<=0){pmFeedback('pmt-feedback','Angiv hvor mange minutter der er brugt',false);return}
+  if(!note){pmFeedback('pmt-feedback','Skriv en note om det udførte arbejde',false);return}
+  if(!file){pmFeedback('pmt-feedback','Upload et billede som dokumentation',false);return}
+  const btn=document.getElementById('pmt-submit');btn.disabled=true;btn.textContent='Gemmer…';
+  try{
+    const dataUrl=await pmReadFileAsDataUrl(file);
+    const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
+    if(!up||!up.ok){pmFeedback('pmt-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade billedet',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
+    const r=await api('/api/projects/'+pmState.current.id+'/time-entries',{method:'POST',body:JSON.stringify({minutes,note,photo_url:up.data.url,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date})});
+    if(r&&r.ok){toast('Tid registreret ✓');await pmOpenProject(pmState.current.id)}
+    else{pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
+  }catch(e){pmFeedback('pmt-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
+}
+function pmOpenPhotoForm(){
+  pmState.view='photo-form';
+  document.getElementById('pm-title').textContent='📷 Tilføj billede';
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>
+    <label class="req-label">Billede</label>
+    <input class="req-input" type="file" accept="image/*" capture="environment" id="pmp-photo">
+    <label class="req-label">Note — valgfrit</label>
+    <input class="req-input" id="pmp-caption" placeholder="Fx 'Efter slibning, stue'">
+    <div id="pmp-feedback" class="req-feedback"></div>
+    <button class="req-submit" type="button" id="pmp-submit" onclick="pmSubmitPhoto()">Upload billede</button>
+  `;
+}
+async function pmSubmitPhoto(){
+  const file=document.getElementById('pmp-photo').files[0];
+  const caption=document.getElementById('pmp-caption').value.trim();
+  if(!file){pmFeedback('pmp-feedback','Vælg et billede',false);return}
+  const btn=document.getElementById('pmp-submit');btn.disabled=true;btn.textContent='Uploader…';
+  try{
+    const dataUrl=await pmReadFileAsDataUrl(file);
+    const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
+    if(!up||!up.ok){pmFeedback('pmp-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade billedet',false);btn.disabled=false;btn.textContent='Upload billede';return}
+    const r=await api('/api/projects/'+pmState.current.id+'/photos',{method:'POST',body:JSON.stringify({url:up.data.url,caption:caption||null})});
+    if(r&&r.ok){toast('Billede tilføjet ✓');await pmOpenProject(pmState.current.id)}
+    else{pmFeedback('pmp-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Upload billede'}
+  }catch(e){pmFeedback('pmp-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Upload billede'}
+}
+async function pmOpenQaPicker(){
+  pmState.view='qa-picker';
+  document.getElementById('pm-title').textContent='🛡 Vælg KS-formular';
+  const body=document.getElementById('pm-body');
+  body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p style="color:var(--muted)">Henter…</p>';
+  const r=await api('/api/qa-templates');
+  pmState.qaTemplates=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
+  if(!pmState.qaTemplates.length){body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p class="modal-empty">Der er ikke oprettet nogen KS-skabeloner endnu.</p>';return}
+  body.innerHTML=`<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>`+
+    pmState.qaTemplates.map(t=>`<div class="ft-result" onclick="pmOpenQaForm(${t.id})"><div class="ft-result-title">${esc(t.name)}</div><div class="ft-result-sub">${(t.fields||[]).length} felter</div></div>`).join('');
+}
+function pmOpenQaForm(templateId){
+  const t=pmState.qaTemplates.find(x=>x.id===templateId);
+  if(!t)return;
+  pmState.qaAnswering=t;
+  pmState.view='qa-form';
+  document.getElementById('pm-title').textContent=esc(t.name);
+  const fieldsHtml=(t.fields||[]).map((f,i)=>{
+    if(f.type==='check')return `<label class="doc-check"><input type="checkbox" data-qa-idx="${i}"><span><strong>${esc(f.label)}</strong></span></label>`;
+    if(f.type==='number')return `<label class="req-label">${esc(f.label)}</label><input class="req-input" type="number" data-qa-idx="${i}">`;
+    if(f.type==='photo')return `<label class="req-label">${esc(f.label)}</label><input class="req-input" type="file" accept="image/*" capture="environment" data-qa-idx="${i}">`;
+    return `<label class="req-label">${esc(f.label)}</label><input class="req-input" data-qa-idx="${i}">`;
+  }).join('');
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmOpenQaPicker()" style="margin-bottom:12px">← Tilbage</button>
+    ${fieldsHtml}
+    <div id="pmq-feedback" class="req-feedback"></div>
+    <button class="req-submit" type="button" id="pmq-submit" onclick="pmSubmitQa()">Indsend KS-formular</button>
+  `;
+}
+async function pmSubmitQa(){
+  const t=pmState.qaAnswering;
+  const btn=document.getElementById('pmq-submit');btn.disabled=true;btn.textContent='Indsender…';
+  try{
+    const answers=[];
+    for(let i=0;i<(t.fields||[]).length;i++){
+      const f=t.fields[i];
+      const el=document.querySelector('[data-qa-idx="'+i+'"]');
+      let value=null;
+      if(f.type==='check')value=el.checked;
+      else if(f.type==='photo'){
+        const file=el.files[0];
+        if(file){
+          const dataUrl=await pmReadFileAsDataUrl(file);
+          const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'qa/'+pmState.current.id})});
+          value=(up&&up.ok)?up.data.url:null;
+        }
+      } else value=el.value;
+      answers.push({label:f.label,type:f.type,value});
+    }
+    const r=await api('/api/projects/'+pmState.current.id+'/qa-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers})});
+    if(r&&r.ok){toast('KS-formular indsendt ✓');await pmOpenProject(pmState.current.id)}
+    else{pmFeedback('pmq-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
+  }catch(e){pmFeedback('pmq-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
+}
 
 function tomorrowISO(){const d=new Date();d.setDate(d.getDate()+1);return iso(d)}
 function reqField(id){return document.querySelector('#request-modal #'+id)}

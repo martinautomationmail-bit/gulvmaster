@@ -738,6 +738,14 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-segtabs{display:flex;gap:22px;border-bottom:1px solid var(--bly-border-soft);margin-bottom:14px}
 .bly-segtab{border:0;background:transparent;padding:0 0 11px;font-size:13px;font-weight:700;color:var(--bly-sub);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
 .bly-segtab.active{color:var(--bly-ink);border-bottom-color:var(--bly-ink)}
+.pd-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.pd-photo-thumb{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bly-border-soft);aspect-ratio:1/1;background:#F4F6FB}
+.pd-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.pd-photo-thumb .pd-photo-del{position:absolute;top:4px;right:4px;background:rgba(17,19,24,.65);color:#fff;border:0;border-radius:6px;width:22px;height:22px;font-size:11px;cursor:pointer}
+.pd-task-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bly-border-soft)}
+.pd-task-row input.input{padding:6px 8px;font-size:12.5px}
+.pd-task-bar-wrap{flex:1;min-width:120px;height:8px;background:var(--bly-border-soft);border-radius:4px;position:relative;overflow:hidden}
+.pd-task-bar{position:absolute;top:0;bottom:0;left:0;background:#5B8DEF;border-radius:4px}
 .bly-util-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--bly-sub);margin-bottom:14px}
 .bly-util-row .left{display:flex;align-items:center;gap:14px}
 .bly-util-row a{color:var(--bly-accent);text-decoration:none;font-weight:700}
@@ -818,8 +826,8 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-customer-result:hover{background:var(--bly-hover)}
 .qe-lines-head{display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px}
 .qe-line{border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:12px;margin-bottom:8px;background:#FAFAFB}
-.qe-line-top{display:grid;grid-template-columns:1fr 90px 30px;gap:8px;align-items:center;margin-bottom:8px}
-.qe-line-nums{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px}
+.qe-line-top{display:grid;grid-template-columns:1fr 80px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
+.qe-line-nums{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .qe-line-num-label{font-size:9px;color:var(--bly-sub);font-weight:700;text-transform:uppercase}
 .qe-line-margin{font-size:10.5px;font-weight:800;margin-top:2px}
 .qe-remove-line{border:0;background:transparent;color:var(--bly-dot-overdue);cursor:pointer;font-size:15px}
@@ -1595,7 +1603,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <nav class="nav">
   <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name">Gulv Master — Admin</span></button>
-  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-21.5</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.35);margin-left:-4px;align-self:center" title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-31.1</span>
   <div class="tabs">
     <a class="tab" href="#dashboard" data-page="dashboard">Kommandocenter</a>
     <div class="navdrop tab-navdrop" id="plan-subdrop">
@@ -1629,6 +1637,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <a class="tab hidden" href="#quotes" data-page="quotes" id="quotes-tab-btn">🧾 Tilbud &amp; Faktura</a>
+    <a class="tab hidden" href="#customers" data-page="customers" id="customers-tab-btn">👥 Kunder</a>
+    <a class="tab hidden" href="#projects" data-page="projects" id="projects-tab-btn">🏗️ Projekter</a>
   </div>
   <div class="nav-actions">
     <div class="navdrop" id="globalsearch">
@@ -2039,6 +2049,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
   <div class="bly-segtabs" id="qz-tabs">
     <button class="bly-segtab active" data-qztab="products" type="button">📦 Produkter</button>
+    <button class="bly-segtab" data-qztab="templates" type="button">📑 Skabeloner</button>
     <button class="bly-segtab" data-qztab="quotes" type="button">📝 Tilbud</button>
     <button class="bly-segtab" data-qztab="invoices" type="button">🧾 Fakturaer</button>
   </div>
@@ -2052,8 +2063,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <table class="bly-table">
-      <thead><tr><th>Navn</th><th>Kategori</th><th>Enhed</th><th class="num">Cost-pris</th><th class="num">Salgspris</th><th class="num">Avance</th><th style="width:90px"></th></tr></thead>
+      <thead><tr><th>Navn</th><th>Type</th><th>Kategori</th><th>Enhed</th><th class="num">Cost-pris</th><th class="num">Salgspris</th><th class="num">Avance</th><th style="width:90px"></th></tr></thead>
       <tbody id="qz-products-body"></tbody>
+    </table>
+  </div>
+
+  <div class="qztabpage" id="qztab-templates" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Skabeloner</span><input type="text" id="qz-template-search" class="bly-search" placeholder="Søg i skabeloner..."></div>
+      <div class="bly-toolbar-right"><button class="bly-btn" id="qz-new-template-btn" type="button">+ Ny skabelon</button></div>
+    </div>
+    <table class="bly-table">
+      <thead><tr><th>Navn</th><th>Beskrivelse</th><th class="num">Linjer</th><th style="width:110px"></th></tr></thead>
+      <tbody id="qz-templates-body"></tbody>
     </table>
   </div>
 
@@ -2078,6 +2100,152 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </table>
   </div>
 </section>
+
+<!-- KUNDER (CRM) — eget kundekartotek, uafhængigt af JobTread. Bruges i
+     tilbudseditorens kunde-søgning sammen med JobTread-sagerne. -->
+<section class="page" id="page-customers">
+  <div class="bly-pagehead">
+    <div><h2>Kunder</h2><div class="sub">Opret og book kunder direkte — de behøver ikke først have en sag i JobTread</div></div>
+  </div>
+  <div class="bly-toolbar">
+    <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="crm-count">Kunder</span><input type="text" id="crm-search" class="bly-search" placeholder="Søg kunde..."></div>
+    <div class="bly-toolbar-right"><button class="bly-btn" id="crm-new-btn" type="button">+ Ny kunde</button></div>
+  </div>
+  <table class="bly-table">
+    <thead><tr><th>Navn</th><th>Telefon</th><th>E-mail</th><th>Adresse</th><th style="width:90px"></th></tr></thead>
+    <tbody id="crm-body"></tbody>
+  </table>
+</section>
+
+<!-- PROJEKTER — oprettes automatisk når en kunde underskriver et tilbud.
+     Sags-dashboard med et let Gantt (kun for denne sag), billeder, tidsregistrering
+     og kvalitetssikring. -->
+<section class="page" id="page-projects">
+  <div class="bly-pagehead">
+    <div><h2>Projekter</h2><div class="sub">Sags-dashboards — oprettes automatisk når en kunde underskriver et tilbud</div></div>
+  </div>
+  <div class="bly-segtabs" id="proj-tabs">
+    <button class="bly-segtab active" data-projtab="list" type="button">🏗️ Projekter</button>
+    <button class="bly-segtab" data-projtab="qa-templates" type="button">📋 KS-skabeloner</button>
+  </div>
+
+  <div class="projtabpage" id="projtab-list">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="proj-count">Projekter</span><input type="text" id="proj-search" class="bly-search" placeholder="Søg projekt..."></div>
+    </div>
+    <table class="bly-table">
+      <thead><tr><th>Navn</th><th>Status</th><th>Adresse</th><th class="num">Opgaver</th><th class="num">Tid</th><th class="num">Billeder</th><th style="width:90px"></th></tr></thead>
+      <tbody id="proj-body"></tbody>
+    </table>
+  </div>
+
+  <div class="projtabpage" id="projtab-qa-templates" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">KS-skabeloner</span></div>
+      <div class="bly-toolbar-right"><button class="bly-btn" id="qa-new-template-btn" type="button">+ Ny skabelon</button></div>
+    </div>
+    <table class="bly-table">
+      <thead><tr><th>Navn</th><th class="num">Felter</th><th style="width:90px"></th></tr></thead>
+      <tbody id="qa-templates-body"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- KUNDE-MODAL (CRM) -->
+<div class="mo" id="crm-modal">
+  <div class="modal" style="width:460px">
+    <h3 id="crm-modal-title">Ny kunde</h3>
+    <div class="form-group"><label class="form-label">Navn</label><input id="crmc-name" class="input"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Telefon</label><input id="crmc-phone" class="input"></div>
+      <div class="form-group"><label class="form-label">E-mail</label><input id="crmc-email" class="input"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Adresse</label><input id="crmc-address" class="input"></div>
+    <div class="form-group"><label class="form-label">Noter <span class="opt-tag">valgfrit</span></label><textarea id="crmc-notes" class="input" rows="2" style="resize:vertical"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="crmc-delete">Slet</button>
+      <button class="btn" id="crmc-cancel">Annuller</button>
+      <button class="btn primary" id="crmc-save">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- KS-SKABELON-MODAL — Martin bygger de felter medarbejderne skal udfylde -->
+<div class="mo" id="qa-template-modal">
+  <div class="modal" style="max-width:600px;width:94vw">
+    <h3 id="qa-template-modal-title">Ny KS-skabelon</h3>
+    <div class="form-group"><label class="form-label">Navn</label><input id="qat-name" class="input" placeholder="Fx Aflevering gulvafslibning"></div>
+    <div class="form-group">
+      <label class="form-label">Felter</label>
+      <div id="qat-fields"></div>
+      <button class="bly-btn outline small" id="qat-add-field" type="button">+ Tilføj felt</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="qat-delete">Slet</button>
+      <button class="btn" id="qat-cancel">Annuller</button>
+      <button class="btn primary" id="qat-save">Gem skabelon</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROJEKT-DASHBOARD — sagens Gantt (kun for denne sag), billeder, tid, KS -->
+<div class="mo" id="project-detail-modal">
+  <div class="modal" style="max-width:1100px;width:96vw;max-height:92vh;display:flex;flex-direction:column;padding:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--bly-border-soft);flex-shrink:0">
+      <div>
+        <div style="font-size:15px;font-weight:800;color:var(--bly-ink)" id="pd-title">Projekt</div>
+        <div class="sub" id="pd-subtitle" style="font-size:11px"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="pd-status-select" class="select" style="width:auto">
+          <option value="active">Aktivt</option>
+          <option value="done">Afsluttet</option>
+          <option value="archived">Arkiveret</option>
+        </select>
+        <a id="pd-quote-link" class="bly-btn outline" href="#" target="_blank" style="display:none">📄 Se tilbud</a>
+        <button class="qz-icon-btn" id="pd-close-btn" type="button" title="Luk">✕</button>
+      </div>
+    </div>
+    <div style="padding:14px 22px 0;flex-shrink:0">
+      <div class="bly-segtabs" id="pd-tabs">
+        <button class="bly-segtab active" data-pdtab="tasks" type="button">📅 Opgaver</button>
+        <button class="bly-segtab" data-pdtab="photos" type="button">📷 Billeder</button>
+        <button class="bly-segtab" data-pdtab="time" type="button">⏱️ Tidsregistrering</button>
+        <button class="bly-segtab" data-pdtab="qa" type="button">📋 Kvalitetssikring</button>
+      </div>
+    </div>
+    <div style="padding:16px 22px 22px;overflow:auto;flex:1">
+      <div class="pdtabpage" id="pdtab-tasks">
+        <div class="bly-toolbar">
+          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Opgaver i sagen</span></div>
+          <div class="bly-toolbar-right">
+            <button class="bly-btn outline" id="pd-convert-lines-btn" type="button" title="Opret én opgave pr. linje i det tilknyttede tilbud">🔨 Opret opgaver fra tilbud</button>
+            <button class="bly-btn" id="pd-new-task-btn" type="button">+ Ny opgave</button>
+          </div>
+        </div>
+        <div id="pd-tasks-body"></div>
+      </div>
+      <div class="pdtabpage" id="pdtab-photos" style="display:none">
+        <div class="bly-toolbar">
+          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Billeder</span></div>
+          <div class="bly-toolbar-right"><label class="bly-btn outline small" style="cursor:pointer">+ Tilføj billede<input type="file" accept="image/*" id="pd-photo-input" style="display:none"></label></div>
+        </div>
+        <div id="pd-photos-grid" class="pd-photos-grid"></div>
+      </div>
+      <div class="pdtabpage" id="pdtab-time" style="display:none">
+        <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Tidsregistreringer</span></div></div>
+        <table class="bly-table">
+          <thead><tr><th>Dato</th><th>Medarbejder</th><th class="num">Min.</th><th>Note</th><th>Post</th><th>Materialer</th><th>Billede</th><th style="width:40px"></th></tr></thead>
+          <tbody id="pd-time-body"></tbody>
+        </table>
+      </div>
+      <div class="pdtabpage" id="pdtab-qa" style="display:none">
+        <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Indsendte KS-formularer</span></div></div>
+        <div id="pd-qa-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- DAGLIG PLAN -->
 <section class="page active" id="page-plan">
@@ -2944,12 +3112,42 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Cost-pris (kr.)</label><input id="qzp-cost" type="number" step="0.01" class="input" value="0"></div>
       <div class="form-group"><label class="form-label">Salgspris (kr.)</label><input id="qzp-sell" type="number" step="0.01" class="input" value="0"></div>
     </div>
+    <div class="form-group"><label class="form-label">Type <span class="opt-tag">bruges til KPI-opdeling på tilbud</span></label>
+      <select id="qzp-type" class="select"><option value="service">Service</option><option value="materialer">Materialer</option></select>
+    </div>
     <div class="hint" id="qzp-margin-preview">Avance: —</div>
     <div class="form-group" style="margin-top:8px"><label class="form-label">Beskrivelse <span class="opt-tag">valgfrit</span></label><textarea id="qzp-description" class="input" rows="2" style="resize:vertical"></textarea></div>
     <div class="modal-actions">
       <button class="btn danger hidden" id="qzp-delete">Slet</button>
       <button class="btn" id="qzp-cancel">Annuller</button>
       <button class="btn primary" id="qzp-save">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- TILBUDSSKABELON — gemt linjesæt, klar til at blive indsat i et nyt tilbud -->
+<div class="mo" id="qz-template-modal">
+  <div class="modal" style="max-width:820px;width:94vw">
+    <h3 id="qzt-title">Ny skabelon</h3>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Navn</label><input id="qzt-name" class="input"></div>
+      <div class="form-group"><label class="form-label">Beskrivelse <span class="opt-tag">valgfrit</span></label><input id="qzt-description" class="input"></div>
+    </div>
+    <div class="qe-lines-head">
+      <span class="qe-label" style="margin:0">Linjer</span>
+      <div style="display:flex;gap:6px">
+        <div class="qe-customer-pop" style="width:220px">
+          <input id="qzt-product-search" class="qe-input" placeholder="Søg produkt og tilføj...">
+          <div class="qe-customer-results" id="qzt-product-results"></div>
+        </div>
+        <button class="bly-btn outline small" id="qzt-add-blank-line" type="button">+ Fri linje</button>
+      </div>
+    </div>
+    <div id="qzt-lines" style="max-height:360px;overflow:auto"></div>
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="qzt-delete">Slet</button>
+      <button class="btn" id="qzt-cancel">Annuller</button>
+      <button class="btn primary" id="qzt-save">Gem skabelon</button>
     </div>
   </div>
 </div>
@@ -2965,6 +3163,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div style="display:flex;gap:8px;align-items:center">
         <select id="qe-status-select" class="select" style="width:auto"></select>
         <a class="bly-btn outline" id="qe-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
+        <button class="bly-btn outline" id="qe-share-btn" type="button" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
+        <button class="bly-btn outline" id="qe-request-btn" type="button" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
         <button class="bly-btn outline" id="qe-convert-btn" type="button" style="display:none">➜ Konvertér til faktura</button>
         <button class="bly-btn" id="qe-save-btn" type="button">💾 Gem</button>
         <button class="qz-icon-btn" id="qe-close-btn" type="button" title="Luk">✕</button>
@@ -2985,14 +3185,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div><label class="qe-label">E-mail</label><input id="qe-customer-email" class="qe-input"></div>
           <div><label class="qe-label">Gyldig til</label><input id="qe-valid-until" type="date" class="qe-input"></div>
         </div>
+        <div class="qe-field-row">
+          <div><label class="qe-label">Rabat på hele tilbuddet (%)</label><input id="qe-doc-discount" type="number" step="0.1" min="0" max="100" class="qe-input" value="0"></div>
+          <div><label class="qe-label">Indsæt fra skabelon <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><select id="qe-template-picker" class="qe-input"><option value="">Vælg en skabelon...</option></select></div>
+        </div>
 
         <div class="qe-lines-head">
           <span class="qe-label" style="margin:0">Linjer</span>
-          <div style="display:flex;gap:6px">
-            <select id="qe-product-picker" class="qe-input" style="width:220px">
-              <option value="">+ Tilføj fra produktkatalog...</option>
-            </select>
+          <div style="display:flex;gap:6px;align-items:center">
+            <div class="qe-customer-pop" style="width:220px">
+              <input id="qe-product-search" class="qe-input" placeholder="Søg produkt og tilføj...">
+              <div class="qe-customer-results" id="qe-product-results"></div>
+            </div>
             <button class="bly-btn outline small" id="qe-add-blank-line" type="button">+ Fri linje</button>
+            <button class="bly-btn outline small" id="qe-save-as-template-btn" type="button" title="Gem de nuværende linjer som en skabelon">💾 Gem som skabelon</button>
           </div>
         </div>
         <div id="qe-lines"></div>
@@ -3006,6 +3212,32 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div id="qe-preview" class="qe-pdf-page"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- PRISFORESPØRGSLER — send tilbuddets materialer til leverandører (uden priser,
+     til sammenligning) eller hele tilbuddet til en underleverandør (blanke prisfelter). -->
+<div class="mo" id="quote-request-modal">
+  <div class="modal" style="max-width:720px;width:94vw;max-height:88vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0">Prisforespørgsler</h3>
+      <button class="qz-icon-btn" id="qr-close-btn" type="button" title="Luk">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Type</label>
+      <select id="qr-kind" class="select">
+        <option value="supplier">📦 Leverandør — kun materiale-linjer, uden priser (til prissammenligning)</option>
+        <option value="subcontractor">🔧 Underleverandør — alle linjer, med blanke prisfelter de selv udfylder</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Modtagere</label>
+      <div id="qr-recipients"></div>
+      <button class="bly-btn outline small" id="qr-add-recipient" type="button">+ Tilføj modtager</button>
+    </div>
+    <div class="form-group"><label class="form-label">Besked <span class="opt-tag">valgfrit, internt — sendes ikke til modtager</span></label><textarea id="qr-note" class="input" rows="2" style="resize:vertical"></textarea></div>
+    <button class="bly-btn" id="qr-send-btn" type="button">📨 Send forespørgsel</button>
+    <div id="qr-history" style="margin-top:22px"></div>
   </div>
 </div>
 
@@ -3400,7 +3632,9 @@ document.getElementById('app').style.display='block';
     var r=await fetch((API||'')+'/api/auth/me',{headers:{'Authorization':'Bearer '+token}});
     if(r.ok){var fresh=await r.json();me=Object.assign({},me,fresh);localStorage.setItem('gm_user',JSON.stringify(me));
       document.getElementById('finance-subdrop').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('quotes-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
+      document.getElementById('quotes-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('customers-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('projects-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
   }catch(e){}
 })();
 
@@ -9445,7 +9679,7 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 function bind(){
   syncStickyOffsets();window.addEventListener('resize',syncStickyOffsets);
   // Tabs
-  var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance','quotes'];
+  var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance','quotes','customers','projects'];
   function switchPage(page,skipHash){
     if(VALID_PAGES.indexOf(page)===-1)page='plan';
     document.querySelectorAll('.tab,.navdrop-item').forEach(function(x){x.classList.remove('active');});
@@ -9483,6 +9717,8 @@ function bind(){
     if(page==='notif-settings')loadNotificationSettings();
     if(page==='finance'){if(!me.is_finance_admin){toast('Du har ikke adgang til Økonomi','🔒');switchPage('plan');return;}loadFinance();}
     if(page==='quotes'){if(!me.is_finance_admin){toast('Du har ikke adgang til Tilbud & Faktura','🔒');switchPage('plan');return;}initQuotesModule();}
+    if(page==='customers'){if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');switchPage('plan');return;}initCrmModule();}
+    if(page==='projects'){if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');switchPage('plan');return;}initProjectsModule();}
   }
   window.addEventListener('hashchange',function(){
     var parts=location.hash.slice(1).split('/');
@@ -9870,7 +10106,7 @@ function bind(){
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
   // Modal backdrop
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','quote-editor-modal','invoice-detail-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','project-detail-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -10170,21 +10406,26 @@ function initNoteWidget(){
 initNoteWidget();
 
 // ══════════════════════════════════════════════════════════════
-// TILBUD & FAKTURA — eget produktkatalog med cost/salgspris og avance,
-// tilbudseditor med live PDF-forhåndsvisning, konvertering til faktura,
-// og fakturaer med delbetalinger. Kører 100% på egne data (ikke JobTreads
-// egne dokumenter), fordi JobTread ikke understøtter delbetalinger.
+// TILBUD & FAKTURA — eget produktkatalog med cost/salgspris, avance og
+// Materialer/Service-type, tilbudsskabeloner, tilbudseditor med rabat
+// (pr. linje + hele tilbuddet), live PDF-forhåndsvisning, konvertering
+// til faktura, og fakturaer med delbetalinger. Kører 100% på egne data
+// (ikke JobTreads egne dokumenter), fordi JobTread ikke understøtter
+// delbetalinger.
 // ══════════════════════════════════════════════════════════════
-var qzProducts=[],qzQuotes=[],qzInvoices=[],qzActiveTab='products',qzInitialized=false,qzEditingProductId=null;
-var qeState={id:null,lines:[],jobName:'',quoteNumber:null,taxRate:25,lastStatus:'draft'};
+var qzProducts=[],qzQuotes=[],qzInvoices=[],qzTemplates=[],qzActiveTab='products',qzInitialized=false,qzEditingProductId=null;
+var qeState={id:null,lines:[],jobName:'',quoteNumber:null,taxRate:25,lastStatus:'draft',customerId:null};
+var qztState={id:null,lines:[]};
 var ivState={id:null};
 var qeCustomerSearchTimer=null;
 var QZ_QUOTE_STATUS={draft:{label:'Kladde',dot:'var(--bly-dot-draft)'},sent:{label:'Sendt',dot:'var(--bly-dot-draft)'},accepted:{label:'Godkendt',dot:'var(--bly-dot-paid)'},declined:{label:'Afvist',dot:'var(--bly-dot-overdue)'},converted:{label:'Konverteret',dot:'var(--bly-dot-total)'}};
 var QZ_INVOICE_STATUS={unpaid:{label:'Ikke betalt',dot:'var(--bly-dot-unpaid)'},partial:{label:'Delvist betalt',dot:'var(--bly-dot-draft)'},paid:{label:'Betalt',dot:'var(--bly-dot-paid)'},void:{label:'Annulleret',dot:'var(--bly-dot-overdue)'}};
+var QZ_TYPE_LABEL={materialer:'Materialer',service:'Service'};
 
 function qzMarginPct(cost,sell){return sell>0?(sell-cost)/sell*100:null;}
 function qzMarginClass(pct){return pct===null?'':(pct>=25?'good':(pct<15?'low':''));}
 function qzStatusDot(map,status){var s=map[status]||{label:status,dot:'var(--bly-dot-total)'};return '<span class="bly-status-dot" style="background:'+s.dot+'"></span>'+esc(s.label);}
+function qzType(v){return v==='materialer'?'materialer':'service';}
 async function qzOpenPdf(path){
   try{
     var r=await fetch(API+path,{headers:{'Authorization':'Bearer '+token}});
@@ -10196,17 +10437,121 @@ async function qzOpenPdf(path){
 
 async function initQuotesModule(){
   if(!qzInitialized){bindQuotesModuleEvents();qzInitialized=true;}
-  await Promise.all([loadQzProducts(),loadQzQuotes(),loadQzInvoices()]);
-  renderQzProducts();renderQzQuotes();renderQzInvoices();qePopulateProductPicker();
+  await Promise.all([loadQzProducts(),loadQzQuotes(),loadQzInvoices(),loadQzTemplates()]);
+  renderQzProducts();renderQzQuotes();renderQzInvoices();renderQzTemplates();populateQeTemplatePicker();
 }
 async function loadQzProducts(){var r=await api('/api/products');qzProducts=Array.isArray(r)?r:[];}
 async function loadQzQuotes(){var r=await api('/api/quotes');qzQuotes=Array.isArray(r)?r:[];}
 async function loadQzInvoices(){var r=await api('/api/invoices');qzInvoices=Array.isArray(r)?r:[];}
+async function loadQzTemplates(){var r=await api('/api/quote-templates');qzTemplates=Array.isArray(r)?r:[];}
 
 function switchQzTab(name){
   qzActiveTab=name;
   document.querySelectorAll('#qz-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
-  ['products','quotes','invoices'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
+  ['products','templates','quotes','invoices'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
+}
+
+// ── FÆLLES LINJE-EDITOR — genbruges af både tilbudseditoren og
+// skabelon-editoren, så de altid ser og opfører sig ens. ──────
+function qzLineRowHtml(l,idx,prefix){
+  var qty=Number(l.quantity)||0,sell=Number(l.sell_price)||0,cost=Number(l.cost_price)||0;
+  var lineDisc=Number(l.discount_pct)||0;
+  var lineTotal=qty*sell*(1-lineDisc/100);
+  var pct=qzMarginPct(cost,sell);
+  var marginTxt=pct===null?'Avance: –':('Avance: '+pct.toFixed(0)+'% · DB '+krFmt((sell-cost)*qty));
+  var type=qzType(l.product_type);
+  return '<div class="qe-line" data-idx="'+idx+'">'
+    +'<div class="qe-line-top">'
+    +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="description" value="'+esc(l.description||'')+'" placeholder="Beskrivelse">'
+    +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="unit" value="'+esc(l.unit||'stk')+'" placeholder="Enhed">'
+    +'<select class="qe-input qe-line-field" data-idx="'+idx+'" data-field="product_type">'
+      +'<option value="service"'+(type==='service'?' selected':'')+'>Service</option>'
+      +'<option value="materialer"'+(type==='materialer'?' selected':'')+'>Materialer</option>'
+    +'</select>'
+    +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
+    +'</div>'
+    +'<div class="qe-line-nums">'
+    +'<div><div class="qe-line-num-label">Antal</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="quantity" value="'+qty+'"></div>'
+    +'<div><div class="qe-line-num-label">Cost-pris</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="cost_price" value="'+cost+'"></div>'
+    +'<div><div class="qe-line-num-label">Salgspris</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="sell_price" value="'+sell+'"></div>'
+    +'<div><div class="qe-line-num-label">Rabat %</div><input class="qe-input qe-line-field" type="number" step="0.1" min="0" max="100" data-idx="'+idx+'" data-field="discount_pct" value="'+lineDisc+'"></div>'
+    +'<div><div class="qe-line-num-label">I alt</div><div id="'+prefix+'-line-total-'+idx+'" style="font-weight:800;padding-top:4px">'+krFmt(lineTotal)+'</div></div>'
+    +'</div>'
+    +'<div class="qe-line-margin qz-margin '+qzMarginClass(pct)+'" id="'+prefix+'-line-margin-'+idx+'">'+marginTxt+'</div>'
+    +'</div>';
+}
+function qzRenderLines(containerId,lines,prefix){
+  var el=document.getElementById(containerId);
+  if(!lines.length){el.innerHTML='<div class="sub" style="padding:14px 0">Ingen linjer endnu — tilføj fra produktkataloget eller opret en fri linje.</div>';return;}
+  el.innerHTML=lines.map(function(l,idx){return qzLineRowHtml(l,idx,prefix);}).join('');
+}
+function qzRefreshLineDisplay(lines,idx,prefix){
+  var l=lines[idx];if(!l)return;
+  var qty=Number(l.quantity)||0,sell=Number(l.sell_price)||0,cost=Number(l.cost_price)||0;
+  var lineDisc=Number(l.discount_pct)||0;
+  var lineTotal=qty*sell*(1-lineDisc/100);
+  var pct=qzMarginPct(cost,sell);
+  var totalEl=document.getElementById(prefix+'-line-total-'+idx);
+  if(totalEl)totalEl.textContent=krFmt(lineTotal);
+  var marginEl=document.getElementById(prefix+'-line-margin-'+idx);
+  if(marginEl){marginEl.className='qe-line-margin qz-margin '+qzMarginClass(pct);marginEl.textContent=pct===null?'Avance: –':('Avance: '+pct.toFixed(0)+'% · DB '+krFmt((sell-cost)*qty));}
+}
+function makeLinesFieldHandler(getLines,prefix,onChange){
+  return function(e){
+    var t=e.target;
+    if(!t.classList.contains('qe-line-field'))return;
+    var lines=getLines();
+    var idx=Number(t.dataset.idx),field=t.dataset.field;
+    var l=lines[idx];if(!l)return;
+    if(field==='description'||field==='unit'||field==='product_type'){l[field]=t.value;}
+    else{l[field]=Number(t.value)||0;qzRefreshLineDisplay(lines,idx,prefix);}
+    if(onChange)onChange();
+  };
+}
+function makeLinesRemoveHandler(getLines,renderFn){
+  return function(e){
+    var btn=e.target.closest('.qe-line-remove');
+    if(!btn)return;
+    getLines().splice(Number(btn.dataset.idx),1);
+    renderFn();
+  };
+}
+function qzMakeBlankLine(product){
+  return {
+    product_id:product?product.id:null,
+    description:product?product.name:'',
+    unit:product?(product.unit||'stk'):'stk',
+    quantity:1,
+    cost_price:product?Number(product.cost_price):0,
+    sell_price:product?Number(product.sell_price):0,
+    product_type:product?qzType(product.product_type):'service',
+    discount_pct:0
+  };
+}
+function qzRunProductSearch(inputId,resultsId,onPick){
+  var q=document.getElementById(inputId).value.trim().toLowerCase();
+  var box=document.getElementById(resultsId);
+  if(!q){box.style.display='none';box.innerHTML='';return;}
+  var matches=qzProducts.filter(function(p){return p.name.toLowerCase().indexOf(q)>-1||(p.category||'').toLowerCase().indexOf(q)>-1;}).slice(0,8);
+  if(!matches.length){box.innerHTML='<div class="qe-customer-result" style="cursor:default;color:var(--bly-sub)">Ingen produkter fundet</div>';box.style.display='block';return;}
+  box.innerHTML=matches.map(function(p){
+    var pct=qzMarginPct(Number(p.cost_price),Number(p.sell_price));
+    return '<div class="qe-customer-result" data-pid="'+p.id+'"><b>'+esc(p.name)+'</b> <span class="qz-margin '+qzMarginClass(pct)+'" style="float:right">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span><br><span style="color:var(--bly-sub)">'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+(p.category?' · '+esc(p.category):'')+' · '+krFmt(Number(p.sell_price))+'</span></div>';
+  }).join('');
+  box.style.display='block';
+  Array.prototype.forEach.call(box.querySelectorAll('.qe-customer-result[data-pid]'),function(elx){
+    elx.onclick=function(){
+      var p=qzProducts.find(function(x){return x.id===Number(elx.dataset.pid);});
+      if(p)onPick(p);
+      document.getElementById(inputId).value='';
+      box.style.display='none';
+    };
+  });
+}
+function qzCloseAllPops(){
+  ['qe-customer-results','qe-product-results','qzt-product-results'].forEach(function(id){
+    var box=document.getElementById(id);if(box)box.style.display='none';
+  });
 }
 
 // ── PRODUKTER ────────────────────────────────────────────────
@@ -10214,12 +10559,13 @@ function renderQzProducts(){
   var q=(document.getElementById('qz-product-search').value||'').trim().toLowerCase();
   var list=qzProducts.filter(function(p){return !q||p.name.toLowerCase().indexOf(q)>-1||(p.category||'').toLowerCase().indexOf(q)>-1;});
   var body=document.getElementById('qz-products-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen produkter fundet':'Ingen produkter endnu — opret et eller importér fra JobTread')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen produkter fundet':'Ingen produkter endnu — opret et eller importér fra JobTread')+'</td></tr>';return;}
   body.innerHTML=list.map(function(p){
     var cost=Number(p.cost_price),sell=Number(p.sell_price);
     var pct=qzMarginPct(cost,sell);
     return '<tr>'
       +'<td>'+esc(p.name)+'</td>'
+      +'<td>'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+'</td>'
       +'<td>'+esc(p.category||'–')+'</td>'
       +'<td>'+esc(p.unit||'stk')+'</td>'
       +'<td class="num">'+krFmt(cost)+'</td>'
@@ -10238,6 +10584,7 @@ function openProductModal(id){
   document.getElementById('qzp-unit').value=p?(p.unit||'stk'):'stk';
   document.getElementById('qzp-cost').value=p?Number(p.cost_price):0;
   document.getElementById('qzp-sell').value=p?Number(p.sell_price):0;
+  document.getElementById('qzp-type').value=p?qzType(p.product_type):'service';
   document.getElementById('qzp-description').value=p?(p.description||''):'';
   document.getElementById('qzp-delete').classList.toggle('hidden',!p);
   updateQzpMarginPreview();
@@ -10260,18 +10607,370 @@ async function saveQzProduct(){
     unit:document.getElementById('qzp-unit').value.trim()||'stk',
     cost_price:Number(document.getElementById('qzp-cost').value)||0,
     sell_price:Number(document.getElementById('qzp-sell').value)||0,
+    product_type:document.getElementById('qzp-type').value,
     description:document.getElementById('qzp-description').value.trim()||null
   };
   var r=qzEditingProductId?await api('/api/products/'+qzEditingProductId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/products',{method:'POST',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Produkt gemt','✓');closeModal('qz-product-modal');await loadQzProducts();renderQzProducts();qePopulateProductPicker();}
+  if(r&&r.ok){toast('Produkt gemt','✓');closeModal('qz-product-modal');await loadQzProducts();renderQzProducts();}
   else toast((r&&r.error)||'Kunne ikke gemme produktet','❌');
 }
 async function deleteQzProduct(){
   if(!qzEditingProductId)return;
   if(!await gmConfirm('Slet produktet? Historiske tilbud/fakturaer beholder deres egne priser.'))return;
   var r=await api('/api/products/'+qzEditingProductId,{method:'DELETE'});
-  if(r&&r.ok){toast('Produkt slettet','🗑');closeModal('qz-product-modal');await loadQzProducts();renderQzProducts();qePopulateProductPicker();}
+  if(r&&r.ok){toast('Produkt slettet','🗑');closeModal('qz-product-modal');await loadQzProducts();renderQzProducts();}
 }
+// ══════════════════════════════════════════════════════════════
+// KUNDER (CRM) — eget kundekartotek, uafhængigt af JobTread.
+// ══════════════════════════════════════════════════════════════
+var crmCustomers=[],crmEditingId=null,crmInitialized=false;
+function initCrmModule(){
+  if(!crmInitialized){
+    document.getElementById('crm-search').addEventListener('input',renderCrmCustomers);
+    document.getElementById('crm-new-btn').addEventListener('click',function(){openCrmModal();});
+    document.getElementById('crmc-cancel').addEventListener('click',function(){closeModal('crm-modal');});
+    document.getElementById('crmc-save').addEventListener('click',saveCrmCustomer);
+    document.getElementById('crmc-delete').addEventListener('click',deleteCrmCustomer);
+    crmInitialized=true;
+  }
+  loadCrmCustomers().then(renderCrmCustomers);
+}
+async function loadCrmCustomers(){var r=await api('/api/crm/customers');crmCustomers=Array.isArray(r)?r:[];}
+function renderCrmCustomers(){
+  var q=(document.getElementById('crm-search').value||'').trim().toLowerCase();
+  var list=crmCustomers.filter(function(c){return !q||(c.name||'').toLowerCase().indexOf(q)>-1||(c.phone||'').toLowerCase().indexOf(q)>-1||(c.email||'').toLowerCase().indexOf(q)>-1;});
+  document.getElementById('crm-count').textContent=list.length+' kunde'+(list.length===1?'':'r');
+  var body=document.getElementById('crm-body');
+  if(!list.length){body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen kunder fundet':'Ingen kunder endnu — opret den første')+'</td></tr>';return;}
+  body.innerHTML=list.map(function(c){
+    return '<tr>'
+      +'<td>'+esc(c.name)+'</td>'
+      +'<td>'+esc(c.phone||'–')+'</td>'
+      +'<td>'+esc(c.email||'–')+'</td>'
+      +'<td>'+esc(c.address||'–')+'</td>'
+      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openCrmModal('+c.id+')" title="Redigér">✎</button></div></td>'
+      +'</tr>';
+  }).join('');
+}
+function openCrmModal(id){
+  var c=id?crmCustomers.find(function(x){return x.id===id;}):null;
+  crmEditingId=id||null;
+  document.getElementById('crm-modal-title').textContent=c?'Redigér kunde':'Ny kunde';
+  document.getElementById('crmc-name').value=c?c.name:'';
+  document.getElementById('crmc-phone').value=c?(c.phone||''):'';
+  document.getElementById('crmc-email').value=c?(c.email||''):'';
+  document.getElementById('crmc-address').value=c?(c.address||''):'';
+  document.getElementById('crmc-notes').value=c?(c.notes||''):'';
+  document.getElementById('crmc-delete').classList.toggle('hidden',!c);
+  document.getElementById('crm-modal').classList.add('open');
+}
+async function saveCrmCustomer(){
+  var name=document.getElementById('crmc-name').value.trim();
+  if(!name){toast('Navn mangler','⚠️');return;}
+  var body={name:name,phone:document.getElementById('crmc-phone').value.trim()||null,email:document.getElementById('crmc-email').value.trim()||null,address:document.getElementById('crmc-address').value.trim()||null,notes:document.getElementById('crmc-notes').value.trim()||null};
+  var r=crmEditingId?await api('/api/crm/customers/'+crmEditingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/crm/customers',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Kunde gemt','✓');closeModal('crm-modal');await loadCrmCustomers();renderCrmCustomers();}
+  else toast((r&&r.error)||'Kunne ikke gemme kunden','❌');
+}
+async function deleteCrmCustomer(){
+  if(!crmEditingId)return;
+  if(!await gmConfirm('Slet kunden? Tidligere tilbud/fakturaer på kunden bevares.'))return;
+  var r=await api('/api/crm/customers/'+crmEditingId,{method:'DELETE'});
+  if(r&&r.ok){toast('Kunde slettet','🗑');closeModal('crm-modal');await loadCrmCustomers();renderCrmCustomers();}
+}
+
+// ══════════════════════════════════════════════════════════════
+// PROJEKTER — sags-dashboard: let Gantt (kun for denne sag, IKKE
+// JobTread-synkroniseret — derfor dato-felter + fremdrift i stedet for
+// træk-i-musen), billeder, tidsregistrering, kvalitetssikring.
+// ══════════════════════════════════════════════════════════════
+var pjProjects=[],pjQaTemplates=[],pjInitialized=false,pjCurrent=null;
+function initProjectsModule(){
+  if(!pjInitialized){
+    document.querySelectorAll('#proj-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){switchProjTab(b.dataset.projtab);});});
+    document.getElementById('proj-search').addEventListener('input',renderPjProjects);
+    document.getElementById('qa-new-template-btn').addEventListener('click',function(){openQaTemplateModal();});
+    document.getElementById('qat-add-field').addEventListener('click',function(){qatAddFieldRow();});
+    document.getElementById('qat-cancel').addEventListener('click',function(){closeModal('qa-template-modal');});
+    document.getElementById('qat-save').addEventListener('click',saveQaTemplate);
+    document.getElementById('qat-delete').addEventListener('click',deleteQaTemplate);
+    document.getElementById('pd-close-btn').addEventListener('click',function(){closeModal('project-detail-modal');});
+    document.getElementById('pd-status-select').addEventListener('change',savePdStatus);
+    document.getElementById('pd-convert-lines-btn').addEventListener('click',pdConvertLines);
+    document.getElementById('pd-new-task-btn').addEventListener('click',function(){pdAddTaskRow();});
+    document.getElementById('pd-photo-input').addEventListener('change',pdUploadPhoto);
+    document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){switchPdTab(b.dataset.pdtab);});});
+    pjInitialized=true;
+  }
+  loadPjProjects().then(renderPjProjects);
+  loadPjQaTemplates().then(renderPjQaTemplates);
+}
+function switchProjTab(name){
+  document.querySelectorAll('#proj-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.projtab===name);});
+  document.getElementById('projtab-list').style.display=name==='list'?'':'none';
+  document.getElementById('projtab-qa-templates').style.display=name==='qa-templates'?'':'none';
+}
+async function loadPjProjects(){var r=await api('/api/projects');pjProjects=Array.isArray(r)?r:[];}
+function renderPjProjects(){
+  var q=(document.getElementById('proj-search').value||'').trim().toLowerCase();
+  var list=pjProjects.filter(function(p){return !q||(p.name||'').toLowerCase().indexOf(q)>-1;});
+  document.getElementById('proj-count').textContent=list.length+' projekt'+(list.length===1?'':'er');
+  var body=document.getElementById('proj-body');
+  if(!list.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når en kunde underskriver et tilbud')+'</td></tr>';return;}
+  var STATUS_LABEL={active:'🔧 Aktivt',done:'✅ Afsluttet',archived:'📦 Arkiveret'};
+  body.innerHTML=list.map(function(p){
+    return '<tr style="cursor:pointer" onclick="openProjectDetail('+p.id+')">'
+      +'<td>'+esc(p.name)+(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</td>'
+      +'<td>'+(STATUS_LABEL[p.status]||esc(p.status))+'</td>'
+      +'<td>'+esc(p.customer_address||'–')+'</td>'
+      +'<td class="num">'+(p.task_count||0)+'</td>'
+      +'<td class="num">'+(p.time_entry_count||0)+'</td>'
+      +'<td class="num">'+(p.photo_count||0)+'</td>'
+      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" title="Åbn">→</button></div></td>'
+      +'</tr>';
+  }).join('');
+}
+async function openProjectDetail(id){
+  var d=await api('/api/projects/'+id);
+  if(!d||d.error){toast('Kunne ikke hente projektet','❌');return;}
+  pjCurrent=d;
+  document.getElementById('pd-title').textContent=d.name;
+  document.getElementById('pd-subtitle').textContent=[d.customer_address,d.customer_phone,d.customer_email].filter(Boolean).join(' · ');
+  document.getElementById('pd-status-select').value=d.status;
+  var qlink=document.getElementById('pd-quote-link');
+  if(d.quote_id){qlink.style.display='inline-flex';qlink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/quotes/'+d.quote_id+'/pdf');};}
+  else qlink.style.display='none';
+  switchPdTab('tasks');
+  renderPdTasks();renderPdPhotos();renderPdTime();renderPdQa();
+  document.getElementById('project-detail-modal').classList.add('open');
+}
+async function reloadPdCurrent(){
+  if(!pjCurrent)return;
+  var d=await api('/api/projects/'+pjCurrent.id);
+  if(!d||d.error)return;
+  pjCurrent=d;
+  renderPdTasks();renderPdPhotos();renderPdTime();renderPdQa();
+  await loadPjProjects();renderPjProjects();
+}
+function switchPdTab(name){
+  document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdtab===name);});
+  ['tasks','photos','time','qa'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
+}
+async function savePdStatus(){
+  if(!pjCurrent)return;
+  var status=document.getElementById('pd-status-select').value;
+  var r=await api('/api/projects/'+pjCurrent.id,{method:'PUT',body:JSON.stringify({status:status})});
+  if(r&&r.ok){toast('Status opdateret','✓');pjCurrent.status=status;await loadPjProjects();renderPjProjects();}
+  else toast((r&&r.error)||'Kunne ikke opdatere status','❌');
+}
+function pdTaskBarStyle(t){
+  var tasks=pjCurrent.tasks||[];
+  var dates=tasks.reduce(function(a,x){return a.concat([x.start_date,x.end_date]);},[]).filter(Boolean);
+  if(!dates.length||!t.start_date)return '';
+  var min=dates.reduce(function(a,b){return b<a?b:a;});
+  var max=dates.reduce(function(a,b){return b>a?b:a;});
+  var minT=new Date(min).getTime(),maxT=new Date(max).getTime();
+  var span=Math.max(1,maxT-minT);
+  var s=new Date(t.start_date).getTime(),e=new Date(t.end_date||t.start_date).getTime();
+  var left=Math.max(0,(s-minT)/span*100);
+  var width=Math.max(3,(e-s)/span*100);
+  return 'left:'+left.toFixed(1)+'%;width:'+width.toFixed(1)+'%';
+}
+function renderPdTasks(){
+  var box=document.getElementById('pd-tasks-body');
+  var tasks=(pjCurrent.tasks||[]).slice().sort(function(a,b){return (a.start_date||'').localeCompare(b.start_date||'');});
+  if(!tasks.length){box.innerHTML='<div class="sub" style="padding:16px 0">Ingen opgaver endnu. Opret dem manuelt, eller tryk "Opret opgaver fra tilbud" hvis sagen har et tilknyttet tilbud.</div>';return;}
+  box.innerHTML=tasks.map(function(t){
+    return '<div class="pd-task-row" data-task-id="'+t.id+'">'
+      +'<input class="input pd-task-name" style="width:220px" value="'+esc(t.name)+'">'
+      +'<input class="input pd-task-start" type="date" value="'+esc(t.start_date||'')+'" style="width:130px">'
+      +'<input class="input pd-task-end" type="date" value="'+esc(t.end_date||t.start_date||'')+'" style="width:130px">'
+      +'<div class="pd-task-bar-wrap"><div class="pd-task-bar" style="'+pdTaskBarStyle(t)+'"></div></div>'
+      +'<input class="input pd-task-progress" type="number" min="0" max="100" step="5" value="'+Math.round((Number(t.progress)||0)*100)+'" style="width:60px" title="Fremdrift %">'
+      +'<button class="qz-icon-btn" data-action="pd-task-delete" title="Slet">🗑</button>'
+      +'</div>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('.pd-task-row'),function(row){
+    var id=row.dataset.taskId;
+    var save=function(){
+      api('/api/projects/'+pjCurrent.id+'/tasks/'+id,{method:'PUT',body:JSON.stringify({
+        name:row.querySelector('.pd-task-name').value.trim(),
+        start_date:row.querySelector('.pd-task-start').value,
+        end_date:row.querySelector('.pd-task-end').value||row.querySelector('.pd-task-start').value,
+        progress:Math.max(0,Math.min(100,Number(row.querySelector('.pd-task-progress').value)||0))/100
+      })}).then(function(){reloadPdCurrent();});
+    };
+    row.querySelector('.pd-task-name').addEventListener('change',save);
+    row.querySelector('.pd-task-start').addEventListener('change',save);
+    row.querySelector('.pd-task-end').addEventListener('change',save);
+    row.querySelector('.pd-task-progress').addEventListener('change',save);
+    row.querySelector('[data-action="pd-task-delete"]').addEventListener('click',async function(){
+      if(!await gmConfirm('Slet opgaven?'))return;
+      await api('/api/projects/'+pjCurrent.id+'/tasks/'+id,{method:'DELETE'});
+      reloadPdCurrent();
+    });
+  });
+}
+async function pdAddTaskRow(){
+  var today=iso(new Date());
+  var r=await api('/api/projects/'+pjCurrent.id+'/tasks',{method:'POST',body:JSON.stringify({name:'Ny opgave',start_date:today,end_date:today})});
+  if(r&&r.ok)reloadPdCurrent();
+  else toast((r&&r.error)||'Kunne ikke oprette opgaven','❌');
+}
+async function pdConvertLines(){
+  if(!pjCurrent.quote_id){toast('Dette projekt har intet tilknyttet tilbud','⚠️');return;}
+  var r=await api('/api/projects/'+pjCurrent.id+'/convert-quote-lines',{method:'POST'});
+  if(r&&r.ok){toast(r.created+' opgave(r) oprettet fra tilbuddet','✓');reloadPdCurrent();}
+  else toast((r&&r.error)||'Kunne ikke oprette opgaver','❌');
+}
+function renderPdPhotos(){
+  var grid=document.getElementById('pd-photos-grid');
+  var photos=pjCurrent.photos||[];
+  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder endnu.</div>';return;}
+  grid.innerHTML=photos.map(function(p){
+    return '<div class="pd-photo-thumb"><img src="'+esc(p.url)+'" loading="lazy"><button class="pd-photo-del" data-id="'+p.id+'" title="Slet">✕</button></div>';
+  }).join('');
+  Array.prototype.forEach.call(grid.querySelectorAll('.pd-photo-del'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet billedet?'))return;
+      await api('/api/projects/'+pjCurrent.id+'/photos/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+}
+function pdReadFileAsDataUrl(file){
+  return new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(){resolve(reader.result);};
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
+async function pdUploadPhoto(e){
+  var file=e.target.files&&e.target.files[0];
+  if(!file)return;
+  e.target.value='';
+  toast('Uploader billede…','⏳');
+  try{
+    var dataUrl=await pdReadFileAsDataUrl(file);
+    var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pjCurrent.id})});
+    if(!up||!up.ok){toast((up&&up.error)||'Kunne ikke uploade billedet','❌');return;}
+    var r=await api('/api/projects/'+pjCurrent.id+'/photos',{method:'POST',body:JSON.stringify({url:up.url})});
+    if(r&&r.ok){toast('Billede tilføjet','✓');reloadPdCurrent();}
+  }catch(err){toast('Kunne ikke uploade billedet','❌');}
+}
+function renderPdTime(){
+  var body=document.getElementById('pd-time-body');
+  var entries=pjCurrent.time_entries||[];
+  if(!entries.length){body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen tidsregistreringer endnu</td></tr>';return;}
+  var lineById={};(pjCurrent.quote_line_options||[]).forEach(function(l){lineById[l.id]=l.description;});
+  body.innerHTML=entries.map(function(t){
+    var uname=(users.find(function(x){return +x.id===+t.user_id;})||{}).name||'–';
+    return '<tr>'
+      +'<td>'+esc(fmtDaDate(t.entry_date))+'</td>'
+      +'<td>'+esc(uname)+'</td>'
+      +'<td class="num">'+t.minutes+'</td>'
+      +'<td>'+esc(t.note||'')+'</td>'
+      +'<td>'+esc(t.quote_line_id?(lineById[t.quote_line_id]||'–'):'–')+'</td>'
+      +'<td>'+esc(t.bought_materials||'–')+'</td>'
+      +'<td>'+(t.photo_url?'<a href="'+esc(t.photo_url)+'" target="_blank">📷 Se</a>':'–')+'</td>'
+      +'<td><button class="qz-icon-btn" data-action="pd-time-delete" data-id="'+t.id+'" title="Slet">🗑</button></td>'
+      +'</tr>';
+  }).join('');
+  Array.prototype.forEach.call(body.querySelectorAll('[data-action="pd-time-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet tidsregistreringen?'))return;
+      await api('/api/projects/'+pjCurrent.id+'/time-entries/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+}
+function renderPdQa(){
+  var box=document.getElementById('pd-qa-body');
+  var subs=pjCurrent.qa_submissions||[];
+  if(!subs.length){box.innerHTML='<div class="sub" style="padding:16px 0">Ingen KS-formularer indsendt endnu.</div>';return;}
+  box.innerHTML=subs.map(function(s){
+    var answers=(typeof s.answers==='string'?JSON.parse(s.answers):s.answers)||[];
+    var rows=answers.map(function(a){
+      var val=a.type==='photo'&&a.value?('<a href="'+esc(a.value)+'" target="_blank">📷 Se billede</a>'):esc(a.value===true?'Ja':a.value===false?'Nej':(a.value||'–'));
+      return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px"><span>'+esc(a.label)+'</span><span>'+val+'</span></div>';
+    }).join('');
+    var subUname=(users.find(function(x){return +x.id===+s.submitted_by;})||{}).name||'–';
+    return '<div style="border:1px solid var(--bly-border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+      +'<div style="font-weight:700">'+esc(s.template_name||'KS-formular')+' <span class="sub" style="font-weight:400">· '+esc(String(s.submitted_at||'').slice(0,16).replace('T',' '))+' af '+esc(subUname)+'</span></div>'
+      +'<button class="qz-icon-btn" data-action="pd-qa-delete" data-id="'+s.id+'" title="Slet">🗑</button>'
+      +'</div>'+rows+'</div>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-qa-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet denne KS-formular?'))return;
+      await api('/api/qa-submissions/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+}
+// KS-skabelon-builder
+function loadPjQaTemplates(){return api('/api/qa-templates').then(function(r){pjQaTemplates=Array.isArray(r)?r:[];});}
+function renderPjQaTemplates(){
+  var body=document.getElementById('qa-templates-body');
+  if(!pjQaTemplates.length){body.innerHTML='<tr><td colspan="3" style="text-align:center;color:var(--bly-sub);padding:24px">Ingen skabeloner endnu</td></tr>';return;}
+  body.innerHTML=pjQaTemplates.map(function(t){
+    return '<tr><td>'+esc(t.name)+'</td><td class="num">'+((t.fields||[]).length)+'</td>'
+      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openQaTemplateModal('+t.id+')" title="Redigér">✎</button></div></td></tr>';
+  }).join('');
+}
+var qatEditingId=null;
+function qatAddFieldRow(field){
+  var wrap=document.getElementById('qat-fields');
+  var row=document.createElement('div');
+  row.className='qat-field-row';
+  row.style.cssText='display:flex;gap:6px;margin-bottom:6px;align-items:center';
+  row.innerHTML='<input class="input qat-field-label" placeholder="Feltnavn, fx \'Fugtmåling udført\'" style="flex:1">'
+    +'<select class="select qat-field-type" style="width:120px">'
+      +'<option value="check">Afkrydsning</option>'
+      +'<option value="text">Tekst</option>'
+      +'<option value="number">Tal</option>'
+      +'<option value="photo">Billede</option>'
+    +'</select>'
+    +'<button class="qz-icon-btn qat-remove-field" type="button" title="Fjern">✕</button>';
+  if(field){
+    row.querySelector('.qat-field-label').value=field.label||'';
+    row.querySelector('.qat-field-type').value=field.type||'text';
+  }
+  row.querySelector('.qat-remove-field').onclick=function(){row.remove();};
+  wrap.appendChild(row);
+}
+function openQaTemplateModal(id){
+  var t=id?pjQaTemplates.find(function(x){return x.id===id;}):null;
+  qatEditingId=id||null;
+  document.getElementById('qa-template-modal-title').textContent=t?'Redigér skabelon':'Ny KS-skabelon';
+  document.getElementById('qat-name').value=t?t.name:'';
+  document.getElementById('qat-fields').innerHTML='';
+  ((t&&t.fields)||[]).forEach(function(f){qatAddFieldRow(f);});
+  if(!t)qatAddFieldRow();
+  document.getElementById('qat-delete').classList.toggle('hidden',!t);
+  document.getElementById('qa-template-modal').classList.add('open');
+}
+async function saveQaTemplate(){
+  var name=document.getElementById('qat-name').value.trim();
+  if(!name){toast('Navn mangler','⚠️');return;}
+  var fields=Array.prototype.slice.call(document.querySelectorAll('#qat-fields .qat-field-row')).map(function(row){
+    return {label:row.querySelector('.qat-field-label').value.trim(),type:row.querySelector('.qat-field-type').value};
+  }).filter(function(f){return f.label;});
+  if(!fields.length){toast('Tilføj mindst ét felt','⚠️');return;}
+  var body={name:name,fields:fields};
+  var r=qatEditingId?await api('/api/qa-templates/'+qatEditingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/qa-templates',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Skabelon gemt','✓');closeModal('qa-template-modal');await loadPjQaTemplates();renderPjQaTemplates();}
+  else toast((r&&r.error)||'Kunne ikke gemme skabelonen','❌');
+}
+async function deleteQaTemplate(){
+  if(!qatEditingId)return;
+  if(!await gmConfirm('Slet skabelonen? Tidligere indsendte KS-formularer bevares.'))return;
+  var r=await api('/api/qa-templates/'+qatEditingId,{method:'DELETE'});
+  if(r&&r.ok){toast('Skabelon slettet','🗑');closeModal('qa-template-modal');await loadPjQaTemplates();renderPjQaTemplates();}
+}
+
 async function importProductsFromJobtread(){
   var btn=document.getElementById('qz-import-jt-btn');
   btn.disabled=true;var oldTxt=btn.textContent;btn.textContent='Importerer...';
@@ -10279,8 +10978,73 @@ async function importProductsFromJobtread(){
   btn.disabled=false;btn.textContent=oldTxt;
   if(r&&r.ok){
     toast('Importerede '+r.imported+' nye produkter ('+r.skipped+' sprunget over, '+r.total_found+' fundet i alt)','✓');
-    await loadQzProducts();renderQzProducts();qePopulateProductPicker();
+    await loadQzProducts();renderQzProducts();
   } else toast((r&&r.error)||'Import fra JobTread fejlede','❌');
+}
+
+// ── SKABELONER — gemte linjesæt der kan indsættes i et nyt tilbud ──
+function renderQzTemplates(){
+  var q=(document.getElementById('qz-template-search').value||'').trim().toLowerCase();
+  var list=qzTemplates.filter(function(t){return !q||t.name.toLowerCase().indexOf(q)>-1;});
+  var body=document.getElementById('qz-templates-body');
+  if(!list.length){body.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen skabeloner fundet':'Ingen skabeloner endnu — byg en herunder, eller gem et tilbud som skabelon')+'</td></tr>';return;}
+  body.innerHTML=list.map(function(t){
+    return '<tr>'
+      +'<td>'+esc(t.name)+'</td>'
+      +'<td>'+esc(t.description||'–')+'</td>'
+      +'<td class="num">'+((t.lines||[]).length)+'</td>'
+      +'<td><div class="qz-row-actions">'
+      +'<button class="qz-icon-btn" onclick="useTemplateForNewQuote('+t.id+')" title="Brug i nyt tilbud">➜</button>'
+      +'<button class="qz-icon-btn" onclick="openTemplateModal('+t.id+')" title="Redigér">✎</button>'
+      +'<button class="qz-icon-btn" onclick="deleteQzTemplate('+t.id+')" title="Slet">🗑</button>'
+      +'</div></td>'
+      +'</tr>';
+  }).join('');
+}
+function openTemplateModal(id){
+  var t=id?qzTemplates.find(function(x){return x.id===id;}):null;
+  qztState={id:id||null,lines:t?(t.lines||[]).map(function(l){return Object.assign({},l);}):[]};
+  document.getElementById('qzt-title').textContent=t?'Redigér skabelon':'Ny skabelon';
+  document.getElementById('qzt-name').value=t?t.name:'';
+  document.getElementById('qzt-description').value=t?(t.description||''):'';
+  document.getElementById('qzt-delete').classList.toggle('hidden',!t);
+  qzRenderLines('qzt-lines',qztState.lines,'qzt');
+  document.getElementById('qz-template-modal').classList.add('open');
+}
+function qztAddLine(product){qztState.lines.push(qzMakeBlankLine(product));qzRenderLines('qzt-lines',qztState.lines,'qzt');}
+async function saveQzTemplate(){
+  var name=document.getElementById('qzt-name').value.trim();
+  if(!name){toast('Navn mangler','⚠️');return;}
+  if(!qztState.lines.length){toast('Tilføj mindst én linje','⚠️');return;}
+  var body={name:name,description:document.getElementById('qzt-description').value.trim()||null,lines:qztState.lines};
+  var r=qztState.id?await api('/api/quote-templates/'+qztState.id,{method:'PUT',body:JSON.stringify(body)}):await api('/api/quote-templates',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Skabelon gemt','✓');closeModal('qz-template-modal');await loadQzTemplates();renderQzTemplates();populateQeTemplatePicker();}
+  else toast((r&&r.error)||'Kunne ikke gemme skabelonen','❌');
+}
+async function deleteQzTemplateFromModal(){
+  if(!qztState.id)return;
+  if(!await gmConfirm('Slet denne skabelon?'))return;
+  var r=await api('/api/quote-templates/'+qztState.id,{method:'DELETE'});
+  if(r&&r.ok){toast('Skabelon slettet','🗑');closeModal('qz-template-modal');await loadQzTemplates();renderQzTemplates();populateQeTemplatePicker();}
+}
+async function deleteQzTemplate(id){
+  if(!await gmConfirm('Slet denne skabelon?'))return;
+  var r=await api('/api/quote-templates/'+id,{method:'DELETE'});
+  if(r&&r.ok){toast('Skabelon slettet','🗑');await loadQzTemplates();renderQzTemplates();populateQeTemplatePicker();}
+}
+function populateQeTemplatePicker(){
+  var sel=document.getElementById('qe-template-picker');
+  if(!sel)return;
+  sel.innerHTML='<option value="">Vælg en skabelon...</option>'+qzTemplates.map(function(t){
+    return '<option value="'+t.id+'">'+esc(t.name)+' ('+((t.lines||[]).length)+' linjer)</option>';
+  }).join('');
+}
+async function useTemplateForNewQuote(id){
+  var t=qzTemplates.find(function(x){return x.id===id;});
+  if(!t)return;
+  await openQuoteEditor(null);
+  qeState.lines=(t.lines||[]).map(function(l){return Object.assign({},l);});
+  renderQeLines();qeRecalc();
 }
 
 // ── TILBUD — liste ───────────────────────────────────────────
@@ -10312,14 +11076,6 @@ async function deleteQzQuote(id){
 }
 
 // ── TILBUDSEDITOR — delt skærm med live PDF-forhåndsvisning ──
-function qePopulateProductPicker(){
-  var sel=document.getElementById('qe-product-picker');
-  var current=sel.value;
-  sel.innerHTML='<option value="">+ Tilføj fra produktkatalog...</option>'+qzProducts.map(function(p){
-    return '<option value="'+p.id+'">'+esc(p.name)+' — '+krFmt(Number(p.sell_price))+'</option>';
-  }).join('');
-  sel.value=current;
-}
 function qePopulateStatusSelect(current){
   var sel=document.getElementById('qe-status-select');
   if(current==='converted'){
@@ -10333,17 +11089,20 @@ function qePopulateStatusSelect(current){
   }
 }
 async function openQuoteEditor(id){
-  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft'};
+  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null};
   document.getElementById('qe-customer-search').value='';
   document.getElementById('qe-customer-address').value='';
   document.getElementById('qe-customer-phone').value='';
   document.getElementById('qe-customer-email').value='';
   document.getElementById('qe-valid-until').value='';
+  document.getElementById('qe-doc-discount').value=0;
+  document.getElementById('qe-template-picker').value='';
   document.getElementById('qe-notes').value='';
   document.getElementById('qe-customer-results').style.display='none';
   document.getElementById('qe-convert-btn').style.display='none';
   document.getElementById('qe-pdf-link').style.display='none';
-  qePopulateProductPicker();
+  document.getElementById('qe-share-btn').style.display='none';
+  document.getElementById('qe-request-btn').style.display='none';
   if(id){
     var qd=await api('/api/quotes/'+id);
     if(!qd||qd.error){toast('Kunne ikke hente tilbuddet','❌');return;}
@@ -10351,18 +11110,22 @@ async function openQuoteEditor(id){
     qeState.taxRate=Number(qd.tax_rate)||25;
     qeState.jobName=qd.job_name||'';
     qeState.lastStatus=qd.status;
-    qeState.lines=(qd.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0};});
+    qeState.customerId=qd.customer_id||null;
+    qeState.lines=(qd.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0};});
     document.getElementById('qe-customer-search').value=qd.job_name||'';
     document.getElementById('qe-customer-address').value=qd.customer_address||'';
     document.getElementById('qe-customer-phone').value=qd.customer_phone||'';
     document.getElementById('qe-customer-email').value=qd.customer_email||'';
     document.getElementById('qe-valid-until').value=qd.valid_until||'';
+    document.getElementById('qe-doc-discount').value=Number(qd.discount_pct)||0;
     document.getElementById('qe-notes').value=qd.notes||'';
     document.getElementById('qe-title').textContent=qd.quote_number;
     document.getElementById('qe-subtitle').textContent='Oprettet '+String(qd.created_at||'').slice(0,10);
     qePopulateStatusSelect(qd.status);
     document.getElementById('qe-pdf-link').style.display='inline-flex';
     document.getElementById('qe-convert-btn').style.display=qd.status==='converted'?'none':'inline-flex';
+    document.getElementById('qe-share-btn').style.display=qd.status==='converted'?'none':'inline-flex';
+    document.getElementById('qe-request-btn').style.display='inline-flex';
     if(qd.status==='converted')toast('Dette tilbud er konverteret til en faktura','ℹ️');
   } else {
     document.getElementById('qe-title').textContent='Nyt tilbud';
@@ -10373,78 +11136,46 @@ async function openQuoteEditor(id){
   qeRecalc();
   document.getElementById('quote-editor-modal').classList.add('open');
 }
-function qeLineHtml(l,idx){
-  var lineTotal=(Number(l.quantity)||0)*(Number(l.sell_price)||0);
-  var cost=Number(l.cost_price)||0,sell=Number(l.sell_price)||0;
-  var pct=qzMarginPct(cost,sell);
-  var marginTxt=pct===null?'Avance: –':('Avance: '+pct.toFixed(0)+'% · DB '+krFmt((sell-cost)*(Number(l.quantity)||0)));
-  return '<div class="qe-line" data-idx="'+idx+'">'
-    +'<div class="qe-line-top">'
-    +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="description" value="'+esc(l.description||'')+'" placeholder="Beskrivelse">'
-    +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="unit" value="'+esc(l.unit||'stk')+'" placeholder="Enhed">'
-    +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
-    +'</div>'
-    +'<div class="qe-line-nums">'
-    +'<div><div class="qe-line-num-label">Antal</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="quantity" value="'+(Number(l.quantity)||0)+'"></div>'
-    +'<div><div class="qe-line-num-label">Cost-pris</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="cost_price" value="'+cost+'"></div>'
-    +'<div><div class="qe-line-num-label">Salgspris</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="sell_price" value="'+sell+'"></div>'
-    +'<div><div class="qe-line-num-label">I alt</div><div id="qe-line-total-'+idx+'" style="font-weight:800;padding-top:4px">'+krFmt(lineTotal)+'</div></div>'
-    +'</div>'
-    +'<div class="qe-line-margin qz-margin '+qzMarginClass(pct)+'" id="qe-line-margin-'+idx+'">'+marginTxt+'</div>'
-    +'</div>';
-}
-function renderQeLines(){
-  var el=document.getElementById('qe-lines');
-  if(!qeState.lines.length){el.innerHTML='<div class="sub" style="padding:14px 0">Ingen linjer endnu — tilføj fra produktkataloget eller opret en fri linje.</div>';return;}
-  el.innerHTML=qeState.lines.map(function(l,idx){return qeLineHtml(l,idx);}).join('');
-}
-function qeAddLine(product){
-  qeState.lines.push({
-    product_id:product?product.id:null,
-    description:product?product.name:'',
-    unit:product?(product.unit||'stk'):'stk',
-    quantity:1,
-    cost_price:product?Number(product.cost_price):0,
-    sell_price:product?Number(product.sell_price):0
-  });
-  renderQeLines();qeRecalc();
-}
-function qeRemoveLine(idx){qeState.lines.splice(idx,1);renderQeLines();qeRecalc();}
-function qeRefreshLineDisplay(idx){
-  var l=qeState.lines[idx];if(!l)return;
-  var lineTotal=(Number(l.quantity)||0)*(Number(l.sell_price)||0);
-  var cost=Number(l.cost_price)||0,sell=Number(l.sell_price)||0;
-  var pct=qzMarginPct(cost,sell);
-  var totalEl=document.getElementById('qe-line-total-'+idx);
-  if(totalEl)totalEl.textContent=krFmt(lineTotal);
-  var marginEl=document.getElementById('qe-line-margin-'+idx);
-  if(marginEl){marginEl.className='qe-line-margin qz-margin '+qzMarginClass(pct);marginEl.textContent=pct===null?'Avance: –':('Avance: '+pct.toFixed(0)+'% · DB '+krFmt((sell-cost)*(Number(l.quantity)||0)));}
-}
-function qeUpdateLine(idx,field,value){
-  var l=qeState.lines[idx];if(!l)return;
-  if(field==='description'||field==='unit'){l[field]=value;}
-  else{l[field]=Number(value)||0;qeRefreshLineDisplay(idx);}
-  qeRecalc();
-}
+function renderQeLines(){qzRenderLines('qe-lines',qeState.lines,'qe');}
+function qeAddLine(product){qeState.lines.push(qzMakeBlankLine(product));renderQeLines();qeRecalc();}
 function qeComputeTotals(){
-  var subtotal=qeState.lines.reduce(function(s,l){return s+(Number(l.quantity)||0)*(Number(l.sell_price)||0);},0);
+  var docDiscountPct=Number(document.getElementById('qe-doc-discount').value)||0;
   var taxRate=Number(qeState.taxRate)||25;
+  var byType={materialer:{revenue:0,cost:0},service:{revenue:0,cost:0}};
+  var rawSubtotal=0,costTotal=0;
+  qeState.lines.forEach(function(l){
+    var qty=Number(l.quantity)||0,sell=Number(l.sell_price)||0,cost=Number(l.cost_price)||0;
+    var lineDisc=Number(l.discount_pct)||0;
+    var net=qty*sell*(1-lineDisc/100);
+    var lineCost=qty*cost;
+    rawSubtotal+=net;costTotal+=lineCost;
+    var type=qzType(l.product_type);
+    byType[type].revenue+=net;byType[type].cost+=lineCost;
+  });
+  var discountAmount=rawSubtotal*docDiscountPct/100;
+  var subtotal=rawSubtotal-discountAmount;
   var taxAmount=subtotal*taxRate/100;
   var total=subtotal+taxAmount;
-  var costTotal=qeState.lines.reduce(function(s,l){return s+(Number(l.quantity)||0)*(Number(l.cost_price)||0);},0);
   var marginTotal=subtotal-costTotal;
   var marginPct=subtotal>0?marginTotal/subtotal*100:null;
-  return {subtotal:subtotal,taxRate:taxRate,taxAmount:taxAmount,total:total,costTotal:costTotal,marginTotal:marginTotal,marginPct:marginPct};
+  return {rawSubtotal:rawSubtotal,docDiscountPct:docDiscountPct,discountAmount:discountAmount,subtotal:subtotal,taxRate:taxRate,taxAmount:taxAmount,total:total,costTotal:costTotal,marginTotal:marginTotal,marginPct:marginPct,byType:byType};
+}
+function qzTypeRow(label,d){
+  var pct=d.revenue>0?(d.revenue-d.cost)/d.revenue*100:null;
+  return '<div class="qe-totals-row"><span>'+label+' — omsætning / avance</span><span>'+krFmt(d.revenue)+' <span class="qz-margin '+qzMarginClass(pct)+'">('+krFmt(d.revenue-d.cost)+(pct===null?'':' · '+pct.toFixed(0)+'%')+')</span></span></div>';
 }
 function qeRenderTotals(){
   var t=qeComputeTotals();
   document.getElementById('qe-totals').innerHTML=
-    '<div class="qe-totals-row"><span>Subtotal</span><span>'+krFmt(t.subtotal)+'</span></div>'
+    '<div class="qe-totals-row"><span>Subtotal (før rabat)</span><span>'+krFmt(t.rawSubtotal)+'</span></div>'
+   +(t.discountAmount>0?'<div class="qe-totals-row"><span>Rabat ('+t.docDiscountPct+'%)</span><span>-'+krFmt(t.discountAmount)+'</span></div>':'')
    +'<div class="qe-totals-row"><span>Moms ('+t.taxRate+'%)</span><span>'+krFmt(t.taxAmount)+'</span></div>'
    +'<div class="qe-totals-row total"><span>Total</span><span>'+krFmt(t.total)+'</span></div>';
   document.getElementById('qe-cost-summary').innerHTML=
-    '<div class="qe-totals-row"><span>Samlet cost-pris</span><span>'+krFmt(t.costTotal)+'</span></div>'
-   +'<div class="qe-totals-row"><span>Samlet avance</span><span class="qz-margin '+qzMarginClass(t.marginPct)+'">'+krFmt(t.marginTotal)+(t.marginPct===null?'':' · '+t.marginPct.toFixed(1)+'%')+'</span></div>';
+    qzTypeRow('Materialer',t.byType.materialer)
+   +qzTypeRow('Service',t.byType.service)
+   +'<div class="qe-totals-row"><span>Samlet cost-pris</span><span>'+krFmt(t.costTotal)+'</span></div>'
+   +'<div class="qe-totals-row"><span>Samlet avance (efter rabat)</span><span class="qz-margin '+qzMarginClass(t.marginPct)+'">'+krFmt(t.marginTotal)+(t.marginPct===null?'':' · '+t.marginPct.toFixed(1)+'%')+'</span></div>';
   return t;
 }
 function qeRenderPreview(){
@@ -10459,8 +11190,9 @@ function qeRenderPreview(){
   var validUntil=document.getElementById('qe-valid-until').value;
   var notes=document.getElementById('qe-notes').value.trim();
   var rowsHtml=qeState.lines.map(function(l){
-    var lineTotal=(Number(l.quantity)||0)*(Number(l.sell_price)||0);
-    return '<tr><td>'+esc(l.description||'–')+'</td><td class="num">'+(Number(l.quantity)||0)+' '+esc(l.unit||'')+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lineTotal)+'</td></tr>';
+    var qty=Number(l.quantity)||0,disc=Number(l.discount_pct)||0;
+    var lineTotal=qty*(Number(l.sell_price)||0)*(1-disc/100);
+    return '<tr><td>'+esc(l.description||'–')+'</td><td class="num">'+qty+' '+esc(l.unit||'')+(disc?' (-'+disc+'%)':'')+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lineTotal)+'</td></tr>';
   }).join('')||'<tr><td colspan="4" style="text-align:center;color:#9CA3AF;padding:14px">Ingen linjer endnu</td></tr>';
   document.getElementById('qe-preview').innerHTML=
      '<div class="qe-pdf-head">'
@@ -10470,6 +11202,7 @@ function qeRenderPreview(){
     +'<div class="qe-pdf-to"><b>Til:</b><br>'+(custName?esc(custName)+'<br>':'')+(custAddr?esc(custAddr)+'<br>':'')+(custPhone?'Tlf. '+esc(custPhone)+'<br>':'')+(custEmail?esc(custEmail):'')+'</div>'
     +'<table class="qe-pdf-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'
     +'<div class="qe-pdf-totals">'
+    +(t.discountAmount>0?'<div class="qe-pdf-totals-row"><span>Rabat ('+t.docDiscountPct+'%)</span><span>-'+krFmt(t.discountAmount)+'</span></div>':'')
     +'<div class="qe-pdf-totals-row"><span>Subtotal</span><span>'+krFmt(t.subtotal)+'</span></div>'
     +'<div class="qe-pdf-totals-row"><span>Moms ('+t.taxRate+'%)</span><span>'+krFmt(t.taxAmount)+'</span></div>'
     +'<div class="qe-pdf-totals-row grand"><span>Total</span><span>'+krFmt(t.total)+'</span></div>'
@@ -10497,6 +11230,7 @@ function qePickCustomer(r){
   document.getElementById('qe-customer-phone').value=r.customer_phone||'';
   document.getElementById('qe-customer-email').value=r.customer_email||'';
   document.getElementById('qe-customer-results').style.display='none';
+  qeState.customerId=r.customer_id||null;
   qeRecalc();
 }
 async function qeStatusChanged(e){
@@ -10512,12 +11246,14 @@ async function saveQuoteEditor(){
   if(!qeState.lines.length){toast('Tilføj mindst én linje','⚠️');return;}
   var body={
     job_name:jobName,
+    customer_id:qeState.customerId||null,
     customer_address:document.getElementById('qe-customer-address').value.trim()||null,
     customer_phone:document.getElementById('qe-customer-phone').value.trim()||null,
     customer_email:document.getElementById('qe-customer-email').value.trim()||null,
     valid_until:document.getElementById('qe-valid-until').value||null,
     notes:document.getElementById('qe-notes').value.trim()||null,
     tax_rate:qeState.taxRate,
+    discount_pct:Number(document.getElementById('qe-doc-discount').value)||0,
     lines:qeState.lines
   };
   var r=qeState.id?await api('/api/quotes/'+qeState.id,{method:'PUT',body:JSON.stringify(body)}):await api('/api/quotes',{method:'POST',body:JSON.stringify(body)});
@@ -10539,6 +11275,109 @@ async function convertQuoteToInvoice(){
     switchQzTab('invoices');
     openInvoiceDetail(r.invoice_id);
   } else toast((r&&r.error)||'Kunne ikke konvertere','❌');
+}
+async function qeShareLink(){
+  if(!qeState.id){toast('Gem tilbuddet først','⚠️');return;}
+  var btn=document.getElementById('qe-share-btn');
+  btn.disabled=true;
+  var r=await api('/api/quotes/'+qeState.id+'/share-link');
+  btn.disabled=false;
+  if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke hente link','❌');return;}
+  var done=function(){toast('Kundelink kopieret — send det i sms/mail til kunden','📋');};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(r.url).then(done).catch(function(){window.prompt('Kopiér linket til kunden:',r.url);});
+  } else {
+    window.prompt('Kopiér linket til kunden:',r.url);
+  }
+}
+function qrAddRecipientRow(name,email){
+  var wrap=document.getElementById('qr-recipients');
+  var row=document.createElement('div');
+  row.className='qr-recipient-row';
+  row.style.cssText='display:flex;gap:6px;margin-bottom:6px';
+  row.innerHTML='<input class="input qr-recip-name" placeholder="Navn (valgfrit)" style="flex:1"><input class="input qr-recip-email" placeholder="E-mail" style="flex:1.4"><button class="qz-icon-btn qr-remove-recipient" type="button" title="Fjern">✕</button>';
+  if(name)row.querySelector('.qr-recip-name').value=name;
+  if(email)row.querySelector('.qr-recip-email').value=email;
+  row.querySelector('.qr-remove-recipient').onclick=function(){row.remove();};
+  wrap.appendChild(row);
+}
+function qrRenderHistory(list){
+  var box=document.getElementById('qr-history');
+  if(!list||!list.length){box.innerHTML='<div class="sub">Ingen forespørgsler sendt endnu for dette tilbud.</div>';return;}
+  box.innerHTML='<div style="font-weight:800;font-size:12px;color:var(--bly-sub);text-transform:uppercase;margin-bottom:8px">Tidligere forespørgsler</div>'+list.map(function(r){
+    var linesById={};(r.lines||[]).forEach(function(l){linesById[l.id]=l;});
+    var kindLabel=r.kind==='supplier'?'📦 Leverandør':'🔧 Underleverandør';
+    var recipientsHtml=(r.recipients||[]).map(function(rc){
+      var statusBadge=rc.status==='responded'?'<span style="color:#15803D;font-weight:700">✓ Besvaret</span>':'<span style="color:#9CA3AF">Afventer svar</span>';
+      var sumHtml='';
+      if(rc.status==='responded'&&rc.responses&&rc.responses.lines){
+        var sum=0,hasPrice=false;
+        rc.responses.lines.forEach(function(v){var l=linesById[v.line_id];if(l&&v.unit_price!==null&&v.unit_price!==undefined&&v.unit_price!==''){sum+=Number(l.quantity)*Number(v.unit_price);hasPrice=true;}});
+        if(hasPrice)sumHtml=' — <b>'+krFmt(sum)+'</b> i alt';
+      }
+      return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px">'+
+        '<span>'+esc(rc.name||rc.email)+' <span class="sub">('+esc(rc.email)+')</span></span>'+
+        '<span style="text-align:right;white-space:nowrap">'+statusBadge+sumHtml+'</span></div>';
+    }).join('');
+    return '<div style="border:1px solid var(--bly-border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+        '<div style="font-weight:700">'+kindLabel+' <span class="sub" style="font-weight:400">· '+esc(String(r.created_at||'').slice(0,16).replace('T',' '))+'</span></div>'+
+        '<button class="qz-icon-btn" type="button" data-action="qr-delete" data-id="'+r.id+'" title="Slet forespørgsel">🗑</button>'+
+      '</div>'+
+      (recipientsHtml||'<div class="sub">Ingen modtagere</div>')+
+    '</div>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="qr-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet denne forespørgsel? Modtagernes svar går tabt.'))return;
+      await api('/api/quote-requests/'+btn.dataset.id,{method:'DELETE'});
+      qrOpenModal();
+    };
+  });
+}
+async function qrOpenModal(){
+  if(!qeState.id){toast('Gem tilbuddet først','⚠️');return;}
+  document.getElementById('qr-recipients').innerHTML='';
+  qrAddRecipientRow();
+  document.getElementById('qr-note').value='';
+  document.getElementById('qr-kind').value='supplier';
+  document.getElementById('qr-history').innerHTML='<div class="sub">Henter…</div>';
+  document.getElementById('quote-request-modal').classList.add('open');
+  var list=await api('/api/quotes/'+qeState.id+'/requests');
+  qrRenderHistory(Array.isArray(list)?list:[]);
+}
+async function qrSend(){
+  var kind=document.getElementById('qr-kind').value;
+  var rows=Array.prototype.slice.call(document.querySelectorAll('#qr-recipients .qr-recipient-row'));
+  var recipients=rows.map(function(row){
+    return {name:row.querySelector('.qr-recip-name').value.trim(),email:row.querySelector('.qr-recip-email').value.trim()};
+  }).filter(function(r){return r.email;});
+  if(!recipients.length){toast('Tilføj mindst én modtager med e-mail','⚠️');return;}
+  var btn=document.getElementById('qr-send-btn');
+  btn.disabled=true;btn.textContent='Sender…';
+  var r=await api('/api/quotes/'+qeState.id+'/requests',{method:'POST',body:JSON.stringify({kind:kind,recipients:recipients,note:document.getElementById('qr-note').value.trim()||null})});
+  btn.disabled=false;btn.textContent='📨 Send forespørgsel';
+  if(r&&r.ok){
+    var msg='Sendt til '+r.sent.length+' modtager'+(r.sent.length===1?'':'e');
+    if(r.failed&&r.failed.length)msg+=' — '+r.failed.length+' fejlede (tjek e-mail-adressen)';
+    toast(msg,'✓');
+    qrOpenModal();
+  } else toast((r&&r.error)||'Kunne ikke sende forespørgslen','❌');
+}
+async function qeSaveCurrentAsTemplate(){
+  if(!qeState.lines.length){toast('Der er ingen linjer at gemme','⚠️');return;}
+  var name=await gmPrompt('Navn på skabelonen','','Gem linjer som skabelon');
+  if(!name)return;
+  var r=await api('/api/quote-templates',{method:'POST',body:JSON.stringify({name:name.trim(),lines:qeState.lines})});
+  if(r&&r.ok){toast('Skabelon gemt','✓');await loadQzTemplates();populateQeTemplatePicker();renderQzTemplates();}
+  else toast((r&&r.error)||'Kunne ikke gemme skabelonen','❌');
+}
+async function qeApplyTemplate(id){
+  var t=qzTemplates.find(function(x){return x.id===id;});
+  if(!t)return;
+  if(qeState.lines.length&&!await gmConfirm('Dette erstatter de nuværende linjer med skabelonens linjer — fortsæt?'))return;
+  qeState.lines=(t.lines||[]).map(function(l){return Object.assign({},l);});
+  renderQeLines();qeRecalc();
 }
 
 // ── FAKTURAER + DELBETALINGER ────────────────────────────────
@@ -10610,6 +11449,7 @@ function bindQuotesModuleEvents(){
     b.addEventListener('click',function(){switchQzTab(b.dataset.qztab);});
   });
   document.getElementById('qz-product-search').addEventListener('input',renderQzProducts);
+  document.getElementById('qz-template-search').addEventListener('input',renderQzTemplates);
   document.getElementById('qz-quote-search').addEventListener('input',renderQzQuotes);
   document.getElementById('qz-invoice-search').addEventListener('input',renderQzInvoices);
   document.getElementById('qz-new-product-btn').addEventListener('click',function(){openProductModal(null);});
@@ -10620,30 +11460,49 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzp-sell').addEventListener('input',updateQzpMarginPreview);
   document.getElementById('qz-import-jt-btn').addEventListener('click',importProductsFromJobtread);
 
+  document.getElementById('qz-new-template-btn').addEventListener('click',function(){openTemplateModal(null);});
+  document.getElementById('qzt-cancel').addEventListener('click',function(){closeModal('qz-template-modal');});
+  document.getElementById('qzt-save').addEventListener('click',saveQzTemplate);
+  document.getElementById('qzt-delete').addEventListener('click',deleteQzTemplateFromModal);
+  document.getElementById('qzt-add-blank-line').addEventListener('click',function(){qztAddLine(null);});
+  document.getElementById('qzt-product-search').addEventListener('input',function(){
+    qzRunProductSearch('qzt-product-search','qzt-product-results',function(p){qztAddLine(p);});
+  });
+  var qztFieldHandler=makeLinesFieldHandler(function(){return qztState.lines;},'qzt',null);
+  document.getElementById('qzt-lines').addEventListener('input',qztFieldHandler);
+  document.getElementById('qzt-lines').addEventListener('change',qztFieldHandler);
+  document.getElementById('qzt-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
+
   document.getElementById('qz-new-quote-btn').addEventListener('click',function(){openQuoteEditor(null);});
   document.getElementById('qe-close-btn').addEventListener('click',function(){closeModal('quote-editor-modal');});
   document.getElementById('qe-save-btn').addEventListener('click',saveQuoteEditor);
   document.getElementById('qe-convert-btn').addEventListener('click',convertQuoteToInvoice);
+  document.getElementById('qe-share-btn').addEventListener('click',qeShareLink);
+  document.getElementById('qe-request-btn').addEventListener('click',qrOpenModal);
+  document.getElementById('qr-close-btn').addEventListener('click',function(){closeModal('quote-request-modal');});
+  document.getElementById('qr-add-recipient').addEventListener('click',function(){qrAddRecipientRow();});
+  document.getElementById('qr-send-btn').addEventListener('click',qrSend);
   document.getElementById('qe-status-select').addEventListener('change',qeStatusChanged);
   document.getElementById('qe-pdf-link').addEventListener('click',function(e){e.preventDefault();if(qeState.id)qzOpenPdf('/api/quotes/'+qeState.id+'/pdf');});
   document.getElementById('qe-add-blank-line').addEventListener('click',function(){qeAddLine(null);});
-  document.getElementById('qe-product-picker').addEventListener('change',function(e){
-    var pid=Number(e.target.value);
-    if(pid){var p=qzProducts.find(function(x){return x.id===pid;});if(p)qeAddLine(p);}
+  document.getElementById('qe-save-as-template-btn').addEventListener('click',qeSaveCurrentAsTemplate);
+  document.getElementById('qe-template-picker').addEventListener('change',function(e){
+    var id=Number(e.target.value);
     e.target.value='';
+    if(id)qeApplyTemplate(id);
   });
-  document.getElementById('qe-lines').addEventListener('input',function(e){
-    var t=e.target;
-    if(!t.classList.contains('qe-line-field'))return;
-    qeUpdateLine(Number(t.dataset.idx),t.dataset.field,t.value);
+  document.getElementById('qe-doc-discount').addEventListener('input',qeRecalc);
+  document.getElementById('qe-product-search').addEventListener('input',function(){
+    qzRunProductSearch('qe-product-search','qe-product-results',function(p){qeAddLine(p);});
   });
-  document.getElementById('qe-lines').addEventListener('click',function(e){
-    var btn=e.target.closest('.qe-line-remove');
-    if(btn)qeRemoveLine(Number(btn.dataset.idx));
-  });
+  var qeFieldHandler=makeLinesFieldHandler(function(){return qeState.lines;},'qe',qeRecalc);
+  document.getElementById('qe-lines').addEventListener('input',qeFieldHandler);
+  document.getElementById('qe-lines').addEventListener('change',qeFieldHandler);
+  document.getElementById('qe-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
   document.getElementById('qe-customer-search').addEventListener('input',function(e){
     clearTimeout(qeCustomerSearchTimer);
     var q=e.target.value.trim();
+    qeState.customerId=null; // gælder kun mens der skrives manuelt — genvælges hvis et forslag klikkes
     qeCustomerSearchTimer=setTimeout(function(){qeRunCustomerSearch(q);},150);
     qeRecalc();
   });
@@ -10651,7 +11510,7 @@ function bindQuotesModuleEvents(){
     document.getElementById(id).addEventListener('input',qeRecalc);
   });
   document.addEventListener('click',function(e){
-    if(!e.target.closest('.qe-customer-pop')){var box=document.getElementById('qe-customer-results');if(box)box.style.display='none';}
+    if(!e.target.closest('.qe-customer-pop'))qzCloseAllPops();
   });
 
   document.getElementById('iv-add-payment-btn').addEventListener('click',addIvPayment);

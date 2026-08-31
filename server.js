@@ -37,6 +37,9 @@ const fs = require('fs');
 const os = require('os');
 
 const app = express();
+// Render sidder bag en proxy — uden dette ville req.ip altid vise proxyens
+// IP i stedet for kundens rigtige IP (bruges som bevis ved e-signatur).
+app.set('trust proxy', true);
 const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET || '';
 const DATABASE_URL = process.env.DATABASE_URL || '';
@@ -796,6 +799,16 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
     CREATE INDEX IF NOT EXISTS idx_products_jt_cost_item ON products(jt_cost_item_id);
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'service'; -- 'materialer' eller 'service'
+
+    CREATE TABLE IF NOT EXISTS quote_templates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      lines JSONB NOT NULL DEFAULT '[]',
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
 
     CREATE TABLE IF NOT EXISTS doc_counters (
       kind TEXT NOT NULL,
@@ -826,6 +839,7 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
     CREATE INDEX IF NOT EXISTS idx_quotes_job_name ON quotes(job_name);
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS discount_pct NUMERIC NOT NULL DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS quote_lines (
       id SERIAL PRIMARY KEY,
@@ -839,6 +853,8 @@ async function initSchema() {
       position INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_quote_lines_quote ON quote_lines(quote_id);
+    ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'service';
+    ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS discount_pct NUMERIC NOT NULL DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS invoices (
       id SERIAL PRIMARY KEY,
@@ -861,6 +877,7 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
     CREATE INDEX IF NOT EXISTS idx_invoices_job_name ON invoices(job_name);
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_pct NUMERIC NOT NULL DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS invoice_lines (
       id SERIAL PRIMARY KEY,
@@ -874,6 +891,8 @@ async function initSchema() {
       position INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice ON invoice_lines(invoice_id);
+    ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'service';
+    ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS discount_pct NUMERIC NOT NULL DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS invoice_payments (
       id SERIAL PRIMARY KEY,
@@ -885,6 +904,130 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invoice_id);
+
+    -- ── CRM: eget kundekartotek (parallelt med JobTread-sagssøgningen, som
+    -- Tilbud/Faktura-editoren stadig kan bruge) — så Martin kan oprette kunder
+    -- direkte og booke/tilbyde dem uden en JobTread-sag i forvejen. ──────
+    CREATE TABLE IF NOT EXISTS customers (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT,
+      phone TEXT,
+      address TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
+
+    -- ── E-SIGNATUR på tilbud: fast link pr. tilbud kunden kan acceptere og
+    -- underskrive (tegnet signatur + navn + IP/tidspunkt som bevis). ────
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS customer_id INTEGER;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS accept_token TEXT;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS signed_name TEXT;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS signed_at TEXT;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS signed_ip TEXT;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS signature_data TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_accept_token ON quotes(accept_token) WHERE accept_token IS NOT NULL;
+
+    -- ── PRISFORESPØRGSLER til leverandører (kun materiale-linjer, uden priser)
+    -- og BLANKE TILBUD til underleverandører (alle linjer, uden priser) — samme
+    -- mekanik, forskellig linje-udvælgelse og modtager-antal. ──────────────
+    CREATE TABLE IF NOT EXISTS quote_requests (
+      id SERIAL PRIMARY KEY,
+      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL, -- 'supplier' eller 'subcontractor'
+      note TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_quote_requests_quote ON quote_requests(quote_id);
+    CREATE TABLE IF NOT EXISTS quote_request_lines (
+      id SERIAL PRIMARY KEY,
+      request_id INTEGER NOT NULL REFERENCES quote_requests(id) ON DELETE CASCADE,
+      description TEXT NOT NULL,
+      unit TEXT,
+      quantity NUMERIC,
+      position INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS quote_request_recipients (
+      id SERIAL PRIMARY KEY,
+      request_id INTEGER NOT NULL REFERENCES quote_requests(id) ON DELETE CASCADE,
+      name TEXT,
+      email TEXT NOT NULL,
+      token TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'sent', -- sent, responded
+      responses JSONB,
+      responded_at TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_quote_request_recipients_token ON quote_request_recipients(token);
+
+    -- ── PROJEKTER: oprettes (typisk) fra et accepteret tilbud. Samler
+    -- sags-Gantt (gantt_tasks scopet via project_id), tidsregistrering,
+    -- kvalitetssikring og billeder ét sted. ─────────────────────────
+    CREATE TABLE IF NOT EXISTS projects (
+      id SERIAL PRIMARY KEY,
+      quote_id INTEGER,
+      invoice_id INTEGER,
+      name TEXT NOT NULL,
+      customer_id INTEGER,
+      customer_address TEXT,
+      customer_phone TEXT,
+      customer_email TEXT,
+      status TEXT NOT NULL DEFAULT 'active', -- active, done, archived
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS project_id INTEGER;
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS source_quote_line_id INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_gantt_tasks_project ON gantt_tasks(project_id);
+
+    -- ── KVALITETSSIKRING: Martin bygger skabeloner (ordnet liste af felter),
+    -- medarbejdere udfylder dem pr. projekt. ────────────────────────────
+    CREATE TABLE IF NOT EXISTS qa_templates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      fields JSONB NOT NULL DEFAULT '[]', -- [{label,type:'check'|'text'|'number'|'photo'}]
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS qa_submissions (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      template_id INTEGER,
+      template_name TEXT,
+      answers JSONB NOT NULL DEFAULT '[]', -- [{label,type,value}]
+      submitted_by INTEGER,
+      submitted_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_qa_submissions_project ON qa_submissions(project_id);
+
+    -- ── TIDSREGISTRERING: note + billede er obligatorisk, indkøbte
+    -- materialer og tilbudspost er valgfrit, men gør det hurtigt at se
+    -- hvad der reelt skal faktureres. ────────────────────────────────
+    CREATE TABLE IF NOT EXISTS time_entries (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL,
+      minutes INTEGER NOT NULL DEFAULT 0,
+      note TEXT NOT NULL,
+      photo_url TEXT,
+      bought_materials TEXT,
+      quote_line_id INTEGER,
+      entry_date TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_time_entries_project ON time_entries(project_id);
+    CREATE TABLE IF NOT EXISTS project_photos (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      uploaded_by INTEGER,
+      caption TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_photos_project ON project_photos(project_id);
   `);
 
   await pool.query(`
@@ -4366,14 +4509,271 @@ app.get('/api/health', asyncRoute(async (req, res) => {
 app.get('/api/customers/search', auth, adminOnly, asyncRoute(async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (q.length < 2) return res.json([]);
-  const rows = await pool.query(`
-    SELECT DISTINCT ON (job_name, job_address) job_name, job_address, job_number, customer_phone, customer_email, job_lat, job_lng
-    FROM jt_tasks
-    WHERE job_name ILIKE $1 AND job_name IS NOT NULL AND job_name <> ''
-    ORDER BY job_name, job_address, created_at DESC
-    LIMIT 12
-  `, [`%${q}%`]);
+  // Matcher på tværs af BÅDE det nye CRM-kartotek (customers) og de historiske
+  // JobTread-sager (jt_tasks) — CRM-kunder vises først, da de er dem Martin
+  // selv har oprettet med vilje. customer_id er sat for CRM-rækker, ellers null.
+  const [crmRows, jtRows] = await Promise.all([
+    pool.query(`
+      SELECT id AS customer_id, name AS job_name, address AS job_address, NULL::TEXT AS job_number,
+        phone AS customer_phone, email AS customer_email, NULL::DOUBLE PRECISION AS job_lat, NULL::DOUBLE PRECISION AS job_lng
+      FROM customers WHERE name ILIKE $1 ORDER BY name LIMIT 8
+    `, [`%${q}%`]),
+    pool.query(`
+      SELECT DISTINCT ON (job_name, job_address) NULL::INTEGER AS customer_id, job_name, job_address, job_number,
+        customer_phone, customer_email, job_lat, job_lng
+      FROM jt_tasks
+      WHERE job_name ILIKE $1 AND job_name IS NOT NULL AND job_name <> ''
+      ORDER BY job_name, job_address, created_at DESC
+      LIMIT 12
+    `, [`%${q}%`])
+  ]);
+  res.json([...crmRows.rows, ...jtRows.rows]);
+}));
+
+// ── CRM: KUNDEKARTOTEK — eget kundekartotek Martin kan oprette kunder i
+// direkte, uafhængigt af om der findes en JobTread-sag på dem endnu. ────
+app.get('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const rows = q
+    ? await pool.query('SELECT * FROM customers WHERE name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1 ORDER BY name', [`%${q}%`])
+    : await pool.query('SELECT * FROM customers ORDER BY name');
   res.json(rows.rows);
+}));
+app.post('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
+  const r = await pool.query(`
+    INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id
+  `, [String(b.name).trim(), b.email || null, b.phone || null, b.address || null, b.notes || null]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM customers WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
+  const b = req.body || {};
+  await pool.query(`
+    UPDATE customers SET name=$1,email=$2,phone=$3,address=$4,notes=$5,updated_at=${nowTextSQL()} WHERE id=$6
+  `, [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.email !== undefined ? b.email : current.email,
+    b.phone !== undefined ? b.phone : current.phone,
+    b.address !== undefined ? b.address : current.address,
+    b.notes !== undefined ? b.notes : current.notes,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+app.delete('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM customers WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ══════════════════════════════════════════════════════════════
+// PROJEKTER — oprettes automatisk når en kunde underskriver et tilbud (se
+// /api/public/quotes/:token/accept), og indeholder: et let sags-Gantt (lokale
+// opgaver, IKKE synkroniseret med JobTread — derfor egne endpoints i stedet
+// for at genbruge /api/gantt/*), billeder, tidsregistrering og KS-formularer.
+// ══════════════════════════════════════════════════════════════
+// Bevidst KUN 'auth' (ikke financeOnly) — medarbejdere skal kunne se listen af
+// projekter i employee.html for at vælge hvilken sag de tidsregistrerer på.
+// Svaret indeholder ingen priser/tilbudsbeløb, kun navn/status/tæller.
+app.get('/api/projects', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT p.*, q.quote_number,
+      (SELECT COUNT(*)::int FROM gantt_tasks WHERE project_id=p.id) AS task_count,
+      (SELECT COUNT(*)::int FROM time_entries WHERE project_id=p.id) AS time_entry_count,
+      (SELECT COUNT(*)::int FROM project_photos WHERE project_id=p.id) AS photo_count
+    FROM projects p LEFT JOIN quotes q ON q.id = p.quote_id
+    ORDER BY p.created_at DESC
+  `);
+  res.json(rows.rows);
+}));
+
+app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const [tasks, photos, timeEntries, qaSubmissions, quoteLines] = await Promise.all([
+    pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 ORDER BY position ASC, id ASC', [req.params.id]).then(r => r.rows),
+    pool.query('SELECT * FROM project_photos WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
+    pool.query('SELECT * FROM time_entries WHERE project_id=$1 ORDER BY entry_date DESC, id DESC', [req.params.id]).then(r => r.rows),
+    pool.query('SELECT * FROM qa_submissions WHERE project_id=$1 ORDER BY submitted_at DESC', [req.params.id]).then(r => r.rows),
+    project.quote_id
+      ? pool.query('SELECT id, description FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id]).then(r => r.rows)
+      : Promise.resolve([])
+  ]);
+  res.json({ ...project, tasks, photos, time_entries: timeEntries, qa_submissions: qaSubmissions, quote_line_options: quoteLines });
+}));
+
+app.put('/api/projects/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  await pool.query(`
+    UPDATE projects SET name=$1, status=$2, customer_address=$3, customer_phone=$4, customer_email=$5, updated_at=${nowTextSQL()}
+    WHERE id=$6
+  `, [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.status !== undefined ? b.status : current.status,
+    b.customer_address !== undefined ? b.customer_address : current.customer_address,
+    b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
+    b.customer_email !== undefined ? b.customer_email : current.customer_email,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+
+// 1-KLIKS: opret én sags-opgave pr. tilbudslinje. Kan trykkes flere gange uden
+// at lave dubletter — springer linjer over der allerede har en opgave.
+app.post('/api/projects/:id/convert-quote-lines', auth, financeOnly, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  if (!project.quote_id) return res.status(400).json({ error: 'Dette projekt har intet tilknyttet tilbud' });
+  const lines = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id])).rows;
+  const existing = (await pool.query('SELECT source_quote_line_id FROM gantt_tasks WHERE project_id=$1 AND source_quote_line_id IS NOT NULL', [req.params.id])).rows;
+  const already = new Set(existing.map(r => r.source_quote_line_id));
+  let countRes = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks WHERE project_id=$1', [req.params.id]);
+  let pos = countRes ? countRes.n : 0;
+  const today = new Date().toISOString().slice(0, 10);
+  let created = 0;
+  for (const l of lines) {
+    if (already.has(l.id)) continue;
+    const id = 'p' + crypto.randomBytes(12).toString('hex');
+    await pool.query(`
+      INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,source_quote_line_id,synced_at)
+      VALUES ($1,$2,$3,$4,'',$5,$5,0,0,$6,$7,$8,${nowTextSQL()})
+    `, [id, 'project-' + project.id, project.name, l.description, today, String(pos), req.params.id, l.id]);
+    pos++;
+    created++;
+  }
+  res.json({ ok: true, created });
+}));
+
+app.post('/api/projects/:id/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id, name FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Skriv et navn til opgaven' });
+  if (!validDate(b.start_date)) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
+  const countRes = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks WHERE project_id=$1', [req.params.id]);
+  const id = 'p' + crypto.randomBytes(12).toString('hex');
+  await pool.query(`
+    INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,synced_at)
+    VALUES ($1,$2,$3,$4,'',$5,$6,0,0,$7,$8,${nowTextSQL()})
+  `, [id, 'project-' + project.id, project.name, name, b.start_date, b.end_date || b.start_date, String(countRes ? countRes.n : 0), req.params.id]);
+  res.json({ ok: true, id });
+}));
+
+app.put('/api/projects/:id/tasks/:taskId', auth, financeOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM gantt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
+  const b = req.body || {};
+  await pool.query(`
+    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, synced_at=${nowTextSQL()} WHERE id=$5
+  `, [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.start_date !== undefined ? b.start_date : current.start_date,
+    b.end_date !== undefined ? b.end_date : current.end_date,
+    b.progress !== undefined ? Math.max(0, Math.min(1, Number(b.progress))) : current.progress,
+    req.params.taskId
+  ]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/projects/:id/tasks/:taskId', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM gantt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.post('/api/projects/:id/photos', auth, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  if (!b.url) return res.status(400).json({ error: 'Intet billede angivet' });
+  const r = await pool.query('INSERT INTO project_photos (project_id,url,uploaded_by,caption) VALUES ($1,$2,$3,$4) RETURNING id',
+    [req.params.id, b.url, req.user.id, b.caption || null]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.delete('/api/projects/:id/photos/:photoId', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM project_photos WHERE id=$1 AND project_id=$2', [req.params.photoId, req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── TIDSREGISTRERING — hver registrering KRÆVER en note og et billede
+// (dokumentation for det udførte arbejde), og kan valgfrit tagges med hvilken
+// tilbudslinje/post arbejdet hører til, samt om der er købt materialer. ────
+app.post('/api/projects/:id/time-entries', auth, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const note = String(b.note || '').trim();
+  const minutes = Number(b.minutes);
+  if (!note) return res.status(400).json({ error: 'Skriv en note om det udførte arbejde' });
+  if (!b.photo_url) return res.status(400).json({ error: 'Upload et billede som dokumentation' });
+  if (!minutes || minutes <= 0) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt' });
+  const entryDate = validDate(b.entry_date) ? b.entry_date : new Date().toISOString().slice(0, 10);
+  const r = await pool.query(`
+    INSERT INTO time_entries (project_id,user_id,minutes,note,photo_url,bought_materials,quote_line_id,entry_date)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+  `, [req.params.id, req.user.id, Math.round(minutes), note, b.photo_url, b.bought_materials || null, b.quote_line_id || null, entryDate]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.delete('/api/projects/:id/time-entries/:entryId', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM time_entries WHERE id=$1 AND project_id=$2', [req.params.entryId, req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── KVALITETSSIKRING — Martin bygger formularer (skabeloner med felter),
+// medarbejdere udfylder dem under et projekt. ──────
+app.get('/api/qa-templates', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM qa_templates ORDER BY name');
+  res.json(rows.rows.map(r => ({ ...r, fields: typeof r.fields === 'string' ? safeJsonParse(r.fields, []) : (r.fields || []) })));
+}));
+
+app.post('/api/qa-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Skriv et navn til skabelonen' });
+  const fields = Array.isArray(b.fields) ? b.fields : [];
+  const r = await pool.query('INSERT INTO qa_templates (name,fields) VALUES ($1,$2) RETURNING id', [name, JSON.stringify(fields)]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.put('/api/qa-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM qa_templates WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  const b = req.body || {};
+  await pool.query(`UPDATE qa_templates SET name=$1, fields=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.fields !== undefined ? JSON.stringify(b.fields) : current.fields,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/qa-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM qa_templates WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.post('/api/projects/:id/qa-submissions', auth, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const answers = Array.isArray(b.answers) ? b.answers : [];
+  if (!answers.length) return res.status(400).json({ error: 'Udfyld mindst ét felt' });
+  const r = await pool.query(`
+    INSERT INTO qa_submissions (project_id,template_id,template_name,answers,submitted_by)
+    VALUES ($1,$2,$3,$4,$5) RETURNING id
+  `, [req.params.id, b.template_id || null, b.template_name || null, JSON.stringify(answers), req.user.id]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.delete('/api/qa-submissions/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM qa_submissions WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
 }));
 
 // ══════════════════════════════════════════════════════════════
@@ -6055,10 +6455,21 @@ async function nextDocNumber(kind, prefix) {
   }
 }
 
-function computeTotals(lines, taxRate) {
-  const subtotal = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.sell_price) || 0), 0);
+// rawSubtotal = sum efter evt. rabat PR. LINJE, men før rabat på hele dokumentet.
+// subtotal (det der gemmes i DB, og vises som "Subtotal" på PDF'en) = efter BEGGE rabatter, før moms.
+function computeTotals(lines, taxRate, discountPct) {
+  const dPct = Number(discountPct) || 0;
+  let rawSubtotal = 0, costTotal = 0;
+  for (const l of (lines || [])) {
+    const qty = Number(l.quantity) || 0, sell = Number(l.sell_price) || 0, cost = Number(l.cost_price) || 0;
+    const lineDisc = Number(l.discount_pct) || 0;
+    rawSubtotal += qty * sell * (1 - lineDisc / 100);
+    costTotal += qty * cost;
+  }
+  const discountAmount = rawSubtotal * dPct / 100;
+  const subtotal = rawSubtotal - discountAmount;
   const taxAmount = subtotal * (Number(taxRate) || 0) / 100;
-  return { subtotal, taxAmount, total: subtotal + taxAmount };
+  return { subtotal, rawSubtotal, discountAmount, taxAmount, total: subtotal + taxAmount, costTotal };
 }
 
 async function getCompanyInfo() {
@@ -6082,6 +6493,44 @@ async function getCompanyInfo() {
   };
 }
 
+// ── BILLED-UPLOAD (Cloudinary) — bruges af tidsregistrering, kvalitetssikring
+// og projekt-billeder. Render har ikke permanent fil-lager, så billeder kan
+// IKKE bare gemmes lokalt på serveren — de forsvinder ved næste deploy. ────
+function cloudinaryConfigured() {
+  return !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+}
+async function uploadPhotoToCloudinary(dataUri, folder) {
+  if (!cloudinaryConfigured()) throw new Error('Cloudinary er ikke konfigureret på serveren');
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  const timestamp = Math.floor(Date.now() / 1000);
+  const params = { timestamp, folder: folder || 'gulvmaster' };
+  const toSign = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&');
+  const signature = crypto.createHash('sha1').update(toSign + apiSecret).digest('hex');
+  const form = new URLSearchParams();
+  form.set('file', dataUri);
+  form.set('api_key', apiKey);
+  form.set('timestamp', String(timestamp));
+  form.set('signature', signature);
+  form.set('folder', params.folder);
+  const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: form });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((data.error && data.error.message) || 'Cloudinary-upload fejlede');
+  return data.secure_url;
+}
+app.post('/api/photos/upload', auth, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.image) return res.status(400).json({ error: 'Intet billede modtaget' });
+  if (!cloudinaryConfigured()) return res.status(400).json({ error: 'Billedlager er ikke konfigureret på serveren endnu — kontakt admin' });
+  try {
+    const url = await uploadPhotoToCloudinary(b.image, b.folder);
+    res.json({ ok: true, url });
+  } catch (e) {
+    res.status(400).json({ error: 'Kunne ikke uploade billedet: ' + e.message });
+  }
+}));
+
 // ── PRODUKTER ────────────────────────────────────────────────
 app.get('/api/products', auth, financeOnly, asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM products WHERE active=1 ORDER BY category NULLS LAST, name');
@@ -6092,9 +6541,9 @@ app.post('/api/products', auth, financeOnly, asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
   const r = await pool.query(`
-    INSERT INTO products (name,description,sku,unit,cost_price,sell_price,category)
-    VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
-  `, [String(b.name).trim(), b.description || null, b.sku || null, b.unit || 'stk', Number(b.cost_price) || 0, Number(b.sell_price) || 0, b.category || null]);
+    INSERT INTO products (name,description,sku,unit,cost_price,sell_price,category,product_type)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+  `, [String(b.name).trim(), b.description || null, b.sku || null, b.unit || 'stk', Number(b.cost_price) || 0, Number(b.sell_price) || 0, b.category || null, b.product_type === 'materialer' ? 'materialer' : 'service']);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
@@ -6103,8 +6552,8 @@ app.put('/api/products/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM products WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Produktet blev ikke fundet' });
   await pool.query(`
-    UPDATE products SET name=$1,description=$2,sku=$3,unit=$4,cost_price=$5,sell_price=$6,category=$7,updated_at=${nowTextSQL()}
-    WHERE id=$8
+    UPDATE products SET name=$1,description=$2,sku=$3,unit=$4,cost_price=$5,sell_price=$6,category=$7,product_type=$8,updated_at=${nowTextSQL()}
+    WHERE id=$9
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
     b.description !== undefined ? b.description : current.description,
@@ -6113,6 +6562,7 @@ app.put('/api/products/:id', auth, financeOnly, asyncRoute(async (req, res) => {
     b.cost_price !== undefined ? Number(b.cost_price) || 0 : current.cost_price,
     b.sell_price !== undefined ? Number(b.sell_price) || 0 : current.sell_price,
     b.category !== undefined ? b.category : current.category,
+    b.product_type !== undefined ? (b.product_type === 'materialer' ? 'materialer' : 'service') : current.product_type,
     req.params.id
   ]);
   res.json({ ok: true });
@@ -6181,6 +6631,41 @@ app.post('/api/products/import-from-jobtread', auth, financeOnly, asyncRoute(asy
   res.json({ ok: true, imported, skipped, total_found: seen.size });
 }));
 
+// ── TILBUDSSKABELONER — gemte linjesæt til hurtigt at starte et nyt tilbud fra ──
+app.get('/api/quote-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM quote_templates ORDER BY name ASC');
+  res.json(rows.rows);
+}));
+
+app.post('/api/quote-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
+  const r = await pool.query(`
+    INSERT INTO quote_templates (name,description,lines) VALUES ($1,$2,$3) RETURNING id
+  `, [String(b.name).trim(), b.description || null, JSON.stringify(b.lines || [])]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.put('/api/quote-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM quote_templates WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  const b = req.body || {};
+  await pool.query(`
+    UPDATE quote_templates SET name=$1,description=$2,lines=$3,updated_at=${nowTextSQL()} WHERE id=$4
+  `, [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.description !== undefined ? b.description : current.description,
+    b.lines !== undefined ? JSON.stringify(b.lines) : JSON.stringify(current.lines),
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/quote-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM quote_templates WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
 // ── TILBUD ───────────────────────────────────────────────────
 async function loadQuoteFull(id) {
   const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [id]);
@@ -6206,9 +6691,9 @@ async function saveQuoteLines(quoteId, lines) {
   for (const l of (lines || [])) {
     if (!l.description) continue;
     await pool.query(`
-      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-    `, [quoteId, l.product_id || null, String(l.description).trim(), l.unit || 'stk', Number(l.quantity) || 1, Number(l.cost_price) || 0, Number(l.sell_price) || 0, pos++]);
+      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `, [quoteId, l.product_id || null, String(l.description).trim(), l.unit || 'stk', Number(l.quantity) || 1, Number(l.cost_price) || 0, Number(l.sell_price) || 0, pos++, l.product_type === 'materialer' ? 'materialer' : 'service', Number(l.discount_pct) || 0]);
   }
 }
 
@@ -6216,12 +6701,14 @@ app.post('/api/quotes', auth, financeOnly, asyncRoute(async (req, res) => {
   const b = req.body || {};
   const company = await getCompanyInfo();
   const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : company.defaultTaxRate;
-  const totals = computeTotals(b.lines || [], taxRate);
+  const discountPct = Number(b.discount_pct) || 0;
+  const totals = computeTotals(b.lines || [], taxRate, discountPct);
   const quoteNumber = await nextDocNumber('quote', 'TIL');
+  const acceptToken = crypto.randomBytes(20).toString('hex');
   const r = await pool.query(`
-    INSERT INTO quotes (quote_number,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,valid_until,created_by)
-    VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8,$9,$10,$11,$12,$13) RETURNING id
-  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes || null, b.valid_until || null, req.user.id]);
+    INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,valid_until,created_by,discount_pct,accept_token)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
+  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes || null, b.valid_until || null, req.user.id, discountPct, acceptToken]);
   await saveQuoteLines(r.rows[0].id, b.lines);
   res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber });
 }));
@@ -6231,19 +6718,22 @@ app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   if (!current) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const b = req.body || {};
   const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : current.tax_rate;
-  const totals = computeTotals(b.lines !== undefined ? b.lines : await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1', [req.params.id]).then(r => r.rows), taxRate);
+  const discountPct = b.discount_pct !== undefined ? Number(b.discount_pct) || 0 : Number(current.discount_pct) || 0;
+  const totals = computeTotals(b.lines !== undefined ? b.lines : await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1', [req.params.id]).then(r => r.rows), taxRate, discountPct);
   await pool.query(`
-    UPDATE quotes SET job_name=$1,job_id=$2,customer_address=$3,customer_phone=$4,customer_email=$5,subtotal=$6,tax_rate=$7,tax_amount=$8,total=$9,notes=$10,valid_until=$11,updated_at=${nowTextSQL()}
-    WHERE id=$12
+    UPDATE quotes SET job_name=$1,job_id=$2,customer_id=$3,customer_address=$4,customer_phone=$5,customer_email=$6,subtotal=$7,tax_rate=$8,tax_amount=$9,total=$10,notes=$11,valid_until=$12,discount_pct=$13,updated_at=${nowTextSQL()}
+    WHERE id=$14
   `, [
     b.job_name !== undefined ? b.job_name : current.job_name,
     b.job_id !== undefined ? b.job_id : current.job_id,
+    b.customer_id !== undefined ? b.customer_id : current.customer_id,
     b.customer_address !== undefined ? b.customer_address : current.customer_address,
     b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
     b.customer_email !== undefined ? b.customer_email : current.customer_email,
     totals.subtotal, taxRate, totals.taxAmount, totals.total,
     b.notes !== undefined ? b.notes : current.notes,
     b.valid_until !== undefined ? b.valid_until : current.valid_until,
+    discountPct,
     req.params.id
   ]);
   if (b.lines !== undefined) await saveQuoteLines(req.params.id, b.lines);
@@ -6271,16 +6761,16 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, financeOnly, asyncRoute(asy
   const invoiceNumber = await nextDocNumber('invoice', 'FAK');
   const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 14);
   const r = await pool.query(`
-    INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,due_date)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13) RETURNING id
-  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, quote.subtotal, quote.tax_rate, quote.tax_amount, quote.total, quote.notes, dueDate.toISOString().slice(0, 10)]);
+    INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,due_date,discount_pct)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14) RETURNING id
+  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, quote.subtotal, quote.tax_rate, quote.tax_amount, quote.total, quote.notes, dueDate.toISOString().slice(0, 10), Number(quote.discount_pct) || 0]);
   const invoiceId = r.rows[0].id;
   let pos = 0;
   for (const l of quote.lines) {
     await pool.query(`
-      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++]);
+      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', Number(l.discount_pct) || 0]);
   }
   await pool.query(`UPDATE quotes SET status='converted', converted_invoice_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [invoiceId, quote.id]);
   res.json({ ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber });
@@ -6394,11 +6884,14 @@ function drawDocumentPdf(doc, kind, record, company) {
   doc.text('I alt', 470, y + 6, { width: 75, align: 'right' });
   y += 26;
   doc.fontSize(9.5).fillColor('#111318');
+  let rawSubtotal = 0;
   (record.lines || []).forEach(l => {
-    const lineTotal = Number(l.quantity) * Number(l.sell_price);
+    const lineDisc = Number(l.discount_pct) || 0;
+    const lineTotal = Number(l.quantity) * Number(l.sell_price) * (1 - lineDisc / 100);
+    rawSubtotal += lineTotal;
     const nameHeight = doc.heightOfString(l.description, { width: 260 });
     doc.text(l.description, 48, y, { width: 260 });
-    doc.text(String(l.quantity) + ' ' + (l.unit || ''), 320, y, { width: 50, align: 'right' });
+    doc.text(String(l.quantity) + ' ' + (l.unit || '') + (lineDisc ? ` (-${lineDisc}%)` : ''), 320, y, { width: 50, align: 'right' });
     doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 380, y, { width: 80, align: 'right' });
     doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
     y += Math.max(nameHeight, 14) + 6;
@@ -6407,6 +6900,13 @@ function drawDocumentPdf(doc, kind, record, company) {
 
   y += 10;
   const totalsX = 380;
+  const docDiscountPct = Number(record.discount_pct) || 0;
+  const docDiscountAmount = docDiscountPct ? rawSubtotal * docDiscountPct / 100 : 0;
+  if (docDiscountAmount > 0) {
+    doc.fontSize(9.5).fillColor('#6B7280').text(`Rabat (${docDiscountPct}%)`, totalsX, y, { width: 80, align: 'right' });
+    doc.fillColor('#DC2626').text('-' + Math.round(docDiscountAmount).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
+    y += 16;
+  }
   doc.fontSize(9.5).fillColor('#6B7280').text('Subtotal', totalsX, y, { width: 80, align: 'right' });
   doc.fillColor('#111318').text(Math.round(Number(record.subtotal)).toLocaleString('da-DK') + ' kr', 470, y, { width: 75, align: 'right' });
   y += 16;
@@ -6431,6 +6931,19 @@ function drawDocumentPdf(doc, kind, record, company) {
     y += 16;
     doc.fontSize(9).fillColor('#6B7280').text(record.notes, 40, y, { width: 515 });
     y += doc.heightOfString(record.notes, { width: 515 }) + 10;
+  }
+
+  if (!isInvoice && record.status === 'accepted' && record.signed_name) {
+    y += 8;
+    doc.fontSize(9).fillColor('#15803D').text(`✓ Accepteret af ${record.signed_name} den ${String(record.signed_at || '').slice(0, 16).replace('T', ' ')}`, 40, y, { width: 515 });
+    y += 15;
+    if (record.signature_data && /^data:image\/(png|jpeg);base64,/.test(record.signature_data)) {
+      try {
+        const imgBuf = Buffer.from(record.signature_data.split(',')[1], 'base64');
+        doc.image(imgBuf, 40, y, { width: 150 });
+        y += 55;
+      } catch (e) { /* ugyldigt billede — spring underskriften over på PDF'en */ }
+    }
   }
 
   if (isInvoice && (company.bankReg || company.bankAccount)) {
@@ -6465,6 +6978,355 @@ app.get('/api/invoices/:id/pdf', auth, financeOnly, asyncRoute(async (req, res) 
   doc.pipe(res);
   drawDocumentPdf(doc, 'invoice', invoice, company);
   doc.end();
+}));
+
+// ══════════════════════════════════════════════════════════════
+// E-SIGNATUR PÅ TILBUD — kunden kan acceptere et tilbud ved at tegne en
+// underskrift + skrive sit navn på en offentlig side (intet login). Det er
+// IKKE en "kvalificeret" e-signatur (eIDAS/NemID-niveau) — det er en tegnet
+// underskrift + navn + IP-adresse + tidsstempel som bevis, ligesom man
+// kender det fra fx pakkeleveringer. Kommunikeres ærligt til Martin.
+// ══════════════════════════════════════════════════════════════
+function krFmtServer(n) {
+  if (n === null || n === undefined || isNaN(Number(n))) return '–';
+  return Math.round(Number(n)).toLocaleString('da-DK') + ' kr';
+}
+function escPublic(s) {
+  return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
+}
+
+app.get('/api/quotes/:id/share-link', auth, financeOnly, asyncRoute(async (req, res) => {
+  const quote = await pgOne('SELECT id, accept_token FROM quotes WHERE id=$1', [req.params.id]);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  let token = quote.accept_token;
+  if (!token) {
+    token = crypto.randomBytes(20).toString('hex');
+    await pool.query('UPDATE quotes SET accept_token=$1 WHERE id=$2', [token, req.params.id]);
+  }
+  res.json({ ok: true, url: `${PUBLIC_APP_URL}/tilbud/${token}` });
+}));
+
+app.get('/tilbud/:token', asyncRoute(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const esc = escPublic;
+  const quote = await pgOne('SELECT * FROM quotes WHERE accept_token=$1', [req.params.token]);
+  if (!quote) return res.status(404).send(portalNotFoundPage());
+  const lines = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [quote.id])).rows;
+  const company = await getCompanyInfo();
+  const rawSubtotal = lines.reduce((s, l) => s + Number(l.quantity) * Number(l.sell_price) * (1 - (Number(l.discount_pct) || 0) / 100), 0);
+  const discountAmount = Number(quote.discount_pct) ? rawSubtotal * Number(quote.discount_pct) / 100 : 0;
+  const rowsHtml = lines.map(l => {
+    const disc = Number(l.discount_pct) || 0;
+    const lineTotal = Number(l.quantity) * Number(l.sell_price) * (1 - disc / 100);
+    return `<tr><td>${esc(l.description)}</td><td class="num">${Number(l.quantity)} ${esc(l.unit || '')}${disc ? ` (-${disc}%)` : ''}</td><td class="num">${krFmtServer(l.sell_price)}</td><td class="num">${krFmtServer(lineTotal)}</td></tr>`;
+  }).join('');
+  const statusBlock = (() => {
+    if (quote.status === 'accepted') {
+      return `<div class="accepted-box">✅ Accepteret af <b>${esc(quote.signed_name)}</b> den ${esc(String(quote.signed_at || '').slice(0, 16).replace('T', ' '))}${quote.signature_data ? `<div class="sig-preview"><img src="${esc(quote.signature_data)}" alt="Underskrift"></div>` : ''}</div>`;
+    }
+    if (quote.status === 'declined') return `<div class="declined-box">Dette tilbud er markeret som afvist.</div>`;
+    if (quote.status === 'converted') return `<div class="declined-box">Dette tilbud er allerede godkendt og faktureret.</div>`;
+    return `
+      <div class="accept-box">
+        <h3>Accepter tilbuddet</h3>
+        <label>Dit fulde navn</label>
+        <input id="accept-name" type="text" placeholder="Fornavn Efternavn">
+        <label>Underskrift <span class="sig-hint">— tegn med musen eller fingeren</span></label>
+        <canvas id="sigpad" width="600" height="180"></canvas>
+        <button type="button" id="sig-clear" class="btn-link">Ryd underskrift</button>
+        <button type="button" id="accept-btn" class="accept-btn" onclick="submitAccept()">Jeg accepterer tilbuddet</button>
+        <p class="legal-note">Ved at underskrive bekræfter du at have læst og accepteret tilbuddet. Din underskrift, dit navn, din IP-adresse og tidspunktet gemmes som bevis for accepten.</p>
+      </div>`;
+  })();
+  const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(quote.quote_number)} — ${esc(company.name)}</title>
+<style>
+  * { box-sizing:border-box; }
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:#111318;margin:0;padding:24px 16px 60px}
+  .wrap{max-width:640px;margin:0 auto}
+  .card{background:#fff;border-radius:16px;padding:28px 24px;box-shadow:0 8px 30px rgba(15,17,24,.08);margin-bottom:16px}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+  .company{font-size:18px;font-weight:800}
+  .company-sub{font-size:11px;color:#6B7280;margin-top:4px;line-height:1.6}
+  .doctype{font-size:20px;font-weight:800;color:#4F46E5;text-align:right}
+  .docmeta{font-size:11px;color:#6B7280;text-align:right;margin-top:2px}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:14px 0}
+  th{text-align:left;background:#F4F6FB;padding:8px 10px;font-size:11px;color:#374151}
+  th.num,td.num{text-align:right}
+  td{padding:8px 10px;border-bottom:1px solid #EEF0F3}
+  .totals{margin-left:auto;width:240px;margin-top:10px}
+  .totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:12.5px;color:#6B7280}
+  .totals-row.grand{font-size:15px;font-weight:800;color:#111318;border-top:1px solid #EEF0F3;margin-top:6px;padding-top:8px}
+  .accept-box h3{margin:0 0 12px;font-size:15px}
+  .accept-box label{display:block;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;margin:12px 0 4px}
+  .accept-box input{width:100%;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;font-size:14px}
+  #sigpad{width:100%;height:180px;border:2px dashed #CBD5E1;border-radius:12px;touch-action:none;background:#FAFAFB}
+  .sig-hint{text-transform:none;font-weight:400}
+  .btn-link{background:none;border:0;color:#6B7280;font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block}
+  .accept-btn{width:100%;margin-top:10px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer}
+  .accept-btn:disabled{opacity:.6}
+  .legal-note{font-size:10.5px;color:#9CA3AF;margin-top:10px;line-height:1.5}
+  .accepted-box{background:#F0FDF4;border:1px solid #BBF7D0;color:#15803D;border-radius:12px;padding:16px;font-size:13.5px}
+  .sig-preview{margin-top:10px;background:#fff;border-radius:8px;padding:8px;display:inline-block}
+  .sig-preview img{max-width:280px;display:block}
+  .declined-box{background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:12px;padding:16px;font-size:13.5px}
+  .notes{margin-top:16px;font-size:12px;color:#6B7280;white-space:pre-wrap}
+</style></head><body><div class="wrap">
+<div class="card">
+  <div class="head">
+    <div><div class="company">${esc(company.name)}</div><div class="company-sub">${[company.address, company.cvr ? ('CVR ' + company.cvr) : '', company.phone, company.email].filter(Boolean).map(esc).join('<br>')}</div></div>
+    <div><div class="doctype">TILBUD</div><div class="docmeta">${esc(quote.quote_number)}<br>Dato: ${esc(String(quote.created_at || '').slice(0, 10))}${quote.valid_until ? `<br>Gyldig til: ${esc(quote.valid_until)}` : ''}</div></div>
+  </div>
+  ${quote.job_name ? `<div style="font-size:13px;margin-bottom:14px"><b>Til:</b> ${esc(quote.job_name)}${quote.customer_address ? '<br>' + esc(quote.customer_address) : ''}</div>` : ''}
+  <table><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+  <div class="totals">
+    ${discountAmount > 0 ? `<div class="totals-row"><span>Rabat (${quote.discount_pct}%)</span><span>-${krFmtServer(discountAmount)}</span></div>` : ''}
+    <div class="totals-row"><span>Subtotal</span><span>${krFmtServer(quote.subtotal)}</span></div>
+    <div class="totals-row"><span>Moms (${quote.tax_rate}%)</span><span>${krFmtServer(quote.tax_amount)}</span></div>
+    <div class="totals-row grand"><span>Total</span><span>${krFmtServer(quote.total)}</span></div>
+  </div>
+  ${quote.notes ? `<div class="notes">${esc(quote.notes)}</div>` : ''}
+</div>
+<div class="card">${statusBlock}</div>
+</div>
+<script>
+var TOKEN=${JSON.stringify(req.params.token)};
+(function(){
+  var canvas=document.getElementById('sigpad');
+  if(!canvas)return;
+  var ctx=canvas.getContext('2d');
+  ctx.strokeStyle='#111318';ctx.lineWidth=2.5;ctx.lineCap='round';
+  var drawing=false,last=null;
+  function pos(e){var r=canvas.getBoundingClientRect();var t=e.touches?e.touches[0]:e;return {x:(t.clientX-r.left)*(canvas.width/r.width),y:(t.clientY-r.top)*(canvas.height/r.height)};}
+  function start(e){drawing=true;last=pos(e);e.preventDefault();}
+  function move(e){if(!drawing)return;var p=pos(e);ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;e.preventDefault();}
+  function end(){drawing=false;}
+  canvas.addEventListener('mousedown',start);canvas.addEventListener('mousemove',move);window.addEventListener('mouseup',end);
+  canvas.addEventListener('touchstart',start,{passive:false});canvas.addEventListener('touchmove',move,{passive:false});canvas.addEventListener('touchend',end);
+  var clearBtn=document.getElementById('sig-clear');
+  if(clearBtn)clearBtn.onclick=function(){ctx.clearRect(0,0,canvas.width,canvas.height);};
+})();
+async function submitAccept(){
+  var nameEl=document.getElementById('accept-name');
+  var name=nameEl?nameEl.value.trim():'';
+  if(!name){alert('Skriv dit navn');return;}
+  var canvas=document.getElementById('sigpad');
+  var blank=document.createElement('canvas');blank.width=canvas.width;blank.height=canvas.height;
+  if(canvas.toDataURL()===blank.toDataURL()){alert('Tegn din underskrift i feltet');return;}
+  var btn=document.getElementById('accept-btn');btn.disabled=true;btn.textContent='Sender...';
+  try{
+    var r=await fetch('/api/public/quotes/'+TOKEN+'/accept',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signed_name:name,signature_data:canvas.toDataURL('image/png')})});
+    var d=await r.json().catch(function(){return{};});
+    if(r.ok&&d.ok){window.location.reload();}
+    else{alert(d.error||'Der skete en fejl');btn.disabled=false;btn.textContent='Jeg accepterer tilbuddet';}
+  }catch(e){alert('Netværksfejl — prøv igen');btn.disabled=false;btn.textContent='Jeg accepterer tilbuddet';}
+}
+</script>
+</body></html>`;
+  res.send(html);
+}));
+
+app.post('/api/public/quotes/:token/accept', asyncRoute(async (req, res) => {
+  const quote = await pgOne('SELECT * FROM quotes WHERE accept_token=$1', [req.params.token]);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  if (['accepted', 'declined', 'converted'].includes(quote.status)) return res.status(400).json({ error: 'Dette tilbud er allerede behandlet' });
+  const b = req.body || {};
+  const name = String(b.signed_name || '').trim();
+  const sig = String(b.signature_data || '');
+  if (!name || !sig.startsWith('data:image/')) return res.status(400).json({ error: 'Navn og underskrift er påkrævet' });
+  const ip = (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim();
+  await pool.query(`
+    UPDATE quotes SET status='accepted', signed_name=$1, signed_at=${nowTextSQL()}, signed_ip=$2, signature_data=$3, updated_at=${nowTextSQL()}
+    WHERE id=$4
+  `, [name, ip, sig, quote.id]);
+  // Opret automatisk et projekt/sags-dashboard så snart kunden har underskrevet —
+  // det er selve pointen med e-signaturen ift. projektplanlægningen.
+  let projectId = null;
+  try {
+    const existingProject = await pgOne('SELECT id FROM projects WHERE quote_id=$1', [quote.id]);
+    if (existingProject) {
+      projectId = existingProject.id;
+    } else {
+      const p = await pgOne(`
+        INSERT INTO projects (quote_id, name, customer_id, customer_address, customer_phone, customer_email)
+        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
+      `, [quote.id, quote.job_name || quote.quote_number, quote.customer_id, quote.customer_address, quote.customer_phone, quote.customer_email]);
+      projectId = p.id;
+    }
+  } catch (e) {
+    // Selve accepten er allerede gemt — en fejl her må ikke vælte kundens kvittering.
+  }
+  res.json({ ok: true, project_id: projectId });
+}));
+
+// ══════════════════════════════════════════════════════════════
+// PRISFORESPØRGSLER (RFQ) — send tilbuddets materiale-linjer til leverandører
+// ("supplier", uden priser) for at indhente sammenlignelige priser, eller send
+// hele tilbuddet til en underleverandør ("subcontractor") med blanke pris-felter
+// de selv udfylder online. Systemet sender selv e-mails via sendMailUniversal.
+// ══════════════════════════════════════════════════════════════
+app.post('/api/quotes/:id/requests', auth, financeOnly, asyncRoute(async (req, res) => {
+  const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [req.params.id]);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const b = req.body || {};
+  const kind = b.kind === 'subcontractor' ? 'subcontractor' : 'supplier';
+  const recipients = Array.isArray(b.recipients) ? b.recipients.filter(r => r && r.email && String(r.email).trim()) : [];
+  if (!recipients.length) return res.status(400).json({ error: 'Angiv mindst én modtager med e-mail' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
+  const allLines = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [req.params.id])).rows;
+  const selectedLines = kind === 'supplier' ? allLines.filter(l => l.product_type === 'materialer') : allLines;
+  if (!selectedLines.length) return res.status(400).json({ error: kind === 'supplier' ? 'Tilbuddet indeholder ingen materiale-linjer at sende' : 'Tilbuddet indeholder ingen linjer at sende' });
+
+  const reqRow = await pgOne('INSERT INTO quote_requests (quote_id,kind,note) VALUES ($1,$2,$3) RETURNING *', [req.params.id, kind, b.note || null]);
+  for (const l of selectedLines) {
+    await pool.query('INSERT INTO quote_request_lines (request_id,description,unit,quantity,position) VALUES ($1,$2,$3,$4,$5)',
+      [reqRow.id, l.description, l.unit, l.quantity, l.position]);
+  }
+  const kindLabel = kind === 'supplier' ? 'Prisforespørgsel' : 'Forespørgsel til underleverandør';
+  const sent = [], failed = [];
+  for (const r of recipients) {
+    const token = crypto.randomBytes(20).toString('hex');
+    await pool.query('INSERT INTO quote_request_recipients (request_id,name,email,token) VALUES ($1,$2,$3,$4)',
+      [reqRow.id, r.name || null, String(r.email).trim(), token]);
+    const link = `${PUBLIC_APP_URL}/forespoergsel/${token}`;
+    try {
+      await sendMailUniversal({
+        to: String(r.email).trim(),
+        subject: `${kindLabel} — ${quote.quote_number}${quote.job_name ? ' (' + quote.job_name + ')' : ''}`,
+        text: `Hej${r.name ? ' ' + r.name : ''},\n\nVi vil gerne bede om en pris. Se detaljer og udfyld direkte her:\n${link}\n\nMvh`,
+        html: `<p>Hej${r.name ? ' ' + escPublic(r.name) : ''},</p><p>Vi vil gerne bede om en pris. Se detaljer og udfyld direkte via linket:</p><p><a href="${link}">${link}</a></p><p>Mvh</p>`
+      });
+      sent.push(r.email);
+    } catch (e) {
+      failed.push({ email: r.email, error: e.message });
+    }
+  }
+  res.json({ ok: true, id: reqRow.id, sent, failed });
+}));
+
+app.get('/api/quotes/:id/requests', auth, financeOnly, asyncRoute(async (req, res) => {
+  const requests = (await pool.query('SELECT * FROM quote_requests WHERE quote_id=$1 ORDER BY created_at DESC', [req.params.id])).rows;
+  for (const r of requests) {
+    r.lines = (await pool.query('SELECT * FROM quote_request_lines WHERE request_id=$1 ORDER BY position ASC, id ASC', [r.id])).rows;
+    r.recipients = (await pool.query('SELECT * FROM quote_request_recipients WHERE request_id=$1 ORDER BY created_at ASC', [r.id])).rows;
+  }
+  res.json(requests);
+}));
+
+app.delete('/api/quote-requests/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM quote_requests WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.get('/forespoergsel/:token', asyncRoute(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const esc = escPublic;
+  const recipient = await pgOne('SELECT * FROM quote_request_recipients WHERE token=$1', [req.params.token]);
+  if (!recipient) return res.status(404).send(portalNotFoundPage());
+  const reqRow = await pgOne('SELECT * FROM quote_requests WHERE id=$1', [recipient.request_id]);
+  if (!reqRow) return res.status(404).send(portalNotFoundPage());
+  const quote = await pgOne('SELECT quote_number, job_name FROM quotes WHERE id=$1', [reqRow.quote_id]);
+  const lines = (await pool.query('SELECT * FROM quote_request_lines WHERE request_id=$1 ORDER BY position ASC, id ASC', [reqRow.id])).rows;
+  const company = await getCompanyInfo();
+  const isSupplier = reqRow.kind === 'supplier';
+  const title = isSupplier ? 'Prisforespørgsel' : 'Forespørgsel til underleverandør';
+  const intro = isSupplier
+    ? 'Vi beder om en pris på følgende materialer. Udfyld enhedspris pr. linje herunder.'
+    : 'Vi beder om et pristilbud på nedenstående opgave. Udfyld din pris pr. linje herunder.';
+
+  let bodyHtml;
+  if (recipient.status === 'responded') {
+    const resp = recipient.responses || { lines: [] };
+    const byId = {}; (resp.lines || []).forEach(l => { byId[l.line_id] = l; });
+    const rowsHtml = lines.map(l => {
+      const v = byId[l.id] || {};
+      return `<tr><td>${esc(l.description)}</td><td class="num">${Number(l.quantity)} ${esc(l.unit || '')}</td><td class="num">${v.unit_price !== undefined && v.unit_price !== null && v.unit_price !== '' ? krFmtServer(v.unit_price) : '–'}</td></tr>`;
+    }).join('');
+    bodyHtml = `
+      <div class="accepted-box">✅ Tak — vi har modtaget dit svar den ${esc(String(recipient.responded_at || '').slice(0, 16).replace('T', ' '))}.</div>
+      <table><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Din pris</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+      ${resp.message ? `<div class="notes"><b>Din besked:</b><br>${esc(resp.message)}</div>` : ''}`;
+  } else {
+    const rowsHtml = lines.map(l => `
+      <tr>
+        <td>${esc(l.description)}</td>
+        <td class="num">${Number(l.quantity)} ${esc(l.unit || '')}</td>
+        <td class="num"><input type="number" step="0.01" min="0" class="line-price" data-line-id="${l.id}" placeholder="0,00"></td>
+      </tr>`).join('');
+    bodyHtml = `
+      <p class="intro">${esc(intro)}</p>
+      <table><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Din pris (kr, ekskl. moms)</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+      <label>Besked (valgfrit)</label>
+      <textarea id="resp-message" rows="3" placeholder="Fx leveringstid, forbehold m.m."></textarea>
+      <button type="button" id="resp-btn" class="accept-btn" onclick="submitResponse()">Send din pris</button>`;
+  }
+
+  const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(title)} — ${esc(company.name)}</title>
+<style>
+  * { box-sizing:border-box; }
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:#111318;margin:0;padding:24px 16px 60px}
+  .wrap{max-width:640px;margin:0 auto}
+  .card{background:#fff;border-radius:16px;padding:28px 24px;box-shadow:0 8px 30px rgba(15,17,24,.08);margin-bottom:16px}
+  .company{font-size:16px;font-weight:800}
+  .company-sub{font-size:11px;color:#6B7280;margin-top:4px}
+  h1{font-size:19px;margin:14px 0 4px}
+  .meta{font-size:12px;color:#6B7280;margin-bottom:14px}
+  .intro{font-size:13px;color:#374151;margin-bottom:14px}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:14px 0}
+  th{text-align:left;background:#F4F6FB;padding:8px 10px;font-size:11px;color:#374151}
+  th.num,td.num{text-align:right}
+  td{padding:8px 10px;border-bottom:1px solid #EEF0F3}
+  .line-price{width:100px;border:1px solid #E5E7EB;border-radius:6px;padding:6px 8px;font-size:13px;text-align:right}
+  label{display:block;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;margin:12px 0 4px}
+  textarea{width:100%;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;resize:vertical}
+  .accept-btn{width:100%;margin-top:14px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer}
+  .accept-btn:disabled{opacity:.6}
+  .accepted-box{background:#F0FDF4;border:1px solid #BBF7D0;color:#15803D;border-radius:12px;padding:16px;font-size:13.5px;margin-bottom:8px}
+  .notes{margin-top:14px;font-size:12.5px;color:#374151;background:#F4F6FB;border-radius:8px;padding:12px;white-space:pre-wrap}
+</style></head><body><div class="wrap">
+<div class="card">
+  <div class="company">${esc(company.name)}</div>
+  <div class="company-sub">${[company.address, company.phone, company.email].filter(Boolean).map(esc).join(' · ')}</div>
+  <h1>${esc(title)}</h1>
+  <div class="meta">${esc(quote ? quote.quote_number : '')}${quote && quote.job_name ? ' — ' + esc(quote.job_name) : ''}${recipient.name ? ' · Til ' + esc(recipient.name) : ''}</div>
+  ${bodyHtml}
+</div>
+</div>
+<script>
+var TOKEN=${JSON.stringify(req.params.token)};
+async function submitResponse(){
+  var inputs=document.querySelectorAll('.line-price');
+  var lines=[];
+  inputs.forEach(function(el){
+    var v=el.value.trim();
+    lines.push({line_id:Number(el.getAttribute('data-line-id')), unit_price: v===''?null:Number(v)});
+  });
+  var msgEl=document.getElementById('resp-message');
+  var btn=document.getElementById('resp-btn');btn.disabled=true;btn.textContent='Sender...';
+  try{
+    var r=await fetch('/api/public/requests/'+TOKEN+'/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lines:lines, message: msgEl?msgEl.value.trim():''})});
+    var d=await r.json().catch(function(){return{};});
+    if(r.ok&&d.ok){window.location.reload();}
+    else{alert(d.error||'Der skete en fejl');btn.disabled=false;btn.textContent='Send din pris';}
+  }catch(e){alert('Netværksfejl — prøv igen');btn.disabled=false;btn.textContent='Send din pris';}
+}
+</script>
+</body></html>`;
+  res.send(html);
+}));
+
+app.post('/api/public/requests/:token/respond', asyncRoute(async (req, res) => {
+  const recipient = await pgOne('SELECT * FROM quote_request_recipients WHERE token=$1', [req.params.token]);
+  if (!recipient) return res.status(404).json({ error: 'Linket blev ikke fundet' });
+  if (recipient.status === 'responded') return res.status(400).json({ error: 'Der er allerede sendt et svar via dette link' });
+  const b = req.body || {};
+  const lines = Array.isArray(b.lines) ? b.lines.filter(l => l && l.line_id) : [];
+  await pool.query(`
+    UPDATE quote_request_recipients SET status='responded', responses=$1, responded_at=${nowTextSQL()}
+    WHERE id=$2
+  `, [JSON.stringify({ lines, message: b.message || '' }), recipient.id]);
+  res.json({ ok: true });
 }));
 
 // ══════════════════════════════════════════════════════════════
