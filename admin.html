@@ -1420,6 +1420,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 #pd-gantt-strip .gantt-bar{top:16px;height:40px;font-size:13px}
 #pd-gantt-strip .gantt-bar-label{font-size:13px;font-weight:700;cursor:text}
 #pd-gantt-strip .gantt-bar-label[contenteditable="true"]{cursor:text;outline:2px solid rgba(255,255,255,.7);border-radius:4px;padding:0 3px}
+/* Venstre kolonne i sags-Gantt'et: navn, åbn og slet direkte på rækken, i stedet
+   for en separat opgaveliste under Gantt'et (fjernet — tog plads og duplikerede
+   det Gantt'et allerede viser). */
+#pd-gantt-strip .gantt-list-row[data-task-id]{gap:4px;padding:0 8px 0 14px}
+#pd-gantt-strip .gantt-inline-name{flex:1;min-width:0;border:1px solid transparent;background:transparent;border-radius:6px;padding:4px 6px;font:inherit;color:inherit}
+#pd-gantt-strip .gantt-inline-name:hover{border-color:var(--bly-border)}
+#pd-gantt-strip .gantt-inline-name:focus{outline:none;border-color:var(--bly-accent);background:#fff;box-shadow:0 0 0 2px var(--bly-accent-soft)}
+#pd-gantt-strip .gantt-list-row-actions{display:flex;gap:4px;flex-shrink:0;opacity:0;transition:.12s}
+#pd-gantt-strip .gantt-list-row[data-task-id]:hover .gantt-list-row-actions{opacity:1}
+#pd-gantt-strip .gantt-list-row-actions .qz-icon-btn{width:24px;height:24px;font-size:11px}
 .gantt-expand-toggle{margin-right:5px;font-size:10px;color:var(--muted);width:12px;display:inline-block}
 .avail-table th{background:var(--navy);color:#fff;padding:8px 9px;font-size:9px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;text-align:left}
 .avail-table th.person-th{position:sticky;left:0;z-index:2;min-width:170px}
@@ -2322,8 +2332,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <button class="bly-btn" id="pd-new-task-btn" type="button">+ Ny opgave</button>
           </div>
         </div>
-        <div id="pd-gantt-strip" style="overflow-x:auto;margin-bottom:16px"></div>
-        <div id="pd-tasks-body"></div>
+        <div id="pd-gantt-strip" style="overflow-x:auto"></div>
       </div>
       <div class="pdtabpage" id="pdtab-photos" style="display:none">
         <div class="bly-toolbar">
@@ -2771,6 +2780,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <input id="pdtd-end-input" type="hidden">
         <button type="button" id="pdtd-daterange-btn" class="input" style="text-align:left;cursor:pointer;background:#fff">Vælg periode…</button>
         <div id="pdtd-daterange-pop" class="bly-period-pop" style="display:none;width:300px;left:0;right:auto"></div>
+      </div>
+      <div class="form-group" style="margin-top:14px">
+        <label class="form-label">Fremdrift</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input id="pdtd-progress-input" type="range" min="0" max="100" step="5" value="0" style="flex:1">
+          <span id="pdtd-progress-value" style="font-size:12.5px;font-weight:700;color:var(--bly-ink);width:38px;text-align:right">0%</span>
+        </div>
       </div>
       <div class="gd-info-grid">
         <div><div class="gd-info-label">📞 Kundetelefon</div><div id="pdtd-phone" class="gd-info-value"></div></div>
@@ -11309,6 +11325,7 @@ function initProjectsModule(){
       if(pop.style.display!=='none'&&!inside)pop.style.display='none';
     });
     document.getElementById('pdtd-save-btn').addEventListener('click',savePdTaskDetail);
+    document.getElementById('pdtd-progress-input').addEventListener('input',function(){document.getElementById('pdtd-progress-value').textContent=this.value+'%';});
     document.getElementById('pdtd-checklist-add-btn').addEventListener('click',function(){addChecklistItem('pdtd-checklist-items',pdTaskDetailId,'pdtd-checklist-new');});
     document.getElementById('pdtd-capacity-btn').addEventListener('click',function(){
       if(!pdTaskDetailId)return;
@@ -11381,7 +11398,7 @@ async function openProjectDetail(id){
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
   switchPdTab('tasks');
-  renderPdTasks();renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
+  renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
   // Genindlæs den delte opgavepool (tasks-variablen) her, så "Tilføj til
   // Kapacitetsbordet" og tjekpunkter på en netop oprettet/redigeret sags-opgave
   // altid har den friske spejl-række fra jt_tasks at slå op i.
@@ -11400,7 +11417,7 @@ async function reloadPdCurrent(){
   var ilink=document.getElementById('pd-invoice-link');
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
-  renderPdTasks();renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
+  renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
   await loadPjProjects();renderPjProjects();
   loadAll();
 }
@@ -11433,7 +11450,7 @@ function pdGanttDateRange(){
 function renderPdGanttStrip(){
   var el=document.getElementById('pd-gantt-strip');
   var tasks=(pjCurrent.tasks||[]).slice().sort(function(a,b){return (a.start_date||'').localeCompare(b.start_date||'');});
-  if(!tasks.length){el.innerHTML='';return;}
+  if(!tasks.length){el.innerHTML='<div class="sub" style="padding:16px 2px">Ingen opgaver endnu. Opret dem manuelt med "+ Ny opgave", eller tryk "Opret opgaver fra tilbud" hvis sagen har et tilknyttet tilbud.</div>';return;}
   var range=pdGanttDateRange();pdGanttState.rangeStart=range.start;
   var dw=pdGanttState.dayWidth,todayIso=iso(new Date());
   var DAYABBR=['Sø','Ma','Ti','On','To','Fr','Lø'];
@@ -11445,7 +11462,16 @@ function renderPdGanttStrip(){
   }
   var listRows='<div class="gantt-list-head">Opgave</div>',timelineRows='';
   tasks.forEach(function(t){
-    listRows+='<div class="gantt-list-row" title="'+esc(t.name)+'"><span style="overflow:hidden;text-overflow:ellipsis">'+esc(t.name||'Uden navn')+'</span></div>';
+    // Omdøb, åbn og slet direkte i venstre kolonne — i stedet for en separat listevisning
+    // under Gantt'et (fjernet efter ønske: den tog plads og duplikerede det Gantt'et
+    // allerede viser). Navnet er et almindeligt tekstfelt (gemmer ved "change"/Enter),
+    // så det er hurtigt at rette uden at åbne hele opgave-detaljerne.
+    listRows+='<div class="gantt-list-row" data-task-id="'+t.id+'">'
+      +'<input class="gantt-inline-name" data-action="glr-name" value="'+esc(t.name||'')+'" title="'+esc(t.name||'')+'">'
+      +'<div class="gantt-list-row-actions">'
+      +'<button type="button" class="qz-icon-btn" data-action="glr-open" title="Åbn — note, tjekpunkter, kapacitet">🔎</button>'
+      +'<button type="button" class="qz-icon-btn" data-action="glr-delete" title="Slet">🗑</button>'
+      +'</div></div>';
     var s=t.start_date?date(t.start_date):range.start,e=t.end_date?date(t.end_date):s;
     var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
     timelineRows+='<div class="gantt-row">'+
@@ -11462,6 +11488,22 @@ function renderPdGanttStrip(){
       '<div class="gantt-timeline-head">'+headCols+'</div>'+
       '<div style="position:relative">'+timelineRows+'</div>'+
     '</div></div>';
+  document.querySelectorAll('#pd-gantt-strip .gantt-list-row[data-task-id]').forEach(function(row){
+    var taskId=row.dataset.taskId;
+    var nameInput=row.querySelector('[data-action="glr-name"]');
+    nameInput.addEventListener('click',function(e){e.stopPropagation();});
+    nameInput.addEventListener('change',function(){
+      var newName=nameInput.value.trim();
+      if(!newName){toast('Navn må ikke være tomt','⚠');nameInput.value=nameInput.title;return;}
+      api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({name:newName})}).then(function(){reloadPdCurrent();});
+    });
+    row.querySelector('[data-action="glr-open"]').addEventListener('click',function(){openPdTaskDetail(taskId);});
+    row.querySelector('[data-action="glr-delete"]').addEventListener('click',async function(){
+      if(!await gmConfirm('Slet opgaven?'))return;
+      await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'DELETE'});
+      reloadPdCurrent();
+    });
+  });
   document.querySelectorAll('#pd-gantt-strip .gantt-bar[data-pd-task-id]').forEach(function(bar){
     var taskId=bar.dataset.pdTaskId;
     bar.addEventListener('mousedown',function(e){
@@ -11555,42 +11597,6 @@ async function onPdGanttDragEnd(){
   await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({start_date:newStart,end_date:newEnd})});
   reloadPdCurrent();
 }
-function renderPdTasks(){
-  var box=document.getElementById('pd-tasks-body');
-  var tasks=(pjCurrent.tasks||[]).slice().sort(function(a,b){return (a.start_date||'').localeCompare(b.start_date||'');});
-  if(!tasks.length){box.innerHTML='<div class="sub" style="padding:16px 0">Ingen opgaver endnu. Opret dem manuelt, eller tryk "Opret opgaver fra tilbud" hvis sagen har et tilknyttet tilbud.</div>';return;}
-  box.innerHTML=tasks.map(function(t){
-    return '<div class="pd-task-row" data-task-id="'+t.id+'">'
-      +'<input class="input pd-task-name" style="width:220px" value="'+esc(t.name)+'">'
-      +'<input class="input pd-task-start" type="date" value="'+esc(t.start_date||'')+'" style="width:130px">'
-      +'<input class="input pd-task-end" type="date" value="'+esc(t.end_date||t.start_date||'')+'" style="width:130px">'
-      +'<input class="input pd-task-progress" type="number" min="0" max="100" step="5" value="'+Math.round((Number(t.progress)||0)*100)+'" style="width:60px" title="Fremdrift %">'
-      +'<button class="qz-icon-btn" data-action="pd-task-open" title="Åbn — note, tjekpunkter, kapacitet">🔎</button>'
-      +'<button class="qz-icon-btn" data-action="pd-task-delete" title="Slet">🗑</button>'
-      +'</div>';
-  }).join('');
-  Array.prototype.forEach.call(box.querySelectorAll('.pd-task-row'),function(row){
-    var id=row.dataset.taskId;
-    var save=function(){
-      api('/api/projects/'+pjCurrent.id+'/tasks/'+id,{method:'PUT',body:JSON.stringify({
-        name:row.querySelector('.pd-task-name').value.trim(),
-        start_date:row.querySelector('.pd-task-start').value,
-        end_date:row.querySelector('.pd-task-end').value||row.querySelector('.pd-task-start').value,
-        progress:Math.max(0,Math.min(100,Number(row.querySelector('.pd-task-progress').value)||0))/100
-      })}).then(function(){reloadPdCurrent();});
-    };
-    row.querySelector('.pd-task-name').addEventListener('change',save);
-    row.querySelector('.pd-task-start').addEventListener('change',save);
-    row.querySelector('.pd-task-end').addEventListener('change',save);
-    row.querySelector('.pd-task-progress').addEventListener('change',save);
-    row.querySelector('[data-action="pd-task-open"]').addEventListener('click',function(){openPdTaskDetail(id);});
-    row.querySelector('[data-action="pd-task-delete"]').addEventListener('click',async function(){
-      if(!await gmConfirm('Slet opgaven?'))return;
-      await api('/api/projects/'+pjCurrent.id+'/tasks/'+id,{method:'DELETE'});
-      reloadPdCurrent();
-    });
-  });
-}
 // ── SAGS-OPGAVE DETALJER — note, kundekontakt, tjekpunkter, "tilføj til
 // Kapacitetsbordet". Åbnes fra 🔎-knappen i opgavelisten eller ved klik (uden
 // træk) på en bjælke i sags-Gantt'et. ──
@@ -11610,6 +11616,9 @@ function openPdTaskDetail(taskId){
   document.getElementById('pdtd-phone').innerHTML=phone?'<a href="tel:'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
   document.getElementById('pdtd-email').innerHTML=email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
   document.getElementById('pdtd-note-input').value=t.description||'';
+  var progressPct=Math.round((Number(t.progress)||0)*100);
+  document.getElementById('pdtd-progress-input').value=progressPct;
+  document.getElementById('pdtd-progress-value').textContent=progressPct+'%';
   document.getElementById('pdtd-checklist-new').value='';
   renderChecklistItems('pdtd-checklist-items',taskId);
   document.getElementById('pd-task-detail-modal').classList.add('open');
@@ -11688,7 +11697,8 @@ async function savePdTaskDetail(){
     name:name,
     start_date:document.getElementById('pdtd-start-input').value,
     end_date:document.getElementById('pdtd-end-input').value||document.getElementById('pdtd-start-input').value,
-    description:document.getElementById('pdtd-note-input').value
+    description:document.getElementById('pdtd-note-input').value,
+    progress:Math.max(0,Math.min(100,Number(document.getElementById('pdtd-progress-input').value)||0))/100
   };
   var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+pdTaskDetailId,{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){closeModal('pd-task-detail-modal');toast('Gemt ✓','✓');reloadPdCurrent();}
