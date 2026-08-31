@@ -4692,10 +4692,47 @@ app.get('/api/customers/search', auth, adminOnly, asyncRoute(async (req, res) =>
 // direkte, uafhængigt af om der findes en JobTread-sag på dem endnu. ────
 app.get('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) => {
   const q = String(req.query.q || '').trim();
+  // Søger også i pris (tilbuds- og faktura-totaler) — så Martin kan skrive fx
+  // "15000" og finde kunden med det tilbud/den faktura, ikke kun navn/email/tlf.
   const rows = q
-    ? await pool.query('SELECT * FROM customers WHERE name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1 ORDER BY name', [`%${q}%`])
+    ? await pool.query(`
+        SELECT * FROM customers c WHERE
+          c.name ILIKE $1 OR c.email ILIKE $1 OR c.phone ILIKE $1
+          OR EXISTS (SELECT 1 FROM quotes qq WHERE qq.customer_id=c.id AND qq.total::text ILIKE $1)
+          OR EXISTS (SELECT 1 FROM invoices ii JOIN quotes qq2 ON qq2.id=ii.quote_id WHERE qq2.customer_id=c.id AND ii.total::text ILIKE $1)
+        ORDER BY c.name
+      `, [`%${q}%`])
     : await pool.query('SELECT * FROM customers ORDER BY name');
   res.json(rows.rows);
+}));
+// Kundedetalje — alt data på én kunde samlet: sager (projekter), tilbud og
+// fakturaer. Fakturaer har ingen customer_id-kolonne (de oprettes altid via
+// konverter-fra-tilbud, se /api/quotes/:id/convert-to-invoice), så de findes
+// via invoices.quote_id -> quotes.customer_id i stedet.
+app.get('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const customer = await pgOne('SELECT * FROM customers WHERE id=$1', [req.params.id]);
+  if (!customer) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
+  const [quotes, invoices, projects] = await Promise.all([
+    pool.query(`
+      SELECT id, quote_number, job_name, status, total, created_at, updated_at
+      FROM quotes WHERE customer_id=$1 ORDER BY created_at DESC
+    `, [req.params.id]),
+    pool.query(`
+      SELECT i.id, i.invoice_number, i.job_name, i.status, i.total, i.due_date, i.created_at
+      FROM invoices i JOIN quotes q ON q.id = i.quote_id
+      WHERE q.customer_id=$1 ORDER BY i.created_at DESC
+    `, [req.params.id]),
+    pool.query(`
+      SELECT id, name, status, quote_id, invoice_id, created_at
+      FROM projects WHERE customer_id=$1 ORDER BY created_at DESC
+    `, [req.params.id])
+  ]);
+  res.json({
+    customer,
+    quotes: quotes.rows,
+    invoices: invoices.rows,
+    projects: projects.rows
+  });
 }));
 app.post('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) => {
   const b = req.body || {};

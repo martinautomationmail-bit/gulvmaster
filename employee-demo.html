@@ -617,13 +617,17 @@ function pmOpenTimeForm(){
     <button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>
     <label class="req-label">Dato</label>
     <input class="req-input" type="date" id="pmt-date" value="${iso(new Date())}">
-    <label class="req-label">Minutter brugt</label>
-    <input class="req-input" type="number" id="pmt-minutes" min="1" placeholder="Fx 120">
+    <label class="req-label">Arbejdstid</label>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label class="req-label" style="margin:0 0 4px">Fra kl.</label><input class="req-input" type="time" id="pmt-time-from" oninput="pmUpdateTimeDuration()"></div>
+      <div style="flex:1"><label class="req-label" style="margin:0 0 4px">Til kl.</label><input class="req-input" type="time" id="pmt-time-to" oninput="pmUpdateTimeDuration()"></div>
+    </div>
+    <div id="pmt-duration-display" style="font-size:12px;font-weight:700;color:var(--muted);margin:6px 0 2px"></div>
     <label class="req-label">Note — hvad blev der lavet</label>
     <textarea class="req-textarea" id="pmt-note" rows="3" placeholder="Beskriv det udførte arbejde..."></textarea>
     <label class="req-label">Billeder — mindst ét er påkrævet som dokumentation</label>
     <div id="pmt-photos-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"></div>
-    <label class="small-btn primary" style="cursor:pointer;display:inline-flex;margin-bottom:10px">+ Tilføj billede<input type="file" accept="image/*" capture="environment" id="pmt-photo" style="display:none" onchange="pmAddTimePhoto(event)"></label>
+    <label class="small-btn primary" style="cursor:pointer;display:inline-flex;margin-bottom:10px">+ Tilføj billeder<input type="file" accept="image/*" capture="environment" multiple id="pmt-photo" style="display:none" onchange="pmAddTimePhoto(event)"></label>
     <label class="req-label">Post fra tilbud — valgfrit</label>
     <select class="req-input" id="pmt-line"><option value="">Ingen valgt</option>${lineOptions}</select>
     <label class="req-label">Købt materialer — valgfrit</label>
@@ -634,12 +638,42 @@ function pmOpenTimeForm(){
   pmRenderTimePhotosPreview();
 }
 function pmAddTimePhoto(e){
-  const f=e.target.files&&e.target.files[0];
+  // multiple-attributten på filfeltet betyder man nu kan vælge flere billeder på
+  // én gang i enhedens billedvælger — ikke kun tilføje ét ad gangen som før.
+  const files=e.target.files?Array.from(e.target.files):[];
   e.target.value='';
-  if(!f)return;
-  pmtPhotoFiles.push(f);
-  pmtPhotoPreviewUrls.push(URL.createObjectURL(f));
+  if(!files.length)return;
+  files.forEach(f=>{
+    pmtPhotoFiles.push(f);
+    pmtPhotoPreviewUrls.push(URL.createObjectURL(f));
+  });
   pmRenderTimePhotosPreview();
+}
+// Medarbejderne forstod ikke selv at regne "fra kl. til kl." om til minutter — de
+// vælger nu klokkeslæt, og antal minutter udregnes automatisk herfra.
+function pmComputeTimeMinutes(){
+  const fromV=document.getElementById('pmt-time-from')?.value;
+  const toV=document.getElementById('pmt-time-to')?.value;
+  if(!fromV||!toV)return null;
+  const[fh,fm]=fromV.split(':').map(Number),[th,tm]=toV.split(':').map(Number);
+  let mins=(th*60+tm)-(fh*60+fm);
+  if(mins<=0)return null; // "til" skal være senere end "fra" samme dag
+  return mins;
+}
+function pmUpdateTimeDuration(){
+  const disp=document.getElementById('pmt-duration-display');
+  if(!disp)return;
+  const mins=pmComputeTimeMinutes();
+  const fromV=document.getElementById('pmt-time-from')?.value;
+  const toV=document.getElementById('pmt-time-to')?.value;
+  if(mins===null){
+    disp.textContent=(fromV&&toV)?'⚠️ "Til" skal være efter "Fra"':'';
+    disp.style.color=(fromV&&toV)?'#DC2626':'var(--muted)';
+    return;
+  }
+  const h=Math.floor(mins/60),m=mins%60;
+  disp.textContent='= '+(h?h+' t ':'')+(m||!h?m+' min':'').trim();
+  disp.style.color='var(--muted)';
 }
 function pmRemoveTimePhoto(i){
   pmtPhotoFiles.splice(i,1);
@@ -653,12 +687,12 @@ function pmRenderTimePhotosPreview(){
   box.innerHTML=pmtPhotoPreviewUrls.map((u,i)=>`<div style="position:relative"><img src="${u}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"><button type="button" onclick="pmRemoveTimePhoto(${i})" style="position:absolute;top:-6px;right:-6px;background:rgba(17,19,24,.8);color:#fff;border:0;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer">✕</button></div>`).join('');
 }
 async function pmSubmitTime(){
-  const minutes=Number(document.getElementById('pmt-minutes').value);
+  const minutes=pmComputeTimeMinutes();
   const note=document.getElementById('pmt-note').value.trim();
   const date=document.getElementById('pmt-date').value;
   const lineId=document.getElementById('pmt-line').value;
   const materials=document.getElementById('pmt-materials').value.trim();
-  if(!minutes||minutes<=0){pmFeedback('pmt-feedback','Angiv hvor mange minutter der er brugt',false);return}
+  if(!minutes){pmFeedback('pmt-feedback','Udfyld "Fra kl." og "Til kl." — til skal være efter fra',false);return}
   if(!note){pmFeedback('pmt-feedback','Skriv en note om det udførte arbejde',false);return}
   if(!pmtPhotoFiles.length){pmFeedback('pmt-feedback','Upload mindst ét billede som dokumentation',false);return}
   const btn=document.getElementById('pmt-submit');btn.disabled=true;btn.textContent='Gemmer…';
