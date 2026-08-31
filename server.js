@@ -848,6 +848,9 @@ async function initSchema() {
     -- 'pct' (procent, 0-100) eller 'fixed' (fast kronebeløb) — styrer hvordan
     -- discount_pct-værdien ovenfor skal fortolkes. Se komment ved computeTotals().
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS discount_type TEXT NOT NULL DEFAULT 'pct';
+    -- Intern note — vises KUN i admin (team), aldrig på PDF/kunde-side/mails.
+    -- Til forskel fra "notes" som er kunde-synlig.
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS internal_note TEXT;
 
     CREATE TABLE IF NOT EXISTS quote_lines (
       id SERIAL PRIMARY KEY,
@@ -913,6 +916,34 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invoice_id);
+
+    -- KREDITNOTAER — selvstændigt nummereret dokument (KN-ÅÅÅÅ-NNNN) knyttet til
+    -- én faktura, med et valgfrit (helt eller delvist) beløb. Trækkes fra
+    -- fakturaens "rest" ligesom betalinger, men vises adskilt.
+    CREATE TABLE IF NOT EXISTS credit_notes (
+      id SERIAL PRIMARY KEY,
+      credit_note_number TEXT UNIQUE,
+      invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+      amount NUMERIC NOT NULL,
+      reason TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_credit_notes_invoice ON credit_notes(invoice_id);
+
+    -- AKTIVITETS-TIDSLINJE — hvem redigerede/sendte tilbud og fakturaer, og
+    -- hvornår kunden selv åbnede dem. Fælles tabel for begge dokumenttyper
+    -- (doc_type 'quote'|'invoice') så vi kun skal bygge/vedligeholde ét system.
+    CREATE TABLE IF NOT EXISTS document_activity (
+      id SERIAL PRIMARY KEY,
+      doc_type TEXT NOT NULL,
+      doc_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      actor TEXT,
+      detail TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_document_activity_doc ON document_activity(doc_type, doc_id);
 
     -- ── CRM: eget kundekartotek (parallelt med JobTread-sagssøgningen, som
     -- Tilbud/Faktura-editoren stadig kan bruge) — så Martin kan oprette kunder
@@ -5831,13 +5862,29 @@ async function sendDunningEmailForInvoice(inv, targetLevel, settings, companyNam
 
   const owed = inv.overrideStatus === 'partial' && inv.remaining != null ? inv.remaining : inv.priceWithTax;
   const totalWithFee = owed + settings.fee_amount;
-  const subject = `Rykker ${targetLevel} — ${inv.fullName} — ${companyName}`;
-  const text = `Hej,\n\nVi kan se at ${inv.fullName} på ${Math.round(owed).toLocaleString('da-DK')} kr. stadig ikke er betalt.\n\n` +
-    `Dette er rykker ${targetLevel}. Der er tillagt et rykkergebyr på ${Math.round(settings.fee_amount).toLocaleString('da-DK')} kr.\n\n` +
-    `Nyt beløb i alt: ${Math.round(totalWithFee).toLocaleString('da-DK')} kr.\n\nBetal venligst hurtigst muligt.\n\nVenlig hilsen\n${companyName}`;
+  let subject, html, text;
+  const templateId = await getAssignedTemplateId('dunning');
+  const tpl = templateId ? await pgOne('SELECT * FROM document_email_templates WHERE id=$1', [templateId]) : null;
+  if (tpl) {
+    // Rykkere har ikke et rigtigt tilbuds-/fakturanummer i JobTread-modellen — {{dokument_nr}}
+    // fyldes derfor med sagsnavnet, og {{restbeloeb}} med beløbet inkl. rykkergebyret.
+    const vars = {
+      kunde: inv.fullName || inv.customer || '', dokument_nr: inv.jobNumber || inv.fullName || '', total: krFmtServer(owed),
+      gyldig_til: '', forfald: '', restbeloeb: krFmtServer(totalWithFee), firma: companyName, link: '', underskriv_link: ''
+    };
+    subject = fillDocEmailVars(tpl.subject, vars);
+    html = fillDocEmailVars(tpl.body_html, vars);
+    text = stripHtmlToText(html);
+  } else {
+    subject = `Rykker ${targetLevel} — ${inv.fullName} — ${companyName}`;
+    text = `Hej,\n\nVi kan se at ${inv.fullName} på ${Math.round(owed).toLocaleString('da-DK')} kr. stadig ikke er betalt.\n\n` +
+      `Dette er rykker ${targetLevel}. Der er tillagt et rykkergebyr på ${Math.round(settings.fee_amount).toLocaleString('da-DK')} kr.\n\n` +
+      `Nyt beløb i alt: ${Math.round(totalWithFee).toLocaleString('da-DK')} kr.\n\nBetal venligst hurtigst muligt.\n\nVenlig hilsen\n${companyName}`;
+    html = text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('');
+  }
   let status = 'sent', error = null;
   try {
-    await sendMailUniversal({ to: toEmail, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') });
+    await sendMailUniversal({ to: toEmail, subject, text, html });
   } catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
   await pool.query('INSERT INTO finance_dunning_log (document_id,level,to_email,status,error) VALUES ($1,$2,$3,$4,$5)', [inv.id, targetLevel, toEmail, status, error]);
   return status === 'sent' ? { sent: true, level: targetLevel, toEmail } : { sent: false, reason: error };
@@ -6640,6 +6687,34 @@ app.post('/api/finance/email-report', auth, financeOnly, asyncRoute(async (req, 
 // delbetalinger, adskilt fra JobTread's egne dokumenter (se financeOnly
 // ovenfor). Kun for brugere med is_finance_admin=1, ligesom resten af Økonomi.
 // ══════════════════════════════════════════════════════════════
+// ── AKTIVITETS-TIDSLINJE — logger aldrig fejl videre til kalderen: en fejlet
+// log-indsættelse må ikke vælte selve tilbuds/faktura-handlingen. 'viewed' er
+// throttlet til højst ét hak pr. minut pr. dokument, så en kunde der genindlæser
+// siden nogle gange ikke oversvømmer tidslinjen med identiske rækker.
+async function logDocActivity(docType, docId, eventType, actor, detail) {
+  try {
+    if (eventType === 'viewed') {
+      const recent = await pgOne(
+        `SELECT id FROM document_activity WHERE doc_type=$1 AND doc_id=$2 AND event_type='viewed' AND created_at > ((CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - interval '60 seconds')::text ORDER BY id DESC LIMIT 1`,
+        [docType, docId]
+      ).catch(() => null);
+      if (recent) return;
+    }
+    await pool.query(
+      'INSERT INTO document_activity (doc_type,doc_id,event_type,actor,detail) VALUES ($1,$2,$3,$4,$5)',
+      [docType, docId, eventType, actor || null, detail || null]
+    );
+  } catch (e) { /* tidslinjen er et nice-to-have — fejler den, må hoved-handlingen ikke fejle med */ }
+}
+app.get('/api/quotes/:id/activity', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM document_activity WHERE doc_type=$1 AND doc_id=$2 ORDER BY id DESC', ['quote', req.params.id]);
+  res.json(rows.rows);
+}));
+app.get('/api/invoices/:id/activity', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM document_activity WHERE doc_type=$1 AND doc_id=$2 ORDER BY id DESC', ['invoice', req.params.id]);
+  res.json(rows.rows);
+}));
+
 async function nextDocNumber(kind, prefix) {
   const year = new Date().getFullYear();
   const client = await pool.connect();
@@ -6947,10 +7022,11 @@ app.post('/api/quotes', auth, financeOnly, asyncRoute(async (req, res) => {
   const quoteNumber = await nextDocNumber('quote', 'TIL');
   const acceptToken = crypto.randomBytes(20).toString('hex');
   const r = await pool.query(`
-    INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,valid_until,created_by,discount_pct,discount_type,accept_token)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id
-  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken]);
+    INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id
+  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes || null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken]);
   await saveQuoteLines(r.rows[0].id, b.lines);
+  logDocActivity('quote', r.rows[0].id, 'created', req.user.name, null);
   res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber });
 }));
 
@@ -6963,8 +7039,8 @@ app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   const discountType = b.discount_type !== undefined ? (b.discount_type === 'fixed' ? 'fixed' : 'pct') : (current.discount_type === 'fixed' ? 'fixed' : 'pct');
   const totals = computeTotals(b.lines !== undefined ? b.lines : await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1', [req.params.id]).then(r => r.rows), taxRate, { value: discountPct, type: discountType });
   await pool.query(`
-    UPDATE quotes SET job_name=$1,job_id=$2,customer_id=$3,customer_address=$4,customer_phone=$5,customer_email=$6,subtotal=$7,tax_rate=$8,tax_amount=$9,total=$10,notes=$11,valid_until=$12,discount_pct=$13,discount_type=$14,updated_at=${nowTextSQL()}
-    WHERE id=$15
+    UPDATE quotes SET job_name=$1,job_id=$2,customer_id=$3,customer_address=$4,customer_phone=$5,customer_email=$6,subtotal=$7,tax_rate=$8,tax_amount=$9,total=$10,notes=$11,internal_note=$12,valid_until=$13,discount_pct=$14,discount_type=$15,updated_at=${nowTextSQL()}
+    WHERE id=$16
   `, [
     b.job_name !== undefined ? b.job_name : current.job_name,
     b.job_id !== undefined ? b.job_id : current.job_id,
@@ -6974,12 +7050,14 @@ app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
     b.customer_email !== undefined ? b.customer_email : current.customer_email,
     totals.subtotal, taxRate, totals.taxAmount, totals.total,
     b.notes !== undefined ? b.notes : current.notes,
+    b.internal_note !== undefined ? b.internal_note : current.internal_note,
     b.valid_until !== undefined ? b.valid_until : current.valid_until,
     discountPct,
     discountType,
     req.params.id
   ]);
   if (b.lines !== undefined) await saveQuoteLines(req.params.id, b.lines);
+  logDocActivity('quote', req.params.id, 'edited', req.user.name, null);
   res.json({ ok: true });
 }));
 
@@ -6988,6 +7066,7 @@ app.put('/api/quotes/:id/status', auth, financeOnly, asyncRoute(async (req, res)
   if (!['draft', 'sent', 'accepted', 'declined'].includes(status)) return res.status(400).json({ error: 'Ugyldig status' });
   const r = await pool.query(`UPDATE quotes SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2 AND status <> 'converted'`, [status, req.params.id]);
   if (!r.rowCount) return res.status(400).json({ error: 'Tilbuddet findes ikke, eller er allerede konverteret til en faktura' });
+  logDocActivity('quote', req.params.id, 'status_changed', req.user.name, status);
   res.json({ ok: true });
 }));
 
@@ -7029,34 +7108,46 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, financeOnly, asyncRoute(asy
   // der findes en faktura, kobles den på projektet, så "Tilføj til faktura"
   // fra tidsregistreringer og "Se faktura"-linket i sags-dashboardet virker.
   await pool.query(`UPDATE projects SET invoice_id=$1, updated_at=${nowTextSQL()} WHERE quote_id=$2`, [invoiceId, quote.id]);
+  logDocActivity('quote', quote.id, 'converted', req.user.name, invoiceNumber);
+  logDocActivity('invoice', invoiceId, 'created', req.user.name, `fra tilbud ${quote.quote_number}`);
   res.json({ ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber });
 }));
 
-// ── FAKTURA + DELBETALINGER ──────────────────────────────────
+// ── FAKTURA + DELBETALINGER + KREDITNOTAER ───────────────────
+// "Rest" på en faktura = total minus BÅDE betalinger OG kreditnotaer — en
+// kreditnota reducerer hvad kunden skylder, ligesom en betaling gør, men vises
+// og bogføres adskilt (den er jo ikke penge kunden har betalt).
 async function loadInvoiceFull(id) {
   const invoice = await pgOne('SELECT * FROM invoices WHERE id=$1', [id]);
   if (!invoice) return null;
   const lines = await pool.query('SELECT * FROM invoice_lines WHERE invoice_id=$1 ORDER BY position ASC, id ASC', [id]);
   const payments = await pool.query('SELECT * FROM invoice_payments WHERE invoice_id=$1 ORDER BY paid_at ASC, id ASC', [id]);
+  const creditNotes = await pool.query('SELECT * FROM credit_notes WHERE invoice_id=$1 ORDER BY created_at ASC, id ASC', [id]);
   const paidTotal = payments.rows.reduce((s, p) => s + Number(p.amount), 0);
-  return { ...invoice, lines: lines.rows, payments: payments.rows, paid_total: paidTotal, remaining: Number(invoice.total) - paidTotal };
+  const creditedTotal = creditNotes.rows.reduce((s, c) => s + Number(c.amount), 0);
+  return {
+    ...invoice, lines: lines.rows, payments: payments.rows, credit_notes: creditNotes.rows,
+    paid_total: paidTotal, credited_total: creditedTotal, remaining: Number(invoice.total) - paidTotal - creditedTotal
+  };
 }
 async function refreshInvoiceStatus(invoiceId) {
   const invoice = await pgOne('SELECT total FROM invoices WHERE id=$1', [invoiceId]);
   if (!invoice) return;
   const sum = await pgOne('SELECT COALESCE(SUM(amount),0) AS paid FROM invoice_payments WHERE invoice_id=$1', [invoiceId]);
-  const paid = Number(sum.paid);
+  const creditSum = await pgOne('SELECT COALESCE(SUM(amount),0) AS credited FROM credit_notes WHERE invoice_id=$1', [invoiceId]);
+  const settled = Number(sum.paid) + Number(creditSum.credited);
   const total = Number(invoice.total);
-  const status = paid <= 0 ? 'unpaid' : (paid >= total ? 'paid' : 'partial');
+  const status = settled <= 0 ? 'unpaid' : (settled >= total ? 'paid' : 'partial');
   await pool.query(`UPDATE invoices SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2 AND status <> 'void'`, [status, invoiceId]);
 }
 
 app.get('/api/invoices', auth, financeOnly, asyncRoute(async (req, res) => {
   const rows = await pool.query(`
-    SELECT i.*, COALESCE((SELECT SUM(amount) FROM invoice_payments p WHERE p.invoice_id=i.id),0) AS paid_total
+    SELECT i.*, COALESCE((SELECT SUM(amount) FROM invoice_payments p WHERE p.invoice_id=i.id),0) AS paid_total,
+           COALESCE((SELECT SUM(amount) FROM credit_notes c WHERE c.invoice_id=i.id),0) AS credited_total
     FROM invoices i ORDER BY i.created_at DESC, i.id DESC
   `);
-  res.json(rows.rows.map(r => ({ ...r, remaining: Number(r.total) - Number(r.paid_total) })));
+  res.json(rows.rows.map(r => ({ ...r, remaining: Number(r.total) - Number(r.paid_total) - Number(r.credited_total) })));
 }));
 
 app.get('/api/invoices/:id', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -7080,6 +7171,7 @@ app.put('/api/invoices/:id', auth, financeOnly, asyncRoute(async (req, res) => {
     b.customer_email !== undefined ? b.customer_email : current.customer_email,
     req.params.id
   ]);
+  logDocActivity('invoice', req.params.id, 'edited', req.user.name, null);
   res.json({ ok: true });
 }));
 
@@ -7093,29 +7185,143 @@ app.post('/api/invoices/:id/payments', auth, financeOnly, asyncRoute(async (req,
     INSERT INTO invoice_payments (invoice_id,amount,paid_at,method,note) VALUES ($1,$2,$3,$4,$5)
   `, [req.params.id, amount, validDate(b.paid_at) ? b.paid_at : new Date().toISOString().slice(0, 10), b.method || null, b.note || null]);
   await refreshInvoiceStatus(req.params.id);
+  logDocActivity('invoice', req.params.id, 'payment_added', req.user.name, krFmtServer(amount));
   res.json({ ok: true });
 }));
 
 app.delete('/api/invoices/:id/payments/:paymentId', auth, financeOnly, asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM invoice_payments WHERE id=$1 AND invoice_id=$2', [req.params.paymentId, req.params.id]);
   await refreshInvoiceStatus(req.params.id);
+  logDocActivity('invoice', req.params.id, 'payment_removed', req.user.name, null);
   res.json({ ok: true });
 }));
 
 app.put('/api/invoices/:id/void', auth, financeOnly, asyncRoute(async (req, res) => {
   await pool.query(`UPDATE invoices SET status='void', updated_at=${nowTextSQL()} WHERE id=$1`, [req.params.id]);
+  logDocActivity('invoice', req.params.id, 'void', req.user.name, null);
+  res.json({ ok: true });
+}));
+
+// ── KREDITNOTAER ──────────────────────────────────────────────
+// Selvstændigt nummereret dokument (KN-ÅÅÅÅ-NNNN) knyttet til én faktura, med
+// et valgfrit beløb — kan dække hele eller kun en del af fakturaen (fx en
+// reklamation over én linje). Beløbet kan ikke overstige det der er tilbage at
+// kreditere (total minus allerede krediterede kreditnotaer).
+app.get('/api/invoices/:id/credit-notes', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM credit_notes WHERE invoice_id=$1 ORDER BY created_at ASC, id ASC', [req.params.id]);
+  res.json(rows.rows);
+}));
+app.post('/api/invoices/:id/credit-notes', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const amount = Number(b.amount);
+  if (!amount || amount <= 0) return res.status(400).json({ error: 'Angiv et gyldigt beløb' });
+  const invoice = await pgOne('SELECT * FROM invoices WHERE id=$1', [req.params.id]);
+  if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  const existing = await pgOne('SELECT COALESCE(SUM(amount),0) AS credited FROM credit_notes WHERE invoice_id=$1', [req.params.id]);
+  const alreadyCredited = Number(existing.credited);
+  const maxCreditable = Number(invoice.total) - alreadyCredited;
+  if (amount > maxCreditable + 0.001) {
+    return res.status(400).json({ error: `Beløbet overstiger hvad der er tilbage at kreditere (maks ${krFmtServer(Math.max(0, maxCreditable))})` });
+  }
+  const creditNoteNumber = await nextDocNumber('credit_note', 'KN');
+  const r = await pool.query(
+    'INSERT INTO credit_notes (credit_note_number,invoice_id,amount,reason,created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+    [creditNoteNumber, req.params.id, amount, b.reason || null, req.user.id]
+  );
+  await refreshInvoiceStatus(req.params.id);
+  logDocActivity('invoice', req.params.id, 'credit_note_added', req.user.name, `${creditNoteNumber} · ${krFmtServer(amount)}`);
+  res.json({ ok: true, id: r.rows[0].id, credit_note_number: creditNoteNumber });
+}));
+app.delete('/api/credit-notes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const cn = await pgOne('SELECT * FROM credit_notes WHERE id=$1', [req.params.id]);
+  if (!cn) return res.status(404).json({ error: 'Kreditnotaen blev ikke fundet' });
+  await pool.query('DELETE FROM credit_notes WHERE id=$1', [req.params.id]);
+  await refreshInvoiceStatus(cn.invoice_id);
+  logDocActivity('invoice', cn.invoice_id, 'credit_note_removed', req.user.name, cn.credit_note_number);
+  res.json({ ok: true });
+}));
+app.get('/api/credit-notes/:id/pdf', auth, financeOnly, asyncRoute(async (req, res) => {
+  const cn = await pgOne('SELECT * FROM credit_notes WHERE id=$1', [req.params.id]);
+  if (!cn) return res.status(404).json({ error: 'Kreditnotaen blev ikke fundet' });
+  const invoice = await loadInvoiceFull(cn.invoice_id);
+  const company = await getCompanyInfo();
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `inline; filename="${cn.credit_note_number}.pdf"`);
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  doc.pipe(res);
+  drawCreditNotePdf(doc, cn, invoice, company);
+  doc.end();
+}));
+app.post('/api/credit-notes/:id/send', auth, financeOnly, asyncRoute(async (req, res) => {
+  const cn = await pgOne('SELECT * FROM credit_notes WHERE id=$1', [req.params.id]);
+  if (!cn) return res.status(404).json({ error: 'Kreditnotaen blev ikke fundet' });
+  const invoice = await loadInvoiceFull(cn.invoice_id);
+  if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  const b = req.body || {};
+  const to = String(b.to || invoice.customer_email || '').trim();
+  if (!to) return res.status(400).json({ error: 'Ingen modtager-mail angivet — udfyld kundens e-mail på fakturaen, eller angiv en her' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
+  const company = await getCompanyInfo();
+  const portalToken = invoice.job_name ? await getOrCreateCustomerPortalToken(invoice.job_name) : null;
+  const portalLink = portalToken ? customerPortalLinkFor(portalToken) : PUBLIC_APP_URL;
+  const vars = {
+    kunde: invoice.job_name || '', dokument_nr: cn.credit_note_number, total: krFmtServer(cn.amount),
+    gyldig_til: '', forfald: '', restbeloeb: krFmtServer(invoice.remaining), firma: company.name,
+    link: portalLink, underskriv_link: ''
+  };
+  let templateId = b.template_id || null;
+  if (!templateId) templateId = await getAssignedTemplateId('credit_note');
+  let subject, bodyHtml, tpl = null;
+  if (templateId) {
+    tpl = await pgOne('SELECT * FROM document_email_templates WHERE id=$1', [templateId]);
+    if (!tpl && b.template_id) return res.status(404).json({ error: 'Mail-skabelonen blev ikke fundet' });
+  }
+  if (tpl) {
+    subject = fillDocEmailVars(tpl.subject, vars);
+    bodyHtml = fillDocEmailVars(tpl.body_html, vars);
+  } else {
+    subject = `Kreditnota ${cn.credit_note_number} fra ${company.name}`;
+    bodyHtml = `<p>Hej ${escPublic(invoice.job_name || '')},</p><p>Vi har udstedt en kreditnota <b>${escPublic(cn.credit_note_number)}</b> på <b>${krFmtServer(cn.amount)}</b> vedr. faktura ${escPublic(invoice.invoice_number)} — vedhæftet som PDF.</p>${cn.reason ? `<p>Begrundelse: ${escPublic(cn.reason)}</p>` : ''}<p>Du kan altid se alle dine tilbud, fakturaer og planlagte opgaver på din side: <a href="${portalLink}">${portalLink}</a></p><p>Mvh<br>${escPublic(company.name)}</p>`;
+  }
+  let pdfBuffer;
+  try { pdfBuffer = await renderCreditNotePdfBuffer(cn, invoice, company); }
+  catch (e) { return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message }); }
+  try {
+    await sendMailUniversal({
+      to, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml),
+      attachments: [{ filename: cn.credit_note_number + '.pdf', content: pdfBuffer }]
+    });
+  } catch (e) {
+    return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
+  }
+  logDocActivity('invoice', cn.invoice_id, 'credit_note_sent', req.user.name, `${cn.credit_note_number} til ${to}`);
   res.json({ ok: true });
 }));
 
 // ── PDF-GENERERING (tilbud + faktura) — pdfkit, ingen headless browser
 // nødvendig, så det er hurtigt og virker uden ekstra opsætning på serveren. ──
+// Logoet gemmes som en data-URI (base64) i indstillingerne — PDFKit kan tegne
+// det direkte fra en Buffer, så vi udpakker base64-delen. Returnerer null hvis
+// der ikke er noget logo, eller hvis data-URI'en er ugyldig (fx delvist
+// korrupt upload) — så falder dokumentet bare tilbage til kun tekst.
+function logoDataUriToBuffer(logoUrl) {
+  if (!logoUrl || typeof logoUrl !== 'string') return null;
+  const m = logoUrl.match(/^data:image\/(png|jpe?g);base64,(.+)$/);
+  if (!m) return null;
+  try { return Buffer.from(m[2], 'base64'); } catch (e) { return null; }
+}
 function drawDocumentPdf(doc, kind, record, company) {
   const isInvoice = kind === 'invoice';
   const accent = '#4F46E5';
-  doc.fontSize(20).fillColor('#111318').text(company.name, 40, 40);
+  const logoBuf = logoDataUriToBuffer(company.logoUrl);
+  const textX = logoBuf ? 96 : 40;
+  if (logoBuf) {
+    try { doc.image(logoBuf, 40, 36, { fit: [48, 48] }); } catch (e) { /* korrupt billede — spring logoet over */ }
+  }
+  doc.fontSize(20).fillColor('#111318').text(company.name, textX, 40);
   doc.fontSize(9).fillColor('#6B7280');
   const addrLines = [company.address, company.cvr ? `CVR ${company.cvr}` : '', company.phone, company.email].filter(Boolean);
-  addrLines.forEach((l, i) => doc.text(l, 40, 66 + i * 12));
+  addrLines.forEach((l, i) => doc.text(l, textX, 66 + i * 12));
 
   doc.fontSize(22).fillColor(accent).text(isInvoice ? 'FAKTURA' : 'TILBUD', 350, 40, { width: 200, align: 'right' });
   doc.fontSize(10).fillColor('#111318').text(isInvoice ? record.invoice_number : record.quote_number, 350, 68, { width: 200, align: 'right' });
@@ -7217,6 +7423,49 @@ function drawDocumentPdf(doc, kind, record, company) {
     doc.fontSize(8).fillColor('#9CA3AF').text(company.footerNote, 40, 780, { width: 515, align: 'center' });
   }
 }
+// Kreditnotaer er beløbs-/begrundelses-baserede (ikke linje-baserede som
+// tilbud/faktura), så de har deres egen, langt enklere tegne-funktion frem for
+// at genbruge drawDocumentPdf's linje-tabel.
+function drawCreditNotePdf(doc, creditNote, invoice, company) {
+  const accent = '#DC2626';
+  const logoBuf = logoDataUriToBuffer(company.logoUrl);
+  const textX = logoBuf ? 96 : 40;
+  if (logoBuf) {
+    try { doc.image(logoBuf, 40, 36, { fit: [48, 48] }); } catch (e) { /* korrupt billede — spring logoet over */ }
+  }
+  doc.fontSize(20).fillColor('#111318').text(company.name, textX, 40);
+  doc.fontSize(9).fillColor('#6B7280');
+  const addrLines = [company.address, company.cvr ? `CVR ${company.cvr}` : '', company.phone, company.email].filter(Boolean);
+  addrLines.forEach((l, i) => doc.text(l, textX, 66 + i * 12));
+
+  doc.fontSize(22).fillColor(accent).text('KREDITNOTA', 350, 40, { width: 200, align: 'right' });
+  doc.fontSize(10).fillColor('#111318').text(creditNote.credit_note_number, 350, 68, { width: 200, align: 'right' });
+  doc.fontSize(9).fillColor('#6B7280').text(`Dato: ${String(creditNote.created_at || '').slice(0, 10)}`, 350, 84, { width: 200, align: 'right' });
+  doc.text(`Vedr. faktura: ${invoice ? invoice.invoice_number : ''}`, 350, 98, { width: 200, align: 'right' });
+
+  let y = 140;
+  doc.fontSize(10).fillColor('#111318').text('Til:', 40, y);
+  y += 14;
+  if (invoice && invoice.job_name) { doc.fontSize(11).text(invoice.job_name, 40, y); y += 14; }
+  if (invoice && invoice.customer_address) { doc.fontSize(9).fillColor('#6B7280').text(invoice.customer_address, 40, y); y += 12; }
+
+  y = Math.max(y + 30, 210);
+  doc.rect(40, y, 515, 60).fill('#FEF2F2');
+  doc.fontSize(9.5).fillColor('#6B7280').text('Krediteret beløb', 56, y + 12);
+  doc.fontSize(20).fillColor(accent).text(Math.round(Number(creditNote.amount)).toLocaleString('da-DK') + ' kr', 56, y + 28);
+  y += 80;
+
+  if (creditNote.reason) {
+    doc.fontSize(9).fillColor('#374151').text('Begrundelse:', 40, y);
+    y += 14;
+    doc.fontSize(9.5).fillColor('#111318').text(creditNote.reason, 40, y, { width: 515 });
+    y += doc.heightOfString(creditNote.reason, { width: 515 }) + 10;
+  }
+
+  if (company.footerNote) {
+    doc.fontSize(8).fillColor('#9CA3AF').text(company.footerNote, 40, 780, { width: 515, align: 'center' });
+  }
+}
 // Samler PDF'en i hukommelsen i stedet for at streame den direkte til et
 // HTTP-svar — bruges når PDF'en skal vedhæftes en mail i stedet for vises i
 // browseren.
@@ -7229,6 +7478,19 @@ function renderDocumentPdfBuffer(kind, record, company) {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
       drawDocumentPdf(doc, kind, record, company);
+      doc.end();
+    } catch (e) { reject(e); }
+  });
+}
+function renderCreditNotePdfBuffer(creditNote, invoice, company) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      drawCreditNotePdf(doc, creditNote, invoice, company);
       doc.end();
     } catch (e) { reject(e); }
   });
@@ -7307,6 +7569,41 @@ const DOC_EMAIL_VARS = [
   ['{{underskriv_link}}', 'Direkte link til at underskrive (kun tilbud)']
 ];
 
+// ── FASTE MAIL-SKABELON-KOBLINGER PR. HÆNDELSESTYPE ──
+// Martin vil have faste standard-koblinger (tilbud/faktura/kreditnota/rykker → en
+// bestemt mail-skabelon), men altid frit kunne ændre koblingen manuelt i Indstillinger.
+// Gemmes som almindelige app_settings-nøgler (email_tpl_event_<type>), så en admin altid
+// selv kan overskrive den ved at sende et eksplicit template_id ved selve afsendelsen.
+const DOC_EMAIL_EVENT_TYPES = ['quote', 'invoice', 'credit_note', 'dunning'];
+async function getEmailTemplateAssignments() {
+  const rows = await pool.query("SELECT key,value FROM app_settings WHERE key LIKE 'email_tpl_event_%'");
+  const map = {}; DOC_EMAIL_EVENT_TYPES.forEach(evt => { map[evt] = null; });
+  rows.rows.forEach(r => {
+    const evt = r.key.replace('email_tpl_event_', '');
+    if (evt in map && r.value) map[evt] = Number(r.value);
+  });
+  return map;
+}
+async function getAssignedTemplateId(eventType) {
+  const row = await pgOne('SELECT value FROM app_settings WHERE key=$1', ['email_tpl_event_' + eventType]);
+  return (row && row.value) ? Number(row.value) : null;
+}
+app.get('/api/settings/email-template-assignments', auth, financeOnly, asyncRoute(async (req, res) => {
+  res.json(await getEmailTemplateAssignments());
+}));
+app.put('/api/settings/email-template-assignments', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  for (const evt of DOC_EMAIL_EVENT_TYPES) {
+    if (!(evt in b)) continue;
+    const val = b[evt] ? String(Number(b[evt])) : '';
+    await pool.query(
+      'INSERT INTO app_settings (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2',
+      ['email_tpl_event_' + evt, val]
+    );
+  }
+  res.json({ ok: true, assignments: await getEmailTemplateAssignments() });
+}));
+
 app.post('/api/quotes/:id/send', auth, financeOnly, asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
@@ -7328,10 +7625,14 @@ app.post('/api/quotes/:id/send', auth, financeOnly, asyncRoute(async (req, res) 
     gyldig_til: quote.valid_until || '', forfald: '', restbeloeb: '', firma: company.name,
     link: portalLink, underskriv_link: signLink
   };
-  let subject, bodyHtml;
-  if (b.template_id) {
-    const tpl = await pgOne('SELECT * FROM document_email_templates WHERE id=$1', [b.template_id]);
-    if (!tpl) return res.status(404).json({ error: 'Mail-skabelonen blev ikke fundet' });
+  let templateId = b.template_id || null;
+  if (!templateId) templateId = await getAssignedTemplateId('quote');
+  let subject, bodyHtml, tpl = null;
+  if (templateId) {
+    tpl = await pgOne('SELECT * FROM document_email_templates WHERE id=$1', [templateId]);
+    if (!tpl && b.template_id) return res.status(404).json({ error: 'Mail-skabelonen blev ikke fundet' });
+  }
+  if (tpl) {
     subject = fillDocEmailVars(tpl.subject, vars);
     bodyHtml = fillDocEmailVars(tpl.body_html, vars);
   } else {
@@ -7350,6 +7651,7 @@ app.post('/api/quotes/:id/send', auth, financeOnly, asyncRoute(async (req, res) 
     return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
   }
   if (quote.status === 'draft') await pool.query(`UPDATE quotes SET status='sent', updated_at=${nowTextSQL()} WHERE id=$1`, [quote.id]);
+  logDocActivity('quote', quote.id, 'sent', req.user.name, `til ${to}`);
   res.json({ ok: true });
 }));
 
@@ -7368,10 +7670,14 @@ app.post('/api/invoices/:id/send', auth, financeOnly, asyncRoute(async (req, res
     gyldig_til: '', forfald: invoice.due_date || '', restbeloeb: krFmtServer(invoice.remaining), firma: company.name,
     link: portalLink, underskriv_link: ''
   };
-  let subject, bodyHtml;
-  if (b.template_id) {
-    const tpl = await pgOne('SELECT * FROM document_email_templates WHERE id=$1', [b.template_id]);
-    if (!tpl) return res.status(404).json({ error: 'Mail-skabelonen blev ikke fundet' });
+  let templateId = b.template_id || null;
+  if (!templateId) templateId = await getAssignedTemplateId('invoice');
+  let subject, bodyHtml, tpl = null;
+  if (templateId) {
+    tpl = await pgOne('SELECT * FROM document_email_templates WHERE id=$1', [templateId]);
+    if (!tpl && b.template_id) return res.status(404).json({ error: 'Mail-skabelonen blev ikke fundet' });
+  }
+  if (tpl) {
     subject = fillDocEmailVars(tpl.subject, vars);
     bodyHtml = fillDocEmailVars(tpl.body_html, vars);
   } else {
@@ -7389,6 +7695,7 @@ app.post('/api/invoices/:id/send', auth, financeOnly, asyncRoute(async (req, res
   } catch (e) {
     return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
   }
+  logDocActivity('invoice', invoice.id, 'sent', req.user.name, `til ${to}`);
   res.json({ ok: true });
 }));
 
@@ -7397,6 +7704,7 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   const esc = escPublic;
   const quote = await pgOne('SELECT * FROM quotes WHERE accept_token=$1', [req.params.token]);
   if (!quote) return res.status(404).send(portalNotFoundPage());
+  logDocActivity('quote', quote.id, 'viewed', 'Kunde', null);
   const lines = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [quote.id])).rows;
   const company = await getCompanyInfo();
   const rawSubtotal = lines.reduce((s, l) => s + (Number(l.quantity) * Number(l.sell_price) - lineDiscountAmount(l, Number(l.quantity) * Number(l.sell_price))), 0);
@@ -7462,10 +7770,12 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   .sig-preview img{max-width:280px;display:block}
   .declined-box{background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:12px;padding:16px;font-size:13.5px}
   .notes{margin-top:16px;font-size:12px;color:#6B7280;white-space:pre-wrap}
+  .company-head{display:flex;align-items:center;gap:10px}
+  .company-logo{width:44px;height:44px;border-radius:9px;object-fit:cover;flex-shrink:0}
 </style></head><body><div class="wrap">
 <div class="card">
   <div class="head">
-    <div><div class="company">${esc(company.name)}</div><div class="company-sub">${[company.address, company.cvr ? ('CVR ' + company.cvr) : '', company.phone, company.email].filter(Boolean).map(esc).join('<br>')}</div></div>
+    <div class="company-head">${company.logoUrl ? `<img class="company-logo" src="${esc(company.logoUrl)}" alt="">` : ''}<div><div class="company">${esc(company.name)}</div><div class="company-sub">${[company.address, company.cvr ? ('CVR ' + company.cvr) : '', company.phone, company.email].filter(Boolean).map(esc).join('<br>')}</div></div></div>
     <div><div class="doctype">TILBUD</div><div class="docmeta">${esc(quote.quote_number)}<br>Dato: ${esc(String(quote.created_at || '').slice(0, 10))}${quote.valid_until ? `<br>Gyldig til: ${esc(quote.valid_until)}` : ''}</div></div>
   </div>
   ${quote.job_name ? `<div style="font-size:13px;margin-bottom:14px"><b>Til:</b> ${esc(quote.job_name)}${quote.customer_address ? '<br>' + esc(quote.customer_address) : ''}</div>` : ''}
@@ -7675,10 +7985,12 @@ app.get('/forespoergsel/:token', asyncRoute(async (req, res) => {
   .accept-btn:disabled{opacity:.6}
   .accepted-box{background:#F0FDF4;border:1px solid #BBF7D0;color:#15803D;border-radius:12px;padding:16px;font-size:13.5px;margin-bottom:8px}
   .notes{margin-top:14px;font-size:12.5px;color:#374151;background:#F4F6FB;border-radius:8px;padding:12px;white-space:pre-wrap}
+  .company-head{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+  .company-logo{width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0}
 </style></head><body><div class="wrap">
 <div class="card">
-  <div class="company">${esc(company.name)}</div>
-  <div class="company-sub">${[company.address, company.phone, company.email].filter(Boolean).map(esc).join(' · ')}</div>
+  <div class="company-head">${company.logoUrl ? `<img class="company-logo" src="${esc(company.logoUrl)}" alt="">` : ''}<div><div class="company">${esc(company.name)}</div>
+  <div class="company-sub">${[company.address, company.phone, company.email].filter(Boolean).map(esc).join(' · ')}</div></div></div>
   <h1>${esc(title)}</h1>
   <div class="meta">${esc(quote ? quote.quote_number : '')}${quote && quote.job_name ? ' — ' + esc(quote.job_name) : ''}${recipient.name ? ' · Til ' + esc(recipient.name) : ''}</div>
   ${bodyHtml}
@@ -8186,6 +8498,7 @@ app.get('/kunde/:token/tilbud/:quoteId/pdf', asyncRoute(async (req, res) => {
     return res.status(404).send(portalNotFoundPage());
   }
   const company = await getCompanyInfo();
+  logDocActivity('quote', quote.id, 'viewed', 'Kunde', 'PDF via kundeportal');
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${quote.quote_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
@@ -8201,6 +8514,7 @@ app.get('/kunde/:token/faktura/:invoiceId/pdf', asyncRoute(async (req, res) => {
     return res.status(404).send(portalNotFoundPage());
   }
   const company = await getCompanyInfo();
+  logDocActivity('invoice', invoice.id, 'viewed', 'Kunde', 'PDF via kundeportal');
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${invoice.invoice_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
