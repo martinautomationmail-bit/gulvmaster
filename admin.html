@@ -2640,12 +2640,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <select id="crmpx-stage" class="select" style="width:auto"></select>
       </div>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       <a class="bly-btn outline" id="crmpx-email-btn" href="#" target="_blank">✉️ Email</a>
       <a class="bly-btn outline" id="crmpx-call-btn" href="#">📞 Ring</a>
       <button class="bly-btn" id="crmpx-convert-btn" type="button" style="display:none;background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8">🤝 Konvertér</button>
-      <button class="bly-btn" id="crmpx-save-btn" type="button">💾 Gem ændringer</button>
       <button class="bly-btn danger" id="crmpx-delete-btn" type="button">🗑 Slet</button>
+      <!-- Siden gemmer nu automatisk ved ændring (se crmpxAutoSave) — ingen
+           "Gem ændringer"-knap længere, kun en diskret status ved siden af. -->
+      <span class="sub" id="crmpx-save-status" style="min-width:70px"></span>
     </div>
   </div>
 
@@ -2658,6 +2660,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="bly-segtabs" id="crmpx-viewtabs" style="display:none">
     <button class="bly-segtab active" data-crmpxview="details" type="button">Detaljer</button>
     <button class="bly-segtab" data-crmpxview="files" type="button">📎 Filer <span class="sub" id="crmpx-files-count"></span></button>
+    <button class="bly-segtab" data-crmpxview="emails" type="button">✉️ Emails <span class="sub" id="crmpx-emails-count"></span></button>
+    <button class="bly-segtab" data-crmpxview="notes" type="button">📝 Noter <span class="sub" id="crmpx-notes-count"></span></button>
   </div>
 
   <div id="crmpx-view-details">
@@ -2742,6 +2746,26 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
   <div id="crmpx-view-files" style="display:none">
     <div id="crmpx-files-grid" class="cd-files-grid"></div>
+  </div>
+
+  <!-- EMAILS (#crmpx-view-emails) — samme lukket/foldbar-mønster som
+       cd-emails-panel på kunde-siden: emne + kort uddrag lukket, klik folder ud
+       og henter selve brødteksten (+ vedhæftninger) live fra Gmail først da. -->
+  <div id="crmpx-view-emails" style="display:none">
+    <div id="crmpx-emails-list"></div>
+  </div>
+
+  <!-- NOTER (#crmpx-view-notes) — den rigtige, redigerbare/sletbare note-liste
+       (customer_notes, samme som cd-notes-panel på kunde-siden), som en separat
+       fane her. Den simple note-boks i "Aktivitet"-panelet i Detaljer-fanen
+       (crmpx-note-new, ovenfor) bevares uændret ved siden af — Martin ønskede
+       begge dele, ikke en erstatning af den ene med den anden. -->
+  <div id="crmpx-view-notes" style="display:none">
+    <div style="margin-bottom:14px">
+      <textarea id="crmpx-notes-new" class="tld-input" rows="2" placeholder="Skriv en note..."></textarea>
+      <div style="margin-top:6px;text-align:right"><button class="btn small" type="button" id="crmpx-notes-add-btn">+ Tilføj note</button></div>
+    </div>
+    <div id="crmpx-notes-list"></div>
   </div>
 </section>
 
@@ -4652,6 +4676,12 @@ document.getElementById('app').style.display='block';
 })();
 
 var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={},poolSelected={},assignAttachmentsReady=true;
+// Resolves once loadAll() has populated `users` for the first time. På en direkte/
+// genindlæst navigation til fx #crmp-detail/... kan openCrmpDetail() nå at køre FØR
+// loadAll() overhovedet er kaldt (den kaldes sidst i opstarts-kæden nederst i scriptet),
+// så alt der bygger en medarbejder-dropdown (fx CRM-opgavers "Ansvarlig") skal awaite
+// denne i stedet for at læse `users` direkte — ellers kan dropdownen forblive tom.
+var usersReadyResolve,usersReadyPromise=new Promise(function(res){usersReadyResolve=res;});
 var settings={company_name:'Gulv Master Enterprise ApS',logo_url:null},library=[],selectedTaskIds={},weeklyNotesCache={};
 var timelineOffset=0,timelineGroupBy='user',capacityGroupBy='user';
 var taskRequests=[],requestsFilter='pending',completedFilter='open';
@@ -11139,6 +11169,7 @@ async function sendTestCompletionEmail(){
 async function loadAll(){
   var r=await Promise.all([api('/api/users'),api('/api/tasks'),api('/api/assignments'),api('/api/dashboard'),api('/api/time-off/approved')]);
   users=r[0]||[];tasks=r[1]||[];bookings=r[2]||[];timeOffApproved=r[4]||[];
+  if(usersReadyResolve){usersReadyResolve();usersReadyResolve=null;}
   renderStats(r[3]||{});
   // Genrender kun den side der rent faktisk vises lige nu — at genopbygge ALLE
   // boards (Daglig plan/Kapacitet/Hold/Ledighed/Opgaveliste) ved HVER handling i
@@ -12967,25 +12998,57 @@ function crmpxInitOnce(){
     switchPage('crmp');
     if(ent)crmpSelectPipelineByType(ent.type,ent.data.pipeline_id);
   });
-  document.getElementById('crmpx-save-btn').addEventListener('click',crmpxSave);
   document.getElementById('crmpx-convert-btn').addEventListener('click',crmpxConvert);
   document.getElementById('crmpx-delete-btn').addEventListener('click',crmpxDelete);
   document.getElementById('crmpx-note-add-btn').addEventListener('click',crmpxAddNote);
   document.getElementById('crmpx-task-add-btn').addEventListener('click',crmpxAddTask);
   document.getElementById('crmpx-task-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddTask();});
   document.getElementById('crmpx-note-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddNote();});
+  document.getElementById('crmpx-notes-add-btn').addEventListener('click',crmpxAddCustomerNote);
   document.querySelectorAll('#crmpx-viewtabs [data-crmpxview]').forEach(function(btn){
     btn.addEventListener('click',function(){crmpxSwitchView(btn.dataset.crmpxview);});
   });
-  document.getElementById('crmpx-task-assignee').innerHTML=(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  // Autogem — se crmpxAutoSave/crmpxAutoSaveContact. Tekstfelter gemmer
+  // debounced (venter til man er holdt op med at skrive), select/checkbox/
+  // dato-felter gemmer med det samme ved "change" (ingen grund til at vente
+  // på et diskret valg). Custom fields og kontakt-felterne på opportunities
+  // gen-renderes hver gang siden åbnes, så de bindes delegeret på deres faste
+  // container i stedet for direkte på de enkelte (skiftende) elementer.
+  ['crmpx-name-input','crmpx-phone','crmpx-email','crmpx-address','crmpx-source','crmpx-note','crmpx-value','crmpx-probability'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)el.addEventListener('input',crmpxAutoSaveDebounced);
+  });
+  ['crmpx-owner','crmpx-stage'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)el.addEventListener('change',crmpxAutoSave);
+  });
+  document.getElementById('crmpx-customfields').addEventListener('input',function(e){
+    if(e.target.closest('[data-cf-key]'))crmpxAutoSaveDebounced();
+  });
+  document.getElementById('crmpx-customfields').addEventListener('change',function(e){
+    if(e.target.closest('[data-cf-key]')&&(e.target.tagName==='SELECT'||e.target.type==='checkbox'||e.target.type==='date'))crmpxAutoSave();
+  });
+  document.getElementById('crmpx-contact-card').addEventListener('input',function(e){
+    if(e.target.closest('#crmpx-contact-name,#crmpx-contact-phone,#crmpx-contact-email,#crmpx-contact-address'))crmpxAutoSaveContactDebounced();
+  });
+  // NB: options for #crmpx-task-assignee populeres IKKE her — dette kører kun
+  // ÉN gang (guardet af crmpState.detailInitialized), og på direkte/genindlæst
+  // navigation til en #crmp-detail/... URL kan den globale users-liste (fra
+  // loadAll()) sagtens stadig være tom på det tidspunkt, hvilket gav en
+  // permanent tom dropdown i produktion. Options genopbygges derfor hver gang
+  // i crmpxLoadTasks() i stedet, som altid kører efter users er hentet.
   document.getElementById('crmpx-task-assignee').addEventListener('change',function(e){e.target.dataset.userTouched='1';});
 }
-var crmpxCurrentCustomerId=null,crmpxFilesLoaded=false;
+var crmpxCurrentCustomerId=null,crmpxFilesLoaded=false,crmpxEmailsLoaded=false,crmpxNotesLoaded=false;
 function crmpxSwitchView(view){
   document.querySelectorAll('#crmpx-viewtabs [data-crmpxview]').forEach(function(btn){btn.classList.toggle('active',btn.dataset.crmpxview===view);});
   document.getElementById('crmpx-view-details').style.display=view==='details'?'':'none';
   document.getElementById('crmpx-view-files').style.display=view==='files'?'':'none';
+  document.getElementById('crmpx-view-emails').style.display=view==='emails'?'':'none';
+  document.getElementById('crmpx-view-notes').style.display=view==='notes'?'':'none';
   if(view==='files'&&!crmpxFilesLoaded)crmpxLoadFiles();
+  if(view==='emails'&&!crmpxEmailsLoaded)crmpxLoadEmails();
+  if(view==='notes'&&!crmpxNotesLoaded)crmpxLoadCustomerNotes();
 }
 async function crmpxLoadFiles(){
   if(!crmpxCurrentCustomerId)return;
@@ -13010,6 +13073,132 @@ document.addEventListener('click',function(e){
   if(!card)return;
   cdDownloadAttachment(card.dataset.msgId,card.dataset.attId,card.dataset.filename,card.dataset.mimetype);
 });
+
+// ── EMAILS (#crmpx-view-emails) — Martins Runde E-ønske om at kunne se
+// mailkorrespondancen på selve lead/sale-siden, samme lukket/foldbar-mønster
+// som cd-emails-panel på kunde-siden (se cdLoadEmails/cdRenderEmails ovenfor,
+// som denne er en tro kopi af, blot med egne element-id'er og egen state, så
+// de to sider ikke deler/overskriver hinandens foldet-ud-tilstand). ──────────
+var crmpxEmails=[],crmpxEmailsExpanded={};
+async function crmpxLoadEmails(){
+  if(!crmpxCurrentCustomerId)return;
+  crmpxEmailsLoaded=true;
+  var list=document.getElementById('crmpx-emails-list');
+  list.innerHTML='<div class="crmpx-empty">Henter mails...</div>';
+  crmpxEmails=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/emails')||[];
+  crmpxEmailsExpanded={};
+  crmpxRenderEmails();
+}
+function crmpxRenderEmails(){
+  document.getElementById('crmpx-emails-count').textContent=crmpxEmails.length?'('+crmpxEmails.length+')':'';
+  document.getElementById('crmpx-emails-list').innerHTML=crmpxEmails.length?crmpxEmails.map(function(e){
+    var expanded=crmpxEmailsExpanded[e.id];
+    return '<div class="cd-email-item" data-email-id="'+e.id+'" data-gmail-id="'+esc(e.gmail_message_id)+'">'
+      +'<div class="cd-email-row">'
+        +'<span class="cd-email-dir'+(e.direction==='out'?' out':'')+'" title="'+(e.direction==='out'?'Sendt':'Modtaget')+'">'+(e.direction==='out'?'↗':'↙')+'</span>'
+        +'<span class="cd-email-subject">'+esc(e.subject||'(uden emne)')+'</span>'
+        +'<span class="cd-email-meta">'+esc(fmtDaDate(new Date(Number(e.internal_date)).toISOString()))+'</span>'
+      +'</div>'
+      +(!expanded?'<div class="cd-email-snippet">'+esc(e.snippet||'')+'</div>':'<div class="cd-email-body-wrap" id="crmpx-email-body-'+e.id+'"><div class="crmpx-empty">Henter...</div></div>')
+      +'</div>';
+  }).join(''):'<div class="crmpx-empty">Ingen mails fundet endnu for denne kundes email-adresse</div>';
+}
+document.addEventListener('click',function(e){
+  var item=e.target.closest('#crmpx-emails-list .cd-email-item');
+  if(!item)return;
+  if(e.target.closest('.cd-email-attachment'))return;
+  var id=+item.dataset.emailId;
+  if(crmpxEmailsExpanded[id]){delete crmpxEmailsExpanded[id];crmpxRenderEmails();return;}
+  crmpxEmailsExpanded[id]=true;
+  crmpxRenderEmails();
+  crmpxLoadEmailBody(id,item.dataset.gmailId);
+});
+async function crmpxLoadEmailBody(id,gmailMessageId){
+  var wrap=document.getElementById('crmpx-email-body-'+id);
+  var d=await api('/api/gmail/messages/'+gmailMessageId);
+  if(!wrap)return; // brugeren nåede at folde den sammen igen inden svaret kom
+  if(!d||d.error){wrap.innerHTML='<div class="crmpx-empty">Kunne ikke hente mailen — '+esc((d&&d.error)||'ukendt fejl')+'</div>';return;}
+  var bodyHtml=d.bodyHtml?d.bodyHtml:(d.bodyText?'<pre style="white-space:pre-wrap;font-family:inherit;margin:0">'+esc(d.bodyText)+'</pre>':'<span class="crmpx-empty">Intet indhold</span>');
+  var attachmentsHtml=(d.attachments||[]).length?'<div class="cd-email-attachments">'+d.attachments.map(function(a){
+    return '<span class="cd-email-attachment" data-att-id="'+esc(a.attachmentId)+'" data-filename="'+esc(a.filename)+'" data-mimetype="'+esc(a.mimeType)+'" data-msg-id="'+esc(gmailMessageId)+'">📎 '+esc(a.filename)+'</span>';
+  }).join('')+'</div>':'';
+  wrap.innerHTML='<div class="cd-email-body">'+bodyHtml+'</div>'+attachmentsHtml;
+}
+document.addEventListener('click',function(e){
+  var chip=e.target.closest('#crmpx-view-emails .cd-email-attachment');
+  if(!chip)return;
+  cdDownloadAttachment(chip.dataset.msgId,chip.dataset.attId,chip.dataset.filename,chip.dataset.mimetype);
+});
+
+// ── NOTER (#crmpx-view-notes) — den rigtige, redigerbare/sletbare note-liste
+// (customer_notes, samme API som Kunder-sidens cd-notes-panel/cdLoadNotes,
+// blot vist som en fane her og bevidst IKKE en erstatning for den simple
+// note-boks i "Aktivitet"-panelet på Detaljer-fanen, se crmpxAddNote — Martin
+// ønskede begge dele bevaret side om side). ──────────────────────────────
+var crmpxCustomerNotes=[];
+async function crmpxLoadCustomerNotes(){
+  if(!crmpxCurrentCustomerId)return;
+  crmpxNotesLoaded=true;
+  crmpxCustomerNotes=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/notes')||[];
+  crmpxRenderCustomerNotes();
+}
+function crmpxRenderCustomerNotes(){
+  document.getElementById('crmpx-notes-count').textContent=crmpxCustomerNotes.length?'('+crmpxCustomerNotes.length+')':'';
+  document.getElementById('crmpx-notes-list').innerHTML=crmpxCustomerNotes.length?crmpxCustomerNotes.map(function(n){
+    var edited=n.updated_at&&n.updated_at!==n.created_at;
+    return '<div class="cd-note-item" data-note-id="'+n.id+'">'
+      +'<div class="cd-note-icon">📝</div>'
+      +'<div class="cd-note-body">'+esc(n.body)+'<div class="cd-note-meta">'+esc(n.user_name||'System')+' · '+esc(fmtDaDate(n.created_at))+(edited?' · <span class="cd-note-meta-edited">redigeret</span>':'')+'</div></div>'
+      +'<div class="cd-note-actions"><button class="qz-icon-btn" data-crmpx-note-act="edit" type="button" title="Redigér">✎</button><button class="qz-icon-btn" data-crmpx-note-act="delete" type="button" title="Slet">🗑</button></div>'
+      +'</div>';
+  }).join(''):'<div class="crmpx-empty">Ingen noter endnu — tilføj den første ovenfor</div>';
+}
+async function crmpxAddCustomerNote(){
+  if(!crmpxCurrentCustomerId)return;
+  var input=document.getElementById('crmpx-notes-new');
+  var body=input.value.trim();
+  if(!body)return;
+  var r=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/notes',{method:'POST',body:JSON.stringify({body:body})});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke tilføje note','❌');return;}
+  input.value='';
+  await crmpxLoadCustomerNotes();
+}
+document.getElementById('page-crmp-detail').addEventListener('click',function(e){
+  var btn=e.target.closest('[data-crmpx-note-act]');
+  if(!btn)return;
+  var item=btn.closest('.cd-note-item');
+  var noteId=+item.dataset.noteId;
+  var note=crmpxCustomerNotes.find(function(n){return n.id===noteId;});
+  if(!note)return;
+  if(btn.dataset.crmpxNoteAct==='delete'){
+    gmConfirm('Slet denne note? Kan ikke fortrydes.','Slet note').then(function(ok){if(ok)crmpxDeleteCustomerNote(noteId);});
+  } else if(btn.dataset.crmpxNoteAct==='edit'){
+    crmpxStartEditCustomerNote(item,note);
+  }
+});
+function crmpxStartEditCustomerNote(item,note){
+  item.innerHTML='<div class="cd-note-icon">📝</div>'
+    +'<div style="flex:1"><textarea class="tld-input" rows="2" id="crmpx-note-edit-input">'+esc(note.body)+'</textarea>'
+    +'<div style="display:flex;gap:6px;margin-top:6px"><button class="btn small" type="button" id="crmpx-note-edit-save">Gem</button><button class="btn small outline" type="button" id="crmpx-note-edit-cancel">Annullér</button></div></div>';
+  document.getElementById('crmpx-note-edit-save').addEventListener('click',function(){crmpxSaveEditCustomerNote(note.id);});
+  document.getElementById('crmpx-note-edit-cancel').addEventListener('click',function(){crmpxRenderCustomerNotes();});
+  document.getElementById('crmpx-note-edit-input').focus();
+}
+async function crmpxSaveEditCustomerNote(noteId){
+  var input=document.getElementById('crmpx-note-edit-input');
+  var body=input.value.trim();
+  if(!body)return;
+  var r=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/notes/'+noteId,{method:'PUT',body:JSON.stringify({body:body})});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke gemme','❌');return;}
+  await crmpxLoadCustomerNotes();
+}
+async function crmpxDeleteCustomerNote(noteId){
+  var r=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/notes/'+noteId,{method:'DELETE'});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke slette','❌');return;}
+  toast('Note slettet','🗑');
+  await crmpxLoadCustomerNotes();
+}
+
 async function openCrmpDetail(entityType,id){
   crmpxInitOnce();
   if(!crmpState.pipelines.length)await crmpLoadPipelines();
@@ -13062,15 +13251,24 @@ async function openCrmpDetail(entityType,id){
       +'<div class="crmpx-mini-card-row">Åbn kundekort — sager, tilbud, fakturaer &amp; noter →</div>'
       +'</div>';
   }
-  // Detaljer/Filer-faneskift — nulstilles til "Detaljer" for hvert lead/opportunity
-  // man åbner, og kun vist når der er en kobling til en kunde OG Gmail er forbundet
-  // (ellers er der intet at vise i Filer-fanen).
+  // Detaljer/Filer/Emails/Noter-faneskift — nulstilles til "Detaljer" for hvert
+  // lead/opportunity man åbner. Selve fanebjælken kræver kun en kobling til en
+  // kunde (Noter virker uden Gmail) — Filer og Emails afhænger derudover af at
+  // Gmail rent faktisk er forbundet, så kun DE to faner skjules hver for sig
+  // hvis det ikke er tilfældet, i stedet for at skjule hele bjælken.
   crmpxCurrentCustomerId=d.customer_id||null;
   crmpxFilesLoaded=false;
+  crmpxEmailsLoaded=false;
+  crmpxNotesLoaded=false;
   crmpxSwitchView('details');
+  document.getElementById('crmpx-viewtabs').style.display=d.customer_id?'':'none';
   var gmailStatusForFiles=d.customer_id?await api('/api/gmail/status'):null;
-  document.getElementById('crmpx-viewtabs').style.display=(gmailStatusForFiles&&gmailStatusForFiles.connected)?'':'none';
+  var gmailOnForFiles=!!(gmailStatusForFiles&&gmailStatusForFiles.connected);
+  document.querySelector('#crmpx-viewtabs [data-crmpxview="files"]').style.display=gmailOnForFiles?'':'none';
+  document.querySelector('#crmpx-viewtabs [data-crmpxview="emails"]').style.display=gmailOnForFiles?'':'none';
   document.getElementById('crmpx-files-count').textContent='';
+  document.getElementById('crmpx-emails-count').textContent='';
+  document.getElementById('crmpx-notes-count').textContent='';
   if(entityType==='lead'){
     var oppsList=document.getElementById('crmpx-opps-list');
     document.getElementById('crmpx-opps-count').textContent=d.converted_opportunity_id?'(1)':'(0)';
@@ -13132,9 +13330,37 @@ function crmpxCollectCustomFieldValues(){
   });
   return out;
 }
-async function crmpxSave(){
+// ── AUTOGEM (Martins Runde E-ønske: fjern "Gem ændringer"-knappen, gem i
+// stedet automatisk ved ændring, Close-stil) ────────────────────────────────
+// Simpel debounce-hjælper — venter til brugeren er holdt op med at skrive i
+// mindst `ms` ms, før selve gemningen sker (undgår ét API-kald pr. tastetryk).
+function crmpxDebounce(fn,ms){
+  var t;
+  return function(){
+    var args=arguments,ctx=this;
+    clearTimeout(t);
+    t=setTimeout(function(){fn.apply(ctx,args);},ms);
+  };
+}
+var crmpxSaveStatusTimer=null;
+function crmpxShowSaveStatus(text,isError){
+  var el=document.getElementById('crmpx-save-status');
+  if(!el)return;
+  el.textContent=text;
+  el.style.color=isError?'#DC2626':'';
+  if(crmpxSaveStatusTimer)clearTimeout(crmpxSaveStatusTimer);
+  if(!isError)crmpxSaveStatusTimer=setTimeout(function(){if(el.textContent===text)el.textContent='';},2000);
+}
+// Kaldes ved enhver ændring af felterne i "Om"-panelet (inkl. custom fields) —
+// gemmer HELE feltsættet ved hvert kald (samme som den gamle Gem-knap gjorde),
+// men uden bagefter at genindlæse/genrendere hele siden (openCrmpDetail), da
+// det ville nulstille cursor-position/fokus hvis brugeren nåede at skrive
+// videre i et andet felt mens gemningen var i gang. I stedet opdateres kun
+// avataren direkte fra det navn der lige blev gemt.
+async function crmpxAutoSave(){
   var ent=crmpDetailEntity;
   if(!ent)return;
+  crmpxShowSaveStatus('Gemmer…');
   var body={
     name:document.getElementById('crmpx-name-input').value,
     owner_id:document.getElementById('crmpx-owner').value||null,
@@ -13153,19 +13379,35 @@ async function crmpxSave(){
   }
   var endpoint=(ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id;
   var r=await api(endpoint,{method:'PUT',body:JSON.stringify(body)});
-  var ok=r&&r.ok;
-  if(ok&&ent.type==='opportunity'&&ent.data.contact_id){
-    var cr=await api('/api/crm/contacts/'+ent.data.contact_id,{method:'PUT',body:JSON.stringify({
-      name:document.getElementById('crmpx-contact-name').value,
-      phone:document.getElementById('crmpx-contact-phone').value,
-      email:document.getElementById('crmpx-contact-email').value,
-      address:document.getElementById('crmpx-contact-address').value
-    })});
-    ok=ok&&cr&&cr.ok;
+  if(r&&r.ok){
+    crmpxShowSaveStatus('Gemt ✓');
+    if(ent.data)ent.data.name=body.name;
+    if(body.name){
+      var initials=String(body.name).trim().split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase()||'?';
+      document.getElementById('crmpx-avatar').textContent=initials;
+    }
+  } else {
+    crmpxShowSaveStatus('Kunne ikke gemme',true);
+    toast((r&&r.error)||'Kunne ikke gemme','❌');
   }
-  if(ok){toast('Gemt ✓','✓');openCrmpDetail(ent.type,ent.id);}
-  else toast((r&&r.error)||'Kunne ikke gemme','❌');
 }
+// Kontaktens egne felter (kun relevant for opportunities, se PUT /api/crm/contacts/:id)
+// gemmes separat fra selve opportunity'en, ligesom den gamle Gem-knap gjorde.
+async function crmpxAutoSaveContact(){
+  var ent=crmpDetailEntity;
+  if(!ent||ent.type!=='opportunity'||!ent.data.contact_id)return;
+  crmpxShowSaveStatus('Gemmer…');
+  var cr=await api('/api/crm/contacts/'+ent.data.contact_id,{method:'PUT',body:JSON.stringify({
+    name:document.getElementById('crmpx-contact-name').value,
+    phone:document.getElementById('crmpx-contact-phone').value,
+    email:document.getElementById('crmpx-contact-email').value,
+    address:document.getElementById('crmpx-contact-address').value
+  })});
+  if(cr&&cr.ok)crmpxShowSaveStatus('Gemt ✓');
+  else{crmpxShowSaveStatus('Kunne ikke gemme',true);toast((cr&&cr.error)||'Kunne ikke gemme','❌');}
+}
+var crmpxAutoSaveDebounced=crmpxDebounce(crmpxAutoSave,800);
+var crmpxAutoSaveContactDebounced=crmpxDebounce(crmpxAutoSaveContact,800);
 async function crmpxConvert(){
   var ent=crmpDetailEntity;
   if(!ent||ent.type!=='lead')return;
@@ -13224,10 +13466,20 @@ async function crmpxLoadTasks(){
   list.querySelectorAll('[data-action="task-delete"]').forEach(function(btn){
     btn.addEventListener('click',async function(){await api('/api/crm/tasks/'+btn.dataset.taskId,{method:'DELETE'});crmpxLoadTasks();});
   });
+  // Genopbyg assignee-dropdownens options hver gang (ikke kun én gang ved init) —
+  // så den altid har data selv hvis crmpxInitOnce kørte før users var hentet.
+  // Vent desuden på at loadAll() rent faktisk har hentet users (se usersReadyPromise
+  // ovenfor) — på en direkte/genindlæst navigation til #crmp-detail/... kan
+  // crmpxLoadTasks nå at køre FØR loadAll() overhovedet er kaldt.
   // Ansvarlig defaulter til den der er logget ind — kan altid ændres i selve
   // formularen inden man trykker "+ Tilføj opgave" (fx for at give Sarah en opgave).
+  await usersReadyPromise;
   var assigneeSel=document.getElementById('crmpx-task-assignee');
-  if(assigneeSel&&!assigneeSel.dataset.userTouched)assigneeSel.value=me.id;
+  if(assigneeSel){
+    var keepVal=assigneeSel.dataset.userTouched?assigneeSel.value:null;
+    assigneeSel.innerHTML=(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+    assigneeSel.value=keepVal||(me&&me.id)||'';
+  }
 }
 async function crmpxAddTask(){
   var ent=crmpDetailEntity;
@@ -13262,7 +13514,6 @@ var cptInitialized=false,cptTasks=[];
 function initCrmpTasksModule(){
   if(!cptInitialized){
     cptInitialized=true;
-    document.getElementById('cpt-assignee-filter').innerHTML='<option value="">Alle ansvarlige</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
     document.getElementById('cpt-assignee-filter').addEventListener('change',cptRender);
     document.getElementById('cpt-include-done').addEventListener('change',cptLoad);
   }
@@ -13270,6 +13521,14 @@ function initCrmpTasksModule(){
 }
 async function cptLoad(){
   var includeDone=document.getElementById('cpt-include-done').checked;
+  // Genopbyg filter-dropdownens options hver gang (samme fix som crmpx-task-assignee) —
+  // så den ikke risikerer at forblive tom hvis users ikke var hentet endnu ved init.
+  // Vent på loadAll() (se usersReadyPromise) af samme grund.
+  await usersReadyPromise;
+  var filterSel=document.getElementById('cpt-assignee-filter');
+  var prevFilter=filterSel.value;
+  filterSel.innerHTML='<option value="">Alle ansvarlige</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  filterSel.value=prevFilter;
   cptTasks=await api('/api/crm/tasks/overview'+(includeDone?'?include_done=1':''))||[];
   cptRender();
 }
@@ -14668,7 +14927,9 @@ function qeRecalc(){qeRenderTotals();qeRenderPreview();}
 function qeRunCustomerSearch(q){
   var box=document.getElementById('qe-customer-results');
   if(!q||q.length<2){box.style.display='none';box.innerHTML='';return;}
-  api('/api/customers/search?q='+encodeURIComponent(q)).then(function(rows){
+  // customers_only=1 — tilbud/faktura-søgningen skal kun kigge i vores eget
+  // kundekartotek (Kunder), ikke blande historiske JobTread-sager ind.
+  api('/api/customers/search?customers_only=1&q='+encodeURIComponent(q)).then(function(rows){
     if(!rows||!rows.length){box.style.display='none';box.innerHTML='';return;}
     box.innerHTML=rows.map(function(r,i){
       return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+esc(r.job_name)+'</b><br><span style="color:var(--bly-sub)">'+esc(r.job_address||'Ingen adresse')+(r.customer_phone?' · '+esc(r.customer_phone):'')+'</span></div>';

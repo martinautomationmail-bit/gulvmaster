@@ -906,6 +906,12 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
     CREATE INDEX IF NOT EXISTS idx_invoices_job_name ON invoices(job_name);
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_pct NUMERIC NOT NULL DEFAULT 0;
+    -- customer_id: kobler fakturaen til vores eget kundekartotek (customers), samme
+    -- idé som quotes.customer_id nedenfor. Manglede tidligere helt — fakturaer var
+    -- kun denormaliseret tekst (navn/adresse/telefon/email), uden reel kobling.
+    -- Sættes ved konvertering fra tilbud (se POST /api/quotes/:id/convert-to-invoice).
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_id INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
 
     CREATE TABLE IF NOT EXISTS invoice_lines (
       id SERIAL PRIMARY KEY,
@@ -5012,15 +5018,25 @@ app.get('/api/health', asyncRoute(async (req, res) => {
 app.get('/api/customers/search', auth, adminOnly, asyncRoute(async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (q.length < 2) return res.json([]);
+  const crmQuery = pool.query(`
+    SELECT id AS customer_id, name AS job_name, address AS job_address, NULL::TEXT AS job_number,
+      phone AS customer_phone, email AS customer_email, NULL::DOUBLE PRECISION AS job_lat, NULL::DOUBLE PRECISION AS job_lng
+    FROM customers WHERE name ILIKE $1 ORDER BY name LIMIT 8
+  `, [`%${q}%`]);
+  // customers_only=1 (bruges af tilbud/faktura-editoren, se qeRunCustomerSearch i
+  // admin.html) — søger KUN i vores eget kundekartotek (customers), uden at
+  // blande historiske JobTread-sager ind, efter Martins ønske. De andre steder
+  // dette endpoint bruges (manuel opgave/booking, kundehistorik) blander fortsat
+  // begge kilder, da det ikke var en del af Martins ønske at ændre det der.
+  if (req.query.customers_only === '1') {
+    const crmRows = await crmQuery;
+    return res.json(crmRows.rows);
+  }
   // Matcher på tværs af BÅDE det nye CRM-kartotek (customers) og de historiske
   // JobTread-sager (jt_tasks) — CRM-kunder vises først, da de er dem Martin
   // selv har oprettet med vilje. customer_id er sat for CRM-rækker, ellers null.
   const [crmRows, jtRows] = await Promise.all([
-    pool.query(`
-      SELECT id AS customer_id, name AS job_name, address AS job_address, NULL::TEXT AS job_number,
-        phone AS customer_phone, email AS customer_email, NULL::DOUBLE PRECISION AS job_lat, NULL::DOUBLE PRECISION AS job_lng
-      FROM customers WHERE name ILIKE $1 ORDER BY name LIMIT 8
-    `, [`%${q}%`]),
+    crmQuery,
     pool.query(`
       SELECT DISTINCT ON (job_name, job_address) NULL::INTEGER AS customer_id, job_name, job_address, job_number,
         customer_phone, customer_email, job_lat, job_lng
@@ -8914,9 +8930,9 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, financeOnly, asyncRoute(asy
     ? (quoteTotalsForInvoice.discountAmount / quoteTotalsForInvoice.rawSubtotal * 100)
     : 0;
   const r = await pool.query(`
-    INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,due_date,discount_pct)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14) RETURNING id
-  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, quote.subtotal, quote.tax_rate, quote.tax_amount, quote.total, quote.notes, dueDate.toISOString().slice(0, 10), equivDocDiscountPct]);
+    INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,due_date,discount_pct,customer_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id
+  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, quote.subtotal, quote.tax_rate, quote.tax_amount, quote.total, quote.notes, dueDate.toISOString().slice(0, 10), equivDocDiscountPct, quote.customer_id || null]);
   const invoiceId = r.rows[0].id;
   let pos = 0;
   for (const l of quote.lines) {
@@ -10624,10 +10640,12 @@ async function start() {
   // måned, så Martin kan sammenligne måned for måned uden at tallene ændrer sig
   // bagefter. Kan også udløses manuelt via "Gem nu"-knappen i Oversigt.
   cron.schedule('0 8 15 * *', () => saveMonthlyProfitSnapshot().catch(e => { console.error('Profit-snapshot fejlede:', e.message); logSystemEvent('profit_snapshot', 'error', 'Månedligt profit-snapshot fejlede: ' + e.message); }));
-  // Gmail-synk hver 30. minut — kører kun når GOOGLE_CLIENT_ID/SECRET er sat op
+  // Gmail-synk hver 5. minut — kører kun når GOOGLE_CLIENT_ID/SECRET er sat op
   // OG en postkasse rent faktisk er forbundet (se GET /api/gmail/status). Kan
-  // også udløses manuelt via "Synk nu" på Gmail-indstillingssiden.
-  cron.schedule('*/30 * * * *', async () => {
+  // også udløses manuelt via "Synk nu" på Gmail-indstillingssiden. (Sat op fra
+  // hvert 30. minut efter Martins ønske — ægte live-synk via Google Cloud
+  // Pub/Sub blev fravalgt pga. den ekstra GCP-opsætning/vedligehold det kræver.)
+  cron.schedule('*/5 * * * *', async () => {
     if (!gmailIsConfigured()) return;
     const conn = await gmailGetConnection().catch(() => null);
     if (!conn || !conn.refresh_token_enc) return;
