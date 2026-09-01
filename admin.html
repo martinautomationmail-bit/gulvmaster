@@ -2130,7 +2130,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">SMS-status</label><div><span class="mail-status-pill" id="sms-status-pill">Tjekker…</span></div></div>
       <div class="form-group"><label class="form-label">Send test-SMS til</label><div style="display:flex;gap:6px"><input id="sms-test-to" class="input" placeholder="Fx 12345678"><button class="btn small" id="sms-test-btn">Send test</button></div></div>
     </div>
-    <div class="hint" style="margin-top:6px">For at aktivere SMS skal en af disse miljøvariabler sættes på serveren (Render → Environment): <b>GATEWAYAPI_API_TOKEN</b> (dansk udbyder, gatewayapi.com — anbefalet, billigst for danske numre) <i>eller</i> <b>TWILIO_ACCOUNT_SID</b> + <b>TWILIO_AUTH_TOKEN</b> + <b>TWILIO_FROM_NUMBER</b>. Push kræver ingen opsætning — det virker allerede, når en medarbejder trykker "Slå notifikationer til" på deres side.</div>
+    <div class="hint" style="margin-top:6px">For at aktivere SMS skal en af disse miljøvariabler sættes på serveren (Render → Environment): <b>INMOBILE_API_TOKEN</b> (dansk udbyder, jeres eksisterende inMobile-konto) <i>eller</i> <b>GATEWAYAPI_API_TOKEN</b> (dansk udbyder, gatewayapi.com) <i>eller</i> <b>TWILIO_ACCOUNT_SID</b> + <b>TWILIO_AUTH_TOKEN</b> + <b>TWILIO_FROM_NUMBER</b>. Push kræver ingen opsætning — det virker allerede, når en medarbejder trykker "Slå notifikationer til" på deres side.</div>
   </div>
   <!-- "Færdig-mail til kunden" og "Mail-skabeloner" (booking-varianter) er
        flyttet herfra til det samlede Skabeloner-center (✉️ Skabeloner i
@@ -2216,7 +2216,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
     <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-bottom:16px">
       <div style="font-weight:700;font-size:13px;margin-bottom:8px">📱 SMS-forbindelse</div>
-      <div id="automation-sms-status" class="hint" style="margin:0"></div>
+      <div id="automation-sms-status" class="hint" style="margin:0 0 10px"></div>
+      <div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">
+        <div class="form-group" style="margin:0"><label class="form-label">Send test-SMS til</label><input id="automation-sms-test-to" class="input" placeholder="Fx 12345678"></div>
+        <button class="btn small" id="automation-sms-test-btn">Send test</button>
+      </div>
     </div>
 
     <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px">
@@ -8416,6 +8420,7 @@ async function loadAutomationSettings(){
     document.getElementById('automation-sms-status').innerHTML=info.sms_configured
       ?('SMS er sat op via <b>'+esc(info.sms_provider)+'</b> — stage-automatikken (se CRM-pipeline-indstillinger) kan sende.')
       :'SMS er endnu ikke sat op på serveren. Sæt <code>INMOBILE_API_TOKEN</code> (og evt. <code>INMOBILE_SENDER</code>) som miljøvariabler på Render for at bruge inMobile.';
+    document.getElementById('automation-sms-test-btn').onclick=function(){sendTestSms('automation-sms-test-to','automation-sms-test-btn');};
   }
   var lf=await api('/api/crm/lost-followup-settings');
   if(lf&&!lf.error){
@@ -11254,15 +11259,17 @@ async function loadNotificationChannels(){
   if(s.sms_configured){smsPill.textContent='✓ SMS er sat op ('+s.sms_provider+')';smsPill.className='mail-status-pill ok';}
   else{smsPill.textContent='⚠ SMS er ikke sat op endnu';smsPill.className='mail-status-pill off';}
 }
-async function sendTestSms(){
-  var to=document.getElementById('sms-test-to').value.trim();
+async function sendTestSms(toId,btnId){
+  toId=(typeof toId==='string'&&toId)||'sms-test-to';btnId=(typeof btnId==='string'&&btnId)||'sms-test-btn';
+  var to=document.getElementById(toId).value.trim();
   if(!to){toast('Skriv et telefonnummer først','⚠');return;}
-  var btn=document.getElementById('sms-test-btn');btn.disabled=true;btn.textContent='Sender…';
+  var btn=document.getElementById(btnId);btn.disabled=true;btn.textContent='Sender…';
   var r=await api('/api/settings/test-sms',{method:'POST',body:JSON.stringify({to:to})});
   if(r&&r.ok)toast('Test-SMS sendt til '+to,'✓');
   else toast((r&&r.error)||'Kunne ikke sende','❌');
   btn.disabled=false;btn.textContent='Send test';
 }
+window.sendTestSms=sendTestSms;
 async function saveSettings(){
   var body={
     company_name:document.getElementById('settings-company-name').value.trim()||'Gulv Master Enterprise ApS',
@@ -11833,7 +11840,7 @@ function bind(){
   // "email-save-btn"/"email-test-btn" er flyttet ind i Skabeloner-kortet for
   // Færdig-mailen (dynamisk indhold) og bindes derfor i renderSystemEmailTemplates()
   // i stedet for her — se initEmailTemplatesModule().
-  document.getElementById('sms-test-btn').onclick=sendTestSms;
+  document.getElementById('sms-test-btn').onclick=function(){sendTestSms();};
   // Opgaveliste
   ['tasklist-search','tasklist-type-filter','tasklist-status-filter'].forEach(function(id){document.getElementById(id).addEventListener('input',renderTaskList);});
   document.getElementById('tasklist-select-all').onclick=function(){selectAllTasks(true);};

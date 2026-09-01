@@ -2148,7 +2148,7 @@ app.get('/api/settings/notification-channels', auth, adminOnly, asyncRoute(async
 app.post('/api/settings/test-sms', auth, adminOnly, asyncRoute(async (req, res) => {
   const to = String((req.body || {}).to || '').trim();
   if (!to) return res.status(400).json({ error: 'Skriv et telefonnummer at teste med' });
-  if (!smsIsConfigured()) return res.status(400).json({ error: 'SMS er ikke sat op endnu (mangler GATEWAYAPI_API_TOKEN eller TWILIO_* i Render Environment)' });
+  if (!smsIsConfigured()) return res.status(400).json({ error: 'SMS er ikke sat op endnu (mangler INMOBILE_API_TOKEN, GATEWAYAPI_API_TOKEN eller TWILIO_* i Render Environment)' });
   try {
     await sendSmsUniversal({ to, message: 'Gulv Master: Dette er en test-SMS fra jeres planlægningssystem.' });
     res.json({ ok: true });
@@ -2576,14 +2576,21 @@ async function sendSmsUniversal({ to, message }) {
   // FØRST, så en sat INMOBILE_API_TOKEN altid vinder over de andre uden at
   // man behøver fjerne dem. OBS: endpoint/felt-navne herunder er bygget ud fra
   // inMobiles offentlige dokumentation (api.inmobile.com/docs) — vi har ikke
-  // haft en rigtig konto at teste imod endnu. Fejler kaldet, kommer inMobiles
-  // egen fejlbesked med i throw'et nedenfor, så det er hurtigt at rette til,
-  // hvis et felt-navn skal justeres, når vi har en rigtig nøgle at teste med.
+  // haft en rigtig konto at teste imod endnu. RETTET (sep. 2026): en rigtig
+  // nøgle blev testet i produktion og gav "inMobile HTTP 401: Error parsing
+  // basic auth" med den oprindelige 'Bearer <token>'-header — det beviser at
+  // inMobiles API forventer HTTP Basic Auth, ikke Bearer. Skiftet til Basic
+  // med api-nøglen som brugernavn og tomt password (samme mønster som
+  // GatewayAPI nedenfor) — inMobiles dokumentation nævner ikke eksplicit et
+  // separat password, så dette er stadig et kvalificeret gæt og bør
+  // bekræftes med en ægte test-SMS. Fejler kaldet fortsat, kommer inMobiles
+  // egen fejlbesked med i throw'et nedenfor, så det er hurtigt at se om det
+  // skal justeres yderligere.
   if (process.env.INMOBILE_API_TOKEN) {
     const response = await fetch('https://api.inmobile.com/v4/sms/outgoing', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ' + process.env.INMOBILE_API_TOKEN,
+        'Authorization': 'Basic ' + Buffer.from(process.env.INMOBILE_API_TOKEN + ':').toString('base64'),
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -7740,7 +7747,7 @@ async function sendTodayReminderEmails() {
 // har sit eget "allerede sendt"-flag (sms_reminder_sent_at) så de to kanaler ikke
 // blokerer hinanden — en kunde med både e-mail og telefon skal gerne have begge.
 async function sendReminderSms() {
-  if (!smsIsConfigured()) return { sent: 0, reason: 'SMS er ikke konfigureret på serveren (GATEWAYAPI_API_TOKEN/TWILIO_*)' };
+  if (!smsIsConfigured()) return { sent: 0, reason: 'SMS er ikke konfigureret på serveren (INMOBILE_API_TOKEN/GATEWAYAPI_API_TOKEN/TWILIO_*)' };
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const iso = tomorrow.toISOString().slice(0, 10);
   const rows = await pool.query(`
@@ -7774,7 +7781,7 @@ async function sendReminderSms() {
 // mangler SMS-opsætning, sendes mailen stadig, og omvendt).
 app.post('/api/customer-emails/send-reminders', auth, adminOnly, asyncRoute(async (req, res) => {
   const emailResult = await sendReminderEmails();
-  let smsResult = { sent: 0, reason: 'SMS er ikke konfigureret på serveren (GATEWAYAPI_API_TOKEN/TWILIO_*)' };
+  let smsResult = { sent: 0, reason: 'SMS er ikke konfigureret på serveren (INMOBILE_API_TOKEN/GATEWAYAPI_API_TOKEN/TWILIO_*)' };
   try { smsResult = await sendReminderSms(); } catch (e) { smsResult = { sent: 0, reason: e.message }; }
   res.json({ ok: true, ...emailResult, sms_sent: smsResult.sent, sms_candidates: smsResult.candidates || 0, sms_reason: smsResult.reason || null });
 }));
