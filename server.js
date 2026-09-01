@@ -2574,29 +2574,29 @@ async function sendSmsUniversal({ to, message }) {
   if (!phone) throw new Error('Ugyldigt eller manglende telefonnummer');
   // inMobile (dansk udbyder, Martins eksisterende SMS-leverandør) tjekkes
   // FØRST, så en sat INMOBILE_API_TOKEN altid vinder over de andre uden at
-  // man behøver fjerne dem. OBS: endpoint/felt-navne herunder er bygget ud fra
-  // inMobiles offentlige dokumentation (api.inmobile.com/docs) — vi har ikke
-  // haft en rigtig konto at teste imod endnu. RETTET (sep. 2026): en rigtig
-  // nøgle blev testet i produktion og gav "inMobile HTTP 401: Error parsing
-  // basic auth" med den oprindelige 'Bearer <token>'-header — det beviser at
-  // inMobiles API forventer HTTP Basic Auth, ikke Bearer. Skiftet til Basic
-  // med api-nøglen som brugernavn og tomt password (samme mønster som
-  // GatewayAPI nedenfor) — inMobiles dokumentation nævner ikke eksplicit et
-  // separat password, så dette er stadig et kvalificeret gæt og bør
-  // bekræftes med en ægte test-SMS. Fejler kaldet fortsat, kommer inMobiles
-  // egen fejlbesked med i throw'et nedenfor, så det er hurtigt at se om det
-  // skal justeres yderligere.
+  // man behøver fjerne dem. BEKRÆFTET mod inMobiles egen live REST API-doku-
+  // mentation (api.inmobile.com/docs, sep. 2026), efter en rigtig nøgle først
+  // gav "Error parsing basic auth" (Bearer-header var forkert) og derefter
+  // "Invalid credentials or IP not valid" (nøglen sad som BRUGERNAVN med tomt
+  // password — også forkert). inMobiles egen doku siger ordret: "Provide
+  // Basic Authentication with an arbitrary username and your api key as
+  // PASSWORD, e.g. some_value_to_be_ignored:your_api_key_here" — dvs. nøglen
+  // skal stå som PASSWORD, ikke brugernavn. Endpointet forventer desuden en
+  // "messages"-liste (ikke et fladt objekt) med de påkrævede felter to/from/
+  // text pr. besked — også rettet herunder, jf. https://api.inmobile.com/v4/sms/outgoing.
   if (process.env.INMOBILE_API_TOKEN) {
     const response = await fetch('https://api.inmobile.com/v4/sms/outgoing', {
       method: 'POST',
       headers: {
-        'Authorization': 'Basic ' + Buffer.from(process.env.INMOBILE_API_TOKEN + ':').toString('base64'),
+        'Authorization': 'Basic ' + Buffer.from('gulvmaster:' + process.env.INMOBILE_API_TOKEN).toString('base64'),
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        to: phone.replace('+', ''),
-        sender: (process.env.INMOBILE_SENDER || 'GulvMaster').slice(0, 11),
-        text: message
+        messages: [{
+          to: phone.replace('+', ''),
+          from: (process.env.INMOBILE_SENDER || 'GulvMaster').slice(0, 11),
+          text: message
+        }]
       })
     });
     if (!response.ok) {
