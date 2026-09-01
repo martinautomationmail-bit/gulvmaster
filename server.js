@@ -1002,6 +1002,59 @@ async function initSchema() {
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_company INTEGER DEFAULT 0;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS cvr TEXT;
 
+    -- customer_notes: rigtig, redigerbar/sletbar note-liste på kundekortet
+    -- (i stedet for det gamle enkelt-felt customers.notes, som stadig findes
+    -- og bruges i "✎ Redigér kunde"-modalen til en kort fritekst-beskrivelse,
+    -- men IKKE er velegnet til løbende arbejdsnoter man vil kunne rette/slette
+    -- enkeltvis). Vist øverst på #page-customer-detail.
+    CREATE TABLE IF NOT EXISTS customer_notes (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      body TEXT NOT NULL,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_notes_customer ON customer_notes(customer_id);
+
+    -- ══════════════════════════════════════════════════════════════
+    -- GMAIL-INTEGRATION — Martins ønske om at kunne se al mailkorrespondance
+    -- med en kunde direkte på kundens kort. ÉN fælles firma-postkasse forbindes
+    -- (ikke én pr. bruger) via Google OAuth, se GET /api/gmail/auth-url m.fl.
+    -- gmail_connection: singleton-række (id altid 1) med de krypterede tokens.
+    -- customer_emails: metadata-cache af synkroniserede mails pr. kunde (selve
+    -- brødtekst/vedhæftninger hentes IKKE gemt herind, kun live fra Gmail når
+    -- man åbner en mail — se GET /api/gmail/messages/:id — for at undgå at
+    -- duplikere store mailarkiver i databasen).
+    -- ══════════════════════════════════════════════════════════════
+    CREATE TABLE IF NOT EXISTS gmail_connection (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      email TEXT,
+      access_token_enc TEXT,
+      refresh_token_enc TEXT,
+      token_expiry BIGINT,
+      connected_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      connected_at TEXT,
+      last_synced_at TEXT,
+      last_sync_error TEXT,
+      CONSTRAINT gmail_connection_singleton CHECK (id = 1)
+    );
+    CREATE TABLE IF NOT EXISTS customer_emails (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      gmail_message_id TEXT NOT NULL UNIQUE,
+      gmail_thread_id TEXT,
+      subject TEXT,
+      snippet TEXT,
+      from_email TEXT,
+      from_name TEXT,
+      to_emails TEXT,
+      direction TEXT,
+      internal_date BIGINT,
+      synced_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_emails_customer ON customer_emails(customer_id, internal_date DESC);
+
     -- ── CLOSE CRM-INTEGRATION: undgår at oprette samme kunde to gange, hvis
     -- Close afsender det samme webhook-event flere gange (Close retrier selv
     -- ved alt andet end 2xx-svar). Se app.post('/api/integrations/close/webhook').
@@ -1073,6 +1126,10 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_crm_leads_stage ON crm_leads(stage_id);
+    -- contact_id: sat allerede ved OPRETTELSE af et lead (ikke kun ved konvertering),
+    -- så Lead → Kunde/Kontakt/Sales hænger sammen fra dag ét. Se
+    -- crmFindOrCreateContactAndCustomer() kaldt fra POST /api/crm/leads.
+    ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS contact_id INTEGER REFERENCES crm_contacts(id) ON DELETE SET NULL;
     CREATE TABLE IF NOT EXISTS crm_opportunities (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
@@ -5060,6 +5117,330 @@ app.delete('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, r
   res.json({ ok: true });
 }));
 
+// ── KUNDE-NOTER — rigtig, redigerbar/sletbar note-liste (se customer_notes
+// ovenfor i initSchema()). Adskilt fra den ældre customers.notes-tekst. ────
+app.get('/api/crm/customers/:id/notes', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT n.*, u.name AS user_name FROM customer_notes n LEFT JOIN users u ON u.id=n.user_id WHERE n.customer_id=$1 ORDER BY n.created_at DESC, n.id DESC', [req.params.id])).rows;
+  res.json(rows);
+}));
+app.post('/api/crm/customers/:id/notes', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.body || !String(b.body).trim()) return res.status(400).json({ error: 'Note mangler' });
+  const customer = await pgOne('SELECT id FROM customers WHERE id=$1', [req.params.id]);
+  if (!customer) return res.status(404).json({ error: 'Kunde ikke fundet' });
+  const r = await pgOne('INSERT INTO customer_notes (customer_id,body,user_id) VALUES ($1,$2,$3) RETURNING id', [req.params.id, String(b.body).trim(), req.user.id]);
+  res.json({ ok: true, id: r.id });
+}));
+app.put('/api/crm/customers/:id/notes/:noteId', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.body || !String(b.body).trim()) return res.status(400).json({ error: 'Note mangler' });
+  const note = await pgOne('SELECT * FROM customer_notes WHERE id=$1 AND customer_id=$2', [req.params.noteId, req.params.id]);
+  if (!note) return res.status(404).json({ error: 'Note ikke fundet' });
+  await pool.query(`UPDATE customer_notes SET body=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [String(b.body).trim(), req.params.noteId]);
+  res.json({ ok: true });
+}));
+app.delete('/api/crm/customers/:id/notes/:noteId', auth, financeOnly, asyncRoute(async (req, res) => {
+  const note = await pgOne('SELECT * FROM customer_notes WHERE id=$1 AND customer_id=$2', [req.params.noteId, req.params.id]);
+  if (!note) return res.status(404).json({ error: 'Note ikke fundet' });
+  await pool.query('DELETE FROM customer_notes WHERE id=$1', [req.params.noteId]);
+  res.json({ ok: true });
+}));
+
+// ══════════════════════════════════════════════════════════════
+// GMAIL-INTEGRATION — punkt 2 i Martins Round C-ønske: "kan man indbygge gmail
+// ind i det? så den trækker alle mails tilkoblet den givende kunde ind på
+// kundens sag". Bygget som Martin selv bad om: fuld 2-vejs OAuth-forbindelse
+// til ÉN firma-postkasse, som løbende synkroniseres og matches til kunder på
+// email-adresse. Kræver at Martin selv opretter et Google Cloud-projekt og
+// sætter GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET som miljøvariabler på Render —
+// se leveringsnoten for den præcise fremgangsmåde, det kan jeg ikke gøre for
+// ham herfra.
+//
+// Scope er bevidst kun "gmail.readonly" — appen kan altså LÆSE/synkronisere
+// mails, men aldrig sende eller slette noget i Martins rigtige Gmail. At sende
+// en mail til en kunde sker stadig via Gmail-knappen der åbner Gmails egen
+// web-compose (se gmailComposeUrl i admin.html) — simplere, sikrere, og kræver
+// ingen udvidet tilladelse fra Google.
+//
+// Tokens gemmes krypteret (AES-256-GCM, nøgle udledt af JWT_SECRET — samme
+// hemmelighed serveren allerede kræver er sat, så der ikke skal endnu en
+// hemmelighed til bare for dette).
+// ══════════════════════════════════════════════════════════════
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email';
+function gmailIsConfigured() { return !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET); }
+function gmailRedirectUri(req) {
+  return process.env.GOOGLE_REDIRECT_URI || (req.protocol + '://' + req.get('host') + '/api/gmail/oauth-callback');
+}
+
+const GMAIL_ENC_KEY = crypto.createHash('sha256').update(JWT_SECRET + ':gmail').digest();
+function gmailEncrypt(text) {
+  if (!text) return null;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', GMAIL_ENC_KEY, iv);
+  const enc = Buffer.concat([cipher.update(String(text), 'utf8'), cipher.final()]);
+  return iv.toString('hex') + ':' + cipher.getAuthTag().toString('hex') + ':' + enc.toString('hex');
+}
+function gmailDecrypt(stored) {
+  if (!stored) return null;
+  const [ivHex, tagHex, dataHex] = String(stored).split(':');
+  if (!ivHex || !tagHex || !dataHex) return null;
+  const decipher = crypto.createDecipheriv('aes-256-gcm', GMAIL_ENC_KEY, Buffer.from(ivHex, 'hex'));
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return Buffer.concat([decipher.update(Buffer.from(dataHex, 'hex')), decipher.final()]).toString('utf8');
+}
+
+async function gmailGetConnection() {
+  return pgOne('SELECT * FROM gmail_connection WHERE id=1');
+}
+
+// Returnerer et gyldigt access token — forny automatisk med refresh_token hvis
+// det er udløbet (eller udløber om under 2 minutter). Kaster hvis der slet
+// ikke er forbundet en Gmail-konto.
+async function gmailGetValidAccessToken() {
+  const conn = await gmailGetConnection();
+  if (!conn || !conn.refresh_token_enc) throw new Error('Ingen Gmail-konto forbundet');
+  const now = Date.now();
+  if (conn.access_token_enc && conn.token_expiry && Number(conn.token_expiry) > now + 120000) {
+    return gmailDecrypt(conn.access_token_enc);
+  }
+  const refreshToken = gmailDecrypt(conn.refresh_token_enc);
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token'
+    })
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data.access_token) {
+    throw new Error('Kunne ikke forny Gmail-adgang: ' + (data.error_description || data.error || resp.status));
+  }
+  const expiry = Date.now() + (Number(data.expires_in || 3600) * 1000);
+  await pool.query('UPDATE gmail_connection SET access_token_enc=$1, token_expiry=$2 WHERE id=1', [gmailEncrypt(data.access_token), expiry]);
+  return data.access_token;
+}
+
+async function gmailApiFetch(path, accessToken, opts) {
+  const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me' + path, Object.assign({}, opts, {
+    headers: Object.assign({ 'Authorization': 'Bearer ' + accessToken }, (opts && opts.headers) || {})
+  }));
+  if (!resp.ok) {
+    const raw = await resp.text().catch(() => '');
+    throw new Error('Gmail API HTTP ' + resp.status + ': ' + raw.slice(0, 300));
+  }
+  return resp.json();
+}
+
+function gmailHeader(headers, name) {
+  const h = (headers || []).find(x => x.name && x.name.toLowerCase() === name.toLowerCase());
+  return h ? h.value : '';
+}
+function gmailParseFromHeader(from) {
+  const m = String(from || '').match(/^\s*"?([^"<]*)"?\s*<?([^<>\s]+@[^<>\s]+)?>?\s*$/);
+  if (!m) return { name: '', email: String(from || '').trim() };
+  return { name: (m[1] || '').trim(), email: (m[2] || m[1] || '').trim() };
+}
+function gmailB64UrlDecode(data) {
+  return Buffer.from(String(data || '').replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+}
+// Går rekursivt igennem en Gmail-besked-payload og finder tekst-krop (html
+// foretrukket, ellers plain) + en liste af rigtige vedhæftninger.
+function gmailWalkPayload(part, acc) {
+  if (!part) return;
+  const filename = part.filename;
+  if (filename && part.body && part.body.attachmentId) {
+    acc.attachments.push({ filename, mimeType: part.mimeType || 'application/octet-stream', attachmentId: part.body.attachmentId, size: part.body.size || 0 });
+  } else if (part.mimeType === 'text/html' && part.body && part.body.data && !acc.html) {
+    acc.html = gmailB64UrlDecode(part.body.data).toString('utf8');
+  } else if (part.mimeType === 'text/plain' && part.body && part.body.data && !acc.text) {
+    acc.text = gmailB64UrlDecode(part.body.data).toString('utf8');
+  }
+  (part.parts || []).forEach(p => gmailWalkPayload(p, acc));
+}
+
+// ── OAuth-flow ──────────────────────────────────────────────────
+app.get('/api/gmail/auth-url', auth, adminOnly, asyncRoute(async (req, res) => {
+  if (!gmailIsConfigured()) return res.status(400).json({ error: 'GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET er ikke sat op på serveren endnu' });
+  const state = jwt.sign({ purpose: 'gmail_oauth', uid: req.user.id }, JWT_SECRET, { expiresIn: '10m' });
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: gmailRedirectUri(req),
+    response_type: 'code',
+    scope: GMAIL_SCOPES,
+    access_type: 'offline',
+    prompt: 'consent',
+    state
+  });
+  res.json({ url: 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString() });
+}));
+
+// Google redirekser brugerens BROWSER direkte hertil (ikke et fetch-kald med
+// Authorization-header) — derfor ingen auth-middleware her. state-JWT'en
+// beviser i stedet at det er en legitim forespørgsel startet af en rigtig
+// admin-bruger i programmet, og fortæller hvem der forbandt kontoen.
+app.get('/api/gmail/oauth-callback', asyncRoute(async (req, res) => {
+  const { code, state, error } = req.query;
+  function fail(msg) {
+    res.status(400).send('<html><body style="font-family:sans-serif;padding:40px"><h2>Gmail-forbindelse fejlede</h2><p>' + String(msg).replace(/</g, '&lt;') + '</p><p><a href="/admin#gmail-settings">Tilbage til Gulv Master</a></p></body></html>');
+  }
+  if (error) return fail('Google afviste: ' + error);
+  if (!code || !state) return fail('Mangler code/state fra Google');
+  let payload;
+  try { payload = jwt.verify(state, JWT_SECRET); } catch (e) { return fail('Ugyldigt eller udløbet state — prøv at forbinde igen'); }
+  if (!payload || payload.purpose !== 'gmail_oauth') return fail('Ugyldigt state');
+
+  const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: gmailRedirectUri(req)
+    })
+  });
+  const tokenData = await tokenResp.json().catch(() => ({}));
+  if (!tokenResp.ok || !tokenData.access_token) {
+    return fail('Kunne ikke hente token fra Google: ' + (tokenData.error_description || tokenData.error || tokenResp.status));
+  }
+  if (!tokenData.refresh_token) {
+    return fail('Google gav intet refresh-token (prøv at fjerne appens adgang under myaccount.google.com/permissions og forbind igen)');
+  }
+  const userinfoResp = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: 'Bearer ' + tokenData.access_token } });
+  const userinfo = await userinfoResp.json().catch(() => ({}));
+
+  await pool.query(`
+    INSERT INTO gmail_connection (id, email, access_token_enc, refresh_token_enc, token_expiry, connected_by, connected_at, last_synced_at, last_sync_error)
+    VALUES (1,$1,$2,$3,$4,$5,${nowTextSQL()},NULL,NULL)
+    ON CONFLICT (id) DO UPDATE SET email=$1, access_token_enc=$2, refresh_token_enc=$3, token_expiry=$4, connected_by=$5, connected_at=${nowTextSQL()}, last_sync_error=NULL
+  `, [userinfo.email || null, gmailEncrypt(tokenData.access_token), gmailEncrypt(tokenData.refresh_token), Date.now() + (Number(tokenData.expires_in || 3600) * 1000), payload.uid]);
+
+  await logSystemEvent('gmail', 'info', 'Gmail forbundet: ' + (userinfo.email || '?'));
+  // OBS: bevidst uden query-string på hashet (kun #gmail-settings, ikke
+  // #gmail-settings?connected=1) — admin.html's hash-router splitter kun på
+  // "/", ikke "?", så et vedhæftet query-tegn ville gøre siden ikke matche
+  // noget i VALID_PAGES og fejle stille ved indlæsning. Siden henter selv sin
+  // forbindelsesstatus (GET /api/gmail/status) med det samme den åbnes.
+  res.redirect('/admin#gmail-settings');
+}));
+
+app.get('/api/gmail/status', auth, financeOnly, asyncRoute(async (req, res) => {
+  const conn = await gmailGetConnection();
+  res.json({
+    configured: gmailIsConfigured(),
+    connected: !!(conn && conn.refresh_token_enc),
+    email: conn ? conn.email : null,
+    connected_at: conn ? conn.connected_at : null,
+    last_synced_at: conn ? conn.last_synced_at : null,
+    last_sync_error: conn ? conn.last_sync_error : null
+  });
+}));
+
+app.post('/api/gmail/disconnect', auth, adminOnly, asyncRoute(async (req, res) => {
+  const conn = await gmailGetConnection();
+  if (conn && conn.refresh_token_enc) {
+    try {
+      await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(gmailDecrypt(conn.refresh_token_enc)), { method: 'POST' });
+    } catch (e) { /* best-effort — fjern forbindelsen lokalt uanset */ }
+  }
+  await pool.query('DELETE FROM gmail_connection WHERE id=1');
+  await logSystemEvent('gmail', 'info', 'Gmail-forbindelse fjernet af ' + (req.user.name || req.user.id));
+  res.json({ ok: true });
+}));
+
+// ── Synkronisering ──────────────────────────────────────────────
+// Henter mails til/fra hver kundes email-adresse fra den forbundne postkasse.
+// Gemmer kun METADATA i databasen (emne/uddrag/afsender/dato) — selve
+// brødtekst og vedhæftninger hentes live fra Gmail først når man åbner en
+// mail, så vi ikke dublerer et helt mailarkiv i Postgres.
+async function gmailSyncAll() {
+  const accessToken = await gmailGetValidAccessToken();
+  const customers = (await pool.query("SELECT id, email FROM customers WHERE email IS NOT NULL AND email <> ''")).rows;
+  let totalNew = 0;
+  for (const customer of customers) {
+    try {
+      totalNew += await gmailSyncCustomer(customer, accessToken);
+    } catch (e) {
+      console.error('Gmail-synk fejlede for kunde #' + customer.id + ':', e.message);
+    }
+  }
+  await pool.query(`UPDATE gmail_connection SET last_synced_at=${nowTextSQL()}, last_sync_error=NULL WHERE id=1`);
+  return totalNew;
+}
+async function gmailSyncCustomer(customer, accessToken) {
+  const q = '(to:"' + customer.email + '" OR from:"' + customer.email + '")';
+  const list = await gmailApiFetch('/messages?maxResults=40&q=' + encodeURIComponent(q), accessToken);
+  const messages = list.messages || [];
+  let added = 0;
+  for (const m of messages) {
+    const exists = await pgOne('SELECT id FROM customer_emails WHERE gmail_message_id=$1', [m.id]);
+    if (exists) continue;
+    const detail = await gmailApiFetch('/messages/' + m.id + '?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date', accessToken);
+    const headers = (detail.payload && detail.payload.headers) || [];
+    const fromParsed = gmailParseFromHeader(gmailHeader(headers, 'From'));
+    const connEmail = (await gmailGetConnection() || {}).email || '';
+    const direction = fromParsed.email && connEmail && fromParsed.email.toLowerCase() === connEmail.toLowerCase() ? 'out' : 'in';
+    try {
+      await pool.query(`
+        INSERT INTO customer_emails (customer_id, gmail_message_id, gmail_thread_id, subject, snippet, from_email, from_name, to_emails, direction, internal_date)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (gmail_message_id) DO NOTHING
+      `, [customer.id, m.id, detail.threadId || null, gmailHeader(headers, 'Subject') || '(uden emne)', detail.snippet || '', fromParsed.email || null, fromParsed.name || null, gmailHeader(headers, 'To') || null, direction, Number(detail.internalDate) || Date.now()]);
+      added++;
+    } catch (e) { console.error('Kunne ikke gemme mail ' + m.id + ':', e.message); }
+  }
+  return added;
+}
+
+app.post('/api/gmail/sync', auth, financeOnly, asyncRoute(async (req, res) => {
+  try {
+    const added = await gmailSyncAll();
+    res.json({ ok: true, added });
+  } catch (e) {
+    await pool.query('UPDATE gmail_connection SET last_sync_error=$1 WHERE id=1', [String(e.message).slice(0, 500)]);
+    res.status(400).json({ error: e.message });
+  }
+}));
+
+// ── Kundens synkroniserede mails + live besked-/vedhæftnings-visning ────────
+app.get('/api/crm/customers/:id/emails', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT * FROM customer_emails WHERE customer_id=$1 ORDER BY internal_date DESC', [req.params.id])).rows;
+  res.json(rows);
+}));
+
+app.get('/api/gmail/messages/:messageId', auth, financeOnly, asyncRoute(async (req, res) => {
+  const accessToken = await gmailGetValidAccessToken();
+  const detail = await gmailApiFetch('/messages/' + req.params.messageId + '?format=full', accessToken);
+  const headers = (detail.payload && detail.payload.headers) || [];
+  const acc = { html: null, text: null, attachments: [] };
+  gmailWalkPayload(detail.payload, acc);
+  res.json({
+    subject: gmailHeader(headers, 'Subject'),
+    from: gmailHeader(headers, 'From'),
+    to: gmailHeader(headers, 'To'),
+    date: gmailHeader(headers, 'Date'),
+    bodyHtml: acc.html,
+    bodyText: acc.text,
+    attachments: acc.attachments.map(a => ({ filename: a.filename, mimeType: a.mimeType, attachmentId: a.attachmentId, size: a.size }))
+  });
+}));
+
+app.get('/api/gmail/messages/:messageId/attachments/:attachmentId', auth, financeOnly, asyncRoute(async (req, res) => {
+  const accessToken = await gmailGetValidAccessToken();
+  const att = await gmailApiFetch('/messages/' + req.params.messageId + '/attachments/' + req.params.attachmentId, accessToken);
+  const buf = gmailB64UrlDecode(att.data);
+  const filename = String(req.query.filename || 'vedhaeftning').replace(/[^\w.\- æøåÆØÅ]/g, '_');
+  res.setHeader('Content-Type', String(req.query.mimetype || 'application/octet-stream'));
+  res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
+  res.send(buf);
+}));
+
 // ══════════════════════════════════════════════════════════════
 // CLOSE CRM-INTEGRATION — Martin bad om: "hver gang en kunde rykkes til
 // Opportunities → Lav Tilbud så oprettes kunden i mit program med alt
@@ -5271,6 +5652,41 @@ async function crmLogActivity(entityType, entityId, kind, body, userId) {
   await pool.query('INSERT INTO crm_activities (entity_type,entity_id,kind,body,user_id) VALUES ($1,$2,$3,$4,$5)', [entityType, entityId, kind, body || null, userId || null]);
 }
 
+// Find-eller-opret en crm_contacts-række + en customers-række for et navn/
+// email/telefon, og kæd dem sammen — dedupliker på telefon/email ligesom
+// resten af appen allerede gør (Close-webhooken m.fl.). Genbruges både ved
+// lead-OPRETTELSE (så Lead/Kunde/Sales hænger sammen fra start) og ved
+// lead-KONVERTERING (uændret slutresultat, men nu ét fælles sted for logikken).
+async function crmFindOrCreateContactAndCustomer(name, email, phone, address, note) {
+  let contact = null;
+  if (phone) contact = await pgOne('SELECT * FROM crm_contacts WHERE phone=$1', [phone]);
+  if (!contact && email) contact = await pgOne('SELECT * FROM crm_contacts WHERE email=$1', [email]);
+  let contactId, contactCreated = false;
+  if (contact) { contactId = contact.id; }
+  else {
+    const c = await pgOne('INSERT INTO crm_contacts (name,email,phone,address) VALUES ($1,$2,$3,$4) RETURNING id', [name, email, phone, address]);
+    contactId = c.id; contactCreated = true;
+  }
+
+  // Genbrug kunden koblet på kontakten hvis den allerede findes (undgår at
+  // kunne oprette en ekstra kunde hvis kundens telefon/email er blevet
+  // opdateret siden sidst, men kontakt-koblingen stadig er der).
+  let customer = null;
+  if (contact && contact.customer_id) customer = await pgOne('SELECT id FROM customers WHERE id=$1', [contact.customer_id]);
+  if (!customer && phone) customer = await pgOne('SELECT id FROM customers WHERE phone=$1', [phone]);
+  if (!customer && email) customer = await pgOne('SELECT id FROM customers WHERE email=$1', [email]);
+  let customerId, customerCreated = false;
+  if (customer) { customerId = customer.id; }
+  else {
+    const cust = await pgOne('INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id', [name, email, phone, address, note || null]);
+    customerId = cust.id; customerCreated = true;
+  }
+  if (!contact || contact.customer_id !== customerId) {
+    await pool.query('UPDATE crm_contacts SET customer_id=$1 WHERE id=$2', [customerId, contactId]);
+  }
+  return { contactId, customerId, contactCreated, customerCreated };
+}
+
 // ── PIPELINES + STAGES ──────────────────────────────────────────
 app.get('/api/crm/pipelines', auth, financeOnly, asyncRoute(async (req, res) => {
   const pipelines = await pool.query('SELECT * FROM crm_pipelines ORDER BY position ASC, id ASC');
@@ -5390,15 +5806,24 @@ app.post('/api/crm/leads', auth, financeOnly, asyncRoute(async (req, res) => {
   if (!pipelineId) return res.status(400).json({ error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
   if (!stageId) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [pipelineId]); stageId = s && s.id; }
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [stageId]);
+  const leadName = String(b.name).trim();
   const r = await pgOne(`
     INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id
-  `, [String(b.name).trim(), b.email || null, b.phone || null, b.address || null, b.source || null, b.note || null, pipelineId, stageId, b.owner_id || req.user.id, posRow.pos]);
+  `, [leadName, b.email || null, b.phone || null, b.address || null, b.source || null, b.note || null, pipelineId, stageId, b.owner_id || req.user.id, posRow.pos]);
   await crmSetCustomFieldValues('lead', r.id, b.custom_fields);
   await crmLogActivity('lead', r.id, 'created', 'Lead oprettet', req.user.id);
-  res.json({ ok: true, id: r.id });
+
+  // Lead, Kunde og Sales skal hænge sammen fra dag ét (Martins ønske) — opret/kobl
+  // automatisk en rigtig kunde (+ kontakt) med det samme, ikke først ved konvertering.
+  // Kører uanset om der er email/telefon (samme som konverterings-routen altid har
+  // gjort) — uden kontaktinfo kan den blot ikke dedupliceres mod en eksisterende kunde.
+  const linked = await crmFindOrCreateContactAndCustomer(leadName, b.email || null, b.phone || null, b.address || null, b.note || null);
+  await pool.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
+  await crmLogActivity('lead', r.id, 'linked', (linked.customerCreated ? 'Ny kunde oprettet automatisk: ' : 'Koblet til eksisterende kunde: ') + leadName, req.user.id);
+  res.json({ ok: true, id: r.id, contact_id: linked.contactId, customer_id: linked.customerId });
 }));
 app.get('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => {
-  const lead = await pgOne('SELECT l.*, u.name AS owner_name FROM crm_leads l LEFT JOIN users u ON u.id=l.owner_id WHERE l.id=$1', [req.params.id]);
+  const lead = await pgOne('SELECT l.*, u.name AS owner_name, c.customer_id AS customer_id FROM crm_leads l LEFT JOIN users u ON u.id=l.owner_id LEFT JOIN crm_contacts c ON c.id=l.contact_id WHERE l.id=$1', [req.params.id]);
   if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
   const customFields = await crmGetCustomFieldDefs('lead');
   const customValues = await crmGetCustomFieldValues('lead', lead.id);
@@ -5457,27 +5882,18 @@ app.post('/api/crm/leads/:id/convert', auth, financeOnly, asyncRoute(async (req,
   let targetStageId = b.stage_id;
   if (!targetStageId) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [targetPipelineId]); targetStageId = s && s.id; }
 
-  // Kontakt: genbrug hvis en med samme telefon/email allerede findes, ellers ny.
-  let contact = null;
-  if (lead.phone) contact = await pgOne('SELECT * FROM crm_contacts WHERE phone=$1', [lead.phone]);
-  if (!contact && lead.email) contact = await pgOne('SELECT * FROM crm_contacts WHERE email=$1', [lead.email]);
-  let contactId;
-  if (contact) { contactId = contact.id; }
-  else {
-    const c = await pgOne('INSERT INTO crm_contacts (name,email,phone,address) VALUES ($1,$2,$3,$4) RETURNING id', [lead.name, lead.email, lead.phone, lead.address]);
-    contactId = c.id;
+  // Kontakt + kunde: leadet har normalt allerede begge dele koblet fra
+  // OPRETTELSEN (se POST /api/crm/leads), så her genbruges bare det —
+  // faldbacker til samme find-eller-opret-logik for ældre leads fra før
+  // den funktion fandtes.
+  let contactId, customerId;
+  if (lead.contact_id) {
+    const existingContact = await pgOne('SELECT * FROM crm_contacts WHERE id=$1', [lead.contact_id]);
+    if (existingContact) { contactId = existingContact.id; customerId = existingContact.customer_id || null; }
   }
-
-  // Kunde i det eksisterende Kunder-modul — dedupliker på telefon/email ligesom
-  // resten af appen allerede gør (se fx Close-webhooken herover).
-  let customer = null;
-  if (lead.phone) customer = await pgOne('SELECT id FROM customers WHERE phone=$1', [lead.phone]);
-  if (!customer && lead.email) customer = await pgOne('SELECT id FROM customers WHERE email=$1', [lead.email]);
-  let customerId;
-  if (customer) { customerId = customer.id; }
-  else {
-    const cust = await pgOne('INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id', [lead.name, lead.email, lead.phone, lead.address, lead.note]);
-    customerId = cust.id;
+  if (!contactId || !customerId) {
+    const linked = await crmFindOrCreateContactAndCustomer(lead.name, lead.email, lead.phone, lead.address, lead.note);
+    contactId = linked.contactId; customerId = linked.customerId;
   }
   await pool.query('UPDATE crm_contacts SET customer_id=$1 WHERE id=$2', [customerId, contactId]);
 
@@ -5492,7 +5908,7 @@ app.post('/api/crm/leads/:id/convert', auth, financeOnly, asyncRoute(async (req,
   await crmSetCustomFieldValues('opportunity', opp.id, leadValues);
 
   const convertedStage = await pgOne("SELECT id FROM crm_stages WHERE pipeline_id=$1 AND is_won=1 ORDER BY position ASC LIMIT 1", [lead.pipeline_id]);
-  await pool.query('UPDATE crm_leads SET converted_opportunity_id=$1, stage_id=COALESCE($2,stage_id) WHERE id=$3', [opp.id, convertedStage ? convertedStage.id : null, lead.id]);
+  await pool.query('UPDATE crm_leads SET converted_opportunity_id=$1, stage_id=COALESCE($2,stage_id), contact_id=$3 WHERE id=$4', [opp.id, convertedStage ? convertedStage.id : null, contactId, lead.id]);
   await crmLogActivity('lead', lead.id, 'converted', 'Konverteret til opportunity #' + opp.id, req.user.id);
   await crmLogActivity('opportunity', opp.id, 'created', 'Oprettet fra lead #' + lead.id, req.user.id);
 
@@ -10041,6 +10457,20 @@ async function start() {
   // måned, så Martin kan sammenligne måned for måned uden at tallene ændrer sig
   // bagefter. Kan også udløses manuelt via "Gem nu"-knappen i Oversigt.
   cron.schedule('0 8 15 * *', () => saveMonthlyProfitSnapshot().catch(e => { console.error('Profit-snapshot fejlede:', e.message); logSystemEvent('profit_snapshot', 'error', 'Månedligt profit-snapshot fejlede: ' + e.message); }));
+  // Gmail-synk hver 30. minut — kører kun når GOOGLE_CLIENT_ID/SECRET er sat op
+  // OG en postkasse rent faktisk er forbundet (se GET /api/gmail/status). Kan
+  // også udløses manuelt via "Synk nu" på Gmail-indstillingssiden.
+  cron.schedule('*/30 * * * *', async () => {
+    if (!gmailIsConfigured()) return;
+    const conn = await gmailGetConnection().catch(() => null);
+    if (!conn || !conn.refresh_token_enc) return;
+    try { await gmailSyncAll(); }
+    catch (e) {
+      console.error('Gmail-synk fejlede:', e.message);
+      await pool.query('UPDATE gmail_connection SET last_sync_error=$1 WHERE id=1', [String(e.message).slice(0, 500)]).catch(() => {});
+      await logSystemEvent('gmail', 'error', 'Planlagt Gmail-synk fejlede: ' + e.message);
+    }
+  });
 }
 
 start().catch(error => {

@@ -91,10 +91,10 @@ button,input,select{font:inherit}
 .sidebar-nav .navdrop-item{color:var(--bly-sub);font-weight:600;font-size:11.5px;padding:6px 9px;border-radius:7px;transition:background .12s,color .12s}
 .sidebar-nav .navdrop-item:hover{color:var(--bly-ink);background:var(--bly-hover)}
 .sidebar-nav .navdrop-item.active{color:var(--bly-accent);background:var(--bly-accent-soft);font-weight:800}
-/* Statiske gruppe-overskrifter (Projekter/CRM/Tilbud & Faktura/Økonomi) — bruges kun
-   foran enkelt-linje-grupper uden egen ▾-menu (Projekter, CRM), da grupper der ALLEREDE
-   har en klikbar ▾-række (Dagligplanlægning, Tilbud & Faktura, Økonomi) er selv-forklarende
-   ligesom Økonomi altid har været. Ikke-klikbare — kun visuel gruppering, som i Billy. */
+/* Statisk gruppe-overskrift-klasse — ikke længere brugt i sidebaren (CRM/Tilbud &
+   Faktura/Økonomi/Dagligplanlægning har alle deres egen ▾-dropdown-række nu, og
+   Projekter er en enkelt-linje uden brug for en overskrift ovenover). Klassen
+   ligger urørt her i tilfælde af at en fremtidig enkelt-linje-gruppe får brug for den. */
 .sidebar-section-label{padding:14px 10px 4px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--bly-sub);opacity:.75}
 .sidebar-nav>.sidebar-section-label:first-child{padding-top:4px}
 .sidebar-foot{padding:12px 18px;font-size:9px;color:var(--bly-sub);opacity:.7;border-top:1px solid var(--bly-border-soft);flex-shrink:0}
@@ -729,6 +729,29 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-activity-body{flex:1;font-size:12.5px;color:var(--bly-ink);line-height:1.5}
 .crmpx-activity-meta{color:var(--bly-sub);font-size:11px;margin-top:2px}
 .crmpx-empty{color:var(--bly-sub);font-size:12px;padding:4px 0}
+/* KUNDE-NOTER (#page-customer-detail) — samme grundlook som crmpx-activity-item,
+   men med rette/slet-knapper og en redigerbar tilstand pr. note. */
+.cd-note-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--bly-border-soft)}
+.cd-note-item:last-child{border-bottom:0}
+.cd-note-icon{width:26px;height:26px;border-radius:50%;background:var(--bly-border-soft);display:grid;place-items:center;flex-shrink:0;font-size:12px}
+.cd-note-body{flex:1;font-size:12.5px;color:var(--bly-ink);line-height:1.5;white-space:pre-wrap}
+.cd-note-meta{color:var(--bly-sub);font-size:11px;margin-top:4px;display:flex;align-items:center;gap:8px}
+.cd-note-meta-edited{font-style:italic}
+.cd-note-actions{display:flex;gap:4px;flex-shrink:0}
+/* MAILS (#cd-emails-panel) — foldbar liste, samme klik-til-udfold-mønster
+   som resten af siden (fx crmp-card). */
+.cd-email-item{border-bottom:1px solid var(--bly-border-soft);padding:10px 0;cursor:pointer}
+.cd-email-item:last-child{border-bottom:0}
+.cd-email-row{display:flex;align-items:center;gap:10px}
+.cd-email-dir{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;font-size:11px;background:var(--bly-border-soft)}
+.cd-email-dir.out{background:var(--bly-accent-soft);color:var(--bly-accent)}
+.cd-email-subject{flex:1;min-width:0;font-weight:700;font-size:12.5px;color:var(--bly-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd-email-meta{font-size:11px;color:var(--bly-sub);flex-shrink:0}
+.cd-email-snippet{font-size:11.5px;color:var(--bly-sub);margin-top:3px;margin-left:32px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd-email-body{margin-top:10px;margin-left:32px;padding:12px;background:var(--bly-border-soft);border-radius:var(--bly-r-md);font-size:12.5px;line-height:1.6;max-height:400px;overflow:auto}
+.cd-email-attachments{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}
+.cd-email-attachment{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid var(--bly-border);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--bly-ink);cursor:pointer}
+.cd-email-attachment:hover{background:var(--bly-hover)}
 
 /* ══════════════════════════════════════════════════════════════
    CRM-PIPELINE — Kanban-bord (Leads/Sales), Billy-stil. */
@@ -1879,7 +1902,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
 
-    <div class="sidebar-section-label hidden" id="projects-section-label">Projekter</div>
+    <!-- PROJEKTER — kun ÉN side/route, så den får (med vilje) ingen ▾-dropdown som
+         CRM/Tilbud & Faktura/Dagligplanlægning/Økonomi: de grupper samler flere
+         undersider, Projekter har kun sin egen liste. Den løse "Projekter"-overskrift
+         der lå ovenover er fjernet (duplikerede blot tab-tekstens ord, samme fix
+         som Tilbud & Faktura fik i sidste runde), så den nu ser lige så ren og
+         ensartet ud som en enkelt-linje i de andre grupper. -->
     <a class="tab hidden" href="#projects" data-page="projects" id="projects-tab-btn"><span class="stab-icon">🏗️</span><span class="stab-label">Projekter</span></a>
 
     <!-- ØKONOMI — "🧾 Fakturaer" fjernet herfra efter Martins ønske (al fakturering
@@ -1934,6 +1962,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#logs" data-page="logs">⏱ Timer & log</a>
         <a class="navdrop-item" href="#templates" data-page="templates">📐 Skabeloner</a>
         <a class="navdrop-item" href="#notif-settings" data-page="notif-settings">⚙️ Notifikationsindstillinger</a>
+        <a class="navdrop-item hidden" href="#gmail-settings" data-page="gmail-settings" id="gmail-settings-tab-btn">📧 Gmail-integration</a>
       </div>
     </div>
     <button class="nb" id="note-widget-btn">📝 Note</button>
@@ -2112,6 +2141,34 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <section class="page" id="page-notif-settings">
   <div class="page-head"><h2>⚙️ Notifikationsindstillinger</h2><p class="page-sub">Vælg hvilke hændelser der skal give besked, og hvordan.</p></div>
   <div id="notif-settings-list" class="dash-panel"></div>
+</section>
+
+<!-- GMAIL-INTEGRATION — punkt 2 i Martins Round C-ønske. Fuld 2-vejs OAuth til
+     ÉN firma-postkasse (se server.js), synkroniseret automatisk hver 30. min
+     og matchet på kundens email-adresse. Kun læse-adgang (gmail.readonly) —
+     at SENDE en mail sker via Gmail-knapperne rundt om i programmet, som
+     hopper direkte over i Gmails egen web-compose. -->
+<section class="page" id="page-gmail-settings">
+  <div class="page-head"><h2>📧 Gmail-integration</h2><p class="page-sub">Forbind jeres firma-Gmail, så mails til/fra en kunde automatisk dukker op på kundens kort.</p></div>
+
+  <div class="crmpx-panel" id="gmail-status-card" style="max-width:640px">
+    <div id="gmail-status-body">Henter status...</div>
+  </div>
+
+  <div class="crmpx-panel" id="gmail-setup-help" style="max-width:640px;margin-top:16px">
+    <h3>🛠 Sådan sættes det op (kun én gang)</h3>
+    <div style="font-size:12.5px;line-height:1.7;color:var(--bly-ink)">
+      <ol style="margin:0;padding-left:20px">
+        <li>Opret et projekt på <strong>console.cloud.google.com</strong> (gratis).</li>
+        <li>Under "APIs &amp; Services" → "Library": aktivér <strong>Gmail API</strong>.</li>
+        <li>Under "APIs &amp; Services" → "OAuth consent screen": vælg "External", udfyld app-navn (fx "Gulv Master"), og tilføj jeres egen Gmail-konto som testbruger.</li>
+        <li>Under "APIs &amp; Services" → "Credentials" → "Create credentials" → "OAuth client ID" → type "Web application".</li>
+        <li>Under "Authorized redirect URIs": tilføj præcis <code id="gmail-redirect-hint">…</code></li>
+        <li>Kopiér "Client ID" og "Client secret", og sæt dem som miljøvariabler på Render: <code>GOOGLE_CLIENT_ID</code> og <code>GOOGLE_CLIENT_SECRET</code>. Genstart derefter serveren på Render.</li>
+        <li>Kom tilbage hertil og tryk "Forbind Gmail" nedenfor.</li>
+      </ol>
+    </div>
+  </div>
 </section>
 
 <!-- ØKONOMI (kun for is_finance_admin) -->
@@ -2466,11 +2523,36 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <h2 id="cd-name">Kunde</h2>
       <div class="sub" id="cd-subtitle">–</div>
     </div>
-    <div style="display:flex;gap:6px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <a class="bly-btn outline" id="cd-email-btn" href="#" target="_blank">✉️ Email</a>
+      <a class="bly-btn outline" id="cd-call-btn" href="#">📞 Ring</a>
       <button class="bly-btn" id="cd-edit-btn" type="button">✎ Redigér kunde</button>
     </div>
   </div>
-  <div id="cd-notes-wrap" class="hint" style="margin-bottom:16px;display:none"></div>
+
+  <!-- NOTER — rigtig, redigerbar/sletbar liste (customer_notes), vist øverst
+       lige under overskriften, så den er let at få øje på selv når kunden
+       har meget andet data (sager/tilbud/fakturaer) længere nede. Adskilt fra
+       det korte fritekst-felt i "✎ Redigér kunde"-modalen (customers.notes),
+       som stadig findes til en kort generel beskrivelse af kunden. -->
+  <div class="crmpx-panel" id="cd-notes-panel" style="margin-bottom:20px">
+    <h3>📝 Noter <span class="sub" id="cd-notes-count"></span></h3>
+    <div class="tld-row">
+      <div style="flex:1"><input id="cd-note-new" class="tld-input" placeholder="Skriv en note om kunden..."></div>
+      <button class="btn small" type="button" id="cd-note-add-btn">+ Tilføj</button>
+    </div>
+    <div id="cd-notes-list" style="margin-top:12px"></div>
+  </div>
+
+  <!-- MAILS — Round C punkt 2: viser mails synkroniseret fra den forbundne
+       firma-Gmail til/fra denne kundes email-adresse (se GET
+       /api/crm/customers/:id/emails). Selve brødtekst/vedhæftninger hentes
+       først live når man folder en mail ud, ikke gemt i databasen. -->
+  <div class="crmpx-panel" id="cd-emails-panel" style="margin-bottom:20px;display:none">
+    <h3>📧 Mails <span class="sub" id="cd-emails-count"></span></h3>
+    <div id="cd-emails-list"></div>
+  </div>
+  <div class="hint" id="cd-emails-not-connected" style="margin-bottom:20px;display:none">📧 Forbind jeres Gmail under "Min side → Gmail-integration" for automatisk at se mailkorrespondance med kunden her.</div>
 
   <h3 style="font-size:14px;margin:22px 0 10px">🏗️ Sager <span class="sub" id="cd-projects-count"></span></h3>
   <table class="bly-table">
@@ -2568,6 +2650,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="tld-section"><label class="tld-label">👤 Ansvarlig</label><select id="crmpx-owner" class="tld-input"></select></div>
         <div class="tld-section" id="crmpx-source-field" style="display:none"><label class="tld-label">🔗 Kilde</label><input id="crmpx-source" class="tld-input" placeholder="Fx Website form, Facebook/Instagram"></div>
         <div class="tld-section"><label class="tld-label">📝 Note</label><textarea id="crmpx-note" class="tld-input" rows="2"></textarea></div>
+      </div>
+
+      <!-- KUNDE-PANEL — link direkte ind på den rigtige, fyldige kundeside
+           (#page-customer-detail), som allerede viser Sager/Tilbud/Fakturaer/
+           Opportunities samlet for kunden. I stedet for at duplikere de tabeller
+           herinde, peger vi bare på den ene rigtige side, så Lead/Kunde/Sales
+           føles forbundet uden to steder der kan komme ud af trit. Vises for
+           både leads og opportunities, når leadet/opportunityen er koblet til
+           en kunde (hvilket nu sker automatisk fra oprettelsen af leadet). -->
+      <div class="crmpx-panel" id="crmpx-customer-panel" style="display:none">
+        <h3>🏠 Kunde</h3>
+        <div id="crmpx-customer-card"></div>
       </div>
 
       <div class="crmpx-panel">
@@ -4487,8 +4581,8 @@ document.getElementById('app').style.display='block';
       document.getElementById('crmp-leads-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('crmp-sales-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('projects-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('projects-section-label').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('email-templates-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
+      document.getElementById('email-templates-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('gmail-settings-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
   }catch(e){}
 })();
 
@@ -4545,6 +4639,15 @@ async function deleteTaskType(key){
 }
 
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c];});}
+// "Email"-knapper hopper over i Gmail web-compose i stedet for mailto: (som
+// afhænger af hvilket mailprogram der er sat som standard på maskinen — ikke
+// altid Gmail). Martin bad selv om at overveje en smartere løsning end mailto:.
+function gmailComposeUrl(to,subject,body){
+  var qs=['view=cm','fs=1','to='+encodeURIComponent(to||'')];
+  if(subject)qs.push('su='+encodeURIComponent(subject));
+  if(body)qs.push('body='+encodeURIComponent(body));
+  return 'https://mail.google.com/mail/?'+qs.join('&');
+}
 
 // ── LILLE RIG-TEKST-EDITOR (fed skrift + links) TIL NOTER I TILBUD/FAKTURA ──
 // Erstatter visuelt en almindelig <textarea id="X"> med en contenteditable-boks
@@ -8282,6 +8385,69 @@ async function loadNotificationSettings(){
       '</div></div>';
   }).join('');
 }
+
+// ══════════════════════════════════════════════════════════════
+// GMAIL-INDSTILLINGER (#page-gmail-settings) — forbind/afbryd/synk-nu for den
+// ÉNE fælles firma-postkasse. Selve OAuth-udvekslingen foregår på serveren
+// (se GET /api/gmail/auth-url + /api/gmail/oauth-callback i server.js);
+// denne side viser bare status og starter/stopper forbindelsen.
+// ══════════════════════════════════════════════════════════════
+var gmailSettingsInitialized=false;
+function initGmailSettingsModule(){
+  document.getElementById('gmail-redirect-hint').textContent=location.origin+'/api/gmail/oauth-callback';
+  gmailLoadStatus();
+  if(gmailSettingsInitialized)return;
+  gmailSettingsInitialized=true;
+}
+async function gmailLoadStatus(){
+  var body=document.getElementById('gmail-status-body');
+  var s=await api('/api/gmail/status');
+  if(!s){body.innerHTML='<div class="crmpx-empty">Kunne ikke hente status.</div>';return;}
+  if(!s.configured){
+    body.innerHTML='<div class="hint" style="margin:0">⚠️ Ikke sat op endnu — <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code> mangler som miljøvariabler på serveren. Se guiden nedenfor.</div>';
+    return;
+  }
+  if(!s.connected){
+    body.innerHTML='<div style="margin-bottom:12px;color:var(--bly-sub);font-size:12.5px">Sat op, men ingen Gmail-konto er forbundet endnu.</div>'
+      +'<button class="bly-btn" type="button" id="gmail-connect-btn">🔗 Forbind Gmail</button>';
+    document.getElementById('gmail-connect-btn').addEventListener('click',gmailStartConnect);
+    return;
+  }
+  var lastSync=s.last_synced_at?fmtDaDate(s.last_synced_at):'Endnu ikke synkroniseret';
+  body.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+    +'<span style="font-size:20px">✅</span><div><div style="font-weight:800;color:var(--bly-ink)">Forbundet som '+esc(s.email||'?')+'</div>'
+    +'<div class="sub" style="font-size:11.5px">Forbundet '+esc(fmtDaDate(s.connected_at))+' · Sidst synkroniseret: '+esc(lastSync)+'</div></div></div>'
+    +(s.last_sync_error?'<div class="hint" style="margin-bottom:12px;border-color:#FCA5A5;background:#FEF2F2">⚠️ Seneste synk fejlede: '+esc(s.last_sync_error)+'</div>':'')
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    +'<button class="bly-btn outline" type="button" id="gmail-sync-btn">🔄 Synk nu</button>'
+    +'<button class="bly-btn danger" type="button" id="gmail-disconnect-btn">Afbryd forbindelse</button>'
+    +'</div>'
+    +'<div class="sub" style="font-size:11px;margin-top:10px">Synkroniserer automatisk hvert 30. minut i baggrunden — "Synk nu" er kun til at hente det seneste med det samme.</div>';
+  document.getElementById('gmail-sync-btn').addEventListener('click',gmailRunSync);
+  document.getElementById('gmail-disconnect-btn').addEventListener('click',gmailDisconnect);
+}
+async function gmailStartConnect(){
+  var r=await api('/api/gmail/auth-url');
+  if(!r||r.error||!r.url){toast((r&&r.error)||'Kunne ikke starte forbindelsen','❌');return;}
+  window.location.href=r.url;
+}
+async function gmailRunSync(){
+  var btn=document.getElementById('gmail-sync-btn');
+  if(btn){btn.disabled=true;btn.textContent='Synkroniserer...';}
+  var r=await api('/api/gmail/sync',{method:'POST'});
+  if(btn){btn.disabled=false;btn.textContent='🔄 Synk nu';}
+  if(!r||r.error){toast((r&&r.error)||'Synk fejlede','❌');gmailLoadStatus();return;}
+  toast((r.added||0)+' nye mail(s) hentet','✅');
+  gmailLoadStatus();
+}
+async function gmailDisconnect(){
+  var ok=await gmConfirm('Afbryd Gmail-forbindelsen? Programmet holder op med at hente nye mails, indtil den forbindes igen.','Afbryd Gmail');
+  if(!ok)return;
+  var r=await api('/api/gmail/disconnect',{method:'POST'});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke afbryde','❌');return;}
+  toast('Gmail-forbindelse afbrudt','✅');
+  gmailLoadStatus();
+}
 function saveNotifRule(row){
   var eventKey=row.dataset.eventKey;
   var body={inapp_enabled:row.querySelector('.nr-inapp').checked,email_enabled:row.querySelector('.nr-email').checked,email_to:row.querySelector('.nr-email-to').value.trim()};
@@ -10957,7 +11123,7 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 // kun var en PRIVAT funktion inde i bind() (fanget med en rigtig browser-test,
 // ikke kun en syntakstjek — samme disciplin som ved "kan ikke åbne en sag"-
 // rettelsen). Adfærden er uændret, kun hvor funktionen er defineret.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','email-templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail'];
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','email-templates','notif-settings','gmail-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail'];
 function switchPage(page,skipHash){
   if(VALID_PAGES.indexOf(page)===-1)page='plan';
   document.querySelectorAll('.tab,.navdrop-item,.navdrop-btn').forEach(function(x){x.classList.remove('active');});
@@ -10994,6 +11160,7 @@ function switchPage(page,skipHash){
   if(page==='templates')loadTemplates();
   if(page==='email-templates'){if(!me.is_finance_admin){toast('Du har ikke adgang til Skabeloner','🔒');switchPage('plan');return;}initEmailTemplatesModule();}
   if(page==='notif-settings')loadNotificationSettings();
+  if(page==='gmail-settings'){if(!me.is_finance_admin){toast('Du har ikke adgang til Gmail-integration','🔒');switchPage('plan');return;}initGmailSettingsModule();}
   if(page==='finance'){if(!me.is_finance_admin){toast('Du har ikke adgang til Økonomi','🔒');switchPage('plan');return;}loadFinance();}
   if(page==='quotes'){if(!me.is_finance_admin){toast('Du har ikke adgang til Tilbud & Faktura','🔒');switchPage('plan');return;}initQuotesModule();}
   if(page==='customers'){if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');switchPage('plan');return;}initCrmModule();}
@@ -12342,12 +12509,141 @@ function openCrmModal(id){
 // KUNDEDETALJE — klik på en kunde i listen. Egen side (samme mønster som
 // project-detail): sagen/tilbud/faktura-data hentes samlet fra
 // GET /api/crm/customers/:id og listerne kan klikkes videre ind på hver.
-var cdCurrent=null,cdInitialized=false;
+var cdCurrent=null,cdInitialized=false,cdNotes=[];
 function initCustomerDetailModule(){
   if(cdInitialized)return;
   cdInitialized=true;
   document.getElementById('cd-back-btn').addEventListener('click',function(){switchPage('customers');});
   document.getElementById('cd-edit-btn').addEventListener('click',function(){if(cdCurrent)openCrmModal(cdCurrent.id);});
+  document.getElementById('cd-note-add-btn').addEventListener('click',cdAddNote);
+  document.getElementById('cd-note-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();cdAddNote();}});
+  document.getElementById('cd-notes-list').addEventListener('click',cdNotesListClick);
+}
+// KUNDE-NOTER — rigtig, redigerbar/sletbar liste (customer_notes), se
+// crmpx-activity-item-mønstret som denne er baseret på.
+async function cdLoadNotes(customerId){
+  cdNotes=await api('/api/crm/customers/'+customerId+'/notes')||[];
+  cdRenderNotes();
+}
+function cdRenderNotes(){
+  document.getElementById('cd-notes-count').textContent=cdNotes.length?'('+cdNotes.length+')':'';
+  document.getElementById('cd-notes-list').innerHTML=cdNotes.length?cdNotes.map(function(n){
+    var edited=n.updated_at&&n.updated_at!==n.created_at;
+    return '<div class="cd-note-item" data-note-id="'+n.id+'">'
+      +'<div class="cd-note-icon">📝</div>'
+      +'<div class="cd-note-body">'+esc(n.body)+'<div class="cd-note-meta">'+esc(n.user_name||'System')+' · '+esc(fmtDaDate(n.created_at))+(edited?' · <span class="cd-note-meta-edited">redigeret</span>':'')+'</div></div>'
+      +'<div class="cd-note-actions"><button class="qz-icon-btn" data-note-act="edit" type="button" title="Redigér">✎</button><button class="qz-icon-btn" data-note-act="delete" type="button" title="Slet">🗑</button></div>'
+      +'</div>';
+  }).join(''):'<div class="crmpx-empty">Ingen noter endnu — tilføj den første ovenfor</div>';
+}
+async function cdAddNote(){
+  if(!cdCurrent)return;
+  var input=document.getElementById('cd-note-new');
+  var body=input.value.trim();
+  if(!body)return;
+  var r=await api('/api/crm/customers/'+cdCurrent.id+'/notes',{method:'POST',body:JSON.stringify({body:body})});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke tilføje note','❌');return;}
+  input.value='';
+  await cdLoadNotes(cdCurrent.id);
+}
+function cdNotesListClick(e){
+  var btn=e.target.closest('[data-note-act]');
+  if(!btn)return;
+  var item=btn.closest('.cd-note-item');
+  var noteId=+item.dataset.noteId;
+  var note=cdNotes.find(function(n){return n.id===noteId;});
+  if(!note)return;
+  if(btn.dataset.noteAct==='delete'){
+    gmConfirm('Slet denne note? Kan ikke fortrydes.','Slet note').then(function(ok){if(ok)cdDeleteNote(noteId);});
+  } else if(btn.dataset.noteAct==='edit'){
+    cdStartEditNote(item,note);
+  }
+}
+function cdStartEditNote(item,note){
+  item.innerHTML='<div class="cd-note-icon">📝</div>'
+    +'<div style="flex:1"><textarea class="tld-input" rows="2" id="cd-note-edit-input">'+esc(note.body)+'</textarea>'
+    +'<div style="display:flex;gap:6px;margin-top:6px"><button class="btn small" type="button" id="cd-note-edit-save">Gem</button><button class="btn small outline" type="button" id="cd-note-edit-cancel">Annullér</button></div></div>';
+  document.getElementById('cd-note-edit-save').addEventListener('click',function(){cdSaveEditNote(note.id);});
+  document.getElementById('cd-note-edit-cancel').addEventListener('click',function(){cdRenderNotes();});
+  document.getElementById('cd-note-edit-input').focus();
+}
+async function cdSaveEditNote(noteId){
+  var input=document.getElementById('cd-note-edit-input');
+  var body=input.value.trim();
+  if(!body)return;
+  var r=await api('/api/crm/customers/'+cdCurrent.id+'/notes/'+noteId,{method:'PUT',body:JSON.stringify({body:body})});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke gemme','❌');return;}
+  await cdLoadNotes(cdCurrent.id);
+}
+async function cdDeleteNote(noteId){
+  var r=await api('/api/crm/customers/'+cdCurrent.id+'/notes/'+noteId,{method:'DELETE'});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke slette','❌');return;}
+  toast('Note slettet','🗑');
+  await cdLoadNotes(cdCurrent.id);
+}
+// MAILS — se cd-emails-panel. Gmail-status tjekkes hver gang siden åbnes (ingen
+// cache) — billigt DB-opslag, og undgår at vise et forældet forbindelses-billede.
+var cdEmails=[],cdEmailsExpanded={};
+async function cdLoadEmails(customerId){
+  var s=await api('/api/gmail/status');
+  var connected=!!(s&&s.connected);
+  document.getElementById('cd-emails-panel').style.display=connected?'':'none';
+  document.getElementById('cd-emails-not-connected').style.display=connected?'none':'';
+  if(!connected)return;
+  cdEmails=await api('/api/crm/customers/'+customerId+'/emails')||[];
+  cdEmailsExpanded={};
+  cdRenderEmails();
+}
+function cdRenderEmails(){
+  document.getElementById('cd-emails-count').textContent=cdEmails.length?'('+cdEmails.length+')':'';
+  document.getElementById('cd-emails-list').innerHTML=cdEmails.length?cdEmails.map(function(e){
+    var expanded=cdEmailsExpanded[e.id];
+    return '<div class="cd-email-item" data-email-id="'+e.id+'" data-gmail-id="'+esc(e.gmail_message_id)+'">'
+      +'<div class="cd-email-row">'
+        +'<span class="cd-email-dir'+(e.direction==='out'?' out':'')+'" title="'+(e.direction==='out'?'Sendt':'Modtaget')+'">'+(e.direction==='out'?'↗':'↙')+'</span>'
+        +'<span class="cd-email-subject">'+esc(e.subject||'(uden emne)')+'</span>'
+        +'<span class="cd-email-meta">'+esc(fmtDaDate(new Date(Number(e.internal_date)).toISOString()))+'</span>'
+      +'</div>'
+      +(!expanded?'<div class="cd-email-snippet">'+esc(e.snippet||'')+'</div>':'<div class="cd-email-body-wrap" id="cd-email-body-'+e.id+'"><div class="crmpx-empty">Henter...</div></div>')
+      +'</div>';
+  }).join(''):'<div class="crmpx-empty">Ingen mails fundet endnu for denne kundes email-adresse</div>';
+}
+document.addEventListener('click',function(e){
+  var item=e.target.closest('#cd-emails-list .cd-email-item');
+  if(!item)return;
+  if(e.target.closest('.cd-email-attachment'))return;
+  var id=+item.dataset.emailId;
+  if(cdEmailsExpanded[id]){delete cdEmailsExpanded[id];cdRenderEmails();return;}
+  cdEmailsExpanded[id]=true;
+  cdRenderEmails();
+  cdLoadEmailBody(id,item.dataset.gmailId);
+});
+async function cdLoadEmailBody(id,gmailMessageId){
+  var wrap=document.getElementById('cd-email-body-'+id);
+  var d=await api('/api/gmail/messages/'+gmailMessageId);
+  if(!wrap)return; // brugeren nåede at folde den sammen igen inden svaret kom
+  if(!d||d.error){wrap.innerHTML='<div class="crmpx-empty">Kunne ikke hente mailen — '+esc((d&&d.error)||'ukendt fejl')+'</div>';return;}
+  var bodyHtml=d.bodyHtml?d.bodyHtml:(d.bodyText?'<pre style="white-space:pre-wrap;font-family:inherit;margin:0">'+esc(d.bodyText)+'</pre>':'<span class="crmpx-empty">Intet indhold</span>');
+  var attachmentsHtml=(d.attachments||[]).length?'<div class="cd-email-attachments">'+d.attachments.map(function(a){
+    return '<span class="cd-email-attachment" data-att-id="'+esc(a.attachmentId)+'" data-filename="'+esc(a.filename)+'" data-mimetype="'+esc(a.mimeType)+'" data-msg-id="'+esc(gmailMessageId)+'">📎 '+esc(a.filename)+'</span>';
+  }).join('')+'</div>':'';
+  wrap.innerHTML='<div class="cd-email-body">'+bodyHtml+'</div>'+attachmentsHtml;
+}
+document.addEventListener('click',function(e){
+  var chip=e.target.closest('.cd-email-attachment');
+  if(!chip)return;
+  cdDownloadAttachment(chip.dataset.msgId,chip.dataset.attId,chip.dataset.filename,chip.dataset.mimetype);
+});
+async function cdDownloadAttachment(messageId,attachmentId,filename,mimetype){
+  try{
+    var r=await fetch(API+'/api/gmail/messages/'+messageId+'/attachments/'+attachmentId+'?filename='+encodeURIComponent(filename)+'&mimetype='+encodeURIComponent(mimetype),{headers:{'Authorization':'Bearer '+token}});
+    if(!r.ok){toast('Kunne ikke hente vedhæftning','❌');return;}
+    var blob=await r.blob();
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},4000);
+  }catch(e){toast('Netværksfejl ved hentning af vedhæftning','❌');}
 }
 async function openCustomerDetail(id){
   var d=await api('/api/crm/customers/'+id);
@@ -12355,8 +12651,11 @@ async function openCustomerDetail(id){
   cdCurrent=d.customer;
   document.getElementById('cd-name').textContent=(d.customer.is_company?'🏢 ':'')+d.customer.name+(d.customer.is_company&&d.customer.cvr?' · CVR '+d.customer.cvr:'');
   document.getElementById('cd-subtitle').textContent=[d.customer.phone,d.customer.email,d.customer.address].filter(Boolean).join(' · ')||'Ingen kontaktoplysninger endnu';
-  var notesWrap=document.getElementById('cd-notes-wrap');
-  if(d.customer.notes){notesWrap.style.display='';notesWrap.textContent=d.customer.notes;}else{notesWrap.style.display='none';}
+  var cdEmailBtn=document.getElementById('cd-email-btn'),cdCallBtn=document.getElementById('cd-call-btn');
+  cdEmailBtn.href=d.customer.email?gmailComposeUrl(d.customer.email):'#';cdEmailBtn.style.opacity=d.customer.email?'1':'.4';cdEmailBtn.style.pointerEvents=d.customer.email?'':'none';
+  cdCallBtn.href=d.customer.phone?('tel:'+d.customer.phone):'#';cdCallBtn.style.opacity=d.customer.phone?'1':'.4';cdCallBtn.style.pointerEvents=d.customer.phone?'':'none';
+  cdLoadNotes(id);
+  cdLoadEmails(id);
 
   document.getElementById('cd-projects-count').textContent='('+d.projects.length+')';
   var STATUS_LABEL={active:'🔧 Aktivt',done:'✅ Afsluttet',archived:'📦 Arkiveret'};
@@ -12632,7 +12931,7 @@ async function openCrmpDetail(entityType,id){
   document.getElementById('crmpx-email').value=email||'';
   document.getElementById('crmpx-address').value=address||'';
   var emailBtn=document.getElementById('crmpx-email-btn'),callBtn=document.getElementById('crmpx-call-btn');
-  emailBtn.href=email?('mailto:'+email):'#';emailBtn.style.opacity=email?'1':'.4';emailBtn.style.pointerEvents=email?'':'none';
+  emailBtn.href=email?gmailComposeUrl(email):'#';emailBtn.style.opacity=email?'1':'.4';emailBtn.style.pointerEvents=email?'':'none';
   callBtn.href=phone?('tel:'+phone):'#';callBtn.style.opacity=phone?'1':'.4';callBtn.style.pointerEvents=phone?'':'none';
   document.getElementById('crmpx-opp-fields').style.display=entityType==='opportunity'?'':'none';
   document.getElementById('crmpx-source-field').style.display=entityType==='lead'?'':'none';
@@ -12654,6 +12953,14 @@ async function openCrmpDetail(entityType,id){
 
   document.getElementById('crmpx-opps-panel').style.display=entityType==='lead'?'':'none';
   document.getElementById('crmpx-contact-panel').style.display=entityType==='opportunity'?'':'none';
+  document.getElementById('crmpx-customer-panel').style.display=d.customer_id?'':'none';
+  if(d.customer_id){
+    document.getElementById('crmpx-customer-card').innerHTML=
+      '<div class="crmpx-mini-card" onclick="openCustomerDetail('+d.customer_id+')">'
+      +'<div class="crmpx-mini-card-name">'+esc(displayName||'Kunde')+'</div>'
+      +'<div class="crmpx-mini-card-row">Åbn kundekort — sager, tilbud, fakturaer &amp; noter →</div>'
+      +'</div>';
+  }
   if(entityType==='lead'){
     var oppsList=document.getElementById('crmpx-opps-list');
     document.getElementById('crmpx-opps-count').textContent=d.converted_opportunity_id?'(1)':'(0)';
@@ -14609,6 +14916,7 @@ window.deleteQzQuote=deleteQzQuote;
 window.deleteQzTemplate=deleteQzTemplate;
 window.openContactTemplateModal=openContactTemplateModal;
 window.openCrmModal=openCrmModal;
+window.openCrmpDetail=openCrmpDetail;
 window.openCustomerDetail=openCustomerDetail;
 window.openInvoiceDetail=openInvoiceDetail;
 window.openProductModal=openProductModal;
