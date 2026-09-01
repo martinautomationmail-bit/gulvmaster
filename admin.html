@@ -91,6 +91,12 @@ button,input,select{font:inherit}
 .sidebar-nav .navdrop-item{color:var(--bly-sub);font-weight:600;font-size:11.5px;padding:6px 9px;border-radius:7px;transition:background .12s,color .12s}
 .sidebar-nav .navdrop-item:hover{color:var(--bly-ink);background:var(--bly-hover)}
 .sidebar-nav .navdrop-item.active{color:var(--bly-accent);background:var(--bly-accent-soft);font-weight:800}
+/* Statiske gruppe-overskrifter (Projekter/CRM/Tilbud & Faktura/Økonomi) — bruges kun
+   foran enkelt-linje-grupper uden egen ▾-menu (Projekter, CRM), da grupper der ALLEREDE
+   har en klikbar ▾-række (Dagligplanlægning, Tilbud & Faktura, Økonomi) er selv-forklarende
+   ligesom Økonomi altid har været. Ikke-klikbare — kun visuel gruppering, som i Billy. */
+.sidebar-section-label{padding:14px 10px 4px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--bly-sub);opacity:.75}
+.sidebar-nav>.sidebar-section-label:first-child{padding-top:4px}
 .sidebar-foot{padding:12px 18px;font-size:9px;color:var(--bly-sub);opacity:.7;border-top:1px solid var(--bly-border-soft);flex-shrink:0}
 .app-content{flex:1;min-width:0}
 
@@ -99,6 +105,7 @@ body.sidebar-collapsed .sidebar-head{flex-direction:column;justify-content:cente
 body.sidebar-collapsed .sidebar-brand-name,
 body.sidebar-collapsed .stab-label,
 body.sidebar-collapsed .sidebar-foot,
+body.sidebar-collapsed .sidebar-section-label,
 body.sidebar-collapsed .sidebar-nav .navdrop-caret,
 body.sidebar-collapsed .sidebar-nav .navdrop-menu{display:none}
 body.sidebar-collapsed .sidebar-head .brand{flex:0}
@@ -108,7 +115,7 @@ body.sidebar-collapsed .sidebar-nav .tab-navdrop .tab{justify-content:center;pad
 
 @media(max-width:900px){
   .sidebar{position:fixed;left:0;top:0;width:var(--sidebar-w-collapsed)}
-  .sidebar .sidebar-brand-name,.sidebar .stab-label,.sidebar .sidebar-foot,.sidebar .navdrop-caret,.sidebar .navdrop-menu{display:none}
+  .sidebar .sidebar-brand-name,.sidebar .stab-label,.sidebar .sidebar-foot,.sidebar .sidebar-section-label,.sidebar .navdrop-caret,.sidebar .navdrop-menu{display:none}
   .sidebar .sidebar-nav .tab{justify-content:center;padding-left:0;padding-right:0}
   .app-content{margin-left:var(--sidebar-w-collapsed)}
   body.sidebar-collapsed .sidebar{width:0;overflow:hidden}
@@ -745,6 +752,19 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #gantt-detail-modal .gd-type-badge{background:#fff;color:var(--bly-accent)}
 #gantt-detail-modal .gd-name-input{background:#fff;border:1px solid var(--bly-border);color:var(--bly-ink)}
 #gantt-detail-modal .gd-name-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+
+/* Opgave-detalje-modallen på projekt-detalje siden brugte stadig den gamle
+   mørkeblå gd-head fra før Billy-omlægningen (samme klasse som gantt-detail-modal,
+   men uden det tilsvarende lyse Billy-scope) — deraf at den ikke "lignede" resten
+   af app'en. Samme lyse behandling som #gantt-detail-modal herover. */
+#pd-task-detail-modal .gd-modal{border-radius:var(--bly-r-lg)}
+#pd-task-detail-modal .gd-head{background:var(--bly-accent-soft);color:var(--bly-ink);cursor:default}
+#pd-task-detail-modal .gd-head-icon{background:#fff;color:var(--bly-accent)}
+#pd-task-detail-modal .gd-head-title{color:var(--bly-accent);opacity:1}
+#pd-task-detail-modal .gd-name-input{background:#fff;border:1px solid var(--bly-border);color:var(--bly-ink)}
+#pd-task-detail-modal .gd-name-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+#pd-task-detail-modal .btn.primary{background:var(--bly-accent);border-color:var(--bly-accent)}
+#pd-task-detail-modal #pdtd-capacity-btn{background:var(--bly-accent-soft);border-color:#DCD9FB;color:var(--bly-accent);font-weight:700}
 
 /* ══════════════════════════════════════════════════════════════
    LEDIGHEDSOVERSIGT — samme Billy-behandling, scoped til
@@ -1493,8 +1513,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
    (det gjorde den meget lille med få opgaver). Ved mange opgaver scroller
    den internt i stedet for at vokse i det uendelige. */
 #pd-gantt-strip{min-height:min(66vh,600px);max-height:78vh;overflow:auto;display:flex}
-#pd-gantt-strip .gantt-chart{flex:1;align-items:stretch}
-#pd-gantt-strip .gantt-list-head{height:52px}
+/* Samme fix som #page-gantt (se kommentar ved #page-gantt .gantt-chart): denne boks er selv
+   den scrollende beholder (overflow:auto ovenfor), så .gantt-chart's egen overflow:hidden
+   sad mellem den og de sticky headere og ødelagde position:sticky helt — det var derfor
+   første opgave-række visuelt gemte sig bagved/under dato-headeren. */
+#pd-gantt-strip .gantt-chart{flex:1;align-items:stretch;overflow:visible}
+#pd-gantt-strip .gantt-week-head{background:var(--bly-border-soft);border-bottom:1px solid var(--bly-border-soft)}
+#pd-gantt-strip .gantt-list-head{height:86px}
 #pd-gantt-strip .gantt-list-row,#pd-gantt-strip .gantt-row{height:72px}
 #pd-gantt-strip .gantt-bar{top:16px;height:40px;font-size:13px}
 #pd-gantt-strip .gantt-bar-label{font-size:13px;font-weight:700;cursor:text}
@@ -1738,25 +1763,54 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
   <nav class="sidebar-nav">
     <a class="tab" href="#dashboard" data-page="dashboard"><span class="stab-icon">🧭</span><span class="stab-label">Kommandocenter</span></a>
+
+    <!-- DAGLIGPLANLÆGNING — samler det der før var 3 separate menupunkter (Daglig
+         plan, Kapacitet, Gantt) + deres undermenuer i én gruppe, efter Martins
+         ønskede menustruktur. Peger stadig på nøjagtig de samme 4 sider/routes
+         som før (data-page uændret), kun grupperingen i sidebaren er ny. -->
     <div class="navdrop tab-navdrop" id="plan-subdrop">
       <div class="stab-row">
-        <a class="tab active" href="#plan" data-page="plan"><span class="stab-icon">📅</span><span class="stab-label">Daglig plan</span></a>
+        <a class="tab active" href="#plan" data-page="plan"><span class="stab-icon">📅</span><span class="stab-label">Dagligplanlægning</span></a>
         <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
       </div>
       <div class="navdrop-menu">
-        <a class="navdrop-item" href="#timeline" data-page="timeline">🕒 Tidslinje</a>
-      </div>
-    </div>
-    <div class="navdrop tab-navdrop" id="capacity-subdrop">
-      <div class="stab-row">
-        <a class="tab" href="#capacity" data-page="capacity"><span class="stab-icon">📊</span><span class="stab-label">Kapacitet</span></a>
-        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
-      </div>
-      <div class="navdrop-menu">
+        <a class="navdrop-item" href="#capacity" data-page="capacity">📊 Kapacitet</a>
         <a class="navdrop-item" href="#availability" data-page="availability">🟢 Ledighedsoversigt</a>
+        <a class="navdrop-item" href="#timeline" data-page="timeline">🕒 Tidslinje</a>
+        <a class="navdrop-item" href="#gantt" data-page="gantt">📶 Gantt</a>
       </div>
     </div>
-    <a class="tab" href="#gantt" data-page="gantt"><span class="stab-icon">📶</span><span class="stab-label">Gantt</span></a>
+
+    <div class="sidebar-section-label hidden" id="projects-section-label">Projekter</div>
+    <a class="tab hidden" href="#projects" data-page="projects" id="projects-tab-btn"><span class="stab-icon">🏗️</span><span class="stab-label">Projekter</span></a>
+
+    <div class="sidebar-section-label hidden" id="crm-section-label">CRM</div>
+    <a class="tab hidden" href="#customers" data-page="customers" id="customers-tab-btn"><span class="stab-icon">👥</span><span class="stab-label">Kunder</span></a>
+
+    <!-- TILBUD & FAKTURA — Produkter/Skabeloner/Mail-skabeloner lå før KUN som
+         in-page-faner (nederst i "..."-menuen på selve siden), ikke i sidebaren.
+         Nu er de også direkte sidebar-dybe-links, via samme data-qztab-jump-mønster
+         som Økonomi allerede bruger til sine underfaner (data-fintab-jump). -->
+    <div class="sidebar-section-label hidden" id="quotes-section-label">Tilbud &amp; Faktura</div>
+    <div class="navdrop tab-navdrop hidden" id="quotes-subdrop">
+      <div class="stab-row">
+        <a class="tab" href="#quotes" data-page="quotes" id="quotes-tab-btn"><span class="stab-icon">🧾</span><span class="stab-label">Tilbud &amp; Faktura</span></a>
+        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
+      </div>
+      <div class="navdrop-menu">
+        <a class="navdrop-item" href="#quotes/faktura-tab" data-page="quotes" data-qztab-jump="invoices">🧾 Fakturaer</a>
+        <a class="navdrop-item" href="#quotes/tilbud-tab" data-page="quotes" data-qztab-jump="quotes">📝 Tilbud</a>
+        <a class="navdrop-item" href="#quotes/produkter" data-page="quotes" data-qztab-jump="products">📦 Produkter</a>
+        <a class="navdrop-item" href="#quotes/skabeloner" data-page="quotes" data-qztab-jump="templates">📑 Skabeloner</a>
+        <a class="navdrop-item" href="#quotes/mailskabeloner" data-page="quotes" data-qztab-jump="mailtemplates">✉️ Mail-skabeloner</a>
+      </div>
+    </div>
+
+    <!-- ØKONOMI — "🧾 Fakturaer" fjernet herfra efter Martins ønske (al fakturering
+         køres nu fra Tilbud & Faktura-modulets egen Fakturaer-fane ovenfor). Selve
+         Fakturaer-fanen/koden inde i Økonomi-dashboardet (fintab-fakturaer, bank-
+         afstemnings-/rykker-kædet) er IKKE slettet, kun sidebar-genvejen — se
+         leveringsnoten. -->
     <div class="navdrop tab-navdrop hidden" id="finance-subdrop">
       <div class="stab-row">
         <a class="tab" href="#finance" data-page="finance" id="finance-tab-btn"><span class="stab-icon">💰</span><span class="stab-label">Økonomi</span></a>
@@ -1765,7 +1819,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="navdrop-menu">
         <a class="navdrop-item" href="#finance/oversigt" data-page="finance" data-fintab-jump="oversigt">📊 Oversigt</a>
         <a class="navdrop-item" href="#finance/omsaetning" data-page="finance" data-fintab-jump="omsaetning">💰 Omsætning pr. fag</a>
-        <a class="navdrop-item" href="#finance/fakturaer" data-page="finance" data-fintab-jump="fakturaer">🧾 Fakturaer</a>
         <a class="navdrop-item" href="#finance/bankafstemning" data-page="finance" data-fintab-jump="bankafstemning">🏦 Bankafstemning</a>
         <a class="navdrop-item" href="#finance/rykkere" data-page="finance" data-fintab-jump="rykkere">✉️ Rykkere</a>
         <a class="navdrop-item" href="#finance/udgifter" data-page="finance" data-fintab-jump="udgifter">📖 Udgifter</a>
@@ -1774,9 +1827,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#finance/noter" data-page="finance" data-fintab-jump="noter">⚠️ Noter &amp; datakvalitet</a>
       </div>
     </div>
-    <a class="tab hidden" href="#quotes" data-page="quotes" id="quotes-tab-btn"><span class="stab-icon">🧾</span><span class="stab-label">Tilbud &amp; Faktura</span></a>
-    <a class="tab hidden" href="#customers" data-page="customers" id="customers-tab-btn"><span class="stab-icon">👥</span><span class="stab-label">Kunder</span></a>
-    <a class="tab hidden" href="#projects" data-page="projects" id="projects-tab-btn"><span class="stab-icon">🏗️</span><span class="stab-label">Projekter</span></a>
   </nav>
   <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-31.1</span></div>
 </aside>
@@ -2955,6 +3005,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div style="grid-column:1/-1;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Kundekontakt</div>
         <div><div class="gd-info-label">📞 Kundetelefon</div><div id="pdtd-phone" class="gd-info-value"></div></div>
         <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="pdtd-email" class="gd-info-value"></div></div>
+        <div><div class="gd-info-label">🔢 Sagsnummer</div><div id="pdtd-jobnumber" class="gd-info-value"></div></div>
       </div>
     </div>
     <div class="modal-actions">
@@ -4119,8 +4170,12 @@ document.getElementById('app').style.display='block';
     if(r.ok){var fresh=await r.json();me=Object.assign({},me,fresh);localStorage.setItem('gm_user',JSON.stringify(me));
       document.getElementById('finance-subdrop').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('quotes-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('quotes-subdrop').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('quotes-section-label').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('customers-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('projects-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
+      document.getElementById('crm-section-label').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('projects-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('projects-section-label').classList.toggle('hidden',!me.is_finance_admin);}
   }catch(e){}
 })();
 
@@ -10498,6 +10553,10 @@ function bind(){
     // så højreklik "åbn i ny fane" og ctrl/cmd-klik virker som forventet.
     if(parts[0]==='quotes'&&parts[1]==='tilbud'&&parts[2])openQuoteEditor(Number(parts[2]));
     if(parts[0]==='quotes'&&parts[1]==='faktura'&&parts[2])openInvoiceDetail(Number(parts[2]));
+    // Dyb-link til en af Tilbud & Faktura-modulets egne faner fra sidebaren —
+    // #quotes/<alias> (uden id-segment ovenfor) — se data-qztab-jump i sidebaren.
+    var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','mailskabeloner':'mailtemplates'};
+    if(parts[0]==='quotes'&&parts[1]&&QZTAB_HASH_MAP[parts[1]])switchQzTab(QZTAB_HASH_MAP[parts[1]]);
     // Dyb-link til en enkelt sag — #project-detail/42 — sat af openProjectDetail()
     // selv (den bruger replaceState, ikke location.hash=, for ikke at trigge endnu
     // et hashchange-kald oveni sit eget fetch), men skal også virke ved genindlæsning
@@ -10626,6 +10685,17 @@ function bind(){
       e.preventDefault();
       switchPage('finance');
       switchFintab(btn.dataset.fintabJump);
+      document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
+    });
+  });
+  // Samme dybe-link-mønster som Økonomis data-fintab-jump herover, men til
+  // Tilbud & Faktura-modulets egne in-page-faner (Fakturaer/Tilbud/Produkter/
+  // Skabeloner/Mail-skabeloner) — nu også tilgængelige direkte fra sidebaren.
+  document.querySelectorAll('[data-qztab-jump]').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.preventDefault();
+      switchPage('quotes');
+      switchQzTab(btn.dataset.qztabJump);
       document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
     });
   });
@@ -11034,6 +11104,8 @@ function bind(){
     // Åbnet direkte via et #quotes/tilbud/123-link (fx højreklik → åbn i ny fane)
     if(initialPage==='quotes'&&initialParts[1]==='tilbud'&&initialParts[2])openQuoteEditor(Number(initialParts[2]));
     if(initialPage==='quotes'&&initialParts[1]==='faktura'&&initialParts[2])openInvoiceDetail(Number(initialParts[2]));
+    var QZTAB_HASH_MAP_INIT={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','mailskabeloner':'mailtemplates'};
+    if(initialPage==='quotes'&&initialParts[1]&&QZTAB_HASH_MAP_INIT[initialParts[1]])switchQzTab(QZTAB_HASH_MAP_INIT[initialParts[1]]);
     if(initialPage==='project-detail'&&initialParts[1])openProjectDetail(Number(initialParts[1]));
     if(initialPage==='customer-detail'&&initialParts[1])openCustomerDetail(Number(initialParts[1]));
   }
@@ -11931,7 +12003,7 @@ function renderPjProjects(){
     var price=p.invoice_total!=null?p.invoice_total:p.quote_total;
     var contact=[p.customer_email,p.customer_phone].filter(Boolean).join(' · ');
     return '<tr style="cursor:pointer" onclick="openProjectDetail('+p.id+')">'
-      +'<td>'+esc(p.name)+(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</td>'
+      +'<td>'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer">#'+esc(p.job_number)+'</span>':'')+(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</td>'
       +'<td>'+(STATUS_LABEL[p.status]||esc(p.status))+'</td>'
       +'<td>'+esc(p.customer_address||'–')+'</td>'
       +'<td>'+esc(contact||'–')+'</td>'
@@ -11948,7 +12020,7 @@ async function openProjectDetail(id){
   if(!d||d.error){toast('Kunne ikke hente projektet','❌');return;}
   pjCurrent=d;
   document.getElementById('pd-title').textContent=d.name;
-  document.getElementById('pd-subtitle').textContent=[d.customer_address,d.customer_phone,d.customer_email].filter(Boolean).join(' · ');
+  document.getElementById('pd-subtitle').textContent=[d.job_number?'Sag '+d.job_number:null,d.customer_address,d.customer_phone,d.customer_email].filter(Boolean).join(' · ');
   document.getElementById('pd-status-select').value=d.status;
   var qlink=document.getElementById('pd-quote-link');
   if(d.quote_id){qlink.style.display='inline-flex';qlink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/quotes/'+d.quote_id+'/pdf');};}
@@ -12013,12 +12085,16 @@ function renderPdGanttStrip(){
   var range=pdGanttDateRange();pdGanttState.rangeStart=range.start;
   var dw=pdGanttState.dayWidth,todayIso=iso(new Date());
   var DAYABBR=['Sø','Ma','Ti','On','To','Fr','Lø'];
-  var headCols='',bgCols='';
+  var headCols='',bgCols='',weekCols='',curWeekSpan=0,curWeekLabel='';
+  function flushPdWeekSeg(){if(curWeekSpan>0)weekCols+='<div class="gantt-week-col" style="width:'+(curWeekSpan*dw)+'px">'+curWeekLabel+'</div>';}
   for(var i=0;i<range.days;i++){
     var d=add(range.start,i),wk=d.getDay()===0||d.getDay()===6;
     headCols+='<div class="gantt-day-col'+(wk?' weekend':'')+(iso(d)===todayIso?' today':'')+'" style="width:'+dw+'px">'+DAYABBR[d.getDay()]+'<br>'+(iso(d)===todayIso?'<span>'+d.getDate()+'</span>':d.getDate())+'</div>';
     bgCols+='<div class="gantt-bg-col'+(wk?' weekend':'')+'" style="width:'+dw+'px"></div>';
+    if(d.getDay()===1||i===0){flushPdWeekSeg();curWeekSpan=0;curWeekLabel='Uge '+weekNo(d)+' <span class="gantt-week-date">· '+d.getDate()+'/'+(d.getMonth()+1)+'</span>';}
+    curWeekSpan++;
   }
+  flushPdWeekSeg();
   var listRows='<div class="gantt-list-head">Opgave</div>',timelineRows='';
   tasks.forEach(function(t){
     // Omdøb, åbn og slet direkte i venstre kolonne — i stedet for en separat listevisning
@@ -12044,6 +12120,7 @@ function renderPdGanttStrip(){
   });
   el.innerHTML='<div class="gantt-chart"><div class="gantt-list">'+listRows+'</div>'+
     '<div class="gantt-timeline" style="width:'+(range.days*dw)+'px">'+
+      '<div class="gantt-week-head">'+weekCols+'</div>'+
       '<div class="gantt-timeline-head">'+headCols+'</div>'+
       '<div style="position:relative">'+timelineRows+'</div>'+
     '</div></div>';
@@ -12174,6 +12251,7 @@ function openPdTaskDetail(taskId){
   var phone=pjCurrent.customer_phone,email=pjCurrent.customer_email;
   document.getElementById('pdtd-phone').innerHTML=phone?'<a href="tel:'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
   document.getElementById('pdtd-email').innerHTML=email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
+  document.getElementById('pdtd-jobnumber').innerHTML=pjCurrent.job_number?esc(pjCurrent.job_number):'<span class="muted-sm">Intet sagsnummer</span>';
   document.getElementById('pdtd-note-input').value=t.description||'';
   var progressPct=Math.round((Number(t.progress)||0)*100);
   document.getElementById('pdtd-progress-input').value=progressPct;
@@ -13033,7 +13111,7 @@ function qeRenderPreview(){
   }).join('')||'<tr><td colspan="4" style="text-align:center;color:#9CA3AF;padding:14px">Ingen linjer endnu</td></tr>';
   document.getElementById('qe-preview').innerHTML=
      '<div class="qe-pdf-head">'
-    +'<div style="display:flex;align-items:center;gap:8px">'+(settings.logo_url?'<img src="'+settings.logo_url+'" style="max-width:96px;max-height:56px;object-fit:contain;flex-shrink:0">':'')+'<div><div class="qe-pdf-company">'+esc(settings.company_name||'Gulv Master Enterprise ApS')+'</div><div class="qe-pdf-company-sub">'+addrLines.map(function(l){return esc(l);}).join('<br>')+'</div></div></div>'
+    +'<div style="display:flex;align-items:center;gap:8px">'+(settings.logo_url?'<img src="'+settings.logo_url+'" style="max-width:200px;max-height:82px;object-fit:contain;flex-shrink:0">':'')+'<div><div class="qe-pdf-company">'+esc(settings.company_name||'Gulv Master Enterprise ApS')+'</div><div class="qe-pdf-company-sub">'+addrLines.map(function(l){return esc(l);}).join('<br>')+'</div></div></div>'
     +'<div><div class="qe-pdf-doctype">TILBUD</div><div class="qe-pdf-docnum">'+esc(docNum)+'</div><div class="qe-pdf-meta">Dato: '+todayStr+(validUntil?'<br>Gyldig til: '+esc(validUntil):'')+'</div></div>'
     +'</div>'
     +'<div class="qe-pdf-to"><b>Til:</b><br>'+(custName?esc(custName)+'<br>':'')+(custAddr?esc(custAddr)+'<br>':'')+(custPhone?'Tlf. '+esc(custPhone)+'<br>':'')+(custEmail?esc(custEmail):'')+'</div>'

@@ -67,7 +67,11 @@ app.disable('x-powered-by');
 // 20mb: rummer base64 logo/avatar-billeder OG op til 8 note-vedhæftninger
 // (billeder/PDF'er, maks ~15mb tekst i alt, se cleanNoteAttachments) sendt som
 // data-URI'er fra admin-UI'et.
-app.use(express.json({ limit: '20mb' }));
+// verify: gemmer den RÅ request-body på req.rawBody, udelukkende brugt til at
+// verificere Close CRM-webhookets signatur (se CLOSE-integrationen nederst i
+// filen) — Close signerer den originale byte-for-byte body, ikke den
+// genparsede/genserialiserede JSON, så den skal fanges her inden parsing.
+app.use(express.json({ limit: '20mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: false }));
 
 const upload = multer({
@@ -994,6 +998,15 @@ async function initSchema() {
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_company INTEGER DEFAULT 0;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS cvr TEXT;
 
+    -- ── CLOSE CRM-INTEGRATION: undgår at oprette samme kunde to gange, hvis
+    -- Close afsender det samme webhook-event flere gange (Close retrier selv
+    -- ved alt andet end 2xx-svar). Se app.post('/api/integrations/close/webhook').
+    CREATE TABLE IF NOT EXISTS close_customer_links (
+      close_lead_id TEXT PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     -- ── E-SIGNATUR på tilbud: fast link pr. tilbud kunden kan acceptere og
     -- underskrive (tegnet signatur + navn + IP/tidspunkt som bevis). ────
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS customer_id INTEGER;
@@ -1062,6 +1075,11 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+    -- Sagsnummer (GM-ÅÅÅÅ-NNNN) — tildeles automatisk når sagen oprettes (se
+    -- nextDocNumber('project','GM') ved INSERT INTO projects), men er et helt
+    -- almindeligt tekstfelt bagefter, så det evt. kan rettes manuelt ligesom de
+    -- andre steder i appen der bruger samme sagsnummer-konvention (Tidslinje mm.).
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS job_number TEXT;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS project_id INTEGER;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS source_quote_line_id INTEGER;
     CREATE INDEX IF NOT EXISTS idx_gantt_tasks_project ON gantt_tasks(project_id);
@@ -4770,6 +4788,164 @@ app.delete('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, r
 }));
 
 // ══════════════════════════════════════════════════════════════
+// CLOSE CRM-INTEGRATION — Martin bad om: "hver gang en kunde rykkes til
+// Opportunities → Lav Tilbud så oprettes kunden i mit program med alt
+// nødvendig data". Løst som et REALTIDS-webhook (Martins eget valg, ikke et
+// periodisk tjek), da Close selv kan sende et signal med det samme en
+// opportunity/lead skifter status.
+//
+// OPSÆTNING (skal gøres af Martin, kræver adgang til hans Close-konto):
+//   1) I Close: Settings → Developer → Webhooks → "Add webhook", peg den på
+//      https://<jeres-render-url>/api/integrations/close/webhook, og
+//      abonnér på "Lead: Status changed" og/eller "Opportunity: Status
+//      changed" (Close deler tit disse i to events — abonnér på begge for en
+//      sikkerheds skyld, koden herunder tjekker selv om den rigtige status
+//      er ramt uanset hvilket event det kommer fra).
+//   2) Close viser en "signing key" når webhooket oprettes — sæt den som
+//      miljøvariablen CLOSE_WEBHOOK_SIGNING_KEY i Render.
+//   3) Lav en API-nøgle i Close (Settings → API Keys) og sæt den som
+//      CLOSE_API_KEY i Render — bruges til at slå de FULDE lead-/kunde-data
+//      op (Close-webhooks sender typisk kun et tyndt "der skete noget her"-
+//      signal, ikke alle felter).
+//   4) Hvis pipeline/status hedder noget andet end "Opportunities"/"Lav
+//      Tilbud" i praksis, eller I bruger flere pipelines, sæt
+//      CLOSE_TRIGGER_PIPELINE_LABEL / CLOSE_TRIGGER_STATUS_LABEL i Render —
+//      ellers bruges disse to som standard. Vi slår selv status-ID'et op
+//      dynamisk via Close's API ud fra navnet, i stedet for at hardkode et
+//      internt Close-ID der ville knække hvis pipelinen redigeres senere.
+//
+// Uden disse 2 miljøvariabler sat er endpointet inaktivt (svarer 501), så
+// resten af appen kører upåvirket indtil Martin har sat det op.
+// ══════════════════════════════════════════════════════════════
+const CLOSE_API_KEY = process.env.CLOSE_API_KEY || '';
+const CLOSE_WEBHOOK_SIGNING_KEY = process.env.CLOSE_WEBHOOK_SIGNING_KEY || '';
+const CLOSE_TRIGGER_PIPELINE_LABEL = process.env.CLOSE_TRIGGER_PIPELINE_LABEL || 'Opportunities';
+const CLOSE_TRIGGER_STATUS_LABEL = process.env.CLOSE_TRIGGER_STATUS_LABEL || 'Lav Tilbud';
+const CLOSE_API = 'https://api.close.com/api/v1';
+let closeTriggerStatusIdCache = null; // {id, expiresAt} — undgår at slå det op ved hvert webhook-kald
+
+function closeAuthHeader() {
+  // Close bruger HTTP Basic Auth med API-nøglen som "brugernavn" og tomt kodeord.
+  return 'Basic ' + Buffer.from(CLOSE_API_KEY + ':').toString('base64');
+}
+
+async function resolveCloseTriggerStatusId() {
+  if (closeTriggerStatusIdCache && closeTriggerStatusIdCache.expiresAt > Date.now()) return closeTriggerStatusIdCache.id;
+  const r = await fetch(CLOSE_API + '/pipeline/', { headers: { Authorization: closeAuthHeader() } });
+  if (!r.ok) throw new Error('Kunne ikke hente pipelines fra Close (status ' + r.status + ')');
+  const data = await r.json();
+  const pipelines = data.data || [];
+  const pipeline = pipelines.find(p => String(p.name || '').trim().toLowerCase() === CLOSE_TRIGGER_PIPELINE_LABEL.trim().toLowerCase());
+  if (!pipeline) throw new Error('Fandt ingen pipeline i Close ved navn "' + CLOSE_TRIGGER_PIPELINE_LABEL + '"');
+  const status = (pipeline.statuses || []).find(s => String(s.label || '').trim().toLowerCase() === CLOSE_TRIGGER_STATUS_LABEL.trim().toLowerCase());
+  if (!status) throw new Error('Fandt ingen status ved navn "' + CLOSE_TRIGGER_STATUS_LABEL + '" i pipelinen "' + CLOSE_TRIGGER_PIPELINE_LABEL + '"');
+  closeTriggerStatusIdCache = { id: status.id, expiresAt: Date.now() + 30 * 60 * 1000 };
+  return status.id;
+}
+
+function verifyCloseWebhookSignature(req) {
+  if (!CLOSE_WEBHOOK_SIGNING_KEY) return false;
+  const sigHash = req.headers['close-sig-hash'];
+  const sigTimestamp = req.headers['close-sig-timestamp'];
+  if (!sigHash || !sigTimestamp || !req.rawBody) return false;
+  const expected = crypto.createHmac('sha256', CLOSE_WEBHOOK_SIGNING_KEY)
+    .update(sigTimestamp + req.rawBody.toString('utf8'))
+    .digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(String(sigHash), 'hex'));
+  } catch (e) {
+    return false; // fx forskellig længde — helt sikkert ikke et match
+  }
+}
+
+// Henter de fulde lead-data fra Close (kontaktoplysninger, adresse, noter) —
+// webhook-payloaden alene indeholder typisk ikke alt det vi skal bruge.
+async function fetchCloseLeadDetails(leadId) {
+  const r = await fetch(CLOSE_API + '/lead/' + leadId + '/?_fields=id,display_name,name,addresses,contacts,description,note,html_url', {
+    headers: { Authorization: closeAuthHeader() }
+  });
+  if (!r.ok) throw new Error('Kunne ikke hente lead ' + leadId + ' fra Close (status ' + r.status + ')');
+  return r.json();
+}
+
+// Close-vedhæftninger/billeder ligger som "activities" af typen note/email med
+// filer, ikke direkte på selve lead-objektet — vi slår dem op separat og
+// samler dem som simple links, da Gulv Masters kundekort (customers) ikke har
+// et billed-felt (kun projekter/sager har det, se project_photos). Fejler
+// opslaget, springes billeder blot over — det må ikke vælte kunde-oprettelsen.
+async function fetchCloseLeadAttachmentLinks(leadId) {
+  try {
+    const r = await fetch(CLOSE_API + '/activity/note/?lead_id=' + leadId, { headers: { Authorization: closeAuthHeader() } });
+    if (!r.ok) return [];
+    const data = await r.json();
+    const links = [];
+    (data.data || []).forEach(note => {
+      (note.attachments || []).forEach(att => { if (att.url) links.push(att.url); });
+    });
+    return links;
+  } catch (e) {
+    return [];
+  }
+}
+
+function closeLeadToCustomerFields(lead, attachmentLinks) {
+  const contact = (lead.contacts || [])[0] || {};
+  const phone = (contact.phones || [])[0] || {};
+  const email = (contact.emails || [])[0] || {};
+  const address = (lead.addresses || [])[0] || {};
+  const addressParts = [address.address_1, address.address_2, address.zipcode, address.city].filter(Boolean);
+  const noteParts = [];
+  if (lead.description) noteParts.push(lead.description);
+  if (lead.html_url) noteParts.push('Close-lead: ' + lead.html_url);
+  if (attachmentLinks.length) noteParts.push('Billeder/vedhæftninger fra Close:\n' + attachmentLinks.join('\n'));
+  return {
+    name: lead.display_name || lead.name || 'Ukendt kunde (Close)',
+    phone: phone.phone || null,
+    email: email.email || null,
+    address: addressParts.join(', ') || null,
+    notes: noteParts.join('\n\n') || null
+  };
+}
+
+app.post('/api/integrations/close/webhook', asyncRoute(async (req, res) => {
+  if (!CLOSE_API_KEY || !CLOSE_WEBHOOK_SIGNING_KEY) {
+    console.error('Close-webhook kaldt, men CLOSE_API_KEY/CLOSE_WEBHOOK_SIGNING_KEY er ikke sat i miljøvariablerne.');
+    return res.status(501).json({ error: 'Close-integrationen er ikke sat op endnu' });
+  }
+  if (!verifyCloseWebhookSignature(req)) {
+    console.error('Close-webhook: ugyldig signatur — afvist.');
+    return res.status(401).json({ error: 'Ugyldig signatur' });
+  }
+  // Svar Close med det samme — vi vil ikke risikere at Close gentager kaldet
+  // fordi VORES efterbehandling (opslag mod Close + oprettelse her) tager for
+  // lang tid. Selve arbejdet fortsætter i baggrunden efter res.json().
+  res.json({ ok: true });
+
+  try {
+    const event = (req.body && req.body.event) || {};
+    const leadId = event.lead_id || (event.data && event.data.lead_id) || (event.data && event.data.id) || null;
+    const newStatusId = (event.data && (event.data.status_id || (event.data.status && event.data.status.id))) || null;
+    if (!leadId || !newStatusId) return; // ikke et status-skifte-event vi kan bruge
+    const triggerStatusId = await resolveCloseTriggerStatusId();
+    if (newStatusId !== triggerStatusId) return; // skiftede til en ANDEN status end "Lav Tilbud" — ignorér
+
+    const existingLink = await pgOne('SELECT customer_id FROM close_customer_links WHERE close_lead_id=$1', [leadId]);
+    if (existingLink) { console.log('Close-webhook: lead ' + leadId + ' er allerede oprettet som kunde #' + existingLink.customer_id + ' — springer over.'); return; }
+
+    const lead = await fetchCloseLeadDetails(leadId);
+    const attachmentLinks = await fetchCloseLeadAttachmentLinks(leadId);
+    const fields = closeLeadToCustomerFields(lead, attachmentLinks);
+    const created = await pgOne(`
+      INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id
+    `, [fields.name, fields.email, fields.phone, fields.address, fields.notes]);
+    await pool.query('INSERT INTO close_customer_links (close_lead_id, customer_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [leadId, created.id]);
+    console.log('Close-webhook: oprettede kunde #' + created.id + ' ("' + fields.name + '") ud fra Close-lead ' + leadId);
+  } catch (e) {
+    console.error('Close-webhook fejlede under efterbehandling:', e.message);
+  }
+}));
+
+// ══════════════════════════════════════════════════════════════
 // PROJEKTER — oprettes automatisk når en kunde underskriver et tilbud (se
 // /api/public/quotes/:token/accept), og indeholder: et let sags-Gantt (lokale
 // opgaver, IKKE synkroniseret med JobTread — derfor egne endpoints i stedet
@@ -7676,7 +7852,7 @@ function renderRichText(doc, html, x, y, width, opts) {
 function drawDocHeader(doc, docLabel, docNumber, metaLines, accent, company) {
   const logoBuf = logoDataUriToBuffer(company.logoUrl);
   if (logoBuf) {
-    try { doc.image(logoBuf, 40, 26, { fit: [104, 104] }); } catch (e) { /* korrupt billede — spring logoet over */ }
+    try { doc.image(logoBuf, 40, 30, { fit: [220, 90] }); } catch (e) { /* korrupt billede — spring logoet over */ }
   } else {
     doc.font('Helvetica-Bold').fontSize(18).fillColor('#111318').text(company.name, 40, 54);
     doc.font('Helvetica');
@@ -8291,10 +8467,15 @@ app.post('/api/public/quotes/:token/accept', asyncRoute(async (req, res) => {
     if (existingProject) {
       projectId = existingProject.id;
     } else {
+      // Sagsnummer tildeles automatisk her, i samme GM-ÅÅÅÅ-NNNN-stil som Tilbud (TIL-)
+      // og Faktura (FAK-) allerede bruger — se nextDocNumber(). Martin bad om at nye
+      // sager altid får et sagsnummer fra start, i stedet for at det skal tastes ind
+      // manuelt bagefter som på de enkelte opgaver i Tidslinje/Daglig plan.
+      const jobNumber = await nextDocNumber('project', 'GM');
       const p = await pgOne(`
-        INSERT INTO projects (quote_id, name, customer_id, customer_address, customer_phone, customer_email)
-        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
-      `, [quote.id, quote.job_name || quote.quote_number, quote.customer_id, quote.customer_address, quote.customer_phone, quote.customer_email]);
+        INSERT INTO projects (quote_id, name, customer_id, customer_address, customer_phone, customer_email, job_number)
+        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
+      `, [quote.id, quote.job_name || quote.quote_number, quote.customer_id, quote.customer_address, quote.customer_phone, quote.customer_email, jobNumber]);
       projectId = p.id;
     }
   } catch (e) {
