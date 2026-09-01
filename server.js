@@ -7578,6 +7578,35 @@ app.get('/api/customers/portal-link', auth, adminOnly, asyncRoute(async (req, re
   res.json({ ok: true, url: customerPortalLinkFor(token) });
 }));
 
+// Send kundeportal-linket direkte til kunden pr. mail fra projekt-siden (Runde H
+// #7: "Kundehistorik burde fjernes, der burde automatisk oprettes en
+// kundeplatform... så man bare kan trykke send"). Genbruger samme
+// getOrCreateCustomerPortalToken/customerPortalLinkFor som den ældre
+// GET /api/customers/portal-link (Kundehistorik) brugte til at hente linket —
+// denne rute går skridtet videre og sender det som mail via sendMailUniversal,
+// helt uafhængigt af Gmail-forbindelsen (se sendMailUniversal-kommentaren).
+app.post('/api/projects/:id/send-portal-link', auth, financeOnly, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  if (!project.customer_email) return res.status(400).json({ error: 'Kunden har ingen e-mail registreret på sagen' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
+  const token = await getOrCreateCustomerPortalToken(project.name);
+  if (!token) return res.status(400).json({ error: 'Kunne ikke oprette kundeportal-link' });
+  const link = customerPortalLinkFor(token);
+  const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
+  const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
+  const subject = `Din side hos ${companyName}`;
+  const html = `<p>Hej,</p><p>Her er linket til din side hos ${companyName}, hvor du altid kan se status på jeres sag(er), tilbud og fakturaer:</p><p><a href="${link}">${link}</a></p>`;
+  try {
+    await sendMailUniversal({ to: project.customer_email, subject, html, text: html.replace(/<[^>]+>/g, ' ') });
+    await logSystemEvent('portal-link', 'info', `Kundeportal-link sendt til ${project.customer_email} for "${project.name}"`);
+    res.json({ ok: true, url: link, to: project.customer_email });
+  } catch (e) {
+    await logSystemEvent('portal-link', 'error', `Kunne ikke sende kundeportal-link for "${project.name}": ${e.message}`);
+    res.status(500).json({ error: 'Kunne ikke sende mailen: ' + e.message });
+  }
+}));
+
 async function sendScheduledEmail(booking, templateId) {
   if (!mailIsConfigured()) return { sent: false, reason: 'E-mail er ikke konfigureret på serveren' };
   const task = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [booking.task_id]);
