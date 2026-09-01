@@ -5740,6 +5740,29 @@ async function crmFindOrCreateContactAndCustomer(name, email, phone, address, no
   return { contactId, customerId, contactCreated, customerCreated };
 }
 
+// Opdaterer en kontakt (og dens koblede kunde i customers, hvis der er én) med
+// de angivne felter — kaldes når navn/email/telefon/adresse redigeres fra et
+// leads eller en opportunitys detaljeside. Uden dette blev den underliggende
+// kunde ved med at pege på den OPRINDELIGE adresse fra dengang leadet blev
+// oprettet, selvom man bagefter rettede fx email på selve leadet — hvilket bl.a.
+// gjorde at Gmail-synkroniseringen (som matcher på customers.email) aldrig fandt
+// mails til/fra den nye adresse. Kun felter der rent faktisk er angivet
+// (ikke undefined) opdateres. Bemærk: dette OPDATERER den allerede koblede
+// kunde i stedet for at køre find-eller-opret-logik igen — hvis den nye email
+// tilfældigvis matcher en ANDEN eksisterende kunde, bliver de to kunder IKKE
+// slået sammen automatisk (det er en større funktion i sig selv, som ikke er
+// bedt om her).
+async function crmPropagateContactFields(contactId, fields) {
+  const keys = Object.keys(fields).filter(k => fields[k] !== undefined);
+  if (!contactId || !keys.length) return;
+  const setSql = keys.map((k, i) => k + '=$' + (i + 2)).join(',');
+  await pool.query('UPDATE crm_contacts SET ' + setSql + ' WHERE id=$1', [contactId, ...keys.map(k => fields[k])]);
+  const contact = await pgOne('SELECT customer_id FROM crm_contacts WHERE id=$1', [contactId]);
+  if (contact && contact.customer_id) {
+    await pool.query('UPDATE customers SET ' + setSql + ' WHERE id=$1', [contact.customer_id, ...keys.map(k => fields[k])]);
+  }
+}
+
 // ── PIPELINES + STAGES ──────────────────────────────────────────
 app.get('/api/crm/pipelines', auth, financeOnly, asyncRoute(async (req, res) => {
   const pipelines = await pool.query('SELECT * FROM crm_pipelines ORDER BY position ASC, id ASC');
@@ -5887,6 +5910,16 @@ app.get('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => 
     const linked = await crmFindOrCreateContactAndCustomer(lead.name, lead.email, lead.phone, lead.address, lead.note);
     await pool.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, lead.id]);
     lead = await pgOne('SELECT l.*, u.name AS owner_name, c.customer_id AS customer_id FROM crm_leads l LEFT JOIN users u ON u.id=l.owner_id LEFT JOIN crm_contacts c ON c.id=l.contact_id WHERE l.id=$1', [req.params.id]);
+  } else {
+    // Selvhelbredende genopretning nr. 2: hvis leadets email/telefon er blevet
+    // rettet (fx via "Gem ændringer" på selve leadet) FØR crmPropagateContactFields
+    // fandtes (se PUT-routen nedenfor), er den koblede kontakt/kunde stadig den
+    // gamle adresse — hvilket er præcis grunden til at Gmail-synk/Filer-fanen ikke
+    // fandt noget. Genopretter automatisk, første gang leadet åbnes efter denne rettelse.
+    const contact = await pgOne('SELECT email, phone FROM crm_contacts WHERE id=$1', [lead.contact_id]);
+    if (contact && (contact.email !== lead.email || contact.phone !== lead.phone)) {
+      await crmPropagateContactFields(lead.contact_id, { email: lead.email, phone: lead.phone });
+    }
   }
   const customFields = await crmGetCustomFieldDefs('lead');
   const customValues = await crmGetCustomFieldValues('lead', lead.id);
@@ -5913,6 +5946,17 @@ app.put('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => 
     b.position !== undefined ? b.position : current.position,
     req.params.id
   ]);
+  // Se crmPropagateContactFields ovenfor — holder den koblede kunde (customers)
+  // opdateret, så bl.a. Gmail-synk/Filer-fanen ikke bliver ved med at kigge
+  // efter en forældet email efter en redigering her.
+  if (current.contact_id && (b.name !== undefined || b.email !== undefined || b.phone !== undefined || b.address !== undefined)) {
+    await crmPropagateContactFields(current.contact_id, {
+      name: b.name !== undefined ? String(b.name).trim() : undefined,
+      email: b.email !== undefined ? b.email : undefined,
+      phone: b.phone !== undefined ? b.phone : undefined,
+      address: b.address !== undefined ? b.address : undefined
+    });
+  }
   if (b.custom_fields) await crmSetCustomFieldValues('lead', req.params.id, b.custom_fields);
   if (stageChanged) {
     const newStage = await pgOne('SELECT name FROM crm_stages WHERE id=$1', [b.stage_id]);
@@ -5993,6 +6037,16 @@ app.put('/api/crm/contacts/:id', auth, financeOnly, asyncRoute(async (req, res) 
     b.address !== undefined ? b.address : current.address,
     req.params.id
   ]);
+  // Se crmPropagateContactFields — holder den koblede kunde (customers) opdateret
+  // ved samme lejlighed (samme grund som ved PUT /api/crm/leads/:id ovenfor).
+  if (current.customer_id && (b.name !== undefined || b.email !== undefined || b.phone !== undefined || b.address !== undefined)) {
+    await crmPropagateContactFields(req.params.id, {
+      name: b.name !== undefined ? String(b.name).trim() : undefined,
+      email: b.email !== undefined ? b.email : undefined,
+      phone: b.phone !== undefined ? b.phone : undefined,
+      address: b.address !== undefined ? b.address : undefined
+    });
+  }
   res.json({ ok: true });
 }));
 app.get('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res) => {
