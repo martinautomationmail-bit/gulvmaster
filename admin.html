@@ -2472,13 +2472,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-quotes-count">Tilbud</span><input type="text" id="qz-quote-search" class="bly-search" placeholder="Søg i tilbud..."></div>
       <div class="bly-toolbar-right"><button class="bly-btn" id="qz-new-quote-btn" type="button">+ Nyt tilbud</button></div>
     </div>
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 14px">
-      <div class="bly-segtabs" id="qz-quotes-status-filter" style="border-bottom:0;margin-bottom:0;gap:14px"></div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <div class="bly-period" style="position:relative">
-          <button class="bly-ctl" id="qz-quotes-period-btn" type="button">📅 <span id="qz-quotes-period-label">Alt tid</span></button>
-          <div class="bly-period-pop" id="qz-quotes-period-pop" style="display:none"></div>
-        </div>
+    <!-- Status-oversigt som "kort" i stedet for almindelige tekst-faner — samme
+         .bly-kpi-card-mønster som Økonomi-modulets fakturastatus-kort, efter
+         Martins ønske om noget der ligner Billys "Overblik"-bokse. -->
+    <div class="bly-kpi-row" id="qz-quotes-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:0 0 14px">
+      <div class="bly-period" style="position:relative">
+        <button class="bly-ctl" id="qz-quotes-period-btn" type="button">📅 <span id="qz-quotes-period-label">Alt tid</span></button>
+        <div class="bly-period-pop" id="qz-quotes-period-pop" style="display:none"></div>
       </div>
     </div>
     <table class="bly-table">
@@ -2491,13 +2492,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-invoices-count">Fakturaer</span><input type="text" id="qz-invoice-search" class="bly-search" placeholder="Søg i fakturaer..."></div>
     </div>
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 14px">
-      <div class="bly-segtabs" id="qz-invoices-status-filter" style="border-bottom:0;margin-bottom:0;gap:14px"></div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <div class="bly-period" style="position:relative">
-          <button class="bly-ctl" id="qz-invoices-period-btn" type="button">📅 <span id="qz-invoices-period-label">Alt tid</span></button>
-          <div class="bly-period-pop" id="qz-invoices-period-pop" style="display:none"></div>
-        </div>
+    <div class="bly-kpi-row" id="qz-invoices-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:0 0 14px">
+      <div class="bly-period" style="position:relative">
+        <button class="bly-ctl" id="qz-invoices-period-btn" type="button">📅 <span id="qz-invoices-period-label">Alt tid</span></button>
+        <div class="bly-period-pop" id="qz-invoices-period-pop" style="display:none"></div>
       </div>
     </div>
     <table class="bly-table">
@@ -2744,6 +2743,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
   </div>
 
+  <!-- Fuld mail-historik — Martins spørgsmål om synk kun henter nye mails eller
+       også gamle. Delt værktøjslinje for Filer- og Emails-fanen, da begge er
+       bygget på samme customer_emails-data (se gmailFullSyncCustomer). -->
+  <div id="crmpx-mailsync-toolbar" style="display:none;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:10px">
+    <span class="sub" id="crmpx-fullsync-status"></span>
+    <button class="btn small" type="button" id="crmpx-fullsync-btn" title="Henter hele mailhistorikken med denne kunde (ikke kun de seneste)">🔄 Hent hele mail-historikken</button>
+  </div>
+
   <div id="crmpx-view-files" style="display:none">
     <div id="crmpx-files-grid" class="cd-files-grid"></div>
   </div>
@@ -2789,6 +2796,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <tbody id="cpt-body"></tbody>
   </table>
 </section>
+
+<!-- FIL-LIGHTBOX — Martins ønske om at kunne se en fil forstørret INDE i selve
+     appen (billede/PDF) i stedet for at den bare downloader eller åbner en ny
+     fane. Andre filtyper (docx/xlsx osv.) kan browseren ikke vise inline, så
+     de falder tilbage til almindelig download — se crmpxOpenFileLightbox. -->
+<div class="mo" id="file-lightbox-modal">
+  <div class="modal" style="max-width:min(900px,94vw);width:auto;max-height:92vh;padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bly-border-soft)">
+      <div style="flex:1;font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="file-lightbox-title"></div>
+      <button class="btn small" type="button" id="file-lightbox-download">⬇ Download</button>
+      <button class="btn small" type="button" onclick="crmpxCloseLightbox()">✕ Luk</button>
+    </div>
+    <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:#F5F5F7;min-height:200px" id="file-lightbox-body"></div>
+  </div>
+</div>
 
 <!-- CRM-PIPELINE — INDSTILLINGER (stages pr. pipeline + custom fields) -->
 <div class="mo" id="crmp-settings-modal">
@@ -13005,6 +13027,12 @@ function crmpxInitOnce(){
   document.getElementById('crmpx-task-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddTask();});
   document.getElementById('crmpx-note-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddNote();});
   document.getElementById('crmpx-notes-add-btn').addEventListener('click',crmpxAddCustomerNote);
+  // Enter gemmer (som crmpx-note-new ovenfor) — Shift+Enter indsætter i stedet en
+  // ny linje, samme konvention som fx chat-inputs, siden dette er en <textarea>
+  // og derfor kan rumme flerlinjede noter.
+  document.getElementById('crmpx-notes-new').addEventListener('keydown',function(e){
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();crmpxAddCustomerNote();}
+  });
   document.querySelectorAll('#crmpx-viewtabs [data-crmpxview]').forEach(function(btn){
     btn.addEventListener('click',function(){crmpxSwitchView(btn.dataset.crmpxview);});
   });
@@ -13046,6 +13074,7 @@ function crmpxSwitchView(view){
   document.getElementById('crmpx-view-files').style.display=view==='files'?'':'none';
   document.getElementById('crmpx-view-emails').style.display=view==='emails'?'':'none';
   document.getElementById('crmpx-view-notes').style.display=view==='notes'?'':'none';
+  document.getElementById('crmpx-mailsync-toolbar').style.display=(view==='files'||view==='emails')?'flex':'none';
   if(view==='files'&&!crmpxFilesLoaded)crmpxLoadFiles();
   if(view==='emails'&&!crmpxEmailsLoaded)crmpxLoadEmails();
   if(view==='notes'&&!crmpxNotesLoaded)crmpxLoadCustomerNotes();
@@ -13071,8 +13100,79 @@ async function crmpxLoadFiles(){
 document.addEventListener('click',function(e){
   var card=e.target.closest('.cd-file-card');
   if(!card)return;
-  cdDownloadAttachment(card.dataset.msgId,card.dataset.attId,card.dataset.filename,card.dataset.mimetype);
+  crmpxOpenFileLightbox(card.dataset.msgId,card.dataset.attId,card.dataset.filename,card.dataset.mimetype);
 });
+
+// ── FIL-LIGHTBOX — se crmpxOpenFileLightbox() ovenfor #file-lightbox-modal i
+// HTML'en. Billeder/PDF vises direkte i modalen; andre filtyper (docx/xlsx osv.)
+// kan browseren ikke vise inline, så de falder tilbage til en downloadbesked med
+// Download-knappen aktiv.
+var crmpxLightboxUrl=null,crmpxLightboxFilename=null;
+function crmpxCloseLightbox(){
+  if(crmpxLightboxUrl){URL.revokeObjectURL(crmpxLightboxUrl);crmpxLightboxUrl=null;}
+  crmpxLightboxFilename=null;
+  closeModal('file-lightbox-modal');
+}
+async function crmpxOpenFileLightbox(messageId,attachmentId,filename,mimetype){
+  if(crmpxLightboxUrl){URL.revokeObjectURL(crmpxLightboxUrl);crmpxLightboxUrl=null;}
+  document.getElementById('file-lightbox-title').textContent=filename||'Fil';
+  var body=document.getElementById('file-lightbox-body');
+  body.innerHTML='<div class="crmpx-empty">Henter…</div>';
+  document.getElementById('file-lightbox-modal').classList.add('open');
+  try{
+    var r=await fetch(API+'/api/gmail/messages/'+messageId+'/attachments/'+attachmentId+'?filename='+encodeURIComponent(filename)+'&mimetype='+encodeURIComponent(mimetype),{headers:{'Authorization':'Bearer '+token}});
+    if(!r.ok){body.innerHTML='<div class="crmpx-empty">Kunne ikke hente filen</div>';return;}
+    var blob=await r.blob();
+    var url=URL.createObjectURL(blob);
+    crmpxLightboxUrl=url;
+    crmpxLightboxFilename=filename;
+    if(mimetype&&mimetype.indexOf('image/')===0){
+      body.innerHTML='';
+      var img=document.createElement('img');
+      img.src=url;img.style.maxWidth='100%';img.style.maxHeight='80vh';img.style.display='block';img.alt=filename||'';
+      body.appendChild(img);
+    }else if(mimetype==='application/pdf'){
+      body.innerHTML='';
+      var frame=document.createElement('iframe');
+      frame.src=url;frame.style.width='min(900px,90vw)';frame.style.height='80vh';frame.style.border='0';frame.style.background='#fff';
+      body.appendChild(frame);
+    }else{
+      body.innerHTML='<div class="crmpx-empty" style="padding:40px;text-align:center;max-width:360px">Denne filtype kan ikke vises direkte i appen — brug Download-knappen ovenfor.</div>';
+    }
+  }catch(e){body.innerHTML='<div class="crmpx-empty">Netværksfejl ved hentning af filen</div>';}
+}
+document.getElementById('file-lightbox-download').addEventListener('click',function(){
+  if(!crmpxLightboxUrl||!crmpxLightboxFilename)return;
+  var a=document.createElement('a');
+  a.href=crmpxLightboxUrl;a.download=crmpxLightboxFilename;document.body.appendChild(a);a.click();a.remove();
+});
+
+// ── Fuld mail-historik on-demand — se gmailFullSyncCustomer i server.js.
+// Den hurtige 5-minutters synk henter kun de 40 nyeste mails; dette kald
+// bladrer igennem HELE Gmail-korrespondancen (op til 500 mails) for kunden,
+// så ældre billeder/filer/mails der er faldet uden for "top 40" også kommer
+// med. Tilgængelig fra både Filer- og Emails-fanen (delt værktøjslinje).
+document.getElementById('crmpx-fullsync-btn').addEventListener('click',crmpxFullMailSync);
+async function crmpxFullMailSync(){
+  if(!crmpxCurrentCustomerId)return;
+  var btn=document.getElementById('crmpx-fullsync-btn'),status=document.getElementById('crmpx-fullsync-status');
+  btn.disabled=true;btn.textContent='⏳ Henter...';
+  status.textContent='';
+  try{
+    var r=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/full-mail-sync',{method:'POST'});
+    if(!r||r.error){
+      status.textContent='Fejl: '+((r&&r.error)||'ukendt fejl');
+    }else{
+      status.textContent=r.added+' ny(e) af '+r.fetched+' gennemgået'+(r.truncated?' — mere findes, tryk igen for at fortsætte':'');
+      crmpxFilesLoaded=false;crmpxEmailsLoaded=false;
+      var activeTab=document.querySelector('#crmpx-viewtabs [data-crmpxview].active');
+      var activeView=activeTab?activeTab.dataset.crmpxview:'';
+      if(activeView==='files')crmpxLoadFiles();
+      if(activeView==='emails')crmpxLoadEmails();
+    }
+  }catch(e){status.textContent='Netværksfejl';}
+  btn.disabled=false;btn.textContent='🔄 Hent hele mail-historikken';
+}
 
 // ── EMAILS (#crmpx-view-emails) — Martins Runde E-ønske om at kunne se
 // mailkorrespondancen på selve lead/sale-siden, samme lukket/foldbar-mønster
@@ -14662,10 +14762,16 @@ async function useTemplateForNewQuote(id){
 function renderQzQuoteStatusFilter(){
   var box=document.getElementById('qz-quotes-status-filter');
   var order=['draft','sent','accepted','declined','converted'];
-  var html='<button class="bly-segtab'+(qzQuoteStatusFilter==='all'?' active':'')+'" data-qz-quote-status="all" type="button">Alle ('+qzQuotes.length+')</button>';
+  function sum(list){return list.reduce(function(s,x){return s+(Number(x.total)||0);},0);}
+  function card(status,dot,label,list){
+    var active=qzQuoteStatusFilter===status;
+    return '<button class="bly-kpi-card'+(active?' active':'')+'" data-qz-quote-status="'+status+'" type="button">'
+      +'<div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:'+dot+'"></span>'+list.length+' '+esc(label)+'</div>'
+      +'<div class="bly-kpi-value">'+krFmt(sum(list))+'</div></button>';
+  }
+  var html=card('all','var(--bly-dot-total)','Alle',qzQuotes);
   html+=order.map(function(s){
-    var n=qzQuotes.filter(function(x){return x.status===s;}).length;
-    return '<button class="bly-segtab'+(qzQuoteStatusFilter===s?' active':'')+'" data-qz-quote-status="'+s+'" type="button">'+esc(QZ_QUOTE_STATUS[s].label)+' ('+n+')</button>';
+    return card(s,QZ_QUOTE_STATUS[s].dot,QZ_QUOTE_STATUS[s].label,qzQuotes.filter(function(x){return x.status===s;}));
   }).join('');
   box.innerHTML=html;
   box.querySelectorAll('[data-qz-quote-status]').forEach(function(b){
@@ -15107,10 +15213,16 @@ async function qeApplyTemplate(id){
 function renderQzInvoiceStatusFilter(){
   var box=document.getElementById('qz-invoices-status-filter');
   var order=['unpaid','partial','paid','void'];
-  var html='<button class="bly-segtab'+(qzInvoiceStatusFilter==='all'?' active':'')+'" data-qz-invoice-status="all" type="button">Alle ('+qzInvoices.length+')</button>';
+  function sum(list){return list.reduce(function(s,x){return s+(Number(x.total)||0);},0);}
+  function card(status,dot,label,list){
+    var active=qzInvoiceStatusFilter===status;
+    return '<button class="bly-kpi-card'+(active?' active':'')+'" data-qz-invoice-status="'+status+'" type="button">'
+      +'<div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:'+dot+'"></span>'+list.length+' '+esc(label)+'</div>'
+      +'<div class="bly-kpi-value">'+krFmt(sum(list))+'</div></button>';
+  }
+  var html=card('all','var(--bly-dot-total)','Alle',qzInvoices);
   html+=order.map(function(s){
-    var n=qzInvoices.filter(function(x){return x.status===s;}).length;
-    return '<button class="bly-segtab'+(qzInvoiceStatusFilter===s?' active':'')+'" data-qz-invoice-status="'+s+'" type="button">'+esc(QZ_INVOICE_STATUS[s].label)+' ('+n+')</button>';
+    return card(s,QZ_INVOICE_STATUS[s].dot,QZ_INVOICE_STATUS[s].label,qzInvoices.filter(function(x){return x.status===s;}));
   }).join('');
   box.innerHTML=html;
   box.querySelectorAll('[data-qz-invoice-status]').forEach(function(b){
@@ -15361,6 +15473,7 @@ function bindQuotesModuleEvents(){
 // synlig for brugeren, kun en "ikke defineret"-fejl i browserens konsol) —
 // tjek derfor denne liste igen hvis du tilføjer et nyt onclick="funktion(...)".
 window.closeModal=closeModal;
+window.crmpxCloseLightbox=crmpxCloseLightbox;
 window.deleteIvPayment=deleteIvPayment;
 window.deleteQzQuote=deleteQzQuote;
 window.deleteQzTemplate=deleteQzTemplate;

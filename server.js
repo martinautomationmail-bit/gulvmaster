@@ -5403,19 +5403,12 @@ async function gmailSyncAll() {
   await pool.query(`UPDATE gmail_connection SET last_synced_at=${nowTextSQL()}, last_sync_error=NULL WHERE id=1`);
   return totalNew;
 }
-async function gmailSyncCustomer(customer, accessToken) {
-  const q = '(to:"' + customer.email + '" OR from:"' + customer.email + '")';
-  const list = await gmailApiFetch('/messages?maxResults=40&q=' + encodeURIComponent(q), accessToken);
-  const messages = list.messages || [];
-  // Billig ekstra søgning: hvilke af disse mails har en vedhæftning? (bruges af
-  // "Filer"-fanen, se GET /api/crm/customers/:id/files) — undgår at skulle hente
-  // fulde besked-detaljer for hver eneste mail bare for at vide det.
-  let attachmentIds = new Set();
-  try {
-    const attList = await gmailApiFetch('/messages?maxResults=100&q=' + encodeURIComponent(q + ' has:attachment'), accessToken);
-    attachmentIds = new Set((attList.messages || []).map(x => x.id));
-  } catch (e) { console.error('Kunne ikke tjekke vedhæftninger for kunde #' + customer.id + ':', e.message); }
-  const connEmail = (await gmailGetConnection() || {}).email || '';
+// Fælles indsætningslogik for begge synk-veje nedenfor (den hurtige 40-nyeste
+// synk der kører hvert 5. minut, og den on-demand fulde historik-synk) — for
+// ikke at have to kopier af INSERT/ON CONFLICT-logikken der kan løbe fra
+// hinanden. messages = Gmail-listeresultatets .messages[] (kun {id,threadId}),
+// attachmentIds = et Set af besked-id'er vi allerede ved har vedhæftninger.
+async function gmailUpsertMessages(messages, customerId, accessToken, connEmail, attachmentIds) {
   let added = 0;
   for (const m of messages) {
     const hasAttachment = attachmentIds.has(m.id) ? 1 : 0;
@@ -5435,11 +5428,67 @@ async function gmailSyncCustomer(customer, accessToken) {
         INSERT INTO customer_emails (customer_id, gmail_message_id, gmail_thread_id, subject, snippet, from_email, from_name, to_emails, direction, internal_date, has_attachments)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         ON CONFLICT (gmail_message_id) DO NOTHING
-      `, [customer.id, m.id, detail.threadId || null, gmailHeader(headers, 'Subject') || '(uden emne)', detail.snippet || '', fromParsed.email || null, fromParsed.name || null, gmailHeader(headers, 'To') || null, direction, Number(detail.internalDate) || Date.now(), hasAttachment]);
+      `, [customerId, m.id, detail.threadId || null, gmailHeader(headers, 'Subject') || '(uden emne)', detail.snippet || '', fromParsed.email || null, fromParsed.name || null, gmailHeader(headers, 'To') || null, direction, Number(detail.internalDate) || Date.now(), hasAttachment]);
       added++;
     } catch (e) { console.error('Kunne ikke gemme mail ' + m.id + ':', e.message); }
   }
   return added;
+}
+async function gmailSyncCustomer(customer, accessToken) {
+  const q = '(to:"' + customer.email + '" OR from:"' + customer.email + '")';
+  const list = await gmailApiFetch('/messages?maxResults=40&q=' + encodeURIComponent(q), accessToken);
+  const messages = list.messages || [];
+  // Billig ekstra søgning: hvilke af disse mails har en vedhæftning? (bruges af
+  // "Filer"-fanen, se GET /api/crm/customers/:id/files) — undgår at skulle hente
+  // fulde besked-detaljer for hver eneste mail bare for at vide det.
+  let attachmentIds = new Set();
+  try {
+    const attList = await gmailApiFetch('/messages?maxResults=100&q=' + encodeURIComponent(q + ' has:attachment'), accessToken);
+    attachmentIds = new Set((attList.messages || []).map(x => x.id));
+  } catch (e) { console.error('Kunne ikke tjekke vedhæftninger for kunde #' + customer.id + ':', e.message); }
+  const connEmail = (await gmailGetConnection() || {}).email || '';
+  return gmailUpsertMessages(messages, customer.id, accessToken, connEmail, attachmentIds);
+}
+
+// ── Fuld mail-historik (on-demand) ───────────────────────────────
+// Martins spørgsmål: "kan den også hente gamle filer fra den email der
+// tilkoblet eller kun nye?" — svaret er at den almindelige synk ovenfor
+// bevidst KUN henter de 40 nyeste mails pr. kald (for at holde den hurtig nok
+// til at køre hvert 5. minut på alle kunder ad gangen). Har en kunde mere end
+// 40 mails i alt, og der løbende kommer nye til, kan ældre mails i teorien
+// aldrig nå at blive synket med den hurtige synk alene.
+// Denne funktion er et separat, on-demand kald (trigges af en knap i
+// Filer/Emails-fanen, se crmpxFullMailSync i admin.html) der bladrer igennem
+// ALLE Gmails søgeresultater via pageToken, op til en sikkerhedsgrænse, så det
+// ikke kan løbe løbsk for en kunde med tusindvis af mails.
+const GMAIL_FULL_SYNC_MAX_MESSAGES = 500;
+const GMAIL_FULL_SYNC_MAX_PAGES = 20;
+async function gmailFullSyncCustomer(customer, accessToken) {
+  const q = '(to:"' + customer.email + '" OR from:"' + customer.email + '")';
+  const connEmail = (await gmailGetConnection() || {}).email || '';
+
+  let attachmentIds = new Set();
+  try {
+    let attPageToken, attGuard = 0;
+    do {
+      const attList = await gmailApiFetch('/messages?maxResults=100&q=' + encodeURIComponent(q + ' has:attachment') + (attPageToken ? '&pageToken=' + attPageToken : ''), accessToken);
+      (attList.messages || []).forEach(x => attachmentIds.add(x.id));
+      attPageToken = attList.nextPageToken;
+      attGuard++;
+    } while (attPageToken && attGuard < GMAIL_FULL_SYNC_MAX_PAGES);
+  } catch (e) { console.error('Kunne ikke tjekke vedhæftninger (fuld synk) for kunde #' + customer.id + ':', e.message); }
+
+  let added = 0, fetched = 0, pageToken, pages = 0;
+  do {
+    const list = await gmailApiFetch('/messages?maxResults=100&q=' + encodeURIComponent(q) + (pageToken ? '&pageToken=' + pageToken : ''), accessToken);
+    const messages = list.messages || [];
+    fetched += messages.length;
+    added += await gmailUpsertMessages(messages, customer.id, accessToken, connEmail, attachmentIds);
+    pageToken = list.nextPageToken;
+    pages++;
+  } while (pageToken && fetched < GMAIL_FULL_SYNC_MAX_MESSAGES && pages < GMAIL_FULL_SYNC_MAX_PAGES);
+
+  return { added, fetched, truncated: !!pageToken };
 }
 
 app.post('/api/gmail/sync', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -5448,6 +5497,20 @@ app.post('/api/gmail/sync', auth, financeOnly, asyncRoute(async (req, res) => {
     res.json({ ok: true, added });
   } catch (e) {
     await pool.query('UPDATE gmail_connection SET last_sync_error=$1 WHERE id=1', [String(e.message).slice(0, 500)]);
+    res.status(400).json({ error: e.message });
+  }
+}));
+
+// On-demand "hent hele historikken" — se kommentaren ved gmailFullSyncCustomer.
+app.post('/api/crm/customers/:id/full-mail-sync', auth, financeOnly, asyncRoute(async (req, res) => {
+  const customer = await pgOne('SELECT id, email FROM customers WHERE id=$1', [req.params.id]);
+  if (!customer) return res.status(404).json({ error: 'Kunde ikke fundet' });
+  if (!customer.email) return res.status(400).json({ error: 'Kunden har ingen emailadresse' });
+  try {
+    const accessToken = await gmailGetValidAccessToken();
+    const result = await gmailFullSyncCustomer(customer, accessToken);
+    res.json({ ok: true, added: result.added, fetched: result.fetched, truncated: result.truncated });
+  } catch (e) {
     res.status(400).json({ error: e.message });
   }
 }));
