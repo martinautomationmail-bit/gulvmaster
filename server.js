@@ -1110,6 +1110,15 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_crm_stages_pipeline ON crm_stages(pipeline_id);
+    -- SMS/email-automatik pr. stage — Martins ønske om at flytte det, han i dag
+    -- gør via Close + inMobile, ind i vores eget system: rykker man et lead/en
+    -- sag TIL en stage der har dette slået til, sendes beskeden automatisk til
+    -- leadet/kunden. Se crmFireStageAutomation().
+    ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS sms_enabled INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS sms_template TEXT;
+    ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS email_enabled INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS email_subject TEXT;
+    ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS email_body TEXT;
     CREATE TABLE IF NOT EXISTS crm_contacts (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
@@ -1137,6 +1146,13 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_crm_leads_stage ON crm_leads(stage_id);
+    -- stage_changed_at: ADSKILT fra updated_at (som opdateres ved ALT, inkl.
+    -- autogem af et telefonnummer) — sættes KUN når stage_id rent faktisk
+    -- ændres. Bruges af den tidsbaserede "ligget X dage i Tabt"-mail-automatik
+    -- (runLostFollowupScan), som ellers ville nulstille sit ur ved enhver
+    -- redigering af leadet.
+    ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS stage_changed_at TEXT;
+    UPDATE crm_leads SET stage_changed_at=created_at WHERE stage_changed_at IS NULL;
     -- contact_id: sat allerede ved OPRETTELSE af et lead (ikke kun ved konvertering),
     -- så Lead → Kunde/Kontakt/Sales hænger sammen fra dag ét. Se
     -- crmFindOrCreateContactAndCustomer() kaldt fra POST /api/crm/leads.
@@ -1157,6 +1173,30 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_crm_opp_stage ON crm_opportunities(stage_id);
     ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS converted_opportunity_id INTEGER REFERENCES crm_opportunities(id) ON DELETE SET NULL;
+    -- Se tilsvarende kommentar ved crm_leads.stage_changed_at ovenfor.
+    ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS stage_changed_at TEXT;
+    UPDATE crm_opportunities SET stage_changed_at=created_at WHERE stage_changed_at IS NULL;
+    -- Automatisk "opfølgning ved tabt tilbud" — én global regel (ikke pr.
+    -- pipeline/stage), se runLostFollowupScan(). Enkelt-række-tabel, samme
+    -- mønster som finance_dunning_settings.
+    CREATE TABLE IF NOT EXISTS crm_lost_followup_settings (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      days_threshold INTEGER NOT NULL DEFAULT 5,
+      require_quote INTEGER NOT NULL DEFAULT 1,
+      subject TEXT,
+      body TEXT,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    INSERT INTO crm_lost_followup_settings (id, enabled, days_threshold, require_quote, subject, body)
+    VALUES (1, 0, 5, 1,
+      'Er du stadig interesseret, {{navn}}?',
+      'Hej {{navn}},<br><br>Vi kan se at vi ikke har hørt fra dig i et stykke tid vedrørende dit tilbud. Er du stadig interesseret, eller har du spørgsmål vi kan hjælpe med?<br><br>Du er altid velkommen til at svare på denne mail eller ringe til os.<br><br>Venlig hilsen<br>{{firma}}'
+    ) ON CONFLICT (id) DO NOTHING;
+    -- Delt hemmelig nøgle til lead-modtage-webhooken (Elementor/Facebook Ads via
+    -- Make.com) — genereres én gang ved første opstart, ligger derefter fast
+    -- indtil nogen trykker "Generér ny nøgle" i UI'en. Se POST /api/leads/webhook/:source.
+    INSERT INTO app_settings (key, value) VALUES ('lead_webhook_secret', '${crypto.randomBytes(20).toString('hex')}') ON CONFLICT (key) DO NOTHING;
     CREATE TABLE IF NOT EXISTS crm_custom_fields (
       id SERIAL PRIMARY KEY,
       entity_type TEXT NOT NULL, -- 'lead' | 'opportunity' | 'contact'
@@ -2102,7 +2142,7 @@ app.get('/api/settings/notification-channels', auth, adminOnly, asyncRoute(async
   res.json({
     push_configured: true, // web push kræver ingen ekstern konto — virker altid
     sms_configured: smsIsConfigured(),
-    sms_provider: process.env.GATEWAYAPI_API_TOKEN ? 'GatewayAPI' : (process.env.TWILIO_ACCOUNT_SID ? 'Twilio' : null)
+    sms_provider: smsProviderName()
   });
 }));
 app.post('/api/settings/test-sms', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -2512,7 +2552,13 @@ async function sendMailUniversal({ to, subject, text, html, attachments }) {
 // Ingen SDK'er tilføjet — begge kaldes direkte via fetch, ligesom Resend ovenfor.
 // ══════════════════════════════════════════════════════════════
 function smsIsConfigured() {
-  return !!process.env.GATEWAYAPI_API_TOKEN || !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER);
+  return !!process.env.INMOBILE_API_TOKEN || !!process.env.GATEWAYAPI_API_TOKEN || !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER);
+}
+function smsProviderName() {
+  if (process.env.INMOBILE_API_TOKEN) return 'inMobile';
+  if (process.env.GATEWAYAPI_API_TOKEN) return 'GatewayAPI';
+  if (process.env.TWILIO_ACCOUNT_SID) return 'Twilio';
+  return null;
 }
 // Normaliserer til E.164. Antager dansk nummer (8 cifre, intet landekode) hvis
 // intet andet er angivet — dækker langt de fleste kunder/medarbejdere her.
@@ -2526,6 +2572,32 @@ function normalizePhone(raw) {
 async function sendSmsUniversal({ to, message }) {
   const phone = normalizePhone(to);
   if (!phone) throw new Error('Ugyldigt eller manglende telefonnummer');
+  // inMobile (dansk udbyder, Martins eksisterende SMS-leverandør) tjekkes
+  // FØRST, så en sat INMOBILE_API_TOKEN altid vinder over de andre uden at
+  // man behøver fjerne dem. OBS: endpoint/felt-navne herunder er bygget ud fra
+  // inMobiles offentlige dokumentation (api.inmobile.com/docs) — vi har ikke
+  // haft en rigtig konto at teste imod endnu. Fejler kaldet, kommer inMobiles
+  // egen fejlbesked med i throw'et nedenfor, så det er hurtigt at rette til,
+  // hvis et felt-navn skal justeres, når vi har en rigtig nøgle at teste med.
+  if (process.env.INMOBILE_API_TOKEN) {
+    const response = await fetch('https://api.inmobile.com/v4/sms/outgoing', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + process.env.INMOBILE_API_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        to: phone.replace('+', ''),
+        sender: (process.env.INMOBILE_SENDER || 'GulvMaster').slice(0, 11),
+        text: message
+      })
+    });
+    if (!response.ok) {
+      const raw = await response.text().catch(() => '');
+      throw new Error(`inMobile HTTP ${response.status}: ${raw.slice(0, 300)}`);
+    }
+    return;
+  }
   if (process.env.GATEWAYAPI_API_TOKEN) {
     const response = await fetch('https://gatewayapi.com/rest/mtsms', {
       method: 'POST',
@@ -5732,6 +5804,71 @@ app.post('/api/integrations/close/webhook', asyncRoute(async (req, res) => {
 }));
 
 // ══════════════════════════════════════════════════════════════
+// LEAD-INTAKE WEBHOOK — Martins ønske om automatisk at modtage leads fra sin
+// WordPress/Elementor-formular og fra Facebook Lead Ads. I MODSÆTNING til
+// Close-webhooken ovenfor (som kun opretter en "customers"-række, uden om
+// hele CRM'et) opretter DENNE et rigtigt lead i Leads-pipelinen — så det får
+// samme selvstændige SMS/email-automatik som alle andre leads (se
+// crmFireStageAutomation), fx en velkomst-SMS hvis "Ny"-stagen har det slået
+// til. Ikke bygget til at forbindes direkte fra Elementor/Facebook (deres
+// egne webhook-formater er forskellige og ustabile at parse) — i stedet går
+// begge igennem Make.com, som oversætter til det simple JSON-format herunder.
+//
+// OPSÆTNING (se "🤖 Automatisering"-fanen under Skabeloner i appen for URL +
+// nøgle, klar til at indsætte i Make):
+//   URL:  https://<jeres-render-url>/api/integrations/lead-intake/<kilde>
+//         <kilde> er frit tekst til jeres egen reference, fx "elementor" eller
+//         "facebook-ads" — indgår bare som lead'ets "Kilde" i CRM'et.
+//   Header: X-Webhook-Secret: <nøglen fra Automatisering-fanen>
+//           (et ?token=<nøgle> query-param virker også, hvis Make's Webhooks-
+//           modul gør headers besværligt at sætte op).
+//   Body (JSON): { "name": "...", "email": "...", "phone": "...", "address": "...", "note": "..." }
+//           Kun "name" er påkrævet — map Elementor/Facebook-felterne til disse
+//           navne i et "Set variable"/"Compose"-trin i Make FØR I sender videre.
+// ══════════════════════════════════════════════════════════════
+const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'facebook-ads': 'Facebook Ads' };
+async function verifyLeadWebhookSecret(req) {
+  const provided = req.headers['x-webhook-secret'] || req.query.token || '';
+  if (!provided) return false;
+  const row = await pgOne("SELECT value FROM app_settings WHERE key='lead_webhook_secret'");
+  const expected = row && row.value;
+  if (!expected) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(String(provided)), Buffer.from(String(expected)));
+  } catch (e) {
+    return false; // forskellig længde — helt sikkert ikke et match
+  }
+}
+app.post('/api/integrations/lead-intake/:source', asyncRoute(async (req, res) => {
+  if (!(await verifyLeadWebhookSecret(req))) return res.status(401).json({ error: 'Ugyldig eller manglende nøgle (X-Webhook-Secret)' });
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Navn mangler' });
+  const sourceLabel = LEAD_WEBHOOK_SOURCE_LABELS[req.params.source] || (req.params.source ? String(req.params.source) : 'Webhook');
+
+  const p = await pgOne("SELECT id FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1");
+  if (!p) return res.status(400).json({ error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
+  const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [p.id]);
+  const stageId = s && s.id;
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [stageId]);
+
+  const r = await pgOne(`
+    INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,${nowTextSQL()}) RETURNING id
+  `, [name, b.email || null, b.phone || null, b.address || null, sourceLabel, b.note || null, p.id, stageId, posRow.pos]);
+  await crmLogActivity('lead', r.id, 'created', 'Lead modtaget automatisk via ' + sourceLabel, null);
+
+  const linked = await crmFindOrCreateContactAndCustomer(name, b.email || null, b.phone || null, b.address || null, b.note || null);
+  await pool.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
+  await crmLogActivity('lead', r.id, 'linked', (linked.customerCreated ? 'Ny kunde oprettet automatisk: ' : 'Koblet til eksisterende kunde: ') + name, null);
+
+  crmFireStageAutomation('lead', r.id, stageId, { name, email: b.email || null, phone: b.phone || null })
+    .catch(e => console.error('SMS/email-automatik fejlede for webhook-lead #' + r.id + ':', e.message));
+
+  res.json({ ok: true, id: r.id });
+}));
+
+// ══════════════════════════════════════════════════════════════
 // INDBYGGET CRM — Leads-pipeline → konverter til Kontakt + Opportunity i
 // Sales-pipelinen, redigerbare pipelines/stages, brugerdefinerede felter.
 // Se migrationen i initSchema() for tabellerne. Alt herunder kræver
@@ -5782,6 +5919,47 @@ async function crmSetCustomFieldValues(entityType, entityId, valuesObj) {
 }
 async function crmLogActivity(entityType, entityId, kind, body, userId) {
   await pool.query('INSERT INTO crm_activities (entity_type,entity_id,kind,body,user_id) VALUES ($1,$2,$3,$4,$5)', [entityType, entityId, kind, body || null, userId || null]);
+}
+
+// ── Automatisk SMS/email pr. pipeline-stage ──────────────────────
+// Martins ønske om at flytte det han i dag gør med Close+inMobile ind i vores
+// eget system: hver stage kan have en valgfri SMS- og/eller email-skabelon
+// (crm_stages.sms_enabled/sms_template/email_enabled/email_subject/email_body).
+// Kaldes hver gang et lead/en opportunity LANDER i en stage — både ved
+// OPRETTELSE (fx et nyt lead fra webhooken nedenfor) og ved et rigtigt
+// stage-SKIFT (træk i kanban/dropdown). Fejler afsendelsen (forkert/manglende
+// nøgle, ugyldigt nummer osv.), må det ALDRIG vælte selve lead/opportunity-
+// kaldet — logges blot som en aktivitet på leadet/sagen, ligesom alt andet her.
+async function crmFireStageAutomation(entityType, entityId, stageId, contactFields) {
+  if (!stageId) return;
+  const stage = await pgOne('SELECT * FROM crm_stages WHERE id=$1', [stageId]);
+  if (!stage) return;
+  const vars = {
+    navn: contactFields.name || '',
+    telefon: contactFields.phone || '',
+    email: contactFields.email || '',
+    firma: 'Gulv Master Enterprise ApS',
+    stage: stage.name || ''
+  };
+  if (stage.sms_enabled && stage.sms_template && contactFields.phone) {
+    try {
+      const message = fillDocEmailVars(stage.sms_template, vars);
+      await sendSmsUniversal({ to: contactFields.phone, message });
+      await crmLogActivity(entityType, entityId, 'sms_sent', 'SMS sendt ("' + stage.name + '"): ' + message, null);
+    } catch (e) {
+      await crmLogActivity(entityType, entityId, 'sms_failed', 'SMS-automatik fejlede ("' + stage.name + '"): ' + e.message, null);
+    }
+  }
+  if (stage.email_enabled && stage.email_body && contactFields.email) {
+    try {
+      const subject = fillDocEmailVars(stage.email_subject || 'Besked fra ' + vars.firma, vars);
+      const html = fillDocEmailVars(stage.email_body, vars);
+      await sendMailUniversal({ to: contactFields.email, subject, html, text: html.replace(/<[^>]+>/g, ' ') });
+      await crmLogActivity(entityType, entityId, 'email_sent', 'Email sendt ("' + stage.name + '"): ' + subject, null);
+    } catch (e) {
+      await crmLogActivity(entityType, entityId, 'email_failed', 'Email-automatik fejlede ("' + stage.name + '"): ' + e.message, null);
+    }
+  }
 }
 
 // Find-eller-opret en crm_contacts-række + en customers-række for et navn/
@@ -5881,12 +6059,17 @@ app.put('/api/crm/stages/:id', auth, financeOnly, asyncRoute(async (req, res) =>
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_stages WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Stage ikke fundet' });
-  await pool.query('UPDATE crm_stages SET name=$1,color=$2,position=$3,is_won=$4,is_lost=$5 WHERE id=$6', [
+  await pool.query('UPDATE crm_stages SET name=$1,color=$2,position=$3,is_won=$4,is_lost=$5,sms_enabled=$6,sms_template=$7,email_enabled=$8,email_subject=$9,email_body=$10 WHERE id=$11', [
     b.name !== undefined ? String(b.name).trim() : current.name,
     b.color !== undefined ? b.color : current.color,
     b.position !== undefined ? b.position : current.position,
     b.is_won !== undefined ? (b.is_won ? 1 : 0) : current.is_won,
     b.is_lost !== undefined ? (b.is_lost ? 1 : 0) : current.is_lost,
+    b.sms_enabled !== undefined ? (b.sms_enabled ? 1 : 0) : current.sms_enabled,
+    b.sms_template !== undefined ? b.sms_template : current.sms_template,
+    b.email_enabled !== undefined ? (b.email_enabled ? 1 : 0) : current.email_enabled,
+    b.email_subject !== undefined ? b.email_subject : current.email_subject,
+    b.email_body !== undefined ? b.email_body : current.email_body,
     req.params.id
   ]);
   res.json({ ok: true });
@@ -5900,6 +6083,45 @@ app.delete('/api/crm/stages/:id', auth, financeOnly, asyncRoute(async (req, res)
   if (stageCount && stageCount.n <= 1) return res.status(400).json({ error: 'En pipeline skal have mindst én stage' });
   await pool.query('DELETE FROM crm_stages WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
+}));
+
+// ── Automatiserings-indstillinger (Skabeloner → 🤖 Automatisering) ──────────
+app.get('/api/crm/lead-webhook-info', auth, financeOnly, asyncRoute(async (req, res) => {
+  const row = await pgOne("SELECT value FROM app_settings WHERE key='lead_webhook_secret'");
+  const base = req.protocol + '://' + req.get('host') + '/api/integrations/lead-intake/';
+  res.json({
+    secret: row && row.value,
+    url_elementor: base + 'elementor',
+    url_facebook: base + 'facebook-ads',
+    sms_configured: smsIsConfigured(),
+    sms_provider: smsProviderName(),
+    mail_configured: mailIsConfigured()
+  });
+}));
+app.post('/api/crm/lead-webhook-regenerate', auth, adminOnly, asyncRoute(async (req, res) => {
+  const secret = crypto.randomBytes(20).toString('hex');
+  await pool.query("INSERT INTO app_settings (key,value) VALUES ('lead_webhook_secret',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [secret]);
+  res.json({ ok: true, secret });
+}));
+app.get('/api/crm/lost-followup-settings', auth, financeOnly, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT * FROM crm_lost_followup_settings WHERE id=1');
+  res.json(row || {});
+}));
+app.put('/api/crm/lost-followup-settings', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const current = await pgOne('SELECT * FROM crm_lost_followup_settings WHERE id=1');
+  await pool.query(`UPDATE crm_lost_followup_settings SET enabled=$1,days_threshold=$2,require_quote=$3,subject=$4,body=$5,updated_at=${nowTextSQL()} WHERE id=1`, [
+    b.enabled !== undefined ? (b.enabled ? 1 : 0) : current.enabled,
+    b.days_threshold !== undefined ? b.days_threshold : current.days_threshold,
+    b.require_quote !== undefined ? (b.require_quote ? 1 : 0) : current.require_quote,
+    b.subject !== undefined ? b.subject : current.subject,
+    b.body !== undefined ? b.body : current.body
+  ]);
+  res.json({ ok: true });
+}));
+app.post('/api/crm/lost-followup/run', auth, financeOnly, asyncRoute(async (req, res) => {
+  const result = await runLostFollowupScan(true);
+  res.json(result);
 }));
 
 // ── CUSTOM FIELDS ────────────────────────────────────────────────
@@ -5963,7 +6185,7 @@ app.post('/api/crm/leads', auth, financeOnly, asyncRoute(async (req, res) => {
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [stageId]);
   const leadName = String(b.name).trim();
   const r = await pgOne(`
-    INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id
+    INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()}) RETURNING id
   `, [leadName, b.email || null, b.phone || null, b.address || null, b.source || null, b.note || null, pipelineId, stageId, b.owner_id || req.user.id, posRow.pos]);
   await crmSetCustomFieldValues('lead', r.id, b.custom_fields);
   await crmLogActivity('lead', r.id, 'created', 'Lead oprettet', req.user.id);
@@ -5975,6 +6197,11 @@ app.post('/api/crm/leads', auth, financeOnly, asyncRoute(async (req, res) => {
   const linked = await crmFindOrCreateContactAndCustomer(leadName, b.email || null, b.phone || null, b.address || null, b.note || null);
   await pool.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
   await crmLogActivity('lead', r.id, 'linked', (linked.customerCreated ? 'Ny kunde oprettet automatisk: ' : 'Koblet til eksisterende kunde: ') + leadName, req.user.id);
+  // SMS/email-automatik for den stage leadet lander i (fx "Ny") — se
+  // crmFireStageAutomation. Kører også for leads oprettet via webhooken
+  // (POST /api/integrations/lead-intake/:source), som kalder samme kode.
+  crmFireStageAutomation('lead', r.id, stageId, { name: leadName, email: b.email || null, phone: b.phone || null })
+    .catch(e => console.error('SMS/email-automatik fejlede for lead #' + r.id + ':', e.message));
   res.json({ ok: true, id: r.id, contact_id: linked.contactId, customer_id: linked.customerId });
 }));
 app.get('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -6011,7 +6238,7 @@ app.put('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => 
   if (!current) return res.status(404).json({ error: 'Lead ikke fundet' });
   const stageChanged = b.stage_id !== undefined && Number(b.stage_id) !== current.stage_id;
   await pool.query(`
-    UPDATE crm_leads SET name=$1,email=$2,phone=$3,address=$4,source=$5,note=$6,stage_id=$7,pipeline_id=$8,owner_id=$9,position=$10,updated_at=${nowTextSQL()} WHERE id=$11
+    UPDATE crm_leads SET name=$1,email=$2,phone=$3,address=$4,source=$5,note=$6,stage_id=$7,pipeline_id=$8,owner_id=$9,position=$10,updated_at=${nowTextSQL()}${stageChanged ? ',stage_changed_at=' + nowTextSQL() : ''} WHERE id=$11
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
     b.email !== undefined ? b.email : current.email,
@@ -6040,6 +6267,11 @@ app.put('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => 
   if (stageChanged) {
     const newStage = await pgOne('SELECT name FROM crm_stages WHERE id=$1', [b.stage_id]);
     await crmLogActivity('lead', req.params.id, 'stage_change', 'Status ændret til "' + (newStage ? newStage.name : '?') + '"', req.user.id);
+    crmFireStageAutomation('lead', req.params.id, b.stage_id, {
+      name: b.name !== undefined ? String(b.name).trim() : current.name,
+      email: b.email !== undefined ? b.email : current.email,
+      phone: b.phone !== undefined ? b.phone : current.phone
+    }).catch(e => console.error('SMS/email-automatik fejlede for lead #' + req.params.id + ':', e.message));
   }
   res.json({ ok: true });
 }));
@@ -6085,7 +6317,7 @@ app.post('/api/crm/leads/:id/convert', auth, financeOnly, asyncRoute(async (req,
 
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_opportunities WHERE stage_id=$1', [targetStageId]);
   const opp = await pgOne(`
-    INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,owner_id,source_lead_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
+    INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,owner_id,source_lead_id,position,stage_changed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()}) RETURNING id
   `, [lead.name, contactId, targetPipelineId, targetStageId, lead.owner_id, lead.id, posRow.pos]);
 
   // Kopiér custom fields der findes på BEGGE entitetstyper (samme key) med over,
@@ -6097,6 +6329,8 @@ app.post('/api/crm/leads/:id/convert', auth, financeOnly, asyncRoute(async (req,
   await pool.query('UPDATE crm_leads SET converted_opportunity_id=$1, stage_id=COALESCE($2,stage_id), contact_id=$3 WHERE id=$4', [opp.id, convertedStage ? convertedStage.id : null, contactId, lead.id]);
   await crmLogActivity('lead', lead.id, 'converted', 'Konverteret til opportunity #' + opp.id, req.user.id);
   await crmLogActivity('opportunity', opp.id, 'created', 'Oprettet fra lead #' + lead.id, req.user.id);
+  crmFireStageAutomation('opportunity', opp.id, targetStageId, { name: lead.name, email: lead.email, phone: lead.phone })
+    .catch(e => console.error('SMS/email-automatik fejlede for opportunity #' + opp.id + ':', e.message));
 
   res.json({ ok: true, contact_id: contactId, customer_id: customerId, opportunity_id: opp.id });
 }));
@@ -6164,10 +6398,12 @@ app.post('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res
   }
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_opportunities WHERE stage_id=$1', [stageId]);
   const r = await pgOne(`
-    INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,value,probability,owner_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+    INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,value,probability,owner_id,position,stage_changed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()}) RETURNING id
   `, [String(b.name).trim(), contactId, pipelineId, stageId, b.value || null, b.probability || null, b.owner_id || req.user.id, posRow.pos]);
   await crmSetCustomFieldValues('opportunity', r.id, b.custom_fields);
   await crmLogActivity('opportunity', r.id, 'created', 'Opportunity oprettet', req.user.id);
+  crmFireStageAutomation('opportunity', r.id, stageId, { name: b.contact_name || b.name, email: b.contact_email || null, phone: b.contact_phone || null })
+    .catch(e => console.error('SMS/email-automatik fejlede for opportunity #' + r.id + ':', e.message));
   res.json({ ok: true, id: r.id });
 }));
 app.get('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -6200,7 +6436,7 @@ app.put('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, 
   if (!current) return res.status(404).json({ error: 'Opportunity ikke fundet' });
   const stageChanged = b.stage_id !== undefined && Number(b.stage_id) !== current.stage_id;
   await pool.query(`
-    UPDATE crm_opportunities SET name=$1,value=$2,probability=$3,stage_id=$4,pipeline_id=$5,owner_id=$6,position=$7,updated_at=${nowTextSQL()} WHERE id=$8
+    UPDATE crm_opportunities SET name=$1,value=$2,probability=$3,stage_id=$4,pipeline_id=$5,owner_id=$6,position=$7,updated_at=${nowTextSQL()}${stageChanged ? ',stage_changed_at=' + nowTextSQL() : ''} WHERE id=$8
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
     b.value !== undefined ? b.value : current.value,
@@ -6215,6 +6451,14 @@ app.put('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, 
   if (stageChanged) {
     const newStage = await pgOne('SELECT name FROM crm_stages WHERE id=$1', [b.stage_id]);
     await crmLogActivity('opportunity', req.params.id, 'stage_change', 'Status ændret til "' + (newStage ? newStage.name : '?') + '"', req.user.id);
+    // Opportunities ejer ikke selv email/telefon (bor på crm_contacts) — slå
+    // kontakten op til SMS/email-automatikken.
+    const oppContact = current.contact_id ? await pgOne('SELECT name, email, phone FROM crm_contacts WHERE id=$1', [current.contact_id]) : null;
+    crmFireStageAutomation('opportunity', req.params.id, b.stage_id, {
+      name: (oppContact && oppContact.name) || (b.name !== undefined ? String(b.name).trim() : current.name),
+      email: oppContact && oppContact.email,
+      phone: oppContact && oppContact.phone
+    }).catch(e => console.error('SMS/email-automatik fejlede for opportunity #' + req.params.id + ':', e.message));
   }
   res.json({ ok: true });
 }));
@@ -7812,6 +8056,61 @@ async function runDunningScan(triggeredManually) {
   }
   await logSystemEvent('dunning_scan', 'info', `Rykker-scan: ${sent1} rykker 1, ${sent2} rykker 2 sendt, ${skippedNoEmail} sprunget over (ingen e-mail).`);
   return { ran: true, sent1, sent2, skippedNoEmail };
+}
+
+// ── Automatisk opfølgning på tabte leads/sager (Martins "5 dage i lost med
+// et tilbud"-ønske) — samme skan-mønster som runDunningScan ovenfor, bare på
+// crm_leads/crm_opportunities i stedet for fakturaer. Tjekker BEGGE tabeller,
+// finder rækker der ligger i en stage markeret "Tabt" (is_lost=1), og som har
+// gjort det i mindst X dage (stage_changed_at — se kommentaren ved den
+// kolonne). Dedupe: en crm_activities-række med kind='lost_followup_sent' er
+// selve "sendt allerede"-flaget, så scanningen aldrig sender to gange til
+// samme lead/sag, uanset hvor mange gange den kører.
+async function runLostFollowupScan(triggeredManually) {
+  const settings = await pgOne('SELECT * FROM crm_lost_followup_settings WHERE id=1');
+  if (!settings || (!settings.enabled && !triggeredManually)) return { ran: false, reason: 'Slået fra' };
+  if (!mailIsConfigured()) return { ran: false, reason: 'E-mail er ikke konfigureret' };
+  const days = Number(settings.days_threshold) || 5;
+  let sent = 0, skippedNoEmail = 0, skippedNoQuote = 0;
+
+  for (const entityType of ['lead', 'opportunity']) {
+    const table = entityType === 'lead' ? 'crm_leads' : 'crm_opportunities';
+    const extraCols = entityType === 'lead' ? ', t.name, t.email, t.phone' : '';
+    const rows = (await pool.query(`
+      SELECT t.id, t.stage_changed_at, t.contact_id${extraCols}
+      FROM ${table} t JOIN crm_stages s ON s.id = t.stage_id
+      WHERE s.is_lost = 1 AND t.stage_changed_at IS NOT NULL
+    `)).rows;
+    for (const row of rows) {
+      const daysOld = Math.floor((Date.now() - new Date(row.stage_changed_at)) / 86400000);
+      if (daysOld < days) continue;
+      const already = await pgOne("SELECT id FROM crm_activities WHERE entity_type=$1 AND entity_id=$2 AND kind='lost_followup_sent'", [entityType, row.id]);
+      if (already) continue;
+
+      let name = row.name, email = row.email, customerId = null;
+      if (row.contact_id) {
+        const c = await pgOne('SELECT name, email, customer_id FROM crm_contacts WHERE id=$1', [row.contact_id]);
+        if (c) { name = c.name || name; email = c.email || email; customerId = c.customer_id; }
+      }
+      if (settings.require_quote) {
+        const q = customerId ? await pgOne('SELECT id FROM quotes WHERE customer_id=$1 LIMIT 1', [customerId]) : null;
+        if (!q) { skippedNoQuote++; continue; }
+      }
+      if (!email) { skippedNoEmail++; continue; }
+      try {
+        const vars = { navn: name || '', firma: 'Gulv Master Enterprise ApS' };
+        const subject = fillDocEmailVars(settings.subject || 'Er du stadig interesseret?', vars);
+        const html = fillDocEmailVars(settings.body || '', vars);
+        await sendMailUniversal({ to: email, subject, html, text: html.replace(/<[^>]+>/g, ' ') });
+        await crmLogActivity(entityType, row.id, 'lost_followup_sent', 'Opfølgningsmail sendt (' + daysOld + ' dage i "Tabt"): ' + subject, null);
+        sent++;
+      } catch (e) {
+        await crmLogActivity(entityType, row.id, 'lost_followup_failed', 'Opfølgningsmail fejlede: ' + e.message, null);
+      }
+    }
+  }
+  await logSystemEvent('lost_followup_scan', 'info', `Tabt-opfølgning: ${sent} mail(s) sendt, ${skippedNoEmail} sprunget over (ingen e-mail), ${skippedNoQuote} sprunget over (intet tilbud).`);
+  return { ran: true, sent, skippedNoEmail, skippedNoQuote };
 }
 
 // Manuel afsendelse for ÉN faktura — uanset dag-tærskler, og uanset til/fra-knappen.
@@ -10699,6 +10998,8 @@ async function start() {
   cron.schedule('15 * * * *', () => runNotificationScan().catch(e => { console.error('Notifikationsscan fejlede:', e.message); logSystemEvent('notification_scan', 'error', 'Notifikationsscan fejlede: ' + e.message); }));
   // Rykker-scan kl. 10 hver dag — runDunningScan tjekker selv om det er slået til.
   cron.schedule('0 10 * * *', () => runDunningScan(false).catch(e => { console.error('Rykker-scan fejlede:', e.message); logSystemEvent('dunning_scan', 'error', 'Rykker-scan fejlede: ' + e.message); }));
+  // Tabt-opfølgning kl. 10:30 hver dag — runLostFollowupScan tjekker selv om den er slået til.
+  cron.schedule('30 10 * * *', () => runLostFollowupScan(false).catch(e => { console.error('Tabt-opfølgning fejlede:', e.message); logSystemEvent('lost_followup_scan', 'error', 'Tabt-opfølgning fejlede: ' + e.message); }));
   // Profit-analyse — gemmer et fast snapshot af indeværende måned kl. 08 d. 15. hver
   // måned, så Martin kan sammenligne måned for måned uden at tallene ændrer sig
   // bagefter. Kan også udløses manuelt via "Gem nu"-knappen i Oversigt.

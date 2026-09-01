@@ -2104,6 +2104,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="bly-segtab" data-emltab="booking" type="button">📅 Planlægningsmail</button>
     <button class="bly-segtab" data-emltab="documents" type="button">🧾 Tilbud &amp; faktura</button>
     <button class="bly-segtab" data-emltab="custom" type="button">✨ Andre skabeloner</button>
+    <button class="bly-segtab" data-emltab="automation" type="button">🤖 Automatisering</button>
   </div>
 
   <div class="emltabpage" id="emltab-auto">
@@ -2147,6 +2148,42 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <thead><tr><th>Navn</th><th>Emne</th><th style="width:90px"></th></tr></thead>
       <tbody id="custom-tpl-table-body"></tbody>
     </table>
+  </div>
+
+  <!-- AUTOMATISERING — Martins ønske om SMS pr. pipeline-stage (inMobile),
+       lead-intake fra WordPress/Elementor + Facebook Ads (via Make.com), og
+       automatisk opfølgningsmail på tabte leads/sager. SMS/email-skabeloner
+       PR. STAGE redigeres ikke her, men inde på selve stagen i CRM-
+       pipeline-indstillingerne (⚙ ved siden af pipeline-vælgeren under CRM) —
+       denne fane er kun det der er FÆLLES: nøgler, status, og tabt-reglen. -->
+  <div class="emltabpage" id="emltab-automation" style="display:none">
+    <div class="hint" style="margin-bottom:14px">SMS pr. pipeline-stage redigeres inde på selve stagen (CRM → ⚙ Indstillinger → Pipelines). Her er det fælles: nøgler til lead-modtagelse, SMS-status, og den automatiske opfølgning på tabte leads/sager.</div>
+
+    <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">📥 Modtag leads automatisk (WordPress/Elementor + Facebook Ads)</div>
+      <div class="hint" style="margin:0 0 10px">Sæt disse URL'er ind som mål i et Make.com-scenarie — ét for Elementor-formularen, ét for Facebook Lead Ads. Læg nøglen i en header <code>X-Webhook-Secret</code> (eller som <code>?token=</code> i selve URL'en, hvis Make gør headers besværlige).</div>
+      <div id="automation-webhook-info"></div>
+    </div>
+
+    <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">📱 SMS-forbindelse</div>
+      <div id="automation-sms-status" class="hint" style="margin:0"></div>
+    </div>
+
+    <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">📮 Automatisk opfølgning på tabte leads/sager</div>
+      <div class="hint" style="margin:0 0 10px">Sender én gang automatisk en mail til leadet/kunden, hvis et kort har ligget i en stage markeret "❌ Tabt" (se CRM-pipeline-indstillinger) i mindst X dage. Indsætninger: {{navn}}, {{firma}}.</div>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><input type="checkbox" id="lostfollow-enabled"> <b>Slået til</b></label>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">
+        <label class="sub">Antal dage i "Tabt"<br><input class="input" id="lostfollow-days" type="number" min="1" style="width:100px"></label>
+        <label class="sub" style="display:flex;align-items:flex-end;gap:6px;padding-bottom:4px"><input type="checkbox" id="lostfollow-require-quote"> Kun hvis der findes et tilbud på kunden</label>
+      </div>
+      <input class="input" id="lostfollow-subject" placeholder="Emne" style="width:100%;margin-bottom:8px">
+      <textarea class="input" id="lostfollow-body" rows="4" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:10px"></textarea>
+      <button class="bly-btn" id="lostfollow-save-btn" type="button">Gem</button>
+      <button class="btn small" id="lostfollow-run-btn" type="button" style="margin-left:8px">Kør nu (test)</button>
+      <span class="sub" id="lostfollow-status" style="margin-left:8px"></span>
+    </div>
   </div>
 </section>
 
@@ -8236,12 +8273,68 @@ function initEmailTemplatesModule(){
 function switchEmlTab(name){
   emlActiveTab=name;
   document.querySelectorAll('#eml-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.emltab===name);});
-  ['auto','booking','documents','custom'].forEach(function(n){document.getElementById('emltab-'+n).style.display=n===name?'':'none';});
+  ['auto','booking','documents','custom','automation'].forEach(function(n){document.getElementById('emltab-'+n).style.display=n===name?'':'none';});
   if(name==='auto')loadSystemEmailTemplates();
   if(name==='booking')loadEmailTemplates();
   if(name==='documents'){loadDocMailTemplates();loadDocTplAssignments();}
   if(name==='custom')loadCustomEmailTemplates();
+  if(name==='automation')loadAutomationSettings();
 }
+
+// ── AUTOMATISERING (🤖-fanen) — webhook-nøgler, SMS-status, tabt-opfølgning ──
+async function loadAutomationSettings(){
+  var info=await api('/api/crm/lead-webhook-info');
+  if(info&&!info.error){
+    document.getElementById('automation-webhook-info').innerHTML=
+      '<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Elementor (WordPress)</div>'
+      +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.url_elementor)+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.url_elementor)+'" title="Kopiér">📋</button></div></div>'
+      +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Facebook Ads</div>'
+      +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.url_facebook)+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.url_facebook)+'" title="Kopiér">📋</button></div></div>'
+      +'<div><div class="sub" style="margin-bottom:2px">Nøgle (X-Webhook-Secret)</div>'
+      +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.secret||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.secret||'')+'" title="Kopiér">📋</button><button class="btn small" id="automation-webhook-regen">Generér ny nøgle</button></div></div>';
+    document.querySelectorAll('#automation-webhook-info [data-copy]').forEach(function(btn){
+      btn.addEventListener('click',async function(){
+        try{await navigator.clipboard.writeText(btn.dataset.copy);toast('Kopieret','✓');}catch(e){toast('Kunne ikke kopiere — markér og kopiér manuelt','⚠');}
+      });
+    });
+    var regenBtn=document.getElementById('automation-webhook-regen');
+    if(regenBtn)regenBtn.addEventListener('click',async function(){
+      if(!await gmConfirm('Generér en ny nøgle? Den GAMLE nøgle holder op med at virke med det samme — husk at opdatere den i Make bagefter.'))return;
+      var r=await api('/api/crm/lead-webhook-regenerate',{method:'POST'});
+      if(r&&r.ok)loadAutomationSettings();else toast((r&&r.error)||'Kunne ikke generere ny nøgle','❌');
+    });
+    document.getElementById('automation-sms-status').innerHTML=info.sms_configured
+      ?('SMS er sat op via <b>'+esc(info.sms_provider)+'</b> — stage-automatikken (se CRM-pipeline-indstillinger) kan sende.')
+      :'SMS er endnu ikke sat op på serveren. Sæt <code>INMOBILE_API_TOKEN</code> (og evt. <code>INMOBILE_SENDER</code>) som miljøvariabler på Render for at bruge inMobile.';
+  }
+  var lf=await api('/api/crm/lost-followup-settings');
+  if(lf&&!lf.error){
+    document.getElementById('lostfollow-enabled').checked=!!lf.enabled;
+    document.getElementById('lostfollow-days').value=(lf.days_threshold===null||lf.days_threshold===undefined)?5:lf.days_threshold;
+    document.getElementById('lostfollow-require-quote').checked=!!lf.require_quote;
+    document.getElementById('lostfollow-subject').value=lf.subject||'';
+    document.getElementById('lostfollow-body').value=lf.body||'';
+  }
+}
+document.getElementById('lostfollow-save-btn').addEventListener('click',async function(){
+  var statusEl=document.getElementById('lostfollow-status');
+  statusEl.textContent='Gemmer...';
+  var r=await api('/api/crm/lost-followup-settings',{method:'PUT',body:JSON.stringify({
+    enabled:document.getElementById('lostfollow-enabled').checked,
+    days_threshold:(document.getElementById('lostfollow-days').value===''?5:Number(document.getElementById('lostfollow-days').value)),
+    require_quote:document.getElementById('lostfollow-require-quote').checked,
+    subject:document.getElementById('lostfollow-subject').value,
+    body:document.getElementById('lostfollow-body').value
+  })});
+  statusEl.textContent=(r&&r.ok)?'Gemt ✓':'Fejl';
+});
+document.getElementById('lostfollow-run-btn').addEventListener('click',async function(){
+  var statusEl=document.getElementById('lostfollow-status');
+  statusEl.textContent='Kører...';
+  var r=await api('/api/crm/lost-followup/run',{method:'POST'});
+  if(!r||r.ran===false){statusEl.textContent='Kørte ikke ('+((r&&r.reason)||'ukendt fejl')+')';return;}
+  statusEl.textContent=r.sent+' mail(s) sendt, '+r.skippedNoEmail+' uden email, '+r.skippedNoQuote+' uden tilbud.';
+});
 
 // ── AUTOMATISKE MAILS (system_email_templates) — ét aktivt eksemplar pr. handling ──
 var SYS_EMAIL_META=[
@@ -13701,15 +13794,30 @@ function crmpRenderSettingsStages(){
     return '<div class="crmp-set-stage-row" data-stage-id="'+s.id+'">'
       +'<input type="color" value="'+esc(s.color)+'" data-action="stage-color" style="width:32px;height:28px;padding:1px;border-radius:6px;border:1px solid var(--bly-border)">'
       +'<input class="input" data-action="stage-name" value="'+esc(s.name)+'" style="flex:1">'
+      +'<label class="sub" style="display:flex;align-items:center;gap:3px;white-space:nowrap" title="Slut-stage: vundet"><input type="checkbox" data-action="stage-won" '+(s.is_won?'checked':'')+'> 🏆</label>'
+      +'<label class="sub" style="display:flex;align-items:center;gap:3px;white-space:nowrap" title="Slut-stage: tabt (bruges af den automatiske opfølgningsmail, se Skabeloner → Automatisering)"><input type="checkbox" data-action="stage-lost" '+(s.is_lost?'checked':'')+'> ❌</label>'
+      +'<button class="qz-icon-btn" data-action="stage-automation-toggle" title="SMS/email når et lead/en sag rykkes hertil">'+((s.sms_enabled||s.email_enabled)?'🔔':'🔕')+'</button>'
       +'<button class="qz-icon-btn" data-action="stage-up" title="Flyt op" '+(i===0?'disabled':'')+'>↑</button>'
       +'<button class="qz-icon-btn" data-action="stage-down" title="Flyt ned" '+(i===stages.length-1?'disabled':'')+'>↓</button>'
       +'<button class="qz-icon-btn" data-action="stage-delete" title="Slet">🗑</button>'
+      +'</div>'
+      +'<div class="crmp-set-stage-automation" data-automation-id="'+s.id+'" style="display:none;margin:2px 0 10px 40px;padding:10px 12px;background:var(--bly-bg-soft,#F5F5F7);border-radius:var(--bly-r-md);font-size:12.5px">'
+        +'<div class="sub" style="margin-bottom:6px">Indsætninger: {{navn}}, {{telefon}}, {{email}}, {{firma}}, {{stage}}</div>'
+        +'<label style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" data-action="sms-enabled" '+(s.sms_enabled?'checked':'')+'> <b>SMS</b> til leadet/kunden når et kort rykkes hertil</label>'
+        +'<textarea class="input" data-action="sms-template" rows="2" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:8px">'+esc(s.sms_template||'')+'</textarea>'
+        +'<label style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" data-action="email-enabled" '+(s.email_enabled?'checked':'')+'> <b>Email</b> til leadet/kunden når et kort rykkes hertil</label>'
+        +'<input class="input" data-action="email-subject" placeholder="Emne" value="'+esc(s.email_subject||'')+'" style="width:100%;margin-bottom:6px">'
+        +'<textarea class="input" data-action="email-body" rows="3" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:8px">'+esc(s.email_body||'')+'</textarea>'
+        +'<button class="btn small" data-action="automation-save">Gem automatik</button>'
+        +'<span class="sub" data-automation-status style="margin-left:8px"></span>'
       +'</div>';
   }).join('');
   list.querySelectorAll('.crmp-set-stage-row').forEach(function(row){
     var stageId=Number(row.dataset.stageId);
     row.querySelector('[data-action="stage-name"]').addEventListener('change',function(){api('/api/crm/stages/'+stageId,{method:'PUT',body:JSON.stringify({name:this.value})}).then(function(){crmpLoadPipelinesAndRefreshSettings();});});
     row.querySelector('[data-action="stage-color"]').addEventListener('change',function(){api('/api/crm/stages/'+stageId,{method:'PUT',body:JSON.stringify({color:this.value})}).then(function(){crmpLoadPipelinesAndRefreshSettings();});});
+    row.querySelector('[data-action="stage-won"]').addEventListener('change',function(){api('/api/crm/stages/'+stageId,{method:'PUT',body:JSON.stringify({is_won:this.checked})});});
+    row.querySelector('[data-action="stage-lost"]').addEventListener('change',function(){api('/api/crm/stages/'+stageId,{method:'PUT',body:JSON.stringify({is_lost:this.checked})});});
     var upBtn=row.querySelector('[data-action="stage-up"]'),downBtn=row.querySelector('[data-action="stage-down"]');
     if(upBtn)upBtn.addEventListener('click',function(){crmpSwapStagePosition(stageId,-1);});
     if(downBtn)downBtn.addEventListener('click',function(){crmpSwapStagePosition(stageId,1);});
@@ -13717,6 +13825,26 @@ function crmpRenderSettingsStages(){
       if(!await gmConfirm('Slet stagen? Kun muligt hvis den er tom.'))return;
       var r=await api('/api/crm/stages/'+stageId,{method:'DELETE'});
       if(r&&r.ok)crmpLoadPipelinesAndRefreshSettings();else toast((r&&r.error)||'Kunne ikke slette','❌');
+    });
+    row.querySelector('[data-action="stage-automation-toggle"]').addEventListener('click',function(){
+      var panel=list.querySelector('.crmp-set-stage-automation[data-automation-id="'+stageId+'"]');
+      if(panel)panel.style.display=panel.style.display==='none'?'':'none';
+    });
+  });
+  list.querySelectorAll('.crmp-set-stage-automation').forEach(function(panel){
+    var stageId=Number(panel.dataset.automationId);
+    panel.querySelector('[data-action="automation-save"]').addEventListener('click',async function(){
+      var statusEl=panel.querySelector('[data-automation-status]');
+      statusEl.textContent='Gemmer...';
+      var r=await api('/api/crm/stages/'+stageId,{method:'PUT',body:JSON.stringify({
+        sms_enabled:panel.querySelector('[data-action="sms-enabled"]').checked,
+        sms_template:panel.querySelector('[data-action="sms-template"]').value,
+        email_enabled:panel.querySelector('[data-action="email-enabled"]').checked,
+        email_subject:panel.querySelector('[data-action="email-subject"]').value,
+        email_body:panel.querySelector('[data-action="email-body"]').value
+      })});
+      statusEl.textContent=(r&&r.ok)?'Gemt ✓':'Fejl';
+      if(r&&r.ok)crmpLoadPipelinesAndRefreshSettings();
     });
   });
 }
