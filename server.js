@@ -5876,8 +5876,18 @@ app.post('/api/crm/leads', auth, financeOnly, asyncRoute(async (req, res) => {
   res.json({ ok: true, id: r.id, contact_id: linked.contactId, customer_id: linked.customerId });
 }));
 app.get('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => {
-  const lead = await pgOne('SELECT l.*, u.name AS owner_name, c.customer_id AS customer_id FROM crm_leads l LEFT JOIN users u ON u.id=l.owner_id LEFT JOIN crm_contacts c ON c.id=l.contact_id WHERE l.id=$1', [req.params.id]);
+  let lead = await pgOne('SELECT l.*, u.name AS owner_name, c.customer_id AS customer_id FROM crm_leads l LEFT JOIN users u ON u.id=l.owner_id LEFT JOIN crm_contacts c ON c.id=l.contact_id WHERE l.id=$1', [req.params.id]);
   if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
+  // Selvhelbredende efterudfyldning: leads oprettet FØR kontakt/kunde blev
+  // koblet automatisk ved oprettelse (indført senere) mangler contact_id/
+  // customer_id — det er derfor 🏠 Kunde-panelet og 📎 Filer-fanen aldrig
+  // dukkede op på ældre leads. Kobles nu på, første gang et sådant lead åbnes,
+  // med samme find-eller-opret-logik som bruges ved oprettelse/konvertering.
+  if (!lead.contact_id) {
+    const linked = await crmFindOrCreateContactAndCustomer(lead.name, lead.email, lead.phone, lead.address, lead.note);
+    await pool.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, lead.id]);
+    lead = await pgOne('SELECT l.*, u.name AS owner_name, c.customer_id AS customer_id FROM crm_leads l LEFT JOIN users u ON u.id=l.owner_id LEFT JOIN crm_contacts c ON c.id=l.contact_id WHERE l.id=$1', [req.params.id]);
+  }
   const customFields = await crmGetCustomFieldDefs('lead');
   const customValues = await crmGetCustomFieldValues('lead', lead.id);
   const activities = (await pool.query('SELECT a.*, u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.entity_type=$1 AND a.entity_id=$2 ORDER BY a.created_at DESC, a.id DESC', ['lead', lead.id])).rows;
@@ -6010,10 +6020,14 @@ app.post('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res
   if (!pipelineId) return res.status(400).json({ error: 'Ingen salgs-pipeline findes' });
   let stageId = b.stage_id;
   if (!stageId) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [pipelineId]); stageId = s && s.id; }
+  // Bruger samme find-eller-opret-logik som ved lead-oprettelse (og konvertering),
+  // så en direkte-oprettet sale (uden om et lead) også får en rigtig kunde
+  // koblet med det samme — ellers dukkede 🏠 Kunde-panelet og 📎 Filer-fanen
+  // aldrig op på den slags sales.
   let contactId = b.contact_id || null;
   if (!contactId && (b.contact_name || b.contact_phone || b.contact_email)) {
-    const c = await pgOne('INSERT INTO crm_contacts (name,email,phone) VALUES ($1,$2,$3) RETURNING id', [b.contact_name || b.name, b.contact_email || null, b.contact_phone || null]);
-    contactId = c.id;
+    const linked = await crmFindOrCreateContactAndCustomer(b.contact_name || b.name, b.contact_email || null, b.contact_phone || null, null, null);
+    contactId = linked.contactId;
   }
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_opportunities WHERE stage_id=$1', [stageId]);
   const r = await pgOne(`
@@ -6024,11 +6038,24 @@ app.post('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res
   res.json({ ok: true, id: r.id });
 }));
 app.get('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, res) => {
-  const opp = await pgOne(`
+  const oppQuery = `
     SELECT o.*, c.name AS contact_name, c.phone AS contact_phone, c.email AS contact_email, c.address AS contact_address, c.customer_id AS customer_id
     FROM crm_opportunities o LEFT JOIN crm_contacts c ON c.id=o.contact_id WHERE o.id=$1
-  `, [req.params.id]);
+  `;
+  let opp = await pgOne(oppQuery, [req.params.id]);
   if (!opp) return res.status(404).json({ error: 'Opportunity ikke fundet' });
+  // Selvhelbredende efterudfyldning — samme grund som ved leads: en sale kan
+  // mangle kunde-koblingen enten fordi den er oprettet direkte uden om et lead
+  // (før find-eller-opret-rettelsen ovenfor i POST-routen), eller fordi den slet
+  // ingen kontakt har. Koble til/opret nu, første gang salget åbnes.
+  if (!opp.customer_id) {
+    const linked = await crmFindOrCreateContactAndCustomer(
+      opp.contact_name || opp.name, opp.contact_email || null, opp.contact_phone || null, opp.contact_address || null, null
+    );
+    if (opp.contact_id) await pool.query('UPDATE crm_contacts SET customer_id=$1 WHERE id=$2', [linked.customerId, opp.contact_id]);
+    else await pool.query('UPDATE crm_opportunities SET contact_id=$1 WHERE id=$2', [linked.contactId, opp.id]);
+    opp = await pgOne(oppQuery, [req.params.id]);
+  }
   const customFields = await crmGetCustomFieldDefs('opportunity');
   const customValues = await crmGetCustomFieldValues('opportunity', opp.id);
   const activities = (await pool.query('SELECT a.*, u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.entity_type=$1 AND a.entity_id=$2 ORDER BY a.created_at DESC, a.id DESC', ['opportunity', opp.id])).rows;
