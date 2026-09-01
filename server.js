@@ -573,6 +573,10 @@ async function initSchema() {
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS scheduled_email_sent_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS reminder_email_sent_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS sms_reminder_sent_at TEXT;
+    -- Eget "allerede sendt"-flag til "Vi kommer i DAG"-mailen (adskilt fra
+    -- reminder_email_sent_at ovenfor, som er til "i morgen"), så de to
+    -- påmindelser ikke blokerer hinanden.
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS reminder_today_email_sent_at TEXT;
 
     -- PUSH/SMS-NOTIFIKATIONER (medarbejder-push + kunde-SMS "din montør kommer").
     ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
@@ -1148,6 +1152,36 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}, updated_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- SAMLET SKABELON-CENTER ("Skabeloner" i topmenuen, ét sted for ALLE
+    -- mail-skabeloner) — "singulære" system-mails, dvs. mails der kun findes
+    -- i ÉT aktivt eksemplar ad gangen (modsat email_templates/
+    -- document_email_templates ovenfor, hvor man vælger mellem FLERE
+    -- navngivne varianter). "enabled" bruges reelt kun for skabeloner der
+    -- sendes AUTOMATISK (fx ved ny kunde) — manuelt afsendte skabeloner
+    -- (Vi kommer i dag/i morgen, Tak for accept) ignorerer feltet ved
+    -- afsendelse, men gemmer det alligevel for et ensartet UI.
+    CREATE TABLE IF NOT EXISTS system_email_templates (
+      key TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body_html TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
+    -- BRUGERDEFINEREDE SKABELONER — frit oprettede mail-skabeloner uden fast
+    -- automatisk handling (endnu), jf. Martins ønske om løbende at kunne
+    -- oprette flere skabeloner fra samme sted. Vises i Skabeloner-sidens
+    -- "Andre skabeloner"-sektion.
+    CREATE TABLE IF NOT EXISTS custom_email_templates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body_html TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     -- ── PRISFORESPØRGSLER til leverandører (kun materiale-linjer, uden priser)
     -- og BLANKE TILBUD til underleverandører (alle linjer, uden priser) — samme
     -- mekanik, forskellig linje-udvælgelse og modtager-antal. ──────────────
@@ -1331,6 +1365,51 @@ async function initSchema() {
     'Vedhæftet finder du vores pleje- og vedligeholdelsesvejledning, som beskriver hvordan du bedst passer på dit nybehandlede gulv den første tid.\n\n' +
     'Mange tak for denne gang — vi håber du bliver glad for resultatet!\n\nVenlig hilsen\n{firma}'
   ]);
+
+  // ── SAMLET SKABELON-CENTER: engangs-migrering + standardtekster ────────
+  // Flytter en evt. tidligere tilpasset færdig-mail-tekst fra de gamle
+  // app_settings-nøgler over i den nye system_email_templates-tabel (så intet
+  // tabes ved omlægningen til ét samlet Skabeloner-sted, se leveringsnoten),
+  // normaliserer variabel-syntaksen til {{var}} som resten af appen bruger,
+  // og sår standardtekster for de nye skabeloner (Velkomst til nye kunder,
+  // Vi kommer i dag) samt for to hidtil hårdkodede mails der nu bliver
+  // redigerbare for første gang (Vi kommer i morgen, Tak for accept).
+  {
+    const oldCompletionRows = (await pool.query(
+      "SELECT key,value FROM app_settings WHERE key IN ('completion_email_subject','completion_email_body')"
+    )).rows;
+    const oldCompletionMap = {};
+    oldCompletionRows.forEach(r => { oldCompletionMap[r.key] = r.value; });
+    const toDbl = s => String(s || '').replace(/\{(kunde|firma|opgave|dato|tidspunkt|medarbejder|fag|adresse)\}/g, '{{$1}}');
+    const systemEmailDefaults = [
+      ['completion', 'Færdig-mail til kunden',
+        toDbl(oldCompletionMap.completion_email_subject) || 'Vi er færdige hos dig — {{kunde}}',
+        toDbl(oldCompletionMap.completion_email_body) || 'Hej,\n\nVi vil gerne informere dig om, at vi nu er færdige med arbejdet hos dig ({{opgave}}).\n\nVedhæftet finder du vores pleje- og vedligeholdelsesvejledning, som beskriver hvordan du bedst passer på dit nybehandlede gulv den første tid.\n\nMange tak for denne gang — vi håber du bliver glad for resultatet!\n\nVenlig hilsen\n{{firma}}',
+        1],
+      ['reminder_tomorrow', 'Vi kommer i morgen',
+        'Vi kommer i morgen — {{firma}}',
+        'Hej,\n\nVi vil bare give dig besked om, at vi kommer i morgen{{tidspunkt}} og udfører ({{opgave}}).\n\nDu kan altid se status på din opgave her: {{link}}\n\nVenlig hilsen\n{{firma}}',
+        1],
+      ['reminder_today', 'Vi kommer i dag',
+        'Vi kommer i dag — {{firma}}',
+        'Hej,\n\nVi vil bare give dig besked om, at vi kommer i dag{{tidspunkt}} og udfører ({{opgave}}).\n\nDu kan altid se status på din opgave her: {{link}}\n\nVenlig hilsen\n{{firma}}',
+        1],
+      ['customer_welcome', 'Velkomst til nye kunder',
+        'Velkommen som kunde hos {{firma}}! 🎉',
+        '<p>Hej {{kunde}},</p><p>Tusind tak fordi du er blevet kunde hos {{firma}} — vi glæder os til samarbejdet!</p><p>Har du spørgsmål undervejs, er du altid velkommen til at kontakte os.</p><p>Mange hilsner<br>{{firma}}</p>',
+        0],
+      ['quote_accepted', 'Tak for accept af tilbud',
+        'Tak for din accept, {{kunde}}! 🎉',
+        '<p>Hej {{kunde}},</p><p>Tusind tak fordi du har accepteret tilbuddet <b>{{dokument_nr}}</b> hos {{firma}} — vi glæder os til at komme i gang! 🛠️</p><p>Du kan altid følge dit projekt og se alle dine tilbud og fakturaer på din helt egen side her, uden at skulle logge ind:</p><p><a href="{{link}}">{{link}}</a></p><p>Gem gerne linket — det er dit permanente overblik fremover.</p><p>Har du spørgsmål, er du altid velkommen til at kontakte os.</p><p>Mange hilsner<br>{{firma}}</p>',
+        1],
+    ];
+    for (const [key, name, subject, body, enabled] of systemEmailDefaults) {
+      await pool.query(
+        `INSERT INTO system_email_templates (key,name,subject,body_html,enabled) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (key) DO NOTHING`,
+        [key, name, subject, body, enabled]
+      );
+    }
+  }
 
   // ── ØKONOMI: engangs-bootstrap ──────────────────────────────
   // Ingen har adgang til Økonomi-sektionen som standard. Første gang serveren
@@ -1886,8 +1965,9 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
   if (body.quote_top_note_default !== undefined) entries.push(['quote_top_note_default', sanitizeRichText(String(body.quote_top_note_default).slice(0, 2000))]);
   if (body.quote_bottom_note_default !== undefined) entries.push(['quote_bottom_note_default', sanitizeRichText(String(body.quote_bottom_note_default).slice(0, 2000))]);
   if (body.default_tax_rate !== undefined) entries.push(['default_tax_rate', String(Number(body.default_tax_rate) || 25)]);
-  if (body.completion_email_subject !== undefined) entries.push(['completion_email_subject', String(body.completion_email_subject).slice(0, 300)]);
-  if (body.completion_email_body !== undefined) entries.push(['completion_email_body', String(body.completion_email_body).slice(0, 5000)]);
+  // completion_email_subject/completion_email_body er flyttet til det samlede
+  // Skabeloner-center (PUT /api/system-email-templates/completion) — se
+  // leveringsnoten om konsolideringen. Kun selve PDF-vedhæftningen bor stadig her.
   if (body.cleaning_pdf_base64 !== undefined) entries.push(['cleaning_pdf_base64', body.cleaning_pdf_base64 ? String(body.cleaning_pdf_base64).slice(0, 15000000) : null]);
   if (body.cleaning_pdf_filename !== undefined) entries.push(['cleaning_pdf_filename', body.cleaning_pdf_filename ? String(body.cleaning_pdf_filename).slice(0, 200) : null]);
   for (const [key, value] of entries) {
@@ -1900,17 +1980,14 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
 }));
 
 app.get('/api/settings/completion-email', auth, adminOnly, asyncRoute(async (req, res) => {
-  const rows = await pool.query(
-    "SELECT key,value FROM app_settings WHERE key IN ('completion_email_subject','completion_email_body','cleaning_pdf_filename')"
-  );
-  const map = {};
-  rows.rows.forEach(r => { map[r.key] = r.value; });
+  // Emne/besked er flyttet til det samlede Skabeloner-center (GET
+  // /api/system-email-templates) — denne route dækker nu kun selve
+  // PDF-vedhæftningen + mail-opsætnings-status, som stadig hører til her.
+  const pdfFilenameRow = await pgOne("SELECT value FROM app_settings WHERE key='cleaning_pdf_filename'");
   const pdfRow = await pgOne("SELECT value FROM app_settings WHERE key='cleaning_pdf_base64'");
   res.json({
-    subject: map.completion_email_subject || 'Vi er færdige hos dig — {kunde}',
-    body: map.completion_email_body || 'Hej,\n\nVi vil gerne informere dig om, at vi nu er færdige med arbejdet hos dig ({opgave}).\n\nVedhæftet finder du en vejledning til efterbehandling/rengøring.\n\nMange tak for denne gang!\n\nVenlig hilsen\n{firma}',
     has_pdf: !!(pdfRow && pdfRow.value),
-    pdf_filename: map.cleaning_pdf_filename || null,
+    pdf_filename: (pdfFilenameRow && pdfFilenameRow.value) || null,
     mail_configured: mailIsConfigured()
   });
 }));
@@ -1922,14 +1999,15 @@ app.post('/api/settings/test-completion-email', auth, adminOnly, asyncRoute(asyn
   try {
     // Til en ren test sender vi direkte med skabelonen, uden at kræve en rigtig opgave:
     const settingsRows = await pool.query(
-      "SELECT key,value FROM app_settings WHERE key IN ('company_name','completion_email_subject','completion_email_body','cleaning_pdf_base64','cleaning_pdf_filename')"
+      "SELECT key,value FROM app_settings WHERE key IN ('company_name','cleaning_pdf_base64','cleaning_pdf_filename')"
     );
     const settings = {};
     settingsRows.rows.forEach(r => { settings[r.key] = r.value; });
+    const sysTpl = await pgOne("SELECT * FROM system_email_templates WHERE key='completion'");
     const companyName = settings.company_name || 'Gulv Master Enterprise ApS';
-    const subject = (settings.completion_email_subject || 'Vi er færdige hos dig — {kunde}').replace('{kunde}', 'Test-kunde').replace('{firma}', companyName);
-    const bodyTemplate = settings.completion_email_body || 'Hej,\n\nDette er en TEST af færdig-mailen.\n\nVenlig hilsen\n{firma}';
-    const bodyText = bodyTemplate.replace('{opgave}', 'Test-opgave').replace('{kunde}', 'Test-kunde').replace('{firma}', companyName);
+    const subject = fillDocEmailVars(sysTpl?.subject || 'Vi er færdige hos dig — {{kunde}}', { kunde: 'Test-kunde', firma: companyName });
+    const bodyTemplate = sysTpl?.body_html || 'Hej,\n\nDette er en TEST af færdig-mailen.\n\nVenlig hilsen\n{{firma}}';
+    const bodyText = fillDocEmailVars(bodyTemplate, { opgave: 'Test-opgave', kunde: 'Test-kunde', firma: companyName });
     const attachments = [];
     if (settings.cleaning_pdf_base64) {
       attachments.push({ filename: settings.cleaning_pdf_filename || 'test.pdf', content: Buffer.from(settings.cleaning_pdf_base64, 'base64'), contentType: 'application/pdf' });
@@ -2430,18 +2508,27 @@ async function sendCompletionEmail(booking) {
   }
 
   const settingsRows = await pool.query(
-    "SELECT key,value FROM app_settings WHERE key IN ('company_name','completion_email_subject','completion_email_body','cleaning_pdf_base64','cleaning_pdf_filename')"
+    "SELECT key,value FROM app_settings WHERE key IN ('company_name','cleaning_pdf_base64','cleaning_pdf_filename')"
   );
   const settings = {};
   settingsRows.rows.forEach(r => { settings[r.key] = r.value; });
+  // Emne/besked kommer nu fra det samlede Skabeloner-center (system_email_templates),
+  // ikke længere fra app_settings — se leveringsnoten om konsolideringen.
+  const sysTpl = await pgOne("SELECT * FROM system_email_templates WHERE key='completion'");
+  if (sysTpl && !sysTpl.enabled) {
+    await pool.query(
+      'INSERT INTO completion_emails (booking_id,task_id,to_email,status,error,sent_at) VALUES ($1,$2,$3,$4,$5,' + nowTextSQL() + ')',
+      [booking.id, booking.task_id, null, 'skipped', 'Skabelonen "Færdig-mail til kunden" er slået fra i Skabeloner-centeret']
+    );
+    return;
+  }
 
   const companyName = settings.company_name || 'Gulv Master Enterprise ApS';
   const jobName = task?.job_name || 'din opgave';
-  const subject = (settings.completion_email_subject || 'Vi er færdige hos dig — {kunde}')
-    .replace('{kunde}', jobName).replace('{firma}', companyName);
-  const bodyTemplate = settings.completion_email_body ||
-    'Hej,\n\nVi vil gerne informere dig om, at vi nu er færdige med arbejdet hos dig ({opgave}).\n\nVedhæftet finder du en vejledning til efterbehandling/rengøring.\n\nMange tak for denne gang!\n\nVenlig hilsen\n{firma}';
-  const bodyText = bodyTemplate.replace('{opgave}', jobName).replace('{kunde}', jobName).replace('{firma}', companyName);
+  const subject = fillDocEmailVars(sysTpl?.subject || 'Vi er færdige hos dig — {{kunde}}', { kunde: jobName, firma: companyName });
+  const bodyTemplate = sysTpl?.body_html ||
+    'Hej,\n\nVi vil gerne informere dig om, at vi nu er færdige med arbejdet hos dig ({{opgave}}).\n\nVedhæftet finder du en vejledning til efterbehandling/rengøring.\n\nMange tak for denne gang!\n\nVenlig hilsen\n{{firma}}';
+  const bodyText = fillDocEmailVars(bodyTemplate, { opgave: jobName, kunde: jobName, firma: companyName });
   const bodyHtml = bodyText.split('\n').map(line => line ? `<p>${line.replace(/</g, '&lt;')}</p>` : '<br>').join('');
 
   const attachments = [];
@@ -4929,6 +5016,23 @@ app.post('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) =>
   const r = await pool.query(`
     INSERT INTO customers (name,email,phone,address,notes,is_company,cvr) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
   `, [String(b.name).trim(), b.email || null, b.phone || null, b.address || null, b.notes || null, isCompany ? 1 : 0, cvr]);
+  // AUTOMATISK VELKOMSTMAIL TIL NYE KUNDER — ny funktion (var ikke tidligere
+  // muligt), styret af "Aktiv"-knappen på skabelonen i Skabeloner-centeret
+  // (system_email_templates, key='customer_welcome'). Slået FRA som standard
+  // ved denne omlægning, så ingen kunder pludselig får en uventet mail — se
+  // leveringsnoten. Fejler mailen, må det aldrig vælte selve kundeoprettelsen.
+  try {
+    if (b.email && mailIsConfigured()) {
+      const sysTpl = await pgOne("SELECT * FROM system_email_templates WHERE key='customer_welcome' AND enabled=1");
+      if (sysTpl) {
+        const company = await getCompanyInfo();
+        const vars = { kunde: String(b.name).trim(), firma: company.name };
+        const subject = fillDocEmailVars(sysTpl.subject, vars);
+        const bodyHtml = fillDocEmailVars(sysTpl.body_html, vars);
+        await sendMailUniversal({ to: b.email, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml) });
+      }
+    }
+  } catch (e) { console.error('Kunne ikke sende velkomstmail til ny kunde:', e.message); }
   res.json({ ok: true, id: r.rows[0].id });
 }));
 app.put('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -6161,6 +6265,54 @@ app.delete('/api/document-email-templates/:id', auth, financeOnly, asyncRoute(as
   res.json({ ok: true });
 }));
 
+// ── SAMLET SKABELON-CENTER (Skabeloner i topmenuen) ──────────────────
+// "Singulære" system-mails — ét aktivt eksemplar pr. key, redigeres inline
+// (ingen separat opret/slet, kun de faste keys sat i initSchema()).
+app.get('/api/system-email-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM system_email_templates ORDER BY key ASC');
+  res.json(rows.rows);
+}));
+app.put('/api/system-email-templates/:key', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const fields = [], values = [];
+  if (body.subject !== undefined) { fields.push(`subject=$${fields.length + 1}`); values.push(String(body.subject).trim().slice(0, 300)); }
+  if (body.body_html !== undefined) { fields.push(`body_html=$${fields.length + 1}`); values.push(String(body.body_html).slice(0, 40000)); }
+  if (body.enabled !== undefined) { fields.push(`enabled=$${fields.length + 1}`); values.push(body.enabled ? 1 : 0); }
+  if (!fields.length) return res.json({ ok: true });
+  fields.push(`updated_at=${nowTextSQL()}`);
+  values.push(req.params.key);
+  const r = await pool.query(`UPDATE system_email_templates SET ${fields.join(',')} WHERE key=$${values.length}`, values);
+  if (!r.rowCount) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  res.json({ ok: true });
+}));
+
+// Brugerdefinerede skabeloner uden fast automatisk handling (endnu) — frit
+// opret/redigér/slet, jf. Martins ønske om løbende at kunne oprette flere.
+app.get('/api/custom-email-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM custom_email_templates ORDER BY name ASC');
+  res.json(rows.rows);
+}));
+app.post('/api/custom-email-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name || !body.subject || !body.body_html) return res.status(400).json({ error: 'Navn, emne og indhold skal udfyldes' });
+  const r = await pool.query(`
+    INSERT INTO custom_email_templates (name,subject,body_html,updated_at) VALUES ($1,$2,$3,${nowTextSQL()}) RETURNING id
+  `, [String(body.name).trim().slice(0, 200), String(body.subject).trim().slice(0, 300), String(body.body_html).slice(0, 40000)]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/custom-email-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const r = await pool.query(`
+    UPDATE custom_email_templates SET name=$1,subject=$2,body_html=$3,updated_at=${nowTextSQL()} WHERE id=$4
+  `, [String(body.name || '').trim().slice(0, 200), String(body.subject || '').trim().slice(0, 300), String(body.body_html || '').slice(0, 40000), req.params.id]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  res.json({ ok: true });
+}));
+app.delete('/api/custom-email-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM custom_email_templates WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
 // ══════════════════════════════════════════════════════════════
 // NOTIFIKATIONER — konfigurerbare regler + log
 // ══════════════════════════════════════════════════════════════
@@ -6592,36 +6744,59 @@ app.get('/api/assignments/:id/portal-link', auth, adminOnly, asyncRoute(async (r
   res.json({ ok: true, url: portalLinkFor(token) });
 }));
 
-async function sendReminderEmails() {
+// Fælles motor for både "Vi kommer i morgen" og "Vi kommer i dag" — kun
+// dagsoffset (0=i dag, 1=i morgen), sendt-flag-kolonne og skabelon-key
+// adskiller de to, så de aldrig blokerer hinanden eller sender dobbelt.
+// Emne/besked hentes nu fra det samlede Skabeloner-center (system_email_templates),
+// i stedet for at være hårdkodet — se leveringsnoten om konsolideringen.
+async function sendReminderEmailsGeneric(dayOffset, sentAtColumn, templateKey) {
   if (!mailIsConfigured()) return { sent: 0, reason: 'E-mail er ikke konfigureret på serveren' };
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-  const iso = tomorrow.toISOString().slice(0, 10);
+  const targetDate = new Date(); targetDate.setDate(targetDate.getDate() + dayOffset);
+  const iso = targetDate.toISOString().slice(0, 10);
   // DISTINCT ON (task_id): hvis samme opgave ved en fejl er booket flere gange samme
   // dag, skal kunden kun have ÉN påmindelse, ikke én pr. duplikeret booking-række.
+  const sysTpl = await pgOne('SELECT * FROM system_email_templates WHERE key=$1', [templateKey]);
+  if (sysTpl && !sysTpl.enabled) return { sent: 0, reason: 'Skabelonen "' + sysTpl.name + '" er slået fra i Skabeloner-centeret' };
   const rows = await pool.query(`
     SELECT DISTINCT ON (b.task_id) b.*, t.job_name, t.customer_email FROM planning_bookings b JOIN jt_tasks t ON b.task_id=t.id
-    WHERE b.start_date=$1 AND COALESCE(b.planning_mode,'daily')='daily' AND b.reminder_email_sent_at IS NULL AND t.customer_email IS NOT NULL
+    WHERE b.start_date=$1 AND COALESCE(b.planning_mode,'daily')='daily' AND b.${sentAtColumn} IS NULL AND t.customer_email IS NOT NULL
     ORDER BY b.task_id, b.id ASC
   `, [iso]);
   const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
   const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
+  const dagOrd = dayOffset === 0 ? 'i dag' : 'i morgen';
   let sentCount = 0;
   for (const b of rows.rows) {
     const portalToken = b.job_name ? await getOrCreateCustomerPortalToken(b.job_name) : null;
     const portalLink = portalToken ? customerPortalLinkFor(portalToken) : '';
-    const subject = `Vi kommer i morgen — ${companyName}`;
-    const text = `Hej,\n\nVi vil bare give dig besked om, at vi kommer i morgen${b.start_time ? ' kl. ' + b.start_time : ''} og udfører (${b.job_name}).` +
-      (portalLink ? `\n\nDu kan altid se status på din opgave her: ${portalLink}` : '') +
-      `\n\nVenlig hilsen\n${companyName}`;
+    const vars = {
+      kunde: b.job_name, opgave: b.job_name, firma: companyName,
+      tidspunkt: b.start_time ? ' kl. ' + b.start_time : '',
+      link: portalLink
+    };
+    const subject = fillDocEmailVars(sysTpl?.subject || `Vi kommer ${dagOrd} — ${companyName}`, vars);
+    let text = fillDocEmailVars(
+      sysTpl?.body_html || `Hej,\n\nVi vil bare give dig besked om, at vi kommer ${dagOrd}{{tidspunkt}} og udfører ({{opgave}}).\n\nDu kan altid se status på din opgave her: {{link}}\n\nVenlig hilsen\n{{firma}}`,
+      vars
+    );
+    // Hvis {{link}} er tom (ingen sags-portal endnu), ryd tomme linjer op i stedet
+    // for at lade "her: " stå og pege på ingenting.
+    text = text.split('\n').filter(l => l.trim() !== '' || true).join('\n').replace(/^Du kan altid se status på din opgave her: \s*$/m, '').replace(/\n{3,}/g, '\n\n');
     let status = 'sent', error = null;
     try { await sendMailUniversal({ to: b.customer_email, subject, text, html: text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('') }); sentCount++; }
     catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
-    await pool.query('INSERT INTO customer_schedule_emails (booking_id,task_id,kind,to_email,status,error) VALUES ($1,$2,$3,$4,$5,$6)', [b.id, b.task_id, 'reminder', b.customer_email, status, error]);
+    await pool.query('INSERT INTO customer_schedule_emails (booking_id,task_id,kind,to_email,status,error) VALUES ($1,$2,$3,$4,$5,$6)', [b.id, b.task_id, dayOffset === 0 ? 'reminder_today' : 'reminder', b.customer_email, status, error]);
     // Marker ALLE bookinger for samme opgave+dato som sendt, ikke kun den ene, så en
-    // evt. duplikeret booking ikke selv trigger endnu en påmindelse i morgen.
-    await pool.query(`UPDATE planning_bookings SET reminder_email_sent_at=${nowTextSQL()} WHERE task_id=$1 AND start_date=$2`, [b.task_id, iso]);
+    // evt. duplikeret booking ikke selv trigger endnu en påmindelse.
+    await pool.query(`UPDATE planning_bookings SET ${sentAtColumn}=${nowTextSQL()} WHERE task_id=$1 AND start_date=$2`, [b.task_id, iso]);
   }
   return { sent: sentCount, candidates: rows.rows.length };
+}
+async function sendReminderEmails() {
+  return sendReminderEmailsGeneric(1, 'reminder_email_sent_at', 'reminder_tomorrow');
+}
+async function sendTodayReminderEmails() {
+  return sendReminderEmailsGeneric(0, 'reminder_today_email_sent_at', 'reminder_today');
 }
 
 // "Din montør kommer i morgen"-SMS — samme kandidat-logik som mail-påmindelsen
@@ -6667,6 +6842,13 @@ app.post('/api/customer-emails/send-reminders', auth, adminOnly, asyncRoute(asyn
   let smsResult = { sent: 0, reason: 'SMS er ikke konfigureret på serveren (GATEWAYAPI_API_TOKEN/TWILIO_*)' };
   try { smsResult = await sendReminderSms(); } catch (e) { smsResult = { sent: 0, reason: e.message }; }
   res.json({ ok: true, ...emailResult, sms_sent: smsResult.sent, sms_candidates: smsResult.candidates || 0, sms_reason: smsResult.reason || null });
+}));
+// "Vi kommer i DAG"-varianten — samme manuelle knap-mønster som "i morgen"
+// ovenfor, men til dagens bookinger og med sit eget skabelon/sendt-flag, så de
+// to ikke griber ind i hinanden. Kun mail (ingen SMS-variant, jf. Martins ønske).
+app.post('/api/customer-emails/send-today-reminders', auth, adminOnly, asyncRoute(async (req, res) => {
+  const emailResult = await sendTodayReminderEmails();
+  res.json({ ok: true, ...emailResult });
 }));
 
 // ══════════════════════════════════════════════════════════════
@@ -9086,10 +9268,16 @@ app.post('/api/public/quotes/:token/accept', asyncRoute(async (req, res) => {
       const portalToken = quote.job_name ? await getOrCreateCustomerPortalToken(quote.job_name) : null;
       const portalLink = portalToken ? customerPortalLinkFor(portalToken) : PUBLIC_APP_URL;
       const firstName = name.split(' ')[0];
-      const subject = `Tak for din accept, ${firstName}! 🎉`;
-      const bodyHtml = `<p>Hej ${escPublic(firstName)},</p><p>Tusind tak fordi du har accepteret tilbuddet <b>${escPublic(quote.quote_number)}</b> hos ${escPublic(company.name)} — vi glæder os til at komme i gang! 🛠️</p><p>Du kan altid følge dit projekt og se alle dine tilbud og fakturaer på din helt egen side her, uden at skulle logge ind:</p><p><a href="${escPublic(portalLink)}">${escPublic(portalLink)}</a></p><p>Gem gerne linket — det er dit permanente overblik fremover.</p><p>Har du spørgsmål, er du altid velkommen til at kontakte os.</p><p>Mange hilsner<br>${escPublic(company.name)}</p>`;
-      await sendMailUniversal({ to: quote.customer_email, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml) });
-      logDocActivity('quote', quote.id, 'accepted_email_sent', 'System', `til ${quote.customer_email}`);
+      // Emne/besked hentes nu fra det samlede Skabeloner-center (system_email_templates,
+      // key='quote_accepted') i stedet for at være hårdkodet — se leveringsnoten.
+      const sysTpl = await pgOne("SELECT * FROM system_email_templates WHERE key='quote_accepted'");
+      if (!sysTpl || sysTpl.enabled) {
+        const vars = { kunde: escPublic(firstName), firma: escPublic(company.name), link: escPublic(portalLink), dokument_nr: escPublic(quote.quote_number) };
+        const subject = fillDocEmailVars(sysTpl?.subject || `Tak for din accept, {{kunde}}! 🎉`, vars);
+        const bodyHtml = fillDocEmailVars(sysTpl?.body_html || `<p>Hej {{kunde}},</p><p>Tusind tak fordi du har accepteret tilbuddet <b>{{dokument_nr}}</b> hos {{firma}} — vi glæder os til at komme i gang! 🛠️</p><p>Du kan altid følge dit projekt og se alle dine tilbud og fakturaer på din helt egen side her, uden at skulle logge ind:</p><p><a href="{{link}}">{{link}}</a></p><p>Gem gerne linket — det er dit permanente overblik fremover.</p><p>Har du spørgsmål, er du altid velkommen til at kontakte os.</p><p>Mange hilsner<br>{{firma}}</p>`, vars);
+        await sendMailUniversal({ to: quote.customer_email, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml) });
+        logDocActivity('quote', quote.id, 'accepted_email_sent', 'System', `til ${quote.customer_email}`);
+      }
     }
   } catch (e) { console.error('Kunne ikke sende accept-kvitteringsmail:', e.message); }
   res.json({ ok: true, project_id: projectId });

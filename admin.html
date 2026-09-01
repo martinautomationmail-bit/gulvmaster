@@ -1819,16 +1819,53 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <div class="app-shell">
 <aside class="sidebar" id="app-sidebar">
   <div class="sidebar-head">
-    <button class="brand" type="button" title="Gå til Daglig planlægning" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name" class="sidebar-brand-name">Gulv Master — Admin</span></button>
+    <button class="brand" type="button" title="Gå til Kommandocenter" data-action="brand-home"><span class="logo" id="nav-logo">🪵</span><span id="nav-brand-name" class="sidebar-brand-name">Gulv Master — Admin</span></button>
     <button class="sidebar-toggle" id="sidebar-toggle-btn" type="button" title="Fold sidebar ind/ud">‹</button>
   </div>
   <nav class="sidebar-nav">
-    <a class="tab" href="#dashboard" data-page="dashboard"><span class="stab-icon">🧭</span><span class="stab-label">Kommandocenter</span></a>
+    <!-- KOMMANDOCENTER — er ikke længere sit eget menupunkt i sidebaren; siden
+         (#page-dashboard) findes stadig og nås nu ved at trykke på selve
+         "Gulv Master"-logoet ovenfor (data-action="brand-home"). -->
+
+    <!-- CRM — nu sin egen ▾-dropdown-gruppe, i samme stil som Dagligplanlægning/
+         Tilbud & Faktura/Økonomi, i stedet for en statisk overskrift + 3 løse
+         menupunkter. Kunder/Leads/Sales er uændrede sider/routes, kun selve
+         sidebar-grupperingen er ny. -->
+    <div class="navdrop tab-navdrop hidden" id="crm-subdrop">
+      <div class="stab-row">
+        <a class="tab" href="#customers" data-page="customers" id="crm-main-tab-btn"><span class="stab-icon">📇</span><span class="stab-label">CRM</span></a>
+        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
+      </div>
+      <div class="navdrop-menu">
+        <a class="navdrop-item" href="#customers" data-page="customers" id="customers-tab-btn">👥 Kunder</a>
+        <a class="navdrop-item" href="#crmp/leads" data-page="crmp" data-crmp-pipeline-type="lead" id="crmp-leads-tab-btn">🧲 Leads</a>
+        <a class="navdrop-item" href="#crmp/sales" data-page="crmp" data-crmp-pipeline-type="opportunity" id="crmp-sales-tab-btn">🤝 Sales</a>
+      </div>
+    </div>
+
+    <!-- TILBUD & FAKTURA — samme ▾-mønster som CRM/Dagligplanlægning/Økonomi.
+         Den separate "Tilbud & Faktura"-overskrift der lå ovenover ▾-rækken er
+         fjernet, da den blot duplikerede teksten der allerede står i selve
+         ▾-rækken (uoverensstemmende med Dagligplanlægning/Økonomis rene look).
+         "✉️ Mail-skabeloner"-genvejen er fjernet herfra, da al mail-skabelon-
+         redigering nu foregår ét sted, under fanen "Skabeloner" i toppen. -->
+    <div class="navdrop tab-navdrop hidden" id="quotes-subdrop">
+      <div class="stab-row">
+        <a class="tab" href="#quotes" data-page="quotes" id="quotes-tab-btn"><span class="stab-icon">🧾</span><span class="stab-label">Tilbud &amp; Faktura</span></a>
+        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
+      </div>
+      <div class="navdrop-menu">
+        <a class="navdrop-item" href="#quotes/faktura-tab" data-page="quotes" data-qztab-jump="invoices">🧾 Fakturaer</a>
+        <a class="navdrop-item" href="#quotes/tilbud-tab" data-page="quotes" data-qztab-jump="quotes">📝 Tilbud</a>
+        <a class="navdrop-item" href="#quotes/produkter" data-page="quotes" data-qztab-jump="products">📦 Produkter</a>
+        <a class="navdrop-item" href="#quotes/skabeloner" data-page="quotes" data-qztab-jump="templates">📑 Skabeloner</a>
+      </div>
+    </div>
 
     <!-- DAGLIGPLANLÆGNING — samler det der før var 3 separate menupunkter (Daglig
          plan, Kapacitet, Gantt) + deres undermenuer i én gruppe, efter Martins
          ønskede menustruktur. Peger stadig på nøjagtig de samme 4 sider/routes
-         som før (data-page uændret), kun grupperingen i sidebaren er ny. -->
+         som før (data-page uændret), kun placeringen i rækkefølgen er ny. -->
     <div class="navdrop tab-navdrop" id="plan-subdrop">
       <div class="stab-row">
         <a class="tab active" href="#plan" data-page="plan"><span class="stab-icon">📅</span><span class="stab-label">Dagligplanlægning</span></a>
@@ -1844,30 +1881,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
     <div class="sidebar-section-label hidden" id="projects-section-label">Projekter</div>
     <a class="tab hidden" href="#projects" data-page="projects" id="projects-tab-btn"><span class="stab-icon">🏗️</span><span class="stab-label">Projekter</span></a>
-
-    <div class="sidebar-section-label hidden" id="crm-section-label">CRM</div>
-    <a class="tab hidden" href="#customers" data-page="customers" id="customers-tab-btn"><span class="stab-icon">👥</span><span class="stab-label">Kunder</span></a>
-    <a class="tab hidden" href="#crmp/leads" data-page="crmp" data-crmp-pipeline-type="lead" id="crmp-leads-tab-btn"><span class="stab-icon">🧲</span><span class="stab-label">Leads</span></a>
-    <a class="tab hidden" href="#crmp/sales" data-page="crmp" data-crmp-pipeline-type="opportunity" id="crmp-sales-tab-btn"><span class="stab-icon">🤝</span><span class="stab-label">Sales</span></a>
-
-    <!-- TILBUD & FAKTURA — Produkter/Skabeloner/Mail-skabeloner lå før KUN som
-         in-page-faner (nederst i "..."-menuen på selve siden), ikke i sidebaren.
-         Nu er de også direkte sidebar-dybe-links, via samme data-qztab-jump-mønster
-         som Økonomi allerede bruger til sine underfaner (data-fintab-jump). -->
-    <div class="sidebar-section-label hidden" id="quotes-section-label">Tilbud &amp; Faktura</div>
-    <div class="navdrop tab-navdrop hidden" id="quotes-subdrop">
-      <div class="stab-row">
-        <a class="tab" href="#quotes" data-page="quotes" id="quotes-tab-btn"><span class="stab-icon">🧾</span><span class="stab-label">Tilbud &amp; Faktura</span></a>
-        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
-      </div>
-      <div class="navdrop-menu">
-        <a class="navdrop-item" href="#quotes/faktura-tab" data-page="quotes" data-qztab-jump="invoices">🧾 Fakturaer</a>
-        <a class="navdrop-item" href="#quotes/tilbud-tab" data-page="quotes" data-qztab-jump="quotes">📝 Tilbud</a>
-        <a class="navdrop-item" href="#quotes/produkter" data-page="quotes" data-qztab-jump="products">📦 Produkter</a>
-        <a class="navdrop-item" href="#quotes/skabeloner" data-page="quotes" data-qztab-jump="templates">📑 Skabeloner</a>
-        <a class="navdrop-item" href="#quotes/mailskabeloner" data-page="quotes" data-qztab-jump="mailtemplates">✉️ Mail-skabeloner</a>
-      </div>
-    </div>
 
     <!-- ØKONOMI — "🧾 Fakturaer" fjernet herfra efter Martins ønske (al fakturering
          køres nu fra Tilbud & Faktura-modulets egen Fakturaer-fane ovenfor). Selve
@@ -1907,6 +1920,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <span id="sync-ind" style="font-size:10px;color:rgba(255,255,255,.5)"></span>
     <button class="nb green" id="sync-btn">⚡ Synk JT</button>
     <button class="nb" id="sync-phones-btn" title="Henter kundetelefon + adresse-koordinater til vejret, med det samme, og viser resultatet direkte">📞 Synk telefon & vejr</button>
+    <a class="tab hidden" href="#email-templates" data-page="email-templates" id="email-templates-tab-btn" title="Alle mail-skabeloner ét sted">✉️ Skabeloner</a>
     <div class="navdrop" id="navdrop">
       <button class="nb navdrop-btn" id="navdrop-btn">👤 Min side ▾</button>
       <div class="navdrop-menu" id="navdrop-menu">
@@ -2016,22 +2030,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 
-  <div class="email-settings-card">
-    <div class="email-settings-head">
-      <div><div class="email-settings-title">📧 Færdig-mail til kunden</div><div class="email-settings-sub">Sendes automatisk til kundens e-mail, når en medarbejder markerer en opgave som færdig — med jeres rengørings-PDF vedhæftet.</div></div>
-      <span class="mail-status-pill" id="mail-status-pill">Tjekker…</span>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Emne <span class="opt-tag">{kunde} og {firma} indsættes automatisk</span></label><input id="email-subject" class="input" placeholder="Vi er færdige hos dig — {kunde}"></div>
-    </div>
-    <div class="form-group"><label class="form-label">Besked <span class="opt-tag">{opgave}, {kunde}, {firma} indsættes automatisk</span></label><textarea id="email-body" class="input" rows="6" style="font-family:inherit"></textarea></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Rengørings-PDF (vedhæftes automatisk)</label><input id="email-pdf-file" type="file" accept="application/pdf" class="input"><div class="muted-sm" id="email-pdf-current" style="margin-top:4px"></div></div>
-      <div class="form-group"><label class="form-label">Send test-mail til</label><div style="display:flex;gap:6px"><input id="email-test-to" class="input" placeholder="din@mail.dk"><button class="btn small" id="email-test-btn">Send test</button></div></div>
-    </div>
-    <div class="modal-actions" style="padding:0;border:0;margin-top:10px"><button class="btn primary small" id="email-save-btn">Gem mail-indstillinger</button></div>
-  </div>
-
   <div class="email-settings-card" style="margin-top:16px">
     <div class="email-settings-head">
       <div><div class="email-settings-title">📲 Push- og SMS-notifikationer</div><div class="email-settings-sub">Push til medarbejdere (ny/ændret opgave) virker altid, uden opsætning. SMS til kunder ("din montør kommer") og medarbejdere kræver en SMS-udbyder — se forklaring nedenfor.</div></div>
@@ -2043,11 +2041,71 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="hint" style="margin-top:6px">For at aktivere SMS skal en af disse miljøvariabler sættes på serveren (Render → Environment): <b>GATEWAYAPI_API_TOKEN</b> (dansk udbyder, gatewayapi.com — anbefalet, billigst for danske numre) <i>eller</i> <b>TWILIO_ACCOUNT_SID</b> + <b>TWILIO_AUTH_TOKEN</b> + <b>TWILIO_FROM_NUMBER</b>. Push kræver ingen opsætning — det virker allerede, når en medarbejder trykker "Slå notifikationer til" på deres side.</div>
   </div>
+  <!-- "Færdig-mail til kunden" og "Mail-skabeloner" (booking-varianter) er
+       flyttet herfra til det samlede Skabeloner-center (✉️ Skabeloner i
+       topmenuen) — se leveringsnoten om konsolideringen. -->
+</section>
 
-  <div class="page-head" style="margin-top:28px"><h2>📧 Mail-skabeloner</h2><p class="page-sub">Forskellige varianter af kunde-mailen — vælges når du trykker "Send planlægningsmail".</p>
-    <button class="nb blue" id="new-email-template-btn">+ Ny mail-skabelon</button>
+<!-- SKABELONER — samlet skabelon-center for ALLE mail-skabeloner i appen (✉️
+     Skabeloner i topmenuen), jf. Martins ønske om ét sted til det hele.
+     Fire faner: Automatiske mails (system_email_templates, ét aktivt
+     eksemplar pr. handling), Planlægningsmail (email_templates, flere
+     navngivne varianter man vælger imellem), Tilbud & faktura
+     (document_email_templates + faste koblinger pr. hændelse) og Andre
+     skabeloner (custom_email_templates, uden fast handling endnu). -->
+<section class="page" id="page-email-templates">
+  <div class="bly-pagehead">
+    <div><h2>✉️ Skabeloner</h2><div class="sub">Alle jeres mail-skabeloner ét sted — automatiske kunde-mails, planlægningsmails og tilbud/faktura-mails.</div></div>
   </div>
-  <div id="email-templates-list" class="dash-panel"></div>
+  <div class="bly-segtabs" id="eml-tabs">
+    <button class="bly-segtab active" data-emltab="auto" type="button">⚡ Automatiske mails</button>
+    <button class="bly-segtab" data-emltab="booking" type="button">📅 Planlægningsmail</button>
+    <button class="bly-segtab" data-emltab="documents" type="button">🧾 Tilbud &amp; faktura</button>
+    <button class="bly-segtab" data-emltab="custom" type="button">✨ Andre skabeloner</button>
+  </div>
+
+  <div class="emltabpage" id="emltab-auto">
+    <div class="hint" style="margin-bottom:14px">Disse mails sendes automatisk (eller ved tryk på en fast knap i appen) — her styrer du emne, indhold og om de er slået til.</div>
+    <div id="sys-email-templates-list"></div>
+  </div>
+
+  <div class="emltabpage" id="emltab-booking" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Mail-varianter ved booking</span></div>
+      <div class="bly-toolbar-right"><button class="bly-btn" id="new-email-template-btn" type="button">+ Ny mail-skabelon</button></div>
+    </div>
+    <div class="hint" style="margin-bottom:14px">Forskellige varianter af kunde-mailen — vælges når du trykker "Send planlægningsmail" ved en booking.</div>
+    <div id="email-templates-list" class="dash-panel"></div>
+  </div>
+
+  <div class="emltabpage" id="emltab-documents" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Mail-skabeloner til tilbud &amp; faktura</span></div>
+      <div class="bly-toolbar-right"><button class="bly-btn" id="doc-tpl-new-btn" type="button">+ Ny mail-skabelon</button></div>
+    </div>
+    <div class="hint" style="margin-bottom:14px">Bruges når du trykker "📧 Send til kunde" på et tilbud eller en faktura. Skrevet i HTML — PDF'en vedhæftes automatisk, og kundens portal-link (hvor de kan se alt og underskrive) kan sættes ind som en variabel.</div>
+    <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:4px">🔗 Standard-skabelon pr. hændelse</div>
+      <div class="hint" style="margin:0 0 12px">Faste koblinger, så det rigtige udseende bruges automatisk — men du kan altid ændre dem her, eller vælge en anden skabelon manuelt når du trykker "Send".</div>
+      <div id="doc-tpl-assign-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px"></div>
+    </div>
+    <table class="bly-table">
+      <thead><tr><th>Navn</th><th>Emne</th><th style="width:90px"></th></tr></thead>
+      <tbody id="doc-tpl-table-body"></tbody>
+    </table>
+  </div>
+
+  <div class="emltabpage" id="emltab-custom" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Andre skabeloner</span></div>
+      <div class="bly-toolbar-right"><button class="bly-btn" id="custom-tpl-new-btn" type="button">+ Ny skabelon</button></div>
+    </div>
+    <div class="hint" style="margin-bottom:14px">Frit oprettede skabeloner uden fast automatisk handling endnu — til løbende brug fremover, fx til nye handlinger I tilføjer senere.</div>
+    <table class="bly-table">
+      <thead><tr><th>Navn</th><th>Emne</th><th style="width:90px"></th></tr></thead>
+      <tbody id="custom-tpl-table-body"></tbody>
+    </table>
+  </div>
 </section>
 
 <!-- NOTIFIKATIONSINDSTILLINGER -->
@@ -2310,7 +2368,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="qz-more-menu" id="qz-more-menu">
         <button class="qz-more-item" data-qztab="products" type="button">📦 Produkter</button>
         <button class="qz-more-item" data-qztab="templates" type="button">📑 Skabeloner</button>
-        <button class="qz-more-item" data-qztab="mailtemplates" type="button">✉️ Mail-skabeloner</button>
       </div>
     </div>
   </div>
@@ -2379,22 +2436,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </table>
   </div>
 
-  <div class="qztabpage" id="qztab-mailtemplates" style="display:none">
-    <div class="bly-toolbar">
-      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Mail-skabeloner til tilbud &amp; faktura</span></div>
-      <div class="bly-toolbar-right"><button class="bly-btn" id="doc-tpl-new-btn" type="button">+ Ny mail-skabelon</button></div>
-    </div>
-    <div class="hint" style="margin-bottom:14px">Bruges når du trykker "📧 Send til kunde" på et tilbud eller en faktura. Skrevet i HTML — PDF'en vedhæftes automatisk, og kundens portal-link (hvor de kan se alt og underskrive) kan sættes ind som en variabel.</div>
-    <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-bottom:16px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:4px">🔗 Standard-skabelon pr. hændelse</div>
-      <div class="hint" style="margin:0 0 12px">Faste koblinger, så det rigtige udseende bruges automatisk — men du kan altid ændre dem her, eller vælge en anden skabelon manuelt når du trykker "Send".</div>
-      <div id="doc-tpl-assign-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px"></div>
-    </div>
-    <table class="bly-table">
-      <thead><tr><th>Navn</th><th>Emne</th><th style="width:90px"></th></tr></thead>
-      <tbody id="doc-tpl-body"></tbody>
-    </table>
-  </div>
+  <!-- "Mail-skabeloner til tilbud & faktura" er flyttet herfra til det
+       samlede Skabeloner-center (✉️ Skabeloner i topmenuen) — se
+       leveringsnoten om konsolideringen. -->
 </section>
 
 <!-- KUNDER (CRM) — eget kundekartotek, uafhængigt af JobTread. Bruges i
@@ -2907,6 +2951,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="btn small" id="plan-team-overview-btn" title="Se hvor alle medarbejdere er en given dag">👥 Hvor er alle</button>
         <button class="btn small" id="plan-route-map-btn" title="Kort over dagens ruter, eller alle projekter I nogensinde har haft">🗺️ Ruter & kort</button>
         <button class="btn small" id="send-reminders-btn" title="Sender mail + SMS (med montørens navn) til kunder booket i morgen, som ikke allerede har fået det">✉️ Send "vi kommer i morgen"</button>
+        <button class="btn small" id="send-today-reminders-btn" title="Sender mail til kunder booket i dag, som ikke allerede har fået det">☀️ Send "vi kommer i dag"</button>
       </div>
       <div class="workforce-bar" id="plan-workforce-filters"></div>
       <div class="board-outer" id="plan-board-outer">
@@ -4322,6 +4367,33 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
+<!-- ANDRE SKABELONER (uden fast automatisk handling endnu) — REDIGERING -->
+<div class="mo" id="custom-tpl-edit-modal">
+  <div class="modal manual-modal-modern" style="max-width:540px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">✨</span>
+      <div><div class="manual-modal-title" id="custom-tpl-edit-title">Ny skabelon</div><div class="manual-modal-sub">Ikke tilknyttet en automatisk handling endnu — gemmes til fremtidig brug</div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Navn <span class="opt-tag">kun til internt brug</span></label>
+      <input id="custom-tpl-name" class="input" placeholder="Fx Julehilsen til kunder">
+      <label class="form-label" style="margin-top:12px">Emnelinje</label>
+      <input id="custom-tpl-subject" class="input" placeholder="Fx Glædelig jul fra {{firma}}!">
+      <label class="form-label" style="margin-top:12px">Indhold</label>
+      <textarea id="custom-tpl-body" class="input" rows="7" placeholder="Hej {{kunde}},&#10;&#10;..."></textarea>
+      <div class="geo-hint" style="margin-top:8px">
+        <b>Variabler du kan bruge — klik for at indsætte:</b><br>
+        <div id="custom-tpl-var-buttons" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn danger" id="custom-tpl-delete" style="display:none">Slet</button>
+      <button class="btn" id="close-custom-tpl-edit">Annuller</button>
+      <button class="btn primary" id="save-custom-tpl-edit">Gem skabelon</button>
+    </div>
+  </div>
+</div>
+
 <!-- SEND TILBUD/FAKTURA TIL KUNDE -->
 <div class="mo" id="doc-send-modal">
   <div class="modal manual-modal-modern" style="max-width:520px">
@@ -4410,13 +4482,13 @@ document.getElementById('app').style.display='block';
       document.getElementById('finance-subdrop').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('quotes-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('quotes-subdrop').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('quotes-section-label').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('crm-subdrop').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('customers-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('crm-section-label').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('crmp-leads-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('crmp-sales-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('projects-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('projects-section-label').classList.toggle('hidden',!me.is_finance_admin);}
+      document.getElementById('projects-section-label').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('email-templates-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
   }catch(e){}
 })();
 
@@ -7834,7 +7906,7 @@ async function loadDocMailTemplates(){
   renderDocMailTemplatesTable();
 }
 function renderDocMailTemplatesTable(){
-  var el=document.getElementById('doc-tpl-body');
+  var el=document.getElementById('doc-tpl-table-body');
   if(!el)return;
   el.innerHTML=docMailTemplatesCache.length?docMailTemplatesCache.map(function(t){
     return '<tr><td>'+esc(t.name)+'</td><td>'+esc(t.subject)+'</td><td style="text-align:right;white-space:nowrap"><button class="btn small" data-action="edit-doc-tpl" data-doc-tpl-id="'+t.id+'">✏</button> <button class="btn small danger" data-action="delete-doc-tpl" data-doc-tpl-id="'+t.id+'">🗑</button></td></tr>';
@@ -7918,6 +7990,169 @@ async function saveDocTplAssignment(evt,val){
   var r=await api('/api/settings/email-template-assignments',{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){toast('Standard-skabelon opdateret','✓');docTplAssignCache=r.assignments||docTplAssignCache;}
   else toast((r&&r.error)||'Kunne ikke gemme koblingen','❌');
+}
+
+// ══════════════════════════════════════════════════════════════
+// SAMLET SKABELON-CENTER (✉️ Skabeloner i topmenuen) — ét sted for ALLE
+// mail-skabeloner i appen. Fire faner: Automatiske mails (herunder),
+// Planlægningsmail/Tilbud & faktura (genbruger listerne/modalerne ovenfor,
+// bare flyttet hertil) og Andre skabeloner (herunder).
+// ══════════════════════════════════════════════════════════════
+var emailTemplatesModuleInitialized=false;
+var emlActiveTab='auto';
+function initEmailTemplatesModule(){
+  if(!emailTemplatesModuleInitialized){
+    emailTemplatesModuleInitialized=true;
+    document.querySelectorAll('#eml-tabs .bly-segtab').forEach(function(b){
+      b.addEventListener('click',function(){switchEmlTab(b.dataset.emltab);});
+    });
+    document.getElementById('custom-tpl-new-btn').addEventListener('click',function(){openCustomTplEditor(null);});
+    document.getElementById('close-custom-tpl-edit').onclick=function(){closeModal('custom-tpl-edit-modal');};
+    document.getElementById('save-custom-tpl-edit').onclick=saveCustomTplEditor;
+    document.getElementById('custom-tpl-delete').onclick=deleteCustomTplEditor;
+  }
+  switchEmlTab(emlActiveTab);
+}
+function switchEmlTab(name){
+  emlActiveTab=name;
+  document.querySelectorAll('#eml-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.emltab===name);});
+  ['auto','booking','documents','custom'].forEach(function(n){document.getElementById('emltab-'+n).style.display=n===name?'':'none';});
+  if(name==='auto')loadSystemEmailTemplates();
+  if(name==='booking')loadEmailTemplates();
+  if(name==='documents'){loadDocMailTemplates();loadDocTplAssignments();}
+  if(name==='custom')loadCustomEmailTemplates();
+}
+
+// ── AUTOMATISKE MAILS (system_email_templates) — ét aktivt eksemplar pr. handling ──
+var SYS_EMAIL_META=[
+  {key:'completion',icon:'📧',help:'Sendes automatisk til kundens e-mail, når en medarbejder markerer en opgave som færdig — med jeres rengørings-PDF vedhæftet.',vars:'{{kunde}}, {{opgave}}, {{firma}}',hasPdfAndTest:true},
+  {key:'customer_welcome',icon:'🎉',help:'Sendes automatisk når en ny kunde oprettes i CRM (kræver at kunden har en e-mailadresse). Slået fra som standard.',vars:'{{kunde}}, {{firma}}'},
+  {key:'reminder_today',icon:'☀️',help:'Sendes fra knappen "Send vi kommer i dag" i Dagligplanlægning, til kunder booket i dag.',vars:'{{kunde}}, {{opgave}}, {{firma}}, {{tidspunkt}}, {{link}}'},
+  {key:'reminder_tomorrow',icon:'🌙',help:'Sendes fra knappen "Send vi kommer i morgen" i Dagligplanlægning, til kunder booket i morgen.',vars:'{{kunde}}, {{opgave}}, {{firma}}, {{tidspunkt}}, {{link}}'},
+  {key:'quote_accepted',icon:'🤝',help:'Sendes automatisk når en kunde accepterer et tilbud online, med et link til deres faste kundeportal.',vars:'{{kunde}}, {{firma}}, {{dokument_nr}}, {{link}}'}
+];
+var sysEmailTemplatesCache={};
+async function loadSystemEmailTemplates(){
+  var rows=await api('/api/system-email-templates')||[];
+  sysEmailTemplatesCache={};
+  rows.forEach(function(r){sysEmailTemplatesCache[r.key]=r;});
+  renderSystemEmailTemplates();
+  if(sysEmailTemplatesCache.completion)loadEmailSettings();
+}
+function renderSystemEmailTemplates(){
+  var el=document.getElementById('sys-email-templates-list');
+  if(!el)return;
+  el.innerHTML=SYS_EMAIL_META.map(function(m){
+    var t=sysEmailTemplatesCache[m.key]||{name:m.key,subject:'',body_html:'',enabled:1};
+    var pdfTestHtml=m.hasPdfAndTest?(
+      '<div class="form-row">'+
+        '<div class="form-group"><label class="form-label">Rengørings-PDF (vedhæftes automatisk)</label><input id="email-pdf-file" type="file" accept="application/pdf" class="input"><div class="muted-sm" id="email-pdf-current" style="margin-top:4px"></div></div>'+
+        '<div class="form-group"><label class="form-label">Send test-mail til</label><div style="display:flex;gap:6px"><input id="email-test-to" class="input" placeholder="din@mail.dk"><button class="btn small" id="email-test-btn" type="button">Send test</button></div></div>'+
+      '</div>'
+    ):'';
+    var statusPill=m.hasPdfAndTest?'<span class="mail-status-pill" id="mail-status-pill" style="margin-right:auto">Tjekker…</span>':'<span style="margin-right:auto"></span>';
+    return '<div class="email-settings-card" data-sys-key="'+m.key+'">'+
+      '<div class="email-settings-head">'+
+        '<div><div class="email-settings-title">'+m.icon+' '+esc(t.name)+'</div><div class="email-settings-sub">'+esc(m.help)+'</div></div>'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap;cursor:pointer"><input type="checkbox" class="sys-tpl-enabled" '+(t.enabled?'checked':'')+'> Aktiv</label>'+
+      '</div>'+
+      '<div class="form-row"><div class="form-group"><label class="form-label">Emne <span class="opt-tag">'+esc(m.vars)+' indsættes automatisk</span></label><input class="input sys-tpl-subject" value="'+esc(t.subject)+'"></div></div>'+
+      '<div class="form-group"><label class="form-label">Besked</label><textarea class="input sys-tpl-body" rows="6" style="font-family:inherit">'+esc(t.body_html)+'</textarea></div>'+
+      pdfTestHtml+
+      '<div class="modal-actions" style="padding:0;border:0;margin-top:10px;justify-content:flex-start;gap:10px">'+statusPill+'<button class="btn primary small sys-tpl-save" type="button" style="margin-left:auto">Gem</button></div>'+
+    '</div>';
+  }).join('');
+  el.querySelectorAll('.sys-tpl-save').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var card=btn.closest('[data-sys-key]');
+      saveSystemEmailTemplate(card.dataset.sysKey,card);
+    });
+  });
+  var completionCard=el.querySelector('[data-sys-key="completion"]');
+  if(completionCard){
+    document.getElementById('email-pdf-file').addEventListener('change',function(){});
+    document.getElementById('email-test-btn').onclick=sendTestCompletionEmail;
+  }
+}
+async function saveSystemEmailTemplate(key,card){
+  var body={
+    subject:card.querySelector('.sys-tpl-subject').value.trim(),
+    body_html:card.querySelector('.sys-tpl-body').value,
+    enabled:card.querySelector('.sys-tpl-enabled').checked
+  };
+  if(!body.subject||!body.body_html){toast('Udfyld emne og besked','⚠');return;}
+  var r=await api('/api/system-email-templates/'+key,{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){
+    toast('Skabelon gemt ✓','✓');
+    if(key==='completion'){
+      // Selve PDF-filen (hvis en ny er valgt) og status-pillen håndteres stadig
+      // via de gamle PDF-specifikke felter/funktioner — kun emne/besked er nu
+      // flyttet til system-email-templates.
+      await saveEmailSettings();
+    }
+    await loadSystemEmailTemplates();
+  }
+  else if(r)toast(r.error||'Fejl','❌');
+}
+
+// ── ANDRE SKABELONER (custom_email_templates) — uden fast handling endnu ──
+var customEmailTemplatesCache=[];
+var customTplEditCtx=null;
+async function loadCustomEmailTemplates(){
+  var t=await api('/api/custom-email-templates');
+  customEmailTemplatesCache=t||[];
+  var el=document.getElementById('custom-tpl-table-body');
+  if(!el)return;
+  el.innerHTML=customEmailTemplatesCache.length?customEmailTemplatesCache.map(function(t){
+    return '<tr><td>'+esc(t.name)+'</td><td>'+esc(t.subject)+'</td><td style="text-align:right;white-space:nowrap"><button class="btn small" data-action="edit-custom-tpl" data-custom-tpl-id="'+t.id+'">✏</button> <button class="btn small danger" data-action="delete-custom-tpl" data-custom-tpl-id="'+t.id+'">🗑</button></td></tr>';
+  }).join(''):'<tr><td colspan="3" class="dash-empty">Ingen skabeloner endnu — opret en, hvis I fx senere vil tilknytte den en ny handling i programmet.</td></tr>';
+  el.querySelectorAll('[data-action="edit-custom-tpl"]').forEach(function(b){
+    b.onclick=function(){var t=customEmailTemplatesCache.find(function(x){return x.id==b.dataset.customTplId;});openCustomTplEditor(t);};
+  });
+  el.querySelectorAll('[data-action="delete-custom-tpl"]').forEach(function(b){
+    b.onclick=async function(){
+      if(!await gmConfirm('Slet denne skabelon?'))return;
+      var r=await api('/api/custom-email-templates/'+b.dataset.customTplId,{method:'DELETE'});
+      if(r&&r.ok){toast('Skabelon slettet','🗑');await loadCustomEmailTemplates();}
+    };
+  });
+}
+function openCustomTplEditor(tpl){
+  customTplEditCtx=tpl?tpl.id:null;
+  document.getElementById('custom-tpl-edit-title').textContent=tpl?'Redigér skabelon':'Ny skabelon';
+  document.getElementById('custom-tpl-name').value=tpl?tpl.name:'';
+  document.getElementById('custom-tpl-subject').value=tpl?tpl.subject:'';
+  document.getElementById('custom-tpl-body').value=tpl?tpl.body_html:'';
+  document.getElementById('custom-tpl-delete').style.display=tpl?'inline-flex':'none';
+  var btnWrap=document.getElementById('custom-tpl-var-buttons');
+  var vars=[['{{kunde}}','Kunde/sagsnavn'],['{{firma}}','Firmanavn']];
+  btnWrap.innerHTML=vars.map(function(v){return '<button type="button" class="btn small" data-insert-custom-var="'+esc(v[0])+'" title="'+esc(v[1])+'">'+esc(v[0])+'</button>';}).join('');
+  btnWrap.querySelectorAll('[data-insert-custom-var]').forEach(function(b){
+    b.onclick=function(){
+      var ta=document.getElementById('custom-tpl-body');
+      var pos=ta.selectionStart||ta.value.length;
+      ta.value=ta.value.slice(0,pos)+b.dataset.insertCustomVar+ta.value.slice(pos);
+      ta.focus();ta.selectionStart=ta.selectionEnd=pos+b.dataset.insertCustomVar.length;
+    };
+  });
+  document.getElementById('custom-tpl-edit-modal').classList.add('open');
+}
+async function saveCustomTplEditor(){
+  var name=document.getElementById('custom-tpl-name').value.trim();
+  var subject=document.getElementById('custom-tpl-subject').value.trim();
+  var body_html=document.getElementById('custom-tpl-body').value.trim();
+  if(!name||!subject||!body_html){toast('Udfyld navn, emne og indhold','⚠');return;}
+  var payload={name:name,subject:subject,body_html:body_html};
+  var call=customTplEditCtx?api('/api/custom-email-templates/'+customTplEditCtx,{method:'PUT',body:JSON.stringify(payload)}):api('/api/custom-email-templates',{method:'POST',body:JSON.stringify(payload)});
+  var r=await call;
+  if(r&&r.ok){toast('Skabelon gemt ✓','✓');closeModal('custom-tpl-edit-modal');await loadCustomEmailTemplates();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function deleteCustomTplEditor(){
+  if(!customTplEditCtx)return;
+  if(!await gmConfirm('Slet denne skabelon?'))return;
+  var r=await api('/api/custom-email-templates/'+customTplEditCtx,{method:'DELETE'});
+  if(r&&r.ok){toast('Skabelon slettet','🗑');closeModal('custom-tpl-edit-modal');await loadCustomEmailTemplates();}
 }
 
 // ── SEND TILBUD/FAKTURA TIL KUNDE (PDF vedhæftet + link til kundens portal) ──
@@ -10633,28 +10868,31 @@ async function saveSettings(){
   if(r&&r.ok){toast('Virksomhedsprofil gemt','✓');await loadSettings();}else if(r)toast(r.error||'Fejl','❌');
 }
 
-// FÆRDIG-MAIL TIL KUNDEN
+// FÆRDIG-MAIL TIL KUNDEN — emne/besked er flyttet ind i skabelon-kortet
+// (system_email_templates, se saveSystemEmailTemplate), denne funktion styrer
+// nu kun selve PDF-vedhæftningen + mail-opsætnings-status-pillen på kortet.
 async function loadEmailSettings(){
   var s=await api('/api/settings/completion-email');
   if(!s)return;
-  document.getElementById('email-subject').value=s.subject||'';
-  document.getElementById('email-body').value=s.body||'';
-  document.getElementById('email-pdf-current').textContent=s.has_pdf?('📎 '+(s.pdf_filename||'PDF uploadet')):'Ingen PDF uploadet endnu';
+  var pdfCurrent=document.getElementById('email-pdf-current');
+  if(pdfCurrent)pdfCurrent.textContent=s.has_pdf?('📎 '+(s.pdf_filename||'PDF uploadet')):'Ingen PDF uploadet endnu';
   var pill=document.getElementById('mail-status-pill');
-  if(s.mail_configured){pill.textContent='✓ Mail er sat op';pill.className='mail-status-pill ok';}
-  else{pill.textContent='⚠ SMTP mangler at blive sat op på serveren';pill.className='mail-status-pill off';}
+  if(pill){
+    if(s.mail_configured){pill.textContent='✓ Mail er sat op';pill.className='mail-status-pill ok';}
+    else{pill.textContent='⚠ SMTP mangler at blive sat op på serveren';pill.className='mail-status-pill off';}
+  }
 }
 async function saveEmailSettings(){
-  var body={completion_email_subject:document.getElementById('email-subject').value.trim(),completion_email_body:document.getElementById('email-body').value};
-  var file=document.getElementById('email-pdf-file').files[0];
-  if(file){
-    var dataUri=await fileToDataURL(file);
-    body.cleaning_pdf_base64=dataUri.split(',')[1]||'';
-    body.cleaning_pdf_filename=file.name;
-  }
+  var fileEl=document.getElementById('email-pdf-file');
+  var file=fileEl?fileEl.files[0]:null;
+  if(!file)return; // Intet nyt PDF-upload denne gang — emne/besked er allerede gemt separat.
+  var body={};
+  var dataUri=await fileToDataURL(file);
+  body.cleaning_pdf_base64=dataUri.split(',')[1]||'';
+  body.cleaning_pdf_filename=file.name;
   var r=await api('/api/settings',{method:'PUT',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Mail-indstillinger gemt','✓');document.getElementById('email-pdf-file').value='';await loadEmailSettings();}
-  else if(r)toast(r.error||'Fejl','❌');
+  if(r&&r.ok){fileEl.value='';await loadEmailSettings();}
+  else if(r)toast(r.error||'Fejl ved upload af PDF','❌');
 }
 async function sendTestCompletionEmail(){
   var to=document.getElementById('email-test-to').value.trim();
@@ -10719,7 +10957,7 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 // kun var en PRIVAT funktion inde i bind() (fanget med en rigtig browser-test,
 // ikke kun en syntakstjek — samme disciplin som ved "kan ikke åbne en sag"-
 // rettelsen). Adfærden er uændret, kun hvor funktionen er defineret.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail'];
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','email-templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail'];
 function switchPage(page,skipHash){
   if(VALID_PAGES.indexOf(page)===-1)page='plan';
   document.querySelectorAll('.tab,.navdrop-item,.navdrop-btn').forEach(function(x){x.classList.remove('active');});
@@ -10753,7 +10991,8 @@ function switchPage(page,skipHash){
   if(page==='customer-history'){var chIn=document.getElementById('ch-search-input');if(chIn)setTimeout(function(){chIn.focus();},50);}
   if(page==='capacity'){try{renderCapacity();}catch(e){console.error('Cap fejl',e);}setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);}
   if(page==='dashboard')loadDashboard();
-  if(page==='templates'){loadTemplates();loadEmailTemplates();}
+  if(page==='templates')loadTemplates();
+  if(page==='email-templates'){if(!me.is_finance_admin){toast('Du har ikke adgang til Skabeloner','🔒');switchPage('plan');return;}initEmailTemplatesModule();}
   if(page==='notif-settings')loadNotificationSettings();
   if(page==='finance'){if(!me.is_finance_admin){toast('Du har ikke adgang til Økonomi','🔒');switchPage('plan');return;}loadFinance();}
   if(page==='quotes'){if(!me.is_finance_admin){toast('Du har ikke adgang til Tilbud & Faktura','🔒');switchPage('plan');return;}initQuotesModule();}
@@ -10798,7 +11037,7 @@ function bind(){
     if(parts[0]==='quotes'&&parts[1]==='faktura'&&parts[2])openInvoiceDetail(Number(parts[2]));
     // Dyb-link til en af Tilbud & Faktura-modulets egne faner fra sidebaren —
     // #quotes/<alias> (uden id-segment ovenfor) — se data-qztab-jump i sidebaren.
-    var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','mailskabeloner':'mailtemplates'};
+    var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates'};
     if(parts[0]==='quotes'&&parts[1]&&QZTAB_HASH_MAP[parts[1]])switchQzTab(QZTAB_HASH_MAP[parts[1]]);
     if(parts[0]==='crmp'&&parts[1]==='leads')crmpSelectPipelineByType('lead');
     if(parts[0]==='crmp'&&parts[1]==='sales')crmpSelectPipelineByType('opportunity');
@@ -10921,7 +11160,7 @@ function bind(){
   document.querySelectorAll('[data-action="tab-caret-toggle"]').forEach(function(btn){
     btn.addEventListener('click',function(e){
       e.stopPropagation();
-      var menu=btn.parentElement.querySelector('.navdrop-menu');
+      var menu=btn.closest('.tab-navdrop').querySelector('.navdrop-menu');
       document.querySelectorAll('.tab-navdrop .navdrop-menu.open').forEach(function(m){if(m!==menu)m.classList.remove('open');});
       menu.classList.toggle('open');
     });
@@ -11117,6 +11356,15 @@ function bind(){
     }
     else if(r)toast(r.error||'Kunne ikke sende','❌');
   };
+  document.getElementById('send-today-reminders-btn').onclick=async function(){
+    if(!await gmConfirm('Send "vi kommer i dag" til alle kunder der er booket i dag, og som ikke allerede har fået den?'))return;
+    var btn=this;btn.disabled=true;btn.textContent='Sender…';
+    var r=await api('/api/customer-emails/send-today-reminders',{method:'POST'});
+    btn.disabled=false;btn.textContent='☀️ Send "vi kommer i dag"';
+    if(r&&r.ok&&r.candidates!==undefined)toast('Mail sendt til '+r.sent+' af '+r.candidates+' kunder','☀️');
+    else if(r&&r.ok)toast(r.reason||'Ingen kunder booket i dag','☀️');
+    else if(r)toast(r.error||r.reason||'Kunne ikke sende','❌');
+  };
   document.getElementById('cap-today').onclick=function(){scrollToWeek(weekKey(new Date()));};
   document.getElementById('cap-groupby').onchange=function(e){capacityGroupBy=e.target.value;renderCapacity();};
   document.getElementById('avail-groupby').onchange=function(e){availGroupBy=e.target.value;renderAvailability();};
@@ -11151,8 +11399,9 @@ function bind(){
   document.getElementById('user-avatar-clear').onclick=function(){document.getElementById('user-avatar-file').value='';updateAvatarPreview(null);};
   // Virksomhedsprofil
   document.getElementById('settings-save-btn').onclick=saveSettings;
-  document.getElementById('email-save-btn').onclick=saveEmailSettings;
-  document.getElementById('email-test-btn').onclick=sendTestCompletionEmail;
+  // "email-save-btn"/"email-test-btn" er flyttet ind i Skabeloner-kortet for
+  // Færdig-mailen (dynamisk indhold) og bindes derfor i renderSystemEmailTemplates()
+  // i stedet for her — se initEmailTemplatesModule().
   document.getElementById('sms-test-btn').onclick=sendTestSms;
   // Opgaveliste
   ['tasklist-search','tasklist-type-filter','tasklist-status-filter'].forEach(function(id){document.getElementById(id).addEventListener('input',renderTaskList);});
@@ -11341,7 +11590,7 @@ function bind(){
       if(act==='toggle-invoiced'){e.stopPropagation();toggleInvoiced(+a.dataset.bookingId,a.checked);}
       if(act==='toggle-completed'){e.stopPropagation();toggleCompleted(+a.dataset.bookingId,a.dataset.completed==='1');}
       if(act==='delete-type'){e.stopPropagation();deleteTaskType(a.dataset.key);}
-      if(act==='brand-home')switchPage('plan');
+      if(act==='brand-home')switchPage('dashboard');
       return;
     }
     // Click on assignment pill → open full edit modal
@@ -11360,7 +11609,7 @@ function bind(){
     // Åbnet direkte via et #quotes/tilbud/123-link (fx højreklik → åbn i ny fane)
     if(initialPage==='quotes'&&initialParts[1]==='tilbud'&&initialParts[2])openQuoteEditor(Number(initialParts[2]));
     if(initialPage==='quotes'&&initialParts[1]==='faktura'&&initialParts[2])openInvoiceDetail(Number(initialParts[2]));
-    var QZTAB_HASH_MAP_INIT={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','mailskabeloner':'mailtemplates'};
+    var QZTAB_HASH_MAP_INIT={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates'};
     if(initialPage==='quotes'&&initialParts[1]&&QZTAB_HASH_MAP_INIT[initialParts[1]])switchQzTab(QZTAB_HASH_MAP_INIT[initialParts[1]]);
     if(initialPage==='crmp'&&initialParts[1]==='leads')crmpSelectPipelineByType('lead');
     if(initialPage==='crmp'&&initialParts[1]==='sales')crmpSelectPipelineByType('opportunity');
@@ -11702,11 +11951,11 @@ async function loadQzQuotes(){var r=await api('/api/quotes');qzQuotes=Array.isAr
 async function loadQzInvoices(){var r=await api('/api/invoices');qzInvoices=Array.isArray(r)?r:[];}
 async function loadQzTemplates(){var r=await api('/api/quote-templates');qzTemplates=Array.isArray(r)?r:[];}
 
-var QZ_MORE_TABS=['products','templates','mailtemplates'];
+var QZ_MORE_TABS=['products','templates'];
 function switchQzTab(name){
   qzActiveTab=name;
   document.querySelectorAll('#qz-tabs > .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
-  // "Mere"-knappen (Produkter/Skabeloner/Mail-skabeloner) er flyttet ud af de altid-synlige
+  // "Mere"-knappen (Produkter/Skabeloner) er flyttet ud af de altid-synlige
   // faner og ind i en lille dropdown — se qz-more-drop/-menu/-btn ovenfor i #qz-tabs. Selve
   // knappen skal fremstå "aktiv" (samme underline-stil som en almindelig fane) når en af
   // dens undersider er den aktuelt viste, så man stadig kan se hvor man er.
@@ -11714,8 +11963,7 @@ function switchQzTab(name){
   document.getElementById('qz-more-btn').classList.toggle('active',isMoreTab);
   document.querySelectorAll('.qz-more-item').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
   document.getElementById('qz-more-menu').classList.remove('open');
-  ['products','templates','quotes','invoices','mailtemplates'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
-  if(name==='mailtemplates'){loadDocMailTemplates();loadDocTplAssignments();}
+  ['products','templates','quotes','invoices'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
 }
 
 // ── FÆLLES LINJE-EDITOR — genbruges af både tilbudseditoren og
