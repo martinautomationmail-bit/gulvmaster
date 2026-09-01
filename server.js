@@ -1054,6 +1054,11 @@ async function initSchema() {
       synced_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_customer_emails_customer ON customer_emails(customer_id, internal_date DESC);
+    -- has_attachments sættes ved synk ud fra en "has:attachment"-søgning (billigt),
+    -- så "Filer"-fanen (se GET /api/crm/customers/:id/files) kun behøver at hente
+    -- fulde mail-detaljer live for de mails der reelt har vedhæftninger, i stedet
+    -- for at gennemgå ALLE kundens mails hver gang fanen åbnes.
+    ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS has_attachments INTEGER NOT NULL DEFAULT 0;
 
     -- ── CLOSE CRM-INTEGRATION: undgår at oprette samme kunde to gange, hvis
     -- Close afsender det samme webhook-event flere gange (Close retrier selv
@@ -1189,6 +1194,15 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_crm_tasks_entity ON crm_tasks(entity_type, entity_id);
+    -- Udvidet efter Martins ønske om Close-lignende opgaver: ansvarlig medarbejder,
+    -- dato/tid for opfølgning, og prioritet — så der kan bygges en fælles
+    -- "Opfølgninger"-oversigt på tværs af alle leads/opportunities (se
+    -- GET /api/crm/tasks/overview).
+    ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS due_date TEXT;
+    ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS due_time TEXT;
+    ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 0;
 
     -- ── E-SIGNATUR på tilbud: fast link pr. tilbud kunden kan acceptere og
     -- underskrive (tegnet signatur + navn + IP/tidspunkt som bevis). ────
@@ -5377,21 +5391,35 @@ async function gmailSyncCustomer(customer, accessToken) {
   const q = '(to:"' + customer.email + '" OR from:"' + customer.email + '")';
   const list = await gmailApiFetch('/messages?maxResults=40&q=' + encodeURIComponent(q), accessToken);
   const messages = list.messages || [];
+  // Billig ekstra søgning: hvilke af disse mails har en vedhæftning? (bruges af
+  // "Filer"-fanen, se GET /api/crm/customers/:id/files) — undgår at skulle hente
+  // fulde besked-detaljer for hver eneste mail bare for at vide det.
+  let attachmentIds = new Set();
+  try {
+    const attList = await gmailApiFetch('/messages?maxResults=100&q=' + encodeURIComponent(q + ' has:attachment'), accessToken);
+    attachmentIds = new Set((attList.messages || []).map(x => x.id));
+  } catch (e) { console.error('Kunne ikke tjekke vedhæftninger for kunde #' + customer.id + ':', e.message); }
+  const connEmail = (await gmailGetConnection() || {}).email || '';
   let added = 0;
   for (const m of messages) {
-    const exists = await pgOne('SELECT id FROM customer_emails WHERE gmail_message_id=$1', [m.id]);
-    if (exists) continue;
+    const hasAttachment = attachmentIds.has(m.id) ? 1 : 0;
+    const exists = await pgOne('SELECT id, has_attachments FROM customer_emails WHERE gmail_message_id=$1', [m.id]);
+    if (exists) {
+      if (hasAttachment && !exists.has_attachments) {
+        await pool.query('UPDATE customer_emails SET has_attachments=1 WHERE id=$1', [exists.id]);
+      }
+      continue;
+    }
     const detail = await gmailApiFetch('/messages/' + m.id + '?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date', accessToken);
     const headers = (detail.payload && detail.payload.headers) || [];
     const fromParsed = gmailParseFromHeader(gmailHeader(headers, 'From'));
-    const connEmail = (await gmailGetConnection() || {}).email || '';
     const direction = fromParsed.email && connEmail && fromParsed.email.toLowerCase() === connEmail.toLowerCase() ? 'out' : 'in';
     try {
       await pool.query(`
-        INSERT INTO customer_emails (customer_id, gmail_message_id, gmail_thread_id, subject, snippet, from_email, from_name, to_emails, direction, internal_date)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        INSERT INTO customer_emails (customer_id, gmail_message_id, gmail_thread_id, subject, snippet, from_email, from_name, to_emails, direction, internal_date, has_attachments)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         ON CONFLICT (gmail_message_id) DO NOTHING
-      `, [customer.id, m.id, detail.threadId || null, gmailHeader(headers, 'Subject') || '(uden emne)', detail.snippet || '', fromParsed.email || null, fromParsed.name || null, gmailHeader(headers, 'To') || null, direction, Number(detail.internalDate) || Date.now()]);
+      `, [customer.id, m.id, detail.threadId || null, gmailHeader(headers, 'Subject') || '(uden emne)', detail.snippet || '', fromParsed.email || null, fromParsed.name || null, gmailHeader(headers, 'To') || null, direction, Number(detail.internalDate) || Date.now(), hasAttachment]);
       added++;
     } catch (e) { console.error('Kunne ikke gemme mail ' + m.id + ':', e.message); }
   }
@@ -5412,6 +5440,31 @@ app.post('/api/gmail/sync', auth, financeOnly, asyncRoute(async (req, res) => {
 app.get('/api/crm/customers/:id/emails', auth, financeOnly, asyncRoute(async (req, res) => {
   const rows = (await pool.query('SELECT * FROM customer_emails WHERE customer_id=$1 ORDER BY internal_date DESC', [req.params.id])).rows;
   res.json(rows);
+}));
+
+// "Filer" — punkt i Martins Round D-ønske: samme idé som Close's Detaljer/Filer-
+// faneskift, en samlet visning af alle vedhæftninger (billeder, PDF'er osv.)
+// kunden har sendt på mail, uden at skulle åbne hver enkelt mail selv. Henter
+// kun fulde besked-detaljer live for de mails der er markeret has_attachments=1
+// ved synk (se gmailSyncCustomer), og er derfor billig selv med mange mails.
+// Kappet til de 40 nyeste mails-med-vedhæftning pr. kald, for ikke at kunne løbe
+// løbsk hvis en kunde en dag har hundredvis.
+app.get('/api/crm/customers/:id/files', auth, financeOnly, asyncRoute(async (req, res) => {
+  const accessToken = await gmailGetValidAccessToken();
+  const emails = (await pool.query('SELECT * FROM customer_emails WHERE customer_id=$1 AND has_attachments=1 ORDER BY internal_date DESC LIMIT 40', [req.params.id])).rows;
+  const files = [];
+  for (const e of emails) {
+    try {
+      const detail = await gmailApiFetch('/messages/' + e.gmail_message_id + '?format=full', accessToken);
+      const acc = { html: null, text: null, attachments: [] };
+      gmailWalkPayload(detail.payload, acc);
+      acc.attachments.forEach(a => files.push({
+        filename: a.filename, mimeType: a.mimeType, size: a.size, attachmentId: a.attachmentId,
+        gmail_message_id: e.gmail_message_id, subject: e.subject, internal_date: e.internal_date
+      }));
+    } catch (err) { console.error('Kunne ikke hente vedhæftninger for mail ' + e.gmail_message_id + ':', err.message); }
+  }
+  res.json(files);
 }));
 
 app.get('/api/gmail/messages/:messageId', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -6036,13 +6089,42 @@ app.get('/api/crm/customers/:id/opportunities', auth, financeOnly, asyncRoute(as
 app.get('/api/crm/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
   const { entity_type, entity_id } = req.query;
   if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type og entity_id påkrævet' });
-  const rows = (await pool.query('SELECT * FROM crm_tasks WHERE entity_type=$1 AND entity_id=$2 ORDER BY done ASC, id ASC', [entity_type, entity_id])).rows;
+  const rows = (await pool.query(`
+    SELECT t.*, u.name AS assigned_name, u.color AS assigned_color, u.initials AS assigned_initials
+    FROM crm_tasks t LEFT JOIN users u ON u.id=t.assigned_to
+    WHERE t.entity_type=$1 AND t.entity_id=$2 ORDER BY t.done ASC, t.id ASC
+  `, [entity_type, entity_id])).rows;
+  res.json(rows);
+}));
+// "Opfølgninger" — alle opgaver på tværs af leads/opportunities, samlet ét
+// sted, så Martin og Sarah kan se hinandens (og egne) kommende opfølgninger
+// og oprette/omfordele dem uden at skulle ind på hvert enkelt lead/opportunity.
+// Skal registreres FØR GET /api/crm/tasks/:id, hvis den nogensinde tilføjes —
+// ellers ville "overview" selv blive fortolket som et :id.
+app.get('/api/crm/tasks/overview', auth, financeOnly, asyncRoute(async (req, res) => {
+  const includeDone = req.query.include_done === '1';
+  const rows = (await pool.query(`
+    SELECT t.*,
+      COALESCE(l.name, o.name) AS entity_name,
+      u.name AS assigned_name, u.color AS assigned_color, u.initials AS assigned_initials,
+      cu.name AS created_by_name
+    FROM crm_tasks t
+    LEFT JOIN crm_leads l ON t.entity_type='lead' AND l.id=t.entity_id
+    LEFT JOIN crm_opportunities o ON t.entity_type='opportunity' AND o.id=t.entity_id
+    LEFT JOIN users u ON u.id=t.assigned_to
+    LEFT JOIN users cu ON cu.id=t.created_by
+    ${includeDone ? '' : 'WHERE t.done=0'}
+    ORDER BY t.done ASC, (t.due_date IS NULL) ASC, t.due_date ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id ASC
+  `)).rows;
   res.json(rows);
 }));
 app.post('/api/crm/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.entity_type || !b.entity_id || !String(b.title || '').trim()) return res.status(400).json({ error: 'Titel mangler' });
-  const row = await pgOne('INSERT INTO crm_tasks (entity_type,entity_id,title) VALUES ($1,$2,$3) RETURNING *', [b.entity_type, b.entity_id, String(b.title).trim()]);
+  const row = await pgOne(`
+    INSERT INTO crm_tasks (entity_type,entity_id,title,assigned_to,created_by,due_date,due_time,priority)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
+  `, [b.entity_type, b.entity_id, String(b.title).trim(), b.assigned_to || null, req.user.id, b.due_date || null, b.due_time || null, b.priority ? 1 : 0]);
   res.json(row);
 }));
 app.put('/api/crm/tasks/:id', auth, financeOnly, asyncRoute(async (req, res) => {
@@ -6050,6 +6132,10 @@ app.put('/api/crm/tasks/:id', auth, financeOnly, asyncRoute(async (req, res) => 
   const fields = [], values = [];
   if (b.title !== undefined) { fields.push(`title=$${fields.length + 1}`); values.push(String(b.title).trim()); }
   if (b.done !== undefined) { fields.push(`done=$${fields.length + 1}`); values.push(b.done ? 1 : 0); }
+  if (b.assigned_to !== undefined) { fields.push(`assigned_to=$${fields.length + 1}`); values.push(b.assigned_to || null); }
+  if (b.due_date !== undefined) { fields.push(`due_date=$${fields.length + 1}`); values.push(b.due_date || null); }
+  if (b.due_time !== undefined) { fields.push(`due_time=$${fields.length + 1}`); values.push(b.due_time || null); }
+  if (b.priority !== undefined) { fields.push(`priority=$${fields.length + 1}`); values.push(b.priority ? 1 : 0); }
   if (!fields.length) return res.json({ ok: true });
   values.push(req.params.id);
   await pool.query(`UPDATE crm_tasks SET ${fields.join(',')} WHERE id=$${values.length}`, values);

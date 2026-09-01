@@ -717,7 +717,11 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-task-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px}
 .crmpx-task-row:last-of-type{border-bottom:0}
 .crmpx-task-row.done .crmpx-task-title{text-decoration:line-through;color:var(--bly-sub)}
-.crmpx-task-title{flex:1}
+.crmpx-task-title{flex:1;min-width:0}
+.crmpx-task-meta{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.crmpx-task-due{font-size:10.5px;color:var(--bly-sub);white-space:nowrap}
+.crmpx-task-due.overdue{color:#DC2626;font-weight:700}
+.crmpx-task-assignee{width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;font-size:8px;font-weight:800;color:#fff;flex-shrink:0}
 .crmpx-mini-card{background:var(--bly-border-soft);border-radius:var(--bly-r-md);padding:10px 12px;font-size:12.5px;cursor:pointer;transition:background .12s}
 .crmpx-mini-card:hover{background:#EEF0F4}
 .crmpx-mini-card+.crmpx-mini-card{margin-top:8px}
@@ -752,6 +756,14 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .cd-email-attachments{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}
 .cd-email-attachment{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid var(--bly-border);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--bly-ink);cursor:pointer}
 .cd-email-attachment:hover{background:var(--bly-hover)}
+/* FILER (#crmpx-view-files) — filgalleri af alle vedhæftninger fra kundens
+   mailkorrespondance, samme grundidé som Close's "Files"-fane. */
+.cd-files-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.cd-file-card{border:1px solid var(--bly-border);border-radius:var(--bly-r-md);padding:12px;cursor:pointer;background:#fff;transition:box-shadow .12s}
+.cd-file-card:hover{box-shadow:0 4px 14px rgba(15,17,24,.1)}
+.cd-file-icon{font-size:26px;margin-bottom:8px}
+.cd-file-name{font-size:11.5px;font-weight:700;color:var(--bly-ink);word-break:break-word;line-height:1.3}
+.cd-file-meta{font-size:10.5px;color:var(--bly-sub);margin-top:4px}
 
 /* ══════════════════════════════════════════════════════════════
    CRM-PIPELINE — Kanban-bord (Leads/Sales), Billy-stil. */
@@ -1863,6 +1875,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#customers" data-page="customers" id="customers-tab-btn">👥 Kunder</a>
         <a class="navdrop-item" href="#crmp/leads" data-page="crmp" data-crmp-pipeline-type="lead" id="crmp-leads-tab-btn">🧲 Leads</a>
         <a class="navdrop-item" href="#crmp/sales" data-page="crmp" data-crmp-pipeline-type="opportunity" id="crmp-sales-tab-btn">🤝 Sales</a>
+        <a class="navdrop-item" href="#crmp-tasks" data-page="crmp-tasks" id="crmp-tasks-tab-btn">☑ Opfølgninger</a>
       </div>
     </div>
 
@@ -2636,6 +2649,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 
+  <!-- DETALJER/FILER — Martins Round D-ønske, samme faneskift som Close har
+       øverst på en lead-side. "Filer" samler alle vedhæftninger kunden har
+       sendt på mail (billeder af gulve m.m.) ét sted, uden at skulle læse
+       hver mail for sig — se GET /api/crm/customers/:id/files. Kun synlig
+       når leadet/opportunityen er koblet til en kunde OG Gmail er forbundet
+       (samme betingelse som 🏠 Kunde-panelet). -->
+  <div class="bly-segtabs" id="crmpx-viewtabs" style="display:none">
+    <button class="bly-segtab active" data-crmpxview="details" type="button">Detaljer</button>
+    <button class="bly-segtab" data-crmpxview="files" type="button">📎 Filer <span class="sub" id="crmpx-files-count"></span></button>
+  </div>
+
+  <div id="crmpx-view-details">
   <div class="crmpx-layout">
     <div class="crmpx-col-left">
       <div class="crmpx-panel">
@@ -2664,12 +2689,25 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div id="crmpx-customer-card"></div>
       </div>
 
+      <!-- OPGAVER — udvidet efter Martins ønske om samme felter som Close's
+           "Add Task": navn, ansvarlig, dato+tid for opfølgning, prioritet.
+           Kontakten er altid det lead/den opportunity siden allerede er åben
+           på (entity_type/entity_id), så der er bevidst ikke noget separat
+           "vælg kontakt"-felt her, i modsætning til Close. -->
       <div class="crmpx-panel">
         <h3>☑ Opgaver <span class="sub" id="crmpx-tasks-count"></span></h3>
         <div id="crmpx-tasks-list"><div class="crmpx-empty">Ingen opgaver endnu</div></div>
-        <div class="tld-row" style="margin-top:10px">
-          <div style="flex:1"><input id="crmpx-task-new" class="tld-input" placeholder="Ny opgave, fx 'Ring op i morgen'"></div>
-          <button class="btn small" type="button" id="crmpx-task-add-btn">+ Tilføj</button>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bly-border-soft)">
+          <input id="crmpx-task-new" class="tld-input" placeholder="Ny opgave, fx 'Ring op i morgen'" style="margin-bottom:6px">
+          <div class="tld-row">
+            <select id="crmpx-task-assignee" class="tld-input" style="flex:1.3"></select>
+            <input type="date" id="crmpx-task-date" class="tld-input" style="flex:1">
+            <input type="time" id="crmpx-task-time" class="tld-input" style="width:95px">
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <label style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--bly-sub);cursor:pointer"><input type="checkbox" id="crmpx-task-priority" style="width:auto">⚡ Høj prioritet</label>
+            <button class="btn small" type="button" id="crmpx-task-add-btn">+ Tilføj opgave</button>
+          </div>
         </div>
       </div>
 
@@ -2700,6 +2738,32 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
   </div>
+  </div>
+
+  <div id="crmpx-view-files" style="display:none">
+    <div id="crmpx-files-grid" class="cd-files-grid"></div>
+  </div>
+</section>
+
+<!-- OPFØLGNINGER — Martins Round D-ønske om ét fælles sted i CRM'et hvor alle
+     opgaver på tværs af leads/opportunities kan ses og fordeles, så Martin og
+     Sarah kan se hinandens (og egne) kommende opfølgninger uden at skulle
+     klikke ind på hvert enkelt lead/opportunity. -->
+<section class="page" id="page-crmp-tasks">
+  <div class="bly-pagehead">
+    <div><h2>☑ Opfølgninger</h2><div class="sub">Alle opgaver på tværs af leads og sales, samlet ét sted</div></div>
+  </div>
+  <div class="bly-toolbar">
+    <div class="bly-toolbar-left">
+      <select id="cpt-assignee-filter" class="select" style="width:auto"><option value="">Alle ansvarlige</option></select>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--bly-sub);cursor:pointer"><input type="checkbox" id="cpt-include-done" style="width:auto">Vis også afsluttede</label>
+    </div>
+    <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="cpt-count"></span></div>
+  </div>
+  <table class="bly-table">
+    <thead><tr><th style="width:30px"></th><th style="width:24px"></th><th>Opgave</th><th>Lead / Sale</th><th style="width:170px">Ansvarlig</th><th style="width:130px">Dato</th><th style="width:44px"></th></tr></thead>
+    <tbody id="cpt-body"></tbody>
+  </table>
 </section>
 
 <!-- CRM-PIPELINE — INDSTILLINGER (stages pr. pipeline + custom fields) -->
@@ -4580,6 +4644,7 @@ document.getElementById('app').style.display='block';
       document.getElementById('customers-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('crmp-leads-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('crmp-sales-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('crmp-tasks-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('projects-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('email-templates-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('gmail-settings-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
@@ -11123,7 +11188,7 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 // kun var en PRIVAT funktion inde i bind() (fanget med en rigtig browser-test,
 // ikke kun en syntakstjek — samme disciplin som ved "kan ikke åbne en sag"-
 // rettelsen). Adfærden er uændret, kun hvor funktionen er defineret.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','email-templates','notif-settings','gmail-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail'];
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','email-templates','notif-settings','gmail-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks'];
 function switchPage(page,skipHash){
   if(VALID_PAGES.indexOf(page)===-1)page='plan';
   document.querySelectorAll('.tab,.navdrop-item,.navdrop-btn').forEach(function(x){x.classList.remove('active');});
@@ -11166,6 +11231,7 @@ function switchPage(page,skipHash){
   if(page==='customers'){if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');switchPage('plan');return;}initCrmModule();}
   if(page==='crmp'){if(!me.is_finance_admin){toast('Du har ikke adgang til CRM','🔒');switchPage('plan');return;}initCrmpModule();}
   if(page==='crmp-detail'){if(!me.is_finance_admin){toast('Du har ikke adgang til CRM','🔒');switchPage('plan');return;}crmpxInitOnce();}
+  if(page==='crmp-tasks'){if(!me.is_finance_admin){toast('Du har ikke adgang til CRM','🔒');switchPage('plan');return;}initCrmpTasksModule();}
   if(page==='projects'){if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');switchPage('plan');return;}initProjectsModule();}
   // initProjectsModule() binder bl.a. "← Tilbage til Projekter"-knappen og alt
   // andet på selve sags-siden (fanerne, "+ Ny opgave", opgave-detalje-modalens
@@ -12908,7 +12974,42 @@ function crmpxInitOnce(){
   document.getElementById('crmpx-task-add-btn').addEventListener('click',crmpxAddTask);
   document.getElementById('crmpx-task-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddTask();});
   document.getElementById('crmpx-note-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddNote();});
+  document.querySelectorAll('#crmpx-viewtabs [data-crmpxview]').forEach(function(btn){
+    btn.addEventListener('click',function(){crmpxSwitchView(btn.dataset.crmpxview);});
+  });
+  document.getElementById('crmpx-task-assignee').innerHTML=(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  document.getElementById('crmpx-task-assignee').addEventListener('change',function(e){e.target.dataset.userTouched='1';});
 }
+var crmpxCurrentCustomerId=null,crmpxFilesLoaded=false;
+function crmpxSwitchView(view){
+  document.querySelectorAll('#crmpx-viewtabs [data-crmpxview]').forEach(function(btn){btn.classList.toggle('active',btn.dataset.crmpxview===view);});
+  document.getElementById('crmpx-view-details').style.display=view==='details'?'':'none';
+  document.getElementById('crmpx-view-files').style.display=view==='files'?'':'none';
+  if(view==='files'&&!crmpxFilesLoaded)crmpxLoadFiles();
+}
+async function crmpxLoadFiles(){
+  if(!crmpxCurrentCustomerId)return;
+  crmpxFilesLoaded=true;
+  var grid=document.getElementById('crmpx-files-grid');
+  grid.innerHTML='<div class="crmpx-empty">Henter filer...</div>';
+  var files=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/files');
+  if(!files||files.error){grid.innerHTML='<div class="crmpx-empty">Kunne ikke hente filer — '+esc((files&&files.error)||'ukendt fejl')+'</div>';return;}
+  document.getElementById('crmpx-files-count').textContent=files.length?'('+files.length+')':'';
+  if(!files.length){grid.innerHTML='<div class="crmpx-empty">Ingen filer fundet i mailkorrespondancen endnu</div>';return;}
+  grid.innerHTML=files.map(function(f){
+    var icon=f.mimeType&&f.mimeType.indexOf('image/')===0?'🖼️':(f.mimeType==='application/pdf'?'📄':'📎');
+    return '<div class="cd-file-card" data-msg-id="'+esc(f.gmail_message_id)+'" data-att-id="'+esc(f.attachmentId)+'" data-filename="'+esc(f.filename)+'" data-mimetype="'+esc(f.mimeType)+'">'
+      +'<div class="cd-file-icon">'+icon+'</div>'
+      +'<div class="cd-file-name">'+esc(f.filename)+'</div>'
+      +'<div class="cd-file-meta">'+esc(fmtDaDate(new Date(Number(f.internal_date)).toISOString()))+'</div>'
+      +'</div>';
+  }).join('');
+}
+document.addEventListener('click',function(e){
+  var card=e.target.closest('.cd-file-card');
+  if(!card)return;
+  cdDownloadAttachment(card.dataset.msgId,card.dataset.attId,card.dataset.filename,card.dataset.mimetype);
+});
 async function openCrmpDetail(entityType,id){
   crmpxInitOnce();
   if(!crmpState.pipelines.length)await crmpLoadPipelines();
@@ -12961,6 +13062,15 @@ async function openCrmpDetail(entityType,id){
       +'<div class="crmpx-mini-card-row">Åbn kundekort — sager, tilbud, fakturaer &amp; noter →</div>'
       +'</div>';
   }
+  // Detaljer/Filer-faneskift — nulstilles til "Detaljer" for hvert lead/opportunity
+  // man åbner, og kun vist når der er en kobling til en kunde OG Gmail er forbundet
+  // (ellers er der intet at vise i Filer-fanen).
+  crmpxCurrentCustomerId=d.customer_id||null;
+  crmpxFilesLoaded=false;
+  crmpxSwitchView('details');
+  var gmailStatusForFiles=d.customer_id?await api('/api/gmail/status'):null;
+  document.getElementById('crmpx-viewtabs').style.display=(gmailStatusForFiles&&gmailStatusForFiles.connected)?'':'none';
+  document.getElementById('crmpx-files-count').textContent='';
   if(entityType==='lead'){
     var oppsList=document.getElementById('crmpx-opps-list');
     document.getElementById('crmpx-opps-count').textContent=d.converted_opportunity_id?'(1)':'(0)';
@@ -13086,6 +13196,12 @@ async function crmpxAddNote(){
   if(r&&r.ok){input.value='';openCrmpDetail(ent.type,ent.id);}
   else toast((r&&r.error)||'Kunne ikke tilføje note','❌');
 }
+function crmpxTaskDueLabel(t){
+  if(!t.due_date)return '';
+  var overdue=!t.done&&t.due_date<iso(new Date());
+  var label=fmtDaDate(t.due_date)+(t.due_time?' · '+t.due_time:'');
+  return '<span class="crmpx-task-due'+(overdue?' overdue':'')+'">'+(overdue?'⚠️ ':'')+esc(label)+'</span>';
+}
 async function crmpxLoadTasks(){
   var ent=crmpDetailEntity;
   if(!ent)return;
@@ -13093,7 +13209,14 @@ async function crmpxLoadTasks(){
   var list=document.getElementById('crmpx-tasks-list');
   document.getElementById('crmpx-tasks-count').textContent='('+tasks.length+')';
   list.innerHTML=tasks.length?tasks.map(function(t){
-    return '<div class="crmpx-task-row'+(t.done?' done':'')+'"><input type="checkbox" data-task-id="'+t.id+'" data-action="task-toggle"'+(t.done?' checked':'')+'><span class="crmpx-task-title">'+esc(t.title)+'</span><button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="task-delete" title="Slet">🗑</button></div>';
+    var initials=t.assigned_initials||(t.assigned_name?t.assigned_name.split(' ').map(function(w){return w[0];}).slice(0,2).join('').toUpperCase():'');
+    var assigneeBadge=t.assigned_to?'<span class="crmpx-task-assignee" style="background:'+crmpOwnerColor(t.assigned_to)+'" title="'+esc(t.assigned_name||'')+'">'+esc(initials)+'</span>':'';
+    return '<div class="crmpx-task-row'+(t.done?' done':'')+'">'
+      +'<input type="checkbox" data-task-id="'+t.id+'" data-action="task-toggle"'+(t.done?' checked':'')+'>'
+      +(t.priority?'<span title="Høj prioritet">⚡</span>':'')
+      +'<span class="crmpx-task-title">'+esc(t.title)+'</span>'
+      +'<span class="crmpx-task-meta">'+crmpxTaskDueLabel(t)+assigneeBadge+'</span>'
+      +'<button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="task-delete" title="Slet">🗑</button></div>';
   }).join(''):'<div class="crmpx-empty">Ingen opgaver endnu</div>';
   list.querySelectorAll('[data-action="task-toggle"]').forEach(function(cb){
     cb.addEventListener('change',async function(){await api('/api/crm/tasks/'+cb.dataset.taskId,{method:'PUT',body:JSON.stringify({done:cb.checked})});crmpxLoadTasks();});
@@ -13101,14 +13224,80 @@ async function crmpxLoadTasks(){
   list.querySelectorAll('[data-action="task-delete"]').forEach(function(btn){
     btn.addEventListener('click',async function(){await api('/api/crm/tasks/'+btn.dataset.taskId,{method:'DELETE'});crmpxLoadTasks();});
   });
+  // Ansvarlig defaulter til den der er logget ind — kan altid ændres i selve
+  // formularen inden man trykker "+ Tilføj opgave" (fx for at give Sarah en opgave).
+  var assigneeSel=document.getElementById('crmpx-task-assignee');
+  if(assigneeSel&&!assigneeSel.dataset.userTouched)assigneeSel.value=me.id;
 }
 async function crmpxAddTask(){
   var ent=crmpDetailEntity;
   var input=document.getElementById('crmpx-task-new');
   if(!ent||!input.value.trim())return;
-  var r=await api('/api/crm/tasks',{method:'POST',body:JSON.stringify({entity_type:ent.type,entity_id:ent.id,title:input.value.trim()})});
-  if(r&&r.id){input.value='';crmpxLoadTasks();}
+  var body={
+    entity_type:ent.type,entity_id:ent.id,title:input.value.trim(),
+    assigned_to:document.getElementById('crmpx-task-assignee').value||null,
+    due_date:document.getElementById('crmpx-task-date').value||null,
+    due_time:document.getElementById('crmpx-task-time').value||null,
+    priority:document.getElementById('crmpx-task-priority').checked
+  };
+  var r=await api('/api/crm/tasks',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.id){
+    input.value='';
+    document.getElementById('crmpx-task-date').value='';
+    document.getElementById('crmpx-task-time').value='';
+    document.getElementById('crmpx-task-priority').checked=false;
+    crmpxLoadTasks();
+  }
   else toast((r&&r.error)||'Kunne ikke tilføje opgave','❌');
+}
+
+// ══════════════════════════════════════════════════════════════
+// OPFØLGNINGER (#page-crmp-tasks) — samlet oversigt over crm_tasks på tværs af
+// alle leads/opportunities (se GET /api/crm/tasks/overview). Assignee kan
+// ændres direkte i listen, så Martin/Sarah kan fordele opfølgninger mellem sig
+// uden at skulle ind på hvert enkelt lead. Nye opgaver oprettes stadig inde på
+// selve leadet/opportunityen (☑ Opgaver-panelet) — en opgave hører altid til
+// én bestemt sag, så det er der den naturligt hører hjemme.
+var cptInitialized=false,cptTasks=[];
+function initCrmpTasksModule(){
+  if(!cptInitialized){
+    cptInitialized=true;
+    document.getElementById('cpt-assignee-filter').innerHTML='<option value="">Alle ansvarlige</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+    document.getElementById('cpt-assignee-filter').addEventListener('change',cptRender);
+    document.getElementById('cpt-include-done').addEventListener('change',cptLoad);
+  }
+  cptLoad();
+}
+async function cptLoad(){
+  var includeDone=document.getElementById('cpt-include-done').checked;
+  cptTasks=await api('/api/crm/tasks/overview'+(includeDone?'?include_done=1':''))||[];
+  cptRender();
+}
+function cptRender(){
+  var filterId=document.getElementById('cpt-assignee-filter').value;
+  var rows=filterId?cptTasks.filter(function(t){return String(t.assigned_to)===filterId;}):cptTasks;
+  document.getElementById('cpt-count').textContent=rows.length?rows.length+' opgave(r)':'';
+  document.getElementById('cpt-body').innerHTML=rows.length?rows.map(function(t){
+    var assigneeOptions='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(t.assigned_to)?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
+    return '<tr class="'+(t.done?'done':'')+'" style="'+(t.done?'opacity:.55':'')+'">'
+      +'<td><input type="checkbox" data-task-id="'+t.id+'" data-action="cpt-toggle"'+(t.done?' checked':'')+'></td>'
+      +'<td>'+(t.priority?'⚡':'')+'</td>'
+      +'<td style="'+(t.done?'text-decoration:line-through':'')+'">'+esc(t.title)+'</td>'
+      +'<td><a href="#crmp-detail/'+t.entity_type+'/'+t.entity_id+'" onclick="openCrmpDetail(\''+t.entity_type+'\','+t.entity_id+');return false;">'+esc(t.entity_name||'(slettet)')+'</a></td>'
+      +'<td><select class="select" style="width:100%" data-task-id="'+t.id+'" data-action="cpt-assignee">'+assigneeOptions+'</select></td>'
+      +'<td>'+(crmpxTaskDueLabel(t)||'<span class="crmpx-empty" style="padding:0">–</span>')+'</td>'
+      +'<td><button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="cpt-delete" title="Slet">🗑</button></td>'
+      +'</tr>';
+  }).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen opfølgninger fundet</td></tr>';
+  document.querySelectorAll('[data-action="cpt-toggle"]').forEach(function(cb){
+    cb.addEventListener('change',async function(){await api('/api/crm/tasks/'+cb.dataset.taskId,{method:'PUT',body:JSON.stringify({done:cb.checked})});cptLoad();});
+  });
+  document.querySelectorAll('[data-action="cpt-assignee"]').forEach(function(sel){
+    sel.addEventListener('change',async function(){await api('/api/crm/tasks/'+sel.dataset.taskId,{method:'PUT',body:JSON.stringify({assigned_to:sel.value||null})});cptLoad();});
+  });
+  document.querySelectorAll('[data-action="cpt-delete"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){await api('/api/crm/tasks/'+btn.dataset.taskId,{method:'DELETE'});cptLoad();});
+  });
 }
 
 // ── OPRET NYT LEAD/OPPORTUNITY (hurtig-modal) ─────────────────────
