@@ -1007,6 +1007,115 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- ══════════════════════════════════════════════════════════════
+    -- INDBYGGET CRM — samme grund-idé som Close (Leads → Kontakt + Opportunity
+    -- i en salgs-pipeline), men bygget direkte ind i programmet i Billy-stil,
+    -- efter Martins eget ønske i stedet for kun at synkronisere udefra.
+    -- crm_pipelines: de "borde" man kan se (fx "Leads", "Sales") — helt
+    -- brugeroprettede/redigerbare, ikke hardkodede.
+    -- crm_stages: kolonnerne i et pipeline-bord (ordnet via "position").
+    -- crm_leads: raw indkommende interesse, ligger i en lead-pipeline-stage.
+    -- crm_opportunities: en konkret salgsmulighed i en opportunity-pipeline-
+    -- stage, knyttet til én crm_contact.
+    -- crm_contacts: en person — oprettes automatisk ved lead-konvertering,
+    -- men kan også oprettes/redigeres direkte.
+    -- crm_custom_fields/-values: Martins eget ønske om selv at kunne lave
+    -- felter til senere dataanalyse, i stedet for faste hardkodede kolonner.
+    -- crm_activities: fælles note-/hændelses-tidslinje (som Close's egen "Log"
+    -- man ser på et lead — statusskift logges automatisk, noter manuelt).
+    -- ══════════════════════════════════════════════════════════════
+    CREATE TABLE IF NOT EXISTS crm_pipelines (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'opportunity', -- 'lead' | 'opportunity' — styrer hvor konvertering lander
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS crm_stages (
+      id SERIAL PRIMARY KEY,
+      pipeline_id INTEGER NOT NULL REFERENCES crm_pipelines(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#6366F1',
+      position INTEGER NOT NULL DEFAULT 0,
+      is_won INTEGER NOT NULL DEFAULT 0,  -- markerer en "vundet"-slut-stage (til statistik/filtrering senere)
+      is_lost INTEGER NOT NULL DEFAULT 0, -- markerer en "tabt"-slut-stage
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_stages_pipeline ON crm_stages(pipeline_id);
+    CREATE TABLE IF NOT EXISTS crm_contacts (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT,
+      phone TEXT,
+      address TEXT,
+      customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL, -- sat når kontakten er koblet til en rigtig kunde i Kunder-modulet
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS crm_leads (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT,
+      phone TEXT,
+      address TEXT,
+      source TEXT,
+      note TEXT,
+      pipeline_id INTEGER NOT NULL REFERENCES crm_pipelines(id),
+      stage_id INTEGER NOT NULL REFERENCES crm_stages(id),
+      owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      converted_opportunity_id INTEGER, -- sat når leadet er konverteret (FK tilføjes efter crm_opportunities findes)
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_stage ON crm_leads(stage_id);
+    CREATE TABLE IF NOT EXISTS crm_opportunities (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      contact_id INTEGER REFERENCES crm_contacts(id) ON DELETE SET NULL,
+      pipeline_id INTEGER NOT NULL REFERENCES crm_pipelines(id),
+      stage_id INTEGER NOT NULL REFERENCES crm_stages(id),
+      value NUMERIC,
+      probability INTEGER,
+      owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      source_lead_id INTEGER REFERENCES crm_leads(id) ON DELETE SET NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_opp_stage ON crm_opportunities(stage_id);
+    ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS converted_opportunity_id INTEGER REFERENCES crm_opportunities(id) ON DELETE SET NULL;
+    CREATE TABLE IF NOT EXISTS crm_custom_fields (
+      id SERIAL PRIMARY KEY,
+      entity_type TEXT NOT NULL, -- 'lead' | 'opportunity' | 'contact'
+      key TEXT NOT NULL,
+      label TEXT NOT NULL,
+      field_type TEXT NOT NULL DEFAULT 'text', -- text | number | select | date | checkbox
+      options JSONB DEFAULT '[]', -- kun brugt af 'select'
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      UNIQUE(entity_type, key)
+    );
+    CREATE TABLE IF NOT EXISTS crm_custom_field_values (
+      id SERIAL PRIMARY KEY,
+      field_id INTEGER NOT NULL REFERENCES crm_custom_fields(id) ON DELETE CASCADE,
+      entity_type TEXT NOT NULL,
+      entity_id INTEGER NOT NULL,
+      value TEXT,
+      UNIQUE(field_id, entity_type, entity_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_cfv_entity ON crm_custom_field_values(entity_type, entity_id);
+    CREATE TABLE IF NOT EXISTS crm_activities (
+      id SERIAL PRIMARY KEY,
+      entity_type TEXT NOT NULL, -- 'lead' | 'opportunity' | 'contact'
+      entity_id INTEGER NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'note', -- note | stage_change | created | converted
+      body TEXT,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_activities_entity ON crm_activities(entity_type, entity_id);
+
     -- ── E-SIGNATUR på tilbud: fast link pr. tilbud kunden kan acceptere og
     -- underskrive (tegnet signatur + navn + IP/tidspunkt som bevis). ────
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS customer_id INTEGER;
@@ -1275,6 +1384,53 @@ async function initSchema() {
   const widgetCount = await pgOne('SELECT COUNT(*)::int AS n FROM finance_dashboard_widgets');
   if (widgetCount && widgetCount.n === 0) {
     await pool.query("INSERT INTO finance_dashboard_widgets (widget_type, sort_order) VALUES ('trend', 0), ('year', 1)");
+  }
+
+  // ── CRM: seed de to standard-pipelines ("Leads" + "Sales") + deres stages,
+  // kun hvis der IKKE allerede findes nogen — rører aldrig ved data Martin
+  // selv har redigeret/tilføjet siden (samme mønster som udgiftskategorierne
+  // ovenfor). Stage-navnene matcher hans eget Close-opsætning som udgangspunkt,
+  // men er 100% redigerbare bagefter under CRM → Indstillinger.
+  const pipelineCount = await pgOne('SELECT COUNT(*)::int AS n FROM crm_pipelines');
+  if (pipelineCount && pipelineCount.n === 0) {
+    const leadsPipeline = await pgOne("INSERT INTO crm_pipelines (name, type, position) VALUES ('Leads','lead',0) RETURNING id");
+    const leadStages = ['Nyt lead', 'Kontaktet', 'Kvalificeret', 'Konverteret'];
+    for (let i = 0; i < leadStages.length; i++) {
+      await pool.query('INSERT INTO crm_stages (pipeline_id,name,color,position,is_won) VALUES ($1,$2,$3,$4,$5)',
+        [leadsPipeline.id, leadStages[i], ['#6B7280', '#3B82F6', '#8B5CF6', '#16A34A'][i], i, leadStages[i] === 'Konverteret' ? 1 : 0]);
+    }
+    const salesPipeline = await pgOne("INSERT INTO crm_pipelines (name, type, position) VALUES ('Sales','opportunity',1) RETURNING id");
+    const salesStages = [
+      ['Manglende data', '#9CA3AF', 0, 0],
+      ['Lav Tilbud', '#F59E0B', 0, 0],
+      ['Tilbud Afgivet', '#3B82F6', 0, 0],
+      ['Hot Lead', '#EF4444', 0, 0],
+      ['Vundet', '#16A34A', 1, 0],
+      ['Tabt', '#6B7280', 0, 1]
+    ];
+    for (let i = 0; i < salesStages.length; i++) {
+      const [name, color, isWon, isLost] = salesStages[i];
+      await pool.query('INSERT INTO crm_stages (pipeline_id,name,color,position,is_won,is_lost) VALUES ($1,$2,$3,$4,$5,$6)',
+        [salesPipeline.id, name, color, i, isWon, isLost]);
+    }
+    console.log('CRM: standard-pipelines "Leads" og "Sales" oprettet med startstages.');
+  }
+
+  // Seed et par åbenlyse custom fields fra Martins Close-skærmbilleder, så
+  // CRM'et ikke starter helt tomt — kan frit redigeres/slettes bagefter.
+  const customFieldCount = await pgOne('SELECT COUNT(*)::int AS n FROM crm_custom_fields');
+  if (customFieldCount && customFieldCount.n === 0) {
+    const seedFields = [
+      ['lead', 'projekt_type', 'Projekt Type', 'select', ['Gulvslibning', 'Gulvlægning', 'Maler', 'Enterprise'], 0],
+      ['lead', 'lead_source', 'Lead Source', 'select', ['Website form', 'Facebook/Instagram', 'Telefon', 'Anbefaling'], 1],
+      ['opportunity', 'projekt_type', 'Projekt Type', 'select', ['Gulvslibning', 'Gulvlægning', 'Maler', 'Enterprise'], 0],
+      ['opportunity', 'sagsnummer', 'Sagsnummer', 'text', [], 1]
+    ];
+    for (const [entityType, key, label, fieldType, options, position] of seedFields) {
+      await pool.query('INSERT INTO crm_custom_fields (entity_type,key,label,field_type,options,position) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
+        [entityType, key, label, fieldType, JSON.stringify(options), position]);
+    }
+    console.log('CRM: standard custom fields oprettet (Projekt Type, Lead Source, Sagsnummer).');
   }
 }
 
@@ -4943,6 +5099,385 @@ app.post('/api/integrations/close/webhook', asyncRoute(async (req, res) => {
   } catch (e) {
     console.error('Close-webhook fejlede under efterbehandling:', e.message);
   }
+}));
+
+// ══════════════════════════════════════════════════════════════
+// INDBYGGET CRM — Leads-pipeline → konverter til Kontakt + Opportunity i
+// Sales-pipelinen, redigerbare pipelines/stages, brugerdefinerede felter.
+// Se migrationen i initSchema() for tabellerne. Alt herunder kræver
+// finance_admin, ligesom resten af CRM/Kunder-modulet.
+// ══════════════════════════════════════════════════════════════
+async function crmGetCustomFieldDefs(entityType) {
+  const r = await pool.query('SELECT * FROM crm_custom_fields WHERE entity_type=$1 ORDER BY position ASC, id ASC', [entityType]);
+  return r.rows.map(f => ({ ...f, options: f.options || [] }));
+}
+async function crmGetCustomFieldValues(entityType, entityId) {
+  const r = await pool.query(`
+    SELECT cf.key, cfv.value FROM crm_custom_field_values cfv
+    JOIN crm_custom_fields cf ON cf.id = cfv.field_id
+    WHERE cfv.entity_type=$1 AND cfv.entity_id=$2
+  `, [entityType, entityId]);
+  const out = {};
+  r.rows.forEach(row => { out[row.key] = row.value; });
+  return out;
+}
+async function crmGetCustomFieldValuesBulk(entityType, entityIds) {
+  if (!entityIds.length) return {};
+  const r = await pool.query(`
+    SELECT cfv.entity_id, cf.key, cfv.value FROM crm_custom_field_values cfv
+    JOIN crm_custom_fields cf ON cf.id = cfv.field_id
+    WHERE cfv.entity_type=$1 AND cfv.entity_id = ANY($2::int[])
+  `, [entityType, entityIds]);
+  const out = {};
+  r.rows.forEach(row => { (out[row.entity_id] = out[row.entity_id] || {})[row.key] = row.value; });
+  return out;
+}
+async function crmSetCustomFieldValues(entityType, entityId, valuesObj) {
+  if (!valuesObj || typeof valuesObj !== 'object') return;
+  const defs = await crmGetCustomFieldDefs(entityType);
+  const byKey = {}; defs.forEach(d => { byKey[d.key] = d; });
+  for (const key of Object.keys(valuesObj)) {
+    const def = byKey[key];
+    if (!def) continue; // ukendt felt-nøgle — ignoreres stille (fx et felt der lige er slettet)
+    const val = valuesObj[key];
+    if (val === null || val === undefined || val === '') {
+      await pool.query('DELETE FROM crm_custom_field_values WHERE field_id=$1 AND entity_type=$2 AND entity_id=$3', [def.id, entityType, entityId]);
+    } else {
+      await pool.query(`
+        INSERT INTO crm_custom_field_values (field_id, entity_type, entity_id, value) VALUES ($1,$2,$3,$4)
+        ON CONFLICT (field_id, entity_type, entity_id) DO UPDATE SET value=$4
+      `, [def.id, entityType, entityId, String(val)]);
+    }
+  }
+}
+async function crmLogActivity(entityType, entityId, kind, body, userId) {
+  await pool.query('INSERT INTO crm_activities (entity_type,entity_id,kind,body,user_id) VALUES ($1,$2,$3,$4,$5)', [entityType, entityId, kind, body || null, userId || null]);
+}
+
+// ── PIPELINES + STAGES ──────────────────────────────────────────
+app.get('/api/crm/pipelines', auth, financeOnly, asyncRoute(async (req, res) => {
+  const pipelines = await pool.query('SELECT * FROM crm_pipelines ORDER BY position ASC, id ASC');
+  const stages = await pool.query('SELECT * FROM crm_stages ORDER BY position ASC, id ASC');
+  res.json(pipelines.rows.map(p => ({ ...p, stages: stages.rows.filter(s => s.pipeline_id === p.id) })));
+}));
+app.post('/api/crm/pipelines', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_pipelines');
+  const r = await pgOne('INSERT INTO crm_pipelines (name,type,position) VALUES ($1,$2,$3) RETURNING id', [String(b.name).trim(), b.type === 'lead' ? 'lead' : 'opportunity', posRow.pos]);
+  await pool.query('INSERT INTO crm_stages (pipeline_id,name,color,position) VALUES ($1,$2,$3,0)', [r.id, 'Ny', '#6366F1']);
+  res.json({ ok: true, id: r.id });
+}));
+app.put('/api/crm/pipelines/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (b.name !== undefined) await pool.query('UPDATE crm_pipelines SET name=$1 WHERE id=$2', [String(b.name).trim(), req.params.id]);
+  if (b.position !== undefined) await pool.query('UPDATE crm_pipelines SET position=$1 WHERE id=$2', [b.position, req.params.id]);
+  res.json({ ok: true });
+}));
+app.delete('/api/crm/pipelines/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const inUse = await pgOne(`
+    SELECT (SELECT COUNT(*) FROM crm_leads WHERE pipeline_id=$1) + (SELECT COUNT(*) FROM crm_opportunities WHERE pipeline_id=$1) AS n
+  `, [req.params.id]);
+  if (inUse && Number(inUse.n) > 0) return res.status(400).json({ error: 'Pipelinen indeholder stadig leads/opportunities — flyt eller slet dem først' });
+  await pool.query('DELETE FROM crm_pipelines WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+app.post('/api/crm/pipelines/:id/stages', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_stages WHERE pipeline_id=$1', [req.params.id]);
+  const r = await pgOne('INSERT INTO crm_stages (pipeline_id,name,color,position) VALUES ($1,$2,$3,$4) RETURNING id', [req.params.id, String(b.name).trim(), b.color || '#6366F1', posRow.pos]);
+  res.json({ ok: true, id: r.id });
+}));
+app.put('/api/crm/stages/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const current = await pgOne('SELECT * FROM crm_stages WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Stage ikke fundet' });
+  await pool.query('UPDATE crm_stages SET name=$1,color=$2,position=$3,is_won=$4,is_lost=$5 WHERE id=$6', [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.color !== undefined ? b.color : current.color,
+    b.position !== undefined ? b.position : current.position,
+    b.is_won !== undefined ? (b.is_won ? 1 : 0) : current.is_won,
+    b.is_lost !== undefined ? (b.is_lost ? 1 : 0) : current.is_lost,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+app.delete('/api/crm/stages/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const inUse = await pgOne(`
+    SELECT (SELECT COUNT(*) FROM crm_leads WHERE stage_id=$1) + (SELECT COUNT(*) FROM crm_opportunities WHERE stage_id=$1) AS n
+  `, [req.params.id]);
+  if (inUse && Number(inUse.n) > 0) return res.status(400).json({ error: 'Stagen indeholder stadig kort — flyt dem til en anden stage først' });
+  const stageCount = await pgOne('SELECT COUNT(*)::int AS n FROM crm_stages WHERE pipeline_id=(SELECT pipeline_id FROM crm_stages WHERE id=$1)', [req.params.id]);
+  if (stageCount && stageCount.n <= 1) return res.status(400).json({ error: 'En pipeline skal have mindst én stage' });
+  await pool.query('DELETE FROM crm_stages WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── CUSTOM FIELDS ────────────────────────────────────────────────
+app.get('/api/crm/custom-fields', auth, financeOnly, asyncRoute(async (req, res) => {
+  const q = req.query.entity_type;
+  const r = q ? await pool.query('SELECT * FROM crm_custom_fields WHERE entity_type=$1 ORDER BY position ASC, id ASC', [q])
+    : await pool.query('SELECT * FROM crm_custom_fields ORDER BY entity_type ASC, position ASC, id ASC');
+  res.json(r.rows);
+}));
+app.post('/api/crm/custom-fields', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.label || !b.entity_type) return res.status(400).json({ error: 'Label og entitetstype mangler' });
+  const key = String(b.key || b.label).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'felt';
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_custom_fields WHERE entity_type=$1', [b.entity_type]);
+  try {
+    const r = await pgOne(`
+      INSERT INTO crm_custom_fields (entity_type,key,label,field_type,options,position) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
+    `, [b.entity_type, key, String(b.label).trim(), b.field_type || 'text', JSON.stringify(Array.isArray(b.options) ? b.options : []), posRow.pos]);
+    res.json({ ok: true, id: r.id });
+  } catch (e) {
+    if (String(e.message).includes('duplicate key')) return res.status(400).json({ error: 'Der findes allerede et felt med den nøgle for denne entitetstype' });
+    throw e;
+  }
+}));
+app.put('/api/crm/custom-fields/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const current = await pgOne('SELECT * FROM crm_custom_fields WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Feltet blev ikke fundet' });
+  await pool.query('UPDATE crm_custom_fields SET label=$1,field_type=$2,options=$3,position=$4 WHERE id=$5', [
+    b.label !== undefined ? String(b.label).trim() : current.label,
+    b.field_type !== undefined ? b.field_type : current.field_type,
+    b.options !== undefined ? JSON.stringify(b.options) : current.options,
+    b.position !== undefined ? b.position : current.position,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+app.delete('/api/crm/custom-fields/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM crm_custom_fields WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── LEADS ────────────────────────────────────────────────────────
+app.get('/api/crm/leads', auth, financeOnly, asyncRoute(async (req, res) => {
+  const conds = ['1=1']; const params = [];
+  if (req.query.pipeline_id) { params.push(req.query.pipeline_id); conds.push('l.pipeline_id=$' + params.length); }
+  if (req.query.stage_id) { params.push(req.query.stage_id); conds.push('l.stage_id=$' + params.length); }
+  if (req.query.owner_id) { params.push(req.query.owner_id); conds.push('l.owner_id=$' + params.length); }
+  if (req.query.q) { params.push('%' + req.query.q + '%'); conds.push('(l.name ILIKE $' + params.length + ' OR l.email ILIKE $' + params.length + ' OR l.phone ILIKE $' + params.length + ')'); }
+  const rows = (await pool.query(`SELECT l.*, u.name AS owner_name, u.color AS owner_color, u.initials AS owner_initials FROM crm_leads l LEFT JOIN users u ON u.id=l.owner_id WHERE ${conds.join(' AND ')} ORDER BY l.position ASC, l.id DESC`, params)).rows;
+  const cfValues = await crmGetCustomFieldValuesBulk('lead', rows.map(r => r.id));
+  res.json(rows.map(r => ({ ...r, custom_fields: cfValues[r.id] || {} })));
+}));
+app.post('/api/crm/leads', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
+  let stageId = b.stage_id, pipelineId = b.pipeline_id;
+  if (!pipelineId) { const p = await pgOne("SELECT id FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1"); pipelineId = p && p.id; }
+  if (!pipelineId) return res.status(400).json({ error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
+  if (!stageId) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [pipelineId]); stageId = s && s.id; }
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [stageId]);
+  const r = await pgOne(`
+    INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id
+  `, [String(b.name).trim(), b.email || null, b.phone || null, b.address || null, b.source || null, b.note || null, pipelineId, stageId, b.owner_id || req.user.id, posRow.pos]);
+  await crmSetCustomFieldValues('lead', r.id, b.custom_fields);
+  await crmLogActivity('lead', r.id, 'created', 'Lead oprettet', req.user.id);
+  res.json({ ok: true, id: r.id });
+}));
+app.get('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const lead = await pgOne('SELECT l.*, u.name AS owner_name FROM crm_leads l LEFT JOIN users u ON u.id=l.owner_id WHERE l.id=$1', [req.params.id]);
+  if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
+  const customFields = await crmGetCustomFieldDefs('lead');
+  const customValues = await crmGetCustomFieldValues('lead', lead.id);
+  const activities = (await pool.query('SELECT a.*, u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.entity_type=$1 AND a.entity_id=$2 ORDER BY a.created_at DESC, a.id DESC', ['lead', lead.id])).rows;
+  res.json({ ...lead, custom_fields: customValues, custom_field_defs: customFields, activities });
+}));
+app.put('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const current = await pgOne('SELECT * FROM crm_leads WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Lead ikke fundet' });
+  const stageChanged = b.stage_id !== undefined && Number(b.stage_id) !== current.stage_id;
+  await pool.query(`
+    UPDATE crm_leads SET name=$1,email=$2,phone=$3,address=$4,source=$5,note=$6,stage_id=$7,pipeline_id=$8,owner_id=$9,position=$10,updated_at=${nowTextSQL()} WHERE id=$11
+  `, [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.email !== undefined ? b.email : current.email,
+    b.phone !== undefined ? b.phone : current.phone,
+    b.address !== undefined ? b.address : current.address,
+    b.source !== undefined ? b.source : current.source,
+    b.note !== undefined ? b.note : current.note,
+    b.stage_id !== undefined ? b.stage_id : current.stage_id,
+    b.pipeline_id !== undefined ? b.pipeline_id : current.pipeline_id,
+    b.owner_id !== undefined ? b.owner_id : current.owner_id,
+    b.position !== undefined ? b.position : current.position,
+    req.params.id
+  ]);
+  if (b.custom_fields) await crmSetCustomFieldValues('lead', req.params.id, b.custom_fields);
+  if (stageChanged) {
+    const newStage = await pgOne('SELECT name FROM crm_stages WHERE id=$1', [b.stage_id]);
+    await crmLogActivity('lead', req.params.id, 'stage_change', 'Status ændret til "' + (newStage ? newStage.name : '?') + '"', req.user.id);
+  }
+  res.json({ ok: true });
+}));
+app.delete('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM crm_leads WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+app.post('/api/crm/leads/:id/notes', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.body) return res.status(400).json({ error: 'Note mangler' });
+  await crmLogActivity('lead', req.params.id, 'note', String(b.body), req.user.id);
+  res.json({ ok: true });
+}));
+// Konverterer et lead til en kontakt + en opportunity i Sales-pipelinen —
+// og opretter/kæder samtidig en rigtig kunde i Kunder-modulet (customers),
+// så Tilbud/Faktura/Projekter fungerer med det samme uden ekstra trin.
+app.post('/api/crm/leads/:id/convert', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const lead = await pgOne('SELECT * FROM crm_leads WHERE id=$1', [req.params.id]);
+  if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
+  if (lead.converted_opportunity_id) return res.status(400).json({ error: 'Leadet er allerede konverteret' });
+
+  let targetPipelineId = b.pipeline_id;
+  if (!targetPipelineId) { const p = await pgOne("SELECT id FROM crm_pipelines WHERE type='opportunity' ORDER BY position ASC LIMIT 1"); targetPipelineId = p && p.id; }
+  if (!targetPipelineId) return res.status(400).json({ error: 'Ingen salgs-pipeline findes — opret én under CRM-indstillinger' });
+  let targetStageId = b.stage_id;
+  if (!targetStageId) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [targetPipelineId]); targetStageId = s && s.id; }
+
+  // Kontakt: genbrug hvis en med samme telefon/email allerede findes, ellers ny.
+  let contact = null;
+  if (lead.phone) contact = await pgOne('SELECT * FROM crm_contacts WHERE phone=$1', [lead.phone]);
+  if (!contact && lead.email) contact = await pgOne('SELECT * FROM crm_contacts WHERE email=$1', [lead.email]);
+  let contactId;
+  if (contact) { contactId = contact.id; }
+  else {
+    const c = await pgOne('INSERT INTO crm_contacts (name,email,phone,address) VALUES ($1,$2,$3,$4) RETURNING id', [lead.name, lead.email, lead.phone, lead.address]);
+    contactId = c.id;
+  }
+
+  // Kunde i det eksisterende Kunder-modul — dedupliker på telefon/email ligesom
+  // resten af appen allerede gør (se fx Close-webhooken herover).
+  let customer = null;
+  if (lead.phone) customer = await pgOne('SELECT id FROM customers WHERE phone=$1', [lead.phone]);
+  if (!customer && lead.email) customer = await pgOne('SELECT id FROM customers WHERE email=$1', [lead.email]);
+  let customerId;
+  if (customer) { customerId = customer.id; }
+  else {
+    const cust = await pgOne('INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id', [lead.name, lead.email, lead.phone, lead.address, lead.note]);
+    customerId = cust.id;
+  }
+  await pool.query('UPDATE crm_contacts SET customer_id=$1 WHERE id=$2', [customerId, contactId]);
+
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_opportunities WHERE stage_id=$1', [targetStageId]);
+  const opp = await pgOne(`
+    INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,owner_id,source_lead_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
+  `, [lead.name, contactId, targetPipelineId, targetStageId, lead.owner_id, lead.id, posRow.pos]);
+
+  // Kopiér custom fields der findes på BEGGE entitetstyper (samme key) med over,
+  // så data ikke går tabt ved konvertering.
+  const leadValues = await crmGetCustomFieldValues('lead', lead.id);
+  await crmSetCustomFieldValues('opportunity', opp.id, leadValues);
+
+  const convertedStage = await pgOne("SELECT id FROM crm_stages WHERE pipeline_id=$1 AND is_won=1 ORDER BY position ASC LIMIT 1", [lead.pipeline_id]);
+  await pool.query('UPDATE crm_leads SET converted_opportunity_id=$1, stage_id=COALESCE($2,stage_id) WHERE id=$3', [opp.id, convertedStage ? convertedStage.id : null, lead.id]);
+  await crmLogActivity('lead', lead.id, 'converted', 'Konverteret til opportunity #' + opp.id, req.user.id);
+  await crmLogActivity('opportunity', opp.id, 'created', 'Oprettet fra lead #' + lead.id, req.user.id);
+
+  res.json({ ok: true, contact_id: contactId, customer_id: customerId, opportunity_id: opp.id });
+}));
+
+// ── OPPORTUNITIES ────────────────────────────────────────────────
+app.get('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res) => {
+  const conds = ['1=1']; const params = [];
+  if (req.query.pipeline_id) { params.push(req.query.pipeline_id); conds.push('o.pipeline_id=$' + params.length); }
+  if (req.query.stage_id) { params.push(req.query.stage_id); conds.push('o.stage_id=$' + params.length); }
+  if (req.query.owner_id) { params.push(req.query.owner_id); conds.push('o.owner_id=$' + params.length); }
+  if (req.query.q) { params.push('%' + req.query.q + '%'); conds.push('(o.name ILIKE $' + params.length + ' OR c.name ILIKE $' + params.length + ' OR c.phone ILIKE $' + params.length + ' OR c.email ILIKE $' + params.length + ')'); }
+  const rows = (await pool.query(`
+    SELECT o.*, u.name AS owner_name, u.color AS owner_color, u.initials AS owner_initials,
+      c.name AS contact_name, c.phone AS contact_phone, c.email AS contact_email, c.customer_id AS customer_id
+    FROM crm_opportunities o
+    LEFT JOIN users u ON u.id=o.owner_id
+    LEFT JOIN crm_contacts c ON c.id=o.contact_id
+    WHERE ${conds.join(' AND ')} ORDER BY o.position ASC, o.id DESC
+  `, params)).rows;
+  const cfValues = await crmGetCustomFieldValuesBulk('opportunity', rows.map(r => r.id));
+  res.json(rows.map(r => ({ ...r, custom_fields: cfValues[r.id] || {} })));
+}));
+app.post('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
+  let pipelineId = b.pipeline_id;
+  if (!pipelineId) { const p = await pgOne("SELECT id FROM crm_pipelines WHERE type='opportunity' ORDER BY position ASC LIMIT 1"); pipelineId = p && p.id; }
+  if (!pipelineId) return res.status(400).json({ error: 'Ingen salgs-pipeline findes' });
+  let stageId = b.stage_id;
+  if (!stageId) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [pipelineId]); stageId = s && s.id; }
+  let contactId = b.contact_id || null;
+  if (!contactId && (b.contact_name || b.contact_phone || b.contact_email)) {
+    const c = await pgOne('INSERT INTO crm_contacts (name,email,phone) VALUES ($1,$2,$3) RETURNING id', [b.contact_name || b.name, b.contact_email || null, b.contact_phone || null]);
+    contactId = c.id;
+  }
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_opportunities WHERE stage_id=$1', [stageId]);
+  const r = await pgOne(`
+    INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,value,probability,owner_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+  `, [String(b.name).trim(), contactId, pipelineId, stageId, b.value || null, b.probability || null, b.owner_id || req.user.id, posRow.pos]);
+  await crmSetCustomFieldValues('opportunity', r.id, b.custom_fields);
+  await crmLogActivity('opportunity', r.id, 'created', 'Opportunity oprettet', req.user.id);
+  res.json({ ok: true, id: r.id });
+}));
+app.get('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const opp = await pgOne(`
+    SELECT o.*, c.name AS contact_name, c.phone AS contact_phone, c.email AS contact_email, c.address AS contact_address, c.customer_id AS customer_id
+    FROM crm_opportunities o LEFT JOIN crm_contacts c ON c.id=o.contact_id WHERE o.id=$1
+  `, [req.params.id]);
+  if (!opp) return res.status(404).json({ error: 'Opportunity ikke fundet' });
+  const customFields = await crmGetCustomFieldDefs('opportunity');
+  const customValues = await crmGetCustomFieldValues('opportunity', opp.id);
+  const activities = (await pool.query('SELECT a.*, u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.entity_type=$1 AND a.entity_id=$2 ORDER BY a.created_at DESC, a.id DESC', ['opportunity', opp.id])).rows;
+  res.json({ ...opp, custom_fields: customValues, custom_field_defs: customFields, activities });
+}));
+app.put('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const current = await pgOne('SELECT * FROM crm_opportunities WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Opportunity ikke fundet' });
+  const stageChanged = b.stage_id !== undefined && Number(b.stage_id) !== current.stage_id;
+  await pool.query(`
+    UPDATE crm_opportunities SET name=$1,value=$2,probability=$3,stage_id=$4,pipeline_id=$5,owner_id=$6,position=$7,updated_at=${nowTextSQL()} WHERE id=$8
+  `, [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.value !== undefined ? b.value : current.value,
+    b.probability !== undefined ? b.probability : current.probability,
+    b.stage_id !== undefined ? b.stage_id : current.stage_id,
+    b.pipeline_id !== undefined ? b.pipeline_id : current.pipeline_id,
+    b.owner_id !== undefined ? b.owner_id : current.owner_id,
+    b.position !== undefined ? b.position : current.position,
+    req.params.id
+  ]);
+  if (b.custom_fields) await crmSetCustomFieldValues('opportunity', req.params.id, b.custom_fields);
+  if (stageChanged) {
+    const newStage = await pgOne('SELECT name FROM crm_stages WHERE id=$1', [b.stage_id]);
+    await crmLogActivity('opportunity', req.params.id, 'stage_change', 'Status ændret til "' + (newStage ? newStage.name : '?') + '"', req.user.id);
+  }
+  res.json({ ok: true });
+}));
+app.delete('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM crm_opportunities WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+app.post('/api/crm/opportunities/:id/notes', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.body) return res.status(400).json({ error: 'Note mangler' });
+  await crmLogActivity('opportunity', req.params.id, 'note', String(b.body), req.user.id);
+  res.json({ ok: true });
+}));
+// Opportunities knyttet til en given kunde i Kunder-modulet — bruges af
+// kundekortet til at vise "tilknyttede opportunities" (se customer-detail).
+app.get('/api/crm/customers/:id/opportunities', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = (await pool.query(`
+    SELECT o.*, s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name
+    FROM crm_opportunities o
+    JOIN crm_contacts c ON c.id=o.contact_id
+    JOIN crm_stages s ON s.id=o.stage_id
+    JOIN crm_pipelines p ON p.id=o.pipeline_id
+    WHERE c.customer_id=$1 ORDER BY o.created_at DESC
+  `, [req.params.id])).rows;
+  res.json(rows);
 }));
 
 // ══════════════════════════════════════════════════════════════

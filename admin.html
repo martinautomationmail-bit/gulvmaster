@@ -697,6 +697,44 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #tl-drawer .tld-input{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);color:var(--bly-ink)}
 #tl-drawer .tld-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
 
+/* CRM-PIPELINE detalje-panel — samme lys Billy-behandling som #tl-drawer
+   herover (se kommentar der), bare sit eget id så det ikke kolliderer med
+   Tidslinjens egen drawer. */
+#crmp-drawer{box-shadow:-16px 0 50px rgba(15,17,24,.14);border-left:1px solid var(--bly-border-soft)}
+#crmp-drawer .tl-drawer-head{background:none;color:var(--bly-ink);border-bottom:1px solid var(--bly-border-soft);padding:20px}
+#crmp-drawer .tl-drawer-sub{color:var(--bly-sub);opacity:1}
+#crmp-drawer .tl-drawer-close{background:var(--bly-border-soft);color:var(--bly-ink);border-radius:50%}
+#crmp-drawer .tld-label{text-transform:none;color:var(--bly-sub);font-weight:700;letter-spacing:.02em;font-size:11px}
+#crmp-drawer .tld-input{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);color:var(--bly-ink)}
+#crmp-drawer .tld-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+#crmp-drawer #crmpd-name-input{color:var(--bly-ink)}
+#crmp-drawer .tl-drawer-type-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--bly-accent)}
+
+/* ══════════════════════════════════════════════════════════════
+   CRM-PIPELINE — Kanban-bord (Leads/Sales), Billy-stil. */
+#page-crmp .bly-toolbar-left{gap:8px}
+.crmp-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
+.crmp-col{flex:0 0 280px;background:var(--bly-border-soft);border-radius:var(--bly-r-lg);display:flex;flex-direction:column;max-height:calc(100vh - 320px)}
+.crmp-col.drag-over{outline:2px dashed var(--bly-accent);outline-offset:-2px}
+.crmp-col-head{padding:12px 14px 10px;flex-shrink:0}
+.crmp-col-title{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;color:var(--bly-ink)}
+.crmp-col-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.crmp-col-count{margin-left:auto;font-size:11px;font-weight:700;color:var(--bly-sub);background:#fff;border-radius:999px;padding:1px 8px}
+.crmp-col-sum{font-size:11px;color:var(--bly-sub);margin-top:2px;font-weight:600}
+.crmp-col-body{flex:1;overflow-y:auto;padding:0 10px 10px;display:flex;flex-direction:column;gap:8px}
+.crmp-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:11px 12px;cursor:grab;box-shadow:0 1px 2px rgba(15,17,24,.04);transition:box-shadow .12s,transform .12s}
+.crmp-card:hover{box-shadow:0 4px 14px rgba(15,17,24,.1)}
+.crmp-card.dragging{opacity:.4}
+.crmp-card-name{font-size:13px;font-weight:800;color:var(--bly-ink);margin-bottom:4px}
+.crmp-card-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--bly-sub);margin-top:3px}
+.crmp-card-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.crmp-card-badge{background:var(--bly-accent-soft);color:var(--bly-accent);font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px}
+.crmp-card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.crmp-card-owner{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0}
+.crmp-card-value{font-size:11.5px;font-weight:800;color:var(--bly-ink)}
+.crmp-set-stage-row{display:flex;align-items:center;gap:8px;background:var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:6px 8px}
+.crmp-set-field-row{display:flex;align-items:center;gap:8px;background:var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:6px 8px}
+
 /* ══════════════════════════════════════════════════════════════
    KOMMANDOCENTER — samme Billy-behandling, scoped til #page-dashboard. */
 #page-dashboard .page-head h2{font-size:25px;font-weight:800;color:var(--bly-ink);letter-spacing:-.01em;margin:0}
@@ -1786,6 +1824,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
     <div class="sidebar-section-label hidden" id="crm-section-label">CRM</div>
     <a class="tab hidden" href="#customers" data-page="customers" id="customers-tab-btn"><span class="stab-icon">👥</span><span class="stab-label">Kunder</span></a>
+    <a class="tab hidden" href="#crmp/leads" data-page="crmp" data-crmp-pipeline-type="lead" id="crmp-leads-tab-btn"><span class="stab-icon">🧲</span><span class="stab-label">Leads</span></a>
+    <a class="tab hidden" href="#crmp/sales" data-page="crmp" data-crmp-pipeline-type="opportunity" id="crmp-sales-tab-btn"><span class="stab-icon">🤝</span><span class="stab-label">Sales</span></a>
 
     <!-- TILBUD & FAKTURA — Produkter/Skabeloner/Mail-skabeloner lå før KUN som
          in-page-faner (nederst i "..."-menuen på selve siden), ikke i sidebaren.
@@ -2382,7 +2422,150 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <thead><tr><th>Nr.</th><th>Sag</th><th>Status</th><th class="num">Beløb</th><th>Forfald</th><th style="width:90px"></th></tr></thead>
     <tbody id="cd-invoices-body"></tbody>
   </table>
+
+  <h3 style="font-size:14px;margin:22px 0 10px">🤝 Opportunities <span class="sub" id="cd-opps-count"></span></h3>
+  <table class="bly-table">
+    <thead><tr><th>Navn</th><th>Pipeline</th><th>Stage</th><th class="num">Værdi</th></tr></thead>
+    <tbody id="cd-opps-body"></tbody>
+  </table>
 </section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     CRM-PIPELINE — Leads + Sales (og evt. flere Martin selv opretter).
+     Kanban-bord i Billy-stil, samme grund-idé som Close men bygget direkte
+     ind i programmet. "crmp"-præfiks overalt i JS/CSS/id'er, bevidst
+     adskilt fra det ELDRE "crm"-præfiks som Kunder-modulet allerede bruger
+     (initCrmModule/crm-modal/loadCrmCustomers m.fl.) — for ikke at kollidere. -->
+<section class="page" id="page-crmp">
+  <div class="bly-pagehead">
+    <div>
+      <h2 id="crmp-pipeline-title">Pipeline</h2>
+      <div class="sub" id="crmp-pipeline-sub">–</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="crmp-pipeline-select" class="select" style="width:auto"></select>
+      <button class="bly-btn outline" id="crmp-settings-btn" type="button">⚙️ Indstillinger</button>
+      <button class="bly-btn" id="crmp-new-btn" type="button">+ Ny</button>
+    </div>
+  </div>
+  <div class="bly-toolbar">
+    <div class="bly-toolbar-left" style="flex-wrap:wrap">
+      <input type="text" id="crmp-search" class="bly-search" placeholder="Søg navn, telefon eller email..." style="width:240px">
+      <select id="crmp-owner-filter" class="select" style="width:auto"><option value="">Alle ansvarlige</option></select>
+      <select id="crmp-cf-filter-field" class="select" style="width:auto"><option value="">Filtrér på felt...</option></select>
+      <select id="crmp-cf-filter-value" class="select" style="width:auto;display:none"></select>
+      <button class="bly-ctl" id="crmp-filter-clear" type="button" title="Ryd filtre">✕ Ryd filtre</button>
+    </div>
+    <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="crmp-count"></span></div>
+  </div>
+  <div class="crmp-board" id="crmp-board"></div>
+</section>
+
+<!-- CRM-PIPELINE — DETALJE-PANEL (samme visuelle sprog/klasser som Tidslinjens
+     tl-drawer, egen ID så den ikke kolliderer, men egen matchende Billy-lys
+     farve-override herunder i CSS'en). -->
+<div class="tl-drawer" id="crmp-drawer">
+  <div class="tl-drawer-head">
+    <span class="tl-drawer-type-dot" id="crmpd-type-dot"></span>
+    <div class="tl-drawer-head-text">
+      <input id="crmpd-name-input" class="tld-input" style="font-size:15px;font-weight:800;border:0;background:transparent;padding:2px 0">
+      <div class="tl-drawer-sub" id="crmpd-sub"></div>
+    </div>
+    <button class="tl-drawer-close" id="crmpd-close">✕</button>
+  </div>
+  <div class="tl-drawer-body">
+    <div class="tld-row">
+      <div class="tld-section"><label class="tld-label">📞 Telefon</label><input id="crmpd-phone" class="tld-input"></div>
+      <div class="tld-section"><label class="tld-label">📧 Email</label><input id="crmpd-email" class="tld-input" type="email"></div>
+    </div>
+    <div class="tld-section"><label class="tld-label">📍 Adresse</label><input id="crmpd-address" class="tld-input"></div>
+    <div class="tld-row" id="crmpd-opp-fields" style="display:none">
+      <div class="tld-section"><label class="tld-label">💰 Værdi (kr.)</label><input id="crmpd-value" type="number" class="tld-input"></div>
+      <div class="tld-section"><label class="tld-label">🎯 Sandsynlighed (%)</label><input id="crmpd-probability" type="number" min="0" max="100" class="tld-input"></div>
+    </div>
+    <div class="tld-row">
+      <div class="tld-section"><label class="tld-label">👤 Ansvarlig</label><select id="crmpd-owner" class="tld-input"></select></div>
+      <div class="tld-section"><label class="tld-label">🗂 Stage</label><select id="crmpd-stage" class="tld-input"></select></div>
+    </div>
+    <div class="tld-section" id="crmpd-source-field" style="display:none"><label class="tld-label">🔗 Kilde</label><input id="crmpd-source" class="tld-input" placeholder="Fx Website form, Facebook/Instagram"></div>
+    <div id="crmpd-customfields"></div>
+    <div class="tld-section"><label class="tld-label">📝 Note</label><textarea id="crmpd-note" class="tld-input" rows="3"></textarea></div>
+    <div class="tld-section">
+      <label class="tld-label">☑ Aktivitet</label>
+      <div id="crmpd-activity" style="margin-bottom:8px;max-height:220px;overflow:auto"></div>
+      <div class="tld-row">
+        <div style="flex:1"><input id="crmpd-note-new" class="tld-input" placeholder="Skriv en note..."></div>
+        <button class="btn small" type="button" id="crmpd-note-add-btn" style="align-self:flex-end">+ Tilføj</button>
+      </div>
+    </div>
+  </div>
+  <div class="tl-drawer-footer">
+    <button class="btn primary tld-footer-primary" id="crmpd-save">Gem ændringer</button>
+    <button class="btn tld-footer-primary" id="crmpd-convert" type="button" style="background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8">🤝 Konvertér til Opportunity</button>
+    <div class="tld-footer-row">
+      <button class="btn danger" id="crmpd-delete">🗑 Slet</button>
+    </div>
+  </div>
+</div>
+
+<!-- CRM-PIPELINE — INDSTILLINGER (stages pr. pipeline + custom fields) -->
+<div class="mo" id="crmp-settings-modal">
+  <div class="modal" style="max-width:640px">
+    <h3>CRM-indstillinger</h3>
+    <div class="bly-segtabs" id="crmp-settings-tabs" style="margin-bottom:16px">
+      <button class="bly-segtab active" data-crmpsettab="pipelines" type="button">🗂 Pipelines &amp; stages</button>
+      <button class="bly-segtab" data-crmpsettab="fields" type="button">🏷 Custom fields</button>
+    </div>
+    <div id="crmpsettab-pipelines">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <select id="crmp-set-pipeline-select" class="select" style="flex:1"></select>
+        <button class="btn small" id="crmp-set-pipeline-new" type="button">+ Ny pipeline</button>
+      </div>
+      <div id="crmp-set-stages-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px">
+        <input id="crmp-set-stage-new-name" class="input" placeholder="Ny stage-navn" style="flex:1">
+        <input id="crmp-set-stage-new-color" type="color" value="#6366F1" style="width:44px;padding:2px;border-radius:8px;border:1px solid var(--bly-border)">
+        <button class="btn small" id="crmp-set-stage-add" type="button">+ Tilføj stage</button>
+      </div>
+    </div>
+    <div id="crmpsettab-fields" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <select id="crmp-set-field-entity" class="select" style="width:auto">
+          <option value="lead">Lead-felter</option>
+          <option value="opportunity">Opportunity-felter</option>
+        </select>
+      </div>
+      <div id="crmp-set-fields-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="crmp-set-field-new-label" class="input" placeholder="Feltnavn, fx Sagsnummer" style="flex:1;min-width:160px">
+        <select id="crmp-set-field-new-type" class="select" style="width:auto">
+          <option value="text">Tekst</option>
+          <option value="number">Tal</option>
+          <option value="select">Dropdown</option>
+          <option value="date">Dato</option>
+          <option value="checkbox">Afkrydsning</option>
+        </select>
+        <input id="crmp-set-field-new-options" class="input" placeholder="Valg adskilt af komma (kun dropdown)" style="flex:1;min-width:200px;display:none">
+        <button class="btn small" id="crmp-set-field-add" type="button">+ Tilføj felt</button>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn" id="crmp-settings-close">Luk</button></div>
+  </div>
+</div>
+
+<!-- CRM-PIPELINE — OPRET NYT LEAD/OPPORTUNITY (hurtig-modal) -->
+<div class="mo" id="crmp-new-modal">
+  <div class="modal" style="max-width:420px">
+    <h3 id="crmp-new-modal-title">Nyt lead</h3>
+    <div class="form-group"><label class="form-label">Navn</label><input id="crmp-new-name" class="input"></div>
+    <div class="form-group"><label class="form-label">Telefon</label><input id="crmp-new-phone" class="input"></div>
+    <div class="form-group"><label class="form-label">Email</label><input id="crmp-new-email" class="input" type="email"></div>
+    <div class="modal-actions">
+      <button class="btn" id="crmp-new-cancel">Annuller</button>
+      <button class="btn primary" id="crmp-new-create">Opret</button>
+    </div>
+  </div>
+</div>
 
 <!-- PROJEKTER — oprettes automatisk når en kunde underskriver et tilbud.
      Sags-dashboard med et let Gantt (kun for denne sag), billeder, tidsregistrering
@@ -4174,6 +4357,8 @@ document.getElementById('app').style.display='block';
       document.getElementById('quotes-section-label').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('customers-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('crm-section-label').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('crmp-leads-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('crmp-sales-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('projects-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('projects-section-label').classList.toggle('hidden',!me.is_finance_admin);}
   }catch(e){}
@@ -10478,7 +10663,7 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 // kun var en PRIVAT funktion inde i bind() (fanget med en rigtig browser-test,
 // ikke kun en syntakstjek — samme disciplin som ved "kan ikke åbne en sag"-
 // rettelsen). Adfærden er uændret, kun hvor funktionen er defineret.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail'];
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp'];
 function switchPage(page,skipHash){
   if(VALID_PAGES.indexOf(page)===-1)page='plan';
   document.querySelectorAll('.tab,.navdrop-item,.navdrop-btn').forEach(function(x){x.classList.remove('active');});
@@ -10517,6 +10702,7 @@ function switchPage(page,skipHash){
   if(page==='finance'){if(!me.is_finance_admin){toast('Du har ikke adgang til Økonomi','🔒');switchPage('plan');return;}loadFinance();}
   if(page==='quotes'){if(!me.is_finance_admin){toast('Du har ikke adgang til Tilbud & Faktura','🔒');switchPage('plan');return;}initQuotesModule();}
   if(page==='customers'){if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');switchPage('plan');return;}initCrmModule();}
+  if(page==='crmp'){if(!me.is_finance_admin){toast('Du har ikke adgang til CRM','🔒');switchPage('plan');return;}initCrmpModule();}
   if(page==='projects'){if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');switchPage('plan');return;}initProjectsModule();}
   // initProjectsModule() binder bl.a. "← Tilbage til Projekter"-knappen og alt
   // andet på selve sags-siden (fanerne, "+ Ny opgave", opgave-detalje-modalens
@@ -10557,6 +10743,8 @@ function bind(){
     // #quotes/<alias> (uden id-segment ovenfor) — se data-qztab-jump i sidebaren.
     var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','mailskabeloner':'mailtemplates'};
     if(parts[0]==='quotes'&&parts[1]&&QZTAB_HASH_MAP[parts[1]])switchQzTab(QZTAB_HASH_MAP[parts[1]]);
+    if(parts[0]==='crmp'&&parts[1]==='leads')crmpSelectPipelineByType('lead');
+    if(parts[0]==='crmp'&&parts[1]==='sales')crmpSelectPipelineByType('opportunity');
     // Dyb-link til en enkelt sag — #project-detail/42 — sat af openProjectDetail()
     // selv (den bruger replaceState, ikke location.hash=, for ikke at trigge endnu
     // et hashchange-kald oveni sit eget fetch), men skal også virke ved genindlæsning
@@ -10697,6 +10885,16 @@ function bind(){
       switchPage('quotes');
       switchQzTab(btn.dataset.qztabJump);
       document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
+    });
+  });
+  // "Leads" og "Sales" i sidebaren peger begge på #page-crmp, men skal hver
+  // vælge deres egen pipeline-type (lead/opportunity) — samme mønster som
+  // data-fintab-jump/data-qztab-jump herover.
+  document.querySelectorAll('[data-crmp-pipeline-type]').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.preventDefault();
+      switchPage('crmp');
+      crmpSelectPipelineByType(btn.dataset.crmpPipelineType);
     });
   });
   document.addEventListener('click',function(e){
@@ -10969,7 +11167,7 @@ function bind(){
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
   // Modal backdrop
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -11106,6 +11304,8 @@ function bind(){
     if(initialPage==='quotes'&&initialParts[1]==='faktura'&&initialParts[2])openInvoiceDetail(Number(initialParts[2]));
     var QZTAB_HASH_MAP_INIT={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','mailskabeloner':'mailtemplates'};
     if(initialPage==='quotes'&&initialParts[1]&&QZTAB_HASH_MAP_INIT[initialParts[1]])switchQzTab(QZTAB_HASH_MAP_INIT[initialParts[1]]);
+    if(initialPage==='crmp'&&initialParts[1]==='leads')crmpSelectPipelineByType('lead');
+    if(initialPage==='crmp'&&initialParts[1]==='sales')crmpSelectPipelineByType('opportunity');
     if(initialPage==='project-detail'&&initialParts[1])openProjectDetail(Number(initialParts[1]));
     if(initialPage==='customer-detail'&&initialParts[1])openCustomerDetail(Number(initialParts[1]));
   }
@@ -11886,10 +12086,435 @@ async function openCustomerDetail(id){
       +'</tr>';
   }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen fakturaer endnu</td></tr>';
 
+  var opps=await api('/api/crm/customers/'+id+'/opportunities')||[];
+  document.getElementById('cd-opps-count').textContent='('+opps.length+')';
+  document.getElementById('cd-opps-body').innerHTML=opps.length?opps.map(function(o){
+    return '<tr style="cursor:pointer" onclick="switchPage(\'crmp\');crmpSelectPipelineByType(\'opportunity\',\''+o.pipeline_id+'\');setTimeout(function(){openCrmpDrawer(\'opportunity\','+o.id+');},250)">'
+      +'<td>'+esc(o.name)+'</td>'
+      +'<td>'+esc(o.pipeline_name)+'</td>'
+      +'<td><span class="crmp-card-badge" style="background:'+esc(o.stage_color)+'22;color:'+esc(o.stage_color)+'">'+esc(o.stage_name)+'</span></td>'
+      +'<td class="num">'+(o.value!=null?krFmt(o.value):'–')+'</td>'
+      +'</tr>';
+  }).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen opportunities endnu</td></tr>';
+
   initCustomerDetailModule();
   switchPage('customer-detail',true);
   if(location.hash.slice(1)!=='customer-detail/'+id)history.replaceState(null,'','#customer-detail/'+id);
 }
+
+// ══════════════════════════════════════════════════════════════
+// CRM-PIPELINE — Leads/Sales Kanban-bord. "crmp"-præfiks overalt for ikke at
+// kollidere med det ældre "crm"-præfiks Kunder-modulet allerede bruger
+// (initCrmModule/crm-modal/loadCrmCustomers m.fl., se lige ovenfor).
+// ══════════════════════════════════════════════════════════════
+var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[]},filters:{q:'',owner_id:'',cf_key:'',cf_value:''},initialized:false,drawerEntity:null,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead'};
+function crmpCurrentPipeline(){return crmpState.pipelines.find(function(p){return p.id===crmpState.currentPipelineId;});}
+async function initCrmpModule(){
+  if(!crmpState.initialized){
+    crmpState.initialized=true;
+    document.getElementById('crmp-pipeline-select').addEventListener('change',function(){crmpState.currentPipelineId=Number(this.value);crmpAfterPipelineSwitch();});
+    document.getElementById('crmp-settings-btn').addEventListener('click',openCrmpSettingsModal);
+    document.getElementById('crmp-new-btn').addEventListener('click',openCrmpNewModal);
+    document.getElementById('crmp-search').addEventListener('input',function(){crmpState.filters.q=this.value;clearTimeout(crmpState._searchTimer);crmpState._searchTimer=setTimeout(crmpLoadBoard,250);});
+    document.getElementById('crmp-owner-filter').addEventListener('change',function(){crmpState.filters.owner_id=this.value;crmpLoadBoard();});
+    document.getElementById('crmp-cf-filter-field').addEventListener('change',function(){
+      crmpState.filters.cf_key=this.value;crmpState.filters.cf_value='';
+      var valSel=document.getElementById('crmp-cf-filter-value');
+      var def=(crmpCurrentPipeline()&&crmpState.customFieldDefs[crmpCurrentPipeline().type]||[]).find(function(d){return d.key===this.value;}.bind(this));
+      if(def&&def.field_type==='select'){valSel.innerHTML='<option value="">Alle værdier</option>'+def.options.map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join('');valSel.style.display='';}
+      else valSel.style.display='none';
+      crmpLoadBoard();
+    });
+    document.getElementById('crmp-cf-filter-value').addEventListener('change',function(){crmpState.filters.cf_value=this.value;crmpLoadBoard();});
+    document.getElementById('crmp-filter-clear').addEventListener('click',function(){
+      crmpState.filters={q:'',owner_id:'',cf_key:'',cf_value:''};
+      document.getElementById('crmp-search').value='';document.getElementById('crmp-owner-filter').value='';
+      document.getElementById('crmp-cf-filter-field').value='';document.getElementById('crmp-cf-filter-value').style.display='none';
+      crmpLoadBoard();
+    });
+    document.getElementById('crmpd-close').addEventListener('click',function(){document.getElementById('crmp-drawer').classList.remove('open');});
+    document.getElementById('crmpd-save').addEventListener('click',crmpSaveDrawer);
+    document.getElementById('crmpd-convert').addEventListener('click',crmpConvertLead);
+    document.getElementById('crmpd-delete').addEventListener('click',crmpDeleteDrawerEntity);
+    document.getElementById('crmpd-note-add-btn').addEventListener('click',crmpAddNote);
+    document.getElementById('crmp-settings-close').addEventListener('click',function(){closeModal('crmp-settings-modal');});
+    document.querySelectorAll('#crmp-settings-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){
+      document.querySelectorAll('#crmp-settings-tabs .bly-segtab').forEach(function(x){x.classList.toggle('active',x===b);});
+      document.getElementById('crmpsettab-pipelines').style.display=b.dataset.crmpsettab==='pipelines'?'':'none';
+      document.getElementById('crmpsettab-fields').style.display=b.dataset.crmpsettab==='fields'?'':'none';
+    });});
+    document.getElementById('crmp-set-pipeline-select').addEventListener('change',function(){crmpState.settingsPipelineId=Number(this.value);crmpRenderSettingsStages();});
+    document.getElementById('crmp-set-pipeline-new').addEventListener('click',crmpCreatePipeline);
+    document.getElementById('crmp-set-stage-add').addEventListener('click',crmpAddStage);
+    document.getElementById('crmp-set-field-entity').addEventListener('change',function(){crmpState.settingsFieldEntity=this.value;crmpRenderSettingsFields();});
+    document.getElementById('crmp-set-field-new-type').addEventListener('change',function(){document.getElementById('crmp-set-field-new-options').style.display=this.value==='select'?'':'none';});
+    document.getElementById('crmp-set-field-add').addEventListener('click',crmpAddCustomField);
+    document.getElementById('crmp-new-cancel').addEventListener('click',function(){closeModal('crmp-new-modal');});
+    document.getElementById('crmp-new-create').addEventListener('click',crmpCreateNewItem);
+  }
+  await crmpLoadPipelines();
+  if(!crmpState.currentPipelineId&&crmpState.pipelines.length)crmpState.currentPipelineId=crmpState.pipelines[0].id;
+  await crmpAfterPipelineSwitch();
+}
+function crmpSelectPipelineByType(type,pipelineId){
+  var p=pipelineId?crmpState.pipelines.find(function(x){return x.id===Number(pipelineId);}):crmpState.pipelines.find(function(x){return x.type===type;});
+  if(!p)return;
+  crmpState.currentPipelineId=p.id;
+  var sel=document.getElementById('crmp-pipeline-select');
+  if(sel)sel.value=p.id;
+  // "Leads" og "Sales" i sidebaren deler begge data-page="crmp", så switchPage()'s
+  // egen aktiv-fane-logik rammer kun den første af dem — sæt derfor selv den
+  // korrekte af de to som aktiv her, ud fra hvilken type pipeline der reelt vises.
+  var leadsTab=document.getElementById('crmp-leads-tab-btn'),salesTab=document.getElementById('crmp-sales-tab-btn');
+  if(leadsTab&&salesTab){
+    leadsTab.classList.toggle('active',p.type==='lead');
+    salesTab.classList.toggle('active',p.type==='opportunity');
+  }
+  crmpAfterPipelineSwitch();
+}
+async function crmpLoadPipelines(){
+  crmpState.pipelines=await api('/api/crm/pipelines')||[];
+  var sel=document.getElementById('crmp-pipeline-select');
+  sel.innerHTML=crmpState.pipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
+  if(crmpState.currentPipelineId)sel.value=crmpState.currentPipelineId;
+  crmpState.customFieldDefs.lead=await crmGetCustomFieldDefsCache('lead');
+  crmpState.customFieldDefs.opportunity=await crmGetCustomFieldDefsCache('opportunity');
+  var ownerSel=document.getElementById('crmp-owner-filter');
+  ownerSel.innerHTML='<option value="">Alle ansvarlige</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+}
+async function crmGetCustomFieldDefsCache(entityType){
+  var r=await api('/api/crm/custom-fields?entity_type='+entityType);
+  return (r||[]).map(function(f){return Object.assign({},f,{options:f.options||[]});});
+}
+async function crmpAfterPipelineSwitch(){
+  var p=crmpCurrentPipeline();
+  if(!p){document.getElementById('crmp-board').innerHTML='<div class="sub" style="padding:20px">Ingen pipelines endnu — opret én under ⚙️ Indstillinger.</div>';return;}
+  document.getElementById('crmp-pipeline-title').textContent=p.name;
+  document.getElementById('crmp-pipeline-sub').textContent=p.type==='lead'?'Nye henvendelser — konvertér til en opportunity når de er kvalificeret':'Salgsmuligheder i gang';
+  document.getElementById('crmp-new-btn').textContent=p.type==='lead'?'+ Nyt lead':'+ Ny opportunity';
+  var cfSel=document.getElementById('crmp-cf-filter-field');
+  var defs=crmpState.customFieldDefs[p.type]||[];
+  cfSel.innerHTML='<option value="">Filtrér på felt...</option>'+defs.map(function(d){return '<option value="'+esc(d.key)+'">'+esc(d.label)+'</option>';}).join('');
+  document.getElementById('crmp-cf-filter-value').style.display='none';
+  await crmpLoadBoard();
+}
+async function crmpLoadBoard(){
+  var p=crmpCurrentPipeline();
+  if(!p)return;
+  var qs=['pipeline_id='+p.id];
+  if(crmpState.filters.q)qs.push('q='+encodeURIComponent(crmpState.filters.q));
+  if(crmpState.filters.owner_id)qs.push('owner_id='+crmpState.filters.owner_id);
+  var endpoint=p.type==='lead'?'/api/crm/leads':'/api/crm/opportunities';
+  var rows=await api(endpoint+'?'+qs.join('&'))||[];
+  if(crmpState.filters.cf_key&&crmpState.filters.cf_value){
+    rows=rows.filter(function(r){return r.custom_fields&&r.custom_fields[crmpState.filters.cf_key]===crmpState.filters.cf_value;});
+  }
+  crmpState.cards=rows;
+  crmpRenderBoard();
+}
+var CRMP_OWNER_PALETTE=['#4F46E5','#0EA5E9','#16A34A','#D97706','#DB2777','#7C3AED','#DC2626'];
+function crmpOwnerColor(userId){return userId?CRMP_OWNER_PALETTE[userId%CRMP_OWNER_PALETTE.length]:'#9CA3AF';}
+function crmpRenderBoard(){
+  var p=crmpCurrentPipeline();
+  var board=document.getElementById('crmp-board');
+  var stages=(p.stages||[]).slice().sort(function(a,b){return a.position-b.position;});
+  var defs=crmpState.customFieldDefs[p.type]||[];
+  document.getElementById('crmp-count').textContent=crmpState.cards.length+' kort';
+  board.innerHTML=stages.map(function(stage){
+    var cards=crmpState.cards.filter(function(c){return c.stage_id===stage.id;});
+    var sum=p.type==='opportunity'?cards.reduce(function(s,c){return s+(Number(c.value)||0);},0):0;
+    return '<div class="crmp-col" data-stage-id="'+stage.id+'">'
+      +'<div class="crmp-col-head">'
+      +'<div class="crmp-col-title"><span class="crmp-col-dot" style="background:'+esc(stage.color)+'"></span>'+esc(stage.name)+'<span class="crmp-col-count">'+cards.length+'</span></div>'
+      +(p.type==='opportunity'?'<div class="crmp-col-sum">'+krFmt(sum)+'</div>':'')
+      +'</div>'
+      +'<div class="crmp-col-body" data-stage-id="'+stage.id+'">'
+      +cards.map(function(c){return crmpCardHtml(c,p,defs);}).join('')
+      +'</div></div>';
+  }).join('');
+  board.querySelectorAll('.crmp-card').forEach(function(card){
+    card.addEventListener('click',function(){openCrmpDrawer(p.type,Number(card.dataset.id));});
+    card.addEventListener('dragstart',function(e){crmpState.dragCardId=Number(card.dataset.id);card.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+    card.addEventListener('dragend',function(){card.classList.remove('dragging');});
+  });
+  board.querySelectorAll('.crmp-col-body').forEach(function(col){
+    col.addEventListener('dragover',function(e){e.preventDefault();col.closest('.crmp-col').classList.add('drag-over');});
+    col.addEventListener('dragleave',function(){col.closest('.crmp-col').classList.remove('drag-over');});
+    col.addEventListener('drop',async function(e){
+      e.preventDefault();
+      col.closest('.crmp-col').classList.remove('drag-over');
+      var stageId=Number(col.dataset.stageId);
+      var cardId=crmpState.dragCardId;
+      if(!cardId)return;
+      var endpoint=(p.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+cardId;
+      var r=await api(endpoint,{method:'PUT',body:JSON.stringify({stage_id:stageId})});
+      if(r&&r.ok){toast('Flyttet ✓','✓');crmpLoadBoard();}else toast((r&&r.error)||'Kunne ikke flytte','❌');
+    });
+  });
+}
+function crmpCardHtml(c,pipeline,defs){
+  var badges=defs.filter(function(d){return c.custom_fields&&c.custom_fields[d.key];}).slice(0,2).map(function(d){
+    return '<span class="crmp-card-badge">'+esc(c.custom_fields[d.key])+'</span>';
+  }).join('');
+  var contactLine=[c.phone||c.contact_phone,c.email||c.contact_email].filter(Boolean).join(' · ');
+  var ownerId=c.owner_id;
+  var ownerInitials=c.owner_initials||(c.owner_name?c.owner_name.split(' ').map(function(w){return w[0];}).slice(0,2).join('').toUpperCase():'');
+  return '<div class="crmp-card" draggable="true" data-id="'+c.id+'">'
+    +'<div class="crmp-card-name">'+esc(pipeline.type==='opportunity'?(c.contact_name||c.name):c.name)+'</div>'
+    +(contactLine?'<div class="crmp-card-row">'+esc(contactLine)+'</div>':'')
+    +(badges?'<div class="crmp-card-badges">'+badges+'</div>':'')
+    +'<div class="crmp-card-foot">'
+    +(pipeline.type==='opportunity'&&c.value!=null?'<span class="crmp-card-value">'+krFmt(c.value)+'</span>':'<span></span>')
+    +(ownerId?'<span class="crmp-card-owner" style="background:'+crmpOwnerColor(ownerId)+'">'+esc(ownerInitials)+'</span>':'')
+    +'</div></div>';
+}
+
+// ── DETALJE-PANEL ────────────────────────────────────────────────
+async function openCrmpDrawer(entityType,id){
+  var endpoint=(entityType==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+id;
+  var d=await api(endpoint);
+  if(!d||d.error){toast('Kunne ikke hente','❌');return;}
+  crmpState.drawerEntity={type:entityType,id:id,data:d};
+  document.getElementById('crmpd-name-input').value=entityType==='lead'?d.name:(d.contact_name||d.name);
+  document.getElementById('crmpd-sub').textContent=entityType==='lead'?'Lead':'Opportunity · '+(d.contact_name||'');
+  document.getElementById('crmpd-phone').value=entityType==='lead'?(d.phone||''):(d.contact_phone||'');
+  document.getElementById('crmpd-email').value=entityType==='lead'?(d.email||''):(d.contact_email||'');
+  document.getElementById('crmpd-address').value=entityType==='lead'?(d.address||''):(d.contact_address||'');
+  document.getElementById('crmpd-phone').disabled=entityType==='opportunity';
+  document.getElementById('crmpd-email').disabled=entityType==='opportunity';
+  document.getElementById('crmpd-address').disabled=entityType==='opportunity';
+  document.getElementById('crmpd-opp-fields').style.display=entityType==='opportunity'?'':'none';
+  document.getElementById('crmpd-source-field').style.display=entityType==='lead'?'':'none';
+  if(entityType==='opportunity'){
+    document.getElementById('crmpd-value').value=d.value!=null?d.value:'';
+    document.getElementById('crmpd-probability').value=d.probability!=null?d.probability:'';
+  } else {
+    document.getElementById('crmpd-source').value=d.source||'';
+  }
+  document.getElementById('crmpd-note').value=(entityType==='lead'?d.note:'')||'';
+  document.getElementById('crmpd-note').closest('.tld-section').style.display=entityType==='lead'?'':'none';
+  var ownerSel=document.getElementById('crmpd-owner');
+  ownerSel.innerHTML='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(u.id===d.owner_id?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
+  var pipeline=crmpState.pipelines.find(function(p){return p.id===d.pipeline_id;});
+  var stageSel=document.getElementById('crmpd-stage');
+  stageSel.innerHTML=(pipeline?pipeline.stages:[]).slice().sort(function(a,b){return a.position-b.position;}).map(function(s){return '<option value="'+s.id+'"'+(s.id===d.stage_id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
+  document.getElementById('crmpd-customfields').innerHTML=crmpRenderCustomFieldInputs(entityType,d.custom_field_defs||[],d.custom_fields||{});
+  document.getElementById('crmpd-convert').style.display=entityType==='lead'&&!d.converted_opportunity_id?'':'none';
+  document.getElementById('crmpd-activity').innerHTML=(d.activities||[]).map(function(a){
+    return '<div style="padding:6px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12px">'
+      +'<div style="color:var(--bly-ink)">'+(a.kind==='note'?'📝 ':a.kind==='stage_change'?'🔀 ':a.kind==='converted'?'🤝 ':'✨ ')+esc(a.body||'')+'</div>'
+      +'<div class="sub" style="font-size:10.5px">'+esc(a.user_name||'System')+' · '+esc(fmtDaDate(a.created_at))+'</div></div>';
+  }).join('')||'<div class="sub" style="padding:6px 0">Ingen aktivitet endnu</div>';
+  document.getElementById('crmp-drawer').classList.add('open');
+}
+function crmpRenderCustomFieldInputs(entityType,defs,values){
+  return defs.map(function(d){
+    var val=values[d.key]||'';
+    var input;
+    if(d.field_type==='select'){
+      input='<select class="tld-input" data-cf-key="'+esc(d.key)+'"><option value="">—</option>'+d.options.map(function(o){return '<option value="'+esc(o)+'"'+(o===val?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>';
+    } else if(d.field_type==='checkbox'){
+      input='<input type="checkbox" data-cf-key="'+esc(d.key)+'" style="width:auto"'+(val==='1'||val===true?' checked':'')+'>';
+    } else if(d.field_type==='number'){
+      input='<input type="number" class="tld-input" data-cf-key="'+esc(d.key)+'" value="'+esc(val)+'">';
+    } else if(d.field_type==='date'){
+      input='<input type="date" class="tld-input" data-cf-key="'+esc(d.key)+'" value="'+esc(val)+'">';
+    } else {
+      input='<input type="text" class="tld-input" data-cf-key="'+esc(d.key)+'" value="'+esc(val)+'">';
+    }
+    return '<div class="tld-section"><label class="tld-label">'+esc(d.label)+'</label>'+input+'</div>';
+  }).join('');
+}
+function crmpCollectCustomFieldValues(){
+  var out={};
+  document.querySelectorAll('#crmpd-customfields [data-cf-key]').forEach(function(el){
+    out[el.dataset.cfKey]=el.type==='checkbox'?(el.checked?'1':''):el.value;
+  });
+  return out;
+}
+async function crmpSaveDrawer(){
+  var ent=crmpState.drawerEntity;
+  if(!ent)return;
+  var body={
+    name:document.getElementById('crmpd-name-input').value,
+    owner_id:document.getElementById('crmpd-owner').value||null,
+    stage_id:Number(document.getElementById('crmpd-stage').value),
+    custom_fields:crmpCollectCustomFieldValues()
+  };
+  if(ent.type==='lead'){
+    body.phone=document.getElementById('crmpd-phone').value;
+    body.email=document.getElementById('crmpd-email').value;
+    body.address=document.getElementById('crmpd-address').value;
+    body.source=document.getElementById('crmpd-source').value;
+    body.note=document.getElementById('crmpd-note').value;
+  } else {
+    body.value=document.getElementById('crmpd-value').value||null;
+    body.probability=document.getElementById('crmpd-probability').value||null;
+  }
+  var endpoint=(ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id;
+  var r=await api(endpoint,{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Gemt ✓','✓');document.getElementById('crmp-drawer').classList.remove('open');crmpLoadBoard();}
+  else toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+async function crmpConvertLead(){
+  var ent=crmpState.drawerEntity;
+  if(!ent||ent.type!=='lead')return;
+  if(!await gmConfirm('Konvertér leadet til en kontakt + opportunity i salgs-pipelinen? Der oprettes/kædes samtidig en kunde i Kunder-modulet.'))return;
+  var r=await api('/api/crm/leads/'+ent.id+'/convert',{method:'POST',body:JSON.stringify({})});
+  if(r&&r.ok){
+    toast('Konverteret ✓','🤝');
+    document.getElementById('crmp-drawer').classList.remove('open');
+    crmpSelectPipelineByType('opportunity');
+  } else toast((r&&r.error)||'Kunne ikke konvertere','❌');
+}
+async function crmpDeleteDrawerEntity(){
+  var ent=crmpState.drawerEntity;
+  if(!ent)return;
+  if(!await gmConfirm('Slet '+(ent.type==='lead'?'leadet':'opportunity')+'? Kan ikke fortrydes.'))return;
+  var endpoint=(ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id;
+  var r=await api(endpoint,{method:'DELETE'});
+  if(r&&r.ok){toast('Slettet','🗑');document.getElementById('crmp-drawer').classList.remove('open');crmpLoadBoard();}
+  else toast((r&&r.error)||'Kunne ikke slette','❌');
+}
+async function crmpAddNote(){
+  var ent=crmpState.drawerEntity;
+  var input=document.getElementById('crmpd-note-new');
+  if(!ent||!input.value.trim())return;
+  var endpoint=(ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id+'/notes';
+  var r=await api(endpoint,{method:'POST',body:JSON.stringify({body:input.value.trim()})});
+  if(r&&r.ok){input.value='';openCrmpDrawer(ent.type,ent.id);}
+  else toast((r&&r.error)||'Kunne ikke tilføje note','❌');
+}
+
+// ── OPRET NYT LEAD/OPPORTUNITY (hurtig-modal) ─────────────────────
+function openCrmpNewModal(){
+  var p=crmpCurrentPipeline();
+  if(!p)return;
+  document.getElementById('crmp-new-modal-title').textContent=p.type==='lead'?'Nyt lead':'Ny opportunity';
+  document.getElementById('crmp-new-name').value='';
+  document.getElementById('crmp-new-phone').value='';
+  document.getElementById('crmp-new-email').value='';
+  document.getElementById('crmp-new-modal').classList.add('open');
+}
+async function crmpCreateNewItem(){
+  var p=crmpCurrentPipeline();
+  var name=document.getElementById('crmp-new-name').value.trim();
+  if(!name){toast('Navn mangler','⚠');return;}
+  var body={name:name,phone:document.getElementById('crmp-new-phone').value,email:document.getElementById('crmp-new-email').value,pipeline_id:p.id};
+  var endpoint=p.type==='lead'?'/api/crm/leads':'/api/crm/opportunities';
+  if(p.type==='opportunity'){body.contact_name=name;body.contact_phone=body.phone;body.contact_email=body.email;}
+  var r=await api(endpoint,{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Oprettet ✓','✓');closeModal('crmp-new-modal');crmpLoadBoard();}
+  else toast((r&&r.error)||'Kunne ikke oprette','❌');
+}
+
+// ── INDSTILLINGER: pipelines/stages + custom fields ───────────────
+function openCrmpSettingsModal(){
+  crmpState.settingsPipelineId=crmpState.currentPipelineId;
+  var sel=document.getElementById('crmp-set-pipeline-select');
+  sel.innerHTML=crmpState.pipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+' ('+(p.type==='lead'?'Lead':'Opportunity')+')</option>';}).join('');
+  sel.value=crmpState.settingsPipelineId;
+  crmpRenderSettingsStages();
+  document.getElementById('crmp-set-field-entity').value=crmpState.settingsFieldEntity;
+  crmpRenderSettingsFields();
+  document.getElementById('crmp-settings-modal').classList.add('open');
+}
+function crmpRenderSettingsStages(){
+  var p=crmpState.pipelines.find(function(x){return x.id===crmpState.settingsPipelineId;});
+  var list=document.getElementById('crmp-set-stages-list');
+  if(!p){list.innerHTML='';return;}
+  var stages=(p.stages||[]).slice().sort(function(a,b){return a.position-b.position;});
+  list.innerHTML=stages.map(function(s,i){
+    return '<div class="crmp-set-stage-row" data-stage-id="'+s.id+'">'
+      +'<input type="color" value="'+esc(s.color)+'" data-action="stage-color" style="width:32px;height:28px;padding:1px;border-radius:6px;border:1px solid var(--bly-border)">'
+      +'<input class="input" data-action="stage-name" value="'+esc(s.name)+'" style="flex:1">'
+      +'<button class="qz-icon-btn" data-action="stage-up" title="Flyt op" '+(i===0?'disabled':'')+'>↑</button>'
+      +'<button class="qz-icon-btn" data-action="stage-down" title="Flyt ned" '+(i===stages.length-1?'disabled':'')+'>↓</button>'
+      +'<button class="qz-icon-btn" data-action="stage-delete" title="Slet">🗑</button>'
+      +'</div>';
+  }).join('');
+  list.querySelectorAll('.crmp-set-stage-row').forEach(function(row){
+    var stageId=Number(row.dataset.stageId);
+    row.querySelector('[data-action="stage-name"]').addEventListener('change',function(){api('/api/crm/stages/'+stageId,{method:'PUT',body:JSON.stringify({name:this.value})}).then(function(){crmpLoadPipelinesAndRefreshSettings();});});
+    row.querySelector('[data-action="stage-color"]').addEventListener('change',function(){api('/api/crm/stages/'+stageId,{method:'PUT',body:JSON.stringify({color:this.value})}).then(function(){crmpLoadPipelinesAndRefreshSettings();});});
+    var upBtn=row.querySelector('[data-action="stage-up"]'),downBtn=row.querySelector('[data-action="stage-down"]');
+    if(upBtn)upBtn.addEventListener('click',function(){crmpSwapStagePosition(stageId,-1);});
+    if(downBtn)downBtn.addEventListener('click',function(){crmpSwapStagePosition(stageId,1);});
+    row.querySelector('[data-action="stage-delete"]').addEventListener('click',async function(){
+      if(!await gmConfirm('Slet stagen? Kun muligt hvis den er tom.'))return;
+      var r=await api('/api/crm/stages/'+stageId,{method:'DELETE'});
+      if(r&&r.ok)crmpLoadPipelinesAndRefreshSettings();else toast((r&&r.error)||'Kunne ikke slette','❌');
+    });
+  });
+}
+async function crmpSwapStagePosition(stageId,dir){
+  var p=crmpState.pipelines.find(function(x){return x.id===crmpState.settingsPipelineId;});
+  var stages=(p.stages||[]).slice().sort(function(a,b){return a.position-b.position;});
+  var idx=stages.findIndex(function(s){return s.id===stageId;});
+  var swapIdx=idx+dir;
+  if(swapIdx<0||swapIdx>=stages.length)return;
+  var a=stages[idx],b=stages[swapIdx];
+  await Promise.all([
+    api('/api/crm/stages/'+a.id,{method:'PUT',body:JSON.stringify({position:b.position})}),
+    api('/api/crm/stages/'+b.id,{method:'PUT',body:JSON.stringify({position:a.position})})
+  ]);
+  crmpLoadPipelinesAndRefreshSettings();
+}
+async function crmpLoadPipelinesAndRefreshSettings(){
+  await crmpLoadPipelines();
+  crmpRenderSettingsStages();
+  if(crmpState.currentPipelineId)await crmpLoadBoard();
+}
+async function crmpAddStage(){
+  var nameInput=document.getElementById('crmp-set-stage-new-name');
+  var colorInput=document.getElementById('crmp-set-stage-new-color');
+  if(!nameInput.value.trim()){toast('Navn mangler','⚠');return;}
+  var r=await api('/api/crm/pipelines/'+crmpState.settingsPipelineId+'/stages',{method:'POST',body:JSON.stringify({name:nameInput.value.trim(),color:colorInput.value})});
+  if(r&&r.ok){nameInput.value='';await crmpLoadPipelinesAndRefreshSettings();}
+  else toast((r&&r.error)||'Kunne ikke tilføje stage','❌');
+}
+async function crmpCreatePipeline(){
+  var name=await gmPrompt('Navn på ny pipeline:','');
+  if(!name)return;
+  var type=await gmConfirm('Er det en LEAD-pipeline (indkommende, endnu ikke kvalificerede)?\n\nTryk Annuller for i stedet en Opportunity/salgs-pipeline.')?'lead':'opportunity';
+  var r=await api('/api/crm/pipelines',{method:'POST',body:JSON.stringify({name:name,type:type})});
+  if(r&&r.ok){await crmpLoadPipelines();document.getElementById('crmp-set-pipeline-select').value=r.id;crmpState.settingsPipelineId=r.id;crmpRenderSettingsStages();}
+  else toast((r&&r.error)||'Kunne ikke oprette pipeline','❌');
+}
+function crmpRenderSettingsFields(){
+  var defs=crmpState.customFieldDefs[crmpState.settingsFieldEntity]||[];
+  var list=document.getElementById('crmp-set-fields-list');
+  list.innerHTML=defs.length?defs.map(function(d){
+    return '<div class="crmp-set-field-row" data-field-id="'+d.id+'">'
+      +'<span style="flex:1;font-weight:700;font-size:12.5px">'+esc(d.label)+'</span>'
+      +'<span class="sub" style="font-size:11px">'+({text:'Tekst',number:'Tal',select:'Dropdown',date:'Dato',checkbox:'Afkrydsning'}[d.field_type]||d.field_type)+'</span>'
+      +'<button class="qz-icon-btn" data-action="field-delete" title="Slet">🗑</button>'
+      +'</div>';
+  }).join(''):'<div class="sub" style="padding:6px 0">Ingen felter endnu</div>';
+  list.querySelectorAll('[data-action="field-delete"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var fieldId=Number(btn.closest('.crmp-set-field-row').dataset.fieldId);
+      if(!await gmConfirm('Slet feltet? Alle gemte værdier for feltet slettes også.'))return;
+      var r=await api('/api/crm/custom-fields/'+fieldId,{method:'DELETE'});
+      if(r&&r.ok){crmpState.customFieldDefs[crmpState.settingsFieldEntity]=await crmGetCustomFieldDefsCache(crmpState.settingsFieldEntity);crmpRenderSettingsFields();}
+    });
+  });
+}
+async function crmpAddCustomField(){
+  var label=document.getElementById('crmp-set-field-new-label').value.trim();
+  var type=document.getElementById('crmp-set-field-new-type').value;
+  var optionsRaw=document.getElementById('crmp-set-field-new-options').value;
+  if(!label){toast('Feltnavn mangler','⚠');return;}
+  var options=type==='select'?optionsRaw.split(',').map(function(s){return s.trim();}).filter(Boolean):[];
+  var r=await api('/api/crm/custom-fields',{method:'POST',body:JSON.stringify({entity_type:crmpState.settingsFieldEntity,label:label,field_type:type,options:options})});
+  if(r&&r.ok){
+    document.getElementById('crmp-set-field-new-label').value='';
+    document.getElementById('crmp-set-field-new-options').value='';
+    crmpState.customFieldDefs[crmpState.settingsFieldEntity]=await crmGetCustomFieldDefsCache(crmpState.settingsFieldEntity);
+    crmpRenderSettingsFields();
+  } else toast((r&&r.error)||'Kunne ikke tilføje felt','❌');
+}
+
 async function saveCrmCustomer(){
   var name=document.getElementById('crmc-name').value.trim();
   if(!name){toast('Navn mangler','⚠️');return;}
