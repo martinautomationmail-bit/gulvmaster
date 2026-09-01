@@ -1116,6 +1116,19 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_crm_activities_entity ON crm_activities(entity_type, entity_id);
 
+    -- crm_tasks: lille opgave-tjekliste pr. lead/opportunity (samme idé som
+    -- Close's "Tasks"-panel på lead-/kontaktsiden — ikke koblet til det store
+    -- Daglig planlægning/Gantt-system, bevidst holdt simpelt).
+    CREATE TABLE IF NOT EXISTS crm_tasks (
+      id SERIAL PRIMARY KEY,
+      entity_type TEXT NOT NULL,
+      entity_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_tasks_entity ON crm_tasks(entity_type, entity_id);
+
     -- ── E-SIGNATUR på tilbud: fast link pr. tilbud kunden kan acceptere og
     -- underskrive (tegnet signatur + navn + IP/tidspunkt som bevis). ────
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS customer_id INTEGER;
@@ -5383,6 +5396,22 @@ app.post('/api/crm/leads/:id/convert', auth, financeOnly, asyncRoute(async (req,
 }));
 
 // ── OPPORTUNITIES ────────────────────────────────────────────────
+// Kontaktens egne felter (navn/telefon/email/adresse) redigeres fra
+// opportunity-detaljesiden, siden en opportunity ikke selv ejer de felter —
+// de bor på crm_contacts (kan være delt af flere opportunities for samme person).
+app.put('/api/crm/contacts/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const current = await pgOne('SELECT * FROM crm_contacts WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Kontakt ikke fundet' });
+  await pool.query(`UPDATE crm_contacts SET name=$1,phone=$2,email=$3,address=$4,updated_at=${nowTextSQL()} WHERE id=$5`, [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.phone !== undefined ? b.phone : current.phone,
+    b.email !== undefined ? b.email : current.email,
+    b.address !== undefined ? b.address : current.address,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
 app.get('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res) => {
   const conds = ['1=1']; const params = [];
   if (req.query.pipeline_id) { params.push(req.query.pipeline_id); conds.push('o.pipeline_id=$' + params.length); }
@@ -5478,6 +5507,37 @@ app.get('/api/crm/customers/:id/opportunities', auth, financeOnly, asyncRoute(as
     WHERE c.customer_id=$1 ORDER BY o.created_at DESC
   `, [req.params.id])).rows;
   res.json(rows);
+}));
+
+// Simpel opgave-tjekliste pr. lead/opportunity (Close-lignende "Tasks"-panel).
+// Bevidst IKKE koblet til Daglig planlægning/Gantt — det er en helt separat,
+// meget større planlægningsmotor. Dette er kun en let huskeliste på selve
+// CRM-kortet, fx "Ring op i morgen", "Send tilbud".
+app.get('/api/crm/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
+  const { entity_type, entity_id } = req.query;
+  if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type og entity_id påkrævet' });
+  const rows = (await pool.query('SELECT * FROM crm_tasks WHERE entity_type=$1 AND entity_id=$2 ORDER BY done ASC, id ASC', [entity_type, entity_id])).rows;
+  res.json(rows);
+}));
+app.post('/api/crm/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.entity_type || !b.entity_id || !String(b.title || '').trim()) return res.status(400).json({ error: 'Titel mangler' });
+  const row = await pgOne('INSERT INTO crm_tasks (entity_type,entity_id,title) VALUES ($1,$2,$3) RETURNING *', [b.entity_type, b.entity_id, String(b.title).trim()]);
+  res.json(row);
+}));
+app.put('/api/crm/tasks/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const fields = [], values = [];
+  if (b.title !== undefined) { fields.push(`title=$${fields.length + 1}`); values.push(String(b.title).trim()); }
+  if (b.done !== undefined) { fields.push(`done=$${fields.length + 1}`); values.push(b.done ? 1 : 0); }
+  if (!fields.length) return res.json({ ok: true });
+  values.push(req.params.id);
+  await pool.query(`UPDATE crm_tasks SET ${fields.join(',')} WHERE id=$${values.length}`, values);
+  res.json({ ok: true });
+}));
+app.delete('/api/crm/tasks/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM crm_tasks WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
 }));
 
 // ══════════════════════════════════════════════════════════════

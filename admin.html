@@ -697,18 +697,38 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #tl-drawer .tld-input{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);color:var(--bly-ink)}
 #tl-drawer .tld-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
 
-/* CRM-PIPELINE detalje-panel — samme lys Billy-behandling som #tl-drawer
-   herover (se kommentar der), bare sit eget id så det ikke kolliderer med
-   Tidslinjens egen drawer. */
-#crmp-drawer{box-shadow:-16px 0 50px rgba(15,17,24,.14);border-left:1px solid var(--bly-border-soft)}
-#crmp-drawer .tl-drawer-head{background:none;color:var(--bly-ink);border-bottom:1px solid var(--bly-border-soft);padding:20px}
-#crmp-drawer .tl-drawer-sub{color:var(--bly-sub);opacity:1}
-#crmp-drawer .tl-drawer-close{background:var(--bly-border-soft);color:var(--bly-ink);border-radius:50%}
-#crmp-drawer .tld-label{text-transform:none;color:var(--bly-sub);font-weight:700;letter-spacing:.02em;font-size:11px}
-#crmp-drawer .tld-input{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);color:var(--bly-ink)}
-#crmp-drawer .tld-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
-#crmp-drawer #crmpd-name-input{color:var(--bly-ink)}
-#crmp-drawer .tl-drawer-type-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--bly-accent)}
+/* CRM-PIPELINE — DETALJESIDE (fuld side, ikke et sidepanel — samme grund-idé
+   som Close's lead-/opportunity-side: navn+status øverst, "Om"/Opgaver/
+   Opportunities/Kontakt/Custom fields i venstre kolonne, aktivitets-tidslinje
+   i højre. Genbruger .tld-* fra Tidslinjens drawer-sprog for felter/labels. */
+#page-crmp-detail .tld-label{text-transform:none;color:var(--bly-sub);font-weight:700;letter-spacing:.02em;font-size:11px}
+#page-crmp-detail .tld-input{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);color:var(--bly-ink)}
+#page-crmp-detail .tld-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+.crmpx-head-name{font-size:20px;font-weight:800;color:var(--bly-ink);border:0;background:transparent;padding:2px 0;min-width:120px}
+.crmpx-head-name:focus{outline:none;background:var(--bly-border-soft);border-radius:var(--bly-r-sm)}
+.crmpx-avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0;background:var(--bly-accent)}
+.crmpx-layout{display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:18px;align-items:start}
+@media (max-width:900px){.crmpx-layout{grid-template-columns:1fr}}
+.crmpx-col-left{display:flex;flex-direction:column;gap:14px;min-width:0}
+.crmpx-col-right{min-width:0}
+.crmpx-panel{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,23,42,.04);padding:16px 18px}
+.crmpx-panel h3{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--bly-sub);margin:0 0 12px;display:flex;align-items:center;gap:6px}
+.crmpx-panel h3 .sub{text-transform:none;letter-spacing:0;font-weight:600}
+.crmpx-task-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px}
+.crmpx-task-row:last-of-type{border-bottom:0}
+.crmpx-task-row.done .crmpx-task-title{text-decoration:line-through;color:var(--bly-sub)}
+.crmpx-task-title{flex:1}
+.crmpx-mini-card{background:var(--bly-border-soft);border-radius:var(--bly-r-md);padding:10px 12px;font-size:12.5px;cursor:pointer;transition:background .12s}
+.crmpx-mini-card:hover{background:#EEF0F4}
+.crmpx-mini-card+.crmpx-mini-card{margin-top:8px}
+.crmpx-mini-card-name{font-weight:800;color:var(--bly-ink);margin-bottom:2px}
+.crmpx-mini-card-row{color:var(--bly-sub);font-size:11.5px;display:flex;align-items:center;gap:6px}
+.crmpx-activity-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--bly-border-soft)}
+.crmpx-activity-item:last-child{border-bottom:0}
+.crmpx-activity-icon{width:26px;height:26px;border-radius:50%;background:var(--bly-border-soft);display:grid;place-items:center;flex-shrink:0;font-size:12px}
+.crmpx-activity-body{flex:1;font-size:12.5px;color:var(--bly-ink);line-height:1.5}
+.crmpx-activity-meta{color:var(--bly-sub);font-size:11px;margin-top:2px}
+.crmpx-empty{color:var(--bly-sub);font-size:12px;padding:4px 0}
 
 /* ══════════════════════════════════════════════════════════════
    CRM-PIPELINE — Kanban-bord (Leads/Sales), Billy-stil. */
@@ -732,6 +752,9 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmp-card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
 .crmp-card-owner{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0}
 .crmp-card-value{font-size:11.5px;font-weight:800;color:var(--bly-ink)}
+.crmp-card-note{font-size:11px;color:var(--bly-sub);margin-top:6px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4}
+.crmp-card-cf-foot{font-size:10.5px;color:var(--bly-sub);margin-top:6px;padding-top:6px;border-top:1px solid var(--bly-border-soft)}
+.crmp-card-cf-foot b{color:var(--bly-ink);font-weight:700}
 .crmp-set-stage-row{display:flex;align-items:center;gap:8px;background:var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:6px 8px}
 .crmp-set-field-row{display:flex;align-items:center;gap:8px;background:var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:6px 8px}
 
@@ -2461,52 +2484,85 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="crmp-board" id="crmp-board"></div>
 </section>
 
-<!-- CRM-PIPELINE — DETALJE-PANEL (samme visuelle sprog/klasser som Tidslinjens
-     tl-drawer, egen ID så den ikke kolliderer, men egen matchende Billy-lys
-     farve-override herunder i CSS'en). -->
-<div class="tl-drawer" id="crmp-drawer">
-  <div class="tl-drawer-head">
-    <span class="tl-drawer-type-dot" id="crmpd-type-dot"></span>
-    <div class="tl-drawer-head-text">
-      <input id="crmpd-name-input" class="tld-input" style="font-size:15px;font-weight:800;border:0;background:transparent;padding:2px 0">
-      <div class="tl-drawer-sub" id="crmpd-sub"></div>
+<!-- CRM-PIPELINE — DETALJESIDE (fuld side man navigerer ind på ved klik på et
+     kort, ligesom Close's egen lead-/opportunity-side — IKKE et sidepanel).
+     To kolonner: "Om"/Opgaver/Opportunities/Kontakt/Custom fields til venstre,
+     aktivitets-tidslinje til højre. -->
+<section class="page" id="page-crmp-detail">
+  <div class="bly-pagehead">
+    <div>
+      <button class="btn small" id="crmpx-back-btn" type="button" style="margin-bottom:10px">← Tilbage</button>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span class="crmpx-avatar" id="crmpx-avatar">?</span>
+        <div>
+          <input id="crmpx-name-input" class="crmpx-head-name">
+          <div class="sub" id="crmpx-sub">–</div>
+        </div>
+        <select id="crmpx-stage" class="select" style="width:auto"></select>
+      </div>
     </div>
-    <button class="tl-drawer-close" id="crmpd-close">✕</button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <a class="bly-btn outline" id="crmpx-email-btn" href="#" target="_blank">✉️ Email</a>
+      <a class="bly-btn outline" id="crmpx-call-btn" href="#">📞 Ring</a>
+      <button class="bly-btn" id="crmpx-convert-btn" type="button" style="display:none;background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8">🤝 Konvertér</button>
+      <button class="bly-btn" id="crmpx-save-btn" type="button">💾 Gem ændringer</button>
+      <button class="bly-btn danger" id="crmpx-delete-btn" type="button">🗑 Slet</button>
+    </div>
   </div>
-  <div class="tl-drawer-body">
-    <div class="tld-row">
-      <div class="tld-section"><label class="tld-label">📞 Telefon</label><input id="crmpd-phone" class="tld-input"></div>
-      <div class="tld-section"><label class="tld-label">📧 Email</label><input id="crmpd-email" class="tld-input" type="email"></div>
+
+  <div class="crmpx-layout">
+    <div class="crmpx-col-left">
+      <div class="crmpx-panel">
+        <h3>ℹ️ Om</h3>
+        <div class="tld-section"><label class="tld-label">📞 Telefon</label><input id="crmpx-phone" class="tld-input"></div>
+        <div class="tld-section"><label class="tld-label">📧 Email</label><input id="crmpx-email" class="tld-input" type="email"></div>
+        <div class="tld-section"><label class="tld-label">📍 Adresse</label><input id="crmpx-address" class="tld-input"></div>
+        <div class="tld-row" id="crmpx-opp-fields" style="display:none">
+          <div class="tld-section"><label class="tld-label">💰 Værdi (kr.)</label><input id="crmpx-value" type="number" class="tld-input"></div>
+          <div class="tld-section"><label class="tld-label">🎯 Sandsynlighed (%)</label><input id="crmpx-probability" type="number" min="0" max="100" class="tld-input"></div>
+        </div>
+        <div class="tld-section"><label class="tld-label">👤 Ansvarlig</label><select id="crmpx-owner" class="tld-input"></select></div>
+        <div class="tld-section" id="crmpx-source-field" style="display:none"><label class="tld-label">🔗 Kilde</label><input id="crmpx-source" class="tld-input" placeholder="Fx Website form, Facebook/Instagram"></div>
+        <div class="tld-section"><label class="tld-label">📝 Note</label><textarea id="crmpx-note" class="tld-input" rows="2"></textarea></div>
+      </div>
+
+      <div class="crmpx-panel">
+        <h3>☑ Opgaver <span class="sub" id="crmpx-tasks-count"></span></h3>
+        <div id="crmpx-tasks-list"><div class="crmpx-empty">Ingen opgaver endnu</div></div>
+        <div class="tld-row" style="margin-top:10px">
+          <div style="flex:1"><input id="crmpx-task-new" class="tld-input" placeholder="Ny opgave, fx 'Ring op i morgen'"></div>
+          <button class="btn small" type="button" id="crmpx-task-add-btn">+ Tilføj</button>
+        </div>
+      </div>
+
+      <div class="crmpx-panel" id="crmpx-opps-panel">
+        <h3>🤝 Opportunities <span class="sub" id="crmpx-opps-count"></span></h3>
+        <div id="crmpx-opps-list"><div class="crmpx-empty">Ingen opportunity endnu</div></div>
+      </div>
+
+      <div class="crmpx-panel" id="crmpx-contact-panel" style="display:none">
+        <h3>👤 Kontakt</h3>
+        <div id="crmpx-contact-card"></div>
+      </div>
+
+      <div class="crmpx-panel" id="crmpx-cf-panel">
+        <h3>🏷 Custom fields</h3>
+        <div id="crmpx-customfields"><div class="crmpx-empty">Ingen felter oprettet — tilføj under ⚙️ Indstillinger</div></div>
+      </div>
     </div>
-    <div class="tld-section"><label class="tld-label">📍 Adresse</label><input id="crmpd-address" class="tld-input"></div>
-    <div class="tld-row" id="crmpd-opp-fields" style="display:none">
-      <div class="tld-section"><label class="tld-label">💰 Værdi (kr.)</label><input id="crmpd-value" type="number" class="tld-input"></div>
-      <div class="tld-section"><label class="tld-label">🎯 Sandsynlighed (%)</label><input id="crmpd-probability" type="number" min="0" max="100" class="tld-input"></div>
-    </div>
-    <div class="tld-row">
-      <div class="tld-section"><label class="tld-label">👤 Ansvarlig</label><select id="crmpd-owner" class="tld-input"></select></div>
-      <div class="tld-section"><label class="tld-label">🗂 Stage</label><select id="crmpd-stage" class="tld-input"></select></div>
-    </div>
-    <div class="tld-section" id="crmpd-source-field" style="display:none"><label class="tld-label">🔗 Kilde</label><input id="crmpd-source" class="tld-input" placeholder="Fx Website form, Facebook/Instagram"></div>
-    <div id="crmpd-customfields"></div>
-    <div class="tld-section"><label class="tld-label">📝 Note</label><textarea id="crmpd-note" class="tld-input" rows="3"></textarea></div>
-    <div class="tld-section">
-      <label class="tld-label">☑ Aktivitet</label>
-      <div id="crmpd-activity" style="margin-bottom:8px;max-height:220px;overflow:auto"></div>
-      <div class="tld-row">
-        <div style="flex:1"><input id="crmpd-note-new" class="tld-input" placeholder="Skriv en note..."></div>
-        <button class="btn small" type="button" id="crmpd-note-add-btn" style="align-self:flex-end">+ Tilføj</button>
+
+    <div class="crmpx-col-right">
+      <div class="crmpx-panel">
+        <h3>Aktivitet</h3>
+        <div class="tld-row">
+          <div style="flex:1"><input id="crmpx-note-new" class="tld-input" placeholder="Skriv en note..."></div>
+          <button class="btn small" type="button" id="crmpx-note-add-btn">+ Tilføj</button>
+        </div>
+        <div id="crmpx-activity" style="margin-top:14px"></div>
       </div>
     </div>
   </div>
-  <div class="tl-drawer-footer">
-    <button class="btn primary tld-footer-primary" id="crmpd-save">Gem ændringer</button>
-    <button class="btn tld-footer-primary" id="crmpd-convert" type="button" style="background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8">🤝 Konvertér til Opportunity</button>
-    <div class="tld-footer-row">
-      <button class="btn danger" id="crmpd-delete">🗑 Slet</button>
-    </div>
-  </div>
-</div>
+</section>
 
 <!-- CRM-PIPELINE — INDSTILLINGER (stages pr. pipeline + custom fields) -->
 <div class="mo" id="crmp-settings-modal">
@@ -10663,7 +10719,7 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 // kun var en PRIVAT funktion inde i bind() (fanget med en rigtig browser-test,
 // ikke kun en syntakstjek — samme disciplin som ved "kan ikke åbne en sag"-
 // rettelsen). Adfærden er uændret, kun hvor funktionen er defineret.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp'];
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','gantt','tasklist','requests','completed','people','customer-history','library','logs','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail'];
 function switchPage(page,skipHash){
   if(VALID_PAGES.indexOf(page)===-1)page='plan';
   document.querySelectorAll('.tab,.navdrop-item,.navdrop-btn').forEach(function(x){x.classList.remove('active');});
@@ -10703,6 +10759,7 @@ function switchPage(page,skipHash){
   if(page==='quotes'){if(!me.is_finance_admin){toast('Du har ikke adgang til Tilbud & Faktura','🔒');switchPage('plan');return;}initQuotesModule();}
   if(page==='customers'){if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');switchPage('plan');return;}initCrmModule();}
   if(page==='crmp'){if(!me.is_finance_admin){toast('Du har ikke adgang til CRM','🔒');switchPage('plan');return;}initCrmpModule();}
+  if(page==='crmp-detail'){if(!me.is_finance_admin){toast('Du har ikke adgang til CRM','🔒');switchPage('plan');return;}crmpxInitOnce();}
   if(page==='projects'){if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');switchPage('plan');return;}initProjectsModule();}
   // initProjectsModule() binder bl.a. "← Tilbage til Projekter"-knappen og alt
   // andet på selve sags-siden (fanerne, "+ Ny opgave", opgave-detalje-modalens
@@ -10745,6 +10802,7 @@ function bind(){
     if(parts[0]==='quotes'&&parts[1]&&QZTAB_HASH_MAP[parts[1]])switchQzTab(QZTAB_HASH_MAP[parts[1]]);
     if(parts[0]==='crmp'&&parts[1]==='leads')crmpSelectPipelineByType('lead');
     if(parts[0]==='crmp'&&parts[1]==='sales')crmpSelectPipelineByType('opportunity');
+    if(parts[0]==='crmp-detail'&&parts[1]&&parts[2])openCrmpDetail(parts[1],Number(parts[2]));
     // Dyb-link til en enkelt sag — #project-detail/42 — sat af openProjectDetail()
     // selv (den bruger replaceState, ikke location.hash=, for ikke at trigge endnu
     // et hashchange-kald oveni sit eget fetch), men skal også virke ved genindlæsning
@@ -11306,6 +11364,7 @@ function bind(){
     if(initialPage==='quotes'&&initialParts[1]&&QZTAB_HASH_MAP_INIT[initialParts[1]])switchQzTab(QZTAB_HASH_MAP_INIT[initialParts[1]]);
     if(initialPage==='crmp'&&initialParts[1]==='leads')crmpSelectPipelineByType('lead');
     if(initialPage==='crmp'&&initialParts[1]==='sales')crmpSelectPipelineByType('opportunity');
+    if(initialPage==='crmp-detail'&&initialParts[1]&&initialParts[2])openCrmpDetail(initialParts[1],Number(initialParts[2]));
     if(initialPage==='project-detail'&&initialParts[1])openProjectDetail(Number(initialParts[1]));
     if(initialPage==='customer-detail'&&initialParts[1])openCustomerDetail(Number(initialParts[1]));
   }
@@ -12089,7 +12148,7 @@ async function openCustomerDetail(id){
   var opps=await api('/api/crm/customers/'+id+'/opportunities')||[];
   document.getElementById('cd-opps-count').textContent='('+opps.length+')';
   document.getElementById('cd-opps-body').innerHTML=opps.length?opps.map(function(o){
-    return '<tr style="cursor:pointer" onclick="switchPage(\'crmp\');crmpSelectPipelineByType(\'opportunity\',\''+o.pipeline_id+'\');setTimeout(function(){openCrmpDrawer(\'opportunity\','+o.id+');},250)">'
+    return '<tr style="cursor:pointer" onclick="openCrmpDetail(\'opportunity\','+o.id+')">'
       +'<td>'+esc(o.name)+'</td>'
       +'<td>'+esc(o.pipeline_name)+'</td>'
       +'<td><span class="crmp-card-badge" style="background:'+esc(o.stage_color)+'22;color:'+esc(o.stage_color)+'">'+esc(o.stage_name)+'</span></td>'
@@ -12107,7 +12166,8 @@ async function openCustomerDetail(id){
 // kollidere med det ældre "crm"-præfiks Kunder-modulet allerede bruger
 // (initCrmModule/crm-modal/loadCrmCustomers m.fl., se lige ovenfor).
 // ══════════════════════════════════════════════════════════════
-var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[]},filters:{q:'',owner_id:'',cf_key:'',cf_value:''},initialized:false,drawerEntity:null,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead'};
+var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[]},filters:{q:'',owner_id:'',cf_key:'',cf_value:''},initialized:false,detailInitialized:false,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead'};
+var crmpDetailEntity=null;
 function crmpCurrentPipeline(){return crmpState.pipelines.find(function(p){return p.id===crmpState.currentPipelineId;});}
 async function initCrmpModule(){
   if(!crmpState.initialized){
@@ -12132,11 +12192,6 @@ async function initCrmpModule(){
       document.getElementById('crmp-cf-filter-field').value='';document.getElementById('crmp-cf-filter-value').style.display='none';
       crmpLoadBoard();
     });
-    document.getElementById('crmpd-close').addEventListener('click',function(){document.getElementById('crmp-drawer').classList.remove('open');});
-    document.getElementById('crmpd-save').addEventListener('click',crmpSaveDrawer);
-    document.getElementById('crmpd-convert').addEventListener('click',crmpConvertLead);
-    document.getElementById('crmpd-delete').addEventListener('click',crmpDeleteDrawerEntity);
-    document.getElementById('crmpd-note-add-btn').addEventListener('click',crmpAddNote);
     document.getElementById('crmp-settings-close').addEventListener('click',function(){closeModal('crmp-settings-modal');});
     document.querySelectorAll('#crmp-settings-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){
       document.querySelectorAll('#crmp-settings-tabs .bly-segtab').forEach(function(x){x.classList.toggle('active',x===b);});
@@ -12233,7 +12288,7 @@ function crmpRenderBoard(){
       +'</div></div>';
   }).join('');
   board.querySelectorAll('.crmp-card').forEach(function(card){
-    card.addEventListener('click',function(){openCrmpDrawer(p.type,Number(card.dataset.id));});
+    card.addEventListener('click',function(){openCrmpDetail(p.type,Number(card.dataset.id));});
     card.addEventListener('dragstart',function(e){crmpState.dragCardId=Number(card.dataset.id);card.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
     card.addEventListener('dragend',function(){card.classList.remove('dragging');});
   });
@@ -12258,56 +12313,136 @@ function crmpCardHtml(c,pipeline,defs){
   }).join('');
   var contactLine=[c.phone||c.contact_phone,c.email||c.contact_email].filter(Boolean).join(' · ');
   var ownerId=c.owner_id;
-  var ownerInitials=c.owner_initials||(c.owner_name?c.owner_name.split(' ').map(function(w){return w[0];}).slice(0,2).join('').toUpperCase():'');
+  var ownerInitials=c.owner_initials||(c.owner_name?c.owner_name.split(' ').map(function(w){return w[0];}).slice(0,2).join('').toUpperCase():'—');
+  // Ejer+sandsynlighed-linje øverst (samme idé som Close's "SK 50% · opdateret for 2t siden")
+  var ownerLine='<span class="crmp-card-owner" style="background:'+crmpOwnerColor(ownerId)+';width:18px;height:18px;font-size:8.5px;display:inline-grid">'+esc(ownerInitials)+'</span>'
+    +(pipeline.type==='opportunity'&&c.probability!=null?'<span>'+esc(c.probability)+'%</span>':'')
+    +'<span style="margin-left:auto">'+esc(fmtRelativeDa(c.updated_at||c.created_at))+'</span>';
+  var noteText=pipeline.type==='lead'?c.note:null;
   return '<div class="crmp-card" draggable="true" data-id="'+c.id+'">'
+    +'<div class="crmp-card-row" style="margin:0 0 6px">'+ownerLine+'</div>'
     +'<div class="crmp-card-name">'+esc(pipeline.type==='opportunity'?(c.contact_name||c.name):c.name)+'</div>'
     +(contactLine?'<div class="crmp-card-row">'+esc(contactLine)+'</div>':'')
+    +(noteText?'<div class="crmp-card-note">'+esc(noteText)+'</div>':'')
     +(badges?'<div class="crmp-card-badges">'+badges+'</div>':'')
     +'<div class="crmp-card-foot">'
     +(pipeline.type==='opportunity'&&c.value!=null?'<span class="crmp-card-value">'+krFmt(c.value)+'</span>':'<span></span>')
-    +(ownerId?'<span class="crmp-card-owner" style="background:'+crmpOwnerColor(ownerId)+'">'+esc(ownerInitials)+'</span>':'')
     +'</div></div>';
+}
+function fmtRelativeDa(iso){
+  if(!iso)return'';
+  var d=new Date(iso.replace(' ','T'));
+  if(isNaN(d))return'';
+  var diffMs=Date.now()-d.getTime();
+  var mins=Math.floor(diffMs/60000);
+  if(mins<1)return'lige nu';
+  if(mins<60)return mins+'m siden';
+  var hrs=Math.floor(mins/60);
+  if(hrs<24)return hrs+'t siden';
+  var days=Math.floor(hrs/24);
+  if(days<30)return days+'d siden';
+  return fmtDaDate(iso);
 }
 
 // ── DETALJE-PANEL ────────────────────────────────────────────────
-async function openCrmpDrawer(entityType,id){
+// ── DETALJESIDE (fuld side, ligesom Close's lead-/opportunity-side) ──────
+function crmpxInitOnce(){
+  if(crmpState.detailInitialized)return;
+  crmpState.detailInitialized=true;
+  document.getElementById('crmpx-back-btn').addEventListener('click',function(){
+    var ent=crmpDetailEntity;
+    switchPage('crmp');
+    if(ent)crmpSelectPipelineByType(ent.type,ent.data.pipeline_id);
+  });
+  document.getElementById('crmpx-save-btn').addEventListener('click',crmpxSave);
+  document.getElementById('crmpx-convert-btn').addEventListener('click',crmpxConvert);
+  document.getElementById('crmpx-delete-btn').addEventListener('click',crmpxDelete);
+  document.getElementById('crmpx-note-add-btn').addEventListener('click',crmpxAddNote);
+  document.getElementById('crmpx-task-add-btn').addEventListener('click',crmpxAddTask);
+  document.getElementById('crmpx-task-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddTask();});
+  document.getElementById('crmpx-note-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddNote();});
+}
+async function openCrmpDetail(entityType,id){
+  crmpxInitOnce();
+  if(!crmpState.pipelines.length)await crmpLoadPipelines();
   var endpoint=(entityType==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+id;
   var d=await api(endpoint);
   if(!d||d.error){toast('Kunne ikke hente','❌');return;}
-  crmpState.drawerEntity={type:entityType,id:id,data:d};
-  document.getElementById('crmpd-name-input').value=entityType==='lead'?d.name:(d.contact_name||d.name);
-  document.getElementById('crmpd-sub').textContent=entityType==='lead'?'Lead':'Opportunity · '+(d.contact_name||'');
-  document.getElementById('crmpd-phone').value=entityType==='lead'?(d.phone||''):(d.contact_phone||'');
-  document.getElementById('crmpd-email').value=entityType==='lead'?(d.email||''):(d.contact_email||'');
-  document.getElementById('crmpd-address').value=entityType==='lead'?(d.address||''):(d.contact_address||'');
-  document.getElementById('crmpd-phone').disabled=entityType==='opportunity';
-  document.getElementById('crmpd-email').disabled=entityType==='opportunity';
-  document.getElementById('crmpd-address').disabled=entityType==='opportunity';
-  document.getElementById('crmpd-opp-fields').style.display=entityType==='opportunity'?'':'none';
-  document.getElementById('crmpd-source-field').style.display=entityType==='lead'?'':'none';
+  crmpDetailEntity={type:entityType,id:id,data:d};
+  var displayName=entityType==='lead'?d.name:(d.contact_name||d.name);
+  document.getElementById('crmpx-name-input').value=displayName||'';
+  var initials=(displayName||'?').trim().split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase()||'?';
+  var avatar=document.getElementById('crmpx-avatar');
+  avatar.textContent=initials;
+  avatar.style.background=crmpOwnerColor(d.owner_id||d.id);
+  document.getElementById('crmpx-sub').textContent=entityType==='lead'?'Lead':'Opportunity';
+  var phone=entityType==='lead'?d.phone:d.contact_phone, email=entityType==='lead'?d.email:d.contact_email, address=entityType==='lead'?d.address:d.contact_address;
+  document.getElementById('crmpx-phone').closest('.tld-section').style.display=entityType==='lead'?'':'none';
+  document.getElementById('crmpx-email').closest('.tld-section').style.display=entityType==='lead'?'':'none';
+  document.getElementById('crmpx-address').closest('.tld-section').style.display=entityType==='lead'?'':'none';
+  document.getElementById('crmpx-phone').value=phone||'';
+  document.getElementById('crmpx-email').value=email||'';
+  document.getElementById('crmpx-address').value=address||'';
+  var emailBtn=document.getElementById('crmpx-email-btn'),callBtn=document.getElementById('crmpx-call-btn');
+  emailBtn.href=email?('mailto:'+email):'#';emailBtn.style.opacity=email?'1':'.4';emailBtn.style.pointerEvents=email?'':'none';
+  callBtn.href=phone?('tel:'+phone):'#';callBtn.style.opacity=phone?'1':'.4';callBtn.style.pointerEvents=phone?'':'none';
+  document.getElementById('crmpx-opp-fields').style.display=entityType==='opportunity'?'':'none';
+  document.getElementById('crmpx-source-field').style.display=entityType==='lead'?'':'none';
+  document.getElementById('crmpx-note').closest('.tld-section').style.display=entityType==='lead'?'':'none';
   if(entityType==='opportunity'){
-    document.getElementById('crmpd-value').value=d.value!=null?d.value:'';
-    document.getElementById('crmpd-probability').value=d.probability!=null?d.probability:'';
+    document.getElementById('crmpx-value').value=d.value!=null?d.value:'';
+    document.getElementById('crmpx-probability').value=d.probability!=null?d.probability:'';
   } else {
-    document.getElementById('crmpd-source').value=d.source||'';
+    document.getElementById('crmpx-source').value=d.source||'';
+    document.getElementById('crmpx-note').value=d.note||'';
   }
-  document.getElementById('crmpd-note').value=(entityType==='lead'?d.note:'')||'';
-  document.getElementById('crmpd-note').closest('.tld-section').style.display=entityType==='lead'?'':'none';
-  var ownerSel=document.getElementById('crmpd-owner');
+  var ownerSel=document.getElementById('crmpx-owner');
   ownerSel.innerHTML='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(u.id===d.owner_id?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
   var pipeline=crmpState.pipelines.find(function(p){return p.id===d.pipeline_id;});
-  var stageSel=document.getElementById('crmpd-stage');
+  var stageSel=document.getElementById('crmpx-stage');
   stageSel.innerHTML=(pipeline?pipeline.stages:[]).slice().sort(function(a,b){return a.position-b.position;}).map(function(s){return '<option value="'+s.id+'"'+(s.id===d.stage_id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
-  document.getElementById('crmpd-customfields').innerHTML=crmpRenderCustomFieldInputs(entityType,d.custom_field_defs||[],d.custom_fields||{});
-  document.getElementById('crmpd-convert').style.display=entityType==='lead'&&!d.converted_opportunity_id?'':'none';
-  document.getElementById('crmpd-activity').innerHTML=(d.activities||[]).map(function(a){
-    return '<div style="padding:6px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12px">'
-      +'<div style="color:var(--bly-ink)">'+(a.kind==='note'?'📝 ':a.kind==='stage_change'?'🔀 ':a.kind==='converted'?'🤝 ':'✨ ')+esc(a.body||'')+'</div>'
-      +'<div class="sub" style="font-size:10.5px">'+esc(a.user_name||'System')+' · '+esc(fmtDaDate(a.created_at))+'</div></div>';
-  }).join('')||'<div class="sub" style="padding:6px 0">Ingen aktivitet endnu</div>';
-  document.getElementById('crmp-drawer').classList.add('open');
+  document.getElementById('crmpx-customfields').innerHTML=crmpxRenderCustomFieldInputs(d.custom_field_defs||[],d.custom_fields||{})||'<div class="crmpx-empty">Ingen felter oprettet — tilføj under ⚙️ Indstillinger</div>';
+  document.getElementById('crmpx-convert-btn').style.display=entityType==='lead'&&!d.converted_opportunity_id?'':'none';
+
+  document.getElementById('crmpx-opps-panel').style.display=entityType==='lead'?'':'none';
+  document.getElementById('crmpx-contact-panel').style.display=entityType==='opportunity'?'':'none';
+  if(entityType==='lead'){
+    var oppsList=document.getElementById('crmpx-opps-list');
+    document.getElementById('crmpx-opps-count').textContent=d.converted_opportunity_id?'(1)':'(0)';
+    if(d.converted_opportunity_id){
+      var opp=await api('/api/crm/opportunities/'+d.converted_opportunity_id);
+      oppsList.innerHTML=opp&&!opp.error?crmpxOppMiniCard(opp):'<div class="crmpx-empty">Ingen opportunity endnu</div>';
+    } else {
+      oppsList.innerHTML='<div class="crmpx-empty">Ingen opportunity endnu — konvertér leadet for at oprette en</div>';
+    }
+  } else {
+    document.getElementById('crmpx-contact-card').innerHTML=
+      '<div class="tld-section"><label class="tld-label">Navn</label><input id="crmpx-contact-name" class="tld-input" value="'+esc(d.contact_name||'')+'"></div>'
+      +'<div class="tld-section"><label class="tld-label">📞 Telefon</label><input id="crmpx-contact-phone" class="tld-input" value="'+esc(d.contact_phone||'')+'"></div>'
+      +'<div class="tld-section"><label class="tld-label">📧 Email</label><input id="crmpx-contact-email" class="tld-input" type="email" value="'+esc(d.contact_email||'')+'"></div>'
+      +'<div class="tld-section"><label class="tld-label">📍 Adresse</label><input id="crmpx-contact-address" class="tld-input" value="'+esc(d.contact_address||'')+'"></div>';
+  }
+  crmpxRenderActivity(d.activities||[]);
+  crmpxLoadTasks();
+  switchPage('crmp-detail',true);
+  var hashTarget='crmp-detail/'+entityType+'/'+id;
+  if(location.hash.slice(1)!==hashTarget)history.replaceState(null,'','#'+hashTarget);
 }
-function crmpRenderCustomFieldInputs(entityType,defs,values){
+function crmpxOppMiniCard(opp){
+  var stage=null;
+  crmpState.pipelines.forEach(function(p){var s=(p.stages||[]).find(function(x){return x.id===opp.stage_id;});if(s)stage=s;});
+  return '<div class="crmpx-mini-card" onclick="openCrmpDetail(\'opportunity\','+opp.id+')">'
+    +'<div class="crmpx-mini-card-name">'+esc(opp.name)+'</div>'
+    +'<div class="crmpx-mini-card-row">'+(stage?'<span class="crmp-col-dot" style="background:'+esc(stage.color)+';width:7px;height:7px"></span> '+esc(stage.name):'')+(opp.value!=null?' · '+krFmt(opp.value):'')+'</div>'
+    +'</div>';
+}
+function crmpxRenderActivity(activities){
+  document.getElementById('crmpx-activity').innerHTML=(activities||[]).map(function(a){
+    var icon=a.kind==='note'?'📝':a.kind==='stage_change'?'🔀':a.kind==='converted'?'🤝':'✨';
+    return '<div class="crmpx-activity-item"><div class="crmpx-activity-icon">'+icon+'</div><div class="crmpx-activity-body">'+esc(a.body||'')+'<div class="crmpx-activity-meta">'+esc(a.user_name||'System')+' · '+esc(fmtDaDate(a.created_at))+'</div></div></div>';
+  }).join('')||'<div class="crmpx-empty">Ingen aktivitet endnu</div>';
+}
+function crmpxRenderCustomFieldInputs(defs,values){
   return defs.map(function(d){
     var val=values[d.key]||'';
     var input;
@@ -12325,65 +12460,100 @@ function crmpRenderCustomFieldInputs(entityType,defs,values){
     return '<div class="tld-section"><label class="tld-label">'+esc(d.label)+'</label>'+input+'</div>';
   }).join('');
 }
-function crmpCollectCustomFieldValues(){
+function crmpxCollectCustomFieldValues(){
   var out={};
-  document.querySelectorAll('#crmpd-customfields [data-cf-key]').forEach(function(el){
+  document.querySelectorAll('#crmpx-customfields [data-cf-key]').forEach(function(el){
     out[el.dataset.cfKey]=el.type==='checkbox'?(el.checked?'1':''):el.value;
   });
   return out;
 }
-async function crmpSaveDrawer(){
-  var ent=crmpState.drawerEntity;
+async function crmpxSave(){
+  var ent=crmpDetailEntity;
   if(!ent)return;
   var body={
-    name:document.getElementById('crmpd-name-input').value,
-    owner_id:document.getElementById('crmpd-owner').value||null,
-    stage_id:Number(document.getElementById('crmpd-stage').value),
-    custom_fields:crmpCollectCustomFieldValues()
+    name:document.getElementById('crmpx-name-input').value,
+    owner_id:document.getElementById('crmpx-owner').value||null,
+    stage_id:Number(document.getElementById('crmpx-stage').value),
+    custom_fields:crmpxCollectCustomFieldValues()
   };
   if(ent.type==='lead'){
-    body.phone=document.getElementById('crmpd-phone').value;
-    body.email=document.getElementById('crmpd-email').value;
-    body.address=document.getElementById('crmpd-address').value;
-    body.source=document.getElementById('crmpd-source').value;
-    body.note=document.getElementById('crmpd-note').value;
+    body.phone=document.getElementById('crmpx-phone').value;
+    body.email=document.getElementById('crmpx-email').value;
+    body.address=document.getElementById('crmpx-address').value;
+    body.source=document.getElementById('crmpx-source').value;
+    body.note=document.getElementById('crmpx-note').value;
   } else {
-    body.value=document.getElementById('crmpd-value').value||null;
-    body.probability=document.getElementById('crmpd-probability').value||null;
+    body.value=document.getElementById('crmpx-value').value||null;
+    body.probability=document.getElementById('crmpx-probability').value||null;
   }
   var endpoint=(ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id;
   var r=await api(endpoint,{method:'PUT',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Gemt ✓','✓');document.getElementById('crmp-drawer').classList.remove('open');crmpLoadBoard();}
+  var ok=r&&r.ok;
+  if(ok&&ent.type==='opportunity'&&ent.data.contact_id){
+    var cr=await api('/api/crm/contacts/'+ent.data.contact_id,{method:'PUT',body:JSON.stringify({
+      name:document.getElementById('crmpx-contact-name').value,
+      phone:document.getElementById('crmpx-contact-phone').value,
+      email:document.getElementById('crmpx-contact-email').value,
+      address:document.getElementById('crmpx-contact-address').value
+    })});
+    ok=ok&&cr&&cr.ok;
+  }
+  if(ok){toast('Gemt ✓','✓');openCrmpDetail(ent.type,ent.id);}
   else toast((r&&r.error)||'Kunne ikke gemme','❌');
 }
-async function crmpConvertLead(){
-  var ent=crmpState.drawerEntity;
+async function crmpxConvert(){
+  var ent=crmpDetailEntity;
   if(!ent||ent.type!=='lead')return;
   if(!await gmConfirm('Konvertér leadet til en kontakt + opportunity i salgs-pipelinen? Der oprettes/kædes samtidig en kunde i Kunder-modulet.'))return;
   var r=await api('/api/crm/leads/'+ent.id+'/convert',{method:'POST',body:JSON.stringify({})});
-  if(r&&r.ok){
-    toast('Konverteret ✓','🤝');
-    document.getElementById('crmp-drawer').classList.remove('open');
-    crmpSelectPipelineByType('opportunity');
-  } else toast((r&&r.error)||'Kunne ikke konvertere','❌');
+  if(r&&r.ok){toast('Konverteret ✓','🤝');openCrmpDetail('opportunity',r.opportunity_id);}
+  else toast((r&&r.error)||'Kunne ikke konvertere','❌');
 }
-async function crmpDeleteDrawerEntity(){
-  var ent=crmpState.drawerEntity;
+async function crmpxDelete(){
+  var ent=crmpDetailEntity;
   if(!ent)return;
   if(!await gmConfirm('Slet '+(ent.type==='lead'?'leadet':'opportunity')+'? Kan ikke fortrydes.'))return;
   var endpoint=(ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id;
   var r=await api(endpoint,{method:'DELETE'});
-  if(r&&r.ok){toast('Slettet','🗑');document.getElementById('crmp-drawer').classList.remove('open');crmpLoadBoard();}
-  else toast((r&&r.error)||'Kunne ikke slette','❌');
+  if(r&&r.ok){
+    toast('Slettet','🗑');
+    var type=ent.type,pipelineId=ent.data.pipeline_id;
+    switchPage('crmp');
+    crmpSelectPipelineByType(type,pipelineId);
+  } else toast((r&&r.error)||'Kunne ikke slette','❌');
 }
-async function crmpAddNote(){
-  var ent=crmpState.drawerEntity;
-  var input=document.getElementById('crmpd-note-new');
+async function crmpxAddNote(){
+  var ent=crmpDetailEntity;
+  var input=document.getElementById('crmpx-note-new');
   if(!ent||!input.value.trim())return;
   var endpoint=(ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id+'/notes';
   var r=await api(endpoint,{method:'POST',body:JSON.stringify({body:input.value.trim()})});
-  if(r&&r.ok){input.value='';openCrmpDrawer(ent.type,ent.id);}
+  if(r&&r.ok){input.value='';openCrmpDetail(ent.type,ent.id);}
   else toast((r&&r.error)||'Kunne ikke tilføje note','❌');
+}
+async function crmpxLoadTasks(){
+  var ent=crmpDetailEntity;
+  if(!ent)return;
+  var tasks=await api('/api/crm/tasks?entity_type='+ent.type+'&entity_id='+ent.id)||[];
+  var list=document.getElementById('crmpx-tasks-list');
+  document.getElementById('crmpx-tasks-count').textContent='('+tasks.length+')';
+  list.innerHTML=tasks.length?tasks.map(function(t){
+    return '<div class="crmpx-task-row'+(t.done?' done':'')+'"><input type="checkbox" data-task-id="'+t.id+'" data-action="task-toggle"'+(t.done?' checked':'')+'><span class="crmpx-task-title">'+esc(t.title)+'</span><button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="task-delete" title="Slet">🗑</button></div>';
+  }).join(''):'<div class="crmpx-empty">Ingen opgaver endnu</div>';
+  list.querySelectorAll('[data-action="task-toggle"]').forEach(function(cb){
+    cb.addEventListener('change',async function(){await api('/api/crm/tasks/'+cb.dataset.taskId,{method:'PUT',body:JSON.stringify({done:cb.checked})});crmpxLoadTasks();});
+  });
+  list.querySelectorAll('[data-action="task-delete"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){await api('/api/crm/tasks/'+btn.dataset.taskId,{method:'DELETE'});crmpxLoadTasks();});
+  });
+}
+async function crmpxAddTask(){
+  var ent=crmpDetailEntity;
+  var input=document.getElementById('crmpx-task-new');
+  if(!ent||!input.value.trim())return;
+  var r=await api('/api/crm/tasks',{method:'POST',body:JSON.stringify({entity_type:ent.type,entity_id:ent.id,title:input.value.trim()})});
+  if(r&&r.id){input.value='';crmpxLoadTasks();}
+  else toast((r&&r.error)||'Kunne ikke tilføje opgave','❌');
 }
 
 // ── OPRET NYT LEAD/OPPORTUNITY (hurtig-modal) ─────────────────────
