@@ -2632,7 +2632,7 @@ async function sendSmsUniversal({ to, message }) {
     }
     return;
   }
-  throw new Error('Hverken GATEWAYAPI_API_TOKEN eller TWILIO_* er sat op på serveren');
+  throw new Error('Ingen SMS-udbyder er sat op på serveren — mangler INMOBILE_API_TOKEN, GATEWAYAPI_API_TOKEN eller TWILIO_*');
 }
 
 async function sendCompletionEmail(booking) {
