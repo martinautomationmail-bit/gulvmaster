@@ -59,37 +59,43 @@ button,input,select{font:inherit}
    faneblads-menu (.tabs). Selve routingen (switchPage/.tab/.navdrop-item/
    .page) er 100% uændret — sidebaren genbruger nøjagtig de samme klasser og
    data-page-attributter, den er bare lagt om til et lodret layout, så alt
-   klik/hash/dybt-link-logik i switchPage()/bind() virker uændret. */
-:root{--sidebar-w:216px;--sidebar-w-collapsed:60px}
-.app-shell{display:flex;align-items:stretch;min-height:100vh}
-.sidebar{width:var(--sidebar-w);flex:0 0 auto;background:var(--navy);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;overflow-x:hidden;z-index:90;transition:width .15s ease;box-shadow:2px 0 12px rgba(0,0,0,.14)}
-.sidebar-head{display:flex;align-items:center;gap:6px;padding:14px 12px 10px;flex-shrink:0}
-.sidebar-head .brand{color:#fff;flex:1;min-width:0}
-.sidebar-brand-name{overflow:hidden;text-overflow:ellipsis}
-.sidebar-toggle{border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;border-radius:6px;width:24px;height:24px;flex-shrink:0;display:grid;place-items:center;cursor:pointer;font-size:11px;transition:transform .15s ease}
-.sidebar-toggle:hover{background:rgba(255,255,255,.18)}
-.sidebar-nav{display:flex;flex-direction:column;gap:2px;padding:6px 10px;flex:1}
-.sidebar-nav .tab{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:7px;width:100%}
-.sidebar-nav .tab.active{color:#fff;background:rgba(255,255,255,.16)}
-.sidebar-nav .tab:hover{color:#fff;background:rgba(255,255,255,.08)}
-.stab-icon{width:16px;text-align:center;flex-shrink:0;font-size:13px}
+   klik/hash/dybt-link-logik i switchPage()/bind() virker uændret.
+   Farverne er bevidst det SAMME lyse "--bly-*"-design-system som resten af
+   appen (toppen, tabellerne, knapperne) allerede bruger — en mørk navy-
+   sidebar ville se ude af trit ud med alt andet og ligne det gamle look,
+   ikke Billys rigtige lyse, minimale stil. */
+:root{--sidebar-w:240px;--sidebar-w-collapsed:64px}
+.app-shell{display:flex;align-items:stretch;min-height:100vh;background:#fff}
+.sidebar{width:var(--sidebar-w);flex:0 0 auto;background:#fff;color:var(--bly-ink);display:flex;flex-direction:column;position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;overflow-x:hidden;z-index:90;transition:width .15s ease;border-right:1px solid var(--bly-border-soft)}
+.sidebar-head{display:flex;align-items:center;gap:10px;padding:20px 16px 16px;flex-shrink:0}
+.sidebar-head .brand{color:var(--bly-ink);flex:1;min-width:0;gap:10px}
+.sidebar-head .logo{width:30px;height:30px;border-radius:var(--bly-r-sm);background:linear-gradient(135deg,var(--bly-accent),#7C3AED);font-size:14px;flex-shrink:0}
+.sidebar-brand-name{overflow:hidden;text-overflow:ellipsis;font-size:13.5px;font-weight:800;letter-spacing:-.01em}
+.sidebar-toggle{border:1px solid var(--bly-border);background:#fff;color:var(--bly-sub);border-radius:var(--bly-r-sm);width:26px;height:26px;flex-shrink:0;display:grid;place-items:center;cursor:pointer;font-size:11px;transition:transform .15s ease,background .12s,color .12s}
+.sidebar-toggle:hover{background:var(--bly-hover);color:var(--bly-ink);border-color:#C7CBD1}
+.sidebar-nav{display:flex;flex-direction:column;gap:1px;padding:6px 12px;flex:1}
+.sidebar-nav .tab{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:var(--bly-r-sm);width:100%;color:var(--bly-sub);font-size:12.5px;font-weight:600;transition:background .12s,color .12s;box-sizing:border-box}
+.sidebar-nav .tab.active{color:var(--bly-accent);background:var(--bly-accent-soft);font-weight:800}
+.sidebar-nav .tab:hover{color:var(--bly-ink);background:var(--bly-hover)}
+.stab-icon{width:18px;text-align:center;flex-shrink:0;font-size:14px;opacity:.9}
 .stab-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sidebar-nav .tab-navdrop{display:flex;flex-direction:column;gap:0;align-items:stretch}
 .sidebar-nav .tab-navdrop .stab-row{display:flex;align-items:center;gap:2px}
-.sidebar-nav .tab-navdrop .tab{flex:1;min-width:0;border-radius:7px;padding-right:6px}
-.sidebar-nav .tab-navdrop .navdrop-caret{border:0;background:transparent;color:rgba(255,255,255,.45);border-radius:6px;padding:6px 7px;font-size:9px;cursor:pointer;flex-shrink:0}
-.sidebar-nav .tab-navdrop .navdrop-caret:hover{color:#fff;background:rgba(255,255,255,.1)}
-.sidebar-nav .tab-navdrop:has(.navdrop-btn.active) .stab-row .tab{color:#fff;background:rgba(255,255,255,.16);border-radius:7px}
-.sidebar-nav .navdrop-menu{position:static;display:none;background:transparent;box-shadow:none;padding:2px 0 4px 25px;margin:0;min-width:0;border-radius:0;width:auto}
+.sidebar-nav .tab-navdrop .tab{flex:1;min-width:0;border-radius:var(--bly-r-sm);padding-right:6px}
+.sidebar-nav .tab-navdrop .navdrop-caret{border:0;background:transparent;color:var(--bly-sub);border-radius:6px;padding:6px 7px;font-size:9px;cursor:pointer;flex-shrink:0;transition:transform .15s ease,background .12s,color .12s}
+.sidebar-nav .tab-navdrop .navdrop-caret:hover{color:var(--bly-ink);background:var(--bly-hover)}
+.sidebar-nav .tab-navdrop:has(.navdrop-menu.open) .navdrop-caret{transform:rotate(180deg)}
+.sidebar-nav .tab-navdrop:has(.navdrop-btn.active) .stab-row .tab{color:var(--bly-accent);background:var(--bly-accent-soft);font-weight:800}
+.sidebar-nav .navdrop-menu{position:static;display:none;background:transparent;box-shadow:none;padding:3px 0 6px 17px;margin:2px 0 2px 20px;min-width:0;border-radius:0;width:auto;border-left:1px solid var(--bly-border-soft)}
 .sidebar-nav .navdrop-menu.open{display:flex;flex-direction:column;gap:1px}
-.sidebar-nav .navdrop-item{color:rgba(255,255,255,.62);font-weight:600;font-size:11.5px;padding:6px 8px}
-.sidebar-nav .navdrop-item:hover{color:#fff;background:rgba(255,255,255,.08)}
-.sidebar-nav .navdrop-item.active{color:#fff;background:rgba(255,255,255,.14)}
-.sidebar-foot{padding:10px 14px;font-size:9px;color:rgba(255,255,255,.35);border-top:1px solid rgba(255,255,255,.09);flex-shrink:0}
+.sidebar-nav .navdrop-item{color:var(--bly-sub);font-weight:600;font-size:11.5px;padding:6px 9px;border-radius:7px;transition:background .12s,color .12s}
+.sidebar-nav .navdrop-item:hover{color:var(--bly-ink);background:var(--bly-hover)}
+.sidebar-nav .navdrop-item.active{color:var(--bly-accent);background:var(--bly-accent-soft);font-weight:800}
+.sidebar-foot{padding:12px 18px;font-size:9px;color:var(--bly-sub);opacity:.7;border-top:1px solid var(--bly-border-soft);flex-shrink:0}
 .app-content{flex:1;min-width:0}
 
 body.sidebar-collapsed .sidebar{width:var(--sidebar-w-collapsed)}
-body.sidebar-collapsed .sidebar-head{justify-content:center;padding:14px 6px 10px}
+body.sidebar-collapsed .sidebar-head{flex-direction:column;justify-content:center;padding:18px 8px 14px;gap:10px}
 body.sidebar-collapsed .sidebar-brand-name,
 body.sidebar-collapsed .stab-label,
 body.sidebar-collapsed .sidebar-foot,
