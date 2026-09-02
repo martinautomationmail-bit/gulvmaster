@@ -68,7 +68,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
 const token = localStorage.getItem('gm_token');
 const user = JSON.parse(localStorage.getItem('gm_user') || 'null');
 if (token && user) {
-  window.location.href = user.role === 'admin' ? '/admin' : '/employee';
+  // Roller & adgang (sep. 2026): en bruger med en tildelt panel-rolle (fx
+  // "Kontor"/"Mester") sendes til /admin (med de sider Martin har krydset af
+  // for rollen), præcis som en almindelig admin. Uden nogen panel-rolle er
+  // adfærden 100% uændret — lige til /employee, som altid.
+  window.location.href = (user.role === 'admin' || user.panel_role_id) ? '/admin' : '/employee';
 }
 
 async function login() {
@@ -90,7 +94,7 @@ async function login() {
     if (!r.ok) { showError(data.error || 'Login fejlede'); return; }
     localStorage.setItem('gm_token', data.token);
     localStorage.setItem('gm_user', JSON.stringify(data.user));
-    window.location.href = data.user.role === 'admin' ? '/admin' : '/employee';
+    window.location.href = (data.user.role === 'admin' || data.user.panel_role_id) ? '/admin' : '/employee';
   } catch (e) {
     showError('Kunne ikke forbinde til server');
   } finally {

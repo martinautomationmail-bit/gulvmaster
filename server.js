@@ -224,6 +224,39 @@ async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_finance_admin INTEGER DEFAULT 0;
 
+    -- ROLLER & ADGANG (sep. 2026, Martins ønske): et selvstændigt lag ved siden
+    -- af den eksisterende role-kolonne ('admin'/'employee', som bruges vidt
+    -- omkring til "er dette en planlægbar medarbejder"-filtrering og IKKE må
+    -- ændres af dette) og is_finance_admin (som fortsætter helt uændret).
+    -- panel_roles = de brugerdefinerede roller Martin selv opretter (fx
+    -- "Kontor", "Mester") med et sæt sider hver. panel_role_id på en bruger er
+    -- valgfri og UAFHÆNGIG af role/is_finance_admin — en "Mester" kan sagtens
+    -- beholde role='employee' (så vedkommende stadig kan planlægges/tildeles
+    -- opgaver som normalt og fortsat bruger den rigtige medarbejder-app) OG
+    -- samtidig få adgang til nogle få sider i admin-panelet oveni.
+    CREATE TABLE IF NOT EXISTS panel_roles (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      is_builtin INTEGER NOT NULL DEFAULT 0,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS panel_role_pages (
+      role_id INTEGER NOT NULL REFERENCES panel_roles(id) ON DELETE CASCADE,
+      page_key TEXT NOT NULL,
+      PRIMARY KEY (role_id, page_key)
+    );
+    -- Undtagelser pr. person, oveni rollens standardsæt — allowed=1 giver ekstra
+    -- adgang udover rollen, allowed=0 fjerner en side rollen ellers ville give.
+    CREATE TABLE IF NOT EXISTS panel_user_overrides (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      page_key TEXT NOT NULL,
+      allowed INTEGER NOT NULL,
+      PRIMARY KEY (user_id, page_key)
+    );
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS panel_role_id INTEGER REFERENCES panel_roles(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_users_panel_role ON users(panel_role_id);
+
     -- ØKONOMI: kun synligt/tilgængeligt for brugere med is_finance_admin=1 (se
     -- financeOnly-middleware). Alt her er bevidst adskilt fra den almindelige
     -- planlægning, så en almindelig admin ikke ved et uheld kan se/ændre det.
@@ -1922,6 +1955,98 @@ async function isFinanceAdmin(userId) {
   }
 }
 
+// ── ROLLER & ADGANG (sep. 2026) ─────────────────────────────────────────────
+// Katalog over de sider Martin kan krydse af pr. rolle/person i admin-panelet.
+// 'dashboard' er en særlig nøgle: gives automatisk til enhver med en rolle
+// overhovedet (se panelAccess nedenfor) — Kommandocenter er "hjemmesiden", ikke
+// noget der skal kunne fravælges. Rækkefølgen her styrer visningsrækkefølgen
+// i markerings-UI'en (Hold & vendors → Roller & adgang).
+const PANEL_PAGES = [
+  { key: 'plan', label: 'Dagligplanlægning', group: 'Planlægning' },
+  { key: 'capacity', label: 'Kapacitet', group: 'Planlægning' },
+  { key: 'availability', label: 'Ledighedsoversigt', group: 'Planlægning' },
+  { key: 'timeline', label: 'Tidslinje', group: 'Planlægning' },
+  { key: 'projects', label: 'Projekter (inkl. Gantt, KS-skabeloner, Kontaktformularer)', group: 'Projekter' },
+  { key: 'customers', label: 'CRM: Kunder', group: 'CRM' },
+  { key: 'crmp_leads', label: 'CRM: Leads', group: 'CRM' },
+  { key: 'crmp_sales', label: 'CRM: Sales', group: 'CRM' },
+  { key: 'crmp_tasks', label: 'CRM: Opfølgninger', group: 'CRM' },
+  { key: 'quotes', label: 'Tilbud & Faktura', group: 'Tilbud & Faktura' },
+  { key: 'finance', label: 'Økonomi', group: 'Økonomi' },
+  { key: 'templates', label: 'Skabeloner (automatisering)', group: 'Administration' },
+  { key: 'email-templates', label: 'Mail-skabeloner', group: 'Administration' },
+  { key: 'people', label: 'Hold & vendors', group: 'Administration' },
+  { key: 'library', label: 'Bibliotek', group: 'Administration' },
+  { key: 'logs', label: 'Log', group: 'Administration' },
+  { key: 'notif-settings', label: 'Indstillinger', group: 'Administration' },
+  { key: 'gmail-settings', label: 'Gmail-integration', group: 'Administration' },
+  { key: 'tasklist', label: 'Opgaveliste (Min side)', group: 'Min side' },
+  { key: 'requests', label: 'Godkendelser (sygdom)', group: 'Min side' },
+  { key: 'completed', label: 'Færdige opgaver', group: 'Min side' },
+  { key: 'timer', label: 'Timer', group: 'Min side' },
+];
+const PANEL_PAGE_KEYS = new Set(PANEL_PAGES.map(p => p.key));
+
+// Bagudkompatibilitet: is_finance_admin=1 (det gamle, brede "Økonomi-adgang"-
+// flueben på en bruger) dækkede indtil nu præcis disse sider i sidebaren (se
+// den gamle .toggle('hidden',!me.is_finance_admin)-liste i admin.html). En
+// eksisterende is_finance_admin-bruger, der ALDRIG får tildelt en panel-rolle,
+// skal blive ved med at se nøjagtig det samme som i dag — ingen skal miste
+// adgang til noget som helst pga. denne omlægning. Ved beregning af en brugers
+// samlede panel_pages foldes dette bundt derfor altid ind, oveni evt. panel-rolle.
+const LEGACY_FINANCE_BUNDLE = ['finance', 'quotes', 'customers', 'crmp_leads', 'crmp_sales', 'crmp_tasks', 'projects', 'email-templates', 'gmail-settings'];
+
+// Beregner den fulde liste af side-nøgler en bruger har adgang til: alt ved
+// role==='admin', ellers panel-rollens sider + is_finance_admin-bundtet
+// (bagudkompatibilitet) + personlige undtagelser (override kan både lægge til
+// og trække fra, og vinder altid til sidst).
+async function computeUserPanelPages(user) {
+  if (user.role === 'admin') return PANEL_PAGES.map(p => p.key);
+  const pages = new Set();
+  if (user.is_finance_admin) LEGACY_FINANCE_BUNDLE.forEach(k => pages.add(k));
+  if (user.panel_role_id) {
+    const rows = (await pool.query('SELECT page_key FROM panel_role_pages WHERE role_id=$1', [user.panel_role_id])).rows;
+    rows.forEach(r => pages.add(r.page_key));
+  }
+  if (user.panel_role_id || user.is_finance_admin) pages.add('dashboard');
+  const overrides = (await pool.query('SELECT page_key, allowed FROM panel_user_overrides WHERE user_id=$1', [user.id])).rows;
+  for (const o of overrides) {
+    if (o.allowed) pages.add(o.page_key); else pages.delete(o.page_key);
+  }
+  return Array.from(pages);
+}
+
+// Bruges af routes der hører til ÉN bestemt side i markerings-UI'en (den store
+// flertal). role==='admin' passerer altid (uændret adfærd for Martins egen og
+// enhver eksisterende admin-login). For alle andre slås brugerens rolle op
+// live i databasen — samme "stol ikke på en op til 30 dage gammel JWT"-
+// forsigtighed som financeOnly allerede bruger ovenfor — og tjekkes mod den
+// samlede sideliste (panel-rolle + evt. is_finance_admin-bundt + undtagelser).
+function panelAccess(pageKey) {
+  return asyncRoute(async (req, res, next) => {
+    const u = await pgOne('SELECT id, role, active, is_finance_admin, panel_role_id FROM users WHERE id=$1', [req.user.id]);
+    if (!u || !u.active) return res.status(403).json({ error: 'Ingen adgang' });
+    if (u.role === 'admin') return next();
+    const pages = await computeUserPanelPages(u);
+    if (!pages.includes(pageKey)) return res.status(403).json({ error: 'Ingen adgang til denne side' });
+    next();
+  });
+}
+
+// Samme som panelAccess, men for de fælles CRM-konfigurationsendpoints (pipelines/
+// stages/custom fields/opfølgningsregler m.fl.) der bruges fra BÅDE Leads- og
+// Sales-siden — kræver blot at brugeren har adgang til MINDST én CRM-side.
+function panelAccessAny(pageKeys) {
+  return asyncRoute(async (req, res, next) => {
+    const u = await pgOne('SELECT id, role, active, is_finance_admin, panel_role_id FROM users WHERE id=$1', [req.user.id]);
+    if (!u || !u.active) return res.status(403).json({ error: 'Ingen adgang' });
+    if (u.role === 'admin') return next();
+    const pages = await computeUserPanelPages(u);
+    if (!pageKeys.some(k => pages.includes(k))) return res.status(403).json({ error: 'Ingen adgang til denne side' });
+    next();
+  });
+}
+
 // Skriver til systemloggen, så admin kan se hvad der er kørt automatisk i baggrunden
 // — synk, notifikationsscan osv. — uden at skulle ind i Renders serverlogs. Fejler
 // den selv, printes bare en konsol-advarsel; systemloggen må aldrig kunne vælte en
@@ -2093,13 +2218,20 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
     return res.status(401).json({ error: 'Forkert email eller adgangskode' });
   }
   const token = jwt.sign({ id: user.id, name: user.name, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email, color: user.color, initials: user.initials, avatar_url: user.avatar_url, is_finance_admin: !!user.is_finance_admin, can_view_team_overview: !!user.can_view_team_overview } });
+  // panel_role_id/panel_pages tages med i login-svaret så index.html (den fælles
+  // login-side for begge apps) kan afgøre om brugeren skal til /admin eller
+  // /employee — se "Roller & adgang" (sep. 2026). En almindelig markarbejder uden
+  // nogen panel-rolle er 100% uændret: role!=='admin' && !panel_role_id -> /employee,
+  // nøjagtig som hele tiden før dette.
+  const panelPages = await computeUserPanelPages(user);
+  res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email, color: user.color, initials: user.initials, avatar_url: user.avatar_url, is_finance_admin: !!user.is_finance_admin, can_view_team_overview: !!user.can_view_team_overview, panel_role_id: user.panel_role_id || null, panel_pages: panelPages } });
 }));
 
 app.get('/api/auth/me', auth, asyncRoute(async (req, res) => {
-  const user = await pgOne('SELECT id,name,email,role,color,initials,avatar_url,is_finance_admin,can_view_team_overview FROM users WHERE id=$1', [req.user.id]);
+  const user = await pgOne('SELECT id,name,email,role,color,initials,avatar_url,is_finance_admin,can_view_team_overview,panel_role_id FROM users WHERE id=$1', [req.user.id]);
   if (!user) return res.status(401).json({ error: 'Bruger ikke fundet' });
-  res.json({ ...user, is_finance_admin: !!user.is_finance_admin, can_view_team_overview: !!user.can_view_team_overview });
+  const panelPages = await computeUserPanelPages(user);
+  res.json({ ...user, is_finance_admin: !!user.is_finance_admin, can_view_team_overview: !!user.can_view_team_overview, panel_pages: panelPages });
 }));
 
 // Kun en eksisterende Økonomi-bruger kan give/fjerne adgang for andre — forhindrer
@@ -2276,7 +2408,7 @@ function slugifyTypeKey(label) {
     .replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '').slice(0, 40) || `fag-${Date.now()}`;
 }
 
-app.post('/api/task-types', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/task-types', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const label = String(body.label || '').trim().slice(0, 60);
   if (!label) return res.status(400).json({ error: 'Skriv et navn på faget' });
@@ -2292,7 +2424,7 @@ app.post('/api/task-types', auth, adminOnly, asyncRoute(async (req, res) => {
   res.json({ ok: true, key });
 }));
 
-app.put('/api/task-types/:key', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/task-types/:key', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM task_types WHERE key=$1', [req.params.key]);
   if (!row) return res.status(404).json({ error: 'Faget blev ikke fundet' });
   const body = req.body || {};
@@ -2302,7 +2434,7 @@ app.put('/api/task-types/:key', auth, adminOnly, asyncRoute(async (req, res) => 
   res.json({ ok: true });
 }));
 
-app.delete('/api/task-types/:key', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/task-types/:key', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   if (req.params.key === 'other') return res.status(400).json({ error: '"Andet" kan ikke slettes — den bruges som standardfarve' });
   const inUse = await pgOne('SELECT id FROM jt_tasks WHERE type_guess=$1 LIMIT 1', [req.params.key]);
   if (inUse) return res.status(400).json({ error: 'Faget er i brug på mindst én opgave — skift deres fag først' });
@@ -2312,7 +2444,14 @@ app.delete('/api/task-types/:key', auth, adminOnly, asyncRoute(async (req, res) 
 }));
 
 // ── USERS / WORKFORCE ───────────────────────────────────────
-app.get('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
+// Bemærk (Roller & adgang, sep. 2026): bevidst panelAccess('dashboard') og IKKE
+// adminOnly — enhver bruger der overhovedet kan åbne admin-panelet (Kontor,
+// Mester, ...) skal kunne se hold-listen, da navn/farve/initialer bruges i ALLE
+// planlægnings-/kapacitetsvisninger, ikke kun på "Hold & vendors"-siden. Det er
+// nøjagtig den samme fulde brugerliste (inkl. email/telefon) som en admin ser i
+// dag — før denne omlægning var admin.html kun tilgængeligt for role==='admin',
+// så dette er ikke en indskrænkning, men en bevidst udvidelse til nye panel-roller.
+app.get('/api/users', auth, panelAccess('dashboard'), asyncRoute(async (req, res) => {
   const result = await pool.query(`
     SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,phone,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin,COALESCE(can_view_team_overview,0) AS can_view_team_overview
     FROM users
@@ -2415,12 +2554,17 @@ app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
   const role = canLogin ? (body.role || 'employee') : 'employee';
   const weeklyCapacity = Math.max(0, Number(body.weekly_capacity) || 5);
 
+  // Roller & adgang (sep. 2026): panel_role_id skal kunne sættes allerede ved
+  // oprettelse, ikke kun ved efterfølgende redigering — ellers forsvinder valget
+  // stille i UI'en, fordi Gem på "Ny medarbejder" bruger denne route (POST), ikke
+  // PUT /api/users/:id (som allerede understøtter feltet).
+  const panelRoleId = body.panel_role_id ? Number(body.panel_role_id) : null;
   try {
     const result = await pool.query(`
-      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url,personal_email,notify_schedule_changes,phone,can_view_team_overview)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url,personal_email,notify_schedule_changes,phone,can_view_team_overview,panel_role_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
       RETURNING id
-    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0, body.phone ? String(body.phone).trim().slice(0, 30) : null, body.can_view_team_overview ? 1 : 0]);
+    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0, body.phone ? String(body.phone).trim().slice(0, 30) : null, body.can_view_team_overview ? 1 : 0, panelRoleId]);
     res.json({ ok: true, id: result.rows[0].id });
     // Send login-vejledning, så medarbejderen selv kan sætte sin adgangskode —
     // kun relevant for brugere der faktisk kan logge ind.
@@ -2485,19 +2629,111 @@ app.put('/api/users/:id', auth, adminOnly, asyncRoute(async (req, res) => {
     personal_email: body.personal_email !== undefined ? (body.personal_email || null) : current.personal_email,
     notify_schedule_changes: body.notify_schedule_changes !== undefined ? (body.notify_schedule_changes ? 1 : 0) : current.notify_schedule_changes,
     phone: body.phone !== undefined ? (body.phone ? String(body.phone).trim().slice(0, 30) : null) : current.phone,
-    can_view_team_overview: body.can_view_team_overview !== undefined ? (body.can_view_team_overview ? 1 : 0) : Number(current.can_view_team_overview || 0)
+    can_view_team_overview: body.can_view_team_overview !== undefined ? (body.can_view_team_overview ? 1 : 0) : Number(current.can_view_team_overview || 0),
+    // Roller & adgang (sep. 2026) — hvilken panel-rolle (hvis nogen) brugeren har
+    // til admin-panelet, helt uafhængig af role/worker_type ovenfor. null = ingen
+    // adgang til admin-panelet overhovedet (kun den almindelige medarbejder-app).
+    panel_role_id: body.panel_role_id !== undefined ? (body.panel_role_id || null) : current.panel_role_id
   };
   if (canLogin && !next.email) return res.status(400).json({ error: 'Email mangler for login-bruger' });
   try {
     await pool.query(`
-      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14,personal_email=$15,notify_schedule_changes=$16,phone=$17,can_view_team_overview=$18
-      WHERE id=$19
-    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, next.personal_email, next.notify_schedule_changes, next.phone, next.can_view_team_overview, id]);
+      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14,personal_email=$15,notify_schedule_changes=$16,phone=$17,can_view_team_overview=$18,panel_role_id=$19
+      WHERE id=$20
+    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, next.personal_email, next.notify_schedule_changes, next.phone, next.can_view_team_overview, next.panel_role_id, id]);
     res.json({ ok: true });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
     throw error;
   }
+}));
+
+// ── ROLLER & ADGANG (sep. 2026) ──────────────────────────────
+// Alt herunder er BEVIDST kun adminOnly (aldrig panelAccess) — retten til selv
+// at oprette/redigere roller og tildele dem må aldrig kunne uddelegeres via
+// systemet selv, ellers kunne en bruger med "Hold & vendors"-adgang i teorien
+// give sig selv Admin. Kun en ægte role==='admin'-bruger (Martin) kan ændre her.
+app.get('/api/panel-pages', auth, adminOnly, asyncRoute(async (req, res) => {
+  res.json({ pages: PANEL_PAGES });
+}));
+app.get('/api/panel-roles', auth, adminOnly, asyncRoute(async (req, res) => {
+  const roles = (await pool.query('SELECT * FROM panel_roles ORDER BY position ASC, id ASC')).rows;
+  const pageRows = (await pool.query('SELECT role_id, page_key FROM panel_role_pages')).rows;
+  const byRole = {};
+  pageRows.forEach(r => { (byRole[r.role_id] = byRole[r.role_id] || []).push(r.page_key); });
+  res.json(roles.map(r => ({ ...r, is_builtin: !!r.is_builtin, pages: byRole[r.id] || [] })));
+}));
+app.post('/api/panel-roles', auth, adminOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Navn mangler' });
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM panel_roles');
+  let r;
+  try {
+    r = await pgOne('INSERT INTO panel_roles (name, position) VALUES ($1,$2) RETURNING id', [name, posRow.pos]);
+  } catch (error) {
+    if (error.code === '23505') return res.status(400).json({ error: 'En rolle med det navn findes allerede' });
+    throw error;
+  }
+  const pages = Array.isArray(b.pages) ? b.pages.filter(k => PANEL_PAGE_KEYS.has(k)) : [];
+  for (const key of pages) {
+    await pool.query('INSERT INTO panel_role_pages (role_id, page_key) VALUES ($1,$2) ON CONFLICT DO NOTHING', [r.id, key]);
+  }
+  res.json({ ok: true, id: r.id });
+}));
+app.put('/api/panel-roles/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const id = Number(req.params.id);
+  const current = await pgOne('SELECT * FROM panel_roles WHERE id=$1', [id]);
+  if (!current) return res.status(404).json({ error: 'Rolle ikke fundet' });
+  const b = req.body || {};
+  if (b.name !== undefined) {
+    const name = String(b.name).trim();
+    if (!name) return res.status(400).json({ error: 'Navn mangler' });
+    try {
+      await pool.query('UPDATE panel_roles SET name=$1 WHERE id=$2', [name, id]);
+    } catch (error) {
+      if (error.code === '23505') return res.status(400).json({ error: 'En rolle med det navn findes allerede' });
+      throw error;
+    }
+  }
+  // pages: sender den FULDE liste af sider rollen nu skal have — enklest for
+  // markerings-UI'en (send alle afkrydsede kasser ved hvert gem, ikke et diff).
+  if (Array.isArray(b.pages)) {
+    const pages = b.pages.filter(k => PANEL_PAGE_KEYS.has(k));
+    await pool.query('DELETE FROM panel_role_pages WHERE role_id=$1', [id]);
+    for (const key of pages) {
+      await pool.query('INSERT INTO panel_role_pages (role_id, page_key) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, key]);
+    }
+  }
+  res.json({ ok: true });
+}));
+app.delete('/api/panel-roles/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const id = Number(req.params.id);
+  const current = await pgOne('SELECT * FROM panel_roles WHERE id=$1', [id]);
+  if (!current) return res.status(404).json({ error: 'Rolle ikke fundet' });
+  if (current.is_builtin) return res.status(400).json({ error: 'Denne rolle kan ikke slettes' });
+  const inUse = await pgOne('SELECT COUNT(*)::int AS n FROM users WHERE panel_role_id=$1', [id]);
+  if (inUse && inUse.n > 0) return res.status(400).json({ error: `${inUse.n} bruger(e) har stadig denne rolle — flyt dem til en anden rolle først` });
+  await pool.query('DELETE FROM panel_roles WHERE id=$1', [id]);
+  res.json({ ok: true });
+}));
+// Personlige undtagelser oveni en brugers rolle (allowed=true lægger en side
+// til, allowed=false fjerner en side rollen ellers ville give).
+app.get('/api/users/:id/panel-overrides', auth, adminOnly, asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT page_key, allowed FROM panel_user_overrides WHERE user_id=$1', [req.params.id])).rows;
+  res.json({ overrides: rows.map(r => ({ page_key: r.page_key, allowed: !!r.allowed })) });
+}));
+app.put('/api/users/:id/panel-overrides', auth, adminOnly, asyncRoute(async (req, res) => {
+  const userId = Number(req.params.id);
+  const user = await pgOne('SELECT id FROM users WHERE id=$1', [userId]);
+  if (!user) return res.status(404).json({ error: 'Bruger ikke fundet' });
+  const overrides = Array.isArray((req.body || {}).overrides) ? req.body.overrides : [];
+  await pool.query('DELETE FROM panel_user_overrides WHERE user_id=$1', [userId]);
+  for (const o of overrides) {
+    if (!PANEL_PAGE_KEYS.has(o.page_key)) continue;
+    await pool.query('INSERT INTO panel_user_overrides (user_id, page_key, allowed) VALUES ($1,$2,$3)', [userId, o.page_key, o.allowed ? 1 : 0]);
+  }
+  res.json({ ok: true });
 }));
 
 // ── JOBTREAD LIVE SYNC ──────────────────────────────────────
@@ -3697,7 +3933,7 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
   res.json({ tasks: out, lastSyncedAt: lastSynced?.t || null });
 }));
 
-app.post('/api/gantt/sync-all', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/gantt/sync-all', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const r = await syncAllGanttTasksFromJT();
   if (!r.ok) return res.status(400).json({ error: r.error || 'Synk fejlede' });
   res.json(r);
@@ -3717,7 +3953,7 @@ app.get('/api/gantt/job/:jobId', auth, asyncRoute(async (req, res) => {
   res.json(rows.rows.map(r => ({ ...r, depends_on: safeJsonParse(r.depends_on, []) })));
 }));
 
-app.post('/api/gantt/job/:jobId/sync', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/gantt/job/:jobId/sync', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   try {
     const result = await syncGanttJob(req.params.jobId);
     res.json({ ok: true, ...result });
@@ -3726,7 +3962,7 @@ app.post('/api/gantt/job/:jobId/sync', auth, adminOnly, asyncRoute(async (req, r
   }
 }));
 
-app.put('/api/gantt/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/gantt/tasks/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM gantt_tasks WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
   const body = req.body || {};
@@ -3766,7 +4002,7 @@ app.put('/api/gantt/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => 
   res.json({ ok: true });
 }));
 
-app.post('/api/gantt/job/:jobId/tasks', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/gantt/job/:jobId/tasks', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const name = String(body.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Skriv et navn til opgaven' });
@@ -3847,7 +4083,7 @@ app.get('/api/tasks', auth, asyncRoute(async (req, res) => {
   res.json(result.rows);
 }));
 
-app.post('/api/tasks/manual', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/tasks/manual', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.job_name || !body.name || !validDate(body.start_date)) {
     return res.status(400).json({ error: 'Kunde/projekt, opgave og startdato skal udfyldes' });
@@ -3866,7 +4102,7 @@ app.post('/api/tasks/manual', auth, adminOnly, asyncRoute(async (req, res) => {
 // Skabelon-træk direkte ud på en dag: opretter opgaven (som ovenfor) OG booker den på
 // den medarbejder/dato den blev sluppet på, i én omgang — så man undgår to separate
 // trin når man trækker en skabelon ud i Daglig plan.
-app.post('/api/tasks/manual-and-book', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/tasks/manual-and-book', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   // FEJL RETTET: krævede tidligere at ALLE felter var udfyldt for at gemme en
   // skabelon-drop, selv i Kapacitet hvor kun navn + medarbejder + startdato reelt
@@ -3923,7 +4159,7 @@ app.post('/api/tasks/manual-and-book', auth, adminOnly, asyncRoute(async (req, r
 // These blocks are intentionally separate from Daily plan / Employee schedule.
 // They reserve a person's weekly availability without creating a meeting time,
 // address, telephone number or JobTread case number.
-app.post('/api/capacity-reservations', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/capacity-reservations', auth, panelAccess('capacity'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const startDate = validDate(String(body.week_start || '')) ? String(body.week_start) : null;
   if (!startDate) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
@@ -3979,7 +4215,7 @@ app.post('/api/capacity-reservations', auth, adminOnly, asyncRoute(async (req, r
   }
 }));
 
-app.put('/api/capacity-reservations/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/capacity-reservations/:id', auth, panelAccess('capacity'), asyncRoute(async (req, res) => {
   const current = await pgOne("SELECT * FROM planning_bookings WHERE id=$1 AND COALESCE(planning_mode,'daily')='capacity'", [Number(req.params.id)]);
   if (!current) return res.status(404).json({ error: 'Kapacitetsreservationen blev ikke fundet' });
   const body = req.body || {};
@@ -4002,7 +4238,7 @@ app.put('/api/capacity-reservations/:id', auth, adminOnly, asyncRoute(async (req
   res.json({ ok: true });
 }));
 
-app.put('/api/tasks/:id/customer-contact', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/tasks/:id/customer-contact', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const task = await pgOne('SELECT id, job_id FROM jt_tasks WHERE id=$1', [req.params.id]);
   if (!task) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
   const body = req.body || {};
@@ -4043,7 +4279,7 @@ app.put('/api/tasks/:id/customer-contact', auth, adminOnly, asyncRoute(async (re
   res.json({ ok: true, customer_phone: phone || null, customer_phone_source: phone ? 'manual' : null, customer_email: emailProvided ? (email || null) : undefined });
 }));
 
-app.delete('/api/tasks/manual/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/tasks/manual/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -4067,7 +4303,7 @@ app.delete('/api/tasks/manual/:id', auth, adminOnly, asyncRoute(async (req, res)
 // Bulk edit (masseredigering i Opgaveliste) — sætter fx fag på flere opgaver ad gangen.
 // VIGTIGT: denne route skal stå FØR '/api/tasks/:id', ellers vil Express matche
 // "bulk" som et :id-parameter og masseredigering vil aldrig blive ramt.
-app.put('/api/tasks/bulk', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/tasks/bulk', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
   const patch = body.patch || {};
@@ -4083,7 +4319,7 @@ app.put('/api/tasks/bulk', auth, adminOnly, asyncRoute(async (req, res) => {
 }));
 
 // General task edit (Opgaveliste) — works for both JobTread and manual tasks.
-app.put('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/tasks/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM jt_tasks WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
   const body = req.body || {};
@@ -4164,7 +4400,7 @@ app.put('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
 }));
 
 // Bulk delete (masse-slet i Opgaveliste) — fjerner opgaver + tilhørende bookinger/filer.
-app.post('/api/tasks/bulk-delete', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/tasks/bulk-delete', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const ids = Array.isArray((req.body || {}).ids) ? req.body.ids.filter(Boolean) : [];
   if (!ids.length) return res.status(400).json({ error: 'Ingen opgaver valgt' });
   const client = await pool.connect();
@@ -4184,7 +4420,7 @@ app.post('/api/tasks/bulk-delete', auth, adminOnly, asyncRoute(async (req, res) 
 }));
 
 // Generel sletning af én opgave (både JobTread- og manuelle opgaver).
-app.delete('/api/tasks/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/tasks/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -4208,7 +4444,7 @@ app.get('/api/tasks/:id/files', auth, asyncRoute(async (req, res) => {
   res.json(result.rows);
 }));
 
-app.post('/api/tasks/:id/files', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/tasks/:id/files', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.name || !body.url) return res.status(400).json({ error: 'Navn og link/fil skal udfyldes' });
   const result = await pool.query(`
@@ -4217,7 +4453,7 @@ app.post('/api/tasks/:id/files', auth, adminOnly, asyncRoute(async (req, res) =>
   res.json({ ok: true, id: result.rows[0].id });
 }));
 
-app.delete('/api/files/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/files/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM job_files WHERE id=$1', [Number(req.params.id)]);
   res.json({ ok: true });
 }));
@@ -4228,7 +4464,7 @@ app.get('/api/library', auth, asyncRoute(async (req, res) => {
   res.json(result.rows);
 }));
 
-app.post('/api/library', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/library', auth, panelAccess('library'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.name || !body.url) return res.status(400).json({ error: 'Navn og link/fil skal udfyldes' });
   const result = await pool.query(`
@@ -4237,20 +4473,20 @@ app.post('/api/library', auth, adminOnly, asyncRoute(async (req, res) => {
   res.json({ ok: true, id: result.rows[0].id });
 }));
 
-app.delete('/api/library/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/library/:id', auth, panelAccess('library'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM library_files WHERE id=$1', [Number(req.params.id)]);
   res.json({ ok: true });
 }));
 
 // ── UGENTLIGE NOTER TIL MEDARBEJDER/VENDOR ───────────────────
-app.get('/api/notes/weekly', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/notes/weekly', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const weekKey = String(req.query.week_key || '');
   if (!weekKey) return res.status(400).json({ error: 'week_key mangler' });
   const result = await pool.query('SELECT * FROM weekly_notes WHERE week_key=$1', [weekKey]);
   res.json(result.rows);
 }));
 
-app.put('/api/notes/weekly', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/notes/weekly', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const userId = Number(body.user_id);
   const weekKey = String(body.week_key || '');
@@ -4296,7 +4532,7 @@ app.get('/api/task-requests/my', auth, asyncRoute(async (req, res) => {
   res.json(result.rows);
 }));
 
-app.get('/api/task-requests', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/task-requests', auth, panelAccess('requests'), asyncRoute(async (req, res) => {
   const status = req.query.status ? String(req.query.status) : null;
   const result = status
     ? await pool.query(`
@@ -4310,7 +4546,7 @@ app.get('/api/task-requests', auth, adminOnly, asyncRoute(async (req, res) => {
   res.json(result.rows);
 }));
 
-app.put('/api/task-requests/:id/approve', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/task-requests/:id/approve', auth, panelAccess('requests'), asyncRoute(async (req, res) => {
   const reqRow = await pgOne('SELECT * FROM task_requests WHERE id=$1', [req.params.id]);
   if (!reqRow) return res.status(404).json({ error: 'Anmodningen blev ikke fundet' });
   if (reqRow.status !== 'pending') return res.status(400).json({ error: 'Anmodningen er allerede behandlet' });
@@ -4343,7 +4579,7 @@ app.put('/api/task-requests/:id/approve', auth, adminOnly, asyncRoute(async (req
   }
 }));
 
-app.put('/api/task-requests/:id/reject', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/task-requests/:id/reject', auth, panelAccess('requests'), asyncRoute(async (req, res) => {
   const reqRow = await pgOne('SELECT * FROM task_requests WHERE id=$1', [req.params.id]);
   if (!reqRow) return res.status(404).json({ error: 'Anmodningen blev ikke fundet' });
   if (reqRow.status !== 'pending') return res.status(400).json({ error: 'Anmodningen er allerede behandlet' });
@@ -4358,7 +4594,7 @@ app.get('/api/tasks/:id/checklist', auth, asyncRoute(async (req, res) => {
   res.json(rows.rows);
 }));
 
-app.post('/api/tasks/:id/checklist', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/tasks/:id/checklist', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const title = String((req.body || {}).title || '').trim();
   if (!title) return res.status(400).json({ error: 'Skriv hvad tjekpunktet handler om' });
   const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [req.params.id]);
@@ -4380,7 +4616,7 @@ app.put('/api/checklist/:id', auth, asyncRoute(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.delete('/api/checklist/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/checklist/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM task_checklist_items WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -4393,7 +4629,7 @@ app.delete('/api/checklist/:id', auth, adminOnly, asyncRoute(async (req, res) =>
 // opgave oveni. Nu opretter "Book kundebesøg" kun selve jt_tasks-opgaven (ligesom en
 // almindelig manuel opgave) — den rigtige booking sker først (og kun én gang) når
 // opgaven trækkes ud på den medarbejder/dag den faktisk skal ligge hos.
-app.post('/api/customer-visits/book', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/customer-visits/book', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const customerName = String(body.customer_name || '').trim();
   if (!customerName) return res.status(400).json({ error: 'Skriv kundens navn' });
@@ -4533,7 +4769,7 @@ function timeOffOverlaps(userId, startDate, endDate, excludeId) {
   return pool.query(sql, params);
 }
 
-app.get('/api/time-off', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/time-off', auth, panelAccess('requests'), asyncRoute(async (req, res) => {
   const status = req.query.status ? String(req.query.status) : null;
   const result = status
     ? await pool.query(`
@@ -4578,7 +4814,7 @@ app.post('/api/time-off', auth, asyncRoute(async (req, res) => {
 
 // Redigér en eksisterende ferie-/fraværsperiode direkte (bruges fra hurtig-redigering
 // i Daglig plan / Kapacitet, hvor man vil kunne ændre dage, skifte til syg, osv. med det samme).
-app.put('/api/time-off/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/time-off/:id', auth, panelAccess('requests'), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM time_off WHERE id=$1', [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Blev ikke fundet' });
   const body = req.body || {};
@@ -4595,14 +4831,14 @@ app.put('/api/time-off/:id', auth, adminOnly, asyncRoute(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.put('/api/time-off/:id/approve', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/time-off/:id/approve', auth, panelAccess('requests'), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM time_off WHERE id=$1', [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Anmodningen blev ikke fundet' });
   await pool.query(`UPDATE time_off SET status='approved', resolved_at=${nowTextSQL()} WHERE id=$1`, [row.id]);
   res.json({ ok: true });
 }));
 
-app.put('/api/time-off/:id/reject', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/time-off/:id/reject', auth, panelAccess('requests'), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM time_off WHERE id=$1', [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Anmodningen blev ikke fundet' });
   const adminNote = req.body && req.body.admin_note ? String(req.body.admin_note).slice(0, 500) : null;
@@ -4610,7 +4846,7 @@ app.put('/api/time-off/:id/reject', auth, adminOnly, asyncRoute(async (req, res)
   res.json({ ok: true });
 }));
 
-app.delete('/api/time-off/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/time-off/:id', auth, panelAccess('requests'), asyncRoute(async (req, res) => {
   const result = await pool.query('DELETE FROM time_off WHERE id=$1', [req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Blev ikke fundet' });
   res.json({ ok: true });
@@ -4658,7 +4894,7 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
 // Manuel færdig-markering for en UPLANLAGT opgave (ingen booking findes endnu at
 // sætte completed_at på). Bruges af ✓-knappen i Opgavepool for opgaver der aldrig
 // er blevet booket.
-app.put('/api/tasks/:id/manual-complete', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/tasks/:id/manual-complete', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const completed = !!(req.body || {}).completed;
   await pool.query(`UPDATE jt_tasks SET manually_completed_at=${completed ? nowTextSQL() : 'NULL'} WHERE id=$1`, [req.params.id]);
   res.json({ ok: true });
@@ -4668,7 +4904,7 @@ app.put('/api/tasks/:id/manual-complete', auth, adminOnly, asyncRoute(async (req
 // admin selv vil bestemme rækkefølgen medarbejderen ser opgaverne i den dag — uafhængigt
 // af mødetidspunkt. Sætter man et mødetidspunkt (start_time), tager visningen automatisk
 // over og sorterer efter klokkeslæt i stedet (håndteres i frontend'en).
-app.put('/api/assignments/:id/move', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/assignments/:id/move', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
   const dir = (req.body || {}).direction === 'down' ? 1 : -1;
@@ -4692,7 +4928,7 @@ app.put('/api/assignments/:id/move', auth, adminOnly, asyncRoute(async (req, res
 // venter (afvent), bagud, eller aflyst. Færdig håndteres stadig af /complete ovenfor,
 // da den også trigger faktura-flowet og færdig-mailen — de to systemer må ikke blandes.
 const BOOKING_STATUS_FLAGS = ['waiting', 'behind', 'cancelled'];
-app.put('/api/assignments/:id/status', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/assignments/:id/status', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
   const raw = (req.body || {}).status_flag;
@@ -4701,7 +4937,7 @@ app.put('/api/assignments/:id/status', auth, adminOnly, asyncRoute(async (req, r
   res.json({ ok: true, status_flag: value });
 }));
 
-app.put('/api/assignments/:id/invoice', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/assignments/:id/invoice', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
   if (String(current.planning_mode || 'daily') === 'capacity') return res.status(400).json({ error: 'En kapacitetsreservation kan ikke faktureres' });
@@ -4890,7 +5126,7 @@ app.get('/api/team/overview', auth, asyncRoute(async (req, res) => {
 // Henter den fulde note (tekst + link + vedhæftninger) for ÉN booking — bruges når
 // admin rent faktisk åbner "Rediger booking"-popup'en, i stedet for at slæbe alle
 // vedhæftninger med i den store liste ovenfor.
-app.get('/api/assignments/:id/note', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/assignments/:id/note', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT notes, note_link, note_attachments FROM planning_bookings WHERE id=$1', [Number(req.params.id)]);
   if (!row) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
   res.json(row);
@@ -4919,7 +5155,7 @@ app.post('/api/assignments/self', auth, asyncRoute(async (req, res) => {
   }
 }));
 
-app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/assignments', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   try {
     const booking = await normalizeBooking(req.body, true);
     const result = await pool.query(`
@@ -4946,7 +5182,7 @@ app.post('/api/assignments', auth, adminOnly, asyncRoute(async (req, res) => {
   }
 }));
 
-app.put('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/assignments/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [Number(req.params.id)]);
   if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
   try {
@@ -4988,7 +5224,7 @@ app.put('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => 
   }
 }));
 
-app.delete('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/assignments/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -5070,7 +5306,7 @@ app.delete('/api/assignments/:id', auth, adminOnly, asyncRoute(async (req, res) 
   }
 }));
 
-app.delete('/api/plan', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/plan', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   // Do not erase long-range capacity reservations when clearing the day-to-day plan.
   await pool.query("DELETE FROM planning_bookings WHERE COALESCE(planning_mode,'daily') <> 'capacity'");
   res.json({ ok: true });
@@ -5128,7 +5364,7 @@ app.get('/api/time/active', auth, asyncRoute(async (req, res) => {
   res.json(result.rows[0] || null);
 }));
 
-app.get('/api/time/all', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/time/all', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const result = await pool.query(`
     SELECT tl.*,u.name AS user_name,t.job_name,t.name AS task_name
     FROM time_logs tl
@@ -5141,7 +5377,7 @@ app.get('/api/time/all', auth, adminOnly, asyncRoute(async (req, res) => {
 }));
 
 // ── DASHBOARD ─────────────────────────────────────────────────
-app.get('/api/dashboard', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/dashboard', auth, panelAccess('dashboard'), asyncRoute(async (req, res) => {
   const result = await pgOne(`
     SELECT
       (SELECT COUNT(*)::int FROM jt_tasks) AS "totalTasks",
@@ -5176,7 +5412,7 @@ app.get('/api/health', asyncRoute(async (req, res) => {
 // Bygger på allerede synkroniserede JobTread-sager (jt_tasks), da der ikke findes en
 // selvstændig "kunde"-tabel i dag — job_name er reelt kundenavnet på sagen.
 // ══════════════════════════════════════════════════════════════
-app.get('/api/customers/search', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/customers/search', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (q.length < 2) return res.json([]);
   const crmQuery = pool.query(`
@@ -5212,7 +5448,7 @@ app.get('/api/customers/search', auth, adminOnly, asyncRoute(async (req, res) =>
 
 // ── CRM: KUNDEKARTOTEK — eget kundekartotek Martin kan oprette kunder i
 // direkte, uafhængigt af om der findes en JobTread-sag på dem endnu. ────
-app.get('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const q = String(req.query.q || '').trim();
   // Søger også i pris (tilbuds- og faktura-totaler) — så Martin kan skrive fx
   // "15000" og finde kunden med det tilbud/den faktura, ikke kun navn/email/tlf.
@@ -5231,7 +5467,7 @@ app.get('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) => 
 // fakturaer. Fakturaer har ingen customer_id-kolonne (de oprettes altid via
 // konverter-fra-tilbud, se /api/quotes/:id/convert-to-invoice), så de findes
 // via invoices.quote_id -> quotes.customer_id i stedet.
-app.get('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const customer = await pgOne('SELECT * FROM customers WHERE id=$1', [req.params.id]);
   if (!customer) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
   const [quotes, invoices, projects] = await Promise.all([
@@ -5256,7 +5492,7 @@ app.get('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, res)
     projects: projects.rows
   });
 }));
-app.post('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
   const isCompany = !!b.is_company;
@@ -5283,7 +5519,7 @@ app.post('/api/crm/customers', auth, financeOnly, asyncRoute(async (req, res) =>
   } catch (e) { console.error('Kunne ikke sende velkomstmail til ny kunde:', e.message); }
   res.json({ ok: true, id: r.rows[0].id });
 }));
-app.put('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM customers WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
   const b = req.body || {};
@@ -5303,18 +5539,18 @@ app.put('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, res)
   ]);
   res.json({ ok: true });
 }));
-app.delete('/api/crm/customers/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM customers WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
 // ── KUNDE-NOTER — rigtig, redigerbar/sletbar note-liste (se customer_notes
 // ovenfor i initSchema()). Adskilt fra den ældre customers.notes-tekst. ────
-app.get('/api/crm/customers/:id/notes', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/customers/:id/notes', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const rows = (await pool.query('SELECT n.*, u.name AS user_name FROM customer_notes n LEFT JOIN users u ON u.id=n.user_id WHERE n.customer_id=$1 ORDER BY n.created_at DESC, n.id DESC', [req.params.id])).rows;
   res.json(rows);
 }));
-app.post('/api/crm/customers/:id/notes', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/customers/:id/notes', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.body || !String(b.body).trim()) return res.status(400).json({ error: 'Note mangler' });
   const customer = await pgOne('SELECT id FROM customers WHERE id=$1', [req.params.id]);
@@ -5322,7 +5558,7 @@ app.post('/api/crm/customers/:id/notes', auth, financeOnly, asyncRoute(async (re
   const r = await pgOne('INSERT INTO customer_notes (customer_id,body,user_id) VALUES ($1,$2,$3) RETURNING id', [req.params.id, String(b.body).trim(), req.user.id]);
   res.json({ ok: true, id: r.id });
 }));
-app.put('/api/crm/customers/:id/notes/:noteId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/customers/:id/notes/:noteId', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.body || !String(b.body).trim()) return res.status(400).json({ error: 'Note mangler' });
   const note = await pgOne('SELECT * FROM customer_notes WHERE id=$1 AND customer_id=$2', [req.params.noteId, req.params.id]);
@@ -5330,7 +5566,7 @@ app.put('/api/crm/customers/:id/notes/:noteId', auth, financeOnly, asyncRoute(as
   await pool.query(`UPDATE customer_notes SET body=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [String(b.body).trim(), req.params.noteId]);
   res.json({ ok: true });
 }));
-app.delete('/api/crm/customers/:id/notes/:noteId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/crm/customers/:id/notes/:noteId', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const note = await pgOne('SELECT * FROM customer_notes WHERE id=$1 AND customer_id=$2', [req.params.noteId, req.params.id]);
   if (!note) return res.status(404).json({ error: 'Note ikke fundet' });
   await pool.query('DELETE FROM customer_notes WHERE id=$1', [req.params.noteId]);
@@ -5455,7 +5691,7 @@ function gmailWalkPayload(part, acc) {
 }
 
 // ── OAuth-flow ──────────────────────────────────────────────────
-app.get('/api/gmail/auth-url', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/gmail/auth-url', auth, panelAccess('gmail-settings'), asyncRoute(async (req, res) => {
   if (!gmailIsConfigured()) return res.status(400).json({ error: 'GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET er ikke sat op på serveren endnu' });
   const state = jwt.sign({ purpose: 'gmail_oauth', uid: req.user.id }, JWT_SECRET, { expiresIn: '10m' });
   const params = new URLSearchParams({
@@ -5521,7 +5757,7 @@ app.get('/api/gmail/oauth-callback', asyncRoute(async (req, res) => {
   res.redirect('/admin#gmail-settings');
 }));
 
-app.get('/api/gmail/status', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/gmail/status', auth, panelAccess('gmail-settings'), asyncRoute(async (req, res) => {
   const conn = await gmailGetConnection();
   res.json({
     configured: gmailIsConfigured(),
@@ -5533,7 +5769,7 @@ app.get('/api/gmail/status', auth, financeOnly, asyncRoute(async (req, res) => {
   });
 }));
 
-app.post('/api/gmail/disconnect', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/gmail/disconnect', auth, panelAccess('gmail-settings'), asyncRoute(async (req, res) => {
   const conn = await gmailGetConnection();
   if (conn && conn.refresh_token_enc) {
     try {
@@ -5652,7 +5888,7 @@ async function gmailFullSyncCustomer(customer, accessToken) {
   return { added, fetched, truncated: !!pageToken };
 }
 
-app.post('/api/gmail/sync', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/gmail/sync', auth, panelAccess('gmail-settings'), asyncRoute(async (req, res) => {
   try {
     const added = await gmailSyncAll();
     res.json({ ok: true, added });
@@ -5663,7 +5899,7 @@ app.post('/api/gmail/sync', auth, financeOnly, asyncRoute(async (req, res) => {
 }));
 
 // On-demand "hent hele historikken" — se kommentaren ved gmailFullSyncCustomer.
-app.post('/api/crm/customers/:id/full-mail-sync', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/customers/:id/full-mail-sync', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const customer = await pgOne('SELECT id, email FROM customers WHERE id=$1', [req.params.id]);
   if (!customer) return res.status(404).json({ error: 'Kunde ikke fundet' });
   if (!customer.email) return res.status(400).json({ error: 'Kunden har ingen emailadresse' });
@@ -5677,7 +5913,7 @@ app.post('/api/crm/customers/:id/full-mail-sync', auth, financeOnly, asyncRoute(
 }));
 
 // ── Kundens synkroniserede mails + live besked-/vedhæftnings-visning ────────
-app.get('/api/crm/customers/:id/emails', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/customers/:id/emails', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const rows = (await pool.query('SELECT * FROM customer_emails WHERE customer_id=$1 ORDER BY internal_date DESC', [req.params.id])).rows;
   res.json(rows);
 }));
@@ -5689,7 +5925,7 @@ app.get('/api/crm/customers/:id/emails', auth, financeOnly, asyncRoute(async (re
 // ved synk (se gmailSyncCustomer), og er derfor billig selv med mange mails.
 // Kappet til de 40 nyeste mails-med-vedhæftning pr. kald, for ikke at kunne løbe
 // løbsk hvis en kunde en dag har hundredvis.
-app.get('/api/crm/customers/:id/files', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/customers/:id/files', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const accessToken = await gmailGetValidAccessToken();
   const emails = (await pool.query('SELECT * FROM customer_emails WHERE customer_id=$1 AND has_attachments=1 ORDER BY internal_date DESC LIMIT 40', [req.params.id])).rows;
   const files = [];
@@ -5707,7 +5943,7 @@ app.get('/api/crm/customers/:id/files', auth, financeOnly, asyncRoute(async (req
   res.json(files);
 }));
 
-app.get('/api/gmail/messages/:messageId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/gmail/messages/:messageId', auth, panelAccess('gmail-settings'), asyncRoute(async (req, res) => {
   const accessToken = await gmailGetValidAccessToken();
   const detail = await gmailApiFetch('/messages/' + req.params.messageId + '?format=full', accessToken);
   const headers = (detail.payload && detail.payload.headers) || [];
@@ -5724,7 +5960,7 @@ app.get('/api/gmail/messages/:messageId', auth, financeOnly, asyncRoute(async (r
   });
 }));
 
-app.get('/api/gmail/messages/:messageId/attachments/:attachmentId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/gmail/messages/:messageId/attachments/:attachmentId', auth, panelAccess('gmail-settings'), asyncRoute(async (req, res) => {
   const accessToken = await gmailGetValidAccessToken();
   const att = await gmailApiFetch('/messages/' + req.params.messageId + '/attachments/' + req.params.attachmentId, accessToken);
   const buf = gmailB64UrlDecode(att.data);
@@ -6197,12 +6433,12 @@ async function crmPropagateContactFields(contactId, fields) {
 }
 
 // ── PIPELINES + STAGES ──────────────────────────────────────────
-app.get('/api/crm/pipelines', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/pipelines', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const pipelines = await pool.query('SELECT * FROM crm_pipelines ORDER BY position ASC, id ASC');
   const stages = await pool.query('SELECT * FROM crm_stages ORDER BY position ASC, id ASC');
   res.json(pipelines.rows.map(p => ({ ...p, stages: stages.rows.filter(s => s.pipeline_id === p.id) })));
 }));
-app.post('/api/crm/pipelines', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/pipelines', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_pipelines');
@@ -6210,13 +6446,13 @@ app.post('/api/crm/pipelines', auth, financeOnly, asyncRoute(async (req, res) =>
   await pool.query('INSERT INTO crm_stages (pipeline_id,name,color,position) VALUES ($1,$2,$3,0)', [r.id, 'Ny', '#6366F1']);
   res.json({ ok: true, id: r.id });
 }));
-app.put('/api/crm/pipelines/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/pipelines/:id', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (b.name !== undefined) await pool.query('UPDATE crm_pipelines SET name=$1 WHERE id=$2', [String(b.name).trim(), req.params.id]);
   if (b.position !== undefined) await pool.query('UPDATE crm_pipelines SET position=$1 WHERE id=$2', [b.position, req.params.id]);
   res.json({ ok: true });
 }));
-app.delete('/api/crm/pipelines/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/crm/pipelines/:id', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const inUse = await pgOne(`
     SELECT (SELECT COUNT(*) FROM crm_leads WHERE pipeline_id=$1) + (SELECT COUNT(*) FROM crm_opportunities WHERE pipeline_id=$1) AS n
   `, [req.params.id]);
@@ -6224,14 +6460,14 @@ app.delete('/api/crm/pipelines/:id', auth, financeOnly, asyncRoute(async (req, r
   await pool.query('DELETE FROM crm_pipelines WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
-app.post('/api/crm/pipelines/:id/stages', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/pipelines/:id/stages', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_stages WHERE pipeline_id=$1', [req.params.id]);
   const r = await pgOne('INSERT INTO crm_stages (pipeline_id,name,color,position) VALUES ($1,$2,$3,$4) RETURNING id', [req.params.id, String(b.name).trim(), b.color || '#6366F1', posRow.pos]);
   res.json({ ok: true, id: r.id });
 }));
-app.put('/api/crm/stages/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/stages/:id', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_stages WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Stage ikke fundet' });
@@ -6250,7 +6486,7 @@ app.put('/api/crm/stages/:id', auth, financeOnly, asyncRoute(async (req, res) =>
   ]);
   res.json({ ok: true });
 }));
-app.delete('/api/crm/stages/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/crm/stages/:id', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const inUse = await pgOne(`
     SELECT (SELECT COUNT(*) FROM crm_leads WHERE stage_id=$1) + (SELECT COUNT(*) FROM crm_opportunities WHERE stage_id=$1) AS n
   `, [req.params.id]);
@@ -6262,11 +6498,11 @@ app.delete('/api/crm/stages/:id', auth, financeOnly, asyncRoute(async (req, res)
 }));
 
 // ── Tidsbaserede stage-opfølgninger (crm_stage_followup_rules) ──────────────
-app.get('/api/crm/stages/:id/followup-rules', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/stages/:id/followup-rules', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const rows = (await pool.query('SELECT * FROM crm_stage_followup_rules WHERE stage_id=$1 ORDER BY days_after ASC, position ASC', [req.params.id])).rows;
   res.json({ rules: rows });
 }));
-app.post('/api/crm/stages/:id/followup-rules', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/stages/:id/followup-rules', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.days_after || Number(b.days_after) <= 0) return res.status(400).json({ error: 'Antal dage skal være større end 0' });
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_stage_followup_rules WHERE stage_id=$1', [req.params.id]);
@@ -6285,7 +6521,7 @@ app.post('/api/crm/stages/:id/followup-rules', auth, financeOnly, asyncRoute(asy
   ]);
   res.json({ ok: true, id: r.id });
 }));
-app.put('/api/crm/followup-rules/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/followup-rules/:id', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_stage_followup_rules WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Regel ikke fundet' });
@@ -6302,17 +6538,17 @@ app.put('/api/crm/followup-rules/:id', auth, financeOnly, asyncRoute(async (req,
   ]);
   res.json({ ok: true });
 }));
-app.delete('/api/crm/followup-rules/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/crm/followup-rules/:id', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM crm_stage_followup_rules WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
-app.post('/api/crm/followup-rules/run-now', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/followup-rules/run-now', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const result = await runStageFollowupScan();
   res.json({ ok: true, ...result });
 }));
 
 // ── Automatiserings-indstillinger (Skabeloner → 🤖 Automatisering) ──────────
-app.get('/api/crm/lead-webhook-info', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/lead-webhook-info', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const row = await pgOne("SELECT value FROM app_settings WHERE key='lead_webhook_secret'");
   const base = req.protocol + '://' + req.get('host') + '/api/integrations/lead-intake/';
   res.json({
@@ -6329,11 +6565,11 @@ app.post('/api/crm/lead-webhook-regenerate', auth, adminOnly, asyncRoute(async (
   await pool.query("INSERT INTO app_settings (key,value) VALUES ('lead_webhook_secret',$1) ON CONFLICT (key) DO UPDATE SET value=$1", [secret]);
   res.json({ ok: true, secret });
 }));
-app.get('/api/crm/lost-followup-settings', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/lost-followup-settings', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM crm_lost_followup_settings WHERE id=1');
   res.json(row || {});
 }));
-app.put('/api/crm/lost-followup-settings', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/lost-followup-settings', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_lost_followup_settings WHERE id=1');
   await pool.query(`UPDATE crm_lost_followup_settings SET enabled=$1,days_threshold=$2,require_quote=$3,subject=$4,body=$5,updated_at=${nowTextSQL()} WHERE id=1`, [
@@ -6345,19 +6581,19 @@ app.put('/api/crm/lost-followup-settings', auth, financeOnly, asyncRoute(async (
   ]);
   res.json({ ok: true });
 }));
-app.post('/api/crm/lost-followup/run', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/lost-followup/run', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const result = await runLostFollowupScan(true);
   res.json(result);
 }));
 
 // ── CUSTOM FIELDS ────────────────────────────────────────────────
-app.get('/api/crm/custom-fields', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/custom-fields', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const q = req.query.entity_type;
   const r = q ? await pool.query('SELECT * FROM crm_custom_fields WHERE entity_type=$1 ORDER BY position ASC, id ASC', [q])
     : await pool.query('SELECT * FROM crm_custom_fields ORDER BY entity_type ASC, position ASC, id ASC');
   res.json(r.rows);
 }));
-app.post('/api/crm/custom-fields', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/custom-fields', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.label || !b.entity_type) return res.status(400).json({ error: 'Label og entitetstype mangler' });
   const key = String(b.key || b.label).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'felt';
@@ -6372,7 +6608,7 @@ app.post('/api/crm/custom-fields', auth, financeOnly, asyncRoute(async (req, res
     throw e;
   }
 }));
-app.put('/api/crm/custom-fields/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/custom-fields/:id', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_custom_fields WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Feltet blev ikke fundet' });
@@ -6385,13 +6621,13 @@ app.put('/api/crm/custom-fields/:id', auth, financeOnly, asyncRoute(async (req, 
   ]);
   res.json({ ok: true });
 }));
-app.delete('/api/crm/custom-fields/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/crm/custom-fields/:id', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM crm_custom_fields WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
 // ── LEADS ────────────────────────────────────────────────────────
-app.get('/api/crm/leads', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/leads', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   const conds = ['1=1']; const params = [];
   if (req.query.pipeline_id) { params.push(req.query.pipeline_id); conds.push('l.pipeline_id=$' + params.length); }
   if (req.query.stage_id) { params.push(req.query.stage_id); conds.push('l.stage_id=$' + params.length); }
@@ -6401,7 +6637,7 @@ app.get('/api/crm/leads', auth, financeOnly, asyncRoute(async (req, res) => {
   const cfValues = await crmGetCustomFieldValuesBulk('lead', rows.map(r => r.id));
   res.json(rows.map(r => ({ ...r, custom_fields: cfValues[r.id] || {} })));
 }));
-app.post('/api/crm/leads', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/leads', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
   let stageId = b.stage_id, pipelineId = b.pipeline_id;
@@ -6430,7 +6666,7 @@ app.post('/api/crm/leads', auth, financeOnly, asyncRoute(async (req, res) => {
     .catch(e => console.error('SMS/email-automatik fejlede for lead #' + r.id + ':', e.message));
   res.json({ ok: true, id: r.id, contact_id: linked.contactId, customer_id: linked.customerId });
 }));
-app.get('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   let lead = await pgOne('SELECT l.*, u.name AS owner_name, c.customer_id AS customer_id FROM crm_leads l LEFT JOIN users u ON u.id=l.owner_id LEFT JOIN crm_contacts c ON c.id=l.contact_id WHERE l.id=$1', [req.params.id]);
   if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
   // Selvhelbredende efterudfyldning: leads oprettet FØR kontakt/kunde blev
@@ -6458,7 +6694,7 @@ app.get('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => 
   const activities = (await pool.query('SELECT a.*, u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.entity_type=$1 AND a.entity_id=$2 ORDER BY a.created_at DESC, a.id DESC', ['lead', lead.id])).rows;
   res.json({ ...lead, custom_fields: customValues, custom_field_defs: customFields, activities });
 }));
-app.put('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_leads WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Lead ikke fundet' });
@@ -6501,11 +6737,11 @@ app.put('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => 
   }
   res.json({ ok: true });
 }));
-app.delete('/api/crm/leads/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM crm_leads WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
-app.post('/api/crm/leads/:id/notes', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/leads/:id/notes', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.body) return res.status(400).json({ error: 'Note mangler' });
   await crmLogActivity('lead', req.params.id, 'note', String(b.body), req.user.id);
@@ -6514,7 +6750,7 @@ app.post('/api/crm/leads/:id/notes', auth, financeOnly, asyncRoute(async (req, r
 // Konverterer et lead til en kontakt + en opportunity i Sales-pipelinen —
 // og opretter/kæder samtidig en rigtig kunde i Kunder-modulet (customers),
 // så Tilbud/Faktura/Projekter fungerer med det samme uden ekstra trin.
-app.post('/api/crm/leads/:id/convert', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/leads/:id/convert', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const lead = await pgOne('SELECT * FROM crm_leads WHERE id=$1', [req.params.id]);
   if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
@@ -6565,7 +6801,7 @@ app.post('/api/crm/leads/:id/convert', auth, financeOnly, asyncRoute(async (req,
 // Kontaktens egne felter (navn/telefon/email/adresse) redigeres fra
 // opportunity-detaljesiden, siden en opportunity ikke selv ejer de felter —
 // de bor på crm_contacts (kan være delt af flere opportunities for samme person).
-app.put('/api/crm/contacts/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/contacts/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_contacts WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Kontakt ikke fundet' });
@@ -6588,7 +6824,7 @@ app.put('/api/crm/contacts/:id', auth, financeOnly, asyncRoute(async (req, res) 
   }
   res.json({ ok: true });
 }));
-app.get('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/opportunities', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   const conds = ['1=1']; const params = [];
   if (req.query.pipeline_id) { params.push(req.query.pipeline_id); conds.push('o.pipeline_id=$' + params.length); }
   if (req.query.stage_id) { params.push(req.query.stage_id); conds.push('o.stage_id=$' + params.length); }
@@ -6605,7 +6841,7 @@ app.get('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res)
   const cfValues = await crmGetCustomFieldValuesBulk('opportunity', rows.map(r => r.id));
   res.json(rows.map(r => ({ ...r, custom_fields: cfValues[r.id] || {} })));
 }));
-app.post('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/opportunities', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
   let pipelineId = b.pipeline_id;
@@ -6632,7 +6868,7 @@ app.post('/api/crm/opportunities', auth, financeOnly, asyncRoute(async (req, res
     .catch(e => console.error('SMS/email-automatik fejlede for opportunity #' + r.id + ':', e.message));
   res.json({ ok: true, id: r.id });
 }));
-app.get('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   const oppQuery = `
     SELECT o.*, c.name AS contact_name, c.phone AS contact_phone, c.email AS contact_email, c.address AS contact_address, c.customer_id AS customer_id
     FROM crm_opportunities o LEFT JOIN crm_contacts c ON c.id=o.contact_id WHERE o.id=$1
@@ -6656,7 +6892,7 @@ app.get('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, 
   const activities = (await pool.query('SELECT a.*, u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.entity_type=$1 AND a.entity_id=$2 ORDER BY a.created_at DESC, a.id DESC', ['opportunity', opp.id])).rows;
   res.json({ ...opp, custom_fields: customValues, custom_field_defs: customFields, activities });
 }));
-app.put('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_opportunities WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Opportunity ikke fundet' });
@@ -6688,11 +6924,11 @@ app.put('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, 
   }
   res.json({ ok: true });
 }));
-app.delete('/api/crm/opportunities/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM crm_opportunities WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
-app.post('/api/crm/opportunities/:id/notes', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/opportunities/:id/notes', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.body) return res.status(400).json({ error: 'Note mangler' });
   await crmLogActivity('opportunity', req.params.id, 'note', String(b.body), req.user.id);
@@ -6700,7 +6936,7 @@ app.post('/api/crm/opportunities/:id/notes', auth, financeOnly, asyncRoute(async
 }));
 // Opportunities knyttet til en given kunde i Kunder-modulet — bruges af
 // kundekortet til at vise "tilknyttede opportunities" (se customer-detail).
-app.get('/api/crm/customers/:id/opportunities', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/customers/:id/opportunities', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const rows = (await pool.query(`
     SELECT o.*, s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name
     FROM crm_opportunities o
@@ -6716,7 +6952,7 @@ app.get('/api/crm/customers/:id/opportunities', auth, financeOnly, asyncRoute(as
 // Bevidst IKKE koblet til Daglig planlægning/Gantt — det er en helt separat,
 // meget større planlægningsmotor. Dette er kun en let huskeliste på selve
 // CRM-kortet, fx "Ring op i morgen", "Send tilbud".
-app.get('/api/crm/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/tasks', auth, panelAccess('crmp_tasks'), asyncRoute(async (req, res) => {
   const { entity_type, entity_id } = req.query;
   if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type og entity_id påkrævet' });
   const rows = (await pool.query(`
@@ -6731,7 +6967,7 @@ app.get('/api/crm/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
 // og oprette/omfordele dem uden at skulle ind på hvert enkelt lead/opportunity.
 // Skal registreres FØR GET /api/crm/tasks/:id, hvis den nogensinde tilføjes —
 // ellers ville "overview" selv blive fortolket som et :id.
-app.get('/api/crm/tasks/overview', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/crm/tasks/overview', auth, panelAccess('crmp_tasks'), asyncRoute(async (req, res) => {
   const includeDone = req.query.include_done === '1';
   const rows = (await pool.query(`
     SELECT t.*,
@@ -6748,7 +6984,7 @@ app.get('/api/crm/tasks/overview', auth, financeOnly, asyncRoute(async (req, res
   `)).rows;
   res.json(rows);
 }));
-app.post('/api/crm/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/crm/tasks', auth, panelAccess('crmp_tasks'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.entity_type || !b.entity_id || !String(b.title || '').trim()) return res.status(400).json({ error: 'Titel mangler' });
   const row = await pgOne(`
@@ -6757,7 +6993,7 @@ app.post('/api/crm/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
   `, [b.entity_type, b.entity_id, String(b.title).trim(), b.assigned_to || null, req.user.id, b.due_date || null, b.due_time || null, b.priority ? 1 : 0]);
   res.json(row);
 }));
-app.put('/api/crm/tasks/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/crm/tasks/:id', auth, panelAccess('crmp_tasks'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const fields = [], values = [];
   if (b.title !== undefined) { fields.push(`title=$${fields.length + 1}`); values.push(String(b.title).trim()); }
@@ -6771,7 +7007,7 @@ app.put('/api/crm/tasks/:id', auth, financeOnly, asyncRoute(async (req, res) => 
   await pool.query(`UPDATE crm_tasks SET ${fields.join(',')} WHERE id=$${values.length}`, values);
   res.json({ ok: true });
 }));
-app.delete('/api/crm/tasks/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/crm/tasks/:id', auth, panelAccess('crmp_tasks'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM crm_tasks WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -6845,7 +7081,7 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
 
 // Kontoret vælger hvilke KS-skabeloner der er tilgængelige for medarbejderen på DENNE
 // sag. Ingen rækker gemt = ingen begrænsning (alle skabeloner tilladt, bagudkompatibelt).
-app.put('/api/projects/:id/qa-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/projects/:id/qa-templates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   const ids = Array.isArray(req.body && req.body.template_ids) ? req.body.template_ids.map(Number).filter(Boolean) : [];
@@ -6857,7 +7093,7 @@ app.put('/api/projects/:id/qa-templates', auth, financeOnly, asyncRoute(async (r
   res.json({ ok: true });
 }));
 
-app.put('/api/projects/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   const b = req.body || {};
@@ -6877,7 +7113,7 @@ app.put('/api/projects/:id', auth, financeOnly, asyncRoute(async (req, res) => {
 
 // 1-KLIKS: opret én sags-opgave pr. tilbudslinje. Kan trykkes flere gange uden
 // at lave dubletter — springer linjer over der allerede har en opgave.
-app.post('/api/projects/:id/convert-quote-lines', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/projects/:id/convert-quote-lines', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   if (!project.quote_id) return res.status(400).json({ error: 'Dette projekt har intet tilknyttet tilbud' });
@@ -6902,7 +7138,7 @@ app.post('/api/projects/:id/convert-quote-lines', auth, financeOnly, asyncRoute(
   res.json({ ok: true, created });
 }));
 
-app.post('/api/projects/:id/tasks', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/projects/:id/tasks', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   const b = req.body || {};
@@ -6920,7 +7156,7 @@ app.post('/api/projects/:id/tasks', auth, financeOnly, asyncRoute(async (req, re
   res.json({ ok: true, id });
 }));
 
-app.put('/api/projects/:id/tasks/:taskId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM gantt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
   if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
@@ -6941,7 +7177,7 @@ app.put('/api/projects/:id/tasks/:taskId', auth, financeOnly, asyncRoute(async (
   res.json({ ok: true });
 }));
 
-app.delete('/api/projects/:id/tasks/:taskId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   // Rydder også op i poolen (og alt der peger på opgaven dér) — ellers ville en
   // slettet sags-opgave blive hængende som en "spøgelses"-opgave i Opgavepool/
   // Kapacitet/Daglig plan, siden de tabeller ikke har nogen FK til gantt_tasks.
@@ -6963,7 +7199,7 @@ app.post('/api/projects/:id/photos', auth, asyncRoute(async (req, res) => {
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
-app.delete('/api/projects/:id/photos/:photoId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/projects/:id/photos/:photoId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM project_photos WHERE id=$1 AND project_id=$2', [req.params.photoId, req.params.id]);
   res.json({ ok: true });
 }));
@@ -7003,7 +7239,7 @@ app.post('/api/projects/:id/time-entries', auth, asyncRoute(async (req, res) => 
 
 // Redigering er forbeholdt kontoret/økonomi — en medarbejder kan ikke selv rette en
 // registrering bagefter, kun oprette og (indirekte, via kontoret) få den rettet.
-app.put('/api/projects/:id/time-entries/:entryId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/projects/:id/time-entries/:entryId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const existing = await pgOne('SELECT id FROM time_entries WHERE id=$1 AND project_id=$2', [req.params.entryId, req.params.id]);
   if (!existing) return res.status(404).json({ error: 'Tidsregistreringen blev ikke fundet' });
   const b = req.body || {};
@@ -7023,7 +7259,7 @@ app.put('/api/projects/:id/time-entries/:entryId', auth, financeOnly, asyncRoute
   res.json({ ok: true });
 }));
 
-app.delete('/api/projects/:id/time-entries/:entryId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/projects/:id/time-entries/:entryId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM time_entries WHERE id=$1 AND project_id=$2', [req.params.entryId, req.params.id]);
   res.json({ ok: true });
 }));
@@ -7096,7 +7332,7 @@ app.post('/api/projects/:id/materials', auth, asyncRoute(async (req, res) => {
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
-app.delete('/api/projects/:id/materials/:materialId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/projects/:id/materials/:materialId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM project_materials WHERE id=$1 AND project_id=$2', [req.params.materialId, req.params.id]);
   res.json({ ok: true });
 }));
@@ -7108,7 +7344,7 @@ app.delete('/api/projects/:id/materials/:materialId', auth, financeOnly, asyncRo
 // til den registrerede pris, da den ER den faktiske udgift — Martin kan justere
 // avancen bagefter på selve fakturalinjen, hvis materialerne skal videresælges
 // med tillæg.
-app.post('/api/projects/:id/materials/:materialId/invoice', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/projects/:id/materials/:materialId/invoice', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
   if (!project.invoice_id) return res.status(400).json({ error: 'Sagen har endnu ingen faktura — konvertér tilbuddet til faktura under Tilbud & Faktura først' });
@@ -7146,7 +7382,7 @@ app.get('/api/qa-templates', auth, asyncRoute(async (req, res) => {
   res.json(rows.rows.map(r => ({ ...r, fields: typeof r.fields === 'string' ? safeJsonParse(r.fields, []) : (r.fields || []) })));
 }));
 
-app.post('/api/qa-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/qa-templates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const name = String(b.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Skriv et navn til skabelonen' });
@@ -7155,7 +7391,7 @@ app.post('/api/qa-templates', auth, financeOnly, asyncRoute(async (req, res) => 
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
-app.put('/api/qa-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/qa-templates/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM qa_templates WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
   const b = req.body || {};
@@ -7167,7 +7403,7 @@ app.put('/api/qa-templates/:id', auth, financeOnly, asyncRoute(async (req, res) 
   res.json({ ok: true });
 }));
 
-app.delete('/api/qa-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/qa-templates/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM qa_templates WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -7185,7 +7421,7 @@ app.post('/api/projects/:id/qa-submissions', auth, asyncRoute(async (req, res) =
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
-app.delete('/api/qa-submissions/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/qa-submissions/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM qa_submissions WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -7197,7 +7433,7 @@ app.get('/api/contact-form-templates', auth, asyncRoute(async (req, res) => {
   res.json(rows.rows.map(r => ({ ...r, fields: typeof r.fields === 'string' ? safeJsonParse(r.fields, []) : (r.fields || []) })));
 }));
 
-app.post('/api/contact-form-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/contact-form-templates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const name = String(b.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Skriv et navn til formularen' });
@@ -7206,7 +7442,7 @@ app.post('/api/contact-form-templates', auth, financeOnly, asyncRoute(async (req
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
-app.put('/api/contact-form-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/contact-form-templates/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM contact_form_templates WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Formularen blev ikke fundet' });
   const b = req.body || {};
@@ -7218,7 +7454,7 @@ app.put('/api/contact-form-templates/:id', auth, financeOnly, asyncRoute(async (
   res.json({ ok: true });
 }));
 
-app.delete('/api/contact-form-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/contact-form-templates/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM contact_form_templates WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -7236,7 +7472,7 @@ app.post('/api/projects/:id/contact-form-submissions', auth, asyncRoute(async (r
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
-app.delete('/api/contact-form-submissions/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/contact-form-submissions/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM contact_form_submissions WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -7246,7 +7482,7 @@ app.delete('/api/contact-form-submissions/:id', auth, financeOnly, asyncRoute(as
 // faktura, klar til Martin blot skal sætte prisen og sende. Kræver at
 // tilbuddet allerede er konverteret til faktura — der findes bevidst ingen
 // "opret tom faktura"-vej i systemet, faktura skabes altid fra et tilbud. ──
-app.post('/api/projects/:id/time-entries/:entryId/invoice', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/projects/:id/time-entries/:entryId/invoice', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   if (!project.invoice_id) return res.status(400).json({ error: 'Sagen har endnu ingen faktura — konvertér tilbuddet til faktura under Tilbud & Faktura først' });
@@ -7286,7 +7522,7 @@ app.post('/api/projects/:id/time-entries/:entryId/invoice', auth, financeOnly, a
 // en kundeside er værre end intet tal. I stedet linkes der ud til JobTread
 // (jt_url), som er den faktiske kilde til fakturaer, pr. job.
 // ══════════════════════════════════════════════════════════════
-app.get('/api/customers/history', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/customers/history', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const name = String(req.query.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Mangler kundenavn' });
   const tasks = await pool.query(`
@@ -7315,7 +7551,7 @@ app.get('/api/templates', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM task_templates ORDER BY name ASC');
   res.json(rows.rows.map(r => ({ ...r, checklist_items: safeJsonParse(r.checklist_items, []) })));
 }));
-app.post('/api/templates', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/templates', auth, panelAccess('templates'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
   const days = Math.max(0.25, Math.min(60, Number(body.default_days) || 1));
@@ -7326,7 +7562,7 @@ app.post('/api/templates', auth, adminOnly, asyncRoute(async (req, res) => {
   `, [String(body.name).trim().slice(0, 200), cleanTaskType(body.type_guess), days, JSON.stringify(checklist), body.notes_template ? String(body.notes_template).slice(0, 1000) : null]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
-app.put('/api/templates/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/templates/:id', auth, panelAccess('templates'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const days = Math.max(0.25, Math.min(60, Number(body.default_days) || 1));
   const checklist = Array.isArray(body.checklist_items) ? body.checklist_items.map(x => String(x).slice(0, 200)) : [];
@@ -7337,7 +7573,7 @@ app.put('/api/templates/:id', auth, adminOnly, asyncRoute(async (req, res) => {
   if (!r.rowCount) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
   res.json({ ok: true });
 }));
-app.delete('/api/templates/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/templates/:id', auth, panelAccess('templates'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM task_templates WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -7350,7 +7586,7 @@ app.get('/api/email-templates', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM email_templates ORDER BY name ASC');
   res.json(rows.rows);
 }));
-app.post('/api/email-templates', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/email-templates', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.name || !body.subject || !body.body) return res.status(400).json({ error: 'Navn, emne og indhold skal udfyldes' });
   const r = await pool.query(`
@@ -7358,7 +7594,7 @@ app.post('/api/email-templates', auth, adminOnly, asyncRoute(async (req, res) =>
   `, [String(body.name).trim().slice(0, 200), String(body.subject).trim().slice(0, 300), String(body.body).slice(0, 5000)]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
-app.put('/api/email-templates/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/email-templates/:id', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const r = await pool.query(`
     UPDATE email_templates SET name=$1,subject=$2,body=$3,updated_at=${nowTextSQL()} WHERE id=$4
@@ -7366,17 +7602,17 @@ app.put('/api/email-templates/:id', auth, adminOnly, asyncRoute(async (req, res)
   if (!r.rowCount) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
   res.json({ ok: true });
 }));
-app.delete('/api/email-templates/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/email-templates/:id', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM email_templates WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
 // ── MAIL-SKABELONER TIL TILBUD/FAKTURA (HTML) ──
-app.get('/api/document-email-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/document-email-templates', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM document_email_templates ORDER BY name ASC');
   res.json(rows.rows);
 }));
-app.post('/api/document-email-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/document-email-templates', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.name || !body.subject || !body.body_html) return res.status(400).json({ error: 'Navn, emne og indhold skal udfyldes' });
   const r = await pool.query(`
@@ -7384,7 +7620,7 @@ app.post('/api/document-email-templates', auth, financeOnly, asyncRoute(async (r
   `, [String(body.name).trim().slice(0, 200), String(body.subject).trim().slice(0, 300), String(body.body_html).slice(0, 40000)]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
-app.put('/api/document-email-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/document-email-templates/:id', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const r = await pool.query(`
     UPDATE document_email_templates SET name=$1,subject=$2,body_html=$3,updated_at=${nowTextSQL()} WHERE id=$4
@@ -7392,7 +7628,7 @@ app.put('/api/document-email-templates/:id', auth, financeOnly, asyncRoute(async
   if (!r.rowCount) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
   res.json({ ok: true });
 }));
-app.delete('/api/document-email-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/document-email-templates/:id', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM document_email_templates WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -7400,11 +7636,11 @@ app.delete('/api/document-email-templates/:id', auth, financeOnly, asyncRoute(as
 // ── SAMLET SKABELON-CENTER (Skabeloner i topmenuen) ──────────────────
 // "Singulære" system-mails — ét aktivt eksemplar pr. key, redigeres inline
 // (ingen separat opret/slet, kun de faste keys sat i initSchema()).
-app.get('/api/system-email-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/system-email-templates', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM system_email_templates ORDER BY key ASC');
   res.json(rows.rows);
 }));
-app.put('/api/system-email-templates/:key', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/system-email-templates/:key', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const fields = [], values = [];
   if (body.subject !== undefined) { fields.push(`subject=$${fields.length + 1}`); values.push(String(body.subject).trim().slice(0, 300)); }
@@ -7420,11 +7656,11 @@ app.put('/api/system-email-templates/:key', auth, financeOnly, asyncRoute(async 
 
 // Brugerdefinerede skabeloner uden fast automatisk handling (endnu) — frit
 // opret/redigér/slet, jf. Martins ønske om løbende at kunne oprette flere.
-app.get('/api/custom-email-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/custom-email-templates', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM custom_email_templates ORDER BY name ASC');
   res.json(rows.rows);
 }));
-app.post('/api/custom-email-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/custom-email-templates', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.name || !body.subject || !body.body_html) return res.status(400).json({ error: 'Navn, emne og indhold skal udfyldes' });
   const r = await pool.query(`
@@ -7432,7 +7668,7 @@ app.post('/api/custom-email-templates', auth, financeOnly, asyncRoute(async (req
   `, [String(body.name).trim().slice(0, 200), String(body.subject).trim().slice(0, 300), String(body.body_html).slice(0, 40000)]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
-app.put('/api/custom-email-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/custom-email-templates/:id', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const r = await pool.query(`
     UPDATE custom_email_templates SET name=$1,subject=$2,body_html=$3,updated_at=${nowTextSQL()} WHERE id=$4
@@ -7440,7 +7676,7 @@ app.put('/api/custom-email-templates/:id', auth, financeOnly, asyncRoute(async (
   if (!r.rowCount) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
   res.json({ ok: true });
 }));
-app.delete('/api/custom-email-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/custom-email-templates/:id', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM custom_email_templates WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -7513,12 +7749,12 @@ async function notifyEmployee(userId, title, body, link) {
     } catch (e) { console.error('SMS til medarbejder fejlede:', e.message); }
   }
 }
-app.get('/api/notification-settings', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/notification-settings', auth, panelAccess('notif-settings'), asyncRoute(async (req, res) => {
   await ensureNotificationRulesSeeded();
   const rows = await pool.query('SELECT * FROM notification_rules ORDER BY event_key ASC');
   res.json(rows.rows);
 }));
-app.put('/api/notification-settings/:eventKey', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/notification-settings/:eventKey', auth, panelAccess('notif-settings'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const r = await pool.query(`
     UPDATE notification_rules SET inapp_enabled=$1,email_enabled=$2,email_to=$3,updated_at=${nowTextSQL()} WHERE event_key=$4
@@ -7603,7 +7839,7 @@ async function runNotificationScan() {
 // ══════════════════════════════════════════════════════════════
 // KOMMANDOCENTER — samlet overblik, kapacitetsprognose, nøgletal
 // ══════════════════════════════════════════════════════════════
-app.get('/api/dashboard/overview', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/dashboard/overview', auth, panelAccess('dashboard'), asyncRoute(async (req, res) => {
   const poolOpen = await pool.query(`
     SELECT COUNT(*)::int AS n, MIN(t.created_at) AS oldest FROM jt_tasks t
     WHERE t.start_date IS NOT NULL
@@ -7634,7 +7870,7 @@ app.get('/api/dashboard/overview', auth, adminOnly, asyncRoute(async (req, res) 
   });
 }));
 
-app.get('/api/dashboard/capacity-forecast', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/dashboard/capacity-forecast', auth, panelAccess('dashboard'), asyncRoute(async (req, res) => {
   // 8 uger frem, grupperet pr. fag: samlet teamkapacitet (dage/uge) vs. bookede dage.
   const weeks = [];
   const today = new Date();
@@ -7656,7 +7892,7 @@ app.get('/api/dashboard/capacity-forecast', auth, adminOnly, asyncRoute(async (r
   res.json({ weeks, capacity_by_trade: capByTrade.rows, booked_by_trade_week: bookedByTradeWeek.rows });
 }));
 
-app.get('/api/dashboard/kpis', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/dashboard/kpis', auth, panelAccess('dashboard'), asyncRoute(async (req, res) => {
   const utilization = await pool.query(`
     SELECT u.id,u.name,u.color,COALESCE(u.weekly_capacity,5) AS capacity,
            COALESCE(SUM(b.days) FILTER (WHERE b.week_key = TO_CHAR(CURRENT_DATE,'IYYY-"W"IW')),0) AS booked_this_week
@@ -7796,7 +8032,7 @@ async function getOrCreateCustomerPortalToken(jobName) {
 function customerPortalLinkFor(token) {
   return `${PUBLIC_APP_URL}/kunde/${token}`;
 }
-app.get('/api/customers/portal-link', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/customers/portal-link', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const name = String(req.query.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Mangler kundenavn' });
   const token = await getOrCreateCustomerPortalToken(name);
@@ -7811,7 +8047,7 @@ app.get('/api/customers/portal-link', auth, adminOnly, asyncRoute(async (req, re
 // GET /api/customers/portal-link (Kundehistorik) brugte til at hente linket —
 // denne rute går skridtet videre og sender det som mail via sendMailUniversal,
 // helt uafhængigt af Gmail-forbindelsen (se sendMailUniversal-kommentaren).
-app.post('/api/projects/:id/send-portal-link', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/projects/:id/send-portal-link', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   if (!project.customer_email) return res.status(400).json({ error: 'Kunden har ingen e-mail registreret på sagen' });
@@ -7887,7 +8123,7 @@ async function sendScheduledEmail(booking, templateId) {
 // flere gange. Kræver et bekræftende klik igen hvis der allerede er sendt én (se
 // scheduled_email_sent_at i svaret, som frontend'en bruger til at vise en advarsel).
 // Body kan indeholde template_id, hvis admin har valgt en bestemt mail-skabelon.
-app.post('/api/assignments/:id/send-scheduled-email', auth, adminOnly, asyncRoute(async (req, res) => {
+app.post('/api/assignments/:id/send-scheduled-email', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
   const result = await sendScheduledEmail(current, (req.body || {}).template_id || null);
@@ -7898,7 +8134,7 @@ app.post('/api/assignments/:id/send-scheduled-email', auth, adminOnly, asyncRout
 // Henter (og opretter ved behov) det offentlige kundelink for én booking, til
 // "🔗 Hent kunde-status-link"-knappen i booking-popup'en — uafhængigt af om der
 // nogensinde sendes en mail, så du fx også kan sende linket manuelt via SMS.
-app.get('/api/assignments/:id/portal-link', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/assignments/:id/portal-link', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT id FROM planning_bookings WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
   const token = await getOrCreateBookingToken(current.id);
@@ -8370,7 +8606,7 @@ async function runLostFollowupScan(triggeredManually) {
 
 // Manuel afsendelse for ÉN faktura — uanset dag-tærskler, og uanset til/fra-knappen.
 // Vælger automatisk næste niveau (1 hvis intet sendt endnu, ellers 2).
-app.post('/api/finance/dunning-send/:documentId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/dunning-send/:documentId', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
   const invoices = await fetchFinanceInvoices();
   const inv = invoices.find(i => i.id === req.params.documentId);
@@ -8387,29 +8623,29 @@ app.post('/api/finance/dunning-send/:documentId', auth, financeOnly, asyncRoute(
   res.json({ ok: true, level: targetLevel, toEmail: result.toEmail });
 }));
 
-app.get('/api/finance/dunning-settings', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/dunning-settings', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   res.json(await pgOne('SELECT * FROM finance_dunning_settings WHERE id=1'));
 }));
-app.put('/api/finance/dunning-settings', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/dunning-settings', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   await pool.query(`
     UPDATE finance_dunning_settings SET enabled=$1,days_rykker1=$2,days_rykker2=$3,fee_amount=$4,updated_at=${nowTextSQL()} WHERE id=1
   `, [body.enabled ? 1 : 0, Number(body.days_rykker1) || 14, Number(body.days_rykker2) || 28, Number(body.fee_amount) || 100]);
   res.json({ ok: true });
 }));
-app.get('/api/finance/dunning-log', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/dunning-log', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM finance_dunning_log ORDER BY id DESC LIMIT 100');
   res.json(rows.rows);
 }));
-app.post('/api/finance/dunning-run', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/dunning-run', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   res.json(await runDunningScan(true));
 }));
 
-app.get('/api/finance/panel-order/:panel', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/panel-order/:panel', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT order_json FROM finance_panel_order WHERE panel=$1', [req.params.panel]);
   res.json({ order: row ? JSON.parse(row.order_json) : null });
 }));
-app.put('/api/finance/panel-order', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/panel-order', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.panel || !Array.isArray(body.order)) return res.status(400).json({ error: 'panel og order skal udfyldes' });
   await pool.query(`
@@ -8419,13 +8655,13 @@ app.put('/api/finance/panel-order', auth, financeOnly, asyncRoute(async (req, re
   res.json({ ok: true });
 }));
 
-app.get('/api/finance/panel-box-size/:panel', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/panel-box-size/:panel', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT box_id,width,height FROM finance_panel_box_size WHERE panel=$1', [req.params.panel]);
   const out = {};
   for (const r of rows.rows) out[r.box_id] = { width: r.width, height: r.height };
   res.json(out);
 }));
-app.put('/api/finance/panel-box-size', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/panel-box-size', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.panel || !body.boxId || !body.width || !body.height) return res.status(400).json({ error: 'panel, boxId, width og height skal udfyldes' });
   await pool.query(`
@@ -8435,23 +8671,23 @@ app.put('/api/finance/panel-box-size', auth, financeOnly, asyncRoute(async (req,
   res.json({ ok: true });
 }));
 
-app.post('/api/finance/manual-revenue', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/manual-revenue', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.month_key || !body.name) return res.status(400).json({ error: 'Måned og navn skal udfyldes' });
   const r = await pool.query('INSERT INTO finance_manual_revenue (month_key,name,fag,amount) VALUES ($1,$2,$3,$4) RETURNING id', [body.month_key, String(body.name).slice(0, 200), body.fag || 'Ukendt', Number(body.amount) || 0]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
-app.put('/api/finance/manual-revenue/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/manual-revenue/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   await pool.query(`UPDATE finance_manual_revenue SET name=$1,fag=$2,amount=$3,updated_at=${nowTextSQL()} WHERE id=$4`, [String(body.name || '').slice(0, 200), body.fag || 'Ukendt', Number(body.amount) || 0, req.params.id]);
   res.json({ ok: true });
 }));
-app.delete('/api/finance/manual-revenue/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/finance/manual-revenue/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM finance_manual_revenue WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
-app.put('/api/finance/job-month-override/:jobId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/job-month-override/:jobId', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const monthKey = String(req.body?.monthKey || '').trim();
   if (!monthKey) {
     await pool.query('DELETE FROM finance_job_month_overrides WHERE job_id=$1', [req.params.jobId]);
@@ -8464,13 +8700,13 @@ app.put('/api/finance/job-month-override/:jobId', auth, financeOnly, asyncRoute(
   `, [req.params.jobId, monthKey]);
   res.json({ ok: true });
 }));
-app.get('/api/finance/job-status-marks', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/job-status-marks', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT job_key, status FROM finance_job_status_marks');
   const out = {};
   for (const r of rows.rows) out[r.job_key] = r.status;
   res.json(out);
 }));
-app.put('/api/finance/job-status-marks/:jobKey', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/job-status-marks/:jobKey', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const status = String(req.body?.status || '').trim();
   if (!status) {
     await pool.query('DELETE FROM finance_job_status_marks WHERE job_key=$1', [req.params.jobKey]);
@@ -8483,7 +8719,7 @@ app.put('/api/finance/job-status-marks/:jobKey', auth, financeOnly, asyncRoute(a
   `, [req.params.jobKey, status]);
   res.json({ ok: true });
 }));
-app.get('/api/finance/revenue', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/revenue', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const monthsBack = Math.min(12, Math.max(0, Number(req.query.monthsBack) || 0));
   const monthsForward = Math.min(6, Math.max(1, Number(req.query.monthsForward) || 1));
   const data = await fetchFinanceJobsByMonth(monthsBack, monthsForward);
@@ -8494,7 +8730,7 @@ app.get('/api/finance/revenue', auth, financeOnly, asyncRoute(async (req, res) =
 // Omsætning er sagsbudget-baseret (samme metode som resten af Omsætning pr. fag),
 // så fag-opdelingen er tilgængelig for alle 12 måneder ensartet. Udgifter hentes fra
 // de månedsopdelte udgiftsposter under Udgifter-fanen.
-app.get('/api/finance/year-overview', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/year-overview', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const today = new Date();
   const year = Math.min(today.getFullYear() + 1, Math.max(today.getFullYear() - 3, Number(req.query.year) || today.getFullYear()));
   const isCurrentYear = year === today.getFullYear();
@@ -8515,11 +8751,11 @@ app.get('/api/finance/year-overview', auth, financeOnly, asyncRoute(async (req, 
 }));
 
 // ── Selvvalgte graf-widgets i Oversigt ──
-app.get('/api/finance/dashboard-widgets', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/dashboard-widgets', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM finance_dashboard_widgets ORDER BY sort_order ASC, id ASC');
   res.json(rows.rows);
 }));
-app.post('/api/finance/dashboard-widgets', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/dashboard-widgets', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const allowed = ['trend', 'year', 'fag_pie', 'invoice_status', 'expense_pie', 'vat_deadline', 'todo_today'];
   if (!allowed.includes(body.widget_type)) return res.status(400).json({ error: 'Ukendt graftype' });
@@ -8527,13 +8763,13 @@ app.post('/api/finance/dashboard-widgets', auth, financeOnly, asyncRoute(async (
   const r = await pool.query('INSERT INTO finance_dashboard_widgets (widget_type, sort_order) VALUES ($1,$2) RETURNING id', [body.widget_type, (maxOrder ? maxOrder.m : -1) + 1]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
-app.delete('/api/finance/dashboard-widgets/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/finance/dashboard-widgets/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM finance_dashboard_widgets WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
 
-app.put('/api/finance/job-override/:jobId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/job-override/:jobId', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const amount = body.amount === '' || body.amount === null || body.amount === undefined ? null : Number(body.amount);
   const excluded = !!body.excluded;
@@ -8624,11 +8860,11 @@ async function writePaymentToJobTread(documentId, accountId, amount, note) {
   }, 'Økonomi: knyt betaling til faktura i JobTread');
   return paymentId;
 }
-app.get('/api/finance/invoices', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/invoices', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   res.json(await fetchFinanceInvoices());
 }));
 
-app.put('/api/finance/invoices/:documentId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/invoices/:documentId', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const status = ['paid', 'unpaid', 'unclear', 'partial'].includes(body.status) ? body.status : 'unpaid';
   const note = body.note ? String(body.note).slice(0, 500) : null;
@@ -8786,7 +9022,7 @@ function matchTransactionsToInvoices(transactions, invoices) {
     return { ...txn, matches: scored };
   });
 }
-app.post('/api/finance/bank-statement/parse', auth, financeOnly, uploadBankStatement.single('file'), asyncRoute(async (req, res) => {
+app.post('/api/finance/bank-statement/parse', auth, panelAccess('finance'), uploadBankStatement.single('file'), asyncRoute(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Ingen fil modtaget' });
   const lower = String(req.file.originalname || '').toLowerCase();
   let transactions = [];
@@ -8820,7 +9056,7 @@ app.post('/api/finance/bank-statement/parse', auth, financeOnly, uploadBankState
   `, [req.file.originalname || null, JSON.stringify(matched)]);
   res.json({ transactions: matched, count: transactions.length, filename: req.file.originalname });
 }));
-app.get('/api/finance/bank-statement/session', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/bank-statement/session', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM finance_bank_session WHERE id=1');
   if (!row) return res.json({ transactions: null });
   let transactions = [];
@@ -8834,7 +9070,7 @@ app.get('/api/finance/bank-statement/session', auth, financeOnly, asyncRoute(asy
 // gangen og bruges til fakturamatching) — her uploader man én fil PR. MÅNED, og den
 // gemmes permanent under den måned, så man kan bygge et helt års rigtige udgiftstal op
 // måned for måned uden at nyere uploads sletter ældre måneders data.
-app.post('/api/finance/bank-statement/upload-month', auth, financeOnly, uploadBankStatement.single('file'), asyncRoute(async (req, res) => {
+app.post('/api/finance/bank-statement/upload-month', auth, panelAccess('finance'), uploadBankStatement.single('file'), asyncRoute(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Ingen fil modtaget' });
   const monthKey = String(req.body?.month || req.query?.month || '');
   if (!/^\d{4}-\d{2}$/.test(monthKey)) return res.status(400).json({ error: 'Ugyldig eller manglende måned' });
@@ -8867,7 +9103,7 @@ app.post('/api/finance/bank-statement/upload-month', auth, financeOnly, uploadBa
   `, [monthKey, req.file.originalname || null, JSON.stringify(transactions), expenseTotal, incomeTotal, transactions.length]);
   res.json({ ok: true, month: monthKey, expenseTotal, incomeTotal, count: transactions.length, filename: req.file.originalname });
 }));
-app.get('/api/finance/bank-statement/month-totals', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/bank-statement/month-totals', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
   const out = {};
   if (!months.length) return res.json(out);
@@ -8875,12 +9111,12 @@ app.get('/api/finance/bank-statement/month-totals', auth, financeOnly, asyncRout
   for (const r of rows.rows) out[r.month_key] = { filename: r.filename, expenseTotal: r.expense_total, incomeTotal: r.income_total, count: r.txn_count, uploadedAt: r.uploaded_at };
   res.json(out);
 }));
-app.delete('/api/finance/bank-statement/month/:month', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/finance/bank-statement/month/:month', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM finance_bank_month_statements WHERE month_key=$1', [req.params.month]);
   res.json({ ok: true });
 }));
 
-app.post('/api/finance/bank-statement/mark-reconciled', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/bank-statement/mark-reconciled', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.externalId) return res.status(400).json({ error: 'Mangler transaktions-id' });
   const kind = body.kind === 'ignored' ? 'ignored' : 'matched';
@@ -8891,14 +9127,14 @@ app.post('/api/finance/bank-statement/mark-reconciled', auth, financeOnly, async
   `, [body.externalId, body.date || null, body.text || null, body.amount || null, body.documentId || null, body.customer || null, kind]);
   res.json({ ok: true });
 }));
-app.post('/api/finance/bank-statement/unreconcile', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/bank-statement/unreconcile', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const externalId = String(req.body?.externalId || '');
   if (!externalId) return res.status(400).json({ error: 'Mangler transaktions-id' });
   await pool.query('DELETE FROM finance_bank_reconciled WHERE external_id=$1', [externalId]);
   res.json({ ok: true });
 }));
 // ── Faste udgifter ──
-app.get('/api/finance/expenses', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/expenses', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const monthKey = /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
   const cats = await pool.query('SELECT * FROM finance_expense_categories ORDER BY sort_order ASC');
   let items = await pool.query('SELECT * FROM finance_expenses WHERE month_key=$1 ORDER BY id ASC', [monthKey]);
@@ -8920,7 +9156,7 @@ app.get('/api/finance/expenses', auth, financeOnly, asyncRoute(async (req, res) 
 }));
 // Bruges af Oversigt-graffen til at hente det rigtige udgiftstal pr. måned, i stedet
 // for at antage samme beløb hver måned.
-app.get('/api/finance/expenses-totals', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/expenses-totals', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
   const out = {};
   if (!months.length) return res.json(out);
@@ -8950,7 +9186,7 @@ app.get('/api/finance/expenses-totals', auth, financeOnly, asyncRoute(async (req
 // HURTIG MÅNEDS-UDGIFT — se kommentar ved CREATE TABLE finance_expense_month_totals.
 // Returnerer BÅDE override-beløbet (hvis sat) OG den udspecificerede sum, så frontenden
 // kan vise "X kr (manuelt sat) — ville ellers have været Y kr fra Udgifter-fanen".
-app.get('/api/finance/expense-month-totals', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/expense-month-totals', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
   const out = {};
   if (!months.length) return res.json(out);
@@ -8963,7 +9199,7 @@ app.get('/api/finance/expense-month-totals', auth, financeOnly, asyncRoute(async
   }
   res.json(out);
 }));
-app.put('/api/finance/expense-month-totals/:month', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/expense-month-totals/:month', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const mk = req.params.month;
   if (!/^\d{4}-\d{2}$/.test(mk)) return res.status(400).json({ error: 'Ugyldig måned' });
   const amount = Number((req.body || {}).amount);
@@ -8974,81 +9210,81 @@ app.put('/api/finance/expense-month-totals/:month', auth, financeOnly, asyncRout
   `, [mk, amount]);
   res.json({ ok: true });
 }));
-app.delete('/api/finance/expense-month-totals/:month', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/finance/expense-month-totals/:month', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const mk = req.params.month;
   await pool.query('DELETE FROM finance_expense_month_totals WHERE month_key=$1', [mk]);
   res.json({ ok: true });
 }));
-app.post('/api/finance/expenses', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/expenses', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.category_id || !body.name || !body.month_key) return res.status(400).json({ error: 'Kategori, navn og måned skal udfyldes' });
   const r = await pool.query('INSERT INTO finance_expenses (category_id,name,amount,paid,month_key) VALUES ($1,$2,$3,$4,$5) RETURNING id', [body.category_id, String(body.name).slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, body.month_key]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
-app.put('/api/finance/expenses/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/expenses/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   await pool.query(`UPDATE finance_expenses SET name=$1,amount=$2,paid=$3,updated_at=${nowTextSQL()} WHERE id=$4`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, req.params.id]);
   res.json({ ok: true });
 }));
-app.delete('/api/finance/expenses/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/finance/expenses/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM finance_expenses WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
 // ── Privat budget: fuldt frit redigerbart — kategorier kan oprettes/omdøbes/slettes,
 // ikke kun poster inde i faste kategorier (modsat den almindelige Udgifter-fane).
-app.get('/api/finance/private-budget', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/private-budget', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const cats = await pool.query('SELECT * FROM private_budget_categories ORDER BY sort_order ASC, id ASC');
   const items = await pool.query('SELECT * FROM private_budget_items ORDER BY id ASC');
   const byCategory = cats.rows.map(c => ({ ...c, items: items.rows.filter(i => i.category_id === c.id) }));
   res.json(byCategory);
 }));
-app.put('/api/finance/private-budget/reorder', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/private-budget/reorder', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const order = (req.body || {}).order || [];
   for (let i = 0; i < order.length; i++) {
     await pool.query('UPDATE private_budget_categories SET sort_order=$1 WHERE id=$2', [i, order[i]]);
   }
   res.json({ ok: true });
 }));
-app.post('/api/finance/private-budget/category', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/private-budget/category', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
   const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0)::int AS m FROM private_budget_categories');
   const r = await pool.query('INSERT INTO private_budget_categories (name, sort_order) VALUES ($1,$2) RETURNING id', [String(body.name).slice(0, 200), (maxOrder ? maxOrder.m : 0) + 1]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
-app.put('/api/finance/private-budget/category/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/private-budget/category/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
   await pool.query('UPDATE private_budget_categories SET name=$1 WHERE id=$2', [String(body.name).slice(0, 200), req.params.id]);
   res.json({ ok: true });
 }));
-app.delete('/api/finance/private-budget/category/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/finance/private-budget/category/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM private_budget_categories WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
-app.post('/api/finance/private-budget/item', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/private-budget/item', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.category_id || !body.name) return res.status(400).json({ error: 'Kategori og navn skal udfyldes' });
   const r = await pool.query('INSERT INTO private_budget_items (category_id,name,amount,note) VALUES ($1,$2,$3,$4) RETURNING id', [body.category_id, String(body.name).slice(0, 200), Number(body.amount) || 0, body.note ? String(body.note).slice(0, 500) : null]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
-app.put('/api/finance/private-budget/item/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/finance/private-budget/item/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   await pool.query(`UPDATE private_budget_items SET name=$1,amount=$2,note=$3,updated_at=${nowTextSQL()} WHERE id=$4`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.note ? String(body.note).slice(0, 500) : null, req.params.id]);
   res.json({ ok: true });
 }));
-app.delete('/api/finance/private-budget/item/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/finance/private-budget/item/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM private_budget_items WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
 // ── Bank-snapshots (erstatter manuel indtastning hver gang — gemmes rigtigt i databasen) ──
-app.get('/api/finance/bank-snapshots', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/bank-snapshots', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM finance_bank_snapshots ORDER BY snap_date DESC LIMIT 24');
   res.json(rows.rows);
 }));
-app.post('/api/finance/bank-snapshots', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/bank-snapshots', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const today = new Date().toISOString().slice(0, 10);
   await pool.query(`
@@ -9099,19 +9335,19 @@ async function saveMonthlyProfitSnapshot() {
   `, [snap.monthKey, today, snap.expenses, snap.bankCash, snap.invoicesSent, snap.invoicesPending, snap.bottomLine]);
   return snap;
 }
-app.get('/api/finance/profit-snapshots', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/finance/profit-snapshots', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM profit_snapshots ORDER BY month_key ASC');
   res.json(rows.rows);
 }));
 // Manuel "Gem nu"-knap — bruges også automatisk af den månedlige cron nedenfor d. 15.
 // Idempotent: kører man den flere gange samme måned, opdateres blot samme række.
-app.post('/api/finance/profit-snapshots/save-now', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/profit-snapshots/save-now', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const snap = await saveMonthlyProfitSnapshot();
   res.json({ ok: true, snapshot: snap });
 }));
 
 // ── Send dagens rapport til egen mail — genbruger den eksisterende mail-opsætning ──
-app.post('/api/finance/email-report', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/finance/email-report', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const to = req.user.email;
   if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
   const revenue = await fetchFinanceJobsByMonth();
@@ -9157,11 +9393,11 @@ async function logDocActivity(docType, docId, eventType, actor, detail) {
     );
   } catch (e) { /* tidslinjen er et nice-to-have — fejler den, må hoved-handlingen ikke fejle med */ }
 }
-app.get('/api/quotes/:id/activity', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/quotes/:id/activity', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM document_activity WHERE doc_type=$1 AND doc_id=$2 ORDER BY id DESC', ['quote', req.params.id]);
   res.json(rows.rows);
 }));
-app.get('/api/invoices/:id/activity', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/invoices/:id/activity', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM document_activity WHERE doc_type=$1 AND doc_id=$2 ORDER BY id DESC', ['invoice', req.params.id]);
   res.json(rows.rows);
 }));
@@ -9300,12 +9536,12 @@ app.post('/api/photos/upload', auth, asyncRoute(async (req, res) => {
 }));
 
 // ── PRODUKTER ────────────────────────────────────────────────
-app.get('/api/products', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/products', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM products WHERE active=1 ORDER BY category NULLS LAST, name');
   res.json(rows.rows);
 }));
 
-app.post('/api/products', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/products', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
   const r = await pool.query(`
@@ -9315,7 +9551,7 @@ app.post('/api/products', auth, financeOnly, asyncRoute(async (req, res) => {
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
-app.put('/api/products/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/products/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM products WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Produktet blev ikke fundet' });
@@ -9336,7 +9572,7 @@ app.put('/api/products/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.delete('/api/products/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/products/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   // Slet ikke rigtigt — historiske tilbud/fakturaer refererer stadig til product_id,
   // og skal blive ved med at vise korrekt selv efter produktet er "slettet".
   await pool.query('UPDATE products SET active=0 WHERE id=$1', [req.params.id]);
@@ -9347,7 +9583,7 @@ app.delete('/api/products/:id', auth, financeOnly, asyncRoute(async (req, res) =
 // (se svar i chatten): henter alt organisationen har brugt af cost items på tværs af
 // jobs, og lægger de unikke navne ind som et udgangspunkt for jeres eget katalog.
 // Køres kun når admin selv trykker på knappen, aldrig automatisk.
-app.post('/api/products/import-from-jobtread', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/products/import-from-jobtread', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   if (!JT_ORG || !JT_GRANT) return res.status(400).json({ error: 'JobTread er ikke sat op på serveren' });
   // JobTread har ikke en selvstændig "produktkatalog"-type — cost items på tværs
   // af alle jobs bruges i stedet, hvor en cost item enten ER en genbrugelig skabelon
@@ -9400,12 +9636,12 @@ app.post('/api/products/import-from-jobtread', auth, financeOnly, asyncRoute(asy
 }));
 
 // ── TILBUDSSKABELONER — gemte linjesæt til hurtigt at starte et nyt tilbud fra ──
-app.get('/api/quote-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/quote-templates', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM quote_templates ORDER BY name ASC');
   res.json(rows.rows);
 }));
 
-app.post('/api/quote-templates', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/quote-templates', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
   const r = await pool.query(`
@@ -9414,7 +9650,7 @@ app.post('/api/quote-templates', auth, financeOnly, asyncRoute(async (req, res) 
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
-app.put('/api/quote-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/quote-templates/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM quote_templates WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
   const b = req.body || {};
@@ -9429,7 +9665,7 @@ app.put('/api/quote-templates/:id', auth, financeOnly, asyncRoute(async (req, re
   res.json({ ok: true });
 }));
 
-app.delete('/api/quote-templates/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/quote-templates/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM quote_templates WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -9442,12 +9678,12 @@ async function loadQuoteFull(id) {
   return { ...quote, lines: lines.rows };
 }
 
-app.get('/api/quotes', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM quotes ORDER BY created_at DESC, id DESC');
   res.json(rows.rows);
 }));
 
-app.get('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   res.json(quote);
@@ -9466,7 +9702,7 @@ async function saveQuoteLines(quoteId, lines) {
   }
 }
 
-app.post('/api/quotes', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const company = await getCompanyInfo();
   const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : company.defaultTaxRate;
@@ -9484,7 +9720,7 @@ app.post('/api/quotes', auth, financeOnly, asyncRoute(async (req, res) => {
   res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber });
 }));
 
-app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM quotes WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const b = req.body || {};
@@ -9516,7 +9752,7 @@ app.put('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.put('/api/quotes/:id/status', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/quotes/:id/status', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const status = String((req.body || {}).status || '');
   if (!['draft', 'sent', 'accepted', 'declined'].includes(status)) return res.status(400).json({ error: 'Ugyldig status' });
   const r = await pool.query(`UPDATE quotes SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2 AND status <> 'converted'`, [status, req.params.id]);
@@ -9525,13 +9761,13 @@ app.put('/api/quotes/:id/status', auth, financeOnly, asyncRoute(async (req, res)
   res.json({ ok: true });
 }));
 
-app.delete('/api/quotes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const r = await pool.query(`DELETE FROM quotes WHERE id=$1 AND status <> 'converted'`, [req.params.id]);
   if (!r.rowCount) return res.status(400).json({ error: 'Kan ikke slette et tilbud der er konverteret til faktura' });
   res.json({ ok: true });
 }));
 
-app.post('/api/quotes/:id/convert-to-invoice', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   if (quote.status === 'converted') return res.status(400).json({ error: 'Tilbuddet er allerede konverteret' });
@@ -9596,7 +9832,7 @@ async function refreshInvoiceStatus(invoiceId) {
   await pool.query(`UPDATE invoices SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2 AND status <> 'void'`, [status, invoiceId]);
 }
 
-app.get('/api/invoices', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/invoices', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT i.*, COALESCE((SELECT SUM(amount) FROM invoice_payments p WHERE p.invoice_id=i.id),0) AS paid_total,
            COALESCE((SELECT SUM(amount) FROM credit_notes c WHERE c.invoice_id=i.id),0) AS credited_total
@@ -9605,13 +9841,13 @@ app.get('/api/invoices', auth, financeOnly, asyncRoute(async (req, res) => {
   res.json(rows.rows.map(r => ({ ...r, remaining: Number(r.total) - Number(r.paid_total) - Number(r.credited_total) })));
 }));
 
-app.get('/api/invoices/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/invoices/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const invoice = await loadInvoiceFull(req.params.id);
   if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
   res.json(invoice);
 }));
 
-app.put('/api/invoices/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/invoices/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM invoices WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
   const b = req.body || {};
@@ -9630,7 +9866,7 @@ app.put('/api/invoices/:id', auth, financeOnly, asyncRoute(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.post('/api/invoices/:id/payments', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/invoices/:id/payments', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const amount = Number(b.amount);
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Angiv et gyldigt beløb' });
@@ -9644,14 +9880,14 @@ app.post('/api/invoices/:id/payments', auth, financeOnly, asyncRoute(async (req,
   res.json({ ok: true });
 }));
 
-app.delete('/api/invoices/:id/payments/:paymentId', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/invoices/:id/payments/:paymentId', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM invoice_payments WHERE id=$1 AND invoice_id=$2', [req.params.paymentId, req.params.id]);
   await refreshInvoiceStatus(req.params.id);
   logDocActivity('invoice', req.params.id, 'payment_removed', req.user.name, null);
   res.json({ ok: true });
 }));
 
-app.put('/api/invoices/:id/void', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/invoices/:id/void', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   await pool.query(`UPDATE invoices SET status='void', updated_at=${nowTextSQL()} WHERE id=$1`, [req.params.id]);
   logDocActivity('invoice', req.params.id, 'void', req.user.name, null);
   res.json({ ok: true });
@@ -9662,11 +9898,11 @@ app.put('/api/invoices/:id/void', auth, financeOnly, asyncRoute(async (req, res)
 // et valgfrit beløb — kan dække hele eller kun en del af fakturaen (fx en
 // reklamation over én linje). Beløbet kan ikke overstige det der er tilbage at
 // kreditere (total minus allerede krediterede kreditnotaer).
-app.get('/api/invoices/:id/credit-notes', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/invoices/:id/credit-notes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM credit_notes WHERE invoice_id=$1 ORDER BY created_at ASC, id ASC', [req.params.id]);
   res.json(rows.rows);
 }));
-app.post('/api/invoices/:id/credit-notes', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/invoices/:id/credit-notes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const amount = Number(b.amount);
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Angiv et gyldigt beløb' });
@@ -9687,7 +9923,7 @@ app.post('/api/invoices/:id/credit-notes', auth, financeOnly, asyncRoute(async (
   logDocActivity('invoice', req.params.id, 'credit_note_added', req.user.name, `${creditNoteNumber} · ${krFmtServer(amount)}`);
   res.json({ ok: true, id: r.rows[0].id, credit_note_number: creditNoteNumber });
 }));
-app.delete('/api/credit-notes/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/credit-notes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const cn = await pgOne('SELECT * FROM credit_notes WHERE id=$1', [req.params.id]);
   if (!cn) return res.status(404).json({ error: 'Kreditnotaen blev ikke fundet' });
   await pool.query('DELETE FROM credit_notes WHERE id=$1', [req.params.id]);
@@ -9695,7 +9931,7 @@ app.delete('/api/credit-notes/:id', auth, financeOnly, asyncRoute(async (req, re
   logDocActivity('invoice', cn.invoice_id, 'credit_note_removed', req.user.name, cn.credit_note_number);
   res.json({ ok: true });
 }));
-app.get('/api/credit-notes/:id/pdf', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/credit-notes/:id/pdf', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const cn = await pgOne('SELECT * FROM credit_notes WHERE id=$1', [req.params.id]);
   if (!cn) return res.status(404).json({ error: 'Kreditnotaen blev ikke fundet' });
   const invoice = await loadInvoiceFull(cn.invoice_id);
@@ -9707,7 +9943,7 @@ app.get('/api/credit-notes/:id/pdf', auth, financeOnly, asyncRoute(async (req, r
   drawCreditNotePdf(doc, cn, invoice, company);
   doc.end();
 }));
-app.post('/api/credit-notes/:id/send', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/credit-notes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const cn = await pgOne('SELECT * FROM credit_notes WHERE id=$1', [req.params.id]);
   if (!cn) return res.status(404).json({ error: 'Kreditnotaen blev ikke fundet' });
   const invoice = await loadInvoiceFull(cn.invoice_id);
@@ -10080,7 +10316,7 @@ function stripHtmlToText(html) {
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-app.get('/api/quotes/:id/pdf', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/quotes/:id/pdf', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const company = await getCompanyInfo();
@@ -10092,7 +10328,7 @@ app.get('/api/quotes/:id/pdf', auth, financeOnly, asyncRoute(async (req, res) =>
   doc.end();
 }));
 
-app.get('/api/invoices/:id/pdf', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/invoices/:id/pdf', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const invoice = await loadInvoiceFull(req.params.id);
   if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
   const company = await getCompanyInfo();
@@ -10119,7 +10355,7 @@ function escPublic(s) {
   return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
 }
 
-app.get('/api/quotes/:id/share-link', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/quotes/:id/share-link', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await pgOne('SELECT id, accept_token FROM quotes WHERE id=$1', [req.params.id]);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   let token = quote.accept_token;
@@ -10163,10 +10399,10 @@ async function getAssignedTemplateId(eventType) {
   const row = await pgOne('SELECT value FROM app_settings WHERE key=$1', ['email_tpl_event_' + eventType]);
   return (row && row.value) ? Number(row.value) : null;
 }
-app.get('/api/settings/email-template-assignments', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/settings/email-template-assignments', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   res.json(await getEmailTemplateAssignments());
 }));
-app.put('/api/settings/email-template-assignments', auth, financeOnly, asyncRoute(async (req, res) => {
+app.put('/api/settings/email-template-assignments', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   for (const evt of DOC_EMAIL_EVENT_TYPES) {
     if (!(evt in b)) continue;
@@ -10179,7 +10415,7 @@ app.put('/api/settings/email-template-assignments', auth, financeOnly, asyncRout
   res.json({ ok: true, assignments: await getEmailTemplateAssignments() });
 }));
 
-app.post('/api/quotes/:id/send', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const b = req.body || {};
@@ -10243,12 +10479,12 @@ app.post('/api/quotes/:id/send', auth, financeOnly, asyncRoute(async (req, res) 
   res.json({ ok: true });
 }));
 
-app.get('/api/quotes/:id/sends', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/quotes/:id/sends', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT id,version_number,sent_at,sent_by,recipient FROM quote_sends WHERE quote_id=$1 ORDER BY version_number DESC', [req.params.id]);
   res.json(rows.rows);
 }));
 
-app.get('/api/quotes/:id/sends/:sendId/pdf', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/quotes/:id/sends/:sendId/pdf', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT pdf_snapshot,version_number FROM quote_sends WHERE id=$1 AND quote_id=$2', [req.params.sendId, req.params.id]);
   if (!row || !row.pdf_snapshot) return res.status(404).json({ error: 'Den arkiverede PDF-version blev ikke fundet' });
   res.set('Content-Type', 'application/pdf');
@@ -10256,7 +10492,7 @@ app.get('/api/quotes/:id/sends/:sendId/pdf', auth, financeOnly, asyncRoute(async
   res.send(row.pdf_snapshot);
 }));
 
-app.post('/api/invoices/:id/send', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const invoice = await loadInvoiceFull(req.params.id);
   if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
   const b = req.body || {};
@@ -10505,7 +10741,7 @@ app.post('/api/public/quotes/:token/accept', asyncRoute(async (req, res) => {
 // hele tilbuddet til en underleverandør ("subcontractor") med blanke pris-felter
 // de selv udfylder online. Systemet sender selv e-mails via sendMailUniversal.
 // ══════════════════════════════════════════════════════════════
-app.post('/api/quotes/:id/requests', auth, financeOnly, asyncRoute(async (req, res) => {
+app.post('/api/quotes/:id/requests', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [req.params.id]);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const b = req.body || {};
@@ -10544,7 +10780,7 @@ app.post('/api/quotes/:id/requests', auth, financeOnly, asyncRoute(async (req, r
   res.json({ ok: true, id: reqRow.id, sent, failed });
 }));
 
-app.get('/api/quotes/:id/requests', auth, financeOnly, asyncRoute(async (req, res) => {
+app.get('/api/quotes/:id/requests', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const requests = (await pool.query('SELECT * FROM quote_requests WHERE quote_id=$1 ORDER BY created_at DESC', [req.params.id])).rows;
   for (const r of requests) {
     r.lines = (await pool.query('SELECT * FROM quote_request_lines WHERE request_id=$1 ORDER BY position ASC, id ASC', [r.id])).rows;
@@ -10553,7 +10789,7 @@ app.get('/api/quotes/:id/requests', auth, financeOnly, asyncRoute(async (req, re
   res.json(requests);
 }));
 
-app.delete('/api/quote-requests/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+app.delete('/api/quote-requests/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM quote_requests WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));

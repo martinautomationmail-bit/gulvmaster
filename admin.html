@@ -3763,12 +3763,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="page-title">Hold & vendors</div>
       <div class="page-sub">Interne medarbejdere kan have login. Vendor-undergrupper bruges til booking og kapacitet.</div>
     </div>
-    <div style="display:flex;gap:6px">
+    <div class="realadmin-only" style="display:flex;gap:6px">
       <button class="btn" id="new-vendor-group-btn">+ Vendor-gruppe</button>
       <button class="btn primary" id="new-user-btn">+ Medarbejder</button>
     </div>
   </div>
-  <div class="settings-card">
+  <div class="settings-card realadmin-only">
     <div class="sc-logo" id="settings-logo-preview">🪵</div>
     <div class="sc-fields">
       <div><label>Virksomhedsnavn</label><input type="text" id="settings-company-name" placeholder="Gulv Master Enterprise ApS"></div>
@@ -3790,6 +3790,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <button class="btn primary small" id="settings-save-btn">Gem virksomhedsprofil</button>
     </div>
+  </div>
+  <div class="settings-card realadmin-only" id="panel-roles-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:700;font-size:15px">🔐 Roller &amp; adgang</div>
+        <div class="hint" style="margin:2px 0 0">Bestem hvilke sider i DETTE admin-panel en rolle (fx "Kontor", "Mester") skal kunne se — krydses af pr. rolle. Tildel rollen til en medarbejder under "Panel-rolle" på deres profil (✏ Rediger). Medarbejder-appen (til alle med login) berøres ikke af dette.</div>
+      </div>
+      <button class="btn primary small" id="new-panel-role-btn">+ Ny rolle</button>
+    </div>
+    <div id="panel-roles-list" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"></div>
   </div>
   <div class="people" id="people-grid"></div>
 </section>
@@ -4820,6 +4830,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <select id="user-role" class="select"><option value="employee">Medarbejder</option><option value="admin">Admin</option></select>
         </div>
       </div>
+      <div class="form-group" id="user-panel-role-group"><label class="form-label">Panel-rolle <span class="opt-tag">valgfrit — giver adgang til udvalgte sider i dette admin-panel, se "Roller &amp; adgang"</span></label>
+        <select id="user-panel-role" class="select"><option value="">Ingen (kun Medarbejder-appen)</option></select>
+        <div class="hint" style="margin-top:4px" id="user-panel-role-admin-hint">Har allerede fuld adgang som Admin — panel-rolle er ikke nødvendig.</div>
+      </div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Kapacitet pr. uge (dage)</label><input id="user-capacity" class="input" type="number" min="0" max="14" step=".5" value="5"></div>
@@ -4849,32 +4863,78 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
+<div class="mo" id="panel-role-modal">
+  <div class="modal" style="max-width:540px">
+    <h3 id="panel-role-title">Ny rolle</h3>
+    <div class="form-group"><label class="form-label">Rollenavn</label><input id="panel-role-name" class="input" placeholder="Fx Kontor"></div>
+    <div class="form-label" style="margin-top:6px">Adgang til sider</div>
+    <div id="panel-role-pages-list" style="max-height:380px;overflow:auto;border:1px solid var(--border2);border-radius:8px;padding:10px 12px;margin-top:6px"></div>
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="delete-panel-role">Slet rolle</button>
+      <button class="btn" id="close-panel-role">Annuller</button>
+      <button class="btn primary" id="save-panel-role">Gem</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <script>
 (function(){'use strict';
 var API='',token=localStorage.getItem('gm_token'),me=JSON.parse(localStorage.getItem('gm_user')||'null');
-if(!token||!me||me.role!=='admin'){window.location.href='/';return;}
+// Roller & adgang (sep. 2026): adgang til admin-panelet kræver enten role==='admin'
+// (uændret, som altid) ELLER en tildelt panel-rolle (fx "Kontor"/"Mester") — se
+// panel_role_id i login-svaret. Alle andre (almindelige medarbejdere uden nogen
+// panel-rolle) sendes væk her, 100% som før denne funktion fandtes.
+if(!token||!me||(me.role!=='admin'&&!me.panel_role_id)){window.location.href='/';return;}
 document.getElementById('app').style.display='block';
+// Roller & adgang (sep. 2026) — det fælles katalog af side-nøgler, matcher
+// PANEL_PAGES i server.js 1:1 (holdes i sync manuelt, samme mønster som resten
+// af appens delte konstanter mellem frontend/backend).
+var PANEL_PAGE_KEYS_CLIENT=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','templates','email-templates','people','library','logs','notif-settings','gmail-settings','tasklist','requests','completed','timer'];
+function meHasPanelPage(key){return me.role==='admin'||(me.panel_pages||[]).indexOf(key)>-1;}
+function panelItemKey(el){var k=el.dataset.page;if(k==='crmp')k=el.dataset.crmpPipelineType==='lead'?'crmp_leads':'crmp_sales';if(k==='crmp-tasks')k='crmp_tasks';return k;}
+// Skjuler/viser hver enkelt sidebar-genvej efter den indloggede brugers samlede
+// panel_pages (rolle + evt. is_finance_admin-bundt + personlige undtagelser,
+// beregnet server-side i /api/auth/me). role==='admin' ser som altid alt.
+// Dette er UI-bekvemmelighed — den reelle spærring sker i API'et (panelAccess-
+// middlewaren i server.js), så selv hvis noget her skulle fejle, kan en bruger
+// ikke reelt hente/ændre data de ikke har adgang til.
+function applyPanelPageVisibility(){
+  document.querySelectorAll('.sidebar-nav [data-page], .sidebar-bottom [data-page]').forEach(function(el){
+    var k=panelItemKey(el);
+    if(PANEL_PAGE_KEYS_CLIENT.indexOf(k)===-1)return;
+    el.classList.toggle('hidden',!meHasPanelPage(k));
+  });
+  document.querySelectorAll('.tab-navdrop').forEach(function(grp){
+    var items=grp.querySelectorAll('[data-page]');
+    var anyVisible=Array.prototype.some.call(items,function(el){return !el.classList.contains('hidden');});
+    grp.classList.toggle('hidden',!anyVisible);
+    var mainLink=grp.querySelector('.stab-row .tab[data-page]');
+    if(mainLink&&anyVisible)mainLink.classList.remove('hidden');
+  });
+}
+// Skjuler bruger-/rolle-administration (opret/redigér medarbejdere, virksomheds-
+// profil, Roller & adgang-kortet selv) for alle der ikke er "rigtig" Admin
+// (role==='admin'). Dette er bevidst strengere end den almindelige side-adgang
+// ovenfor: at oprette/redigere brugere (og dermed evt. tildele sig selv Admin
+// eller flere rettigheder) er og bliver kun for Martins egne admin-logins —
+// /api/users*-endpoints i server.js er hårdkodet adminOnly uanset panel-rolle,
+// så dette er ren UI-oprydning for at undgå "Gem"-knapper der alligevel fejler.
+function applyRealAdminOnlyVisibility(){
+  document.querySelectorAll('.realadmin-only').forEach(function(el){el.classList.toggle('hidden',me.role!=='admin');});
+}
 (async function(){
   try{
     var r=await fetch((API||'')+'/api/auth/me',{headers:{'Authorization':'Bearer '+token}});
     if(r.ok){var fresh=await r.json();me=Object.assign({},me,fresh);localStorage.setItem('gm_user',JSON.stringify(me));
-      document.getElementById('finance-subdrop').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('quotes-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('quotes-subdrop').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('crm-subdrop').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('customers-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('crmp-leads-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('crmp-sales-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('crmp-tasks-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('projects-subdrop').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('email-templates-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('gmail-settings-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
+      applyPanelPageVisibility();applyRealAdminOnlyVisibility();
+      if(me.role==='admin')loadPanelRolesData();}
   }catch(e){}
 })();
 
 var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={},poolSelected={},assignAttachmentsReady=true;
+var panelRoles=[],panelPagesCatalog=[],editPanelRoleId=null;
 // Resolves once loadAll() has populated `users` for the first time. På en direkte/
 // genindlæst navigation til fx #crmp-detail/... kan openCrmpDetail() nå at køre FØR
 // loadAll() overhovedet er kaldt (den kaldes sidst i opstarts-kæden nederst i scriptet),
@@ -7940,6 +8000,12 @@ async function bulkSetType(){
 // skal nu kun gælde godkendelser på sygedage"). Opgaveanmodninger (task_requests)
 // er flyttet ned under Opgaveliste, se renderTasklistRequests() nedenfor.
 async function refreshRequestsBadge(){
+  // Roller & adgang (sep. 2026): begge kald herunder kræver 'requests'-adgang
+  // server-side (panelAccess('requests')) — denne funktion kaldes ubetinget fra
+  // loadAll() for ALLE brugere der kan åbne admin-panelet, så en Kontor/Mester-
+  // rolle uden "Godkendelser"-siden skal bare stille og roligt springe badge'et
+  // over i stedet for at ramme et 403 og crashe på .filter af et fejl-objekt.
+  if(!meHasPanelPage('requests'))return;
   var r=await Promise.all([api('/api/task-requests?status=pending'),api('/api/time-off?status=pending')]);
   var taskN=(r[0]||[]).length;
   var sickN=(r[1]||[]).filter(function(t){return t.type==='sick';}).length;
@@ -8084,6 +8150,10 @@ async function deleteTimeOff(id){
 // medarbejder-anmodning om ferie/fravær, forbliver popup'en åben — der er ingen
 // luk/annuller-knap og intet baggrundsklik, så admin skal tage stilling til dem alle.
 async function checkPendingTimeOffPopup(){
+  // Samme begrundelse som i refreshRequestsBadge() ovenfor — den blokerende
+  // godkendelses-popup giver kun mening for brugere der rent faktisk har
+  // "Godkendelser"-siden (server-siden er panelAccess('requests')).
+  if(!meHasPanelPage('requests'))return;
   var list=await api('/api/time-off?status=pending');
   var pending=(list||[]).filter(function(t){return t.requested_by==='employee';});
   var modal=document.getElementById('timeoff-block-modal');
@@ -11078,20 +11148,89 @@ async function deleteLibraryFile(id){
 }
 
 // PEOPLE
+// ── ROLLER & ADGANG (Hold & vendors → "Roller & adgang"-kort) ──────────────
+// Kun for role==='admin' (se applyRealAdminOnlyVisibility) — kortet er skjult
+// for alle andre, men funktionerne tjekker alligevel ikke aktivt me.role her,
+// da de kun kan kaldes via UI-elementer der allerede er skjult, og server-side
+// er /api/panel-roles* under alle omstændigheder hårdkodet adminOnly.
+async function loadPanelRolesData(){
+  var r=await Promise.all([api('/api/panel-pages'),api('/api/panel-roles')]);
+  panelPagesCatalog=(r[0]&&Array.isArray(r[0].pages))?r[0].pages:[];
+  panelRoles=Array.isArray(r[1])?r[1]:[];
+  renderPanelRolesList();
+  populateUserPanelRoleSelect();
+}
+function renderPanelRolesList(){
+  var el=document.getElementById('panel-roles-list');if(!el)return;
+  if(!panelRoles.length){el.innerHTML='<p style="color:var(--muted);margin:0">Ingen roller endnu — opret fx "Kontor" eller "Mester" med + Ny rolle.</p>';return;}
+  el.innerHTML=panelRoles.map(function(rl){
+    var n=(rl.pages||[]).length;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border2);border-radius:8px;padding:10px 12px">'+
+      '<div><strong>'+esc(rl.name)+'</strong><div class="hint" style="margin-top:2px">'+n+' side'+(n===1?'':'r')+' valgt</div></div>'+
+      '<button class="btn small" data-action="edit-panel-role" data-role-id="'+rl.id+'">✏ Rediger</button>'+
+      '</div>';
+  }).join('');
+}
+function populateUserPanelRoleSelect(){
+  var sel=document.getElementById('user-panel-role');if(!sel)return;
+  var cur=sel.value;
+  sel.innerHTML='<option value="">Ingen (kun Medarbejder-appen)</option>'+panelRoles.map(function(rl){return '<option value="'+rl.id+'">'+esc(rl.name)+'</option>';}).join('');
+  sel.value=cur;
+}
+function renderPanelRolePagesCheckboxes(checkedKeys){
+  var groups={},order=[];
+  panelPagesCatalog.forEach(function(p){if(!groups[p.group]){groups[p.group]=[];order.push(p.group);}groups[p.group].push(p);});
+  var html='';
+  order.forEach(function(g){
+    html+='<div style="margin-bottom:10px"><div style="font-weight:700;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">'+esc(g)+'</div>';
+    html+=groups[g].map(function(p){
+      var checked=checkedKeys.indexOf(p.key)>-1?' checked':'';
+      return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer"><input type="checkbox" class="panel-role-page-cb" value="'+p.key+'"'+checked+'> '+esc(p.label)+'</label>';
+    }).join('');
+    html+='</div>';
+  });
+  document.getElementById('panel-role-pages-list').innerHTML=html;
+}
+function openPanelRole(id){
+  editPanelRoleId=id||null;
+  var rl=id?panelRoles.find(function(x){return +x.id===+id;}):null;
+  document.getElementById('panel-role-title').textContent=rl?'Rediger rolle':'Ny rolle';
+  document.getElementById('panel-role-name').value=rl?rl.name:'';
+  renderPanelRolePagesCheckboxes(rl?(rl.pages||[]):[]);
+  document.getElementById('delete-panel-role').classList.toggle('hidden',!rl);
+  document.getElementById('panel-role-modal').classList.add('open');
+}
+async function savePanelRole(){
+  var name=document.getElementById('panel-role-name').value.trim();
+  if(!name){toast('Rollenavn mangler','⚠');return;}
+  var pages=Array.prototype.slice.call(document.querySelectorAll('.panel-role-page-cb:checked')).map(function(c){return c.value;});
+  var body={name:name,pages:pages};
+  var r=editPanelRoleId?await api('/api/panel-roles/'+editPanelRoleId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/panel-roles',{method:'POST',body:JSON.stringify(body)});
+  if(r&&(r.ok||r.id)){closeModal('panel-role-modal');toast('Gemt','✓');await loadPanelRolesData();}else if(r)toast(r.error||'Fejl','❌');
+}
+async function deletePanelRole(){
+  if(!editPanelRoleId||!await gmConfirm('Slet denne rolle? Medarbejdere med rollen mister adgangen med det samme.'))return;
+  var r=await api('/api/panel-roles/'+editPanelRoleId,{method:'DELETE'});
+  if(r&&r.ok){closeModal('panel-role-modal');toast('Slettet','🗑');await loadPanelRolesData();}else if(r)toast(r.error||'Fejl','❌');
+}
+
 function renderPeople(){
+  var isRealAdmin=me.role==='admin';
   var intern=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type!=='vendor';}),vendors={};
   users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type==='vendor';}).forEach(function(u){var g=u.vendor_group||'Øvrige vendors';(vendors[g]=vendors[g]||[]).push(u);});
   function avatarOrInitials(u,size){
     return u.avatar_url?'<img class="avatar-img" style="width:'+size+'px;height:'+size+'px" src="'+u.avatar_url+'">':'<div class="avatar" style="width:'+size+'px;height:'+size+'px;background:'+(u.color||'#2563EB')+'22;color:'+(u.color||'#2563EB')+'">'+esc(u.initials||u.name.slice(0,2))+'</div>';
   }
   var html=intern.map(function(u){
+    var actions='<button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖 Ferie/sygdom</button>';
+    if(isRealAdmin)actions='<button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏ Rediger</button>'+actions+(u.can_login?'<button class="btn small" data-action="send-login-guide" data-user-id="'+u.id+'" title="Send en mail med link til at sætte egen adgangskode">🔑 Login-vejledning</button>':'');
     return '<article class="person-card"><div class="person-top">'+avatarOrInitials(u,38)+'<div><div class="person-name">'+esc(u.name)+'</div><div class="person-email">'+(u.can_login?esc(u.email):'Ingen login')+'</div><span class="role-pill">Medarbejder</span></div></div>'+
       '<div class="person-detail">Fag: '+esc(u.trade||'Ikke sat')+'<br>Kapacitet: '+(+u.weekly_capacity||5)+' dage/uge<br>'+(u.jobtread_name?'JT: '+esc(u.jobtread_name):'')+'</div>'+
-      '<div class="person-actions"><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏ Rediger</button><button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖 Ferie/sygdom</button>'+(u.can_login?'<button class="btn small" data-action="send-login-guide" data-user-id="'+u.id+'" title="Send en mail med link til at sætte egen adgangskode">🔑 Login-vejledning</button>':'')+'</div></article>';
+      '<div class="person-actions">'+actions+'</div></article>';
   }).join('');
   Object.keys(vendors).sort().forEach(function(g){
-    html+='<article class="vendor-card"><div class="vendor-head"><div class="vendor-title"><span class="vicon">'+esc(g.slice(0,1))+'</span>'+esc(g)+'</div><button class="btn small primary" data-action="add-subgroup" data-group="'+esc(g)+'">+ Undergruppe</button></div>'+
-      '<div class="vendor-subgrid">'+vendors[g].map(function(u){return '<div class="sub-team">'+avatarOrInitials(u,28)+'<div style="flex:1"><strong>'+esc(u.name)+'</strong><div class="sub-team-meta">'+esc(u.trade||'Fag ikke sat')+' · '+(+u.weekly_capacity||5)+' d/uge'+(u.can_login?' · login':'')+'</div></div><button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏</button><button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖</button></div>';}).join('')+'</div></article>';
+    html+='<article class="vendor-card"><div class="vendor-head"><div class="vendor-title"><span class="vicon">'+esc(g.slice(0,1))+'</span>'+esc(g)+'</div>'+(isRealAdmin?'<button class="btn small primary" data-action="add-subgroup" data-group="'+esc(g)+'">+ Undergruppe</button>':'')+'</div>'+
+      '<div class="vendor-subgrid">'+vendors[g].map(function(u){return '<div class="sub-team">'+avatarOrInitials(u,28)+'<div style="flex:1"><strong>'+esc(u.name)+'</strong><div class="sub-team-meta">'+esc(u.trade||'Fag ikke sat')+' · '+(+u.weekly_capacity||5)+' d/uge'+(u.can_login?' · login':'')+'</div></div>'+(isRealAdmin?'<button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏</button>':'')+'<button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖</button></div>';}).join('')+'</div></article>';
   });
   document.getElementById('people-grid').innerHTML=html||'<p style="color:var(--muted)">Ingen aktive hold.</p>';
 }
@@ -11108,6 +11247,11 @@ function fmtDaDate(s){if(!s)return'';var d=date(s);return d.getDate()+'/'+(d.get
 
 // USER MODAL
 function setLoginFields(){document.getElementById('login-fields').classList.toggle('hidden',!document.getElementById('user-can-login').checked);}
+function toggleUserPanelRoleField(){
+  var isAdmin=document.getElementById('user-role').value==='admin';
+  document.getElementById('user-panel-role').classList.toggle('hidden',isAdmin);
+  document.getElementById('user-panel-role-admin-hint').classList.toggle('hidden',!isAdmin);
+}
 function updateAvatarPreview(url){
   var el=document.getElementById('user-avatar-preview');
   el.innerHTML=url?'<img src="'+url+'" style="width:100%;height:100%;object-fit:cover">':'👤';
@@ -11120,6 +11264,8 @@ function openUser(id,opts){
   document.getElementById('user-name').value=u?u.name:'';document.getElementById('user-initials').value=u?(u.initials||''):'';
   document.getElementById('user-email').value=u&&u.can_login?u.email:'';document.getElementById('user-password').value='';
   document.getElementById('user-role').value=u?u.role:'employee';document.getElementById('user-color').value=u?(u.color||'#2563EB'):'#2563EB';
+  populateUserPanelRoleSelect();document.getElementById('user-panel-role').value=u&&u.panel_role_id?String(u.panel_role_id):'';
+  toggleUserPanelRoleField();
   document.getElementById('user-capacity').value=u?(u.weekly_capacity||5):5;document.getElementById('user-worker-type').value=u?(u.worker_type||'employee'):(opts.vendorGroup?'vendor':'employee');
   document.getElementById('user-trade').value=u?(u.trade||''):'';document.getElementById('user-vendor-group').value=u?(u.vendor_group||''):(opts.vendorGroup||'');
   document.getElementById('user-can-login').checked=u?!!u.can_login:!opts.vendorGroup;
@@ -11136,7 +11282,8 @@ async function saveUser(){
   var name=document.getElementById('user-name').value.trim(),login=document.getElementById('user-can-login').checked,email=document.getElementById('user-email').value.trim(),pw=document.getElementById('user-password').value;
   if(!name){toast('Navn mangler','⚠');return;}
   if(login&&(!email||(!editUserId&&!pw))){toast('Email og kode mangler','⚠');return;}
-  var body={name:name,can_login:login,email:email,role:document.getElementById('user-role').value,password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,avatar_url:document.getElementById('user-avatar-url').value||null,personal_email:document.getElementById('user-personal-email').value.trim()||null,phone:document.getElementById('user-phone').value.trim()||null,notify_schedule_changes:document.getElementById('user-notify-changes').checked,can_view_team_overview:document.getElementById('user-team-overview').checked};
+  var roleVal=document.getElementById('user-role').value;
+  var body={name:name,can_login:login,email:email,role:roleVal,panel_role_id:roleVal==='admin'?null:(document.getElementById('user-panel-role').value||null),password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,avatar_url:document.getElementById('user-avatar-url').value||null,personal_email:document.getElementById('user-personal-email').value.trim()||null,phone:document.getElementById('user-phone').value.trim()||null,notify_schedule_changes:document.getElementById('user-notify-changes').checked,can_view_team_overview:document.getElementById('user-team-overview').checked};
   var r=editUserId?await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/users',{method:'POST',body:JSON.stringify(body)});
   if(r&&(r.ok||r.id)){closeModal('user-modal');toast('Gemt','✓');await loadAll();}else if(r)toast(r.error||'Fejl','❌');
 }
@@ -11426,6 +11573,40 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 // ikke kun en syntakstjek — samme disciplin som ved "kan ikke åbne en sag"-
 // rettelsen). Adfærden er uændret, kun hvor funktionen er defineret.
 var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','completed','people','library','logs','timer','templates','email-templates','notif-settings','gmail-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks'];
+// Roller & adgang (sep. 2026) — bruges af switchPage() nedenfor til at nægte
+// navigation til en side brugeren ikke har krydset af (server-siden håndhæver
+// det samme via panelAccess-middlewaren i server.js — dette er kun UI-lag).
+// firstAllowedPage() bruges som "faldback"-mål: guardPage returnerer bevidst
+// FALSE (dvs. lad siden vise alligevel) hvis der IKKE findes noget andet sted
+// at sende brugeren hen — det forhindrer en uendelig switchPage-løkke i det
+// sjældne øjeblik lige efter login hvor /api/auth/me's friske panel_pages
+// endnu ikke er nået at overskrive den cachede (ældre) bruger i localStorage.
+var PANEL_PAGE_ORDER=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','tasklist','requests','completed','people','library','logs','templates','email-templates','notif-settings','gmail-settings','timer'];
+function firstAllowedPage(excludePage){
+  for(var i=0;i<PANEL_PAGE_ORDER.length;i++){
+    var k=PANEL_PAGE_ORDER[i];
+    var target=(k==='crmp_leads'||k==='crmp_sales')?'crmp':(k==='crmp_tasks'?'crmp-tasks':k);
+    if(target===excludePage)continue;
+    if(meHasPanelPage(k))return target;
+  }
+  return null;
+}
+function guardPage(pageKey,label){
+  if(meHasPanelPage(pageKey))return false;
+  var fb=firstAllowedPage(null);
+  if(!fb||fb===pageKey)return false; // intet andet sted at sende brugeren hen — lad siden vise (server-siden blokerer stadig reelle data-kald)
+  toast('Du har ikke adgang til '+label,'🔒');
+  switchPage(fb);
+  return true;
+}
+function guardPageAny(pageKeys,label){
+  if(pageKeys.some(function(k){return meHasPanelPage(k);}))return false;
+  var fb=firstAllowedPage(null);
+  if(!fb)return false;
+  toast('Du har ikke adgang til '+label,'🔒');
+  switchPage(fb);
+  return true;
+}
 function switchPage(page,skipHash){
   // Gantt er ikke længere sin egen side — den bor nu som en fane under Projekter.
   // Gamle links/bogmærker til #gantt sendes videre dertil i stedet for at falde
@@ -11462,17 +11643,28 @@ function switchPage(page,skipHash){
   if(page==='people'){try{renderPeople();}catch(e){console.error('People fejl',e);}}
   if(page==='capacity'){try{renderCapacity();}catch(e){console.error('Cap fejl',e);}setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);}
   if(page==='dashboard')loadDashboard();
-  if(page==='templates')loadTemplates();
-  if(page==='email-templates'){if(!me.is_finance_admin){toast('Du har ikke adgang til Skabeloner','🔒');switchPage('plan');return;}initEmailTemplatesModule();}
-  if(page==='notif-settings')loadNotificationSettings();
-  if(page==='gmail-settings'){if(!me.is_finance_admin){toast('Du har ikke adgang til Gmail-integration','🔒');switchPage('plan');return;}initGmailSettingsModule();}
-  if(page==='finance'){if(!me.is_finance_admin){toast('Du har ikke adgang til Økonomi','🔒');switchPage('plan');return;}loadFinance();}
-  if(page==='quotes'){if(!me.is_finance_admin){toast('Du har ikke adgang til Tilbud & Faktura','🔒');switchPage('plan');return;}initQuotesModule();}
-  if(page==='customers'){if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');switchPage('plan');return;}initCrmModule();}
-  if(page==='crmp'){if(!me.is_finance_admin){toast('Du har ikke adgang til CRM','🔒');switchPage('plan');return;}initCrmpModule();}
-  if(page==='crmp-detail'){if(!me.is_finance_admin){toast('Du har ikke adgang til CRM','🔒');switchPage('plan');return;}crmpxInitOnce();}
-  if(page==='crmp-tasks'){if(!me.is_finance_admin){toast('Du har ikke adgang til CRM','🔒');switchPage('plan');return;}initCrmpTasksModule();}
-  if(page==='projects'){if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');switchPage('plan');return;}initProjectsModule();}
+  if(page==='templates'){if(guardPage('templates','Skabeloner'))return;loadTemplates();}
+  if(page==='email-templates'){if(guardPage('email-templates','Skabeloner'))return;initEmailTemplatesModule();}
+  if(page==='notif-settings'){if(guardPage('notif-settings','Indstillinger'))return;loadNotificationSettings();}
+  if(page==='gmail-settings'){if(guardPage('gmail-settings','Gmail-integration'))return;initGmailSettingsModule();}
+  if(page==='finance'){if(guardPage('finance','Økonomi'))return;loadFinance();}
+  if(page==='quotes'){if(guardPage('quotes','Tilbud & Faktura'))return;initQuotesModule();}
+  if(page==='customers'){if(guardPage('customers','Kunder'))return;initCrmModule();}
+  if(page==='crmp'){if(guardPageAny(['crmp_leads','crmp_sales'],'CRM'))return;initCrmpModule();}
+  if(page==='crmp-detail'){if(guardPageAny(['crmp_leads','crmp_sales'],'CRM'))return;crmpxInitOnce();}
+  if(page==='crmp-tasks'){if(guardPage('crmp_tasks','CRM: Opfølgninger'))return;initCrmpTasksModule();}
+  if(page==='projects'){if(guardPage('projects','Projekter'))return;initProjectsModule();}
+  if(page==='plan'&&guardPage('plan','Dagligplanlægning'))return;
+  if(page==='capacity'&&guardPage('capacity','Kapacitet'))return;
+  if(page==='availability'&&guardPage('availability','Ledighedsoversigt'))return;
+  if(page==='timeline'&&guardPage('timeline','Tidslinje'))return;
+  if(page==='people'&&guardPage('people','Hold & vendors'))return;
+  if(page==='library'&&guardPage('library','Bibliotek'))return;
+  if(page==='logs'&&guardPage('logs','Log'))return;
+  if(page==='tasklist'&&guardPage('tasklist','Opgaveliste'))return;
+  if(page==='requests'&&guardPage('requests','Godkendelser'))return;
+  if(page==='completed'&&guardPage('completed','Færdige opgaver'))return;
+  if(page==='timer'&&guardPage('timer','Timer'))return;
   // initProjectsModule() binder bl.a. "← Tilbage til Projekter"-knappen og alt
   // andet på selve sags-siden (fanerne, "+ Ny opgave", opgave-detalje-modalens
   // knapper...). Uden dette kald her virkede INGEN af de knapper hvis man kom
@@ -11889,6 +12081,12 @@ function bind(){
   document.getElementById('new-user-btn').onclick=function(){openUser();};
   document.getElementById('new-vendor-group-btn').onclick=async function(){var g=await gmPrompt('Navn på vendor-gruppen:');if(g&&g.trim())openUser(null,{vendorGroup:g.trim()});};
   document.getElementById('user-can-login').onchange=setLoginFields;
+  document.getElementById('user-role').onchange=toggleUserPanelRoleField;
+  // Roller & adgang
+  document.getElementById('new-panel-role-btn').onclick=function(){openPanelRole(null);};
+  document.getElementById('close-panel-role').onclick=function(){closeModal('panel-role-modal');};
+  document.getElementById('save-panel-role').onclick=savePanelRole;
+  document.getElementById('delete-panel-role').onclick=deletePanelRole;
   document.getElementById('user-avatar-file').addEventListener('change',async function(e){var f=e.target.files[0];if(!f)return;updateAvatarPreview(await resizeImageFile(f,400,.75));});
   document.getElementById('user-avatar-clear').onclick=function(){document.getElementById('user-avatar-file').value='';updateAvatarPreview(null);};
   // Virksomhedsprofil
@@ -11968,7 +12166,7 @@ function bind(){
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
   // Modal backdrop
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -12054,6 +12252,7 @@ function bind(){
       if(act==='edit-booking'){e.stopPropagation();openAssign({bookingId:+a.dataset.bookingId});}
       if(act==='open-timeline-drawer'){e.stopPropagation();openTimelineDrawer(+a.dataset.bookingId);}
       if(act==='edit-user')openUser(+a.dataset.userId);
+      if(act==='edit-panel-role')openPanelRole(+a.dataset.roleId);
       if(act==='send-login-guide'){
         a.disabled=true;a.textContent='Sender…';
         api('/api/users/'+a.dataset.userId+'/send-login-guide',{method:'POST'}).then(function(r){
