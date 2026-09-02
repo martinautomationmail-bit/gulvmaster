@@ -1119,6 +1119,26 @@ async function initSchema() {
     ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS email_enabled INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS email_subject TEXT;
     ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS email_body TEXT;
+    -- Tidsbaserede opfølgninger pr. stage (adskilt fra sms_enabled/email_enabled
+    -- ovenfor, som kun fyrer ÉN gang når man LANDER i stagen) — Martins ønske om
+    -- fx "7 dage i Tilbud Afgivet uden bevægelse: SMS+mail, 14 dage: mail,
+    -- 30 dage: mail", med dag-tærskler HAN selv kan ændre løbende. Flere rækker
+    -- pr. stage. Generisk — virker for enhver stage i enhver pipeline, ikke kun
+    -- Tilbud Afgivet. Se runStageFollowupScan().
+    CREATE TABLE IF NOT EXISTS crm_stage_followup_rules (
+      id SERIAL PRIMARY KEY,
+      stage_id INTEGER NOT NULL REFERENCES crm_stages(id) ON DELETE CASCADE,
+      days_after INTEGER NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      sms_enabled INTEGER NOT NULL DEFAULT 0,
+      sms_template TEXT,
+      email_enabled INTEGER NOT NULL DEFAULT 0,
+      email_subject TEXT,
+      email_body TEXT,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_stage_followup_rules_stage ON crm_stage_followup_rules(stage_id);
     CREATE TABLE IF NOT EXISTS crm_contacts (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
@@ -1227,6 +1247,57 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_crm_activities_entity ON crm_activities(entity_type, entity_id);
+
+    -- Engangs-migrering (idempotent, pga. NOT EXISTS — kan trygt køre ved hver
+    -- opstart uden at gøre noget efter første gang): da vi tilføjede once-per-
+    -- stage-dedup til crmFireStageAutomation (sep. 2026), skiftede vi de loggede
+    -- aktivitetstyper fra det generiske 'sms_sent'/'email_sent' til stage-
+    -- specifikke 'sms_sent_stage<ID>'/'email_sent_stage<ID>'. Uden denne
+    -- backfill ville ethvert lead/enhver sag, der allerede havde fået en
+    -- automatisk SMS/mail i sin NUVÆRENDE stage under den gamle ordning,
+    -- pludselig få den samme besked igen den dag rettelsen går i drift.
+    INSERT INTO crm_activities (entity_type, entity_id, kind, body, created_at)
+    SELECT 'lead', l.id, 'sms_sent_stage' || l.stage_id::text, 'Automatisk migreret dedup-markering (SMS allerede sendt i denne stage under tidligere ordning)', ${nowTextSQL()}
+    FROM crm_leads l
+    WHERE EXISTS (SELECT 1 FROM crm_activities a WHERE a.entity_type='lead' AND a.entity_id=l.id AND a.kind='sms_sent')
+      AND NOT EXISTS (SELECT 1 FROM crm_activities a2 WHERE a2.entity_type='lead' AND a2.entity_id=l.id AND a2.kind='sms_sent_stage' || l.stage_id::text);
+    INSERT INTO crm_activities (entity_type, entity_id, kind, body, created_at)
+    SELECT 'lead', l.id, 'email_sent_stage' || l.stage_id::text, 'Automatisk migreret dedup-markering (email allerede sendt i denne stage under tidligere ordning)', ${nowTextSQL()}
+    FROM crm_leads l
+    WHERE EXISTS (SELECT 1 FROM crm_activities a WHERE a.entity_type='lead' AND a.entity_id=l.id AND a.kind='email_sent')
+      AND NOT EXISTS (SELECT 1 FROM crm_activities a2 WHERE a2.entity_type='lead' AND a2.entity_id=l.id AND a2.kind='email_sent_stage' || l.stage_id::text);
+    INSERT INTO crm_activities (entity_type, entity_id, kind, body, created_at)
+    SELECT 'opportunity', o.id, 'sms_sent_stage' || o.stage_id::text, 'Automatisk migreret dedup-markering (SMS allerede sendt i denne stage under tidligere ordning)', ${nowTextSQL()}
+    FROM crm_opportunities o
+    WHERE EXISTS (SELECT 1 FROM crm_activities a WHERE a.entity_type='opportunity' AND a.entity_id=o.id AND a.kind='sms_sent')
+      AND NOT EXISTS (SELECT 1 FROM crm_activities a2 WHERE a2.entity_type='opportunity' AND a2.entity_id=o.id AND a2.kind='sms_sent_stage' || o.stage_id::text);
+    INSERT INTO crm_activities (entity_type, entity_id, kind, body, created_at)
+    SELECT 'opportunity', o.id, 'email_sent_stage' || o.stage_id::text, 'Automatisk migreret dedup-markering (email allerede sendt i denne stage under tidligere ordning)', ${nowTextSQL()}
+    FROM crm_opportunities o
+    WHERE EXISTS (SELECT 1 FROM crm_activities a WHERE a.entity_type='opportunity' AND a.entity_id=o.id AND a.kind='email_sent')
+      AND NOT EXISTS (SELECT 1 FROM crm_activities a2 WHERE a2.entity_type='opportunity' AND a2.entity_id=o.id AND a2.kind='email_sent_stage' || o.stage_id::text);
+
+    -- Default-opsætning af "Tilbud Afgivet"-stagens tidsbaserede opfølgninger
+    -- (Martins 7/14/30-dages-ønske) — kun hvis stagen findes (matchet på navn,
+    -- case-insensitivt) OG den ikke allerede har nogen regler (så vi aldrig
+    -- overskriver noget Martin selv har redigeret). Teksterne er UDKAST — se
+    -- leveringsnoten, de bør læses igennem og evt. rettes til i UI'en.
+    INSERT INTO crm_stage_followup_rules (stage_id, days_after, sms_enabled, sms_template, email_enabled, email_subject, email_body, position)
+    SELECT s.id, 7, 1, 'Hej {{navn}}, har du haft mulighed for at kigge på tilbuddet fra {{firma}}? Sig endelig til hvis du har spørgsmål 🙂',
+                    1, 'Har du set vores tilbud?', '<p>Hej {{navn}},</p><p>Vi sendte for lidt siden et tilbud til dig og ville lige høre om du har haft mulighed for at kigge på det?</p><p>Sig endelig til hvis du har spørgsmål, eller hvis der er noget vi skal justere.</p><p>Mange hilsner<br>{{firma}}</p>', 0
+    FROM crm_stages s
+    WHERE lower(s.name)='tilbud afgivet'
+      AND NOT EXISTS (SELECT 1 FROM crm_stage_followup_rules r WHERE r.stage_id=s.id);
+    INSERT INTO crm_stage_followup_rules (stage_id, days_after, email_enabled, email_subject, email_body, position)
+    SELECT s.id, 14, 1, 'Stadig interesseret i tilbuddet?', '<p>Hej {{navn}},</p><p>Vi kan se at vores tilbud stadig står åbent. Er du stadig interesseret, eller er der noget der holder dig tilbage?</p><p>Vi hjælper gerne med at justere tilbuddet, hvis det er det der skal til.</p><p>Mange hilsner<br>{{firma}}</p>', 1
+    FROM crm_stages s
+    WHERE lower(s.name)='tilbud afgivet'
+      AND NOT EXISTS (SELECT 1 FROM crm_stage_followup_rules r WHERE r.stage_id=s.id AND r.days_after=14);
+    INSERT INTO crm_stage_followup_rules (stage_id, days_after, email_enabled, email_subject, email_body, position)
+    SELECT s.id, 30, 1, 'Sidste opfølgning på dit tilbud', '<p>Hej {{navn}},</p><p>Det er nu en måned siden vi sendte vores tilbud, og vi har ikke hørt fra dig. Vi vil meget gerne hjælpe, hvis projektet stadig er aktuelt — sig endelig til.</p><p>Mange hilsner<br>{{firma}}</p>', 2
+    FROM crm_stages s
+    WHERE lower(s.name)='tilbud afgivet'
+      AND NOT EXISTS (SELECT 1 FROM crm_stage_followup_rules r WHERE r.stage_id=s.id AND r.days_after=30);
 
     -- crm_tasks: lille opgave-tjekliste pr. lead/opportunity (samme idé som
     -- Close's "Tasks"-panel på lead-/kontaktsiden — ikke koblet til det store
@@ -3564,19 +3635,30 @@ app.get('/api/gantt/jobs', auth, asyncRoute(async (req, res) => {
   // Henter ALLE kendte sager på én gang (ikke kun søgeresultater), inkl. det
   // fag der oftest går igen på sagens opgaver — så admin kan bladre/gruppere
   // med det samme uden at skulle vide/skrive kundens navn i forvejen.
+  //
+  // is_project/project_id: Martins ønske (sep. 2026) om at Gantt skal "hente
+  // data fra Projekt-delen" — der findes IKKE noget rigtigt job_id-link mellem
+  // JobTread-sager og den lokale `projects`-tabel i dag, kun et løst tekstfelt
+  // (sagsnummer/job_number, samme konvention begge steder), så vi kobler på
+  // DET i stedet for at bygge en ny hård FK. Bevidst en LEFT JOIN, ikke et
+  // filter: at skjule JobTread-sager uden en Projekt-post ville være en reel
+  // regression (Martin bruger stadig Gantt på sager der ikke nødvendigvis er
+  // oprettet som en formel "Projekt" endnu) — se leveringsnoten.
   const rows = await pool.query(`
     SELECT
-      job_id,
-      MAX(job_name) AS job_name,
-      MAX(job_number) AS job_number,
-      MAX(job_address) AS job_address,
-      MODE() WITHIN GROUP (ORDER BY type_guess) AS trade,
+      j.job_id,
+      MAX(j.job_name) AS job_name,
+      MAX(j.job_number) AS job_number,
+      MAX(j.job_address) AS job_address,
+      MODE() WITHIN GROUP (ORDER BY j.type_guess) AS trade,
       COUNT(*)::int AS task_count,
-      MAX(synced_at) AS last_synced
-    FROM jt_tasks
-    WHERE job_id IS NOT NULL AND job_id <> ''
-    GROUP BY job_id
-    ORDER BY MAX(job_name) ASC
+      MAX(j.synced_at) AS last_synced,
+      MAX(p.id) AS project_id
+    FROM jt_tasks j
+    LEFT JOIN projects p ON p.job_number = j.job_number AND j.job_number IS NOT NULL AND j.job_number <> ''
+    WHERE j.job_id IS NOT NULL AND j.job_id <> ''
+    GROUP BY j.job_id
+    ORDER BY (MAX(p.id) IS NOT NULL) DESC, MAX(j.job_name) ASC
   `);
   res.json(rows.rows);
 }));
@@ -5948,25 +6030,112 @@ async function crmFireStageAutomation(entityType, entityId, stageId, contactFiel
     firma: 'Gulv Master Enterprise ApS',
     stage: stage.name || ''
   };
+  // Once-per-(entity,stage)-dedup: Martins udtrykkelige krav (sep. 2026) — hvis
+  // et kort rykkes ud og tilbage til samme stage igen (fx ved en fejl), skal
+  // den samme SMS/mail IKKE sendes igen. Dedup-nøglen er selve activity-kind'en
+  // (sms_sent_stage<ID>/email_sent_stage<ID>) — en eksisterende sådan række ER
+  // "sendt allerede"-flaget, ligesom lost-followup-scanningen gør det for sit
+  // eget kind. En FEJLET afsendelse logges under et andet, ikke-blokerende kind
+  // (sms_failed/email_failed), så et forbigående problem ikke forhindrer et
+  // reelt forsøg senere (fx ved et nyt stage-skift).
+  const smsKind = 'sms_sent_stage' + stageId;
+  const emailKind = 'email_sent_stage' + stageId;
   if (stage.sms_enabled && stage.sms_template && contactFields.phone) {
-    try {
-      const message = fillDocEmailVars(stage.sms_template, vars);
-      await sendSmsUniversal({ to: contactFields.phone, message });
-      await crmLogActivity(entityType, entityId, 'sms_sent', 'SMS sendt ("' + stage.name + '"): ' + message, null);
-    } catch (e) {
-      await crmLogActivity(entityType, entityId, 'sms_failed', 'SMS-automatik fejlede ("' + stage.name + '"): ' + e.message, null);
+    const already = await pgOne('SELECT id FROM crm_activities WHERE entity_type=$1 AND entity_id=$2 AND kind=$3', [entityType, entityId, smsKind]);
+    if (!already) {
+      try {
+        const message = fillDocEmailVars(stage.sms_template, vars);
+        await sendSmsUniversal({ to: contactFields.phone, message });
+        await crmLogActivity(entityType, entityId, smsKind, 'SMS sendt ("' + stage.name + '"): ' + message, null);
+      } catch (e) {
+        await crmLogActivity(entityType, entityId, 'sms_failed', 'SMS-automatik fejlede ("' + stage.name + '"): ' + e.message, null);
+      }
     }
   }
   if (stage.email_enabled && stage.email_body && contactFields.email) {
-    try {
-      const subject = fillDocEmailVars(stage.email_subject || 'Besked fra ' + vars.firma, vars);
-      const html = fillDocEmailVars(stage.email_body, vars);
-      await sendMailUniversal({ to: contactFields.email, subject, html, text: html.replace(/<[^>]+>/g, ' ') });
-      await crmLogActivity(entityType, entityId, 'email_sent', 'Email sendt ("' + stage.name + '"): ' + subject, null);
-    } catch (e) {
-      await crmLogActivity(entityType, entityId, 'email_failed', 'Email-automatik fejlede ("' + stage.name + '"): ' + e.message, null);
+    const already = await pgOne('SELECT id FROM crm_activities WHERE entity_type=$1 AND entity_id=$2 AND kind=$3', [entityType, entityId, emailKind]);
+    if (!already) {
+      try {
+        const subject = fillDocEmailVars(stage.email_subject || 'Besked fra ' + vars.firma, vars);
+        const html = fillDocEmailVars(stage.email_body, vars);
+        await sendMailUniversal({ to: contactFields.email, subject, html, text: html.replace(/<[^>]+>/g, ' ') });
+        await crmLogActivity(entityType, entityId, emailKind, 'Email sendt ("' + stage.name + '"): ' + subject, null);
+      } catch (e) {
+        await crmLogActivity(entityType, entityId, 'email_failed', 'Email-automatik fejlede ("' + stage.name + '"): ' + e.message, null);
+      }
     }
   }
+}
+
+// ── Tidsbaserede opfølgninger pr. stage (crm_stage_followup_rules) ──────────
+// Generisk motor: for ENHVER stage i ENHVER pipeline kan man sætte flere
+// dag-tærskler op (fx "7 dage: SMS+mail", "14 dage: mail", "30 dage: mail"),
+// redigerbare i CRM → ⚙ Indstillinger → Pipelines. Kører dagligt (se
+// cron.schedule nedenfor) — samme dedup-mønster som runLostFollowupScan: en
+// crm_activities-række med en unik kind pr. (regel, kanal) ER selve "sendt
+// allerede"-flaget. Forlader kortet stagen og kommer tilbage senere, nulstiller
+// det stage_changed_at (dagene tælles forfra) — MEN da dedup-nøglen kun er
+// bundet til (entity, regel), sender en regel der allerede er udløst for denne
+// stage IKKE igen, selv efter en tur ud og ind. Det er bevidst, og matcher
+// Martins "kun 1 gang pr. stage"-princip konsekvent på tværs af hele motoren.
+async function runStageFollowupScan() {
+  const rules = (await pool.query(`
+    SELECT r.*, s.name AS stage_name, s.pipeline_id, p.type AS pipeline_type
+    FROM crm_stage_followup_rules r
+    JOIN crm_stages s ON s.id = r.stage_id
+    JOIN crm_pipelines p ON p.id = s.pipeline_id
+    WHERE r.enabled = 1
+  `)).rows;
+  let processed = 0;
+  for (const rule of rules) {
+    const entityType = rule.pipeline_type === 'lead' ? 'lead' : 'opportunity';
+    const table = entityType === 'lead' ? 'crm_leads' : 'crm_opportunities';
+    const smsKind = 'stage_followup_sms_r' + rule.id;
+    const emailKind = 'stage_followup_email_r' + rule.id;
+    const rows = (await pool.query(`
+      SELECT t.id, t.stage_changed_at, t.contact_id${entityType === 'lead' ? ', t.name, t.email, t.phone' : ''}
+      FROM ${table} t WHERE t.stage_id = $1 AND t.stage_changed_at IS NOT NULL
+    `, [rule.stage_id])).rows;
+    for (const row of rows) {
+      const daysOld = Math.floor((Date.now() - new Date(row.stage_changed_at)) / 86400000);
+      if (daysOld < rule.days_after) continue;
+      let name = row.name, email = row.email, phone = row.phone;
+      if (row.contact_id) {
+        const c = await pgOne('SELECT name, email, phone FROM crm_contacts WHERE id=$1', [row.contact_id]);
+        if (c) { name = c.name || name; email = c.email || email; phone = c.phone || phone; }
+      }
+      const vars = { navn: name || '', firma: 'Gulv Master Enterprise ApS' };
+      if (rule.sms_enabled && rule.sms_template && phone) {
+        const already = await pgOne('SELECT id FROM crm_activities WHERE entity_type=$1 AND entity_id=$2 AND kind=$3', [entityType, row.id, smsKind]);
+        if (!already) {
+          try {
+            const message = fillDocEmailVars(rule.sms_template, vars);
+            await sendSmsUniversal({ to: phone, message });
+            await crmLogActivity(entityType, row.id, smsKind, 'Tidsbaseret SMS-opfølgning sendt (' + daysOld + ' dage i "' + rule.stage_name + '"): ' + message, null);
+            processed++;
+          } catch (e) {
+            await crmLogActivity(entityType, row.id, 'stage_followup_sms_failed', 'Tidsbaseret SMS-opfølgning fejlede ("' + rule.stage_name + '"): ' + e.message, null);
+          }
+        }
+      }
+      if (rule.email_enabled && rule.email_body && email) {
+        const already = await pgOne('SELECT id FROM crm_activities WHERE entity_type=$1 AND entity_id=$2 AND kind=$3', [entityType, row.id, emailKind]);
+        if (!already) {
+          try {
+            const subject = fillDocEmailVars(rule.email_subject || 'Opfølgning', vars);
+            const html = fillDocEmailVars(rule.email_body, vars);
+            await sendMailUniversal({ to: email, subject, html, text: html.replace(/<[^>]+>/g, ' ') });
+            await crmLogActivity(entityType, row.id, emailKind, 'Tidsbaseret email-opfølgning sendt (' + daysOld + ' dage i "' + rule.stage_name + '"): ' + subject, null);
+            processed++;
+          } catch (e) {
+            await crmLogActivity(entityType, row.id, 'stage_followup_email_failed', 'Tidsbaseret email-opfølgning fejlede ("' + rule.stage_name + '"): ' + e.message, null);
+          }
+        }
+      }
+    }
+  }
+  await logSystemEvent('stage_followup_scan', 'info', `Tidsbaserede stage-opfølgninger: ${processed} besked(er) sendt.`);
+  return { processed };
 }
 
 // Find-eller-opret en crm_contacts-række + en customers-række for et navn/
@@ -6090,6 +6259,56 @@ app.delete('/api/crm/stages/:id', auth, financeOnly, asyncRoute(async (req, res)
   if (stageCount && stageCount.n <= 1) return res.status(400).json({ error: 'En pipeline skal have mindst én stage' });
   await pool.query('DELETE FROM crm_stages WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
+}));
+
+// ── Tidsbaserede stage-opfølgninger (crm_stage_followup_rules) ──────────────
+app.get('/api/crm/stages/:id/followup-rules', auth, financeOnly, asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT * FROM crm_stage_followup_rules WHERE stage_id=$1 ORDER BY days_after ASC, position ASC', [req.params.id])).rows;
+  res.json({ rules: rows });
+}));
+app.post('/api/crm/stages/:id/followup-rules', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.days_after || Number(b.days_after) <= 0) return res.status(400).json({ error: 'Antal dage skal være større end 0' });
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_stage_followup_rules WHERE stage_id=$1', [req.params.id]);
+  const r = await pgOne(`
+    INSERT INTO crm_stage_followup_rules (stage_id, days_after, enabled, sms_enabled, sms_template, email_enabled, email_subject, email_body, position)
+    VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8) RETURNING id
+  `, [
+    req.params.id,
+    Number(b.days_after),
+    b.sms_enabled ? 1 : 0,
+    b.sms_template || null,
+    b.email_enabled ? 1 : 0,
+    b.email_subject || null,
+    b.email_body || null,
+    posRow.pos
+  ]);
+  res.json({ ok: true, id: r.id });
+}));
+app.put('/api/crm/followup-rules/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const current = await pgOne('SELECT * FROM crm_stage_followup_rules WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Regel ikke fundet' });
+  await pool.query('UPDATE crm_stage_followup_rules SET days_after=$1,enabled=$2,sms_enabled=$3,sms_template=$4,email_enabled=$5,email_subject=$6,email_body=$7,position=$8 WHERE id=$9', [
+    b.days_after !== undefined ? Number(b.days_after) : current.days_after,
+    b.enabled !== undefined ? (b.enabled ? 1 : 0) : current.enabled,
+    b.sms_enabled !== undefined ? (b.sms_enabled ? 1 : 0) : current.sms_enabled,
+    b.sms_template !== undefined ? b.sms_template : current.sms_template,
+    b.email_enabled !== undefined ? (b.email_enabled ? 1 : 0) : current.email_enabled,
+    b.email_subject !== undefined ? b.email_subject : current.email_subject,
+    b.email_body !== undefined ? b.email_body : current.email_body,
+    b.position !== undefined ? b.position : current.position,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+app.delete('/api/crm/followup-rules/:id', auth, financeOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM crm_stage_followup_rules WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+app.post('/api/crm/followup-rules/run-now', auth, financeOnly, asyncRoute(async (req, res) => {
+  const result = await runStageFollowupScan();
+  res.json({ ok: true, ...result });
 }));
 
 // ── Automatiserings-indstillinger (Skabeloner → 🤖 Automatisering) ──────────
@@ -11036,6 +11255,10 @@ async function start() {
   cron.schedule('0 10 * * *', () => runDunningScan(false).catch(e => { console.error('Rykker-scan fejlede:', e.message); logSystemEvent('dunning_scan', 'error', 'Rykker-scan fejlede: ' + e.message); }));
   // Tabt-opfølgning kl. 10:30 hver dag — runLostFollowupScan tjekker selv om den er slået til.
   cron.schedule('30 10 * * *', () => runLostFollowupScan(false).catch(e => { console.error('Tabt-opfølgning fejlede:', e.message); logSystemEvent('lost_followup_scan', 'error', 'Tabt-opfølgning fejlede: ' + e.message); }));
+  // Tidsbaserede stage-opfølgninger kl. 10:45 hver dag (15 min efter tabt-opfølgning) —
+  // se crm_stage_followup_rules / runStageFollowupScan. Kan også køres manuelt via
+  // "Kør nu (test)"-knappen i CRM → ⚙ Indstillinger → Pipelines.
+  cron.schedule('45 10 * * *', () => runStageFollowupScan().catch(e => { console.error('Stage-opfølgningsscan fejlede:', e.message); logSystemEvent('stage_followup_scan', 'error', 'Stage-opfølgningsscan fejlede: ' + e.message); }));
   // Profit-analyse — gemmer et fast snapshot af indeværende måned kl. 08 d. 15. hver
   // måned, så Martin kan sammenligne måned for måned uden at tallene ændrer sig
   // bagefter. Kan også udløses manuelt via "Gem nu"-knappen i Oversigt.

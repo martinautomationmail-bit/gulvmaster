@@ -97,6 +97,22 @@ button,input,select{font:inherit}
    ligger urørt her i tilfælde af at en fremtidig enkelt-linje-gruppe får brug for den. */
 .sidebar-section-label{padding:14px 10px 4px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--bly-sub);opacity:.75}
 .sidebar-nav>.sidebar-section-label:first-child{padding-top:4px}
+/* "+ Ny"-knappen — flyttet fra topheaderen ned i sidebaren, øverst over CRM,
+   som en stor rund/pille-formet knap i Billy-stil (jf. mit.billy.dk's store
+   "+"-knap over deres venstre-navigation). */
+.sidebar-newbtn-wrap{position:relative;margin:2px 12px 12px}
+.sidebar-newbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px 14px;border:0;border-radius:999px;background:var(--bly-accent);color:#fff;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.08);transition:background .12s,transform .08s}
+.sidebar-newbtn:hover{background:var(--bly-accent-dark,#3730A3)}
+.sidebar-newbtn:active{transform:scale(.98)}
+.sidebar-newbtn .sidebar-newbtn-plus{font-size:16px;line-height:1;font-weight:800}
+.sidebar-newbtn-menu{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);box-shadow:0 8px 24px rgba(0,0,0,.12);padding:6px;z-index:50}
+.sidebar-newbtn-menu.open{display:flex;flex-direction:column;gap:1px}
+.sidebar-newbtn-menu a{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;color:var(--bly-ink);font-size:12.5px;font-weight:600}
+.sidebar-newbtn-menu a:hover{background:var(--bly-hover)}
+body.sidebar-collapsed .sidebar-newbtn-label{display:none}
+body.sidebar-collapsed .sidebar-newbtn{padding:11px;border-radius:50%;width:40px;height:40px}
+body.sidebar-collapsed .sidebar-newbtn-wrap{display:flex;justify-content:center;padding:0;margin:2px 0 12px}
+body.sidebar-collapsed .sidebar-newbtn-menu{left:8px;right:auto;width:180px}
 .sidebar-foot{padding:12px 18px;font-size:9px;color:var(--bly-sub);opacity:.7;border-top:1px solid var(--bly-border-soft);flex-shrink:0}
 /* RUNDE H #4 — "Min side" + Log ud flyttet ned i bunden af (venstre)
    sidebaren, ligesom profil/log ud typisk sidder nederst i andre programmer.
@@ -1511,27 +1527,29 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .tl-bar:hover .tl-handle::after{opacity:1}
 .tl-empty{padding:24px;text-align:center;color:#9AA3B2;font-size:12px}
 
-/* FLYDENDE NOTE-BLOK */
-.note-widget{position:fixed;display:none;flex-direction:column;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;box-shadow:0 16px 44px rgba(15,34,64,.32);z-index:500;min-width:220px;min-height:160px;overflow:hidden}
+/* FLYDENDE NOTE-BLOK — omlagt fra Gulv/Orange-farverne til en neutral,
+   moderne Billy-stil (samme --bly-*-designsystem som resten af appen), efter
+   Martins ønske (sep. 2026). */
+.note-widget{position:fixed;display:none;flex-direction:column;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);box-shadow:0 16px 44px rgba(15,34,64,.18);z-index:500;min-width:220px;min-height:160px;overflow:hidden}
 .note-widget.open{display:flex}
 .note-widget.minimized .note-widget-toolbar,.note-widget.minimized .note-widget-body,.note-widget.minimized .note-widget-resize{display:none}
-.note-widget-head{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#FBBF24;color:#78350F;font-size:12px;font-weight:800;cursor:grab;user-select:none;flex-shrink:0}
+.note-widget-head{display:flex;align-items:center;justify-content:space-between;padding:9px 10px;background:var(--bly-ink);color:#fff;font-size:12px;font-weight:800;cursor:grab;user-select:none;flex-shrink:0}
 .note-widget-head:active{cursor:grabbing}
-.note-widget-min,.note-widget-close{border:0;background:rgba(120,53,15,.14);color:#78350F;width:20px;height:20px;border-radius:5px;cursor:pointer;font-size:11px;line-height:1}
-.note-widget-min:hover,.note-widget-close:hover{background:rgba(120,53,15,.26)}
-.note-widget-toolbar{display:flex;gap:4px;align-items:center;padding:6px 8px;background:#FEF3C7;border-bottom:1px solid #FDE68A;flex-shrink:0;flex-wrap:wrap}
-.note-widget-toolbar button{border:1px solid #FDE68A;background:#fff;width:24px;height:24px;border-radius:5px;cursor:pointer;font-size:11px}
-.note-widget-toolbar button:hover{background:#FEF3C7}
-.note-widget-toolbar select{border:1px solid #FDE68A;background:#fff;border-radius:5px;font-size:10px;padding:3px 4px}
-.note-widget-body{flex:1;overflow:auto;padding:12px;font-size:13px;line-height:1.5;outline:none;color:#451a03}
-.note-widget-body:empty:before{content:attr(placeholder);color:#B45309;opacity:.55}
-.note-widget-resize{position:absolute;right:2px;bottom:2px;width:16px;height:16px;cursor:nwse-resize;color:#B45309;font-size:11px;display:flex;align-items:center;justify-content:center;opacity:.6}
-.note-widget-tabs{display:flex;align-items:center;gap:2px;padding:6px 6px 0;background:#FEF3C7;flex-shrink:0;overflow-x:auto}
-.nw-tab{display:flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;font-weight:700;color:#92400E;background:transparent;border:0;border-radius:7px 7px 0 0;cursor:pointer;white-space:nowrap;opacity:.65}
-.nw-tab.active{background:#FFFBEB;opacity:1}
+.note-widget-min,.note-widget-close{border:0;background:rgba(255,255,255,.14);color:#fff;width:20px;height:20px;border-radius:5px;cursor:pointer;font-size:11px;line-height:1}
+.note-widget-min:hover,.note-widget-close:hover{background:rgba(255,255,255,.26)}
+.note-widget-toolbar{display:flex;gap:4px;align-items:center;padding:6px 8px;background:var(--bly-bg-soft,#F5F5F7);border-bottom:1px solid var(--bly-border-soft);flex-shrink:0;flex-wrap:wrap}
+.note-widget-toolbar button{border:1px solid var(--bly-border);background:#fff;color:var(--bly-ink);width:24px;height:24px;border-radius:5px;cursor:pointer;font-size:11px}
+.note-widget-toolbar button:hover{background:var(--bly-hover);border-color:var(--bly-accent)}
+.note-widget-toolbar select{border:1px solid var(--bly-border);background:#fff;color:var(--bly-ink);border-radius:5px;font-size:10px;padding:3px 4px}
+.note-widget-body{flex:1;overflow:auto;padding:12px;font-size:13px;line-height:1.5;outline:none;color:var(--bly-ink)}
+.note-widget-body:empty:before{content:attr(placeholder);color:var(--bly-sub);opacity:.7}
+.note-widget-resize{position:absolute;right:2px;bottom:2px;width:16px;height:16px;cursor:nwse-resize;color:var(--bly-sub);font-size:11px;display:flex;align-items:center;justify-content:center;opacity:.6}
+.note-widget-tabs{display:flex;align-items:center;gap:2px;padding:6px 6px 0;background:var(--bly-bg-soft,#F5F5F7);flex-shrink:0;overflow-x:auto}
+.nw-tab{display:flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--bly-sub);background:transparent;border:0;border-radius:7px 7px 0 0;cursor:pointer;white-space:nowrap;opacity:.75}
+.nw-tab.active{background:#fff;color:var(--bly-accent);opacity:1}
 .nw-tab-close{opacity:.5;font-size:10px;padding:1px}
 .nw-tab-close:hover{opacity:1}
-.nw-tab-add{padding:5px 8px;font-size:13px;font-weight:800;color:#92400E;background:transparent;border:0;cursor:pointer;opacity:.6}
+.nw-tab-add{padding:5px 8px;font-size:13px;font-weight:800;color:var(--bly-sub);background:transparent;border:0;cursor:pointer;opacity:.7}
 .nw-tab-add:hover{opacity:1}
 .nw-check{display:flex;align-items:flex-start;gap:7px;margin:3px 0}
 .nw-check input[type=checkbox]{width:16px;height:16px;margin-top:1px;accent-color:#16A34A;flex-shrink:0;cursor:pointer}
@@ -1883,6 +1901,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
          (#page-dashboard) findes stadig og nås nu ved at trykke på selve
          "Gulv Master"-logoet ovenfor (data-action="brand-home"). -->
 
+    <!-- "+ Ny" — flyttet hertil fra topheaderen efter Martins ønske (sep. 2026),
+         placeret som en stor Billy-stil pilleknap direkte over CRM-gruppen. -->
+    <div class="sidebar-newbtn-wrap" id="sidebar-newshortcut-drop">
+      <button class="sidebar-newbtn" id="sidebar-newshortcut-btn" type="button"><span class="sidebar-newbtn-plus">+</span><span class="sidebar-newbtn-label">Ny</span></button>
+      <div class="sidebar-newbtn-menu" id="sidebar-newshortcut-menu">
+        <a href="#" id="sidebar-newshortcut-quote">📝 Nyt tilbud</a>
+        <a href="#" id="sidebar-newshortcut-customer">👤 Ny kunde</a>
+      </div>
+    </div>
+
     <!-- CRM — nu sin egen ▾-dropdown-gruppe, i samme stil som Dagligplanlægning/
          Tilbud & Faktura/Økonomi, i stedet for en statisk overskrift + 3 løse
          menupunkter. Kunder/Leads/Sales er uændrede sider/routes, kun selve
@@ -1938,13 +1966,30 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
          (Martins ønske), se #proj-tabs / projtab-gantt. #gantt-hash omdirigeres
          til Projekter-fanen i switchPage() for gamle bogmærker/links. -->
 
-    <!-- PROJEKTER — kun ÉN side/route, så den får (med vilje) ingen ▾-dropdown som
-         CRM/Tilbud & Faktura/Dagligplanlægning/Økonomi: de grupper samler flere
-         undersider, Projekter har kun sin egen liste. Den løse "Projekter"-overskrift
-         der lå ovenover er fjernet (duplikerede blot tab-tekstens ord, samme fix
-         som Tilbud & Faktura fik i sidste runde), så den nu ser lige så ren og
-         ensartet ud som en enkelt-linje i de andre grupper. -->
-    <a class="tab hidden" href="#projects" data-page="projects" id="projects-tab-btn"><span class="stab-icon">🏗️</span><span class="stab-label">Projekter</span></a>
+    <!-- PROJEKTER — fik tidligere (med vilje) ingen ▾-dropdown, da Gantt/KS-
+         skabeloner/Kontaktformularer dengang kun var in-page-faner. Efter
+         Martins ønske (sep. 2026: "brug data derfra... dropdown effekt") er
+         gruppen nu samme ▾-mønster som CRM/Tilbud & Faktura/Økonomi, med de
+         fire in-page-faner som dybe sidebar-genveje (samme data-*-jump-mønster
+         som data-qztab-jump/data-fintab-jump). Selve Gantt-siden/dens data er
+         uændret — den har allerede boet inde under Projekter-sidens faner
+         siden en tidligere runde og henter fortsat sine sager fra JobTread
+         (jt_tasks), IKKE fra den lokale Projekter-liste — der findes ingen
+         pålidelig kobling (job_id) mellem de to i dag, kun et løst tekstfelt
+         (sagsnummer), så en reel sammenlægning er en større, separat opgave.
+         Se leveringsnoten for hvorfor dette er en bevidst afgrænsning. -->
+    <div class="navdrop tab-navdrop hidden" id="projects-subdrop">
+      <div class="stab-row">
+        <a class="tab" href="#projects" data-page="projects" id="projects-tab-btn"><span class="stab-icon">🏗️</span><span class="stab-label">Projekter</span></a>
+        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
+      </div>
+      <div class="navdrop-menu">
+        <a class="navdrop-item" href="#projects" data-page="projects" data-projtab-jump="list">🏗️ Sagsoversigt</a>
+        <a class="navdrop-item" href="#gantt" data-page="projects" data-projtab-jump="gantt">📶 Gantt</a>
+        <a class="navdrop-item" href="#projects/ks-skabeloner" data-page="projects" data-projtab-jump="qa-templates">📋 KS-skabeloner</a>
+        <a class="navdrop-item" href="#projects/kontaktformularer" data-page="projects" data-projtab-jump="contact-templates">📇 Kontaktformularer</a>
+      </div>
+    </div>
 
     <!-- ØKONOMI — "🧾 Fakturaer" fjernet herfra efter Martins ønske (al fakturering
          køres nu fra Tilbud & Faktura-modulets egen Fakturaer-fane ovenfor). Selve
@@ -2018,18 +2063,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="navdrop-menu" id="global-search-results" style="width:420px;max-height:420px;overflow:auto;display:none"></div>
     </div>
   </div>
-  <!-- RUNDE H #9 — genvej til nyt tilbud/ny kunde. #12 — de to JobTread-synk-
-       knapper er flyttet ned i Indstillinger (Min side → ⚙️ Indstillinger),
-       da de ifølge dig snart forsvinder helt. -->
-  <div class="nav-right">
-    <div class="navdrop" id="newshortcut-drop">
-      <button class="nb navdrop-btn" id="newshortcut-btn">+ Ny ▾</button>
-      <div class="navdrop-menu" id="newshortcut-menu" style="right:0;left:auto">
-        <a class="navdrop-item" href="#" id="newshortcut-quote">📝 Nyt tilbud</a>
-        <a class="navdrop-item" href="#" id="newshortcut-customer">👤 Ny kunde</a>
-      </div>
-    </div>
-  </div>
+  <!-- RUNDE H #9's "+ Ny"-genvej er flyttet ned i sidebaren over CRM (sep.
+       2026, se sidebar-newbtn-* ovenfor i <aside>), som en stor Billy-stil
+       knap efter Martins ønske. #12 — de to JobTread-synk-knapper er flyttet
+       ned i Indstillinger (Min side → ⚙️ Indstillinger). Tom .nav-right
+       bevaret som spacer, så søgefeltet i midten forbliver centreret
+       (.nav er en 1fr/auto/1fr-grid). -->
+  <div class="nav-right"></div>
 </nav>
 
 <!-- FLYDENDE NOTE-BLOK — personlig kladdeblok, kan flyttes og ændres i størrelse -->
@@ -4828,7 +4868,7 @@ document.getElementById('app').style.display='block';
       document.getElementById('crmp-leads-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('crmp-sales-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('crmp-tasks-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
-      document.getElementById('projects-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
+      document.getElementById('projects-subdrop').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('email-templates-tab-btn').classList.toggle('hidden',!me.is_finance_admin);
       document.getElementById('gmail-settings-tab-btn').classList.toggle('hidden',!me.is_finance_admin);}
   }catch(e){}
@@ -7103,8 +7143,12 @@ function renderGanttJobList(){
   if(!list.length){el.innerHTML='<p class="muted-sm">Ingen sager matcher.</p>';return;}
 
   function cardHtml(j){
+    // "📁 Projekt"-badge — sat når sagen (via sagsnummer) også findes i den
+    // lokale Projekter-liste (se LEFT JOIN i /api/gantt/jobs). Rent visuelt:
+    // skjuler IKKE andre JobTread-sager, se kommentaren ved serverens route.
     return '<div class="gantt-job-result" data-job-id="'+esc(j.job_id)+'" data-job-name="'+esc(j.job_name||'')+'">'+
       '<strong>'+esc(j.job_name||'Uden navn')+'</strong>'+(j.job_number?' <span class="muted-sm">#'+esc(j.job_number)+'</span>':'')+
+      (j.project_id?' <span class="muted-sm" title="Findes også i Projekter-listen">📁 Projekt</span>':'')+
       '<div class="muted-sm">'+(j.task_count||0)+' opgave'+(j.task_count!==1?'r':'')+(j.job_address?' · '+esc(j.job_address):'')+'</div>'+
       '</div>';
   }
@@ -11494,17 +11538,18 @@ function bind(){
   // der lå her tidligere, er fjernet — de duplikerede/kolliderede med den
   // generiske håndtering efter flytningen (Runde H #4).
   document.getElementById('notifdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('notifdrop-menu').classList.toggle('open');refreshNotifBell();});
-  // RUNDE H #9 — "+ Ny"-genvej i topbjælken til nyt tilbud/ny kunde. Genbruger
-  // de eksisterende opret-funktioner (openQuoteEditor/openCrmModal) uændret.
-  document.getElementById('newshortcut-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('newshortcut-menu').classList.toggle('open');});
-  document.addEventListener('click',function(e){if(!e.target.closest('#newshortcut-drop'))document.getElementById('newshortcut-menu').classList.remove('open');});
-  document.getElementById('newshortcut-quote').addEventListener('click',function(e){
-    e.preventDefault();document.getElementById('newshortcut-menu').classList.remove('open');
+  // RUNDE H #9 (senere flyttet til sidebaren, sep. 2026, se sidebar-newbtn-*
+  // CSS/markup ovenfor) — "+ Ny"-genvej til nyt tilbud/ny kunde. Genbruger de
+  // eksisterende opret-funktioner (openQuoteEditor/openCrmModal) uændret.
+  document.getElementById('sidebar-newshortcut-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('sidebar-newshortcut-menu').classList.toggle('open');});
+  document.addEventListener('click',function(e){if(!e.target.closest('#sidebar-newshortcut-drop'))document.getElementById('sidebar-newshortcut-menu').classList.remove('open');});
+  document.getElementById('sidebar-newshortcut-quote').addEventListener('click',function(e){
+    e.preventDefault();document.getElementById('sidebar-newshortcut-menu').classList.remove('open');
     if(!me.is_finance_admin){toast('Du har ikke adgang til Tilbud & Faktura','🔒');return;}
     switchPage('quotes');switchQzTab('quotes');openQuoteEditor(null);
   });
-  document.getElementById('newshortcut-customer').addEventListener('click',function(e){
-    e.preventDefault();document.getElementById('newshortcut-menu').classList.remove('open');
+  document.getElementById('sidebar-newshortcut-customer').addEventListener('click',function(e){
+    e.preventDefault();document.getElementById('sidebar-newshortcut-menu').classList.remove('open');
     if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');return;}
     switchPage('customers');openCrmModal();
   });
@@ -11619,6 +11664,17 @@ function bind(){
       e.preventDefault();
       switchPage('quotes');
       switchQzTab(btn.dataset.qztabJump);
+      document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
+    });
+  });
+  // Projekter fik sin egen ▾-dropdown (sep. 2026, Martins ønske) — samme dybe-
+  // link-mønster som data-qztab-jump/data-fintab-jump herover, til de fire
+  // in-page-faner (Sagsoversigt/Gantt/KS-skabeloner/Kontaktformularer).
+  document.querySelectorAll('[data-projtab-jump]').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.preventDefault();
+      switchPage('projects');
+      setTimeout(function(){switchProjTab(btn.dataset.projtabJump);},0);
       document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
     });
   });
@@ -13869,6 +13925,15 @@ function crmpRenderSettingsStages(){
         +'<textarea class="input" data-action="email-body" rows="3" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:8px">'+esc(s.email_body||'')+'</textarea>'
         +'<button class="btn small" data-action="automation-save">Gem automatik</button>'
         +'<span class="sub" data-automation-status style="margin-left:8px"></span>'
+        +'<div class="crmp-followup-rules-section" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bly-border)">'
+          +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+            +'<b style="font-size:12.5px">⏱ Tidsbaserede opfølgninger</b>'
+            +'<button class="qz-icon-btn" data-action="followup-runnow" title="Kør scanningen for alle regler nu (test)">▶ Kør nu</button>'
+          +'</div>'
+          +'<div class="sub" style="margin-bottom:6px">Sender automatisk SMS/email X dage efter et kort er landet i denne stage — uafhængigt af om kortet flyttes igen. Kører hver dag kl. 10:45. Kun 1 gang pr. tærskel pr. kort.</div>'
+          +'<div class="crmp-followup-rules-list" data-followup-list="'+s.id+'"><span class="sub">Indlæser...</span></div>'
+          +'<button class="btn small" data-action="followup-add" style="margin-top:6px">+ Tilføj tærskel</button>'
+        +'</div>'
       +'</div>';
   }).join('');
   list.querySelectorAll('.crmp-set-stage-row').forEach(function(row){
@@ -13887,7 +13952,13 @@ function crmpRenderSettingsStages(){
     });
     row.querySelector('[data-action="stage-automation-toggle"]').addEventListener('click',function(){
       var panel=list.querySelector('.crmp-set-stage-automation[data-automation-id="'+stageId+'"]');
-      if(panel)panel.style.display=panel.style.display==='none'?'':'none';
+      if(!panel)return;
+      var opening=panel.style.display==='none';
+      panel.style.display=opening?'':'none';
+      if(opening&&!panel.dataset.followupLoaded){
+        panel.dataset.followupLoaded='1';
+        crmpLoadFollowupRules(stageId);
+      }
     });
   });
   list.querySelectorAll('.crmp-set-stage-automation').forEach(function(panel){
@@ -13904,6 +13975,62 @@ function crmpRenderSettingsStages(){
       })});
       statusEl.textContent=(r&&r.ok)?'Gemt ✓':'Fejl';
       if(r&&r.ok)crmpLoadPipelinesAndRefreshSettings();
+    });
+    panel.querySelector('[data-action="followup-add"]').addEventListener('click',async function(){
+      var r=await api('/api/crm/stages/'+stageId+'/followup-rules',{method:'POST',body:JSON.stringify({days_after:7})});
+      if(r&&r.ok)crmpLoadFollowupRules(stageId);else toast((r&&r.error)||'Kunne ikke tilføje','❌');
+    });
+    panel.querySelector('[data-action="followup-runnow"]').addEventListener('click',async function(){
+      var btn=this;btn.disabled=true;btn.textContent='Kører...';
+      var r=await api('/api/crm/followup-rules/run-now',{method:'POST'});
+      btn.disabled=false;btn.textContent='▶ Kør nu';
+      if(r&&r.ok)toast('Scan kørt — '+r.processed+' besked(er) sendt','✅');else toast((r&&r.error)||'Fejlede','❌');
+    });
+  });
+}
+async function crmpLoadFollowupRules(stageId){
+  var listEl=document.querySelector('.crmp-followup-rules-list[data-followup-list="'+stageId+'"]');
+  if(!listEl)return;
+  var r=await api('/api/crm/stages/'+stageId+'/followup-rules');
+  var rules=(r&&r.rules)||[];
+  listEl.innerHTML=rules.length?rules.map(function(rule){
+    return '<div class="crmp-followup-rule-row" data-rule-id="'+rule.id+'" style="border:1px solid var(--bly-border);border-radius:8px;padding:8px;margin-bottom:6px;background:#fff">'
+      +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+        +'<label class="sub" style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" data-action="rule-enabled" '+(rule.enabled?'checked':'')+'> Aktiv</label>'
+        +'<span class="sub">efter</span>'
+        +'<input type="number" class="input" data-action="rule-days" min="1" value="'+Number(rule.days_after)+'" style="width:60px">'
+        +'<span class="sub">dag(e)</span>'
+        +'<button class="qz-icon-btn" data-action="rule-delete" title="Slet tærskel" style="margin-left:auto">🗑</button>'
+      +'</div>'
+      +'<label style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" data-action="rule-sms-enabled" '+(rule.sms_enabled?'checked':'')+'> <b>SMS</b></label>'
+      +'<textarea class="input" data-action="rule-sms-template" rows="2" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:6px">'+esc(rule.sms_template||'')+'</textarea>'
+      +'<label style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" data-action="rule-email-enabled" '+(rule.email_enabled?'checked':'')+'> <b>Email</b></label>'
+      +'<input class="input" data-action="rule-email-subject" placeholder="Emne" value="'+esc(rule.email_subject||'')+'" style="width:100%;margin-bottom:6px">'
+      +'<textarea class="input" data-action="rule-email-body" rows="3" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:6px">'+esc(rule.email_body||'')+'</textarea>'
+      +'<button class="btn small" data-action="rule-save">Gem tærskel</button>'
+      +'<span class="sub" data-rule-status style="margin-left:8px"></span>'
+    +'</div>';
+  }).join(''):'<div class="sub" style="padding:4px 0">Ingen tærskler endnu — brug "+ Tilføj tærskel" nedenfor.</div>';
+  listEl.querySelectorAll('.crmp-followup-rule-row').forEach(function(row){
+    var ruleId=Number(row.dataset.ruleId);
+    row.querySelector('[data-action="rule-delete"]').addEventListener('click',async function(){
+      if(!await gmConfirm('Slet denne tærskel?'))return;
+      var r=await api('/api/crm/followup-rules/'+ruleId,{method:'DELETE'});
+      if(r&&r.ok)crmpLoadFollowupRules(stageId);
+    });
+    row.querySelector('[data-action="rule-save"]').addEventListener('click',async function(){
+      var statusEl=row.querySelector('[data-rule-status]');
+      statusEl.textContent='Gemmer...';
+      var r=await api('/api/crm/followup-rules/'+ruleId,{method:'PUT',body:JSON.stringify({
+        enabled:row.querySelector('[data-action="rule-enabled"]').checked,
+        days_after:Number(row.querySelector('[data-action="rule-days"]').value)||1,
+        sms_enabled:row.querySelector('[data-action="rule-sms-enabled"]').checked,
+        sms_template:row.querySelector('[data-action="rule-sms-template"]').value,
+        email_enabled:row.querySelector('[data-action="rule-email-enabled"]').checked,
+        email_subject:row.querySelector('[data-action="rule-email-subject"]').value,
+        email_body:row.querySelector('[data-action="rule-email-body"]').value
+      })});
+      statusEl.textContent=(r&&r.ok)?'Gemt ✓':'Fejl';
     });
   });
 }
