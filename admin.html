@@ -12945,7 +12945,12 @@ function qzLineRowHtml(l,idx,prefix){
     +'</div>'
     // Note (sep. 2026, Martins ønske) — helt separat felt fra beskrivelsen ovenfor.
     // Vises i sin egen fremhævede boks UNDER beskrivelsen på tilbud/faktura.
-    +'<textarea class="qe-input qe-line-field qz-note-area" data-idx="'+idx+'" data-field="note" placeholder="Note (valgfrit) — vises i egen boks under beskrivelsen på tilbud/faktura" rows="1" style="margin-top:4px;font-size:12.5px">'+esc(l.note||'')+'</textarea>'
+    // FEJLRETTELSE (sep. 2026): feltet var næsten usynligt/afskåret — den automatiske
+    // højde-tilpasning (qzAutoGrowTextarea, baseret på scrollHeight) gav somme tider en
+    // for lav værdi FØR feltet var færdig-layoutet, og uden en fast min-højde kunne
+    // boksen ende helt sammenklappet (kun stort nok til sin egen padding, ingen synlig
+    // tekstlinje). min-height er en garanti der altid vinder over en for lille sat højde.
+    +'<textarea class="qe-input qe-line-field qz-note-area" data-idx="'+idx+'" data-field="note" placeholder="Note (valgfrit) — vises i egen boks under beskrivelsen på tilbud/faktura" rows="1" style="margin-top:4px;font-size:12.5px;min-height:34px">'+esc(l.note||'')+'</textarea>'
     +'<div class="qe-line-nums">'
     +'<div><div class="qe-line-num-label">Antal</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="quantity" value="'+qty+'"></div>'
     +'<div><div class="qe-line-num-label">Cost-pris</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="cost_price" value="'+cost+'"></div>'
@@ -14260,7 +14265,7 @@ async function crmpxConvert(){
 }
 // "Lav tilbud" (sep. 2026) — åbner et nyt, blankt tilbud forudfyldt med
 // opportunityens koblede kunde, så man ikke skal søge kunden op igen manuelt.
-function crmpxOpenQuote(){
+async function crmpxOpenQuote(){
   var ent=crmpDetailEntity;
   if(!ent||!crmpxCurrentCustomerId)return;
   var d=ent.data;
@@ -14271,6 +14276,17 @@ function crmpxOpenQuote(){
   var phone=ent.type==='lead'?d.phone:d.contact_phone;
   var email=ent.type==='lead'?d.email:d.contact_email;
   var address=ent.type==='lead'?d.address:d.contact_address;
+  // FEJLRETTELSE (sep. 2026): "Tilbud & Faktura"-modulets data (qzProducts/
+  // qzTemplates m.fl.) OG dets input-lyttere (søgefelt, linjefelter, osv. —
+  // bindQuotesModuleEvents) sættes normalt kun op FØRSTE GANG man besøger selve
+  // siden (initQuotesModule, styret af qzInitialized). Åbner man tilbudseditoren
+  // HERFRA — direkte fra et lead/en opportunity, uden nogensinde at have besøgt
+  // Tilbud & Faktura-siden i denne session — var hverken produktlisten hentet
+  // ELLER lytterne bundet. Det betød at søgefeltet i linjerne (og i virkeligheden
+  // ALLE felter i editoren) simpelthen ikke reagerede på noget som helst. Kalder
+  // nu det samme init-kald som selve siden selv bruger, så begge dele er på plads.
+  if(!qzInitialized)await initQuotesModule();
+  else await Promise.all([loadQzProducts(),loadQzTemplates()]);
   openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:name||'',phone:phone||'',email:email||'',address:address||''});
 }
 async function crmpxDelete(){
