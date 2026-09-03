@@ -1138,6 +1138,17 @@ async function initSchema() {
       customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
+    -- Close-webhooken opretter fra sep. 2026 OGSÅ et rigtigt salg i Sales-
+    -- pipelinen (crm_opportunities), ikke kun en kunde-række — se
+    -- app.post('/api/integrations/close/webhook'). opportunity_id er bevidst
+    -- NULLABLE: rækker oprettet af den GAMLE kode (kun kunde) har den tom, og
+    -- webhooken selvhelbreder dem ved næste udløsning på samme Close-lead
+    -- (opretter salget der mangler). NULL bruges altså som "mangler stadig sit
+    -- salg", og er samtidig det der forhindrer at et salg oprettes to gange.
+    -- Ingen FOREIGN KEY: sletter Martin selv salget igen i CRM'et, skal linket
+    -- blive stående som "behandlet" i stedet for at genoprette salget ved
+    -- næste webhook-gentagelse fra Close.
+    ALTER TABLE close_customer_links ADD COLUMN IF NOT EXISTS opportunity_id INTEGER;
 
     -- ══════════════════════════════════════════════════════════════
     -- INDBYGGET CRM — samme grund-idé som Close (Leads → Kontakt + Opportunity
@@ -6072,6 +6083,16 @@ app.get('/api/gmail/messages/:messageId/attachments/:attachmentId', auth, panelA
 // periodisk tjek), da Close selv kan sende et signal med det samme en
 // opportunity/lead skifter status.
 //
+// UDVIDET sep. 2026 efter Martins udtrykkelige ja ("Ja — udvid
+// Close-webhooken"): webhooken opretter nu BÅDE kunden OG et tilsvarende salg
+// i Gulvmasters egen Sales-pipeline (crm_opportunities), i stedet for kun den
+// bare kunde-række som oprindeligt. Kunden oprettes desuden via
+// crmFindOrCreateContactAndCustomer (samme dedup som resten af appen) i stedet
+// for en rå INSERT INTO customers — dels for at undgå dubletter, dels fordi
+// salget skal hænge på en crm_contacts-række. Se
+// closeWebhookCreateOpportunity nedenfor og opportunity_id-kolonnen på
+// close_customer_links (selvhelbredelse af gamle links uden salg).
+//
 // OPSÆTNING (skal gøres af Martin, kræver adgang til hans Close-konto):
 //   1) I Close: Settings → Developer → Webhooks → "Add webhook", peg den på
 //      https://<jeres-render-url>/api/integrations/close/webhook, og
@@ -6185,6 +6206,46 @@ function closeLeadToCustomerFields(lead, attachmentLinks) {
   };
 }
 
+// Opretter det tilsvarende SALG i Gulvmasters EGEN Sales-pipeline
+// (crm_opportunities) — udvidelsen Martin bad om i sep. 2026 ("Ja — udvid
+// Close-webhooken"). Indtil da lavede webhooken kun en kunde-række, så et
+// Close-lead der nåede "Lav Tilbud" aldrig dukkede op som et kort i
+// Sales-pipelinen, og derfor heller ikke fik glæde af pipelinens egen
+// SMS/email-automatik.
+//
+// Stagen findes ved NAVN, case-insensitivt, ud fra CLOSE_TRIGGER_STATUS_LABEL
+// (samme "match på navn, ellers pipelinens første stage"-mønster som
+// CSV-importen bruger — closeMatchStageByName genbruges direkte). Aldrig
+// hardkodede id'er: både pipeline og stage slås op live, så det stadig virker
+// hvis Martin omdøber eller omrokerer sine stages.
+//
+// value/probability efterlades NULL: webhook-signalet fra Close bærer hverken
+// beløb eller sandsynlighed, og begge kolonner er nullable. stage_changed_at
+// sættes til NU — det her er ét enkelt, friskt salg i realtid, ikke en
+// historisk bulk-import, så det skal opføre sig præcis som et salg oprettet i
+// hånden (POST /api/crm/opportunities), inkl. crmLogActivity og
+// crmFireStageAutomation.
+async function closeWebhookCreateOpportunity(contactId, fields) {
+  const pipeline = await pgOne("SELECT id, name FROM crm_pipelines WHERE type='opportunity' ORDER BY position ASC LIMIT 1");
+  if (!pipeline) throw new Error('Ingen salgs-pipeline (type=opportunity) findes — opret én under CRM-indstillinger');
+  const stages = (await pool.query('SELECT * FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC, id ASC', [pipeline.id])).rows;
+  if (!stages.length) throw new Error('Salgs-pipelinen "' + pipeline.name + '" har ingen stages');
+  const matched = closeMatchStageByName(stages, CLOSE_TRIGGER_STATUS_LABEL);
+  const stage = matched || stages[0];
+  if (!matched) {
+    console.warn('Close-webhook: fandt ingen stage ved navn "' + CLOSE_TRIGGER_STATUS_LABEL + '" i pipelinen "' + pipeline.name + '" — bruger første stage "' + stage.name + '" i stedet.');
+  }
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_opportunities WHERE stage_id=$1', [stage.id]);
+  const r = await pgOne(`
+    INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,value,probability,owner_id,note,position,stage_changed_at)
+    VALUES ($1,$2,$3,$4,NULL,NULL,NULL,$5,$6,${nowTextSQL()}) RETURNING id
+  `, [fields.name, contactId, pipeline.id, stage.id, fields.notes, posRow.pos]);
+  await crmLogActivity('opportunity', r.id, 'created', 'Salg oprettet automatisk fra Close (lead flyttet til "' + CLOSE_TRIGGER_STATUS_LABEL + '")', null);
+  crmFireStageAutomation('opportunity', r.id, stage.id, { name: fields.name, email: fields.email, phone: fields.phone })
+    .catch(e => console.error('SMS/email-automatik fejlede for Close-salg #' + r.id + ':', e.message));
+  return { id: r.id, stageName: stage.name, matchedStage: !!matched };
+}
+
 app.post('/api/integrations/close/webhook', asyncRoute(async (req, res) => {
   if (!CLOSE_API_KEY || !CLOSE_WEBHOOK_SIGNING_KEY) {
     console.error('Close-webhook kaldt, men CLOSE_API_KEY/CLOSE_WEBHOOK_SIGNING_KEY er ikke sat i miljøvariablerne.');
@@ -6207,17 +6268,67 @@ app.post('/api/integrations/close/webhook', asyncRoute(async (req, res) => {
     const triggerStatusId = await resolveCloseTriggerStatusId();
     if (newStatusId !== triggerStatusId) return; // skiftede til en ANDEN status end "Lav Tilbud" — ignorér
 
-    const existingLink = await pgOne('SELECT customer_id FROM close_customer_links WHERE close_lead_id=$1', [leadId]);
-    if (existingLink) { console.log('Close-webhook: lead ' + leadId + ' er allerede oprettet som kunde #' + existingLink.customer_id + ' — springer over.'); return; }
+    // Tre tilstande, ikke to som før (hvor ETHVERT eksisterende link betød
+    // "spring alt over"):
+    //   1) link findes MED opportunity_id  → færdigbehandlet, spring over.
+    //   2) link findes UDEN opportunity_id → kunden blev oprettet af den GAMLE
+    //      kode (før salg-udvidelsen), eller salget fejlede sidst. Selvhelbred:
+    //      opret KUN det manglende salg på den kunde der allerede findes.
+    //   3) intet link                      → fuldt forløb: kunde + kontakt + salg.
+    const existingLink = await pgOne('SELECT customer_id, opportunity_id FROM close_customer_links WHERE close_lead_id=$1', [leadId]);
+    if (existingLink && existingLink.opportunity_id) {
+      console.log('Close-webhook: lead ' + leadId + ' er allerede oprettet som kunde #' + existingLink.customer_id + ' og salg #' + existingLink.opportunity_id + ' — springer over.');
+      return;
+    }
 
     const lead = await fetchCloseLeadDetails(leadId);
     const attachmentLinks = await fetchCloseLeadAttachmentLinks(leadId);
     const fields = closeLeadToCustomerFields(lead, attachmentLinks);
-    const created = await pgOne(`
-      INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id
-    `, [fields.name, fields.email, fields.phone, fields.address, fields.notes]);
-    await pool.query('INSERT INTO close_customer_links (close_lead_id, customer_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [leadId, created.id]);
-    console.log('Close-webhook: oprettede kunde #' + created.id + ' ("' + fields.name + '") ud fra Close-lead ' + leadId);
+
+    let customerId, contactId;
+    if (existingLink) {
+      // Selvhelbredelse. Kunden findes allerede og må IKKE oprettes igen — vi
+      // slår derfor bevidst IKKE crmFindOrCreateContactAndCustomer op her
+      // (den ville kunne lande på en anden kunde, eller oprette en ny, hvis
+      // Close-leadet i mellemtiden har fået rettet telefon/email). Vi genbruger
+      // den kontakt der allerede peger på kunden, og opretter kun en kontakt
+      // hvis kunden slet ingen har (typisk: kunden blev lavet med den gamle
+      // rå INSERT INTO customers, helt uden om crm_contacts).
+      customerId = existingLink.customer_id;
+      const existingContact = await pgOne('SELECT id FROM crm_contacts WHERE customer_id=$1 ORDER BY id ASC LIMIT 1', [customerId]);
+      if (existingContact) contactId = existingContact.id;
+      else {
+        const c = await pgOne(
+          'INSERT INTO crm_contacts (name,email,phone,address,customer_id) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+          [fields.name, fields.email, fields.phone, fields.address, customerId]
+        );
+        contactId = c.id;
+      }
+      console.log('Close-webhook: lead ' + leadId + ' har allerede kunde #' + customerId + ', men mangler sit salg i Sales-pipelinen — opretter det nu.');
+    } else {
+      // crmFindOrCreateContactAndCustomer i stedet for den tidligere rå
+      // INSERT INTO customers: samme dedup (telefon først, så email) som resten
+      // af appen, og den giver os den kontakt-række salget skal hænge på
+      // (crm_opportunities har ingen customer_id — kun contact_id).
+      const linked = await crmFindOrCreateContactAndCustomer(fields.name, fields.email, fields.phone, fields.address, fields.notes);
+      customerId = linked.customerId;
+      contactId = linked.contactId;
+      await pool.query('INSERT INTO close_customer_links (close_lead_id, customer_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [leadId, customerId]);
+      console.log('Close-webhook: ' + (linked.customerCreated ? 'oprettede kunde #' : 'genbrugte eksisterende kunde #') + customerId + ' ("' + fields.name + '") ud fra Close-lead ' + leadId);
+    }
+
+    // Salget i sit EGET try: fejler det, skal kunden ovenfor stadig stå. Vi
+    // lader opportunity_id blive NULL, så næste udløsning/gentagelse fra Close
+    // på samme lead automatisk prøver igen (tilstand 2 ovenfor) i stedet for at
+    // fejlen forsvinder i stilhed.
+    try {
+      const opp = await closeWebhookCreateOpportunity(contactId, fields);
+      await pool.query('UPDATE close_customer_links SET opportunity_id=$1 WHERE close_lead_id=$2', [opp.id, leadId]);
+      console.log('Close-webhook: oprettede salg #' + opp.id + ' ("' + fields.name + '") i stagen "' + opp.stageName + '"' + (opp.matchedStage ? '' : ' (navnematch fejlede — brugte pipelinens første stage)') + ' for Close-lead ' + leadId);
+    } catch (e) {
+      console.error('Close-webhook: kunde #' + customerId + ' er på plads for lead ' + leadId + ', men salget i Sales-pipelinen kunne IKKE oprettes: ' + e.message + ' — opportunity_id efterlades NULL, så det prøves igen ved næste udløsning.');
+      await logSystemEvent('close_webhook', 'error', 'Close-webhook: kunne ikke oprette salg i Sales-pipelinen for Close-lead ' + leadId + ' (kunde #' + customerId + ' er oprettet): ' + e.message);
+    }
   } catch (e) {
     console.error('Close-webhook fejlede under efterbehandling:', e.message);
   }
@@ -7270,15 +7381,42 @@ function closeResolveOpportunityStage(oppStages, defaultStage, row) {
 // crmSetCustomFieldValues stille droppe Lead Source-værdien for hver eneste
 // importeret opportunity (crmSetCustomFieldValues ignorerer ukendte
 // feltnøgler uden fejl), og data ville gå tabt uden varsel.
+//
+// show_on_card=1 SÆTTES BEVIDST HER (rettelse, sep. 2026 — se leveringsnoten):
+// crm_custom_fields.show_on_card har DEFAULT 0, og kort-badges på Kanban-
+// boardet vises KUN for felter med show_on_card=1 (se crmpCardHtml i
+// admin.html: `defs.filter(d => d.show_on_card && ...)`). Den første version af
+// denne import oprettede derfor "Lead Source" for entity_type='opportunity'
+// med show_on_card=0 — værdierne blev gemt korrekt i crm_custom_field_values og
+// kunne ses inde på det enkelte salg (detalje-modalen læser feltdefinitionerne
+// direkte fra GET /api/crm/opportunities/:id), men de var USYNLIGE på selve
+// Sales-boardets kort. Det var præcis det Martin oplevede som "ingen af
+// Opportunities fik Custom fields med ind". Felterne oprettes her udelukkende
+// FOR at bære Close-data, så de skal være synlige på kortene fra start.
 async function closeEnsureCustomFieldDef(entityType, key, label, fieldType) {
   const existing = await pgOne('SELECT id FROM crm_custom_fields WHERE entity_type=$1 AND key=$2', [entityType, key]);
   if (existing) return false;
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_custom_fields WHERE entity_type=$1', [entityType]);
   await pool.query(
-    'INSERT INTO crm_custom_fields (entity_type,key,label,field_type,options,position) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (entity_type,key) DO NOTHING',
+    'INSERT INTO crm_custom_fields (entity_type,key,label,field_type,options,position,show_on_card) VALUES ($1,$2,$3,$4,$5,$6,1) ON CONFLICT (entity_type,key) DO NOTHING',
     [entityType, key, label, fieldType, '[]', posRow.pos]
   );
   return true;
+}
+// Slår "Vis på kort" til på et Close-mappet felt der allerede findes med
+// show_on_card=0. Nødvendigt fordi Martins PRODUKTIONS-database allerede har
+// "Lead Source" (opportunity) liggende — oprettet af den FØRSTE importkørsel,
+// altså af vores egen kode, med den forkerte 0-default ovenfor. Uden dette
+// ville en gen-import af de samme filer stadig efterlade felterne usynlige på
+// kortene. Returnerer true hvis den faktisk ændrede noget, så det kan vises i
+// import-kvitteringen — Martin kan altid fjerne fluebenet igen med ét klik
+// under CRM-indstillinger → Felter.
+async function closeEnsureShownOnCard(entityType, key) {
+  const r = await pool.query(
+    'UPDATE crm_custom_fields SET show_on_card=1 WHERE entity_type=$1 AND key=$2 AND COALESCE(show_on_card,0)=0',
+    [entityType, key]
+  );
+  return r.rowCount > 0;
 }
 async function closeLoadFieldOptionCache(entityType, key) {
   const def = await pgOne('SELECT id, options FROM crm_custom_fields WHERE entity_type=$1 AND key=$2', [entityType, key]);
@@ -7343,6 +7481,12 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
   if (await closeEnsureCustomFieldDef('lead', 'projekt_type', 'Projekt Type', 'select')) createdFields.push('lead.projekt_type');
   if (await closeEnsureCustomFieldDef('opportunity', 'lead_source', 'Lead Source', 'select')) createdFields.push('opportunity.lead_source');
   if (await closeEnsureCustomFieldDef('opportunity', 'projekt_type', 'Projekt Type', 'select')) createdFields.push('opportunity.projekt_type');
+  // Se closeEnsureShownOnCard: retter den forkerte show_on_card=0-default som
+  // den første version af denne import gav de felter den selv oprettede.
+  const shownOnCardFixed = [];
+  for (const [ent, key] of [['lead', 'lead_source'], ['lead', 'projekt_type'], ['opportunity', 'lead_source'], ['opportunity', 'projekt_type']]) {
+    if (await closeEnsureShownOnCard(ent, key)) shownOnCardFixed.push(ent + '.' + key);
+  }
 
   const leadSourceCacheLead = await closeLoadFieldOptionCache('lead', 'lead_source');
   const projektTypeCacheLead = await closeLoadFieldOptionCache('lead', 'projekt_type');
@@ -7350,6 +7494,52 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
   const projektTypeCacheOpp = await closeLoadFieldOptionCache('opportunity', 'projekt_type');
   const leadSourceNewOptions = new Set();
   const projektTypeNewOptions = new Set();
+
+  // ── CUSTOM FIELDS: ét fælles sted ────────────────────────────
+  // Samlet her (i stedet for inline i hver af de to faser, som før) fordi
+  // NØJAGTIG samme mapping nu skal kunne køres i to situationer: når rækken
+  // oprettes, OG når den allerede findes og kun skal have felterne efterfyldt
+  // (se "GEN-KØRSEL"-blokkene i fase 1 og 2).
+  function closeLeadCustomFieldValues(row) {
+    const out = {};
+    const ls = closeMapLeadSource(row['custom.Lead Source']);
+    const pt = closeMapProjektType(row['custom.Projekt Type']);
+    if (ls) out.lead_source = ls;
+    if (pt) out.projekt_type = pt;
+    return out;
+  }
+  // Opportunity-rækkens EGNE custom-felter først, ellers det tilhørende LEADS.
+  // Grunden (målt på Martins rigtige eksport, se leveringsnoten): Close gemmer
+  // i praksis næsten altid Lead Source/Projekt Type på LEADET, ikke på
+  // opportunity'en. Af de 1729 opportunities har kun 68 selv en Lead Source og
+  // 157 selv en Projekt Type — men deres tilhørende lead har det i hhv. 446 og
+  // 284 tilfælde. Uden dette fald-tilbage ville ~9 ud af 10 salg i Sales-
+  // pipelinen stå helt uden Projekt Type/Lead Source, selvom oplysningen
+  // ligger lige ved siden af i den samme eksport. Samme princip som
+  // closeLeadPersonFields, hvor leads.csv i forvejen er den autoritative kilde
+  // til navn/telefon/email/adresse for opportunities. Opportunity'ens egen
+  // værdi vinder ALTID hvis den findes — leadet bruges kun som udfyldning.
+  function closeOppCustomFieldValues(row, leadRow) {
+    const own = closeLeadCustomFieldValues(row);
+    const fromLead = leadRow ? closeLeadCustomFieldValues(leadRow) : {};
+    const out = {};
+    let usedLeadFallback = false;
+    for (const key of ['lead_source', 'projekt_type']) {
+      if (own[key]) out[key] = own[key];
+      else if (fromLead[key]) { out[key] = fromLead[key]; usedLeadFallback = true; }
+    }
+    return { values: out, usedLeadFallback };
+  }
+  // Skriver værdierne og udvider samtidig select-felternes options-liste med
+  // værdier Close kender men Gulvmaster ikke gør. Returnerer true hvis der
+  // faktisk blev sat mindst én værdi.
+  async function closeWriteCustomFields(entityType, entityId, values, lsCache, ptCache) {
+    if (!Object.keys(values).length) return false;
+    if (values.lead_source && await closeEnsureOption(lsCache, values.lead_source)) leadSourceNewOptions.add(values.lead_source);
+    if (values.projekt_type && await closeEnsureOption(ptCache, values.projekt_type)) projektTypeNewOptions.add(values.projekt_type);
+    await crmSetCustomFieldValues(entityType, entityId, values);
+    return true;
+  }
 
   // In-memory position-tællere pr. stage (én opslags-forespørgsel i stedet for
   // en MAX(position)-forespørgsel PR. importeret række) — samme resultat som
@@ -7368,8 +7558,14 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
     ok: true,
     leads_imported: 0,
     leads_skipped_existing: 0,
+    // Antal ALLEREDE importerede rækker der ved denne kørsel fik deres custom
+    // fields sat/rettet i stedet for bare at blive sprunget over — se
+    // "GEN-KØRSEL"-blokken nedenfor. Tælles adskilt fra _skipped_existing, som
+    // fortsat er det samlede antal rækker der ikke blev oprettet på ny.
+    leads_custom_fields_refreshed: 0,
     opportunities_imported: 0,
     opportunities_skipped_existing: 0,
+    opportunities_custom_fields_refreshed: 0,
     customers_created: 0,
     customers_matched_existing: 0,
     contacts_created: 0,
@@ -7379,6 +7575,11 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
     lead_source_new_options_added: [],
     projekt_type_new_options_added: [],
     custom_fields_created: createdFields,
+    custom_fields_shown_on_card_fixed: shownOnCardFixed,
+    // Hvor mange opportunities der hentede deres Lead Source/Projekt Type fra
+    // det TILHØRENDE LEAD i stedet for fra opportunity-rækkens eget felt — se
+    // closeOppCustomFieldValues nedenfor.
+    opportunity_custom_fields_from_lead: 0,
     warnings: [],
     errors: []
   };
@@ -7397,7 +7598,25 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
     try {
       const closeId = row.id;
       const existing = await pgOne('SELECT id FROM crm_leads WHERE close_id=$1', [closeId]);
-      if (existing) { summary.leads_skipped_existing++; continue; }
+      // ── GEN-KØRSEL: efterfyld custom fields på en RÆKKE DER ALLEREDE FINDES ──
+      // Før denne rettelse blev en allerede importeret række sprunget helt
+      // over, hvilket betød at Martins ~2790 rækker fra den FØRSTE
+      // produktionskørsel aldrig kunne få rettet deres custom fields — en
+      // gen-import ville ikke røre dem. Nu køres NØJAGTIG samme
+      // felt-mapping igen på den eksisterende række.
+      // BEVIDST IKKE rørt her: crmFindOrCreateContactAndCustomer (ingen nye/
+      // ændrede kunder eller kontakter), stage_id/position/contact_id og
+      // stage_changed_at. Kørslen kan altså ikke flytte et kort Martin selv har
+      // trukket videre i pipelinen, ikke oprette dubletter, og ikke udløse
+      // SMS/email-automatik. Den rører KUN crm_custom_field_values.
+      if (existing) {
+        summary.leads_skipped_existing++;
+        const values = closeLeadCustomFieldValues(row);
+        if (await closeWriteCustomFields('lead', existing.id, values, leadSourceCacheLead, projektTypeCacheLead)) {
+          summary.leads_custom_fields_refreshed++;
+        }
+        continue;
+      }
 
       const person = closeLeadPersonFields(row);
       const { stage, fellBack } = closeResolveLeadStage(leadStages, defaultLeadStage, row.status_label);
@@ -7415,18 +7634,7 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
         VALUES ($1,$2,$3,$4,NULL,$5,$6,$7,NULL,$8,NULL,$9,$10,$11) RETURNING id
       `, [person.name, person.email, person.phone, person.address, note, leadPipeline.id, stage.id, position, closeId, createdAt, updatedAt]);
 
-      const leadSourceMapped = closeMapLeadSource(row['custom.Lead Source']);
-      const projektTypeMapped = closeMapProjektType(row['custom.Projekt Type']);
-      const cfValues = {};
-      if (leadSourceMapped) {
-        cfValues.lead_source = leadSourceMapped;
-        if (await closeEnsureOption(leadSourceCacheLead, leadSourceMapped)) leadSourceNewOptions.add(leadSourceMapped);
-      }
-      if (projektTypeMapped) {
-        cfValues.projekt_type = projektTypeMapped;
-        if (await closeEnsureOption(projektTypeCacheLead, projektTypeMapped)) projektTypeNewOptions.add(projektTypeMapped);
-      }
-      if (Object.keys(cfValues).length) await crmSetCustomFieldValues('lead', r.id, cfValues);
+      await closeWriteCustomFields('lead', r.id, closeLeadCustomFieldValues(row), leadSourceCacheLead, projektTypeCacheLead);
 
       // Beslutning #3 — se filhoved-kommentaren: samme find-eller-opret-logik
       // som resten af appen, for ALLE importerede leads (ikke kun Won).
@@ -7446,7 +7654,19 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
     try {
       const closeId = row.id;
       const existing = await pgOne('SELECT id FROM crm_opportunities WHERE close_id=$1', [closeId]);
-      if (existing) { summary.opportunities_skipped_existing++; continue; }
+      // ── GEN-KØRSEL — se den tilsvarende blok i fase 1 for begrundelsen.
+      // Samme begrænsning her: KUN crm_custom_field_values røres. Hverken
+      // stage, position, contact_id, kunde/kontakt-koblingen eller
+      // stage_changed_at ændres på et salg der allerede ligger i pipelinen.
+      if (existing) {
+        summary.opportunities_skipped_existing++;
+        const cf = closeOppCustomFieldValues(row, row.lead_id ? leadsById.get(row.lead_id) : null);
+        if (await closeWriteCustomFields('opportunity', existing.id, cf.values, leadSourceCacheOpp, projektTypeCacheOpp)) {
+          summary.opportunities_custom_fields_refreshed++;
+          if (cf.usedLeadFallback) summary.opportunity_custom_fields_from_lead++;
+        }
+        continue;
+      }
 
       const leadRow = row.lead_id ? leadsById.get(row.lead_id) : null;
       let person;
@@ -7490,18 +7710,10 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
         VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,$8,NULL,$9,$10,$11) RETURNING id
       `, [oppName, linked.contactId, oppPipeline.id, stage.id, value, probability, note, position, closeId, createdAt, updatedAt]);
 
-      const leadSourceMapped = closeMapLeadSource(row['custom.Lead Source']);
-      const projektTypeMapped = closeMapProjektType(row['custom.Projekt Type']);
-      const cfValues = {};
-      if (projektTypeMapped) {
-        cfValues.projekt_type = projektTypeMapped;
-        if (await closeEnsureOption(projektTypeCacheOpp, projektTypeMapped)) projektTypeNewOptions.add(projektTypeMapped);
+      const cf = closeOppCustomFieldValues(row, leadRow);
+      if (await closeWriteCustomFields('opportunity', r.id, cf.values, leadSourceCacheOpp, projektTypeCacheOpp)) {
+        if (cf.usedLeadFallback) summary.opportunity_custom_fields_from_lead++;
       }
-      if (leadSourceMapped && leadSourceCacheOpp) {
-        cfValues.lead_source = leadSourceMapped;
-        if (await closeEnsureOption(leadSourceCacheOpp, leadSourceMapped)) leadSourceNewOptions.add(leadSourceMapped);
-      }
-      if (Object.keys(cfValues).length) await crmSetCustomFieldValues('opportunity', r.id, cfValues);
 
       summary.opportunities_imported++;
     } catch (e) {
@@ -7512,7 +7724,7 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
   summary.lead_source_new_options_added = Array.from(leadSourceNewOptions);
   summary.projekt_type_new_options_added = Array.from(projektTypeNewOptions);
   summary.duration_ms = Date.now() - t0;
-  await logSystemEvent('close_import', 'info', `Close CRM-import: ${summary.leads_imported} leads, ${summary.opportunities_imported} opportunities importeret (${summary.leads_skipped_existing}+${summary.opportunities_skipped_existing} sprunget over som allerede importeret), ${summary.errors.length} fejl.`);
+  await logSystemEvent('close_import', 'info', `Close CRM-import: ${summary.leads_imported} leads, ${summary.opportunities_imported} opportunities importeret (${summary.leads_skipped_existing}+${summary.opportunities_skipped_existing} fandtes i forvejen, heraf ${summary.leads_custom_fields_refreshed}+${summary.opportunities_custom_fields_refreshed} med opdaterede custom fields), ${summary.errors.length} fejl.`);
   res.json(summary);
 }));
 

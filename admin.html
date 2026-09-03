@@ -2055,7 +2055,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-08-31.1</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-03.1</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -11468,6 +11468,15 @@ async function runCloseImport(){
     return;
   }
   renderCloseImportResult(r);
+  // Importen kan have OPRETTET nye custom felter (fx "Lead Source" på
+  // opportunities) og tilføjet nye valgmuligheder til dem. CRM-modulets
+  // felt-cache (crmpState.customFieldDefs) blev fyldt før importen, så den
+  // genopfriskes her — ellers ville felt-filteret og kort-badges på Kanban-
+  // boardet først kende de nye felter næste gang CRM-siden åbnes.
+  try{
+    crmpState.customFieldDefs.lead=await crmGetCustomFieldDefsCache('lead');
+    crmpState.customFieldDefs.opportunity=await crmGetCustomFieldDefsCache('opportunity');
+  }catch(e){/* rent kosmetisk — må aldrig vælte kvitteringen for en gennemført import */}
   toast('Import gennemført ✓','✓');
 }
 function renderCloseImportResult(r){
@@ -11475,8 +11484,10 @@ function renderCloseImportResult(r){
   var tiles=[
     ['Leads importeret',r.leads_imported],
     ['Leads sprunget over (allerede importeret)',r.leads_skipped_existing],
+    ['↳ heraf fik custom fields opdateret',r.leads_custom_fields_refreshed],
     ['Opportunities importeret',r.opportunities_imported],
     ['Opportunities sprunget over (allerede importeret)',r.opportunities_skipped_existing],
+    ['↳ heraf fik custom fields opdateret',r.opportunities_custom_fields_refreshed],
     ['Nye kunder oprettet',r.customers_created],
     ['Kunder genbrugt (fandtes i forvejen)',r.customers_matched_existing],
     ['Nye kontakter oprettet',r.contacts_created],
@@ -11502,6 +11513,12 @@ function renderCloseImportResult(r){
   }
   if((r.custom_fields_created||[]).length){
     html+='<div class="hint" style="margin-top:4px">➕ Manglende custom felt(er) oprettet automatisk, så data ikke gik tabt: '+r.custom_fields_created.map(esc).join(', ')+'</div>';
+  }
+  if((r.custom_fields_shown_on_card_fixed||[]).length){
+    html+='<div class="hint" style="margin-top:4px">👁 "Vis på kort" slået til for: '+r.custom_fields_shown_on_card_fixed.map(esc).join(', ')+' — værdierne var gemt, men blev ikke vist på kortene i pipelinen. Kan altid slås fra igen under ⚙️ CRM-indstillinger → Felter.</div>';
+  }
+  if(r.opportunity_custom_fields_from_lead){
+    html+='<div class="hint" style="margin-top:4px">🔗 '+r.opportunity_custom_fields_from_lead+' opportunities fik Lead Source/Projekt Type fra deres tilhørende lead, fordi selve opportunity-rækken i Close stod tom.</div>';
   }
   if((r.warnings||[]).length){
     html+='<div style="margin-top:10px;border:1px solid #F59E0B;background:#FFFBEB;border-radius:8px;padding:10px 12px"><div style="font-weight:700;font-size:12.5px;color:#92400E">⚠ Bør tjekkes ('+r.warnings.length+')</div><ul style="margin:4px 0 0;padding-left:18px;font-size:12.5px;color:#92400E">'+r.warnings.map(function(w){return '<li>'+esc(w)+'</li>';}).join('')+'</ul></div>';
