@@ -7735,6 +7735,164 @@ async function closeEnsureOption(cache, value) {
   return true;
 }
 
+// ══════════════════════════════════════════════════════════════
+// RETTELSE (sep. 2026): opportunities.csv INDEHOLDER IKKE KUN SALG
+// ──────────────────────────────────────────────────────────────
+// Close eksporterer BÅDE sin rigtige salgs-pipeline OG sin egen "Leads
+// Pipeline"-opfølgning gennem præcis samme opportunities-eksportformat,
+// adskilt udelukkende af kolonnen `pipeline_name`. På Martins rigtige
+// eksport: 1623 rækker med pipeline_name='Sales' (ægte salg) og 106 med
+// pipeline_name='Leads' (IKKE salg — det er blot den kolonne leadet ligger i
+// på Close's Leads-board: "Nyt lead", "Kontaktforsøg 1..4", "Afventer kunde",
+// "Ikke relevant / Lukket").
+//
+// De første to produktionskørsler af denne import behandlede ALLE rækker i
+// opportunities.csv som ægte salg. Konsekvensen i Martins produktionsdatabase:
+//   1) 106 falske salg i Sales-pipelinen (94 i "Tabt", 12 i "Manglende data").
+//   2) De tilhørende leads.csv-rækker blev SAMTIDIG udelukket fra at blive
+//      importeret som leads overhovedet — fordi "rene leads"-udregningen
+//      ekskluderede ethvert lead-id der optrådte som lead_id på en hvilken som
+//      helst opportunity-række. Derfor stod Gulvmasters Lead-board med ALLE
+//      1061 leads i "Nyt lead" og INTET i kontaktforsøgs-kolonnerne, modsat
+//      Martins rigtige Close Leads Pipeline-visning.
+//
+// Rettelsen (aftalt med Martin):
+//   - Kun pipeline_name='Sales' tæller som "dette lead blev til et rigtigt
+//     salg" i "rene leads"-udregningen (udelukkelsen er fortsat rigtig — den
+//     skal bare kun gælde ÆGTE salg).
+//   - En pipeline_name='Leads'-række bliver i stedet STAGE-KILDE for leadet:
+//     leadet importeres som et crm_leads-kort med personoplysninger fra
+//     leads.csv (samme autoritative kilde som alt andet her) og med LEADETS
+//     EGET close_id (leads.csv's `id`) som idempotens-nøgle — nøjagtig som
+//     ethvert andet rent lead, så det deduperer korrekt mod
+//     idx_crm_leads_close_id.
+//   - Har ét lead BÅDE en Sales- og en Leads-række, vinder Sales-rækken
+//     (leadet udelades fortsat, kun det ægte salg importeres). Optræder i
+//     praksis 2 gange i Martins data.
+//   - Har ét lead FLERE Leads-rækker, bruges den senest opdaterede som
+//     stage-kilde, og der logges en advarsel. Optræder 1 gang i Martins data.
+//   - SELVHELING: de 106 forkert oprettede crm_opportunities-rækker (tagget med
+//     SELVE Leads-rækkens close_id) slettes ved næste kørsel, med tilhørende
+//     custom field-værdier, aktiviteter og opgaver — se
+//     closeDeleteWronglyImportedOpportunity().
+// ══════════════════════════════════════════════════════════════
+
+// De Lead-pipeline-stages Close's egen Leads Pipeline bruger, men som
+// Gulvmasters standard-seed (Nyt lead / Kontaktet / Kvalificeret /
+// Konverteret) ikke har. Oprettes automatisk ved import — samme idé som
+// closeEnsureCustomFieldDef ovenfor: tjek på navn først, opret kun det der
+// mangler, og kun én gang uanset hvor mange gange importen køres.
+//
+// `place`:
+//   'after_new'  → indsættes i rækkefølge lige efter "Nyt lead", FØR
+//                  "Kontaktet", så boardet læses Nyt lead → Kontaktforsøg 1-4
+//                  → Afventer kunde → Kontaktet → Kvalificeret → Konverteret.
+//   'last'       → sidst i pipelinen, efter "Konverteret" — Martins eget valg
+//                  for "Ikke relevant / Lukket", spejler hvordan "Tabt" ligger
+//                  sidst i Sales-pipelinen.
+//
+// Farverne følger samme Tailwind-agtige hex-stil som appens egen seeding
+// (se initSchema): en stigende blå→gul→orange-trappe for de fire
+// kontaktforsøg, teal for "Afventer kunde", og neutral grå for "Afvist".
+//
+// is_lost SÆTTES BEVIDST IKKE på "Afvist" (modsat "Tabt" i Sales-pipelinen).
+// is_lost bruges KUN af runLostFollowupScan, som sender en automatisk
+// "Er du stadig interesseret?"-mail X dage efter at et kort er landet i en
+// is_lost-stage. Martin har bedt om en Afvist-kolonne, ikke om ny automatik på
+// leads han selv har markeret som irrelevante. Han kan slå den til med ét klik
+// (❌-fluebenet under CRM-indstillinger → Pipelines) hvis han ønsker det.
+// (De importerede rækker ville i øvrigt alligevel blive sprunget over, fordi
+// importen sætter stage_changed_at=NULL — se filhoved-kommentaren.)
+const CLOSE_LEAD_PIPELINE_STAGES = [
+  { name: 'Kontaktforsøg 1', color: '#93C5FD', place: 'after_new' },
+  { name: 'Kontaktforsøg 2', color: '#60A5FA', place: 'after_new' },
+  { name: 'Kontaktforsøg 3', color: '#FBBF24', place: 'after_new' },
+  { name: 'Kontaktforsøg 4', color: '#FB923C', place: 'after_new' },
+  { name: 'Afventer kunde', color: '#14B8A6', place: 'after_new' },
+  { name: 'Afvist', color: '#9CA3AF', place: 'last' }
+];
+// Ankerkæden bestemmer HVOR en manglende 'after_new'-stage indsættes: lige
+// efter den SIDSTE af de foranstillede stages der faktisk findes. Dermed
+// lander fx "Kontaktforsøg 3" korrekt efter "Kontaktforsøg 2", uanset om 1 og 2
+// blev oprettet i denne kørsel, i en tidligere kørsel, eller af Martin selv.
+const CLOSE_LEAD_STAGE_ANCHOR_CHAIN = ['Nyt lead', 'Kontaktforsøg 1', 'Kontaktforsøg 2', 'Kontaktforsøg 3', 'Kontaktforsøg 4', 'Afventer kunde'];
+
+// Opretter de manglende Lead-pipeline-stages ovenfor og skubber KUN de
+// efterfølgende stages én plads op pr. stage der rent faktisk oprettes.
+// Findes de alle i forvejen (2., 3., ... kørsel), rører funktionen INTET —
+// ingen dubletter, ingen huller i position-rækkefølgen, og ingen omrokering af
+// stages Martin selv har flyttet eller tilføjet.
+async function closeEnsureLeadPipelineStages(pipelineId) {
+  const created = [];
+  const loadStages = async () => (await pool.query('SELECT id, name, position FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC, id ASC', [pipelineId])).rows;
+  const findByName = (stages, name) => stages.find(s => String(s.name || '').trim().toLowerCase() === String(name).trim().toLowerCase()) || null;
+
+  for (const def of CLOSE_LEAD_PIPELINE_STAGES) {
+    const stages = await loadStages();
+    if (findByName(stages, def.name)) continue; // findes allerede — spring helt over
+    let targetPos;
+    if (def.place === 'last') {
+      targetPos = stages.reduce((m, s) => Math.max(m, Number(s.position)), -1) + 1;
+    } else {
+      const idx = CLOSE_LEAD_STAGE_ANCHOR_CHAIN.indexOf(def.name);
+      let anchorPos = -1;
+      for (let i = 0; i < (idx === -1 ? 1 : idx); i++) {
+        const a = findByName(stages, CLOSE_LEAD_STAGE_ANCHOR_CHAIN[i]);
+        if (a && Number(a.position) > anchorPos) anchorPos = Number(a.position);
+      }
+      targetPos = anchorPos + 1;
+      // Gør plads: alt fra targetPos og frem rykker én op. Kun de stages der
+      // ligger EFTER indsættelsespunktet berøres — aldrig "Nyt lead" eller
+      // tidligere kontaktforsøg.
+      await pool.query('UPDATE crm_stages SET position=position+1 WHERE pipeline_id=$1 AND position>=$2', [pipelineId, targetPos]);
+    }
+    await pool.query('INSERT INTO crm_stages (pipeline_id,name,color,position,is_won,is_lost) VALUES ($1,$2,$3,$4,0,0)', [pipelineId, def.name, def.color, targetPos]);
+    created.push(def.name);
+  }
+  return created;
+}
+
+// Close's Leads Pipeline-statusnavne matcher 1:1 vores egne stagenavne, PÅ NÉR
+// "Ikke relevant / Lukket" (94 af de 106 rækker), som Martin udtrykkeligt har
+// valgt skal hedde "Afvist" i Gulvmaster. Alt andet matches dynamisk på navn
+// mod de RIGTIGE stages i databasen (aldrig hardkodede id'er), præcis som
+// closeResolveLeadStage/closeResolveOpportunityStage.
+const CLOSE_LEADS_PIPELINE_STAGE_MAP = { 'ikke relevant / lukket': 'Afvist' };
+function closeResolveReclassifiedLeadStage(leadStages, defaultStage, statusLabel) {
+  const raw = String(statusLabel || '').trim();
+  const targetName = CLOSE_LEADS_PIPELINE_STAGE_MAP[raw.toLowerCase()] || raw;
+  const stage = closeMatchStageByName(leadStages, targetName);
+  if (stage) return { stage, fellBack: false, targetName };
+  return { stage: defaultStage, fellBack: true, targetName };
+}
+
+// SELVHELING af de forkert importerede salg. En pipeline_name='Leads'-række
+// blev af den tidligere version oprettet som et crm_opportunities-kort tagget
+// med RÆKKENS EGET close_id (oppo_...). Her fjernes den igen, sammen med alt
+// der peger på opportunity-id'et — samme grundighed som resten af kodebasen
+// viser for relaterede rækker:
+//   crm_custom_field_values / crm_activities / crm_tasks (entity_type=
+//   'opportunity' + entity_id — ingen FK, ville ellers blive forældreløse),
+//   crm_leads.converted_opportunity_id (FK ON DELETE SET NULL, men nulstilles
+//   eksplicit så et evt. lead ikke fremstår "konverteret"),
+//   close_customer_links.opportunity_id (ingen FK — sat af Close-webhooken).
+// Kunden/kontakten i Kunder-modulet RØRES BEVIDST IKKE: den blev fundet eller
+// oprettet med samme dedup-logik som alt andet i appen, kan i mellemtiden have
+// fået tilbud/fakturaer/sager hængende på sig, og leadet vi opretter i stedet
+// peger alligevel på præcis samme kontakt.
+// Returnerer true hvis der faktisk blev slettet et salg.
+async function closeDeleteWronglyImportedOpportunity(closeOppId) {
+  const wrong = await pgOne('SELECT id FROM crm_opportunities WHERE close_id=$1', [closeOppId]);
+  if (!wrong) return false;
+  await pool.query("DELETE FROM crm_custom_field_values WHERE entity_type='opportunity' AND entity_id=$1", [wrong.id]);
+  await pool.query("DELETE FROM crm_activities WHERE entity_type='opportunity' AND entity_id=$1", [wrong.id]);
+  await pool.query("DELETE FROM crm_tasks WHERE entity_type='opportunity' AND entity_id=$1", [wrong.id]);
+  await pool.query('UPDATE crm_leads SET converted_opportunity_id=NULL WHERE converted_opportunity_id=$1', [wrong.id]);
+  await pool.query('UPDATE close_customer_links SET opportunity_id=NULL WHERE opportunity_id=$1', [wrong.id]);
+  await pool.query('DELETE FROM crm_opportunities WHERE id=$1', [wrong.id]);
+  return true;
+}
+
 // ── ENDPOINT ─────────────────────────────────────────────────────
 // adminOnly (ikke bare panelAccess) — dette er en engangs, historisk
 // databulk-handling, ikke noget en almindelig medarbejder-login (fx Sarah)
@@ -7758,6 +7916,9 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
 
   const leadPipeline = await pgOne("SELECT id FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1");
   if (!leadPipeline) return res.status(400).json({ error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
+  // Opret de Lead-pipeline-stages Close's Leads Pipeline bruger, FØR stages
+  // læses ind nedenfor — så de nyoprettede kan matches som alle andre.
+  const createdLeadStages = await closeEnsureLeadPipelineStages(leadPipeline.id);
   const leadStages = (await pool.query('SELECT * FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC, id ASC', [leadPipeline.id])).rows;
   if (!leadStages.length) return res.status(400).json({ error: 'Lead-pipelinen har ingen stages' });
   const defaultLeadStage = leadStages[0];
@@ -7857,6 +8018,23 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
     // "GEN-KØRSEL"-blokken nedenfor. Tælles adskilt fra _skipped_existing, som
     // fortsat er det samlede antal rækker der ikke blev oprettet på ny.
     leads_custom_fields_refreshed: 0,
+    // ── Rettelsen af pipeline_name='Leads'-fejlklassificeringen (se den store
+    // kommentarblok over CLOSE_LEAD_PIPELINE_STAGES) ──
+    // Leads oprettet ud fra en pipeline_name='Leads'-række, dvs. leads der FØR
+    // rettelsen slet ikke blev importeret som leads.
+    leads_reclassified_from_leads_pipeline: 0,
+    // Delmængde af ovenstående: dem hvor der SAMTIDIG lå et forkert oprettet
+    // salg fra en tidligere kørsel, som blev slettet i denne kørsel.
+    leads_reclassified_from_wrong_opportunity: 0,
+    // Alle forkert oprettede salg der blev fjernet fra Sales-pipelinen —
+    // inkl. de få hvor leadet alligevel ikke skal oprettes (fordi leadet også
+    // har et ÆGTE salg), og derfor er tallet ≥ tallet ovenfor.
+    wrong_opportunities_deleted: 0,
+    // Nye Lead-pipeline-stages oprettet af denne kørsel (tom ved gen-kørsel).
+    lead_stages_created: createdLeadStages,
+    // Fordeling af de reklassificerede leads pr. stage — den fordeling Martin
+    // kender fra Close's egen Leads Pipeline-visning.
+    reclassified_lead_stage_counts: {},
     opportunities_imported: 0,
     opportunities_skipped_existing: 0,
     opportunities_custom_fields_refreshed: 0,
@@ -7883,14 +8061,79 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
   // ALDRIG optræder som en opportunitys lead_id (beslutning #2 ovenfor).
   const leadsById = new Map();
   leadRows.forEach(r => { if (r.id) leadsById.set(r.id, r); });
-  const oppLeadIds = new Set();
-  oppRows.forEach(r => { if (r.lead_id) oppLeadIds.add(r.lead_id); });
-  const pureLeadRows = leadRows.filter(r => r.id && !oppLeadIds.has(r.id));
+
+  // ── OPDELING AF opportunities.csv PÅ pipeline_name ───────────
+  // Se den store kommentarblok over CLOSE_LEAD_PIPELINE_STAGES: kun 'Sales'
+  // er ægte salg. Ukendte pipeline_name-værdier (skulle ikke kunne ske, men
+  // Close kunne få flere boards) behandles som salg — samme adfærd som før
+  // rettelsen — og flages som advarsel, så intet forsvinder lydløst.
+  const salesOppRows = [];
+  const leadsPipelineRows = [];
+  const unknownPipelineNames = new Set();
+  for (const r of oppRows) {
+    const pn = String(r.pipeline_name || '').trim();
+    if (pn.toLowerCase() === 'leads') leadsPipelineRows.push(r);
+    else {
+      if (pn && pn.toLowerCase() !== 'sales') unknownPipelineNames.add(pn);
+      salesOppRows.push(r);
+    }
+  }
+  if (unknownPipelineNames.size) {
+    summary.warnings.push('opportunities.csv indeholder ukendte pipeline_name-værdier (' + Array.from(unknownPipelineNames).join(', ') + ') — de er behandlet som ægte salg og importeret i Sales-pipelinen.');
+  }
+
+  // "Rene leads" = leads.csv-rækker hvis id ALDRIG optræder som lead_id på en
+  // ÆGTE (pipeline_name='Sales') opportunity. En Leads-pipeline-række
+  // udelukker altså IKKE længere sit lead — den bliver tværtimod leadets
+  // stage-kilde nedenfor.
+  const salesLeadIds = new Set();
+  salesOppRows.forEach(r => { if (r.lead_id) salesLeadIds.add(r.lead_id); });
+  const pureLeadRows = leadRows.filter(r => r.id && !salesLeadIds.has(r.id));
+
+  // Stage-kilde pr. lead_id. Har ét lead flere Leads-rækker, vinder den senest
+  // opdaterede (fald tilbage til oprettelsesdato, derefter id, så valget er
+  // deterministisk og gen-kørsler giver samme resultat).
+  const reclassifiedByLeadId = new Map();
+  const duplicateReclassifiedLeadIds = new Set();
+  for (const r of leadsPipelineRows) {
+    if (!r.lead_id) continue;
+    // Sales vinder: leadet har ALLIGEVEL et ægte salg og skal derfor stadig
+    // ikke oprettes som lead-kort (det forkerte salg ryddes stadig op nedenfor).
+    if (salesLeadIds.has(r.lead_id)) continue;
+    const prev = reclassifiedByLeadId.get(r.lead_id);
+    if (!prev) { reclassifiedByLeadId.set(r.lead_id, r); continue; }
+    duplicateReclassifiedLeadIds.add(r.lead_id);
+    const key = (x) => String(x.date_updated || '') + '|' + String(x.date_created || '') + '|' + String(x.id || '');
+    if (key(r) > key(prev)) reclassifiedByLeadId.set(r.lead_id, r);
+  }
+  for (const lid of duplicateReclassifiedLeadIds) {
+    summary.warnings.push('Lead ' + lid + ' har flere rækker i Close\'s Leads Pipeline — brugte den senest opdaterede ("' + String((reclassifiedByLeadId.get(lid) || {}).status_label || '').trim() + '") som stage.');
+  }
+
+  // ── FASE 0: SELVHELING — fjern salg der aldrig burde have været salg ──
+  // Kører for ALLE Leads-pipeline-rækker, også de få hvis lead alligevel ikke
+  // bliver til et lead-kort (fordi leadet også har et ægte salg) — ellers ville
+  // det falske salg blive stående i Sales-pipelinen for evigt. Er der intet at
+  // slette (Martin har endnu ikke kørt den fejlbehæftede version, eller det er
+  // 2. gang denne rettelse køres), sker der ganske enkelt ingenting.
+  const healedLeadIds = new Set();
+  for (const row of leadsPipelineRows) {
+    try {
+      if (await closeDeleteWronglyImportedOpportunity(row.id)) {
+        summary.wrong_opportunities_deleted++;
+        if (row.lead_id) healedLeadIds.add(row.lead_id);
+      }
+    } catch (e) {
+      summary.errors.push('Oprydning af fejlimporteret salg ' + (row && row.id) + ': ' + e.message);
+    }
+  }
 
   // ── FASE 1: rene leads → Lead-pipelinen ──────────────────────
   for (const row of pureLeadRows) {
     try {
       const closeId = row.id;
+      // Findes en Leads-pipeline-række for dette lead, er DEN stage-kilden.
+      const reclassRow = reclassifiedByLeadId.get(closeId) || null;
       const existing = await pgOne('SELECT id FROM crm_leads WHERE close_id=$1', [closeId]);
       // ── GEN-KØRSEL: efterfyld custom fields på en RÆKKE DER ALLEREDE FINDES ──
       // Før denne rettelse blev en allerede importeret række sprunget helt
@@ -7913,7 +8156,30 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
       }
 
       const person = closeLeadPersonFields(row);
-      const { stage, fellBack } = closeResolveLeadStage(leadStages, defaultLeadStage, row.status_label);
+      // Stage: normalt leads.csv's egen status_label ("Nyt Lead" for alle 1061
+      // rene leads i Martins eksport). Har leadet en Leads-pipeline-række, er
+      // det DENS status_label der er den rigtige kolonne — det er præcis den
+      // fordeling Martin ser i Close's egen Leads Pipeline-visning.
+      // BEVIDST UÆNDRET: person-, note-, dato- og custom field-felterne hentes
+      // fortsat fra leads.csv-rækken, nøjagtig som for ethvert andet rent lead
+      // — Leads-rækkens value/confidence har ingen modsvarende kolonner på
+      // crm_leads og droppes. Det holder også GEN-KØRSEL-blokken ovenfor
+      // idempotent: den efterfylder custom fields fra samme leads.csv-række.
+      let stage, fellBack;
+      if (reclassRow) {
+        const resolved = closeResolveReclassifiedLeadStage(leadStages, defaultLeadStage, reclassRow.status_label);
+        stage = resolved.stage; fellBack = false;
+        if (resolved.fellBack) {
+          const warnMsg = 'Lead-stage "' + resolved.targetName + '" findes ikke i Lead-pipelinen — faldt tilbage til "' + defaultLeadStage.name + '".';
+          if (!summary.warnings.includes(warnMsg)) summary.warnings.push(warnMsg);
+        }
+        summary.reclassified_lead_stage_counts[stage.name] = (summary.reclassified_lead_stage_counts[stage.name] || 0) + 1;
+        summary.leads_reclassified_from_leads_pipeline++;
+        if (healedLeadIds.has(closeId)) summary.leads_reclassified_from_wrong_opportunity++;
+      } else {
+        const resolved = closeResolveLeadStage(leadStages, defaultLeadStage, row.status_label);
+        stage = resolved.stage; fellBack = resolved.fellBack;
+      }
       if (fellBack) {
         const key = String(row.status_label || '').trim() || '(tom)';
         summary.lead_stage_fallback_counts[key] = (summary.lead_stage_fallback_counts[key] || 0) + 1;
@@ -7943,8 +8209,10 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
     }
   }
 
-  // ── FASE 2: ALLE opportunities → Sales-pipelinen ─────────────
-  for (const row of oppRows) {
+  // ── FASE 2: ÆGTE opportunities (pipeline_name='Sales') → Sales-pipelinen ──
+  // BEMÆRK: her itereres over salesOppRows, IKKE oppRows. Rækkerne fra Close's
+  // Leads Pipeline er allerede håndteret som leads i fase 0+1 ovenfor.
+  for (const row of salesOppRows) {
     try {
       const closeId = row.id;
       const existing = await pgOne('SELECT id FROM crm_opportunities WHERE close_id=$1', [closeId]);
@@ -8018,7 +8286,7 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
   summary.lead_source_new_options_added = Array.from(leadSourceNewOptions);
   summary.projekt_type_new_options_added = Array.from(projektTypeNewOptions);
   summary.duration_ms = Date.now() - t0;
-  await logSystemEvent('close_import', 'info', `Close CRM-import: ${summary.leads_imported} leads, ${summary.opportunities_imported} opportunities importeret (${summary.leads_skipped_existing}+${summary.opportunities_skipped_existing} fandtes i forvejen, heraf ${summary.leads_custom_fields_refreshed}+${summary.opportunities_custom_fields_refreshed} med opdaterede custom fields), ${summary.errors.length} fejl.`);
+  await logSystemEvent('close_import', 'info', `Close CRM-import: ${summary.leads_imported} leads, ${summary.opportunities_imported} opportunities importeret (${summary.leads_skipped_existing}+${summary.opportunities_skipped_existing} fandtes i forvejen, heraf ${summary.leads_custom_fields_refreshed}+${summary.opportunities_custom_fields_refreshed} med opdaterede custom fields), ${summary.leads_reclassified_from_leads_pipeline} leads reklassificeret fra Close's Leads Pipeline (${summary.wrong_opportunities_deleted} fejlimporterede salg fjernet), ${summary.lead_stages_created.length} nye lead-stages, ${summary.errors.length} fejl.`);
   res.json(summary);
 }));
 

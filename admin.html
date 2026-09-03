@@ -2104,7 +2104,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-03.2</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-03.3</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -11535,8 +11535,10 @@ function renderCloseImportResult(r){
   var el=document.getElementById('close-import-result');
   var tiles=[
     ['Leads importeret',r.leads_imported],
+    ['↳ heraf fra Close\'s Leads Pipeline',r.leads_reclassified_from_leads_pipeline],
     ['Leads sprunget over (allerede importeret)',r.leads_skipped_existing],
     ['↳ heraf fik custom fields opdateret',r.leads_custom_fields_refreshed],
+    ['Fejlimporterede salg fjernet',r.wrong_opportunities_deleted],
     ['Opportunities importeret',r.opportunities_imported],
     ['Opportunities sprunget over (allerede importeret)',r.opportunities_skipped_existing],
     ['↳ heraf fik custom fields opdateret',r.opportunities_custom_fields_refreshed],
@@ -11557,6 +11559,16 @@ function renderCloseImportResult(r){
   }
   html+=fallbackBlock('⚠ Leads faldet tilbage til standard-stage (ukendt/ugenkendt status)',r.lead_stage_fallback_counts);
   html+=fallbackBlock('⚠ Opportunities faldet tilbage til "Manglende data" (ukendt/ugenkendt status)',r.opportunity_stage_fallback_counts);
+  // Rettelsen af Close's "Leads Pipeline"-rækker — se den store kommentarblok
+  // over CLOSE_LEAD_PIPELINE_STAGES i server.js. Vises kun når kørslen rent
+  // faktisk gjorde noget, så en almindelig gen-import ikke fyldes med støj.
+  if((r.lead_stages_created||[]).length){
+    html+='<div class="hint" style="margin-top:8px">🆕 Nye kolonner oprettet i Lead-pipelinen: '+r.lead_stages_created.map(esc).join(', ')+' — de svarer til kolonnerne i din Leads Pipeline i Close, og er lagt ind i samme rækkefølge (Afvist ligger sidst). Navne, farver og rækkefølge kan frit ændres under ⚙️ CRM-indstillinger → Pipelines.</div>';
+  }
+  if(r.wrong_opportunities_deleted){
+    html+='<div class="hint" style="margin-top:4px">🧹 '+r.wrong_opportunities_deleted+' rækker fra Close\'s Leads Pipeline lå fejlagtigt som salg i Sales-pipelinen fra en tidligere import — de er nu fjernet fra Sales'+(r.leads_reclassified_from_wrong_opportunity?' og '+r.leads_reclassified_from_wrong_opportunity+' af dem er genoprettet som lead-kort i den rigtige kolonne':'')+'. Kun rækker fra Close-importen er rørt — dine egne, manuelt oprettede salg står urørt.</div>';
+  }
+  html+=fallbackBlock('📊 Leads fordelt efter deres kolonne i Close\'s Leads Pipeline',r.reclassified_lead_stage_counts);
   if((r.lead_source_new_options_added||[]).length){
     html+='<div class="hint" style="margin-top:8px">🏷 Nye "Lead Source"-valgmuligheder tilføjet automatisk til dropdown: '+r.lead_source_new_options_added.map(esc).join(', ')+'</div>';
   }
