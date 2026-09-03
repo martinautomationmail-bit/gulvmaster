@@ -1281,6 +1281,23 @@ async function initSchema() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_close_id ON crm_leads(close_id) WHERE close_id IS NOT NULL;
     ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS close_id TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_opportunities_close_id ON crm_opportunities(close_id) WHERE close_id IS NOT NULL;
+    -- RETTELSE (sep. 2026) — SIKKERHEDSKRITISK: den ÆLDRE migration et par
+    -- linjer ovenfor ("UPDATE crm_leads/crm_opportunities SET
+    -- stage_changed_at=created_at WHERE stage_changed_at IS NULL") kører ved
+    -- HVER serverstart og blev skrevet længe før Close-importen fandtes. Den
+    -- kan ikke se forskel på "kolonnen er lige tilføjet" og "importen satte
+    -- BEVIDST NULL for at beskytte historiske rækker mod runStageFollowupScan/
+    -- runLostFollowupScan" — så den overskrev stille importens NULL med
+    -- Close's årgamle created_at ved allerførste genstart efter enhver import,
+    -- hvilket ville gøre op til ~1700+ historiske sager/leads berettiget til
+    -- automatisk opfølgnings-SMS/mail. Denne rettelse gendanner beskyttelsen
+    -- ved HVER opstart for enhver close_id-mærket række der stadig ser
+    -- urørt ud (stage_changed_at er stadig lig sin egen created_at — en
+    -- rigtig manuel stage-ændring via PUT .../:id sætter stage_changed_at til
+    -- NU, aldrig til den gamle created_at, så denne test kan ikke fejlagtigt
+    -- ramme noget Martin selv har rørt).
+    UPDATE crm_leads SET stage_changed_at=NULL WHERE close_id IS NOT NULL AND stage_changed_at=created_at;
+    UPDATE crm_opportunities SET stage_changed_at=NULL WHERE close_id IS NOT NULL AND stage_changed_at=created_at;
     -- crm_opportunities havde ingen fritekst-note (kun crm_activities-tidslinjen) —
     -- Close's opportunity-notefelt importeres direkte hertil, som ÉT samlet felt
     -- i stedet for en aktivitets-logline pr. importeret sag (se importens
@@ -7634,14 +7651,12 @@ function closeMatchStageByName(stages, name) {
   return stages.find(s => String(s.name || '').trim().toLowerCase() === n) || null;
 }
 
-// Best-effort case-insensitivt navnematch mod de RIGTIGE Lead-pipeline-stages
-// i databasen (aldrig hardkodede id'er) — default til pipelinens første stage
-// (position 0, normalt "Nyt lead") når intet matcher sikkert.
-function closeResolveLeadStage(leadStages, defaultStage, statusLabel) {
-  const stage = closeMatchStageByName(leadStages, statusLabel);
-  if (stage) return { stage, fellBack: false };
-  return { stage: defaultStage, fellBack: true };
-}
+// (Her lå closeResolveLeadStage(), som mappede leads.csv's egen status_label
+// til en Lead-pipeline-stage. Den er fjernet ved rettelse nr. 2, sep. 2026:
+// begge de to lead-populationer har nu hver sin, mere præcise stage-kilde —
+// closeResolveReclassifiedLeadStage() for leads med en Leads-pipeline-række,
+// og closeResolvePureLeadStage() ("Tabt") for leads uden nogen opportunity
+// overhovedet. Se kommentarblokken "RETTELSE nr. 2" længere nede.)
 
 // Prioriteret mapping status_type/status_label -> Sales-pipeline-stagenavn,
 // se leveringsnoten for hele tabellen. targetName matches case-insensitivt
@@ -7803,13 +7818,26 @@ async function closeEnsureOption(cache, value) {
 // (❌-fluebenet under CRM-indstillinger → Pipelines) hvis han ønsker det.
 // (De importerede rækker ville i øvrigt alligevel blive sprunget over, fordi
 // importen sætter stage_changed_at=NULL — se filhoved-kommentaren.)
+//
+// ── "Tabt" (rettelse, sep. 2026 — se den store kommentarblok "RETTELSE:
+// leads UDEN NOGEN opportunity" nedenfor) ──
+// Tilføjet SIDST i listen, og med place:'last', så den lander efter "Afvist"
+// i pipelinen: begge er terminale/ikke-aktive kolonner, og "Tabt" er den
+// største af dem (~1061 kort), så den skal ikke ligge midt i Martins
+// arbejdsgang. Farven er en MØRKERE grå (#4B5563) end både "Nyt lead"
+// (#6B7280) og "Afvist" (#9CA3AF), så de tre kan skelnes fra hinanden på
+// boardet. is_lost sættes bevidst IKKE — nøjagtig samme begrundelse som for
+// "Afvist" ovenfor, og med endnu større vægt her: det er over TUSIND gamle,
+// kolde kontaktformular-henvendelser, som ingen af dem skal have en
+// automatisk "Er du stadig interesseret?"-mail uden Martins udtrykkelige ja.
 const CLOSE_LEAD_PIPELINE_STAGES = [
   { name: 'Kontaktforsøg 1', color: '#93C5FD', place: 'after_new' },
   { name: 'Kontaktforsøg 2', color: '#60A5FA', place: 'after_new' },
   { name: 'Kontaktforsøg 3', color: '#FBBF24', place: 'after_new' },
   { name: 'Kontaktforsøg 4', color: '#FB923C', place: 'after_new' },
   { name: 'Afventer kunde', color: '#14B8A6', place: 'after_new' },
-  { name: 'Afvist', color: '#9CA3AF', place: 'last' }
+  { name: 'Afvist', color: '#9CA3AF', place: 'last' },
+  { name: 'Tabt', color: '#4B5563', place: 'last' }
 ];
 // Ankerkæden bestemmer HVOR en manglende 'after_new'-stage indsættes: lige
 // efter den SIDSTE af de foranstillede stages der faktisk findes. Dermed
@@ -7891,6 +7919,94 @@ async function closeDeleteWronglyImportedOpportunity(closeOppId) {
   await pool.query('UPDATE close_customer_links SET opportunity_id=NULL WHERE opportunity_id=$1', [wrong.id]);
   await pool.query('DELETE FROM crm_opportunities WHERE id=$1', [wrong.id]);
   return true;
+}
+
+// ══════════════════════════════════════════════════════════════
+// RETTELSE (sep. 2026, nr. 2): LEADS UDEN NOGEN OPPORTUNITY OVERHOVEDET
+// ──────────────────────────────────────────────────────────────
+// 1061 af de 2750 rækker i leads.csv optræder ALDRIG som lead_id på nogen
+// opportunity-række — hverken en pipeline_name='Sales' eller en
+// pipeline_name='Leads'. Det er rå kontaktformular-henvendelser som Close har
+// registreret, men som Martin aldrig har arbejdet med på noget board. Alle
+// 1061 har status_label='Nyt Lead' i leads.csv (Close's default-leadstatus,
+// ikke et udtryk for at de er nye), og de blev derfor indtil nu importeret til
+// Lead-pipelinens FØRSTE stage, "Nyt lead" — som dermed stod med 1061+ kort,
+// mens Martins rigtige Close "Leads Pipeline"-board kun viser en håndfuld
+// ægte nye leads.
+//
+// Martins ord ved opfølgning: "Lav en separat kolonne med tabt".
+//
+// VIGTIGT — "Tabt" og "Afvist" er TO FORSKELLIGE populationer, og de må ikke
+// blandes sammen:
+//   "Afvist" (rettelse nr. 1) = de 94 pipeline_name='Leads'-rækker som Close
+//        selv har markeret 'Ikke relevant / Lukket'. Leads Martin FAKTISK har
+//        haft på sit Leads-board og derefter afvist.
+//   "Tabt"  (denne rettelse) = de ~1061 leads der ALDRIG har ligget på noget
+//        Close-board. Aldrig arbejdet, ikke afvist — bare aldrig taget op.
+//
+// SELVHELING af Martins produktionsdata: de 1061 ligger allerede i "Nyt lead"
+// fra tidligere kørsler, tagget med leadets eget close_id. Ved denne kørsel
+// flyttes de (kun stage_id) til "Tabt" — se closeHealPureLeadToTabt(). Der
+// slettes ALDRIG noget, og der bygges bevidst INGEN nulstillings-/wipe-
+// funktion: samme rene slutresultat nås ved at flytte på plads.
+// ══════════════════════════════════════════════════════════════
+
+// Navnet på den stage rene leads (nul opportunities) skal lande i. Slås op på
+// NAVN mod de rigtige stages i databasen — aldrig et hardkodet id — præcis som
+// closeResolveLeadStage/closeResolveReclassifiedLeadStage.
+const CLOSE_PURE_LEAD_STAGE_NAME = 'Tabt';
+function closeResolvePureLeadStage(leadStages, defaultStage) {
+  const stage = closeMatchStageByName(leadStages, CLOSE_PURE_LEAD_STAGE_NAME);
+  if (stage) return { stage, fellBack: false };
+  return { stage: defaultStage, fellBack: true };
+}
+
+// SELVHELING af de leads en TIDLIGERE kørsel lagde i "Nyt lead", og som efter
+// rettelsen ovenfor hører hjemme i "Tabt".
+//
+// Flytter KUN en række der opfylder ALLE fire betingelser:
+//   1) close_id matcher leads.csv-rækken  → Martins egne, håndlavede leads
+//      (close_id IS NULL) kan aldrig rammes.
+//   2) stage_id er stadig pipelinens FØRSTE stage ("Nyt lead")  → ligger den
+//      et andet sted, har Martin selv flyttet kortet, og det respekteres.
+//   3) kortet har ALDRIG skiftet stage: stage_changed_at er enten NULL (som
+//      importen sætter den) ELLER nøjagtig lig created_at. Det sidste led er
+//      IKKE pynt — se den vigtige note nedenfor. PUT /api/crm/leads/:id sætter
+//      stage_changed_at til NUTIDEN hver gang stagen ændres, og de importerede
+//      rækkers created_at er Close's egen (ofte årgamle) dato, så et manuelt
+//      flyt kan aldrig komme til at ligne "urørt" — heller ikke hvis Martin
+//      har flyttet kortet TILBAGE til "Nyt lead" igen.
+//   4) mål-stagen er en anden end den nuværende  → gør gen-kørsel til en no-op.
+//
+// VIGTIGT — HVORFOR stage_changed_at IKKE bare kan testes med "IS NULL":
+// initSchema() kører ved HVER serverstart og indeholder migrationen
+//   UPDATE crm_leads SET stage_changed_at=created_at WHERE stage_changed_at IS NULL;
+// Den blev skrevet længe før Close-importen fandtes, og den kan ikke se
+// forskel på "kolonnen er lige blevet tilføjet" og "importen satte bevidst
+// NULL". Første gang serveren genstarter efter en import (altså ved næste
+// deploy) får ALLE importerede rækker derfor stage_changed_at = created_at.
+// Målt direkte på en gennemkørsel af hele produktionssekvensen her: 1060 ud af
+// 1060 importerede leads i "Nyt lead" havde stage_changed_at = created_at, ikke
+// NULL. En ren "IS NULL"-test ville altså have flyttet NUL leads i praksis.
+// Dette er en selvstændig, ældre fejl der rækker ud over denne rettelse — den
+// underminerer også import-kodens egen dokumenterede sikkerhed mod automatiske
+// SMS/mails på historiske rækker. Den er IKKE rettet her (det kræver Martins
+// stillingtagen til de rækker der allerede er blevet bagudfyldt) — se
+// leveringsnoten.
+//
+// stage_changed_at, updated_at, position, contact_id og alt andet RØRES IKKE:
+// stage_changed_at må ikke få et NYT (nutidigt) tidsstempel, ellers ville
+// runStageFollowupScan/runLostFollowupScan pludselig kunne fange over tusind
+// årgamle kontakter (se filhoved-kommentaren). Kortet lander derfor nederst i
+// "Tabt" med sin oprindelige position — helt uden automatik.
+// Returnerer true hvis rækken faktisk blev flyttet.
+async function closeHealPureLeadToTabt(closeId, defaultStageId, tabtStageId) {
+  if (!tabtStageId || Number(tabtStageId) === Number(defaultStageId)) return false;
+  const r = await pool.query(
+    'UPDATE crm_leads SET stage_id=$1 WHERE close_id=$2 AND stage_id=$3 AND (stage_changed_at IS NULL OR stage_changed_at = created_at)',
+    [tabtStageId, closeId, defaultStageId]
+  );
+  return r.rowCount > 0;
 }
 
 // ── ENDPOINT ─────────────────────────────────────────────────────
@@ -8030,6 +8146,15 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
     // inkl. de få hvor leadet alligevel ikke skal oprettes (fordi leadet også
     // har et ÆGTE salg), og derfor er tallet ≥ tallet ovenfor.
     wrong_opportunities_deleted: 0,
+    // ── Rettelsen af de rene leads uden nogen opportunity (se kommentarblokken
+    // "RETTELSE nr. 2" over CLOSE_PURE_LEAD_STAGE_NAME) ──
+    // Nye leads (nul opportunities af nogen art) oprettet direkte i "Tabt" i
+    // denne kørsel — altså dem der FØR rettelsen ville være landet i "Nyt lead".
+    leads_imported_to_tabt: 0,
+    // Allerede importerede leads fra en TIDLIGERE (fejlbehæftet) kørsel, som
+    // stadig lå urørt i "Nyt lead" og nu er flyttet til "Tabt". 0 ved 2. og
+    // senere kørsel — og tæller aldrig kort Martin selv har flyttet.
+    leads_moved_to_tabt: 0,
     // Nye Lead-pipeline-stages oprettet af denne kørsel (tom ved gen-kørsel).
     lead_stages_created: createdLeadStages,
     // Fordeling af de reklassificerede leads pr. stage — den fordeling Martin
@@ -8042,7 +8167,10 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
     customers_matched_existing: 0,
     contacts_created: 0,
     contacts_matched_existing: 0,
-    lead_stage_fallback_counts: {},
+    // (lead_stage_fallback_counts er udgået ved rettelse nr. 2: begge lead-
+    // populationer har nu en fast, kendt stage-kilde, så der findes ikke
+    // længere et "ukendt status_label"-fald-tilbage for leads. Skulle selve
+    // mål-stagen mangle, flages det i stedet som en advarsel.)
     opportunity_stage_fallback_counts: {},
     lead_source_new_options_added: [],
     projekt_type_new_options_added: [],
@@ -8089,6 +8217,17 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
   const salesLeadIds = new Set();
   salesOppRows.forEach(r => { if (r.lead_id) salesLeadIds.add(r.lead_id); });
   const pureLeadRows = leadRows.filter(r => r.id && !salesLeadIds.has(r.id));
+
+  // Mål-stagen for leads UDEN nogen opportunity overhovedet — "Tabt", oprettet
+  // af closeEnsureLeadPipelineStages ovenfor. Slås op ÉN gang her (ikke pr.
+  // række). Skulle den mod forventning mangle (Martin har omdøbt/slettet den
+  // igen), falder vi tilbage til den hidtidige adfærd — pipelinens første stage
+  // — og flager det, i stedet for at fejle importen.
+  const pureLeadStageResolved = closeResolvePureLeadStage(leadStages, defaultLeadStage);
+  const pureLeadStage = pureLeadStageResolved.stage;
+  if (pureLeadStageResolved.fellBack) {
+    summary.warnings.push('Lead-stagen "' + CLOSE_PURE_LEAD_STAGE_NAME + '" findes ikke i Lead-pipelinen — leads uden nogen opportunity blev lagt i "' + defaultLeadStage.name + '" som før.');
+  }
 
   // Stage-kilde pr. lead_id. Har ét lead flere Leads-rækker, vinder den senest
   // opdaterede (fald tilbage til oprettelsesdato, derefter id, så valget er
@@ -8152,23 +8291,37 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
         if (await closeWriteCustomFields('lead', existing.id, values, leadSourceCacheLead, projektTypeCacheLead)) {
           summary.leads_custom_fields_refreshed++;
         }
+        // SELVHELING (rettelse nr. 2): har leadet INGEN opportunity af nogen
+        // art (!reclassRow), hører det hjemme i "Tabt" — men tidligere kørsler
+        // lagde det i "Nyt lead". Flyt det på plads, dog kun hvis det stadig
+        // ligger præcis der hvor den gamle import efterlod det. Se
+        // closeHealPureLeadToTabt for alle fire betingelser; funktionen er selv
+        // en no-op ved 2. kørsel og kan aldrig ramme et kort Martin har rørt.
+        // BEMÆRK: kun stage_id ændres — hverken custom fields, kunde/kontakt,
+        // position, updated_at eller stage_changed_at berøres.
+        if (!reclassRow) {
+          if (await closeHealPureLeadToTabt(closeId, defaultLeadStage.id, pureLeadStage.id)) {
+            summary.leads_moved_to_tabt++;
+          }
+        }
         continue;
       }
 
       const person = closeLeadPersonFields(row);
-      // Stage: normalt leads.csv's egen status_label ("Nyt Lead" for alle 1061
-      // rene leads i Martins eksport). Har leadet en Leads-pipeline-række, er
-      // det DENS status_label der er den rigtige kolonne — det er præcis den
-      // fordeling Martin ser i Close's egen Leads Pipeline-visning.
+      // Stage: har leadet en Leads-pipeline-række, er det DENS status_label der
+      // er den rigtige kolonne — det er præcis den fordeling Martin ser i
+      // Close's egen Leads Pipeline-visning. Har det INGEN opportunity
+      // overhovedet, er kolonnen "Tabt" (rettelse nr. 2 — se kommentarblokken
+      // over CLOSE_PURE_LEAD_STAGE_NAME).
       // BEVIDST UÆNDRET: person-, note-, dato- og custom field-felterne hentes
       // fortsat fra leads.csv-rækken, nøjagtig som for ethvert andet rent lead
       // — Leads-rækkens value/confidence har ingen modsvarende kolonner på
       // crm_leads og droppes. Det holder også GEN-KØRSEL-blokken ovenfor
       // idempotent: den efterfylder custom fields fra samme leads.csv-række.
-      let stage, fellBack;
+      let stage;
       if (reclassRow) {
         const resolved = closeResolveReclassifiedLeadStage(leadStages, defaultLeadStage, reclassRow.status_label);
-        stage = resolved.stage; fellBack = false;
+        stage = resolved.stage;
         if (resolved.fellBack) {
           const warnMsg = 'Lead-stage "' + resolved.targetName + '" findes ikke i Lead-pipelinen — faldt tilbage til "' + defaultLeadStage.name + '".';
           if (!summary.warnings.includes(warnMsg)) summary.warnings.push(warnMsg);
@@ -8177,12 +8330,14 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
         summary.leads_reclassified_from_leads_pipeline++;
         if (healedLeadIds.has(closeId)) summary.leads_reclassified_from_wrong_opportunity++;
       } else {
-        const resolved = closeResolveLeadStage(leadStages, defaultLeadStage, row.status_label);
-        stage = resolved.stage; fellBack = resolved.fellBack;
-      }
-      if (fellBack) {
-        const key = String(row.status_label || '').trim() || '(tom)';
-        summary.lead_stage_fallback_counts[key] = (summary.lead_stage_fallback_counts[key] || 0) + 1;
+        // INGEN opportunity af nogen art — hverken Sales eller Leads. Se
+        // kommentarblokken "RETTELSE nr. 2": disse ~1061 rå henvendelser skal
+        // i "Tabt", IKKE i "Nyt lead". Bemærk at leads.csv's egen status_label
+        // ("Nyt Lead" for alle 1061) BEVIDST ikke længere bruges som stage-
+        // kilde her — den er Close's default-leadstatus og siger intet om at
+        // leadet skulle være nyt. Reklassificerede leads ovenfor er uberørte.
+        stage = pureLeadStage;
+        summary.leads_imported_to_tabt++;
       }
       const note = String(row.description || '').trim() || null;
       const createdAt = closeToDbTimestamp(row.date_created) || closeNowTimestamp();
@@ -8286,7 +8441,7 @@ app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{
   summary.lead_source_new_options_added = Array.from(leadSourceNewOptions);
   summary.projekt_type_new_options_added = Array.from(projektTypeNewOptions);
   summary.duration_ms = Date.now() - t0;
-  await logSystemEvent('close_import', 'info', `Close CRM-import: ${summary.leads_imported} leads, ${summary.opportunities_imported} opportunities importeret (${summary.leads_skipped_existing}+${summary.opportunities_skipped_existing} fandtes i forvejen, heraf ${summary.leads_custom_fields_refreshed}+${summary.opportunities_custom_fields_refreshed} med opdaterede custom fields), ${summary.leads_reclassified_from_leads_pipeline} leads reklassificeret fra Close's Leads Pipeline (${summary.wrong_opportunities_deleted} fejlimporterede salg fjernet), ${summary.lead_stages_created.length} nye lead-stages, ${summary.errors.length} fejl.`);
+  await logSystemEvent('close_import', 'info', `Close CRM-import: ${summary.leads_imported} leads, ${summary.opportunities_imported} opportunities importeret (${summary.leads_skipped_existing}+${summary.opportunities_skipped_existing} fandtes i forvejen, heraf ${summary.leads_custom_fields_refreshed}+${summary.opportunities_custom_fields_refreshed} med opdaterede custom fields), ${summary.leads_reclassified_from_leads_pipeline} leads reklassificeret fra Close's Leads Pipeline (${summary.wrong_opportunities_deleted} fejlimporterede salg fjernet), ${summary.leads_imported_to_tabt} leads uden opportunity lagt i "Tabt" (+${summary.leads_moved_to_tabt} flyttet dertil fra "${defaultLeadStage.name}"), ${summary.lead_stages_created.length} nye lead-stages, ${summary.errors.length} fejl.`);
   res.json(summary);
 }));
 

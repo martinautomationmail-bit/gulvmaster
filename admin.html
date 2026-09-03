@@ -2104,7 +2104,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-03.3</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-03.4</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -9135,9 +9135,11 @@ function switchFintab(name){
   var page=document.getElementById('fintab-'+name);
   if(page)page.style.display='block';
   if(name==='bankafstemning'&&typeof loadFinBankSessionIfNeeded==='function')loadFinBankSessionIfNeeded();
-  // replaceState (i modsætning til at sætte location.hash) udløser IKKE et nyt
-  // hashchange-event, så selve fane-skiftet her genindlæser ikke hele Økonomi-siden.
-  if(location.hash.slice(1)!=='finance/'+name)history.replaceState(null,'','#finance/'+name);
+  // pushState (i modsætning til at sætte location.hash) udløser IKKE et nyt
+  // hashchange-event, så selve fane-skiftet her genindlæser ikke hele Økonomi-
+  // siden — men lægger nu et punkt i browserens historik, så tilbage-knappen
+  // fører tilbage til den forrige Økonomi-fane. Se navPushHash().
+  navPushHash('finance/'+name);
 }
 document.querySelectorAll('[data-fintab]').forEach(function(btn){
   btn.addEventListener('click',function(e){
@@ -11536,6 +11538,10 @@ function renderCloseImportResult(r){
   var tiles=[
     ['Leads importeret',r.leads_imported],
     ['↳ heraf fra Close\'s Leads Pipeline',r.leads_reclassified_from_leads_pipeline],
+    // Rettelse nr. 2, sep. 2026 (se CLOSE_PURE_LEAD_STAGE_NAME i server.js):
+    // leads uden nogen opportunity overhovedet lander nu i "Tabt".
+    ['↳ heraf lagt i "Tabt" (aldrig arbejdet i Close)',r.leads_imported_to_tabt],
+    ['Leads flyttet til "Tabt" (oprydning efter tidligere import)',r.leads_moved_to_tabt],
     ['Leads sprunget over (allerede importeret)',r.leads_skipped_existing],
     ['↳ heraf fik custom fields opdateret',r.leads_custom_fields_refreshed],
     ['Fejlimporterede salg fjernet',r.wrong_opportunities_deleted],
@@ -11557,13 +11563,22 @@ function renderCloseImportResult(r){
       +keys.map(function(k){return '<li>"'+esc(k)+'": '+map[k]+' stk.</li>';}).join('')
       +'</ul></div>';
   }
-  html+=fallbackBlock('⚠ Leads faldet tilbage til standard-stage (ukendt/ugenkendt status)',r.lead_stage_fallback_counts);
+  // (Blokken "Leads faldet tilbage til standard-stage" er udgået sammen med
+  // lead_stage_fallback_counts på serveren — begge lead-populationer har nu en
+  // fast, kendt kolonne, så et ukendt status_label kan ikke længere opstå.)
   html+=fallbackBlock('⚠ Opportunities faldet tilbage til "Manglende data" (ukendt/ugenkendt status)',r.opportunity_stage_fallback_counts);
   // Rettelsen af Close's "Leads Pipeline"-rækker — se den store kommentarblok
   // over CLOSE_LEAD_PIPELINE_STAGES i server.js. Vises kun når kørslen rent
   // faktisk gjorde noget, så en almindelig gen-import ikke fyldes med støj.
   if((r.lead_stages_created||[]).length){
-    html+='<div class="hint" style="margin-top:8px">🆕 Nye kolonner oprettet i Lead-pipelinen: '+r.lead_stages_created.map(esc).join(', ')+' — de svarer til kolonnerne i din Leads Pipeline i Close, og er lagt ind i samme rækkefølge (Afvist ligger sidst). Navne, farver og rækkefølge kan frit ændres under ⚙️ CRM-indstillinger → Pipelines.</div>';
+    html+='<div class="hint" style="margin-top:8px">🆕 Nye kolonner oprettet i Lead-pipelinen: '+r.lead_stages_created.map(esc).join(', ')+' — de svarer til kolonnerne i din Leads Pipeline i Close, og er lagt ind i samme rækkefølge (Afvist og Tabt ligger sidst). Navne, farver og rækkefølge kan frit ændres under ⚙️ CRM-indstillinger → Pipelines.</div>';
+  }
+  // Rettelse nr. 2 — samme notits-stil som 🧹-linjen nedenfor: vises kun når
+  // kørslen rent faktisk lagde eller flyttede noget til "Tabt".
+  if(r.leads_imported_to_tabt||r.leads_moved_to_tabt){
+    html+='<div class="hint" style="margin-top:4px">📥 '+((r.leads_imported_to_tabt||0)+(r.leads_moved_to_tabt||0))+' leads havde ALDRIG en opportunity i Close — hverken i Sales eller i Leads Pipeline — og ligger nu i kolonnen "Tabt" i stedet for "Nyt lead"'
+      +(r.leads_moved_to_tabt?', heraf '+r.leads_moved_to_tabt+' der blev flyttet på plads efter en tidligere import':'')
+      +'. "Nyt lead" viser dermed kun dine ægte nye leads. Ingen data er slettet, og der er ikke sat gang i nogen automatisk SMS/mail. Leads du selv har flyttet videre i pipelinen er ikke rørt.</div>';
   }
   if(r.wrong_opportunities_deleted){
     html+='<div class="hint" style="margin-top:4px">🧹 '+r.wrong_opportunities_deleted+' rækker fra Close\'s Leads Pipeline lå fejlagtigt som salg i Sales-pipelinen fra en tidligere import — de er nu fjernet fra Sales'+(r.leads_reclassified_from_wrong_opportunity?' og '+r.leads_reclassified_from_wrong_opportunity+' af dem er genoprettet som lead-kort i den rigtige kolonne':'')+'. Kun rækker fra Close-importen er rørt — dine egne, manuelt oprettede salg står urørt.</div>';
@@ -12015,6 +12030,40 @@ function guardPageAny(pageKeys,label){
   switchPage(fb);
   return true;
 }
+// ══════════════════════════════════════════════════════════════
+// BROWSER-HISTORIK — frem/tilbage-knapperne (rettelse, sep. 2026)
+// ──────────────────────────────────────────────────────────────
+// Appen er en hash-SPA: hashchange-lytteren i bind() nedenfor kan i forvejen
+// gengive ENHVER URL-form appen bruger (#side, #finance/<fane>,
+// #quotes/tilbud/<id>, #crmp/<type>, #crmp-detail/<type>/<id>,
+// #project-detail/<id>, #customer-detail/<id>). Alligevel virkede browserens
+// tilbage-knap ikke: HVER ENESTE sted der opdaterede adresselinjen brugte
+// history.replaceState(), som OVERSKRIVER det nuværende historik-punkt i
+// stedet for at lægge et nyt oveni. Der blev derfor aldrig lavet historik at
+// gå tilbage TIL inde i appen.
+//
+// Rettelsen er navPushHash() herunder: samme adfærd som før, men pushState.
+// Hvorfor ikke bare "location.hash=...", som ville være endnu enklere? Fordi
+// en tildeling af location.hash SELV udløser et hashchange — og alle
+// kaldstederne har allerede tegnet skærmen færdig, så det ville give en
+// dobbelt (og for detalje-siderne: en ekstra fetch af samme data) gengivelse.
+// pushState/replaceState udløser derimod ALDRIG hashchange af sig selv; kun
+// en RIGTIG navigation (tilbage/frem-knappen, et klik på et <a href="#...">,
+// eller location.hash=) gør. Netop derfor virker tilbage-knappen nu: browseren
+// skifter hash'en for os, hashchange fyrer, og den eksisterende lytter
+// gengiver siden.
+//
+// navPushHash() skriver kun når hash'en rent faktisk ændrer sig. Det er ikke
+// pynt: uden den vagt ville et klik på den fane man allerede står på lægge et
+// dublet-punkt i historikken, så man skulle trykke tilbage flere gange for at
+// komme ét skridt tilbage. Det er også præcis dét der gør, at gengivelsen
+// under et tilbage-klik ikke selv kan komme til at skrive ny historik:
+// adresselinjen er allerede den rigtige, når lytteren kalder videre ud i
+// switchPage()/openProjectDetail()/switchFintab() osv.
+function navPushHash(target){
+  if(location.hash.slice(1)===target)return;
+  history.pushState(null,'','#'+target);
+}
 function switchPage(page,skipHash){
   // Gantt er ikke længere sin egen side — den bor nu som en fane under Projekter.
   // Gamle links/bogmærker til #gantt sendes videre dertil i stedet for at falde
@@ -12034,7 +12083,18 @@ function switchPage(page,skipHash){
   }
   document.getElementById('page-'+page).classList.add('active');
   document.querySelectorAll('.navdrop-menu.open').forEach(function(m){m.classList.remove('open');});
-  if(!skipHash&&location.hash.slice(1)!==page)history.replaceState(null,'','#'+page);
+  // Sammenlignes på FØRSTE hash-segment, ikke på hele hash'en (ændret sammen
+  // med skiftet til pushState ovenfor). Grunden: hashchange-lytteren kalder
+  // switchPage(parts[0]) med SIDENAVNET alene, mens adresselinjen står på den
+  // fulde, dybe URL — fx switchPage('project-detail') mens hash'en er
+  // "project-detail/42". Med en sammenligning på hele hash'en ville et
+  // tilbage-klik derfor først skubbe et halvt "#project-detail" (uden id!) ind
+  // i historikken, og bagefter ville openProjectDetail() skubbe den rigtige
+  // "#project-detail/42" ind — to ekstra punkter pr. tilbage-tryk, og tilbage-
+  // knappen ville føles helt død. Med denne sammenligning skriver ingen af
+  // kaldene under en tilbage-navigation ny historik, mens et rigtigt sideskift
+  // (andet førstesegment) stadig gør det.
+  if(!skipHash&&location.hash.slice(1).split('/')[0]!==page)navPushHash(page);
   if(page==='logs')loadLogs();
   if(page==='timer')loadTimerPage();
   if(page==='library')loadLibrary();
@@ -12116,7 +12176,7 @@ function bind(){
     if(parts[0]==='crmp'&&parts[1]==='sales')crmpSelectPipelineByType('opportunity');
     if(parts[0]==='crmp-detail'&&parts[1]&&parts[2])openCrmpDetail(parts[1],Number(parts[2]));
     // Dyb-link til en enkelt sag — #project-detail/42 — sat af openProjectDetail()
-    // selv (den bruger replaceState, ikke location.hash=, for ikke at trigge endnu
+    // selv (den bruger pushState, ikke location.hash=, for ikke at trigge endnu
     // et hashchange-kald oveni sit eget fetch), men skal også virke ved genindlæsning
     // eller "åbn i ny fane" fra en rigtig <a href>.
     if(parts[0]==='project-detail'&&parts[1])openProjectDetail(Number(parts[1]));
@@ -12129,7 +12189,17 @@ function bind(){
   // stadig 100% af switchPage() som før — preventDefault stopper kun browserens egen
   // hash-navigation (og dermed en ekstra, overflødig hashchange-baseret genrendering).
   document.querySelectorAll('.tab[data-page]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();switchPage(b.dataset.page);});});
-  document.querySelectorAll('.navdrop-item[data-page]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();switchPage(b.dataset.page);});});
+  // HISTORIK-RETTELSE (sep. 2026): nogle sidebar-punkter har DERES EGEN
+  // dybe-link-lytter længere nede (data-fintab-jump / data-qztab-jump /
+  // data-projtab-jump / data-crmp-pipeline-type). De kalder allerede selv
+  // switchPage() OG skifter til den rigtige underfane, så denne generiske
+  // lytter kaldte switchPage() en ekstra, overflødig gang på præcis de
+  // punkter. Med replaceState var det usynligt spild; med rigtig historik
+  // (pushState) gav ét klik TO punkter i browserhistorikken — først "#finance",
+  // så "#finance/rykkere" — så tilbage-knappen skulle trykkes to gange pr.
+  // skridt. Målt med en rigtig klik-test. Derfor springes de over her.
+  var NAVDROP_HAS_OWN_HANDLER='[data-fintab-jump],[data-qztab-jump],[data-projtab-jump],[data-crmp-pipeline-type]';
+  document.querySelectorAll('.navdrop-item[data-page]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();if(b.matches(NAVDROP_HAS_OWN_HANDLER))return;switchPage(b.dataset.page);});});
   // "Min side" (#mypage-subdrop) er nu en almindelig .tab-navdrop-gruppe i
   // sidebaren (som CRM/Tilbud & Faktura/Dagligplanlægning/Økonomi) — dens
   // åbne/lukke-adfærd håndteres derfor allerede generisk af
@@ -12350,7 +12420,14 @@ function bind(){
   document.querySelectorAll('[data-fintab-jump]').forEach(function(btn){
     btn.addEventListener('click',function(e){
       e.preventDefault();
-      switchPage('finance');
+      // skipHash: switchFintab() nedenfor skriver selv den fulde hash
+      // (#finance/<fane>). Uden skipHash ville switchPage() først lægge et
+      // "#finance" i historikken, og ét klik ville give to punkter at trykke
+      // tilbage igennem. Se navPushHash().
+      switchPage('finance',true);
+      // Adgang nægtet? Så har switchPage() allerede sendt brugeren et andet
+      // sted hen — skift ikke fane og skriv ikke en #finance-hash oveni.
+      if(!document.getElementById('page-finance').classList.contains('active'))return;
       switchFintab(btn.dataset.fintabJump);
       document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
     });
@@ -12380,11 +12457,27 @@ function bind(){
   // "Leads" og "Sales" i sidebaren peger begge på #page-crmp, men skal hver
   // vælge deres egen pipeline-type (lead/opportunity) — samme mønster som
   // data-fintab-jump/data-qztab-jump herover.
+  // HISTORIK-RETTELSE (sep. 2026, fundet ved en rigtig tilbage-knap-test):
+  // begge links skrev tidligere bare "#crmp" i adresselinjen — uden det
+  // /leads- eller /sales-segment deres EGEN href har, og som hashchange-
+  // lytteren i forvejen kan læse. Så længe tilbage-knappen alligevel ikke
+  // virkede, betød det ingenting. Med rigtig historik gjorde det: gik man
+  // Leads → et lead → Sales, førte tilbage-knappen til "#crmp", hvor boardet
+  // viste Sales i stedet for Leads, fordi hash'en ikke fortalte hvilken af de
+  // to man kom fra. Nu skrives den fulde hash — samme værdi som linkets href,
+  // så adresselinjen, "åbn i ny fane" og tilbage/frem er enige.
+  // skipHash på switchPage: ellers ville den først lægge et "#crmp" i
+  // historikken, og ét klik ville give to punkter at trykke tilbage igennem.
   document.querySelectorAll('[data-crmp-pipeline-type]').forEach(function(btn){
     btn.addEventListener('click',function(e){
       e.preventDefault();
-      switchPage('crmp');
+      switchPage('crmp',true);
+      // Har brugeren ikke adgang til CRM, har switchPage() allerede sendt
+      // vedkommende et andet sted hen — så skal vi hverken vælge pipeline
+      // eller skrive en #crmp-hash oveni.
+      if(!document.getElementById('page-crmp').classList.contains('active'))return;
       crmpSelectPipelineByType(btn.dataset.crmpPipelineType);
+      navPushHash(btn.dataset.crmpPipelineType==='lead'?'crmp/leads':'crmp/sales');
     });
   });
   document.addEventListener('click',function(e){
@@ -13817,7 +13910,7 @@ async function openCustomerDetail(id){
 
   initCustomerDetailModule();
   switchPage('customer-detail',true);
-  if(location.hash.slice(1)!=='customer-detail/'+id)history.replaceState(null,'','#customer-detail/'+id);
+  navPushHash('customer-detail/'+id);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -14401,8 +14494,7 @@ async function openCrmpDetail(entityType,id){
   crmpxRenderActivity(d.activities||[]);
   crmpxLoadTasks();
   switchPage('crmp-detail',true);
-  var hashTarget='crmp-detail/'+entityType+'/'+id;
-  if(location.hash.slice(1)!==hashTarget)history.replaceState(null,'','#'+hashTarget);
+  navPushHash('crmp-detail/'+entityType+'/'+id);
 }
 function crmpxOppMiniCard(opp){
   var stage=null;
@@ -15190,10 +15282,11 @@ async function openProjectDetail(id){
   // altid har den friske spejl-række fra jt_tasks at slå op i.
   loadAll();
   // Egen side (ikke popup) — se kommentaren ved <section id="page-project-detail">.
-  // replaceState (ikke location.hash=) for ikke selv at trigge et ekstra
+  // pushState (ikke location.hash=) for ikke selv at trigge et ekstra
   // hashchange-kald, som ville kalde openProjectDetail() igen oveni sig selv.
+  // Se navPushHash().
   switchPage('project-detail',true);
-  if(location.hash.slice(1)!=='project-detail/'+id)history.replaceState(null,'','#project-detail/'+id);
+  navPushHash('project-detail/'+id);
 }
 async function reloadPdCurrent(){
   if(!pjCurrent)return;
