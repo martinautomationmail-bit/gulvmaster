@@ -619,6 +619,14 @@ async function initSchema() {
     -- og hvad de er tilknyttet resten af ugen. Admin har altid adgang uanset dette flag.
     ALTER TABLE users ADD COLUMN IF NOT EXISTS can_view_team_overview INTEGER DEFAULT 0;
 
+    -- LØN & AKKORD (sep. 2026, Martins ønske): pay_type styrer om en medarbejder aflønnes
+    -- pr. time (hourly_wage, kr/time) eller pr. akkord (stykpris fra akkord_items, se
+    -- nedenfor) — akkord ERSTATTER timeløn helt for den medarbejder, jf. Martins valg.
+    -- Bruges til projektets budget-dashboard til at trække reelle lønomkostninger fra
+    -- fortjenesten. Tomt/0 som standard, påvirker intet før Martin selv udfylder det.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pay_type TEXT NOT NULL DEFAULT 'hourly'; -- 'hourly' | 'akkord'
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS hourly_wage NUMERIC NOT NULL DEFAULT 0;
+
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL,
@@ -1261,6 +1269,13 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()},
       UNIQUE(entity_type, key)
     );
+    -- Kort-visning i pipeline (sep. 2026, Martins ønske): admin vælger selv hvilke felter
+    -- der vises på et lead/opportunity-kort, i stedet for automatisk "de første 2 med en
+    -- værdi". option_colors er kun brugt af 'select'-felter: {"Website form":"#2563EB",...}
+    -- — et separat map i stedet for at ændre selve 'options'-formatet, så alt eksisterende
+    -- der læser 'options' som en ren tekst-liste forbliver uændret.
+    ALTER TABLE crm_custom_fields ADD COLUMN IF NOT EXISTS show_on_card INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE crm_custom_fields ADD COLUMN IF NOT EXISTS option_colors JSONB DEFAULT '{}';
     CREATE TABLE IF NOT EXISTS crm_custom_field_values (
       id SERIAL PRIMARY KEY,
       field_id INTEGER NOT NULL REFERENCES crm_custom_fields(id) ON DELETE CASCADE,
@@ -1500,6 +1515,26 @@ async function initSchema() {
     ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS photo_urls JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS created_by INTEGER;
     ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS updated_at TEXT;
+
+    -- AKKORDLISTE (sep. 2026, Martins ønske): global, navngivet prisliste med stykpriser —
+    -- fx "Slibning, grundbehandling" til X kr — som akkord-lønnede medarbejdere (fx en
+    -- gulvsliber som Adrian, med 10-20 forskellige poster) vælger imellem når de logger
+    -- arbejde på en sag, i stedet for timeløn. Global (ikke pr. medarbejder), så alle
+    -- akkord-medarbejdere vælger fra samme liste.
+    CREATE TABLE IF NOT EXISTS akkord_items (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      rate NUMERIC NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    -- En tidsregistrering er ENTEN time-baseret (minutes, som hidtil) ELLER akkord-baseret
+    -- (akkord_item_id + akkord_quantity, fx "3 stk grundbehandling") — minutes bruges stadig
+    -- til at vise hvor lang tid arbejdet reelt tog (planlægning/historik), mens lønbeløbet
+    -- for en akkord-lønnet medarbejder udregnes ud fra akkord-linjen, ikke minutter×timeløn.
+    ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS akkord_item_id INTEGER REFERENCES akkord_items(id) ON DELETE SET NULL;
+    ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS akkord_quantity NUMERIC NOT NULL DEFAULT 0;
 
     -- ── KS-SKABELON PR. SAG: Martin kan begrænse hvilke KS-skabeloner en
     -- medarbejder må udfylde på en given sag. Ingen rækker for en sag =
@@ -2452,8 +2487,11 @@ app.delete('/api/task-types/:key', auth, panelAccess('plan'), asyncRoute(async (
 // dag — før denne omlægning var admin.html kun tilgængeligt for role==='admin',
 // så dette er ikke en indskrænkning, men en bevidst udvidelse til nye panel-roller.
 app.get('/api/users', auth, panelAccess('dashboard'), asyncRoute(async (req, res) => {
+  // pay_type ('hourly'/'akkord') tages med her, så fx tidsregistrerings-modalen kan vise
+  // det rigtige felt pr. valgt medarbejder — men IKKE hourly_wage (den faktiske lønsats),
+  // som stadig kun udleveres via det snævre, adminOnly-gatede GET /api/users/:id/pay.
   const result = await pool.query(`
-    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,phone,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin,COALESCE(can_view_team_overview,0) AS can_view_team_overview
+    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,phone,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin,COALESCE(can_view_team_overview,0) AS can_view_team_overview,COALESCE(pay_type,'hourly') AS pay_type
     FROM users
     ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END,
              CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END,
@@ -2559,12 +2597,17 @@ app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
   // stille i UI'en, fordi Gem på "Ny medarbejder" bruger denne route (POST), ikke
   // PUT /api/users/:id (som allerede understøtter feltet).
   const panelRoleId = body.panel_role_id ? Number(body.panel_role_id) : null;
+  // Løn & akkord (sep. 2026): pay_type/hourly_wage sættes kun her og ved PUT — aldrig
+  // udstillet via den brede GET /api/users-liste (bruges alle steder til navne/dropdowns),
+  // for ikke at sprede lønoplysninger bredere end nødvendigt. Se GET /api/users/:id/pay.
+  const payType = body.pay_type === 'akkord' ? 'akkord' : 'hourly';
+  const hourlyWage = Math.max(0, Number(body.hourly_wage) || 0);
   try {
     const result = await pool.query(`
-      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url,personal_email,notify_schedule_changes,phone,can_view_team_overview,panel_role_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+      INSERT INTO users (name,email,password_hash,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,can_login,avatar_url,personal_email,notify_schedule_changes,phone,can_view_team_overview,panel_role_id,pay_type,hourly_wage)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING id
-    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0, body.phone ? String(body.phone).trim().slice(0, 30) : null, body.can_view_team_overview ? 1 : 0, panelRoleId]);
+    `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0, body.phone ? String(body.phone).trim().slice(0, 30) : null, body.can_view_team_overview ? 1 : 0, panelRoleId, payType, hourlyWage]);
     res.json({ ok: true, id: result.rows[0].id });
     // Send login-vejledning, så medarbejderen selv kan sætte sin adgangskode —
     // kun relevant for brugere der faktisk kan logge ind.
@@ -2580,6 +2623,16 @@ app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
     throw error;
   }
+}));
+
+// Løn & akkord (sep. 2026) — bevidst sin egen, smalle, adminOnly route: hentes kun
+// når "Rediger medarbejder"-modalen faktisk åbnes for én bestemt medarbejder, i stedet
+// for at ligge i den brede GET /api/users-liste som alle steder i appen (fx dropdowns,
+// holdoversigt) genbruger — så lønoplysninger aldrig sendes med til noget der ikke skal se dem.
+app.get('/api/users/:id/pay', auth, adminOnly, asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT pay_type, hourly_wage FROM users WHERE id=$1', [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Bruger blev ikke fundet' });
+  res.json(row);
 }));
 
 // Manuel gensendelse af login-vejledningen (fx hvis medarbejderen har mistet mailen).
@@ -2633,14 +2686,18 @@ app.put('/api/users/:id', auth, adminOnly, asyncRoute(async (req, res) => {
     // Roller & adgang (sep. 2026) — hvilken panel-rolle (hvis nogen) brugeren har
     // til admin-panelet, helt uafhængig af role/worker_type ovenfor. null = ingen
     // adgang til admin-panelet overhovedet (kun den almindelige medarbejder-app).
-    panel_role_id: body.panel_role_id !== undefined ? (body.panel_role_id || null) : current.panel_role_id
+    panel_role_id: body.panel_role_id !== undefined ? (body.panel_role_id || null) : current.panel_role_id,
+    // Løn & akkord (sep. 2026) — se GET /api/users/:id/pay for hvorfor disse to ikke
+    // står i den brede GET /api/users-liste.
+    pay_type: body.pay_type !== undefined ? (body.pay_type === 'akkord' ? 'akkord' : 'hourly') : (current.pay_type || 'hourly'),
+    hourly_wage: body.hourly_wage !== undefined ? Math.max(0, Number(body.hourly_wage) || 0) : (Number(current.hourly_wage) || 0)
   };
   if (canLogin && !next.email) return res.status(400).json({ error: 'Email mangler for login-bruger' });
   try {
     await pool.query(`
-      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14,personal_email=$15,notify_schedule_changes=$16,phone=$17,can_view_team_overview=$18,panel_role_id=$19
-      WHERE id=$20
-    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, next.personal_email, next.notify_schedule_changes, next.phone, next.can_view_team_overview, next.panel_role_id, id]);
+      UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14,personal_email=$15,notify_schedule_changes=$16,phone=$17,can_view_team_overview=$18,panel_role_id=$19,pay_type=$20,hourly_wage=$21
+      WHERE id=$22
+    `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, next.personal_email, next.notify_schedule_changes, next.phone, next.can_view_team_overview, next.panel_role_id, next.pay_type, next.hourly_wage, id]);
     res.json({ ok: true });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
@@ -6600,8 +6657,8 @@ app.post('/api/crm/custom-fields', auth, panelAccessAny(['customers','crmp_leads
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_custom_fields WHERE entity_type=$1', [b.entity_type]);
   try {
     const r = await pgOne(`
-      INSERT INTO crm_custom_fields (entity_type,key,label,field_type,options,position) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
-    `, [b.entity_type, key, String(b.label).trim(), b.field_type || 'text', JSON.stringify(Array.isArray(b.options) ? b.options : []), posRow.pos]);
+      INSERT INTO crm_custom_fields (entity_type,key,label,field_type,options,position,show_on_card,option_colors) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+    `, [b.entity_type, key, String(b.label).trim(), b.field_type || 'text', JSON.stringify(Array.isArray(b.options) ? b.options : []), posRow.pos, b.show_on_card ? 1 : 0, JSON.stringify(b.option_colors && typeof b.option_colors === 'object' ? b.option_colors : {})]);
     res.json({ ok: true, id: r.id });
   } catch (e) {
     if (String(e.message).includes('duplicate key')) return res.status(400).json({ error: 'Der findes allerede et felt med den nøgle for denne entitetstype' });
@@ -6612,11 +6669,17 @@ app.put('/api/crm/custom-fields/:id', auth, panelAccessAny(['customers','crmp_le
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_custom_fields WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Feltet blev ikke fundet' });
-  await pool.query('UPDATE crm_custom_fields SET label=$1,field_type=$2,options=$3,position=$4 WHERE id=$5', [
+  // OBS: pg-driveren serialiserer et JS-array-parameter som en Postgres ARRAY-literal
+  // (fx "{a,b}"), IKKE som JSON — så et uændret current.options (allerede parset til et
+  // JS-array af pgOne) skal eksplicit JSON.stringify'es igen her, ellers fejler UPDATE'en
+  // med "invalid input syntax for type json" så snart kun fx show_on_card sendes med.
+  await pool.query('UPDATE crm_custom_fields SET label=$1,field_type=$2,options=$3,position=$4,show_on_card=$5,option_colors=$6 WHERE id=$7', [
     b.label !== undefined ? String(b.label).trim() : current.label,
     b.field_type !== undefined ? b.field_type : current.field_type,
-    b.options !== undefined ? JSON.stringify(b.options) : current.options,
+    b.options !== undefined ? JSON.stringify(b.options) : JSON.stringify(current.options || []),
     b.position !== undefined ? b.position : current.position,
+    b.show_on_card !== undefined ? (b.show_on_card ? 1 : 0) : current.show_on_card,
+    b.option_colors !== undefined ? JSON.stringify(b.option_colors && typeof b.option_colors === 'object' ? b.option_colors : {}) : JSON.stringify(current.option_colors || {}),
     req.params.id
   ]);
   res.json({ ok: true });
@@ -7079,6 +7142,91 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
   res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds });
 }));
 
+// Projekt-budget (sep. 2026, Martins ønske #3 "Samlet budget visning under projekter"):
+// Godkendt pris / Opkrævet / Restsaldo / Forventet omkostning / Forventet fortjeneste /
+// Margin — samme opbygning som JobTread-billedet Martin sendte. adminOnly, fordi svaret
+// afslører løn- og akkord-omkostninger pr. medarbejder, som ikke skal ses bredt af alle
+// der har adgang til projekter-panelet.
+app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id, quote_id, invoice_id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+
+  const quote = project.quote_id ? await pgOne('SELECT id, total FROM quotes WHERE id=$1', [project.quote_id]) : null;
+  const approved = quote ? Number(quote.total) || 0 : 0;
+
+  // Opkrævet: betalinger på alle fakturaer der hører til sagen — både den direkte kobling
+  // (projects.invoice_id) og evt. andre fakturaer lavet på samme tilbud (quote_id).
+  const invoiceIds = new Set();
+  if (project.invoice_id) invoiceIds.add(project.invoice_id);
+  if (project.quote_id) {
+    const rows = await pool.query('SELECT id FROM invoices WHERE quote_id=$1', [project.quote_id]).then(r => r.rows);
+    rows.forEach(r => invoiceIds.add(r.id));
+  }
+  let collected = 0;
+  if (invoiceIds.size) {
+    const ids = [...invoiceIds];
+    const ph = ids.map((_, i) => `$${i + 1}`).join(',');
+    collected = await pool.query(`SELECT COALESCE(SUM(amount),0) AS s FROM invoice_payments WHERE invoice_id IN (${ph})`, ids)
+      .then(r => Number(r.rows[0].s) || 0);
+  }
+
+  // Forventet omkostning ("cost to complete"): budgetteret kostpris fra tilbudslinjerne.
+  // Vi har ikke løbende indkøbs-/materiale-tracking pr. sag, så dette er den bedste
+  // tilgængelige proxy for de forventede materialeomkostninger.
+  let costToComplete = 0;
+  if (project.quote_id) {
+    costToComplete = await pgOne(
+      `SELECT COALESCE(SUM(cost_price * quantity), 0) AS s FROM quote_lines WHERE quote_id=$1 AND line_type='item'`,
+      [project.quote_id]
+    ).then(r => Number(r.s) || 0);
+  }
+
+  // Løn-/akkord-omkostning: hver tidsregistrering på sagen omregnes til kr ud fra
+  // medarbejderens NUVÆRENDE lønform/-sats (der gemmes ikke en historisk sats pr. registrering).
+  const laborRows = await pool.query(`
+    SELECT te.id, te.user_id, te.minutes, te.akkord_item_id, te.akkord_quantity,
+           u.name AS user_name, u.pay_type, u.hourly_wage,
+           ai.name AS akkord_name, ai.rate AS akkord_rate
+    FROM time_entries te
+    LEFT JOIN users u ON u.id = te.user_id
+    LEFT JOIN akkord_items ai ON ai.id = te.akkord_item_id
+    WHERE te.project_id=$1
+  `, [req.params.id]).then(r => r.rows);
+
+  const byEmployee = new Map();
+  let laborTotal = 0;
+  for (const row of laborRows) {
+    const isAkkord = !!(row.akkord_item_id && Number(row.akkord_quantity) > 0);
+    const minutes = Number(row.minutes) || 0;
+    const cost = isAkkord
+      ? (Number(row.akkord_quantity) || 0) * (Number(row.akkord_rate) || 0)
+      : (minutes / 60) * (Number(row.hourly_wage) || 0);
+    laborTotal += cost;
+    const key = row.user_id || 0;
+    if (!byEmployee.has(key)) {
+      byEmployee.set(key, { user_id: row.user_id, name: row.user_name || 'Ukendt medarbejder', pay_type: row.pay_type || 'hourly', minutes: 0, akkord_lines: [], cost: 0 });
+    }
+    const emp = byEmployee.get(key);
+    emp.minutes += minutes;
+    emp.cost += cost;
+    if (isAkkord) emp.akkord_lines.push({ time_entry_id: row.id, item: row.akkord_name || '—', quantity: Number(row.akkord_quantity) || 0, rate: Number(row.akkord_rate) || 0, cost });
+  }
+
+  const profit = approved - costToComplete - laborTotal;
+  const margin = approved > 0 ? (profit / approved) * 100 : 0;
+
+  res.json({
+    approved_price: approved,
+    collected,
+    remaining_balance: approved - collected,
+    cost_to_complete: costToComplete,
+    labor_cost: laborTotal,
+    projected_profit: profit,
+    projected_margin: margin,
+    employees: [...byEmployee.values()]
+  });
+}));
+
 // Kontoret vælger hvilke KS-skabeloner der er tilgængelige for medarbejderen på DENNE
 // sag. Ingen rækker gemt = ingen begrænsning (alle skabeloner tilladt, bagudkompatibelt).
 app.put('/api/projects/:id/qa-templates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
@@ -7226,14 +7374,21 @@ app.post('/api/projects/:id/time-entries', auth, asyncRoute(async (req, res) => 
     targetUserId = Number(b.user_id);
   }
   const isManualByOffice = targetUserId !== req.user.id || (b.manual && await isFinanceAdmin(req.user.id));
+  // Akkord (sep. 2026): en akkord-lønnet medarbejder logger en post fra akkordlisten +
+  // antal i stedet for (eller ud over) minutter — se akkord_items. Minutter er stadig
+  // nyttigt til historik/planlægning og forbliver påkrævet MEDMINDRE der er angivet en
+  // gyldig akkord-post, for ikke at gøre timeregistrering unødigt besværlig for alle andre.
+  const akkordItemId = b.akkord_item_id ? Number(b.akkord_item_id) : null;
+  const akkordQuantity = Math.max(0, Number(b.akkord_quantity) || 0);
+  const hasAkkord = akkordItemId && akkordQuantity > 0;
   if (!note) return res.status(400).json({ error: 'Skriv en note om det udførte arbejde' });
   if (!photoUrls.length && !isManualByOffice) return res.status(400).json({ error: 'Upload et billede som dokumentation' });
-  if (!minutes || minutes <= 0) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt' });
+  if ((!minutes || minutes <= 0) && !hasAkkord) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt, eller vælg en akkord-post' });
   const entryDate = validDate(b.entry_date) ? b.entry_date : new Date().toISOString().slice(0, 10);
   const r = await pool.query(`
-    INSERT INTO time_entries (project_id,user_id,minutes,note,photo_url,photo_urls,bought_materials,quote_line_id,entry_date,created_by)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id
-  `, [req.params.id, targetUserId, Math.round(minutes), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, req.user.id]);
+    INSERT INTO time_entries (project_id,user_id,minutes,note,photo_url,photo_urls,bought_materials,quote_line_id,entry_date,created_by,akkord_item_id,akkord_quantity)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id
+  `, [req.params.id, targetUserId, Math.max(0, Math.round(minutes) || 0), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, req.user.id, hasAkkord ? akkordItemId : null, hasAkkord ? akkordQuantity : 0]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
@@ -7245,17 +7400,20 @@ app.put('/api/projects/:id/time-entries/:entryId', auth, panelAccess('projects')
   const b = req.body || {};
   const note = String(b.note || '').trim();
   const minutes = Number(b.minutes);
+  const akkordItemId = b.akkord_item_id ? Number(b.akkord_item_id) : null;
+  const akkordQuantity = Math.max(0, Number(b.akkord_quantity) || 0);
+  const hasAkkord = akkordItemId && akkordQuantity > 0;
   if (!note) return res.status(400).json({ error: 'Skriv en note om det udførte arbejde' });
-  if (!minutes || minutes <= 0) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt' });
+  if ((!minutes || minutes <= 0) && !hasAkkord) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt, eller vælg en akkord-post' });
   if (!b.user_id) return res.status(400).json({ error: 'Vælg en medarbejder' });
   const entryDate = validDate(b.entry_date) ? b.entry_date : new Date().toISOString().slice(0, 10);
   let photoUrls = Array.isArray(b.photo_urls) ? b.photo_urls.filter(Boolean).map(String) : [];
   if (!photoUrls.length && b.photo_url) photoUrls = [String(b.photo_url)];
   await pool.query(`
     UPDATE time_entries SET user_id=$1, minutes=$2, note=$3, photo_url=$4, photo_urls=$5,
-      bought_materials=$6, quote_line_id=$7, entry_date=$8, updated_at=${nowTextSQL()}
-    WHERE id=$9 AND project_id=$10
-  `, [Number(b.user_id), Math.round(minutes), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, req.params.entryId, req.params.id]);
+      bought_materials=$6, quote_line_id=$7, entry_date=$8, updated_at=${nowTextSQL()}, akkord_item_id=$9, akkord_quantity=$10
+    WHERE id=$11 AND project_id=$12
+  `, [Number(b.user_id), Math.max(0, Math.round(minutes) || 0), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, hasAkkord ? akkordItemId : null, hasAkkord ? akkordQuantity : 0, req.params.entryId, req.params.id]);
   res.json({ ok: true });
 }));
 
@@ -9579,6 +9737,47 @@ app.delete('/api/products/:id', auth, panelAccess('quotes'), asyncRoute(async (r
   res.json({ ok: true });
 }));
 
+// ── AKKORDLISTE (sep. 2026) — global prisliste til stykløn, se akkord_items i
+// migrations-blokken. Læses af tidsregistrerings-modalen (panelAccess('projects') er
+// nok til det — medarbejdere der logger tid skal kunne se posterne), men kun en ægte
+// admin må ændre selve listen (priser er følsomme, ligesom lønfeltet på en medarbejder).
+app.get('/api/akkord-items', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT * FROM akkord_items WHERE active=1 ORDER BY position ASC, id ASC')).rows;
+  res.json(rows);
+}));
+app.get('/api/akkord-items/all', auth, adminOnly, asyncRoute(async (req, res) => {
+  // Inkl. inaktive — bruges af selve administrations-UI'en, så en post kan slås til/fra igen.
+  const rows = (await pool.query('SELECT * FROM akkord_items ORDER BY position ASC, id ASC')).rows;
+  res.json(rows);
+}));
+app.post('/api/akkord-items', auth, adminOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Navn mangler' });
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM akkord_items');
+  const r = await pgOne('INSERT INTO akkord_items (name,rate,position) VALUES ($1,$2,$3) RETURNING id', [name, Math.max(0, Number(b.rate) || 0), posRow.pos]);
+  res.json({ ok: true, id: r.id });
+}));
+app.put('/api/akkord-items/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM akkord_items WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Posten blev ikke fundet' });
+  const b = req.body || {};
+  await pool.query('UPDATE akkord_items SET name=$1,rate=$2,active=$3,position=$4 WHERE id=$5', [
+    b.name !== undefined ? String(b.name).trim() : current.name,
+    b.rate !== undefined ? Math.max(0, Number(b.rate) || 0) : current.rate,
+    b.active !== undefined ? (b.active ? 1 : 0) : current.active,
+    b.position !== undefined ? b.position : current.position,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+app.delete('/api/akkord-items/:id', auth, adminOnly, asyncRoute(async (req, res) => {
+  // Slet ikke rigtigt — historiske tidsregistreringer refererer stadig til akkord_item_id
+  // (ON DELETE SET NULL ville ellers gøre gamle registreringer uforklarlige bagefter).
+  await pool.query('UPDATE akkord_items SET active=0 WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
 // Engangs-import fra JobTread's costItems — bevidst IKKE en løbende synkronisering
 // (se svar i chatten): henter alt organisationen har brugt af cost items på tværs af
 // jobs, og lægger de unikke navne ind som et udgangspunkt for jeres eget katalog.
@@ -9602,7 +9801,7 @@ app.post('/api/products/import-from-jobtread', auth, panelAccess('quotes'), asyn
         query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, costItems: {
           $: { size: 100, page: page || undefined },
           nextPage: {},
-          nodes: { id: {}, name: {}, unit: { name: {} }, unitCost: {}, unitPrice: {}, organizationCostItem: { id: {} } }
+          nodes: { id: {}, name: {}, description: {}, unit: { name: {} }, unitCost: {}, unitPrice: {}, organizationCostItem: { id: {} } }
         } } }
       }, 'Produktimport: hent cost items fra JobTread');
       const conn = data?.organization?.costItems;
@@ -9613,7 +9812,7 @@ app.post('/api/products/import-from-jobtread', auth, panelAccess('quotes'), asyn
         const isTemplate = !n.organizationCostItem;
         const existing = seen.get(key);
         if (!existing || (isTemplate && !existing.isTemplate)) {
-          seen.set(key, { name: n.name, unit: n.unit?.name || 'stk', cost: Number(n.unitCost) || 0, price: Number(n.unitPrice) || 0, jtId: n.id, isTemplate });
+          seen.set(key, { name: n.name, description: n.description || '', unit: n.unit?.name || 'stk', cost: Number(n.unitCost) || 0, price: Number(n.unitPrice) || 0, jtId: n.id, isTemplate });
         }
       }
       page = conn?.nextPage || null;
@@ -9621,18 +9820,29 @@ app.post('/api/products/import-from-jobtread', auth, panelAccess('quotes'), asyn
   } catch (error) {
     return res.status(400).json({ error: 'Kunne ikke hente fra JobTread: ' + error.message });
   }
-  let imported = 0, skipped = 0;
+  let imported = 0, skipped = 0, descriptionsFilled = 0;
   for (const item of seen.values()) {
     const existing = item.jtId
-      ? await pgOne('SELECT id FROM products WHERE jt_cost_item_id=$1', [item.jtId])
-      : await pgOne('SELECT id FROM products WHERE lower(trim(name))=lower(trim($1)) AND jt_cost_item_id IS NULL', [item.name]);
-    if (existing) { skipped++; continue; }
+      ? await pgOne('SELECT id, description FROM products WHERE jt_cost_item_id=$1', [item.jtId])
+      : await pgOne('SELECT id, description FROM products WHERE lower(trim(name))=lower(trim($1)) AND jt_cost_item_id IS NULL', [item.name]);
+    if (existing) {
+      skipped++;
+      // Findes allerede lokalt — vi rører aldrig navn/pris på et eksisterende produkt
+      // (kan være rettet manuelt), men hvis der IKKE allerede står en beskrivelse, og
+      // JobTread har en, udfylder vi den. Overskriver aldrig en beskrivelse der allerede
+      // findes — kun tomme felter (Martins ønske, sep. 2026).
+      if (item.description && !(existing.description || '').trim()) {
+        await pool.query('UPDATE products SET description=$1 WHERE id=$2', [item.description, existing.id]);
+        descriptionsFilled++;
+      }
+      continue;
+    }
     await pool.query(`
-      INSERT INTO products (name,unit,cost_price,sell_price,jt_cost_item_id) VALUES ($1,$2,$3,$4,$5)
-    `, [item.name, item.unit, item.cost, item.price, item.jtId]);
+      INSERT INTO products (name,description,unit,cost_price,sell_price,jt_cost_item_id) VALUES ($1,$2,$3,$4,$5,$6)
+    `, [item.name, item.description, item.unit, item.cost, item.price, item.jtId]);
     imported++;
   }
-  res.json({ ok: true, imported, skipped, total_found: seen.size });
+  res.json({ ok: true, imported, skipped, descriptions_filled: descriptionsFilled, total_found: seen.size });
 }));
 
 // ── TILBUDSSKABELONER — gemte linjesæt til hurtigt at starte et nyt tilbud fra ──
@@ -10595,6 +10805,7 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   th{text-align:left;background:#F4F6FB;padding:8px 10px;font-size:11px;color:#374151}
   th.num,td.num{text-align:right}
   td{padding:8px 10px;border-bottom:1px solid #EEF0F3}
+  td:first-child{white-space:pre-line}
   .totals{margin-left:auto;width:240px;margin-top:10px}
   .totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:12.5px;color:#6B7280}
   .totals-row.grand{font-size:15px;font-weight:800;color:#111318;border-top:1px solid #EEF0F3;margin-top:6px;padding-top:8px}
@@ -10853,6 +11064,7 @@ app.get('/forespoergsel/:token', asyncRoute(async (req, res) => {
   th{text-align:left;background:#F4F6FB;padding:8px 10px;font-size:11px;color:#374151}
   th.num,td.num{text-align:right}
   td{padding:8px 10px;border-bottom:1px solid #EEF0F3}
+  td:first-child{white-space:pre-line}
   .line-price{width:100px;border:1px solid #E5E7EB;border-radius:6px;padding:6px 8px;font-size:13px;text-align:right}
   label{display:block;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;margin:12px 0 4px}
   textarea{width:100%;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;resize:vertical}

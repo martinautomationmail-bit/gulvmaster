@@ -341,6 +341,10 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .bly-kpi-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .bly-kpi-value{font-size:23px;font-weight:800;color:var(--bly-ink);line-height:1.1;letter-spacing:-.01em}
 .bly-kpi-value .unit{font-size:12px;font-weight:700;color:var(--bly-sub);margin-left:3px}
+/* Projekt budget-dashboard (sep. 2026) — samme kort-stil som bly-kpi-*, men uden
+   klik-interaktion (rene nøgletal, ikke filtre) og et bredere grid til 6 tal. */
+.pd-budget-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:10px}
+.pd-budget-card{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:16px 18px}
 .bly-input{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:8px 12px;font-size:12.5px;font-weight:500;color:var(--bly-ink);background:#fff}
 .bly-btn.small{padding:8px 14px;font-size:11.5px}
 /* OMSÆTNING PR FAG — Billy-stil, skopet kun til denne fane (#fintab-omsaetning) så de
@@ -1069,6 +1073,7 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-line-text .qe-line-top{grid-template-columns:1fr 30px;margin-bottom:0}
 .qe-line-text input.qe-line-field{font-weight:700;color:var(--bly-ink)}
 .qe-line-top{display:grid;grid-template-columns:1fr 80px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
+.qe-line-top textarea.qe-desc-area{resize:vertical;min-height:36px;max-height:200px;line-height:1.4;font-family:inherit;overflow-y:auto;white-space:pre-wrap}
 .qe-line-nums{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .qe-line-num-label{font-size:9px;color:var(--bly-sub);font-weight:700;text-transform:uppercase}
 .qe-line-margin{font-size:10.5px;font-weight:800;margin-top:2px}
@@ -2787,6 +2792,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       <a class="bly-btn outline" id="crmpx-email-btn" href="#" target="_blank">✉️ Email</a>
       <a class="bly-btn outline" id="crmpx-call-btn" href="#">📞 Ring</a>
+      <button class="bly-btn" id="crmpx-quote-btn" type="button" style="display:none">📝 Lav tilbud</button>
       <button class="bly-btn" id="crmpx-convert-btn" type="button" style="display:none;background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8">🤝 Konvertér</button>
       <button class="bly-btn danger" id="crmpx-delete-btn" type="button">🗑 Slet</button>
       <!-- Siden gemmer nu automatisk ved ændring (se crmpxAutoSave) — ingen
@@ -3153,6 +3159,31 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="form-group"><label class="form-label">Adresse</label><input id="crmc-address" class="input"></div>
     <div class="form-group"><label class="form-label">Noter <span class="opt-tag">valgfrit</span></label><textarea id="crmc-notes" class="input" rows="2" style="resize:vertical"></textarea></div>
+    <div id="crmc-lead-fields">
+      <div class="hint" style="margin:2px 0 8px">En ny kunde opretter automatisk et lead i Leads-pipelinen — udfyld hvor kunden kommer fra og hvilken slags opgave det drejer sig om.</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Kilde</label>
+          <select id="crmc-source" class="select">
+            <option value="">Vælg…</option>
+            <option value="Website form">Website form</option>
+            <option value="Facebook/Instagram">Facebook/Instagram</option>
+            <option value="Telefon">Telefon</option>
+            <option value="Anbefaling">Anbefaling</option>
+            <option value="Andet">Andet…</option>
+          </select>
+          <input id="crmc-source-other" class="input hidden" style="margin-top:6px" placeholder="Angiv kilde">
+        </div>
+        <div class="form-group"><label class="form-label">Projekttype</label>
+          <select id="crmc-projekt-type" class="select">
+            <option value="">Vælg…</option>
+            <option value="Gulvslibning">Gulvslibning</option>
+            <option value="Gulvlægning">Gulvlægning</option>
+            <option value="Maler">Maler</option>
+            <option value="Enterprise">Enterprise</option>
+          </select>
+        </div>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn danger hidden" id="crmc-delete">Slet</button>
       <button class="btn" id="crmc-cancel">Annuller</button>
@@ -3233,6 +3264,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-segtab active" data-pdtab="tasks" type="button">📅 Opgaver</button>
         <button class="bly-segtab" data-pdtab="photos" type="button">📷 Billeder</button>
         <button class="bly-segtab" data-pdtab="time" type="button">⏱️ Tidsregistrering</button>
+        <!-- Budget-dashboard (sep. 2026, Martins ønske #3) — kun for rigtige admins, da den
+             viser løn-/akkord-omkostninger udregnet ud fra medarbejdernes lønsatser. -->
+        <button class="bly-segtab realadmin-only" data-pdtab="budget" type="button">💰 Budget</button>
         <button class="bly-segtab" data-pdtab="materials" type="button">🧾 Materialer</button>
         <button class="bly-segtab" data-pdtab="qa" type="button">📋 Kvalitetssikring</button>
         <button class="bly-segtab" data-pdtab="contact" type="button">📇 Kontaktformular</button>
@@ -3283,6 +3317,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         </table>
       </div>
 
+      <!-- Budget-dashboard (sep. 2026, Martins ønske #3 "Samlet budget visning under
+           projekter") — samme opbygning som JobTread-billedet Martin sendte: Godkendt pris /
+           Opkrævet / Restsaldo / Forventet omkostning / Forventet fortjeneste / Margin, plus
+           en oversigt over løn-/akkord-omkostning pr. medarbejder. Data fra
+           GET /api/projects/:id/budget (adminOnly server-side). -->
+      <div class="pdtabpage" id="pdtab-budget" style="display:none">
+        <div class="bly-toolbar">
+          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Budget &amp; fortjeneste</span></div>
+          <div class="bly-toolbar-right"><button class="bly-btn outline small" id="pd-budget-toggle-btn" type="button">Skjul oversigt</button></div>
+        </div>
+        <div id="pd-budget-summary" class="pd-budget-grid"></div>
+        <h3 style="font-size:14px;margin:22px 0 10px">👷 Løn &amp; akkord pr. medarbejder</h3>
+        <table class="bly-table">
+          <thead><tr><th>Medarbejder</th><th>Løntype</th><th class="num">Timer</th><th>Akkord-poster</th><th class="num">Omkostning</th></tr></thead>
+          <tbody id="pd-budget-employees-body"></tbody>
+        </table>
+      </div>
+
       <div class="mo" id="pd-time-modal">
         <div class="modal gd-modal" style="max-width:520px">
           <div class="gd-head">
@@ -3294,9 +3346,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
               <div class="form-group"><label class="form-label">Medarbejder</label><select id="pdt-user" class="select"></select></div>
               <div class="form-group"><label class="form-label">Dato</label><input id="pdt-date" type="date" class="input"></div>
             </div>
-            <div class="form-row">
+            <div class="form-row" id="pdt-minutes-row">
               <div class="form-group"><label class="form-label">Minutter</label><input id="pdt-minutes" type="number" min="1" class="input" placeholder="Fx 120"></div>
               <div class="form-group"><label class="form-label">Post fra tilbud — valgfrit</label><select id="pdt-line" class="select"><option value="">Ingen valgt</option></select></div>
+            </div>
+            <!-- Akkord (sep. 2026, Martins ønske #3): vises kun når den valgte medarbejder
+                 har løntype "Akkord" — erstatter minutter × timeløn med post × antal fra
+                 Akkordlisten (Hold & vendors). -->
+            <div class="form-row hidden" id="pdt-akkord-row">
+              <div class="form-group"><label class="form-label">Akkord-post</label><select id="pdt-akkord-item" class="select"><option value="">Vælg post...</option></select></div>
+              <div class="form-group"><label class="form-label">Antal</label><input id="pdt-akkord-qty" type="number" min="0" step="0.01" class="input" placeholder="Fx 12,5"></div>
             </div>
             <div class="form-group"><label class="form-label">Note</label><textarea id="pdt-note" class="input" rows="3" placeholder="Beskriv det udførte arbejde..."></textarea></div>
             <div class="form-group"><label class="form-label">Købt materialer — valgfrit</label><input id="pdt-materials" class="input" placeholder="Fx 'Lim, 2 spande, Bilka, 340 kr'"></div>
@@ -3355,6 +3414,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="pool-filters">
           <div class="filter-row" id="plan-status-filters"></div>
           <div class="filter-row" id="plan-type-filters"></div>
+          <!-- Datofilter/uge (sep. 2026, Martins ønske #2): filtrerer KUN Opgavepool-
+               listen til en valgt uge (opgavens start-/slutdato), så man hurtigt kan se
+               og trække alle opgaver for ugen ud. Uafhængig af selve ugekalenderen. -->
+          <div class="filter-row" id="plan-date-filter-row" style="display:flex;align-items:center;gap:4px"></div>
         </div>
         <div id="pool-bulk-bar" class="pool-bulk-bar">
           <div class="pool-bulk-bar-top">
@@ -3800,6 +3863,23 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn primary small" id="new-panel-role-btn">+ Ny rolle</button>
     </div>
     <div id="panel-roles-list" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+  <!-- AKKORDLISTE (sep. 2026, Martins ønske #3): fælles prisliste for akkord-poster, fx
+       til gulvslibere — hver medarbejder med "Akkord" som løntype vælger blandt DISSE
+       poster (i stedet for timer × timeløn) når der registreres tid på en sag. -->
+  <div class="settings-card realadmin-only" id="akkord-items-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:700;font-size:15px">🧱 Akkordliste</div>
+        <div class="hint" style="margin:2px 0 0">Fælles prisliste for akkord-arbejde (fx gulvslibning pr. m² eller pr. rum). Medarbejdere med løntype "Akkord" vælger blandt disse poster ved tidsregistrering, i stedet for timeløn.</div>
+      </div>
+    </div>
+    <div id="akkord-items-list" style="margin-top:12px;display:flex;flex-direction:column;gap:6px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+      <input id="akkord-new-name" class="input" placeholder="Fx 'Gulvslibning, egetræ pr. m²'" style="flex:1;min-width:220px">
+      <input id="akkord-new-rate" class="input" type="number" min="0" step="0.01" placeholder="Pris (kr)" style="width:120px">
+      <button class="btn small primary" id="akkord-new-add-btn" type="button">+ Tilføj post</button>
+    </div>
   </div>
   <div class="people" id="people-grid"></div>
 </section>
@@ -4827,12 +4907,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-row">
         <div class="form-group"><label class="form-label">Adgangskode</label><input id="user-password" type="password" class="input" placeholder="Påkrævet ved ny bruger"></div>
         <div class="form-group"><label class="form-label">Rolle</label>
-          <select id="user-role" class="select"><option value="employee">Medarbejder</option><option value="admin">Admin</option></select>
+          <select id="user-role" class="select"><option value="employee">Medarbejder</option><option value="admin">Admin — fuld, ubegrænset adgang til ALT</option></select>
+          <div class="hint" style="margin-top:4px;color:#B91C1C;font-weight:600" id="user-role-admin-warning">⚠️ Fuld adgang til ALT i systemet — kunder, økonomi, alle andre brugere osv. Brug kun til dig selv/dine mest betroede. For begrænset adgang (fx "Kontor" eller "Mester"), vælg i stedet Medarbejder herover og en Panel-rolle nedenfor.</div>
         </div>
       </div>
-      <div class="form-group" id="user-panel-role-group"><label class="form-label">Panel-rolle <span class="opt-tag">valgfrit — giver adgang til udvalgte sider i dette admin-panel, se "Roller &amp; adgang"</span></label>
+      <div class="form-group" id="user-panel-role-group"><label class="form-label">👉 Panel-rolle <span class="opt-tag">brug DENNE til begrænset adgang (fx Kontor/Mester) — se "Roller &amp; adgang" på Hold &amp; vendors-siden</span></label>
         <select id="user-panel-role" class="select"><option value="">Ingen (kun Medarbejder-appen)</option></select>
-        <div class="hint" style="margin-top:4px" id="user-panel-role-admin-hint">Har allerede fuld adgang som Admin — panel-rolle er ikke nødvendig.</div>
+        <div class="hint" style="margin-top:4px" id="user-panel-role-admin-hint">Rolle er sat til Admin herover, som allerede giver fuld adgang til alt — Panel-rolle er derfor skjult/ikke nødvendig. Vil du give BEGRÆNSET adgang i stedet, så sæt Rolle til "Medarbejder" ovenfor først.</div>
       </div>
     </div>
     <div class="form-row">
@@ -4849,6 +4930,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <div class="form-group"><label class="form-label">Vendor-gruppe</label><input id="user-vendor-group" class="input" placeholder="Fx AJB Gruppen APS"></div>
+    <!-- Løntype/Timeløn (sep. 2026, Martins ønske #3): "Akkord" ERSTATTER timeløn helt for
+         medarbejderen — ved tidsregistrering vælges der så i stedet en post fra Akkordlisten
+         (se kortet nedenfor på siden) i stedet for timer × timeløn. -->
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Løntype</label>
+        <select id="user-pay-type" class="select"><option value="hourly">Timeløn</option><option value="akkord">Akkord</option></select>
+      </div>
+      <div class="form-group" id="user-hourly-wage-group"><label class="form-label">Timeløn (kr/time)</label><input id="user-hourly-wage" class="input" type="number" min="0" step="0.01" placeholder="Fx 200"></div>
+    </div>
+    <div class="hint hidden" id="user-akkord-hint" style="margin:-4px 0 4px">Medarbejderen vælger en post fra Akkordlisten (nedenfor på denne side) hver gang der registreres tid, i stedet for timer × timeløn.</div>
     <div class="form-group"><label class="form-label">Privat mail <span class="opt-tag">til kalender-notifikationer, kan afvige fra login-mail</span></label><input id="user-personal-email" type="email" class="input" placeholder="Fx ahmed@privat.dk"></div>
     <div class="form-group"><label class="form-label">Mobilnummer <span class="opt-tag">til push/SMS ved ny/ændret opgave</span></label><input id="user-phone" type="tel" class="input" placeholder="Fx 12345678"></div>
     <label class="login-row"><input id="user-notify-changes" type="checkbox"> Send besked (mail + evt. SMS) til medarbejderen, når kalenderen ændres</label>
@@ -4929,12 +5020,16 @@ function applyRealAdminOnlyVisibility(){
     var r=await fetch((API||'')+'/api/auth/me',{headers:{'Authorization':'Bearer '+token}});
     if(r.ok){var fresh=await r.json();me=Object.assign({},me,fresh);localStorage.setItem('gm_user',JSON.stringify(me));
       applyPanelPageVisibility();applyRealAdminOnlyVisibility();
-      if(me.role==='admin')loadPanelRolesData();}
+      if(me.role==='admin'){loadPanelRolesData();loadAkkordItemsData();}}
   }catch(e){}
 })();
 
 var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={},poolSelected={},assignAttachmentsReady=true;
 var panelRoles=[],panelPagesCatalog=[],editPanelRoleId=null;
+// Akkordliste (sep. 2026): akkordItems = kun AKTIVE poster, indlæst bredt (bruges af
+// tidsregistrerings-modalen på en sag). akkordItemsAll = ALLE poster inkl. deaktiverede,
+// kun hentet/vist for rigtige admins i Hold & vendors-kortet, se loadAkkordItemsData().
+var akkordItems=[],akkordItemsAll=[],editAkkordItemId=null;
 // Resolves once loadAll() has populated `users` for the first time. På en direkte/
 // genindlæst navigation til fx #crmp-detail/... kan openCrmpDetail() nå at køre FØR
 // loadAll() overhovedet er kaldt (den kaldes sidst i opstarts-kæden nederst i scriptet),
@@ -4945,7 +5040,11 @@ var settings={company_name:'Gulv Master Enterprise ApS',logo_url:null},library=[
 var timelineOffset=0,timelineGroupBy='user',capacityGroupBy='user';
 var taskRequests=[],requestsFilter='pending',completedFilter='open';
 var timeOffApproved=[],timeOffRequests=[];
-var filters={plan:{status:'all',type:'all',team:'all'},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'},availability:{status:'all',type:'all',team:'all'}};
+// dateWeek (kun 'plan'-scope, sep. 2026, Martins ønske #2): ISO-dato for mandagen i den
+// uge Opgavepoolen skal filtreres til, eller null = intet datofilter (alle opgaver, som
+// hidtil). Bruges KUN til at filtrere Opgavepool-listen i venstre side — påvirker ikke
+// selve ugekalenderen til højre (planCurrentWeekStart), som er en helt separat ting.
+var filters={plan:{status:'all',type:'all',team:'all',dateWeek:null},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'},availability:{status:'all',type:'all',team:'all'}};
 var availGroupBy='user';
 var DAYS=['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
 // Standard-fag/farver — bruges som fallback indtil /api/task-types er hentet,
@@ -5241,6 +5340,14 @@ function filterTasks(scope){
     if(f.status==='manual'&&t.source!=='manual')return false;
     if(f.status==='visit'&&!t.is_visit)return false;
     if(f.type!=='all'&&t.type_guess!==f.type)return false;
+    // Datofilter/uge (kun Opgavepool/plan, sep. 2026): opgaven skal overlappe den valgte
+    // uge (start-/slutdato), så en flerdages opgave dukker op i alle uger den strækker sig over.
+    if(scope==='plan'&&f.dateWeek){
+      if(!t.start_date)return false;
+      var wkStart=f.dateWeek,wkEnd=iso(add(date(f.dateWeek),6));
+      var tStart=String(t.start_date).slice(0,10),tEnd=String(t.end_date||t.start_date).slice(0,10);
+      if(tEnd<wkStart||tStart>wkEnd)return false;
+    }
     return matchesQuery();
     function matchesQuery(){
       var text=((t.job_name||'')+' '+(t.name||'')+' '+(t.job_address||'')).toLowerCase();
@@ -5267,6 +5374,34 @@ function filtersHTML(scope){
   var se=document.getElementById(dom+'-status-filters'),te=document.getElementById(dom+'-type-filters');
   if(se)se.innerHTML=filterDropdownHTML(scope,'status','Status',sts,f.status);
   if(te)te.innerHTML=filterDropdownHTML(scope,'type','Fag',tys,f.type);
+  if(scope==='plan')planDateFilterHTML();
+}
+// Datofilter/uge for Opgavepool (sep. 2026) — se HTML-kommentaren ved
+// #plan-date-filter-row. f.dateWeek er en ISO-dato for mandagen i den valgte uge, eller
+// null når filteret er slået fra (viser alle opgaver, som hidtil).
+function planDateFilterHTML(){
+  var el=document.getElementById('plan-date-filter-row');if(!el)return;
+  var f=filters.plan;
+  if(!f.dateWeek){
+    el.innerHTML='<button type="button" class="btn small" data-action="plan-date-filter-on" style="width:100%">📅 Filtrér på uge...</button>';
+  }else{
+    var wm=date(f.dateWeek),we=add(wm,6);
+    var label='Uge '+weekNo(wm)+' · '+wm.getDate()+'/'+(wm.getMonth()+1)+'–'+we.getDate()+'/'+(we.getMonth()+1);
+    el.innerHTML='<button type="button" class="btn small" data-action="plan-date-filter-prev" title="Forrige uge">◀</button>'
+      +'<span class="muted-sm" style="flex:1;text-align:center;font-weight:600">'+esc(label)+'</span>'
+      +'<button type="button" class="btn small" data-action="plan-date-filter-next" title="Næste uge">▶</button>'
+      +'<button type="button" class="btn small" data-action="plan-date-filter-clear" title="Ryd datofilter">✕</button>';
+  }
+  el.querySelectorAll('[data-action]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var act=btn.dataset.action;
+      if(act==='plan-date-filter-on')filters.plan.dateWeek=iso(mon(new Date()));
+      else if(act==='plan-date-filter-clear')filters.plan.dateWeek=null;
+      else if(act==='plan-date-filter-prev')filters.plan.dateWeek=iso(add(date(filters.plan.dateWeek),-7));
+      else if(act==='plan-date-filter-next')filters.plan.dateWeek=iso(add(date(filters.plan.dateWeek),7));
+      renderPool('plan');
+    });
+  });
 }
 function filterDropdownHTML(scope,kind,label,options,current){
   var cur=options.find(function(x){return x[0]===current;})||options[0];
@@ -11214,6 +11349,66 @@ async function deletePanelRole(){
   if(r&&r.ok){closeModal('panel-role-modal');toast('Slettet','🗑');await loadPanelRolesData();}else if(r)toast(r.error||'Fejl','❌');
 }
 
+// ── AKKORDLISTE (Hold & vendors → "Akkordliste"-kort) ──────────────────────
+// Samme mønster som Roller & adgang lige ovenfor: kun for role==='admin' (kortet er
+// realadmin-only), og /api/akkord-items* er under alle omstændigheder adminOnly server-side.
+async function loadAkkordItemsData(){
+  var r=await api('/api/akkord-items/all');
+  akkordItemsAll=Array.isArray(r)?r:[];
+  renderAkkordItemsList();
+}
+function renderAkkordItemsList(){
+  var el=document.getElementById('akkord-items-list');if(!el)return;
+  if(!akkordItemsAll.length){el.innerHTML='<p style="color:var(--muted);margin:0">Ingen akkord-poster endnu — tilføj den første nedenfor.</p>';return;}
+  el.innerHTML=akkordItemsAll.map(function(it){
+    var inactive=!it.active;
+    return '<div style="display:flex;align-items:center;gap:10px;border:1px solid var(--border2);border-radius:8px;padding:8px 12px'+(inactive?';opacity:.5':'')+'" data-akkord-id="'+it.id+'">'
+      +'<div style="flex:1"><strong>'+esc(it.name)+'</strong>'+(inactive?' <span class="hint">(deaktiveret)</span>':'')+'</div>'
+      +'<div style="font-weight:700;white-space:nowrap">'+krFmt(Number(it.rate))+'</div>'
+      +'<button class="btn small" data-action="akkord-edit" data-id="'+it.id+'">✏ Rediger</button>'
+      +'<button class="btn small" data-action="akkord-toggle" data-id="'+it.id+'">'+(inactive?'Aktivér':'Deaktivér')+'</button>'
+      +'<button class="btn small danger" data-action="akkord-delete" data-id="'+it.id+'">🗑</button>'
+      +'</div>';
+  }).join('');
+  el.querySelectorAll('[data-action="akkord-edit"]').forEach(function(btn){btn.onclick=function(){openAkkordItemEdit(+btn.dataset.id);};});
+  el.querySelectorAll('[data-action="akkord-toggle"]').forEach(function(btn){btn.onclick=async function(){
+    var it=akkordItemsAll.find(function(x){return +x.id===+btn.dataset.id;});if(!it)return;
+    var r=await api('/api/akkord-items/'+it.id,{method:'PUT',body:JSON.stringify({active:it.active?0:1})});
+    if(r&&r.ok){await loadAkkordItemsData();var active=await api('/api/akkord-items');akkordItems=Array.isArray(active)?active:[];}
+    else toast((r&&r.error)||'Kunne ikke gemme','❌');
+  };});
+  el.querySelectorAll('[data-action="akkord-delete"]').forEach(function(btn){btn.onclick=async function(){
+    if(!await gmConfirm('Slet akkord-posten? Tidligere tidsregistreringer med posten beholder navn/pris som de var registreret med.'))return;
+    var r=await api('/api/akkord-items/'+btn.dataset.id,{method:'DELETE'});
+    if(r&&r.ok){await loadAkkordItemsData();var active=await api('/api/akkord-items');akkordItems=Array.isArray(active)?active:[];}
+    else toast((r&&r.error)||'Kunne ikke slette','❌');
+  };});
+}
+async function addAkkordItem(){
+  var name=document.getElementById('akkord-new-name').value.trim();
+  var rate=+document.getElementById('akkord-new-rate').value||0;
+  if(!name){toast('Navn på posten mangler','⚠');return;}
+  var r=await api('/api/akkord-items',{method:'POST',body:JSON.stringify({name:name,rate:rate})});
+  if(r&&(r.ok||r.id)){
+    document.getElementById('akkord-new-name').value='';document.getElementById('akkord-new-rate').value='';
+    await loadAkkordItemsData();var active=await api('/api/akkord-items');akkordItems=Array.isArray(active)?active:[];
+    toast('Tilføjet','✓');
+  }else toast((r&&r.error)||'Kunne ikke tilføje','❌');
+}
+async function openAkkordItemEdit(id){
+  var it=akkordItemsAll.find(function(x){return +x.id===+id;});if(!it)return;
+  var newName=await gmPrompt('Navn på posten:',it.name);
+  if(newName===null)return;
+  newName=newName.trim();if(!newName){toast('Navn mangler','⚠');return;}
+  var newRateRaw=await gmPrompt('Pris (kr):',String(it.rate));
+  if(newRateRaw===null)return;
+  var newRate=Number(String(newRateRaw).replace(',','.'));
+  if(isNaN(newRate)||newRate<0){toast('Ugyldig pris','⚠');return;}
+  var r=await api('/api/akkord-items/'+id,{method:'PUT',body:JSON.stringify({name:newName,rate:newRate})});
+  if(r&&r.ok){await loadAkkordItemsData();var active=await api('/api/akkord-items');akkordItems=Array.isArray(active)?active:[];toast('Gemt','✓');}
+  else toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+
 function renderPeople(){
   var isRealAdmin=me.role==='admin';
   var intern=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type!=='vendor';}),vendors={};
@@ -11247,17 +11442,30 @@ function fmtDaDate(s){if(!s)return'';var d=date(s);return d.getDate()+'/'+(d.get
 
 // USER MODAL
 function setLoginFields(){document.getElementById('login-fields').classList.toggle('hidden',!document.getElementById('user-can-login').checked);}
+// Løntype/Timeløn (sep. 2026): "Akkord" erstatter timeløn helt, se kommentar ved
+// user-modal-markup'et. Skjuler timeløn-feltet og viser i stedet et hint om Akkordlisten.
+function toggleUserPayTypeField(){
+  var isAkkord=document.getElementById('user-pay-type').value==='akkord';
+  document.getElementById('user-hourly-wage-group').classList.toggle('hidden',isAkkord);
+  document.getElementById('user-akkord-hint').classList.toggle('hidden',!isAkkord);
+}
 function toggleUserPanelRoleField(){
   var isAdmin=document.getElementById('user-role').value==='admin';
   document.getElementById('user-panel-role').classList.toggle('hidden',isAdmin);
   document.getElementById('user-panel-role-admin-hint').classList.toggle('hidden',!isAdmin);
+  // Roller & adgang (sep. 2026): "Rolle: Admin" og "Panel-rolle" ligner nemt
+  // hinanden i navn, men har meget forskellig konsekvens (Admin = ALT, uden
+  // mulighed for at begrænse noget som helst) — denne advarsel skal gøre det
+  // umuligt at overse hvad man vælger, efter en medarbejder ved en fejl fik
+  // fuld admin-adgang i stedet for en begrænset Kontor-rolle.
+  document.getElementById('user-role-admin-warning').classList.toggle('hidden',!isAdmin);
 }
 function updateAvatarPreview(url){
   var el=document.getElementById('user-avatar-preview');
   el.innerHTML=url?'<img src="'+url+'" style="width:100%;height:100%;object-fit:cover">':'👤';
   document.getElementById('user-avatar-url').value=url||'';
 }
-function openUser(id,opts){
+async function openUser(id,opts){
   opts=opts||{};editUserId=id||null;
   var u=id?users.find(function(x){return +x.id===+id;}):null;
   document.getElementById('user-title').textContent=u?'Rediger medarbejder':(opts.vendorGroup?'Ny vendor-undergruppe':'Ny medarbejder');
@@ -11276,14 +11484,28 @@ function openUser(id,opts){
   document.getElementById('user-avatar-file').value='';
   updateAvatarPreview(u?u.avatar_url:null);
   document.getElementById('deactivate-user').classList.toggle('hidden',!u);
+  // Løntype/Timeløn (sep. 2026): hourly_wage leveres bevidst IKKE med i den brede
+  // /api/users-liste (lønprivatliv), så den hentes separat her via det snævre
+  // adminOnly-endpoint — kun når man rent faktisk åbner en eksisterende medarbejder.
+  document.getElementById('user-pay-type').value=u?(u.pay_type||'hourly'):'hourly';
+  document.getElementById('user-hourly-wage').value='';
+  toggleUserPayTypeField();
   setLoginFields();document.getElementById('user-modal').classList.add('open');
+  if(u){
+    var pay=await api('/api/users/'+u.id+'/pay');
+    if(pay&&pay.pay_type){
+      document.getElementById('user-pay-type').value=pay.pay_type;
+      document.getElementById('user-hourly-wage').value=pay.hourly_wage||'';
+      toggleUserPayTypeField();
+    }
+  }
 }
 async function saveUser(){
   var name=document.getElementById('user-name').value.trim(),login=document.getElementById('user-can-login').checked,email=document.getElementById('user-email').value.trim(),pw=document.getElementById('user-password').value;
   if(!name){toast('Navn mangler','⚠');return;}
   if(login&&(!email||(!editUserId&&!pw))){toast('Email og kode mangler','⚠');return;}
   var roleVal=document.getElementById('user-role').value;
-  var body={name:name,can_login:login,email:email,role:roleVal,panel_role_id:roleVal==='admin'?null:(document.getElementById('user-panel-role').value||null),password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,avatar_url:document.getElementById('user-avatar-url').value||null,personal_email:document.getElementById('user-personal-email').value.trim()||null,phone:document.getElementById('user-phone').value.trim()||null,notify_schedule_changes:document.getElementById('user-notify-changes').checked,can_view_team_overview:document.getElementById('user-team-overview').checked};
+  var body={name:name,can_login:login,email:email,role:roleVal,panel_role_id:roleVal==='admin'?null:(document.getElementById('user-panel-role').value||null),password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,avatar_url:document.getElementById('user-avatar-url').value||null,personal_email:document.getElementById('user-personal-email').value.trim()||null,phone:document.getElementById('user-phone').value.trim()||null,notify_schedule_changes:document.getElementById('user-notify-changes').checked,can_view_team_overview:document.getElementById('user-team-overview').checked,pay_type:document.getElementById('user-pay-type').value,hourly_wage:+document.getElementById('user-hourly-wage').value||0};
   var r=editUserId?await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/users',{method:'POST',body:JSON.stringify(body)});
   if(r&&(r.ok||r.id)){closeModal('user-modal');toast('Gemt','✓');await loadAll();}else if(r)toast(r.error||'Fejl','❌');
 }
@@ -11520,8 +11742,9 @@ async function sendTestCompletionEmail(){
 
 // LOAD ALL
 async function loadAll(){
-  var r=await Promise.all([api('/api/users'),api('/api/tasks'),api('/api/assignments'),api('/api/dashboard'),api('/api/time-off/approved')]);
+  var r=await Promise.all([api('/api/users'),api('/api/tasks'),api('/api/assignments'),api('/api/dashboard'),api('/api/time-off/approved'),api('/api/akkord-items')]);
   users=r[0]||[];tasks=r[1]||[];bookings=r[2]||[];timeOffApproved=r[4]||[];
+  akkordItems=Array.isArray(r[5])?r[5]:[];
   if(usersReadyResolve){usersReadyResolve();usersReadyResolve=null;}
   renderStats(r[3]||{});
   // Genrender kun den side der rent faktisk vises lige nu — at genopbygge ALLE
@@ -12082,6 +12305,9 @@ function bind(){
   document.getElementById('new-vendor-group-btn').onclick=async function(){var g=await gmPrompt('Navn på vendor-gruppen:');if(g&&g.trim())openUser(null,{vendorGroup:g.trim()});};
   document.getElementById('user-can-login').onchange=setLoginFields;
   document.getElementById('user-role').onchange=toggleUserPanelRoleField;
+  document.getElementById('user-pay-type').onchange=toggleUserPayTypeField;
+  // Akkordliste
+  document.getElementById('akkord-new-add-btn').onclick=addAkkordItem;
   // Roller & adgang
   document.getElementById('new-panel-role-btn').onclick=function(){openPanelRole(null);};
   document.getElementById('close-panel-role').onclick=function(){closeModal('panel-role-modal');};
@@ -12488,6 +12714,8 @@ initNoteWidget();
 // delbetalinger.
 // ══════════════════════════════════════════════════════════════
 var qzProducts=[],qzQuotes=[],qzInvoices=[],qzTemplates=[],qzActiveTab='quotes',qzInitialized=false,qzEditingProductId=null;
+// Se qzLineAcSuppressFieldEvents-brugen i qzShowLineAutocomplete's valg-håndtering.
+var qzLineAcSuppressFieldEvents=false;
 var qzQuoteStatusFilter='all',qzInvoiceStatusFilter='all';
 var qzQuotePeriodFilter=null,qzInvoicePeriodFilter=null;
 // Genanvendelig Billy-stil dato-filter (Måned/Kvartal/Regnskabsår/Alt tid + frit
@@ -12685,7 +12913,7 @@ function qzLineRowHtml(l,idx,prefix){
   var type=qzType(l.product_type);
   return '<div class="qe-line" data-idx="'+idx+'">'
     +'<div class="qe-line-top">'
-    +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="description" value="'+esc(l.description||'')+'" placeholder="Beskrivelse">'
+    +'<textarea class="qe-input qe-line-field qe-desc-area" data-idx="'+idx+'" data-field="description" placeholder="Beskrivelse" rows="1">'+esc(l.description||'')+'</textarea>'
     +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="unit" value="'+esc(l.unit||'stk')+'" placeholder="Enhed">'
     +'<select class="qe-input qe-line-field" data-idx="'+idx+'" data-field="product_type">'
       +'<option value="service"'+(type==='service'?' selected':'')+'>Service</option>'
@@ -12709,10 +12937,19 @@ function qzLineRowHtml(l,idx,prefix){
     +'<div class="qe-line-margin qz-margin '+qzMarginClass(pct)+'" id="'+prefix+'-line-margin-'+idx+'">'+marginTxt+'</div>'
     +'</div>';
 }
+// Lader et beskrivelses-tekstfelt vokse i højden efter indholdet — bruges så en
+// produktbeskrivelse med flere linjer (fra JobTread-import) er synlig og redigerbar
+// i selve tilbudslinjen, i stedet for at blive skjult i et enkeltlinjet inputfelt.
+function qzAutoGrowTextarea(el){
+  if(!el)return;
+  el.style.height='auto';
+  el.style.height=Math.min(el.scrollHeight,200)+'px';
+}
 function qzRenderLines(containerId,lines,prefix){
   var el=document.getElementById(containerId);
   if(!lines.length){el.innerHTML='<div class="sub" style="padding:14px 0">Ingen linjer endnu — tilføj fra produktkataloget eller opret en fri linje.</div>';return;}
   el.innerHTML=lines.map(function(l,idx){return qzLineRowHtml(l,idx,prefix);}).join('');
+  Array.prototype.forEach.call(el.querySelectorAll('.qe-desc-area'),qzAutoGrowTextarea);
 }
 function qzRefreshLineDisplay(lines,idx,prefix){
   var l=lines[idx];if(!l)return;
@@ -12729,17 +12966,23 @@ function makeLinesFieldHandler(getLines,prefix,onChange,renderLinesFn){
   return function(e){
     var t=e.target;
     if(!t.classList.contains('qe-line-field'))return;
+    // FEJLRETTELSE (sep. 2026): se qzLineAcSuppressFieldEvents nedenfor for baggrunden —
+    // uden dette tjek overskriver et automatisk 'change'-event fra det GAMLE, netop
+    // fjernede beskrivelsesfelt linjens korrekte, netop valgte værdi med den ufærdige
+    // søgetekst igen, og den levende tilbudsviser+totaler står derfor fast på det.
+    if(qzLineAcSuppressFieldEvents)return;
     var lines=getLines();
     var idx=Number(t.dataset.idx),field=t.dataset.field;
     var l=lines[idx];if(!l)return;
     if(field==='description'||field==='unit'||field==='product_type'||field==='discount_type'){l[field]=t.value;if(field==='discount_type')qzRefreshLineDisplay(lines,idx,prefix);}
     else{l[field]=Number(t.value)||0;qzRefreshLineDisplay(lines,idx,prefix);}
+    if(field==='description'&&t.tagName==='TEXTAREA')qzAutoGrowTextarea(t);
     // Live produkt-søgning DIREKTE i linjens eget beskrivelsesfelt — ikke kun i det
     // separate søgefelt i toppen. Kun for almindelige linjer (ikke tekst-/overskriftslinjer,
     // som ikke har pris-felter at udfylde). Kun på selve 'input'-eventet (mens man skriver),
     // ikke 'change' (som også fyrer ved blur) — ellers dukker boksen forkert op igen efter valg.
     if(field==='description'&&l.line_type!=='text'&&e.type==='input'&&renderLinesFn){
-      qzShowLineAutocomplete(t,lines,idx,prefix,renderLinesFn);
+      qzShowLineAutocomplete(t,lines,idx,prefix,renderLinesFn,onChange);
     }
     if(onChange)onChange();
   };
@@ -12752,10 +12995,18 @@ function makeLinesRemoveHandler(getLines,renderFn){
     renderFn();
   };
 }
+// Sammensætter en linjes startbeskrivelse ud fra et produkt: navnet, plus
+// produktets egen (redigerbare) beskrivelse på ny linje hvis den findes — vi
+// har en beskrivelse til alt vi laver, og den skal med på tilbuddet, ikke kun
+// stå gemt i produktkataloget (Martins ønske, sep. 2026).
+function qzProductLineText(product){
+  if(!product)return'';
+  return product.description?product.name+'\n'+product.description:product.name;
+}
 function qzMakeBlankLine(product){
   return {
     product_id:product?product.id:null,
-    description:product?product.name:'',
+    description:qzProductLineText(product),
     unit:product?(product.unit||'stk'):'stk',
     quantity:1,
     cost_price:product?Number(product.cost_price):0,
@@ -12858,7 +13109,7 @@ function qzHideLineAutocomplete(){
   var box=document.getElementById('qz-line-ac');
   if(box){box.style.display='none';box.innerHTML='';}
 }
-function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn){
+function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange){
   var q=inputEl.value.trim().toLowerCase();
   if(!q){qzHideLineAutocomplete();return;}
   var matches=qzProducts.filter(function(p){return p.name.toLowerCase().indexOf(q)>-1||(p.category||'').toLowerCase().indexOf(q)>-1;}).slice(0,8);
@@ -12890,11 +13141,23 @@ function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn){
       var p=qzProducts.find(function(x){return x.id===pid;});
       if(!p)return;
       var l=lines[idx];if(!l)return;
-      l.product_id=p.id;l.description=p.name;l.unit=p.unit||'stk';
+      l.product_id=p.id;l.description=qzProductLineText(p);l.unit=p.unit||'stk';
       l.cost_price=Number(p.cost_price)||0;l.sell_price=Number(p.sell_price)||0;
       l.product_type=qzType(p.product_type);
       qzHideLineAutocomplete();
+      // qzLineAcSuppressFieldEvents: renderLinesFn() erstatter straks det fokuserede,
+      // "beskidte" beskrivelsesfelt med et nyt DOM-element — og browseren fyrer selv et
+      // sidste 'change' PÅ DET GAMLE, netop fjernede felt som led i det (indeholdende den
+      // ufærdige søgetekst, ikke det man lige valgte). Det boblede op til feltets fælles
+      // event-lytter og overskrev linjen med søgeteksten igen. Undertrykkes her.
+      qzLineAcSuppressFieldEvents=true;
       renderLinesFn();
+      qzLineAcSuppressFieldEvents=false;
+      // FEJLRETTELSE (sep. 2026): et valg her opdaterede kun selve linje-rækken, ikke
+      // totaler/den levende tilbudsviser til højre — som derfor stod fast på de sidste
+      // par bogstaver man nåede at skrive, indtil et helt andet felt blev rørt. Samme
+      // onChange (qeRecalc) som alle andre felt-ændringer allerede trigger.
+      if(onChange)onChange();
     };
   });
 }
@@ -12978,6 +13241,7 @@ function initCrmModule(){
     document.getElementById('crm-new-btn').addEventListener('click',function(){openCrmModal();});
     document.getElementById('crmc-cancel').addEventListener('click',function(){closeModal('crm-modal');});
     document.getElementById('crmc-is-company').addEventListener('change',crmSyncCompanyFields);
+    document.getElementById('crmc-source').addEventListener('change',function(e){document.getElementById('crmc-source-other').classList.toggle('hidden',e.target.value!=='Andet');});
     document.getElementById('crmc-save').addEventListener('click',saveCrmCustomer);
     document.getElementById('crmc-delete').addEventListener('click',deleteCrmCustomer);
     crmInitialized=true;
@@ -13030,6 +13294,14 @@ function openCrmModal(id){
   document.getElementById('crmc-cvr').value=c?(c.cvr||''):'';
   crmSyncCompanyFields();
   document.getElementById('crmc-delete').classList.toggle('hidden',!c);
+  // Kilde/Projekttype (og dermed det automatisk oprettede lead) giver kun mening
+  // ved oprettelse af en HELT NY kunde — ikke når en eksisterende kunde redigeres
+  // (den har typisk allerede et lead/en opportunity et sted i pipelinen).
+  document.getElementById('crmc-lead-fields').classList.toggle('hidden',!!c);
+  document.getElementById('crmc-source').value='';
+  document.getElementById('crmc-source-other').value='';
+  document.getElementById('crmc-source-other').classList.add('hidden');
+  document.getElementById('crmc-projekt-type').value='';
   document.getElementById('crm-modal').classList.add('open');
 }
 // KUNDEDETALJE — klik på en kunde i listen. Egen side (samme mønster som
@@ -13265,7 +13537,12 @@ async function initCrmpModule(){
       document.getElementById('crmp-cf-filter-field').value='';document.getElementById('crmp-cf-filter-value').style.display='none';
       crmpLoadBoard();
     });
-    document.getElementById('crmp-settings-close').addEventListener('click',function(){closeModal('crmp-settings-modal');});
+    document.getElementById('crmp-settings-close').addEventListener('click',function(){
+      closeModal('crmp-settings-modal');
+      // Genopfrisk kortene med det samme hvis Martin lige har ændret "Vis på kort"/farver,
+      // så han ikke behøver genindlæse siden for at se ændringen på boardet.
+      if(crmpCurrentPipeline())crmpRenderBoard();
+    });
     document.querySelectorAll('#crmp-settings-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){
       document.querySelectorAll('#crmp-settings-tabs .bly-segtab').forEach(function(x){x.classList.toggle('active',x===b);});
       document.getElementById('crmpsettab-pipelines').style.display=b.dataset.crmpsettab==='pipelines'?'':'none';
@@ -13381,8 +13658,15 @@ function crmpRenderBoard(){
   });
 }
 function crmpCardHtml(c,pipeline,defs){
-  var badges=defs.filter(function(d){return c.custom_fields&&c.custom_fields[d.key];}).slice(0,2).map(function(d){
-    return '<span class="crmp-card-badge">'+esc(c.custom_fields[d.key])+'</span>';
+  // Kort-felter (sep. 2026, Martins ønske): INGEN automatik længere — kun felter Martin
+  // selv har krydset "Vis på kort" af for i CRM-indstillinger vises, og der er ikke
+  // længere noget loft på 2 stk. Select-felter med en farve sat pr. valgmulighed
+  // (option_colors) viser badgen i den farve i stedet for standard-badge-farven.
+  var badges=defs.filter(function(d){return d.show_on_card&&c.custom_fields&&c.custom_fields[d.key]!=null&&c.custom_fields[d.key]!=='';}).map(function(d){
+    var val=c.custom_fields[d.key];
+    var color=d.field_type==='select'&&d.option_colors&&d.option_colors[val];
+    var style=color?' style="background:'+esc(color)+'22;color:'+esc(color)+';border:1px solid '+esc(color)+'55"':'';
+    return '<span class="crmp-card-badge"'+style+'>'+esc(val)+'</span>';
   }).join('');
   var contactLine=[c.phone||c.contact_phone,c.email||c.contact_email].filter(Boolean).join(' · ');
   var ownerId=c.owner_id;
@@ -13428,6 +13712,7 @@ function crmpxInitOnce(){
     if(ent)crmpSelectPipelineByType(ent.type,ent.data.pipeline_id);
   });
   document.getElementById('crmpx-convert-btn').addEventListener('click',crmpxConvert);
+  document.getElementById('crmpx-quote-btn').addEventListener('click',crmpxOpenQuote);
   document.getElementById('crmpx-delete-btn').addEventListener('click',crmpxDelete);
   document.getElementById('crmpx-note-add-btn').addEventListener('click',crmpxAddNote);
   document.getElementById('crmpx-task-add-btn').addEventListener('click',crmpxAddTask);
@@ -13747,6 +14032,10 @@ async function openCrmpDetail(entityType,id){
   stageSel.innerHTML=(pipeline?pipeline.stages:[]).slice().sort(function(a,b){return a.position-b.position;}).map(function(s){return '<option value="'+s.id+'"'+(s.id===d.stage_id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
   document.getElementById('crmpx-customfields').innerHTML=crmpxRenderCustomFieldInputs(d.custom_field_defs||[],d.custom_fields||{})||'<div class="crmpx-empty">Ingen felter oprettet — tilføj under ⚙️ Indstillinger</div>';
   document.getElementById('crmpx-convert-btn').style.display=entityType==='lead'&&!d.converted_opportunity_id?'':'none';
+  // "Lav tilbud" (sep. 2026, Martins ønske): kun for opportunities (et lead er
+  // typisk ikke konkretiseret nok endnu) — og kun når der rent faktisk er en
+  // kunde koblet på, så tilbuddet kan forudfyldes med kontaktoplysninger.
+  document.getElementById('crmpx-quote-btn').style.display=(entityType==='opportunity'&&d.customer_id)?'':'none';
 
   document.getElementById('crmpx-opps-panel').style.display=entityType==='lead'?'':'none';
   document.getElementById('crmpx-contact-panel').style.display=entityType==='opportunity'?'':'none';
@@ -13922,6 +14211,14 @@ async function crmpxConvert(){
   var r=await api('/api/crm/leads/'+ent.id+'/convert',{method:'POST',body:JSON.stringify({})});
   if(r&&r.ok){toast('Konverteret ✓','🤝');openCrmpDetail('opportunity',r.opportunity_id);}
   else toast((r&&r.error)||'Kunne ikke konvertere','❌');
+}
+// "Lav tilbud" (sep. 2026) — åbner et nyt, blankt tilbud forudfyldt med
+// opportunityens koblede kunde, så man ikke skal søge kunden op igen manuelt.
+function crmpxOpenQuote(){
+  var ent=crmpDetailEntity;
+  if(!ent||ent.type!=='opportunity'||!crmpxCurrentCustomerId)return;
+  var d=ent.data;
+  openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:d.contact_name||d.name||'',phone:d.contact_phone||'',email:d.contact_email||'',address:d.contact_address||''});
 }
 async function crmpxDelete(){
   var ent=crmpDetailEntity;
@@ -14270,11 +14567,31 @@ async function crmpCreatePipeline(){
 function crmpRenderSettingsFields(){
   var defs=crmpState.customFieldDefs[crmpState.settingsFieldEntity]||[];
   var list=document.getElementById('crmp-set-fields-list');
+  var typeLabels={text:'Tekst',number:'Tal',select:'Dropdown',date:'Dato',checkbox:'Afkrydsning'};
+  // "Vis på kort" + farver pr. valgmulighed (sep. 2026, Martins ønske): admin bestemmer nu
+  // selv hvilke custom fields der vises som badges på et lead/opportunity-kort i
+  // pipelinen, i stedet for automatisk "de første 2 med en værdi" — og for dropdown-felter
+  // (fx Lead source) kan hver valgmulighed få sin egen farve, der så bruges på badgen.
   list.innerHTML=defs.length?defs.map(function(d){
-    return '<div class="crmp-set-field-row" data-field-id="'+d.id+'">'
+    var hasOptions=d.field_type==='select'&&Array.isArray(d.options)&&d.options.length>0;
+    return '<div class="crmp-set-field-row" data-field-id="'+d.id+'" style="flex-wrap:wrap">'
+      +'<div style="display:flex;align-items:center;gap:8px;width:100%">'
       +'<span style="flex:1;font-weight:700;font-size:12.5px">'+esc(d.label)+'</span>'
-      +'<span class="sub" style="font-size:11px">'+({text:'Tekst',number:'Tal',select:'Dropdown',date:'Dato',checkbox:'Afkrydsning'}[d.field_type]||d.field_type)+'</span>'
+      +'<span class="sub" style="font-size:11px">'+(typeLabels[d.field_type]||d.field_type)+'</span>'
+      +'<label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--bly-sub);cursor:pointer;white-space:nowrap">'
+      +'<input type="checkbox" data-action="toggle-card"'+(d.show_on_card?' checked':'')+'> Vis på kort</label>'
+      +(hasOptions?'<button class="qz-icon-btn" data-action="field-colors" title="Farver pr. valgmulighed">🎨</button>':'')
       +'<button class="qz-icon-btn" data-action="field-delete" title="Slet">🗑</button>'
+      +'</div>'
+      +(hasOptions?('<div class="crmp-set-field-colors" style="display:none;flex-wrap:wrap;gap:10px;width:100%;margin-top:8px;padding-top:8px;border-top:1px dashed var(--bly-border)">'
+        +d.options.map(function(opt){
+          var color=(d.option_colors&&d.option_colors[opt])||'#94A3B8';
+          return '<label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600">'
+            +'<input type="color" data-opt="'+esc(opt)+'" value="'+esc(color)+'" style="width:26px;height:26px;padding:1px;border-radius:6px;border:1px solid var(--bly-border);cursor:pointer">'
+            +esc(opt)+'</label>';
+        }).join('')
+        +'<button class="btn small" data-action="field-colors-save" style="margin-left:auto">Gem farver</button>'
+        +'</div>'):'')
       +'</div>';
   }).join(''):'<div class="sub" style="padding:6px 0">Ingen felter endnu</div>';
   list.querySelectorAll('[data-action="field-delete"]').forEach(function(btn){
@@ -14283,6 +14600,32 @@ function crmpRenderSettingsFields(){
       if(!await gmConfirm('Slet feltet? Alle gemte værdier for feltet slettes også.'))return;
       var r=await api('/api/crm/custom-fields/'+fieldId,{method:'DELETE'});
       if(r&&r.ok){crmpState.customFieldDefs[crmpState.settingsFieldEntity]=await crmGetCustomFieldDefsCache(crmpState.settingsFieldEntity);crmpRenderSettingsFields();}
+    });
+  });
+  list.querySelectorAll('[data-action="toggle-card"]').forEach(function(cb){
+    cb.addEventListener('change',async function(){
+      var fieldId=Number(cb.closest('.crmp-set-field-row').dataset.fieldId);
+      var wasChecked=!cb.checked;
+      var r=await api('/api/crm/custom-fields/'+fieldId,{method:'PUT',body:JSON.stringify({show_on_card:cb.checked})});
+      if(r&&r.ok){crmpState.customFieldDefs[crmpState.settingsFieldEntity]=await crmGetCustomFieldDefsCache(crmpState.settingsFieldEntity);}
+      else{cb.checked=wasChecked;toast((r&&r.error)||'Kunne ikke gemme','❌');}
+    });
+  });
+  list.querySelectorAll('[data-action="field-colors"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var panel=btn.closest('.crmp-set-field-row').querySelector('.crmp-set-field-colors');
+      if(panel)panel.style.display=panel.style.display==='none'?'flex':'none';
+    });
+  });
+  list.querySelectorAll('[data-action="field-colors-save"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var row=btn.closest('.crmp-set-field-row');
+      var fieldId=Number(row.dataset.fieldId);
+      var colors={};
+      row.querySelectorAll('[data-opt]').forEach(function(inp){colors[inp.dataset.opt]=inp.value;});
+      var r=await api('/api/crm/custom-fields/'+fieldId,{method:'PUT',body:JSON.stringify({option_colors:colors})});
+      if(r&&r.ok){toast('Farver gemt','✓');crmpState.customFieldDefs[crmpState.settingsFieldEntity]=await crmGetCustomFieldDefsCache(crmpState.settingsFieldEntity);}
+      else toast((r&&r.error)||'Kunne ikke gemme farver','❌');
     });
   });
 }
@@ -14304,11 +14647,34 @@ async function crmpAddCustomField(){
 async function saveCrmCustomer(){
   var name=document.getElementById('crmc-name').value.trim();
   if(!name){toast('Navn mangler','⚠️');return;}
+  var isNew=!crmEditingId;
+  var source=document.getElementById('crmc-source').value,sourceOther=document.getElementById('crmc-source-other').value.trim();
+  var projektType=document.getElementById('crmc-projekt-type').value;
   var isCompany=document.getElementById('crmc-is-company').checked;
-  var body={name:name,phone:document.getElementById('crmc-phone').value.trim()||null,email:document.getElementById('crmc-email').value.trim()||null,address:document.getElementById('crmc-address').value.trim()||null,notes:document.getElementById('crmc-notes').value.trim()||null,is_company:isCompany,cvr:isCompany?(document.getElementById('crmc-cvr').value.trim()||null):null};
+  var phone=document.getElementById('crmc-phone').value.trim()||null,email=document.getElementById('crmc-email').value.trim()||null,address=document.getElementById('crmc-address').value.trim()||null;
+  if(isNew){
+    if(!source){toast('Vælg en kilde','⚠️');return;}
+    if(source==='Andet'&&!sourceOther){toast('Angiv kilden under "Andet"','⚠️');return;}
+    if(!projektType){toast('Vælg en projekttype','⚠️');return;}
+    // Telefon ELLER email er nødvendig for at det automatisk oprettede lead kan kobles
+    // til DENNE kunde (matcher på telefon/email) — uden nogen af delene opretter leadet
+    // sin egen duplikat-kunde i stedet, se crmFindOrCreateContactAndCustomer i server.js.
+    if(!phone&&!email){toast('Angiv telefon eller email — ellers kan det automatiske lead ikke kobles til kunden','⚠️');return;}
+  }
+  var body={name:name,phone:phone,email:email,address:address,notes:document.getElementById('crmc-notes').value.trim()||null,is_company:isCompany,cvr:isCompany?(document.getElementById('crmc-cvr').value.trim()||null):null};
   var r=crmEditingId?await api('/api/crm/customers/'+crmEditingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/crm/customers',{method:'POST',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Kunde gemt','✓');closeModal('crm-modal');await loadCrmCustomers();renderCrmCustomers();}
-  else toast((r&&r.error)||'Kunne ikke gemme kunden','❌');
+  if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke gemme kunden','❌');return;}
+  // Ny kunde: opret automatisk et lead i Leads-pipelinen med samme kontaktoplysninger
+  // — POST /api/crm/leads kobler det selv til den kunde vi lige oprettede (matcher på
+  // telefon/email, samme find-eller-opret-logik som resten af CRM'et bruger). Uden
+  // telefon/email kan den ikke matches til kunden og opretter i stedet sin egen —
+  // samme kendte begrænsning som alle andre steder leads oprettes i appen.
+  if(isNew){
+    var leadBody={name:name,phone:phone,email:email,address:address,source:source==='Andet'?sourceOther:source,custom_fields:{projekt_type:projektType}};
+    var lr=await api('/api/crm/leads',{method:'POST',body:JSON.stringify(leadBody)});
+    if(!lr||!lr.ok)toast('Kunden blev oprettet, men leadet kunne ikke oprettes: '+((lr&&lr.error)||'ukendt fejl'),'⚠️');
+  }
+  toast('Kunde gemt','✓');closeModal('crm-modal');await loadCrmCustomers();renderCrmCustomers();
 }
 async function deleteCrmCustomer(){
   if(!crmEditingId)return;
@@ -14352,8 +14718,10 @@ function initProjectsModule(){
     document.getElementById('pd-new-task-btn').addEventListener('click',function(){pdAddTaskRow();});
     document.getElementById('pd-photo-input').addEventListener('change',pdUploadPhoto);
     document.getElementById('pd-time-add-btn').addEventListener('click',function(){openPdTimeModal(null);});
+    document.getElementById('pd-budget-toggle-btn').addEventListener('click',function(){pdBudgetHidden=!pdBudgetHidden;renderPdBudget();});
     document.getElementById('pdt-close-btn').addEventListener('click',function(){closeModal('pd-time-modal');});
     document.getElementById('pdt-save-btn').addEventListener('click',savePdTimeModal);
+    document.getElementById('pdt-user').addEventListener('change',pdtToggleAkkordRow);
     document.getElementById('pdt-photo-input').addEventListener('change',pdtHandlePhotoFiles);
     document.getElementById('pd-qa-assign-save-btn').addEventListener('click',savePdQaAssign);
     document.getElementById('pd-lightbox-close-btn').addEventListener('click',function(){closeModal('pd-photo-lightbox');});
@@ -14504,9 +14872,54 @@ async function reloadPdCurrent(){
   await loadPjProjects();renderPjProjects();
   loadAll();
 }
+// ── BUDGET-DASHBOARD (Projekt-detalje → 💰 Budget-fane, sep. 2026) ─────────
+var pdBudgetData=null,pdBudgetHidden=false;
+async function loadPdBudget(){
+  if(!pjCurrent)return;
+  var r=await api('/api/projects/'+pjCurrent.id+'/budget');
+  if(!r||r.error){document.getElementById('pd-budget-summary').innerHTML='<div class="sub" style="padding:10px 0">Kunne ikke hente budgettet'+(r&&r.error?': '+esc(r.error):'')+'</div>';return;}
+  pdBudgetData=r;
+  renderPdBudget();
+}
+function renderPdBudget(){
+  if(!pdBudgetData)return;
+  var d=pdBudgetData;
+  var summaryEl=document.getElementById('pd-budget-summary');
+  document.getElementById('pd-budget-toggle-btn').textContent=pdBudgetHidden?'Vis oversigt':'Skjul oversigt';
+  if(pdBudgetHidden){summaryEl.style.display='none';}
+  else{
+    summaryEl.style.display='';
+    var profitColor=d.projected_profit>=0?'#16A34A':'#DC2626';
+    var cards=[
+      ['Godkendt pris',krFmt(d.approved_price),null],
+      ['Opkrævet',krFmt(d.collected),null],
+      ['Restsaldo',krFmt(d.remaining_balance),null],
+      ['Forventet omkostning',krFmt(d.cost_to_complete+d.labor_cost),null],
+      ['Forventet fortjeneste',krFmt(d.projected_profit),profitColor],
+      ['Forventet margin',Number(d.projected_margin).toFixed(1).replace('.',',')+' %',profitColor]
+    ];
+    summaryEl.innerHTML=cards.map(function(c){
+      return '<div class="pd-budget-card"><div class="bly-kpi-label">'+esc(c[0])+'</div><div class="bly-kpi-value"'+(c[2]?' style="color:'+c[2]+'"':'')+'>'+c[1]+'</div></div>';
+    }).join('');
+  }
+  var body=document.getElementById('pd-budget-employees-body');
+  if(!d.employees||!d.employees.length){body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen tidsregistreringer på sagen endnu</td></tr>';return;}
+  body.innerHTML=d.employees.map(function(e){
+    var hrs=(e.minutes/60).toFixed(1).replace('.',',');
+    var akkordTxt=(e.akkord_lines||[]).length?e.akkord_lines.map(function(l){return esc(l.item)+' × '+l.quantity;}).join(', '):'–';
+    return '<tr>'
+      +'<td>'+esc(e.name)+'</td>'
+      +'<td>'+(e.pay_type==='akkord'?'Akkord':'Timeløn')+'</td>'
+      +'<td class="num">'+(e.minutes>0?hrs+' t':'–')+'</td>'
+      +'<td>'+akkordTxt+'</td>'
+      +'<td class="num">'+krFmt(e.cost)+'</td>'
+      +'</tr>';
+  }).join('');
+}
 function switchPdTab(name){
   document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdtab===name);});
-  ['tasks','photos','time','materials','qa','contact'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
+  ['tasks','photos','time','budget','materials','qa','contact'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
+  if(name==='budget'&&me.role==='admin')loadPdBudget();
 }
 async function savePdStatus(){
   if(!pjCurrent)return;
@@ -14906,14 +15319,20 @@ function renderPdTime(){
   }
   if(!entries.length){body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen tidsregistreringer endnu</td></tr>';return;}
   var lineById={};(pjCurrent.quote_line_options||[]).forEach(function(l){lineById[l.id]=l.description;});
+  var akkordById={};akkordItems.concat(akkordItemsAll).forEach(function(it){akkordById[it.id]=it;});
   body.innerHTML=entries.map(function(t){
     var uname=(users.find(function(x){return +x.id===+t.user_id;})||{}).name||'–';
     var photos=(Array.isArray(t.photo_urls)&&t.photo_urls.length)?t.photo_urls:(t.photo_url?[t.photo_url]:[]);
     var photosHtml=photos.length?photos.map(function(u,i){return '<a href="'+esc(u)+'" target="_blank">📷 '+(i+1)+'</a>';}).join(' '):'–';
+    // Akkord-registreringer har ingen minutter — vis i stedet post × antal (sep. 2026).
+    var isAkkordEntry=t.akkord_item_id&&Number(t.akkord_quantity)>0;
+    var minutesCell=isAkkordEntry
+      ?(esc((akkordById[t.akkord_item_id]||{}).name||'Akkord')+' × '+t.akkord_quantity)
+      :t.minutes;
     return '<tr>'
       +'<td>'+esc(fmtDaDate(t.entry_date))+'</td>'
       +'<td>'+esc(uname)+'</td>'
-      +'<td class="num">'+t.minutes+'</td>'
+      +'<td class="num">'+minutesCell+'</td>'
       +'<td>'+esc(t.note||'')+'</td>'
       +'<td>'+esc(t.quote_line_id?(lineById[t.quote_line_id]||'–'):'–')+'</td>'
       +'<td>'+esc(t.bought_materials||'–')+'</td>'
@@ -14951,6 +15370,19 @@ function renderPdTime(){
 // ny registrering (evt. for en anden medarbejder) og til at REDIGERE en
 // eksisterende — pdtTimeEditId er null i opret-tilstand. ────────────────────
 var pdtTimeEditId=null,pdtPhotoUrls=[];
+function pdtAkkordOptionsHtml(){
+  return '<option value="">Vælg post...</option>'+akkordItems.map(function(it){return '<option value="'+it.id+'">'+esc(it.name)+' — '+krFmt(Number(it.rate))+'</option>';}).join('');
+}
+// Viser Akkord-rækken (post + antal) i stedet for Minutter-rækken, alt efter om den
+// valgte medarbejder har løntype "Akkord" — se toggleUserPayTypeField for samme idé
+// på selve medarbejder-profilen.
+function pdtToggleAkkordRow(){
+  var uid=Number(document.getElementById('pdt-user').value);
+  var u=users.find(function(x){return +x.id===uid;});
+  var isAkkord=u&&u.pay_type==='akkord';
+  document.getElementById('pdt-akkord-row').classList.toggle('hidden',!isAkkord);
+  document.getElementById('pdt-minutes-row').classList.toggle('hidden',isAkkord);
+}
 function openPdTimeModal(entry){
   pdtTimeEditId=entry?entry.id:null;
   pdtPhotoUrls=entry?((Array.isArray(entry.photo_urls)&&entry.photo_urls.length)?entry.photo_urls.slice():(entry.photo_url?[entry.photo_url]:[])):[];
@@ -14966,6 +15398,10 @@ function openPdTimeModal(entry){
   document.getElementById('pdt-note').value=entry?(entry.note||''):'';
   document.getElementById('pdt-materials').value=entry?(entry.bought_materials||''):'';
   document.getElementById('pdt-photo-input').value='';
+  document.getElementById('pdt-akkord-item').innerHTML=pdtAkkordOptionsHtml();
+  document.getElementById('pdt-akkord-item').value=entry&&entry.akkord_item_id?entry.akkord_item_id:'';
+  document.getElementById('pdt-akkord-qty').value=entry&&entry.akkord_quantity?entry.akkord_quantity:'';
+  pdtToggleAkkordRow();
   renderPdtPhotosPreview();
   document.getElementById('pd-time-modal').classList.add('open');
 }
@@ -14994,17 +15430,26 @@ async function pdtHandlePhotoFiles(e){
   renderPdtPhotosPreview();
 }
 async function savePdTimeModal(){
+  var selUser=users.find(function(x){return +x.id===Number(document.getElementById('pdt-user').value);});
+  var isAkkord=selUser&&selUser.pay_type==='akkord';
   var body={
     user_id:Number(document.getElementById('pdt-user').value),
     entry_date:document.getElementById('pdt-date').value,
-    minutes:Number(document.getElementById('pdt-minutes').value),
+    minutes:isAkkord?0:Number(document.getElementById('pdt-minutes').value),
     note:document.getElementById('pdt-note').value.trim(),
     bought_materials:document.getElementById('pdt-materials').value.trim()||null,
     quote_line_id:document.getElementById('pdt-line').value||null,
     photo_urls:pdtPhotoUrls,
-    manual:true
+    manual:true,
+    akkord_item_id:isAkkord?(document.getElementById('pdt-akkord-item').value||null):null,
+    akkord_quantity:isAkkord?(Number(document.getElementById('pdt-akkord-qty').value)||0):0
   };
-  if(!body.minutes||body.minutes<=0){toast('Angiv hvor mange minutter der er brugt','⚠');return;}
+  if(isAkkord){
+    if(!body.akkord_item_id){toast('Vælg en akkord-post','⚠');return;}
+    if(!body.akkord_quantity||body.akkord_quantity<=0){toast('Angiv antal for akkord-posten','⚠');return;}
+  }else{
+    if(!body.minutes||body.minutes<=0){toast('Angiv hvor mange minutter der er brugt','⚠');return;}
+  }
   if(!body.note){toast('Skriv en note om det udførte arbejde','⚠');return;}
   var r=pdtTimeEditId
     ?await api('/api/projects/'+pjCurrent.id+'/time-entries/'+pdtTimeEditId,{method:'PUT',body:JSON.stringify(body)})
@@ -15249,7 +15694,7 @@ async function importProductsFromJobtread(){
   var r=await api('/api/products/import-from-jobtread',{method:'POST'});
   btn.disabled=false;btn.textContent=oldTxt;
   if(r&&r.ok){
-    toast('Importerede '+r.imported+' nye produkter ('+r.skipped+' sprunget over, '+r.total_found+' fundet i alt)','✓');
+    toast('Importerede '+r.imported+' nye produkter ('+r.skipped+' sprunget over, '+(r.descriptions_filled||0)+' fik udfyldt beskrivelse, '+r.total_found+' fundet i alt)','✓');
     await loadQzProducts();renderQzProducts();
   } else toast((r&&r.error)||'Import fra JobTread fejlede','❌');
 }
@@ -15445,7 +15890,7 @@ function qePopulateStatusSelect(current){
     }).join('');
   }
 }
-async function openQuoteEditor(id){
+async function openQuoteEditor(id,prefillCustomer){
   qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null};
   qzProductSearchSelections['qe-product-results']={};
   document.getElementById('qe-customer-search').value='';
@@ -15507,6 +15952,15 @@ async function openQuoteEditor(id){
     qeState.lines=[qzMakeBlankLine(null),qzMakeBlankLine(null),qzMakeBlankLine(null)];
     document.getElementById('qe-top-note').value=settings.quote_top_note_default||'';
     document.getElementById('qe-notes').value=settings.quote_bottom_note_default||'';
+    // Forudfyldt kunde (fx fra "📝 Lav tilbud" på en opportunity) — samme felter
+    // som qePickCustomer sætter ved manuelt søge-og-vælg.
+    if(prefillCustomer){
+      qeState.customerId=prefillCustomer.customerId||null;
+      document.getElementById('qe-customer-search').value=prefillCustomer.name||'';
+      document.getElementById('qe-customer-address').value=prefillCustomer.address||'';
+      document.getElementById('qe-customer-phone').value=prefillCustomer.phone||'';
+      document.getElementById('qe-customer-email').value=prefillCustomer.email||'';
+    }
   }
   renderQeLines();
   qeRecalc();
@@ -15839,7 +16293,7 @@ async function openInvoiceDetail(id){
     +(inv.lines||[]).map(function(l){
       if(l.line_type==='text')return '<tr><td colspan="4" style="font-weight:800">'+esc(l.description||'')+'</td></tr>';
       var lt=(Number(l.quantity)||0)*(Number(l.sell_price)||0);
-      return '<tr><td>'+esc(l.description)+'</td><td class="num">'+(Number(l.quantity)||0)+' '+esc(l.unit||'')+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lt)+'</td></tr>';
+      return '<tr><td style="white-space:pre-wrap">'+esc(l.description)+'</td><td class="num">'+(Number(l.quantity)||0)+' '+esc(l.unit||'')+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lt)+'</td></tr>';
     }).join('')+'</tbody></table>';
   document.getElementById('iv-payments-list').innerHTML=(inv.payments||[]).length?inv.payments.map(function(p){
     return '<div class="iv-payment-row"><div><b>'+krFmt(Number(p.amount))+'</b><div class="iv-payment-meta">'+esc(p.paid_at)+(p.method?' · '+esc(p.method):'')+(p.note?' · '+esc(p.note):'')+'</div></div><button class="qz-icon-btn" onclick="deleteIvPayment('+p.id+')" title="Fjern">✕</button></div>';
