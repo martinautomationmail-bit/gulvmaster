@@ -73,8 +73,15 @@ button,input,select{font:inherit}
 .sidebar-brand-name{overflow:hidden;text-overflow:ellipsis;font-size:13.5px;font-weight:800;letter-spacing:-.01em}
 .sidebar-toggle{border:1px solid var(--bly-border);background:#fff;color:var(--bly-sub);border-radius:var(--bly-r-sm);width:26px;height:26px;flex-shrink:0;display:grid;place-items:center;cursor:pointer;font-size:11px;transition:transform .15s ease,background .12s,color .12s}
 .sidebar-toggle:hover{background:var(--bly-hover);color:var(--bly-ink);border-color:#C7CBD1}
-.sidebar-nav{display:flex;flex-direction:column;gap:1px;padding:6px 12px;flex:1}
-.sidebar-nav .tab,.sidebar-bottom .tab{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:var(--bly-r-sm);width:100%;color:var(--bly-sub);font-size:12.5px;font-weight:600;transition:background .12s,color .12s;box-sizing:border-box}
+/* Afstand mellem de 5 hovedpunkter i sidebaren (CRM, Tilbud & Faktura,
+   Dagligplanlægning, Projekter, Økonomi) — gap gik fra 1px til 7px og
+   menupunkternes lodrette padding fra 9px til 10px efter Martins ønske
+   ("man skal ramme meget præcist med musen for at komme fra ét punkt til
+   det næste"). Kun de øverste grupper er berørt: undermenuernes egen gap
+   ligger i .sidebar-nav .navdrop-menu.open længere nede og er bevidst
+   uændret, så udfoldede undermenuer stadig er kompakte. */
+.sidebar-nav{display:flex;flex-direction:column;gap:7px;padding:6px 12px;flex:1}
+.sidebar-nav .tab,.sidebar-bottom .tab{display:flex;align-items:center;gap:11px;padding:10px 10px;border-radius:var(--bly-r-sm);width:100%;color:var(--bly-sub);font-size:12.5px;font-weight:600;transition:background .12s,color .12s;box-sizing:border-box}
 .sidebar-nav .tab.active,.sidebar-bottom .tab.active{color:var(--bly-accent);background:var(--bly-accent-soft);font-weight:800}
 .sidebar-nav .tab:hover,.sidebar-bottom .tab:hover{color:var(--bly-ink);background:var(--bly-hover)}
 .stab-icon{width:18px;text-align:center;flex-shrink:0;font-size:14px;opacity:.9}
@@ -593,6 +600,38 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .nav-center #global-search-input{width:420px;max-width:38vw;padding:11px 18px;font-size:13.5px;border-radius:var(--bly-r-pill)}
 
 /* ══════════════════════════════════════════════════════════════
+   GLOBAL SØGNING — dropdown-resultater. Redesignet efter Martins ønske om
+   "pænere/mere moderne data og dropdown-boks" i samme stil som Billy: rene
+   rækker med tydeligt hierarki (fed titel, dæmpet sekundærlinje med telefon
+   og adresse) i stedet for en tæt tekst-klump, og klart adskilte sektioner
+   (Sager & opgaver, Kunder, Leads, Opportunities, Medarbejdere) så man kan se
+   på et øjeblik hvad man kigger på. Sektionsoverskrifternes stil er den
+   samme lille versal-etiket som den gamle "Sager & opgaver"-overskrift
+   brugte — bare gjort til rigtige klasser og udvidet til alle sektioner.
+   Selve søgningen: se renderGlobalSearchResults + GET /api/search. */
+#global-search-results{padding:6px;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md,12px);box-shadow:0 12px 32px rgba(15,17,24,.14)}
+#global-search-results .gs-section{padding:9px 10px 3px;display:flex;align-items:center;gap:7px}
+#global-search-results .gs-section+.gs-section,#global-search-results .gs-row+.gs-section{border-top:1px solid var(--bly-border-soft);margin-top:5px;padding-top:11px}
+#global-search-results .gs-section-title{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--bly-sub,var(--muted))}
+#global-search-results .gs-section-count{font-size:9px;font-weight:800;color:var(--bly-sub,var(--muted));background:var(--bly-border-soft);border-radius:999px;padding:1px 6px;line-height:1.6;font-variant-numeric:tabular-nums}
+#global-search-results .gs-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;cursor:pointer;transition:background .1s;text-align:left}
+#global-search-results .gs-row:hover{background:var(--bly-hover,var(--ice))}
+#global-search-results .gs-avatar{width:30px;height:30px;border-radius:8px;flex-shrink:0;display:grid;place-items:center;font-size:11px;font-weight:800;letter-spacing:-.02em}
+#global-search-results .gs-main{flex:1;min-width:0}
+#global-search-results .gs-name{font-size:12.5px;font-weight:800;color:var(--bly-ink,var(--navy));line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#global-search-results .gs-meta{font-size:10.5px;font-weight:500;color:var(--bly-sub,var(--muted));line-height:1.4;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#global-search-results .gs-meta .gs-sep{opacity:.45;padding:0 2px}
+#global-search-results .gs-right{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:3px;max-width:38%}
+#global-search-results .gs-value{font-size:11.5px;font-weight:800;color:var(--bly-ink,var(--navy));font-variant-numeric:tabular-nums;white-space:nowrap}
+#global-search-results .gs-stage{display:flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;color:var(--bly-sub,var(--muted));background:var(--bly-border-soft);border-radius:999px;padding:2px 8px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#global-search-results .gs-stage-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+#global-search-results .gs-empty{padding:22px 14px;text-align:center;color:var(--bly-sub,var(--muted));font-size:12px;font-weight:600}
+#global-search-results .gs-empty small{display:block;margin-top:4px;font-size:10.5px;font-weight:500;opacity:.8}
+#global-search-results .gs-loading{padding:8px 12px 10px;font-size:10.5px;font-weight:600;color:var(--bly-sub,var(--muted));display:flex;align-items:center;gap:7px}
+#global-search-results .gs-spinner{width:11px;height:11px;border-radius:50%;border:2px solid var(--bly-border-soft);border-top-color:var(--bly-accent);animation:gs-spin .7s linear infinite;flex-shrink:0}
+@keyframes gs-spin{to{transform:rotate(360deg)}}
+
+/* ══════════════════════════════════════════════════════════════
    DAGLIG PLAN — total Billy-redesign, scoped til #page-plan (samt
    #daily-head/#daily-body/#plan-board-outer for selve boardet) så
    Kapacitet og resten af appen, der genbruger de samme klassenavne
@@ -812,11 +851,21 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmp-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
 .crmp-col{flex:0 0 280px;background:var(--bly-border-soft);border-radius:var(--bly-r-lg);display:flex;flex-direction:column;max-height:calc(100vh - 320px)}
 .crmp-col.drag-over{outline:2px dashed var(--bly-accent);outline-offset:-2px}
-.crmp-col-head{padding:12px 14px 10px;flex-shrink:0}
-.crmp-col-title{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;color:var(--bly-ink)}
-.crmp-col-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
-.crmp-col-count{margin-left:auto;font-size:11px;font-weight:700;color:var(--bly-sub);background:#fff;border-radius:999px;padding:1px 8px}
-.crmp-col-sum{font-size:11px;color:var(--bly-sub);margin-top:2px;font-weight:600}
+/* KOLONNE-HOVED I PIPELINE-BOARDET — redesignet efter Martins ønske om at
+   stage-totalen skal se ud som Close CRM's ("lille label + fed tal, ren
+   typografi") i stedet for den tidligere grå brødtekst-linje. Selve TALLET er
+   uændret: det er stadig den rå sum af kortenes value-felt (se crmpRenderBoard),
+   IKKE sandsynlighedsvægtet — det har Martin udtrykkeligt bekræftet. Kun
+   præsentationen er ny: totalen ligger nu i sin egen hvide "pille" med en
+   lille versal-label, og antals-badgen har fået samme kant/vægt så de to
+   nøgletal læses som ét samlet resumé. */
+.crmp-col-head{padding:12px 12px 10px;flex-shrink:0}
+.crmp-col-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--bly-ink);letter-spacing:.005em;min-width:0}
+.crmp-col-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 3px rgba(255,255,255,.75)}
+.crmp-col-count{margin-left:auto;flex-shrink:0;font-size:10.5px;font-weight:800;color:var(--bly-sub);background:#fff;border:1px solid var(--bly-border-soft);border-radius:999px;padding:1px 8px;line-height:1.6;min-width:24px;text-align:center;font-variant-numeric:tabular-nums}
+.crmp-col-sum{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:9px;background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:6px 9px 7px}
+.crmp-col-sum-label{font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--bly-sub);opacity:.8;flex-shrink:0}
+.crmp-col-sum-value{font-size:13px;font-weight:800;color:var(--bly-ink);letter-spacing:-.018em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crmp-col-body{flex:1;overflow-y:auto;padding:0 10px 10px;display:flex;flex-direction:column;gap:8px}
 .crmp-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:11px 12px;cursor:grab;box-shadow:0 1px 2px rgba(15,17,24,.04);transition:box-shadow .12s,transform .12s}
 .crmp-card:hover{box-shadow:0 4px 14px rgba(15,17,24,.1)}
@@ -2055,7 +2104,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-03.1</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-03.2</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -2072,7 +2121,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="nav-center">
     <div class="navdrop" id="globalsearch">
       <input id="global-search-input" placeholder="🔍 Søg sag, kunde eller medarbejder..." autocomplete="off">
-      <div class="navdrop-menu" id="global-search-results" style="width:420px;max-height:420px;overflow:auto;display:none"></div>
+      <!-- Bredden er nu lidt større end selve søgefeltet (460 mod 420), så
+           resultatrækkerne har plads til både navn og en hel sekundærlinje
+           med telefon + adresse uden at den bliver klippet. -->
+      <div class="navdrop-menu" id="global-search-results" style="width:460px;max-width:92vw;max-height:460px;overflow:auto;display:none"></div>
     </div>
   </div>
   <!-- RUNDE H #9's "+ Ny"-genvej er flyttet ned i sidebaren over CRM (sep.
@@ -12089,73 +12141,172 @@ function bind(){
     if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');return;}
     switchPage('customers');openCrmModal();
   });
-  // GLOBAL SØGNING — søger på tværs af opgaver/sager og medarbejdere uden at skulle
-  // vide hvilken side (Daglig plan/Gantt/Tidslinje/Kapacitet) tingen findes på.
+  // GLOBAL SØGNING — søger på tværs af opgaver/sager, kunder, leads,
+  // opportunities og medarbejdere, uden at skulle vide hvilken side tingen
+  // findes på.
+  //
+  // HVORDAN DEN ER SKRUET SAMMEN (opgraderet sep. 2026):
+  //   • Opgaver og medarbejdere filtreres som før i de lister der allerede
+  //     ligger i browserens hukommelse (tasks/users). Det er øjeblikkeligt og
+  //     tegnes med det samme, så feltet aldrig føles trægt.
+  //   • Kunder, leads og opportunities LÅ IKKE i nogen liste i browseren — de
+  //     kunne derfor slet ikke findes herfra før. De hentes nu fra det nye
+  //     GET /api/search, der søger direkte i databasen og er stavefejl-tolerant
+  //     (pg_trgm-trigrammer, så "gulvmaester" finder "Gulvmester ApS").
+  //     Svaret popper ind i dropdownen når det lander, uden at fjerne de
+  //     resultater der allerede er tegnet.
+  //   • gsSeq sikrer at et langsomt svar på en GAMMEL søgetekst aldrig kan
+  //     overskrive resultaterne for det man har skrevet i mellemtiden.
   var globalSearchTimer=null;
+  var gsSeq=0;                 // stigende id pr. søgning — kun det nyeste svar tegnes
+  var gsServer={};             // seneste serverresultat, nøglet på søgetekst
+  var gsPending=false;         // er der et kald undervejs for den aktuelle tekst?
   document.getElementById('global-search-input').addEventListener('input',function(e){
     clearTimeout(globalSearchTimer);
     var q=e.target.value.trim();
     var resEl=document.getElementById('global-search-results');
     if(!q){resEl.style.display='none';return;}
-    globalSearchTimer=setTimeout(function(){renderGlobalSearchResults(q);},120);
+    globalSearchTimer=setTimeout(function(){runGlobalSearch(q);},140);
   });
   document.getElementById('global-search-input').addEventListener('focus',function(e){
-    if(e.target.value.trim())renderGlobalSearchResults(e.target.value.trim());
+    if(e.target.value.trim())runGlobalSearch(e.target.value.trim());
   });
   document.addEventListener('click',function(e){
     if(!e.target.closest('#globalsearch'))document.getElementById('global-search-results').style.display='none';
   });
+  function runGlobalSearch(q){
+    var seq=++gsSeq;
+    // Tegn de øjeblikkelige (lokale) resultater først, med en lille
+    // "søger..."-linje nederst så det er tydeligt at der kommer mere.
+    gsPending=true;
+    renderGlobalSearchResults(q);
+    if(q.length<2){gsPending=false;renderGlobalSearchResults(q);return;}
+    api('/api/search?q='+encodeURIComponent(q)).then(function(r){
+      if(seq!==gsSeq)return; // et nyere søgeord er skrevet i mellemtiden
+      gsServer={q:q,data:(r&&!r.error)?r:{customers:[],leads:[],opportunities:[]}};
+      gsPending=false;
+      renderGlobalSearchResults(q);
+    }).catch(function(){
+      if(seq!==gsSeq)return;
+      gsPending=false;
+      renderGlobalSearchResults(q);
+    });
+  }
+  // Én række i dropdownen, Billy-stil: firkantet ikon/initialer, fed titel,
+  // dæmpet sekundærlinje (telefon · adresse · email) og evt. en højre-kolonne
+  // med beløb/stage.
+  function gsRow(opts){
+    var meta=(opts.meta||[]).filter(Boolean).map(function(part){return esc(part);}).join('<span class="gs-sep">·</span>');
+    var right='';
+    if(opts.value||opts.stage){
+      right='<div class="gs-right">'
+        +(opts.value?'<div class="gs-value">'+esc(opts.value)+'</div>':'')
+        +(opts.stage?'<div class="gs-stage"><span class="gs-stage-dot" style="background:'+esc(opts.stageColor||'#9CA3AF')+'"></span>'+esc(opts.stage)+'</div>':'')
+        +'</div>';
+    }
+    return '<div class="gs-row" data-gs-action="'+esc(opts.action)+'" data-gs-id="'+esc(opts.id)+'">'
+      +'<div class="gs-avatar" style="background:'+esc(opts.avatarBg)+';color:'+esc(opts.avatarFg)+'">'+esc(opts.avatar)+'</div>'
+      +'<div class="gs-main"><div class="gs-name">'+esc(opts.name||'(uden navn)')+'</div>'
+      +(meta?'<div class="gs-meta">'+meta+'</div>':'')+'</div>'
+      +right+'</div>';
+  }
+  function gsSection(title,count){
+    return '<div class="gs-section"><span class="gs-section-title">'+esc(title)+'</span><span class="gs-section-count">'+count+'</span></div>';
+  }
+  function gsInitials(name){
+    return String(name||'?').trim().split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase()||'?';
+  }
   function renderGlobalSearchResults(q){
     var ql=q.toLowerCase();
     var resEl=document.getElementById('global-search-results');
-    var matchedTaskIds={};
+    // ── Lokalt (øjeblikkeligt): sager/opgaver + medarbejdere, som hidtil ──
     var taskResults=tasks.filter(function(t){
       if(t.manually_completed_at)return false;
       var hay=((t.job_name||'')+' '+(t.name||'')+' '+(t.job_number||'')+' '+(t.customer_name||'')).toLowerCase();
-      var hit=hay.indexOf(ql)>-1;
-      if(hit)matchedTaskIds[t.id]=true;
-      return hit;
+      return hay.indexOf(ql)>-1;
     }).slice(0,6);
-    var userResults=users.filter(function(u){return (u.name||'').toLowerCase().indexOf(ql)>-1;}).slice(0,5);
-    if(!taskResults.length&&!userResults.length){
-      resEl.innerHTML='<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">Intet fundet for "'+esc(q)+'"</div>';
-      resEl.style.display='block';return;
-    }
+    var userResults=users.filter(function(u){
+      var hay=((u.name||'')+' '+(u.email||'')+' '+(u.phone||'')+' '+(u.trade||'')).toLowerCase();
+      return hay.indexOf(ql)>-1;
+    }).slice(0,5);
+    // ── Fra serveren: kunder, leads, opportunities ──
+    var srv=(gsServer.q===q&&gsServer.data)?gsServer.data:{customers:[],leads:[],opportunities:[]};
+    var customers=srv.customers||[],leads=srv.leads||[],opps=srv.opportunities||[];
+
     var html='';
+    // Rækkefølge efter Martins ønske: Projekt (sager/opgaver), Kunde, Leads,
+    // Opportunity — og medarbejdere til sidst, da de sjældnest er det man leder
+    // efter i praksis.
     if(taskResults.length){
-      html+='<div style="padding:6px 10px 2px;font-size:9px;font-weight:800;text-transform:uppercase;color:var(--muted)">Sager & opgaver</div>';
+      html+=gsSection('Sager & opgaver',taskResults.length);
       html+=taskResults.map(function(t){
-        return '<div class="navdrop-item" data-action="gsearch-task" data-task-id="'+esc(t.id)+'" style="padding:8px 10px;cursor:pointer;border-radius:6px"><b style="font-size:12px">'+esc(t.job_name||t.name)+'</b><div style="font-size:10.5px;color:var(--muted)">'+esc(t.name||'')+(t.job_number?' · '+esc(t.job_number):'')+'</div></div>';
+        return gsRow({action:'task',id:t.id,avatar:'🏗',avatarBg:'#EEF2FF',avatarFg:'#4F46E5',
+          name:t.job_name||t.name,
+          meta:[t.name&&t.name!==t.job_name?t.name:'',t.job_number?'Sag '+t.job_number:'',t.customer_name||'']});
+      }).join('');
+    }
+    if(customers.length){
+      html+=gsSection('Kunder',customers.length);
+      html+=customers.map(function(c){
+        return gsRow({action:'customer',id:c.id,avatar:c.is_company?'🏢':gsInitials(c.name),avatarBg:'#ECFDF5',avatarFg:'#047857',
+          name:c.name,
+          meta:[c.phone||'',c.address||'',(!c.phone&&!c.address)?(c.email||''):'']});
+      }).join('');
+    }
+    if(leads.length){
+      html+=gsSection('Leads',leads.length);
+      html+=leads.map(function(l){
+        return gsRow({action:'lead',id:l.id,avatar:gsInitials(l.name),avatarBg:'#FFF7ED',avatarFg:'#C2410C',
+          name:l.name,
+          meta:[l.phone||'',l.address||'',(!l.phone&&!l.address)?(l.email||''):''],
+          stage:l.stage_name||'',stageColor:l.stage_color});
+      }).join('');
+    }
+    if(opps.length){
+      html+=gsSection('Opportunities',opps.length);
+      html+=opps.map(function(o){
+        return gsRow({action:'opportunity',id:o.id,avatar:gsInitials(o.contact_name||o.name),avatarBg:'#EFF6FF',avatarFg:'#1D4ED8',
+          name:o.name,
+          meta:[o.contact_name||'',o.contact_phone||'',o.contact_address||''],
+          value:(o.value===null||o.value===undefined)?'':krFmt(Number(o.value)),
+          stage:o.stage_name||'',stageColor:o.stage_color});
       }).join('');
     }
     if(userResults.length){
-      html+='<div style="padding:6px 10px 2px;font-size:9px;font-weight:800;text-transform:uppercase;color:var(--muted)">Medarbejdere</div>';
+      html+=gsSection('Medarbejdere',userResults.length);
       html+=userResults.map(function(u){
-        return '<div class="navdrop-item" data-action="gsearch-user" data-user-id="'+esc(u.id)+'" style="padding:8px 10px;cursor:pointer;border-radius:6px"><b style="font-size:12px">'+esc(u.name)+'</b><div style="font-size:10.5px;color:var(--muted)">'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+'</div></div>';
+        return gsRow({action:'user',id:u.id,avatar:gsInitials(u.name),avatarBg:'#F5F3FF',avatarFg:'#6D28D9',
+          name:u.name,
+          meta:[u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'),u.phone||'',u.email||'']});
       }).join('');
+    }
+    if(!html){
+      html=gsPending
+        ? '<div class="gs-loading"><span class="gs-spinner"></span>Søger efter "'+esc(q)+'"...</div>'
+        : '<div class="gs-empty">Intet fundet for "'+esc(q)+'"<small>Søger i sager, kunder, leads, opportunities og medarbejdere — på navn, telefon, email og adresse.</small></div>';
+    }else if(gsPending){
+      html+='<div class="gs-loading"><span class="gs-spinner"></span>Søger i kunder, leads og opportunities...</div>';
     }
     resEl.innerHTML=html;
     resEl.style.display='block';
-    resEl.querySelectorAll('[data-action="gsearch-task"]').forEach(function(el){
-      el.addEventListener('mouseenter',function(){el.style.background='var(--ice)';});
-      el.addEventListener('mouseleave',function(){el.style.background='';});
+    // Klik → åbn præcis den samme detaljevisning som resten af appen bruger
+    // (openCustomerDetail / openCrmpDetail / openUser skifter selv side og
+    // sætter hash), så der ikke opstår en anden navigationsvej sideløbende.
+    resEl.querySelectorAll('.gs-row').forEach(function(el){
       el.addEventListener('click',function(){
         document.getElementById('global-search-results').style.display='none';
         document.getElementById('global-search-input').value='';
-        switchPage('plan');
-        var t=tasks.find(function(x){return String(x.id)===el.dataset.taskId;});
-        var searchVal=t?(t.job_name||t.name||''):'';
-        document.getElementById('plan-search').value=searchVal;
-        renderPool('plan');
-      });
-    });
-    resEl.querySelectorAll('[data-action="gsearch-user"]').forEach(function(el){
-      el.addEventListener('mouseenter',function(){el.style.background='var(--ice)';});
-      el.addEventListener('mouseleave',function(){el.style.background='';});
-      el.addEventListener('click',function(){
-        document.getElementById('global-search-results').style.display='none';
-        document.getElementById('global-search-input').value='';
-        openUser(el.dataset.userId);
+        var id=el.dataset.gsId,action=el.dataset.gsAction;
+        if(action==='task'){
+          switchPage('plan');
+          var t=tasks.find(function(x){return String(x.id)===id;});
+          document.getElementById('plan-search').value=t?(t.job_name||t.name||''):'';
+          renderPool('plan');
+        }
+        else if(action==='customer')openCustomerDetail(Number(id));
+        else if(action==='lead')openCrmpDetail('lead',Number(id));
+        else if(action==='opportunity')openCrmpDetail('opportunity',Number(id));
+        else if(action==='user')openUser(id);
       });
     });
   }
@@ -13782,7 +13933,9 @@ function crmpRenderBoard(){
     return '<div class="crmp-col" data-stage-id="'+stage.id+'">'
       +'<div class="crmp-col-head">'
       +'<div class="crmp-col-title"><span class="crmp-col-dot" style="background:'+esc(stage.color)+'"></span>'+esc(stage.name)+'<span class="crmp-col-count">'+cards.length+'</span></div>'
-      +(p.type==='opportunity'?'<div class="crmp-col-sum">'+krFmt(sum)+'</div>':'')
+      // Uændret beregning (rå sum af value på kortene i stagen) — kun opsætningen
+      // er ny, se .crmp-col-sum* i CSS'en.
+      +(p.type==='opportunity'?'<div class="crmp-col-sum" title="Samlet værdi af kortene i denne stage"><span class="crmp-col-sum-label">I alt</span><span class="crmp-col-sum-value">'+krFmt(sum)+'</span></div>':'')
       +'</div>'
       +'<div class="crmp-col-body" data-stage-id="'+stage.id+'">'
       +cards.map(function(c){return crmpCardHtml(c,p,defs);}).join('')

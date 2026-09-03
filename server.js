@@ -1829,6 +1829,49 @@ async function initSchema() {
     }
     console.log('CRM: standard custom fields oprettet (Projekt Type, Lead Source, Sagsnummer).');
   }
+
+  await initSearchTrigrams();
+}
+
+// ══════════════════════════════════════════════════════════════
+// FUZZY-SØGNING (pg_trgm) — grundlaget under den globale søgning i topbjælken,
+// se GET /api/search længere nede. Martins ønske: "søgningen skal ikke være
+// 100% korrekt for at finde noget" — altså at "gulvmaester" stadig finder
+// "Gulvmester ApS". Det løses med Postgres' indbyggede trigram-udvidelse
+// pg_trgm, der sammenligner ord på 3-tegns-stumper i stedet for at kræve et
+// eksakt tekstmatch.
+//
+// FEJLSIKRING: pg_trgm er en "trusted extension" fra Postgres 13 og frem, så
+// den kan normalt oprettes af app-brugeren selv (også på Render). Skulle det
+// alligevel fejle — ældre Postgres, eller en hosting hvor extensions er
+// spærret — MÅ det ikke vælte opstarten: så sættes searchTrgmReady=false, og
+// /api/search kører videre med ren ILIKE-søgning (stadig fuldt brugbar, bare
+// uden stavefejl-tolerance). Flaget rapporteres i svaret som "fuzzy", så det
+// er til at se udefra hvad der faktisk kører.
+// ══════════════════════════════════════════════════════════════
+let searchTrgmReady = false;
+
+async function initSearchTrigrams() {
+  try {
+    await pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+    // GIN-trigram-indeks på de navne/adresser vi fuzzy-søger i, så % / <%
+    // kan slå op i et indeks i stedet for at scanne hele tabellen når
+    // kunde-/lead-listerne vokser.
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_customers_name_trgm ON customers USING gin (name gin_trgm_ops);
+      CREATE INDEX IF NOT EXISTS idx_customers_address_trgm ON customers USING gin (address gin_trgm_ops);
+      CREATE INDEX IF NOT EXISTS idx_crm_leads_name_trgm ON crm_leads USING gin (name gin_trgm_ops);
+      CREATE INDEX IF NOT EXISTS idx_crm_leads_address_trgm ON crm_leads USING gin (address gin_trgm_ops);
+      CREATE INDEX IF NOT EXISTS idx_crm_contacts_name_trgm ON crm_contacts USING gin (name gin_trgm_ops);
+      CREATE INDEX IF NOT EXISTS idx_crm_contacts_address_trgm ON crm_contacts USING gin (address gin_trgm_ops);
+      CREATE INDEX IF NOT EXISTS idx_crm_opportunities_name_trgm ON crm_opportunities USING gin (name gin_trgm_ops);
+    `);
+    searchTrgmReady = true;
+    console.log('Global søgning: pg_trgm aktiveret — stavefejl-tolerant (fuzzy) søgning er slået til.');
+  } catch (e) {
+    searchTrgmReady = false;
+    console.error('ADVARSEL: pg_trgm kunne ikke aktiveres — global søgning kører videre med ren ILIKE (ingen stavefejl-tolerance):', e.message);
+  }
 }
 
 function secureEqual(left, right) {
@@ -5552,6 +5595,144 @@ app.get('/api/customers/search', auth, panelAccess('customers'), asyncRoute(asyn
   res.json([...crmRows.rows, ...jtRows.rows]);
 }));
 
+// ══════════════════════════════════════════════════════════════
+// GLOBAL SØGNING — backend til søgefeltet i topbjælken (se
+// renderGlobalSearchResults i admin.html).
+//
+// BAGGRUND: søgefeltet var tidligere 100% frontend — det filtrerede kun i de
+// to lister der i forvejen lå i browserens hukommelse (opgaver og
+// medarbejdere). Kunder, leads og opportunities blev ALDRIG hentet ind i
+// nogen global liste, så de kunne principielt ikke findes derfra. Det er
+// hullet Martin ramte. Dette endpoint søger dem direkte i databasen.
+//
+// STAVEFEJL-TOLERANCE: kombinerer to ting pr. felt —
+//   1) ILIKE '%tekst%'  → det eksakte delstrengs-match. Rammer altid, også
+//      for meget korte søgeord hvor trigrammer er ubrugelige ("BJ", "Lars").
+//   2) pg_trgm's % / <% → trigram-lighed, der fanger stavefejl, bøjninger og
+//      ombyttede ord ("gulvmaester" → "Gulvmester ApS"). Slås fra automatisk
+//      hvis udvidelsen ikke kunne oprettes, se initSearchTrigrams().
+// Resultaterne sorteres derefter: præfiks-match på navnet først (rank 0),
+// så øvrige eksakte delstrengs-match (rank 1), og til sidst de rent fuzzy
+// (rank 2) sorteret efter lighedsscore. Dvs. skriver man noget der findes
+// præcist, ligger det altid øverst — de fuzzy gæt fylder kun op nedenunder.
+//
+// TELEFON: matches på RENE CIFRE i begge ender, så "20112233" finder
+// "+45 20 11 22 33". Samme normalisering som resten af appen bruger.
+//
+// ADGANG: kun 'auth' på selve ruten (alle indloggede må kalde den — den er
+// en del af den fælles topbjælke og må ikke give 403 i ansigtet på en
+// medarbejder), men HVER kategori tjekkes bagefter mod præcis den samme
+// side-adgang som den tilsvarende side kræver ('customers', 'crmp_leads',
+// 'crmp_sales' — se panelAccess). Har man ikke adgang til Kunder, får man
+// simpelthen en tom kunde-liste tilbage i stedet for en fejl. Der lækkes
+// altså ikke data en bruger ikke i forvejen kunne se på sidene selv.
+// ══════════════════════════════════════════════════════════════
+
+// Escaper % og _ i brugerens søgetekst, så de ikke bliver til ILIKE-wildcards.
+function searchLikeEscape(text) {
+  return String(text).replace(/([\\%_])/g, '\\$1');
+}
+
+app.get('/api/search', auth, asyncRoute(async (req, res) => {
+  const term = String(req.query.q || '').trim();
+  const empty = { q: term, fuzzy: searchTrgmReady, customers: [], leads: [], opportunities: [] };
+  // Ét enkelt tegn giver kun støj (og et fuldt tabelscan) — vent til der er to.
+  if (term.length < 2) return res.json(empty);
+
+  const u = await pgOne('SELECT id, role, active, is_finance_admin, panel_role_id FROM users WHERE id=$1', [req.user.id]);
+  if (!u || !u.active) return res.status(403).json({ error: 'Ingen adgang' });
+  const pages = u.role === 'admin' ? null : await computeUserPanelPages(u); // null = admin, alt tilladt
+  const may = key => pages === null || pages.includes(key);
+
+  const esc = searchLikeEscape(term);
+  const prefixPat = esc + '%';       // $2 — "starter med"
+  const containsPat = '%' + esc + '%'; // $3 — "indeholder"
+  // $4 — kun cifre. Tom streng = søgeteksten indeholdt ingen cifre, og så
+  // springes telefon-matchet helt over (ellers ville '%%' matche alle rækker).
+  const digits = term.replace(/[^0-9]/g, '');
+  const digitPat = digits.length >= 3 ? '%' + digits + '%' : '';
+  const params = [term, prefixPat, containsPat, digitPat];
+
+  const LIMIT = 8;
+  // Byggeklodser der kun må komme med når pg_trgm rent faktisk er aktiv.
+  const simExpr = cols => searchTrgmReady
+    ? 'GREATEST(' + cols.map(c => `similarity(${c},$1), word_similarity($1,${c})`).join(', ') + ')'
+    : '0::real';
+  const fuzzyWhere = cols => searchTrgmReady
+    ? ' OR ' + cols.map(c => `${c} % $1 OR $1 <% ${c}`).join(' OR ')
+    : '';
+  const phoneWhere = col => `($4 <> '' AND regexp_replace(COALESCE(${col},''),'[^0-9]','','g') LIKE $4)`;
+
+  const queries = {};
+
+  if (may('customers')) {
+    queries.customers = pool.query(`
+      SELECT c.id, c.name, c.email, c.phone, c.address, c.is_company, c.cvr,
+        CASE WHEN c.name ILIKE $2 THEN 0
+             WHEN c.name ILIKE $3 OR COALESCE(c.email,'') ILIKE $3 OR COALESCE(c.address,'') ILIKE $3
+                  OR ${phoneWhere('c.phone')} THEN 1
+             ELSE 2 END AS match_rank,
+        ${simExpr(['c.name', "COALESCE(c.address,'')"])} AS score
+      FROM customers c
+      WHERE c.name ILIKE $3 OR COALESCE(c.email,'') ILIKE $3 OR COALESCE(c.address,'') ILIKE $3
+         OR ${phoneWhere('c.phone')}${fuzzyWhere(['c.name', "COALESCE(c.address,'')"])}
+      ORDER BY match_rank ASC, score DESC, c.name ASC
+      LIMIT ${LIMIT}
+    `, params);
+  }
+
+  if (may('crmp_leads')) {
+    queries.leads = pool.query(`
+      SELECT l.id, l.name, l.email, l.phone, l.address, l.source,
+             s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name,
+        CASE WHEN l.name ILIKE $2 THEN 0
+             WHEN l.name ILIKE $3 OR COALESCE(l.email,'') ILIKE $3 OR COALESCE(l.address,'') ILIKE $3
+                  OR ${phoneWhere('l.phone')} THEN 1
+             ELSE 2 END AS match_rank,
+        ${simExpr(['l.name', "COALESCE(l.address,'')"])} AS score
+      FROM crm_leads l
+      LEFT JOIN crm_stages s ON s.id = l.stage_id
+      LEFT JOIN crm_pipelines p ON p.id = l.pipeline_id
+      WHERE l.name ILIKE $3 OR COALESCE(l.email,'') ILIKE $3 OR COALESCE(l.address,'') ILIKE $3
+         OR ${phoneWhere('l.phone')}${fuzzyWhere(['l.name', "COALESCE(l.address,'')"])}
+      ORDER BY match_rank ASC, score DESC, l.updated_at DESC NULLS LAST, l.name ASC
+      LIMIT ${LIMIT}
+    `, params);
+  }
+
+  if (may('crmp_sales')) {
+    // Opportunities har ikke selv navn/tlf/adresse på kunden — de hænger på
+    // crm_contacts via contact_id (se skemaet). Vi søger derfor både i sagens
+    // eget navn OG i den tilknyttede kontakts felter, og returnerer kontaktens
+    // oplysninger som den sekundære linje i dropdownen.
+    queries.opportunities = pool.query(`
+      SELECT o.id, o.name, o.value,
+             ct.name AS contact_name, ct.email AS contact_email,
+             ct.phone AS contact_phone, ct.address AS contact_address,
+             s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name,
+        CASE WHEN o.name ILIKE $2 OR COALESCE(ct.name,'') ILIKE $2 THEN 0
+             WHEN o.name ILIKE $3 OR COALESCE(ct.name,'') ILIKE $3 OR COALESCE(ct.email,'') ILIKE $3
+                  OR COALESCE(ct.address,'') ILIKE $3 OR ${phoneWhere('ct.phone')} THEN 1
+             ELSE 2 END AS match_rank,
+        ${simExpr(['o.name', "COALESCE(ct.name,'')", "COALESCE(ct.address,'')"])} AS score
+      FROM crm_opportunities o
+      LEFT JOIN crm_contacts ct ON ct.id = o.contact_id
+      LEFT JOIN crm_stages s ON s.id = o.stage_id
+      LEFT JOIN crm_pipelines p ON p.id = o.pipeline_id
+      WHERE o.name ILIKE $3 OR COALESCE(ct.name,'') ILIKE $3 OR COALESCE(ct.email,'') ILIKE $3
+         OR COALESCE(ct.address,'') ILIKE $3 OR ${phoneWhere('ct.phone')}${fuzzyWhere(['o.name', "COALESCE(ct.name,'')", "COALESCE(ct.address,'')"])}
+      ORDER BY match_rank ASC, score DESC, o.updated_at DESC NULLS LAST, o.name ASC
+      LIMIT ${LIMIT}
+    `, params);
+  }
+
+  const keys = Object.keys(queries);
+  const results = await Promise.all(keys.map(k => queries[k]));
+  const out = { q: term, fuzzy: searchTrgmReady, customers: [], leads: [], opportunities: [] };
+  keys.forEach((k, i) => { out[k] = results[i].rows; });
+  res.json(out);
+}));
+
 // ── CRM: KUNDEKARTOTEK — eget kundekartotek Martin kan oprette kunder i
 // direkte, uafhængigt af om der findes en JobTread-sag på dem endnu. ────
 app.get('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
@@ -6370,11 +6551,124 @@ async function verifyLeadWebhookSecret(req) {
     return false; // forskellig længde — helt sikkert ikke et match
   }
 }
-app.post('/api/integrations/lead-intake/:source', asyncRoute(async (req, res) => {
+// ── ROBUSTHED I MODTAGELSEN (sep. 2026) ─────────────────────────────────────
+// Anledning: Martin så et Facebook Ads-scenarie der "kørte grønt" i Make, men
+// hvor leadet aldrig dukkede op i Gulvmaster — mens præcis samme endpoint
+// virkede fint for Elementor. Selve route-koden er identisk uanset :source, så
+// der er ikke (og var ikke) nogen kilde-specifik fejl her. Den langt mest
+// sandsynlige forklaring ligger i Make-scenariet: enten et felt der ikke er
+// mappet, eller Make's HTTP-modul der IKKE sætter Content-Type: application/json
+// på netop det scenarie. Sker det sidste, springer Express' body-parsere over,
+// req.body ender tom, "name" læses som tom — og endpointet svarer (helt korrekt
+// set fra sin egen side) 400 "Navn mangler". Make viser i mange opsætninger
+// stadig trinnet som gennemført, så det ligner "det virkede".
+//
+// De tre ting nedenfor gør at det ikke kan gentage sig ubemærket:
+//   1. leadIntakeParseBody: forstår også en body der kommer HELT uden
+//      Content-Type, som text/plain eller som application/octet-stream —
+//      både hvis indholdet er JSON og hvis det er formular-kodet (a=1&b=2).
+//      application/json og application/x-www-form-urlencoded håndteres i
+//      forvejen af de globale parsere øverst i filen (express.json /
+//      express.urlencoded) og røres ikke.
+//   2. leadIntakeField: accepterer de mest almindelige alternative feltnavne,
+//      fx Facebooks egne "full_name" og "phone_number", så et glemt
+//      omdøbnings-trin i Make ikke i sig selv koster leadet.
+//   3. En tydelig serverlog ved afvisning, med Content-Type, hvilke nøgler
+//      body'en faktisk indeholdt, og :source — nok til at diagnosticere, uden
+//      at skrive selve kundedata (navn/tlf/mail) i loggen.
+// X-Webhook-Secret-tjekket er UÆNDRET og præcis lige så striks som før.
+function leadIntakeParseBody(req, res, next) {
+  // req._body sættes af body-parser når en af de globale parsere har læst
+  // streamen. Er den sat, er der intet tilbage at læse — og intet at gøre.
+  if (req._body) return next();
+  let raw = '';
+  let tooBig = false;
+  req.setEncoding('utf8');
+  req.on('data', chunk => {
+    if (raw.length > 1000000) { tooBig = true; return; }
+    raw += chunk;
+  });
+  req.on('end', () => {
+    const text = tooBig ? '' : raw.trim();
+    if (!text) return next();
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        req.body = parsed;
+        req.leadIntakeRecovered = 'json-uden-content-type';
+        return next();
+      }
+    } catch (e) { /* ikke JSON — prøv formular-kodet nedenfor */ }
+    try {
+      const params = new URLSearchParams(text);
+      const obj = {};
+      for (const [key, value] of params) obj[key] = value;
+      if (Object.keys(obj).length) {
+        req.body = obj;
+        req.leadIntakeRecovered = 'formular-kodet-uden-content-type';
+      }
+    } catch (e) { /* hverken JSON eller formular — body forbliver tom */ }
+    next();
+  });
+  req.on('error', () => next());
+}
+
+// Sender Make (eller en anden afsender) en body med Content-Type:
+// application/json men et indhold der IKKE er gyldig JSON — fx afkortet fordi
+// et felt i Make var tomt, eller med en efterladt komma — så fejler Express'
+// globale JSON-parser FØR ruten overhovedet nås. Uden dette ville det ende som
+// en generisk 500 "Unhandled error: SyntaxError" uden nogen antydning af hvilken
+// webhook eller hvilken kilde det drejede sig om. Her fanges det i stedet med
+// en 400 og en log der siger præcis hvad der kom ind. Handleren er scopet til
+// lead-intake-stien alene; alt andet sendes uændret videre til den globale
+// fejl-handler nederst i filen.
+app.use('/api/integrations/lead-intake', (error, req, res, next) => {
+  if (!error || (error.type !== 'entity.parse.failed' && !(error instanceof SyntaxError))) return next(error);
+  console.error('lead-intake webhook AFVIST (body kunne ikke parses). source=' + String((req.path || '').replace(/^\//, '') || '(ingen)')
+    + ', content-type=' + String(req.headers['content-type'] || '(ingen)')
+    + ', content-length=' + String(req.headers['content-length'] || '(ingen)')
+    + ', parse-fejl=' + String(error.message));
+  res.status(400).json({
+    error: 'Body kunne ikke læses',
+    hint: 'Content-Type var ' + String(req.headers['content-type'] || '(ingen)') + ', men indholdet er ikke gyldig JSON. Tjek feltmapningen i Make — et tomt felt kan efterlade ugyldig JSON.'
+  });
+});
+
+// Slår et felt op på tværs af de navne forskellige kilder bruger. Første
+// ikke-tomme værdi vinder; vores egne dokumenterede navne står altid først.
+function leadIntakeField(body, names) {
+  for (const key of names) {
+    const value = body[key];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+  }
+  return '';
+}
+
+app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRoute(async (req, res) => {
   if (!(await verifyLeadWebhookSecret(req))) return res.status(401).json({ error: 'Ugyldig eller manglende nøgle (X-Webhook-Secret)' });
-  const b = req.body || {};
-  const name = String(b.name || '').trim();
-  if (!name) return res.status(400).json({ error: 'Navn mangler' });
+  const b = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};
+  const name = leadIntakeField(b, ['name', 'Name', 'navn', 'Navn', 'full_name', 'fullName', 'full name'])
+    || [leadIntakeField(b, ['first_name', 'firstName', 'fornavn']), leadIntakeField(b, ['last_name', 'lastName', 'efternavn'])].filter(Boolean).join(' ').trim();
+  if (!name) {
+    // Bevidst uden selve værdierne — kun STRUKTUREN, så en fejlsøgning senere
+    // (Martins eller vores) kan se med det samme om body'en overhovedet kom
+    // frem, og med hvilken Content-Type.
+    console.error('lead-intake webhook AFVIST (intet navn i body). source=' + String(req.params.source || '(ingen)')
+      + ', content-type=' + String(req.headers['content-type'] || '(ingen)')
+      + ', body-nøgler=[' + Object.keys(b).join(',') + ']'
+      + ', body-type=' + (Array.isArray(req.body) ? 'array' : typeof req.body)
+      + ', content-length=' + String(req.headers['content-length'] || '(ingen)')
+      + (req.leadIntakeRecovered ? ', genfundet-som=' + req.leadIntakeRecovered : ''));
+    return res.status(400).json({ error: 'Navn mangler', hint: 'Send feltet "name" i body\'en. Modtaget Content-Type: ' + String(req.headers['content-type'] || '(ingen)') + '. Modtagne felter: ' + (Object.keys(b).join(', ') || '(ingen)') });
+  }
+  if (req.leadIntakeRecovered) {
+    console.warn('lead-intake webhook: body kom uden brugbar Content-Type og blev genfundet som ' + req.leadIntakeRecovered
+      + ' (source=' + String(req.params.source || '(ingen)') + '). Overvej at sætte Content-Type: application/json i Make.');
+  }
+  b.email = leadIntakeField(b, ['email', 'Email', 'e-mail', 'mail', 'email_address']) || null;
+  b.phone = leadIntakeField(b, ['phone', 'Phone', 'telefon', 'tlf', 'phone_number', 'mobile', 'mobil']) || null;
+  b.address = leadIntakeField(b, ['address', 'Address', 'adresse', 'street_address', 'street']) || null;
+  b.note = leadIntakeField(b, ['note', 'Note', 'besked', 'message', 'comments', 'kommentar']) || null;
   const sourceLabel = LEAD_WEBHOOK_SOURCE_LABELS[req.params.source] || (req.params.source ? String(req.params.source) : 'Webhook');
 
   const p = await pgOne("SELECT id FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1");
