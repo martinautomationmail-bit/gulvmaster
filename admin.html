@@ -3888,6 +3888,23 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn small primary" id="akkord-new-add-btn" type="button">+ Tilføj post</button>
     </div>
   </div>
+  <!-- CLOSE CRM-IMPORT (sep. 2026): éngangsimport af Martins historiske leads/
+       opportunities fra Close CRM, uploadet direkte af Martin selv — se
+       POST /api/admin/import/close. Trygt at genkøre (close_id-idempotens). -->
+  <div class="settings-card realadmin-only" id="close-import-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:700;font-size:15px">📥 Close CRM-import</div>
+        <div class="hint" style="margin:2px 0 0">Importér Martins historiske leads og opportunities fra Close CRM (CSV-eksport) ind i CRM-modulet ovenfor. Trygt at trykke flere gange — allerede importerede rækker springes automatisk over.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
+      <div><label style="display:block;font-size:11px;color:var(--bly-sub);margin-bottom:4px">Leads CSV</label><input type="file" id="close-import-leads-file" accept=".csv"></div>
+      <div><label style="display:block;font-size:11px;color:var(--bly-sub);margin-bottom:4px">Opportunities CSV</label><input type="file" id="close-import-opps-file" accept=".csv"></div>
+      <button class="btn primary small" id="close-import-run-btn" type="button">Importér fra Close</button>
+    </div>
+    <div id="close-import-result" style="margin-top:14px"></div>
+  </div>
   <div class="people" id="people-grid"></div>
 </section>
 
@@ -11431,6 +11448,71 @@ async function openAkkordItemEdit(id){
   else toast((r&&r.error)||'Kunne ikke gemme','❌');
 }
 
+// CLOSE CRM-IMPORT — se POST /api/admin/import/close på serveren.
+async function runCloseImport(){
+  var leadsFile=(document.getElementById('close-import-leads-file').files||[])[0];
+  var oppsFile=(document.getElementById('close-import-opps-file').files||[])[0];
+  if(!leadsFile||!oppsFile){toast('Vælg både Leads CSV og Opportunities CSV','⚠');return;}
+  if(!await gmConfirm('Importér Close CRM-data nu? Dette opretter/opdaterer rigtige leads, opportunities, kontakter og kunder i Gulvmaster ud fra de to CSV-filer. Allerede importerede rækker (samme Close-id) springes automatisk over — det er trygt at trykke igen, fx efter en rettelse.'))return;
+  var btn=document.getElementById('close-import-run-btn');
+  var orig=btn.textContent;
+  btn.disabled=true;btn.textContent='Importerer… kan tage op til et halvt minut';
+  var resultEl=document.getElementById('close-import-result');
+  resultEl.innerHTML='';
+  var fd=new FormData();fd.append('leads',leadsFile);fd.append('opportunities',oppsFile);
+  var r=await api('/api/admin/import/close',{method:'POST',body:fd});
+  btn.disabled=false;btn.textContent=orig;
+  if(!r||r.error){
+    resultEl.innerHTML='<div style="border:1px solid #DC2626;background:#FEF2F2;border-radius:8px;padding:10px 12px;color:#991B1B;font-size:12.5px">'+esc((r&&r.error)||'Import fejlede — prøv igen')+'</div>';
+    toast((r&&r.error)||'Import fejlede','❌');
+    return;
+  }
+  renderCloseImportResult(r);
+  toast('Import gennemført ✓','✓');
+}
+function renderCloseImportResult(r){
+  var el=document.getElementById('close-import-result');
+  var tiles=[
+    ['Leads importeret',r.leads_imported],
+    ['Leads sprunget over (allerede importeret)',r.leads_skipped_existing],
+    ['Opportunities importeret',r.opportunities_imported],
+    ['Opportunities sprunget over (allerede importeret)',r.opportunities_skipped_existing],
+    ['Nye kunder oprettet',r.customers_created],
+    ['Kunder genbrugt (fandtes i forvejen)',r.customers_matched_existing],
+    ['Nye kontakter oprettet',r.contacts_created],
+    ['Kontakter genbrugt (fandtes i forvejen)',r.contacts_matched_existing]
+  ];
+  var html='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:10px">'
+    +tiles.map(function(x){return '<div style="border:1px solid var(--border2);border-radius:8px;padding:8px 12px"><div style="font-size:11px;color:var(--bly-sub)">'+esc(x[0])+'</div><div style="font-weight:700;font-size:16px">'+(x[1]==null?0:x[1])+'</div></div>';}).join('')
+    +'</div>';
+  function fallbackBlock(title,map){
+    var keys=Object.keys(map||{});
+    if(!keys.length)return '';
+    return '<div style="margin-top:6px;font-size:12.5px"><div style="font-weight:700;margin-bottom:2px">'+esc(title)+'</div><ul style="margin:0;padding-left:18px">'
+      +keys.map(function(k){return '<li>"'+esc(k)+'": '+map[k]+' stk.</li>';}).join('')
+      +'</ul></div>';
+  }
+  html+=fallbackBlock('⚠ Leads faldet tilbage til standard-stage (ukendt/ugenkendt status)',r.lead_stage_fallback_counts);
+  html+=fallbackBlock('⚠ Opportunities faldet tilbage til "Manglende data" (ukendt/ugenkendt status)',r.opportunity_stage_fallback_counts);
+  if((r.lead_source_new_options_added||[]).length){
+    html+='<div class="hint" style="margin-top:8px">🏷 Nye "Lead Source"-valgmuligheder tilføjet automatisk til dropdown: '+r.lead_source_new_options_added.map(esc).join(', ')+'</div>';
+  }
+  if((r.projekt_type_new_options_added||[]).length){
+    html+='<div class="hint" style="margin-top:4px">🏷 Nye "Projekt Type"-valgmuligheder tilføjet automatisk til dropdown: '+r.projekt_type_new_options_added.map(esc).join(', ')+'</div>';
+  }
+  if((r.custom_fields_created||[]).length){
+    html+='<div class="hint" style="margin-top:4px">➕ Manglende custom felt(er) oprettet automatisk, så data ikke gik tabt: '+r.custom_fields_created.map(esc).join(', ')+'</div>';
+  }
+  if((r.warnings||[]).length){
+    html+='<div style="margin-top:10px;border:1px solid #F59E0B;background:#FFFBEB;border-radius:8px;padding:10px 12px"><div style="font-weight:700;font-size:12.5px;color:#92400E">⚠ Bør tjekkes ('+r.warnings.length+')</div><ul style="margin:4px 0 0;padding-left:18px;font-size:12.5px;color:#92400E">'+r.warnings.map(function(w){return '<li>'+esc(w)+'</li>';}).join('')+'</ul></div>';
+  }
+  if((r.errors||[]).length){
+    html+='<div style="margin-top:10px;border:1px solid #DC2626;background:#FEF2F2;border-radius:8px;padding:10px 12px"><div style="font-weight:700;font-size:12.5px;color:#991B1B">❌ Fejl på enkelte rækker ('+r.errors.length+')</div><ul style="margin:4px 0 0;padding-left:18px;font-size:12.5px;color:#991B1B">'+r.errors.slice(0,50).map(function(e){return '<li>'+esc(e)+'</li>';}).join('')+(r.errors.length>50?'<li>… og '+(r.errors.length-50)+' flere</li>':'')+'</ul></div>';
+  }
+  html+='<div class="hint" style="margin-top:10px">Kørslen tog '+(r.duration_ms?(Math.round(r.duration_ms/100)/10)+' sek.':'?')+'.</div>';
+  el.innerHTML=html;
+}
+
 function renderPeople(){
   var isRealAdmin=me.role==='admin';
   var intern=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type!=='vendor';}),vendors={};
@@ -12330,6 +12412,8 @@ function bind(){
   document.getElementById('user-pay-type').onchange=toggleUserPayTypeField;
   // Akkordliste
   document.getElementById('akkord-new-add-btn').onclick=addAkkordItem;
+  // Close CRM-import
+  document.getElementById('close-import-run-btn').onclick=runCloseImport;
   // Roller & adgang
   document.getElementById('new-panel-role-btn').onclick=function(){openPanelRole(null);};
   document.getElementById('close-panel-role').onclick=function(){closeModal('panel-role-modal');};

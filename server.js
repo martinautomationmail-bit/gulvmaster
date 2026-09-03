@@ -98,6 +98,18 @@ const uploadBankStatement = multer({
     cb(null, true);
   }
 });
+// Éngangsimport af Martins historiske Close CRM-data (leads.csv + opportunities.csv-
+// eksport) — se POST /api/admin/import/close. 25mb pr. fil er rigeligt til flere
+// tusinde rækker Close-eksport (de rigtige filer er 4-5mb hver).
+const uploadCloseImport = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024, files: 2 },
+  fileFilter: (req, file, cb) => {
+    const lower = String(file.originalname || '').toLowerCase();
+    if (!lower.endsWith('.csv')) return cb(new Error('Vælg en CSV-fil eksporteret fra Close.'));
+    cb(null, true);
+  }
+});
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
@@ -1248,6 +1260,21 @@ async function initSchema() {
     -- Se tilsvarende kommentar ved crm_leads.stage_changed_at ovenfor.
     ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS stage_changed_at TEXT;
     UPDATE crm_opportunities SET stage_changed_at=created_at WHERE stage_changed_at IS NULL;
+    -- Close CRM-historikimport (POST /api/admin/import/close): close_id er Close's
+    -- EGET lead-/opportunity-id fra CSV-eksporten, brugt som idempotens-nøgle så
+    -- Martin trygt kan genkøre importen flere gange (fx efter en datarettelse) uden
+    -- at oprette dubletter — se lookup'et FØR hver INSERT i import-endpointet.
+    -- Delvist unikt index (WHERE close_id IS NOT NULL) fordi almindelige, manuelt
+    -- oprettede leads/opportunities ikke har nogen close_id.
+    ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS close_id TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_close_id ON crm_leads(close_id) WHERE close_id IS NOT NULL;
+    ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS close_id TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_opportunities_close_id ON crm_opportunities(close_id) WHERE close_id IS NOT NULL;
+    -- crm_opportunities havde ingen fritekst-note (kun crm_activities-tidslinjen) —
+    -- Close's opportunity-notefelt importeres direkte hertil, som ÉT samlet felt
+    -- i stedet for en aktivitets-logline pr. importeret sag (se importens
+    -- kommentar om at springe crmLogActivity over for importerede rækker).
+    ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS note TEXT;
     -- Automatisk "opfølgning ved tabt tilbud" — én global regel (ikke pr.
     -- pipeline/stage), se runLostFollowupScan(). Enkelt-række-tabel, samme
     -- mønster som finance_dunning_settings.
@@ -7020,6 +7047,473 @@ app.get('/api/crm/customers/:id/opportunities', auth, panelAccess('customers'), 
     WHERE c.customer_id=$1 ORDER BY o.created_at DESC
   `, [req.params.id])).rows;
   res.json(rows);
+}));
+
+// ══════════════════════════════════════════════════════════════
+// CLOSE CRM — HISTORISK IMPORT (sep. 2026, éngangsopgave for Martin, men
+// bevidst bygget til at kunne genkøres trygt — se close_id-idempotens
+// nedenfor). Importerer Martins fulde salgshistorik fra Close CRM
+// (leads.csv + opportunities.csv, eksporteret direkte fra Close) ind i det
+// indbyggede CRM ovenfor, ÉN gang, via en rigtig admin-knap i UI'et — ikke et
+// engangsscript. Se POST /api/admin/import/close.
+//
+// TO STRUKTURELLE BESLUTNINGER (taget af Martin på forhånd, IKKE genvurderet her):
+//   1) En Close-opportunity med status_type='won' bliver en RIGTIG kunde i
+//      Kunder-modulet (customers), ikke kun en CRM-registrering.
+//   2) Et lead der allerede blev til en Close-opportunity vises i Gulvmaster
+//      KUN som opportunity'en — ALDRIG også som et separat "konverteret"
+//      lead-kort. Kun leads der ALDRIG blev til en opportunity importeres
+//      som lead-kort (se "rene leads"-udregningen nedenfor).
+//
+// EN TREDJE BESLUTNING, taget som en bevidst, begrundet udvidelse af
+// appens EGEN etablerede konvention (dokumenteret ved crm_leads.contact_id
+// ovenfor: "crmFindOrCreateContactAndCustomer() kaldt fra POST
+// /api/crm/leads" — ALTID, for ethvert nyt lead, ikke kun ved konvertering):
+//   3) crmFindOrCreateContactAndCustomer() køres for BÅDE alle importerede
+//      leads OG alle importerede opportunities — ikke kun de 45 "Won". Det er
+//      samme dedup-logik (telefon først, så email) som resten af appen
+//      allerede bruger overalt. Flages eksplicit til Martin: dette betyder at
+//      importen opretter langt flere Kunder-rækker end kun de vundne sager.
+//
+// BEVIDST UDELADT ift. den normale enkelt-række-oprettelse (POST
+// /api/crm/leads / /api/crm/opportunities):
+//   - crmLogActivity() kaldes IKKE pr. importeret række — en tidslinje-note
+//     på hver af op til ~2790 historiske rækker ville bare være støj.
+//   - crmFireStageAutomation() kaldes IKKE — og stage_changed_at sættes
+//     bevidst til NULL for hver importeret række (se INSERT'erne nedenfor),
+//     I STEDET FOR Close's oprindelige dato. Dette er en SIKKERHEDS-
+//     beslutning, ikke en smagssag: appen har en daglig baggrundsscanning
+//     (runStageFollowupScan, cron kl. 10:45) der sender AUTOMATISK SMS/mail
+//     til alt der har ligget X dage i en stage med en tidsbaseret
+//     opfølgningsregel — "Tilbud Afgivet" har allerede sådan en regel
+//     (7/14/30 dage) fra appens standardopsætning. 1406 af de 1729
+//     opportunities lander netop i "Tilbud Afgivet". Havde vi sat
+//     stage_changed_at til Close's ÅRGAMLE dato, ville NÆSTE cron-kørsel
+//     omgående sende en "har du set vores tilbud?"-SMS/mail til op til 1406
+//     rigtige, historiske kontakter — hvoraf mange forlængst er afsluttede,
+//     tabte eller har handlet et andet sted. Samme risiko gælder
+//     runLostFollowupScan for "Tabt". Med stage_changed_at=NULL springer
+//     begge scanninger (som kræver "stage_changed_at IS NOT NULL")
+//     importerede rækker helt over, permanent — indtil Martin selv trækker
+//     et kort til en ny stage, hvorved det almindelige ur starter forfra som
+//     normalt. Flages eksplicit — se leveringsnoten.
+//   - owner_id sættes ikke (Close's created_by/user_name mappes ikke til en
+//     Gulvmaster-bruger).
+//
+// created_at/updated_at SÆTTES derimod til Close's egne date_created/
+// date_updated (konverteret, se closeToDbTimestamp) — det er ren historik/
+// visning uden automatik-konsekvenser, og bevarer hvornår tingene faktisk
+// skete i Close.
+// ══════════════════════════════════════════════════════════════
+
+// RFC4180-kompatibel CSV-parser uden ekstern afhængighed (der findes ingen
+// csv-pakke i package.json — se README/leveringsnote). Strips BOM, håndterer
+// felter i "citationstegn" med indlejrede kommaer/linjeskift og fordoblet
+// anførselstegn ("" -> ") som escape, UTF-8 (danske tegn). Valideret række-for-
+// række og kolonne-for-kolonne mod Pythons indbyggede csv-modul (ground truth)
+// på de RIGTIGE Close-eksportfiler (2750/1729/2480 rækker) før den blev taget i
+// brug her — se leveringsnoten for detaljer om valideringen.
+function closeParseCsv(buffer) {
+  let text = buffer.toString('utf8');
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
+  const records = [];
+  let field = '';
+  let record = [];
+  let inQuotes = false;
+  const len = text.length;
+  let i = 0;
+  const pushField = () => { record.push(field); field = ''; };
+  const pushRecord = () => { pushField(); records.push(record); record = []; };
+  while (i < len) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += ch; i++; continue;
+    }
+    if (ch === '"') { inQuotes = true; i++; continue; }
+    if (ch === ',') { pushField(); i++; continue; }
+    if (ch === '\r') {
+      if (text[i + 1] === '\n') { pushRecord(); i += 2; continue; }
+      pushRecord(); i++; continue;
+    }
+    if (ch === '\n') { pushRecord(); i++; continue; }
+    field += ch; i++;
+  }
+  if (field.length > 0 || record.length > 0) pushRecord();
+  while (records.length && records[records.length - 1].length === 1 && records[records.length - 1][0] === '') records.pop();
+  if (!records.length) return [];
+  const headers = records[0];
+  const rows = [];
+  for (let r = 1; r < records.length; r++) {
+    const rec = records[r];
+    const obj = {};
+    for (let c = 0; c < headers.length; c++) obj[headers[c]] = rec[c] !== undefined ? rec[c] : '';
+    rows.push(obj);
+  }
+  return rows;
+}
+
+// Close eksporterer altid UTC med et '+00:00'-suffiks, fx
+// '2026-08-23 14:01:18.834000+00:00' — samme tekstformat som resten af appens
+// egne TEXT-tidsstempler (nowTextSQL()) minus suffikset, så vi blot stripper
+// det i stedet for at parse og genformattere en dato.
+function closeToDbTimestamp(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const stripped = s.replace(/([+-]\d\d:\d\d|Z)$/i, '').trim().replace('T', ' ');
+  if (!/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d/.test(stripped)) return null;
+  return stripped;
+}
+function closeNowTimestamp() {
+  return new Date().toISOString().replace('T', ' ').replace('Z', '');
+}
+
+// Kombinerer gade med by/postnr til én fuld adresse-streng — undgår at
+// duplikere by/postnr hvis de allerede indgår i gade-feltet (set i praksis i
+// den rigtige Close-eksport, fx "Iranvej 4, 2300 KBH"). Bevidst enkel — ingen
+// forsøg på at normalisere/rette adresser.
+function closeBuildAddress(street, city, zip, country) {
+  street = String(street || '').trim();
+  city = String(city || '').trim();
+  zip = String(zip || '').trim();
+  if (!street && !city && !zip) return null;
+  const streetLower = street.toLowerCase();
+  const extra = [];
+  if (zip && !streetLower.includes(zip.toLowerCase())) extra.push(zip);
+  if (city && !streetLower.includes(city.toLowerCase())) extra.push(city);
+  const parts = [];
+  if (street) parts.push(street);
+  if (extra.length) parts.push(extra.join(' '));
+  return parts.join(', ') || null;
+}
+
+// leads.csv er den AUTORITATIVE kilde til navn/telefon/email/adresse — også
+// for opportunities (joinet via lead_id). opportunities.csv's egne
+// contact_name/contact_id-kolonner er ofte tomme og bruges bevidst IKKE — se
+// leveringsnoten. 281 af 2750 leads mangler primary_contact_name helt; falder
+// da tilbage til display_name/lead_name (Close's egen sagstitel), og til sidst
+// en fast tekst — crm_leads.name/crm_opportunities kræver NOT NULL.
+function closeLeadPersonFields(leadRow) {
+  const name = String(leadRow.primary_contact_name || '').trim()
+    || String(leadRow.display_name || '').trim()
+    || String(leadRow.lead_name || '').trim()
+    || 'Ukendt navn (Close-import)';
+  const email = String(leadRow.primary_contact_primary_email || '').trim() || null;
+  const phone = String(leadRow.primary_contact_primary_phone || '').trim() || null;
+  const address = closeBuildAddress(leadRow.address_1_address_1, leadRow.address_1_city, leadRow.address_1_zip, leadRow.address_1_country);
+  return { name, email, phone, address };
+}
+
+const CLOSE_LEAD_SOURCE_MAP = { 'Opkald': 'Telefon', 'Mund til Mund': 'Anbefaling' };
+function closeMapLeadSource(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  return CLOSE_LEAD_SOURCE_MAP[s] || s;
+}
+// Projekt Type kan indeholde flere værdier adskilt af "; " (Close tillader
+// multi-select, vores custom_fields gør ikke — UNIQUE pr. felt+entity). Kun
+// første segment bruges, jf. leveringsnoten.
+function closeMapProjektType(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const first = s.split(';')[0].trim();
+  return first || null;
+}
+
+function closeMatchStageByName(stages, name) {
+  const n = String(name || '').trim().toLowerCase();
+  if (!n) return null;
+  return stages.find(s => String(s.name || '').trim().toLowerCase() === n) || null;
+}
+
+// Best-effort case-insensitivt navnematch mod de RIGTIGE Lead-pipeline-stages
+// i databasen (aldrig hardkodede id'er) — default til pipelinens første stage
+// (position 0, normalt "Nyt lead") når intet matcher sikkert.
+function closeResolveLeadStage(leadStages, defaultStage, statusLabel) {
+  const stage = closeMatchStageByName(leadStages, statusLabel);
+  if (stage) return { stage, fellBack: false };
+  return { stage: defaultStage, fellBack: true };
+}
+
+// Prioriteret mapping status_type/status_label -> Sales-pipeline-stagenavn,
+// se leveringsnoten for hele tabellen. targetName matches case-insensitivt
+// mod de RIGTIGE stages i databasen — findes den ikke (anden pipeline-
+// opsætning end forventet), falder vi tilbage til pipelinens første stage og
+// flager det som en advarsel i stedet for at fejle hele importen.
+function closeResolveOpportunityStage(oppStages, defaultStage, row) {
+  const statusType = String(row.status_type || '').trim().toLowerCase();
+  const statusLabel = String(row.status_label || '').trim();
+  const statusLabelLower = statusLabel.toLowerCase();
+  let targetName;
+  let isCatchAll = false;
+  if (statusType === 'won') targetName = 'Vundet';
+  else if (statusLabel === 'Tilbud Afgivet') targetName = 'Tilbud Afgivet';
+  else if (statusLabel === 'Lav Tilbud') targetName = 'Lav Tilbud';
+  else if (statusLabel === 'Manglende data') targetName = 'Manglende data';
+  else if (statusLabelLower.includes('hot lead')) targetName = 'Hot Lead';
+  else if (statusLabel === 'Lost' || statusLabel === 'Ikke relevant / Lukket') targetName = 'Tabt';
+  else { targetName = 'Manglende data'; isCatchAll = true; }
+  const stage = closeMatchStageByName(oppStages, targetName);
+  if (stage) return { stage, isCatchAll, targetName, notFoundInDb: false };
+  return { stage: defaultStage, isCatchAll, targetName, notFoundInDb: true };
+}
+
+// Sikrer at et custom field FINDES for den givne entity_type/key, og opretter
+// det (tomt options-array) hvis ikke — samme INSERT-mønster som appens egen
+// standard-seeding af custom fields (initSchema). Kun relevant fordi denne
+// lokale/prod-DB, ved verificering, viser at "Lead Source" IKKE findes som
+// felt for entity_type='opportunity' (kun for 'lead') — modsat hvad der
+// oprindeligt blev antaget. Se leveringsnoten: uden dette ville
+// crmSetCustomFieldValues stille droppe Lead Source-værdien for hver eneste
+// importeret opportunity (crmSetCustomFieldValues ignorerer ukendte
+// feltnøgler uden fejl), og data ville gå tabt uden varsel.
+async function closeEnsureCustomFieldDef(entityType, key, label, fieldType) {
+  const existing = await pgOne('SELECT id FROM crm_custom_fields WHERE entity_type=$1 AND key=$2', [entityType, key]);
+  if (existing) return false;
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_custom_fields WHERE entity_type=$1', [entityType]);
+  await pool.query(
+    'INSERT INTO crm_custom_fields (entity_type,key,label,field_type,options,position) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (entity_type,key) DO NOTHING',
+    [entityType, key, label, fieldType, '[]', posRow.pos]
+  );
+  return true;
+}
+async function closeLoadFieldOptionCache(entityType, key) {
+  const def = await pgOne('SELECT id, options FROM crm_custom_fields WHERE entity_type=$1 AND key=$2', [entityType, key]);
+  if (!def) return null;
+  const list = Array.isArray(def.options) ? def.options.map(String) : [];
+  return { id: def.id, list, lowerSet: new Set(list.map(o => o.toLowerCase())) };
+}
+// Tilføjer en ny option til et select-felts options-array HVIS den ikke
+// allerede findes case-insensitivt — så en værdi Close har, men Gulvmaster
+// endnu ikke kender, ikke bare stille forsvinder (crmSetCustomFieldValues sætter
+// blot den rå tekstværdi uanset options, men UI'ets dropdown ville aldrig vise
+// den uden dette). Returnerer true hvis en ny option faktisk blev tilføjet.
+async function closeEnsureOption(cache, value) {
+  if (!cache || value === null || value === undefined) return false;
+  const v = String(value);
+  if (!v.trim()) return false;
+  const lower = v.toLowerCase();
+  if (cache.lowerSet.has(lower)) return false;
+  cache.list.push(v);
+  cache.lowerSet.add(lower);
+  await pool.query('UPDATE crm_custom_fields SET options=$1 WHERE id=$2', [JSON.stringify(cache.list), cache.id]);
+  return true;
+}
+
+// ── ENDPOINT ─────────────────────────────────────────────────────
+// adminOnly (ikke bare panelAccess) — dette er en engangs, historisk
+// databulk-handling, ikke noget en almindelig medarbejder-login (fx Sarah)
+// skal kunne trykke på, jf. samme gating som andre følsomme admin-handlinger
+// (/api/backup/export, /api/users, /api/settings m.fl.).
+app.post('/api/admin/import/close', auth, adminOnly, uploadCloseImport.fields([{ name: 'leads', maxCount: 1 }, { name: 'opportunities', maxCount: 1 }]), asyncRoute(async (req, res) => {
+  const t0 = Date.now();
+  const leadsFile = req.files && req.files.leads && req.files.leads[0];
+  const oppsFile = req.files && req.files.opportunities && req.files.opportunities[0];
+  if (!leadsFile || !oppsFile) return res.status(400).json({ error: 'Både leads.csv og opportunities.csv skal uploades' });
+
+  let leadRows, oppRows;
+  try {
+    leadRows = closeParseCsv(leadsFile.buffer);
+    oppRows = closeParseCsv(oppsFile.buffer);
+  } catch (e) {
+    return res.status(400).json({ error: 'Kunne ikke læse CSV-filerne: ' + e.message });
+  }
+  if (!leadRows.length) return res.status(400).json({ error: 'leads.csv er tom eller kunne ikke læses' });
+  if (!oppRows.length) return res.status(400).json({ error: 'opportunities.csv er tom eller kunne ikke læses' });
+
+  const leadPipeline = await pgOne("SELECT id FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1");
+  if (!leadPipeline) return res.status(400).json({ error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
+  const leadStages = (await pool.query('SELECT * FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC, id ASC', [leadPipeline.id])).rows;
+  if (!leadStages.length) return res.status(400).json({ error: 'Lead-pipelinen har ingen stages' });
+  const defaultLeadStage = leadStages[0];
+
+  const oppPipeline = await pgOne("SELECT id FROM crm_pipelines WHERE type='opportunity' ORDER BY position ASC LIMIT 1");
+  if (!oppPipeline) return res.status(400).json({ error: 'Ingen salgs-pipeline (Sales) findes — opret én under CRM-indstillinger' });
+  const oppStages = (await pool.query('SELECT * FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC, id ASC', [oppPipeline.id])).rows;
+  if (!oppStages.length) return res.status(400).json({ error: 'Salgs-pipelinen har ingen stages' });
+  const defaultOppStage = oppStages[0];
+
+  // Sikr custom fields — se closeEnsureCustomFieldDef ovenfor. Bruger samme
+  // options som appens egen standard-seed for de felter der allerede findes.
+  const createdFields = [];
+  if (await closeEnsureCustomFieldDef('lead', 'lead_source', 'Lead Source', 'select')) createdFields.push('lead.lead_source');
+  if (await closeEnsureCustomFieldDef('lead', 'projekt_type', 'Projekt Type', 'select')) createdFields.push('lead.projekt_type');
+  if (await closeEnsureCustomFieldDef('opportunity', 'lead_source', 'Lead Source', 'select')) createdFields.push('opportunity.lead_source');
+  if (await closeEnsureCustomFieldDef('opportunity', 'projekt_type', 'Projekt Type', 'select')) createdFields.push('opportunity.projekt_type');
+
+  const leadSourceCacheLead = await closeLoadFieldOptionCache('lead', 'lead_source');
+  const projektTypeCacheLead = await closeLoadFieldOptionCache('lead', 'projekt_type');
+  const leadSourceCacheOpp = await closeLoadFieldOptionCache('opportunity', 'lead_source');
+  const projektTypeCacheOpp = await closeLoadFieldOptionCache('opportunity', 'projekt_type');
+  const leadSourceNewOptions = new Set();
+  const projektTypeNewOptions = new Set();
+
+  // In-memory position-tællere pr. stage (én opslags-forespørgsel i stedet for
+  // en MAX(position)-forespørgsel PR. importeret række) — samme resultat som
+  // det eksisterende "COALESCE(MAX(position),-1)+1"-mønster, bare uden ~2790
+  // ekstra roundtrips.
+  const leadPosCounters = {};
+  (await pool.query('SELECT stage_id, COALESCE(MAX(position),-1) AS maxpos FROM crm_leads GROUP BY stage_id')).rows
+    .forEach(r => { leadPosCounters[r.stage_id] = Number(r.maxpos); });
+  const nextLeadPosition = (stageId) => { const n = (leadPosCounters[stageId] === undefined ? -1 : leadPosCounters[stageId]) + 1; leadPosCounters[stageId] = n; return n; };
+  const oppPosCounters = {};
+  (await pool.query('SELECT stage_id, COALESCE(MAX(position),-1) AS maxpos FROM crm_opportunities GROUP BY stage_id')).rows
+    .forEach(r => { oppPosCounters[r.stage_id] = Number(r.maxpos); });
+  const nextOppPosition = (stageId) => { const n = (oppPosCounters[stageId] === undefined ? -1 : oppPosCounters[stageId]) + 1; oppPosCounters[stageId] = n; return n; };
+
+  const summary = {
+    ok: true,
+    leads_imported: 0,
+    leads_skipped_existing: 0,
+    opportunities_imported: 0,
+    opportunities_skipped_existing: 0,
+    customers_created: 0,
+    customers_matched_existing: 0,
+    contacts_created: 0,
+    contacts_matched_existing: 0,
+    lead_stage_fallback_counts: {},
+    opportunity_stage_fallback_counts: {},
+    lead_source_new_options_added: [],
+    projekt_type_new_options_added: [],
+    custom_fields_created: createdFields,
+    warnings: [],
+    errors: []
+  };
+
+  // leads.csv joinet via id er den AUTORITATIVE kilde til navn/telefon/email/
+  // adresse — også for opportunities. "Rene leads" = leads.csv-rækker hvis id
+  // ALDRIG optræder som en opportunitys lead_id (beslutning #2 ovenfor).
+  const leadsById = new Map();
+  leadRows.forEach(r => { if (r.id) leadsById.set(r.id, r); });
+  const oppLeadIds = new Set();
+  oppRows.forEach(r => { if (r.lead_id) oppLeadIds.add(r.lead_id); });
+  const pureLeadRows = leadRows.filter(r => r.id && !oppLeadIds.has(r.id));
+
+  // ── FASE 1: rene leads → Lead-pipelinen ──────────────────────
+  for (const row of pureLeadRows) {
+    try {
+      const closeId = row.id;
+      const existing = await pgOne('SELECT id FROM crm_leads WHERE close_id=$1', [closeId]);
+      if (existing) { summary.leads_skipped_existing++; continue; }
+
+      const person = closeLeadPersonFields(row);
+      const { stage, fellBack } = closeResolveLeadStage(leadStages, defaultLeadStage, row.status_label);
+      if (fellBack) {
+        const key = String(row.status_label || '').trim() || '(tom)';
+        summary.lead_stage_fallback_counts[key] = (summary.lead_stage_fallback_counts[key] || 0) + 1;
+      }
+      const note = String(row.description || '').trim() || null;
+      const createdAt = closeToDbTimestamp(row.date_created) || closeNowTimestamp();
+      const updatedAt = closeToDbTimestamp(row.date_updated) || createdAt;
+      const position = nextLeadPosition(stage.id);
+
+      const r = await pgOne(`
+        INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at,close_id,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,NULL,$5,$6,$7,NULL,$8,NULL,$9,$10,$11) RETURNING id
+      `, [person.name, person.email, person.phone, person.address, note, leadPipeline.id, stage.id, position, closeId, createdAt, updatedAt]);
+
+      const leadSourceMapped = closeMapLeadSource(row['custom.Lead Source']);
+      const projektTypeMapped = closeMapProjektType(row['custom.Projekt Type']);
+      const cfValues = {};
+      if (leadSourceMapped) {
+        cfValues.lead_source = leadSourceMapped;
+        if (await closeEnsureOption(leadSourceCacheLead, leadSourceMapped)) leadSourceNewOptions.add(leadSourceMapped);
+      }
+      if (projektTypeMapped) {
+        cfValues.projekt_type = projektTypeMapped;
+        if (await closeEnsureOption(projektTypeCacheLead, projektTypeMapped)) projektTypeNewOptions.add(projektTypeMapped);
+      }
+      if (Object.keys(cfValues).length) await crmSetCustomFieldValues('lead', r.id, cfValues);
+
+      // Beslutning #3 — se filhoved-kommentaren: samme find-eller-opret-logik
+      // som resten af appen, for ALLE importerede leads (ikke kun Won).
+      const linked = await crmFindOrCreateContactAndCustomer(person.name, person.email, person.phone, person.address, note);
+      await pool.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
+      if (linked.contactCreated) summary.contacts_created++; else summary.contacts_matched_existing++;
+      if (linked.customerCreated) summary.customers_created++; else summary.customers_matched_existing++;
+
+      summary.leads_imported++;
+    } catch (e) {
+      summary.errors.push('Lead ' + (row && row.id) + ' (' + (row && (row.primary_contact_name || row.display_name || '?')) + '): ' + e.message);
+    }
+  }
+
+  // ── FASE 2: ALLE opportunities → Sales-pipelinen ─────────────
+  for (const row of oppRows) {
+    try {
+      const closeId = row.id;
+      const existing = await pgOne('SELECT id FROM crm_opportunities WHERE close_id=$1', [closeId]);
+      if (existing) { summary.opportunities_skipped_existing++; continue; }
+
+      const leadRow = row.lead_id ? leadsById.get(row.lead_id) : null;
+      let person;
+      if (leadRow) {
+        person = closeLeadPersonFields(leadRow);
+      } else {
+        person = { name: String(row.lead_name || row.contact_name || '').trim() || 'Ukendt navn (Close-import)', email: String(row.contact_email || '').trim() || null, phone: null, address: null };
+        summary.warnings.push('Opportunity ' + closeId + ': tilhørende lead (lead_id "' + row.lead_id + '") blev ikke fundet i leads.csv — brugte begrænset fallback-data fra opportunities.csv.');
+      }
+      // opportunities.csv's EGEN "lead_name"-kolonne er reelt Close's sagstitel
+      // (fx "Gulvslibning — Anni"), ikke bare personens navn — bruges som
+      // sagens navn i Sales-pipelinen, adskilt fra kontaktens navn (person.name).
+      const oppName = String(row.lead_name || '').trim() || person.name;
+
+      const { stage, isCatchAll, targetName, notFoundInDb } = closeResolveOpportunityStage(oppStages, defaultOppStage, row);
+      if (notFoundInDb) {
+        const warnMsg = 'Target-stage "' + targetName + '" findes ikke i Sales-pipelinen — faldt tilbage til "' + defaultOppStage.name + '".';
+        if (!summary.warnings.includes(warnMsg)) summary.warnings.push(warnMsg);
+      } else if (isCatchAll) {
+        const key = String(row.status_label || '').trim() || '(tom)';
+        summary.opportunity_stage_fallback_counts[key] = (summary.opportunity_stage_fallback_counts[key] || 0) + 1;
+      }
+
+      const valueRaw = row.value;
+      const value = valueRaw !== undefined && valueRaw !== '' && Number.isFinite(Number(valueRaw)) ? Number(valueRaw) : null;
+      const confRaw = row.confidence;
+      const probability = confRaw !== undefined && confRaw !== '' && Number.isFinite(Number(confRaw)) ? Number(confRaw) : null;
+      const note = String(row.note || '').trim() || null;
+      const createdAt = closeToDbTimestamp(row.date_created) || closeNowTimestamp();
+      const updatedAt = closeToDbTimestamp(row.date_updated) || createdAt;
+      const position = nextOppPosition(stage.id);
+
+      // Beslutning #3 — se filhoved-kommentaren: samme find-eller-opret-logik
+      // for ALLE importerede opportunities (ikke kun Won).
+      const linked = await crmFindOrCreateContactAndCustomer(person.name, person.email, person.phone, person.address, note);
+      if (linked.contactCreated) summary.contacts_created++; else summary.contacts_matched_existing++;
+      if (linked.customerCreated) summary.customers_created++; else summary.customers_matched_existing++;
+
+      const r = await pgOne(`
+        INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,value,probability,owner_id,note,position,stage_changed_at,close_id,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,$8,NULL,$9,$10,$11) RETURNING id
+      `, [oppName, linked.contactId, oppPipeline.id, stage.id, value, probability, note, position, closeId, createdAt, updatedAt]);
+
+      const leadSourceMapped = closeMapLeadSource(row['custom.Lead Source']);
+      const projektTypeMapped = closeMapProjektType(row['custom.Projekt Type']);
+      const cfValues = {};
+      if (projektTypeMapped) {
+        cfValues.projekt_type = projektTypeMapped;
+        if (await closeEnsureOption(projektTypeCacheOpp, projektTypeMapped)) projektTypeNewOptions.add(projektTypeMapped);
+      }
+      if (leadSourceMapped && leadSourceCacheOpp) {
+        cfValues.lead_source = leadSourceMapped;
+        if (await closeEnsureOption(leadSourceCacheOpp, leadSourceMapped)) leadSourceNewOptions.add(leadSourceMapped);
+      }
+      if (Object.keys(cfValues).length) await crmSetCustomFieldValues('opportunity', r.id, cfValues);
+
+      summary.opportunities_imported++;
+    } catch (e) {
+      summary.errors.push('Opportunity ' + (row && row.id) + ': ' + e.message);
+    }
+  }
+
+  summary.lead_source_new_options_added = Array.from(leadSourceNewOptions);
+  summary.projekt_type_new_options_added = Array.from(projektTypeNewOptions);
+  summary.duration_ms = Date.now() - t0;
+  await logSystemEvent('close_import', 'info', `Close CRM-import: ${summary.leads_imported} leads, ${summary.opportunities_imported} opportunities importeret (${summary.leads_skipped_existing}+${summary.opportunities_skipped_existing} sprunget over som allerede importeret), ${summary.errors.length} fejl.`);
+  res.json(summary);
 }));
 
 // Simpel opgave-tjekliste pr. lead/opportunity (Close-lignende "Tasks"-panel).
