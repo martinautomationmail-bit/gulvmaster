@@ -854,6 +854,11 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
     CREATE INDEX IF NOT EXISTS idx_products_jt_cost_item ON products(jt_cost_item_id);
     ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'service'; -- 'materialer' eller 'service'
+    -- Note (sep. 2026, Martins ønske): adskilt fra 'description' — vises på tilbud/faktura i
+    -- sin egen fremhævede boks UNDER beskrivelsen (fx forbehold/vigtige bemærkninger), i
+    -- stedet for at blande sig ind i selve produktbeskrivelsen. Arves til quote_lines/
+    -- invoice_lines.note når produktet vælges på en linje (se qzMakeBlankLine i admin.html).
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS note TEXT;
 
     CREATE TABLE IF NOT EXISTS quote_templates (
       id SERIAL PRIMARY KEY,
@@ -919,6 +924,9 @@ async function initSchema() {
     -- 'item' (almindelig linje med antal/pris) eller 'text' (ren tekst-/overskriftslinje,
     -- ingen antal/pris — bruges til at bryde et langt tilbud op med overskrifter/noter).
     ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS line_type TEXT NOT NULL DEFAULT 'item';
+    -- Note pr. linje (sep. 2026, Martins ønske) — se kommentar ved products.note. Vises i
+    -- egen boks under beskrivelsen på både tilbuds-PDF'en og kundens tilbudsside.
+    ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS note TEXT;
     -- Note i TOPPEN af tilbuddet (under kundeoplysninger) — adskilt fra "notes" som vises
     -- i BUNDEN (typisk betingelser). Begge kan forudfyldes fra en standardtekst i
     -- Indstillinger (quote_top_note_default/quote_bottom_note_default), men redigeres frit
@@ -972,6 +980,9 @@ async function initSchema() {
     -- tekst-/overskriftslinje på et tilbud kan konverteres videre til en faktura, og
     -- skal blive ved med at vises som ren tekst dér også, ikke som en 0 kr.-varelinje.
     ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS line_type TEXT NOT NULL DEFAULT 'item';
+    -- Note pr. linje (sep. 2026) — kopieres fra quote_lines.note ved konvertering til
+    -- faktura (se POST /api/quotes/:id/convert-to-invoice), samme visning som på tilbuddet.
+    ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS note TEXT;
 
     CREATE TABLE IF NOT EXISTS invoice_payments (
       id SERIAL PRIMARY KEY,
@@ -9703,9 +9714,9 @@ app.post('/api/products', auth, panelAccess('quotes'), asyncRoute(async (req, re
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
   const r = await pool.query(`
-    INSERT INTO products (name,description,sku,unit,cost_price,sell_price,category,product_type)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
-  `, [String(b.name).trim(), b.description || null, b.sku || null, b.unit || 'stk', Number(b.cost_price) || 0, Number(b.sell_price) || 0, b.category || null, b.product_type === 'materialer' ? 'materialer' : 'service']);
+    INSERT INTO products (name,description,sku,unit,cost_price,sell_price,category,product_type,note)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id
+  `, [String(b.name).trim(), b.description || null, b.sku || null, b.unit || 'stk', Number(b.cost_price) || 0, Number(b.sell_price) || 0, b.category || null, b.product_type === 'materialer' ? 'materialer' : 'service', b.note || null]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
@@ -9714,8 +9725,8 @@ app.put('/api/products/:id', auth, panelAccess('quotes'), asyncRoute(async (req,
   const current = await pgOne('SELECT * FROM products WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Produktet blev ikke fundet' });
   await pool.query(`
-    UPDATE products SET name=$1,description=$2,sku=$3,unit=$4,cost_price=$5,sell_price=$6,category=$7,product_type=$8,updated_at=${nowTextSQL()}
-    WHERE id=$9
+    UPDATE products SET name=$1,description=$2,sku=$3,unit=$4,cost_price=$5,sell_price=$6,category=$7,product_type=$8,note=$9,updated_at=${nowTextSQL()}
+    WHERE id=$10
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
     b.description !== undefined ? b.description : current.description,
@@ -9725,6 +9736,7 @@ app.put('/api/products/:id', auth, panelAccess('quotes'), asyncRoute(async (req,
     b.sell_price !== undefined ? Number(b.sell_price) || 0 : current.sell_price,
     b.category !== undefined ? b.category : current.category,
     b.product_type !== undefined ? (b.product_type === 'materialer' ? 'materialer' : 'service') : current.product_type,
+    b.note !== undefined ? b.note : current.note,
     req.params.id
   ]);
   res.json({ ok: true });
@@ -9906,9 +9918,9 @@ async function saveQuoteLines(quoteId, lines) {
     if (!l.description) continue;
     const isText = l.line_type === 'text';
     await pool.query(`
-      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type,line_type)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-    `, [quoteId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), l.discount_type === 'fixed' ? 'fixed' : 'pct', isText ? 'text' : 'item']);
+      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type,line_type,note)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    `, [quoteId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), l.discount_type === 'fixed' ? 'fixed' : 'pct', isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null)]);
   }
 }
 
@@ -10000,9 +10012,9 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyn
   let pos = 0;
   for (const l of quote.lines) {
     await pool.query(`
-      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', equivalentLinePct(l), l.line_type === 'text' ? 'text' : 'item']);
+      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,note)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', equivalentLinePct(l), l.line_type === 'text' ? 'text' : 'item', l.note || null]);
   }
   await pool.query(`UPDATE quotes SET status='converted', converted_invoice_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [invoiceId, quote.id]);
   // Sagen (projektet) blev oprettet da kunden underskrev tilbuddet — nu hvor
@@ -10349,6 +10361,57 @@ function drawDocFooter(doc, company) {
   }
 }
 
+// Linje-beskrivelse i den RIGTIGE PDF (PDFKit, ikke HTML/CSS) — samme opdeling som
+// lineDescCellHtml() ovenfor: 1. linje af l.description = overskrift (fed), resten =
+// beskrivelse (lidt federe end almindelig tekst — der er kun 2 vægte i PDFKits
+// standard-Helvetica, så "en lille smule tykkere" er løst med selve overskriftens fed
+// skrift + normal Helvetica for beskrivelsen, i stedet for en ikke-eksisterende "semibold"),
+// og l.note (nyt separat felt, Martins ønske sep. 2026) i sin egen lyse boks nedenunder.
+// To funktioner: _pdfLineDescParts() deler teksten op ét sted, højde-funktionen bruges til
+// at reservere korrekt plads FØR noget tegnes (PDFKit har ingen automatisk layout-flow).
+function _pdfLineDescParts(l) {
+  const full = String(l.description || '');
+  const nl = full.indexOf('\n');
+  return {
+    heading: nl === -1 ? full : full.slice(0, nl),
+    rest: nl === -1 ? '' : full.slice(nl + 1).trim(),
+    note: (l.note && String(l.note).trim()) ? String(l.note).trim() : ''
+  };
+}
+function pdfLineDescHeight(doc, l, width) {
+  const p = _pdfLineDescParts(l);
+  doc.font('Helvetica-Bold').fontSize(9.5);
+  let h = doc.heightOfString(p.heading, { width });
+  if (p.rest) {
+    doc.font('Helvetica').fontSize(9.5);
+    h += 3 + doc.heightOfString(p.rest, { width });
+  }
+  if (p.note) {
+    doc.font('Helvetica-Oblique').fontSize(8.5);
+    h += 8 + doc.heightOfString(p.note, { width: width - 16 }) + 12;
+  }
+  doc.font('Helvetica').fontSize(9.5);
+  return h;
+}
+function drawPdfLineDesc(doc, l, x, y, width) {
+  const p = _pdfLineDescParts(l);
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#111318').text(p.heading, x, y, { width });
+  let cy = y + doc.heightOfString(p.heading, { width });
+  if (p.rest) {
+    doc.font('Helvetica').fontSize(9.5).fillColor('#374151').text(p.rest, x, cy + 3, { width });
+    cy += 3 + doc.heightOfString(p.rest, { width });
+  }
+  if (p.note) {
+    doc.font('Helvetica-Oblique').fontSize(8.5);
+    const noteH = doc.heightOfString(p.note, { width: width - 16 });
+    cy += 8;
+    doc.roundedRect(x - 2, cy, width + 4, noteH + 12, 4).fill('#FFF7ED');
+    doc.fillColor('#7C2D12').text(p.note, x + 6, cy + 6, { width: width - 16 });
+    cy += noteH + 12;
+  }
+  doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
+  return cy - y;
+}
 function drawDocumentPdf(doc, kind, record, company) {
   const isInvoice = kind === 'invoice';
   const accent = '#4F46E5';
@@ -10392,12 +10455,15 @@ function drawDocumentPdf(doc, kind, record, company) {
     const lineTotal = gross - lineDiscAmt;
     rawSubtotal += lineTotal;
     const lineDiscLabel = lineDiscVal ? (lineDiscType === 'fixed' ? ` (-${Math.round(lineDiscVal).toLocaleString('da-DK')} kr)` : ` (-${lineDiscVal}%)`) : '';
-    const nameHeight = doc.heightOfString(l.description, { width: 260 });
+    // Overskrift/beskrivelse/note (sep. 2026) — se pdfLineDescHeight/drawPdfLineDesc
+    // ovenfor drawDocumentPdf. Højden skal beregnes FØRST (PDFKit har intet automatisk
+    // layout-flow), så antal/pris-kolonnerne og skillelinjen kan placeres korrekt.
+    const nameHeight = pdfLineDescHeight(doc, l, 260);
     doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
-    doc.text(l.description, 48, y, { width: 260 });
     doc.text(String(l.quantity) + ' ' + (l.unit || '') + lineDiscLabel, 320, y, { width: 50, align: 'right' });
     doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 380, y, { width: 80, align: 'right' });
     doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
+    drawPdfLineDesc(doc, l, 48, y, 260);
     y += Math.max(nameHeight, 14) + 8;
     doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#EEF0F3').stroke();
   });
@@ -10563,6 +10629,24 @@ function krFmtServer(n) {
 }
 function escPublic(s) {
   return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
+}
+// Linje-beskrivelse på tilbud/faktura (sep. 2026, Martins ønske): 1. linje af
+// l.description er OVERSKRIFTEN (produktnavnet — se qzProductLineText i admin.html, som
+// sætter navn+beskrivelse sammen med et linjeskift NÅR man vælger et produkt), resten af
+// teksten er selve beskrivelsen, vist lidt federe lige under overskriften. l.note er et
+// helt separat felt (products.note / quote_lines.note / invoice_lines.note) og vises i sin
+// egen fremhævede boks NEDERST — adskilt fra beskrivelsen, som Martin bad om. Bruges af
+// /tilbud/:token nedenfor; drawDocumentPdf (rigtig PDF) har sin egen PDFKit-udgave af
+// samme opdeling, da PDFKit ikke kan bruge HTML/CSS.
+function lineDescCellHtml(l) {
+  const full = String(l.description || '');
+  const nl = full.indexOf('\n');
+  const heading = nl === -1 ? full : full.slice(0, nl);
+  const rest = nl === -1 ? '' : full.slice(nl + 1).trim();
+  let html = `<div class="ln-heading">${escPublic(heading)}</div>`;
+  if (rest) html += `<div class="ln-desc">${escPublic(rest)}</div>`;
+  if (l.note && String(l.note).trim()) html += `<div class="ln-note">${escPublic(String(l.note).trim())}</div>`;
+  return html;
 }
 
 app.get('/api/quotes/:id/share-link', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -10759,12 +10843,15 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   const discountAmount = docDiscType === 'fixed' ? Math.max(0, Math.min(Number(quote.discount_pct) || 0, rawSubtotal)) : (Number(quote.discount_pct) ? rawSubtotal * Number(quote.discount_pct) / 100 : 0);
   const docDiscLabel = docDiscType === 'fixed' ? `${Math.round(Number(quote.discount_pct) || 0).toLocaleString('da-DK')} kr` : `${Number(quote.discount_pct) || 0}%`;
   const rowsHtml = lines.map(l => {
+    if (l.line_type === 'text') {
+      return `<tr><td colspan="4" class="ln-textrow">${esc(l.description)}</td></tr>`;
+    }
     const discType = l.discount_type === 'fixed' ? 'fixed' : 'pct';
     const disc = Number(l.discount_pct) || 0;
     const gross = Number(l.quantity) * Number(l.sell_price);
     const lineTotal = gross - lineDiscountAmount(l, gross);
     const discLabel = disc ? (discType === 'fixed' ? ` (-${Math.round(disc).toLocaleString('da-DK')} kr)` : ` (-${disc}%)`) : '';
-    return `<tr><td>${esc(l.description)}</td><td class="num">${Number(l.quantity)} ${esc(l.unit || '')}${discLabel}</td><td class="num">${krFmtServer(l.sell_price)}</td><td class="num">${krFmtServer(lineTotal)}</td></tr>`;
+    return `<tr><td>${lineDescCellHtml(l)}</td><td class="num">${Number(l.quantity)} ${esc(l.unit || '')}${discLabel}</td><td class="num">${krFmtServer(l.sell_price)}</td><td class="num">${krFmtServer(lineTotal)}</td></tr>`;
   }).join('');
   const statusBlock = (() => {
     if (quote.status === 'accepted') {
@@ -10805,7 +10892,10 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   th{text-align:left;background:#F4F6FB;padding:8px 10px;font-size:11px;color:#374151}
   th.num,td.num{text-align:right}
   td{padding:8px 10px;border-bottom:1px solid #EEF0F3}
-  td:first-child{white-space:pre-line}
+  .ln-heading{font-weight:700}
+  .ln-desc{font-weight:600;color:#374151;margin-top:3px;white-space:pre-line}
+  .ln-note{margin-top:6px;background:#FFF7ED;border-left:3px solid #FB923C;border-radius:6px;padding:6px 9px;font-size:11.5px;font-weight:500;color:#7C2D12;white-space:pre-line}
+  .ln-textrow{font-weight:700;white-space:pre-line}
   .totals{margin-left:auto;width:240px;margin-top:10px}
   .totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:12.5px;color:#6B7280}
   .totals-row.grand{font-size:15px;font-weight:800;color:#111318;border-top:1px solid #EEF0F3;margin-top:6px;padding-top:8px}

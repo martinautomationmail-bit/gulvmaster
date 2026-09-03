@@ -1096,6 +1096,13 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-pdf-table th{text-align:left;background:#F4F6FB;padding:6px 8px;font-weight:700;color:#374151}
 .qe-pdf-table th.num,.qe-pdf-table td.num{text-align:right}
 .qe-pdf-table td{padding:6px 8px;border-bottom:1px solid #EEF0F3}
+/* Linje-overskrift/beskrivelse/note (sep. 2026, Martins ønske) — samme visuelle
+   hierarki som /tilbud/:token og den rigtige PDF: fed overskrift, lidt federe
+   beskrivelse lige under, og noten i sin egen fremhævede boks nederst. */
+.ln-heading{font-weight:700}
+.ln-desc{font-weight:600;color:#374151;margin-top:3px;white-space:pre-line}
+.ln-note{margin-top:6px;background:#FFF7ED;border-left:3px solid #FB923C;border-radius:6px;padding:6px 9px;font-size:11.5px;font-weight:500;color:#7C2D12;white-space:pre-line}
+.ln-textrow{font-weight:700;white-space:pre-line}
 .qe-pdf-totals{margin-left:auto;width:220px}
 .qe-pdf-totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#6B7280}
 .qe-pdf-totals-row.grand{background:var(--bly-accent);color:#fff;font-weight:800;font-size:11.5px;padding:6px 8px;border-radius:6px;margin-top:6px}
@@ -4313,6 +4320,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="hint" id="qzp-margin-preview">Avance: —</div>
     <div class="form-group" style="margin-top:8px"><label class="form-label">Beskrivelse <span class="opt-tag">valgfrit</span></label><textarea id="qzp-description" class="input" rows="2" style="resize:vertical"></textarea></div>
+    <!-- Note (sep. 2026, Martins ønske) — HELT ADSKILT fra beskrivelsen ovenfor. Vises på
+         tilbud/faktura i sin egen fremhævede boks UNDER beskrivelsen, fx til forbehold eller
+         vigtige bemærkninger der ikke skal blandes ind i selve produktteksten. -->
+    <div class="form-group" style="margin-top:8px"><label class="form-label">Note <span class="opt-tag">valgfrit</span></label><textarea id="qzp-note" class="input" rows="2" style="resize:vertical" placeholder="Vises i egen boks under beskrivelsen på tilbud/faktura"></textarea></div>
     <div class="modal-actions">
       <button class="btn danger hidden" id="qzp-delete">Slet</button>
       <button class="btn" id="qzp-cancel">Annuller</button>
@@ -4341,6 +4352,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <div id="qzt-lines" style="max-height:360px;overflow:auto"></div>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <button class="bly-btn outline small" id="qzt-add-blank-line-bottom" type="button">+ Tilføj linje</button>
+      <button class="bly-btn outline small" id="qzt-add-text-line-bottom" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
+    </div>
     <div class="modal-actions">
       <button class="btn danger hidden" id="qzt-delete">Slet</button>
       <button class="btn" id="qzt-cancel">Annuller</button>
@@ -4402,6 +4417,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           </div>
         </div>
         <div id="qe-lines"></div>
+        <!-- Samme "+ Tilføj linje"/"+ Tekstlinje"-knapper som foroven, men lige under
+             sidste linje (sep. 2026, Martins ønske) — så man ikke skal føre musen op
+             til toppen igen for hver ny linje ved lange tilbud. -->
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="bly-btn outline small" id="qe-add-blank-line-bottom" type="button">+ Tilføj linje</button>
+          <button class="bly-btn outline small" id="qe-add-text-line-bottom" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
+        </div>
 
         <div class="qe-totals" id="qe-totals"></div>
         <div class="qe-cost-summary" id="qe-cost-summary"></div>
@@ -12921,6 +12943,9 @@ function qzLineRowHtml(l,idx,prefix){
     +'</select>'
     +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
     +'</div>'
+    // Note (sep. 2026, Martins ønske) — helt separat felt fra beskrivelsen ovenfor.
+    // Vises i sin egen fremhævede boks UNDER beskrivelsen på tilbud/faktura.
+    +'<textarea class="qe-input qe-line-field qz-note-area" data-idx="'+idx+'" data-field="note" placeholder="Note (valgfrit) — vises i egen boks under beskrivelsen på tilbud/faktura" rows="1" style="margin-top:4px;font-size:12.5px">'+esc(l.note||'')+'</textarea>'
     +'<div class="qe-line-nums">'
     +'<div><div class="qe-line-num-label">Antal</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="quantity" value="'+qty+'"></div>'
     +'<div><div class="qe-line-num-label">Cost-pris</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="cost_price" value="'+cost+'"></div>'
@@ -12949,7 +12974,7 @@ function qzRenderLines(containerId,lines,prefix){
   var el=document.getElementById(containerId);
   if(!lines.length){el.innerHTML='<div class="sub" style="padding:14px 0">Ingen linjer endnu — tilføj fra produktkataloget eller opret en fri linje.</div>';return;}
   el.innerHTML=lines.map(function(l,idx){return qzLineRowHtml(l,idx,prefix);}).join('');
-  Array.prototype.forEach.call(el.querySelectorAll('.qe-desc-area'),qzAutoGrowTextarea);
+  Array.prototype.forEach.call(el.querySelectorAll('.qe-desc-area,.qz-note-area'),qzAutoGrowTextarea);
 }
 function qzRefreshLineDisplay(lines,idx,prefix){
   var l=lines[idx];if(!l)return;
@@ -12974,9 +12999,9 @@ function makeLinesFieldHandler(getLines,prefix,onChange,renderLinesFn){
     var lines=getLines();
     var idx=Number(t.dataset.idx),field=t.dataset.field;
     var l=lines[idx];if(!l)return;
-    if(field==='description'||field==='unit'||field==='product_type'||field==='discount_type'){l[field]=t.value;if(field==='discount_type')qzRefreshLineDisplay(lines,idx,prefix);}
+    if(field==='description'||field==='unit'||field==='product_type'||field==='discount_type'||field==='note'){l[field]=t.value;if(field==='discount_type')qzRefreshLineDisplay(lines,idx,prefix);}
     else{l[field]=Number(t.value)||0;qzRefreshLineDisplay(lines,idx,prefix);}
-    if(field==='description'&&t.tagName==='TEXTAREA')qzAutoGrowTextarea(t);
+    if((field==='description'||field==='note')&&t.tagName==='TEXTAREA')qzAutoGrowTextarea(t);
     // Live produkt-søgning DIREKTE i linjens eget beskrivelsesfelt — ikke kun i det
     // separate søgefelt i toppen. Kun for almindelige linjer (ikke tekst-/overskriftslinjer,
     // som ikke har pris-felter at udfylde). Kun på selve 'input'-eventet (mens man skriver),
@@ -12999,6 +13024,21 @@ function makeLinesRemoveHandler(getLines,renderFn){
 // produktets egen (redigerbare) beskrivelse på ny linje hvis den findes — vi
 // har en beskrivelse til alt vi laver, og den skal med på tilbuddet, ikke kun
 // stå gemt i produktkataloget (Martins ønske, sep. 2026).
+// Deler en linjes beskrivelse op i overskrift (1. linje, fed) + resten (lidt federe,
+// under overskriften) og tilføjer noten (nyt separat felt, sep. 2026) i sin egen boks
+// nedenunder. Samme opdeling som server.js' lineDescCellHtml() — bruges i BÅDE den
+// levende tilbudsvisning her (qeRenderPreview) og faktura-visningen (openInvoiceDetail),
+// så admin ser præcis det samme layout som kunden får på tilbuds-siden/PDF'en.
+function qzLineDescCellHtml(l){
+  var full=String(l.description||'');
+  var nl=full.indexOf('\n');
+  var heading=nl===-1?full:full.slice(0,nl);
+  var rest=nl===-1?'':full.slice(nl+1).trim();
+  var html='<div class="ln-heading">'+esc(heading)+'</div>';
+  if(rest)html+='<div class="ln-desc">'+esc(rest)+'</div>';
+  if(l.note&&String(l.note).trim())html+='<div class="ln-note">'+esc(String(l.note).trim())+'</div>';
+  return html;
+}
 function qzProductLineText(product){
   if(!product)return'';
   return product.description?product.name+'\n'+product.description:product.name;
@@ -13007,6 +13047,8 @@ function qzMakeBlankLine(product){
   return {
     product_id:product?product.id:null,
     description:qzProductLineText(product),
+    // Note (sep. 2026, Martins ønske) — arves fra produktet, HELT adskilt fra description.
+    note:product?(product.note||''):'',
     unit:product?(product.unit||'stk'):'stk',
     quantity:1,
     cost_price:product?Number(product.cost_price):0,
@@ -13144,6 +13186,7 @@ function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange)
       l.product_id=p.id;l.description=qzProductLineText(p);l.unit=p.unit||'stk';
       l.cost_price=Number(p.cost_price)||0;l.sell_price=Number(p.sell_price)||0;
       l.product_type=qzType(p.product_type);
+      l.note=p.note||''; // Note (sep. 2026) arves også når produktet vælges via autocomplete
       qzHideLineAutocomplete();
       // qzLineAcSuppressFieldEvents: renderLinesFn() erstatter straks det fokuserede,
       // "beskidte" beskrivelsesfelt med et nyt DOM-element — og browseren fyrer selv et
@@ -13194,6 +13237,7 @@ function openProductModal(id){
   document.getElementById('qzp-sell').value=p?Number(p.sell_price):0;
   document.getElementById('qzp-type').value=p?qzType(p.product_type):'service';
   document.getElementById('qzp-description').value=p?(p.description||''):'';
+  document.getElementById('qzp-note').value=p?(p.note||''):'';
   document.getElementById('qzp-delete').classList.toggle('hidden',!p);
   updateQzpMarginPreview();
   document.getElementById('qz-product-modal').classList.add('open');
@@ -13216,7 +13260,8 @@ async function saveQzProduct(){
     cost_price:Number(document.getElementById('qzp-cost').value)||0,
     sell_price:Number(document.getElementById('qzp-sell').value)||0,
     product_type:document.getElementById('qzp-type').value,
-    description:document.getElementById('qzp-description').value.trim()||null
+    description:document.getElementById('qzp-description').value.trim()||null,
+    note:document.getElementById('qzp-note').value.trim()||null
   };
   var r=qzEditingProductId?await api('/api/products/'+qzEditingProductId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/products',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){toast('Produkt gemt','✓');closeModal('qz-product-modal');await loadQzProducts();renderQzProducts();}
@@ -14032,10 +14077,11 @@ async function openCrmpDetail(entityType,id){
   stageSel.innerHTML=(pipeline?pipeline.stages:[]).slice().sort(function(a,b){return a.position-b.position;}).map(function(s){return '<option value="'+s.id+'"'+(s.id===d.stage_id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
   document.getElementById('crmpx-customfields').innerHTML=crmpxRenderCustomFieldInputs(d.custom_field_defs||[],d.custom_fields||{})||'<div class="crmpx-empty">Ingen felter oprettet — tilføj under ⚙️ Indstillinger</div>';
   document.getElementById('crmpx-convert-btn').style.display=entityType==='lead'&&!d.converted_opportunity_id?'':'none';
-  // "Lav tilbud" (sep. 2026, Martins ønske): kun for opportunities (et lead er
-  // typisk ikke konkretiseret nok endnu) — og kun når der rent faktisk er en
-  // kunde koblet på, så tilbuddet kan forudfyldes med kontaktoplysninger.
-  document.getElementById('crmpx-quote-btn').style.display=(entityType==='opportunity'&&d.customer_id)?'':'none';
+  // "Lav tilbud" (sep. 2026, oprindeligt kun for opportunities — udvidet efter
+  // Martins ønske til også at vise på LEADS, så man kan lave et tilbud med det
+  // samme uden først at skulle konvertere leadet). Vises når der rent faktisk er
+  // en kunde koblet på, så tilbuddet kan forudfyldes med kontaktoplysninger.
+  document.getElementById('crmpx-quote-btn').style.display=d.customer_id?'':'none';
 
   document.getElementById('crmpx-opps-panel').style.display=entityType==='lead'?'':'none';
   document.getElementById('crmpx-contact-panel').style.display=entityType==='opportunity'?'':'none';
@@ -14216,9 +14262,16 @@ async function crmpxConvert(){
 // opportunityens koblede kunde, så man ikke skal søge kunden op igen manuelt.
 function crmpxOpenQuote(){
   var ent=crmpDetailEntity;
-  if(!ent||ent.type!=='opportunity'||!crmpxCurrentCustomerId)return;
+  if(!ent||!crmpxCurrentCustomerId)return;
   var d=ent.data;
-  openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:d.contact_name||d.name||'',phone:d.contact_phone||'',email:d.contact_email||'',address:d.contact_address||''});
+  // "Lav tilbud" virker nu fra BÅDE lead- og opportunity-siden (Martins ønske, sep. 2026)
+  // — leads/opportunities gemmer navn/telefon/email/adresse under forskellige feltnavne
+  // (se samme skelnen i openCrmpDetail lige ovenfor), så vi vælger det rigtige sæt her.
+  var name=ent.type==='lead'?d.name:(d.contact_name||d.name);
+  var phone=ent.type==='lead'?d.phone:d.contact_phone;
+  var email=ent.type==='lead'?d.email:d.contact_email;
+  var address=ent.type==='lead'?d.address:d.contact_address;
+  openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:name||'',phone:phone||'',email:email||'',address:address||''});
 }
 async function crmpxDelete(){
   var ent=crmpDetailEntity;
@@ -15920,7 +15973,11 @@ async function openQuoteEditor(id,prefillCustomer){
     qeState.jobName=qd.job_name||'';
     qeState.lastStatus=qd.status;
     qeState.customerId=qd.customer_id||null;
-    qeState.lines=(qd.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:l.discount_type==='fixed'?'fixed':'pct',line_type:l.line_type==='text'?'text':'item'};});
+    // FEJLRETTELSE (sep. 2026, opdaget under implementering af note-feltet): denne mapping
+    // manglede 'note' — uden den blev linjens note tabt hver gang et EKSISTERENDE tilbud
+    // blev åbnet og gemt igen (qeState.lines fik ikke feltet med, og et efterfølgende
+    // gem ville derfor overskrive den gemte note i databasen med null).
+    qeState.lines=(qd.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,note:l.note||'',unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:l.discount_type==='fixed'?'fixed':'pct',line_type:l.line_type==='text'?'text':'item'};});
     document.getElementById('qe-customer-search').value=qd.job_name||'';
     document.getElementById('qe-customer-address').value=qd.customer_address||'';
     document.getElementById('qe-customer-phone').value=qd.customer_phone||'';
@@ -16024,13 +16081,13 @@ function qeRenderPreview(){
   var topNote=document.getElementById('qe-top-note').value.trim();
   var rowsHtml=qeState.lines.map(function(l){
     if(l.line_type==='text'){
-      return '<tr><td colspan="4" style="font-weight:800;padding-top:12px;border-top:none">'+esc(l.description||'')+'</td></tr>';
+      return '<tr><td colspan="4" style="padding-top:12px;border-top:none"><div class="ln-textrow">'+esc(l.description||'')+'</div></td></tr>';
     }
     var qty=Number(l.quantity)||0,disc=Number(l.discount_pct)||0;
     var gross=qty*(Number(l.sell_price)||0);
     var lineTotal=gross-qzLineDiscountAmount(l,gross);
     var discLabel=disc?(l.discount_type==='fixed'?' (-'+krFmt(disc)+')':' (-'+disc+'%)'):'';
-    return '<tr><td>'+esc(l.description||'–')+'</td><td class="num">'+qty+' '+esc(l.unit||'')+discLabel+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lineTotal)+'</td></tr>';
+    return '<tr><td>'+qzLineDescCellHtml(l)+'</td><td class="num">'+qty+' '+esc(l.unit||'')+discLabel+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lineTotal)+'</td></tr>';
   }).join('')||'<tr><td colspan="4" style="text-align:center;color:#9CA3AF;padding:14px">Ingen linjer endnu</td></tr>';
   document.getElementById('qe-preview').innerHTML=
      '<div class="qe-pdf-head">'
@@ -16291,9 +16348,9 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-remaining').textContent=krFmt(Number(inv.remaining));
   document.getElementById('iv-lines-preview').innerHTML='<table class="bly-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Salgspris</th><th class="num">I alt</th></tr></thead><tbody>'
     +(inv.lines||[]).map(function(l){
-      if(l.line_type==='text')return '<tr><td colspan="4" style="font-weight:800">'+esc(l.description||'')+'</td></tr>';
+      if(l.line_type==='text')return '<tr><td colspan="4"><div class="ln-textrow">'+esc(l.description||'')+'</div></td></tr>';
       var lt=(Number(l.quantity)||0)*(Number(l.sell_price)||0);
-      return '<tr><td style="white-space:pre-wrap">'+esc(l.description)+'</td><td class="num">'+(Number(l.quantity)||0)+' '+esc(l.unit||'')+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lt)+'</td></tr>';
+      return '<tr><td>'+qzLineDescCellHtml(l)+'</td><td class="num">'+(Number(l.quantity)||0)+' '+esc(l.unit||'')+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lt)+'</td></tr>';
     }).join('')+'</tbody></table>';
   document.getElementById('iv-payments-list').innerHTML=(inv.payments||[]).length?inv.payments.map(function(p){
     return '<div class="iv-payment-row"><div><b>'+krFmt(Number(p.amount))+'</b><div class="iv-payment-meta">'+esc(p.paid_at)+(p.method?' · '+esc(p.method):'')+(p.note?' · '+esc(p.note):'')+'</div></div><button class="qz-icon-btn" onclick="deleteIvPayment('+p.id+')" title="Fjern">✕</button></div>';
@@ -16398,6 +16455,8 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzt-delete').addEventListener('click',deleteQzTemplateFromModal);
   document.getElementById('qzt-add-blank-line').addEventListener('click',function(){qztAddLine(null);});
   document.getElementById('qzt-add-text-line').addEventListener('click',function(){qztState.lines.push(qzMakeTextLine());qzRenderLines('qzt-lines',qztState.lines,'qzt');});
+  document.getElementById('qzt-add-blank-line-bottom').addEventListener('click',function(){qztAddLine(null);});
+  document.getElementById('qzt-add-text-line-bottom').addEventListener('click',function(){qztState.lines.push(qzMakeTextLine());qzRenderLines('qzt-lines',qztState.lines,'qzt');});
   document.getElementById('qzt-product-search').addEventListener('input',function(){
     qzRunProductSearch('qzt-product-search','qzt-product-results',function(p){qztAddLine(p);});
   });
@@ -16422,6 +16481,10 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-pdf-link').addEventListener('click',function(e){e.preventDefault();if(qeState.id)qzOpenPdf('/api/quotes/'+qeState.id+'/pdf');});
   document.getElementById('qe-add-blank-line').addEventListener('click',function(){qeAddLine(null);});
   document.getElementById('qe-add-text-line').addEventListener('click',function(){qeState.lines.push(qzMakeTextLine());renderQeLines();qeRecalc();});
+  // Samme handlers som knapperne foroven, bare for de duplikerede knapper under
+  // sidste linje (sep. 2026, Martins ønske — undgår at skulle føre musen op igen).
+  document.getElementById('qe-add-blank-line-bottom').addEventListener('click',function(){qeAddLine(null);});
+  document.getElementById('qe-add-text-line-bottom').addEventListener('click',function(){qeState.lines.push(qzMakeTextLine());renderQeLines();qeRecalc();});
   document.getElementById('qe-save-as-template-btn').addEventListener('click',qeSaveCurrentAsTemplate);
   document.getElementById('qe-template-picker').addEventListener('change',function(e){
     var id=Number(e.target.value);
