@@ -941,6 +941,19 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmp-col.crmp-col-collapsed .crmp-col-count{margin-left:0}
 .crmp-set-stage-row{display:flex;align-items:center;gap:8px;background:var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:6px 8px}
 .crmp-set-field-row{display:flex;align-items:center;gap:8px;background:var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:6px 8px}
+/* Options-editor pr. dropdown-felt (⚙️ Indstillinger → Felter). ÉT sted der
+   både omdøber, sletter, tilføjer og farvelægger valgmulighederne — bevidst
+   ikke to konkurrerende UI-flader for det samme. */
+.crmp-set-field-opts{display:none;flex-direction:column;gap:6px;width:100%;margin-top:8px;padding-top:8px;border-top:1px dashed var(--bly-border)}
+.crmp-set-opt-row{display:flex;align-items:center;gap:7px}
+.crmp-set-opt-row input[type=color]{flex:none;width:26px;height:26px;padding:1px;border-radius:6px;border:1px solid var(--bly-border);cursor:pointer}
+.crmp-set-opt-name{flex:1;min-width:60px;font:inherit;font-size:12px;font-weight:600;padding:4px 7px;border:1px solid var(--bly-border);border-radius:7px;background:#fff;color:var(--bly-text)}
+.crmp-set-opt-name:focus{outline:none;border-color:var(--bly-accent)}
+.crmp-set-opt-use{flex:none;font-size:10.5px;font-weight:700;color:var(--bly-sub);white-space:nowrap;min-width:52px;text-align:right}
+.crmp-set-opt-add{display:flex;align-items:center;gap:7px;margin-top:2px}
+.crmp-set-opt-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+.crmp-set-opt-twin{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--bly-sub);cursor:pointer}
+.crmp-set-opt-twin input{width:auto}
 
 /* ══════════════════════════════════════════════════════════════
    KOMMANDOCENTER — samme Billy-behandling, scoped til #page-dashboard. */
@@ -2249,7 +2262,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-04.3</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-04.4</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -3663,14 +3676,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           </select>
           <input id="crmc-source-other" class="input hidden" style="margin-top:6px" placeholder="Angiv kilde">
         </div>
-        <div class="form-group"><label class="form-label">Projekttype</label>
-          <select id="crmc-projekt-type" class="select">
-            <option value="">Vælg…</option>
-            <option value="Gulvslibning">Gulvslibning</option>
-            <option value="Gulvlægning">Gulvlægning</option>
-            <option value="Maler">Maler</option>
-            <option value="Enterprise">Enterprise</option>
-          </select>
+        <!-- Projekttype er IKKE en selvstændig liste her. Den tegnes ud fra det
+             RIGTIGE custom field (entity_type='lead', key='projekt_type') af
+             crmcFillProjektType() — nøjagtig samme definition som CRM-detalje-
+             siden og Kanban-boardet bruger. Før stod de fire valgmuligheder
+             hardkodet i HTML'en, så snart Martin redigerede feltet under
+             ⚙️ Indstillinger drev denne dropdown lydløst fra virkeligheden. -->
+        <div class="form-group" id="crmc-projekt-type-wrap"><label class="form-label" id="crmc-projekt-type-label">Projekttype</label>
+          <select id="crmc-projekt-type" class="select"><option value="">Vælg…</option></select>
         </div>
       </div>
       <!-- Pipeline + stage for det lead der oprettes automatisk sammen med
@@ -14492,6 +14505,15 @@ async function crmpEnsurePipelinesLoaded(){
   if(!crmpState.pipelines.length)await crmpLoadPipelines();
   return crmpState.pipelines;
 }
+// Præcis samme guard for custom field-DEFINITIONERNE. De hentes normalt sammen
+// med pipelines i crmpLoadPipelines(), men "Ny kunde"-modalen tegner nu sin
+// Projekttype-dropdown ud fra dem, og den kan åbnes uden at Kanban-boardet
+// nogensinde har været åbnet i denne session. Egen "loaded"-markør frem for
+// .length, så et CRM helt uden custom fields ikke udløser et nyt kald hver gang.
+async function crmpEnsureCustomFieldDefsLoaded(){
+  if(!crmpState.customFieldDefsLoaded)await crmpReloadCustomFieldDefs();
+  return crmpState.customFieldDefs;
+}
 async function openCrmModal(id){
   var c=id?crmCustomers.find(function(x){return x.id===id;}):null;
   crmEditingId=id||null;
@@ -14521,8 +14543,25 @@ async function openCrmModal(id){
   if(!c){
     await crmpEnsurePipelinesLoaded();
     crmcFillPipelines();
+    await crmpEnsureCustomFieldDefsLoaded();
+    crmcFillProjektType();
   }
   document.getElementById('crm-modal').classList.add('open');
+}
+// Projekttype-dropdownen i "Ny kunde" — ÉN kilde, nemlig custom field-defen
+// for lead.projekt_type. Tilføjer/omdøber/sletter Martin en valgmulighed under
+// ⚙️ Indstillinger, slår det igennem her uden at nogen rører HTML'en.
+// Findes feltet slet ikke (eller er listen tom), skjules hele rækken frem for
+// at vise en dropdown der kun kan vælge ingenting — resten af modalen virker
+// præcis som før, og gem-flowet sender så bare en tom projekt_type.
+function crmcFillProjektType(){
+  var wrap=document.getElementById('crmc-projekt-type-wrap');
+  var sel=document.getElementById('crmc-projekt-type');
+  var def=(crmpState.customFieldDefs.lead||[]).find(function(d){return d.key==='projekt_type'&&d.field_type==='select';});
+  var opts=def&&Array.isArray(def.options)?def.options:[];
+  sel.innerHTML='<option value="">Vælg…</option>'+opts.map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join('');
+  document.getElementById('crmc-projekt-type-label').textContent=(def&&def.label)||'Projekttype';
+  wrap.style.display=opts.length?'':'none';
 }
 // KUNDEDETALJE — klik på en kunde i listen. Egen side (samme mønster som
 // project-detail): sagen/tilbud/faktura-data hentes samlet fra
@@ -14791,7 +14830,7 @@ async function openCustomerDetail(id){
 // kollidere med det ældre "crm"-præfiks Kunder-modulet allerede bruger
 // (initCrmModule/crm-modal/loadCrmCustomers m.fl., se lige ovenfor).
 // ══════════════════════════════════════════════════════════════
-var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[]},filters:{q:'',owner_id:'',cf_key:'',cf_value:''},initialized:false,detailInitialized:false,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead',selectMode:false,selected:{}};
+var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[]},customFieldDefsLoaded:false,filters:{q:'',owner_id:'',cf_key:'',cf_value:''},initialized:false,detailInitialized:false,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead',selectMode:false,selected:{}};
 // ── SAMMENKLAPPEDE KOLONNER — hvilke stages brugeren SELV har foldet ud i
 // denne session. Martin har udtrykkeligt bedt om at "Konverteret"/"Afvist"/
 // "Tabt" ALTID starter krympede, så dette må IKKE gemmes i localStorage: ved
@@ -14875,8 +14914,7 @@ async function crmpLoadPipelines(){
   var sel=document.getElementById('crmp-pipeline-select');
   sel.innerHTML=crmpState.pipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
   if(crmpState.currentPipelineId)sel.value=crmpState.currentPipelineId;
-  crmpState.customFieldDefs.lead=await crmGetCustomFieldDefsCache('lead');
-  crmpState.customFieldDefs.opportunity=await crmGetCustomFieldDefsCache('opportunity');
+  await crmpReloadCustomFieldDefs();
   var ownerSel=document.getElementById('crmp-owner-filter');
   ownerSel.innerHTML='<option value="">Alle ansvarlige</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
 }
@@ -15849,7 +15887,16 @@ function crmpxRenderCustomFieldInputs(defs,values){
     var val=values[d.key]||'';
     var input;
     if(d.field_type==='select'){
-      input='<select class="tld-input" data-cf-key="'+esc(d.key)+'"><option value="">—</option>'+d.options.map(function(o){return '<option value="'+esc(o)+'"'+(o===val?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>';
+      // "Udgået værdi": bliver en valgmulighed fjernet under ⚙️ Indstillinger,
+      // sletter vi bevidst IKKE de værdier der allerede er gemt på gamle sager.
+      // Uden denne linje ville dropdownen stå tom på netop de sager — og
+      // autogem ville så overskrive den gemte værdi med ingenting, altså præcis
+      // det lydløse datatab Martin har klaget over. Værdien vises i stedet som
+      // valgt og mærket "udgået", indtil nogen aktivt vælger noget andet.
+      var known=d.options.indexOf(val)>=0;
+      input='<select class="tld-input" data-cf-key="'+esc(d.key)+'"><option value="">—</option>'
+        +(val&&!known?'<option value="'+esc(val)+'" selected>'+esc(val)+' (udgået)</option>':'')
+        +d.options.map(function(o){return '<option value="'+esc(o)+'"'+(o===val?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>';
     } else if(d.field_type==='checkbox'){
       input='<input type="checkbox" data-cf-key="'+esc(d.key)+'" style="width:auto"'+(val==='1'||val===true?' checked':'')+'>';
     } else if(d.field_type==='number'){
@@ -16425,25 +16472,45 @@ function crmpRenderSettingsFields(){
   // selv hvilke custom fields der vises som badges på et lead/opportunity-kort i
   // pipelinen, i stedet for automatisk "de første 2 med en værdi" — og for dropdown-felter
   // (fx Lead source) kan hver valgmulighed få sin egen farve, der så bruges på badgen.
+  // VALGMULIGHEDER (sep. 2026, Martins ønske "hvor redigerer jeg de værdier der
+  // ligger i feltet — jeg vil tilføje nogle og slette nogle"): den gamle 🎨-panel
+  // kunne KUN sætte farver; listen af valgmuligheder kunne udelukkende sættes én
+  // gang ved oprettelsen af feltet. Nu er samme panel udvidet til at være ÉN
+  // samlet options-editor — omdøb, slet, tilføj og farvelæg samme sted. Bevidst
+  // ikke to overlappende UI-flader for det samme.
+  var otherEntity=crmpState.settingsFieldEntity==='lead'?'opportunity':'lead';
+  var otherEntityLabel=otherEntity==='lead'?'Leads':'Opportunities';
+  var otherDefs=crmpState.customFieldDefs[otherEntity]||[];
   list.innerHTML=defs.length?defs.map(function(d){
-    var hasOptions=d.field_type==='select'&&Array.isArray(d.options)&&d.options.length>0;
+    var isSelect=d.field_type==='select';
+    var opts=Array.isArray(d.options)?d.options:[];
+    // "Twin" = feltet med SAMME key på den anden entitetstype. projekt_type
+    // findes fx både på lead og opportunity, og et lead tager sine værdier med
+    // over pr. key når det konverteres — driver de to lister fra hinanden, ender
+    // en konverteret opportunity med en værdi dens egen dropdown ikke kender.
+    var twin=isSelect?otherDefs.find(function(o){return o.key===d.key&&o.field_type==='select';}):null;
     return '<div class="crmp-set-field-row" data-field-id="'+d.id+'" style="flex-wrap:wrap">'
       +'<div style="display:flex;align-items:center;gap:8px;width:100%">'
-      +'<span style="flex:1;font-weight:700;font-size:12.5px">'+esc(d.label)+'</span>'
-      +'<span class="sub" style="font-size:11px">'+(typeLabels[d.field_type]||d.field_type)+'</span>'
+      +'<span style="flex:1;min-width:0;font-weight:700;font-size:12.5px">'+esc(d.label)+'</span>'
+      +'<span class="sub" style="font-size:11px;white-space:nowrap"'+(isSelect?' title="'+opts.length+' valgmuligheder"':'')+'>'+(typeLabels[d.field_type]||d.field_type)+(isSelect?' · '+opts.length:'')+'</span>'
       +'<label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--bly-sub);cursor:pointer;white-space:nowrap">'
       +'<input type="checkbox" data-action="toggle-card"'+(d.show_on_card?' checked':'')+'> Vis på kort</label>'
-      +(hasOptions?'<button class="qz-icon-btn" data-action="field-colors" title="Farver pr. valgmulighed">🎨</button>':'')
-      +'<button class="qz-icon-btn" data-action="field-delete" title="Slet">🗑</button>'
+      +(isSelect?'<button class="qz-icon-btn" data-action="field-options" title="Redigér valgmuligheder og farver">✏️</button>':'')
+      +'<button class="qz-icon-btn" data-action="field-delete" title="Slet feltet">🗑</button>'
       +'</div>'
-      +(hasOptions?('<div class="crmp-set-field-colors" style="display:none;flex-wrap:wrap;gap:10px;width:100%;margin-top:8px;padding-top:8px;border-top:1px dashed var(--bly-border)">'
-        +d.options.map(function(opt){
-          var color=(d.option_colors&&d.option_colors[opt])||'#94A3B8';
-          return '<label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600">'
-            +'<input type="color" data-opt="'+esc(opt)+'" value="'+esc(color)+'" style="width:26px;height:26px;padding:1px;border-radius:6px;border:1px solid var(--bly-border);cursor:pointer">'
-            +esc(opt)+'</label>';
-        }).join('')
-        +'<button class="btn small" data-action="field-colors-save" style="margin-left:auto">Gem farver</button>'
+      +(isSelect?('<div class="crmp-set-field-opts">'
+        +'<div class="crmp-set-opt-rows">'
+        +opts.map(function(opt){return crmpSetOptionRowHtml(opt,(d.option_colors&&d.option_colors[opt])||'');}).join('')
+        +'</div>'
+        +'<div class="sub crmp-set-opt-empty" style="font-size:11px'+(opts.length?';display:none':'')+'">Ingen valgmuligheder endnu — tilføj den første nedenfor.</div>'
+        +'<div class="crmp-set-opt-add">'
+        +'<input type="text" class="crmp-set-opt-name crmp-set-opt-new" placeholder="Ny valgmulighed…">'
+        +'<button class="btn small" data-action="opt-add">+ Tilføj</button>'
+        +'</div>'
+        +'<div class="crmp-set-opt-foot">'
+        +(twin?'<label class="crmp-set-opt-twin" title="Feltet findes med samme nøgle begge steder — hold listerne ens, så en konverteret sag beholder sin værdi"><input type="checkbox" data-action="opts-sync-twin" checked> Anvend også på “'+esc(twin.label)+'” under '+otherEntityLabel+'</label>':'')
+        +'<button class="btn primary small" data-action="opts-save" style="margin-left:auto">Gem valgmuligheder</button>'
+        +'</div>'
         +'</div>'):'')
       +'</div>';
   }).join(''):'<div class="sub" style="padding:6px 0">Ingen felter endnu</div>';
@@ -16452,7 +16519,7 @@ function crmpRenderSettingsFields(){
       var fieldId=Number(btn.closest('.crmp-set-field-row').dataset.fieldId);
       if(!await gmConfirm('Slet feltet? Alle gemte værdier for feltet slettes også.'))return;
       var r=await api('/api/crm/custom-fields/'+fieldId,{method:'DELETE'});
-      if(r&&r.ok){crmpState.customFieldDefs[crmpState.settingsFieldEntity]=await crmGetCustomFieldDefsCache(crmpState.settingsFieldEntity);crmpRenderSettingsFields();}
+      if(r&&r.ok){await crmpReloadCustomFieldDefs();crmpRenderSettingsFields();}
     });
   });
   list.querySelectorAll('[data-action="toggle-card"]').forEach(function(cb){
@@ -16464,23 +16531,157 @@ function crmpRenderSettingsFields(){
       else{cb.checked=wasChecked;toast((r&&r.error)||'Kunne ikke gemme','❌');}
     });
   });
-  list.querySelectorAll('[data-action="field-colors"]').forEach(function(btn){
+  list.querySelectorAll('[data-action="field-options"]').forEach(function(btn){
     btn.addEventListener('click',function(){
-      var panel=btn.closest('.crmp-set-field-row').querySelector('.crmp-set-field-colors');
-      if(panel)panel.style.display=panel.style.display==='none'?'flex':'none';
-    });
-  });
-  list.querySelectorAll('[data-action="field-colors-save"]').forEach(function(btn){
-    btn.addEventListener('click',async function(){
       var row=btn.closest('.crmp-set-field-row');
-      var fieldId=Number(row.dataset.fieldId);
-      var colors={};
-      row.querySelectorAll('[data-opt]').forEach(function(inp){colors[inp.dataset.opt]=inp.value;});
-      var r=await api('/api/crm/custom-fields/'+fieldId,{method:'PUT',body:JSON.stringify({option_colors:colors})});
-      if(r&&r.ok){toast('Farver gemt','✓');crmpState.customFieldDefs[crmpState.settingsFieldEntity]=await crmGetCustomFieldDefsCache(crmpState.settingsFieldEntity);}
-      else toast((r&&r.error)||'Kunne ikke gemme farver','❌');
+      var panel=row.querySelector('.crmp-set-field-opts');
+      if(!panel)return;
+      var open=panel.style.display!=='flex';
+      panel.style.display=open?'flex':'none';
+      // Brugstællingerne hentes først når panelet faktisk åbnes — Martin skal
+      // kunne SE hvor mange sager der bruger en valgmulighed, før han sletter den.
+      if(open&&!panel.dataset.usageLoaded)crmpLoadOptionUsage(row);
     });
   });
+  list.querySelectorAll('[data-action="opt-add"]').forEach(function(btn){
+    btn.addEventListener('click',function(){crmpAddOptionRow(btn.closest('.crmp-set-field-row'));});
+  });
+  list.querySelectorAll('.crmp-set-opt-new').forEach(function(inp){
+    inp.addEventListener('keydown',function(e){
+      if(e.key==='Enter'){e.preventDefault();crmpAddOptionRow(inp.closest('.crmp-set-field-row'));}
+    });
+  });
+  list.querySelectorAll('[data-action="opts-save"]').forEach(function(btn){
+    btn.addEventListener('click',function(){crmpSaveFieldOptions(btn.closest('.crmp-set-field-row'));});
+  });
+  list.querySelectorAll('.crmp-set-field-opts').forEach(function(panel){
+    panel.addEventListener('click',function(e){
+      var btn=e.target.closest('[data-action="opt-remove"]');
+      if(btn)crmpRemoveOptionRow(btn.closest('.crmp-set-opt-row'));
+    });
+    panel.addEventListener('input',function(e){
+      if(e.target.type==='color')e.target.closest('.crmp-set-opt-row').dataset.hascolor='1';
+    });
+  });
+}
+// Én række i options-editoren: farve · navn (redigerbart = omdøbning) · antal
+// gemte værdier · fjern. data-orig husker hvad rækken HED da panelet blev
+// tegnet, så en omdøbning kan sendes med som {gammel:ny} ved gem.
+// hascolor: er der FAKTISK valgt en badge-farve for denne valgmulighed? Uden
+// den markering ville et gem skrive standard-gråt ind for hver eneste
+// valgmulighed, og så ville alle kort-badges skifte fra deres normale udseende
+// til gråt bare fordi man tilføjede én valgmulighed.
+function crmpSetOptionRowHtml(opt,color){
+  return '<div class="crmp-set-opt-row" data-orig="'+esc(opt)+'"'+(color?' data-hascolor="1"':'')+'>'
+    +'<input type="color" value="'+esc(color||'#94A3B8')+'" title="Farve på kort-badge">'
+    +'<input type="text" class="crmp-set-opt-name" value="'+esc(opt)+'">'
+    +'<span class="crmp-set-opt-use"></span>'
+    +'<button class="qz-icon-btn" data-action="opt-remove" title="Fjern valgmulighed">✕</button>'
+    +'</div>';
+}
+function crmpOptUsage(row){
+  var panel=row.querySelector('.crmp-set-field-opts');
+  try{return JSON.parse((panel&&panel.dataset.usage)||'{}');}catch(e){return {};}
+}
+async function crmpLoadOptionUsage(row){
+  var fieldId=Number(row.dataset.fieldId);
+  var panel=row.querySelector('.crmp-set-field-opts');
+  var r=await api('/api/crm/custom-fields/'+fieldId+'/option-usage');
+  if(!r||!r.ok)return;
+  panel.dataset.usage=JSON.stringify(r.counts||{});
+  panel.dataset.usageLoaded='1';
+  crmpPaintOptionUsage(row);
+}
+function crmpPaintOptionUsage(row){
+  var counts=crmpOptUsage(row);
+  row.querySelectorAll('.crmp-set-opt-row').forEach(function(r){
+    var orig=r.dataset.orig||'';
+    var span=r.querySelector('.crmp-set-opt-use');
+    var n=orig?(counts[orig]||0):0;
+    span.textContent=orig?(n>0?n+' i brug':'ubrugt'):'ny';
+  });
+}
+function crmpAddOptionRow(row){
+  var inp=row.querySelector('.crmp-set-opt-new');
+  var name=inp.value.trim();
+  if(!name){toast('Skriv en valgmulighed først','⚠');return;}
+  var exists=Array.prototype.some.call(row.querySelectorAll('.crmp-set-opt-name:not(.crmp-set-opt-new)'),function(el){
+    return el.value.trim().toLowerCase()===name.toLowerCase();
+  });
+  if(exists){toast('“'+name+'” står der allerede','⚠');return;}
+  var wrap=row.querySelector('.crmp-set-opt-rows');
+  wrap.insertAdjacentHTML('beforeend',crmpSetOptionRowHtml(name,''));
+  wrap.lastElementChild.dataset.orig=''; // ny række — ingen omdøbning at spore
+  inp.value='';
+  row.querySelector('.crmp-set-opt-empty').style.display='none';
+  crmpPaintOptionUsage(row);
+  inp.focus();
+}
+// Fjernelse: værdier der ALLEREDE er gemt på et lead/en opportunity slettes
+// IKKE — de bliver stående som "udgåede" og vises stadig (markeret) i
+// detaljesidens dropdown. Men Martin får antallet at se først, så det ikke
+// sker i blinde.
+async function crmpRemoveOptionRow(optRow){
+  var row=optRow.closest('.crmp-set-field-row');
+  var orig=optRow.dataset.orig||'';
+  var n=orig?(crmpOptUsage(row)[orig]||0):0;
+  if(n>0&&!await gmConfirm('“'+orig+'” bruges lige nu på '+n+' '+(n===1?'sag':'sager')+'.\n\nFjernes den, kan den ikke længere VÆLGES — men '+(n===1?'den gemte værdi bliver':'de '+n+' gemte værdier bliver')+' stående (vist som “udgået”), så historikken ikke forsvinder.\n\nFjern valgmuligheden?'))return;
+  optRow.remove();
+  var left=row.querySelectorAll('.crmp-set-opt-row').length;
+  row.querySelector('.crmp-set-opt-empty').style.display=left?'none':'';
+}
+async function crmpSaveFieldOptions(row){
+  var fieldId=Number(row.dataset.fieldId);
+  var btn=row.querySelector('[data-action="opts-save"]');
+  var optRows=Array.prototype.slice.call(row.querySelectorAll('.crmp-set-opt-row'));
+  var options=[],colors={},renames={},seen={};
+  for(var i=0;i<optRows.length;i++){
+    var name=optRows[i].querySelector('.crmp-set-opt-name').value.trim();
+    if(!name){toast('En valgmulighed må ikke være tom','⚠');optRows[i].querySelector('.crmp-set-opt-name').focus();return;}
+    if(seen[name.toLowerCase()]){toast('“'+name+'” står der to gange','⚠');return;}
+    seen[name.toLowerCase()]=1;
+    options.push(name);
+    if(optRows[i].dataset.hascolor==='1')colors[name]=optRows[i].querySelector('input[type=color]').value;
+    var orig=optRows[i].dataset.orig||'';
+    if(orig&&orig!==name)renames[orig]=name;
+  }
+  var body={options:options,option_colors:colors,option_renames:renames};
+  var twinChk=row.querySelector('[data-action="opts-sync-twin"]');
+  if(twinChk&&twinChk.checked)body.sync_twin=true;
+  var usage=crmpOptUsage(row);
+  // Omdøbning propagerer til de gemte værdier — sig det højt, så ingen bliver
+  // overrasket over at gamle sager også skifter tekst.
+  var renameKeys=Object.keys(renames);
+  if(renameKeys.length){
+    var affected=renameKeys.reduce(function(s,k){return s+(usage[k]||0);},0);
+    if(!await gmConfirm('Omdøb '+renameKeys.map(function(k){return '“'+k+'” → “'+renames[k]+'”';}).join(', ')+'?\n\n'+(affected?affected+' gemte '+(affected===1?'værdi':'værdier')+' opdateres samtidig, så ingen sag står tilbage med et navn der ikke findes.':'Ingen gemte værdier bruger de gamle navne.')))return;
+  }
+  if(!options.length){
+    var total=Object.keys(usage).reduce(function(s,k){return s+usage[k];},0);
+    if(!await gmConfirm('Listen bliver helt tom — feltet kan så ikke udfyldes nogen steder.'+(total?'\n\n'+total+' gemte '+(total===1?'værdi bliver':'værdier bliver')+' stående som udgåede.':'')+'\n\nFortsæt?'))return;
+    body.allow_empty=true;
+  }
+  btn.disabled=true;
+  var r=await api('/api/crm/custom-fields/'+fieldId,{method:'PUT',body:JSON.stringify(body)});
+  btn.disabled=false;
+  if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke gemme valgmuligheder','❌');return;}
+  var msg='Valgmuligheder gemt';
+  if(r.renamed_values)msg+=' · '+r.renamed_values+' gemt'+(r.renamed_values===1?' værdi':'e værdier')+' omdøbt';
+  if(r.twin_synced)msg+=' · synkroniseret med '+(r.twin_synced.entity_type==='lead'?'Leads':'Opportunities');
+  if(r.orphaned_values)msg+=' · '+r.orphaned_values+' udgåe'+(r.orphaned_values===1?'t værdi':'de værdier')+' bevaret';
+  toast(msg,'✓');
+  await crmpReloadCustomFieldDefs();
+  crmpRenderSettingsFields();
+  // Kort-badges og evt. åben detaljeside viser de gamle navne indtil de hentes igen.
+  if(crmpState.currentPipelineId)await crmpLoadBoard();
+}
+// Begge entitetstypers feltdefinitioner genindlæses under ét: et gem kan via
+// sync_twin have ændret feltet på den ANDEN type også, og "Ny kunde"-modalen
+// læser lead-definitionerne fra samme cache.
+async function crmpReloadCustomFieldDefs(){
+  crmpState.customFieldDefs.lead=await crmGetCustomFieldDefsCache('lead');
+  crmpState.customFieldDefs.opportunity=await crmGetCustomFieldDefsCache('opportunity');
+  crmpState.customFieldDefsLoaded=true;
 }
 async function crmpAddCustomField(){
   var label=document.getElementById('crmp-set-field-new-label').value.trim();
@@ -16508,7 +16709,11 @@ async function saveCrmCustomer(){
   if(isNew){
     if(!source){toast('Vælg en kilde','⚠️');return;}
     if(source==='Andet'&&!sourceOther){toast('Angiv kilden under "Andet"','⚠️');return;}
-    if(!projektType){toast('Vælg en projekttype','⚠️');return;}
+    // Projekttype kræves KUN når feltet faktisk er der at udfylde. Er custom
+    // field'et lead.projekt_type slettet (eller har det ingen valgmuligheder),
+    // skjuler crmcFillProjektType() rækken — og så må kravet ikke stå tilbage
+    // og blokere for at gemme en kunde man umuligt kan udfylde det på.
+    if(!projektType&&document.getElementById('crmc-projekt-type-wrap').style.display!=='none'){toast('Vælg en projekttype','⚠️');return;}
     // Telefon ELLER email er nødvendig for at det automatisk oprettede lead kan kobles
     // til DENNE kunde (matcher på telefon/email) — uden nogen af delene opretter leadet
     // sin egen duplikat-kunde i stedet, se crmFindOrCreateContactAndCustomer i server.js.

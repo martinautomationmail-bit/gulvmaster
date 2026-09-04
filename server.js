@@ -6275,7 +6275,22 @@ app.get('/api/crm/customers/:id/files', auth, panelAccess('customers'), asyncRou
   res.json(files);
 }));
 
-app.get('/api/gmail/messages/:messageId', auth, panelAccess('gmail-settings'), asyncRoute(async (req, res) => {
+// FEJLRETTELSE (sep. 2026): Ligesom GET /api/gmail/status (se ovenfor) sad
+// disse to ruter fejlagtigt bag panelAccess('gmail-settings') — retten til at
+// administrere selve Gmail-forbindelsen, som kun Martin (admin) har — i stedet
+// for panelAccess('customers'), som er den rettighed der reelt afgør om man må
+// se en kundes mailkorrespondance. Enhver anden bruger med 'customers'-adgang
+// (fx en kontormedarbejder som Sarah) kunne derfor se mail-LISTEN på en kunde
+// (den henter fra customer_emails, korrekt gated på 'customers'), men fik "Ingen
+// adgang til denne side" når selve mailteksten eller en vedhæftning skulle
+// hentes — præcis samme slags fejl som Filer/Emails-fanerne tidligere. Som
+// ekstra sikkerhed (nu hvor flere end admin kan kalde ruten) tjekkes det også at
+// det efterspurgte gmail_message_id rent faktisk findes i customer_emails —
+// dvs. er en mail der allerede er synkroniseret og vist på en kunde — så ruten
+// ikke kan bruges til at hente vilkårlige beskeder fra virksomhedens postkasse.
+app.get('/api/gmail/messages/:messageId', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+  const known = await pgOne('SELECT id FROM customer_emails WHERE gmail_message_id=$1', [req.params.messageId]);
+  if (!known) return res.status(404).json({ error: 'Mailen findes ikke i nogen kundes mailhistorik' });
   const accessToken = await gmailGetValidAccessToken();
   const detail = await gmailApiFetch('/messages/' + req.params.messageId + '?format=full', accessToken);
   const headers = (detail.payload && detail.payload.headers) || [];
@@ -6292,7 +6307,9 @@ app.get('/api/gmail/messages/:messageId', auth, panelAccess('gmail-settings'), a
   });
 }));
 
-app.get('/api/gmail/messages/:messageId/attachments/:attachmentId', auth, panelAccess('gmail-settings'), asyncRoute(async (req, res) => {
+app.get('/api/gmail/messages/:messageId/attachments/:attachmentId', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+  const known = await pgOne('SELECT id FROM customer_emails WHERE gmail_message_id=$1', [req.params.messageId]);
+  if (!known) return res.status(404).json({ error: 'Mailen findes ikke i nogen kundes mailhistorik' });
   const accessToken = await gmailGetValidAccessToken();
   const att = await gmailApiFetch('/messages/' + req.params.messageId + '/attachments/' + req.params.attachmentId, accessToken);
   const buf = gmailB64UrlDecode(att.data);
@@ -7346,24 +7363,154 @@ app.post('/api/crm/custom-fields', auth, panelAccessAny(['customers','crmp_leads
     throw e;
   }
 }));
+// Hvor mange gemte værdier ligger der pr. valgmulighed på ét dropdown-felt?
+// Bruges af options-editoren i ⚙️ Indstillinger, så Martin kan SE hvor mange
+// leads/opportunities der bruger en valgmulighed FØR han sletter den — i stedet
+// for at opdage det bagefter. Tæller også værdier der IKKE længere står i
+// options-listen (udgåede/forældreløse værdier), så de er synlige.
+app.get('/api/crm/custom-fields/:id/option-usage', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM crm_custom_fields WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Feltet blev ikke fundet' });
+  const r = await pool.query(
+    'SELECT value, COUNT(*)::int AS n FROM crm_custom_field_values WHERE field_id=$1 AND value IS NOT NULL AND value <> \'\' GROUP BY value',
+    [req.params.id]
+  );
+  const counts = {}; let total = 0;
+  r.rows.forEach(row => { counts[row.value] = row.n; total += row.n; });
+  const known = new Set((current.options || []).map(String));
+  res.json({ ok: true, counts, total, orphaned: Object.keys(counts).filter(v => !known.has(v)) });
+}));
+// ── OPDATÉR ét custom field ─────────────────────────────────────
+// Kroppen er en DELVIS opdatering — kun de nøgler der sendes med ændres.
+// Understøttede nøgler:
+//   label, field_type, position, show_on_card, option_colors  (som hidtil)
+//   options         : string[]        — HELE den nye valgmulighedsliste
+//   option_renames  : {gammel:ny}     — omdøbninger der skal SLÅ IGENNEM på
+//                                       allerede gemte værdier
+//   allow_empty     : bool            — bekræftelse på at tømme options helt
+//                                       selvom feltet har gemte værdier
+//   sync_twin       : bool            — anvend options/renames på feltet med
+//                                       SAMME key på den anden entitetstype
+//
+// VALG (sep. 2026, Martins ønske "det skal være præcis det samme felt, ikke en
+// lignende kopi"): en OMDØBNING propagerer til crm_custom_field_values i SAMME
+// transaktion, så et lead der stod på "Maler" står på "Malerarbejde" bagefter —
+// og ikke på en værdi der ikke længere findes i dropdownen. En SLETNING af en
+// valgmulighed rører derimod IKKE de gemte værdier: historikken skal ikke
+// forsvinde bare fordi valgmuligheden ikke længere kan vælges fremadrettet.
+// De værdier bliver "udgåede" og vises stadig (markeret) i detaljesidens
+// dropdown, så de hverken er usynlige eller bliver overskrevet ved autogem.
 app.put('/api/crm/custom-fields/:id', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_custom_fields WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Feltet blev ikke fundet' });
-  // OBS: pg-driveren serialiserer et JS-array-parameter som en Postgres ARRAY-literal
-  // (fx "{a,b}"), IKKE som JSON — så et uændret current.options (allerede parset til et
-  // JS-array af pgOne) skal eksplicit JSON.stringify'es igen her, ellers fejler UPDATE'en
-  // med "invalid input syntax for type json" så snart kun fx show_on_card sendes med.
-  await pool.query('UPDATE crm_custom_fields SET label=$1,field_type=$2,options=$3,position=$4,show_on_card=$5,option_colors=$6 WHERE id=$7', [
-    b.label !== undefined ? String(b.label).trim() : current.label,
-    b.field_type !== undefined ? b.field_type : current.field_type,
-    b.options !== undefined ? JSON.stringify(b.options) : JSON.stringify(current.options || []),
-    b.position !== undefined ? b.position : current.position,
-    b.show_on_card !== undefined ? (b.show_on_card ? 1 : 0) : current.show_on_card,
-    b.option_colors !== undefined ? JSON.stringify(b.option_colors && typeof b.option_colors === 'object' ? b.option_colors : {}) : JSON.stringify(current.option_colors || {}),
-    req.params.id
-  ]);
-  res.json({ ok: true });
+
+  let newOptions = null;
+  if (b.options !== undefined) {
+    if (!Array.isArray(b.options)) return res.status(400).json({ error: 'options skal være en liste' });
+    newOptions = b.options.map(o => String(o == null ? '' : o).trim());
+    if (newOptions.some(o => !o)) return res.status(400).json({ error: 'En valgmulighed må ikke være tom' });
+    if (newOptions.some(o => o.length > 200)) return res.status(400).json({ error: 'En valgmulighed må højst være 200 tegn' });
+    const seen = new Map();
+    for (const o of newOptions) {
+      const k = o.toLowerCase();
+      if (seen.has(k)) return res.status(400).json({ error: 'Valgmuligheden "' + o + '" står der allerede — dubletter er ikke tilladt' });
+      seen.set(k, o);
+    }
+    const effectiveType = b.field_type !== undefined ? b.field_type : current.field_type;
+    if (effectiveType === 'select' && newOptions.length === 0 && !b.allow_empty) {
+      const used = await pgOne("SELECT COUNT(*)::int AS n FROM crm_custom_field_values WHERE field_id=$1 AND value IS NOT NULL AND value <> ''", [req.params.id]);
+      if (used && used.n > 0) return res.status(400).json({ error: 'Feltet har ' + used.n + ' gemte værdier — bekræft at listen skal tømmes helt', in_use: used.n, needs_confirm: 'allow_empty' });
+    }
+  }
+
+  const renames = [];
+  if (b.option_renames && typeof b.option_renames === 'object') {
+    for (const oldName of Object.keys(b.option_renames)) {
+      const to = String(b.option_renames[oldName] == null ? '' : b.option_renames[oldName]).trim();
+      const from = String(oldName).trim();
+      if (!from || !to || from === to) continue;
+      renames.push([from, to]);
+    }
+  }
+
+  // Twin = feltet med samme key på den ANDEN entitetstype (fx projekt_type
+  // findes både på lead og opportunity, og et lead der konverteres tager sine
+  // værdier med over pr. key). Holdes de to ikke i sync, ender en konverteret
+  // opportunity med en værdi dens egen dropdown ikke kender.
+  let twin = null;
+  if (b.sync_twin) {
+    twin = await pgOne('SELECT * FROM crm_custom_fields WHERE key=$1 AND entity_type<>$2 AND field_type=$3 ORDER BY id ASC LIMIT 1',
+      [current.key, current.entity_type, current.field_type]);
+  }
+
+  // Alle omdøbninger slår igennem i ÉT UPDATE med en CASE-mapping — ikke som en
+  // løkke af enkelt-UPDATEs. Ellers ville en "kæde" som {A:B, B:C} køre A→B og
+  // BAGEFTER B→C, så de oprindelige A-værdier endte som C.
+  const applyRenames = async (client, fieldId) => {
+    if (!renames.length) return 0;
+    const params = [fieldId];
+    const cases = renames.map(([from, to]) => {
+      params.push(from, to);
+      return 'WHEN $' + (params.length - 1) + ' THEN $' + params.length;
+    }).join(' ');
+    const froms = renames.map((_, i) => '$' + (2 + i * 2)).join(',');
+    const r = await client.query(
+      'UPDATE crm_custom_field_values SET value = CASE value ' + cases + ' ELSE value END WHERE field_id=$1 AND value IN (' + froms + ')',
+      params
+    );
+    return r.rowCount || 0;
+  };
+  // option_colors følger med en omdøbning, så farven ikke "falder af" navnet.
+  const migrateColors = (colors) => {
+    const out = Object.assign({}, colors && typeof colors === 'object' ? colors : {});
+    for (const [from, to] of renames) {
+      if (out[from] !== undefined) { out[to] = out[from]; delete out[from]; }
+    }
+    return out;
+  };
+
+  const result = await crmWithTransaction(async (client) => {
+    // OBS: pg-driveren serialiserer et JS-array-parameter som en Postgres ARRAY-literal
+    // (fx "{a,b}"), IKKE som JSON — så et uændret current.options (allerede parset til et
+    // JS-array af pgOne) skal eksplicit JSON.stringify'es igen her, ellers fejler UPDATE'en
+    // med "invalid input syntax for type json" så snart kun fx show_on_card sendes med.
+    const colors = b.option_colors !== undefined
+      ? (b.option_colors && typeof b.option_colors === 'object' ? b.option_colors : {})
+      : migrateColors(current.option_colors || {});
+    await client.query('UPDATE crm_custom_fields SET label=$1,field_type=$2,options=$3,position=$4,show_on_card=$5,option_colors=$6 WHERE id=$7', [
+      b.label !== undefined ? String(b.label).trim() : current.label,
+      b.field_type !== undefined ? b.field_type : current.field_type,
+      newOptions !== null ? JSON.stringify(newOptions) : JSON.stringify(current.options || []),
+      b.position !== undefined ? b.position : current.position,
+      b.show_on_card !== undefined ? (b.show_on_card ? 1 : 0) : current.show_on_card,
+      JSON.stringify(colors),
+      req.params.id
+    ]);
+    let renamedValues = await applyRenames(client, current.id);
+    let twinSynced = null;
+    if (twin) {
+      await client.query('UPDATE crm_custom_fields SET options=$1,option_colors=$2 WHERE id=$3', [
+        newOptions !== null ? JSON.stringify(newOptions) : JSON.stringify(twin.options || []),
+        JSON.stringify(b.option_colors !== undefined ? colors : migrateColors(twin.option_colors || {})),
+        twin.id
+      ]);
+      renamedValues += await applyRenames(client, twin.id);
+      twinSynced = { id: twin.id, entity_type: twin.entity_type };
+    }
+    return { renamedValues, twinSynced };
+  });
+
+  // Værdier der stadig ligger gemt, men hvis valgmulighed er fjernet fra listen.
+  let orphaned = 0;
+  if (newOptions !== null) {
+    const orph = await pgOne(
+      "SELECT COUNT(*)::int AS n FROM crm_custom_field_values WHERE field_id=$1 AND value IS NOT NULL AND value <> '' AND NOT (value = ANY($2::text[]))",
+      [req.params.id, newOptions]
+    );
+    orphaned = (orph && orph.n) || 0;
+  }
+  res.json({ ok: true, renamed_values: result.renamedValues, orphaned_values: orphaned, twin_synced: result.twinSynced });
 }));
 app.delete('/api/crm/custom-fields/:id', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM crm_custom_fields WHERE id=$1', [req.params.id]);
