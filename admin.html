@@ -2249,7 +2249,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-04.2</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-04.3</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -3126,7 +3126,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <tbody id="cd-invoices-body"></tbody>
   </table>
 
-  <h3 style="font-size:14px;margin:22px 0 10px">🤝 Opportunities <span class="sub" id="cd-opps-count"></span></h3>
+  <!-- "+ Ny handel" (Martins ønske, sep. 2026): "hvis jeg er under en gammel
+       kunde kan jeg ved ét klik oprette en ny handel". Derfor ÉN knap og ingen
+       modal — men pipeline/stage står som to små dropdowns lige ved siden af,
+       forudfyldt med samme standard som alle de andre nye pickere i CRM'et, så
+       man kan styre hvor handlen lander uden at skulle igennem et ekstra trin.
+       Ét klik = en ny opportunity koblet til præcis DENNE kunde, se
+       POST /api/crm/customers/:id/opportunities. -->
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:22px 0 10px">
+    <h3 style="font-size:14px;margin:0">🤝 Opportunities <span class="sub" id="cd-opps-count"></span></h3>
+    <div style="flex:1"></div>
+    <select id="cd-newopp-pipeline" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px"></select>
+    <select id="cd-newopp-stage" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px"></select>
+    <button class="bly-btn" id="cd-newopp-btn" type="button">+ Ny handel</button>
+  </div>
   <table class="bly-table">
     <thead><tr><th>Navn</th><th>Pipeline</th><th>Stage</th><th class="num">Værdi</th></tr></thead>
     <tbody id="cd-opps-body"></tbody>
@@ -3659,6 +3672,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <option value="Enterprise">Enterprise</option>
           </select>
         </div>
+      </div>
+      <!-- Pipeline + stage for det lead der oprettes automatisk sammen med
+           kunden (Martins ønske, sep. 2026). Præcis samme to valg som
+           "+ Nyt lead"-modalen på selve Kanban-boardet (#crmp-new-modal) — før
+           landede leadet herfra altid dér hvor serverens standard-faldback
+           placerede det (første lead-pipeline, første stage efter position),
+           uden at man hverken kunne se eller bestemme hvor. Fyldes af
+           crmcFillPipelines()/crmcFillStages(), som genbruger
+           crmpSortedStages()/crmpDefaultNewStageId() 1:1, så standardvalget er
+           den stage der hedder "Nyt lead" — samme opførsel begge steder. -->
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Pipeline</label><select id="crmc-pipeline" class="select"></select></div>
+        <div class="form-group"><label class="form-label">Stage</label><select id="crmc-stage" class="select"></select></div>
       </div>
     </div>
     <div class="modal-actions">
@@ -14395,6 +14421,9 @@ function initCrmModule(){
     document.getElementById('crmc-cancel').addEventListener('click',function(){closeModal('crm-modal');});
     document.getElementById('crmc-is-company').addEventListener('change',crmSyncCompanyFields);
     document.getElementById('crmc-source').addEventListener('change',function(e){document.getElementById('crmc-source-other').classList.toggle('hidden',e.target.value!=='Andet');});
+    // Skifter man pipeline, skal stage-listen med over — ellers kunne man sende
+    // et stage_id fra en HELT anden pipeline med (samme greb som crmpNewFillStages).
+    document.getElementById('crmc-pipeline').addEventListener('change',crmcFillStages);
     document.getElementById('crmc-save').addEventListener('click',saveCrmCustomer);
     document.getElementById('crmc-delete').addEventListener('click',deleteCrmCustomer);
     crmInitialized=true;
@@ -14434,7 +14463,36 @@ function crmSyncCompanyFields(){
   document.getElementById('crmc-cvr-wrap').style.display=isCompany?'':'none';
   document.getElementById('crmc-name-label').textContent=isCompany?'Firmanavn':'Navn';
 }
-function openCrmModal(id){
+// Pipeline/stage-dropdowns i "Ny kunde"-modalen — se kommentaren ved
+// #crmc-pipeline i HTML'en. Bevidst bygget oven på præcis de samme to
+// hjælpefunktioner som Kanban-boardets egen "+ Nyt lead"-modal bruger
+// (crmpSortedStages/crmpDefaultNewStageId), så de to steder ikke kan komme til
+// at vælge forskellig standard-stage.
+function crmcFillStages(){
+  var pid=Number(document.getElementById('crmc-pipeline').value);
+  var p=crmpState.pipelines.find(function(x){return x.id===pid;});
+  var sel=document.getElementById('crmc-stage');
+  sel.innerHTML=crmpSortedStages(p).map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
+  sel.value=crmpDefaultNewStageId(p);
+}
+function crmcFillPipelines(){
+  var sel=document.getElementById('crmc-pipeline');
+  // Kun LEAD-pipelines: modalen opretter et lead, ikke en opportunity.
+  var leadPipelines=crmpState.pipelines.filter(function(p){return p.type==='lead';});
+  sel.innerHTML=leadPipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
+  if(leadPipelines.length)sel.value=leadPipelines[0].id;
+  crmcFillStages();
+}
+// Pipelines hentes ÉN gang pr. session og bor i crmpState — men "Ny kunde" og
+// kundedetaljesiden kan sagtens åbnes uden at man nogensinde har været inde på
+// Kanban-boardet, og så ville dropdownen stå tom (og et tomt valg er værre end
+// den gamle blinde standard). Derfor samme guard som openCrmpDetail bruger,
+// samlet ét sted så begge nye pickere er dækket.
+async function crmpEnsurePipelinesLoaded(){
+  if(!crmpState.pipelines.length)await crmpLoadPipelines();
+  return crmpState.pipelines;
+}
+async function openCrmModal(id){
   var c=id?crmCustomers.find(function(x){return x.id===id;}):null;
   crmEditingId=id||null;
   document.getElementById('crm-modal-title').textContent=c?'Redigér kunde':'Ny kunde';
@@ -14455,6 +14513,15 @@ function openCrmModal(id){
   document.getElementById('crmc-source-other').value='';
   document.getElementById('crmc-source-other').classList.add('hidden');
   document.getElementById('crmc-projekt-type').value='';
+  // Ny kunde: pipeline/stage-valget skal stå klar OG være rigtigt fra det
+  // sekund modalen er åben — derfor hentes pipelines (hvis de mangler) FØR
+  // modalen vises, i stedet for at lade dropdownen stå tom et øjeblik og
+  // risikere at man når at trykke Gem imens. Ved redigering er blokken skjult,
+  // og så springes hele hentningen over.
+  if(!c){
+    await crmpEnsurePipelinesLoaded();
+    crmcFillPipelines();
+  }
   document.getElementById('crm-modal').classList.add('open');
 }
 // KUNDEDETALJE — klik på en kunde i listen. Egen side (samme mønster som
@@ -14469,6 +14536,71 @@ function initCustomerDetailModule(){
   document.getElementById('cd-note-add-btn').addEventListener('click',cdAddNote);
   document.getElementById('cd-note-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();cdAddNote();}});
   document.getElementById('cd-notes-list').addEventListener('click',cdNotesListClick);
+  document.getElementById('cd-newopp-pipeline').addEventListener('change',cdFillNewOppStages);
+  document.getElementById('cd-newopp-btn').addEventListener('click',cdCreateOpportunity);
+}
+// ── "+ NY HANDEL" PÅ EN EKSISTERENDE KUNDE ───────────────────────
+// Ét klik = en ny opportunity koblet til den kunde man står på. Pipeline/stage
+// står som to små dropdowns ved siden af knappen i stedet for i en modal —
+// Martin bad udtrykkeligt om ÉT klik, men lige så udtrykkeligt om at kunne
+// bestemme hvor tingene lander; en inline-picker giver begge dele uden et
+// ekstra trin. Standardvalget er første salgs-pipeline + dens første stage
+// efter position, altså nøjagtig hvad serveren selv ville have valgt.
+// Kun OPPORTUNITY-pipelines: en "handel" på en eksisterende kunde er pr.
+// definition et salg, ikke et nyt lead.
+function cdFillNewOppStages(){
+  var pid=Number(document.getElementById('cd-newopp-pipeline').value);
+  var p=crmpState.pipelines.find(function(x){return x.id===pid;});
+  var sel=document.getElementById('cd-newopp-stage');
+  var stages=crmpSortedStages(p);
+  sel.innerHTML=stages.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
+  if(stages.length)sel.value=stages[0].id;
+}
+async function cdFillNewOppPickers(){
+  await crmpEnsurePipelinesLoaded();
+  var sel=document.getElementById('cd-newopp-pipeline');
+  var salesPipelines=crmpState.pipelines.filter(function(p){return p.type==='opportunity';});
+  sel.innerHTML=salesPipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
+  if(salesPipelines.length)sel.value=salesPipelines[0].id;
+  cdFillNewOppStages();
+  // Findes der slet ingen salgs-pipeline, skjules hele rækken frem for at
+  // vise en knap der kun kan fejle.
+  var hasSales=!!salesPipelines.length;
+  document.getElementById('cd-newopp-btn').style.display=hasSales?'':'none';
+  sel.style.display=hasSales?'':'none';
+  document.getElementById('cd-newopp-stage').style.display=hasSales?'':'none';
+}
+async function cdCreateOpportunity(){
+  if(!cdCurrent)return;
+  var btn=document.getElementById('cd-newopp-btn');
+  btn.disabled=true;
+  var body={
+    pipeline_id:Number(document.getElementById('cd-newopp-pipeline').value)||null,
+    stage_id:Number(document.getElementById('cd-newopp-stage').value)||null
+  };
+  var r=await api('/api/crm/customers/'+cdCurrent.id+'/opportunities',{method:'POST',body:JSON.stringify(body)});
+  btn.disabled=false;
+  if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke oprette handlen','❌');return;}
+  toast('Ny handel oprettet ✓','🤝');
+  // Tabellen genindlæses med det samme (ingen sidegenindlæsning) — og boardets
+  // cache tømmes, så Kanban'en henter forfra næste gang man går derind og
+  // dermed også viser den nye handel.
+  await cdReloadOpportunities(cdCurrent.id);
+  crmpState.cards=[];
+}
+// Kun Opportunities-tabellen — bruges både ved opslag af kunden og efter at
+// der er oprettet en ny handel, så de to steder ikke kan tegne forskelligt.
+async function cdReloadOpportunities(customerId){
+  var opps=await api('/api/crm/customers/'+customerId+'/opportunities')||[];
+  document.getElementById('cd-opps-count').textContent='('+opps.length+')';
+  document.getElementById('cd-opps-body').innerHTML=opps.length?opps.map(function(o){
+    return '<tr style="cursor:pointer" onclick="openCrmpDetail(\'opportunity\','+o.id+')">'
+      +'<td>'+esc(o.name)+'</td>'
+      +'<td>'+esc(o.pipeline_name)+'</td>'
+      +'<td><span class="crmp-card-badge" style="background:'+esc(o.stage_color)+'22;color:'+esc(o.stage_color)+'">'+esc(o.stage_name)+'</span></td>'
+      +'<td class="num">'+(o.value!=null?krFmt(o.value):'–')+'</td>'
+      +'</tr>';
+  }).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen opportunities endnu</td></tr>';
 }
 // KUNDE-NOTER — rigtig, redigerbar/sletbar liste (customer_notes), se
 // crmpx-activity-item-mønstret som denne er baseret på.
@@ -14643,18 +14775,13 @@ async function openCustomerDetail(id){
       +'</tr>';
   }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen fakturaer endnu</td></tr>';
 
-  var opps=await api('/api/crm/customers/'+id+'/opportunities')||[];
-  document.getElementById('cd-opps-count').textContent='('+opps.length+')';
-  document.getElementById('cd-opps-body').innerHTML=opps.length?opps.map(function(o){
-    return '<tr style="cursor:pointer" onclick="openCrmpDetail(\'opportunity\','+o.id+')">'
-      +'<td>'+esc(o.name)+'</td>'
-      +'<td>'+esc(o.pipeline_name)+'</td>'
-      +'<td><span class="crmp-card-badge" style="background:'+esc(o.stage_color)+'22;color:'+esc(o.stage_color)+'">'+esc(o.stage_name)+'</span></td>'
-      +'<td class="num">'+(o.value!=null?krFmt(o.value):'–')+'</td>'
-      +'</tr>';
-  }).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen opportunities endnu</td></tr>';
+  await cdReloadOpportunities(id);
 
   initCustomerDetailModule();
+  // "+ Ny handel"-pickerne fyldes hver gang kundesiden åbnes — pipelines kan
+  // være hentet (eller ændret under ⚙️ Indstillinger) siden sidst, og siden kan
+  // sagtens være den FØRSTE CRM-side man rammer i en session.
+  cdFillNewOppPickers();
   switchPage('customer-detail',true);
   navPushHash('customer-detail/'+id);
 }
@@ -15166,7 +15293,13 @@ function crmpxInitOnce(){
     if(e.target.closest('[data-cf-key]')&&(e.target.tagName==='SELECT'||e.target.type==='checkbox'||e.target.type==='date'))crmpxAutoSave();
   });
   document.getElementById('crmpx-contact-card').addEventListener('input',function(e){
-    if(e.target.closest('#crmpx-contact-name,#crmpx-contact-phone,#crmpx-contact-email,#crmpx-contact-address'))crmpxAutoSaveContactDebounced();
+    if(e.target.closest('#crmpx-contact-name,#crmpx-contact-phone,#crmpx-contact-email,#crmpx-contact-address')){
+      crmpxAutoSaveContactDebounced();
+      // Samme som på leadets felter: 📞/✉️/📍 skal pege på det man LIGE har
+      // skrevet, ikke på værdien fra da siden blev åbnet. Delegeret her, fordi
+      // kontaktkortet gen-renderes ved hver åbning af en opportunity.
+      crmpxUpdateContactLinks();
+    }
   });
   // NB: options for #crmpx-task-assignee populeres IKKE her — dette kører kun
   // ÉN gang (guardet af crmpState.detailInitialized), og på direkte/genindlæst
@@ -15498,13 +15631,20 @@ async function openCrmpDetail(entityType,id){
   crmpxUpdateContactLinks();
   document.getElementById('crmpx-opp-fields').style.display=entityType==='opportunity'?'':'none';
   document.getElementById('crmpx-source-field').style.display=entityType==='lead'?'':'none';
-  document.getElementById('crmpx-note').closest('.tld-section').style.display=entityType==='lead'?'':'none';
+  // 📝 Note vises nu for BEGGE typer. Før var sektionen skjult for
+  // opportunities — hvilket betød at leadets note ikke bare gik tabt ved
+  // konvertering (den blev slet ikke kopieret, se POST .../convert), men at
+  // selv de noter Close-importen lagde i crm_opportunities.note aldrig kunne
+  // ses nogen steder i programmet. Feltet er samme fritekst-felt på begge
+  // tabeller, så det behandles nu også ens begge steder (PUT
+  // /api/crm/opportunities/:id tager imod note).
+  document.getElementById('crmpx-note').closest('.tld-section').style.display='';
+  document.getElementById('crmpx-note').value=d.note||'';
   if(entityType==='opportunity'){
     document.getElementById('crmpx-value').value=d.value!=null?d.value:'';
     document.getElementById('crmpx-probability').value=d.probability!=null?d.probability:'';
   } else {
     document.getElementById('crmpx-source').value=d.source||'';
-    document.getElementById('crmpx-note').value=d.note||'';
   }
   var ownerSel=document.getElementById('crmpx-owner');
   ownerSel.innerHTML='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(u.id===d.owner_id?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
@@ -15557,11 +15697,30 @@ async function openCrmpDetail(entityType,id){
       oppsList.innerHTML='<div class="crmpx-empty">Ingen opportunity endnu — konvertér leadet for at oprette en</div>';
     }
   } else {
+    // Samme 📋/📞/✉️/📍-knapper som på leadets egne kontaktfelter (Martin:
+    // skal virke "på begge stadier"). Nøjagtig samme markup —
+    // .crmpx-field-row + .crmpx-field-btn, data-crmpx-copy på kopiér-knappen —
+    // så den delegerede kopier-handler og crmpxUpdateContactLinks() dækker
+    // begge paneler uden en eneste linje duplikeret logik.
     document.getElementById('crmpx-contact-card').innerHTML=
-      '<div class="tld-section"><label class="tld-label">Navn</label><input id="crmpx-contact-name" class="tld-input" value="'+esc(d.contact_name||'')+'"></div>'
-      +'<div class="tld-section"><label class="tld-label">📞 Telefon</label><input id="crmpx-contact-phone" class="tld-input" value="'+esc(d.contact_phone||'')+'"></div>'
-      +'<div class="tld-section"><label class="tld-label">📧 Email</label><input id="crmpx-contact-email" class="tld-input" type="email" value="'+esc(d.contact_email||'')+'"></div>'
-      +'<div class="tld-section"><label class="tld-label">📍 Adresse</label><input id="crmpx-contact-address" class="tld-input" value="'+esc(d.contact_address||'')+'"></div>';
+      '<div class="tld-section"><label class="tld-label">Navn</label>'
+      +'<div class="crmpx-field-row"><input id="crmpx-contact-name" class="tld-input" value="'+esc(d.contact_name||'')+'">'
+      +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-name" title="Kopiér navn">📋</button></div></div>'
+      +'<div class="tld-section"><label class="tld-label">📞 Telefon</label>'
+      +'<div class="crmpx-field-row"><input id="crmpx-contact-phone" class="tld-input" value="'+esc(d.contact_phone||'')+'">'
+      +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-phone" title="Kopiér telefonnummer">📋</button>'
+      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-phone-link" href="#" title="Ring op">📞</a></div></div>'
+      +'<div class="tld-section"><label class="tld-label">📧 Email</label>'
+      +'<div class="crmpx-field-row"><input id="crmpx-contact-email" class="tld-input" type="email" value="'+esc(d.contact_email||'')+'">'
+      +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-email" title="Kopiér email">📋</button>'
+      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-email-link" href="#" target="_blank" rel="noopener" title="Skriv en mail">✉️</a></div></div>'
+      +'<div class="tld-section"><label class="tld-label">📍 Adresse</label>'
+      +'<div class="crmpx-field-row"><input id="crmpx-contact-address" class="tld-input" value="'+esc(d.contact_address||'')+'">'
+      +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-address" title="Kopiér adresse">📋</button>'
+      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-address-link" href="#" target="_blank" rel="noopener" title="Vis på Google Maps">📍</a></div></div>';
+    // Kortet gen-renderes hver gang siden åbnes, så hrefs sættes HER (den
+    // tidligere crmpxUpdateContactLinks()-kald ovenfor kørte før kortet fandtes).
+    crmpxUpdateContactLinks();
   }
   crmpxRenderActivity(d.activities||[]);
   crmpxLoadTasks();
@@ -15577,19 +15736,34 @@ async function openCrmpDetail(entityType,id){
 //               programmet (se kommentaren over gmailComposeUrl: mailto: åbner
 //               et vilkårligt mailprogram, ikke nødvendigvis Gmail)
 //   • Adresse → Google Maps-søgning på adressen
-function crmpxUpdateContactLinks(){
-  var phone=String((document.getElementById('crmpx-phone')||{}).value||'').trim();
-  var email=String((document.getElementById('crmpx-email')||{}).value||'').trim();
-  var address=String((document.getElementById('crmpx-address')||{}).value||'').trim();
+//
+// Der er TO kontaktpaneler på siden med præcis samme slags felter: leadets egne
+// inline-felter (crmpx-phone/-email/-address) og opportunityens kontaktkort
+// (crmpx-contact-phone/-email/-address, som redigerer selve crm_contacts-rækken).
+// Martin vil have knapperne begge steder — derfor er selve link-bygningen samlet
+// i ÉN funktion der tager id-præfikset, i stedet for to sæt der kan drive fra
+// hinanden. Kopier-knapperne er allerede fælles: de er delegerede på
+// #page-crmp-detail og læser bare det felt der står i data-crmpx-copy.
+function crmpxApplyContactLinks(fieldPrefix){
+  function val(suffix){return String((document.getElementById(fieldPrefix+suffix)||{}).value||'').trim();}
+  var phone=val('phone'),email=val('email'),address=val('address');
   function setLink(id,href,on){
     var el=document.getElementById(id);
     if(!el)return;
     el.href=on?href:'#';
     el.classList.toggle('crmpx-field-btn-off',!on);
   }
-  setLink('crmpx-phone-link','tel:'+phone.replace(/\s+/g,''),!!phone);
-  setLink('crmpx-email-link',email?gmailComposeUrl(email):'#',!!email);
-  setLink('crmpx-address-link','https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(address),!!address);
+  setLink(fieldPrefix+'phone-link','tel:'+phone.replace(/\s+/g,''),!!phone);
+  setLink(fieldPrefix+'email-link',email?gmailComposeUrl(email):'#',!!email);
+  setLink(fieldPrefix+'address-link','https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(address),!!address);
+}
+// Opdaterer BEGGE paneler — det ene sæt felter findes simpelthen ikke når det
+// andet er i brug (leads har ingen kontaktkort og omvendt), og setLink()
+// springer selv over id'er der ikke er i DOM'en, så det er trygt at kalde ét
+// sted uanset hvilken slags post der er åben.
+function crmpxUpdateContactLinks(){
+  crmpxApplyContactLinks('crmpx-');
+  crmpxApplyContactLinks('crmpx-contact-');
 }
 function crmpxOppMiniCard(opp){
   var stage=null;
@@ -15610,7 +15784,12 @@ var crmpxActivities=[];
 function crmpxRenderActivity(activities){
   if(activities)crmpxActivities=activities;
   document.getElementById('crmpx-activity').innerHTML=(crmpxActivities||[]).map(function(a){
-    var icon=a.kind==='note'?'📝':a.kind==='stage_change'?'🔀':a.kind==='converted'?'🤝':'✨';
+    // 'lead_history' = en loglinje der er kopieret med over fra leadet ved
+    // konvertering (se crmCopyActivitiesToOpportunity i server.js) — egen ikon,
+    // så man kan se hvad der skete FØR konverteringen uden at forveksle det med
+    // salgets egne linjer. Kopierede NOTER beholder kind='note' og ser derfor
+    // ud (og kan rettes/slettes) præcis som noter skrevet her.
+    var icon=a.kind==='note'?'📝':a.kind==='stage_change'?'🔀':a.kind==='converted'?'🤝':a.kind==='lead_history'?'📜':'✨';
     var edited=a.updated_at&&a.updated_at!==a.created_at;
     return '<div class="crmpx-activity-item" data-activity-id="'+a.id+'">'
       +'<div class="crmpx-activity-icon">'+icon+'</div>'
@@ -15725,6 +15904,9 @@ async function crmpxAutoSave(){
     name:document.getElementById('crmpx-name-input').value,
     owner_id:document.getElementById('crmpx-owner').value||null,
     stage_id:Number(document.getElementById('crmpx-stage').value),
+    // 📝 Note gemmes nu for begge typer — feltet vises også for begge, se
+    // openCrmpDetail.
+    note:document.getElementById('crmpx-note').value,
     custom_fields:crmpxCollectCustomFieldValues()
   };
   if(ent.type==='lead'){
@@ -15732,7 +15914,6 @@ async function crmpxAutoSave(){
     body.email=document.getElementById('crmpx-email').value;
     body.address=document.getElementById('crmpx-address').value;
     body.source=document.getElementById('crmpx-source').value;
-    body.note=document.getElementById('crmpx-note').value;
   } else {
     body.value=document.getElementById('crmpx-value').value||null;
     body.probability=document.getElementById('crmpx-probability').value||null;
@@ -16342,7 +16523,14 @@ async function saveCrmCustomer(){
   // telefon/email kan den ikke matches til kunden og opretter i stedet sin egen —
   // samme kendte begrænsning som alle andre steder leads oprettes i appen.
   if(isNew){
-    var leadBody={name:name,phone:phone,email:email,address:address,source:source==='Andet'?sourceOther:source,custom_fields:{projekt_type:projektType}};
+    // Pipeline/stage kommer nu fra dropdownene i modalen (før: intet med, så
+    // serveren valgte blindt første lead-pipeline + første stage). Er de mod
+    // forventning tomme — fx hvis der slet ingen lead-pipeline findes — sendes
+    // de som null, og serveren falder tilbage til præcis den gamle opførsel i
+    // stedet for at fejle.
+    var leadPipelineId=Number(document.getElementById('crmc-pipeline').value)||null;
+    var leadStageId=Number(document.getElementById('crmc-stage').value)||null;
+    var leadBody={name:name,phone:phone,email:email,address:address,source:source==='Andet'?sourceOther:source,pipeline_id:leadPipelineId,stage_id:leadStageId,custom_fields:{projekt_type:projektType}};
     var lr=await api('/api/crm/leads',{method:'POST',body:JSON.stringify(leadBody)});
     if(!lr||!lr.ok)toast('Kunden blev oprettet, men leadet kunne ikke oprettes: '+((lr&&lr.error)||'ukendt fejl'),'⚠️');
   }

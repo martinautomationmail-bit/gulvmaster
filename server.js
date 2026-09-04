@@ -7526,14 +7526,22 @@ app.post('/api/crm/leads/:id/convert', auth, panelAccess('crmp_leads'), asyncRou
   await pool.query('UPDATE crm_contacts SET customer_id=$1 WHERE id=$2', [customerId, contactId]);
 
   const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_opportunities WHERE stage_id=$1', [targetStageId]);
+  // note kopieres med over i SAMME kolonne-type (crm_opportunities.note findes
+  // allerede, se skema-migreringen ovenfor) — ellers forsvandt lead-notens
+  // fritekst sporløst ved konvertering. Se den lange kommentar ved
+  // crmCopyActivitiesToOpportunity nedenfor for resten af data-overførslen.
   const opp = await pgOne(`
-    INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,owner_id,source_lead_id,position,stage_changed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()}) RETURNING id
-  `, [lead.name, contactId, targetPipelineId, targetStageId, lead.owner_id, lead.id, posRow.pos]);
+    INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,owner_id,source_lead_id,note,position,stage_changed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()}) RETURNING id
+  `, [lead.name, contactId, targetPipelineId, targetStageId, lead.owner_id, lead.id, lead.note || null, posRow.pos]);
 
   // Kopiér custom fields der findes på BEGGE entitetstyper (samme key) med over,
   // så data ikke går tabt ved konvertering.
   const leadValues = await crmGetCustomFieldValues('lead', lead.id);
   await crmSetCustomFieldValues('opportunity', opp.id, leadValues);
+
+  // Hele leadets aktivitets-historik (noter, stage-skift, "lead oprettet" osv.)
+  // kopieres over på den nye opportunity — se crmCopyActivitiesToOpportunity.
+  const copiedActivities = await crmCopyActivitiesToOpportunity(lead.id, opp.id);
 
   const convertedStage = await pgOne("SELECT id FROM crm_stages WHERE pipeline_id=$1 AND is_won=1 ORDER BY position ASC LIMIT 1", [lead.pipeline_id]);
   await pool.query('UPDATE crm_leads SET converted_opportunity_id=$1, stage_id=COALESCE($2,stage_id), contact_id=$3 WHERE id=$4', [opp.id, convertedStage ? convertedStage.id : null, contactId, lead.id]);
@@ -7542,8 +7550,53 @@ app.post('/api/crm/leads/:id/convert', auth, panelAccess('crmp_leads'), asyncRou
   crmFireStageAutomation('opportunity', opp.id, targetStageId, { name: lead.name, email: lead.email, phone: lead.phone })
     .catch(e => console.error('SMS/email-automatik fejlede for opportunity #' + opp.id + ':', e.message));
 
-  res.json({ ok: true, contact_id: contactId, customer_id: customerId, opportunity_id: opp.id });
+  res.json({ ok: true, contact_id: contactId, customer_id: customerId, opportunity_id: opp.id, copied_activities: copiedActivities });
 }));
+
+// Kopierer HELE leadets aktivitets-tidslinje over på den nye opportunity ved
+// konvertering (Martins ord: "INTET DATA fra lead-konverteringen til Sales-
+// pipelinen må forsvinde"). Før dette blev aktiviteterne stående stemplet med
+// entity_type='lead'/entity_id=<gammelt lead-id>, mens opportunityens eget
+// Aktivitet-panel kun spørger på entity_type='opportunity' — så alle noter
+// Martin selv havde skrevet så tomme ud efter konvertering, selvom rækkerne
+// stadig lå i databasen under et lead der straks efter forsvinder ned i den
+// sammenklappede "Konverteret"-kolonne.
+//
+// TRE BEVIDSTE VALG:
+//  1) ADDITIV kopi, ikke flytning: lead-rækkerne bliver stående uændret, så
+//     BEGGE poster har deres egen fulde historie (leadet skal stadig kunne
+//     læses som det, der rent faktisk skete på leadet).
+//  2) body kopieres 100% ORDRET for noter (kind='note') — det er tekst et
+//     menneske har skrevet, og den må ikke omskrives. De øvrige, maskin-
+//     genererede loglinjer får præfikset "Fra lead: ", så den flettede
+//     tidslinje kan læses uden at man tror at fx 'Status ændret til
+//     "Kontaktet"' handlede om en SALGS-stage.
+//  3) kind NORMALISERES for alt andet end noter til 'lead_history'. Det er
+//     ikke kosmetik: flere steder i serveren bruges (entity_type, entity_id,
+//     kind) som "er dette allerede sket?"-nøgle — crmFireStageAutomation
+//     ('sms_sent_stage<ID>'/'email_sent_stage<ID>') og runLostFollowupScan
+//     ('lost_followup_sent'). Kopierede vi de kinds ordret over, ville den nye
+//     opportunity kunne arve et "allerede sendt"-flag fra leadet og dermed
+//     ALDRIG få sin egen opfølgnings-SMS/mail. Noter er derimod bevidst
+//     bevaret som kind='note', så de kan rettes/slettes på opportunityen med
+//     de samme ✎/🗑-knapper som alle andre noter (PUT/DELETE
+//     /api/crm/activities/:id kræver netop kind='note'). En rettelse i kopien
+//     ændrer ikke originalen på leadet — de to poster er uafhængige, jf. (1).
+// created_at/user_id/updated_at bevares, så den flettede tidslinje står i
+// rigtig kronologisk rækkefølge sammen med opportunityens egne linjer.
+async function crmCopyActivitiesToOpportunity(leadId, oppId, exec) {
+  const r = await (exec || pool).query(`
+    INSERT INTO crm_activities (entity_type, entity_id, kind, body, user_id, created_at, updated_at)
+    SELECT 'opportunity', $2,
+           CASE WHEN kind='note' THEN 'note' ELSE 'lead_history' END,
+           CASE WHEN kind='note' THEN body ELSE 'Fra lead: ' || COALESCE(body,'') END,
+           user_id, created_at, updated_at
+    FROM crm_activities
+    WHERE entity_type='lead' AND entity_id=$1
+    ORDER BY created_at ASC, id ASC
+  `, [leadId, oppId]);
+  return r.rowCount || 0;
+}
 
 // ── OPPORTUNITIES ────────────────────────────────────────────────
 // Kontaktens egne felter (navn/telefon/email/adresse) redigeres fra
@@ -7646,7 +7699,7 @@ app.put('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRout
   if (!current) return res.status(404).json({ error: 'Opportunity ikke fundet' });
   const stageChanged = b.stage_id !== undefined && Number(b.stage_id) !== current.stage_id;
   await pool.query(`
-    UPDATE crm_opportunities SET name=$1,value=$2,probability=$3,stage_id=$4,pipeline_id=$5,owner_id=$6,position=$7,updated_at=${nowTextSQL()}${stageChanged ? ',stage_changed_at=' + nowTextSQL() : ''} WHERE id=$8
+    UPDATE crm_opportunities SET name=$1,value=$2,probability=$3,stage_id=$4,pipeline_id=$5,owner_id=$6,position=$7,note=$8,updated_at=${nowTextSQL()}${stageChanged ? ',stage_changed_at=' + nowTextSQL() : ''} WHERE id=$9
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
     b.value !== undefined ? b.value : current.value,
@@ -7655,6 +7708,10 @@ app.put('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRout
     b.pipeline_id !== undefined ? b.pipeline_id : current.pipeline_id,
     b.owner_id !== undefined ? b.owner_id : current.owner_id,
     b.position !== undefined ? b.position : current.position,
+    // Note-feltet er nu redigerbart på opportunities i UI'et (samme 📝 Note-felt
+    // som på leads) — før kunne kolonnen kun fyldes af Close-importen og af
+    // lead-konverteringen, og der var ingen vej til at rette den bagefter.
+    b.note !== undefined ? b.note : current.note,
     req.params.id
   ]);
   if (b.custom_fields) await crmSetCustomFieldValues('opportunity', req.params.id, b.custom_fields);
@@ -7741,6 +7798,62 @@ app.get('/api/crm/customers/:id/opportunities', auth, panelAccess('customers'), 
     WHERE c.customer_id=$1 ORDER BY o.created_at DESC
   `, [req.params.id])).rows;
   res.json(rows);
+}));
+// "+ Ny handel" direkte på en eksisterende kunde (Martins ønske: "hvis jeg er
+// under en gammel kunde kan jeg ved ét klik oprette en ny handel").
+//
+// Hvorfor en EGEN route i stedet for bare at kalde POST /api/crm/opportunities
+// med et contact_id fra frontenden: en kunde ejer 0..n crm_contacts-rækker, og
+// kundesiden kender kun customer_id. Skulle frontenden selv finde kontakten,
+// ville den enten skulle hente en kontaktliste først (ekstra kald + risiko for
+// at vælge den forkerte) eller sende kontaktoplysninger som tekst og dermed
+// kunne oprette en DUBLET-kunde via crmFindOrCreateContactAndCustomer. Her
+// slås kontakten i stedet op ud fra selve kunde-koblingen, og findes der ingen,
+// oprettes én ud fra kundens egne navn/telefon/email/adresse og kobles til
+// kunden med det samme — samme find-eller-opret-idé som
+// crmFindOrCreateContactAndCustomer, blot med customer_id som udgangspunkt i
+// stedet for telefon/email, så vi ALDRIG kan ende på en anden kunde.
+app.post('/api/crm/customers/:id/opportunities', auth, panelAccessAny(['customers', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const customer = await pgOne('SELECT * FROM customers WHERE id=$1', [req.params.id]);
+  if (!customer) return res.status(404).json({ error: 'Kunde ikke fundet' });
+
+  let pipelineId = b.pipeline_id;
+  if (!pipelineId) { const p = await pgOne("SELECT id FROM crm_pipelines WHERE type='opportunity' ORDER BY position ASC LIMIT 1"); pipelineId = p && p.id; }
+  if (!pipelineId) return res.status(400).json({ error: 'Ingen salgs-pipeline findes — opret én under CRM-indstillinger' });
+  let stageId = b.stage_id;
+  if (!stageId) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [pipelineId]); stageId = s && s.id; }
+  // Stagen SKAL høre til den valgte pipeline — ellers ville et forældet stage_id
+  // fra en anden pipeline (fx hvis dropdownen ikke nåede at blive fyldt om)
+  // lande handlen i et helt andet board.
+  const stage = stageId ? await pgOne('SELECT id FROM crm_stages WHERE id=$1 AND pipeline_id=$2', [stageId, pipelineId]) : null;
+  if (!stage) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [pipelineId]); stageId = s && s.id; }
+  if (!stageId) return res.status(400).json({ error: 'Salgs-pipelinen har ingen stages' });
+
+  // Kontakt: genbrug kundens egen kontakt hvis der er én (foretræk den der
+  // matcher kundens telefon/email, ellers bare den ældste), ellers opret.
+  // (phone=$2 med $2=NULL giver NULL og matcher derfor ingenting — derfor
+  // behøver de to første opslag ikke en ekstra "har kunden overhovedet et
+  // telefonnummer/en email?"-test.)
+  let contact = await pgOne('SELECT * FROM crm_contacts WHERE customer_id=$1 AND phone=$2 ORDER BY id ASC LIMIT 1', [customer.id, customer.phone || null]);
+  if (!contact) contact = await pgOne('SELECT * FROM crm_contacts WHERE customer_id=$1 AND email=$2 ORDER BY id ASC LIMIT 1', [customer.id, customer.email || null]);
+  if (!contact) contact = await pgOne('SELECT * FROM crm_contacts WHERE customer_id=$1 ORDER BY id ASC LIMIT 1', [customer.id]);
+  if (!contact) {
+    contact = await pgOne('INSERT INTO crm_contacts (name,email,phone,address,customer_id) VALUES ($1,$2,$3,$4,$5) RETURNING *', [
+      customer.name, customer.email || null, customer.phone || null, customer.address || null, customer.id
+    ]);
+  }
+
+  const name = (b.name !== undefined && String(b.name).trim()) ? String(b.name).trim() : customer.name;
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_opportunities WHERE stage_id=$1', [stageId]);
+  const r = await pgOne(`
+    INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,value,probability,owner_id,position,stage_changed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()}) RETURNING id
+  `, [name, contact.id, pipelineId, stageId, b.value || null, b.probability || null, b.owner_id || req.user.id, posRow.pos]);
+  await crmSetCustomFieldValues('opportunity', r.id, b.custom_fields);
+  await crmLogActivity('opportunity', r.id, 'created', 'Ny handel oprettet på kunden "' + customer.name + '"', req.user.id);
+  crmFireStageAutomation('opportunity', r.id, stageId, { name: contact.name || customer.name, email: contact.email, phone: contact.phone })
+    .catch(e => console.error('SMS/email-automatik fejlede for opportunity #' + r.id + ':', e.message));
+  res.json({ ok: true, id: r.id, contact_id: contact.id, customer_id: customer.id, pipeline_id: pipelineId, stage_id: stageId });
 }));
 
 // ══════════════════════════════════════════════════════════════
