@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gulv Master — Planlægning</title>
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <style>
 :root{
   --navy:#0F2240;--navy2:#1C3557;--steel:#2E5086;--blue:#2563EB;--green:#059669;
@@ -880,6 +883,44 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmp-card-note{font-size:11px;color:var(--bly-sub);margin-top:6px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4}
 .crmp-card-cf-foot{font-size:10.5px;color:var(--bly-sub);margin-top:6px;padding-top:6px;border-top:1px solid var(--bly-border-soft)}
 .crmp-card-cf-foot b{color:var(--bly-ink);font-weight:700}
+
+/* ── MASSEVALG PÅ BOARDET (sep. 2026, Martins ønske: "slet, opdatere felt mm")
+   Samme grund-idé som de øvrige massevalg i appen (#fin-inv-bulk-bar på
+   fakturaerne, .pool-bulk-bar i medarbejderpuljen): et flueben pr. kort og en
+   handlingsbjælke der først dukker op når mindst ét kort er valgt.
+   Fluebenet ligger øverst til VENSTRE i kortet, i den eksisterende
+   ejer-/tidslinje — der er plads til overs dér, så det ikke kolliderer med
+   hverken navn, badges eller værdi.
+   Mens vælge-tilstanden er slået til er kortene draggable="false" (se
+   crmpCardHtml), så et klik-træk ikke kæmper med afkrydsningen. */
+.crmp-card-check{width:15px;height:15px;flex-shrink:0;accent-color:var(--bly-accent);cursor:pointer;margin:0}
+.crmp-board.crmp-selecting .crmp-card{cursor:pointer}
+.crmp-card.crmp-card-selected{border-color:var(--bly-accent);box-shadow:0 0 0 2px var(--bly-accent-soft)}
+/* Flydende handlingsbjælke — fast i bunden af skærmen, midtstillet, i samme
+   mørke "bly-ink"-stil som fakturasidens #fin-inv-bulk-bar. */
+.crmp-bulk-bar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;display:none;align-items:center;flex-wrap:wrap;gap:9px;background:var(--bly-ink);color:#fff;padding:11px 16px;border-radius:var(--bly-r-pill);box-shadow:0 14px 40px rgba(15,17,24,.34);max-width:min(1180px,94vw)}
+.crmp-bulk-bar.open{display:flex}
+.crmp-bulk-count{font-weight:800;font-size:12.5px;white-space:nowrap}
+.crmp-bulk-sep{width:1px;height:20px;background:rgba(255,255,255,.22);flex-shrink:0}
+.crmp-bulk-bar select,.crmp-bulk-bar input[type=text]{border-radius:8px;border:0;padding:6px 8px;font-size:12px;font-family:inherit;color:var(--bly-ink);max-width:190px}
+.crmp-bulk-btn{border:0;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:var(--bly-ink);white-space:nowrap}
+.crmp-bulk-btn:disabled{opacity:.45;cursor:default}
+.crmp-bulk-btn.ghost{background:rgba(255,255,255,.15);color:#fff}
+.crmp-bulk-btn.danger{background:#DC2626;color:#fff}
+
+/* ── SAMMENKLAPPEDE KOLONNER (Martins ønske: "Konverteret/Afvist/Tabt skal
+   altid være krympet") — en smal kolonne der kun viser stagenavnet lodret
+   plus antallet, med en chevron til at folde ud igen. Kolonnen er STADIG et
+   gyldigt drop-mål, så man kan trække et kort direkte ned i fx "Tabt". */
+.crmp-col.crmp-col-collapsed{flex:0 0 46px;min-width:46px}
+.crmp-col.crmp-col-collapsed .crmp-col-body,
+.crmp-col.crmp-col-collapsed .crmp-col-sum{display:none}
+.crmp-col.crmp-col-collapsed .crmp-col-head{padding:9px 5px 14px;display:flex;flex-direction:column;align-items:center;gap:9px}
+.crmp-col-collapsed-name{writing-mode:vertical-rl;transform:rotate(180deg);font-size:11.5px;font-weight:800;color:var(--bly-ink);letter-spacing:.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-height:230px}
+.crmp-col-headrow{display:flex;align-items:center;gap:8px;min-width:0}
+.crmp-col-toggle{flex-shrink:0;width:20px;height:20px;display:grid;place-items:center;border:1px solid var(--bly-border-soft);background:#fff;color:var(--bly-sub);border-radius:6px;font-size:10px;line-height:1;cursor:pointer;padding:0;font-family:inherit}
+.crmp-col-toggle:hover{color:var(--bly-ink);border-color:#C7CBD1}
+.crmp-col.crmp-col-collapsed .crmp-col-count{margin-left:0}
 .crmp-set-stage-row{display:flex;align-items:center;gap:8px;background:var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:6px 8px}
 .crmp-set-field-row{display:flex;align-items:center;gap:8px;background:var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:6px 8px}
 
@@ -1492,19 +1533,86 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 @media(max-width:1000px){#capacity-scroll{height:calc(100vh - 360px);min-height:330px}.board-layout{grid-template-columns:230px minmax(0,1fr)}}
 @media(max-width:760px){#capacity-scroll{height:calc(100vh - 310px);min-height:320px}.board-layout{grid-template-columns:1fr}.panel-body{max-height:280px}}
 
-/* PEOPLE — modern cards */
-.settings-card{background:linear-gradient(135deg,var(--navy),var(--steel));border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);margin:0 0 12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;color:#fff}
-.settings-card .sc-logo{width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,.12);display:grid;place-items:center;overflow:hidden;flex-shrink:0}
-.settings-card .sc-logo img{width:100%;height:100%;object-fit:cover}
-.settings-card .sc-fields{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;flex:1}
-.settings-card label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;opacity:.8;display:block;margin-bottom:3px}
-.settings-card input[type=text],.settings-card input[type=email],.settings-card textarea{padding:7px 9px;border-radius:7px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;font-size:12px;min-width:220px;outline:none;font-family:inherit}
-.settings-card input[type=text]::placeholder,.settings-card input[type=email]::placeholder,.settings-card textarea::placeholder{color:rgba(255,255,255,.6)}
-.settings-card input[type=file]{font-size:10px;color:#fff}
-.settings-card .sc-fields-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;flex-basis:100%;width:100%}
-.settings-card .sc-fields-grid input{width:100%;min-width:0}
-.settings-card .sc-fields>div:has(textarea){flex-basis:100%;width:100%}
-.settings-card textarea{width:100%}
+/* ══════════════════════════════════════════════════════════════
+   INDSTILLINGER (#page-notif-settings) — den SAMLEDE indstillings-side.
+   ──────────────────────────────────────────────────────────────
+   Erstatter den gamle .settings-card (mørk navy-gradient med hvide felter
+   på halvgennemsigtig baggrund), som lå spredt ud over Hold & vendors-
+   siden. Martins kritik var netop, at indstillingerne så "dumme og
+   sjuskede" ud, fordi de var fire mørke kasser boltet oven på en lys side,
+   i et helt andet design-sprog end resten af programmet.
+
+   Alt herunder bruger derfor det NYE --bly-*-tokensæt — samme sprog som
+   CRM-pipelinen (.crmp-col-head/.crmp-card), den globale søgning (gs-*)
+   og .crmpx-panel: hvide kort, blød kant, lille skygge, 16px radius og
+   samme typografi-trappe. .settings-card er dermed helt pensioneret;
+   ingen markup i filen bruger klassen længere.
+   ══════════════════════════════════════════════════════════════ */
+.set-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,23,42,.04);padding:18px 20px;margin:0 0 14px;max-width:940px}
+.set-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.set-card-title{font-size:14px;font-weight:800;color:var(--bly-ink);letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.set-card-sub{font-size:11.5px;color:var(--bly-sub);margin-top:4px;line-height:1.65;max-width:660px}
+.set-card-body{display:flex;flex-direction:column;gap:14px}
+.set-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.set-grid.wide{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.set-field{min-width:0}
+.set-field label,.set-label{display:block;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--bly-sub);margin-bottom:5px}
+.set-card input[type=text],.set-card input[type=email],.set-card input[type=number],.set-card textarea{width:100%;min-width:0;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:9px 12px;font-size:12.5px;font-weight:500;color:var(--bly-ink);background:#fff;font-family:inherit;outline:none;transition:border-color .12s,box-shadow .12s}
+.set-card input[type=text]:focus,.set-card input[type=email]:focus,.set-card input[type=number]:focus,.set-card textarea:focus{border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+.set-card input::placeholder,.set-card textarea::placeholder{color:#A9AFBA}
+.set-card input[type=file]{font-size:11px;color:var(--bly-sub)}
+.set-logo{width:58px;height:58px;border-radius:var(--bly-r-md);background:var(--bly-accent-soft);border:1px solid var(--bly-border-soft);display:grid;place-items:center;overflow:hidden;flex-shrink:0;font-size:24px}
+.set-logo img{width:100%;height:100%;object-fit:cover}
+/* Én linje i en liste inde i et kort (panel-rolle, akkord-post) — samme lyse
+   "række-i-kort"-stil som .crmp-card, bare vandret. */
+.set-row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:10px 13px;transition:border-color .12s,background .12s}
+.set-row:hover{background:var(--bly-hover);border-color:var(--bly-border)}
+.set-row-main{flex:1;min-width:0}
+.set-row-title{font-size:12.5px;font-weight:800;color:var(--bly-ink)}
+.set-row-sub{font-size:10.5px;color:var(--bly-sub);margin-top:2px}
+.set-row-value{font-size:12.5px;font-weight:800;color:var(--bly-ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+.set-list{display:flex;flex-direction:column;gap:8px}
+.set-empty{font-size:12px;color:var(--bly-sub);margin:0;padding:12px 2px}
+/* Handlingsbjælke nederst i et kort — adskilt med en blød linje, så "Gem"
+   altid er tydeligt knyttet til netop dét kort. */
+.set-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px;padding-top:14px;border-top:1px solid var(--bly-border-soft)}
+.set-inline{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.set-note{font-size:11px;color:var(--bly-sub);line-height:1.65;margin:0}
+.set-guide{font-size:12.5px;line-height:1.75;color:var(--bly-ink)}
+.set-guide ol{margin:0;padding-left:20px}
+.set-guide code{background:var(--bly-border-soft);border-radius:5px;padding:1px 5px;font-size:11.5px}
+.set-warn{font-size:11.5px;line-height:1.65;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:var(--bly-r-md);padding:10px 12px}
+.bly-btn.danger{background:#DC2626;color:#fff}
+.bly-btn.danger:hover{background:#B91C1C}
+.settabpage{display:none}
+.settabpage.active{display:block}
+/* Samme vis/skjul-mekanik som .settabpage ovenfor, til de to andre sider der
+   blev slået sammen i samme oprydning (sep. 2026):
+     • .tltabpage  — Opgaveliste + Færdige opgaver på #page-tasklist
+     • .tpltabpage — Opgave-skabeloner + Mail-skabeloner på #page-templates
+   Begge styres af den samme .bly-segtabs/.bly-segtab-stribe som Indstillinger,
+   så der ikke opstår endnu et fane-system i filen. */
+.tltabpage,.tpltabpage{display:none}
+.tltabpage.active,.tpltabpage.active{display:block}
+/* Mail-skabelonernes egen (indre) fanestribe ligger nu inde i en ydre fane på
+   Skabeloner-siden. Samme .bly-segtabs-mekanik, men en anelse mindre og med
+   luft over, så de to fane-niveauer kan skelnes fra hinanden. */
+#tpltab-mail #eml-tabs{margin-top:2px;gap:18px}
+#tpltab-mail #eml-tabs .bly-segtab{font-size:12px;padding-bottom:9px}
+/* De små handlingsknapper i rækkerne (✏ Rediger / Aktivér / 🗑) er stadig de
+   generiske .btn'er — de får her bly-kanter/typografi, så de ikke stikker ud
+   som gråt gammelt UI midt i de nye kort. Kun udseende; markup og handlers er
+   uændrede. Samme scoped behandling gives Hold & vendors-siden. */
+#page-notif-settings .set-row .btn,#page-people .btn{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);background:#fff;color:var(--bly-ink);font-size:11px;font-weight:700;padding:6px 11px}
+#page-notif-settings .set-row .btn:hover,#page-people .btn:hover{background:var(--bly-hover);border-color:var(--bly-accent);color:var(--bly-accent)}
+#page-notif-settings .set-row .btn.danger,#page-people .btn.danger{color:#B91C1C;border-color:#FECACA}
+#page-notif-settings .set-row .btn.danger:hover,#page-people .btn.danger:hover{background:#FEF2F2;border-color:#FCA5A5;color:#B91C1C}
+/* Notifikationsreglerne bor nu i et .set-card i stedet for den gamle
+   grå .dash-panel — rækkerne får derfor samme bly-kanter/typografi. */
+#settab-notif .notif-rule-row{border-bottom:1px solid var(--bly-border-soft);padding:12px 2px}
+#settab-notif .notif-rule-label{font-size:12.5px;font-weight:700;color:var(--bly-ink)}
+#settab-notif .notif-toggle-group{font-size:11px;color:var(--bly-sub)}
+#notif-settings-list{max-height:none;overflow:visible;border:0;padding:0;background:transparent;min-height:0}
 .email-settings-card{background:#fff;border:1px solid var(--border2);border-radius:12px;padding:16px;box-shadow:var(--shadow);margin:0 0 12px}
 .email-settings-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px}
 .email-settings-title{font-size:13px;font-weight:800;color:var(--navy)}
@@ -1513,24 +1621,40 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .mail-status-pill.ok{background:#DCFCE7;color:#15803D}
 .mail-status-pill.off{background:#FEE2E2;color:#B91C1C}
 
+/* ══════════════════════════════════════════════════════════════
+   HOLD & VENDORS (#page-people) — medarbejder-/vendor-kartotek.
+   ──────────────────────────────────────────────────────────────
+   Siden er ryddet: de fire indstillings-kort (virksomhedsprofil, roller,
+   akkordliste, Close-import) er flyttet til #page-notif-settings, så her
+   er KUN selve holdoversigten tilbage. Kortene er samtidig flyttet fra det
+   gamle tokensæt (--navy/--border2/--shadow) over til --bly-* — samme
+   hvide kort, bløde kant, 16px radius, lille skygge og pille-badges som
+   .crmp-card og gs-*-rækkerne i den globale søgning. Klassenavnene er
+   bevidst uændrede, så renderPeople()'s markup ikke skulle røres.
+   ══════════════════════════════════════════════════════════════ */
 .people{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
-.person-card,.vendor-card{background:#fff;border:1px solid var(--border2);border-radius:14px;padding:14px;box-shadow:var(--shadow);transition:.15s}
-.person-card:hover,.vendor-card:hover{box-shadow:0 6px 20px rgba(15,34,64,.14);transform:translateY(-1px)}
-.person-top{display:flex;gap:9px;align-items:center}
-.avatar-img{width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid var(--ice2)}
-.person-name{font-size:12.5px;font-weight:800;color:var(--navy)}
-.person-email{font-size:9px;color:var(--muted);margin-top:1px}
-.role-pill{display:inline-block;font-size:8px;font-weight:800;color:#1D4ED8;background:#DBEAFE;border-radius:20px;padding:2px 8px;margin-top:4px;letter-spacing:.3px}
+.person-card,.vendor-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:15px 16px;box-shadow:0 1px 3px rgba(15,23,42,.04);transition:box-shadow .12s,border-color .12s}
+.person-card:hover,.vendor-card:hover{box-shadow:0 4px 14px rgba(15,17,24,.1);border-color:var(--bly-border)}
+.person-top{display:flex;gap:11px;align-items:center}
+.avatar-img{width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid var(--bly-border-soft)}
+.person-name{font-size:13px;font-weight:800;color:var(--bly-ink);letter-spacing:-.01em}
+.person-email{font-size:10.5px;color:var(--bly-sub);margin-top:2px}
+.role-pill{display:inline-block;font-size:9px;font-weight:800;color:var(--bly-accent);background:var(--bly-accent-soft);border-radius:var(--bly-r-pill);padding:2px 9px;margin-top:6px;letter-spacing:.02em}
 .role-pill.vendor{color:#5B21B6;background:#EDE9FE}
-.person-detail{font-size:10px;color:var(--muted);padding:8px 9px;background:var(--ice);border-radius:8px;margin-top:9px;line-height:1.7}
-.person-actions{display:flex;gap:5px;margin-top:9px}
-.vendor-card{grid-column:1/-1;background:linear-gradient(180deg,#fff,var(--ice) 400%)}
-.vendor-head{display:flex;align-items:center;justify-content:space-between;gap:6px;border-bottom:1px solid var(--border2);padding-bottom:9px;margin-bottom:9px}
-.vendor-title{font-size:14px;font-weight:800;color:var(--navy);display:flex;align-items:center;gap:7px}
-.vendor-title .vicon{width:26px;height:26px;border-radius:8px;background:var(--navy);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:800}
-.vendor-subgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:7px}
-.sub-team{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:8px 9px;background:var(--ice);border-radius:9px;font-size:10px;border:1px solid var(--border2)}
-.sub-team-meta{color:var(--muted);font-size:9px;margin-top:2px}
+.person-detail{font-size:10.5px;color:var(--bly-sub);padding:9px 11px;background:var(--bly-border-soft);border-radius:var(--bly-r-md);margin-top:11px;line-height:1.7}
+.person-actions{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
+.vendor-card{grid-column:1/-1;background:#fff;padding:16px 18px}
+.vendor-head{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--bly-border-soft);padding-bottom:11px;margin-bottom:12px}
+.vendor-title{font-size:14px;font-weight:800;color:var(--bly-ink);letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
+.vendor-title .vicon{width:28px;height:28px;border-radius:50%;background:var(--bly-accent-soft);color:var(--bly-accent);display:grid;place-items:center;font-size:12px;font-weight:800;flex-shrink:0}
+.vendor-subgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.sub-team{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 11px;background:#fff;border-radius:var(--bly-r-md);font-size:11px;color:var(--bly-ink);border:1px solid var(--bly-border-soft);transition:background .12s,border-color .12s}
+.sub-team:hover{background:var(--bly-hover);border-color:var(--bly-border)}
+.sub-team-meta{color:var(--bly-sub);font-size:10px;margin-top:2px}
+/* Sidehoved/værktøjslinje på Hold & vendors — samme .bly-pagehead-mønster som
+   Projekter/CRM, med en lille tælle-pille i stedet for den gamle .page-title. */
+#page-people .bly-pagehead h2{display:flex;align-items:center;gap:9px}
+#people-count-pill{font-size:10.5px;font-weight:800;color:var(--bly-sub);background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-pill);padding:2px 10px;line-height:1.7;font-variant-numeric:tabular-nums}
 
 /* WEEKLY NOTE */
 .wnote-btn{border:0;background:transparent;cursor:pointer;font-size:11px;opacity:.55;padding:1px 3px}
@@ -2078,10 +2202,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        (Runde H #4: "Flyt min side ned i bunden af headeren... Lav Logud Icon
        nede under"). Samme ▾-dropdown-mønster som CRM/Tilbud & Faktura-grupperne
        ovenfor. "👤 Kundehistorik" og "📁 Vejledning" er fjernet fra listen
-       (Runde H #6/#7). "✉️ Mail-skabeloner" (tidligere en selvstændig, som regel
-       skjult fane i topbjælken) er flyttet ned i denne menu også — vores bedste
-       gæt på "og til skabloner til den" i din besked; sig til hvis du mente
-       noget andet. Timer og Log er nu to separate punkter (Runde H #5). -->
+       (Runde H #6/#7). Timer og Log er nu to separate punkter (Runde H #5).
+       "✅ Færdige opgaver" og "✉️ Mail-skabeloner" har ikke længere hver sit
+       menupunkt (sep. 2026): de er faner INDE på hhv. "📋 Opgaveliste" og
+       "📐 Skabeloner" — se data-tltab-jump/data-tpltab-jump nedenfor, samme
+       dybe-link-mønster som data-fintab-jump/data-qztab-jump. -->
   <div class="sidebar-bottom">
     <div class="navdrop tab-navdrop" id="mypage-subdrop">
       <div class="stab-row">
@@ -2090,21 +2215,23 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div class="navdrop-menu" id="navdrop-menu">
         <a class="navdrop-item" id="employee-link" href="/employee">👷 Mit skema</a>
-        <a class="navdrop-item" href="#tasklist" data-page="tasklist">📋 Opgaveliste</a>
+        <a class="navdrop-item" href="#tasklist" data-page="tasklist" data-tltab-jump="open">📋 Opgaveliste</a>
         <a class="navdrop-item" href="#requests" data-page="requests">✅ Godkendelser (sygdom)<span class="tab-badge hidden" id="requests-badge">0</span></a>
-        <a class="navdrop-item" href="#completed" data-page="completed">✅ Færdige opgaver</a>
         <a class="navdrop-item" href="#people" data-page="people">👥 Hold &amp; vendors</a>
         <a class="navdrop-item" href="#timer" data-page="timer">⏱ Timer</a>
         <a class="navdrop-item" href="#logs" data-page="logs">🛠 Log</a>
-        <a class="navdrop-item" href="#templates" data-page="templates">📐 Skabeloner</a>
-        <a class="navdrop-item hidden" href="#email-templates" data-page="email-templates" id="email-templates-tab-btn" title="Alle mail-skabeloner ét sted">✉️ Mail-skabeloner</a>
+        <a class="navdrop-item" href="#templates" data-page="templates" data-tpltab-jump="tasks">📐 Skabeloner</a>
+        <!-- Gmail-integrationen har ikke længere sit eget menupunkt (det var
+             permanent .hidden og blev aldrig vist af nogen kode) — den bor nu
+             som en fane inde på selve Indstillinger-siden. Præcis det samme er
+             nu sket med "✉️ Mail-skabeloner" (#email-templates-tab-btn), der
+             ligeledes var permanent .hidden og aldrig blev vist af nogen kode. -->
         <a class="navdrop-item" href="#notif-settings" data-page="notif-settings">⚙️ Indstillinger</a>
-        <a class="navdrop-item hidden" href="#gmail-settings" data-page="gmail-settings" id="gmail-settings-tab-btn">📧 Gmail-integration</a>
       </div>
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-03.4</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-03.5</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -2206,9 +2333,42 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </section>
 
-<!-- SKABELONER -->
+<!-- ══════════════════════════════════════════════════════════════
+     SKABELONER — ÉN samlet side (sep. 2026).
+     ──────────────────────────────────────────────────────────────
+     Før denne oprydning lå der to forskellige "Skabeloner"-sider i appen:
+     denne (#templates — opgave-skabeloner, Fag & farver, Push/SMS) og
+     #email-templates ("✉️ Mail-skabeloner"), hvis menupunkt var permanent
+     .hidden og aldrig blev vist af nogen kode — den kunne altså kun nås ved
+     at taste hash'en manuelt. Mail-skabelonerne er nu flyttet herind som en
+     ydre fane, med deres egne fem underfaner uændrede.
+
+     Fanerne bruger .bly-segtabs/.bly-segtab — nøjagtig samme mekanisme som
+     Indstillinger (#set-tabs) og Projekter (#proj-tabs), ikke et nyt
+     fane-system. ID'er, felter, knapper, handlers og API-kald er FLYTTET
+     uændret — ingen backend-kontrakt er rørt.
+
+     Adgang: siden vises for 'templates' ELLER 'email-templates' (se
+     meHasTemplatesPage/switchPage), og hver fane gates derudover selv på sin
+     egen nøgle i applyTplTabsVisibility() — 'email-templates' er netop den
+     nøgle server.js stadig håndhæver på alle /api/*-email-template-ruter.
+     Samme mønster som 'gmail-settings' fik ved sammenlægningen af
+     Indstillinger. -->
 <section class="page" id="page-templates">
-  <div class="page-head"><h2>📐 Opgave-skabeloner</h2><p class="page-sub">Genbrugelige opgavetyper til tilbagevendende arbejde.</p>
+  <div class="bly-pagehead">
+    <div><h2>📐 Skabeloner</h2><div class="sub">Opgave-skabeloner, fag &amp; farver, notifikationer — og alle jeres mail-skabeloner ét sted.</div></div>
+  </div>
+  <div class="bly-segtabs" id="tpl-tabs">
+    <button class="bly-segtab active" data-tpltab="tasks" data-tpltab-page="templates" type="button">📋 Opgave-skabeloner</button>
+    <button class="bly-segtab" data-tpltab="mail" data-tpltab-page="email-templates" type="button">✉️ Mail-skabeloner</button>
+  </div>
+
+<div class="tpltabpage active" id="tpltab-tasks">
+  <div class="page-head">
+    <div>
+      <div class="page-title">📐 Opgave-skabeloner</div>
+      <div class="page-sub">Genbrugelige opgavetyper til tilbagevendende arbejde.</div>
+    </div>
     <button class="nb blue" id="new-template-btn">+ Ny skabelon</button>
   </div>
   <div id="templates-list" class="dash-panel"></div>
@@ -2237,21 +2397,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="hint" style="margin-top:6px">For at aktivere SMS skal en af disse miljøvariabler sættes på serveren (Render → Environment): <b>INMOBILE_API_TOKEN</b> (dansk udbyder, jeres eksisterende inMobile-konto) <i>eller</i> <b>GATEWAYAPI_API_TOKEN</b> (dansk udbyder, gatewayapi.com) <i>eller</i> <b>TWILIO_ACCOUNT_SID</b> + <b>TWILIO_AUTH_TOKEN</b> + <b>TWILIO_FROM_NUMBER</b>. Push kræver ingen opsætning — det virker allerede, når en medarbejder trykker "Slå notifikationer til" på deres side.</div>
   </div>
   <!-- "Færdig-mail til kunden" og "Mail-skabeloner" (booking-varianter) er
-       flyttet herfra til det samlede Skabeloner-center (✉️ Skabeloner i
-       topmenuen) — se leveringsnoten om konsolideringen. -->
-</section>
+       flyttet herfra til mail-fanen på denne side (✉️ Mail-skabeloner
+       nedenfor) — se leveringsnoten om konsolideringen. -->
+</div><!-- /#tpltab-tasks -->
 
-<!-- SKABELONER — samlet skabelon-center for ALLE mail-skabeloner i appen (✉️
-     Skabeloner i topmenuen), jf. Martins ønske om ét sted til det hele.
-     Fire faner: Automatiske mails (system_email_templates, ét aktivt
+<!-- MAIL-SKABELONER — samlet skabelon-center for ALLE mail-skabeloner i appen,
+     jf. Martins ønske om ét sted til det hele. Lå tidligere på sin egen
+     (praktisk talt uopnåelige) side #email-templates; er nu denne fane.
+     Fem underfaner: Automatiske mails (system_email_templates, ét aktivt
      eksemplar pr. handling), Planlægningsmail (email_templates, flere
      navngivne varianter man vælger imellem), Tilbud & faktura
-     (document_email_templates + faste koblinger pr. hændelse) og Andre
-     skabeloner (custom_email_templates, uden fast handling endnu). -->
-<section class="page" id="page-email-templates">
-  <div class="bly-pagehead">
-    <div><h2>✉️ Skabeloner</h2><div class="sub">Alle jeres mail-skabeloner ét sted — automatiske kunde-mails, planlægningsmails og tilbud/faktura-mails.</div></div>
-  </div>
+     (document_email_templates + faste koblinger pr. hændelse), Andre
+     skabeloner (custom_email_templates, uden fast handling endnu) og
+     Automatisering. Markup, id'er og handlers er flyttet uændret. -->
+<div class="tpltabpage" id="tpltab-mail">
   <div class="bly-segtabs" id="eml-tabs">
     <button class="bly-segtab active" data-emltab="auto" type="button">⚡ Automatiske mails</button>
     <button class="bly-segtab" data-emltab="booking" type="button">📅 Planlægningsmail</button>
@@ -2342,53 +2501,209 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <span class="sub" id="lostfollow-status" style="margin-left:8px"></span>
     </div>
   </div>
-</section>
+</div><!-- /#tpltab-mail -->
+</section><!-- /#page-templates -->
 
-<!-- NOTIFIKATIONSINDSTILLINGER -->
+<!-- ══════════════════════════════════════════════════════════════
+     INDSTILLINGER — ÉN samlet side (sep. 2026).
+     ──────────────────────────────────────────────────────────────
+     Før denne oprydning lå Martins indstillinger fem forskellige steder:
+     fire mørke .settings-card-kasser var boltet oven på "Hold & vendors"
+     (virksomhedsprofil, roller & adgang, akkordliste, Close CRM-import),
+     Gmail-integrationen havde sin egen skjulte side (#gmail-settings, uden
+     nogen synlig menupunkt overhovedet), og selve siden der HEDDER
+     "Indstillinger" indeholdt kun notifikationsregler + JobTread-synk.
+
+     Alt er nu samlet her under faner (.bly-segtabs — nøjagtig samme
+     mekanisme som Projekter/#proj-tabs og CRM-detaljens #crmpx-viewtabs,
+     ikke et nyt fane-system), og hvert afsnit er lagt i et lyst .set-card
+     i --bly-*-sproget. ID'er, felter, knapper og JS-handlers er FLYTTET
+     uændret — ingen backend-kontrakt er rørt.
+
+     Adgang: siden vises for 'notif-settings' ELLER 'gmail-settings' (se
+     switchPage/applyPanelPageVisibility), og Gmail-fanen er derudover selv
+     gated på 'gmail-settings' — netop den nøgle som server.js stadig
+     kræver på alle /api/gmail/*-ruter. Ingen mister adgang ved flytningen.
+     ══════════════════════════════════════════════════════════════ -->
 <section class="page" id="page-notif-settings">
-  <div class="page-head"><h2>⚙️ Indstillinger</h2><p class="page-sub">Vælg hvilke hændelser der skal give besked, og hvordan.</p></div>
-  <div id="notif-settings-list" class="dash-panel"></div>
-
-  <!-- JOBTREAD-SYNK — flyttet herned fra topbjælken (Runde H #12: "Gem de 2
-       synk knapper et sted i indstillinger indtil jeg fjerner dem"). Samme
-       knapper/id'er/funktioner (syncNow/syncPhonesNow) som før, kun placeringen
-       er ny. -->
-  <div class="dash-panel" style="max-width:640px;margin-top:16px">
-    <h3 style="margin:0 0 4px">🔄 JobTread-synkronisering</h3>
-    <p class="page-sub" style="margin:0 0 12px">Midlertidig — fjernes når JobTread-data ikke længere bruges.</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <span id="sync-ind" style="font-size:11px;color:var(--bly-sub)"></span>
-      <button class="btn primary" id="sync-btn">⚡ Synk JT</button>
-      <button class="btn" id="sync-phones-btn" title="Henter kundetelefon + adresse-koordinater til vejret, med det samme, og viser resultatet direkte">📞 Synk telefon &amp; vejr</button>
+  <div class="bly-pagehead">
+    <div>
+      <h2>Indstillinger</h2>
+      <div class="sub">Virksomhedsprofil, adgang, integrationer og notifikationer — samlet ét sted.</div>
     </div>
-    <p class="page-sub" style="margin:8px 0 0">Synk-loggen vises øverst på Dagligplanlægning-siden.</p>
   </div>
-</section>
-
-<!-- GMAIL-INTEGRATION — punkt 2 i Martins Round C-ønske. Fuld 2-vejs OAuth til
-     ÉN firma-postkasse (se server.js), synkroniseret automatisk hver 30. min
-     og matchet på kundens email-adresse. Kun læse-adgang (gmail.readonly) —
-     at SENDE en mail sker via Gmail-knapperne rundt om i programmet, som
-     hopper direkte over i Gmails egen web-compose. -->
-<section class="page" id="page-gmail-settings">
-  <div class="page-head"><h2>📧 Gmail-integration</h2><p class="page-sub">Forbind jeres firma-Gmail, så mails til/fra en kunde automatisk dukker op på kundens kort.</p></div>
-
-  <div class="crmpx-panel" id="gmail-status-card" style="max-width:640px">
-    <div id="gmail-status-body">Henter status...</div>
+  <div class="bly-segtabs" id="set-tabs">
+    <button class="bly-segtab active realadmin-only" data-settab="company" type="button">🏢 Virksomhedsprofil</button>
+    <button class="bly-segtab realadmin-only" data-settab="access" type="button">🔐 Roller &amp; adgang</button>
+    <button class="bly-segtab realadmin-only" data-settab="akkord" type="button">🧱 Akkordliste</button>
+    <button class="bly-segtab" data-settab="gmail" data-settab-page="gmail-settings" type="button">📧 Gmail</button>
+    <button class="bly-segtab" data-settab="sync" data-settab-page="notif-settings" type="button">🔄 Synk &amp; import</button>
+    <button class="bly-segtab" data-settab="notif" data-settab-page="notif-settings" type="button">🔔 Notifikationer</button>
   </div>
 
-  <div class="crmpx-panel" id="gmail-setup-help" style="max-width:640px;margin-top:16px">
-    <h3>🛠 Sådan sættes det op (kun én gang)</h3>
-    <div style="font-size:12.5px;line-height:1.7;color:var(--bly-ink)">
-      <ol style="margin:0;padding-left:20px">
-        <li>Opret et projekt på <strong>console.cloud.google.com</strong> (gratis).</li>
-        <li>Under "APIs &amp; Services" → "Library": aktivér <strong>Gmail API</strong>.</li>
-        <li>Under "APIs &amp; Services" → "OAuth consent screen": vælg "External", udfyld app-navn (fx "Gulv Master"), og tilføj jeres egen Gmail-konto som testbruger.</li>
-        <li>Under "APIs &amp; Services" → "Credentials" → "Create credentials" → "OAuth client ID" → type "Web application".</li>
-        <li>Under "Authorized redirect URIs": tilføj præcis <code id="gmail-redirect-hint">…</code></li>
-        <li>Kopiér "Client ID" og "Client secret", og sæt dem som miljøvariabler på Render: <code>GOOGLE_CLIENT_ID</code> og <code>GOOGLE_CLIENT_SECRET</code>. Genstart derefter serveren på Render.</li>
-        <li>Kom tilbage hertil og tryk "Forbind Gmail" nedenfor.</li>
-      </ol>
+  <!-- ── VIRKSOMHEDSPROFIL (flyttet fra #page-people) ────────────────── -->
+  <div class="settabpage active" id="settab-company">
+    <div class="set-card realadmin-only">
+      <div class="set-card-head">
+        <div style="display:flex;gap:14px;align-items:flex-start;min-width:0">
+          <div class="set-logo" id="settings-logo-preview">🪵</div>
+          <div>
+            <div class="set-card-title">🏢 Virksomhedsprofil</div>
+            <div class="set-card-sub">Navn, logo og kontaktoplysninger bruges på login-siden, i topbjælken og på alle tilbud og fakturaer.</div>
+          </div>
+        </div>
+      </div>
+      <div class="set-card-body">
+        <div class="set-grid">
+          <div class="set-field"><label>Virksomhedsnavn</label><input type="text" id="settings-company-name" placeholder="Gulv Master Enterprise ApS"></div>
+          <div class="set-field"><label>Logo</label><input type="file" id="settings-logo-file" accept="image/*"></div>
+        </div>
+        <div class="set-grid">
+          <div class="set-field"><label>Adresse</label><input type="text" id="settings-company-address" placeholder="Vejnavn 1, 1234 By"></div>
+          <div class="set-field"><label>CVR</label><input type="text" id="settings-company-cvr" placeholder="12345678"></div>
+          <div class="set-field"><label>Telefon</label><input type="text" id="settings-company-phone" placeholder="12 34 56 78"></div>
+          <div class="set-field"><label>E-mail</label><input type="email" id="settings-company-email" placeholder="info@gulvmaster.dk"></div>
+        </div>
+        <div>
+          <div class="set-label" style="margin-bottom:8px">Bankoplysninger</div>
+          <div class="set-grid">
+            <div class="set-field"><label>Bank reg.nr.</label><input type="text" id="settings-company-bank-reg" placeholder="1234"></div>
+            <div class="set-field"><label>Bank kontonr.</label><input type="text" id="settings-company-bank-account" placeholder="1234567890"></div>
+            <div class="set-field"><label>IBAN <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><input type="text" id="settings-company-iban" placeholder="DK5000400440116243"></div>
+            <div class="set-field"><label>SWIFT/BIC <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><input type="text" id="settings-company-swift" placeholder="NDEADKKK"></div>
+          </div>
+        </div>
+        <div class="set-field"><label>Footer-note på fakturaer <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit — vises nederst på PDF'en</span></label><textarea id="settings-invoice-footer" rows="2" style="resize:vertical" placeholder="Fx betalingsbetingelser eller en tak-hilsen"></textarea></div>
+        <div class="set-grid wide">
+          <div class="set-field"><label>Standardtekst øverst på nye tilbud <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit — udfyldes automatisk, kan altid rettes pr. tilbud</span></label><textarea id="settings-quote-top-note" rows="2" style="resize:vertical"></textarea></div>
+          <div class="set-field"><label>Standard betingelser nederst på nye tilbud <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><textarea id="settings-quote-bottom-note" rows="2" style="resize:vertical"></textarea></div>
+        </div>
+        <div class="set-actions"><button class="bly-btn" id="settings-save-btn" type="button">Gem virksomhedsprofil</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ROLLER & ADGANG (flyttet fra #page-people) ──────────────────── -->
+  <div class="settabpage" id="settab-access">
+    <div class="set-card realadmin-only" id="panel-roles-card">
+      <div class="set-card-head">
+        <div>
+          <div class="set-card-title">🔐 Roller &amp; adgang</div>
+          <div class="set-card-sub">Bestem hvilke sider i DETTE admin-panel en rolle (fx "Kontor", "Mester") skal kunne se — krydses af pr. rolle. Tildel rollen til en medarbejder under "Panel-rolle" på deres profil (✏ Rediger). Medarbejder-appen (til alle med login) berøres ikke af dette.</div>
+        </div>
+        <button class="bly-btn small" id="new-panel-role-btn" type="button">+ Ny rolle</button>
+      </div>
+      <div id="panel-roles-list" class="set-list"></div>
+    </div>
+  </div>
+
+  <!-- ── AKKORDLISTE (flyttet fra #page-people) ──────────────────────── -->
+  <!-- Fælles prisliste for akkord-poster, fx til gulvslibere — hver medarbejder
+       med "Akkord" som løntype vælger blandt DISSE poster (i stedet for timer ×
+       timeløn) når der registreres tid på en sag. -->
+  <div class="settabpage" id="settab-akkord">
+    <div class="set-card realadmin-only" id="akkord-items-card">
+      <div class="set-card-head">
+        <div>
+          <div class="set-card-title">🧱 Akkordliste</div>
+          <div class="set-card-sub">Fælles prisliste for akkord-arbejde (fx gulvslibning pr. m² eller pr. rum). Medarbejdere med løntype "Akkord" vælger blandt disse poster ved tidsregistrering, i stedet for timeløn.</div>
+        </div>
+      </div>
+      <div id="akkord-items-list" class="set-list"></div>
+      <div class="set-actions">
+        <input id="akkord-new-name" type="text" placeholder="Fx 'Gulvslibning, egetræ pr. m²'" style="flex:1;min-width:220px;width:auto">
+        <input id="akkord-new-rate" type="number" min="0" step="0.01" placeholder="Pris (kr)" style="width:130px">
+        <button class="bly-btn small" id="akkord-new-add-btn" type="button">+ Tilføj post</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── GMAIL-INTEGRATION (flyttet fra den nu slettede #page-gmail-settings) ──
+       Fuld OAuth til ÉN firma-postkasse (se server.js), synkroniseret automatisk
+       hver 30. min og matchet på kundens email-adresse. Kun læse-adgang
+       (gmail.readonly) — at SENDE en mail sker via Gmail-knapperne rundt om i
+       programmet, som hopper direkte over i Gmails egen web-compose. -->
+  <div class="settabpage" id="settab-gmail">
+    <div class="set-card" id="gmail-status-card">
+      <div class="set-card-head">
+        <div>
+          <div class="set-card-title">📧 Gmail-integration</div>
+          <div class="set-card-sub">Forbind jeres firma-Gmail, så mails til/fra en kunde automatisk dukker op på kundens kort.</div>
+        </div>
+      </div>
+      <div id="gmail-status-body">Henter status...</div>
+    </div>
+
+    <div class="set-card" id="gmail-setup-help">
+      <div class="set-card-head">
+        <div>
+          <div class="set-card-title">🛠 Sådan sættes det op (kun én gang)</div>
+          <div class="set-card-sub">Skal kun gøres første gang — derefter husker serveren forbindelsen.</div>
+        </div>
+      </div>
+      <div class="set-guide">
+        <ol>
+          <li>Opret et projekt på <strong>console.cloud.google.com</strong> (gratis).</li>
+          <li>Under "APIs &amp; Services" → "Library": aktivér <strong>Gmail API</strong>.</li>
+          <li>Under "APIs &amp; Services" → "OAuth consent screen": vælg "External", udfyld app-navn (fx "Gulv Master"), og tilføj jeres egen Gmail-konto som testbruger.</li>
+          <li>Under "APIs &amp; Services" → "Credentials" → "Create credentials" → "OAuth client ID" → type "Web application".</li>
+          <li>Under "Authorized redirect URIs": tilføj præcis <code id="gmail-redirect-hint">…</code></li>
+          <li>Kopiér "Client ID" og "Client secret", og sæt dem som miljøvariabler på Render: <code>GOOGLE_CLIENT_ID</code> og <code>GOOGLE_CLIENT_SECRET</code>. Genstart derefter serveren på Render.</li>
+          <li>Kom tilbage hertil og tryk "Forbind Gmail" ovenfor.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SYNK & IMPORT — JobTread-synk + Close CRM-import ────────────── -->
+  <div class="settabpage" id="settab-sync">
+    <!-- JOBTREAD-SYNK — flyttet herned fra topbjælken (Runde H #12: "Gem de 2
+         synk knapper et sted i indstillinger indtil jeg fjerner dem"). Samme
+         knapper/id'er/funktioner (syncNow/syncPhonesNow) som før. -->
+    <div class="set-card">
+      <div class="set-card-head">
+        <div>
+          <div class="set-card-title">🔄 JobTread-synkronisering</div>
+          <div class="set-card-sub">Midlertidig — fjernes når JobTread-data ikke længere bruges. Synk-loggen vises øverst på Dagligplanlægning-siden.</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="bly-btn small" id="sync-btn" type="button">⚡ Synk JT</button>
+        <button class="bly-btn outline small" id="sync-phones-btn" type="button" title="Henter kundetelefon + adresse-koordinater til vejret, med det samme, og viser resultatet direkte">📞 Synk telefon &amp; vejr</button>
+        <span id="sync-ind" style="font-size:11px;color:var(--bly-sub)"></span>
+      </div>
+    </div>
+
+    <!-- CLOSE CRM-IMPORT (flyttet fra #page-people, sep. 2026): éngangsimport af
+         Martins historiske leads/opportunities fra Close CRM, uploadet direkte af
+         Martin selv — se POST /api/admin/import/close. Trygt at genkøre
+         (close_id-idempotens). -->
+    <div class="set-card realadmin-only" id="close-import-card">
+      <div class="set-card-head">
+        <div>
+          <div class="set-card-title">📥 Close CRM-import</div>
+          <div class="set-card-sub">Importér historiske leads og opportunities fra Close CRM (CSV-eksport) ind i CRM-modulet. Trygt at trykke flere gange — allerede importerede rækker springes automatisk over.</div>
+        </div>
+      </div>
+      <div class="set-inline">
+        <div class="set-field"><label>Leads CSV</label><input type="file" id="close-import-leads-file" accept=".csv"></div>
+        <div class="set-field"><label>Opportunities CSV</label><input type="file" id="close-import-opps-file" accept=".csv"></div>
+        <button class="bly-btn small" id="close-import-run-btn" type="button">Importér fra Close</button>
+      </div>
+      <div id="close-import-result" style="margin-top:14px"></div>
+    </div>
+  </div>
+
+  <!-- ── NOTIFIKATIONSREGLER (var i forvejen på denne side) ──────────── -->
+  <div class="settabpage" id="settab-notif">
+    <div class="set-card">
+      <div class="set-card-head">
+        <div>
+          <div class="set-card-title">🔔 Notifikationsregler</div>
+          <div class="set-card-sub">Vælg hvilke hændelser der skal give besked, og hvordan.</div>
+        </div>
+      </div>
+      <div id="notif-settings-list"></div>
     </div>
   </div>
 </section>
@@ -2773,7 +3088,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <h3>📧 Mails <span class="sub" id="cd-emails-count"></span></h3>
     <div id="cd-emails-list"></div>
   </div>
-  <div class="hint" id="cd-emails-not-connected" style="margin-bottom:20px;display:none">📧 Forbind jeres Gmail under "Min side → Gmail-integration" for automatisk at se mailkorrespondance med kunden her.</div>
+  <div class="hint" id="cd-emails-not-connected" style="margin-bottom:20px;display:none">📧 Forbind jeres Gmail under "Min side → Indstillinger → Gmail" for automatisk at se mailkorrespondance med kunden her.</div>
 
   <h3 style="font-size:14px;margin:22px 0 10px">🏗️ Sager <span class="sub" id="cd-projects-count"></span></h3>
   <table class="bly-table">
@@ -2825,10 +3140,27 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <select id="crmp-cf-filter-field" class="select" style="width:auto"><option value="">Filtrér på felt...</option></select>
       <select id="crmp-cf-filter-value" class="select" style="width:auto;display:none"></select>
       <button class="bly-ctl" id="crmp-filter-clear" type="button" title="Ryd filtre">✕ Ryd filtre</button>
+      <button class="bly-ctl" id="crmp-select-toggle" type="button" title="Vælg flere kort og udfør en handling på dem alle">☑️ Vælg</button>
     </div>
     <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="crmp-count"></span></div>
   </div>
   <div class="crmp-board" id="crmp-board"></div>
+  <!-- MASSEVALG — bjælken vises først når mindst ét kort er valgt, samme
+       mønster som #fin-inv-bulk-bar/.pool-bulk-bar andre steder i appen. -->
+  <div class="crmp-bulk-bar" id="crmp-bulk-bar">
+    <span class="crmp-bulk-count" id="crmp-bulk-count"></span>
+    <span class="crmp-bulk-sep"></span>
+    <select id="crmp-bulk-stage" title="Flyt alle valgte kort til en anden stage"><option value="">Skift stage…</option></select>
+    <button class="crmp-bulk-btn" id="crmp-bulk-stage-apply" type="button">Flyt</button>
+    <span class="crmp-bulk-sep"></span>
+    <select id="crmp-bulk-field" title="Sæt det samme felt på alle valgte kort"><option value="">Opdater felt…</option></select>
+    <select id="crmp-bulk-field-value" style="display:none"></select>
+    <input type="text" id="crmp-bulk-field-text" style="display:none" placeholder="Værdi (tom = ryd)">
+    <button class="crmp-bulk-btn" id="crmp-bulk-field-apply" type="button">Opdater</button>
+    <span class="crmp-bulk-sep"></span>
+    <button class="crmp-bulk-btn danger" id="crmp-bulk-delete" type="button">🗑 Slet</button>
+    <button class="crmp-bulk-btn ghost" id="crmp-bulk-clear" type="button">Fravælg alle</button>
+  </div>
 </section>
 
 <!-- CRM-PIPELINE — DETALJESIDE (fuld side man navigerer ind på ved klik på et
@@ -3015,10 +3347,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="modal" style="max-width:min(900px,94vw);width:auto;max-height:92vh;padding:0;overflow:hidden;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bly-border-soft)">
       <div style="flex:1;font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="file-lightbox-title"></div>
+      <span class="sub" id="file-lightbox-counter" style="font-size:11.5px;flex-shrink:0"></span>
       <button class="btn small" type="button" id="file-lightbox-download">⬇ Download</button>
       <button class="btn small" type="button" onclick="crmpxCloseLightbox()">✕ Luk</button>
     </div>
-    <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:#F5F5F7;min-height:200px" id="file-lightbox-body"></div>
+    <!-- ‹/›-knapperne er kopieret fra sagsbillede-lightboxen (#pd-photo-lightbox),
+         så de to gallerier ser og opfører sig ens. Piletasterne virker også — se
+         keydown-lytteren ved crmpxOpenFileLightboxAt. -->
+    <div style="flex:1;position:relative;display:flex;min-height:200px">
+      <button class="bly-btn outline small" id="file-lightbox-prev-btn" type="button" title="Forrige fil (←)" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:2;background:#fff;display:none">‹</button>
+      <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:#F5F5F7" id="file-lightbox-body"></div>
+      <button class="bly-btn outline small" id="file-lightbox-next-btn" type="button" title="Næste fil (→)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:2;background:#fff;display:none">›</button>
+    </div>
   </div>
 </div>
 
@@ -3791,14 +4131,40 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 </div>
+<!-- ══════════════════════════════════════════════════════════════
+     OPGAVELISTE — åbne OG færdige opgaver på én side (sep. 2026).
+     ──────────────────────────────────────────────────────────────
+     "✅ Færdige opgaver" var før sin egen side (#completed / #page-completed)
+     med sit eget menupunkt lige under Opgaveliste i "Min side"-menuen. De to
+     lister er to visninger af det samme arbejde, så de er nu faner på ÉN side:
+     #tasklist (åbne) og #tasklist/completed (færdige) — samme #side/underfane-
+     hash-konvention som #finance/rykkere og #notif-settings/gmail.
+
+     Fanerne bruger .bly-segtabs/.bly-segtab (samme mekanisme som
+     Indstillinger/#set-tabs og Projekter/#proj-tabs, ikke et nyt fane-system),
+     og fane-skift skrives med navPushHash() så browserens tilbage/frem-knap
+     virker mellem de to visninger. Al markup, alle id'er og alle handlers fra
+     begge de gamle sider er FLYTTET uændret.
+
+     Adgang: siden åbner for 'tasklist' ELLER 'completed' (se
+     meHasTasklistPage/switchPage), og hver fane gates derudover selv på sin
+     egen nøgle i applyTlTabsVisibility() — begge nøgler findes uændret i
+     server.js' PANEL_PAGES. Samme mønster som 'gmail-settings' fik ved
+     sammenlægningen af Indstillinger. -->
 <section class="page" id="page-tasklist">
   <div class="page-head">
     <div>
       <div class="page-title">Opgaveliste</div>
-      <div class="page-sub">Vælg flere for masseredigering.</div>
+      <div class="page-sub">Åbne og afsluttede opgaver ét sted.</div>
     </div>
     <button class="btn primary" id="tasklist-add-btn">+ Tilføj job</button>
   </div>
+  <div class="bly-segtabs" id="tl-tabs">
+    <button class="bly-segtab active" data-tltab="open" data-tltab-page="tasklist" type="button">📋 Opgaveliste</button>
+    <button class="bly-segtab" data-tltab="completed" data-tltab-page="completed" type="button">✅ Færdige opgaver</button>
+  </div>
+
+<div class="tltabpage active" id="tltab-open">
   <!-- Medarbejder-opgaveanmodninger (task_requests) — flyttet herned fra
        Godkendelser, som nu KUN viser sygdoms-godkendelser (Runde H #8). -->
   <div id="tasklist-requests-wrap" class="hidden" style="margin-bottom:22px">
@@ -3806,6 +4172,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div><div class="page-title" style="font-size:15px">📋 Afventer godkendelse<span class="tab-badge hidden" id="tasklist-requests-badge">0</span></div><div class="page-sub">Opgaver medarbejdere selv har bedt om at få sat på deres kalender.</div></div>
     </div>
     <div id="tasklist-requests-list"></div>
+  </div>
+  <!-- Underoverskriften der før stod i sidehovedet ("Vælg flere for
+       masseredigering.") hører kun til DENNE fane, og er derfor flyttet
+       herned — sidehovedet dækker nu begge faner. -->
+  <div class="page-head">
+    <div>
+      <div class="page-title">📋 Åbne opgaver</div>
+      <div class="page-sub">Vælg flere for masseredigering.</div>
+    </div>
   </div>
   <div class="tasklist-toolbar">
     <input id="tasklist-search" class="search" placeholder="Søg...">
@@ -3838,7 +4213,30 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <tbody id="tasklist-body"></tbody>
     </table>
   </div>
-</section>
+</div><!-- /#tltab-open -->
+
+<!-- FÆRDIGE OPGAVER (til fakturering) — flyttet hertil uændret fra den
+     tidligere selvstændige side #page-completed. -->
+<div class="tltabpage" id="tltab-completed">
+  <div class="page-head">
+    <div>
+      <div class="page-title">✅ Færdige opgaver</div>
+      <div class="page-sub">Det er den eneste permanente hjemadresse for afsluttede opgaver. Når medarbejderen afslutter, forsvinder opgaven fra “Alle” og lander her.</div>
+    </div>
+    <div class="filter-row">
+      <button class="chip active" data-action="completed-filter" data-value="open">Ikke faktureret</button>
+      <button class="chip" data-action="completed-filter" data-value="invoiced">Faktureret</button>
+      <button class="chip" data-action="completed-filter" data-value="all">Alle</button>
+    </div>
+  </div>
+  <div class="board-outer" style="overflow:auto">
+    <table class="task-table">
+      <thead><tr><th>Kunde</th><th>Opgave</th><th>Type</th><th>Medarbejder</th><th>Afsluttet</th><th>Dage</th><th>Dokumentation</th><th>Faktureret</th><th></th></tr></thead>
+      <tbody id="completed-body"></tbody>
+    </table>
+  </div>
+</div><!-- /#tltab-completed -->
+</section><!-- /#page-tasklist -->
 
 <!-- GODKENDELSER (medarbejder-anmodninger) -->
 <section class="page" id="page-requests">
@@ -3857,105 +4255,26 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div id="requests-list" class="requests-list"></div>
 </section>
 
-<!-- FÆRDIGE OPGAVER (til fakturering) -->
-<section class="page" id="page-completed">
-  <div class="page-head">
-    <div>
-      <div class="page-title">Færdige opgaver</div>
-      <div class="page-sub">Det er den eneste permanente hjemadresse for afsluttede opgaver. Når medarbejderen afslutter, forsvinder opgaven fra “Alle” og lander her.</div>
-    </div>
-    <div class="filter-row">
-      <button class="chip active" data-action="completed-filter" data-value="open">Ikke faktureret</button>
-      <button class="chip" data-action="completed-filter" data-value="invoiced">Faktureret</button>
-      <button class="chip" data-action="completed-filter" data-value="all">Alle</button>
-    </div>
-  </div>
-  <div class="board-outer" style="overflow:auto">
-    <table class="task-table">
-      <thead><tr><th>Kunde</th><th>Opgave</th><th>Type</th><th>Medarbejder</th><th>Afsluttet</th><th>Dage</th><th>Dokumentation</th><th>Faktureret</th><th></th></tr></thead>
-      <tbody id="completed-body"></tbody>
-    </table>
-  </div>
-</section>
+<!-- (Den gamle selvstændige side "FÆRDIGE OPGAVER" lå her — den er nu fanen
+     #tltab-completed inde på Opgaveliste ovenfor.) -->
 
-<!-- HOLD & VENDORS -->
+<!-- HOLD & VENDORS — KUN holdoversigten.
+     De fire indstillings-kort der tidligere var boltet oven på denne side
+     (Virksomhedsprofil, Roller & adgang, Akkordliste og Close CRM-import) er
+     flyttet til den samlede #notif-settings-side. Markup'en her er dermed
+     ryddet ned til sidehoved + selve kartoteket, og sidehovedet er lagt om til
+     .bly-pagehead/.bly-btn ligesom Projekter og CRM. Knappernes id'er
+     (new-vendor-group-btn/new-user-btn) er uændrede. -->
 <section class="page" id="page-people">
-  <div class="page-head">
+  <div class="bly-pagehead">
     <div>
-      <div class="page-title">Hold & vendors</div>
-      <div class="page-sub">Interne medarbejdere kan have login. Vendor-undergrupper bruges til booking og kapacitet.</div>
+      <h2>Hold &amp; vendors <span id="people-count-pill">0</span></h2>
+      <div class="sub">Interne medarbejdere kan have login. Vendor-undergrupper bruges til booking og kapacitet.</div>
     </div>
-    <div class="realadmin-only" style="display:flex;gap:6px">
-      <button class="btn" id="new-vendor-group-btn">+ Vendor-gruppe</button>
-      <button class="btn primary" id="new-user-btn">+ Medarbejder</button>
+    <div class="realadmin-only" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="bly-btn outline" id="new-vendor-group-btn" type="button">+ Vendor-gruppe</button>
+      <button class="bly-btn" id="new-user-btn" type="button">+ Medarbejder</button>
     </div>
-  </div>
-  <div class="settings-card realadmin-only">
-    <div class="sc-logo" id="settings-logo-preview">🪵</div>
-    <div class="sc-fields">
-      <div><label>Virksomhedsnavn</label><input type="text" id="settings-company-name" placeholder="Gulv Master Enterprise ApS"></div>
-      <div><label>Logo</label><input type="file" id="settings-logo-file" accept="image/*"></div>
-      <div class="sc-fields-grid">
-        <div><label>Adresse</label><input type="text" id="settings-company-address" placeholder="Vejnavn 1, 1234 By"></div>
-        <div><label>CVR</label><input type="text" id="settings-company-cvr" placeholder="12345678"></div>
-        <div><label>Telefon</label><input type="text" id="settings-company-phone" placeholder="12 34 56 78"></div>
-        <div><label>E-mail</label><input type="email" id="settings-company-email" placeholder="info@gulvmaster.dk"></div>
-        <div><label>Bank reg.nr.</label><input type="text" id="settings-company-bank-reg" placeholder="1234"></div>
-        <div><label>Bank kontonr.</label><input type="text" id="settings-company-bank-account" placeholder="1234567890"></div>
-        <div><label>IBAN <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><input type="text" id="settings-company-iban" placeholder="DK5000400440116243"></div>
-        <div><label>SWIFT/BIC <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><input type="text" id="settings-company-swift" placeholder="NDEADKKK"></div>
-      </div>
-      <div><label>Footer-note på fakturaer <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit — vises nederst på PDF'en</span></label><textarea id="settings-invoice-footer" rows="2" style="width:100%;resize:vertical" placeholder="Fx betalingsbetingelser eller en tak-hilsen"></textarea></div>
-      <div class="sc-fields-grid">
-        <div><label>Standardtekst øverst på nye tilbud <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit — udfyldes automatisk, kan altid rettes pr. tilbud</span></label><textarea id="settings-quote-top-note" rows="2" style="width:100%;resize:vertical"></textarea></div>
-        <div><label>Standard betingelser nederst på nye tilbud <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><textarea id="settings-quote-bottom-note" rows="2" style="width:100%;resize:vertical"></textarea></div>
-      </div>
-      <button class="btn primary small" id="settings-save-btn">Gem virksomhedsprofil</button>
-    </div>
-  </div>
-  <div class="settings-card realadmin-only" id="panel-roles-card">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-      <div>
-        <div style="font-weight:700;font-size:15px">🔐 Roller &amp; adgang</div>
-        <div class="hint" style="margin:2px 0 0">Bestem hvilke sider i DETTE admin-panel en rolle (fx "Kontor", "Mester") skal kunne se — krydses af pr. rolle. Tildel rollen til en medarbejder under "Panel-rolle" på deres profil (✏ Rediger). Medarbejder-appen (til alle med login) berøres ikke af dette.</div>
-      </div>
-      <button class="btn primary small" id="new-panel-role-btn">+ Ny rolle</button>
-    </div>
-    <div id="panel-roles-list" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"></div>
-  </div>
-  <!-- AKKORDLISTE (sep. 2026, Martins ønske #3): fælles prisliste for akkord-poster, fx
-       til gulvslibere — hver medarbejder med "Akkord" som løntype vælger blandt DISSE
-       poster (i stedet for timer × timeløn) når der registreres tid på en sag. -->
-  <div class="settings-card realadmin-only" id="akkord-items-card">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-      <div>
-        <div style="font-weight:700;font-size:15px">🧱 Akkordliste</div>
-        <div class="hint" style="margin:2px 0 0">Fælles prisliste for akkord-arbejde (fx gulvslibning pr. m² eller pr. rum). Medarbejdere med løntype "Akkord" vælger blandt disse poster ved tidsregistrering, i stedet for timeløn.</div>
-      </div>
-    </div>
-    <div id="akkord-items-list" style="margin-top:12px;display:flex;flex-direction:column;gap:6px"></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
-      <input id="akkord-new-name" class="input" placeholder="Fx 'Gulvslibning, egetræ pr. m²'" style="flex:1;min-width:220px">
-      <input id="akkord-new-rate" class="input" type="number" min="0" step="0.01" placeholder="Pris (kr)" style="width:120px">
-      <button class="btn small primary" id="akkord-new-add-btn" type="button">+ Tilføj post</button>
-    </div>
-  </div>
-  <!-- CLOSE CRM-IMPORT (sep. 2026): éngangsimport af Martins historiske leads/
-       opportunities fra Close CRM, uploadet direkte af Martin selv — se
-       POST /api/admin/import/close. Trygt at genkøre (close_id-idempotens). -->
-  <div class="settings-card realadmin-only" id="close-import-card">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-      <div>
-        <div style="font-weight:700;font-size:15px">📥 Close CRM-import</div>
-        <div class="hint" style="margin:2px 0 0">Importér Martins historiske leads og opportunities fra Close CRM (CSV-eksport) ind i CRM-modulet ovenfor. Trygt at trykke flere gange — allerede importerede rækker springes automatisk over.</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
-      <div><label style="display:block;font-size:11px;color:var(--bly-sub);margin-bottom:4px">Leads CSV</label><input type="file" id="close-import-leads-file" accept=".csv"></div>
-      <div><label style="display:block;font-size:11px;color:var(--bly-sub);margin-bottom:4px">Opportunities CSV</label><input type="file" id="close-import-opps-file" accept=".csv"></div>
-      <button class="btn primary small" id="close-import-run-btn" type="button">Importér fra Close</button>
-    </div>
-    <div id="close-import-result" style="margin-top:14px"></div>
   </div>
   <div class="people" id="people-grid"></div>
 </section>
@@ -5073,8 +5392,29 @@ document.getElementById('app').style.display='block';
 // Roller & adgang (sep. 2026) — det fælles katalog af side-nøgler, matcher
 // PANEL_PAGES i server.js 1:1 (holdes i sync manuelt, samme mønster som resten
 // af appens delte konstanter mellem frontend/backend).
+// 'gmail-settings' står bevidst stadig på listen, selv om Gmail ikke længere
+// er en selvstændig SIDE: nøglen findes uændret i server.js' PANEL_PAGES og er
+// dét, panelAccess('gmail-settings') håndhæver på alle /api/gmail/*-ruter. Den
+// styrer nu Gmail-FANEN inde på Indstillinger (se applySetTabsVisibility).
 var PANEL_PAGE_KEYS_CLIENT=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','templates','email-templates','people','library','logs','notif-settings','gmail-settings','tasklist','requests','completed','timer'];
 function meHasPanelPage(key){return me.role==='admin'||(me.panel_pages||[]).indexOf(key)>-1;}
+// Indstillinger-siden rummer nu BÅDE notifikations-/synk-/profil-afsnittene og
+// Gmail-integrationen, som før havde sin egen side. En bruger der KUN havde
+// 'gmail-settings' (fx via LEGACY_FINANCE_BUNDLE i server.js) kunne tidligere
+// nå #gmail-settings uden at have 'notif-settings' — derfor åbner siden for
+// begge nøgler, og de enkelte faner gates hver for sig.
+function meHasSettingsPage(){return meHasPanelPage('notif-settings')||meHasPanelPage('gmail-settings');}
+// SAMME MØNSTER, to nye sammenlægninger (sep. 2026):
+//   • Opgaveliste rummer nu både de åbne opgaver ('tasklist') og fanen
+//     "Færdige opgaver" ('completed'), der før var sin egen side.
+//   • Skabeloner rummer nu både opgave-skabelonerne ('templates') og fanen
+//     "Mail-skabeloner" ('email-templates'), der før var sin egen (skjulte) side.
+// Begge nøgler findes uændret i server.js' PANEL_PAGES, og 'email-templates' er
+// dét panelAccess() håndhæver på alle mail-skabelon-ruterne. En bruger der KUN
+// har den ene nøgle skal derfor stadig kunne komme ind på siden — og ser så kun
+// sin egen fane (se applyTlTabsVisibility/applyTplTabsVisibility).
+function meHasTasklistPage(){return meHasPanelPage('tasklist')||meHasPanelPage('completed');}
+function meHasTemplatesPage(){return meHasPanelPage('templates')||meHasPanelPage('email-templates');}
 function panelItemKey(el){var k=el.dataset.page;if(k==='crmp')k=el.dataset.crmpPipelineType==='lead'?'crmp_leads':'crmp_sales';if(k==='crmp-tasks')k='crmp_tasks';return k;}
 // Skjuler/viser hver enkelt sidebar-genvej efter den indloggede brugers samlede
 // panel_pages (rolle + evt. is_finance_admin-bundt + personlige undtagelser,
@@ -5086,7 +5426,13 @@ function applyPanelPageVisibility(){
   document.querySelectorAll('.sidebar-nav [data-page], .sidebar-bottom [data-page]').forEach(function(el){
     var k=panelItemKey(el);
     if(PANEL_PAGE_KEYS_CLIENT.indexOf(k)===-1)return;
-    el.classList.toggle('hidden',!meHasPanelPage(k));
+    // De tre sammenlagte sider vises hvis brugeren har MINDST ÉN af de nøgler
+    // siden nu dækker — ellers ville fx en bruger med kun 'completed' eller kun
+    // 'email-templates' miste adgangen helt ved sammenlægningen.
+    var visible=k==='notif-settings'?meHasSettingsPage():
+                k==='tasklist'?meHasTasklistPage():
+                k==='templates'?meHasTemplatesPage():meHasPanelPage(k);
+    el.classList.toggle('hidden',!visible);
   });
   document.querySelectorAll('.tab-navdrop').forEach(function(grp){
     var items=grp.querySelectorAll('[data-page]');
@@ -8412,6 +8758,84 @@ async function blockRejectTimeOff(id){
   else if(r)toast(r.error||'Fejl','❌');
 }
 
+// ══════════════════════════════════════════════════════════════
+// OPGAVELISTE-SIDENS TO FANER — "📋 Opgaveliste" (åbne) og "✅ Færdige
+// opgaver". Færdige opgaver var før sin egen side (#completed); de to
+// visninger er nu faner på #tasklist, med #tasklist/completed som
+// dybe-link-adresse til den anden fane.
+//
+// Mekanikken er 1:1 kopieret fra Indstillinger-siden (SET_TABS/switchSetTab):
+// samme .bly-segtabs-stribe, samme skipHash-konvention, samme
+// "fanen gates på sin egen panel-nøgle"-opsætning. Der er bevidst IKKE lavet
+// et nyt fane-system.
+// ══════════════════════════════════════════════════════════════
+var TL_TABS=['open','completed'];
+var tasklistTabsBound=false;
+function tlTabBtn(name){return document.querySelector('#tl-tabs [data-tltab="'+name+'"]');}
+// Hvilken af de to faner der vises lige nu — brugt af loadAll() til kun at
+// genrendere den liste man rent faktisk kigger på.
+function tlActiveTab(){
+  var el=document.querySelector('#tl-tabs .bly-segtab.active');
+  return el?el.dataset.tltab:'open';
+}
+function tlTabVisible(name){
+  var btn=tlTabBtn(name);
+  if(!btn)return false;
+  var need=btn.dataset.tltabPage;
+  return !need||meHasPanelPage(need);
+}
+function applyTlTabsVisibility(){
+  TL_TABS.forEach(function(n){
+    var btn=tlTabBtn(n);
+    if(btn)btn.classList.toggle('hidden',!tlTabVisible(n));
+  });
+  // Er der kun én synlig fane, er selve fanestriben ren støj — skjul den, så
+  // siden ser ud præcis som før sammenlægningen for de brugere der kun har
+  // adgang til den ene af de to lister.
+  var strip=document.getElementById('tl-tabs');
+  if(strip)strip.classList.toggle('hidden',TL_TABS.filter(tlTabVisible).length<2);
+}
+// skipHash: sat når fanen skiftes AF hash-routeren selv (eller af den
+// automatiske "første synlige fane"-korrektion), så vi ikke skriver ny
+// browserhistorik oveni en navigation der allerede er sket — samme hensyn som
+// navPushHash()/switchPage(skipHash) andre steder i filen.
+function switchTlTab(name,skipHash){
+  if(TL_TABS.indexOf(name)===-1)name='open';
+  if(!tlTabVisible(name)){
+    var fallback=TL_TABS.filter(tlTabVisible)[0];
+    if(!fallback)return;
+    name=fallback;
+  }
+  document.querySelectorAll('#tl-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.tltab===name);});
+  TL_TABS.forEach(function(n){
+    var el=document.getElementById('tltab-'+n);
+    if(el)el.classList.toggle('active',n===name);
+  });
+  // "+ Tilføj job" hører kun til de åbne opgaver — den ville ikke give mening
+  // over listen af allerede afsluttede opgaver.
+  var addBtn=document.getElementById('tasklist-add-btn');
+  if(addBtn)addBtn.classList.toggle('hidden',name!=='open');
+  if(!skipHash)navPushHash(name==='open'?'tasklist':'tasklist/completed');
+  // Fanerne tegner kun deres egen liste, og først når man står på dem.
+  if(name==='open'){renderTaskList();renderTasklistRequests();}
+  if(name==='completed')renderCompleted();
+}
+// Kaldes af switchPage() hver gang Opgaveliste åbnes.
+function initTasklistPage(){
+  if(!tasklistTabsBound){
+    tasklistTabsBound=true;
+    document.querySelectorAll('#tl-tabs .bly-segtab').forEach(function(b){
+      b.addEventListener('click',function(){switchTlTab(b.dataset.tltab);});
+    });
+  }
+  applyTlTabsVisibility();
+  // Hash'en er sandheden om hvilken fane man skal lande på: kommer man ind
+  // UDEFRA (hash'ens første segment er noget andet end 'tasklist'), starter vi
+  // altid på de åbne opgaver; kommer man via en #tasklist/<fane>-adresse (fx
+  // tilbage-knappen eller et bogmærke), respekteres den fane.
+  switchTlTab(hashSubTab('tasklist','open'),true);
+}
+
 // FÆRDIGE OPGAVER (fakturering)
 function renderCompleted(){
   var body=document.getElementById('completed-body');if(!body)return;
@@ -8704,10 +9128,71 @@ async function saveDocTplAssignment(evt,val){
 }
 
 // ══════════════════════════════════════════════════════════════
-// SAMLET SKABELON-CENTER (✉️ Skabeloner i topmenuen) — ét sted for ALLE
-// mail-skabeloner i appen. Fire faner: Automatiske mails (herunder),
-// Planlægningsmail/Tilbud & faktura (genbruger listerne/modalerne ovenfor,
-// bare flyttet hertil) og Andre skabeloner (herunder).
+// SKABELON-SIDENS TO YDRE FANER — "📋 Opgave-skabeloner" (opgave-skabeloner,
+// Fag & farver, Push/SMS) og "✉️ Mail-skabeloner" (det samlede mail-
+// skabelon-center, der før lå på sin egen side #email-templates).
+//
+// Nøjagtig samme mekanik som Indstillinger (SET_TABS/switchSetTab) og
+// Opgaveliste (TL_TABS/switchTlTab): .bly-segtabs-stribe, skipHash-konvention
+// og en fane pr. panel-nøgle. Mail-fanens EGNE fem underfaner (#eml-tabs)
+// er urørte — de ligger nu bare inde i den ydre fane.
+// ══════════════════════════════════════════════════════════════
+var TPL_TABS=['tasks','mail'];
+var templatesTabsBound=false;
+function tplTabBtn(name){return document.querySelector('#tpl-tabs [data-tpltab="'+name+'"]');}
+function tplTabVisible(name){
+  var btn=tplTabBtn(name);
+  if(!btn)return false;
+  var need=btn.dataset.tpltabPage;
+  return !need||meHasPanelPage(need);
+}
+function applyTplTabsVisibility(){
+  TPL_TABS.forEach(function(n){
+    var btn=tplTabBtn(n);
+    if(btn)btn.classList.toggle('hidden',!tplTabVisible(n));
+  });
+  var strip=document.getElementById('tpl-tabs');
+  if(strip)strip.classList.toggle('hidden',TPL_TABS.filter(tplTabVisible).length<2);
+}
+function switchTplTab(name,skipHash){
+  if(TPL_TABS.indexOf(name)===-1)name='tasks';
+  if(!tplTabVisible(name)){
+    var fallback=TPL_TABS.filter(tplTabVisible)[0];
+    if(!fallback)return;
+    name=fallback;
+  }
+  document.querySelectorAll('#tpl-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.tpltab===name);});
+  TPL_TABS.forEach(function(n){
+    var el=document.getElementById('tpltab-'+n);
+    if(el)el.classList.toggle('active',n===name);
+  });
+  if(!skipHash)navPushHash(name==='tasks'?'templates':'templates/mail');
+  // Hver fane henter kun sine egne data, og først når man står på den — præcis
+  // som switchPage() gjorde det for de to gamle, adskilte sider.
+  if(name==='tasks')loadTemplates();
+  if(name==='mail')initEmailTemplatesModule();
+}
+// Kaldes af switchPage() hver gang Skabeloner åbnes.
+function initTemplatesPage(){
+  if(!templatesTabsBound){
+    templatesTabsBound=true;
+    document.querySelectorAll('#tpl-tabs .bly-segtab').forEach(function(b){
+      b.addEventListener('click',function(){switchTplTab(b.dataset.tpltab);});
+    });
+  }
+  applyTplTabsVisibility();
+  // Som på Opgaveliste: hash'en bestemmer fanen når man kommer ind via en
+  // #templates/<fane>-adresse (bogmærke, tilbage-knappen, #email-templates-
+  // aliasset); ellers lander man på opgave-skabelonerne.
+  switchTplTab(hashSubTab('templates','tasks'),true);
+}
+
+// ══════════════════════════════════════════════════════════════
+// SAMLET MAIL-SKABELON-CENTER (fanen "✉️ Mail-skabeloner" på Skabeloner-siden)
+// — ét sted for ALLE mail-skabeloner i appen. Fem underfaner: Automatiske
+// mails (herunder), Planlægningsmail/Tilbud & faktura (genbruger listerne/
+// modalerne ovenfor, bare flyttet hertil), Andre skabeloner (herunder) og
+// Automatisering.
 // ══════════════════════════════════════════════════════════════
 var emailTemplatesModuleInitialized=false;
 var emlActiveTab='auto';
@@ -9033,7 +9518,86 @@ function useTemplate(id){
 }
 
 // ══════════════════════════════════════════════════════════════
-// NOTIFIKATIONSINDSTILLINGER
+// INDSTILLINGER (#notif-settings) — den samlede indstillings-side.
+// ──────────────────────────────────────────────────────────────
+// Faneskiftet er 1:1 samme mekanisme som Projekter-sidens switchProjTab()
+// (.bly-segtabs/.bly-segtab + en .settabpage pr. fane) — der er bevidst IKKE
+// opfundet et nyt fane-system til denne side.
+//
+// Hver fane kan være utilgængelig for den indloggede bruger, af to grunde:
+//   • .realadmin-only  → kun role==='admin' (virksomhedsprofil, roller,
+//     akkordliste, Close-import) — sættes af applyRealAdminOnlyVisibility().
+//   • data-settab-page → kræver en bestemt panel-nøgle; Gmail-fanen kræver
+//     'gmail-settings' (nøjagtig den nøgle server.js kræver på /api/gmail/*),
+//     synk/notifikations-fanerne kræver 'notif-settings'.
+// applySetTabsVisibility() skjuler de faner brugeren ikke må se, og sørger
+// for at den aktive fane altid er en synlig fane — ellers ville fx en ikke-
+// admin lande på en tom "Virksomhedsprofil"-fane.
+// ══════════════════════════════════════════════════════════════
+var SET_TABS=['company','access','akkord','gmail','sync','notif'];
+var settingsPageInitialized=false;
+function setTabBtn(name){return document.querySelector('#set-tabs [data-settab="'+name+'"]');}
+function setTabVisible(name){
+  var btn=setTabBtn(name);
+  if(!btn)return false;
+  if(btn.classList.contains('realadmin-only')&&me.role!=='admin')return false;
+  var need=btn.dataset.settabPage;
+  if(need&&!meHasPanelPage(need))return false;
+  return true;
+}
+function applySetTabsVisibility(){
+  SET_TABS.forEach(function(n){
+    var btn=setTabBtn(n);
+    if(btn)btn.classList.toggle('hidden',!setTabVisible(n));
+  });
+  var active=document.querySelector('#set-tabs .bly-segtab.active');
+  var activeName=active?active.dataset.settab:null;
+  if(!activeName||!setTabVisible(activeName)){
+    var first=SET_TABS.filter(setTabVisible)[0];
+    if(first)switchSetTab(first,true);
+  }
+}
+// skipHash: sat når fanen skiftes AF hash-routeren selv (eller af den
+// automatiske "første synlige fane"-korrektion), så vi ikke skriver ny
+// browserhistorik oveni en navigation der allerede er sket — samme hensyn som
+// navPushHash()/switchPage(skipHash) andre steder i filen.
+function switchSetTab(name,skipHash){
+  if(SET_TABS.indexOf(name)===-1)name='company';
+  if(!setTabVisible(name)){
+    var fallback=SET_TABS.filter(setTabVisible)[0];
+    if(!fallback)return;
+    name=fallback;
+  }
+  document.querySelectorAll('#set-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.settab===name);});
+  SET_TABS.forEach(function(n){
+    var el=document.getElementById('settab-'+n);
+    if(el)el.classList.toggle('active',n===name);
+  });
+  if(!skipHash)navPushHash('notif-settings/'+name);
+  // Fanerne henter kun deres egne data når man rent faktisk står på dem.
+  if(name==='notif')loadNotificationSettings();
+  if(name==='gmail')initGmailSettingsModule();
+}
+// Kaldes af switchPage() hver gang Indstillinger åbnes.
+function initSettingsPage(){
+  applySetTabsVisibility();
+  if(!settingsPageInitialized){
+    settingsPageInitialized=true;
+    document.querySelectorAll('#set-tabs .bly-segtab').forEach(function(b){
+      b.addEventListener('click',function(){switchSetTab(b.dataset.settab);});
+    });
+  }
+  var active=document.querySelector('#set-tabs .bly-segtab.active');
+  var activeName=active?active.dataset.settab:null;
+  // Genindlæs data for den fane man lander på (fx notifikationsreglerne), så
+  // et sidebesøg altid viser friske tal — præcis som før sammenlægningen, hvor
+  // switchPage kaldte loadNotificationSettings()/initGmailSettingsModule().
+  if(activeName==='notif')loadNotificationSettings();
+  if(activeName==='gmail')initGmailSettingsModule();
+}
+
+// ══════════════════════════════════════════════════════════════
+// NOTIFIKATIONSREGLER
 // ══════════════════════════════════════════════════════════════
 async function loadNotificationSettings(){
   var rules=await api('/api/notification-settings');
@@ -9045,14 +9609,14 @@ async function loadNotificationSettings(){
       '<div class="notif-toggle-group">'+
         '<label><input type="checkbox" class="nr-inapp" '+(r.inapp_enabled?'checked':'')+'> I appen</label>'+
         '<label><input type="checkbox" class="nr-email" '+(r.email_enabled?'checked':'')+'> E-mail til</label>'+
-        '<input type="email" class="input nr-email-to" style="width:170px" placeholder="admin@gulvmaster.dk" value="'+esc(r.email_to||'')+'">'+
-        '<button class="btn small primary" data-action="save-notif-rule">Gem</button>'+
+        '<input type="email" class="bly-input nr-email-to" style="width:190px" placeholder="admin@gulvmaster.dk" value="'+esc(r.email_to||'')+'">'+
+        '<button class="bly-btn small" data-action="save-notif-rule">Gem</button>'+
       '</div></div>';
   }).join('');
 }
 
 // ══════════════════════════════════════════════════════════════
-// GMAIL-INDSTILLINGER (#page-gmail-settings) — forbind/afbryd/synk-nu for den
+// GMAIL-INDSTILLINGER (Gmail-fanen på #notif-settings) — forbind/afbryd/synk-nu for den
 // ÉNE fælles firma-postkasse. Selve OAuth-udvekslingen foregår på serveren
 // (se GET /api/gmail/auth-url + /api/gmail/oauth-callback i server.js);
 // denne side viser bare status og starter/stopper forbindelsen.
@@ -9067,9 +9631,9 @@ function initGmailSettingsModule(){
 async function gmailLoadStatus(){
   var body=document.getElementById('gmail-status-body');
   var s=await api('/api/gmail/status');
-  if(!s){body.innerHTML='<div class="crmpx-empty">Kunne ikke hente status.</div>';return;}
+  if(!s){body.innerHTML='<div class="set-empty">Kunne ikke hente status.</div>';return;}
   if(!s.configured){
-    body.innerHTML='<div class="hint" style="margin:0">⚠️ Ikke sat op endnu — <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code> mangler som miljøvariabler på serveren. Se guiden nedenfor.</div>';
+    body.innerHTML='<div class="set-warn">⚠️ Ikke sat op endnu — <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code> mangler som miljøvariabler på serveren. Se guiden nedenfor.</div>';
     return;
   }
   if(!s.connected){
@@ -9082,7 +9646,7 @@ async function gmailLoadStatus(){
   body.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
     +'<span style="font-size:20px">✅</span><div><div style="font-weight:800;color:var(--bly-ink)">Forbundet som '+esc(s.email||'?')+'</div>'
     +'<div class="sub" style="font-size:11.5px">Forbundet '+esc(fmtDaDate(s.connected_at))+' · Sidst synkroniseret: '+esc(lastSync)+'</div></div></div>'
-    +(s.last_sync_error?'<div class="hint" style="margin-bottom:12px;border-color:#FCA5A5;background:#FEF2F2">⚠️ Seneste synk fejlede: '+esc(s.last_sync_error)+'</div>':'')
+    +(s.last_sync_error?'<div class="set-warn" style="margin-bottom:12px;border-color:#FCA5A5;background:#FEF2F2;color:#991B1B">⚠️ Seneste synk fejlede: '+esc(s.last_sync_error)+'</div>':'')
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
     +'<button class="bly-btn outline" type="button" id="gmail-sync-btn">🔄 Synk nu</button>'
     +'<button class="bly-btn danger" type="button" id="gmail-disconnect-btn">Afbryd forbindelse</button>'
@@ -11390,11 +11954,11 @@ async function loadPanelRolesData(){
 }
 function renderPanelRolesList(){
   var el=document.getElementById('panel-roles-list');if(!el)return;
-  if(!panelRoles.length){el.innerHTML='<p style="color:var(--muted);margin:0">Ingen roller endnu — opret fx "Kontor" eller "Mester" med + Ny rolle.</p>';return;}
+  if(!panelRoles.length){el.innerHTML='<p class="set-empty">Ingen roller endnu — opret fx "Kontor" eller "Mester" med + Ny rolle.</p>';return;}
   el.innerHTML=panelRoles.map(function(rl){
     var n=(rl.pages||[]).length;
-    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border2);border-radius:8px;padding:10px 12px">'+
-      '<div><strong>'+esc(rl.name)+'</strong><div class="hint" style="margin-top:2px">'+n+' side'+(n===1?'':'r')+' valgt</div></div>'+
+    return '<div class="set-row">'+
+      '<div class="set-row-main"><div class="set-row-title">'+esc(rl.name)+'</div><div class="set-row-sub">'+n+' side'+(n===1?'':'r')+' valgt</div></div>'+
       '<button class="btn small" data-action="edit-panel-role" data-role-id="'+rl.id+'">✏ Rediger</button>'+
       '</div>';
   }).join('');
@@ -11452,12 +12016,12 @@ async function loadAkkordItemsData(){
 }
 function renderAkkordItemsList(){
   var el=document.getElementById('akkord-items-list');if(!el)return;
-  if(!akkordItemsAll.length){el.innerHTML='<p style="color:var(--muted);margin:0">Ingen akkord-poster endnu — tilføj den første nedenfor.</p>';return;}
+  if(!akkordItemsAll.length){el.innerHTML='<p class="set-empty">Ingen akkord-poster endnu — tilføj den første nedenfor.</p>';return;}
   el.innerHTML=akkordItemsAll.map(function(it){
     var inactive=!it.active;
-    return '<div style="display:flex;align-items:center;gap:10px;border:1px solid var(--border2);border-radius:8px;padding:8px 12px'+(inactive?';opacity:.5':'')+'" data-akkord-id="'+it.id+'">'
-      +'<div style="flex:1"><strong>'+esc(it.name)+'</strong>'+(inactive?' <span class="hint">(deaktiveret)</span>':'')+'</div>'
-      +'<div style="font-weight:700;white-space:nowrap">'+krFmt(Number(it.rate))+'</div>'
+    return '<div class="set-row"'+(inactive?' style="opacity:.55"':'')+' data-akkord-id="'+it.id+'">'
+      +'<div class="set-row-main"><div class="set-row-title">'+esc(it.name)+(inactive?' <span class="set-row-sub" style="display:inline;margin:0">(deaktiveret)</span>':'')+'</div></div>'
+      +'<div class="set-row-value">'+krFmt(Number(it.rate))+'</div>'
       +'<button class="btn small" data-action="akkord-edit" data-id="'+it.id+'">✏ Rediger</button>'
       +'<button class="btn small" data-action="akkord-toggle" data-id="'+it.id+'">'+(inactive?'Aktivér':'Deaktivér')+'</button>'
       +'<button class="btn small danger" data-action="akkord-delete" data-id="'+it.id+'">🗑</button>'
@@ -11554,7 +12118,7 @@ function renderCloseImportResult(r){
     ['Kontakter genbrugt (fandtes i forvejen)',r.contacts_matched_existing]
   ];
   var html='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:10px">'
-    +tiles.map(function(x){return '<div style="border:1px solid var(--border2);border-radius:8px;padding:8px 12px"><div style="font-size:11px;color:var(--bly-sub)">'+esc(x[0])+'</div><div style="font-weight:700;font-size:16px">'+(x[1]==null?0:x[1])+'</div></div>';}).join('')
+    +tiles.map(function(x){return '<div style="border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:10px 13px"><div style="font-size:11px;color:var(--bly-sub)">'+esc(x[0])+'</div><div style="font-weight:800;font-size:16px;color:var(--bly-ink)">'+(x[1]==null?0:x[1])+'</div></div>';}).join('')
     +'</div>';
   function fallbackBlock(title,map){
     var keys=Object.keys(map||{});
@@ -11627,7 +12191,13 @@ function renderPeople(){
     html+='<article class="vendor-card"><div class="vendor-head"><div class="vendor-title"><span class="vicon">'+esc(g.slice(0,1))+'</span>'+esc(g)+'</div>'+(isRealAdmin?'<button class="btn small primary" data-action="add-subgroup" data-group="'+esc(g)+'">+ Undergruppe</button>':'')+'</div>'+
       '<div class="vendor-subgrid">'+vendors[g].map(function(u){return '<div class="sub-team">'+avatarOrInitials(u,28)+'<div style="flex:1"><strong>'+esc(u.name)+'</strong><div class="sub-team-meta">'+esc(u.trade||'Fag ikke sat')+' · '+(+u.weekly_capacity||5)+' d/uge'+(u.can_login?' · login':'')+'</div></div>'+(isRealAdmin?'<button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏</button>':'')+'<button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖</button></div>';}).join('')+'</div></article>';
   });
-  document.getElementById('people-grid').innerHTML=html||'<p style="color:var(--muted)">Ingen aktive hold.</p>';
+  document.getElementById('people-grid').innerHTML=html||'<p class="set-empty">Ingen aktive hold.</p>';
+  // Lille tælle-pille i sidehovedet, samme mønster som .crmp-col-count i pipelinen.
+  var pill=document.getElementById('people-count-pill');
+  if(pill){
+    var vendorCount=Object.keys(vendors).reduce(function(a,g){return a+vendors[g].length;},0);
+    pill.textContent=intern.length+' medarbejdere · '+vendorCount+' vendors';
+  }
 }
 
 // KUNDEHISTORIK — samler alle jobs/bookinger/noter for én kunde (identificeret
@@ -11958,12 +12528,14 @@ async function loadAll(){
   try{if(activePageId==='page-capacity')renderCapacity();}catch(e){console.error('Cap fejl',e);}
   try{if(activePageId==='page-people')renderPeople();}catch(e){console.error('People fejl',e);}
   try{if(activePageId==='page-availability')renderAvailability();}catch(e){console.error('Ledighed fejl',e);}
-  try{if(activePageId==='page-tasklist')renderTaskList();}catch(e){console.error('Opgaveliste fejl',e);}
+  // Opgaveliste-siden har nu to faner (åbne/færdige) — genrender kun den man
+  // står på, samme "kun den aktive visning"-princip som resten af blokken her.
+  try{if(activePageId==='page-tasklist'&&tlActiveTab()==='open')renderTaskList();}catch(e){console.error('Opgaveliste fejl',e);}
   if(document.getElementById('page-logs').classList.contains('active'))loadLogs();
   if(document.getElementById('page-library').classList.contains('active'))loadLibrary();
   if(document.getElementById('page-timeline').classList.contains('active'))renderTimeline();
   refreshRequestsBadge();
-  if(document.getElementById('page-completed').classList.contains('active'))renderCompleted();
+  if(activePageId==='page-tasklist'&&tlActiveTab()==='completed')renderCompleted();
   if(document.getElementById('page-requests').classList.contains('active'))renderRequests();
 }
 function renderStats(d){
@@ -11995,7 +12567,16 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 // kun var en PRIVAT funktion inde i bind() (fanget med en rigtig browser-test,
 // ikke kun en syntakstjek — samme disciplin som ved "kan ikke åbne en sag"-
 // rettelsen). Adfærden er uændret, kun hvor funktionen er defineret.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','completed','people','library','logs','timer','templates','email-templates','notif-settings','gmail-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks'];
+// 'gmail-settings' er FJERNET herfra: den selvstændige side findes ikke
+// længere (indholdet er en fane på #notif-settings). Gamle bogmærker og
+// serverens OAuth-callback-redirect fanges i stedet af alias-linjen øverst i
+// switchPage(), som sender dem videre til #notif-settings/gmail.
+// 'completed' og 'email-templates' er fjernet af nøjagtig samme grund (sep.
+// 2026): "Færdige opgaver" er nu fanen #tasklist/completed, og
+// "Mail-skabeloner" er nu fanen #templates/mail. Begge gamle hash-adresser
+// fanges af alias-linjerne øverst i switchPage() (klik-navigation) og af
+// oversættelses-linjerne i "genskab siden ved genindlæsning"-blokken.
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','timer','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks'];
 // Roller & adgang (sep. 2026) — bruges af switchPage() nedenfor til at nægte
 // navigation til en side brugeren ikke har krydset af (server-siden håndhæver
 // det samme via panelAccess-middlewaren i server.js — dette er kun UI-lag).
@@ -12008,7 +12589,11 @@ var PANEL_PAGE_ORDER=['plan','capacity','availability','timeline','projects','cu
 function firstAllowedPage(excludePage){
   for(var i=0;i<PANEL_PAGE_ORDER.length;i++){
     var k=PANEL_PAGE_ORDER[i];
-    var target=(k==='crmp_leads'||k==='crmp_sales')?'crmp':(k==='crmp_tasks'?'crmp-tasks':k);
+    // 'gmail-settings', 'completed' og 'email-templates' beholdes i rækkefølgen
+    // (nøglerne findes alle stadig server-side og håndhæves af panelAccess),
+    // men de peger nu på den side hvor deres fane bor.
+    var MERGED_TARGET={'gmail-settings':'notif-settings','completed':'tasklist','email-templates':'templates'};
+    var target=(k==='crmp_leads'||k==='crmp_sales')?'crmp':(k==='crmp_tasks'?'crmp-tasks':(MERGED_TARGET[k]||k));
     if(target===excludePage)continue;
     if(meHasPanelPage(k))return target;
   }
@@ -12064,11 +12649,32 @@ function navPushHash(target){
   if(location.hash.slice(1)===target)return;
   history.pushState(null,'','#'+target);
 }
+// Læser underfane-segmentet ud af adresselinjen for en side der bruger
+// #side/<underfane>-formen (#tasklist/completed, #templates/mail).
+// Bruges af de to siders init*Page(): står adresselinjen på en ANDEN side,
+// er man på vej ind udefra og skal lande på sidens standardfane; står den
+// allerede på siden (tilbage-knappen, et bogmærke, et alias), er dens eget
+// andet segment sandheden om hvilken fane der skal vises.
+function hashSubTab(page,dflt){
+  var p=location.hash.slice(1).split('/');
+  return p[0]===page&&p[1]?p[1]:dflt;
+}
 function switchPage(page,skipHash){
   // Gantt er ikke længere sin egen side — den bor nu som en fane under Projekter.
   // Gamle links/bogmærker til #gantt sendes videre dertil i stedet for at falde
   // tilbage til forsiden.
   if(page==='gantt'){switchPage('projects',skipHash);setTimeout(function(){switchProjTab('gantt');},0);return;}
+  // Gmail er heller ikke længere sin egen side — den er en fane på Indstillinger.
+  // Gamle bogmærker/links til #gmail-settings (og serverens OAuth-callback-
+  // redirect) sendes derfor videre hertil og lander direkte på Gmail-fanen,
+  // præcis samme alias-mønster som #gantt ovenfor.
+  if(page==='gmail-settings'){switchPage('notif-settings',skipHash);setTimeout(function(){switchSetTab('gmail');},0);return;}
+  // "Færdige opgaver" er ikke længere sin egen side — den er en fane på
+  // Opgaveliste. Gamle bogmærker/links til #completed sendes videre hertil og
+  // lander direkte på den fane, samme alias-mønster som #gmail-settings ovenfor.
+  if(page==='completed'){switchPage('tasklist',skipHash);setTimeout(function(){switchTlTab('completed');},0);return;}
+  // Det samme for "Mail-skabeloner", der nu er en fane på Skabeloner-siden.
+  if(page==='email-templates'){switchPage('templates',skipHash);setTimeout(function(){switchTplTab('mail');},0);return;}
   if(VALID_PAGES.indexOf(page)===-1)page='plan';
   document.querySelectorAll('.tab,.navdrop-item,.navdrop-btn').forEach(function(x){x.classList.remove('active');});
   document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});
@@ -12099,10 +12705,8 @@ function switchPage(page,skipHash){
   if(page==='timer')loadTimerPage();
   if(page==='library')loadLibrary();
   if(page==='availability')renderAvailability();
-  if(page==='tasklist'){renderTaskList();renderTasklistRequests();}
   if(page==='timeline')renderTimeline();
   if(page==='requests')renderRequests();
-  if(page==='completed')renderCompleted();
   // Daglig plan/Kapacitet/Hold genrenderes nu KUN når man rent faktisk skifter til
   // dem (se loadAll() — den genrenderer heller kun den side der er aktiv), så data
   // altid er friske ved fane-skift uden at hver handling i hele appen skal betale
@@ -12111,10 +12715,18 @@ function switchPage(page,skipHash){
   if(page==='people'){try{renderPeople();}catch(e){console.error('People fejl',e);}}
   if(page==='capacity'){try{renderCapacity();}catch(e){console.error('Cap fejl',e);}setTimeout(function(){scrollToWeek(weekKey(new Date()));},100);}
   if(page==='dashboard')loadDashboard();
-  if(page==='templates'){if(guardPage('templates','Skabeloner'))return;loadTemplates();}
-  if(page==='email-templates'){if(guardPage('email-templates','Skabeloner'))return;initEmailTemplatesModule();}
-  if(page==='notif-settings'){if(guardPage('notif-settings','Indstillinger'))return;loadNotificationSettings();}
-  if(page==='gmail-settings'){if(guardPage('gmail-settings','Gmail-integration'))return;initGmailSettingsModule();}
+  // Skabeloner åbnes for BEGGE nøgler ('templates' og 'email-templates'), så
+  // ingen der før kunne nå #email-templates mister adgang ved sammenlægningen.
+  // De to faner gates hver for sig i applyTplTabsVisibility().
+  if(page==='templates'){if(guardPageAny(['templates','email-templates'],'Skabeloner'))return;initTemplatesPage();}
+  // Samme for Opgaveliste ('tasklist' og 'completed'). Bemærk at guarden nu
+  // ligger HER — før guardPage('tasklist') lå nede i blokken efter render-
+  // kaldene, hvilket betød at listen blev tegnet før adgangen blev tjekket.
+  if(page==='tasklist'){if(guardPageAny(['tasklist','completed'],'Opgaveliste'))return;initTasklistPage();}
+  // Indstillinger åbnes for BEGGE nøgler ('notif-settings' og 'gmail-settings'),
+  // så ingen der før kunne nå #gmail-settings mister adgang ved sammenlægningen.
+  // De enkelte faner gates hver for sig i applySetTabsVisibility().
+  if(page==='notif-settings'){if(guardPageAny(['notif-settings','gmail-settings'],'Indstillinger'))return;initSettingsPage();}
   if(page==='finance'){if(guardPage('finance','Økonomi'))return;loadFinance();}
   if(page==='quotes'){if(guardPage('quotes','Tilbud & Faktura'))return;initQuotesModule();}
   if(page==='customers'){if(guardPage('customers','Kunder'))return;initCrmModule();}
@@ -12129,9 +12741,7 @@ function switchPage(page,skipHash){
   if(page==='people'&&guardPage('people','Hold & vendors'))return;
   if(page==='library'&&guardPage('library','Bibliotek'))return;
   if(page==='logs'&&guardPage('logs','Log'))return;
-  if(page==='tasklist'&&guardPage('tasklist','Opgaveliste'))return;
   if(page==='requests'&&guardPage('requests','Godkendelser'))return;
-  if(page==='completed'&&guardPage('completed','Færdige opgaver'))return;
   if(page==='timer'&&guardPage('timer','Timer'))return;
   // initProjectsModule() binder bl.a. "← Tilbage til Projekter"-knappen og alt
   // andet på selve sags-siden (fanerne, "+ Ny opgave", opgave-detalje-modalens
@@ -12163,6 +12773,15 @@ function bind(){
     var parts=location.hash.slice(1).split('/');
     switchPage(parts[0]);
     if(parts[0]==='finance'&&parts[1])switchFintab(parts[1]);
+    // Dyb-link til en af Indstillinger-sidens faner — #notif-settings/gmail osv.
+    // (bl.a. dét serverens Gmail-OAuth-callback sender brugeren tilbage til).
+    if(parts[0]==='notif-settings'&&parts[1])switchSetTab(parts[1],true);
+    // De to sammenlagte sider (Opgaveliste og Skabeloner) læser bevidst også
+    // det TOMME andet segment: går man tilbage fra #tasklist/completed til
+    // #tasklist, SKAL fanen skifte tilbage til de åbne opgaver, ellers ville
+    // tilbage-knappen ændre adresselinjen uden at ændre det man ser.
+    if(parts[0]==='tasklist')switchTlTab(parts[1]||'open',true);
+    if(parts[0]==='templates')switchTplTab(parts[1]||'tasks',true);
     // Dyb-link til et enkelt tilbud/faktura — #quotes/tilbud/123 eller
     // #quotes/faktura/123 — bruges af de rigtige <a href>-links i tabellerne,
     // så højreklik "åbn i ny fane" og ctrl/cmd-klik virker som forventet.
@@ -12198,7 +12817,7 @@ function bind(){
   // (pushState) gav ét klik TO punkter i browserhistorikken — først "#finance",
   // så "#finance/rykkere" — så tilbage-knappen skulle trykkes to gange pr.
   // skridt. Målt med en rigtig klik-test. Derfor springes de over her.
-  var NAVDROP_HAS_OWN_HANDLER='[data-fintab-jump],[data-qztab-jump],[data-projtab-jump],[data-crmp-pipeline-type]';
+  var NAVDROP_HAS_OWN_HANDLER='[data-fintab-jump],[data-qztab-jump],[data-projtab-jump],[data-crmp-pipeline-type],[data-tltab-jump],[data-tpltab-jump]';
   document.querySelectorAll('.navdrop-item[data-page]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();if(b.matches(NAVDROP_HAS_OWN_HANDLER))return;switchPage(b.dataset.page);});});
   // "Min side" (#mypage-subdrop) er nu en almindelig .tab-navdrop-gruppe i
   // sidebaren (som CRM/Tilbud & Faktura/Dagligplanlægning/Økonomi) — dens
@@ -12451,6 +13070,32 @@ function bind(){
       e.preventDefault();
       switchPage('projects');
       setTimeout(function(){switchProjTab(btn.dataset.projtabJump);},0);
+      document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
+    });
+  });
+  // Opgaveliste og Skabeloner er nu sider med hver to faner (sep. 2026) — deres
+  // sidebar-punkter bruger derfor samme dybe-link-mønster som
+  // data-fintab-jump/data-qztab-jump herover, så et klik altid lander på den
+  // rigtige fane (og ikke bare på den man tilfældigvis stod på sidst).
+  // skipHash på switchPage: switch*Tab() nedenfor skriver selv den fulde hash,
+  // så ét klik kun giver ÉT punkt i browserhistorikken.
+  document.querySelectorAll('[data-tltab-jump]').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.preventDefault();
+      switchPage('tasklist',true);
+      // Adgang nægtet? Så har switchPage() allerede sendt brugeren et andet sted
+      // hen — skift ikke fane og skriv ikke en #tasklist-hash oveni.
+      if(!document.getElementById('page-tasklist').classList.contains('active'))return;
+      switchTlTab(btn.dataset.tltabJump);
+      document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
+    });
+  });
+  document.querySelectorAll('[data-tpltab-jump]').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.preventDefault();
+      switchPage('templates',true);
+      if(!document.getElementById('page-templates').classList.contains('active'))return;
+      switchTplTab(btn.dataset.tpltabJump);
       document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
     });
   });
@@ -12815,8 +13460,11 @@ function bind(){
       if(act==='mark-task-done'){e.stopPropagation();markTaskDoneFromPool(a.dataset.taskId);}
       if(act==='toggle-checklist-item'){e.stopPropagation();toggleChecklistItem(+a.dataset.id,a.checked,a.dataset.container,a.dataset.taskId);}
       if(act==='delete-checklist-item'){e.stopPropagation();deleteChecklistItem(+a.dataset.id,a.dataset.container,a.dataset.taskId);}
-      if(act==='goto-tasklist'){var sf=document.getElementById('tasklist-status-filter');if(sf)sf.value=a.dataset.filter;switchPage('tasklist');}
-      if(act==='goto-tasklist-task'){switchPage('tasklist');}
+      // Genvejene fra dashboard-tallene/-listerne peger altid på de ÅBNE
+      // opgaver — switchTlTab('open') sikrer at man ikke lander på fanen
+      // "Færdige opgaver", hvis det var den man stod på sidst.
+      if(act==='goto-tasklist'){var sf=document.getElementById('tasklist-status-filter');if(sf)sf.value=a.dataset.filter;switchPage('tasklist');if(document.getElementById('page-tasklist').classList.contains('active'))switchTlTab('open');}
+      if(act==='goto-tasklist-task'){switchPage('tasklist');if(document.getElementById('page-tasklist').classList.contains('active'))switchTlTab('open');}
       if(act==='use-template')useTemplate(+a.dataset.templateId);
       if(act==='edit-template')openTemplateEditor(templatesCache.find(function(x){return +x.id===+a.dataset.templateId;}));
       if(act==='delete-template'){if(await gmConfirm('Slet denne skabelon?'))api('/api/templates/'+a.dataset.templateId,{method:'DELETE'}).then(async function(){loadTemplates();});}
@@ -12901,9 +13549,29 @@ function bind(){
   // Genskab den side, browserens adresse peger på (så en genindlæsning bliver på samme side)
   var initialParts=location.hash.slice(1).split('/');
   var initialPage=initialParts[0];
+  // Gamle #gmail-settings-links (bogmærker + serverens OAuth-callback-redirect)
+  // oversættes her, INDEN VALID_PAGES-tjekket, så en hel sideindlæsning på den
+  // gamle adresse lander rigtigt. switchPage() har samme alias for klik-
+  // navigation; dette er kun "genskab siden ved genindlæsning"-vejen.
+  if(initialPage==='gmail-settings'){initialPage='notif-settings';initialParts=['notif-settings','gmail'];}
+  // Samme oversættelse for de to andre sider der blev slået sammen (sep. 2026),
+  // så en HEL sideindlæsning på en gammel adresse — et bogmærke, et delt link,
+  // "genindlæs" med #completed/#email-templates i adresselinjen — lander på den
+  // rigtige fane i stedet for at falde tilbage til forsiden.
+  if(initialPage==='completed'){initialPage='tasklist';initialParts=['tasklist','completed'];}
+  if(initialPage==='email-templates'){initialPage='templates';initialParts=['templates','mail'];}
   if(initialPage&&VALID_PAGES.indexOf(initialPage)>-1){
+    // Adresselinjen skal matche den side man rent faktisk lander på, ellers
+    // ville tilbage-knappen sende brugeren til en hash der ikke findes mere.
+    // replaceState (ikke pushState) — der er ingen navigation at gemme her,
+    // kun en oversættelse af den adresse man kom ind på.
+    var aliasHash=initialParts.join('/');
+    if(location.hash.slice(1)!==aliasHash)history.replaceState(null,'','#'+aliasHash);
     switchPage(initialPage,true);
     if(initialPage==='finance'&&initialParts[1])switchFintab(initialParts[1]);
+    if(initialPage==='notif-settings'&&initialParts[1])switchSetTab(initialParts[1],true);
+    if(initialPage==='tasklist')switchTlTab(initialParts[1]||'open',true);
+    if(initialPage==='templates')switchTplTab(initialParts[1]||'tasks',true);
     // Åbnet direkte via et #quotes/tilbud/123-link (fx højreklik → åbn i ny fane)
     if(initialPage==='quotes'&&initialParts[1]==='tilbud'&&initialParts[2])openQuoteEditor(Number(initialParts[2]));
     if(initialPage==='quotes'&&initialParts[1]==='faktura'&&initialParts[2])openInvoiceDetail(Number(initialParts[2]));
@@ -13918,7 +14586,15 @@ async function openCustomerDetail(id){
 // kollidere med det ældre "crm"-præfiks Kunder-modulet allerede bruger
 // (initCrmModule/crm-modal/loadCrmCustomers m.fl., se lige ovenfor).
 // ══════════════════════════════════════════════════════════════
-var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[]},filters:{q:'',owner_id:'',cf_key:'',cf_value:''},initialized:false,detailInitialized:false,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead'};
+var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[]},filters:{q:'',owner_id:'',cf_key:'',cf_value:''},initialized:false,detailInitialized:false,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead',selectMode:false,selected:{}};
+// ── SAMMENKLAPPEDE KOLONNER — hvilke stages brugeren SELV har foldet ud i
+// denne session. Martin har udtrykkeligt bedt om at "Konverteret"/"Afvist"/
+// "Tabt" ALTID starter krympede, så dette må IKKE gemmes i localStorage: ved
+// hver ny sideindlæsning er variablen tom igen, og kolonnerne er krympede.
+// Den lever kun i hukommelsen for at et stille gen-render af boardet (fx efter
+// et træk-og-slip et andet sted, eller efter en masse-handling) ikke pludselig
+// klapper en kolonne sammen som man lige har foldet ud.
+var crmpExpandedStages={};
 var crmpDetailEntity=null;
 function crmpCurrentPipeline(){return crmpState.pipelines.find(function(p){return p.id===crmpState.currentPipelineId;});}
 async function initCrmpModule(){
@@ -13963,6 +14639,7 @@ async function initCrmpModule(){
     document.getElementById('crmp-set-field-add').addEventListener('click',crmpAddCustomField);
     document.getElementById('crmp-new-cancel').addEventListener('click',function(){closeModal('crmp-new-modal');});
     document.getElementById('crmp-new-create').addEventListener('click',crmpCreateNewItem);
+    crmpInitBulkBar();
   }
   await crmpLoadPipelines();
   if(!crmpState.currentPipelineId&&crmpState.pipelines.length)crmpState.currentPipelineId=crmpState.pipelines[0].id;
@@ -14008,6 +14685,10 @@ async function crmpAfterPipelineSwitch(){
   var defs=crmpState.customFieldDefs[p.type]||[];
   cfSel.innerHTML='<option value="">Filtrér på felt...</option>'+defs.map(function(d){return '<option value="'+esc(d.key)+'">'+esc(d.label)+'</option>';}).join('');
   document.getElementById('crmp-cf-filter-value').style.display='none';
+  // Markerede kort hører til DEN pipeline man stod på — de må ikke følge med
+  // over på et andet board (hvor de samme id'er er en helt anden entitetstype).
+  crmpState.selected={};
+  crmpBulkBuiltFor=null;
   await crmpLoadBoard();
 }
 async function crmpLoadBoard(){
@@ -14026,18 +14707,62 @@ async function crmpLoadBoard(){
 }
 var CRMP_OWNER_PALETTE=['#4F46E5','#0EA5E9','#16A34A','#D97706','#DB2777','#7C3AED','#DC2626'];
 function crmpOwnerColor(userId){return userId?CRMP_OWNER_PALETTE[userId%CRMP_OWNER_PALETTE.length]:'#9CA3AF';}
+// ── HVILKE KOLONNER STARTER KRYMPEDE? ────────────────────────────
+// Martins ønske (sep. 2026): "Konverteret", "Afvist" og "Tabt" skal altid
+// være krympet fra start — det er de tre "lukkede", lav-opmærksomheds-
+// kolonner (og "Tabt" alene på Sales-boardet).
+//
+// Matches PRIMÆRT på stagenavn, ikke på is_won/is_lost-flagene, af to grunde:
+//   1) "Vundet" i Sales-pipelinen har is_won=1, men er netop en kolonne Martin
+//      VIL kigge på — den må ikke krympe.
+//   2) "Afvist" og "Tabt" i Lead-pipelinen har hverken is_won eller is_lost
+//      sat (bevidst, se CLOSE_LEAD_PIPELINE_STAGES i server.js), så et rent
+//      flag-baseret regelsæt ville slet ikke fange dem.
+// FALDBACK: hvis en pipeline slet ikke indeholder nogen af de tre navne — dvs.
+// den er navngivet om/bygget helt selv — bruges is_won/is_lost i stedet, så
+// reglen stadig giver mening i en tilpasset opsætning.
+var CRMP_COLLAPSED_STAGE_NAMES=['konverteret','afvist','tabt'];
+function crmpDefaultCollapsedStageIds(stages){
+  var named=stages.filter(function(s){return CRMP_COLLAPSED_STAGE_NAMES.indexOf(String(s.name||'').trim().toLowerCase())!==-1;});
+  var chosen=named.length?named:stages.filter(function(s){return Number(s.is_won)===1||Number(s.is_lost)===1;});
+  var out={};
+  chosen.forEach(function(s){out[s.id]=true;});
+  return out;
+}
+function crmpToggleColumn(stageId){
+  if(crmpExpandedStages[stageId])delete crmpExpandedStages[stageId];
+  else crmpExpandedStages[stageId]=true;
+  crmpRenderBoard();
+}
 function crmpRenderBoard(){
   var p=crmpCurrentPipeline();
   var board=document.getElementById('crmp-board');
   var stages=(p.stages||[]).slice().sort(function(a,b){return a.position-b.position;});
   var defs=crmpState.customFieldDefs[p.type]||[];
+  var defaultCollapsed=crmpDefaultCollapsedStageIds(stages);
   document.getElementById('crmp-count').textContent=crmpState.cards.length+' kort';
+  board.classList.toggle('crmp-selecting',!!crmpState.selectMode);
   board.innerHTML=stages.map(function(stage){
     var cards=crmpState.cards.filter(function(c){return c.stage_id===stage.id;});
     var sum=p.type==='opportunity'?cards.reduce(function(s,c){return s+(Number(c.value)||0);},0):0;
+    // Krympet med mindre brugeren selv har foldet netop denne kolonne ud i
+    // løbet af sessionen (crmpExpandedStages, kun i hukommelsen).
+    var collapsed=!!defaultCollapsed[stage.id]&&!crmpExpandedStages[stage.id];
+    if(collapsed){
+      return '<div class="crmp-col crmp-col-collapsed" data-stage-id="'+stage.id+'" title="'+esc(stage.name)+' — klik for at folde ud">'
+        +'<div class="crmp-col-head">'
+        +'<button class="crmp-col-toggle" type="button" data-crmp-toggle="'+stage.id+'" title="Fold ud">›</button>'
+        +'<span class="crmp-col-dot" style="background:'+esc(stage.color)+'"></span>'
+        +'<span class="crmp-col-count">'+cards.length+'</span>'
+        +'<span class="crmp-col-collapsed-name">'+esc(stage.name)+'</span>'
+        +'</div></div>';
+    }
     return '<div class="crmp-col" data-stage-id="'+stage.id+'">'
       +'<div class="crmp-col-head">'
-      +'<div class="crmp-col-title"><span class="crmp-col-dot" style="background:'+esc(stage.color)+'"></span>'+esc(stage.name)+'<span class="crmp-col-count">'+cards.length+'</span></div>'
+      +'<div class="crmp-col-headrow">'
+      +(defaultCollapsed[stage.id]?'<button class="crmp-col-toggle" type="button" data-crmp-toggle="'+stage.id+'" title="Fold sammen">⌄</button>':'')
+      +'<div class="crmp-col-title" style="flex:1;min-width:0"><span class="crmp-col-dot" style="background:'+esc(stage.color)+'"></span>'+esc(stage.name)+'<span class="crmp-col-count">'+cards.length+'</span></div>'
+      +'</div>'
       // Uændret beregning (rå sum af value på kortene i stagen) — kun opsætningen
       // er ny, se .crmp-col-sum* i CSS'en.
       +(p.type==='opportunity'?'<div class="crmp-col-sum" title="Samlet værdi af kortene i denne stage"><span class="crmp-col-sum-label">I alt</span><span class="crmp-col-sum-value">'+krFmt(sum)+'</span></div>':'')
@@ -14046,17 +14771,45 @@ function crmpRenderBoard(){
       +cards.map(function(c){return crmpCardHtml(c,p,defs);}).join('')
       +'</div></div>';
   }).join('');
+  board.querySelectorAll('[data-crmp-toggle]').forEach(function(btn){
+    btn.addEventListener('click',function(e){e.stopPropagation();crmpToggleColumn(Number(btn.dataset.crmpToggle));});
+  });
+  // Hele den KRYMPEDE kolonne er klikbar (ikke kun chevronen), så den er nem at
+  // ramme selvom den kun er 46px bred.
+  board.querySelectorAll('.crmp-col-collapsed').forEach(function(col){
+    col.addEventListener('click',function(){crmpToggleColumn(Number(col.dataset.stageId));});
+  });
   board.querySelectorAll('.crmp-card').forEach(function(card){
-    card.addEventListener('click',function(){openCrmpDetail(p.type,Number(card.dataset.id));});
-    card.addEventListener('dragstart',function(e){crmpState.dragCardId=Number(card.dataset.id);card.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+    var id=Number(card.dataset.id);
+    card.addEventListener('click',function(e){
+      // I vælge-tilstand er klik = markér/afmarkér i stedet for at åbne kortet.
+      if(crmpState.selectMode){
+        if(e.target&&e.target.classList.contains('crmp-card-check'))return; // checkboxen håndterer sig selv
+        crmpToggleCardSelected(id);
+        return;
+      }
+      openCrmpDetail(p.type,id);
+    });
+    card.addEventListener('dragstart',function(e){
+      // Dobbelt sikring ud over draggable="false" i markuppen.
+      if(crmpState.selectMode){e.preventDefault();return;}
+      crmpState.dragCardId=id;card.classList.add('dragging');e.dataTransfer.effectAllowed='move';
+    });
     card.addEventListener('dragend',function(){card.classList.remove('dragging');});
   });
-  board.querySelectorAll('.crmp-col-body').forEach(function(col){
-    col.addEventListener('dragover',function(e){e.preventDefault();col.closest('.crmp-col').classList.add('drag-over');});
-    col.addEventListener('dragleave',function(){col.closest('.crmp-col').classList.remove('drag-over');});
+  board.querySelectorAll('.crmp-card-check').forEach(function(cb){
+    cb.addEventListener('click',function(e){e.stopPropagation();});
+    cb.addEventListener('change',function(){crmpSetCardSelected(Number(cb.dataset.id),cb.checked);});
+  });
+  // Drop-mål er nu hele .crmp-col (ikke kun .crmp-col-body), så man også kan
+  // trække et kort ned i en KRYMPET kolonne — fx direkte til "Tabt".
+  board.querySelectorAll('.crmp-col').forEach(function(col){
+    col.addEventListener('dragover',function(e){if(crmpState.selectMode)return;e.preventDefault();col.classList.add('drag-over');});
+    col.addEventListener('dragleave',function(){col.classList.remove('drag-over');});
     col.addEventListener('drop',async function(e){
       e.preventDefault();
-      col.closest('.crmp-col').classList.remove('drag-over');
+      col.classList.remove('drag-over');
+      if(crmpState.selectMode)return;
       var stageId=Number(col.dataset.stageId);
       var cardId=crmpState.dragCardId;
       if(!cardId)return;
@@ -14065,6 +14818,7 @@ function crmpRenderBoard(){
       if(r&&r.ok){toast('Flyttet ✓','✓');crmpLoadBoard();}else toast((r&&r.error)||'Kunne ikke flytte','❌');
     });
   });
+  crmpRenderBulkBar();
 }
 function crmpCardHtml(c,pipeline,defs){
   // Kort-felter (sep. 2026, Martins ønske): INGEN automatik længere — kun felter Martin
@@ -14081,11 +14835,17 @@ function crmpCardHtml(c,pipeline,defs){
   var ownerId=c.owner_id;
   var ownerInitials=c.owner_initials||(c.owner_name?c.owner_name.split(' ').map(function(w){return w[0];}).slice(0,2).join('').toUpperCase():'—');
   // Ejer+sandsynlighed-linje øverst (samme idé som Close's "SK 50% · opdateret for 2t siden")
-  var ownerLine='<span class="crmp-card-owner" style="background:'+crmpOwnerColor(ownerId)+';width:18px;height:18px;font-size:8.5px;display:inline-grid">'+esc(ownerInitials)+'</span>'
+  // Flueben i vælge-tilstand — se .crmp-card-check i CSS'en. Kortet gøres
+  // samtidig IKKE-trækbart, så et klik-træk ikke kæmper med afkrydsningen (og
+  // dermed ikke kan udløse et utilsigtet stage-skifte midt i en markering).
+  var selected=!!crmpState.selected[c.id];
+  var checkHtml=crmpState.selectMode?'<input type="checkbox" class="crmp-card-check" data-id="'+c.id+'"'+(selected?' checked':'')+' aria-label="Vælg kort">':'';
+  var ownerLine=checkHtml
+    +'<span class="crmp-card-owner" style="background:'+crmpOwnerColor(ownerId)+';width:18px;height:18px;font-size:8.5px;display:inline-grid">'+esc(ownerInitials)+'</span>'
     +(pipeline.type==='opportunity'&&c.probability!=null?'<span>'+esc(c.probability)+'%</span>':'')
     +'<span style="margin-left:auto">'+esc(fmtRelativeDa(c.updated_at||c.created_at))+'</span>';
   var noteText=pipeline.type==='lead'?c.note:null;
-  return '<div class="crmp-card" draggable="true" data-id="'+c.id+'">'
+  return '<div class="crmp-card'+(crmpState.selectMode&&selected?' crmp-card-selected':'')+'" draggable="'+(crmpState.selectMode?'false':'true')+'" data-id="'+c.id+'">'
     +'<div class="crmp-card-row" style="margin:0 0 6px">'+ownerLine+'</div>'
     +'<div class="crmp-card-name">'+esc(pipeline.type==='opportunity'?(c.contact_name||c.name):c.name)+'</div>'
     +(contactLine?'<div class="crmp-card-row">'+esc(contactLine)+'</div>':'')
@@ -14094,6 +14854,147 @@ function crmpCardHtml(c,pipeline,defs){
     +'<div class="crmp-card-foot">'
     +(pipeline.type==='opportunity'&&c.value!=null?'<span class="crmp-card-value">'+krFmt(c.value)+'</span>':'<span></span>')
     +'</div></div>';
+}
+// ══════════════════════════════════════════════════════════════
+// MASSEVALG PÅ BOARDET — "Vælg"-tilstand + flydende handlingsbjælke.
+// Martins ønske (sep. 2026): kunne markere flere kort og "slet, opdatere felt
+// mm" i stedet for at åbne hvert kort for sig. Samme mønster som de øvrige
+// massevalg i appen (#fin-inv-bulk-bar på fakturaerne, .pool-bulk-bar i
+// medarbejderpuljen): flueben pr. række + en bjælke der først dukker op når
+// mindst én er valgt.
+//
+// Handlingerne rammer POST /api/crm/leads/bulk hhv. /api/crm/opportunities/bulk
+// (se crmBulkAction i server.js), som kører det hele i én transaktion og
+// genbruger nøjagtig samme slette-/opdaterings-logik som enkelt-ruterne.
+// ══════════════════════════════════════════════════════════════
+function crmpSelectedIds(){return Object.keys(crmpState.selected).map(Number);}
+function crmpSetCardSelected(id,on){
+  if(on)crmpState.selected[id]=true;else delete crmpState.selected[id];
+  var card=document.querySelector('#crmp-board .crmp-card[data-id="'+id+'"]');
+  if(card){
+    card.classList.toggle('crmp-card-selected',!!on);
+    var cb=card.querySelector('.crmp-card-check');
+    if(cb)cb.checked=!!on;
+  }
+  crmpRenderBulkBar();
+}
+function crmpToggleCardSelected(id){crmpSetCardSelected(id,!crmpState.selected[id]);}
+function crmpSetSelectMode(on){
+  crmpState.selectMode=!!on;
+  if(!crmpState.selectMode)crmpState.selected={};
+  var btn=document.getElementById('crmp-select-toggle');
+  if(btn){
+    btn.classList.toggle('active',crmpState.selectMode);
+    btn.textContent=crmpState.selectMode?'✕ Afslut valg':'☑️ Vælg';
+  }
+  if(crmpCurrentPipeline())crmpRenderBoard();else crmpRenderBulkBar();
+}
+// Bygger dropdown'ernes indhold. Kun når pipelinen (og dermed stages/felter)
+// reelt er skiftet — ellers ville et baggrunds-render nulstille det valg
+// brugeren står midt i at foretage.
+var crmpBulkBuiltFor=null;
+function crmpBuildBulkControls(){
+  var p=crmpCurrentPipeline();
+  if(!p)return;
+  var stageSel=document.getElementById('crmp-bulk-stage'),fieldSel=document.getElementById('crmp-bulk-field');
+  var stages=(p.stages||[]).slice().sort(function(a,b){return a.position-b.position;});
+  stageSel.innerHTML='<option value="">Skift stage…</option>'+stages.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
+  var defs=(crmpState.customFieldDefs[p.type]||[]).filter(function(d){return d.field_type==='select';});
+  var core=p.type==='lead'
+    ?[{v:'core:owner_id',l:'Ansvarlig'},{v:'core:source',l:'Kilde'}]
+    :[{v:'core:owner_id',l:'Ansvarlig'}];
+  fieldSel.innerHTML='<option value="">Opdater felt…</option>'
+    +core.map(function(o){return '<option value="'+o.v+'">'+esc(o.l)+'</option>';}).join('')
+    +defs.map(function(d){return '<option value="custom:'+esc(d.key)+'">'+esc(d.label)+'</option>';}).join('');
+  crmpBulkBuiltFor=p.id;
+  crmpSyncBulkValueControl();
+}
+// Viser den rigtige værdi-kontrol for det valgte felt: dropdown for
+// select-felter og for Ansvarlig, fritekst for Kilde.
+function crmpSyncBulkValueControl(){
+  var p=crmpCurrentPipeline();
+  var sel=document.getElementById('crmp-bulk-field').value;
+  var valSel=document.getElementById('crmp-bulk-field-value'),valTxt=document.getElementById('crmp-bulk-field-text');
+  valSel.style.display='none';valTxt.style.display='none';
+  if(!sel||!p)return;
+  if(sel==='core:owner_id'){
+    valSel.innerHTML='<option value="">— Ingen ansvarlig —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+    valSel.style.display='';
+    return;
+  }
+  if(sel==='core:source'){valTxt.style.display='';return;}
+  var key=sel.slice('custom:'.length);
+  var def=(crmpState.customFieldDefs[p.type]||[]).find(function(d){return d.key===key;});
+  if(!def)return;
+  valSel.innerHTML='<option value="">— Ryd værdi —</option>'+(def.options||[]).map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join('');
+  valSel.style.display='';
+}
+function crmpRenderBulkBar(){
+  var bar=document.getElementById('crmp-bulk-bar');
+  if(!bar)return;
+  var p=crmpCurrentPipeline();
+  // Ryd valg af kort der ikke længere findes på boardet (slettet/filtreret væk).
+  var present={};(crmpState.cards||[]).forEach(function(c){present[c.id]=true;});
+  Object.keys(crmpState.selected).forEach(function(id){if(!present[id])delete crmpState.selected[id];});
+  var n=crmpSelectedIds().length;
+  bar.classList.toggle('open',crmpState.selectMode&&n>0);
+  if(!crmpState.selectMode||!n)return;
+  if(p&&crmpBulkBuiltFor!==p.id)crmpBuildBulkControls();
+  document.getElementById('crmp-bulk-count').textContent=n+(p&&p.type==='opportunity'?' salg valgt':' lead(s) valgt');
+}
+function crmpBulkEndpoint(){
+  var p=crmpCurrentPipeline();
+  return p&&p.type==='opportunity'?'/api/crm/opportunities/bulk':'/api/crm/leads/bulk';
+}
+// Fælles kald + oprydning: alle tre handlinger opdaterer boardet med det samme
+// bagefter (uden manuel genindlæsning) og rydder markeringen.
+async function crmpBulkRun(body,btn,busyLabel){
+  var ids=crmpSelectedIds();
+  if(!ids.length)return null;
+  var label=btn?btn.textContent:null;
+  if(btn){btn.disabled=true;btn.textContent=busyLabel;}
+  var r=await api(crmpBulkEndpoint(),{method:'POST',body:JSON.stringify(Object.assign({ids:ids},body))});
+  if(btn){btn.disabled=false;btn.textContent=label;}
+  if(!r||!r.ok){toast((r&&r.error)||'Handlingen fejlede','❌');return null;}
+  crmpState.selected={};
+  await crmpLoadBoard();
+  return r;
+}
+function crmpInitBulkBar(){
+  document.getElementById('crmp-select-toggle').addEventListener('click',function(){crmpSetSelectMode(!crmpState.selectMode);});
+  document.getElementById('crmp-bulk-clear').addEventListener('click',function(){crmpState.selected={};crmpRenderBoard();});
+  document.getElementById('crmp-bulk-field').addEventListener('change',crmpSyncBulkValueControl);
+  document.getElementById('crmp-bulk-delete').addEventListener('click',async function(){
+    var n=crmpSelectedIds().length;
+    if(!n)return;
+    var p=crmpCurrentPipeline();
+    if(!await gmConfirm('Slet '+n+' '+(p&&p.type==='opportunity'?'salg':'lead(s)')+'? Kan ikke fortrydes.'))return;
+    var r=await crmpBulkRun({action:'delete'},this,'Sletter…');
+    if(r)toast(r.deleted+' slettet','🗑');
+  });
+  document.getElementById('crmp-bulk-stage-apply').addEventListener('click',async function(){
+    var stageId=document.getElementById('crmp-bulk-stage').value;
+    if(!stageId){toast('Vælg først en stage','⚠');return;}
+    var n=crmpSelectedIds().length;
+    var stageName=document.getElementById('crmp-bulk-stage').selectedOptions[0].textContent;
+    if(!await gmConfirm('Flyt '+n+' kort til "'+stageName+'"?'))return;
+    var r=await crmpBulkRun({action:'stage',stage_id:Number(stageId)},this,'Flytter…');
+    if(r)toast(r.updated+' flyttet til "'+stageName+'"','✓');
+  });
+  document.getElementById('crmp-bulk-field-apply').addEventListener('click',async function(){
+    var sel=document.getElementById('crmp-bulk-field').value;
+    if(!sel){toast('Vælg først et felt','⚠');return;}
+    var valSel=document.getElementById('crmp-bulk-field-value'),valTxt=document.getElementById('crmp-bulk-field-text');
+    var value=valTxt.style.display===''?valTxt.value.trim():valSel.value;
+    var fieldLabel=document.getElementById('crmp-bulk-field').selectedOptions[0].textContent;
+    var n=crmpSelectedIds().length;
+    if(!await gmConfirm('Sæt "'+fieldLabel+'" til '+(value?'"'+value+'"':'(tom)')+' på '+n+' kort?'))return;
+    var body=sel.indexOf('core:')===0
+      ?{action:'field',field_scope:'core',field_key:sel.slice(5),value:value}
+      :{action:'field',field_scope:'custom',field_key:sel.slice(7),value:value};
+    var r=await crmpBulkRun(body,this,'Opdaterer…');
+    if(r)toast(fieldLabel+' opdateret på '+r.updated+' kort','✓');
+  });
 }
 function fmtRelativeDa(iso){
   if(!iso)return'';
@@ -14183,15 +15084,19 @@ function crmpxSwitchView(view){
 async function crmpxLoadFiles(){
   if(!crmpxCurrentCustomerId)return;
   crmpxFilesLoaded=true;
+  crmpxFiles=[]; // aldrig bladre videre i den FORRIGE kundes filliste
   var grid=document.getElementById('crmpx-files-grid');
   grid.innerHTML='<div class="crmpx-empty">Henter filer...</div>';
   var files=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/files');
   if(!files||files.error){grid.innerHTML='<div class="crmpx-empty">Kunne ikke hente filer — '+esc((files&&files.error)||'ukendt fejl')+'</div>';return;}
   document.getElementById('crmpx-files-count').textContent=files.length?'('+files.length+')':'';
   if(!files.length){grid.innerHTML='<div class="crmpx-empty">Ingen filer fundet i mailkorrespondancen endnu</div>';return;}
-  grid.innerHTML=files.map(function(f){
+  // Gemmes så lightboxen kan bladre frem/tilbage i PRÆCIS den her liste uden at
+  // hente noget igen — se crmpxOpenFileLightboxAt.
+  crmpxFiles=files;
+  grid.innerHTML=files.map(function(f,i){
     var icon=f.mimeType&&f.mimeType.indexOf('image/')===0?'🖼️':(f.mimeType==='application/pdf'?'📄':'📎');
-    return '<div class="cd-file-card" data-msg-id="'+esc(f.gmail_message_id)+'" data-att-id="'+esc(f.attachmentId)+'" data-filename="'+esc(f.filename)+'" data-mimetype="'+esc(f.mimeType)+'">'
+    return '<div class="cd-file-card" data-file-idx="'+i+'" data-msg-id="'+esc(f.gmail_message_id)+'" data-att-id="'+esc(f.attachmentId)+'" data-filename="'+esc(f.filename)+'" data-mimetype="'+esc(f.mimeType)+'">'
       +'<div class="cd-file-icon">'+icon+'</div>'
       +'<div class="cd-file-name">'+esc(f.filename)+'</div>'
       +'<div class="cd-file-meta">'+esc(fmtDaDate(new Date(Number(f.internal_date)).toISOString()))+'</div>'
@@ -14201,7 +15106,7 @@ async function crmpxLoadFiles(){
 document.addEventListener('click',function(e){
   var card=e.target.closest('.cd-file-card');
   if(!card)return;
-  crmpxOpenFileLightbox(card.dataset.msgId,card.dataset.attId,card.dataset.filename,card.dataset.mimetype);
+  crmpxOpenFileLightboxAt(Number(card.dataset.fileIdx)||0);
 });
 
 // ── FIL-LIGHTBOX — se crmpxOpenFileLightbox() ovenfor #file-lightbox-modal i
@@ -14209,21 +15114,80 @@ document.addEventListener('click',function(e){
 // kan browseren ikke vise inline, så de falder tilbage til en downloadbesked med
 // Download-knappen aktiv.
 var crmpxLightboxUrl=null,crmpxLightboxFilename=null;
+// GALLERI-NAVIGATION (sep. 2026, Martins ønske): lightboxen kunne før kun vise
+// ÉN fil ad gangen — man skulle lukke den og klikke det næste kort for at se
+// fil nr. 2. Nu bladrer ‹/› og piletasterne igennem HELE fillisten for den
+// pågældende kunde, præcis som sagsbillede-lightboxen (#pd-photo-lightbox)
+// altid har kunnet med billeder.
+//
+// Listen er den SAMME der allerede er hentet til Filer-fanen (crmpxFiles fra
+// crmpxLoadFiles) — der hentes intet igen ved bladring, kun selve den viste
+// fils indhold.
+//
+// Bladringen WRAPPER (fra sidste fil videre til den første og omvendt), samme
+// valg som #pd-photo-lightbox allerede traf for billeder — så de to gallerier
+// føles ens.
+//
+// Ikke-billeder (PDF m.fl.) er en helt normal del af rækkefølgen og vises som
+// de altid har gjort; ‹/› springer altså ikke over dem.
+var crmpxFiles=[],crmpxLightboxIdx=0;
+var crmpxLightboxSeq=0; // værn mod at et langsomt svar overskriver et nyere
 function crmpxCloseLightbox(){
   if(crmpxLightboxUrl){URL.revokeObjectURL(crmpxLightboxUrl);crmpxLightboxUrl=null;}
   crmpxLightboxFilename=null;
+  crmpxLightboxSeq++;
   closeModal('file-lightbox-modal');
 }
+function crmpxLightboxIsOpen(){
+  var m=document.getElementById('file-lightbox-modal');
+  return !!(m&&m.classList.contains('open'));
+}
+function crmpxLightboxStep(delta){
+  if(!crmpxLightboxIsOpen()||crmpxFiles.length<2)return;
+  var n=crmpxFiles.length;
+  crmpxOpenFileLightboxAt(((crmpxLightboxIdx+delta)%n+n)%n);
+}
+// Åbner filen på plads `idx` i crmpxFiles. Al åbning går igennem denne, både
+// klik på et filkort, ‹/›-knapperne og piletasterne.
+function crmpxOpenFileLightboxAt(idx){
+  var f=crmpxFiles[idx];
+  if(!f)return;
+  crmpxLightboxIdx=idx;
+  var multi=crmpxFiles.length>1;
+  document.getElementById('file-lightbox-prev-btn').style.display=multi?'':'none';
+  document.getElementById('file-lightbox-next-btn').style.display=multi?'':'none';
+  document.getElementById('file-lightbox-counter').textContent=multi?(idx+1)+' / '+crmpxFiles.length:'';
+  return crmpxOpenFileLightbox(f.gmail_message_id,f.attachmentId,f.filename,f.mimeType);
+}
+document.getElementById('file-lightbox-prev-btn').addEventListener('click',function(){crmpxLightboxStep(-1);});
+document.getElementById('file-lightbox-next-btn').addEventListener('click',function(){crmpxLightboxStep(1);});
+// Tastatur: ←/→ bladrer, Esc lukker. Der fandtes ingen tastaturnavigation i
+// appen i forvejen (heller ikke i #pd-photo-lightbox), så lytteren er bevidst
+// snæver: den gør KUN noget når netop denne lightbox er åben, og rører aldrig
+// tastetryk i et input/textarea.
+document.addEventListener('keydown',function(e){
+  if(!crmpxLightboxIsOpen())return;
+  var t=e.target;
+  if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable))return;
+  if(e.key==='Escape'){e.preventDefault();crmpxCloseLightbox();}
+  else if(e.key==='ArrowLeft'){e.preventDefault();crmpxLightboxStep(-1);}
+  else if(e.key==='ArrowRight'){e.preventDefault();crmpxLightboxStep(1);}
+});
 async function crmpxOpenFileLightbox(messageId,attachmentId,filename,mimetype){
   if(crmpxLightboxUrl){URL.revokeObjectURL(crmpxLightboxUrl);crmpxLightboxUrl=null;}
+  var seq=++crmpxLightboxSeq;
   document.getElementById('file-lightbox-title').textContent=filename||'Fil';
   var body=document.getElementById('file-lightbox-body');
   body.innerHTML='<div class="crmpx-empty">Henter…</div>';
   document.getElementById('file-lightbox-modal').classList.add('open');
   try{
     var r=await fetch(API+'/api/gmail/messages/'+messageId+'/attachments/'+attachmentId+'?filename='+encodeURIComponent(filename)+'&mimetype='+encodeURIComponent(mimetype),{headers:{'Authorization':'Bearer '+token}});
+    // Bladrer man hurtigt med piletasterne, kan et ældre svar nå frem EFTER et
+    // nyere — så ville man se den forkerte fil. Kun det nyeste kald må skrive.
+    if(seq!==crmpxLightboxSeq)return;
     if(!r.ok){body.innerHTML='<div class="crmpx-empty">Kunne ikke hente filen</div>';return;}
     var blob=await r.blob();
+    if(seq!==crmpxLightboxSeq)return;
     var url=URL.createObjectURL(blob);
     crmpxLightboxUrl=url;
     crmpxLightboxFilename=filename;
@@ -14240,7 +15204,7 @@ async function crmpxOpenFileLightbox(messageId,attachmentId,filename,mimetype){
     }else{
       body.innerHTML='<div class="crmpx-empty" style="padding:40px;text-align:center;max-width:360px">Denne filtype kan ikke vises direkte i appen — brug Download-knappen ovenfor.</div>';
     }
-  }catch(e){body.innerHTML='<div class="crmpx-empty">Netværksfejl ved hentning af filen</div>';}
+  }catch(e){if(seq===crmpxLightboxSeq)body.innerHTML='<div class="crmpx-empty">Netværksfejl ved hentning af filen</div>';}
 }
 document.getElementById('file-lightbox-download').addEventListener('click',function(){
   if(!crmpxLightboxUrl||!crmpxLightboxFilename)return;

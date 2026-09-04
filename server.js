@@ -2123,7 +2123,12 @@ const PANEL_PAGES = [
   { key: 'library', label: 'Bibliotek', group: 'Administration' },
   { key: 'logs', label: 'Log', group: 'Administration' },
   { key: 'notif-settings', label: 'Indstillinger', group: 'Administration' },
-  { key: 'gmail-settings', label: 'Gmail-integration', group: 'Administration' },
+  // Gmail har ikke længere sin egen side i admin-panelet — indholdet er en fane
+  // under Indstillinger. Nøglen bevares uændret, da den stadig er dét
+  // panelAccess() håndhæver på alle /api/gmail/*-ruter (og den indgår i
+  // LEGACY_FINANCE_BUNDLE nedenfor); kun labelen er opdateret, så afkrydsningen
+  // i "Roller & adgang" fortæller hvor indstillingen nu findes.
+  { key: 'gmail-settings', label: 'Gmail-integration (fane under Indstillinger)', group: 'Administration' },
   { key: 'tasklist', label: 'Opgaveliste (Min side)', group: 'Min side' },
   { key: 'requests', label: 'Godkendelser (sygdom)', group: 'Min side' },
   { key: 'completed', label: 'Færdige opgaver', group: 'Min side' },
@@ -6017,7 +6022,7 @@ app.get('/api/gmail/auth-url', auth, panelAccess('gmail-settings'), asyncRoute(a
 app.get('/api/gmail/oauth-callback', asyncRoute(async (req, res) => {
   const { code, state, error } = req.query;
   function fail(msg) {
-    res.status(400).send('<html><body style="font-family:sans-serif;padding:40px"><h2>Gmail-forbindelse fejlede</h2><p>' + String(msg).replace(/</g, '&lt;') + '</p><p><a href="/admin#gmail-settings">Tilbage til Gulv Master</a></p></body></html>');
+    res.status(400).send('<html><body style="font-family:sans-serif;padding:40px"><h2>Gmail-forbindelse fejlede</h2><p>' + String(msg).replace(/</g, '&lt;') + '</p><p><a href="/admin#notif-settings/gmail">Tilbage til Gulv Master</a></p></body></html>');
   }
   if (error) return fail('Google afviste: ' + error);
   if (!code || !state) return fail('Mangler code/state fra Google');
@@ -6053,12 +6058,14 @@ app.get('/api/gmail/oauth-callback', asyncRoute(async (req, res) => {
   `, [userinfo.email || null, gmailEncrypt(tokenData.access_token), gmailEncrypt(tokenData.refresh_token), Date.now() + (Number(tokenData.expires_in || 3600) * 1000), payload.uid]);
 
   await logSystemEvent('gmail', 'info', 'Gmail forbundet: ' + (userinfo.email || '?'));
-  // OBS: bevidst uden query-string på hashet (kun #gmail-settings, ikke
-  // #gmail-settings?connected=1) — admin.html's hash-router splitter kun på
-  // "/", ikke "?", så et vedhæftet query-tegn ville gøre siden ikke matche
-  // noget i VALID_PAGES og fejle stille ved indlæsning. Siden henter selv sin
-  // forbindelsesstatus (GET /api/gmail/status) med det samme den åbnes.
-  res.redirect('/admin#gmail-settings');
+  // Gmail har ikke længere sin egen side i admin.html — indholdet er nu en fane
+  // på den samlede Indstillinger-side, så vi sender brugeren direkte til fanen.
+  // OBS: bevidst uden query-string på hashet (kun #notif-settings/gmail, ikke
+  // ...?connected=1) — admin.html's hash-router splitter kun på "/", ikke "?",
+  // så et vedhæftet query-tegn ville gøre siden ikke matche noget i VALID_PAGES
+  // og fejle stille ved indlæsning. Fanen henter selv sin forbindelsesstatus
+  // (GET /api/gmail/status) med det samme den åbnes.
+  res.redirect('/admin#notif-settings/gmail');
 }));
 
 app.get('/api/gmail/status', auth, panelAccess('gmail-settings'), asyncRoute(async (req, res) => {
@@ -6741,7 +6748,11 @@ async function crmGetCustomFieldValuesBulk(entityType, entityIds) {
   r.rows.forEach(row => { (out[row.entity_id] = out[row.entity_id] || {})[row.key] = row.value; });
   return out;
 }
-async function crmSetCustomFieldValues(entityType, entityId, valuesObj) {
+// `exec` er valgfri og kan være enten poolen (standard) eller en klient midt i
+// en transaktion — se crmWithTransaction nedenfor. Alle eksisterende kaldesteder
+// udelader den og rammer derfor poolen præcis som før.
+async function crmSetCustomFieldValues(entityType, entityId, valuesObj, exec) {
+  const db = exec || pool;
   if (!valuesObj || typeof valuesObj !== 'object') return;
   const defs = await crmGetCustomFieldDefs(entityType);
   const byKey = {}; defs.forEach(d => { byKey[d.key] = d; });
@@ -6750,17 +6761,206 @@ async function crmSetCustomFieldValues(entityType, entityId, valuesObj) {
     if (!def) continue; // ukendt felt-nøgle — ignoreres stille (fx et felt der lige er slettet)
     const val = valuesObj[key];
     if (val === null || val === undefined || val === '') {
-      await pool.query('DELETE FROM crm_custom_field_values WHERE field_id=$1 AND entity_type=$2 AND entity_id=$3', [def.id, entityType, entityId]);
+      await db.query('DELETE FROM crm_custom_field_values WHERE field_id=$1 AND entity_type=$2 AND entity_id=$3', [def.id, entityType, entityId]);
     } else {
-      await pool.query(`
+      await db.query(`
         INSERT INTO crm_custom_field_values (field_id, entity_type, entity_id, value) VALUES ($1,$2,$3,$4)
         ON CONFLICT (field_id, entity_type, entity_id) DO UPDATE SET value=$4
       `, [def.id, entityType, entityId, String(val)]);
     }
   }
 }
-async function crmLogActivity(entityType, entityId, kind, body, userId) {
-  await pool.query('INSERT INTO crm_activities (entity_type,entity_id,kind,body,user_id) VALUES ($1,$2,$3,$4,$5)', [entityType, entityId, kind, body || null, userId || null]);
+async function crmLogActivity(entityType, entityId, kind, body, userId, exec) {
+  await (exec || pool).query('INSERT INTO crm_activities (entity_type,entity_id,kind,body,user_id) VALUES ($1,$2,$3,$4,$5)', [entityType, entityId, kind, body || null, userId || null]);
+}
+
+// ── Fælles transaktions-indpakning for CRM-skrivninger ───────────
+// Samme BEGIN/COMMIT/ROLLBACK-mønster som resten af filen allerede bruger
+// (fx syncGanttJob), blot samlet ét sted så både enkelt-sletning og
+// masse-handlingerne nedenfor deler nøjagtig samme opførsel: enten går HELE
+// operationen igennem, eller også rulles den helt tilbage.
+async function crmWithTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const out = await fn(client);
+    await client.query('COMMIT');
+    return out;
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// ── SLETNING af ét lead / én opportunity, inkl. børnerækker ──────
+// FEJLRETTELSE (sep. 2026): DELETE /api/crm/leads/:id og
+// DELETE /api/crm/opportunities/:id kørte tidligere BARE
+// "DELETE FROM crm_leads WHERE id=$1" og intet andet.
+//
+// crm_custom_field_values, crm_activities og crm_tasks peger alle tre på
+// (entity_type, entity_id) som et LØST par UDEN nogen foreign key — det er
+// bevidst, fordi den samme tabel deles af flere entitetstyper ('lead',
+// 'opportunity', 'contact') — men det betyder samtidig at Postgres ikke har
+// nogen ON DELETE CASCADE at rydde op med. Hver sletning efterlod derfor
+// forældreløse custom field-værdier, hele aktivitetstidslinjen og evt.
+// opgaver liggende i databasen for evigt.
+//
+// Desuden: crm_leads.converted_opportunity_id blev tilføjet med
+// "ALTER TABLE ... ADD COLUMN IF NOT EXISTS ... REFERENCES crm_opportunities(id)
+// ON DELETE SET NULL", men kolonnen fandtes ALLEREDE fra den oprindelige
+// CREATE TABLE (uden FK), så ADD COLUMN IF NOT EXISTS blev et no-op og
+// fremmednøglen kom aldrig i databasen (bekræftet mod information_schema).
+// Sletter man en opportunity, står det oprindelige lead altså tilbage med et
+// converted_opportunity_id der peger i tomme luften — hvilket bl.a. gør at
+// 🤝 Konvertér-knappen på leadet bliver ved med at være skjult ("allerede
+// konverteret") selvom salget er væk. Vi nulstiller derfor selv feltet her i
+// stedet for at stole på en FK der ikke findes.
+//
+// `exec` skal normalt være en transaktionsklient (se crmWithTransaction), så
+// hele oprydningen + selve sletningen er atomisk.
+async function crmDeleteEntityCascade(exec, entityType, entityId) {
+  const table = entityType === 'lead' ? 'crm_leads' : 'crm_opportunities';
+  const id = Number(entityId);
+  if (!Number.isInteger(id) || id <= 0) return 0;
+  await exec.query('DELETE FROM crm_custom_field_values WHERE entity_type=$1 AND entity_id=$2', [entityType, id]);
+  await exec.query('DELETE FROM crm_activities WHERE entity_type=$1 AND entity_id=$2', [entityType, id]);
+  await exec.query('DELETE FROM crm_tasks WHERE entity_type=$1 AND entity_id=$2', [entityType, id]);
+  if (entityType === 'lead') {
+    // Der ER en rigtig FK (ON DELETE SET NULL) på denne — vi gør det blot
+    // eksplicit, så adfærden er den samme uanset om en ældre database mangler den.
+    await exec.query('UPDATE crm_opportunities SET source_lead_id=NULL WHERE source_lead_id=$1', [id]);
+  } else {
+    await exec.query('UPDATE crm_leads SET converted_opportunity_id=NULL WHERE converted_opportunity_id=$1', [id]);
+  }
+  // close_customer_links.lead_id/opportunity_id ryddes BEVIDST IKKE — se
+  // kommentaren ved kolonnen i initSchema: linket skal blive stående som
+  // "behandlet", så en gentaget Close-webhook ikke genopretter noget Martin
+  // netop har slettet i hånden.
+  const r = await exec.query(`DELETE FROM ${table} WHERE id=$1`, [id]);
+  return r.rowCount || 0;
+}
+
+// ══════════════════════════════════════════════════════════════
+// MASSE-HANDLINGER PÅ KANBAN-BOARDET (Martins ønske: "slet, opdatere felt mm")
+// ── POST /api/crm/leads/bulk og POST /api/crm/opportunities/bulk ──
+//
+//   { ids:[1,2,3], action:'delete' }
+//   { ids:[...],   action:'stage',  stage_id:42 }
+//   { ids:[...],   action:'field',  field_scope:'custom'|'core', field_key:'projekt_type', value:'Maler' }
+//
+// Begge ruter deler nøjagtig samme handler og er gated med præcis samme
+// panelAccess som enkelt-ruterne ('crmp_leads' hhv. 'crmp_sales'). Alt skrives
+// inde i én transaktion, og selve sletningen genbruger crmDeleteEntityCascade
+// — samme funktion som DELETE .../:id kalder — i stedet for en parallel
+// implementering.
+//
+// KERNEFELTER der må masseopdateres. Bevidst en kort, eksplicit hvidliste:
+// nøglerne herfra interpoleres direkte ind i UPDATE-sætningen, så listen ER
+// sikkerhedsgrænsen (værdierne parametriseres som alt andet).
+const CRM_BULK_CORE_FIELDS = {
+  lead: { source: { type: 'text', label: 'Kilde' }, owner_id: { type: 'user', label: 'Ansvarlig' } },
+  opportunity: { owner_id: { type: 'user', label: 'Ansvarlig' } }
+};
+const CRM_BULK_MAX_IDS = 500;
+
+async function crmBulkAction(entityType, req, res) {
+  const b = req.body || {};
+  const table = entityType === 'lead' ? 'crm_leads' : 'crm_opportunities';
+  const ids = Array.from(new Set((Array.isArray(b.ids) ? b.ids : []).map(Number).filter(n => Number.isInteger(n) && n > 0)));
+  if (!ids.length) return res.status(400).json({ error: 'Ingen kort valgt' });
+  if (ids.length > CRM_BULK_MAX_IDS) return res.status(400).json({ error: 'For mange kort valgt på én gang (maks. ' + CRM_BULK_MAX_IDS + ')' });
+  const action = String(b.action || '');
+  const rows = (await pool.query(`SELECT * FROM ${table} WHERE id = ANY($1::int[])`, [ids])).rows;
+  if (!rows.length) return res.status(404).json({ error: 'Ingen af de valgte kort findes længere' });
+
+  if (action === 'delete') {
+    const deleted = await crmWithTransaction(async client => {
+      let n = 0;
+      for (const row of rows) n += await crmDeleteEntityCascade(client, entityType, row.id);
+      return n;
+    });
+    return res.json({ ok: true, action, deleted });
+  }
+
+  if (action === 'stage') {
+    const stageId = Number(b.stage_id);
+    if (!Number.isInteger(stageId) || stageId <= 0) return res.status(400).json({ error: 'stage_id mangler' });
+    const stage = await pgOne('SELECT * FROM crm_stages WHERE id=$1', [stageId]);
+    if (!stage) return res.status(404).json({ error: 'Stagen findes ikke' });
+    // Samme regel som træk-og-slip på boardet: et kort kan kun flyttes til en
+    // stage i sin EGEN pipeline.
+    if (rows.some(r => Number(r.pipeline_id) !== Number(stage.pipeline_id))) {
+      return res.status(400).json({ error: 'Stagen hører til en anden pipeline end de valgte kort' });
+    }
+    const changed = rows.filter(r => Number(r.stage_id) !== stageId);
+    await crmWithTransaction(async client => {
+      for (const row of changed) {
+        await client.query(`UPDATE ${table} SET stage_id=$1, updated_at=${nowTextSQL()}, stage_changed_at=${nowTextSQL()} WHERE id=$2`, [stageId, row.id]);
+        await crmLogActivity(entityType, row.id, 'stage_change', 'Status ændret til "' + stage.name + '"', req.user.id, client);
+      }
+    });
+    // SMS/email-automatik EFTER commit — nøjagtig samme kald som ved en enkelt
+    // flytning (PUT .../:id og træk-og-slip på boardet), så en masseflytning
+    // ikke pludselig springer Martins stage-automatik over. crmFireStageAutomation
+    // deduplikerer selv pr. (kort, stage), og må aldrig vælte selve svaret.
+    for (const row of changed) {
+      let fields = { name: row.name, email: row.email || null, phone: row.phone || null };
+      if (entityType === 'opportunity') {
+        const c = row.contact_id ? await pgOne('SELECT name, email, phone FROM crm_contacts WHERE id=$1', [row.contact_id]) : null;
+        fields = { name: (c && c.name) || row.name, email: c && c.email, phone: c && c.phone };
+      }
+      crmFireStageAutomation(entityType, row.id, stageId, fields)
+        .catch(e => console.error('SMS/email-automatik fejlede for ' + entityType + ' #' + row.id + ':', e.message));
+    }
+    return res.json({ ok: true, action, updated: changed.length, unchanged: rows.length - changed.length });
+  }
+
+  if (action === 'field') {
+    const scope = String(b.field_scope || 'custom');
+    const key = String(b.field_key || '');
+    const raw = (b.value === undefined || b.value === null) ? '' : String(b.value);
+    if (!key) return res.status(400).json({ error: 'Felt mangler' });
+
+    if (scope === 'custom') {
+      const defs = await crmGetCustomFieldDefs(entityType);
+      const def = defs.find(d => d.key === key);
+      if (!def) return res.status(400).json({ error: 'Ukendt felt' });
+      // Samme validering som enkelt-redigeringen reelt giver via dropdown'en på
+      // detaljesiden: et select-felt kan kun sættes til en af sine egne options
+      // (eller ryddes med tom værdi).
+      if (def.field_type === 'select' && raw !== '' && !(def.options || []).map(String).includes(raw)) {
+        return res.status(400).json({ error: 'Ugyldig værdi for feltet "' + def.label + '"' });
+      }
+      await crmWithTransaction(async client => {
+        for (const row of rows) {
+          await crmSetCustomFieldValues(entityType, row.id, { [key]: raw }, client);
+          await client.query(`UPDATE ${table} SET updated_at=${nowTextSQL()} WHERE id=$1`, [row.id]);
+          await crmLogActivity(entityType, row.id, 'field_update', def.label + ' sat til "' + (raw || '—') + '" (masseopdatering)', req.user.id, client);
+        }
+      });
+      return res.json({ ok: true, action, updated: rows.length });
+    }
+
+    const coreDef = (CRM_BULK_CORE_FIELDS[entityType] || {})[key];
+    if (!coreDef) return res.status(400).json({ error: 'Feltet kan ikke masseopdateres' });
+    let val = raw === '' ? null : raw;
+    if (coreDef.type === 'user' && val !== null) {
+      const u = await pgOne('SELECT id FROM users WHERE id=$1', [Number(val)]);
+      if (!u) return res.status(400).json({ error: 'Ukendt bruger' });
+      val = u.id;
+    }
+    await crmWithTransaction(async client => {
+      for (const row of rows) {
+        await client.query(`UPDATE ${table} SET ${key}=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [val, row.id]);
+        await crmLogActivity(entityType, row.id, 'field_update', coreDef.label + ' sat til "' + (raw || '—') + '" (masseopdatering)', req.user.id, client);
+      }
+    });
+    return res.json({ ok: true, action, updated: rows.length });
+  }
+
+  return res.status(400).json({ error: 'Ukendt handling' });
 }
 
 // ── Automatisk SMS/email pr. pipeline-stage ──────────────────────
@@ -7261,9 +7461,13 @@ app.put('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async 
   res.json({ ok: true });
 }));
 app.delete('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
-  await pool.query('DELETE FROM crm_leads WHERE id=$1', [req.params.id]);
-  res.json({ ok: true });
+  // Se crmDeleteEntityCascade — rydder også custom field-værdier, aktiviteter
+  // og opgaver op, hvilket denne rute IKKE gjorde tidligere.
+  const deleted = await crmWithTransaction(client => crmDeleteEntityCascade(client, 'lead', req.params.id));
+  res.json({ ok: true, deleted });
 }));
+// Masse-handlinger på flere leads ad gangen — se crmBulkAction ovenfor.
+app.post('/api/crm/leads/bulk', auth, panelAccess('crmp_leads'), asyncRoute((req, res) => crmBulkAction('lead', req, res)));
 app.post('/api/crm/leads/:id/notes', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.body) return res.status(400).json({ error: 'Note mangler' });
@@ -7448,9 +7652,13 @@ app.put('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRout
   res.json({ ok: true });
 }));
 app.delete('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
-  await pool.query('DELETE FROM crm_opportunities WHERE id=$1', [req.params.id]);
-  res.json({ ok: true });
+  // Se crmDeleteEntityCascade — rydder også custom field-værdier, aktiviteter
+  // og opgaver op, og nulstiller kilde-leadets converted_opportunity_id.
+  const deleted = await crmWithTransaction(client => crmDeleteEntityCascade(client, 'opportunity', req.params.id));
+  res.json({ ok: true, deleted });
 }));
+// Masse-handlinger på flere opportunities ad gangen — se crmBulkAction ovenfor.
+app.post('/api/crm/opportunities/bulk', auth, panelAccess('crmp_sales'), asyncRoute((req, res) => crmBulkAction('opportunity', req, res)));
 app.post('/api/crm/opportunities/:id/notes', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.body) return res.status(400).json({ error: 'Note mangler' });
