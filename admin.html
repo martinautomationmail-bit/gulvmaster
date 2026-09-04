@@ -813,9 +813,27 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-activity-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--bly-border-soft)}
 .crmpx-activity-item:last-child{border-bottom:0}
 .crmpx-activity-icon{width:26px;height:26px;border-radius:50%;background:var(--bly-border-soft);display:grid;place-items:center;flex-shrink:0;font-size:12px}
-.crmpx-activity-body{flex:1;font-size:12.5px;color:var(--bly-ink);line-height:1.5}
-.crmpx-activity-meta{color:var(--bly-sub);font-size:11px;margin-top:2px}
+/* white-space:pre-wrap — noter kan nu skrives i flere linjer (crmpx-note-new er
+   en <textarea>, se crmpxAddNote), og linjeskiftene skal så også BEVARES når
+   noten vises igen. Præcis samme løsning som .cd-note-body allerede bruger. */
+.crmpx-activity-body{flex:1;min-width:0;font-size:12.5px;color:var(--bly-ink);line-height:1.5;white-space:pre-wrap}
+.crmpx-activity-meta{color:var(--bly-sub);font-size:11px;margin-top:2px;white-space:normal}
+.crmpx-activity-meta-edited{font-style:italic}
+/* Rette/slet-knapper vises kun på NOTE-linjer i tidslinjen (kind='note') — resten
+   er systemhændelser og er bevidst uforanderlige, se PUT /api/crm/activities/:id. */
+.crmpx-activity-actions{display:flex;gap:4px;flex-shrink:0}
 .crmpx-empty{color:var(--bly-sub);font-size:12px;padding:4px 0}
+/* KONTAKTFELTER PÅ DETALJESIDEN — inputfeltet beholdes som det er (det gemmer
+   automatisk, se crmpxAutoSaveDebounced), og kopiér/åbn-knapperne lægges i en
+   lille række VED SIDEN AF feltet i stedet for at lave selve feltet om til et
+   link. Så kan man både rette værdien og bruge den med ét klik. */
+.crmpx-field-row{display:flex;align-items:center;gap:6px}
+.crmpx-field-row .tld-input{flex:1;min-width:0}
+.crmpx-field-btn{flex-shrink:0;text-decoration:none;color:var(--bly-ink)}
+.crmpx-field-btn.crmpx-field-btn-off{opacity:.35;pointer-events:none}
+/* Kopiér-knap ved siden af navnet i sidehovedet — samme knap, men følger
+   overskriftens højde i stedet for feltets. */
+.crmpx-head-namerow{display:flex;align-items:center;gap:6px}
 /* KUNDE-NOTER (#page-customer-detail) — samme grundlook som crmpx-activity-item,
    men med rette/slet-knapper og en redigerbar tilstand pr. note. */
 .cd-note-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--bly-border-soft)}
@@ -2231,7 +2249,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-03.5</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-04.1</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -3174,7 +3192,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span class="crmpx-avatar" id="crmpx-avatar">?</span>
         <div>
-          <input id="crmpx-name-input" class="crmpx-head-name">
+          <!-- Kopiér-knap ved navnet (Martins ønske: "kundens navn" skal også kunne
+               kopieres med ét klik). Selve feltet forbliver et redigerbart input
+               med autogem — knappen kopierer bare feltets aktuelle værdi. -->
+          <div class="crmpx-head-namerow">
+            <input id="crmpx-name-input" class="crmpx-head-name">
+            <button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-name-input" title="Kopiér navn">📋</button>
+          </div>
           <div class="sub" id="crmpx-sub">–</div>
         </div>
         <select id="crmpx-stage" class="select" style="width:auto"></select>
@@ -3210,9 +3234,32 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="crmpx-col-left">
       <div class="crmpx-panel">
         <h3>ℹ️ Om</h3>
-        <div class="tld-section"><label class="tld-label">📞 Telefon</label><input id="crmpx-phone" class="tld-input"></div>
-        <div class="tld-section"><label class="tld-label">📧 Email</label><input id="crmpx-email" class="tld-input" type="email"></div>
-        <div class="tld-section"><label class="tld-label">📍 Adresse</label><input id="crmpx-address" class="tld-input"></div>
+        <!-- Kopiér (📋) + åbn (📞 tel: / ✉️ Gmail-compose / 📍 Google Maps) ved siden
+             af hvert kontaktfelt. Felterne er stadig helt almindelige, redigerbare
+             inputs med autogem — knapperne læser bare feltets aktuelle værdi, og
+             hrefs holdes opdaterede mens man skriver (crmpxUpdateContactLinks).
+             Værktøjslinjens "✉️ Email"/"📞 Ring"-knapper øverst er bevaret uændret. -->
+        <div class="tld-section"><label class="tld-label">📞 Telefon</label>
+          <div class="crmpx-field-row">
+            <input id="crmpx-phone" class="tld-input">
+            <button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-phone" title="Kopiér telefonnummer">📋</button>
+            <a class="qz-icon-btn crmpx-field-btn" id="crmpx-phone-link" href="#" title="Ring op">📞</a>
+          </div>
+        </div>
+        <div class="tld-section"><label class="tld-label">📧 Email</label>
+          <div class="crmpx-field-row">
+            <input id="crmpx-email" class="tld-input" type="email">
+            <button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-email" title="Kopiér email">📋</button>
+            <a class="qz-icon-btn crmpx-field-btn" id="crmpx-email-link" href="#" target="_blank" rel="noopener" title="Skriv en mail">✉️</a>
+          </div>
+        </div>
+        <div class="tld-section"><label class="tld-label">📍 Adresse</label>
+          <div class="crmpx-field-row">
+            <input id="crmpx-address" class="tld-input">
+            <button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-address" title="Kopiér adresse">📋</button>
+            <a class="qz-icon-btn crmpx-field-btn" id="crmpx-address-link" href="#" target="_blank" rel="noopener" title="Vis på Google Maps">📍</a>
+          </div>
+        </div>
         <div class="tld-row" id="crmpx-opp-fields" style="display:none">
           <div class="tld-section"><label class="tld-label">💰 Værdi (kr.)</label><input id="crmpx-value" type="number" class="tld-input"></div>
           <div class="tld-section"><label class="tld-label">🎯 Sandsynlighed (%)</label><input id="crmpx-probability" type="number" min="0" max="100" class="tld-input"></div>
@@ -3275,9 +3322,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="crmpx-col-right">
       <div class="crmpx-panel">
         <h3>Aktivitet</h3>
-        <div class="tld-row">
-          <div style="flex:1"><input id="crmpx-note-new" class="tld-input" placeholder="Skriv en note..."></div>
-          <button class="btn small" type="button" id="crmpx-note-add-btn">+ Tilføj</button>
+        <!-- Note-boksen er nu en HØJ <textarea> i stedet for et enkelt-linje <input>
+             (Martins ønske: mere plads at skrive i, og mulighed for linjeskift).
+             Enter gemmer, Shift+Enter laver et linjeskift — NØJAGTIG samme
+             opførsel som note-boksen på Noter-fanen (crmpx-notes-new), så de to
+             note-felter i programmet føles ens. -->
+        <div>
+          <textarea id="crmpx-note-new" class="tld-input" rows="4" placeholder="Skriv en note...  (Enter = gem, Shift+Enter = ny linje)" style="resize:vertical;min-height:88px"></textarea>
+          <div style="margin-top:6px;text-align:right"><button class="btn small" type="button" id="crmpx-note-add-btn">+ Tilføj</button></div>
         </div>
         <div id="crmpx-activity" style="margin-top:14px"></div>
       </div>
@@ -3414,9 +3466,35 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="form-group"><label class="form-label">Navn</label><input id="crmp-new-name" class="input"></div>
     <div class="form-group"><label class="form-label">Telefon</label><input id="crmp-new-phone" class="input"></div>
     <div class="form-group"><label class="form-label">Email</label><input id="crmp-new-email" class="input" type="email"></div>
+    <!-- Pipeline + stage (Martins ønske, sep. 2026): man skal kunne bestemme HVOR
+         det nye lead lander, i stedet for altid at få det i pipelinens første
+         stage. Vises for både leads og opportunities — det er den samme modal,
+         og det ville være mærkeligt at kunne vælge stage det ene sted men ikke
+         det andet. Stage-listen fyldes ud fra den valgte pipeline, se
+         crmpNewFillStages(). -->
+    <div class="form-group"><label class="form-label">Pipeline</label><select id="crmp-new-pipeline" class="input"></select></div>
+    <div class="form-group"><label class="form-label">Stage</label><select id="crmp-new-stage" class="input"></select></div>
     <div class="modal-actions">
       <button class="btn" id="crmp-new-cancel">Annuller</button>
       <button class="btn primary" id="crmp-new-create">Opret</button>
+    </div>
+  </div>
+</div>
+
+<!-- CRM-PIPELINE — KONVERTÉR LEAD (vælg salgs-pipeline + start-stage).
+     Erstatter den tidligere rene gmConfirm-boks, så man selv kan bestemme hvor
+     den nye opportunity lander i stedet for altid at få den i første stage.
+     Bevidst holdt i samme lille, enkle form som crmp-new-modal ovenfor —
+     ingen ny modal-komponent, bare de to valg + Annuller/Konvertér. -->
+<div class="mo" id="crmpx-convert-modal">
+  <div class="modal" style="max-width:420px">
+    <h3>🤝 Konvertér lead</h3>
+    <p style="font-size:13px;color:var(--ink);line-height:1.5;margin:0 0 14px">Leadet bliver til en kontakt + en opportunity i salgs-pipelinen. Der oprettes/kædes samtidig en kunde i Kunder-modulet.</p>
+    <div class="form-group"><label class="form-label">Salgs-pipeline</label><select id="crmpx-convert-pipeline" class="input"></select></div>
+    <div class="form-group"><label class="form-label">Start-stage</label><select id="crmpx-convert-stage" class="input"></select></div>
+    <div class="modal-actions">
+      <button class="btn" id="crmpx-convert-cancel">Annuller</button>
+      <button class="btn primary" id="crmpx-convert-ok">Konvertér</button>
     </div>
   </div>
 </div>
@@ -14638,6 +14716,10 @@ async function initCrmpModule(){
     document.getElementById('crmp-set-field-new-type').addEventListener('change',function(){document.getElementById('crmp-set-field-new-options').style.display=this.value==='select'?'':'none';});
     document.getElementById('crmp-set-field-add').addEventListener('click',crmpAddCustomField);
     document.getElementById('crmp-new-cancel').addEventListener('click',function(){closeModal('crmp-new-modal');});
+    // Skift af pipeline skal ALTID fylde stage-listen forfra (og vælge "Nyt lead"
+    // igen, hvis den nye pipeline har en sådan) — ellers ville der stå stages
+    // tilbage fra den forrige pipeline, som slet ikke findes i den valgte.
+    document.getElementById('crmp-new-pipeline').addEventListener('change',crmpNewFillStages);
     document.getElementById('crmp-new-create').addEventListener('click',crmpCreateNewItem);
     crmpInitBulkBar();
   }
@@ -15027,7 +15109,14 @@ function crmpxInitOnce(){
   document.getElementById('crmpx-note-add-btn').addEventListener('click',crmpxAddNote);
   document.getElementById('crmpx-task-add-btn').addEventListener('click',crmpxAddTask);
   document.getElementById('crmpx-task-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddTask();});
-  document.getElementById('crmpx-note-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddNote();});
+  // Note-boksen i Aktivitet-panelet er nu en <textarea> (Martins ønske om plads
+  // til flere linjer). Enter gemmer, Shift+Enter laver et linjeskift — nøjagtig
+  // samme opførsel som crmpx-notes-new på Noter-fanen nedenfor, så de to
+  // note-felter i programmet fungerer ens. (Før var dette et <input>, hvor der
+  // slet IKKE var nogen måde at skrive et linjeskift på.)
+  document.getElementById('crmpx-note-new').addEventListener('keydown',function(e){
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();crmpxAddNote();}
+  });
   document.getElementById('crmpx-notes-add-btn').addEventListener('click',crmpxAddCustomerNote);
   // Enter gemmer (som crmpx-note-new ovenfor) — Shift+Enter indsætter i stedet en
   // ny linje, samme konvention som fx chat-inputs, siden dette er en <textarea>
@@ -15047,6 +15136,24 @@ function crmpxInitOnce(){
   ['crmpx-name-input','crmpx-phone','crmpx-email','crmpx-address','crmpx-source','crmpx-note','crmpx-value','crmpx-probability'].forEach(function(id){
     var el=document.getElementById(id);
     if(el)el.addEventListener('input',crmpxAutoSaveDebounced);
+  });
+  // Ring-/mail-/kort-linkene ved kontaktfelterne skal pege på det man LIGE har
+  // skrevet, ikke på værdien fra da siden blev åbnet — opdateres derfor med det
+  // samme ved hvert tastetryk (billigt, det er kun href-strenge).
+  ['crmpx-phone','crmpx-email','crmpx-address'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)el.addEventListener('input',crmpxUpdateContactLinks);
+  });
+  // Kopiér-knapper ved navn/telefon/email/adresse — delegeret, så det er ét
+  // sted uanset hvor mange felter der kommer til. Læser feltets AKTUELLE værdi.
+  document.getElementById('page-crmp-detail').addEventListener('click',async function(e){
+    var btn=e.target.closest('[data-crmpx-copy]');
+    if(!btn)return;
+    var src=document.getElementById(btn.dataset.crmpxCopy);
+    var val=src?String(src.value||'').trim():'';
+    if(!val){toast('Feltet er tomt','⚠');return;}
+    try{await navigator.clipboard.writeText(val);toast('Kopieret: '+val,'📋');}
+    catch(err){toast('Kunne ikke kopiere — markér og kopiér manuelt','⚠');}
   });
   ['crmpx-owner','crmpx-stage'].forEach(function(id){
     var el=document.getElementById(id);
@@ -15388,6 +15495,7 @@ async function openCrmpDetail(entityType,id){
   var emailBtn=document.getElementById('crmpx-email-btn'),callBtn=document.getElementById('crmpx-call-btn');
   emailBtn.href=email?gmailComposeUrl(email):'#';emailBtn.style.opacity=email?'1':'.4';emailBtn.style.pointerEvents=email?'':'none';
   callBtn.href=phone?('tel:'+phone):'#';callBtn.style.opacity=phone?'1':'.4';callBtn.style.pointerEvents=phone?'':'none';
+  crmpxUpdateContactLinks();
   document.getElementById('crmpx-opp-fields').style.display=entityType==='opportunity'?'':'none';
   document.getElementById('crmpx-source-field').style.display=entityType==='lead'?'':'none';
   document.getElementById('crmpx-note').closest('.tld-section').style.display=entityType==='lead'?'':'none';
@@ -15460,6 +15568,29 @@ async function openCrmpDetail(entityType,id){
   switchPage('crmp-detail',true);
   navPushHash('crmp-detail/'+entityType+'/'+id);
 }
+// ── ÅBN-LINKS VED KONTAKTFELTERNE (📞 / ✉️ / 📍) ──────────────────
+// Sætter href på de tre små ikonknapper ved siden af telefon/email/adresse ud
+// fra felternes aktuelle indhold. Er feltet tomt, tones knappen ned og gøres
+// uklikbar (samme greb som værktøjslinjens ✉️/📞-knapper allerede bruger).
+//   • Telefon → tel: (samme som værktøjslinjens "📞 Ring", som er bevaret)
+//   • Email   → gmailComposeUrl(), IKKE mailto: — det er husreglen i resten af
+//               programmet (se kommentaren over gmailComposeUrl: mailto: åbner
+//               et vilkårligt mailprogram, ikke nødvendigvis Gmail)
+//   • Adresse → Google Maps-søgning på adressen
+function crmpxUpdateContactLinks(){
+  var phone=String((document.getElementById('crmpx-phone')||{}).value||'').trim();
+  var email=String((document.getElementById('crmpx-email')||{}).value||'').trim();
+  var address=String((document.getElementById('crmpx-address')||{}).value||'').trim();
+  function setLink(id,href,on){
+    var el=document.getElementById(id);
+    if(!el)return;
+    el.href=on?href:'#';
+    el.classList.toggle('crmpx-field-btn-off',!on);
+  }
+  setLink('crmpx-phone-link','tel:'+phone.replace(/\s+/g,''),!!phone);
+  setLink('crmpx-email-link',email?gmailComposeUrl(email):'#',!!email);
+  setLink('crmpx-address-link','https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(address),!!address);
+}
 function crmpxOppMiniCard(opp){
   var stage=null;
   crmpState.pipelines.forEach(function(p){var s=(p.stages||[]).find(function(x){return x.id===opp.stage_id;});if(s)stage=s;});
@@ -15468,11 +15599,71 @@ function crmpxOppMiniCard(opp){
     +'<div class="crmpx-mini-card-row">'+(stage?'<span class="crmp-col-dot" style="background:'+esc(stage.color)+';width:7px;height:7px"></span> '+esc(stage.name):'')+(opp.value!=null?' · '+krFmt(opp.value):'')+'</div>'
     +'</div>';
 }
+// ── AKTIVITETS-TIDSLINJEN ────────────────────────────────────────
+// Kun NOTER (kind='note') får ✎/🗑-knapper. Resten af linjerne — stage-skift,
+// "konverteret", automatiske SMS'er/mails osv. — er et faktuelt log over hvad
+// der er sket, og skal blive stående uændret. Serveren håndhæver det samme,
+// se PUT/DELETE /api/crm/activities/:id, så det ikke kun er UI'et der beskytter.
+// Rette-i-stedet-mønstret er kopieret 1:1 fra kunde-noterne (crmpxStartEdit-
+// CustomerNote), så de to noteliste-typer opfører sig ens.
+var crmpxActivities=[];
 function crmpxRenderActivity(activities){
-  document.getElementById('crmpx-activity').innerHTML=(activities||[]).map(function(a){
+  if(activities)crmpxActivities=activities;
+  document.getElementById('crmpx-activity').innerHTML=(crmpxActivities||[]).map(function(a){
     var icon=a.kind==='note'?'📝':a.kind==='stage_change'?'🔀':a.kind==='converted'?'🤝':'✨';
-    return '<div class="crmpx-activity-item"><div class="crmpx-activity-icon">'+icon+'</div><div class="crmpx-activity-body">'+esc(a.body||'')+'<div class="crmpx-activity-meta">'+esc(a.user_name||'System')+' · '+esc(fmtDaDate(a.created_at))+'</div></div></div>';
+    var edited=a.updated_at&&a.updated_at!==a.created_at;
+    return '<div class="crmpx-activity-item" data-activity-id="'+a.id+'">'
+      +'<div class="crmpx-activity-icon">'+icon+'</div>'
+      +'<div class="crmpx-activity-body">'+esc(a.body||'')
+      +'<div class="crmpx-activity-meta">'+esc(a.user_name||'System')+' · '+esc(fmtDaDate(a.created_at))+(edited?' · <span class="crmpx-activity-meta-edited">redigeret</span>':'')+'</div></div>'
+      +(a.kind==='note'?'<div class="crmpx-activity-actions"><button class="qz-icon-btn" data-crmpx-act="edit" type="button" title="Redigér">✎</button><button class="qz-icon-btn" data-crmpx-act="delete" type="button" title="Slet">🗑</button></div>':'')
+      +'</div>';
   }).join('')||'<div class="crmpx-empty">Ingen aktivitet endnu</div>';
+}
+document.getElementById('crmpx-activity').addEventListener('click',function(e){
+  var btn=e.target.closest('[data-crmpx-act]');
+  if(!btn)return;
+  var item=btn.closest('.crmpx-activity-item');
+  var actId=Number(item.dataset.activityId);
+  var act=crmpxActivities.find(function(a){return a.id===actId;});
+  if(!act)return;
+  if(btn.dataset.crmpxAct==='delete'){
+    gmConfirm('Slet denne note? Kan ikke fortrydes.','Slet note').then(function(ok){if(ok)crmpxDeleteActivityNote(actId);});
+  } else {
+    crmpxStartEditActivityNote(item,act);
+  }
+});
+function crmpxStartEditActivityNote(item,act){
+  item.innerHTML='<div class="crmpx-activity-icon">📝</div>'
+    +'<div style="flex:1;min-width:0"><textarea class="tld-input" rows="3" id="crmpx-act-edit-input" style="resize:vertical">'+esc(act.body||'')+'</textarea>'
+    +'<div style="display:flex;gap:6px;margin-top:6px"><button class="btn small" type="button" id="crmpx-act-edit-save">Gem</button><button class="btn small outline" type="button" id="crmpx-act-edit-cancel">Annullér</button></div></div>';
+  document.getElementById('crmpx-act-edit-save').addEventListener('click',function(){crmpxSaveEditActivityNote(act.id);});
+  document.getElementById('crmpx-act-edit-cancel').addEventListener('click',function(){crmpxRenderActivity();});
+  document.getElementById('crmpx-act-edit-input').focus();
+}
+async function crmpxSaveEditActivityNote(actId){
+  var input=document.getElementById('crmpx-act-edit-input');
+  var body=input.value.trim();
+  if(!body)return;
+  var r=await api('/api/crm/activities/'+actId,{method:'PUT',body:JSON.stringify({body:body})});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke gemme','❌');return;}
+  toast('Note gemt ✓','✓');
+  await crmpxReloadActivity();
+}
+async function crmpxDeleteActivityNote(actId){
+  var r=await api('/api/crm/activities/'+actId,{method:'DELETE'});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke slette','❌');return;}
+  toast('Note slettet','🗑');
+  await crmpxReloadActivity();
+}
+// Henter KUN tidslinjen igen (ikke hele siden via openCrmpDetail) — så mister man
+// hverken fokus eller det man er ved at skrive i et af felterne ved siden af.
+async function crmpxReloadActivity(){
+  var ent=crmpDetailEntity;
+  if(!ent)return;
+  var d=await api((ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id);
+  if(!d||d.error)return;
+  crmpxRenderActivity(d.activities||[]);
 }
 function crmpxRenderCustomFieldInputs(defs,values){
   return defs.map(function(d){
@@ -15577,11 +15768,58 @@ async function crmpxAutoSaveContact(){
 }
 var crmpxAutoSaveDebounced=crmpxDebounce(crmpxAutoSave,800);
 var crmpxAutoSaveContactDebounced=crmpxDebounce(crmpxAutoSaveContact,800);
+// ── KONVERTÉR LEAD → OPPORTUNITY ─────────────────────────────────
+// Før: en ren gmConfirm-boks, og opportunityen landede altid i salgs-pipelinens
+// FØRSTE stage. Nu vælger man selv pipeline + start-stage (Martins ønske).
+// Standardvalget er stadig første salgs-pipeline / første stage efter position,
+// altså nøjagtig det serveren selv ville have valgt hvis felterne var tomme
+// (se POST /api/crm/leads/:id/convert) — så "bare tryk Konvertér" giver samme
+// resultat som før. Pipeline-dropdownen vises altid, også når der kun findes én
+// salgs-pipeline; vi antager ikke at der kun er én.
+function crmpxConvertFillStages(){
+  var pid=Number(document.getElementById('crmpx-convert-pipeline').value);
+  var p=crmpState.pipelines.find(function(x){return x.id===pid;});
+  var sel=document.getElementById('crmpx-convert-stage');
+  var stages=crmpSortedStages(p);
+  sel.innerHTML=stages.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
+  if(stages.length)sel.value=stages[0].id;
+}
+function crmpxAskConvertTarget(){
+  return new Promise(function(resolve){
+    var overlay=document.getElementById('crmpx-convert-modal');
+    var pipeSel=document.getElementById('crmpx-convert-pipeline');
+    var stageSel=document.getElementById('crmpx-convert-stage');
+    var salesPipelines=crmpState.pipelines.filter(function(p){return p.type==='opportunity';});
+    if(!salesPipelines.length){toast('Ingen salgs-pipeline findes — opret én under ⚙️ Indstillinger','⚠');resolve(null);return;}
+    pipeSel.innerHTML=salesPipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
+    pipeSel.value=salesPipelines[0].id;
+    crmpxConvertFillStages();
+    overlay.classList.add('open');
+    var okBtn=document.getElementById('crmpx-convert-ok'),cancelBtn=document.getElementById('crmpx-convert-cancel');
+    function cleanup(result){
+      overlay.classList.remove('open');
+      okBtn.removeEventListener('click',onOk);
+      cancelBtn.removeEventListener('click',onCancel);
+      overlay.removeEventListener('click',onBackdrop);
+      pipeSel.removeEventListener('change',crmpxConvertFillStages);
+      resolve(result);
+    }
+    function onOk(){cleanup({pipeline_id:Number(pipeSel.value)||null,stage_id:Number(stageSel.value)||null});}
+    function onCancel(){cleanup(null);}
+    function onBackdrop(e){if(e.target===overlay)onCancel();}
+    okBtn.addEventListener('click',onOk);
+    cancelBtn.addEventListener('click',onCancel);
+    overlay.addEventListener('click',onBackdrop);
+    pipeSel.addEventListener('change',crmpxConvertFillStages);
+  });
+}
 async function crmpxConvert(){
   var ent=crmpDetailEntity;
   if(!ent||ent.type!=='lead')return;
-  if(!await gmConfirm('Konvertér leadet til en kontakt + opportunity i salgs-pipelinen? Der oprettes/kædes samtidig en kunde i Kunder-modulet.'))return;
-  var r=await api('/api/crm/leads/'+ent.id+'/convert',{method:'POST',body:JSON.stringify({})});
+  if(!crmpState.pipelines.length)await crmpLoadPipelines();
+  var target=await crmpxAskConvertTarget();
+  if(!target)return;
+  var r=await api('/api/crm/leads/'+ent.id+'/convert',{method:'POST',body:JSON.stringify(target)});
   if(r&&r.ok){toast('Konverteret ✓','🤝');openCrmpDetail('opportunity',r.opportunity_id);}
   else toast((r&&r.error)||'Kunne ikke konvertere','❌');
 }
@@ -15630,7 +15868,10 @@ async function crmpxAddNote(){
   if(!ent||!input.value.trim())return;
   var endpoint=(ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id+'/notes';
   var r=await api(endpoint,{method:'POST',body:JSON.stringify({body:input.value.trim()})});
-  if(r&&r.ok){input.value='';openCrmpDetail(ent.type,ent.id);}
+  // Genindlæser KUN tidslinjen (før: hele siden via openCrmpDetail, hvilket
+  // hoppede tilbage til Detaljer-fanen og skubbede et nyt hash på historikken —
+  // unødvendigt, når det eneste der er ændret er aktivitetslisten).
+  if(r&&r.ok){input.value='';toast('Note tilføjet ✓','📝');await crmpxReloadActivity();}
   else toast((r&&r.error)||'Kunne ikke tilføje note','❌');
 }
 function crmpxTaskDueLabel(t){
@@ -15755,6 +15996,30 @@ function cptRender(){
 }
 
 // ── OPRET NYT LEAD/OPPORTUNITY (hurtig-modal) ─────────────────────
+// Standard-stagen for et NYT lead er den der hedder præcis "Nyt lead" (Martins
+// ønske — det er den kolonne han selv tænker på som indbakken), uanset hvor i
+// rækkefølgen den ligger. Findes den ikke i den valgte pipeline (fx en
+// opportunity-pipeline, eller en pipeline hvor kolonnen hedder noget andet),
+// falder vi tilbage til den første stage efter position — altså præcis det
+// serveren i forvejen ville have valgt selv, se POST /api/crm/leads.
+var CRMP_DEFAULT_NEW_STAGE_NAME='nyt lead';
+function crmpSortedStages(p){return ((p&&p.stages)||[]).slice().sort(function(a,b){return a.position-b.position;});}
+function crmpDefaultNewStageId(p){
+  var stages=crmpSortedStages(p);
+  if(!stages.length)return '';
+  var named=stages.find(function(s){return String(s.name||'').trim().toLowerCase()===CRMP_DEFAULT_NEW_STAGE_NAME;});
+  return (named||stages[0]).id;
+}
+// Fylder stage-listen ud fra den pipeline der er valgt i pipeline-dropdownen —
+// kaldes både når modalen åbnes og hver gang man skifter pipeline, så der aldrig
+// står stages tilbage fra den forrige pipeline.
+function crmpNewFillStages(){
+  var pid=Number(document.getElementById('crmp-new-pipeline').value);
+  var p=crmpState.pipelines.find(function(x){return x.id===pid;});
+  var sel=document.getElementById('crmp-new-stage');
+  sel.innerHTML=crmpSortedStages(p).map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
+  sel.value=crmpDefaultNewStageId(p);
+}
 function openCrmpNewModal(){
   var p=crmpCurrentPipeline();
   if(!p)return;
@@ -15762,17 +16027,33 @@ function openCrmpNewModal(){
   document.getElementById('crmp-new-name').value='';
   document.getElementById('crmp-new-phone').value='';
   document.getElementById('crmp-new-email').value='';
+  // Kun pipelines af SAMME type som det board man står på — man opretter ikke et
+  // lead i en salgs-pipeline (og omvendt) ved et uheld.
+  var sel=document.getElementById('crmp-new-pipeline');
+  sel.innerHTML=crmpState.pipelines.filter(function(x){return x.type===p.type;}).map(function(x){return '<option value="'+x.id+'">'+esc(x.name)+'</option>';}).join('');
+  sel.value=p.id;
+  crmpNewFillStages();
   document.getElementById('crmp-new-modal').classList.add('open');
 }
 async function crmpCreateNewItem(){
-  var p=crmpCurrentPipeline();
+  var pid=Number(document.getElementById('crmp-new-pipeline').value);
+  var p=crmpState.pipelines.find(function(x){return x.id===pid;})||crmpCurrentPipeline();
+  if(!p)return;
   var name=document.getElementById('crmp-new-name').value.trim();
   if(!name){toast('Navn mangler','⚠');return;}
-  var body={name:name,phone:document.getElementById('crmp-new-phone').value,email:document.getElementById('crmp-new-email').value,pipeline_id:p.id};
+  var stageId=Number(document.getElementById('crmp-new-stage').value)||null;
+  var body={name:name,phone:document.getElementById('crmp-new-phone').value,email:document.getElementById('crmp-new-email').value,pipeline_id:p.id,stage_id:stageId};
   var endpoint=p.type==='lead'?'/api/crm/leads':'/api/crm/opportunities';
   if(p.type==='opportunity'){body.contact_name=name;body.contact_phone=body.phone;body.contact_email=body.email;}
   var r=await api(endpoint,{method:'POST',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Oprettet ✓','✓');closeModal('crmp-new-modal');crmpLoadBoard();}
+  if(r&&r.ok){
+    toast('Oprettet ✓','✓');
+    closeModal('crmp-new-modal');
+    // Blev der valgt en ANDEN pipeline end den man står på, skiftes boardet med
+    // over til den — ellers ville det nye lead se ud som om det forsvandt.
+    if(p.id!==crmpState.currentPipelineId)crmpSelectPipelineByType(p.type,p.id);
+    else crmpLoadBoard();
+  }
   else toast((r&&r.error)||'Kunne ikke oprette','❌');
 }
 

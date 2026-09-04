@@ -1361,6 +1361,10 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_crm_activities_entity ON crm_activities(entity_type, entity_id);
+    -- Noter i tidslinjen kan nu redigeres (se PUT /api/crm/activities/:id) — sættes
+    -- kun når en note rent faktisk er rettet, så "redigeret"-mærket i UI'et kan vises
+    -- præcis som på kunde-noterne (customer_notes.updated_at).
+    ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS updated_at TEXT;
 
     -- Engangs-migrering (idempotent, pga. NOT EXISTS — kan trygt køre ved hver
     -- opstart uden at gøre noget efter første gang): da vi tilføjede once-per-
@@ -7665,6 +7669,49 @@ app.post('/api/crm/opportunities/:id/notes', auth, panelAccess('crmp_sales'), as
   await crmLogActivity('opportunity', req.params.id, 'note', String(b.body), req.user.id);
   res.json({ ok: true });
 }));
+
+// ── REDIGÉR / SLET ÉN NOTE I AKTIVITETS-TIDSLINJEN ───────────────
+// Martins ønske (sep. 2026): man skal kunne rette en tastefejl i en note eller
+// slette den igen — men KUN noter. Resten af tidslinjen (stage_change, created,
+// converted, sms_sent/email_sent m.fl.) er et faktuelt log over hvad der rent
+// faktisk er sket, og må hverken kunne rettes eller slettes; ellers kan man ikke
+// stole på den. Derfor håndhæves kind='note' HER på serveren — ikke kun ved at
+// undlade knapperne i UI'et — så et håndlavet kald mod et stage-skifte afvises.
+//
+// Adgang: aktiviteten hører til ENTEN et lead ELLER en opportunity, så den
+// sædvanlige panelAccess('crmp_leads')/panelAccess('crmp_sales') kan ikke vælges
+// på forhånd som middleware. I stedet slås rækken op først, og så tjekkes præcis
+// den side rækken hører til — med nøjagtig samme regler som panelAccess bruger.
+const CRM_ACTIVITY_PANEL_BY_ENTITY = { lead: 'crmp_leads', opportunity: 'crmp_sales' };
+async function crmLoadEditableActivity(req, res) {
+  const row = await pgOne('SELECT * FROM crm_activities WHERE id=$1', [req.params.id]);
+  if (!row) { res.status(404).json({ error: 'Aktivitet ikke fundet' }); return null; }
+  const panelKey = CRM_ACTIVITY_PANEL_BY_ENTITY[row.entity_type];
+  if (!panelKey) { res.status(403).json({ error: 'Ingen adgang' }); return null; }
+  const u = await pgOne('SELECT id, role, active, is_finance_admin, panel_role_id FROM users WHERE id=$1', [req.user.id]);
+  if (!u || !u.active) { res.status(403).json({ error: 'Ingen adgang' }); return null; }
+  if (u.role !== 'admin') {
+    const pages = await computeUserPanelPages(u);
+    if (!pages.includes(panelKey)) { res.status(403).json({ error: 'Ingen adgang til denne side' }); return null; }
+  }
+  if (row.kind !== 'note') { res.status(400).json({ error: 'Kun noter kan redigeres eller slettes — resten af tidslinjen er et fast log' }); return null; }
+  return row;
+}
+app.put('/api/crm/activities/:id', auth, asyncRoute(async (req, res) => {
+  const row = await crmLoadEditableActivity(req, res);
+  if (!row) return;
+  const b = req.body || {};
+  if (!b.body || !String(b.body).trim()) return res.status(400).json({ error: 'Note mangler' });
+  await pool.query(`UPDATE crm_activities SET body=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [String(b.body).trim(), row.id]);
+  res.json({ ok: true });
+}));
+app.delete('/api/crm/activities/:id', auth, asyncRoute(async (req, res) => {
+  const row = await crmLoadEditableActivity(req, res);
+  if (!row) return;
+  await pool.query('DELETE FROM crm_activities WHERE id=$1', [row.id]);
+  res.json({ ok: true });
+}));
+
 // Opportunities knyttet til en given kunde i Kunder-modulet — bruges af
 // kundekortet til at vise "tilknyttede opportunities" (se customer-detail).
 app.get('/api/crm/customers/:id/opportunities', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
