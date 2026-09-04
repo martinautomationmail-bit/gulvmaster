@@ -6084,6 +6084,23 @@ app.get('/api/gmail/status', auth, panelAccess('gmail-settings'), asyncRoute(asy
   });
 }));
 
+// FEJLRETTELSE (sep. 2026): Filer- og Emails-fanerne på CRM-kortet og
+// Emails-panelet på kundesiden brugte GET /api/gmail/status til bare at
+// spørge "er Gmail forbundet overhovedet?" for at vide om fanerne skal vises.
+// Men den rute kræver panelAccess('gmail-settings') — retten til selv at
+// SÆTTE Gmail-integrationen op under Indstillinger — som kun Martin (admin)
+// har. Enhver anden bruger (fx en kontormedarbejder som Sarah, der har
+// 'customers'-adgang men ikke 'gmail-settings') fik derfor et 403 tilbage,
+// hvilket i UI'et så ud som "Gmail er ikke forbundet" — selvom det rent
+// faktisk er, for hele virksomheden (gmail_connection er én delt forbindelse,
+// ikke pr. bruger). Denne rute afslører kun det ene boolean "connected", intet
+// følsomt (ingen email, ingen tokens, ingen sync-fejl), og kræver derfor bare
+// at man er logget ind — ikke at man må administrere selve integrationen.
+app.get('/api/gmail/connected', auth, asyncRoute(async (req, res) => {
+  const conn = await gmailGetConnection();
+  res.json({ connected: !!(conn && conn.refresh_token_enc) });
+}));
+
 app.post('/api/gmail/disconnect', auth, panelAccess('gmail-settings'), asyncRoute(async (req, res) => {
   const conn = await gmailGetConnection();
   if (conn && conn.refresh_token_enc) {
