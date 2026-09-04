@@ -2262,7 +2262,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-04.4</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-04.5</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -3482,6 +3482,32 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <div class="modal-actions"><button class="btn" id="crmp-settings-close">Luk</button></div>
+  </div>
+</div>
+
+<!-- CRM-PIPELINE — FORHÅNDSVISNING AF AUTOMATIK-EMAIL
+     Deles af stage-automatikken og de tidsbaserede opfølgninger. Serveren
+     sender email_body som RÅ HTML uden nogen escaping (se crmFireStageAutomation
+     og runStageFollowupScan), så en indsat template-mail kan kun kontrolleres
+     ved faktisk at rendere den. Den vises i en sandkasse-iframe via srcdoc og
+     BEVIDST uden allow-scripts: en indsat template må gerne indeholde script-
+     tags, men de skal aldrig kunne køre i admin-fladen — og dens CSS kan ikke
+     smitte af på siden udenom. Eget z-index, da den åbnes OVEN PÅ indstillings-modalen
+     (.mo er z-index 200). -->
+<div class="mo" id="crmp-email-preview-modal" style="z-index:260">
+  <div class="modal" style="width:min(760px,96vw);max-width:96vw;padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--bly-border)">
+      <div style="flex:1;font-weight:800;font-size:15px;letter-spacing:-.01em">👁 Forhåndsvisning af email</div>
+      <button class="btn small" type="button" id="crmp-email-preview-close">✕ Luk</button>
+    </div>
+    <div style="padding:12px 18px;border-bottom:1px solid var(--bly-border-soft);background:var(--bly-bg-soft,#F5F5F7)">
+      <div class="sub" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Emne</div>
+      <div id="crmp-email-preview-subject" style="font-weight:700;font-size:13.5px;word-break:break-word"></div>
+    </div>
+    <div style="flex:1;min-height:0;display:flex;justify-content:center;background:#F5F5F7;padding:12px">
+      <iframe id="crmp-email-preview-frame" sandbox="allow-same-origin" title="Forhåndsvisning af email" style="width:100%;max-width:700px;height:500px;border:1px solid var(--bly-border);border-radius:8px;background:#fff"></iframe>
+    </div>
+    <div class="sub" style="padding:10px 18px;border-top:1px solid var(--bly-border-soft);font-size:11.5px">Forhåndsvisning med eksempeldata — de rigtige oplysninger indsættes ved afsendelse.</div>
   </div>
 </div>
 
@@ -14864,6 +14890,10 @@ async function initCrmpModule(){
       document.getElementById('crmp-cf-filter-field').value='';document.getElementById('crmp-cf-filter-value').style.display='none';
       crmpLoadBoard();
     });
+    // Luk-knappen wires her (og ikke som inline onclick) fordi hele scriptet
+    // ligger i en IIFE — en global onclick-handler ville ikke kunne se
+    // crmpCloseEmailPreview. Samme mønster som knappen lige nedenfor.
+    document.getElementById('crmp-email-preview-close').addEventListener('click',crmpCloseEmailPreview);
     document.getElementById('crmp-settings-close').addEventListener('click',function(){
       closeModal('crmp-settings-modal');
       // Genopfrisk kortene med det samme hvis Martin lige har ændret "Vis på kort"/farver,
@@ -16296,6 +16326,38 @@ function openCrmpSettingsModal(){
   crmpRenderSettingsFields();
   document.getElementById('crmp-settings-modal').classList.add('open');
 }
+// ── FORHÅNDSVISNING AF AUTOMATIK-EMAILS ─────────────────────────────────────
+// Martin skriver rå HTML-templates (tabel-layout, logo, CTA-knap) direkte i
+// email_body-felterne, og serveren sender dem ordret videre. Vi genbruger
+// fillDocEmailVarsClient — ordret samme regex som serverens fillDocEmailVars,
+// inkl. at et UKENDT {{tag}} bliver stående bogstaveligt — så det man ser her
+// er præcis det der sendes. Netop derfor afslører forhåndsvisningen også en
+// template fra et andet CRM med fx {{ contact.name }}: den bliver stående som
+// den er, i stedet for at blive opdaget først ude hos kunden.
+function crmpStagePreviewSampleVars(stageName){
+  return {navn:'Peter Jensen',telefon:'12 34 56 78',email:'peter@eksempel.dk',firma:'Gulv Master Enterprise ApS',stage:stageName||''};
+}
+// Tidsbaserede opfølgninger får BEVIDST et mindre vars-objekt end
+// stage-automatikken — runStageFollowupScan bygger kun {navn, firma}. Hvis vi
+// gav forhåndsvisningen her det fulde sæt, ville fx {{telefon}} se ud som om
+// den virkede, og så først stå tom-bogstavelig i den rigtige mail.
+function crmpFollowupPreviewSampleVars(){
+  return {navn:'Peter Jensen',firma:'Gulv Master Enterprise ApS'};
+}
+function crmpOpenEmailPreview(subject,body,vars){
+  document.getElementById('crmp-email-preview-subject').textContent=fillDocEmailVarsClient(subject,vars);
+  var html=fillDocEmailVarsClient(body,vars);
+  // Ingen egen padding på body: mailens HTML ER dokumentet hos modtageren, og
+  // en tabel-baseret template med egen baggrundsfarve ville ellers få en falsk
+  // hvid kant hele vejen rundt. Skrifttypen er kun en fallback for de templates
+  // der ikke selv sætter en — præcis som en mailklient gør det.
+  document.getElementById('crmp-email-preview-frame').srcdoc='<!doctype html><meta charset="utf-8"><body style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#222">'+(html.trim()?html:'<span style="color:#888;display:inline-block;padding:12px">(tom mail-tekst)</span>')+'</body>';
+  document.getElementById('crmp-email-preview-modal').classList.add('open');
+}
+function crmpCloseEmailPreview(){
+  document.getElementById('crmp-email-preview-modal').classList.remove('open');
+  document.getElementById('crmp-email-preview-frame').srcdoc='';
+}
 function crmpRenderSettingsStages(){
   var p=crmpState.pipelines.find(function(x){return x.id===crmpState.settingsPipelineId;});
   var list=document.getElementById('crmp-set-stages-list');
@@ -16318,7 +16380,11 @@ function crmpRenderSettingsStages(){
         +'<textarea class="input" data-action="sms-template" rows="2" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:8px">'+esc(s.sms_template||'')+'</textarea>'
         +'<label style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" data-action="email-enabled" '+(s.email_enabled?'checked':'')+'> <b>Email</b> til leadet/kunden når et kort rykkes hertil</label>'
         +'<input class="input" data-action="email-subject" placeholder="Emne" value="'+esc(s.email_subject||'')+'" style="width:100%;margin-bottom:6px">'
-        +'<textarea class="input" data-action="email-body" rows="3" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:8px">'+esc(s.email_body||'')+'</textarea>'
+        +'<textarea class="input" data-action="email-body" rows="10" placeholder="Hej {{navn}}, ... — eller indsæt en færdig HTML-mail" style="width:100%;margin-bottom:4px;font-family:monospace;font-size:11.5px;resize:vertical;min-height:160px">'+esc(s.email_body||'')+'</textarea>'
+        +'<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+          +'<button class="btn small" data-action="email-preview" type="button">👁 Forhåndsvisning</button>'
+          +'<span class="sub" style="flex:1;min-width:200px;font-size:11px">Understøtter HTML. Brug præcis disse variabler: {{navn}}, {{telefon}}, {{email}}, {{firma}}, {{stage}} — tags fra andre systemer (fx {{ contact.name }}) bliver IKKE erstattet.</span>'
+        +'</div>'
         +'<button class="btn small" data-action="automation-save">Gem automatik</button>'
         +'<span class="sub" data-automation-status style="margin-left:8px"></span>'
         +'<div class="crmp-followup-rules-section" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bly-border)">'
@@ -16359,6 +16425,14 @@ function crmpRenderSettingsStages(){
   });
   list.querySelectorAll('.crmp-set-stage-automation').forEach(function(panel){
     var stageId=Number(panel.dataset.automationId);
+    // Læser .value LIVE, så en endnu ikke gemt indsat template også kan tjekkes.
+    // Emne-fallbacken matcher serverens ('Besked fra ' + firma i
+    // crmFireStageAutomation), så et tomt emnefelt vises som det faktisk sendes.
+    panel.querySelector('[data-action="email-preview"]').addEventListener('click',function(){
+      var st=stages.find(function(x){return x.id===stageId;});
+      var vars=crmpStagePreviewSampleVars(st?st.name:'');
+      crmpOpenEmailPreview(panel.querySelector('[data-action="email-subject"]').value||'Besked fra '+vars.firma,panel.querySelector('[data-action="email-body"]').value,vars);
+    });
     panel.querySelector('[data-action="automation-save"]').addEventListener('click',async function(){
       var statusEl=panel.querySelector('[data-automation-status]');
       statusEl.textContent='Gemmer...';
@@ -16402,7 +16476,11 @@ async function crmpLoadFollowupRules(stageId){
       +'<textarea class="input" data-action="rule-sms-template" rows="2" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:6px">'+esc(rule.sms_template||'')+'</textarea>'
       +'<label style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><input type="checkbox" data-action="rule-email-enabled" '+(rule.email_enabled?'checked':'')+'> <b>Email</b></label>'
       +'<input class="input" data-action="rule-email-subject" placeholder="Emne" value="'+esc(rule.email_subject||'')+'" style="width:100%;margin-bottom:6px">'
-      +'<textarea class="input" data-action="rule-email-body" rows="3" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:6px">'+esc(rule.email_body||'')+'</textarea>'
+      +'<textarea class="input" data-action="rule-email-body" rows="10" placeholder="Hej {{navn}}, ... — eller indsæt en færdig HTML-mail" style="width:100%;margin-bottom:4px;font-family:monospace;font-size:11.5px;resize:vertical;min-height:160px">'+esc(rule.email_body||'')+'</textarea>'
+      +'<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;flex-wrap:wrap">'
+        +'<button class="btn small" data-action="rule-email-preview" type="button">👁 Forhåndsvisning</button>'
+        +'<span class="sub" style="flex:1;min-width:200px;font-size:11px">Understøtter HTML. Her udfyldes kun {{navn}} og {{firma}} — alle andre tags (fx {{telefon}} eller {{ contact.name }}) bliver IKKE erstattet.</span>'
+      +'</div>'
       +'<button class="btn small" data-action="rule-save">Gem tærskel</button>'
       +'<span class="sub" data-rule-status style="margin-left:8px"></span>'
     +'</div>';
@@ -16413,6 +16491,10 @@ async function crmpLoadFollowupRules(stageId){
       if(!await gmConfirm('Slet denne tærskel?'))return;
       var r=await api('/api/crm/followup-rules/'+ruleId,{method:'DELETE'});
       if(r&&r.ok)crmpLoadFollowupRules(stageId);
+    });
+    // Emne-fallbacken matcher serverens ('Opfølgning' i runStageFollowupScan).
+    row.querySelector('[data-action="rule-email-preview"]').addEventListener('click',function(){
+      crmpOpenEmailPreview(row.querySelector('[data-action="rule-email-subject"]').value||'Opfølgning',row.querySelector('[data-action="rule-email-body"]').value,crmpFollowupPreviewSampleVars());
     });
     row.querySelector('[data-action="rule-save"]').addEventListener('click',async function(){
       var statusEl=row.querySelector('[data-rule-status]');
