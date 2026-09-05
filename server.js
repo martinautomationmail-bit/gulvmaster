@@ -726,6 +726,10 @@ async function initSchema() {
       error TEXT,
       sent_at TEXT DEFAULT ${nowTextSQL()}
     );
+    -- RUNDE H: færdig-mailen udløses nu fra sagen (projects), ikke pr. booking/
+    -- opgave. booking_id/task_id er NULL for disse rækker; project_id peger i
+    -- stedet på den afsluttede sag, så mail-loggen fortsat viser alt ét sted.
+    ALTER TABLE completion_emails ADD COLUMN IF NOT EXISTS project_id INTEGER;
 
     CREATE TABLE IF NOT EXISTS task_checklist_items (
       id SERIAL PRIMARY KEY,
@@ -1553,6 +1557,11 @@ async function initSchema() {
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS project_id INTEGER;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS source_quote_line_id INTEGER;
     CREATE INDEX IF NOT EXISTS idx_gantt_tasks_project ON gantt_tasks(project_id);
+    -- RUNDE H: Færdig-mailen til kunden sendes nu automatisk når SAGEN sættes til
+    -- "Afsluttet" (status='done'), ikke længere manuelt pr. opgave i Opgavepool.
+    -- Dette felt forhindrer at samme sag udløser mailen mere end én gang, selvom
+    -- den senere genåbnes og afsluttes igen — se PUT /api/projects/:id.
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS completion_email_sent_at TEXT;
 
     -- ── KVALITETSSIKRING: Martin bygger skabeloner (ordnet liste af felter),
     -- medarbejdere udfylder dem pr. projekt. ────────────────────────────
@@ -1944,6 +1953,11 @@ function mondayOfDate(value) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Bruges af KAPACITETSBORDETS egne beregninger (splitCapacityAcrossWeeks'
+// sidste-udvej-fallback), som fortsat regner ud fra en almindelig 5-dages
+// arbejdsuge (mandag-fredag) — se addBookableDays herunder for RUNDE H #24's
+// tilsvarende funktion for selve Dagligplanlægningen, som bevidst har en
+// anden regel (lørdag ER en normal dag der).
 function addWorkingDays(startDate, durationDays) {
   const d = new Date(`${startDate}T12:00:00`);
   if (Number.isNaN(d.getTime())) return startDate;
@@ -1952,6 +1966,25 @@ function addWorkingDays(startDate, durationDays) {
   while (count < days) {
     d.setDate(d.getDate() + 1);
     if (d.getDay() !== 0 && d.getDay() !== 6) count += 1;
+  }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// RUNDE H #24 — Martins ønske: i Dagligplanlægning er lørdag en HELT normal
+// bookbar dag ligesom mandag-fredag; kun søndag kræver at man manuelt trækker
+// en enkelt opgave derud (se openQuickPop's søndags-lås i admin.html, samt
+// planWorkDates() i samme fil som er klientens tilsvarende visnings-regel).
+// Bruges til at udregne standard-slutdatoen for en flerdages Dagligplan-
+// booking ud fra antal dage — springer KUN søndag over (aldrig lørdag), og
+// ruller videre til den følgende mandag hvis et interval ellers ville ramme
+// en søndag midt i eller i enden af forløbet.
+function addBookableDays(startDate, durationDays) {
+  const d = new Date(`${startDate}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return startDate;
+  const days = Math.max(1, Math.ceil(Number(durationDays) || 1));
+  let count = 1;
+  while (count < days) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0) count += 1;
   }
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -2008,7 +2041,20 @@ async function splitCapacityAcrossWeeks(userId, weeklyCapacity, startDate, total
     guard++;
     const alreadyBooked = await weeklyLoadForUser(userId, weekStart, excludeBookingId);
     const capThisWeek = Math.max(0, weeklyCapacity - alreadyBooked);
-    const takeThisWeek = Math.min(remaining, capThisWeek > 0.001 ? capThisWeek : remaining);
+    // RETTET (RUNDE H #24, fundet under test af "Book alt i Kapacitetsbordet"):
+    // stod tidligere som `capThisWeek>0.001 ? capThisWeek : remaining` — hvis en
+    // uge var PRÆCIS fuld (capThisWeek===0), faldt den ned i ": remaining"-grenen
+    // og proppede så ALT det resterende ind i den allerede fulde uge i stedet for
+    // at rulle videre til næste uge, som er hele pointen med funktionen. Ramte
+    // ikke tidligere (enkelt-opgave-booking rammer sjældent en uge der er PRÆCIS
+    // fuld), men gjorde det konsekvent ved sekventiel bulk-booking af flere
+    // opgaver til samme medarbejder/uge — stik imod Martins "ULTRA vigtigt: den
+    // booker dem korrekt" for denne feature. Nu bruges kun den reelle resterende
+    // kapacitet denne uge (som kan være 0, og så rykker loopet bare videre til
+    // næste uge) — "giv op og læg ÉN samlet blok" findes stadig som sidste
+    // udvej efter loopet (guard=26/~et halvt år), for den sjældne situation hvor
+    // ingen kommende uge nogensinde har plads.
+    const takeThisWeek = Math.min(remaining, capThisWeek);
     if (takeThisWeek > 0.001) {
       const segmentStart = segments.length === 0 ? startDate : weekStart;
       // Slutdatoen er altid ugens fredag. capacity_days er en belastnings-mængde
@@ -2541,10 +2587,11 @@ app.get('/api/customer-schedule-emails', auth, adminOnly, asyncRoute(async (req,
 // rent faktisk kom afsted, og hvad fejlen var hvis ikke.
 app.get('/api/completion-emails', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await pool.query(`
-    SELECT ce.id, ce.booking_id, ce.task_id, ce.to_email, ce.status, ce.error, ce.sent_at,
-           t.job_name, t.name AS task_name, u.name AS user_name
+    SELECT ce.id, ce.booking_id, ce.task_id, ce.project_id, ce.to_email, ce.status, ce.error, ce.sent_at,
+           COALESCE(t.job_name, p.name) AS job_name, t.name AS task_name, u.name AS user_name
     FROM completion_emails ce
     LEFT JOIN jt_tasks t ON t.id = ce.task_id
+    LEFT JOIN projects p ON p.id = ce.project_id
     LEFT JOIN planning_bookings pb ON pb.id = ce.booking_id
     LEFT JOIN users u ON u.id = pb.user_id
     ORDER BY ce.sent_at DESC
@@ -3132,6 +3179,10 @@ async function sendSmsUniversal({ to, message }) {
   throw new Error('Ingen SMS-udbyder er sat op på serveren — mangler INMOBILE_API_TOKEN, GATEWAYAPI_API_TOKEN eller TWILIO_*');
 }
 
+// RUNDE H: sendes ikke længere automatisk nogen steder fra (se
+// sendProjectCompletionEmail nedenfor for den nye, sags-niveau udgave, som
+// PUT /api/projects/:id bruger). Beholdt uændret her, ubrugt, i tilfælde af at
+// en fremtidig pr.-booking/pr.-opgave mail-funktion skal genbruge den.
 async function sendCompletionEmail(booking) {
   if (!mailIsConfigured()) {
     // Ikke sat op endnu — log det stille, så det kan ses i mail-loggen i stedet for at forsvinde sporløst.
@@ -3239,6 +3290,115 @@ async function sendCompletionWebhook(booking) {
     if (!response.ok) throw new Error(`Zapier webhook HTTP ${response.status}`);
   } catch (e) {
     console.error('Kunne ikke sende Zapier-webhook:', e.message);
+  }
+}
+
+// ── FÆRDIG-MAIL VED SAGSAFSLUTNING (RUNDE H) ──────────────────────────────
+// FEJL RETTET: kunden kunne tidligere modtage "Vi er færdige hos dig"-mailen
+// helt op til ~10 gange for én sag, fordi hver enkelt booking/opgave i sagen
+// udløste sin egen mail via /api/assignments/:id/complete — og en sag med
+// mange bookinger (fx flere lokaler/besøg) ramte derfor endpointet flere
+// gange på én gang, fx via den grønne "✓ Markér som færdige"-bulk-knap i
+// Opgavepool. Den knap sender/sendte i praksis en PDF-vejledning med mailen
+// pr. booking-række, ikke pr. sag.
+//
+// Løsning: /api/assignments/:id/complete sender IKKE længere selv en
+// kunde-mail (se den funktion) — opgave/booking-fuldførelse er nu udelukkende
+// intern registrering (bruges bl.a. til fakturering). Den kundevendte
+// færdig-mail sendes i stedet PRÆCIS ÉN GANG pr. sag, automatisk, når sagen
+// sættes til "Afsluttet" på Projekt-siden (PUT /api/projects/:id) — enten
+// via status-dropdown'et på sagen selv, eller hurtig-status i sagslisten.
+// completion_email_sent_at på sagen sikrer at det aldrig sker to gange for
+// samme sag, heller ikke hvis den senere genåbnes og afsluttes igen.
+async function sendProjectCompletionEmail(project) {
+  if (!mailIsConfigured()) {
+    await pool.query(
+      'INSERT INTO completion_emails (project_id,to_email,status,error,sent_at) VALUES ($1,$2,$3,$4,' + nowTextSQL() + ')',
+      [project.id, null, 'skipped', 'Mail er ikke sat op på serveren (RESEND_API_KEY/SMTP mangler)']
+    );
+    return;
+  }
+
+  const toEmail = project.customer_email;
+  if (!toEmail) {
+    await pool.query(
+      'INSERT INTO completion_emails (project_id,to_email,status,error,sent_at) VALUES ($1,$2,$3,$4,' + nowTextSQL() + ')',
+      [project.id, null, 'skipped', 'Ingen e-mail registreret på kunden']
+    );
+    return;
+  }
+
+  const settingsRows = await pool.query(
+    "SELECT key,value FROM app_settings WHERE key IN ('company_name','cleaning_pdf_base64','cleaning_pdf_filename')"
+  );
+  const settings = {};
+  settingsRows.rows.forEach(r => { settings[r.key] = r.value; });
+  const sysTpl = await pgOne("SELECT * FROM system_email_templates WHERE key='completion'");
+  if (sysTpl && !sysTpl.enabled) {
+    await pool.query(
+      'INSERT INTO completion_emails (project_id,to_email,status,error,sent_at) VALUES ($1,$2,$3,$4,' + nowTextSQL() + ')',
+      [project.id, null, 'skipped', 'Skabelonen "Færdig-mail til kunden" er slået fra i Skabeloner-centeret']
+    );
+    return;
+  }
+
+  const companyName = settings.company_name || 'Gulv Master Enterprise ApS';
+  const jobName = project.name || 'din sag';
+  const subject = fillDocEmailVars(sysTpl?.subject || 'Vi er færdige hos dig — {{kunde}}', { kunde: jobName, firma: companyName });
+  const bodyTemplate = sysTpl?.body_html ||
+    'Hej,\n\nVi vil gerne informere dig om, at vi nu er færdige med arbejdet hos dig ({{opgave}}).\n\nVedhæftet finder du en vejledning til efterbehandling/rengøring.\n\nMange tak for denne gang!\n\nVenlig hilsen\n{{firma}}';
+  const bodyText = fillDocEmailVars(bodyTemplate, { opgave: jobName, kunde: jobName, firma: companyName });
+  const bodyHtml = bodyText.split('\n').map(line => line ? `<p>${line.replace(/</g, '&lt;')}</p>` : '<br>').join('');
+
+  const attachments = [];
+  if (settings.cleaning_pdf_base64) {
+    attachments.push({
+      filename: settings.cleaning_pdf_filename || 'Rengoering-og-efterbehandling.pdf',
+      content: Buffer.from(settings.cleaning_pdf_base64, 'base64'),
+      contentType: 'application/pdf'
+    });
+  }
+
+  let status = 'sent', error = null;
+  try {
+    await sendMailUniversal({ to: toEmail, subject, text: bodyText, html: bodyHtml, attachments });
+  } catch (e) {
+    status = 'error';
+    error = redactSecret(e.message || 'Ukendt fejl').slice(0, 500);
+    console.error('Kunne ikke sende sags-færdig-mail:', error);
+  }
+  await pool.query(
+    'INSERT INTO completion_emails (project_id,to_email,status,error,sent_at) VALUES ($1,$2,$3,$4,' + nowTextSQL() + ')',
+    [project.id, toEmail, status, error]
+  );
+}
+
+// Samme ALTERNATIV-logik som ved booking-færdig (se sendCompletionWebhook) —
+// hvis Zapier er sat op, bruges den i stedet for den direkte mail, aldrig begge.
+async function sendProjectCompletionWebhook(project) {
+  const url = process.env.ZAPIER_WEBHOOK_URL;
+  if (!url) return;
+  const settingsRow = await pgOne("SELECT value FROM app_settings WHERE key='company_name'");
+  const payload = {
+    event: 'project_completed',
+    company_name: settingsRow?.value || 'Gulv Master Enterprise ApS',
+    project_id: project.id,
+    job_number: project.job_number || null,
+    job_name: project.name || null,
+    job_address: project.customer_address || null,
+    customer_email: project.customer_email || null,
+    customer_phone: project.customer_phone || null,
+    completed_at: new Date().toISOString()
+  };
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error(`Zapier webhook HTTP ${response.status}`);
+  } catch (e) {
+    console.error('Kunne ikke sende Zapier-webhook (sag):', e.message);
   }
 }
 
@@ -4749,7 +4909,7 @@ app.post('/api/tasks/manual', auth, panelAccess('plan'), asyncRoute(async (req, 
     return res.status(400).json({ error: 'Kunde/projekt, opgave og startdato skal udfyldes' });
   }
   const days = Math.max(0.25, Math.min(60, Number(body.days) || 1));
-  const endDate = validDate(body.end_date) ? body.end_date : addWorkingDays(body.start_date, days);
+  const endDate = validDate(body.end_date) ? body.end_date : addBookableDays(body.start_date, days);
   const id = `manual-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
   const customerEmail = String(body.customer_email || '').trim().slice(0, 200) || null;
   await pool.query(`
@@ -4772,7 +4932,7 @@ app.post('/api/tasks/manual-and-book', auth, panelAccess('plan'), asyncRoute(asy
     return res.status(400).json({ error: 'Kunde/projekt, opgave, medarbejder og startdato skal udfyldes' });
   }
   const days = Math.max(0.25, Math.min(60, Number(body.days) || 1));
-  const endDate = validDate(body.end_date) ? body.end_date : addWorkingDays(body.start_date, days);
+  const endDate = validDate(body.end_date) ? body.end_date : addBookableDays(body.start_date, days);
   const id = `manual-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
   const customerEmail = String(body.customer_email || '').trim().slice(0, 200) || null;
   await pool.query(`
@@ -5537,18 +5697,12 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
     );
   }
   res.json({ ok: true });
-  if (completed) {
-    // FEJL RETTET: kunden fik "Vi er færdige hos dig"-mailen to gange — fordi begge
-    // metoder kørte samtidig: den direkte mail OG Zapier-webhook'en (som i praksis er
-    // sat op til selv at sende en færdig-mail via Gmail/Outlook). De to var tænkt som
-    // ALTERNATIVER til hinanden, ikke noget der skulle køre parallelt. Nu bruges kun
-    // Zapier når den er konfigureret; ellers sendes mailen direkte som normalt.
-    if (process.env.ZAPIER_WEBHOOK_URL) {
-      sendCompletionWebhook(current).catch(e => console.error('Zapier-webhook fejlede:', e.message));
-    } else {
-      sendCompletionEmail(current).catch(e => console.error('Færdig-mail fejlede:', e.message));
-    }
-  }
+  // RUNDE H: denne rute sender IKKE længere selv en kunde-mail. At markere en
+  // enkelt booking/opgave som færdig her er ren intern registrering (bl.a. til
+  // fakturering) — en sag har typisk flere bookinger, og kunden skal kun have
+  // ÉN "vi er færdige"-mail for hele sagen, ikke én pr. booking. Se
+  // sendProjectCompletionEmail() og PUT /api/projects/:id, hvor den nu sendes
+  // automatisk når sagen sættes til "Afsluttet".
 }));
 
 // Manuel færdig-markering for en UPLANLAGT opgave (ingen booking findes endnu at
@@ -5697,7 +5851,11 @@ async function normalizeBooking(body, isNew) {
     note_attachments: noteAttachments === undefined ? null : noteAttachments,
     start_time: booking.start_time || null,
     start_date: start,
-    end_date: validDate(booking.end_date) ? booking.end_date : addWorkingDays(start, days)
+    // RUNDE H #24 — normalizeBooking() er den fælles vej for ALLE almindelige
+    // Dagligplan-bookinger (POST/PUT /api/assignments) — brug addBookableDays
+    // (lørdag normal, kun søndag springes over), IKKE addWorkingDays
+    // (mandag-fredag, som Kapacitetsboardet stadig bruger).
+    end_date: validDate(booking.end_date) ? booking.end_date : addBookableDays(start, days)
   };
 }
 
@@ -9571,6 +9729,38 @@ async function mirrorProjectTaskToPool(id, project, fields, exec) {
     project.id
   ]);
 }
+// RUNDE H #24 — udtrukket fra POST /api/projects/:id/convert-quote-lines (som
+// stadig findes og bruger denne, til manuel brug), så den ALTID kan kaldes
+// også fra /api/public/quotes/:token/accept lige når projektet oprettes —
+// Martins ønske: "når et projekt er oprettet i projekter, oprettes det
+// automatisk i opgavepool" (i stedet for at kræve et manuelt klik bagefter).
+// project skal mindst have {id, quote_id, name}.
+async function convertQuoteLinesToTasks(project) {
+  if (!project || !project.quote_id) return { ok: false, created: 0 };
+  const lines = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id])).rows;
+  const existing = (await pool.query('SELECT source_quote_line_id FROM gantt_tasks WHERE project_id=$1 AND source_quote_line_id IS NOT NULL', [project.id])).rows;
+  const already = new Set(existing.map(r => r.source_quote_line_id));
+  let countRes = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks WHERE project_id=$1', [project.id]);
+  let pos = countRes ? countRes.n : 0;
+  const today = new Date().toISOString().slice(0, 10);
+  let created = 0;
+  for (const l of lines) {
+    if (already.has(l.id)) continue;
+    // Overskriftslinjer ("text"-linjetypen, se Tilbud #1) er ikke rigtige
+    // arbejdsopgaver — spring dem over, ellers ender Opgavepoolen med tomme
+    // "opgaver" der bare er en overskrift fra tilbuddet.
+    if (l.line_type === 'text') continue;
+    const id = 'p' + crypto.randomBytes(12).toString('hex');
+    await pool.query(`
+      INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,source_quote_line_id,synced_at)
+      VALUES ($1,$2,$3,$4,'',$5,$5,0,0,$6,$7,$8,${nowTextSQL()})
+    `, [id, 'project-' + project.id, project.name, l.description, today, String(pos), project.id, l.id]);
+    await mirrorProjectTaskToPool(id, project, { name: l.description, start_date: today, end_date: today, description: '' });
+    pos++;
+    created++;
+  }
+  return { ok: true, created };
+}
 app.get('/api/projects', auth, asyncRoute(async (req, res) => {
   // Pris/tilbudsbeløb sendes KUN med til kontor/økonomi-brugere (til søgning/visning
   // i admin.html's Projekter-liste) — aldrig til employee/employee-demo, som deler
@@ -9591,7 +9781,14 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   const [tasks, photos, timeEntries, materials, qaSubmissions, contactSubmissions, quoteLines, qaTemplateIds] = await Promise.all([
-    pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 ORDER BY position ASC, id ASC', [req.params.id]).then(r => r.rows),
+    // RUNDE H #24 — has_booking bruges af "📊 Book alt i Kapacitetsbordet" (se
+    // POST /api/projects/:id/bulk-book-capacity) til kun at tilbyde/vise
+    // opgaver der IKKE allerede har en booking (kapacitet ELLER daglig plan),
+    // så et ekstra klik aldrig dobbelt-booker en opgave.
+    pool.query(`
+      SELECT g.*, EXISTS(SELECT 1 FROM planning_bookings b WHERE b.task_id=g.id) AS has_booking
+      FROM gantt_tasks g WHERE g.project_id=$1 ORDER BY position ASC, id ASC
+    `, [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM project_photos WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM time_entries WHERE project_id=$1 ORDER BY entry_date DESC, id DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM project_materials WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
@@ -9708,18 +9905,41 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
   const current = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   const b = req.body || {};
+  const newStatus = b.status !== undefined ? b.status : current.status;
   await pool.query(`
     UPDATE projects SET name=$1, status=$2, customer_address=$3, customer_phone=$4, customer_email=$5, updated_at=${nowTextSQL()}
     WHERE id=$6
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
-    b.status !== undefined ? b.status : current.status,
+    newStatus,
     b.customer_address !== undefined ? b.customer_address : current.customer_address,
     b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
     b.customer_email !== undefined ? b.customer_email : current.customer_email,
     req.params.id
   ]);
   res.json({ ok: true });
+
+  // RUNDE H: automatisk færdig-mail til kunden, når sagen (lige nu) sættes til
+  // "Afsluttet" — se sendProjectCompletionEmail() ovenfor for baggrunden
+  // (erstatter den tidligere manuelle/gentagne mail pr. booking i Opgavepool).
+  // Betingelser: (1) status skifter FAKTISK til 'done' i dette kald — ikke bare
+  // et gemt-igen mens den allerede var 'done', og (2) sagen har aldrig fået
+  // mailen før (completion_email_sent_at), så en sag der genåbnes og afsluttes
+  // igen ikke sender endnu en mail til kunden.
+  if (newStatus === 'done' && current.status !== 'done' && !current.completion_email_sent_at) {
+    const updated = { ...current, name: b.name !== undefined ? String(b.name).trim() : current.name, status: newStatus,
+      customer_address: b.customer_address !== undefined ? b.customer_address : current.customer_address,
+      customer_phone: b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
+      customer_email: b.customer_email !== undefined ? b.customer_email : current.customer_email };
+    pool.query(`UPDATE projects SET completion_email_sent_at=${nowTextSQL()} WHERE id=$1`, [current.id])
+      .then(() => {
+        if (process.env.ZAPIER_WEBHOOK_URL) {
+          return sendProjectCompletionWebhook(updated);
+        }
+        return sendProjectCompletionEmail(updated);
+      })
+      .catch(e => console.error('Sags-færdig-mail fejlede:', e.message));
+  }
 }));
 
 // 1-KLIKS: opret én sags-opgave pr. tilbudslinje. Kan trykkes flere gange uden
@@ -9728,25 +9948,72 @@ app.post('/api/projects/:id/convert-quote-lines', auth, panelAccess('projects'),
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   if (!project.quote_id) return res.status(400).json({ error: 'Dette projekt har intet tilknyttet tilbud' });
-  const lines = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id])).rows;
-  const existing = (await pool.query('SELECT source_quote_line_id FROM gantt_tasks WHERE project_id=$1 AND source_quote_line_id IS NOT NULL', [req.params.id])).rows;
-  const already = new Set(existing.map(r => r.source_quote_line_id));
-  let countRes = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks WHERE project_id=$1', [req.params.id]);
-  let pos = countRes ? countRes.n : 0;
-  const today = new Date().toISOString().slice(0, 10);
-  let created = 0;
-  for (const l of lines) {
-    if (already.has(l.id)) continue;
-    const id = 'p' + crypto.randomBytes(12).toString('hex');
-    await pool.query(`
-      INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,source_quote_line_id,synced_at)
-      VALUES ($1,$2,$3,$4,'',$5,$5,0,0,$6,$7,$8,${nowTextSQL()})
-    `, [id, 'project-' + project.id, project.name, l.description, today, String(pos), req.params.id, l.id]);
-    await mirrorProjectTaskToPool(id, project, { name: l.description, start_date: today, end_date: today, description: '' });
-    pos++;
-    created++;
+  // Denne knap er nu et MANUELT fallback/genkør (fx hvis en linje er tilføjet
+  // til tilbuddet efter projektet blev oprettet) — selve oprettelsen sker
+  // normalt automatisk allerede når projektet bliver til, se
+  // convertQuoteLinesToTasks() og /api/public/quotes/:token/accept.
+  const result = await convertQuoteLinesToTasks(project);
+  res.json(result);
+}));
+
+// RUNDE H #24 — "📊 Book alt i Kapacitetsbordet" på projekt-siden (Martins
+// ønske, mærket "ULTRA vigtigt"): ét klik der booker ALLE sagens endnu
+// ubookede opgaver ind i Kapacitetsbordet, i stedet for at skulle gøre det
+// opgave for opgave via "Tilføj til Kapacitetsbordet". Dette er en RÅ
+// kapacitets-reservation (samme slags som den enkelte-opgave-knap allerede
+// laver, planning_mode='capacity') — IKKE en tildeling til en bestemt dag hos
+// en medarbejder, som stadig sker manuelt bagefter i Dagligplanlægning (se
+// Martins egen beskrivelse af arbejdsgangen). Man vælger derfor stadig ÉN
+// medarbejder her: kapacitetssystemet har intet begreb om et "team" eller en
+// "ikke-tildelt" reservation (POST /api/capacity-reservations kræver altid en
+// rigtig aktiv medarbejder, user_id), så det ville være at GÆTTE — og en forkert
+// gættet medarbejder ville netop ødelægge det "langsigtede syn på hvad vi har
+// af plads" Martin selv fremhæver som det vigtigste ved denne knap. At vælge
+// medarbejderen er derfor bevidst IKKE fjernet her, kun selve det at skulle
+// booke hver opgave enkeltvis.
+//
+// Hver opgave bookes SEKVENTIELT med samme ønskede startuge — splitCapacityAcrossWeeks
+// slår den reelle allerede-brugte kapacitet op igen for hver opgave (inkl. dem der
+// lige er booket af dette samme kald), så opgave 2 automatisk ruller videre til
+// uge 2 hvis uge 1 er fuld efter opgave 1, osv. — det er selve "booker dem korrekt"-
+// delen af ønsket.
+app.post('/api/projects/:id/bulk-book-capacity', auth, panelAccess('capacity'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const user = await pgOne("SELECT id,weekly_capacity FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(b.user_id)]);
+  if (!user) return res.status(400).json({ error: 'Vælg en gyldig medarbejder' });
+  const startDate = validDate(String(b.week_start || '')) ? String(b.week_start) : null;
+  if (!startDate) return res.status(400).json({ error: 'Vælg en gyldig startuge' });
+  const defaultDays = Math.max(0.25, Math.min(60, Number(b.default_days) || 1));
+  const perTaskDays = (b.days && typeof b.days === 'object') ? b.days : {};
+  const weeklyCapacity = Number(user.weekly_capacity) || 5;
+
+  const gtRows = (await pool.query('SELECT id,name FROM gantt_tasks WHERE project_id=$1 ORDER BY position ASC, id ASC', [project.id])).rows;
+  if (!gtRows.length) return res.json({ ok: true, booked: 0, skipped: 0, results: [] });
+  // Spring opgaver over der allerede har EN ELLER ANDEN booking (kapacitet
+  // eller daglig plan) — undgår dobbelt-booking hvis man trykker knappen igen
+  // efter at have tilføjet flere linjer/opgaver til sagen.
+  const already = new Set((await pool.query(
+    'SELECT DISTINCT task_id FROM planning_bookings WHERE task_id = ANY($1::text[])', [gtRows.map(r => r.id)]
+  )).rows.map(r => r.task_id));
+
+  let booked = 0, skipped = 0;
+  const results = [];
+  for (const t of gtRows) {
+    if (already.has(t.id)) { skipped++; continue; }
+    const days = Math.max(0.25, Math.min(60, Number(perTaskDays[t.id]) || defaultDays));
+    const segments = await splitCapacityAcrossWeeks(user.id, weeklyCapacity, startDate, days);
+    for (const seg of segments) {
+      await pool.query(`
+        INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,planning_mode,capacity_label,updated_at)
+        VALUES ($1,$2,$3,5,$4,$5,NULL,$6,$7,'capacity',$8,${nowTextSQL()})
+      `, [t.id, user.id, seg.week_key, seg.capacity_days, null, seg.start_date, seg.end_date, t.name]);
+    }
+    booked++;
+    results.push({ task_id: t.id, name: t.name, weeks: segments.length, first_week: segments[0].week_key });
   }
-  res.json({ ok: true, created });
+  res.json({ ok: true, booked, skipped, results });
 }));
 
 app.post('/api/projects/:id/tasks', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
@@ -13562,6 +13829,20 @@ app.post('/api/public/quotes/:token/accept', asyncRoute(async (req, res) => {
         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
       `, [quote.id, quote.job_name || quote.quote_number, quote.customer_id, quote.customer_address, quote.customer_phone, quote.customer_email, jobNumber]);
       projectId = p.id;
+      // RUNDE H #24 — Martins ønske: "når et projekt er oprettet i projekter,
+      // oprettes det automatisk i opgavepool" — dvs. tilbuddets linjer skal
+      // ALTID blive til rigtige opgaver (og dermed dukke op i Opgavepoolen,
+      // via mirrorProjectTaskToPool inde i convertQuoteLinesToTasks) med det
+      // samme sagen opstår, i stedet for at kræve et manuelt klik på "Konvertér
+      // tilbudslinjer" bagefter på selve projekt-siden. Fejler dette (fx en
+      // uventet datafejl), må det — ligesom velkomstmailen herunder — aldrig
+      // vælte selve kundens accept-kvittering, som allerede er gemt.
+      try {
+        await convertQuoteLinesToTasks({
+          id: projectId, quote_id: quote.id, name: quote.job_name || quote.quote_number,
+          customer_address: quote.customer_address, customer_phone: quote.customer_phone, customer_email: quote.customer_email
+        });
+      } catch (e2) { console.error('Kunne ikke auto-oprette opgaver fra tilbudslinjer:', e2.message); }
     }
   } catch (e) {
     // Selve accepten er allerede gemt — en fejl her må ikke vælte kundens kvittering.

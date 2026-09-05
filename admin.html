@@ -153,11 +153,29 @@ body.sidebar-collapsed .sidebar-logout-btn{justify-content:center;padding-left:0
 
 @media(max-width:900px){
   .sidebar{position:fixed;left:0;top:0;width:var(--sidebar-w-collapsed)}
-  .sidebar .sidebar-brand-name,.sidebar .stab-label,.sidebar .sidebar-foot,.sidebar .sidebar-section-label,.sidebar .navdrop-caret,.sidebar .navdrop-menu{display:none}
-  .sidebar .sidebar-nav .tab{justify-content:center;padding-left:0;padding-right:0}
+  body:not(.sidebar-mobile-open) .sidebar .sidebar-brand-name,body:not(.sidebar-mobile-open) .sidebar .stab-label,body:not(.sidebar-mobile-open) .sidebar .sidebar-foot,body:not(.sidebar-mobile-open) .sidebar .sidebar-section-label,body:not(.sidebar-mobile-open) .sidebar .navdrop-caret,body:not(.sidebar-mobile-open) .sidebar .navdrop-menu{display:none}
+  body:not(.sidebar-mobile-open) .sidebar .sidebar-nav .tab{justify-content:center;padding-left:0;padding-right:0}
   .app-content{margin-left:var(--sidebar-w-collapsed)}
   body.sidebar-collapsed .sidebar{width:0;overflow:hidden}
   body.sidebar-collapsed .app-content{margin-left:0}
+}
+/* RUNDE H #23 — Martins rigtige pointe denne gang: det er admin.html's egen
+   sidebar (den faste 64px ikon-strimmel, se .sidebar herover) der ALTID
+   klemmer indholdet sammen på en telefon, ikke .nav's klokke/note-ikoner
+   (som RUNDE H #19 allerede løste). Under 760px skjules hele sidebaren som
+   udgangspunkt (width:0, ingen permanent 64px-strimmel), og folder i stedet
+   ud som et rigtigt overlay-panel (drawer) når man vælger "☰ Menu/sider" i
+   samme mobil-menu som notifikationer/note allerede ligger i — se
+   #mobilenavdrop-sidebar-item og JS'en ved toggleMobileSidebar(). Bevidst
+   en SEPARAT klasse (body.sidebar-mobile-open) fra den eksisterende
+   body.sidebar-collapsed, så det ikke blander sig med den gemte
+   desktop-præference (gm_sidebar_collapsed i localStorage). */
+@media(max-width:760px){
+  .sidebar{width:0!important;overflow:hidden;box-shadow:none;transition:width .18s ease;z-index:850}
+  .app-content{margin-left:0!important}
+  body.sidebar-mobile-open .sidebar{width:250px!important;box-shadow:0 0 44px rgba(17,19,24,.4)}
+  .sidebar-mobile-backdrop{display:none;position:fixed;inset:0;background:rgba(17,19,24,.45);z-index:840}
+  body.sidebar-mobile-open .sidebar-mobile-backdrop{display:block}
 }
 
 .nb{border:1px solid rgba(255,255,255,.23);background:rgba(255,255,255,.1);color:#fff;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap}
@@ -1006,18 +1024,24 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-dashboard .dash-row-title{color:var(--bly-ink);font-weight:700}
 #page-dashboard .dash-row-sub{color:var(--bly-sub)}
 #page-dashboard .dash-empty{color:var(--bly-sub)}
-/* Høj prioritet-banner (sep. 2026) — se HTML-kommentaren ved #dash-priority-banner. */
-.dash-priority-banner{background:#FEF2F2;border:1.5px solid #FECACA;border-radius:var(--bly-r-lg);padding:14px 16px;margin-bottom:16px}
-.dash-priority-banner-title{font-size:13px;font-weight:800;color:#991B1B;margin-bottom:8px;display:flex;align-items:center;gap:6px}
-.dash-priority-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 4px;border-bottom:1px solid #FECACA;cursor:pointer}
-.dash-priority-row:last-child{border-bottom:0}
-.dash-priority-row:hover{background:#FEE2E2}
+/* Høj prioritet-banner (sep. 2026, RUNDE H #24 gjort GLOBAL) — se
+   HTML-kommentaren ved #dash-priority-banner (nu lige under .nav, uden for
+   .page-routeren, så den er synlig uanset hvilken side man kigger på). */
+.dash-priority-banner{background:#FEF2F2;border:1.5px solid #FECACA;border-radius:var(--bly-r-lg);padding:12px 16px;margin:12px 14px 0 14px}
+.dash-priority-banner-title{font-size:13px;font-weight:800;color:#991B1B;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.dash-priority-banner-count{margin-left:auto;font-size:11px;font-weight:700;color:#991B1B;background:#FEE2E2;border-radius:var(--bly-r-pill);padding:2px 9px}
+.dash-priority-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 4px;cursor:pointer}
+.dash-priority-row:hover{background:#FEE2E2;border-radius:var(--bly-r-sm)}
 .dash-priority-row-title{color:var(--bly-ink);font-weight:700;font-size:12.5px}
 .dash-priority-row-sub{color:var(--bly-sub);font-size:11px}
 .dash-priority-tag{font-size:10px;font-weight:800;border-radius:var(--bly-r-pill);padding:3px 9px;white-space:nowrap}
 .dash-priority-tag.overdue{background:#DC2626;color:#fff}
 .dash-priority-tag.today{background:#F59E0B;color:#fff}
 .dash-priority-tag.nodate{background:#E5E7EB;color:#374151}
+.dash-priority-dots{display:flex;gap:4px;margin-left:8px}
+.dash-priority-dot{width:6px;height:6px;border-radius:50%;background:#FCA5A5;cursor:pointer}
+.dash-priority-dot.active{background:#991B1B}
+@media(max-width:760px){.dash-priority-banner{margin:8px 10px 0 10px}}
 
 /* ══════════════════════════════════════════════════════════════
    GANTT — samme Billy-behandling, scoped til #page-gantt (samt de to
@@ -1524,6 +1548,12 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .capacity-context{display:flex;align-items:center;gap:7px;padding:8px 10px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:9px;color:#5B21B6;font-size:10px;font-weight:700;margin:0 0 8px}
 .capacity-jt-hint{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 11px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;color:#92400E;font-size:11px;font-weight:600;margin:-6px 0 12px}
 .capacity-modal-note{font-size:10px;color:var(--muted);line-height:1.45;margin:-2px 0 12px}
+/* RUNDE H #24 — "Book alt i Kapacitetsbordet"-opgavelisten (#bulk-capacity-modal) */
+.bcap-task-list{max-height:220px;overflow-y:auto;border:1px solid var(--bly-border,#E5E7EB);border-radius:var(--bly-r-md,8px)}
+.bcap-task-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-bottom:1px solid var(--bly-border-soft,#F1F1F3)}
+.bcap-task-row:last-child{border-bottom:0}
+.bcap-task-row-name{font-size:12.5px;font-weight:600;color:var(--bly-ink,#111827);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bcap-task-days{width:64px;flex-shrink:0}
 .checklist-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm);margin-bottom:6px}
 .checklist-item.done{background:#F0FDF4;border-color:#BBF7D0}
 .checklist-item.done .checklist-item-title{text-decoration:line-through;opacity:.65}
@@ -1762,7 +1792,18 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .wnote-btn{border:0;background:transparent;cursor:pointer;font-size:11px;opacity:.55;padding:1px 3px}
 .wnote-btn:hover{opacity:1}
 .wnote-btn.has{opacity:1;color:#B45309}
-.wnote-banner{background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412;border-radius:7px;padding:6px 9px;font-size:10px;margin-top:4px;line-height:1.5}
+/* RUNDE H #223: en lang ugenote fik hele medarbejder-rækken (og dermed alle
+   dagens opgave-blokke i den række) til at blive højere end de andre rækker,
+   fordi banneret ikke var begrænset til én linje. Klippes nu til én linje med
+   "…", og resten ses ved klik (genbruger samme ugenote-dialog som 🗒-knappen). */
+.wnote-banner{background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412;border-radius:7px;padding:6px 9px;font-size:10px;margin-top:4px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px;box-sizing:border-box;cursor:pointer}
+.wnote-banner:hover{background:#FFEDD5}
+/* Skal have min-width:0 for at .wnote-banner's ellipsis/overflow rent faktisk
+   klipper til, i stedet for at flex-elementet bare vokser sig bredere (og
+   dermed presser hele medarbejder-kolonnen bredere, uden at tabellen bruger
+   table-layout:fixed). max-width er derfor sat i px, ikke %, ud fra den
+   faktiske ledige bredde i medarbejder-kolonnen (.staff-info ≈ 113px). */
+.staff-info{min-width:0;flex:1}
 
 /* COPY BUTTON on pills */
 .pill-copy{border:0;background:rgba(0,0,0,.08);cursor:pointer;font-size:9px;line-height:1;color:inherit;opacity:.6;padding:2px 4px;border-radius:3px;flex-shrink:0}
@@ -2341,7 +2382,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.6</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.7</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -2379,14 +2420,30 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
          100% — se JS'en ved mobilenavdrop-btn. Skjult på computer (kun synlig
          i mobil-medieforespørgslen), hvor de originale knapper fungerer fint. -->
     <div class="navdrop mobile-nav-menu" id="mobilenavdrop">
-      <button class="nb navdrop-btn" id="mobilenavdrop-btn" type="button" title="Notifikationer og note">☰<span class="tab-badge hidden" id="mobilenavdrop-badge">0</span></button>
+      <button class="nb navdrop-btn" id="mobilenavdrop-btn" type="button" title="Menu">☰<span class="tab-badge hidden" id="mobilenavdrop-badge">0</span></button>
       <div class="navdrop-menu" id="mobilenavdrop-menu">
+        <a class="navdrop-item" href="#" id="mobilenavdrop-sidebar-item">📂 Menu / sider</a>
         <a class="navdrop-item" href="#" id="mobilenavdrop-notif-item">🔔 Notifikationer</a>
         <a class="navdrop-item" href="#" id="mobilenavdrop-note-item">📝 Note</a>
       </div>
     </div>
   </div>
 </nav>
+<div class="sidebar-mobile-backdrop" id="sidebar-mobile-backdrop"></div>
+
+<!-- RUNDE H #24 — Høj prioritet-banner, GLOBALT på alle sider (Martins ønske:
+     "kan du ikke lave et banner du kan se på alle sider? så man ikke glemmer
+     det og hvis man har flere vigtigt så skifter den?"). Lå tidligere kun
+     inde i #page-dashboard — nu placeret her, uden for .page-routeren i
+     <main>, så den samme boks er synlig uanset hvilken fane man står på.
+     Kilden er stadig "⚡ Høj prioritet"-fluebenet fra en CRM-opgave
+     (Opfølgning) — se #crmpx-task-priority og GET /api/crm/tasks/overview.
+     Hentes/opdateres af refreshGlobalPriorityBanner() (opstart + hvert 90.
+     sekund, se setInterval ved refreshNotifBell). Er der FLERE end én
+     kvalificerende sag, skifter boksen automatisk mellem dem hvert 5. sekund
+     (se renderPriorityBanner/advanceGlobalPriorityBanner) — pause ved at
+     holde musen over den. Vises kun når der reelt er noget at vise. -->
+<div id="dash-priority-banner" class="dash-priority-banner" hidden></div>
 
 <!-- FLYDENDE NOTE-BLOK — personlig kladdeblok, kan flyttes og ændres i størrelse -->
 <div class="note-widget" id="note-widget">
@@ -2425,13 +2482,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <!-- KOMMANDOCENTER -->
 <section class="page" id="page-dashboard">
   <div class="page-head"><h2>Kommandocenter</h2><p class="page-sub">Samlet overblik — hvad skal du tage stilling til lige nu.</p></div>
-  <!-- Høj prioritet-banner (sep. 2026, Martins ønske: "når der er høj prioritet
-       sager, skal et banner køre... med de forskellige høj profiler de skal
-       kontakte i dag, eller hvis der er nogle sager de er bagud på"). Kilden er
-       det samme "⚡ Høj prioritet"-flueben man sætter når en CRM-opgave
-       (Opfølgning) oprettes — se #crmpx-task-priority og GET /api/crm/tasks/overview.
-       Vises kun når der reelt er noget at vise (tomt = ingen banner, ikke en tom boks). -->
-  <div id="dash-priority-banner" class="dash-priority-banner" hidden></div>
+  <!-- RUNDE H #24 — høj prioritet-banneret er flyttet ud herfra og op på
+       GLOBALT niveau (lige under .nav, uden for <main>/.page-routeren), se
+       #dash-priority-banner ved .app-content ovenfor. Det står derfor IKKE
+       længere her, men vises stadig automatisk øverst når man kigger på
+       Kommandocenter, ligesom på alle andre sider. -->
   <div class="dash-grid" id="dash-kpi-cards"></div>
   <div class="dash-cols">
     <div class="dash-col">
@@ -3924,6 +3979,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="bly-toolbar-left"><span class="bly-toolbar-title">Opgaver i sagen</span></div>
           <div class="bly-toolbar-right">
             <button class="bly-btn outline" id="pd-convert-lines-btn" type="button" title="Opret én opgave pr. linje i det tilknyttede tilbud">🔨 Opret opgaver fra tilbud</button>
+            <!-- RUNDE H #24 — Martins ønske, mærket "ULTRA vigtigt": ét klik
+                 der booker ALLE sagens endnu ubookede opgaver ind i
+                 Kapacitetsbordet på én gang, i stedet for opgave for opgave.
+                 Se openBulkCapacityModal()/#bulk-capacity-modal og
+                 POST /api/projects/:id/bulk-book-capacity. -->
+            <button class="bly-btn outline" id="pd-bulk-capacity-btn" type="button" title="Book alle endnu ubookede opgaver i sagen ind i Kapacitetsbordet med ét klik">📊 Book alt i Kapacitetsbordet</button>
             <button class="bly-btn" id="pd-new-task-btn" type="button">+ Ny opgave</button>
           </div>
         </div>
@@ -4042,8 +4103,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <section class="page active" id="page-plan">
   <!-- Synk-loggen (<div class="slog" id="sync-log">) er fjernet 05-09-2026 sammen
        med JobTread-synkknapperne i Indstillinger — den blev udelukkende fyldt af
-       syncNow/syncPhonesNow/jtImportNow, som ikke findes længere. -->
-  <div class="stats" id="stats"></div>
+       syncNow/syncPhonesNow/jtImportNow, som ikke findes længere.
+       RUNDE H #24 (sep. 2026) — de 6 KPI-kort (#stats/renderStats) er fjernet
+       herfra på Martins ønske ("ikke brugbare") — se også renderStats-kaldet i
+       loadAll() og selve funktionsdefinitionen, som er fjernet samme sted. -->
   <div class="page-head">
     <div>
       <div class="page-title">Daglig planlægning</div>
@@ -4059,19 +4122,37 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <aside class="panel">
       <div class="panel-head">
         <span class="panel-title">📥 Opgavepool</span>
-        <button class="btn small primary" id="plan-group-toggle" title="Skift mellem gruppering pr. kunde og flad liste">👥 Pr. kunde</button>
       </div>
       <div class="panel-body">
         <div class="pool-search-wrap"><input id="plan-search" class="search" placeholder="Søg kunde eller opgave"></div>
-        <button class="btn small primary" data-action="manual" style="width:100%;margin-bottom:8px">+ Manuel opgave</button>
-        <button class="btn small" id="book-visit-btn" style="width:100%;margin-bottom:8px">📅 Book kundebesøg</button>
-        <div class="pool-filters">
-          <div class="filter-row" id="plan-status-filters"></div>
-          <div class="filter-row" id="plan-type-filters"></div>
-          <!-- Datofilter/uge (sep. 2026, Martins ønske #2): filtrerer KUN Opgavepool-
-               listen til en valgt uge (opgavens start-/slutdato), så man hurtigt kan se
-               og trække alle opgaver for ugen ud. Uafhængig af selve ugekalenderen. -->
-          <div class="filter-row" id="plan-date-filter-row" style="display:flex;align-items:center;gap:4px"></div>
+        <!-- RUNDE H #24 — Martins ønske: pool-værktøjslinjen skal ned på 2
+             knapper i alt. "👥 Pr. kunde"-fladliste-skiftet er fjernet helt
+             (poolen viser nu ALTID gruppering pr. kunde, se poolGroupedMode.plan
+             som ikke længere kan slås fra). "+ Manuel opgave" og "📅 Book
+             kundebesøg" er samlet i ÉN dropdown-knap (de to formularer er
+             BEVIDST stadig separate bagved — se kommentaren ved openVisitBookModal
+             om hvorfor de ikke må slås sammen til ét skema). Fag/uge-filtrene
+             (og status-filtret) er samlet i en anden dropdown i stedet for at stå
+             fremme hele tiden. -->
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div class="navdrop" id="pool-add-dropdown" style="flex:1;position:relative">
+            <button class="btn small primary" id="pool-add-btn" type="button" style="width:100%">+ Book / Opgave ▾</button>
+            <div class="navdrop-menu" id="pool-add-menu" style="left:0;right:auto;width:100%;min-width:0">
+              <a class="navdrop-item" href="#" id="pool-add-manual-item">📝 Manuel opgave</a>
+              <a class="navdrop-item" href="#" id="pool-add-visit-item">📅 Book kundebesøg</a>
+            </div>
+          </div>
+          <div class="navdrop" id="pool-filter-dropdown" style="flex:1;position:relative">
+            <button class="btn small" id="pool-filter-btn" type="button" style="width:100%">🔍 Filtre ▾</button>
+            <div class="navdrop-menu" id="pool-filter-menu" style="left:0;right:auto;width:240px;padding:10px">
+              <div class="filter-row" id="plan-status-filters"></div>
+              <div class="filter-row" id="plan-type-filters"></div>
+              <!-- Datofilter/uge (sep. 2026, Martins ønske #2): filtrerer KUN Opgavepool-
+                   listen til en valgt uge (opgavens start-/slutdato), så man hurtigt kan se
+                   og trække alle opgaver for ugen ud. Uafhængig af selve ugekalenderen. -->
+              <div class="filter-row" id="plan-date-filter-row" style="display:flex;align-items:center;gap:4px"></div>
+            </div>
+          </div>
         </div>
         <div id="pool-bulk-bar" class="pool-bulk-bar">
           <div class="pool-bulk-bar-top">
@@ -4709,6 +4790,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div>
         <label class="quick-label">Antal dage</label>
         <input class="quick-input" type="number" id="qp-days" min=".25" max="60" step=".25" value="1">
+        <!-- RUNDE H #24 — Martins ønske: søndag kan kun bookes ved at trække en
+             enkelt opgave derud manuelt, aldrig som en del af en flerdages-booking.
+             Låses/vises af qpLockSundayIfNeeded() i openQuickPop() + qp-date's
+             change-lytter. -->
+        <div id="qp-sunday-note" class="capacity-modal-note" style="display:none;margin:4px 0 0">🔒 Søndag: kun 1 dag ad gangen.</div>
       </div>
       <div id="qp-time-row">
         <label class="quick-label">Mødetid</label>
@@ -4762,6 +4848,38 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn danger hidden" id="delete-capacity">Fjern reservation</button>
       <button class="btn" id="close-capacity">Annuller</button>
       <button class="btn primary" id="save-capacity">Gem kapacitet</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE H #24 — "📊 Book alt i Kapacitetsbordet" på projekt-siden. Booker
+     alle sagens opgaver der ENDNU IKKE har nogen booking (hverken kapacitet
+     eller daglig plan) — én medarbejder + én startuge for det hele, men med
+     mulighed for at justere antal dage pr. opgave, da opgaver i en sag sjældent
+     er lige store. Selve "book dem korrekt over ugerne"-delen sker automatisk
+     på serveren (splitCapacityAcrossWeeks), som ruller videre til næste uge når
+     en uge er fuld — se kommentaren ved POST /api/projects/:id/bulk-book-capacity. -->
+<div class="mo" id="bulk-capacity-modal">
+  <div class="modal">
+    <h3>📊 Book alt i Kapacitetsbordet</h3>
+    <div class="capacity-context">Opretter en kapacitets-reservation for hver opgave herunder — de vises kun på Kapacitetsbordet, ikke i Daglig plan eller hos medarbejderen. Selve dag-for-dag planlægningen laver I stadig manuelt bagefter i Dagligplanlægning.</div>
+    <div class="form-group">
+      <label class="form-label">Medarbejder / hold</label>
+      <select id="bcap-user" class="select"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Startuge <span style="opacity:.6;font-weight:500">(opgaver der ikke er plads til, ruller automatisk videre til næste uge)</span></label>
+      <select id="bcap-week" class="select"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Opgaver der bookes</label>
+      <div id="bcap-task-list" class="bcap-task-list"></div>
+      <div id="bcap-none-note" class="capacity-modal-note" style="display:none">Alle opgaver i sagen har allerede en booking — der er ikke noget at booke.</div>
+      <div id="bcap-skip-note" class="capacity-modal-note" style="display:none"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-bulk-capacity">Annuller</button>
+      <button class="btn primary" id="save-bulk-capacity">Book opgaverne</button>
     </div>
   </div>
 </div>
@@ -6011,15 +6129,33 @@ async function api(path,opts){
   catch(e){toast('Netværksfejl','❌');return null;}
 }
 
-// Working dates for a booking
+// Working dates for a booking — bruges af KAPACITETSBORDET (weeklyLoad m.fl.),
+// som fortsat regner ud fra en almindelig 5-dages arbejdsuge (mandag-fredag),
+// uafhængigt af RUNDE H #24's ændring af selve Dagligplanlægningens dage
+// herunder (planWorkDates) — de to har bevidst forskellige regler, se
+// kommentaren ved planWorkDates.
 function workDates(b){
   var s=date(b.start_date),e=date(b.end_date||b.start_date),out=[];
   for(var d=new Date(s);d<=e;d=add(d,1)){if(d.getDay()!==0&&d.getDay()!==6)out.push(iso(d));}
   return out.length?out:[iso(s)];
 }
+// RUNDE H #24 — Martins ønske: i DAGLIGPLANLÆGNING (ikke Kapacitetsbordet) skal
+// lørdag være en normal, bookbar dag ligesom mandag-fredag, mens søndag
+// fortsat kun kan bruges ved at trække en enkelt opgave derud manuelt (se
+// openQuickPop's søndags-lås herunder). Denne funktion afspejler præcis det:
+// spring KUN søndag over (aldrig lørdag) når en flerdages-booking udregnes
+// eller vises. Bruges af de faktiske Daglig plan-visnings-/beregningssteder
+// (indexDailyBookings/dailyLoad/renderPlan/removeBooking) — IKKE af
+// Kapacitetsboardets egne beregninger (weeklyLoad m.fl.), som bevidst
+// beholder den oprindelige workDates() ovenfor uændret.
+function planWorkDates(b){
+  var s=date(b.start_date),e=date(b.end_date||b.start_date),out=[];
+  for(var d=new Date(s);d<=e;d=add(d,1)){if(d.getDay()!==0)out.push(iso(d));}
+  return out.length?out:[iso(s)];
+}
 function dailyLoad(uid,ds){
-  return bookings.filter(function(b){return !isCapacityBooking(b)&&+b.user_id===+uid&&workDates(b).indexOf(ds)>-1;})
-    .reduce(function(n,b){return n+(+b.days||1)/workDates(b).length;},0);
+  return bookings.filter(function(b){return !isCapacityBooking(b)&&+b.user_id===+uid&&planWorkDates(b).indexOf(ds)>-1;})
+    .reduce(function(n,b){return n+(+b.days||1)/planWorkDates(b).length;},0);
 }
 // Bygger ét opslag "bruger:dato" -> liste af (ikke-kapacitets-)bookinger, i stedet
 // for at scanne HELE bookings-arrayet igen for hver eneste dag/medarbejder-celle i
@@ -6031,7 +6167,7 @@ function indexDailyBookings(list){
   list.forEach(function(b){
     if(isCapacityBooking(b))return;
     var uid=+b.user_id;
-    workDates(b).forEach(function(ds){
+    planWorkDates(b).forEach(function(ds){
       var k=uid+':'+ds;
       (idx[k]=idx[k]||[]).push(b);
     });
@@ -6434,7 +6570,10 @@ function assignPillSpan(b,spanDays,ds,canUp,canDown){
     '<span style="display:flex;gap:2px;flex-shrink:0">'+reorderBtns+
     '<button class="pill-copy" title="Kopiér opgave" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>'+
     '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></span></div>'+
-    (b.start_time?'<div class="assign-time">⏰ '+esc(b.start_time)+'</div>':'')+
+    // RUNDE H #223: linjen vises nu ALTID (også uden mødetid, som &nbsp;), så
+    // opgaver med og uden klokkeslæt fylder præcis samme antal linjer/højde —
+    // ellers blev blokke med et mødetidspunkt én linje højere end de andre.
+    '<div class="assign-time">'+(b.start_time?'⏰ '+esc(b.start_time):'&nbsp;')+'</div>'+
     '<div class="assign-sub">'+esc(b.task_name||'')+(b.customer_phone?' · '+phoneMarkup(b.customer_phone,true):'')+'</div>'+
     '</div>';
 }
@@ -6444,6 +6583,7 @@ function assignPillContinue(b){
   return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+(b.completed_at?' is-done':'')+'" draggable="true" data-booking-id="'+b.id+'" style="opacity:.75;'+bookingColorStyle(b,type)+'">'+
     '<div class="assign-top"><span class="assign-name">↩ '+esc(b.job_name||b.task_name||'Opgave')+'</span>'+
     '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></div>'+
+    '<div class="assign-time">&nbsp;</div>'+
     '<div class="assign-sub">Fortsat · '+esc(b.days)+'d total</div>'+
     '</div>';
 }
@@ -6524,9 +6664,9 @@ function renderPlan(){
 
     var cells='<td class="staff-cell"><div class="staff-line">'+
       avatarHTML+
-      '<div><div class="staff-name">'+esc(u.name)+' <button class="wnote-btn'+(hasNote?' has':'')+'" title="Ugenote" data-action="weekly-note" data-user-id="'+u.id+'">🗒</button></div>'+
+      '<div class="staff-info"><div class="staff-name">'+esc(u.name)+' <button class="wnote-btn'+(hasNote?' has':'')+'" title="Ugenote" data-action="weekly-note" data-user-id="'+u.id+'">🗒</button></div>'+
       '<div class="staff-role">'+(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbej.'))+' · '+(+u.weekly_capacity||5)+' d</div>'+
-      (hasNote?'<div class="wnote-banner">'+esc(hasNote)+'</div>':'')+
+      (hasNote?'<div class="wnote-banner" data-action="weekly-note" data-user-id="'+u.id+'" title="'+esc(hasNote)+' — klik for at se/redigere hele noten">'+esc(hasNote)+'</div>':'')+
       '</div></div></td>';
 
     days.forEach(function(d,i){
@@ -6543,7 +6683,7 @@ function renderPlan(){
       // Find all bookings that cover this specific day (via det forudberegnede opslag,
       // i stedet for at scanne hele bookings-arrayet igen for hver celle)
       var items=(dailyIndex[(+u.id)+':'+ds]||[]).slice();
-      var booked=items.reduce(function(n,b){return n+(+b.days||1)/workDates(b).length;},0);
+      var booked=items.reduce(function(n,b){return n+(+b.days||1)/planWorkDates(b).length;},0);
       // Rækkefølge: opgaver MED mødetidspunkt vises altid i klokkeslæt-orden først;
       // opgaver uden tidspunkt beholder den rækkefølge du selv har sat med ▲▼.
       items.sort(function(a,b){
@@ -7222,6 +7362,21 @@ function positionFloatingPopup(pop,evt,centerOnCursor){
   pop.style.top=Math.round(y)+'px';
   pop.style.visibility='';
 }
+// RUNDE H #24 — Martins ønske: søndag skal fortsat kunne bruges, men KUN ved
+// at trække en enkelt opgave derud manuelt — aldrig som en del af en
+// flerdages-booking (det ville jo netop kræve at ugen "ruller ind i" søndag,
+// som addBookableDays på serveren bevidst springer uden om). Låser derfor
+// #qp-days til 1 og skjuler feltet, når den valgte dato er en søndag OG vi er
+// i Daglig plan (Kapacitet booker pr. uge, ikke en bestemt dag, og er derfor
+// ikke omfattet). Kaldes både ved åbning og hver gang datoen ændres i popup'en.
+function qpLockSundayIfNeeded(){
+  if(!quickCtx||quickCtx.context==='capacity')return;
+  var dateEl=document.getElementById('qp-date'),daysEl=document.getElementById('qp-days'),note=document.getElementById('qp-sunday-note');
+  var isSunday=dateEl.value&&date(dateEl.value).getDay()===0;
+  daysEl.disabled=!!isSunday;
+  note.style.display=isSunday?'block':'none';
+  if(isSunday)daysEl.value='1';
+}
 function openQuickPop(taskId,uid,dateStr,evt){
   var t=taskId?tasks.find(function(x){return String(x.id)===String(taskId);}):null;
   var inCapacity=document.getElementById('page-capacity').classList.contains('active');
@@ -7231,6 +7386,7 @@ function openQuickPop(taskId,uid,dateStr,evt){
   populateQPUsers(uid);
   document.getElementById('qp-date').value=dateStr||iso(new Date());
   document.getElementById('qp-days').value=t&&t.start_date&&t.end_date?Math.max(1,Math.round((new Date(t.end_date)-new Date(t.start_date))/86400000)+1):'1';
+  qpLockSundayIfNeeded();
   // If no task pre-selected, show the quick-task field (primary) + task dropdown (secondary)
   var wrap=document.getElementById('qp-task-select-wrap');
   var sel=document.getElementById('qp-task-select');
@@ -7285,7 +7441,10 @@ function openQuickPop(taskId,uid,dateStr,evt){
     document.getElementById('qp-new-job-number').value=t?(t.job_number||''):'';
   }
   document.getElementById('qp-time').value='';
-  document.getElementById('qp-send-mail').checked=false;
+  // RUNDE H #24 — forvalgt TIL i Daglig plan (automatisk mail er nu standard,
+  // se saveQuickPop), forvalgt FRA i Kapacitet (uændret opt-in, giver ikke
+  // samme mening for en rå kapacitetsreservation uden en bestemt dag/kunde-tid).
+  document.getElementById('qp-send-mail').checked=!inCapacity;
   document.getElementById('qp-note').value='';
   document.getElementById('qp-note-link').value='';
   document.getElementById('qp-note-files').value='';
@@ -7329,11 +7488,40 @@ async function saveQuickPop(){
   }
   if(!taskId){toast('Skriv en opgave, eller vælg en fra poolen','⚠');return;}
   var body={task_id:taskId,user_id:+document.getElementById('qp-user').value,start_date:document.getElementById('qp-date').value,days:+document.getElementById('qp-days').value||1,start_time:document.getElementById('qp-time').value||null,notes:document.getElementById('qp-note').value.trim()||null,note_link:document.getElementById('qp-note-link').value.trim()||null,note_attachments:noteAttachState('qp')};
+  var isCapacityCtx=quickCtx&&quickCtx.context==='capacity';
   var r=await api('/api/assignments',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
-    var wantsMail=document.getElementById('qp-send-mail').checked;
+    // RUNDE H #24 — Martins ønske: "sende en automatisk mail når en kunde
+    // bookes" i Dagligplanlægning. Feltet var før et opt-IN flueben man selv
+    // skulle huske at sætte hver gang — nu sendes planlægningsmailen
+    // automatisk ved enhver NY booking herfra (kun her, ikke ved redigering af
+    // en eksisterende booking andre steder — quickCtx.bookingId er altid null
+    // i denne popup, så dette rammer kun opret, aldrig gentagne redigeringer
+    // af samme booking, som ville give akkurat den "kunden får samme mail
+    // mange gange"-situation Martin selv beder om at få fjernet andetsteds,
+    // se #222). Fluebenet er bevidst BEVARET (nu som opt-UD, forvalgt
+    // markeret) i stedet for helt fjernet, så man stadig kan fravælge mailen
+    // for en enkelt booking (fx en intern prøve-opgave uden reel kunde) —
+    // flagget tydeligt som et fortolkningsvalg i leveringen. Gælder kun Daglig
+    // plan (context==='plan'); Kapacitets-popup'en er uændret (manuelt opt-in,
+    // giver ikke samme mening for en rå kapacitetsreservation uden fast dato).
+    var wantsMail=!isCapacityCtx&&document.getElementById('qp-send-mail').checked;
     closeQuickPop();toast('Booking gemt ✓','✓');await loadAll();
-    if(wantsMail&&r.id)await sendScheduledEmailForBooking(r.id,false);
+    if(wantsMail&&r.id){
+      // Sender direkte med standardskabelonen (springer skabelon-vælgeren
+      // over) — automatisk skal netop betyde at man IKKE skal tage stilling
+      // til noget ekstra hver gang. Vil man vælge en bestemt skabelon for en
+      // konkret booking, kan man stadig sende/gensende manuelt med valg af
+      // skabelon fra booking-detaljerne bagefter.
+      var mailResult=await api('/api/assignments/'+r.id+'/send-scheduled-email',{method:'POST',body:JSON.stringify({template_id:null})});
+      // "Ingen e-mail registreret" / "mail ikke konfigureret" er helt normale,
+      // hyppige situationer (fx en intern hurtig-opgave uden kunde-e-mail) —
+      // IKKE en fejl man skal forstyrres med hver gang man booker noget i
+      // Daglig plan. Kun uventede fejl vises.
+      if(mailResult&&!mailResult.ok&&mailResult.error!=='Kunden har ingen e-mail registreret'&&mailResult.error!=='E-mail er ikke konfigureret på serveren'){
+        toast('Booking gemt, men mailen fejlede: '+(mailResult.error||'ukendt fejl'),'❌');
+      }
+    }
   }
   else if(r)toast(r.error||'Fejl','❌');
 }
@@ -7486,7 +7674,7 @@ async function copyBooking(id){
 async function removeBooking(id){
   var b=bookings.find(function(x){return +x.id===+id;});
   if(!b){toast('Bookingen blev ikke fundet','❌');return;}
-  var dates=isCapacityBooking(b)?[]:workDates(b);
+  var dates=isCapacityBooking(b)?[]:planWorkDates(b);
   if(dates.length<=1){
     if(!await gmConfirm('Fjern booking?'))return;
     var r=await api('/api/assignments/'+id,{method:'DELETE'});
@@ -7912,7 +8100,13 @@ function openTemplateDropModal(templateId,uid,ds,isCapacity){
   document.getElementById('tpldrop-phone').value='';
   document.getElementById('tpldrop-email').value='';
   document.getElementById('tpldrop-name').value=t.name;
-  document.getElementById('tpldrop-days').value=t.default_days;
+  var tpldropDaysEl=document.getElementById('tpldrop-days');
+  // RUNDE H #24 — samme søndags-regel som quick-pop (openQuickPop/qpLockSundayIfNeeded):
+  // en skabelon der trækkes direkte ud på en søndag i Daglig plan (ikke Kapacitet,
+  // som booker pr. uge) kan kun blive til én enkelt dag, aldrig en flerdages-booking.
+  var tpldropIsSunday=!isCapacity&&ds&&date(ds).getDay()===0;
+  tpldropDaysEl.value=tpldropIsSunday?1:t.default_days;
+  tpldropDaysEl.disabled=!!tpldropIsSunday;
   document.getElementById('tpldrop-customer-suggestions').style.display='none';
   document.getElementById('tpldrop-send-mail').checked=false;
   document.getElementById('tpldrop-send-mail-row').style.display=isCapacity?'none':'flex';
@@ -9239,14 +9433,22 @@ function timeAgo(iso){
   if(diffH<24)return diffH+' t siden';
   return Math.round(diffH/24)+' d siden';
 }
-// Høj prioritet-banner på Kommandocenter (sep. 2026, Martins ønske) — se
-// HTML-kommentaren ved #dash-priority-banner. Viser kun opgaver der er sat som
-// "⚡ Høj prioritet" ved oprettelse OG enten forfalder i dag eller allerede er
-// overskredet ("bagud") — fremtidige høj-prioritets-opfølgninger er ikke akutte
-// endnu og fylder derfor ikke banneret unødigt. Klik åbner samme detalje-modal
-// som "☑ Opfølgninger"-siden (openCrmpDetail).
+// Høj prioritet-banner, GLOBAL på alle sider (sep. 2026, RUNDE H #24, Martins
+// ønske: "et banner du kan se på alle sider... og hvis man har flere vigtigt
+// så skifter den"). Viser kun opgaver der er sat som "⚡ Høj prioritet" ved
+// oprettelse OG enten forfalder i dag eller allerede er overskredet ("bagud")
+// — fremtidige høj-prioritets-opfølgninger er ikke akutte endnu og fylder
+// derfor ikke banneret unødigt. Klik åbner samme detalje-modal som
+// "☑ Opfølgninger"-siden (openCrmpDetail). Er der flere end én kvalificerende
+// sag, viser boksen dem ÉN ad gangen og skifter automatisk hvert 5. sekund
+// (se globalPriorityRows/globalPriorityIdx/globalPriorityTimer herunder) —
+// pause ved museover håndteres separat i bind() (mouseenter/mouseleave på
+// selve boksen sætter globalPriorityPaused).
+var globalPriorityRows=[];
+var globalPriorityIdx=0;
+var globalPriorityTimer=null;
+var globalPriorityPaused=false;
 function renderPriorityBanner(list){
-  var box=document.getElementById('dash-priority-banner');
   var todayIso=iso(new Date());
   function tagFor(t){
     if(!t.due_date)return{cls:'nodate',label:'Ingen dato'};
@@ -9257,21 +9459,47 @@ function renderPriorityBanner(list){
   var rows=list.filter(function(t){return !t.done&&+t.priority===1;})
     .map(function(t){return{t:t,tag:tagFor(t)};})
     .filter(function(x){return x.tag;});
-  if(!rows.length){box.hidden=true;box.innerHTML='';return;}
   var order={overdue:0,today:1,nodate:2};
   rows.sort(function(a,b){
     var d=order[a.tag.cls]-order[b.tag.cls];
     return d||String(a.t.due_date||'').localeCompare(String(b.t.due_date||''));
   });
+  globalPriorityRows=rows;
+  globalPriorityIdx=0;
+  if(globalPriorityTimer){clearInterval(globalPriorityTimer);globalPriorityTimer=null;}
+  if(rows.length>1){
+    globalPriorityTimer=setInterval(function(){
+      if(globalPriorityPaused)return;
+      globalPriorityIdx=(globalPriorityIdx+1)%globalPriorityRows.length;
+      renderGlobalPriorityCurrent();
+    },5000);
+  }
+  renderGlobalPriorityCurrent();
+}
+function renderGlobalPriorityCurrent(){
+  var box=document.getElementById('dash-priority-banner');
+  if(!box)return;
+  var rows=globalPriorityRows;
+  if(!rows.length){box.hidden=true;box.innerHTML='';return;}
+  if(globalPriorityIdx>=rows.length)globalPriorityIdx=0;
+  var x=rows[globalPriorityIdx],t=x.t;
   box.hidden=false;
-  box.innerHTML='<div class="dash-priority-banner-title">⚡ Høj prioritet — skal kontaktes</div>'
-    +rows.map(function(x){
-      var t=x.t;
-      return '<div class="dash-priority-row" onclick="openCrmpDetail(\''+esc(t.entity_type)+'\','+ +t.entity_id+')">'
-        +'<div><div class="dash-priority-row-title">'+esc(t.entity_name||'(slettet)')+'</div>'
-        +'<div class="dash-priority-row-sub">'+esc(t.title||'')+(t.assigned_name?' · '+esc(t.assigned_name):'')+'</div></div>'
-        +'<span class="dash-priority-tag '+x.tag.cls+'">'+x.tag.label+'</span></div>';
-    }).join('');
+  var dots=rows.length>1?'<div class="dash-priority-dots">'+rows.map(function(_,i){return '<span class="dash-priority-dot'+(i===globalPriorityIdx?' active':'')+'" data-action="priority-dot" data-idx="'+i+'"></span>';}).join('')+'</div>':'';
+  var count=rows.length>1?'<span class="dash-priority-banner-count">'+(globalPriorityIdx+1)+' af '+rows.length+'</span>':'';
+  box.innerHTML='<div class="dash-priority-banner-title">⚡ Høj prioritet — skal kontaktes'+count+dots+'</div>'
+    +'<div class="dash-priority-row" onclick="openCrmpDetail(\''+esc(t.entity_type)+'\','+ +t.entity_id+')">'
+    +'<div><div class="dash-priority-row-title">'+esc(t.entity_name||'(slettet)')+'</div>'
+    +'<div class="dash-priority-row-sub">'+esc(t.title||'')+(t.assigned_name?' · '+esc(t.assigned_name):'')+'</div></div>'
+    +'<span class="dash-priority-tag '+x.tag.cls+'">'+x.tag.label+'</span></div>';
+}
+// Henter selve dataen — kaldes ved opstart og hvert 90. sekund (se
+// setInterval ved refreshNotifBell i bind()), UAFHÆNGIGT af hvilken side man
+// står på, samt direkte fra loadDashboard() for at være frisk med det samme
+// når man lander på Kommandocenter. Fejler stille (fx bruger uden
+// crmp_tasks-adgang) — banneret skjules bare da.
+async function refreshGlobalPriorityBanner(){
+  var list=await api('/api/crm/tasks/overview');
+  renderPriorityBanner(Array.isArray(list)?list:[]);
 }
 async function loadDashboard(){
   var el=document.getElementById('dash-kpi-cards');
@@ -9280,11 +9508,10 @@ async function loadDashboard(){
   var kpis=await api('/api/dashboard/kpis');
   var forecast=await api('/api/dashboard/capacity-forecast');
   var notifs=await api('/api/notifications');
-  // Høj prioritet-opfølgninger — genbruger samme data som "☑ Opfølgninger"-siden
-  // (GET /api/crm/tasks/overview), viser kun priority=1 + ikke færdige. Fejler
-  // stille (fx bruger uden crmp_tasks-adgang) — banneret skjules bare da.
-  var crmTasksOverview=await api('/api/crm/tasks/overview');
-  renderPriorityBanner(Array.isArray(crmTasksOverview)?crmTasksOverview:[]);
+  // Banneret er nu globalt (RUNDE H #24) og hentes/opdateres i forvejen ved
+  // opstart + hvert 90. sekund (se refreshGlobalPriorityBanner). Kaldes også
+  // her, så det med det samme er frisk når man lander på Kommandocenter.
+  refreshGlobalPriorityBanner();
   if(!overview){el.innerHTML='<div class="dash-empty">Kunne ikke hente overblik.</div>';return;}
 
   var waitingN=(overview.status_counts.find(function(s){return s.status_flag==='waiting';})||{}).n||0;
@@ -12917,7 +13144,6 @@ async function loadAll(){
   users=r[0]||[];tasks=r[1]||[];bookings=r[2]||[];timeOffApproved=r[4]||[];
   akkordItems=Array.isArray(r[5])?r[5]:[];
   if(usersReadyResolve){usersReadyResolve();usersReadyResolve=null;}
-  renderStats(r[3]||{});
   // Genrender kun den side der rent faktisk vises lige nu — at genopbygge ALLE
   // boards (Daglig plan/Kapacitet/Hold/Ledighed/Opgaveliste) ved HVER handling i
   // hele appen, uanset hvilken fane man kigger på, var en stor del af grunden til
@@ -12938,23 +13164,6 @@ async function loadAll(){
   refreshRequestsBadge();
   if(activePageId==='page-tasklist'&&tlActiveTab()==='completed')renderCompleted();
   if(document.getElementById('page-requests').classList.contains('active'))renderRequests();
-}
-function renderStats(d){
-  var today=iso(new Date());
-  var overdue=tasks.filter(function(t){return +t.assignment_count===0&&t.start_date&&String(t.start_date).slice(0,10)<today;}).length;
-  var items=[
-    ['Ikke planlagt',d.unassigned||0,'klik for at se dem','open'],
-    ['Overskredet & uplanlagt',overdue,overdue?'⚠ kræver handling nu':'ingen — flot!','open',overdue>0],
-    ['Planlagte Tasks',d.assigned||0,'har mindst én booking','planned'],
-    ['Opgaver i pool',d.totalTasks||0,'alle opgaver i poolen','all'],
-    ['Interne',d.employees||0,'medarbejdere',null],
-    ['Vendors',d.vendors||0,'undergrupper',null]
-  ];
-  document.getElementById('stats').innerHTML=items.map(function(x){
-    var clickable=x[3]?' data-action="goto-tasklist" data-filter="'+x[3]+'" style="cursor:pointer"':'';
-    var warn=x[4]?' style="color:#B91C1C"':'';
-    return '<div class="stat"'+clickable+'><div class="stat-label">'+x[0]+'</div><div class="stat-value"'+warn+'>'+x[1]+'</div><div class="stat-sub">'+x[2]+'</div></div>';
-  }).join('');
 }
 function closeModal(id){document.getElementById(id).classList.remove('open');if(id==='assign-modal')assignCtx=null;}
 
@@ -13253,6 +13462,23 @@ function bind(){
     e.preventDefault();
     document.getElementById('mobilenavdrop-menu').classList.remove('open');
     document.getElementById('note-widget-btn').click();
+  });
+  // RUNDE H #23 — "☰ Menu / sider" åbner sidebaren som et rigtigt overlay-
+  // panel på telefon (se CSS'en ved body.sidebar-mobile-open). Lukker igen
+  // ved klik på en side-fane (samme lytter som .tab[data-page] længere oppe
+  // fortsætter med at virke normalt), ved klik på baggrunds-dimningen, eller
+  // ved at åbne ☰-menuen igen. Bevidst IKKE samme klasse som den gemte
+  // desktop-præference (body.sidebar-collapsed) — de skal ikke blande sig.
+  function toggleMobileSidebar(){document.body.classList.toggle('sidebar-mobile-open');}
+  function closeMobileSidebar(){document.body.classList.remove('sidebar-mobile-open');}
+  document.getElementById('mobilenavdrop-sidebar-item').addEventListener('click',function(e){
+    e.preventDefault();
+    document.getElementById('mobilenavdrop-menu').classList.remove('open');
+    toggleMobileSidebar();
+  });
+  document.getElementById('sidebar-mobile-backdrop').addEventListener('click',closeMobileSidebar);
+  document.getElementById('app-sidebar').addEventListener('click',function(e){
+    if(e.target.closest('.tab,.navdrop-item'))closeMobileSidebar();
   });
   // RUNDE H #9 (senere flyttet til sidebaren, sep. 2026, se sidebar-newbtn-*
   // CSS/markup ovenfor) — "+ Ny"-genvej til nyt tilbud/ny kunde. Genbruger de
@@ -13593,6 +13819,18 @@ function bind(){
   // virker upåklageligt og øjeblikkeligt.
   refreshNotifBell();
   setInterval(refreshNotifBell,90000);
+  // RUNDE H #24 — høj prioritet-banneret er globalt nu, så det holdes friskt
+  // uafhængigt af hvilken side man står på (samme 90-sekunders rytme som
+  // notifikations-klokken ovenfor). Pause ved museover, så man kan nå at
+  // læse/klikke på den aktuelle sag før den skifter videre.
+  setInterval(refreshGlobalPriorityBanner,90000);
+  (function(){
+    var box=document.getElementById('dash-priority-banner');
+    if(box){
+      box.addEventListener('mouseenter',function(){globalPriorityPaused=true;});
+      box.addEventListener('mouseleave',function(){globalPriorityPaused=false;});
+    }
+  })();
   // TRÆKBARE POPUPS: virker på alle .modal-bokse i hele programmet uden at skulle
   // rettes i hver enkelt popup. Man griber i toppen (headeren, ~60px) og trækker —
   // resten af boksen (inputs, knapper osv.) forbliver almindeligt klikbare.
@@ -13634,7 +13872,26 @@ function bind(){
   })();
   // Nav
   document.getElementById('logout-btn').onclick=logoutWithConfirm;
-  document.getElementById('book-visit-btn').onclick=openVisitBookModal;
+  // RUNDE H #24 — "+ Book / Opgave"-dropdownen i Opgavepoolen (Dagligplan) samler
+  // adgangen til de to (bevidst stadig separate) formularer i én knap.
+  (function(){
+    var dd=document.getElementById('pool-add-dropdown');
+    if(!dd)return;
+    document.getElementById('pool-add-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('pool-add-menu').classList.toggle('open');});
+    document.getElementById('pool-add-manual-item').addEventListener('click',function(e){e.preventDefault();document.getElementById('pool-add-menu').classList.remove('open');openManual();});
+    document.getElementById('pool-add-visit-item').addEventListener('click',function(e){e.preventDefault();document.getElementById('pool-add-menu').classList.remove('open');openVisitBookModal();});
+  })();
+  // Samme mønster for "🔍 Filtre"-dropdownen (Fag/uge/status-filtrene, som før
+  // stod fremme i panelet hele tiden).
+  (function(){
+    var dd=document.getElementById('pool-filter-dropdown');
+    if(!dd)return;
+    document.getElementById('pool-filter-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('pool-filter-menu').classList.toggle('open');});
+  })();
+  document.addEventListener('click',function(e){
+    if(!e.target.closest('#pool-add-dropdown'))document.getElementById('pool-add-menu').classList.remove('open');
+    if(!e.target.closest('#pool-filter-dropdown'))document.getElementById('pool-filter-menu').classList.remove('open');
+  });
   document.getElementById('close-checklist').onclick=function(){closeModal('checklist-modal');};
   document.getElementById('checklist-add-btn').onclick=function(){addChecklistItem('checklist-items',checklistTaskId,'checklist-new-title');};
   document.getElementById('checklist-new-title').addEventListener('keydown',function(e){if(e.key==='Enter')addChecklistItem('checklist-items',checklistTaskId,'checklist-new-title');});
@@ -13649,12 +13906,10 @@ function bind(){
   document.getElementById('save-visit-form').onclick=saveVisitForm;
   // "Ryd alle bookinger"-knappen er fjernet fra UI (for let at trykke på ved en fejl) —
   document.getElementById('pool-bulk-clear').addEventListener('click',function(){poolSelected={};renderPool('plan');});
-  document.getElementById('plan-group-toggle').addEventListener('click',function(){
-    poolGroupedMode.plan=!poolGroupedMode.plan;
-    this.textContent=poolGroupedMode.plan?'👥 Pr. kunde':'📋 Flad liste';
-    this.classList.toggle('primary',poolGroupedMode.plan);
-    renderPool('plan');
-  });
+  // RUNDE H #24 — "📋/👥"-fladliste-skiftet er fjernet fra UI'en efter Martins
+  // ønske (poolen viser nu ALTID gruppering pr. kunde). poolGroupedMode.plan
+  // sættes derfor fast til true her i stedet for at kunne slås til/fra.
+  poolGroupedMode.plan=true;
   document.getElementById('pool-bulk-done-btn').addEventListener('click',async function(){
     var ids=Object.keys(poolSelected);
     if(!ids.length)return;
@@ -13846,6 +14101,7 @@ function bind(){
   // Quick pop
   document.getElementById('qp-cancel').onclick=closeQuickPop;
   document.getElementById('qp-save').onclick=saveQuickPop;
+  document.getElementById('qp-date').addEventListener('change',qpLockSundayIfNeeded);
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
   // Modal backdrop — klik ved siden af modalen lukker den. UNDTAGEN 'crm-modal'
@@ -13892,6 +14148,7 @@ function bind(){
     if(a){
       var act=a.dataset.action;
       if(act==='manual')openManual();
+      if(act==='priority-dot'){e.stopPropagation();globalPriorityIdx=+a.dataset.idx;renderGlobalPriorityCurrent();}
       if(act==='open-visit-form'){e.stopPropagation();openVisitFormModal(a.dataset.taskId);}
       if(act==='open-checklist'){e.stopPropagation();openChecklistModal(a.dataset.taskId);}
       if(act==='pool-open-project'){e.stopPropagation();if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');}else{openProjectDetail(+a.dataset.projectId);}}
@@ -17295,6 +17552,9 @@ function initProjectsModule(){
     document.getElementById('pd-status-select').addEventListener('change',savePdStatus);
     document.getElementById('pd-send-portal-btn').addEventListener('click',pdSendPortalLink);
     document.getElementById('pd-convert-lines-btn').addEventListener('click',pdConvertLines);
+    document.getElementById('pd-bulk-capacity-btn').addEventListener('click',openBulkCapacityModal);
+    document.getElementById('close-bulk-capacity').addEventListener('click',function(){closeModal('bulk-capacity-modal');});
+    document.getElementById('save-bulk-capacity').addEventListener('click',saveBulkCapacityReservation);
     document.getElementById('pd-new-task-btn').addEventListener('click',function(){pdAddTaskRow();});
     document.getElementById('pd-photo-input').addEventListener('change',pdUploadPhoto);
     document.getElementById('pd-time-add-btn').addEventListener('click',function(){openPdTimeModal(null);});
@@ -17830,6 +18090,47 @@ async function pdConvertLines(){
   var r=await api('/api/projects/'+pjCurrent.id+'/convert-quote-lines',{method:'POST'});
   if(r&&r.ok){toast(r.created+' opgave(r) oprettet fra tilbuddet','✓');reloadPdCurrent();}
   else toast((r&&r.error)||'Kunne ikke oprette opgaver','❌');
+}
+// RUNDE H #24 — "📊 Book alt i Kapacitetsbordet". Se HTML-kommentaren ved
+// #bulk-capacity-modal for baggrunden (og hvorfor medarbejder-valget bevidst
+// IKKE er automatiseret væk). Genbruger capacityWeekOptions() (generisk,
+// ikke bundet til et bestemt element-id) fra det almindelige kapacitets-modal.
+function openBulkCapacityModal(){
+  if(!pjCurrent||!Array.isArray(pjCurrent.tasks))return;
+  var bookable=pjCurrent.tasks.filter(function(t){return !t.has_booking;});
+  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
+  document.getElementById('bcap-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
+  document.getElementById('bcap-week').innerHTML=capacityWeekOptions(iso(mon(new Date())));
+  var list=document.getElementById('bcap-task-list');
+  document.getElementById('bcap-none-note').style.display=bookable.length?'none':'block';
+  var skippedCount=pjCurrent.tasks.length-bookable.length;
+  var skipNote=document.getElementById('bcap-skip-note');
+  if(skippedCount>0){skipNote.style.display='block';skipNote.textContent=skippedCount+' opgave(r) er allerede booket (kapacitet eller daglig plan) og vises ikke her.';}
+  else skipNote.style.display='none';
+  list.style.display=bookable.length?'block':'none';
+  list.innerHTML=bookable.map(function(t){
+    return '<div class="bcap-task-row"><span class="bcap-task-row-name">'+esc(t.name||'(uden navn)')+'</span>'
+      +'<input type="number" class="input bcap-task-days" min=".25" max="60" step=".25" value="1" data-task-id="'+esc(t.id)+'"></div>';
+  }).join('');
+  document.getElementById('save-bulk-capacity').disabled=!bookable.length;
+  document.getElementById('bulk-capacity-modal').classList.add('open');
+}
+async function saveBulkCapacityReservation(){
+  var userId=document.getElementById('bcap-user').value;
+  if(!userId){toast('Vælg en medarbejder','⚠️');return;}
+  var weekStart=document.getElementById('bcap-week').value;
+  var days={};
+  Array.prototype.forEach.call(document.querySelectorAll('#bcap-task-list .bcap-task-days'),function(inp){
+    days[inp.dataset.taskId]=Math.max(.25,Math.min(60,Number(inp.value)||1));
+  });
+  var btn=document.getElementById('save-bulk-capacity');btn.disabled=true;btn.textContent='Booker…';
+  var r=await api('/api/projects/'+pjCurrent.id+'/bulk-book-capacity',{method:'POST',body:JSON.stringify({user_id:userId,week_start:weekStart,days:days})});
+  btn.disabled=false;btn.textContent='Book opgaverne';
+  if(r&&r.ok){
+    closeModal('bulk-capacity-modal');
+    toast(r.booked+' opgave(r) booket i Kapacitetsbordet'+(r.skipped?' ('+r.skipped+' sprunget over — allerede booket)':''),'✓');
+    reloadPdCurrent();
+  }else toast((r&&r.error)||'Kunne ikke booke opgaverne','❌');
 }
 function renderPdPhotos(){
   var grid=document.getElementById('pd-photos-grid');
@@ -19267,7 +19568,7 @@ window.useTemplateForNewQuote=useTemplateForNewQuote;
 
 bind();
 loadSettings();
-loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmailTemplates();return loadAll();}).then(function(){checkPendingTimeOffPopup();});
+loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmailTemplates();return loadAll();}).then(function(){checkPendingTimeOffPopup();refreshGlobalPriorityBanner();});
 })();
 </script>
 </body>
