@@ -20,6 +20,27 @@
 .topbar{min-height:58px;background:#fff;color:var(--ink);padding:8px 16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;position:sticky;top:0;z-index:20;border-bottom:1px solid var(--border);box-shadow:var(--shadow)}.brand{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:750;flex-shrink:0;color:var(--ink)}.logo{width:31px;height:31px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#7C3AED);display:grid;place-items:center;flex-shrink:0}.user{display:flex;align-items:center;gap:8px;flex-shrink:0}.avatar{width:31px;height:31px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800;flex-shrink:0}.avatar-img{border-radius:50%;flex-shrink:0}.logout{border:1px solid var(--border);border-radius:var(--radius-pill);padding:5px 11px;background:#fff;color:var(--ink);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:.15s}.logout:hover{background:#F5F3FF;border-color:#C7D2FE}
 .topbar-actions{display:flex;gap:8px;flex-wrap:wrap;order:3;flex-basis:100%}
 @media(min-width:701px){.topbar-actions{order:2;flex-basis:auto;flex:1;justify-content:center}}
+.mobile-menu-btn{display:none;position:relative;border:1px solid var(--border);background:#fff;color:var(--ink);border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0}
+.mobile-menu-badge{position:absolute;top:-4px;right:-4px;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;line-height:1.3}
+.lib-btn-mobilelabel{display:none}
+/* RUNDE H #22 — Martins rigtige pointe: det var ikke note/notifikationer der
+   skulle proppes ind i et menu-ikon (det var allerede løst i admin.html) — det
+   var HELE Employee-topbaren, som klapper sammen til flere ulæselige linjer på
+   en telefon. Under 700px skjules hele knap-rækken (.topbar-actions) og samles
+   i stedet i én ☰-menu, der folder ud som et flydende panel. Samme knapper/
+   handlinger genbruges 1:1 (ingen dubleret kode) — kun visningen ændrer sig. */
+@media(max-width:700px){
+  .topbar{flex-wrap:nowrap;gap:8px}
+  .brand{overflow:hidden;flex-shrink:1;min-width:0}
+  .brand span:not(.logo){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .user{flex-shrink:0}
+  .mobile-menu-btn{display:inline-flex}
+  .lib-btn-mobilelabel{display:inline}
+  .topbar-actions{display:none;position:fixed;top:64px;left:10px;right:10px;flex-direction:column;align-items:stretch;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-lg);padding:10px;z-index:400;gap:6px;max-height:calc(100vh - 80px);overflow:auto}
+  .topbar-actions.mobile-open{display:flex}
+  .topbar-actions .lib-btn{width:100%;justify-content:flex-start;border-radius:9px;padding:10px 12px}
+  #notif-dropdown{position:fixed!important;left:10px!important;right:10px!important;top:calc(64px + 48px)!important;width:auto!important;max-width:none!important}
+}
 .main{max-width:800px;margin:0 auto;padding:16px}.week-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 13px}.week-title{font-weight:800;font-size:18px;color:var(--navy)}.week-sub{font-size:11px;color:var(--muted);margin-top:2px}.week-buttons{display:flex;gap:5px;align-items:center}.small-btn{border:1px solid var(--border);background:#fff;border-radius:var(--radius-pill);padding:7px 12px;font-weight:650;font-size:11px;cursor:pointer;color:var(--muted);transition:.15s}.small-btn:hover{background:#F5F3FF;border-color:#C7D2FE;color:var(--accent)}.small-btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}.small-btn.primary:hover{background:#000;color:#fff}
 .week-overview{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:15px}.day-chip{background:#fff;border:1px solid var(--border);border-radius:9px;padding:7px 3px;text-align:center;cursor:pointer}.day-chip.active{background:var(--navy);border-color:var(--navy);color:#fff}.day-chip.has{border-bottom:3px solid var(--blue)}.day-chip .d1{font-size:9px;font-weight:800;opacity:.72}.day-chip .d2{font-size:15px;font-weight:800}.day-chip .d3{font-size:9px;min-height:12px;margin-top:2px}
 .view-notice{background:#EEF2FF;border:1px solid #C7D2FE;color:#4338CA;border-radius:9px;padding:8px 10px;margin:0 0 14px;font-size:11px;font-weight:650;display:flex;align-items:center;justify-content:space-between;gap:8px}.view-notice button{border:none;background:transparent;color:#4338CA;font-weight:800;font-size:11px;cursor:pointer;text-decoration:underline}
@@ -52,7 +73,12 @@
 .task-timeline-seg.tl-future{background:#E2E8F0}
 .task.done .task-timeline{background:#F0FDF4;border-color:#BBF7D0}
 .task.done .task-timeline-seg.tl-past,.task.done .task-timeline-seg.tl-today{background:#16A34A;box-shadow:none}.case-chip{font-size:9px;font-weight:800;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:2px 7px;white-space:nowrap;text-decoration:none;display:inline-block}.untimed-divider{font-size:10px;font-weight:700;color:var(--muted);background:#F1F5F9;border:1px dashed var(--border);border-radius:8px;padding:6px 10px;margin:0 0 9px}.job-details{margin:11px 0 12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px 0;display:grid;gap:6px}.detail-line{display:flex;align-items:flex-start;gap:6px;font-size:11px;color:var(--muted);line-height:1.35}.detail-line a{color:#4F46E5;text-decoration:none;font-weight:650}.detail-line a:hover{text-decoration:underline}.detail-line.planned{color:#475569}.weather-line{font-size:11px;color:var(--muted)}.weather-line.loading{color:var(--ghost)}.task-checklist{margin:0 0 10px}.task-checklist:empty{display:none}.task-description{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin:0 0 12px}.task-description-label{font-size:9.5px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px}.task-description-body{font-size:12.5px;color:#78350F;line-height:1.5;white-space:pre-line}.tc-title{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}.tc-item{display:flex;align-items:center;gap:8px;padding:7px 9px;background:#F8FAFC;border-radius:8px;margin-bottom:5px}.tc-item.done{background:#F0FDF4}.tc-item.done span{text-decoration:line-through;opacity:.6}.tc-item input{width:17px;height:17px;accent-color:#16A34A;flex-shrink:0}.tc-item span{font-size:12px;color:var(--navy)}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.action{border:1px solid transparent;border-radius:9px;padding:10px 8px;font-size:11px;font-weight:800;min-height:42px;display:flex;align-items:center;justify-content:center;gap:5px;cursor:pointer;text-decoration:none;text-align:center}.action.maps{background:#FEF3C7;color:#92400E}.action.note{background:#EEF2FF;color:#4338CA}.action.info{background:#E2E8F0;color:#334155}.action.files{background:#F5F3FF;color:#6D28D9}.action.time{background:#DCFCE7;color:#15803D}.action.qc{background:#CFFAFE;color:#155E75}.action.rules{background:#F1F5F9;color:#475569}.action:hover{filter:brightness(.97);transform:translateY(-1px)}
+/* RUNDE H #21 — Martin syntes farveblokkene (gul/lilla/cyan osv.) så "børneagtige"
+   ud. Skiftet til én neutral, rolig knap-stil (hvid + tynd kant, som .small-btn/
+   .lib-btn) for alle sekundære handlinger, og kun to solide "vigtigt"-farver
+   forbeholdt de to fuld-bredde CTA-knapper nederst (Registrér tid = ink, Mark as
+   done = grøn) — det giver et voksent, roligt udtryk uden at miste hierarkiet. */
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.action{border:1px solid var(--border);border-radius:9px;padding:10px 8px;font-size:11px;font-weight:700;min-height:42px;display:flex;align-items:center;justify-content:center;gap:5px;cursor:pointer;text-decoration:none;text-align:center;background:#fff;color:var(--ink);transition:.15s}.action:hover{background:#F5F3FF;border-color:#C7D2FE;color:var(--accent);transform:translateY(-1px)}.action.time{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:800}.action.time:hover{background:#000;color:#fff}.action.done-btn{background:#16A34A;color:#fff;border-color:#16A34A;font-weight:800}.action.done-btn:hover{background:#15803D;color:#fff}.action.undone-btn{background:#fff;color:var(--muted)}
 .empty{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:38px 20px;text-align:center;color:var(--muted)}.empty-icon{font-size:40px}.empty h3{color:var(--navy);margin:7px 0 4px;font-size:16px}.toast{position:fixed;bottom:18px;left:50%;transform:translate(-50%,80px);background:var(--navy);color:#fff;padding:10px 14px;border-radius:9px;box-shadow:var(--shadow-lg);font-size:12px;opacity:0;transition:.22s;z-index:300}.toast.show{transform:translate(-50%,0);opacity:1}
 /* TEAM & MAP — read-only "who's where" view for employees Martin has flagged
    (e.g. a foreman). Reuses the same job_lat/job_lng data as the admin route map,
@@ -97,7 +123,8 @@
 .file-item a{font-size:12px;font-weight:700;color:#4F46E5;text-decoration:none}
 .file-item a:hover{text-decoration:underline}
 .file-cat{font-size:8px;font-weight:800;text-transform:uppercase;color:var(--muted);letter-spacing:.4px}
-.lib-btn{border:1px solid var(--border);border-radius:var(--radius-pill);padding:6px 12px;background:#fff;color:var(--ink);font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;transition:.15s}.lib-btn:hover{background:var(--accent-soft);border-color:#C7D2FE;color:var(--accent)}
+.lib-btn{border:1px solid var(--border);border-radius:var(--radius-pill);padding:6px 12px;background:#fff;color:var(--ink);font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;transition:.15s}.lib-btn:hover{background:var(--accent-soft);border-color:#C7D2FE;color:var(--accent)}
+.lib-btn-icon{display:inline-flex}.lib-btn-label{margin-left:0}
 @media(max-width:420px){.lib-btn-label{display:none}.lib-btn{padding:7px 9px;font-size:13px}}
 @media(max-width:480px){.week-overview{gap:3px}.day-chip{padding:5px 1px}.day-chip .d1{font-size:8px}.day-chip .d2{font-size:12px}.day-chip .d3{font-size:7px;min-height:9px}}
 .req-label{display:block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:12px 0 5px}
@@ -136,15 +163,17 @@
 <body>
 <header class="topbar">
   <div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div>
-  <div class="topbar-actions"><button class="lib-btn" onclick="openProjectsModal()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find projekt</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">🏖</span><span class="lib-btn-label"> Ferie</span></button><button class="lib-btn" onclick="openMyHours()"><span class="lib-btn-icon">⏱</span><span class="lib-btn-label"> Mine timer</span></button>
+  <div class="topbar-actions" id="topbar-actions"><button class="lib-btn" onclick="openProjectsModal()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find projekt</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">🏖</span><span class="lib-btn-label"> Ferie</span></button><button class="lib-btn" onclick="openMyHours()"><span class="lib-btn-icon">⏱</span><span class="lib-btn-label"> Mine timer</span></button>
     <div style="position:relative;display:inline-block">
-      <button class="lib-btn" id="notif-bell-btn" onclick="toggleNotifDropdown()"><span class="lib-btn-icon">🔔</span><span id="notif-bell-count" style="display:none;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;margin-left:4px"></span></button>
+      <button class="lib-btn" id="notif-bell-btn" onclick="toggleNotifDropdown()"><span class="lib-btn-icon">🔔</span><span class="lib-btn-mobilelabel"> Notifikationer</span><span id="notif-bell-count" style="display:none;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;margin-left:4px"></span></button>
       <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:300px;max-height:360px;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(17,19,24,.25);z-index:500;color:#1a1a1a"></div>
     </div>
     <button class="lib-btn" id="push-enable-btn" style="display:none" onclick="enablePushNotifications()" title="Få besked med det samme på telefonen/pc'en når din plan bliver ændret"><span class="lib-btn-icon">📲</span><span class="lib-btn-label"> Slå notifikationer til</span></button>
     <button class="lib-btn" id="team-map-btn" style="display:none" onclick="openTeamMap()" title="See where the team is working and what everyone has on this week"><span class="lib-btn-icon">🗺️</span><span class="lib-btn-label"> Team &amp; map</span></button>
   </div>
-  <div class="user"><span id="user-name" class="user-name"></span><span id="user-avatar" class="avatar">?</span><button class="logout" onclick="logout()">Log out</button></div>
+  <div class="user"><span id="user-name" class="user-name"></span><span id="user-avatar" class="avatar">?</span><button class="logout" onclick="logout()">Log out</button>
+    <button class="mobile-menu-btn" id="mobilemenu-btn" type="button" title="Menu" onclick="toggleMobileMenu()">☰<span id="mobilemenu-badge" class="mobile-menu-badge" style="display:none"></span></button>
+  </div>
 </header>
 <main class="main">
   <div class="week-nav"><div><div id="week-label" class="week-title">Loading...</div><div id="week-sub" class="week-sub"></div></div><div class="week-buttons"><button id="whole-week-btn" class="small-btn primary" onclick="showWholeWeek()">Whole week</button><button class="small-btn" onclick="changeWeek(-1)">←</button><button class="small-btn primary" onclick="goToday()">Today</button><button class="small-btn" onclick="changeWeek(1)">→</button></div></div>
@@ -464,7 +493,7 @@ function pmRenderDetail(){
       <button class="action time" type="button" onclick="pmOpenTimeForm()">⏱ Registrér tid</button>
       <button class="action files" type="button" onclick="pmOpenMaterialsForm()">🧾 Materialer</button>
       <button class="action files" type="button" onclick="pmOpenPhotoForm()">📷 Tilføj billede</button>
-      <button class="action qc" type="button" onclick="pmOpenQaPicker()">🛡 Udfyld KS-formular</button>
+      <button class="action qc" type="button" onclick="pmOpenQaPicker()">🛡 Kvalitetssikring</button>
       <button class="action qc" type="button" onclick="pmOpenContactPicker()">📇 Kontaktformular</button>
     </div>
     <div class="tm-section-label">Dine seneste tidsregistreringer</div>
@@ -1032,7 +1061,7 @@ function render(){
       // (i stedet for at vise et abstrakt "dage"-tal, som ikke sagde medarbejderne noget).
       const hoursNum=Math.round(Number(a.days||1)*9*4)/4;
       const hoursLabel=(hoursNum%1===0?hoursNum:hoursNum.toFixed(2).replace(/0+$/,'').replace(/\.$/,'').replace('.',',')) + ' timer';
-      const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:`<button class="action done-btn" type="button" onclick="openDocModal(${noteId})">✅ Mark as done</button>`;
+      const doneBtn=isDone?`<button class="action undone-btn" type="button" style="grid-column:1/-1" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openDocModal(${noteId})">✅ Mark as done</button>`;
       const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse'}</div><div class="task-description-body">${esc(a.task_description).replace(/\n/g,'<br>')}</div></div>`:'';
       // SAGS-HANDLINGER: alle opgaver styres nu fra Martins eget program, så
       // "Se sagen"/"Registrér tid"/"Udfyld KS-formular"/"Materialer" åbner en
@@ -1045,12 +1074,15 @@ function render(){
       // confirmDocumentationAndComplete().
       const isCaseTask=!!a.task_project_id;
       const caseIcon=isCaseTask?`<span class="case-chip" style="background:#EEF2FF;color:#4F46E5;border-color:#C7D2FE" title="Denne opgave hører til en sag i dit eget program">📁 Sag</span>`:'';
+      // RUNDE H #21 — Martin fjernede "Se sagen" og "Regler og lovgivning" fra
+      // handlingerne (mindre rod, færre knapper der sjældent bruges). "Registrér tid"
+      // er nu en fuld-bredde knap nederst, da tidsregistrering er den vigtigste
+      // handling. "Udfyld KS-formular" hedder nu bare "Kvalitetssikring".
       const caseActions=isCaseTask?`
-        <button class="action info" type="button" onclick="openProjectDashboard(${a.task_project_id})">🔗 Se sagen</button>
-        <button class="action time" type="button" onclick="openTimeFormForTask(${a.task_project_id})">⏱ Registrér tid</button>
-        <button class="action qc" type="button" onclick="openQaPickerForTask(${a.task_project_id})">🛡 Udfyld KS-formular</button>
+        <button class="action qc" type="button" onclick="openQaPickerForTask(${a.task_project_id})">🛡 Kvalitetssikring</button>
         <button class="action files" type="button" onclick="openMaterialsFormForTask(${a.task_project_id})">🧾 Materialer</button>`:'';
-      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}${caseIcon}</div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button>${caseActions}<button class="action rules" type="button" onclick="openRulesModal()">📜 Regler og lovgivning</button>${doneBtn}</div></article>`;
+      const timeButton=isCaseTask?`<button class="action time" type="button" onclick="openTimeFormForTask(${a.task_project_id})" style="grid-column:1/-1">⏱ Registrér tid</button>`:'';
+      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}${caseIcon}</div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button>${caseActions}${timeButton}${doneBtn}</div></article>`;
     });}
     out+='</section>';});
   document.getElementById('tasks-container').innerHTML=total?out:'<div class="empty"><div class="empty-icon">📅</div><h3>No tasks in this view</h3><p>Choose another day or show the whole week.</p></div>';
@@ -1087,6 +1119,13 @@ function renderNotifBell(){
   var badge=document.getElementById('notif-bell-count');
   if(unread.length){badge.style.display='inline-block';badge.textContent=unread.length;}
   else badge.style.display='none';
+  // Spejler tællingen på ☰-menuknappen, så man kan se der er ulæste beskeder
+  // uden at skulle folde hele menuen ud først (se RUNDE H #22).
+  var mbadge=document.getElementById('mobilemenu-badge');
+  if(mbadge){
+    if(unread.length){mbadge.style.display='block';mbadge.textContent=unread.length;}
+    else mbadge.style.display='none';
+  }
   var dd=document.getElementById('notif-dropdown');
   if(dd.style.display!=='none')renderNotifDropdownList();
 }
@@ -1115,6 +1154,23 @@ function markNotifRead(id){
 document.addEventListener('click',function(e){
   if(!e.target.closest('#notif-bell-btn')&&!e.target.closest('#notif-dropdown')){
     document.getElementById('notif-dropdown').style.display='none';
+  }
+});
+// RUNDE H #22 — mobil-menu (☰): folder .topbar-actions ud som et flydende panel
+// i stedet for at proppe alle knapperne ind i selve topbaren (se CSS-kommentaren
+// ved .mobile-menu-btn). Lukker automatisk igen når man vælger en handling, dog
+// IKKE ved klik på notifikations-klokken — den ligger fysisk inde i panelet, og
+// hvis panelet lukkede med det samme ville dropdown'en (som er en efterkommer af
+// .topbar-actions) forsvinde sammen med det, før man nåede at se den.
+function toggleMobileMenu(){document.getElementById('topbar-actions').classList.toggle('mobile-open');}
+document.getElementById('topbar-actions').addEventListener('click',function(e){
+  if(e.target.closest('.lib-btn')&&!e.target.closest('#notif-bell-btn')){
+    document.getElementById('topbar-actions').classList.remove('mobile-open');
+  }
+});
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#topbar-actions')&&!e.target.closest('#mobilemenu-btn')){
+    document.getElementById('topbar-actions').classList.remove('mobile-open');
   }
 });
 refreshMyNotifications(false);
