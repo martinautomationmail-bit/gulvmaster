@@ -288,7 +288,7 @@ body.sidebar-collapsed .sidebar-logout-btn{justify-content:center;padding-left:0
 .fin-recon-right-item{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--border2);border-radius:8px;padding:8px 10px;font-size:11.5px;color:var(--navy);cursor:pointer}
 .fin-recon-right-item:hover{border-color:var(--blue,#2563EB);background:#EFF6FF}
 .fin-recon-right-amount{font-weight:800;margin-top:2px}
-@media(max-width:900px){.fin-recon-layout{grid-template-columns:1fr}.fin-recon-right{position:static;max-height:340px}}
+@media(max-width:900px){.fin-recon-layout{grid-template-columns:minmax(0,1fr)}.fin-recon-right{position:static;max-height:340px}}
 .fin-month-card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(15,34,64,.06);border:1px solid #EEF0F3}
 .fin-month-head{padding:14px 12px;text-align:center;background:linear-gradient(135deg,#F8FAFC,#EEF2F7);border-bottom:1px solid #EEF0F3}
 .fin-month-head-current{background:linear-gradient(135deg,var(--navy),#1e3a6e)}
@@ -611,16 +611,19 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
    allerede bruger ovenfor. */
 .nav-left .navdrop-menu{left:0;right:auto}
 
-/* RUNDE H #14 — Mobilheader. "📝 Note"-teksten fylder for meget sammen med
-   klokken i venstre side på en smal telefonskærm og fik headeren til at se
-   stimlet/i stykker ud; på mobil vises derfor kun selve ikonerne (samme
-   knapper/id'er, kun teksten skjules), og søgefeltet får lidt mere plads. */
+/* RUNDE H #19 (erstatter #14, som kun skjulte teksten og ikke faktisk løste
+   Martins konkrete ønske) — .mobile-nav-menu ("☰") er skjult på computer;
+   #notifdrop-btn/#note-widget-btn i .nav-left er derimod skjult PÅ MOBIL, hvor
+   ☰-knappen overtager i stedet, ved siden af søgefeltet. Selve knapperne
+   skjules — ikke deres omsluttende .navdrop/-container — så #notifdrop-menu
+   (som ☰-menuens "🔔 Notifikationer"-punkt blot åbner/lukker via samme
+   klasse/id som før) stadig har sin positionerings-forælder i behold. */
+.mobile-nav-menu{display:none}
 @media(max-width:760px){
   .nav{gap:8px;padding:8px 10px}
-  .nav-left{gap:3px}
-  .nav-left .nb-label{display:none}
-  .nav-left .nb{padding:7px 9px}
-  .nav-center #global-search-input{max-width:58vw}
+  .nav-left #notifdrop-btn,.nav-left #note-widget-btn{display:none}
+  .nav-center #global-search-input{max-width:52vw}
+  .mobile-nav-menu{display:block}
   /* Klokkeknappen sidder tæt på venstre kant på mobil (efter sidebaren er
      foldet sammen til en smal ikon-bjælke), så en 340px-bred menu låst fast
      til selve knappens position ville stadig rage ud over skærmens højre
@@ -823,7 +826,7 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-head-name:focus{outline:none;background:var(--bly-border-soft);border-radius:var(--bly-r-sm)}
 .crmpx-avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0;background:var(--bly-accent)}
 .crmpx-layout{display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:18px;align-items:start}
-@media (max-width:900px){.crmpx-layout{grid-template-columns:1fr}}
+@media (max-width:900px){.crmpx-layout{grid-template-columns:minmax(0,1fr)}}
 .crmpx-col-left{display:flex;flex-direction:column;gap:14px;min-width:0}
 .crmpx-col-right{min-width:0}
 .crmpx-panel{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,23,42,.04);padding:16px 18px}
@@ -1147,7 +1150,7 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-util-row .left{display:flex;align-items:center;gap:14px}
 .bly-util-row a{color:var(--bly-accent);text-decoration:none;font-weight:700}
 .bly-layout{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
-@media(max-width:980px){.bly-layout{grid-template-columns:1fr}}
+@media(max-width:980px){.bly-layout{grid-template-columns:minmax(0,1fr)}}
 .bly-col{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:22px}
 .bly-col-logo{text-align:center;padding:8px 0 16px;color:#C7CBD1;font-weight:900;font-size:15px;letter-spacing:.08em;text-transform:uppercase;user-select:none}
 .bly-col-logo.gm{color:#003509;opacity:.35}
@@ -1630,7 +1633,7 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .cap-drop.over .cap-add-btn{border-color:var(--blue);color:var(--blue);background:#DBEAFE}
 .group-summary-cell{text-align:center;font-size:9px;padding:3px 4px;color:var(--muted);background:var(--ice)}
 @media(max-width:1000px){#capacity-scroll{height:calc(100vh - 360px);min-height:330px}.board-layout{grid-template-columns:230px minmax(0,1fr)}}
-@media(max-width:760px){#capacity-scroll{height:calc(100vh - 310px);min-height:320px}.board-layout{grid-template-columns:1fr}.panel-body{max-height:280px}}
+@media(max-width:760px){#capacity-scroll{height:calc(100vh - 310px);min-height:320px}.board-layout{grid-template-columns:minmax(0,1fr)}.panel-body{max-height:280px}}
 
 /* ══════════════════════════════════════════════════════════════
    INDSTILLINGER (#page-notif-settings) — den SAMLEDE indstillings-side.
@@ -2159,7 +2162,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .toast.show{transform:translateY(0);opacity:1}
 
 @media(max-width:900px){
-  .board-layout{grid-template-columns:1fr}
+  /* RUNDE H #18 — root cause for "Dagligplanlægning er slet ikke mobilvenlig":
+     denne enkelte-kolonne-grid manglede minmax(0,...). Uden den bruger browseren
+     kolonnens INDHOLDS mindstebredde (her: hele ugetavlens brede tabel, som
+     nemt bliver 10.000+ px) som kolonnens minimumsbredde — så HELE siden (ikke
+     kun tavlen) blev tvunget lige så bred, med vandret scroll på det hele som
+     resultat i stedet for kun inde i selve tavlen (#plan-board-outer har allerede
+     sin egen overflow-x:auto — den fik bare aldrig lov at virke). Samme rettelse
+     som .app-content{flex:1;min-width:0} allerede bruger et niveau højere oppe. */
+  .board-layout{grid-template-columns:minmax(0,1fr)}
   .panel-body{max-height:280px}
   .nav{height:auto;min-height:52px;flex-wrap:wrap;padding:7px 10px}
 }
@@ -2330,7 +2341,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.4</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.5</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -2356,10 +2367,25 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <!-- RUNDE H #9's "+ Ny"-genvej er flyttet ned i sidebaren over CRM (sep.
        2026, se sidebar-newbtn-* ovenfor i <aside>), som en stor Billy-stil
        knap efter Martins ønske. #12 — de to JobTread-synk-knapper er flyttet
-       ned i Indstillinger (Min side → ⚙️ Indstillinger). Tom .nav-right
-       bevaret som spacer, så søgefeltet i midten forbliver centreret
-       (.nav er en 1fr/auto/1fr-grid). -->
-  <div class="nav-right"></div>
+       ned i Indstillinger (Min side → ⚙️ Indstillinger). .nav-right bruges nu
+       også af #19 herunder — resten er stadig tomt og virker som spacer, så
+       søgefeltet i midten forbliver centreret (.nav er en 1fr/auto/1fr-grid). -->
+  <div class="nav-right">
+    <!-- RUNDE H #19 — Martins konkrete ønske ("en icon der popper up når du
+         trykker på den"): på mobil erstattes 🔔/📝-knapperne i .nav-left (som
+         der ikke er plads til ved siden af søgefeltet) af ÉN samlet knap her,
+         ved siden af søgefeltet, der åbner/lukker en lille menu med de samme
+         to handlinger. Genbruger de eksisterende #notifdrop-menu/#note-widget
+         100% — se JS'en ved mobilenavdrop-btn. Skjult på computer (kun synlig
+         i mobil-medieforespørgslen), hvor de originale knapper fungerer fint. -->
+    <div class="navdrop mobile-nav-menu" id="mobilenavdrop">
+      <button class="nb navdrop-btn" id="mobilenavdrop-btn" type="button" title="Notifikationer og note">☰<span class="tab-badge hidden" id="mobilenavdrop-badge">0</span></button>
+      <div class="navdrop-menu" id="mobilenavdrop-menu">
+        <a class="navdrop-item" href="#" id="mobilenavdrop-notif-item">🔔 Notifikationer</a>
+        <a class="navdrop-item" href="#" id="mobilenavdrop-note-item">📝 Note</a>
+      </div>
+    </div>
+  </div>
 </nav>
 
 <!-- FLYDENDE NOTE-BLOK — personlig kladdeblok, kan flyttes og ændres i størrelse -->
@@ -9346,6 +9372,10 @@ async function refreshNotifBell(){
   var badge=document.getElementById('notif-badge');
   badge.textContent=unread.length;
   badge.classList.toggle('hidden',!unread.length);
+  // RUNDE H #19 — samme ulæst-tal spejles ind i mobilens ☰-knap, som skjuler
+  // den rigtige 🔔-knap (og dermed dens badge) på smalle skærme.
+  var mobileBadge=document.getElementById('mobilenavdrop-badge');
+  if(mobileBadge){mobileBadge.textContent=unread.length;mobileBadge.classList.toggle('hidden',!unread.length);}
   var menu=document.getElementById('notifdrop-menu');
   menu.innerHTML=n.length?(n.slice(0,20).map(function(x){
     return '<div class="notif-item'+(x.read_at?'':' unread')+'" data-action="open-notif" data-notif-id="'+x.id+'" data-link="'+esc(x.link||'')+'">'+
@@ -13208,6 +13238,22 @@ function bind(){
   // der lå her tidligere, er fjernet — de duplikerede/kolliderede med den
   // generiske håndtering efter flytningen (Runde H #4).
   document.getElementById('notifdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('notifdrop-menu').classList.toggle('open');refreshNotifBell();});
+  // RUNDE H #19 — mobilens samlede ☰-knap (se .mobile-nav-menu i CSS'en).
+  // Åbner/lukker sin egen lille menu; de to punkter i den genbruger blot de
+  // eksisterende 🔔/📝-handlinger 1:1 i stedet for at duplikere dem.
+  document.getElementById('mobilenavdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('mobilenavdrop-menu').classList.toggle('open');});
+  document.addEventListener('click',function(e){if(!e.target.closest('#mobilenavdrop'))document.getElementById('mobilenavdrop-menu').classList.remove('open');});
+  document.getElementById('mobilenavdrop-notif-item').addEventListener('click',function(e){
+    e.preventDefault();
+    document.getElementById('mobilenavdrop-menu').classList.remove('open');
+    document.getElementById('notifdrop-menu').classList.toggle('open');
+    refreshNotifBell();
+  });
+  document.getElementById('mobilenavdrop-note-item').addEventListener('click',function(e){
+    e.preventDefault();
+    document.getElementById('mobilenavdrop-menu').classList.remove('open');
+    document.getElementById('note-widget-btn').click();
+  });
   // RUNDE H #9 (senere flyttet til sidebaren, sep. 2026, se sidebar-newbtn-*
   // CSS/markup ovenfor) — "+ Ny"-genvej til nyt tilbud/ny kunde. Genbruger de
   // eksisterende opret-funktioner (openQuoteEditor/openCrmModal) uændret.
@@ -13392,7 +13438,7 @@ function bind(){
       });
     });
   }
-  document.addEventListener('click',function(e){if(!e.target.closest('#notifdrop'))document.getElementById('notifdrop-menu').classList.remove('open');});
+  document.addEventListener('click',function(e){if(!e.target.closest('#notifdrop')&&!e.target.closest('#mobilenavdrop'))document.getElementById('notifdrop-menu').classList.remove('open');});
   // Nye undermenuer i navigationen (Tidslinje under Daglig plan, Ledighedsoversigt under
   // Kapacitet, Økonomi-underfaner) — åbnes nu ved HOVER over hele menu-gruppen, ikke kun
   // ved klik på den lille pil, med en kort forsinkelse ved museleave så det ikke lukker
