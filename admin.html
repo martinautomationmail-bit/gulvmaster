@@ -602,6 +602,38 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .nav-right{display:flex;align-items:center;gap:8px;justify-self:end}
 .nav-center #global-search-input{width:420px;max-width:38vw;padding:11px 18px;font-size:13.5px;border-radius:var(--bly-r-pill)}
 
+/* RUNDE H #13 — Notifikationsmenuen brugte "right:0" fra dengang klokken sad i
+   højre side af headeren. Efter #11 flyttede klokken til .nav-left (venstre
+   side), men positioneringen blev ikke opdateret — "right:0" regnes ift.
+   selve klokke-knappens egen (smalle) boks, så menuen endte med at folde sig
+   ud mod venstre og forsvinde uden for skærmen (på både computer og telefon)
+   i stedet for ind over siden. Samme rettelse-mønster som .tab-navdrop
+   allerede bruger ovenfor. */
+.nav-left .navdrop-menu{left:0;right:auto}
+
+/* RUNDE H #14 — Mobilheader. "📝 Note"-teksten fylder for meget sammen med
+   klokken i venstre side på en smal telefonskærm og fik headeren til at se
+   stimlet/i stykker ud; på mobil vises derfor kun selve ikonerne (samme
+   knapper/id'er, kun teksten skjules), og søgefeltet får lidt mere plads. */
+@media(max-width:760px){
+  .nav{gap:8px;padding:8px 10px}
+  .nav-left{gap:3px}
+  .nav-left .nb-label{display:none}
+  .nav-left .nb{padding:7px 9px}
+  .nav-center #global-search-input{max-width:58vw}
+  /* Klokkeknappen sidder tæt på venstre kant på mobil (efter sidebaren er
+     foldet sammen til en smal ikon-bjælke), så en 340px-bred menu låst fast
+     til selve knappens position ville stadig rage ud over skærmens højre
+     kant uanset venstre/højre-anker. Den låses derfor til selve skærmen i
+     stedet for til knappen på mobil, med luft i begge sider. */
+  #notifdrop-menu{position:fixed!important;left:10px!important;right:10px!important;top:60px!important;width:auto!important;max-width:none!important}
+  /* RUNDE H #15 — Note-blokken kunne arve en position/størrelse gemt fra en
+     stor computerskærm og dermed rage ud over kanten af en telefonskærm; som
+     ekstra sikkerhedsnet (ud over JS-klampningen i applyNoteWidgetPosition)
+     kan den aldrig blive bredere/højere end selve den synlige skærm. */
+  .note-widget{max-width:calc(100vw - 16px);max-height:calc(100vh - 16px)}
+}
+
 /* ══════════════════════════════════════════════════════════════
    GLOBAL SØGNING — dropdown-resultater. Redesignet efter Martins ønske om
    "pænere/mere moderne data og dropdown-boks" i samme stil som Billy: rene
@@ -2298,7 +2330,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.3</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.4</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -2308,7 +2340,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="nb navdrop-btn" id="notifdrop-btn">🔔<span class="tab-badge hidden" id="notif-badge">0</span></button>
       <div class="navdrop-menu" id="notifdrop-menu" style="width:340px;max-height:420px;overflow:auto"></div>
     </div>
-    <button class="nb" id="note-widget-btn">📝 Note</button>
+    <button class="nb" id="note-widget-btn">📝 <span class="nb-label">Note</span></button>
   </div>
   <!-- RUNDE H #10 — søgefeltet centreret og forstørret (se .nav-center
        #global-search-input i CSS'en). -->
@@ -12998,6 +13030,15 @@ function hashSubTab(page,dflt){
   var p=location.hash.slice(1).split('/');
   return p[0]===page&&p[1]?p[1]:dflt;
 }
+// RUNDE H #16 — Sarah bad om at browserfanens titel viser navnet på kunden/
+// sagen/leadet man kigger på, uanset hvilken "speciel side" (detaljeside) det
+// er, så flere åbne faner kan skelnes fra hinanden i browserens topbar i
+// stedet for at de alle bare hedder "Gulv Master". Kaldes af de enkelte
+// open*Detail()-funktioner når navnet er hentet, og nulstilles automatisk her
+// i switchPage() når man forlader en detaljeside til en almindelig liste-side.
+var APP_DEFAULT_TITLE=document.title;
+function setAppTitle(name){document.title=name?(name+' — Gulv Master'):APP_DEFAULT_TITLE;}
+var DETAIL_PAGES_KEEP_TITLE=['customer-detail','project-detail','crmp-detail'];
 function switchPage(page,skipHash){
   // Gantt er ikke længere sin egen side — den bor nu som en fane under Projekter.
   // Gamle links/bogmærker til #gantt sendes videre dertil i stedet for at falde
@@ -13015,6 +13056,7 @@ function switchPage(page,skipHash){
   // Det samme for "Mail-skabeloner", der nu er en fane på Skabeloner-siden.
   if(page==='email-templates'){switchPage('templates',skipHash);setTimeout(function(){switchTplTab('mail');},0);return;}
   if(VALID_PAGES.indexOf(page)===-1)page='plan';
+  if(DETAIL_PAGES_KEEP_TITLE.indexOf(page)===-1)setAppTitle(null);
   document.querySelectorAll('.tab,.navdrop-item,.navdrop-btn').forEach(function(x){x.classList.remove('active');});
   document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});
   var tabBtn=document.querySelector('.tab[data-page="'+page+'"]');
@@ -13760,8 +13802,13 @@ function bind(){
   document.getElementById('qp-save').onclick=saveQuickPop;
   // Enter in quick pop
   document.getElementById('quick-pop').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveQuickPop();}if(e.key==='Escape')closeQuickPop();});
-  // Modal backdrop
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','crm-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  // Modal backdrop — klik ved siden af modalen lukker den. UNDTAGEN 'crm-modal'
+  // (sep. 2026, Martins ønske: "ved oprettelse af en kunde... må popuppen ikke
+  // forsvinde hvis man trykker ved siden af, det er trælst hvis man lige har
+  // skrevet en masse data") — den lukkes derfor nu KUN via ✕/Annullér/Gem, se
+  // dens egne knap-bindinger. crm-modal bruges både af sidebar-genvejen "👤 Ny
+  // kunde" og "+ Ny kunde"-knappen på Kunder-siden.
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -14028,10 +14075,29 @@ function savePositionSoon(){
 }
 function applyNoteWidgetPosition(){
   var el=noteWidgetEl();
-  el.style.left=Math.max(0,Math.min(window.innerWidth-60,noteWidgetState.pos_x))+'px';
-  el.style.top=Math.max(0,Math.min(window.innerHeight-60,noteWidgetState.pos_y))+'px';
-  el.style.width=noteWidgetState.width+'px';
-  el.style.height=noteWidgetState.height+'px';
+  // RUNDE H #15 — position/størrelse kan være gemt fra en stor computerskærm
+  // (fx pos_x langt til højre). Før blev kun venstre/top-kanten klampet, så
+  // resten af boksen (bredde/højde) kunne rage langt ud over en smal
+  // telefonskærm — man kunne kun se toppen/venstre hjørne af den. Nu regnes
+  // bredde/højde ind i klampningen, så HELE note-blokken altid er synlig,
+  // uanset hvilken skærm den sidst blev gemt fra.
+  var w=Math.max(240,Math.min(noteWidgetState.width,window.innerWidth-16));
+  var h=Math.max(200,Math.min(noteWidgetState.height,window.innerHeight-16));
+  var maxLeft=Math.max(8,window.innerWidth-w-8);
+  var maxTop=Math.max(8,window.innerHeight-h-8);
+  var left=Math.max(8,Math.min(maxLeft,noteWidgetState.pos_x));
+  var top=Math.max(8,Math.min(maxTop,noteWidgetState.pos_y));
+  // Skriv den klampede værdi tilbage i noteWidgetState — ellers husker den
+  // stadig den oprindelige (fx alt for store) gemte position internt, selvom
+  // boksen VISUELT står et andet sted. Uden dette ville et lille træk bagefter
+  // tage udgangspunkt i den usynlige, upassende værdi og se ud til slet ikke
+  // at flytte boksen (kun et kæmpe træk i den rigtige retning ville virke).
+  noteWidgetState.pos_x=left;noteWidgetState.pos_y=top;
+  noteWidgetState.width=w;noteWidgetState.height=h;
+  el.style.left=left+'px';
+  el.style.top=top+'px';
+  el.style.width=w+'px';
+  el.style.height=h+'px';
 }
 function insertNoteCheckbox(){
   var body=document.getElementById('note-widget-body');
@@ -14065,35 +14131,61 @@ function initNoteWidget(){
   });
   document.getElementById('note-font-name').onchange=function(e){body.focus();document.execCommand('fontName',false,e.target.value);saveNoteWidgetSoon();};
   document.getElementById('note-font-size').onchange=function(e){body.focus();document.execCommand('fontSize',false,e.target.value);saveNoteWidgetSoon();};
-  // Træk i headeren for at flytte
+  // Træk i headeren for at flytte. RUNDE H #15 — lyttede før kun på
+  // mouse-events, så blokken slet ikke kunne flyttes med fingeren på telefon
+  // ("ikke flyt bar"). Genbruger nu samme håndtag/state til både mus og touch
+  // via en lille fælles helper der finder x/y uanset event-type.
+  function noteWidgetPointerXY(e){
+    if(e.touches&&e.touches.length)return {x:e.touches[0].clientX,y:e.touches[0].clientY};
+    if(e.changedTouches&&e.changedTouches.length)return {x:e.changedTouches[0].clientX,y:e.changedTouches[0].clientY};
+    return {x:e.clientX,y:e.clientY};
+  }
   var drag=document.getElementById('note-widget-drag'),dragging=null;
-  drag.addEventListener('mousedown',function(e){
+  function noteDragStart(e){
     if(e.target.closest('button'))return;
-    dragging={startX:e.clientX,startY:e.clientY,origX:noteWidgetState.pos_x,origY:noteWidgetState.pos_y};
+    var p=noteWidgetPointerXY(e);
+    dragging={startX:p.x,startY:p.y,origX:noteWidgetState.pos_x,origY:noteWidgetState.pos_y};
     e.preventDefault();
-  });
-  document.addEventListener('mousemove',function(e){
+  }
+  drag.addEventListener('mousedown',noteDragStart);
+  drag.addEventListener('touchstart',noteDragStart,{passive:false});
+  function noteDragMove(e){
     if(dragging){
-      noteWidgetState.pos_x=dragging.origX+(e.clientX-dragging.startX);
-      noteWidgetState.pos_y=dragging.origY+(e.clientY-dragging.startY);
+      var p=noteWidgetPointerXY(e);
+      noteWidgetState.pos_x=dragging.origX+(p.x-dragging.startX);
+      noteWidgetState.pos_y=dragging.origY+(p.y-dragging.startY);
       applyNoteWidgetPosition();
+      e.preventDefault();
     }
     if(resizing){
-      noteWidgetState.width=Math.max(240,resizing.origW+(e.clientX-resizing.startX));
-      noteWidgetState.height=Math.max(200,resizing.origH+(e.clientY-resizing.startY));
+      var p2=noteWidgetPointerXY(e);
+      noteWidgetState.width=Math.max(240,resizing.origW+(p2.x-resizing.startX));
+      noteWidgetState.height=Math.max(200,resizing.origH+(p2.y-resizing.startY));
       applyNoteWidgetPosition();
+      e.preventDefault();
     }
-  });
-  document.addEventListener('mouseup',function(){
+  }
+  document.addEventListener('mousemove',noteDragMove);
+  document.addEventListener('touchmove',noteDragMove,{passive:false});
+  function noteDragEnd(){
     if(dragging){dragging=null;savePositionSoon();}
     if(resizing){resizing=null;savePositionSoon();}
-  });
-  // Træk i hjørnet for at ændre størrelse
+  }
+  document.addEventListener('mouseup',noteDragEnd);
+  document.addEventListener('touchend',noteDragEnd);
+  document.addEventListener('touchcancel',noteDragEnd);
+  // Træk i hjørnet for at ændre størrelse (også med touch, se ovenfor)
   var resizeHandle=document.getElementById('note-widget-resize'),resizing=null;
-  resizeHandle.addEventListener('mousedown',function(e){
-    resizing={startX:e.clientX,startY:e.clientY,origW:noteWidgetState.width,origH:noteWidgetState.height};
+  function noteResizeStart(e){
+    var p=noteWidgetPointerXY(e);
+    resizing={startX:p.x,startY:p.y,origW:noteWidgetState.width,origH:noteWidgetState.height};
     e.preventDefault();e.stopPropagation();
-  });
+  }
+  resizeHandle.addEventListener('mousedown',noteResizeStart);
+  resizeHandle.addEventListener('touchstart',noteResizeStart,{passive:false});
+  // Hvis skærmen roteres/ændrer størrelse mens blokken er åben, hold den
+  // fuldt synlig i stedet for at lade den blive stående uden for kanten.
+  window.addEventListener('resize',function(){if(el.classList.contains('open'))applyNoteWidgetPosition();});
 }
 initNoteWidget();
 
@@ -15090,6 +15182,7 @@ async function openCustomerDetail(id){
   var d=await api('/api/crm/customers/'+id);
   if(!d||d.error){toast('Kunne ikke hente kunden','❌');return;}
   cdCurrent=d.customer;
+  setAppTitle(d.customer.name);
   document.getElementById('cd-name').textContent=(d.customer.is_company?'🏢 ':'')+d.customer.name+(d.customer.is_company&&d.customer.cvr?' · CVR '+d.customer.cvr:'');
   document.getElementById('cd-subtitle').textContent=[d.customer.phone,d.customer.email,d.customer.address].filter(Boolean).join(' · ')||'Ingen kontaktoplysninger endnu';
   var cdEmailBtn=document.getElementById('cd-email-btn'),cdCallBtn=document.getElementById('cd-call-btn');
@@ -15973,6 +16066,7 @@ async function openCrmpDetail(entityType,id){
   if(!d||d.error){toast('Kunne ikke hente','❌');return;}
   crmpDetailEntity={type:entityType,id:id,data:d};
   var displayName=entityType==='lead'?d.name:(d.contact_name||d.name);
+  setAppTitle(displayName);
   document.getElementById('crmpx-name-input').value=displayName||'';
   var initials=(displayName||'?').trim().split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase()||'?';
   var avatar=document.getElementById('crmpx-avatar');
@@ -17259,12 +17353,22 @@ function renderPjProjects(){
   var body=document.getElementById('proj-body');
   if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når en kunde underskriver et tilbud')+'</td></tr>';return;}
   var STATUS_LABEL={active:'🔧 Aktivt',on_hold:'⏸ På hold',done:'✅ Afsluttet',archived:'📦 Arkiveret'};
+  // Status-dropdown direkte i listen (sep. 2026, Martins ønske: "jeg burde kunne
+  // vælge status via dropdown, det gør jeg ikke behøves at åbne alle sagerne for
+  // at ændre status — hurtig oprydning"). onclick="event.stopPropagation()" på
+  // selve select'en, ellers ville et klik for at åbne dropdown'en også trigge
+  // rækkens egen onclick (åbner sagen) — se savePjRowStatus().
+  function pjRowStatusSelect(p){
+    return '<select class="select" style="width:auto;font-size:11.5px;padding:3px 6px" onclick="event.stopPropagation()" onchange="savePjRowStatus('+p.id+',this.value)">'
+      +Object.keys(STATUS_LABEL).map(function(s){return '<option value="'+s+'"'+(p.status===s?' selected':'')+'>'+STATUS_LABEL[s]+'</option>';}).join('')
+      +'</select>';
+  }
   body.innerHTML=list.map(function(p){
     var price=p.invoice_total!=null?p.invoice_total:p.quote_total;
     var contact=[p.customer_email,p.customer_phone].filter(Boolean).join(' · ');
     return '<tr style="cursor:pointer" onclick="openProjectDetail('+p.id+')">'
       +'<td>'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer">#'+esc(p.job_number)+'</span>':'')+(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</td>'
-      +'<td>'+(STATUS_LABEL[p.status]||esc(p.status))+'</td>'
+      +'<td>'+pjRowStatusSelect(p)+'</td>'
       +'<td>'+esc(p.customer_address||'–')+'</td>'
       +'<td>'+esc(contact||'–')+'</td>'
       +'<td class="num">'+(price!=null?krFmt(price):'–')+'</td>'
@@ -17279,6 +17383,7 @@ async function openProjectDetail(id){
   var d=await api('/api/projects/'+id);
   if(!d||d.error){toast('Kunne ikke hente projektet','❌');return;}
   pjCurrent=d;
+  setAppTitle(d.name);
   document.getElementById('pd-title').textContent=d.name;
   document.getElementById('pd-subtitle').textContent=[d.job_number?'Sag '+d.job_number:null,d.customer_address,d.customer_phone,d.customer_email].filter(Boolean).join(' · ');
   document.getElementById('pd-status-select').value=d.status;
@@ -17361,6 +17466,16 @@ function switchPdTab(name){
   document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdtab===name);});
   ['tasks','photos','time','budget','materials','qa','contact'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
   if(name==='budget'&&me.role==='admin')loadPdBudget();
+}
+async function savePjRowStatus(id,status){
+  var r=await api('/api/projects/'+id,{method:'PUT',body:JSON.stringify({status:status})});
+  if(r&&r.ok){
+    var row=pjProjects.find(function(p){return +p.id===+id;});
+    if(row)row.status=status;
+    if(pjCurrent&&+pjCurrent.id===+id)pjCurrent.status=status;
+    toast('Status opdateret','✓');
+    renderPjProjects();
+  }else{toast((r&&r.error)||'Kunne ikke opdatere status','❌');await loadPjProjects();renderPjProjects();}
 }
 async function savePdStatus(){
   if(!pjCurrent)return;
@@ -18838,6 +18953,7 @@ async function openInvoiceDetail(id){
   ivState.id=id;
   var inv=await api('/api/invoices/'+id);
   if(!inv||inv.error){toast('Kunne ikke hente fakturaen','❌');return;}
+  setAppTitle(inv.job_name||inv.invoice_number);
   document.getElementById('iv-title').textContent=inv.invoice_number;
   document.getElementById('iv-subtitle').textContent=(inv.job_name||'')+' · '+(QZ_INVOICE_STATUS[inv.status]?QZ_INVOICE_STATUS[inv.status].label:inv.status);
   document.getElementById('iv-due-date').value=inv.due_date||'';
@@ -19100,6 +19216,7 @@ window.openProjectDetail=openProjectDetail;
 window.openQaTemplateModal=openQaTemplateModal;
 window.openQuoteEditor=openQuoteEditor;
 window.openTemplateModal=openTemplateModal;
+window.savePjRowStatus=savePjRowStatus;
 window.useTemplateForNewQuote=useTemplateForNewQuote;
 
 bind();

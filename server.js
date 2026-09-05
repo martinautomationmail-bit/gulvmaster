@@ -14320,6 +14320,27 @@ async function backfillProjectTaskMirrors() {
   if (rows.rowCount) console.log(`Efterudfyldte ${rows.rowCount} sags-opgave(r) i Opgavepoolen (oprettet før dette fandtes).`);
 }
 
+// ÉNGANGS-EFTERUDFYLDNING #2 (sep. 2026): "Hent nye sager"-importen oprettede et
+// NYT internt projekt for hver JobTread-sag, men rørte aldrig ved de EKSISTERENDE
+// jt_tasks-rækker fra den gamle daglige JobTread-synk for samme sag — de har
+// stadig project_id=NULL, selvom sagen nu findes som et rigtigt projekt. Det er
+// derfor disse (rigtige, aktivt bookede) felt-opgaver stadig viser de gamle
+// generiske knapper (Maps/Task note/Regler og lovgivning) i Employee-appen i
+// stedet for sags-knapperne (Registrér tid/KS-formular/Materialer) — se
+// isCaseTask i employee.html, som udelukkende kigger på task_project_id. De ER
+// reelt sags-opgaver, men blev aldrig koblet til sagen. Kobles nu sammen via
+// jt_tasks.job_id (JobTreads job-id, sat af den gamle synk) = projects.jobtread_job_id
+// (samme JobTread job-id, sat af importen). Kører ved hver opstart, billigt og
+// no-op når alt allerede er koblet (WHERE t.project_id IS NULL).
+async function backfillLegacyJobTaskProjectLinks() {
+  const result = await pool.query(`
+    UPDATE jt_tasks t SET project_id = p.id
+    FROM projects p
+    WHERE t.project_id IS NULL AND t.job_id IS NOT NULL AND p.jobtread_job_id = t.job_id
+  `);
+  if (result.rowCount) console.log(`Koblede ${result.rowCount} eksisterende JobTread-opgave(r) til deres nu-importerede sag — sags-knapperne (tid/KS/materialer) virker nu for dem i Employee-appen.`);
+}
+
 // ══ ÉNGANGSOPRYDNING: GAMLE JOBTREAD-OPGAVER UD AF OPGAVEPOOLEN ═════════════
 //
 // Baggrund: Martin er migreret helt væk fra JobTread og har genoprettet alle
@@ -14440,6 +14461,7 @@ async function start() {
   await pool.query('SELECT 1 AS connected');
   await initSchema();
   await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
+  await backfillLegacyJobTaskProjectLinks().catch(error => console.error('Efterudfyldning af sags-kobling fejlede:', error.message));
   app.listen(PORT, () => {
     console.log(`Gulv Master PostgreSQL kører på port ${PORT}`);
     console.log('JobTread-synk er read-only: den kan aldrig ændre planning_bookings.');
