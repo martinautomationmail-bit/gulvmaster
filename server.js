@@ -4050,188 +4050,282 @@ async function syncGanttJob(jobId) {
   return { jobName, count: tasks.length, phone, email, address };
 }
 
-app.get('/api/gantt/jobs', auth, asyncRoute(async (req, res) => {
-  // Henter ALLE kendte sager på én gang (ikke kun søgeresultater), inkl. det
-  // fag der oftest går igen på sagens opgaver — så admin kan bladre/gruppere
-  // med det samme uden at skulle vide/skrive kundens navn i forvejen.
-  //
-  // is_project/project_id: Martins ønske (sep. 2026) om at Gantt skal "hente
-  // data fra Projekt-delen" — der findes IKKE noget rigtigt job_id-link mellem
-  // JobTread-sager og den lokale `projects`-tabel i dag, kun et løst tekstfelt
-  // (sagsnummer/job_number, samme konvention begge steder), så vi kobler på
-  // DET i stedet for at bygge en ny hård FK. Bevidst en LEFT JOIN, ikke et
-  // filter: at skjule JobTread-sager uden en Projekt-post ville være en reel
-  // regression (Martin bruger stadig Gantt på sager der ikke nødvendigvis er
-  // oprettet som en formel "Projekt" endnu) — se leveringsnoten.
+// ══ GANTT UNDER PROJEKTER — NU 100% PÅ APPENS EGNE SAGER ═══════════════════
+//
+// AFKOBLET 05-09-2026: Gantt-fanen hentede og skrev tidligere LIVE til
+// JobTread (job-vælger, "Synk med JobTread", og hver eneste rettelse gik
+// gennem jtFetch/updateTask FØR den blev gemt lokalt). Martin er flyttet helt
+// væk fra JobTread — kunder, sager, tilbud og tidsplaner ligger nu i appens
+// egne tabeller (projects/quotes/gantt_tasks) — så fanen kører nu udelukkende
+// på Projekter-data via de to nye ruter herunder plus de allerede eksisterende
+// /api/projects/:id(/tasks) -ruter, som sags-Gantt'et på sagsdetaljesiden også
+// bruger (og som selv holder Opgavepool/Kapacitet/Tidslinje opdateret via
+// mirrorProjectTaskToPool).
+//
+// Rutemonteringerne nedenfor er KOMMENTERET UD, ikke slettet — samme
+// reversible mønster som ved JobTread-synkknapperne længere nede. Hjælpe-
+// funktionerne fetchGanttTasksFromJT/syncAllGanttTasksFromJT/syncGanttJob står
+// stadig defineret lige ovenfor og er urørte; de er nu udelukkende nået fra
+// disse udkommenterede ruter (kontrolleret: ingen andre kaldesteder i filen),
+// og ligger derfor hen som ubrugt kode indtil videre. Fjern kommentartegnene
+// her igen, så virker JobTread-koblingen præcis som før.
+//
+//   GET  /api/gantt/jobs            → erstattet af GET /api/gantt/projects
+//   GET  /api/gantt/all-tasks       → samme sti, men helt ny handler (se nedenfor)
+//   POST /api/gantt/sync-all        → udgået, der er intet eksternt system at synke med
+//   GET  /api/gantt/job/:jobId      → erstattet af GET /api/projects/:id (.tasks)
+//   POST /api/gantt/job/:jobId/sync → udgået, samme grund som sync-all
+//   PUT  /api/gantt/tasks/:id       → erstattet af PUT /api/projects/:id/tasks/:taskId
+//   POST /api/gantt/job/:jobId/tasks→ erstattet af POST /api/projects/:id/tasks
+//
+// app.get('/api/gantt/jobs', auth, asyncRoute(async (req, res) => {
+//   // Henter ALLE kendte sager på én gang (ikke kun søgeresultater), inkl. det
+//   // fag der oftest går igen på sagens opgaver — så admin kan bladre/gruppere
+//   // med det samme uden at skulle vide/skrive kundens navn i forvejen.
+//   //
+//   // is_project/project_id: Martins ønske (sep. 2026) om at Gantt skal "hente
+//   // data fra Projekt-delen" — der findes IKKE noget rigtigt job_id-link mellem
+//   // JobTread-sager og den lokale `projects`-tabel i dag, kun et løst tekstfelt
+//   // (sagsnummer/job_number, samme konvention begge steder), så vi kobler på
+//   // DET i stedet for at bygge en ny hård FK. Bevidst en LEFT JOIN, ikke et
+//   // filter: at skjule JobTread-sager uden en Projekt-post ville være en reel
+//   // regression (Martin bruger stadig Gantt på sager der ikke nødvendigvis er
+//   // oprettet som en formel "Projekt" endnu) — se leveringsnoten.
+//   const rows = await pool.query(`
+//     SELECT
+//       j.job_id,
+//       MAX(j.job_name) AS job_name,
+//       MAX(j.job_number) AS job_number,
+//       MAX(j.job_address) AS job_address,
+//       MODE() WITHIN GROUP (ORDER BY j.type_guess) AS trade,
+//       COUNT(*)::int AS task_count,
+//       MAX(j.synced_at) AS last_synced,
+//       MAX(p.id) AS project_id
+//     FROM jt_tasks j
+//     LEFT JOIN projects p ON p.job_number = j.job_number AND j.job_number IS NOT NULL AND j.job_number <> ''
+//     WHERE j.job_id IS NOT NULL AND j.job_id <> ''
+//     GROUP BY j.job_id
+//     ORDER BY (MAX(p.id) IS NOT NULL) DESC, MAX(j.job_name) ASC
+//   `);
+//   res.json(rows.rows);
+// }));
+//
+// app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
+//   let count = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks');
+//   if (!count || !count.n) {
+//     const r = await syncAllGanttTasksFromJT();
+//     if (!r.ok && !r.skipped) return res.status(400).json({ error: r.error || 'Kunne ikke hente opgaverne' });
+//   }
+//   const rows = await pool.query(`
+//     SELECT g.*, COALESCE(g.job_phone, t.customer_phone) AS resolved_phone, COALESCE(g.job_email, t.customer_email) AS resolved_email,
+//            COALESCE(g.job_address, t.job_address) AS resolved_address
+//     FROM gantt_tasks g
+//     LEFT JOIN jt_tasks t ON t.job_id = g.job_id AND t.customer_phone IS NOT NULL
+//     ORDER BY g.job_name ASC, g.start_date ASC
+//     LIMIT 2000
+//   `);
+//   const seen = new Set();
+//   const out = [];
+//   for (const r of rows.rows) {
+//     if (seen.has(r.id)) continue; // LEFT JOIN kan give flere rækker pr. opgave — behold kun én
+//     seen.add(r.id);
+//     out.push({
+//       id: r.id, job_id: r.job_id, job_name: r.job_name, job_number: r.job_number,
+//       name: r.name, description: r.description, start_date: r.start_date, end_date: r.end_date,
+//       progress: r.progress, is_group: !!r.is_group, parent_task_id: r.parent_task_id,
+//       depends_on: safeJsonParse(r.depends_on, []), type_guess: r.type_guess,
+//       job_phone: r.resolved_phone, job_email: r.resolved_email, job_address: r.resolved_address
+//     });
+//   }
+//   // SIKKERHED: viser tydeligt hvor friske data er, så man aldrig er i tvivl om man
+//   // kigger på noget der blev flyttet i JobTread for nyligt, men endnu ikke er hentet
+//   // ned hertil — i stedet for at det bare stille viser forældede datoer.
+//   const lastSynced = await pgOne('SELECT MAX(synced_at) AS t FROM gantt_tasks');
+//   res.json({ tasks: out, lastSyncedAt: lastSynced?.t || null });
+// }));
+//
+// app.post('/api/gantt/sync-all', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+//   const r = await syncAllGanttTasksFromJT();
+//   if (!r.ok) return res.status(400).json({ error: r.error || 'Synk fejlede' });
+//   res.json(r);
+// }));
+//
+// app.get('/api/gantt/job/:jobId', auth, asyncRoute(async (req, res) => {
+//   let rows = await pool.query('SELECT * FROM gantt_tasks WHERE job_id=$1 ORDER BY position ASC, id ASC', [req.params.jobId]);
+//   if (!rows.rowCount) {
+//     // Første gang dette job åbnes — hent live fra JobTread med det samme.
+//     try {
+//       await syncGanttJob(req.params.jobId);
+//       rows = await pool.query('SELECT * FROM gantt_tasks WHERE job_id=$1 ORDER BY position ASC, id ASC', [req.params.jobId]);
+//     } catch (error) {
+//       return res.status(400).json({ error: error.message });
+//     }
+//   }
+//   res.json(rows.rows.map(r => ({ ...r, depends_on: safeJsonParse(r.depends_on, []) })));
+// }));
+//
+// app.post('/api/gantt/job/:jobId/sync', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+//   try {
+//     const result = await syncGanttJob(req.params.jobId);
+//     res.json({ ok: true, ...result });
+//   } catch (error) {
+//     res.status(400).json({ error: error.message });
+//   }
+// }));
+//
+// app.put('/api/gantt/tasks/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+//   const current = await pgOne('SELECT * FROM gantt_tasks WHERE id=$1', [req.params.id]);
+//   if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
+//   const body = req.body || {};
+//   const next = {
+//     name: body.name !== undefined ? String(body.name).trim() : current.name,
+//     start_date: body.start_date !== undefined ? body.start_date : current.start_date,
+//     end_date: body.end_date !== undefined ? body.end_date : current.end_date,
+//     progress: body.progress !== undefined ? Math.max(0, Math.min(1, Number(body.progress))) : current.progress
+//   };
+//   // Skriv til JobTread FØRST — hvis det fejler, skal vi ikke gemme en lokal
+//   // version der er ude af trit med den rigtige sag.
+//   try {
+//     await jtFetch({
+//       query: {
+//         $: { grantKey: JT_GRANT },
+//         updateTask: {
+//           $: { id: current.id, name: next.name, startDate: next.start_date, endDate: next.end_date, progress: next.progress, notify: false, updateDependentTasks: true }
+//         }
+//       }
+//     }, 'Gantt: opdatér opgave i JobTread');
+//   } catch (error) {
+//     return res.status(400).json({ error: 'Kunne ikke opdatere i JobTread: ' + error.message });
+//   }
+//   // JobTread rykker automatisk afhængige opgaver (updateDependentTasks:true) —
+//   // så vi genhenter HELE jobbet i stedet for kun at rette denne ene opgave
+//   // lokalt, ellers ville de kaskade-flyttede opgaver ikke opdatere sig i vores
+//   // eget Gantt-kort før næste manuelle synk.
+//   try {
+//     await syncGanttJob(current.job_id);
+//   } catch (error) {
+//     // Selve JobTread-opdateringen lykkedes — kun genhentningen fejlede. Gem i
+//     // det mindste denne ene opgave lokalt, så UI'en ikke falder helt tilbage.
+//     await pool.query(`
+//       UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, synced_at=${nowTextSQL()} WHERE id=$5
+//     `, [next.name, next.start_date, next.end_date, next.progress, current.id]);
+//   }
+//   res.json({ ok: true });
+// }));
+//
+// app.post('/api/gantt/job/:jobId/tasks', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+//   const body = req.body || {};
+//   const name = String(body.name || '').trim();
+//   if (!name) return res.status(400).json({ error: 'Skriv et navn til opgaven' });
+//   if (!validDate(body.start_date)) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
+//   let createdId;
+//   try {
+//     const result = await jtFetch({
+//       query: {
+//         $: { grantKey: JT_GRANT },
+//         createTask: {
+//           $: {
+//             targetId: req.params.jobId, targetType: 'job', name,
+//             startDate: body.start_date, endDate: body.end_date || body.start_date,
+//             isToDo: false, notify: false,
+//             ...(body.depends_on ? { dependsOnTasks: [{ id: body.depends_on }] } : {})
+//           },
+//           createdTask: { id: {} }
+//         }
+//       }
+//     }, 'Gantt: opret opgave i JobTread');
+//     createdId = result?.createTask?.createdTask?.id;
+//     if (!createdId) throw new Error('JobTread returnerede intet id');
+//   } catch (error) {
+//     return res.status(400).json({ error: 'Kunne ikke oprette i JobTread: ' + error.message });
+//   }
+//   await pool.query(`
+//     INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,synced_at)
+//     VALUES ($1,$2,(SELECT job_name FROM gantt_tasks WHERE job_id=$2 LIMIT 1),$3,'',$4,$5,0,0,NULL,'',$6,${nowTextSQL()})
+//   `, [createdId, req.params.jobId, name, body.start_date, body.end_date || body.start_date, JSON.stringify(body.depends_on ? [body.depends_on] : [])]);
+//   res.json({ ok: true, id: createdId });
+// }));
+
+// Vælgerlisten i Gantt-fanen: appens EGNE sager. Afløser GET /api/gantt/jobs.
+// task_count bruger præcis samme delforespørgsel som GET /api/projects, så
+// tallet i vælgeren altid stemmer med det Projekter-listen viser.
+// Sortering: sager der faktisk HAR en tidsplan først (det er dem man skal have
+// fat i her), derefter alfabetisk — rent en UI-beslutning, ingen data afhænger
+// af rækkefølgen.
+app.get('/api/gantt/projects', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query(`
-    SELECT
-      j.job_id,
-      MAX(j.job_name) AS job_name,
-      MAX(j.job_number) AS job_number,
-      MAX(j.job_address) AS job_address,
-      MODE() WITHIN GROUP (ORDER BY j.type_guess) AS trade,
-      COUNT(*)::int AS task_count,
-      MAX(j.synced_at) AS last_synced,
-      MAX(p.id) AS project_id
-    FROM jt_tasks j
-    LEFT JOIN projects p ON p.job_number = j.job_number AND j.job_number IS NOT NULL AND j.job_number <> ''
-    WHERE j.job_id IS NOT NULL AND j.job_id <> ''
-    GROUP BY j.job_id
-    ORDER BY (MAX(p.id) IS NOT NULL) DESC, MAX(j.job_name) ASC
+    SELECT p.id, p.name, p.job_number, p.customer_address, p.status,
+      (SELECT COUNT(*)::int FROM gantt_tasks WHERE project_id=p.id) AS task_count
+    FROM projects p
+    ORDER BY ((SELECT COUNT(*) FROM gantt_tasks WHERE project_id=p.id) > 0) DESC, p.name ASC, p.id ASC
   `);
   res.json(rows.rows);
 }));
 
+// "📊 Se alle opgaver" — alle sags-opgaver på tværs af ALLE sager, samlet.
+// Helt ny handler; den gamle af samme navn (udkommenteret ovenfor) hentede fra
+// JobTread. INNER JOIN på projects, så kun rigtige sags-opgaver kommer med —
+// gamle JobTread-rækker i gantt_tasks (project_id IS NULL) hører ikke til her.
+//
+// project_id følger med på HVER opgave, fordi klienten skal kunne slå den rette
+// sag op pr. opgave når man retter noget i denne kombinerede visning (der er
+// ingen "nuværende sag" at falde tilbage på her) — se ganttProjectIdForTask()
+// i admin.html.
+//
+// type_guess er ALTID NULL på sags-opgaver (feltet blev kun udfyldt af
+// JobTread-synken). Fag-filteret i "Se alle opgaver" lander derfor alt under
+// "Andet" — bevidst accepteret begrænsning, ikke noget der gættes på her.
 app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
-  let count = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks');
-  if (!count || !count.n) {
-    const r = await syncAllGanttTasksFromJT();
-    if (!r.ok && !r.skipped) return res.status(400).json({ error: r.error || 'Kunne ikke hente opgaverne' });
-  }
   const rows = await pool.query(`
-    SELECT g.*, COALESCE(g.job_phone, t.customer_phone) AS resolved_phone, COALESCE(g.job_email, t.customer_email) AS resolved_email,
-           COALESCE(g.job_address, t.job_address) AS resolved_address
+    SELECT g.id, g.project_id, g.name, g.description, g.start_date, g.end_date,
+           g.progress, g.is_group, g.parent_task_id, g.position, g.depends_on, g.type_guess,
+           p.name AS project_name, p.job_number, p.status AS project_status,
+           p.customer_address, p.customer_phone, p.customer_email
     FROM gantt_tasks g
-    LEFT JOIN jt_tasks t ON t.job_id = g.job_id AND t.customer_phone IS NOT NULL
-    ORDER BY g.job_name ASC, g.start_date ASC
+    JOIN projects p ON p.id = g.project_id
+    WHERE g.project_id IS NOT NULL
+    ORDER BY p.name ASC, g.start_date ASC, g.position ASC, g.id ASC
     LIMIT 2000
   `);
-  const seen = new Set();
-  const out = [];
-  for (const r of rows.rows) {
-    if (seen.has(r.id)) continue; // LEFT JOIN kan give flere rækker pr. opgave — behold kun én
-    seen.add(r.id);
-    out.push({
-      id: r.id, job_id: r.job_id, job_name: r.job_name, job_number: r.job_number,
-      name: r.name, description: r.description, start_date: r.start_date, end_date: r.end_date,
+  res.json({
+    tasks: rows.rows.map(r => ({
+      id: r.id, project_id: r.project_id, project_name: r.project_name,
+      job_number: r.job_number, project_status: r.project_status,
+      name: r.name, description: r.description,
+      start_date: r.start_date, end_date: r.end_date,
       progress: r.progress, is_group: !!r.is_group, parent_task_id: r.parent_task_id,
-      depends_on: safeJsonParse(r.depends_on, []), type_guess: r.type_guess,
-      job_phone: r.resolved_phone, job_email: r.resolved_email, job_address: r.resolved_address
-    });
-  }
-  // SIKKERHED: viser tydeligt hvor friske data er, så man aldrig er i tvivl om man
-  // kigger på noget der blev flyttet i JobTread for nyligt, men endnu ikke er hentet
-  // ned hertil — i stedet for at det bare stille viser forældede datoer.
-  const lastSynced = await pgOne('SELECT MAX(synced_at) AS t FROM gantt_tasks');
-  res.json({ tasks: out, lastSyncedAt: lastSynced?.t || null });
+      // Sags-opgaver får aldrig sat depends_on (POST/PUT /api/projects/:id/tasks
+      // kender ikke afhængigheder), så det bliver reelt altid [] — kolonnen
+      // læses alligevel, så en evt. gammel værdi ikke forsvinder lydløst.
+      depends_on: safeJsonParse(r.depends_on, []) || [],
+      type_guess: r.type_guess,
+      customer_phone: r.customer_phone, customer_email: r.customer_email,
+      customer_address: r.customer_address
+    }))
+  });
 }));
 
-app.post('/api/gantt/sync-all', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
-  const r = await syncAllGanttTasksFromJT();
-  if (!r.ok) return res.status(400).json({ error: r.error || 'Synk fejlede' });
-  res.json(r);
-}));
-
-app.get('/api/gantt/job/:jobId', auth, asyncRoute(async (req, res) => {
-  let rows = await pool.query('SELECT * FROM gantt_tasks WHERE job_id=$1 ORDER BY position ASC, id ASC', [req.params.jobId]);
-  if (!rows.rowCount) {
-    // Første gang dette job åbnes — hent live fra JobTread med det samme.
-    try {
-      await syncGanttJob(req.params.jobId);
-      rows = await pool.query('SELECT * FROM gantt_tasks WHERE job_id=$1 ORDER BY position ASC, id ASC', [req.params.jobId]);
-    } catch (error) {
-      return res.status(400).json({ error: error.message });
-    }
-  }
-  res.json(rows.rows.map(r => ({ ...r, depends_on: safeJsonParse(r.depends_on, []) })));
-}));
-
-app.post('/api/gantt/job/:jobId/sync', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
-  try {
-    const result = await syncGanttJob(req.params.jobId);
-    res.json({ ok: true, ...result });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-}));
-
-app.put('/api/gantt/tasks/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
-  const current = await pgOne('SELECT * FROM gantt_tasks WHERE id=$1', [req.params.id]);
-  if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
-  const body = req.body || {};
-  const next = {
-    name: body.name !== undefined ? String(body.name).trim() : current.name,
-    start_date: body.start_date !== undefined ? body.start_date : current.start_date,
-    end_date: body.end_date !== undefined ? body.end_date : current.end_date,
-    progress: body.progress !== undefined ? Math.max(0, Math.min(1, Number(body.progress))) : current.progress
-  };
-  // Skriv til JobTread FØRST — hvis det fejler, skal vi ikke gemme en lokal
-  // version der er ude af trit med den rigtige sag.
-  try {
-    await jtFetch({
-      query: {
-        $: { grantKey: JT_GRANT },
-        updateTask: {
-          $: { id: current.id, name: next.name, startDate: next.start_date, endDate: next.end_date, progress: next.progress, notify: false, updateDependentTasks: true }
-        }
-      }
-    }, 'Gantt: opdatér opgave i JobTread');
-  } catch (error) {
-    return res.status(400).json({ error: 'Kunne ikke opdatere i JobTread: ' + error.message });
-  }
-  // JobTread rykker automatisk afhængige opgaver (updateDependentTasks:true) —
-  // så vi genhenter HELE jobbet i stedet for kun at rette denne ene opgave
-  // lokalt, ellers ville de kaskade-flyttede opgaver ikke opdatere sig i vores
-  // eget Gantt-kort før næste manuelle synk.
-  try {
-    await syncGanttJob(current.job_id);
-  } catch (error) {
-    // Selve JobTread-opdateringen lykkedes — kun genhentningen fejlede. Gem i
-    // det mindste denne ene opgave lokalt, så UI'en ikke falder helt tilbage.
-    await pool.query(`
-      UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, synced_at=${nowTextSQL()} WHERE id=$5
-    `, [next.name, next.start_date, next.end_date, next.progress, current.id]);
-  }
-  res.json({ ok: true });
-}));
-
-app.post('/api/gantt/job/:jobId/tasks', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
-  const body = req.body || {};
-  const name = String(body.name || '').trim();
-  if (!name) return res.status(400).json({ error: 'Skriv et navn til opgaven' });
-  if (!validDate(body.start_date)) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
-  let createdId;
-  try {
-    const result = await jtFetch({
-      query: {
-        $: { grantKey: JT_GRANT },
-        createTask: {
-          $: {
-            targetId: req.params.jobId, targetType: 'job', name,
-            startDate: body.start_date, endDate: body.end_date || body.start_date,
-            isToDo: false, notify: false,
-            ...(body.depends_on ? { dependsOnTasks: [{ id: body.depends_on }] } : {})
-          },
-          createdTask: { id: {} }
-        }
-      }
-    }, 'Gantt: opret opgave i JobTread');
-    createdId = result?.createTask?.createdTask?.id;
-    if (!createdId) throw new Error('JobTread returnerede intet id');
-  } catch (error) {
-    return res.status(400).json({ error: 'Kunne ikke oprette i JobTread: ' + error.message });
-  }
-  await pool.query(`
-    INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,parent_task_id,position,depends_on,synced_at)
-    VALUES ($1,$2,(SELECT job_name FROM gantt_tasks WHERE job_id=$2 LIMIT 1),$3,'',$4,$5,0,0,NULL,'',$6,${nowTextSQL()})
-  `, [createdId, req.params.jobId, name, body.start_date, body.end_date || body.start_date, JSON.stringify(body.depends_on ? [body.depends_on] : [])]);
-  res.json({ ok: true, id: createdId });
-}));
-
-app.post('/api/sync-phones', auth, adminOnly, asyncRoute(async (req, res) => {
-  const result = await syncCustomerPhonesFromJT();
-  // Do not make the admin browser wait for weather. The phone rows have already
-  // been saved before this background process begins.
-  if (result.ok) {
-    syncJobGeocodesInBackground().catch(error => console.error('Baggrunds-geokodning fejlede:', error.message));
-  }
-  res.status(result.ok ? 200 : 500).json({ ...result, weather_sync_started: Boolean(result.ok) });
-}));
-
-app.post('/api/sync', auth, adminOnly, asyncRoute(async (req, res) => {
-  const result = await syncFromJT();
-  res.status(result.ok ? 200 : 500).json(result);
-}));
+// ── AFKOBLET 05-09-2026: JOBTREAD-SYNKKNAPPERNE ────────────────────────────
+// "⚡ Synk JT" og "📞 Synk telefon & vejr" er fjernet fra Indstillinger, fordi
+// opgavepoolen nu kun kører på appens egne data (se det store notat i start()).
+// Selve rutemonteringen er kommenteret ud — handler-funktionerne (syncFromJT,
+// syncCustomerPhonesFromJT) står stadig defineret længere oppe og er urørte, så
+// det hele kan genaktiveres ved bare at fjerne kommentartegnene her igen.
+//
+// app.post('/api/sync-phones', auth, adminOnly, asyncRoute(async (req, res) => {
+//   const result = await syncCustomerPhonesFromJT();
+//   // Do not make the admin browser wait for weather. The phone rows have already
+//   // been saved before this background process begins.
+//   if (result.ok) {
+//     syncJobGeocodesInBackground().catch(error => console.error('Baggrunds-geokodning fejlede:', error.message));
+//   }
+//   res.status(result.ok ? 200 : 500).json({ ...result, weather_sync_started: Boolean(result.ok) });
+// }));
+//
+// app.post('/api/sync', auth, adminOnly, asyncRoute(async (req, res) => {
+//   const result = await syncFromJT();
+//   res.status(result.ok ? 200 : 500).json(result);
+// }));
 
 // ══ JOBTREAD → PROJEKTER: "HENT NYE SAGER" ══════════════════════════════
 //
@@ -4574,30 +4668,45 @@ async function jtImportMaterializeJob(jobData) {
 }
 
 // (c) SELVE KNAPPEN. Samme adgangskrav som POST /api/sync (kun admin).
-app.post('/api/admin/jobtread-import', auth, adminOnly, asyncRoute(async (req, res) => {
-  const fetched = await jtImportFetchPlannedJobs();
-  if (!fetched.ok) {
-    await writeSyncLog(0, 'error', 'Sagsimport fra JobTread: ' + fetched.error);
-    return res.status(500).json({ ok: false, error: fetched.error });
-  }
-  const summary = { ok: true, found: fetched.jobs.length, created: 0, skipped: 0, without_dates: 0, failed: [] };
-  for (const job of fetched.jobs) {
-    const result = await jtImportMaterializeJob(job);
-    if (!result.ok) summary.failed.push({ name: jtImportProjectName(job), error: result.error });
-    else if (result.created) { summary.created++; if (!result.scheduled) summary.without_dates++; }
-    else summary.skipped++;
-  }
-  const message = `Sagsimport fra JobTread: ${summary.created} ny(e) sag(er) oprettet, ${summary.skipped} sprunget over (allerede importeret), ${summary.failed.length} fejlede. ${summary.found} planlagt(e) sag(er) fundet i JobTread.`
-    + (summary.without_dates ? ` ${summary.without_dates} sag(er) fik ingen tidsplan (planlagte opgaver uden datoer i JobTread).` : '');
-  await writeSyncLog(summary.created, summary.failed.length ? 'error' : 'ok', message);
-  await logSystemEvent('jobtread_project_import', summary.failed.length ? 'error' : 'info', message);
-  res.json(summary);
-}));
+//
+// ── AFKOBLET 05-09-2026 ────────────────────────────────────────────────────
+// Martin har bekræftet, at alle sager allerede ER importeret, og at han fra nu
+// af opretter dem direkte i appen. "📥 Hent nye sager" er derfor fjernet fra
+// Indstillinger, og ruten er kommenteret ud her. jtImportFetchPlannedJobs(),
+// jtImportMaterializeJob() og jtImportProjectName() ovenfor er bevidst bevaret
+// urørte (de har ingen andre kaldesteder), så importen kan genaktiveres ved at
+// fjerne kommentartegnene her igen.
+//
+// app.post('/api/admin/jobtread-import', auth, adminOnly, asyncRoute(async (req, res) => {
+//   const fetched = await jtImportFetchPlannedJobs();
+//   if (!fetched.ok) {
+//     await writeSyncLog(0, 'error', 'Sagsimport fra JobTread: ' + fetched.error);
+//     return res.status(500).json({ ok: false, error: fetched.error });
+//   }
+//   const summary = { ok: true, found: fetched.jobs.length, created: 0, skipped: 0, without_dates: 0, failed: [] };
+//   for (const job of fetched.jobs) {
+//     const result = await jtImportMaterializeJob(job);
+//     if (!result.ok) summary.failed.push({ name: jtImportProjectName(job), error: result.error });
+//     else if (result.created) { summary.created++; if (!result.scheduled) summary.without_dates++; }
+//     else summary.skipped++;
+//   }
+//   const message = `Sagsimport fra JobTread: ...`;
+//   await writeSyncLog(summary.created, summary.failed.length ? 'error' : 'ok', message);
+//   await logSystemEvent('jobtread_project_import', summary.failed.length ? 'error' : 'info', message);
+//   res.json(summary);
+// }));
 
-app.get('/api/sync/log', auth, adminOnly, asyncRoute(async (req, res) => {
-  const result = await pool.query('SELECT * FROM sync_log ORDER BY id DESC LIMIT 20');
-  res.json(result.rows);
-}));
+// ── AFKOBLET 05-09-2026 ────────────────────────────────────────────────────
+// sync_log fodres kun af JobTread-synken/-importen, som nu er slået fra, så
+// tabellen står stille fremover og denne rute havde intet at vise. Tabellen er
+// IKKE droppet — de historiske rækker bliver stående og vises stadig i den
+// rigtige "🛠 Systemlog" via GET /api/system-log nedenfor, som læser fra både
+// sync_log og system_log.
+//
+// app.get('/api/sync/log', auth, adminOnly, asyncRoute(async (req, res) => {
+//   const result = await pool.query('SELECT * FROM sync_log ORDER BY id DESC LIMIT 20');
+//   res.json(result.rows);
+// }));
 
 // Samlet systemlog: JobTread-synk + alt andet der kører automatisk i baggrunden
 // (notifikationsscan m.fl.), sorteret nyest først, så det hele kan ses ét sted.
@@ -12119,72 +12228,79 @@ app.delete('/api/akkord-items/:id', auth, adminOnly, asyncRoute(async (req, res)
   res.json({ ok: true });
 }));
 
-// Engangs-import fra JobTread's costItems — bevidst IKKE en løbende synkronisering
-// (se svar i chatten): henter alt organisationen har brugt af cost items på tværs af
-// jobs, og lægger de unikke navne ind som et udgangspunkt for jeres eget katalog.
-// Køres kun når admin selv trykker på knappen, aldrig automatisk.
-app.post('/api/products/import-from-jobtread', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
-  if (!JT_ORG || !JT_GRANT) return res.status(400).json({ error: 'JobTread er ikke sat op på serveren' });
-  // JobTread har ikke en selvstændig "produktkatalog"-type — cost items på tværs
-  // af alle jobs bruges i stedet, hvor en cost item enten ER en genbrugelig skabelon
-  // (organizationCostItem er tom, og den har sin egen unitCost/unitPrice), eller er
-  // en KOPI af én, brugt på et konkret job (organizationCostItem peger på skabelonen,
-  // og har typisk ikke sin egen pris). Vi importerer kun items med reelle pris-data,
-  // dedupliceret på navn — kopier uden egen pris springes over, da skabelonen med
-  // samme navn allerede giver den rigtige cost/salgspris.
-  const seen = new Map(); // navn (lowercase) -> {name,unit,cost,price,jtId,isTemplate}
-  let page = null;
-  let guard = 0;
-  try {
-    do {
-      guard++;
-      const data = await jtFetch({
-        query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, costItems: {
-          $: { size: 100, page: page || undefined },
-          nextPage: {},
-          nodes: { id: {}, name: {}, description: {}, unit: { name: {} }, unitCost: {}, unitPrice: {}, organizationCostItem: { id: {} } }
-        } } }
-      }, 'Produktimport: hent cost items fra JobTread');
-      const conn = data?.organization?.costItems;
-      for (const n of conn?.nodes || []) {
-        if (!n.name) continue;
-        if (n.unitCost == null && n.unitPrice == null) continue; // job-kopi uden egen pris — spring over
-        const key = n.name.toLowerCase().trim();
-        const isTemplate = !n.organizationCostItem;
-        const existing = seen.get(key);
-        if (!existing || (isTemplate && !existing.isTemplate)) {
-          seen.set(key, { name: n.name, description: n.description || '', unit: n.unit?.name || 'stk', cost: Number(n.unitCost) || 0, price: Number(n.unitPrice) || 0, jtId: n.id, isTemplate });
-        }
-      }
-      page = conn?.nextPage || null;
-    } while (page && guard < 200);
-  } catch (error) {
-    return res.status(400).json({ error: 'Kunne ikke hente fra JobTread: ' + error.message });
-  }
-  let imported = 0, skipped = 0, descriptionsFilled = 0;
-  for (const item of seen.values()) {
-    const existing = item.jtId
-      ? await pgOne('SELECT id, description FROM products WHERE jt_cost_item_id=$1', [item.jtId])
-      : await pgOne('SELECT id, description FROM products WHERE lower(trim(name))=lower(trim($1)) AND jt_cost_item_id IS NULL', [item.name]);
-    if (existing) {
-      skipped++;
-      // Findes allerede lokalt — vi rører aldrig navn/pris på et eksisterende produkt
-      // (kan være rettet manuelt), men hvis der IKKE allerede står en beskrivelse, og
-      // JobTread har en, udfylder vi den. Overskriver aldrig en beskrivelse der allerede
-      // findes — kun tomme felter (Martins ønske, sep. 2026).
-      if (item.description && !(existing.description || '').trim()) {
-        await pool.query('UPDATE products SET description=$1 WHERE id=$2', [item.description, existing.id]);
-        descriptionsFilled++;
-      }
-      continue;
-    }
-    await pool.query(`
-      INSERT INTO products (name,description,unit,cost_price,sell_price,jt_cost_item_id) VALUES ($1,$2,$3,$4,$5,$6)
-    `, [item.name, item.description, item.unit, item.cost, item.price, item.jtId]);
-    imported++;
-  }
-  res.json({ ok: true, imported, skipped, descriptions_filled: descriptionsFilled, total_found: seen.size });
-}));
+// ── AFKOBLET 05-09-2026 ────────────────────────────────────────────────────
+// Martin har fjernet alle resterende JobTread-koblinger fra admin-UI'et — dette
+// engangsimport-værktøj ("📥 Importér fra JobTread" i Produkter) er derfor også
+// taget ud. Ruten er kommenteret ud, ikke slettet, af samme grund som de andre
+// JobTread-afkoblinger denne dag: nemt at genaktivere, hvis det skulle blive
+// relevant igen. products.jt_cost_item_id-kolonnen og de allerede importerede
+// produkter er urørte.
+// // Engangs-import fra JobTread's costItems — bevidst IKKE en løbende synkronisering
+// // (se svar i chatten): henter alt organisationen har brugt af cost items på tværs af
+// // jobs, og lægger de unikke navne ind som et udgangspunkt for jeres eget katalog.
+// // Køres kun når admin selv trykker på knappen, aldrig automatisk.
+// app.post('/api/products/import-from-jobtread', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+//   if (!JT_ORG || !JT_GRANT) return res.status(400).json({ error: 'JobTread er ikke sat op på serveren' });
+//   // JobTread har ikke en selvstændig "produktkatalog"-type — cost items på tværs
+//   // af alle jobs bruges i stedet, hvor en cost item enten ER en genbrugelig skabelon
+//   // (organizationCostItem er tom, og den har sin egen unitCost/unitPrice), eller er
+//   // en KOPI af én, brugt på et konkret job (organizationCostItem peger på skabelonen,
+//   // og har typisk ikke sin egen pris). Vi importerer kun items med reelle pris-data,
+//   // dedupliceret på navn — kopier uden egen pris springes over, da skabelonen med
+//   // samme navn allerede giver den rigtige cost/salgspris.
+//   const seen = new Map(); // navn (lowercase) -> {name,unit,cost,price,jtId,isTemplate}
+//   let page = null;
+//   let guard = 0;
+//   try {
+//     do {
+//       guard++;
+//       const data = await jtFetch({
+//         query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, costItems: {
+//           $: { size: 100, page: page || undefined },
+//           nextPage: {},
+//           nodes: { id: {}, name: {}, description: {}, unit: { name: {} }, unitCost: {}, unitPrice: {}, organizationCostItem: { id: {} } }
+//         } } }
+//       }, 'Produktimport: hent cost items fra JobTread');
+//       const conn = data?.organization?.costItems;
+//       for (const n of conn?.nodes || []) {
+//         if (!n.name) continue;
+//         if (n.unitCost == null && n.unitPrice == null) continue; // job-kopi uden egen pris — spring over
+//         const key = n.name.toLowerCase().trim();
+//         const isTemplate = !n.organizationCostItem;
+//         const existing = seen.get(key);
+//         if (!existing || (isTemplate && !existing.isTemplate)) {
+//           seen.set(key, { name: n.name, description: n.description || '', unit: n.unit?.name || 'stk', cost: Number(n.unitCost) || 0, price: Number(n.unitPrice) || 0, jtId: n.id, isTemplate });
+//         }
+//       }
+//       page = conn?.nextPage || null;
+//     } while (page && guard < 200);
+//   } catch (error) {
+//     return res.status(400).json({ error: 'Kunne ikke hente fra JobTread: ' + error.message });
+//   }
+//   let imported = 0, skipped = 0, descriptionsFilled = 0;
+//   for (const item of seen.values()) {
+//     const existing = item.jtId
+//       ? await pgOne('SELECT id, description FROM products WHERE jt_cost_item_id=$1', [item.jtId])
+//       : await pgOne('SELECT id, description FROM products WHERE lower(trim(name))=lower(trim($1)) AND jt_cost_item_id IS NULL', [item.name]);
+//     if (existing) {
+//       skipped++;
+//       // Findes allerede lokalt — vi rører aldrig navn/pris på et eksisterende produkt
+//       // (kan være rettet manuelt), men hvis der IKKE allerede står en beskrivelse, og
+//       // JobTread har en, udfylder vi den. Overskriver aldrig en beskrivelse der allerede
+//       // findes — kun tomme felter (Martins ønske, sep. 2026).
+//       if (item.description && !(existing.description || '').trim()) {
+//         await pool.query('UPDATE products SET description=$1 WHERE id=$2', [item.description, existing.id]);
+//         descriptionsFilled++;
+//       }
+//       continue;
+//     }
+//     await pool.query(`
+//       INSERT INTO products (name,description,unit,cost_price,sell_price,jt_cost_item_id) VALUES ($1,$2,$3,$4,$5,$6)
+//     `, [item.name, item.description, item.unit, item.cost, item.price, item.jtId]);
+//     imported++;
+//   }
+//   res.json({ ok: true, imported, skipped, descriptions_filled: descriptionsFilled, total_found: seen.size });
+// }));
 
 // ── TILBUDSSKABELONER — gemte linjesæt til hurtigt at starte et nyt tilbud fra ──
 app.get('/api/quote-templates', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -14098,6 +14214,122 @@ async function backfillProjectTaskMirrors() {
   if (rows.rowCount) console.log(`Efterudfyldte ${rows.rowCount} sags-opgave(r) i Opgavepoolen (oprettet før dette fandtes).`);
 }
 
+// ══ ÉNGANGSOPRYDNING: GAMLE JOBTREAD-OPGAVER UD AF OPGAVEPOOLEN ═════════════
+//
+// Baggrund: Martin er migreret helt væk fra JobTread og har genoprettet alle
+// sine sager internt i appen. De gamle source='jobtread'-rækker i jt_tasks står
+// derfor tilbage i Opgavepool/Kapacitet/Tidslinje som forvirrende dubletter af
+// hans nye interne sager. De skal væk — MEN alt der har rigtig historik hængende
+// på sig skal blive stående, urørt.
+//
+// SIKKERHEDSREGLEN: en jt_tasks-række slettes kun hvis
+//   1) COALESCE(source,'jobtread') = 'jobtread'  (NULL = gammel legacy-række fra
+//      før source-kolonnen fandtes, behandles som JobTread), OG
+//   2) dens id findes IKKE i NOGEN af de tabeller der peger tilbage på den.
+// Alt andet springes helt over — ingen ændring, ingen markering, intet.
+//
+// Der findes INGEN rigtige FOREIGN KEYs på tværs af disse tabeller (alle
+// task_id-kolonner er almindelige TEXT-kolonner uden REFERENCES), så Postgres
+// stopper os ikke selv — listen herunder er fundet ved at gennemgå hele skemaet
+// i initSchema() for kolonner der gemmer et jt_tasks.id:
+//   planning_bookings.task_id       — bookinger ude hos medarbejderne
+//   assignments.task_id             — den gamle bookingtabel fra før planning_bookings
+//   time_logs.task_id               — tidsregistrering
+//   task_checklist_items.task_id    — tjekpunkter
+//   customer_visits.task_id         — kundebesøgsskemaer
+//   job_files.task_id               — uploadede billeder/filer på opgaven
+//   completion_emails.task_id       — "opgaven er færdig"-mails til kunden
+//   customer_schedule_emails.task_id— planlagt/påmindelses-mails til kunden
+//   customer_schedule_sms.task_id   — påmindelses-SMS til kunden
+// (gantt_tasks har kun parent_task_id, som peger på gantt_tasks' EGNE rækker —
+//  ikke på jt_tasks — og Gantt-fanen læser i det hele taget gantt_tasks, ikke
+//  jt_tasks, så den er helt urørt af denne oprydning.)
+//
+// Bevidst mere forsigtig end "tjek kun bookinger": en JobTread-opgave, der
+// aldrig kom gennem bookingflowet, men som der ER registreret tid eller
+// uploadet billeder på, ville ellers forsvinde i stilhed.
+const JOBTREAD_CLEANUP_MIGRATION = 'jobtread_task_pool_cleanup_20260905';
+const JOBTREAD_CLEANUP_REFERENCES = [
+  { table: 'planning_bookings', label: 'booking' },
+  { table: 'assignments', label: 'gammel booking' },
+  { table: 'time_logs', label: 'tidsregistrering' },
+  { table: 'task_checklist_items', label: 'tjekliste' },
+  { table: 'customer_visits', label: 'kundebesøg' },
+  { table: 'job_files', label: 'fil' },
+  { table: 'completion_emails', label: 'færdig-mail' },
+  { table: 'customer_schedule_emails', label: 'planlægningsmail' },
+  { table: 'customer_schedule_sms', label: 'påmindelses-SMS' }
+];
+
+async function runJobTreadPoolCleanup() {
+  // Gate #1 (uden for transaktionen): er den allerede kørt, så laves der intet
+  // arbejde overhovedet — hverken tælling eller sletning. Gate #2 ligger inde i
+  // transaktionen herunder, så to samtidige opstarter aldrig kan køre den to gange.
+  const already = await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [JOBTREAD_CLEANUP_MIGRATION]);
+  if (already) return { ok: true, skipped: true, reason: 'already_done' };
+
+  const notReferenced = JOBTREAD_CLEANUP_REFERENCES
+    .map(r => `NOT EXISTS (SELECT 1 FROM ${r.table} x WHERE x.task_id = t.id)`)
+    .join('\n        AND ');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const claimed = await client.query(
+      "INSERT INTO app_migrations (name, details) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING",
+      [JOBTREAD_CLEANUP_MIGRATION, 'Kører…']
+    );
+    if (!claimed.rowCount) {
+      await client.query('ROLLBACK');
+      return { ok: true, skipped: true, reason: 'already_done' };
+    }
+
+    // Hvor mange JobTread-rækker findes der i alt, og hvor mange af dem har
+    // historik på sig? Tælles FØR sletningen, i samme transaktion.
+    const breakdownSelect = JOBTREAD_CLEANUP_REFERENCES
+      .map(r => `(SELECT COUNT(*)::int FROM jt_tasks t WHERE COALESCE(t.source,'jobtread')='jobtread' AND EXISTS (SELECT 1 FROM ${r.table} x WHERE x.task_id = t.id)) AS "${r.table}"`)
+      .join(',\n        ');
+    const counts = await client.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM jt_tasks t WHERE COALESCE(t.source,'jobtread')='jobtread') AS jobtread_total,
+        (SELECT COUNT(*)::int FROM jt_tasks t WHERE COALESCE(t.source,'jobtread')='jobtread' AND ${notReferenced}) AS deletable,
+        ${breakdownSelect}
+    `);
+    const c = counts.rows[0];
+    const kept = c.jobtread_total - c.deletable;
+
+    const deleted = await client.query(`
+      DELETE FROM jt_tasks t
+      WHERE COALESCE(t.source,'jobtread')='jobtread'
+        AND ${notReferenced}
+    `);
+
+    // Læselig opdeling af HVORFOR de bevarede rækker blev bevaret. Én opgave kan
+    // sagtens tælle med i flere kolonner (fx både booking og tidsregistrering),
+    // så tallene summer ikke nødvendigvis til "beholdt".
+    const reasons = JOBTREAD_CLEANUP_REFERENCES
+      .filter(r => c[r.table] > 0)
+      .map(r => `${r.label}: ${c[r.table]}`)
+      .join(', ');
+    const message = `JobTread-oprydning: slettede ${deleted.rowCount} gamle JobTread-opgaver uden nogen historik. `
+      + `Beholdt ${kept} opgaver der stadig har en booking/tidsregistrering/tjekliste/besøg/fil/mail knyttet til sig.`
+      + (reasons ? ` (Bevaret pga. — ${reasons}. Samme opgave kan tælle med flere steder.)` : '')
+      + ' Manuelle opgaver, sags-opgaver fra Projekter og kapacitetsrækker er ikke rørt.';
+
+    await client.query('UPDATE app_migrations SET details=$2, completed_at=' + nowTextSQL() + ' WHERE name=$1', [JOBTREAD_CLEANUP_MIGRATION, message]);
+    await client.query('COMMIT');
+
+    await logSystemEvent('jobtread_cleanup', 'info', message);
+    console.log(message);
+    return { ok: true, deleted: deleted.rowCount, kept, total: c.jobtread_total };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function start() {
   await pool.query('SELECT 1 AS connected');
   await initSchema();
@@ -14111,11 +14343,47 @@ async function start() {
   // stop to avoid duplicates. Sync is enabled automatically after the migration exists.
   const migrationState = await pgOne("SELECT 1 FROM app_migrations WHERE name='sqlite_initial_import_20260702'");
   const migrationPending = Boolean(MIGRATION_SECRET) && !migrationState;
-  if (JT_GRANT && JT_ORG && JT_AUTO_SYNC && !migrationPending) {
-    setTimeout(() => syncFromJT().catch(error => { console.error('Startup sync failed:', error.message); logSystemEvent('jobtread_sync', 'error', 'Opstarts-synk fejlede: ' + error.message); }), 5000);
-    cron.schedule('0 * * * *', () => syncFromJT().catch(error => { console.error('Scheduled sync failed:', error.message); logSystemEvent('jobtread_sync', 'error', 'Planlagt synk (hver time) fejlede: ' + error.message); }));
-  } else if (migrationPending) {
-    console.log('JobTread-sync er sat på pause, indtil den første SQLite-import er færdig.');
+  // ── JOBTREAD-SYNK TIL OPGAVEPOOLEN: SLÅET FRA PERMANENT 05-09-2026 ──────────
+  // Martin har migreret alt væk fra JobTread og opretter nu selv kunder, sager,
+  // tilbud og tidsplaner direkte i appen. Opgavepoolen (Opgavepool, Daglig
+  // planlægning, Kapacitetsboard, Tidslinje) skal derfor udelukkende køre på
+  // appens egne data — source='manual' / 'project' / 'capacity' — og må aldrig
+  // få nye source='jobtread'-rækker ind igen. Se chat/commit for kontekst.
+  //
+  // syncFromJT() (og de tre baggrundskald den udløste ved succes:
+  // syncCustomerPhonesFromJT, syncJobGeocodesInBackground, syncVendorsFromJT) er
+  // bevidst IKKE slettet — kun frakoblet — så det hele nemt kan genaktiveres,
+  // hvis det mod forventning skulle blive nødvendigt igen. Den gamle kode stod
+  // præcis sådan her:
+  //
+  //   if (JT_GRANT && JT_ORG && JT_AUTO_SYNC && !migrationPending) {
+  //     setTimeout(() => syncFromJT().catch(error => { ... }), 5000);
+  //     cron.schedule('0 * * * *', () => syncFromJT().catch(error => { ... }));
+  //   } else if (migrationPending) {
+  //     console.log('JobTread-sync er sat på pause, indtil den første SQLite-import er færdig.');
+  //   }
+
+  // ── GEOKODNING: NU HELT UAFHÆNGIG AF JOBTREAD ──────────────────────────────
+  // syncJobGeocodesInBackground() er IKKE JobTread-specifik: den slår adresser
+  // op hos Nominatim (OpenStreetMap) for ALLE rækker i jt_tasks uanset source —
+  // altså også manuelle opgaver, kundebesøg og sags-opgaver spejlet ind fra
+  // Projekter. Den blev tidligere kun udløst som en sidegevinst af en vellykket
+  // JobTread-synk, så uden dette kald ville kort/afstand (Ruter & kort,
+  // Kapacitet) stille og roligt holde op med at virke for adresser på nye
+  // interne sager. Den kører derfor nu i sit eget timeslot, uden nogen form for
+  // JobTread-involvering (ingen grant/org-tjek nødvendig — funktionen kalder
+  // aldrig JobTreads API).
+  cron.schedule('0 * * * *', () => syncJobGeocodesInBackground().catch(error => { console.error('Planlagt geokodning fejlede:', error.message); logSystemEvent('geocode_sync', 'error', 'Planlagt geokodning (hver time) fejlede: ' + error.message); }));
+
+  // ── ÉNGANGSOPRYDNING AF GAMLE JOBTREAD-OPGAVER I POOLEN ────────────────────
+  // Kører højst én gang nogensinde (gated på app_migrations). Springes over så
+  // længe den første SQLite-import mangler, for ellers ville oprydningen køre
+  // mod en tom database, markere sig som gennemført, og de gamle JobTread-
+  // rækker ville aldrig blive ryddet op efter importen.
+  if (!migrationPending) {
+    runJobTreadPoolCleanup().catch(error => { console.error('JobTread-oprydning fejlede:', error.message); logSystemEvent('jobtread_cleanup', 'error', 'JobTread-oprydning af opgavepoolen fejlede: ' + error.message); });
+  } else {
+    console.log('JobTread-oprydning af opgavepoolen afventer, at den første SQLite-import er færdig.');
   }
   // OBS: kunde-påmindelsen ("vi kommer i morgen") sendes IKKE automatisk længere —
   // kun når admin selv trykker på knappen (se POST /api/customer-emails/send-reminders

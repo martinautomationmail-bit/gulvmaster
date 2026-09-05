@@ -2262,7 +2262,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-04.6</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.2</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -2686,31 +2686,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 
-  <!-- ── SYNK & IMPORT — JobTread-synk + Close CRM-import ────────────── -->
+  <!-- ── SYNK & IMPORT — Close CRM-import ─────────────────────────────── -->
   <div class="settabpage" id="settab-sync">
-    <!-- JOBTREAD-SYNK — flyttet herned fra topbjælken (Runde H #12: "Gem de 2
-         synk knapper et sted i indstillinger indtil jeg fjerner dem"). Samme
-         knapper/id'er/funktioner (syncNow/syncPhonesNow) som før. -->
-    <div class="set-card">
-      <div class="set-card-head">
-        <div>
-          <div class="set-card-title">🔄 JobTread-synkronisering</div>
-          <div class="set-card-sub">Midlertidig — fjernes når JobTread-data ikke længere bruges. Synk-loggen vises øverst på Dagligplanlægning-siden.</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <button class="bly-btn small" id="sync-btn" type="button">⚡ Synk JT</button>
-        <button class="bly-btn outline small" id="sync-phones-btn" type="button" title="Henter kundetelefon + adresse-koordinater til vejret, med det samme, og viser resultatet direkte">📞 Synk telefon &amp; vejr</button>
-        <!-- NB til den næste der læser med: kortets undertekst ovenfor siger at
-             JobTread-synken er "midlertidig" og fjernes når JobTread-data ikke
-             længere bruges — men denne knap trækker tværtimod JobTread-sager helt
-             ind i Projekter (med tilbud, sagsnummer og tidsplan) og gør dermed
-             afhængigheden STØRRE, ikke mindre. Teksten er bevidst ikke ændret her;
-             det er en beslutning Martin skal tage, ikke en formulering vi retter. -->
-        <button class="bly-btn outline small" id="jt-import-btn" type="button" title="Opretter nye Projekter-sager for JobTread-jobs der har planlagte datoer og endnu ikke er importeret">📥 Hent nye sager</button>
-        <span id="sync-ind" style="font-size:11px;color:var(--bly-sub)"></span>
-      </div>
-    </div>
+    <!-- JOBTREAD-SYNKKORTET ("🔄 JobTread-synkronisering" med ⚡ Synk JT,
+         📞 Synk telefon & vejr og 📥 Hent nye sager) er fjernet 05-09-2026:
+         Martin er migreret helt væk fra JobTread, opgavepoolen kører nu kun på
+         appens egne data, og de tilhørende ruter (/api/sync, /api/sync-phones,
+         /api/admin/jobtread-import) er afkoblet i server.js. -->
 
     <!-- CLOSE CRM-IMPORT (flyttet fra #page-people, sep. 2026): éngangsimport af
          Martins historiske leads/opportunities fra Close CRM, uploadet direkte af
@@ -3007,8 +2989,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="qztabpage" id="qztab-products" style="display:none">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title">Produkter</span><input type="text" id="qz-product-search" class="bly-search" placeholder="Søg i produkter..."></div>
+      <!-- "📥 Importér fra JobTread" fjernet 05-09-2026 sammen med den tilhørende
+           rute (server.js: /api/products/import-from-jobtread) — alt produktdata
+           oprettes nu direkte i appen. -->
       <div class="bly-toolbar-right">
-        <button class="bly-btn outline" id="qz-import-jt-btn" type="button">📥 Importér fra JobTread</button>
         <button class="bly-btn" id="qz-new-product-btn" type="button">+ Nyt produkt</button>
       </div>
     </div>
@@ -3076,7 +3060,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      tilbudseditorens kunde-søgning sammen med JobTread-sagerne. -->
 <section class="page" id="page-customers">
   <div class="bly-pagehead">
-    <div><h2>Kunder</h2><div class="sub">Opret og book kunder direkte — de behøver ikke først have en sag i JobTread</div></div>
+    <div><h2>Kunder</h2><div class="sub">Opret og book kunder direkte — de behøver ikke først have en sag oprettet</div></div>
   </div>
   <div class="bly-toolbar">
     <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="crm-count">Kunder</span><input type="text" id="crm-search" class="bly-search" placeholder="Søg — navn, pris, email eller telefon..." style="width:280px"></div>
@@ -3619,24 +3603,29 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
   <!-- GANTT — flyttet herind under Projekter fra sin tidligere plads i
        "Dagligplanlægning"-gruppen (Martins ønske: "Flyt gantkortet ned under
-       projekter og brug data derfra"). Selve indholdet/id'erne er uændrede,
-       kun ydre wrapper (fra <section class="page" id="page-gantt"> til en
-       almindelig .projtabpage), så al eksisterende Gantt-JS (initGanttPage,
-       renderGanttChart, gantt-sync-btn m.fl.) virker uændret. -->
+       projekter og brug data derfra").
+       05-09-2026: fanen kører nu HELT på appens egne sager. Man vælger en sag
+       fra Projekter (ikke længere et JobTread-job), og opgaverne er sagens egne
+       gantt_tasks-rækker — nøjagtig de samme som sags-Gantt'et på sagsdetalje-
+       siden viser. Der læses/skrives ikke længere ét eneste sted til JobTread
+       herfra; alt går gennem /api/gantt/projects, /api/gantt/all-tasks og de
+       almindelige /api/projects/:id(/tasks)-ruter. -->
   <div class="projtabpage" id="projtab-gantt" style="display:none">
     <div class="page-head">
       <div>
         <div class="page-title">Gantt</div>
-        <div class="page-sub">Et Gantt-kort direkte på et JobTread-job — ændringer skrives med det samme tilbage til JobTread, og omvendt ved synk.</div>
+        <div class="page-sub">Tidsplanen for én af dine sager — vælg sagen nedenfor. Ændringer gemmes med det samme på sagen og slår igennem i Opgavepool, Kapacitet og Tidslinje.</div>
       </div>
       <button class="btn primary" id="gantt-all-tasks-btn">📊 Se alle opgaver</button>
     </div>
     <div class="gantt-job-picker" id="gantt-job-picker">
       <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-        <input id="gantt-job-search" class="input" placeholder="Filtrér — skriv for at indsnævre listen..." autocomplete="off" style="flex:1;min-width:220px">
+        <input id="gantt-job-search" class="input" placeholder="Filtrér — skriv sagsnavn, sagsnr. eller adresse..." autocomplete="off" style="flex:1;min-width:220px">
+        <!-- "Gruppér: Faggruppe" er fjernet her: sager i Projekter har intet
+             fag-felt (det kom udelukkende fra JobTread-synken), så valget ville
+             samle alle sager i én "Andet"-gruppe og dermed ikke gruppere noget. -->
         <select id="gantt-group-by" class="select" style="width:auto">
           <option value="none">Gruppér: Ingen</option>
-          <option value="trade">Gruppér: Faggruppe</option>
           <option value="letter">Gruppér: A-Å</option>
         </select>
       </div>
@@ -3648,7 +3637,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <strong id="gantt-job-title" style="font-size:13px"></strong>
         <span style="flex:1"></span>
         <span id="gantt-all-filters" style="display:none;gap:8px;align-items:center">
-          <input id="gantt-search" class="input" placeholder="🔍 Søg opgave, kunde eller sagsnr..." style="width:220px">
+          <input id="gantt-search" class="input" placeholder="🔍 Søg opgave, sag eller sagsnr..." style="width:220px">
+          <!-- BEMÆRK: fag-filteret virker, men er reelt uden effekt på sags-
+               opgaver — fag (type_guess) blev kun udfyldt af JobTread-synken, og
+               sags-opgaver har det aldrig sat. Alt lander derfor under "Andet".
+               Filteret er bevidst bevaret (så gamle vaner/valg ikke forsvinder),
+               men skal have et rigtigt fag-felt på sagen for at blive nyttigt igen. -->
           <select id="gantt-trade-filter" class="select" style="width:auto">
             <option value="all">🎨 Alle fag</option>
             <option value="lay">Gulvlægning</option>
@@ -3671,9 +3665,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <input type="date" id="gantt-date-to" class="input" style="width:auto">
           </span>
         </span>
+        <!-- "🔄 Synk med JobTread" + friskheds-indikatoren ("Sidst hentet fra
+             JobTread: …") er fjernet 05-09-2026: opgaverne ER appens egne data
+             nu, de gemmes direkte når man retter dem, og der findes derfor
+             hverken noget at synke med eller nogen forsinkelse at advare om. -->
         <button class="btn small" id="gantt-add-task-btn">+ Ny opgave</button>
-        <button class="btn small primary" id="gantt-sync-btn">🔄 Synk med JobTread</button>
-        <div id="gantt-sync-freshness" style="font-size:10px;font-weight:700;margin-top:4px;text-align:right"></div>
       </div>
       <div class="board-outer">
         <div id="gantt-chart"></div>
@@ -3943,7 +3939,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <!-- DAGLIG PLAN -->
 <section class="page active" id="page-plan">
-  <div class="slog" id="sync-log"></div>
+  <!-- Synk-loggen (<div class="slog" id="sync-log">) er fjernet 05-09-2026 sammen
+       med JobTread-synkknapperne i Indstillinger — den blev udelukkende fyldt af
+       syncNow/syncPhonesNow/jtImportNow, som ikke findes længere. -->
   <div class="stats" id="stats"></div>
   <div class="page-head">
     <div>
@@ -4193,15 +4191,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Startdato</label><input id="gt-start" type="date" class="input"></div>
       <div class="form-group"><label class="form-label">Slutdato</label><input id="gt-end" type="date" class="input"></div>
     </div>
-    <div class="form-group"><label class="form-label">Afhænger af <span class="opt-tag">valgfrit — starter først når denne er færdig</span></label><select id="gt-depends" class="select"><option value="">— Ingen —</option></select></div>
+    <!-- "Afhænger af" er fjernet 05-09-2026: afhængigheder mellem opgaver var et
+         rent JobTread-begreb. Sagens egne opgaver (POST /api/projects/:id/tasks)
+         kender dem ikke, så feltet ville have set ud som om det gjorde noget,
+         uden at gøre det. -->
     <div class="modal-actions">
       <button class="btn" id="gantt-task-cancel">Annuller</button>
-      <button class="btn primary" id="gantt-task-save">Opret i JobTread</button>
+      <button class="btn primary" id="gantt-task-save">Opret opgave</button>
     </div>
   </div>
 </div>
 
-<!-- GANTT-OPGAVE DETALJER (fra JobTread, redigerbar) -->
+<!-- GANTT-OPGAVE DETALJER — en opgave på en af appens egne sager, redigerbar -->
 <div class="mo" id="gantt-detail-modal">
   <div class="modal gd-modal" style="max-width:580px">
     <div class="gd-head">
@@ -4221,11 +4222,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="gd-email" class="gd-info-value"></div></div>
         <div><div class="gd-info-label">📍 Adresse</div><div id="gd-address" class="gd-info-value"></div></div>
       </div>
-      <div id="gd-desc-wrap" style="display:none;margin-top:14px"><div class="gd-info-label">Beskrivelse (fra JobTread)</div><div id="gd-desc" class="gd-info-value" style="white-space:pre-wrap"></div></div>
+      <div id="gd-desc-wrap" style="display:none;margin-top:14px"><div class="gd-info-label">Beskrivelse</div><div id="gd-desc" class="gd-info-value" style="white-space:pre-wrap"></div></div>
     </div>
     <div class="modal-actions">
       <button class="btn" id="gantt-detail-close">Luk</button>
-      <a class="btn" id="gd-jt-link" href="#" target="_blank" rel="noopener">Åbn i JobTread ↗</a>
+      <!-- Afløser den tidligere "Åbn i JobTread ↗": springer nu til sagens egen
+           detaljeside i appen (openProjectDetail), som er der alt om sagen står. -->
+      <button class="btn" id="gd-open-project">Åbn sagen ↗</button>
       <button class="btn primary" id="gd-save-btn">Gem ændringer</button>
     </div>
   </div>
@@ -4514,7 +4517,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div class="page-head" style="margin-top:26px">
-    <div><div class="page-title">🛠 Systemlog</div><div class="page-sub">Alt der kører automatisk i baggrunden — JobTread-synk hver time, notifikationsscan m.fl. En "info"-linje hver time betyder bare at scanneren kørte og ikke fandt noget at reagere på; det er ikke en fejl.</div></div>
+    <div><div class="page-title">🛠 Systemlog</div><div class="page-sub">Alt der kører automatisk i baggrunden — geokodning af adresser hver time, notifikationsscan m.fl. En "info"-linje hver time betyder bare at scanneren kørte og ikke fandt noget at reagere på; det er ikke en fejl.</div></div>
     <div class="filter-row" id="system-log-filters">
       <button class="chip active" data-action="system-log-filter" data-value="all">Alle</button>
       <button class="chip" data-action="system-log-filter" data-value="error">✕ Kun fejl</button>
@@ -5132,8 +5135,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div id="assign-info" class="assign-info-box"></div>
     <div id="assign-geo-hint" class="geo-hint" style="display:none"></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">📍 Adresse <span class="opt-tag">ret hvis JobTread har forkert/mangler</span></label><input id="assign-address" class="input" placeholder="Gade, postnr, by"></div>
-      <div class="form-group"><label class="form-label">📞 Kundetelefon <span class="opt-tag">ret hvis JobTread har forkert/mangler</span></label><input id="assign-phone" class="input" placeholder="Fx 12 34 56 78"></div>
+      <div class="form-group"><label class="form-label">📍 Adresse <span class="opt-tag">ret hvis den mangler/er forkert</span></label><input id="assign-address" class="input" placeholder="Gade, postnr, by"></div>
+      <div class="form-group"><label class="form-label">📞 Kundetelefon <span class="opt-tag">ret hvis den mangler/er forkert</span></label><input id="assign-phone" class="input" placeholder="Fx 12 34 56 78"></div>
     </div>
     <div class="form-group" id="assign-status-wrap">
       <label class="form-label">Status</label>
@@ -6024,16 +6027,21 @@ function taskCard(t,scope){
     (contact?'<div class="task-contact">'+contact+'</div>':'')+
     '<div class="task-meta">'+
       '<span class="badge '+esc(t.type_guess||'other')+'" style="background:'+(type.bar||'#94A3B8')+'22;color:'+(type.bar||'#94A3B8')+'">'+type.label+'</span>'+
-      '<span class="tag'+(t.source==='manual'||t.source==='project'?' manual':'')+'">'+(t.source==='project'?'📁 Sag':(t.source==='manual'?'Manuel':'JT'))+'</span>'+
+      // "Ekstern" dækker gamle sager der stammer fra den tidligere JobTread-synk
+      // (kun de få der stadig har historik hængende på sig — resten er ryddet op i
+      // 05-09-2026) — der oprettes aldrig flere af den slags fremover.
+      '<span class="tag'+(t.source==='manual'||t.source==='project'?' manual':'')+'">'+(t.source==='project'?'📁 Sag':(t.source==='manual'?'Manuel':'Ekstern'))+'</span>'+
       (t.job_number?'<span class="tag" title="Sagsnummer">#'+esc(t.job_number)+'</span>':'')+
       (t.is_visit?'<span class="tag" style="background:#FEF3C7;color:#92400E">📅 Besøg</span>':'')+
       (planned?'<span class="tag">✓ '+t.assignment_count+'×</span>':'')+
-      '<span class="muted-sm" title="JobTread opstart/slut-dato">📅 '+esc((t.start_date||'—').slice(0,10))+(t.end_date&&t.end_date.slice(0,10)!==(t.start_date||'').slice(0,10)?' – '+esc(t.end_date.slice(0,10)):'')+'</span>'+
+      '<span class="muted-sm" title="Planlagt start/slut-dato">📅 '+esc((t.start_date||'—').slice(0,10))+(t.end_date&&t.end_date.slice(0,10)!==(t.start_date||'').slice(0,10)?' – '+esc(t.end_date.slice(0,10)):'')+'</span>'+
     '</div>'+capacityHint+
     (t.is_visit?'<button class="btn small" style="width:100%;margin-top:6px" data-action="open-visit-form" data-task-id="'+esc(t.id)+'">📋 Besøgsformular</button>':'')+
     '<button class="btn small" style="width:100%;margin-top:4px" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjekpunkter</button>'+
     (t.project_id?'<button class="btn small" style="width:100%;margin-top:4px" data-action="pool-open-project" data-project-id="'+esc(t.project_id)+'">🔗 Åbn sagen</button>':'')+
-    (t.job_id?'<a class="btn small" style="width:100%;margin-top:4px;display:block;text-align:center;text-decoration:none;background:#EFF6FF;color:#1D4ED8" href="https://app.jobtread.com/jobs/'+esc(t.job_id)+'/documents" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧾 Add Invoice</a>':'')+
+    // "🧾 Add Invoice" (link til JobTreads fakturaside for sagen) fjernet 05-09-2026
+    // — t.job_id er kun sat på de sidste, historiske JobTread-rækker, og der er
+    // ikke længere noget i JobTread at oprette en faktura imod for dem.
     '</article>';
 }
 // Markér alle dagens bookinger for en opgave som færdige direkte fra Opgavepoolen,
@@ -6942,25 +6950,27 @@ function openCapacityModal(opts){
   document.getElementById('capacity-note').value=b&&b.notes||'';
   document.getElementById('delete-capacity').classList.toggle('hidden',!b);
   // FEJL RETTET: her stod tidligere kun den uge reservationen var trukket til — uden
-  // nogen reference til opgavens FAKTISKE planlagte dato i JobTread. Så en kollega der
-  // åbnede en gammel reservation, havde ingen måde at se om ugen stadig var korrekt.
-  // Viser nu tydeligt JobTread-datoen med en knap til at rette det med ét klik.
+  // nogen reference til opgavens egen planlagte dato. Så en kollega der åbnede en
+  // gammel reservation, havde ingen måde at se om ugen stadig var korrekt.
+  // Viser nu tydeligt opgavens planlagte dato med en knap til at rette det med ét
+  // klik. (Kaldes stadig jt*/jtHint internt af historiske årsager — logikken kigger
+  // bare på opgavens eget start_date, uanset hvor opgaven stammer fra.)
   var jtHint=document.getElementById('capacity-jt-date-hint');
   var jtDate=t&&t.start_date?String(t.start_date).slice(0,10):null;
   var jtWeekVal=jtDate?iso(mon(date(jtDate))):null;
   if(jtWeekVal&&jtWeekVal!==weekVal){
     jtHint.style.display='flex';
-    jtHint.innerHTML='<span>📅 JobTread siger denne opgave starter <strong>'+esc(jtDate.slice(8,10)+'/'+jtDate.slice(5,7)+'-'+jtDate.slice(0,4))+'</strong> — reservationen står til en anden uge.</span><button type="button" class="btn small" id="capacity-use-jt-date">Brug JobTread-uge</button>';
+    jtHint.innerHTML='<span>📅 Opgaven er planlagt til at starte <strong>'+esc(jtDate.slice(8,10)+'/'+jtDate.slice(5,7)+'-'+jtDate.slice(0,4))+'</strong> — reservationen står til en anden uge.</span><button type="button" class="btn small" id="capacity-use-jt-date">Brug den planlagte uge</button>';
     document.getElementById('capacity-use-jt-date').onclick=function(){document.getElementById('capacity-week').value=jtWeekVal;jtHint.style.display='none';};
   }else{
     jtHint.style.display='none';
   }
-  // Viser altid JobTreads opstart/slut-dato for opgaven her (uanset om ugen matcher),
-  // så man hurtigt kan analysere opgaven uden at skulle slå den op andetsteds.
+  // Viser altid opgavens planlagte start/slut-dato her (uanset om ugen matcher), så
+  // man hurtigt kan analysere opgaven uden at skulle slå den op andetsteds.
   var jtInfo=document.getElementById('capacity-jt-date-info');
   if(t&&(t.start_date||t.end_date)){
     jtInfo.style.display='block';
-    jtInfo.textContent='📅 JobTread: '+(t.start_date?String(t.start_date).slice(0,10):'?')+' – '+(t.end_date?String(t.end_date).slice(0,10):(t.start_date?String(t.start_date).slice(0,10):'?'));
+    jtInfo.textContent='📅 Planlagt: '+(t.start_date?String(t.start_date).slice(0,10):'?')+' – '+(t.end_date?String(t.end_date).slice(0,10):(t.start_date?String(t.start_date).slice(0,10):'?'));
   }else{
     jtInfo.style.display='none';
   }
@@ -7865,66 +7875,10 @@ async function saveManual(){
   else if(r)toast(r.error||'Fejl','❌');
 }
 
-// SYNC
-async function syncNow(){
-  var b=document.getElementById('sync-btn');b.disabled=true;b.textContent='⏳ Synker';
-  var log=document.getElementById('sync-log');log.classList.add('show');log.innerHTML='';
-  function addLog(m,c){var d=document.createElement('div');d.className=c||'info';d.textContent='['+new Date().toLocaleTimeString('da-DK')+'] '+m;log.appendChild(d);}
-  addLog('Importerer kun Task-data fra JobTread. Ingen bookinger ændres.','info');
-  var r=await api('/api/sync',{method:'POST'});
-  if(r&&r.ok){addLog(r.count+' Tasks opdateret. Din plan er urørt.','ok');document.getElementById('sync-ind').textContent='Synket '+new Date().toLocaleTimeString('da-DK');toast('Synk færdig ✅');}
-  else addLog((r&&r.error)||'Synk fejlede','err');
-  b.disabled=false;b.textContent='⚡ Synk JT';
-  await loadAll();
-}
-async function syncPhonesNow(){
-  var b=document.getElementById('sync-phones-btn');b.disabled=true;b.textContent='⏳ Henter…';
-  var log=document.getElementById('sync-log');log.classList.add('show');
-  function addLog(m,c){var d=document.createElement('div');d.className=c||'info';d.textContent='['+new Date().toLocaleTimeString('da-DK')+'] '+m;log.appendChild(d);}
-  addLog('Henter kundetelefoner fra JobTread i små sider. Vejr/adresser opdateres bagefter i baggrunden og forsinker ikke telefonerne.','info');
-  var r=await api('/api/sync-phones',{method:'POST'});
-  if(r&&r.ok){
-    addLog('Færdig: '+r.found+' JobTread-sager med telefon, '+r.updated+' opgaver opdateret. Gennemgået '+r.jobs_scanned+' sager og '+r.contacts_scanned+' kontakter.'+(r.weather_sync_started?' Vejr-opslag fortsætter i baggrunden.':'') ,'ok');
-    toast(r.updated+' opgaver med telefon ✅');
-    await loadAll();
-  } else {
-    addLog('Fejlede: '+((r&&r.error)||'Ukendt fejl — se konsollen (F12) for detaljer'),'err');
-    toast('Opslag fejlede — se loggen','❌');
-    console.error('Phone sync failed:',r);
-  }
-  b.disabled=false;b.textContent='📞 Synk telefon & vejr';
-}
-// "📥 Hent nye sager" — henter de JobTread-sager der rent faktisk er planlagt
-// (har opgaver i JobTreads kalender) ind som rigtige sager under Projekter, med
-// et internt tilbud der allerede står som accepteret + sagens tidsplan. Trygt at
-// trykke på igen og igen: sager der er hentet før springes over server-side.
-async function jtImportNow(){
-  var b=document.getElementById('jt-import-btn');b.disabled=true;b.textContent='⏳ Henter sager…';
-  var log=document.getElementById('sync-log');log.classList.add('show');
-  function addLog(m,c){var d=document.createElement('div');d.className=c||'info';d.textContent='['+new Date().toLocaleTimeString('da-DK')+'] '+m;log.appendChild(d);}
-  addLog('Henter planlagte JobTread-sager ind i Projekter. Allerede importerede sager springes over.','info');
-  var r=await api('/api/admin/jobtread-import',{method:'POST'});
-  if(r&&r.ok){
-    var msg=r.created+' nye sager oprettet, '+r.skipped+' sprunget over (allerede importeret)'+(r.failed&&r.failed.length?', '+r.failed.length+' fejlede':'');
-    addLog(msg+'. '+r.found+' planlagte sager fundet i JobTread.',r.failed&&r.failed.length?'err':'ok');
-    if(r.without_dates)addLog(r.without_dates+' sag(er) fik ingen tidsplan — deres opgaver i JobTread mangler datoer.','info');
-    if(r.failed&&r.failed.length){
-      r.failed.forEach(function(f){addLog('Fejlede: '+(f.name||'Ukendt sag')+' — '+(f.error||'ukendt fejl'),'err');});
-      console.error('JobTread-sagsimport, fejlede sager:',r.failed);
-    }
-    toast(msg,r.failed&&r.failed.length?'⚠️':'✅');
-    // Projekter-listen skal vise de nye sager med det samme. renderPjProjects()
-    // kaldes kun hvis Projekter-siden er initialiseret (dens filtre findes først
-    // efter første besøg) — ellers hentes de bare ved næste sidevisning.
-    await loadPjProjects();
-    if(typeof pjInitialized!=='undefined'&&pjInitialized)renderPjProjects();
-  } else {
-    addLog('Import fejlede: '+((r&&r.error)||'Ukendt fejl — se konsollen (F12) for detaljer'),'err');
-    toast((r&&r.error)||'Import fejlede — se loggen','❌');
-    console.error('JobTread project import failed:',r);
-  }
-  b.disabled=false;b.textContent='📥 Hent nye sager';
-}
+// JOBTREAD-SYNKHANDLERS FJERNET 05-09-2026 — syncNow(), syncPhonesNow() og
+// jtImportNow() er slettet sammen med knapperne i Indstillinger → Synk & import.
+// Se server.js (/api/sync, /api/sync-phones, /api/admin/jobtread-import), hvor
+// ruterne er kommenteret ud, hvis noget af det nogensinde skal genaktiveres.
 async function clearPlan(){
   if(!await gmConfirm('Ryd ALLE bookinger? Opgavepoolen bevares.'))return;
   var r=await api('/api/plan',{method:'DELETE'});
@@ -7932,112 +7886,129 @@ async function clearPlan(){
 }
 
 // LEDIGHEDSOVERSIGT
-// GANTT — 1:1 med et JobTread-job (eller "Se alle opgaver" på tværs af alle sager)
-var ganttState={jobId:null,jobName:'',tasks:[],dayWidth:32,rangeStart:null,rangeDays:60,allMode:false};
-var ganttAllJobs=[],ganttGroupBy='none';
+// GANTT — 1:1 med ÉN af appens egne sager (eller "Se alle opgaver" på tværs af
+// alle sager). Kørte indtil 05-09-2026 på JobTread-jobs med to-vejs live-synk;
+// kører nu udelukkende på Projekter-data:
+//   vælger   → GET  /api/gantt/projects
+//   én sag   → GET  /api/projects/:id  (bruger svarets .tasks)
+//   alle     → GET  /api/gantt/all-tasks
+//   opret    → POST /api/projects/:id/tasks
+//   redigér  → PUT  /api/projects/:id/tasks/:taskId
+// Bemærk at BEGGE skrive-ruter kræver sagens id i URL'en. I "alle opgaver"-
+// visningen findes der ingen "nuværende sag", så id'et slås op PR. OPGAVE via
+// ganttProjectIdForTask() — se den funktion, det er stedet hvor en fejl ville
+// kunne gemme en rettelse på den forkerte sag.
+var ganttState={projectId:null,projectName:'',project:null,tasks:[],dayWidth:32,rangeStart:null,rangeDays:60,allMode:false};
+var ganttAllProjects=[],ganttGroupBy='none';
 async function initGanttPage(){
   document.getElementById('gantt-job-picker').style.display='block';
   document.getElementById('gantt-board-wrap').style.display='none';
   var input=document.getElementById('gantt-job-search');
   input.value='';
-  input.oninput=renderGanttJobList;
-  document.getElementById('gantt-group-by').onchange=function(e){ganttGroupBy=e.target.value;renderGanttJobList();};
+  input.oninput=renderGanttProjectList;
+  document.getElementById('gantt-group-by').onchange=function(e){ganttGroupBy=e.target.value;renderGanttProjectList();};
   document.getElementById('gantt-job-results').innerHTML='<p class="muted-sm">Henter sager…</p>';
-  var r=await api('/api/gantt/jobs');
-  ganttAllJobs=r||[];
-  renderGanttJobList();
+  var r=await api('/api/gantt/projects');
+  ganttAllProjects=Array.isArray(r)?r:[];
+  renderGanttProjectList();
 }
-var TRADE_LABELS={lay:'Gulvlægning',sand:'Gulvslibning',paint:'Malerservice',sub:'Underleverandør',other:'Andet / ukendt'};
-function renderGanttJobList(){
+// (TRADE_LABELS er fjernet 05-09-2026 — den blev kun brugt af "Gruppér:
+// Faggruppe" i sagsvælgeren, som er udgået sammen med JobTread-fagfeltet.)
+function renderGanttProjectList(){
   var q=document.getElementById('gantt-job-search').value.trim().toLowerCase();
   var el=document.getElementById('gantt-job-results');
-  var list=ganttAllJobs;
-  if(q)list=list.filter(function(j){return ((j.job_name||'')+' '+(j.job_number||'')+' '+(j.job_address||'')).toLowerCase().indexOf(q)>-1;});
-  if(!list.length){el.innerHTML='<p class="muted-sm">Ingen sager matcher.</p>';return;}
+  var list=ganttAllProjects;
+  if(q)list=list.filter(function(p){return ((p.name||'')+' '+(p.job_number||'')+' '+(p.customer_address||'')).toLowerCase().indexOf(q)>-1;});
+  if(!list.length){el.innerHTML='<p class="muted-sm">'+(ganttAllProjects.length?'Ingen sager matcher.':'Der er ingen sager endnu — opret en sag under Projekter først.')+'</p>';return;}
 
-  function cardHtml(j){
-    // "📁 Projekt"-badge — sat når sagen (via sagsnummer) også findes i den
-    // lokale Projekter-liste (se LEFT JOIN i /api/gantt/jobs). Rent visuelt:
-    // skjuler IKKE andre JobTread-sager, se kommentaren ved serverens route.
-    return '<div class="gantt-job-result" data-job-id="'+esc(j.job_id)+'" data-job-name="'+esc(j.job_name||'')+'">'+
-      '<strong>'+esc(j.job_name||'Uden navn')+'</strong>'+(j.job_number?' <span class="muted-sm">#'+esc(j.job_number)+'</span>':'')+
-      (j.project_id?' <span class="muted-sm" title="Findes også i Projekter-listen">📁 Projekt</span>':'')+
-      '<div class="muted-sm">'+(j.task_count||0)+' opgave'+(j.task_count!==1?'r':'')+(j.job_address?' · '+esc(j.job_address):'')+'</div>'+
+  function cardHtml(p){
+    // Ingen "📁 Projekt"-badge længere: HVER række her ER en sag fra Projekter,
+    // så badgen ville stå på alt og fortælle ingenting. Antal opgaver er det
+    // tal der reelt siger noget — 0 betyder "sagen har ingen tidsplan endnu".
+    return '<div class="gantt-job-result" data-project-id="'+esc(String(p.id))+'" data-project-name="'+esc(p.name||'')+'">'+
+      '<strong>'+esc(p.name||'Uden navn')+'</strong>'+(p.job_number?' <span class="muted-sm">#'+esc(p.job_number)+'</span>':'')+
+      '<div class="muted-sm">'+(p.task_count||0)+' opgave'+(p.task_count!==1?'r':'')+(p.customer_address?' · '+esc(p.customer_address):'')+'</div>'+
       '</div>';
   }
 
   var html='';
-  if(ganttGroupBy==='trade'){
-    var groups={};
-    list.forEach(function(j){var k=j.trade||'other';(groups[k]=groups[k]||[]).push(j);});
-    Object.keys(groups).sort(function(a,b){return (TRADE_LABELS[a]||a).localeCompare(TRADE_LABELS[b]||b,'da');}).forEach(function(k){
-      html+='<div class="gantt-job-group-header">'+(TRADE_LABELS[k]||k)+' ('+groups[k].length+')</div>';
-      groups[k].sort(function(a,b){return (a.job_name||'').localeCompare(b.job_name||'','da');}).forEach(function(j){html+=cardHtml(j);});
-    });
-  }else if(ganttGroupBy==='letter'){
+  if(ganttGroupBy==='letter'){
     var groups2={};
-    list.forEach(function(j){var k=(j.job_name||'#').trim().charAt(0).toUpperCase()||'#';(groups2[k]=groups2[k]||[]).push(j);});
+    list.forEach(function(p){var k=(p.name||'#').trim().charAt(0).toUpperCase()||'#';(groups2[k]=groups2[k]||[]).push(p);});
     Object.keys(groups2).sort().forEach(function(k){
       html+='<div class="gantt-job-group-header">'+k+'</div>';
-      groups2[k].sort(function(a,b){return (a.job_name||'').localeCompare(b.job_name||'','da');}).forEach(function(j){html+=cardHtml(j);});
+      groups2[k].sort(function(a,b){return (a.name||'').localeCompare(b.name||'','da');}).forEach(function(p){html+=cardHtml(p);});
     });
   }else{
-    list.slice().sort(function(a,b){return (a.job_name||'').localeCompare(b.job_name||'','da');}).forEach(function(j){html+=cardHtml(j);});
+    // Ingen gruppering: behold serverens rækkefølge (sager MED tidsplan først,
+    // derefter alfabetisk) — det er dem man er her efter.
+    list.forEach(function(p){html+=cardHtml(p);});
   }
   el.innerHTML=html;
   el.querySelectorAll('.gantt-job-result').forEach(function(row){
-    row.onclick=function(){openGanttJob(row.dataset.jobId,row.dataset.jobName);};
+    row.onclick=function(){openGanttProject(row.dataset.projectId,row.dataset.projectName);};
   });
 }
-async function openGanttJob(jobId,jobName){
-  ganttState.jobId=jobId;ganttState.jobName=jobName;ganttState.allMode=false;
-  document.getElementById('gantt-job-title').textContent=jobName;
+// Åbner ÉN sags tidsplan. Bruger den almindelige sags-rute — nøjagtig samme
+// data som sags-Gantt'et på sagsdetaljesiden, så de to visninger aldrig kan
+// komme til at vise hver sit.
+async function openGanttProject(projectId,projectName){
+  ganttState.projectId=projectId?String(projectId):null;
+  ganttState.projectName=projectName||'';
+  ganttState.project=null;ganttState.allMode=false;
+  document.getElementById('gantt-job-title').textContent=projectName||'';
   document.getElementById('gantt-add-task-btn').style.display='';
   document.getElementById('gantt-all-filters').style.display='none';
   document.getElementById('gantt-job-picker').style.display='none';
   document.getElementById('gantt-board-wrap').style.display='block';
-  document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter fra JobTread…</p>';
-  var r=await api('/api/gantt/job/'+encodeURIComponent(jobId));
-  if(!r||r.error){toast((r&&r.error)||'Kunne ikke hente jobbet','❌');document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Kunne ikke hente data.</p>';return;}
-  ganttState.tasks=r;
+  document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter sagens tidsplan…</p>';
+  var r=await api('/api/projects/'+encodeURIComponent(ganttState.projectId));
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke hente sagen','❌');document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Kunne ikke hente data.</p>';return;}
+  // Selve sagen gemmes med, så opgave-detaljevinduet kan vise kundens telefon/
+  // mail/adresse — de står på SAGEN, ikke på den enkelte opgave.
+  ganttState.project=r;
+  ganttState.projectName=r.name||projectName||'';
+  document.getElementById('gantt-job-title').textContent=ganttState.projectName+(r.job_number?' · #'+r.job_number:'');
+  ganttState.tasks=Array.isArray(r.tasks)?r.tasks:[];
   renderGanttChart();
 }
 async function openGanttAllTasks(){
-  ganttState.jobId=null;ganttState.jobName='Alle opgaver';ganttState.allMode=true;
+  ganttState.projectId=null;ganttState.projectName='Alle opgaver';ganttState.project=null;ganttState.allMode=true;
   document.getElementById('gantt-job-title').textContent='📊 Alle opgaver (alle sager)';
   document.getElementById('gantt-add-task-btn').style.display='none';
   document.getElementById('gantt-all-filters').style.display='flex';
   document.getElementById('gantt-job-picker').style.display='none';
   document.getElementById('gantt-board-wrap').style.display='block';
-  document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter (kan tage lidt tid første gang — henter hele organisationen fra JobTread)…</p>';
+  document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter opgaver på tværs af alle sager…</p>';
   var r=await api('/api/gantt/all-tasks');
-  if(!r){toast('Kunne ikke hente opgaverne','❌');return;}
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke hente opgaverne','❌');document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Kunne ikke hente data.</p>';return;}
   ganttState.tasks=r.tasks||[];
-  renderGanttSyncFreshness(r.lastSyncedAt);
   renderGanttChart();
 }
-var ganttLastSyncedAt=null;
-function renderGanttSyncFreshness(lastSyncedAt){
-  if(lastSyncedAt!==undefined)ganttLastSyncedAt=lastSyncedAt;
-  var el=document.getElementById('gantt-sync-freshness');
-  if(!el)return;
-  if(!ganttLastSyncedAt){el.textContent='Aldrig synkroniseret endnu';el.style.color='#B91C1C';return;}
-  var mins=Math.round((Date.now()-new Date(ganttLastSyncedAt).getTime())/60000);
-  var label=mins<1?'lige nu':mins<60?mins+' min. siden':mins<1440?Math.round(mins/60)+' t. siden':Math.round(mins/1440)+' dage siden';
-  el.textContent='Sidst hentet fra JobTread: '+label;
-  // Rødt hvis det er over 2 timer siden — så man aldrig antager data er friske, uden at se det.
-  el.style.color=mins>120?'#B91C1C':(mins>30?'#B45309':'#15803D');
+// Sagens id for EN bestemt opgave. Dette er nøglen til at rettelser i "alle
+// opgaver"-visningen havner det rigtige sted: dér er der ingen valgt sag, så
+// id'et SKAL komme fra opgaven selv (project_id følger med fra
+// /api/gantt/all-tasks og fra gantt_tasks-rækkerne i /api/projects/:id).
+// ganttState.projectId er kun en sidste udvej for én-sags-visningen.
+function ganttProjectIdForTask(taskId){
+  var t=ganttState.tasks.find(function(x){return String(x.id)===String(taskId);});
+  var pid=(t&&t.project_id!=null&&t.project_id!=='')?t.project_id:(ganttState.allMode?null:ganttState.projectId);
+  return pid!=null&&pid!==''?String(pid):null;
 }
-setInterval(function(){if(ganttLastSyncedAt)renderGanttSyncFreshness();},30000);
+function ganttTaskApiUrl(taskId){
+  var pid=ganttProjectIdForTask(taskId);
+  if(!pid)return null;
+  return '/api/projects/'+encodeURIComponent(pid)+'/tasks/'+encodeURIComponent(taskId);
+}
 var ganttAllFilters={trade:'all',period:'all',search:'',customFrom:'',customTo:''};
-var ganttExpandedJobs={};
+var ganttExpandedProjects={};
 function ganttFilteredTasks(){
   if(!ganttState.allMode)return ganttState.tasks;
   var list=ganttState.tasks;
   if(ganttAllFilters.trade!=='all')list=list.filter(function(t){return (t.type_guess||'other')===ganttAllFilters.trade;});
   if(ganttAllFilters.search.trim()){
     var q=ganttAllFilters.search.trim().toLowerCase();
-    list=list.filter(function(t){return (t.name||'').toLowerCase().indexOf(q)>-1||(t.job_name||'').toLowerCase().indexOf(q)>-1||(t.job_number||'').toLowerCase().indexOf(q)>-1;});
+    list=list.filter(function(t){return (t.name||'').toLowerCase().indexOf(q)>-1||(t.project_name||'').toLowerCase().indexOf(q)>-1||(t.job_number||'').toLowerCase().indexOf(q)>-1;});
   }
   if(ganttAllFilters.period!=='all'){
     var now=new Date(),rs,re;
@@ -8064,17 +8035,21 @@ function ganttFilteredTasks(){
 function ganttDisplayRows(){
   var filtered=ganttFilteredTasks();
   if(!ganttState.allMode)return filtered.map(function(t){return {type:'task',task:t};});
-  var byJob={};
-  filtered.forEach(function(t){(byJob[t.job_id]=byJob[t.job_id]||[]).push(t);});
+  // Grupperingsnøglen er sagens id (før: JobTread-jobbets id).
+  var byProject={};
+  filtered.forEach(function(t){var k=String(t.project_id);(byProject[k]=byProject[k]||[]).push(t);});
   var rows=[];
-  Object.keys(byJob).sort(function(a,b){return (byJob[a][0].job_name||'').localeCompare(byJob[b][0].job_name||'','da');}).forEach(function(jobId){
-    var group=byJob[jobId];
+  Object.keys(byProject).sort(function(a,b){return (byProject[a][0].project_name||'').localeCompare(byProject[b][0].project_name||'','da');}).forEach(function(projectId){
+    var group=byProject[projectId];
     var starts=group.map(function(t){return t.start_date;}).filter(Boolean);
     var ends=group.map(function(t){return t.end_date;}).filter(Boolean);
+    // En sag kan have opgaver helt uden datoer — så er der intet spænd at tegne,
+    // og gruppe-rækken springes over i stedet for at kaste på reduce() af en tom liste.
+    if(!starts.length||!ends.length)return;
     var minD=starts.reduce(function(a,b){return a<b?a:b;});
     var maxD=ends.reduce(function(a,b){return a>b?a:b;});
-    var expanded=!!ganttExpandedJobs[jobId];
-    rows.push({type:'group',jobId:jobId,jobName:group[0].job_name,jobNumber:group[0].job_number,count:group.length,start_date:minD,end_date:maxD,expanded:expanded});
+    var expanded=!!ganttExpandedProjects[projectId];
+    rows.push({type:'group',projectId:projectId,projectName:group[0].project_name,jobNumber:group[0].job_number,count:group.length,start_date:minD,end_date:maxD,expanded:expanded});
     if(expanded)group.forEach(function(t){rows.push({type:'task',task:t});});
   });
   return rows;
@@ -8120,17 +8095,17 @@ function renderGanttChart(){
 
   rows.forEach(function(row,idx){
     if(row.type==='group'){
-      listRows+='<div class="gantt-list-row is-group" data-toggle-job="'+esc(row.jobId)+'" style="cursor:pointer">'+
+      listRows+='<div class="gantt-list-row is-group" data-toggle-project="'+esc(row.projectId)+'" style="cursor:pointer">'+
         '<span class="gantt-expand-toggle">'+(row.expanded?'▾':'▸')+'</span>'+
-        '<span style="overflow:hidden;text-overflow:ellipsis">'+esc(row.jobName||'Uden navn')+(row.jobNumber?' <span class="muted-sm">#'+esc(row.jobNumber)+'</span>':'')+'</span>'+
+        '<span style="overflow:hidden;text-overflow:ellipsis">'+esc(row.projectName||'Uden navn')+(row.jobNumber?' <span class="muted-sm">#'+esc(row.jobNumber)+'</span>':'')+'</span>'+
         '<span class="muted-sm" style="margin-left:auto;flex-shrink:0">'+row.count+' opg.</span>'+
         '</div>';
       var s=date(row.start_date),e=date(row.end_date);
       var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
-      timelineRows+='<div class="gantt-row gantt-group-row" data-toggle-job="'+esc(row.jobId)+'" style="cursor:pointer">'+
+      timelineRows+='<div class="gantt-row gantt-group-row" data-toggle-project="'+esc(row.projectId)+'" style="cursor:pointer">'+
         '<div class="gantt-row-bg">'+bgCols+'</div>'+
-        '<div class="gantt-bar" data-job-id="'+esc(row.jobId)+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(row.jobName)+' — '+row.count+' opgaver — træk for at flytte hele sagen">'+
-          '<span class="gantt-bar-label">'+esc(row.jobName||'')+' ('+row.count+')</span>'+
+        '<div class="gantt-bar" data-project-id="'+esc(row.projectId)+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(row.projectName||'')+' — '+row.count+' opgaver — træk for at flytte hele sagen">'+
+          '<span class="gantt-bar-label">'+esc(row.projectName||'')+' ('+row.count+')</span>'+
         '</div>'+
       '</div>';
       return;
@@ -8215,10 +8190,10 @@ function renderGanttChart(){
   bindGanttInteractions();
 }
 function bindGanttInteractions(){
-  document.querySelectorAll('[data-toggle-job]').forEach(function(el){
+  document.querySelectorAll('[data-toggle-project]').forEach(function(el){
     el.addEventListener('click',function(){
-      var jobId=el.dataset.toggleJob;
-      ganttExpandedJobs[jobId]=!ganttExpandedJobs[jobId];
+      var projectId=el.dataset.toggleProject;
+      ganttExpandedProjects[projectId]=!ganttExpandedProjects[projectId];
       renderGanttChart();
     });
   });
@@ -8245,10 +8220,10 @@ function bindGanttInteractions(){
       h.addEventListener('mousedown',function(e){e.stopPropagation();startGanttDrag(e,bar,taskId,h.dataset.handle);});
     });
   });
-  document.querySelectorAll('.gantt-bar[data-job-id]').forEach(function(bar){
+  document.querySelectorAll('.gantt-bar[data-project-id]').forEach(function(bar){
     bar.addEventListener('mousedown',function(e){
       e.stopPropagation();
-      startGanttGroupDrag(e,bar,bar.dataset.jobId);
+      startGanttGroupDrag(e,bar,bar.dataset.projectId);
     });
   });
 }
@@ -8292,10 +8267,10 @@ function onGanttDragEnd(){
   ganttDrag=null;
 }
 var ganttGroupDrag=null;
-function startGanttGroupDrag(e,bar,jobId){
+function startGanttGroupDrag(e,bar,projectId){
   e.preventDefault();
-  var tasksInJob=ganttState.tasks.filter(function(t){return String(t.job_id||ganttState.jobId)===String(jobId);});
-  ganttGroupDrag={jobId:jobId,bar:bar,startX:e.clientX,origLeft:parseInt(bar.style.left),moved:false,taskIds:tasksInJob.map(function(t){return t.id;})};
+  var tasksInProject=ganttState.tasks.filter(function(t){return String(t.project_id!=null?t.project_id:ganttState.projectId)===String(projectId);});
+  ganttGroupDrag={projectId:projectId,bar:bar,startX:e.clientX,origLeft:parseInt(bar.style.left),moved:false,taskIds:tasksInProject.map(function(t){return t.id;})};
   document.addEventListener('mousemove',onGanttGroupDragMove);
   document.addEventListener('mouseup',onGanttGroupDragEnd);
 }
@@ -8312,7 +8287,7 @@ async function onGanttGroupDragEnd(e){
   document.removeEventListener('mouseup',onGanttGroupDragEnd);
   var g=ganttGroupDrag;ganttGroupDrag=null;
   if(!g.moved){
-    // Intet reelt træk — det var et klik. Lad det almindelige data-toggle-job
+    // Intet reelt træk — det var et klik. Lad det almindelige data-toggle-project
     // click-flow (på hele rækken) folde ud/sammen, så vi ikke toggler dobbelt.
     return;
   }
@@ -8322,48 +8297,59 @@ async function onGanttGroupDragEnd(e){
   toast('Flytter '+g.taskIds.length+' opgaver …','⏳');
   var results=await Promise.all(g.taskIds.map(function(taskId){
     var t=ganttState.tasks.find(function(x){return x.id===taskId;});
-    if(!t)return Promise.resolve(null);
+    if(!t||!t.start_date)return Promise.resolve(null);
+    var url=ganttTaskApiUrl(taskId);
+    if(!url)return Promise.resolve(null);
     var newStart=iso(add(date(t.start_date),deltaDays));
     var newEnd=iso(add(date(t.end_date||t.start_date),deltaDays));
     t.start_date=newStart;t.end_date=newEnd; // optimistisk, lokalt
-    return api('/api/gantt/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({start_date:newStart,end_date:newEnd})});
+    return api(url,{method:'PUT',body:JSON.stringify({start_date:newStart,end_date:newEnd})});
   }));
   var failed=results.filter(function(r){return !r||!r.ok;}).length;
   if(failed)toast(failed+' af '+results.length+' opgaver kunne ikke flyttes','❌');
   else toast('Hele sagen flyttet ✓','✓');
+  await ganttReload();
+}
+// Genindlæser den visning man rent faktisk står i. Samlet ét sted, så hver
+// eneste skrive-sti (træk, kant-træk, fremgang, detaljevindue, ny opgave)
+// bagefter læser sandheden fra databasen i stedet for at stole på sin egen
+// optimistiske ændring.
+async function ganttReload(){
   if(ganttState.allMode)await openGanttAllTasks();
-  else await openGanttJob(ganttState.jobId,ganttState.jobName);
+  else if(ganttState.projectId)await openGanttProject(ganttState.projectId,ganttState.projectName);
 }
 async function saveGanttTaskChange(taskId,changes){
-  var t=ganttState.tasks.find(function(x){return x.id===taskId;});
+  var url=ganttTaskApiUrl(taskId);
+  if(!url){toast('Kunne ikke finde sagen for opgaven','❌');await ganttReload();return;}
+  var t=ganttState.tasks.find(function(x){return String(x.id)===String(taskId);});
   if(t)Object.assign(t,changes);
-  renderGanttChart(); // optimistisk, mens vi venter på JobTread
-  var r=await api('/api/gantt/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify(changes)});
-  if(r&&r.ok){
-    toast('Gemt i JobTread ✓','✓');
-    // JobTread kan have rykket AFHÆNGIGE opgaver automatisk (before/after-kæder)
-    // — genhent, så de kaskade-flyttede opgaver også opdaterer sig her, i den
-    // visning vi faktisk står i (ét job eller "Alle opgaver").
-    if(ganttState.allMode)await openGanttAllTasks();
-    else await openGanttJob(ganttState.jobId,ganttState.jobName);
-  } else {
-    toast((r&&r.error)||'Kunne ikke gemme i JobTread','❌');
-    if(ganttState.allMode)await openGanttAllTasks();
-    else await openGanttJob(ganttState.jobId,ganttState.jobName);
-  }
+  renderGanttChart(); // optimistisk, mens vi venter på serveren
+  var r=await api(url,{method:'PUT',body:JSON.stringify(changes)});
+  if(r&&r.ok)toast('Gemt ✓','✓');
+  else toast((r&&r.error)||'Kunne ikke gemme','❌');
+  await ganttReload();
 }
 var ganttDetailTaskId=null;
 function openGanttTaskDetail(taskId){
   var t=ganttState.tasks.find(function(x){return x.id===taskId;});
   if(!t)return;
   ganttDetailTaskId=taskId;
-  document.getElementById('gd-job-label').textContent=(ganttState.allMode&&t.job_name)?(t.job_name+(t.job_number?' · #'+t.job_number:'')):'Opgave';
+  var projName=t.project_name||(ganttState.allMode?'':ganttState.projectName);
+  var projNumber=t.job_number||(ganttState.project?ganttState.project.job_number:null);
+  document.getElementById('gd-job-label').textContent=projName?(projName+(projNumber?' · #'+projNumber:'')):'Opgave';
   document.getElementById('gd-name-input').value=t.name||'';
   document.getElementById('gd-start-input').value=(t.start_date||'').slice(0,10);
   document.getElementById('gd-end-input').value=(t.end_date||'').slice(0,10);
   document.getElementById('gd-progress-input').value=Math.round((t.progress||0)*100);
   document.getElementById('gd-progress-pct-label').textContent=Math.round((t.progress||0)*100)+'%';
-  var phone=t.job_phone,email=t.job_email,address=t.job_address;
+  // Kontaktoplysningerne står på SAGEN, ikke på opgaven: i "alle opgaver"-
+  // visningen kommer de med pr. opgave fra /api/gantt/all-tasks, i én-sags-
+  // visningen tages de fra den sag der er hentet. job_*-felterne bagest er de
+  // gamle JobTread-kolonner på gantt_tasks — kun relevante for historiske rækker.
+  var proj=ganttState.allMode?null:ganttState.project;
+  var phone=t.customer_phone||(proj&&proj.customer_phone)||t.job_phone;
+  var email=t.customer_email||(proj&&proj.customer_email)||t.job_email;
+  var address=t.customer_address||(proj&&proj.customer_address)||t.job_address;
   document.getElementById('gd-phone').innerHTML=phone?'<a href="tel:'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
   document.getElementById('gd-email').innerHTML=email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
   document.getElementById('gd-address').innerHTML=address?esc(address):'<span class="muted-sm">Ikke registreret</span>';
@@ -8372,8 +8358,13 @@ function openGanttTaskDetail(taskId){
   else{typeBadge.style.display='none';}
   var descWrap=document.getElementById('gd-desc-wrap');
   if(t.description){descWrap.style.display='block';document.getElementById('gd-desc').textContent=t.description;}else{descWrap.style.display='none';}
-  var jobId=t.job_id||ganttState.jobId;
-  document.getElementById('gd-jt-link').href=jobId?('https://app.jobtread.com/jobs/'+encodeURIComponent(jobId)+'/schedule'):'#';
+  // "Åbn sagen ↗" peger på sagens egen detaljeside i appen (tidligere: sagens
+  // tidsplan i JobTread). Skjules helt hvis vi mod forventning ikke kan udpege
+  // sagen — bedre end en knap der ikke gør noget.
+  var openBtn=document.getElementById('gd-open-project');
+  var detailProjectId=ganttProjectIdForTask(taskId);
+  openBtn.style.display=detailProjectId?'':'none';
+  openBtn.dataset.projectId=detailProjectId||'';
   document.getElementById('gantt-detail-modal').classList.add('open');
 }
 document.addEventListener('input',function(e){
@@ -8389,47 +8380,28 @@ async function saveGanttDetailEdit(){
   };
   if(!changes.name){toast('Navn må ikke være tomt','⚠');return;}
   closeModal('gantt-detail-modal');
-  if(ganttState.allMode){
-    // I "alle opgaver"-visningen skriver vi stadig direkte til JobTread (id'et
-    // er det samme rigtige opgave-id), men genindlæser hele oversigten bagefter
-    // i stedet for kun ét jobs Gantt-kort.
-    var r=await api('/api/gantt/tasks/'+encodeURIComponent(ganttDetailTaskId),{method:'PUT',body:JSON.stringify(changes)});
-    if(r&&r.ok){toast('Gemt i JobTread ✓','✓');await openGanttAllTasks();}
-    else toast((r&&r.error)||'Kunne ikke gemme','❌');
-  }else{
-    await saveGanttTaskChange(ganttDetailTaskId,changes);
-  }
+  // Samme sti i begge visninger: saveGanttTaskChange() slår selv sagens id op
+  // pr. opgave (ganttTaskApiUrl), så en rettelse i "alle opgaver"-visningen
+  // altid rammer den sag opgaven faktisk hører til.
+  await saveGanttTaskChange(ganttDetailTaskId,changes);
 }
 function openGanttAddTask(){
   document.getElementById('gt-name').value='';
   document.getElementById('gt-start').value=iso(new Date());
   document.getElementById('gt-end').value=iso(new Date());
-  document.getElementById('gt-depends').innerHTML='<option value="">— Ingen —</option>'+ganttState.tasks.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>';}).join('');
   document.getElementById('gantt-task-modal').classList.add('open');
 }
 async function saveGanttNewTask(){
+  // "+ Ny opgave" vises kun i én-sags-visningen (knappen skjules i allMode), så
+  // sagen er altid kendt her — men vi tjekker alligevel, frem for at sende et
+  // "undefined" med i URL'en hvis det nogensinde skulle ændre sig.
+  if(!ganttState.projectId){toast('Vælg en sag først','⚠');return;}
   var name=document.getElementById('gt-name').value.trim();
   if(!name){toast('Skriv et navn','⚠');return;}
-  var body={name:name,start_date:document.getElementById('gt-start').value,end_date:document.getElementById('gt-end').value,depends_on:document.getElementById('gt-depends').value||null};
-  var r=await api('/api/gantt/job/'+encodeURIComponent(ganttState.jobId)+'/tasks',{method:'POST',body:JSON.stringify(body)});
-  if(r&&r.ok){closeModal('gantt-task-modal');toast('Oprettet i JobTread ✓','✓');await openGanttJob(ganttState.jobId,ganttState.jobName);}
+  var body={name:name,start_date:document.getElementById('gt-start').value,end_date:document.getElementById('gt-end').value};
+  var r=await api('/api/projects/'+encodeURIComponent(ganttState.projectId)+'/tasks',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){closeModal('gantt-task-modal');toast('Opgave oprettet ✓','✓');await openGanttProject(ganttState.projectId,ganttState.projectName);}
   else if(r)toast(r.error||'Fejl','❌');
-}
-async function syncGanttNow(){
-  var btn=document.getElementById('gantt-sync-btn');
-  if(ganttState.allMode){
-    btn.disabled=true;btn.textContent='⏳ Synker hele organisationen…';
-    var r2=await api('/api/gantt/sync-all',{method:'POST'});
-    if(r2&&r2.ok){toast(r2.count+' opgaver synket fra JobTread','✓');await openGanttAllTasks();}
-    else toast((r2&&r2.error)||'Synk fejlede','❌');
-    btn.disabled=false;btn.textContent='🔄 Synk med JobTread';
-    return;
-  }
-  btn.disabled=true;btn.textContent='⏳ Synker…';
-  var r=await api('/api/gantt/job/'+encodeURIComponent(ganttState.jobId)+'/sync',{method:'POST'});
-  if(r&&r.ok){toast(r.count+' opgaver synket fra JobTread','✓');await openGanttJob(ganttState.jobId,ganttState.jobName);}
-  else toast((r&&r.error)||'Synk fejlede','❌');
-  btn.disabled=false;btn.textContent='🔄 Synk med JobTread';
 }
 
 function renderAvailability(){
@@ -12365,7 +12337,7 @@ function renderPeople(){
     var actions='<button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖 Ferie/sygdom</button>';
     if(isRealAdmin)actions='<button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏ Rediger</button>'+actions+(u.can_login?'<button class="btn small" data-action="send-login-guide" data-user-id="'+u.id+'" title="Send en mail med link til at sætte egen adgangskode">🔑 Login-vejledning</button>':'');
     return '<article class="person-card"><div class="person-top">'+avatarOrInitials(u,38)+'<div><div class="person-name">'+esc(u.name)+'</div><div class="person-email">'+(u.can_login?esc(u.email):'Ingen login')+'</div><span class="role-pill">Medarbejder</span></div></div>'+
-      '<div class="person-detail">Fag: '+esc(u.trade||'Ikke sat')+'<br>Kapacitet: '+(+u.weekly_capacity||5)+' dage/uge<br>'+(u.jobtread_name?'JT: '+esc(u.jobtread_name):'')+'</div>'+
+      '<div class="person-detail">Fag: '+esc(u.trade||'Ikke sat')+'<br>Kapacitet: '+(+u.weekly_capacity||5)+' dage/uge</div>'+
       '<div class="person-actions">'+actions+'</div></article>';
   }).join('');
   Object.keys(vendors).sort().forEach(function(g){
@@ -12726,7 +12698,7 @@ function renderStats(d){
     ['Ikke planlagt',d.unassigned||0,'klik for at se dem','open'],
     ['Overskredet & uplanlagt',overdue,overdue?'⚠ kræver handling nu':'ingen — flot!','open',overdue>0],
     ['Planlagte Tasks',d.assigned||0,'har mindst én booking','planned'],
-    ['Tasks i pool',d.totalTasks||0,'JobTread + manuelle','all'],
+    ['Opgaver i pool',d.totalTasks||0,'alle opgaver i poolen','all'],
     ['Interne',d.employees||0,'medarbejdere',null],
     ['Vendors',d.vendors||0,'undergrupper',null]
   ];
@@ -13388,7 +13360,6 @@ function bind(){
   })();
   // Nav
   document.getElementById('logout-btn').onclick=logoutWithConfirm;
-  document.getElementById('sync-btn').onclick=syncNow;
   document.getElementById('book-visit-btn').onclick=openVisitBookModal;
   document.getElementById('close-checklist').onclick=function(){closeModal('checklist-modal');};
   document.getElementById('checklist-add-btn').onclick=function(){addChecklistItem('checklist-items',checklistTaskId,'checklist-new-title');};
@@ -13402,8 +13373,6 @@ function bind(){
   document.getElementById('save-visit-book').onclick=saveVisitBooking;
   document.getElementById('close-visit-form').onclick=function(){closeModal('visit-form-modal');};
   document.getElementById('save-visit-form').onclick=saveVisitForm;
-  document.getElementById('sync-phones-btn').onclick=syncPhonesNow;
-  document.getElementById('jt-import-btn').onclick=jtImportNow;
   // "Ryd alle bookinger"-knappen er fjernet fra UI (for let at trykke på ved en fejl) —
   document.getElementById('pool-bulk-clear').addEventListener('click',function(){poolSelected={};renderPool('plan');});
   document.getElementById('plan-group-toggle').addEventListener('click',function(){
@@ -13485,6 +13454,15 @@ function bind(){
   document.getElementById('gantt-all-tasks-btn').onclick=openGanttAllTasks;
   document.getElementById('gantt-detail-close').onclick=function(){closeModal('gantt-detail-modal');};
   document.getElementById('gd-save-btn').onclick=saveGanttDetailEdit;
+  // "Åbn sagen ↗" — samme adgangstjek som når man åbner en sag fra Opgavepoolen,
+  // så knappen ikke kan bruges til at komme uden om Projekter-adgangen.
+  document.getElementById('gd-open-project').onclick=function(){
+    var pid=this.dataset.projectId;
+    if(!pid)return;
+    if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');return;}
+    closeModal('gantt-detail-modal');
+    openProjectDetail(+pid);
+  };
   document.getElementById('gantt-trade-filter').onchange=function(e){ganttAllFilters.trade=e.target.value;renderGanttChart();};
   document.getElementById('gantt-period-filter').onchange=function(e){
     ganttAllFilters.period=e.target.value;
@@ -13501,7 +13479,6 @@ function bind(){
   document.getElementById('gantt-add-task-btn').onclick=openGanttAddTask;
   document.getElementById('gantt-task-cancel').onclick=function(){closeModal('gantt-task-modal');};
   document.getElementById('gantt-task-save').onclick=saveGanttNewTask;
-  document.getElementById('gantt-sync-btn').onclick=syncGanttNow;
   // Search
   ['plan-search','cap-search','timeline-search'].forEach(function(id){document.getElementById(id).addEventListener('input',function(){renderPool(id==='plan-search'?'plan':(id==='cap-search'?'capacity':'timeline'));});});
   // People
@@ -14422,7 +14399,7 @@ function renderQzProducts(){
   var q=(document.getElementById('qz-product-search').value||'').trim().toLowerCase();
   var list=qzProducts.filter(function(p){return !q||p.name.toLowerCase().indexOf(q)>-1||(p.category||'').toLowerCase().indexOf(q)>-1;});
   var body=document.getElementById('qz-products-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen produkter fundet':'Ingen produkter endnu — opret et eller importér fra JobTread')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen produkter fundet':'Ingen produkter endnu — opret det første')+'</td></tr>';return;}
   body.innerHTML=list.map(function(p){
     var cost=Number(p.cost_price),sell=Number(p.sell_price);
     var pct=qzMarginPct(cost,sell);
@@ -17875,16 +17852,8 @@ async function deleteQaTemplate(){
   if(r&&r.ok){toast('Skabelon slettet','🗑');closeModal('qa-template-modal');await loadPjQaTemplates();renderPjQaTemplates();}
 }
 
-async function importProductsFromJobtread(){
-  var btn=document.getElementById('qz-import-jt-btn');
-  btn.disabled=true;var oldTxt=btn.textContent;btn.textContent='Importerer...';
-  var r=await api('/api/products/import-from-jobtread',{method:'POST'});
-  btn.disabled=false;btn.textContent=oldTxt;
-  if(r&&r.ok){
-    toast('Importerede '+r.imported+' nye produkter ('+r.skipped+' sprunget over, '+(r.descriptions_filled||0)+' fik udfyldt beskrivelse, '+r.total_found+' fundet i alt)','✓');
-    await loadQzProducts();renderQzProducts();
-  } else toast((r&&r.error)||'Import fra JobTread fejlede','❌');
-}
+// importProductsFromJobtread() er fjernet 05-09-2026 sammen med "📥 Importér fra
+// JobTread"-knappen — se server.js for den udkommenterede rute.
 
 // ── SKABELONER — gemte linjesæt der kan indsættes i et nyt tilbud ──
 function renderQzTemplates(){
@@ -18581,7 +18550,6 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzp-delete').addEventListener('click',deleteQzProduct);
   document.getElementById('qzp-cost').addEventListener('input',updateQzpMarginPreview);
   document.getElementById('qzp-sell').addEventListener('input',updateQzpMarginPreview);
-  document.getElementById('qz-import-jt-btn').addEventListener('click',importProductsFromJobtread);
 
   document.getElementById('qz-new-template-btn').addEventListener('click',function(){openTemplateModal(null);});
   document.getElementById('qzt-cancel').addEventListener('click',function(){closeModal('qz-template-modal');});

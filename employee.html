@@ -5,25 +5,30 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Gulv Master — My Schedule</title>
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#0f2240">
+<meta name="theme-color" content="#111318">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
-:root{--navy:#0f2240;--navy2:#1c3557;--blue:#2563eb;--ice:#f4f7fc;--white:#fff;--ink:#0f1923;--muted:#5a6a7e;--ghost:#94a3b8;--border:#e2e8f0;--green:#059669;--amber:#d97706;--radius:13px;--shadow:0 2px 10px rgba(15,34,64,.08);--shadow-lg:0 16px 42px rgba(15,34,64,.22)}
+/* "Billy stil" — samme designsprog som admin.html's .bly-* system: næsten-sort
+   ink i stedet for marineblå, indigo som accentfarve, bløde grå kanter og en
+   rolig skygge-skala. Variabelnavnene (--navy, --blue osv.) er bevaret for ikke
+   at skulle røre hver eneste regel i filen — kun VÆRDIERNE er skiftet ud, så hele
+   modulet (og alle popups, som deler de samme klasser) automatisk får det nye look. */
+:root{--navy:#111318;--navy2:#1f2126;--blue:#4F46E5;--accent:#4F46E5;--accent-soft:#EEF2FF;--ice:#F7F8FA;--white:#fff;--ink:#111318;--muted:#6B7280;--ghost:#9CA3AF;--border:#E5E7EB;--green:#16A34A;--amber:#D97706;--radius:14px;--radius-pill:999px;--shadow:0 1px 3px rgba(17,19,24,.06),0 10px 26px rgba(17,19,24,.05);--shadow-lg:0 24px 64px rgba(17,19,24,.28)}
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:var(--ice);color:var(--ink)}
-.topbar{min-height:58px;background:var(--navy);color:#fff;padding:8px 16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;position:sticky;top:0;z-index:20;box-shadow:0 2px 10px rgba(0,0,0,.2)}.brand{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:750;flex-shrink:0}.logo{width:31px;height:31px;border-radius:8px;background:#2e5086;display:grid;place-items:center;flex-shrink:0}.user{display:flex;align-items:center;gap:8px;flex-shrink:0}.avatar{width:31px;height:31px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800;flex-shrink:0}.avatar-img{border-radius:50%;flex-shrink:0}.logout{border:1px solid rgba(255,255,255,.28);border-radius:7px;padding:5px 9px;background:rgba(255,255,255,.1);color:#fff;font-size:11px;cursor:pointer;white-space:nowrap}
+.topbar{min-height:58px;background:var(--navy);color:#fff;padding:8px 16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;position:sticky;top:0;z-index:20;box-shadow:0 2px 10px rgba(0,0,0,.2)}.brand{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:750;flex-shrink:0}.logo{width:31px;height:31px;border-radius:8px;background:#3730A3;display:grid;place-items:center;flex-shrink:0}.user{display:flex;align-items:center;gap:8px;flex-shrink:0}.avatar{width:31px;height:31px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800;flex-shrink:0}.avatar-img{border-radius:50%;flex-shrink:0}.logout{border:1px solid rgba(255,255,255,.28);border-radius:7px;padding:5px 9px;background:rgba(255,255,255,.1);color:#fff;font-size:11px;cursor:pointer;white-space:nowrap}
 .topbar-actions{display:flex;gap:8px;flex-wrap:wrap;order:3;flex-basis:100%}
 @media(min-width:701px){.topbar-actions{order:2;flex-basis:auto;flex:1;justify-content:center}}
 .main{max-width:800px;margin:0 auto;padding:16px}.week-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 13px}.week-title{font-weight:800;font-size:18px;color:var(--navy)}.week-sub{font-size:11px;color:var(--muted);margin-top:2px}.week-buttons{display:flex;gap:5px;align-items:center}.small-btn{border:1px solid var(--border);background:#fff;border-radius:8px;padding:7px 9px;font-weight:650;font-size:11px;cursor:pointer;color:var(--muted)}.small-btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
 .week-overview{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:15px}.day-chip{background:#fff;border:1px solid var(--border);border-radius:9px;padding:7px 3px;text-align:center;cursor:pointer}.day-chip.active{background:var(--navy);border-color:var(--navy);color:#fff}.day-chip.has{border-bottom:3px solid var(--blue)}.day-chip .d1{font-size:9px;font-weight:800;opacity:.72}.day-chip .d2{font-size:15px;font-weight:800}.day-chip .d3{font-size:9px;min-height:12px;margin-top:2px}
-.view-notice{background:#eaf1ff;border:1px solid #c7d7ff;color:#174ea6;border-radius:9px;padding:8px 10px;margin:0 0 14px;font-size:11px;font-weight:650;display:flex;align-items:center;justify-content:space-between;gap:8px}.view-notice button{border:none;background:transparent;color:#174ea6;font-weight:800;font-size:11px;cursor:pointer;text-decoration:underline}
+.view-notice{background:#EEF2FF;border:1px solid #C7D2FE;color:#4338CA;border-radius:9px;padding:8px 10px;margin:0 0 14px;font-size:11px;font-weight:650;display:flex;align-items:center;justify-content:space-between;gap:8px}.view-notice button{border:none;background:transparent;color:#4338CA;font-weight:800;font-size:11px;cursor:pointer;text-decoration:underline}
 /* Dag-sektioner i "hele ugen"-visningen: hver dag får en tydelig, klæbende overskrift
    (position:sticky), så man altid kan se hvilken dag man kigger på mens man scroller,
    samt en farvet venstrekant og luft omkring, så et dageskifte er tydeligt at få øje på. */
 .day-section{margin:0 0 26px;scroll-margin-top:calc(var(--topbar-h,58px) + 10px);border-left:3px solid var(--border);padding-left:10px}
 .day-section.today-section{border-left-color:var(--blue)}
-.day-head{display:flex;align-items:center;gap:7px;margin:0 0 10px;position:sticky;top:var(--topbar-h,58px);z-index:15;background:var(--ice);padding:8px 10px;border-radius:9px;box-shadow:0 2px 6px rgba(15,34,64,.07);border:1px solid var(--border)}
+.day-head{display:flex;align-items:center;gap:7px;margin:0 0 10px;position:sticky;top:var(--topbar-h,58px);z-index:15;background:var(--ice);padding:8px 10px;border-radius:9px;box-shadow:0 2px 6px rgba(17,19,24,.07);border:1px solid var(--border)}
 .day-name{font-size:15px;font-weight:800;color:var(--navy)}
 .day-date{font-size:12px;color:var(--muted)}
 .today{background:var(--blue);color:#fff;font-size:9px;border-radius:9px;padding:2px 7px;font-weight:800}
@@ -46,8 +51,8 @@
 .task-timeline-seg.tl-today{background:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.22)}
 .task-timeline-seg.tl-future{background:#E2E8F0}
 .task.done .task-timeline{background:#F0FDF4;border-color:#BBF7D0}
-.task.done .task-timeline-seg.tl-past,.task.done .task-timeline-seg.tl-today{background:#16A34A;box-shadow:none}.upload-bill-icon{font-size:9px;font-weight:800;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:2px 7px;white-space:nowrap;text-decoration:none;display:inline-block}.upload-bill-icon:hover{background:#FEF3C7}.untimed-divider{font-size:10px;font-weight:700;color:var(--muted);background:#F1F5F9;border:1px dashed var(--border);border-radius:8px;padding:6px 10px;margin:0 0 9px}.job-details{margin:11px 0 12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px 0;display:grid;gap:6px}.detail-line{display:flex;align-items:flex-start;gap:6px;font-size:11px;color:var(--muted);line-height:1.35}.detail-line a{color:#1d4ed8;text-decoration:none;font-weight:650}.detail-line a:hover{text-decoration:underline}.detail-line.planned{color:#475569}.weather-line{font-size:11px;color:var(--muted)}.weather-line.loading{color:var(--ghost)}.task-checklist{margin:0 0 10px}.task-checklist:empty{display:none}.task-description{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin:0 0 12px}.task-description-label{font-size:9.5px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px}.task-description-body{font-size:12.5px;color:#78350F;line-height:1.5;white-space:pre-line}.tc-title{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}.tc-item{display:flex;align-items:center;gap:8px;padding:7px 9px;background:#F8FAFC;border-radius:8px;margin-bottom:5px}.tc-item.done{background:#F0FDF4}.tc-item.done span{text-decoration:line-through;opacity:.6}.tc-item input{width:17px;height:17px;accent-color:#16A34A;flex-shrink:0}.tc-item span{font-size:12px;color:var(--navy)}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.action{border:0;border-radius:9px;padding:10px 8px;font-size:11px;font-weight:800;min-height:42px;display:flex;align-items:center;justify-content:center;gap:5px;cursor:pointer;text-decoration:none;text-align:center}.action.maps{background:#f59e0b;color:#fff}.action.note{background:#eaf1ff;color:#174ea6}.action.info{background:var(--navy);color:#fff}.action.files{background:#7c3aed;color:#fff}.action.time{background:var(--green);color:#fff}.action.qc{background:#0891b2;color:#fff}.action.rules{background:#334155;color:#fff}.action:hover{filter:brightness(.97);transform:translateY(-1px)}
+.task.done .task-timeline-seg.tl-past,.task.done .task-timeline-seg.tl-today{background:#16A34A;box-shadow:none}.case-chip{font-size:9px;font-weight:800;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:2px 7px;white-space:nowrap;text-decoration:none;display:inline-block}.untimed-divider{font-size:10px;font-weight:700;color:var(--muted);background:#F1F5F9;border:1px dashed var(--border);border-radius:8px;padding:6px 10px;margin:0 0 9px}.job-details{margin:11px 0 12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px 0;display:grid;gap:6px}.detail-line{display:flex;align-items:flex-start;gap:6px;font-size:11px;color:var(--muted);line-height:1.35}.detail-line a{color:#4F46E5;text-decoration:none;font-weight:650}.detail-line a:hover{text-decoration:underline}.detail-line.planned{color:#475569}.weather-line{font-size:11px;color:var(--muted)}.weather-line.loading{color:var(--ghost)}.task-checklist{margin:0 0 10px}.task-checklist:empty{display:none}.task-description{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin:0 0 12px}.task-description-label{font-size:9.5px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px}.task-description-body{font-size:12.5px;color:#78350F;line-height:1.5;white-space:pre-line}.tc-title{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}.tc-item{display:flex;align-items:center;gap:8px;padding:7px 9px;background:#F8FAFC;border-radius:8px;margin-bottom:5px}.tc-item.done{background:#F0FDF4}.tc-item.done span{text-decoration:line-through;opacity:.6}.tc-item input{width:17px;height:17px;accent-color:#16A34A;flex-shrink:0}.tc-item span{font-size:12px;color:var(--navy)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.action{border:0;border-radius:9px;padding:10px 8px;font-size:11px;font-weight:800;min-height:42px;display:flex;align-items:center;justify-content:center;gap:5px;cursor:pointer;text-decoration:none;text-align:center}.action.maps{background:#f59e0b;color:#fff}.action.note{background:#EEF2FF;color:#4338CA}.action.info{background:var(--navy);color:#fff}.action.files{background:#7c3aed;color:#fff}.action.time{background:var(--green);color:#fff}.action.qc{background:#0891b2;color:#fff}.action.rules{background:#334155;color:#fff}.action:hover{filter:brightness(.97);transform:translateY(-1px)}
 .empty{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:38px 20px;text-align:center;color:var(--muted)}.empty-icon{font-size:40px}.empty h3{color:var(--navy);margin:7px 0 4px;font-size:16px}.toast{position:fixed;bottom:18px;left:50%;transform:translate(-50%,80px);background:var(--navy);color:#fff;padding:10px 14px;border-radius:9px;box-shadow:var(--shadow-lg);font-size:12px;opacity:0;transition:.22s;z-index:300}.toast.show{transform:translate(-50%,0);opacity:1}
 /* TEAM & MAP — read-only "who's where" view for employees Martin has flagged
    (e.g. a foreman). Reuses the same job_lat/job_lng data as the admin route map,
@@ -66,12 +71,12 @@
 .tm-day-item .tm-time{font-weight:800;color:var(--navy)}
 .tm-day-free{color:var(--ghost);font-style:italic;font-size:11.5px}
 .tm-pin-popup{font-size:12px}.tm-pin-popup b{color:var(--navy)}
-.modal-backdrop{position:fixed;inset:0;background:rgba(15,34,64,.55);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;padding:18px;z-index:250}.modal-backdrop.open{display:flex;animation:gm-fade .18s ease}.modal{width:min(450px,100%);background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(15,34,64,.35);overflow:hidden;animation:gm-pop .22s cubic-bezier(.2,.9,.3,1.3)}.modal-head{background:var(--navy);color:#fff;padding:13px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px}.modal-title{font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px}.modal-close{border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:7px;padding:5px 8px;font-size:12px;cursor:pointer;transition:.15s}.modal-close:hover{background:rgba(255,255,255,.24)}.modal-body{padding:18px;max-height:70vh;overflow:auto}.modal-task{font-size:12px;font-weight:800;color:var(--navy);margin-bottom:9px}.modal-note{font-size:13px;line-height:1.55;color:#334155;white-space:pre-wrap;background:#f8fafc;border:1px solid var(--border);border-radius:9px;padding:12px}.modal-empty{color:var(--ghost);font-style:italic}.modal-note-link{margin-top:10px}.modal-note-link a{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#1D4ED8;text-decoration:none;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 12px}.modal-note-link a:hover{background:#DBEAFE}.modal-note-attachments{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.modal-note-att{display:block;width:76px;text-decoration:none}.modal-note-att img{width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block;cursor:zoom-in}.modal-note-att-pdf{width:76px;height:76px;border-radius:10px;border:1px solid var(--border);background:#FEF2F2;display:flex;align-items:center;justify-content:center;font-size:28px}.modal-note-att-name{display:block;font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;text-align:center}
+.modal-backdrop{position:fixed;inset:0;background:rgba(17,19,24,.55);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;padding:18px;z-index:250}.modal-backdrop.open{display:flex;animation:gm-fade .18s ease}.modal{width:min(450px,100%);background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(17,19,24,.35);overflow:hidden;animation:gm-pop .22s cubic-bezier(.2,.9,.3,1.3)}.modal-head{background:var(--navy);color:#fff;padding:13px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px}.modal-title{font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px}.modal-close{border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:7px;padding:5px 8px;font-size:12px;cursor:pointer;transition:.15s}.modal-close:hover{background:rgba(255,255,255,.24)}.modal-body{padding:18px;max-height:70vh;overflow:auto}.modal-task{font-size:12px;font-weight:800;color:var(--navy);margin-bottom:9px}.modal-note{font-size:13px;line-height:1.55;color:#334155;white-space:pre-wrap;background:#f8fafc;border:1px solid var(--border);border-radius:9px;padding:12px}.modal-empty{color:var(--ghost);font-style:italic}.modal-note-link{margin-top:10px}.modal-note-link a{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#4F46E5;text-decoration:none;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:8px;padding:8px 12px}.modal-note-link a:hover{background:#DBEAFE}.modal-note-attachments{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.modal-note-att{display:block;width:76px;text-decoration:none}.modal-note-att img{width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block;cursor:zoom-in}.modal-note-att-pdf{width:76px;height:76px;border-radius:10px;border:1px solid var(--border);background:#FEF2F2;display:flex;align-items:center;justify-content:center;font-size:28px}.modal-note-att-name{display:block;font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;text-align:center}
 @keyframes gm-fade{from{opacity:0}to{opacity:1}}
 @keyframes gm-pop{from{opacity:0;transform:scale(.94) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
-.req-head{background:linear-gradient(135deg,var(--navy),#1e3a6e)}
+.req-head{background:linear-gradient(135deg,var(--navy),#3730A3)}
 .req-icon{display:inline-grid;place-items:center;width:24px;height:24px;background:rgba(255,255,255,.18);border-radius:8px;font-size:13px}
-.req-intro{font-size:11.5px;color:var(--muted);margin:0 0 14px;line-height:1.5;background:#F8FAFC;border-left:3px solid var(--accent,#2563eb);padding:8px 10px;border-radius:0 8px 8px 0}
+.req-intro{font-size:11.5px;color:var(--muted);margin:0 0 14px;line-height:1.5;background:#F8FAFC;border-left:3px solid var(--accent,#4F46E5);padding:8px 10px;border-radius:0 8px 8px 0}
 .doc-check{display:flex;align-items:flex-start;gap:11px;padding:12px;border:1.5px solid var(--border,#E2E8F0);border-radius:10px;margin-bottom:9px;cursor:pointer;transition:.15s}
 .doc-check:has(input:checked){background:#F0FDF4;border-color:#86EFAC}
 .doc-check input{width:19px;height:19px;flex-shrink:0;margin-top:1px;accent-color:#16A34A}
@@ -89,7 +94,7 @@
 .wnote-banner{background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412;border-radius:10px;padding:10px 12px;margin:0 0 14px;font-size:12px;line-height:1.5}
 .wnote-banner b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;opacity:.85}
 .file-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:9px;margin-bottom:7px}
-.file-item a{font-size:12px;font-weight:700;color:#1d4ed8;text-decoration:none}
+.file-item a{font-size:12px;font-weight:700;color:#4F46E5;text-decoration:none}
 .file-item a:hover{text-decoration:underline}
 .file-cat{font-size:8px;font-weight:800;text-transform:uppercase;color:var(--muted);letter-spacing:.4px}
 .lib-btn{border:1px solid rgba(255,255,255,.28);border-radius:7px;padding:6px 10px;background:rgba(255,255,255,.1);color:#fff;font-size:11px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center}
@@ -97,10 +102,10 @@
 @media(max-width:480px){.week-overview{gap:3px}.day-chip{padding:5px 1px}.day-chip .d1{font-size:8px}.day-chip .d2{font-size:12px}.day-chip .d3{font-size:7px;min-height:9px}}
 .req-label{display:block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:12px 0 5px}
 .req-input,.req-textarea{width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;box-sizing:border-box;transition:.15s;background:#fcfcfd}
-.req-input:focus,.req-textarea:focus{outline:none;border-color:var(--navy);background:#fff;box-shadow:0 0 0 3px rgba(15,34,64,.08)}
+.req-input:focus,.req-textarea:focus{outline:none;border-color:var(--navy);background:#fff;box-shadow:0 0 0 3px rgba(17,19,24,.08)}
 .req-textarea{resize:vertical}
-.req-submit{width:100%;margin-top:16px;padding:12px;border:0;border-radius:10px;background:linear-gradient(135deg,var(--navy),#1e3a6e);color:#fff;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(15,34,64,.28);transition:.15s}
-.req-submit:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(15,34,64,.35)}
+.req-submit{width:100%;margin-top:16px;padding:12px;border:0;border-radius:10px;background:linear-gradient(135deg,var(--navy),#3730A3);color:#fff;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(17,19,24,.28);transition:.15s}
+.req-submit:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(17,19,24,.35)}
 .req-submit:active{transform:translateY(0)}
 .req-submit:hover{filter:brightness(1.1)}
 .req-history{margin-top:16px;border-top:1px solid var(--border);padding-top:12px}
@@ -126,16 +131,16 @@
 .rules-link-arrow{margin-left:auto;font-size:16px;color:#94A3B8;flex-shrink:0}
 .action.undone-btn{background:#F1F5F9;color:#64748B}
 @media(max-width:560px){.main{padding:12px}.user-name{display:none}.week-buttons{gap:4px}.week-buttons .small-btn{padding:7px}.task{padding:12px}.topbar{padding:8px 12px}.actions{grid-template-columns:1fr 1fr}.action{font-size:10px;padding:9px 6px}.week-nav{align-items:flex-start}.week-buttons{flex-wrap:wrap;justify-content:flex-end}.week-title{font-size:17px}}
-.task.done{background:linear-gradient(135deg,#F0FDF4,#fff)}.task{box-shadow:0 1px 2px rgba(15,34,64,.05),0 8px 20px rgba(15,34,64,.035)}.task:hover{transform:translateY(-1px)}
+.task.done{background:linear-gradient(135deg,#F0FDF4,#fff)}.task{box-shadow:0 1px 2px rgba(17,19,24,.05),0 8px 20px rgba(17,19,24,.035)}.task:hover{transform:translateY(-1px)}
 </style>
 </head>
 <body>
 <header class="topbar">
   <div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div>
-  <div class="topbar-actions"><button class="lib-btn" onclick="openFindTask()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find a task</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button><button class="lib-btn" onclick="openProjectsModal()"><span class="lib-btn-icon">🏗️</span><span class="lib-btn-label"> Projekter</span></button>
+  <div class="topbar-actions"><button class="lib-btn" onclick="openFindTask()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find a task</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">📩</span><span class="lib-btn-label"> Request a task</span></button><button class="lib-btn" onclick="openLibrary()"><span class="lib-btn-icon">📁</span><span class="lib-btn-label"> Guides</span></button><button class="lib-btn" onclick="openMyHours()"><span class="lib-btn-icon">⏱</span><span class="lib-btn-label"> Mine timer</span></button><button class="lib-btn" onclick="openProjectsModal()"><span class="lib-btn-icon">🏗️</span><span class="lib-btn-label"> Projekter</span></button>
     <div style="position:relative;display:inline-block">
       <button class="lib-btn" id="notif-bell-btn" onclick="toggleNotifDropdown()"><span class="lib-btn-icon">🔔</span><span id="notif-bell-count" style="display:none;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;margin-left:4px"></span></button>
-      <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:300px;max-height:360px;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(15,34,64,.25);z-index:500;color:#1a1a1a"></div>
+      <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:300px;max-height:360px;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(17,19,24,.25);z-index:500;color:#1a1a1a"></div>
     </div>
     <button class="lib-btn" id="push-enable-btn" style="display:none" onclick="enablePushNotifications()" title="Få besked med det samme på telefonen/pc'en når din plan bliver ændret"><span class="lib-btn-icon">📲</span><span class="lib-btn-label"> Slå notifikationer til</span></button>
     <button class="lib-btn" id="team-map-btn" style="display:none" onclick="openTeamMap()" title="See where the team is working and what everyone has on this week"><span class="lib-btn-icon">🗺️</span><span class="lib-btn-label"> Team &amp; map</span></button>
@@ -150,7 +155,7 @@
   <div id="tasks-container"><div class="empty"><div class="empty-icon">⏳</div><h3>Loading your tasks...</h3></div></div>
 </main>
 <div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div></div></div></div>
-<div id="library-modal" class="modal-backdrop" onclick="closeLibraryOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📁 Guides & floor plans</div><button class="modal-close" onclick="closeLibrary()">Close</button></div><div class="modal-body" id="library-body"></div></div></div>
+<div id="library-modal" class="modal-backdrop" onclick="closeLibraryOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📁 Guides &amp; floor plans</div><button class="modal-close" onclick="closeLibrary()">Close</button></div><div class="modal-body" id="library-body"></div></div></div>
 <!-- PROJEKTER — sager der er blevet til efter en kunde har underskrevet et
      tilbud. Herfra kan medarbejdere registrere tid (note + billede påkrævet),
      tilføje billeder til sagen, og udfylde KS-formularer. -->
@@ -158,6 +163,12 @@
   <div class="modal" style="width:min(520px,96vw)">
     <div class="modal-head"><div class="modal-title" id="pm-title">🏗️ Projekter</div><button class="modal-close" onclick="closeProjectsModal()">Close</button></div>
     <div class="modal-body" id="pm-body"></div>
+  </div>
+</div>
+<div id="my-hours-modal" class="modal-backdrop" onclick="closeMyHoursOnBackdrop(event)">
+  <div class="modal" style="width:min(560px,96vw)">
+    <div class="modal-head"><div class="modal-title">⏱ Mine timer</div><button class="modal-close" onclick="closeMyHours()">Close</button></div>
+    <div class="modal-body" id="my-hours-body" style="max-height:74vh"></div>
   </div>
 </div>
 <div id="team-map-modal" class="modal-backdrop" onclick="closeTeamMapOnBackdrop(event)">
@@ -255,8 +266,8 @@
       <label class="req-label" style="margin-top:14px">Kort note <span style="opacity:.6;font-weight:500">(valgfrit)</span></label>
       <textarea id="doc-note" class="req-textarea" rows="2" placeholder="Fx alt som forventet, ingen bemærkninger"></textarea>
       <div id="doc-feedback" class="req-feedback"></div>
-      <button type="button" class="req-submit" id="doc-confirm-btn" onclick="confirmDocumentationAndComplete()"><span class="req-submit-label">Bekræft & upload filer på sagen →</span></button>
-      <p style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0 0">Åbner JobTreads filer for denne sag i en ny fane, så du kan lægge billeder/dokumenter ind med det rigtige tag.</p>
+      <button type="button" class="req-submit" id="doc-confirm-btn" onclick="confirmDocumentationAndComplete()"><span class="req-submit-label">Bekræft & markér som færdig →</span></button>
+      <p style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0 0">Billeder og dokumenter lægges på sagen under 🏗️ Projekter — brug "⏱ Registrér tid" eller "📷 Tilføj billede" der.</p>
     </div>
   </div>
 </div>
@@ -280,14 +291,13 @@ let assignments=[],weekOffset=0,selectedDate=iso(new Date());
 const bookingNotes=new Map();
 const weatherItems=new Map();
 const weeklyNoteCache=new Map();
-const JOBTREAD_TIME_URL='https://app.jobtread.com/time';
 if(!token||!user)location.href='/';
 document.getElementById('user-name').textContent=(user.name||'').split(' ')[0]||'Employee';
 if(user.avatar_url){document.getElementById('user-avatar').innerHTML='<img class="avatar-img" src="'+user.avatar_url+'">';}
 else{
   document.getElementById('user-avatar').textContent=user.initials||(user.name||'?').split(' ').map(x=>x[0]).join('').slice(0,2);
-  document.getElementById('user-avatar').style.background=(user.color||'#2563eb')+'22';
-  document.getElementById('user-avatar').style.color=user.color||'#2563eb';
+  document.getElementById('user-avatar').style.background=(user.color||'#4F46E5')+'22';
+  document.getElementById('user-avatar').style.color=user.color||'#4F46E5';
 }
 async function loadBranding(){
   try{const r=await fetch('/api/settings');const d=await r.json();
@@ -305,7 +315,7 @@ function iso(d){var x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffse
 function getWeekDays(off){let m=monday(new Date());m.setDate(m.getDate()+off*7);return Array.from({length:7},(_,i)=>{let d=new Date(m);d.setDate(m.getDate()+i);return d})}
 function sameDay(d){let n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate()}
 function weekNumber(d){let x=new Date(d);let day=x.getDay()||7;x.setDate(x.getDate()+4-day);let y=new Date(Date.UTC(x.getFullYear(),0,1));return Math.ceil((((x-y)/86400000)+1)/7)}
-const TYPES={lay:['Flooring','#dbeafe','#1d4ed8'],sand:['Floor sanding','#dcfce7','#15803d'],paint:['Painting','#fef9c3','#92570a'],sub:['Subcontractor','#ede9fe','#5b21b6'],other:['Other','#f1f5f9','#475569']};
+const TYPES={lay:['Flooring','#dbeafe','#4F46E5'],sand:['Floor sanding','#dcfce7','#15803d'],paint:['Painting','#fef9c3','#92570a'],sub:['Subcontractor','#ede9fe','#5b21b6'],other:['Other','#f1f5f9','#475569']};
 function tasksFor(date){return assignments.filter(a=>date>=String(a.start_date).slice(0,10)&&date<=String(a.end_date||a.start_date).slice(0,10)).sort((a,b)=>{
   const ta=String(a.start_time||'').trim(),tb=String(b.start_time||'').trim();
   if(ta&&tb)return ta.localeCompare(tb);
@@ -341,7 +351,6 @@ function taskTimelineHtml(a,currentDate){
 }
 function phoneValue(a){return String(a.customer_phone||a.job_phone||a.customer_phone_number||'').trim()}
 function phoneHref(phone){return 'tel:'+String(phone||'').replace(/[^+\d]/g,'')}
-function taskLink(a){return a.jt_url||'https://app.jobtread.com'}
 function weatherKey(address,date){return 'gm-weather:'+date+':'+String(address||'').toLowerCase().trim()}
 function weatherText(code,max,min,rain){const m={0:['☀️','Clear'],1:['🌤️','Mostly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],45:['🌫️','Fog'],48:['🌫️','Rime fog'],51:['🌦️','Light drizzle'],53:['🌦️','Drizzle'],55:['🌧️','Heavy drizzle'],61:['🌦️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['❄️','Heavy snow'],80:['🌦️','Showers'],81:['🌧️','Rain showers'],82:['⛈️','Heavy showers'],95:['⛈️','Thunderstorm'],96:['⛈️','Thunderstorm with hail'],99:['⛈️','Severe thunderstorm']}[Number(code)]||['🌤️','Weather'];const temps=(Number.isFinite(Number(min))&&Number.isFinite(Number(max)))?`${Math.round(min)}–${Math.round(max)}°`:'Temperature unknown';const rainText=Number.isFinite(Number(rain))?` · ${Math.round(rain)}% rain`:'';return `${m[0]} ${m[1]} · ${temps}${rainText}`}
 function cityForWeather(address){
@@ -545,21 +554,65 @@ function pmRenderDetail(){
   const entriesHtml=myEntries.length?myEntries.map(t=>`
     <div class="file-item"><div><span class="file-cat">${esc(fmtPmDate(t.entry_date))} · ${t.minutes} min</span><br><span style="font-size:12px">${esc(t.note)}</span></div></div>
   `).join(''):'<p class="modal-empty" style="margin:8px 0;padding:14px">Du har ikke registreret tid på denne sag endnu.</p>';
+  const myMaterials=(p.materials||[]).filter(m=>+m.user_id===+user.id).slice(0,8);
+  const materialsHtml=myMaterials.length?myMaterials.map(m=>`
+    <div class="file-item"><div><span class="file-cat">${esc(fmtPmDate(m.created_at))}${m.store?' · '+esc(m.store):''}</span><br><span style="font-size:12px">${Math.round(Number(m.price)).toLocaleString('da-DK')} kr${m.note?' · '+esc(m.note):''}</span></div></div>
+  `).join(''):'<p class="modal-empty" style="margin:8px 0;padding:14px">Du har ikke registreret nogen materialer på denne sag endnu.</p>';
   body.innerHTML=`
     <button class="small-btn" onclick="pmRenderList()" style="margin-bottom:12px">← Alle projekter</button>
     ${p.customer_address?`<div class="detail-line" style="margin-bottom:10px">📍 <span>${esc(p.customer_address)}</span></div>`:''}
     <div class="actions" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
       <button class="action time" type="button" onclick="pmOpenTimeForm()">⏱ Registrér tid</button>
+      <button class="action files" type="button" onclick="pmOpenMaterialsForm()">🧾 Materialer</button>
       <button class="action files" type="button" onclick="pmOpenPhotoForm()">📷 Tilføj billede</button>
       <button class="action qc" type="button" onclick="pmOpenQaPicker()">🛡 Udfyld KS-formular</button>
       <button class="action qc" type="button" onclick="pmOpenContactPicker()">📇 Kontaktformular</button>
     </div>
     <div class="tm-section-label">Dine seneste tidsregistreringer</div>
     ${entriesHtml}
+    <div class="tm-section-label" style="margin-top:14px">Dine seneste materialer</div>
+    ${materialsHtml}
   `;
 }
+function pmOpenMaterialsForm(){
+  pmState.view='materials-form';
+  document.getElementById('pm-title').textContent='🧾 Materialer';
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>
+    <label class="req-label">Billede af regningen/fakturaen — påkrævet</label>
+    <input class="req-input" type="file" accept="image/*" capture="environment" id="pmm-photo">
+    <label class="req-label">Pris (kr.)</label>
+    <input class="req-input" type="number" step="0.01" min="0" id="pmm-price" placeholder="Fx 340">
+    <label class="req-label">Butik / leverandør</label>
+    <input class="req-input" id="pmm-store" placeholder="Fx Bilka, Silvan, XL-Byg">
+    <label class="req-label">Note — valgfrit</label>
+    <input class="req-input" id="pmm-note" placeholder="Fx 'Lim og 2 spande spartelmasse'">
+    <div id="pmm-feedback" class="req-feedback"></div>
+    <button class="req-submit" type="button" id="pmm-submit" onclick="pmSubmitMaterials()">Gem materiale</button>
+  `;
+}
+async function pmSubmitMaterials(){
+  const file=document.getElementById('pmm-photo').files[0];
+  const price=Number(document.getElementById('pmm-price').value);
+  const store=document.getElementById('pmm-store').value.trim();
+  const note=document.getElementById('pmm-note').value.trim();
+  if(!file){pmFeedback('pmm-feedback','Upload et billede af regningen/fakturaen',false);return}
+  if(!price||price<=0){pmFeedback('pmm-feedback','Angiv prisen',false);return}
+  if(!store){pmFeedback('pmm-feedback','Angiv hvilken butik/leverandør',false);return}
+  const btn=document.getElementById('pmm-submit');btn.disabled=true;btn.textContent='Gemmer…';
+  try{
+    const dataUrl=await pmReadFileAsDataUrl(file);
+    const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
+    if(!up||!up.ok){pmFeedback('pmm-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade billedet',false);btn.disabled=false;btn.textContent='Gem materiale';return}
+    const r=await api('/api/projects/'+pmState.current.id+'/materials',{method:'POST',body:JSON.stringify({price,store,note:note||null,receipt_photo_url:up.data.url})});
+    if(r&&r.ok){toast('Materiale gemt ✓');await pmOpenProject(pmState.current.id)}
+    else{pmFeedback('pmm-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem materiale'}
+  }catch(e){pmFeedback('pmm-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem materiale'}
+}
+let pmtPhotoFiles=[],pmtPhotoPreviewUrls=[];
 function pmOpenTimeForm(){
   pmState.view='time-form';
+  pmtPhotoFiles=[];pmtPhotoPreviewUrls=[];
   document.getElementById('pm-title').textContent='⏱ Registrér tid';
   const p=pmState.current;
   const lineOptions=(p.quote_line_options||[]).map(l=>`<option value="${l.id}">${esc(l.description)}</option>`).join('');
@@ -567,12 +620,17 @@ function pmOpenTimeForm(){
     <button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>
     <label class="req-label">Dato</label>
     <input class="req-input" type="date" id="pmt-date" value="${iso(new Date())}">
-    <label class="req-label">Minutter brugt</label>
-    <input class="req-input" type="number" id="pmt-minutes" min="1" placeholder="Fx 120">
+    <label class="req-label">Arbejdstid</label>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label class="req-label" style="margin:0 0 4px">Fra kl.</label><input class="req-input" type="time" id="pmt-time-from" oninput="pmUpdateTimeDuration()"></div>
+      <div style="flex:1"><label class="req-label" style="margin:0 0 4px">Til kl.</label><input class="req-input" type="time" id="pmt-time-to" oninput="pmUpdateTimeDuration()"></div>
+    </div>
+    <div id="pmt-duration-display" style="font-size:12px;font-weight:700;color:var(--muted);margin:6px 0 2px"></div>
     <label class="req-label">Note — hvad blev der lavet</label>
     <textarea class="req-textarea" id="pmt-note" rows="3" placeholder="Beskriv det udførte arbejde..."></textarea>
-    <label class="req-label">Billede — påkrævet som dokumentation</label>
-    <input class="req-input" type="file" accept="image/*" capture="environment" id="pmt-photo">
+    <label class="req-label">Billeder — mindst ét er påkrævet som dokumentation</label>
+    <div id="pmt-photos-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"></div>
+    <label class="small-btn primary" style="cursor:pointer;display:inline-flex;margin-bottom:10px">+ Tilføj billeder<input type="file" accept="image/*" capture="environment" multiple id="pmt-photo" style="display:none" onchange="pmAddTimePhoto(event)"></label>
     <label class="req-label">Post fra tilbud — valgfrit</label>
     <select class="req-input" id="pmt-line"><option value="">Ingen valgt</option>${lineOptions}</select>
     <label class="req-label">Købt materialer — valgfrit</label>
@@ -580,23 +638,76 @@ function pmOpenTimeForm(){
     <div id="pmt-feedback" class="req-feedback"></div>
     <button class="req-submit" type="button" id="pmt-submit" onclick="pmSubmitTime()">Gem tidsregistrering</button>
   `;
+  pmRenderTimePhotosPreview();
+}
+function pmAddTimePhoto(e){
+  // multiple-attributten på filfeltet betyder man nu kan vælge flere billeder på
+  // én gang i enhedens billedvælger — ikke kun tilføje ét ad gangen som før.
+  const files=e.target.files?Array.from(e.target.files):[];
+  e.target.value='';
+  if(!files.length)return;
+  files.forEach(f=>{
+    pmtPhotoFiles.push(f);
+    pmtPhotoPreviewUrls.push(URL.createObjectURL(f));
+  });
+  pmRenderTimePhotosPreview();
+}
+// Medarbejderne forstod ikke selv at regne "fra kl. til kl." om til minutter — de
+// vælger nu klokkeslæt, og antal minutter udregnes automatisk herfra.
+function pmComputeTimeMinutes(){
+  const fromV=document.getElementById('pmt-time-from')?.value;
+  const toV=document.getElementById('pmt-time-to')?.value;
+  if(!fromV||!toV)return null;
+  const[fh,fm]=fromV.split(':').map(Number),[th,tm]=toV.split(':').map(Number);
+  let mins=(th*60+tm)-(fh*60+fm);
+  if(mins<=0)return null; // "til" skal være senere end "fra" samme dag
+  return mins;
+}
+function pmUpdateTimeDuration(){
+  const disp=document.getElementById('pmt-duration-display');
+  if(!disp)return;
+  const mins=pmComputeTimeMinutes();
+  const fromV=document.getElementById('pmt-time-from')?.value;
+  const toV=document.getElementById('pmt-time-to')?.value;
+  if(mins===null){
+    disp.textContent=(fromV&&toV)?'⚠️ "Til" skal være efter "Fra"':'';
+    disp.style.color=(fromV&&toV)?'#DC2626':'var(--muted)';
+    return;
+  }
+  const h=Math.floor(mins/60),m=mins%60;
+  disp.textContent='= '+(h?h+' t ':'')+(m||!h?m+' min':'').trim();
+  disp.style.color='var(--muted)';
+}
+function pmRemoveTimePhoto(i){
+  pmtPhotoFiles.splice(i,1);
+  pmtPhotoPreviewUrls.splice(i,1);
+  pmRenderTimePhotosPreview();
+}
+function pmRenderTimePhotosPreview(){
+  const box=document.getElementById('pmt-photos-preview');
+  if(!box)return;
+  if(!pmtPhotoFiles.length){box.innerHTML='<span class="sub">Ingen billeder endnu</span>';return}
+  box.innerHTML=pmtPhotoPreviewUrls.map((u,i)=>`<div style="position:relative"><img src="${u}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"><button type="button" onclick="pmRemoveTimePhoto(${i})" style="position:absolute;top:-6px;right:-6px;background:rgba(17,19,24,.8);color:#fff;border:0;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer">✕</button></div>`).join('');
 }
 async function pmSubmitTime(){
-  const minutes=Number(document.getElementById('pmt-minutes').value);
+  const minutes=pmComputeTimeMinutes();
   const note=document.getElementById('pmt-note').value.trim();
-  const file=document.getElementById('pmt-photo').files[0];
   const date=document.getElementById('pmt-date').value;
   const lineId=document.getElementById('pmt-line').value;
   const materials=document.getElementById('pmt-materials').value.trim();
-  if(!minutes||minutes<=0){pmFeedback('pmt-feedback','Angiv hvor mange minutter der er brugt',false);return}
+  if(!minutes){pmFeedback('pmt-feedback','Udfyld "Fra kl." og "Til kl." — til skal være efter fra',false);return}
   if(!note){pmFeedback('pmt-feedback','Skriv en note om det udførte arbejde',false);return}
-  if(!file){pmFeedback('pmt-feedback','Upload et billede som dokumentation',false);return}
+  if(!pmtPhotoFiles.length){pmFeedback('pmt-feedback','Upload mindst ét billede som dokumentation',false);return}
   const btn=document.getElementById('pmt-submit');btn.disabled=true;btn.textContent='Gemmer…';
   try{
-    const dataUrl=await pmReadFileAsDataUrl(file);
-    const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
-    if(!up||!up.ok){pmFeedback('pmt-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade billedet',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
-    const r=await api('/api/projects/'+pmState.current.id+'/time-entries',{method:'POST',body:JSON.stringify({minutes,note,photo_url:up.data.url,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date})});
+    const photoUrls=[];
+    for(const file of pmtPhotoFiles){
+      const dataUrl=await pmReadFileAsDataUrl(file);
+      const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
+      if(!up||!up.ok){pmFeedback('pmt-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade et billede',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
+      photoUrls.push(up.data.url);
+    }
+    const r=await api('/api/projects/'+pmState.current.id+'/time-entries',{method:'POST',body:JSON.stringify({minutes,note,photo_urls:photoUrls,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date})});
     if(r&&r.ok){toast('Tid registreret ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
   }catch(e){pmFeedback('pmt-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
@@ -633,7 +744,7 @@ async function pmOpenQaPicker(){
   document.getElementById('pm-title').textContent='🛡 Vælg KS-formular';
   const body=document.getElementById('pm-body');
   body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p style="color:var(--muted)">Henter…</p>';
-  const r=await api('/api/qa-templates');
+  const r=await api('/api/qa-templates?project_id='+pmState.current.id);
   pmState.qaTemplates=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
   if(!pmState.qaTemplates.length){body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p class="modal-empty">Der er ikke oprettet nogen KS-skabeloner endnu.</p>';return}
   body.innerHTML=`<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>`+
@@ -738,6 +849,49 @@ async function pmSubmitContact(){
     else{pmFeedback('pmc-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
   }catch(e){pmFeedback('pmc-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
 }
+// ══════════════════════════════════════════════════════════════
+// GENVEJE INDE FRA EN DAGS-OPGAVE og direkte ind i sags-modulet ovenfor.
+// Dagens opgaveliste (render(), længere nede i filen) viser og kalder disse,
+// når opgaven hører til en sag i Martins eget program (a.task_project_id sat).
+// Genbruger 100% af det eksisterende sags-modul — åbner bare direkte på det
+// relevante skærmbillede i stedet for at starte ved projektlisten, fordi
+// medarbejderen allerede har valgt en bestemt opgave. Guard'en på projectId
+// er ren sikkerhedssele: knapperne vises slet ikke uden en sag.
+// ══════════════════════════════════════════════════════════════
+async function pmOpenProjectFor(projectId){
+  const r=await api('/api/projects/'+projectId);
+  if(!r||!r.ok){toast('Kunne ikke hente sagen');return false}
+  pmState.current=r.data;
+  return true;
+}
+async function openProjectDashboard(projectId){
+  if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
+  document.getElementById('projects-modal').classList.add('open');
+  document.getElementById('pm-title').textContent='Henter…';
+  document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  if(await pmOpenProjectFor(projectId))pmRenderDetail();
+}
+async function openTimeFormForTask(projectId){
+  if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
+  document.getElementById('projects-modal').classList.add('open');
+  document.getElementById('pm-title').textContent='Henter…';
+  document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  if(await pmOpenProjectFor(projectId))pmOpenTimeForm();
+}
+async function openQaPickerForTask(projectId){
+  if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
+  document.getElementById('projects-modal').classList.add('open');
+  document.getElementById('pm-title').textContent='Henter…';
+  document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  if(await pmOpenProjectFor(projectId))pmOpenQaPicker();
+}
+async function openMaterialsFormForTask(projectId){
+  if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
+  document.getElementById('projects-modal').classList.add('open');
+  document.getElementById('pm-title').textContent='Henter…';
+  document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  if(await pmOpenProjectFor(projectId))pmOpenMaterialsForm();
+}
 
 function tomorrowISO(){const d=new Date();d.setDate(d.getDate()+1);return iso(d)}
 function reqField(id){return document.querySelector('#request-modal #'+id)}
@@ -756,6 +910,8 @@ async function openRequestModal(){
   document.getElementById('request-modal').classList.add('open');
   loadRequestHistory();
 }
+// Én popup, to formularer: "bed om en opgave" og "ferie/sygdom". Fanerne skifter
+// blot hvilken af de to der er synlig — historikken nederst viser begge slags.
 function switchRequestTab(which){
   const isTask=which==='task';
   document.getElementById('req-tab-task').classList.toggle('active',isTask);
@@ -767,6 +923,81 @@ function switchRequestTab(which){
 }
 function closeRequestModal(){document.getElementById('request-modal').classList.remove('open')}
 function closeRequestOnBackdrop(e){if(e.target===document.getElementById('request-modal'))closeRequestModal()}
+
+// ── MINE TIMER — samlet oversigt over ALLE egne tidsregistreringer på tværs
+// af sager (ikke kun de seneste 8 på én sag som sags-detaljen viser), med
+// mulighed for selv at rette/slette en registrering man har lavet en fejl i.
+// Redigering er bevidst begrænset til minutter/note/dato — billeder, købte
+// materialer og evt. tilbudslinje kan kun kontoret rette (se server.js).
+let myHoursEntries=[], myHoursEditingId=null;
+async function openMyHours(){
+  document.getElementById('my-hours-modal').classList.add('open');
+  myHoursEditingId=null;
+  await loadMyHours();
+}
+function closeMyHours(){document.getElementById('my-hours-modal').classList.remove('open')}
+function closeMyHoursOnBackdrop(e){if(e.target===document.getElementById('my-hours-modal'))closeMyHours()}
+async function loadMyHours(){
+  const body=document.getElementById('my-hours-body');
+  body.innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  try{
+    const r=await api('/api/time-entries/mine');
+    myHoursEntries=r&&r.ok?r.data:[];
+    renderMyHours();
+  }catch(e){body.innerHTML='<p class="modal-empty">Kunne ikke hente dine timer.</p>';}
+}
+function renderMyHours(){
+  const body=document.getElementById('my-hours-body');
+  if(!myHoursEntries.length){body.innerHTML='<p class="modal-empty">Du har ikke registreret nogen timer endnu.</p>';return}
+  const totalMin=myHoursEntries.reduce((s,t)=>s+(Number(t.minutes)||0),0);
+  const totalH=(totalMin/60).toFixed(1).replace('.0','').replace('.',',');
+  body.innerHTML='<div class="tm-section-label">I alt registreret: '+totalH+' timer</div>'
+    +myHoursEntries.map(t=>{
+      if(myHoursEditingId===t.id){
+        return `<div class="file-item" style="display:block">
+          <label class="req-label">Dato</label>
+          <input type="date" id="mh-edit-date" class="req-input" value="${esc(String(t.entry_date).slice(0,10))}">
+          <label class="req-label">Minutter</label>
+          <input type="number" min="1" step="1" id="mh-edit-minutes" class="req-input" value="${Number(t.minutes)||0}">
+          <label class="req-label">Note</label>
+          <textarea id="mh-edit-note" class="req-textarea" rows="2">${esc(t.note)}</textarea>
+          <div id="mh-edit-feedback" class="req-feedback"></div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="req-submit" type="button" onclick="saveMyHoursEdit(${t.id})" style="flex:1">Gem</button>
+            <button class="small-btn" type="button" onclick="cancelMyHoursEdit()">Annullér</button>
+          </div>
+        </div>`;
+      }
+      return `<div class="file-item">
+        <div><span class="file-cat">${esc(fmtPmDate(t.entry_date))} · ${esc(t.project_name)} · ${Number(t.minutes)||0} min</span><br><span style="font-size:12px">${esc(t.note)}</span></div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="small-btn" type="button" onclick="startMyHoursEdit(${t.id})" title="Ret">✏️</button>
+          <button class="small-btn" type="button" onclick="deleteMyHoursEntry(${t.id})" title="Slet">🗑️</button>
+        </div>
+      </div>`;
+    }).join('');
+}
+function startMyHoursEdit(id){myHoursEditingId=id;renderMyHours();}
+function cancelMyHoursEdit(){myHoursEditingId=null;renderMyHours();}
+async function saveMyHoursEdit(id){
+  const dateVal=document.getElementById('mh-edit-date').value;
+  const minutesVal=Number(document.getElementById('mh-edit-minutes').value);
+  const noteVal=document.getElementById('mh-edit-note').value.trim();
+  const fb=document.getElementById('mh-edit-feedback');
+  function fbShow(msg){fb.textContent=msg;fb.className='req-feedback show error';}
+  if(!noteVal){fbShow('Skriv en note');return}
+  if(!minutesVal||minutesVal<=0){fbShow('Angiv gyldige minutter');return}
+  const r=await api('/api/time-entries/'+id,{method:'PUT',body:JSON.stringify({minutes:minutesVal,note:noteVal,entry_date:dateVal})});
+  if(r&&r.ok){toast('Registrering opdateret ✓');myHoursEditingId=null;await loadMyHours();}
+  else fbShow((r&&r.data&&r.data.error)||'Kunne ikke gemme ændringen');
+}
+async function deleteMyHoursEntry(id){
+  if(!confirm('Slet denne tidsregistrering?'))return;
+  const r=await api('/api/time-entries/'+id,{method:'DELETE'});
+  if(r&&r.ok){toast('Registrering slettet 🗑');await loadMyHours();}
+  else toast((r&&r.data&&r.data.error)||'Kunne ikke slette registreringen');
+}
+
 async function loadRequestHistory(){
   const el=document.getElementById('req-history');
   el.innerHTML='<div class="req-label">Your recent requests</div><p style="color:var(--muted);font-size:11px">Loading…</p>';
@@ -815,7 +1046,7 @@ function reqFeedback(msg,kind){
   el.className='req-feedback show '+(kind||'');
 }
 async function submitTaskRequest(){
-  const formEl=document.querySelector('#request-modal form');
+  const formEl=document.querySelector('#request-modal #req-task-form form');
   const fd=formEl?new FormData(formEl):null;
   const rawJobName=fd?fd.get('gm_req_job_name_field'):null;
   const rawDate=fd?fd.get('gm_req_date_field'):null;
@@ -903,16 +1134,12 @@ async function confirmDocumentationAndComplete(){
     return;
   }
   const id=docModalTaskId;
-  const a=assignments.find(x=>+x.id===+id);
   const note=document.getElementById('doc-note').value.trim();
   closeDocModal();
+  // Alt ligger nu i Martins eget program: der er intet eksternt vindue at åbne
+  // bagefter. Bekræftelsen markerer opgaven som færdig — punktum. Billeder og
+  // dokumenter lægges på sagen under 🏗️ Projekter.
   await toggleTaskDone(id,true,true,note);
-  // Åbn JobTreads filer for denne sag, så billeder/dokumenter kan lægges direkte ind med det rigtige tag.
-  if(a&&a.job_id){
-    window.open('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files','_blank');
-  }else{
-    toast('Ingen JobTread-sag koblet på denne opgave — filer kan ikke åbnes automatisk');
-  }
 }
 
 function weekKeyOf(d){const x=new Date(d);x.setHours(12,0,0,0);const day=x.getDay()||7;x.setDate(x.getDate()+4-day);const yearStart=new Date(x.getFullYear(),0,1);const weekNo=Math.ceil((((x-yearStart)/86400000)+1)/7);const m=monday(d);return 'w'+m.getFullYear()+'-'+String(weekNo).padStart(2,'0')}
@@ -951,14 +1178,11 @@ function render(){
       list.forEach((a,idx)=>{
       const hasTime=!!String(a.start_time||'').trim();
       if(!hasTime&&!shownUntimedHeader){shownUntimedHeader=true;out+='<div class="untimed-divider">⏳ No fixed time — you decide the order</div>';}
-      const t=TYPES[a.type_guess]||TYPES.other;const address=String(a.job_address||'').trim();const phone=phoneValue(a);const maps=address?'https://maps.google.com/?q='+encodeURIComponent(address):'';const weatherId='w-'+String(a.id)+'-'+date.replace(/[^0-9]/g,'');weatherItems.set(weatherId,{address:address,date:date,lat:a.job_lat,lng:a.job_lng});bookingNotes.set(String(a.id),{note:a.notes,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||'')});
+      const t=TYPES[a.type_guess]||TYPES.other;const address=String(a.job_address||'').trim();const phone=phoneValue(a);const maps=address?'https://maps.google.com/?q='+encodeURIComponent(address):'';const weatherId='w-'+String(a.id)+'-'+date.replace(/[^0-9]/g,'');weatherItems.set(weatherId,{address:address,date:date,lat:a.job_lat,lng:a.job_lng});bookingNotes.set(String(a.id),{note:a.task_project_id?(a.task_description||a.notes):a.notes,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||'')});
       const mapButton=maps?`<a class="action maps" href="${maps}" target="_blank" rel="noopener">📍 Maps</a>`:`<button class="action maps" type="button" onclick="toast('No address on this task')">📍 Maps</button>`;
       const addressMarkup=address?(maps?`<a href="${maps}" target="_blank" rel="noopener">${esc(address)}</a>`:esc(address)):'No address';
       const phoneMarkup=phone?`<a href="${esc(phoneHref(phone))}">${esc(phone)}</a>`:'<span>No customer phone number</span>';
       const noteId=Number(a.id)||0;
-      const jobFilesLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/files'):'https://app.jobtread.com';
-      const jobBillLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/documents'):'https://app.jobtread.com';
-      const jobFormsLink=a.job_id?('https://app.jobtread.com/jobs/'+encodeURIComponent(a.job_id)+'/forms'):'https://app.jobtread.com';
       const timeChip=hasTime?`<span class="time-chip">⏰ ${esc(a.start_time)}</span>`:`<span class="time-chip untimed">🕓 Self-scheduled</span>`;
       const isDone=!!a.completed_at;
       // En "hel dag" bookes som 1.0 i planlægningen, og regnes her som 9 timers arbejde
@@ -966,8 +1190,24 @@ function render(){
       const hoursNum=Math.round(Number(a.days||1)*9*4)/4;
       const hoursLabel=(hoursNum%1===0?hoursNum:hoursNum.toFixed(2).replace(/0+$/,'').replace(/\.$/,'').replace('.',',')) + ' timer';
       const doneBtn=isDone?`<button class="action undone-btn" type="button" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:`<button class="action done-btn" type="button" onclick="openDocModal(${noteId})">✅ Mark as done</button>`;
-      const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 Beskrivelse fra JobTread</div><div class="task-description-body">${esc(a.task_description).replace(/\n/g,'<br>')}</div></div>`:'';
-      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}<a class="upload-bill-icon" href="${esc(jobBillLink)}" target="_blank" rel="noopener" title="Upload regning på denne opgave i JobTread">🧾 Upload Bill</a></div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button><a class="action info" href="${esc(taskLink(a))}" target="_blank" rel="noopener">📋 Read about the task</a><a class="action files" href="${esc(jobFilesLink)}" target="_blank" rel="noopener">📁 Job files</a><a class="action time" href="${JOBTREAD_TIME_URL}" target="_blank" rel="noopener">⏱ Track your time</a><a class="action qc" href="${esc(jobFormsLink)}" target="_blank" rel="noopener">🛡 Kvalitetskontrol form</a><button class="action rules" type="button" onclick="openRulesModal()">📜 Regler og lovgivning</button>${doneBtn}</div></article>`;
+      const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse'}</div><div class="task-description-body">${esc(a.task_description).replace(/\n/g,'<br>')}</div></div>`:'';
+      // SAGS-HANDLINGER: alle opgaver styres nu fra Martins eget program, så
+      // "Se sagen"/"Registrér tid"/"Udfyld KS-formular"/"Materialer" åbner en
+      // formular i selve appen, sat direkte på opgavens sag.
+      // De vises KUN når opgaven faktisk hører til en sag (task_project_id sat —
+      // dvs. opgaven er oprettet via Projekter/Gantt). Gamle opgaver uden sag har
+      // ingen sag at registrere på, og får derfor ikke fire knapper der ikke kan
+      // gøre noget: kortet har simpelthen færre handlinger (kort/note/regler/færdig),
+      // hvilket er den ærlige tilstand. Samme betingelse bruges i
+      // confirmDocumentationAndComplete().
+      const isCaseTask=!!a.task_project_id;
+      const caseIcon=isCaseTask?`<span class="case-chip" style="background:#EEF2FF;color:#4F46E5;border-color:#C7D2FE" title="Denne opgave hører til en sag i dit eget program">📁 Sag</span>`:'';
+      const caseActions=isCaseTask?`
+        <button class="action info" type="button" onclick="openProjectDashboard(${a.task_project_id})">🔗 Se sagen</button>
+        <button class="action time" type="button" onclick="openTimeFormForTask(${a.task_project_id})">⏱ Registrér tid</button>
+        <button class="action qc" type="button" onclick="openQaPickerForTask(${a.task_project_id})">🛡 Udfyld KS-formular</button>
+        <button class="action files" type="button" onclick="openMaterialsFormForTask(${a.task_project_id})">🧾 Materialer</button>`:'';
+      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}${caseIcon}</div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button>${caseActions}<button class="action rules" type="button" onclick="openRulesModal()">📜 Regler og lovgivning</button>${doneBtn}</div></article>`;
     });}
     out+='</section>';});
   document.getElementById('tasks-container').innerHTML=total?out:'<div class="empty"><div class="empty-icon">📅</div><h3>No tasks in this view</h3><p>Choose another day or show the whole week.</p></div>';
@@ -1011,7 +1251,7 @@ function renderNotifDropdownList(){
   var dd=document.getElementById('notif-dropdown');
   if(!myNotifs.length){dd.innerHTML='<div style="padding:18px;text-align:center;color:#94a3b8;font-size:12px">Ingen beskeder endnu</div>';return;}
   dd.innerHTML=myNotifs.map(function(n){
-    return '<div onclick="markNotifRead('+n.id+')" style="padding:12px 14px;border-bottom:1px solid #F1F5F9;cursor:pointer;background:'+(n.read_at?'#fff':'#EFF6FF')+'">'+
+    return '<div onclick="markNotifRead('+n.id+')" style="padding:12px 14px;border-bottom:1px solid #F1F5F9;cursor:pointer;background:'+(n.read_at?'#fff':'#EEF2FF')+'">'+
       '<div style="font-weight:800;font-size:12px;color:#1a1a1a">'+(n.read_at?'':'🔵 ')+esc(n.title)+'</div>'+
       (n.body?'<div style="font-size:11.5px;color:#475569;margin-top:2px">'+esc(n.body)+'</div>':'')+
       '<div style="font-size:9.5px;color:#94a3b8;margin-top:4px">'+esc(String(n.created_at||'').slice(0,16).replace('T',' '))+'</div></div>';
@@ -1129,7 +1369,7 @@ async function loadTeamOverview(){
   teamMap.markers.clearLayers();
   var pts=[];
   (d.employees||[]).forEach(function(emp){
-    var color=emp.color||'#2563eb';
+    var color=emp.color||'#4F46E5';
     (emp.today||[]).forEach(function(item){
       if(item.job_lat==null||item.job_lng==null)return;
       var pt=[+item.job_lat,+item.job_lng];
@@ -1141,7 +1381,7 @@ async function loadTeamOverview(){
   if(pts.length)teamMap.map.fitBounds(L.latLngBounds(pts).pad(.3));
   var weekDates=[];for(var i=0;i<7;i++){var dt=new Date(d.weekStart+'T12:00:00');dt.setDate(dt.getDate()+i);weekDates.push(iso(dt));}
   var html=(d.employees||[]).map(function(emp){
-    var color=emp.color||'#2563eb';
+    var color=emp.color||'#4F46E5';
     var rows=weekDates.map(function(ds){
       var items=emp.week&&emp.week[ds]||[];
       var dt=new Date(ds+'T12:00:00');
