@@ -4723,11 +4723,18 @@ app.get('/api/system-log', auth, adminOnly, asyncRoute(async (req, res) => {
 // ── TASK POOL + INDEPENDENT MANUAL PLAN ──────────────────────
 app.get('/api/tasks', auth, asyncRoute(async (req, res) => {
   const result = await pool.query(`
-    SELECT t.*, COUNT(b.id) FILTER (WHERE COALESCE(b.planning_mode,'daily') <> 'capacity')::int AS assignment_count
+    SELECT t.*, COUNT(b.id) FILTER (WHERE COALESCE(b.planning_mode,'daily') <> 'capacity')::int AS assignment_count,
+           -- Sagens status ('active'/'on_hold'/'done'/'archived') følger med hver
+           -- opgave, så Opgavepool/Kapacitet/Tidslinje kan filtrere på "kun
+           -- igangværende sager" (se poolProjectStatusFilter i admin.html).
+           -- NULL for opgaver uden sag (manuelle/kapacitet/gamle JobTread-rækker) —
+           -- de skjules bevidst ALDRIG af det filter.
+           p.status AS project_status
     FROM jt_tasks t
     LEFT JOIN planning_bookings b ON b.task_id=t.id
+    LEFT JOIN projects p ON p.id = t.project_id
     WHERE COALESCE(t.source,'jobtread') <> 'capacity'
-    GROUP BY t.id
+    GROUP BY t.id, p.status
     ORDER BY CASE WHEN t.source='manual' THEN 0 ELSE 1 END,
              CASE WHEN t.start_date IS NULL OR t.start_date='' THEN 1 ELSE 0 END,
              t.start_date ASC NULLS LAST,
@@ -5702,10 +5709,17 @@ function bookingSelect(where = '') {
            -- en rigtig JobTread-synk) — bruges af employee-demo.html til at vise
            -- "spor tid"/"kvalitetssikring" som en formular i selve appen (mod sagen)
            -- i stedet for et link ud til JobTread, som der intet rigtigt job er for.
-           t.project_id AS task_project_id
+           t.project_id AS task_project_id,
+           -- Sagens status pr. booking — samme formål som project_status i
+           -- GET /api/tasks: Tidslinjen grupperer bookinger (ikke pool-opgaver),
+           -- så den har brug for statussen her for at kunne filtrere på
+           -- igangværende/på hold/afsluttede sager. NULL når bookingen hænger på en
+           -- opgave uden sag (manuel/kapacitet) — den skjules aldrig af filteret.
+           p.status AS task_project_status
     FROM planning_bookings b
     JOIN users u ON b.user_id=u.id
     JOIN jt_tasks t ON b.task_id=t.id
+    LEFT JOIN projects p ON p.id = t.project_id
     ${where}
   `;
 }
@@ -12185,6 +12199,98 @@ app.delete('/api/products/:id', auth, panelAccess('quotes'), asyncRoute(async (r
   // og skal blive ved med at vise korrekt selv efter produktet er "slettet".
   await pool.query('UPDATE products SET active=0 WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
+}));
+
+// ── AI-DIKTERING AF TILBUD (sep. 2026, Martins ønske: "kan du tilføje AI så jeg
+// kan tale til programmet med hvad jeg ønsker tilbuddet skal være, og den
+// lynhurtigt finder det i databasen med produkter eller selv laver produktet" —
+// valgte "hele tilbuddet på én gang"-varianten). Selve tale-til-tekst sker i
+// browseren (Web Speech API, gratis, ingen server-nøgle nødvendig, se admin.html)
+// — denne rute tager KUN den færdige tekst og beder en AI-model dele den op i
+// tilbudslinjer og matche hver linje mod produktkataloget. Opretter ALDRIG selv
+// et produkt i databasen — det sker kun når Martin bekræfter i gennemgangs-
+// vinduet i admin.html, via den helt almindelige POST /api/products ovenfor
+// (Martins valg: "altid bekræft med mig først"). Kræver ANTHROPIC_API_KEY sat
+// som miljøvariabel på serveren (Render → Environment → tilføj ANTHROPIC_API_KEY)
+// — uden den svarer ruten pænt med en dansk fejlbesked i stedet for at fejle råt.
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929';
+async function callAnthropicJSON(systemPrompt, userPrompt) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    const err = new Error('AI-diktering er ikke aktiveret på serveren endnu — ANTHROPIC_API_KEY mangler i Render-miljøvariablerne.');
+    err.isConfig = true;
+    throw err;
+  }
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 2000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    })
+  });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = (data && data.error && data.error.message) || ('AI-kald fejlede (HTTP ' + r.status + ')');
+    throw new Error(msg);
+  }
+  const text = data && data.content && data.content[0] && data.content[0].text;
+  if (!text) throw new Error('AI-svaret var tomt');
+  // Modellen bedes KUN svare med JSON, men vi renser defensivt for evt.
+  // ```json ... ``` kodeblok-hegn, hvis den alligevel skulle tilføje det.
+  const cleaned = text.trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+  return JSON.parse(cleaned);
+}
+app.post('/api/quotes/ai-parse-lines', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const transcript = String((req.body && req.body.transcript) || '').trim();
+  if (!transcript) return res.status(400).json({ error: 'Ingen tale/tekst modtaget' });
+  const products = (await pool.query("SELECT id,name,unit,sell_price,cost_price,category,product_type FROM products WHERE active=1 ORDER BY name LIMIT 1000")).rows;
+  const catalogForPrompt = products.map(p => ({ id: p.id, name: p.name, unit: p.unit, sell_price: Number(p.sell_price), category: p.category || null, type: p.product_type }));
+  const systemPrompt = 'Du hjælper en dansk gulvfirma-medarbejder (Gulv Master) med at omsætte et talt diktat til tilbudslinjer.\n'
+    + 'Du får (1) et diktat på dansk og (2) firmaets produktkatalog som JSON.\n'
+    + 'Del diktatet op i separate linjer — én pr. arbejde/produkt/vare der nævnes. For hver linje:\n'
+    + '- "quantity": mængde som tal (antag 1 hvis intet tal nævnes)\n'
+    + '- "unit": enhed (fx "m2", "stk", "timer", "lbm") — gæt ud fra sammenhængen, ellers "stk"\n'
+    + '- "description": en kort, naturlig beskrivelse af linjen på dansk\n'
+    + '- "match": hvis et produkt i kataloget TYDELIGVIS er det samme, sæt {"product_id": <id>} — vær IKKE overfortolkende, kun ved en reelt god match\n'
+    + '- "new_product": hvis INTET produkt i kataloget passer, sæt i stedet {"name": <kort produktnavn>, "unit": <enhed>, "product_type": "materialer" eller "service"} — lad prisfelter være ude, dem sætter brugeren selv bagefter\n'
+    + 'Præcis ét af "match"/"new_product" skal være sat pr. linje, aldrig begge, aldrig ingen.\n'
+    + 'Svar KUN med gyldig JSON på formen {"lines":[...]} — ingen forklaring, ingen kodeblok-hegn.';
+  const userPrompt = 'PRODUKTKATALOG:\n' + JSON.stringify(catalogForPrompt) + '\n\nDIKTAT:\n' + transcript;
+  let parsed;
+  try {
+    parsed = await callAnthropicJSON(systemPrompt, userPrompt);
+  } catch (e) {
+    await logSystemEvent('ai_parse_quote', 'error', 'AI-diktering fejlede: ' + e.message);
+    return res.status(e.isConfig ? 501 : 502).json({ error: e.message });
+  }
+  const rawLines = Array.isArray(parsed && parsed.lines) ? parsed.lines : [];
+  const byId = new Map(products.map(p => [p.id, p]));
+  const lines = rawLines.map(l => {
+    const quantity = Number(l.quantity) || 1;
+    const unit = String(l.unit || 'stk').trim() || 'stk';
+    const description = String(l.description || '').trim();
+    let match = null, newProduct = null;
+    if (l.match && byId.has(Number(l.match.product_id))) {
+      const p = byId.get(Number(l.match.product_id));
+      match = { product_id: p.id, name: p.name, unit: p.unit, sell_price: Number(p.sell_price), cost_price: Number(p.cost_price), product_type: p.product_type };
+    } else if (l.new_product && l.new_product.name) {
+      newProduct = {
+        name: String(l.new_product.name).trim(),
+        unit: String(l.new_product.unit || unit || 'stk').trim(),
+        product_type: l.new_product.product_type === 'materialer' ? 'materialer' : 'service'
+      };
+    }
+    if (!match && !newProduct) return null; // hverken match eller forslag — kan ikke bruges
+    return { quantity, unit, description, match, new_product: newProduct };
+  }).filter(Boolean);
+  await logSystemEvent('ai_parse_quote', 'info', 'AI-diktering: ' + lines.length + ' linje(r) tolket ud af diktat på ' + transcript.length + ' tegn (' + rawLines.length + ' rå linjer fra modellen).');
+  res.json({ ok: true, lines });
 }));
 
 // ── AKKORDLISTE (sep. 2026) — global prisliste til stykløn, se akkord_items i

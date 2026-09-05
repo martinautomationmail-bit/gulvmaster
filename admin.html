@@ -971,6 +971,18 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-dashboard .dash-row-title{color:var(--bly-ink);font-weight:700}
 #page-dashboard .dash-row-sub{color:var(--bly-sub)}
 #page-dashboard .dash-empty{color:var(--bly-sub)}
+/* Høj prioritet-banner (sep. 2026) — se HTML-kommentaren ved #dash-priority-banner. */
+.dash-priority-banner{background:#FEF2F2;border:1.5px solid #FECACA;border-radius:var(--bly-r-lg);padding:14px 16px;margin-bottom:16px}
+.dash-priority-banner-title{font-size:13px;font-weight:800;color:#991B1B;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.dash-priority-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 4px;border-bottom:1px solid #FECACA;cursor:pointer}
+.dash-priority-row:last-child{border-bottom:0}
+.dash-priority-row:hover{background:#FEE2E2}
+.dash-priority-row-title{color:var(--bly-ink);font-weight:700;font-size:12.5px}
+.dash-priority-row-sub{color:var(--bly-sub);font-size:11px}
+.dash-priority-tag{font-size:10px;font-weight:800;border-radius:var(--bly-r-pill);padding:3px 9px;white-space:nowrap}
+.dash-priority-tag.overdue{background:#DC2626;color:#fff}
+.dash-priority-tag.today{background:#F59E0B;color:#fff}
+.dash-priority-tag.nodate{background:#E5E7EB;color:#374151}
 
 /* ══════════════════════════════════════════════════════════════
    GANTT — samme Billy-behandling, scoped til #page-gantt (samt de to
@@ -1191,14 +1203,38 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-lines-head{display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px}
 .qe-line{border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:12px;margin-bottom:8px;background:#FAFAFB}
 .qe-line-text{background:var(--bly-accent-soft);border-color:#C7D2FE}
-.qe-line-text .qe-line-top{grid-template-columns:1fr 30px;margin-bottom:0}
+.qe-line-text .qe-line-top{grid-template-columns:18px 1fr 30px;margin-bottom:0}
 .qe-line-text input.qe-line-field{font-weight:700;color:var(--bly-ink)}
-.qe-line-top{display:grid;grid-template-columns:1fr 80px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
+.qe-line-top{display:grid;grid-template-columns:18px 1fr 80px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
 .qe-line-top textarea.qe-desc-area{resize:vertical;min-height:36px;max-height:200px;line-height:1.4;font-family:inherit;overflow-y:auto;white-space:pre-wrap}
 .qe-line-nums{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .qe-line-num-label{font-size:9px;color:var(--bly-sub);font-weight:700;text-transform:uppercase}
 .qe-line-margin{font-size:10.5px;font-weight:800;margin-top:2px}
 .qe-remove-line{border:0;background:transparent;color:var(--bly-dot-overdue);cursor:pointer;font-size:15px}
+/* Trækhåndtag til at omarrangere tilbudslinjer (sep. 2026) — se qzLineDragHandle/
+   makeLinesDragHandler. Kun håndtaget er draggable, resten af linjen er almindelig
+   tekst man kan markere/redigere uden at et træk starter ved et uheld. */
+.qe-line-drag{cursor:grab;color:var(--bly-sub);text-align:center;font-size:14px;line-height:1;user-select:none;padding:2px 0}
+.qe-line-drag:active{cursor:grabbing}
+.qe-line-dragging{opacity:.4}
+.qe-line-dragover{box-shadow:0 -2px 0 0 var(--bly-accent) inset}
+/* AI-diktering (sep. 2026) — lytte-bar under linje-værktøjslinjen + gennemgangsvindue. */
+.qe-ai-listening-bar{display:flex;align-items:center;gap:8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--bly-r-md);padding:8px 12px;margin-bottom:10px;font-size:12px;color:#991B1B}
+/* FEJLRETTELSE: [hidden] og .qe-ai-listening-bar{display:flex} har samme CSS-
+   specificitet, så uden denne regel vandt display:flex over den indbyggede
+   [hidden]{display:none} — baren forblev synlig efter at være skjult via .hidden. */
+.qe-ai-listening-bar[hidden]{display:none}
+.qe-ai-listening-dot{width:9px;height:9px;border-radius:50%;background:#DC2626;animation:qe-ai-pulse 1.1s ease-in-out infinite}
+@keyframes qe-ai-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.qe-ai-live-transcript{color:var(--bly-sub);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.qe-ai-review-row{border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start}
+.qe-ai-review-row.new{background:#FFFBEB;border-color:#FDE68A}
+.qe-ai-review-row.matched{background:#F0FDF4;border-color:#BBF7D0}
+.qe-ai-review-fields{flex:1;display:flex;flex-direction:column;gap:4px}
+.qe-ai-review-tag{font-size:10px;font-weight:800;border-radius:var(--bly-r-pill);padding:2px 8px;display:inline-block;width:fit-content}
+.qe-ai-review-row.new .qe-ai-review-tag{background:#F59E0B;color:#fff}
+.qe-ai-review-row.matched .qe-ai-review-tag{background:#16A34A;color:#fff}
+.qe-ai-review-row input.qe-input{font-size:12px;padding:5px 8px}
 .qe-totals{margin-top:14px;padding-top:12px;border-top:1px solid var(--bly-border-soft)}
 .qe-totals-row{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;color:var(--bly-sub)}
 .qe-totals-row.total{font-size:15px;font-weight:800;color:var(--bly-ink);border-top:1px solid var(--bly-border-soft);margin-top:6px;padding-top:8px}
@@ -2262,7 +2298,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.2</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.3</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -2331,6 +2367,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <!-- KOMMANDOCENTER -->
 <section class="page" id="page-dashboard">
   <div class="page-head"><h2>Kommandocenter</h2><p class="page-sub">Samlet overblik — hvad skal du tage stilling til lige nu.</p></div>
+  <!-- Høj prioritet-banner (sep. 2026, Martins ønske: "når der er høj prioritet
+       sager, skal et banner køre... med de forskellige høj profiler de skal
+       kontakte i dag, eller hvis der er nogle sager de er bagud på"). Kilden er
+       det samme "⚡ Høj prioritet"-flueben man sætter når en CRM-opgave
+       (Opfølgning) oprettes — se #crmpx-task-priority og GET /api/crm/tasks/overview.
+       Vises kun når der reelt er noget at vise (tomt = ingen banner, ikke en tom boks). -->
+  <div id="dash-priority-banner" class="dash-priority-banner" hidden></div>
   <div class="dash-grid" id="dash-kpi-cards"></div>
   <div class="dash-cols">
     <div class="dash-col">
@@ -3948,6 +3991,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="page-title">Daglig planlægning</div>
     </div>
   </div>
+  <!-- Sagsstatus-bobler (sep. 2026, Martins ønske) — samme .bly-kpi-card/"Billy"-
+       komponent og samme grid-opsætning som status-boblerne på Projekter-siden
+       (#proj-status-filter). Filteret er FÆLLES for Dagligplanlægning, Kapacitet og
+       Tidslinje (poolProjectStatusFilter), så valget følger med når man skifter fane.
+       Se renderPoolProjectStatusFilter(). -->
+  <div class="bly-kpi-row" id="plan-projstatus-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));margin-bottom:0"></div>
   <div class="board-layout" style="margin-top:14px">
     <aside class="panel">
       <div class="panel-head">
@@ -4014,6 +4063,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </select>
   </div>
   <div class="stats" id="cap-stats"></div>
+  <!-- Sagsstatus-bobler — samme fælles filter som på Dagligplanlægning/Tidslinje,
+       se kommentaren ved #plan-projstatus-filter. -->
+  <div class="bly-kpi-row" id="cap-projstatus-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));margin-bottom:14px"></div>
   <div class="board-layout">
     <aside class="panel">
       <div class="panel-head">
@@ -4065,6 +4117,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn small" id="tl-next">→</button>
     </div>
   </div>
+  <!-- Sagsstatus-bobler — samme fælles filter som på Dagligplanlægning/Kapacitet,
+       se kommentaren ved #plan-projstatus-filter. Her filtrerer den BÅDE
+       Opgavepoolen til venstre og selve tidslinjens bjælker (bookinger). -->
+  <div class="bly-kpi-row" id="timeline-projstatus-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));margin-bottom:14px"></div>
   <div class="board-layout">
     <aside class="panel">
       <div class="panel-head">
@@ -4885,7 +4941,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <span class="qe-label" style="margin:0">Linjer</span>
       <div style="display:flex;gap:6px">
         <div class="qe-customer-pop" style="width:220px">
-          <input id="qzt-product-search" class="qe-input" placeholder="Søg produkt og tilføj...">
+          <input id="qzt-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
           <div class="qe-customer-results" id="qzt-product-results"></div>
         </div>
         <button class="bly-btn outline small" id="qzt-add-blank-line" type="button">+ Tilføj linje</button>
@@ -4949,13 +5005,25 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <span class="qe-label" style="margin:0">Linjer</span>
           <div style="display:flex;gap:6px;align-items:center">
             <div class="qe-customer-pop" style="width:220px">
-              <input id="qe-product-search" class="qe-input" placeholder="Søg produkt og tilføj...">
+              <input id="qe-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
               <div class="qe-customer-results" id="qe-product-results"></div>
             </div>
+            <!-- AI-diktering (sep. 2026, Martins ønske) — se qeAiToggleListen() og
+                 POST /api/quotes/ai-parse-lines. Selve tale-optagelsen sker via
+                 browserens Web Speech API (da-DK), ingen server-nøgle nødvendig for
+                 selve optagelsen — kun for AI-tolkningen bagefter. -->
+            <button class="bly-btn outline small" id="qe-ai-mic-btn" type="button" title="Diktér hele tilbuddet — AI finder eller foreslår produkter">🎤 AI-diktering</button>
             <button class="bly-btn outline small" id="qe-add-blank-line" type="button">+ Tilføj linje</button>
             <button class="bly-btn outline small" id="qe-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
             <button class="bly-btn outline small" id="qe-save-as-template-btn" type="button" title="Gem de nuværende linjer som en skabelon">💾 Gem som skabelon</button>
           </div>
+        </div>
+        <div id="qe-ai-listening-bar" class="qe-ai-listening-bar" hidden>
+          <span class="qe-ai-listening-dot"></span>
+          <span>Lytter... sig hele tilbuddet, tryk "Stop &amp; tolk" når du er færdig.</span>
+          <span id="qe-ai-live-transcript" class="qe-ai-live-transcript"></span>
+          <button class="bly-btn small" id="qe-ai-stop-btn" type="button" style="margin-left:auto">⏹ Stop &amp; tolk</button>
+          <button class="qz-icon-btn" id="qe-ai-cancel-btn" type="button" title="Annullér optagelse">✕</button>
         </div>
         <div id="qe-lines"></div>
         <!-- Samme "+ Tilføj linje"/"+ Tekstlinje"-knapper som foroven, men lige under
@@ -4983,6 +5051,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="qe-preview-wrap">
         <div id="qe-preview" class="qe-pdf-page"></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI-DIKTERING — gennemgangsvindue efter tolkning af diktatet (sep. 2026,
+     Martins ønske). Intet lægges ind på tilbuddet og INTET produkt oprettes i
+     databasen før Martin trykker "Tilføj til tilbud" her — se qzRenderAiReview()/
+     qeAiConfirm(). Hver linje kan afkrydses fra hvis den ikke skal med. -->
+<div class="mo" id="qe-ai-review-modal">
+  <div class="modal" style="max-width:640px;width:92vw">
+    <h3>🎤 AI-tolkning af diktat</h3>
+    <p class="sub" style="margin-top:-6px">Gennemgå linjerne før de føjes til tilbuddet. Linjer markeret <b>🆕 Nyt produkt</b> opretter et nyt produkt i kataloget når du bekræfter — fjern fluebenet hvis du ikke vil oprette det.</p>
+    <div id="qe-ai-review-lines" style="max-height:50vh;overflow:auto;margin:10px 0"></div>
+    <div class="modal-actions">
+      <button class="btn" id="qe-ai-review-cancel" type="button">Annullér</button>
+      <button class="btn primary" id="qe-ai-review-confirm" type="button">Tilføj til tilbud</button>
     </div>
   </div>
 </div>
@@ -5635,6 +5719,14 @@ var timeOffApproved=[],timeOffRequests=[];
 // hidtil). Bruges KUN til at filtrere Opgavepool-listen i venstre side — påvirker ikke
 // selve ugekalenderen til højre (planCurrentWeekStart), som er en helt separat ting.
 var filters={plan:{status:'all',type:'all',team:'all',dateWeek:null},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'},availability:{status:'all',type:'all',team:'all'}};
+// SAGSSTATUS-FILTER for Opgavepool/Kapacitet/Tidslinje (sep. 2026, Martins ønske:
+// "Den samme opdeling skal være i Opgavepool også, så jeg nemt kan se kun
+// igangværende sager — både i Kapacitetsboard og Dagligplanlægning og Tidslinje").
+// BEVIDST ÉN fælles variabel (ikke én pr. fane, som filters ovenfor): vælger man
+// "Igangværende" i Opgavepoolen, gælder det også når man skifter til Kapacitet
+// eller Tidslinje — man skal ikke vælge det forfra på hver fane.
+// 'all' er standard, så appen ser præcis ud som før indtil man aktivt filtrerer.
+var poolProjectStatusFilter='all';
 var availGroupBy='user';
 var DAYS=['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
 // Standard-fag/farver — bruges som fallback indtil /api/task-types er hentet,
@@ -5917,9 +6009,22 @@ function taskIsCompleted(t){if(t.manually_completed_at)return true;var rows=dail
 // En opgave regnes som "faktureret" når alle dens (færdiggjorte) bookinger er markeret faktureret.
 // Bruges til at rydde helt op i Opgavepool, når man har trykket "faktureret" i Færdige opgaver.
 function taskIsInvoiced(t){var rows=dailyBookingsForTask(t);return rows.length>0&&rows.every(function(b){return !!b.invoiced;});}
-function filterTasks(scope){
+// Sagsstatus-filteret (poolProjectStatusFilter). Bruges både af filterTasks nedenfor
+// og af Tidslinjens booking-liste, så de to steder ALTID er enige om hvad der vises.
+// Opgaver/bookinger UDEN sag (manuelle opgaver, kapacitetsblokke, gamle
+// JobTread-rækker) har ingen sagsstatus at filtrere på og skjules derfor ALDRIG —
+// meningen er at gemme færdige/hvilende SAGER væk, ikke ad hoc-opgaver.
+// ignore=true springer filteret over (bruges til at tælle boblerne, så tallene ikke
+// ændrer sig af selve valget).
+function matchesPoolProjectStatus(status,ignore){
+  if(ignore||poolProjectStatusFilter==='all')return true;
+  if(!status)return true; // ingen sag → altid synlig
+  return status===poolProjectStatusFilter;
+}
+function filterTasks(scope,ignoreProjectStatus){
   var f=filters[scope],searchId={plan:'plan-search',capacity:'cap-search',timeline:'timeline-search'}[scope]||'plan-search',q=(document.getElementById(searchId).value||'').toLowerCase().trim();
   return tasks.filter(function(t){
+    if(!matchesPoolProjectStatus(t.project_status,ignoreProjectStatus))return false;
     var completed=taskIsCompleted(t);
     if(completed&&taskIsInvoiced(t))return false; // faktureret → fjernet helt fra Opgavepool, uanset filter
     if(f.status==='completed')return completed&&matchesQuery();
@@ -5965,6 +6070,42 @@ function filtersHTML(scope){
   if(se)se.innerHTML=filterDropdownHTML(scope,'status','Status',sts,f.status);
   if(te)te.innerHTML=filterDropdownHTML(scope,'type','Fag',tys,f.type);
   if(scope==='plan')planDateFilterHTML();
+}
+// SAGSSTATUS-BOBLER over Opgavepool/Kapacitetsboard/Tidslinje. Bevidst nøjagtig
+// samme komponent som status-boblerne på Projekter-siden (se renderPjStatusFilter)
+// — samme .bly-kpi-card-markup og de SAMME statusnøgler/labels/farver via
+// PJ_STATUS_ORDER/PJ_STATUS_META, så "Billy-boblerne" ser ens ud overalt i appen.
+// Arkiverede sager har (som på Projekter-siden) bevidst ingen egen boble.
+function renderPoolProjectStatusFilter(scope){
+  var dom=scope==='capacity'?'cap':scope;
+  var box=document.getElementById(dom+'-projstatus-filter');
+  if(!box)return;
+  // Tallene beregnes på listen som den ville se ud UDEN sagsstatus-filteret (men MED
+  // de øvrige filtre/søgning for netop denne visning), så de står stille mens man
+  // klikker rundt mellem boblerne — ellers ville alle andre end den valgte vise 0.
+  var base=filterTasks(scope,true);
+  function card(status,label,dot,n){
+    var active=poolProjectStatusFilter===status;
+    return '<button class="bly-kpi-card'+(active?' active':'')+'" data-pool-pj-status="'+status+'" type="button">'
+      +'<div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:'+dot+'"></span>'+label+'</div>'
+      +'<div class="bly-kpi-value">'+n+'</div></button>';
+  }
+  var html=card('all','Alle','var(--bly-dot-total)',base.length);
+  html+=PJ_STATUS_ORDER.map(function(s){
+    return card(s,PJ_STATUS_META[s].label,PJ_STATUS_META[s].dot,base.filter(function(t){return t.project_status===s;}).length);
+  }).join('');
+  box.innerHTML=html;
+  box.querySelectorAll('[data-pool-pj-status]').forEach(function(b){
+    b.onclick=function(){
+      poolProjectStatusFilter=b.dataset.poolPjStatus;
+      // Filteret er fælles for de tre visninger, så her gentegnes kun DEN side man
+      // står på — de to andre læser den samme variabel næste gang de tegnes
+      // (switchPage/loadAll), og valget følger derfor automatisk med rundt.
+      if(scope==='capacity')renderCapacity();
+      else if(scope==='timeline')renderTimeline();
+      else renderPlan();
+    };
+  });
 }
 // Datofilter/uge for Opgavepool (sep. 2026) — se HTML-kommentaren ved
 // #plan-date-filter-row. f.dateWeek er en ISO-dato for mandagen i den valgte uge, eller
@@ -6075,6 +6216,7 @@ var poolGroupedMode={plan:true,capacity:false,timeline:false};
 var poolGroupExpanded={};
 function renderPool(scope){
   filtersHTML(scope);
+  renderPoolProjectStatusFilter(scope);
   var dom=scope==='capacity'?'cap':scope;
   var el=document.getElementById(dom+'-pool');
   if(!el)return;
@@ -8499,6 +8641,11 @@ function renderTimeline(){
   groups.forEach(function(g){
     var rowBookings=bookings.filter(function(b){
       if(isCapacityBooking(b))return false;
+      // Tidslinjen grupperer BOOKINGER (ikke pool-opgaverne), så sagsstatus-filteret
+      // skal slå igennem her på hver booking via task_project_status fra
+      // bookingSelect() i server.js — ellers ville boblerne kun filtrere
+      // Opgavepoolen til venstre og ikke selve tidslinjen.
+      if(!matchesPoolProjectStatus(b.task_project_status))return false;
       if(timelineGroupBy==='type')return (b.type_guess||'other')===g.key;
       return +b.user_id===+g.key;
     }).filter(function(b){
@@ -9034,6 +9181,40 @@ function timeAgo(iso){
   if(diffH<24)return diffH+' t siden';
   return Math.round(diffH/24)+' d siden';
 }
+// Høj prioritet-banner på Kommandocenter (sep. 2026, Martins ønske) — se
+// HTML-kommentaren ved #dash-priority-banner. Viser kun opgaver der er sat som
+// "⚡ Høj prioritet" ved oprettelse OG enten forfalder i dag eller allerede er
+// overskredet ("bagud") — fremtidige høj-prioritets-opfølgninger er ikke akutte
+// endnu og fylder derfor ikke banneret unødigt. Klik åbner samme detalje-modal
+// som "☑ Opfølgninger"-siden (openCrmpDetail).
+function renderPriorityBanner(list){
+  var box=document.getElementById('dash-priority-banner');
+  var todayIso=iso(new Date());
+  function tagFor(t){
+    if(!t.due_date)return{cls:'nodate',label:'Ingen dato'};
+    if(t.due_date<todayIso)return{cls:'overdue',label:'Bagud'};
+    if(t.due_date===todayIso)return{cls:'today',label:'I dag'};
+    return null;
+  }
+  var rows=list.filter(function(t){return !t.done&&+t.priority===1;})
+    .map(function(t){return{t:t,tag:tagFor(t)};})
+    .filter(function(x){return x.tag;});
+  if(!rows.length){box.hidden=true;box.innerHTML='';return;}
+  var order={overdue:0,today:1,nodate:2};
+  rows.sort(function(a,b){
+    var d=order[a.tag.cls]-order[b.tag.cls];
+    return d||String(a.t.due_date||'').localeCompare(String(b.t.due_date||''));
+  });
+  box.hidden=false;
+  box.innerHTML='<div class="dash-priority-banner-title">⚡ Høj prioritet — skal kontaktes</div>'
+    +rows.map(function(x){
+      var t=x.t;
+      return '<div class="dash-priority-row" onclick="openCrmpDetail(\''+esc(t.entity_type)+'\','+ +t.entity_id+')">'
+        +'<div><div class="dash-priority-row-title">'+esc(t.entity_name||'(slettet)')+'</div>'
+        +'<div class="dash-priority-row-sub">'+esc(t.title||'')+(t.assigned_name?' · '+esc(t.assigned_name):'')+'</div></div>'
+        +'<span class="dash-priority-tag '+x.tag.cls+'">'+x.tag.label+'</span></div>';
+    }).join('');
+}
 async function loadDashboard(){
   var el=document.getElementById('dash-kpi-cards');
   el.innerHTML='<div class="dash-empty">Henter…</div>';
@@ -9041,6 +9222,11 @@ async function loadDashboard(){
   var kpis=await api('/api/dashboard/kpis');
   var forecast=await api('/api/dashboard/capacity-forecast');
   var notifs=await api('/api/notifications');
+  // Høj prioritet-opfølgninger — genbruger samme data som "☑ Opfølgninger"-siden
+  // (GET /api/crm/tasks/overview), viser kun priority=1 + ikke færdige. Fejler
+  // stille (fx bruger uden crmp_tasks-adgang) — banneret skjules bare da.
+  var crmTasksOverview=await api('/api/crm/tasks/overview');
+  renderPriorityBanner(Array.isArray(crmTasksOverview)?crmTasksOverview:[]);
   if(!overview){el.innerHTML='<div class="dash-empty">Kunne ikke hente overblik.</div>';return;}
 
   var waitingN=(overview.status_counts.find(function(s){return s.status_flag==='waiting';})||{}).n||0;
@@ -14101,10 +14287,19 @@ function qzLineDiscountAmount(l,gross){
   if(type==='fixed')return Math.max(0,Math.min(val,gross));
   return gross*Math.max(0,Math.min(val,100))/100;
 }
+// Trækhåndtag (sep. 2026, Martins ønske: "Mulighed for at flytte tilbudslinjer
+// op og ned med drag and drop"). Selve håndtaget er draggable="true" — resten af
+// linjen er det bevidst IKKE, ellers ville man ikke kunne markere/redigere tekst
+// i beskrivelses-/notefelterne uden ved et uheld at starte et træk. Se
+// makeLinesDragHandler nedenfor for selve logikken.
+function qzLineDragHandle(idx){
+  return '<span class="qe-line-drag" draggable="true" data-idx="'+idx+'" title="Træk for at ændre rækkefølge">⠿</span>';
+}
 function qzLineRowHtml(l,idx,prefix){
   if(l.line_type==='text'){
     return '<div class="qe-line qe-line-text" data-idx="'+idx+'">'
       +'<div class="qe-line-top">'
+      +qzLineDragHandle(idx)
       +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="description" value="'+esc(l.description||'')+'" placeholder="Overskrift eller note — brydes ind i tilbuddet som ren tekst">'
       +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
       +'</div></div>';
@@ -14119,6 +14314,7 @@ function qzLineRowHtml(l,idx,prefix){
   var type=qzType(l.product_type);
   return '<div class="qe-line" data-idx="'+idx+'">'
     +'<div class="qe-line-top">'
+    +qzLineDragHandle(idx)
     +'<textarea class="qe-input qe-line-field qe-desc-area" data-idx="'+idx+'" data-field="description" placeholder="Beskrivelse" rows="1">'+esc(l.description||'')+'</textarea>'
     +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="unit" value="'+esc(l.unit||'stk')+'" placeholder="Enhed">'
     +'<select class="qe-input qe-line-field" data-idx="'+idx+'" data-field="product_type">'
@@ -14209,6 +14405,61 @@ function makeLinesRemoveHandler(getLines,renderFn){
     renderFn();
   };
 }
+// Drag-and-drop reorder af tilbudslinjer (sep. 2026, Martins ønske). Bindes som
+// dragstart/dragover/drop/dragend på selve linje-containeren (samme delegerings-
+// mønster som makeLinesFieldHandler/makeLinesRemoveHandler ovenfor), så den virker
+// uændret efter hver gentegning uden at skulle genbindes pr. linje.
+// Kun håndtaget (.qe-line-drag) er draggable — se qzLineDragHandle.
+function qzLineRow(el){return el&&el.closest('.qe-line,.qe-line-text');}
+function makeLinesDragHandler(getLines,renderFn){
+  var fromIdx=null;
+  function clearDragoverMarks(root){
+    root.querySelectorAll('.qe-line-dragover').forEach(function(el){el.classList.remove('qe-line-dragover');});
+  }
+  return {
+    dragstart:function(e){
+      var handle=e.target.closest('.qe-line-drag');
+      if(!handle){e.preventDefault();return;}
+      var row=qzLineRow(handle);
+      if(!row)return;
+      fromIdx=Number(row.dataset.idx);
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',String(fromIdx));
+      row.classList.add('qe-line-dragging');
+    },
+    dragover:function(e){
+      if(fromIdx===null)return;
+      var row=qzLineRow(e.target);
+      if(!row)return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect='move';
+      clearDragoverMarks(row.parentNode);
+      if(Number(row.dataset.idx)!==fromIdx)row.classList.add('qe-line-dragover');
+    },
+    drop:function(e){
+      if(fromIdx===null)return;
+      var row=qzLineRow(e.target);
+      e.preventDefault();
+      if(row){
+        var toIdx=Number(row.dataset.idx);
+        if(toIdx!==fromIdx){
+          var lines=getLines();
+          var moved=lines.splice(fromIdx,1)[0];
+          lines.splice(toIdx,0,moved);
+          renderFn();
+        }
+      }
+      fromIdx=null;
+    },
+    dragend:function(e){
+      fromIdx=null;
+      var container=e.currentTarget;
+      if(container){
+        container.querySelectorAll('.qe-line-dragging,.qe-line-dragover').forEach(function(el){el.classList.remove('qe-line-dragging','qe-line-dragover');});
+      }
+    }
+  };
+}
 // Sammensætter en linjes startbeskrivelse ud fra et produkt: navnet, plus
 // produktets egen (redigerbare) beskrivelse på ny linje hvis den findes — vi
 // har en beskrivelse til alt vi laver, og den skal med på tilbuddet, ikke kun
@@ -14253,6 +14504,28 @@ function qzMakeBlankLine(product){
 function qzMakeTextLine(){
   return {product_id:null,description:'',unit:'',quantity:0,cost_price:0,sell_price:0,product_type:'service',discount_pct:0,discount_type:'pct',line_type:'text'};
 }
+// Søgefeltet i toppen af tilbuds-/skabelon-editoren (sep. 2026, Martins ønske:
+// "lav forskellige indhak i note søgefeltet — fx / når den skal søge på produkt,
+// ellers lav det mere agilt så man kan flere ting"). Uden "/" opfører feltet sig
+// som en almindelig fritekst-note: tryk Enter for at tilføje en ren tekstlinje med
+// det skrevne (samme linjetype som "+ Tekstlinje"-knappen). Med "/" foran søger
+// feltet i stedet produktkataloget som hidtil (se qzRunProductSearch) — Enter gør
+// her ingenting, valg sker via afkrydsning + "+ Tilføj" i resultat-boksen.
+function qzQuickNoteHandler(getLines,renderFn){
+  return function(e){
+    if(e.key!=='Enter')return;
+    var el=e.target;
+    if(el.value.charAt(0)==='/')return;
+    var text=el.value.trim();
+    if(!text)return;
+    e.preventDefault();
+    var line=qzMakeTextLine();
+    line.description=text;
+    getLines().push(line);
+    renderFn();
+    el.value='';
+  };
+}
 // Flervalg af produkter: hver søgeboks (qe-product-results / qzt-product-results)
 // har sin egen "kurv" af afkrydsede produkter, der huskes på tværs af flere
 // søgninger (skriv "gulv", kryds 2 af; skriv "lim", kryds 1 af osv.), og
@@ -14262,8 +14535,12 @@ function qzMultiSelectFor(resultsId){
   if(!qzProductSearchSelections[resultsId])qzProductSearchSelections[resultsId]={};
   return qzProductSearchSelections[resultsId];
 }
+// (sep. 2026, Martins ønske) Feltet er nu delt i to: uden "/" er det en almindelig
+// fritekst-note (se qzQuickNoteHandler), og "/" foran teksten slår produktsøgning
+// til — samme søgning som hidtil, blot uden selve skråstregen i søgeforespørgslen.
 function qzRunProductSearch(inputId,resultsId,onPick){
-  var q=document.getElementById(inputId).value.trim().toLowerCase();
+  var raw=document.getElementById(inputId).value.trim();
+  var q=(raw.charAt(0)==='/'?raw.slice(1):raw).trim().toLowerCase();
   var box=document.getElementById(resultsId);
   var sel=qzMultiSelectFor(resultsId);
   var selIds=Object.keys(sel);
@@ -18128,6 +18405,127 @@ async function openQuoteEditor(id,prefillCustomer){
 }
 function renderQeLines(){qzRenderLines('qe-lines',qeState.lines,'qe');}
 function qeAddLine(product){qeState.lines.push(qzMakeBlankLine(product));renderQeLines();qeRecalc();}
+// ── AI-DIKTERING (sep. 2026, Martins ønske: "tale til programmet med hvad jeg
+// ønsker tilbuddet skal være, så den lynhurtigt finder produktet eller selv
+// laver det") ────────────────────────────────────────────────────────────────
+// Tale-til-tekst sker HELT i browseren via Web Speech API (da-DK) — virker i
+// Chrome/Edge, ikke i Firefox/Safari (ingen SpeechRecognition der endnu). Selve
+// tolkningen af diktatet til tilbudslinjer sker server-side, se
+// POST /api/quotes/ai-parse-lines. Intet føjes til tilbuddet og INTET produkt
+// oprettes før Martin bekræfter i gennemgangsvinduet (#qe-ai-review-modal) —
+// Martins udtrykkelige valg ("altid bekræft med mig først").
+var qeAiState={recognition:null,listening:false,finalTranscript:'',reviewLines:[]};
+function qeAiSupported(){return!!(window.SpeechRecognition||window.webkitSpeechRecognition);}
+function qeAiToggleListen(){
+  if(qeAiState.listening){qeAiStopAndParse();return;}
+  if(!qeAiSupported()){toast('AI-diktering kræver Chrome eller Edge','⚠️');return;}
+  var Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
+  var rec=new Rec();
+  rec.lang='da-DK';rec.continuous=true;rec.interimResults=true;
+  qeAiState.finalTranscript='';
+  rec.onresult=function(e){
+    var interim='';
+    for(var i=e.resultIndex;i<e.results.length;i++){
+      var res=e.results[i];
+      if(res.isFinal)qeAiState.finalTranscript+=res[0].transcript+' ';
+      else interim+=res[0].transcript;
+    }
+    var live=document.getElementById('qe-ai-live-transcript');
+    if(live)live.textContent=(qeAiState.finalTranscript+interim).slice(-120);
+  };
+  rec.onerror=function(e){
+    // 'no-speech'/'aborted' sker tit bare fordi man holder en pause — ikke en reel fejl.
+    if(e.error!=='no-speech'&&e.error!=='aborted'){toast('Mikrofonfejl: '+e.error,'❌');qeAiCancel();}
+  };
+  rec.onend=function(){
+    // Nogle browsere lukker forbindelsen efter lang stilhed selvom continuous=true —
+    // genstart lytningen frem for at tabe optagelsen, medmindre brugeren selv har stoppet.
+    if(qeAiState.listening){try{rec.start();}catch(e){}}
+  };
+  qeAiState.recognition=rec;
+  qeAiState.listening=true;
+  try{rec.start();}catch(e){toast('Kunne ikke starte mikrofonen','❌');qeAiState.listening=false;return;}
+  document.getElementById('qe-ai-listening-bar').hidden=false;
+  document.getElementById('qe-ai-live-transcript').textContent='';
+  document.getElementById('qe-ai-mic-btn').textContent='🔴 Optager...';
+}
+function qeAiCancel(){
+  if(qeAiState.recognition){try{qeAiState.recognition.stop();}catch(e){}qeAiState.recognition=null;}
+  qeAiState.listening=false;
+  document.getElementById('qe-ai-listening-bar').hidden=true;
+  document.getElementById('qe-ai-mic-btn').textContent='🎤 AI-diktering';
+}
+async function qeAiStopAndParse(){
+  var rec=qeAiState.recognition;
+  qeAiState.listening=false; // sættes FØR stop(), ellers genstarter onend()-handleren ovenfor den
+  if(rec){try{rec.stop();}catch(e){}}
+  document.getElementById('qe-ai-listening-bar').hidden=true;
+  document.getElementById('qe-ai-mic-btn').textContent='🎤 AI-diktering';
+  var transcript=qeAiState.finalTranscript.trim();
+  if(!transcript){toast('Intet blev opfanget — prøv igen','⚠️');return;}
+  toast('Tolker diktat...','⏳');
+  var r=await api('/api/quotes/ai-parse-lines',{method:'POST',body:JSON.stringify({transcript:transcript})});
+  if(!r||r.error){toast(r&&r.error?r.error:'Kunne ikke tolke diktatet','❌');return;}
+  if(!r.lines||!r.lines.length){toast('AI fandt ingen linjer i diktatet','⚠️');return;}
+  qzRenderAiReview(r.lines);
+}
+function qzRenderAiReview(lines){
+  qeAiState.reviewLines=lines.map(function(l){return Object.assign({include:true},l);});
+  var box=document.getElementById('qe-ai-review-lines');
+  box.innerHTML=qeAiState.reviewLines.map(function(l,idx){
+    var isNew=!!l.new_product;
+    var tag=isNew?'<span class="qe-ai-review-tag">🆕 Nyt produkt</span>':'<span class="qe-ai-review-tag">✓ Matchet</span>';
+    var nameVal=isNew?l.new_product.name:l.match.name;
+    var priceInfo=isNew?'Pris sættes bagefter i produktkataloget':(krFmt(l.match.sell_price)+' / '+esc(l.match.unit));
+    return '<div class="qe-ai-review-row '+(isNew?'new':'matched')+'" data-idx="'+idx+'">'
+      +'<input type="checkbox" data-ai-include="'+idx+'"'+(l.include?' checked':'')+' style="margin-top:4px">'
+      +'<div class="qe-ai-review-fields">'
+      +tag
+      +'<input class="qe-input" data-ai-field="name" data-idx="'+idx+'" value="'+esc(nameVal||'')+'">'
+      +'<div style="display:flex;gap:6px">'
+      +'<input class="qe-input" type="number" step="0.01" style="width:70px" data-ai-field="quantity" data-idx="'+idx+'" value="'+(Number(l.quantity)||1)+'" title="Antal">'
+      +'<input class="qe-input" style="width:70px" data-ai-field="unit" data-idx="'+idx+'" value="'+esc(l.unit||'stk')+'" title="Enhed">'
+      +'<span class="opt-tag" style="align-self:center">'+priceInfo+'</span>'
+      +'</div>'
+      +'<input class="qe-input" data-ai-field="description" data-idx="'+idx+'" value="'+esc(l.description||'')+'" placeholder="Beskrivelse på linjen">'
+      +'</div></div>';
+  }).join('');
+  box.querySelectorAll('[data-ai-include]').forEach(function(cb){
+    cb.onchange=function(){qeAiState.reviewLines[Number(cb.dataset.aiInclude)].include=cb.checked;};
+  });
+  box.querySelectorAll('[data-ai-field]').forEach(function(inp){
+    inp.oninput=function(){
+      var l=qeAiState.reviewLines[Number(inp.dataset.idx)],field=inp.dataset.aiField;
+      if(field==='name'){if(l.new_product)l.new_product.name=inp.value;else l.match.name=inp.value;}
+      else if(field==='quantity')l.quantity=Number(inp.value)||1;
+      else if(field==='unit')l.unit=inp.value;
+      else if(field==='description')l.description=inp.value;
+    };
+  });
+  document.getElementById('qe-ai-review-modal').classList.add('open');
+}
+async function qeAiReviewConfirm(){
+  var chosen=qeAiState.reviewLines.filter(function(l){return l.include;});
+  if(!chosen.length){closeModal('qe-ai-review-modal');return;}
+  var created=0;
+  for(var i=0;i<chosen.length;i++){
+    var l=chosen[i],line;
+    if(l.new_product){
+      var r=await api('/api/products',{method:'POST',body:JSON.stringify({name:l.new_product.name,unit:l.unit||l.new_product.unit,product_type:l.new_product.product_type,cost_price:0,sell_price:0})});
+      if(!r||r.error){toast('Kunne ikke oprette "'+l.new_product.name+'"','❌');continue;}
+      created++;
+      line=qzMakeBlankLine({id:r.id,name:l.new_product.name,description:'',unit:l.unit||l.new_product.unit,cost_price:0,sell_price:0,product_type:l.new_product.product_type,note:''});
+    }else{
+      line=qzMakeBlankLine({id:l.match.product_id,name:l.match.name,description:'',unit:l.unit||l.match.unit,cost_price:l.match.cost_price,sell_price:l.match.sell_price,product_type:l.match.product_type,note:''});
+    }
+    line.quantity=Number(l.quantity)||1;
+    if(l.description)line.description=l.description;
+    qeState.lines.push(line);
+  }
+  renderQeLines();qeRecalc();
+  closeModal('qe-ai-review-modal');
+  toast(chosen.length+' linje(r) tilføjet'+(created?' · '+created+' nyt produkt oprettet':''),'✓');
+}
 function qeComputeTotals(){
   var docDiscountPct=Number(document.getElementById('qe-doc-discount').value)||0;
   var docDiscountType=document.getElementById('qe-doc-discount-type').value==='fixed'?'fixed':'pct';
@@ -18559,19 +18957,32 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzt-add-text-line').addEventListener('click',function(){qztState.lines.push(qzMakeTextLine());qzRenderLines('qzt-lines',qztState.lines,'qzt');});
   document.getElementById('qzt-add-blank-line-bottom').addEventListener('click',function(){qztAddLine(null);});
   document.getElementById('qzt-add-text-line-bottom').addEventListener('click',function(){qztState.lines.push(qzMakeTextLine());qzRenderLines('qzt-lines',qztState.lines,'qzt');});
-  document.getElementById('qzt-product-search').addEventListener('input',function(){
-    qzRunProductSearch('qzt-product-search','qzt-product-results',function(p){qztAddLine(p);});
+  document.getElementById('qzt-product-search').addEventListener('input',function(e){
+    if(e.target.value.charAt(0)==='/'){
+      qzRunProductSearch('qzt-product-search','qzt-product-results',function(p){qztAddLine(p);});
+    }else if(!Object.keys(qzMultiSelectFor('qzt-product-results')).length){
+      var box=document.getElementById('qzt-product-results');box.style.display='none';box.innerHTML='';
+    }
   });
+  document.getElementById('qzt-product-search').addEventListener('keydown',qzQuickNoteHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
   var qztFieldHandler=makeLinesFieldHandler(function(){return qztState.lines;},'qzt',null,function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');});
   document.getElementById('qzt-lines').addEventListener('input',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('change',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
+  (function(){
+    var qztDrag=makeLinesDragHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');});
+    var el=document.getElementById('qzt-lines');
+    el.addEventListener('dragstart',qztDrag.dragstart);
+    el.addEventListener('dragover',qztDrag.dragover);
+    el.addEventListener('drop',qztDrag.drop);
+    el.addEventListener('dragend',qztDrag.dragend);
+  })();
 
   makeRichField('qe-top-note');
   makeRichField('qe-notes');
   makeRichField('iv-notes');
   document.getElementById('qz-new-quote-btn').addEventListener('click',function(){openQuoteEditor(null);});
-  document.getElementById('qe-close-btn').addEventListener('click',function(){closeModal('quote-editor-modal');});
+  document.getElementById('qe-close-btn').addEventListener('click',function(){if(qeAiState.listening)qeAiCancel();closeModal('quote-editor-modal');});
   document.getElementById('qe-save-btn').addEventListener('click',saveQuoteEditor);
   document.getElementById('qe-convert-btn').addEventListener('click',convertQuoteToInvoice);
   document.getElementById('qe-share-btn').addEventListener('click',qeShareLink);
@@ -18581,6 +18992,11 @@ function bindQuotesModuleEvents(){
   document.getElementById('qr-send-btn').addEventListener('click',qrSend);
   document.getElementById('qe-status-select').addEventListener('change',qeStatusChanged);
   document.getElementById('qe-pdf-link').addEventListener('click',function(e){e.preventDefault();if(qeState.id)qzOpenPdf('/api/quotes/'+qeState.id+'/pdf');});
+  document.getElementById('qe-ai-mic-btn').addEventListener('click',qeAiToggleListen);
+  document.getElementById('qe-ai-stop-btn').addEventListener('click',qeAiStopAndParse);
+  document.getElementById('qe-ai-cancel-btn').addEventListener('click',qeAiCancel);
+  document.getElementById('qe-ai-review-cancel').addEventListener('click',function(){closeModal('qe-ai-review-modal');});
+  document.getElementById('qe-ai-review-confirm').addEventListener('click',qeAiReviewConfirm);
   document.getElementById('qe-add-blank-line').addEventListener('click',function(){qeAddLine(null);});
   document.getElementById('qe-add-text-line').addEventListener('click',function(){qeState.lines.push(qzMakeTextLine());renderQeLines();qeRecalc();});
   // Samme handlers som knapperne foroven, bare for de duplikerede knapper under
@@ -18595,13 +19011,26 @@ function bindQuotesModuleEvents(){
   });
   document.getElementById('qe-doc-discount').addEventListener('input',qeRecalc);
   document.getElementById('qe-doc-discount-type').addEventListener('change',qeRecalc);
-  document.getElementById('qe-product-search').addEventListener('input',function(){
-    qzRunProductSearch('qe-product-search','qe-product-results',function(p){qeAddLine(p);});
+  document.getElementById('qe-product-search').addEventListener('input',function(e){
+    if(e.target.value.charAt(0)==='/'){
+      qzRunProductSearch('qe-product-search','qe-product-results',function(p){qeAddLine(p);});
+    }else if(!Object.keys(qzMultiSelectFor('qe-product-results')).length){
+      var box=document.getElementById('qe-product-results');box.style.display='none';box.innerHTML='';
+    }
   });
+  document.getElementById('qe-product-search').addEventListener('keydown',qzQuickNoteHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
   var qeFieldHandler=makeLinesFieldHandler(function(){return qeState.lines;},'qe',qeRecalc,renderQeLines);
   document.getElementById('qe-lines').addEventListener('input',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('change',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
+  (function(){
+    var qeDrag=makeLinesDragHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();});
+    var el=document.getElementById('qe-lines');
+    el.addEventListener('dragstart',qeDrag.dragstart);
+    el.addEventListener('dragover',qeDrag.dragover);
+    el.addEventListener('drop',qeDrag.drop);
+    el.addEventListener('dragend',qeDrag.dragend);
+  })();
   document.getElementById('qe-customer-search').addEventListener('input',function(e){
     clearTimeout(qeCustomerSearchTimer);
     var q=e.target.value.trim();
