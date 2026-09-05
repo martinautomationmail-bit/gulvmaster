@@ -2262,7 +2262,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-04.5</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-04.6</span></div>
 </aside>
 <div class="app-content">
 <nav class="nav">
@@ -2701,6 +2701,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="bly-btn small" id="sync-btn" type="button">⚡ Synk JT</button>
         <button class="bly-btn outline small" id="sync-phones-btn" type="button" title="Henter kundetelefon + adresse-koordinater til vejret, med det samme, og viser resultatet direkte">📞 Synk telefon &amp; vejr</button>
+        <!-- NB til den næste der læser med: kortets undertekst ovenfor siger at
+             JobTread-synken er "midlertidig" og fjernes når JobTread-data ikke
+             længere bruges — men denne knap trækker tværtimod JobTread-sager helt
+             ind i Projekter (med tilbud, sagsnummer og tidsplan) og gør dermed
+             afhængigheden STØRRE, ikke mindre. Teksten er bevidst ikke ændret her;
+             det er en beslutning Martin skal tage, ikke en formulering vi retter. -->
+        <button class="bly-btn outline small" id="jt-import-btn" type="button" title="Opretter nye Projekter-sager for JobTread-jobs der har planlagte datoer og endnu ikke er importeret">📥 Hent nye sager</button>
         <span id="sync-ind" style="font-size:11px;color:var(--bly-sub)"></span>
       </div>
     </div>
@@ -7886,6 +7893,37 @@ async function syncPhonesNow(){
     console.error('Phone sync failed:',r);
   }
   b.disabled=false;b.textContent='📞 Synk telefon & vejr';
+}
+// "📥 Hent nye sager" — henter de JobTread-sager der rent faktisk er planlagt
+// (har opgaver i JobTreads kalender) ind som rigtige sager under Projekter, med
+// et internt tilbud der allerede står som accepteret + sagens tidsplan. Trygt at
+// trykke på igen og igen: sager der er hentet før springes over server-side.
+async function jtImportNow(){
+  var b=document.getElementById('jt-import-btn');b.disabled=true;b.textContent='⏳ Henter sager…';
+  var log=document.getElementById('sync-log');log.classList.add('show');
+  function addLog(m,c){var d=document.createElement('div');d.className=c||'info';d.textContent='['+new Date().toLocaleTimeString('da-DK')+'] '+m;log.appendChild(d);}
+  addLog('Henter planlagte JobTread-sager ind i Projekter. Allerede importerede sager springes over.','info');
+  var r=await api('/api/admin/jobtread-import',{method:'POST'});
+  if(r&&r.ok){
+    var msg=r.created+' nye sager oprettet, '+r.skipped+' sprunget over (allerede importeret)'+(r.failed&&r.failed.length?', '+r.failed.length+' fejlede':'');
+    addLog(msg+'. '+r.found+' planlagte sager fundet i JobTread.',r.failed&&r.failed.length?'err':'ok');
+    if(r.without_dates)addLog(r.without_dates+' sag(er) fik ingen tidsplan — deres opgaver i JobTread mangler datoer.','info');
+    if(r.failed&&r.failed.length){
+      r.failed.forEach(function(f){addLog('Fejlede: '+(f.name||'Ukendt sag')+' — '+(f.error||'ukendt fejl'),'err');});
+      console.error('JobTread-sagsimport, fejlede sager:',r.failed);
+    }
+    toast(msg,r.failed&&r.failed.length?'⚠️':'✅');
+    // Projekter-listen skal vise de nye sager med det samme. renderPjProjects()
+    // kaldes kun hvis Projekter-siden er initialiseret (dens filtre findes først
+    // efter første besøg) — ellers hentes de bare ved næste sidevisning.
+    await loadPjProjects();
+    if(typeof pjInitialized!=='undefined'&&pjInitialized)renderPjProjects();
+  } else {
+    addLog('Import fejlede: '+((r&&r.error)||'Ukendt fejl — se konsollen (F12) for detaljer'),'err');
+    toast((r&&r.error)||'Import fejlede — se loggen','❌');
+    console.error('JobTread project import failed:',r);
+  }
+  b.disabled=false;b.textContent='📥 Hent nye sager';
 }
 async function clearPlan(){
   if(!await gmConfirm('Ryd ALLE bookinger? Opgavepoolen bevares.'))return;
@@ -13365,6 +13403,7 @@ function bind(){
   document.getElementById('close-visit-form').onclick=function(){closeModal('visit-form-modal');};
   document.getElementById('save-visit-form').onclick=saveVisitForm;
   document.getElementById('sync-phones-btn').onclick=syncPhonesNow;
+  document.getElementById('jt-import-btn').onclick=jtImportNow;
   // "Ryd alle bookinger"-knappen er fjernet fra UI (for let at trykke på ved en fejl) —
   document.getElementById('pool-bulk-clear').addEventListener('click',function(){poolSelected={};renderPool('plan');});
   document.getElementById('plan-group-toggle').addEventListener('click',function(){

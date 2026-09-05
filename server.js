@@ -1542,6 +1542,14 @@ async function initSchema() {
     -- almindeligt tekstfelt bagefter, så det evt. kan rettes manuelt ligesom de
     -- andre steder i appen der bruger samme sagsnummer-konvention (Tidslinje mm.).
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS job_number TEXT;
+    -- JobTread-sagens id, sat KUN på sager oprettet af "Hent nye sager"-importen
+    -- (se jtImportMaterializeJob). Er nøglen der gør knappen tryg at trykke på
+    -- igen og igen: en JobTread-sag der allerede er hentet ind springes over i
+    -- stedet for at blive oprettet en gang til. Manuelt/normalt oprettede sager
+    -- (fra et accepteret tilbud) har NULL her — derfor er unik-indekset delvist,
+    -- så de mange NULL'er ikke kolliderer med hinanden.
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS jobtread_job_id TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_jobtread_job_id ON projects(jobtread_job_id) WHERE jobtread_job_id IS NOT NULL;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS project_id INTEGER;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS source_quote_line_id INTEGER;
     CREATE INDEX IF NOT EXISTS idx_gantt_tasks_project ON gantt_tasks(project_id);
@@ -4223,6 +4231,367 @@ app.post('/api/sync-phones', auth, adminOnly, asyncRoute(async (req, res) => {
 app.post('/api/sync', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await syncFromJT();
   res.status(result.ok ? 200 : 500).json(result);
+}));
+
+// ══ JOBTREAD → PROJEKTER: "HENT NYE SAGER" ══════════════════════════════
+//
+// Martin planlægger fortsat sine sager i JobTread, men vil have dem ind i
+// appens EGEN Projekter-sektion, så alt det der hænger på et projekt
+// (fakturering, tidsregistrering, kvalitetssikring, billeder, sags-Gantt)
+// virker på dem. Indtil nu kunne et projekt KUN opstå som en sidegevinst af at
+// en kunde underskrev et internt tilbud (se POST /api/public/quotes/:token/accept)
+// — der fandtes slet ingen anden vej ind.
+//
+// Denne import laver derfor præcis det samme som en accept ville have gjort:
+// et fuldt internt tilbud, oprettet direkte som 'accepted' (signed_name =
+// 'JobTread-import'), og oven på det et projekt + en sags-Gantt-linje der
+// spænder over de datoer sagen er planlagt til i JobTread. Resultatet er en
+// helt almindelig sag i appen — ikke en specialsag med huller i.
+//
+// HVORNÅR TÆLLER EN JOBTREAD-SAG SOM "PLANLAGT"?
+// IKKE på sagens eget "Status"-felt. Det er undersøgt i Martins rigtige data:
+// feltet bliver ikke holdt opdateret, så massevis af sager der reelt er
+// planlagt og i gang står stadig som "Estimating". Det pålidelige signal er
+// om sagen har mindst én rigtig kalender-opgave i JobTreads egen planlægning
+// (organization.tasks med targetType='job' og isGroup=false). Kun de sager
+// hentes ind — på den måde slæber knappen ikke 300 løse tilbudssager med.
+//
+// Knappen er bygget til at kunne trykkes igen og igen: allerede importerede
+// sager kendes på projects.jobtread_job_id og springes over.
+
+// Sagsdetaljer hentes i små bidder. JobTread svarer 413 (Request Entity Too
+// Large) når man kombinerer for mange id'er i ét "in"-filter med for mange
+// nestede felter pr. sag — målt i Martins portal: 20 id'er med alle felterne
+// herunder går igennem, 25-40 gør ikke. Derfor en behersket startstørrelse
+// PLUS en fallback der halverer bidden og prøver igen (se jtImportFetchJobChunk),
+// så importen tilpasser sig selv i stedet for at vælte hvis grænsen flytter sig.
+const JT_IMPORT_JOB_CHUNK = 15;
+
+// Kandidat-navne på JobTreads job-custom-fields. Feltnavne kan variere/omdøbes i
+// portalen, så der slås op på flere stavemåder og falder stille tilbage til null
+// — værdierne bruges KUN i den interne note på tilbuddet, aldrig til beslutninger
+// eller til noget kundevendt, så et manglende felt er harmløst.
+const JT_IMPORT_FIELD_ALIASES = {
+  statusRaw: ['Status'],
+  projektType: ['Projekt Type', 'Projekttype'],
+  salesRep: ['Sales Rep', 'Sælger', 'Salgsansvarlig'],
+  projectManager: ['Project Manager', 'Projektleder', 'Sagsansvarlig']
+};
+
+function jtImportCustomFields(job) {
+  const byName = {};
+  for (const fv of listNodes(job?.customFieldValues)) {
+    const label = fv?.customField?.name;
+    if (label && fv?.value != null && fv.value !== '') byName[String(label).trim()] = String(fv.value);
+  }
+  const out = {};
+  for (const key of Object.keys(JT_IMPORT_FIELD_ALIASES)) {
+    out[key] = null;
+    for (const alias of JT_IMPORT_FIELD_ALIASES[key]) {
+      if (byName[alias]) { out[key] = byName[alias]; break; }
+    }
+  }
+  return out;
+}
+
+// Sagsnavnet i JobTread er normalt sigende ("Per Bo Austin - Gulvlægning"), men
+// nogle sager hedder bare "Job GM-2026-0123" e.l. Er navnet tomt eller kun en
+// gentagelse af sagsnummeret, bruges nummeret direkte i stedet for at lave en
+// sag der hedder noget intetsigende i Projekter-listen.
+function jtImportProjectName(jobData) {
+  const name = String(jobData?.name || '').trim();
+  const number = String(jobData?.number || '').trim();
+  const generic = !name || /^job\s+/i.test(name) || (number && name.toLowerCase() === number.toLowerCase());
+  if (generic && number) return number;
+  return name || number || 'JobTread-sag';
+}
+
+// Hele metadata-sporet fra JobTread lægges i tilbuddets INTERNE note
+// (internal_note), aldrig i den kundevendte "notes" — internal_note vises kun i
+// admin, mens notes ender på PDF'en og kundesiden. En importeret sag skal ikke
+// vise Martins interne JobTread-felter til kunden.
+function jtImportInternalNote(jobData) {
+  const parts = ['Automatisk oprettet fra JobTread ("Hent nye sager") — kunden har IKKE underskrevet dette tilbud i appen.'];
+  if (jobData.jobtreadJobId) parts.push('JobTread-sag: ' + jobData.jobtreadJobId + (jobData.number ? ' (' + jobData.number + ')' : ''));
+  if (jobData.statusRaw) parts.push('Status i JobTread: ' + jobData.statusRaw);
+  if (jobData.projektType) parts.push('Projekt Type: ' + jobData.projektType);
+  if (jobData.salesRep) parts.push('Sælger: ' + jobData.salesRep);
+  if (jobData.projectManager) parts.push('Projektleder: ' + jobData.projectManager);
+  if (jobData.startDate) parts.push('Planlagt i JobTread: ' + jobData.startDate + (jobData.endDate && jobData.endDate !== jobData.startDate ? ' → ' + jobData.endDate : ''));
+  else parts.push('Bemærk: sagen har planlagte opgaver i JobTread, men uden datoer — der er derfor ikke lagt noget i sagens tidsplan.');
+  if (jobData.priceSource === 'customerOrder') parts.push('Beløb hentet fra underskrevet kundeordre i JobTread (ekskl. moms).');
+  else if (jobData.priceSource === 'costItems') parts.push('Beløb hentet fra JobTreads cost items (ekskl. moms) — der findes endnu ingen underskrevet kundeordre på sagen.');
+  else parts.push('OBS: JobTread har ingen prisdata på denne sag (hverken underskrevet kundeordre eller cost items). Tilbuddet er oprettet med 0 kr og skal rettes manuelt.');
+  return parts.join('\n');
+}
+
+// Henter ÉN bid sagsdetaljer. Rammer vi JobTreads 413-grænse, halveres bidden og
+// hver halvdel prøves igen — så tilpasser importen sig selv i stedet for at
+// afhænge af én hårdkodet størrelse. Kan selv en enkelt sag ikke hentes med
+// pris-felterne, hentes den uden dem (sagen kommer så ind med 0 kr, hvilket er
+// langt bedre end at hele importen fejler).
+async function jtImportFetchJobChunk(ids) {
+  const baseFields = {
+    id: {}, name: {}, number: {}, createdAt: {},
+    location: { formattedAddress: {}, account: { name: {} } },
+    customFieldValues: { $: { size: 20 }, nodes: { customField: { name: {} }, value: {} } }
+  };
+  const priceFields = {
+    documents: { $: { size: 10, sortBy: [{ field: 'signedAt', order: 'desc' }] }, nodes: { type: {}, status: {}, price: {}, signedAt: {} } },
+    costItems: { sum: { $: 'price' } }
+  };
+  const run = async (fields, label) => {
+    const data = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
+      $: { size: ids.length, where: ['id', 'in', ids] },
+      count: {}, nodes: fields
+    } } } }, label);
+    return listNodes(data?.organization?.jobs);
+  };
+  try {
+    return await run({ ...baseFields, ...priceFields }, 'Sagsimport: sagsdetaljer (' + ids.length + ' sager)');
+  } catch (error) {
+    const tooLarge = /HTTP 413/.test(String(error?.message || ''));
+    if (!tooLarge) throw error;
+    if (ids.length > 1) {
+      const mid = Math.ceil(ids.length / 2);
+      const first = await jtImportFetchJobChunk(ids.slice(0, mid));
+      const second = await jtImportFetchJobChunk(ids.slice(mid));
+      return first.concat(second);
+    }
+    // Sidste udvej for en enkelt tung sag: drop pris-felterne.
+    const rows = await run(baseFields, 'Sagsimport: sagsdetaljer uden prisfelter (1 sag)');
+    return rows.map(row => ({ ...row, __priceUnavailable: true }));
+  }
+}
+
+// Bedste tilgængelige pris, i den prioritet Martin har bekræftet:
+//   (a) summen af UNDERSKREVNE kundeordrer (customerOrder med signedAt) — det er
+//       det kunden faktisk har sagt ja til,
+//   (b) ellers JobTreads rå cost-item-sum (interne budgetlinjer uden dokument),
+//   (c) ellers 0 — sagen oprettes stadig, med en note om at prisen mangler.
+// Alle beløb er EKSKL. moms (JobTreads `price`, ikke `priceWithTax`), fordi det
+// er det tilbudslinjens sell_price skal være — computeTotals lægger selv momsen
+// oveni bagefter, præcis som ved et normalt tilbud.
+function jtImportResolvePrice(job) {
+  if (job?.__priceUnavailable) return { price: 0, priceSource: 'none' };
+  const signedOrders = listNodes(job?.documents).filter(d => d?.type === 'customerOrder' && d?.signedAt);
+  if (signedOrders.length) {
+    const sum = signedOrders.reduce((total, d) => total + (Number(d.price) || 0), 0);
+    if (sum > 0) return { price: sum, priceSource: 'customerOrder' };
+  }
+  const costSum = Number(job?.costItems?.sum);
+  if (Number.isFinite(costSum) && costSum > 0) return { price: costSum, priceSource: 'costItems' };
+  return { price: 0, priceSource: 'none' };
+}
+
+// (a) HENT-DELEN — taler UDELUKKENDE med JobTread, rører aldrig databasen.
+// Holdt bevidst adskilt fra skrive-delen nedenfor, så skrive-delen kan testes
+// fuldt ud uden JobTread-adgang (og omvendt).
+async function jtImportFetchPlannedJobs() {
+  if (!JT_GRANT || !JT_ORG) {
+    return { ok: false, error: 'JobTread er ikke sat op på serveren (Grant Key/Organisation ID mangler) — kan ikke hente sager.' };
+  }
+  try {
+    // ── TRIN 1: alle planlagte kalender-opgaver, side for side. Ud af dem
+    // udledes både HVILKE sager der er planlagte, og hvilket datospænd de har.
+    const ranges = new Map(); // JobTread-sags-id → {start,end,tasks}
+    let cursor, page = 0;
+    while (page < JT_MAX_PAGES) {
+      const args = { size: 50, where: { and: [['targetType', 'job'], ['isGroup', false]] } };
+      if (cursor) args.page = cursor;
+      const data = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG },
+        tasks: { $: args, count: {}, nextPage: {}, nodes: { id: {}, startDate: {}, endDate: {}, job: { id: {} } } }
+      } } }, 'Sagsimport: planlagte opgaver s.' + (page + 1));
+      const conn = data?.organization?.tasks;
+      for (const task of listNodes(conn)) {
+        const jobId = task?.job?.id;
+        if (!jobId) continue;
+        const range = ranges.get(jobId) || { start: null, end: null, tasks: 0 };
+        range.tasks++;
+        // En opgave uden datoer tæller stadig som "planlagt" (sagen ligger i
+        // JobTreads kalender), men kan naturligvis ikke bidrage til datospændet.
+        if (validDate(task.startDate) && (!range.start || task.startDate < range.start)) range.start = task.startDate;
+        const endCandidate = validDate(task.endDate) ? task.endDate : (validDate(task.startDate) ? task.startDate : null);
+        if (endCandidate && (!range.end || endCandidate > range.end)) range.end = endCandidate;
+        ranges.set(jobId, range);
+      }
+      page++;
+      cursor = conn?.nextPage;
+      if (!cursor) break;
+    }
+    const jobIds = [...ranges.keys()];
+    if (!jobIds.length) return { ok: true, jobs: [], pages: page };
+
+    // ── TRIN 2: sagsdetaljer + pris, i små bidder (se JT_IMPORT_JOB_CHUNK).
+    const jobs = [];
+    for (let i = 0; i < jobIds.length; i += JT_IMPORT_JOB_CHUNK) {
+      const chunk = jobIds.slice(i, i + JT_IMPORT_JOB_CHUNK);
+      for (const job of await jtImportFetchJobChunk(chunk)) {
+        if (!job?.id) continue;
+        const range = ranges.get(job.id) || { start: null, end: null, tasks: 0 };
+        const fields = jtImportCustomFields(job);
+        const { price, priceSource } = jtImportResolvePrice(job);
+        const row = {
+          jobtreadJobId: job.id,
+          name: String(job.name || '').trim(),
+          number: String(job.number || '').trim(),
+          customerName: String(job.location?.account?.name || '').trim(),
+          address: String(job.location?.formattedAddress || '').trim(),
+          statusRaw: fields.statusRaw,
+          projektType: fields.projektType,
+          salesRep: fields.salesRep,
+          projectManager: fields.projectManager,
+          notes: null,
+          startDate: range.start,
+          endDate: range.end || range.start,
+          price,
+          priceSource
+        };
+        row.notes = jtImportInternalNote(row);
+        jobs.push(row);
+      }
+    }
+    return { ok: true, jobs, pages: page };
+  } catch (error) {
+    return { ok: false, error: redactSecret(error?.message || 'Ukendt fejl ved hentning fra JobTread').slice(0, 900) };
+  }
+}
+
+// Kundematch for DENNE import. BEVIDST anderledes end den ellers kanoniske
+// crmFindOrCreateContactAndCustomer(), som deduplikerer på telefon/e-mail:
+// de oplysninger findes ikke på det niveau vi henter fra JobTread her (de
+// kræver dybere opslag pr. kontakt), så der matches i stedet på NAVN — trimmet
+// og uden hensyn til store/små bogstaver.
+//
+// ADVARSEL / KENDT BEGRÆNSNING: navnematch er ikke entydigt. To forskellige
+// personer med samme navn bliver samme kunde, og to stavemåder af samme person
+// ("Anders Hvisel" på to adresser i Martins JobTread) bliver to kunder. Der er
+// bevidst IKKE lagt fuzzy-matching ind — et gæt der rammer forkert ville sammen-
+// blande to rigtige kunders sager, hvilket er værre end en dublet man kan se og
+// rette. Kunder oprettet her får ingen crm_contacts-række (modsat CRM-helperen),
+// netop fordi der ikke er e-mail/telefon at deduplikere kontakten på.
+async function jtImportFindOrCreateCustomer(client, jobData) {
+  const name = String(jobData?.customerName || '').trim();
+  if (!name) return null; // ingen kunde på sagen i JobTread — sagen oprettes uden kundekobling
+  const found = await client.query('SELECT id FROM customers WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) ORDER BY id LIMIT 1', [name]);
+  if (found.rows[0]) return found.rows[0].id;
+  const created = await client.query(
+    'INSERT INTO customers (name,address,notes) VALUES ($1,$2,$3) RETURNING id',
+    [name, jobData.address || null, 'Oprettet automatisk ved JobTread-sagsimport.']
+  );
+  return created.rows[0].id;
+}
+
+// (b) SKRIVE-DELEN — én sag ad gangen, alle skrivninger i ÉN transaktion, så en
+// fejl halvvejs inde ikke efterlader fx et tilbud uden tilhørende projekt.
+// Kaster ALDRIG: en enkelt dårlig sag må ikke stoppe resten af importen, så alt
+// leveres tilbage som et resultat-objekt loopet kan tælle på.
+async function jtImportMaterializeJob(jobData) {
+  try {
+    const jobtreadJobId = String(jobData?.jobtreadJobId || '').trim();
+    if (!jobtreadJobId) return { ok: false, error: 'JobTread-sagen mangler et id.' };
+
+    // Er sagen hentet ind før, stopper vi HER — før der bruges et tilbuds- eller
+    // sagsnummer på den, så genkørsler ikke æder huller i nummerrækkerne.
+    const already = await pgOne('SELECT id FROM projects WHERE jobtread_job_id=$1', [jobtreadJobId]);
+    if (already) return { ok: true, created: false, reason: 'already_imported', projectId: already.id };
+
+    const company = await getCompanyInfo();
+    const taxRate = company.defaultTaxRate;
+    const projectName = jtImportProjectName(jobData);
+    const price = Number(jobData.price) || 0;
+    // Én samlet linje — importen kender ikke JobTreads linjeopdeling, og at gætte
+    // den ville give et tilbud der ser rigtigt ud men ikke er det. Én ærlig linje
+    // med det beløb der faktisk er belæg for, som Martin kan splitte op manuelt.
+    const lines = [{
+      description: projectName || 'Jf. JobTread-tilbud',
+      quantity: 1,
+      sell_price: price,
+      cost_price: 0,
+      unit: 'stk',
+      product_type: 'service',
+      line_type: 'item'
+    }];
+    const totals = computeTotals(lines, taxRate, { value: 0, type: 'pct' });
+
+    // Nummer-tildeling ligger UDEN FOR transaktionen med vilje: nextDocNumber
+    // åbner sin egen forbindelse og sin egen transaktion, og poolen har kun 5
+    // forbindelser — at hente et nummer mens vi selv holder en klient ville
+    // unødigt binde to forbindelser ad gangen.
+    const quoteNumber = await nextDocNumber('quote', 'TIL');
+    const jobNumber = await nextDocNumber('project', 'GM');
+    const acceptToken = crypto.randomBytes(20).toString('hex');
+    const startDate = validDate(jobData.startDate) ? jobData.startDate : null;
+    const endDate = validDate(jobData.endDate) ? jobData.endDate : startDate;
+
+    const result = await crmWithTransaction(async client => {
+      // Samme tjek igen inde i transaktionen — to samtidige klik på knappen må
+      // ikke kunne nå at oprette den samme sag to gange. Det delvise unik-indeks
+      // på projects.jobtread_job_id er den endelige garanti.
+      const raced = await client.query('SELECT id FROM projects WHERE jobtread_job_id=$1', [jobtreadJobId]);
+      if (raced.rows[0]) return { created: false, reason: 'already_imported', projectId: raced.rows[0].id };
+
+      const customerId = await jtImportFindOrCreateCustomer(client, jobData);
+
+      // Tilbuddet oprettes direkte som 'accepted' — det er hele pointen: sagen
+      // skal opføre sig som om kunden havde underskrevet i appen, så fakturering
+      // m.m. virker. signed_ip er null, fordi der ikke ER nogen underskriver-IP;
+      // signed_name siger tydeligt at det er en import, ikke en rigtig signatur.
+      const quoteRow = await client.query(`
+        INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token,signed_name,signed_at,signed_ip)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,'accepted',$8,$9,$10,$11,NULL,$12,NULL,NULL,0,'pct',$13,'JobTread-import',${nowTextSQL()},NULL) RETURNING id
+      `, [quoteNumber, projectName, jobtreadJobId, customerId, jobData.address || null, null, null,
+          totals.subtotal, taxRate, totals.taxAmount, totals.total, jobData.notes || jtImportInternalNote(jobData), acceptToken]);
+      const quoteId = quoteRow.rows[0].id;
+      await saveQuoteLines(quoteId, lines, client);
+
+      const projectRow = await client.query(`
+        INSERT INTO projects (quote_id, name, customer_id, customer_address, customer_phone, customer_email, job_number, jobtread_job_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
+      `, [quoteId, projectName, customerId, jobData.address || null, null, null, jobNumber, jobtreadJobId]);
+      const project = projectRow.rows[0];
+
+      // Sagens tidsplan: én linje der spænder over hele det planlagte forløb i
+      // JobTread. job_id sættes til 'project-<id>' præcis som alle andre
+      // sags-opgaver (IKKE JobTread-sagens id) — kolonnen bruges til at holde en
+      // sags egne opgaver sammen, ikke til at pege tilbage på JobTread.
+      let scheduled = false;
+      if (startDate) {
+        const taskId = 'p' + crypto.randomBytes(12).toString('hex');
+        await client.query(`
+          INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,synced_at)
+          VALUES ($1,$2,$3,$4,'',$5,$6,0,0,'0',$7,${nowTextSQL()})
+        `, [taskId, 'project-' + project.id, project.name, project.name, startDate, endDate, project.id]);
+        await mirrorProjectTaskToPool(taskId, project, { name: project.name, start_date: startDate, end_date: endDate, description: '' }, client);
+        scheduled = true;
+      }
+      return { created: true, projectId: project.id, quoteId, quoteNumber, jobNumber, scheduled };
+    });
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, error: redactSecret(error?.message || 'Ukendt fejl').slice(0, 500) };
+  }
+}
+
+// (c) SELVE KNAPPEN. Samme adgangskrav som POST /api/sync (kun admin).
+app.post('/api/admin/jobtread-import', auth, adminOnly, asyncRoute(async (req, res) => {
+  const fetched = await jtImportFetchPlannedJobs();
+  if (!fetched.ok) {
+    await writeSyncLog(0, 'error', 'Sagsimport fra JobTread: ' + fetched.error);
+    return res.status(500).json({ ok: false, error: fetched.error });
+  }
+  const summary = { ok: true, found: fetched.jobs.length, created: 0, skipped: 0, without_dates: 0, failed: [] };
+  for (const job of fetched.jobs) {
+    const result = await jtImportMaterializeJob(job);
+    if (!result.ok) summary.failed.push({ name: jtImportProjectName(job), error: result.error });
+    else if (result.created) { summary.created++; if (!result.scheduled) summary.without_dates++; }
+    else summary.skipped++;
+  }
+  const message = `Sagsimport fra JobTread: ${summary.created} ny(e) sag(er) oprettet, ${summary.skipped} sprunget over (allerede importeret), ${summary.failed.length} fejlede. ${summary.found} planlagt(e) sag(er) fundet i JobTread.`
+    + (summary.without_dates ? ` ${summary.without_dates} sag(er) fik ingen tidsplan (planlagte opgaver uden datoer i JobTread).` : '');
+  await writeSyncLog(summary.created, summary.failed.length ? 'error' : 'ok', message);
+  await logSystemEvent('jobtread_project_import', summary.failed.length ? 'error' : 'info', message);
+  res.json(summary);
 }));
 
 app.get('/api/sync/log', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -9057,8 +9426,13 @@ app.delete('/api/crm/tasks/:id', auth, panelAccess('crmp_tasks'), asyncRoute(asy
 // id-agnostisk, ingen FK) og "Tilføj til Kapacitetsbordet" (openCapacityModal på
 // klienten slår bare taskId op i den delte tasks-liste). UPSERT, så både opret
 // og redigér kan kalde samme funktion uden at skulle vide om rækken findes.
-async function mirrorProjectTaskToPool(id, project, fields) {
-  await pool.query(`
+// `exec` er valgfri og kan være enten poolen (standard) eller en klient midt i
+// en transaktion — samme mønster som crmSetCustomFieldValues/crmLogActivity
+// allerede bruger. Alle eksisterende kaldesteder udelader den og rammer derfor
+// poolen præcis som før; kun JobTread-sagsimporten sender en transaktionsklient
+// med, så spejlingen ruller tilbage sammen med resten hvis importen fejler.
+async function mirrorProjectTaskToPool(id, project, fields, exec) {
+  await (exec || pool).query(`
     INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,customer_email,customer_email_source,start_date,end_date,description,synced_at,source,created_at,project_id)
     VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()},'project',${nowTextSQL()},$11)
     ON CONFLICT (id) DO UPDATE SET
@@ -11866,13 +12240,17 @@ app.get('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, r
   res.json(quote);
 }));
 
-async function saveQuoteLines(quoteId, lines) {
-  await pool.query('DELETE FROM quote_lines WHERE quote_id=$1', [quoteId]);
+// `exec` er valgfri (pool som standard, eller en transaktionsklient) — se samme
+// mønster ved crmSetCustomFieldValues/mirrorProjectTaskToPool. Eksisterende
+// kaldesteder er uændrede; kun JobTread-sagsimporten sender en klient med.
+async function saveQuoteLines(quoteId, lines, exec) {
+  const db = exec || pool;
+  await db.query('DELETE FROM quote_lines WHERE quote_id=$1', [quoteId]);
   let pos = 0;
   for (const l of (lines || [])) {
     if (!l.description) continue;
     const isText = l.line_type === 'text';
-    await pool.query(`
+    await db.query(`
       INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type,line_type,note)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
     `, [quoteId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), l.discount_type === 'fixed' ? 'fixed' : 'pct', isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null)]);
