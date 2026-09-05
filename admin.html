@@ -26,7 +26,16 @@ button,input,select{font:inherit}
 .hidden{display:none!important}
 
 /* NAV */
-.nav{height:52px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;gap:10px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.22)}
+/* RUNDE H #223b: .nav sad tidligere selv med position:sticky, og
+   prioritetsbanneret lige under den var et helt almindeligt element i siden
+   — det scrollede altså væk med resten af indholdet, i stedet for at blive
+   siddende sammen med selve headeren (Martins pointe: "banneret skal ikke
+   komme på siden men i headeren"). .nav er nu i stedet en almindelig
+   flow-boks, og det er WRAPPEREN .app-header-sticky (uden for i HTML'en) der
+   klæber til toppen — banneret ligger som endnu et barn i den samme boks, så
+   de to altid sidder fast sammen, uanset om nav wrapper på mobil. */
+.app-header-sticky{position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.22)}
+.nav{height:52px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;gap:10px}
 .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;white-space:nowrap;cursor:pointer;border:0;background:none;padding:0;color:inherit;font-family:inherit}
 .brand:hover{opacity:.82}
 .logo{width:26px;height:26px;display:grid;place-items:center;border-radius:6px;background:var(--steel)}
@@ -1024,24 +1033,27 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-dashboard .dash-row-title{color:var(--bly-ink);font-weight:700}
 #page-dashboard .dash-row-sub{color:var(--bly-sub)}
 #page-dashboard .dash-empty{color:var(--bly-sub)}
-/* Høj prioritet-banner (sep. 2026, RUNDE H #24 gjort GLOBAL) — se
-   HTML-kommentaren ved #dash-priority-banner (nu lige under .nav, uden for
-   .page-routeren, så den er synlig uanset hvilken side man kigger på). */
-.dash-priority-banner{background:#FEF2F2;border:1.5px solid #FECACA;border-radius:var(--bly-r-lg);padding:12px 16px;margin:12px 14px 0 14px}
-.dash-priority-banner-title{font-size:13px;font-weight:800;color:#991B1B;margin-bottom:6px;display:flex;align-items:center;gap:6px}
-.dash-priority-banner-count{margin-left:auto;font-size:11px;font-weight:700;color:#991B1B;background:#FEE2E2;border-radius:var(--bly-r-pill);padding:2px 9px}
-.dash-priority-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 4px;cursor:pointer}
-.dash-priority-row:hover{background:#FEE2E2;border-radius:var(--bly-r-sm)}
-.dash-priority-row-title{color:var(--bly-ink);font-weight:700;font-size:12.5px}
-.dash-priority-row-sub{color:var(--bly-sub);font-size:11px}
-.dash-priority-tag{font-size:10px;font-weight:800;border-radius:var(--bly-r-pill);padding:3px 9px;white-space:nowrap}
+/* Høj prioritet-banner (sep. 2026, RUNDE H #24 gjort GLOBAL, RUNDE H #223b
+   lavet om til en SLANK slider-linje inde i selve headeren i stedet for en
+   boks midt i siden — se HTML-kommentaren ved #dash-priority-banner og
+   .app-header-sticky ovenfor. Ét linje, altid samme højde, sidder fast
+   sammen med .nav uanset scroll/side). */
+.dash-priority-banner{background:#FEF2F2;border-top:1px solid #FECACA;padding:0}
+.dash-priority-banner-inner{display:flex;align-items:center;gap:8px;padding:6px 16px;cursor:pointer;min-width:0}
+.dash-priority-banner-inner:hover{background:#FEE2E2}
+.dash-priority-banner-title{font-size:11.5px;font-weight:800;color:#991B1B;flex-shrink:0;white-space:nowrap}
+.dash-priority-banner-count{flex-shrink:0;font-size:10px;font-weight:700;color:#991B1B;background:#FEE2E2;border-radius:var(--bly-r-pill);padding:2px 8px;white-space:nowrap}
+.dash-priority-row{display:flex;align-items:center;gap:6px;min-width:0;flex:1}
+.dash-priority-row-title{color:#991B1B;font-weight:700;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dash-priority-row-sub{color:#B91C1C;font-size:11px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
+.dash-priority-tag{font-size:9.5px;font-weight:800;border-radius:var(--bly-r-pill);padding:2px 8px;white-space:nowrap;flex-shrink:0}
 .dash-priority-tag.overdue{background:#DC2626;color:#fff}
 .dash-priority-tag.today{background:#F59E0B;color:#fff}
 .dash-priority-tag.nodate{background:#E5E7EB;color:#374151}
-.dash-priority-dots{display:flex;gap:4px;margin-left:8px}
-.dash-priority-dot{width:6px;height:6px;border-radius:50%;background:#FCA5A5;cursor:pointer}
+.dash-priority-dots{display:flex;gap:4px;flex-shrink:0}
+.dash-priority-dot{width:6px;height:6px;border-radius:50%;background:#FCA5A5;cursor:pointer;border:0;padding:0}
 .dash-priority-dot.active{background:#991B1B}
-@media(max-width:760px){.dash-priority-banner{margin:8px 10px 0 10px}}
+@media(max-width:760px){.dash-priority-row-sub{display:none}}
 
 /* ══════════════════════════════════════════════════════════════
    GANTT — samme Billy-behandling, scoped til #page-gantt (samt de to
@@ -1463,8 +1475,6 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .task-card-head{display:flex;align-items:flex-start;gap:7px;margin-bottom:2px}
 .task-card-title-block{flex:1;min-width:0}
 .pool-select-cb{flex-shrink:0;width:16px;height:16px;margin-top:1px;cursor:pointer;accent-color:#2563EB;border-radius:4px}
-.task-mark-done-btn{flex-shrink:0;width:22px;height:22px;border-radius:50%;border:1.5px solid #86EFAC;background:#DCFCE7;color:#15803D;font-weight:900;font-size:12px;cursor:pointer;line-height:1;padding:0}
-.task-mark-done-btn:hover{background:#15803D;color:#fff;border-color:#15803D}
 .pool-group{border:1px solid var(--border2);border-radius:9px;margin-bottom:6px;overflow:hidden}
 .pool-group-head{width:100%;display:flex;align-items:center;gap:7px;padding:9px 10px;background:#fff;border:0;cursor:pointer;text-align:left}
 .pool-group-head:hover{background:var(--ice)}
@@ -1484,8 +1494,6 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .pool-bulk-bar-actions{display:flex;flex-direction:column;gap:7px}
 .pool-bulk-action-btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;border:0;border-radius:9px;padding:9px 10px;font-size:11.5px;font-weight:700;cursor:pointer;transition:.15s}
 .pool-bulk-action-btn span{font-size:13px}
-.pool-bulk-action-btn.done{background:#DCFCE7;color:#15803D}
-.pool-bulk-action-btn.done:hover{background:#BBF7D0}
 .pool-bulk-action-btn.assign{background:rgba(255,255,255,.14);color:#fff}
 .pool-bulk-action-btn.assign:hover{background:rgba(255,255,255,.24)}
 .task-overdue{border-left:3px solid #DC2626!important}
@@ -1592,7 +1600,19 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .staff-role{font-size:9px;color:var(--muted);margin-top:1px}
 .group-row td{background:#F8FAFF;font-size:10px;font-weight:800;padding:5px 8px;color:var(--navy2);position:sticky;left:0}
 .group-toggle{border:0;background:transparent;color:var(--navy2);font-weight:800;cursor:pointer;padding:0;font-size:10px}
-.day-cell{padding:4px;min-width:128px;overflow:visible}
+/* RUNDE H #223c (fortsat): den EGENTLIGE rodårsag til "opgaveblokke er for
+   lange" var ikke kun flex-truncation (se .assign-name/.assign-top ovenfor) —
+   tabellen (<table class="daily-board">) bruger standard table-layout:auto,
+   som lader en kolonne VOKSE ud over min-width, hvis blot ÉT celleindhold med
+   white-space:nowrap er bredere (selvom det klippes visuelt med ellipsis inde
+   i cellen — det tæller stadig med i browserens egen udregning af kolonnens
+   MINIMUMS-bredde). Derfor skal dags-kolonnen have en EGENTLIG max-width, ikke
+   kun min-width, så den rent faktisk er fast 128px — se samme fix på
+   dags-<th> i renderPlan() (style="min-width:128px;max-width:128px"). Dette
+   er også hvad flerdags-boblernes egen bredde-udregning (assignPillSpan,
+   calc(N*128px + ...)) allerede antog, så det retter samtidig evt.
+   fejljustering af dem hvis en kolonne tidligere var blevet bredere end 128px. */
+.day-cell{padding:4px;min-width:128px;max-width:128px;overflow:visible}
 .day-cell.today-col{background:#FBFDFF}
 .drop-zone{min-height:70px;border:1px dashed transparent;border-radius:6px;padding:2px;transition:.14s;overflow:visible}
 .drop-zone.over{background:#EFF6FF;border-color:var(--blue)}
@@ -1608,8 +1628,17 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .assignment.sub{background:var(--sub-bg);color:var(--sub-fg)}
 .assignment.other{background:var(--other-bg);color:var(--other-fg)}
 .assignment.dragging{opacity:.35}
-.assign-top{display:flex;align-items:center;gap:2px}
-.assign-name{font-size:10px;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+/* RUNDE H #223c: .assign-name manglede min-width:0. Uden den nægter en
+   flex-child med flex:1 at krybe sammen under sin egen indholds-bredde, så et
+   langt kundenavn/opgavenavn IKKE blev klippet af "…" som tiltænkt — i stedet
+   voksede teksten ud over selve boblens runde baggrund og ud i næste dags
+   kolonne (synligt som "for lange" opgaveblokke), fordi .assignment bevidst
+   har overflow:visible (bruges bl.a. til multi-dags-bobler der skal strække
+   sig hen over flere kolonner). Med min-width:0 tvinges teksten til rent
+   faktisk at blive klippet ved boblens egen kant, som ellipsis-reglerne altid
+   har tilsigtet. */
+.assign-top{display:flex;align-items:center;gap:2px;min-width:0}
+.assign-name{font-size:10px;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .assign-x{border:0;background:transparent;cursor:pointer;font-size:12px;line-height:1;color:inherit;opacity:.6;padding:0 1px;flex-shrink:0}
 .assign-x:hover{opacity:1}
 .assign-sub{font-size:8px;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
@@ -2382,9 +2411,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.7</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.8</span></div>
 </aside>
 <div class="app-content">
+<!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
+     siden (position:sticky sad tidligere direkte på .nav) — både selve
+     navigations-linjen OG prioritets-sliderern herunder er nu barn af DENNE
+     boks, så de altid sidder fast sammen som ÉN header, uanset hvilken side
+     man ser, og uanset om man har scrollet ned i en lang tabel (Martins
+     ønske: "banneret skal ikke komme på siden men i headeren som et slider
+     banner"). -->
+<div class="app-header-sticky">
 <nav class="nav">
   <!-- RUNDE H #11 — Notifikationer + Note flyttet til venstre side. -->
   <div class="nav-left">
@@ -2429,13 +2466,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 </nav>
-<div class="sidebar-mobile-backdrop" id="sidebar-mobile-backdrop"></div>
 
 <!-- RUNDE H #24 — Høj prioritet-banner, GLOBALT på alle sider (Martins ønske:
      "kan du ikke lave et banner du kan se på alle sider? så man ikke glemmer
      det og hvis man har flere vigtigt så skifter den?"). Lå tidligere kun
      inde i #page-dashboard — nu placeret her, uden for .page-routeren i
      <main>, så den samme boks er synlig uanset hvilken fane man står på.
+     RUNDE H #223b: barn af .app-header-sticky (se ovenfor), IKKE længere et
+     almindeligt element i siden — den er nu en slank ét-linjes slider der
+     sidder fast i selve headeren i stedet for at scrolle væk med indholdet.
      Kilden er stadig "⚡ Høj prioritet"-fluebenet fra en CRM-opgave
      (Opfølgning) — se #crmpx-task-priority og GET /api/crm/tasks/overview.
      Hentes/opdateres af refreshGlobalPriorityBanner() (opstart + hvert 90.
@@ -2444,6 +2483,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      (se renderPriorityBanner/advanceGlobalPriorityBanner) — pause ved at
      holde musen over den. Vises kun når der reelt er noget at vise. -->
 <div id="dash-priority-banner" class="dash-priority-banner" hidden></div>
+</div>
+<div class="sidebar-mobile-backdrop" id="sidebar-mobile-backdrop"></div>
 
 <!-- FLYDENDE NOTE-BLOK — personlig kladdeblok, kan flyttes og ændres i størrelse -->
 <div class="note-widget" id="note-widget">
@@ -4134,15 +4175,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              om hvorfor de ikke må slås sammen til ét skema). Fag/uge-filtrene
              (og status-filtret) er samlet i en anden dropdown i stedet for at stå
              fremme hele tiden. -->
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <div class="navdrop" id="pool-add-dropdown" style="flex:1;position:relative">
+        <!-- RUNDE H #223c: knapperne stod tidligere side om side (flex-row) og
+             blev for tætte/klemte på den smalle pool-spalte — Martins ønske var
+             at de i stedet skal stå under hinanden, hver i fuld bredde. -->
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px">
+          <div class="navdrop" id="pool-add-dropdown" style="position:relative">
             <button class="btn small primary" id="pool-add-btn" type="button" style="width:100%">+ Book / Opgave ▾</button>
             <div class="navdrop-menu" id="pool-add-menu" style="left:0;right:auto;width:100%;min-width:0">
               <a class="navdrop-item" href="#" id="pool-add-manual-item">📝 Manuel opgave</a>
               <a class="navdrop-item" href="#" id="pool-add-visit-item">📅 Book kundebesøg</a>
             </div>
           </div>
-          <div class="navdrop" id="pool-filter-dropdown" style="flex:1;position:relative">
+          <div class="navdrop" id="pool-filter-dropdown" style="position:relative">
             <button class="btn small" id="pool-filter-btn" type="button" style="width:100%">🔍 Filtre ▾</button>
             <div class="navdrop-menu" id="pool-filter-menu" style="left:0;right:auto;width:240px;padding:10px">
               <div class="filter-row" id="plan-status-filters"></div>
@@ -4159,8 +4203,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <span id="pool-bulk-count"></span>
             <button id="pool-bulk-clear" class="pool-bulk-clear-btn">Fravælg alle</button>
           </div>
+          <!-- RUNDE H #223d: "✓ Markér som færdige"-bulk-knappen er fjernet efter
+               Martins ønske — at markere opgaver/bookinger som færdige (og dermed
+               sende evt. kunde-mail) sker ikke længere fra Opgavepool, kun ved at
+               sætte SAGEN til "Afsluttet" på Projekt-siden (se PUT /api/projects/:id
+               i server.js). -->
           <div class="pool-bulk-bar-actions">
-            <button id="pool-bulk-done-btn" class="pool-bulk-action-btn done"><span>✓</span>Markér som færdige</button>
             <button id="pool-bulk-assign-btn" class="pool-bulk-action-btn assign"><span>📌</span>Tildel til medarbejder</button>
           </div>
         </div>
@@ -6355,7 +6403,6 @@ function taskCard(t,scope){
         '<div class="task-name">'+esc(t.job_name||'Uden kunde')+'</div>'+
         '<div class="task-sub">'+esc(t.name||'Opgave')+'</div>'+
       '</div>'+
-      (!completed?'<button class="task-mark-done-btn" data-action="mark-task-done" data-task-id="'+esc(t.id)+'" title="Markér opgaven som færdig — fjerner den fra poolen">✓</button>':'')+
     '</div>'+
     (completed?'<div class="task-done-badge">✅ Færdiggjort · '+(bookings.filter(function(b){return b.task_id===t.id&&!!b.completed_at&&!isCapacityBooking(b)&&!b.invoiced;}).length?'Klar til faktura':'Faktureret')+'</div>':'')+
     (overdue?'<div class="task-overdue-badge">⚠ Startdato overskredet — planlæg snarest</div>':'')+
@@ -6379,26 +6426,12 @@ function taskCard(t,scope){
     // ikke længere noget i JobTread at oprette en faktura imod for dem.
     '</article>';
 }
-// Markér alle dagens bookinger for en opgave som færdige direkte fra Opgavepoolen,
-// uden at skulle ind i Daglig plan/Tidslinje først. Opgaven forsvinder herefter fra
-// de almindelige lister (se filterTasks) og kan findes under status-filteret "✅ Færdiggjort".
-async function markTaskDoneFromPool(taskId){
-  var t=tasks.find(function(x){return String(x.id)===String(taskId);});
-  if(!t)return;
-  var rows=dailyBookingsForTask(t).filter(function(b){return !b.completed_at;});
-  if(!await gmConfirm('Markér "'+(t.job_name||t.name)+'" som færdig? Den fjernes fra Opgavepoolen og lægges under "✅ Færdiggjort".'))return;
-  if(rows.length){
-    for(var i=0;i<rows.length;i++){
-      await api('/api/assignments/'+rows[i].id+'/complete',{method:'PUT',body:JSON.stringify({completed:true})});
-    }
-  }else{
-    // Opgaven er slet ikke booket endnu — ingen booking at sætte completed_at på,
-    // så den markeres manuelt direkte på selve opgaven i stedet.
-    await api('/api/tasks/'+encodeURIComponent(t.id)+'/manual-complete',{method:'PUT',body:JSON.stringify({completed:true})});
-  }
-  toast('Markeret som færdig ✓','✅');
-  await loadAll();
-}
+// RUNDE H #223d: markTaskDoneFromPool() (den grønne ✓-knap pr. opgave/bulk i
+// Opgavepool) er fjernet efter Martins ønske — at markere opgaver/bookinger
+// som færdige sker ikke længere herfra. Det sker nu udelukkende ved at sætte
+// SAGEN til "Afsluttet" på Projekt-siden, som automatisk markerer alle sagens
+// opgaver/bookinger som færdige OG sender kunde-mailen — se PUT
+// /api/projects/:id i server.js.
 function templateCard(t){
   return '<article class="task-card template-pool-card" draggable="true" data-template-id="'+t.id+'" title="Træk ud på en dag">'+
     '<div class="task-name">📐 '+esc(t.name)+'</div>'+
@@ -6650,7 +6683,7 @@ function renderPlan(){
   head+='</tr><tr><th class="staff-th">Medarbejder / undergruppe</th>';
   days.forEach(function(d,i){
     var weekBoundary=i>0&&d.getDay()===1; // tynd adskillelseslinje ved hver ny uges mandag
-    head+='<th class="'+(isToday(d)?'today-th':'')+(weekBoundary?' plan-week-boundary':'')+'" data-plan-monday="'+(d.getDay()===1?iso(d):'')+'" style="min-width:128px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';
+    head+='<th class="'+(isToday(d)?'today-th':'')+(weekBoundary?' plan-week-boundary':'')+'" data-plan-monday="'+(d.getDay()===1?iso(d):'')+'" style="min-width:128px;max-width:128px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';
   });
   document.getElementById('daily-head').innerHTML=head+'</tr>';
   var grouped=teamList('plan'),html='';
@@ -9486,11 +9519,23 @@ function renderGlobalPriorityCurrent(){
   box.hidden=false;
   var dots=rows.length>1?'<div class="dash-priority-dots">'+rows.map(function(_,i){return '<span class="dash-priority-dot'+(i===globalPriorityIdx?' active':'')+'" data-action="priority-dot" data-idx="'+i+'"></span>';}).join('')+'</div>':'';
   var count=rows.length>1?'<span class="dash-priority-banner-count">'+(globalPriorityIdx+1)+' af '+rows.length+'</span>':'';
-  box.innerHTML='<div class="dash-priority-banner-title">⚡ Høj prioritet — skal kontaktes'+count+dots+'</div>'
-    +'<div class="dash-priority-row" onclick="openCrmpDetail(\''+esc(t.entity_type)+'\','+ +t.entity_id+')">'
-    +'<div><div class="dash-priority-row-title">'+esc(t.entity_name||'(slettet)')+'</div>'
-    +'<div class="dash-priority-row-sub">'+esc(t.title||'')+(t.assigned_name?' · '+esc(t.assigned_name):'')+'</div></div>'
-    +'<span class="dash-priority-tag '+x.tag.cls+'">'+x.tag.label+'</span></div>';
+  // RUNDE H #223b: hele banneret er nu ÉN linje (se .dash-priority-banner-inner
+  // i CSS'en) i stedet for en to-linjers boks, så den kan sidde i selve
+  // headeren som en slank slider. Klik-til-navigation er flyttet fra et inline
+  // onclick på en YDRE boks (som ville "vinde løbet" mod prikkernes
+  // stopPropagation, da de to ellers ligger i hver sin klik-håndtering) til
+  // SAMME delegerede data-action-mønster som prikkerne selv bruger — så
+  // e.target.closest('[data-action]') altid rammer det inderste (prik ELLER
+  // linje), aldrig begge, uden nogen rækkefølge-usikkerhed.
+  box.innerHTML='<div class="dash-priority-banner-inner" data-action="priority-row" data-entity-type="'+esc(t.entity_type)+'" data-entity-id="'+ +t.entity_id+'">'
+    +'<span class="dash-priority-banner-title">⚡ Høj prioritet</span>'
+    +'<div class="dash-priority-row">'
+    +'<span class="dash-priority-row-title">'+esc(t.entity_name||'(slettet)')+'</span>'
+    +'<span class="dash-priority-row-sub">'+esc(t.title||'')+(t.assigned_name?' · '+esc(t.assigned_name):'')+'</span>'
+    +'</div>'
+    +'<span class="dash-priority-tag '+x.tag.cls+'">'+x.tag.label+'</span>'
+    +count+dots
+    +'</div>';
 }
 // Henter selve dataen — kaldes ved opstart og hvert 90. sekund (se
 // setInterval ved refreshNotifBell i bind()), UAFHÆNGIGT af hvilken side man
@@ -13910,23 +13955,6 @@ function bind(){
   // ønske (poolen viser nu ALTID gruppering pr. kunde). poolGroupedMode.plan
   // sættes derfor fast til true her i stedet for at kunne slås til/fra.
   poolGroupedMode.plan=true;
-  document.getElementById('pool-bulk-done-btn').addEventListener('click',async function(){
-    var ids=Object.keys(poolSelected);
-    if(!ids.length)return;
-    if(!await gmConfirm('Markér '+ids.length+' opgave(r) som færdige? De fjernes fra poolen.'))return;
-    var btn=this;btn.disabled=true;btn.textContent='Markerer…';
-    for(var i=0;i<ids.length;i++){
-      var t=tasks.find(function(x){return String(x.id)===ids[i];});
-      if(!t)continue;
-      var rows=dailyBookingsForTask(t).filter(function(b){return !b.completed_at;});
-      if(rows.length){for(var j=0;j<rows.length;j++)await api('/api/assignments/'+rows[j].id+'/complete',{method:'PUT',body:JSON.stringify({completed:true})});}
-      else await api('/api/tasks/'+encodeURIComponent(t.id)+'/manual-complete',{method:'PUT',body:JSON.stringify({completed:true})});
-    }
-    btn.disabled=false;btn.textContent='✓ Markér valgte som færdige';
-    poolSelected={};
-    toast(ids.length+' opgave(r) markeret som færdige ✓','✅');
-    await loadAll();
-  });
   document.getElementById('pool-bulk-assign-btn').addEventListener('click',function(){
     if(!Object.keys(poolSelected).length)return;
     openPoolBulkAssignModal();
@@ -14149,10 +14177,10 @@ function bind(){
       var act=a.dataset.action;
       if(act==='manual')openManual();
       if(act==='priority-dot'){e.stopPropagation();globalPriorityIdx=+a.dataset.idx;renderGlobalPriorityCurrent();}
+      if(act==='priority-row'){openCrmpDetail(a.dataset.entityType,+a.dataset.entityId);}
       if(act==='open-visit-form'){e.stopPropagation();openVisitFormModal(a.dataset.taskId);}
       if(act==='open-checklist'){e.stopPropagation();openChecklistModal(a.dataset.taskId);}
       if(act==='pool-open-project'){e.stopPropagation();if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');}else{openProjectDetail(+a.dataset.projectId);}}
-      if(act==='mark-task-done'){e.stopPropagation();markTaskDoneFromPool(a.dataset.taskId);}
       if(act==='toggle-checklist-item'){e.stopPropagation();toggleChecklistItem(+a.dataset.id,a.checked,a.dataset.container,a.dataset.taskId);}
       if(act==='delete-checklist-item'){e.stopPropagation();deleteChecklistItem(+a.dataset.id,a.dataset.container,a.dataset.taskId);}
       // Genvejene fra dashboard-tallene/-listerne peger altid på de ÅBNE

@@ -9919,26 +9919,45 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
   ]);
   res.json({ ok: true });
 
-  // RUNDE H: automatisk færdig-mail til kunden, når sagen (lige nu) sættes til
-  // "Afsluttet" — se sendProjectCompletionEmail() ovenfor for baggrunden
-  // (erstatter den tidligere manuelle/gentagne mail pr. booking i Opgavepool).
-  // Betingelser: (1) status skifter FAKTISK til 'done' i dette kald — ikke bare
-  // et gemt-igen mens den allerede var 'done', og (2) sagen har aldrig fået
-  // mailen før (completion_email_sent_at), så en sag der genåbnes og afsluttes
-  // igen ikke sender endnu en mail til kunden.
-  if (newStatus === 'done' && current.status !== 'done' && !current.completion_email_sent_at) {
-    const updated = { ...current, name: b.name !== undefined ? String(b.name).trim() : current.name, status: newStatus,
-      customer_address: b.customer_address !== undefined ? b.customer_address : current.customer_address,
-      customer_phone: b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
-      customer_email: b.customer_email !== undefined ? b.customer_email : current.customer_email };
-    pool.query(`UPDATE projects SET completion_email_sent_at=${nowTextSQL()} WHERE id=$1`, [current.id])
-      .then(() => {
-        if (process.env.ZAPIER_WEBHOOK_URL) {
-          return sendProjectCompletionWebhook(updated);
-        }
-        return sendProjectCompletionEmail(updated);
-      })
-      .catch(e => console.error('Sags-færdig-mail fejlede:', e.message));
+  // RUNDE H #223d: den grønne ✓-knap (enkelt-opgave og bulk) i Opgavepool er
+  // fjernet efter Martins ønske — at markere opgaver/bookinger som færdige sker
+  // ikke længere derfra. I stedet sker BEGGE ting nu automatisk herfra, når
+  // sagen (lige nu) sættes til "Afsluttet" på Projekt-siden:
+  //   (a) alle sagens opgaver/bookinger markeres færdige (samme databasefelter
+  //       som den gamle ✓-knap satte: completed_at på bookinger, eller
+  //       manually_completed_at på opgaver der slet ikke er booket) — så
+  //       "Klar til faktura"-status stadig virker, uden det manuelle klik.
+  //   (b) færdig-mailen til kunden sendes (se sendProjectCompletionEmail
+  //       ovenfor) — men KUN allerførste gang sagen afsluttes
+  //       (completion_email_sent_at), så en sag der genåbnes og afsluttes
+  //       igen ikke sender endnu en mail, mens (a) gerne må ske hver gang.
+  // Betingelse fælles for begge: status skifter FAKTISK til 'done' i dette
+  // kald — ikke bare et gemt-igen mens den allerede var 'done'.
+  if (newStatus === 'done' && current.status !== 'done') {
+    pool.query(`
+      UPDATE planning_bookings SET completed_at=${nowTextSQL()}
+      WHERE completed_at IS NULL AND COALESCE(planning_mode,'daily') <> 'capacity'
+        AND task_id IN (SELECT id FROM jt_tasks WHERE project_id=$1)
+    `, [current.id]).catch(e => console.error('Kunne ikke markere sagens bookinger som færdige:', e.message));
+    pool.query(`
+      UPDATE jt_tasks SET manually_completed_at=${nowTextSQL()}
+      WHERE project_id=$1 AND manually_completed_at IS NULL
+    `, [current.id]).catch(e => console.error('Kunne ikke markere sagens ubookede opgaver som færdige:', e.message));
+
+    if (!current.completion_email_sent_at) {
+      const updated = { ...current, name: b.name !== undefined ? String(b.name).trim() : current.name, status: newStatus,
+        customer_address: b.customer_address !== undefined ? b.customer_address : current.customer_address,
+        customer_phone: b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
+        customer_email: b.customer_email !== undefined ? b.customer_email : current.customer_email };
+      pool.query(`UPDATE projects SET completion_email_sent_at=${nowTextSQL()} WHERE id=$1`, [current.id])
+        .then(() => {
+          if (process.env.ZAPIER_WEBHOOK_URL) {
+            return sendProjectCompletionWebhook(updated);
+          }
+          return sendProjectCompletionEmail(updated);
+        })
+        .catch(e => console.error('Sags-færdig-mail fejlede:', e.message));
+    }
   }
 }));
 
