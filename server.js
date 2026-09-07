@@ -2500,6 +2500,10 @@ app.get('/api/settings', asyncRoute(async (req, res) => {
     invoice_footer_note: map.invoice_footer_note || '',
     quote_top_note_default: map.quote_top_note_default || '',
     quote_bottom_note_default: map.quote_bottom_note_default || '',
+    // RUNDE K (sep. 2026, Martins ønske) — fakturaens egen note-skabelon, helt
+    // uafhængig af tilbuddets (se getCompanyInfo).
+    invoice_top_note_default: map.invoice_top_note_default || '',
+    invoice_bottom_note_default: map.invoice_bottom_note_default || '',
     default_tax_rate: map.default_tax_rate || '25'
   });
 }));
@@ -2520,6 +2524,8 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
   if (body.invoice_footer_note !== undefined) entries.push(['invoice_footer_note', String(body.invoice_footer_note).slice(0, 1000)]);
   if (body.quote_top_note_default !== undefined) entries.push(['quote_top_note_default', sanitizeRichText(String(body.quote_top_note_default).slice(0, 2000))]);
   if (body.quote_bottom_note_default !== undefined) entries.push(['quote_bottom_note_default', sanitizeRichText(String(body.quote_bottom_note_default).slice(0, 2000))]);
+  if (body.invoice_top_note_default !== undefined) entries.push(['invoice_top_note_default', sanitizeRichText(String(body.invoice_top_note_default).slice(0, 2000))]);
+  if (body.invoice_bottom_note_default !== undefined) entries.push(['invoice_bottom_note_default', sanitizeRichText(String(body.invoice_bottom_note_default).slice(0, 2000))]);
   if (body.default_tax_rate !== undefined) entries.push(['default_tax_rate', String(Number(body.default_tax_rate) || 25)]);
   // completion_email_subject/completion_email_body er flyttet til det samlede
   // Skabeloner-center (PUT /api/system-email-templates/completion) — se
@@ -2692,8 +2698,13 @@ app.get('/api/users', auth, panelAccess('dashboard'), asyncRoute(async (req, res
   // pay_type ('hourly'/'akkord') tages med her, så fx tidsregistrerings-modalen kan vise
   // det rigtige felt pr. valgt medarbejder — men IKKE hourly_wage (den faktiske lønsats),
   // som stadig kun udleveres via det snævre, adminOnly-gatede GET /api/users/:id/pay.
+  // RUNDE K (sep. 2026, Martins ønske) — panel_role_id manglede helt her (kun PUT/POST
+  // for én enkelt bruger kendte til feltet), så Hold & vendors' nye Rolle-filter/-pille
+  // (se renderPeople/peopleRoleLabel i admin.html) aldrig kunne vise en Kontor/Mester-
+  // brugers rigtige rollenavn — kun det generiske "Medarbejder". Ikke følsomt at vise
+  // bredt (kun hvilken RAD/panel-rolle en bruger har, ikke selve rollens rettigheder).
   const result = await pool.query(`
-    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,phone,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin,COALESCE(can_view_team_overview,0) AS can_view_team_overview,COALESCE(pay_type,'hourly') AS pay_type
+    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,phone,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin,COALESCE(can_view_team_overview,0) AS can_view_team_overview,COALESCE(pay_type,'hourly') AS pay_type,panel_role_id
     FROM users
     ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END,
              CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END,
@@ -12475,7 +12486,7 @@ function computeTotals(lines, taxRate, discount) {
 async function getCompanyInfo() {
   const rows = await pool.query(`
     SELECT key,value FROM app_settings WHERE key IN
-    ('company_name','logo_url','company_address','company_cvr','company_phone','company_email','company_bank_reg','company_bank_account','company_iban','company_swift','invoice_footer_note','default_tax_rate')
+    ('company_name','logo_url','company_address','company_cvr','company_phone','company_email','company_bank_reg','company_bank_account','company_iban','company_swift','invoice_footer_note','default_tax_rate','invoice_top_note_default','invoice_bottom_note_default')
   `);
   const map = {};
   rows.rows.forEach(r => { map[r.key] = r.value; });
@@ -12491,7 +12502,15 @@ async function getCompanyInfo() {
     iban: map.company_iban || '',
     swift: map.company_swift || '',
     footerNote: map.invoice_footer_note || '',
-    defaultTaxRate: Number(map.default_tax_rate) || 25
+    defaultTaxRate: Number(map.default_tax_rate) || 25,
+    // RUNDE K (sep. 2026, Martins ønske) — "Faktura-note uafhængig af tilbud: den skal
+    // ikke bruge den fra tilbuddet, den skal have sin egen skabelon". Fakturaens
+    // top_note/notes blev hidtil kopieret DIREKTE fra tilbuddet ved konvertering (se
+    // POST /api/quotes/:id/convert-to-invoice) — helt uafhængigt af disse to nye
+    // standardværdier. Nu bruges i stedet altid fakturaens EGEN skabelon herfra, uanset
+    // om fakturaen stammer fra et tilbud eller er en direkte faktura.
+    invoiceTopNoteDefault: map.invoice_top_note_default || '',
+    invoiceBottomNoteDefault: map.invoice_bottom_note_default || ''
   };
 }
 
@@ -12957,6 +12976,14 @@ app.delete('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req
 app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  // RUNDE K (sep. 2026, Martins ønske) — "Faktura-note uafhængig af tilbud: den skal
+  // ikke bruge den fra tilbuddet, den skal have sin egen skabelon jeg kan lave". Hidtil
+  // blev tilbuddets top_note/notes kopieret direkte med over i den nye faktura (se
+  // git-historik) — nu bruges i stedet ALTID fakturaens egen standard-note fra
+  // Indstillinger (invoice_top_note_default/invoice_bottom_note_default), helt uden
+  // hensyn til hvad tilbuddet måtte have stående. Martin kan redigere/fjerne noten på
+  // den enkelte faktura bagefter som altid.
+  const company = await getCompanyInfo();
   const availableLines = quote.lines.filter(l => !l.invoiced_in_invoice_id);
   const requestedIds = Array.isArray(req.body?.line_ids) ? req.body.line_ids.map(Number) : null;
   const linesToInvoice = requestedIds ? availableLines.filter(l => requestedIds.includes(l.id)) : availableLines;
@@ -12981,7 +13008,7 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyn
   const r = await pool.query(`
     INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct,customer_id)
     VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
-  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, batchTotals.subtotal, quote.tax_rate, batchTotals.taxAmount, batchTotals.total, quote.notes, quote.top_note, dueDate.toISOString().slice(0, 10), equivDocDiscountPct, quote.customer_id || null]);
+  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, batchTotals.subtotal, quote.tax_rate, batchTotals.taxAmount, batchTotals.total, company.invoiceBottomNoteDefault || null, company.invoiceTopNoteDefault || null, dueDate.toISOString().slice(0, 10), equivDocDiscountPct, quote.customer_id || null]);
   const invoiceId = r.rows[0].id;
   let pos = 0;
   for (const l of linesToInvoice) {
@@ -13073,10 +13100,20 @@ app.post('/api/invoices/direct-create', auth, panelAccess('quotes'), asyncRoute(
   const totals = computeTotals(b.lines || [], taxRate, { value: discountPct, type: discountType });
   const invoiceNumber = await nextDocNumber('invoice', 'FAK');
   const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 4);
+  // RUNDE K (sep. 2026, Martins ønske) — "Faktura-note uafhængig af tilbud, egen
+  // skabelon": klienten forudfylder allerede qe-top-note/qe-notes med fakturaens
+  // egne standardværdier ved en direkte faktura (se openDirectInvoiceEditor), men
+  // falder her ALLIGEVEL tilbage til samme standard hvis feltet slet ikke er sendt
+  // med (b.notes===undefined) — fx ved et evt. fremtidigt kald udenom UI'en. Sender
+  // klienten eksplicit en tom streng (fordi Martin bevidst har ryddet feltet), gemmes
+  // det som ingen note, ligesom hidtil.
   const r = await pool.query(`
     INSERT INTO invoices (invoice_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct)
     VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id
-  `, [invoiceNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, dueDate.toISOString().slice(0, 10), discountPct]);
+  `, [invoiceNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total,
+    b.notes !== undefined ? (b.notes ? sanitizeRichText(b.notes) : null) : (company.invoiceBottomNoteDefault || null),
+    b.top_note !== undefined ? (b.top_note ? sanitizeRichText(b.top_note) : null) : (company.invoiceTopNoteDefault || null),
+    dueDate.toISOString().slice(0, 10), discountPct]);
   const invoiceId = r.rows[0].id;
   let pos = 0;
   // BEMÆRK: invoice_lines har (til forskel fra quote_lines) INGEN discount_type-kolonne —

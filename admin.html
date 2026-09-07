@@ -1849,6 +1849,17 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .sub-team{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 11px;background:#fff;border-radius:var(--bly-r-md);font-size:11px;color:var(--bly-ink);border:1px solid var(--bly-border-soft);transition:background .12s,border-color .12s}
 .sub-team:hover{background:var(--bly-hover);border-color:var(--bly-border)}
 .sub-team-meta{color:var(--bly-sub);font-size:10px;margin-top:2px}
+/* RUNDE K (sep. 2026, Martins ønske) — kompresibel vendor-container på Hold &
+   vendors, så alle vendor-grupper kan foldes sammen under ét klikbart hoved i
+   stedet for at fylde resten af siden ud som separate kort. */
+.vendor-container{margin-top:20px;background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);overflow:hidden}
+.vendor-container-head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;background:none;border:none;cursor:pointer;font:inherit;text-align:left}
+.vendor-container-head:hover{background:var(--bly-hover)}
+.vendor-container-title{font-size:13px;font-weight:800;color:var(--bly-ink);display:flex;align-items:center;gap:8px}
+.vendor-container-count{font-size:11px;font-weight:700;color:var(--bly-sub)}
+.vendor-container-chevron{font-size:12px;color:var(--bly-sub);transition:transform .15s}
+.vendor-container.open .vendor-container-chevron{transform:rotate(90deg)}
+.vendor-container-body{padding:14px 16px 16px;display:grid;gap:12px;border-top:1px solid var(--bly-border-soft)}
 /* Sidehoved/værktøjslinje på Hold & vendors — samme .bly-pagehead-mønster som
    Projekter/CRM, med en lille tælle-pille i stedet for den gamle .page-title. */
 #page-people .bly-pagehead h2{display:flex;align-items:center;gap:9px}
@@ -2448,7 +2459,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-07.4</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-07.5</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -2842,6 +2853,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="set-grid wide">
           <div class="set-field"><label>Standardtekst øverst på nye tilbud <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit — udfyldes automatisk, kan altid rettes pr. tilbud</span></label><textarea id="settings-quote-top-note" rows="2" style="resize:vertical"></textarea></div>
           <div class="set-field"><label>Standard betingelser nederst på nye tilbud <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><textarea id="settings-quote-bottom-note" rows="2" style="resize:vertical"></textarea></div>
+        </div>
+        <!-- RUNDE K (sep. 2026, Martins ønske) — "Faktura-note uafhængig af tilbud: den
+             skal ikke bruge den fra tilbuddet, den skal have sin egen skabelon jeg kan
+             lave". Helt egen skabelon-parre, adskilt fra tilbuddets ovenfor — bruges nu
+             ALTID på nye fakturaer (både konverteret fra tilbud og direkte fakturaer),
+             uanset hvad der står på det oprindelige tilbud. -->
+        <div class="set-grid wide">
+          <div class="set-field"><label>Standardtekst øverst på nye fakturaer <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit — egen skabelon, uafhængig af tilbuddets. Udfyldes automatisk, kan altid rettes pr. faktura</span></label><textarea id="settings-invoice-top-note" rows="2" style="resize:vertical"></textarea></div>
+          <div class="set-field"><label>Standard betingelser nederst på nye fakturaer <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit — egen skabelon, uafhængig af tilbuddets</span></label><textarea id="settings-invoice-bottom-note" rows="2" style="resize:vertical"></textarea></div>
         </div>
         <div class="set-actions"><button class="bly-btn" id="settings-save-btn" type="button">Gem virksomhedsprofil</button></div>
       </div>
@@ -4750,7 +4770,26 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="bly-btn" id="new-user-btn" type="button">+ Medarbejder</button>
     </div>
   </div>
+  <!-- RUNDE K (sep. 2026, Martins ønske) — filtrér egne medarbejdere på faggruppe
+       og/eller rolle. Options bygges dynamisk i renderPeople() ud fra hvem der
+       faktisk er oprettet, så listen aldrig er tom eller forældet. -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+    <select id="people-trade-filter" class="select" style="width:auto;min-width:170px"><option value="">Alle faggrupper</option></select>
+    <select id="people-role-filter" class="select" style="width:auto;min-width:170px"><option value="">Alle roller</option></select>
+  </div>
   <div class="people" id="people-grid"></div>
+  <!-- RUNDE K (sep. 2026, Martins ønske) — "alle vendors lægges under en compress
+       vendor container jeg kan tryk på for at åbne op": egne medarbejdere fylder nu
+       IKKE længere siden ud sammen med hver enkelt vendor-gruppes kort — alle
+       vendor-grupper er samlet i denne ene lukkede/åbnede container, så "mine egne
+       folk" altid er det man ser først uden at skulle scrolle forbi vendors. -->
+  <div class="vendor-container" id="people-vendor-container" style="display:none">
+    <button type="button" class="vendor-container-head" id="people-vendor-toggle">
+      <span class="vendor-container-title">🧰 Vendors <span id="people-vendor-count" class="vendor-container-count"></span></span>
+      <span class="vendor-container-chevron" id="people-vendor-chevron">▸</span>
+    </button>
+    <div class="vendor-container-body" id="people-vendor-body" style="display:none"></div>
+  </div>
 </section>
 
 <!-- KUNDEHISTORIK fjernet (Runde H #7) — erstattet af "🔗 Send kundeportal"
@@ -13051,31 +13090,93 @@ function renderCloseImportResult(r){
   el.innerHTML=html;
 }
 
+// RUNDE K (sep. 2026, Martins ønske) — hvad en bruger reelt "er" i Hold & vendors-
+// sammenhæng: Admin, en navngivet Panel-rolle (fx "Kontor"/"Mester" — se Roller &
+// adgang), eller almindelig Medarbejder. Genbruges både til at bygge Rolle-filteret
+// og til rolle-pillen på hvert kort.
+function peopleRoleLabel(u){
+  if(u.panel_role_id){
+    var pr=panelRoles.find(function(r){return +r.id===+u.panel_role_id;});
+    if(pr)return pr.name;
+  }
+  return u.role==='admin'?'Admin':'Medarbejder';
+}
 function renderPeople(){
   var isRealAdmin=me.role==='admin';
-  var intern=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type!=='vendor';}),vendors={};
-  users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type==='vendor';}).forEach(function(u){var g=u.vendor_group||'Øvrige vendors';(vendors[g]=vendors[g]||[]).push(u);});
+  // RUNDE K (sep. 2026, Martins ønske) — "Hvorfor kan jeg ikke se kontor medarbejder
+  // under hold og vendors": "mine egne medarbejdere" viste hidtil KUN role==='employee'
+  // — kontor-/mester-medarbejdere sat op som rolle=Admin (med eller uden Panel-rolle,
+  // se panel_role_id) forsvandt derfor helt fra listen, selvom de er lige så meget
+  // "eget hold" som gulvlæggerne. "Egne medarbejdere" er nu alle aktive, ikke-vendor
+  // brugere uanset rolle-opsætning — kun worker_type==='vendor' udskiller vendors.
+  var allIntern=users.filter(function(u){return u.active&&u.worker_type!=='vendor';});
+  var allVendors=users.filter(function(u){return u.active&&u.worker_type==='vendor';});
+
+  // Faggruppe-filter — bygget dynamisk ud fra de fag der rent faktisk er sat på
+  // mindst én aktiv bruger (interne OG vendors), så listen aldrig er tom/forældet.
+  var tradeSet={};
+  allIntern.concat(allVendors).forEach(function(u){if(u.trade)tradeSet[u.trade]=true;});
+  var tradeOptions=Object.keys(tradeSet).sort(function(a,b){return a.localeCompare(b,'da');});
+  // Rolle-filter — Admin/Medarbejder/hver navngivet Panel-rolle, kun blandt de
+  // INTERNE (vendors har ingen rolle/adgang i systemet).
+  var roleSet={};
+  allIntern.forEach(function(u){roleSet[peopleRoleLabel(u)]=true;});
+  var roleOptions=Object.keys(roleSet).sort(function(a,b){return a.localeCompare(b,'da');});
+
+  var tradeSel=document.getElementById('people-trade-filter'),roleSel=document.getElementById('people-role-filter');
+  if(tradeSel){
+    var curTrade=tradeSel.value;
+    tradeSel.innerHTML='<option value="">Alle faggrupper</option>'+tradeOptions.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join('');
+    tradeSel.value=tradeOptions.indexOf(curTrade)>-1?curTrade:'';
+  }
+  if(roleSel){
+    var curRole=roleSel.value;
+    roleSel.innerHTML='<option value="">Alle roller</option>'+roleOptions.map(function(r){return '<option value="'+esc(r)+'">'+esc(r)+'</option>';}).join('');
+    roleSel.value=roleOptions.indexOf(curRole)>-1?curRole:'';
+  }
+  var tradeFilter=tradeSel?tradeSel.value:'',roleFilter=roleSel?roleSel.value:'';
+
+  var intern=allIntern.filter(function(u){
+    if(tradeFilter&&u.trade!==tradeFilter)return false;
+    if(roleFilter&&peopleRoleLabel(u)!==roleFilter)return false;
+    return true;
+  });
+  var vendors={};
+  allVendors.filter(function(u){return !tradeFilter||u.trade===tradeFilter;})
+    .forEach(function(u){var g=u.vendor_group||'Øvrige vendors';(vendors[g]=vendors[g]||[]).push(u);});
+
   function avatarOrInitials(u,size){
     return u.avatar_url?'<img class="avatar-img" style="width:'+size+'px;height:'+size+'px" src="'+u.avatar_url+'">':'<div class="avatar" style="width:'+size+'px;height:'+size+'px;background:'+(u.color||'#2563EB')+'22;color:'+(u.color||'#2563EB')+'">'+esc(u.initials||u.name.slice(0,2))+'</div>';
   }
   var html=intern.map(function(u){
     var actions='<button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖 Ferie/sygdom</button>';
     if(isRealAdmin)actions='<button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏ Rediger</button>'+actions+(u.can_login?'<button class="btn small" data-action="send-login-guide" data-user-id="'+u.id+'" title="Send en mail med link til at sætte egen adgangskode">🔑 Login-vejledning</button>':'');
-    return '<article class="person-card"><div class="person-top">'+avatarOrInitials(u,38)+'<div><div class="person-name">'+esc(u.name)+'</div><div class="person-email">'+(u.can_login?esc(u.email):'Ingen login')+'</div><span class="role-pill">Medarbejder</span></div></div>'+
+    return '<article class="person-card"><div class="person-top">'+avatarOrInitials(u,38)+'<div><div class="person-name">'+esc(u.name)+'</div><div class="person-email">'+(u.can_login?esc(u.email):'Ingen login')+'</div><span class="role-pill">'+esc(peopleRoleLabel(u))+'</span></div></div>'+
       '<div class="person-detail">Fag: '+esc(u.trade||'Ikke sat')+'<br>Kapacitet: '+(+u.weekly_capacity||5)+' dage/uge</div>'+
       '<div class="person-actions">'+actions+'</div></article>';
   }).join('');
-  Object.keys(vendors).sort().forEach(function(g){
-    html+='<article class="vendor-card"><div class="vendor-head"><div class="vendor-title"><span class="vicon">'+esc(g.slice(0,1))+'</span>'+esc(g)+'</div>'+(isRealAdmin?'<button class="btn small primary" data-action="add-subgroup" data-group="'+esc(g)+'">+ Undergruppe</button>':'')+'</div>'+
-      '<div class="vendor-subgrid">'+vendors[g].map(function(u){return '<div class="sub-team">'+avatarOrInitials(u,28)+'<div style="flex:1"><strong>'+esc(u.name)+'</strong><div class="sub-team-meta">'+esc(u.trade||'Fag ikke sat')+' · '+(+u.weekly_capacity||5)+' d/uge'+(u.can_login?' · login':'')+'</div></div>'+(isRealAdmin?'<button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏</button>':'')+'<button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖</button></div>';}).join('')+'</div></article>';
-  });
-  document.getElementById('people-grid').innerHTML=html||'<p class="set-empty">Ingen aktive hold.</p>';
+  document.getElementById('people-grid').innerHTML=html||'<p class="set-empty">Ingen medarbejdere matcher filteret.</p>';
+
+  // RUNDE K — vendors samlet i én kompresibel container (se CSS .vendor-container),
+  // i stedet for at fylde resten af siden ud som separate kort pr. gruppe.
+  var vendorGroupKeys=Object.keys(vendors).sort(function(a,b){return a.localeCompare(b,'da');});
+  var vendorCount=vendorGroupKeys.reduce(function(a,g){return a+vendors[g].length;},0);
+  var vendorBox=document.getElementById('people-vendor-container');
+  if(vendorBox){
+    if(!vendorGroupKeys.length){
+      vendorBox.style.display='none';
+    } else {
+      vendorBox.style.display='';
+      document.getElementById('people-vendor-count').textContent='('+vendorCount+' i '+vendorGroupKeys.length+' grupper)';
+      document.getElementById('people-vendor-body').innerHTML=vendorGroupKeys.map(function(g){
+        return '<article class="vendor-card"><div class="vendor-head"><div class="vendor-title"><span class="vicon">'+esc(g.slice(0,1))+'</span>'+esc(g)+'</div>'+(isRealAdmin?'<button class="btn small primary" data-action="add-subgroup" data-group="'+esc(g)+'">+ Undergruppe</button>':'')+'</div>'+
+          '<div class="vendor-subgrid">'+vendors[g].map(function(u){return '<div class="sub-team">'+avatarOrInitials(u,28)+'<div style="flex:1"><strong>'+esc(u.name)+'</strong><div class="sub-team-meta">'+esc(u.trade||'Fag ikke sat')+' · '+(+u.weekly_capacity||5)+' d/uge'+(u.can_login?' · login':'')+'</div></div>'+(isRealAdmin?'<button class="btn small" data-action="edit-user" data-user-id="'+u.id+'">✏</button>':'')+'<button class="btn small" data-action="add-timeoff" data-user-id="'+u.id+'">🏖</button></div>';}).join('')+'</div></article>';
+      }).join('');
+    }
+  }
   // Lille tælle-pille i sidehovedet, samme mønster som .crmp-col-count i pipelinen.
   var pill=document.getElementById('people-count-pill');
-  if(pill){
-    var vendorCount=Object.keys(vendors).reduce(function(a,g){return a+vendors[g].length;},0);
-    pill.textContent=intern.length+' medarbejdere · '+vendorCount+' vendors';
-  }
+  if(pill)pill.textContent=intern.length+' medarbejdere · '+vendorCount+' vendors';
 }
 
 // KUNDEHISTORIK — samler alle jobs/bookinger/noter for én kunde (identificeret
@@ -13305,6 +13406,10 @@ function applySettingsToUI(){
   makeRichField('settings-quote-bottom-note');
   document.getElementById('settings-quote-top-note').value=settings.quote_top_note_default||'';
   document.getElementById('settings-quote-bottom-note').value=settings.quote_bottom_note_default||'';
+  makeRichField('settings-invoice-top-note');
+  makeRichField('settings-invoice-bottom-note');
+  document.getElementById('settings-invoice-top-note').value=settings.invoice_top_note_default||'';
+  document.getElementById('settings-invoice-bottom-note').value=settings.invoice_bottom_note_default||'';
   var logoEl=document.getElementById('nav-logo'),prevEl=document.getElementById('settings-logo-preview');
   if(settings.logo_url){logoEl.innerHTML='<img src="'+settings.logo_url+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">';prevEl.innerHTML='<img src="'+settings.logo_url+'">';}
   else{logoEl.textContent='🪵';prevEl.textContent='🪵';}
@@ -13344,7 +13449,9 @@ async function saveSettings(){
     company_swift:document.getElementById('settings-company-swift').value.trim(),
     invoice_footer_note:document.getElementById('settings-invoice-footer').value.trim(),
     quote_top_note_default:document.getElementById('settings-quote-top-note').value.trim(),
-    quote_bottom_note_default:document.getElementById('settings-quote-bottom-note').value.trim()
+    quote_bottom_note_default:document.getElementById('settings-quote-bottom-note').value.trim(),
+    invoice_top_note_default:document.getElementById('settings-invoice-top-note').value.trim(),
+    invoice_bottom_note_default:document.getElementById('settings-invoice-bottom-note').value.trim()
   };
   var file=document.getElementById('settings-logo-file').files[0];
   if(file)body.logo_url=await fileToDataURL(file);
@@ -13931,12 +14038,13 @@ function bind(){
     });
   }
   // RUNDE I (sep. 2026, Martins ønske) — den dedikerede søgeresultat-side (Enter i
-  // søgefeltet/"Se alle resultater"). Til forskel fra header-dropdownen (som bevidst
-  // IKKE længere viser sager/opgaver, se renderGlobalSearchResults ovenfor) viser
-  // denne side OGSÅ "Sager & opgaver" — det er her Martin faktisk kan lede efter dem,
-  // uden at det popper uventet op i den hurtige dropdown. Genbruger gsRow/gsSection/
-  // gsInitials 1:1 fra global søgning ovenfor. Eksponeres på window (se bunden af
-  // bind()), da switchPage() ligger UDENFOR bind()'s scope og skal kunne kalde den.
+  // søgefeltet/"Se alle resultater"). Genbruger gsRow/gsSection/gsInitials 1:1 fra
+  // global søgning ovenfor. Eksponeres på window (se bunden af bind()), da
+  // switchPage() ligger UDENFOR bind()'s scope og skal kunne kalde den.
+  // RUNDE K (sep. 2026, Martins ønske) — "Ved søgefunktion skal den ikke vise Sager
+  // & opgaver": "Sager & opgaver" var (siden Runde I) bevidst vist HER (men ikke i
+  // header-dropdownen, se renderGlobalSearchResults ovenfor) — nu fjernet begge
+  // steder, så søgning udelukkende dækker kunder/leads/opportunities/medarbejdere.
   function renderSearchResultsPage(q){
     document.getElementById('gsp-subtitle').textContent=q?('for "'+q+'"'):'';
     var el=document.getElementById('gsp-results');
@@ -13944,11 +14052,6 @@ function bind(){
     if(!q||q.length<2){el.innerHTML='<div class="gs-card"><div class="gs-empty">Skriv mindst 2 tegn i søgefeltet foroven</div></div>';return;}
     el.innerHTML='<div class="gs-card"><div class="gs-empty"><span class="gs-spinner" style="display:inline-block"></span> Søger efter "'+esc(q)+'"...</div></div>';
     var ql=q.toLowerCase();
-    var taskResults=tasks.filter(function(t){
-      if(t.manually_completed_at)return false;
-      var hay=((t.job_name||'')+' '+(t.name||'')+' '+(t.job_number||'')+' '+(t.customer_name||'')).toLowerCase();
-      return hay.indexOf(ql)>-1;
-    }).slice(0,50);
     var userResults=users.filter(function(u){
       var hay=((u.name||'')+' '+(u.email||'')+' '+(u.phone||'')+' '+(u.trade||'')).toLowerCase();
       return hay.indexOf(ql)>-1;
@@ -13958,14 +14061,6 @@ function bind(){
       var srv=(r&&!r.error)?r:{customers:[],leads:[],opportunities:[]};
       var customers=srv.customers||[],leads=srv.leads||[],opps=srv.opportunities||[];
       var html='';
-      if(taskResults.length){
-        html+=gsSection('Sager & opgaver',taskResults.length);
-        html+=taskResults.map(function(t){
-          return gsRow({action:'task',id:t.id,avatar:'🏗',avatarBg:'#EEF2FF',avatarFg:'#4F46E5',
-            name:t.job_name||t.name,
-            meta:[t.name&&t.name!==t.job_name?t.name:'',t.job_number?'Sag '+t.job_number:'',t.customer_name||'']});
-        }).join('');
-      }
       if(customers.length){
         html+=gsSection('Kunder',customers.length);
         html+=customers.map(function(c){
@@ -14001,17 +14096,11 @@ function bind(){
             meta:[u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'),u.phone||'',u.email||'']});
         }).join('');
       }
-      el.innerHTML='<div class="gs-card">'+(html||'<div class="gs-empty">Intet fundet for "'+esc(q)+'"<small>Søger i sager, kunder, leads, opportunities og medarbejdere — på navn, telefon, email og adresse.</small></div>')+'</div>';
+      el.innerHTML='<div class="gs-card">'+(html||'<div class="gs-empty">Intet fundet for "'+esc(q)+'"<small>Søger i kunder, leads, opportunities og medarbejdere — på navn, telefon, email og adresse.</small></div>')+'</div>';
       el.querySelectorAll('.gs-row').forEach(function(row){
         row.addEventListener('click',function(){
           var id=row.dataset.gsId,action=row.dataset.gsAction;
-          if(action==='task'){
-            switchPage('plan');
-            var t=tasks.find(function(x){return String(x.id)===id;});
-            document.getElementById('plan-search').value=t?(t.job_name||t.name||''):'';
-            renderPool('plan');
-          }
-          else if(action==='customer')openCustomerDetail(Number(id));
+          if(action==='customer')openCustomerDetail(Number(id));
           else if(action==='lead')openCrmpDetail('lead',Number(id));
           else if(action==='opportunity')openCrmpDetail('opportunity',Number(id));
           else if(action==='user')openUser(id);
@@ -14355,6 +14444,15 @@ function bind(){
   // People
   document.getElementById('new-user-btn').onclick=function(){openUser();};
   document.getElementById('new-vendor-group-btn').onclick=async function(){var g=await gmPrompt('Navn på vendor-gruppen:');if(g&&g.trim())openUser(null,{vendorGroup:g.trim()});};
+  // RUNDE K (sep. 2026, Martins ønske) — Faggruppe-/Rolle-filter og den
+  // kompresible vendor-container på Hold & vendors.
+  document.getElementById('people-trade-filter').addEventListener('change',renderPeople);
+  document.getElementById('people-role-filter').addEventListener('change',renderPeople);
+  document.getElementById('people-vendor-toggle').addEventListener('click',function(){
+    var box=document.getElementById('people-vendor-container');
+    var open=box.classList.toggle('open');
+    document.getElementById('people-vendor-body').style.display=open?'':'none';
+  });
   document.getElementById('user-can-login').onchange=setLoginFields;
   document.getElementById('user-role').onchange=toggleUserPanelRoleField;
   document.getElementById('user-pay-type').onchange=toggleUserPayTypeField;
@@ -16755,10 +16853,11 @@ async function openCrmpDetail(entityType,id){
   if(!d||d.error){toast('Kunne ikke hente','❌');return;}
   crmpDetailEntity={type:entityType,id:id,data:d};
   // RUNDE I (sep. 2026, Martins ønske): opgaver oprettet under en Opportunity forudfyldes
-  // med kl. 07:00 som starttidspunkt (kan altid ændres før "+ Tilføj opgave"). Leads har
-  // bevidst IKKE denne standardtid — kun opportunities, som Martin bad om.
+  // med kl. 07:00 som starttidspunkt (kan altid ændres før "+ Tilføj opgave").
+  // RUNDE K (sep. 2026, Martins ønske): samme standardtid gælder nu også Leads —
+  // tidligere fik kun Opportunities 07:00, Leads startede tomt.
   var crmpxTaskTimeField=document.getElementById('crmpx-task-time');
-  if(crmpxTaskTimeField)crmpxTaskTimeField.value=entityType==='opportunity'?'07:00':'';
+  if(crmpxTaskTimeField)crmpxTaskTimeField.value='07:00';
   var displayName=entityType==='lead'?d.name:(d.contact_name||d.name);
   setAppTitle(displayName);
   document.getElementById('crmpx-name-input').value=displayName||'';
@@ -17272,9 +17371,9 @@ async function crmpxAddTask(){
     input.value='';
     document.getElementById('crmpx-task-date').value='';
     // Efter tilføjelse nulstilles tiden til den samme standard som ved åbning af siden
-    // (07:00 for opportunities, tom for leads) — ikke bare tomt — så man kan tilføje
-    // flere opgaver i træk uden at skulle udfylde 07:00 igen for hver.
-    document.getElementById('crmpx-task-time').value=(ent.type==='opportunity')?'07:00':'';
+    // (07:00, se openCrmpDetail — gælder både opportunities og leads) — ikke bare
+    // tomt — så man kan tilføje flere opgaver i træk uden at skulle udfylde 07:00 igen.
+    document.getElementById('crmpx-task-time').value='07:00';
     document.getElementById('crmpx-task-priority').checked=false;
     crmpxLoadTasks();
   }
@@ -19426,10 +19525,12 @@ async function openDirectInvoiceEditor(prefillCustomer){
   document.getElementById('qe-subtitle').textContent='Uden forudgående tilbud — forfalder 4 dage efter oprettelse';
   document.getElementById('qe-status-select').style.display='none';
   document.getElementById('qe-valid-until').parentElement.style.display='none';
-  // Tilbuddets standard-noter giver ikke nødvendigvis mening på en faktura uden
-  // tilbud — startes tomme, kan altid udfyldes.
-  document.getElementById('qe-top-note').value='';
-  document.getElementById('qe-notes').value='';
+  // RUNDE K (sep. 2026, Martins ønske) — "Faktura-note uafhængig af tilbud". Tilbuddets
+  // standard-noter (sat af openQuoteEditor ovenfor) giver ikke mening på en faktura, så
+  // de erstattes her med fakturaens EGEN standardnote fra Indstillinger (kan altid
+  // rettes/slettes for denne faktura, ligesom tilbuddets note kunne).
+  document.getElementById('qe-top-note').value=settings.invoice_top_note_default||'';
+  document.getElementById('qe-notes').value=settings.invoice_bottom_note_default||'';
 }
 function renderQeLines(){qzRenderLines('qe-lines',qeState.lines,'qe');}
 // RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: skjuler/viser "+ Tilføj linje",
