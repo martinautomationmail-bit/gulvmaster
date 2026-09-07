@@ -983,6 +983,29 @@ async function initSchema() {
     -- (invoices.notes) var derimod ALLEREDE fuldt uafhængig af tilbuddets note (egen
     -- kolonne, redigeres separat via PUT /api/invoices/:id) — det var kun toppen der manglede.
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS top_note TEXT;
+    -- RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: sat første gang fakturaen
+    -- rent faktisk sendes til kunden (POST /api/invoices/:id/send), aldrig ændret
+    -- igen derefter (et gensend rører den ikke). Så snart den er sat, låses
+    -- fakturaens linjer/rabat/note/kundeoplysninger (se PUT /api/invoices/:id og
+    -- den nye PUT /api/invoices/:id/lines) — rettelser herefter skal ske via
+    -- kreditnota. due_date er BEVIDST undtaget: at rykke en betalingsfrist er
+    -- almindelig drift, ikke en rettelse af hvad der er faktureret.
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sent_at TEXT;
+    -- RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: hvilken faktura (hvis
+    -- nogen) denne tilbudslinje er blevet faktureret i. NULL = stadig i "puljen",
+    -- ledig til at blive taget med i en (delvis) faktura. Sat af
+    -- POST /api/quotes/:id/convert-to-invoice, ryddet automatisk (SET NULL) hvis
+    -- fakturaen skulle blive slettet. VIGTIGT for robusthed: PUT /api/quotes/:id
+    -- (den almindelige "Gem" i tilbudseditoren) sletter og genopretter ALLE
+    -- linjer for hvert kald (se saveQuoteLines) — den ville derfor ubønhørligt
+    -- slette denne markering igen ved næste gem. Løsningen er IKKE at prøve at
+    -- bevare markeringen gennem en destruktiv full-replace, men i stedet at
+    -- LUKKE for den destruktive vej, så snart tilbuddet har mindst én faktura
+    -- knyttet til sig (se guard i PUT /api/quotes/:id nedenfor) — nye linjer
+    -- herefter kommer KUN ind additivt via POST /api/quotes/:id/lines
+    -- ("+ Tilføj ekstra ydelser"), som aldrig rører eksisterende rækker.
+    ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS invoiced_in_invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_quote_lines_invoiced ON quote_lines(invoiced_in_invoice_id);
 
     CREATE TABLE IF NOT EXISTS invoice_lines (
       id SERIAL PRIMARY KEY,
@@ -9770,6 +9793,42 @@ async function convertQuoteLinesToTasks(project) {
   }
   return { ok: true, created };
 }
+// RUNDE K (sep. 2026, Martins ønske) — udtrukket fra /api/public/quotes/:token/accept
+// (hvor kundens online e-signatur udløser oprettelsen), så PRÆCIS den samme logik
+// også kan køres når Martin/Sarah selv sætter et tilbud til "Godkendt" manuelt i
+// admin (se PUT /api/quotes/:id/status nedenfor) — fx når kunden har sagt god for
+// det telefonisk eller pr. mail i stedet for at underskrive online. Idempotent:
+// gør ingenting og returnerer bare det eksisterende projekt, hvis der allerede
+// findes ét for tilbuddet — trygt at kalde uanset hvor mange gange/hvorfra status
+// sættes til 'accepted'. En fejl her må ALDRIG vælte selve statusskiftet/accepten,
+// som allerede er gemt når denne kaldes.
+async function createProjectFromAcceptedQuote(quote) {
+  try {
+    const existingProject = await pgOne('SELECT id FROM projects WHERE quote_id=$1', [quote.id]);
+    if (existingProject) return { projectId: existingProject.id, created: false };
+    // Sagsnummer tildeles automatisk her, i samme GM-ÅÅÅÅ-NNNN-stil som Tilbud (TIL-)
+    // og Faktura (FAK-) allerede bruger — se nextDocNumber().
+    const jobNumber = await nextDocNumber('project', 'GM');
+    const p = await pgOne(`
+      INSERT INTO projects (quote_id, name, customer_id, customer_address, customer_phone, customer_email, job_number)
+      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
+    `, [quote.id, quote.job_name || quote.quote_number, quote.customer_id, quote.customer_address, quote.customer_phone, quote.customer_email, jobNumber]);
+    const projectId = p.id;
+    // RUNDE H #24 — Martins ønske: "når et projekt er oprettet i projekter,
+    // oprettes det automatisk i opgavepool" — dvs. tilbuddets linjer skal ALTID
+    // blive til rigtige opgaver med det samme sagen opstår.
+    try {
+      await convertQuoteLinesToTasks({
+        id: projectId, quote_id: quote.id, name: quote.job_name || quote.quote_number,
+        customer_address: quote.customer_address, customer_phone: quote.customer_phone, customer_email: quote.customer_email
+      });
+    } catch (e2) { console.error('Kunne ikke auto-oprette opgaver fra tilbudslinjer:', e2.message); }
+    return { projectId, created: true };
+  } catch (e) {
+    console.error('Kunne ikke oprette projekt fra accepteret tilbud:', e.message);
+    return { projectId: null, created: false };
+  }
+}
 app.get('/api/projects', auth, asyncRoute(async (req, res) => {
   // Pris/tilbudsbeløb sendes KUN med til kontor/økonomi-brugere (til søgning/visning
   // i admin.html's Projekter-liste) — aldrig til employee/employee-demo, som deler
@@ -9910,20 +9969,43 @@ app.put('/api/projects/:id/qa-templates', auth, panelAccess('projects'), asyncRo
   res.json({ ok: true });
 }));
 
+// RUNDE K (sep. 2026, Martins ønske) — manuel projekt-oprettelse: "Jeg skal kunne
+// oprette et projekt manuelt inde under projekter og tilføje til kunde". Hidtil
+// kunne projekter KUN opstå automatisk (kunde-accept af tilbud, eller
+// JobTread-import) — der var intet POST-endpoint overhovedet. Sagsnummer
+// tildeles på samme måde som ved auto-oprettelse, så manuelt oprettede sager
+// ikke skiller sig ud i nummerserien.
+app.post('/api/projects', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Angiv et navn på projektet' });
+  const status = ['active', 'on_hold', 'done', 'archived'].includes(b.status) ? b.status : 'active';
+  const jobNumber = await nextDocNumber('project', 'GM');
+  const p = await pgOne(`
+    INSERT INTO projects (name, customer_id, customer_address, customer_phone, customer_email, job_number, status)
+    VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
+  `, [name, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, jobNumber, status]);
+  res.json({ ok: true, id: p.id });
+}));
+
 app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   const b = req.body || {};
   const newStatus = b.status !== undefined ? b.status : current.status;
   await pool.query(`
-    UPDATE projects SET name=$1, status=$2, customer_address=$3, customer_phone=$4, customer_email=$5, updated_at=${nowTextSQL()}
-    WHERE id=$6
+    UPDATE projects SET name=$1, status=$2, customer_address=$3, customer_phone=$4, customer_email=$5, customer_id=$6, updated_at=${nowTextSQL()}
+    WHERE id=$7
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
     newStatus,
     b.customer_address !== undefined ? b.customer_address : current.customer_address,
     b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
     b.customer_email !== undefined ? b.customer_email : current.customer_email,
+    // customer_id (sep. 2026, Martins ønske) — kunne hidtil slet ikke ændres efter
+    // oprettelse, kun de denormaliserede tekstfelter. Kan nu også rettes senere,
+    // ikke kun sættes ved den nye manuelle oprettelse.
+    b.customer_id !== undefined ? (b.customer_id || null) : current.customer_id,
     req.params.id
   ]);
   res.json({ ok: true });
@@ -12796,6 +12878,19 @@ app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, r
   const current = await pgOne('SELECT * FROM quotes WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const b = req.body || {};
+  // RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: saveQuoteLines sletter og
+  // genopretter ALLE linjer ved hvert kald, hvilket ville nulstille
+  // quote_lines.invoiced_in_invoice_id (se skema-kommentaren ved den kolonne) og
+  // dermed ugyldiggøre sporingen af hvad der allerede er faktureret. Så snart
+  // tilbuddet har mindst én faktura, afvises derfor ændringer af selve
+  // linjerne her — nye linjer tilføjes i stedet KUN additivt via
+  // POST /api/quotes/:id/lines ("+ Tilføj ekstra ydelser"). Andre felter
+  // (kundeoplysninger, noter, gyldig til) kan fortsat redigeres uændret, blot
+  // uden 'lines' i samme kald.
+  if (b.lines !== undefined) {
+    const hasInvoices = await pgOne('SELECT 1 FROM invoices WHERE quote_id=$1 LIMIT 1', [req.params.id]);
+    if (hasInvoices) return res.status(400).json({ error: 'Tilbuddet har allerede faktura(er) knyttet til sig og kan ikke redigeres i sin helhed — brug "+ Tilføj ekstra ydelser" for nye linjer.' });
+  }
   const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : current.tax_rate;
   const discountPct = b.discount_pct !== undefined ? Number(b.discount_pct) || 0 : Number(current.discount_pct) || 0;
   const discountType = b.discount_type !== undefined ? (b.discount_type === 'fixed' ? 'fixed' : 'pct') : (current.discount_type === 'fixed' ? 'fixed' : 'pct');
@@ -12830,7 +12925,18 @@ app.put('/api/quotes/:id/status', auth, panelAccess('quotes'), asyncRoute(async 
   const r = await pool.query(`UPDATE quotes SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2 AND status <> 'converted'`, [status, req.params.id]);
   if (!r.rowCount) return res.status(400).json({ error: 'Tilbuddet findes ikke, eller er allerede konverteret til en faktura' });
   logDocActivity('quote', req.params.id, 'status_changed', req.user.name, status);
-  res.json({ ok: true });
+  // RUNDE K (sep. 2026, Martins ønske) — "Når tilbud er accepteret lav et projekt":
+  // hidtil skete dette KUN når kunden selv underskrev online (se
+  // /api/public/quotes/:token/accept). Sætter Martin/Sarah status til "Godkendt"
+  // manuelt i admin — fx fordi kunden gav mundtligt/telefonisk tilsagn — skal det
+  // samme ske. createProjectFromAcceptedQuote er idempotent (rører intet hvis
+  // projektet allerede findes), så det er trygt at kalde her uanset forudgående status.
+  let projectId = null;
+  if (status === 'accepted') {
+    const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [req.params.id]);
+    if (quote) projectId = (await createProjectFromAcceptedQuote(quote)).projectId;
+  }
+  res.json({ ok: true, project_id: projectId });
 }));
 
 app.delete('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -12839,42 +12945,116 @@ app.delete('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req
   res.json({ ok: true });
 }));
 
+// RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: et tilbud kan nu konverteres
+// til FLERE fakturaer over tid i stedet for kun én. Body kan valgfrit sende
+// {line_ids:[...]} for kun at fakturere et udvalg af tilbuddets endnu ikke
+// fakturerede linjer (en "delfaktura") — udelades line_ids, faktureres ALLE
+// resterende ufakturerede linjer på én gang (samme opførsel som den gamle
+// engangs-konvertering, når intet endnu er faktureret). Hver linje kan kun
+// være med i ÉN faktura (se quote_lines.invoiced_in_invoice_id) — "puljen" af
+// tilgængelige linjer krymper for hver delfaktura, og fyldes kun op igen ved
+// "+ Tilføj ekstra ydelser" (POST /api/quotes/:id/lines nedenfor).
 app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
-  if (quote.status === 'converted') return res.status(400).json({ error: 'Tilbuddet er allerede konverteret' });
+  const availableLines = quote.lines.filter(l => !l.invoiced_in_invoice_id);
+  const requestedIds = Array.isArray(req.body?.line_ids) ? req.body.line_ids.map(Number) : null;
+  const linesToInvoice = requestedIds ? availableLines.filter(l => requestedIds.includes(l.id)) : availableLines;
+  if (!linesToInvoice.length) {
+    return res.status(400).json({ error: availableLines.length ? 'Ingen af de valgte linjer kunne faktureres (allerede faktureret?)' : 'Alle linjer på tilbuddet er allerede faktureret' });
+  }
   const invoiceNumber = await nextDocNumber('invoice', 'FAK');
   // RUNDE I (sep. 2026, Martins ønske): standard forfaldsdato ændret fra 14 til 4 dage.
   const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 4);
   // Fakturaer understøtter (endnu) kun rabat i %, så en evt. fast kronerabat fra
-  // tilbuddet omregnes her til den procentsats der giver samme kronebeløb. De
-  // faktiske beløb (subtotal/moms/total) kopieres uændret fra tilbuddet
-  // nedenfor, så fakturaens totaler er korrekte uanset rabat-type — kun
-  // rabat-TEKSTEN og linjetotalerne på selve fakturaen regnes om til procent.
+  // tilbuddet omregnes her til den procentsats der giver samme kronebeløb. Den
+  // omregnede procentsats regnes ud fra HELE tilbuddets tal (uændret ved
+  // delfakturering) og påføres derefter DENNE fakturas linjer — det er en rimelig
+  // tilnærmelse til at fordele en fast kronerabat proportionalt over flere
+  // delfakturaer, uden at skulle bogføre delrabatter separat pr. faktura.
   const quoteTotalsForInvoice = computeTotals(quote.lines, quote.tax_rate, { value: Number(quote.discount_pct) || 0, type: quote.discount_type });
   const equivDocDiscountPct = quoteTotalsForInvoice.rawSubtotal > 0
     ? (quoteTotalsForInvoice.discountAmount / quoteTotalsForInvoice.rawSubtotal * 100)
     : 0;
+  // Totaler for DENNE faktura beregnes kun ud fra de valgte linjer, ikke hele tilbuddet.
+  const batchTotals = computeTotals(linesToInvoice, quote.tax_rate, { value: equivDocDiscountPct, type: 'pct' });
   const r = await pool.query(`
     INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct,customer_id)
     VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
-  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, quote.subtotal, quote.tax_rate, quote.tax_amount, quote.total, quote.notes, quote.top_note, dueDate.toISOString().slice(0, 10), equivDocDiscountPct, quote.customer_id || null]);
+  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, batchTotals.subtotal, quote.tax_rate, batchTotals.taxAmount, batchTotals.total, quote.notes, quote.top_note, dueDate.toISOString().slice(0, 10), equivDocDiscountPct, quote.customer_id || null]);
   const invoiceId = r.rows[0].id;
   let pos = 0;
-  for (const l of quote.lines) {
+  for (const l of linesToInvoice) {
     await pool.query(`
       INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,note)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
     `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', equivalentLinePct(l), l.line_type === 'text' ? 'text' : 'item', l.note || null]);
   }
+  await pool.query(`UPDATE quote_lines SET invoiced_in_invoice_id=$1 WHERE id = ANY($2::int[])`, [invoiceId, linesToInvoice.map(l => l.id)]);
+  // 'converted' markerer nu "der findes mindst én faktura" — blokerer IKKE
+  // længere yderligere delfakturaer, se availableLines-tjekket ovenfor.
+  // converted_invoice_id/projects.invoice_id er rene bekvemmeligheds-links til
+  // "seneste faktura" (bruges intet sted til at afgøre hvor meget der ER
+  // faktureret — det læses altid live fra quote_lines/invoices, se
+  // GET /api/quotes/:id/invoicing-status).
   await pool.query(`UPDATE quotes SET status='converted', converted_invoice_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [invoiceId, quote.id]);
   // Sagen (projektet) blev oprettet da kunden underskrev tilbuddet — nu hvor
   // der findes en faktura, kobles den på projektet, så "Tilføj til faktura"
   // fra tidsregistreringer og "Se faktura"-linket i sags-dashboardet virker.
   await pool.query(`UPDATE projects SET invoice_id=$1, updated_at=${nowTextSQL()} WHERE quote_id=$2`, [invoiceId, quote.id]);
-  logDocActivity('quote', quote.id, 'converted', req.user.name, invoiceNumber);
+  logDocActivity('quote', quote.id, 'converted', req.user.name, invoiceNumber + (requestedIds ? ' (delfaktura)' : ''));
   logDocActivity('invoice', invoiceId, 'created', req.user.name, `fra tilbud ${quote.quote_number}`);
   res.json({ ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber });
+}));
+
+// RUNDE J (sep. 2026, Martins ønske) — "+ Tilføj ekstra ydelser": tilføjer nye
+// linjer til et EKSISTERENDE tilbud (typisk et der allerede har fakturaer
+// knyttet til sig — mere arbejde er aftalt undervejs). Rører ALDRIG
+// eksisterende linjer (kun INSERT, aldrig DELETE/UPDATE af andre rækker) —
+// det er præcis derfor denne rute findes ved siden af den almindelige
+// PUT /api/quotes/:id, som til gengæld nu nægter at røre linjerne når der
+// findes fakturaer (se guard dér). De nye linjer lander i "puljen"
+// (invoiced_in_invoice_id NULL) og kan tages med i den NÆSTE delfaktura.
+app.post('/api/quotes/:id/lines', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const quote = await loadQuoteFull(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const newLines = Array.isArray(req.body?.lines) ? req.body.lines : [];
+  if (!newLines.length) return res.status(400).json({ error: 'Ingen linjer angivet' });
+  let pos = quote.lines.reduce((m, l) => Math.max(m, Number(l.position) || 0), 0) + 1;
+  const inserted = [];
+  for (const l of newLines) {
+    if (!l.description) continue;
+    const isText = l.line_type === 'text';
+    const ins = await pgOne(`
+      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type,line_type,note)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *
+    `, [quote.id, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), l.discount_type === 'fixed' ? 'fixed' : 'pct', isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null)]);
+    inserted.push(ins);
+  }
+  // Genberegn tilbuddets totaler så de nye linjer tæller med (samme rabat/moms
+  // som hele tilbuddet i forvejen har).
+  const allLines = [...quote.lines, ...inserted];
+  const totals = computeTotals(allLines, quote.tax_rate, { value: Number(quote.discount_pct) || 0, type: quote.discount_type === 'fixed' ? 'fixed' : 'pct' });
+  await pool.query(`UPDATE quotes SET subtotal=$1, tax_amount=$2, total=$3, updated_at=${nowTextSQL()} WHERE id=$4`, [totals.subtotal, totals.taxAmount, totals.total, quote.id]);
+  logDocActivity('quote', quote.id, 'edited', req.user.name, `${inserted.length} ekstra ydelse(r) tilføjet`);
+  res.json({ ok: true, added: inserted.length });
+}));
+
+// RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: faktureringsstatus for et
+// tilbud. Bruges af tilbudseditoren til at vise "Faktureret X af Y kr", listen
+// af delfakturaer, og hvilke linjer der stadig står tilbage i puljen.
+app.get('/api/quotes/:id/invoicing-status', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const quote = await loadQuoteFull(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const invoicesRes = await pool.query(`SELECT id, invoice_number, total, status, sent_at, created_at FROM invoices WHERE quote_id=$1 ORDER BY created_at ASC, id ASC`, [quote.id]);
+  const remainingLines = quote.lines.filter(l => !l.invoiced_in_invoice_id);
+  const invoicedTotal = invoicesRes.rows.reduce((s, inv) => s + Number(inv.total), 0);
+  res.json({
+    quote_total: Number(quote.total),
+    invoiced_total: invoicedTotal,
+    remaining_lines: remainingLines,
+    invoices: invoicesRes.rows
+  });
 }));
 
 // RUNDE I (sep. 2026, Martins ønske): "direkte faktura" — når prisen er aftalt
@@ -12962,6 +13142,21 @@ app.put('/api/invoices/:id', auth, panelAccess('quotes'), asyncRoute(async (req,
   const current = await pgOne('SELECT * FROM invoices WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
   const b = req.body || {};
+  // RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: så snart fakturaen er sendt
+  // (sent_at sat) er note/kundeoplysninger låst — rettelser herefter skal ske
+  // via kreditnota, ikke ved at redigere den udsendte faktura. due_date er
+  // BEVIDST undtaget: at rykke en betalingsfrist er almindelig drift.
+  if (current.sent_at) {
+    const triesToChange = (field, val) => val !== undefined && String(val ?? '') !== String(current[field] ?? '');
+    const lockedFieldTouched = triesToChange('notes', b.notes !== undefined ? sanitizeRichText(b.notes) : undefined)
+      || triesToChange('top_note', b.top_note !== undefined ? sanitizeRichText(b.top_note) : undefined)
+      || triesToChange('customer_address', b.customer_address)
+      || triesToChange('customer_phone', b.customer_phone)
+      || triesToChange('customer_email', b.customer_email);
+    if (lockedFieldTouched) {
+      return res.status(400).json({ error: 'Fakturaen er allerede sendt til kunden og er låst for rettelser — brug en kreditnota. Forfaldsdato kan stadig ændres.' });
+    }
+  }
   await pool.query(`
     UPDATE invoices SET notes=$1, top_note=$2, due_date=$3, customer_address=$4, customer_phone=$5, customer_email=$6, updated_at=${nowTextSQL()}
     WHERE id=$7
@@ -12975,6 +13170,38 @@ app.put('/api/invoices/:id', auth, panelAccess('quotes'), asyncRoute(async (req,
     req.params.id
   ]);
   logDocActivity('invoice', req.params.id, 'edited', req.user.name, null);
+  res.json({ ok: true });
+}));
+
+// RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: redigering af fakturalinjer
+// og rabat er KUN tilladt før fakturaen er sendt (sent_at IS NULL). Fakturaer
+// har hidtil slet ikke kunnet redigeres efter oprettelse — dette lukker det
+// hul for den periode hvor det giver mening (inden kunden har set den), uden
+// at åbne op for at ændre en allerede afsendt faktura (det er hvad
+// kreditnotaer er til).
+app.put('/api/invoices/:id/lines', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM invoices WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  if (current.sent_at) return res.status(400).json({ error: 'Fakturaen er allerede sendt og kan ikke redigeres — brug en kreditnota.' });
+  const b = req.body || {};
+  const lines = Array.isArray(b.lines) ? b.lines : null;
+  if (!lines) return res.status(400).json({ error: 'Ingen linjer angivet' });
+  const discountPct = b.discount_pct !== undefined ? Number(b.discount_pct) || 0 : Number(current.discount_pct) || 0;
+  await pool.query('DELETE FROM invoice_lines WHERE invoice_id=$1', [req.params.id]);
+  let pos = 0;
+  for (const l of lines) {
+    if (!l.description) continue;
+    const isText = l.line_type === 'text';
+    await pool.query(`
+      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,note)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    `, [req.params.id, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null)]);
+  }
+  const savedLines = (await pool.query('SELECT * FROM invoice_lines WHERE invoice_id=$1 ORDER BY position ASC, id ASC', [req.params.id])).rows;
+  const totals = computeTotals(savedLines, current.tax_rate, { value: discountPct, type: 'pct' });
+  await pool.query(`UPDATE invoices SET subtotal=$1, tax_amount=$2, total=$3, discount_pct=$4, updated_at=${nowTextSQL()} WHERE id=$5`, [totals.subtotal, totals.taxAmount, totals.total, discountPct, req.params.id]);
+  await refreshInvoiceStatus(req.params.id);
+  logDocActivity('invoice', req.params.id, 'edited', req.user.name, 'linjer redigeret');
   res.json({ ok: true });
 }));
 
@@ -13084,7 +13311,12 @@ app.post('/api/credit-notes/:id/send', auth, panelAccess('quotes'), asyncRoute(a
     bodyHtml = fillDocEmailVars(tpl.body_html, vars);
   } else {
     subject = `Kreditnota ${cn.credit_note_number} fra ${company.name}`;
-    bodyHtml = `<p>Hej ${escPublic(invoice.job_name || '')},</p><p>Vi har udstedt en kreditnota <b>${escPublic(cn.credit_note_number)}</b> på <b>${krFmtServer(cn.amount)}</b> vedr. faktura ${escPublic(invoice.invoice_number)} — vedhæftet som PDF.</p>${cn.reason ? `<p>Begrundelse: ${escPublic(cn.reason)}</p>` : ''}<p>Du kan altid se alle dine tilbud, fakturaer og planlagte opgaver på din side: <a href="${portalLink}">${portalLink}</a></p><p>Mvh<br>${escPublic(company.name)}</p>`;
+    bodyHtml = renderDefaultDocEmailHtml({
+      company, greetingName: invoice.job_name || '',
+      introHtml: `Vi har udstedt en kreditnota <b>${escPublic(cn.credit_note_number)}</b> vedr. faktura <b>${escPublic(invoice.invoice_number)}</b> — vedhæftet som PDF.` + (cn.reason ? `<br><span style="color:#6B7280">Begrundelse: ${escPublic(cn.reason)}</span>` : ''),
+      docLabel: 'Kreditnota', docNumber: cn.credit_note_number, amountLabel: krFmtServer(cn.amount),
+      ctaUrl: portalLink, ctaLabel: 'Se dine dokumenter'
+    });
   }
   let pdfBuffer;
   try { pdfBuffer = await renderCreditNotePdfBuffer(cn, invoice, company); }
@@ -13557,6 +13789,59 @@ app.get('/api/quotes/:id/share-link', auth, panelAccess('quotes'), asyncRoute(as
 function fillDocEmailVars(str, vars) {
   return String(str || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, key) => (key in vars) ? String(vars[key]) : m);
 }
+// RUNDE J (sep. 2026, Martins ønske — "virkelig grim" mail-udseende) — pænt,
+// tabel-baseret HTML-layout (inline CSS, ingen eksterne stylesheets/skrifttyper —
+// nødvendigt for at det ser rigtigt ud i almindelige mailklienter som Outlook/Gmail)
+// brugt som standard-udseende for tilbuds-/faktura-/kreditnota-mails, når Martin
+// IKKE selv har valgt eller lavet en mail-skabelon for den pågældende hændelsestype
+// i Skabeloner-siden (se getAssignedTemplateId — hvis han HAR valgt en, bruges hans
+// egen i stedet, uændret, denne funktion rører den slet ikke). Matcher Billy-stilens
+// accentfarve (#4F46E5, samme som admin.html's --bly-accent) og firmaets logo, så
+// mailen ser lige så professionel ud som PDF'en og kundeportalen.
+function renderDefaultDocEmailHtml(opts) {
+  const company = opts.company;
+  const logoHtml = company.logoUrl
+    ? `<img src="${escPublic(company.logoUrl)}" alt="${escPublic(company.name)}" style="max-height:38px;max-width:220px;display:block;border:0">`
+    : `<div style="font-size:17px;font-weight:800;color:#fff;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(company.name)}</div>`;
+  const docBoxHtml = opts.docNumber ? `
+    <tr><td style="padding:0 32px 22px">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F9FAFB;border:1px solid #EEF0F3;border-radius:10px">
+        <tr>
+          <td style="padding:14px 18px;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.03em;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(opts.docLabel || 'Dokument')}</td>
+          <td style="padding:14px 18px;font-size:13.5px;font-weight:700;color:#111318;text-align:right;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(opts.docNumber)}</td>
+        </tr>
+        <tr>
+          <td style="padding:0 18px 14px;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.03em;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(opts.amountLabel2 || 'Beløb')}</td>
+          <td style="padding:0 18px 14px;font-size:15px;font-weight:800;color:#4F46E5;text-align:right;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(opts.amountLabel || '')}</td>
+        </tr>
+      </table>
+    </td></tr>` : '';
+  const ctaHtml = opts.ctaUrl ? `
+    <tr><td style="padding:0 32px 20px">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-radius:8px;background:#4F46E5">
+        <a href="${escPublic(opts.ctaUrl)}" target="_blank" style="display:inline-block;padding:12px 22px;font-size:13.5px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(opts.ctaLabel || 'Se online')}</a>
+      </td></tr></table>
+    </td></tr>` : '';
+  const extraHtml = opts.extraHtml ? `<tr><td style="padding:0 32px 18px;font-size:13px;color:#374151;line-height:1.55;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${opts.extraHtml}</td></tr>` : '';
+  const portalHtml = opts.portalLink ? `<tr><td style="padding:0 32px 22px;font-size:12px;color:#6B7280;line-height:1.6;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">Du kan altid se alle dine tilbud, fakturaer og planlagte opgaver på din side: <a href="${escPublic(opts.portalLink)}" style="color:#4F46E5">${escPublic(opts.portalLink)}</a></td></tr>` : '';
+  const addrLine = [company.address, company.cvr ? 'CVR ' + company.cvr : '', company.phone, company.email].filter(Boolean).join(' · ');
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#F4F6FB;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F6FB;padding:32px 12px">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(15,23,42,.06)">
+<tr><td style="background:#4F46E5;padding:22px 32px">${logoHtml}</td></tr>
+<tr><td style="padding:28px 32px 4px;font-size:14px;color:#111318;line-height:1.6;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">Hej ${escPublic(opts.greetingName || '')},</td></tr>
+<tr><td style="padding:6px 32px 18px;font-size:14px;color:#111318;line-height:1.6;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${opts.introHtml}</td></tr>
+${docBoxHtml}
+${ctaHtml}
+${extraHtml}
+${portalHtml}
+<tr><td style="padding:18px 32px;border-top:1px solid #EEF0F3;font-size:11.5px;color:#9CA3AF;line-height:1.6;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">Mvh<br><b style="color:#374151">${escPublic(company.name)}</b>${addrLine ? '<br>' + escPublic(addrLine) : ''}</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
 const DOC_EMAIL_VARS = [
   ['{{kunde}}', 'Kunde/sagsnavn'], ['{{dokument_nr}}', 'Tilbuds-/fakturanummer'], ['{{total}}', 'Totalbeløb'],
   ['{{gyldig_til}}', 'Gyldig til (kun tilbud)'], ['{{forfald}}', 'Forfaldsdato (kun faktura)'], ['{{restbeloeb}}', 'Restbeløb (kun faktura)'],
@@ -13632,7 +13917,13 @@ app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (
     bodyHtml = fillDocEmailVars(tpl.body_html, vars);
   } else {
     subject = `Dit tilbud ${quote.quote_number} fra ${company.name}`;
-    bodyHtml = `<p>Hej ${escPublic(quote.job_name || '')},</p><p>Her er dit tilbud <b>${escPublic(quote.quote_number)}</b> på <b>${krFmtServer(quote.total)}</b> — vedhæftet som PDF.</p><p>Du kan se og underskrive tilbuddet online her: <a href="${signLink}">${signLink}</a></p><p>Du kan altid se alle dine tilbud, fakturaer og planlagte opgaver på din side: <a href="${portalLink}">${portalLink}</a></p><p>Mvh<br>${escPublic(company.name)}</p>`;
+    bodyHtml = renderDefaultDocEmailHtml({
+      company, greetingName: quote.job_name || '',
+      introHtml: `Her er dit tilbud <b>${escPublic(quote.quote_number)}</b> — vedhæftet som PDF, og du kan se og underskrive det direkte online herunder.`,
+      docLabel: 'Tilbud', docNumber: quote.quote_number, amountLabel: krFmtServer(quote.total),
+      ctaUrl: signLink, ctaLabel: 'Se & underskriv tilbud',
+      portalLink: portalLink !== signLink ? portalLink : null
+    });
   }
   let pdfBuffer;
   try { pdfBuffer = await renderDocumentPdfBuffer('quote', quote, company); }
@@ -13703,7 +13994,12 @@ app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async
     bodyHtml = fillDocEmailVars(tpl.body_html, vars);
   } else {
     subject = `Din faktura ${invoice.invoice_number} fra ${company.name}`;
-    bodyHtml = `<p>Hej ${escPublic(invoice.job_name || '')},</p><p>Her er din faktura <b>${escPublic(invoice.invoice_number)}</b> på <b>${krFmtServer(invoice.total)}</b>${invoice.due_date ? ', med forfald ' + escPublic(invoice.due_date) : ''} — vedhæftet som PDF.</p><p>Du kan altid se alle dine tilbud, fakturaer og planlagte opgaver på din side: <a href="${portalLink}">${portalLink}</a></p><p>Mvh<br>${escPublic(company.name)}</p>`;
+    bodyHtml = renderDefaultDocEmailHtml({
+      company, greetingName: invoice.job_name || '',
+      introHtml: `Her er din faktura <b>${escPublic(invoice.invoice_number)}</b>${invoice.due_date ? ' — forfalder ' + escPublic(invoice.due_date) : ''} — vedhæftet som PDF.`,
+      docLabel: 'Faktura', docNumber: invoice.invoice_number, amountLabel: krFmtServer(invoice.total),
+      ctaUrl: portalLink, ctaLabel: 'Se faktura online'
+    });
   }
   let pdfBuffer;
   try { pdfBuffer = await renderDocumentPdfBuffer('invoice', invoice, company); }
@@ -13716,6 +14012,11 @@ app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async
   } catch (e) {
     return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
   }
+  // RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: sent_at sættes kun ved
+  // FØRSTE vellykkede afsendelse (COALESCE — et gensend rører den ikke). Fra
+  // dette tidspunkt er fakturaen låst for rettelser, se PUT /api/invoices/:id
+  // og PUT /api/invoices/:id/lines.
+  await pool.query(`UPDATE invoices SET sent_at = COALESCE(sent_at, ${nowTextSQL()}) WHERE id=$1`, [invoice.id]);
   logDocActivity('invoice', invoice.id, 'sent', req.user.name, `til ${to}`);
   res.json({ ok: true });
 }));
@@ -13880,41 +14181,10 @@ app.post('/api/public/quotes/:token/accept', asyncRoute(async (req, res) => {
     WHERE id=$4
   `, [name, ip, sig, quote.id]);
   // Opret automatisk et projekt/sags-dashboard så snart kunden har underskrevet —
-  // det er selve pointen med e-signaturen ift. projektplanlægningen.
-  let projectId = null;
-  try {
-    const existingProject = await pgOne('SELECT id FROM projects WHERE quote_id=$1', [quote.id]);
-    if (existingProject) {
-      projectId = existingProject.id;
-    } else {
-      // Sagsnummer tildeles automatisk her, i samme GM-ÅÅÅÅ-NNNN-stil som Tilbud (TIL-)
-      // og Faktura (FAK-) allerede bruger — se nextDocNumber(). Martin bad om at nye
-      // sager altid får et sagsnummer fra start, i stedet for at det skal tastes ind
-      // manuelt bagefter som på de enkelte opgaver i Tidslinje/Daglig plan.
-      const jobNumber = await nextDocNumber('project', 'GM');
-      const p = await pgOne(`
-        INSERT INTO projects (quote_id, name, customer_id, customer_address, customer_phone, customer_email, job_number)
-        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
-      `, [quote.id, quote.job_name || quote.quote_number, quote.customer_id, quote.customer_address, quote.customer_phone, quote.customer_email, jobNumber]);
-      projectId = p.id;
-      // RUNDE H #24 — Martins ønske: "når et projekt er oprettet i projekter,
-      // oprettes det automatisk i opgavepool" — dvs. tilbuddets linjer skal
-      // ALTID blive til rigtige opgaver (og dermed dukke op i Opgavepoolen,
-      // via mirrorProjectTaskToPool inde i convertQuoteLinesToTasks) med det
-      // samme sagen opstår, i stedet for at kræve et manuelt klik på "Konvertér
-      // tilbudslinjer" bagefter på selve projekt-siden. Fejler dette (fx en
-      // uventet datafejl), må det — ligesom velkomstmailen herunder — aldrig
-      // vælte selve kundens accept-kvittering, som allerede er gemt.
-      try {
-        await convertQuoteLinesToTasks({
-          id: projectId, quote_id: quote.id, name: quote.job_name || quote.quote_number,
-          customer_address: quote.customer_address, customer_phone: quote.customer_phone, customer_email: quote.customer_email
-        });
-      } catch (e2) { console.error('Kunne ikke auto-oprette opgaver fra tilbudslinjer:', e2.message); }
-    }
-  } catch (e) {
-    // Selve accepten er allerede gemt — en fejl her må ikke vælte kundens kvittering.
-  }
+  // det er selve pointen med e-signaturen ift. projektplanlægningen. (Samme
+  // helper bruges nu også når status sættes til 'accepted' manuelt i admin,
+  // se createProjectFromAcceptedQuote og PUT /api/quotes/:id/status.)
+  const { projectId } = await createProjectFromAcceptedQuote(quote);
   // AUTOMATISK VELKOMSTMAIL — sender kundens PERMANENTE kundeportal-link (alle
   // tilbud/fakturaer/opgaver ét sted) med det samme kunden har accepteret, så de ikke
   // længere skal bruge det midlertidige underskrifts-link. Fejler mailen (fx ikke

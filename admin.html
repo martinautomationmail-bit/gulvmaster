@@ -1357,6 +1357,21 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-pdf-totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#6B7280}
 .qe-pdf-totals-row.grand{background:var(--bly-accent);color:#fff;font-weight:800;font-size:11.5px;padding:6px 8px;border-radius:6px;margin-top:6px}
 .qe-pdf-notes{margin-top:20px;font-size:9px;color:#6B7280;white-space:pre-wrap}
+/* RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS-badge på fakturadetaljen, og
+   DELBETALINGER-status-panel i tilbudseditoren. */
+.iv-lock-badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:20px;padding:3px 10px;margin-left:8px;vertical-align:middle}
+.qe-invoicing-panel{background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:var(--bly-r-lg);padding:14px 16px;margin:12px 0}
+.qe-invoicing-progress-track{background:#E0F2FE;border-radius:20px;height:8px;overflow:hidden;margin:8px 0 10px}
+.qe-invoicing-progress-fill{background:var(--bly-accent);height:100%;border-radius:20px}
+.qe-invoicing-inv-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #E0F2FE;font-size:12px;cursor:pointer}
+.qe-invoicing-inv-row:last-child{border-bottom:none}
+.qe-invoicing-inv-row:hover{color:var(--bly-accent)}
+.qe-lines-locked-note{font-size:11px;color:#0369A1;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:8px 10px;margin-bottom:8px}
+#qe-lines.qe-lines-locked .qe-line-field{pointer-events:none;background:#F3F4F6;color:#6B7280}
+#qe-lines.qe-lines-locked .qe-line-remove,#qe-lines.qe-lines-locked .qe-line-drag{display:none}
+.qcv-line-row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px}
+.qcv-line-row:last-child{border-bottom:none}
+.qcv-line-row input[type=checkbox]{margin-top:3px;width:16px;height:16px;flex-shrink:0}
 /* FAKTURA-DETALJE — betalingsliste med delbetalinger, plus rest-saldo tydeligt fremhævet. */
 .iv-balance-card{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
 .iv-balance-tile{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:14px 16px}
@@ -2433,7 +2448,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-07.1</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-07.3</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3791,7 +3806,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      og kvalitetssikring. -->
 <section class="page" id="page-projects">
   <div class="bly-pagehead">
-    <div><h2>Projekter</h2><div class="sub">Sags-dashboards — oprettes automatisk når en kunde underskriver et tilbud</div></div>
+    <div><h2>Projekter</h2><div class="sub">Sags-dashboards — oprettes automatisk når et tilbud godkendes, eller opret ét manuelt</div></div>
   </div>
   <div class="bly-segtabs" id="proj-tabs">
     <button class="bly-segtab active" data-projtab="list" type="button">🏗️ Projekter</button>
@@ -3803,11 +3818,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="projtabpage" id="projtab-list">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="proj-count">Projekter</span><input type="text" id="proj-search" class="bly-search" placeholder="Søg — navn, pris, email eller telefon..." style="width:280px"></div>
+      <!-- RUNDE K (sep. 2026, Martins ønske) — Liste/Kanban-visningsvalg, og manuel
+           projekt-oprettelse (hidtil kunne projekter KUN opstå automatisk). -->
+      <div class="bly-toolbar-right">
+        <div class="bly-segtabs" id="proj-view-toggle" style="margin:0">
+          <button class="bly-segtab active" id="proj-view-list-btn" type="button" title="Listevisning">☰ Liste</button>
+          <button class="bly-segtab" id="proj-view-kanban-btn" type="button" title="Kanban-visning — træk sager mellem faser">🗂️ Kanban</button>
+        </div>
+        <button class="bly-btn" id="proj-new-btn" type="button">+ Nyt projekt</button>
+      </div>
     </div>
     <!-- Status-bobler i samme .bly-kpi-card-mønster som Tilbud/Faktura-modulet,
          efter Martins ønske ("ligesom Billy og som du har lavet i tilbud").
          Arkiveret er bevidst IKKE en ligestillet boble her — den vises som en
-         mindre til/fra-knap ved siden af dato-filteret i stedet, se proj-archived-toggle. -->
+         mindre til/fra-knap ved siden af dato-filteret i stedet, se proj-archived-toggle.
+         Skjules i Kanban-visning — der ER faserne selv kolonnerne, se switchPjView(). -->
     <div class="bly-kpi-row" id="proj-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:0 0 14px">
       <button class="bly-ctl" id="proj-archived-toggle" type="button">📦 <span id="proj-archived-toggle-label">Vis arkiverede</span></button>
@@ -3816,10 +3841,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-period-pop" id="proj-period-pop" style="display:none"></div>
       </div>
     </div>
-    <table class="bly-table">
+    <table class="bly-table" id="proj-table">
       <thead><tr><th>Navn</th><th>Status</th><th>Adresse</th><th>Kontakt</th><th class="num">Pris</th><th class="num">Opgaver</th><th class="num">Tid</th><th class="num">Billeder</th><th style="width:90px"></th></tr></thead>
       <tbody id="proj-body"></tbody>
     </table>
+    <!-- Kanban-board — samme Billy-stils klasser (.crmp-board/.crmp-col/.crmp-card)
+         som CRM-pipelinens Kanban-board, for ens udseende/adfærd i hele appen.
+         Faserne er de FASTE projekt-statusser (Igangværende/På hold/Afsluttet, +
+         Arkiveret når "Vis arkiverede" er slået til) — ikke en konfigurerbar
+         pipeline som i CRM. Se renderPjKanban(). -->
+    <div class="crmp-board" id="proj-kanban-board" style="display:none"></div>
   </div>
 
   <div class="projtabpage" id="projtab-qa-templates" style="display:none">
@@ -4954,6 +4985,38 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      er lige store. Selve "book dem korrekt over ugerne"-delen sker automatisk
      på serveren (splitCapacityAcrossWeeks), som ruller videre til næste uge når
      en uge er fuld — se kommentaren ved POST /api/projects/:id/bulk-book-capacity. -->
+<!-- RUNDE K (sep. 2026, Martins ønske) — "Jeg skal kunne oprette et projekt manuelt
+     inde under projekter og tilføje til kunde". Hidtil kunne projekter kun opstå
+     automatisk (kunde-accept af tilbud, eller JobTread-import). Kunde-søgningen
+     genbruger samme mønster/endpoint som tilbudseditorens (qe-customer-search):
+     GET /api/customers/search?customers_only=1&q=. -->
+<div class="mo" id="pj-new-modal">
+  <div class="modal" style="max-width:520px;width:92vw">
+    <h3 style="margin:0 0 4px">+ Nyt projekt</h3>
+    <p class="sub" style="margin-top:0">Til sager der starter uden et tilbud — fx en mindre opgave eller en aftale indgået udenom systemet.</p>
+    <div class="form-group"><label class="form-label">Navn</label><input id="pjn-name" class="input" placeholder="Fx kundens navn eller sagens adresse"></div>
+    <div class="form-group">
+      <label class="form-label">Kunde <span class="opt-tag">valgfrit — søg i kundekartoteket</span></label>
+      <div class="qe-customer-pop">
+        <input id="pjn-customer-search" class="qe-input" placeholder="Søg efter eksisterende kunde, eller lad stå tomt...">
+        <div class="qe-customer-results" id="pjn-customer-results"></div>
+      </div>
+    </div>
+    <div class="qe-field-row" style="margin-top:10px">
+      <div><label class="qe-label">Adresse</label><input id="pjn-address" class="qe-input"></div>
+      <div><label class="qe-label">Telefon</label><input id="pjn-phone" class="qe-input"></div>
+    </div>
+    <div class="qe-field-row">
+      <div><label class="qe-label">E-mail</label><input id="pjn-email" class="qe-input"></div>
+      <div><label class="qe-label">Status</label><select id="pjn-status" class="qe-input"><option value="active">🔧 Aktivt</option><option value="on_hold">⏸ På hold</option><option value="done">✅ Afsluttet</option></select></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="pjn-cancel-btn" type="button">Annuller</button>
+      <button class="btn primary" id="pjn-save-btn" type="button">Opret projekt</button>
+    </div>
+  </div>
+</div>
+
 <div class="mo" id="bulk-capacity-modal">
   <div class="modal">
     <h3>📊 Book alt i Kapacitetsbordet</h3>
@@ -5272,6 +5335,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         </div>
         <div class="form-group" style="margin-top:10px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger</span></label><textarea id="qe-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
 
+        <!-- RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: vises kun når tilbuddet
+             har mindst én faktura knyttet til sig, se renderQeInvoicingPanel(). -->
+        <div id="qe-invoicing-panel" class="qe-invoicing-panel" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:12.5px">
+            <span id="qe-invoicing-summary">Faktureret 0 kr af 0 kr</span>
+          </div>
+          <div class="qe-invoicing-progress-track"><div class="qe-invoicing-progress-fill" id="qe-invoicing-progress-fill" style="width:0%"></div></div>
+          <div id="qe-invoicing-inv-list"></div>
+          <button class="bly-btn outline small" id="qe-add-extra-lines-btn" type="button" style="margin-top:8px">+ Tilføj ekstra ydelser</button>
+        </div>
+
         <div class="qe-lines-head">
           <span class="qe-label" style="margin:0">Linjer</span>
           <div style="display:flex;gap:6px;align-items:center">
@@ -5326,6 +5400,51 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
+<!-- RUNDE J (sep. 2026, Martins ønske) — KONVERTÉR TIL FAKTURA MED LINJEVALG:
+     erstatter den gamle rene ja/nej-bekræftelse. Viser tilbuddets endnu ikke
+     fakturerede linjer som afkrydsningsliste (alle valgt som udgangspunkt —
+     samme opførsel som før hvis man bare trykker "Opret faktura" uden at
+     ændre noget), så en delfaktura kun kræver at fjerne fluebenet ved de
+     linjer der IKKE skal med denne gang. -->
+<div class="mo" id="quote-convert-modal">
+  <div class="modal" style="max-width:560px;width:92vw">
+    <h3 style="margin:0 0 4px">Opret faktura</h3>
+    <p class="sub" style="margin-top:0">Vælg hvilke linjer der skal med på denne faktura. Fravalgte linjer forbliver i puljen og kan faktureres senere.</p>
+    <div id="qcv-lines" style="max-height:50vh;overflow:auto;margin:10px 0"></div>
+    <div class="qe-totals" id="qcv-total" style="margin-top:6px"></div>
+    <div class="modal-actions">
+      <button class="btn" id="qcv-cancel-btn" type="button">Annuller</button>
+      <button class="btn primary" id="qcv-confirm-btn" type="button">➜ Opret faktura</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE J (sep. 2026, Martins ønske) — TILFØJ EKSTRA YDELSER: additiv tilføjelse
+     af nye linjer til et tilbud der allerede har faktura(er) knyttet til sig (se
+     POST /api/quotes/:id/lines). Rører ALDRIG eksisterende linjer. -->
+<div class="mo" id="quote-add-lines-modal">
+  <div class="modal" style="max-width:820px;width:94vw">
+    <h3 style="margin:0 0 4px">+ Tilføj ekstra ydelser</h3>
+    <p class="sub" style="margin-top:0" id="qal-subtitle"></p>
+    <div class="qe-lines-head">
+      <span class="qe-label" style="margin:0">Nye linjer</span>
+      <div style="display:flex;gap:6px">
+        <div class="qe-customer-pop" style="width:220px">
+          <input id="qal-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
+          <div class="qe-customer-results" id="qal-product-results"></div>
+        </div>
+        <button class="bly-btn outline small" id="qal-add-blank-line" type="button">+ Tilføj linje</button>
+        <button class="bly-btn outline small" id="qal-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
+      </div>
+    </div>
+    <div id="qal-lines" style="max-height:360px;overflow:auto"></div>
+    <div class="modal-actions">
+      <button class="btn" id="qal-cancel-btn" type="button">Annuller</button>
+      <button class="btn primary" id="qal-save-btn" type="button">Tilføj til tilbud</button>
+    </div>
+  </div>
+</div>
+
 <!-- AI-DIKTERING — gennemgangsvindue efter tolkning af diktatet (sep. 2026,
      Martins ønske). Intet lægges ind på tilbuddet og INTET produkt oprettes i
      databasen før Martin trykker "Tilføj til tilbud" her — se qzRenderAiReview()/
@@ -5372,9 +5491,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <div class="mo" id="invoice-detail-modal">
   <div class="modal" style="max-width:760px;width:94vw">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <h3 id="iv-title" style="margin:0">Faktura</h3>
+      <h3 style="margin:0">
+        <span id="iv-title">Faktura</span>
+        <!-- RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: vises når fakturaen er
+             sendt (sent_at sat). Rettelser herefter skal ske via kreditnota. -->
+        <span id="iv-lock-badge" class="iv-lock-badge" style="display:none" title="Fakturaen er sendt til kunden og er låst for rettelser — brug en kreditnota">🔒 Sendt — låst</span>
+      </h3>
       <div style="display:flex;gap:8px">
         <a class="bly-btn outline small" id="iv-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
+        <button class="bly-btn outline small" id="iv-edit-lines-btn" type="button" title="Redigér linjer/rabat — kun muligt før fakturaen er sendt">✎ Redigér linjer</button>
         <button class="bly-btn outline small" id="iv-send-btn" type="button" title="Send fakturaen som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
       </div>
     </div>
@@ -5421,6 +5546,38 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions">
       <button class="btn danger" id="iv-void-btn">Annullér faktura</button>
       <button class="btn" onclick="closeModal('invoice-detail-modal')">Luk</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: linjeredigering, kun muligt
+     før fakturaen er sendt (se PUT /api/invoices/:id/lines). Fakturaer har hidtil
+     slet ikke kunnet redigeres efter oprettelse. -->
+<div class="mo" id="invoice-lines-edit-modal">
+  <div class="modal" style="max-width:900px;width:95vw;max-height:90vh;overflow:auto">
+    <h3 style="margin:0 0 4px" id="ivl-title">Redigér fakturalinjer</h3>
+    <p class="sub" style="margin-top:0">Kun muligt før fakturaen sendes til kunden — herefter skal rettelser ske via kreditnota.</p>
+    <div class="qe-field-row" style="max-width:260px">
+      <!-- Fakturaens rabat er ALTID i procent (invoices.discount_pct har ingen
+           discount_type-kolonne, i modsætning til tilbud) — se skema-noten i server.js. -->
+      <div><label class="qe-label">Rabat på hele fakturaen (%)</label><input id="ivl-discount" type="number" step="0.1" min="0" class="qe-input" value="0"></div>
+    </div>
+    <div class="qe-lines-head">
+      <span class="qe-label" style="margin:0">Linjer</span>
+      <div style="display:flex;gap:6px">
+        <div class="qe-customer-pop" style="width:220px">
+          <input id="ivl-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
+          <div class="qe-customer-results" id="ivl-product-results"></div>
+        </div>
+        <button class="bly-btn outline small" id="ivl-add-blank-line" type="button">+ Tilføj linje</button>
+        <button class="bly-btn outline small" id="ivl-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
+      </div>
+    </div>
+    <div id="ivl-lines" style="max-height:360px;overflow:auto"></div>
+    <div class="qe-totals" id="ivl-total" style="margin-top:8px"></div>
+    <div class="modal-actions">
+      <button class="btn" id="ivl-cancel-btn" type="button">Annuller</button>
+      <button class="btn primary" id="ivl-save-btn" type="button">💾 Gem linjer</button>
     </div>
   </div>
 </div>
@@ -14820,6 +14977,11 @@ function makeBlyPeriodFilter(btnId,popId,labelId,onChange){
 var qeState={id:null,lines:[],jobName:'',quoteNumber:null,taxRate:25,lastStatus:'draft',customerId:null};
 var qztState={id:null,lines:[]};
 var ivState={id:null};
+// RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER + FAKTURALÅS: state til de tre
+// nye modaler (linjevalg ved konvertering, tilføj ekstra ydelser, redigér fakturalinjer).
+var qcvState={quoteId:null,lines:[]};
+var qalState={quoteId:null,lines:[]};
+var ivlState={invoiceId:null,lines:[],taxRate:25};
 var qeCustomerSearchTimer=null;
 var QZ_QUOTE_STATUS={draft:{label:'Kladde',dot:'var(--bly-dot-draft)'},sent:{label:'Sendt',dot:'var(--bly-dot-draft)'},accepted:{label:'Godkendt',dot:'var(--bly-dot-paid)'},declined:{label:'Afvist',dot:'var(--bly-dot-overdue)'},converted:{label:'Konverteret',dot:'var(--bly-dot-total)'}};
 var QZ_INVOICE_STATUS={unpaid:{label:'Ikke betalt',dot:'var(--bly-dot-unpaid)'},partial:{label:'Delvist betalt',dot:'var(--bly-dot-draft)'},paid:{label:'Betalt',dot:'var(--bly-dot-paid)'},void:{label:'Annulleret',dot:'var(--bly-dot-overdue)'}};
@@ -15175,7 +15337,7 @@ function qzRunProductSearch(inputId,resultsId,onPick){
   };
 }
 function qzCloseAllPops(){
-  ['qe-customer-results','qe-product-results','qzt-product-results'].forEach(function(id){
+  ['qe-customer-results','qe-product-results','qzt-product-results','qal-product-results','ivl-product-results','pjn-customer-results'].forEach(function(id){
     var box=document.getElementById(id);if(box)box.style.display='none';
   });
   qzHideLineAutocomplete();
@@ -17758,7 +17920,11 @@ async function deleteCrmCustomer(){
 // træk-i-musen), billeder, tidsregistrering, kvalitetssikring.
 // ══════════════════════════════════════════════════════════════
 var pjProjects=[],pjQaTemplates=[],pjInitialized=false,pjCurrent=null;
-var pjStatusFilter='all',pjShowArchived=false,pjPeriodFilter=null;
+var pjStatusFilter='all',pjShowArchived=false,pjPeriodFilter=null,pjView='list';
+// RUNDE K (sep. 2026, Martins ønske) — "opret et projekt manuelt ... tilføje til
+// kunde": state til "+ Nyt projekt"-modalen (pj-new-modal), samme kunde-søgnings-
+// mønster som tilbudseditoren (qeState.customerId).
+var pjnState={customerId:null};
 function initProjectsModule(){
   if(!pjInitialized){
     document.querySelectorAll('#proj-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){switchProjTab(b.dataset.projtab);});});
@@ -17770,6 +17936,14 @@ function initProjectsModule(){
       document.getElementById('proj-archived-toggle-label').textContent=pjShowArchived?'Skjul arkiverede':'Vis arkiverede';
       renderPjProjects();
     });
+    // RUNDE K (sep. 2026, Martins ønske) — Liste/Kanban-visningsvalg + manuel
+    // projekt-oprettelse.
+    document.getElementById('proj-view-list-btn').addEventListener('click',function(){switchPjView('list');});
+    document.getElementById('proj-view-kanban-btn').addEventListener('click',function(){switchPjView('kanban');});
+    document.getElementById('proj-new-btn').addEventListener('click',openPjNewModal);
+    document.getElementById('pjn-cancel-btn').addEventListener('click',function(){closeModal('pj-new-modal');});
+    document.getElementById('pjn-save-btn').addEventListener('click',savePjNew);
+    document.getElementById('pjn-customer-search').addEventListener('input',function(e){pjnRunCustomerSearch(e.target.value.trim());});
     document.getElementById('qa-new-template-btn').addEventListener('click',function(){openQaTemplateModal();});
     document.getElementById('qat-add-field').addEventListener('click',function(){qatAddFieldRow();});
     document.getElementById('qat-cancel').addEventListener('click',function(){closeModal('qa-template-modal');});
@@ -17867,16 +18041,11 @@ function renderPjStatusFilter(nonArchived){
     b.onclick=function(){pjStatusFilter=b.dataset.pjStatus;renderPjProjects();};
   });
 }
-function renderPjProjects(){
-  var q=(document.getElementById('proj-search').value||'').trim().toLowerCase();
-  // Søger på navn, pris (kr-beløb som tekst), email og telefonnummer — sidstnævnte
-  // to sammenlignes uden mellemrum, så "12 34 56 78" også matcher "12345678".
-  var qDigits=q.replace(/\s+/g,'');
-  var nonArchived=pjProjects.filter(function(p){return p.status!=='archived';});
-  renderPjStatusFilter(nonArchived);
-  var base=pjShowArchived?pjProjects:nonArchived;
-  var list=base.filter(function(p){
-    if(pjStatusFilter!=='all'&&p.status!==pjStatusFilter)return false;
+// RUNDE K (sep. 2026, Martins ønske) — Kanban-visning: samme faste faser vises
+// altid som kolonner (i modsætning til liste-visningens ét-ad-gangen status-
+// filter, som ikke giver mening når man netop vil se ALLE faser på én gang).
+function pjPeriodSearchFilter(base,q,qDigits){
+  return base.filter(function(p){
     if(pjPeriodFilter&&!pjPeriodFilter.matches(p.created_at))return false;
     if(!q)return true;
     var price=p.invoice_total!=null?p.invoice_total:p.quote_total;
@@ -17887,9 +18056,35 @@ function renderPjProjects(){
     if(priceStr&&priceStr.indexOf(q.replace(/\s+/g,''))>-1)return true;
     return false;
   });
+}
+function switchPjView(v){
+  pjView=v;
+  document.getElementById('proj-view-list-btn').classList.toggle('active',v==='list');
+  document.getElementById('proj-view-kanban-btn').classList.toggle('active',v==='kanban');
+  document.getElementById('proj-status-filter').style.display=v==='list'?'':'none';
+  document.getElementById('proj-table').style.display=v==='list'?'':'none';
+  document.getElementById('proj-kanban-board').style.display=v==='kanban'?'':'none';
+  renderPjProjects();
+}
+function renderPjProjects(){
+  var q=(document.getElementById('proj-search').value||'').trim().toLowerCase();
+  // Søger på navn, pris (kr-beløb som tekst), email og telefonnummer — sidstnævnte
+  // to sammenlignes uden mellemrum, så "12 34 56 78" også matcher "12345678".
+  var qDigits=q.replace(/\s+/g,'');
+  var nonArchived=pjProjects.filter(function(p){return p.status!=='archived';});
+  var base=pjShowArchived?pjProjects:nonArchived;
+  if(pjView==='kanban'){
+    renderPjKanban(pjPeriodSearchFilter(base,q,qDigits));
+    return;
+  }
+  renderPjStatusFilter(nonArchived);
+  var list=pjPeriodSearchFilter(base,q,qDigits).filter(function(p){
+    if(pjStatusFilter!=='all'&&p.status!==pjStatusFilter)return false;
+    return true;
+  });
   document.getElementById('proj-count').textContent=list.length+' projekt'+(list.length===1?'':'er');
   var body=document.getElementById('proj-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når en kunde underskriver et tilbud')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når et tilbud godkendes, eller opret ét manuelt med "+ Nyt projekt"')+'</td></tr>';return;}
   var STATUS_LABEL={active:'🔧 Aktivt',on_hold:'⏸ På hold',done:'✅ Afsluttet',archived:'📦 Arkiveret'};
   // Status-dropdown direkte i listen (sep. 2026, Martins ønske: "jeg burde kunne
   // vælge status via dropdown, det gør jeg ikke behøves at åbne alle sagerne for
@@ -18014,6 +18209,112 @@ async function savePjRowStatus(id,status){
     toast('Status opdateret','✓');
     renderPjProjects();
   }else{toast((r&&r.error)||'Kunne ikke opdatere status','❌');await loadPjProjects();renderPjProjects();}
+}
+// RUNDE K (sep. 2026, Martins ønske) — "lad mig ku se alle projekter i Kanban
+// view og rykke dem manuelt ligesom Pipeline, så kan jeg hurtig se hvor vi er i
+// fasen". Genbruger PRÆCIS samme Billy-stils klasser som CRM-pipelinens Kanban
+// (.crmp-board/.crmp-col/.crmp-card, se crmpRenderBoard) for ens udseende — men
+// kolonnerne her er de faste projekt-statusser, ikke en konfigurerbar pipeline,
+// så render/drag-logikken er sin egen, enklere funktion.
+var PJ_KANBAN_STATUS_META={active:PJ_STATUS_META.active,on_hold:PJ_STATUS_META.on_hold,done:PJ_STATUS_META.done,archived:{dot:'#6B7280',label:'📦 Arkiveret'}};
+function pjKanbanCardHtml(p){
+  var price=p.invoice_total!=null?p.invoice_total:p.quote_total;
+  var contact=[p.customer_address,p.customer_phone].filter(Boolean).join(' · ');
+  return '<div class="crmp-card" draggable="true" data-id="'+p.id+'">'
+    +'<div class="crmp-card-name">'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer" style="font-weight:600">#'+esc(p.job_number)+'</span>':'')+'</div>'
+    +(contact?'<div class="crmp-card-row">'+esc(contact)+'</div>':'')
+    +'<div class="crmp-card-foot">'
+    +'<span class="crmp-card-value">'+(price!=null?krFmt(price):'–')+'</span>'
+    +'<span class="sub">'+(p.task_count||0)+' opg.</span>'
+    +'</div></div>';
+}
+function renderPjKanban(list){
+  var board=document.getElementById('proj-kanban-board');
+  var cols=pjShowArchived?['active','on_hold','done','archived']:['active','on_hold','done'];
+  board.innerHTML=cols.map(function(status){
+    var cards=list.filter(function(p){return p.status===status;});
+    var meta=PJ_KANBAN_STATUS_META[status];
+    return '<div class="crmp-col" data-status="'+status+'">'
+      +'<div class="crmp-col-head"><div class="crmp-col-headrow"><div class="crmp-col-title" style="flex:1;min-width:0">'
+      +'<span class="crmp-col-dot" style="background:'+meta.dot+'"></span>'+meta.label+'<span class="crmp-col-count">'+cards.length+'</span>'
+      +'</div></div></div>'
+      +'<div class="crmp-col-body" data-status="'+status+'">'+cards.map(pjKanbanCardHtml).join('')+'</div>'
+      +'</div>';
+  }).join('');
+  board.querySelectorAll('.crmp-card').forEach(function(card){
+    var id=Number(card.dataset.id);
+    card.addEventListener('click',function(){openProjectDetail(id);});
+    card.addEventListener('dragstart',function(){pjKanbanDragId=id;card.classList.add('dragging');});
+    card.addEventListener('dragend',function(){card.classList.remove('dragging');});
+  });
+  board.querySelectorAll('.crmp-col').forEach(function(col){
+    col.addEventListener('dragover',function(e){e.preventDefault();col.classList.add('drag-over');});
+    col.addEventListener('dragleave',function(){col.classList.remove('drag-over');});
+    col.addEventListener('drop',async function(e){
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      var status=col.dataset.status;
+      var id=pjKanbanDragId;
+      if(!id)return;
+      await savePjRowStatus(id,status);
+    });
+  });
+}
+var pjKanbanDragId=null;
+// ── "+ Nyt projekt" — manuel oprettelse ────────────────────────
+function openPjNewModal(){
+  pjnState={customerId:null};
+  document.getElementById('pjn-name').value='';
+  document.getElementById('pjn-customer-search').value='';
+  document.getElementById('pjn-address').value='';
+  document.getElementById('pjn-phone').value='';
+  document.getElementById('pjn-email').value='';
+  document.getElementById('pjn-status').value='active';
+  document.getElementById('pjn-customer-results').style.display='none';
+  document.getElementById('pj-new-modal').classList.add('open');
+  setTimeout(function(){document.getElementById('pjn-name').focus();},50);
+}
+function pjnRunCustomerSearch(q){
+  var box=document.getElementById('pjn-customer-results');
+  if(!q||q.length<2){box.style.display='none';box.innerHTML='';return;}
+  api('/api/customers/search?customers_only=1&q='+encodeURIComponent(q)).then(function(rows){
+    if(!rows||!rows.length){box.style.display='none';box.innerHTML='';return;}
+    box.innerHTML=rows.map(function(r,i){
+      return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+esc(r.job_name)+'</b><br><span style="color:var(--bly-sub)">'+esc(r.job_address||'Ingen adresse')+(r.customer_phone?' · '+esc(r.customer_phone):'')+'</span></div>';
+    }).join('');
+    box.style.display='block';
+    Array.prototype.forEach.call(box.querySelectorAll('.qe-customer-result'),function(elx,i){
+      elx.onclick=function(){pjnPickCustomer(rows[i]);};
+    });
+  });
+}
+function pjnPickCustomer(r){
+  document.getElementById('pjn-customer-search').value=r.job_name||'';
+  if(!document.getElementById('pjn-name').value.trim())document.getElementById('pjn-name').value=r.job_name||'';
+  document.getElementById('pjn-address').value=r.job_address||'';
+  document.getElementById('pjn-phone').value=r.customer_phone||'';
+  document.getElementById('pjn-email').value=r.customer_email||'';
+  document.getElementById('pjn-customer-results').style.display='none';
+  pjnState.customerId=r.customer_id||null;
+}
+async function savePjNew(){
+  var name=document.getElementById('pjn-name').value.trim();
+  if(!name){toast('Angiv et navn','⚠️');return;}
+  var body={
+    name:name,
+    customer_id:pjnState.customerId||null,
+    customer_address:document.getElementById('pjn-address').value.trim()||null,
+    customer_phone:document.getElementById('pjn-phone').value.trim()||null,
+    customer_email:document.getElementById('pjn-email').value.trim()||null,
+    status:document.getElementById('pjn-status').value
+  };
+  var r=await api('/api/projects',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){
+    toast('Projekt oprettet','✓');
+    closeModal('pj-new-modal');
+    await loadPjProjects();renderPjProjects();
+    openProjectDetail(r.id);
+  } else toast((r&&r.error)||'Kunne ikke oprette projektet','❌');
 }
 async function savePdStatus(){
   if(!pjCurrent)return;
@@ -19022,7 +19323,10 @@ async function openQuoteEditor(id,prefillCustomer){
   // nedenfor, som sætter den til true EFTER dette kald. qe-status-select og
   // "Gyldig til" (begge tilbuds-specifikke begreber, giver ikke mening for en
   // faktura) vises altid som udgangspunkt her, og skjules kun i direkte-faktura-tilstand.
-  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false};
+  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false,invStatus:null};
+  document.getElementById('qe-invoicing-panel').style.display='none';
+  document.getElementById('qe-lines').classList.remove('qe-lines-locked');
+  qeSetLineButtonsLocked(false);
   document.getElementById('qe-status-select').style.display='';
   document.getElementById('qe-valid-until').parentElement.style.display='';
   qzProductSearchSelections['qe-product-results']={};
@@ -19074,11 +19378,16 @@ async function openQuoteEditor(id,prefillCustomer){
     document.getElementById('qe-subtitle').textContent='Oprettet '+String(qd.created_at||'').slice(0,10);
     qePopulateStatusSelect(qd.status);
     document.getElementById('qe-pdf-link').style.display='inline-flex';
-    document.getElementById('qe-convert-btn').style.display=qd.status==='converted'?'none':'inline-flex';
     document.getElementById('qe-share-btn').style.display=qd.status==='converted'?'none':'inline-flex';
     document.getElementById('qe-request-btn').style.display='inline-flex';
     document.getElementById('qe-send-btn').style.display='inline-flex';
-    if(qd.status==='converted')toast('Dette tilbud er konverteret til en faktura','ℹ️');
+    // RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: konverter-knappen og
+    // linjelåsen styres nu af om der findes fakturaer/resterende ufakturerede
+    // linjer, ikke længere kun af tilbuddets status (som forbliver 'converted'
+    // efter den FØRSTE delfaktura — se server.js' convert-to-invoice).
+    qeState.invStatus=await api('/api/quotes/'+id+'/invoicing-status');
+    if(!qeState.invStatus||qeState.invStatus.error)qeState.invStatus={quote_total:qd.total,invoiced_total:0,remaining_lines:qeState.lines,invoices:[]};
+    renderQeInvoicingPanel();
   } else {
     document.getElementById('qe-title').textContent='Nyt tilbud';
     document.getElementById('qe-subtitle').textContent='';
@@ -19123,6 +19432,45 @@ async function openDirectInvoiceEditor(prefillCustomer){
   document.getElementById('qe-notes').value='';
 }
 function renderQeLines(){qzRenderLines('qe-lines',qeState.lines,'qe');}
+// RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: skjuler/viser "+ Tilføj linje",
+// "+ Tekstlinje", AI-diktering og "Gem som skabelon", som alle ville forsøge at ændre
+// den linjeliste der er låst så snart tilbuddet har fakturaer (se qeSetLineButtonsLocked).
+function qeSetLineButtonsLocked(locked){
+  ['qe-add-blank-line','qe-add-text-line','qe-ai-mic-btn','qe-save-as-template-btn','qe-add-blank-line-bottom','qe-add-text-line-bottom'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.style.display=locked?'none':'';
+  });
+}
+// RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: tegner "Faktureringsstatus"-
+// panelet (fremdrift + liste af delfakturaer + "Tilføj ekstra ydelser") og låser den
+// almindelige linjeeditor (kun læsbar — nye linjer skal herefter komme additivt via
+// "+ Tilføj ekstra ydelser", se PUT /api/quotes/:id's guard i server.js) så snart
+// tilbuddet har mindst én faktura knyttet til sig. Uden fakturaer opfører alt sig
+// som hidtil (fuldt redigerbare linjer, ingen panel).
+function renderQeInvoicingPanel(){
+  var st=qeState.invStatus;
+  var hasInvoices=!!(st&&st.invoices&&st.invoices.length);
+  document.getElementById('qe-invoicing-panel').style.display=hasInvoices?'':'none';
+  document.getElementById('qe-lines').classList.toggle('qe-lines-locked',hasInvoices);
+  qeSetLineButtonsLocked(hasInvoices);
+  var remaining=st?(st.remaining_lines||[]):qeState.lines;
+  document.getElementById('qe-convert-btn').style.display=remaining.length?'inline-flex':'none';
+  document.getElementById('qe-convert-btn').textContent=hasInvoices?'➜ Fakturér flere linjer':'➜ Konvertér til faktura';
+  if(!hasInvoices)return;
+  var pct=st.quote_total>0?Math.min(100,Math.round(st.invoiced_total/st.quote_total*100)):0;
+  document.getElementById('qe-invoicing-summary').textContent='Faktureret '+krFmt(st.invoiced_total)+' af '+krFmt(st.quote_total)+' ('+pct+'%)'+(remaining.length?'':' — alt faktureret');
+  document.getElementById('qe-invoicing-progress-fill').style.width=pct+'%';
+  document.getElementById('qe-invoicing-inv-list').innerHTML=st.invoices.map(function(inv){
+    return '<div class="qe-invoicing-inv-row" data-invid="'+inv.id+'"><span>'+esc(inv.invoice_number)+(inv.sent_at?' · sendt':' · ikke sendt endnu')+'</span><span>'+krFmt(Number(inv.total))+'</span></div>';
+  }).join('');
+  Array.prototype.forEach.call(document.getElementById('qe-invoicing-inv-list').querySelectorAll('[data-invid]'),function(row){
+    row.onclick=function(){
+      var invId=Number(row.dataset.invid);
+      closeModal('quote-editor-modal');
+      switchQzTab('invoices');
+      openInvoiceDetail(invId);
+    };
+  });
+}
 function qeAddLine(product){qeState.lines.push(qzMakeBlankLine(product));renderQeLines();qeRecalc();}
 // ── AI-DIKTERING (sep. 2026, Martins ønske: "tale til programmet med hvad jeg
 // ønsker tilbuddet skal være, så den lynhurtigt finder produktet eller selv
@@ -19355,7 +19703,14 @@ async function qeStatusChanged(e){
   if(!qeState.id){e.target.value='draft';toast('Gem tilbuddet først, før du kan ændre status','ℹ️');return;}
   var newStatus=e.target.value;
   var r=await api('/api/quotes/'+qeState.id+'/status',{method:'PUT',body:JSON.stringify({status:newStatus})});
-  if(r&&r.ok){qeState.lastStatus=newStatus;toast('Status opdateret','✓');await loadQzQuotes();renderQzQuotes();}
+  if(r&&r.ok){
+    qeState.lastStatus=newStatus;
+    // RUNDE K (sep. 2026, Martins ønske) — sætter man status til "Godkendt" her
+    // manuelt (fx kunden sagde ja telefonisk), opretter serveren nu automatisk et
+    // projekt, ligesom når kunden selv underskriver online — se project_id i svaret.
+    toast(newStatus==='accepted'&&r.project_id?'Godkendt — projekt oprettet ✓':'Status opdateret','✓');
+    await loadQzQuotes();renderQzQuotes();
+  }
   else{toast((r&&r.error)||'Kunne ikke opdatere status','❌');qePopulateStatusSelect(qeState.lastStatus);}
 }
 async function saveQuoteEditor(){
@@ -19374,9 +19729,15 @@ async function saveQuoteEditor(){
     internal_note:document.getElementById('qe-internal-note').value.trim()||null,
     tax_rate:qeState.taxRate,
     discount_pct:Number(document.getElementById('qe-doc-discount').value)||0,
-    discount_type:document.getElementById('qe-doc-discount-type').value==='fixed'?'fixed':'pct',
-    lines:qeState.lines
+    discount_type:document.getElementById('qe-doc-discount-type').value==='fixed'?'fixed':'pct'
   };
+  // RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: 'lines' udelades helt fra
+  // kaldet så snart tilbuddet har fakturaer knyttet til sig — linjeeditoren er
+  // låst i den tilstand (se renderQeInvoicingPanel), og serveren afviser
+  // (400) et PUT med 'lines' i det tilfælde, se guard i PUT /api/quotes/:id.
+  // Andre felter (kunde/noter/gyldig til/rabat) kan stadig gemmes som hidtil.
+  var hasInvoices=!!(qeState.invStatus&&qeState.invStatus.invoices&&qeState.invStatus.invoices.length);
+  if(!hasInvoices)body.lines=qeState.lines;
   // RUNDE I (sep. 2026): direkte faktura opretter ALDRIG et tilbud undervejs —
   // egen rute, egen succes-håndtering (lukker editoren og åbner den nye faktura,
   // ligesom "Konvertér til faktura" gør for et rigtigt tilbud).
@@ -19402,18 +19763,86 @@ async function saveQuoteEditor(){
     await openQuoteEditor(qeState.id||r.id);
   } else toast((r&&r.error)||'Kunne ikke gemme tilbuddet','❌');
 }
+// RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: "Konvertér til faktura" åbner nu
+// en linjevalgs-modal i stedet for kun en ja/nej-bekræftelse. Henter friske
+// faktureringstal ved KLIK (ikke genbruger qeState.invStatus fra editor-åbningen),
+// så det aldrig er forældet hvis man har tilføjet ekstra ydelser undervejs i samme session.
 async function convertQuoteToInvoice(){
   if(!qeState.id)return;
-  if(!await gmConfirm('Konvertér dette tilbud til en faktura? Tilbuddets linjer låses og kopieres til fakturaen.'))return;
-  var r=await api('/api/quotes/'+qeState.id+'/convert-to-invoice',{method:'POST'});
+  var st=await api('/api/quotes/'+qeState.id+'/invoicing-status');
+  if(!st||st.error){toast('Kunne ikke hente faktureringsstatus','❌');return;}
+  qeState.invStatus=st;
+  renderQeInvoicingPanel();
+  if(!st.remaining_lines.length){toast('Alle linjer på tilbuddet er allerede faktureret','ℹ️');return;}
+  qcvState={quoteId:qeState.id,lines:st.remaining_lines};
+  renderQcvLines();
+  document.getElementById('quote-convert-modal').classList.add('open');
+}
+function renderQcvLines(){
+  document.getElementById('qcv-lines').innerHTML=qcvState.lines.map(function(l,idx){
+    var lineTotal=(Number(l.quantity)||0)*(Number(l.sell_price)||0)-qzLineDiscountAmount(l,(Number(l.quantity)||0)*(Number(l.sell_price)||0));
+    return '<label class="qcv-line-row"><input type="checkbox" class="qcv-line-check" data-idx="'+idx+'" checked>'
+      +'<span style="flex:1">'+qzLineDescCellHtml(l)+(l.line_type!=='text'?'<div class="sub">'+(Number(l.quantity)||0)+' '+esc(l.unit||'')+' · '+krFmt(Number(l.sell_price))+'</div>':'')+'</span>'
+      +(l.line_type!=='text'?'<span style="flex-shrink:0;font-weight:700">'+krFmt(lineTotal)+'</span>':'')
+      +'</label>';
+  }).join('');
+  qcvRecalcTotal();
+}
+function qcvRecalcTotal(){
+  var checks=document.querySelectorAll('.qcv-line-check');
+  var sum=0,anyChecked=false;
+  Array.prototype.forEach.call(checks,function(cb){
+    if(!cb.checked)return;
+    anyChecked=true;
+    var l=qcvState.lines[Number(cb.dataset.idx)];
+    if(!l||l.line_type==='text')return;
+    var gross=(Number(l.quantity)||0)*(Number(l.sell_price)||0);
+    sum+=gross-qzLineDiscountAmount(l,gross);
+  });
+  // Beløbet her er FØR tilbuddets evt. dokument-rabat og moms (som først lægges
+  // proportionalt på den faktiske delfaktura af serveren) — vist som vejledende
+  // "ca."-beløb, ikke fakturaens endelige total.
+  document.getElementById('qcv-total').innerHTML='<div class="qe-totals-row total"><span>Valgte linjer, ca. (før evt. tilbudsrabat/moms)</span><span>'+krFmt(sum)+'</span></div>';
+  document.getElementById('qcv-confirm-btn').disabled=!anyChecked;
+}
+async function qcvConfirm(){
+  var ids=[];
+  Array.prototype.forEach.call(document.querySelectorAll('.qcv-line-check'),function(cb){
+    if(cb.checked)ids.push(qcvState.lines[Number(cb.dataset.idx)].id);
+  });
+  if(!ids.length){toast('Vælg mindst én linje','⚠️');return;}
+  var r=await api('/api/quotes/'+qcvState.quoteId+'/convert-to-invoice',{method:'POST',body:JSON.stringify({line_ids:ids})});
   if(r&&r.ok){
-    toast('Konverteret til faktura '+r.invoice_number,'✓');
+    toast('Faktura '+r.invoice_number+' oprettet','✓');
+    closeModal('quote-convert-modal');
     closeModal('quote-editor-modal');
     await Promise.all([loadQzQuotes(),loadQzInvoices()]);
     renderQzQuotes();renderQzInvoices();
     switchQzTab('invoices');
     openInvoiceDetail(r.invoice_id);
   } else toast((r&&r.error)||'Kunne ikke konvertere','❌');
+}
+// RUNDE J (sep. 2026, Martins ønske) — "+ Tilføj ekstra ydelser": åbner en lille
+// linjeeditor (genbruger samme mønster som skabelon-editoren, se qzRenderLines)
+// og sender de nye linjer additivt via POST /api/quotes/:id/lines — rører aldrig
+// tilbuddets eksisterende linjer.
+function openQalModal(){
+  if(!qeState.id)return;
+  qalState={quoteId:qeState.id,lines:[qzMakeBlankLine(null)]};
+  document.getElementById('qal-subtitle').textContent='Tilbud '+(qeState.quoteNumber||'')+' — disse linjer lægges i puljen og kan tages med i den næste (del)faktura.';
+  qzRenderLines('qal-lines',qalState.lines,'qal');
+  document.getElementById('quote-add-lines-modal').classList.add('open');
+}
+async function qalSave(){
+  var lines=qalState.lines.filter(function(l){return l.description&&String(l.description).trim();});
+  if(!lines.length){toast('Tilføj mindst én linje','⚠️');return;}
+  var r=await api('/api/quotes/'+qalState.quoteId+'/lines',{method:'POST',body:JSON.stringify({lines:lines})});
+  if(r&&r.ok){
+    toast(r.added+' ekstra ydelse(r) tilføjet','✓');
+    closeModal('quote-add-lines-modal');
+    await loadQzQuotes();renderQzQuotes();
+    await openQuoteEditor(qalState.quoteId);
+  } else toast((r&&r.error)||'Kunne ikke tilføje linjerne','❌');
 }
 async function qeShareLink(){
   if(!qeState.id){toast('Gem tilbuddet først','⚠️');return;}
@@ -19574,6 +20003,16 @@ async function openInvoiceDetail(id){
   setAppTitle(inv.job_name||inv.invoice_number);
   document.getElementById('iv-title').textContent=inv.invoice_number;
   document.getElementById('iv-subtitle').textContent=(inv.job_name||'')+' · '+(QZ_INVOICE_STATUS[inv.status]?QZ_INVOICE_STATUS[inv.status].label:inv.status);
+  // RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: sent_at sat = fakturaen er
+  // sendt til kunden og er låst for rettelser af note/linjer (due_date er BEVIDST
+  // undtaget, se skema-noten i server.js). Serveren håndhæver samme regel (se
+  // guard i PUT /api/invoices/:id) — dette er den synlige/proaktive side af det.
+  ivState.sentAt=inv.sent_at||null;
+  var locked=!!ivState.sentAt;
+  document.getElementById('iv-lock-badge').style.display=locked?'inline-flex':'none';
+  document.getElementById('iv-edit-lines-btn').style.display=locked?'none':'inline-flex';
+  document.getElementById('iv-top-note').disabled=locked;
+  document.getElementById('iv-notes').disabled=locked;
   document.getElementById('iv-due-date').value=inv.due_date||'';
   document.getElementById('iv-top-note').value=inv.top_note||'';
   document.getElementById('iv-notes').value=inv.notes||'';
@@ -19657,6 +20096,54 @@ async function saveIvTopNote(){
   if(r&&r.ok){toast('Note gemt','✓');loadDocActivity('invoice',ivState.id,'iv-activity-list');}
   else toast((r&&r.error)||'Kunne ikke gemme noten','❌');
 }
+// RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: redigering af fakturalinjer/rabat,
+// kun tilgængelig før fakturaen er sendt (se iv-edit-lines-btn, skjult når ivState.sentAt).
+async function openIvlModal(){
+  if(!ivState.id||ivState.sentAt)return;
+  var inv=await api('/api/invoices/'+ivState.id);
+  if(!inv||inv.error){toast('Kunne ikke hente fakturaen','❌');return;}
+  ivlState={invoiceId:ivState.id,lines:(inv.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,note:l.note||'',unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:'pct',line_type:l.line_type==='text'?'text':'item'};}),taxRate:Number(inv.tax_rate)||25};
+  document.getElementById('ivl-title').textContent='Redigér linjer — '+inv.invoice_number;
+  document.getElementById('ivl-discount').value=Number(inv.discount_pct)||0;
+  qzRenderLines('ivl-lines',ivlState.lines,'ivl');
+  ivlRenderTotals();
+  document.getElementById('invoice-lines-edit-modal').classList.add('open');
+}
+function ivlComputeTotals(){
+  var discountPct=Number(document.getElementById('ivl-discount').value)||0;
+  var taxRate=Number(ivlState.taxRate)||25;
+  var rawSubtotal=0;
+  ivlState.lines.forEach(function(l){
+    var qty=Number(l.quantity)||0,sell=Number(l.sell_price)||0;
+    var gross=qty*sell;
+    rawSubtotal+=gross-qzLineDiscountAmount(l,gross);
+  });
+  var discountAmount=rawSubtotal*Math.max(0,Math.min(discountPct,100))/100;
+  var subtotal=rawSubtotal-discountAmount;
+  var taxAmount=subtotal*taxRate/100;
+  var total=subtotal+taxAmount;
+  return {rawSubtotal:rawSubtotal,discountPct:discountPct,discountAmount:discountAmount,subtotal:subtotal,taxRate:taxRate,taxAmount:taxAmount,total:total};
+}
+function ivlRenderTotals(){
+  var t=ivlComputeTotals();
+  document.getElementById('ivl-total').innerHTML=
+    '<div class="qe-totals-row"><span>Subtotal (før rabat)</span><span>'+krFmt(t.rawSubtotal)+'</span></div>'
+   +(t.discountAmount>0?'<div class="qe-totals-row"><span>Rabat ('+t.discountPct+'%)</span><span>-'+krFmt(t.discountAmount)+'</span></div>':'')
+   +'<div class="qe-totals-row"><span>Moms ('+t.taxRate+'%)</span><span>'+krFmt(t.taxAmount)+'</span></div>'
+   +'<div class="qe-totals-row total"><span>Total</span><span>'+krFmt(t.total)+'</span></div>';
+}
+async function ivlSave(){
+  var lines=ivlState.lines.filter(function(l){return l.description&&String(l.description).trim();});
+  if(!lines.length){toast('Tilføj mindst én linje','⚠️');return;}
+  var body={lines:lines,discount_pct:Number(document.getElementById('ivl-discount').value)||0};
+  var r=await api('/api/invoices/'+ivlState.invoiceId+'/lines',{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){
+    toast('Fakturalinjer gemt','✓');
+    closeModal('invoice-lines-edit-modal');
+    await loadQzInvoices();renderQzInvoices();
+    await openInvoiceDetail(ivlState.invoiceId);
+  } else toast((r&&r.error)||'Kunne ikke gemme linjerne','❌');
+}
 async function voidIvInvoice(){
   if(!await gmConfirm('Annullér denne faktura? Den vil blive markeret som annulleret.'))return;
   var r=await api('/api/invoices/'+ivState.id+'/void',{method:'PUT'});
@@ -19718,6 +20205,65 @@ function bindQuotesModuleEvents(){
     el.addEventListener('dragover',qztDrag.dragover);
     el.addEventListener('drop',qztDrag.drop);
     el.addEventListener('dragend',qztDrag.dragend);
+  })();
+
+  // RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER-modaler: linjevalg ved
+  // konvertering (qcv) og "+ Tilføj ekstra ydelser" (qal), samme opkoblingsmønster
+  // som skabelon-editoren (qzt) ovenfor.
+  document.getElementById('qcv-cancel-btn').addEventListener('click',function(){closeModal('quote-convert-modal');});
+  document.getElementById('qcv-confirm-btn').addEventListener('click',qcvConfirm);
+  document.getElementById('qcv-lines').addEventListener('change',function(e){if(e.target.classList.contains('qcv-line-check'))qcvRecalcTotal();});
+  document.getElementById('qe-add-extra-lines-btn').addEventListener('click',openQalModal);
+  document.getElementById('qal-cancel-btn').addEventListener('click',function(){closeModal('quote-add-lines-modal');});
+  document.getElementById('qal-save-btn').addEventListener('click',qalSave);
+  document.getElementById('qal-add-blank-line').addEventListener('click',function(){qalState.lines.push(qzMakeBlankLine(null));qzRenderLines('qal-lines',qalState.lines,'qal');});
+  document.getElementById('qal-add-text-line').addEventListener('click',function(){qalState.lines.push(qzMakeTextLine());qzRenderLines('qal-lines',qalState.lines,'qal');});
+  document.getElementById('qal-product-search').addEventListener('input',function(e){
+    if(e.target.value.charAt(0)==='/'){
+      qzRunProductSearch('qal-product-search','qal-product-results',function(p){qalState.lines.push(qzMakeBlankLine(p));qzRenderLines('qal-lines',qalState.lines,'qal');});
+    }else if(!Object.keys(qzMultiSelectFor('qal-product-results')).length){
+      var box=document.getElementById('qal-product-results');box.style.display='none';box.innerHTML='';
+    }
+  });
+  document.getElementById('qal-product-search').addEventListener('keydown',qzQuickNoteHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
+  var qalFieldHandler=makeLinesFieldHandler(function(){return qalState.lines;},'qal',null,function(){qzRenderLines('qal-lines',qalState.lines,'qal');});
+  document.getElementById('qal-lines').addEventListener('input',qalFieldHandler);
+  document.getElementById('qal-lines').addEventListener('change',qalFieldHandler);
+  document.getElementById('qal-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
+  (function(){
+    var qalDrag=makeLinesDragHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');});
+    var el=document.getElementById('qal-lines');
+    el.addEventListener('dragstart',qalDrag.dragstart);
+    el.addEventListener('dragover',qalDrag.dragover);
+    el.addEventListener('drop',qalDrag.drop);
+    el.addEventListener('dragend',qalDrag.dragend);
+  })();
+  // RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: linjeredigering før afsendt (ivl).
+  document.getElementById('iv-edit-lines-btn').addEventListener('click',openIvlModal);
+  document.getElementById('ivl-cancel-btn').addEventListener('click',function(){closeModal('invoice-lines-edit-modal');});
+  document.getElementById('ivl-save-btn').addEventListener('click',ivlSave);
+  document.getElementById('ivl-add-blank-line').addEventListener('click',function(){ivlState.lines.push(qzMakeBlankLine(null));qzRenderLines('ivl-lines',ivlState.lines,'ivl');});
+  document.getElementById('ivl-add-text-line').addEventListener('click',function(){ivlState.lines.push(qzMakeTextLine());qzRenderLines('ivl-lines',ivlState.lines,'ivl');});
+  document.getElementById('ivl-product-search').addEventListener('input',function(e){
+    if(e.target.value.charAt(0)==='/'){
+      qzRunProductSearch('ivl-product-search','ivl-product-results',function(p){ivlState.lines.push(qzMakeBlankLine(p));qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();});
+    }else if(!Object.keys(qzMultiSelectFor('ivl-product-results')).length){
+      var box=document.getElementById('ivl-product-results');box.style.display='none';box.innerHTML='';
+    }
+  });
+  document.getElementById('ivl-product-search').addEventListener('keydown',qzQuickNoteHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
+  var ivlFieldHandler=makeLinesFieldHandler(function(){return ivlState.lines;},'ivl',ivlRenderTotals,function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');});
+  document.getElementById('ivl-lines').addEventListener('input',ivlFieldHandler);
+  document.getElementById('ivl-lines').addEventListener('change',ivlFieldHandler);
+  document.getElementById('ivl-lines').addEventListener('click',makeLinesRemoveHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
+  document.getElementById('ivl-discount').addEventListener('input',ivlRenderTotals);
+  (function(){
+    var ivlDrag=makeLinesDragHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');});
+    var el=document.getElementById('ivl-lines');
+    el.addEventListener('dragstart',ivlDrag.dragstart);
+    el.addEventListener('dragover',ivlDrag.dragover);
+    el.addEventListener('drop',ivlDrag.drop);
+    el.addEventListener('dragend',ivlDrag.dragend);
   })();
 
   makeRichField('qe-top-note');
