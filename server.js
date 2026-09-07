@@ -13297,7 +13297,8 @@ app.post('/api/credit-notes/:id/send', auth, panelAccess('quotes'), asyncRoute(a
   const vars = {
     kunde: invoice.job_name || '', dokument_nr: cn.credit_note_number, total: krFmtServer(cn.amount),
     gyldig_til: '', forfald: '', restbeloeb: krFmtServer(invoice.remaining), firma: company.name,
-    link: portalLink, underskriv_link: ''
+    link: portalLink, underskriv_link: '',
+    logo: company.logoUrl || '', telefon: company.phone || '', firma_email: company.email || ''
   };
   let templateId = b.template_id || null;
   if (!templateId) templateId = await getAssignedTemplateId('credit_note');
@@ -13846,7 +13847,14 @@ const DOC_EMAIL_VARS = [
   ['{{kunde}}', 'Kunde/sagsnavn'], ['{{dokument_nr}}', 'Tilbuds-/fakturanummer'], ['{{total}}', 'Totalbeløb'],
   ['{{gyldig_til}}', 'Gyldig til (kun tilbud)'], ['{{forfald}}', 'Forfaldsdato (kun faktura)'], ['{{restbeloeb}}', 'Restbeløb (kun faktura)'],
   ['{{firma}}', 'Firmanavn'], ['{{link}}', 'Link til kundens portal (alle tilbud/fakturaer/opgaver)'],
-  ['{{underskriv_link}}', 'Direkte link til at underskrive (kun tilbud)']
+  ['{{underskriv_link}}', 'Direkte link til at underskrive (kun tilbud)'],
+  // RUNDE K (sep. 2026, Martins ønske) — tilføjet så en helt selvbygget mail-skabelon
+  // (fx sat sammen udenfor systemet og limet ind som HTML) automatisk kan vise firmaets
+  // rigtige logo/telefon/mail fra Indstillinger, i stedet for at Martin skal hardkode en
+  // billed-URL/telefonnummer direkte i skabelonens HTML, som så ikke opdateres hvis
+  // logo/telefon senere ændres i Indstillinger.
+  ['{{logo}}', 'Firmaets logo (billed-URL — sæt som <img src="{{logo}}">)'],
+  ['{{telefon}}', 'Firmaets telefonnummer'], ['{{firma_email}}', 'Firmaets e-mailadresse']
 ];
 
 // ── FASTE MAIL-SKABELON-KOBLINGER PR. HÆNDELSESTYPE ──
@@ -13903,7 +13911,8 @@ app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (
   const vars = {
     kunde: quote.job_name || '', dokument_nr: quote.quote_number, total: krFmtServer(quote.total),
     gyldig_til: quote.valid_until || '', forfald: '', restbeloeb: '', firma: company.name,
-    link: portalLink, underskriv_link: signLink
+    link: portalLink, underskriv_link: signLink,
+    logo: company.logoUrl || '', telefon: company.phone || '', firma_email: company.email || ''
   };
   let templateId = b.template_id || null;
   if (!templateId) templateId = await getAssignedTemplateId('quote');
@@ -13980,7 +13989,8 @@ app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async
   const vars = {
     kunde: invoice.job_name || '', dokument_nr: invoice.invoice_number, total: krFmtServer(invoice.total),
     gyldig_til: '', forfald: invoice.due_date || '', restbeloeb: krFmtServer(invoice.remaining), firma: company.name,
-    link: portalLink, underskriv_link: ''
+    link: portalLink, underskriv_link: '',
+    logo: company.logoUrl || '', telefon: company.phone || '', firma_email: company.email || ''
   };
   let templateId = b.template_id || null;
   if (!templateId) templateId = await getAssignedTemplateId('invoice');
