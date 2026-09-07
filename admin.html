@@ -2459,7 +2459,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-07.5</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-07.6</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5155,7 +5155,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="modal-body-pad">
       <label class="form-label">Kundens navn</label>
-      <input id="visit-customer" class="input" placeholder="Fx Peter Lindgren">
+      <!-- RUNDE K (fortsat, sep. 2026, Martins ønske) — "Når kundebesøg oprettes i
+           dagligplanlægning, skal den søge i dataen omkring kunder": genbruger samme
+           søge-mønster/endpoint som Nyt Projekt-modalen (pjnRunCustomerSearch) —
+           GET /api/customers/search?customers_only=1&q=. Et klik på et forslag udfylder
+           adresse/telefon automatisk; man kan stadig bare skrive et nyt navn i stedet,
+           præcis som før. -->
+      <div class="qe-customer-pop">
+        <input id="visit-customer" class="input" placeholder="Fx Peter Lindgren" autocomplete="off">
+        <div class="qe-customer-results" id="vb-customer-results"></div>
+      </div>
       <div class="form-row" style="margin-top:12px">
         <div class="form-group"><label class="form-label">Dato <span class="opt-tag">ca. — vælges endeligt ved udtræk</span></label><input id="visit-date" type="date" class="input"></div>
         <div class="form-group"><label class="form-label">Telefon <span class="opt-tag">valgfrit</span></label><input id="visit-phone" class="input" placeholder="Fx 12 34 56 78"></div>
@@ -6021,14 +6030,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">E-mail</label><input id="user-email" type="email" class="input"></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Adgangskode</label><input id="user-password" type="password" class="input" placeholder="Påkrævet ved ny bruger"></div>
-        <div class="form-group"><label class="form-label">Rolle</label>
-          <select id="user-role" class="select"><option value="employee">Medarbejder</option><option value="admin">Admin — fuld, ubegrænset adgang til ALT</option></select>
-          <div class="hint" style="margin-top:4px;color:#B91C1C;font-weight:600" id="user-role-admin-warning">⚠️ Fuld adgang til ALT i systemet — kunder, økonomi, alle andre brugere osv. Brug kun til dig selv/dine mest betroede. For begrænset adgang (fx "Kontor" eller "Mester"), vælg i stedet Medarbejder herover og en Panel-rolle nedenfor.</div>
+        <div class="form-group"><label class="form-label">Rolle <span class="opt-tag">navngivne roller (fx "Kontor"/"Mester") oprettes under "Roller &amp; adgang" på Hold &amp; vendors-siden</span></label>
+          <!-- RUNDE K (fortsat, sep. 2026, Martins ønske) — "Vi har da stadig kun mulighed
+               for at vælge Admin og medarbejder?": de navngivne Panel-roller (Kontor,
+               Mester, osv.) er nu samlet ind i DENNE ene liste i stedet for at ligge i et
+               separat, delvist skjult "Panel-rolle"-felt nedenunder som man skulle huske at
+               åbne — se populateUserRoleSelect(). Valgt panel-rolle sendes stadig til
+               serveren som role='employee'+panel_role_id, præcis som før. -->
+          <select id="user-role" class="select"><option value="employee">Medarbejder — ingen adgang til admin-panelet, kun medarbejder-appen</option><option value="admin">Admin — fuld, ubegrænset adgang til ALT</option></select>
+          <div class="hint" style="margin-top:4px;color:#B91C1C;font-weight:600" id="user-role-admin-warning">⚠️ Fuld adgang til ALT i systemet — kunder, økonomi, alle andre brugere osv. Brug kun til dig selv/dine mest betroede. For begrænset adgang, vælg i stedet en af de navngivne roller ovenfor (fx "Kontor" eller "Mester").</div>
         </div>
-      </div>
-      <div class="form-group" id="user-panel-role-group"><label class="form-label">👉 Panel-rolle <span class="opt-tag">brug DENNE til begrænset adgang (fx Kontor/Mester) — se "Roller &amp; adgang" på Hold &amp; vendors-siden</span></label>
-        <select id="user-panel-role" class="select"><option value="">Ingen (kun Medarbejder-appen)</option></select>
-        <div class="hint" style="margin-top:4px" id="user-panel-role-admin-hint">Rolle er sat til Admin herover, som allerede giver fuld adgang til alt — Panel-rolle er derfor skjult/ikke nødvendig. Vil du give BEGRÆNSET adgang i stedet, så sæt Rolle til "Medarbejder" ovenfor først.</div>
       </div>
     </div>
     <div class="form-row">
@@ -8482,7 +8493,32 @@ async function deleteChecklistItem(id,containerId,taskId){
 function openVisitBookModal(){
   document.getElementById('visit-date').value=iso(new Date());
   ['visit-customer','visit-phone','visit-address','visit-notes'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('vb-customer-results').style.display='none';
   document.getElementById('visit-book-modal').classList.add('open');
+}
+// RUNDE K (fortsat, sep. 2026, Martins ønske) — samme kunde-søgning som Nyt
+// Projekt-modalen (se pjnRunCustomerSearch/pjnPickCustomer), her genbrugt til "Book
+// kundebesøg". Kundebesøg er (bevidst uændret) ikke koblet til et customer_id på
+// serveren — søgningen er derfor kun en udfyldnings-genvej, ikke en reel kobling.
+function vbRunCustomerSearch(q){
+  var box=document.getElementById('vb-customer-results');
+  if(!q||q.length<2){box.style.display='none';box.innerHTML='';return;}
+  api('/api/customers/search?customers_only=1&q='+encodeURIComponent(q)).then(function(rows){
+    if(!rows||!rows.length){box.style.display='none';box.innerHTML='';return;}
+    box.innerHTML=rows.map(function(r,i){
+      return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+esc(r.job_name)+'</b><br><span style="color:var(--bly-sub)">'+esc(r.job_address||'Ingen adresse')+(r.customer_phone?' · '+esc(r.customer_phone):'')+'</span></div>';
+    }).join('');
+    box.style.display='block';
+    Array.prototype.forEach.call(box.querySelectorAll('.qe-customer-result'),function(elx,i){
+      elx.onclick=function(){vbPickCustomer(rows[i]);};
+    });
+  });
+}
+function vbPickCustomer(r){
+  document.getElementById('visit-customer').value=r.job_name||'';
+  document.getElementById('visit-address').value=r.job_address||'';
+  document.getElementById('visit-phone').value=r.customer_phone||'';
+  document.getElementById('vb-customer-results').style.display='none';
 }
 async function saveVisitBooking(){
   var name=document.getElementById('visit-customer').value.trim();
@@ -10329,6 +10365,12 @@ async function deleteCustomTplEditor(){
 var docSendCtx={kind:null,id:null,record:null};
 async function openDocSendModal(kind,id){
   if(!docMailTemplatesCache.length)await loadDocMailTemplates();
+  // RUNDE K (fortsat, sep. 2026, Martins ønske) — hentes parallelt med selve
+  // dokumentet: den faste skabelon-kobling pr. hændelsestype (quote/invoice), sat
+  // under Skabeloner → Mail → Dokumenter (se docTplAssignCache/saveDocTplAssignment
+  // ovenfor). Hentes FRISK hver gang modalen åbnes (ikke kun fra cache), så en
+  // nyligt ændret standard-skabelon slår igennem med det samme.
+  var assignP=api('/api/settings/email-template-assignments');
   var rec=await api('/api/'+(kind==='quote'?'quotes':'invoices')+'/'+id);
   if(!rec||rec.error){toast('Kunne ikke hente dokumentet','❌');return;}
   docSendCtx={kind:kind,id:id,record:rec};
@@ -10337,7 +10379,14 @@ async function openDocSendModal(kind,id){
   document.getElementById('doc-send-to').value=rec.customer_email||'';
   var sel=document.getElementById('doc-send-template');
   sel.innerHTML=['<option value="">Standard (uden skabelon)</option>'].concat(docMailTemplatesCache.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>';})).join('');
-  sel.value='';
+  // "Kan du ikke gøre så jeg kan tilføje hver skabelon jeg laver som den standard
+  // vælger, så man ikke manuelt skal huske at skifte hver gang?" — brug den faste
+  // koblings-skabelon som forudvalgt her, i stedet for altid at nulstille til
+  // "Standard (uden skabelon)". Man kan stadig vælge en anden skabelon manuelt for
+  // netop denne ene afsendelse, uden at det ændrer den faste standard-kobling.
+  docTplAssignCache=(await assignP)||docTplAssignCache||{};
+  var defaultTplId=docTplAssignCache[kind]||'';
+  sel.value=defaultTplId&&docMailTemplatesCache.some(function(t){return String(t.id)===String(defaultTplId);})?String(defaultTplId):'';
   docSendUpdatePreview();
   document.getElementById('doc-send-modal').classList.add('open');
 }
@@ -12867,7 +12916,7 @@ async function loadPanelRolesData(){
   panelPagesCatalog=(r[0]&&Array.isArray(r[0].pages))?r[0].pages:[];
   panelRoles=Array.isArray(r[1])?r[1]:[];
   renderPanelRolesList();
-  populateUserPanelRoleSelect();
+  populateUserRoleSelect();
 }
 function renderPanelRolesList(){
   var el=document.getElementById('panel-roles-list');if(!el)return;
@@ -12880,10 +12929,16 @@ function renderPanelRolesList(){
       '</div>';
   }).join('');
 }
-function populateUserPanelRoleSelect(){
-  var sel=document.getElementById('user-panel-role');if(!sel)return;
+// RUNDE K (fortsat, sep. 2026, Martins ønske) — bygger den ENE Rolle-liste i
+// medarbejder-modalen: Medarbejder, hver navngiven Panel-rolle (Kontor, Mester,
+// osv. — værdien "panel:<id>" afkodes i saveUser()), og til sidst Admin. Kaldes
+// både når modalen åbnes OG hver gang panelRoles opdateres (loadPanelRolesData),
+// så en lige-oprettet rolle med det samme kan vælges uden en sideindlæsning.
+function populateUserRoleSelect(){
+  var sel=document.getElementById('user-role');if(!sel)return;
   var cur=sel.value;
-  sel.innerHTML='<option value="">Ingen (kun Medarbejder-appen)</option>'+panelRoles.map(function(rl){return '<option value="'+rl.id+'">'+esc(rl.name)+'</option>';}).join('');
+  var panelOpts=panelRoles.map(function(rl){return '<option value="panel:'+rl.id+'">'+esc(rl.name)+' — begrænset adgang (Panel-rolle)</option>';}).join('');
+  sel.innerHTML='<option value="employee">Medarbejder — ingen adgang til admin-panelet, kun medarbejder-appen</option>'+panelOpts+'<option value="admin">Admin — fuld, ubegrænset adgang til ALT</option>';
   sel.value=cur;
 }
 function renderPanelRolePagesCheckboxes(checkedKeys){
@@ -13198,15 +13253,13 @@ function toggleUserPayTypeField(){
   document.getElementById('user-hourly-wage-group').classList.toggle('hidden',isAkkord);
   document.getElementById('user-akkord-hint').classList.toggle('hidden',!isAkkord);
 }
-function toggleUserPanelRoleField(){
+function toggleUserRoleWarning(){
   var isAdmin=document.getElementById('user-role').value==='admin';
-  document.getElementById('user-panel-role').classList.toggle('hidden',isAdmin);
-  document.getElementById('user-panel-role-admin-hint').classList.toggle('hidden',!isAdmin);
-  // Roller & adgang (sep. 2026): "Rolle: Admin" og "Panel-rolle" ligner nemt
-  // hinanden i navn, men har meget forskellig konsekvens (Admin = ALT, uden
-  // mulighed for at begrænse noget som helst) — denne advarsel skal gøre det
-  // umuligt at overse hvad man vælger, efter en medarbejder ved en fejl fik
-  // fuld admin-adgang i stedet for en begrænset Kontor-rolle.
+  // Roller & adgang (sep. 2026): "Rolle: Admin" og en navngiven Panel-rolle ligner
+  // nemt hinanden, men har meget forskellig konsekvens (Admin = ALT, uden mulighed
+  // for at begrænse noget som helst) — denne advarsel skal gøre det umuligt at
+  // overse hvad man vælger, efter en medarbejder ved en fejl fik fuld admin-adgang
+  // i stedet for en begrænset Kontor-rolle.
   document.getElementById('user-role-admin-warning').classList.toggle('hidden',!isAdmin);
 }
 function updateAvatarPreview(url){
@@ -13220,9 +13273,10 @@ async function openUser(id,opts){
   document.getElementById('user-title').textContent=u?'Rediger medarbejder':(opts.vendorGroup?'Ny vendor-undergruppe':'Ny medarbejder');
   document.getElementById('user-name').value=u?u.name:'';document.getElementById('user-initials').value=u?(u.initials||''):'';
   document.getElementById('user-email').value=u&&u.can_login?u.email:'';document.getElementById('user-password').value='';
-  document.getElementById('user-role').value=u?u.role:'employee';document.getElementById('user-color').value=u?(u.color||'#2563EB'):'#2563EB';
-  populateUserPanelRoleSelect();document.getElementById('user-panel-role').value=u&&u.panel_role_id?String(u.panel_role_id):'';
-  toggleUserPanelRoleField();
+  document.getElementById('user-color').value=u?(u.color||'#2563EB'):'#2563EB';
+  populateUserRoleSelect();
+  document.getElementById('user-role').value=u?(u.role==='admin'?'admin':(u.panel_role_id?'panel:'+u.panel_role_id:'employee')):'employee';
+  toggleUserRoleWarning();
   document.getElementById('user-capacity').value=u?(u.weekly_capacity||5):5;document.getElementById('user-worker-type').value=u?(u.worker_type||'employee'):(opts.vendorGroup?'vendor':'employee');
   document.getElementById('user-trade').value=u?(u.trade||''):'';document.getElementById('user-vendor-group').value=u?(u.vendor_group||''):(opts.vendorGroup||'');
   document.getElementById('user-can-login').checked=u?!!u.can_login:!opts.vendorGroup;
@@ -13253,8 +13307,14 @@ async function saveUser(){
   var name=document.getElementById('user-name').value.trim(),login=document.getElementById('user-can-login').checked,email=document.getElementById('user-email').value.trim(),pw=document.getElementById('user-password').value;
   if(!name){toast('Navn mangler','⚠');return;}
   if(login&&(!email||(!editUserId&&!pw))){toast('Email og kode mangler','⚠');return;}
-  var roleVal=document.getElementById('user-role').value;
-  var body={name:name,can_login:login,email:email,role:roleVal,panel_role_id:roleVal==='admin'?null:(document.getElementById('user-panel-role').value||null),password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,avatar_url:document.getElementById('user-avatar-url').value||null,personal_email:document.getElementById('user-personal-email').value.trim()||null,phone:document.getElementById('user-phone').value.trim()||null,notify_schedule_changes:document.getElementById('user-notify-changes').checked,can_view_team_overview:document.getElementById('user-team-overview').checked,pay_type:document.getElementById('user-pay-type').value,hourly_wage:+document.getElementById('user-hourly-wage').value||0};
+  // RUNDE K (fortsat, sep. 2026) — den ene Rolle-liste sender enten 'employee',
+  // 'admin', eller 'panel:<id>' (en navngiven Panel-rolle) — afkodes her til de to
+  // felter serveren rent faktisk gemmer (role + panel_role_id), se populateUserRoleSelect().
+  var roleSelVal=document.getElementById('user-role').value;
+  var roleVal='employee',panelRoleIdVal=null;
+  if(roleSelVal==='admin')roleVal='admin';
+  else if(roleSelVal.indexOf('panel:')===0)panelRoleIdVal=roleSelVal.slice(6);
+  var body={name:name,can_login:login,email:email,role:roleVal,panel_role_id:panelRoleIdVal,password:pw,color:document.getElementById('user-color').value,initials:document.getElementById('user-initials').value.trim(),weekly_capacity:+document.getElementById('user-capacity').value||0,worker_type:document.getElementById('user-worker-type').value,vendor_group:document.getElementById('user-vendor-group').value.trim()||null,trade:document.getElementById('user-trade').value.trim()||null,avatar_url:document.getElementById('user-avatar-url').value||null,personal_email:document.getElementById('user-personal-email').value.trim()||null,phone:document.getElementById('user-phone').value.trim()||null,notify_schedule_changes:document.getElementById('user-notify-changes').checked,can_view_team_overview:document.getElementById('user-team-overview').checked,pay_type:document.getElementById('user-pay-type').value,hourly_wage:+document.getElementById('user-hourly-wage').value||0};
   var r=editUserId?await api('/api/users/'+editUserId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/users',{method:'POST',body:JSON.stringify(body)});
   if(r&&(r.ok||r.id)){closeModal('user-modal');toast('Gemt','✓');await loadAll();}else if(r)toast(r.error||'Fejl','❌');
 }
@@ -14350,6 +14410,11 @@ function bind(){
   document.getElementById('tld-checklist-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();if(tlDrawerTaskId)addChecklistItem('tld-checklist-items',tlDrawerTaskId,'tld-checklist-new');}});
   document.getElementById('close-visit-book').onclick=function(){closeModal('visit-book-modal');};
   document.getElementById('save-visit-book').onclick=saveVisitBooking;
+  // RUNDE K (fortsat, sep. 2026, Martins ønske) — RETTET fra en tidligere fejlplacering:
+  // sad først i initProjectsModule() (kun bundet efter man havde besøgt Projekter-siden),
+  // men "Book kundebesøg" åbnes fra pool-dropdown'en der findes på ALLE sider — hører
+  // derfor hjemme her i den almindelige bind(), som altid kører ved opstart.
+  document.getElementById('visit-customer').addEventListener('input',function(e){vbRunCustomerSearch(e.target.value.trim());});
   document.getElementById('close-visit-form').onclick=function(){closeModal('visit-form-modal');};
   document.getElementById('save-visit-form').onclick=saveVisitForm;
   // "Ryd alle bookinger"-knappen er fjernet fra UI (for let at trykke på ved en fejl) —
@@ -14454,7 +14519,7 @@ function bind(){
     document.getElementById('people-vendor-body').style.display=open?'':'none';
   });
   document.getElementById('user-can-login').onchange=setLoginFields;
-  document.getElementById('user-role').onchange=toggleUserPanelRoleField;
+  document.getElementById('user-role').onchange=toggleUserRoleWarning;
   document.getElementById('user-pay-type').onchange=toggleUserPayTypeField;
   // Akkordliste
   document.getElementById('akkord-new-add-btn').onclick=addAkkordItem;
@@ -15435,7 +15500,7 @@ function qzRunProductSearch(inputId,resultsId,onPick){
   };
 }
 function qzCloseAllPops(){
-  ['qe-customer-results','qe-product-results','qzt-product-results','qal-product-results','ivl-product-results','pjn-customer-results'].forEach(function(id){
+  ['qe-customer-results','qe-product-results','qzt-product-results','qal-product-results','ivl-product-results','pjn-customer-results','vb-customer-results'].forEach(function(id){
     var box=document.getElementById(id);if(box)box.style.display='none';
   });
   qzHideLineAutocomplete();
