@@ -977,6 +977,12 @@ async function initSchema() {
     -- Sættes ved konvertering fra tilbud (se POST /api/quotes/:id/convert-to-invoice).
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_id INTEGER;
     CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
+    -- RUNDE I (sep. 2026, Martins ønske): fakturaen manglede et topnote-felt (tilbud har
+    -- BÅDE top_note og notes/bund — se quotes.top_note ovenfor). Uden denne kolonne blev
+    -- et tilbuds topnote stiltiende væk ved konvertering til faktura. bund-noten
+    -- (invoices.notes) var derimod ALLEREDE fuldt uafhængig af tilbuddets note (egen
+    -- kolonne, redigeres separat via PUT /api/invoices/:id) — det var kun toppen der manglede.
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS top_note TEXT;
 
     CREATE TABLE IF NOT EXISTS invoice_lines (
       id SERIAL PRIMARY KEY,
@@ -6329,7 +6335,10 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
   const digitPat = digits.length >= 3 ? '%' + digits + '%' : '';
   const params = [term, prefixPat, containsPat, digitPat];
 
-  const LIMIT = 8;
+  // RUNDE I (sep. 2026, Martins ønske): den dedikerede søgeresultat-side (Enter i
+  // søgefeltet) vil vise ALLE resultater, ikke kun dropdownens korte forhåndsvisning —
+  // den sender derfor ?limit=50, mens selve dropdownen fortsat bruger standard-8.
+  const LIMIT = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 50);
   // Byggeklodser der kun må komme med når pg_trgm rent faktisk er aktiv.
   const simExpr = cols => searchTrgmReady
     ? 'GREATEST(' + cols.map(c => `similarity(${c},$1), word_similarity($1,${c})`).join(', ') + ')'
@@ -12835,7 +12844,8 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyn
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   if (quote.status === 'converted') return res.status(400).json({ error: 'Tilbuddet er allerede konverteret' });
   const invoiceNumber = await nextDocNumber('invoice', 'FAK');
-  const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 14);
+  // RUNDE I (sep. 2026, Martins ønske): standard forfaldsdato ændret fra 14 til 4 dage.
+  const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 4);
   // Fakturaer understøtter (endnu) kun rabat i %, så en evt. fast kronerabat fra
   // tilbuddet omregnes her til den procentsats der giver samme kronebeløb. De
   // faktiske beløb (subtotal/moms/total) kopieres uændret fra tilbuddet
@@ -12846,9 +12856,9 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyn
     ? (quoteTotalsForInvoice.discountAmount / quoteTotalsForInvoice.rawSubtotal * 100)
     : 0;
   const r = await pool.query(`
-    INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,due_date,discount_pct,customer_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id
-  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, quote.subtotal, quote.tax_rate, quote.tax_amount, quote.total, quote.notes, dueDate.toISOString().slice(0, 10), equivDocDiscountPct, quote.customer_id || null]);
+    INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct,customer_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
+  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, quote.subtotal, quote.tax_rate, quote.tax_amount, quote.total, quote.notes, quote.top_note, dueDate.toISOString().slice(0, 10), equivDocDiscountPct, quote.customer_id || null]);
   const invoiceId = r.rows[0].id;
   let pos = 0;
   for (const l of quote.lines) {
@@ -12865,6 +12875,44 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyn
   logDocActivity('quote', quote.id, 'converted', req.user.name, invoiceNumber);
   logDocActivity('invoice', invoiceId, 'created', req.user.name, `fra tilbud ${quote.quote_number}`);
   res.json({ ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber });
+}));
+
+// RUNDE I (sep. 2026, Martins ønske): "direkte faktura" — når prisen er aftalt
+// mundtligt/direkte uden et formelt tilbud, og der derfor ikke skal laves et
+// tilbud først. Opretter fakturaen direkte, uden om quotes-tabellen helt (den
+// får ALDRIG et quote_id — adskiller den fra en konverteret faktura i UI'en/
+// rapporter). Genbruger samme linje-/rabat-/moms-logik som POST /api/quotes
+// (computeTotals) og samme nummerserie/forfaldsdato-standard (+4 dage) som
+// POST /api/quotes/:id/convert-to-invoice ovenfor.
+app.post('/api/invoices/direct-create', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const company = await getCompanyInfo();
+  const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : company.defaultTaxRate;
+  const discountPct = Number(b.discount_pct) || 0;
+  const discountType = b.discount_type === 'fixed' ? 'fixed' : 'pct';
+  const totals = computeTotals(b.lines || [], taxRate, { value: discountPct, type: discountType });
+  const invoiceNumber = await nextDocNumber('invoice', 'FAK');
+  const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 4);
+  const r = await pool.query(`
+    INSERT INTO invoices (invoice_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id
+  `, [invoiceNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, dueDate.toISOString().slice(0, 10), discountPct]);
+  const invoiceId = r.rows[0].id;
+  let pos = 0;
+  // BEMÆRK: invoice_lines har (til forskel fra quote_lines) INGEN discount_type-kolonne —
+  // fakturalinjer understøtter kun rabat i %, se samme bemærkning ved convert-to-invoice
+  // ovenfor. En evt. fast kronerabat på en linje omregnes derfor her til den procentsats
+  // der giver samme kronebeløb (equivalentLinePct), præcis som ved konvertering fra tilbud.
+  for (const l of (b.lines || [])) {
+    if (!l.description) continue;
+    const isText = l.line_type === 'text';
+    await pool.query(`
+      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,note)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    `, [invoiceId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : equivalentLinePct(l), isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null)]);
+  }
+  logDocActivity('invoice', invoiceId, 'created', req.user.name, 'direkte faktura, uden tilbud');
+  res.json({ ok: true, id: invoiceId, invoice_id: invoiceId, invoice_number: invoiceNumber });
 }));
 
 // ── FAKTURA + DELBETALINGER + KREDITNOTAER ───────────────────
@@ -12915,10 +12963,11 @@ app.put('/api/invoices/:id', auth, panelAccess('quotes'), asyncRoute(async (req,
   if (!current) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
   const b = req.body || {};
   await pool.query(`
-    UPDATE invoices SET notes=$1, due_date=$2, customer_address=$3, customer_phone=$4, customer_email=$5, updated_at=${nowTextSQL()}
-    WHERE id=$6
+    UPDATE invoices SET notes=$1, top_note=$2, due_date=$3, customer_address=$4, customer_phone=$5, customer_email=$6, updated_at=${nowTextSQL()}
+    WHERE id=$7
   `, [
     b.notes !== undefined ? sanitizeRichText(b.notes) : current.notes,
+    b.top_note !== undefined ? sanitizeRichText(b.top_note) : current.top_note,
     b.due_date !== undefined ? b.due_date : current.due_date,
     b.customer_address !== undefined ? b.customer_address : current.customer_address,
     b.customer_phone !== undefined ? b.customer_phone : current.customer_phone,
@@ -13263,7 +13312,7 @@ function drawDocumentPdf(doc, kind, record, company) {
 
   y = drawFraTilBlock(doc, y, company, record);
 
-  if (!isInvoice && record.top_note) {
+  if (record.top_note) {
     const noteH = doc.heightOfString(richTextToPlain(record.top_note), { width: 495 });
     doc.roundedRect(40, y, 515, noteH + 20, 8).fill('#F7F8FC');
     renderRichText(doc, record.top_note, 50, y + 10, 495, { color: '#374151' });

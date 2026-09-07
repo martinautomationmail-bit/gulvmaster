@@ -696,6 +696,28 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #global-search-results .gs-spinner{width:11px;height:11px;border-radius:50%;border:2px solid var(--bly-border-soft);border-top-color:var(--bly-accent);animation:gs-spin .7s linear infinite;flex-shrink:0}
 @keyframes gs-spin{to{transform:rotate(360deg)}}
 
+/* RUNDE I (sep. 2026) — samme gs-*-byggeklodser som header-dropdownen ovenfor
+   (genbruges 1:1 fra JS, se renderSearchResultsPage), men i en almindelig
+   sideflade (kort pr. kategori) i stedet for en svævende dropdown. */
+#gsp-results .gs-card{background:var(--bly-card,#fff);border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md,12px);padding:6px;margin-bottom:14px}
+#gsp-results .gs-section{padding:9px 10px 3px;display:flex;align-items:center;gap:7px}
+#gsp-results .gs-section+.gs-section,#gsp-results .gs-row+.gs-section{border-top:1px solid var(--bly-border-soft);margin-top:5px;padding-top:11px}
+#gsp-results .gs-section-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--bly-sub,var(--muted))}
+#gsp-results .gs-section-count{font-size:10px;font-weight:800;color:var(--bly-sub,var(--muted));background:var(--bly-border-soft);border-radius:999px;padding:1px 6px;line-height:1.6;font-variant-numeric:tabular-nums}
+#gsp-results .gs-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;transition:background .1s;text-align:left}
+#gsp-results .gs-row:hover{background:var(--bly-hover,var(--ice))}
+#gsp-results .gs-avatar{width:34px;height:34px;border-radius:9px;flex-shrink:0;display:grid;place-items:center;font-size:12px;font-weight:800;letter-spacing:-.02em}
+#gsp-results .gs-main{flex:1;min-width:0}
+#gsp-results .gs-name{font-size:13.5px;font-weight:800;color:var(--bly-ink,var(--navy));line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#gsp-results .gs-meta{font-size:11.5px;font-weight:500;color:var(--bly-sub,var(--muted));line-height:1.4;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#gsp-results .gs-meta .gs-sep{opacity:.45;padding:0 2px}
+#gsp-results .gs-right{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:3px;max-width:38%}
+#gsp-results .gs-value{font-size:12.5px;font-weight:800;color:var(--bly-ink,var(--navy));font-variant-numeric:tabular-nums;white-space:nowrap}
+#gsp-results .gs-stage{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:var(--bly-sub,var(--muted));background:var(--bly-border-soft);border-radius:999px;padding:2px 8px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#gsp-results .gs-stage-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+#gsp-results .gs-empty{padding:32px 14px;text-align:center;color:var(--bly-sub,var(--muted));font-size:13px;font-weight:600}
+#gsp-results .gs-empty small{display:block;margin-top:5px;font-size:11.5px;font-weight:500;opacity:.8}
+
 /* ══════════════════════════════════════════════════════════════
    DAGLIG PLAN — total Billy-redesign, scoped til #page-plan (samt
    #daily-head/#daily-body/#plan-board-outer for selve boardet) så
@@ -2411,7 +2433,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-05.8</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-07.1</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3234,6 +3256,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="qztabpage" id="qztab-invoices" style="display:none">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-invoices-count">Fakturaer</span><input type="text" id="qz-invoice-search" class="bly-search" placeholder="Søg i fakturaer..."></div>
+      <div class="bly-toolbar-right"><button class="bly-btn outline" id="qz-new-direct-invoice-btn" type="button" title="Til priser aftalt direkte/mundtligt med kunden, uden et forudgående tilbud">+ Ny faktura (uden tilbud)</button></div>
     </div>
     <div class="bly-kpi-row" id="qz-invoices-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:0 0 14px">
@@ -3285,34 +3308,34 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 
-  <!-- NOTER — rigtig, redigerbar/sletbar liste (customer_notes), vist øverst
-       lige under overskriften, så den er let at få øje på selv når kunden
-       har meget andet data (sager/tilbud/fakturaer) længere nede. Adskilt fra
-       det korte fritekst-felt i "✎ Redigér kunde"-modalen (customers.notes),
-       som stadig findes til en kort generel beskrivelse af kunden. -->
-  <div class="crmpx-panel" id="cd-notes-panel" style="margin-bottom:20px">
-    <h3>📝 Noter <span class="sub" id="cd-notes-count"></span></h3>
-    <div class="tld-row">
-      <div style="flex:1"><input id="cd-note-new" class="tld-input" placeholder="Skriv en note om kunden..."></div>
-      <button class="btn small" type="button" id="cd-note-add-btn">+ Tilføj</button>
-    </div>
-    <div id="cd-notes-list" style="margin-top:12px"></div>
-  </div>
+  <!-- RUNDE I (sep. 2026, Martins ønske): Opportunity/Tilbud/Faktura (+ Sager,
+       som hører til samme "forretnings-data om kunden"-gruppe) flyttet op i
+       TOPPEN af siden, lige under overskriften — det er det Martin oftest skal
+       bruge/oprette herfra. Noter og Mails (sidstnævnte altid sammenklappet som
+       standard, se cd-emails-panel nedenfor) er rykket ned i BUNDEN.
 
-  <!-- MAILS — Round C punkt 2: viser mails synkroniseret fra den forbundne
-       firma-Gmail til/fra denne kundes email-adresse (se GET
-       /api/crm/customers/:id/emails). Selve brødtekst/vedhæftninger hentes
-       først live når man folder en mail ud, ikke gemt i databasen. -->
-  <div class="crmpx-panel" id="cd-emails-panel" style="margin-bottom:20px;display:none">
-    <h3>📧 Mails <span class="sub" id="cd-emails-count"></span></h3>
-    <div id="cd-emails-list"></div>
+       "+ Ny handel" (Martins ønske, sep. 2026): "hvis jeg er under en gammel
+       kunde kan jeg ved ét klik oprette en ny handel". Derfor ÉN knap og ingen
+       modal — men pipeline/stage står som to små dropdowns lige ved siden af,
+       forudfyldt med samme standard som alle de andre nye pickere i CRM'et, så
+       man kan styre hvor handlen lander uden at skulle igennem et ekstra trin.
+       Ét klik = en ny opportunity koblet til præcis DENNE kunde, se
+       POST /api/crm/customers/:id/opportunities. "+ Lav tilbud"/"+ Lav faktura"
+       (nye, RUNDE I) genbruger samme tilbuds-/direkte-faktura-editor som resten
+       af appen, blot forudfyldt med denne kundes oplysninger (se cdOpenQuote/
+       cdOpenDirectInvoice) — samme mønster som crmpx-quote-btn på en opportunity. -->
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px">
+    <h3 style="font-size:14px;margin:0">🤝 Opportunities <span class="sub" id="cd-opps-count"></span></h3>
+    <div style="flex:1"></div>
+    <select id="cd-newopp-pipeline" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px"></select>
+    <select id="cd-newopp-stage" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px"></select>
+    <button class="bly-btn" id="cd-newopp-btn" type="button">+ Ny handel</button>
+    <button class="bly-btn outline" id="cd-newquote-btn" type="button">+ Lav tilbud</button>
+    <button class="bly-btn outline" id="cd-newinvoice-btn" type="button">+ Lav faktura</button>
   </div>
-  <div class="hint" id="cd-emails-not-connected" style="margin-bottom:20px;display:none">📧 Forbind jeres Gmail under "Min side → Indstillinger → Gmail" for automatisk at se mailkorrespondance med kunden her.</div>
-
-  <h3 style="font-size:14px;margin:22px 0 10px">🏗️ Sager <span class="sub" id="cd-projects-count"></span></h3>
   <table class="bly-table">
-    <thead><tr><th>Navn</th><th>Status</th><th>Adresse</th><th style="width:90px"></th></tr></thead>
-    <tbody id="cd-projects-body"></tbody>
+    <thead><tr><th>Navn</th><th>Pipeline</th><th>Stage</th><th class="num">Værdi</th></tr></thead>
+    <tbody id="cd-opps-body"></tbody>
   </table>
 
   <h3 style="font-size:14px;margin:22px 0 10px">📄 Tilbud <span class="sub" id="cd-quotes-count"></span></h3>
@@ -3327,24 +3350,35 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <tbody id="cd-invoices-body"></tbody>
   </table>
 
-  <!-- "+ Ny handel" (Martins ønske, sep. 2026): "hvis jeg er under en gammel
-       kunde kan jeg ved ét klik oprette en ny handel". Derfor ÉN knap og ingen
-       modal — men pipeline/stage står som to små dropdowns lige ved siden af,
-       forudfyldt med samme standard som alle de andre nye pickere i CRM'et, så
-       man kan styre hvor handlen lander uden at skulle igennem et ekstra trin.
-       Ét klik = en ny opportunity koblet til præcis DENNE kunde, se
-       POST /api/crm/customers/:id/opportunities. -->
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:22px 0 10px">
-    <h3 style="font-size:14px;margin:0">🤝 Opportunities <span class="sub" id="cd-opps-count"></span></h3>
-    <div style="flex:1"></div>
-    <select id="cd-newopp-pipeline" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px"></select>
-    <select id="cd-newopp-stage" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px"></select>
-    <button class="bly-btn" id="cd-newopp-btn" type="button">+ Ny handel</button>
-  </div>
+  <h3 style="font-size:14px;margin:22px 0 10px">🏗️ Sager <span class="sub" id="cd-projects-count"></span></h3>
   <table class="bly-table">
-    <thead><tr><th>Navn</th><th>Pipeline</th><th>Stage</th><th class="num">Værdi</th></tr></thead>
-    <tbody id="cd-opps-body"></tbody>
+    <thead><tr><th>Navn</th><th>Status</th><th>Adresse</th><th style="width:90px"></th></tr></thead>
+    <tbody id="cd-projects-body"></tbody>
   </table>
+
+  <!-- NOTER — rigtig, redigerbar/sletbar liste (customer_notes). Adskilt fra
+       det korte fritekst-felt i "✎ Redigér kunde"-modalen (customers.notes),
+       som stadig findes til en kort generel beskrivelse af kunden. -->
+  <div class="crmpx-panel" id="cd-notes-panel" style="margin:22px 0 20px">
+    <h3>📝 Noter <span class="sub" id="cd-notes-count"></span></h3>
+    <div class="tld-row">
+      <div style="flex:1"><input id="cd-note-new" class="tld-input" placeholder="Skriv en note om kunden..."></div>
+      <button class="btn small" type="button" id="cd-note-add-btn">+ Tilføj</button>
+    </div>
+    <div id="cd-notes-list" style="margin-top:12px"></div>
+  </div>
+
+  <!-- MAILS — viser mails synkroniseret fra den forbundne firma-Gmail til/fra
+       denne kundes email-adresse (se GET /api/crm/customers/:id/emails). Selve
+       brødtekst/vedhæftninger hentes først live når man folder en mail ud, ikke
+       gemt i databasen. RUNDE I (sep. 2026, Martins ønske): flyttet til bunden
+       af siden og ALTID sammenklappet som standard — udfoldes kun ved klik på
+       overskriften (cdToggleEmailsPanel), se cd-emails-list/cd-emails-toggle-icon. -->
+  <div class="crmpx-panel" id="cd-emails-panel" style="margin-bottom:20px;display:none">
+    <h3 id="cd-emails-toggle" style="cursor:pointer;user-select:none">📧 Mails <span class="sub" id="cd-emails-count"></span> <span id="cd-emails-toggle-icon" style="float:right;font-size:11px;color:var(--bly-sub)">▸ Vis</span></h3>
+    <div id="cd-emails-list" hidden></div>
+  </div>
+  <div class="hint" id="cd-emails-not-connected" style="margin-bottom:20px;display:none">📧 Forbind jeres Gmail under "Min side → Indstillinger → Gmail" for automatisk at se mailkorrespondance med kunden her.</div>
 </section>
 
 <!-- ══════════════════════════════════════════════════════════════
@@ -3603,6 +3637,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <thead><tr><th style="width:30px"></th><th style="width:24px"></th><th>Opgave</th><th>Lead / Sale</th><th style="width:170px">Ansvarlig</th><th style="width:130px">Dato</th><th style="width:44px"></th></tr></thead>
     <tbody id="cpt-body"></tbody>
   </table>
+</section>
+
+<!-- SØGERESULTAT-SIDE (sep. 2026, Martins ønske) — nås ved Enter i den globale
+     søgning eller "Se alle resultater"-linket i dropdownen. Til forskel fra
+     dropdownen (som kun søger kunder/leads/opportunities/medarbejdere, se
+     renderGlobalSearchResults) viser denne side OGSÅ sager & opgaver, og uden
+     dropdownens 8-stk-loft (server-kaldet sender ?limit=50). Genbruger gsRow/
+     gsSection-byggeklodserne fra global søgning, se renderSearchResultsPage. -->
+<section class="page" id="page-search-results">
+  <div class="bly-pagehead">
+    <div><h2>🔍 Søgeresultater</h2><div class="sub" id="gsp-subtitle"></div></div>
+  </div>
+  <div id="gsp-results"></div>
 </section>
 
 <!-- FIL-LIGHTBOX — Martins ønske om at kunne se en fil forstørret INDE i selve
@@ -5363,7 +5410,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="bly-btn outline small" id="iv-add-credit-btn" type="button">+ Ny kreditnota</button>
 
-    <div class="form-group" style="margin-top:18px"><label class="form-label">Betingelser / note <span class="opt-tag">valgfrit — vises nederst på PDF'en og hos kunden</span></label><textarea id="iv-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
+    <div class="form-group" style="margin-top:18px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
+    <div class="form-group" style="margin-top:10px"><label class="form-label">Betingelser / note <span class="opt-tag">valgfrit — vises nederst på PDF'en og hos kunden. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
 
     <div class="form-group" id="iv-activity-wrap" style="margin-top:18px">
       <label class="form-label">🕓 Tidslinje</label>
@@ -13231,7 +13279,7 @@ function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.
 // "Mail-skabeloner" er nu fanen #templates/mail. Begge gamle hash-adresser
 // fanges af alias-linjerne øverst i switchPage() (klik-navigation) og af
 // oversættelses-linjerne i "genskab siden ved genindlæsning"-blokken.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','timer','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks'];
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','timer','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','search-results'];
 // Roller & adgang (sep. 2026) — bruges af switchPage() nedenfor til at nægte
 // navigation til en side brugeren ikke har krydset af (server-siden håndhæver
 // det samme via panelAccess-middlewaren i server.js — dette er kun UI-lag).
@@ -13323,6 +13371,11 @@ function hashSubTab(page,dflt){
 var APP_DEFAULT_TITLE=document.title;
 function setAppTitle(name){document.title=name?(name+' — Gulv Master'):APP_DEFAULT_TITLE;}
 var DETAIL_PAGES_KEEP_TITLE=['customer-detail','project-detail','crmp-detail'];
+// RUNDE I (sep. 2026, Martins ønske): søgeordet der ligger bag den dedikerede
+// søgeresultat-side (#search-results) — sat af Enter-tryk/"Se alle"-klik i
+// global søgning (bind()), læst af renderSearchResultsPage (også bind(), eksponeret
+// via window.renderSearchResultsPage nedenfor) når switchPage('search-results') kaldes.
+var lastSearchQuery='';
 function switchPage(page,skipHash){
   // Gantt er ikke længere sin egen side — den bor nu som en fane under Projekter.
   // Gamle links/bogmærker til #gantt sendes videre dertil i stedet for at falde
@@ -13398,6 +13451,10 @@ function switchPage(page,skipHash){
   if(page==='crmp'){if(guardPageAny(['crmp_leads','crmp_sales'],'CRM'))return;initCrmpModule();}
   if(page==='crmp-detail'){if(guardPageAny(['crmp_leads','crmp_sales'],'CRM'))return;crmpxInitOnce();}
   if(page==='crmp-tasks'){if(guardPage('crmp_tasks','CRM: Opfølgninger'))return;initCrmpTasksModule();}
+  // Søgeresultat-siden gates ikke selv — den er kun et andet visningslag oven på
+  // /api/search, som allerede filtrerer pr. kategori efter brugerens Roller & adgang
+  // (se panelAccess/computeUserPanelPages i server.js), samme princip som dropdownen.
+  if(page==='search-results'&&window.renderSearchResultsPage)window.renderSearchResultsPage(lastSearchQuery);
   if(page==='projects'){if(guardPage('projects','Projekter'))return;initProjectsModule();}
   if(page==='plan'&&guardPage('plan','Dagligplanlægning'))return;
   if(page==='capacity'&&guardPage('capacity','Kapacitet'))return;
@@ -13570,6 +13627,18 @@ function bind(){
   document.getElementById('global-search-input').addEventListener('focus',function(e){
     if(e.target.value.trim())runGlobalSearch(e.target.value.trim());
   });
+  // RUNDE I (sep. 2026, Martins ønske): Enter i søgefeltet navigerer til en
+  // dedikeret søgeresultat-side med ALLE resultater, i stedet for kun at blive i
+  // den korte dropdown-forhåndsvisning.
+  document.getElementById('global-search-input').addEventListener('keydown',function(e){
+    if(e.key!=='Enter')return;
+    e.preventDefault();
+    var q=e.target.value.trim();
+    if(q.length<2)return;
+    document.getElementById('global-search-results').style.display='none';
+    lastSearchQuery=q;
+    switchPage('search-results');
+  });
   document.addEventListener('click',function(e){
     if(!e.target.closest('#globalsearch'))document.getElementById('global-search-results').style.display='none';
   });
@@ -13615,15 +13684,15 @@ function bind(){
   function gsInitials(name){
     return String(name||'?').trim().split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase()||'?';
   }
+  // RUNDE I (sep. 2026, Martins ønske): "Sager & opgaver"-resultater er fjernet fra
+  // selve HEADER-dropdownen — de rykkede før direkte ind i Dagligplanlægning
+  // (switchPage('plan') nedenfor), hvilket Martin oplevede som at dropdownen "viste
+  // resultater fra Kapacitet og Dagligplanlægning". Sager/opgaver kan stadig findes
+  // via Enter → den nye dedikerede søgeresultat-side (se renderSearchResultsPage),
+  // hvor det er et bevidst sideskift og ikke en overraskelse midt i en hurtig søgning.
   function renderGlobalSearchResults(q){
     var ql=q.toLowerCase();
     var resEl=document.getElementById('global-search-results');
-    // ── Lokalt (øjeblikkeligt): sager/opgaver + medarbejdere, som hidtil ──
-    var taskResults=tasks.filter(function(t){
-      if(t.manually_completed_at)return false;
-      var hay=((t.job_name||'')+' '+(t.name||'')+' '+(t.job_number||'')+' '+(t.customer_name||'')).toLowerCase();
-      return hay.indexOf(ql)>-1;
-    }).slice(0,6);
     var userResults=users.filter(function(u){
       var hay=((u.name||'')+' '+(u.email||'')+' '+(u.phone||'')+' '+(u.trade||'')).toLowerCase();
       return hay.indexOf(ql)>-1;
@@ -13633,17 +13702,8 @@ function bind(){
     var customers=srv.customers||[],leads=srv.leads||[],opps=srv.opportunities||[];
 
     var html='';
-    // Rækkefølge efter Martins ønske: Projekt (sager/opgaver), Kunde, Leads,
-    // Opportunity — og medarbejdere til sidst, da de sjældnest er det man leder
-    // efter i praksis.
-    if(taskResults.length){
-      html+=gsSection('Sager & opgaver',taskResults.length);
-      html+=taskResults.map(function(t){
-        return gsRow({action:'task',id:t.id,avatar:'🏗',avatarBg:'#EEF2FF',avatarFg:'#4F46E5',
-          name:t.job_name||t.name,
-          meta:[t.name&&t.name!==t.job_name?t.name:'',t.job_number?'Sag '+t.job_number:'',t.customer_name||'']});
-      }).join('');
-    }
+    // Rækkefølge efter Martins ønske: Kunde, Leads, Opportunity — og medarbejdere
+    // til sidst, da de sjældnest er det man leder efter i praksis.
     if(customers.length){
       html+=gsSection('Kunder',customers.length);
       html+=customers.map(function(c){
@@ -13682,10 +13742,14 @@ function bind(){
     if(!html){
       html=gsPending
         ? '<div class="gs-loading"><span class="gs-spinner"></span>Søger efter "'+esc(q)+'"...</div>'
-        : '<div class="gs-empty">Intet fundet for "'+esc(q)+'"<small>Søger i sager, kunder, leads, opportunities og medarbejdere — på navn, telefon, email og adresse.</small></div>';
+        : '<div class="gs-empty">Intet fundet for "'+esc(q)+'"<small>Søger i kunder, leads, opportunities og medarbejdere — på navn, telefon, email og adresse.</small></div>';
     }else if(gsPending){
       html+='<div class="gs-loading"><span class="gs-spinner"></span>Søger i kunder, leads og opportunities...</div>';
     }
+    // Fast fod i bunden af dropdownen: samme sted man kommer hen ved at trykke
+    // Enter i feltet (se keydown-lytteren nedenfor) — så det også er tydeligt at
+    // klikke sig til fra musen, og ikke kun for dem der tilfældigvis trykker Enter.
+    html+='<div class="gs-row gs-see-all" data-gs-action="see-all"><div class="gs-main" style="padding:2px 0"><div class="gs-name" style="color:var(--bly-primary,#4F46E5);font-weight:600">Se alle resultater for "'+esc(q)+'" →</div></div></div>';
     resEl.innerHTML=html;
     resEl.style.display='block';
     // Klik → åbn præcis den samme detaljevisning som resten af appen bruger
@@ -13693,22 +13757,115 @@ function bind(){
     // sætter hash), så der ikke opstår en anden navigationsvej sideløbende.
     resEl.querySelectorAll('.gs-row').forEach(function(el){
       el.addEventListener('click',function(){
+        var id=el.dataset.gsId,action=el.dataset.gsAction;
+        if(action==='see-all'){
+          lastSearchQuery=q;
+          document.getElementById('global-search-results').style.display='none';
+          switchPage('search-results');
+          return;
+        }
         document.getElementById('global-search-results').style.display='none';
         document.getElementById('global-search-input').value='';
-        var id=el.dataset.gsId,action=el.dataset.gsAction;
-        if(action==='task'){
-          switchPage('plan');
-          var t=tasks.find(function(x){return String(x.id)===id;});
-          document.getElementById('plan-search').value=t?(t.job_name||t.name||''):'';
-          renderPool('plan');
-        }
-        else if(action==='customer')openCustomerDetail(Number(id));
+        if(action==='customer')openCustomerDetail(Number(id));
         else if(action==='lead')openCrmpDetail('lead',Number(id));
         else if(action==='opportunity')openCrmpDetail('opportunity',Number(id));
         else if(action==='user')openUser(id);
       });
     });
   }
+  // RUNDE I (sep. 2026, Martins ønske) — den dedikerede søgeresultat-side (Enter i
+  // søgefeltet/"Se alle resultater"). Til forskel fra header-dropdownen (som bevidst
+  // IKKE længere viser sager/opgaver, se renderGlobalSearchResults ovenfor) viser
+  // denne side OGSÅ "Sager & opgaver" — det er her Martin faktisk kan lede efter dem,
+  // uden at det popper uventet op i den hurtige dropdown. Genbruger gsRow/gsSection/
+  // gsInitials 1:1 fra global søgning ovenfor. Eksponeres på window (se bunden af
+  // bind()), da switchPage() ligger UDENFOR bind()'s scope og skal kunne kalde den.
+  function renderSearchResultsPage(q){
+    document.getElementById('gsp-subtitle').textContent=q?('for "'+q+'"'):'';
+    var el=document.getElementById('gsp-results');
+    if(!el)return;
+    if(!q||q.length<2){el.innerHTML='<div class="gs-card"><div class="gs-empty">Skriv mindst 2 tegn i søgefeltet foroven</div></div>';return;}
+    el.innerHTML='<div class="gs-card"><div class="gs-empty"><span class="gs-spinner" style="display:inline-block"></span> Søger efter "'+esc(q)+'"...</div></div>';
+    var ql=q.toLowerCase();
+    var taskResults=tasks.filter(function(t){
+      if(t.manually_completed_at)return false;
+      var hay=((t.job_name||'')+' '+(t.name||'')+' '+(t.job_number||'')+' '+(t.customer_name||'')).toLowerCase();
+      return hay.indexOf(ql)>-1;
+    }).slice(0,50);
+    var userResults=users.filter(function(u){
+      var hay=((u.name||'')+' '+(u.email||'')+' '+(u.phone||'')+' '+(u.trade||'')).toLowerCase();
+      return hay.indexOf(ql)>-1;
+    }).slice(0,50);
+    api('/api/search?limit=50&q='+encodeURIComponent(q)).then(function(r){
+      if(lastSearchQuery!==q)return; // brugeren nåede at søge på noget andet i mellemtiden
+      var srv=(r&&!r.error)?r:{customers:[],leads:[],opportunities:[]};
+      var customers=srv.customers||[],leads=srv.leads||[],opps=srv.opportunities||[];
+      var html='';
+      if(taskResults.length){
+        html+=gsSection('Sager & opgaver',taskResults.length);
+        html+=taskResults.map(function(t){
+          return gsRow({action:'task',id:t.id,avatar:'🏗',avatarBg:'#EEF2FF',avatarFg:'#4F46E5',
+            name:t.job_name||t.name,
+            meta:[t.name&&t.name!==t.job_name?t.name:'',t.job_number?'Sag '+t.job_number:'',t.customer_name||'']});
+        }).join('');
+      }
+      if(customers.length){
+        html+=gsSection('Kunder',customers.length);
+        html+=customers.map(function(c){
+          return gsRow({action:'customer',id:c.id,avatar:c.is_company?'🏢':gsInitials(c.name),avatarBg:'#ECFDF5',avatarFg:'#047857',
+            name:c.name,
+            meta:[c.phone||'',c.address||'',(!c.phone&&!c.address)?(c.email||''):'']});
+        }).join('');
+      }
+      if(leads.length){
+        html+=gsSection('Leads',leads.length);
+        html+=leads.map(function(l){
+          return gsRow({action:'lead',id:l.id,avatar:gsInitials(l.name),avatarBg:'#FFF7ED',avatarFg:'#C2410C',
+            name:l.name,
+            meta:[l.phone||'',l.address||'',(!l.phone&&!l.address)?(l.email||''):''],
+            stage:l.stage_name||'',stageColor:l.stage_color});
+        }).join('');
+      }
+      if(opps.length){
+        html+=gsSection('Opportunities',opps.length);
+        html+=opps.map(function(o){
+          return gsRow({action:'opportunity',id:o.id,avatar:gsInitials(o.contact_name||o.name),avatarBg:'#EFF6FF',avatarFg:'#1D4ED8',
+            name:o.name,
+            meta:[o.contact_name||'',o.contact_phone||'',o.contact_address||''],
+            value:(o.value===null||o.value===undefined)?'':krFmt(Number(o.value)),
+            stage:o.stage_name||'',stageColor:o.stage_color});
+        }).join('');
+      }
+      if(userResults.length){
+        html+=gsSection('Medarbejdere',userResults.length);
+        html+=userResults.map(function(u){
+          return gsRow({action:'user',id:u.id,avatar:gsInitials(u.name),avatarBg:'#F5F3FF',avatarFg:'#6D28D9',
+            name:u.name,
+            meta:[u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'),u.phone||'',u.email||'']});
+        }).join('');
+      }
+      el.innerHTML='<div class="gs-card">'+(html||'<div class="gs-empty">Intet fundet for "'+esc(q)+'"<small>Søger i sager, kunder, leads, opportunities og medarbejdere — på navn, telefon, email og adresse.</small></div>')+'</div>';
+      el.querySelectorAll('.gs-row').forEach(function(row){
+        row.addEventListener('click',function(){
+          var id=row.dataset.gsId,action=row.dataset.gsAction;
+          if(action==='task'){
+            switchPage('plan');
+            var t=tasks.find(function(x){return String(x.id)===id;});
+            document.getElementById('plan-search').value=t?(t.job_name||t.name||''):'';
+            renderPool('plan');
+          }
+          else if(action==='customer')openCustomerDetail(Number(id));
+          else if(action==='lead')openCrmpDetail('lead',Number(id));
+          else if(action==='opportunity')openCrmpDetail('opportunity',Number(id));
+          else if(action==='user')openUser(id);
+        });
+      });
+    }).catch(function(){
+      if(lastSearchQuery!==q)return;
+      el.innerHTML='<div class="gs-card"><div class="gs-empty">Søgningen fejlede — prøv igen</div></div>';
+    });
+  }
+  window.renderSearchResultsPage=renderSearchResultsPage;
   document.addEventListener('click',function(e){if(!e.target.closest('#notifdrop')&&!e.target.closest('#mobilenavdrop'))document.getElementById('notifdrop-menu').classList.remove('open');});
   // Nye undermenuer i navigationen (Tidslinje under Daglig plan, Ledighedsoversigt under
   // Kapacitet, Økonomi-underfaner) — åbnes nu ved HOVER over hele menu-gruppen, ikke kun
@@ -14138,7 +14295,11 @@ function bind(){
   // skrevet en masse data") — den lukkes derfor nu KUN via ✕/Annullér/Gem, se
   // dens egne knap-bindinger. crm-modal bruges både af sidebar-genvejen "👤 Ny
   // kunde" og "+ Ny kunde"-knappen på Kunder-siden.
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-editor-modal','quote-request-modal','invoice-detail-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  // RUNDE I (sep. 2026, Martins ønske): samme regel gælder nu OGSÅ tilbud
+  // ('quote-editor-modal', bruges til både ny og redigér) og faktura
+  // ('invoice-detail-modal') — begge fjernet fra listen herunder, så de (som
+  // 'crm-modal') kun kan lukkes via ✕/Annullér/Luk-knappen, aldrig ved klik udenfor.
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -15319,6 +15480,36 @@ function initCustomerDetailModule(){
   document.getElementById('cd-notes-list').addEventListener('click',cdNotesListClick);
   document.getElementById('cd-newopp-pipeline').addEventListener('change',cdFillNewOppStages);
   document.getElementById('cd-newopp-btn').addEventListener('click',cdCreateOpportunity);
+  // RUNDE I (sep. 2026, Martins ønske): "+ Lav tilbud"/"+ Lav faktura" ved siden
+  // af "+ Ny handel" — samme prefillCustomer-mønster som crmpx-quote-btn bruger
+  // fra en opportunity, se cdOpenQuote/cdOpenDirectInvoice nedenfor.
+  document.getElementById('cd-newquote-btn').addEventListener('click',cdOpenQuote);
+  document.getElementById('cd-newinvoice-btn').addEventListener('click',cdOpenDirectInvoice);
+  // Mails er altid sammenklappet ved åbning af en kundeside (se openCustomerDetail),
+  // og foldes kun ud/ind ved klik på selve overskriften.
+  document.getElementById('cd-emails-toggle').addEventListener('click',cdToggleEmailsPanel);
+}
+// Samme "hent init/data hvis det ikke allerede er gjort"-forsigtighed som
+// crmpxOpenQuote (se dens kommentar) — "+ Lav tilbud"/"+ Lav faktura" kan være
+// det FØRSTE sted i sessionen man rører Tilbud & Faktura-modulet.
+async function cdOpenQuote(){
+  if(!cdCurrent)return;
+  if(!qzInitialized)await initQuotesModule();
+  else await Promise.all([loadQzProducts(),loadQzTemplates()]);
+  openQuoteEditor(null,{customerId:cdCurrent.id,name:cdCurrent.name||'',phone:cdCurrent.phone||'',email:cdCurrent.email||'',address:cdCurrent.address||''});
+}
+async function cdOpenDirectInvoice(){
+  if(!cdCurrent)return;
+  if(!qzInitialized)await initQuotesModule();
+  else await Promise.all([loadQzProducts(),loadQzTemplates()]);
+  openDirectInvoiceEditor({customerId:cdCurrent.id,name:cdCurrent.name||'',phone:cdCurrent.phone||'',email:cdCurrent.email||'',address:cdCurrent.address||''});
+}
+function cdToggleEmailsPanel(){
+  var list=document.getElementById('cd-emails-list');
+  var icon=document.getElementById('cd-emails-toggle-icon');
+  var nowHidden=!list.hidden;
+  list.hidden=nowHidden;
+  icon.textContent=nowHidden?'▸ Vis':'▾ Skjul';
 }
 // ── "+ NY HANDEL" PÅ EN EKSISTERENDE KUNDE ───────────────────────
 // Ét klik = en ny opportunity koblet til den kunde man står på. Pipeline/stage
@@ -15521,6 +15712,11 @@ async function openCustomerDetail(id){
   cdCallBtn.href=d.customer.phone?('tel:'+d.customer.phone):'#';cdCallBtn.style.opacity=d.customer.phone?'1':'.4';cdCallBtn.style.pointerEvents=d.customer.phone?'':'none';
   cdLoadNotes(id);
   cdLoadEmails(id);
+  // Mails starter altid sammenklappet ved åbning af en kundeside (Martins ønske) —
+  // nulstilles her hver gang, så en tidligere udfoldning (denne kunde, eller en
+  // anden kunde besøgt før i samme session, samme DOM-elementer) ikke "smitter af".
+  document.getElementById('cd-emails-list').hidden=true;
+  document.getElementById('cd-emails-toggle-icon').textContent='▸ Vis';
 
   document.getElementById('cd-projects-count').textContent='('+d.projects.length+')';
   var STATUS_LABEL={active:'🔧 Aktivt',on_hold:'⏸ På hold',done:'✅ Afsluttet',archived:'📦 Arkiveret'};
@@ -16396,6 +16592,11 @@ async function openCrmpDetail(entityType,id){
   var d=await api(endpoint);
   if(!d||d.error){toast('Kunne ikke hente','❌');return;}
   crmpDetailEntity={type:entityType,id:id,data:d};
+  // RUNDE I (sep. 2026, Martins ønske): opgaver oprettet under en Opportunity forudfyldes
+  // med kl. 07:00 som starttidspunkt (kan altid ændres før "+ Tilføj opgave"). Leads har
+  // bevidst IKKE denne standardtid — kun opportunities, som Martin bad om.
+  var crmpxTaskTimeField=document.getElementById('crmpx-task-time');
+  if(crmpxTaskTimeField)crmpxTaskTimeField.value=entityType==='opportunity'?'07:00':'';
   var displayName=entityType==='lead'?d.name:(d.contact_name||d.name);
   setAppTitle(displayName);
   document.getElementById('crmpx-name-input').value=displayName||'';
@@ -16908,7 +17109,10 @@ async function crmpxAddTask(){
   if(r&&r.id){
     input.value='';
     document.getElementById('crmpx-task-date').value='';
-    document.getElementById('crmpx-task-time').value='';
+    // Efter tilføjelse nulstilles tiden til den samme standard som ved åbning af siden
+    // (07:00 for opportunities, tom for leads) — ikke bare tomt — så man kan tilføje
+    // flere opgaver i træk uden at skulle udfylde 07:00 igen for hver.
+    document.getElementById('crmpx-task-time').value=(ent.type==='opportunity')?'07:00':'';
     document.getElementById('crmpx-task-priority').checked=false;
     crmpxLoadTasks();
   }
@@ -18814,7 +19018,13 @@ function qePopulateStatusSelect(current){
   }
 }
 async function openQuoteEditor(id,prefillCustomer){
-  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null};
+  // directInvoice=false nulstilles her hver gang — se openDirectInvoiceEditor()
+  // nedenfor, som sætter den til true EFTER dette kald. qe-status-select og
+  // "Gyldig til" (begge tilbuds-specifikke begreber, giver ikke mening for en
+  // faktura) vises altid som udgangspunkt her, og skjules kun i direkte-faktura-tilstand.
+  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false};
+  document.getElementById('qe-status-select').style.display='';
+  document.getElementById('qe-valid-until').parentElement.style.display='';
   qzProductSearchSelections['qe-product-results']={};
   document.getElementById('qe-customer-search').value='';
   document.getElementById('qe-customer-address').value='';
@@ -18892,6 +19102,25 @@ async function openQuoteEditor(id,prefillCustomer){
   renderQeLines();
   qeRecalc();
   document.getElementById('quote-editor-modal').classList.add('open');
+}
+// RUNDE I (sep. 2026, Martins ønske): "Direkte faktura" — når prisen er aftalt
+// mundtligt/direkte med kunden, og der IKKE skal laves et tilbud først. Genbruger
+// hele tilbudseditoren (samme linjeredigering, produktsøgning, rabat, noter —
+// alt sammen allerede bygget til tilbud), men skjuler de rent tilbuds-specifikke
+// felter (status, gyldig til) og lader saveQuoteEditor()'s qeState.directInvoice-
+// gren sende linjerne til POST /api/invoices/direct-create i stedet for
+// /api/quotes, så der ALDRIG oprettes noget tilbud undervejs.
+async function openDirectInvoiceEditor(prefillCustomer){
+  await openQuoteEditor(null,prefillCustomer);
+  qeState.directInvoice=true;
+  document.getElementById('qe-title').textContent='Ny direkte faktura';
+  document.getElementById('qe-subtitle').textContent='Uden forudgående tilbud — forfalder 4 dage efter oprettelse';
+  document.getElementById('qe-status-select').style.display='none';
+  document.getElementById('qe-valid-until').parentElement.style.display='none';
+  // Tilbuddets standard-noter giver ikke nødvendigvis mening på en faktura uden
+  // tilbud — startes tomme, kan altid udfyldes.
+  document.getElementById('qe-top-note').value='';
+  document.getElementById('qe-notes').value='';
 }
 function renderQeLines(){qzRenderLines('qe-lines',qeState.lines,'qe');}
 function qeAddLine(product){qeState.lines.push(qzMakeBlankLine(product));renderQeLines();qeRecalc();}
@@ -19083,7 +19312,7 @@ function qeRenderPreview(){
   document.getElementById('qe-preview').innerHTML=
      '<div class="qe-pdf-head">'
     +'<div style="display:flex;align-items:center;gap:8px">'+(settings.logo_url?'<img src="'+settings.logo_url+'" style="max-width:200px;max-height:82px;object-fit:contain;flex-shrink:0">':'')+'<div><div class="qe-pdf-company">'+esc(settings.company_name||'Gulv Master Enterprise ApS')+'</div><div class="qe-pdf-company-sub">'+addrLines.map(function(l){return esc(l);}).join('<br>')+'</div></div></div>'
-    +'<div><div class="qe-pdf-doctype">TILBUD</div><div class="qe-pdf-docnum">'+esc(docNum)+'</div><div class="qe-pdf-meta">Dato: '+todayStr+(validUntil?'<br>Gyldig til: '+esc(validUntil):'')+'</div></div>'
+    +'<div><div class="qe-pdf-doctype">'+(qeState.directInvoice?'FAKTURA':'TILBUD')+'</div><div class="qe-pdf-docnum">'+(qeState.directInvoice?'Udkast':esc(docNum))+'</div><div class="qe-pdf-meta">Dato: '+todayStr+(validUntil?'<br>Gyldig til: '+esc(validUntil):'')+'</div></div>'
     +'</div>'
     +'<div class="qe-pdf-to"><b>Til:</b><br>'+(custName?esc(custName)+'<br>':'')+(custAddr?esc(custAddr)+'<br>':'')+(custPhone?'Tlf. '+esc(custPhone)+'<br>':'')+(custEmail?esc(custEmail):'')+'</div>'
     +(topNote?'<div class="qe-pdf-notes" style="margin:6px 0 10px">'+topNote+'</div>':'')
@@ -19148,6 +19377,20 @@ async function saveQuoteEditor(){
     discount_type:document.getElementById('qe-doc-discount-type').value==='fixed'?'fixed':'pct',
     lines:qeState.lines
   };
+  // RUNDE I (sep. 2026): direkte faktura opretter ALDRIG et tilbud undervejs —
+  // egen rute, egen succes-håndtering (lukker editoren og åbner den nye faktura,
+  // ligesom "Konvertér til faktura" gør for et rigtigt tilbud).
+  if(qeState.directInvoice){
+    var dr=await api('/api/invoices/direct-create',{method:'POST',body:JSON.stringify(body)});
+    if(dr&&dr.ok){
+      toast('Faktura '+dr.invoice_number+' oprettet','✓');
+      closeModal('quote-editor-modal');
+      await loadQzInvoices();renderQzInvoices();
+      switchQzTab('invoices');
+      openInvoiceDetail(dr.id);
+    } else toast((dr&&dr.error)||'Kunne ikke oprette fakturaen','❌');
+    return;
+  }
   var r=qeState.id?await api('/api/quotes/'+qeState.id,{method:'PUT',body:JSON.stringify(body)}):await api('/api/quotes',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
     toast('Tilbud gemt','✓');
@@ -19332,6 +19575,7 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-title').textContent=inv.invoice_number;
   document.getElementById('iv-subtitle').textContent=(inv.job_name||'')+' · '+(QZ_INVOICE_STATUS[inv.status]?QZ_INVOICE_STATUS[inv.status].label:inv.status);
   document.getElementById('iv-due-date').value=inv.due_date||'';
+  document.getElementById('iv-top-note').value=inv.top_note||'';
   document.getElementById('iv-notes').value=inv.notes||'';
   document.getElementById('iv-total').textContent=krFmt(Number(inv.total));
   document.getElementById('iv-paid').textContent=krFmt(Number(inv.paid_total));
@@ -19406,6 +19650,13 @@ async function saveIvNotes(){
   if(r&&r.ok){toast('Note gemt','✓');loadDocActivity('invoice',ivState.id,'iv-activity-list');}
   else toast((r&&r.error)||'Kunne ikke gemme noten','❌');
 }
+async function saveIvTopNote(){
+  if(!ivState.id)return;
+  var val=document.getElementById('iv-top-note').value.trim()||null;
+  var r=await api('/api/invoices/'+ivState.id,{method:'PUT',body:JSON.stringify({top_note:val})});
+  if(r&&r.ok){toast('Note gemt','✓');loadDocActivity('invoice',ivState.id,'iv-activity-list');}
+  else toast((r&&r.error)||'Kunne ikke gemme noten','❌');
+}
 async function voidIvInvoice(){
   if(!await gmConfirm('Annullér denne faktura? Den vil blive markeret som annulleret.'))return;
   var r=await api('/api/invoices/'+ivState.id+'/void',{method:'PUT'});
@@ -19472,7 +19723,9 @@ function bindQuotesModuleEvents(){
   makeRichField('qe-top-note');
   makeRichField('qe-notes');
   makeRichField('iv-notes');
+  makeRichField('iv-top-note');
   document.getElementById('qz-new-quote-btn').addEventListener('click',function(){openQuoteEditor(null);});
+  document.getElementById('qz-new-direct-invoice-btn').addEventListener('click',function(){openDirectInvoiceEditor(null);});
   document.getElementById('qe-close-btn').addEventListener('click',function(){if(qeAiState.listening)qeAiCancel();closeModal('quote-editor-modal');});
   document.getElementById('qe-save-btn').addEventListener('click',saveQuoteEditor);
   document.getElementById('qe-convert-btn').addEventListener('click',convertQuoteToInvoice);
@@ -19561,6 +19814,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('iv-add-payment-btn').addEventListener('click',addIvPayment);
   document.getElementById('iv-add-credit-btn').addEventListener('click',addIvCreditNote);
   document.getElementById('iv-due-date').addEventListener('change',saveIvDueDate);
+  document.getElementById('iv-top-note').addEventListener('change',saveIvTopNote);
   document.getElementById('iv-notes').addEventListener('change',saveIvNotes);
   document.getElementById('iv-void-btn').addEventListener('click',voidIvInvoice);
   document.getElementById('iv-pdf-link').addEventListener('click',function(e){e.preventDefault();if(ivState.id)qzOpenPdf('/api/invoices/'+ivState.id+'/pdf');});
