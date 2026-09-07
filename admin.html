@@ -2278,6 +2278,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 /* TOAST */
 .toast{position:fixed;right:14px;bottom:14px;background:var(--navy);color:#fff;border-radius:8px;padding:8px 12px;font-size:11px;box-shadow:0 8px 24px rgba(0,0,0,.2);transform:translateY(80px);opacity:0;transition:.2s;z-index:500;display:flex;align-items:center;gap:6px}
 .toast.show{transform:translateY(0);opacity:1}
+/* RUNDE K (fortsat, sep. 2026, Martins ønske) — klikbar toast (se toast()'s
+   3. parameter, onClick): "man skal kunne trykke på den, samme som opportunity
+   osv." Rent visuelt kun cursor+let hover-løft, så den stadig ligner en almindelig
+   bekræftelse og ikke en påtrængende knap. */
+.toast.clickable{cursor:pointer}
+.toast.clickable:hover{transform:translateY(-2px)}
 
 @media(max-width:900px){
   /* RUNDE H #18 — root cause for "Dagligplanlægning er slet ikke mobilvenlig":
@@ -2459,7 +2465,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-07.6</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-07.7</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3987,9 +3993,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="form-group"><label class="form-label">Adresse</label><input id="crmc-address" class="input"></div>
     <div class="form-group"><label class="form-label">Noter <span class="opt-tag">valgfrit</span></label><textarea id="crmc-notes" class="input" rows="2" style="resize:vertical"></textarea></div>
     <div id="crmc-lead-fields">
-      <div class="hint" style="margin:2px 0 8px">En ny kunde opretter automatisk et lead i Leads-pipelinen — udfyld hvor kunden kommer fra og hvilken slags opgave det drejer sig om.</div>
+      <div class="hint" style="margin:2px 0 8px" id="crmc-lead-fields-hint">En ny kunde opretter automatisk et lead eller en opportunity i den valgte pipeline — udfyld hvor kunden kommer fra og hvilken slags opgave det drejer sig om.</div>
+      <!-- RUNDE K (fortsat, sep. 2026, Martins ønske) — "ved oprettelse af en ny kunde kan
+           man vælge pipeline der kan man pt kun vælge Lead, gør det også muligt at vælge
+           den anden sale pipline. måske er kunden ikke et lead længere": Pipeline-vælgeren
+           flyttet OP og lister nu BÅDE lead- og salgs-pipelines (crmcFillPipelines()),
+           grupperet i optgroups. Vælger man en salgs-pipeline, opretter saveCrmCustomer()
+           en OPPORTUNITY i stedet for et lead — se crmcSelectedPipelineType()/
+           crmcOnPipelineChange(). "Kilde" findes kun på leads (ingen tilsvarende kolonne på
+           opportunities noget andet sted i appen) og skjules derfor automatisk når en
+           salgs-pipeline er valgt. -->
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Kilde</label>
+        <div class="form-group"><label class="form-label">Pipeline</label><select id="crmc-pipeline" class="select"></select></div>
+        <div class="form-group"><label class="form-label">Stage</label><select id="crmc-stage" class="select"></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" id="crmc-source-wrap"><label class="form-label">Kilde</label>
           <select id="crmc-source" class="select">
             <option value="">Vælg…</option>
             <option value="Website form">Website form</option>
@@ -4001,27 +4020,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <input id="crmc-source-other" class="input hidden" style="margin-top:6px" placeholder="Angiv kilde">
         </div>
         <!-- Projekttype er IKKE en selvstændig liste her. Den tegnes ud fra det
-             RIGTIGE custom field (entity_type='lead', key='projekt_type') af
-             crmcFillProjektType() — nøjagtig samme definition som CRM-detalje-
+             RIGTIGE custom field (samme key='projekt_type', men entity_type følger
+             nu den valgte pipelines type — lead ELLER opportunity, begge har feltet)
+             af crmcFillProjektType() — nøjagtig samme definition som CRM-detalje-
              siden og Kanban-boardet bruger. Før stod de fire valgmuligheder
              hardkodet i HTML'en, så snart Martin redigerede feltet under
              ⚙️ Indstillinger drev denne dropdown lydløst fra virkeligheden. -->
         <div class="form-group" id="crmc-projekt-type-wrap"><label class="form-label" id="crmc-projekt-type-label">Projekttype</label>
           <select id="crmc-projekt-type" class="select"><option value="">Vælg…</option></select>
         </div>
-      </div>
-      <!-- Pipeline + stage for det lead der oprettes automatisk sammen med
-           kunden (Martins ønske, sep. 2026). Præcis samme to valg som
-           "+ Nyt lead"-modalen på selve Kanban-boardet (#crmp-new-modal) — før
-           landede leadet herfra altid dér hvor serverens standard-faldback
-           placerede det (første lead-pipeline, første stage efter position),
-           uden at man hverken kunne se eller bestemme hvor. Fyldes af
-           crmcFillPipelines()/crmcFillStages(), som genbruger
-           crmpSortedStages()/crmpDefaultNewStageId() 1:1, så standardvalget er
-           den stage der hedder "Nyt lead" — samme opførsel begge steder. -->
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Pipeline</label><select id="crmc-pipeline" class="select"></select></div>
-        <div class="form-group"><label class="form-label">Stage</label><select id="crmc-stage" class="select"></select></div>
       </div>
     </div>
     <div class="modal-actions">
@@ -6336,7 +6343,21 @@ function add(d,n){var x=new Date(d);x.setDate(x.getDate()+n);return x;}
 function weekNo(d){var x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var q=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-q);var y=new Date(Date.UTC(x.getUTCFullYear(),0,1));return Math.ceil((((x-y)/86400000)+1)/7);}
 function isToday(d){return iso(d)===iso(new Date());}
 function weekKey(d){var x=mon(d);return 'w'+x.getFullYear()+'-'+String(weekNo(x)).padStart(2,'0');}
-function toast(msg,ic){var el=document.getElementById('toast');el.innerHTML=(ic?ic+' ':'')+esc(msg);el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(function(){el.classList.remove('show');},2600);}
+// RUNDE K (fortsat, sep. 2026, Martins ønske) — valgfri 3. parameter onClick:
+// "når et lead oprettes skal man kunne trykke på boksen der siger den er
+// oprettet, så man kommer ind på leadet — samme som opportunity osv." Uden
+// onClick opfører toasten sig 100% som før. Med onClick vises den lidt længere
+// (4.2s i stedet for 2.6s), så der er reel tid til at nå at klikke, og skjules
+// øjeblikkeligt ved klik i stedet for at vente på timeouten.
+function toast(msg,ic,onClick){
+  var el=document.getElementById('toast');
+  el.innerHTML=(ic?ic+' ':'')+esc(msg)+(onClick?' <span style="opacity:.7">→</span>':'');
+  el.classList.add('show');
+  el.classList.toggle('clickable',!!onClick);
+  el.onclick=onClick?function(){el.classList.remove('show');clearTimeout(el._t);onClick();}:null;
+  clearTimeout(el._t);
+  el._t=setTimeout(function(){el.classList.remove('show');},onClick?4200:2600);
+}
 // MODERNE ERSTATNING FOR window.await gmConfirm()/window.await gmPrompt() — samme trækbare
 // popup-stil som resten af programmet, i stedet for browserens grimme, låste bokse.
 // Bruges som: if(!await gmConfirm('Er du sikker?'))return;  eller  var x=await gmPrompt('Navn:','standard');
@@ -15662,9 +15683,10 @@ function initCrmModule(){
     document.getElementById('crmc-cancel').addEventListener('click',function(){closeModal('crm-modal');});
     document.getElementById('crmc-is-company').addEventListener('change',crmSyncCompanyFields);
     document.getElementById('crmc-source').addEventListener('change',function(e){document.getElementById('crmc-source-other').classList.toggle('hidden',e.target.value!=='Andet');});
-    // Skifter man pipeline, skal stage-listen med over — ellers kunne man sende
-    // et stage_id fra en HELT anden pipeline med (samme greb som crmpNewFillStages).
-    document.getElementById('crmc-pipeline').addEventListener('change',crmcFillStages);
+    // Skifter man pipeline, skal stage-listen (og, RUNDE K fortsat, Kilde-feltets
+    // synlighed + Projekttype-listen) med over — ellers kunne man sende et
+    // stage_id fra en HELT anden pipeline med (samme greb som crmpNewFillStages).
+    document.getElementById('crmc-pipeline').addEventListener('change',crmcOnPipelineChange);
     document.getElementById('crmc-save').addEventListener('click',saveCrmCustomer);
     document.getElementById('crmc-delete').addEventListener('click',deleteCrmCustomer);
     crmInitialized=true;
@@ -15716,13 +15738,38 @@ function crmcFillStages(){
   sel.innerHTML=crmpSortedStages(p).map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
   sel.value=crmpDefaultNewStageId(p);
 }
+// RUNDE K (fortsat, sep. 2026, Martins ønske) — lister nu BÅDE lead- og
+// salgs-pipelines (grupperet i optgroups), ikke kun lead-pipelines som før.
+// Standardvalget er stadig den første LEAD-pipeline (mest almindelige tilfælde
+// uændret) — men man kan nu bevidst vælge en salgs-pipeline i stedet, fx hvis
+// kunden allerede er en aftalt handel og ikke skal starte som et lead.
 function crmcFillPipelines(){
   var sel=document.getElementById('crmc-pipeline');
-  // Kun LEAD-pipelines: modalen opretter et lead, ikke en opportunity.
   var leadPipelines=crmpState.pipelines.filter(function(p){return p.type==='lead';});
-  sel.innerHTML=leadPipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
+  var oppPipelines=crmpState.pipelines.filter(function(p){return p.type==='opportunity';});
+  var html='';
+  if(leadPipelines.length)html+='<optgroup label="Leads">'+leadPipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('')+'</optgroup>';
+  if(oppPipelines.length)html+='<optgroup label="Salg (opportunities)">'+oppPipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('')+'</optgroup>';
+  sel.innerHTML=html;
   if(leadPipelines.length)sel.value=leadPipelines[0].id;
+  crmcOnPipelineChange();
+}
+// Typen (lead/opportunity) af den pipeline der p.t. er valgt i "Ny kunde"-modalen.
+function crmcSelectedPipelineType(){
+  var pid=Number(document.getElementById('crmc-pipeline').value);
+  var p=crmpState.pipelines.find(function(x){return x.id===pid;});
+  return p?p.type:'lead';
+}
+// Skifter man mellem en lead- og en salgs-pipeline, skal tre ting følge med:
+// stage-listen (anden pipeline = andre stages), "Kilde"-feltet (findes kun på
+// leads — ingen tilsvarende kolonne på opportunities), og Projekttype-listen
+// (samme custom field-KEY findes på begge entitetstyper, men er to adskilte
+// definitioner Martin kan redigere hver for sig under ⚙️ Indstillinger).
+function crmcOnPipelineChange(){
   crmcFillStages();
+  var isOpp=crmcSelectedPipelineType()==='opportunity';
+  document.getElementById('crmc-source-wrap').classList.toggle('hidden',isOpp);
+  crmcFillProjektType();
 }
 // Pipelines hentes ÉN gang pr. session og bor i crmpState — men "Ny kunde" og
 // kundedetaljesiden kan sagtens åbnes uden at man nogensinde har været inde på
@@ -15777,15 +15824,19 @@ async function openCrmModal(id){
   document.getElementById('crm-modal').classList.add('open');
 }
 // Projekttype-dropdownen i "Ny kunde" — ÉN kilde, nemlig custom field-defen
-// for lead.projekt_type. Tilføjer/omdøber/sletter Martin en valgmulighed under
-// ⚙️ Indstillinger, slår det igennem her uden at nogen rører HTML'en.
-// Findes feltet slet ikke (eller er listen tom), skjules hele rækken frem for
-// at vise en dropdown der kun kan vælge ingenting — resten af modalen virker
-// præcis som før, og gem-flowet sender så bare en tom projekt_type.
+// for projekt_type på den entitetstype den valgte pipeline faktisk opretter
+// (lead ELLER opportunity — RUNDE K, fortsat — begge har feltet, men det er to
+// separate definitioner Martin kan redigere hver for sig under ⚙️ Indstillinger).
+// Tilføjer/omdøber/sletter Martin en valgmulighed dér, slår det igennem her
+// uden at nogen rører HTML'en. Findes feltet slet ikke (eller er listen tom),
+// skjules hele rækken frem for at vise en dropdown der kun kan vælge ingenting
+// — resten af modalen virker præcis som før, og gem-flowet sender så bare en
+// tom projekt_type.
 function crmcFillProjektType(){
   var wrap=document.getElementById('crmc-projekt-type-wrap');
   var sel=document.getElementById('crmc-projekt-type');
-  var def=(crmpState.customFieldDefs.lead||[]).find(function(d){return d.key==='projekt_type'&&d.field_type==='select';});
+  var entityType=crmcSelectedPipelineType();
+  var def=(crmpState.customFieldDefs[entityType]||[]).find(function(d){return d.key==='projekt_type'&&d.field_type==='select';});
   var opts=def&&Array.isArray(def.options)?def.options:[];
   sel.innerHTML='<option value="">Vælg…</option>'+opts.map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join('');
   document.getElementById('crmc-projekt-type-label').textContent=(def&&def.label)||'Projekttype';
@@ -17553,7 +17604,10 @@ async function crmpCreateNewItem(){
   if(p.type==='opportunity'){body.contact_name=name;body.contact_phone=body.phone;body.contact_email=body.email;}
   var r=await api(endpoint,{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
-    toast('Oprettet ✓','✓');
+    // RUNDE K (fortsat, sep. 2026, Martins ønske) — bekræftelsen er nu klikbar:
+    // fører direkte ind på det lead/den opportunity der lige blev oprettet.
+    var createdId=r.id,createdType=p.type;
+    toast('Oprettet ✓','✓',function(){openCrmpDetail(createdType,createdId);});
     closeModal('crmp-new-modal');
     // Blev der valgt en ANDEN pipeline end den man står på, skiftes boardet med
     // over til den — ellers ville det nye lead se ud som om det forsvandt.
@@ -18032,44 +18086,69 @@ async function saveCrmCustomer(){
   var name=document.getElementById('crmc-name').value.trim();
   if(!name){toast('Navn mangler','⚠️');return;}
   var isNew=!crmEditingId;
+  // RUNDE K (fortsat, sep. 2026, Martins ønske) — "gør det også muligt at vælge den
+  // anden sale pibline. måske er kunden ikke et lead længere": den valgte pipelines
+  // type (lead/opportunity) styrer nu HVILKEN entitet der oprettes automatisk sammen
+  // med kunden. isOpp bruges kun ved en helt ny kunde (crmc-pipeline er skjult/
+  // irrelevant ved redigering af en eksisterende kunde).
+  var isOpp=isNew&&crmcSelectedPipelineType()==='opportunity';
   var source=document.getElementById('crmc-source').value,sourceOther=document.getElementById('crmc-source-other').value.trim();
   var projektType=document.getElementById('crmc-projekt-type').value;
   var isCompany=document.getElementById('crmc-is-company').checked;
   var phone=document.getElementById('crmc-phone').value.trim()||null,email=document.getElementById('crmc-email').value.trim()||null,address=document.getElementById('crmc-address').value.trim()||null;
   if(isNew){
-    if(!source){toast('Vælg en kilde','⚠️');return;}
-    if(source==='Andet'&&!sourceOther){toast('Angiv kilden under "Andet"','⚠️');return;}
+    // Kilde findes kun på leads (ingen tilsvarende kolonne på opportunities noget
+    // andet sted i appen) — springes helt over ved en salgs-pipeline.
+    if(!isOpp){
+      if(!source){toast('Vælg en kilde','⚠️');return;}
+      if(source==='Andet'&&!sourceOther){toast('Angiv kilden under "Andet"','⚠️');return;}
+    }
     // Projekttype kræves KUN når feltet faktisk er der at udfylde. Er custom
-    // field'et lead.projekt_type slettet (eller har det ingen valgmuligheder),
+    // field'et projekt_type slettet (eller har det ingen valgmuligheder),
     // skjuler crmcFillProjektType() rækken — og så må kravet ikke stå tilbage
     // og blokere for at gemme en kunde man umuligt kan udfylde det på.
     if(!projektType&&document.getElementById('crmc-projekt-type-wrap').style.display!=='none'){toast('Vælg en projekttype','⚠️');return;}
-    // Telefon ELLER email er nødvendig for at det automatisk oprettede lead kan kobles
-    // til DENNE kunde (matcher på telefon/email) — uden nogen af delene opretter leadet
-    // sin egen duplikat-kunde i stedet, se crmFindOrCreateContactAndCustomer i server.js.
-    if(!phone&&!email){toast('Angiv telefon eller email — ellers kan det automatiske lead ikke kobles til kunden','⚠️');return;}
+    // Telefon ELLER email er nødvendig for at det automatisk oprettede lead/opportunity
+    // kan kobles til DENNE kunde (matcher på telefon/email) — uden nogen af delene
+    // opretter den sin egen duplikat-kunde i stedet, se crmFindOrCreateContactAndCustomer
+    // i server.js.
+    if(!phone&&!email){toast('Angiv telefon eller email — ellers kan det automatiske lead/opportunity ikke kobles til kunden','⚠️');return;}
   }
   var body={name:name,phone:phone,email:email,address:address,notes:document.getElementById('crmc-notes').value.trim()||null,is_company:isCompany,cvr:isCompany?(document.getElementById('crmc-cvr').value.trim()||null):null};
   var r=crmEditingId?await api('/api/crm/customers/'+crmEditingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/crm/customers',{method:'POST',body:JSON.stringify(body)});
   if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke gemme kunden','❌');return;}
-  // Ny kunde: opret automatisk et lead i Leads-pipelinen med samme kontaktoplysninger
-  // — POST /api/crm/leads kobler det selv til den kunde vi lige oprettede (matcher på
-  // telefon/email, samme find-eller-opret-logik som resten af CRM'et bruger). Uden
-  // telefon/email kan den ikke matches til kunden og opretter i stedet sin egen —
-  // samme kendte begrænsning som alle andre steder leads oprettes i appen.
+  // Ny kunde: opret automatisk et lead ELLER en opportunity (efter hvilken pipeline
+  // der er valgt) med samme kontaktoplysninger — begge endpoints kobler det selv til
+  // den kunde vi lige oprettede (matcher på telefon/email, samme find-eller-opret-
+  // logik som resten af CRM'et bruger). Uden telefon/email kan den ikke matches til
+  // kunden og opretter i stedet sin egen — samme kendte begrænsning som alle andre
+  // steder leads/opportunities oprettes i appen.
+  var createdEntityId=null,createdEntityType=null;
   if(isNew){
-    // Pipeline/stage kommer nu fra dropdownene i modalen (før: intet med, så
-    // serveren valgte blindt første lead-pipeline + første stage). Er de mod
-    // forventning tomme — fx hvis der slet ingen lead-pipeline findes — sendes
-    // de som null, og serveren falder tilbage til præcis den gamle opførsel i
-    // stedet for at fejle.
-    var leadPipelineId=Number(document.getElementById('crmc-pipeline').value)||null;
-    var leadStageId=Number(document.getElementById('crmc-stage').value)||null;
-    var leadBody={name:name,phone:phone,email:email,address:address,source:source==='Andet'?sourceOther:source,pipeline_id:leadPipelineId,stage_id:leadStageId,custom_fields:{projekt_type:projektType}};
-    var lr=await api('/api/crm/leads',{method:'POST',body:JSON.stringify(leadBody)});
-    if(!lr||!lr.ok)toast('Kunden blev oprettet, men leadet kunne ikke oprettes: '+((lr&&lr.error)||'ukendt fejl'),'⚠️');
+    // Pipeline/stage kommer fra dropdownene i modalen (før: intet med, så serveren
+    // valgte blindt første lead-pipeline + første stage). Er de mod forventning tomme
+    // — fx hvis der slet ingen pipeline af den type findes — sendes de som null, og
+    // serveren falder tilbage til præcis den gamle opførsel i stedet for at fejle.
+    var pipelineId=Number(document.getElementById('crmc-pipeline').value)||null;
+    var stageId=Number(document.getElementById('crmc-stage').value)||null;
+    if(isOpp){
+      var oppBody={name:name,contact_name:name,contact_phone:phone,contact_email:email,pipeline_id:pipelineId,stage_id:stageId,custom_fields:{projekt_type:projektType}};
+      var orr=await api('/api/crm/opportunities',{method:'POST',body:JSON.stringify(oppBody)});
+      if(orr&&orr.ok){createdEntityId=orr.id;createdEntityType='opportunity';}
+      else toast('Kunden blev oprettet, men opportunity kunne ikke oprettes: '+((orr&&orr.error)||'ukendt fejl'),'⚠️');
+    } else {
+      var leadBody={name:name,phone:phone,email:email,address:address,source:source==='Andet'?sourceOther:source,pipeline_id:pipelineId,stage_id:stageId,custom_fields:{projekt_type:projektType}};
+      var lr=await api('/api/crm/leads',{method:'POST',body:JSON.stringify(leadBody)});
+      if(lr&&lr.ok){createdEntityId=lr.id;createdEntityType='lead';}
+      else toast('Kunden blev oprettet, men leadet kunne ikke oprettes: '+((lr&&lr.error)||'ukendt fejl'),'⚠️');
+    }
   }
-  toast('Kunde gemt','✓');closeModal('crm-modal');await loadCrmCustomers();renderCrmCustomers();
+  // RUNDE K (fortsat, sep. 2026, Martins ønske) — klikbar bekræftelse ind på det
+  // lige oprettede lead/opportunity, samme mønster som crmpCreateNewItem(). Kun
+  // klikbar når der rent faktisk blev oprettet ét (dvs. en helt ny kunde).
+  if(createdEntityId)toast('Kunde gemt','✓',function(){openCrmpDetail(createdEntityType,createdEntityId);});
+  else toast('Kunde gemt','✓');
+  closeModal('crm-modal');await loadCrmCustomers();renderCrmCustomers();
 }
 async function deleteCrmCustomer(){
   if(!crmEditingId)return;

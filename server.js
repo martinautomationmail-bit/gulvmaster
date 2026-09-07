@@ -6458,15 +6458,20 @@ app.get('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async (
   const q = String(req.query.q || '').trim();
   // Søger også i pris (tilbuds- og faktura-totaler) — så Martin kan skrive fx
   // "15000" og finde kunden med det tilbud/den faktura, ikke kun navn/email/tlf.
+  // RUNDE K (fortsat, sep. 2026, Martins ønske) — "i kunde listen skal en ny kunde
+  // altid stå øverst, så de står i rækkefølge som standard for oprettet": var før
+  // ORDER BY name (alfabetisk) — nu nyeste først. id DESC frem for created_at DESC,
+  // da id (SERIAL, altid udfyldt) er en garanteret monoton oprettelsesrækkefølge,
+  // mens ældre rækker fra før created_at-kolonnen fandtes kan mangle værdien.
   const rows = q
     ? await pool.query(`
         SELECT * FROM customers c WHERE
           c.name ILIKE $1 OR c.email ILIKE $1 OR c.phone ILIKE $1
           OR EXISTS (SELECT 1 FROM quotes qq WHERE qq.customer_id=c.id AND qq.total::text ILIKE $1)
           OR EXISTS (SELECT 1 FROM invoices ii JOIN quotes qq2 ON qq2.id=ii.quote_id WHERE qq2.customer_id=c.id AND ii.total::text ILIKE $1)
-        ORDER BY c.name
+        ORDER BY c.id DESC
       `, [`%${q}%`])
-    : await pool.query('SELECT * FROM customers ORDER BY name');
+    : await pool.query('SELECT * FROM customers ORDER BY id DESC');
   res.json(rows.rows);
 }));
 // Kundedetalje — alt data på én kunde samlet: sager (projekter), tilbud og
