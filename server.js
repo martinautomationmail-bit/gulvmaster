@@ -519,6 +519,13 @@ async function initSchema() {
       synced_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_gantt_tasks_job ON gantt_tasks(job_id);
+    -- RUNDE L (sep. 2026, Martins ønske #2) — opgavens egen status/fase i sagens
+    -- nye Pipeline-visning (kanban med 4 faste kolonner, se
+    -- PUT /api/projects/:id/tasks/:taskId og pd-pipeline-* i admin.html). Bevidst
+    -- ADSKILT fra planning_bookings' status (tld-status-select: Færdig/Afvent/
+    -- Bagud/Aflyst), som først findes NÅR opgaven er booket ind på en medarbejder
+    -- — denne status findes fra opgaven oprettes, uafhængigt af booking.
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'todo';
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_phone TEXT;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_email TEXT;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_address TEXT;
@@ -7827,6 +7834,21 @@ async function runStageFollowupScan() {
   return { processed };
 }
 
+// RUNDE L (sep. 2026, Martins ønske): tilbud/fakturaer/sager oprettet uden at
+// vælge en eksisterende kunde fra søgefeltet (fx skrevet i hånden og gemt for
+// hurtigt) endte tidligere som "forældreløse" — customer_id blev NULL, selvom
+// kunden allerede fandtes i systemet, og tilbuddet/sagen dukkede derfor aldrig
+// op på kundens egen side ("kunderne filer/tilbud kommer ikke ind i programmet
+// som de skal"). Dette sikkerhedsnet forsøger at genkende en eksisterende kunde
+// på email (case-uafhængigt) eller telefon, KUN hvis klienten ikke selv sendte
+// et customer_id — overskriver aldrig et customer_id klienten rent faktisk valgte.
+async function resolveCustomerId(explicitId, email, phone) {
+  if (explicitId) return explicitId;
+  let customer = null;
+  if (email) customer = await pgOne('SELECT id FROM customers WHERE lower(email)=lower($1)', [email]);
+  if (!customer && phone) customer = await pgOne('SELECT id FROM customers WHERE phone=$1', [phone]);
+  return customer ? customer.id : null;
+}
 // Find-eller-opret en crm_contacts-række + en customers-række for et navn/
 // email/telefon, og kæd dem sammen — dedupliker på telefon/email ligesom
 // resten af appen allerede gør (Close-webhooken m.fl.). Genbruges både ved
@@ -9870,7 +9892,12 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
     // opgaver der IKKE allerede har en booking (kapacitet ELLER daglig plan),
     // så et ekstra klik aldrig dobbelt-booker en opgave.
     pool.query(`
-      SELECT g.*, EXISTS(SELECT 1 FROM planning_bookings b WHERE b.task_id=g.id) AS has_booking
+      SELECT g.*, EXISTS(SELECT 1 FROM planning_bookings b WHERE b.task_id=g.id) AS has_booking,
+        -- RUNDE L (Martins ønske #1 "flere data oplysninger") — hvem opgaven er
+        -- booket på og hvornår, vist i den udvidede opgave-popup (pdtd-bookings).
+        -- En opgave kan sagtens have flere bookinger (flere medarbejdere/perioder).
+        (SELECT json_agg(json_build_object('user_name', u.name, 'start_date', b.start_date, 'end_date', b.end_date) ORDER BY b.start_date)
+         FROM planning_bookings b LEFT JOIN users u ON u.id = b.user_id WHERE b.task_id = g.id) AS bookings
       FROM gantt_tasks g WHERE g.project_id=$1 ORDER BY position ASC, id ASC
     `, [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM project_photos WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
@@ -9997,10 +10024,11 @@ app.post('/api/projects', auth, panelAccess('projects'), asyncRoute(async (req, 
   if (!name) return res.status(400).json({ error: 'Angiv et navn på projektet' });
   const status = ['active', 'on_hold', 'done', 'archived'].includes(b.status) ? b.status : 'active';
   const jobNumber = await nextDocNumber('project', 'GM');
+  const resolvedCustomerId = await resolveCustomerId(b.customer_id || null, b.customer_email || null, b.customer_phone || null);
   const p = await pgOne(`
     INSERT INTO projects (name, customer_id, customer_address, customer_phone, customer_email, job_number, status)
     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
-  `, [name, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, jobNumber, status]);
+  `, [name, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, jobNumber, status]);
   res.json({ ok: true, id: p.id });
 }));
 
@@ -10165,6 +10193,7 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
   if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   const b = req.body || {};
+  const GANTT_TASK_STATUSES = ['todo', 'in_progress', 'waiting', 'done'];
   const merged = {
     name: b.name !== undefined ? String(b.name).trim() : current.name,
     start_date: b.start_date !== undefined ? b.start_date : current.start_date,
@@ -10172,11 +10201,13 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
     progress: b.progress !== undefined ? Math.max(0, Math.min(1, Number(b.progress))) : current.progress,
     // "Note" på opgaven — samme description-felt der bruges i det almindelige
     // Gantt-opgave-detaljevindue (gd-desc), vist i sagens opgave-detaljer.
-    description: b.description !== undefined ? String(b.description).slice(0, 2000) : (current.description || '')
+    description: b.description !== undefined ? String(b.description).slice(0, 2000) : (current.description || ''),
+    // RUNDE L (Martins ønske #2) — opgavens fase i Pipeline-visningen.
+    status: b.status !== undefined && GANTT_TASK_STATUSES.includes(b.status) ? b.status : (current.status || 'todo')
   };
   await pool.query(`
-    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, synced_at=${nowTextSQL()} WHERE id=$6
-  `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, req.params.taskId]);
+    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, status=$6, synced_at=${nowTextSQL()} WHERE id=$7
+  `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, req.params.taskId]);
   if (project) await mirrorProjectTaskToPool(req.params.taskId, project, merged);
   res.json({ ok: true });
 }));
@@ -12905,10 +12936,11 @@ app.post('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res)
   const totals = computeTotals(b.lines || [], taxRate, { value: discountPct, type: discountType });
   const quoteNumber = await nextDocNumber('quote', 'TIL');
   const acceptToken = crypto.randomBytes(20).toString('hex');
+  const resolvedCustomerId = await resolveCustomerId(b.customer_id || null, b.customer_email || null, b.customer_phone || null);
   const r = await pool.query(`
     INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token)
     VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id
-  `, [quoteNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken]);
+  `, [quoteNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken]);
   await saveQuoteLines(r.rows[0].id, b.lines);
   logDocActivity('quote', r.rows[0].id, 'created', req.user.name, null);
   res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber });
@@ -13128,10 +13160,11 @@ app.post('/api/invoices/direct-create', auth, panelAccess('quotes'), asyncRoute(
   // med (b.notes===undefined) — fx ved et evt. fremtidigt kald udenom UI'en. Sender
   // klienten eksplicit en tom streng (fordi Martin bevidst har ryddet feltet), gemmes
   // det som ingen note, ligesom hidtil.
+  const resolvedCustomerId = await resolveCustomerId(b.customer_id || null, b.customer_email || null, b.customer_phone || null);
   const r = await pool.query(`
     INSERT INTO invoices (invoice_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct)
     VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id
-  `, [invoiceNumber, b.job_name || null, b.job_id || null, b.customer_id || null, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total,
+  `, [invoiceNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total,
     b.notes !== undefined ? (b.notes ? sanitizeRichText(b.notes) : null) : (company.invoiceBottomNoteDefault || null),
     b.top_note !== undefined ? (b.top_note ? sanitizeRichText(b.top_note) : null) : (company.invoiceTopNoteDefault || null),
     dueDate.toISOString().slice(0, 10), discountPct]);

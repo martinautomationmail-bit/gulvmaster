@@ -972,7 +972,12 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmp-col-sum-label{font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--bly-sub);opacity:.8;flex-shrink:0}
 .crmp-col-sum-value{font-size:13px;font-weight:800;color:var(--bly-ink);letter-spacing:-.018em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crmp-col-body{flex:1;overflow-y:auto;padding:0 10px 10px;display:flex;flex-direction:column;gap:8px}
-.crmp-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:11px 12px;cursor:grab;box-shadow:0 1px 2px rgba(15,17,24,.04);transition:box-shadow .12s,transform .12s}
+.crmp-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:11px 12px;cursor:grab;box-shadow:0 1px 2px rgba(15,17,24,.04);transition:box-shadow .12s,transform .12s;display:block;text-decoration:none;color:inherit}
+/* RUNDE L — dato-linjen (oprettet + kom i denne fase) nederst på kortet, se crmpCardHtml */
+.crmp-card-dates{margin-top:6px;padding-top:6px;border-top:1px solid var(--bly-border-soft);font-size:10px;color:var(--bly-sub);display:flex}
+/* RUNDE L — lille fremdrifts-bjælke på opgave-pipeline-kortene, se pdPipelineCardHtml */
+.pd-pipeline-progress-bar{flex:1;height:5px;border-radius:3px;background:var(--bly-border-soft);overflow:hidden}
+.pd-pipeline-progress-fill{height:100%;background:var(--bly-accent);border-radius:3px}
 .crmp-card:hover{box-shadow:0 4px 14px rgba(15,17,24,.1)}
 .crmp-card.dragging{opacity:.4}
 .crmp-card-name{font-size:13px;font-weight:800;color:var(--bly-ink);margin-bottom:4px}
@@ -2465,7 +2470,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-08.1</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-08.2</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3380,7 +3385,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <tbody id="cd-opps-body"></tbody>
   </table>
 
-  <h3 style="font-size:14px;margin:22px 0 10px">📄 Tilbud <span class="sub" id="cd-quotes-count"></span></h3>
+  <!-- RUNDE L (Martins ønske #6): en kunde kan over tid have mange tilbud —
+       søgefeltet filtrerer den allerede-hentede liste (cdQuotes) på tilbudsnr.,
+       sagsnavn eller status, uden noget nyt API-kald. -->
+  <div style="display:flex;align-items:center;gap:8px;margin:22px 0 10px">
+    <h3 style="font-size:14px;margin:0;flex:1">📄 Tilbud <span class="sub" id="cd-quotes-count"></span></h3>
+    <input type="text" id="cd-quotes-search" class="bly-search" style="width:220px" placeholder="🔍 Find tilbud...">
+  </div>
   <table class="bly-table">
     <thead><tr><th>Nr.</th><th>Sag</th><th>Status</th><th class="num">Beløb</th><th>Oprettet</th><th style="width:90px"></th></tr></thead>
     <tbody id="cd-quotes-body"></tbody>
@@ -3421,6 +3432,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div id="cd-emails-list" hidden></div>
   </div>
   <div class="hint" id="cd-emails-not-connected" style="margin-bottom:20px;display:none">📧 Forbind jeres Gmail under "Min side → Indstillinger → Gmail" for automatisk at se mailkorrespondance med kunden her.</div>
+
+  <!-- FILER — RUNDE L (Martins ønske #8): denne sektion fandtes hidtil KUN på et
+       lead/en opportunity (crmpx-view-files), ikke på selve kundens egen side —
+       derfor virkede det som om "kundernes filer ikke kom ind i programmet", når
+       man reelt ledte det forkerte sted. Samme data/kilde (Gmail-vedhæftninger
+       på kundens mailkorrespondance, se GET /api/crm/customers/:id/files) og
+       samme lightbox/galleri (crmpxOpenFileLightboxAt m.fl.) genbruges her,
+       blot i sit eget grid (cd-files-grid) og med sin egen indlæsningsfunktion
+       (cdLoadFiles), da crmpx-siden holder sin egen tilstand pr. lead/opportunity. -->
+  <div class="crmpx-panel" id="cd-files-panel" style="margin-bottom:20px;display:none">
+    <h3 id="cd-files-toggle" style="cursor:pointer;user-select:none">📎 Filer <span class="sub" id="cd-files-count"></span> <span id="cd-files-toggle-icon" style="float:right;font-size:11px;color:var(--bly-sub)">▸ Vis</span></h3>
+    <div id="cd-files-wrap" hidden>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button class="btn small" type="button" id="cd-files-fullsync-btn" title="Henter hele mailhistorikken med denne kunde (ikke kun de seneste)">🔄 Hent hele mail-historikken</button>
+      </div>
+      <div id="cd-files-grid" class="cd-files-grid"></div>
+    </div>
+  </div>
 </section>
 
 <!-- ══════════════════════════════════════════════════════════════
@@ -4110,6 +4139,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div style="padding:14px 22px 0">
       <div class="bly-segtabs" id="pd-tabs">
         <button class="bly-segtab active" data-pdtab="tasks" type="button">📅 Opgaver</button>
+        <!-- RUNDE L (Martins ønske #2) — Pipeline-visning af sagens EGNE opgaver
+             (ikke at forveksle med CRM-pipelinen for leads/sales) — se
+             renderPdPipeline()/pdPipelineCardHtml() og gantt_tasks.status. -->
+        <button class="bly-segtab" data-pdtab="pipeline" type="button">🗂 Pipeline</button>
         <button class="bly-segtab" data-pdtab="photos" type="button">📷 Billeder</button>
         <button class="bly-segtab" data-pdtab="time" type="button">⏱️ Tidsregistrering</button>
         <!-- Budget-dashboard (sep. 2026, Martins ønske #3) — kun for rigtige admins, da den
@@ -4136,6 +4169,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           </div>
         </div>
         <div id="pd-gantt-strip" style="overflow-x:auto"></div>
+      </div>
+      <!-- PIPELINE — RUNDE L (Martins ønske #2 og #3): opgaverne i sagen som et
+           kanban-bord med 4 faste faser (gantt_tasks.status), man kan trække
+           imellem. Hvert kort har sin egen "📊 Book i Kapacitetsbordet"-genvej
+           (#3), samme funktion som pdtd-capacity-btn i opgave-popup'en. Bruger
+           samme klassenavne (.crmp-board/.crmp-col/.crmp-card) som CRM- og
+           projekt-Kanban'erne for et ensartet udseende, men er sin egen enkle
+           render/drag-funktion (PD_PIPELINE_STATUS_META), ikke en konfigurerbar
+           pipeline som CRM'et. -->
+      <div class="pdtabpage" id="pdtab-pipeline" style="display:none">
+        <div class="bly-toolbar">
+          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Opgave-pipeline</span><span class="sub">Træk et kort til en anden fase for at ændre status</span></div>
+        </div>
+        <div class="crmp-board" id="pd-pipeline-board"></div>
       </div>
       <div class="pdtabpage" id="pdtab-photos" style="display:none">
         <div class="bly-toolbar">
@@ -4592,11 +4639,26 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <div class="mo" id="pd-task-detail-modal">
   <div class="modal gd-modal" style="max-width:560px">
     <div class="gd-head">
-      <span class="gd-head-icon">📋</span>
-      <div style="flex:1"><div class="gd-head-title">Opgave i sagen</div><input id="pdtd-name-input" class="gd-name-input"></div>
+      <!-- RUNDE L (Martins ønske #1): farvet prik der følger opgavens status,
+           samme idé som type-prikken i Tidslinje-drawerens hoved (tl-drawer-type-dot). -->
+      <span class="gd-head-icon" style="position:relative"><span id="pdtd-status-dot" style="width:11px;height:11px;border-radius:50%;position:absolute;bottom:-1px;right:-1px;border:2px solid #fff"></span>📋</span>
+      <div style="flex:1"><div class="gd-head-title">Opgave i sagen · <span id="pdtd-status-label" style="opacity:.8;font-weight:600"></span></div><input id="pdtd-name-input" class="gd-name-input"></div>
     </div>
     <div class="modal-body-pad">
-      <div class="form-group" style="position:relative">
+      <!-- RUNDE L (Martins ønske #1 og #2) — samme 4 faser som den nye
+           Pipeline-fane (PD_PIPELINE_STATUS_META), redigerbar direkte herfra
+           også, så man ikke behøver skifte til kanban-visningen for bare at
+           flytte én opgave videre. -->
+      <div class="form-group">
+        <label class="form-label">Status i pipeline</label>
+        <select id="pdtd-status-select" class="tld-status-select" style="width:100%">
+          <option value="todo" style="background:#F1F5F9;color:#475569">📝 Ikke startet</option>
+          <option value="in_progress" style="background:#DBEAFE;color:#1D4ED8">🔨 I gang</option>
+          <option value="waiting" style="background:#FEF9C3;color:#92570A">⏳ Afventer</option>
+          <option value="done" style="background:#DCFCE7;color:#15803D">✅ Færdig</option>
+        </select>
+      </div>
+      <div class="form-group" style="position:relative;margin-top:14px">
         <label class="form-label">Periode</label>
         <input id="pdtd-start-input" type="hidden">
         <input id="pdtd-end-input" type="hidden">
@@ -4618,6 +4680,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <input id="pdtd-checklist-new" class="input" placeholder="Fx Tag billede før opstart" style="flex:1">
           <button class="btn small" type="button" id="pdtd-checklist-add-btn">+ Tilføj</button>
         </div>
+      </div>
+      <!-- RUNDE L (Martins ønske #1 "flere data oplysninger") — hvem opgaven
+           allerede er booket på i Kapacitetsbordet, hvis nogen. Skjult helt
+           når opgaven slet ikke er booket endnu. -->
+      <div class="form-group" id="pdtd-bookings-wrap" style="margin-top:14px;display:none">
+        <label class="form-label">👤 Booket på</label>
+        <div id="pdtd-bookings-list" class="gd-info-value"></div>
       </div>
       <div class="gd-info-grid" style="margin-top:22px">
         <div style="grid-column:1/-1;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Kundekontakt</div>
@@ -15865,7 +15934,7 @@ function crmcFillProjektType(){
 // KUNDEDETALJE — klik på en kunde i listen. Egen side (samme mønster som
 // project-detail): sagen/tilbud/faktura-data hentes samlet fra
 // GET /api/crm/customers/:id og listerne kan klikkes videre ind på hver.
-var cdCurrent=null,cdInitialized=false,cdNotes=[];
+var cdCurrent=null,cdInitialized=false,cdNotes=[],cdQuotes=[];
 function initCustomerDetailModule(){
   if(cdInitialized)return;
   cdInitialized=true;
@@ -15884,6 +15953,34 @@ function initCustomerDetailModule(){
   // Mails er altid sammenklappet ved åbning af en kundeside (se openCustomerDetail),
   // og foldes kun ud/ind ved klik på selve overskriften.
   document.getElementById('cd-emails-toggle').addEventListener('click',cdToggleEmailsPanel);
+  // RUNDE L (Martins ønske #6) — "Find tilbud"-søgefeltet filtrerer bare den
+  // allerede hentede liste, ingen ny hentning nødvendig.
+  document.getElementById('cd-quotes-search').addEventListener('input',cdRenderQuotes);
+  // RUNDE L (Martins ønske #8) — Filer-panellet, samme mønster som Mails
+  // herover: altid sammenklappet, foldes ud ved klik på overskriften.
+  document.getElementById('cd-files-toggle').addEventListener('click',cdToggleFilesPanel);
+}
+// RUNDE L (Martins ønske #6): filtrerer cdQuotes på tilbudsnr., sagsnavn eller
+// status-tekst — case-uafhængigt, ingen nyt API-kald.
+function cdRenderQuotes(){
+  var q=(document.getElementById('cd-quotes-search').value||'').trim().toLowerCase();
+  var list=!q?cdQuotes:cdQuotes.filter(function(x){
+    var statusLabel=(QZ_QUOTE_STATUS[x.status]&&QZ_QUOTE_STATUS[x.status].label)||x.status||'';
+    return (x.quote_number||'').toLowerCase().indexOf(q)>-1
+      ||(x.job_name||'').toLowerCase().indexOf(q)>-1
+      ||statusLabel.toLowerCase().indexOf(q)>-1;
+  });
+  document.getElementById('cd-quotes-count').textContent='('+cdQuotes.length+')';
+  document.getElementById('cd-quotes-body').innerHTML=list.length?list.map(function(x){
+    return '<tr style="cursor:pointer" onclick="openQuoteEditor('+x.id+')">'
+      +'<td>'+esc(x.quote_number||'–')+'</td>'
+      +'<td>'+esc(x.job_name||'–')+'</td>'
+      +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
+      +'<td class="num">'+krFmt(x.total)+'</td>'
+      +'<td>'+esc(fmtDaDate(x.created_at))+'</td>'
+      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" title="Åbn">→</button></div></td>'
+      +'</tr>';
+  }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:16px">'+(q?'Intet tilbud matcher "'+esc(q)+'"':'Ingen tilbud endnu')+'</td></tr>';
 }
 // Samme "hent init/data hvis det ikke allerede er gjort"-forsigtighed som
 // crmpxOpenQuote (se dens kommentar) — "+ Lav tilbud"/"+ Lav faktura" kan være
@@ -15907,6 +16004,53 @@ function cdToggleEmailsPanel(){
   list.hidden=nowHidden;
   icon.textContent=nowHidden?'▸ Vis':'▾ Skjul';
 }
+// RUNDE L (Martins ønske #8) — se HTML-kommentaren ved cd-files-panel. Bruger
+// PRÆCIS samme endpoint/data som crmpx-Filer-fanen (GET .../files), samme
+// delte lightbox (#file-lightbox-modal) og samme crmpxFiles-array til
+// forrige/næste-navigation — kun selve indlæsningen/renderingen er sin egen,
+// fordi kundesidens Filer-panel er sammenklappet som standard (ligesom Mails)
+// og derfor kun bør hente noget, første gang det rent faktisk foldes ud.
+var cdFilesLoaded=false;
+function cdToggleFilesPanel(){
+  var wrap=document.getElementById('cd-files-wrap');
+  var icon=document.getElementById('cd-files-toggle-icon');
+  var nowHidden=!wrap.hidden;
+  wrap.hidden=nowHidden;
+  icon.textContent=nowHidden?'▸ Vis':'▾ Skjul';
+  if(!nowHidden&&!cdFilesLoaded)cdLoadFiles();
+}
+async function cdLoadFiles(){
+  if(!cdCurrent)return;
+  cdFilesLoaded=true;
+  crmpxFiles=[]; // samme delte array som crmpx-Filer-fanen — aldrig bladre videre i en anden kundes liste
+  var grid=document.getElementById('cd-files-grid');
+  grid.innerHTML='<div class="crmpx-empty">Henter filer...</div>';
+  var files=await api('/api/crm/customers/'+cdCurrent.id+'/files');
+  if(!files||files.error){grid.innerHTML='<div class="crmpx-empty">Kunne ikke hente filer — '+esc((files&&files.error)||'ukendt fejl')+'</div>';return;}
+  document.getElementById('cd-files-count').textContent=files.length?'('+files.length+')':'';
+  if(!files.length){grid.innerHTML='<div class="crmpx-empty">Ingen filer fundet i mailkorrespondancen endnu</div>';return;}
+  crmpxFiles=files;
+  grid.innerHTML=files.map(function(f,i){
+    var icon=f.mimeType&&f.mimeType.indexOf('image/')===0?'🖼️':(f.mimeType==='application/pdf'?'📄':'📎');
+    return '<div class="cd-file-card" data-file-idx="'+i+'" data-msg-id="'+esc(f.gmail_message_id)+'" data-att-id="'+esc(f.attachmentId)+'" data-filename="'+esc(f.filename)+'" data-mimetype="'+esc(f.mimeType)+'">'
+      +'<div class="cd-file-icon">'+icon+'</div>'
+      +'<div class="cd-file-name">'+esc(f.filename)+'</div>'
+      +'<div class="cd-file-meta">'+esc(fmtDaDate(new Date(Number(f.internal_date)).toISOString()))+'</div>'
+      +'</div>';
+  }).join('');
+}
+// Genbruger .cd-file-card-klikket, der allerede findes globalt (se crmpxOpenFileLightboxAt-
+// lytteren ved crmpx-files-grid) — den lytter på HELE dokumentet, så den rammer
+// automatisk kort i #cd-files-grid også, uden en ekstra lytter her.
+document.getElementById('cd-files-fullsync-btn').addEventListener('click',async function(){
+  if(!cdCurrent)return;
+  var btn=document.getElementById('cd-files-fullsync-btn');
+  btn.disabled=true;var origText=btn.textContent;btn.textContent='Henter…';
+  var r=await api('/api/crm/customers/'+cdCurrent.id+'/full-mail-sync',{method:'POST'});
+  btn.disabled=false;btn.textContent=origText;
+  if(r&&r.ok){toast('Mailhistorik hentet ('+(r.added||0)+' nye) ✓','✓');cdFilesLoaded=false;cdLoadFiles();cdLoadEmails(cdCurrent.id);}
+  else toast((r&&r.error)||'Kunne ikke hente mailhistorikken','❌');
+});
 // ── "+ NY HANDEL" PÅ EN EKSISTERENDE KUNDE ───────────────────────
 // Ét klik = en ny opportunity koblet til den kunde man står på. Pipeline/stage
 // står som to små dropdowns ved siden af knappen i stedet for i en modal —
@@ -16040,6 +16184,9 @@ async function cdLoadEmails(customerId){
   var connected=!!(s&&s.connected);
   document.getElementById('cd-emails-panel').style.display=connected?'':'none';
   document.getElementById('cd-emails-not-connected').style.display=connected?'none':'';
+  // RUNDE L (Martins ønske #8) — Filer-panellet gates på PRÆCIS samme betingelse
+  // som Mails (kræver en forbundet Gmail), da det er samme datakilde.
+  document.getElementById('cd-files-panel').style.display=connected?'':'none';
   if(!connected)return;
   cdEmails=await api('/api/crm/customers/'+customerId+'/emails')||[];
   cdEmailsExpanded={};
@@ -16113,6 +16260,10 @@ async function openCustomerDetail(id){
   // anden kunde besøgt før i samme session, samme DOM-elementer) ikke "smitter af".
   document.getElementById('cd-emails-list').hidden=true;
   document.getElementById('cd-emails-toggle-icon').textContent='▸ Vis';
+  // Samme nulstilling for det nye Filer-panel (RUNDE L, #8).
+  document.getElementById('cd-files-wrap').hidden=true;
+  document.getElementById('cd-files-toggle-icon').textContent='▸ Vis';
+  cdFilesLoaded=false;
 
   document.getElementById('cd-projects-count').textContent='('+d.projects.length+')';
   var STATUS_LABEL={active:'🔧 Aktivt',on_hold:'⏸ På hold',done:'✅ Afsluttet',archived:'📦 Arkiveret'};
@@ -16125,17 +16276,9 @@ async function openCustomerDetail(id){
       +'</tr>';
   }).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen sager endnu</td></tr>';
 
-  document.getElementById('cd-quotes-count').textContent='('+d.quotes.length+')';
-  document.getElementById('cd-quotes-body').innerHTML=d.quotes.length?d.quotes.map(function(x){
-    return '<tr style="cursor:pointer" onclick="openQuoteEditor('+x.id+')">'
-      +'<td>'+esc(x.quote_number||'–')+'</td>'
-      +'<td>'+esc(x.job_name||'–')+'</td>'
-      +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
-      +'<td class="num">'+krFmt(x.total)+'</td>'
-      +'<td>'+esc(fmtDaDate(x.created_at))+'</td>'
-      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" title="Åbn">→</button></div></td>'
-      +'</tr>';
-  }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen tilbud endnu</td></tr>';
+  cdQuotes=d.quotes||[];
+  document.getElementById('cd-quotes-search').value='';
+  cdRenderQuotes();
 
   document.getElementById('cd-invoices-count').textContent='('+d.invoices.length+')';
   document.getElementById('cd-invoices-body').innerHTML=d.invoices.length?d.invoices.map(function(x){
@@ -16368,6 +16511,11 @@ function crmpRenderBoard(){
   board.querySelectorAll('.crmp-card').forEach(function(card){
     var id=Number(card.dataset.id);
     card.addEventListener('click',function(e){
+      // RUNDE L: kortet er nu et rigtigt <a href>, så almindeligt Ctrl/Cmd-klik
+      // eller midterklik skal overlades til browseren (åbner selv i ny fane/vindue)
+      // — kun et helt normalt venstreklik opfanges her til SPA-navigation.
+      if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
+      e.preventDefault();
       // I vælge-tilstand er klik = markér/afmarkér i stedet for at åbne kortet.
       if(crmpState.selectMode){
         if(e.target&&e.target.classList.contains('crmp-card-check'))return; // checkboxen håndterer sig selv
@@ -16384,8 +16532,24 @@ function crmpRenderBoard(){
     card.addEventListener('dragend',function(){card.classList.remove('dragging');});
   });
   board.querySelectorAll('.crmp-card-check').forEach(function(cb){
-    cb.addEventListener('click',function(e){e.stopPropagation();});
-    cb.addEventListener('change',function(){crmpSetCardSelected(Number(cb.dataset.id),cb.checked);});
+    // RUNDE L: kortet er nu et rigtigt <a href> (se crmpCardHtml). preventDefault()
+    // er nødvendig for at undgå at klikket ÅBNER linket (ændrer URL-hash'en) —
+    // men da browseren allerede (jf. HTML-specifikationen for "activation
+    // behavior") slår cb.checked om FØR click-eventet overhovedet dispatches,
+    // og bagefter (fordi vi kalder preventDefault) automatisk RULLER den
+    // ændring tilbage igen bagefter, kan vi ikke bare læse/skrive cb.checked
+    // synkront inde i handleren — resultatet ville altid blive rullet
+    // tilbage. Løsningen: læs den (allerede omvendte) ønskede værdi synkront,
+    // men anvend den først i en setTimeout(...,0), dvs. EFTER browserens
+    // egen rul-tilbage er kørt færdig.
+    cb.addEventListener('click',function(e){
+      e.stopPropagation();e.preventDefault();
+      var wantChecked=cb.checked;
+      setTimeout(function(){
+        cb.checked=wantChecked;
+        crmpSetCardSelected(Number(cb.dataset.id),wantChecked);
+      },0);
+    });
   });
   // Drop-mål er nu hele .crmp-col (ikke kun .crmp-col-body), så man også kan
   // trække et kort ned i en KRYMPET kolonne — fx direkte til "Tabt".
@@ -16431,7 +16595,19 @@ function crmpCardHtml(c,pipeline,defs){
     +(pipeline.type==='opportunity'&&c.probability!=null?'<span>'+esc(c.probability)+'%</span>':'')
     +'<span style="margin-left:auto">'+esc(fmtRelativeDa(c.updated_at||c.created_at))+'</span>';
   var noteText=pipeline.type==='lead'?c.note:null;
-  return '<div class="crmp-card'+(crmpState.selectMode&&selected?' crmp-card-selected':'')+'" draggable="'+(crmpState.selectMode?'false':'true')+'" data-id="'+c.id+'">'
+  // RUNDE L (Martins ønske): kortet skal kunne højreklikkes og åbnes i en ny fane,
+  // ligesom et almindeligt link — derfor et rigtigt <a href="#crmp-detail/..."> i
+  // stedet for en <div>. Almindeligt venstreklik opfanges stadig af klik-handleren
+  // nedenfor (SPA-navigation uden sideindlæsning), men et rigtigt href gør at
+  // browserens egen "Åbn link i ny fane" (højreklik) og Ctrl/Cmd-klik/midterklik
+  // virker helt normalt, uden ekstra JS.
+  // RUNDE L (Martins ønske #7): viser nu BÅDE oprettelsesdato og dato for seneste
+  // stage-skift. stage_changed_at fandtes allerede i databasen (bruges af
+  // opfølgnings-automatikken, se kommentar ved kolonnen i server.js) — sættes
+  // KUN når stage_id rent faktisk ændres, ikke ved enhver anden redigering.
+  var datesLine='<span title="Oprettet">🕓 '+esc(fmtRelativeDa(c.created_at))+'</span>'
+    +'<span title="Kom i denne fase" style="margin-left:8px">➜ '+esc(fmtRelativeDa(c.stage_changed_at||c.created_at))+'</span>';
+  return '<a href="#crmp-detail/'+esc(pipeline.type)+'/'+c.id+'" class="crmp-card'+(crmpState.selectMode&&selected?' crmp-card-selected':'')+'" draggable="'+(crmpState.selectMode?'false':'true')+'" data-id="'+c.id+'">'
     +'<div class="crmp-card-row" style="margin:0 0 6px">'+ownerLine+'</div>'
     +'<div class="crmp-card-name">'+esc(pipeline.type==='opportunity'?(c.contact_name||c.name):c.name)+'</div>'
     +(contactLine?'<div class="crmp-card-row">'+esc(contactLine)+'</div>':'')
@@ -16439,7 +16615,9 @@ function crmpCardHtml(c,pipeline,defs){
     +(badges?'<div class="crmp-card-badges">'+badges+'</div>':'')
     +'<div class="crmp-card-foot">'
     +(pipeline.type==='opportunity'&&c.value!=null?'<span class="crmp-card-value">'+krFmt(c.value)+'</span>':'<span></span>')
-    +'</div></div>';
+    +'</div>'
+    +'<div class="crmp-card-row crmp-card-dates">'+datesLine+'</div>'
+    +'</a>';
 }
 // ══════════════════════════════════════════════════════════════
 // MASSEVALG PÅ BOARDET — "Vælg"-tilstand + flydende handlingsbjælke.
@@ -18254,6 +18432,13 @@ function initProjectsModule(){
     });
     document.getElementById('pdtd-save-btn').addEventListener('click',savePdTaskDetail);
     document.getElementById('pdtd-progress-input').addEventListener('input',function(){document.getElementById('pdtd-progress-value').textContent=this.value+'%';});
+    // RUNDE L (#1) — status-prikken/-teksten i hovedet opdateres straks ved valg,
+    // så man ser farven skifte med det samme, ikke først efter Gem.
+    document.getElementById('pdtd-status-select').addEventListener('change',function(){
+      var meta=PD_PIPELINE_STATUS_META[this.value]||PD_PIPELINE_STATUS_META.todo;
+      document.getElementById('pdtd-status-dot').style.background=meta.dot;
+      document.getElementById('pdtd-status-label').textContent=meta.label;
+    });
     document.getElementById('pdtd-checklist-add-btn').addEventListener('click',function(){addChecklistItem('pdtd-checklist-items',pdTaskDetailId,'pdtd-checklist-new');});
     document.getElementById('pdtd-capacity-btn').addEventListener('click',function(){
       if(!pdTaskDetailId)return;
@@ -18390,7 +18575,7 @@ async function openProjectDetail(id){
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
   switchPdTab('tasks');
-  renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
+  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
   // Genindlæs den delte opgavepool (tasks-variablen) her, så "Tilføj til
   // Kapacitetsbordet" og tjekpunkter på en netop oprettet/redigeret sags-opgave
   // altid har den friske spejl-række fra jt_tasks at slå op i.
@@ -18410,7 +18595,7 @@ async function reloadPdCurrent(){
   var ilink=document.getElementById('pd-invoice-link');
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
-  renderPdGanttStrip();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
+  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
   await loadPjProjects();renderPjProjects();
   loadAll();
 }
@@ -18460,8 +18645,86 @@ function renderPdBudget(){
 }
 function switchPdTab(name){
   document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdtab===name);});
-  ['tasks','photos','time','budget','materials','qa','contact'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
+  ['tasks','pipeline','photos','time','budget','materials','qa','contact'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
   if(name==='budget'&&me.role==='admin')loadPdBudget();
+  // RUNDE L (#2) — Pipeline-kortene skal altid være friske når man rent
+  // faktisk klikker ind på fanen (fx efter at have redigeret en opgave på
+  // Opgaver-fanen lige inden).
+  if(name==='pipeline')renderPdPipeline();
+}
+// ── OPGAVE-PIPELINE (RUNDE L, Martins ønske #2 og #3) ──────────────────────
+// Sagens egne opgaver som et kanban med 4 faste faser (gantt_tasks.status),
+// man kan trække imellem — farven følger med, se PD_PIPELINE_STATUS_META.
+// Genbruger samme .crmp-board/.crmp-col/.crmp-card-klasser som CRM- og
+// projekt-Kanban'erne (se renderPjKanban ovenfor) for et ensartet udseende.
+var PD_PIPELINE_STATUS_META={
+  todo:{dot:'#94A3B8',label:'📝 Ikke startet'},
+  in_progress:{dot:'#3B82F6',label:'🔨 I gang'},
+  waiting:{dot:'#F59E0B',label:'⏳ Afventer'},
+  done:{dot:'#22C55E',label:'✅ Færdig'}
+};
+var PD_PIPELINE_STATUS_ORDER=['todo','in_progress','waiting','done'];
+var pdPipelineDragId=null;
+function pdPipelineCardHtml(t){
+  var sd=t.start_date?fmtDaDate(t.start_date):'?',ed=t.end_date?fmtDaDate(t.end_date):sd;
+  var progressPct=Math.round((Number(t.progress)||0)*100);
+  return '<div class="crmp-card" draggable="true" data-id="'+esc(t.id)+'">'
+    +'<div class="crmp-card-name">'+esc(t.name||'(uden navn)')+'</div>'
+    +'<div class="crmp-card-row">'+esc(sd)+' – '+esc(ed)+'</div>'
+    +'<div class="crmp-card-row" style="align-items:center">'
+    +'<div class="pd-pipeline-progress-bar"><div class="pd-pipeline-progress-fill" style="width:'+progressPct+'%"></div></div>'
+    +'<span class="sub" style="margin-left:6px">'+progressPct+'%</span>'
+    +'</div>'
+    +'<div class="crmp-card-foot">'
+    +'<button type="button" class="btn small" data-pd-pipeline-book="'+esc(t.id)+'" title="Book denne opgave i Kapacitetsbordet">📊 Book'+(t.has_booking?' ✓':'')+'</button>'
+    +'</div></div>';
+}
+function renderPdPipeline(){
+  var board=document.getElementById('pd-pipeline-board');
+  if(!board||!pjCurrent)return;
+  var tasks=pjCurrent.tasks||[];
+  board.innerHTML=PD_PIPELINE_STATUS_ORDER.map(function(status){
+    var cards=tasks.filter(function(t){return (t.status||'todo')===status;});
+    var meta=PD_PIPELINE_STATUS_META[status];
+    return '<div class="crmp-col" data-status="'+status+'">'
+      +'<div class="crmp-col-head"><div class="crmp-col-headrow"><div class="crmp-col-title" style="flex:1;min-width:0">'
+      +'<span class="crmp-col-dot" style="background:'+meta.dot+'"></span>'+meta.label+'<span class="crmp-col-count">'+cards.length+'</span>'
+      +'</div></div></div>'
+      +'<div class="crmp-col-body" data-status="'+status+'">'+(cards.length?cards.map(pdPipelineCardHtml).join(''):'<div class="crmpx-empty" style="padding:10px 4px">Ingen opgaver her</div>')+'</div>'
+      +'</div>';
+  }).join('');
+  board.querySelectorAll('.crmp-card').forEach(function(card){
+    var id=card.dataset.id;
+    card.addEventListener('click',function(e){
+      if(e.target.closest('[data-pd-pipeline-book]'))return;
+      openPdTaskDetail(id);
+    });
+    card.addEventListener('dragstart',function(){pdPipelineDragId=id;card.classList.add('dragging');});
+    card.addEventListener('dragend',function(){card.classList.remove('dragging');});
+  });
+  board.querySelectorAll('[data-pd-pipeline-book]').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      openCapacityModal({taskId:btn.dataset.pdPipelineBook});
+    });
+  });
+  board.querySelectorAll('.crmp-col').forEach(function(col){
+    col.addEventListener('dragover',function(e){e.preventDefault();col.classList.add('drag-over');});
+    col.addEventListener('dragleave',function(){col.classList.remove('drag-over');});
+    col.addEventListener('drop',async function(e){
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      var status=col.dataset.status;
+      var id=pdPipelineDragId;
+      if(!id)return;
+      var task=tasks.find(function(t){return t.id===id;});
+      if(task&&task.status===status)return; // droppet i samme kolonne — intet at gøre
+      if(task)task.status=status; // optimistisk, så kortet ikke "hopper tilbage" mens kaldet er undervejs
+      renderPdPipeline();
+      var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+id,{method:'PUT',body:JSON.stringify({status:status})});
+      if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke opdatere status','❌');await reloadPdCurrent();}
+    });
+  });
 }
 async function savePjRowStatus(id,status){
   var r=await api('/api/projects/'+id,{method:'PUT',body:JSON.stringify({status:status})});
@@ -18573,7 +18836,10 @@ async function savePjNew(){
   };
   var r=await api('/api/projects',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
-    toast('Projekt oprettet','✓');
+    // RUNDE L — klikbar "oprettet"-toast, samme mønster som ved leads/opportunities.
+    // Siden åbnes allerede automatisk herunder, men toasten skal stadig kunne
+    // klikkes/pege på sagen, så det er ens overalt i programmet.
+    toast('Projekt oprettet ✓','✓',function(){openProjectDetail(r.id);});
     closeModal('pj-new-modal');
     await loadPjProjects();renderPjProjects();
     openProjectDetail(r.id);
@@ -18792,6 +19058,19 @@ function openPdTaskDetail(taskId){
   document.getElementById('pdtd-progress-value').textContent=progressPct+'%';
   document.getElementById('pdtd-checklist-new').value='';
   renderChecklistItems('pdtd-checklist-items',taskId);
+  // RUNDE L (Martins ønske #1) — status-farve i hovedet + status-select, samme
+  // vokabular som den nye Pipeline-fane (PD_PIPELINE_STATUS_META).
+  var status=t.status||'todo',statusMeta=PD_PIPELINE_STATUS_META[status]||PD_PIPELINE_STATUS_META.todo;
+  document.getElementById('pdtd-status-select').value=status;
+  document.getElementById('pdtd-status-dot').style.background=statusMeta.dot;
+  document.getElementById('pdtd-status-label').textContent=statusMeta.label;
+  // "Booket på" — se bookings-aggregeringen i GET /api/projects/:id (server.js).
+  var bookings=t.bookings||[];
+  document.getElementById('pdtd-bookings-wrap').style.display=bookings.length?'':'none';
+  document.getElementById('pdtd-bookings-list').innerHTML=bookings.map(function(b){
+    var period=b.start_date===b.end_date?fmtDaDate(b.start_date):(fmtDaDate(b.start_date)+' – '+fmtDaDate(b.end_date));
+    return '<div>'+esc(b.user_name||'Ukendt medarbejder')+' <span class="muted-sm">· '+esc(period)+'</span></div>';
+  }).join('');
   document.getElementById('pd-task-detail-modal').classList.add('open');
 }
 // ── ÉT kalendervisning til start+slutdato — klik en dag for start, klik en
@@ -18869,7 +19148,8 @@ async function savePdTaskDetail(){
     start_date:document.getElementById('pdtd-start-input').value,
     end_date:document.getElementById('pdtd-end-input').value||document.getElementById('pdtd-start-input').value,
     description:document.getElementById('pdtd-note-input').value,
-    progress:Math.max(0,Math.min(100,Number(document.getElementById('pdtd-progress-input').value)||0))/100
+    progress:Math.max(0,Math.min(100,Number(document.getElementById('pdtd-progress-input').value)||0))/100,
+    status:document.getElementById('pdtd-status-select').value
   };
   var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+pdTaskDetailId,{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){closeModal('pd-task-detail-modal');toast('Gemt ✓','✓');reloadPdCurrent();}
@@ -19973,7 +20253,14 @@ async function qeStatusChanged(e){
     // RUNDE K (sep. 2026, Martins ønske) — sætter man status til "Godkendt" her
     // manuelt (fx kunden sagde ja telefonisk), opretter serveren nu automatisk et
     // projekt, ligesom når kunden selv underskriver online — se project_id i svaret.
-    toast(newStatus==='accepted'&&r.project_id?'Godkendt — projekt oprettet ✓':'Status opdateret','✓');
+    // RUNDE L (sep. 2026, Martins ønske): toasten skal, ligesom ved oprettelse af
+    // et lead/en opportunity, kunne klikkes direkte ind på den nyoprettede sag —
+    // samme klikbare toast-mønster (toast(msg,ic,onClick)) som resten af CRM'et.
+    if(newStatus==='accepted'&&r.project_id){
+      toast('Godkendt — projekt oprettet ✓','✓',function(){closeModal('quote-editor-modal');openProjectDetail(r.project_id);});
+    } else {
+      toast('Status opdateret','✓');
+    }
     await loadQzQuotes();renderQzQuotes();
   }
   else{toast((r&&r.error)||'Kunne ikke opdatere status','❌');qePopulateStatusSelect(qeState.lastStatus);}
