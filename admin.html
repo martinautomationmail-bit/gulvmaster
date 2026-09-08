@@ -2465,7 +2465,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-07.7</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-08.1</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3249,10 +3249,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="qztabpage" id="qztab-products" style="display:none">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title">Produkter</span><input type="text" id="qz-product-search" class="bly-search" placeholder="Søg i produkter..."></div>
-      <!-- "📥 Importér fra JobTread" fjernet 05-09-2026 sammen med den tilhørende
-           rute (server.js: /api/products/import-from-jobtread) — alt produktdata
-           oprettes nu direkte i appen. -->
+      <!-- "📥 Importér fra JobTread" genaktiveret 08-09-2026 (var fjernet 05-09-2026) —
+           se server.js: /api/products/import-from-jobtread. Bruges nu primært til at
+           udfylde manglende beskrivelser fra JobTreads cost items. -->
       <div class="bly-toolbar-right">
+        <button class="bly-btn" id="qz-import-jt-btn" type="button">📥 Importér fra JobTread</button>
         <button class="bly-btn" id="qz-new-product-btn" type="button">+ Nyt produkt</button>
       </div>
     </div>
@@ -15669,6 +15670,25 @@ async function deleteQzProduct(){
   var r=await api('/api/products/'+qzEditingProductId,{method:'DELETE'});
   if(r&&r.ok){toast('Produkt slettet','🗑');closeModal('qz-product-modal');await loadQzProducts();renderQzProducts();}
 }
+// Genaktiveret 08-09-2026 (var afkoblet 05-09-2026): engangs-import fra JobTreads
+// cost items — bruges primært til at udfylde manglende beskrivelser på eksisterende
+// produkter/ydelser, samt at oprette evt. nye produkter der findes i JobTread men
+// ikke lokalt. Overskriver ALDRIG navn/pris/eksisterende beskrivelse — kun tomme
+// beskrivelsesfelter udfyldes (se server.js for den fulde logik).
+async function importProductsFromJobtread(){
+  if(!await gmConfirm('Hent produkter/ydelser fra JobTread? Dette udfylder manglende beskrivelser på eksisterende produkter og opretter evt. nye produkter, der findes i JobTread men ikke her. Eksisterende navne, priser og beskrivelser bliver ALDRIG overskrevet.','Importér fra JobTread'))return;
+  var btn=document.getElementById('qz-import-jt-btn');
+  var origText=btn.textContent;
+  btn.disabled=true;btn.textContent='Henter fra JobTread…';
+  var r=await api('/api/products/import-from-jobtread',{method:'POST'});
+  btn.disabled=false;btn.textContent=origText;
+  if(r&&r.ok){
+    toast('Import færdig: '+r.imported+' nye, '+r.descriptions_filled+' beskrivelser udfyldt, '+r.skipped+' allerede opdateret ('+r.total_found+' fundet i alt)','✓');
+    await loadQzProducts();renderQzProducts();
+  } else {
+    toast((r&&r.error)||'Kunne ikke importere fra JobTread','❌');
+  }
+}
 // ══════════════════════════════════════════════════════════════
 // KUNDER (CRM) — eget kundekartotek, uafhængigt af JobTread.
 // ══════════════════════════════════════════════════════════════
@@ -20417,6 +20437,7 @@ function bindQuotesModuleEvents(){
   qzQuotePeriodFilter=makeBlyPeriodFilter('qz-quotes-period-btn','qz-quotes-period-pop','qz-quotes-period-label',function(){renderQzQuotes();});
   qzInvoicePeriodFilter=makeBlyPeriodFilter('qz-invoices-period-btn','qz-invoices-period-pop','qz-invoices-period-label',function(){renderQzInvoices();});
   document.getElementById('qz-new-product-btn').addEventListener('click',function(){openProductModal(null);});
+  document.getElementById('qz-import-jt-btn').addEventListener('click',importProductsFromJobtread);
   document.getElementById('qzp-cancel').addEventListener('click',function(){closeModal('qz-product-modal');});
   document.getElementById('qzp-save').addEventListener('click',saveQzProduct);
   document.getElementById('qzp-delete').addEventListener('click',deleteQzProduct);

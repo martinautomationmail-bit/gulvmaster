@@ -12735,79 +12735,95 @@ app.delete('/api/akkord-items/:id', auth, adminOnly, asyncRoute(async (req, res)
   res.json({ ok: true });
 }));
 
-// ── AFKOBLET 05-09-2026 ────────────────────────────────────────────────────
-// Martin har fjernet alle resterende JobTread-koblinger fra admin-UI'et — dette
-// engangsimport-værktøj ("📥 Importér fra JobTread" i Produkter) er derfor også
-// taget ud. Ruten er kommenteret ud, ikke slettet, af samme grund som de andre
-// JobTread-afkoblinger denne dag: nemt at genaktivere, hvis det skulle blive
-// relevant igen. products.jt_cost_item_id-kolonnen og de allerede importerede
-// produkter er urørte.
-// // Engangs-import fra JobTread's costItems — bevidst IKKE en løbende synkronisering
-// // (se svar i chatten): henter alt organisationen har brugt af cost items på tværs af
-// // jobs, og lægger de unikke navne ind som et udgangspunkt for jeres eget katalog.
-// // Køres kun når admin selv trykker på knappen, aldrig automatisk.
-// app.post('/api/products/import-from-jobtread', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
-//   if (!JT_ORG || !JT_GRANT) return res.status(400).json({ error: 'JobTread er ikke sat op på serveren' });
-//   // JobTread har ikke en selvstændig "produktkatalog"-type — cost items på tværs
-//   // af alle jobs bruges i stedet, hvor en cost item enten ER en genbrugelig skabelon
-//   // (organizationCostItem er tom, og den har sin egen unitCost/unitPrice), eller er
-//   // en KOPI af én, brugt på et konkret job (organizationCostItem peger på skabelonen,
-//   // og har typisk ikke sin egen pris). Vi importerer kun items med reelle pris-data,
-//   // dedupliceret på navn — kopier uden egen pris springes over, da skabelonen med
-//   // samme navn allerede giver den rigtige cost/salgspris.
-//   const seen = new Map(); // navn (lowercase) -> {name,unit,cost,price,jtId,isTemplate}
-//   let page = null;
-//   let guard = 0;
-//   try {
-//     do {
-//       guard++;
-//       const data = await jtFetch({
-//         query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, costItems: {
-//           $: { size: 100, page: page || undefined },
-//           nextPage: {},
-//           nodes: { id: {}, name: {}, description: {}, unit: { name: {} }, unitCost: {}, unitPrice: {}, organizationCostItem: { id: {} } }
-//         } } }
-//       }, 'Produktimport: hent cost items fra JobTread');
-//       const conn = data?.organization?.costItems;
-//       for (const n of conn?.nodes || []) {
-//         if (!n.name) continue;
-//         if (n.unitCost == null && n.unitPrice == null) continue; // job-kopi uden egen pris — spring over
-//         const key = n.name.toLowerCase().trim();
-//         const isTemplate = !n.organizationCostItem;
-//         const existing = seen.get(key);
-//         if (!existing || (isTemplate && !existing.isTemplate)) {
-//           seen.set(key, { name: n.name, description: n.description || '', unit: n.unit?.name || 'stk', cost: Number(n.unitCost) || 0, price: Number(n.unitPrice) || 0, jtId: n.id, isTemplate });
-//         }
-//       }
-//       page = conn?.nextPage || null;
-//     } while (page && guard < 200);
-//   } catch (error) {
-//     return res.status(400).json({ error: 'Kunne ikke hente fra JobTread: ' + error.message });
-//   }
-//   let imported = 0, skipped = 0, descriptionsFilled = 0;
-//   for (const item of seen.values()) {
-//     const existing = item.jtId
-//       ? await pgOne('SELECT id, description FROM products WHERE jt_cost_item_id=$1', [item.jtId])
-//       : await pgOne('SELECT id, description FROM products WHERE lower(trim(name))=lower(trim($1)) AND jt_cost_item_id IS NULL', [item.name]);
-//     if (existing) {
-//       skipped++;
-//       // Findes allerede lokalt — vi rører aldrig navn/pris på et eksisterende produkt
-//       // (kan være rettet manuelt), men hvis der IKKE allerede står en beskrivelse, og
-//       // JobTread har en, udfylder vi den. Overskriver aldrig en beskrivelse der allerede
-//       // findes — kun tomme felter (Martins ønske, sep. 2026).
-//       if (item.description && !(existing.description || '').trim()) {
-//         await pool.query('UPDATE products SET description=$1 WHERE id=$2', [item.description, existing.id]);
-//         descriptionsFilled++;
-//       }
-//       continue;
-//     }
-//     await pool.query(`
-//       INSERT INTO products (name,description,unit,cost_price,sell_price,jt_cost_item_id) VALUES ($1,$2,$3,$4,$5,$6)
-//     `, [item.name, item.description, item.unit, item.cost, item.price, item.jtId]);
-//     imported++;
-//   }
-//   res.json({ ok: true, imported, skipped, descriptions_filled: descriptionsFilled, total_found: seen.size });
-// }));
+// ── GENAKTIVERET 08-09-2026 (var afkoblet 05-09-2026, se git-historik) ──────
+// Martin fjernede oprindeligt alle resterende JobTread-koblinger fra admin-UI'et,
+// inkl. dette engangsimport-værktøj. Genaktiveret på hans udtrykkelige, akutte
+// ønske ("MEGET VIGTIGT") om at få beskrivelser fra JobTread ind på alle
+// produkter/ydelser, som i dag mangler dem. Logikken er uændret ift. den
+// oprindelige version.
+// Engangs-import fra JobTread's costItems — bevidst IKKE en løbende synkronisering
+// (se svar i chatten): henter alt organisationen har brugt af cost items på tværs af
+// jobs, og lægger de unikke navne ind som et udgangspunkt for jeres eget katalog.
+// Køres kun når admin selv trykker på knappen, aldrig automatisk.
+app.post('/api/products/import-from-jobtread', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  if (!JT_ORG || !JT_GRANT) return res.status(400).json({ error: 'JobTread er ikke sat op på serveren' });
+  // JobTread har ikke en selvstændig "produktkatalog"-type — cost items på tværs
+  // af alle jobs bruges i stedet, hvor en cost item enten ER en genbrugelig skabelon
+  // (organizationCostItem er tom, og den har sin egen unitCost/unitPrice), eller er
+  // en KOPI af én, brugt på et konkret job (organizationCostItem peger på skabelonen,
+  // og har typisk ikke sin egen pris). Vi importerer kun items med reelle pris-data,
+  // dedupliceret på navn — kopier uden egen pris springes over, da skabelonen med
+  // samme navn allerede giver den rigtige cost/salgspris.
+  const seen = new Map(); // navn (lowercase) -> {name,unit,cost,price,jtId,isTemplate}
+  let page = null;
+  let guard = 0;
+  try {
+    do {
+      guard++;
+      const data = await jtFetch({
+        query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, costItems: {
+          $: { size: 100, page: page || undefined },
+          nextPage: {},
+          nodes: { id: {}, name: {}, description: {}, unit: { name: {} }, unitCost: {}, unitPrice: {}, organizationCostItem: { id: {} } }
+        } } }
+      }, 'Produktimport: hent cost items fra JobTread');
+      const conn = data?.organization?.costItems;
+      for (const n of conn?.nodes || []) {
+        if (!n.name) continue;
+        if (n.unitCost == null && n.unitPrice == null) continue; // job-kopi uden egen pris — spring over
+        const key = n.name.toLowerCase().trim();
+        const isTemplate = !n.organizationCostItem;
+        const existing = seen.get(key);
+        if (!existing || (isTemplate && !existing.isTemplate)) {
+          seen.set(key, { name: n.name, description: n.description || '', unit: n.unit?.name || 'stk', cost: Number(n.unitCost) || 0, price: Number(n.unitPrice) || 0, jtId: n.id, isTemplate });
+        }
+      }
+      page = conn?.nextPage || null;
+    } while (page && guard < 200);
+  } catch (error) {
+    return res.status(400).json({ error: 'Kunne ikke hente fra JobTread: ' + error.message });
+  }
+  let imported = 0, skipped = 0, descriptionsFilled = 0;
+  for (const item of seen.values()) {
+    // Match først på jt_cost_item_id (stabilt ved gen-kørsel af importen), men en
+    // ægte JobTread cost item har ALTID sit eget id — så uden et navne-fallback ville
+    // Martins eksisterende, manuelt oprettede produkter (som ikke har jt_cost_item_id
+    // sat) aldrig blive fundet her, og importen ville i stedet oprette dubletter for
+    // hvert af dem i stedet for at udfylde deres manglende beskrivelse (som er selve
+    // formålet, sep. 2026). Derfor: fald tilbage til navn-match (case/whitespace-
+    // uafhængigt) når der ikke findes et jt_cost_item_id-match, og "adoptér" derefter
+    // jt_cost_item_id'et på det fundne produkt, så senere gen-kørsler er idempotente.
+    let existing = item.jtId
+      ? await pgOne('SELECT id, description, jt_cost_item_id FROM products WHERE jt_cost_item_id=$1', [item.jtId])
+      : null;
+    if (!existing) {
+      existing = await pgOne(
+        'SELECT id, description, jt_cost_item_id FROM products WHERE lower(trim(name))=lower(trim($1)) AND (jt_cost_item_id IS NULL OR jt_cost_item_id=$1)',
+        [item.name]
+      );
+      if (existing && item.jtId && !existing.jt_cost_item_id) {
+        await pool.query('UPDATE products SET jt_cost_item_id=$1 WHERE id=$2', [item.jtId, existing.id]);
+      }
+    }
+    if (existing) {
+      skipped++;
+      // Findes allerede lokalt — vi rører aldrig navn/pris på et eksisterende produkt
+      // (kan være rettet manuelt), men hvis der IKKE allerede står en beskrivelse, og
+      // JobTread har en, udfylder vi den. Overskriver aldrig en beskrivelse der allerede
+      // findes — kun tomme felter (Martins ønske, sep. 2026).
+      if (item.description && !(existing.description || '').trim()) {
+        await pool.query('UPDATE products SET description=$1 WHERE id=$2', [item.description, existing.id]);
+        descriptionsFilled++;
+      }
+      continue;
+    }
+    await pool.query(`
+      INSERT INTO products (name,description,unit,cost_price,sell_price,jt_cost_item_id) VALUES ($1,$2,$3,$4,$5,$6)
+    `, [item.name, item.description, item.unit, item.cost, item.price, item.jtId]);
+    imported++;
+  }
+  res.json({ ok: true, imported, skipped, descriptions_filled: descriptionsFilled, total_found: seen.size });
+}));
 
 // ── TILBUDSSKABELONER — gemte linjesæt til hurtigt at starte et nyt tilbud fra ──
 app.get('/api/quote-templates', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
