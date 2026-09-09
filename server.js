@@ -1615,6 +1615,36 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+    -- RUNDE R (Martins ønske: "gør så jeg selv kan ændre/tilføje stadier") —
+    -- projekt-Kanban'ets faser var hidtil 4 hårdkodede værdier i selve koden
+    -- (active/on_hold/done/archived). De er nu rækker i denne tabel i stedet,
+    -- så Martin selv kan tilføje/omdøbe/omfarve/omarrangere sine egne faser —
+    -- samme grundtanke som CRM'ets pipelines/crm_stages allerede giver ham for
+    -- leads/salg (se crm_stages ovenfor). projects.status gemmer STADIG bare
+    -- "key"-værdien som helt almindelig tekst (uændret felt/datatype/index),
+    -- så alt andet i appen der allerede læser/skriver status (fakturering,
+    -- Opgavepool/Kapacitet/Tidslinje-filtrene, den automatiske afslutnings-mail
+    -- ved 'done' osv.) bliver ved med at virke uændret — kun listen af GYLDIGE
+    -- keys og deres labels/farver/rækkefølge er nu dynamisk i stedet for
+    -- hårdkodet. De 4 indbyggede stadier kan omdøbes/omfarves/flyttes som alle
+    -- andre, men ikke slettes (se DELETE /api/project-stages/:id) — deres KEY
+    -- er hårdkodet andre steder (fx 'done'-overgangen der afslutter opgaver og
+    -- sender kunde-mailen, og 'archived' der styrer "Vis arkiverede").
+    CREATE TABLE IF NOT EXISTS project_stages (
+      id SERIAL PRIMARY KEY,
+      key TEXT UNIQUE NOT NULL,
+      label TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#2563EB',
+      position INTEGER NOT NULL DEFAULT 0,
+      is_system INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    INSERT INTO project_stages (key,label,color,position,is_system) VALUES
+      ('active','Igangværende','#2563EB',0,1),
+      ('on_hold','På hold','#D97706',1,1),
+      ('done','Afsluttet','#15803D',2,1),
+      ('archived','Arkiveret','#6B7280',3,1)
+    ON CONFLICT (key) DO NOTHING;
     -- Sagsnummer (GM-ÅÅÅÅ-NNNN) — tildeles automatisk når sagen oprettes (se
     -- nextDocNumber('project','GM') ved INSERT INTO projects), men er et helt
     -- almindeligt tekstfelt bagefter, så det evt. kan rettes manuelt ligesom de
@@ -10209,6 +10239,69 @@ app.put('/api/projects/:id/qa-templates', auth, panelAccess('projects'), asyncRo
   res.json({ ok: true });
 }));
 
+// RUNDE R — projekt-stadier (project_stages) er nu Martins EGEN, redigerbare
+// liste i stedet for 4 hårdkodede strenge (se initSchema/project_stages for
+// baggrunden). Denne helper henter de gyldige keys, brugt til at validere
+// status ved oprettelse/opdatering af en sag nedenfor — uden den kunne man
+// (utilsigtet, fra en fremtidig integration el.lign.) skrive en vilkårlig
+// tekststreng ind i projects.status, som så ikke ville matche noget stadie
+// noget sted i UI'et.
+async function validProjectStageKeys() {
+  const rows = (await pool.query('SELECT key FROM project_stages')).rows;
+  return rows.map(r => r.key);
+}
+// ── Stadier (Kanban-faser) på projekter — CRUD ──────────────────────────────
+app.get('/api/project-stages', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT * FROM project_stages ORDER BY position ASC, id ASC')).rows;
+  res.json(rows);
+}));
+app.post('/api/project-stages', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const label = String(b.label || '').trim();
+  if (!label) return res.status(400).json({ error: 'Navn mangler' });
+  // Genererer en stabil, unik "key" ud fra navnet (samme slags nøgle som
+  // active/on_hold/done/archived) — det er DEN der reelt gemmes i
+  // projects.status, ikke selve label-teksten, så en senere omdøbning af
+  // stadiet ikke ændrer noget på de sager der allerede har det.
+  let base = label.toLowerCase()
+    .replace(/[æå]/g, 'a').replace(/ø/g, 'o').replace(/é|è|ê/g, 'e')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'stadie';
+  let key = base, n = 2;
+  const existing = new Set(await validProjectStageKeys());
+  while (existing.has(key)) { key = base + '_' + n; n++; }
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM project_stages');
+  const r = await pgOne(
+    'INSERT INTO project_stages (key,label,color,position,is_system) VALUES ($1,$2,$3,$4,0) RETURNING id',
+    [key, label, b.color || '#2563EB', posRow.pos]
+  );
+  res.json({ ok: true, id: r.id, key });
+}));
+app.put('/api/project-stages/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM project_stages WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Stadiet blev ikke fundet' });
+  const b = req.body || {};
+  // "key" (den værdi der faktisk gemmes i projects.status) kan bevidst IKKE
+  // ændres herfra, heller ikke for et selvoprettet stadie — kun label/farve/
+  // rækkefølge. Ellers ville en omdøbning "flytte" alle eksisterende sager
+  // væk fra stadiet uden man opdagede det.
+  await pool.query('UPDATE project_stages SET label=$1, color=$2, position=$3 WHERE id=$4', [
+    b.label !== undefined ? String(b.label).trim() || current.label : current.label,
+    b.color !== undefined ? b.color : current.color,
+    b.position !== undefined ? b.position : current.position,
+    req.params.id
+  ]);
+  res.json({ ok: true });
+}));
+app.delete('/api/project-stages/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM project_stages WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Stadiet blev ikke fundet' });
+  if (current.is_system) return res.status(400).json({ error: 'Dette er et af de indbyggede stadier og kan ikke slettes — det kan godt omdøbes og flyttes.' });
+  const inUse = await pgOne('SELECT COUNT(*)::int AS n FROM projects WHERE status=$1', [current.key]);
+  if (inUse && inUse.n > 0) return res.status(400).json({ error: 'Stadiet bruges stadig af ' + inUse.n + ' sag(er) — flyt dem til et andet stadie først' });
+  await pool.query('DELETE FROM project_stages WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
 // RUNDE K (sep. 2026, Martins ønske) — manuel projekt-oprettelse: "Jeg skal kunne
 // oprette et projekt manuelt inde under projekter og tilføje til kunde". Hidtil
 // kunne projekter KUN opstå automatisk (kunde-accept af tilbud, eller
@@ -10219,7 +10312,8 @@ app.post('/api/projects', auth, panelAccess('projects'), asyncRoute(async (req, 
   const b = req.body || {};
   const name = String(b.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Angiv et navn på projektet' });
-  const status = ['active', 'on_hold', 'done', 'archived'].includes(b.status) ? b.status : 'active';
+  const validKeys = await validProjectStageKeys();
+  const status = validKeys.includes(b.status) ? b.status : 'active';
   const jobNumber = await nextDocNumber('project', 'GM');
   const resolvedCustomerId = await resolveCustomerId(b.customer_id || null, b.customer_email || null, b.customer_phone || null);
   const p = await pgOne(`
@@ -10233,6 +10327,10 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
   const current = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   const b = req.body || {};
+  if (b.status !== undefined) {
+    const validKeys = await validProjectStageKeys();
+    if (!validKeys.includes(b.status)) return res.status(400).json({ error: 'Ukendt stadie' });
+  }
   const newStatus = b.status !== undefined ? b.status : current.status;
   await pool.query(`
     UPDATE projects SET name=$1, status=$2, customer_address=$3, customer_phone=$4, customer_email=$5, customer_id=$6, updated_at=${nowTextSQL()}

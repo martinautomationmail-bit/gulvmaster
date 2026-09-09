@@ -1723,6 +1723,10 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .assign-sub{font-size:8px;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 .assign-note-dot{font-size:8px;opacity:.85;flex-shrink:0;cursor:help}
 .assign-time{font-size:8px;font-weight:700;opacity:.9}
+/* RUNDE Q — adresse-linje på selve opgave-kortet i Daglig Plan/Opgavepool, se
+   addressMarkup(). Afkortes ligesom .assign-sub — kortet er kun 128px bredt. */
+.assign-address{font-size:8px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.assign-address .task-phone-link{color:inherit;text-decoration:underline;font-weight:700}
 .day-load{font-size:8px;color:var(--muted);text-align:right;margin-top:2px}
 .day-load.overload{color:#B91C1C;font-weight:800}
 .add-small{width:100%;border:1px dashed var(--border);background:#fff;color:var(--ghost);border-radius:4px;font-size:9px;padding:2px;cursor:pointer;margin-top:2px}
@@ -2130,6 +2134,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 #pd-gantt-strip .gantt-list-row-actions{display:flex;gap:4px;flex-shrink:0;opacity:0;transition:.12s}
 #pd-gantt-strip .gantt-list-row[data-task-id]:hover .gantt-list-row-actions{opacity:1}
 #pd-gantt-strip .gantt-list-row-actions .qz-icon-btn{width:24px;height:24px;font-size:11px}
+/* RUNDE Q (Martins ønske) — "trække en pil fra en task til en anden" i stedet for kun
+   dropdown'en. Lille håndtag i højre kant af hver bjælke (kun synligt ved hover, ligesom
+   ændre-varighed-håndtagene den allerede har) — træk herfra og slip på en anden opgave for
+   at kæde dem sammen. Dropdown'en (.gantt-link-select ovenfor) er bevidst BEHOLDT som
+   sekundær metode, den er stadig nyttig når opgaverne er langt fra hinanden på skærmen. */
+#pd-gantt-strip .gantt-bar-link-handle{position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:11px;height:11px;border-radius:50%;background:#8B5CF6;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,34,64,.35);cursor:crosshair;opacity:0;transition:opacity .12s,transform .12s;z-index:6}
+#pd-gantt-strip .gantt-bar:hover .gantt-bar-link-handle{opacity:1}
+#pd-gantt-strip .gantt-bar-link-handle:hover{transform:translateY(-50%) scale(1.35)}
+#pd-gantt-strip .gantt-bar.gantt-bar-link-target{outline:2.5px dashed #8B5CF6;outline-offset:2px}
+/* Den tynde synlige pil (.gantt-dep-path) er for smal til nemt at ramme med musen, så der
+   ligger en usynlig, meget bredere "hit"-linje ovenpå (.gantt-dep-hit) som fanger klikket —
+   selve SVG'en har pointer-events:none (så den ikke er i vejen for resten af tidslinjen),
+   men det enkelte hit-element sætter sin egen pointer-events:auto (se renderPdGanttStrip). */
+#pd-gantt-strip .gantt-dep-path.selected{filter:drop-shadow(0 0 1px rgba(239,68,68,.5))}
 .pd-gantt-nav{display:flex;align-items:center;gap:4px}
 .pd-gantt-nav .btn.small{padding:4px 9px;font-weight:700}
 .gantt-expand-toggle{margin-right:5px;font-size:10px;color:var(--muted);width:12px;display:inline-block}
@@ -2528,7 +2546,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-09.2</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-09.4</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3955,6 +3973,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <button class="bly-segtab active" id="proj-view-list-btn" type="button" title="Listevisning">☰ Liste</button>
           <button class="bly-segtab" id="proj-view-kanban-btn" type="button" title="Kanban-visning — træk sager mellem faser">🗂️ Kanban</button>
         </div>
+        <!-- RUNDE R (Martins ønske: "gør så jeg selv kan ændre/tilføje stadier") —
+             åbner en editor til at tilføje/omdøbe/omfarve/omarrangere sagernes
+             egne Kanban-faser. Se pj-stages-modal og openPjStagesModal(). -->
+        <button class="bly-btn outline" id="proj-stages-btn" type="button" title="Tilføj, omdøb eller omarrangér sagernes stadier">⚙️ Rediger stadier</button>
         <button class="bly-btn" id="proj-new-btn" type="button">+ Nyt projekt</button>
       </div>
     </div>
@@ -4199,12 +4221,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="sub" id="pd-subtitle" style="font-size:12px;margin-top:2px"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <select id="pd-status-select" class="select" style="width:auto">
-          <option value="active">Aktivt</option>
-          <option value="on_hold">På hold</option>
-          <option value="done">Afsluttet</option>
-          <option value="archived">Arkiveret</option>
-        </select>
+        <!-- RUNDE R — indhold sat dynamisk fra pjStages (Martins egne stadier) i
+             openProjectDetail(), ikke længere disse 4 hårdkodede <option>er. -->
+        <select id="pd-status-select" class="select" style="width:auto"></select>
         <a id="pd-quote-link" class="bly-btn outline" href="#" target="_blank" style="display:none">📄 Se tilbud</a>
         <a id="pd-invoice-link" class="bly-btn outline" href="#" target="_blank" style="display:none">🧾 Se faktura</a>
         <button id="pd-send-portal-btn" class="bly-btn outline" type="button" title="Send linket til kundens egen side (alle sager, tilbud og fakturaer) på mail">🔗 Send kundeportal</button>
@@ -5217,11 +5236,33 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="qe-field-row">
       <div><label class="qe-label">E-mail</label><input id="pjn-email" class="qe-input"></div>
-      <div><label class="qe-label">Status</label><select id="pjn-status" class="qe-input"><option value="active">🔧 Aktivt</option><option value="on_hold">⏸ På hold</option><option value="done">✅ Afsluttet</option></select></div>
+      <!-- RUNDE R — indhold sat dynamisk fra pjNonArchivedStages() i openPjNewModal(). -->
+      <div><label class="qe-label">Status</label><select id="pjn-status" class="qe-input"></select></div>
     </div>
     <div class="modal-actions">
       <button class="btn" id="pjn-cancel-btn" type="button">Annuller</button>
       <button class="btn primary" id="pjn-save-btn" type="button">Opret projekt</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE R (Martins ønske: "gør så jeg selv kan ændre/tilføje stadier") — editor til
+     sagernes Kanban-faser (project_stages i server.js). Samme opbygning/stil som
+     CRM-pipelinens stage-editor (#crmp-settings-modal, #crmp-set-stages-list) for
+     genkendelighed, bare uden SMS/mail-automatikken — det giver ikke mening for
+     sags-stadier på samme måde som for CRM-leads. -->
+<div class="mo" id="pj-stages-modal">
+  <div class="modal" style="max-width:520px;width:92vw">
+    <h3 style="margin:0 0 4px">⚙️ Rediger stadier</h3>
+    <p class="sub" style="margin-top:0">Sagernes faser i Kanban-visningen og status-dropdown'en. De 4 indbyggede (Igangværende/På hold/Afsluttet/Arkiveret) kan omdøbes, omfarves og flyttes, men ikke slettes — Afsluttet og Arkiveret har begge en særlig funktion andre steder i programmet (bl.a. den automatiske "sag afsluttet"-mail til kunden, og "Vis arkiverede"-knappen).</p>
+    <div id="pjs-stages-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="pjs-new-color" type="color" value="#6366F1" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--bly-border)">
+      <input id="pjs-new-name" class="input" placeholder="Nyt stadie, fx &quot;Venter på materialer&quot;" style="flex:1">
+      <button class="btn small" id="pjs-add-btn" type="button">+ Tilføj stadie</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="pjs-close-btn" type="button">Luk</button>
     </div>
   </div>
 </div>
@@ -6674,6 +6715,17 @@ function capClass(booked,cap){var p=cap?booked/cap:0;return p<=0?'cap-free':p<.7
 function barColor(booked,cap){var p=cap?booked/cap:0;return p<=0?'var(--sand-bar)':p<.7?'var(--lay-bar)':p<=1?'var(--paint-bar)':'#EF4444';}
 function phoneHref(phone){return 'tel:'+String(phone||'').replace(/[^+\d]/g,'');}
 function phoneMarkup(phone,compact){if(!phone)return compact?'':'<span class="muted-sm">📞 Intet nummer</span>';return '<a class="task-phone-link" href="'+esc(phoneHref(phone))+'" onclick="event.stopPropagation()">📞 '+esc(phone)+'</a>';}
+// RUNDE Q (Martins ønske) — "kundens tlf og adresse ... skal stå tydeligt for
+// medarbejderen når jeg gør det i planlægning". Adressen var allerede med i
+// data'en (t.job_address/b.job_address, se bookingSelect() i server.js), men
+// blev aldrig VIST nogen steder i Daglig Plan — kun telefonnummeret var. Samme
+// visuelle sprog som phoneMarkup(), og samme kort-til-Google-Maps-link som
+// employee-appen allerede bruger.
+function addressMarkup(address,compact){
+  if(!address)return compact?'':'<span class="muted-sm">📍 Ingen adresse</span>';
+  var maps='https://maps.google.com/?q='+encodeURIComponent(address);
+  return '<a class="task-phone-link" href="'+esc(maps)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">📍 '+esc(address)+'</a>';
+}
 
 function teamList(scope){
   var f=filters[scope],all=users.filter(function(u){return u.active&&u.role==='employee';});
@@ -6757,9 +6809,10 @@ function filtersHTML(scope){
 }
 // SAGSSTATUS-BOBLER over Opgavepool/Kapacitetsboard/Tidslinje. Bevidst nøjagtig
 // samme komponent som status-boblerne på Projekter-siden (se renderPjStatusFilter)
-// — samme .bly-kpi-card-markup og de SAMME statusnøgler/labels/farver via
-// PJ_STATUS_ORDER/PJ_STATUS_META, så "Billy-boblerne" ser ens ud overalt i appen.
-// Arkiverede sager har (som på Projekter-siden) bevidst ingen egen boble.
+// — samme .bly-kpi-card-markup og de SAMME stadier/labels/farver via
+// pjStages/pjNonArchivedStages() (RUNDE R — Martins egne, redigerbare stadier,
+// se project_stages i server.js), så "Billy-boblerne" ser ens ud overalt i
+// appen. Arkiverede sager har (som på Projekter-siden) bevidst ingen egen boble.
 function renderPoolProjectStatusFilter(scope){
   var dom=scope==='capacity'?'cap':scope;
   var box=document.getElementById(dom+'-projstatus-filter');
@@ -6775,8 +6828,8 @@ function renderPoolProjectStatusFilter(scope){
       +'<div class="bly-kpi-value">'+n+'</div></button>';
   }
   var html=card('all','Alle','var(--bly-dot-total)',base.length);
-  html+=PJ_STATUS_ORDER.map(function(s){
-    return card(s,PJ_STATUS_META[s].label,PJ_STATUS_META[s].dot,base.filter(function(t){return t.project_status===s;}).length);
+  html+=pjNonArchivedStages().map(function(s){
+    return card(s.key,s.label,s.color,base.filter(function(t){return t.project_status===s.key;}).length);
   }).join('');
   box.innerHTML=html;
   box.querySelectorAll('[data-pool-pj-status]').forEach(function(b){
@@ -6837,6 +6890,7 @@ function taskCard(t,scope){
   var overdue=!planned&&!completed&&t.start_date&&String(t.start_date).slice(0,10)<iso(new Date());
   var capacityHint=scope==='capacity'&&!completed?'<div class="task-drag-hint">⠿ Træk direkte til den ønskede uge</div>':'';
   var contact=phoneMarkup(t.customer_phone,true);
+  var addr=addressMarkup(t.job_address,true);
   var showBulkCb=scope==='plan'&&!completed;
   return '<article class="task-card draggable-task'+(completed?' completed':'')+(overdue?' task-overdue':'')+'" draggable="true" data-task-id="'+esc(t.id)+'" title="'+esc(t.job_name||'')+'">'+
     '<div class="task-card-head">'+
@@ -6848,7 +6902,7 @@ function taskCard(t,scope){
     '</div>'+
     (completed?'<div class="task-done-badge">✅ Færdiggjort · '+(bookings.filter(function(b){return b.task_id===t.id&&!!b.completed_at&&!isCapacityBooking(b)&&!b.invoiced;}).length?'Klar til faktura':'Faktureret')+'</div>':'')+
     (overdue?'<div class="task-overdue-badge">⚠ Startdato overskredet — planlæg snarest</div>':'')+
-    (contact?'<div class="task-contact">'+contact+'</div>':'')+
+    (contact||addr?'<div class="task-contact">'+addr+(addr&&contact?'<br>':'')+contact+'</div>':'')+
     '<div class="task-meta">'+
       '<span class="badge '+esc(t.type_guess||'other')+'" style="background:'+(type.bar||'#94A3B8')+'22;color:'+(type.bar||'#94A3B8')+'">'+type.label+'</span>'+
       // "Ekstern" dækker gamle sager der stammer fra den tidligere JobTread-synk
@@ -7050,6 +7104,12 @@ function assignPillSpan(b,spanDays,ds,canUp,canDown){
     // ellers blev blokke med et mødetidspunkt én linje højere end de andre.
     '<div class="assign-time">'+(b.start_time?'⏰ '+esc(b.start_time):'&nbsp;')+'</div>'+
     '<div class="assign-sub">'+esc(b.task_name||'')+(b.customer_phone?' · '+phoneMarkup(b.customer_phone,true):'')+'</div>'+
+    // RUNDE Q (Martins ønske) — adressen kom aldrig med herned, kun telefon.
+    // Egen linje (ikke proppet ind i assign-sub) fordi en adresse typisk er for
+    // lang til at dele plads med opgavenavn+telefon i en 128px-bred dagscelle —
+    // afkortes derfor med "…" i stedet for at presse resten af kortet i stykker,
+    // men er altid tilgængelig fuldt ud via linket til Google Maps.
+    (b.job_address?'<div class="assign-address" title="'+esc(b.job_address)+'">'+addressMarkup(b.job_address)+'</div>':'')+
     '</div>';
 }
 // Pill for bookings continuing from a previous week
@@ -16383,11 +16443,10 @@ async function openCustomerDetail(id){
   cdFilesLoaded=false;
 
   document.getElementById('cd-projects-count').textContent='('+d.projects.length+')';
-  var STATUS_LABEL={active:'🔧 Aktivt',on_hold:'⏸ På hold',done:'✅ Afsluttet',archived:'📦 Arkiveret'};
   document.getElementById('cd-projects-body').innerHTML=d.projects.length?d.projects.map(function(p){
     return '<tr style="cursor:pointer" onclick="openProjectDetail('+p.id+')">'
       +'<td>'+esc(p.name)+'</td>'
-      +'<td>'+(STATUS_LABEL[p.status]||esc(p.status))+'</td>'
+      +'<td>'+esc(pjStageLabel(p.status))+'</td>'
       +'<td>'+esc(d.customer.address||'–')+'</td>'
       +'<td><div class="qz-row-actions"><button class="qz-icon-btn" title="Åbn">→</button></div></td>'
       +'</tr>';
@@ -18521,6 +18580,21 @@ async function deleteCrmCustomer(){
 // ══════════════════════════════════════════════════════════════
 var pjProjects=[],pjQaTemplates=[],pjInitialized=false,pjCurrent=null;
 var pjStatusFilter='all',pjShowArchived=false,pjPeriodFilter=null,pjView='list';
+// RUNDE R (Martins ønske: "gør så jeg selv kan ændre/tilføje stadier") — sagernes
+// Kanban-faser/status-værdier er nu Martins egen, redigerbare liste (project_stages
+// i server.js) i stedet for 4 hårdkodede strenge. Hentes ved app-opstart (se bunden
+// af scriptet) OG genindlæses her hver gang man besøger Projekter-siden, så en lige
+// tilføjet/omdøbt/slettet stadie altid er frisk. pjStages=[{id,key,label,color,
+// position,is_system}]. "key" er den værdi der reelt gemmes i projects.status —
+// uændret datatype/felt, kun listen af gyldige keys+labels+farver+rækkefølge er nu
+// dynamisk. "archived" er (som hidtil) det ene stadie der bevidst holdes UDENFOR de
+// almindelige bobler/Kanban-kolonner, styret af pjShowArchived — se pjNonArchivedStages().
+var pjStages=[];
+async function loadPjStages(){var r=await api('/api/project-stages');pjStages=Array.isArray(r)?r:[];}
+function pjAllStagesSorted(){return pjStages.slice().sort(function(a,b){return a.position-b.position;});}
+function pjNonArchivedStages(){return pjAllStagesSorted().filter(function(s){return s.key!=='archived';});}
+function pjStageMeta(key){var s=pjStages.find(function(x){return x.key===key;});return s?{dot:s.color,label:s.label}:{dot:'#94A3B8',label:key||'—'};}
+function pjStageLabel(key){return pjStageMeta(key).label;}
 // RUNDE K (sep. 2026, Martins ønske) — "opret et projekt manuelt ... tilføje til
 // kunde": state til "+ Nyt projekt"-modalen (pj-new-modal), samme kunde-søgnings-
 // mønster som tilbudseditoren (qeState.customerId).
@@ -18541,6 +18615,10 @@ function initProjectsModule(){
     document.getElementById('proj-view-list-btn').addEventListener('click',function(){switchPjView('list');});
     document.getElementById('proj-view-kanban-btn').addEventListener('click',function(){switchPjView('kanban');});
     document.getElementById('proj-new-btn').addEventListener('click',openPjNewModal);
+    // RUNDE R (Martins ønske: "gør så jeg selv kan ændre/tilføje stadier").
+    document.getElementById('proj-stages-btn').addEventListener('click',openPjStagesModal);
+    document.getElementById('pjs-close-btn').addEventListener('click',function(){closeModal('pj-stages-modal');});
+    document.getElementById('pjs-add-btn').addEventListener('click',pjAddStage);
     document.getElementById('pjn-cancel-btn').addEventListener('click',function(){closeModal('pj-new-modal');});
     document.getElementById('pjn-save-btn').addEventListener('click',savePjNew);
     document.getElementById('pjn-customer-search').addEventListener('input',function(e){pjnRunCustomerSearch(e.target.value.trim());});
@@ -18564,7 +18642,7 @@ function initProjectsModule(){
     // opgavernes egne datoer tilfældigvis dækker. Se pdGanttPan().
     document.getElementById('pd-gantt-prev-btn').addEventListener('click',function(){pdGanttPan(-14);});
     document.getElementById('pd-gantt-next-btn').addEventListener('click',function(){pdGanttPan(14);});
-    document.getElementById('pd-gantt-today-btn').addEventListener('click',function(){pdGanttState.manualRange=false;renderPdGanttStrip();});
+    document.getElementById('pd-gantt-today-btn').addEventListener('click',pdGanttResetToToday);
     document.getElementById('close-bulk-capacity').addEventListener('click',function(){closeModal('bulk-capacity-modal');});
     document.getElementById('save-bulk-capacity').addEventListener('click',saveBulkCapacityReservation);
     document.getElementById('bcap-apply-all-btn').addEventListener('click',bcapApplyUserToAll);
@@ -18618,6 +18696,9 @@ function initProjectsModule(){
     pjInitialized=true;
   }
   loadPjProjects().then(renderPjProjects);
+  // RUNDE R — genindlæses hver gang man besøger siden, så en lige tilføjet/
+  // omdøbt/slettet stadie (fx redigeret i en anden fane) altid er frisk.
+  loadPjStages().then(renderPjProjects);
   loadPjQaTemplates().then(renderPjQaTemplates);
   loadPjContactTemplates().then(renderPjContactTemplates);
 }
@@ -18636,8 +18717,8 @@ async function loadPjProjects(){var r=await api('/api/projects');pjProjects=Arra
 // Status-bobler — samme .bly-kpi-card-mønster som Tilbud/Faktura, efter Martins
 // ønske ("Lav bobler(container) ligesom billy og som du har lavet i tilbud").
 // Arkiveret er bevidst holdt UDENFOR denne række (se proj-archived-toggle).
-var PJ_STATUS_ORDER=['active','on_hold','done'];
-var PJ_STATUS_META={active:{dot:'#2563EB',label:'Igangværende'},on_hold:{dot:'#D97706',label:'På hold'},done:{dot:'#15803D',label:'Afsluttet'}};
+// RUNDE R — bygges nu ud fra Martins egne, redigerbare stadier (pjNonArchivedStages()),
+// ikke en hårdkodet liste (se pjStages ovenfor).
 function renderPjStatusFilter(nonArchived){
   var box=document.getElementById('proj-status-filter');
   function card(status,label,dot,list){
@@ -18647,8 +18728,8 @@ function renderPjStatusFilter(nonArchived){
       +'<div class="bly-kpi-value">'+list.length+'</div></button>';
   }
   var html=card('all','Alle',"var(--bly-dot-total)",nonArchived);
-  html+=PJ_STATUS_ORDER.map(function(s){
-    return card(s,PJ_STATUS_META[s].label,PJ_STATUS_META[s].dot,nonArchived.filter(function(p){return p.status===s;}));
+  html+=pjNonArchivedStages().map(function(s){
+    return card(s.key,s.label,s.color,nonArchived.filter(function(p){return p.status===s.key;}));
   }).join('');
   box.innerHTML=html;
   box.querySelectorAll('[data-pj-status]').forEach(function(b){
@@ -18699,15 +18780,15 @@ function renderPjProjects(){
   document.getElementById('proj-count').textContent=list.length+' projekt'+(list.length===1?'':'er');
   var body=document.getElementById('proj-body');
   if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når et tilbud godkendes, eller opret ét manuelt med "+ Nyt projekt"')+'</td></tr>';return;}
-  var STATUS_LABEL={active:'🔧 Aktivt',on_hold:'⏸ På hold',done:'✅ Afsluttet',archived:'📦 Arkiveret'};
   // Status-dropdown direkte i listen (sep. 2026, Martins ønske: "jeg burde kunne
   // vælge status via dropdown, det gør jeg ikke behøves at åbne alle sagerne for
   // at ændre status — hurtig oprydning"). onclick="event.stopPropagation()" på
   // selve select'en, ellers ville et klik for at åbne dropdown'en også trigge
-  // rækkens egen onclick (åbner sagen) — se savePjRowStatus().
+  // rækkens egen onclick (åbner sagen) — se savePjRowStatus(). RUNDE R — bygges nu
+  // ud fra pjStages (Martins egne stadier) i stedet for en hårdkodet liste.
   function pjRowStatusSelect(p){
     return '<select class="select" style="width:auto;font-size:11.5px;padding:3px 6px" onclick="event.stopPropagation()" onchange="savePjRowStatus('+p.id+',this.value)">'
-      +Object.keys(STATUS_LABEL).map(function(s){return '<option value="'+s+'"'+(p.status===s?' selected':'')+'>'+STATUS_LABEL[s]+'</option>';}).join('')
+      +pjAllStagesSorted().map(function(s){return '<option value="'+esc(s.key)+'"'+(p.status===s.key?' selected':'')+'>'+esc(s.label)+'</option>';}).join('')
       +'</select>';
   }
   body.innerHTML=list.map(function(p){
@@ -18727,16 +18808,23 @@ function renderPjProjects(){
   }).join('');
 }
 async function openProjectDetail(id){
+  // RUNDE R — deep-link (fx #project-detail/45 ved genindlæsning) kan i
+  // teorien nå hertil før boot-kædens loadPjStages() er færdig; sikrer den er
+  // hentet før dropdown'en nedenfor bygges, ellers ville den stå tom.
+  if(!pjStages.length)await loadPjStages();
   var d=await api('/api/projects/'+id);
   if(!d||d.error){toast('Kunne ikke hente projektet','❌');return;}
   pjCurrent=d;
   // RUNDE P — en evt. panorering fra en tidligere besøgt sag må ikke lække ind i
   // denne; start altid med auto-tilpasning når en (ny eller samme) sag åbnes.
-  pdGanttState={dayWidth:38,rangeStart:null,days:null,manualRange:false};
+  pdGanttState={dayWidth:38,autoStart:null,autoDays:null,daysBack:0,daysForward:0,renderedStart:null};
+  pdGanttSelectedDepKey=null;
   setAppTitle(d.name);
   document.getElementById('pd-title').textContent=d.name;
   document.getElementById('pd-subtitle').textContent=[d.job_number?'Sag '+d.job_number:null,d.customer_address,d.customer_phone,d.customer_email].filter(Boolean).join(' · ');
-  document.getElementById('pd-status-select').value=d.status;
+  var pdStatusSel=document.getElementById('pd-status-select');
+  pdStatusSel.innerHTML=pjAllStagesSorted().map(function(s){return '<option value="'+esc(s.key)+'">'+esc(s.label)+'</option>';}).join('');
+  pdStatusSel.value=d.status;
   var qlink=document.getElementById('pd-quote-link');
   if(d.quote_id){qlink.style.display='inline-flex';qlink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/quotes/'+d.quote_id+'/pdf');};}
   else qlink.style.display='none';
@@ -18908,10 +18996,11 @@ async function savePjRowStatus(id,status){
 // RUNDE K (sep. 2026, Martins ønske) — "lad mig ku se alle projekter i Kanban
 // view og rykke dem manuelt ligesom Pipeline, så kan jeg hurtig se hvor vi er i
 // fasen". Genbruger PRÆCIS samme Billy-stils klasser som CRM-pipelinens Kanban
-// (.crmp-board/.crmp-col/.crmp-card, se crmpRenderBoard) for ens udseende — men
-// kolonnerne her er de faste projekt-statusser, ikke en konfigurerbar pipeline,
-// så render/drag-logikken er sin egen, enklere funktion.
-var PJ_KANBAN_STATUS_META={active:PJ_STATUS_META.active,on_hold:PJ_STATUS_META.on_hold,done:PJ_STATUS_META.done,archived:{dot:'#6B7280',label:'📦 Arkiveret'}};
+// (.crmp-board/.crmp-col/.crmp-card, se crmpRenderBoard) for ens udseende.
+// RUNDE R — kolonnerne var oprindeligt de 3-4 faste projekt-statusser; nu er de
+// Martins egne, redigerbare stadier (pjNonArchivedStages()/pjAllStagesSorted()),
+// se "⚙️ Rediger stadier"-knappen/pjStagesModal nedenfor. Render/drag-logikken
+// er stadig sin egen, enklere funktion end CRM's konfigurerbare pipeline-Kanban.
 function pjKanbanCardHtml(p){
   var price=p.invoice_total!=null?p.invoice_total:p.quote_total;
   var contact=[p.customer_address,p.customer_phone].filter(Boolean).join(' · ');
@@ -18925,15 +19014,14 @@ function pjKanbanCardHtml(p){
 }
 function renderPjKanban(list){
   var board=document.getElementById('proj-kanban-board');
-  var cols=pjShowArchived?['active','on_hold','done','archived']:['active','on_hold','done'];
-  board.innerHTML=cols.map(function(status){
-    var cards=list.filter(function(p){return p.status===status;});
-    var meta=PJ_KANBAN_STATUS_META[status];
-    return '<div class="crmp-col" data-status="'+status+'">'
+  var stages=pjShowArchived?pjAllStagesSorted():pjNonArchivedStages();
+  board.innerHTML=stages.map(function(s){
+    var cards=list.filter(function(p){return p.status===s.key;});
+    return '<div class="crmp-col" data-status="'+esc(s.key)+'">'
       +'<div class="crmp-col-head"><div class="crmp-col-headrow"><div class="crmp-col-title" style="flex:1;min-width:0">'
-      +'<span class="crmp-col-dot" style="background:'+meta.dot+'"></span>'+meta.label+'<span class="crmp-col-count">'+cards.length+'</span>'
+      +'<span class="crmp-col-dot" style="background:'+esc(s.color)+'"></span>'+esc(s.label)+'<span class="crmp-col-count">'+cards.length+'</span>'
       +'</div></div></div>'
-      +'<div class="crmp-col-body" data-status="'+status+'">'+cards.map(pjKanbanCardHtml).join('')+'</div>'
+      +'<div class="crmp-col-body" data-status="'+esc(s.key)+'">'+cards.map(pjKanbanCardHtml).join('')+'</div>'
       +'</div>';
   }).join('');
   board.querySelectorAll('.crmp-card').forEach(function(card){
@@ -18964,6 +19052,9 @@ function openPjNewModal(){
   document.getElementById('pjn-address').value='';
   document.getElementById('pjn-phone').value='';
   document.getElementById('pjn-email').value='';
+  // RUNDE R — "Arkiveret" er (som hidtil) bevidst ikke en mulighed for et
+  // NYT projekt her, resten kommer fra Martins egne stadier (pjStages).
+  document.getElementById('pjn-status').innerHTML=pjNonArchivedStages().map(function(s){return '<option value="'+esc(s.key)+'">'+esc(s.label)+'</option>';}).join('');
   document.getElementById('pjn-status').value='active';
   document.getElementById('pjn-customer-results').style.display='none';
   document.getElementById('pj-new-modal').classList.add('open');
@@ -19021,6 +19112,69 @@ async function savePdStatus(){
   if(r&&r.ok){toast('Status opdateret','✓');pjCurrent.status=status;await loadPjProjects();renderPjProjects();}
   else toast((r&&r.error)||'Kunne ikke opdatere status','❌');
 }
+// ── RUNDE R — "⚙️ Rediger stadier"-editoren (pj-stages-modal) ──────────────
+async function openPjStagesModal(){
+  if(!pjStages.length)await loadPjStages();
+  pjRenderStagesList();
+  document.getElementById('pjs-new-name').value='';
+  document.getElementById('pj-stages-modal').classList.add('open');
+}
+function pjRenderStagesList(){
+  var list=document.getElementById('pjs-stages-list');
+  var stages=pjAllStagesSorted();
+  list.innerHTML=stages.map(function(s,i){
+    return '<div class="crmp-set-stage-row" data-stage-id="'+s.id+'">'
+      +'<input type="color" value="'+esc(s.color)+'" data-action="stage-color" style="width:32px;height:28px;padding:1px;border-radius:6px;border:1px solid var(--bly-border)">'
+      +'<input class="input" data-action="stage-name" value="'+esc(s.label)+'" style="flex:1">'
+      +(s.is_system?'<span class="sub" title="Indbygget stadie — kan omdøbes/omfarves/flyttes, men ikke slettes" style="white-space:nowrap">🔒 indbygget</span>':'')
+      +'<button class="qz-icon-btn" data-action="stage-up" title="Flyt op" '+(i===0?'disabled':'')+'>↑</button>'
+      +'<button class="qz-icon-btn" data-action="stage-down" title="Flyt ned" '+(i===stages.length-1?'disabled':'')+'>↓</button>'
+      +(s.is_system?'':'<button class="qz-icon-btn" data-action="stage-delete" title="Slet">🗑</button>')
+      +'</div>';
+  }).join('');
+  list.querySelectorAll('.crmp-set-stage-row').forEach(function(row){
+    var stageId=Number(row.dataset.stageId);
+    row.querySelector('[data-action="stage-name"]').addEventListener('change',async function(){
+      var val=this.value.trim();
+      if(!val){toast('Navn må ikke være tomt','⚠');this.value=stages.find(function(s){return s.id===stageId;}).label;return;}
+      await api('/api/project-stages/'+stageId,{method:'PUT',body:JSON.stringify({label:val})});
+      await loadPjStages();pjRenderStagesList();renderPjProjects();
+    });
+    row.querySelector('[data-action="stage-color"]').addEventListener('change',async function(){
+      await api('/api/project-stages/'+stageId,{method:'PUT',body:JSON.stringify({color:this.value})});
+      await loadPjStages();pjRenderStagesList();renderPjProjects();
+    });
+    var upBtn=row.querySelector('[data-action="stage-up"]'),downBtn=row.querySelector('[data-action="stage-down"]');
+    if(upBtn)upBtn.addEventListener('click',function(){pjSwapStagePosition(stageId,-1);});
+    if(downBtn)downBtn.addEventListener('click',function(){pjSwapStagePosition(stageId,1);});
+    var delBtn=row.querySelector('[data-action="stage-delete"]');
+    if(delBtn)delBtn.addEventListener('click',async function(){
+      if(!await gmConfirm('Slet stadiet? Kun muligt hvis ingen sager bruger det lige nu.'))return;
+      var r=await api('/api/project-stages/'+stageId,{method:'DELETE'});
+      if(r&&r.ok){await loadPjStages();pjRenderStagesList();renderPjProjects();}
+      else toast((r&&r.error)||'Kunne ikke slette stadiet','❌');
+    });
+  });
+}
+async function pjSwapStagePosition(stageId,dir){
+  var stages=pjAllStagesSorted();
+  var idx=stages.findIndex(function(s){return s.id===stageId;});
+  var swapIdx=idx+dir;
+  if(swapIdx<0||swapIdx>=stages.length)return;
+  var a=stages[idx],b=stages[swapIdx];
+  await Promise.all([
+    api('/api/project-stages/'+a.id,{method:'PUT',body:JSON.stringify({position:b.position})}),
+    api('/api/project-stages/'+b.id,{method:'PUT',body:JSON.stringify({position:a.position})})
+  ]);
+  await loadPjStages();pjRenderStagesList();renderPjProjects();
+}
+async function pjAddStage(){
+  var nameInput=document.getElementById('pjs-new-name'),colorInput=document.getElementById('pjs-new-color');
+  if(!nameInput.value.trim()){toast('Navn mangler','⚠');return;}
+  var r=await api('/api/project-stages',{method:'POST',body:JSON.stringify({label:nameInput.value.trim(),color:colorInput.value})});
+  if(r&&r.ok){nameInput.value='';await loadPjStages();pjRenderStagesList();renderPjProjects();toast('Stadie tilføjet ✓','✓');}
+  else toast((r&&r.error)||'Kunne ikke tilføje stadiet','❌');
+}
 // Send kundeportal-link — erstatter Kundehistorik-siden (Runde H #7). Beder
 // altid om bekræftelse først (Martins valg), da den rent faktisk sender en
 // mail til kunden med det samme.
@@ -19035,7 +19189,19 @@ async function pdSendPortalLink(){
 // ── SAGS-GANTT — samme visuelle stil/CSS-klasser som hoved-Gantt'et (siden
 // "Gantt"), men udelukkende denne sags opgaver, og gemmer LOKALT via
 // /api/projects/:id/tasks/:taskId i stedet for at skrive til JobTread. ──
-var pdGanttState={dayWidth:38,rangeStart:null,days:null,manualRange:false},pdGanttDrag=null;
+// RUNDE Q — Martin: "jeg kan ikke scrolle i Timeline ... den burde fungere
+// ligesom i dagligplanlægning hvor jeg kan scrole frem og tilbage". Min
+// RUNDE P-løsning (◀/▶-knapper med et fast panoreringsvindue) var IKKE hvad
+// han mente — Daglig Plan scroller med musen/touchpad'et (native horisontal
+// scroll på #plan-board-outer), og udvider selv sit dato-vindue når man
+// nærmer sig kanten (bindPlanScrollTracking()/planEnsureWindow(), se ca.
+// linje 7093-7129). #pd-gantt-strip er allerede en native scroll-beholder
+// (overflow:auto) — den manglede bare den samme "udvid ved kanten"-logik.
+// Genbruger nøjagtig samme opskrift, bare dags-baseret (38px/dag, ensartet
+// bredde) i stedet for uge-baseret, hvilket gør scrollLeft-kompensationen
+// simplere end Daglig Plans mandags-anker (ren dage×dayWidth-regning).
+var PD_GANTT_DAYS_BACK_MAX=200,PD_GANTT_DAYS_FORWARD_MAX=400;
+var pdGanttState={dayWidth:38,autoStart:null,autoDays:null,daysBack:0,daysForward:0,renderedStart:null},pdGanttDrag=null,pdGanttLinkDrag=null,pdGanttSelectedDepKey=null;
 function pdGanttDateRange(){
   var tasks=pjCurrent.tasks||[];
   var starts=tasks.map(function(t){return t.start_date;}).filter(Boolean);
@@ -19047,24 +19213,80 @@ function pdGanttDateRange(){
   var days=Math.max(21,Math.round((end-start)/86400000)+1);
   return {start:start,days:Math.min(days,120)};
 }
-// RUNDE P (Martins ønske) — tidslinjen kunne før kun vise det udsnit dato-
-// rækkevidden af de EKSISTERENDE opgaver gav (+ lidt buffer), med intet loft
-// på hvor langt frem/tilbage man kunne panorere — "den stopper efter uge 39".
-// Kaldes fra ◀/▶-knapperne; går første gang ud fra det auto-tilpassede udsnit
-// (så panorering starter der man allerede kigger), men bruger en bredere fast
-// rude (mindst 60 dage) så der reelt ER noget at panorere ud i. Når man først
-// har panoreret, husker pdGanttState.manualRange det til man trykker "I dag"
-// eller åbner en anden sag (nulstillet i openProjectDetail).
-function pdGanttPan(deltaDays){
-  if(!pjCurrent||!pjCurrent.tasks)return;
-  if(!pdGanttState.manualRange){
+// Det FAKTISKE rende-vindue: auto-tilpasningen (cachet — se "I dag"-knappen,
+// som er den eneste der nulstiller den) udvidet med daysBack/daysForward, som
+// vokser når man scroller nær en kant (pdGanttEnsureWindow) eller trykker ◀/▶.
+function pdGanttCurrentRange(){
+  if(!pdGanttState.autoStart){
     var auto=pdGanttDateRange();
-    pdGanttState.rangeStart=auto.start;
-    pdGanttState.days=Math.max(auto.days,60);
-    pdGanttState.manualRange=true;
+    pdGanttState.autoStart=auto.start;pdGanttState.autoDays=auto.days;
   }
-  pdGanttState.rangeStart=add(pdGanttState.rangeStart,deltaDays);
+  return {start:add(pdGanttState.autoStart,-pdGanttState.daysBack),days:pdGanttState.autoDays+pdGanttState.daysBack+pdGanttState.daysForward};
+}
+// Udvider daysBack/daysForward (op til de to lofter ovenfor) og gentegner —
+// men bevarer scroll-positionen ift. det man allerede kigger på (samme
+// hensigt som Daglig Plans planEnsureWindow(), her bare en ren dage×bredde-
+// forskydning i stedet for et DOM-anker, fordi hver dag her ALTID er samme
+// bredde i modsætning til Daglig Plans ugependler).
+function pdGanttEnsureWindow(daysBackNeeded,daysForwardNeeded){
+  var changed=false;
+  if(daysBackNeeded>pdGanttState.daysBack){pdGanttState.daysBack=Math.min(PD_GANTT_DAYS_BACK_MAX,daysBackNeeded);changed=true;}
+  if(daysForwardNeeded>pdGanttState.daysForward){pdGanttState.daysForward=Math.min(PD_GANTT_DAYS_FORWARD_MAX,daysForwardNeeded);changed=true;}
+  if(!changed)return false;
+  var outer=document.getElementById('pd-gantt-strip');
+  var prevStart=pdGanttState.renderedStart,prevScrollLeft=outer?outer.scrollLeft:null;
   renderPdGanttStrip();
+  if(outer&&prevStart&&prevScrollLeft!==null){
+    var deltaDays=Math.round((prevStart-pdGanttState.renderedStart)/86400000);
+    outer.scrollLeft=prevScrollLeft+deltaDays*pdGanttState.dayWidth;
+  }
+  return true;
+}
+// ◀/▶-knapperne — samme idé som Daglig Plans Forrige/Næste (planScrollByWeeks):
+// en bekvem genvej OVEN I den native scroll, ikke i stedet for den. Sørger
+// først for der er nok vindue at panorere ind i, panorerer så med en blød
+// scroll — ligesom Daglig Plans egne knapper gør.
+function pdGanttPan(deltaDays){
+  var outer=document.getElementById('pd-gantt-strip');
+  if(!outer||!pjCurrent||!pjCurrent.tasks)return;
+  if(deltaDays<0)pdGanttEnsureWindow(pdGanttState.daysBack-deltaDays+14,0);
+  else pdGanttEnsureWindow(0,pdGanttState.daysForward+deltaDays+14);
+  outer.scrollBy({left:deltaDays*pdGanttState.dayWidth,behavior:'smooth'});
+}
+// "I dag"-knappen — eneste sted der nulstiller auto-tilpasningen (autoStart/
+// autoDays gencomputes fra opgavernes AKTUELLE datoer) og ruller helt tilbage
+// til begyndelsen af den.
+function pdGanttResetToToday(){
+  pdGanttState.daysBack=0;pdGanttState.daysForward=0;pdGanttState.autoStart=null;pdGanttState.autoDays=null;
+  renderPdGanttStrip();
+  var outer=document.getElementById('pd-gantt-strip');
+  if(outer)outer.scrollLeft=0;
+}
+// Native scroll-sporing — nøjagtig samme "udvid stille i baggrunden når man
+// nærmer sig kanten"-mønster som bindPlanScrollTracking() (se den for den
+// fulde forklaring). _pdGanttScrollBound-flaget gør bindingen idempotent,
+// ligesom originalen, så den trygt kan kaldes fra hver renderPdGanttStrip().
+function bindPdGanttScrollTracking(){
+  var outer=document.getElementById('pd-gantt-strip');
+  if(!outer||outer._pdGanttScrollBound)return;
+  outer._pdGanttScrollBound=true;
+  var ticking=false;
+  function detect(){
+    ticking=false;
+    if(!pjCurrent||!pjCurrent.tasks||!pjCurrent.tasks.length)return;
+    var dw=pdGanttState.dayWidth,edgeBuffer=21*dw; // ~3 uger margin, samme forholdsmæssige idé som Daglig Plans 3*128
+    var scrollMax=outer.scrollWidth-outer.clientWidth;
+    if(outer.scrollLeft<edgeBuffer&&pdGanttState.daysBack<PD_GANTT_DAYS_BACK_MAX){
+      pdGanttEnsureWindow(pdGanttState.daysBack+45,0);
+    }else if(scrollMax-outer.scrollLeft<edgeBuffer&&pdGanttState.daysForward<PD_GANTT_DAYS_FORWARD_MAX){
+      pdGanttEnsureWindow(0,pdGanttState.daysForward+45);
+    }
+  }
+  outer.addEventListener('scroll',function(){
+    if(ticking)return;
+    ticking=true;
+    requestAnimationFrame(detect);
+  },{passive:true});
 }
 // Bruges af kæde-vælgeren (glr-link) i hver rækkes 2. linje — viser alle ANDRE
 // opgaver i sagen som mulige "kæd til"-mål. Kæder er lineære (højst ét mål pr.
@@ -19086,8 +19308,8 @@ function renderPdGanttStrip(){
   // GET /api/projects/:id) — stabil, ændrer sig ikke af at sætte en dato.
   var tasks=pjCurrent.tasks||[];
   if(!tasks.length){el.innerHTML='<div class="sub" style="padding:16px 2px">Ingen opgaver endnu. Opret dem manuelt med "+ Ny opgave", eller tryk "Opret opgaver fra tilbud" hvis sagen har et tilknyttet tilbud.</div>';return;}
-  var range=(pdGanttState.manualRange&&pdGanttState.rangeStart&&pdGanttState.days)?{start:pdGanttState.rangeStart,days:pdGanttState.days}:pdGanttDateRange();
-  pdGanttState.rangeStart=range.start;pdGanttState.days=range.days;
+  var range=pdGanttCurrentRange();
+  pdGanttState.renderedStart=range.start;
   var dw=pdGanttState.dayWidth,todayIso=iso(new Date());
   var DAYABBR=['Sø','Ma','Ti','On','To','Fr','Lø'];
   var headCols='',bgCols='',weekCols='',curWeekSpan=0,curWeekLabel='';
@@ -19127,6 +19349,7 @@ function renderPdGanttStrip(){
         '<span class="gantt-bar-label">'+esc(t.name||'')+'</span>'+
         '<div class="gantt-bar-handle left" data-handle="left"></div>'+
         '<div class="gantt-bar-handle right" data-handle="right"></div>'+
+        '<div class="gantt-bar-link-handle" data-link-handle="1" title="Træk herfra til en anden opgave for at kæde dem sammen (som en tråd) — så flytter de dato med hinanden"></div>'+
       '</div></div>';
   });
   // RUNDE P — tegner en "tråd" (pil) mellem kædede opgaver, samme visuelle
@@ -19156,7 +19379,11 @@ function renderPdGanttStrip(){
         var loopX=x1+gap,vSign2=y2>y1?1:-1,midY=(y1+y2)/2;
         path='M'+x1+' '+y1+' L'+(loopX-r)+' '+y1+' Q'+loopX+' '+y1+' '+loopX+' '+(y1+r*vSign2)+' L'+loopX+' '+(midY-r)+' Q'+loopX+' '+midY+' '+(loopX-r)+' '+midY+' L'+(x2-gap+r)+' '+midY+' Q'+(x2-gap)+' '+midY+' '+(x2-gap)+' '+(midY+r*vSign2)+' L'+(x2-gap)+' '+(y2-r*vSign2)+' Q'+(x2-gap)+' '+y2+' '+(x2-gap+r)+' '+y2+' L'+x2+' '+y2;
       }
-      deps+='<path d="'+path+'" stroke="#8B5CF6" stroke-width="1.75" fill="none" marker-end="url(#pdGanttArrow)"/>';
+      // RUNDE Q — klikbar "hit"-linje ovenpå den tynde synlige pil (se CSS-kommentaren
+      // ved .gantt-dep-hit) + rød fremhævning når denne kæde er valgt (klar til Delete).
+      var isSelDep=pdGanttSelectedDepKey===t.id;
+      deps+='<path class="gantt-dep-path'+(isSelDep?' selected':'')+'" d="'+path+'" stroke="'+(isSelDep?'#EF4444':'#8B5CF6')+'" stroke-width="'+(isSelDep?'2.5':'1.75')+'" fill="none" marker-end="url(#pdGanttArrow'+(isSelDep?'Sel':'')+')"/>'+
+        '<path class="gantt-dep-hit" data-dep-target="'+esc(t.id)+'" data-dep-source="'+esc(depId2)+'" d="'+path+'" stroke="transparent" stroke-width="14" fill="none" style="pointer-events:auto;cursor:pointer" title="Klik for at vælge — tryk så Delete for at fjerne kæden"/>';
     });
   });
   el.innerHTML='<div class="gantt-chart"><div class="gantt-list">'+listRows+'</div>'+
@@ -19164,7 +19391,10 @@ function renderPdGanttStrip(){
       '<div class="gantt-week-head">'+weekCols+'</div>'+
       '<div class="gantt-timeline-head">'+headCols+'</div>'+
       '<div style="position:relative">'+timelineRows+
-        '<svg class="gantt-dep-svg" width="'+svgW+'" height="'+svgH+'"><defs><marker id="pdGanttArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8B5CF6"/></marker></defs>'+deps+'</svg>'+
+        '<svg class="gantt-dep-svg" width="'+svgW+'" height="'+svgH+'"><defs>'+
+          '<marker id="pdGanttArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8B5CF6"/></marker>'+
+          '<marker id="pdGanttArrowSel" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#EF4444"/></marker>'+
+        '</defs>'+deps+'</svg>'+
       '</div>'+
     '</div></div>';
   document.querySelectorAll('#pd-gantt-strip .gantt-list-row[data-task-id]').forEach(function(row){
@@ -19222,6 +19452,13 @@ function renderPdGanttStrip(){
     bar.querySelectorAll('.gantt-bar-handle').forEach(function(h){
       h.addEventListener('mousedown',function(e){e.stopPropagation();startPdGanttDrag(e,bar,taskId,h.dataset.handle);});
     });
+    // RUNDE Q — træk fra det lille lilla håndtag for at KÆDE denne opgave sammen med
+    // en anden (i stedet for kun dropdown'en). Egen mousedown-håndtering, adskilt fra
+    // bjælkens flytte-træk ovenfor.
+    var linkHandle=bar.querySelector('.gantt-bar-link-handle');
+    if(linkHandle){
+      linkHandle.addEventListener('mousedown',function(e){e.stopPropagation();startPdGanttLinkDrag(e,bar,taskId);});
+    }
     // Dobbeltklik på navnet på bjælken for at omdøbe opgaven direkte i Gantt'et —
     // hurtigere end at åbne opgavedetaljerne bare for at rette navnet. Navnet får sin
     // EGEN mousedown/click-håndtering (med stopPropagation), for ellers ville bjælkens
@@ -19245,6 +19482,8 @@ function renderPdGanttStrip(){
       });
     }
   });
+  bindPdGanttScrollTracking();
+  bindPdGanttDepInteractions();
 }
 function startGanttBarRename(label,taskId){
   var origName=label.textContent;
@@ -19298,7 +19537,7 @@ async function onPdGanttDragEnd(){
   var dw=pdGanttState.dayWidth;
   var left=parseInt(pdGanttDrag.bar.style.left),width=parseInt(pdGanttDrag.bar.style.width);
   var startOffset=Math.round(left/dw),spanDays=Math.max(1,Math.round((width+4)/dw));
-  var newStart=iso(add(pdGanttState.rangeStart,startOffset));
+  var newStart=iso(add(pdGanttState.renderedStart,startOffset));
   var newEnd=iso(add(date(newStart),spanDays-1));
   var taskId=pdGanttDrag.taskId;
   pdGanttDrag=null;
@@ -19307,6 +19546,94 @@ async function onPdGanttDragEnd(){
   // rykker de kædede opgaver automatisk med her.
   if(r&&r.ok&&r.cascaded&&r.cascaded.length)toast(r.cascaded.length+' kædet opgave(r) rykket med','✓');
   reloadPdCurrent();
+}
+// RUNDE Q (Martins ønske) — "trække en pil fra en task til en anden så de rykker sig
+// sammen". Træk fra en bjælkes lille lilla håndtag (.gantt-bar-link-handle, i højre
+// kant) hen over en anden opgaves bjælke og slip — så bliver DEN opgave (target) kædet
+// til at følge KILDE-opgavens dato, præcis som dropdown'en allerede gør (samme
+// depends_on-felt, samme tovejs-kaskade på serveren). Tegner en midlertidig stiplet
+// linje mens man trækker, så man kan se hvor pilen peger hen.
+function startPdGanttLinkDrag(e,bar,taskId){
+  e.preventDefault();
+  var svg=document.querySelector('#pd-gantt-strip .gantt-dep-svg');
+  if(!svg)return;
+  var svgRect=svg.getBoundingClientRect();
+  var barRect=bar.getBoundingClientRect();
+  var x1=barRect.right-svgRect.left,y1=barRect.top-svgRect.top+barRect.height/2;
+  var line=document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('x1',x1);line.setAttribute('y1',y1);line.setAttribute('x2',x1);line.setAttribute('y2',y1);
+  line.setAttribute('stroke','#8B5CF6');line.setAttribute('stroke-width','2');line.setAttribute('stroke-dasharray','5,4');
+  line.style.pointerEvents='none';
+  svg.appendChild(line);
+  pdGanttLinkDrag={taskId:taskId,svgRect:svgRect,line:line,targetBar:null};
+  document.addEventListener('mousemove',onPdGanttLinkDragMove);
+  document.addEventListener('mouseup',onPdGanttLinkDragEnd);
+}
+function onPdGanttLinkDragMove(e){
+  if(!pdGanttLinkDrag)return;
+  var d=pdGanttLinkDrag;
+  var x2=e.clientX-d.svgRect.left,y2=e.clientY-d.svgRect.top;
+  d.line.setAttribute('x2',x2);d.line.setAttribute('y2',y2);
+  if(d.targetBar){d.targetBar.classList.remove('gantt-bar-link-target');d.targetBar=null;}
+  var elAt=document.elementFromPoint(e.clientX,e.clientY);
+  var barAt=elAt&&elAt.closest?elAt.closest('#pd-gantt-strip .gantt-bar[data-pd-task-id]'):null;
+  if(barAt&&barAt.dataset.pdTaskId!==d.taskId){
+    barAt.classList.add('gantt-bar-link-target');
+    d.targetBar=barAt;
+  }
+}
+function onPdGanttLinkDragEnd(e){
+  document.removeEventListener('mousemove',onPdGanttLinkDragMove);
+  document.removeEventListener('mouseup',onPdGanttLinkDragEnd);
+  if(!pdGanttLinkDrag)return;
+  var d=pdGanttLinkDrag,sourceId=d.taskId;
+  if(d.line&&d.line.parentNode)d.line.parentNode.removeChild(d.line);
+  if(d.targetBar)d.targetBar.classList.remove('gantt-bar-link-target');
+  pdGanttLinkDrag=null;
+  var elAt=document.elementFromPoint(e.clientX,e.clientY);
+  var barAt=elAt&&elAt.closest?elAt.closest('#pd-gantt-strip .gantt-bar[data-pd-task-id]'):null;
+  if(!barAt)return; // sluppet på tomt sted — annulleret, ingen kald til serveren
+  var targetId=barAt.dataset.pdTaskId;
+  if(targetId===sourceId)return; // sluppet på sig selv — ignoreret
+  api('/api/projects/'+pjCurrent.id+'/tasks/'+targetId,{method:'PUT',body:JSON.stringify({depends_on:[sourceId]})}).then(function(r){
+    if(r&&r.ok){toast('Opgaverne er kædet sammen','✓');reloadPdCurrent();}
+    else toast((r&&r.error)||'Kunne ikke kæde opgaverne sammen','❌');
+  });
+}
+// RUNDE Q — klik på en kæde-pil (den brede usynlige .gantt-dep-hit ovenpå den tynde
+// synlige pil, se CSS) for at VÆLGE den (bliver rød), tryk så Delete/Backspace for at
+// fjerne kæden — Martins ønske: "trykke på strgen/pilen mellem en opgave og trykke
+// delete og så fjerne den sammenhæng". Klik på tomt sted i tidslinjen, eller Escape,
+// fravælger igen. Bindes kun én gang (ikke ved hver render, ligesom scroll-trackingen).
+function bindPdGanttDepInteractions(){
+  var el=document.getElementById('pd-gantt-strip');
+  if(!el||el._pdGanttDepBound)return;
+  el._pdGanttDepBound=true;
+  el.addEventListener('click',function(e){
+    var hit=e.target.closest?e.target.closest('.gantt-dep-hit'):null;
+    if(hit){
+      pdGanttSelectedDepKey=(pdGanttSelectedDepKey===hit.dataset.depTarget)?null:hit.dataset.depTarget;
+      renderPdGanttStrip();
+      return;
+    }
+    if(pdGanttSelectedDepKey){pdGanttSelectedDepKey=null;renderPdGanttStrip();}
+  });
+  document.addEventListener('keydown',function(e){
+    if(!pdGanttSelectedDepKey)return;
+    var pageEl=document.getElementById('page-project-detail');
+    if(!pageEl||!pageEl.classList.contains('active'))return; // sags-siden er ikke aktiv lige nu
+    var ae=document.activeElement;
+    if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable))return;
+    if(e.key==='Delete'||e.key==='Backspace'){
+      e.preventDefault();
+      var targetId=pdGanttSelectedDepKey;
+      pdGanttSelectedDepKey=null;
+      api('/api/projects/'+pjCurrent.id+'/tasks/'+targetId,{method:'PUT',body:JSON.stringify({depends_on:[]})}).then(function(r){
+        if(r&&r.ok){toast('Kæden er fjernet','✓');reloadPdCurrent();}
+        else toast((r&&r.error)||'Kunne ikke fjerne kæden','❌');
+      });
+    }else if(e.key==='Escape'){pdGanttSelectedDepKey=null;renderPdGanttStrip();}
+  });
 }
 // ── SAGS-OPGAVE DETALJER — note, kundekontakt, tjekpunkter, "tilføj til
 // Kapacitetsbordet". Åbnes fra 🔎-knappen i opgavelisten eller ved klik (uden
@@ -21377,6 +21704,11 @@ window.useTemplateForNewQuote=useTemplateForNewQuote;
 
 bind();
 loadSettings();
+// RUNDE R — hentes ved opstart (ikke kun når man besøger Projekter-siden), fordi
+// sagsstatus-boblerne over Opgavepool/Kapacitetsboard/Tidslinje (renderPoolProjectStatusFilter)
+// bruger de samme, Martin-redigerbare stadier og kan blive besøgt uden man
+// nogensinde har været inde på selve Projekter-siden i denne session.
+loadPjStages();
 loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmailTemplates();return loadAll();}).then(function(){checkPendingTimeOffPopup();refreshGlobalPriorityBanner();});
 })();
 </script>
