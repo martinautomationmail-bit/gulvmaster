@@ -1093,6 +1093,44 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_quote_sends_quote ON quote_sends(quote_id);
 
+    -- RUNDE M (sep. 2026, Martins presserende ønske) — "kun ca. 50% af kunderne
+    -- modtager mine tilbud/fakturaer". Roden af problemet er at appen hidtil
+    -- har behandlet et 200-svar fra Resend/SMTP som "sendt = færdig", men det
+    -- betyder KUN at mail-udbyderen har taget imod mailen til afsendelse — ikke
+    -- at den rent faktisk er landet i kundens indbakke. Om den reelt blev
+    -- LEVERET, AFVIST (bounced) eller markeret som SPAM ved man kun ved at
+    -- lytte efter Resends asynkrone webhook-events bagefter (se
+    -- POST /api/webhooks/resend nedenfor) — denne tabel er broen der kobler
+    -- Resends "email_id" tilbage til det tilbud/den faktura mailen hørte til,
+    -- så statussen kan skrives ind i den eksisterende aktivitets-tidslinje
+    -- (document_activity) og dermed blive SYNLIG for Martin i stedet for at
+    -- forsvinde i tomrummet. Dækker desuden ikke-dokument-mails (fx
+    -- færdig-mail til kunden), så der findes ét samlet sted at fejlsøge
+    -- mail-leverance generelt.
+    CREATE TABLE IF NOT EXISTS outbound_emails (
+      id SERIAL PRIMARY KEY,
+      kind TEXT NOT NULL,
+      ref_id TEXT,
+      recipient TEXT,
+      subject TEXT,
+      resend_email_id TEXT,
+      provider TEXT,
+      status TEXT NOT NULL DEFAULT 'sent',
+      status_detail TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      status_updated_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_outbound_emails_resend_id ON outbound_emails(resend_email_id);
+    CREATE INDEX IF NOT EXISTS idx_outbound_emails_kind_ref ON outbound_emails(kind, ref_id);
+    -- Samme leverance-status, men på selve den arkiverede tilbuds-VERSION (så en
+    -- konkret gensendt version kan vise sin egen status, ikke kun den seneste
+    -- generelle linje i aktivitets-tidslinjen) — udfyldes af webhooken sammen
+    -- med outbound_emails/document_activity ovenfor.
+    ALTER TABLE quote_sends ADD COLUMN IF NOT EXISTS resend_email_id TEXT;
+    ALTER TABLE quote_sends ADD COLUMN IF NOT EXISTS delivery_status TEXT;
+    ALTER TABLE quote_sends ADD COLUMN IF NOT EXISTS delivery_status_at TEXT;
+    ALTER TABLE quote_sends ADD COLUMN IF NOT EXISTS delivery_detail TEXT;
+
     -- ── CRM: eget kundekartotek (parallelt med JobTread-sagssøgningen, som
     -- Tilbud/Faktura-editoren stadig kan bruge) — så Martin kan oprette kunder
     -- direkte og booke/tilbyde dem uden en JobTread-sag i forvejen. ──────
@@ -3096,6 +3134,11 @@ function mailIsConfigured() {
   return !!process.env.RESEND_API_KEY || !!getMailTransport();
 }
 
+// RUNDE M — returnerer nu ET OBJEKT ({ provider, resendEmailId }) i stedet for
+// bare at returnere udefineret ved success, så kalderen (se logOutboundEmail
+// nedenfor) kan gemme Resends "email_id" og senere matche leverance-status
+// (webhook) tilbage til den rigtige mail. SMTP har ingen tilsvarende async
+// status, så resendEmailId er der bevidst null.
 async function sendMailUniversal({ to, subject, text, html, attachments }) {
   if (process.env.RESEND_API_KEY) {
     const response = await fetch('https://api.resend.com/emails', {
@@ -3116,16 +3159,108 @@ async function sendMailUniversal({ to, subject, text, html, attachments }) {
         }))
       })
     });
+    const raw = await response.text();
+    let data = null; try { data = JSON.parse(raw); } catch (e) { /* ignorer — bruges kun til id'et herunder */ }
     if (!response.ok) {
-      const raw = await response.text();
       throw new Error(`Resend HTTP ${response.status}: ${raw.slice(0, 400)}`);
     }
-    return;
+    return { provider: 'resend', resendEmailId: (data && data.id) || null };
   }
   const transport = getMailTransport();
   if (!transport) throw new Error('Hverken RESEND_API_KEY eller SMTP er sat op');
   await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, text, html, attachments });
+  return { provider: 'smtp', resendEmailId: null };
 }
+
+// RUNDE M — logger EN sendt mail i outbound_emails (se skema-kommentaren ved
+// tabellen). Fejler aldrig hårdt (samme mønster som logDocActivity/
+// tilbudsarkivering ovenfor) — en logningsfejl må ALDRIG vælte selve
+// afsendelsen, som på dette tidspunkt allerede er lykkedes.
+async function logOutboundEmail({ kind, refId, recipient, subject, sendResult }) {
+  try {
+    await pool.query(
+      `INSERT INTO outbound_emails (kind,ref_id,recipient,subject,resend_email_id,provider,status,status_updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'sent',${nowTextSQL()})`,
+      [kind, refId != null ? String(refId) : null, recipient, subject, sendResult && sendResult.resendEmailId, sendResult && sendResult.provider]
+    );
+  } catch (e) { console.error('Kunne ikke logge udgående mail (outbound_emails):', e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════
+// RESEND-WEBHOOK — RUNDE M (sep. 2026, Martins presserende ønske: "det største
+// problem PT — ikke alle kunder, måske kun 50%, modtager mine tilbud/faktura").
+//
+// VIGTIGT AT FORSTÅ: et 200-svar fra Resend (se sendMailUniversal ovenfor)
+// betyder KUN at Resend har taget imod mailen til afsendelse — IKKE at den
+// rent faktisk landede i kundens indbakke. Om den blev LEVERET, AFVIST
+// (bounced, fx forkert/lukket adresse) eller markeret som SPAM af modtageren
+// ved man først bagefter, asynkront, via disse webhook-events. Uden dette
+// endpoint har appen (og Martin) været fuldstændig blind for den del — det er
+// den mest sandsynlige forklaring på "kun ca. 50%": nogle mails bliver
+// stille afvist eller spam-filtreret efter afsendelse, uden nogen fejl Martin
+// nogensinde ser i selve programmet.
+//
+// OPSÆTNING (skal gøres af Martin, kræver adgang til Resend-kontoen — kan
+// ikke gøres herfra):
+//   1) I Resend: Webhooks → "Add Endpoint", peg den på
+//      https://<jeres-render-url>/api/webhooks/resend, og abonnér i det
+//      mindste på: email.delivered, email.bounced, email.complained,
+//      email.delivery_delayed (øvrige email.*-events ignoreres roligt
+//      herunder, så det er ufarligt at abonnere på alle for en sikkerheds
+//      skyld).
+//   2) Resend viser en "Signing Secret" (starter med whsec_) når endpointet
+//      oprettes — sæt den som miljøvariablen RESEND_WEBHOOK_SECRET i Render.
+// Uden RESEND_WEBHOOK_SECRET sat er endpointet inaktivt (svarer 501), så
+// resten af appen kører upåvirket indtil Martin har sat det op.
+//
+// ⚠️ DEN VIGTIGSTE ÅRSAG rettes IKKE af denne webhook alene — se den store
+// forklaring i leveringsmailen: er RESEND_FROM ikke sat til en adresse på et
+// domæne der er VERIFICERET hos Resend (SPF+DKIM tilføjet hos jeres
+// DNS-udbyder), sendes der stadig fra Resends delte test-adresse
+// (onboarding@resend.dev), som mange mailudbydere spam-filtrerer aggressivt.
+// Webhooken gør problemet SYNLIGT — den løser det ikke i sig selv.
+//
+// Signaturverifikation følger Svix' skema (som Resend selv bruger) — samme
+// idé som verifyCloseWebhookSignature ovenfor (HMAC over den RÅ body), men et
+// andet konkret format, se Resends/Svix' dokumentation for detaljerne.
+// ══════════════════════════════════════════════════════════════
+const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET || '';
+function verifyResendWebhookSignature(req) {
+  if (!RESEND_WEBHOOK_SECRET || !req.rawBody) return false;
+  const svixId = req.headers['svix-id'];
+  const svixTimestamp = req.headers['svix-timestamp'];
+  const svixSignature = req.headers['svix-signature'];
+  if (!svixId || !svixTimestamp || !svixSignature) return false;
+  // Afvis for gamle/for "fremtidige" beskeder (typisk replay-forsøg) — 5 minutters margin.
+  const ts = Number(svixTimestamp);
+  if (!ts || Math.abs(Date.now() / 1000 - ts) > 300) return false;
+  try {
+    const secretPart = RESEND_WEBHOOK_SECRET.startsWith('whsec_') ? RESEND_WEBHOOK_SECRET.slice(6) : RESEND_WEBHOOK_SECRET;
+    const secretBytes = Buffer.from(secretPart, 'base64');
+    const signedContent = `${svixId}.${svixTimestamp}.${req.rawBody.toString('utf8')}`;
+    const expected = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64');
+    // svix-signature kan indeholde flere "v1,<base64>"-par adskilt af mellemrum
+    // (fx ved nøgle-rotation) — et match mod ÉT af dem er nok.
+    const candidates = String(svixSignature).split(' ').map(part => part.split(',')[1]).filter(Boolean);
+    return candidates.some(sig => {
+      try { return crypto.timingSafeEqual(Buffer.from(sig, 'base64'), Buffer.from(expected, 'base64')); }
+      catch (e) { return false; } // fx forskellig længde — helt sikkert ikke et match
+    });
+  } catch (e) { return false; }
+}
+// Kortlægger Resends event-type til (a) en status-værdi gemt på selve rækken
+// og (b) evt. en ny linje i den eksisterende aktivitets-tidslinje (kun for
+// quote/invoice — se DOC_ACTIVITY_LABELS i admin.html for de tilsvarende
+// danske labels/ikoner). 'email.sent' får bevidst activityType:null, da
+// "sendt" allerede logges synkront ved selve afsendelsen (logDocActivity
+// kaldes direkte i POST .../send) — det ville være en dublet at logge det igen her.
+const RESEND_EVENT_STATUS_MAP = {
+  'email.sent': { status: 'sent', activityType: null },
+  'email.delivered': { status: 'delivered', activityType: 'mail_delivered' },
+  'email.delivery_delayed': { status: 'delayed', activityType: 'mail_delayed' },
+  'email.bounced': { status: 'bounced', activityType: 'mail_bounced' },
+  'email.complained': { status: 'complained', activityType: 'mail_complained' }
+};
 
 // ══════════════════════════════════════════════════════════════
 // SMS — samme "graceful degradation"-mønster som mail ovenfor: virker slet
@@ -7279,6 +7414,51 @@ app.post('/api/integrations/close/webhook', asyncRoute(async (req, res) => {
     }
   } catch (e) {
     console.error('Close-webhook fejlede under efterbehandling:', e.message);
+  }
+}));
+
+// Se den store forklarende kommentar ved verifyResendWebhookSignature/
+// RESEND_EVENT_STATUS_MAP (længere oppe, lige efter logOutboundEmail) for
+// baggrunden og opsætningsvejledningen til denne — RUNDE M, Martins
+// presserende ønske om at kunne se hvorfor tilbud/fakturaer ikke lander.
+app.post('/api/webhooks/resend', asyncRoute(async (req, res) => {
+  if (!RESEND_WEBHOOK_SECRET) {
+    console.error('Resend-webhook kaldt, men RESEND_WEBHOOK_SECRET er ikke sat i miljøvariablerne.');
+    return res.status(501).json({ error: 'Resend-webhooken er ikke sat op endnu' });
+  }
+  if (!verifyResendWebhookSignature(req)) {
+    console.error('Resend-webhook: ugyldig signatur — afvist.');
+    return res.status(401).json({ error: 'Ugyldig signatur' });
+  }
+  // Svar Resend med det samme, ligesom Close-webhooken ovenfor — selve
+  // efterbehandlingen fortsætter i baggrunden efter res.json().
+  res.json({ ok: true });
+  try {
+    const event = req.body || {};
+    const map = RESEND_EVENT_STATUS_MAP[event.type];
+    if (!map) return; // ukendt/uinteressant event-type (fx email.opened/clicked) — ignorér roligt
+    const emailId = event.data && (event.data.email_id || event.data.id);
+    if (!emailId) return;
+    const detail = (event.data && event.data.bounce && event.data.bounce.message)
+      || (event.data && event.data.click && event.data.click.link)
+      || null;
+
+    const row = await pgOne('SELECT * FROM outbound_emails WHERE resend_email_id=$1', [emailId]);
+    if (!row) { console.log('Resend-webhook: ukendt email_id (ingen matchende outbound_emails-række endnu — måske en mail sendt før denne webhook blev sat op):', emailId); return; }
+
+    await pool.query(
+      `UPDATE outbound_emails SET status=$1, status_detail=$2, status_updated_at=${nowTextSQL()} WHERE resend_email_id=$3`,
+      [map.status, detail, emailId]
+    );
+    await pool.query(
+      `UPDATE quote_sends SET delivery_status=$1, delivery_detail=$2, delivery_status_at=${nowTextSQL()} WHERE resend_email_id=$3`,
+      [map.status, detail, emailId]
+    );
+    if (map.activityType && (row.kind === 'quote' || row.kind === 'invoice')) {
+      logDocActivity(row.kind, Number(row.ref_id), map.activityType, 'Resend', detail);
+    }
+  } catch (e) {
+    console.error('Fejl i Resend-webhook-behandling:', e.message);
   }
 }));
 
@@ -14028,8 +14208,9 @@ app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (
   let pdfBuffer;
   try { pdfBuffer = await renderDocumentPdfBuffer('quote', quote, company); }
   catch (e) { return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message }); }
+  let sendResult;
   try {
-    await sendMailUniversal({
+    sendResult = await sendMailUniversal({
       to, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml),
       attachments: [{ filename: quote.quote_number + '.pdf', content: pdfBuffer }]
     });
@@ -14038,24 +14219,46 @@ app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (
   }
   if (quote.status === 'draft') await pool.query(`UPDATE quotes SET status='sent', updated_at=${nowTextSQL()} WHERE id=$1`, [quote.id]);
   logDocActivity('quote', quote.id, 'sent', req.user.name, `til ${to}`);
+  logOutboundEmail({ kind: 'quote', refId: quote.id, recipient: to, subject, sendResult });
   // ARKIVERING — gem den PRÆCISE PDF (som blev sendt) + et datasnapshot som en ny
   // nummereret version, så tilbuddet altid kan redigeres/gensendes videre uden at en
   // tidligere given pris/PDF nogensinde forsvinder eller ændres i baglommen. Fejler
   // arkiveringen af en eller anden grund, må det IKKE vælte selve afsendelsen — mailen
-  // er allerede sendt til kunden på dette tidspunkt.
+  // er allerede sendt til kunden på dette tidspunkt. resend_email_id gemmes med, så
+  // POST /api/webhooks/resend senere kan skrive leverance-status ind på PRÆCIS
+  // denne version (se RUNDE M-kommentaren ved outbound_emails).
   try {
     const mx = await pgOne('SELECT COALESCE(MAX(version_number),0) AS mx FROM quote_sends WHERE quote_id=$1', [quote.id]);
     const versionNumber = Number(mx.mx) + 1;
     await pool.query(
-      'INSERT INTO quote_sends (quote_id,version_number,sent_by,recipient,pdf_snapshot,snapshot_data) VALUES ($1,$2,$3,$4,$5,$6)',
-      [quote.id, versionNumber, req.user.name, to, pdfBuffer, JSON.stringify(quote)]
+      'INSERT INTO quote_sends (quote_id,version_number,sent_by,recipient,pdf_snapshot,snapshot_data,resend_email_id,delivery_status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [quote.id, versionNumber, req.user.name, to, pdfBuffer, JSON.stringify(quote), sendResult && sendResult.resendEmailId, sendResult && sendResult.resendEmailId ? 'sent' : null]
     );
   } catch (e) { console.error('Kunne ikke arkivere tilbudsversion:', e.message); }
   res.json({ ok: true });
 }));
 
+// RUNDE M (sep. 2026, Martins presserende ønske) — proaktiv liste over
+// tilbud/fakturaer der er AFVIST (bounced) eller markeret som SPAM af
+// modtageren de seneste 30 dage, så Martin kan opdage det UDEN at skulle åbne
+// hvert enkelt dokument selv. Kræver at RESEND_WEBHOOK_SECRET er sat op (se
+// forklaringen ved outbound_emails/verifyResendWebhookSignature) — er den
+// ikke det, er listen bare altid tom, hvilket IKKE er det samme som "alt er
+// leveret fint" (se advarslen returneret i webhook_configured herunder).
+app.get('/api/outbound-emails/problems', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT kind, ref_id, recipient, subject, status, status_detail, created_at, status_updated_at
+    FROM outbound_emails
+    WHERE kind IN ('quote','invoice') AND status IN ('bounced','complained')
+      AND created_at > ((CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - interval '30 days')::text
+    ORDER BY status_updated_at DESC NULLS LAST, created_at DESC
+    LIMIT 25
+  `);
+  res.json({ webhook_configured: !!RESEND_WEBHOOK_SECRET, problems: rows.rows });
+}));
+
 app.get('/api/quotes/:id/sends', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
-  const rows = await pool.query('SELECT id,version_number,sent_at,sent_by,recipient FROM quote_sends WHERE quote_id=$1 ORDER BY version_number DESC', [req.params.id]);
+  const rows = await pool.query('SELECT id,version_number,sent_at,sent_by,recipient,delivery_status,delivery_status_at,delivery_detail FROM quote_sends WHERE quote_id=$1 ORDER BY version_number DESC', [req.params.id]);
   res.json(rows.rows);
 }));
 
@@ -14105,8 +14308,9 @@ app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async
   let pdfBuffer;
   try { pdfBuffer = await renderDocumentPdfBuffer('invoice', invoice, company); }
   catch (e) { return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message }); }
+  let sendResult;
   try {
-    await sendMailUniversal({
+    sendResult = await sendMailUniversal({
       to, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml),
       attachments: [{ filename: invoice.invoice_number + '.pdf', content: pdfBuffer }]
     });
@@ -14119,6 +14323,7 @@ app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async
   // og PUT /api/invoices/:id/lines.
   await pool.query(`UPDATE invoices SET sent_at = COALESCE(sent_at, ${nowTextSQL()}) WHERE id=$1`, [invoice.id]);
   logDocActivity('invoice', invoice.id, 'sent', req.user.name, `til ${to}`);
+  logOutboundEmail({ kind: 'invoice', refId: invoice.id, recipient: to, subject, sendResult });
   res.json({ ok: true });
 }));
 
@@ -14719,6 +14924,7 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
   // så kunden ser "samme tidslinje, samme layout" som i admin, bare uden
   // træk/slip eller afhængighedspile som ikke giver mening for en kunde.
   let ganttScrollToday = 0, ganttDayWidth = 34;
+  let ganttTasksForModal = [];
   const ganttHtml = (() => {
     const tasksWithDates = projectTasks.filter(t => t.start_date);
     if (!tasksWithDates.length) {
@@ -14764,10 +14970,16 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     const sorted = tasksWithDates.slice().sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || '')));
     let listRows = '';
     let barRows = '';
+    // TL_TASKS — data til den nye interaktive opgave-popup (item 1). Kun
+    // kunde-sikre felter medtages bevidst: t.job_phone/t.job_email (interne
+    // JobTread-kontaktfelter på selve opgaven) og t.status (Martins interne
+    // todo/doing/done-pipeline-kolonne, se pd-pipeline-* i admin) eksponeres
+    // IKKE her — kun navn, evt. beskrivelse, datoer og en afledt, kunde-venlig
+    // status (samme færdig/ikke-færdig-logik som bjælkefarven allerede bruger).
+    ganttTasksForModal = [];
     sorted.forEach(t => {
       const label = t.name || 'Opgave';
       const jobLabel = multiJob ? (jobNameById[t.job_id] || '') : '';
-      listRows += `<div class="g-list-row"><div class="g-list-row-title">${esc(label)}</div>${jobLabel ? `<div class="g-list-row-sub">${esc(jobLabel)}</div>` : ''}</div>`;
       const s = parseIso(t.start_date), e = parseIso(t.end_date || t.start_date);
       const offset = Math.round((s - rangeStart) / 86400000);
       const span = Math.max(1, Math.round((e - s) / 86400000) + 1);
@@ -14775,9 +14987,21 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
       // grøn når opgaven er markeret 100% færdig i Gantt-kortet, ellers grå.
       const done = Number(t.progress || 0) >= 1;
       const barColor = done ? '#22C55E' : '#94A3B8';
-      barRows += `<div class="g-row"><div class="g-row-bg">${bgCols}</div><div class="g-bar" style="left:${offset * dw}px;width:${Math.max(dw - 4, span * dw - 4)}px;background:${barColor}" title="${esc(label)}${jobLabel ? ' · ' + esc(jobLabel) : ''} (${t.start_date} – ${t.end_date || t.start_date})">${dw >= 22 ? `<span class="g-bar-label">${esc(label)}</span>` : ''}</div></div>`;
+      let taskStatus;
+      if (done) taskStatus = { label: '✅ Færdig', color: '#15803D', bg: '#DCFCE7' };
+      else if (todayIso < String(t.start_date).slice(0, 10)) taskStatus = { label: '📅 Planlagt', color: '#1D4ED8', bg: '#DBEAFE' };
+      else taskStatus = { label: '🔧 I gang', color: '#92400E', bg: '#FEF3C7' };
+      const durationDays = Math.round((e - s) / 86400000) + 1;
+      ganttTasksForModal.push({
+        id: String(t.id), name: label, job: jobLabel || null,
+        start: t.start_date, end: t.end_date || t.start_date, days: durationDays,
+        desc: t.description || null, status: taskStatus.label, statusColor: taskStatus.color, statusBg: taskStatus.bg
+      });
+      listRows += `<div class="g-list-row" data-task-id="${esc(String(t.id))}" onclick="openTaskModal('${esc(String(t.id))}')"><div class="g-list-row-title">${esc(label)}</div>${jobLabel ? `<div class="g-list-row-sub">${esc(jobLabel)}</div>` : ''}</div>`;
+      barRows += `<div class="g-row"><div class="g-row-bg">${bgCols}</div><div class="g-bar" data-task-id="${esc(String(t.id))}" onclick="openTaskModal('${esc(String(t.id))}')" style="left:${offset * dw}px;width:${Math.max(dw - 4, span * dw - 4)}px;background:${barColor};cursor:pointer" title="${esc(label)}${jobLabel ? ' · ' + esc(jobLabel) : ''} (${t.start_date} – ${t.end_date || t.start_date}) — klik for detaljer">${dw >= 22 ? `<span class="g-bar-label">${esc(label)}</span>` : ''}</div></div>`;
     });
-    return `<div class="gantt-scroll" id="gantt-scroll"><div class="g-chart">
+    return `<div id="tl-pdf-btn-wrap" style="display:flex;justify-content:flex-end;margin-bottom:8px"><button type="button" class="tl-pdf-btn" onclick="downloadTimelinePdf()">📄 Download PDF</button></div>
+    <div class="gantt-scroll" id="gantt-scroll"><div class="g-chart">
       <div class="g-list"><div class="g-list-head">Projektforløb</div>${listRows}</div>
       <div class="g-timeline" style="width:${totalDays * dw}px">
         <div class="g-week-head">${weekCols}</div>
@@ -14905,6 +15129,28 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 .g-bar-label{color:#fff;font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gantt-legend{display:flex;gap:16px;justify-content:center;margin-top:8px;font-size:11px;color:var(--sub)}
 .gantt-legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:middle}
+.tl-pdf-btn{border:1px solid var(--border);background:#fff;color:var(--accent);font-size:11.5px;font-weight:800;padding:7px 12px;border-radius:9px;cursor:pointer}
+.tl-pdf-btn:hover{background:var(--accent-soft)}
+.tl-pdf-btn:disabled{opacity:.6;cursor:default}
+.g-list-row,.g-bar{cursor:pointer}
+/* OPGAVE-POPUP (item 1) — "moderne, billy-style" udgave af admins interne
+   Tidslinje-panel (#tl-drawer, gradient-header), tilpasset som en centreret
+   modal (ikke et sidepanel) af hensyn til at kunder ofte kigger på mobil. */
+.tm-backdrop{display:none;position:fixed;inset:0;background:rgba(15,17,24,.45);z-index:200;align-items:center;justify-content:center;padding:16px}
+.tm-backdrop.open{display:flex}
+.tm-card{background:#fff;border-radius:18px;max-width:420px;width:100%;max-height:86vh;overflow:auto;box-shadow:0 24px 60px rgba(15,17,24,.3)}
+.tm-head{background:linear-gradient(135deg,var(--accent),#3730A3);color:#fff;padding:20px;border-radius:18px 18px 0 0;position:relative}
+.tm-close{position:absolute;top:14px;right:14px;border:0;background:rgba(255,255,255,.18);color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1}
+.tm-close:hover{background:rgba(255,255,255,.3)}
+.tm-title{font-size:16px;font-weight:800;padding-right:36px}
+.tm-job{font-size:11.5px;opacity:.85;margin-top:3px}
+.tm-body{padding:18px 20px}
+.tm-status{display:inline-block;font-size:11px;font-weight:800;padding:4px 11px;border-radius:999px;margin-bottom:14px}
+.tm-row{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #F5F6F8}
+.tm-row:last-child{border-bottom:0}
+.tm-row-icon{width:20px;flex-shrink:0;text-align:center}
+.tm-row-label{font-size:9.5px;font-weight:800;color:var(--sub);text-transform:uppercase;letter-spacing:.02em}
+.tm-row-value{font-size:13px;color:var(--ink);margin-top:2px;white-space:pre-wrap}
 </style></head><body><div class="wrap">
 <div class="brand">${esc(companyName)}</div>
 <h1>Hej ${esc(tokenRow.job_name)} 👋</h1>
@@ -14923,6 +15169,23 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 <div class="panel" id="panel-docs">${docsHtml}</div>
 <div class="foot">Spørgsmål? Kontakt ${esc(companyName)} direkte.</div>
 </div>
+<div class="tm-backdrop" id="tm-backdrop" onclick="if(event.target===this)closeTaskModal()">
+  <div class="tm-card">
+    <div class="tm-head">
+      <button type="button" class="tm-close" onclick="closeTaskModal()" title="Luk">✕</button>
+      <div class="tm-title" id="tm-title"></div>
+      <div class="tm-job" id="tm-job"></div>
+    </div>
+    <div class="tm-body">
+      <span class="tm-status" id="tm-status"></span>
+      <div class="tm-row"><div class="tm-row-icon">📅</div><div><div class="tm-row-label">Periode</div><div class="tm-row-value" id="tm-period"></div></div></div>
+      <div class="tm-row"><div class="tm-row-icon">⏱</div><div><div class="tm-row-label">Varighed</div><div class="tm-row-value" id="tm-duration"></div></div></div>
+      <div class="tm-row" id="tm-desc-row" style="display:none"><div class="tm-row-icon">📝</div><div><div class="tm-row-label">Beskrivelse</div><div class="tm-row-value" id="tm-desc"></div></div></div>
+    </div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 function showTab(name){
   ['pipeline','timeline','docs'].forEach(function(n){
@@ -14932,6 +15195,78 @@ function showTab(name){
   if(name==='timeline'){
     var sc=document.getElementById('gantt-scroll');
     if(sc) sc.scrollLeft=Math.max(0,${ganttScrollToday}-${ganttDayWidth}*2);
+  }
+}
+// OPGAVE-POPUP (item 1) — TL_TASKS bygges server-side (kun kunde-sikre felter,
+// se kommentaren ved ganttTasksForModal ovenfor i server.js) og læses her rent
+// klient-side; ingen ekstra kald til serveren nødvendigt for at åbne popup'en.
+var TL_TASKS = ${JSON.stringify(ganttTasksForModal).replace(/</g, '\\u003c')};
+function fmtTlDate(iso){
+  if(!iso)return '';
+  var d=new Date(String(iso).slice(0,10)+'T00:00:00');
+  return d.toLocaleDateString('da-DK',{weekday:'short',day:'numeric',month:'long',year:'numeric'});
+}
+function openTaskModal(id){
+  var t=null;
+  for(var i=0;i<TL_TASKS.length;i++){ if(TL_TASKS[i].id===id){ t=TL_TASKS[i]; break; } }
+  if(!t)return;
+  document.getElementById('tm-title').textContent=t.name;
+  document.getElementById('tm-job').textContent=t.job||'';
+  document.getElementById('tm-job').style.display=t.job?'':'none';
+  var st=document.getElementById('tm-status');
+  st.textContent=t.status;
+  st.style.background=t.statusBg;
+  st.style.color=t.statusColor;
+  document.getElementById('tm-period').textContent=(t.start===t.end)?fmtTlDate(t.start):(fmtTlDate(t.start)+' – '+fmtTlDate(t.end));
+  document.getElementById('tm-duration').textContent=t.days+(t.days===1?' dag':' dage');
+  var descRow=document.getElementById('tm-desc-row');
+  if(t.desc){ descRow.style.display=''; document.getElementById('tm-desc').textContent=t.desc; }
+  else { descRow.style.display='none'; }
+  document.getElementById('tm-backdrop').classList.add('open');
+}
+function closeTaskModal(){ document.getElementById('tm-backdrop').classList.remove('open'); }
+document.addEventListener('keydown',function(e){ if(e.key==='Escape')closeTaskModal(); });
+// DOWNLOAD PDF (item 3, kundens egen genvej — Martins "eller hvis det i deres
+// egen portal måske?"-idé) — samme html2canvas+jsPDF-teknik som admins
+// Gantt-PDF-knap (pdDownloadGanttPdf i admin.html), men her fanger den PRÆCIS
+// det kunden selv ser (denne side ER kildevisningen), så der er ingen risiko
+// for at komme ud af trit med admin-visningen.
+async function downloadTimelinePdf(){
+  var panel=document.getElementById('panel-timeline');
+  var scroll=document.getElementById('gantt-scroll');
+  if(!panel||!scroll||!TL_TASKS.length){ alert('Ingen opgaver i tidslinjen at downloade endnu.'); return; }
+  if(typeof html2canvas==='undefined'||!window.jspdf){ alert('PDF-eksport kunne ikke indlæses — tjek internetforbindelsen og prøv igen.'); return; }
+  var btn=document.querySelector('.tl-pdf-btn');
+  var origHtml=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳ Genererer…'; }
+  var prevOverflow=scroll.style.overflow;
+  scroll.style.overflow='visible';
+  try{
+    var canvas=await html2canvas(panel,{
+      backgroundColor:'#ffffff',scale:1.5,useCORS:true,
+      width:panel.scrollWidth,height:panel.scrollHeight,
+      windowWidth:panel.scrollWidth,windowHeight:panel.scrollHeight,
+      ignoreElements:function(el){ return el.id==='tl-pdf-btn-wrap'; }
+    });
+    var imgData=canvas.toDataURL('image/jpeg',0.92);
+    var jsPDF=window.jspdf.jsPDF;
+    var isLandscape=canvas.width>=canvas.height;
+    var pdf=new jsPDF({orientation:isLandscape?'landscape':'portrait',unit:'mm',format:'a4'});
+    var pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight();
+    var margin=10,titleH=8;
+    var maxW=pageW-margin*2,maxH=pageH-margin*2-titleH;
+    var ratio=Math.min(maxW/canvas.width,maxH/canvas.height);
+    var imgW=canvas.width*ratio,imgH=canvas.height*ratio;
+    var title=${JSON.stringify(String(tokenRow.job_name || ''))}+' — Tidslinje ('+new Date().toLocaleDateString('da-DK')+')';
+    pdf.setFontSize(13);
+    pdf.text(title,margin,margin+4);
+    var imgX=margin+(maxW-imgW)/2;
+    pdf.addImage(imgData,'JPEG',imgX,margin+titleH,imgW,imgH);
+    pdf.save('tidslinje.pdf');
+  }catch(e){ alert('Kunne ikke lave PDF: '+e.message); }
+  finally{
+    scroll.style.overflow=prevOverflow;
+    if(btn){ btn.disabled=false; btn.innerHTML=origHtml; }
   }
 }
 </script>

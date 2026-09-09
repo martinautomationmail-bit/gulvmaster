@@ -2310,6 +2310,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<!-- RUNDE M (sep. 2026, Martins ønske #9) — html2canvas+jsPDF bruges KUN til at
+     eksportere sagens ganttkort som PDF (se pdDownloadGanttPdf()), fuldstændig
+     klient-side, ingen server-ændring nødvendig. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 <div id="app" style="display:none">
@@ -2470,7 +2475,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-08.2</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-08.4</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3239,6 +3244,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="bly-pagehead">
     <div><h2>Tilbud &amp; Faktura</h2><div class="sub">Eget produktkatalog, tilbudseditor med live PDF-forhåndsvisning, og fakturaer med delbetalinger</div></div>
   </div>
+  <!-- RUNDE M (sep. 2026, Martins presserende ønske: "kun ca. 50% modtager mine
+       tilbud/faktura") — proaktiv advarsel i stedet for at Martin selv skal opdage
+       det ved at en kunde ringer og siger de aldrig fik noget. Se
+       loadQzDeliveryWarning()/GET /api/outbound-emails/problems. Skjult som
+       standard — vises kun hvis der reelt er noget at vise. -->
+  <div id="qz-delivery-warning" style="display:none;margin:0 0 16px;padding:12px 16px;border-radius:var(--bly-r-md);background:#FEF2F2;border:1px solid #FECACA"></div>
   <div class="bly-segtabs" id="qz-tabs">
     <button class="bly-segtab active" data-qztab="quotes" type="button">📝 Tilbud</button>
     <button class="bly-segtab" data-qztab="invoices" type="button">🧾 Fakturaer</button>
@@ -3546,6 +3557,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="bly-segtab" data-crmpxview="files" type="button">📎 Filer <span class="sub" id="crmpx-files-count"></span></button>
     <button class="bly-segtab" data-crmpxview="emails" type="button">✉️ Emails <span class="sub" id="crmpx-emails-count"></span></button>
     <button class="bly-segtab" data-crmpxview="notes" type="button">📝 Noter <span class="sub" id="crmpx-notes-count"></span></button>
+    <button class="bly-segtab" data-crmpxview="quotes" type="button">📄 Tilbud <span class="sub" id="crmpx-quotes-count"></span></button>
   </div>
 
   <div id="crmpx-view-details">
@@ -3686,6 +3698,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div style="margin-top:6px;text-align:right"><button class="btn small" type="button" id="crmpx-notes-add-btn">+ Tilføj note</button></div>
     </div>
     <div id="crmpx-notes-list"></div>
+  </div>
+
+  <!-- TILBUD (#crmpx-view-quotes) — Martins ønske om at kunne se alle tilbud
+       lavet på denne handel/kunde direkte fra sales-pipeline-detaljen, uden at
+       skulle ud til kundekortet. Genbruger den eksisterende
+       /api/crm/customers/:id-endpoint (samme data som kundekortets
+       Tilbud-fane) — ingen ny server-endpoint nødvendig. -->
+  <div id="crmpx-view-quotes" style="display:none">
+    <div id="crmpx-quotes-list"></div>
   </div>
 </section>
 
@@ -4165,6 +4186,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
                  Se openBulkCapacityModal()/#bulk-capacity-modal og
                  POST /api/projects/:id/bulk-book-capacity. -->
             <button class="bly-btn outline" id="pd-bulk-capacity-btn" type="button" title="Book alle endnu ubookede opgaver i sagen ind i Kapacitetsbordet med ét klik">📊 Book alt i Kapacitetsbordet</button>
+            <!-- RUNDE M (Martins ønske #9) — eksporterer ganttkortet (som det ser ud lige
+                 nu, med alle rækker, ikke kun det synlige udsnit) som en PDF-fil, se
+                 pdDownloadGanttPdf(). -->
+            <button class="bly-btn outline" id="pd-gantt-pdf-btn" type="button" title="Download ganttkortet som PDF">📄 Download PDF</button>
             <button class="bly-btn" id="pd-new-task-btn" type="button">+ Ny opgave</button>
           </div>
         </div>
@@ -15258,6 +15283,27 @@ async function initQuotesModule(){
   if(!qzInitialized){bindQuotesModuleEvents();qzInitialized=true;}
   await Promise.all([loadQzProducts(),loadQzQuotes(),loadQzInvoices(),loadQzTemplates()]);
   renderQzProducts();renderQzQuotes();renderQzInvoices();renderQzTemplates();populateQeTemplatePicker();
+  loadQzDeliveryWarning();
+}
+// RUNDE M (sep. 2026, Martins presserende ønske) — se HTML-kommentaren ved
+// #qz-delivery-warning. Fejler kaldet (fx ældre server uden endpointet under
+// et deploy), skal det bare forblive skjult — aldrig vælte resten af siden.
+async function loadQzDeliveryWarning(){
+  var box=document.getElementById('qz-delivery-warning');
+  try{
+    var r=await api('/api/outbound-emails/problems');
+    if(!r||!r.webhook_configured||!Array.isArray(r.problems)||!r.problems.length){box.style.display='none';return;}
+    var rowsHtml=r.problems.slice(0,8).map(function(p){
+      var href=p.kind==='invoice'?'#quotes/faktura/'+p.ref_id:'#';
+      var label=(p.status==='bounced'?'❌ Afvist':'🚫 Markeret som spam')+' — '+esc(p.recipient||'?')+(p.subject?' · '+esc(p.subject):'');
+      var onclick=p.kind==='quote'?' onclick="openQuoteEditor('+p.ref_id+');return false;"':'';
+      return '<div style="padding:4px 0;font-size:12px"><a href="'+href+'"'+onclick+' style="color:#991B1B;text-decoration:underline">'+label+'</a></div>';
+    }).join('');
+    box.innerHTML='<div style="font-weight:800;color:#991B1B;font-size:13px;margin-bottom:4px">⚠️ '+r.problems.length+' tilbud/faktura er IKKE landet hos kunden de seneste 30 dage</div>'
+      +'<div style="color:#7F1D1D;font-size:12px;margin-bottom:6px">Modtagerens mailserver har afvist eller spam-markeret disse — kunden har med stor sandsynlighed intet set. Overvej at ringe eller finde en anden mailadresse.</div>'
+      +rowsHtml;
+    box.style.display='';
+  }catch(e){box.style.display='none';}
 }
 async function loadQzProducts(){var r=await api('/api/products');qzProducts=Array.isArray(r)?r:[];}
 async function loadQzQuotes(){var r=await api('/api/quotes');qzQuotes=Array.isArray(r)?r:[];}
@@ -15972,7 +16018,7 @@ function cdRenderQuotes(){
   });
   document.getElementById('cd-quotes-count').textContent='('+cdQuotes.length+')';
   document.getElementById('cd-quotes-body').innerHTML=list.length?list.map(function(x){
-    return '<tr style="cursor:pointer" onclick="openQuoteEditor('+x.id+')">'
+    return '<tr style="cursor:pointer" onclick="openQuoteEditorSafe('+x.id+')">'
       +'<td>'+esc(x.quote_number||'–')+'</td>'
       +'<td>'+esc(x.job_name||'–')+'</td>'
       +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
@@ -16864,17 +16910,57 @@ function crmpxInitOnce(){
   // i crmpxLoadTasks() i stedet, som altid kører efter users er hentet.
   document.getElementById('crmpx-task-assignee').addEventListener('change',function(e){e.target.dataset.userTouched='1';});
 }
-var crmpxCurrentCustomerId=null,crmpxFilesLoaded=false,crmpxEmailsLoaded=false,crmpxNotesLoaded=false;
+var crmpxCurrentCustomerId=null,crmpxFilesLoaded=false,crmpxEmailsLoaded=false,crmpxNotesLoaded=false,crmpxQuotesLoaded=false;
 function crmpxSwitchView(view){
   document.querySelectorAll('#crmpx-viewtabs [data-crmpxview]').forEach(function(btn){btn.classList.toggle('active',btn.dataset.crmpxview===view);});
   document.getElementById('crmpx-view-details').style.display=view==='details'?'':'none';
   document.getElementById('crmpx-view-files').style.display=view==='files'?'':'none';
   document.getElementById('crmpx-view-emails').style.display=view==='emails'?'':'none';
   document.getElementById('crmpx-view-notes').style.display=view==='notes'?'':'none';
+  document.getElementById('crmpx-view-quotes').style.display=view==='quotes'?'':'none';
   document.getElementById('crmpx-mailsync-toolbar').style.display=(view==='files'||view==='emails')?'flex':'none';
   if(view==='files'&&!crmpxFilesLoaded)crmpxLoadFiles();
   if(view==='emails'&&!crmpxEmailsLoaded)crmpxLoadEmails();
   if(view==='notes'&&!crmpxNotesLoaded)crmpxLoadCustomerNotes();
+  if(view==='quotes'&&!crmpxQuotesLoaded)crmpxLoadQuotes();
+}
+// TILBUD-fanen — samme data som kundekortets Tilbud-liste (cdRenderQuotes),
+// men filtreret via crmpxCurrentCustomerId og uden søgefelt (typisk få tilbud
+// pr. handel). Klik på en række åbner den rigtige tilbuds-editor.
+async function crmpxLoadQuotes(){
+  if(!crmpxCurrentCustomerId)return;
+  crmpxQuotesLoaded=true;
+  var list=document.getElementById('crmpx-quotes-list');
+  list.innerHTML='<div class="crmpx-empty">Henter tilbud...</div>';
+  var data=await api('/api/crm/customers/'+crmpxCurrentCustomerId);
+  if(!data||data.error){list.innerHTML='<div class="crmpx-empty">Kunne ikke hente tilbud — '+esc((data&&data.error)||'ukendt fejl')+'</div>';return;}
+  var quotes=data.quotes||[];
+  document.getElementById('crmpx-quotes-count').textContent=quotes.length?'('+quotes.length+')':'';
+  if(!quotes.length){list.innerHTML='<div class="crmpx-empty">Ingen tilbud lavet på denne kunde endnu</div>';return;}
+  list.innerHTML='<table class="bly-table"><thead><tr><th>Tilbudsnr.</th><th>Sag</th><th>Status</th><th class="num">Beløb</th><th>Oprettet</th></tr></thead><tbody>'
+    +quotes.map(function(x){
+      return '<tr style="cursor:pointer" onclick="openQuoteEditorSafe('+x.id+')">'
+        +'<td>'+esc(x.quote_number||'–')+'</td>'
+        +'<td>'+esc(x.job_name||'–')+'</td>'
+        +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
+        +'<td class="num">'+krFmt(x.total)+'</td>'
+        +'<td>'+esc(fmtDaDate(x.created_at))+'</td>'
+        +'</tr>';
+    }).join('')
+    +'</tbody></table>';
+}
+// Fælles "sørg for at tilbudsmodulet rent faktisk er initialiseret først"-hjælper
+// — genbruges både her og af cdRenderQuotes (kundekortets Tilbud-liste). Uden
+// denne kan #crmpx-view-quotes/kundekortets tilbudsliste sagtens blive det
+// FØRSTE sted en bruger rører Tilbud & Faktura-modulet i sessionen (fx første
+// handling efter login er at åbne en handel og klikke Tilbud), og uden
+// bindQuotesModuleEvents() (som kun kører via initQuotesModule) mangler tilbuds-
+// editorens knapper (bl.a. Luk-knappen) simpelthen deres click-lyttere — man
+// kan åbne et tilbud, men aldrig lukke det igen. Fundet og rettet i forbindelse
+// med den nye Tilbud-fane i CRM (item 2), men gælder også den ældre kundekort-liste.
+async function openQuoteEditorSafe(id){
+  if(!qzInitialized)await initQuotesModule();
+  openQuoteEditor(id);
 }
 async function crmpxLoadFiles(){
   if(!crmpxCurrentCustomerId)return;
@@ -17240,6 +17326,7 @@ async function openCrmpDetail(entityType,id){
   crmpxFilesLoaded=false;
   crmpxEmailsLoaded=false;
   crmpxNotesLoaded=false;
+  crmpxQuotesLoaded=false;
   crmpxSwitchView('details');
   document.getElementById('crmpx-viewtabs').style.display=d.customer_id?'':'none';
   var gmailStatusForFiles=d.customer_id?await api('/api/gmail/connected'):null;
@@ -17249,6 +17336,7 @@ async function openCrmpDetail(entityType,id){
   document.getElementById('crmpx-files-count').textContent='';
   document.getElementById('crmpx-emails-count').textContent='';
   document.getElementById('crmpx-notes-count').textContent='';
+  document.getElementById('crmpx-quotes-count').textContent='';
   if(entityType==='lead'){
     var oppsList=document.getElementById('crmpx-opps-list');
     document.getElementById('crmpx-opps-count').textContent=d.converted_opportunity_id?'(1)':'(0)';
@@ -18400,6 +18488,7 @@ function initProjectsModule(){
     document.getElementById('pd-send-portal-btn').addEventListener('click',pdSendPortalLink);
     document.getElementById('pd-convert-lines-btn').addEventListener('click',pdConvertLines);
     document.getElementById('pd-bulk-capacity-btn').addEventListener('click',openBulkCapacityModal);
+    document.getElementById('pd-gantt-pdf-btn').addEventListener('click',pdDownloadGanttPdf);
     document.getElementById('close-bulk-capacity').addEventListener('click',function(){closeModal('bulk-capacity-modal');});
     document.getElementById('save-bulk-capacity').addEventListener('click',saveBulkCapacityReservation);
     document.getElementById('pd-new-task-btn').addEventListener('click',function(){pdAddTaskRow();});
@@ -19167,6 +19256,80 @@ async function pdConvertLines(){
   if(r&&r.ok){toast(r.created+' opgave(r) oprettet fra tilbuddet','✓');reloadPdCurrent();}
   else toast((r&&r.error)||'Kunne ikke oprette opgaver','❌');
 }
+// RUNDE M (sep. 2026, Martins ønske #9) — "📄 Download PDF" på ganttkortet.
+// Rent klient-side: tager et "skærmbillede" af hele ganttkortet (html2canvas)
+// — herunder de dele der kun er synlige ved at scrolle, ikke kun det
+// synlige udsnit — og limer det ind i en PDF-side (jsPDF), skaleret så det
+// fylder siden bedst muligt. Ingen ny server-endpoint nødvendig.
+// RUNDE N — Martins rettelse til RUNDE M's PDF-knap: han ønskede IKKE et
+// øjebliksbillede af admins eget redigerbare ganttkort (#pd-gantt-strip),
+// men "kundens Timeline kort" — samme visning kunden selv ser på sin
+// portalside (/kunde/:token, Timeline-fanen) — så filen er klar til at sende
+// videre til kunden 1:1. Løsningen henter kundens portalside (samme
+// endpoint som "Send portal-link"-knappen bruger, GET
+// /api/customers/portal-link) i et skjult iframe, skifter til Timeline-fanen
+// DÉR, og fotograferer den — i stedet for at genopbygge visningen selv, hvilket
+// garanterer 100% samme udseende som det kunden faktisk får, uden dobbelt
+// vedligehold af Gantt-tegne-koden i server.js.
+async function pdDownloadGanttPdf(){
+  if(!pjCurrent||!(pjCurrent.tasks||[]).length){toast('Ingen opgaver at eksportere endnu','⚠️');return;}
+  var btn=document.getElementById('pd-gantt-pdf-btn');
+  var origHtml=btn.innerHTML;
+  btn.disabled=true;btn.innerHTML='⏳ Henter kundens tidslinje…';
+  var ifr=null;
+  try{
+    var link=await api('/api/customers/portal-link?name='+encodeURIComponent(pjCurrent.name||''));
+    if(!link||link.error||!link.url){toast('Kunne ikke finde kundens portal-link — '+((link&&link.error)||'ukendt fejl'),'❌');return;}
+    var pageRes=await fetch(link.url);
+    var pageHtml=await pageRes.text();
+    ifr=document.createElement('iframe');
+    ifr.style.cssText='position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:0';
+    document.body.appendChild(ifr);
+    await new Promise(function(resolve){ ifr.onload=resolve; ifr.srcdoc=pageHtml; });
+    var idoc=ifr.contentDocument;
+    var panel=idoc&&idoc.getElementById('panel-timeline');
+    var scroll=idoc&&idoc.getElementById('gantt-scroll');
+    if(!panel||!scroll){toast('Kunden har ingen tidslinje at eksportere endnu — synkronisér ganttkortet først','⚠️');return;}
+    // Skift til Timeline-fanen INDE i iframen (portalens egen showTab()), så
+    // panel-timeline rent faktisk er synligt (den er display:none som standard
+    // — kun "Oversigt"-fanen er aktiv ved indlæsning).
+    if(typeof ifr.contentWindow.showTab==='function')ifr.contentWindow.showTab('timeline');
+    scroll.style.overflow='visible';
+    await new Promise(function(r){ setTimeout(r,60); });
+    if(typeof html2canvas==='undefined'||!window.jspdf){toast('PDF-eksport kunne ikke indlæses — tjek internetforbindelsen og prøv igen','❌');return;}
+    btn.innerHTML='⏳ Genererer…';
+    var canvas=await html2canvas(panel,{
+      backgroundColor:'#ffffff',scale:1.5,useCORS:true,
+      width:panel.scrollWidth,height:panel.scrollHeight,
+      windowWidth:panel.scrollWidth,windowHeight:panel.scrollHeight,
+      ignoreElements:function(node){ return node.id==='tl-pdf-btn-wrap'; }
+    });
+    // JPEG (ikke PNG) — et ganttkort er stort set fladt farvede felter + tekst,
+    // så JPEG-komprimering gør PDF'en markant mindre (typisk en faktor 10+)
+    // uden synligt kvalitetstab, hvilket betyder meget for en fil Martin skal
+    // maile videre til en kunde eller kollega.
+    var imgData=canvas.toDataURL('image/jpeg',0.92);
+    var jsPDF=window.jspdf.jsPDF;
+    var isLandscape=canvas.width>=canvas.height;
+    var pdf=new jsPDF({orientation:isLandscape?'landscape':'portrait',unit:'mm',format:'a4'});
+    var pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight();
+    var margin=10,titleH=8;
+    var maxW=pageW-margin*2,maxH=pageH-margin*2-titleH;
+    var ratio=Math.min(maxW/canvas.width,maxH/canvas.height);
+    var imgW=canvas.width*ratio,imgH=canvas.height*ratio;
+    var title=(pjCurrent.name||'Ganttkort')+' — Tidslinje ('+iso(new Date())+')';
+    pdf.setFontSize(13);pdf.text(title,margin,margin+4);
+    var imgX=margin+(maxW-imgW)/2;
+    pdf.addImage(imgData,'JPEG',imgX,margin+titleH,imgW,imgH);
+    var fname=(pjCurrent.name||'projekt').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'-')||'projekt';
+    pdf.save(fname+'-tidslinje.pdf');
+  }catch(e){
+    toast('Kunne ikke lave PDF: '+e.message,'❌');
+  }finally{
+    if(ifr&&ifr.parentNode)ifr.parentNode.removeChild(ifr);
+    btn.disabled=false;btn.innerHTML=origHtml;
+  }
+}
 // RUNDE H #24 — "📊 Book alt i Kapacitetsbordet". Se HTML-kommentaren ved
 // #bulk-capacity-modal for baggrunden (og hvorfor medarbejder-valget bevidst
 // IKKE er automatiseret væk). Genbruger capacityWeekOptions() (generisk,
@@ -19808,7 +19971,14 @@ var DOC_ACTIVITY_LABELS={
   credit_note_added:{icon:'🧾',label:'Kreditnota oprettet'},
   credit_note_removed:{icon:'🗑️',label:'Kreditnota fjernet'},
   credit_note_sent:{icon:'📧',label:'Kreditnota sendt til kunden'},
-  accepted_email_sent:{icon:'🎉',label:'Velkomstmail med kundeportal sendt'}
+  accepted_email_sent:{icon:'🎉',label:'Velkomstmail med kundeportal sendt'},
+  // RUNDE M (sep. 2026, Martins presserende ønske om synlighed på hvorfor
+  // tilbud/fakturaer ikke lander) — skrives af POST /api/webhooks/resend, se
+  // den store forklaring ved outbound_emails i server.js.
+  mail_delivered:{icon:'✅',label:'E-mail bekræftet leveret'},
+  mail_bounced:{icon:'❌',label:'E-mail AFVIST (bounced) — landede ikke'},
+  mail_complained:{icon:'🚫',label:'Markeret som spam af modtageren'},
+  mail_delayed:{icon:'⏳',label:'Levering forsinket'}
 };
 function fmtActivityWhen(ts){
   if(!ts)return'';
@@ -19834,13 +20004,30 @@ async function loadDocActivity(docType,id,containerId){
 // ARKIVEREDE TILBUDSVERSIONER — den PRÆCISE PDF (og hvem der sendte den, og hvornår)
 // for hver gang tilbuddet er blevet sendt, så en tidligere given pris/version altid
 // kan findes frem igen, uanset hvad der efterfølgende redigeres i det levende tilbud.
+// RUNDE M (sep. 2026, Martins presserende ønske) — leverance-status pr.
+// sendt version. delivery_status er kun sat hvis Martin har sat
+// RESEND_WEBHOOK_SECRET op i Render (se den store forklaring i server.js) —
+// før det viser badgen bevidst "leverance ukendt" i stedet for at lade som
+// om vi ved noget vi ikke gør.
+var QE_DELIVERY_META={
+  sent:{icon:'📧',label:'Sendt (afventer bekræftelse)',color:'var(--bly-sub)'},
+  delivered:{icon:'✅',label:'Leveret',color:'#16A34A'},
+  bounced:{icon:'❌',label:'Afvist (bounced)',color:'#DC2626'},
+  complained:{icon:'🚫',label:'Markeret som spam',color:'#DC2626'},
+  delayed:{icon:'⏳',label:'Forsinket',color:'#D97706'}
+};
+function qeDeliveryBadgeHtml(status,detail){
+  if(!status)return '<span title="Kræver at Resend-webhooken er sat op — se leveringsnoten" style="font-size:10px;color:var(--bly-sub)">— leverance ukendt</span>';
+  var m=QE_DELIVERY_META[status]||{icon:'•',label:status,color:'var(--bly-sub)'};
+  return '<span style="font-size:10.5px;font-weight:700;color:'+m.color+'"'+(detail?' title="'+esc(detail)+'"':'')+'>'+m.icon+' '+m.label+'</span>';
+}
 async function loadQeVersions(id){
   var wrap=document.getElementById('qe-versions-wrap');
   var rows=await api('/api/quotes/'+id+'/sends');
   if(!Array.isArray(rows)||!rows.length){wrap.style.display='none';return;}
   wrap.style.display='';
   document.getElementById('qe-versions-list').innerHTML=rows.map(function(s){
-    return '<div class="doc-activity-row"><div><div class="doc-activity-what">📄 Version '+s.version_number+'</div><div class="doc-activity-meta">Sendt af '+esc(s.sent_by||'–')+' til '+esc(s.recipient||'–')+'</div></div>'
+    return '<div class="doc-activity-row"><div><div class="doc-activity-what">📄 Version '+s.version_number+'</div><div class="doc-activity-meta">Sendt af '+esc(s.sent_by||'–')+' til '+esc(s.recipient||'–')+' · '+qeDeliveryBadgeHtml(s.delivery_status,s.delivery_detail)+'</div></div>'
       +'<div style="display:flex;align-items:center;gap:8px"><span class="doc-activity-when">'+fmtActivityWhen(s.sent_at)+'</span><button type="button" class="qz-icon-btn" data-send-id="'+s.id+'" title="Åbn den sendte PDF">📄</button></div></div>';
   }).join('');
   Array.prototype.forEach.call(document.querySelectorAll('#qe-versions-list [data-send-id]'),function(btn){
@@ -20943,6 +21130,7 @@ window.openProductModal=openProductModal;
 window.openProjectDetail=openProjectDetail;
 window.openQaTemplateModal=openQaTemplateModal;
 window.openQuoteEditor=openQuoteEditor;
+window.openQuoteEditorSafe=openQuoteEditorSafe;
 window.openTemplateModal=openTemplateModal;
 window.savePjRowStatus=savePjRowStatus;
 window.useTemplateForNewQuote=useTemplateForNewQuote;
