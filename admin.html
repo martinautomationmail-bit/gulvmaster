@@ -2546,7 +2546,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-09.4</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-09.5</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4225,8 +4225,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              openProjectDetail(), ikke længere disse 4 hårdkodede <option>er. -->
         <select id="pd-status-select" class="select" style="width:auto"></select>
         <a id="pd-quote-link" class="bly-btn outline" href="#" target="_blank" style="display:none">📄 Se tilbud</a>
+        <!-- RUNDE S (Martins ønske: "skal jeg kunne se tilbuddet inde i projektet ...
+             ændre man i det kan man trykke tilføje nye poster") — "Se tilbud" ovenfor
+             viser stadig kun PDF'en (hurtigt overblik/print); denne knap åbner den
+             RIGTIGE tilbudseditor, så nye poster kan tilføjes direkte — brug bagefter
+             "Opret opgaver fra tilbud" i Opgaver-fanen til at hente de nye poster ind
+             som opgaver (den springer allerede-oprettede poster over). -->
+        <button id="pd-quote-edit-btn" class="bly-btn outline" type="button" style="display:none" title="Åbn selve tilbuddet for at rette eller tilføje poster">✎ Rediger tilbud</button>
         <a id="pd-invoice-link" class="bly-btn outline" href="#" target="_blank" style="display:none">🧾 Se faktura</a>
         <button id="pd-send-portal-btn" class="bly-btn outline" type="button" title="Send linket til kundens egen side (alle sager, tilbud og fakturaer) på mail">🔗 Send kundeportal</button>
+        <!-- RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter ... under
+             projektet"). -->
+        <button id="pd-delete-btn" class="bly-btn outline" type="button" style="color:#B91C1C;border-color:#FCA5A5" title="Slet sagen permanent">🗑 Slet sagen</button>
       </div>
     </div>
     <div style="padding:14px 22px 0">
@@ -4344,6 +4354,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <thead><tr><th>Medarbejder</th><th>Løntype</th><th class="num">Timer</th><th>Akkord-poster</th><th class="num">Omkostning</th></tr></thead>
           <tbody id="pd-budget-employees-body"></tbody>
         </table>
+        <!-- RUNDE S (Martins ønske: "underleverandør ... faktura ind på
+             opgaven ... viser det vi så har tjent") — kun synlig når mindst én
+             opgave rent faktisk har et underleverandør-beløb sat, se
+             renderPdBudget(). -->
+        <div id="pd-budget-sub-wrap" style="display:none">
+          <h3 style="font-size:14px;margin:22px 0 10px">🧾 Underleverandør-fakturaer pr. opgave</h3>
+          <table class="bly-table">
+            <thead><tr><th>Opgave</th><th>Note</th><th class="num">Beløb</th></tr></thead>
+            <tbody id="pd-budget-sub-body"></tbody>
+          </table>
+        </div>
       </div>
 
       <div class="mo" id="pd-time-modal">
@@ -4785,6 +4806,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       </div>
       <div class="form-group" style="margin-top:14px"><label class="form-label">📝 Note</label><textarea id="pdtd-note-input" class="input" rows="3" placeholder="Fx særlige forhold på pladsen, adgang, aftaler med kunden..."></textarea></div>
+      <!-- RUNDE S (Martins ønske: "hvis en underleverandør har lavet opgave at
+           lægge deres faktura ind på opgaven ... i stedet for den bruger
+           medarbejdernes timer") — bruges kun hvis opgaven er lavet af en
+           underleverandør i stedet for egne folk; beløbet trækkes fra avancen i
+           stedet for de normale løn-timer, se renderPdBudget(). -->
+      <div class="pdtd-card" style="margin-top:14px">
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">🧾 Underleverandør-faktura</label>
+          <input id="pdtd-subcost-input" class="input" type="number" min="0" step="0.01" placeholder="Beløb i kr., fx 4500 — udfyld kun hvis en underleverandør har lavet opgaven">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Note til fakturaen</label>
+          <input id="pdtd-subnote-input" class="input" placeholder="Fx fakturanr. eller firmanavn">
+        </div>
+      </div>
       <div class="form-group" style="margin-top:14px">
         <label class="form-label">☑ Tjekpunkter</label>
         <div id="pdtd-checklist-items" style="margin-bottom:8px"></div>
@@ -17817,7 +17853,10 @@ async function crmpxOpenQuote(){
   // nu det samme init-kald som selve siden selv bruger, så begge dele er på plads.
   if(!qzInitialized)await initQuotesModule();
   else await Promise.all([loadQzProducts(),loadQzTemplates()]);
-  openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:name||'',phone:phone||'',email:email||'',address:address||''});
+  // RUNDE S — se kommentaren ved qeState i openQuoteEditor: husker hvilket
+  // lead/opportunity tilbuddet stammer fra, så kortet kan flyttes til
+  // "Vundet" automatisk når tilbuddet senere accepteres.
+  openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:name||'',phone:phone||'',email:email||'',address:address||'',crmEntityType:ent.type,crmEntityId:ent.id});
 }
 async function crmpxDelete(){
   var ent=crmpDetailEntity;
@@ -18635,6 +18674,7 @@ function initProjectsModule(){
     document.getElementById('pd-back-btn').addEventListener('click',function(){switchPage('projects');});
     document.getElementById('pd-status-select').addEventListener('change',savePdStatus);
     document.getElementById('pd-send-portal-btn').addEventListener('click',pdSendPortalLink);
+    document.getElementById('pd-delete-btn').addEventListener('click',function(){if(pjCurrent)deletePjProject(pjCurrent.id);});
     document.getElementById('pd-convert-lines-btn').addEventListener('click',pdConvertLines);
     document.getElementById('pd-bulk-capacity-btn').addEventListener('click',openBulkCapacityModal);
     document.getElementById('pd-gantt-pdf-btn').addEventListener('click',pdDownloadGanttPdf);
@@ -18803,7 +18843,11 @@ function renderPjProjects(){
       +'<td class="num">'+(p.task_count||0)+'</td>'
       +'<td class="num">'+(p.time_entry_count||0)+'</td>'
       +'<td class="num">'+(p.photo_count||0)+'</td>'
-      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" title="Åbn">→</button></div></td>'
+      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" title="Åbn">→</button>'
+      // RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter") —
+      // stopPropagation, ellers ville klikket også trigge rækkens egen
+      // onclick (åbner sagen), samme mønster som pjRowStatusSelect().
+      +'<button class="qz-icon-btn" onclick="event.stopPropagation();deletePjProject('+p.id+')" title="Slet sagen">🗑</button></div></td>'
       +'</tr>';
   }).join('');
 }
@@ -18828,6 +18872,10 @@ async function openProjectDetail(id){
   var qlink=document.getElementById('pd-quote-link');
   if(d.quote_id){qlink.style.display='inline-flex';qlink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/quotes/'+d.quote_id+'/pdf');};}
   else qlink.style.display='none';
+  // RUNDE S — se kommentaren ved #pd-quote-edit-btn i HTML'en.
+  var qeditBtn=document.getElementById('pd-quote-edit-btn');
+  if(d.quote_id){qeditBtn.style.display='inline-flex';qeditBtn.onclick=function(){openQuoteEditorSafe(d.quote_id);};}
+  else qeditBtn.style.display='none';
   var ilink=document.getElementById('pd-invoice-link');
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
@@ -18874,11 +18922,14 @@ function renderPdBudget(){
   else{
     summaryEl.style.display='';
     var profitColor=d.projected_profit>=0?'#16A34A':'#DC2626';
+    // RUNDE S — underleverandør-omkostning tælles med i "Forventet omkostning"
+    // ligesom løn og materialer, se GET /api/projects/:id/budget i server.js.
+    var subTotal=Number(d.subcontractor_cost)||0;
     var cards=[
       ['Godkendt pris',krFmt(d.approved_price),null],
       ['Opkrævet',krFmt(d.collected),null],
       ['Restsaldo',krFmt(d.remaining_balance),null],
-      ['Forventet omkostning',krFmt(d.cost_to_complete+d.labor_cost),null],
+      ['Forventet omkostning',krFmt(d.cost_to_complete+d.labor_cost+subTotal),null],
       ['Forventet fortjeneste',krFmt(d.projected_profit),profitColor],
       ['Forventet margin',Number(d.projected_margin).toFixed(1).replace('.',',')+' %',profitColor]
     ];
@@ -18887,8 +18938,8 @@ function renderPdBudget(){
     }).join('');
   }
   var body=document.getElementById('pd-budget-employees-body');
-  if(!d.employees||!d.employees.length){body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen tidsregistreringer på sagen endnu</td></tr>';return;}
-  body.innerHTML=d.employees.map(function(e){
+  if(!d.employees||!d.employees.length)body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen tidsregistreringer på sagen endnu</td></tr>';
+  else body.innerHTML=d.employees.map(function(e){
     var hrs=(e.minutes/60).toFixed(1).replace('.',',');
     var akkordTxt=(e.akkord_lines||[]).length?e.akkord_lines.map(function(l){return esc(l.item)+' × '+l.quantity;}).join(', '):'–';
     return '<tr>'
@@ -18899,6 +18950,18 @@ function renderPdBudget(){
       +'<td class="num">'+krFmt(e.cost)+'</td>'
       +'</tr>';
   }).join('');
+  // RUNDE S — underleverandør-fakturaer pr. opgave, kun vist når der findes mindst én.
+  var subWrap=document.getElementById('pd-budget-sub-wrap');
+  var subBody=document.getElementById('pd-budget-sub-body');
+  if(d.subcontractor_tasks&&d.subcontractor_tasks.length){
+    subWrap.style.display='';
+    subBody.innerHTML=d.subcontractor_tasks.map(function(t){
+      return '<tr><td>'+esc(t.name||'(uden navn)')+'</td><td>'+esc(t.note||'–')+'</td><td class="num">'+krFmt(t.cost)+'</td></tr>';
+    }).join('');
+  }else{
+    subWrap.style.display='none';
+    subBody.innerHTML='';
+  }
 }
 function switchPdTab(name){
   document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdtab===name);});
@@ -18993,6 +19056,26 @@ async function savePjRowStatus(id,status){
     renderPjProjects();
   }else{toast((r&&r.error)||'Kunne ikke opdatere status','❌');await loadPjProjects();renderPjProjects();}
 }
+// RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter både på siden
+// projekter men også under projektet og i kanban view") — permanent sletning,
+// kaldt fra alle tre steder. quote_id/invoice_id har bevidst ingen FK (se
+// DELETE /api/projects/:id i server.js) — et evt. tilknyttet tilbud/faktura
+// slettes IKKE med, kun koblingen forsvinder — advares om her, så det ikke
+// kommer bag på nogen bagefter.
+async function deletePjProject(id){
+  var p=pjProjects.find(function(x){return +x.id===+id;})||(pjCurrent&&+pjCurrent.id===+id?pjCurrent:null);
+  var warn='';
+  if(p&&p.invoice_id)warn='\n\nOBS: Sagen har en tilknyttet FAKTURA — selve fakturaen slettes ikke, kun koblingen til sagen forsvinder.';
+  else if(p&&p.quote_id)warn='\n\nOBS: Sagen har et tilknyttet TILBUD — selve tilbuddet slettes ikke, kun koblingen til sagen forsvinder.';
+  if(!await gmConfirm('Slet sagen'+(p?' "'+p.name+'"':'')+' permanent?\n\nAlle sagens opgaver, billeder, tidsregistreringer og kvalitetssikring bliver slettet med det samme.'+warn,'Slet sagen'))return;
+  var r=await api('/api/projects/'+id,{method:'DELETE'});
+  if(r&&r.ok){
+    toast('Sagen er slettet','🗑');
+    pjProjects=pjProjects.filter(function(x){return +x.id!==+id;});
+    if(pjCurrent&&+pjCurrent.id===+id){pjCurrent=null;switchPage('projects');}
+    renderPjProjects();
+  }else toast((r&&r.error)||'Kunne ikke slette sagen','❌');
+}
 // RUNDE K (sep. 2026, Martins ønske) — "lad mig ku se alle projekter i Kanban
 // view og rykke dem manuelt ligesom Pipeline, så kan jeg hurtig se hvor vi er i
 // fasen". Genbruger PRÆCIS samme Billy-stils klasser som CRM-pipelinens Kanban
@@ -19010,6 +19093,10 @@ function pjKanbanCardHtml(p){
     +'<div class="crmp-card-foot">'
     +'<span class="crmp-card-value">'+(price!=null?krFmt(price):'–')+'</span>'
     +'<span class="sub">'+(p.task_count||0)+' opg.</span>'
+    // RUNDE S (Martins ønske: "jeg mangler en slet knap ... i kanban view") —
+    // egen mousedown-håndtering ud over click, ellers kan et klik på knappen
+    // nå at starte HTML5-trækket (draggable="true" sidder på selve kortet).
+    +'<button type="button" class="qz-icon-btn" data-action="pj-kanban-delete" data-id="'+p.id+'" title="Slet sagen" style="margin-left:auto">🗑</button>'
     +'</div></div>';
 }
 function renderPjKanban(list){
@@ -19029,6 +19116,13 @@ function renderPjKanban(list){
     card.addEventListener('click',function(){openProjectDetail(id);});
     card.addEventListener('dragstart',function(){pjKanbanDragId=id;card.classList.add('dragging');});
     card.addEventListener('dragend',function(){card.classList.remove('dragging');});
+    var delBtn=card.querySelector('[data-action="pj-kanban-delete"]');
+    if(delBtn){
+      // Forhindrer klikket i at åbne sagen (kortets egen click-handler ovenfor)
+      // OG i at starte et HTML5-træk (kortet har draggable="true").
+      delBtn.addEventListener('mousedown',function(e){e.stopPropagation();});
+      delBtn.addEventListener('click',function(e){e.stopPropagation();deletePjProject(id);});
+    }
   });
   board.querySelectorAll('.crmp-col').forEach(function(col){
     col.addEventListener('dragover',function(e){e.preventDefault();col.classList.add('drag-over');});
@@ -19664,6 +19758,10 @@ function openPdTaskDetail(taskId){
   document.getElementById('pdtd-email').innerHTML=email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
   document.getElementById('pdtd-jobnumber').innerHTML=pjCurrent.job_number?esc(pjCurrent.job_number):'<span class="muted-sm">Intet sagsnummer</span>';
   document.getElementById('pdtd-note-input').value=t.description||'';
+  // RUNDE S — underleverandør-fakturabeløb/-note for denne opgave, se skema-
+  // kommentaren ved gantt_tasks.subcontractor_cost i server.js.
+  document.getElementById('pdtd-subcost-input').value=t.subcontractor_cost!=null?t.subcontractor_cost:'';
+  document.getElementById('pdtd-subnote-input').value=t.subcontractor_note||'';
   var progressPct=Math.round((Number(t.progress)||0)*100);
   document.getElementById('pdtd-progress-input').value=progressPct;
   document.getElementById('pdtd-progress-value').textContent=progressPct+'%';
@@ -19761,7 +19859,12 @@ async function savePdTaskDetail(){
     end_date:document.getElementById('pdtd-end-input').value||document.getElementById('pdtd-start-input').value,
     description:document.getElementById('pdtd-note-input').value,
     progress:Math.max(0,Math.min(100,Number(document.getElementById('pdtd-progress-input').value)||0))/100,
-    status:document.getElementById('pdtd-status-select').value
+    status:document.getElementById('pdtd-status-select').value,
+    // RUNDE S — underleverandør-fakturabeløb/-note, se skema-kommentaren ved
+    // gantt_tasks.subcontractor_cost i server.js. Tom værdi sender null og
+    // rydder feltet igen (fx hvis man fortryder).
+    subcontractor_cost:document.getElementById('pdtd-subcost-input').value===''?null:Number(document.getElementById('pdtd-subcost-input').value),
+    subcontractor_note:document.getElementById('pdtd-subnote-input').value
   };
   var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+pdTaskDetailId,{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){closeModal('pd-task-detail-modal');toast('Gemt ✓','✓');reloadPdCurrent();}
@@ -20620,7 +20723,14 @@ async function openQuoteEditor(id,prefillCustomer){
   // nedenfor, som sætter den til true EFTER dette kald. qe-status-select og
   // "Gyldig til" (begge tilbuds-specifikke begreber, giver ikke mening for en
   // faktura) vises altid som udgangspunkt her, og skjules kun i direkte-faktura-tilstand.
-  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false,invStatus:null};
+  // RUNDE S (Martins ønske: "sæt den til at Rykke kunden til Won når tilbuddet
+  // accepteres automatisk") — crmEntityType/crmEntityId husker hvilket CRM-
+  // lead/opportunity dette tilbud stammer fra (sat via prefillCustomer nedenfor
+  // når tilbuddet åbnes fra "📝 Lav tilbud" på et lead/en opportunity, eller
+  // genindlæst fra det gemte tilbud nedenfor). Bruges af serveren til at flytte
+  // CRM-kortet til pipelinens "Vundet"-fase når tilbuddet accepteres, se
+  // crm_lead_id/crm_opportunity_id på quotes i server.js.
+  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false,invStatus:null,crmEntityType:null,crmEntityId:null};
   document.getElementById('qe-invoicing-panel').style.display='none';
   document.getElementById('qe-lines').classList.remove('qe-lines-locked');
   qeSetLineButtonsLocked(false);
@@ -20654,6 +20764,9 @@ async function openQuoteEditor(id,prefillCustomer){
     qeState.jobName=qd.job_name||'';
     qeState.lastStatus=qd.status;
     qeState.customerId=qd.customer_id||null;
+    // RUNDE S — se kommentaren ved qeState herover.
+    qeState.crmEntityType=qd.crm_lead_id?'lead':(qd.crm_opportunity_id?'opportunity':null);
+    qeState.crmEntityId=qd.crm_lead_id||qd.crm_opportunity_id||null;
     // FEJLRETTELSE (sep. 2026, opdaget under implementering af note-feltet): denne mapping
     // manglede 'note' — uden den blev linjens note tabt hver gang et EKSISTERENDE tilbud
     // blev åbnet og gemt igen (qeState.lines fik ikke feltet med, og et efterfølgende
@@ -20703,6 +20816,9 @@ async function openQuoteEditor(id,prefillCustomer){
       document.getElementById('qe-customer-address').value=prefillCustomer.address||'';
       document.getElementById('qe-customer-phone').value=prefillCustomer.phone||'';
       document.getElementById('qe-customer-email').value=prefillCustomer.email||'';
+      // RUNDE S — se kommentaren ved qeState herover.
+      qeState.crmEntityType=prefillCustomer.crmEntityType||null;
+      qeState.crmEntityId=prefillCustomer.crmEntityId||null;
     }
   }
   renderQeLines();
@@ -21035,7 +21151,10 @@ async function saveQuoteEditor(){
     internal_note:document.getElementById('qe-internal-note').value.trim()||null,
     tax_rate:qeState.taxRate,
     discount_pct:Number(document.getElementById('qe-doc-discount').value)||0,
-    discount_type:document.getElementById('qe-doc-discount-type').value==='fixed'?'fixed':'pct'
+    discount_type:document.getElementById('qe-doc-discount-type').value==='fixed'?'fixed':'pct',
+    // RUNDE S — se kommentaren ved qeState i openQuoteEditor.
+    crm_lead_id:qeState.crmEntityType==='lead'?qeState.crmEntityId:null,
+    crm_opportunity_id:qeState.crmEntityType==='opportunity'?qeState.crmEntityId:null
   };
   // RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: 'lines' udelades helt fra
   // kaldet så snart tilbuddet har fakturaer knyttet til sig — linjeeditoren er
@@ -21700,6 +21819,7 @@ window.openQuoteEditor=openQuoteEditor;
 window.openQuoteEditorSafe=openQuoteEditorSafe;
 window.openTemplateModal=openTemplateModal;
 window.savePjRowStatus=savePjRowStatus;
+window.deletePjProject=deletePjProject;
 window.useTemplateForNewQuote=useTemplateForNewQuote;
 
 bind();

@@ -955,6 +955,15 @@ async function initSchema() {
     -- Indstillinger (quote_top_note_default/quote_bottom_note_default), men redigeres frit
     -- pr. tilbud herfra.
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS top_note TEXT;
+    -- RUNDE S (Martins ønske: "sæt den til at Rykke kunden til Won når tilbuddet
+    -- accepteres automatisk") — hvilket CRM-lead/opportunity dette tilbud stammer
+    -- fra, sat når tilbuddet oprettes via "📝 Lav tilbud" på et lead/en
+    -- opportunity (se prefillCustomer i admin.html). Ingen FK, samme løse
+    -- kobling som quote_id/invoice_id på projects — højst én af de to er sat.
+    -- Bruges KUN til at flytte CRM-kortet til pipelinens "Vundet"-fase når
+    -- tilbuddet accepteres, se crmMoveEntityToWonStage nedenfor.
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS crm_lead_id INTEGER;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS crm_opportunity_id INTEGER;
 
     CREATE TABLE IF NOT EXISTS invoices (
       id SERIAL PRIMARY KEY,
@@ -1661,6 +1670,14 @@ async function initSchema() {
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS project_id INTEGER;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS source_quote_line_id INTEGER;
     CREATE INDEX IF NOT EXISTS idx_gantt_tasks_project ON gantt_tasks(project_id);
+    -- RUNDE S (Martins ønske: "hvis en underleverandør har lavet opgave at lægge
+    -- deres faktura ind på opgaven ... i stedet for den bruger medarbejdernes
+    -- timer") — en opgave udført af en underleverandør har ingen medarbejder-
+    -- timeregistreringer at regne omkostningen ud fra (se GET
+    -- /api/projects/:id/budget), så den reelle omkostning kan nu sættes direkte
+    -- her i stedet, og trækkes fra avancen ligesom løn-/materialeomkostning.
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS subcontractor_cost NUMERIC;
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS subcontractor_note TEXT;
     -- RUNDE H: Færdig-mailen til kunden sendes nu automatisk når SAGEN sættes til
     -- "Afsluttet" (status='done'), ikke længere manuelt pr. opgave i Opgavepool.
     -- Dette felt forhindrer at samme sag udløser mailen mere end én gang, selvom
@@ -10048,11 +10065,17 @@ async function convertQuoteLinesToTasks(project) {
     // "opgaver" der bare er en overskrift fra tilbuddet.
     if (l.line_type === 'text') continue;
     const id = 'p' + crypto.randomBytes(12).toString('hex');
+    // RUNDE S (Martins ønske: "i noten på den task den laver skal den tage
+    // beskrivelsen af servicens med") — tilbudslinjens EGEN note (quote_lines.note,
+    // den orange kommentarboks under linjen på tilbuds-PDF'en) blev hidtil bare
+    // droppet ('' hårdkodet) i stedet for at følge med ind i opgavens note-felt
+    // (gantt_tasks.description, samme felt som "📝 Note" i opgave-detaljerne).
+    const taskNote = l.note || '';
     await pool.query(`
       INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,source_quote_line_id,synced_at)
-      VALUES ($1,$2,$3,$4,'',$5,$5,0,0,$6,$7,$8,${nowTextSQL()})
-    `, [id, 'project-' + project.id, project.name, l.description, today, String(pos), project.id, l.id]);
-    await mirrorProjectTaskToPool(id, project, { name: l.description, start_date: today, end_date: today, description: '' });
+      VALUES ($1,$2,$3,$4,$5,$6,$6,0,0,$7,$8,$9,${nowTextSQL()})
+    `, [id, 'project-' + project.id, project.name, l.description, taskNote, today, String(pos), project.id, l.id]);
+    await mirrorProjectTaskToPool(id, project, { name: l.description, start_date: today, end_date: today, description: taskNote });
     pos++;
     created++;
   }
@@ -10067,8 +10090,50 @@ async function convertQuoteLinesToTasks(project) {
 // findes ét for tilbuddet — trygt at kalde uanset hvor mange gange/hvorfra status
 // sættes til 'accepted'. En fejl her må ALDRIG vælte selve statusskiftet/accepten,
 // som allerede er gemt når denne kaldes.
+// RUNDE S (Martins ønske: "opsæt automation mail når du har vundet en opgave
+// måske sæt den til at Rykke kunden til Won når tilbuddet accepteres
+// automatisk?") — flytter det CRM-lead/opportunity tilbuddet stammer fra (se
+// quotes.crm_lead_id/crm_opportunity_id, sat når tilbuddet oprettes via "📝 Lav
+// tilbud" på et lead/en opportunity) til pipelinens FØRSTE "Vundet"-stage
+// (crm_stages.is_won=1), og genbruger crmFireStageAutomation bagefter så
+// stagens evt. SMS/mail-automatik udløses — nøjagtig samme kald som ved en
+// almindelig kanban-flytning (se PUT /api/crm/leads|opportunities/:id
+// ovenfor). Kaldes fra createProjectFromAcceptedQuote nedenfor, altså hver
+// gang et tilbud accepteres (både kundens online e-signatur og Martin/Sarahs
+// manuelle "Godkendt"-status). De fleste tilbud har intet CRM-kort at flytte
+// (kun ny funktionalitet fremover) — det er en STILLE no-op, ikke en fejl.
+// Fejler noget undervejs (fx en stage der er slettet siden), må det ALDRIG
+// vælte selve tilbudsaccepten, og logges derfor kun.
+async function crmMoveEntityToWonStage(quote) {
+  try {
+    const entityType = quote.crm_lead_id ? 'lead' : (quote.crm_opportunity_id ? 'opportunity' : null);
+    if (!entityType) return;
+    const entityId = quote.crm_lead_id || quote.crm_opportunity_id;
+    const table = entityType === 'lead' ? 'crm_leads' : 'crm_opportunities';
+    const entity = await pgOne(`SELECT * FROM ${table} WHERE id=$1`, [entityId]);
+    if (!entity) return;
+    // Kun ÉN "Vundet"-stage bruges hvis flere skulle være markeret sådan på
+    // samme pipeline — den første efter position, samme regel som lead-
+    // konverteringens egen is_won-opslag (se convertedStage lidt længere nede
+    // i filen).
+    const wonStage = await pgOne('SELECT * FROM crm_stages WHERE pipeline_id=$1 AND is_won=1 ORDER BY position ASC LIMIT 1', [entity.pipeline_id]);
+    if (!wonStage) return; // ingen "Vundet"-stage sat op på denne pipeline endnu
+    if (Number(entity.stage_id) === Number(wonStage.id)) return; // allerede der — undgå gentagne automatik-afsendelser
+    await pool.query(`UPDATE ${table} SET stage_id=$1, updated_at=${nowTextSQL()}, stage_changed_at=${nowTextSQL()} WHERE id=$2`, [wonStage.id, entityId]);
+    await crmLogActivity(entityType, entityId, 'stage_change', 'Status ændret til "' + wonStage.name + '" (automatisk — tilbud accepteret)', null);
+    let fields = { name: entity.name, email: entity.email || null, phone: entity.phone || null };
+    if (entityType === 'opportunity') {
+      const c = entity.contact_id ? await pgOne('SELECT name, email, phone FROM crm_contacts WHERE id=$1', [entity.contact_id]) : null;
+      fields = { name: (c && c.name) || entity.name, email: c && c.email, phone: c && c.phone };
+    }
+    await crmFireStageAutomation(entityType, entityId, wonStage.id, fields);
+  } catch (e) {
+    console.error('Kunne ikke flytte CRM-kort til "Vundet" efter tilbudsaccept:', e.message);
+  }
+}
 async function createProjectFromAcceptedQuote(quote) {
   try {
+    crmMoveEntityToWonStage(quote).catch(e => console.error('Won-automatik fejlede for tilbud #' + quote.id + ':', e.message));
     const existingProject = await pgOne('SELECT id FROM projects WHERE quote_id=$1', [quote.id]);
     if (existingProject) return { projectId: existingProject.id, created: false };
     // Sagsnummer tildeles automatisk her, i samme GM-ÅÅÅÅ-NNNN-stil som Tilbud (TIL-)
@@ -10210,7 +10275,19 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     if (isAkkord) emp.akkord_lines.push({ time_entry_id: row.id, item: row.akkord_name || '—', quantity: Number(row.akkord_quantity) || 0, rate: Number(row.akkord_rate) || 0, cost });
   }
 
-  const profit = approved - costToComplete - laborTotal;
+  // RUNDE S (Martins ønske: "hvis en underleverandør har lavet opgave at lægge
+  // deres faktura ind på opgaven ... i stedet for den bruger medarbejdernes
+  // timer") — en underleverandør-opgave har typisk INGEN medarbejder-
+  // timeregistreringer at regne løn-omkostningen ud fra ovenfor (laborRows),
+  // så den reelle omkostning trækkes fra avancen her i stedet, sat direkte pr.
+  // opgave (gantt_tasks.subcontractor_cost, se opgave-detaljerne).
+  const subRows = await pool.query(
+    `SELECT id, name, subcontractor_cost, subcontractor_note FROM gantt_tasks WHERE project_id=$1 AND subcontractor_cost IS NOT NULL AND subcontractor_cost > 0`,
+    [req.params.id]
+  ).then(r => r.rows);
+  const subcontractorTotal = subRows.reduce((sum, r) => sum + (Number(r.subcontractor_cost) || 0), 0);
+
+  const profit = approved - costToComplete - laborTotal - subcontractorTotal;
   const margin = approved > 0 ? (profit / approved) * 100 : 0;
 
   res.json({
@@ -10219,6 +10296,8 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     remaining_balance: approved - collected,
     cost_to_complete: costToComplete,
     labor_cost: laborTotal,
+    subcontractor_cost: subcontractorTotal,
+    subcontractor_tasks: subRows.map(r => ({ task_id: r.id, name: r.name, cost: Number(r.subcontractor_cost) || 0, note: r.subcontractor_note || '' })),
     projected_profit: profit,
     projected_margin: margin,
     employees: [...byEmployee.values()]
@@ -10391,6 +10470,38 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
   }
 }));
 
+// RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter") — sletter
+// sagen PERMANENT, inkl. alt der hænger på den. Seks tabeller har allerede
+// ON DELETE CASCADE på project_id (qa_submissions, time_entries,
+// project_qa_templates, project_materials, project_photos,
+// contact_form_submissions), så de rydder sig selv når selve projects-rækken
+// slettes nedenfor. Tre andre har IKKE nogen databaseFK og skal derfor ryddes
+// manuelt her, PRÆCIS samme mønster som enkelt-opgave-sletningen ovenfor
+// (DELETE /api/projects/:id/tasks/:taskId) allerede bruger pr. opgave — bare
+// for ALLE sagens opgaver på én gang: task_checklist_items/planning_bookings/
+// assignments (peger på jt_tasks.id via en almindelig tekst-kolonne, ingen
+// FK), jt_tasks selv (sagens "spejl" i den delte opgavepool), og
+// completion_emails (logger for den automatiske afslutnings-mail). quote_id/
+// invoice_id på selve sagen har bevidst INGEN FK (rene informations-links) —
+// et evt. tilknyttet tilbud/faktura bliver IKKE slettet med, kun koblingen
+// forsvinder. Frontend'en advarer om dette i bekræftelses-dialogen, se
+// deletePjProject() i admin.html.
+app.delete('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const taskIds = (await pool.query('SELECT id FROM gantt_tasks WHERE project_id=$1', [req.params.id])).rows.map(r => r.id);
+  if (taskIds.length) {
+    await pool.query('DELETE FROM task_checklist_items WHERE task_id = ANY($1)', [taskIds]);
+    await pool.query('DELETE FROM planning_bookings WHERE task_id = ANY($1)', [taskIds]);
+    await pool.query('DELETE FROM assignments WHERE task_id = ANY($1)', [taskIds]);
+    await pool.query('DELETE FROM jt_tasks WHERE id = ANY($1)', [taskIds]);
+  }
+  await pool.query('DELETE FROM gantt_tasks WHERE project_id=$1', [req.params.id]);
+  await pool.query('DELETE FROM completion_emails WHERE project_id=$1', [req.params.id]);
+  await pool.query('DELETE FROM projects WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
 // 1-KLIKS: opret én sags-opgave pr. tilbudslinje. Kan trykkes flere gange uden
 // at lave dubletter — springer linjer over der allerede har en opgave.
 app.post('/api/projects/:id/convert-quote-lines', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
@@ -10523,11 +10634,18 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
     // er lineære (tråde), ikke forgrenede afhængighedsnet.
     depends_on: b.depends_on !== undefined
       ? (Array.isArray(b.depends_on) ? b.depends_on.filter(x => x && x !== req.params.taskId).slice(0, 1) : [])
-      : (safeJsonParse(current.depends_on, []) || [])
+      : (safeJsonParse(current.depends_on, []) || []),
+    // RUNDE S — underleverandørens fakturabeløb for denne opgave (se skema-
+    // kommentaren ved gantt_tasks.subcontractor_cost). Tom streng/0/null rydder
+    // feltet igen (fx hvis man fortryder).
+    subcontractor_cost: b.subcontractor_cost !== undefined
+      ? (b.subcontractor_cost === null || b.subcontractor_cost === '' ? null : Math.max(0, Number(b.subcontractor_cost) || 0))
+      : current.subcontractor_cost,
+    subcontractor_note: b.subcontractor_note !== undefined ? String(b.subcontractor_note || '').slice(0, 500) : (current.subcontractor_note || '')
   };
   await pool.query(`
-    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, status=$6, depends_on=$7, synced_at=${nowTextSQL()} WHERE id=$8
-  `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, JSON.stringify(merged.depends_on), req.params.taskId]);
+    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, status=$6, depends_on=$7, subcontractor_cost=$8, subcontractor_note=$9, synced_at=${nowTextSQL()} WHERE id=$10
+  `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, JSON.stringify(merged.depends_on), merged.subcontractor_cost, merged.subcontractor_note, req.params.taskId]);
   if (project) await mirrorProjectTaskToPool(req.params.taskId, project, merged);
 
   // RUNDE P — hvis opgavens STARTDATO ændrede sig, og den (direkte eller via andre
@@ -13309,10 +13427,13 @@ app.post('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res)
   const quoteNumber = await nextDocNumber('quote', 'TIL');
   const acceptToken = crypto.randomBytes(20).toString('hex');
   const resolvedCustomerId = await resolveCustomerId(b.customer_id || null, b.customer_email || null, b.customer_phone || null);
+  // RUNDE S — se skema-kommentaren ved quotes.crm_lead_id/crm_opportunity_id.
+  const crmLeadId = b.crm_lead_id || null;
+  const crmOpportunityId = crmLeadId ? null : (b.crm_opportunity_id || null);
   const r = await pool.query(`
-    INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id
-  `, [quoteNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken]);
+    INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token,crm_lead_id,crm_opportunity_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING id
+  `, [quoteNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken, crmLeadId, crmOpportunityId]);
   await saveQuoteLines(r.rows[0].id, b.lines);
   logDocActivity('quote', r.rows[0].id, 'created', req.user.name, null);
   res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber });
