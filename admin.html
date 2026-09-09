@@ -1336,7 +1336,7 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-customer-result:hover{background:var(--bly-hover)}
 .qe-lines-head{display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px}
 .qe-line{border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:12px;margin-bottom:8px;background:#FAFAFB}
-.qe-line-text{background:var(--bly-accent-soft);border-color:#C7D2FE}
+.qe-line-text{background:var(--bly-accent-soft);border-color:#C7D2FE;border-left:4px solid var(--bly-accent)}
 .qe-line-text .qe-line-top{grid-template-columns:18px 1fr 30px;margin-bottom:0}
 .qe-line-text input.qe-line-field{font-weight:700;color:var(--bly-ink)}
 .qe-line-top{display:grid;grid-template-columns:18px 1fr 80px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
@@ -1426,6 +1426,14 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .ln-desc{font-weight:600;color:#374151;margin-top:3px;white-space:pre-line}
 .ln-note{margin-top:6px;background:#FFF7ED;border-left:3px solid #FB923C;border-radius:6px;padding:6px 9px;font-size:11.5px;font-weight:500;color:#7C2D12;white-space:pre-line}
 .ln-textrow{font-weight:700;white-space:pre-line}
+/* RUNDE U (Martins ønske: "Når man i et tilbud laver en tekstlinje lav det
+   mere tydeligt det bryder det eksisterende tilbud med en linje så man kan
+   bruge det til at indele tilbuddet i faggrupper") — en tekstlinje var før
+   bare fed tekst midt i tabellen, nemt at overse. Nu en tydelig, farvet
+   "sektions-adskiller"-bjælke, så man med ét blik kan se hvor ét fag stopper
+   og det næste starter i et langt tilbud. Samme visuelle idé bruges i BÅDE
+   den levende forhåndsvisning (her) og den faktiske PDF (drawDocumentPdf).*/
+.qe-divider-row{background:var(--bly-accent-soft);color:var(--bly-accent);font-weight:800;font-size:12px;padding:10px 14px;border-radius:8px;border-left:4px solid var(--bly-accent);white-space:pre-line}
 .qe-pdf-totals{margin-left:auto;width:220px}
 .qe-pdf-totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#6B7280}
 .qe-pdf-totals-row.grand{background:var(--bly-accent);color:#fff;font-weight:800;font-size:11.5px;padding:6px 8px;border-radius:6px;margin-top:6px}
@@ -15592,6 +15600,7 @@ var qalState={quoteId:null,lines:[]};
 var ivlState={invoiceId:null,lines:[],taxRate:25};
 var qeCustomerSearchTimer=null;
 var qeCrmLinkSearchTimer=null; // RUNDE T — se qeRunCrmLinkSearch
+var qePreviewRenderTimer=null; // RUNDE U — se qeRecalc
 var QZ_QUOTE_STATUS={draft:{label:'Kladde',dot:'var(--bly-dot-draft)'},sent:{label:'Sendt',dot:'var(--bly-dot-draft)'},accepted:{label:'Godkendt',dot:'var(--bly-dot-paid)'},declined:{label:'Afvist',dot:'var(--bly-dot-overdue)'},converted:{label:'Konverteret',dot:'var(--bly-dot-total)'}};
 var QZ_INVOICE_STATUS={unpaid:{label:'Ikke betalt',dot:'var(--bly-dot-unpaid)'},partial:{label:'Delvist betalt',dot:'var(--bly-dot-draft)'},paid:{label:'Betalt',dot:'var(--bly-dot-paid)'},void:{label:'Annulleret',dot:'var(--bly-dot-overdue)'}};
 var QZ_TYPE_LABEL={materialer:'Materialer',service:'Service'};
@@ -15676,7 +15685,7 @@ function qzLineRowHtml(l,idx,prefix){
     return '<div class="qe-line qe-line-text" data-idx="'+idx+'">'
       +'<div class="qe-line-top">'
       +qzLineDragHandle(idx)
-      +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="description" value="'+esc(l.description||'')+'" placeholder="Overskrift eller note — brydes ind i tilbuddet som ren tekst">'
+      +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="description" value="'+esc(l.description||'')+'" placeholder="✦ Sektionsoverskrift — fx en faggruppe (\'Gulvarbejde\', \'Malerarbejde\'...) — vises som en tydelig adskiller i tilbuddet">'
       +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
       +'</div></div>';
   }
@@ -19775,9 +19784,14 @@ function renderPdGanttStrip(){
       }
       // RUNDE Q — klikbar "hit"-linje ovenpå den tynde synlige pil (se CSS-kommentaren
       // ved .gantt-dep-hit) + rød fremhævning når denne kæde er valgt (klar til Delete).
-      var isSelDep=pdGanttSelectedDepKey===t.id;
+      // RUNDE U — nøglen er nu KILDE+MÅL sammen ("source→target"), ikke kun målets
+      // id. Med flere kæder ind på samme mål-opgave (se onPdGanttLinkDragEnd) ville
+      // ellers ALLE pile ind på det mål blive markeret rødt samtidig, og Delete ville
+      // ramme/fjerne dem alle i stedet for kun den ene valgte pil.
+      var depEdgeKey=depId2+'→'+t.id;
+      var isSelDep=pdGanttSelectedDepKey===depEdgeKey;
       deps+='<path class="gantt-dep-path'+(isSelDep?' selected':'')+'" d="'+path+'" stroke="'+(isSelDep?'#EF4444':'#8B5CF6')+'" stroke-width="'+(isSelDep?'2.5':'1.75')+'" fill="none" marker-end="url(#pdGanttArrow'+(isSelDep?'Sel':'')+')"/>'+
-        '<path class="gantt-dep-hit" data-dep-target="'+esc(t.id)+'" data-dep-source="'+esc(depId2)+'" d="'+path+'" stroke="transparent" stroke-width="14" fill="none" style="pointer-events:auto;cursor:pointer" title="Klik for at vælge — tryk så Delete for at fjerne kæden"/>';
+        '<path class="gantt-dep-hit" data-dep-key="'+esc(depEdgeKey)+'" data-dep-target="'+esc(t.id)+'" data-dep-source="'+esc(depId2)+'" d="'+path+'" stroke="transparent" stroke-width="14" fill="none" style="pointer-events:auto;cursor:pointer" title="Klik for at vælge — tryk så Delete for at fjerne denne kæde"/>';
     });
   });
   el.innerHTML='<div class="gantt-chart"><div class="gantt-list">'+listRows+'</div>'+
@@ -19825,7 +19839,16 @@ function renderPdGanttStrip(){
     linkSelect.addEventListener('click',function(e){e.stopPropagation();});
     linkSelect.addEventListener('change',async function(){
       var depId3=linkSelect.value;
-      var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({depends_on:depId3?[depId3]:[]})});
+      // RUNDE U — denne dropdown viser/sætter bevidst kun den FØRSTE kæde (se
+      // pdGanttLinkOptionsHtml/depId=t.depends_on[0]) som en hurtig genvej for
+      // det almindelige "lineære kæde"-tilfælde. Den må derfor kun erstatte
+      // element 0 — IKKE hele listen, ellers ville den nulstille evt. ekstra
+      // kæder man har lavet ved at trække flere pile ind på samme opgave (se
+      // onPdGanttLinkDragEnd ovenfor).
+      var task=(pjCurrent.tasks||[]).find(function(x){return String(x.id)===String(taskId);});
+      var rest=((task&&task.depends_on)||[]).slice(1);
+      var newDeps=depId3?[depId3].concat(rest.filter(function(id){return id!==depId3;})):rest;
+      var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({depends_on:newDeps})});
       if(r&&r.ok){toast(depId3?'Opgaverne er kædet sammen':'Kæden er fjernet','✓');reloadPdCurrent();}
       else toast((r&&r.error)||'Kunne ikke opdatere kæden','❌');
     });
@@ -19989,7 +20012,17 @@ function onPdGanttLinkDragEnd(e){
   if(!barAt)return; // sluppet på tomt sted — annulleret, ingen kald til serveren
   var targetId=barAt.dataset.pdTaskId;
   if(targetId===sourceId)return; // sluppet på sig selv — ignoreret
-  api('/api/projects/'+pjCurrent.id+'/tasks/'+targetId,{method:'PUT',body:JSON.stringify({depends_on:[sourceId]})}).then(function(r){
+  // RUNDE U (Martins ønske: "jeg kan ikke trække fra 2 opgaver en pil hen til
+  // 1 opgave ... den reagerer ikke") — sendte hidtil ALTID depends_on:[sourceId],
+  // som ERSTATTEDE mål-opgavens evt. eksisterende kæde i stedet for at føje den
+  // nye til. Trak man en 2. pil ind på samme opgave, forsvandt den 1. kæde altså
+  // stille og roligt igen (uden fejl, derfor "den reagerer ikke"). Lægger nu
+  // sourceId TIL den eksisterende liste (dedupliceret) — serverens .slice(0,1)-
+  // begrænsning er også fjernet, så flere opgaver nu kan pege ind på samme mål.
+  var targetTask=(pjCurrent.tasks||[]).find(function(x){return String(x.id)===String(targetId);});
+  var existingDeps=(targetTask&&targetTask.depends_on)||[];
+  var newDeps=existingDeps.concat([sourceId]).filter(function(id,i,arr){return arr.indexOf(id)===i;});
+  api('/api/projects/'+pjCurrent.id+'/tasks/'+targetId,{method:'PUT',body:JSON.stringify({depends_on:newDeps})}).then(function(r){
     if(r&&r.ok){toast('Opgaverne er kædet sammen','✓');reloadPdCurrent();}
     else toast((r&&r.error)||'Kunne ikke kæde opgaverne sammen','❌');
   });
@@ -20006,7 +20039,9 @@ function bindPdGanttDepInteractions(){
   el.addEventListener('click',function(e){
     var hit=e.target.closest?e.target.closest('.gantt-dep-hit'):null;
     if(hit){
-      pdGanttSelectedDepKey=(pdGanttSelectedDepKey===hit.dataset.depTarget)?null:hit.dataset.depTarget;
+      // RUNDE U — nøglen er "kilde→mål" (data-dep-key), ikke kun mål-opgavens id,
+      // så to forskellige kæder ind på samme mål-opgave kan vælges/slettes hver for sig.
+      pdGanttSelectedDepKey=(pdGanttSelectedDepKey===hit.dataset.depKey)?null:hit.dataset.depKey;
       renderPdGanttStrip();
       return;
     }
@@ -20020,9 +20055,15 @@ function bindPdGanttDepInteractions(){
     if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable))return;
     if(e.key==='Delete'||e.key==='Backspace'){
       e.preventDefault();
-      var targetId=pdGanttSelectedDepKey;
+      // RUNDE U (Martins ønske: "jeg kan ikke trække fra 2 opgaver en pil hen
+      // til 1 opgave") — Delete skal kun fjerne DENNE ENE valgte kæde, ikke
+      // mål-opgavens fulde depends_on-liste (som hidtil, dengang der aldrig var
+      // mere end én kæde pr. opgave alligevel). Nøglen er "kilde→mål".
+      var parts=pdGanttSelectedDepKey.split('→'),sourceId=parts[0],targetId=parts[1];
       pdGanttSelectedDepKey=null;
-      api('/api/projects/'+pjCurrent.id+'/tasks/'+targetId,{method:'PUT',body:JSON.stringify({depends_on:[]})}).then(function(r){
+      var targetTask=(pjCurrent.tasks||[]).find(function(x){return String(x.id)===String(targetId);});
+      var newDeps=((targetTask&&targetTask.depends_on)||[]).filter(function(id){return String(id)!==String(sourceId);});
+      api('/api/projects/'+pjCurrent.id+'/tasks/'+targetId,{method:'PUT',body:JSON.stringify({depends_on:newDeps})}).then(function(r){
         if(r&&r.ok){toast('Kæden er fjernet','✓');reloadPdCurrent();}
         else toast((r&&r.error)||'Kunne ikke fjerne kæden','❌');
       });
@@ -21405,7 +21446,7 @@ function qeRenderPreview(){
   var topNote=document.getElementById('qe-top-note').value.trim();
   var rowsHtml=qeState.lines.map(function(l){
     if(l.line_type==='text'){
-      return '<tr><td colspan="5" style="padding-top:12px;border-top:none"><div class="ln-textrow">'+esc(l.description||'')+'</div></td></tr>';
+      return '<tr><td colspan="5" style="padding:8px 0;border-top:none"><div class="qe-divider-row">'+esc(l.description||'')+'</div></td></tr>';
     }
     var qty=Number(l.quantity)||0,disc=Number(l.discount_pct)||0;
     var gross=qty*(Number(l.sell_price)||0);
@@ -21434,7 +21475,21 @@ function qeRenderPreview(){
     +'</div>'
     +(notes?'<div class="qe-pdf-notes">'+notes+'</div>':'');
 }
-function qeRecalc(){qeRenderTotals();qeRenderPreview();}
+// RUNDE U (Martins ønske: "Note se tilbuddet når det bliver for
+// stort/langt så kan din Live viewer ikke følge med") — qeRecalc() køres på
+// HVER tastetryk i ethvert linjefelt (pris, antal, beskrivelse, note, ...).
+// qeRenderTotals() er billig (kun tal), men qeRenderPreview() genopbygger
+// HELE forhåndsvisningens innerHTML (alle linjer, hele PDF-lignende layoutet)
+// hver eneste gang — for et langt tilbud med mange/lange linjer blev det
+// mærkbart langsomt/hakkende at skrive i et felt. Totalerne/margin-kortene
+// opdateres stadig med det samme (det er dem man kigger på mens man taster),
+// men selve den tunge forhåndsvisning debounces til 150ms efter sidste
+// tastetryk — usynligt i praksis, men sparer alle de mellemliggende gengivelser.
+function qeRecalc(){
+  qeRenderTotals();
+  clearTimeout(qePreviewRenderTimer);
+  qePreviewRenderTimer=setTimeout(qeRenderPreview,150);
+}
 function qeRunCustomerSearch(q){
   var box=document.getElementById('qe-customer-results');
   if(!q||q.length<2){box.style.display='none';box.innerHTML='';return;}

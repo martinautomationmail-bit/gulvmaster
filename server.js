@@ -10713,10 +10713,18 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
     // RUNDE P (Martins ønske) — "en tråd mellem hver task ... så hele sagen
     // rykker frem og tilbage". depends_on fandtes allerede som kolonne (brugt af
     // JobTread-synkroniseringen til hoved-Gantt'et), men blev bevidst ALDRIG sat
-    // for sags-opgaver før nu. Gemmes som en liste med højst ét element — kæder
-    // er lineære (tråde), ikke forgrenede afhængighedsnet.
+    // for sags-opgaver før nu.
+    // RUNDE U (Martins ønske: "jeg kan ikke trække fra 2 opgaver en pil hen til
+    // 1 opgave") — var hidtil bevidst begrænset til højst ét element pr. opgave
+    // (".slice(0, 1)", lineære kæder, intet forgrenet afhængighedsnet). Martin
+    // vil gerne kunne lade FLERE opgaver pege ind på samme mål-opgave (fx "både
+    // gulvafslibning OG maling skal være færdig før aflevering"). Kaskade-
+    // logikken nedenfor bygger allerede en generel, ikke-lineær graf ud fra ALLE
+    // opgavers depends_on (adj/link), så den håndterer forgrening helt uden
+    // ændringer — det var UDELUKKENDE denne .slice(0,1) der forhindrede det.
+    // Dedupliceret og uden selvreference, men ellers ubegrænset.
     depends_on: b.depends_on !== undefined
-      ? (Array.isArray(b.depends_on) ? b.depends_on.filter(x => x && x !== req.params.taskId).slice(0, 1) : [])
+      ? (Array.isArray(b.depends_on) ? [...new Set(b.depends_on.filter(x => x && x !== req.params.taskId))] : [])
       : (safeJsonParse(current.depends_on, []) || []),
     // RUNDE S — underleverandørens fakturabeløb for denne opgave (se skema-
     // kommentaren ved gantt_tasks.subcontractor_cost). Tom streng/0/null rydder
@@ -14231,18 +14239,64 @@ function drawPdfLineDesc(doc, l, x, y, width) {
   doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
   return cy - y;
 }
+// RUNDE U (Martins ønske: "Note se tilbuddet når det bliver for stort/langt
+// så kan din Live viewer ikke følge med. Det gør PDF FILEN design heller
+// ikke") — SIKKERHEDSKRITISK PDF-BUG: drawDocumentPdf tegnede ALTID kun på
+// side 1 (aldrig et eneste doc.addPage()-kald i hele filen). Så snart et
+// tilbud/en faktura havde nok linjer til at løbe forbi bunden af A4-siden,
+// endte man IKKE med en pæn side 2 — PDFKit tegner videre med de samme
+// eksplicitte y-koordinater, som nu peger UDENFOR den fysiske side, og når
+// PDFKit et enkelt sted internt selv indsætter en ny side midt i et langt
+// doc.text()-kald (fx en meget lang linjebeskrivelse), mister vores egen
+// y-bogføring al sammenhæng med hvor "pennen" faktisk er. Resultatet var et
+// PDF-dokument på over 10 sider, næsten alle tomme, med enkelte tal og ord
+// tilfældigt strøet ud over dem — se Martins vedhæftede eksempel. Løsningen
+// er ægte, manuel paginering: FØR hvert element beregnes dets højde, og hvis
+// det ikke er plads til det på den resterende side, indsættes en ny side
+// (ensurePdfSpace nedenfor) FØR elementet tegnes — aldrig midt i det.
+const PDF_PAGE_BOTTOM = 760; // under denne y-værdi starter en ny side
+const PDF_CONTINUATION_TOP = 50; // hvor indhold starter igen på side 2, 3, ...
+function pdfStartContinuationPage(doc, isInvoice, docNumber, accent) {
+  doc.addPage();
+  let y = PDF_CONTINUATION_TOP;
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(accent).text((isInvoice ? 'FAKTURA ' : 'TILBUD ') + docNumber + ' — fortsat', 40, y);
+  y += 20;
+  return y;
+}
+function drawPdfLineTableHeader(doc, y) {
+  doc.roundedRect(40, y, 515, 24, 6).fill('#F4F6FB');
+  doc.font('Helvetica').fontSize(9).fillColor('#374151');
+  doc.text('Beskrivelse', 52, y + 8);
+  doc.text('Antal', 278, y + 8, { width: 42, align: 'right' });
+  doc.text('Rabat', 325, y + 8, { width: 60, align: 'right' });
+  doc.text('Enhedspris', 390, y + 8, { width: 70, align: 'right' });
+  doc.text('I alt', 465, y + 8, { width: 75, align: 'right' });
+  return y + 32;
+}
+// Sikrer mindst `needed` højde tilbage på den aktuelle side FØR et element
+// tegnes — indsætter en ny side (og gentegner evt. tabel-header, så en
+// fortsat linjetabel forbliver læsbar) hvis der ikke er plads.
+function ensurePdfSpace(doc, y, needed, ctx) {
+  if (y + needed <= PDF_PAGE_BOTTOM) return y;
+  let ny = pdfStartContinuationPage(doc, ctx.isInvoice, ctx.docNumber, ctx.accent);
+  if (ctx.redrawTableHeader) ny = drawPdfLineTableHeader(doc, ny);
+  return ny;
+}
 function drawDocumentPdf(doc, kind, record, company) {
   const isInvoice = kind === 'invoice';
   const accent = '#4F46E5';
+  const docNumber = isInvoice ? record.invoice_number : record.quote_number;
+  const ctx = { isInvoice, docNumber, accent };
   const metaLines = [`Dato: ${String(record.created_at || '').slice(0, 10)}`];
   if (isInvoice && record.due_date) metaLines.push(`Forfaldsdato: ${record.due_date}`);
   if (!isInvoice && record.valid_until) metaLines.push(`Gyldig til: ${record.valid_until}`);
-  let y = drawDocHeader(doc, isInvoice ? 'FAKTURA' : 'TILBUD', isInvoice ? record.invoice_number : record.quote_number, metaLines, accent, company);
+  let y = drawDocHeader(doc, isInvoice ? 'FAKTURA' : 'TILBUD', docNumber, metaLines, accent, company);
 
   y = drawFraTilBlock(doc, y, company, record);
 
   if (record.top_note) {
     const noteH = doc.heightOfString(richTextToPlain(record.top_note), { width: 495 });
+    y = ensurePdfSpace(doc, y, noteH + 32, ctx);
     doc.roundedRect(40, y, 515, noteH + 20, 8).fill('#F7F8FC');
     renderRichText(doc, record.top_note, 50, y + 10, 495, { color: '#374151' });
     y += noteH + 32;
@@ -14256,23 +14310,26 @@ function drawDocumentPdf(doc, kind, record, company) {
   // enheden — nemt at overse, og kun procenten/kr-satsen vist, aldrig selve
   // rabatbeløbet. Egen "Rabat"-kolonne herunder, rød tekst, og viser BÅDE
   // satsen og kr-beløbet ("-15% (-450 kr)"), tom når linjen ikke har rabat.
-  doc.roundedRect(40, y, 515, 24, 6).fill('#F4F6FB');
-  doc.font('Helvetica').fontSize(9).fillColor('#374151');
-  doc.text('Beskrivelse', 52, y + 8);
-  doc.text('Antal', 278, y + 8, { width: 42, align: 'right' });
-  doc.text('Rabat', 325, y + 8, { width: 60, align: 'right' });
-  doc.text('Enhedspris', 390, y + 8, { width: 70, align: 'right' });
-  doc.text('I alt', 465, y + 8, { width: 75, align: 'right' });
-  y += 32;
+  y = drawPdfLineTableHeader(doc, y);
   doc.fontSize(9.5).fillColor('#111318');
   let rawSubtotal = 0;
   (record.lines || []).forEach(l => {
     if (l.line_type === 'text') {
-      const h = doc.heightOfString(l.description, { width: 507 });
-      doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#111318').text(l.description, 48, y, { width: 507 });
+      // RUNDE U (Martins ønske: "lav det mere tydeligt det bryder det
+      // eksisterende tilbud med en linje så man kan bruge det til at indele
+      // tilbuddet i faggrupper") — en tekstlinje var bare fed tekst midt i
+      // tabellen, nemt at overse i et langt tilbud. Tegnes nu som en tydelig
+      // farvet "sektions-adskiller"-bjælke, samme visuelle sprog som i den
+      // levende forhåndsvisning (.qe-divider-row i admin.html).
+      doc.font('Helvetica-Bold').fontSize(10);
+      const h = doc.heightOfString(l.description, { width: 491 });
+      const boxH = h + 20;
+      y = ensurePdfSpace(doc, y, boxH + 12, { ...ctx, redrawTableHeader: true });
+      doc.roundedRect(40, y, 515, boxH, 6).fill('#EEF0FE');
+      doc.roundedRect(40, y, 4, boxH, 2).fill(accent);
+      doc.fillColor(accent).text(l.description, 56, y + 10, { width: 491 });
       doc.font('Helvetica');
-      y += h + 12;
-      doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#EEF0F3').stroke();
+      y += boxH + 12;
       return;
     }
     const lineDiscType = l.discount_type === 'fixed' ? 'fixed' : 'pct';
@@ -14289,8 +14346,12 @@ function drawDocumentPdf(doc, kind, record, company) {
     const lineDiscAmtLabel = lineDiscVal ? `(-${Math.round(lineDiscAmt).toLocaleString('da-DK')} kr)` : '';
     // Overskrift/beskrivelse/note (sep. 2026) — se pdfLineDescHeight/drawPdfLineDesc
     // ovenfor drawDocumentPdf. Højden skal beregnes FØRST (PDFKit har intet automatisk
-    // layout-flow), så antal/pris-kolonnerne og skillelinjen kan placeres korrekt.
+    // layout-flow), så antal/pris-kolonnerne og skillelinjen kan placeres korrekt —
+    // OG (RUNDE U) så vi kan afgøre FØR vi tegner noget, om linjen overhovedet er
+    // på den aktuelle side eller skal starte på en ny (ensurePdfSpace).
     const nameHeight = pdfLineDescHeight(doc, l, 220);
+    const rowHeight = Math.max(nameHeight, 14) + 8;
+    y = ensurePdfSpace(doc, y, rowHeight, { ...ctx, redrawTableHeader: true });
     doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
     doc.text(String(l.quantity) + ' ' + (l.unit || ''), 278, y, { width: 42, align: 'right' });
     if (lineDiscRateLabel) {
@@ -14303,11 +14364,14 @@ function drawDocumentPdf(doc, kind, record, company) {
     doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 390, y, { width: 70, align: 'right' });
     doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 465, y, { width: 75, align: 'right' });
     drawPdfLineDesc(doc, l, 48, y, 220);
-    y += Math.max(nameHeight, 14) + 8;
+    y += rowHeight;
     doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#EEF0F3').stroke();
   });
 
   y += 12;
+  // RUNDE U — totalblokken (rabat/subtotal/moms/total, evt. betalt/restbeløb)
+  // hænger visuelt sammen og skal ikke splittes hen over en sideskift.
+  y = ensurePdfSpace(doc, y, 130, ctx);
   const totalsX = 380;
   const docDiscountType = record.discount_type === 'fixed' ? 'fixed' : 'pct';
   const docDiscountPct = Number(record.discount_pct) || 0;
@@ -14330,6 +14394,7 @@ function drawDocumentPdf(doc, kind, record, company) {
   y += 32;
 
   if (isInvoice && record.paid_total > 0) {
+    y = ensurePdfSpace(doc, y, 36, ctx);
     doc.fontSize(9.5).fillColor('#15803D').text('Betalt', totalsX, y, { width: 80, align: 'right' });
     doc.text('-' + Math.round(Number(record.paid_total)).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
     y += 16;
@@ -14341,12 +14406,14 @@ function drawDocumentPdf(doc, kind, record, company) {
   if (record.notes) {
     y += 12;
     const noteH = doc.heightOfString(richTextToPlain(record.notes), { width: 495 });
+    y = ensurePdfSpace(doc, y, noteH + 30, ctx);
     doc.roundedRect(40, y, 515, noteH + 20, 8).fill('#F7F8FC');
     renderRichText(doc, record.notes, 50, y + 10, 495, { color: '#374151' });
     y += noteH + 30;
   }
 
   if (!isInvoice && record.status === 'accepted' && record.signed_name) {
+    y = ensurePdfSpace(doc, y, 78, ctx);
     y += 8;
     doc.font('Helvetica').fontSize(9).fillColor('#15803D').text(`✓ Accepteret af ${record.signed_name} den ${String(record.signed_at || '').slice(0, 16).replace('T', ' ')}`, 40, y, { width: 515 });
     y += 15;
