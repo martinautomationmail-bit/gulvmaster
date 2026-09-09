@@ -1683,6 +1683,17 @@ async function initSchema() {
     -- Dette felt forhindrer at samme sag udløser mailen mere end én gang, selvom
     -- den senere genåbnes og afsluttes igen — se PUT /api/projects/:id.
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS completion_email_sent_at TEXT;
+    -- RUNDE T (Martins ønske: "Alle projekter skal have en faggruppe") — samme
+    -- valgmuligheder som CRM'ets "Projekt Type"-felt på leads/opportunities
+    -- (crm_custom_fields, key='projekt_type': Gulvslibning/Gulvlægning/Maler/
+    -- Enterprise, men Martin kan selv udvide listen der — se GET
+    -- /api/project-types, som læser den SAMME liste i stedet for at duplikere
+    -- den). Sættes AUTOMATISK fra det koblede CRM-lead/opportunitys eget
+    -- "Projekt Type"-svar når sagen opstår fra et tilbud der har
+    -- crm_lead_id/crm_opportunity_id (se crmMoveEntityToWonStage-kaldet i
+    -- createProjectFromAcceptedQuote nedenfor) — ellers skal Martin vælge den
+    -- manuelt (almindeligt tekstfelt, ingen FK, ligesom projects.status).
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type TEXT;
 
     -- ── KVALITETSSIKRING: Martin bygger skabeloner (ordnet liste af felter),
     -- medarbejdere udfylder dem pr. projekt. ────────────────────────────
@@ -8549,6 +8560,16 @@ app.get('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async 
   const activities = (await pool.query('SELECT a.*, u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.entity_type=$1 AND a.entity_id=$2 ORDER BY a.created_at DESC, a.id DESC', ['lead', lead.id])).rows;
   res.json({ ...lead, custom_fields: customValues, custom_field_defs: customFields, activities });
 }));
+// RUNDE T (Martins ønske: "en Knap ved siden af filer hvor man trykker og kan
+// se alle tilbud der lavet på denne opptunitury") — BEVIDST forskellig fra
+// GET /api/crm/customers/:id's "quotes" (som viser ALLE tilbud kunden
+// nogensinde har fået, på tværs af alle sager/handler denne kunde har haft).
+// Her filtreres på selve lead'et (quotes.crm_lead_id), så en kunde med flere
+// tidligere/samtidige handler ikke får tilbud fra andre sager blandet ind.
+app.get('/api/crm/leads/:id/quotes', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT id, quote_number, job_name, status, total, created_at FROM quotes WHERE crm_lead_id=$1 ORDER BY created_at DESC', [req.params.id]);
+  res.json(rows.rows);
+}));
 app.put('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_leads WHERE id=$1', [req.params.id]);
@@ -8803,6 +8824,12 @@ app.get('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRout
   const customValues = await crmGetCustomFieldValues('opportunity', opp.id);
   const activities = (await pool.query('SELECT a.*, u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.entity_type=$1 AND a.entity_id=$2 ORDER BY a.created_at DESC, a.id DESC', ['opportunity', opp.id])).rows;
   res.json({ ...opp, custom_fields: customValues, custom_field_defs: customFields, activities });
+}));
+// RUNDE T — se kommentaren ved GET /api/crm/leads/:id/quotes ovenfor, samme
+// begrundelse: filtreret på DENNE handel (crm_opportunity_id), ikke kunden generelt.
+app.get('/api/crm/opportunities/:id/quotes', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT id, quote_number, job_name, status, total, created_at FROM quotes WHERE crm_opportunity_id=$1 ORDER BY created_at DESC', [req.params.id]);
+  res.json(rows.rows);
 }));
 app.put('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   const b = req.body || {};
@@ -10139,10 +10166,26 @@ async function createProjectFromAcceptedQuote(quote) {
     // Sagsnummer tildeles automatisk her, i samme GM-ÅÅÅÅ-NNNN-stil som Tilbud (TIL-)
     // og Faktura (FAK-) allerede bruger — se nextDocNumber().
     const jobNumber = await nextDocNumber('project', 'GM');
+    // RUNDE T (Martins ønske: "når den opretter et projekt automatisk skal den
+    // vælge en faggruppe kan den gøre det ud fra felterne") — samme CRM-kobling
+    // som Won-automatikken ovenfor bruger. Hvis tilbuddet stammer fra et
+    // lead/en opportunity der selv har svaret på "Projekt Type", kopieres det
+    // svar direkte over som sagens faggruppe. Intet at kopiere (langt de fleste
+    // tilbud, indtil videre) = projects.project_type forbliver NULL, og Martin
+    // sætter den manuelt i sagen (se PUT /api/projects/:id).
+    let projectType = null;
+    try {
+      const entityType = quote.crm_lead_id ? 'lead' : (quote.crm_opportunity_id ? 'opportunity' : null);
+      if (entityType) {
+        const entityId = quote.crm_lead_id || quote.crm_opportunity_id;
+        const fields = await crmGetCustomFieldValues(entityType, entityId);
+        projectType = fields.projekt_type || null;
+      }
+    } catch (e3) { console.error('Kunne ikke udlede faggruppe fra CRM-kortet:', e3.message); }
     const p = await pgOne(`
-      INSERT INTO projects (quote_id, name, customer_id, customer_address, customer_phone, customer_email, job_number)
-      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
-    `, [quote.id, quote.job_name || quote.quote_number, quote.customer_id, quote.customer_address, quote.customer_phone, quote.customer_email, jobNumber]);
+      INSERT INTO projects (quote_id, name, customer_id, customer_address, customer_phone, customer_email, job_number, project_type)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+    `, [quote.id, quote.job_name || quote.quote_number, quote.customer_id, quote.customer_address, quote.customer_phone, quote.customer_email, jobNumber, projectType]);
     const projectId = p.id;
     // RUNDE H #24 — Martins ønske: "når et projekt er oprettet i projekter,
     // oprettes det automatisk i opgavepool" — dvs. tilbuddets linjer skal ALTID
@@ -10159,6 +10202,24 @@ async function createProjectFromAcceptedQuote(quote) {
     return { projectId: null, created: false };
   }
 }
+// RUNDE T — faggruppe-valgmulighederne genbruger CRM'ets eget "Projekt
+// Type"-felt (crm_custom_fields, key='projekt_type') i stedet for at
+// duplikere listen et andet sted: udvider Martin CRM-listen (fx en ny
+// faggruppe), får sagsvælgeren den automatisk med. Slår op på BÅDE lead- og
+// opportunity-versionen af feltet (de er seedet ens, men kan i teorien være
+// redigeret hver for sig siden) og lægger sammen, dedupliceret.
+app.get('/api/project-types', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query("SELECT options FROM crm_custom_fields WHERE key='projekt_type' AND entity_type IN ('lead','opportunity')");
+  const seen = new Set();
+  const options = [];
+  for (const row of rows.rows) {
+    for (const opt of (row.options || [])) {
+      if (opt && !seen.has(opt)) { seen.add(opt); options.push(opt); }
+    }
+  }
+  if (!options.length) options.push('Gulvslibning', 'Gulvlægning', 'Maler', 'Enterprise');
+  res.json(options);
+}));
 app.get('/api/projects', auth, asyncRoute(async (req, res) => {
   // Pris/tilbudsbeløb sendes KUN med til kontor/økonomi-brugere (til søgning/visning
   // i admin.html's Projekter-liste) — aldrig til employee/employee-demo, som deler
@@ -10396,9 +10457,9 @@ app.post('/api/projects', auth, panelAccess('projects'), asyncRoute(async (req, 
   const jobNumber = await nextDocNumber('project', 'GM');
   const resolvedCustomerId = await resolveCustomerId(b.customer_id || null, b.customer_email || null, b.customer_phone || null);
   const p = await pgOne(`
-    INSERT INTO projects (name, customer_id, customer_address, customer_phone, customer_email, job_number, status)
-    VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
-  `, [name, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, jobNumber, status]);
+    INSERT INTO projects (name, customer_id, customer_address, customer_phone, customer_email, job_number, status, project_type)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+  `, [name, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, jobNumber, status, b.project_type || null]);
   res.json({ ok: true, id: p.id });
 }));
 
@@ -10412,8 +10473,8 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
   }
   const newStatus = b.status !== undefined ? b.status : current.status;
   await pool.query(`
-    UPDATE projects SET name=$1, status=$2, customer_address=$3, customer_phone=$4, customer_email=$5, customer_id=$6, updated_at=${nowTextSQL()}
-    WHERE id=$7
+    UPDATE projects SET name=$1, status=$2, customer_address=$3, customer_phone=$4, customer_email=$5, customer_id=$6, project_type=$7, updated_at=${nowTextSQL()}
+    WHERE id=$8
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
     newStatus,
@@ -10424,6 +10485,8 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
     // oprettelse, kun de denormaliserede tekstfelter. Kan nu også rettes senere,
     // ikke kun sættes ved den nye manuelle oprettelse.
     b.customer_id !== undefined ? (b.customer_id || null) : current.customer_id,
+    // RUNDE T — faggruppe, se skema-kommentaren ved projects.project_type.
+    b.project_type !== undefined ? (b.project_type || null) : current.project_type,
     req.params.id
   ]);
   res.json({ ok: true });
@@ -10470,6 +10533,26 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
   }
 }));
 
+// RUNDE T (Martins ønske: "Hver projekt skal have et tilbud tilkoblet, som
+// man kan rette i og så retter det også prisen på det samlede projekt") —
+// kun relevant for sager der IKKE allerede har et tilbud (typisk ældre sager
+// fra før dette, eller manuelt oprettede via "+ Nyt projekt"). Kobler en
+// EKSISTERENDE tilbud på sagen (quote_id, samme løse ikke-FK-kobling som
+// resten af projects). Tilbuddet må ikke allerede sidde på en anden sag —
+// ellers ville to sager dele samme pris/redigeringsknap, hvilket ville være
+// mere forvirrende end den manglende kobling er i dag.
+app.put('/api/projects/:id/attach-quote', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const quoteId = Number((req.body || {}).quote_id);
+  if (!quoteId) return res.status(400).json({ error: 'Angiv hvilket tilbud der skal kobles på' });
+  const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [quoteId]);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const other = await pgOne('SELECT id, name FROM projects WHERE quote_id=$1 AND id<>$2', [quoteId, req.params.id]);
+  if (other) return res.status(400).json({ error: `Dette tilbud er allerede koblet på sagen "${other.name}"` });
+  await pool.query(`UPDATE projects SET quote_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [quoteId, req.params.id]);
+  res.json({ ok: true });
+}));
 // RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter") — sletter
 // sagen PERMANENT, inkl. alt der hænger på den. Seks tabeller har allerede
 // ON DELETE CASCADE på project_id (qa_submissions, time_entries,
@@ -13382,11 +13465,28 @@ app.delete('/api/quote-templates/:id', auth, panelAccess('quotes'), asyncRoute(a
 }));
 
 // ── TILBUD ───────────────────────────────────────────────────
+// RUNDE T (Martins ønske: "når vi laver en note på en kundens sag i pipelines
+// fx sale. og så skal lave et tilbud så kan vi ikke læse hvad projektet
+// omhandler? ... Hvordan kan vi løse det") — vedhæfter det koblede CRM-lead/
+// opportunitys EGEN note (crm_leads.note/crm_opportunities.note — den man
+// skriver på selve kanban-kortet, IKKE tilbuddets egen top_note som kunden ser)
+// som crm_entity_note/crm_entity_name/crm_entity_type, så tilbudseditoren kan
+// vise den i et skrivebeskyttet panel — se qeRenderCrmNote() i admin.html.
 async function loadQuoteFull(id) {
   const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [id]);
   if (!quote) return null;
   const lines = await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [id]);
-  return { ...quote, lines: lines.rows };
+  let crmEntityNote = null, crmEntityName = null, crmEntityType = null;
+  try {
+    if (quote.crm_lead_id) {
+      const lead = await pgOne('SELECT name, note FROM crm_leads WHERE id=$1', [quote.crm_lead_id]);
+      if (lead) { crmEntityNote = lead.note || null; crmEntityName = lead.name; crmEntityType = 'lead'; }
+    } else if (quote.crm_opportunity_id) {
+      const opp = await pgOne('SELECT name, note FROM crm_opportunities WHERE id=$1', [quote.crm_opportunity_id]);
+      if (opp) { crmEntityNote = opp.note || null; crmEntityName = opp.name; crmEntityType = 'opportunity'; }
+    }
+  } catch (e) { console.error('Kunne ikke hente CRM-note til tilbud #' + id + ':', e.message); }
+  return { ...quote, lines: lines.rows, crm_entity_note: crmEntityNote, crm_entity_name: crmEntityName, crm_entity_type: crmEntityType };
 }
 
 app.get('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -13460,9 +13560,19 @@ app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, r
   const discountPct = b.discount_pct !== undefined ? Number(b.discount_pct) || 0 : Number(current.discount_pct) || 0;
   const discountType = b.discount_type !== undefined ? (b.discount_type === 'fixed' ? 'fixed' : 'pct') : (current.discount_type === 'fixed' ? 'fixed' : 'pct');
   const totals = computeTotals(b.lines !== undefined ? b.lines : await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1', [req.params.id]).then(r => r.rows), taxRate, { value: discountPct, type: discountType });
+  // RUNDE T (Martins ønske: "Vælg opportunity/lead ved manuel tilbudsoprettelse
+  // ... Men jeg tænker det fint alle dele af programmet hænger sammen") —
+  // crm_lead_id/crm_opportunity_id kunne hidtil kun sættes ved OPRETTELSE (se
+  // POST /api/quotes ovenfor, altid fra "📝 Lav tilbud" på et CRM-kort). Nu kan
+  // koblingen også sættes/ændres/fjernes bagefter — fx på et tilbud oprettet
+  // manuelt uden om CRM'et, eller hvor sagen konverteres fra lead til
+  // opportunity efter tilbuddet allerede er lavet — se qe-crm-link-search i
+  // admin.html. b.crm_lead_id===null (eksplicit) fjerner koblingen igen.
+  const crmLeadId = b.crm_lead_id !== undefined ? (b.crm_lead_id || null) : current.crm_lead_id;
+  const crmOpportunityId = b.crm_opportunity_id !== undefined ? (b.crm_opportunity_id || null) : current.crm_opportunity_id;
   await pool.query(`
-    UPDATE quotes SET job_name=$1,job_id=$2,customer_id=$3,customer_address=$4,customer_phone=$5,customer_email=$6,subtotal=$7,tax_rate=$8,tax_amount=$9,total=$10,notes=$11,top_note=$12,internal_note=$13,valid_until=$14,discount_pct=$15,discount_type=$16,updated_at=${nowTextSQL()}
-    WHERE id=$17
+    UPDATE quotes SET job_name=$1,job_id=$2,customer_id=$3,customer_address=$4,customer_phone=$5,customer_email=$6,subtotal=$7,tax_rate=$8,tax_amount=$9,total=$10,notes=$11,top_note=$12,internal_note=$13,valid_until=$14,discount_pct=$15,discount_type=$16,crm_lead_id=$17,crm_opportunity_id=$18,updated_at=${nowTextSQL()}
+    WHERE id=$19
   `, [
     b.job_name !== undefined ? b.job_name : current.job_name,
     b.job_id !== undefined ? b.job_id : current.job_id,
@@ -13477,6 +13587,8 @@ app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, r
     b.valid_until !== undefined ? b.valid_until : current.valid_until,
     discountPct,
     discountType,
+    crmLeadId,
+    crmOpportunityId,
     req.params.id
   ]);
   if (b.lines !== undefined) await saveQuoteLines(req.params.id, b.lines);
@@ -14137,12 +14249,20 @@ function drawDocumentPdf(doc, kind, record, company) {
   }
 
   y = Math.max(y + 6, 222);
+  // RUNDE T (Martins ønske: "Når der gives rabat i et tilbud, så står der bare
+  // 15% ... kan det ikke stå mere tydeligt at der rabat og i sin egen Collum
+  // ... Så måske man kan se hvor mange kr i alt også") — rabat fik hidtil
+  // ingen egen kolonne, bare " (-15%)" klistret bagpå Antal-cellen, sammen med
+  // enheden — nemt at overse, og kun procenten/kr-satsen vist, aldrig selve
+  // rabatbeløbet. Egen "Rabat"-kolonne herunder, rød tekst, og viser BÅDE
+  // satsen og kr-beløbet ("-15% (-450 kr)"), tom når linjen ikke har rabat.
   doc.roundedRect(40, y, 515, 24, 6).fill('#F4F6FB');
   doc.font('Helvetica').fontSize(9).fillColor('#374151');
   doc.text('Beskrivelse', 52, y + 8);
-  doc.text('Antal', 320, y + 8, { width: 50, align: 'right' });
-  doc.text('Enhedspris', 380, y + 8, { width: 80, align: 'right' });
-  doc.text('I alt', 457, y + 8, { width: 80, align: 'right' });
+  doc.text('Antal', 278, y + 8, { width: 42, align: 'right' });
+  doc.text('Rabat', 325, y + 8, { width: 60, align: 'right' });
+  doc.text('Enhedspris', 390, y + 8, { width: 70, align: 'right' });
+  doc.text('I alt', 465, y + 8, { width: 75, align: 'right' });
   y += 32;
   doc.fontSize(9.5).fillColor('#111318');
   let rawSubtotal = 0;
@@ -14161,16 +14281,28 @@ function drawDocumentPdf(doc, kind, record, company) {
     const lineDiscAmt = lineDiscountAmount(l, gross);
     const lineTotal = gross - lineDiscAmt;
     rawSubtotal += lineTotal;
-    const lineDiscLabel = lineDiscVal ? (lineDiscType === 'fixed' ? ` (-${Math.round(lineDiscVal).toLocaleString('da-DK')} kr)` : ` (-${lineDiscVal}%)`) : '';
+    // RUNDE T: rabat vises nu i egen kolonne, rød tekst, i stedet for klistret
+    // på Antal-cellen — se kommentar ved kolonneoverskrifterne. Viser BÅDE
+    // satsen ("-10%"/"-450 kr") OG selve rabatbeløbet i kr, som to stablede
+    // linjer (for smalt til begge dele på én linje i kolonnens bredde).
+    const lineDiscRateLabel = lineDiscVal ? (lineDiscType === 'fixed' ? `-${Math.round(lineDiscVal).toLocaleString('da-DK')} kr` : `-${lineDiscVal}%`) : '';
+    const lineDiscAmtLabel = lineDiscVal ? `(-${Math.round(lineDiscAmt).toLocaleString('da-DK')} kr)` : '';
     // Overskrift/beskrivelse/note (sep. 2026) — se pdfLineDescHeight/drawPdfLineDesc
     // ovenfor drawDocumentPdf. Højden skal beregnes FØRST (PDFKit har intet automatisk
     // layout-flow), så antal/pris-kolonnerne og skillelinjen kan placeres korrekt.
-    const nameHeight = pdfLineDescHeight(doc, l, 260);
+    const nameHeight = pdfLineDescHeight(doc, l, 220);
     doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
-    doc.text(String(l.quantity) + ' ' + (l.unit || '') + lineDiscLabel, 320, y, { width: 50, align: 'right' });
-    doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 380, y, { width: 80, align: 'right' });
-    doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
-    drawPdfLineDesc(doc, l, 48, y, 260);
+    doc.text(String(l.quantity) + ' ' + (l.unit || ''), 278, y, { width: 42, align: 'right' });
+    if (lineDiscRateLabel) {
+      doc.font('Helvetica-Bold').fontSize(8).fillColor('#C0392B');
+      doc.text(lineDiscRateLabel, 325, y + 1, { width: 60, align: 'right' });
+      doc.font('Helvetica').fontSize(7).fillColor('#C0392B');
+      doc.text(lineDiscAmtLabel, 325, y + 11, { width: 60, align: 'right' });
+      doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
+    }
+    doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 390, y, { width: 70, align: 'right' });
+    doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 465, y, { width: 75, align: 'right' });
+    drawPdfLineDesc(doc, l, 48, y, 220);
     y += Math.max(nameHeight, 14) + 8;
     doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#EEF0F3').stroke();
   });

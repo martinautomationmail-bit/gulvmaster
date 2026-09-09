@@ -1181,6 +1181,21 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .bly-period-tabs{display:flex;background:var(--ice);border-radius:var(--bly-r-sm);padding:3px;margin-bottom:14px}
 .bly-period-tab{flex:1;border:0;background:transparent;border-radius:7px;padding:7px 4px;font-size:11.5px;font-weight:700;color:var(--bly-sub);cursor:pointer}
 .bly-period-tab.active{background:#fff;color:var(--bly-ink);box-shadow:0 1px 4px rgba(15,17,24,.12)}
+/* RUNDE T (Martins ønske: "Højre klikke alle projekter i List view And Kanban
+   view") — lille generisk højreklik-kontekstmenu, se showCtxMenu() i JS'en.
+   position:fixed fordi den placeres ud fra musens skærmkoordinater
+   (e.clientX/clientY), ikke relativt til noget forældre-element. */
+.ctx-menu{position:fixed;z-index:500;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);box-shadow:0 20px 45px rgba(15,17,24,.18);padding:6px;min-width:190px;max-height:70vh;overflow-y:auto}
+.ctx-menu-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--bly-ink);cursor:pointer;white-space:nowrap}
+.ctx-menu-item:hover{background:var(--ice)}
+.ctx-menu-item.danger{color:#B91C1C}
+.ctx-menu-item.danger:hover{background:#FEF2F2}
+.ctx-menu-sep{height:1px;background:var(--bly-border-soft);margin:5px 4px}
+.ctx-menu-label{padding:6px 10px 4px;font-size:10px;font-weight:800;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.04em}
+/* RUNDE T — lille tekst-knap-stil til "vis mere"/"vælg poster i stedet"-typen
+   handlinger, hvor en fuld knap-boks ville stjæle for meget opmærksomhed. */
+.qz-link-btn{border:0;background:transparent;color:var(--bly-accent);font-size:12px;font-weight:700;cursor:pointer;padding:2px 0}
+.qz-link-btn:hover{text-decoration:underline}
 .bly-period-years{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
 .bly-period-year{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);padding:9px 4px;font-size:12.5px;font-weight:700;color:var(--bly-ink);cursor:pointer;text-align:center}
 .bly-period-year:hover{border-color:#C7CBD1}
@@ -1358,6 +1373,35 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-totals-row{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;color:var(--bly-sub)}
 .qe-totals-row.total{font-size:15px;font-weight:800;color:var(--bly-ink);border-top:1px solid var(--bly-border-soft);margin-top:6px;padding-top:8px}
 .qe-cost-summary{background:var(--bly-accent-soft);border-radius:var(--bly-r-sm);padding:10px 12px;margin-top:10px;font-size:11.5px;color:var(--bly-ink)}
+/* RUNDE T (Martins ønske: "flytter den samlede tilbud ned under KPI'erne...
+   og gør det felt med margin lidt mere moderne og lækkert og let at analyser")
+   — nyt kort-baseret margin-panel, samme visuelle sprog som KPI-kortene
+   øverst på Projekter/Fakturaer-siderne (.bly-kpi-card), i stedet for de
+   gamle simple tekst-rækker (qzTypeRow). Vises under linjerne, med
+   "Rabat på hele tilbuddet" lige ovenover som sin egen lille sektion. */
+.qe-doc-discount-wrap{margin-top:16px;padding-top:14px;border-top:1px solid var(--bly-border-soft);display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+/* RUNDE T (Martins ønske: "når vi laver en note på en kundens sag i pipelines
+   ... og så skal lave et tilbud så kan vi ikke læse hvad projektet omhandler")
+   — skrivebeskyttet panel der viser CRM-kortets EGEN note direkte i
+   tilbudseditoren, så man ikke skal skifte frem og tilbage mellem CRM'et og
+   tilbuddet. Kun synlig når tilbuddet er koblet til et lead/en opportunity
+   der faktisk har en note — se qeRenderCrmNotePanel(). */
+.qe-crm-note-panel{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-top:10px}
+.qe-crm-note-head{font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:.02em;margin-bottom:4px;display:flex;align-items:center;gap:5px}
+.qe-crm-note-text{font-size:12.5px;color:#374151;white-space:pre-wrap}
+/* RUNDE T (Martins ønske: se qe-crm-link-search ovenfor) — pillen der viser
+   det lead/den handel tilbuddet er koblet til, med en lille ✕ for at fjerne
+   koblingen igen. Samme visuelle familie som .fin-recon-match-chip. */
+.ic-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;background:var(--bly-accent-soft);color:var(--bly-accent);border:1px solid var(--bly-accent);border-radius:20px;padding:5px 6px 5px 12px}
+.qe-margin-panel{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.qe-margin-card{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:12px 14px}
+.qe-margin-card-label{font-size:11px;font-weight:600;color:var(--bly-sub);margin-bottom:6px}
+.qe-margin-card-value{font-size:17px;font-weight:800;color:var(--bly-ink);line-height:1.15}
+.qe-margin-card-sub{font-size:11.5px;font-weight:700;margin-top:3px}
+.qe-margin-card.total{background:var(--bly-accent);border-color:var(--bly-accent)}
+.qe-margin-card.total .qe-margin-card-label{color:rgba(255,255,255,.78)}
+.qe-margin-card.total .qe-margin-card-value{color:#fff}
+.qe-margin-card.total .qe-margin-card-sub{color:rgba(255,255,255,.9)}
 /* Selve PDF-forhåndsvisningen — designet så den ligner det pdfkit-genererede
    dokument så tæt som muligt, så "det du ser er det kunden får". */
 .qe-pdf-page{width:100%;max-width:560px;background:#fff;box-shadow:0 8px 30px rgba(15,17,24,.15);padding:36px 34px;font-size:11px;color:#111318;min-height:700px}
@@ -1372,6 +1416,9 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-pdf-table th{text-align:left;background:#F4F6FB;padding:6px 8px;font-weight:700;color:#374151}
 .qe-pdf-table th.num,.qe-pdf-table td.num{text-align:right}
 .qe-pdf-table td{padding:6px 8px;border-bottom:1px solid #EEF0F3}
+/* RUNDE T (Martins ønske: rabat pr. linje skal stå tydeligt i sin egen kolonne,
+   ikke klistret bag på Antal — se qeRenderPreview) */
+.qe-pdf-disc{color:#C0392B;font-weight:700;white-space:nowrap}
 /* Linje-overskrift/beskrivelse/note (sep. 2026, Martins ønske) — samme visuelle
    hierarki som /tilbud/:token og den rigtige PDF: fed overskrift, lidt federe
    beskrivelse lige under, og noten i sin egen fremhævede boks nederst. */
@@ -4223,7 +4270,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div style="display:flex;gap:8px;align-items:center">
         <!-- RUNDE R — indhold sat dynamisk fra pjStages (Martins egne stadier) i
              openProjectDetail(), ikke længere disse 4 hårdkodede <option>er. -->
+        <!-- RUNDE T (Martins ønske: "Alle projekter skal have en faggruppe") —
+             indhold sat dynamisk fra pjProjectTypes (samme liste som CRM'ets
+             "Projekt Type") i openProjectDetail(). "(ingen)" som første valg,
+             da ikke alle sager nødvendigvis får den sat automatisk. -->
+        <select id="pd-type-select" class="select" style="width:auto"></select>
         <select id="pd-status-select" class="select" style="width:auto"></select>
+        <!-- RUNDE T (Martins ønske: "Hver projekt skal have et tilbud tilkoblet")
+             — vises KUN når sagen ikke allerede har et tilbud koblet på (ellers
+             viser #pd-quote-link/#pd-quote-edit-btn nedenfor det rigtige). -->
+        <button id="pd-attach-quote-btn" class="bly-btn outline" type="button" style="display:none" title="Denne sag har intet tilbud endnu — koble et eksisterende på, eller opret et nyt">🔗 Tilknyt tilbud</button>
         <a id="pd-quote-link" class="bly-btn outline" href="#" target="_blank" style="display:none">📄 Se tilbud</a>
         <!-- RUNDE S (Martins ønske: "skal jeg kunne se tilbuddet inde i projektet ...
              ændre man i det kan man trykke tilføje nye poster") — "Se tilbud" ovenfor
@@ -5275,9 +5331,36 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <!-- RUNDE R — indhold sat dynamisk fra pjNonArchivedStages() i openPjNewModal(). -->
       <div><label class="qe-label">Status</label><select id="pjn-status" class="qe-input"></select></div>
     </div>
+    <!-- RUNDE T (Martins ønske: "Alle projekter skal have en faggruppe") —
+         indhold sat dynamisk fra pjProjectTypes i openPjNewModal(). -->
+    <div class="form-group"><label class="form-label">Faggruppe <span class="opt-tag">valgfrit</span></label><select id="pjn-type" class="input"></select></div>
     <div class="modal-actions">
       <button class="btn" id="pjn-cancel-btn" type="button">Annuller</button>
       <button class="btn primary" id="pjn-save-btn" type="button">Opret projekt</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE T (Martins ønske: "Hver projekt skal have et tilbud tilkoblet, som
+     man kan rette i") — for sager der IKKE allerede har et tilbud: enten
+     koble et EKSISTERENDE tilbud på (søgning, samme mønster som kunde-
+     søgningen i tilbudseditoren), eller oprette et helt nyt tomt tilbud
+     direkte til sagen. -->
+<div class="mo" id="pj-attach-quote-modal">
+  <div class="modal" style="max-width:480px;width:92vw">
+    <h3 style="margin:0 0 4px">🔗 Tilknyt tilbud</h3>
+    <p class="sub" style="margin-top:0">Denne sag har intet tilbud endnu — sagens pris følger altid det koblede tilbud.</p>
+    <div class="form-group">
+      <label class="form-label">Søg efter et eksisterende tilbud</label>
+      <div class="qe-customer-pop">
+        <input id="pjaq-search" class="input" placeholder="Søg på tilbudsnummer eller kundenavn...">
+        <div class="qe-customer-results" id="pjaq-results"></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--bly-sub);font-size:11.5px"><div style="flex:1;height:1px;background:var(--bly-border)"></div>eller<div style="flex:1;height:1px;background:var(--bly-border)"></div></div>
+    <button class="bly-btn outline" id="pjaq-new-btn" type="button" style="width:100%;justify-content:center">+ Opret nyt tomt tilbud til denne sag</button>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('pj-attach-quote-modal')" type="button">Luk</button>
     </div>
   </div>
 </div>
@@ -5627,9 +5710,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div><label class="qe-label">E-mail</label><input id="qe-customer-email" class="qe-input"></div>
           <div><label class="qe-label">Gyldig til</label><input id="qe-valid-until" type="date" class="qe-input"></div>
         </div>
-        <div class="qe-field-row">
-          <div><label class="qe-label">Rabat på hele tilbuddet</label><div style="display:flex;gap:6px"><input id="qe-doc-discount" type="number" step="0.1" min="0" class="qe-input" value="0" style="flex:1;min-width:0"><select id="qe-doc-discount-type" class="qe-input" style="flex:0 0 64px;padding:0 2px" title="Rabattype"><option value="pct">%</option><option value="fixed">kr</option></select></div></div>
-          <div><label class="qe-label">Indsæt fra skabelon <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label><select id="qe-template-picker" class="qe-input"><option value="">Vælg en skabelon...</option></select></div>
+        <!-- RUNDE T (Martins ønske: "Vælg opportunity/lead ved manuel
+             tilbudsoprettelse ... jeg tænker det fint alle dele af programmet
+             hænger sammen så man ved hvad sager der har hvilke data") — kun
+             relevant hvis tilbuddet IKKE allerede er koblet fra "📝 Lav tilbud"
+             på selve CRM-kortet (så er koblingen jo givet i forvejen). -->
+        <div style="margin-top:10px">
+          <label class="qe-label">Tilknyt til lead/handel <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label>
+          <div id="qe-crm-link-chip" style="display:none"></div>
+          <div class="qe-customer-pop" id="qe-crm-link-search-wrap">
+            <input id="qe-crm-link-search" class="qe-input" placeholder="Søg efter lead eller handel...">
+            <div class="qe-customer-results" id="qe-crm-link-results"></div>
+          </div>
+        </div>
+        <div id="qe-crm-note-panel" class="qe-crm-note-panel" style="display:none">
+          <div class="qe-crm-note-head">📌 Note fra <span id="qe-crm-note-entity-label"></span></div>
+          <div class="qe-crm-note-text" id="qe-crm-note-text"></div>
         </div>
         <div class="form-group" style="margin-top:10px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger</span></label><textarea id="qe-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
 
@@ -5659,6 +5755,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <button class="bly-btn outline small" id="qe-add-blank-line" type="button">+ Tilføj linje</button>
             <button class="bly-btn outline small" id="qe-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
             <button class="bly-btn outline small" id="qe-save-as-template-btn" type="button" title="Gem de nuværende linjer som en skabelon">💾 Gem som skabelon</button>
+            <!-- RUNDE T (Martins ønske: "flyt knappen indsæt skablon ned ved siden af Gem
+                 som skablon og så laver den i samme design som de knapper der med icon") —
+                 var før et <select>-felt langt oppe i tilbuddet, nu en ikon-knap i samme
+                 design som "Gem som skabelon" lige ved siden af, der åbner en liste over
+                 skabeloner via den fælles kontekstmenu (showCtxMenu) — se qeOpenTemplateMenu. -->
+            <button class="bly-btn outline small" id="qe-insert-template-btn" type="button" title="Indsæt linjer fra en gemt skabelon">📥 Indsæt skabelon</button>
           </div>
         </div>
         <div id="qe-ai-listening-bar" class="qe-ai-listening-bar" hidden>
@@ -5679,6 +5781,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
         <div class="qe-totals" id="qe-totals"></div>
         <div class="qe-cost-summary" id="qe-cost-summary"></div>
+        <!-- RUNDE T (Martins ønske: "flytter den samlede tilbud ned under KPI'erne
+             hvor du har margin mm") — "Rabat på hele tilbuddet" lå før langt oppe i
+             tilbuddet, sammen med kunde-/adressefelterne; nu lige under margin-
+             kortene, hvor den hører hjemme sammen med resten af tal-/rabat-delen. -->
+        <div class="qe-doc-discount-wrap">
+          <div><label class="qe-label">Rabat på hele tilbuddet</label><div style="display:flex;gap:6px"><input id="qe-doc-discount" type="number" step="0.1" min="0" class="qe-input" value="0" style="flex:1;min-width:0"><select id="qe-doc-discount-type" class="qe-input" style="flex:0 0 64px;padding:0 2px" title="Rabattype"><option value="pct">%</option><option value="fixed">kr</option></select></div></div>
+        </div>
 
         <div class="form-group" style="margin-top:14px"><label class="form-label">Betingelser / note i bunden <span class="opt-tag">valgfrit — vises nederst på PDF'en</span></label><textarea id="qe-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
         <div class="form-group" style="margin-top:10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px"><label class="form-label" style="color:#92400E">🔒 Intern note <span class="opt-tag" style="text-transform:none;font-weight:400;color:#92400E">kun jer — kunden ser den ALDRIG</span></label><textarea id="qe-internal-note" class="input" rows="2" style="resize:vertical" placeholder="Fx: kunden får gratis fugefyld med, aftalt telefonisk d. ..."></textarea></div>
@@ -5827,10 +5936,27 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <span class="qe-label" style="margin:0">Kreditnotaer</span>
     </div>
     <div id="iv-credit-notes-list" style="margin-bottom:12px"></div>
+    <!-- RUNDE T (Martins ønske: "ved 1 klik kunne trykke hele beløbet",
+         "er de tmed eller uden moms jeg skal indtaste det?", "hurtigt kunne
+         søge med de poster der er istedet for jeg skal side og regne") —
+         beløbet er ALTID inkl. moms (trækkes direkte fra fakturaens total,
+         ligesom en betaling), gjort tydeligt i label'en nu. "Hele resterende
+         beløb" udfylder med ét klik det der reelt er tilbage at kreditere.
+         "Vælg poster i stedet" summerer de afkrydsede fakturalinjer (inkl.
+         moms, samme fordeling af evt. rabat på hele fakturaen som selve
+         fakturatotalen bruger) ind i beløbfeltet i stedet for manuel regning. -->
     <div class="form-row" style="align-items:flex-end">
-      <div class="form-group"><label class="form-label">Beløb (kr.) <span class="opt-tag">valgfrit — hele eller delvist</span></label><input id="iv-credit-amount" type="number" step="0.01" class="input"></div>
+      <div class="form-group">
+        <label class="form-label">Beløb (kr., inkl. moms) <span class="opt-tag">valgfrit — hele eller delvist</span></label>
+        <div style="display:flex;gap:6px">
+          <input id="iv-credit-amount" type="number" step="0.01" class="input" style="flex:1;min-width:0">
+          <button class="bly-btn outline small" id="iv-credit-full-btn" type="button" title="Udfylder med det der er tilbage at kreditere">Hele beløbet</button>
+        </div>
+      </div>
       <div class="form-group" style="flex:1"><label class="form-label">Begrundelse <span class="opt-tag">valgfrit</span></label><input id="iv-credit-reason" class="input" placeholder="Fx reklamation, prisfejl på linje 2"></div>
     </div>
+    <button class="qz-link-btn" id="iv-credit-picker-toggle" type="button" style="margin:2px 0 8px">🔎 Vælg poster i stedet for at regne selv</button>
+    <div id="iv-credit-picker" style="display:none;background:var(--ice);border-radius:var(--bly-r-md);padding:10px 12px;margin-bottom:12px"></div>
     <button class="bly-btn outline small" id="iv-add-credit-btn" type="button">+ Ny kreditnota</button>
 
     <div class="form-group" style="margin-top:18px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
@@ -5929,6 +6055,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 </div>
+<!-- RUNDE T — se .ctx-menu i CSS'en og showCtxMenu() i JS'en. Ét delt element,
+     genbruges af List/Kanban-visningen af Projekter (og evt. flere steder
+     senere) — indhold bygges dynamisk pr. kald. -->
+<div id="ctx-menu" class="ctx-menu" style="display:none"></div>
 <div class="mo" id="gm-dialog-modal">
   <div class="modal" style="width:380px">
     <h3 id="gm-dialog-title">Bekræft</h3>
@@ -6634,6 +6764,38 @@ function gmDialog(opts){
 }
 function gmConfirm(message,title){return gmDialog({message:message,title:title,isPrompt:false});}
 function gmPrompt(message,defaultValue,title){return gmDialog({message:message,defaultValue:defaultValue,title:title,isPrompt:true});}
+// RUNDE T (Martins ønske: "Højre klikke alle projekter i List view And Kanban
+// view") — lille generisk højreklik-kontekstmenu. items = liste af enten
+// {sep:true}, {label:true,text:'...'} (overskrift, ikke klikbar), eller
+// {icon,text,onClick,danger}. Positioneres ud fra museklikkets skærm-
+// koordinater og holdes indenfor vinduet, så den ikke løber ud over kanten
+// ved et klik tæt på højre/nederste skærmkant.
+function showCtxMenu(x,y,items){
+  var el=document.getElementById('ctx-menu');
+  el.innerHTML=items.map(function(it){
+    if(it.sep)return '<div class="ctx-menu-sep"></div>';
+    if(it.label)return '<div class="ctx-menu-label">'+esc(it.text)+'</div>';
+    return '<div class="ctx-menu-item'+(it.danger?' danger':'')+'" data-ctx-idx="'+items.indexOf(it)+'">'+(it.icon||'')+' '+esc(it.text)+'</div>';
+  }).join('');
+  el.style.display='block';
+  // Midlertidigt målt for at kunne holde menuen indenfor vinduet (se nedenfor) —
+  // display:block skal sættes FØR offsetWidth/Height giver mening.
+  var w=el.offsetWidth,h=el.offsetHeight;
+  el.style.left=Math.min(x,window.innerWidth-w-8)+'px';
+  el.style.top=Math.min(y,window.innerHeight-h-8)+'px';
+  Array.prototype.forEach.call(el.querySelectorAll('[data-ctx-idx]'),function(rowEl){
+    var it=items[Number(rowEl.dataset.ctxIdx)];
+    rowEl.onclick=function(){hideCtxMenu();it.onClick();};
+  });
+}
+function hideCtxMenu(){document.getElementById('ctx-menu').style.display='none';}
+document.addEventListener('click',function(e){if(!e.target.closest('#ctx-menu'))hideCtxMenu();});
+// capture:true — lukker en ÅBEN menu FØR et nyt højreklik et andet sted evt.
+// åbner en ny (eller viser browserens egen menu på et sted uden kontekstmenu),
+// så der aldrig kan stå to menuer/en forældet menu tilbage på skærmen.
+document.addEventListener('contextmenu',hideCtxMenu,true);
+document.addEventListener('scroll',hideCtxMenu,true);
+window.addEventListener('resize',hideCtxMenu);
 // Generisk træk-for-at-omarrangere til alle "fin-resizable"-bokse — bruges af Privat
 // budget, Oversigt og Udgifter, så det ikke skal genopfindes hvert sted.
 function makeFinBoxesDraggable(container,boxSelector,onReorder){
@@ -15429,6 +15591,7 @@ var qcvState={quoteId:null,lines:[]};
 var qalState={quoteId:null,lines:[]};
 var ivlState={invoiceId:null,lines:[],taxRate:25};
 var qeCustomerSearchTimer=null;
+var qeCrmLinkSearchTimer=null; // RUNDE T — se qeRunCrmLinkSearch
 var QZ_QUOTE_STATUS={draft:{label:'Kladde',dot:'var(--bly-dot-draft)'},sent:{label:'Sendt',dot:'var(--bly-dot-draft)'},accepted:{label:'Godkendt',dot:'var(--bly-dot-paid)'},declined:{label:'Afvist',dot:'var(--bly-dot-overdue)'},converted:{label:'Konverteret',dot:'var(--bly-dot-total)'}};
 var QZ_INVOICE_STATUS={unpaid:{label:'Ikke betalt',dot:'var(--bly-dot-unpaid)'},partial:{label:'Delvist betalt',dot:'var(--bly-dot-draft)'},paid:{label:'Betalt',dot:'var(--bly-dot-paid)'},void:{label:'Annulleret',dot:'var(--bly-dot-overdue)'}};
 var QZ_TYPE_LABEL={materialer:'Materialer',service:'Service'};
@@ -17090,17 +17253,22 @@ function crmpxSwitchView(view){
   if(view==='notes'&&!crmpxNotesLoaded)crmpxLoadCustomerNotes();
   if(view==='quotes'&&!crmpxQuotesLoaded)crmpxLoadQuotes();
 }
-// TILBUD-fanen — samme data som kundekortets Tilbud-liste (cdRenderQuotes),
-// men filtreret via crmpxCurrentCustomerId og uden søgefelt (typisk få tilbud
-// pr. handel). Klik på en række åbner den rigtige tilbuds-editor.
+// TILBUD-fanen (sep. 2026) — oprindeligt kundekortets fulde Tilbud-liste
+// (cdRenderQuotes), altså ALLE tilbud kunden nogensinde har fået.
+// RUNDE T (Martins ønske: "en Knap ved siden af filer hvor man trykker og kan
+// se alle tilbud der lavet på denne opptunitury") — det er IKKE det samme:
+// en kunde kan sagtens have flere leads/handler over tid, og de gamle skal
+// ikke blandes ind når man sidder på ÉN bestemt sag. Filtreres derfor nu på
+// selve lead'et/opportunityen (crmpDetailEntity — samme entitet som resten af
+// siden, fx crmpxOpenQuote), via de nye /api/crm/leads|opportunities/:id/quotes.
 async function crmpxLoadQuotes(){
-  if(!crmpxCurrentCustomerId)return;
+  var ent=crmpDetailEntity;
+  if(!ent)return;
   crmpxQuotesLoaded=true;
   var list=document.getElementById('crmpx-quotes-list');
   list.innerHTML='<div class="crmpx-empty">Henter tilbud...</div>';
-  var data=await api('/api/crm/customers/'+crmpxCurrentCustomerId);
-  if(!data||data.error){list.innerHTML='<div class="crmpx-empty">Kunne ikke hente tilbud — '+esc((data&&data.error)||'ukendt fejl')+'</div>';return;}
-  var quotes=data.quotes||[];
+  var quotes=await api('/api/crm/'+(ent.type==='lead'?'leads':'opportunities')+'/'+ent.id+'/quotes');
+  if(!quotes||quotes.error){list.innerHTML='<div class="crmpx-empty">Kunne ikke hente tilbud — '+esc((quotes&&quotes.error)||'ukendt fejl')+'</div>';return;}
   document.getElementById('crmpx-quotes-count').textContent=quotes.length?'('+quotes.length+')':'';
   if(!quotes.length){list.innerHTML='<div class="crmpx-empty">Ingen tilbud lavet på denne kunde endnu</div>';return;}
   list.innerHTML='<table class="bly-table"><thead><tr><th>Tilbudsnr.</th><th>Sag</th><th>Status</th><th class="num">Beløb</th><th>Oprettet</th></tr></thead><tbody>'
@@ -17856,7 +18024,9 @@ async function crmpxOpenQuote(){
   // RUNDE S — se kommentaren ved qeState i openQuoteEditor: husker hvilket
   // lead/opportunity tilbuddet stammer fra, så kortet kan flyttes til
   // "Vundet" automatisk når tilbuddet senere accepteres.
-  openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:name||'',phone:phone||'',email:email||'',address:address||'',crmEntityType:ent.type,crmEntityId:ent.id});
+  // RUNDE T — se qe-crm-note-panel: giver tilbudseditoren kortets EGEN note og
+  // navn med det samme, uden et ekstra API-kald (d er allerede hele kortets data).
+  openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:name||'',phone:phone||'',email:email||'',address:address||'',crmEntityType:ent.type,crmEntityId:ent.id,crmEntityName:d.name||name||'',note:d.note||''});
 }
 async function crmpxDelete(){
   var ent=crmpDetailEntity;
@@ -18630,6 +18800,11 @@ var pjStatusFilter='all',pjShowArchived=false,pjPeriodFilter=null,pjView='list';
 // almindelige bobler/Kanban-kolonner, styret af pjShowArchived — se pjNonArchivedStages().
 var pjStages=[];
 async function loadPjStages(){var r=await api('/api/project-stages');pjStages=Array.isArray(r)?r:[];}
+// RUNDE T (Martins ønske: "Alle projekter skal have en faggruppe") — samme
+// valgmuligheder som CRM'ets "Projekt Type"-felt (se GET /api/project-types
+// i server.js, som genbruger CRM-listen i stedet for at duplikere den).
+var pjProjectTypes=[];
+async function loadPjProjectTypes(){var r=await api('/api/project-types');pjProjectTypes=Array.isArray(r)?r:[];}
 function pjAllStagesSorted(){return pjStages.slice().sort(function(a,b){return a.position-b.position;});}
 function pjNonArchivedStages(){return pjAllStagesSorted().filter(function(s){return s.key!=='archived';});}
 function pjStageMeta(key){var s=pjStages.find(function(x){return x.key===key;});return s?{dot:s.color,label:s.label}:{dot:'#94A3B8',label:key||'—'};}
@@ -18673,6 +18848,11 @@ function initProjectsModule(){
     document.getElementById('cft-delete').addEventListener('click',deleteContactTemplate);
     document.getElementById('pd-back-btn').addEventListener('click',function(){switchPage('projects');});
     document.getElementById('pd-status-select').addEventListener('change',savePdStatus);
+    // RUNDE T — faggruppe + tilknyt-tilbud.
+    document.getElementById('pd-type-select').addEventListener('change',savePdProjectType);
+    document.getElementById('pd-attach-quote-btn').addEventListener('click',openPjAttachQuoteModal);
+    document.getElementById('pjaq-search').addEventListener('input',function(e){pjaqRunSearch(e.target.value.trim());});
+    document.getElementById('pjaq-new-btn').addEventListener('click',pjaqCreateNew);
     document.getElementById('pd-send-portal-btn').addEventListener('click',pdSendPortalLink);
     document.getElementById('pd-delete-btn').addEventListener('click',function(){if(pjCurrent)deletePjProject(pjCurrent.id);});
     document.getElementById('pd-convert-lines-btn').addEventListener('click',pdConvertLines);
@@ -18739,6 +18919,7 @@ function initProjectsModule(){
   // RUNDE R — genindlæses hver gang man besøger siden, så en lige tilføjet/
   // omdøbt/slettet stadie (fx redigeret i en anden fane) altid er frisk.
   loadPjStages().then(renderPjProjects);
+  if(!pjProjectTypes.length)loadPjProjectTypes();
   loadPjQaTemplates().then(renderPjQaTemplates);
   loadPjContactTemplates().then(renderPjContactTemplates);
 }
@@ -18783,7 +18964,16 @@ function pjPeriodSearchFilter(base,q,qDigits){
   return base.filter(function(p){
     if(pjPeriodFilter&&!pjPeriodFilter.matches(p.created_at))return false;
     if(!q)return true;
-    var price=p.invoice_total!=null?p.invoice_total:p.quote_total;
+    // RUNDE T (Martins ønske: "Ret alle projekters Priser da mange af dem har
+    // trukket forkert pris") — BUG: prioriterede hidtil invoice_total, men ved
+    // delbetalinger (flere fakturaer på samme tilbud) peger projects.invoice_id
+    // kun på DEN SENESTE faktura (se PUT .../:id/convert-to-invoice), så en sag
+    // faktureret i rater viste kun sidste rates beløb som "sagens pris" i
+    // stedet for hele den aftalte sum. Tilbuddets total (quote_total) er den
+    // reelt aftalte pris og ændrer sig aldrig af at blive delvist faktureret —
+    // foretrækkes nu altid når der er et tilbud koblet på. invoice_total er
+    // kun fallback for rene direkte-fakturaer UDEN noget tilbud overhovedet.
+    var price=p.quote_total!=null?p.quote_total:p.invoice_total;
     var priceStr=price!=null?String(Math.round(price)):'';
     if((p.name||'').toLowerCase().indexOf(q)>-1)return true;
     if((p.customer_email||'').toLowerCase().indexOf(q)>-1)return true;
@@ -18832,10 +19022,19 @@ function renderPjProjects(){
       +'</select>';
   }
   body.innerHTML=list.map(function(p){
-    var price=p.invoice_total!=null?p.invoice_total:p.quote_total;
+    // RUNDE T (Martins ønske: "Ret alle projekters Priser da mange af dem har
+    // trukket forkert pris") — BUG: prioriterede hidtil invoice_total, men ved
+    // delbetalinger (flere fakturaer på samme tilbud) peger projects.invoice_id
+    // kun på DEN SENESTE faktura (se PUT .../:id/convert-to-invoice), så en sag
+    // faktureret i rater viste kun sidste rates beløb som "sagens pris" i
+    // stedet for hele den aftalte sum. Tilbuddets total (quote_total) er den
+    // reelt aftalte pris og ændrer sig aldrig af at blive delvist faktureret —
+    // foretrækkes nu altid når der er et tilbud koblet på. invoice_total er
+    // kun fallback for rene direkte-fakturaer UDEN noget tilbud overhovedet.
+    var price=p.quote_total!=null?p.quote_total:p.invoice_total;
     var contact=[p.customer_email,p.customer_phone].filter(Boolean).join(' · ');
-    return '<tr style="cursor:pointer" onclick="openProjectDetail('+p.id+')">'
-      +'<td>'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer">#'+esc(p.job_number)+'</span>':'')+(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</td>'
+    return '<tr style="cursor:pointer" onclick="openProjectDetail('+p.id+')" oncontextmenu="pjRowCtxMenu(event,'+p.id+')">'
+      +'<td>'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer">#'+esc(p.job_number)+'</span>':'')+(p.project_type?' <span class="tag" title="Faggruppe" style="background:var(--bly-accent-soft);color:var(--bly-accent)">🏷️ '+esc(p.project_type)+'</span>':'')+(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</td>'
       +'<td>'+pjRowStatusSelect(p)+'</td>'
       +'<td>'+esc(p.customer_address||'–')+'</td>'
       +'<td>'+esc(contact||'–')+'</td>'
@@ -18869,6 +19068,11 @@ async function openProjectDetail(id){
   var pdStatusSel=document.getElementById('pd-status-select');
   pdStatusSel.innerHTML=pjAllStagesSorted().map(function(s){return '<option value="'+esc(s.key)+'">'+esc(s.label)+'</option>';}).join('');
   pdStatusSel.value=d.status;
+  // RUNDE T — se kommentaren ved pjProjectTypes.
+  if(!pjProjectTypes.length)await loadPjProjectTypes();
+  var pdTypeSel=document.getElementById('pd-type-select');
+  pdTypeSel.innerHTML='<option value="">🏷️ (ingen faggruppe)</option>'+pjProjectTypes.map(function(t){return '<option value="'+esc(t)+'">🏷️ '+esc(t)+'</option>';}).join('');
+  pdTypeSel.value=d.project_type||'';
   var qlink=document.getElementById('pd-quote-link');
   if(d.quote_id){qlink.style.display='inline-flex';qlink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/quotes/'+d.quote_id+'/pdf');};}
   else qlink.style.display='none';
@@ -18876,6 +19080,8 @@ async function openProjectDetail(id){
   var qeditBtn=document.getElementById('pd-quote-edit-btn');
   if(d.quote_id){qeditBtn.style.display='inline-flex';qeditBtn.onclick=function(){openQuoteEditorSafe(d.quote_id);};}
   else qeditBtn.style.display='none';
+  // RUNDE T — se kommentaren ved #pd-attach-quote-btn i HTML'en.
+  document.getElementById('pd-attach-quote-btn').style.display=d.quote_id?'none':'inline-flex';
   var ilink=document.getElementById('pd-invoice-link');
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
@@ -19056,6 +19262,32 @@ async function savePjRowStatus(id,status){
     renderPjProjects();
   }else{toast((r&&r.error)||'Kunne ikke opdatere status','❌');await loadPjProjects();renderPjProjects();}
 }
+// RUNDE T (Martins ønske: "Højre klikke alle projekter i List view And Kanban
+// view") — samme handlinger der allerede findes som knapper (Martins eget
+// valg blandt de spørgsmål jeg stillede): åbn, skift stadie, slet. Delt
+// mellem List- og Kanban-visningen, se pjRowCtxMenu()/pjKanbanCtxMenu()
+// nedenfor.
+function pjCtxMenuItems(p){
+  var items=[{icon:'👁',text:'Åbn sagen',onClick:function(){openProjectDetail(p.id);}},{sep:true},{label:true,text:'Skift stadie'}];
+  pjAllStagesSorted().forEach(function(s){
+    if(s.key===p.status)return;
+    items.push({icon:'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+esc(s.color)+'"></span>',text:s.label,onClick:function(){savePjRowStatus(p.id,s.key);}});
+  });
+  items.push({sep:true},{icon:'🗑',text:'Slet sagen',danger:true,onClick:function(){deletePjProject(p.id);}});
+  return items;
+}
+function pjRowCtxMenu(e,id){
+  e.preventDefault();
+  var p=pjProjects.find(function(x){return +x.id===+id;});
+  if(!p)return;
+  showCtxMenu(e.clientX,e.clientY,pjCtxMenuItems(p));
+}
+function pjKanbanCtxMenu(e,id){
+  e.preventDefault();
+  var p=pjProjects.find(function(x){return +x.id===+id;});
+  if(!p)return;
+  showCtxMenu(e.clientX,e.clientY,pjCtxMenuItems(p));
+}
 // RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter både på siden
 // projekter men også under projektet og i kanban view") — permanent sletning,
 // kaldt fra alle tre steder. quote_id/invoice_id har bevidst ingen FK (se
@@ -19085,10 +19317,19 @@ async function deletePjProject(id){
 // se "⚙️ Rediger stadier"-knappen/pjStagesModal nedenfor. Render/drag-logikken
 // er stadig sin egen, enklere funktion end CRM's konfigurerbare pipeline-Kanban.
 function pjKanbanCardHtml(p){
-  var price=p.invoice_total!=null?p.invoice_total:p.quote_total;
+  // RUNDE T (Martins ønske: "Ret alle projekters Priser da mange af dem har
+    // trukket forkert pris") — BUG: prioriterede hidtil invoice_total, men ved
+    // delbetalinger (flere fakturaer på samme tilbud) peger projects.invoice_id
+    // kun på DEN SENESTE faktura (se PUT .../:id/convert-to-invoice), så en sag
+    // faktureret i rater viste kun sidste rates beløb som "sagens pris" i
+    // stedet for hele den aftalte sum. Tilbuddets total (quote_total) er den
+    // reelt aftalte pris og ændrer sig aldrig af at blive delvist faktureret —
+    // foretrækkes nu altid når der er et tilbud koblet på. invoice_total er
+    // kun fallback for rene direkte-fakturaer UDEN noget tilbud overhovedet.
+    var price=p.quote_total!=null?p.quote_total:p.invoice_total;
   var contact=[p.customer_address,p.customer_phone].filter(Boolean).join(' · ');
   return '<div class="crmp-card" draggable="true" data-id="'+p.id+'">'
-    +'<div class="crmp-card-name">'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer" style="font-weight:600">#'+esc(p.job_number)+'</span>':'')+'</div>'
+    +'<div class="crmp-card-name">'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer" style="font-weight:600">#'+esc(p.job_number)+'</span>':'')+(p.project_type?' <span class="tag" title="Faggruppe" style="background:var(--bly-accent-soft);color:var(--bly-accent);font-weight:600">🏷️ '+esc(p.project_type)+'</span>':'')+'</div>'
     +(contact?'<div class="crmp-card-row">'+esc(contact)+'</div>':'')
     +'<div class="crmp-card-foot">'
     +'<span class="crmp-card-value">'+(price!=null?krFmt(price):'–')+'</span>'
@@ -19114,6 +19355,7 @@ function renderPjKanban(list){
   board.querySelectorAll('.crmp-card').forEach(function(card){
     var id=Number(card.dataset.id);
     card.addEventListener('click',function(){openProjectDetail(id);});
+    card.addEventListener('contextmenu',function(e){pjKanbanCtxMenu(e,id);});
     card.addEventListener('dragstart',function(){pjKanbanDragId=id;card.classList.add('dragging');});
     card.addEventListener('dragend',function(){card.classList.remove('dragging');});
     var delBtn=card.querySelector('[data-action="pj-kanban-delete"]');
@@ -19150,6 +19392,8 @@ function openPjNewModal(){
   // NYT projekt her, resten kommer fra Martins egne stadier (pjStages).
   document.getElementById('pjn-status').innerHTML=pjNonArchivedStages().map(function(s){return '<option value="'+esc(s.key)+'">'+esc(s.label)+'</option>';}).join('');
   document.getElementById('pjn-status').value='active';
+  // RUNDE T — se kommentaren ved pjProjectTypes.
+  document.getElementById('pjn-type').innerHTML='<option value="">(ingen)</option>'+pjProjectTypes.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join('');
   document.getElementById('pjn-customer-results').style.display='none';
   document.getElementById('pj-new-modal').classList.add('open');
   setTimeout(function(){document.getElementById('pjn-name').focus();},50);
@@ -19186,7 +19430,8 @@ async function savePjNew(){
     customer_address:document.getElementById('pjn-address').value.trim()||null,
     customer_phone:document.getElementById('pjn-phone').value.trim()||null,
     customer_email:document.getElementById('pjn-email').value.trim()||null,
-    status:document.getElementById('pjn-status').value
+    status:document.getElementById('pjn-status').value,
+    project_type:document.getElementById('pjn-type').value||null
   };
   var r=await api('/api/projects',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
@@ -19205,6 +19450,61 @@ async function savePdStatus(){
   var r=await api('/api/projects/'+pjCurrent.id,{method:'PUT',body:JSON.stringify({status:status})});
   if(r&&r.ok){toast('Status opdateret','✓');pjCurrent.status=status;await loadPjProjects();renderPjProjects();}
   else toast((r&&r.error)||'Kunne ikke opdatere status','❌');
+}
+// RUNDE T (Martins ønske: "Alle projekter skal have en faggruppe") — manuel
+// rettelse/valg direkte fra sagen, samme mønster som savePdStatus().
+async function savePdProjectType(){
+  if(!pjCurrent)return;
+  var type=document.getElementById('pd-type-select').value;
+  var r=await api('/api/projects/'+pjCurrent.id,{method:'PUT',body:JSON.stringify({project_type:type||null})});
+  if(r&&r.ok){toast('Faggruppe opdateret','✓');pjCurrent.project_type=type||null;await loadPjProjects();renderPjProjects();}
+  else toast((r&&r.error)||'Kunne ikke opdatere faggruppe','❌');
+}
+// RUNDE T (Martins ønske: "Hver projekt skal have et tilbud tilkoblet") —
+// tilknytnings-modalen for sager der endnu ikke har noget tilbud.
+var pjaqQuotes=null;
+async function openPjAttachQuoteModal(){
+  if(!pjCurrent)return;
+  document.getElementById('pjaq-search').value='';
+  document.getElementById('pjaq-results').innerHTML='';
+  document.getElementById('pjaq-results').style.display='none';
+  document.getElementById('pj-attach-quote-modal').classList.add('open');
+  setTimeout(function(){document.getElementById('pjaq-search').focus();},50);
+}
+function pjaqRunSearch(q){
+  var box=document.getElementById('pjaq-results');
+  if(!q||q.length<2){box.style.display='none';box.innerHTML='';return;}
+  (pjaqQuotes?Promise.resolve(pjaqQuotes):api('/api/quotes').then(function(r){pjaqQuotes=Array.isArray(r)?r:[];return pjaqQuotes;})).then(function(all){
+    var ql=q.toLowerCase();
+    // Et tilbud der allerede sidder på en ANDEN sag kan sagtens dukke op her
+    // (quotes-tabellen ved ikke selv hvilken sag den bruges af) — vælger man
+    // ét der allerede er taget, afviser serveren det med en tydelig fejl, se
+    // guarden i PUT /api/projects/:id/attach-quote.
+    var rows=all.filter(function(x){return (x.quote_number||'').toLowerCase().indexOf(ql)>-1||(x.job_name||'').toLowerCase().indexOf(ql)>-1;}).slice(0,15);
+    if(!rows.length){box.style.display='block';box.innerHTML='<div class="qe-customer-result" style="color:var(--bly-sub)">Ingen ledige tilbud matcher</div>';return;}
+    box.innerHTML=rows.map(function(r,i){return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+esc(r.quote_number)+'</b> — '+esc(r.job_name||'')+'<br><span style="color:var(--bly-sub)">'+krFmt(Number(r.total))+' · '+esc(QZ_QUOTE_STATUS&&QZ_QUOTE_STATUS[r.status]?QZ_QUOTE_STATUS[r.status].label:r.status)+'</span></div>';}).join('');
+    box.style.display='block';
+    Array.prototype.forEach.call(box.querySelectorAll('.qe-customer-result[data-idx]'),function(elx,i){
+      elx.onclick=function(){pjaqAttach(rows[i].id);};
+    });
+  });
+}
+async function pjaqAttach(quoteId){
+  var r=await api('/api/projects/'+pjCurrent.id+'/attach-quote',{method:'PUT',body:JSON.stringify({quote_id:quoteId})});
+  if(r&&r.ok){toast('Tilbud tilknyttet ✓','🔗');closeModal('pj-attach-quote-modal');await openProjectDetail(pjCurrent.id);await loadPjProjects();renderPjProjects();}
+  else toast((r&&r.error)||'Kunne ikke tilknytte tilbuddet','❌');
+}
+async function pjaqCreateNew(){
+  if(!pjCurrent)return;
+  var body={job_name:pjCurrent.name,customer_id:pjCurrent.customer_id||null,customer_address:pjCurrent.customer_address||null,customer_phone:pjCurrent.customer_phone||null,customer_email:pjCurrent.customer_email||null,lines:[]};
+  var r=await api('/api/quotes',{method:'POST',body:JSON.stringify(body)});
+  if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke oprette tilbuddet','❌');return;}
+  await pjaqAttach(r.id);
+  // Åbn straks tilbudseditoren, så Martin kan udfylde priserne med det samme
+  // i stedet for at skulle lede tilbuddet frem igen bagefter. openQuoteEditorSafe
+  // (ikke bare openQuoteEditor) — se dens kommentar: initialiserer Tilbud &
+  // Faktura-modulet først hvis man ikke allerede har besøgt siden i denne session.
+  openQuoteEditorSafe(r.id);
 }
 // ── RUNDE R — "⚙️ Rediger stadier"-editoren (pj-stages-modal) ──────────────
 async function openPjStagesModal(){
@@ -20718,6 +21018,16 @@ function qePopulateStatusSelect(current){
     }).join('');
   }
 }
+// RUNDE T (Martins ønske: se qe-crm-note-panel ovenfor) — tom/manglende note
+// skjuler panelet helt, så det ikke fylder for de (fleste) tilbud der ikke
+// stammer fra et lead/en opportunity, eller hvor kortet ikke har nogen note.
+function qeRenderCrmNotePanel(note,entityType,entityName){
+  var panel=document.getElementById('qe-crm-note-panel');
+  if(!note||!String(note).trim()){panel.style.display='none';return;}
+  document.getElementById('qe-crm-note-entity-label').textContent=(entityType==='lead'?'lead':'handel')+' "'+(entityName||'')+'"';
+  document.getElementById('qe-crm-note-text').textContent=note;
+  panel.style.display='';
+}
 async function openQuoteEditor(id,prefillCustomer){
   // directInvoice=false nulstilles her hver gang — se openDirectInvoiceEditor()
   // nedenfor, som sætter den til true EFTER dette kald. qe-status-select og
@@ -20730,7 +21040,9 @@ async function openQuoteEditor(id,prefillCustomer){
   // genindlæst fra det gemte tilbud nedenfor). Bruges af serveren til at flytte
   // CRM-kortet til pipelinens "Vundet"-fase når tilbuddet accepteres, se
   // crm_lead_id/crm_opportunity_id på quotes i server.js.
-  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false,invStatus:null,crmEntityType:null,crmEntityId:null};
+  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false,invStatus:null,crmEntityType:null,crmEntityId:null,crmEntityName:null};
+  document.getElementById('qe-crm-link-search').value='';
+  document.getElementById('qe-crm-link-results').style.display='none';
   document.getElementById('qe-invoicing-panel').style.display='none';
   document.getElementById('qe-lines').classList.remove('qe-lines-locked');
   qeSetLineButtonsLocked(false);
@@ -20744,7 +21056,6 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-valid-until').value='';
   document.getElementById('qe-doc-discount').value=0;
   document.getElementById('qe-doc-discount-type').value='pct';
-  document.getElementById('qe-template-picker').value='';
   document.getElementById('qe-notes').value='';
   document.getElementById('qe-top-note').value='';
   document.getElementById('qe-internal-note').value='';
@@ -20756,6 +21067,7 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-send-btn').style.display='none';
   document.getElementById('qe-activity-wrap').style.display=id?'':'none';
   document.getElementById('qe-versions-wrap').style.display='none';
+  document.getElementById('qe-crm-note-panel').style.display='none';
   if(id){
     var qd=await api('/api/quotes/'+id);
     if(!qd||qd.error){toast('Kunne ikke hente tilbuddet','❌');return;}
@@ -20767,6 +21079,9 @@ async function openQuoteEditor(id,prefillCustomer){
     // RUNDE S — se kommentaren ved qeState herover.
     qeState.crmEntityType=qd.crm_lead_id?'lead':(qd.crm_opportunity_id?'opportunity':null);
     qeState.crmEntityId=qd.crm_lead_id||qd.crm_opportunity_id||null;
+    qeState.crmEntityName=qd.crm_entity_name||null;
+    qeRenderCrmLinkChip();
+    qeRenderCrmNotePanel(qd.crm_entity_note,qeState.crmEntityType,qd.crm_entity_name);
     // FEJLRETTELSE (sep. 2026, opdaget under implementering af note-feltet): denne mapping
     // manglede 'note' — uden den blev linjens note tabt hver gang et EKSISTERENDE tilbud
     // blev åbnet og gemt igen (qeState.lines fik ikke feltet med, og et efterfølgende
@@ -20819,8 +21134,11 @@ async function openQuoteEditor(id,prefillCustomer){
       // RUNDE S — se kommentaren ved qeState herover.
       qeState.crmEntityType=prefillCustomer.crmEntityType||null;
       qeState.crmEntityId=prefillCustomer.crmEntityId||null;
+      qeState.crmEntityName=prefillCustomer.crmEntityName||null;
+      qeRenderCrmNotePanel(prefillCustomer.note,prefillCustomer.crmEntityType,prefillCustomer.crmEntityName);
     }
   }
+  qeRenderCrmLinkChip();
   renderQeLines();
   qeRecalc();
   document.getElementById('quote-editor-modal').classList.add('open');
@@ -20851,7 +21169,7 @@ function renderQeLines(){qzRenderLines('qe-lines',qeState.lines,'qe');}
 // "+ Tekstlinje", AI-diktering og "Gem som skabelon", som alle ville forsøge at ændre
 // den linjeliste der er låst så snart tilbuddet har fakturaer (se qeSetLineButtonsLocked).
 function qeSetLineButtonsLocked(locked){
-  ['qe-add-blank-line','qe-add-text-line','qe-ai-mic-btn','qe-save-as-template-btn','qe-add-blank-line-bottom','qe-add-text-line-bottom'].forEach(function(id){
+  ['qe-add-blank-line','qe-add-text-line','qe-ai-mic-btn','qe-save-as-template-btn','qe-insert-template-btn','qe-add-blank-line-bottom','qe-add-text-line-bottom'].forEach(function(id){
     var el=document.getElementById(id);if(el)el.style.display=locked?'none':'';
   });
 }
@@ -21024,6 +21342,19 @@ function qeComputeTotals(){
     byType[type].revenue+=net;byType[type].cost+=lineCost;
   });
   var discountAmount=docDiscountType==='fixed'?Math.max(0,Math.min(docDiscountPct,rawSubtotal)):rawSubtotal*Math.max(0,Math.min(docDiscountPct,100))/100;
+  // RUNDE T (Martins ønske: "Når jeg sætter % på et helt tilbud så udregner den
+  // ikke den korrekte margin efter") — fordel rabatten på HELE tilbuddet ud på
+  // Materialer/Service-opdelingen proportionalt med deres andel af rawSubtotal,
+  // ellers viser "Samlet avance"-linjen (som RIGTIGT trækker rabatten fra) en
+  // anden margin end Materialer/Service-rækkerne (som hidtil kun kendte til
+  // rabat sat pr. linje, aldrig rabat sat på hele tilbuddet). Samme
+  // proportionalfordelings-teknik som ivCreditLineAmounts() bruger til kreditnotaer.
+  if(discountAmount>0&&rawSubtotal>0){
+    ['materialer','service'].forEach(function(type){
+      var share=byType[type].revenue/rawSubtotal;
+      byType[type].revenue-=discountAmount*share;
+    });
+  }
   var subtotal=rawSubtotal-discountAmount;
   var taxAmount=subtotal*taxRate/100;
   var total=subtotal+taxAmount;
@@ -21031,9 +21362,18 @@ function qeComputeTotals(){
   var marginPct=subtotal>0?marginTotal/subtotal*100:null;
   return {rawSubtotal:rawSubtotal,docDiscountPct:docDiscountPct,docDiscountType:docDiscountType,discountAmount:discountAmount,subtotal:subtotal,taxRate:taxRate,taxAmount:taxAmount,total:total,costTotal:costTotal,marginTotal:marginTotal,marginPct:marginPct,byType:byType};
 }
-function qzTypeRow(label,d){
+// RUNDE T (Martins ønske: "gør det felt med margin lidt mere moderne og lækkert
+// og let at analyser") — erstatter de gamle tekst-rækker (qzTypeRow) med et
+// kort-baseret panel i samme visuelle sprog som KPI-kortene andre steder i
+// programmet (.bly-kpi-card). Bruges kun herfra.
+function qeMarginCardHtml(label,d,cls){
   var pct=d.revenue>0?(d.revenue-d.cost)/d.revenue*100:null;
-  return '<div class="qe-totals-row"><span>'+label+' — omsætning / avance</span><span>'+krFmt(d.revenue)+' <span class="qz-margin '+qzMarginClass(pct)+'">('+krFmt(d.revenue-d.cost)+(pct===null?'':' · '+pct.toFixed(0)+'%')+')</span></span></div>';
+  var margin=d.revenue-d.cost;
+  return '<div class="qe-margin-card'+(cls?' '+cls:'')+'">'
+    +'<div class="qe-margin-card-label">'+esc(label)+'</div>'
+    +'<div class="qe-margin-card-value">'+krFmt(d.revenue)+'</div>'
+    +'<div class="qe-margin-card-sub '+(cls?'':'qz-margin '+qzMarginClass(pct))+'">'+krFmt(margin)+' avance'+(pct===null?'':' · '+pct.toFixed(0)+'%')+'</div>'
+    +'</div>';
 }
 function qeRenderTotals(){
   var t=qeComputeTotals();
@@ -21044,10 +21384,11 @@ function qeRenderTotals(){
    +'<div class="qe-totals-row"><span>Moms ('+t.taxRate+'%)</span><span>'+krFmt(t.taxAmount)+'</span></div>'
    +'<div class="qe-totals-row total"><span>Total</span><span>'+krFmt(t.total)+'</span></div>';
   document.getElementById('qe-cost-summary').innerHTML=
-    qzTypeRow('Materialer',t.byType.materialer)
-   +qzTypeRow('Service',t.byType.service)
-   +'<div class="qe-totals-row"><span>Samlet cost-pris</span><span>'+krFmt(t.costTotal)+'</span></div>'
-   +'<div class="qe-totals-row"><span>Samlet avance (efter rabat)</span><span class="qz-margin '+qzMarginClass(t.marginPct)+'">'+krFmt(t.marginTotal)+(t.marginPct===null?'':' · '+t.marginPct.toFixed(1)+'%')+'</span></div>';
+    '<div class="qe-margin-panel">'
+    +qeMarginCardHtml('Materialer',t.byType.materialer)
+    +qeMarginCardHtml('Service',t.byType.service)
+    +'<div class="qe-margin-card total"><div class="qe-margin-card-label">Samlet avance (efter rabat)</div><div class="qe-margin-card-value">'+krFmt(t.marginTotal)+'</div><div class="qe-margin-card-sub">'+(t.marginPct===null?'–':t.marginPct.toFixed(1)+'%')+' · cost-pris '+krFmt(t.costTotal)+'</div></div>'
+    +'</div>';
   return t;
 }
 function qeRenderPreview(){
@@ -21064,14 +21405,19 @@ function qeRenderPreview(){
   var topNote=document.getElementById('qe-top-note').value.trim();
   var rowsHtml=qeState.lines.map(function(l){
     if(l.line_type==='text'){
-      return '<tr><td colspan="4" style="padding-top:12px;border-top:none"><div class="ln-textrow">'+esc(l.description||'')+'</div></td></tr>';
+      return '<tr><td colspan="5" style="padding-top:12px;border-top:none"><div class="ln-textrow">'+esc(l.description||'')+'</div></td></tr>';
     }
     var qty=Number(l.quantity)||0,disc=Number(l.discount_pct)||0;
     var gross=qty*(Number(l.sell_price)||0);
-    var lineTotal=gross-qzLineDiscountAmount(l,gross);
-    var discLabel=disc?(l.discount_type==='fixed'?' (-'+krFmt(disc)+')':' (-'+disc+'%)'):'';
-    return '<tr><td>'+qzLineDescCellHtml(l)+'</td><td class="num">'+qty+' '+esc(l.unit||'')+discLabel+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lineTotal)+'</td></tr>';
-  }).join('')||'<tr><td colspan="4" style="text-align:center;color:#9CA3AF;padding:14px">Ingen linjer endnu</td></tr>';
+    var lineDiscAmt=qzLineDiscountAmount(l,gross);
+    var lineTotal=gross-lineDiscAmt;
+    // RUNDE T (Martins ønske: "kan det ikke stå mere tydeligt at der rabat og
+    // i sin egen Collum ... Så måske man kan se hvor mange kr i alt også") —
+    // egen kolonne, rød tekst, viser BÅDE satsen og selve kr-beløbet, i stedet
+    // for at klistre " (-15%)" bag på Antal-cellen.
+    var discCell=disc?('<span class="qe-pdf-disc">-'+(l.discount_type==='fixed'?krFmt(disc):disc+'%')+' (-'+krFmt(lineDiscAmt)+')</span>'):'';
+    return '<tr><td>'+qzLineDescCellHtml(l)+'</td><td class="num">'+qty+' '+esc(l.unit||'')+'</td><td class="num">'+discCell+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lineTotal)+'</td></tr>';
+  }).join('')||'<tr><td colspan="5" style="text-align:center;color:#9CA3AF;padding:14px">Ingen linjer endnu</td></tr>';
   document.getElementById('qe-preview').innerHTML=
      '<div class="qe-pdf-head">'
     +'<div style="display:flex;align-items:center;gap:8px">'+(settings.logo_url?'<img src="'+settings.logo_url+'" style="max-width:200px;max-height:82px;object-fit:contain;flex-shrink:0">':'')+'<div><div class="qe-pdf-company">'+esc(settings.company_name||'Gulv Master Enterprise ApS')+'</div><div class="qe-pdf-company-sub">'+addrLines.map(function(l){return esc(l);}).join('<br>')+'</div></div></div>'
@@ -21079,7 +21425,7 @@ function qeRenderPreview(){
     +'</div>'
     +'<div class="qe-pdf-to"><b>Til:</b><br>'+(custName?esc(custName)+'<br>':'')+(custAddr?esc(custAddr)+'<br>':'')+(custPhone?'Tlf. '+esc(custPhone)+'<br>':'')+(custEmail?esc(custEmail):'')+'</div>'
     +(topNote?'<div class="qe-pdf-notes" style="margin:6px 0 10px">'+topNote+'</div>':'')
-    +'<table class="qe-pdf-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'
+    +'<table class="qe-pdf-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Rabat</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'
     +'<div class="qe-pdf-totals">'
     +(t.discountAmount>0?'<div class="qe-pdf-totals-row"><span>Rabat ('+(t.docDiscountType==='fixed'?krFmt(t.docDiscountPct):t.docDiscountPct+'%')+')</span><span>-'+krFmt(t.discountAmount)+'</span></div>':'')
     +'<div class="qe-pdf-totals-row"><span>Subtotal</span><span>'+krFmt(t.subtotal)+'</span></div>'
@@ -21104,6 +21450,53 @@ function qeRunCustomerSearch(q){
       elx.onclick=function(){qePickCustomer(rows[i]);};
     });
   });
+}
+// RUNDE T (Martins ønske: "Vælg opportunity/lead ved manuel tilbudsoprettelse
+// ... skal man lige sige hvad opptirnity den skal tilknyttes") — samme
+// søge-/vælg-mønster som qeRunCustomerSearch/qePickCustomer ovenfor, men mod
+// leads/opportunities via det fælles /api/search (samme endpoint som
+// hovedsøgefeltet i toppen af programmet bruger).
+function qeRunCrmLinkSearch(q){
+  var box=document.getElementById('qe-crm-link-results');
+  if(!q||q.length<2){box.style.display='none';box.innerHTML='';return;}
+  api('/api/search?q='+encodeURIComponent(q)).then(function(r){
+    if(!r)return;
+    var results=(r.leads||[]).map(function(x){return {type:'lead',id:x.id,name:x.name,sub:(x.pipeline_name||'')+(x.stage_name?' · '+x.stage_name:'')};})
+      .concat((r.opportunities||[]).map(function(x){return {type:'opportunity',id:x.id,name:x.name,sub:(x.pipeline_name||'')+(x.stage_name?' · '+x.stage_name:'')};}));
+    if(!results.length){box.style.display='none';box.innerHTML='';return;}
+    box.innerHTML=results.map(function(x,i){
+      return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+(x.type==='lead'?'🎯':'🤝')+' '+esc(x.name)+'</b><br><span style="color:var(--bly-sub)">'+esc(x.sub||(x.type==='lead'?'Lead':'Handel'))+'</span></div>';
+    }).join('');
+    box.style.display='block';
+    Array.prototype.forEach.call(box.querySelectorAll('.qe-customer-result'),function(elx,i){
+      elx.onclick=function(){qePickCrmLink(results[i]);};
+    });
+  });
+}
+async function qePickCrmLink(x){
+  qeState.crmEntityType=x.type;
+  qeState.crmEntityId=x.id;
+  qeState.crmEntityName=x.name;
+  document.getElementById('qe-crm-link-search').value='';
+  document.getElementById('qe-crm-link-results').style.display='none';
+  qeRenderCrmLinkChip();
+  // Henter selve noten (ikke med i søgeresultatet) så qe-crm-note-panel kan
+  // vise den med det samme, uden at man først skal gemme og genåbne tilbuddet.
+  var full=await api('/api/crm/'+(x.type==='lead'?'leads':'opportunities')+'/'+x.id);
+  qeRenderCrmNotePanel(full&&!full.error?full.note:'',x.type,x.name);
+}
+function qeUnlinkCrm(){
+  qeState.crmEntityType=null;qeState.crmEntityId=null;qeState.crmEntityName=null;
+  qeRenderCrmLinkChip();
+  qeRenderCrmNotePanel(null);
+}
+function qeRenderCrmLinkChip(){
+  var chip=document.getElementById('qe-crm-link-chip');
+  var searchWrap=document.getElementById('qe-crm-link-search-wrap');
+  if(!qeState.crmEntityType||!qeState.crmEntityId){chip.style.display='none';searchWrap.style.display='';return;}
+  chip.innerHTML='<span class="ic-chip">'+(qeState.crmEntityType==='lead'?'🎯':'🤝')+' '+esc(qeState.crmEntityName||('#'+qeState.crmEntityId))+' <button type="button" class="qz-icon-btn" style="width:18px;height:18px;font-size:11px" title="Fjern kobling" onclick="qeUnlinkCrm()">✕</button></span>';
+  chip.style.display='';
+  searchWrap.style.display='none';
 }
 function qePickCustomer(r){
   document.getElementById('qe-customer-search').value=r.job_name||'';
@@ -21372,6 +21765,18 @@ async function qeApplyTemplate(id){
   qeState.lines=(t.lines||[]).map(function(l){return Object.assign({},l);});
   renderQeLines();qeRecalc();
 }
+// RUNDE T (Martins ønske: se qe-insert-template-btn ovenfor) — erstatter det
+// gamle <select id="qe-template-picker">-felt: knappen genbruger den fælles
+// kontekstmenu (showCtxMenu, ellers brugt til højreklik på Projekter) til at
+// vise skabelonlisten lige under knappen.
+function qeOpenTemplateMenu(e){
+  if(!qzTemplates.length){toast('Ingen skabeloner gemt endnu','ℹ️');return;}
+  var r=e.currentTarget.getBoundingClientRect();
+  var items=qzTemplates.map(function(t){
+    return {icon:'📥',text:t.name+' ('+((t.lines||[]).length)+' linjer)',onClick:function(){qeApplyTemplate(t.id);}};
+  });
+  showCtxMenu(r.left,r.bottom+4,items);
+}
 
 // ── FAKTURAER + DELBETALINGER ────────────────────────────────
 function renderQzInvoiceStatusFilter(){
@@ -21464,8 +21869,57 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-pay-method').value='';
   document.getElementById('iv-credit-amount').value='';
   document.getElementById('iv-credit-reason').value='';
+  // RUNDE T — "Hele beløbet"-knappen og postevælgeren har brug for det der
+  // reelt er tilbage at kreditere (total minus allerede krediteret — BEVIDST
+  // ikke inv.remaining, som også trækker betalinger fra: se maxCreditable i
+  // POST /api/invoices/:id/credit-notes, som bruger nøjagtig samme formel),
+  // samt selve linjerne/moms/rabat til postevælgerens udregning.
+  ivState.maxCreditable=Math.max(0,Number(inv.total)-Number(inv.credited_total||0));
+  ivState.lines=inv.lines||[];
+  ivState.taxRate=Number(inv.tax_rate)||25;
+  ivState.discountPct=Number(inv.discount_pct)||0;
+  document.getElementById('iv-credit-picker').style.display='none';
+  document.getElementById('iv-credit-picker-toggle').textContent='🔎 Vælg poster i stedet for at regne selv';
   loadDocActivity('invoice',id,'iv-activity-list');
   document.getElementById('invoice-detail-modal').classList.add('open');
+}
+// RUNDE T (Martins ønske: "hurtigt kunne søge med de poster der er istedet
+// for jeg skal side og regne men bare vælge af posterne") — beregner hver
+// linjes andel af fakturaens INKL.-moms total, samme fordeling af fakturaens
+// egen rabat som selve fakturatotalen bruger (proportionalt på tværs af alle
+// linjer), så summen af ALLE linjer nøjagtig rammer fakturaens total.
+function ivCreditLineAmounts(){
+  var lines=(ivState.lines||[]).filter(function(l){return l.line_type!=='text';});
+  var nets=lines.map(function(l){var gross=(Number(l.quantity)||0)*(Number(l.sell_price)||0);return gross-qzLineDiscountAmount(l,gross);});
+  var rawSubtotal=nets.reduce(function(a,b){return a+b;},0);
+  var discountAmount=rawSubtotal*Math.max(0,Math.min(ivState.discountPct||0,100))/100;
+  var taxMult=1+(ivState.taxRate||0)/100;
+  return lines.map(function(l,i){
+    var proportion=rawSubtotal>0?nets[i]/rawSubtotal:0;
+    var net=nets[i]-discountAmount*proportion;
+    return {line:l,inclMoms:net*taxMult};
+  });
+}
+function ivToggleCreditPicker(){
+  var box=document.getElementById('iv-credit-picker');
+  var open=box.style.display==='none';
+  if(open){
+    box.innerHTML=ivCreditLineAmounts().map(function(x,idx){
+      return '<label class="qcv-line-row"><input type="checkbox" class="iv-credit-line-check" data-idx="'+idx+'">'
+        +'<span style="flex:1">'+qzLineDescCellHtml(x.line)+'<div class="sub">'+(Number(x.line.quantity)||0)+' '+esc(x.line.unit||'')+' · '+krFmt(Number(x.line.sell_price))+'</div></span>'
+        +'<span style="flex-shrink:0;font-weight:700">'+krFmt(x.inclMoms)+'</span></label>';
+    }).join('')||'<div class="sub">Ingen almindelige poster på denne faktura</div>';
+  }
+  box.style.display=open?'':'none';
+  document.getElementById('iv-credit-picker-toggle').textContent=open?'🔎 Skjul postevælgeren':'🔎 Vælg poster i stedet for at regne selv';
+}
+function ivCreditPickerRecalc(){
+  var amounts=ivCreditLineAmounts();
+  var sum=0;
+  Array.prototype.forEach.call(document.querySelectorAll('.iv-credit-line-check'),function(cb){
+    if(cb.checked)sum+=amounts[Number(cb.dataset.idx)].inclMoms;
+  });
+  document.getElementById('iv-credit-amount').value=Math.round(sum*100)/100;
 }
 async function addIvPayment(){
   var amount=Number(document.getElementById('iv-pay-amount').value);
@@ -21720,11 +22174,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-add-blank-line-bottom').addEventListener('click',function(){qeAddLine(null);});
   document.getElementById('qe-add-text-line-bottom').addEventListener('click',function(){qeState.lines.push(qzMakeTextLine());renderQeLines();qeRecalc();});
   document.getElementById('qe-save-as-template-btn').addEventListener('click',qeSaveCurrentAsTemplate);
-  document.getElementById('qe-template-picker').addEventListener('change',function(e){
-    var id=Number(e.target.value);
-    e.target.value='';
-    if(id)qeApplyTemplate(id);
-  });
+  document.getElementById('qe-insert-template-btn').addEventListener('click',qeOpenTemplateMenu);
   document.getElementById('qe-doc-discount').addEventListener('input',qeRecalc);
   document.getElementById('qe-doc-discount-type').addEventListener('change',qeRecalc);
   document.getElementById('qe-product-search').addEventListener('input',function(e){
@@ -21757,6 +22207,11 @@ function bindQuotesModuleEvents(){
   ['qe-customer-address','qe-customer-phone','qe-customer-email','qe-valid-until','qe-notes','qe-top-note'].forEach(function(id){
     document.getElementById(id).addEventListener('input',qeRecalc);
   });
+  document.getElementById('qe-crm-link-search').addEventListener('input',function(e){
+    clearTimeout(qeCrmLinkSearchTimer);
+    var q=e.target.value.trim();
+    qeCrmLinkSearchTimer=setTimeout(function(){qeRunCrmLinkSearch(q);},150);
+  });
   // Bruger e.composedPath() (ikke e.target.closest()) — når man krydser et produkt af i
   // multi-select-søgeboksen, gentegner qzRunProductSearch boksens innerHTML SYNKRONT i
   // checkbox'ens egen change-handler, hvilket frakobler det klikkede element fra DOM'et
@@ -21785,6 +22240,10 @@ function bindQuotesModuleEvents(){
 
   document.getElementById('iv-add-payment-btn').addEventListener('click',addIvPayment);
   document.getElementById('iv-add-credit-btn').addEventListener('click',addIvCreditNote);
+  // RUNDE T — "Hele beløbet" + postevælgeren.
+  document.getElementById('iv-credit-full-btn').addEventListener('click',function(){document.getElementById('iv-credit-amount').value=Math.round((ivState.maxCreditable||0)*100)/100;});
+  document.getElementById('iv-credit-picker-toggle').addEventListener('click',ivToggleCreditPicker);
+  document.getElementById('iv-credit-picker').addEventListener('change',function(e){if(e.target.classList.contains('iv-credit-line-check'))ivCreditPickerRecalc();});
   document.getElementById('iv-due-date').addEventListener('change',saveIvDueDate);
   document.getElementById('iv-top-note').addEventListener('change',saveIvTopNote);
   document.getElementById('iv-notes').addEventListener('change',saveIvNotes);
@@ -21805,6 +22264,17 @@ function bindQuotesModuleEvents(){
 window.closeModal=closeModal;
 window.crmpxCloseLightbox=crmpxCloseLightbox;
 window.deleteIvPayment=deleteIvPayment;
+// RUNDE T (Martins ønske: "jeg kan ikke slette en fejl kreditnota jeg har
+// lavet eller oprette flere? den reagere ikke") — fundet: disse to kaldes via
+// onclick="..." i HTML-strenge (global scope, se iv-credit-notes-list i
+// openInvoiceDetail()), men var ved en fejl aldrig eksporteret til window som
+// deleteIvPayment ovenfor er — gav en stille ReferenceError i konsollen, så
+// knapperne "✕ Fjern" og "📧 Send til kunde" på en EKSISTERENDE kreditnota
+// bogstaveligt talt ikke gjorde noget. Forklarer nok også "kan ikke oprette
+// flere": kunne man ikke slette en fejlagtig kreditnota på hele beløbet, var
+// der 0 kr tilbage at kreditere, og en ny blev korrekt afvist af serveren.
+window.deleteIvCreditNote=deleteIvCreditNote;
+window.sendIvCreditNote=sendIvCreditNote;
 window.deleteQzQuote=deleteQzQuote;
 window.deleteQzTemplate=deleteQzTemplate;
 window.openContactTemplateModal=openContactTemplateModal;
@@ -21820,6 +22290,7 @@ window.openQuoteEditorSafe=openQuoteEditorSafe;
 window.openTemplateModal=openTemplateModal;
 window.savePjRowStatus=savePjRowStatus;
 window.deletePjProject=deletePjProject;
+window.pjRowCtxMenu=pjRowCtxMenu;
 window.useTemplateForNewQuote=useTemplateForNewQuote;
 
 bind();
