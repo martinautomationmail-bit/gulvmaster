@@ -1133,6 +1133,27 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #pd-task-detail-modal .gd-name-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
 #pd-task-detail-modal .btn.primary{background:var(--bly-accent);border-color:var(--bly-accent)}
 #pd-task-detail-modal #pdtd-capacity-btn{background:var(--bly-accent-soft);border-color:#DCD9FB;color:var(--bly-accent);font-weight:700}
+/* RUNDE O — Martin: header/primærknap fik Billy-behandlingen i en tidligere
+   runde, men "tekstfelterne og knapperne" gjorde ikke — periode-knappen var
+   stadig en ustylet <button class="input">, fremdrifts-slideren var browserens
+   helt native (grå) skyder, og de tre sektioner (Status/Periode/Fremdrift,
+   Note, Tjekpunkter) flød sammen uden den kortbaserede gruppering resten af
+   Billy-designet ellers bruger (jf. .ch-job-card, .team-ov-row m.fl.). Retter
+   alle tre her — samme --bly-*-tokens, ingen nye farver opfundet. */
+#pd-task-detail-modal .modal-body-pad{padding:22px 24px 6px}
+#pd-task-detail-modal .pdtd-card{background:#F8FAFC;border:1px solid #F0F2F5;border-radius:var(--bly-r-md);padding:16px 16px 4px;margin-bottom:16px}
+#pd-task-detail-modal .pdtd-card .form-group{margin-bottom:16px}
+#pd-task-detail-modal #pdtd-daterange-btn{display:flex;align-items:center;font-weight:600;color:var(--bly-ink)}
+#pd-task-detail-modal #pdtd-daterange-btn:hover{border-color:#C7CBD1}
+#pd-task-detail-modal #pdtd-daterange-btn:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+#pd-task-detail-modal #pdtd-daterange-btn:before{content:'📅';margin-right:8px}
+#pd-task-detail-modal #pdtd-daterange-btn:after{content:'▾';margin-left:auto;color:var(--bly-sub);font-size:10px}
+#pd-task-detail-modal #pdtd-progress-input{-webkit-appearance:none;appearance:none;height:6px;border-radius:var(--bly-r-pill);background:linear-gradient(to right,var(--bly-accent) var(--pdtd-progress-pct,0%),var(--bly-border) var(--pdtd-progress-pct,0%));outline:none;cursor:pointer}
+#pd-task-detail-modal #pdtd-progress-input::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid var(--bly-accent);box-shadow:0 1px 4px rgba(15,17,24,.25);cursor:pointer;margin-top:0}
+#pd-task-detail-modal #pdtd-progress-input::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid var(--bly-accent);box-shadow:0 1px 4px rgba(15,17,24,.25);cursor:pointer}
+#pd-task-detail-modal #pdtd-progress-input::-moz-range-track{height:6px;border-radius:var(--bly-r-pill);background:var(--bly-border)}
+#pd-task-detail-modal #pdtd-progress-input::-moz-range-progress{height:6px;border-radius:var(--bly-r-pill);background:var(--bly-accent)}
+#pd-task-detail-modal .form-label{display:flex;align-items:center;gap:5px}
 
 /* ══════════════════════════════════════════════════════════════
    LEDIGHEDSOVERSIGT — samme Billy-behandling, scoped til
@@ -1598,12 +1619,28 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .capacity-context{display:flex;align-items:center;gap:7px;padding:8px 10px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:9px;color:#5B21B6;font-size:10px;font-weight:700;margin:0 0 8px}
 .capacity-jt-hint{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 11px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;color:#92400E;font-size:11px;font-weight:600;margin:-6px 0 12px}
 .capacity-modal-note{font-size:10px;color:var(--muted);line-height:1.45;margin:-2px 0 12px}
-/* RUNDE H #24 — "Book alt i Kapacitetsbordet"-opgavelisten (#bulk-capacity-modal) */
-.bcap-task-list{max-height:220px;overflow-y:auto;border:1px solid var(--bly-border,#E5E7EB);border-radius:var(--bly-r-md,8px)}
-.bcap-task-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-bottom:1px solid var(--bly-border-soft,#F1F1F3)}
+/* RUNDE H #24 — "Book alt i Kapacitetsbordet"-opgavelisten (#bulk-capacity-modal).
+   RUNDE O: hver række fik sin egen dato (forudfyldt fra opgavens planlagte
+   periode) og sin egen medarbejder-vælger (forudfyldt fra "Book alle hos"
+   ovenfor, men frit redigerbar pr. opgave) — derfor to linjer pr. række nu
+   i stedet for kun navn+dage. */
+.bcap-task-list{max-height:340px;overflow-y:auto;border:1px solid var(--bly-border,#E5E7EB);border-radius:var(--bly-r-md,8px)}
+.bcap-task-row{display:flex;flex-direction:column;gap:6px;padding:10px;border-bottom:1px solid var(--bly-border-soft,#F1F1F3)}
 .bcap-task-row:last-child{border-bottom:0}
-.bcap-task-row-name{font-size:12.5px;font-weight:600;color:var(--bly-ink,#111827);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bcap-task-days{width:64px;flex-shrink:0}
+.bcap-task-row-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.bcap-task-row-name{font-size:12.5px;font-weight:700;color:var(--bly-ink,#111827);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bcap-task-row-planned{font-size:10.5px;color:var(--bly-sub,#6B7280);flex-shrink:0;white-space:nowrap}
+.bcap-task-row-fields{display:flex;gap:8px}
+/* RETTET (RUNDE O, fundet under test): disse tre skal have højere specificitet end
+   den globale ".input,.select{width:100%}"-regel (linje ~2287) — ellers vinder DEN
+   ift. "width" pga. lige specificitet + senere placering i filen, hvilket ødelagde
+   hele rækkens flex-fordeling (dato/medarbejder blev klemt til ~20px, dage-feltet
+   endte på 100% bredde). Kvalificeret med .bcap-task-row-fields foran løser det. */
+.bcap-task-row-fields .bcap-task-date{flex:1.3;min-width:0}
+.bcap-task-row-fields .bcap-task-user{flex:1.4;min-width:0}
+.bcap-task-row-fields .bcap-task-days{width:64px;flex-shrink:0}
+.bcap-task-row-fields .input,.bcap-task-row-fields .select{padding:7px 9px;font-size:12px}
+.bcap-task-row.no-date .bcap-task-date{outline:2px solid #FDE68A;outline-offset:1px;border-radius:var(--bly-r-sm)}
 .checklist-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm);margin-bottom:6px}
 .checklist-item.done{background:#F0FDF4;border-color:#BBF7D0}
 .checklist-item.done .checklist-item-title{text-decoration:line-through;opacity:.65}
@@ -2072,13 +2109,29 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 /* Venstre kolonne i sags-Gantt'et: navn, åbn og slet direkte på rækken, i stedet
    for en separat opgaveliste under Gantt'et (fjernet — tog plads og duplikerede
    det Gantt'et allerede viser). */
-#pd-gantt-strip .gantt-list-row[data-task-id]{gap:4px;padding:0 8px 0 14px}
+/* RUNDE P — rækken er nu 2 linjer høj (navn øverst, hurtig-dato + kæde-vælger +
+   knapper nederst) i stedet for én vandret linje — der er plads nok i de 72px
+   #pd-gantt-strip allerede bruger pr. række, og det var nødvendigt for at få et
+   dato-felt ("Skal jeg hurtig kunne sætte en dato", Martins ønske) ind uden at
+   gøre navnefeltet urimeligt smalt. */
+#pd-gantt-strip .gantt-list-row[data-task-id]{flex-direction:column;align-items:stretch;justify-content:center;gap:3px;padding:6px 8px 6px 14px}
+#pd-gantt-strip .glr-line2{display:flex;align-items:center;gap:4px}
 #pd-gantt-strip .gantt-inline-name{flex:1;min-width:0;border:1px solid transparent;background:transparent;border-radius:6px;padding:4px 6px;font:inherit;color:inherit}
 #pd-gantt-strip .gantt-inline-name:hover{border-color:var(--bly-border)}
 #pd-gantt-strip .gantt-inline-name:focus{outline:none;border-color:var(--bly-accent);background:#fff;box-shadow:0 0 0 2px var(--bly-accent-soft)}
+#pd-gantt-strip .gantt-inline-date{width:80px;flex-shrink:0;font-size:10.5px;padding:3px 4px;border:1px solid var(--bly-border);border-radius:6px;background:#fff;color:var(--bly-ink);font-family:inherit}
+#pd-gantt-strip .gantt-inline-date:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 2px var(--bly-accent-soft)}
+/* Kæde-vælger ("tråd mellem opgaver" — Martins ønske): sat kompakt, den fulde
+   opgaveliste vises alligevel i den native, udfoldede dropdown uanset feltets
+   egen bredde her. */
+#pd-gantt-strip .gantt-link-select{flex:1;min-width:0;font-size:10.5px;padding:3px 2px;border:1px solid var(--bly-border);border-radius:6px;background:#fff;color:var(--bly-ink)}
+#pd-gantt-strip .gantt-link-select:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 2px var(--bly-accent-soft)}
+#pd-gantt-strip .gantt-link-select.linked{border-color:var(--bly-accent);background:var(--bly-accent-soft);color:var(--bly-accent);font-weight:600}
 #pd-gantt-strip .gantt-list-row-actions{display:flex;gap:4px;flex-shrink:0;opacity:0;transition:.12s}
 #pd-gantt-strip .gantt-list-row[data-task-id]:hover .gantt-list-row-actions{opacity:1}
 #pd-gantt-strip .gantt-list-row-actions .qz-icon-btn{width:24px;height:24px;font-size:11px}
+.pd-gantt-nav{display:flex;align-items:center;gap:4px}
+.pd-gantt-nav .btn.small{padding:4px 9px;font-weight:700}
 .gantt-expand-toggle{margin-right:5px;font-size:10px;color:var(--muted);width:12px;display:inline-block}
 .avail-table th{background:var(--navy);color:#fff;padding:8px 9px;font-size:9px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;text-align:left}
 .avail-table th.person-th{position:sticky;left:0;z-index:2;min-width:170px}
@@ -2475,7 +2528,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-08.4</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-09.2</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4177,7 +4230,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div style="padding:16px 22px 22px">
       <div class="pdtabpage" id="pdtab-tasks">
         <div class="bly-toolbar">
-          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Opgaver i sagen</span></div>
+          <div class="bly-toolbar-left">
+            <span class="bly-toolbar-title">Opgaver i sagen</span>
+            <!-- RUNDE P (Martins ønske) — tidslinjen viste kun det udsnit der lige
+                 dækkede opgavernes egne datoer (+ lidt buffer) og kunne ikke rulles
+                 videre — så man kunne ikke planlægge en opgave længere ude i
+                 fremtiden end de eksisterende opgaver rakte. Disse tre knapper lader
+                 én panorere frit; "I dag" nulstiller til auto-tilpasning igen. Se
+                 pdGanttPan()/pdGanttState.manualRange. -->
+            <div class="pd-gantt-nav">
+              <button type="button" class="btn small" id="pd-gantt-prev-btn" title="Se tidligere i tidslinjen">◀</button>
+              <button type="button" class="btn small" id="pd-gantt-today-btn" title="Nulstil til automatisk tilpasning ud fra opgavernes datoer">I dag</button>
+              <button type="button" class="btn small" id="pd-gantt-next-btn" title="Se fremad i tidslinjen">▶</button>
+            </div>
+          </div>
           <div class="bly-toolbar-right">
             <button class="bly-btn outline" id="pd-convert-lines-btn" type="button" title="Opret én opgave pr. linje i det tilknyttede tilbud">🔨 Opret opgaver fra tilbud</button>
             <!-- RUNDE H #24 — Martins ønske, mærket "ULTRA vigtigt": ét klik
@@ -4674,8 +4740,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
            Pipeline-fane (PD_PIPELINE_STATUS_META), redigerbar direkte herfra
            også, så man ikke behøver skifte til kanban-visningen for bare at
            flytte én opgave videre. -->
+      <div class="pdtd-card">
       <div class="form-group">
-        <label class="form-label">Status i pipeline</label>
+        <label class="form-label">📌 Status i pipeline</label>
         <select id="pdtd-status-select" class="tld-status-select" style="width:100%">
           <option value="todo" style="background:#F1F5F9;color:#475569">📝 Ikke startet</option>
           <option value="in_progress" style="background:#DBEAFE;color:#1D4ED8">🔨 I gang</option>
@@ -4683,23 +4750,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <option value="done" style="background:#DCFCE7;color:#15803D">✅ Færdig</option>
         </select>
       </div>
-      <div class="form-group" style="position:relative;margin-top:14px">
-        <label class="form-label">Periode</label>
+      <div class="form-group" style="position:relative">
+        <label class="form-label">📅 Periode</label>
         <input id="pdtd-start-input" type="hidden">
         <input id="pdtd-end-input" type="hidden">
         <button type="button" id="pdtd-daterange-btn" class="input" style="text-align:left;cursor:pointer;background:#fff">Vælg periode…</button>
         <div id="pdtd-daterange-pop" class="bly-period-pop" style="display:none;width:300px;left:0;right:auto"></div>
       </div>
-      <div class="form-group" style="margin-top:14px">
-        <label class="form-label">Fremdrift</label>
+      <div class="form-group">
+        <label class="form-label">📈 Fremdrift</label>
         <div style="display:flex;align-items:center;gap:10px">
           <input id="pdtd-progress-input" type="range" min="0" max="100" step="5" value="0" style="flex:1">
           <span id="pdtd-progress-value" style="font-size:12.5px;font-weight:700;color:var(--bly-ink);width:38px;text-align:right">0%</span>
         </div>
       </div>
-      <div class="form-group" style="margin-top:14px"><label class="form-label">Note</label><textarea id="pdtd-note-input" class="input" rows="3" placeholder="Fx særlige forhold på pladsen, adgang, aftaler med kunden..."></textarea></div>
+      </div>
+      <div class="form-group" style="margin-top:14px"><label class="form-label">📝 Note</label><textarea id="pdtd-note-input" class="input" rows="3" placeholder="Fx særlige forhold på pladsen, adgang, aftaler med kunden..."></textarea></div>
       <div class="form-group" style="margin-top:14px">
-        <label class="form-label">Tjekpunkter</label>
+        <label class="form-label">☑ Tjekpunkter</label>
         <div id="pdtd-checklist-items" style="margin-bottom:8px"></div>
         <div style="display:flex;gap:8px">
           <input id="pdtd-checklist-new" class="input" placeholder="Fx Tag billede før opstart" style="flex:1">
@@ -5159,19 +5227,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 </div>
 
 <div class="mo" id="bulk-capacity-modal">
-  <div class="modal">
+  <div class="modal" style="max-width:640px">
     <h3>📊 Book alt i Kapacitetsbordet</h3>
     <div class="capacity-context">Opretter en kapacitets-reservation for hver opgave herunder — de vises kun på Kapacitetsbordet, ikke i Daglig plan eller hos medarbejderen. Selve dag-for-dag planlægningen laver I stadig manuelt bagefter i Dagligplanlægning.</div>
+    <!-- RUNDE O (Martins ønske) — datoen trækkes nu automatisk fra hver opgaves
+         egen planlagte periode i stedet for én fælles startuge for alle, og
+         medarbejderen kan sættes for alle på én gang ELLER pr. opgave, i
+         stedet for kun det ene fælles valg som før. -->
     <div class="form-group">
-      <label class="form-label">Medarbejder / hold</label>
-      <select id="bcap-user" class="select"></select>
+      <label class="form-label">Book alle hos <span style="opacity:.6;font-weight:500">(kan overstyres pr. opgave nedenfor)</span></label>
+      <div style="display:flex;gap:8px">
+        <select id="bcap-user" class="select" style="flex:1"></select>
+        <button class="btn small" type="button" id="bcap-apply-all-btn" title="Sæt denne medarbejder på alle opgaver nedenfor">↓ Anvend på alle</button>
+      </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Startuge <span style="opacity:.6;font-weight:500">(opgaver der ikke er plads til, ruller automatisk videre til næste uge)</span></label>
-      <select id="bcap-week" class="select"></select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Opgaver der bookes</label>
+      <label class="form-label">Opgaver der bookes <span style="opacity:.6;font-weight:500">(dato er hentet fra opgavens egen planlagte periode — ret den her hvis nødvendigt)</span></label>
       <div id="bcap-task-list" class="bcap-task-list"></div>
       <div id="bcap-none-note" class="capacity-modal-note" style="display:none">Alle opgaver i sagen har allerede en booking — der er ikke noget at booke.</div>
       <div id="bcap-skip-note" class="capacity-modal-note" style="display:none"></div>
@@ -18489,8 +18560,14 @@ function initProjectsModule(){
     document.getElementById('pd-convert-lines-btn').addEventListener('click',pdConvertLines);
     document.getElementById('pd-bulk-capacity-btn').addEventListener('click',openBulkCapacityModal);
     document.getElementById('pd-gantt-pdf-btn').addEventListener('click',pdDownloadGanttPdf);
+    // RUNDE P — panorér tidslinjen frit i stedet for at være låst til det udsnit
+    // opgavernes egne datoer tilfældigvis dækker. Se pdGanttPan().
+    document.getElementById('pd-gantt-prev-btn').addEventListener('click',function(){pdGanttPan(-14);});
+    document.getElementById('pd-gantt-next-btn').addEventListener('click',function(){pdGanttPan(14);});
+    document.getElementById('pd-gantt-today-btn').addEventListener('click',function(){pdGanttState.manualRange=false;renderPdGanttStrip();});
     document.getElementById('close-bulk-capacity').addEventListener('click',function(){closeModal('bulk-capacity-modal');});
     document.getElementById('save-bulk-capacity').addEventListener('click',saveBulkCapacityReservation);
+    document.getElementById('bcap-apply-all-btn').addEventListener('click',bcapApplyUserToAll);
     document.getElementById('pd-new-task-btn').addEventListener('click',function(){pdAddTaskRow();});
     document.getElementById('pd-photo-input').addEventListener('change',pdUploadPhoto);
     document.getElementById('pd-time-add-btn').addEventListener('click',function(){openPdTimeModal(null);});
@@ -18520,7 +18597,7 @@ function initProjectsModule(){
       if(pop.style.display!=='none'&&!inside)pop.style.display='none';
     });
     document.getElementById('pdtd-save-btn').addEventListener('click',savePdTaskDetail);
-    document.getElementById('pdtd-progress-input').addEventListener('input',function(){document.getElementById('pdtd-progress-value').textContent=this.value+'%';});
+    document.getElementById('pdtd-progress-input').addEventListener('input',function(){document.getElementById('pdtd-progress-value').textContent=this.value+'%';pdtdSyncProgressFill();});
     // RUNDE L (#1) — status-prikken/-teksten i hovedet opdateres straks ved valg,
     // så man ser farven skifte med det samme, ikke først efter Gem.
     document.getElementById('pdtd-status-select').addEventListener('change',function(){
@@ -18653,6 +18730,9 @@ async function openProjectDetail(id){
   var d=await api('/api/projects/'+id);
   if(!d||d.error){toast('Kunne ikke hente projektet','❌');return;}
   pjCurrent=d;
+  // RUNDE P — en evt. panorering fra en tidligere besøgt sag må ikke lække ind i
+  // denne; start altid med auto-tilpasning når en (ny eller samme) sag åbnes.
+  pdGanttState={dayWidth:38,rangeStart:null,days:null,manualRange:false};
   setAppTitle(d.name);
   document.getElementById('pd-title').textContent=d.name;
   document.getElementById('pd-subtitle').textContent=[d.job_number?'Sag '+d.job_number:null,d.customer_address,d.customer_phone,d.customer_email].filter(Boolean).join(' · ');
@@ -18955,7 +19035,7 @@ async function pdSendPortalLink(){
 // ── SAGS-GANTT — samme visuelle stil/CSS-klasser som hoved-Gantt'et (siden
 // "Gantt"), men udelukkende denne sags opgaver, og gemmer LOKALT via
 // /api/projects/:id/tasks/:taskId i stedet for at skrive til JobTread. ──
-var pdGanttState={dayWidth:38,rangeStart:null},pdGanttDrag=null;
+var pdGanttState={dayWidth:38,rangeStart:null,days:null,manualRange:false},pdGanttDrag=null;
 function pdGanttDateRange(){
   var tasks=pjCurrent.tasks||[];
   var starts=tasks.map(function(t){return t.start_date;}).filter(Boolean);
@@ -18967,11 +19047,47 @@ function pdGanttDateRange(){
   var days=Math.max(21,Math.round((end-start)/86400000)+1);
   return {start:start,days:Math.min(days,120)};
 }
+// RUNDE P (Martins ønske) — tidslinjen kunne før kun vise det udsnit dato-
+// rækkevidden af de EKSISTERENDE opgaver gav (+ lidt buffer), med intet loft
+// på hvor langt frem/tilbage man kunne panorere — "den stopper efter uge 39".
+// Kaldes fra ◀/▶-knapperne; går første gang ud fra det auto-tilpassede udsnit
+// (så panorering starter der man allerede kigger), men bruger en bredere fast
+// rude (mindst 60 dage) så der reelt ER noget at panorere ud i. Når man først
+// har panoreret, husker pdGanttState.manualRange det til man trykker "I dag"
+// eller åbner en anden sag (nulstillet i openProjectDetail).
+function pdGanttPan(deltaDays){
+  if(!pjCurrent||!pjCurrent.tasks)return;
+  if(!pdGanttState.manualRange){
+    var auto=pdGanttDateRange();
+    pdGanttState.rangeStart=auto.start;
+    pdGanttState.days=Math.max(auto.days,60);
+    pdGanttState.manualRange=true;
+  }
+  pdGanttState.rangeStart=add(pdGanttState.rangeStart,deltaDays);
+  renderPdGanttStrip();
+}
+// Bruges af kæde-vælgeren (glr-link) i hver rækkes 2. linje — viser alle ANDRE
+// opgaver i sagen som mulige "kæd til"-mål. Kæder er lineære (højst ét mål pr.
+// opgave), ikke et forgrenet afhængighedsnet.
+function pdGanttLinkOptionsHtml(tasks,selfId,selectedId){
+  var html='<option value="">🔗 –</option>';
+  tasks.forEach(function(t2){
+    if(t2.id===selfId)return;
+    html+='<option value="'+esc(t2.id)+'"'+(String(t2.id)===String(selectedId||'')?' selected':'')+'>'+esc(t2.name||'(uden navn)')+'</option>';
+  });
+  return html;
+}
 function renderPdGanttStrip(){
   var el=document.getElementById('pd-gantt-strip');
-  var tasks=(pjCurrent.tasks||[]).slice().sort(function(a,b){return (a.start_date||'').localeCompare(b.start_date||'');});
+  // RETTET (RUNDE P, Martins ønske) — listen blev FØR sorteret efter startdato,
+  // så en opgave hoppede rundt i rækkefølgen (typisk til bunds) hver gang man
+  // satte eller ændrede dens dato — meget forvirrende ("føles ret mærkeligt").
+  // Bruger nu bare den rækkefølge serveren allerede leverer (position ASC, se
+  // GET /api/projects/:id) — stabil, ændrer sig ikke af at sætte en dato.
+  var tasks=pjCurrent.tasks||[];
   if(!tasks.length){el.innerHTML='<div class="sub" style="padding:16px 2px">Ingen opgaver endnu. Opret dem manuelt med "+ Ny opgave", eller tryk "Opret opgaver fra tilbud" hvis sagen har et tilknyttet tilbud.</div>';return;}
-  var range=pdGanttDateRange();pdGanttState.rangeStart=range.start;
+  var range=(pdGanttState.manualRange&&pdGanttState.rangeStart&&pdGanttState.days)?{start:pdGanttState.rangeStart,days:pdGanttState.days}:pdGanttDateRange();
+  pdGanttState.rangeStart=range.start;pdGanttState.days=range.days;
   var dw=pdGanttState.dayWidth,todayIso=iso(new Date());
   var DAYABBR=['Sø','Ma','Ti','On','To','Fr','Lø'];
   var headCols='',bgCols='',weekCols='',curWeekSpan=0,curWeekLabel='';
@@ -18990,12 +19106,18 @@ function renderPdGanttStrip(){
     // under Gantt'et (fjernet efter ønske: den tog plads og duplikerede det Gantt'et
     // allerede viser). Navnet er et almindeligt tekstfelt (gemmer ved "change"/Enter),
     // så det er hurtigt at rette uden at åbne hele opgave-detaljerne.
+    // RUNDE P — linje 2 tilføjet: hurtig-dato-felt (Martins ønske "skal jeg hurtig
+    // kunne sætte en dato") + kæde-vælger ("en tråd mellem hver task").
+    var depId=(t.depends_on&&t.depends_on[0])||'';
     listRows+='<div class="gantt-list-row" data-task-id="'+t.id+'">'
       +'<input class="gantt-inline-name" data-action="glr-name" value="'+esc(t.name||'')+'" title="'+esc(t.name||'')+'">'
+      +'<div class="glr-line2">'
+      +'<input type="date" class="gantt-inline-date" data-action="glr-date" value="'+esc((t.start_date||'').slice(0,10))+'" title="Sæt/ret startdato hurtigt">'
+      +'<select class="gantt-link-select'+(depId?' linked':'')+'" data-action="glr-link" title="Kæd sammen med en anden opgave — når den kædede opgave flytter dato, flytter denne med (og omvendt)">'+pdGanttLinkOptionsHtml(tasks,t.id,depId)+'</select>'
       +'<div class="gantt-list-row-actions">'
       +'<button type="button" class="qz-icon-btn" data-action="glr-open" title="Åbn — note, tjekpunkter, kapacitet">🔎</button>'
       +'<button type="button" class="qz-icon-btn" data-action="glr-delete" title="Slet">🗑</button>'
-      +'</div></div>';
+      +'</div></div></div>';
     var s=t.start_date?date(t.start_date):range.start,e=t.end_date?date(t.end_date):s;
     var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
     timelineRows+='<div class="gantt-row">'+
@@ -19007,11 +19129,43 @@ function renderPdGanttStrip(){
         '<div class="gantt-bar-handle right" data-handle="right"></div>'+
       '</div></div>';
   });
+  // RUNDE P — tegner en "tråd" (pil) mellem kædede opgaver, samme visuelle
+  // opskrift (afrundede rette vinkler) som hoved-Gantt'ets depends_on-pile
+  // (se renderGantt() længere oppe), bare med #pd-gantt-strip's egne
+  // rækkehøjde/bjælke-mål (72px/centrum 36px, ikke hovedGanttets 64px/32px) og
+  // et andet marker-id, så de to SVG'er ikke kolliderer i samme DOM.
+  var PD_ROW_H=72,PD_BAR_CENTER=36;
+  var svgW=range.days*dw,svgH=tasks.length*PD_ROW_H;
+  var deps='';
+  tasks.forEach(function(t,idx){
+    (t.depends_on||[]).forEach(function(depId2){
+      var depIdx=tasks.findIndex(function(x){return x.id===depId2;});
+      if(depIdx===-1)return;
+      var depTask=tasks[depIdx];
+      var depEnd=depTask.end_date?date(depTask.end_date):range.start;
+      var myStart=t.start_date?date(t.start_date):range.start;
+      var x1=(Math.round((depEnd-range.start)/86400000)+1)*dw,y1=depIdx*PD_ROW_H+PD_BAR_CENTER;
+      var x2=Math.round((myStart-range.start)/86400000)*dw,y2=idx*PD_ROW_H+PD_BAR_CENTER;
+      var r=6,gap=14,midX=x1+Math.max(gap,Math.min((x2-x1)/2,26)),path;
+      if(x2>=x1+gap*2&&Math.abs(y2-y1)>1){
+        var vSign=y2>y1?1:-1;
+        path='M'+x1+' '+y1+' L'+(midX-r)+' '+y1+' Q'+midX+' '+y1+' '+midX+' '+(y1+r*vSign)+' L'+midX+' '+(y2-r*vSign)+' Q'+midX+' '+y2+' '+(midX+r)+' '+y2+' L'+x2+' '+y2;
+      }else if(x2>=x1+gap*2){
+        path='M'+x1+' '+y1+' L'+x2+' '+y2;
+      }else{
+        var loopX=x1+gap,vSign2=y2>y1?1:-1,midY=(y1+y2)/2;
+        path='M'+x1+' '+y1+' L'+(loopX-r)+' '+y1+' Q'+loopX+' '+y1+' '+loopX+' '+(y1+r*vSign2)+' L'+loopX+' '+(midY-r)+' Q'+loopX+' '+midY+' '+(loopX-r)+' '+midY+' L'+(x2-gap+r)+' '+midY+' Q'+(x2-gap)+' '+midY+' '+(x2-gap)+' '+(midY+r*vSign2)+' L'+(x2-gap)+' '+(y2-r*vSign2)+' Q'+(x2-gap)+' '+y2+' '+(x2-gap+r)+' '+y2+' L'+x2+' '+y2;
+      }
+      deps+='<path d="'+path+'" stroke="#8B5CF6" stroke-width="1.75" fill="none" marker-end="url(#pdGanttArrow)"/>';
+    });
+  });
   el.innerHTML='<div class="gantt-chart"><div class="gantt-list">'+listRows+'</div>'+
     '<div class="gantt-timeline" style="width:'+(range.days*dw)+'px">'+
       '<div class="gantt-week-head">'+weekCols+'</div>'+
       '<div class="gantt-timeline-head">'+headCols+'</div>'+
-      '<div style="position:relative">'+timelineRows+'</div>'+
+      '<div style="position:relative">'+timelineRows+
+        '<svg class="gantt-dep-svg" width="'+svgW+'" height="'+svgH+'"><defs><marker id="pdGanttArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8B5CF6"/></marker></defs>'+deps+'</svg>'+
+      '</div>'+
     '</div></div>';
   document.querySelectorAll('#pd-gantt-strip .gantt-list-row[data-task-id]').forEach(function(row){
     var taskId=row.dataset.taskId;
@@ -19021,6 +19175,35 @@ function renderPdGanttStrip(){
       var newName=nameInput.value.trim();
       if(!newName){toast('Navn må ikke være tomt','⚠');nameInput.value=nameInput.title;return;}
       api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({name:newName})}).then(function(){reloadPdCurrent();});
+    });
+    // RUNDE P — hurtig-dato-felt. Bevarer opgavens EGEN varighed (slutdato minus
+    // startdato) hvis den allerede har en, ellers bliver den en 1-dags opgave —
+    // samme regel som resten af programmet bruger når kun startdatoen kendes.
+    var dateInput=row.querySelector('[data-action="glr-date"]');
+    dateInput.addEventListener('click',function(e){e.stopPropagation();});
+    dateInput.addEventListener('change',async function(){
+      var newStart=dateInput.value;
+      if(!newStart)return;
+      var task=(pjCurrent.tasks||[]).find(function(x){return x.id===taskId;});
+      var origDur=(task&&task.start_date&&task.end_date)?Math.max(0,Math.round((date(task.end_date)-date(task.start_date))/86400000)):0;
+      var newEnd=iso(add(date(newStart),origDur));
+      var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({start_date:newStart,end_date:newEnd})});
+      if(r&&r.ok){
+        toast(r.cascaded&&r.cascaded.length?'Dato sat — '+r.cascaded.length+' kædet opgave(r) rykket med':'Dato sat','✓');
+        reloadPdCurrent();
+      }else toast((r&&r.error)||'Kunne ikke sætte dato','❌');
+    });
+    // RUNDE P — kæde-vælger ("en tråd mellem hver task ... hele sagen rykker frem
+    // og tilbage"): sætter depends_on på DENNE opgave til den valgte. Kæden er
+    // tovejs ift. datoflytning (se PUT /api/projects/:id/tasks/:taskId), så det
+    // er uden betydning om man kæder "til" den forrige eller den næste opgave.
+    var linkSelect=row.querySelector('[data-action="glr-link"]');
+    linkSelect.addEventListener('click',function(e){e.stopPropagation();});
+    linkSelect.addEventListener('change',async function(){
+      var depId3=linkSelect.value;
+      var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({depends_on:depId3?[depId3]:[]})});
+      if(r&&r.ok){toast(depId3?'Opgaverne er kædet sammen':'Kæden er fjernet','✓');reloadPdCurrent();}
+      else toast((r&&r.error)||'Kunne ikke opdatere kæden','❌');
     });
     row.querySelector('[data-action="glr-open"]').addEventListener('click',function(){openPdTaskDetail(taskId);});
     row.querySelector('[data-action="glr-delete"]').addEventListener('click',async function(){
@@ -19119,13 +19302,25 @@ async function onPdGanttDragEnd(){
   var newEnd=iso(add(date(newStart),spanDays-1));
   var taskId=pdGanttDrag.taskId;
   pdGanttDrag=null;
-  await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({start_date:newStart,end_date:newEnd})});
+  var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({start_date:newStart,end_date:newEnd})});
+  // RUNDE P — hvis opgaven er kædet sammen med andre (se .gantt-link-select),
+  // rykker de kædede opgaver automatisk med her.
+  if(r&&r.ok&&r.cascaded&&r.cascaded.length)toast(r.cascaded.length+' kædet opgave(r) rykket med','✓');
   reloadPdCurrent();
 }
 // ── SAGS-OPGAVE DETALJER — note, kundekontakt, tjekpunkter, "tilføj til
 // Kapacitetsbordet". Åbnes fra 🔎-knappen i opgavelisten eller ved klik (uden
 // træk) på en bjælke i sags-Gantt'et. ──
 var pdTaskDetailId=null;
+// RUNDE O — fylder sporet bag skyderen ud i accentfarve op til dens nuværende
+// værdi (--pdtd-progress-pct, læst af CSS'en ved #pdtd-progress-input), så den
+// ligner en "rigtig" moderne fremdrifts-bjælke i stedet for browserens native
+// grå skyder. Kaldes både ved manuel betjening og når modalen fyldes fra data.
+function pdtdSyncProgressFill(){
+  var el=document.getElementById('pdtd-progress-input');
+  if(!el)return;
+  el.style.setProperty('--pdtd-progress-pct',el.value+'%');
+}
 function openPdTaskDetail(taskId){
   var t=(pjCurrent.tasks||[]).find(function(x){return x.id===taskId;});
   if(!t)return;
@@ -19145,6 +19340,7 @@ function openPdTaskDetail(taskId){
   var progressPct=Math.round((Number(t.progress)||0)*100);
   document.getElementById('pdtd-progress-input').value=progressPct;
   document.getElementById('pdtd-progress-value').textContent=progressPct+'%';
+  pdtdSyncProgressFill();
   document.getElementById('pdtd-checklist-new').value='';
   renderChecklistItems('pdtd-checklist-items',taskId);
   // RUNDE L (Martins ønske #1) — status-farve i hovedet + status-select, samme
@@ -19334,12 +19530,20 @@ async function pdDownloadGanttPdf(){
 // #bulk-capacity-modal for baggrunden (og hvorfor medarbejder-valget bevidst
 // IKKE er automatiseret væk). Genbruger capacityWeekOptions() (generisk,
 // ikke bundet til et bestemt element-id) fra det almindelige kapacitets-modal.
+// RUNDE O (Martins ønske) — hver opgave booker nu sin egen dato (hentet fra
+// opgavens egen planlagte periode i stedet for én fælles startuge for hele
+// sagen) og sin egen medarbejder (forudfyldt fra "Book alle hos", men frit
+// redigerbar pr. opgave via bcapUserOptionsHtml() nedenfor) — "spørger hvem
+// den skal bookes hos pr Opgave, eller alle hos en" fra Martins besked.
+function bcapUserOptionsHtml(workforce,selectedId){
+  return workforce.map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(selectedId)?' selected':'')+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
+}
 function openBulkCapacityModal(){
   if(!pjCurrent||!Array.isArray(pjCurrent.tasks))return;
   var bookable=pjCurrent.tasks.filter(function(t){return !t.has_booking;});
   var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
-  document.getElementById('bcap-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
-  document.getElementById('bcap-week').innerHTML=capacityWeekOptions(iso(mon(new Date())));
+  var defaultUserId=workforce.length?workforce[0].id:'';
+  document.getElementById('bcap-user').innerHTML=bcapUserOptionsHtml(workforce,defaultUserId);
   var list=document.getElementById('bcap-task-list');
   document.getElementById('bcap-none-note').style.display=bookable.length?'none':'block';
   var skippedCount=pjCurrent.tasks.length-bookable.length;
@@ -19347,23 +19551,59 @@ function openBulkCapacityModal(){
   if(skippedCount>0){skipNote.style.display='block';skipNote.textContent=skippedCount+' opgave(r) er allerede booket (kapacitet eller daglig plan) og vises ikke her.';}
   else skipNote.style.display='none';
   list.style.display=bookable.length?'block':'none';
+  var todayIso=iso(new Date());
   list.innerHTML=bookable.map(function(t){
-    return '<div class="bcap-task-row"><span class="bcap-task-row-name">'+esc(t.name||'(uden navn)')+'</span>'
-      +'<input type="number" class="input bcap-task-days" min=".25" max="60" step=".25" value="1" data-task-id="'+esc(t.id)+'"></div>';
+    var hasDate=!!t.start_date;
+    var plannedDate=hasDate?String(t.start_date).slice(0,10):todayIso;
+    // Standard-varighed gættes ud fra opgavens egen planlagte periode (dage
+    // inkl. start+slut) i stedet for altid at foreslå "1" — kan stadig rettes
+    // manuelt pr. række bagefter.
+    var defaultDays=1;
+    if(hasDate&&t.end_date){
+      var span=Math.round((new Date(String(t.end_date).slice(0,10)+'T12:00:00')-new Date(plannedDate+'T12:00:00'))/86400000)+1;
+      if(span>0)defaultDays=span;
+    }
+    var plannedLabel=hasDate?('Planlagt: '+fmtDaDate(t.start_date)+(t.end_date&&t.end_date!==t.start_date?' – '+fmtDaDate(t.end_date):'')):'⚠️ Ingen dato sat på opgaven';
+    return '<div class="bcap-task-row'+(hasDate?'':' no-date')+'" data-task-id="'+esc(t.id)+'">'
+      +'<div class="bcap-task-row-top"><span class="bcap-task-row-name">'+esc(t.name||'(uden navn)')+'</span><span class="bcap-task-row-planned">'+esc(plannedLabel)+'</span></div>'
+      +'<div class="bcap-task-row-fields">'
+      +'<input type="date" class="input bcap-task-date" data-task-id="'+esc(t.id)+'" value="'+esc(plannedDate)+'">'
+      +'<select class="select bcap-task-user" data-task-id="'+esc(t.id)+'">'+bcapUserOptionsHtml(workforce,defaultUserId)+'</select>'
+      +'<input type="number" class="input bcap-task-days" min=".25" max="60" step=".25" value="'+defaultDays+'" data-task-id="'+esc(t.id)+'">'
+      +'</div></div>';
   }).join('');
   document.getElementById('save-bulk-capacity').disabled=!bookable.length;
   document.getElementById('bulk-capacity-modal').classList.add('open');
 }
-async function saveBulkCapacityReservation(){
+// "↓ Anvend på alle" — kopierer den valgte "Book alle hos"-medarbejder ud i
+// hver rækkes egen vælger. Rører IKKE datoer/dage, kun medarbejder — og en
+// række kan altid efterfølgende rettes tilbage til en anden person igen.
+function bcapApplyUserToAll(){
   var userId=document.getElementById('bcap-user').value;
-  if(!userId){toast('Vælg en medarbejder','⚠️');return;}
-  var weekStart=document.getElementById('bcap-week').value;
-  var days={};
-  Array.prototype.forEach.call(document.querySelectorAll('#bcap-task-list .bcap-task-days'),function(inp){
-    days[inp.dataset.taskId]=Math.max(.25,Math.min(60,Number(inp.value)||1));
+  Array.prototype.forEach.call(document.querySelectorAll('#bcap-task-list .bcap-task-user'),function(sel){sel.value=userId;});
+  toast('Medarbejder sat på alle opgaver','✓');
+}
+async function saveBulkCapacityReservation(){
+  var rows=Array.prototype.slice.call(document.querySelectorAll('#bcap-task-list .bcap-task-row'));
+  if(!rows.length)return;
+  var tasks=rows.map(function(row){
+    var taskId=row.dataset.taskId;
+    var userSel=row.querySelector('.bcap-task-user');
+    var dateInp=row.querySelector('.bcap-task-date');
+    var daysInp=row.querySelector('.bcap-task-days');
+    return {
+      id:taskId,
+      user_id:userSel?userSel.value:'',
+      start_date:dateInp?dateInp.value:'',
+      days:Math.max(.25,Math.min(60,Number(daysInp&&daysInp.value)||1))
+    };
   });
+  var missingUser=tasks.some(function(t){return !t.user_id;});
+  if(missingUser){toast('Vælg en medarbejder for hver opgave (eller brug "Anvend på alle")','⚠️');return;}
+  var missingDate=tasks.some(function(t){return !t.start_date;});
+  if(missingDate){toast('Sæt en dato på hver opgave','⚠️');return;}
   var btn=document.getElementById('save-bulk-capacity');btn.disabled=true;btn.textContent='Booker…';
-  var r=await api('/api/projects/'+pjCurrent.id+'/bulk-book-capacity',{method:'POST',body:JSON.stringify({user_id:userId,week_start:weekStart,days:days})});
+  var r=await api('/api/projects/'+pjCurrent.id+'/bulk-book-capacity',{method:'POST',body:JSON.stringify({tasks:tasks})});
   btn.disabled=false;btn.textContent='Book opgaverne';
   if(r&&r.ok){
     closeModal('bulk-capacity-modal');

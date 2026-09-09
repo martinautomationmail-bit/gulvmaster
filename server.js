@@ -2017,6 +2017,16 @@ function validDate(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+// RUNDE P — bruges af sags-opgavernes "kæde"-funktion (se PUT
+// /api/projects/:id/tasks/:taskId) til at rykke alle kædede opgavers datoer
+// med samme antal (evt. negative) dage som den redigerede opgave blev flyttet.
+function addCalendarDays(dateStr, days) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // Capacity is planned by week, never by a meeting time or a particular day.
 // We still save the Monday/Friday internally so existing reporting remains compatible.
 function mondayOfDate(value) {
@@ -2137,7 +2147,14 @@ async function splitCapacityAcrossWeeks(userId, weeklyCapacity, startDate, total
       // beregnes proportionalt (capacity_days / antal hverdage i intervallet).
       const fri = new Date(`${weekStart}T12:00:00`);
       fri.setDate(fri.getDate() + 4);
-      const segmentEnd = `${fri.getFullYear()}-${String(fri.getMonth() + 1).padStart(2, '0')}-${String(fri.getDate()).padStart(2, '0')}`;
+      let segmentEnd = `${fri.getFullYear()}-${String(fri.getMonth() + 1).padStart(2, '0')}-${String(fri.getDate()).padStart(2, '0')}`;
+      // RUNDE O — fundet under test af opgave-specifikke datoer i "Book alt i
+      // Kapacitetsbordet": segmentStart er i det FØRSTE segment opgavens egen
+      // startdato (kan nu være en hvilken som helst ugedag, ikke kun mandag som
+      // tidligere). Falder den på en lørdag/søndag, ligger den EFTER ugens fredag
+      // — så "slutdato = ugens fredag" endte før startdatoen. Sikrer her at
+      // slutdatoen aldrig ligger før segmentets egen startdato.
+      if (segmentEnd < segmentStart) segmentEnd = segmentStart;
       segments.push({ start_date: segmentStart, end_date: segmentEnd, capacity_days: Math.round(takeThisWeek * 4) / 4, week_key: getWeekKey(weekStart) });
       remaining -= takeThisWeek;
     }
@@ -10079,7 +10096,7 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
         (SELECT json_agg(json_build_object('user_name', u.name, 'start_date', b.start_date, 'end_date', b.end_date) ORDER BY b.start_date)
          FROM planning_bookings b LEFT JOIN users u ON u.id = b.user_id WHERE b.task_id = g.id) AS bookings
       FROM gantt_tasks g WHERE g.project_id=$1 ORDER BY position ASC, id ASC
-    `, [req.params.id]).then(r => r.rows),
+    `, [req.params.id]).then(r => r.rows.map(t => ({ ...t, depends_on: safeJsonParse(t.depends_on, []) || [] }))),
     pool.query('SELECT * FROM project_photos WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM time_entries WHERE project_id=$1 ORDER BY entry_date DESC, id DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM project_materials WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
@@ -10315,15 +10332,16 @@ app.post('/api/projects/:id/bulk-book-capacity', auth, panelAccess('capacity'), 
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   const b = req.body || {};
-  const user = await pgOne("SELECT id,weekly_capacity FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(b.user_id)]);
-  if (!user) return res.status(400).json({ error: 'Vælg en gyldig medarbejder' });
-  const startDate = validDate(String(b.week_start || '')) ? String(b.week_start) : null;
-  if (!startDate) return res.status(400).json({ error: 'Vælg en gyldig startuge' });
-  const defaultDays = Math.max(0.25, Math.min(60, Number(b.default_days) || 1));
-  const perTaskDays = (b.days && typeof b.days === 'object') ? b.days : {};
-  const weeklyCapacity = Number(user.weekly_capacity) || 5;
+  // RUNDE O (Martins ønske) — hver opgave sendes nu med SIN EGEN dato (hentet
+  // fra opgavens egen planlagte periode i admin, ikke én fælles startuge for
+  // hele sagen) og SIN EGEN medarbejder (kan være samme person for alle, eller
+  // forskellig pr. opgave — "Anvend på alle"-knappen i UI'et er blot en hurtig
+  // udfyldnings-genvej, selve bookingen her behandler hver opgave uafhængigt).
+  const taskInputs = Array.isArray(b.tasks) ? b.tasks : null;
+  if (!taskInputs || !taskInputs.length) return res.status(400).json({ error: 'Ingen opgaver at booke' });
 
   const gtRows = (await pool.query('SELECT id,name FROM gantt_tasks WHERE project_id=$1 ORDER BY position ASC, id ASC', [project.id])).rows;
+  const gtById = new Map(gtRows.map(r => [r.id, r]));
   if (!gtRows.length) return res.json({ ok: true, booked: 0, skipped: 0, results: [] });
   // Spring opgaver over der allerede har EN ELLER ANDEN booking (kapacitet
   // eller daglig plan) — undgår dobbelt-booking hvis man trykker knappen igen
@@ -10332,17 +10350,33 @@ app.post('/api/projects/:id/bulk-book-capacity', auth, panelAccess('capacity'), 
     'SELECT DISTINCT task_id FROM planning_bookings WHERE task_id = ANY($1::text[])', [gtRows.map(r => r.id)]
   )).rows.map(r => r.task_id));
 
+  // Der kan sagtens være flere forskellige medarbejdere på tværs af opgaverne
+  // nu — hent alles ugentlige kapacitet samlet i ét opslag i stedet for én
+  // medarbejder som før.
+  const userIds = [...new Set(taskInputs.map(t => Number(t.user_id)).filter(Boolean))];
+  const userRows = userIds.length
+    ? (await pool.query("SELECT id,weekly_capacity FROM users WHERE id = ANY($1::int[]) AND active=1 AND role='employee'", [userIds])).rows
+    : [];
+  const capacityByUser = new Map(userRows.map(u => [u.id, Number(u.weekly_capacity) || 5]));
+
   let booked = 0, skipped = 0;
   const results = [];
-  for (const t of gtRows) {
+  for (const input of taskInputs) {
+    const t = gtById.get(String(input.id));
+    if (!t) { skipped++; continue; } // opgave hører ikke til denne sag (eller findes ikke længere)
     if (already.has(t.id)) { skipped++; continue; }
-    const days = Math.max(0.25, Math.min(60, Number(perTaskDays[t.id]) || defaultDays));
-    const segments = await splitCapacityAcrossWeeks(user.id, weeklyCapacity, startDate, days);
+    const userId = Number(input.user_id);
+    const weeklyCapacity = capacityByUser.get(userId);
+    if (!userId || weeklyCapacity == null) { skipped++; continue; } // ugyldig/inaktiv medarbejder for denne opgave
+    const startDate = validDate(String(input.start_date || '')) ? String(input.start_date) : null;
+    if (!startDate) { skipped++; continue; }
+    const days = Math.max(0.25, Math.min(60, Number(input.days) || 1));
+    const segments = await splitCapacityAcrossWeeks(userId, weeklyCapacity, startDate, days);
     for (const seg of segments) {
       await pool.query(`
         INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,planning_mode,capacity_label,updated_at)
         VALUES ($1,$2,$3,5,$4,$5,NULL,$6,$7,'capacity',$8,${nowTextSQL()})
-      `, [t.id, user.id, seg.week_key, seg.capacity_days, null, seg.start_date, seg.end_date, t.name]);
+      `, [t.id, userId, seg.week_key, seg.capacity_days, null, seg.start_date, seg.end_date, t.name]);
     }
     booked++;
     results.push({ task_id: t.id, name: t.name, weeks: segments.length, first_week: segments[0].week_key });
@@ -10383,13 +10417,62 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
     // Gantt-opgave-detaljevindue (gd-desc), vist i sagens opgave-detaljer.
     description: b.description !== undefined ? String(b.description).slice(0, 2000) : (current.description || ''),
     // RUNDE L (Martins ønske #2) — opgavens fase i Pipeline-visningen.
-    status: b.status !== undefined && GANTT_TASK_STATUSES.includes(b.status) ? b.status : (current.status || 'todo')
+    status: b.status !== undefined && GANTT_TASK_STATUSES.includes(b.status) ? b.status : (current.status || 'todo'),
+    // RUNDE P (Martins ønske) — "en tråd mellem hver task ... så hele sagen
+    // rykker frem og tilbage". depends_on fandtes allerede som kolonne (brugt af
+    // JobTread-synkroniseringen til hoved-Gantt'et), men blev bevidst ALDRIG sat
+    // for sags-opgaver før nu. Gemmes som en liste med højst ét element — kæder
+    // er lineære (tråde), ikke forgrenede afhængighedsnet.
+    depends_on: b.depends_on !== undefined
+      ? (Array.isArray(b.depends_on) ? b.depends_on.filter(x => x && x !== req.params.taskId).slice(0, 1) : [])
+      : (safeJsonParse(current.depends_on, []) || [])
   };
   await pool.query(`
-    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, status=$6, synced_at=${nowTextSQL()} WHERE id=$7
-  `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, req.params.taskId]);
+    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, status=$6, depends_on=$7, synced_at=${nowTextSQL()} WHERE id=$8
+  `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, JSON.stringify(merged.depends_on), req.params.taskId]);
   if (project) await mirrorProjectTaskToPool(req.params.taskId, project, merged);
-  res.json({ ok: true });
+
+  // RUNDE P — hvis opgavens STARTDATO ændrede sig, og den (direkte eller via andre
+  // opgaver) er kædet sammen med andre opgaver i samme sag, rykkes hele den
+  // forbundne kæde med samme antal dage, så den indbyrdes afstand mellem opgaverne
+  // bevares. Kæden behandles bevidst som TOVEJS her (ikke kun "det der kommer
+  // efter") — det matcher Martins ønske om at hele sagen flytter sig sammen,
+  // uanset hvilken opgave i kæden man trækker i.
+  let cascaded = [];
+  const oldStart = validDate(current.start_date) ? current.start_date : null;
+  const newStart = validDate(merged.start_date) ? merged.start_date : null;
+  if (oldStart && newStart && oldStart !== newStart) {
+    const deltaDays = Math.round((new Date(`${newStart}T12:00:00`) - new Date(`${oldStart}T12:00:00`)) / 86400000);
+    if (deltaDays !== 0) {
+      const allTasks = (await pool.query('SELECT id,start_date,end_date,depends_on FROM gantt_tasks WHERE project_id=$1', [req.params.id])).rows;
+      const byId = new Map(allTasks.map(t => [t.id, t]));
+      const adj = new Map();
+      const link = (a, bb) => {
+        if (!adj.has(a)) adj.set(a, new Set());
+        if (!adj.has(bb)) adj.set(bb, new Set());
+        adj.get(a).add(bb); adj.get(bb).add(a);
+      };
+      allTasks.forEach(t => {
+        (safeJsonParse(t.depends_on, []) || []).forEach(depId => { if (byId.has(depId)) link(t.id, depId); });
+      });
+      const visited = new Set([req.params.taskId]);
+      const queue = [req.params.taskId];
+      while (queue.length) {
+        const cur = queue.shift();
+        (adj.get(cur) || new Set()).forEach(n => { if (!visited.has(n)) { visited.add(n); queue.push(n); } });
+      }
+      visited.delete(req.params.taskId);
+      for (const tid of visited) {
+        const t = byId.get(tid);
+        if (!t || !validDate(t.start_date)) continue;
+        const shiftedStart = addCalendarDays(t.start_date, deltaDays);
+        const shiftedEnd = validDate(t.end_date) ? addCalendarDays(t.end_date, deltaDays) : shiftedStart;
+        await pool.query(`UPDATE gantt_tasks SET start_date=$1, end_date=$2, synced_at=${nowTextSQL()} WHERE id=$3`, [shiftedStart, shiftedEnd, tid]);
+        cascaded.push(tid);
+      }
+    }
+  }
+  res.json({ ok: true, cascaded });
 }));
 
 app.delete('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
@@ -10401,6 +10484,17 @@ app.delete('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asy
   await pool.query('DELETE FROM assignments WHERE task_id=$1', [req.params.taskId]);
   await pool.query('DELETE FROM jt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
   await pool.query('DELETE FROM gantt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
+  // RUNDE P — fjerner evt. "kæde"-referencer ANDRE opgaver i sagen havde til den
+  // slettede opgave (se depends_on), så de ikke bliver hængende og peger på en
+  // opgave der ikke længere findes.
+  const linkedRows = (await pool.query('SELECT id,depends_on FROM gantt_tasks WHERE project_id=$1 AND depends_on IS NOT NULL', [req.params.id])).rows;
+  for (const row of linkedRows) {
+    const deps = safeJsonParse(row.depends_on, []) || [];
+    if (deps.includes(req.params.taskId)) {
+      const cleaned = deps.filter(x => x !== req.params.taskId);
+      await pool.query('UPDATE gantt_tasks SET depends_on=$1 WHERE id=$2', [JSON.stringify(cleaned), row.id]);
+    }
+  }
   res.json({ ok: true });
 }));
 
