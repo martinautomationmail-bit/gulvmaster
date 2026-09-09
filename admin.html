@@ -1323,6 +1323,11 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-customer-result label{display:flex;align-items:center;gap:8px;cursor:pointer;margin:0}
 .qe-customer-result input[type="checkbox"]{flex-shrink:0;width:16px;height:16px}
 .qz-icon-btn{border:1px solid var(--bly-border);background:#fff;border-radius:7px;width:28px;height:28px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
+/* RUNDE V — talediktering til note-felter (qe-top-note/crmpx-note-new), se
+   noteDictToggle() i JS. .recording pulserer rødt mens der optages. */
+.qe-note-mic-btn.recording{background:#DC2626;border-color:#DC2626;color:#fff;animation:qeNoteMicPulse 1.4s ease-in-out infinite}
+.qe-note-mic-btn:disabled{opacity:.55;cursor:default}
+@keyframes qeNoteMicPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}
 .qz-icon-btn:hover{background:var(--bly-hover);border-color:var(--bly-accent)}
 .qe-body{display:grid;grid-template-columns:1.35fr 1fr;gap:18px;flex:1;min-height:0;padding:18px 22px;overflow:hidden}
 .qe-editor,.qe-preview-wrap{overflow:auto;background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:20px}
@@ -1402,9 +1407,13 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-margin-card.total .qe-margin-card-label{color:rgba(255,255,255,.78)}
 .qe-margin-card.total .qe-margin-card-value{color:#fff}
 .qe-margin-card.total .qe-margin-card-sub{color:rgba(255,255,255,.9)}
-/* Selve PDF-forhåndsvisningen — designet så den ligner det pdfkit-genererede
-   dokument så tæt som muligt, så "det du ser er det kunden får". */
-.qe-pdf-page{width:100%;max-width:560px;background:#fff;box-shadow:0 8px 30px rgba(15,17,24,.15);padding:36px 34px;font-size:11px;color:#111318;min-height:700px}
+/* RUNDE V (Martins ønske: "PDF filen virker, men ikke live view") — forhånds-
+   visningen er ikke længere en håndbygget HTML-efterligning af PDF'en (som
+   uundgåeligt gik ud af trit med den rigtige sideopdeling), men den ÆGTE PDF
+   vist i et iframe — se qeRenderPreview()/POST /api/quotes/preview-pdf. */
+.qe-pdf-page{width:100%;max-width:560px;background:#fff;box-shadow:0 8px 30px rgba(15,17,24,.15);min-height:700px;position:relative;padding:0;overflow:hidden;border-radius:4px}
+.qe-pdf-iframe{width:100%;height:800px;border:none;display:block;background:#fff}
+.qe-preview-loading{position:absolute;top:10px;right:10px;background:rgba(79,70,229,.92);color:#fff;font-size:10.5px;font-weight:600;padding:4px 11px;border-radius:20px;z-index:2;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .qe-pdf-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px}
 .qe-pdf-company{font-size:16px;font-weight:800}
 .qe-pdf-company-sub{font-size:9px;color:#6B7280;line-height:1.6;margin-top:4px}
@@ -1798,7 +1807,10 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .cap-week-range{display:block;font-size:11px;font-weight:700;color:inherit;opacity:.75;margin-top:2px}
 .capacity-board td{border-bottom:1px solid var(--border2);vertical-align:top}
 .capacity-board .staff-cell{min-width:185px}
-.cap-cell{padding:4px;min-width:120px;vertical-align:top}
+/* RUNDE V (Martins ønske: "alle opgaver i kapacitetsbord felterne skal have
+   samme brede som i Dagligplanlægning det mere overskueligt") — 128px, samme
+   som Dagligplanlægnings .day-cell herunder, i stedet for de 120px før. */
+.cap-cell{padding:4px;min-width:128px;vertical-align:top}
 .cap-drop{min-height:68px;border-radius:6px;border:1px dashed transparent;padding:3px;transition:.14s}
 .cap-drop.over{background:#EFF6FF;border-color:var(--blue)}
 
@@ -1813,13 +1825,22 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .cap-bar-wrap{height:3px;background:var(--border2);border-radius:99px;overflow:hidden;margin:2px 0 4px}
 .cap-bar{height:100%;border-radius:99px;transition:width .3s}
 
-/* CAP JOB PILLS */
-.cap-job{font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:grab;padding:3px 6px;border-radius:4px;margin-top:2px;font-weight:600;display:flex;align-items:center;gap:3px;background:#F1F5F9;color:var(--ink);border-left:3px solid var(--border)}
+/* CAP JOB PILLS — RUNDE V (Martins ønske: "skal have samme brede som i
+   Dagligplanlægning det mere overskueligt") — før var kunde-navn OG
+   opgavebeskrivelse klemt sammen i ÉN 9px-linje der blev afkortet med "…" ved
+   den mindste smule tekst. Nu to linjer, samme opbygning som Dagligplans
+   .assignment-kort (.assign-name/.assign-sub): navnet for sig (fed), og
+   opgavebeskrivelsen på sin egen linje nedenunder (dæmpet) — se
+   qeCapacityDefaultLabel()/capacity-label i JS for hvor navnet " — "
+   beskrivelsen sættes sammen, splittet igen her ved rendering. */
+.cap-job{font-size:9.5px;cursor:grab;padding:4px 6px;border-radius:5px;margin-top:3px;font-weight:600;background:#F1F5F9;color:var(--ink);border-left:3px solid var(--border);overflow:hidden}
 /* Kapacitetsboardet viser bevidst ÉN ensartet farve for alle booket opgaver — uanset fag —
    så tavlen forbliver rolig og overskuelig. Fag-farver bruges kun i Daglig plan/Ugeplan. */
 .cap-job.cap-job-task{border-left-color:var(--blue);background:#EFF6FF}
 .cap-job.dragging{opacity:.35}
-.cap-job-name{flex:1;overflow:hidden;text-overflow:ellipsis}
+.cap-job-top{display:flex;align-items:center;gap:3px}
+.cap-job-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.cap-job-desc{margin-top:2px;font-size:8.5px;font-weight:500;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cap-job-days{font-size:8px;opacity:.75;flex-shrink:0;background:rgba(0,0,0,.08);padding:1px 3px;border-radius:3px}
 .cap-job-x{border:0;background:transparent;cursor:pointer;font-size:11px;line-height:1;color:inherit;opacity:.5;padding:0;flex-shrink:0}
 .cap-job-x:hover{opacity:1}
@@ -3778,7 +3799,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
     <div class="crmpx-col-right">
       <div class="crmpx-panel">
-        <h3>Aktivitet</h3>
+        <h3 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <span>Aktivitet</span>
+          <!-- RUNDE V (Martins ønske: "man ved noter under leads og under sale kan
+               snakke til noten og den så noterer alt ned") — samme diktering som
+               tilbuddets "Note i toppen" (se noteDictToggle()/POST /api/ai/clean-note),
+               indsætter den rensede note her til gennemsyn — "+ Tilføj" skal stadig
+               trykkes bagefter, intet gemmes automatisk. -->
+          <button type="button" class="qz-icon-btn qe-note-mic-btn" id="crmpx-note-new-mic-btn" title="Diktér en note">🎤</button>
+        </h3>
         <!-- Note-boksen er nu en HØJ <textarea> i stedet for et enkelt-linje <input>
              (Martins ønske: mere plads at skrive i, og mulighed for linjeskift).
              Enter gemmer, Shift+Enter laver et linjeskift — NØJAGTIG samme
@@ -5735,7 +5764,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="qe-crm-note-head">📌 Note fra <span id="qe-crm-note-entity-label"></span></div>
           <div class="qe-crm-note-text" id="qe-crm-note-text"></div>
         </div>
-        <div class="form-group" style="margin-top:10px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger</span></label><textarea id="qe-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
+        <div class="form-group" style="margin-top:10px">
+          <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span>Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger</span></span>
+            <!-- RUNDE V (Martins ønske: "AI indtaler til tilbud at jeg kan levere en
+                 note med alt data fra et kundebesøg") — se noteDictToggle() og
+                 POST /api/ai/clean-note. Tal ind, AI renser diktatet op til en pæn
+                 note og sætter den ind i feltet nedenfor (til gennemsyn/redigering,
+                 intet gemmes før du selv trykker "Gem"). -->
+            <button type="button" class="qz-icon-btn qe-note-mic-btn" id="qe-top-note-mic-btn" title="Diktér en note — fx alt fra et kundebesøg">🎤</button>
+          </label>
+          <textarea id="qe-top-note" class="input" rows="2" style="resize:vertical"></textarea>
+        </div>
 
         <!-- RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: vises kun når tilbuddet
              har mindst én faktura knyttet til sig, se renderQeInvoicingPanel(). -->
@@ -5809,7 +5849,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         </div>
       </div>
       <div class="qe-preview-wrap">
-        <div id="qe-preview" class="qe-pdf-page"></div>
+        <div class="qe-pdf-page" id="qe-preview-card">
+          <div id="qe-preview-loading" class="qe-preview-loading" hidden>Opdaterer…</div>
+          <iframe id="qe-preview" class="qe-pdf-iframe" title="Forhåndsvisning af PDF"></iframe>
+        </div>
       </div>
     </div>
   </div>
@@ -7946,13 +7989,21 @@ function renderCapacity(){
       var pills=items.map(function(b){
         var capacityOnly=isCapacityBooking(b);
         var label=capacityOnly?(b.capacity_label||b.task_name||'Kapacitetsreservation'):(b.job_name||b.task_name||'');
+        // RUNDE V — se CSS-kommentaren ved .cap-job-desc: labelen gemmes som ét
+        // sammensat "Fornavn — opgavebeskrivelse"-felt (capacity_label), splittes
+        // her igen til to viste linjer. Ingen " — " i teksten (fx ældre bookinger,
+        // eller "Kapacitetsreservation") → vises bare som én linje, som før.
+        var dashIdx=label.indexOf(' — ');
+        var labelName=dashIdx>-1?label.slice(0,dashIdx):label;
+        var labelDesc=dashIdx>-1?label.slice(dashIdx+3):'';
         var wd=workDates(b),overlapInThisWeek=wd.filter(function(ds){var q=date(ds);return q>=m&&q<=end;}).length;
         var daysThisWeek=Math.round((capDaysOf(b)/wd.length)*overlapInThisWeek*4)/4;
         return '<div class="cap-job '+(capacityOnly?'capacity-reservation':'draggable-assignment cap-job-task')+'" draggable="true" data-booking-id="'+b.id+'" title="'+esc(label)+' — '+daysThisWeek+' d denne uge (i alt '+capDaysOf(b)+' d) — træk for at flytte eller kopiere til en anden uge">'+
-          '<span class="cap-job-name">'+(capacityOnly?'◌ ':'')+esc(label)+'</span>'+
+          '<div class="cap-job-top"><span class="cap-job-name">'+(capacityOnly?'◌ ':'')+esc(labelName)+'</span>'+
           '<span class="cap-job-days">'+daysThisWeek+'d</span>'+
           (capacityOnly?'':'<button class="pill-copy" title="Kopiér" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>')+
-          '<button class="cap-job-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button>'+
+          '<button class="cap-job-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></div>'+
+          (labelDesc?'<div class="cap-job-desc">'+esc(labelDesc)+'</div>':'')+
           '</div>';
       }).join('');
       pills+='<button class="cap-add-btn" data-action="add-capacity" data-user-id="'+u.id+'" data-date="'+iso(m)+'">+ reservér</button>';
@@ -8014,6 +8065,14 @@ function populateCapacityUsers(selectedUid){
   var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
   document.getElementById('capacity-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'"'+(+u.id===+selectedUid?' selected':'')+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
 }
+// RUNDE V — se kommentaren ved capacity-label ovenfor. t.job_name er sagens/
+// kundens navn (typisk "Fornavn Efternavn", da sager altid oprettes med
+// kundens navn som titel), t.name er selve opgavens beskrivelse.
+function qeCapacityDefaultLabel(t){
+  var firstName=t.job_name?String(t.job_name).trim().split(/\s+/)[0]:'';
+  var taskDesc=t.name?String(t.name).trim():'';
+  return [firstName,taskDesc].filter(Boolean).join(' — ');
+}
 function openCapacityModal(opts){
   opts=opts||{};var b=opts.booking||null;var taskId=opts.taskId||(b&&b.task_id)||null;var t=taskId?tasks.find(function(x){return String(x.id)===String(taskId);}):null;
   capacityCtx={bookingId:b&&b.id||null,taskId:taskId};
@@ -8027,7 +8086,17 @@ function openCapacityModal(opts){
   var weekVal=iso(mon(date((b&&b.start_date)||opts.weekStart||iso(new Date()))));
   document.getElementById('capacity-week').innerHTML=capacityWeekOptions(weekVal);
   document.getElementById('capacity-days').value=b?capDaysOf(b):1;
-  document.getElementById('capacity-label').value=b?(b.capacity_label||''):(t?'': 'Kapacitetsreservation');
+  // RUNDE V (Martins ønske: "skal den huske fornavnet på kunden og så opgave
+  // beskrivelsen") — feltet startede FØR helt tomt når man bookede en sags-opgave
+  // (t sat), selvom serveren i virkeligheden ALTID selv fandt på et navn bagved
+  // kulissen hvis feltet blev sendt tomt (job_name — opgavenavn, se
+  // POST /api/capacity-reservations i server.js) — usynligt for Martin, som bare
+  // så et tomt felt og troede intet blev husket. Forudfylder nu det samme (synligt,
+  // redigerbart) her: kundens fornavn (første ord i sagens navn/job_name — sager
+  // oprettes altid med kundens navn som titel, se qePickCustomer) + selve
+  // opgavebeskrivelsen, så det man ser i Kapacitetsbordets bookinger bagefter
+  // faktisk er genkendeligt uden at skulle åbne opgaven igen.
+  document.getElementById('capacity-label').value=b?(b.capacity_label||''):(t?qeCapacityDefaultLabel(t):'Kapacitetsreservation');
   document.getElementById('capacity-note').value=b&&b.notes||'';
   document.getElementById('delete-capacity').classList.toggle('hidden',!b);
   // FEJL RETTET: her stod tidligere kun den uge reservationen var trukket til — uden
@@ -17173,6 +17242,8 @@ function crmpxInitOnce(){
   document.getElementById('crmpx-quote-btn').addEventListener('click',crmpxOpenQuote);
   document.getElementById('crmpx-delete-btn').addEventListener('click',crmpxDelete);
   document.getElementById('crmpx-note-add-btn').addEventListener('click',crmpxAddNote);
+  // RUNDE V — note-diktering på CRM-aktivitetsnoten (se noteDictToggle).
+  document.getElementById('crmpx-note-new-mic-btn').addEventListener('click',function(){noteDictToggle('crmpx-note-new','crmpx-note-new-mic-btn');});
   document.getElementById('crmpx-task-add-btn').addEventListener('click',crmpxAddTask);
   document.getElementById('crmpx-task-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddTask();});
   // Note-boksen i Aktivitet-panelet er nu en <textarea> (Martins ønske om plads
@@ -18035,7 +18106,7 @@ async function crmpxOpenQuote(){
   // "Vundet" automatisk når tilbuddet senere accepteres.
   // RUNDE T — se qe-crm-note-panel: giver tilbudseditoren kortets EGEN note og
   // navn med det samme, uden et ekstra API-kald (d er allerede hele kortets data).
-  openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:name||'',phone:phone||'',email:email||'',address:address||'',crmEntityType:ent.type,crmEntityId:ent.id,crmEntityName:d.name||name||'',note:d.note||''});
+  openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:name||'',phone:phone||'',email:email||'',address:address||'',crmEntityType:ent.type,crmEntityId:ent.id,crmEntityName:d.name||name||'',note:qeCombineCrmNote(d)});
 }
 async function crmpxDelete(){
   var ent=crmpDetailEntity;
@@ -21069,6 +21140,28 @@ function qeRenderCrmNotePanel(note,entityType,entityName){
   document.getElementById('qe-crm-note-text').textContent=note;
   panel.style.display='';
 }
+// RUNDE V (Martins ønske: "Jeg kan ikke få CRM noten til at virke selvom jeg
+// gør det under en handel der er tilknyttet") — der viser sig at være TO helt
+// forskellige "note"-felter på et lead/en handel: det lille 2-linjers "📝
+// Note"-felt i "Om"-panelet (crmpx-note, lead/opportunity.note — det ENESTE
+// qe-crm-note-panel viste før), og den langt mere fremtrædende "Aktivitet"-
+// boks i højre kolonne (crmpx-note-new), som i virkeligheden gemmer i
+// crm_activities (kind='note') — en helt separat tidslinje. De fleste,
+// inklusiv Martin, skriver tydeligvis i den sidste. Kombinerer nu BEGGE
+// kilder: det fastgjorte notefelt (hvis udfyldt) efterfulgt af de seneste
+// aktivitets-noter (nyeste øverst, med dato), så uanset hvilken af de to
+// bokse man bruger, dukker den op i tilbudseditoren.
+function qeCombineCrmNote(d){
+  var parts=[];
+  if(d&&d.note&&String(d.note).trim())parts.push(String(d.note).trim());
+  if(d&&Array.isArray(d.activities)){
+    d.activities.filter(function(a){return a.kind==='note'&&a.body&&String(a.body).trim();}).forEach(function(a){
+      var dt=(a.created_at||'').slice(0,10);
+      parts.push((dt?'['+dt+'] ':'')+String(a.body).trim());
+    });
+  }
+  return parts.join('\n\n');
+}
 async function openQuoteEditor(id,prefillCustomer){
   // directInvoice=false nulstilles her hver gang — se openDirectInvoiceEditor()
   // nedenfor, som sætter den til true EFTER dette kald. qe-status-select og
@@ -21367,6 +21460,80 @@ async function qeAiReviewConfirm(){
   closeModal('qe-ai-review-modal');
   toast(chosen.length+' linje(r) tilføjet'+(created?' · '+created+' nyt produkt oprettet':''),'✓');
 }
+// ── GENERISK NOTE-DIKTERING (RUNDE V, Martins ønske: "Opsæt AI indtaler til
+// tilbud at jeg kan levere en note med alt data fra et kundebesøg... tilføj
+// også at man ved noter under leads og under sale kan snakke til noten") ──
+// Samme Web Speech API-optagelse som linje-dikteringen ovenfor (qeAiToggleListen),
+// men her sendes diktatet til POST /api/ai/clean-note, som beder AI'en rense
+// talesprog/gentagelser op til en pæn note-tekst UDEN at ændre selve indholdet
+// (mål, priser, aftaler bevares præcist). Den rensede tekst sættes ind i det
+// angivne tekstfelt til gennemsyn — INTET gemmes automatisk, samme "bekræft
+// selv bagefter"-princip som linje-dikteringen. Genbrugelig på tværs af flere
+// felter (tilbuddets "Note i toppen", CRM-aktivitetsnoten) via ét lille
+// state-objekt, ligesom qeAiState — kun ét dikteringsfelt kan være aktivt ad gangen.
+var noteDictState={recognition:null,listening:false,finalTranscript:'',textareaId:null,btnId:null};
+function noteDictSupported(){return!!(window.SpeechRecognition||window.webkitSpeechRecognition);}
+function noteDictToggle(textareaId,btnId){
+  if(noteDictState.listening){noteDictStopAndInsert();return;}
+  if(!noteDictSupported()){toast('Talediktering kræver Chrome eller Edge','⚠️');return;}
+  var Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
+  var rec=new Rec();
+  rec.lang='da-DK';rec.continuous=true;rec.interimResults=true;
+  noteDictState.finalTranscript='';
+  noteDictState.textareaId=textareaId;
+  noteDictState.btnId=btnId;
+  rec.onresult=function(e){
+    for(var i=e.resultIndex;i<e.results.length;i++){
+      var res=e.results[i];
+      if(res.isFinal)noteDictState.finalTranscript+=res[0].transcript+' ';
+    }
+  };
+  rec.onerror=function(e){
+    if(e.error!=='no-speech'&&e.error!=='aborted'){toast('Mikrofonfejl: '+e.error,'❌');noteDictCancel();}
+  };
+  rec.onend=function(){
+    // Nogle browsere lukker forbindelsen efter lang stilhed selvom continuous=true —
+    // genstart lytningen frem for at tabe optagelsen, medmindre brugeren selv har stoppet.
+    if(noteDictState.listening){try{rec.start();}catch(e){}}
+  };
+  noteDictState.recognition=rec;
+  noteDictState.listening=true;
+  try{rec.start();}catch(e){toast('Kunne ikke starte mikrofonen','❌');noteDictState.listening=false;return;}
+  var btn=document.getElementById(btnId);
+  if(btn){btn.textContent='⏹';btn.classList.add('recording');btn.title='Stop optagelse';}
+  toast('Optager... tal frit, klik 🎤 igen når du er færdig','🎤');
+}
+function noteDictCancel(){
+  if(noteDictState.recognition){try{noteDictState.recognition.stop();}catch(e){}noteDictState.recognition=null;}
+  noteDictState.listening=false;
+  var btn=noteDictState.btnId&&document.getElementById(noteDictState.btnId);
+  if(btn){btn.textContent='🎤';btn.classList.remove('recording');btn.title='Diktér en note';}
+}
+async function noteDictStopAndInsert(){
+  var rec=noteDictState.recognition;
+  noteDictState.listening=false; // sættes FØR stop(), ellers genstarter onend()-handleren ovenfor den
+  if(rec){try{rec.stop();}catch(e){}}
+  var btn=noteDictState.btnId&&document.getElementById(noteDictState.btnId);
+  var ta=noteDictState.textareaId&&document.getElementById(noteDictState.textareaId);
+  if(btn){btn.textContent='🎤';btn.classList.remove('recording');btn.title='Diktér en note';}
+  var transcript=noteDictState.finalTranscript.trim();
+  if(!transcript){toast('Intet blev opfanget — prøv igen','⚠️');return;}
+  if(!ta)return;
+  if(btn){btn.disabled=true;btn.textContent='✨';}
+  var r=await api('/api/ai/clean-note',{method:'POST',body:JSON.stringify({transcript:transcript})});
+  if(btn){btn.disabled=false;btn.textContent='🎤';}
+  if(r&&r.ok&&r.text){
+    ta.value=(ta.value.trim()?ta.value.trim()+'\n\n':'')+r.text;
+    toast('Note tilføjet fra diktat — tjek den lige igennem ✓','🎤');
+  }else{
+    // Falder tilbage til det rå (urensede) diktat i stedet for at tabe optagelsen —
+    // fx hvis ANTHROPIC_API_KEY mangler på serveren (se fejlbesked i toast).
+    ta.value=(ta.value.trim()?ta.value.trim()+'\n\n':'')+transcript;
+    toast((r&&r.error?r.error+' — ':'')+'Indsatte det rå diktat i stedet','⚠️');
+  }
+  ta.dispatchEvent(new Event('input',{bubbles:true}));
+  ta.focus();
+}
 function qeComputeTotals(){
   var docDiscountPct=Number(document.getElementById('qe-doc-discount').value)||0;
   var docDiscountType=document.getElementById('qe-doc-discount-type').value==='fixed'?'fixed':'pct';
@@ -21432,48 +21599,53 @@ function qeRenderTotals(){
     +'</div>';
   return t;
 }
-function qeRenderPreview(){
+// RUNDE V (Martins ønske: "PDF filen virker, men ikke live view") — se den
+// store kommentar ved POST /api/quotes/preview-pdf i server.js. Bygger den
+// samme body-form som når tilbuddet gemmes, sender den til
+// preview-pdf-endpointet (INTET gemmes i databasen), og viser den ægte PDF
+// (samme drawDocumentPdf som den rigtige PDF) i #qe-preview-iframe'et —
+// garanterer at forhåndsvisningen og PDF'en kunden får ALDRIG kan gå ud af
+// trit igen (før var det to helt separate, håndbyggede layouts).
+function qeBuildPreviewBody(){
   var t=qeComputeTotals();
-  var docNum=qeState.quoteNumber||'Udkast';
-  var todayStr=new Date().toLocaleDateString('da-DK');
-  var addrLines=[settings.company_address,settings.company_cvr?('CVR '+settings.company_cvr):'',settings.company_phone,settings.company_email].filter(Boolean);
-  var custName=document.getElementById('qe-customer-search').value.trim();
-  var custAddr=document.getElementById('qe-customer-address').value.trim();
-  var custPhone=document.getElementById('qe-customer-phone').value.trim();
-  var custEmail=document.getElementById('qe-customer-email').value.trim();
-  var validUntil=document.getElementById('qe-valid-until').value;
-  var notes=document.getElementById('qe-notes').value.trim();
-  var topNote=document.getElementById('qe-top-note').value.trim();
-  var rowsHtml=qeState.lines.map(function(l){
-    if(l.line_type==='text'){
-      return '<tr><td colspan="5" style="padding:8px 0;border-top:none"><div class="qe-divider-row">'+esc(l.description||'')+'</div></td></tr>';
-    }
-    var qty=Number(l.quantity)||0,disc=Number(l.discount_pct)||0;
-    var gross=qty*(Number(l.sell_price)||0);
-    var lineDiscAmt=qzLineDiscountAmount(l,gross);
-    var lineTotal=gross-lineDiscAmt;
-    // RUNDE T (Martins ønske: "kan det ikke stå mere tydeligt at der rabat og
-    // i sin egen Collum ... Så måske man kan se hvor mange kr i alt også") —
-    // egen kolonne, rød tekst, viser BÅDE satsen og selve kr-beløbet, i stedet
-    // for at klistre " (-15%)" bag på Antal-cellen.
-    var discCell=disc?('<span class="qe-pdf-disc">-'+(l.discount_type==='fixed'?krFmt(disc):disc+'%')+' (-'+krFmt(lineDiscAmt)+')</span>'):'';
-    return '<tr><td>'+qzLineDescCellHtml(l)+'</td><td class="num">'+qty+' '+esc(l.unit||'')+'</td><td class="num">'+discCell+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lineTotal)+'</td></tr>';
-  }).join('')||'<tr><td colspan="5" style="text-align:center;color:#9CA3AF;padding:14px">Ingen linjer endnu</td></tr>';
-  document.getElementById('qe-preview').innerHTML=
-     '<div class="qe-pdf-head">'
-    +'<div style="display:flex;align-items:center;gap:8px">'+(settings.logo_url?'<img src="'+settings.logo_url+'" style="max-width:200px;max-height:82px;object-fit:contain;flex-shrink:0">':'')+'<div><div class="qe-pdf-company">'+esc(settings.company_name||'Gulv Master Enterprise ApS')+'</div><div class="qe-pdf-company-sub">'+addrLines.map(function(l){return esc(l);}).join('<br>')+'</div></div></div>'
-    +'<div><div class="qe-pdf-doctype">'+(qeState.directInvoice?'FAKTURA':'TILBUD')+'</div><div class="qe-pdf-docnum">'+(qeState.directInvoice?'Udkast':esc(docNum))+'</div><div class="qe-pdf-meta">Dato: '+todayStr+(validUntil?'<br>Gyldig til: '+esc(validUntil):'')+'</div></div>'
-    +'</div>'
-    +'<div class="qe-pdf-to"><b>Til:</b><br>'+(custName?esc(custName)+'<br>':'')+(custAddr?esc(custAddr)+'<br>':'')+(custPhone?'Tlf. '+esc(custPhone)+'<br>':'')+(custEmail?esc(custEmail):'')+'</div>'
-    +(topNote?'<div class="qe-pdf-notes" style="margin:6px 0 10px">'+topNote+'</div>':'')
-    +'<table class="qe-pdf-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Rabat</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'
-    +'<div class="qe-pdf-totals">'
-    +(t.discountAmount>0?'<div class="qe-pdf-totals-row"><span>Rabat ('+(t.docDiscountType==='fixed'?krFmt(t.docDiscountPct):t.docDiscountPct+'%')+')</span><span>-'+krFmt(t.discountAmount)+'</span></div>':'')
-    +'<div class="qe-pdf-totals-row"><span>Subtotal</span><span>'+krFmt(t.subtotal)+'</span></div>'
-    +'<div class="qe-pdf-totals-row"><span>Moms ('+t.taxRate+'%)</span><span>'+krFmt(t.taxAmount)+'</span></div>'
-    +'<div class="qe-pdf-totals-row grand"><span>Total</span><span>'+krFmt(t.total)+'</span></div>'
-    +'</div>'
-    +(notes?'<div class="qe-pdf-notes">'+notes+'</div>':'');
+  return {
+    kind:qeState.directInvoice?'invoice':'quote',
+    doc_number:qeState.quoteNumber||null,
+    job_name:document.getElementById('qe-customer-search').value.trim(),
+    customer_address:document.getElementById('qe-customer-address').value.trim(),
+    customer_phone:document.getElementById('qe-customer-phone').value.trim(),
+    customer_email:document.getElementById('qe-customer-email').value.trim(),
+    valid_until:document.getElementById('qe-valid-until').value||null,
+    top_note:document.getElementById('qe-top-note').value,
+    notes:document.getElementById('qe-notes').value,
+    tax_rate:qeState.taxRate,
+    discount_pct:t.docDiscountPct,
+    discount_type:t.docDiscountType,
+    lines:qeState.lines
+  };
+}
+var qePreviewBlobUrl=null,qePreviewReqSeq=0;
+async function qeRenderPreview(){
+  var mySeq=++qePreviewReqSeq;
+  var loadingEl=document.getElementById('qe-preview-loading');
+  if(loadingEl)loadingEl.hidden=false;
+  try{
+    var body=qeBuildPreviewBody();
+    var res=await fetch(API+'/api/quotes/preview-pdf',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(mySeq!==qePreviewReqSeq)return; // en nyere forhåndsvisning er allerede undervejs/vist — dropper dette forældede svar
+    if(!res.ok)throw new Error('preview-pdf fejlede: '+res.status);
+    var blob=await res.blob();
+    if(mySeq!==qePreviewReqSeq)return;
+    var url=URL.createObjectURL(blob);
+    var oldUrl=qePreviewBlobUrl;
+    qePreviewBlobUrl=url;
+    document.getElementById('qe-preview').src=url;
+    if(oldUrl)setTimeout(function(){URL.revokeObjectURL(oldUrl);},1500);
+  }catch(e){
+    console.error('Kunne ikke opdatere tilbuds-forhåndsvisningen',e);
+  }finally{
+    if(mySeq===qePreviewReqSeq&&loadingEl)loadingEl.hidden=true;
+  }
 }
 // RUNDE U (Martins ønske: "Note se tilbuddet når det bliver for
 // stort/langt så kan din Live viewer ikke følge med") — qeRecalc() køres på
@@ -21488,7 +21660,11 @@ function qeRenderPreview(){
 function qeRecalc(){
   qeRenderTotals();
   clearTimeout(qePreviewRenderTimer);
-  qePreviewRenderTimer=setTimeout(qeRenderPreview,150);
+  // 350ms — forhåndsvisningen kalder nu en rigtig server-tur (samme ægte
+  // PDF-tegning som den endelige fil), så lidt længere pause end de gamle
+  // 150ms (som kun gentegnede lokal HTML) for ikke at spamme serveren mens
+  // man taster i en linje.
+  qePreviewRenderTimer=setTimeout(qeRenderPreview,350);
 }
 function qeRunCustomerSearch(q){
   var box=document.getElementById('qe-customer-results');
@@ -21538,7 +21714,7 @@ async function qePickCrmLink(x){
   // Henter selve noten (ikke med i søgeresultatet) så qe-crm-note-panel kan
   // vise den med det samme, uden at man først skal gemme og genåbne tilbuddet.
   var full=await api('/api/crm/'+(x.type==='lead'?'leads':'opportunities')+'/'+x.id);
-  qeRenderCrmNotePanel(full&&!full.error?full.note:'',x.type,x.name);
+  qeRenderCrmNotePanel(full&&!full.error?qeCombineCrmNote(full):'',x.type,x.name);
 }
 function qeUnlinkCrm(){
   qeState.crmEntityType=null;qeState.crmEntityId=null;qeState.crmEntityName=null;
@@ -22218,6 +22394,8 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-status-select').addEventListener('change',qeStatusChanged);
   document.getElementById('qe-pdf-link').addEventListener('click',function(e){e.preventDefault();if(qeState.id)qzOpenPdf('/api/quotes/'+qeState.id+'/pdf');});
   document.getElementById('qe-ai-mic-btn').addEventListener('click',qeAiToggleListen);
+  // RUNDE V — note-diktering på tilbuddets "Note i toppen" (se noteDictToggle).
+  document.getElementById('qe-top-note-mic-btn').addEventListener('click',function(){noteDictToggle('qe-top-note','qe-top-note-mic-btn');});
   document.getElementById('qe-ai-stop-btn').addEventListener('click',qeAiStopAndParse);
   document.getElementById('qe-ai-cancel-btn').addEventListener('click',qeAiCancel);
   document.getElementById('qe-ai-review-cancel').addEventListener('click',function(){closeModal('qe-ai-review-modal');});

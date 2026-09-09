@@ -1281,6 +1281,23 @@ async function initSchema() {
     ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS email_enabled INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS email_subject TEXT;
     ALTER TABLE crm_stages ADD COLUMN IF NOT EXISTS email_body TEXT;
+    -- RUNDE V (Martins ønske: "opsæt automation mail når du har vundet en
+    -- opgave") — selve motoren (email_enabled/email_body pr. stage,
+    -- crmFireStageAutomation) fandtes allerede fra RUNDE S og udløses
+    -- automatisk hver gang crmMoveEntityToWonStage() rykker et kort til en
+    -- "Vundet"-stage (is_won=1) — men INGEN "Vundet"-stage havde reelt fået
+    -- en mail-skabelon sat op endnu, så der blev aldrig sendt noget i praksis.
+    -- Sætter nu en fornuftig standardskabelon på enhver "Vundet"-stage der
+    -- endnu ikke har én — KUN når email_body er tom, så et kørsel her ALDRIG
+    -- overskriver noget Martin selv har rettet i mellemtiden. Fuldt
+    -- redigerbar bagefter under CRM → ⚙ Indstillinger → Pipelines, ligesom
+    -- enhver anden stage-automatik ({{navn}}/{{firma}} m.fl. — se
+    -- fillDocEmailVars/crmFireStageAutomation).
+    UPDATE crm_stages SET
+      email_enabled = 1,
+      email_subject = 'Tillykke — vi har vundet opgaven! 🎉',
+      email_body = '<p>Hej {{navn}},</p><p>Super nyhed — I har sagt ja til tilbuddet, og opgaven er nu markeret som <strong>vundet</strong> hos {{firma}}! 🎉</p><p>Vi glæder os til at komme i gang og sætter snarest en tidsplan for jer.</p><p>Har I spørgsmål i mellemtiden, er I altid velkomne til at ringe eller skrive.</p><p>Mange hilsner<br>{{firma}}</p>'
+    WHERE is_won = 1 AND (email_body IS NULL OR email_body = '');
     -- Tidsbaserede opfølgninger pr. stage (adskilt fra sms_enabled/email_enabled
     -- ovenfor, som kun fyrer ÉN gang når man LANDER i stagen) — Martins ønske om
     -- fx "7 dage i Tilbud Afgivet uden bevægelse: SMS+mail, 14 dage: mail,
@@ -13306,6 +13323,37 @@ app.post('/api/quotes/ai-parse-lines', auth, panelAccess('quotes'), asyncRoute(a
   res.json({ ok: true, lines });
 }));
 
+// RUNDE V (Martins ønske: "Opsæt AI indtaler til tilbud at jeg kan levere en
+// note med alt data fra et kundebesøg... tilføj også at man ved noter under
+// leads og under sale kan snakke til noten") — genbruger samme browser-side
+// Web Speech-optagelse som linje-dikteringen ovenfor (se noteDictToggle() i
+// admin.html), men i stedet for at dele diktatet op i tilbudslinjer/produkter
+// beder vi her AI'en rense talesprog/gentagelser/øh'er op til en pæn,
+// sammenhængende note-tekst, UDEN at fjerne eller opdigte faktuelle detaljer
+// (mål, m2, farver, materialer, aftaler, priser). Bruges bredt (tilbuddets
+// "Note i toppen" OG CRM-aktivitetsnoten på leads/handler), derfor kun almindelig
+// auth, ikke bundet til ét specifikt panels adgang.
+app.post('/api/ai/clean-note', auth, asyncRoute(async (req, res) => {
+  const transcript = String((req.body && req.body.transcript) || '').trim();
+  if (!transcript) return res.status(400).json({ error: 'Ingen tale/tekst modtaget' });
+  const systemPrompt = 'Du hjælper en dansk gulvfirma-medarbejder (Gulv Master) med at rense et talt diktat op til en pæn, skriftlig note — fx noter fra et kundebesøg.\n'
+    + 'Ret talesprogs-fyldord ("øh", "altså", gentagelser, afbrudte sætninger) og gør sproget til flydende, professionelt skriftsprog.\n'
+    + 'Bevar ALTID alle faktuelle detaljer nøjagtigt som nævnt — mål/m2, farver, materialer, produktnavne, aftaler, deadlines, priser, navne. Opdigt eller udelad ALDRIG noget.\n'
+    + 'Del op i korte afsnit hvis det er naturligt (fx ét afsnit pr. emne), men tilføj ingen overskrifter, punktopstilling eller kommentarer om selve teksten.\n'
+    + 'Svar KUN med gyldig JSON på formen {"text": "<den rensede note>"} — ingen forklaring, ingen kodeblok-hegn.';
+  const userPrompt = 'DIKTAT:\n' + transcript;
+  let parsed;
+  try {
+    parsed = await callAnthropicJSON(systemPrompt, userPrompt);
+  } catch (e) {
+    await logSystemEvent('ai_clean_note', 'error', 'AI-note-oprydning fejlede: ' + e.message);
+    return res.status(e.isConfig ? 501 : 502).json({ error: e.message });
+  }
+  const text = String((parsed && parsed.text) || '').trim();
+  if (!text) return res.status(502).json({ error: 'AI-svaret indeholdt ingen tekst' });
+  res.json({ ok: true, text });
+}));
+
 // ── AKKORDLISTE (sep. 2026) — global prisliste til stykløn, se akkord_items i
 // migrations-blokken. Læses af tidsregistrerings-modalen (panelAccess('projects') er
 // nok til det — medarbejdere der logger tid skal kunne se posterne), men kun en ægte
@@ -13480,6 +13528,31 @@ app.delete('/api/quote-templates/:id', auth, panelAccess('quotes'), asyncRoute(a
 // skriver på selve kanban-kortet, IKKE tilbuddets egen top_note som kunden ser)
 // som crm_entity_note/crm_entity_name/crm_entity_type, så tilbudseditoren kan
 // vise den i et skrivebeskyttet panel — se qeRenderCrmNote() i admin.html.
+// RUNDE V (Martins ønske: "Jeg kan ikke få CRM noten til at virke selvom jeg
+// gør det under en handel der er tilknyttet") — se qeCombineCrmNote() i
+// admin.html for den fulde forklaring: et lead/en handel har i praksis TO
+// forskellige "note"-steder — det fastgjorte enkeltfelt (crm_leads/
+// crm_opportunities.note) og den langt mere brugte "Aktivitet"-tidslinje
+// (crm_activities, kind='note'). Kombinerer nu begge her også, så en
+// GENÅBNET/gemt tilbud viser nøjagtig samme note som når tilbuddet lige er
+// oprettet fra kortet (se qeCombineCrmNote i admin.html for klient-siden af
+// det samme, brugt ved fælles/manuel tilknytning).
+async function getCrmEntityCombinedNote(entityType, entityId) {
+  const table = entityType === 'lead' ? 'crm_leads' : 'crm_opportunities';
+  const row = await pgOne(`SELECT note FROM ${table} WHERE id=$1`, [entityId]);
+  const parts = [];
+  if (row && row.note && String(row.note).trim()) parts.push(String(row.note).trim());
+  const notes = await pool.query(
+    `SELECT body, created_at FROM crm_activities WHERE entity_type=$1 AND entity_id=$2 AND kind='note' ORDER BY created_at DESC, id DESC LIMIT 8`,
+    [entityType, entityId]
+  );
+  notes.rows.forEach((a) => {
+    if (!a.body || !String(a.body).trim()) return;
+    const d = String(a.created_at || '').slice(0, 10);
+    parts.push((d ? `[${d}] ` : '') + String(a.body).trim());
+  });
+  return parts.join('\n\n');
+}
 async function loadQuoteFull(id) {
   const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [id]);
   if (!quote) return null;
@@ -13487,11 +13560,11 @@ async function loadQuoteFull(id) {
   let crmEntityNote = null, crmEntityName = null, crmEntityType = null;
   try {
     if (quote.crm_lead_id) {
-      const lead = await pgOne('SELECT name, note FROM crm_leads WHERE id=$1', [quote.crm_lead_id]);
-      if (lead) { crmEntityNote = lead.note || null; crmEntityName = lead.name; crmEntityType = 'lead'; }
+      const lead = await pgOne('SELECT name FROM crm_leads WHERE id=$1', [quote.crm_lead_id]);
+      if (lead) { crmEntityNote = await getCrmEntityCombinedNote('lead', quote.crm_lead_id); crmEntityName = lead.name; crmEntityType = 'lead'; }
     } else if (quote.crm_opportunity_id) {
-      const opp = await pgOne('SELECT name, note FROM crm_opportunities WHERE id=$1', [quote.crm_opportunity_id]);
-      if (opp) { crmEntityNote = opp.note || null; crmEntityName = opp.name; crmEntityType = 'opportunity'; }
+      const opp = await pgOne('SELECT name FROM crm_opportunities WHERE id=$1', [quote.crm_opportunity_id]);
+      if (opp) { crmEntityNote = await getCrmEntityCombinedNote('opportunity', quote.crm_opportunity_id); crmEntityName = opp.name; crmEntityType = 'opportunity'; }
     }
   } catch (e) { console.error('Kunne ikke hente CRM-note til tilbud #' + id + ':', e.message); }
   return { ...quote, lines: lines.rows, crm_entity_note: crmEntityNote, crm_entity_name: crmEntityName, crm_entity_type: crmEntityType };
@@ -14507,6 +14580,59 @@ app.get('/api/quotes/:id/pdf', auth, panelAccess('quotes'), asyncRoute(async (re
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   doc.pipe(res);
   drawDocumentPdf(doc, 'quote', quote, company);
+  doc.end();
+}));
+
+// RUNDE V (Martins ønske: "PDF filen virker, men ikke live view" — efter RUNDE
+// U's rettelse af selve PDF-genereringens sideskift stod tilbudseditorens
+// venstre forhåndsvisning tilbage som en HELT ANDEN, håndbygget HTML-visning
+// (qeRenderPreview i admin.html), der aldrig har vist sideskift/paginering og
+// derfor uundgåeligt driver væk fra hvordan den RIGTIGE PDF faktisk ser ud —
+// præcis det Martin oplevede. I stedet for at vedligeholde to parallelle
+// implementationer af tilbuds-layoutet (der før eller siden altid vil gå ud
+// af trit igen), genbruger forhåndsvisningen nu den ÆGTE drawDocumentPdf()
+// direkte, på et tilbud/faktura der ALDRIG gemmes i databasen — kun
+// beregnet i hukommelsen ud fra det admin.html sender (samme form som
+// POST /api/quotes' body). Kaldes debounced fra admin.html og vises i et
+// <iframe> i stedet for den gamle håndbyggede forhåndsvisnings-HTML — se
+// qeRenderPreview()/qeBuildPreviewBody() i admin.html.
+app.post('/api/quotes/preview-pdf', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const company = await getCompanyInfo();
+  const kind = b.kind === 'invoice' ? 'invoice' : 'quote';
+  const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : company.defaultTaxRate;
+  const discountPct = Number(b.discount_pct) || 0;
+  const discountType = b.discount_type === 'fixed' ? 'fixed' : 'pct';
+  const totals = computeTotals(b.lines || [], taxRate, { value: discountPct, type: discountType });
+  const docNumber = b.doc_number || 'Udkast';
+  const record = {
+    quote_number: docNumber,
+    invoice_number: docNumber,
+    created_at: new Date().toISOString(),
+    valid_until: b.valid_until || null,
+    due_date: b.due_date || null,
+    top_note: b.top_note ? sanitizeRichText(b.top_note) : null,
+    notes: b.notes ? sanitizeRichText(b.notes) : null,
+    job_name: b.job_name || '',
+    customer_address: b.customer_address || '',
+    customer_phone: b.customer_phone || '',
+    customer_email: b.customer_email || '',
+    lines: b.lines || [],
+    subtotal: totals.subtotal,
+    tax_rate: taxRate,
+    tax_amount: totals.taxAmount,
+    total: totals.total,
+    discount_pct: discountPct,
+    discount_type: discountType,
+    status: 'draft',
+    paid_total: 0,
+    remaining: totals.total
+  };
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', 'inline; filename="forhaandsvisning.pdf"');
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  doc.pipe(res);
+  drawDocumentPdf(doc, kind, record, company);
   doc.end();
 }));
 
