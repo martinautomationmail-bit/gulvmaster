@@ -185,6 +185,48 @@ body.sidebar-collapsed .sidebar-logout-btn{justify-content:center;padding-left:0
   body.sidebar-mobile-open .sidebar{width:250px!important;box-shadow:0 0 44px rgba(17,19,24,.4)}
   .sidebar-mobile-backdrop{display:none;position:fixed;inset:0;background:rgba(17,19,24,.45);z-index:840}
   body.sidebar-mobile-open .sidebar-mobile-backdrop{display:block}
+  /* RUNDE V (fortsat, Martins ønske: "på tlf har du lavet en header den
+     forsvinder når man blader igennem") — position:sticky kan i visse mobil-
+     browsere miste sin "klæbning" (afhænger af forælder-elementers scroll-
+     kontekst, som her er flex-layoutet omkring sidebaren, og af at adresse-
+     linjen viser/skjuler sig under scroll). position:fixed er IKKE afhængig
+     af nogen forælders scroll-kontekst overhovedet — den kan derfor aldrig
+     "forsvinde" på samme måde, uanset hvilken side eller hvor langt man har
+     scrollet. app-content får en tilsvarende top-padding, så indholdet ikke
+     lander under den nu fastgjorte header — se --mobile-header-h/
+     syncStickyOffsets() i JS'en, som holder padding'en korrekt selv når
+     prioritets-banneret vises/skjules og ændrer headerens højde. */
+  .app-header-sticky{position:fixed;top:0;left:0;right:0;width:100%}
+  .app-content{padding-top:var(--mobile-header-h,52px)}
+  /* RUNDE V (fortsat, Martins ønske: "sindsygt mange ting der ikke er mobil
+     venlig") — brede tabeller (Tilbud, Fakturaer, Produkter, Kunder, ...)
+     tvang hele siden ud i vandret scroll på en telefon, fordi <table> ikke
+     krymper under sit eget indholds naturlige bredde. display:block gør
+     tabellen til sin EGEN vandret-scrollbare boks, så det kun er TABELLEN
+     der scroller sidelæns, ikke hele siden/headeren — samme princip som
+     #plan-board-outer/#capacity-scroll allerede bruger for deres tavler. */
+  table.bly-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+  table.bly-table thead,table.bly-table tbody,table.bly-table tr{display:table;width:100%;table-layout:auto}
+  /* Søgefelter har flere steder en FAST pixel-bredde sat inline (fx
+     #proj-search style="width:280px") — fint på computer, men på en smal
+     telefon tvang den faste bredde hele værktøjslinjen (og dermed siden)
+     bredere end skærmen. !important fordi inline style ellers altid vinder. */
+  input.bly-search{width:100%!important;max-width:100%!important}
+  /* Fane-striben øverst på fx Projekter (Projekter/Gantt/KS-skabeloner/
+     Kontaktformularer) bruger .bly-segtabs med flex + fast gap uden
+     ombrydning — på en smal telefon skubbede sidste fane (fx "📇
+     Kontaktformularer") stribens bredde ud over skærmkanten og gjorde
+     hele siden vandret scrollbar. flex-wrap lader fanerne knække til
+     flere linjer i stedet for at presse siden bredere. */
+  .bly-segtabs{flex-wrap:wrap;row-gap:8px}
+  /* Værktøjslinjen over tilbuds-/faktura-linjerne (+ Tilføj linje / +
+     Tekstlinje / Gem som skabelon / Indsæt skabelon) er en flex-række UDEN
+     ombrydning, og selve knap-wrapperen har det samme sat som inline style
+     (som ellers altid vinder over en CSS-klasse — deraf !important her).
+     På en telefon skubbede de fire knapper tilbudseditoren ud i vandret
+     scroll; nu knækker knapperne pænt til flere linjer i stedet. */
+  .qe-lines-head{flex-wrap:wrap;row-gap:8px}
+  .qe-lines-head>div{flex-wrap:wrap!important;row-gap:6px}
 }
 
 .nb{border:1px solid rgba(255,255,255,.23);background:rgba(255,255,255,.1);color:#fff;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap}
@@ -226,7 +268,8 @@ body.sidebar-collapsed .sidebar-logout-btn{justify-content:center;padding-left:0
 #page-finance select.fin-status.st-unpaid{background:#FEF2F2;color:#B91C1C;border-color:#FECACA}
 #page-finance select.fin-status.st-unclear{background:#FEF3C7;color:#92400E;border-color:#FDE68A}
 #page-finance select.fin-status.st-partial{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
-.fin-header-banner{display:flex;align-items:center;gap:16px;padding:20px 26px;background:linear-gradient(135deg,#003509,#00220a);border-radius:16px;color:#fff;margin-bottom:18px;box-shadow:0 10px 30px rgba(0,53,9,.18)}
+.fin-header-banner{display:flex;align-items:center;gap:16px;padding:20px 26px;background:linear-gradient(135deg,#003509,#00220a);border-radius:16px;color:#fff;margin-bottom:18px;box-shadow:0 10px 30px rgba(0,53,9,.18);flex-wrap:wrap}
+.fin-header-banner>div[style*="flex:1"]{min-width:180px}
 .fin-header-logo{width:42px;height:42px;border-radius:11px;background:#7BE495;color:#003509;display:grid;place-items:center;font-weight:900;font-size:16px;flex-shrink:0}
 .fin-header-title{font-size:21px;font-weight:800;line-height:1.2}
 .fin-header-sub{font-size:11.5px;color:rgba(255,255,255,.65);margin-top:3px}
@@ -1329,10 +1372,23 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-note-mic-btn:disabled{opacity:.55;cursor:default}
 @keyframes qeNoteMicPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}
 .qz-icon-btn:hover{background:var(--bly-hover);border-color:var(--bly-accent)}
-.qe-body{display:grid;grid-template-columns:1.35fr 1fr;gap:18px;flex:1;min-height:0;padding:18px 22px;overflow:hidden}
-.qe-editor,.qe-preview-wrap{overflow:auto;background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:20px}
+/* RUNDE V (fortsat, Martins ønske: "hver tilbud får en side ... får du også
+   mere skærm plads") — qe-body sad før i en FAST-højde modal (92vh, med to
+   uafhængigt scrollende kolonner). Nu er tilbuddet sin egen side i normal
+   sidegennemløb: kolonnerne vokser med deres eget indhold (align-items:start,
+   ingen overflow/flex-tvang), og HELE siden scroller i stedet — netop den
+   ekstra plads Martin efterspurgte, og forudsætningen for at forhånds-
+   visningen kan stable flere sider under hinanden uden at blive klippet af. */
+.qe-body{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;padding:18px 22px;align-items:start}
+.qe-editor,.qe-preview-wrap{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:20px}
 .qe-preview-wrap{background:#EEF0F3;display:flex;flex-direction:column;align-items:center;padding:20px}
-.qe-field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+@media(max-width:1050px){.qe-body{grid-template-columns:minmax(0,1fr)}}
+/* minmax(0,1fr) i stedet for bare "1fr" begge steder ovenfor — uden det
+   nægter et grid-spor at krympe under sit indholds naturlige minimumsbredde
+   (her: de to felter i .qe-field-row nedenfor), så på en telefon blev hele
+   tilbudseditoren tvunget ud i vandret scroll i stedet for at stable/krympe
+   pænt. Samme fælde, samme løsning, i .qe-field-row selv: */
+.qe-field-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-bottom:10px}
 .qe-label{font-size:10.5px;font-weight:700;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;display:block}
 .qe-input{width:100%;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:8px 10px;font-size:12.5px;color:var(--bly-ink);background:#fff}
 .qe-customer-pop{position:relative}
@@ -1407,13 +1463,16 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-margin-card.total .qe-margin-card-label{color:rgba(255,255,255,.78)}
 .qe-margin-card.total .qe-margin-card-value{color:#fff}
 .qe-margin-card.total .qe-margin-card-sub{color:rgba(255,255,255,.9)}
-/* RUNDE V (Martins ønske: "PDF filen virker, men ikke live view") — forhånds-
-   visningen er ikke længere en håndbygget HTML-efterligning af PDF'en (som
-   uundgåeligt gik ud af trit med den rigtige sideopdeling), men den ÆGTE PDF
-   vist i et iframe — se qeRenderPreview()/POST /api/quotes/preview-pdf. */
-.qe-pdf-page{width:100%;max-width:560px;background:#fff;box-shadow:0 8px 30px rgba(15,17,24,.15);min-height:700px;position:relative;padding:0;overflow:hidden;border-radius:4px}
-.qe-pdf-iframe{width:100%;height:800px;border:none;display:block;background:#fff}
-.qe-preview-loading{position:absolute;top:10px;right:10px;background:rgba(79,70,229,.92);color:#fff;font-size:10.5px;font-weight:600;padding:4px 11px;border-radius:20px;z-index:2;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+/* RUNDE V (fortsat, Martins ønske: "lav den gamle Preview live tilbud ...
+   men fiks fejlene med når for meget tekst kommer") — live-forhåndsvisningen
+   er igen en lokal HTML-efterligning af PDF'en (som før RUNDE V's iframe-
+   forsøg), men bygger nu FLERE .qe-pdf-page-bokse — én pr. side, med rigtig
+   måling/paginering — se qeRenderPreview(). qe-preview-pages er den flex-
+   kolonne der stabler siderne med luft imellem, ligesom en rigtig PDF-viewer. */
+.qe-preview-pages{display:flex;flex-direction:column;align-items:center;gap:18px;width:100%}
+.qe-pdf-page{width:100%;max-width:560px;background:#fff;box-shadow:0 8px 30px rgba(15,17,24,.15);position:relative;border-radius:4px;box-sizing:border-box}
+.qe-pdf-cont-head{font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.03em;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #EEF0F3}
+.qe-pdf-pagenum{margin-top:16px;text-align:center;font-size:8.5px;color:#B0B7C3}
 .qe-pdf-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px}
 .qe-pdf-company{font-size:16px;font-weight:800}
 .qe-pdf-company-sub{font-size:9px;color:#6B7280;line-height:1.6;margin-top:4px}
@@ -3388,6 +3447,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      eget produktkatalog + tilbud/faktura-system med delbetalinger, bevidst
      adskilt fra JobTread's egne dokumenter (se svar i chatten). -->
 <section class="page" id="page-quotes">
+<!-- RUNDE V (fortsat) — tilbudseditoren er nu en EGEN SIDE inde i Tilbud &
+     Faktura-siden (qz-list-view/qz-detail-view), IKKE længere en popup
+     (Martins ønske: "hver tilbud får en side man lander på ... får du også
+     mere skærm plads"). Samme mønster som project-detail: se qzShowDetailView()
+     og openQuoteEditor(). Dyb-link'et #quotes/tilbud/<id> fandtes allerede
+     (bruges af rigtige <a href>-links i tabellerne) og virker uændret. -->
+<div id="qz-list-view">
   <div class="bly-pagehead">
     <div><h2>Tilbud &amp; Faktura</h2><div class="sub">Eget produktkatalog, tilbudseditor med live PDF-forhåndsvisning, og fakturaer med delbetalinger</div></div>
   </div>
@@ -3479,6 +3545,154 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <!-- "Mail-skabeloner til tilbud & faktura" er flyttet herfra til det
        samlede Skabeloner-center (✉️ Skabeloner i topmenuen) — se
        leveringsnoten om konsolideringen. -->
+</div>
+
+<!-- TILBUDSEDITOR — egen side (ikke popup), se kommentaren ved #qz-list-view
+     ovenfor. Bruges til BÅDE nyt tilbud, redigering af eksisterende tilbud
+     OG direkte faktura (qeState.directInvoice) — samme indhold som den
+     tidligere quote-editor-modal, blot flyttet ind som en sektion her. -->
+<div id="qz-detail-view" style="display:none">
+  <div class="page-head">
+    <div><button class="bly-btn outline small" id="qe-back-btn" type="button">← Tilbage til alle tilbud</button></div>
+  </div>
+  <div class="qe-page-card" style="background:#fff;border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,17,24,.08)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--bly-border-soft);flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:18px;font-weight:800;color:var(--bly-ink)" id="qe-title">Nyt tilbud</div>
+        <div class="sub" id="qe-subtitle" style="font-size:12px;margin-top:2px"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="qe-status-select" class="select" style="width:auto"></select>
+        <a class="bly-btn outline" id="qe-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
+        <button class="bly-btn outline" id="qe-share-btn" type="button" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
+        <button class="bly-btn outline" id="qe-request-btn" type="button" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
+        <button class="bly-btn outline" id="qe-send-btn" type="button" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
+        <button class="bly-btn outline" id="qe-convert-btn" type="button" style="display:none">➜ Konvertér til faktura</button>
+        <button class="bly-btn" id="qe-save-btn" type="button">💾 Gem</button>
+      </div>
+    </div>
+    <div class="qe-body">
+      <div class="qe-editor">
+        <label class="qe-label">Kunde / sag</label>
+        <div class="qe-customer-pop">
+          <input id="qe-customer-search" class="qe-input" placeholder="Søg efter eksisterende sag, eller skriv et nyt navn...">
+          <div class="qe-customer-results" id="qe-customer-results"></div>
+        </div>
+        <div class="qe-field-row" style="margin-top:10px">
+          <div><label class="qe-label">Adresse</label><input id="qe-customer-address" class="qe-input"></div>
+          <div><label class="qe-label">Telefon</label><input id="qe-customer-phone" class="qe-input"></div>
+        </div>
+        <div class="qe-field-row">
+          <div><label class="qe-label">E-mail</label><input id="qe-customer-email" class="qe-input"></div>
+          <div><label class="qe-label">Gyldig til</label><input id="qe-valid-until" type="date" class="qe-input"></div>
+        </div>
+        <!-- RUNDE T (Martins ønske: "Vælg opportunity/lead ved manuel
+             tilbudsoprettelse ... jeg tænker det fint alle dele af programmet
+             hænger sammen så man ved hvad sager der har hvilke data") — kun
+             relevant hvis tilbuddet IKKE allerede er koblet fra "📝 Lav tilbud"
+             på selve CRM-kortet (så er koblingen jo givet i forvejen). -->
+        <div style="margin-top:10px">
+          <label class="qe-label">Tilknyt til lead/handel <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label>
+          <div id="qe-crm-link-chip" style="display:none"></div>
+          <div class="qe-customer-pop" id="qe-crm-link-search-wrap">
+            <input id="qe-crm-link-search" class="qe-input" placeholder="Søg efter lead eller handel...">
+            <div class="qe-customer-results" id="qe-crm-link-results"></div>
+          </div>
+        </div>
+        <div id="qe-crm-note-panel" class="qe-crm-note-panel" style="display:none">
+          <div class="qe-crm-note-head">📌 Note fra <span id="qe-crm-note-entity-label"></span></div>
+          <div class="qe-crm-note-text" id="qe-crm-note-text"></div>
+        </div>
+        <div class="form-group" style="margin-top:10px">
+          <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span>Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger</span></span>
+            <!-- RUNDE V (Martins ønske: "AI indtaler til tilbud at jeg kan levere en
+                 note med alt data fra et kundebesøg") — se noteDictToggle() og
+                 POST /api/ai/clean-note. Tal ind, AI renser diktatet op til en pæn
+                 note og sætter den ind i feltet nedenfor (til gennemsyn/redigering,
+                 intet gemmes før du selv trykker "Gem"). -->
+            <button type="button" class="qz-icon-btn qe-note-mic-btn" id="qe-top-note-mic-btn" title="Diktér en note — fx alt fra et kundebesøg">🎤</button>
+          </label>
+          <textarea id="qe-top-note" class="input" rows="2" style="resize:vertical"></textarea>
+        </div>
+
+        <!-- RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: vises kun når tilbuddet
+             har mindst én faktura knyttet til sig, se renderQeInvoicingPanel(). -->
+        <div id="qe-invoicing-panel" class="qe-invoicing-panel" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:12.5px">
+            <span id="qe-invoicing-summary">Faktureret 0 kr af 0 kr</span>
+          </div>
+          <div class="qe-invoicing-progress-track"><div class="qe-invoicing-progress-fill" id="qe-invoicing-progress-fill" style="width:0%"></div></div>
+          <div id="qe-invoicing-inv-list"></div>
+          <button class="bly-btn outline small" id="qe-add-extra-lines-btn" type="button" style="margin-top:8px">+ Tilføj ekstra ydelser</button>
+        </div>
+
+        <div class="qe-lines-head">
+          <span class="qe-label" style="margin:0">Linjer</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <div class="qe-customer-pop" style="width:220px">
+              <input id="qe-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
+              <div class="qe-customer-results" id="qe-product-results"></div>
+            </div>
+            <!-- AI-diktering (sep. 2026, Martins ønske) — se qeAiToggleListen() og
+                 POST /api/quotes/ai-parse-lines. Selve tale-optagelsen sker via
+                 browserens Web Speech API (da-DK), ingen server-nøgle nødvendig for
+                 selve optagelsen — kun for AI-tolkningen bagefter. -->
+            <button class="bly-btn outline small" id="qe-ai-mic-btn" type="button" title="Diktér hele tilbuddet — AI finder eller foreslår produkter">🎤 AI-diktering</button>
+            <button class="bly-btn outline small" id="qe-add-blank-line" type="button">+ Tilføj linje</button>
+            <button class="bly-btn outline small" id="qe-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
+            <button class="bly-btn outline small" id="qe-save-as-template-btn" type="button" title="Gem de nuværende linjer som en skabelon">💾 Gem som skabelon</button>
+            <!-- RUNDE T (Martins ønske: "flyt knappen indsæt skablon ned ved siden af Gem
+                 som skablon og så laver den i samme design som de knapper der med icon") —
+                 var før et <select>-felt langt oppe i tilbuddet, nu en ikon-knap i samme
+                 design som "Gem som skabelon" lige ved siden af, der åbner en liste over
+                 skabeloner via den fælles kontekstmenu (showCtxMenu) — se qeOpenTemplateMenu. -->
+            <button class="bly-btn outline small" id="qe-insert-template-btn" type="button" title="Indsæt linjer fra en gemt skabelon">📥 Indsæt skabelon</button>
+          </div>
+        </div>
+        <div id="qe-ai-listening-bar" class="qe-ai-listening-bar" hidden>
+          <span class="qe-ai-listening-dot"></span>
+          <span>Lytter... sig hele tilbuddet, tryk "Stop &amp; tolk" når du er færdig.</span>
+          <span id="qe-ai-live-transcript" class="qe-ai-live-transcript"></span>
+          <button class="bly-btn small" id="qe-ai-stop-btn" type="button" style="margin-left:auto">⏹ Stop &amp; tolk</button>
+          <button class="qz-icon-btn" id="qe-ai-cancel-btn" type="button" title="Annullér optagelse">✕</button>
+        </div>
+        <div id="qe-lines"></div>
+        <!-- Samme "+ Tilføj linje"/"+ Tekstlinje"-knapper som foroven, men lige under
+             sidste linje (sep. 2026, Martins ønske) — så man ikke skal føre musen op
+             til toppen igen for hver ny linje ved lange tilbud. -->
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="bly-btn outline small" id="qe-add-blank-line-bottom" type="button">+ Tilføj linje</button>
+          <button class="bly-btn outline small" id="qe-add-text-line-bottom" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
+        </div>
+
+        <div class="qe-totals" id="qe-totals"></div>
+        <div class="qe-cost-summary" id="qe-cost-summary"></div>
+        <!-- RUNDE T (Martins ønske: "flytter den samlede tilbud ned under KPI'erne
+             hvor du har margin mm") — "Rabat på hele tilbuddet" lå før langt oppe i
+             tilbuddet, sammen med kunde-/adressefelterne; nu lige under margin-
+             kortene, hvor den hører hjemme sammen med resten af tal-/rabat-delen. -->
+        <div class="qe-doc-discount-wrap">
+          <div><label class="qe-label">Rabat på hele tilbuddet</label><div style="display:flex;gap:6px"><input id="qe-doc-discount" type="number" step="0.1" min="0" class="qe-input" value="0" style="flex:1;min-width:0"><select id="qe-doc-discount-type" class="qe-input" style="flex:0 0 64px;padding:0 2px" title="Rabattype"><option value="pct">%</option><option value="fixed">kr</option></select></div></div>
+        </div>
+
+        <div class="form-group" style="margin-top:14px"><label class="form-label">Betingelser / note i bunden <span class="opt-tag">valgfrit — vises nederst på PDF'en</span></label><textarea id="qe-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
+        <div class="form-group" style="margin-top:10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px"><label class="form-label" style="color:#92400E">🔒 Intern note <span class="opt-tag" style="text-transform:none;font-weight:400;color:#92400E">kun jer — kunden ser den ALDRIG</span></label><textarea id="qe-internal-note" class="input" rows="2" style="resize:vertical" placeholder="Fx: kunden får gratis fugefyld med, aftalt telefonisk d. ..."></textarea></div>
+        <div class="form-group" id="qe-versions-wrap" style="margin-top:14px;display:none">
+          <label class="form-label">📄 Sendte versioner <span class="opt-tag" style="text-transform:none;font-weight:400">den arkiverede PDF som faktisk blev sendt — ændres aldrig</span></label>
+          <div id="qe-versions-list" class="doc-activity-list"></div>
+        </div>
+        <div class="form-group" id="qe-activity-wrap" style="margin-top:14px;display:none">
+          <label class="form-label">🕓 Tidslinje</label>
+          <div id="qe-activity-list" class="doc-activity-list"></div>
+        </div>
+      </div>
+      <div class="qe-preview-wrap">
+        <div id="qe-preview" class="qe-preview-pages"></div>
+      </div>
+    </div>
+  </div>
+</div>
 </section>
 
 <!-- KUNDER (CRM) — eget kundekartotek, uafhængigt af JobTread. Bruges i
@@ -5714,149 +5928,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 </div>
 
 <!-- TILBUDSEDITOR — delt skærm: linjer til venstre, live PDF-forhåndsvisning til højre -->
-<div class="mo" id="quote-editor-modal">
-  <div class="modal" style="max-width:1440px;width:97vw;height:92vh;display:flex;flex-direction:column;padding:0">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--bly-border-soft);flex-shrink:0">
-      <div>
-        <div style="font-size:15px;font-weight:800;color:var(--bly-ink)" id="qe-title">Nyt tilbud</div>
-        <div class="sub" id="qe-subtitle" style="font-size:11px"></div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <select id="qe-status-select" class="select" style="width:auto"></select>
-        <a class="bly-btn outline" id="qe-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
-        <button class="bly-btn outline" id="qe-share-btn" type="button" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
-        <button class="bly-btn outline" id="qe-request-btn" type="button" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
-        <button class="bly-btn outline" id="qe-send-btn" type="button" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
-        <button class="bly-btn outline" id="qe-convert-btn" type="button" style="display:none">➜ Konvertér til faktura</button>
-        <button class="bly-btn" id="qe-save-btn" type="button">💾 Gem</button>
-        <button class="qz-icon-btn" id="qe-close-btn" type="button" title="Luk">✕</button>
-      </div>
-    </div>
-    <div class="qe-body">
-      <div class="qe-editor">
-        <label class="qe-label">Kunde / sag</label>
-        <div class="qe-customer-pop">
-          <input id="qe-customer-search" class="qe-input" placeholder="Søg efter eksisterende sag, eller skriv et nyt navn...">
-          <div class="qe-customer-results" id="qe-customer-results"></div>
-        </div>
-        <div class="qe-field-row" style="margin-top:10px">
-          <div><label class="qe-label">Adresse</label><input id="qe-customer-address" class="qe-input"></div>
-          <div><label class="qe-label">Telefon</label><input id="qe-customer-phone" class="qe-input"></div>
-        </div>
-        <div class="qe-field-row">
-          <div><label class="qe-label">E-mail</label><input id="qe-customer-email" class="qe-input"></div>
-          <div><label class="qe-label">Gyldig til</label><input id="qe-valid-until" type="date" class="qe-input"></div>
-        </div>
-        <!-- RUNDE T (Martins ønske: "Vælg opportunity/lead ved manuel
-             tilbudsoprettelse ... jeg tænker det fint alle dele af programmet
-             hænger sammen så man ved hvad sager der har hvilke data") — kun
-             relevant hvis tilbuddet IKKE allerede er koblet fra "📝 Lav tilbud"
-             på selve CRM-kortet (så er koblingen jo givet i forvejen). -->
-        <div style="margin-top:10px">
-          <label class="qe-label">Tilknyt til lead/handel <span class="opt-tag" style="text-transform:none;font-weight:400">valgfrit</span></label>
-          <div id="qe-crm-link-chip" style="display:none"></div>
-          <div class="qe-customer-pop" id="qe-crm-link-search-wrap">
-            <input id="qe-crm-link-search" class="qe-input" placeholder="Søg efter lead eller handel...">
-            <div class="qe-customer-results" id="qe-crm-link-results"></div>
-          </div>
-        </div>
-        <div id="qe-crm-note-panel" class="qe-crm-note-panel" style="display:none">
-          <div class="qe-crm-note-head">📌 Note fra <span id="qe-crm-note-entity-label"></span></div>
-          <div class="qe-crm-note-text" id="qe-crm-note-text"></div>
-        </div>
-        <div class="form-group" style="margin-top:10px">
-          <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-            <span>Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger</span></span>
-            <!-- RUNDE V (Martins ønske: "AI indtaler til tilbud at jeg kan levere en
-                 note med alt data fra et kundebesøg") — se noteDictToggle() og
-                 POST /api/ai/clean-note. Tal ind, AI renser diktatet op til en pæn
-                 note og sætter den ind i feltet nedenfor (til gennemsyn/redigering,
-                 intet gemmes før du selv trykker "Gem"). -->
-            <button type="button" class="qz-icon-btn qe-note-mic-btn" id="qe-top-note-mic-btn" title="Diktér en note — fx alt fra et kundebesøg">🎤</button>
-          </label>
-          <textarea id="qe-top-note" class="input" rows="2" style="resize:vertical"></textarea>
-        </div>
-
-        <!-- RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: vises kun når tilbuddet
-             har mindst én faktura knyttet til sig, se renderQeInvoicingPanel(). -->
-        <div id="qe-invoicing-panel" class="qe-invoicing-panel" style="display:none">
-          <div style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:12.5px">
-            <span id="qe-invoicing-summary">Faktureret 0 kr af 0 kr</span>
-          </div>
-          <div class="qe-invoicing-progress-track"><div class="qe-invoicing-progress-fill" id="qe-invoicing-progress-fill" style="width:0%"></div></div>
-          <div id="qe-invoicing-inv-list"></div>
-          <button class="bly-btn outline small" id="qe-add-extra-lines-btn" type="button" style="margin-top:8px">+ Tilføj ekstra ydelser</button>
-        </div>
-
-        <div class="qe-lines-head">
-          <span class="qe-label" style="margin:0">Linjer</span>
-          <div style="display:flex;gap:6px;align-items:center">
-            <div class="qe-customer-pop" style="width:220px">
-              <input id="qe-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
-              <div class="qe-customer-results" id="qe-product-results"></div>
-            </div>
-            <!-- AI-diktering (sep. 2026, Martins ønske) — se qeAiToggleListen() og
-                 POST /api/quotes/ai-parse-lines. Selve tale-optagelsen sker via
-                 browserens Web Speech API (da-DK), ingen server-nøgle nødvendig for
-                 selve optagelsen — kun for AI-tolkningen bagefter. -->
-            <button class="bly-btn outline small" id="qe-ai-mic-btn" type="button" title="Diktér hele tilbuddet — AI finder eller foreslår produkter">🎤 AI-diktering</button>
-            <button class="bly-btn outline small" id="qe-add-blank-line" type="button">+ Tilføj linje</button>
-            <button class="bly-btn outline small" id="qe-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
-            <button class="bly-btn outline small" id="qe-save-as-template-btn" type="button" title="Gem de nuværende linjer som en skabelon">💾 Gem som skabelon</button>
-            <!-- RUNDE T (Martins ønske: "flyt knappen indsæt skablon ned ved siden af Gem
-                 som skablon og så laver den i samme design som de knapper der med icon") —
-                 var før et <select>-felt langt oppe i tilbuddet, nu en ikon-knap i samme
-                 design som "Gem som skabelon" lige ved siden af, der åbner en liste over
-                 skabeloner via den fælles kontekstmenu (showCtxMenu) — se qeOpenTemplateMenu. -->
-            <button class="bly-btn outline small" id="qe-insert-template-btn" type="button" title="Indsæt linjer fra en gemt skabelon">📥 Indsæt skabelon</button>
-          </div>
-        </div>
-        <div id="qe-ai-listening-bar" class="qe-ai-listening-bar" hidden>
-          <span class="qe-ai-listening-dot"></span>
-          <span>Lytter... sig hele tilbuddet, tryk "Stop &amp; tolk" når du er færdig.</span>
-          <span id="qe-ai-live-transcript" class="qe-ai-live-transcript"></span>
-          <button class="bly-btn small" id="qe-ai-stop-btn" type="button" style="margin-left:auto">⏹ Stop &amp; tolk</button>
-          <button class="qz-icon-btn" id="qe-ai-cancel-btn" type="button" title="Annullér optagelse">✕</button>
-        </div>
-        <div id="qe-lines"></div>
-        <!-- Samme "+ Tilføj linje"/"+ Tekstlinje"-knapper som foroven, men lige under
-             sidste linje (sep. 2026, Martins ønske) — så man ikke skal føre musen op
-             til toppen igen for hver ny linje ved lange tilbud. -->
-        <div style="display:flex;gap:6px;margin-top:8px">
-          <button class="bly-btn outline small" id="qe-add-blank-line-bottom" type="button">+ Tilføj linje</button>
-          <button class="bly-btn outline small" id="qe-add-text-line-bottom" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
-        </div>
-
-        <div class="qe-totals" id="qe-totals"></div>
-        <div class="qe-cost-summary" id="qe-cost-summary"></div>
-        <!-- RUNDE T (Martins ønske: "flytter den samlede tilbud ned under KPI'erne
-             hvor du har margin mm") — "Rabat på hele tilbuddet" lå før langt oppe i
-             tilbuddet, sammen med kunde-/adressefelterne; nu lige under margin-
-             kortene, hvor den hører hjemme sammen med resten af tal-/rabat-delen. -->
-        <div class="qe-doc-discount-wrap">
-          <div><label class="qe-label">Rabat på hele tilbuddet</label><div style="display:flex;gap:6px"><input id="qe-doc-discount" type="number" step="0.1" min="0" class="qe-input" value="0" style="flex:1;min-width:0"><select id="qe-doc-discount-type" class="qe-input" style="flex:0 0 64px;padding:0 2px" title="Rabattype"><option value="pct">%</option><option value="fixed">kr</option></select></div></div>
-        </div>
-
-        <div class="form-group" style="margin-top:14px"><label class="form-label">Betingelser / note i bunden <span class="opt-tag">valgfrit — vises nederst på PDF'en</span></label><textarea id="qe-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
-        <div class="form-group" style="margin-top:10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px"><label class="form-label" style="color:#92400E">🔒 Intern note <span class="opt-tag" style="text-transform:none;font-weight:400;color:#92400E">kun jer — kunden ser den ALDRIG</span></label><textarea id="qe-internal-note" class="input" rows="2" style="resize:vertical" placeholder="Fx: kunden får gratis fugefyld med, aftalt telefonisk d. ..."></textarea></div>
-        <div class="form-group" id="qe-versions-wrap" style="margin-top:14px;display:none">
-          <label class="form-label">📄 Sendte versioner <span class="opt-tag" style="text-transform:none;font-weight:400">den arkiverede PDF som faktisk blev sendt — ændres aldrig</span></label>
-          <div id="qe-versions-list" class="doc-activity-list"></div>
-        </div>
-        <div class="form-group" id="qe-activity-wrap" style="margin-top:14px;display:none">
-          <label class="form-label">🕓 Tidslinje</label>
-          <div id="qe-activity-list" class="doc-activity-list"></div>
-        </div>
-      </div>
-      <div class="qe-preview-wrap">
-        <div class="qe-pdf-page" id="qe-preview-card">
-          <div id="qe-preview-loading" class="qe-preview-loading" hidden>Opdaterer…</div>
-          <iframe id="qe-preview" class="qe-pdf-iframe" title="Forhåndsvisning af PDF"></iframe>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- Tilbudseditoren er flyttet ind i #page-quotes (se #qz-detail-view der,
+     lige før </section>) — egen side i stedet for popup, se kommentaren der. -->
 
 <!-- RUNDE J (sep. 2026, Martins ønske) — KONVERTÉR TIL FAKTURA MED LINJEVALG:
      erstatter den gamle rene ja/nej-bekræftelse. Viser tilbuddets endnu ikke
@@ -14106,7 +14179,25 @@ async function loadAll(){
 }
 function closeModal(id){document.getElementById(id).classList.remove('open');if(id==='assign-modal')assignCtx=null;}
 
-function syncStickyOffsets(){var n=document.querySelector('.nav');if(n)document.documentElement.style.setProperty('--nav-height',Math.ceil(n.getBoundingClientRect().height)+'px');}
+// RUNDE V (fortsat, Martins ønske: "på tlf har du lavet en header den
+// forsvinder når man blader igennem") — --mobile-header-h måler HELE
+// .app-header-sticky (nav + evt. det synlige prioritets-banner), bruges af
+// .app-content's top-padding på mobil (se @media(max-width:760px) ved
+// .sidebar), så indholdet aldrig lander under/bag den nu fastgjorte header,
+// heller ikke når banneret dukker op/forsvinder og ændrer headerens højde.
+function syncStickyOffsets(){
+  var n=document.querySelector('.nav');
+  if(n)document.documentElement.style.setProperty('--nav-height',Math.ceil(n.getBoundingClientRect().height)+'px');
+  var h=document.querySelector('.app-header-sticky');
+  if(h)document.documentElement.style.setProperty('--mobile-header-h',Math.ceil(h.getBoundingClientRect().height)+'px');
+}
+// Fanger ALLE højde-ændringer af selve headeren (banneret vises/skjules,
+// søgefeltets resultatliste skubber den, skrifttype-indlæsning osv.) uden at
+// skulle finde og rette i hver eneste stedet der kunne ændre den — langt mere
+// robust end kun at regne med resize-eventet nedenfor.
+if(window.ResizeObserver){
+  new ResizeObserver(function(){syncStickyOffsets();}).observe(document.querySelector('.app-header-sticky'));
+}
 // BIND ALL EVENTS
 // VALID_PAGES/switchPage flyttet ud af bind() og op på IIFE-topniveau (marts-
 // sessionen der tilføjede "#project-detail/<id>"-siden): openProjectDetail()
@@ -14355,6 +14446,11 @@ function bind(){
     // så højreklik "åbn i ny fane" og ctrl/cmd-klik virker som forventet.
     if(parts[0]==='quotes'&&parts[1]==='tilbud'&&parts[2])openQuoteEditor(Number(parts[2]));
     if(parts[0]==='quotes'&&parts[1]==='faktura'&&parts[2])openInvoiceDetail(Number(parts[2]));
+    // RUNDE V (fortsat) — browserens EGEN tilbage-knap (ikke #qe-back-btn) fra
+    // #quotes/tilbud/123 til bare #quotes skal også skjule tilbudseditor-siden
+    // igen, ellers blev den hængende synligt oven på listen, som var "tilbage"
+    // aldrig sket. Se qzShowDetailView()/qeGoBackToList().
+    if(parts[0]==='quotes'&&!parts[1])qzShowDetailView(false);
     // Dyb-link til en af Tilbud & Faktura-modulets egne faner fra sidebaren —
     // #quotes/<alias> (uden id-segment ovenfor) — se data-qztab-jump i sidebaren.
     var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates'};
@@ -15731,6 +15827,21 @@ function switchQzTab(name){
   document.querySelectorAll('.qz-more-item').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
   document.getElementById('qz-more-menu').classList.remove('open');
   ['products','templates','quotes','invoices'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
+}
+// RUNDE V (fortsat, Martins ønske: "hver tilbud får en side man lander på ...
+// lave sådan en tilbage knap til alle tilbud") — tilbudseditoren er en 2. visning
+// inde i #page-quotes, ved siden af listen (qz-list-view), i stedet for en
+// popup ovenpå den. Se openQuoteEditor() og #qe-back-btn.
+function qzShowDetailView(show){
+  document.getElementById('qz-list-view').style.display=show?'none':'';
+  document.getElementById('qz-detail-view').style.display=show?'':'none';
+}
+function qeGoBackToList(){
+  if(qeAiState.listening)qeAiCancel();
+  if(noteDictState.listening)noteDictCancel();
+  qzShowDetailView(false);
+  setAppTitle(null);
+  navPushHash('quotes');
 }
 
 // ── FÆLLES LINJE-EDITOR — genbruges af både tilbudseditoren og
@@ -21235,6 +21346,7 @@ async function openQuoteEditor(id,prefillCustomer){
     loadQeVersions(id);
     document.getElementById('qe-title').textContent=qd.quote_number;
     document.getElementById('qe-subtitle').textContent='Oprettet '+String(qd.created_at||'').slice(0,10);
+    setAppTitle(qd.job_name||qd.quote_number);
     qePopulateStatusSelect(qd.status);
     document.getElementById('qe-pdf-link').style.display='inline-flex';
     document.getElementById('qe-share-btn').style.display=qd.status==='converted'?'none':'inline-flex';
@@ -21250,6 +21362,7 @@ async function openQuoteEditor(id,prefillCustomer){
   } else {
     document.getElementById('qe-title').textContent='Nyt tilbud';
     document.getElementById('qe-subtitle').textContent='';
+    setAppTitle((prefillCustomer&&prefillCustomer.name)||'Nyt tilbud');
     qePopulateStatusSelect('draft');
     // Nye tilbud starter med 3 åbne linjefelter — man skal ikke trykke "+ Tilføj linje"
     // bare for at komme i gang. Samt forudfyld top-/bundnote fra standardteksten i
@@ -21275,7 +21388,24 @@ async function openQuoteEditor(id,prefillCustomer){
   qeRenderCrmLinkChip();
   renderQeLines();
   qeRecalc();
-  document.getElementById('quote-editor-modal').classList.add('open');
+  // Egen side (ikke popup) — se kommentaren ved #qz-detail-view i HTML'en.
+  // #quotes/tilbud/<id> er den samme dyb-link-adresse der allerede fandtes
+  // (bruges af rigtige <a href>-links i tabellerne) — se hashchange-lytteren.
+  // #qz-detail-view bor INDE i #page-quotes, og #page-quotes selv er kun
+  // synlig når den er den AKTIVE side — men openQuoteEditor()/openQuoteEditorSafe()
+  // kaldes ofte fra en helt anden side (fx "+ Opret nyt tomt tilbud til denne
+  // sag" på en projekt-side, "Rediger tilbud" på et kundekort, eller "📝 Lav
+  // tilbud" på et CRM-lead). Uden dette switchPage-kald ville #qz-detail-view
+  // godt nok få display:block sat på sig selv, men forblive usynlig, fordi
+  // dens forælder #page-quotes stadig havde display:none — nøjagtig samme
+  // mønster som openProjectDetail() allerede løser for #page-project-detail.
+  // Kun nødvendigt at skifte side hvis vi ikke allerede STÅR på #page-quotes
+  // (det almindelige tilfælde: "+ Nyt tilbud" fra selve Tilbud-siden) — ellers
+  // ville initQuotesModule() blive kaldt (og listen genhentet) to gange for ingenting.
+  if(!document.getElementById('page-quotes').classList.contains('active'))switchPage('quotes',true);
+  qzShowDetailView(true);
+  if(id)navPushHash('quotes/tilbud/'+id);
+  else navPushHash('quotes');
 }
 // RUNDE I (sep. 2026, Martins ønske): "Direkte faktura" — når prisen er aftalt
 // mundtligt/direkte med kunden, og der IKKE skal laves et tilbud først. Genbruger
@@ -21332,7 +21462,7 @@ function renderQeInvoicingPanel(){
   Array.prototype.forEach.call(document.getElementById('qe-invoicing-inv-list').querySelectorAll('[data-invid]'),function(row){
     row.onclick=function(){
       var invId=Number(row.dataset.invid);
-      closeModal('quote-editor-modal');
+      qeGoBackToList();
       switchQzTab('invoices');
       openInvoiceDetail(invId);
     };
@@ -21635,65 +21765,139 @@ function qeRenderTotals(){
 // (samme drawDocumentPdf som den rigtige PDF) i #qe-preview-iframe'et —
 // garanterer at forhåndsvisningen og PDF'en kunden får ALDRIG kan gå ud af
 // trit igen (før var det to helt separate, håndbyggede layouts).
-function qeBuildPreviewBody(){
-  var t=qeComputeTotals();
-  return {
-    kind:qeState.directInvoice?'invoice':'quote',
-    doc_number:qeState.quoteNumber||null,
-    job_name:document.getElementById('qe-customer-search').value.trim(),
-    customer_address:document.getElementById('qe-customer-address').value.trim(),
-    customer_phone:document.getElementById('qe-customer-phone').value.trim(),
-    customer_email:document.getElementById('qe-customer-email').value.trim(),
-    valid_until:document.getElementById('qe-valid-until').value||null,
-    top_note:document.getElementById('qe-top-note').value,
-    notes:document.getElementById('qe-notes').value,
-    tax_rate:qeState.taxRate,
-    discount_pct:t.docDiscountPct,
-    discount_type:t.docDiscountType,
-    lines:qeState.lines
-  };
-}
-var qePreviewBlobUrl=null,qePreviewReqSeq=0;
-async function qeRenderPreview(){
-  var mySeq=++qePreviewReqSeq;
-  var loadingEl=document.getElementById('qe-preview-loading');
-  if(loadingEl)loadingEl.hidden=false;
-  try{
-    var body=qeBuildPreviewBody();
-    var res=await fetch(API+'/api/quotes/preview-pdf',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(mySeq!==qePreviewReqSeq)return; // en nyere forhåndsvisning er allerede undervejs/vist — dropper dette forældede svar
-    if(!res.ok)throw new Error('preview-pdf fejlede: '+res.status);
-    var blob=await res.blob();
-    if(mySeq!==qePreviewReqSeq)return;
-    var url=URL.createObjectURL(blob);
-    var oldUrl=qePreviewBlobUrl;
-    qePreviewBlobUrl=url;
-    document.getElementById('qe-preview').src=url;
-    if(oldUrl)setTimeout(function(){URL.revokeObjectURL(oldUrl);},1500);
-  }catch(e){
-    console.error('Kunne ikke opdatere tilbuds-forhåndsvisningen',e);
-  }finally{
-    if(mySeq===qePreviewReqSeq&&loadingEl)loadingEl.hidden=true;
+// RUNDE V (fortsat, Martins ønske: "lav den gamle Preview live tilbud som den
+// havde bare fiks fejlene ... når for meget tekst kommer kan man ikke se det,
+// den crasher simpelthen for siden er ikke lang nok og den forstår ikke når
+// en ny side kommer") — tilbage til en lokal HTML-efterligning af PDF'en (som
+// før RUNDE V), MEN nu med ægte paginering: linjerne måles og pakkes ind i
+// flere separate side-bokse (.qe-pdf-page), akkurat som den rigtige PDF —
+// i stedet for én endeløs boks der bare voksede i det uendelige og aldrig
+// viste hvor et sideskift ville falde. Selve den downloadbare PDF (📄 Åbn PDF)
+// er stadig den 100% autoritative fil — denne visning er en levende SKITSE af
+// den, ikke en pixel-for-pixel kopi, men den viser nu i det mindste ægte
+// sideskift i stedet for at foregive tilbuddet altid er én side langt.
+var QE_PAGE_W=560,QE_PAGE_PAD='36px 34px',QE_PAGE_CONTENT_H=740; // px — ca. A4-forhold ved 560px bredde
+function qeLineRowHtml(l){
+  if(l.line_type==='text'){
+    return '<tr><td colspan="5" style="padding:8px 0;border-top:none"><div class="qe-divider-row">'+esc(l.description||'')+'</div></td></tr>';
   }
+  var qty=Number(l.quantity)||0,disc=Number(l.discount_pct)||0;
+  var gross=qty*(Number(l.sell_price)||0);
+  var lineDiscAmt=qzLineDiscountAmount(l,gross);
+  var lineTotal=gross-lineDiscAmt;
+  var discCell=disc?('<span class="qe-pdf-disc">-'+(l.discount_type==='fixed'?krFmt(disc):disc+'%')+' (-'+krFmt(lineDiscAmt)+')</span>'):'';
+  return '<tr><td>'+qzLineDescCellHtml(l)+'</td><td class="num">'+qty+' '+esc(l.unit||'')+'</td><td class="num">'+discCell+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lineTotal)+'</td></tr>';
+}
+function qeTableHeadHtml(){
+  return '<thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Rabat</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead>';
+}
+function qeRenderPreview(){
+  var t=qeComputeTotals();
+  var docNum=qeState.quoteNumber||'Udkast';
+  var todayStr=new Date().toLocaleDateString('da-DK');
+  var addrLines=[settings.company_address,settings.company_cvr?('CVR '+settings.company_cvr):'',settings.company_phone,settings.company_email].filter(Boolean);
+  var custName=document.getElementById('qe-customer-search').value.trim();
+  var custAddr=document.getElementById('qe-customer-address').value.trim();
+  var custPhone=document.getElementById('qe-customer-phone').value.trim();
+  var custEmail=document.getElementById('qe-customer-email').value.trim();
+  var validUntil=document.getElementById('qe-valid-until').value;
+  var notes=document.getElementById('qe-notes').value.trim();
+  var topNote=document.getElementById('qe-top-note').value.trim();
+  var docTypeLabel=qeState.directInvoice?'FAKTURA':'TILBUD';
+
+  var headHtml='<div class="qe-pdf-head">'
+    +'<div style="display:flex;align-items:center;gap:8px">'+(settings.logo_url?'<img src="'+settings.logo_url+'" style="max-width:200px;max-height:82px;object-fit:contain;flex-shrink:0">':'')+'<div><div class="qe-pdf-company">'+esc(settings.company_name||'Gulv Master Enterprise ApS')+'</div><div class="qe-pdf-company-sub">'+addrLines.map(function(l){return esc(l);}).join('<br>')+'</div></div></div>'
+    +'<div><div class="qe-pdf-doctype">'+docTypeLabel+'</div><div class="qe-pdf-docnum">'+(qeState.directInvoice?'Udkast':esc(docNum))+'</div><div class="qe-pdf-meta">Dato: '+todayStr+(validUntil?'<br>Gyldig til: '+esc(validUntil):'')+'</div></div>'
+    +'</div>'
+    +'<div class="qe-pdf-to"><b>Til:</b><br>'+(custName?esc(custName)+'<br>':'')+(custAddr?esc(custAddr)+'<br>':'')+(custPhone?'Tlf. '+esc(custPhone)+'<br>':'')+(custEmail?esc(custEmail):'')+'</div>'
+    +(topNote?'<div class="qe-pdf-notes" style="margin:6px 0 10px">'+topNote+'</div>':'');
+  var contHeadHtml='<div class="qe-pdf-cont-head">'+esc(docTypeLabel+' '+(qeState.directInvoice?'':docNum)+' — fortsat')+'</div>';
+  var totalsHtml='<div class="qe-pdf-totals">'
+    +(t.discountAmount>0?'<div class="qe-pdf-totals-row"><span>Rabat ('+(t.docDiscountType==='fixed'?krFmt(t.docDiscountPct):t.docDiscountPct+'%')+')</span><span>-'+krFmt(t.discountAmount)+'</span></div>':'')
+    +'<div class="qe-pdf-totals-row"><span>Subtotal</span><span>'+krFmt(t.subtotal)+'</span></div>'
+    +'<div class="qe-pdf-totals-row"><span>Moms ('+t.taxRate+'%)</span><span>'+krFmt(t.taxAmount)+'</span></div>'
+    +'<div class="qe-pdf-totals-row grand"><span>Total</span><span>'+krFmt(t.total)+'</span></div>'
+    +'</div>';
+  var notesHtml=notes?'<div class="qe-pdf-notes">'+notes+'</div>':'';
+
+  // Ingen linjer endnu — ét enkelt tomt sideskitse, ingen grund til at måle/paginere.
+  var box=document.getElementById('qe-preview');
+  if(!qeState.lines.length){
+    box.innerHTML='<div class="qe-pdf-page" style="padding:'+QE_PAGE_PAD+'">'+headHtml+'<table class="qe-pdf-table">'+qeTableHeadHtml()+'<tbody><tr><td colspan="5" style="text-align:center;color:#9CA3AF;padding:14px">Ingen linjer endnu</td></tr></tbody></table>'+totalsHtml+notesHtml+'</div>';
+    return;
+  }
+
+  // MÅLING — bygger alle linjer ind i én skjult tabel (samme bredde/skrifttype
+  // som den rigtige side) og læser hver <tr>'s reelle højde, så pagineringen
+  // pakker efter hvor højt indholdet FAKTISK bliver (lange flerlinjede
+  // beskrivelser/noter fylder mere) i stedet for at gætte på en fast højde.
+  var rowsHtmlArr=qeState.lines.map(qeLineRowHtml);
+  var measure=document.createElement('div');
+  measure.style.cssText='position:absolute;left:-9999px;top:0;width:'+QE_PAGE_W+'px;visibility:hidden';
+  document.body.appendChild(measure);
+  measure.innerHTML='<div style="padding:'+QE_PAGE_PAD+'">'+headHtml+'</div>';
+  var headH=measure.firstChild.offsetHeight;
+  measure.innerHTML='<div style="padding:'+QE_PAGE_PAD+'">'+contHeadHtml+'</div>';
+  var contHeadH=measure.firstChild.offsetHeight;
+  measure.innerHTML='<table class="qe-pdf-table">'+qeTableHeadHtml()+'<tbody>'+rowsHtmlArr.join('')+'</tbody></table>';
+  var theadH=measure.querySelector('thead').offsetHeight;
+  var rowHeights=Array.prototype.map.call(measure.querySelectorAll('tbody tr'),function(tr){return tr.offsetHeight;});
+  measure.innerHTML=totalsHtml;
+  var totalsH=measure.firstChild.offsetHeight;
+  var notesH=0;
+  if(notesHtml){measure.innerHTML=notesHtml;notesH=measure.firstChild.offsetHeight;}
+  document.body.removeChild(measure);
+
+  // PAKNING — grådig sideopdeling: fylder én side op til QE_PAGE_CONTENT_H,
+  // starter en ny side (med gentaget tabel-header) så snart næste linje ikke
+  // er plads til — akkurat den "forstår ikke når en ny side kommer"-fejl
+  // Martin pegede på, løst ved rent faktisk at oprette et nyt side-element.
+  var pages=[{rows:[],isFirst:true}];
+  var used=headH+theadH;
+  qeState.lines.forEach(function(l,i){
+    var h=rowHeights[i];
+    var cur=pages[pages.length-1];
+    if(cur.rows.length&&used+h>QE_PAGE_CONTENT_H){
+      cur=Object.assign({rows:[],isFirst:false});
+      pages.push(cur);
+      used=contHeadH+theadH;
+    }
+    cur.rows.push(rowsHtmlArr[i]);
+    used+=h;
+  });
+  // Totaler/note-boks skal blive på SAMME side som sidste linje hvis der er
+  // plads — ellers får de deres helt egen side, ligesom den rigtige PDF gør.
+  var tailH=totalsH+notesH;
+  if(used+tailH>QE_PAGE_CONTENT_H){
+    pages.push({rows:[],isFirst:false,tailOnly:true});
+  }
+
+  var pageCount=pages.length;
+  var html=pages.map(function(p,idx){
+    var chrome=p.isFirst?headHtml:contHeadHtml;
+    var table=p.rows.length?'<table class="qe-pdf-table">'+qeTableHeadHtml()+'<tbody>'+p.rows.join('')+'</tbody></table>':'';
+    var isLast=idx===pageCount-1;
+    var tail=isLast?(totalsHtml+notesHtml):'';
+    var pageNum='<div class="qe-pdf-pagenum">Side '+(idx+1)+' af '+pageCount+'</div>';
+    return '<div class="qe-pdf-page" style="padding:'+QE_PAGE_PAD+'">'+chrome+table+tail+(pageCount>1?pageNum:'')+'</div>';
+  }).join('');
+  box.innerHTML=html;
 }
 // RUNDE U (Martins ønske: "Note se tilbuddet når det bliver for
 // stort/langt så kan din Live viewer ikke følge med") — qeRecalc() køres på
 // HVER tastetryk i ethvert linjefelt (pris, antal, beskrivelse, note, ...).
 // qeRenderTotals() er billig (kun tal), men qeRenderPreview() genopbygger
-// HELE forhåndsvisningens innerHTML (alle linjer, hele PDF-lignende layoutet)
-// hver eneste gang — for et langt tilbud med mange/lange linjer blev det
-// mærkbart langsomt/hakkende at skrive i et felt. Totalerne/margin-kortene
-// opdateres stadig med det samme (det er dem man kigger på mens man taster),
-// men selve den tunge forhåndsvisning debounces til 150ms efter sidste
-// tastetryk — usynligt i praksis, men sparer alle de mellemliggende gengivelser.
+// HELE forhåndsvisningens innerHTML (alle linjer, hele PDF-lignende layoutet,
+// nu med måling+paginering oveni) hver eneste gang — for et langt tilbud med
+// mange/lange linjer blev det mærkbart langsomt/hakkende at skrive i et felt.
+// Totalerne/margin-kortene opdateres stadig med det samme (det er dem man
+// kigger på mens man taster), men selve den tunge forhåndsvisning debounces
+// til 150ms efter sidste tastetryk — usynligt i praksis, men sparer alle de
+// mellemliggende gengivelser.
 function qeRecalc(){
   qeRenderTotals();
   clearTimeout(qePreviewRenderTimer);
-  // 350ms — forhåndsvisningen kalder nu en rigtig server-tur (samme ægte
-  // PDF-tegning som den endelige fil), så lidt længere pause end de gamle
-  // 150ms (som kun gentegnede lokal HTML) for ikke at spamme serveren mens
-  // man taster i en linje.
-  qePreviewRenderTimer=setTimeout(qeRenderPreview,350);
+  qePreviewRenderTimer=setTimeout(qeRenderPreview,150);
 }
 function qeRunCustomerSearch(q){
   var box=document.getElementById('qe-customer-results');
@@ -21780,7 +21984,7 @@ async function qeStatusChanged(e){
     // et lead/en opportunity, kunne klikkes direkte ind på den nyoprettede sag —
     // samme klikbare toast-mønster (toast(msg,ic,onClick)) som resten af CRM'et.
     if(newStatus==='accepted'&&r.project_id){
-      toast('Godkendt — projekt oprettet ✓','✓',function(){closeModal('quote-editor-modal');openProjectDetail(r.project_id);});
+      toast('Godkendt — projekt oprettet ✓','✓',function(){qzShowDetailView(false);openProjectDetail(r.project_id);});
     } else {
       toast('Status opdateret','✓');
     }
@@ -21823,7 +22027,7 @@ async function saveQuoteEditor(){
     var dr=await api('/api/invoices/direct-create',{method:'POST',body:JSON.stringify(body)});
     if(dr&&dr.ok){
       toast('Faktura '+dr.invoice_number+' oprettet','✓');
-      closeModal('quote-editor-modal');
+      qeGoBackToList();
       await loadQzInvoices();renderQzInvoices();
       switchQzTab('invoices');
       openInvoiceDetail(dr.id);
@@ -21893,7 +22097,7 @@ async function qcvConfirm(){
   if(r&&r.ok){
     toast('Faktura '+r.invoice_number+' oprettet','✓');
     closeModal('quote-convert-modal');
-    closeModal('quote-editor-modal');
+    qeGoBackToList();
     await Promise.all([loadQzQuotes(),loadQzInvoices()]);
     renderQzQuotes();renderQzInvoices();
     switchQzTab('invoices');
@@ -22412,7 +22616,7 @@ function bindQuotesModuleEvents(){
   makeRichField('iv-top-note');
   document.getElementById('qz-new-quote-btn').addEventListener('click',function(){openQuoteEditor(null);});
   document.getElementById('qz-new-direct-invoice-btn').addEventListener('click',function(){openDirectInvoiceEditor(null);});
-  document.getElementById('qe-close-btn').addEventListener('click',function(){if(qeAiState.listening)qeAiCancel();closeModal('quote-editor-modal');});
+  document.getElementById('qe-back-btn').addEventListener('click',qeGoBackToList);
   document.getElementById('qe-save-btn').addEventListener('click',saveQuoteEditor);
   document.getElementById('qe-convert-btn').addEventListener('click',convertQuoteToInvoice);
   document.getElementById('qe-share-btn').addEventListener('click',qeShareLink);
