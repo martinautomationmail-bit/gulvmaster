@@ -21348,7 +21348,7 @@ function qeAddLine(product){qeState.lines.push(qzMakeBlankLine(product));renderQ
 // POST /api/quotes/ai-parse-lines. Intet føjes til tilbuddet og INTET produkt
 // oprettes før Martin bekræfter i gennemgangsvinduet (#qe-ai-review-modal) —
 // Martins udtrykkelige valg ("altid bekræft med mig først").
-var qeAiState={recognition:null,listening:false,finalTranscript:'',reviewLines:[]};
+var qeAiState={recognition:null,listening:false,finalTranscript:'',interimTranscript:'',reviewLines:[]};
 function qeAiSupported(){return!!(window.SpeechRecognition||window.webkitSpeechRecognition);}
 function qeAiToggleListen(){
   if(qeAiState.listening){qeAiStopAndParse();return;}
@@ -21357,6 +21357,7 @@ function qeAiToggleListen(){
   var rec=new Rec();
   rec.lang='da-DK';rec.continuous=true;rec.interimResults=true;
   qeAiState.finalTranscript='';
+  qeAiState.interimTranscript='';
   rec.onresult=function(e){
     var interim='';
     for(var i=e.resultIndex;i<e.results.length;i++){
@@ -21364,6 +21365,7 @@ function qeAiToggleListen(){
       if(res.isFinal)qeAiState.finalTranscript+=res[0].transcript+' ';
       else interim+=res[0].transcript;
     }
+    qeAiState.interimTranscript=interim;
     var live=document.getElementById('qe-ai-live-transcript');
     if(live)live.textContent=(qeAiState.finalTranscript+interim).slice(-120);
   };
@@ -21392,10 +21394,22 @@ function qeAiCancel(){
 async function qeAiStopAndParse(){
   var rec=qeAiState.recognition;
   qeAiState.listening=false; // sættes FØR stop(), ellers genstarter onend()-handleren ovenfor den
-  if(rec){try{rec.stop();}catch(e){}}
+  // Talegenkendelsen afleverer ofte SIDSTE sætnings "isFinal"-resultat asynkront,
+  // LIGE EFTER stop() kaldes — ikke før. Uden denne ventetid kunne vi nå at læse
+  // finalTranscript tomt og vise "Intet blev opfanget", selvom brugeren tydeligt
+  // talte (typisk hvis man klikker stop lige efter man er stoppet med at tale).
+  if(rec){
+    await new Promise(function(resolve){
+      var done=false;var finish=function(){if(done)return;done=true;resolve();};
+      rec.onend=finish;
+      setTimeout(finish,900);
+      try{rec.stop();}catch(e){finish();}
+    });
+  }
   document.getElementById('qe-ai-listening-bar').hidden=true;
   document.getElementById('qe-ai-mic-btn').textContent='🎤 AI-diktering';
-  var transcript=qeAiState.finalTranscript.trim();
+  var transcript=(qeAiState.finalTranscript||'').trim();
+  if(!transcript)transcript=(qeAiState.interimTranscript||'').trim(); // sidste udvej: ufærdiggjort tekst er bedre end intet
   if(!transcript){toast('Intet blev opfanget — prøv igen','⚠️');return;}
   toast('Tolker diktat...','⏳');
   var r=await api('/api/quotes/ai-parse-lines',{method:'POST',body:JSON.stringify({transcript:transcript})});
@@ -21471,7 +21485,7 @@ async function qeAiReviewConfirm(){
 // selv bagefter"-princip som linje-dikteringen. Genbrugelig på tværs af flere
 // felter (tilbuddets "Note i toppen", CRM-aktivitetsnoten) via ét lille
 // state-objekt, ligesom qeAiState — kun ét dikteringsfelt kan være aktivt ad gangen.
-var noteDictState={recognition:null,listening:false,finalTranscript:'',textareaId:null,btnId:null};
+var noteDictState={recognition:null,listening:false,finalTranscript:'',interimTranscript:'',textareaId:null,btnId:null};
 function noteDictSupported(){return!!(window.SpeechRecognition||window.webkitSpeechRecognition);}
 function noteDictToggle(textareaId,btnId){
   if(noteDictState.listening){noteDictStopAndInsert();return;}
@@ -21480,13 +21494,17 @@ function noteDictToggle(textareaId,btnId){
   var rec=new Rec();
   rec.lang='da-DK';rec.continuous=true;rec.interimResults=true;
   noteDictState.finalTranscript='';
+  noteDictState.interimTranscript='';
   noteDictState.textareaId=textareaId;
   noteDictState.btnId=btnId;
   rec.onresult=function(e){
+    var interim='';
     for(var i=e.resultIndex;i<e.results.length;i++){
       var res=e.results[i];
       if(res.isFinal)noteDictState.finalTranscript+=res[0].transcript+' ';
+      else interim+=res[0].transcript;
     }
+    noteDictState.interimTranscript=interim;
   };
   rec.onerror=function(e){
     if(e.error!=='no-speech'&&e.error!=='aborted'){toast('Mikrofonfejl: '+e.error,'❌');noteDictCancel();}
@@ -21512,11 +21530,22 @@ function noteDictCancel(){
 async function noteDictStopAndInsert(){
   var rec=noteDictState.recognition;
   noteDictState.listening=false; // sættes FØR stop(), ellers genstarter onend()-handleren ovenfor den
-  if(rec){try{rec.stop();}catch(e){}}
+  // Se tilsvarende kommentar i qeAiStopAndParse: det sidste "isFinal"-resultat
+  // ankommer ofte asynkront LIGE EFTER stop() — vent kort på det i stedet for at
+  // læse finalTranscript for tidligt og fejlagtigt vise "Intet blev opfanget".
+  if(rec){
+    await new Promise(function(resolve){
+      var done=false;var finish=function(){if(done)return;done=true;resolve();};
+      rec.onend=finish;
+      setTimeout(finish,900);
+      try{rec.stop();}catch(e){finish();}
+    });
+  }
   var btn=noteDictState.btnId&&document.getElementById(noteDictState.btnId);
   var ta=noteDictState.textareaId&&document.getElementById(noteDictState.textareaId);
   if(btn){btn.textContent='🎤';btn.classList.remove('recording');btn.title='Diktér en note';}
-  var transcript=noteDictState.finalTranscript.trim();
+  var transcript=(noteDictState.finalTranscript||'').trim();
+  if(!transcript)transcript=(noteDictState.interimTranscript||'').trim(); // sidste udvej: ufærdiggjort tekst er bedre end intet
   if(!transcript){toast('Intet blev opfanget — prøv igen','⚠️');return;}
   if(!ta)return;
   if(btn){btn.disabled=true;btn.textContent='✨';}
