@@ -14359,6 +14359,140 @@ function drawDocFooter(doc, company) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// RUNDE X (sep. 2026, Martins ønske: "kan du ikke lave så man kan lave Punkt
+// felter, Tal 1,2,3 osv og måske fed skrift" på beskrivelsen og noten under et
+// tilbudslinje) — en let markdown-lignende syntaks, skrevet direkte i teksten
+// (samme rå tekst gemmes i quote_lines.description/note som hidtil, ingen
+// skemaændring):
+//   - linje der starter med "- " eller "• "   → punkt i en punktliste
+//   - linje der starter med "1. " (et tal+punktum/parentes + mellemrum) → nummereret liste
+//   - **tekst** hvor som helst                → fed tekst
+// Delt af BÅDE denne PDFKit-udgave og admin.html's qzRichTextHtml (HTML-udgaven
+// til den levende forhåndsvisning) — de to skal parse EN linje ens, ellers ser
+// den levende visning og den rigtige PDF forskellige ud. Se lineDescCellHtml
+// nedenfor for kunde-portalens (HTML) udgave i denne fil.
+function _rtParseBlocks(text) {
+  const lines = String(text || '').split('\n');
+  const bulletRe = /^\s*[-•]\s+(.*)$/;
+  const numRe = /^\s*\d+[.)]\s+(.*)$/;
+  const blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    let m;
+    if ((m = bulletRe.exec(lines[i]))) {
+      const items = [];
+      while (i < lines.length && (m = bulletRe.exec(lines[i]))) { items.push(m[1]); i++; }
+      blocks.push({ type: 'ul', items });
+      continue;
+    }
+    if ((m = numRe.exec(lines[i]))) {
+      const items = [];
+      while (i < lines.length && (m = numRe.exec(lines[i]))) { items.push(m[1]); i++; }
+      blocks.push({ type: 'ol', items });
+      continue;
+    }
+    const plain = [];
+    while (i < lines.length && !bulletRe.test(lines[i]) && !numRe.test(lines[i])) { plain.push(lines[i]); i++; }
+    blocks.push({ type: 'p', text: plain.join('\n') });
+  }
+  return blocks;
+}
+const RT_BOLD_RE = /\*\*([^\n*]+?)\*\*/g;
+function _rtHasBold(s) { RT_BOLD_RE.lastIndex = 0; return RT_BOLD_RE.test(s || ''); }
+function _rtStripBold(s) { return String(s || '').replace(/\*\*([^\n*]+?)\*\*/g, '$1'); }
+function _rtSplitRuns(s) {
+  const runs = [];
+  const re = /\*\*([^\n*]+?)\*\*/g;
+  let last = 0, m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) runs.push({ text: s.slice(last, m.index), bold: false });
+    runs.push({ text: m[1], bold: true });
+    last = re.lastIndex;
+  }
+  if (last < s.length || !runs.length) runs.push({ text: s.slice(last), bold: false });
+  return runs;
+}
+const RT_BULLET_W = 16, RT_ITEM_GAP = 3, RT_BLOCK_GAP = 4;
+// Beregner højden af én "linje" (som kan folde over flere visuelle rækker) —
+// et FORSIGTIGT (aldrig for lille) skøn: er der fed skrift involveret, måles
+// bredden med den fede skrifttype (bredere tegn), så vi ALDRIG reserverer for
+// lidt plads, selvom den rigtige tegning blander normal+fed på samme linje
+// (PDFKit har ingen indbygget "heightOfString" for blandet skrift). At
+// reservere en anelse for meget er uskadeligt kosmetisk; at reservere for
+// lidt er den pagineringsbug RUNDE U rettede.
+function _rtLineHeight(doc, text, width, font, boldFont, fontSize) {
+  doc.font(_rtHasBold(text) ? boldFont : font).fontSize(fontSize);
+  return doc.heightOfString(_rtStripBold(text), { width });
+}
+function rtBlocksHeight(doc, blocks, width, font, boldFont, fontSize) {
+  let h = 0;
+  blocks.forEach((b, bi) => {
+    if (bi > 0) h += RT_BLOCK_GAP;
+    if (b.type === 'p') {
+      h += _rtLineHeight(doc, b.text, width, font, boldFont, fontSize);
+    } else {
+      const bw = width - RT_BULLET_W;
+      b.items.forEach((item, ii) => {
+        if (ii > 0) h += RT_ITEM_GAP;
+        h += _rtLineHeight(doc, item, bw, font, boldFont, fontSize);
+      });
+    }
+  });
+  return h;
+}
+function _rtDrawLine(doc, text, x, y, width, font, boldFont, fontSize, color) {
+  const runs = _rtSplitRuns(text);
+  doc.fontSize(fontSize).fillColor(color);
+  runs.forEach((r, i) => {
+    doc.font(r.bold ? boldFont : font);
+    const opts = { width };
+    if (i < runs.length - 1) opts.continued = true;
+    if (i === 0) doc.text(r.text, x, y, opts); else doc.text(r.text, opts);
+  });
+  // Rykker markøren frem med PRÆCIS samme højde som blev reserveret af
+  // rtBlocksHeight/_rtLineHeight ovenfor — afgørende for at paginering stemmer.
+  return _rtLineHeight(doc, text, width, font, boldFont, fontSize);
+}
+function drawRtBlocks(doc, blocks, x, y, width, font, boldFont, fontSize, color) {
+  let cy = y;
+  blocks.forEach((b, bi) => {
+    if (bi > 0) cy += RT_BLOCK_GAP;
+    if (b.type === 'p') {
+      cy += _rtDrawLine(doc, b.text, x, cy, width, font, boldFont, fontSize, color);
+    } else {
+      const bw = width - RT_BULLET_W;
+      b.items.forEach((item, ii) => {
+        if (ii > 0) cy += RT_ITEM_GAP;
+        doc.font(font).fontSize(fontSize).fillColor(color)
+          .text(b.type === 'ul' ? '•' : ((ii + 1) + '.'), x, cy, { width: RT_BULLET_W });
+        cy += _rtDrawLine(doc, item, x + RT_BULLET_W, cy, bw, font, boldFont, fontSize, color);
+      });
+    }
+  });
+  return cy - y;
+}
+// HTML-udgaven (kunde-portal, se lineDescCellHtml nedenfor) — samme
+// blok-parsing (_rtParseBlocks), men til <ul>/<ol>/<strong> i stedet for
+// PDFKit-tegning. escFn er escPublic (denne fil) hhv. esc (admin.html).
+function rtBlocksToHtml(blocks, escFn) {
+  function inline(s) {
+    const esc = escFn(s);
+    return esc.replace(/\*\*([^\n*]+?)\*\*/g, '<strong>$1</strong>');
+  }
+  return blocks.map(b => {
+    if (b.type === 'p') return inline(b.text).replace(/\n/g, '<br>');
+    const tag = b.type === 'ul' ? 'ul' : 'ol';
+    return `<${tag} class="ln-rt-list">` + b.items.map(it => `<li>${inline(it)}</li>`).join('') + `</${tag}>`;
+  }).join('');
+}
+function richTextToHtml(text, escFn) {
+  const s = String(text || '');
+  if (!s) return '';
+  return rtBlocksToHtml(_rtParseBlocks(s), escFn);
+}
+// ══════════════════════════════════════════════════════════════
+
 // Linje-beskrivelse i den RIGTIGE PDF (PDFKit, ikke HTML/CSS) — samme opdeling som
 // lineDescCellHtml() ovenfor: 1. linje af l.description = overskrift (fed), resten =
 // beskrivelse (lidt federe end almindelig tekst — der er kun 2 vægte i PDFKits
@@ -14389,35 +14523,37 @@ const NOTE_LABEL_H = 10;
 function pdfLineDescHeight(doc, l, width) {
   const p = _pdfLineDescParts(l);
   doc.font('Helvetica-Bold').fontSize(9.5);
-  let h = doc.heightOfString(p.heading, { width });
+  let h = doc.heightOfString(_rtStripBold(p.heading), { width });
   if (p.rest) {
-    doc.font('Helvetica').fontSize(9.5);
-    h += 3 + doc.heightOfString(p.rest, { width });
+    // RUNDE X — rest kan nu indeholde punkt-/nummererede lister og **fed** tekst.
+    h += 3 + rtBlocksHeight(doc, _rtParseBlocks(p.rest), width, 'Helvetica', 'Helvetica-Bold', 9.5);
   }
   if (p.note) {
-    doc.font('Helvetica-Oblique').fontSize(8.5);
-    h += 8 + NOTE_LABEL_H + doc.heightOfString(p.note, { width: width - 16 }) + 12;
+    const noteH = rtBlocksHeight(doc, _rtParseBlocks(p.note), width - 16, 'Helvetica-Oblique', 'Helvetica-BoldOblique', 8.5);
+    h += 8 + NOTE_LABEL_H + noteH + 12;
   }
   doc.font('Helvetica').fontSize(9.5);
   return h;
 }
 function drawPdfLineDesc(doc, l, x, y, width) {
   const p = _pdfLineDescParts(l);
-  doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#111318').text(p.heading, x, y, { width });
-  let cy = y + doc.heightOfString(p.heading, { width });
+  const headingPlain = _rtStripBold(p.heading);
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#111318').text(headingPlain, x, y, { width });
+  let cy = y + doc.heightOfString(headingPlain, { width });
   if (p.rest) {
-    doc.font('Helvetica').fontSize(9.5).fillColor('#374151').text(p.rest, x, cy + 3, { width });
-    cy += 3 + doc.heightOfString(p.rest, { width });
+    cy += 3;
+    cy += drawRtBlocks(doc, _rtParseBlocks(p.rest), x, cy, width, 'Helvetica', 'Helvetica-Bold', 9.5, '#374151');
   }
   if (p.note) {
-    doc.font('Helvetica-Oblique').fontSize(8.5);
-    const noteH = doc.heightOfString(p.note, { width: width - 16 });
+    const noteInnerWidth = width - 16;
+    const noteBlocks = _rtParseBlocks(p.note);
+    const noteH = rtBlocksHeight(doc, noteBlocks, noteInnerWidth, 'Helvetica-Oblique', 'Helvetica-BoldOblique', 8.5);
     const noteBoxH = NOTE_LABEL_H + noteH + 12;
     cy += 8;
     doc.roundedRect(x - 2, cy, width + 4, noteBoxH, 4).fill('#F9FAFB');
     doc.rect(x - 2, cy, 2, noteBoxH).fill('#9CA3AF');
     doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#9CA3AF').text('NOTE', x + 6, cy + 5, { characterSpacing: 0.4 });
-    doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#4B5563').text(p.note, x + 6, cy + 5 + NOTE_LABEL_H, { width: width - 16 });
+    drawRtBlocks(doc, noteBlocks, x + 6, cy + 5 + NOTE_LABEL_H, noteInnerWidth, 'Helvetica-Oblique', 'Helvetica-BoldOblique', 8.5, '#4B5563');
     cy += noteBoxH;
   }
   doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
@@ -14795,9 +14931,16 @@ function lineDescCellHtml(l) {
   const nl = full.indexOf('\n');
   const heading = nl === -1 ? full : full.slice(0, nl);
   const rest = nl === -1 ? '' : full.slice(nl + 1).trim();
-  let html = `<div class="ln-heading">${escPublic(heading)}</div>`;
-  if (rest) html += `<div class="ln-desc">${escPublic(rest)}</div>`;
-  if (l.note && String(l.note).trim()) html += `<div class="ln-note"><span class="ln-note-label">Note</span>${escPublic(String(l.note).trim())}</div>`;
+  // Overskriften er allerede altid vist fed (.ln-heading{font-weight:700}), så
+  // **fed**-markører giver ingen visuel forskel der — men fjernes stadig, så
+  // bogstavelige ** ikke lækker igennem hvis de bruges vanemæssigt i selve
+  // produktnavnet (se _rtStripBold, samme funktion som rest/note bruger internt).
+  let html = `<div class="ln-heading">${escPublic(_rtStripBold(heading))}</div>`;
+  // RUNDE X — rest/note kan indeholde punktlister, nummererede lister og
+  // **fed** tekst (se richTextToHtml ovenfor) — samme rå-tekst-syntaks som
+  // admin.html's qzRichTextHtml og PDFKit-udgaven (drawPdfLineDesc).
+  if (rest) html += `<div class="ln-desc">${richTextToHtml(rest, escPublic)}</div>`;
+  if (l.note && String(l.note).trim()) html += `<div class="ln-note"><span class="ln-note-label">Note</span>${richTextToHtml(String(l.note).trim(), escPublic)}</div>`;
   return html;
 }
 
@@ -15165,6 +15308,10 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   .ln-desc{font-weight:600;color:#374151;margin-top:3px;white-space:pre-line}
   .ln-note{margin-top:6px;background:#F9FAFB;border-left:2px solid #9CA3AF;border-radius:4px;padding:6px 9px;font-size:11.5px;font-weight:400;font-style:italic;color:#4B5563;white-space:pre-line}
   .ln-note-label{display:block;font-size:8.5px;font-weight:700;font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF;margin-bottom:2px}
+  /* RUNDE X — punkt-/nummererede lister i beskrivelse/note (se richTextToHtml). */
+  .ln-rt-list{margin:4px 0 0;padding-left:17px}
+  .ln-rt-list li{margin-bottom:2px}
+  .ln-desc strong,.ln-note strong{font-weight:800}
   .ln-textrow{font-weight:700;white-space:pre-line}
   .totals{margin-left:auto;width:240px;margin-top:10px}
   .totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:12.5px;color:#6B7280}

@@ -1396,7 +1396,14 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
    100vh er en tilnærmelse (den egentlige scroll-forælder er app-indholdet, ikke
    vinduet) — sticky degraderer i så fald blot til normal positionering uden at
    knække noget, så det er en sikker antagelse. */
-.qe-preview-wrap{background:#EEF0F3;display:flex;flex-direction:column;align-items:center;padding:20px;position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:hidden}
+/* RUNDE X (Martins ønske: "kan ikke lide den grå farve ... i hvertfald den grå
+   farve der er ved prisen og margin ... mere moderne og simplet") — var #EEF0F3
+   (samme grå som .qe-pdf-cont-head-kanten), erstattet med hvid. Siden margin-
+   kortene/totalerne (qe-preview-summary) siden RUNDE W sidder INDE i denne
+   wrap, var det den grå baggrund der ramte lige der Martin peger på. PDF-siden
+   (.qe-pdf-page) har sin egen box-shadow, så den skiller sig stadig visuelt ud
+   fra wrap'en selvom begge nu er hvide. */
+.qe-preview-wrap{background:#fff;display:flex;flex-direction:column;align-items:center;padding:20px;position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:hidden}
 .qe-preview-pages{overflow-y:auto;flex:1 1 auto;min-height:0;width:100%}
 .qe-preview-summary{flex:0 0 auto;width:100%;margin-top:14px;padding-top:14px;border-top:1px solid var(--bly-border-soft)}
 @media(max-width:1050px){.qe-body{grid-template-columns:minmax(0,1fr)}.qe-preview-wrap{position:static;max-height:none;overflow:visible}.qe-preview-pages{overflow:visible}}
@@ -1491,6 +1498,10 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-crm-note-panel{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-top:10px}
 .qe-crm-note-head{font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:.02em;margin-bottom:4px;display:flex;align-items:center;gap:5px}
 .qe-crm-note-text{font-size:12.5px;color:#374151;white-space:pre-wrap}
+.qe-crm-note-text.collapsed{max-height:60px;overflow:hidden;position:relative;mask-image:linear-gradient(to bottom,#000 34px,transparent 58px);-webkit-mask-image:linear-gradient(to bottom,#000 34px,transparent 58px)}
+.qe-crm-note-toggle{display:none;border:0;background:transparent;color:#92400E;cursor:pointer;font-size:11px;font-weight:600;padding:4px 0 0;margin:0}
+.qe-crm-note-toggle:hover{text-decoration:underline}
+.qe-crm-note-toggle.is-visible{display:inline-block}
 /* RUNDE T (Martins ønske: se qe-crm-link-search ovenfor) — pillen der viser
    det lead/den handel tilbuddet er koblet til, med en lille ✕ for at fjerne
    koblingen igen. Samme visuelle familie som .fin-recon-match-chip. */
@@ -1541,6 +1552,20 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
    .ln-note (kundens portal-side) og drawPdfLineDesc (den rigtige PDF). */
 .ln-note{margin-top:6px;background:#F9FAFB;border-left:2px solid #9CA3AF;border-radius:4px;padding:6px 9px;font-size:11.5px;font-weight:400;font-style:italic;color:#4B5563;white-space:pre-line}
 .ln-note-label{display:block;font-size:8.5px;font-weight:700;font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF;margin-bottom:2px}
+/* RUNDE X (Martins ønske: "punktfelter, tal 1,2,3 og fed skrift" i beskrivelse/note)
+   — punkt-/nummererede lister i den levende forhåndsvisning (qzRichTextHtml). Samme
+   klassenavn og udseende som kunde-portalens version i server.js, så PDF-forhånds-
+   visningen her og den PDF kunden faktisk får, ser ens ud. */
+.ln-rt-list{margin:4px 0 0;padding-left:17px}
+.ln-rt-list li{margin-bottom:2px}
+.ln-desc strong,.ln-note strong{font-weight:800}
+/* Den lille formaterings-værktøjslinje over beskrivelses-/note-felterne i selve
+   linje-editoren (se qzLineRowHtml, qzApplyRichTextFormat) — bevidst diskret/
+   minimalistisk (Martins ønske: "professionelt", ikke "Teletubbies"). */
+.qz-rt-host{display:flex;flex-direction:column;gap:3px;min-width:0}
+.qz-rt-toolbar{display:flex;gap:3px}
+.qz-rt-btn{border:1px solid var(--bly-border);background:#fff;color:var(--bly-sub);font-size:10.5px;font-weight:700;line-height:1;padding:3px 7px;border-radius:5px;cursor:pointer;font-family:inherit}
+.qz-rt-btn:hover{background:var(--bly-hover);color:var(--bly-ink);border-color:var(--bly-ink)}
 .ln-textrow{font-weight:700;white-space:pre-line}
 /* RUNDE U (Martins ønske: "Når man i et tilbud laver en tekstlinje lav det
    mere tydeligt det bryder det eksisterende tilbud med en linje så man kan
@@ -3675,9 +3700,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <div class="qe-customer-results" id="qe-crm-link-results"></div>
           </div>
         </div>
+        <!-- RUNDE X (sep. 2026, Martins ønske: "denne note skulle collapse" — CRM-
+             noten kan være en lang, ophobet log af tidsstemplede indtastninger (se
+             qeRenderCrmNotePanel), og fyldte for meget når den altid var helt åben.
+             Starter nu kollapset (se .qe-crm-note-text.collapsed), med en "Vis
+             hele noten"-knap der folder den ud. -->
         <div id="qe-crm-note-panel" class="qe-crm-note-panel" style="display:none">
           <div class="qe-crm-note-head">📌 Note fra <span id="qe-crm-note-entity-label"></span></div>
-          <div class="qe-crm-note-text" id="qe-crm-note-text"></div>
+          <div class="qe-crm-note-text collapsed" id="qe-crm-note-text"></div>
+          <button type="button" class="qe-crm-note-toggle" id="qe-crm-note-toggle">Vis hele noten ▾</button>
         </div>
         <div class="form-group" style="margin-top:10px">
           <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -3744,7 +3775,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div><label class="qe-label">Rabat på hele tilbuddet</label><div style="display:flex;gap:6px"><input id="qe-doc-discount" type="number" step="0.1" min="0" class="qe-input" value="0" style="flex:1;min-width:0"><select id="qe-doc-discount-type" class="qe-input" style="flex:0 0 64px;padding:0 2px" title="Rabattype"><option value="pct">%</option><option value="fixed">kr</option></select></div></div>
         </div>
 
-        <div class="form-group" style="margin-top:14px"><label class="form-label">Betingelser / note i bunden <span class="opt-tag">valgfrit — vises nederst på PDF'en</span></label><textarea id="qe-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
+        <!-- RUNDE X (Martins ønske: "kollaps også denne del") — starter altid
+             lukket og folder sig kun ud igen når feltet rent faktisk har indhold
+             (se qeSetNotesValue), så det ikke fylder i det daglige for tilbud der
+             ikke bruger en bund-note. -->
+        <div class="form-group" style="margin-top:14px">
+          <label class="form-label" id="qe-notes-label" style="cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none"><span id="qe-notes-caret" style="display:inline-block;transition:transform .15s;font-size:10px">▸</span> Betingelser / note i bunden <span class="opt-tag">valgfrit — vises nederst på PDF'en</span></label>
+          <div id="qe-notes-wrap" style="display:none;margin-top:6px"><textarea id="qe-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
+        </div>
         <div class="form-group" style="margin-top:10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px"><label class="form-label" style="color:#92400E">🔒 Intern note <span class="opt-tag" style="text-transform:none;font-weight:400;color:#92400E">kun jer — kunden ser den ALDRIG</span></label><textarea id="qe-internal-note" class="input" rows="2" style="resize:vertical" placeholder="Fx: kunden får gratis fugefyld med, aftalt telefonisk d. ..."></textarea></div>
         <div class="form-group" id="qe-versions-wrap" style="margin-top:14px;display:none">
           <label class="form-label">📄 Sendte versioner <span class="opt-tag" style="text-transform:none;font-weight:400">den arkiverede PDF som faktisk blev sendt — ændres aldrig</span></label>
@@ -16033,6 +16071,16 @@ function qzLineDiscountAmount(l,gross){
 function qzLineDragHandle(idx){
   return '<span class="qe-line-drag" draggable="true" data-idx="'+idx+'" title="Træk for at ændre rækkefølge">⠿</span>';
 }
+// RUNDE X — den lille "B / • / 1."-værktøjslinje over beskrivelses-/note-feltet
+// (se qzApplyRichTextFormat, qzRichTextToolbarHandler). Samme 3 knapper begge
+// steder, holdt bevidst diskret (Martins ønske: "professionelt", ikke barnligt).
+function qzRtToolbarHtml(){
+  return '<div class="qz-rt-toolbar">'
+    +'<button type="button" class="qz-rt-btn" data-fmt="bold" title="Fed skrift">B</button>'
+    +'<button type="button" class="qz-rt-btn" data-fmt="bullet" title="Punktliste">•</button>'
+    +'<button type="button" class="qz-rt-btn" data-fmt="number" title="Nummereret liste">1.</button>'
+    +'</div>';
+}
 function qzLineRowHtml(l,idx,prefix){
   if(l.line_type==='text'){
     return '<div class="qe-line qe-line-text" data-idx="'+idx+'">'
@@ -16053,7 +16101,7 @@ function qzLineRowHtml(l,idx,prefix){
   return '<div class="qe-line" data-idx="'+idx+'">'
     +'<div class="qe-line-top">'
     +qzLineDragHandle(idx)
-    +'<textarea class="qe-input qe-line-field qe-desc-area" data-idx="'+idx+'" data-field="description" placeholder="Beskrivelse" rows="1">'+esc(l.description||'')+'</textarea>'
+    +'<div class="qz-rt-host">'+qzRtToolbarHtml()+'<textarea class="qe-input qe-line-field qe-desc-area" data-idx="'+idx+'" data-field="description" placeholder="Beskrivelse" rows="1">'+esc(l.description||'')+'</textarea></div>'
     +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="unit" value="'+esc(l.unit||'stk')+'" placeholder="Enhed">'
     +'<select class="qe-input qe-line-field" data-idx="'+idx+'" data-field="product_type">'
       +'<option value="service"'+(type==='service'?' selected':'')+'>Service</option>'
@@ -16075,7 +16123,7 @@ function qzLineRowHtml(l,idx,prefix){
     // visuelt (qzToggleNoteArea), uden en fuld gentegning af linjerne.
     +(l.note?'':'<button type="button" class="qz-note-toggle" data-idx="'+idx+'">+ Note</button>')
     +'<div class="qz-note-wrap"'+(l.note?'':' style="display:none"')+'>'
-    +'<textarea class="qe-input qe-line-field qz-note-area" data-idx="'+idx+'" data-field="note" placeholder="Note (valgfrit) — vises i egen boks under beskrivelsen på tilbud/faktura" rows="1" style="margin-top:4px;font-size:12.5px;min-height:34px">'+esc(l.note||'')+'</textarea>'
+    +'<div class="qz-rt-host">'+qzRtToolbarHtml()+'<textarea class="qe-input qe-line-field qz-note-area" data-idx="'+idx+'" data-field="note" placeholder="Note (valgfrit) — vises i egen boks under beskrivelsen på tilbud/faktura" rows="1" style="margin-top:4px;font-size:12.5px;min-height:34px">'+esc(l.note||'')+'</textarea></div>'
     +'</div>'
     +'<div class="qe-line-nums">'
     +'<div><div class="qe-line-num-label">Antal</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="quantity" value="'+qty+'"></div>'
@@ -16165,6 +16213,61 @@ function qzNoteToggleClickHandler(e){
   var area=wrap.querySelector('.qz-note-area');
   if(area){area.focus();qzAutoGrowTextarea(area);}
 }
+// RUNDE X — anvender fed/punktliste/nummereret-liste-formatering på den valgte
+// tekst (eller hele/aktuelle linje for lister) i et beskrivelses-/note-tekstfelt.
+// Ren tekst-manipulation (se qzRtParseBlocks for hvordan **fed**/"- "/"1. "
+// efterfølgende tolkes ved visning) — ingen state udover selve feltets .value.
+function qzApplyRichTextFormat(ta,fmt){
+  var start=ta.selectionStart,end=ta.selectionEnd,val=ta.value;
+  if(fmt==='bold'){
+    var sel=val.slice(start,end);
+    if(sel){
+      ta.value=val.slice(0,start)+'**'+sel+'**'+val.slice(end);
+      ta.selectionStart=start+2;ta.selectionEnd=end+2;
+    }else{
+      var ins='fed tekst';
+      ta.value=val.slice(0,start)+'**'+ins+'**'+val.slice(end);
+      ta.selectionStart=start+2;ta.selectionEnd=start+2+ins.length;
+    }
+    ta.focus();
+    return;
+  }
+  // Punkt-/nummereret liste: virker på alle LINJER selektionen dækker (mindst
+  // den linje markøren står i, hvis intet er markeret). Er alle linjerne i
+  // forvejen af den valgte type, fjernes markeringen igen (toggle af/på).
+  var lineStart=val.lastIndexOf('\n',Math.max(0,start-1))+1;
+  var lineEndIdx=val.indexOf('\n',end);
+  if(lineEndIdx===-1)lineEndIdx=val.length;
+  var block=val.slice(lineStart,lineEndIdx);
+  var lines=block.split('\n');
+  var bulletRe=/^\s*[-•]\s+/,numRe=/^\s*\d+[.)]\s+/;
+  var already=lines.every(function(ln){return fmt==='bullet'?bulletRe.test(ln):numRe.test(ln);});
+  var n=1;
+  var newLines=lines.map(function(ln){
+    var stripped=ln.replace(bulletRe,'').replace(numRe,'');
+    if(already)return stripped;
+    return fmt==='bullet'?('- '+stripped):((n++)+'. '+stripped);
+  });
+  var newBlock=newLines.join('\n');
+  ta.value=val.slice(0,lineStart)+newBlock+val.slice(lineEndIdx);
+  ta.selectionStart=lineStart;ta.selectionEnd=lineStart+newBlock.length;
+  ta.focus();
+}
+// Delegeret click-lytter for .qz-rt-btn (se qzRtToolbarHtml) — bruges som EKSTRA
+// lytter på de samme linje-containere som makeLinesRemoveHandler/qzNoteToggleClickHandler.
+// Efter formateringen sendes et rigtigt 'input'-event, så den ALLEREDE eksisterende
+// felt-handler (makeLinesFieldHandler) opdaterer linjens state, autogrow og
+// live-forhåndsvisningen/totalerne — ingen dubleret state-synkronisering her.
+function qzRichTextToolbarHandler(e){
+  var btn=e.target.closest('.qz-rt-btn');
+  if(!btn)return;
+  e.preventDefault();
+  var host=btn.closest('.qz-rt-host');
+  var ta=host&&host.querySelector('textarea');
+  if(!ta)return;
+  qzApplyRichTextFormat(ta,btn.dataset.fmt);
+  ta.dispatchEvent(new Event('input',{bubbles:true}));
+}
 // Drag-and-drop reorder af tilbudslinjer (sep. 2026, Martins ønske). Bindes som
 // dragstart/dragover/drop/dragend på selve linje-containeren (samme delegerings-
 // mønster som makeLinesFieldHandler/makeLinesRemoveHandler ovenfor), så den virker
@@ -16229,14 +16332,61 @@ function makeLinesDragHandler(getLines,renderFn){
 // nedenunder. Samme opdeling som server.js' lineDescCellHtml() — bruges i BÅDE den
 // levende tilbudsvisning her (qeRenderPreview) og faktura-visningen (openInvoiceDetail),
 // så admin ser præcis det samme layout som kunden får på tilbuds-siden/PDF'en.
+// RUNDE X (Martins ønske: "punktfelter, tal 1,2,3 og fed skrift" på beskrivelsen
+// og noten under en tilbudslinje) — samme lette rå-tekst-syntaks og parsing som
+// server.js' _rtParseBlocks/richTextToHtml (se kommentaren der for detaljer og
+// PDFKit-udgaven): "- "/"• " = punktliste, "1. " = nummereret liste, **fed**.
+// Skal parse EN linje PRÆCIS ens i begge filer, ellers stemmer den levende
+// forhåndsvisning her ikke overens med den rigtige PDF kunden får.
+function qzRtParseBlocks(text){
+  var lines=String(text||'').split('\n');
+  var bulletRe=/^\s*[-•]\s+(.*)$/,numRe=/^\s*\d+[.)]\s+(.*)$/;
+  var blocks=[],i=0;
+  while(i<lines.length){
+    var m;
+    if((m=bulletRe.exec(lines[i]))){
+      var items=[];
+      while(i<lines.length&&(m=bulletRe.exec(lines[i]))){items.push(m[1]);i++;}
+      blocks.push({type:'ul',items:items});
+      continue;
+    }
+    if((m=numRe.exec(lines[i]))){
+      var items2=[];
+      while(i<lines.length&&(m=numRe.exec(lines[i]))){items2.push(m[1]);i++;}
+      blocks.push({type:'ol',items:items2});
+      continue;
+    }
+    var plain=[];
+    while(i<lines.length&&!bulletRe.test(lines[i])&&!numRe.test(lines[i])){plain.push(lines[i]);i++;}
+    blocks.push({type:'p',text:plain.join('\n')});
+  }
+  return blocks;
+}
+function qzRichTextHtml(text){
+  var s=String(text||'');
+  if(!s)return'';
+  function inline(t){return esc(t).replace(/\*\*([^\n*]+?)\*\*/g,'<strong>$1</strong>');}
+  return qzRtParseBlocks(s).map(function(b){
+    if(b.type==='p')return inline(b.text).replace(/\n/g,'<br>');
+    var tag=b.type==='ul'?'ul':'ol';
+    return '<'+tag+' class="ln-rt-list">'+b.items.map(function(it){return '<li>'+inline(it)+'</li>';}).join('')+'</'+tag+'>';
+  }).join('');
+}
+// Overskriften (1. linje af description) er ALTID vist fed (egen CSS-regel,
+// .ln-heading{font-weight:700}), så **fed**-markører der giver visuel mening i
+// resten af feltet er der overflødige — men skal stadig FJERNES, ellers viser
+// PDF'en/forhåndsvisningen bogstavelige **-tegn hvis Martin (vanemæssigt) også
+// bruger dem i selve produktnavnet. Ingen liste-parsing her — overskriften er
+// bevidst kun én linje.
+function qzRtStripBold(s){return String(s||'').replace(/\*\*([^\n*]+?)\*\*/g,'$1');}
 function qzLineDescCellHtml(l){
   var full=String(l.description||'');
   var nl=full.indexOf('\n');
   var heading=nl===-1?full:full.slice(0,nl);
   var rest=nl===-1?'':full.slice(nl+1).trim();
-  var html='<div class="ln-heading">'+esc(heading)+'</div>';
-  if(rest)html+='<div class="ln-desc">'+esc(rest)+'</div>';
-  if(l.note&&String(l.note).trim())html+='<div class="ln-note"><span class="ln-note-label">Note</span>'+esc(String(l.note).trim())+'</div>';
+  var html='<div class="ln-heading">'+esc(qzRtStripBold(heading))+'</div>';
+  if(rest)html+='<div class="ln-desc">'+qzRichTextHtml(rest)+'</div>';
+  if(l.note&&String(l.note).trim())html+='<div class="ln-note"><span class="ln-note-label">Note</span>'+qzRichTextHtml(String(l.note).trim())+'</div>';
   return html;
 }
 function qzProductLineText(product){
@@ -21503,8 +21653,40 @@ function qeRenderCrmNotePanel(note,entityType,entityName){
   var panel=document.getElementById('qe-crm-note-panel');
   if(!note||!String(note).trim()){panel.style.display='none';return;}
   document.getElementById('qe-crm-note-entity-label').textContent=(entityType==='lead'?'lead':'handel')+' "'+(entityName||'')+'"';
-  document.getElementById('qe-crm-note-text').textContent=note;
+  var txt=document.getElementById('qe-crm-note-text');
+  txt.textContent=note;
+  // RUNDE X — starter altid kollapset ved (gen)render, fx når man skifter
+  // mellem tilbud i editoren. "Vis hele noten"-knappen vises kun hvis
+  // teksten rent faktisk er høj nok til at blive klippet af.
+  txt.classList.add('collapsed');
+  var toggle=document.getElementById('qe-crm-note-toggle');
+  toggle.textContent='Vis hele noten ▾';
+  toggle.classList.remove('is-visible');
   panel.style.display='';
+  requestAnimationFrame(function(){
+    if(txt.scrollHeight>txt.clientHeight+4)toggle.classList.add('is-visible');
+  });
+}
+function qeCrmNoteToggleClick(){
+  var txt=document.getElementById('qe-crm-note-text');
+  var toggle=document.getElementById('qe-crm-note-toggle');
+  var collapsed=txt.classList.toggle('collapsed');
+  toggle.textContent=collapsed?'Vis hele noten ▾':'Skjul noten ▴';
+}
+// RUNDE X — "Betingelser / note i bunden" (se #qe-notes-wrap ovenfor). Sætter
+// værdien OG folder feltet ud hvis det allerede har indhold (fx et eksisterende
+// tilbud der har en bund-note), ellers forbliver det kollapset.
+function qeSetNotesValue(v){
+  document.getElementById('qe-notes').value=v||'';
+  qeSetNotesCollapsed(!v);
+}
+function qeSetNotesCollapsed(collapsed){
+  document.getElementById('qe-notes-wrap').style.display=collapsed?'none':'';
+  document.getElementById('qe-notes-caret').style.transform=collapsed?'':'rotate(90deg)';
+}
+function qeNotesToggleClick(){
+  var wrap=document.getElementById('qe-notes-wrap');
+  qeSetNotesCollapsed(wrap.style.display!=='none');
 }
 // RUNDE V (Martins ønske: "Jeg kan ikke få CRM noten til at virke selvom jeg
 // gør det under en handel der er tilknyttet") — der viser sig at være TO helt
@@ -21556,7 +21738,7 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-valid-until').value='';
   document.getElementById('qe-doc-discount').value=0;
   document.getElementById('qe-doc-discount-type').value='pct';
-  document.getElementById('qe-notes').value='';
+  qeSetNotesValue('');
   document.getElementById('qe-top-note').value='';
   document.getElementById('qe-internal-note').value='';
   document.getElementById('qe-customer-results').style.display='none';
@@ -21594,7 +21776,7 @@ async function openQuoteEditor(id,prefillCustomer){
     document.getElementById('qe-valid-until').value=qd.valid_until||'';
     document.getElementById('qe-doc-discount').value=Number(qd.discount_pct)||0;
     document.getElementById('qe-doc-discount-type').value=qd.discount_type==='fixed'?'fixed':'pct';
-    document.getElementById('qe-notes').value=qd.notes||'';
+    qeSetNotesValue(qd.notes||'');
     document.getElementById('qe-top-note').value=qd.top_note||'';
     document.getElementById('qe-internal-note').value=qd.internal_note||'';
     loadDocActivity('quote',id,'qe-activity-list');
@@ -21627,7 +21809,7 @@ async function openQuoteEditor(id,prefillCustomer){
     // Indstillinger, hvis Martin har sat en (kan altid rettes/slettes for dette tilbud).
     qeState.lines=[qzMakeBlankLine(null),qzMakeBlankLine(null),qzMakeBlankLine(null)];
     document.getElementById('qe-top-note').value=settings.quote_top_note_default||'';
-    document.getElementById('qe-notes').value=settings.quote_bottom_note_default||'';
+    qeSetNotesValue(settings.quote_bottom_note_default||'');
     // Forudfyldt kunde (fx fra "📝 Lav tilbud" på en opportunity) — samme felter
     // som qePickCustomer sætter ved manuelt søge-og-vælg.
     if(prefillCustomer){
@@ -21684,7 +21866,7 @@ async function openDirectInvoiceEditor(prefillCustomer){
   // de erstattes her med fakturaens EGEN standardnote fra Indstillinger (kan altid
   // rettes/slettes for denne faktura, ligesom tilbuddets note kunne).
   document.getElementById('qe-top-note').value=settings.invoice_top_note_default||'';
-  document.getElementById('qe-notes').value=settings.invoice_bottom_note_default||'';
+  qeSetNotesValue(settings.invoice_bottom_note_default||'');
 }
 function renderQeLines(){qzRenderLines('qe-lines',qeState.lines,'qe');}
 // RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: skjuler/viser "+ Tilføj linje",
@@ -22845,6 +23027,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzt-lines').addEventListener('change',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
   document.getElementById('qzt-lines').addEventListener('click',qzNoteToggleClickHandler);
+  document.getElementById('qzt-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
     var qztDrag=makeLinesDragHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');});
     var el=document.getElementById('qzt-lines');
@@ -22878,6 +23061,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qal-lines').addEventListener('change',qalFieldHandler);
   document.getElementById('qal-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
   document.getElementById('qal-lines').addEventListener('click',qzNoteToggleClickHandler);
+  document.getElementById('qal-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
     var qalDrag=makeLinesDragHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');});
     var el=document.getElementById('qal-lines');
@@ -22905,6 +23089,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('ivl-lines').addEventListener('change',ivlFieldHandler);
   document.getElementById('ivl-lines').addEventListener('click',makeLinesRemoveHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
   document.getElementById('ivl-lines').addEventListener('click',qzNoteToggleClickHandler);
+  document.getElementById('ivl-lines').addEventListener('click',qzRichTextToolbarHandler);
   document.getElementById('ivl-discount').addEventListener('input',ivlRenderTotals);
   (function(){
     var ivlDrag=makeLinesDragHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');});
@@ -22946,6 +23131,10 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-add-text-line-bottom').addEventListener('click',function(){qeState.lines.push(qzMakeTextLine());renderQeLines();qeRecalc();});
   document.getElementById('qe-save-as-template-btn').addEventListener('click',qeSaveCurrentAsTemplate);
   document.getElementById('qe-insert-template-btn').addEventListener('click',qeOpenTemplateMenu);
+  // RUNDE X — "Vis hele noten" på CRM-note-panelet (se qeRenderCrmNotePanel).
+  document.getElementById('qe-crm-note-toggle').addEventListener('click',qeCrmNoteToggleClick);
+  // RUNDE X — kollaps/fold ud "Betingelser / note i bunden" (se qeSetNotesValue).
+  document.getElementById('qe-notes-label').addEventListener('click',qeNotesToggleClick);
   document.getElementById('qe-doc-discount').addEventListener('input',qeRecalc);
   document.getElementById('qe-doc-discount-type').addEventListener('change',qeRecalc);
   document.getElementById('qe-product-search').addEventListener('input',function(e){
@@ -22961,6 +23150,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-lines').addEventListener('change',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
   document.getElementById('qe-lines').addEventListener('click',qzNoteToggleClickHandler);
+  document.getElementById('qe-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
     var qeDrag=makeLinesDragHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();});
     var el=document.getElementById('qe-lines');
