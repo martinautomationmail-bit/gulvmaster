@@ -11307,7 +11307,20 @@ app.delete('/api/email-templates/:id', auth, panelAccess('email-templates'), asy
 }));
 
 // ── MAIL-SKABELONER TIL TILBUD/FAKTURA (HTML) ──
-app.get('/api/document-email-templates', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
+// FEJL RETTET (sep. 2026, opdaget da Sarah — sælger uden 'email-templates'-adgang,
+// kun 'quotes' — ikke kunne sende et tilbud): "Send til kunde"-knappen er synlig for
+// alle med adgang til Tilbud & Faktura, men modalen der åbnes læser LISTEN af
+// mail-skabeloner (for at kunne vælge en i dropdown'en) via denne rute, som krævede
+// den langt mere restriktive 'email-templates'-side (Administration — kun til at
+// OPRETTE/rette/slette skabeloner). Uden den adgang fik admin.html et 403 tilbage
+// og gik i stå midt i åbningen af send-modalen (docMailTemplatesCache blev sat til
+// selve fejl-objektet i stedet for en tom liste, hvilket væltede næste linje med en
+// "map is not a function"-fejl — se defensiv rettelse samme sted i admin.html) — så
+// intet skete overhovedet når hun trykkede "Send", uden nogen fejlbesked. Denne
+// GET-rute (kun LÆS listen, ikke oprette/rette/slette) er derfor nu også åben for
+// alle med 'quotes'-adgang, så alle der må sende tilbud/fakturaer også kan vælge
+// (men ikke administrere) en mail-skabelon når de gør det.
+app.get('/api/document-email-templates', auth, panelAccessAny(['quotes', 'email-templates']), asyncRoute(async (req, res) => {
   const rows = await pool.query('SELECT * FROM document_email_templates ORDER BY name ASC');
   res.json(rows.rows);
 }));
@@ -14860,7 +14873,11 @@ async function getAssignedTemplateId(eventType) {
   const row = await pgOne('SELECT value FROM app_settings WHERE key=$1', ['email_tpl_event_' + eventType]);
   return (row && row.value) ? Number(row.value) : null;
 }
-app.get('/api/settings/email-template-assignments', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {
+// Samme baggrund som document-email-templates herover — send-modalen slår den faste
+// standard-skabelon op her, uanset hvem der sender, så denne LÆSE-rute er også åben
+// for alle med 'quotes'-adgang. Selve KOBLINGEN (PUT herunder, dvs. hvilken
+// skabelon der er standard) forbliver forbeholdt 'email-templates'.
+app.get('/api/settings/email-template-assignments', auth, panelAccessAny(['quotes', 'email-templates']), asyncRoute(async (req, res) => {
   res.json(await getEmailTemplateAssignments());
 }));
 app.put('/api/settings/email-template-assignments', auth, panelAccess('email-templates'), asyncRoute(async (req, res) => {

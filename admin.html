@@ -8828,7 +8828,13 @@ function ensureWeeklyNotesLoaded(wk){
   if(loadedNoteWeeks[wk])return;
   loadedNoteWeeks[wk]=true;
   api('/api/notes/weekly?week_key='+encodeURIComponent(wk)).then(function(rows){
-    (rows||[]).forEach(function(n){weeklyNotesCache[n.user_id+':'+n.week_key]=n.note;});
+    // FORSVARSRETTELSE (sep. 2026, fundet under test af send-knap-rettelsen for
+    // begrænsede roller uden 'plan'-adgang) — samme fejlmønster som docMailTemplatesCache:
+    // api() returnerer ved 403 et FEJL-OBJEKT, ikke null, så "rows||[]" alene fangede det
+    // ikke, og .forEach() på fejl-objektet væltede stille (renderPlan() kaldes fra
+    // ugentlige gennemrender-cyklusser uanset hvilken fane der er åben, så dette ramte
+    // enhver bruger uden 'plan'-adgang, ikke kun når de selv åbnede Daglig planlægning).
+    (Array.isArray(rows)?rows:[]).forEach(function(n){weeklyNotesCache[n.user_id+':'+n.week_key]=n.note;});
     renderPlan();
   });
 }
@@ -10667,7 +10673,13 @@ function fillDocEmailVarsClient(str,vars){
 }
 async function loadDocMailTemplates(){
   var t=await api('/api/document-email-templates');
-  docMailTemplatesCache=t||[];
+  // FORSVARSRETTELSE (sep. 2026, sammen med adgangsrettelsen i server.js) — api()
+  // returnerer ved en fejl (fx 403 "Ingen adgang") et FEJL-OBJEKT, ikke null/undefined,
+  // så "t||[]" alene fangede det ikke: docMailTemplatesCache blev sat til selve
+  // fejl-objektet, og næste .map()-kald på det (i openDocSendModal, som åbner
+  // "Send til kunde") væltede med "map is not a function" — så send-knappen så ud til
+  // slet ikke at reagere. Tjek derfor eksplicit at svaret rent faktisk er et array.
+  docMailTemplatesCache=Array.isArray(t)?t:[];
   renderDocMailTemplatesTable();
 }
 function renderDocMailTemplatesTable(){

@@ -315,7 +315,19 @@ function tasksFor(date){return assignments.filter(a=>date>=String(a.start_date).
 // stribemønsteret ikke bliver ulæseligt sammenklemt på en smal telefonskærm.
 function fmtShortDate(d){return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}
 function taskTimelineHtml(a,currentDate){
-  const start=String(a.start_date||'').slice(0,10),end=String(a.end_date||a.start_date||'').slice(0,10);
+  // RETTET (sep. 2026, Martins ønske): viser opgavens forløb ud fra SAGENS opgave
+  // (jt_tasks.start_date/end_date — kommer med som task_start_date/task_end_date fra
+  // bookingSelect() i server.js), IKKE hvor mange dage opgaven er booket i medarbejderens
+  // egen kalender (a.start_date/a.end_date, som er selve bookingen i planning_bookings).
+  // Martin booker fx kun 2 dage hos en medarbejder, selvom sagens opgave reelt strækker
+  // sig over 4 dage — medarbejderen skal se de 4 dage som buffer/backup, ikke kun de 2
+  // han lige har booket. Det var derfor det "ikke virkede korrekt og ikke altid": en
+  // étdags-booking af en flerdages-opgave viste slet intet forløb (skjult, fordi booking-
+  // datoerne var ens), og en flerdages-booking af en étdags-opgave viste et forløb der
+  // reelt kun beskrev bookingen, ikke sagen. Falder tilbage til bookingens egne datoer,
+  // hvis opgaven undtagelsesvis ikke har sit eget forløb (fx en ren kalender-/kapacitets-
+  // opgave uden tilknyttet sag).
+  const start=String(a.task_start_date||a.start_date||'').slice(0,10),end=String(a.task_end_date||a.end_date||a.start_date||'').slice(0,10);
   if(!start||!end||start===end)return '';
   const startD=new Date(start+'T00:00:00'),endD=new Date(end+'T00:00:00');
   const totalDays=Math.round((endD-startD)/86400000)+1;

@@ -308,7 +308,12 @@ function tasksFor(date){return assignments.filter(a=>date>=String(a.start_date).
 // stribemønsteret ikke bliver ulæseligt sammenklemt på en smal telefonskærm.
 function fmtShortDate(d){return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}
 function taskTimelineHtml(a,currentDate){
-  const start=String(a.start_date||'').slice(0,10),end=String(a.end_date||a.start_date||'').slice(0,10);
+  // RETTET (sep. 2026, Martins ønske): viser opgavens forløb ud fra SAGENS opgave
+  // (jt_tasks.start_date/end_date — kommer med som task_start_date/task_end_date fra
+  // bookingSelect() i server.js), IKKE hvor mange dage opgaven er booket i medarbejderens
+  // egen kalender (a.start_date/a.end_date, som er selve bookingen i planning_bookings).
+  // Samme rettelse som employee.html — se kommentaren der for baggrunden.
+  const start=String(a.task_start_date||a.start_date||'').slice(0,10),end=String(a.task_end_date||a.end_date||a.start_date||'').slice(0,10);
   if(!start||!end||start===end)return '';
   const startD=new Date(start+'T00:00:00'),endD=new Date(end+'T00:00:00');
   const totalDays=Math.round((endD-startD)/86400000)+1;
