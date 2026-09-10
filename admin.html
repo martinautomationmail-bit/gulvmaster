@@ -1413,8 +1413,18 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-line-drag:active{cursor:grabbing}
 .qe-line-dragging{opacity:.4}
 .qe-line-dragover{box-shadow:0 -2px 0 0 var(--bly-accent) inset}
+/* AI-diktering (sep. 2026, flyttet + omdesignet efter Martins fejlrapport — se
+   HTML-kommentaren ved #qe-ai-mic-btn): tydelig, accentfarvet CTA-knap i stedet
+   for en lille outline-knap, så den ikke kan forveksles med note-mikrofonen. */
+.qe-ai-cta-btn{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--bly-accent-soft);border:1.5px solid var(--bly-accent);border-radius:var(--bly-r-lg);padding:12px 16px;margin-top:12px;cursor:pointer;transition:background .12s,border-color .12s}
+.qe-ai-cta-btn:hover{background:#E0E1FF}
+.qe-ai-cta-btn.recording{background:#FEF2F2;border-color:#DC2626}
+.qe-ai-cta-icon{font-size:22px;line-height:1;flex-shrink:0}
+.qe-ai-cta-text{display:flex;flex-direction:column;gap:2px}
+.qe-ai-cta-text strong{font-size:13.5px;color:var(--bly-accent)}
+.qe-ai-cta-text small{font-size:11.5px;color:var(--bly-sub);font-weight:500}
 /* AI-diktering (sep. 2026) — lytte-bar under linje-værktøjslinjen + gennemgangsvindue. */
-.qe-ai-listening-bar{display:flex;align-items:center;gap:8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--bly-r-md);padding:8px 12px;margin-bottom:10px;font-size:12px;color:#991B1B}
+.qe-ai-listening-bar{display:flex;align-items:center;gap:8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--bly-r-md);padding:8px 12px;margin-bottom:10px;margin-top:10px;font-size:12px;color:#991B1B}
 /* FEJLRETTELSE: [hidden] og .qe-ai-listening-bar{display:flex} har samme CSS-
    specificitet, så uden denne regel vandt display:flex over den indbyggede
    [hidden]{display:none} — baren forblev synlig efter at være skjult via .hidden. */
@@ -3505,7 +3515,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
   <div class="qztabpage" id="qztab-quotes">
     <div class="bly-toolbar">
-      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-quotes-count">Tilbud</span><input type="text" id="qz-quote-search" class="bly-search" placeholder="Søg i tilbud..."></div>
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-quotes-count">Tilbud</span><input type="text" id="qz-quote-search" class="bly-search" placeholder="Søg — navn, tilbudsnr., sagsnr., adresse, email eller telefon..."></div>
       <div class="bly-toolbar-right"><button class="bly-btn" id="qz-new-quote-btn" type="button">+ Nyt tilbud</button></div>
     </div>
     <!-- Status-oversigt som "kort" i stedet for almindelige tekst-faner — samme
@@ -3526,7 +3536,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
   <div class="qztabpage" id="qztab-invoices" style="display:none">
     <div class="bly-toolbar">
-      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-invoices-count">Fakturaer</span><input type="text" id="qz-invoice-search" class="bly-search" placeholder="Søg i fakturaer..."></div>
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-invoices-count">Fakturaer</span><input type="text" id="qz-invoice-search" class="bly-search" placeholder="Søg — navn, fakturanr., sagsnr., adresse, email eller telefon..."></div>
       <div class="bly-toolbar-right"><button class="bly-btn outline" id="qz-new-direct-invoice-btn" type="button" title="Til priser aftalt direkte/mundtligt med kunden, uden et forudgående tilbud">+ Ny faktura (uden tilbud)</button></div>
     </div>
     <div class="bly-kpi-row" id="qz-invoices-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
@@ -3578,6 +3588,31 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <input id="qe-customer-search" class="qe-input" placeholder="Søg efter eksisterende sag, eller skriv et nyt navn...">
           <div class="qe-customer-results" id="qe-customer-results"></div>
         </div>
+        <!-- Martins fejlrapport: han forvekslede denne funktion med note-mikrofonen
+             nedenfor (🎤 ved "Note i toppen"), som kun renser talt tekst op til en
+             note — IKKE tilbudslinjer. Knappen sad før nede i "Linjer"-værktøjs-
+             linjen, klemt ind som en lille outline-knap på linje med "+ Tilføj
+             linje"/"+ Tekstlinje" og let at overse/forveksle. Flyttet herop som
+             det første man kan gøre efter at have valgt kunden ("trin 1", som
+             Martin selv beskrev det), og givet et tydeligt afvigende udseende
+             (accentfarve + to linjers forklarende tekst) så den ikke kan
+             forveksles med note-mikrofonen igen. Samme #qe-ai-mic-btn/
+             qeAiToggleListen()/POST /api/quotes/ai-parse-lines som før — kun
+             placering og udseende er ændret, ingen ny funktionalitet. -->
+        <button class="qe-ai-cta-btn" id="qe-ai-mic-btn" type="button" title="Diktér hele tilbuddet — AI finder eller foreslår produkter fra dit katalog og udfylder linjerne til godkendelse">
+          <span class="qe-ai-cta-icon">🎤</span>
+          <span class="qe-ai-cta-text">
+            <strong>AI-diktering af tilbud</strong>
+            <small>Sig hvad tilbuddet skal indeholde — AI finder eller opretter produkterne og foreslår linjerne til din godkendelse</small>
+          </span>
+        </button>
+        <div id="qe-ai-listening-bar" class="qe-ai-listening-bar" hidden>
+          <span class="qe-ai-listening-dot"></span>
+          <span>Lytter... sig hele tilbuddet, tryk "Stop &amp; tolk" når du er færdig.</span>
+          <span id="qe-ai-live-transcript" class="qe-ai-live-transcript"></span>
+          <button class="bly-btn small" id="qe-ai-stop-btn" type="button" style="margin-left:auto">⏹ Stop &amp; tolk</button>
+          <button class="qz-icon-btn" id="qe-ai-cancel-btn" type="button" title="Annullér optagelse">✕</button>
+        </div>
         <div class="qe-field-row" style="margin-top:10px">
           <div><label class="qe-label">Adresse</label><input id="qe-customer-address" class="qe-input"></div>
           <div><label class="qe-label">Telefon</label><input id="qe-customer-phone" class="qe-input"></div>
@@ -3611,7 +3646,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
                  POST /api/ai/clean-note. Tal ind, AI renser diktatet op til en pæn
                  note og sætter den ind i feltet nedenfor (til gennemsyn/redigering,
                  intet gemmes før du selv trykker "Gem"). -->
-            <button type="button" class="qz-icon-btn qe-note-mic-btn" id="qe-top-note-mic-btn" title="Diktér en note — fx alt fra et kundebesøg">🎤</button>
+            <button type="button" class="qz-icon-btn qe-note-mic-btn" id="qe-top-note-mic-btn" title="Diktér KUN en note (fx alt fra et kundebesøg) — rører ikke tilbudslinjerne. For at få AI til at udfylde linjer/produkter automatisk: brug '🎤 AI-diktering af tilbud' foroven i stedet.">🎤</button>
           </label>
           <textarea id="qe-top-note" class="input" rows="2" style="resize:vertical"></textarea>
         </div>
@@ -3634,11 +3669,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
               <input id="qe-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
               <div class="qe-customer-results" id="qe-product-results"></div>
             </div>
-            <!-- AI-diktering (sep. 2026, Martins ønske) — se qeAiToggleListen() og
-                 POST /api/quotes/ai-parse-lines. Selve tale-optagelsen sker via
-                 browserens Web Speech API (da-DK), ingen server-nøgle nødvendig for
-                 selve optagelsen — kun for AI-tolkningen bagefter. -->
-            <button class="bly-btn outline small" id="qe-ai-mic-btn" type="button" title="Diktér hele tilbuddet — AI finder eller foreslår produkter">🎤 AI-diktering</button>
             <button class="bly-btn outline small" id="qe-add-blank-line" type="button">+ Tilføj linje</button>
             <button class="bly-btn outline small" id="qe-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
             <button class="bly-btn outline small" id="qe-save-as-template-btn" type="button" title="Gem de nuværende linjer som en skabelon">💾 Gem som skabelon</button>
@@ -3649,13 +3679,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
                  skabeloner via den fælles kontekstmenu (showCtxMenu) — se qeOpenTemplateMenu. -->
             <button class="bly-btn outline small" id="qe-insert-template-btn" type="button" title="Indsæt linjer fra en gemt skabelon">📥 Indsæt skabelon</button>
           </div>
-        </div>
-        <div id="qe-ai-listening-bar" class="qe-ai-listening-bar" hidden>
-          <span class="qe-ai-listening-dot"></span>
-          <span>Lytter... sig hele tilbuddet, tryk "Stop &amp; tolk" når du er færdig.</span>
-          <span id="qe-ai-live-transcript" class="qe-ai-live-transcript"></span>
-          <button class="bly-btn small" id="qe-ai-stop-btn" type="button" style="margin-left:auto">⏹ Stop &amp; tolk</button>
-          <button class="qz-icon-btn" id="qe-ai-cancel-btn" type="button" title="Annullér optagelse">✕</button>
         </div>
         <div id="qe-lines"></div>
         <!-- Samme "+ Tilføj linje"/"+ Tekstlinje"-knapper som foroven, men lige under
@@ -4263,7 +4286,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
   <div class="projtabpage" id="projtab-list">
     <div class="bly-toolbar">
-      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="proj-count">Projekter</span><input type="text" id="proj-search" class="bly-search" placeholder="Søg — navn, pris, email eller telefon..." style="width:280px"></div>
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="proj-count">Projekter</span><input type="text" id="proj-search" class="bly-search" placeholder="Søg — navn, sagsnr., adresse, pris, email eller telefon..." style="width:280px"></div>
       <!-- RUNDE K (sep. 2026, Martins ønske) — Liste/Kanban-visningsvalg, og manuel
            projekt-oprettelse (hidtil kunne projekter KUN opstå automatisk). -->
       <div class="bly-toolbar-right">
@@ -6607,8 +6630,24 @@ var API='',token=localStorage.getItem('gm_token'),me=JSON.parse(localStorage.get
 // (uændret, som altid) ELLER en tildelt panel-rolle (fx "Kontor"/"Mester") — se
 // panel_role_id i login-svaret. Alle andre (almindelige medarbejdere uden nogen
 // panel-rolle) sendes væk her, 100% som før denne funktion fandtes.
-if(!token||!me||(me.role!=='admin'&&!me.panel_role_id)){window.location.href='/';return;}
-document.getElementById('app').style.display='block';
+//
+// FEJLRETTELSE (Martins fejlrapport: "gav Sarah Admin/Kontor-adgang, men hun
+// kunne stadig ikke se Kunder/sende Tilbud"): mangler token/bruger HELT -> send
+// væk med det samme (helt sikkert ikke logget ind, intet at tjekke med
+// serveren om). MEN hvis den CACHEDE bruger (gemt ved seneste login) viser
+// ingen adgang, mens der rent faktisk ER et gyldigt token, kan cachen simpelt-
+// hen være FORÆLDET — fx lige efter Martin har givet brugeren Admin/Kontor-
+// adgang, mens de stadig var logget ind, uden at logge helt ud og ind igen.
+// FØR blev sådan en bruger sendt væk HER, synkront, ud fra den forældede
+// cache — uden nogensinde at nå at spørge serveren om det stadig passede. Nu:
+// vis IKKE appen endnu i det tilfælde (den er allerede skjult som standard,
+// ingen "blitz" af indhold) — lad resten af scriptet køre som normalt, og lad
+// meRefreshPromise (se nedenfor) afgøre — ud fra FRISKE data fra serveren —
+// om appen skal vises, eller om brugeren rent faktisk ikke har adgang og skal
+// sendes væk.
+if(!token||!me){window.location.href='/';return;}
+var meCachedShowsNoAccess=(me.role!=='admin'&&!me.panel_role_id);
+if(!meCachedShowsNoAccess){document.getElementById('app').style.display='block';}
 // Roller & adgang (sep. 2026) — det fælles katalog af side-nøgler, matcher
 // PANEL_PAGES i server.js 1:1 (holdes i sync manuelt, samme mønster som resten
 // af appens delte konstanter mellem frontend/backend).
@@ -6672,13 +6711,56 @@ function applyPanelPageVisibility(){
 function applyRealAdminOnlyVisibility(){
   document.querySelectorAll('.realadmin-only').forEach(function(el){el.classList.toggle('hidden',me.role!=='admin');});
 }
-(async function(){
+// FEJLRETTELSE (Martins fejlrapport: "gav Sarah Admin/Kontor-adgang, men hun
+// kunne stadig ikke se Kunder/sende Tilbud"): `me` i localStorage er sat ved
+// SENESTE login og kan derfor være ældre end den rolle/adgang Martin lige har
+// ændret — token'et (gyldigt i 30 dage) ved intet om det. Denne funktion
+// henter den FRISKE adgang fra serveren og gemmes nu som et promise
+// (meRefreshPromise, se bind() nedenfor) i stedet for at køre helt løsrevet —
+// FØR denne rettelse kørte hash-baseret sideindlæsning (bind()'s
+// "genskab siden ved genindlæsning"-blok, som afgør om man overhovedet må SE
+// den side adressen peger på) altid synkront FØRDIG inden dette netværkskald
+// nogensinde kunne nå at svare — garanteret på hver eneste sideindlæsning,
+// ikke kun "et sjældent øjeblik". I praksis mærkedes det aldrig, fordi den
+// cachede `me` som regel stemte overens — men lige efter Martin ændrer en
+// medarbejders rolle og medarbejderen genindlæser/åbner siden (uden at logge
+// helt ud og ind igen), brugte guardPage() den GAMLE adgang, viste "Du har
+// ikke adgang til Kunder" og sendte hende væk — selvom den nye adgang allerede
+// var gemt i databasen. bind() venter nu på dette promise FØR den afgør om
+// den indledende side må vises (se "Genskab den side..."-blokken nedenfor).
+// Derudover: hvis nogen allerede SIDDER inde på en side (fanen har stået åben
+// hen over rolleændringen, ingen genindlæsning sket endnu), revalideres den
+// aktuelt viste side automatisk med det samme de friske data er hentet, så
+// adgangen retter sig selv uden at brugeren skal foretage sig noget.
+var meRefreshPromise=(async function(){
   try{
     var r=await fetch((API||'')+'/api/auth/me',{headers:{'Authorization':'Bearer '+token}});
-    if(r.ok){var fresh=await r.json();me=Object.assign({},me,fresh);localStorage.setItem('gm_user',JSON.stringify(me));
+    if(r.ok){
+      var fresh=await r.json();me=Object.assign({},me,fresh);localStorage.setItem('gm_user',JSON.stringify(me));
+      if(meCachedShowsNoAccess){
+        // Den indledende adgangsbeslutning blev udskudt (se kommentaren foroven
+        // ved topguarden) fordi den CACHEDE bruger viste ingen adgang. Nu har vi
+        // friske data fra serveren — brug DEM til at afgøre om appen skal vises.
+        if(me.role==='admin'||me.panel_role_id){
+          document.getElementById('app').style.display='block';
+        }else{
+          window.location.href='/';return;
+        }
+      }
       applyPanelPageVisibility();applyRealAdminOnlyVisibility();
-      if(me.role==='admin'){loadPanelRolesData();loadAkkordItemsData();}}
-  }catch(e){}
+      if(me.role==='admin'){loadPanelRolesData();loadAkkordItemsData();}
+      var activeEl=document.querySelector('.page.active');
+      if(activeEl&&activeEl.id&&activeEl.id.indexOf('page-')===0){
+        switchPage(activeEl.id.slice(5),true);
+      }
+    }else if(meCachedShowsNoAccess){
+      // Kunne ikke bekræfte adgang mod serveren (fx udløbet token) — send væk,
+      // som topguarden ville have gjort før denne rettelse.
+      window.location.href='/';return;
+    }
+  }catch(e){
+    if(meCachedShowsNoAccess){window.location.href='/';return;}
+  }
 })();
 
 var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={},poolSelected={},assignAttachmentsReady=true;
@@ -14413,7 +14495,7 @@ function switchPage(page,skipHash){
   if(page==='project-detail'){if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');switchPage('plan');return;}initProjectsModule();}
   if(page==='customer-detail'){if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');switchPage('plan');return;}initCustomerDetailModule();}
 }
-function bind(){
+async function bind(){
   syncStickyOffsets();window.addEventListener('resize',syncStickyOffsets);
   // SIDEBAR — fold ind/ud (Billy-stil venstre navigation, erstatter den
   // gamle vandrette topmenu). Tilstanden gemmes pr. browser så den ikke
@@ -15368,6 +15450,14 @@ function bind(){
     var t=e.target.closest('.draggable-task');
     if(t&&e.detail>=2)openAssign({taskId:t.dataset.taskId,date:iso(new Date())});
   });
+  // FEJLRETTELSE (se meRefreshPromise-kommentaren foroven): vent på at den
+  // FRISKE adgang er hentet, FØR vi afgør om den indledende side må vises —
+  // ellers ville guardPage() herunder kunne bruge en forældet, cachet `me`
+  // (fra sidste login, før en evt. lige-ændret rolle) og fejlagtigt sende
+  // brugeren væk med "Du har ikke adgang" på en side de faktisk har adgang
+  // til nu. I praksis er dette kald allerede afsluttet eller kun få
+  // millisekunder fra det, så ingen mærkbar forsinkelse ved normal indlæsning.
+  await meRefreshPromise;
   // Genskab den side, browserens adresse peger på (så en genindlæsning bliver på samme side)
   var initialParts=location.hash.slice(1).split('/');
   var initialPage=initialParts[0];
@@ -19168,6 +19258,12 @@ function pjPeriodSearchFilter(base,q,qDigits){
     var priceStr=price!=null?String(Math.round(price)):'';
     if((p.name||'').toLowerCase().indexOf(q)>-1)return true;
     if((p.customer_email||'').toLowerCase().indexOf(q)>-1)return true;
+    // FEJLRETTELSE (Martins fejlrapport: "tit kan man ikke finde... samt under
+    // projekter"): søgningen manglede HELT to felter der allerede lå i hvert
+    // projekts data — adressen, og ikke mindst sagsnummeret (GM-ÅÅÅÅ-NNNN),
+    // som formentlig er det Martin/teamet oftest kender en sag på i praksis.
+    if((p.customer_address||'').toLowerCase().indexOf(q)>-1)return true;
+    if((p.job_number||'').toLowerCase().indexOf(q)>-1)return true;
     if(qDigits&&(p.customer_phone||'').replace(/\s+/g,'').indexOf(qDigits)>-1)return true;
     if(priceStr&&priceStr.indexOf(q.replace(/\s+/g,''))>-1)return true;
     return false;
@@ -21118,8 +21214,26 @@ function renderQzQuoteStatusFilter(){
 function renderQzQuotes(){
   renderQzQuoteStatusFilter();
   var q=(document.getElementById('qz-quote-search').value||'').trim().toLowerCase();
+  // FEJLRETTELSE (Martins fejlrapport: "tit kan man ikke finde det tilbud man
+  // har lavet"): søgningen kiggede FØR kun på navnet ("Kunde / sag") og
+  // tilbudsnummeret — men adresse, telefon og email lå allerede med i hvert
+  // tilbuds data (samme kolonner som Projekter-siden allerede søger i), de
+  // blev bare ikke brugt her. Nu søges der også i dem, så man fx kan finde
+  // tilbuddet ved at søge på kundens telefonnummer eller vejnavn.
+  var qDigits=q.replace(/\s+/g,'');
   var list=qzQuotes.filter(function(x){
-    if(q&&(x.job_name||'').toLowerCase().indexOf(q)===-1&&(x.quote_number||'').toLowerCase().indexOf(q)===-1)return false;
+    if(q){
+      var hit=(x.job_name||'').toLowerCase().indexOf(q)>-1
+        ||(x.quote_number||'').toLowerCase().indexOf(q)>-1
+        // FEJLRETTELSE (Martins ønske: "Giv alle tilbud et sags nummer. Så man
+        // kan søge efter det") — sagsnummeret (delt med projektet/opgaverne/
+        // fakturaerne for samme sag) er nu også søgbart her.
+        ||(x.job_number||'').toLowerCase().indexOf(q)>-1
+        ||(x.customer_email||'').toLowerCase().indexOf(q)>-1
+        ||(x.customer_address||'').toLowerCase().indexOf(q)>-1
+        ||(qDigits&&(x.customer_phone||'').replace(/\s+/g,'').indexOf(qDigits)>-1);
+      if(!hit)return false;
+    }
     if(qzQuoteStatusFilter!=='all'&&x.status!==qzQuoteStatusFilter)return false;
     if(qzQuotePeriodFilter&&!qzQuotePeriodFilter.matches(x.created_at))return false;
     return true;
@@ -21132,7 +21246,7 @@ function renderQzQuotes(){
     var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
     return '<tr>'
       +'<td>'+a(esc(x.quote_number||'–'))+'</td>'
-      +'<td>'+a(esc(x.job_name||'–'))+'</td>'
+      +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':''))+'</td>'
       +'<td>'+a(esc(String(x.created_at||'').slice(0,10)))+'</td>'
       +'<td>'+a(qzStatusDot(QZ_QUOTE_STATUS,x.status))+'</td>'
       +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
@@ -21345,7 +21459,10 @@ async function openQuoteEditor(id,prefillCustomer){
     loadDocActivity('quote',id,'qe-activity-list');
     loadQeVersions(id);
     document.getElementById('qe-title').textContent=qd.quote_number;
-    document.getElementById('qe-subtitle').textContent='Oprettet '+String(qd.created_at||'').slice(0,10);
+    // Sagsnummer (se skema-kommentaren ved quotes.job_number, Martins ønske) —
+    // vist her så det er synligt allerede mens man arbejder i tilbuddet, ikke
+    // kun i listen/på PDF'en/i mailen.
+    document.getElementById('qe-subtitle').textContent='Oprettet '+String(qd.created_at||'').slice(0,10)+(qd.job_number?' · Sag '+qd.job_number:'');
     setAppTitle(qd.job_name||qd.quote_number);
     qePopulateStatusSelect(qd.status);
     document.getElementById('qe-pdf-link').style.display='inline-flex';
@@ -21480,6 +21597,20 @@ function qeAddLine(product){qeState.lines.push(qzMakeBlankLine(product));renderQ
 // Martins udtrykkelige valg ("altid bekræft med mig først").
 var qeAiState={recognition:null,listening:false,finalTranscript:'',interimTranscript:'',reviewLines:[]};
 function qeAiSupported(){return!!(window.SpeechRecognition||window.webkitSpeechRecognition);}
+// #qe-ai-mic-btn er ikke længere en simpel tekst-knap (se HTML-kommentaren ved
+// den) — den har nu et ikon + to linjers forklarende tekst inde i sig, så
+// .textContent kan ikke længere bruges til at vise optage-status uden at
+// smadre den struktur. Denne helper opdaterer i stedet kun ikon-teksten og
+// .recording-klassen (rød, se CSS), og lader selve forklaringsteksten stå.
+function qeAiSetBtnRecording(recording){
+  var btn=document.getElementById('qe-ai-mic-btn');
+  if(!btn)return;
+  btn.classList.toggle('recording',recording);
+  var icon=btn.querySelector('.qe-ai-cta-icon');
+  if(icon)icon.textContent=recording?'🔴':'🎤';
+  var strong=btn.querySelector('.qe-ai-cta-text strong');
+  if(strong)strong.textContent=recording?'Optager... tryk igen for at stoppe':'AI-diktering af tilbud';
+}
 function qeAiToggleListen(){
   if(qeAiState.listening){qeAiStopAndParse();return;}
   if(!qeAiSupported()){toast('AI-diktering kræver Chrome eller Edge','⚠️');return;}
@@ -21513,13 +21644,13 @@ function qeAiToggleListen(){
   try{rec.start();}catch(e){toast('Kunne ikke starte mikrofonen','❌');qeAiState.listening=false;return;}
   document.getElementById('qe-ai-listening-bar').hidden=false;
   document.getElementById('qe-ai-live-transcript').textContent='';
-  document.getElementById('qe-ai-mic-btn').textContent='🔴 Optager...';
+  qeAiSetBtnRecording(true);
 }
 function qeAiCancel(){
   if(qeAiState.recognition){try{qeAiState.recognition.stop();}catch(e){}qeAiState.recognition=null;}
   qeAiState.listening=false;
   document.getElementById('qe-ai-listening-bar').hidden=true;
-  document.getElementById('qe-ai-mic-btn').textContent='🎤 AI-diktering';
+  qeAiSetBtnRecording(false);
 }
 async function qeAiStopAndParse(){
   var rec=qeAiState.recognition;
@@ -21537,7 +21668,7 @@ async function qeAiStopAndParse(){
     });
   }
   document.getElementById('qe-ai-listening-bar').hidden=true;
-  document.getElementById('qe-ai-mic-btn').textContent='🎤 AI-diktering';
+  qeAiSetBtnRecording(false);
   var transcript=(qeAiState.finalTranscript||'').trim();
   if(!transcript)transcript=(qeAiState.interimTranscript||'').trim(); // sidste udvej: ufærdiggjort tekst er bedre end intet
   if(!transcript){toast('Intet blev opfanget — prøv igen','⚠️');return;}
@@ -22265,8 +22396,23 @@ function renderQzInvoiceStatusFilter(){
 function renderQzInvoices(){
   renderQzInvoiceStatusFilter();
   var q=(document.getElementById('qz-invoice-search').value||'').trim().toLowerCase();
+  // FEJLRETTELSE (samme som tilbudssøgningen, se kommentaren ved renderQzQuotes)
+  // — søger nu også i adresse, telefon og email, ikke kun navn/fakturanummer.
+  var qDigits=q.replace(/\s+/g,'');
   var list=qzInvoices.filter(function(x){
-    if(q&&(x.job_name||'').toLowerCase().indexOf(q)===-1&&(x.invoice_number||'').toLowerCase().indexOf(q)===-1)return false;
+    if(q){
+      var hit=(x.job_name||'').toLowerCase().indexOf(q)>-1
+        ||(x.invoice_number||'').toLowerCase().indexOf(q)>-1
+        // FEJLRETTELSE (Martins ønske: "Giv alle tilbud et sags nummer. Så man
+        // kan søge efter det ... finde alle faktura tilknyttet den enkle sag")
+        // — sagsnummeret er nu søgbart her, samme nummer på alle delfakturaer
+        // for samme sag.
+        ||(x.job_number||'').toLowerCase().indexOf(q)>-1
+        ||(x.customer_email||'').toLowerCase().indexOf(q)>-1
+        ||(x.customer_address||'').toLowerCase().indexOf(q)>-1
+        ||(qDigits&&(x.customer_phone||'').replace(/\s+/g,'').indexOf(qDigits)>-1);
+      if(!hit)return false;
+    }
     if(qzInvoiceStatusFilter!=='all'&&x.status!==qzInvoiceStatusFilter)return false;
     if(qzInvoicePeriodFilter&&!qzInvoicePeriodFilter.matches(x.created_at))return false;
     return true;
@@ -22279,7 +22425,7 @@ function renderQzInvoices(){
     var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
     return '<tr>'
       +'<td>'+a(esc(x.invoice_number||'–'))+'</td>'
-      +'<td>'+a(esc(x.job_name||'–'))+'</td>'
+      +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':''))+'</td>'
       +'<td>'+a(esc(String(x.created_at||'').slice(0,10)))+'</td>'
       +'<td>'+a(esc(x.due_date||'–'))+'</td>'
       +'<td>'+a(qzStatusDot(QZ_INVOICE_STATUS,x.status))+'</td>'
@@ -22296,7 +22442,9 @@ async function openInvoiceDetail(id){
   if(!inv||inv.error){toast('Kunne ikke hente fakturaen','❌');return;}
   setAppTitle(inv.job_name||inv.invoice_number);
   document.getElementById('iv-title').textContent=inv.invoice_number;
-  document.getElementById('iv-subtitle').textContent=(inv.job_name||'')+' · '+(QZ_INVOICE_STATUS[inv.status]?QZ_INVOICE_STATUS[inv.status].label:inv.status);
+  // Sagsnummer (se skema-kommentaren ved quotes.job_number, Martins ønske) —
+  // vist her, ligesom på tilbudseditoren (qe-subtitle).
+  document.getElementById('iv-subtitle').textContent=(inv.job_name||'')+(inv.job_number?' · Sag '+inv.job_number:'')+' · '+(QZ_INVOICE_STATUS[inv.status]?QZ_INVOICE_STATUS[inv.status].label:inv.status);
   // RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: sent_at sat = fakturaen er
   // sendt til kunden og er låst for rettelser af note/linjer (due_date er BEVIDST
   // undtaget, se skema-noten i server.js). Serveren håndhæver samme regel (se

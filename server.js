@@ -1553,6 +1553,23 @@ async function initSchema() {
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS signature_data TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_accept_token ON quotes(accept_token) WHERE accept_token IS NOT NULL;
 
+    -- SAGSNUMMER PÅ TILBUD/FAKTURA (sep. 2026, Martins ønske: "Giv alle tilbud
+    -- et sags nummer ... Det betyder jeg kan søge på det i min email og finde
+    -- alle faktura tilknyttet den enkle sag") — ÉT sagsnummer (samme
+    -- GM-ÅÅÅÅ-NNNN-stil, samme tælleserie: nextDocNumber('project','GM')) der
+    -- nu følger sagen fra tilbuddet OPRETTES, gennem det automatisk oprettede
+    -- projekt, og videre ud på alle sagens opgaver i Opgavepoolen (jt_tasks —
+    -- se mirrorProjectTaskToPool) og enhver faktura (delfakturaer på samme
+    -- tilbud deler derfor alle sammen ÉT nummer). Tildeles ved oprettelse
+    -- (POST /api/quotes, POST /api/invoices/direct-create) og arves derefter
+    -- ned igennem hele kæden i stedet for at hvert dokument/hver opgave får
+    -- sit eget — se backfillCaseNumbers() for eksisterende rækker fra før
+    -- denne kolonne fandtes.
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS job_number TEXT;
+    CREATE INDEX IF NOT EXISTS idx_quotes_job_number ON quotes(job_number);
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS job_number TEXT;
+    CREATE INDEX IF NOT EXISTS idx_invoices_job_number ON invoices(job_number);
+
     -- MAIL-SKABELONER TIL TILBUD/FAKTURA (HTML) — adskilt fra email_templates
     -- ovenfor (som er til booking-/planlægningsmails med andre variabler).
     -- body_html er RÅ HTML som skrives direkte i mailen, ikke tekst der
@@ -2288,9 +2305,19 @@ function auth(req, res, next) {
   }
 }
 
-function adminOnly(req, res, next) {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
-  next();
+// FEJLRETTELSE (sep. 2026, samme baggrund som Martins rolle/adgang-fejlrapport
+// — se den tilsvarende rettelse i admin.html/index.html): stolede FØR kun på
+// req.user.role fra selve JWT'en, som kan være op til 30 dage gammel og derfor
+// ikke nødvendigvis afspejler at nogen lige er blevet degraderet fra admin.
+// Slår nu — ligesom financeOnly herunder — altid op LIVE i databasen i stedet.
+async function adminOnly(req, res, next) {
+  try {
+    const row = await pgOne('SELECT role FROM users WHERE id=$1 AND active=1', [req.user.id]);
+    if (!row || row.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    next();
+  } catch (error) {
+    res.status(500).json({ error: 'Kunne ikke tjekke adgang' });
+  }
 }
 
 // Økonomi er bevidst strengere end almindelig adminOnly: den slår altid databasen
@@ -5066,9 +5093,9 @@ async function jtImportMaterializeJob(jobData) {
       // m.m. virker. signed_ip er null, fordi der ikke ER nogen underskriver-IP;
       // signed_name siger tydeligt at det er en import, ikke en rigtig signatur.
       const quoteRow = await client.query(`
-        INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token,signed_name,signed_at,signed_ip)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,'accepted',$8,$9,$10,$11,NULL,$12,NULL,NULL,0,'pct',$13,'JobTread-import',${nowTextSQL()},NULL) RETURNING id
-      `, [quoteNumber, projectName, jobtreadJobId, customerId, jobData.address || null, null, null,
+        INSERT INTO quotes (quote_number,job_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token,signed_name,signed_at,signed_ip)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'accepted',$9,$10,$11,$12,NULL,$13,NULL,NULL,0,'pct',$14,'JobTread-import',${nowTextSQL()},NULL) RETURNING id
+      `, [quoteNumber, jobNumber, projectName, jobtreadJobId, customerId, jobData.address || null, null, null,
           totals.subtotal, taxRate, totals.taxAmount, totals.total, jobData.notes || jtImportInternalNote(jobData), acceptToken]);
       const quoteId = quoteRow.rows[0].id;
       await saveQuoteLines(quoteId, lines, client);
@@ -10071,16 +10098,24 @@ app.delete('/api/crm/tasks/:id', auth, panelAccess('crmp_tasks'), asyncRoute(asy
 // poolen præcis som før; kun JobTread-sagsimporten sender en transaktionsklient
 // med, så spejlingen ruller tilbage sammen med resten hvis importen fejler.
 async function mirrorProjectTaskToPool(id, project, fields, exec) {
+  // Sagsnummer (sep. 2026, Martins ønske: "Når opgaven er i opgave pool
+  // tilføjes dette sagsnummer til alle task, så ... medarbejder ser deres
+  // task kan de se sagens tasks nummer") — spejles med over fra projektet,
+  // så opgaven viser "Sag #GM-..." i Opgavepool/Daglig plan/Kapacitet
+  // (admin.html) og "Job #..." på medarbejderens egen opgaveliste
+  // (employee.html) — begge steder læser allerede t.job_number, det manglede
+  // bare at blive sat her.
   await (exec || pool).query(`
-    INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,customer_email,customer_email_source,start_date,end_date,description,synced_at,source,created_at,project_id)
-    VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()},'project',${nowTextSQL()},$11)
+    INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,job_number,customer_phone,customer_email,customer_email_source,start_date,end_date,description,synced_at,source,created_at,project_id)
+    VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()},'project',${nowTextSQL()},$12)
     ON CONFLICT (id) DO UPDATE SET
       name=EXCLUDED.name, job_name=EXCLUDED.job_name, job_address=EXCLUDED.job_address,
+      job_number=EXCLUDED.job_number,
       customer_phone=EXCLUDED.customer_phone, customer_email=EXCLUDED.customer_email,
       start_date=EXCLUDED.start_date, end_date=EXCLUDED.end_date, description=EXCLUDED.description,
       synced_at=${nowTextSQL()}
   `, [
-    id, fields.name, project.name, project.customer_address || null,
+    id, fields.name, project.name, project.customer_address || null, project.job_number || null,
     project.customer_phone || null, project.customer_email || null,
     project.customer_email ? 'project' : null,
     fields.start_date, fields.end_date || fields.start_date, fields.description || '',
@@ -10180,9 +10215,14 @@ async function createProjectFromAcceptedQuote(quote) {
     crmMoveEntityToWonStage(quote).catch(e => console.error('Won-automatik fejlede for tilbud #' + quote.id + ':', e.message));
     const existingProject = await pgOne('SELECT id FROM projects WHERE quote_id=$1', [quote.id]);
     if (existingProject) return { projectId: existingProject.id, created: false };
-    // Sagsnummer tildeles automatisk her, i samme GM-ÅÅÅÅ-NNNN-stil som Tilbud (TIL-)
-    // og Faktura (FAK-) allerede bruger — se nextDocNumber().
-    const jobNumber = await nextDocNumber('project', 'GM');
+    // Sagsnummer (se skema-kommentaren ved quotes.job_number, sep. 2026, Martins
+    // ønske): tilbuddet fik ALLEREDE sit sagsnummer ved oprettelsen (POST
+    // /api/quotes) — projektet arver det samme nummer i stedet for at få sit
+    // eget, så tilbud/projekt/opgaver/fakturaer for denne sag alle deler ét
+    // nummer. Fallback til et nyt nummer kun for tilbud oprettet FØR denne
+    // funktion fandtes (mangler job_number), indtil backfillCaseNumbers() når
+    // at rette dem ved næste serverstart.
+    const jobNumber = quote.job_number || await nextDocNumber('project', 'GM');
     // RUNDE T (Martins ønske: "når den opretter et projekt automatisk skal den
     // vælge en faggruppe kan den gøre det ud fra felterne") — samme CRM-kobling
     // som Won-automatikken ovenfor bruger. Hvis tilbuddet stammer fra et
@@ -10209,7 +10249,7 @@ async function createProjectFromAcceptedQuote(quote) {
     // blive til rigtige opgaver med det samme sagen opstår.
     try {
       await convertQuoteLinesToTasks({
-        id: projectId, quote_id: quote.id, name: quote.job_name || quote.quote_number,
+        id: projectId, quote_id: quote.id, name: quote.job_name || quote.quote_number, job_number: jobNumber,
         customer_address: quote.customer_address, customer_phone: quote.customer_phone, customer_email: quote.customer_email
       });
     } catch (e2) { console.error('Kunne ikke auto-oprette opgaver fra tilbudslinjer:', e2.message); }
@@ -10567,7 +10607,23 @@ app.put('/api/projects/:id/attach-quote', auth, panelAccess('projects'), asyncRo
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const other = await pgOne('SELECT id, name FROM projects WHERE quote_id=$1 AND id<>$2', [quoteId, req.params.id]);
   if (other) return res.status(400).json({ error: `Dette tilbud er allerede koblet på sagen "${other.name}"` });
-  await pool.query(`UPDATE projects SET quote_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [quoteId, req.params.id]);
+  // Sagsnummer (se skema-kommentaren ved quotes.job_number) — projektet fik sit
+  // eget sagsnummer ved den manuelle oprettelse ("+ Nyt projekt"), men tilbuddet
+  // har OGSÅ sit eget (fra POST /api/quotes). Nu hvor de to kobles sammen som
+  // ÉN sag, er det tilbuddets nummer der vinder — det er der numrene "starter"
+  // i den normale arbejdsgang. Projektets gamle nummer forlades (ingen fejl af
+  // det, blot et "hul" i tælleserien), og sagens allerede-spejlede opgaver i
+  // Opgavepoolen/sags-Gantt'et rettes til det nye nummer med det samme, så alt
+  // stemmer overens uden at Martin selv skal rette hver opgave.
+  const finalJobNumber = quote.job_number || project.job_number;
+  await pool.query(`UPDATE projects SET quote_id=$1, job_number=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [quoteId, finalJobNumber, req.params.id]);
+  if (finalJobNumber && finalJobNumber !== project.job_number) {
+    await pool.query('UPDATE jt_tasks SET job_number=$1 WHERE project_id=$2', [finalJobNumber, req.params.id]);
+    await pool.query('UPDATE gantt_tasks SET job_number=$1 WHERE project_id=$2', [finalJobNumber, req.params.id]);
+  }
+  if (!quote.job_number && finalJobNumber) {
+    await pool.query('UPDATE quotes SET job_number=$1 WHERE id=$2', [finalJobNumber, quoteId]);
+  }
   res.json({ ok: true });
 }));
 // RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter") — sletter
@@ -13606,18 +13662,22 @@ app.post('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res)
   const discountType = b.discount_type === 'fixed' ? 'fixed' : 'pct';
   const totals = computeTotals(b.lines || [], taxRate, { value: discountPct, type: discountType });
   const quoteNumber = await nextDocNumber('quote', 'TIL');
+  // Sagsnummer (se skema-kommentaren ved quotes.job_number) — tildeles her, ved
+  // selve oprettelsen af sagen, og genbruges derefter automatisk af projektet
+  // og opgavepoolen, i stedet for at hvert af dem får sit eget nummer.
+  const jobNumber = await nextDocNumber('project', 'GM');
   const acceptToken = crypto.randomBytes(20).toString('hex');
   const resolvedCustomerId = await resolveCustomerId(b.customer_id || null, b.customer_email || null, b.customer_phone || null);
   // RUNDE S — se skema-kommentaren ved quotes.crm_lead_id/crm_opportunity_id.
   const crmLeadId = b.crm_lead_id || null;
   const crmOpportunityId = crmLeadId ? null : (b.crm_opportunity_id || null);
   const r = await pool.query(`
-    INSERT INTO quotes (quote_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token,crm_lead_id,crm_opportunity_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING id
-  `, [quoteNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken, crmLeadId, crmOpportunityId]);
+    INSERT INTO quotes (quote_number,job_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token,crm_lead_id,crm_opportunity_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING id
+  `, [quoteNumber, jobNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken, crmLeadId, crmOpportunityId]);
   await saveQuoteLines(r.rows[0].id, b.lines);
   logDocActivity('quote', r.rows[0].id, 'created', req.user.name, null);
-  res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber });
+  res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber, job_number: jobNumber });
 }));
 
 app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -13744,10 +13804,18 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyn
     : 0;
   // Totaler for DENNE faktura beregnes kun ud fra de valgte linjer, ikke hele tilbuddet.
   const batchTotals = computeTotals(linesToInvoice, quote.tax_rate, { value: equivDocDiscountPct, type: 'pct' });
+  // Sagsnummer (se skema-kommentaren ved quotes.job_number) — en faktura
+  // konverteret FRA et tilbud arver ALTID tilbuddets sagsnummer i stedet for at
+  // få sit eget, så delfakturaer på samme tilbud (og selve tilbuddet/projektet/
+  // opgaverne) alle deler ét og samme nummer, man kan søge samlet på.
+  // Fallback til et nyt nummer hvis tilbuddet undtagelsesvis mangler ét (kun
+  // muligt for tilbud oprettet FØR denne funktion fandtes, og kun indtil
+  // backfillCaseNumbers() har rettet dem ved næste serverstart).
+  const invoiceJobNumber = quote.job_number || await nextDocNumber('project', 'GM');
   const r = await pool.query(`
-    INSERT INTO invoices (invoice_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct,customer_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
-  `, [invoiceNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, batchTotals.subtotal, quote.tax_rate, batchTotals.taxAmount, batchTotals.total, company.invoiceBottomNoteDefault || null, company.invoiceTopNoteDefault || null, dueDate.toISOString().slice(0, 10), equivDocDiscountPct, quote.customer_id || null]);
+    INSERT INTO invoices (invoice_number,job_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct,customer_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'unpaid',$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id
+  `, [invoiceNumber, invoiceJobNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, batchTotals.subtotal, quote.tax_rate, batchTotals.taxAmount, batchTotals.total, company.invoiceBottomNoteDefault || null, company.invoiceTopNoteDefault || null, dueDate.toISOString().slice(0, 10), equivDocDiscountPct, quote.customer_id || null]);
   const invoiceId = r.rows[0].id;
   let pos = 0;
   for (const l of linesToInvoice) {
@@ -13838,6 +13906,10 @@ app.post('/api/invoices/direct-create', auth, panelAccess('quotes'), asyncRoute(
   const discountType = b.discount_type === 'fixed' ? 'fixed' : 'pct';
   const totals = computeTotals(b.lines || [], taxRate, { value: discountPct, type: discountType });
   const invoiceNumber = await nextDocNumber('invoice', 'FAK');
+  // Sagsnummer (se skema-kommentaren ved quotes.job_number) — en direkte
+  // faktura har intet tilbud/projekt bagved, så den er selve sagens
+  // oprindelse og får sit eget nye sagsnummer her, ligesom POST /api/quotes gør.
+  const jobNumber = await nextDocNumber('project', 'GM');
   const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 4);
   // RUNDE K (sep. 2026, Martins ønske) — "Faktura-note uafhængig af tilbud, egen
   // skabelon": klienten forudfylder allerede qe-top-note/qe-notes med fakturaens
@@ -13848,9 +13920,9 @@ app.post('/api/invoices/direct-create', auth, panelAccess('quotes'), asyncRoute(
   // det som ingen note, ligesom hidtil.
   const resolvedCustomerId = await resolveCustomerId(b.customer_id || null, b.customer_email || null, b.customer_phone || null);
   const r = await pool.query(`
-    INSERT INTO invoices (invoice_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,'unpaid',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id
-  `, [invoiceNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total,
+    INSERT INTO invoices (invoice_number,job_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'unpaid',$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
+  `, [invoiceNumber, jobNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total,
     b.notes !== undefined ? (b.notes ? sanitizeRichText(b.notes) : null) : (company.invoiceBottomNoteDefault || null),
     b.top_note !== undefined ? (b.top_note ? sanitizeRichText(b.top_note) : null) : (company.invoiceTopNoteDefault || null),
     dueDate.toISOString().slice(0, 10), discountPct]);
@@ -13869,7 +13941,7 @@ app.post('/api/invoices/direct-create', auth, panelAccess('quotes'), asyncRoute(
     `, [invoiceId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : equivalentLinePct(l), isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null)]);
   }
   logDocActivity('invoice', invoiceId, 'created', req.user.name, 'direkte faktura, uden tilbud');
-  res.json({ ok: true, id: invoiceId, invoice_id: invoiceId, invoice_number: invoiceNumber });
+  res.json({ ok: true, id: invoiceId, invoice_id: invoiceId, invoice_number: invoiceNumber, job_number: jobNumber });
 }));
 
 // ── FAKTURA + DELBETALINGER + KREDITNOTAER ───────────────────
@@ -14363,6 +14435,9 @@ function drawDocumentPdf(doc, kind, record, company) {
   const metaLines = [`Dato: ${String(record.created_at || '').slice(0, 10)}`];
   if (isInvoice && record.due_date) metaLines.push(`Forfaldsdato: ${record.due_date}`);
   if (!isInvoice && record.valid_until) metaLines.push(`Gyldig til: ${record.valid_until}`);
+  // Sagsnummer (se skema-kommentaren ved quotes.job_number) — vises på selve
+  // dokumentet, så kunden/medarbejderen kan referere til det uden at åbne appen.
+  if (record.job_number) metaLines.push(`Sag: ${record.job_number}`);
   let y = drawDocHeader(doc, isInvoice ? 'FAKTURA' : 'TILBUD', docNumber, metaLines, accent, company);
 
   y = drawFraTilBlock(doc, y, company, record);
@@ -14821,7 +14896,13 @@ app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (
     kunde: quote.job_name || '', dokument_nr: quote.quote_number, total: krFmtServer(quote.total),
     gyldig_til: quote.valid_until || '', forfald: '', restbeloeb: '', firma: company.name,
     link: portalLink, underskriv_link: signLink,
-    logo: company.logoUrl || '', telefon: company.phone || '', firma_email: company.email || ''
+    logo: company.logoUrl || '', telefon: company.phone || '', firma_email: company.email || '',
+    // Sagsnummer (se skema-kommentaren ved quotes.job_number, Martins ønske:
+    // "søge på det i min email og finde alle faktura tilknyttet den enkle
+    // sag") — tilgængelig som {{sagsnummer}} i en tilpasset skabelon; sættes
+    // desuden direkte i standard-emnelinjen herunder, så det virker med det
+    // samme uden at Martin selv skal opdatere sine skabeloner.
+    sagsnummer: quote.job_number || ''
   };
   let templateId = b.template_id || null;
   if (!templateId) templateId = await getAssignedTemplateId('quote');
@@ -14834,7 +14915,7 @@ app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (
     subject = fillDocEmailVars(tpl.subject, vars);
     bodyHtml = fillDocEmailVars(tpl.body_html, vars);
   } else {
-    subject = `Dit tilbud ${quote.quote_number} fra ${company.name}`;
+    subject = `Dit tilbud ${quote.quote_number}${quote.job_number ? ' (Sag ' + quote.job_number + ')' : ''} fra ${company.name}`;
     bodyHtml = renderDefaultDocEmailHtml({
       company, greetingName: quote.job_name || '',
       introHtml: `Her er dit tilbud <b>${escPublic(quote.quote_number)}</b> — vedhæftet som PDF, og du kan se og underskrive det direkte online herunder.`,
@@ -14922,7 +15003,11 @@ app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async
     kunde: invoice.job_name || '', dokument_nr: invoice.invoice_number, total: krFmtServer(invoice.total),
     gyldig_til: '', forfald: invoice.due_date || '', restbeloeb: krFmtServer(invoice.remaining), firma: company.name,
     link: portalLink, underskriv_link: '',
-    logo: company.logoUrl || '', telefon: company.phone || '', firma_email: company.email || ''
+    logo: company.logoUrl || '', telefon: company.phone || '', firma_email: company.email || '',
+    // Sagsnummer — se kommentaren ved samme felt i /api/quotes/:id/send
+    // ovenfor. Delfakturaer på samme tilbud deler alle samme sagsnummer, så en
+    // søgning på nummeret i mailboksen finder ALLE fakturaer for sagen.
+    sagsnummer: invoice.job_number || ''
   };
   let templateId = b.template_id || null;
   if (!templateId) templateId = await getAssignedTemplateId('invoice');
@@ -14935,7 +15020,7 @@ app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async
     subject = fillDocEmailVars(tpl.subject, vars);
     bodyHtml = fillDocEmailVars(tpl.body_html, vars);
   } else {
-    subject = `Din faktura ${invoice.invoice_number} fra ${company.name}`;
+    subject = `Din faktura ${invoice.invoice_number}${invoice.job_number ? ' (Sag ' + invoice.job_number + ')' : ''} fra ${company.name}`;
     bodyHtml = renderDefaultDocEmailHtml({
       company, greetingName: invoice.job_name || '',
       introHtml: `Her er din faktura <b>${escPublic(invoice.invoice_number)}</b>${invoice.due_date ? ' — forfalder ' + escPublic(invoice.due_date) : ''} — vedhæftet som PDF.`,
@@ -16000,17 +16085,94 @@ async function backfillProjectTaskMirrors() {
   // "opgavens id" i virkeligheden er sagens id. Derfor eksplicitte aliaser her.
   const rows = await pool.query(`
     SELECT gt.id AS gt_id, gt.name AS gt_name, gt.start_date AS gt_start, gt.end_date AS gt_end, gt.description AS gt_desc,
-           p.id AS p_id, p.name AS p_name, p.customer_address AS p_address, p.customer_phone AS p_phone, p.customer_email AS p_email
+           p.id AS p_id, p.name AS p_name, p.customer_address AS p_address, p.customer_phone AS p_phone, p.customer_email AS p_email, p.job_number AS p_job_number
     FROM gantt_tasks gt
     JOIN projects p ON p.id = gt.project_id
     LEFT JOIN jt_tasks jt ON jt.id = gt.id
     WHERE gt.project_id IS NOT NULL AND jt.id IS NULL
   `);
   for (const r of rows.rows) {
-    const project = { id: r.p_id, name: r.p_name, customer_address: r.p_address, customer_phone: r.p_phone, customer_email: r.p_email };
+    const project = { id: r.p_id, name: r.p_name, customer_address: r.p_address, customer_phone: r.p_phone, customer_email: r.p_email, job_number: r.p_job_number };
     await mirrorProjectTaskToPool(r.gt_id, project, { name: r.gt_name, start_date: r.gt_start, end_date: r.gt_end, description: r.gt_desc || '' });
   }
   if (rows.rowCount) console.log(`Efterudfyldte ${rows.rowCount} sags-opgave(r) i Opgavepoolen (oprettet før dette fandtes).`);
+}
+
+// ÉNGANGS-EFTERUDFYLDNING #1B (sep. 2026, Martins ønske: "Giv alle tilbud et
+// sags nummer ... Det betyder jeg kan søge på det i min email og finde alle
+// faktura tilknyttet den enkle sag") — se skema-kommentaren ved
+// quotes.job_number for hele baggrunden. Alt NYT herfra tildeles og arver sit
+// sagsnummer automatisk (POST /api/quotes, .../invoices/direct-create,
+// .../convert-to-invoice, createProjectFromAcceptedQuote, mirrorProjectTaskToPool),
+// men EKSISTERENDE tilbud/fakturaer/opgaver fra FØR denne kolonne fandtes
+// mangler den stadig. Retter det her, samme "kør ved hver opstart, billigt,
+// no-op når alt allerede er udfyldt"-mønster som backfillProjectTaskMirrors
+// ovenfor (WHERE ... job_number IS NULL — findes intet at rette, laves der
+// intet arbejde). Rækkefølgen er vigtig: tilbud FØR fakturaer (så en faktura
+// kan arve fra sit — nu evt. lige udfyldte — tilbud), og opgaver TIL SIDST
+// (så de kan arve fra deres — nu evt. lige udfyldte — projekt).
+async function backfillCaseNumbers() {
+  // OBS (opdaget under test af denne funktion): projects.job_number-kolonnen
+  // fandtes allerede FØR dette, men adskillige eksisterende projekter i
+  // udviklingsdatabasen viste sig alligevel at mangle den — formentlig rækker
+  // fra før selve "Sagsnummer"-feltet fandtes. Trin 0-2 herunder afstemmer
+  // derfor et EVENTUELT tilbud og dets tilknyttede projekt mod hinanden FØRST
+  // (den ene arver fra den anden, alt efter hvem der allerede har et nummer —
+  // og ved uenighed vinder tilbuddets, samme regel som PUT
+  // /api/projects/:id/attach-quote bruger), før noget nyt overhovedet
+  // overvejes tildelt. Kun trin 3/4 tildeler rent faktisk NYE numre.
+  const t1 = await pool.query(`
+    UPDATE projects p SET job_number = q.job_number
+    FROM quotes q WHERE p.quote_id = q.id AND q.job_number IS NOT NULL
+      AND (p.job_number IS NULL OR p.job_number <> q.job_number)
+  `);
+  const t2 = await pool.query(`
+    UPDATE quotes q SET job_number = p.job_number
+    FROM projects p WHERE p.quote_id = q.id AND q.job_number IS NULL AND p.job_number IS NOT NULL
+  `);
+  // 3) Tilbud (med eller uden projekt) der STADIG mangler nummer efter
+  // afstemningen ovenfor: tildel et nyt, og giv et evt. tilknyttet projekt
+  // (som pr. definition også mangler det på dette tidspunkt) samme nummer.
+  const stillMissingQuotes = (await pool.query('SELECT id FROM quotes WHERE job_number IS NULL')).rows;
+  for (const q of stillMissingQuotes) {
+    const num = await nextDocNumber('project', 'GM');
+    await pool.query('UPDATE quotes SET job_number=$1 WHERE id=$2', [num, q.id]);
+    await pool.query('UPDATE projects SET job_number=$1 WHERE quote_id=$2', [num, q.id]);
+  }
+  // 4) Projekter helt UDEN noget tilbud, der stadig mangler nummer: tildel nyt.
+  const stillMissingProjects = (await pool.query('SELECT id FROM projects WHERE job_number IS NULL')).rows;
+  for (const p of stillMissingProjects) {
+    await pool.query('UPDATE projects SET job_number=$1 WHERE id=$2', [await nextDocNumber('project', 'GM'), p.id]);
+  }
+  // 5) Fakturaer uden sagsnummer: arv fra tilbuddet (nu udfyldt), ellers fra
+  // et evt. tilknyttet projekt (nu også udfyldt), ellers tildel et nyt.
+  const invoicesMissing = (await pool.query(`
+    SELECT i.id, q.job_number AS quote_job_number, p.job_number AS project_job_number
+    FROM invoices i
+    LEFT JOIN quotes q ON q.id = i.quote_id
+    LEFT JOIN projects p ON p.invoice_id = i.id
+    WHERE i.job_number IS NULL
+  `)).rows;
+  for (const inv of invoicesMissing) {
+    const num = inv.quote_job_number || inv.project_job_number || await nextDocNumber('project', 'GM');
+    await pool.query('UPDATE invoices SET job_number=$1 WHERE id=$2', [num, inv.id]);
+  }
+  // 6) Opgavepulje-rækker (jt_tasks) OG sags-Gantt'et (gantt_tasks) der allerede
+  // er koblet til et projekt med sagsnummer, men mangler det selv — ren
+  // kopiering, ingen nye numre tildeles her. jt_tasks UDEN project_id (løse
+  // kundebesøg, manuelle hurtig-opgaver uden en rigtig sag) røres bevidst ikke.
+  const jt = await pool.query(`
+    UPDATE jt_tasks jt SET job_number = p.job_number
+    FROM projects p WHERE jt.project_id = p.id AND jt.job_number IS NULL AND p.job_number IS NOT NULL
+  `);
+  const gt = await pool.query(`
+    UPDATE gantt_tasks gt SET job_number = p.job_number
+    FROM projects p WHERE gt.project_id = p.id AND gt.job_number IS NULL AND p.job_number IS NOT NULL
+  `);
+  const touched = t1.rowCount + t2.rowCount + stillMissingQuotes.length + stillMissingProjects.length + invoicesMissing.length + jt.rowCount + gt.rowCount;
+  if (touched) {
+    console.log(`Sagsnummer-efterudfyldning: ${t1.rowCount} projekter arvede tilbuddets nummer, ${t2.rowCount} tilbud arvede projektets, ${stillMissingQuotes.length} tilbud (+evt. projekt) og ${stillMissingProjects.length} rene projekter fik et helt nyt nummer, ${invoicesMissing.length} fakturaer fik et sagsnummer, ${jt.rowCount} opgavepulje-opgaver og ${gt.rowCount} sags-Gantt-opgaver arvede sagens nummer fra deres projekt.`);
+  }
 }
 
 // ÉNGANGS-EFTERUDFYLDNING #2 (sep. 2026): "Hent nye sager"-importen oprettede et
@@ -16154,6 +16316,7 @@ async function start() {
   await pool.query('SELECT 1 AS connected');
   await initSchema();
   await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
+  await backfillCaseNumbers().catch(error => console.error('Efterudfyldning af sagsnumre fejlede:', error.message));
   await backfillLegacyJobTaskProjectLinks().catch(error => console.error('Efterudfyldning af sags-kobling fejlede:', error.message));
   app.listen(PORT, () => {
     console.log(`Gulv Master PostgreSQL kører på port ${PORT}`);
