@@ -14504,8 +14504,19 @@ function switchPage(page,skipHash){
   // binder dem) bliver aldrig kaldt i det tilfælde. Fanget med en rigtig
   // browser-test (genindlæs-siden-scenariet), ikke kun ved at klikke sig ind
   // via Projekter-listen, hvor det ved et tilfælde allerede var bundet.
-  if(page==='project-detail'){if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');switchPage('plan');return;}initProjectsModule();}
-  if(page==='customer-detail'){if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');switchPage('plan');return;}initCustomerDetailModule();}
+  // FEJL RETTET (sep. 2026, opdaget da Martin loggede ind som Sarah — sælger-rolle
+  // med adgang til Kunder via "Roller & adgang", men uden det ældre is_finance_admin-
+  // flag): disse to tjekkede fejlagtigt stadig det GAMLE is_finance_admin-flag i
+  // stedet for meHasPanelPage(), som resten af siderne herover (library/logs/
+  // requests/timer) allerede er skiftet til — et levn fra FØR den granulære
+  // "Roller & adgang"-side fandtes. Sarah kunne derfor se Kunder-listen fint (den
+  // bruger meHasPanelPage korrekt), men blev afvist med det samme hun åbnede en
+  // enkelt kunde eller sag, selvom hendes rolle rent faktisk har adgangen. Bruger nu
+  // guardPage() (samme hjælpefunktion, samme fallback-side som resten af appen) i
+  // stedet for at hardkode 'plan' som fallback — en bruger uden Dagligplanlægning-
+  // adgang ville ellers bare blive kastet videre til endnu en spærret side.
+  if(page==='project-detail'){if(guardPage('projects','Projekter'))return;initProjectsModule();}
+  if(page==='customer-detail'){if(guardPage('customers','Kunder'))return;initCustomerDetailModule();}
 }
 async function bind(){
   syncStickyOffsets();window.addEventListener('resize',syncStickyOffsets);
@@ -14625,12 +14636,14 @@ async function bind(){
   document.addEventListener('click',function(e){if(!e.target.closest('#sidebar-newshortcut-drop'))document.getElementById('sidebar-newshortcut-menu').classList.remove('open');});
   document.getElementById('sidebar-newshortcut-quote').addEventListener('click',function(e){
     e.preventDefault();document.getElementById('sidebar-newshortcut-menu').classList.remove('open');
-    if(!me.is_finance_admin){toast('Du har ikke adgang til Tilbud & Faktura','🔒');return;}
+    // Samme rettelse som page-guardene ovenfor: brug meHasPanelPage (den
+    // granulære rolle-adgang), ikke det gamle is_finance_admin-flag.
+    if(!meHasPanelPage('quotes')){toast('Du har ikke adgang til Tilbud & Faktura','🔒');return;}
     switchPage('quotes');switchQzTab('quotes');openQuoteEditor(null);
   });
   document.getElementById('sidebar-newshortcut-customer').addEventListener('click',function(e){
     e.preventDefault();document.getElementById('sidebar-newshortcut-menu').classList.remove('open');
-    if(!me.is_finance_admin){toast('Du har ikke adgang til Kunder','🔒');return;}
+    if(!meHasPanelPage('customers')){toast('Du har ikke adgang til Kunder','🔒');return;}
     switchPage('customers');openCrmModal();
   });
   // GLOBAL SØGNING — søger på tværs af opgaver/sager, kunder, leads,
@@ -15196,7 +15209,8 @@ async function bind(){
   document.getElementById('gd-open-project').onclick=function(){
     var pid=this.dataset.projectId;
     if(!pid)return;
-    if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');return;}
+    // Samme rettelse som page-guardene i switchPage: meHasPanelPage, ikke is_finance_admin.
+    if(!meHasPanelPage('projects')){toast('Du har ikke adgang til Projekter','🔒');return;}
     closeModal('gantt-detail-modal');
     openProjectDetail(+pid);
   };
@@ -15373,7 +15387,7 @@ async function bind(){
       if(act==='priority-row'){openCrmpDetail(a.dataset.entityType,+a.dataset.entityId);}
       if(act==='open-visit-form'){e.stopPropagation();openVisitFormModal(a.dataset.taskId);}
       if(act==='open-checklist'){e.stopPropagation();openChecklistModal(a.dataset.taskId);}
-      if(act==='pool-open-project'){e.stopPropagation();if(!me.is_finance_admin){toast('Du har ikke adgang til Projekter','🔒');}else{openProjectDetail(+a.dataset.projectId);}}
+      if(act==='pool-open-project'){e.stopPropagation();if(!meHasPanelPage('projects')){toast('Du har ikke adgang til Projekter','🔒');}else{openProjectDetail(+a.dataset.projectId);}}
       if(act==='toggle-checklist-item'){e.stopPropagation();toggleChecklistItem(+a.dataset.id,a.checked,a.dataset.container,a.dataset.taskId);}
       if(act==='delete-checklist-item'){e.stopPropagation();deleteChecklistItem(+a.dataset.id,a.dataset.container,a.dataset.taskId);}
       // Genvejene fra dashboard-tallene/-listerne peger altid på de ÅBNE
