@@ -29,6 +29,7 @@ let XLSX = null, pdfParse = null;
 try { XLSX = require('xlsx'); } catch (e) { console.error('ADVARSEL: xlsx kunne ikke indlæses — bankafstemning (Excel/CSV) er utilgængelig:', e.message); }
 try { pdfParse = require('pdf-parse'); } catch (e) { console.error('ADVARSEL: pdf-parse kunne ikke indlæses — bankafstemning (PDF) er utilgængelig:', e.message); }
 const DEFAULT_CLEANING_PDF_BASE64 = require('./cleaning-pdf-base64');
+const PRODUCT_CATALOG_IMPORT_20260910 = require('./products-catalog-20260910');
 const { Pool } = require('pg');
 // Uses Node's built-in SQLite reader only for the one-time migration upload.
 // This avoids native build issues on Render.
@@ -13312,7 +13313,19 @@ app.delete('/api/products/:id', auth, panelAccess('quotes'), asyncRoute(async (r
 // (Martins valg: "altid bekræft med mig først"). Kræver ANTHROPIC_API_KEY sat
 // som miljøvariabel på serveren (Render → Environment → tilføj ANTHROPIC_API_KEY)
 // — uden den svarer ruten pænt med en dansk fejlbesked i stedet for at fejle råt.
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929';
+// RUNDE W (sep. 2026, Martins fejlrapport: "AI diktator virker ikke — lytter og
+// får dataen ind, men handlingen med at lave tilbuddet sker ikke") — jeg har
+// testet HELE klient-flowet (mikrofon -> transkription -> gennemgangsvindue ->
+// bekræft -> linjer tilføjet til tilbuddet) med et simuleret AI-svar, og det
+// virker 100% korrekt. Fejlen ligger derfor sandsynligvis i selve AI-kaldet på
+// serveren — den hårdkodede model herunder ("claude-sonnet-4-5-20250929") er en
+// dateret model-version, og den nyeste/anbefalede model hedder nu "claude-
+// sonnet-5". Sat til den nyeste model. Jeg kan ikke selv afprøve det rigtige
+// AI-kald uden Martins ANTHROPIC_API_KEY (den findes kun i Render, ikke her),
+// så dette er den mest sandsynlige rettelse ud fra det jeg kan se — hvis det
+// stadig ikke virker efter denne opdatering, se fejlbeskeden der nu vises i
+// toasten (den viser AI-kaldets rigtige fejltekst) og send den til mig.
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 async function callAnthropicJSON(systemPrompt, userPrompt) {
   if (!process.env.ANTHROPIC_API_KEY) {
     const err = new Error('AI-diktering er ikke aktiveret på serveren endnu — ANTHROPIC_API_KEY mangler i Render-miljøvariablerne.');
@@ -14363,6 +14376,16 @@ function _pdfLineDescParts(l) {
     note: (l.note && String(l.note).trim()) ? String(l.note).trim() : ''
   };
 }
+// RUNDE W (sep. 2026, Martins ønske: "gør note-boksen mere minimalistisk/
+// professionel, den er lidt barnlig") — note-boksen skiftede fra en mættet
+// orange "post-it"-farve til en neutral gråtone MED en lille "NOTE"-label
+// øverst i boksen (samme som .ln-note-label i CSS-udgaverne). NOTE_LABEL_H er
+// pladsen labelen fylder, og skal lægges til SAMME sted i både højde-
+// beregningen (pdfLineDescHeight, kaldes FØR noget tegnes) og selve
+// tegningen (drawPdfLineDesc) — ellers gentager vi præcis den pagineringsbug
+// RUNDE U rettede (reserveret højde der ikke matcher det der rent faktisk
+// tegnes).
+const NOTE_LABEL_H = 10;
 function pdfLineDescHeight(doc, l, width) {
   const p = _pdfLineDescParts(l);
   doc.font('Helvetica-Bold').fontSize(9.5);
@@ -14373,7 +14396,7 @@ function pdfLineDescHeight(doc, l, width) {
   }
   if (p.note) {
     doc.font('Helvetica-Oblique').fontSize(8.5);
-    h += 8 + doc.heightOfString(p.note, { width: width - 16 }) + 12;
+    h += 8 + NOTE_LABEL_H + doc.heightOfString(p.note, { width: width - 16 }) + 12;
   }
   doc.font('Helvetica').fontSize(9.5);
   return h;
@@ -14389,10 +14412,13 @@ function drawPdfLineDesc(doc, l, x, y, width) {
   if (p.note) {
     doc.font('Helvetica-Oblique').fontSize(8.5);
     const noteH = doc.heightOfString(p.note, { width: width - 16 });
+    const noteBoxH = NOTE_LABEL_H + noteH + 12;
     cy += 8;
-    doc.roundedRect(x - 2, cy, width + 4, noteH + 12, 4).fill('#FFF7ED');
-    doc.fillColor('#7C2D12').text(p.note, x + 6, cy + 6, { width: width - 16 });
-    cy += noteH + 12;
+    doc.roundedRect(x - 2, cy, width + 4, noteBoxH, 4).fill('#F9FAFB');
+    doc.rect(x - 2, cy, 2, noteBoxH).fill('#9CA3AF');
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#9CA3AF').text('NOTE', x + 6, cy + 5, { characterSpacing: 0.4 });
+    doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#4B5563').text(p.note, x + 6, cy + 5 + NOTE_LABEL_H, { width: width - 16 });
+    cy += noteBoxH;
   }
   doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
   return cy - y;
@@ -14480,15 +14506,21 @@ function drawDocumentPdf(doc, kind, record, company) {
       // eksisterende tilbud med en linje så man kan bruge det til at indele
       // tilbuddet i faggrupper") — en tekstlinje var bare fed tekst midt i
       // tabellen, nemt at overse i et langt tilbud. Tegnes nu som en tydelig
-      // farvet "sektions-adskiller"-bjælke, samme visuelle sprog som i den
+      // "sektions-adskiller"-bjælke, samme visuelle sprog som i den
       // levende forhåndsvisning (.qe-divider-row i admin.html).
+      // RUNDE W (Martins ønske: "mere minimalistisk/professionel, ikke så
+      // barnlig") — farven skiftede fra det mættede accent-lilla til en
+      // neutral mørk/grå stil (samme som .qe-divider-row), og teksten sættes
+      // nu med stort/spatieret ligesom i forhåndsvisningen, så de to steder
+      // ser ens ud.
+      const divText = String(l.description || '').toUpperCase();
       doc.font('Helvetica-Bold').fontSize(10);
-      const h = doc.heightOfString(l.description, { width: 491 });
+      const h = doc.heightOfString(divText, { width: 491, characterSpacing: 0.4 });
       const boxH = h + 20;
       y = ensurePdfSpace(doc, y, boxH + 12, { ...ctx, redrawTableHeader: true });
-      doc.roundedRect(40, y, 515, boxH, 6).fill('#EEF0FE');
-      doc.roundedRect(40, y, 4, boxH, 2).fill(accent);
-      doc.fillColor(accent).text(l.description, 56, y + 10, { width: 491 });
+      doc.roundedRect(40, y, 515, boxH, 4).fill('#F3F4F6');
+      doc.rect(40, y, 3, boxH).fill('#111318');
+      doc.fillColor('#111318').text(divText, 56, y + 10, { width: 491, characterSpacing: 0.4 });
       doc.font('Helvetica');
       y += boxH + 12;
       return;
@@ -14765,7 +14797,7 @@ function lineDescCellHtml(l) {
   const rest = nl === -1 ? '' : full.slice(nl + 1).trim();
   let html = `<div class="ln-heading">${escPublic(heading)}</div>`;
   if (rest) html += `<div class="ln-desc">${escPublic(rest)}</div>`;
-  if (l.note && String(l.note).trim()) html += `<div class="ln-note">${escPublic(String(l.note).trim())}</div>`;
+  if (l.note && String(l.note).trim()) html += `<div class="ln-note"><span class="ln-note-label">Note</span>${escPublic(String(l.note).trim())}</div>`;
   return html;
 }
 
@@ -15131,7 +15163,8 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   td{padding:8px 10px;border-bottom:1px solid #EEF0F3}
   .ln-heading{font-weight:700}
   .ln-desc{font-weight:600;color:#374151;margin-top:3px;white-space:pre-line}
-  .ln-note{margin-top:6px;background:#FFF7ED;border-left:3px solid #FB923C;border-radius:6px;padding:6px 9px;font-size:11.5px;font-weight:500;color:#7C2D12;white-space:pre-line}
+  .ln-note{margin-top:6px;background:#F9FAFB;border-left:2px solid #9CA3AF;border-radius:4px;padding:6px 9px;font-size:11.5px;font-weight:400;font-style:italic;color:#4B5563;white-space:pre-line}
+  .ln-note-label{display:block;font-size:8.5px;font-weight:700;font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF;margin-bottom:2px}
   .ln-textrow{font-weight:700;white-space:pre-line}
   .totals{margin-left:auto;width:240px;margin-top:10px}
   .totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:12.5px;color:#6B7280}
@@ -16248,6 +16281,7 @@ async function backfillLegacyJobTaskProjectLinks() {
 // aldrig kom gennem bookingflowet, men som der ER registreret tid eller
 // uploadet billeder på, ville ellers forsvinde i stilhed.
 const JOBTREAD_CLEANUP_MIGRATION = 'jobtread_task_pool_cleanup_20260905';
+const PRODUCT_CATALOG_REPLACEMENT_MIGRATION = 'product_catalog_replacement_20260910';
 const JOBTREAD_CLEANUP_REFERENCES = [
   { table: 'planning_bookings', label: 'booking' },
   { table: 'assignments', label: 'gammel booking' },
@@ -16329,6 +16363,71 @@ async function runJobTreadPoolCleanup() {
   }
 }
 
+async function runProductCatalogReplacement() {
+  // Martins ønske (sep. 2026): "slet alle produkter i mit program og upload disse" —
+  // hele produktkataloget (264 varer fra hans Billy-regnskabseksport) skal erstatte
+  // det gamle katalog. Kører højst én gang nogensinde (gated på app_migrations), helt
+  // efter samme mønster som runJobTreadPoolCleanup() ovenfor.
+  //
+  // "Slet" er implementeret som deaktivering (active=0), IKKE en rigtig DELETE — præcis
+  // samme konvention som den almindelige DELETE /api/products/:id allerede bruger, fordi
+  // quote_lines/invoice_lines gemmer produktnavn/pris m.v. som et øjebliksbillede på selve
+  // linjen (ikke et live-opslag), men historiske tilbud/fakturaer skal stadig kunne vise
+  // korrekt hvis noget andet sted i appen skulle slå produktet op via id.
+  //
+  // Indkøbspriserne i PRODUCT_CATALOG_IMPORT_20260910 er beregnede estimater, ikke
+  // verificerede leverandørpriser — se products-catalog-20260910.js / det medfølgende
+  // Excel-ark til Martin for metoden og hvilke varer der bør tjekkes manuelt.
+  const already = await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [PRODUCT_CATALOG_REPLACEMENT_MIGRATION]);
+  if (already) return { ok: true, skipped: true, reason: 'already_done' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const claimed = await client.query(
+      "INSERT INTO app_migrations (name, details) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING",
+      [PRODUCT_CATALOG_REPLACEMENT_MIGRATION, 'Kører…']
+    );
+    if (!claimed.rowCount) {
+      await client.query('ROLLBACK');
+      return { ok: true, skipped: true, reason: 'already_done' };
+    }
+
+    const deactivated = await client.query(
+      `UPDATE products SET active=0, updated_at=${nowTextSQL()} WHERE active=1`
+    );
+
+    let inserted = 0;
+    for (const p of PRODUCT_CATALOG_IMPORT_20260910) {
+      await client.query(`
+        INSERT INTO products (name, description, sku, unit, cost_price, sell_price, category, product_type, active, created_at, updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${nowTextSQL()},${nowTextSQL()})
+      `, [
+        p.name, p.description || null, p.sku || null, p.unit || 'stk',
+        Number(p.cost_price) || 0, Number(p.sell_price) || 0, p.category || null,
+        p.product_type === 'materialer' ? 'materialer' : 'service',
+        p.active ? 1 : 0
+      ]);
+      inserted++;
+    }
+
+    const message = `Produktkatalog erstattet (sep. 2026, Martins Billy-import): deaktiverede ${deactivated.rowCount} gamle produkter, `
+      + `indsatte ${inserted} nye fra products-catalog-20260910.js. Indkøbspriser er beregnede estimater — se det medfølgende Excel-ark for metode og hvilke varer der bør tjekkes manuelt.`;
+
+    await client.query('UPDATE app_migrations SET details=$2, completed_at=' + nowTextSQL() + ' WHERE name=$1', [PRODUCT_CATALOG_REPLACEMENT_MIGRATION, message]);
+    await client.query('COMMIT');
+
+    await logSystemEvent('product_catalog_replacement', 'info', message);
+    console.log(message);
+    return { ok: true, deactivated: deactivated.rowCount, inserted };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function start() {
   await pool.query('SELECT 1 AS connected');
   await initSchema();
@@ -16385,6 +16484,14 @@ async function start() {
     runJobTreadPoolCleanup().catch(error => { console.error('JobTread-oprydning fejlede:', error.message); logSystemEvent('jobtread_cleanup', 'error', 'JobTread-oprydning af opgavepoolen fejlede: ' + error.message); });
   } else {
     console.log('JobTread-oprydning af opgavepoolen afventer, at den første SQLite-import er færdig.');
+  }
+
+  // ── ÉNGANGS-ERSTATNING AF PRODUKTKATALOGET (sep. 2026, Martins Billy-import) ──
+  // Kører højst én gang nogensinde (gated på app_migrations), samme mønster som
+  // JobTread-oprydningen ovenfor. Ingen afhængighed af migrationPending — dette er
+  // uafhængigt af den gamle SQLite→Postgres-import.
+  if (!migrationPending) {
+    runProductCatalogReplacement().catch(error => { console.error('Produktkatalog-import fejlede:', error.message); logSystemEvent('product_catalog_replacement', 'error', 'Produktkatalog-import fejlede: ' + error.message); });
   }
   // OBS: kunde-påmindelsen ("vi kommer i morgen") sendes IKKE automatisk længere —
   // kun når admin selv trykker på knappen (se POST /api/customer-emails/send-reminders

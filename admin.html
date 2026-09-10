@@ -1381,8 +1381,25 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
    visningen kan stable flere sider under hinanden uden at blive klippet af. */
 .qe-body{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;padding:18px 22px;align-items:start}
 .qe-editor,.qe-preview-wrap{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:20px}
-.qe-preview-wrap{background:#EEF0F3;display:flex;flex-direction:column;align-items:center;padding:20px}
-@media(max-width:1050px){.qe-body{grid-template-columns:minmax(0,1fr)}}
+/* RUNDE W (sep. 2026, Martins ønske: "behold samme højde [på viewer'en], man
+   skal derover med musen for at scrolle ned i den ... så kan man altid se
+   Margin under den") — modsat RUNDE V-kommentaren ovenfor (som bevidst fjernede
+   en fast-højde/scroll-opførsel for HELE tilbudseditoren), gælder dette kun
+   højre kolonne (PDF-forhåndsvisningen): den får nu sin egen faste, begrænsede
+   højde med intern scroll (position:sticky + max-height + overflow), så den
+   hverken vokser i det uendelige med flersidede tilbud eller forsvinder ud af
+   syne når man scroller langt ned i venstre kolonne (linjerne) — og margin-
+   kortene, som nu sidder lige under selve PDF-visningen (se HTML), er derfor
+   altid synlige uden at skulle scrolle hele siden. Venstre kolonne (.qe-editor)
+   er UÆNDRET og vokser stadig frit med sidens eget scroll, som Martin bad om
+   i RUNDE V.
+   100vh er en tilnærmelse (den egentlige scroll-forælder er app-indholdet, ikke
+   vinduet) — sticky degraderer i så fald blot til normal positionering uden at
+   knække noget, så det er en sikker antagelse. */
+.qe-preview-wrap{background:#EEF0F3;display:flex;flex-direction:column;align-items:center;padding:20px;position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:hidden}
+.qe-preview-pages{overflow-y:auto;flex:1 1 auto;min-height:0;width:100%}
+.qe-preview-summary{flex:0 0 auto;width:100%;margin-top:14px;padding-top:14px;border-top:1px solid var(--bly-border-soft)}
+@media(max-width:1050px){.qe-body{grid-template-columns:minmax(0,1fr)}.qe-preview-wrap{position:static;max-height:none;overflow:visible}.qe-preview-pages{overflow:visible}}
 /* minmax(0,1fr) i stedet for bare "1fr" begge steder ovenfor — uden det
    nægter et grid-spor at krympe under sit indholds naturlige minimumsbredde
    (her: de to felter i .qe-field-row nedenfor), så på en telefon blev hele
@@ -1397,15 +1414,29 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .qe-customer-result:hover{background:var(--bly-hover)}
 .qe-lines-head{display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px}
 .qe-line{border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:12px;margin-bottom:8px;background:#FAFAFB}
-.qe-line-text{background:var(--bly-accent-soft);border-color:#C7D2FE;border-left:4px solid var(--bly-accent)}
+/* RUNDE W (sep. 2026, Martins ønske: "gør note-boksen og tekstlinjen mere
+   minimalistisk/professionel — den er lidt barnlig, det skal ikke ligne noget
+   fra Teletubbies") — tekstlinjens skarpt farvede lilla boks med tyk kant
+   (#EEF2FF/#C7D2FE/4px accent) er erstattet med en neutral, stram stil: en
+   tynd mørk streg + let gråtone i stedet for mættet farve. Stadig tydeligt en
+   sektions-adskiller (stor bogstaver, spatieret skrift), bare uden legetøjs-
+   farverne — passer bedre til et tilbud på flere millioner kr. Samme
+   ændring er lavet i .qe-divider-row (selve forhåndsvisningen) og i den
+   RIGTIGE PDF (drawDocumentPdf i server.js), så alle tre steder stemmer overens. */
+.qe-line-text{background:var(--bly-border-soft);border-color:var(--bly-border);border-left:3px solid var(--bly-ink)}
 .qe-line-text .qe-line-top{grid-template-columns:18px 1fr 30px;margin-bottom:0}
-.qe-line-text input.qe-line-field{font-weight:700;color:var(--bly-ink)}
+.qe-line-text input.qe-line-field{font-weight:700;color:var(--bly-ink);text-transform:uppercase;letter-spacing:.03em;font-size:12.5px}
 .qe-line-top{display:grid;grid-template-columns:18px 1fr 80px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
 .qe-line-top textarea.qe-desc-area{resize:vertical;min-height:36px;max-height:200px;line-height:1.4;font-family:inherit;overflow-y:auto;white-space:pre-wrap}
 .qe-line-nums{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .qe-line-num-label{font-size:9px;color:var(--bly-sub);font-weight:700;text-transform:uppercase}
 .qe-line-margin{font-size:10.5px;font-weight:800;margin-top:2px}
 .qe-remove-line{border:0;background:transparent;color:var(--bly-dot-overdue);cursor:pointer;font-size:15px}
+/* RUNDE W — lille, diskret "+ Note"-knap der åbner note-feltet (se qzLineRowHtml
+   / qzNoteToggleClickHandler). Bevidst underspillet stil (ingen farve, ingen
+   kant) så den ikke konkurrerer visuelt med de rigtige felter på linjen. */
+.qz-note-toggle{border:0;background:transparent;color:var(--bly-sub);cursor:pointer;font-size:11px;font-weight:600;padding:2px 0;margin-top:2px}
+.qz-note-toggle:hover{color:var(--bly-accent)}
 /* Trækhåndtag til at omarrangere tilbudslinjer (sep. 2026) — se qzLineDragHandle/
    makeLinesDragHandler. Kun håndtaget er draggable, resten af linjen er almindelig
    tekst man kan markere/redigere uden at et træk starter ved et uheld. */
@@ -1502,7 +1533,14 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
    beskrivelse lige under, og noten i sin egen fremhævede boks nederst. */
 .ln-heading{font-weight:700}
 .ln-desc{font-weight:600;color:#374151;margin-top:3px;white-space:pre-line}
-.ln-note{margin-top:6px;background:#FFF7ED;border-left:3px solid #FB923C;border-radius:6px;padding:6px 9px;font-size:11.5px;font-weight:500;color:#7C2D12;white-space:pre-line}
+/* RUNDE W — note-boksen var en mættet orange "post-it"-farve (#FFF7ED/#FB923C/
+   #7C2D12), som virkede barnlig/useriøs på et rigtigt tilbud. Neutral, lys
+   gråtone i stedet, kursiv i stedet for farve til at markere at det er en
+   sidebemærkning, og en lille diskret "NOTE"-label så boksens formål stadig
+   er tydeligt uden at skulle bruge farve til det. Samme ændring i server.js'
+   .ln-note (kundens portal-side) og drawPdfLineDesc (den rigtige PDF). */
+.ln-note{margin-top:6px;background:#F9FAFB;border-left:2px solid #9CA3AF;border-radius:4px;padding:6px 9px;font-size:11.5px;font-weight:400;font-style:italic;color:#4B5563;white-space:pre-line}
+.ln-note-label{display:block;font-size:8.5px;font-weight:700;font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF;margin-bottom:2px}
 .ln-textrow{font-weight:700;white-space:pre-line}
 /* RUNDE U (Martins ønske: "Når man i et tilbud laver en tekstlinje lav det
    mere tydeligt det bryder det eksisterende tilbud med en linje så man kan
@@ -1511,7 +1549,10 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
    "sektions-adskiller"-bjælke, så man med ét blik kan se hvor ét fag stopper
    og det næste starter i et langt tilbud. Samme visuelle idé bruges i BÅDE
    den levende forhåndsvisning (her) og den faktiske PDF (drawDocumentPdf).*/
-.qe-divider-row{background:var(--bly-accent-soft);color:var(--bly-accent);font-weight:800;font-size:12px;padding:10px 14px;border-radius:8px;border-left:4px solid var(--bly-accent);white-space:pre-line}
+/* RUNDE W — samme "for barnlig" farve-boks (lilla/indigo) som .qe-line-text,
+   nu neutral/mørk i stedet, se kommentaren ved .qe-line-text ovenfor. Samme
+   ændring i den rigtige PDF (drawDocumentPdf i server.js). */
+.qe-divider-row{background:var(--bly-border-soft);color:var(--bly-ink);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;padding:9px 14px;border-radius:4px;border-left:3px solid var(--bly-ink);white-space:pre-line}
 .qe-pdf-totals{margin-left:auto;width:220px}
 .qe-pdf-totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#6B7280}
 .qe-pdf-totals-row.grand{background:var(--bly-accent);color:#fff;font-weight:800;font-size:11.5px;padding:6px 8px;border-radius:6px;margin-top:6px}
@@ -3689,8 +3730,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <button class="bly-btn outline small" id="qe-add-text-line-bottom" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
         </div>
 
-        <div class="qe-totals" id="qe-totals"></div>
-        <div class="qe-cost-summary" id="qe-cost-summary"></div>
+        <!-- RUNDE W (sep. 2026, Martins ønske: "placer Margin dataen under PDF filen
+             ... så kan man altid under pdf live view se Margin") — #qe-totals og
+             #qe-cost-summary er FLYTTET herfra og ned i .qe-preview-wrap, lige under
+             selve PDF-forhåndsvisningen (#qe-preview), se dér. Selve elementerne
+             (id'erne) er uændrede, kun deres placering i DOM'en — qeRenderTotals()
+             skriver stadig til dem via getElementById, uanset hvor de sidder. -->
         <!-- RUNDE T (Martins ønske: "flytter den samlede tilbud ned under KPI'erne
              hvor du har margin mm") — "Rabat på hele tilbuddet" lå før langt oppe i
              tilbuddet, sammen med kunde-/adressefelterne; nu lige under margin-
@@ -3712,6 +3757,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div class="qe-preview-wrap">
         <div id="qe-preview" class="qe-preview-pages"></div>
+        <!-- RUNDE W — margin/avance og totaler, flyttet hertil fra .qe-editor (se
+             kommentaren ovenfor ved den gamle placering). Ligger UDENFOR den
+             scrollbare #qe-preview, så den altid er synlig under PDF'en, uanset
+             hvor mange sider tilbuddet fylder eller hvor langt man har scrollet i
+             selve PDF-visningen. -->
+        <div class="qe-preview-summary">
+          <div class="qe-totals" id="qe-totals"></div>
+          <div class="qe-cost-summary" id="qe-cost-summary"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -6928,14 +6982,17 @@ function weekKey(d){var x=mon(d);return 'w'+x.getFullYear()+'-'+String(weekNo(x)
 // onClick opfører toasten sig 100% som før. Med onClick vises den lidt længere
 // (4.2s i stedet for 2.6s), så der er reel tid til at nå at klikke, og skjules
 // øjeblikkeligt ved klik i stedet for at vente på timeouten.
-function toast(msg,ic,onClick){
+function toast(msg,ic,onClick,ms){
   var el=document.getElementById('toast');
   el.innerHTML=(ic?ic+' ':'')+esc(msg)+(onClick?' <span style="opacity:.7">→</span>':'');
   el.classList.add('show');
   el.classList.toggle('clickable',!!onClick);
   el.onclick=onClick?function(){el.classList.remove('show');clearTimeout(el._t);onClick();}:null;
   clearTimeout(el._t);
-  el._t=setTimeout(function(){el.classList.remove('show');},onClick?4200:2600);
+  // RUNDE W — ekstra 4. parameter (valgfri, bagudkompatibel): en eksplicit
+  // visningstid i ms, til beskeder der er for lange til den normale 2.6s (fx
+  // AI-fejlbeskeder — se qeAiStopAndParse). Ellers uændret standard-adfærd.
+  el._t=setTimeout(function(){el.classList.remove('show');},ms||(onClick?4200:2600));
 }
 // MODERNE ERSTATNING FOR window.await gmConfirm()/window.await gmPrompt() — samme trækbare
 // popup-stil som resten af programmet, i stedet for browserens grimme, låste bokse.
@@ -16011,7 +16068,15 @@ function qzLineRowHtml(l,idx,prefix){
     // for lav værdi FØR feltet var færdig-layoutet, og uden en fast min-højde kunne
     // boksen ende helt sammenklappet (kun stort nok til sin egen padding, ingen synlig
     // tekstlinje). min-height er en garanti der altid vinder over en for lille sat højde.
+    // RUNDE W (sep. 2026, Martins ønske: "lav noten kollaps fra starten, man kan
+    // klikke på den når man vil se den") — feltet starter nu skjult (kollapset) bag
+    // en lille "+ Note"-knap, MEDMINDRE linjen allerede har en note (så man ikke
+    // skjuler eksisterende indhold for sig selv). Klik toggler synligheden rent
+    // visuelt (qzToggleNoteArea), uden en fuld gentegning af linjerne.
+    +(l.note?'':'<button type="button" class="qz-note-toggle" data-idx="'+idx+'">+ Note</button>')
+    +'<div class="qz-note-wrap"'+(l.note?'':' style="display:none"')+'>'
     +'<textarea class="qe-input qe-line-field qz-note-area" data-idx="'+idx+'" data-field="note" placeholder="Note (valgfrit) — vises i egen boks under beskrivelsen på tilbud/faktura" rows="1" style="margin-top:4px;font-size:12.5px;min-height:34px">'+esc(l.note||'')+'</textarea>'
+    +'</div>'
     +'<div class="qe-line-nums">'
     +'<div><div class="qe-line-num-label">Antal</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="quantity" value="'+qty+'"></div>'
     +'<div><div class="qe-line-num-label">Cost-pris</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="cost_price" value="'+cost+'"></div>'
@@ -16086,6 +16151,20 @@ function makeLinesRemoveHandler(getLines,renderFn){
     renderFn();
   };
 }
+// RUNDE W — åbner note-boksen på klik (se qzLineRowHtml). Ren visuel toggle,
+// ingen state i selve linjen og ingen gentegning, så det ikke forstyrrer andet
+// man er ved at redigere på tilbuddet. Bruges som en EKSTRA delegeret
+// click-lytter på de samme linje-containere som makeLinesRemoveHandler.
+function qzNoteToggleClickHandler(e){
+  var btn=e.target.closest('.qz-note-toggle');
+  if(!btn)return;
+  var wrap=btn.nextElementSibling;
+  if(!wrap||!wrap.classList.contains('qz-note-wrap'))return;
+  wrap.style.display='block';
+  btn.style.display='none';
+  var area=wrap.querySelector('.qz-note-area');
+  if(area){area.focus();qzAutoGrowTextarea(area);}
+}
 // Drag-and-drop reorder af tilbudslinjer (sep. 2026, Martins ønske). Bindes som
 // dragstart/dragover/drop/dragend på selve linje-containeren (samme delegerings-
 // mønster som makeLinesFieldHandler/makeLinesRemoveHandler ovenfor), så den virker
@@ -16157,7 +16236,7 @@ function qzLineDescCellHtml(l){
   var rest=nl===-1?'':full.slice(nl+1).trim();
   var html='<div class="ln-heading">'+esc(heading)+'</div>';
   if(rest)html+='<div class="ln-desc">'+esc(rest)+'</div>';
-  if(l.note&&String(l.note).trim())html+='<div class="ln-note">'+esc(String(l.note).trim())+'</div>';
+  if(l.note&&String(l.note).trim())html+='<div class="ln-note"><span class="ln-note-label">Note</span>'+esc(String(l.note).trim())+'</div>';
   return html;
 }
 function qzProductLineText(product){
@@ -16221,12 +16300,16 @@ function qzMultiSelectFor(resultsId){
 // til — samme søgning som hidtil, blot uden selve skråstregen i søgeforespørgslen.
 function qzRunProductSearch(inputId,resultsId,onPick){
   var raw=document.getElementById(inputId).value.trim();
-  var q=(raw.charAt(0)==='/'?raw.slice(1):raw).trim().toLowerCase();
+  var q=(raw.charAt(0)==='/'?raw.slice(1):raw).trim();
   var box=document.getElementById(resultsId);
   var sel=qzMultiSelectFor(resultsId);
   var selIds=Object.keys(sel);
   if(!q&&!selIds.length){box.style.display='none';box.innerHTML='';return;}
-  var matches=q?qzProducts.filter(function(p){return p.name.toLowerCase().indexOf(q)>-1||(p.category||'').toLowerCase().indexOf(q)>-1;}).slice(0,8):[];
+  // RUNDE W (Martins fejlrapport: "søgefunktionen i tilbuddet finder nogle
+  // gange ikke de ord vi søger på") — bruger nu qzSearchHit (ord-splittet,
+  // diakritik-tolerant), og søger også i varenr. og beskrivelse, ikke kun
+  // navn/kategori.
+  var matches=q?qzProducts.filter(function(p){return qzSearchHit(q,[p.name,p.category,p.sku,p.description]);}).slice(0,8):[];
   var barHtml=selIds.length?(
     '<div class="qz-multiselect-bar"><span>'+selIds.length+' valgt: '+selIds.map(function(id){return esc((sel[id]&&sel[id].name)||'');}).join(', ')+'</span>'
     +'<button type="button" class="bly-btn small" data-action="qz-confirm-multiselect">+ Tilføj '+selIds.length+' linje'+(selIds.length===1?'':'r')+'</button></div>'
@@ -16299,9 +16382,10 @@ function qzHideLineAutocomplete(){
   if(box){box.style.display='none';box.innerHTML='';}
 }
 function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange){
-  var q=inputEl.value.trim().toLowerCase();
+  var q=inputEl.value.trim();
   if(!q){qzHideLineAutocomplete();return;}
-  var matches=qzProducts.filter(function(p){return p.name.toLowerCase().indexOf(q)>-1||(p.category||'').toLowerCase().indexOf(q)>-1;}).slice(0,8);
+  // RUNDE W — samme søge-fejlrettelse som qzRunProductSearch (se qzSearchHit).
+  var matches=qzProducts.filter(function(p){return qzSearchHit(q,[p.name,p.category,p.sku,p.description]);}).slice(0,8);
   if(!matches.length){qzHideLineAutocomplete();return;}
   var box=qzGetLineAcBox();
   box.innerHTML=matches.map(function(p){
@@ -16354,8 +16438,9 @@ function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange)
 
 // ── PRODUKTER ────────────────────────────────────────────────
 function renderQzProducts(){
-  var q=(document.getElementById('qz-product-search').value||'').trim().toLowerCase();
-  var list=qzProducts.filter(function(p){return !q||p.name.toLowerCase().indexOf(q)>-1||(p.category||'').toLowerCase().indexOf(q)>-1;});
+  var q=(document.getElementById('qz-product-search').value||'').trim();
+  // RUNDE W — samme søge-fejlrettelse som tilbud/fakturaer (se qzSearchHit).
+  var list=qzProducts.filter(function(p){return qzSearchHit(q,[p.name,p.category,p.sku]);});
   var body=document.getElementById('qz-products-body');
   if(!list.length){body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen produkter fundet':'Ingen produkter endnu — opret det første')+'</td></tr>';return;}
   body.innerHTML=list.map(function(p){
@@ -21150,8 +21235,9 @@ async function deleteQaTemplate(){
 
 // ── SKABELONER — gemte linjesæt der kan indsættes i et nyt tilbud ──
 function renderQzTemplates(){
-  var q=(document.getElementById('qz-template-search').value||'').trim().toLowerCase();
-  var list=qzTemplates.filter(function(t){return !q||t.name.toLowerCase().indexOf(q)>-1;});
+  var q=(document.getElementById('qz-template-search').value||'').trim();
+  // RUNDE W — samme søge-fejlrettelse som tilbud/fakturaer/produkter (se qzSearchHit).
+  var list=qzTemplates.filter(function(t){return qzSearchHit(q,[t.name]);});
   var body=document.getElementById('qz-templates-body');
   if(!list.length){body.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen skabeloner fundet':'Ingen skabeloner endnu — byg en herunder, eller gem et tilbud som skabelon')+'</td></tr>';return;}
   body.innerHTML=list.map(function(t){
@@ -21237,9 +21323,41 @@ function renderQzQuoteStatusFilter(){
     b.onclick=function(){qzQuoteStatusFilter=b.dataset.qzQuoteStatus;renderQzQuotes();};
   });
 }
+// RUNDE W (sep. 2026, Martins fejlrapport: "kan forbedre søgefunktionen i
+// tilbuddet, nogle gange finder den ikke de ord vi søger på") — den gamle
+// søgning slog hele søgeteksten op som ÉT sammenhængende understreng-match pr.
+// felt (indexOf), aldrig delt op i enkelte ord. Det betød at en søgning på
+// f.eks. "Jensen Nørrebrogade" ALDRIG fandt tilbuddet, selvom "Jensen" stod i
+// navnefeltet og "Nørrebrogade" i adressefeltet — ingen af de to felter
+// indeholdt den FULDE to-ords-streng. Desuden blev æ/ø/å aldrig normaliseret,
+// så "Norgaard" ikke matchede en gemt "Nørgaard" (eller omvendt).
+// qzSearchHit() retter begge dele: søgeteksten splittes i ord, og hvert ord
+// skal findes ET ELLER ANDET sted blandt felterne (men de forskellige ord må
+// gerne sidde i FORSKELLIGE felter) — og både felter og søgeord sammenlignes
+// efter at æ/ø/å (og andre diakritiske tegn) er foldet væk. Felterne
+// sammenlignes hver for sig, ALDRIG som én sammenklistret streng (samme
+// lære som fejlen i products_import/classify.py: en sammenklistret streng
+// kan skabe falske match hen over grænsen mellem to felter).
+function qzDiacriticFold(s){
+  // NB: æ/ø/å er IKKE ægte diakritiske tegn i Unicode-forstand (de
+  // dekomponerer ikke via NFKD, i modsætning til fx é -> e + accent) - de er
+  // selvstændige bogstaver. NFKD+combining-mark-strip fanger derfor kun accenter
+  // fra andre sprog (é, ü, à...). De danske bogstaver erstattes eksplicit i
+  // stedet, så en søgning uden æ/ø/å (fx en tastefejl) stadig matcher —
+  // "Norgaard" finder "Nørgaard".
+  return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/ø/g,'o').replace(/æ/g,'ae').replace(/å/g,'aa');
+}
+function qzSearchHit(queryRaw,fields){
+  var q=qzDiacriticFold(queryRaw).trim();
+  if(!q)return true;
+  var words=q.split(/\s+/).filter(Boolean);
+  var normFields=fields.map(qzDiacriticFold);
+  return words.every(function(w){return normFields.some(function(f){return f.indexOf(w)>-1;});});
+}
 function renderQzQuotes(){
   renderQzQuoteStatusFilter();
-  var q=(document.getElementById('qz-quote-search').value||'').trim().toLowerCase();
+  var q=(document.getElementById('qz-quote-search').value||'').trim();
   // FEJLRETTELSE (Martins fejlrapport: "tit kan man ikke finde det tilbud man
   // har lavet"): søgningen kiggede FØR kun på navnet ("Kunde / sag") og
   // tilbudsnummeret — men adresse, telefon og email lå allerede med i hvert
@@ -21249,14 +21367,11 @@ function renderQzQuotes(){
   var qDigits=q.replace(/\s+/g,'');
   var list=qzQuotes.filter(function(x){
     if(q){
-      var hit=(x.job_name||'').toLowerCase().indexOf(q)>-1
-        ||(x.quote_number||'').toLowerCase().indexOf(q)>-1
+      var hit=qzSearchHit(q,[x.job_name,x.quote_number,
         // FEJLRETTELSE (Martins ønske: "Giv alle tilbud et sags nummer. Så man
         // kan søge efter det") — sagsnummeret (delt med projektet/opgaverne/
         // fakturaerne for samme sag) er nu også søgbart her.
-        ||(x.job_number||'').toLowerCase().indexOf(q)>-1
-        ||(x.customer_email||'').toLowerCase().indexOf(q)>-1
-        ||(x.customer_address||'').toLowerCase().indexOf(q)>-1
+        x.job_number,x.customer_email,x.customer_address])
         ||(qDigits&&(x.customer_phone||'').replace(/\s+/g,'').indexOf(qDigits)>-1);
       if(!hit)return false;
     }
@@ -21700,8 +21815,11 @@ async function qeAiStopAndParse(){
   if(!transcript){toast('Intet blev opfanget — prøv igen','⚠️');return;}
   toast('Tolker diktat...','⏳');
   var r=await api('/api/quotes/ai-parse-lines',{method:'POST',body:JSON.stringify({transcript:transcript})});
-  if(!r||r.error){toast(r&&r.error?r.error:'Kunne ikke tolke diktatet','❌');return;}
-  if(!r.lines||!r.lines.length){toast('AI fandt ingen linjer i diktatet','⚠️');return;}
+  // RUNDE W — fejlbeskeden her kan være lang (fx om en manglende API-nøgle),
+  // og den almindelige 2.6 sek. varighed er for kort til at nå at læse den i
+  // — givet 7 sek. i stedet, så man rent faktisk kan se HVORFOR det fejlede.
+  if(!r||r.error){toast(r&&r.error?r.error:'Kunne ikke tolke diktatet','❌',null,7000);return;}
+  if(!r.lines||!r.lines.length){toast('AI fandt ingen linjer i diktatet','⚠️',null,5000);return;}
   qzRenderAiReview(r.lines);
 }
 function qzRenderAiReview(lines){
@@ -22391,6 +22509,16 @@ async function qeApplyTemplate(id){
 // kontekstmenu (showCtxMenu, ellers brugt til højreklik på Projekter) til at
 // vise skabelonlisten lige under knappen.
 function qeOpenTemplateMenu(e){
+  // FEJLRETTELSE (sep. 2026, Martins rapport: "knappen virker ikke"): uden
+  // stopPropagation her bobler den SAMME klik-begivenhed videre op til
+  // document's globale luk-kontekstmenu-lytter (se "document.addEventListener
+  // ('click', ...hideCtxMenu())" ved showCtxMenu/hideCtxMenu) i samme
+  // hændelse — menuen blev altså åbnet og lukket igen med det samme, uden
+  // nogensinde at nå at blive vist. Virkede fint for højreklik-menuer
+  // andre steder i appen, fordi "contextmenu" er en anden hændelsestype end
+  // "click" og derfor ikke rammer denne lytter — men her er knappen bundet
+  // til et almindeligt venstreklik.
+  e.stopPropagation();
   if(!qzTemplates.length){toast('Ingen skabeloner gemt endnu','ℹ️');return;}
   var r=e.currentTarget.getBoundingClientRect();
   var items=qzTemplates.map(function(t){
@@ -22421,21 +22549,21 @@ function renderQzInvoiceStatusFilter(){
 }
 function renderQzInvoices(){
   renderQzInvoiceStatusFilter();
-  var q=(document.getElementById('qz-invoice-search').value||'').trim().toLowerCase();
+  var q=(document.getElementById('qz-invoice-search').value||'').trim();
   // FEJLRETTELSE (samme som tilbudssøgningen, se kommentaren ved renderQzQuotes)
   // — søger nu også i adresse, telefon og email, ikke kun navn/fakturanummer.
+  // RUNDE W — bruger nu qzSearchHit (ord-splittet, diakritik-tolerant søgning
+  // på tværs af felterne), samme fejlrettelse som Martin rapporterede for
+  // tilbudssøgningen.
   var qDigits=q.replace(/\s+/g,'');
   var list=qzInvoices.filter(function(x){
     if(q){
-      var hit=(x.job_name||'').toLowerCase().indexOf(q)>-1
-        ||(x.invoice_number||'').toLowerCase().indexOf(q)>-1
+      var hit=qzSearchHit(q,[x.job_name,x.invoice_number,
         // FEJLRETTELSE (Martins ønske: "Giv alle tilbud et sags nummer. Så man
         // kan søge efter det ... finde alle faktura tilknyttet den enkle sag")
         // — sagsnummeret er nu søgbart her, samme nummer på alle delfakturaer
         // for samme sag.
-        ||(x.job_number||'').toLowerCase().indexOf(q)>-1
-        ||(x.customer_email||'').toLowerCase().indexOf(q)>-1
-        ||(x.customer_address||'').toLowerCase().indexOf(q)>-1
+        x.job_number,x.customer_email,x.customer_address])
         ||(qDigits&&(x.customer_phone||'').replace(/\s+/g,'').indexOf(qDigits)>-1);
       if(!hit)return false;
     }
@@ -22716,6 +22844,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzt-lines').addEventListener('input',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('change',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
+  document.getElementById('qzt-lines').addEventListener('click',qzNoteToggleClickHandler);
   (function(){
     var qztDrag=makeLinesDragHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');});
     var el=document.getElementById('qzt-lines');
@@ -22748,6 +22877,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qal-lines').addEventListener('input',qalFieldHandler);
   document.getElementById('qal-lines').addEventListener('change',qalFieldHandler);
   document.getElementById('qal-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
+  document.getElementById('qal-lines').addEventListener('click',qzNoteToggleClickHandler);
   (function(){
     var qalDrag=makeLinesDragHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');});
     var el=document.getElementById('qal-lines');
@@ -22774,6 +22904,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('ivl-lines').addEventListener('input',ivlFieldHandler);
   document.getElementById('ivl-lines').addEventListener('change',ivlFieldHandler);
   document.getElementById('ivl-lines').addEventListener('click',makeLinesRemoveHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
+  document.getElementById('ivl-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('ivl-discount').addEventListener('input',ivlRenderTotals);
   (function(){
     var ivlDrag=makeLinesDragHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');});
@@ -22829,6 +22960,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-lines').addEventListener('input',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('change',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
+  document.getElementById('qe-lines').addEventListener('click',qzNoteToggleClickHandler);
   (function(){
     var qeDrag=makeLinesDragHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();});
     var el=document.getElementById('qe-lines');
