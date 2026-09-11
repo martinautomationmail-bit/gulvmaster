@@ -1277,11 +1277,12 @@ table.bly-table tr.bly-row{background:#fff}
 table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bly-status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:9px;flex-shrink:0;vertical-align:middle;margin-bottom:2px}
-/* RUNDE H #28 — Timetracking-fanens medarbejder-rækker + fold-ud-detaljer */
+/* RUNDE H #28/#29 — Timetracking-fanens medarbejder-rækker, fold-ud-detaljer,
+   visningsskift og billed-miniaturer */
 tr.tt-row:hover td{background:var(--bly-hover)}
 tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .tt-detail-list{padding:6px 14px 14px 40px;display:flex;flex-direction:column;gap:1px}
-.tt-detail-row{display:grid;grid-template-columns:84px minmax(0,1fr) minmax(90px,170px) 90px;gap:12px;align-items:start;padding:8px 10px;font-size:12px;border-bottom:1px solid var(--bly-border-soft)}
+.tt-detail-row{display:grid;grid-template-columns:84px minmax(0,1fr) minmax(56px,120px) minmax(90px,170px) 90px;gap:12px;align-items:start;padding:8px 10px;font-size:12px;border-bottom:1px solid var(--bly-border-soft)}
 .tt-detail-row:last-child{border-bottom:none}
 .tt-detail-date{color:var(--bly-sub);white-space:nowrap;font-variant-numeric:tabular-nums}
 .tt-detail-project{color:var(--bly-ink);min-width:0}
@@ -1290,6 +1291,21 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .tt-detail-sub{color:var(--bly-sub);text-align:right;white-space:normal;line-height:1.3;font-variant-numeric:tabular-nums}
 .tt-detail-cost{color:var(--bly-ink);font-weight:600;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 @media (max-width:640px){.tt-detail-row{grid-template-columns:1fr;gap:2px}.tt-detail-sub,.tt-detail-cost{text-align:left}}
+/* RUNDE H #29 — visningsskift (Efter medarbejder / Kronologisk) */
+.tt-view-toggle{display:inline-flex;background:var(--ice);border-radius:var(--bly-r-sm);padding:3px;gap:2px}
+.tt-view-btn{border:0;background:transparent;padding:7px 12px;font-size:12px;font-weight:700;color:var(--bly-sub);border-radius:7px;cursor:pointer;white-space:nowrap}
+.tt-view-btn.active{background:#fff;color:var(--bly-ink);box-shadow:0 1px 3px rgba(15,17,24,.12)}
+/* RUNDE H #29 — billed-miniaturer (både i fold-ud-detaljerne og den kronologiske
+   liste) — klik åbner #tt-photo-lightbox. */
+.tt-thumbs{display:flex;gap:4px;flex-wrap:wrap}
+.tt-thumb{width:34px;height:34px;border-radius:6px;object-fit:cover;cursor:pointer;border:1px solid var(--bly-border-soft);transition:transform .1s}
+.tt-thumb:hover{transform:scale(1.08)}
+.tt-thumb-more{width:34px;height:34px;border-radius:6px;background:var(--ice);color:var(--bly-sub);font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.tt-no-photo{color:var(--bly-sub);font-size:11px}
+/* RUNDE H #29 — den kronologiske (flade) tabel-visning */
+.tt-chrono-project{color:var(--bly-ink);font-weight:600}
+.tt-chrono-customer{color:var(--bly-sub);font-weight:400}
+.tt-chrono-note{color:var(--bly-sub);font-size:11.5px;margin-top:2px;white-space:pre-wrap;max-width:260px}
 .bly-mail-icon{color:var(--bly-sub);font-size:11px;margin-left:6px}
 .bly-tag{display:inline-flex;align-items:center;font-size:9.5px;font-weight:800;color:var(--bly-sub);background:var(--ice);border-radius:5px;padding:2px 6px;margin-right:6px;text-transform:uppercase;letter-spacing:.03em}
 .bly-desc-inner{color:var(--bly-sub);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
@@ -2896,7 +2912,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.3</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.4</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3779,24 +3795,60 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="bly-toolbar-right"><button class="bly-btn outline" id="tt-export-btn" type="button">⬇️ Eksportér CSV</button></div>
     </div>
     <div class="bly-kpi-row" id="tt-kpi-row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
-    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:0 0 14px;flex-wrap:wrap">
-      <select id="tt-filter-user" class="select" style="width:auto;min-width:170px"></select>
-      <select id="tt-filter-trade" class="select" style="width:auto;min-width:140px"></select>
-      <select id="tt-filter-paytype" class="select" style="width:auto;min-width:130px">
-        <option value="all">Alle løntyper</option>
-        <option value="hourly">Timeløn</option>
-        <option value="akkord">Akkord</option>
-      </select>
-      <div class="bly-period" style="position:relative">
-        <button class="bly-ctl" id="tt-period-btn" type="button">📅 <span id="tt-period-label">Alt tid</span></button>
-        <div class="bly-period-pop" id="tt-period-pop" style="display:none"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 14px;flex-wrap:wrap">
+      <!-- RUNDE H #29 — Martins ønske: to visninger. "Efter medarbejder" (grupperet,
+           til løn/estimering) og "Kronologisk" (flad liste, nyeste først, til det
+           hurtige fredags-tjek af hvad der er logget — med billeder og note synligt
+           uden at skulle folde noget ud). -->
+      <div class="tt-view-toggle" id="tt-view-toggle">
+        <button class="tt-view-btn active" data-action="tt-view" data-tt-view="grouped" type="button">👤 Efter medarbejder</button>
+        <button class="tt-view-btn" data-action="tt-view" data-tt-view="chrono" type="button">🕐 Kronologisk</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <select id="tt-filter-user" class="select" style="width:auto;min-width:170px"></select>
+        <select id="tt-filter-trade" class="select" style="width:auto;min-width:140px"></select>
+        <select id="tt-filter-paytype" class="select" style="width:auto;min-width:130px">
+          <option value="all">Alle løntyper</option>
+          <option value="hourly">Timeløn</option>
+          <option value="akkord">Akkord</option>
+        </select>
+        <!-- RUNDE H #29 — Martins ønske om "fra uge til uge"-filtrering (stod i hans
+             allerførste besked om denne side) — den delte periode-popover herunder har
+             Måned/Kvartal/Regnskabsår/fritekst-interval, men ingen "uge"-genvej. I
+             stedet for at lave om på den delte komponent (bruges af Tilbud/Fakturaer
+             m.fl.), lægges to hurtig-knapper her specifikt til Timetracking, der sætter
+             periode-filterets datointerval direkte via dens nye setRange()-metode. -->
+        <button class="bly-ctl" id="tt-thisweek-btn" type="button">Denne uge</button>
+        <button class="bly-ctl" id="tt-lastweek-btn" type="button">Sidste uge</button>
+        <div class="bly-period" style="position:relative">
+          <button class="bly-ctl" id="tt-period-btn" type="button">📅 <span id="tt-period-label">Alt tid</span></button>
+          <div class="bly-period-pop" id="tt-period-pop" style="display:none"></div>
+        </div>
       </div>
     </div>
     <table class="bly-table">
-      <thead><tr><th style="width:26px"></th><th>Medarbejder</th><th>Fag</th><th>Løntype</th><th class="num">Timer</th><th class="num">Registreringer</th><th class="num">Estimeret løn</th></tr></thead>
+      <thead id="tt-thead"><tr><th style="width:26px"></th><th>Medarbejder</th><th>Fag</th><th>Løntype</th><th class="num">Timer</th><th class="num">Registreringer</th><th class="num">Estimeret løn</th></tr></thead>
       <tbody id="tt-body"></tbody>
     </table>
   </div>
+<!-- RUNDE H #29 — Simpel, selvstændig fotolysboks til Timetracking-detaljerne
+     (bevidst IKKE genbrug af #pd-photo-lightbox/#file-lightbox-modal — de er tæt
+     koblet til hhv. sagsbillede-sletning og Gmail-vedhæftninger; her er det bare
+     visning af nogle billed-URL'er). ‹/› bladrer igennem billederne for ÉN
+     registrering ad gangen. -->
+<div class="mo" id="tt-photo-lightbox">
+  <div class="modal" style="max-width:min(880px,92vw);background:transparent;box-shadow:none;padding:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
+      <span class="opt-tag" id="tt-lightbox-counter" style="background:#fff;padding:4px 8px;border-radius:6px"></span>
+      <button class="bly-btn small" id="tt-lightbox-close-btn" type="button">✕ Luk</button>
+    </div>
+    <div style="position:relative;display:flex;align-items:center;justify-content:center">
+      <button class="bly-btn outline small" id="tt-lightbox-prev-btn" type="button" style="position:absolute;left:8px;background:#fff">‹</button>
+      <img id="tt-lightbox-img" style="max-width:100%;max-height:78vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <button class="bly-btn outline small" id="tt-lightbox-next-btn" type="button" style="position:absolute;right:8px;background:#fff">›</button>
+    </div>
+  </div>
+</div>
 
   <!-- "Mail-skabeloner til tilbud & faktura" er flyttet herfra til det
        samlede Skabeloner-center (✉️ Skabeloner i topmenuen) — se
@@ -14719,7 +14771,11 @@ function renderTimerPage(){
 // den gamle Timer-side ovenfor), og filtreres/grupperes herefter helt i
 // klienten — hurtigt og responsivt når man skifter periode/medarbejder/fag
 // "fra uge til uge", uden et nyt serverkald pr. filterskift.
-var ttData=null,ttPeriodFilter=null,ttExpanded={},ttFilterOptionsBuilt=false;
+var ttData=null,ttPeriodFilter=null,ttExpanded={},ttFilterOptionsBuilt=false,ttViewMode='grouped';
+// RUNDE H #29 — Martins fredags-gennemgang: en simpel, selvstændig fotolysboks
+// (se #tt-photo-lightbox i markup'en) til at klikke et miniature op i fuld
+// størrelse, med ‹/›-bladring gennem PRÆCIS den ene registrerings billeder.
+var ttLightboxPhotos=[],ttLightboxIdx=0;
 function ttEnsureData(cb){
   if(ttData){cb();return;}
   api('/api/reports/time-tracking').then(function(r){
@@ -14769,13 +14825,78 @@ function ttFilteredEntries(){
 }
 function ttFmtHours(minutes){return (minutes/60).toFixed(1).replace('.',',');}
 function ttFmtKr(n){return Math.round(n).toLocaleString('da-DK')+' kr';}
+// RUNDE H #29 — Martins ønske om to visninger: "Efter medarbejder" (grupperet,
+// til løn/estimering — det oprindelige) og "Kronologisk" (flad liste, nyeste
+// først, med dato/billeder/note synligt uden at folde noget ud — til det
+// hurtige fredags-tjek af hvad der er lavet i ugens løb).
+function ttSetView(mode){
+  if(ttViewMode===mode)return;
+  ttViewMode=mode;
+  document.querySelectorAll('#tt-view-toggle .tt-view-btn').forEach(function(b){b.classList.toggle('active',b.dataset.ttView===mode);});
+  renderTimetrackReport();
+}
+// RUNDE H #29 — "Denne uge"/"Sidste uge"-genvejsknapperne. Mandag-søndag
+// (dansk uge-konvention), offsetWeeks=0 for indeværende uge, -1 for forrige.
+function ttWeekRange(offsetWeeks){
+  var now=new Date();
+  var todayMidnight=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  var day=todayMidnight.getDay(); // 0=søndag..6=lørdag
+  var diffToMonday=(day===0?-6:1-day);
+  var monday=add(todayMidnight,diffToMonday+offsetWeeks*7);
+  var sunday=add(monday,6);
+  return {from:iso(monday),to:iso(sunday)};
+}
+function ttFindEntry(id){
+  var list=(ttData&&ttData.entries)||[];
+  for(var i=0;i<list.length;i++)if(String(list[i].id)===String(id))return list[i];
+  return null;
+}
+// RUNDE H #29 — Martins ønske: "kan du også tilføje billederne der? det vil
+// gøre det let og hurtigt at se hvad de har lavet og tjekke dem hver fredag".
+// Viser op til 4 miniaturer + "+N" hvis der er flere; klik åbner lysboksen.
+function ttThumbsHtml(e){
+  if(!e.photos||!e.photos.length)return '';
+  var max=4,shown=e.photos.slice(0,max),extra=e.photos.length-max;
+  return '<div class="tt-thumbs">'+shown.map(function(u,i){
+    return '<img class="tt-thumb" src="'+esc(u)+'" data-action="tt-open-photos" data-entry-id="'+e.id+'" data-idx="'+i+'" loading="lazy" alt="Foto fra registrering">';
+  }).join('')+(extra>0?'<span class="tt-thumb-more" data-action="tt-open-photos" data-entry-id="'+e.id+'" data-idx="'+max+'">+'+extra+'</span>':'')+'</div>';
+}
+function ttOpenLightbox(entryId,idx){
+  var e=ttFindEntry(entryId);
+  if(!e||!e.photos||!e.photos.length)return;
+  ttLightboxPhotos=e.photos;ttLightboxIdx=Math.max(0,Math.min(idx,e.photos.length-1));
+  document.getElementById('tt-photo-lightbox').classList.add('open');
+  ttRenderLightbox();
+}
+function ttRenderLightbox(){
+  if(!ttLightboxPhotos.length)return;
+  var multi=ttLightboxPhotos.length>1;
+  document.getElementById('tt-lightbox-img').src=ttLightboxPhotos[ttLightboxIdx];
+  document.getElementById('tt-lightbox-counter').textContent=multi?(ttLightboxIdx+1)+' / '+ttLightboxPhotos.length:'';
+  document.getElementById('tt-lightbox-prev-btn').style.display=multi?'':'none';
+  document.getElementById('tt-lightbox-next-btn').style.display=multi?'':'none';
+}
+function ttLightboxIsOpen(){
+  var m=document.getElementById('tt-photo-lightbox');
+  return !!(m&&m.classList.contains('open'));
+}
+function ttLightboxStep(delta){
+  if(!ttLightboxIsOpen()||ttLightboxPhotos.length<2)return;
+  var n=ttLightboxPhotos.length;
+  ttLightboxIdx=((ttLightboxIdx+delta)%n+n)%n;
+  ttRenderLightbox();
+}
+var TT_THEAD_GROUPED='<tr><th style="width:26px"></th><th>Medarbejder</th><th>Fag</th><th>Løntype</th><th class="num">Timer</th><th class="num">Registreringer</th><th class="num">Estimeret løn</th></tr>';
+var TT_THEAD_CHRONO='<tr><th>Dato</th><th>Medarbejder</th><th>Sag</th><th>Fag</th><th class="num">Timer/Akkord</th><th>Billeder</th><th>Note</th><th class="num">Estimeret løn</th></tr>';
 function renderTimetrackReport(){
   if(!ttData){ttEnsureData(renderTimetrackReport);return;}
-  var kpiEl=document.getElementById('tt-kpi-row'),bodyEl=document.getElementById('tt-body');
+  var kpiEl=document.getElementById('tt-kpi-row'),bodyEl=document.getElementById('tt-body'),theadEl=document.getElementById('tt-thead');
+  var colspan=ttViewMode==='chrono'?8:7;
+  theadEl.innerHTML=ttViewMode==='chrono'?TT_THEAD_CHRONO:TT_THEAD_GROUPED;
   if(ttData.error){
     kpiEl.innerHTML='';
     var msg=ttData.error==='Admin only'?'🔒 Kun administratorer kan se timetracking-rapporten (den viser alles timeløn).':esc(ttData.error);
-    bodyEl.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:32px">'+msg+'</td></tr>';
+    bodyEl.innerHTML='<tr><td colspan="'+colspan+'" style="text-align:center;color:var(--bly-sub);padding:32px">'+msg+'</td></tr>';
     return;
   }
   ttBuildFilterOptions();
@@ -14791,9 +14912,36 @@ function renderTimetrackReport(){
   kpiEl.innerHTML=kpis.map(function(k){
     return '<div class="bly-kpi-card" style="cursor:default"><div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:var(--bly-accent)"></span>'+esc(k.label)+'</div><div class="bly-kpi-value">'+k.value+'</div></div>';
   }).join('');
-  // Gruppér pr. medarbejder — det er selve "analysere alle folks timetracking",
-  // med mulighed for at folde en enkelt medarbejder ud til de bagvedliggende
-  // registreringer (sag, dato, note, timer/akkord, kr) uden at forlade siden.
+  if(!filtered.length){
+    bodyEl.innerHTML='<tr><td colspan="'+colspan+'" style="text-align:center;color:var(--bly-sub);padding:32px">Ingen tidsregistreringer fundet for den valgte periode/filtre.</td></tr>';
+    return;
+  }
+  // RUNDE H #29 — KRONOLOGISK VISNING: flad liste, nyeste registrering først,
+  // dato/sag/billeder/note synligt direkte i rækken uden at skulle folde noget
+  // ud — Martins "hurtige fredags-tjek" af hvad der er logget i ugens løb.
+  if(ttViewMode==='chrono'){
+    var chronoSorted=filtered.slice().sort(function(a,b){
+      var c=String(b.entry_date).localeCompare(String(a.entry_date));
+      return c!==0?c:(b.id-a.id);
+    });
+    bodyEl.innerHTML=chronoSorted.map(function(e){
+      var sub=e.is_akkord?(e.akkord_name||'Akkord')+' × '+e.akkord_quantity:ttFmtHours(e.minutes)+' t';
+      return '<tr>'+
+        '<td style="white-space:nowrap">'+esc(String(e.entry_date).slice(0,10))+'</td>'+
+        '<td>'+esc(e.user_name)+(e.user_active?'':' <span class="opt-tag">inaktiv</span>')+'</td>'+
+        '<td><div class="tt-chrono-project">'+esc(e.project_name)+'</div>'+(e.customer_name?'<div class="tt-chrono-customer">'+esc(e.customer_name)+'</div>':'')+'</td>'+
+        '<td>'+esc(e.user_trade||'—')+'</td>'+
+        '<td class="num" style="white-space:nowrap">'+sub+'</td>'+
+        '<td>'+(ttThumbsHtml(e)||'<span class="tt-no-photo">–</span>')+'</td>'+
+        '<td>'+(e.note?'<div class="tt-chrono-note">'+esc(e.note)+'</div>':'<span class="tt-no-photo">–</span>')+'</td>'+
+        '<td class="num">'+ttFmtKr(e.cost)+'</td>'+
+        '</tr>';
+    }).join('');
+    return;
+  }
+  // GRUPPERET VISNING (standard) — pr. medarbejder, med mulighed for at folde
+  // en enkelt medarbejder ud til de bagvedliggende registreringer (sag, dato,
+  // note, billeder, timer/akkord, kr) uden at forlade siden.
   var byUser={};
   filtered.forEach(function(e){
     var key=e.user_id||0;
@@ -14803,10 +14951,6 @@ function renderTimetrackReport(){
     if(e.is_akkord)g.akkordCount++;else g.hourlyCount++;
   });
   var groups=Object.keys(byUser).map(function(k){return byUser[k];}).sort(function(a,b){return b.minutes-a.minutes;});
-  if(!groups.length){
-    bodyEl.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:32px">Ingen tidsregistreringer fundet for den valgte periode/filtre.</td></tr>';
-    return;
-  }
   bodyEl.innerHTML=groups.map(function(g){
     var open=!!ttExpanded[g.user_id];
     // RUNDE H #28 — Løntype pr. medarbejder-række afspejler de FAKTISKE
@@ -14829,6 +14973,7 @@ function renderTimetrackReport(){
         return '<div class="tt-detail-row"><div class="tt-detail-date">'+esc(String(e.entry_date).slice(0,10))+'</div>'+
           '<div class="tt-detail-project">'+esc(e.project_name)+(e.customer_name?' <span class="tt-detail-customer">· '+esc(e.customer_name)+'</span>':'')+
           (e.note?'<div class="tt-detail-note">'+esc(e.note)+'</div>':'')+'</div>'+
+          '<div>'+ttThumbsHtml(e)+'</div>'+
           '<div class="tt-detail-sub">'+sub+'</div>'+
           '<div class="tt-detail-cost">'+ttFmtKr(e.cost)+'</div></div>';
       }).join('');
@@ -14840,7 +14985,7 @@ function renderTimetrackReport(){
 function ttExportCsv(){
   var filtered=ttFilteredEntries();
   if(!filtered.length){toast('Ingen registreringer at eksportere','⚠');return;}
-  var header=['Dato','Medarbejder','Fag','Løntype','Sag','Kunde','Timer','Akkord-post','Akkord-antal','Note','Estimeret løn (kr)'];
+  var header=['Dato','Medarbejder','Fag','Løntype','Sag','Kunde','Timer','Akkord-post','Akkord-antal','Note','Billeder','Estimeret løn (kr)'];
   var lines=[header.join(';')];
   filtered.slice().sort(function(a,b){return String(a.entry_date).localeCompare(String(b.entry_date));}).forEach(function(e){
     var cells=[
@@ -14852,6 +14997,7 @@ function ttExportCsv(){
       e.is_akkord?(e.akkord_name||''):'',
       e.is_akkord?String(e.akkord_quantity).replace('.',','):'',
       (e.note||'').replace(/[\r\n;]+/g,' '),
+      (e.photos&&e.photos.length)||0,
       Math.round(e.cost)
     ];
     lines.push(cells.map(function(c){var s=String(c==null?'':c);return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(';'));
@@ -16158,7 +16304,7 @@ async function bind(){
   // ('quote-editor-modal', bruges til både ny og redigér) og faktura
   // ('invoice-detail-modal') — begge fjernet fra listen herunder, så de (som
   // 'crm-modal') kun kan lukkes via ✕/Annullér/Luk-knappen, aldrig ved klik udenfor.
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal','tt-photo-lightbox'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -16239,6 +16385,8 @@ async function bind(){
       if(act==='open-cap-timeline'){e.stopPropagation();openCapTimelinePopup(+a.dataset.userId,a.dataset.date);}
       if(act==='open-cap-from-timeline'){e.stopPropagation();var ctlB=bookings.find(function(x){return +x.id===+a.dataset.bookingId;});closeCapTimelinePopup();if(ctlB)openCapacityModal({booking:ctlB});}
       if(act==='toggle-tt-row'){e.stopPropagation();ttExpanded[a.dataset.userId]=!ttExpanded[a.dataset.userId];renderTimetrackReport();}
+      if(act==='tt-open-photos'){e.stopPropagation();ttOpenLightbox(a.dataset.entryId,+a.dataset.idx);}
+      if(act==='tt-view'){ttSetView(a.dataset.ttView);}
       if(act==='pool-filter'){filters[a.dataset.scope][a.dataset.kind]=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}
       if(act==='team-filter'){filters[a.dataset.scope].team=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else if(a.dataset.scope==='availability')renderAvailability();else renderCapacity();}
       if(act==='toggle-vendor'){var g=a.dataset.group;vendorExpanded[g]=vendorExpanded[g]!==true;renderPlan();renderCapacity();}
@@ -16685,7 +16833,16 @@ function makeBlyPeriodFilter(btnId,popId,labelId,onChange){
     var pop=document.getElementById(popId);
     if(pop&&pop.style.display!=='none'&&!pop.contains(e.target)&&e.target.id!==btnId)pop.style.display='none';
   });
-  return {matches:matches,label:label,clear:function(){clearAll();updateLabel();}};
+  // RUNDE H #29 — setRange() lader en side sætte periodefilterets datointerval
+  // PROGRAMMATISK (fx en "Denne uge"/"Sidste uge"-genvejsknap), uden at brugeren
+  // selv skal åbne popoveren og udfylde felterne. Rent additivt — ændrer intet
+  // for de eksisterende kaldere af makeBlyPeriodFilter, der ikke bruger den.
+  function setRange(from,to){
+    clearAll();st.from=from;st.to=to;
+    var pop=document.getElementById(popId);if(pop)pop.style.display='none';
+    updateLabel();onChange();
+  }
+  return {matches:matches,label:label,clear:function(){clearAll();updateLabel();},setRange:setRange};
 }
 var qeState={id:null,lines:[],jobName:'',quoteNumber:null,taxRate:25,lastStatus:'draft',customerId:null};
 var qztState={id:null,lines:[]};
@@ -23898,13 +24055,31 @@ function bindQuotesModuleEvents(){
   document.getElementById('qz-invoice-search').addEventListener('input',renderQzInvoices);
   qzQuotePeriodFilter=makeBlyPeriodFilter('qz-quotes-period-btn','qz-quotes-period-pop','qz-quotes-period-label',function(){renderQzQuotes();});
   qzInvoicePeriodFilter=makeBlyPeriodFilter('qz-invoices-period-btn','qz-invoices-period-pop','qz-invoices-period-label',function(){renderQzInvoices();});
-  // RUNDE H #28 — Timetracking-fanen.
+  // RUNDE H #28/#29 — Timetracking-fanen.
   ttPeriodFilter=makeBlyPeriodFilter('tt-period-btn','tt-period-pop','tt-period-label',function(){renderTimetrackReport();});
   document.getElementById('tt-search').addEventListener('input',renderTimetrackReport);
   document.getElementById('tt-filter-user').addEventListener('change',renderTimetrackReport);
   document.getElementById('tt-filter-trade').addEventListener('change',renderTimetrackReport);
   document.getElementById('tt-filter-paytype').addEventListener('change',renderTimetrackReport);
   document.getElementById('tt-export-btn').addEventListener('click',ttExportCsv);
+  // RUNDE H #29 — "Denne uge"/"Sidste uge"-genvejsknapperne sætter periode-
+  // filterets datointerval direkte via setRange() (se makeBlyPeriodFilter).
+  document.getElementById('tt-thisweek-btn').addEventListener('click',function(){var w=ttWeekRange(0);ttPeriodFilter.setRange(w.from,w.to);});
+  document.getElementById('tt-lastweek-btn').addEventListener('click',function(){var w=ttWeekRange(-1);ttPeriodFilter.setRange(w.from,w.to);});
+  // RUNDE H #29 — fotolysboksen: luk/‹/›-knapper + piletaster/Esc (samme
+  // snævre mønster som crmpx-fillysboksen ovenfor — rører kun tastetryk når
+  // netop DENNE lysboks er åben, og aldrig inde i et input/textarea).
+  document.getElementById('tt-lightbox-close-btn').addEventListener('click',function(){closeModal('tt-photo-lightbox');});
+  document.getElementById('tt-lightbox-prev-btn').addEventListener('click',function(){ttLightboxStep(-1);});
+  document.getElementById('tt-lightbox-next-btn').addEventListener('click',function(){ttLightboxStep(1);});
+  document.addEventListener('keydown',function(e){
+    if(!ttLightboxIsOpen())return;
+    var t=e.target;
+    if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable))return;
+    if(e.key==='Escape'){e.preventDefault();closeModal('tt-photo-lightbox');}
+    else if(e.key==='ArrowLeft'){e.preventDefault();ttLightboxStep(-1);}
+    else if(e.key==='ArrowRight'){e.preventDefault();ttLightboxStep(1);}
+  });
   document.getElementById('qz-new-product-btn').addEventListener('click',function(){openProductModal(null);});
   document.getElementById('qz-import-jt-btn').addEventListener('click',importProductsFromJobtread);
   // RUNDE Y — produkt-dashboard (se qzOpenProductDashboard/qzRenderProductDashboard).

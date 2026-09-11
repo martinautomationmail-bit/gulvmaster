@@ -10479,7 +10479,7 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
 app.get('/api/reports/time-tracking', auth, adminOnly, asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT te.id, te.project_id, te.minutes, te.note, te.entry_date, te.created_at,
-           te.akkord_item_id, te.akkord_quantity,
+           te.akkord_item_id, te.akkord_quantity, te.photo_url, te.photo_urls,
            p.name AS project_name, p.status AS project_status, p.project_type, p.customer_id,
            c.name AS customer_name,
            te.user_id, u.name AS user_name, u.trade AS user_trade, u.worker_type,
@@ -10499,6 +10499,13 @@ app.get('/api/reports/time-tracking', auth, adminOnly, asyncRoute(async (req, re
     const cost = isAkkord
       ? (Number(row.akkord_quantity) || 0) * (Number(row.akkord_rate) || 0)
       : (minutes / 60) * (Number(row.hourly_wage) || 0);
+    // RUNDE H #29 — Martins ønske: se billederne direkte i rapporten (fredags-
+    // tjek af hvad der er udført). Samme normalisering af gammelt enkelt-felt
+    // (photo_url) vs. liste (photo_urls) som ellers bruges ved indlæsning af
+    // en sags egne tidsregistreringer (se POST/PUT .../time-entries ovenfor).
+    const photos = Array.isArray(row.photo_urls) && row.photo_urls.length
+      ? row.photo_urls
+      : (row.photo_url ? [row.photo_url] : []);
     return {
       id: row.id,
       project_id: row.project_id,
@@ -10520,6 +10527,7 @@ app.get('/api/reports/time-tracking', auth, adminOnly, asyncRoute(async (req, re
       akkord_name: row.akkord_name || null,
       akkord_quantity: isAkkord ? Number(row.akkord_quantity) || 0 : 0,
       akkord_rate: isAkkord ? Number(row.akkord_rate) || 0 : 0,
+      photos,
       cost
     };
   });
