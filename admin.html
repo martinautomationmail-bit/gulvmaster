@@ -2912,7 +2912,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.4</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.5</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -15958,13 +15958,23 @@ async function bind(){
   // skipHash på switchPage: ellers ville den først lægge et "#crmp" i
   // historikken, og ét klik ville give to punkter at trykke tilbage igennem.
   document.querySelectorAll('[data-crmp-pipeline-type]').forEach(function(btn){
-    btn.addEventListener('click',function(e){
+    btn.addEventListener('click',async function(e){
       e.preventDefault();
       switchPage('crmp',true);
       // Har brugeren ikke adgang til CRM, har switchPage() allerede sendt
       // vedkommende et andet sted hen — så skal vi hverken vælge pipeline
       // eller skrive en #crmp-hash oveni.
       if(!document.getElementById('page-crmp').classList.contains('active'))return;
+      // RUNDE ... — FEJL FUNDET OG RETTET: switchPage('crmp',...) kalder selv
+      // initCrmpModule(), men uden at vente på den (den er async) — så
+      // crmpState.pipelines kan stadig være tom HER, første gang CRM åbnes i
+      // denne side-session. crmpSelectPipelineByType fandt derfor ingen
+      // pipeline af den ønskede type, gav op uden at gøre noget, og bagefter
+      // faldt initCrmpModule's egen fallback tilbage til den FØRSTE pipeline
+      // (Leads) — uanset om man havde klikket på "Leads" eller "Sales".
+      // Adresselinjen viste korrekt #crmp/sales, men boardet viste Leads.
+      // Sikrer nu selv at pipeline-listen er hentet, før vi vælger type.
+      if(!crmpState.pipelines.length)await crmpLoadPipelines();
       crmpSelectPipelineByType(btn.dataset.crmpPipelineType);
       navPushHash(btn.dataset.crmpPipelineType==='lead'?'crmp/leads':'crmp/sales');
     });
@@ -18358,6 +18368,11 @@ function crmpRenderBoard(){
   board.classList.toggle('crmp-selecting',!!crmpState.selectMode);
   board.innerHTML=stages.map(function(stage){
     var cards=crmpState.cards.filter(function(c){return c.stage_id===stage.id;});
+    // Martins ønske: nyeste handler øverst i hver kolonne, dem der har ligget
+    // længst i pipelinen (ældst oprettet) nederst — samme dato som vises i
+    // kortets 🕓-felt (created_at), altså tid i pipelinen som helhed, ikke kun
+    // tid i den aktuelle fase (det ville være stage_changed_at, ➜-feltet).
+    cards.sort(function(a,b){return new Date(b.created_at||0)-new Date(a.created_at||0);});
     var sum=p.type==='opportunity'?cards.reduce(function(s,c){return s+(Number(c.value)||0);},0):0;
     // Krympet med mindre brugeren selv har foldet netop denne kolonne ud i
     // løbet af sessionen (crmpExpandedStages, kun i hukommelsen).

@@ -6233,10 +6233,25 @@ function bookingSelect(where = '') {
 // (redigér-booking-popup'en), så de sendes nu KUN med der, via en ny, lille
 // GET /api/assignments/:id/note — resten af appen nøjes med et let "has_note_attachments"-
 // flag, der er nok til fx et 📎-ikon, uden at slæbe selve billeddataen med hele tiden.
+// RETTET (Martins fejlrapport, sep. 2026 — "Sarah kan ikke se alt planlægning
+// der lavet på min admin bruger"): "isAdmin" tjekkede FØR kun req.user.role
+// === 'admin' bogstaveligt. Men custom panel-roller (Roller & adgang, fx
+// Sarahs "Kontor"-rolle) giver aldrig role='admin', selvom de sagtens kan
+// have fuld adgang til Dagligplanlægning/Kapacitet/Tidslinje. admin.html's
+// loadAll() bruger DENNE route (ikke den bevidst afgrænsede
+// /api/assignments/my, som kun medarbejder-appen bruger) til at hente ALLE
+// bookinger for hele firmaet til de sider — en panel-bruger med adgang til
+// bare én af planlægningssiderne fik derfor kun SINE EGNE få bookinger
+// tilbage, hvilket forvrængede både "Alle"-optællingen i Opgavepoolen og
+// Kapacitetsboardets frie-dage-tal for alle andre end dem selv (så det så ud
+// som om alle andres timer var "forsvundet"). Medarbejder-appens egen brug af
+// den ægte selvbegrænsede /api/assignments/my er uændret.
 app.get('/api/assignments', auth, asyncRoute(async (req, res) => {
-  const isAdmin = req.user.role === 'admin';
-  const sql = `${bookingSelect(isAdmin ? '' : 'WHERE b.user_id=$1')} ORDER BY b.start_date ASC,b.id ASC`;
-  const result = await pool.query(sql, isAdmin ? [] : [req.user.id]);
+  const _u = req.user.role === 'admin' ? null : await pgOne('SELECT id,role,panel_role_id,is_finance_admin FROM users WHERE id=$1', [req.user.id]);
+  const panelPages = _u ? await computeUserPanelPages(_u) : [];
+  const seesFullPlanning = req.user.role === 'admin' || ['plan', 'capacity', 'timeline'].some(k => panelPages.includes(k));
+  const sql = `${bookingSelect(seesFullPlanning ? '' : 'WHERE b.user_id=$1')} ORDER BY b.start_date ASC,b.id ASC`;
+  const result = await pool.query(sql, seesFullPlanning ? [] : [req.user.id]);
   const rows = result.rows.map(r => {
     const hasAttachments = !!(r.note_attachments && String(r.note_attachments).trim() && String(r.note_attachments).trim() !== 'null');
     return { ...r, note_attachments: null, has_note_attachments: hasAttachments };
@@ -10568,7 +10583,15 @@ async function validProjectStageKeys() {
   return rows.map(r => r.key);
 }
 // ── Stadier (Kanban-faser) på projekter — CRUD ──────────────────────────────
-app.get('/api/project-stages', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+// RETTET (samme runde som /api/assignments ovenfor): selve NAVNENE på sags-
+// stadierne bruges også til at labelle KPI-boblerne på Dagligplanlægning og
+// Kapacitetsboard (Kommende sag/Igangværende/På hold/Afsluttet/Faktureret er
+// ikke hårdkodede tekster — de kommer herfra, se pjNonArchivedStages() i
+// admin.html). At læse dem krævede før adgang til selve Projekter-siden — en
+// panel-bruger med adgang til fx Kapacitet, men ikke Projekter, fik derfor
+// en tom liste og dermed blanke/forsvundne KPI-bobler. Kun det at ÆNDRE
+// stadierne (POST/PUT/DELETE nedenfor) er stadig forbeholdt Projekter-siden.
+app.get('/api/project-stages', auth, panelAccessAny(['projects', 'plan', 'capacity', 'timeline']), asyncRoute(async (req, res) => {
   const rows = (await pool.query('SELECT * FROM project_stages ORDER BY position ASC, id ASC')).rows;
   res.json(rows);
 }));
