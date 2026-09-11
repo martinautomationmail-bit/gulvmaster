@@ -2628,8 +2628,16 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
   res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email, color: user.color, initials: user.initials, avatar_url: user.avatar_url, is_finance_admin: !!user.is_finance_admin, can_view_team_overview: !!user.can_view_team_overview, panel_role_id: user.panel_role_id || null, panel_pages: panelPages } });
 }));
 
+// RUNDE H #30 — pay_type er tilføjet HER (kun i /auth/me, en brugers eget
+// friske øjebliksbillede af sig selv), IKKE i nogen bred /api/users-liste —
+// samme bevidste afgrænsning som hourly_wage allerede havde (se GET /api/users/:id/pay).
+// Forskellen: pay_type ('hourly'/'akkord') er ikke selve lønnen, kun HVORDAN
+// man aflønnes — medarbejder-appen skal kende sin egen værdi for at vise den
+// rigtige tidsregistrerings-formular (timer vs. akkord-post+antal), se
+// pmOpenTimeForm() i employee.html. hourly_wage (det følsomme kronebeløb)
+// forbliver udenfor svaret her, ligesom hele tiden før.
 app.get('/api/auth/me', auth, asyncRoute(async (req, res) => {
-  const user = await pgOne('SELECT id,name,email,role,color,initials,avatar_url,is_finance_admin,can_view_team_overview,panel_role_id FROM users WHERE id=$1', [req.user.id]);
+  const user = await pgOne('SELECT id,name,email,role,color,initials,avatar_url,is_finance_admin,can_view_team_overview,panel_role_id,pay_type FROM users WHERE id=$1', [req.user.id]);
   if (!user) return res.status(401).json({ error: 'Bruger ikke fundet' });
   const panelPages = await computeUserPanelPages(user);
   res.json({ ...user, is_finance_admin: !!user.is_finance_admin, can_view_team_overview: !!user.can_view_team_overview, panel_pages: panelPages });
@@ -13595,10 +13603,17 @@ app.post('/api/ai/clean-note', auth, asyncRoute(async (req, res) => {
 }));
 
 // ── AKKORDLISTE (sep. 2026) — global prisliste til stykløn, se akkord_items i
-// migrations-blokken. Læses af tidsregistrerings-modalen (panelAccess('projects') er
-// nok til det — medarbejdere der logger tid skal kunne se posterne), men kun en ægte
-// admin må ændre selve listen (priser er følsomme, ligesom lønfeltet på en medarbejder).
-app.get('/api/akkord-items', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+// migrations-blokken. Skulle læses af tidsregistrerings-modalen — men
+// panelAccess('projects') dækker kun admin-panelets Projekter-side, ikke
+// medarbejder-appen (employee.html), som almindelige markarbejdere logger ind
+// i, og som kun bruger simpel `auth` uden panel-roller. Resultatet var at
+// akkord-lønnede medarbejdere reelt ALDRIG kunne se posterne i deres egen
+// tidsregistrerings-formular (RUNDE H #30, Martins fejlrapport). Rettet til
+// almindelig `auth` — enhver logget ind bruger må se selve PRISLISTEN (hvad de
+// forskellige akkord-poster betaler pr. stk., nødvendigt for at kunne
+// registrere korrekt), præcis som de allerede kender deres egen timeløn. Kun
+// en ægte admin må stadig ÆNDRE selve listen (se POST/PUT/DELETE nedenfor).
+app.get('/api/akkord-items', auth, asyncRoute(async (req, res) => {
   const rows = (await pool.query('SELECT * FROM akkord_items WHERE active=1 ORDER BY position ASC, id ASC')).rows;
   res.json(rows);
 }));

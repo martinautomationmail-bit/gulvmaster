@@ -432,7 +432,7 @@ function closeNoteOnBackdrop(e){if(e.target===document.getElementById('note-moda
 // PÅKRÆVET som dokumentation), tilføje billeder til sagen, og udfylde
 // KS-formularer Martin har bygget.
 // ══════════════════════════════════════════════════════════════
-let pmState={view:'list',projects:[],current:null,qaTemplates:[],qaAnswering:null,contactTemplates:[],contactAnswering:null};
+let pmState={view:'list',projects:[],current:null,qaTemplates:[],qaAnswering:null,contactTemplates:[],contactAnswering:null,akkordItems:null};
 function openProjectsModal(){
   pmState.view='list';
   document.getElementById('projects-modal').classList.add('open');
@@ -550,22 +550,41 @@ async function pmSubmitMaterials(){
   }catch(e){pmFeedback('pmm-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem materiale'}
 }
 let pmtPhotoFiles=[],pmtPhotoPreviewUrls=[];
-function pmOpenTimeForm(){
+// RUNDE H #30 — Martin har sat nogle medarbejdere til akkord (stykpris pr.
+// udført enhed) i stedet for timeløn. De skal ikke skrive "fra/til klokken" —
+// de skal vælge hvilken akkordpost de har lavet og hvor mange. myPayType
+// kommer friskt fra /api/auth/me (se refreshTeamOverviewAccess ovenfor).
+// Akkordlisten hentes/caches i pmState.akkordItems, kun ved behov.
+async function pmOpenTimeForm(){
   pmState.view='time-form';
   pmtPhotoFiles=[];pmtPhotoPreviewUrls=[];
   document.getElementById('pm-title').textContent='⏱ Registrér tid';
   const p=pmState.current;
+  const isAkkord=myPayType==='akkord';
+  if(isAkkord&&!pmState.akkordItems){
+    const r=await api('/api/akkord-items');
+    pmState.akkordItems=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
+  }
   const lineOptions=(p.quote_line_options||[]).map(l=>`<option value="${l.id}">${esc(l.description)}</option>`).join('');
-  document.getElementById('pm-body').innerHTML=`
-    <button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>
-    <label class="req-label">Dato</label>
-    <input class="req-input" type="date" id="pmt-date" value="${iso(new Date())}">
+  const akkordOptions=isAkkord?(pmState.akkordItems||[]).map(a=>`<option value="${a.id}">${esc(a.name)} — ${Number(a.rate).toFixed(2)} kr/stk</option>`).join(''):'';
+  const workBlock=isAkkord?`
+    <label class="req-label">Akkordpost</label>
+    <select class="req-input" id="pmt-akkord-item"><option value="">Vælg akkordpost…</option>${akkordOptions}</select>
+    <label class="req-label">Antal</label>
+    <input class="req-input" type="number" id="pmt-akkord-qty" min="0" step="0.01" placeholder="Fx 12,5">
+  `:`
     <label class="req-label">Arbejdstid</label>
     <div style="display:flex;gap:8px">
       <div style="flex:1"><label class="req-label" style="margin:0 0 4px">Fra kl.</label><input class="req-input" type="time" id="pmt-time-from" oninput="pmUpdateTimeDuration()"></div>
       <div style="flex:1"><label class="req-label" style="margin:0 0 4px">Til kl.</label><input class="req-input" type="time" id="pmt-time-to" oninput="pmUpdateTimeDuration()"></div>
     </div>
     <div id="pmt-duration-display" style="font-size:12px;font-weight:700;color:var(--muted);margin:6px 0 2px"></div>
+  `;
+  document.getElementById('pm-body').innerHTML=`
+    <button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button>
+    <label class="req-label">Dato</label>
+    <input class="req-input" type="date" id="pmt-date" value="${iso(new Date())}">
+    ${workBlock}
     <label class="req-label">Note — hvad blev der lavet</label>
     <textarea class="req-textarea" id="pmt-note" rows="3" placeholder="Beskriv det udførte arbejde..."></textarea>
     <label class="req-label">Billeder — mindst ét er påkrævet som dokumentation</label>
@@ -630,12 +649,24 @@ function pmRenderTimePhotosPreview(){
   box.innerHTML=pmtPhotoPreviewUrls.map((u,i)=>`<div style="position:relative"><img src="${u}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"><button type="button" onclick="pmRemoveTimePhoto(${i})" style="position:absolute;top:-6px;right:-6px;background:rgba(17,19,24,.8);color:#fff;border:0;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer">✕</button></div>`).join('');
 }
 async function pmSubmitTime(){
-  const minutes=pmComputeTimeMinutes();
+  const isAkkord=myPayType==='akkord';
   const note=document.getElementById('pmt-note').value.trim();
   const date=document.getElementById('pmt-date').value;
   const lineId=document.getElementById('pmt-line').value;
   const materials=document.getElementById('pmt-materials').value.trim();
-  if(!minutes){pmFeedback('pmt-feedback','Udfyld "Fra kl." og "Til kl." — til skal være efter fra',false);return}
+  let payload;
+  if(isAkkord){
+    const akkordItemId=document.getElementById('pmt-akkord-item').value;
+    const qtyRaw=document.getElementById('pmt-akkord-qty').value;
+    const qty=qtyRaw?Number(qtyRaw.replace(',','.')):NaN;
+    if(!akkordItemId){pmFeedback('pmt-feedback','Vælg en akkordpost',false);return}
+    if(!qty||qty<=0){pmFeedback('pmt-feedback','Skriv et gyldigt antal',false);return}
+    payload={akkord_item_id:akkordItemId,akkord_quantity:qty};
+  }else{
+    const minutes=pmComputeTimeMinutes();
+    if(!minutes){pmFeedback('pmt-feedback','Udfyld "Fra kl." og "Til kl." — til skal være efter fra',false);return}
+    payload={minutes};
+  }
   if(!note){pmFeedback('pmt-feedback','Skriv en note om det udførte arbejde',false);return}
   if(!pmtPhotoFiles.length){pmFeedback('pmt-feedback','Upload mindst ét billede som dokumentation',false);return}
   const btn=document.getElementById('pmt-submit');btn.disabled=true;btn.textContent='Gemmer…';
@@ -647,7 +678,7 @@ async function pmSubmitTime(){
       if(!up||!up.ok){pmFeedback('pmt-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade et billede',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
       photoUrls.push(up.data.url);
     }
-    const r=await api('/api/projects/'+pmState.current.id+'/time-entries',{method:'POST',body:JSON.stringify({minutes,note,photo_urls:photoUrls,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date})});
+    const r=await api('/api/projects/'+pmState.current.id+'/time-entries',{method:'POST',body:JSON.stringify({...payload,note,photo_urls:photoUrls,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date})});
     if(r&&r.ok){toast('Tid registreret ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
   }catch(e){pmFeedback('pmt-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
@@ -1115,7 +1146,19 @@ function render(){
       const caseActions=isCaseTask?`
         <button class="action qc" type="button" onclick="openQaPickerForTask(${a.task_project_id})">🛡 Kvalitetssikring</button>
         <button class="action files" type="button" onclick="openMaterialsFormForTask(${a.task_project_id})">🧾 Materialer</button>`:'';
-      const timeButton=isCaseTask?`<button class="action time" type="button" onclick="openTimeFormForTask(${a.task_project_id})" style="grid-column:1/-1">⏱ Registrér tid</button>`:'';
+      // RUNDE H #30 — Martins fejlrapport: han vidste hans folk havde arbejdet,
+      // men Timetracking-rapporten viste kun ét navn. Årsagen var her — en opgave
+      // uden task_project_id (ældre/JobTread-synkede opgaver, IKKE oprettet via
+      // det nye Projekter-modul) fik overhovedet INGEN "Registrér tid"-knap, så
+      // medarbejderen havde ingen vej ind i tidsregistrering fra sit kort. Intet
+      // er gået tabt — der var bare aldrig noget at miste, fordi knappen manglede.
+      // Rettet ved at vise knappen på ALLE kort: har opgaven en sag (isCaseTask),
+      // går den direkte til sagens tidsformular som hidtil; har den ikke, åbner
+      // den i stedet "🔍 Find projekt" (samme modul som topbar-genvejen), så
+      // medarbejderen selv kan vælge/søge den rigtige sag at registrere tid på.
+      const timeButton=isCaseTask
+        ?`<button class="action time" type="button" onclick="openTimeFormForTask(${a.task_project_id})" style="grid-column:1/-1">⏱ Registrér tid</button>`
+        :`<button class="action time" type="button" onclick="openProjectsModal()" style="grid-column:1/-1">⏱ Registrér tid</button>`;
       out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}${caseIcon}</div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button>${caseActions}${timeButton}${doneBtn}</div></article>`;
     });}
     out+='</section>';});
@@ -1270,11 +1313,18 @@ initPushUi();
 // TEAM & MAP — only shown to employees Martin has explicitly flagged (or admins).
 // The flag can change without the person logging out again, so we re-check it
 // against the server on load instead of trusting the possibly-stale localStorage copy.
+//
+// RUNDE H #30 — samme friske-data-begrundelse gælder myPayType herunder: sat
+// af Martin fra admin-panelet, uden at medarbejderen nødvendigvis logger helt
+// ud og ind igen bagefter. Genbruger dette ene /api/auth/me-kald i stedet for
+// at tilføje endnu et — pay_type kommer med i samme svar.
+var myPayType='hourly';
 async function refreshTeamOverviewAccess(){
   var r=await api('/api/auth/me');
   if(!r||!r.ok)return;
   var can=!!r.data.can_view_team_overview||user.role==='admin';
   document.getElementById('team-map-btn').style.display=can?'inline-flex':'none';
+  myPayType=r.data.pay_type==='akkord'?'akkord':'hourly';
 }
 refreshTeamOverviewAccess();
 
