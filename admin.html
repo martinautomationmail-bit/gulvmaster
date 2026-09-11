@@ -3558,6 +3558,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
            se server.js: /api/products/import-from-jobtread. Bruges nu primært til at
            udfylde manglende beskrivelser fra JobTreads cost items. -->
       <div class="bly-toolbar-right">
+        <!-- RUNDE Y (Martins ønske: "lave et dashboard hvor man kan se antal
+             kroner der omsat for henholdt faktura og henholdt tilbud så kan
+             man senere analysere hvilke produkter der sælger bedst og har
+             bedst margin") — se qzOpenProductDashboard() / #qz-product-dashboard-modal. -->
+        <button class="bly-btn" id="qz-product-dashboard-btn" type="button">📊 Dashboard</button>
         <button class="bly-btn" id="qz-import-jt-btn" type="button">📥 Importér fra JobTread</button>
         <button class="bly-btn" id="qz-new-product-btn" type="button">+ Nyt produkt</button>
       </div>
@@ -3710,16 +3715,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="qe-crm-note-text collapsed" id="qe-crm-note-text"></div>
           <button type="button" class="qe-crm-note-toggle" id="qe-crm-note-toggle">Vis hele noten ▾</button>
         </div>
+        <!-- RUNDE Y (Martins ønske: "vi har ikke brug for 2 af dem" — den store
+             "🎤 AI-diktering af tilbud"-boks foroven dækker allerede diktering,
+             så det lille ekstra mikrofon-ikon her var overflødigt/forvirrende.
+             Forklarings-teksten ved siden af "Note i toppen" er også fjernet for
+             et mindre rodet felt; selve labelen er bevaret så feltet stadig er
+             til at kende. -->
         <div class="form-group" style="margin-top:10px">
-          <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-            <span>Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger</span></span>
-            <!-- RUNDE V (Martins ønske: "AI indtaler til tilbud at jeg kan levere en
-                 note med alt data fra et kundebesøg") — se noteDictToggle() og
-                 POST /api/ai/clean-note. Tal ind, AI renser diktatet op til en pæn
-                 note og sætter den ind i feltet nedenfor (til gennemsyn/redigering,
-                 intet gemmes før du selv trykker "Gem"). -->
-            <button type="button" class="qz-icon-btn qe-note-mic-btn" id="qe-top-note-mic-btn" title="Diktér KUN en note (fx alt fra et kundebesøg) — rører ikke tilbudslinjerne. For at få AI til at udfylde linjer/produkter automatisk: brug '🎤 AI-diktering af tilbud' foroven i stedet.">🎤</button>
-          </label>
+          <label class="form-label">Note i toppen</label>
           <textarea id="qe-top-note" class="input" rows="2" style="resize:vertical"></textarea>
         </div>
 
@@ -3736,11 +3739,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
         <div class="qe-lines-head">
           <span class="qe-label" style="margin:0">Linjer</span>
+          <!-- RUNDE Y (Martins ønske: "fjern det lille felt ved siden af tilføj
+               linje") — det lille "skriv en note eller / for at søge"-felt er
+               fjernet. Begge dets funktioner findes allerede andre steder:
+               produktsøgning sker direkte i selve linjens beskrivelsesfelt
+               (qzShowLineAutocomplete), og en fri tekstlinje laves med
+               "+ Tekstlinje"-knappen. -->
           <div style="display:flex;gap:6px;align-items:center">
-            <div class="qe-customer-pop" style="width:220px">
-              <input id="qe-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
-              <div class="qe-customer-results" id="qe-product-results"></div>
-            </div>
             <button class="bly-btn outline small" id="qe-add-blank-line" type="button">+ Tilføj linje</button>
             <button class="bly-btn outline small" id="qe-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
             <button class="bly-btn outline small" id="qe-save-as-template-btn" type="button" title="Gem de nuværende linjer som en skabelon">💾 Gem som skabelon</button>
@@ -3783,7 +3788,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <label class="form-label" id="qe-notes-label" style="cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none"><span id="qe-notes-caret" style="display:inline-block;transition:transform .15s;font-size:10px">▸</span> Betingelser / note i bunden <span class="opt-tag">valgfrit — vises nederst på PDF'en</span></label>
           <div id="qe-notes-wrap" style="display:none;margin-top:6px"><textarea id="qe-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
         </div>
-        <div class="form-group" style="margin-top:10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px"><label class="form-label" style="color:#92400E">🔒 Intern note <span class="opt-tag" style="text-transform:none;font-weight:400;color:#92400E">kun jer — kunden ser den ALDRIG</span></label><textarea id="qe-internal-note" class="input" rows="2" style="resize:vertical" placeholder="Fx: kunden får gratis fugefyld med, aftalt telefonisk d. ..."></textarea></div>
+        <!-- RUNDE Y (Martins ønske: "collabs også intern note i bunden fra
+             starten af") — samme kollaps-mønster som #qe-notes-wrap ovenfor:
+             starter lukket, folder automatisk ud hvis feltet allerede har
+             indhold (se qeSetInternalNoteValue). -->
+        <div class="form-group" style="margin-top:10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px">
+          <label class="form-label" id="qe-internal-note-label" style="color:#92400E;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none"><span id="qe-internal-note-caret" style="display:inline-block;transition:transform .15s;font-size:10px">▸</span> 🔒 Intern note <span class="opt-tag" style="text-transform:none;font-weight:400;color:#92400E">kun jer — kunden ser den ALDRIG</span></label>
+          <div id="qe-internal-note-wrap" style="display:none;margin-top:6px"><textarea id="qe-internal-note" class="input" rows="2" style="resize:vertical" placeholder="Fx: kunden får gratis fugefyld med, aftalt telefonisk d. ..."></textarea></div>
+        </div>
         <div class="form-group" id="qe-versions-wrap" style="margin-top:14px;display:none">
           <label class="form-label">📄 Sendte versioner <span class="opt-tag" style="text-transform:none;font-weight:400">den arkiverede PDF som faktisk blev sendt — ændres aldrig</span></label>
           <div id="qe-versions-list" class="doc-activity-list"></div>
@@ -3793,7 +3805,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div id="qe-activity-list" class="doc-activity-list"></div>
         </div>
       </div>
-      <div class="qe-preview-wrap">
+      <div class="qe-preview-wrap" id="qe-preview-wrap">
         <div id="qe-preview" class="qe-preview-pages"></div>
         <!-- RUNDE W — margin/avance og totaler, flyttet hertil fra .qe-editor (se
              kommentaren ovenfor ved den gamle placering). Ligger UDENFOR den
@@ -6020,11 +6032,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="qe-lines-head">
       <span class="qe-label" style="margin:0">Linjer</span>
+      <!-- RUNDE Y — se kommentaren ved qe-product-search ovenfor: samme felt fjernet her. -->
       <div style="display:flex;gap:6px">
-        <div class="qe-customer-pop" style="width:220px">
-          <input id="qzt-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
-          <div class="qe-customer-results" id="qzt-product-results"></div>
-        </div>
         <button class="bly-btn outline small" id="qzt-add-blank-line" type="button">+ Tilføj linje</button>
         <button class="bly-btn outline small" id="qzt-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
       </div>
@@ -6074,11 +6083,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <p class="sub" style="margin-top:0" id="qal-subtitle"></p>
     <div class="qe-lines-head">
       <span class="qe-label" style="margin:0">Nye linjer</span>
+      <!-- RUNDE Y — se kommentaren ved qe-product-search: samme felt fjernet her. -->
       <div style="display:flex;gap:6px">
-        <div class="qe-customer-pop" style="width:220px">
-          <input id="qal-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
-          <div class="qe-customer-results" id="qal-product-results"></div>
-        </div>
         <button class="bly-btn outline small" id="qal-add-blank-line" type="button">+ Tilføj linje</button>
         <button class="bly-btn outline small" id="qal-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
       </div>
@@ -6098,11 +6104,53 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <div class="mo" id="qe-ai-review-modal">
   <div class="modal" style="max-width:640px;width:92vw">
     <h3>🎤 AI-tolkning af diktat</h3>
-    <p class="sub" style="margin-top:-6px">Gennemgå linjerne før de føjes til tilbuddet. Linjer markeret <b>🆕 Nyt produkt</b> opretter et nyt produkt i kataloget når du bekræfter — fjern fluebenet hvis du ikke vil oprette det.</p>
+    <!-- RUNDE Y (Martins ønske: "det gier ingen mening da vi så ender med en masse
+         produkter med mærkelige priser der bare var tilegnet den ene faktura") —
+         teksten her er opdateret så den matcher den nye adfærd: "Nyt produkt"-linjer
+         opretter IKKE længere noget i produktkataloget, de tilføjes kun som en fri
+         linje på selve tilbuddet/fakturaen (se qeAiReviewConfirm). -->
+    <p class="sub" style="margin-top:-6px">Gennemgå linjerne før de føjes til tilbuddet. Linjer markeret <b>🆕 Ny linje</b> matcher intet i produktkataloget og tilføjes som en fri linje direkte på tilbuddet — der oprettes ikke noget i produktkataloget.</p>
     <div id="qe-ai-review-lines" style="max-height:50vh;overflow:auto;margin:10px 0"></div>
     <div class="modal-actions">
       <button class="btn" id="qe-ai-review-cancel" type="button">Annullér</button>
       <button class="btn primary" id="qe-ai-review-confirm" type="button">Tilføj til tilbud</button>
+    </div>
+  </div>
+</div>
+
+<!-- PRODUKT-DASHBOARD (RUNDE Y, Martins ønske: "lave et dashboard hvor man kan
+     se antal kroner der omsat for henholdt faktura og henholdt tilbud så kan
+     man senere analysere hvilke produkter der sælger bedst og har bedst
+     margin") — se qzOpenProductDashboard()/qzRenderProductDashboard() i JS.
+     "Omsætning (tilbud)" tæller kun accepterede/konverterede tilbud — kladder
+     og afviste tilbud er ikke reel omsætning. Fakturaer tælles med uanset
+     betalingsstatus (også ubetalte), men ikke annullerede. -->
+<div class="mo" id="qz-product-dashboard-modal">
+  <div class="modal" style="max-width:1020px;width:96vw;max-height:90vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <h3 style="margin:0">📊 Produkt-dashboard</h3>
+      <button class="qz-icon-btn" id="qz-pd-close-btn" type="button" title="Luk">✕</button>
+    </div>
+    <p class="sub" style="margin-top:2px">Omsætning pr. produkt fra fakturaer og tilbud, så du kan se hvad der sælger bedst og hvad der har bedst margin. "Tilbud" tæller kun accepterede/konverterede tilbud. "Faktura" tæller alle fakturaer der ikke er annulleret (uanset om de er betalt endnu).</p>
+    <div class="qz-pd-kpis" id="qz-pd-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:14px 0"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" id="qz-pd-search" class="input" style="max-width:260px" placeholder="Søg i produkter...">
+      <span class="opt-tag" id="qz-pd-count" style="text-transform:none"></span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="bly-table" id="qz-pd-table">
+        <thead><tr>
+          <th data-pdsort="name" style="cursor:pointer">Produkt ▾</th>
+          <th data-pdsort="category" style="cursor:pointer">Kategori</th>
+          <th data-pdsort="invoice_revenue" class="num" style="cursor:pointer">Omsætning (faktura)</th>
+          <th data-pdsort="invoice_qty" class="num" style="cursor:pointer">Antal solgt (faktura)</th>
+          <th data-pdsort="quote_revenue" class="num" style="cursor:pointer">Omsætning (tilbud)</th>
+          <th data-pdsort="quote_qty" class="num" style="cursor:pointer">Antal (tilbud)</th>
+          <th data-pdsort="total_revenue" class="num" style="cursor:pointer">Total omsætning</th>
+          <th data-pdsort="margin_pct" class="num" style="cursor:pointer">Margin</th>
+        </tr></thead>
+        <tbody id="qz-pd-body"></tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -6227,11 +6275,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="qe-lines-head">
       <span class="qe-label" style="margin:0">Linjer</span>
+      <!-- RUNDE Y — se kommentaren ved qe-product-search: samme felt fjernet her. -->
       <div style="display:flex;gap:6px">
-        <div class="qe-customer-pop" style="width:220px">
-          <input id="ivl-product-search" class="qe-input" placeholder="Skriv en note, eller / for at søge produkt...">
-          <div class="qe-customer-results" id="ivl-product-results"></div>
-        </div>
         <button class="bly-btn outline small" id="ivl-add-blank-line" type="button">+ Tilføj linje</button>
         <button class="bly-btn outline small" id="ivl-add-text-line" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
       </div>
@@ -16608,6 +16653,93 @@ function renderQzProducts(){
       +'</tr>';
   }).join('');
 }
+// ── PRODUKT-DASHBOARD (RUNDE Y, se #qz-product-dashboard-modal i HTML) ──────
+// Henter aggregeret omsætning pr. produkt fra GET /api/products/analytics
+// (server-side SUM over fakturalinjer/tilbudslinjer) hver gang dashboardet
+// åbnes, så tallene altid er friske. Sortering/søgning sker herefter rent
+// client-side på den hentede liste — ingen grund til at slå serveren igen for det.
+var qzPdData=[];
+var qzPdSort={key:'total_revenue',dir:'desc'};
+async function qzOpenProductDashboard(){
+  document.getElementById('qz-product-dashboard-modal').classList.add('open');
+  document.getElementById('qz-pd-kpis').innerHTML='<div class="qz-pd-kpi">Henter data…</div>';
+  document.getElementById('qz-pd-body').innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:24px">Henter…</td></tr>';
+  try{
+    var rows=await api('/api/products/analytics');
+    qzPdData=(Array.isArray(rows)?rows:[]).map(function(r){
+      var invRev=Number(r.invoice_revenue)||0,qtRev=Number(r.quote_revenue)||0;
+      var cost=Number(r.cost_price)||0,sell=Number(r.sell_price)||0;
+      return {
+        id:r.id,name:r.name,category:r.category,sku:r.sku,
+        invoice_revenue:invRev,invoice_qty:Number(r.invoice_qty)||0,invoice_count:Number(r.invoice_count)||0,
+        quote_revenue:qtRev,quote_qty:Number(r.quote_qty)||0,quote_count:Number(r.quote_count)||0,
+        total_revenue:invRev+qtRev,
+        cost_price:cost,sell_price:sell,margin_pct:qzMarginPct(cost,sell)
+      };
+    });
+    qzRenderProductDashboard();
+  }catch(e){
+    document.getElementById('qz-pd-kpis').innerHTML='';
+    document.getElementById('qz-pd-body').innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-danger,#DC2626);padding:24px">Kunne ikke hente data: '+esc(e.message||'ukendt fejl')+'</td></tr>';
+  }
+}
+function qzRenderProductDashboard(){
+  var q=(document.getElementById('qz-pd-search').value||'').trim();
+  var list=qzPdData.filter(function(p){return qzSearchHit(q,[p.name,p.category,p.sku]);});
+
+  // KPI-kort øverst: samlet overblik før man dykker ned i enkeltprodukter.
+  var totalInv=0,totalQt=0,withSales=0,best=null;
+  qzPdData.forEach(function(p){
+    totalInv+=p.invoice_revenue;totalQt+=p.quote_revenue;
+    if(p.invoice_revenue>0||p.quote_revenue>0)withSales++;
+    if(p.total_revenue>0&&(!best||p.total_revenue>best.total_revenue))best=p;
+  });
+  document.getElementById('qz-pd-kpis').innerHTML=[
+    {label:'Omsætning (fakturaer)',val:krFmt(totalInv)},
+    {label:'Omsætning (accepterede/konverterede tilbud)',val:krFmt(totalQt)},
+    {label:'Produkter med salg',val:withSales+' af '+qzPdData.length},
+    {label:'Bedst sælgende produkt',val:best?esc(best.name):'–'}
+  ].map(function(k){
+    return '<div style="background:var(--bly-card,#fff);border:1px solid var(--bly-border,#E5E7EB);border-radius:10px;padding:12px 14px">'
+      +'<div style="font-size:11px;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.02em;margin-bottom:4px">'+esc(k.label)+'</div>'
+      +'<div style="font-size:18px;font-weight:700">'+k.val+'</div>'
+      +'</div>';
+  }).join('');
+
+  document.getElementById('qz-pd-count').textContent=list.length+' produkt(er)';
+
+  var key=qzPdSort.key,dir=qzPdSort.dir;
+  list=list.slice().sort(function(a,b){
+    var av=a[key],bv=b[key];
+    if(typeof av==='string'||typeof bv==='string'){
+      av=(av||'').toString().toLowerCase();bv=(bv||'').toString().toLowerCase();
+      return dir==='asc'?av.localeCompare(bv):bv.localeCompare(av);
+    }
+    av=Number(av)||0;bv=Number(bv)||0;
+    return dir==='asc'?av-bv:bv-av;
+  });
+
+  var body=document.getElementById('qz-pd-body');
+  if(!list.length){body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:24px">Ingen produkter fundet</td></tr>';return;}
+  body.innerHTML=list.map(function(p){
+    var pct=p.margin_pct;
+    return '<tr>'
+      +'<td>'+esc(p.name)+'</td>'
+      +'<td>'+esc(p.category||'–')+'</td>'
+      +'<td class="num">'+krFmt(p.invoice_revenue)+'</td>'
+      +'<td class="num">'+(p.invoice_qty||0)+'</td>'
+      +'<td class="num">'+krFmt(p.quote_revenue)+'</td>'
+      +'<td class="num">'+(p.quote_qty||0)+'</td>'
+      +'<td class="num"><b>'+krFmt(p.total_revenue)+'</b></td>'
+      +'<td class="num"><span class="qz-margin '+qzMarginClass(pct)+'">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span></td>'
+      +'</tr>';
+  }).join('');
+}
+function qzPdSortClick(key){
+  if(qzPdSort.key===key){qzPdSort.dir=qzPdSort.dir==='asc'?'desc':'asc';}
+  else{qzPdSort.key=key;qzPdSort.dir=(key==='name'||key==='category')?'asc':'desc';}
+  qzRenderProductDashboard();
+}
 function openProductModal(id){
   var p=id?qzProducts.find(function(x){return x.id===id;}):null;
   qzEditingProductId=id||null;
@@ -21656,16 +21788,26 @@ function qeRenderCrmNotePanel(note,entityType,entityName){
   var txt=document.getElementById('qe-crm-note-text');
   txt.textContent=note;
   // RUNDE X — starter altid kollapset ved (gen)render, fx når man skifter
-  // mellem tilbud i editoren. "Vis hele noten"-knappen vises kun hvis
-  // teksten rent faktisk er høj nok til at blive klippet af.
+  // mellem tilbud i editoren.
+  //
+  // FEJLRETTELSE (RUNDE Y, Martins ønske: "jeg kan ikke åbne den og læse hele
+  // noten") — "Vis hele noten"-knappen viste sig KUN når txt.scrollHeight/
+  // clientHeight blev målt via requestAnimationFrame RIGHT efter panelet blev
+  // vist. Det virker fint når man allerede STÅR på tilbudssiden, men
+  // openQuoteEditor() kalder denne funktion FØR den evt. skifter til
+  // #page-quotes (fx ved et direkte link som #quotes/tilbud/151, præcis
+  // Martins tilfælde) — panelets forælder-side havde dengang stadig
+  // display:none, så scrollHeight/clientHeight begge målte 0, og knappen
+  // forblev skjult SELVOM noten var for lang til at se i sin helhed. Løsning:
+  // vis ALTID knappen når der er en note (uafhængigt af layout-timing) — for
+  // en kort note der reelt ikke er klippet af, gør klik på knappen bare
+  // ingenting synligt, hvilket er ufarligt, i modsætning til at knappen
+  // manglede helt når man faktisk havde brug for den.
   txt.classList.add('collapsed');
   var toggle=document.getElementById('qe-crm-note-toggle');
   toggle.textContent='Vis hele noten ▾';
-  toggle.classList.remove('is-visible');
+  toggle.classList.add('is-visible');
   panel.style.display='';
-  requestAnimationFrame(function(){
-    if(txt.scrollHeight>txt.clientHeight+4)toggle.classList.add('is-visible');
-  });
 }
 function qeCrmNoteToggleClick(){
   var txt=document.getElementById('qe-crm-note-text');
@@ -21687,6 +21829,21 @@ function qeSetNotesCollapsed(collapsed){
 function qeNotesToggleClick(){
   var wrap=document.getElementById('qe-notes-wrap');
   qeSetNotesCollapsed(wrap.style.display!=='none');
+}
+// RUNDE Y — "🔒 Intern note" (se #qe-internal-note-wrap ovenfor). Samme
+// mønster som qeSetNotesValue/qeSetNotesCollapsed/qeNotesToggleClick lige
+// ovenfor: sætter værdien OG folder feltet ud hvis det allerede har indhold.
+function qeSetInternalNoteValue(v){
+  document.getElementById('qe-internal-note').value=v||'';
+  qeSetInternalNoteCollapsed(!v);
+}
+function qeSetInternalNoteCollapsed(collapsed){
+  document.getElementById('qe-internal-note-wrap').style.display=collapsed?'none':'';
+  document.getElementById('qe-internal-note-caret').style.transform=collapsed?'':'rotate(90deg)';
+}
+function qeInternalNoteToggleClick(){
+  var wrap=document.getElementById('qe-internal-note-wrap');
+  qeSetInternalNoteCollapsed(wrap.style.display!=='none');
 }
 // RUNDE V (Martins ønske: "Jeg kan ikke få CRM noten til at virke selvom jeg
 // gør det under en handel der er tilknyttet") — der viser sig at være TO helt
@@ -21740,7 +21897,7 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-doc-discount-type').value='pct';
   qeSetNotesValue('');
   document.getElementById('qe-top-note').value='';
-  document.getElementById('qe-internal-note').value='';
+  qeSetInternalNoteValue('');
   document.getElementById('qe-customer-results').style.display='none';
   document.getElementById('qe-convert-btn').style.display='none';
   document.getElementById('qe-pdf-link').style.display='none';
@@ -21778,7 +21935,7 @@ async function openQuoteEditor(id,prefillCustomer){
     document.getElementById('qe-doc-discount-type').value=qd.discount_type==='fixed'?'fixed':'pct';
     qeSetNotesValue(qd.notes||'');
     document.getElementById('qe-top-note').value=qd.top_note||'';
-    document.getElementById('qe-internal-note').value=qd.internal_note||'';
+    qeSetInternalNoteValue(qd.internal_note||'');
     loadDocActivity('quote',id,'qe-activity-list');
     loadQeVersions(id);
     document.getElementById('qe-title').textContent=qd.quote_number;
@@ -21844,6 +22001,12 @@ async function openQuoteEditor(id,prefillCustomer){
   // ville initQuotesModule() blive kaldt (og listen genhentet) to gange for ingenting.
   if(!document.getElementById('page-quotes').classList.contains('active'))switchPage('quotes',true);
   qzShowDetailView(true);
+  // RUNDE Y — qeRecalc() (og dermed qeAdjustPreviewHeight) blev kaldt HEROVER,
+  // FØR siden nødvendigvis er synlig (fx ved et direkte link til
+  // #quotes/tilbud/<id>, hvor #page-quotes stadig kan have display:none på det
+  // tidspunkt) — målingen af ledig plads gav derfor 0/negativ og blev sprunget
+  // over. Nu hvor siden garanteret er vist, genberegnes højden én gang til.
+  qeAdjustPreviewHeight();
   if(id)navPushHash('quotes/tilbud/'+id);
   else navPushHash('quotes');
 }
@@ -22009,9 +22172,9 @@ function qzRenderAiReview(lines){
   var box=document.getElementById('qe-ai-review-lines');
   box.innerHTML=qeAiState.reviewLines.map(function(l,idx){
     var isNew=!!l.new_product;
-    var tag=isNew?'<span class="qe-ai-review-tag">🆕 Nyt produkt</span>':'<span class="qe-ai-review-tag">✓ Matchet</span>';
+    var tag=isNew?'<span class="qe-ai-review-tag">🆕 Ny linje</span>':'<span class="qe-ai-review-tag">✓ Matchet</span>';
     var nameVal=isNew?l.new_product.name:l.match.name;
-    var priceInfo=isNew?'Pris sættes bagefter i produktkataloget':(krFmt(l.match.sell_price)+' / '+esc(l.match.unit));
+    var priceInfo=isNew?'Fri linje — pris sættes direkte på tilbuddet':(krFmt(l.match.sell_price)+' / '+esc(l.match.unit));
     return '<div class="qe-ai-review-row '+(isNew?'new':'matched')+'" data-idx="'+idx+'">'
       +'<input type="checkbox" data-ai-include="'+idx+'"'+(l.include?' checked':'')+' style="margin-top:4px">'
       +'<div class="qe-ai-review-fields">'
@@ -22042,14 +22205,21 @@ function qzRenderAiReview(lines){
 async function qeAiReviewConfirm(){
   var chosen=qeAiState.reviewLines.filter(function(l){return l.include;});
   if(!chosen.length){closeModal('qe-ai-review-modal');return;}
-  var created=0;
+  var freeText=0;
   for(var i=0;i<chosen.length;i++){
     var l=chosen[i],line;
     if(l.new_product){
-      var r=await api('/api/products',{method:'POST',body:JSON.stringify({name:l.new_product.name,unit:l.unit||l.new_product.unit,product_type:l.new_product.product_type,cost_price:0,sell_price:0})});
-      if(!r||r.error){toast('Kunne ikke oprette "'+l.new_product.name+'"','❌');continue;}
-      created++;
-      line=qzMakeBlankLine({id:r.id,name:l.new_product.name,description:'',unit:l.unit||l.new_product.unit,cost_price:0,sell_price:0,product_type:l.new_product.product_type,note:''});
+      // FEJLRETTELSE (RUNDE Y, Martins ønske: "når man skriver noget i feltet
+      // som ikke er i kundedatabasen skal den ikke gemme det i produkter") —
+      // her blev der TIDLIGERE oprettet et rigtigt, permanent produkt (POST
+      // /api/products) for alt AI'en ikke kunne matche til et eksisterende
+      // produkt, altid med cost_price/sell_price sat til 0 — det fyldte
+      // produktkataloget med engangs-varer med "mærkelige" 0-priser, som reelt
+      // kun hørte til dette ene tilbud. Linjen tilføjes nu i stedet direkte som
+      // en almindelig fri linje (uden product_id) — den optræder kun på DETTE
+      // tilbud, ligesom hvis man selv havde skrevet teksten i beskrivelsesfeltet.
+      line=qzMakeBlankLine({id:null,name:l.new_product.name,description:'',unit:l.unit||l.new_product.unit,cost_price:0,sell_price:0,product_type:l.new_product.product_type,note:''});
+      freeText++;
     }else{
       line=qzMakeBlankLine({id:l.match.product_id,name:l.match.name,description:'',unit:l.unit||l.match.unit,cost_price:l.match.cost_price,sell_price:l.match.sell_price,product_type:l.match.product_type,note:''});
     }
@@ -22059,7 +22229,7 @@ async function qeAiReviewConfirm(){
   }
   renderQeLines();qeRecalc();
   closeModal('qe-ai-review-modal');
-  toast(chosen.length+' linje(r) tilføjet'+(created?' · '+created+' nyt produkt oprettet':''),'✓');
+  toast(chosen.length+' linje(r) tilføjet'+(freeText?' · '+freeText+' som fri linje (ikke i produktkataloget)':''),'✓');
 }
 // ── GENERISK NOTE-DIKTERING (RUNDE V, Martins ønske: "Opsæt AI indtaler til
 // tilbud at jeg kan levere en note med alt data fra et kundebesøg... tilføj
@@ -22248,7 +22418,36 @@ function qeLineRowHtml(l){
 function qeTableHeadHtml(){
   return '<thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Rabat</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead>';
 }
+// FEJLRETTELSE (RUNDE Y, Martins ønske: "kan jeg altid se Moms og Total når
+// den er helt scrollet op") — .qe-preview-wrap brugte en fast
+// max-height:calc(100vh - 36px), som antog at kolonnen altid starter 18px
+// fra toppen af vinduet. Det holder IKKE altid stik — fx en høj-prioritet-
+// påmindelse-banner øverst i appen skubber hele sideindholdet (inkl. denne
+// kolonne) længere ned, uden at max-height-beregningen ved det. Resultatet:
+// PDF-siderne + margin-kortene blev tilsammen højere end den reelt synlige
+// plads, og Moms/Total (nederst i .qe-preview-summary) endte under
+// vinduets kant — kun nåelig ved at scrolle HELE siden (ikke bare den
+// interne PDF-scroll, som var meningen).
+//
+// Løsningen er at måle den FAKTISKE ledige plads med JavaScript i stedet for
+// at gætte den i CSS: tag kolonnens nuværende afstand fra toppen af vinduet
+// (uanset hvad der måtte stå ovenover den, banner eller ej) og sæt
+// max-height til præcis dét der er tilbage. Køres hver gang forhåndsvisningen
+// tegnes (billigt — ét getBoundingClientRect-kald) samt ved vindues-resize.
+function qeAdjustPreviewHeight(){
+  var wrap=document.getElementById('qe-preview-wrap');
+  if(!wrap)return;
+  // Under 1050px slår CSS'ens egen mobil-medieforespørgsel den faste højde
+  // fra igen (position:static;max-height:none) — en efterladt inline-stil
+  // ville ellers vinde over det, så den ryddes eksplicit her.
+  if(window.innerWidth<=1050){wrap.style.maxHeight='';return;}
+  var top=wrap.getBoundingClientRect().top;
+  if(top<=0)return;
+  var avail=window.innerHeight-top-20;
+  wrap.style.maxHeight=Math.max(320,avail)+'px';
+}
 function qeRenderPreview(){
+  qeAdjustPreviewHeight();
   var t=qeComputeTotals();
   var docNum=qeState.quoteNumber||'Udkast';
   var todayStr=new Date().toLocaleDateString('da-DK');
@@ -23000,6 +23199,13 @@ function bindQuotesModuleEvents(){
   qzInvoicePeriodFilter=makeBlyPeriodFilter('qz-invoices-period-btn','qz-invoices-period-pop','qz-invoices-period-label',function(){renderQzInvoices();});
   document.getElementById('qz-new-product-btn').addEventListener('click',function(){openProductModal(null);});
   document.getElementById('qz-import-jt-btn').addEventListener('click',importProductsFromJobtread);
+  // RUNDE Y — produkt-dashboard (se qzOpenProductDashboard/qzRenderProductDashboard).
+  document.getElementById('qz-product-dashboard-btn').addEventListener('click',qzOpenProductDashboard);
+  document.getElementById('qz-pd-close-btn').addEventListener('click',function(){closeModal('qz-product-dashboard-modal');});
+  document.getElementById('qz-pd-search').addEventListener('input',qzRenderProductDashboard);
+  Array.prototype.forEach.call(document.querySelectorAll('#qz-pd-table [data-pdsort]'),function(th){
+    th.addEventListener('click',function(){qzPdSortClick(th.dataset.pdsort);});
+  });
   document.getElementById('qzp-cancel').addEventListener('click',function(){closeModal('qz-product-modal');});
   document.getElementById('qzp-save').addEventListener('click',saveQzProduct);
   document.getElementById('qzp-delete').addEventListener('click',deleteQzProduct);
@@ -23014,14 +23220,8 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzt-add-text-line').addEventListener('click',function(){qztState.lines.push(qzMakeTextLine());qzRenderLines('qzt-lines',qztState.lines,'qzt');});
   document.getElementById('qzt-add-blank-line-bottom').addEventListener('click',function(){qztAddLine(null);});
   document.getElementById('qzt-add-text-line-bottom').addEventListener('click',function(){qztState.lines.push(qzMakeTextLine());qzRenderLines('qzt-lines',qztState.lines,'qzt');});
-  document.getElementById('qzt-product-search').addEventListener('input',function(e){
-    if(e.target.value.charAt(0)==='/'){
-      qzRunProductSearch('qzt-product-search','qzt-product-results',function(p){qztAddLine(p);});
-    }else if(!Object.keys(qzMultiSelectFor('qzt-product-results')).length){
-      var box=document.getElementById('qzt-product-results');box.style.display='none';box.innerHTML='';
-    }
-  });
-  document.getElementById('qzt-product-search').addEventListener('keydown',qzQuickNoteHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
+  // RUNDE Y — qzt-product-search/-results er fjernet fra HTML'en (se
+  // kommentaren ved qe-product-search), så disse to lyttere er væk herfra.
   var qztFieldHandler=makeLinesFieldHandler(function(){return qztState.lines;},'qzt',null,function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');});
   document.getElementById('qzt-lines').addEventListener('input',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('change',qztFieldHandler);
@@ -23048,14 +23248,8 @@ function bindQuotesModuleEvents(){
   document.getElementById('qal-save-btn').addEventListener('click',qalSave);
   document.getElementById('qal-add-blank-line').addEventListener('click',function(){qalState.lines.push(qzMakeBlankLine(null));qzRenderLines('qal-lines',qalState.lines,'qal');});
   document.getElementById('qal-add-text-line').addEventListener('click',function(){qalState.lines.push(qzMakeTextLine());qzRenderLines('qal-lines',qalState.lines,'qal');});
-  document.getElementById('qal-product-search').addEventListener('input',function(e){
-    if(e.target.value.charAt(0)==='/'){
-      qzRunProductSearch('qal-product-search','qal-product-results',function(p){qalState.lines.push(qzMakeBlankLine(p));qzRenderLines('qal-lines',qalState.lines,'qal');});
-    }else if(!Object.keys(qzMultiSelectFor('qal-product-results')).length){
-      var box=document.getElementById('qal-product-results');box.style.display='none';box.innerHTML='';
-    }
-  });
-  document.getElementById('qal-product-search').addEventListener('keydown',qzQuickNoteHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
+  // RUNDE Y — qal-product-search/-results er fjernet fra HTML'en (se
+  // kommentaren ved qe-product-search).
   var qalFieldHandler=makeLinesFieldHandler(function(){return qalState.lines;},'qal',null,function(){qzRenderLines('qal-lines',qalState.lines,'qal');});
   document.getElementById('qal-lines').addEventListener('input',qalFieldHandler);
   document.getElementById('qal-lines').addEventListener('change',qalFieldHandler);
@@ -23076,14 +23270,8 @@ function bindQuotesModuleEvents(){
   document.getElementById('ivl-save-btn').addEventListener('click',ivlSave);
   document.getElementById('ivl-add-blank-line').addEventListener('click',function(){ivlState.lines.push(qzMakeBlankLine(null));qzRenderLines('ivl-lines',ivlState.lines,'ivl');});
   document.getElementById('ivl-add-text-line').addEventListener('click',function(){ivlState.lines.push(qzMakeTextLine());qzRenderLines('ivl-lines',ivlState.lines,'ivl');});
-  document.getElementById('ivl-product-search').addEventListener('input',function(e){
-    if(e.target.value.charAt(0)==='/'){
-      qzRunProductSearch('ivl-product-search','ivl-product-results',function(p){ivlState.lines.push(qzMakeBlankLine(p));qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();});
-    }else if(!Object.keys(qzMultiSelectFor('ivl-product-results')).length){
-      var box=document.getElementById('ivl-product-results');box.style.display='none';box.innerHTML='';
-    }
-  });
-  document.getElementById('ivl-product-search').addEventListener('keydown',qzQuickNoteHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
+  // RUNDE Y — ivl-product-search/-results er fjernet fra HTML'en (se
+  // kommentaren ved qe-product-search).
   var ivlFieldHandler=makeLinesFieldHandler(function(){return ivlState.lines;},'ivl',ivlRenderTotals,function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');});
   document.getElementById('ivl-lines').addEventListener('input',ivlFieldHandler);
   document.getElementById('ivl-lines').addEventListener('change',ivlFieldHandler);
@@ -23117,8 +23305,8 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-status-select').addEventListener('change',qeStatusChanged);
   document.getElementById('qe-pdf-link').addEventListener('click',function(e){e.preventDefault();if(qeState.id)qzOpenPdf('/api/quotes/'+qeState.id+'/pdf');});
   document.getElementById('qe-ai-mic-btn').addEventListener('click',qeAiToggleListen);
-  // RUNDE V — note-diktering på tilbuddets "Note i toppen" (se noteDictToggle).
-  document.getElementById('qe-top-note-mic-btn').addEventListener('click',function(){noteDictToggle('qe-top-note','qe-top-note-mic-btn');});
+  // RUNDE Y — den lille mikrofon-knap ved "Note i toppen" (qe-top-note-mic-btn)
+  // er fjernet fra HTML'en (se kommentaren der) — ingen lytter at binde her mere.
   document.getElementById('qe-ai-stop-btn').addEventListener('click',qeAiStopAndParse);
   document.getElementById('qe-ai-cancel-btn').addEventListener('click',qeAiCancel);
   document.getElementById('qe-ai-review-cancel').addEventListener('click',function(){closeModal('qe-ai-review-modal');});
@@ -23131,20 +23319,29 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-add-text-line-bottom').addEventListener('click',function(){qeState.lines.push(qzMakeTextLine());renderQeLines();qeRecalc();});
   document.getElementById('qe-save-as-template-btn').addEventListener('click',qeSaveCurrentAsTemplate);
   document.getElementById('qe-insert-template-btn').addEventListener('click',qeOpenTemplateMenu);
+  // RUNDE Y — genberegner den ledige plads til PDF-forhåndsvisningen ved
+  // vindues-resize (se qeAdjustPreviewHeight). Selve renderingen kalder den
+  // også hver gang, så dette dækker kun "vinduet skifter størrelse uden at
+  // noget andet ændrer sig i tilbuddet".
+  (function(){
+    var resizeTimer=null;
+    window.addEventListener('resize',function(){
+      clearTimeout(resizeTimer);
+      resizeTimer=setTimeout(qeAdjustPreviewHeight,150);
+    });
+  })();
   // RUNDE X — "Vis hele noten" på CRM-note-panelet (se qeRenderCrmNotePanel).
   document.getElementById('qe-crm-note-toggle').addEventListener('click',qeCrmNoteToggleClick);
   // RUNDE X — kollaps/fold ud "Betingelser / note i bunden" (se qeSetNotesValue).
   document.getElementById('qe-notes-label').addEventListener('click',qeNotesToggleClick);
+  // RUNDE Y — "🔒 Intern note" kollaps (se qeSetInternalNoteValue ovenfor).
+  document.getElementById('qe-internal-note-label').addEventListener('click',qeInternalNoteToggleClick);
   document.getElementById('qe-doc-discount').addEventListener('input',qeRecalc);
   document.getElementById('qe-doc-discount-type').addEventListener('change',qeRecalc);
-  document.getElementById('qe-product-search').addEventListener('input',function(e){
-    if(e.target.value.charAt(0)==='/'){
-      qzRunProductSearch('qe-product-search','qe-product-results',function(p){qeAddLine(p);});
-    }else if(!Object.keys(qzMultiSelectFor('qe-product-results')).length){
-      var box=document.getElementById('qe-product-results');box.style.display='none';box.innerHTML='';
-    }
-  });
-  document.getElementById('qe-product-search').addEventListener('keydown',qzQuickNoteHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
+  // RUNDE Y — qe-product-search/-results er fjernet fra HTML'en (Martins
+  // ønske: "fjern det lille felt der er ved siden af tilføj linje"). Begge
+  // dets funktioner findes stadig: produktsøgning direkte i linjens eget
+  // beskrivelsesfelt, og "+ Tekstlinje" for en fri tekstlinje.
   var qeFieldHandler=makeLinesFieldHandler(function(){return qeState.lines;},'qe',qeRecalc,renderQeLines);
   document.getElementById('qe-lines').addEventListener('input',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('change',qeFieldHandler);

@@ -13262,6 +13262,53 @@ app.get('/api/products', auth, panelAccess('quotes'), asyncRoute(async (req, res
   res.json(rows.rows);
 }));
 
+// RUNDE Y (Martins ønske: "under alle produkter lave et dashboard hvor man kan
+// se antal kroner der omsat for henholdt faktura og henholdt tilbud så kan man
+// senere analysere hvilke produkter der sælger bedst og har bedst margin") —
+// aggregerer omsætning pr. produkt fra hhv. fakturalinjer og tilbudslinjer.
+// Fakturaer tælles med uanset betalingsstatus (unpaid/partial/paid) — det er
+// stadig reel omsætning, den er bare ikke nødvendigvis betalt endnu — men
+// annullerede ('void') fakturaer tælles IKKE med. Tilbud tælles kun med når de
+// reelt er blevet til noget (accepteret eller konverteret til faktura) —
+// kladder/afviste tilbud er ikke reel omsætning, kun et forslag.
+app.get('/api/products/analytics', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT
+      p.id, p.name, p.sku, p.category, p.product_type, p.unit,
+      p.cost_price, p.sell_price,
+      COALESCE(inv.revenue,0) AS invoice_revenue,
+      COALESCE(inv.qty,0) AS invoice_qty,
+      COALESCE(inv.cnt,0) AS invoice_count,
+      COALESCE(qt.revenue,0) AS quote_revenue,
+      COALESCE(qt.qty,0) AS quote_qty,
+      COALESCE(qt.cnt,0) AS quote_count
+    FROM products p
+    LEFT JOIN (
+      SELECT il.product_id,
+        SUM(il.quantity * il.sell_price * (1 - COALESCE(il.discount_pct,0)/100.0)) AS revenue,
+        SUM(il.quantity) AS qty,
+        COUNT(DISTINCT il.invoice_id) AS cnt
+      FROM invoice_lines il
+      JOIN invoices i ON i.id = il.invoice_id
+      WHERE il.product_id IS NOT NULL AND i.status <> 'void'
+      GROUP BY il.product_id
+    ) inv ON inv.product_id = p.id
+    LEFT JOIN (
+      SELECT ql.product_id,
+        SUM(ql.quantity * ql.sell_price * (1 - COALESCE(ql.discount_pct,0)/100.0)) AS revenue,
+        SUM(ql.quantity) AS qty,
+        COUNT(DISTINCT ql.quote_id) AS cnt
+      FROM quote_lines ql
+      JOIN quotes q ON q.id = ql.quote_id
+      WHERE ql.product_id IS NOT NULL AND q.status IN ('accepted','converted')
+      GROUP BY ql.product_id
+    ) qt ON qt.product_id = p.id
+    WHERE p.active = 1
+    ORDER BY (COALESCE(inv.revenue,0) + COALESCE(qt.revenue,0)) DESC, p.name
+  `);
+  res.json(rows.rows);
+}));
+
 app.post('/api/products', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
@@ -16575,6 +16622,91 @@ async function runProductCatalogReplacement() {
   }
 }
 
+// RUNDE Y (sep. 2026, Martins ønske: "priserne er blevet helt mærkelig ...
+// derfor det vigtigt det spiller ellers kan vi ikke lave tilbud ud fra det") —
+// SIKKERHEDSKRITISK RETTELSE af en fejl JEG lavede i v2.6.1: runProductCatalogReplacement()
+// ovenfor er gated til at køre HØJST ÉN GANG NOGENSINDE (samme app_migrations-navn,
+// uanset hvad selve datafilen indeholder). Den kørte allerede da Martin første gang
+// deployede v2.6.0 — dengang med for lave, urealistiske indkøbspriser. Da jeg
+// bagefter rettede beregningen (+30-100%) og leverede v2.6.1, opdaterede det KUN
+// filen products-catalog-20260910.js — men fordi migrationen "allerede var kørt"
+// ifølge app_migrations, sprang runProductCatalogReplacement() automatisk hele
+// opdateringen over ved næste deploy. De rettede priser lå altså i koden, men blev
+// ALDRIG skrevet til Martins rigtige database, og margin-tallene han så var derfor
+// stadig baseret på de gamle, forkerte tal.
+//
+// Dette er en HELT NY, separat engangsmigration (nyt navn i app_migrations) der
+// retter det: opdaterer KUN cost_price (aldrig sell_price — den kommer direkte fra
+// Billy og er ikke ændret) på de 264 produkter fra Billy-importen til de nu
+// korrekte tal. Matcher på SKU når begge sider har én (de fleste varer), ellers på
+// varenavn — og springer et produkt over (i stedet for at gætte forkert) hvis det
+// ikke kan matches entydigt, se "unmatched" i loggen. Rører aldrig de gamle
+// deaktiverede produkter fra før kunde-skiftet, og rører aldrig et produkt Martin
+// selv har oprettet manuelt efter importen (de findes ikke i kataloget, matcher
+// derfor ingenting, og springes automatisk over).
+const PRODUCT_CATALOG_PRICE_FIX_MIGRATION = 'product_catalog_price_correction_20260916';
+async function runProductCatalogPriceCorrection() {
+  const already = await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [PRODUCT_CATALOG_PRICE_FIX_MIGRATION]);
+  if (already) return { ok: true, skipped: true, reason: 'already_done' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const claimed = await client.query(
+      "INSERT INTO app_migrations (name, details) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING",
+      [PRODUCT_CATALOG_PRICE_FIX_MIGRATION, 'Kører…']
+    );
+    if (!claimed.rowCount) {
+      await client.query('ROLLBACK');
+      return { ok: true, skipped: true, reason: 'already_done' };
+    }
+
+    const existing = await client.query('SELECT id, name, sku, cost_price FROM products WHERE active=1');
+    const bySku = new Map();
+    const byName = new Map();
+    for (const row of existing.rows) {
+      if (row.sku) bySku.set(row.sku, row);
+      if (!byName.has(row.name)) byName.set(row.name, []);
+      byName.get(row.name).push(row);
+    }
+
+    let updated = 0;
+    const unmatched = [];
+    const usedIds = new Set();
+    for (const p of PRODUCT_CATALOG_IMPORT_20260910) {
+      let target = null;
+      if (p.sku && bySku.has(p.sku) && !usedIds.has(bySku.get(p.sku).id)) {
+        target = bySku.get(p.sku);
+      } else {
+        const candidates = (byName.get(p.name) || []).filter(r => !usedIds.has(r.id));
+        if (candidates.length) target = candidates[0];
+      }
+      if (!target) { unmatched.push(p.name); continue; }
+      usedIds.add(target.id);
+      const newCost = Number(p.cost_price) || 0;
+      if (Math.abs(Number(target.cost_price) - newCost) > 0.001) {
+        await client.query(`UPDATE products SET cost_price=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [newCost, target.id]);
+        updated++;
+      }
+    }
+
+    const message = `Rettede indkøbspriser på ${updated} produkter fra Billy-importen (v2.6.1-prisrettelsen nåede aldrig databasen første gang). `
+      + (unmatched.length ? `${unmatched.length} varer kunne ikke matches entydigt og blev sprunget over: ${unmatched.slice(0, 10).join(', ')}${unmatched.length > 10 ? '…' : ''}.` : 'Alle 264 varer fra kataloget blev matchet.');
+
+    await client.query('UPDATE app_migrations SET details=$2, completed_at=' + nowTextSQL() + ' WHERE name=$1', [PRODUCT_CATALOG_PRICE_FIX_MIGRATION, message]);
+    await client.query('COMMIT');
+
+    await logSystemEvent('product_catalog_price_correction', 'info', message);
+    console.log(message);
+    return { ok: true, updated, unmatched: unmatched.length };
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function start() {
   await pool.query('SELECT 1 AS connected');
   await initSchema();
@@ -16638,7 +16770,14 @@ async function start() {
   // JobTread-oprydningen ovenfor. Ingen afhængighed af migrationPending — dette er
   // uafhængigt af den gamle SQLite→Postgres-import.
   if (!migrationPending) {
-    runProductCatalogReplacement().catch(error => { console.error('Produktkatalog-import fejlede:', error.message); logSystemEvent('product_catalog_replacement', 'error', 'Produktkatalog-import fejlede: ' + error.message); });
+    // RUNDE Y — prisrettelsen (runProductCatalogPriceCorrection) kører EFTER
+    // kataloget er på plads (uanset om det lige blev importeret nu, eller blev
+    // importeret ved et tidligere deploy) — se dens egen kommentar for hvorfor
+    // den findes som en HELT SEPARAT engangsmigration.
+    runProductCatalogReplacement()
+      .catch(error => { console.error('Produktkatalog-import fejlede:', error.message); logSystemEvent('product_catalog_replacement', 'error', 'Produktkatalog-import fejlede: ' + error.message); })
+      .then(() => runProductCatalogPriceCorrection())
+      .catch(error => { console.error('Prisrettelse af produktkatalog fejlede:', error.message); logSystemEvent('product_catalog_price_correction', 'error', 'Prisrettelse af produktkatalog fejlede: ' + error.message); });
   }
   // OBS: kunde-påmindelsen ("vi kommer i morgen") sendes IKKE automatisk længere —
   // kun når admin selv trykker på knappen (se POST /api/customer-emails/send-reminders
