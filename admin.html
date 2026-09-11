@@ -931,17 +931,39 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
    som stadiet har på selve pipeline-boardet) i værktøjslinjen til højre,
    ved siden af Email/Ring, i stedet for klemt inde mellem avatar og navn.
    Stadig det samme <select id="crmpx-stage">, kun ny placering + styling —
-   se crmpxUpdateStagePillColor() for farvelogikken. */
-.crmpx-stage-select{border:1px solid var(--bly-border);border-radius:var(--bly-r-pill);font-size:12px;font-weight:700;padding:8px 30px 8px 14px;cursor:pointer;transition:filter .12s}
-.crmpx-stage-select:hover{filter:brightness(.96)}
-.crmpx-stage-select:focus{outline:none;box-shadow:0 0 0 3px var(--bly-accent-soft)}
+   se crmpxUpdateStagePillColor() for farvelogikken.
+   RUNDE I (Martins fejlrapport: "black text on yello etc is not good" —
+   stadiets rå farve blev brugt som HELE pillens baggrund med sort/hvid tekst
+   beregnet ud fra lysstyrken, hvilket gav dårlig kontrast/billigt udseende
+   ved lyse stadiefarver). Pillen er nu altid hvid med mørk tekst — farven
+   sidder i stedet i en lille prik til venstre (samme sprog som prikkerne på
+   KPI-kortene i Økonomi), så den altid er læsbar uanset stadiefarve. */
+.crmpx-stage-wrap{position:relative;display:inline-flex;align-items:center}
+.crmpx-stage-dot{position:absolute;left:13px;width:8px;height:8px;border-radius:50%;background:#94A3B8;pointer-events:none}
+.crmpx-stage-select{border:1px solid var(--bly-border);border-radius:var(--bly-r-pill);font-size:12px;font-weight:700;padding:8px 30px 8px 28px;cursor:pointer;transition:border-color .12s;background:#fff;color:var(--bly-ink)}
+.crmpx-stage-select:hover{border-color:#C7CBD1}
+.crmpx-stage-select:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
 .crmpx-layout{display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:18px;align-items:start}
 @media (max-width:900px){.crmpx-layout{grid-template-columns:minmax(0,1fr)}}
 .crmpx-col-left{display:flex;flex-direction:column;gap:14px;min-width:0}
 .crmpx-col-right{min-width:0}
 .crmpx-panel{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,23,42,.04);padding:16px 18px}
-.crmpx-panel h3{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--bly-sub);margin:0 0 12px;display:flex;align-items:center;gap:6px}
+/* RUNDE I (Martins fejlrapport: venstre-panelerne Om/Kunde/Opgaver/Kontakt/
+   Opportunities/Custom fields var alle identiske hvide kasser med kun et
+   emoji + gråt label — "borring"). Hver overskrift får nu et lille tegnet
+   ikon i en farvet chip i stedet for emoji'et — 3 farver totalt, valgt efter
+   betydning (indigo=Kunde/relation, gul=Opgaver/handling, grøn=Opportunities,
+   neutral/gråblå=resten), så det bryder ensformigheden uden at blive
+   farve-kaos. Se .crmpx-badge-* nedenfor og de enkelte <h3> i markup'et. */
+.crmpx-panel h3{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--bly-sub);margin:0 0 14px;display:flex;align-items:center;gap:10px}
 .crmpx-panel h3 .sub{text-transform:none;letter-spacing:0;font-weight:600}
+.crmpx-badge{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.crmpx-badge svg{width:14px;height:14px}
+.crmpx-badge-neutral{background:#F3F4F6;color:#4B5563}
+.crmpx-badge-accent{background:var(--bly-accent-soft);color:var(--bly-accent)}
+.crmpx-badge-amber{background:#FFFBEB;color:#B45309}
+.crmpx-badge-green{background:#F0FDF4;color:#15803D}
+.crmpx-badge-slate{background:#F1F5F9;color:#475569}
 .crmpx-task-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px}
 .crmpx-task-row:last-of-type{border-bottom:0}
 .crmpx-task-row.done .crmpx-task-title{text-decoration:line-through;color:var(--bly-sub)}
@@ -955,6 +977,13 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-mini-card+.crmpx-mini-card{margin-top:8px}
 .crmpx-mini-card-name{font-weight:800;color:var(--bly-ink);margin-bottom:2px}
 .crmpx-mini-card-row{color:var(--bly-sub);font-size:11.5px;display:flex;align-items:center;gap:6px}
+/* RUNDE I — Kundekort-mini-kortet (både på lead- og opportunity-siden, se
+   #crmpx-customer-card) var kun ét navn + én tekstlinje. Tilføjet en lille
+   navne-avatar (samme genbrugte initial-udregning som #crmpx-avatar øverst
+   på siden) så kortet ikke bare er endnu en tom hvid boks. */
+.crmpx-mini-card-top{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+.crmpx-mini-avatar{width:26px;height:26px;border-radius:8px;background:var(--bly-accent-soft);color:var(--bly-accent);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;flex-shrink:0}
+.crmpx-mini-card .crmpx-mini-card-name{margin-bottom:0}
 .crmpx-activity-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--bly-border-soft)}
 .crmpx-activity-item:last-child{border-bottom:0}
 .crmpx-activity-icon{width:26px;height:26px;border-radius:50%;background:var(--bly-border-soft);display:grid;place-items:center;flex-shrink:0;font-size:12px}
@@ -1126,21 +1155,32 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
    boks midt i siden — se HTML-kommentaren ved #dash-priority-banner og
    .app-header-sticky ovenfor. Ét linje, altid samme højde, sidder fast
    sammen med .nav uanset scroll/side). */
-.dash-priority-banner{background:#FEF2F2;border-top:1px solid #FECACA;padding:0}
+/* RUNDE I (Martins fejlrapport: "the banner in the top with red is also not
+   pretty" — den kraftige lyserøde/røde alarm-stil, som sidder fast synligt
+   på ALLE sider hele tiden, virkede for skinger til noget der bare er en
+   påmindelse). Skiftet til en rolig, mørk status-linje (samme mørke som
+   appens egne knapper, .bly-btn) — alvoren (bagud/i dag) vises nu med en
+   lille farvet prik + farvet label i stedet for en solid rød/gul mærkat,
+   samme "prik i stedet for fyldt farve"-tankegang som stadie-pillen ovenfor. */
+.dash-priority-banner{background:#111318;padding:0}
 .dash-priority-banner-inner{display:flex;align-items:center;gap:8px;padding:6px 16px;cursor:pointer;min-width:0}
-.dash-priority-banner-inner:hover{background:#FEE2E2}
-.dash-priority-banner-title{font-size:11.5px;font-weight:800;color:#991B1B;flex-shrink:0;white-space:nowrap}
-.dash-priority-banner-count{flex-shrink:0;font-size:10px;font-weight:700;color:#991B1B;background:#FEE2E2;border-radius:var(--bly-r-pill);padding:2px 8px;white-space:nowrap}
+.dash-priority-banner-inner:hover{background:rgba(255,255,255,.06)}
+.dash-priority-banner-title{font-size:11px;font-weight:700;color:#9CA3AF;flex-shrink:0;white-space:nowrap}
+.dash-priority-banner-count{flex-shrink:0;font-size:10px;font-weight:700;color:#fff;background:rgba(255,255,255,.14);border-radius:var(--bly-r-pill);padding:2px 8px;white-space:nowrap}
 .dash-priority-row{display:flex;align-items:center;gap:6px;min-width:0;flex:1}
-.dash-priority-row-title{color:#991B1B;font-weight:700;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dash-priority-row-sub{color:#B91C1C;font-size:11px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
-.dash-priority-tag{font-size:9.5px;font-weight:800;border-radius:var(--bly-r-pill);padding:2px 8px;white-space:nowrap;flex-shrink:0}
-.dash-priority-tag.overdue{background:#DC2626;color:#fff}
-.dash-priority-tag.today{background:#F59E0B;color:#fff}
-.dash-priority-tag.nodate{background:#E5E7EB;color:#374151}
+.dash-priority-row-title{color:#F3F4F6;font-weight:700;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dash-priority-row-sub{color:#9CA3AF;font-size:11px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
+.dash-priority-tag{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;padding:0;white-space:nowrap;flex-shrink:0}
+.dash-priority-tag:before{content:'';width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dash-priority-tag.overdue{color:#FCA5A5}
+.dash-priority-tag.overdue:before{background:#EF4444;box-shadow:0 0 0 3px rgba(239,68,68,.25)}
+.dash-priority-tag.today{color:#FCD34D}
+.dash-priority-tag.today:before{background:#F59E0B}
+.dash-priority-tag.nodate{color:#9CA3AF}
+.dash-priority-tag.nodate:before{background:#6B7280}
 .dash-priority-dots{display:flex;gap:4px;flex-shrink:0}
-.dash-priority-dot{width:6px;height:6px;border-radius:50%;background:#FCA5A5;cursor:pointer;border:0;padding:0}
-.dash-priority-dot.active{background:#991B1B}
+.dash-priority-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.25);cursor:pointer;border:0;padding:0}
+.dash-priority-dot.active{background:#fff}
 @media(max-width:760px){.dash-priority-row-sub{display:none}}
 
 /* ══════════════════════════════════════════════════════════════
@@ -2912,7 +2952,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.5</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.7</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4249,7 +4289,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-      <select id="crmpx-stage" class="crmpx-stage-select"></select>
+      <span class="crmpx-stage-wrap"><span class="crmpx-stage-dot" id="crmpx-stage-dot"></span><select id="crmpx-stage" class="crmpx-stage-select"></select></span>
       <a class="bly-btn outline" id="crmpx-email-btn" href="#" target="_blank">✉️ Email</a>
       <a class="bly-btn outline" id="crmpx-call-btn" href="#">📞 Ring</a>
       <button class="bly-btn" id="crmpx-quote-btn" type="button" style="display:none">📝 Lav tilbud</button>
@@ -4279,7 +4319,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="crmpx-layout">
     <div class="crmpx-col-left">
       <div class="crmpx-panel">
-        <h3>ℹ️ Om</h3>
+        <h3><span class="crmpx-badge crmpx-badge-neutral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg></span>Om</h3>
         <!-- Kopiér (📋) + åbn (📞 tel: / ✉️ Gmail-compose / 📍 Google Maps) ved siden
              af hvert kontaktfelt. Felterne er stadig helt almindelige, redigerbare
              inputs med autogem — knapperne læser bare feltets aktuelle værdi, og
@@ -4323,7 +4363,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
            både leads og opportunities, når leadet/opportunityen er koblet til
            en kunde (hvilket nu sker automatisk fra oprettelsen af leadet). -->
       <div class="crmpx-panel" id="crmpx-customer-panel" style="display:none">
-        <h3>🏠 Kunde</h3>
+        <h3><span class="crmpx-badge crmpx-badge-accent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg></span>Kunde</h3>
         <div id="crmpx-customer-card"></div>
       </div>
 
@@ -4333,7 +4373,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
            på (entity_type/entity_id), så der er bevidst ikke noget separat
            "vælg kontakt"-felt her, i modsætning til Close. -->
       <div class="crmpx-panel">
-        <h3>☑ Opgaver <span class="sub" id="crmpx-tasks-count"></span></h3>
+        <h3><span class="crmpx-badge crmpx-badge-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Opgaver <span class="sub" id="crmpx-tasks-count"></span></h3>
         <div id="crmpx-tasks-list"><div class="crmpx-empty">Ingen opgaver endnu</div></div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bly-border-soft)">
           <input id="crmpx-task-new" class="tld-input" placeholder="Ny opgave, fx 'Ring op i morgen'" style="margin-bottom:6px">
@@ -4350,17 +4390,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
 
       <div class="crmpx-panel" id="crmpx-opps-panel">
-        <h3>🤝 Opportunities <span class="sub" id="crmpx-opps-count"></span></h3>
+        <h3><span class="crmpx-badge crmpx-badge-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>Opportunities <span class="sub" id="crmpx-opps-count"></span></h3>
         <div id="crmpx-opps-list"><div class="crmpx-empty">Ingen opportunity endnu</div></div>
       </div>
 
       <div class="crmpx-panel" id="crmpx-contact-panel" style="display:none">
-        <h3>👤 Kontakt</h3>
+        <h3><span class="crmpx-badge crmpx-badge-slate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg></span>Kontakt</h3>
         <div id="crmpx-contact-card"></div>
       </div>
 
       <div class="crmpx-panel" id="crmpx-cf-panel">
-        <h3>🏷 Custom fields</h3>
+        <h3><span class="crmpx-badge crmpx-badge-neutral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>Custom fields</h3>
         <div id="crmpx-customfields"><div class="crmpx-empty">Ingen felter oprettet — tilføj under ⚙️ Indstillinger</div></div>
       </div>
     </div>
@@ -19176,9 +19216,15 @@ async function openCrmpDetail(entityType,id){
   document.getElementById('crmpx-contact-panel').style.display=entityType==='opportunity'?'':'none';
   document.getElementById('crmpx-customer-panel').style.display=d.customer_id?'':'none';
   if(d.customer_id){
+    // RUNDE I (Martins fejlrapport: "Kunde on the left site Kundekort is
+    // borring") — kortet var kun navn + én tekstlinje. Tilføjet en lille
+    // initial-avatar (samme udregning som #crmpx-avatar øverst på siden) så
+    // det ikke bare er endnu en tom hvid boks — selve indholdet/linket ind
+    // til det fulde kundekort er urørt.
+    var custInitials=String(displayName||'').trim().split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase()||'?';
     document.getElementById('crmpx-customer-card').innerHTML=
       '<div class="crmpx-mini-card" onclick="openCustomerDetail('+d.customer_id+')">'
-      +'<div class="crmpx-mini-card-name">'+esc(displayName||'Kunde')+'</div>'
+      +'<div class="crmpx-mini-card-top"><span class="crmpx-mini-avatar">'+esc(custInitials)+'</span><div class="crmpx-mini-card-name">'+esc(displayName||'Kunde')+'</div></div>'
       +'<div class="crmpx-mini-card-row">Åbn kundekort — sager, tilbud, fakturaer &amp; noter →</div>'
       +'</div>';
   }
@@ -19421,20 +19467,20 @@ function crmpxShowSaveStatus(text,isError){
 // videre i et andet felt mens gemningen var i gang. I stedet opdateres kun
 // avataren direkte fra det navn der lige blev gemt.
 // RUNDE Æ — samme farve som stadiet har på selve pipeline-boardet
-// (.crmp-col-dot, crm_stages.color), sat direkte på <select>'et så pillen i
-// værktøjslinjen matcher stadiet uden at skulle bygge en hel custom dropdown-
-// menu (selve <option>-listen/gemmelogikken i crmpxAutoSave er urørt).
-// Tekstfarve (sort/hvid) vælges ud fra baggrundens lysstyrke, så pillen altid
-// er læsbar uanset hvilken farve stadiet har fået i ⚙️ Indstillinger.
+// (.crmp-col-dot, crm_stages.color) vises ved siden af selve <select>'et
+// (selve <option>-listen/gemmelogikken i crmpxAutoSave er urørt).
+// RUNDE I (Martins fejlrapport: "black text on yello etc is not good") —
+// farven sad tidligere direkte på hele pillens baggrund med sort/hvid tekst
+// beregnet ud fra lysstyrken, hvilket gav dårlig kontrast/billigt udseende
+// ved lyse stadiefarver. Pillen er nu altid hvid med mørk tekst
+// (.crmpx-stage-select, se CSS) — kun den lille prik (#crmpx-stage-dot)
+// skifter farve efter stadiet.
 function crmpxUpdateStagePillColor(){
   var sel=document.getElementById('crmpx-stage');
   var opt=sel.options[sel.selectedIndex];
   var color=(opt&&opt.dataset.color)||'#94A3B8';
-  var r=parseInt(color.slice(1,3),16)||148,g=parseInt(color.slice(3,5),16)||163,b=parseInt(color.slice(5,7),16)||184;
-  var luma=(0.299*r+0.587*g+0.114*b)/255;
-  sel.style.backgroundColor=color;
-  sel.style.color=luma>0.6?'#111318':'#fff';
-  sel.style.borderColor=color;
+  var dot=document.getElementById('crmpx-stage-dot');
+  if(dot)dot.style.background=color;
 }
 async function crmpxAutoSave(){
   var ent=crmpDetailEntity;
@@ -19843,7 +19889,14 @@ function crmpRenderSettingsStages(){
       +'<input class="input" data-action="stage-name" value="'+esc(s.name)+'" style="flex:1">'
       +'<label class="sub" style="display:flex;align-items:center;gap:3px;white-space:nowrap" title="Slut-stage: vundet"><input type="checkbox" data-action="stage-won" '+(s.is_won?'checked':'')+'> 🏆</label>'
       +'<label class="sub" style="display:flex;align-items:center;gap:3px;white-space:nowrap" title="Slut-stage: tabt (bruges af den automatiske opfølgningsmail, se Skabeloner → Automatisering)"><input type="checkbox" data-action="stage-lost" '+(s.is_lost?'checked':'')+'> ❌</label>'
-      +'<button class="qz-icon-btn" data-action="stage-automation-toggle" title="SMS/email når et lead/en sag rykkes hertil">'+((s.sms_enabled||s.email_enabled)?'🔔':'🔕')+'</button>'
+      // RUNDE ... — Martins fejlrapport (viste sig ikke at være en fejl, men en
+      // fælde i selve UI'et): klokken lignede en tænd/sluk-knap for SMS/email,
+      // men var reelt kun en fold-ud/ind-knap for panelet nedenfor — den rigtige
+      // til/fra-afkrydsning ligger INDE i panelet og skal gemmes med "Gem
+      // automatik" for at virke. Tilføjet en tydelig pil (▸/▾, opdateres ved
+      // klik nedenfor) så knappen læses som "åbn panel", ikke "skift status",
+      // og et skarpere tooltip der siger det direkte.
+      +'<button class="qz-icon-btn" data-action="stage-automation-toggle" title="Åbn/luk automatik-panelet nedenfor — selve SMS/email til/fra er afkrydsningerne INDE i panelet (husk at klikke \'Gem automatik\')"><span data-automation-icon>'+((s.sms_enabled||s.email_enabled)?'🔔':'🔕')+'</span> <span data-automation-chevron style="font-size:9px">▸</span></button>'
       +'<button class="qz-icon-btn" data-action="stage-up" title="Flyt op" '+(i===0?'disabled':'')+'>↑</button>'
       +'<button class="qz-icon-btn" data-action="stage-down" title="Flyt ned" '+(i===stages.length-1?'disabled':'')+'>↓</button>'
       +'<button class="qz-icon-btn" data-action="stage-delete" title="Slet">🗑</button>'
@@ -19891,6 +19944,10 @@ function crmpRenderSettingsStages(){
       if(!panel)return;
       var opening=panel.style.display==='none';
       panel.style.display=opening?'':'none';
+      // Pilen følger nu med, så knappen tydeligt opfører sig som en fold-ud/ind
+      // -kontrol og ikke som en tænd/sluk-afbryder for selve SMS/email'en.
+      var chev=this.querySelector('[data-automation-chevron]');
+      if(chev)chev.textContent=opening?'▾':'▸';
       if(opening&&!panel.dataset.followupLoaded){
         panel.dataset.followupLoaded='1';
         crmpLoadFollowupRules(stageId);
