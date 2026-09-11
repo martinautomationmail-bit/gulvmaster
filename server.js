@@ -5191,12 +5191,21 @@ app.get('/api/tasks', auth, asyncRoute(async (req, res) => {
            -- igangværende sager" (se poolProjectStatusFilter i admin.html).
            -- NULL for opgaver uden sag (manuelle/kapacitet/gamle JobTread-rækker) —
            -- de skjules bevidst ALDRIG af det filter.
-           p.status AS project_status
+           p.status AS project_status,
+           -- RUNDE Z (Martins ønske: "kan du ikke filtre på ... Sagens Projekt
+           -- Type hvor du trækker den fra Projekter" — den gamle "Fag"-filter i
+           -- Opgavepool bruger t.type_guess, som er en gammel JobTread-gættet
+           -- værdi og ofte upræcis/tom for sags-opgaver. Sagens EGEN, rigtige
+           -- projekttype (Faggruppe, sat af Martin på selve sagen — se
+           -- projects.project_type / GET /api/project-types) følger nu også med
+           -- hver opgave, så Opgavepool kan filtrere på DEN i stedet. Samme
+           -- NULL-for-opgaver-uden-sag-regel som prof_status ovenfor.
+           p.project_type AS project_type
     FROM jt_tasks t
     LEFT JOIN planning_bookings b ON b.task_id=t.id
     LEFT JOIN projects p ON p.id = t.project_id
     WHERE COALESCE(t.source,'jobtread') <> 'capacity'
-    GROUP BY t.id, p.status
+    GROUP BY t.id, p.status, p.project_type
     ORDER BY CASE WHEN t.source='manual' THEN 0 ELSE 1 END,
              CASE WHEN t.start_date IS NULL OR t.start_date='' THEN 1 ELSE 0 END,
              t.start_date ASC NULLS LAST,
