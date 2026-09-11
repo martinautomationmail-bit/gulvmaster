@@ -1277,6 +1277,19 @@ table.bly-table tr.bly-row{background:#fff}
 table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 .bly-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bly-status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:9px;flex-shrink:0;vertical-align:middle;margin-bottom:2px}
+/* RUNDE H #28 — Timetracking-fanens medarbejder-rækker + fold-ud-detaljer */
+tr.tt-row:hover td{background:var(--bly-hover)}
+tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
+.tt-detail-list{padding:6px 14px 14px 40px;display:flex;flex-direction:column;gap:1px}
+.tt-detail-row{display:grid;grid-template-columns:84px minmax(0,1fr) minmax(90px,170px) 90px;gap:12px;align-items:start;padding:8px 10px;font-size:12px;border-bottom:1px solid var(--bly-border-soft)}
+.tt-detail-row:last-child{border-bottom:none}
+.tt-detail-date{color:var(--bly-sub);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tt-detail-project{color:var(--bly-ink);min-width:0}
+.tt-detail-customer{color:var(--bly-sub)}
+.tt-detail-note{color:var(--bly-sub);font-size:11px;margin-top:2px;white-space:pre-wrap}
+.tt-detail-sub{color:var(--bly-sub);text-align:right;white-space:normal;line-height:1.3;font-variant-numeric:tabular-nums}
+.tt-detail-cost{color:var(--bly-ink);font-weight:600;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+@media (max-width:640px){.tt-detail-row{grid-template-columns:1fr;gap:2px}.tt-detail-sub,.tt-detail-cost{text-align:left}}
 .bly-mail-icon{color:var(--bly-sub);font-size:11px;margin-left:6px}
 .bly-tag{display:inline-flex;align-items:center;font-size:9.5px;font-weight:800;color:var(--bly-sub);background:var(--ice);border-radius:5px;padding:2px 6px;margin-right:6px;text-transform:uppercase;letter-spacing:.03em}
 .bly-desc-inner{color:var(--bly-sub);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
@@ -2043,8 +2056,27 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
    samme brede som i Dagligplanlægning det mere overskueligt") — 128px, samme
    som Dagligplanlægnings .day-cell herunder, i stedet for de 120px før. */
 .cap-cell{padding:4px;min-width:128px;vertical-align:top}
-.cap-drop{min-height:68px;border-radius:6px;border:1px dashed transparent;padding:3px;transition:.14s}
+.cap-drop{position:relative;min-height:68px;border-radius:6px;border:1px dashed transparent;padding:3px;transition:.14s}
 .cap-drop.over{background:#EFF6FF;border-color:var(--blue)}
+
+/* RUNDE H #26 — lille knap pr. medarbejder/uge-celle: åbner en tidslinje-popup
+   med overlap-analyse (se openCapTimelinePopup). Placeret i hjørnet så den
+   ikke fylder i den i forvejen tætpakkede celle. */
+.cap-timeline-btn{position:absolute;top:3px;right:3px;width:20px;height:20px;border:1px solid var(--border2);background:#fff;color:var(--steel);border-radius:5px;font-size:10px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:.8;box-shadow:0 1px 2px rgba(15,34,64,.1);transition:.15s;z-index:2}
+.cap-timeline-btn:hover{opacity:1;background:var(--blue);color:#fff}
+
+/* RUNDE H #26 — tidslinje-popup'ens indhold (genbruger .tl-bar/.tl-track-bg/
+   .tl-weekrow/.tl-weekcell/.tl-bg-cell/.tl-todayline/.tl-empty fra Tidslinje-
+   modulet, så bjælkerne ser ens ud begge steder). */
+/* Højere specificitet end den generiske .modal{width:420px} (som ellers ville
+   vinde, da begge kun har 1 klasses specificitet og .modal står senere i
+   filen) — nødvendigt for at tidslinje-popup'en rent faktisk bliver bred. */
+#cap-timeline-modal .modal.captl-modal{width:min(920px,94vw)}
+.captl-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.captl-head .avatar{width:36px;height:36px;font-size:13px}
+.captl-sub{font-size:11.5px;color:var(--bly-sub);margin-top:2px}
+.captl-scroll{overflow-x:auto;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding-bottom:2px}
+.captl-legend{margin-top:12px;font-size:11.5px;color:var(--bly-sub);line-height:1.5;background:var(--bly-accent-soft);border-radius:var(--bly-r-sm);padding:10px 12px}
 
 /* CAP SUMMARY ROW */
 .cap-num{text-align:center;font-size:10px;font-weight:700;padding:2px 4px;margin-bottom:2px;color:var(--muted)}
@@ -2761,6 +2793,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#quotes/tilbud-tab" data-page="quotes" data-qztab-jump="quotes">📝 Tilbud</a>
         <a class="navdrop-item" href="#quotes/produkter" data-page="quotes" data-qztab-jump="products">📦 Produkter</a>
         <a class="navdrop-item" href="#quotes/skabeloner" data-page="quotes" data-qztab-jump="templates">📑 Skabeloner</a>
+        <a class="navdrop-item" href="#quotes/timetracking" data-page="quotes" data-qztab-jump="timetrack">⏱️ Timetracking</a>
       </div>
     </div>
 
@@ -2863,7 +2896,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.1</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.3</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3653,6 +3686,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="qz-more-menu" id="qz-more-menu">
         <button class="qz-more-item" data-qztab="products" type="button">📦 Produkter</button>
         <button class="qz-more-item" data-qztab="templates" type="button">📑 Skabeloner</button>
+        <button class="qz-more-item" data-qztab="timetrack" type="button">⏱️ Timetracking</button>
       </div>
     </div>
   </div>
@@ -3726,6 +3760,41 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <table class="bly-table">
       <thead><tr><th>Nr.</th><th>Kunde/sag</th><th>Dato</th><th>Forfald</th><th>Status</th><th class="num">Total</th><th class="num">Betalt</th><th class="num">Rest</th><th style="width:90px"></th></tr></thead>
       <tbody id="qz-invoices-body"></tbody>
+    </table>
+  </div>
+
+  <!-- RUNDE H #28 — Martins ønske: "under Tilbud og faktura lave en side hvor
+       man kan analysere alle folks timetracking? gerny i billy style og gerne
+       så man kan filtre på forskellige ting fra uge til uge. interval,
+       Opgaver og hvad ellers du mener er intrassant". "Opgaver" er i praksis
+       "sager" her, da timeregistrering (time_entries) er knyttet til sagen,
+       ikke en enkelt opgave i sagens tidsplan — se søgefeltet nedenfor.
+       adminOnly på selve dataen (se GET /api/reports/time-tracking i
+       server.js) af samme grund som lønoplysninger er skjult andre steder i
+       appen — fanen er synlig for alle med adgang til Tilbud & Faktura, men
+       ikke-admins ser en tydelig besked i stedet for tal de ikke må se. -->
+  <div class="qztabpage" id="qztab-timetrack" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Timetracking</span><input type="text" id="tt-search" class="bly-search" placeholder="Søg — sag eller kunde..."></div>
+      <div class="bly-toolbar-right"><button class="bly-btn outline" id="tt-export-btn" type="button">⬇️ Eksportér CSV</button></div>
+    </div>
+    <div class="bly-kpi-row" id="tt-kpi-row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:0 0 14px;flex-wrap:wrap">
+      <select id="tt-filter-user" class="select" style="width:auto;min-width:170px"></select>
+      <select id="tt-filter-trade" class="select" style="width:auto;min-width:140px"></select>
+      <select id="tt-filter-paytype" class="select" style="width:auto;min-width:130px">
+        <option value="all">Alle løntyper</option>
+        <option value="hourly">Timeløn</option>
+        <option value="akkord">Akkord</option>
+      </select>
+      <div class="bly-period" style="position:relative">
+        <button class="bly-ctl" id="tt-period-btn" type="button">📅 <span id="tt-period-label">Alt tid</span></button>
+        <div class="bly-period-pop" id="tt-period-pop" style="display:none"></div>
+      </div>
+    </div>
+    <table class="bly-table">
+      <thead><tr><th style="width:26px"></th><th>Medarbejder</th><th>Fag</th><th>Løntype</th><th class="num">Timer</th><th class="num">Registreringer</th><th class="num">Estimeret løn</th></tr></thead>
+      <tbody id="tt-body"></tbody>
     </table>
   </div>
 
@@ -5788,6 +5857,27 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn danger hidden" id="delete-capacity">Fjern reservation</button>
       <button class="btn" id="close-capacity">Annuller</button>
       <button class="btn primary" id="save-capacity">Gem kapacitet</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE H #26 — Martins ønske: "ved hver uge trykke en lille knap ved hver
+     medarbejder og se en popup ... booket som kapacitet i et tidslinje view
+     med opstarts og slut datoerne baseret på projektet ... hurtig analyse af
+     dagene de arbejder og hvordan de overlapper hinanden". Bred modal (ikke
+     420px standardbredden) så der er plads til en vandret tidslinje. -->
+<div class="mo" id="cap-timeline-modal">
+  <div class="modal captl-modal">
+    <div class="captl-head">
+      <div class="avatar" id="cap-timeline-avatar">👤</div>
+      <div>
+        <h3 id="cap-timeline-title" style="margin:0">Medarbejder</h3>
+        <div class="captl-sub" id="cap-timeline-sub"></div>
+      </div>
+    </div>
+    <div id="cap-timeline-body"></div>
+    <div class="modal-actions">
+      <button class="btn" id="close-cap-timeline">Luk</button>
     </div>
   </div>
 </div>
@@ -8603,6 +8693,7 @@ function renderCapacity(){
 
       r+='<td class="cap-cell">'+
         '<div class="cap-drop '+(items.length?cc:'cap-free')+' draggable-task-target" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'">'+
+        '<button class="cap-timeline-btn" data-action="open-cap-timeline" data-user-id="'+u.id+'" data-date="'+iso(m)+'" title="Tidslinje/overlap for '+esc(u.name)+'">📈</button>'+
         offBadge+
         '<div class="cap-num '+(booked>0?cc:'cap-free')+'">'+( booked>0?booked.toFixed(1)+' / '+cap+' d':'✓ Ledig')+'</div>'+
         '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+pct+'%;background:'+barColor(booked,cap)+'"></div></div>'+
@@ -8734,6 +8825,121 @@ async function deleteCapacityReservation(){
   else if(r)toast(r.error||'Fejl','❌');
 }
 
+// RUNDE H #26 — Martins ønske: "ved hver uge trykke en lille knap ved hver
+// medarbejder og se en popup ... booket som kapacitet i et tidslinje view med
+// opstarts og slut datoerne baseret på projektet ... hurtig analyse af dagene
+// de arbejder og hvordan de overlapper hinanden". Åbnes fra den lille 📈-knap
+// i hver kapacitets-celle (.cap-timeline-btn). Genbruger samme bjælke-CSS
+// (.tl-bar m.fl.) og lane-pakningsmønster som Tidslinje-modulet (renderTimeline),
+// men for ÉN medarbejder ad gangen, og over hele hans/hendes kapacitetsperiode
+// (ikke kun de 35 dage Tidslinjen viser) — ellers ville man ikke kunne se
+// overlap der ligger måneder fra hinanden.
+function capTlValidDate(s){return !!s&&/^\d{4}-\d{2}-\d{2}/.test(String(s));}
+function capTlShortDate(s){var d=date(s);return d.getDate()+'/'+(d.getMonth()+1);}
+function openCapTimelinePopup(userId,clickedWeekIso){
+  var u=users.find(function(x){return +x.id===+userId;});
+  if(!u){toast('Medarbejderen blev ikke fundet','⚠');return;}
+  var items=bookings.filter(function(b){return isCapacityBooking(b)&&+b.user_id===+userId;});
+  // Visnings-start/slut PR. BOOKING: brug sagens rigtige planlagte datoer
+  // (task_start_date/task_end_date — sat fra sagens Gantt-opgave, se
+  // mirrorProjectTaskToPool i server.js) når de findes, ellers falder vi
+  // tilbage til selve den bookede kapacitetsuges datoer. Det er præcis det
+  // Martin bad om: "opstarts og slut datoerne baseret på projektet".
+  items.forEach(function(b){
+    var basedOnProject=capTlValidDate(b.task_start_date)&&capTlValidDate(b.task_end_date);
+    var ds=basedOnProject?b.task_start_date:b.start_date;
+    var de=basedOnProject?b.task_end_date:(b.end_date||b.start_date);
+    if(date(de)<date(ds))de=ds; // degenereret datointerval — vis som ét-dags bjælke i stedet for at fejle
+    b._capTlStart=ds;b._capTlEnd=de;b._capTlProjectBased=basedOnProject;
+  });
+  var avatarEl=document.getElementById('cap-timeline-avatar');
+  if(u.avatar_url){avatarEl.outerHTML='<img class="avatar-img" id="cap-timeline-avatar" style="width:36px;height:36px" src="'+u.avatar_url+'">';}
+  else{avatarEl.outerHTML='<div class="avatar" id="cap-timeline-avatar" style="background:'+(u.color||'#2563EB')+'22;color:'+(u.color||'#2563EB')+'">'+esc(u.initials||u.name.slice(0,2))+'</div>';}
+  document.getElementById('cap-timeline-title').textContent=u.name;
+  document.getElementById('cap-timeline-sub').textContent=(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+' · '+(+u.weekly_capacity||5)+' d/uge · '+items.length+' kapacitetsreservation'+(items.length!==1?'er':'');
+  var body=document.getElementById('cap-timeline-body');
+  if(!items.length){
+    body.innerHTML='<div class="tl-empty">Ingen kapacitetsreservationer endnu for '+esc(u.name)+'.</div>';
+    document.getElementById('cap-timeline-modal').classList.add('open');
+    return;
+  }
+  // Samlet datointerval, med lidt luft i hver ende, startende på en mandag
+  // (samme rytme som resten af Kapacitetsboardet).
+  var minStart=items.reduce(function(m,b){return date(b._capTlStart)<date(m)?b._capTlStart:m;},items[0]._capTlStart);
+  var maxEnd=items.reduce(function(m,b){return date(b._capTlEnd)>date(m)?b._capTlEnd:m;},items[0]._capTlEnd);
+  var rangeStart=mon(add(date(minStart),-3));
+  var rangeEndPadded=add(date(maxEnd),4);
+  var totalDays=Math.max(14,daysBetween(rangeStart,rangeEndPadded)+1);
+  // Dag-bredde skaleres ned for lange perioder (så en medarbejder booket over
+  // et helt år stadig kan rummes), med et fornuftigt min/maks og vandret scroll.
+  var DAY_W=Math.max(4,Math.min(26,Math.round(1500/totalDays)));
+  var totalW=totalDays*DAY_W;
+  var todayIdx=daysBetween(rangeStart,new Date());
+
+  // Lane-pakning — samme grådige algoritme som renderTimeline() — så
+  // overlappende reservationer stables i stedet for at kollidere visuelt.
+  var lanes=[];
+  items.slice().sort(function(a,b){return String(a._capTlStart).localeCompare(String(b._capTlStart));}).forEach(function(b){
+    var s=daysBetween(rangeStart,date(b._capTlStart));
+    var span=Math.max(1,daysBetween(date(b._capTlStart),date(b._capTlEnd))+1);
+    var placed=false;
+    for(var li=0;li<lanes.length;li++){
+      if(lanes[li]<=s){lanes[li]=s+span;b._lane=li;placed=true;break;}
+    }
+    if(!placed){lanes.push(s+span);b._lane=lanes.length-1;}
+  });
+  var laneCount=Math.max(1,lanes.length);
+  var hasOverlap=laneCount>1;
+  var trackH=laneCount*32+12;
+
+  var weekHTML='<div class="tl-weekrow">';
+  for(var w=0;w<totalDays;w+=7){
+    var wd=add(rangeStart,w);
+    var span=Math.min(7,totalDays-w);
+    weekHTML+='<div class="tl-weekcell" style="width:'+(span*DAY_W)+'px">Uge '+weekNo(wd)+' · '+wd.getDate()+'/'+(wd.getMonth()+1)+'</div>';
+  }
+  weekHTML+='</div>';
+
+  var bgHTML='<div class="tl-track-bg">';
+  for(var di=0;di<totalDays;di++){
+    var d=add(rangeStart,di);
+    var isWeekend=(d.getDay()===0||d.getDay()===6);
+    bgHTML+='<div class="tl-bg-cell'+(isWeekend?' weekend':'')+'" style="width:'+DAY_W+'px"></div>';
+  }
+  bgHTML+='</div>';
+  var todayLine=(todayIdx>=0&&todayIdx<totalDays)?'<div class="tl-todayline" style="left:'+(todayIdx*DAY_W+DAY_W/2)+'px"></div>':'';
+
+  var barsHTML=items.map(function(b){
+    var s=daysBetween(rangeStart,date(b._capTlStart));
+    var span=Math.max(1,daysBetween(date(b._capTlStart),date(b._capTlEnd))+1);
+    var left=s*DAY_W+1,width=Math.max(DAY_W-2,span*DAY_W-2);
+    var top=6+b._lane*32;
+    var type=TYPE[b.type_guess||'other']||TYPE.other;
+    var label=b.capacity_label||b.job_name||b.task_name||'Kapacitetsreservation';
+    var dashIdx=label.indexOf(' — ');
+    if(dashIdx>-1)label=label.slice(0,dashIdx);
+    var basisTxt=b._capTlProjectBased?'sagens planlagte datoer':'den bookede kapacitetsuge';
+    var tip=label+' — '+capTlShortDate(b._capTlStart)+' til '+capTlShortDate(b._capTlEnd)+' ('+basisTxt+') · '+capDaysOf(b)+' d reserveret';
+    return '<div class="tl-bar" data-action="open-cap-from-timeline" data-booking-id="'+b.id+'" style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+(type.bar||'#94A3B8')+'" title="'+esc(tip)+'"><span class="tl-bar-label">'+esc(label)+'</span></div>';
+  }).join('');
+
+  body.innerHTML='<div class="captl-scroll"><div class="tl-grid" style="width:'+totalW+'px">'+weekHTML+
+    '<div class="tl-row" style="border-bottom:none"><div class="tl-track" style="height:'+trackH+'px;width:'+totalW+'px">'+bgHTML+todayLine+barsHTML+'</div></div>'+
+    '</div></div>'+
+    '<div class="captl-legend">'+(hasOverlap?'⚠️ <strong>'+esc(u.name.split(' ')[0])+' er booket flere steder samtidig</strong> — bjælker der ligger i flere rækker overlapper i tid.':'✓ Ingen overlap fundet — alle reservationer ligger efter hinanden.')+' Bjælkerne viser '+esc(u.name.split(' ')[0])+'s kapacitetsreservationer, som udgangspunkt baseret på sagens egne planlagte start-/slutdatoer (ellers den bookede kapacitetsuge). Klik en bjælke for at åbne/redigere reservationen.</div>';
+  document.getElementById('cap-timeline-modal').classList.add('open');
+  // Rul tidslinjen hen til den uge, knappen blev trykket fra (falder tilbage
+  // til dags dato) — ellers ville en medarbejder med bookinger langt tilbage
+  // altid åbne visningen helt til venstre, uden den relevante uge i syne.
+  var scrollEl=body.querySelector('.captl-scroll');
+  if(scrollEl){
+    var targetIso=clickedWeekIso&&capTlValidDate(clickedWeekIso)?clickedWeekIso:iso(new Date());
+    var targetIdx=daysBetween(rangeStart,date(targetIso));
+    scrollEl.scrollLeft=Math.max(0,targetIdx*DAY_W-scrollEl.clientWidth/2);
+  }
+}
+function closeCapTimelinePopup(){document.getElementById('cap-timeline-modal').classList.remove('open');}
+
 // QUICK POP-UP
 var quickCtx=null;
 function populateQPUsers(selectedUid){
@@ -8844,6 +9050,14 @@ function openQuickPop(taskId,uid,dateStr,evt){
   // samme mening for en rå kapacitetsreservation uden en bestemt dag/kunde-tid).
   document.getElementById('qp-send-mail').checked=!inCapacity;
   document.getElementById('qp-note').value='';
+  // RUNDE H #27 — Martin: "når man trækker en opgave ud så kommer der også en
+  // popup og den note er ikke ændret". Denne hurtig-popup (træk en opgave fra
+  // poolen direkte ud på en dag) har sit EGET notefelt (qp-note, historisk et
+  // rent <input>, adskilt fra assign-note i redigér-booking-popup'en) — glemt i
+  // forrige runde. Samme init'es her (no-op efter 1. gang, se makeRichNoteField),
+  // og skal ske FØR positionFloatingPopup nedenfor måler popup'ens højde, ellers
+  // ville den blive positioneret ud fra den gamle, lavere højde.
+  makeRichNoteField('qp-note');
   document.getElementById('qp-note-link').value='';
   document.getElementById('qp-note-files').value='';
   setNoteAttachments('qp',[]);
@@ -14496,6 +14710,161 @@ function renderTimerPage(){
   }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:24px">Ingen timer i denne periode.</td></tr>';
 }
 
+// RUNDE H #28 — TIMETRACKING-ANALYSE (Tilbud & Faktura → ⏱️ Timetracking).
+// Martins ønske: "en side hvor man kan analysere alle folks timetracking ...
+// i billy style og gerne så man kan filtre på forskellige ting fra uge til
+// uge. interval, Opgaver og hvad ellers du mener er intrassant". Data hentes
+// ÉN gang (hele historikken, se GET /api/reports/time-tracking i server.js —
+// samme fetch-alt-filtrér-i-klienten mønster som Tilbud/Fakturaer-fanerne og
+// den gamle Timer-side ovenfor), og filtreres/grupperes herefter helt i
+// klienten — hurtigt og responsivt når man skifter periode/medarbejder/fag
+// "fra uge til uge", uden et nyt serverkald pr. filterskift.
+var ttData=null,ttPeriodFilter=null,ttExpanded={},ttFilterOptionsBuilt=false;
+function ttEnsureData(cb){
+  if(ttData){cb();return;}
+  api('/api/reports/time-tracking').then(function(r){
+    ttData=(r&&r.entries)?r:{entries:[],error:(r&&r.error)||'Kunne ikke hente timetracking-data'};
+    cb();
+  }).catch(function(){ttData={entries:[],error:'Kunne ikke hente timetracking-data'};cb();});
+}
+function ttBuildFilterOptions(){
+  if(ttFilterOptionsBuilt||!ttData||!ttData.entries)return;
+  ttFilterOptionsBuilt=true;
+  var byUser={},trades={};
+  ttData.entries.forEach(function(e){
+    if(!byUser[e.user_id])byUser[e.user_id]={id:e.user_id,name:e.user_name,active:e.user_active};
+    if(e.user_trade)trades[e.user_trade]=1;
+  });
+  var users2=Object.keys(byUser).map(function(k){return byUser[k];}).sort(function(a,b){return a.name.localeCompare(b.name,'da');});
+  document.getElementById('tt-filter-user').innerHTML='<option value="all">Alle medarbejdere</option>'+users2.map(function(u){
+    return '<option value="'+u.id+'">'+esc(u.name)+(u.active?'':' (inaktiv)')+'</option>';
+  }).join('');
+  var tradeNames=Object.keys(trades).sort(function(a,b){return a.localeCompare(b,'da');});
+  document.getElementById('tt-filter-trade').innerHTML='<option value="all">Alle fag</option>'+tradeNames.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join('')+(tradeNames.length?'':'')+'<option value="__none__">Uden fag</option>';
+}
+function ttFilteredEntries(){
+  if(!ttData||!ttData.entries)return [];
+  var uid=document.getElementById('tt-filter-user').value;
+  var trade=document.getElementById('tt-filter-trade').value;
+  var payType=document.getElementById('tt-filter-paytype').value;
+  var q=(document.getElementById('tt-search').value||'').trim().toLowerCase();
+  return ttData.entries.filter(function(e){
+    if(ttPeriodFilter&&!ttPeriodFilter.matches(e.entry_date))return false;
+    if(uid&&uid!=='all'&&String(e.user_id)!==String(uid))return false;
+    if(trade&&trade!=='all'){
+      if(trade==='__none__'){if(e.user_trade)return false;}
+      else if((e.user_trade||'')!==trade)return false;
+    }
+    // RUNDE H #28 — filtreres på hvordan DENNE registrering rent faktisk blev
+    // aflønnet (is_akkord, sat pr. linje via akkord-post+antal), ikke på
+    // medarbejderens generelle pay_type-indstilling — en timelønnet medarbejder
+    // kan sagtens have enkelte akkord-linjer, og omvendt.
+    if(payType&&payType!=='all'&&(e.is_akkord?'akkord':'hourly')!==payType)return false;
+    if(q){
+      var hay=((e.project_name||'')+' '+(e.customer_name||'')).toLowerCase();
+      if(hay.indexOf(q)===-1)return false;
+    }
+    return true;
+  });
+}
+function ttFmtHours(minutes){return (minutes/60).toFixed(1).replace('.',',');}
+function ttFmtKr(n){return Math.round(n).toLocaleString('da-DK')+' kr';}
+function renderTimetrackReport(){
+  if(!ttData){ttEnsureData(renderTimetrackReport);return;}
+  var kpiEl=document.getElementById('tt-kpi-row'),bodyEl=document.getElementById('tt-body');
+  if(ttData.error){
+    kpiEl.innerHTML='';
+    var msg=ttData.error==='Admin only'?'🔒 Kun administratorer kan se timetracking-rapporten (den viser alles timeløn).':esc(ttData.error);
+    bodyEl.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:32px">'+msg+'</td></tr>';
+    return;
+  }
+  ttBuildFilterOptions();
+  var filtered=ttFilteredEntries();
+  var totalMinutes=0,totalCost=0,activeSet={};
+  filtered.forEach(function(e){totalMinutes+=e.minutes;totalCost+=e.cost;activeSet[e.user_id]=1;});
+  var kpis=[
+    {label:'Total timer',value:ttFmtHours(totalMinutes)+' t'},
+    {label:'Estimeret løn',value:ttFmtKr(totalCost)},
+    {label:'Registreringer',value:filtered.length},
+    {label:'Medarbejdere i perioden',value:Object.keys(activeSet).length}
+  ];
+  kpiEl.innerHTML=kpis.map(function(k){
+    return '<div class="bly-kpi-card" style="cursor:default"><div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:var(--bly-accent)"></span>'+esc(k.label)+'</div><div class="bly-kpi-value">'+k.value+'</div></div>';
+  }).join('');
+  // Gruppér pr. medarbejder — det er selve "analysere alle folks timetracking",
+  // med mulighed for at folde en enkelt medarbejder ud til de bagvedliggende
+  // registreringer (sag, dato, note, timer/akkord, kr) uden at forlade siden.
+  var byUser={};
+  filtered.forEach(function(e){
+    var key=e.user_id||0;
+    if(!byUser[key])byUser[key]={user_id:e.user_id,name:e.user_name,trade:e.user_trade,active:e.user_active,minutes:0,count:0,cost:0,akkordCount:0,hourlyCount:0,entries:[]};
+    var g=byUser[key];
+    g.minutes+=e.minutes;g.count++;g.cost+=e.cost;g.entries.push(e);
+    if(e.is_akkord)g.akkordCount++;else g.hourlyCount++;
+  });
+  var groups=Object.keys(byUser).map(function(k){return byUser[k];}).sort(function(a,b){return b.minutes-a.minutes;});
+  if(!groups.length){
+    bodyEl.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:32px">Ingen tidsregistreringer fundet for den valgte periode/filtre.</td></tr>';
+    return;
+  }
+  bodyEl.innerHTML=groups.map(function(g){
+    var open=!!ttExpanded[g.user_id];
+    // RUNDE H #28 — Løntype pr. medarbejder-række afspejler de FAKTISKE
+    // registreringer i den filtrerede periode (kan sagtens være blandet — en
+    // gulvlægger tager typisk timeløn, men kan have enkelte akkord-linjer).
+    var payLabel=g.akkordCount&&g.hourlyCount?'Blandet':(g.akkordCount?'Akkord':'Timeløn');
+    var mainRow='<tr class="tt-row" data-action="toggle-tt-row" data-user-id="'+g.user_id+'" style="cursor:pointer">'+
+      '<td>'+(open?'▾':'▸')+'</td>'+
+      '<td>'+esc(g.name)+(g.active?'':' <span class="opt-tag">inaktiv</span>')+'</td>'+
+      '<td>'+esc(g.trade||'—')+'</td>'+
+      '<td>'+payLabel+'</td>'+
+      '<td class="num">'+ttFmtHours(g.minutes)+' t</td>'+
+      '<td class="num">'+g.count+'</td>'+
+      '<td class="num">'+ttFmtKr(g.cost)+'</td>'+
+      '</tr>';
+    var detailRow='';
+    if(open){
+      var rows=g.entries.slice().sort(function(a,b){return String(b.entry_date).localeCompare(String(a.entry_date));}).map(function(e){
+        var sub=e.is_akkord?(e.akkord_name||'Akkord')+' · '+e.akkord_quantity+' stk':ttFmtHours(e.minutes)+' t';
+        return '<div class="tt-detail-row"><div class="tt-detail-date">'+esc(String(e.entry_date).slice(0,10))+'</div>'+
+          '<div class="tt-detail-project">'+esc(e.project_name)+(e.customer_name?' <span class="tt-detail-customer">· '+esc(e.customer_name)+'</span>':'')+
+          (e.note?'<div class="tt-detail-note">'+esc(e.note)+'</div>':'')+'</div>'+
+          '<div class="tt-detail-sub">'+sub+'</div>'+
+          '<div class="tt-detail-cost">'+ttFmtKr(e.cost)+'</div></div>';
+      }).join('');
+      detailRow='<tr class="tt-detail-wrap"><td colspan="7"><div class="tt-detail-list">'+rows+'</div></td></tr>';
+    }
+    return mainRow+detailRow;
+  }).join('');
+}
+function ttExportCsv(){
+  var filtered=ttFilteredEntries();
+  if(!filtered.length){toast('Ingen registreringer at eksportere','⚠');return;}
+  var header=['Dato','Medarbejder','Fag','Løntype','Sag','Kunde','Timer','Akkord-post','Akkord-antal','Note','Estimeret løn (kr)'];
+  var lines=[header.join(';')];
+  filtered.slice().sort(function(a,b){return String(a.entry_date).localeCompare(String(b.entry_date));}).forEach(function(e){
+    var cells=[
+      String(e.entry_date).slice(0,10),
+      e.user_name,e.user_trade||'',
+      e.is_akkord?'Akkord':'Timeløn',
+      e.project_name,e.customer_name||'',
+      e.is_akkord?'':(e.minutes/60).toFixed(2).replace('.',','),
+      e.is_akkord?(e.akkord_name||''):'',
+      e.is_akkord?String(e.akkord_quantity).replace('.',','):'',
+      (e.note||'').replace(/[\r\n;]+/g,' '),
+      Math.round(e.cost)
+    ];
+    lines.push(cells.map(function(c){var s=String(c==null?'':c);return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(';'));
+  });
+  // BOM foran, så Excel på dansk Windows læser æ/ø/å korrekt uden manuel import.
+  var blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download='timetracking-'+iso(new Date())+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},1000);
+}
+
 // SYSTEMLOG — samlet visning af JobTread-synk + notifikationsscan, så man kan
 // bekræfte i appen at automatiske baggrundsjob rent faktisk kører (og se om noget fejler).
 var systemLogItems=[],systemLogFilter='all';
@@ -14999,7 +15368,7 @@ async function bind(){
     if(parts[0]==='quotes'&&!parts[1])qzShowDetailView(false);
     // Dyb-link til en af Tilbud & Faktura-modulets egne faner fra sidebaren —
     // #quotes/<alias> (uden id-segment ovenfor) — se data-qztab-jump i sidebaren.
-    var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates'};
+    var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','timetracking':'timetrack'};
     if(parts[0]==='quotes'&&parts[1]&&QZTAB_HASH_MAP[parts[1]])switchQzTab(QZTAB_HASH_MAP[parts[1]]);
     if(parts[0]==='crmp'&&parts[1]==='leads')crmpSelectPipelineByType('lead');
     if(parts[0]==='crmp'&&parts[1]==='sales')crmpSelectPipelineByType('opportunity');
@@ -15749,6 +16118,7 @@ async function bind(){
   // Capacity-only modal
   document.getElementById('close-capacity').onclick=function(){closeModal('capacity-modal');capacityCtx=null;};
   document.getElementById('save-capacity').onclick=saveCapacityReservation;
+  document.getElementById('close-cap-timeline').onclick=closeCapTimelinePopup;
   document.getElementById('delete-capacity').onclick=deleteCapacityReservation;
   // Ferie/fravær-modal (Daglig plan, Kapacitet og personkort)
   document.getElementById('close-timeoff').onclick=function(){closeModal('timeoff-modal');timeOffModalCtx=null;};
@@ -15866,6 +16236,9 @@ async function bind(){
       if(act==='move-booking'){e.stopPropagation();api('/api/assignments/'+a.dataset.bookingId+'/move',{method:'PUT',body:JSON.stringify({direction:a.dataset.dir,date:a.dataset.date})}).then(function(r){if(r&&r.ok)loadAll();else if(r)toast(r.error||'Fejl','❌');});}
       if(act==='capacity-add')openCapacityModal({weekStart:iso(mon(new Date()))});
       if(act==='add-capacity')openCapacityModal({userId:+a.dataset.userId,weekStart:a.dataset.date});
+      if(act==='open-cap-timeline'){e.stopPropagation();openCapTimelinePopup(+a.dataset.userId,a.dataset.date);}
+      if(act==='open-cap-from-timeline'){e.stopPropagation();var ctlB=bookings.find(function(x){return +x.id===+a.dataset.bookingId;});closeCapTimelinePopup();if(ctlB)openCapacityModal({booking:ctlB});}
+      if(act==='toggle-tt-row'){e.stopPropagation();ttExpanded[a.dataset.userId]=!ttExpanded[a.dataset.userId];renderTimetrackReport();}
       if(act==='pool-filter'){filters[a.dataset.scope][a.dataset.kind]=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}
       if(act==='team-filter'){filters[a.dataset.scope].team=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else if(a.dataset.scope==='availability')renderAvailability();else renderCapacity();}
       if(act==='toggle-vendor'){var g=a.dataset.group;vendorExpanded[g]=vendorExpanded[g]!==true;renderPlan();renderCapacity();}
@@ -15956,7 +16329,7 @@ async function bind(){
     // Åbnet direkte via et #quotes/tilbud/123-link (fx højreklik → åbn i ny fane)
     if(initialPage==='quotes'&&initialParts[1]==='tilbud'&&initialParts[2])openQuoteEditor(Number(initialParts[2]));
     if(initialPage==='quotes'&&initialParts[1]==='faktura'&&initialParts[2])openInvoiceDetail(Number(initialParts[2]));
-    var QZTAB_HASH_MAP_INIT={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates'};
+    var QZTAB_HASH_MAP_INIT={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','timetracking':'timetrack'};
     if(initialPage==='quotes'&&initialParts[1]&&QZTAB_HASH_MAP_INIT[initialParts[1]])switchQzTab(QZTAB_HASH_MAP_INIT[initialParts[1]]);
     if(initialPage==='crmp'&&initialParts[1]==='leads')crmpSelectPipelineByType('lead');
     if(initialPage==='crmp'&&initialParts[1]==='sales')crmpSelectPipelineByType('opportunity');
@@ -16373,7 +16746,7 @@ async function loadQzQuotes(){var r=await api('/api/quotes');qzQuotes=Array.isAr
 async function loadQzInvoices(){var r=await api('/api/invoices');qzInvoices=Array.isArray(r)?r:[];}
 async function loadQzTemplates(){var r=await api('/api/quote-templates');qzTemplates=Array.isArray(r)?r:[];}
 
-var QZ_MORE_TABS=['products','templates'];
+var QZ_MORE_TABS=['products','templates','timetrack'];
 function switchQzTab(name){
   qzActiveTab=name;
   document.querySelectorAll('#qz-tabs > .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
@@ -16385,7 +16758,12 @@ function switchQzTab(name){
   document.getElementById('qz-more-btn').classList.toggle('active',isMoreTab);
   document.querySelectorAll('.qz-more-item').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
   document.getElementById('qz-more-menu').classList.remove('open');
-  ['products','templates','quotes','invoices'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
+  ['products','templates','quotes','invoices','timetrack'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
+  // RUNDE H #28 — Timetracking-rapporten hentes bevidst FØRST når man rent
+  // faktisk åbner fanen (ikke i initQuotesModule ved siden af Tilbud/Fakturaer),
+  // for ikke at bremse den almindelige Tilbud & Faktura-indlæsning med et
+  // admin-only kald de fleste besøg på siden slet ikke bruger.
+  if(name==='timetrack')renderTimetrackReport();
 }
 // RUNDE V (fortsat, Martins ønske: "hver tilbud får en side man lander på ...
 // lave sådan en tilbage knap til alle tilbud") — tilbudseditoren er en 2. visning
@@ -23520,6 +23898,13 @@ function bindQuotesModuleEvents(){
   document.getElementById('qz-invoice-search').addEventListener('input',renderQzInvoices);
   qzQuotePeriodFilter=makeBlyPeriodFilter('qz-quotes-period-btn','qz-quotes-period-pop','qz-quotes-period-label',function(){renderQzQuotes();});
   qzInvoicePeriodFilter=makeBlyPeriodFilter('qz-invoices-period-btn','qz-invoices-period-pop','qz-invoices-period-label',function(){renderQzInvoices();});
+  // RUNDE H #28 — Timetracking-fanen.
+  ttPeriodFilter=makeBlyPeriodFilter('tt-period-btn','tt-period-pop','tt-period-label',function(){renderTimetrackReport();});
+  document.getElementById('tt-search').addEventListener('input',renderTimetrackReport);
+  document.getElementById('tt-filter-user').addEventListener('change',renderTimetrackReport);
+  document.getElementById('tt-filter-trade').addEventListener('change',renderTimetrackReport);
+  document.getElementById('tt-filter-paytype').addEventListener('change',renderTimetrackReport);
+  document.getElementById('tt-export-btn').addEventListener('click',ttExportCsv);
   document.getElementById('qz-new-product-btn').addEventListener('click',function(){openProductModal(null);});
   document.getElementById('qz-import-jt-btn').addEventListener('click',importProductsFromJobtread);
   // RUNDE Y — produkt-dashboard (se qzOpenProductDashboard/qzRenderProductDashboard).

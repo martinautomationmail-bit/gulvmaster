@@ -10454,6 +10454,78 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   });
 }));
 
+// RUNDE H #28 — Martins ønske: "under Tilbud og faktura lave en side hvor man
+// kan analysere alle folks timetracking ... i billy style og gerne så man kan
+// filtre på forskellige ting fra uge til uge. interval, Opgaver og hvad ellers
+// du mener er intrassant". Global (ikke pr.-sag) rapport over ALLE
+// tidsregistreringer på tværs af sager — samme løn-/akkord-regnestykke som
+// GET /api/projects/:id/budget ovenfor, bare uden WHERE project_id=$1.
+//
+// adminOnly (ikke kun panelAccess('quotes'), som resten af Tilbud & Faktura-
+// siden bruger) — timeløn/hourly_wage er bevidst IKKE en del af den brede
+// bruger-liste andre steder i appen (se kommentaren ved GET /api/users/:id/pay),
+// og denne rapport viser den for alle medarbejdere på én gang, så adgangen skal
+// være mindst lige så streng. Fanen i UI'en er stadig synlig for alle med
+// adgang til Tilbud & Faktura — men selve dataen (og dermed lønnen) kan kun
+// hentes af en rigtig admin; ikke-admins ser en tom rapport med en tydelig
+// besked i stedet for et rådt API-kald.
+//
+// Henter ALT (ingen server-side dato-filtrering) og lader klienten filtrere,
+// ligesom Tilbud/Fakturaer-fanerne og den gamle "Timer"-side allerede gør
+// (se makeBlyPeriodFilter i admin.html) — konsistent med resten af appen, og
+// affødt af at tabellen i praksis er lille nok til det for en virksomhed på
+// Gulv Masters størrelse. Bliver den på sigt for stor, er det her stedet at
+// lægge from/to-parametre ind i stedet.
+app.get('/api/reports/time-tracking', auth, adminOnly, asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT te.id, te.project_id, te.minutes, te.note, te.entry_date, te.created_at,
+           te.akkord_item_id, te.akkord_quantity,
+           p.name AS project_name, p.status AS project_status, p.project_type, p.customer_id,
+           c.name AS customer_name,
+           te.user_id, u.name AS user_name, u.trade AS user_trade, u.worker_type,
+           u.pay_type, u.hourly_wage, u.active AS user_active,
+           ai.name AS akkord_name, ai.rate AS akkord_rate
+    FROM time_entries te
+    LEFT JOIN projects p ON p.id = te.project_id
+    LEFT JOIN customers c ON c.id = p.customer_id
+    LEFT JOIN users u ON u.id = te.user_id
+    LEFT JOIN akkord_items ai ON ai.id = te.akkord_item_id
+    ORDER BY te.entry_date DESC, te.id DESC
+  `).then(r => r.rows);
+
+  const entries = rows.map(row => {
+    const isAkkord = !!(row.akkord_item_id && Number(row.akkord_quantity) > 0);
+    const minutes = Number(row.minutes) || 0;
+    const cost = isAkkord
+      ? (Number(row.akkord_quantity) || 0) * (Number(row.akkord_rate) || 0)
+      : (minutes / 60) * (Number(row.hourly_wage) || 0);
+    return {
+      id: row.id,
+      project_id: row.project_id,
+      project_name: row.project_name || 'Ukendt sag',
+      project_status: row.project_status || null,
+      project_type: row.project_type || null,
+      customer_name: row.customer_name || null,
+      user_id: row.user_id,
+      user_name: row.user_name || 'Ukendt medarbejder',
+      user_trade: row.user_trade || null,
+      worker_type: row.worker_type || 'employee',
+      user_active: row.user_active !== 0,
+      pay_type: row.pay_type || 'hourly',
+      minutes,
+      note: row.note || '',
+      entry_date: row.entry_date,
+      created_at: row.created_at,
+      is_akkord: isAkkord,
+      akkord_name: row.akkord_name || null,
+      akkord_quantity: isAkkord ? Number(row.akkord_quantity) || 0 : 0,
+      akkord_rate: isAkkord ? Number(row.akkord_rate) || 0 : 0,
+      cost
+    };
+  });
+  res.json({ entries });
+}));
+
 // Kontoret vælger hvilke KS-skabeloner der er tilgængelige for medarbejderen på DENNE
 // sag. Ingen rækker gemt = ingen begrænsning (alle skabeloner tilladt, bagudkompatibelt).
 app.put('/api/projects/:id/qa-templates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
