@@ -6819,6 +6819,33 @@ app.get('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
     projects: projects.rows
   });
 }));
+// RUNDE I (Martins ønske: rigtige tal — ikke opdigtede — på Kundekortet inde
+// på selve lead-/opportunity-siden, "3 sager · 1 tilbud · X kr." i stedet for
+// kun navn). Selve dataen findes allerede ovenfor på GET /api/crm/customers/:id,
+// men DEN rute kræver adgang til "Kunder"-siden og sender fulde
+// sags-/tilbuds-/faktura-lister med — mere end nødvendigt for et lille
+// opsummeringskort, og mere data end en bruger med kun CRM-adgang (crmp_leads/
+// crmp_sales), men ikke Kunder, bør kunne hente. Denne rute er bevidst
+// afgrænset til KUN de 3 optællinger (ingen fakturadetaljer), og tilgængelig
+// for alle der har adgang til mindst én af de tre relevante sider.
+app.get('/api/crm/customers/:id/summary', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const customer = await pgOne('SELECT id FROM customers WHERE id=$1', [req.params.id]);
+  if (!customer) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
+  const [projectCount, quoteCount, invoiceTotal] = await Promise.all([
+    pgOne('SELECT COUNT(*)::int AS n FROM projects WHERE customer_id=$1', [req.params.id]),
+    pgOne('SELECT COUNT(*)::int AS n FROM quotes WHERE customer_id=$1', [req.params.id]),
+    pgOne(`
+      SELECT COALESCE(SUM(i.total),0)::numeric AS sum
+      FROM invoices i JOIN quotes q ON q.id = i.quote_id
+      WHERE q.customer_id=$1
+    `, [req.params.id])
+  ]);
+  res.json({
+    project_count: projectCount.n,
+    quote_count: quoteCount.n,
+    invoice_total: Number(invoiceTotal.sum) || 0
+  });
+}));
 app.post('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   if (!b.name) return res.status(400).json({ error: 'Navn mangler' });

@@ -984,6 +984,13 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-mini-card-top{display:flex;align-items:center;gap:9px;margin-bottom:6px}
 .crmpx-mini-avatar{width:26px;height:26px;border-radius:8px;background:var(--bly-accent-soft);color:var(--bly-accent);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;flex-shrink:0}
 .crmpx-mini-card .crmpx-mini-card-name{margin-bottom:0}
+/* RUNDE I (2. runde) — rigtige tal (sager/tilbud/faktureret) hentet fra
+   GET /api/crm/customers/:id/summary, se openCrmpDetail. Tom indtil svaret
+   kommer tilbage (ingen layout-hop af betydning, kortet virker fint uden). */
+.crmpx-mini-card-stats{display:flex;gap:6px;margin-top:8px}
+.crmpx-mini-stat{flex:1;background:#fff;border-radius:8px;padding:7px 8px;text-align:left;min-width:0}
+.crmpx-mini-stat b{display:block;font-size:12.5px;font-weight:800;color:var(--bly-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crmpx-mini-stat span{font-size:9.5px;color:var(--bly-sub)}
 .crmpx-activity-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--bly-border-soft)}
 .crmpx-activity-item:last-child{border-bottom:0}
 .crmpx-activity-icon{width:26px;height:26px;border-radius:50%;background:var(--bly-border-soft);display:grid;place-items:center;flex-shrink:0;font-size:12px}
@@ -2952,7 +2959,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.7</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.8</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -19226,7 +19233,23 @@ async function openCrmpDetail(entityType,id){
       '<div class="crmpx-mini-card" onclick="openCustomerDetail('+d.customer_id+')">'
       +'<div class="crmpx-mini-card-top"><span class="crmpx-mini-avatar">'+esc(custInitials)+'</span><div class="crmpx-mini-card-name">'+esc(displayName||'Kunde')+'</div></div>'
       +'<div class="crmpx-mini-card-row">Åbn kundekort — sager, tilbud, fakturaer &amp; noter →</div>'
+      +'<div class="crmpx-mini-card-stats" id="crmpx-customer-stats"></div>'
       +'</div>';
+    // RUNDE I (2. runde — Martin bad om de RIGTIGE tal, ikke kun mockup-idéen).
+    // Hentes separat (ikke i selve openCrmpDetail-loadet ovenfor) fra den nye,
+    // afgrænsede GET .../summary-rute, så selve Kunde-panelet vises med det
+    // samme og tallene bare dukker op et øjeblik efter. Klik på "Åbn
+    // kundekort"-kortet skal IKKE trigges af klik i selve stat-rækken (den er
+    // ikke klikbar i sig selv) — den ligger inde i samme <div onclick=...>
+    // som resten af kortet med vilje, så et klik hvor som helst på kortet
+    // (inkl. tallene) åbner det fulde kundekort, ligesom før.
+    api('/api/crm/customers/'+d.customer_id+'/summary').then(function(s){
+      var el=document.getElementById('crmpx-customer-stats');
+      if(!el||!s||s.error)return;
+      el.innerHTML='<div class="crmpx-mini-stat"><b>'+s.project_count+'</b><span>sager</span></div>'
+        +'<div class="crmpx-mini-stat"><b>'+s.quote_count+'</b><span>tilbud</span></div>'
+        +'<div class="crmpx-mini-stat"><b>'+krFmt(s.invoice_total)+'</b><span>faktureret</span></div>';
+    });
   }
   // Detaljer/Filer/Emails/Noter-faneskift — nulstilles til "Detaljer" for hvert
   // lead/opportunity man åbner. Selve fanebjælken kræver kun en kobling til en
