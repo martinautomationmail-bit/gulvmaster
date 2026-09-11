@@ -914,9 +914,27 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-crmp-detail .tld-label{text-transform:none;color:var(--bly-sub);font-weight:700;letter-spacing:.02em;font-size:11px}
 #page-crmp-detail .tld-input{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);color:var(--bly-ink)}
 #page-crmp-detail .tld-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
-.crmpx-head-name{font-size:20px;font-weight:800;color:var(--bly-ink);border:0;background:transparent;padding:2px 0;min-width:120px}
-.crmpx-head-name:focus{outline:none;background:var(--bly-border-soft);border-radius:var(--bly-r-sm)}
+/* RUNDE Æ (Martins ønske: "ret kunde data inde under kunden det ikke muligt,
+   der ingen knap for det") — navnefeltet var reelt already et redigerbart
+   input med autogem, men helt usynligt som sådan (border:0, gennemsigtig
+   baggrund) — så det så ud som en almindelig, ikke-klikbar overskrift, og
+   Martin havde ingen grund til at tro han kunne skrive i det. Får nu en
+   diskret men tydelig feltramme hele tiden (ikke kun ved fokus), ligesom
+   telefon/email/adresse-felterne nedenunder allerede har. */
+.crmpx-head-name{font-size:20px;font-weight:800;color:var(--bly-ink);border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);padding:4px 9px;min-width:120px}
+.crmpx-head-name:hover{border-color:var(--bly-sub)}
+.crmpx-head-name:focus{outline:none;border-color:var(--bly-accent);background:#fff;border-radius:var(--bly-r-sm);box-shadow:0 0 0 3px var(--bly-accent-soft)}
 .crmpx-avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0;background:var(--bly-accent)}
+/* RUNDE Æ (Martins ønske: flyt pipeline-status-knappen væk fra midten af
+   navnerækken, "et andet sted hen der mere neutralt og normalt", og gør den
+   mindre kedelig) — vist nu som en farvet pille (samme .crmp-col-dot-farve
+   som stadiet har på selve pipeline-boardet) i værktøjslinjen til højre,
+   ved siden af Email/Ring, i stedet for klemt inde mellem avatar og navn.
+   Stadig det samme <select id="crmpx-stage">, kun ny placering + styling —
+   se crmpxUpdateStagePillColor() for farvelogikken. */
+.crmpx-stage-select{border:1px solid var(--bly-border);border-radius:var(--bly-r-pill);font-size:12px;font-weight:700;padding:8px 30px 8px 14px;cursor:pointer;transition:filter .12s}
+.crmpx-stage-select:hover{filter:brightness(.96)}
+.crmpx-stage-select:focus{outline:none;box-shadow:0 0 0 3px var(--bly-accent-soft)}
 .crmpx-layout{display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:18px;align-items:start}
 @media (max-width:900px){.crmpx-layout{grid-template-columns:minmax(0,1fr)}}
 .crmpx-col-left{display:flex;flex-direction:column;gap:14px;min-width:0}
@@ -1753,9 +1771,38 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
    sidebarens egne undermenuer — egen klasse (.pool-filter-panel) så den kan
    style's uafhængigt af de andre .navdrop-menu-brugere i appen. */
 .pool-filter-panel{border-radius:var(--bly-r-md)!important;border:1px solid var(--bly-border)!important;box-shadow:0 10px 30px rgba(15,23,42,.12)!important}
-.pool-filter-panel .pool-filter-label{margin-top:10px;color:var(--bly-sub)}
-.pool-filter-panel .pool-filter-label:first-child{margin-top:0}
-.pool-filter-panel .filter-dropdown-btn{border-radius:var(--bly-r-sm);border-color:var(--bly-border)}
+/* VIGTIGT: display:flex skal sidde på .open-varianten, ikke basisklassen —
+   basis .navdrop-menu{display:none} (linje 45) styrer om panelet overhovedet
+   er synligt, og en display-regel direkte på .pool-filter-panel ville vinde
+   over den (samme specificitet, men senere i arket) og gøre panelet synligt
+   HELE TIDEN uanset .open-klassen. */
+.pool-filter-panel.open{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
+/* RUNDE Æ — hver .filter-row (status/fag/projekttype/periode) holder normalt
+   kun ÉT element, men skal opføre sig som var det bare ét fælles, ombrydende
+   chip-flow i panelet i stedet for fire adskilte fuld-bredde rækker under
+   hinanden — display:contents fjerner selve row-div'ens boks og lader dens
+   indhold flyde direkte i .pool-filter-panels flex-wrap ovenfor. */
+.pool-filter-panel .filter-row{display:contents}
+.pool-filter-panel .filter-dropdown{width:auto}
+.pool-filter-panel .filter-dropdown-btn{width:auto;border-radius:var(--bly-r-pill);border-color:var(--bly-border);padding:7px 13px;font-size:11.5px}
+/* .filter-dropdown-menu er normalt left:0;right:0 (fylder hele trigger-
+   knappens bredde) — passer fint når knappen selv er fuld bredde, men her er
+   den nu kun en smal chip, så menuen skal have sin egen bredde i stedet for
+   at blive klemt ned til chippens. */
+.pool-filter-panel .filter-dropdown-menu{right:auto;min-width:170px}
+/* Aktivt filter (valgt værdi ≠ "Alle") — mørk pille i stedet for samme hvide
+   udseende som en knap der reelt ikke filtrerer på noget, se
+   filterDropdownHTML()'s isActive/hint-parametre. Samme sort/hvid-kontrast
+   som "+ Book / Opgave"-knappen (var(--bly-ink)), efter Martins eget forslag. */
+.pool-filter-panel .filter-dropdown-btn.active{background:var(--bly-ink);border-color:var(--bly-ink);color:#fff}
+.pool-filter-panel .filter-dropdown-btn.active:hover{background:#000}
+#plan-date-filter-row{width:auto}
+#plan-date-filter-row button[data-action="plan-date-filter-on"]{border-radius:var(--bly-r-pill);padding:7px 13px;font-size:11.5px;width:auto}
+/* Når et datofilter ER aktivt vises ◀/uge/▶/✕ + datovælger i stedet for
+   knappen ovenfor — får samme lette "der filtreres lige nu"-markering
+   (accent-farvet baggrund) som resten af panelet, i sin egen fulde linje da
+   den fylder mere end en enkelt chip. */
+#plan-date-filter-row:has(input#plan-date-jump){width:100%;background:var(--bly-accent-soft);border-radius:var(--bly-r-sm);padding:6px 8px}
 #opgavepool-panel .pool-group{border-radius:var(--bly-r-md);border-color:var(--bly-border-soft)}
 #opgavepool-panel .pool-group-head{padding:10px 12px}
 #opgavepool-panel .pool-group-head:hover{background:var(--bly-hover)}
@@ -1765,8 +1812,13 @@ table.bly-table tr.bly-row:hover td{background:var(--bly-hover)}
 #opgavepool-panel .pool-group-body{background:#FAFAFB;padding:8px}
 #opgavepool-panel .task-card{border-radius:var(--bly-r-md);border-color:var(--bly-border-soft);padding:10px 11px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
 #opgavepool-panel .task-card:hover{border-color:var(--bly-accent);box-shadow:0 4px 14px rgba(79,70,229,.12)}
-#opgavepool-panel .task-name{font-size:12px;color:var(--bly-ink)}
+#opgavepool-panel .task-name{font-size:12.5px;font-weight:800;color:var(--bly-ink)}
 #opgavepool-panel .task-sub{font-size:10.5px}
+/* RUNDE Æ — se taskCard()/scope==='plan' for markup. To kompakte knapper side
+   om side i stedet for to fuld-bredde rækker. */
+#opgavepool-panel .task-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+#opgavepool-panel .task-card-actions:has(>.btn:only-child){grid-template-columns:1fr}
+#opgavepool-panel .task-card-actions .btn{width:100%;margin-top:0}
 #opgavepool-panel .badge{border-radius:var(--bly-r-pill);padding:3px 8px;font-size:8.5px}
 #opgavepool-panel .tag{border-radius:var(--bly-r-pill);padding:2px 7px}
 
@@ -4064,10 +4116,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           </div>
           <div class="sub" id="crmpx-sub">–</div>
         </div>
-        <select id="crmpx-stage" class="select" style="width:auto"></select>
       </div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <select id="crmpx-stage" class="crmpx-stage-select"></select>
       <a class="bly-btn outline" id="crmpx-email-btn" href="#" target="_blank">✉️ Email</a>
       <a class="bly-btn outline" id="crmpx-call-btn" href="#">📞 Ring</a>
       <button class="bly-btn" id="crmpx-quote-btn" type="button" style="display:none">📝 Lav tilbud</button>
@@ -4955,26 +5007,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           </div>
           <div class="navdrop" id="pool-filter-dropdown" style="position:relative">
             <button class="btn small" id="pool-filter-btn" type="button" style="width:100%">🔍 Filtre ▾</button>
+            <!-- RUNDE Æ (Martins ønske: "det ikke pænt nok opsat, du behøver
+                 heller ikke tekst over hver knap") — de fire STATUS/FAG/PROJEKT
+                 TYPE/PERIODE-overskrifter er fjernet; knappernes egen tekst siger
+                 allerede hvad de filtrerer på ("Status: Alle" osv.), og hints
+                 (fx "fra sagen" på Projekt type) er flyttet til et title-tooltip
+                 i stedet for en fast linje tekst. Alle fire filtre står nu i én
+                 kompakt, ombrydende chip-række (se .pool-filter-panel .filter-row)
+                 i stedet for fire fuld-bredde knapper stablet ovenpå hinanden. -->
             <div class="navdrop-menu pool-filter-panel" id="pool-filter-menu" style="left:0;right:auto;width:270px;padding:12px">
-              <div class="pool-filter-label">Status</div>
               <div class="filter-row" id="plan-status-filters"></div>
-              <div class="pool-filter-label">Fag</div>
               <div class="filter-row" id="plan-type-filters"></div>
-              <!-- RUNDE Z (Martins ønske: "Sagens Projekt Type hvor du trækker den
-                   fra Projekter") — helt separat fra "Fag" ovenfor: den trækker
-                   sagens EGEN, rigtige projekttype (Faggruppe, sat manuelt af
-                   Martin på sagen i Projekter — samme liste som pjProjectTypes/
-                   GET /api/project-types), ikke opgavens egen (ofte upræcise,
-                   JobTread-gættede) type_guess. Se filterTasks()/plan-projecttype-
-                   filters-opsætningen i JS. -->
-              <div class="pool-filter-label">Projekt type <span class="opt-tag" style="text-transform:none">fra sagen</span></div>
               <div class="filter-row" id="plan-projecttype-filters"></div>
-              <!-- Datofilter/uge (sep. 2026, Martins ønske #2, udvidet RUNDE Z med
-                   direkte datospring): filtrerer KUN Opgavepool-listen til en valgt
-                   uge (opgavens start-/slutdato), så man hurtigt kan se og trække
-                   alle opgaver for ugen ud. Uafhængig af selve ugekalenderen. -->
-              <div class="pool-filter-label">Periode</div>
-              <div class="filter-row" id="plan-date-filter-row" style="display:flex;align-items:center;gap:4px"></div>
+              <div class="filter-row" id="plan-date-filter-row"></div>
             </div>
           </div>
         </div>
@@ -7446,7 +7491,7 @@ function planProjectTypeFilterHTML(){
     return;
   }
   var opts=[['all','Alle']].concat(pjProjectTypes.map(function(t){return [t,t];}));
-  el.innerHTML=filterDropdownHTML('plan','projectType','Projekt type',opts,filters.plan.projectType);
+  el.innerHTML=filterDropdownHTML('plan','projectType','Projekt type',opts,filters.plan.projectType,'Sagens Faggruppe, sat på selve sagen i Projekter');
 }
 // SAGSSTATUS-BOBLER over Opgavepool/Kapacitetsboard/Tidslinje. Bevidst nøjagtig
 // samme komponent som status-boblerne på Projekter-siden (se renderPjStatusFilter)
@@ -7537,10 +7582,17 @@ function planDateFilterHTML(){
     });
   }
 }
-function filterDropdownHTML(scope,kind,label,options,current){
+function filterDropdownHTML(scope,kind,label,options,current,hint){
   var cur=options.find(function(x){return x[0]===current;})||options[0];
+  // RUNDE Æ (Martins ønske: filterknapperne skal skille sig visuelt ud når de
+  // rent faktisk filtrerer på noget — "måske skal nogle af dem være sorte,
+  // med hvid tekst eller noget andet") — knappen får en "active"-klasse (mørk
+  // baggrund/hvid tekst, se .pool-filter-panel .filter-dropdown-btn.active)
+  // så snart valget afviger fra "Alle", i stedet for at alle knapper ser ens
+  // (og lidt kedelige) ud uanset om de filtrerer eller ej.
+  var isActive=current&&current!=='all';
   return '<div class="filter-dropdown" data-scope="'+scope+'" data-kind="'+kind+'">'+
-    '<button type="button" class="btn small filter-dropdown-btn" data-action="filter-dropdown-toggle" style="width:100%">'+esc(label)+': '+esc(cur[1])+' ▾</button>'+
+    '<button type="button" class="btn small filter-dropdown-btn'+(isActive?' active':'')+'" data-action="filter-dropdown-toggle"'+(hint?' title="'+esc(hint)+'"':'')+'>'+esc(label)+': '+esc(cur[1])+' ▾</button>'+
     '<div class="filter-dropdown-menu">'+options.map(function(x){return '<button type="button" class="filter-dropdown-item'+(x[0]===current?' active':'')+'" data-action="filter-dropdown-select" data-scope="'+scope+'" data-kind="'+kind+'" data-value="'+esc(x[0])+'">'+esc(x[1])+'</button>';}).join('')+'</div>'+
     '</div>';
 }
@@ -7558,7 +7610,15 @@ function taskCard(t,scope){
   var contact=phoneMarkup(t.customer_phone,true);
   var addr=addressMarkup(t.job_address,true);
   var showBulkCb=scope==='plan'&&!completed;
-  return '<article class="task-card draggable-task'+(completed?' completed':'')+(overdue?' task-overdue':'')+'" draggable="true" data-task-id="'+esc(t.id)+'" title="'+esc(t.job_name||'')+'">'+
+  // RUNDE Æ (Martins ønske: opgavepoolen skal ikke se "kedelig"/for ens ud) —
+  // venstre kant på kortet farves nu efter Fag (samme farve som type-badgen
+  // nedenfor, TYPE-objektets .bar), så man kan skimme poolen efter fag uden at
+  // læse hver eneste badge. KUN i selve Opgavepoolen (scope 'plan') — Kapacitet/
+  // Tidslinje-kortene rører vi ikke ved, for ikke at ændre deres udseende.
+  // .task-overdue's røde kant (se CSS, !important) vinder stadig altid over
+  // denne, så en forsinket opgave er tydelig uanset fag.
+  var accentStyle=scope==='plan'&&!overdue?' style="border-left:3px solid '+esc(type.bar||'#94A3B8')+'"':'';
+  return '<article class="task-card draggable-task'+(completed?' completed':'')+(overdue?' task-overdue':'')+'" draggable="true" data-task-id="'+esc(t.id)+'" title="'+esc(t.job_name||'')+'"'+accentStyle+'>'+
     '<div class="task-card-head">'+
       (showBulkCb?'<input type="checkbox" class="pool-select-cb" data-task-id="'+esc(t.id)+'" '+(poolSelected[t.id]?'checked':'')+'>':'')+
       '<div class="task-card-title-block">'+
@@ -7581,8 +7641,19 @@ function taskCard(t,scope){
       '<span class="muted-sm" title="Planlagt start/slut-dato">📅 '+esc((t.start_date||'—').slice(0,10))+(t.end_date&&t.end_date.slice(0,10)!==(t.start_date||'').slice(0,10)?' – '+esc(t.end_date.slice(0,10)):'')+'</span>'+
     '</div>'+capacityHint+
     (t.is_visit?'<button class="btn small" style="width:100%;margin-top:6px" data-action="open-visit-form" data-task-id="'+esc(t.id)+'">📋 Besøgsformular</button>':'')+
-    '<button class="btn small" style="width:100%;margin-top:4px" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjekpunkter</button>'+
-    (t.project_id?'<button class="btn small" style="width:100%;margin-top:4px" data-action="pool-open-project" data-project-id="'+esc(t.project_id)+'">🔗 Åbn sagen</button>':'')+
+    // RUNDE Æ — de to knapper stod tidligere hver i fuld bredde, stablet
+    // ovenpå hinanden (to hele rækker for noget der reelt er to sekundære
+    // genveje) — i selve Opgavepoolen (scope 'plan') står de nu side om side
+    // i én kompakt 2-kolonne-række i stedet. Kapacitet/Tidslinje beholder det
+    // gamle, fuld-bredde udseende uændret (se .task-card-actions-CSS).
+    (scope==='plan'
+      ?'<div class="task-card-actions">'
+        +'<button class="btn small" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjek</button>'
+        +(t.project_id?'<button class="btn small" data-action="pool-open-project" data-project-id="'+esc(t.project_id)+'">🔗 Sagen</button>':'')
+      +'</div>'
+      :'<button class="btn small" style="width:100%;margin-top:4px" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjekpunkter</button>'
+      +(t.project_id?'<button class="btn small" style="width:100%;margin-top:4px" data-action="pool-open-project" data-project-id="'+esc(t.project_id)+'">🔗 Åbn sagen</button>':'')
+    )+
     // "🧾 Add Invoice" (link til JobTreads fakturaside for sagen) fjernet 05-09-2026
     // — t.job_id er kun sat på de sidste, historiske JobTread-rækker, og der er
     // ikke længere noget i JobTread at oprette en faktura imod for dem.
@@ -18014,6 +18085,9 @@ function crmpxInitOnce(){
     var el=document.getElementById(id);
     if(el)el.addEventListener('change',crmpxAutoSave);
   });
+  // RUNDE Æ — pillen skal skifte farve med det samme man vælger et nyt stadie,
+  // ikke først næste gang siden genindlæses.
+  document.getElementById('crmpx-stage').addEventListener('change',crmpxUpdateStagePillColor);
   document.getElementById('crmpx-customfields').addEventListener('input',function(e){
     if(e.target.closest('[data-cf-key]'))crmpxAutoSaveDebounced();
   });
@@ -18430,7 +18504,8 @@ async function openCrmpDetail(entityType,id){
   ownerSel.innerHTML='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(u.id===d.owner_id?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
   var pipeline=crmpState.pipelines.find(function(p){return p.id===d.pipeline_id;});
   var stageSel=document.getElementById('crmpx-stage');
-  stageSel.innerHTML=(pipeline?pipeline.stages:[]).slice().sort(function(a,b){return a.position-b.position;}).map(function(s){return '<option value="'+s.id+'"'+(s.id===d.stage_id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
+  stageSel.innerHTML=(pipeline?pipeline.stages:[]).slice().sort(function(a,b){return a.position-b.position;}).map(function(s){return '<option value="'+s.id+'" data-color="'+esc(s.color||'#94A3B8')+'"'+(s.id===d.stage_id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
+  crmpxUpdateStagePillColor();
   document.getElementById('crmpx-customfields').innerHTML=crmpxRenderCustomFieldInputs(d.custom_field_defs||[],d.custom_fields||{})||'<div class="crmpx-empty">Ingen felter oprettet — tilføj under ⚙️ Indstillinger</div>';
   document.getElementById('crmpx-convert-btn').style.display=entityType==='lead'&&!d.converted_opportunity_id?'':'none';
   // "Lav tilbud" (sep. 2026, oprindeligt kun for opportunities — udvidet efter
@@ -18687,6 +18762,22 @@ function crmpxShowSaveStatus(text,isError){
 // det ville nulstille cursor-position/fokus hvis brugeren nåede at skrive
 // videre i et andet felt mens gemningen var i gang. I stedet opdateres kun
 // avataren direkte fra det navn der lige blev gemt.
+// RUNDE Æ — samme farve som stadiet har på selve pipeline-boardet
+// (.crmp-col-dot, crm_stages.color), sat direkte på <select>'et så pillen i
+// værktøjslinjen matcher stadiet uden at skulle bygge en hel custom dropdown-
+// menu (selve <option>-listen/gemmelogikken i crmpxAutoSave er urørt).
+// Tekstfarve (sort/hvid) vælges ud fra baggrundens lysstyrke, så pillen altid
+// er læsbar uanset hvilken farve stadiet har fået i ⚙️ Indstillinger.
+function crmpxUpdateStagePillColor(){
+  var sel=document.getElementById('crmpx-stage');
+  var opt=sel.options[sel.selectedIndex];
+  var color=(opt&&opt.dataset.color)||'#94A3B8';
+  var r=parseInt(color.slice(1,3),16)||148,g=parseInt(color.slice(3,5),16)||163,b=parseInt(color.slice(5,7),16)||184;
+  var luma=(0.299*r+0.587*g+0.114*b)/255;
+  sel.style.backgroundColor=color;
+  sel.style.color=luma>0.6?'#111318':'#fff';
+  sel.style.borderColor=color;
+}
 async function crmpxAutoSave(){
   var ent=crmpDetailEntity;
   if(!ent)return;
