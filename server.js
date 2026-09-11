@@ -5204,7 +5204,19 @@ app.get('/api/tasks', auth, asyncRoute(async (req, res) => {
     FROM jt_tasks t
     LEFT JOIN planning_bookings b ON b.task_id=t.id
     LEFT JOIN projects p ON p.id = t.project_id
-    WHERE COALESCE(t.source,'jobtread') <> 'capacity'
+    -- RUNDE Æ (Martins ønske: "fjern alle opgaver der kommet ind fra JobTread
+    -- ... så der ikke er 2 af de samme") — de sidste source='jobtread'-rækker
+    -- (kun dem der havde rigtig historik hængende på sig, se
+    -- runJobTreadPoolCleanup()/den store engangsoprydning) stod stadig med i
+    -- Opgavepool/Kapacitet/Tidslinje. For sager der siden er genimporteret som
+    -- et internt projekt ("Hent nye sager", se mirrorProjectTaskToPool()) gav
+    -- det EN opgave for meget — den gamle JobTread-række (nu linket til
+    -- projektet via backfillLegacyJobTaskProjectLinks) OG den nye,
+    -- projekt-spejlede opgave (source='project') viste begge samme sag.
+    -- Rækkerne SLETTES ikke (deres historik i planning_bookings/time_logs/
+    -- task_checklist_items m.fl. skal ikke gå tabt) — de skjules bare fra selve
+    -- opgave-listen, præcis som 'capacity'-rækker allerede blev.
+    WHERE COALESCE(t.source,'jobtread') NOT IN ('capacity','jobtread')
     GROUP BY t.id, p.status, p.project_type
     ORDER BY CASE WHEN t.source='manual' THEN 0 ELSE 1 END,
              CASE WHEN t.start_date IS NULL OR t.start_date='' THEN 1 ELSE 0 END,
@@ -5298,7 +5310,9 @@ app.post('/api/capacity-reservations', auth, panelAccess('capacity'), asyncRoute
   if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
   const capacityDays = Math.max(0.25, Math.min(60, Number(body.capacity_days) || 1));
   const weeklyCapacity = Number(user.weekly_capacity) || 5;
-  const note = body.notes ? String(body.notes).slice(0, 1000) : null;
+  // RUNDE H #25 — "Intern note" her deler DB-kolonne med den nye rig-tekst-note
+  // i Daglig plan/Tidslinje, så vi saniterer/afkorter på samme, sikre måde.
+  const note = body.notes ? truncateNoteHtml(sanitizeBookingNote(body.notes), 1000) : null;
   const requestedLabel = String(body.label || '').trim().slice(0, 120);
   const existingTaskId = body.task_id ? String(body.task_id) : null;
 
@@ -5360,7 +5374,7 @@ app.put('/api/capacity-reservations/:id', auth, panelAccess('capacity'), asyncRo
   const capacityDays = Math.max(0.25, Math.min(60, Number(body.capacity_days) || current.capacity_days || 1));
   const endDate = addWorkingDays(startDate, capacityDays);
   const label = String(body.label !== undefined ? body.label : (current.capacity_label || '')).trim().slice(0, 120) || 'Kapacitetsreservation';
-  const note = body.notes !== undefined ? (body.notes ? String(body.notes).slice(0,1000) : null) : current.notes;
+  const note = body.notes !== undefined ? (body.notes ? truncateNoteHtml(sanitizeBookingNote(body.notes), 1000) : null) : current.notes;
   await pool.query(`
     UPDATE planning_bookings
     SET user_id=$1,week_key=$2,days=5,capacity_days=$3,notes=$4,start_time=NULL,start_date=$5,end_date=$6,capacity_label=$7,updated_at=${nowTextSQL()}
@@ -6141,8 +6155,16 @@ async function normalizeBooking(body, isNew) {
   // ned til medarbejderen uden manuel indtastning. Ved redigering af en
   // eksisterende booking rører vi ALDRIG noten uopfordret (så en admin altid
   // kan slette/tømme en note uden at den bliver genskabt).
-  const explicitNote = booking.notes !== undefined && booking.notes !== null ? String(booking.notes).trim() : '';
-  const fallbackNote = (isNew && !explicitNote && task.description) ? String(task.description).trim() : '';
+  // RUNDE H #25 — noten kan nu indeholde rig tekst (fed, punktopstilling m.m.)
+  // fra den nye note-editor i admin.html. explicitNote saniteres derfor gennem
+  // sanitizeBookingNote() (fjerner alt undtagen b/strong/br/ul/ol/li), så vi
+  // aldrig gemmer vilkårlig HTML fra klienten i databasen. fallbackNote kommer
+  // derimod fra jt_tasks.description, som er REN TEKST — den skal HTML-escapes
+  // (ikke saniteres) før den flyder ind i samme, nu HTML-fortolkede, felt, ellers
+  // ville fx et "<" i en gammel JobTread-beskrivelse blive tolket som et tag.
+  const explicitNoteRaw = booking.notes !== undefined && booking.notes !== null ? sanitizeBookingNote(booking.notes) : '';
+  const fallbackNote = (isNew && !explicitNoteRaw && task.description) ? escPublic(String(task.description).trim()).replace(/\n/g, '<br>') : '';
+  const explicitNote = explicitNoteRaw;
   const finalNote = explicitNote || fallbackNote;
   // Link + vedhæftninger der hører til noten (fx et link til en tegning, eller
   // billeder/PDF'er). Rører ALDRIG uopfordret, ligesom noteteksten ovenfor — sendes
@@ -6157,7 +6179,7 @@ async function normalizeBooking(body, isNew) {
     week_key: getWeekKey(start),
     days,
     capacity_days: capacityDays,
-    notes: finalNote ? finalNote.slice(0, 1000) : null,
+    notes: finalNote ? truncateNoteHtml(finalNote, 1000) : null,
     note_link: noteLink === undefined ? null : noteLink,
     note_attachments: noteAttachments === undefined ? null : noteAttachments,
     start_time: booking.start_time || null,
@@ -14973,6 +14995,51 @@ function krFmtServer(n) {
 }
 function escPublic(s) {
   return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
+}
+// RUNDE H #25 — Rich-text note til medarbejder (planning_bookings.notes). Egen
+// sanitizer, ADSKILT fra sanitizeRichText() (som bruges til tilbud/faktura), så
+// vi aldrig risikerer at ændre adfærden for det allerede fungerende tilbuds-/
+// fakturaflow. Tillader kun de tags admin.html's rich-note-editor rent faktisk
+// kan producere: fed skrift, linjeskift, samt punkt- og talopstilling.
+function sanitizeBookingNote(html) {
+  if (!html) return '';
+  let s = String(html);
+  // Fjern <script>/<style> inkl. indhold helt, før vi strips resten af tags.
+  s = s.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  // <ul> er det ENESTE tag hvor vi bevarer en attribut: class="arrow-list",
+  // som er hvordan note-editoren i admin.html markerer en pil-liste (→) i
+  // stedet for en almindelig punktopstilling. Alt andet på <ul> barberes væk.
+  s = s.replace(/<ul\b[^>]*>/gi, tag => /class\s*=\s*["']?[^"'>]*\barrow-list\b/i.test(tag) ? '<ul class="arrow-list">' : '<ul>');
+  // Normalisér resten af det tilladte whitelist — fjerner alle attributter
+  // (fx style="", onclick="") på disse tags.
+  s = s.replace(/<(\/?)(b|strong|br|ol|li)\b[^>]*>/gi, '<$1$2>');
+  // Alt andet end whitelisten (b/strong/br/ul/ol/li) fjernes helt.
+  s = s.replace(/<(?!\/?(b|strong|br|ul|ol|li)\b)[^>]*>/gi, '');
+  return s.trim();
+}
+// Afkort en (allerede saniteret) note-HTML-streng til maks `max` tegn UDEN at
+// klippe midt i et tag (fx "<st" i stedet for "<strong>"), hvilket ville lade
+// et ulukket "<" flyde med ud i databasen/frontend. Klipper i stedet tilbage
+// til lige før det påbegyndte, ufuldendte tag.
+function truncateNoteHtml(html, max) {
+  if (!html || html.length <= max) return html;
+  let cut = html.slice(0, max);
+  const lastOpen = cut.lastIndexOf('<');
+  const lastClose = cut.lastIndexOf('>');
+  if (lastOpen > lastClose) cut = cut.slice(0, lastOpen);
+  return cut;
+}
+// Simpel HTML → ren tekst, til brug hvor en rig note skal vises et sted der
+// IKKE understøtter HTML (fx en title="" tooltip, eller SMS/e-mail til kunden).
+function richNoteToPlain(html) {
+  if (!html) return '';
+  let s = String(html);
+  s = s.replace(/<li[^>]*>/gi, '• ').replace(/<\/li>/gi, '\n');
+  s = s.replace(/<br\s*\/?>/gi, '\n');
+  s = s.replace(/<\/(ul|ol)>/gi, '\n');
+  s = s.replace(/<[^>]+>/g, '');
+  s = s.replace(/\n{3,}/g, '\n\n').trim();
+  return s;
 }
 // Linje-beskrivelse på tilbud/faktura (sep. 2026, Martins ønske): 1. linje af
 // l.description er OVERSKRIFTEN (produktnavnet — se qzProductLineText i admin.html, som

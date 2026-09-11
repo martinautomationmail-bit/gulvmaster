@@ -2640,6 +2640,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .rte-editable{min-height:52px;line-height:1.5;overflow-y:auto;cursor:text}
 .rte-editable:empty:before{content:attr(data-placeholder);color:#9CA3AF}
 .rte-editable a{color:var(--bly-accent)}
+/* RUNDE H #25 — note-editor (fed + punkt/tal/pil-lister) til "Note til
+   medarbejder" i Daglig plan/Kapacitet/Tidslinje. Egen, større variant af
+   .rte-editable, plus liste-styling delt med employee.html's visning. */
+.rte-editable.rte-note{min-height:130px}
+.rte-editable ul,.rte-editable ol{margin:4px 0;padding-left:22px}
+.rte-editable ul.arrow-list{list-style:none;padding-left:4px}
+.rte-editable ul.arrow-list li{position:relative;padding-left:20px}
+.rte-editable ul.arrow-list li::before{content:'→';position:absolute;left:0;top:0;color:var(--bly-accent);font-weight:700}
+.rte-btn.active{border-color:var(--bly-accent);color:var(--bly-accent);background:var(--bly-accent-soft)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--bly-border-soft)}
 .modal-actions .btn,.gd-modal .modal-actions .btn{height:38px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px;border-radius:var(--bly-r-pill);font-size:11.5px;white-space:nowrap}
@@ -2854,7 +2863,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-09.5</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.1</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -7162,6 +7171,92 @@ function makeRichField(id){
     ta.dispatchEvent(new Event('input'));
   });
 }
+// RUNDE H #25 — "Note til medarbejder" (Daglig plan/Kapacitet/Tidslinje,
+// planning_bookings.notes). Martin: "kan du ikke lave det størrer og som et
+// note felt med fedskrift, Og -> Pil indhak, Dot indhak, Tal indhak mm".
+// Samme .value-transparens-trick som makeRichField() ovenfor, men egen
+// funktion (ikke en udvidelse af makeRichField) så tilbud/faktura-noterne
+// slet ikke kan påvirkes — og med sin egen værktøjslinje: Fed, Punktliste,
+// Talliste, Pilliste. Serveren saniterer ved gem (se sanitizeBookingNote i
+// server.js), som tillader netop b/strong/br/ul/ol/li (+ class="arrow-list").
+function makeRichNoteField(id){
+  var ta=document.getElementById(id);
+  if(!ta||ta.dataset.rteInit)return;
+  ta.dataset.rteInit='1';
+  var seed=ta.value||'';
+  ta.style.display='none';
+  var wrap=document.createElement('div');
+  wrap.className='rte-wrap';
+  wrap.innerHTML='<div class="rte-toolbar">'+
+    '<button type="button" class="rte-btn" data-cmd="bold" title="Fed skrift"><b>F</b></button>'+
+    '<button type="button" class="rte-btn" data-cmd="ul" title="Punktopstilling">•</button>'+
+    '<button type="button" class="rte-btn" data-cmd="ol" title="Talopstilling">1.</button>'+
+    '<button type="button" class="rte-btn" data-cmd="arrow" title="Pil-indhak">→</button>'+
+    '</div>';
+  var editable=document.createElement('div');
+  editable.className='rte-editable input rte-note';
+  editable.contentEditable='true';
+  if(ta.placeholder)editable.setAttribute('data-placeholder',ta.placeholder);
+  wrap.appendChild(editable);
+  ta.parentNode.insertBefore(wrap,ta.nextSibling);
+  var internal=seed;
+  var syncingFromValue=false;
+  Object.defineProperty(ta,'value',{
+    get:function(){return internal;},
+    set:function(v){internal=v||'';syncingFromValue=true;editable.innerHTML=internal;syncingFromValue=false;},
+    configurable:true
+  });
+  if(seed)editable.innerHTML=seed;
+  editable.addEventListener('input',function(){
+    if(syncingFromValue)return;
+    internal=editable.innerHTML;
+    ta.dispatchEvent(new Event('input'));
+  });
+  editable.addEventListener('blur',function(){ta.dispatchEvent(new Event('change'));});
+  // Enter skal give <br> (som resten af noten forstår/saniterer), ikke <div>,
+  // som ikke er på serverens whitelist og derfor ville blive fjernet ved gem.
+  editable.addEventListener('keydown',function(){
+    document.execCommand('defaultParagraphSeparator',false,'br');
+  });
+  var toolbar=wrap.querySelector('.rte-toolbar');
+  toolbar.addEventListener('mousedown',function(e){e.preventDefault();});
+  toolbar.addEventListener('click',function(e){
+    var btn=e.target.closest('.rte-btn');if(!btn)return;
+    editable.focus();
+    var cmd=btn.getAttribute('data-cmd');
+    var sel,anchor,ul;
+    if(cmd==='bold'){document.execCommand('bold');}
+    else if(cmd==='ul'){document.execCommand('insertUnorderedList');}
+    else if(cmd==='ol'){document.execCommand('insertOrderedList');}
+    else if(cmd==='arrow'){
+      sel=window.getSelection();anchor=sel&&sel.anchorNode;
+      ul=anchor&&(anchor.nodeType===1?anchor.closest('ul'):anchor.parentElement&&anchor.parentElement.closest('ul'));
+      if(ul&&editable.contains(ul)){
+        ul.classList.toggle('arrow-list');
+      }else{
+        document.execCommand('insertUnorderedList');
+        sel=window.getSelection();anchor=sel&&sel.anchorNode;
+        ul=anchor&&(anchor.nodeType===1?anchor.closest('ul'):anchor.parentElement&&anchor.parentElement.closest('ul'));
+        if(ul)ul.classList.add('arrow-list');
+      }
+    }
+    internal=editable.innerHTML;
+    ta.dispatchEvent(new Event('input'));
+  });
+}
+// Rig note-HTML (b/br/ul/ol/li) → ren tekst. Bruges hvor noten skal vises et
+// sted der ikke kan/skal vise HTML — fx en title=""-tooltip på et kort.
+// Speciltilfælde af server.js' richNoteToPlain(), holdt i sync med den.
+function richNoteToPlainClient(html){
+  if(!html)return'';
+  var s=String(html);
+  s=s.replace(/<li[^>]*>/gi,'• ').replace(/<\/li>/gi,'\n');
+  s=s.replace(/<br\s*\/?>/gi,'\n');
+  s=s.replace(/<\/(ul|ol)>/gi,'\n');
+  s=s.replace(/<[^>]+>/g,'');
+  s=s.replace(/\n{3,}/g,'\n\n').trim();
+  return s;
+}
 function iso(d){var x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);}
 function date(s){return new Date(String(s).slice(0,10)+'T12:00:00');}
 function mon(d){var x=new Date(d);x.setHours(0,0,0,0);var q=x.getDay()||7;x.setDate(x.getDate()-q+1);return x;}
@@ -7830,8 +7925,13 @@ function assignPillSpan(b,spanDays,ds,canUp,canDown){
   // dagskolonnen, som ikke er bredde-begrænset) til at strække sig helt ud. Nu vises den
   // kun som hover-tooltip (samme mønster som Kapacitet-boardets pills) plus et lille 📝
   // -ikon ved navnet, så det stadig er synligt at der ER en note, uden at kortet vokser.
-  var noteIcon=b.notes?' <span class="assign-note-dot" title="'+esc(b.notes)+'">📝</span>':'';
-  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+(isDone?' is-done':'')+'" draggable="true" data-booking-id="'+b.id+'" style="'+extraStyle+'"'+(b.notes?' title="📝 '+esc(b.notes)+'"':'')+'>'+
+  // RUNDE H #25 — noten kan nu indeholde HTML (fed/lister) fra den nye
+  // rig-tekst-editor. En title=""-tooltip kan ikke vise HTML, så vi konverterer
+  // til ren tekst (richNoteToPlainClient) i stedet for blot at esc() den, ellers
+  // ville tooltippen vise bogstavelige "<b>"-tags i stedet for fed skrift.
+  var notePlain=richNoteToPlainClient(b.notes);
+  var noteIcon=notePlain?' <span class="assign-note-dot" title="'+esc(notePlain)+'">📝</span>':'';
+  return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+(isDone?' is-done':'')+'" draggable="true" data-booking-id="'+b.id+'" style="'+extraStyle+'"'+(notePlain?' title="📝 '+esc(notePlain)+'"':'')+'>'+
     '<div class="assign-top"><span class="assign-name">'+bookingStatusIcon(b)+esc(b.job_name||b.task_name||'Opgave')+daysLabel+noteIcon+'</span>'+
     '<span style="display:flex;gap:2px;flex-shrink:0">'+reorderBtns+
     '<button class="pill-copy" title="Kopiér opgave" data-action="copy-booking" data-booking-id="'+b.id+'">⧉</button>'+
@@ -8893,6 +8993,14 @@ function openAssign(ctx){
   document.getElementById('assign-capacity-fields').style.display='none';
   document.getElementById('assign-time').value=b&&b.start_time||'';
   document.getElementById('assign-note').value=b&&b.notes||'';
+  // RUNDE H #25 — Martins ønske: "Note til medarbejder ... som et note felt
+  // med fedskrift, Og -> Pil indhak, Dot indhak, Tal indhak". Init'es her
+  // (ikke ved globalt page-load) fordi Daglig plan-modulet, ligesom
+  // quote/faktura-editoren, først bygges når man rent faktisk åbner popup'en.
+  // makeRichNoteField() no-op'er sig selv efter første kald (dataset.rteInit),
+  // så det er billigt at kalde ved hvert openAssign(). Kaldes EFTER value=,
+  // så editoren ved init læser den værdi vi lige har sat som sit indhold.
+  makeRichNoteField('assign-note');
   document.getElementById('assign-note-link').value=b&&b.note_link||'';
   document.getElementById('assign-note-files').value='';
   // Vedhæftninger (billeder/PDF'er) sendes IKKE længere med i den store bookings-liste
