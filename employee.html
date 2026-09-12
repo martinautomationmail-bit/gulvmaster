@@ -98,6 +98,19 @@
 .tm-day-free{color:var(--ghost);font-style:italic;font-size:11.5px}
 .tm-pin-popup{font-size:12px}.tm-pin-popup b{color:var(--navy)}
 .modal-backdrop{position:fixed;inset:0;background:rgba(17,19,24,.55);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;padding:18px;z-index:250}.modal-backdrop.open{display:flex;animation:gm-fade .18s ease}.modal{width:min(450px,100%);background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(17,19,24,.35);overflow:hidden;animation:gm-pop .22s cubic-bezier(.2,.9,.3,1.3)}.modal-head{background:#fff;color:var(--ink);padding:13px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border)}.modal-title{font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;color:var(--ink)}.modal-close{border:1px solid var(--border);background:#fff;color:var(--muted);border-radius:7px;padding:5px 8px;font-size:12px;cursor:pointer;transition:.15s}.modal-close:hover{background:#F1F5F9;color:var(--ink)}.modal-body{padding:18px;max-height:70vh;overflow:auto}.modal-task{font-size:12px;font-weight:800;color:var(--navy);margin-bottom:9px}.modal-note{font-size:13px;line-height:1.55;color:#334155;white-space:pre-wrap;background:#f8fafc;border:1px solid var(--border);border-radius:9px;padding:12px}.modal-note ul,.modal-note ol{margin:4px 0;padding-left:20px;white-space:normal}.modal-note ul.arrow-list{list-style:none;padding-left:4px}.modal-note ul.arrow-list li{position:relative;padding-left:20px}.modal-note ul.arrow-list li::before{content:'→';position:absolute;left:0;top:0;color:#4F46E5;font-weight:700}.modal-empty{color:var(--ghost);font-style:italic}.modal-note-link{margin-top:10px}.modal-note-link a{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#4F46E5;text-decoration:none;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:8px;padding:8px 12px}.modal-note-link a:hover{background:#DBEAFE}.modal-note-attachments{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.modal-note-att{display:block;width:76px;text-decoration:none}.modal-note-att img{width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block;cursor:zoom-in}.modal-note-att-pdf{width:76px;height:76px;border-radius:10px;border:1px solid var(--border);background:#FEF2F2;display:flex;align-items:center;justify-content:center;font-size:28px}.modal-note-att-name{display:block;font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;text-align:center}
+.qn-title{font-size:12px;font-weight:800;color:var(--navy);margin-bottom:8px}
+.qn-note-price{font-weight:600;color:var(--muted);font-size:11px}
+.qn-lines{background:#f8fafc;border:1px solid var(--border);border-radius:9px;padding:4px 12px}
+.qn-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;color:#334155}
+.qn-line:last-child{border-bottom:0}
+.qn-line-heading{font-weight:800;color:var(--navy);border-bottom:0;padding-bottom:2px}
+.qn-line-desc{flex:1;min-width:0}
+.qn-line-qty{flex-shrink:0;color:var(--muted);font-size:11.5px;white-space:nowrap}
+.vr-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:10px 0}
+.vr-photo-thumb{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--border);aspect-ratio:1/1;background:#F4F6FB}
+.vr-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.vr-photo-thumb .vr-photo-del{position:absolute;top:3px;right:3px;background:rgba(17,19,24,.65);color:#fff;border:0;border-radius:6px;width:20px;height:20px;font-size:11px;cursor:pointer}
+.vr-photo-add{border:2px dashed var(--border);border-radius:10px;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--muted);cursor:pointer;background:#F8FAFC}
 @keyframes gm-fade{from{opacity:0}to{opacity:1}}
 @keyframes gm-pop{from{opacity:0;transform:scale(.94) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
 .req-head{background:#fff}
@@ -182,7 +195,7 @@
   <div id="selected-notice"></div>
   <div id="tasks-container"><div class="empty"><div class="empty-icon">⏳</div><h3>Loading your tasks...</h3></div></div>
 </main>
-<div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div></div></div></div>
+<div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div><div id="note-quote-section" style="display:none;margin-top:12px"></div></div></div></div>
 <!-- PROJEKTER — sager der er blevet til efter en kunde har underskrevet et
      tilbud. Herfra kan medarbejdere registrere tid (note + billede påkrævet),
      tilføje billeder til sagen, og udfylde KS-formularer. -->
@@ -254,6 +267,33 @@
       <div id="doc-feedback" class="req-feedback"></div>
       <button type="button" class="req-submit" id="doc-confirm-btn" onclick="confirmDocumentationAndComplete()"><span class="req-submit-label">Bekræft & markér som færdig →</span></button>
       <p style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0 0">Billeder og dokumenter lægges på sagen under 🏗️ Projekter — brug "⏱ Registrér tid" eller "📷 Tilføj billede" der.</p>
+    </div>
+  </div>
+</div>
+<!-- BESØGSRAPPORT — RUNDE L (Martins ønske). Obligatorisk for et kundebesøg (a.is_visit),
+     før opgaven kan markeres færdig — se openVisitReportModal() i stedet for openDocModal()
+     i doneBtn ovenfor. Samme felter som admin's "Besøgsformular" (genbrug efter Martins
+     eget valg), plus billeder som ikke fandtes der før. -->
+<div id="visit-report-modal" class="modal-backdrop" onclick="closeVisitReportOnBackdrop(event)">
+  <div class="modal doc-modal">
+    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon">📋</span> Besøgsrapport</div><button class="modal-close" onclick="closeVisitReportModal()">Luk</button></div>
+    <div class="modal-body">
+      <p class="req-intro">Udfyld besøgsrapporten før opgaven kan markeres som færdig — den lander direkte på kunden i CRM.</p>
+      <label class="req-label">Rummets størrelse</label>
+      <input id="vr-room-size" class="req-input" placeholder="Fx 24 m²">
+      <label class="req-label" style="margin-top:10px">Ønsket gulvtype</label>
+      <input id="vr-floor-type" class="req-input" placeholder="Fx eg plankegulv, olieret">
+      <label class="req-label" style="margin-top:10px">Observationer / noter fra besøget</label>
+      <textarea id="vr-notes" class="req-textarea" rows="3" placeholder="Fx underlagets stand, fugt, niveauforskelle, adgangsforhold"></textarea>
+      <label class="req-label" style="margin-top:10px">Anbefalet løsning</label>
+      <textarea id="vr-solution" class="req-textarea" rows="2" placeholder="Hvad anbefaler du kunden?"></textarea>
+      <label class="req-label" style="margin-top:10px">Estimeret pris <span style="opacity:.6;font-weight:500">(valgfrit)</span></label>
+      <input id="vr-price" class="req-input" placeholder="Fx 18.000 - 22.000 kr.">
+      <label class="req-label" style="margin-top:10px">Billeder</label>
+      <div id="vr-photo-grid" class="vr-photo-grid"></div>
+      <input type="file" accept="image/*" capture="environment" multiple id="vr-photo-input" style="display:none" onchange="vrAddPhotos(event)">
+      <div id="vr-feedback" class="req-feedback"></div>
+      <button type="button" class="req-submit" id="vr-submit-btn" onclick="submitVisitReportAndComplete()"><span class="req-submit-label">Gem & markér som færdig →</span></button>
     </div>
   </div>
 </div>
@@ -421,7 +461,26 @@ async function toggleMyChecklistItem(id,done){
   const r=await api('/api/checklist/'+id,{method:'PUT',body:JSON.stringify({done:done})});
   if(!r||!r.ok)toast('Could not save — try again');
 }
-function openBookingNote(id){const x=bookingNotes.get(String(id))||{};document.getElementById('note-task').textContent=x.title||'Task';const note=String(x.note||'').trim();const nt=document.getElementById('note-text');if(note){nt.innerHTML=x.noteIsHtml?note:esc(note).replace(/\n/g,'<br>');}else{nt.textContent='No note has been added to this booking yet.';}nt.classList.toggle('modal-empty',!note);const linkWrap=document.getElementById('note-link-wrap'),linkEl=document.getElementById('note-link');if(x.link){linkEl.href=x.link;linkWrap.style.display='block';}else{linkWrap.style.display='none';}let attachments=[];if(x.attachments){try{attachments=JSON.parse(x.attachments)||[];}catch(e){attachments=[];}}const attEl=document.getElementById('note-attachments');attEl.innerHTML=attachments.map(a=>{const name=esc(a.name||(a.type==='pdf'?'document.pdf':'image'));return a.type==='pdf'?`<a class="modal-note-att" href="${esc(a.data)}" target="_blank" rel="noopener noreferrer"><div class="modal-note-att-pdf">📄</div><span class="modal-note-att-name" title="${name}">${name}</span></a>`:`<a class="modal-note-att" href="${esc(a.data)}" target="_blank" rel="noopener noreferrer"><img src="${esc(a.data)}" alt="${name}"><span class="modal-note-att-name" title="${name}">${name}</span></a>`;}).join('');document.getElementById('note-modal').classList.add('open')}
+function openBookingNote(id){const x=bookingNotes.get(String(id))||{};document.getElementById('note-task').textContent=x.title||'Task';const note=String(x.note||'').trim();const nt=document.getElementById('note-text');if(note){nt.innerHTML=x.noteIsHtml?note:esc(note).replace(/\n/g,'<br>');}else{nt.textContent='No note has been added to this booking yet.';}nt.classList.toggle('modal-empty',!note);const linkWrap=document.getElementById('note-link-wrap'),linkEl=document.getElementById('note-link');if(x.link){linkEl.href=x.link;linkWrap.style.display='block';}else{linkWrap.style.display='none';}let attachments=[];if(x.attachments){try{attachments=JSON.parse(x.attachments)||[];}catch(e){attachments=[];}}const attEl=document.getElementById('note-attachments');attEl.innerHTML=attachments.map(a=>{const name=esc(a.name||(a.type==='pdf'?'document.pdf':'image'));return a.type==='pdf'?`<a class="modal-note-att" href="${esc(a.data)}" target="_blank" rel="noopener noreferrer"><div class="modal-note-att-pdf">📄</div><span class="modal-note-att-name" title="${name}">${name}</span></a>`:`<a class="modal-note-att" href="${esc(a.data)}" target="_blank" rel="noopener noreferrer"><img src="${esc(a.data)}" alt="${name}"><span class="modal-note-att-name" title="${name}">${name}</span></a>`;}).join('');document.getElementById('note-modal').classList.add('open');loadNoteQuoteSection(x);}
+// RUNDE L (Martins ønske) — "med et klik tilføje det tilbud der sendt uden priser".
+// Vises kun for kundebesøg (x.isVisit), og kun beskrivelse/omfang — ALDRIG priser,
+// uanset hvad der kommer tilbage fra /quote-scope (server-siden garanterer det, men
+// vi renderer heller aldrig andet end description/unit/quantity her).
+async function loadNoteQuoteSection(x){
+  const sec=document.getElementById('note-quote-section');
+  sec.style.display='none';sec.innerHTML='';
+  if(!x||!x.isVisit||!x.taskId)return;
+  const r=await api('/api/customer-visits/'+encodeURIComponent(x.taskId)+'/quote-scope');
+  const data=r&&r.ok?r.data:null;
+  if(!data||!data.quote_id||!data.lines||!data.lines.length)return;
+  const rows=data.lines.map(l=>{
+    if(l.line_type==='text')return `<div class="qn-line qn-line-heading">${esc(l.description||'')}</div>`;
+    const qty=(l.quantity!==undefined&&l.quantity!==null)?`${Number(l.quantity)} ${esc(l.unit||'')}`.trim():'';
+    return `<div class="qn-line"><span class="qn-line-desc">${esc(l.description||'')}</span>${qty?`<span class="qn-line-qty">${esc(qty)}</span>`:''}</div>`;
+  }).join('');
+  sec.innerHTML=`<div class="qn-title">📄 Tilbud sendt til kunden ${esc(data.quote_number||'')} <span class="qn-note-price">(uden priser)</span></div><div class="qn-lines">${rows}</div>`;
+  sec.style.display='block';
+}
 function closeNote(){document.getElementById('note-modal').classList.remove('open')}
 function closeNoteOnBackdrop(e){if(e.target===document.getElementById('note-modal'))closeNote()}
 
@@ -1040,6 +1099,89 @@ function closeDocOnBackdrop(e){if(e.target===document.getElementById('doc-modal'
 function openRulesModal(){document.getElementById('rules-modal').classList.add('open');}
 function closeRulesModal(){document.getElementById('rules-modal').classList.remove('open');}
 function closeRulesOnBackdrop(e){if(e.target===document.getElementById('rules-modal'))closeRulesModal();}
+// BESØGSRAPPORT — RUNDE L (Martins ønske: "formular med billeder og spørgsmål når
+// han trykker den af ved Done ... kommer ind på kunden i mit CRM system"). Genbruger
+// bevidst de samme spørgsmål som admins eksisterende "Besøgsformular" (Martins eget
+// valg — hurtigst, og samme data han allerede har felter til), tilføjer billeder.
+let visitReportAssignmentId=null;
+let visitReportTaskId=null;
+let visitReportPhotos=[];
+// id = planning_bookings.id (bruges til toggleTaskDone), taskId = jt_tasks.id
+// (den "visit-..." tekst-id customer_visits/quote-scope er nøglet på — IKKE
+// samme værdi som id, se bookingSelect).
+async function openVisitReportModal(id,taskId){
+  visitReportAssignmentId=id;
+  visitReportTaskId=taskId;
+  visitReportPhotos=[];
+  ['vr-room-size','vr-floor-type','vr-notes','vr-solution','vr-price'].forEach(fid=>{document.getElementById(fid).value='';});
+  document.getElementById('vr-feedback').className='req-feedback';
+  const r=await api('/api/customer-visits/'+encodeURIComponent(taskId));
+  const existing=r&&r.ok?r.data:null;
+  if(existing){
+    document.getElementById('vr-room-size').value=existing.room_size||'';
+    document.getElementById('vr-floor-type').value=existing.floor_type_wanted||'';
+    document.getElementById('vr-notes').value=existing.notes||'';
+    document.getElementById('vr-solution').value=existing.recommended_solution||'';
+    document.getElementById('vr-price').value=existing.estimated_price||'';
+    visitReportPhotos=Array.isArray(existing.photo_urls)?existing.photo_urls.slice():[];
+  }
+  vrRenderPhotoGrid();
+  document.getElementById('visit-report-modal').classList.add('open');
+}
+function closeVisitReportModal(){document.getElementById('visit-report-modal').classList.remove('open');visitReportAssignmentId=null;visitReportTaskId=null;}
+function closeVisitReportOnBackdrop(e){if(e.target===document.getElementById('visit-report-modal'))closeVisitReportModal();}
+function vrRenderPhotoGrid(){
+  const grid=document.getElementById('vr-photo-grid');
+  grid.innerHTML=visitReportPhotos.map((url,i)=>`<div class="vr-photo-thumb"><img src="${esc(url)}"><button type="button" class="vr-photo-del" onclick="vrRemovePhoto(${i})">✕</button></div>`).join('')
+    +`<div class="vr-photo-add" onclick="document.getElementById('vr-photo-input').click()">+</div>`;
+}
+function vrRemovePhoto(i){visitReportPhotos.splice(i,1);vrRenderPhotoGrid();}
+async function vrAddPhotos(e){
+  const files=Array.from(e.target.files||[]);
+  e.target.value='';
+  for(const f of files){
+    try{const dataUrl=await pmReadFileAsDataUrl(f);visitReportPhotos.push(dataUrl);}catch(err){console.error('Photo read failed:',err);}
+  }
+  vrRenderPhotoGrid();
+}
+async function submitVisitReportAndComplete(){
+  const feedback=document.getElementById('vr-feedback');
+  const body={
+    room_size:document.getElementById('vr-room-size').value.trim(),
+    floor_type_wanted:document.getElementById('vr-floor-type').value.trim(),
+    notes:document.getElementById('vr-notes').value,
+    recommended_solution:document.getElementById('vr-solution').value,
+    estimated_price:document.getElementById('vr-price').value.trim(),
+    photo_urls:visitReportPhotos
+  };
+  const hasContent=body.room_size||body.floor_type_wanted||body.notes||body.recommended_solution||body.estimated_price||body.photo_urls.length;
+  if(!hasContent){
+    feedback.textContent='Udfyld mindst ét felt eller tilføj et billede, før du fortsætter';
+    feedback.className='req-feedback show error';
+    return;
+  }
+  const btn=document.getElementById('vr-submit-btn');
+  btn.disabled=true;
+  const taskId=visitReportTaskId;
+  const assignmentId=visitReportAssignmentId;
+  try{
+    const r=await api('/api/customer-visits/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify(body)});
+    if(!r||!r.ok){
+      feedback.textContent=(r&&r.data&&r.data.error)||'Kunne ikke gemme — prøv igen';
+      feedback.className='req-feedback show error';
+      btn.disabled=false;
+      return;
+    }
+    closeVisitReportModal();
+    await toggleTaskDone(assignmentId,true,true,'Besøgsrapport udfyldt');
+  }catch(err){
+    feedback.textContent='Ingen forbindelse — prøv igen';
+    feedback.className='req-feedback show error';
+    console.error('Visit report save error:',err);
+  }finally{
+    btn.disabled=false;
+  }
+}
 async function confirmDocumentationAndComplete(){
   const feedback=document.getElementById('doc-feedback');
   const allChecked=document.getElementById('doc-moisture').checked&&document.getElementById('doc-level').checked&&document.getElementById('doc-other').checked;
@@ -1115,7 +1257,11 @@ function render(){
       // noteIsHtml markerer det, så openBookingNote() ved om den skal rendere
       // som HTML (a.notes, server-saniteret) eller escape'e ren tekst
       // (a.task_description-fallback, som ALDRIG er HTML).
-      bookingNotes.set(String(a.id),{note:a.notes||a.task_description,noteIsHtml:!!a.notes,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||'')});
+      // RUNDE L (Martins ønske) — "med et klik tilføje det tilbud der sendt uden
+      // priser" til et kundebesøg, så medarbejderen kan se omfanget. Vises i samme
+      // note-modal som notes/vedhæftninger allerede bruger (isVisit markerer at
+      // openBookingNote skal hente og vise tilbuds-omfanget, se quote-scope-endpointet).
+      bookingNotes.set(String(a.id),{note:a.notes||a.task_description,noteIsHtml:!!a.notes,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||''),isVisit:!!a.is_visit,taskId:a.task_id});
       const mapButton=maps?`<a class="action maps" href="${maps}" target="_blank" rel="noopener">📍 Maps</a>`:`<button class="action maps" type="button" onclick="toast('No address on this task')">📍 Maps</button>`;
       const addressMarkup=address?(maps?`<a href="${maps}" target="_blank" rel="noopener">${esc(address)}</a>`:esc(address)):'No address';
       const phoneMarkup=phone?`<a href="${esc(phoneHref(phone))}">${esc(phone)}</a>`:'<span>No customer phone number</span>';
@@ -1126,7 +1272,11 @@ function render(){
       // (i stedet for at vise et abstrakt "dage"-tal, som ikke sagde medarbejderne noget).
       const hoursNum=Math.round(Number(a.days||1)*9*4)/4;
       const hoursLabel=(hoursNum%1===0?hoursNum:hoursNum.toFixed(2).replace(/0+$/,'').replace(/\.$/,'').replace('.',',')) + ' timer';
-      const doneBtn=isDone?`<button class="action undone-btn" type="button" style="grid-column:1/-1" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openDocModal(${noteId})">✅ Mark as done</button>`;
+      // RUNDE L (Martins ønske) — et kundebesøg (a.is_visit) skal udfylde
+      // besøgsrapporten (spørgsmål + billeder) FØR det kan markeres færdigt, i
+      // stedet for den almindelige dokumentations-tjekliste (fugtmålinger mv.),
+      // som ikke giver mening for et salgsbesøg. Se openVisitReportModal().
+      const doneBtn=isDone?`<button class="action undone-btn" type="button" style="grid-column:1/-1" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:(a.is_visit?`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openVisitReportModal(${noteId},'${esc(a.task_id)}')">✅ Mark as done</button>`:`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openDocModal(${noteId})">✅ Mark as done</button>`);
       const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse'}</div><div class="task-description-body">${esc(a.task_description).replace(/\n/g,'<br>')}</div></div>`:'';
       // SAGS-HANDLINGER: alle opgaver styres nu fra Martins eget program, så
       // "Se sagen"/"Registrér tid"/"Udfyld KS-formular"/"Materialer" åbner en

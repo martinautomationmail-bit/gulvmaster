@@ -914,6 +914,39 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-crmp-detail .tld-label{text-transform:none;color:var(--bly-sub);font-weight:700;letter-spacing:.02em;font-size:11px}
 #page-crmp-detail .tld-input{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);color:var(--bly-ink)}
 #page-crmp-detail .tld-input:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+/* RUNDE I (3. runde — Martin: "om sektionen samt kontakt sektionen" så stadig
+   ikke ud som forslaget). Felterne er BEVIDST stadig rigtige, redigerbare
+   inputs med autogem (kopiér/ring/mail-knapperne er urørt) — det ville være
+   et skridt tilbage at gøre dem read-only. I stedet får kun disse specifikke
+   felter (Om + Kontakt, IKKE opgave-formularen eller custom fields, som
+   stadig skal se ud som aktive formularfelter) en "spøgelses"-stil: usynlig
+   kant/baggrund i hvile, så de ligner ren tekst — kanten dukker op ved
+   hover/fokus, så man stadig kan se og bruge dem som felter. Kun border-
+   farve/baggrund ændres (ikke padding), så teksten aldrig hopper ved hover.*/
+/* NB: hver selektor er præfikset med #page-crmp-detail (2 id'er), ellers taber
+   den mod #page-crmp-detail .tld-input (1 id + 1 klasse) ovenfor på specificitet
+   og gør slet ingenting — det skete i første version af denne rettelse. */
+#page-crmp-detail #crmpx-phone,#page-crmp-detail #crmpx-email,#page-crmp-detail #crmpx-address,
+#page-crmp-detail #crmpx-value,#page-crmp-detail #crmpx-probability,
+#page-crmp-detail #crmpx-owner,#page-crmp-detail #crmpx-source,#page-crmp-detail #crmpx-note,
+#page-crmp-detail #crmpx-contact-name,#page-crmp-detail #crmpx-contact-phone,
+#page-crmp-detail #crmpx-contact-email,#page-crmp-detail #crmpx-contact-address{
+  border-color:transparent;background-color:transparent;transition:border-color .12s,background-color .12s;
+}
+#page-crmp-detail #crmpx-phone:hover,#page-crmp-detail #crmpx-email:hover,#page-crmp-detail #crmpx-address:hover,
+#page-crmp-detail #crmpx-value:hover,#page-crmp-detail #crmpx-probability:hover,
+#page-crmp-detail #crmpx-owner:hover,#page-crmp-detail #crmpx-source:hover,#page-crmp-detail #crmpx-note:hover,
+#page-crmp-detail #crmpx-contact-name:hover,#page-crmp-detail #crmpx-contact-phone:hover,
+#page-crmp-detail #crmpx-contact-email:hover,#page-crmp-detail #crmpx-contact-address:hover{
+  border-color:var(--bly-border);background-color:#fff;
+}
+#page-crmp-detail #crmpx-phone:focus,#page-crmp-detail #crmpx-email:focus,#page-crmp-detail #crmpx-address:focus,
+#page-crmp-detail #crmpx-value:focus,#page-crmp-detail #crmpx-probability:focus,
+#page-crmp-detail #crmpx-owner:focus,#page-crmp-detail #crmpx-source:focus,#page-crmp-detail #crmpx-note:focus,
+#page-crmp-detail #crmpx-contact-name:focus,#page-crmp-detail #crmpx-contact-phone:focus,
+#page-crmp-detail #crmpx-contact-email:focus,#page-crmp-detail #crmpx-contact-address:focus{
+  border-color:var(--bly-accent);background-color:#fff;
+}
 /* RUNDE Æ (Martins ønske: "ret kunde data inde under kunden det ikke muligt,
    der ingen knap for det") — navnefeltet var reelt already et redigerbart
    input med autogem, men helt usynligt som sådan (border:0, gennemsigtig
@@ -964,13 +997,29 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-badge-amber{background:#FFFBEB;color:#B45309}
 .crmpx-badge-green{background:#F0FDF4;color:#15803D}
 .crmpx-badge-slate{background:#F1F5F9;color:#475569}
-.crmpx-task-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px}
+.crmpx-task-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px}
 .crmpx-task-row:last-of-type{border-bottom:0}
 .crmpx-task-row.done .crmpx-task-title{text-decoration:line-through;color:var(--bly-sub)}
+/* RUNDE I (3. runde — Martin: "specielt ikke opgave sektionen" stadig ikke
+   matchede forslaget) — opgave-rækken brugte en helt almindelig, ustylet
+   browser-checkbox og et enligt ⚡-emoji (kun synligt som tooltip) for høj
+   prioritet. Checkboxen får nu appens accentfarve (grøn = udført, samme
+   betydning som .bly-dot-paid andre steder i appen), og "Høj prioritet" er
+   nu en tydelig gul mærkat i stedet for et emoji man skal holde musen over
+   for at forstå. */
+.crmpx-task-row input[type="checkbox"]{width:15px;height:15px;accent-color:#16A34A;cursor:pointer;flex-shrink:0}
+.crmpx-task-hoej{font-size:9px;font-weight:800;background:#FFFBEB;color:#B45309;border-radius:var(--bly-r-pill);padding:2px 7px;flex-shrink:0;white-space:nowrap}
 .crmpx-task-title{flex:1;min-width:0}
 .crmpx-task-meta{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .crmpx-task-due{font-size:10.5px;color:var(--bly-sub);white-space:nowrap}
 .crmpx-task-due.overdue{color:#DC2626;font-weight:700}
+/* RUNDE L — slet-knappen er kun synlig ved museover, så listen ikke ser rodet
+   ud med et fast rødt/gråt ikon på hver eneste række (matcher forslaget, som
+   slet ikke viser en slet-handling i hvile). */
+.crmpx-task-del{opacity:0;transition:opacity .12s}
+.crmpx-task-row:hover .crmpx-task-del{opacity:1}
+.crmpx-task-add-toggle{width:100%;margin-top:10px;padding:8px;border:1px dashed var(--bly-border);background:none;border-radius:var(--bly-r-sm);color:var(--bly-sub);font-size:12px;font-weight:700;cursor:pointer;transition:.12s}
+.crmpx-task-add-toggle:hover{background:var(--bly-hover);color:var(--bly-accent);border-color:var(--bly-accent)}
 .crmpx-task-assignee{width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;font-size:8px;font-weight:800;color:#fff;flex-shrink:0}
 .crmpx-mini-card{background:var(--bly-border-soft);border-radius:var(--bly-r-md);padding:10px 12px;font-size:12.5px;cursor:pointer;transition:background .12s}
 .crmpx-mini-card:hover{background:#EEF0F4}
@@ -991,6 +1040,23 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-mini-stat{flex:1;background:#fff;border-radius:8px;padding:7px 8px;text-align:left;min-width:0}
 .crmpx-mini-stat b{display:block;font-size:12.5px;font-weight:800;color:var(--bly-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crmpx-mini-stat span{font-size:9.5px;color:var(--bly-sub)}
+/* BESØGSRAPPORT — RUNDE L. Ét kort pr. udfyldt besøg (nyeste først), med
+   spørgsmål/svar som kv-rækker (samme sprog som .crmpx-mini-card) og evt.
+   billeder i et lille thumbnail-grid, matcher .pd-photo-thumb men uden
+   slet-knappen (besøgsrapporter redigeres kun fra medarbejder-appen). */
+.crmpx-visit-card{background:var(--bly-border-soft);border-radius:var(--bly-r-md);padding:12px}
+.crmpx-visit-card+.crmpx-visit-card{margin-top:10px}
+.crmpx-visit-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.crmpx-visit-date{font-weight:800;font-size:12px;color:var(--bly-ink)}
+.crmpx-visit-by{font-size:10.5px;color:var(--bly-sub)}
+.crmpx-visit-kv{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-bottom:8px}
+.crmpx-visit-kv-item{min-width:0}
+.crmpx-visit-kv-item span{display:block;font-size:9.5px;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.02em}
+.crmpx-visit-kv-item b{display:block;font-size:12px;color:var(--bly-ink);font-weight:700;word-break:break-word}
+.crmpx-visit-note{font-size:12px;color:var(--bly-ink);line-height:1.5;white-space:pre-wrap;background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.crmpx-visit-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+.crmpx-visit-thumb{border-radius:8px;overflow:hidden;border:1px solid var(--bly-border-soft);aspect-ratio:1/1;background:#fff;display:block}
+.crmpx-visit-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .crmpx-activity-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--bly-border-soft)}
 .crmpx-activity-item:last-child{border-bottom:0}
 .crmpx-activity-icon{width:26px;height:26px;border-radius:50%;background:var(--bly-border-soft);display:grid;place-items:center;flex-shrink:0;font-size:12px}
@@ -1012,6 +1078,16 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-field-row .tld-input{flex:1;min-width:0}
 .crmpx-field-btn{flex-shrink:0;text-decoration:none;color:var(--bly-ink)}
 .crmpx-field-btn.crmpx-field-btn-off{opacity:.35;pointer-events:none}
+/* KONTAKT-PANELET — RUNDE L. Kompakt icon+linje pr. felt i stedet for
+   label-over-formular, tættere på forslags-billedet Martin fik vist. Samme
+   redigerbare inputs som før (kun visuel indpakning) — kopiér/ring/mail/kort-
+   knapperne er skjult indtil man holder musen over rækken. */
+.crmpx-contact-row{display:flex;align-items:center;gap:9px;padding:7px 0}
+.crmpx-contact-row+.crmpx-contact-row{border-top:1px solid var(--bly-border-soft)}
+.crmpx-contact-icon{width:26px;height:26px;border-radius:8px;background:var(--bly-border-soft);display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.crmpx-contact-input{flex:1;min-width:0}
+.crmpx-contact-row .crmpx-field-btn{opacity:0;transition:opacity .12s}
+.crmpx-contact-row:hover .crmpx-field-btn,.crmpx-contact-row:focus-within .crmpx-field-btn{opacity:1}
 /* Kopiér-knap ved siden af navnet i sidehovedet — samme knap, men følger
    overskriftens højde i stedet for feltets. */
 .crmpx-head-namerow{display:flex;align-items:center;gap:6px}
@@ -2959,7 +3035,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-11.8</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-12.2</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4374,6 +4450,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div id="crmpx-customer-card"></div>
       </div>
 
+      <!-- BESØGSRAPPORT — RUNDE L (Martins ønske): "der kommer ind på kunden i mit CRM
+           system" — svar + billeder fra medarbejderens obligatoriske besøgsformular
+           (udfyldes i medarbejder-appen ved "Markér som færdig" på et kundebesøg).
+           Vises kun når leadet/opportunityen er koblet til en kunde, samme betingelse
+           som Kunde-panelet ovenfor. -->
+      <div class="crmpx-panel" id="crmpx-visits-panel" style="display:none">
+        <h3><span class="crmpx-badge crmpx-badge-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg></span>Besøgsrapport <span class="sub" id="crmpx-visits-count"></span></h3>
+        <div id="crmpx-visits-list"><div class="crmpx-empty">Ingen besøgsrapporter endnu</div></div>
+      </div>
+
       <!-- OPGAVER — udvidet efter Martins ønske om samme felter som Close's
            "Add Task": navn, ansvarlig, dato+tid for opfølgning, prioritet.
            Kontakten er altid det lead/den opportunity siden allerede er åben
@@ -4382,7 +4468,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="crmpx-panel">
         <h3><span class="crmpx-badge crmpx-badge-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Opgaver <span class="sub" id="crmpx-tasks-count"></span></h3>
         <div id="crmpx-tasks-list"><div class="crmpx-empty">Ingen opgaver endnu</div></div>
-        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bly-border-soft)">
+        <!-- RUNDE L (Martins gentagne ønske: "opgave sektionen ser stadig
+             anderledes ud") — selve tilføj-formularen stod altid fuldt fremme
+             under listen, hvilket gjorde panelet tungt/formular-agtigt
+             sammenlignet med forslaget. Skjult bag en enkelt "+ Tilføj
+             opgave"-knap nu, ligesom resten af panelet ser roligt ud i hvile —
+             ingen funktionalitet fjernet, formularen er præcis den samme når
+             man åbner den. -->
+        <button type="button" class="crmpx-task-add-toggle" id="crmpx-task-add-toggle">+ Tilføj opgave</button>
+        <div id="crmpx-task-add-form" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--bly-border-soft)">
           <input id="crmpx-task-new" class="tld-input" placeholder="Ny opgave, fx 'Ring op i morgen'" style="margin-bottom:6px">
           <div class="tld-row">
             <select id="crmpx-task-assignee" class="tld-input" style="flex:1.3"></select>
@@ -6189,6 +6283,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <input id="visit-address" class="input" placeholder="Gade, postnr, by">
       <label class="form-label" style="margin-top:12px">Note <span class="opt-tag">valgfrit</span></label>
       <input id="visit-notes" class="input" placeholder="Fx aftalt telefonisk, ring 15 min før">
+      <!-- RUNDE L (Martins ønske) — dukker kun op når kunden er valgt fra kundebasen
+           (vbSelectedCustomerId sat) OG kunden faktisk har tilbud at vælge imellem. -->
+      <div id="vb-quote-picker-wrap" style="display:none;margin-top:12px">
+        <label class="form-label">Vedhæft tilbud <span class="opt-tag">valgfrit</span></label>
+        <select id="vb-quote-select" class="input">
+          <option value="">Intet tilbud</option>
+        </select>
+        <div class="opt-tag" style="margin-top:4px">Medarbejderen der skal ud kan se omfanget i tilbuddet (uden priser) i sin app</div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn" id="close-visit-book">Annuller</button>
@@ -9927,10 +10030,14 @@ async function deleteChecklistItem(id,containerId,taskId){
 // Nu opretter denne popup kun selve opgaven i poolen (dato er valgfri/vejledende,
 // ligesom ved en almindelig manuel opgave) — medarbejder + endelig dato/tid vælges
 // først (og kun én gang) når opgaven trækkes ud på kalenderen.
+var vbSelectedCustomerId=null;
 function openVisitBookModal(){
   document.getElementById('visit-date').value=iso(new Date());
   ['visit-customer','visit-phone','visit-address','visit-notes'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('vb-customer-results').style.display='none';
+  vbSelectedCustomerId=null;
+  document.getElementById('vb-quote-picker-wrap').style.display='none';
+  document.getElementById('vb-quote-select').innerHTML='<option value="">Intet tilbud</option>';
   document.getElementById('visit-book-modal').classList.add('open');
 }
 // RUNDE K (fortsat, sep. 2026, Martins ønske) — samme kunde-søgning som Nyt
@@ -9956,6 +10063,21 @@ function vbPickCustomer(r){
   document.getElementById('visit-address').value=r.job_address||'';
   document.getElementById('visit-phone').value=r.customer_phone||'';
   document.getElementById('vb-customer-results').style.display='none';
+  // RUNDE L (Martins ønske) — nu hvor kunden er en rigtig, kendt kunde (customer_id),
+  // kan man vedhæfte et af kundens tilbud, så den der skal ud kan se omfanget.
+  vbSelectedCustomerId=r.customer_id||null;
+  vbLoadQuotesForCustomer();
+}
+async function vbLoadQuotesForCustomer(){
+  var wrap=document.getElementById('vb-quote-picker-wrap');
+  var sel=document.getElementById('vb-quote-select');
+  if(!vbSelectedCustomerId){wrap.style.display='none';return;}
+  var quotes=await api('/api/customer-visits/customer/'+vbSelectedCustomerId+'/quotes');
+  if(!quotes||!quotes.length){wrap.style.display='none';return;}
+  sel.innerHTML='<option value="">Intet tilbud</option>'+quotes.map(function(q){
+    return '<option value="'+q.id+'">'+esc(q.quote_number||('Tilbud #'+q.id))+' — '+krFmt(q.total)+' ('+esc(q.status||'')+')</option>';
+  }).join('');
+  wrap.style.display='block';
 }
 async function saveVisitBooking(){
   var name=document.getElementById('visit-customer').value.trim();
@@ -9965,7 +10087,9 @@ async function saveVisitBooking(){
     date:document.getElementById('visit-date').value,
     phone:document.getElementById('visit-phone').value.trim(),
     address:document.getElementById('visit-address').value.trim(),
-    notes:document.getElementById('visit-notes').value.trim()
+    notes:document.getElementById('visit-notes').value.trim(),
+    customer_id:vbSelectedCustomerId||null,
+    quote_id:document.getElementById('vb-quote-select').value||null
   };
   var r=await api('/api/customer-visits/book',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
@@ -18740,6 +18864,13 @@ function crmpxInitOnce(){
   document.getElementById('crmpx-note-new-mic-btn').addEventListener('click',function(){noteDictToggle('crmpx-note-new','crmpx-note-new-mic-btn');});
   document.getElementById('crmpx-task-add-btn').addEventListener('click',crmpxAddTask);
   document.getElementById('crmpx-task-new').addEventListener('keydown',function(e){if(e.key==='Enter')crmpxAddTask();});
+  // RUNDE L — "+ Tilføj opgave"-knappen åbner selve formularen (skjult i
+  // hvile, se CSS-kommentaren ved markup'en) og sætter fokus i titel-feltet.
+  document.getElementById('crmpx-task-add-toggle').addEventListener('click',function(){
+    document.getElementById('crmpx-task-add-form').style.display='block';
+    this.style.display='none';
+    document.getElementById('crmpx-task-new').focus();
+  });
   // Note-boksen i Aktivitet-panelet er nu en <textarea> (Martins ønske om plads
   // til flere linjer). Enter gemmer, Shift+Enter laver et linjeskift — nøjagtig
   // samme opførsel som crmpx-notes-new på Noter-fanen nedenfor, så de to
@@ -19163,6 +19294,11 @@ async function openCrmpDetail(entityType,id){
   var d=await api(endpoint);
   if(!d||d.error){toast('Kunne ikke hente','❌');return;}
   crmpDetailEntity={type:entityType,id:id,data:d};
+  // RUNDE L — "+ Tilføj opgave"-formularen skal altid starte skjult ved en frisk
+  // åbning af et lead/en opportunity (crmpxLoadTasks kaldes også ved genindlæsning
+  // efter tilføj/slet, hvor den IKKE skal nulstilles, så det kun sker her).
+  document.getElementById('crmpx-task-add-form').style.display='none';
+  document.getElementById('crmpx-task-add-toggle').style.display='block';
   // RUNDE I (sep. 2026, Martins ønske): opgaver oprettet under en Opportunity forudfyldes
   // med kl. 07:00 som starttidspunkt (kan altid ændres før "+ Tilføj opgave").
   // RUNDE K (sep. 2026, Martins ønske): samme standardtid gælder nu også Leads —
@@ -19251,6 +19387,8 @@ async function openCrmpDetail(entityType,id){
         +'<div class="crmpx-mini-stat"><b>'+krFmt(s.invoice_total)+'</b><span>faktureret</span></div>';
     });
   }
+  document.getElementById('crmpx-visits-panel').style.display=d.customer_id?'':'none';
+  if(d.customer_id)crmpxLoadVisits(d.customer_id);
   // Detaljer/Filer/Emails/Noter-faneskift — nulstilles til "Detaljer" for hvert
   // lead/opportunity man åbner. Selve fanebjælken kræver kun en kobling til en
   // kunde (Noter virker uden Gmail) — Filer og Emails afhænger derudover af at
@@ -19286,22 +19424,28 @@ async function openCrmpDetail(entityType,id){
     // .crmpx-field-row + .crmpx-field-btn, data-crmpx-copy på kopiér-knappen —
     // så den delegerede kopier-handler og crmpxUpdateContactLinks() dækker
     // begge paneler uden en eneste linje duplikeret logik.
+    // RUNDE L (Martins gentagne ønske: "Kontakt sektionen ser anderledes ud") —
+    // kompakt icon+linje-stil i stedet for label-over-felt-formular, tættere på
+    // forslags-billedet. Felterne er stadig helt almindelige, redigerbare inputs
+    // med autogem (crmpx-contact-row er bare en visuel indpakning) — kun
+    // kopiér/ring/mail/kort-knapperne er nu skjult indtil man holder musen over
+    // rækken, så panelet ikke føles som en formular ved første blik.
     document.getElementById('crmpx-contact-card').innerHTML=
-      '<div class="tld-section"><label class="tld-label">Navn</label>'
-      +'<div class="crmpx-field-row"><input id="crmpx-contact-name" class="tld-input" value="'+esc(d.contact_name||'')+'">'
-      +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-name" title="Kopiér navn">📋</button></div></div>'
-      +'<div class="tld-section"><label class="tld-label">📞 Telefon</label>'
-      +'<div class="crmpx-field-row"><input id="crmpx-contact-phone" class="tld-input" value="'+esc(d.contact_phone||'')+'">'
+      '<div class="crmpx-contact-row"><span class="crmpx-contact-icon">👤</span>'
+      +'<input id="crmpx-contact-name" class="tld-input crmpx-contact-input" value="'+esc(d.contact_name||'')+'" placeholder="Navn">'
+      +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-name" title="Kopiér navn">📋</button></div>'
+      +'<div class="crmpx-contact-row"><span class="crmpx-contact-icon">📞</span>'
+      +'<input id="crmpx-contact-phone" class="tld-input crmpx-contact-input" value="'+esc(d.contact_phone||'')+'" placeholder="Telefon">'
       +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-phone" title="Kopiér telefonnummer">📋</button>'
-      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-phone-link" href="#" title="Ring op">📞</a></div></div>'
-      +'<div class="tld-section"><label class="tld-label">📧 Email</label>'
-      +'<div class="crmpx-field-row"><input id="crmpx-contact-email" class="tld-input" type="email" value="'+esc(d.contact_email||'')+'">'
+      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-phone-link" href="#" title="Ring op">📞</a></div>'
+      +'<div class="crmpx-contact-row"><span class="crmpx-contact-icon">📧</span>'
+      +'<input id="crmpx-contact-email" class="tld-input crmpx-contact-input" type="email" value="'+esc(d.contact_email||'')+'" placeholder="Email">'
       +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-email" title="Kopiér email">📋</button>'
-      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-email-link" href="#" target="_blank" rel="noopener" title="Skriv en mail">✉️</a></div></div>'
-      +'<div class="tld-section"><label class="tld-label">📍 Adresse</label>'
-      +'<div class="crmpx-field-row"><input id="crmpx-contact-address" class="tld-input" value="'+esc(d.contact_address||'')+'">'
+      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-email-link" href="#" target="_blank" rel="noopener" title="Skriv en mail">✉️</a></div>'
+      +'<div class="crmpx-contact-row"><span class="crmpx-contact-icon">📍</span>'
+      +'<input id="crmpx-contact-address" class="tld-input crmpx-contact-input" value="'+esc(d.contact_address||'')+'" placeholder="Adresse">'
       +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-address" title="Kopiér adresse">📋</button>'
-      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-address-link" href="#" target="_blank" rel="noopener" title="Vis på Google Maps">📍</a></div></div>';
+      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-address-link" href="#" target="_blank" rel="noopener" title="Vis på Google Maps">📍</a></div>';
     // Kortet gen-renderes hver gang siden åbnes, så hrefs sættes HER (den
     // tidligere crmpxUpdateContactLinks()-kald ovenfor kørte før kortet fandtes).
     crmpxUpdateContactLinks();
@@ -19684,12 +19828,17 @@ async function crmpxLoadTasks(){
   list.innerHTML=tasks.length?tasks.map(function(t){
     var initials=t.assigned_initials||(t.assigned_name?t.assigned_name.split(' ').map(function(w){return w[0];}).slice(0,2).join('').toUpperCase():'');
     var assigneeBadge=t.assigned_to?'<span class="crmpx-task-assignee" style="background:'+crmpOwnerColor(t.assigned_to)+'" title="'+esc(t.assigned_name||'')+'">'+esc(initials)+'</span>':'';
+    // RUNDE L (Martins gentagne ønske: "opgave sektionen ser stadig anderledes
+    // ud") — rækkefølgen er nu titel → prioritet-mærke → dato/ansvarlig, samme
+    // som forslags-billedet, i stedet for mærke → titel. Slet-knappen vises kun
+    // ved museover (se .crmpx-task-row .qz-icon-btn i CSS), så listen ved
+    // hvile ser lige så ren ud som i forslaget.
     return '<div class="crmpx-task-row'+(t.done?' done':'')+'">'
       +'<input type="checkbox" data-task-id="'+t.id+'" data-action="task-toggle"'+(t.done?' checked':'')+'>'
-      +(t.priority?'<span title="Høj prioritet">⚡</span>':'')
       +'<span class="crmpx-task-title">'+esc(t.title)+'</span>'
+      +(t.priority?'<span class="crmpx-task-hoej" title="Høj prioritet">⚡ Høj</span>':'')
       +'<span class="crmpx-task-meta">'+crmpxTaskDueLabel(t)+assigneeBadge+'</span>'
-      +'<button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="task-delete" title="Slet">🗑</button></div>';
+      +'<button type="button" class="qz-icon-btn crmpx-task-del" data-task-id="'+t.id+'" data-action="task-delete" title="Slet">🗑</button></div>';
   }).join(''):'<div class="crmpx-empty">Ingen opgaver endnu</div>';
   list.querySelectorAll('[data-action="task-toggle"]').forEach(function(cb){
     cb.addEventListener('change',async function(){await api('/api/crm/tasks/'+cb.dataset.taskId,{method:'PUT',body:JSON.stringify({done:cb.checked})});crmpxLoadTasks();});
@@ -19711,6 +19860,34 @@ async function crmpxLoadTasks(){
     assigneeSel.innerHTML=(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
     assigneeSel.value=keepVal||(me&&me.id)||'';
   }
+}
+// BESØGSRAPPORT — RUNDE L (Martins ønske: "kommer ind på kunden i mit CRM system").
+// Viser svar+billeder fra medarbejderens obligatoriske besøgsformular. Kun besøg
+// der faktisk er udfyldt (server-siden filtrerer på submitted_at IS NOT NULL).
+async function crmpxLoadVisits(customerId){
+  var list=document.getElementById('crmpx-visits-list');
+  var countEl=document.getElementById('crmpx-visits-count');
+  var visits=await api('/api/crm/customers/'+customerId+'/visits')||[];
+  if(countEl)countEl.textContent=visits.length?'('+visits.length+')':'';
+  if(!list)return;
+  if(!visits.length){list.innerHTML='<div class="crmpx-empty">Ingen besøgsrapporter endnu</div>';return;}
+  list.innerHTML=visits.map(function(v){
+    var kv=[
+      {l:'Rummets størrelse',val:v.room_size},
+      {l:'Ønsket gulvtype',val:v.floor_type_wanted},
+      {l:'Anbefalet løsning',val:v.recommended_solution},
+      {l:'Estimeret pris',val:v.estimated_price}
+    ].filter(function(x){return x.val;});
+    var kvHtml=kv.length?'<div class="crmpx-visit-kv">'+kv.map(function(x){return '<div class="crmpx-visit-kv-item"><span>'+esc(x.l)+'</span><b>'+esc(x.val)+'</b></div>';}).join('')+'</div>':'';
+    var noteHtml=v.notes?'<div class="crmpx-visit-note">'+esc(v.notes).replace(/\n/g,'<br>')+'</div>':'';
+    var photos=Array.isArray(v.photo_urls)?v.photo_urls:[];
+    var photosHtml=photos.length?'<div class="crmpx-visit-photos">'+photos.map(function(url){return '<a class="crmpx-visit-thumb" href="'+esc(url)+'" target="_blank" rel="noopener"><img src="'+esc(url)+'" loading="lazy"></a>';}).join('')+'</div>':'';
+    return '<div class="crmpx-visit-card">'
+      +'<div class="crmpx-visit-head"><span class="crmpx-visit-date">📅 '+esc(fmtDaDate((v.submitted_at||'').slice(0,10)))+'</span><span class="crmpx-visit-by">'+esc(v.filled_by_name||'')+'</span></div>'
+      +kvHtml+noteHtml+photosHtml
+      +(!kv.length&&!noteHtml&&!photosHtml?'<div class="crmpx-empty">Ingen detaljer udfyldt</div>':'')
+      +'</div>';
+  }).join('');
 }
 async function crmpxAddTask(){
   var ent=crmpDetailEntity;

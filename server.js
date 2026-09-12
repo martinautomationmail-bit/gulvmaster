@@ -783,6 +783,20 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_customer_visits_task ON customer_visits(task_id);
+    -- RUNDE L (sep. 2026, Martins ønske): "Book kundebesøg" kan nu koble besøget til en
+    -- rigtig kunde (customer_id) og et konkret tilbud (quote_id) — så medarbejderen der
+    -- skal ud kan se hvad der er givet tilbud på (uden priser, se /quote-scope), og
+    -- besøgsrapporten (billeder + spørgsmål, udfyldes obligatorisk ved "Markér som
+    -- færdig" for et kundebesøg) kan vises på selve kunden i CRM.
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS quote_id INTEGER REFERENCES quotes(id) ON DELETE SET NULL;
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS photo_urls JSONB NOT NULL DEFAULT '[]';
+    -- Sat første gang formularen gemmes (fra admin ELLER medarbejder-appen) — bruges til
+    -- at afgøre om besøgsrapporten skal vises i CRM (kun rigtigt udfyldte besøg, ikke
+    -- tomme rækker der kun er oprettet ved booking) og om det obligatoriske krav ved
+    -- "Markér som færdig" er opfyldt.
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS submitted_at TEXT;
+    CREATE INDEX IF NOT EXISTS idx_customer_visits_customer ON customer_visits(customer_id);
 
     CREATE TABLE IF NOT EXISTS note_tabs (
       id SERIAL PRIMARY KEY,
@@ -5792,6 +5806,11 @@ app.post('/api/customer-visits/book', auth, panelAccess('plan'), asyncRoute(asyn
   const address = body.address ? String(body.address).trim().slice(0, 300) : '';
   const phone = body.phone ? String(body.phone).trim().slice(0, 60) : '';
   const notes = body.notes ? String(body.notes).trim().slice(0, 500) : '';
+  // RUNDE L — customer_id/quote_id er begge valgfrie: man kan stadig booke et
+  // kundebesøg på en helt ny/ukendt kunde (som før), eller vælge en eksisterende fra
+  // kundebasen og evt. vedhæfte et tilbud, den der skal ud kan se omfanget af.
+  const customerId = body.customer_id ? Number(body.customer_id) || null : null;
+  const quoteId = body.quote_id ? Number(body.quote_id) || null : null;
 
   const client = await pool.connect();
   try {
@@ -5801,9 +5820,9 @@ app.post('/api/customer-visits/book', auth, panelAccess('plan'), asyncRoute(asyn
       VALUES ($1,'Kundebesøg',NULL,$2,$3,$4,$5,$5,'other',NULL,NULL,${nowTextSQL()},'manual',1,${nowTextSQL()})
     `, [taskId, customerName, address, phone || null, body.date]);
     await client.query(`
-      INSERT INTO customer_visits (task_id,customer_name,address,phone,notes,created_at,updated_at)
-      VALUES ($1,$2,$3,$4,$5,${nowTextSQL()},${nowTextSQL()})
-    `, [taskId, customerName, address, phone, notes || null]);
+      INSERT INTO customer_visits (task_id,customer_name,address,phone,notes,customer_id,quote_id,created_at,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()},${nowTextSQL()})
+    `, [taskId, customerName, address, phone, notes || null, customerId, quoteId]);
     await client.query('COMMIT');
     res.json({ ok: true, task_id: taskId });
   } catch (error) {
@@ -5819,6 +5838,34 @@ app.get('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
   res.json(row || null);
 }));
 
+// RUNDE L — quote-liste til "Vedhæft tilbud"-vælgeren i Book kundebesøg-modalen.
+// Samme adgang som selve booke-routen (panelAccess('plan')), IKKE panelAccess('quotes'),
+// så alle der må booke kundebesøg også kan vedhæfte et tilbud fra listen.
+app.get('/api/customer-visits/customer/:customerId/quotes', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const result = await pool.query(`
+    SELECT id, quote_number, status, total, created_at
+    FROM quotes WHERE customer_id=$1
+    ORDER BY created_at DESC LIMIT 20
+  `, [req.params.customerId]);
+  res.json(result.rows);
+}));
+
+// RUNDE L — det medarbejderen ser i sin egen app: KUN beskrivelse/omfang, ALDRIG
+// pris/kostpris/rabat-felter, uanset hvad der senere tilføjes på quote_lines.
+// Slår op via task_id (samme vej som resten af kundebesøgs-flowet), ikke quote_id
+// direkte, så den kun virker for et besøg medarbejderen faktisk er tildelt.
+app.get('/api/customer-visits/:taskId/quote-scope', auth, asyncRoute(async (req, res) => {
+  const visit = await pgOne('SELECT quote_id FROM customer_visits WHERE task_id=$1', [req.params.taskId]);
+  if (!visit || !visit.quote_id) return res.json({ quote_id: null, lines: [] });
+  const quote = await pgOne('SELECT id, quote_number FROM quotes WHERE id=$1', [visit.quote_id]);
+  if (!quote) return res.json({ quote_id: null, lines: [] });
+  const linesResult = await pool.query(`
+    SELECT description, unit, quantity, line_type, note
+    FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC
+  `, [visit.quote_id]);
+  res.json({ quote_id: quote.id, quote_number: quote.quote_number, lines: linesResult.rows });
+}));
+
 app.put('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
   const body = req.body || {};
   const existing = await pgOne('SELECT * FROM customer_visits WHERE task_id=$1', [req.params.taskId]);
@@ -5831,18 +5878,25 @@ app.put('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
     floor_type_wanted: body.floor_type_wanted !== undefined ? String(body.floor_type_wanted).trim().slice(0, 200) : existing?.floor_type_wanted || '',
     notes: body.notes !== undefined ? String(body.notes).slice(0, 3000) : existing?.notes || '',
     recommended_solution: body.recommended_solution !== undefined ? String(body.recommended_solution).slice(0, 2000) : existing?.recommended_solution || '',
-    estimated_price: body.estimated_price !== undefined ? String(body.estimated_price).trim().slice(0, 100) : existing?.estimated_price || ''
+    estimated_price: body.estimated_price !== undefined ? String(body.estimated_price).trim().slice(0, 100) : existing?.estimated_price || '',
+    // RUNDE L — billeder fra besøget (medarbejder-appens obligatoriske besøgsrapport,
+    // men kan i princippet også sættes fra admin). Max 20 pr. besøg, samme grænse-stil
+    // som andre billed-lister i appen (se time_entries.photo_urls).
+    photo_urls: Array.isArray(body.photo_urls) ? body.photo_urls.filter(Boolean).map(String).slice(0, 20) : (existing?.photo_urls || [])
   };
+  // submitted_at sættes første gang formularen gemmes og ændres ikke bagefter
+  // (COALESCE nedenfor) — bruges til at afgøre om besøget vises i CRM og om det
+  // obligatoriske krav ved "Markér som færdig" i medarbejder-appen er opfyldt.
   if (existing) {
     await pool.query(`
-      UPDATE customer_visits SET customer_name=$1,address=$2,phone=$3,email=$4,room_size=$5,floor_type_wanted=$6,notes=$7,recommended_solution=$8,estimated_price=$9,filled_by=$10,updated_at=${nowTextSQL()}
-      WHERE task_id=$11
-    `, [fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, req.user.id, req.params.taskId]);
+      UPDATE customer_visits SET customer_name=$1,address=$2,phone=$3,email=$4,room_size=$5,floor_type_wanted=$6,notes=$7,recommended_solution=$8,estimated_price=$9,filled_by=$10,photo_urls=$11,submitted_at=COALESCE(submitted_at,${nowTextSQL()}),updated_at=${nowTextSQL()}
+      WHERE task_id=$12
+    `, [fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, req.user.id, JSON.stringify(fields.photo_urls), req.params.taskId]);
   } else {
     await pool.query(`
-      INSERT INTO customer_visits (task_id,customer_name,address,phone,email,room_size,floor_type_wanted,notes,recommended_solution,estimated_price,filled_by,created_at,updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()},${nowTextSQL()})
-    `, [req.params.taskId, fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, req.user.id]);
+      INSERT INTO customer_visits (task_id,customer_name,address,phone,email,room_size,floor_type_wanted,notes,recommended_solution,estimated_price,filled_by,photo_urls,submitted_at,created_at,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()},${nowTextSQL()},${nowTextSQL()})
+    `, [req.params.taskId, fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, req.user.id, JSON.stringify(fields.photo_urls)]);
   }
   // Hold også selve opgaven (jt_tasks) opdateret, så navn/adresse/telefon følger med overalt i appen.
   await pool.query(`UPDATE jt_tasks SET job_name=$1, job_address=$2, customer_phone=$3 WHERE id=$4 AND is_visit=1`, [fields.customer_name, fields.address, fields.phone || null, req.params.taskId]);
@@ -6845,6 +6899,22 @@ app.get('/api/crm/customers/:id/summary', auth, panelAccessAny(['customers', 'cr
     quote_count: quoteCount.n,
     invoice_total: Number(invoiceTotal.sum) || 0
   });
+}));
+
+// RUNDE L — besøgsrapporter (billeder + spørgsmål fra medarbejder-appens obligatoriske
+// formular ved "Markér som færdig" på et kundebesøg), til det nye "Besøgsrapport"-panel
+// på lead/opportunity-siden. Kun besøg der faktisk er udfyldt (submitted_at sat) —
+// en tom besøgs-række der kun blev oprettet ved booking skal ikke stå som en "rapport".
+app.get('/api/crm/customers/:id/visits', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const result = await pool.query(`
+    SELECT v.id, v.task_id, v.room_size, v.floor_type_wanted, v.notes, v.recommended_solution,
+           v.estimated_price, v.photo_urls, v.submitted_at, v.updated_at, u.name AS filled_by_name
+    FROM customer_visits v
+    LEFT JOIN users u ON u.id = v.filled_by
+    WHERE v.customer_id=$1 AND v.submitted_at IS NOT NULL
+    ORDER BY v.submitted_at DESC
+  `, [req.params.id]);
+  res.json(result.rows);
 }));
 app.post('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const b = req.body || {};
