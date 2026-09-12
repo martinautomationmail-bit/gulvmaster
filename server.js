@@ -5841,12 +5841,28 @@ app.get('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
 // RUNDE L — quote-liste til "Vedhæft tilbud"-vælgeren i Book kundebesøg-modalen.
 // Samme adgang som selve booke-routen (panelAccess('plan')), IKKE panelAccess('quotes'),
 // så alle der må booke kundebesøg også kan vedhæfte et tilbud fra listen.
+//
+// RUNDE H #300 (Martins fejlrapport: "kundebesøg + vedhæft tilbud virkede ikke") —
+// undersøgt: langt de fleste tilbud oprettes UDEN at customer_id nogensinde bliver
+// sat, fordi Tilbudseditorens kundesøgning (qePickCustomer) kun sætter den hvis man
+// rent faktisk KLIKKER et søgeresultat — skriver man (eller retter i) navnet bagefter,
+// forbliver customer_id NULL selvom det tydeligvis er samme kunde. Streng
+// "WHERE customer_id=$1" fandt derfor reelt aldrig noget for de fleste kunder, uden
+// nogen fejlbesked — det så bare ud som om funktionen ikke gjorde noget. Falder nu
+// også tilbage til at matche et IKKE-koblet tilbud (customer_id IS NULL) på samme
+// navn eller telefonnummer som den valgte kunde, som en ekstra vej ind — en rigtig
+// customer_id-kobling har stadig forrang og bruges altid når den findes.
 app.get('/api/customer-visits/customer/:customerId/quotes', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const name = String(req.query.name || '').trim();
+  const phone = String(req.query.phone || '').trim();
   const result = await pool.query(`
     SELECT id, quote_number, status, total, created_at
-    FROM quotes WHERE customer_id=$1
-    ORDER BY created_at DESC LIMIT 20
-  `, [req.params.customerId]);
+    FROM quotes
+    WHERE customer_id=$1
+       OR (customer_id IS NULL AND $2<>'' AND job_name ILIKE $2)
+       OR (customer_id IS NULL AND $3<>'' AND customer_phone=$3)
+    ORDER BY (customer_id=$1) DESC, created_at DESC LIMIT 20
+  `, [req.params.customerId, name ? `%${name}%` : '', phone]);
   res.json(result.rows);
 }));
 
@@ -12204,133 +12220,32 @@ app.post('/api/customer-emails/send-today-reminders', auth, adminOnly, asyncRout
 // ØKONOMI — kun for brugere med is_finance_admin=1 (se financeOnly)
 // ══════════════════════════════════════════════════════════════
 
-// Henter alle opgaver med planlagt startdato i et vindue omkring nu, og bygger
-// "hvilke sager har arbejde i gang i måned X" pr. faggruppe — samme metode som
-// blev aftalt manuelt: aktiv måned = opgavens startdato, ikke JobTreads eget
-// Status-felt (som i praksis ikke bliver opdateret løbende).
+// RUNDE Ø (sep. 2026, Martins ønske: "slet Jobtread, brug mit eget program") — hentede
+// tidligere sagernes omsætning LIVE fra JobTread's opgaver/dokumenter/cost-items (se
+// git-historik for den gamle, ~220 linjer lange JobTread-udgave med sideskift, batch-
+// opslag og prioritetslogik mellem ordre/faktura/cost-items). Nu bygges "hvilken
+// omsætning hører til hvilken måned, i hvilken faggruppe" i stedet direkte ud fra vores
+// EGNE fakturaer og tilbud (invoices/quotes), som er langt simplere og mere korrekt for
+// bogføring: en faktura tæller i den måned den faktisk er UDSTEDT (samme princip som
+// Resultat-grafen/Moms i Oversigt bruger), gruppéret pr. sag (job_number) og pr.
+// faggruppe (projects.project_type — samme felt CRM'et bruger, se GET /api/project-types).
+//
+// FORVENTET OMSÆTNING (kun i INDEVÆRENDE måned): tilbud kunden har ACCEPTERET, men som
+// endnu ikke er faktureret, vises som forventet/pipeline-omsætning i den måned man
+// kigger på nu — der findes ingen "planlagt startdato" på et tilbud i det nye system
+// (modsat JobTreads opgaveplan), så modsat før spredes det IKKE ud på fremtidige
+// måneder efter et gæt. Bagudgående (allerede overståede) måneder viser fortsat KUN
+// rigtige fakturaer — accepterede-men-ufakturerede tilbud forsvinder automatisk af sig
+// selv fra en overstået måned (se samme filter som før, nu bare på valueSource==='invoice').
+//
+// BEMÆRK (fortalt til Martin ved leveringen): sager der udelukkende findes i JobTread,
+// og aldrig er indtastet som tilbud/faktura her i programmet, tæller ikke længere med —
+// "gamle måneder må vente", som aftalt.
 async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   monthsBack = monthsBack != null ? monthsBack : 1;
   monthsForward = monthsForward != null ? monthsForward : 1;
   const today = new Date();
-  const todayIso = today.toISOString().slice(0, 10);
-  const currentMonthKey = todayIso.slice(0, 7);
-  const rangeStart = new Date(today.getFullYear(), today.getMonth() - monthsBack, 1);
-  const rangeEnd = new Date(today.getFullYear(), today.getMonth() + monthsForward + 1, 0);
-  const fmt = d => d.toISOString().slice(0, 10);
-  const allTasks = [];
-  let cursor, page = 0;
-  while (page < 20) {
-    const args = { size: 100, where: { and: [['startDate', '>=', fmt(rangeStart)], ['startDate', '<=', fmt(rangeEnd)], ['isGroup', false]] } };
-    if (cursor) args.page = cursor;
-    // Let opgave-forespørgsel uden cost items — det er det der holder den hurtig og
-    // fejlfri, ligesom før. Selve budget-beregningen hentes i et separat trin nedenfor.
-    const data = await jtFetch({
-      query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, tasks: {
-        $: args, nextPage: {},
-        nodes: {
-          startDate: {}, endDate: {},
-          job: { id: {}, name: {}, customFieldValues: { $: { size: 5, where: [['customField', 'name'], 'Projekt Type'] }, nodes: { value: {} } } }
-        }
-      } } }
-    }, 'Økonomi: hent opgaver i vindue');
-    const nodes = data?.organization?.tasks?.nodes || [];
-    allTasks.push(...nodes);
-    const next = data?.organization?.tasks?.nextPage;
-    if (!next) break;
-    cursor = next;
-    page++;
-  }
-
-  // Byg ét sæt data pr. sag (ikke pr. opgave) — bruges til placeringslogikken nedenfor.
-  // "isActiveNow": har sagen en opgave der løber henover i dag, uanset hvornår den startede.
-  const jobInfo = {};
-  for (const t of allTasks) {
-    if (!t.job || !t.startDate) continue;
-    const jobId = t.job.id;
-    if (!jobInfo[jobId]) jobInfo[jobId] = { name: t.job.name, fag: t.job.customFieldValues?.nodes?.[0]?.value || 'Ukendt', earliestStart: t.startDate, isActiveNow: false };
-    else if (t.startDate < jobInfo[jobId].earliestStart) jobInfo[jobId].earliestStart = t.startDate;
-    if (t.startDate <= todayIso && (!t.endDate || t.endDate >= todayIso)) jobInfo[jobId].isActiveNow = true;
-  }
-  const uniqueJobIds = Object.keys(jobInfo);
-
-  // Henter fakturadatoer pr. sag — bruges til at placere FÆRDIGE (tidligere) måneder
-  // efter hvornår sagen faktisk blev faktureret, ikke hvornår opgaven oprindeligt stod
-  // til at starte (fx pga. udskydelser undervejs).
-  const invoiceMonthsByJob = {};
-  let invCursor, invPage = 0;
-  while (invPage < 20) {
-    const invArgs = { size: 100, where: { and: [['type', 'customerInvoice'], ['createdAt', '>=', fmt(rangeStart)], ['createdAt', '<=', fmt(rangeEnd)]] } };
-    if (invCursor) invArgs.page = invCursor;
-    const invData = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, documents: {
-      $: invArgs, nextPage: {}, nodes: { createdAt: {}, job: { id: {} } }
-    } } } }, 'Økonomi: fakturadatoer i vindue');
-    const invNodes = invData?.organization?.documents?.nodes || [];
-    for (const d of invNodes) {
-      if (!d.job || !d.createdAt) continue;
-      const mk = d.createdAt.slice(0, 7);
-      if (!invoiceMonthsByJob[d.job.id]) invoiceMonthsByJob[d.job.id] = new Set();
-      invoiceMonthsByJob[d.job.id].add(mk);
-    }
-    const invNext = invData?.organization?.documents?.nextPage;
-    if (!invNext) break;
-    invCursor = invNext;
-    invPage++;
-  }
-
-  // FEJL RETTET (tre fejl fundet, seneste den vigtigste): (1) at hente hver enkelt
-  // cost item pr. opgave gav "Request Entity Too Large" hos JobTread så snart der var
-  // mere end en håndfuld opgaver i vinduet. (2) at summere cost items filtreret på
-  // "document.status=approved" tæller forkert, fordi EN sag typisk har FLERE godkendte
-  // dokumenter i sit forløb (tilbud → ordre → faktura), og JobTread kopierer linjerne
-  // over på hvert nyt dokument — så samme linjer bliver talt 2-3 gange, fordi de findes
-  // på flere godkendte dokumenter samtidig (set direkte i data for "Mie Deign", hvor
-  // reelt 25.060 kr blev vist som 50.120 kr fordi ordre + faktura begge var "approved").
-  // LØSNING: brug dokumentets EGET price-felt i stedet for at summere linjer på tværs
-  // af dokumenter. Prioritet: (a) godkendt/approved FAKTURA — det er det der faktisk er
-  // faktureret, og kan afvige fra tilbuddet hvis der blev lavet mere/mindre end aftalt;
-  // (b) hvis ingen faktura endnu, brug den godkendte/accepterede ORDRE (tilbud); (c) hvis
-  // intet af det findes, fald tilbage til rå cost-item-sum (interne linjer uden dokument).
-  // Hvis både ordre og faktura findes men beløbene afviger markant (>15%), flages sagen
-  // (priceMismatch) i stedet for stiltiende at vælge det ene — så det kan tjekkes manuelt.
-  const jobRevenueInfo = {}, totalSumByJob = {};
-  const BATCH = 50;
-  for (let i = 0; i < uniqueJobIds.length; i += BATCH) {
-    const idBatch = uniqueJobIds.slice(i, i + BATCH);
-    const docsData = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
-      $: { size: idBatch.length, where: ['id', 'in', idBatch] },
-      nodes: { id: {}, documents: { $: { size: 20, where: ['type', 'in', ['customerOrder', 'customerInvoice']] }, nodes: { type: {}, status: {}, price: {}, priceWithTax: {} } } }
-    } } } }, 'Økonomi: tilbud/ordre/faktura pr. sag');
-    for (const j of docsData?.organization?.jobs?.nodes || []) {
-      const docs = j.documents?.nodes || [];
-      const invoices = docs.filter(d => d.type === 'customerInvoice' && d.status === 'approved');
-      const orders = docs.filter(d => d.type === 'customerOrder' && d.status === 'approved');
-      // Martin vil have tallene INKL. moms (priceWithTax), ikke ekskl. (price) — bruges
-      // konsekvent til både summen og mismatch-tjekket herunder.
-      const invSum = invoices.reduce((s, d) => s + (d.priceWithTax != null ? d.priceWithTax : (d.price || 0)), 0);
-      const orderSum = orders.reduce((s, d) => s + (d.priceWithTax != null ? d.priceWithTax : (d.price || 0)), 0);
-      let value = null, source = null;
-      if (invoices.length) { value = invSum; source = 'invoice'; }
-      else if (orders.length) { value = orderSum; source = 'order'; }
-      const priceMismatch = !!(invoices.length && orders.length && orderSum > 0 && Math.abs(invSum - orderSum) / orderSum > 0.15);
-      jobRevenueInfo[j.id] = { value, source, hasDocument: invoices.length > 0 || orders.length > 0, priceMismatch };
-    }
-  }
-  // Fald tilbage til rå cost-item-sum KUN for sager der slet ikke har nogen godkendt
-  // ordre eller faktura endnu (interne linjer uden formelt dokument) — ellers ville de
-  // altid vise "intet budget".
-  const fallbackJobIds = uniqueJobIds.filter(id => !jobRevenueInfo[id]?.hasDocument);
-  for (let i = 0; i < fallbackJobIds.length; i += BATCH) {
-    const idBatch = fallbackJobIds.slice(i, i + BATCH);
-    const totalData = await jtFetch({ query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, jobs: {
-      $: { size: idBatch.length, where: ['id', 'in', idBatch] },
-      nodes: { id: {}, costItems: { sum: { $: 'price' } } }
-    } } } }, 'Økonomi: rå sum pr. sag uden tilbud');
-    // Cost items har ikke deres eget moms-felt (de er interne budgetlinjer, ikke et
-    // kundevendt dokument) — her er der intet godkendt tilbud/faktura at læse momsen fra
-    // endnu, så beløbet estimeres med 25% moms lagt til, så det stemmer overens med resten
-    // af tallene, der nu alle er inkl. moms.
-    for (const j of totalData?.organization?.jobs?.nodes || []) totalSumByJob[j.id] = j.costItems.sum != null ? j.costItems.sum * 1.25 : null;
-  }
+  const currentMonthKey = today.toISOString().slice(0, 7);
 
   const overridesResult = await pool.query('SELECT * FROM finance_job_overrides');
   const overrides = {};
@@ -12344,68 +12259,73 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
     monthKeys.push(d.toISOString().slice(0, 7));
   }
-  // En sag der er flyttet til en måned uden for det normale vindue (fx langt frem i
-  // tiden) skal stadig kunne ses — udvider derfor vinduet med den måned i stedet for
-  // stille at ignorere flytningen.
+  // En sag der er flyttet til en måned uden for det normale vindue skal stadig kunne
+  // ses — udvider derfor vinduet med den måned i stedet for stille at ignorere flytningen.
   for (const mk of Object.values(monthOverrides)) if (!monthKeys.includes(mk)) monthKeys.push(mk);
   monthKeys.sort();
   const buckets = {};
   for (const mk of monthKeys) buckets[mk] = {};
 
-  // PLACERINGSLOGIK — tre forskellige regler afhængig af om måneden er fortid, nutid
-  // eller fremtid, fordi "hvornår hører denne sag til" betyder noget forskelligt alt
-  // efter hvor i forløbet sagen er:
-  //  • Tidligere måneder: placeres efter hvornår sagen rent faktisk blev FAKTURERET
-  //    (ikke hvornår opgaven oprindeligt stod til at starte).
-  //  • Denne måned: aktive sager lige nu, sager der starter denne måned, ELLER sager
-  //    der er blevet faktureret denne måned.
-  //  • Fremtidige måneder: kun sager med et godkendt (accepteret) tilbud planlagt til
-  //    den måned — et upåbegyndt/ikke-godkendt tilbud skal ikke tælle med i en
-  //    fremtidig omsætningsprognose.
-  for (const jobId of uniqueJobIds) {
-    const info = jobInfo[jobId];
-    const naturalMk = info.isActiveNow ? currentMonthKey : info.earliestStart.slice(0, 7);
-    const invoiceMonths = invoiceMonthsByJob[jobId] ? Array.from(invoiceMonthsByJob[jobId]).sort() : [];
-    const revInfo = jobRevenueInfo[jobId] || {};
-    const hasAnyDocument = !!revInfo.hasDocument;
-    const hasApprovedBudget = hasAnyDocument && revInfo.value != null;
-
-    // PLACERINGSÅRSAG — en klar, læsbar sætning der forklarer PRÆCIS hvorfor sagen
-    // landede i denne måned, så Martin hurtigt kan validere om det er korrekt (i stedet
-    // for at skulle regne den komplicerede logik ovenfor ud i hovedet hver gang).
-    let bucketMk, reason;
-    if (invoiceMonths.includes(currentMonthKey)) {
-      bucketMk = currentMonthKey;
-      reason = 'Der er lavet en faktura på sagen i denne måned.';
-    } else if (naturalMk < currentMonthKey) {
-      const pastInvoiceMonths = invoiceMonths.filter(m => m < currentMonthKey);
-      if (pastInvoiceMonths.length) {
-        bucketMk = pastInvoiceMonths[pastInvoiceMonths.length - 1];
-        reason = 'Placeret efter seneste faktura (' + bucketMk + ') — sagens opgaver startede oprindeligt ' + naturalMk + '.';
-      } else {
-        bucketMk = naturalMk;
-        reason = 'Ingen faktura fundet endnu — placeret efter sagens oprindelige startdato (' + naturalMk + ').';
-      }
-    } else if (naturalMk === currentMonthKey) {
-      bucketMk = currentMonthKey;
-      reason = info.isActiveNow ? 'Sagen har en opgave der kører lige nu (henover dags dato).' : 'Sagens tidligste opgave starter denne måned (' + naturalMk + ').';
-    } else {
-      bucketMk = hasApprovedBudget ? naturalMk : null;
-      reason = hasApprovedBudget ? 'Fremtidig måned — medtaget fordi der er et godkendt tilbud/faktura på sagen (' + (revInfo.source === 'invoice' ? 'faktura' : 'tilbud') + ').' : 'Fremtidig måned uden godkendt tilbud endnu — sagen vises ikke.';
-    }
-
-    const manualOverrideMk = monthOverrides[jobId];
-    const mk = manualOverrideMk || bucketMk;
-    if (mk == null || !buckets[mk]) continue;
-    if (manualOverrideMk) reason = 'Manuelt flyttet hertil af dig. (Ville ellers automatisk have ligget i ' + bucketMk + ': ' + reason.charAt(0).toLowerCase() + reason.slice(1) + ')';
-    const override = overrides[jobId];
-    let value = hasAnyDocument ? (revInfo.value ?? null) : (totalSumByJob[jobId] ?? null);
-    let excluded = false;
+  // 1) RIGTIGE FAKTURAER — tælles i den måned de faktisk er udstedt.
+  const invRows = (await pool.query(`
+    SELECT i.id, i.job_number, i.job_name, i.total, i.created_at,
+           pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag
+    FROM invoices i
+    LEFT JOIN projects pr ON pr.job_number = i.job_number
+    WHERE i.status <> 'void'
+  `)).rows;
+  for (const r of invRows) {
+    const naturalMk = String(r.created_at).slice(0, 7);
+    if (!buckets[naturalMk] && !monthKeys.includes(naturalMk)) continue; // uden for det ønskede vindue
+    const key = 'faktura-' + r.id;
+    const manualMk = monthOverrides[key];
+    const mk = manualMk || naturalMk;
+    if (!buckets[mk]) continue;
+    const override = overrides[key];
+    let value = Number(r.total) || 0, excluded = false;
     if (override) {
       if (override.excluded) excluded = true;
-      else if (override.amount !== null && override.amount !== undefined) value = override.amount;
+      else if (override.amount !== null && override.amount !== undefined) value = Number(override.amount);
     }
-    buckets[mk][jobId] = { jobId, name: info.name, fag: info.fag, value, excluded, hasOverride: !!override, startDate: info.earliestStart, monthMoved: mk !== bucketMk, naturalMonth: bucketMk, valueSource: hasAnyDocument ? revInfo.source : (value != null ? 'costItems' : null), priceMismatch: !!revInfo.priceMismatch, placementReason: reason };
+    const baseReason = 'Faktureret ' + String(r.created_at).slice(0, 10) + '.';
+    buckets[mk][key] = {
+      jobId: key, name: r.project_name || r.job_name || r.job_number || ('Faktura #' + r.id),
+      fag: r.fag || 'Ukendt', value, excluded, hasOverride: !!override,
+      startDate: r.created_at, monthMoved: mk !== naturalMk, naturalMonth: naturalMk,
+      valueSource: 'invoice', priceMismatch: false, projectId: r.project_id || null,
+      placementReason: manualMk ? ('Manuelt flyttet hertil af dig. (Ville ellers ligge i ' + naturalMk + ': ' + baseReason.charAt(0).toLowerCase() + baseReason.slice(1) + ')') : baseReason
+    };
+  }
+
+  // 2) FORVENTET OMSÆTNING — accepterede, men endnu ikke fakturerede tilbud. Vises kun
+  // i indeværende måned (se kommentaren ved funktionen ovenfor).
+  if (buckets[currentMonthKey]) {
+    const quoteRows = (await pool.query(`
+      SELECT q.id, q.job_number, q.job_name, q.total,
+             pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag
+      FROM quotes q
+      LEFT JOIN projects pr ON pr.job_number = q.job_number
+      WHERE q.status = 'accepted'
+    `)).rows;
+    for (const r of quoteRows) {
+      const key = 'tilbud-' + r.id;
+      const manualMk = monthOverrides[key];
+      const mk = manualMk || currentMonthKey;
+      if (!buckets[mk]) continue;
+      const override = overrides[key];
+      let value = Number(r.total) || 0, excluded = false;
+      if (override) {
+        if (override.excluded) excluded = true;
+        else if (override.amount !== null && override.amount !== undefined) value = Number(override.amount);
+      }
+      buckets[mk][key] = {
+        jobId: key, name: r.project_name || r.job_name || r.job_number || ('Tilbud #' + r.id),
+        fag: r.fag || 'Ukendt', value, excluded, hasOverride: !!override,
+        startDate: null, monthMoved: mk !== currentMonthKey, naturalMonth: currentMonthKey,
+        valueSource: 'quote', priceMismatch: false, projectId: r.project_id || null,
+        placementReason: manualMk ? 'Manuelt flyttet hertil af dig. (Tilbud accepteret, endnu ikke faktureret.)' : 'Tilbud accepteret af kunden, endnu ikke faktureret.'
+      };
+    }
   }
 
   const manualRows = await pool.query('SELECT * FROM finance_manual_revenue WHERE month_key = ANY($1)', [monthKeys]);
@@ -12413,10 +12333,9 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   const result = {};
   for (const mk of monthKeys) {
     let jobs = Object.values(buckets[mk]).filter(j => !j.excluded);
-    // BAGUDGÅENDE MÅNEDER = FAKTISKE TAL, IKKE FORECAST. En måned der allerede er
-    // overstået skal kun vise sager der reelt ER faktureret — ikke et budget/tilbud-
-    // estimat der aldrig blev til en rigtig faktura. Fremtidige/indeværende måneder
-    // beholder budget/tilbud-estimatet som forecast, som før.
+    // BAGUDGÅENDE MÅNEDER = FAKTISKE TAL, IKKE FORECAST — en måned der allerede er
+    // overstået skal kun vise sager der reelt ER faktureret, aldrig et accepteret-men-
+    // ufaktureret tilbud (som fortsat kun placeres i indeværende måned alligevel).
     if (mk < currentMonthKey) jobs = jobs.filter(j => j.valueSource === 'invoice');
     const manualForMonth = manualRows.rows.filter(r => r.month_key === mk).map(r => ({ jobId: 'manual-' + r.id, manualId: r.id, name: r.name, fag: r.fag, value: r.amount, excluded: false, hasOverride: false, manual: true, placementReason: 'Tilføjet manuelt direkte i denne måned af dig.' }));
     const allJobs = jobs.concat(manualForMonth);
@@ -12437,11 +12356,10 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
 // Økonomi → Fakturaer. Sender Rykker 1 efter X dage, Rykker 2 efter Y dage, med et
 // gebyr lagt til hver gang. Sender aldrig samme niveau to gange for samme faktura.
 async function sendDunningEmailForInvoice(inv, targetLevel, settings, companyName) {
-  let toEmail = null;
-  if (inv.jobId) {
-    const taskRow = await pgOne('SELECT customer_email FROM jt_tasks WHERE job_id=$1 AND customer_email IS NOT NULL LIMIT 1', [inv.jobId]);
-    toEmail = taskRow?.customer_email || null;
-  }
+  // RUNDE Ø: fandt tidligere kundens e-mail via jt_tasks (JobTread-synkroniserede
+  // opgaver) — fakturaen har nu sin egen e-mail direkte (invoices.customer_email,
+  // eller kundekortets, se fetchFinanceInvoices), så det er langt mere pålideligt.
+  const toEmail = inv.email || null;
   if (!toEmail) return { sent: false, reason: 'Ingen kunde-e-mail fundet for denne sag' };
 
   const owed = inv.overrideStatus === 'partial' && inv.remaining != null ? inv.remaining : inv.priceWithTax;
@@ -12733,84 +12651,53 @@ app.put('/api/finance/job-override/:jobId', auth, panelAccess('finance'), asyncR
   res.json({ ok: true });
 }));
 
-// ── Fakturaer: live fra JobTread + manuel status-override (Billy/bank er ikke
-// tilgængelig via API, så status rettes manuelt af admin og gemmes her).
+// ── Fakturaer: RUNDE Ø (sep. 2026, Martins ønske: "slet Jobtread, brug mit eget
+// program") — hentede tidligere fakturaerne LIVE fra JobTread's dokumenter (se
+// git-historik for den gamle jtFetch-udgave). Nu læses de i stedet fra vores EGEN
+// fakturatabel (invoices/invoice_lines/invoice_payments/credit_notes — se "TILBUD &
+// FAKTURA" længere nede i filen), som allerede er den rigtige kilde Martin fakturerer
+// kunderne fra. "overrideStatus" (paid/unpaid/partial/unclear) er BEVIDST bevaret som
+// et separat, manuelt lag ovenpå fakturaens egen status (finance_invoice_overrides,
+// nøglet på fakturaens id) — det fandtes allerede FØR JobTread-integrationen (JobTreads
+// eget statusfelt havde aldrig "unclear"), så det er ikke en JobTread-ting der skal
+// fjernes. Uden en override falder den nu tilbage til fakturaens EGEN status (unpaid/
+// partial/paid), som regnes ud fra RIGTIGE registrerede betalinger/kreditnotaer i
+// stedet for det gamle "balance===0"-gæt — et bedre udgangspunkt end før.
+// BEMÆRK (fortalt til Martin ved leveringen): gamle fakturaer der kun findes inde i
+// JobTread, og aldrig er blevet indtastet her i Tilbud & Faktura, vises IKKE her —
+// kun det der reelt findes i selve programmet.
 async function fetchFinanceInvoices() {
-  // FIK KUN DE NYESTE 100 FAKTURAER FØR — uden sideskift (nextPage) faldt alt ældre end
-  // faktura #101 helt ud af datasættet. Det gjorde bl.a. moms-estimatet og Resultat-grafen
-  // stille og roligt forkerte for alle måneder der lå længere tilbage end de ~100 seneste
-  // fakturaer (fx viste et helt kvartal 0 kr, selvom der var fakturaer i det). Nu bladres
-  // der igennem alle sider ligesom de øvrige JobTread-forespørgsler i denne fil.
-  let cursor, page = 0, nodes = [];
-  while (page < 30) {
-    const args = { size: 100, sortBy: [{ field: 'createdAt', order: 'desc' }], where: ['type', 'customerInvoice'] };
-    if (cursor) args.page = cursor;
-    const data = await jtFetch({
-      query: { $: { grantKey: JT_GRANT }, organization: { $: { id: JT_ORG }, documents: {
-        $: args,
-        nextPage: {},
-        nodes: { id: {}, fullName: {}, createdAt: {}, price: {}, priceWithTax: {}, balance: {}, status: {}, job: { id: {}, name: {}, number: {}, location: { account: { id: {}, name: {} } } } }
-      } } }
-    }, `Økonomi: hent fakturaer s.${page + 1}`);
-    const conn = data?.organization?.documents || {};
-    const pageNodes = Array.isArray(conn.nodes) ? conn.nodes : [];
-    nodes = nodes.concat(pageNodes);
-    page++;
-    const next = conn.nextPage;
-    if (!next || next === '' || !pageNodes.length) break;
-    cursor = next;
-  }
+  const rows = (await pool.query(`
+    SELECT i.id, i.invoice_number, i.job_name, i.job_number, i.customer_id, i.customer_email,
+           i.status, i.subtotal, i.total, i.notes, i.created_at,
+           c.name AS customer_name, c.email AS customer_email_fallback,
+           pr.id AS project_id, pr.project_type AS fag,
+           COALESCE((SELECT SUM(amount) FROM invoice_payments p WHERE p.invoice_id = i.id), 0)::float AS paid_total,
+           COALESCE((SELECT SUM(amount) FROM credit_notes cn WHERE cn.invoice_id = i.id), 0)::float AS credited_total
+    FROM invoices i
+    LEFT JOIN customers c ON c.id = i.customer_id
+    LEFT JOIN projects pr ON pr.job_number = i.job_number
+    WHERE i.status <> 'void'
+    ORDER BY i.created_at DESC, i.id DESC
+  `)).rows;
   const overridesResult = await pool.query('SELECT * FROM finance_invoice_overrides');
   const overrides = {};
   for (const row of overridesResult.rows) overrides[row.document_id] = row;
-  return nodes.filter(d => d.status !== 'denied').map(d => {
-    const ov = overrides[d.id];
-    const remaining = ov?.status === 'partial' && ov?.paid_amount != null ? Math.max(0, (d.priceWithTax || 0) - ov.paid_amount) : null;
+  return rows.map(d => {
+    const id = String(d.id);
+    const ov = overrides[id];
+    const nativeRemaining = Math.max(0, Number(d.total) - Number(d.paid_total) - Number(d.credited_total));
+    const remaining = ov?.status === 'partial' && ov?.paid_amount != null ? Math.max(0, (Number(d.total) || 0) - ov.paid_amount) : (Number(d.paid_total) > 0 ? nativeRemaining : null);
     return {
-      id: d.id, fullName: d.fullName, customer: d.job?.location?.account?.name || d.job?.name || '', accountId: d.job?.location?.account?.id || null, jobId: d.job?.id || null, jobNumber: d.job?.number || '',
-      createdAt: d.createdAt, price: d.price, priceWithTax: d.priceWithTax, balance: d.balance, jtStatus: d.status,
-      overrideStatus: ov?.status || (d.balance === 0 ? 'paid' : 'unpaid'),
-      note: ov?.note || '', paidAmount: ov?.paid_amount ?? null, remaining
+      id, fullName: d.job_name || d.invoice_number, customer: d.customer_name || d.job_name || 'Ukendt kunde',
+      accountId: d.customer_id ? String(d.customer_id) : null, jobId: d.project_id || null, jobNumber: d.job_number || '',
+      invoiceNumber: d.invoice_number, email: d.customer_email || d.customer_email_fallback || null,
+      createdAt: d.created_at, price: Number(d.subtotal), priceWithTax: Number(d.total), balance: nativeRemaining, jtStatus: d.status,
+      overrideStatus: ov?.status || d.status || 'unpaid',
+      note: ov?.note || '', paidAmount: ov?.paid_amount ?? (Number(d.paid_total) > 0 ? Number(d.paid_total) : null), remaining,
+      fag: d.fag || 'Ukendt'
     };
   });
-}
-// SKRIV BETALING TILBAGE TIL JOBTREAD — bevidst en 2-trins proces der matcher deres
-// egen API: (1) opret selve betalingen ("credit"), (2) knyt den til den specifikke
-// faktura med et beløb. Bruges KUN når admin selv har afkrydset det — aldrig
-// automatisk — fordi det skriver rigtige, permanente finansielle data i JobTread.
-async function writePaymentToJobTread(documentId, accountId, amount, note) {
-  if (!accountId) throw new Error('Fakturaen har ingen tilknyttet kundekonto i JobTread — kan ikke registrere betaling der.');
-  const paidAt = new Date().toISOString();
-  const paymentData = await jtFetch({
-    query: {
-      $: { grantKey: JT_GRANT },
-      createPayment: {
-        $: {
-          organizationId: JT_ORG,
-          accountId,
-          amount,
-          paidAt,
-          type: 'credit',
-          source: 'Gulv Master-portal',
-          description: note || 'Registreret via Gulv Master-portalen',
-          attemptAutoMatch: false
-        },
-        createdPayment: { id: {} }
-      }
-    }
-  }, 'Økonomi: opret betaling i JobTread');
-  const paymentId = paymentData?.createPayment?.createdPayment?.id;
-  if (!paymentId) throw new Error('JobTread returnerede ikke et betalings-id');
-  await jtFetch({
-    query: {
-      $: { grantKey: JT_GRANT },
-      createDocumentPayment: {
-        $: { documentId, paymentId, amount, isLinkedToQbo: false },
-        createdDocumentPayment: { id: {} }
-      }
-    }
-  }, 'Økonomi: knyt betaling til faktura i JobTread');
-  return paymentId;
 }
 app.get('/api/finance/invoices', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   res.json(await fetchFinanceInvoices());
@@ -12825,22 +12712,11 @@ app.put('/api/finance/invoices/:documentId', auth, panelAccess('finance'), async
     INSERT INTO finance_invoice_overrides (document_id,status,note,paid_amount,updated_at) VALUES ($1,$2,$3,$4,${nowTextSQL()})
     ON CONFLICT (document_id) DO UPDATE SET status=$2,note=$3,paid_amount=$4,updated_at=${nowTextSQL()}
   `, [req.params.documentId, status, note, paidAmount]);
-  // Kun hvis admin selv har bedt om det — se writePaymentToJobTread ovenfor for hvorfor.
-  if (body.syncToJobtread && (status === 'paid' || status === 'partial')) {
-    try {
-      const invoices = await fetchFinanceInvoices();
-      const inv = invoices.find(i => i.id === req.params.documentId);
-      if (!inv) throw new Error('Fakturaen blev ikke fundet');
-      const amountToWrite = status === 'paid' ? inv.priceWithTax : paidAmount;
-      if (!(amountToWrite > 0)) throw new Error('Ugyldigt beløb at registrere');
-      await writePaymentToJobTread(req.params.documentId, inv.accountId, amountToWrite, note);
-      return res.json({ ok: true, jobtreadSynced: true });
-    } catch (error) {
-      // Status-ændringen i vores egen database er allerede gemt og lykkedes — kun
-      // selve JobTread-delen fejlede, så det rapporteres tydeligt, ikke skjules.
-      return res.json({ ok: true, jobtreadSynced: false, jobtreadError: error.message });
-    }
-  }
+  // RUNDE Ø: "Skriv til JobTread" er fjernet sammen med resten af JobTread-kilden i
+  // Økonomi — der er intet længere at synkronisere til (se fetchFinanceInvoices
+  // ovenfor). En rigtig betaling registreres nu i stedet direkte på selve fakturaen
+  // under Tilbud & Faktura (POST /api/invoices/:id/payments), som denne status-
+  // rettelse er uafhængig af, ligesom hidtil.
   res.json({ ok: true });
 }));
 

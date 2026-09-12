@@ -205,8 +205,33 @@ body.sidebar-collapsed .sidebar-logout-btn{justify-content:center;padding-left:0
      tabellen til sin EGEN vandret-scrollbare boks, så det kun er TABELLEN
      der scroller sidelæns, ikke hele siden/headeren — samme princip som
      #plan-board-outer/#capacity-scroll allerede bruger for deres tavler. */
+  /* RUNDE H #298 (Martins billede 3: "list view du har presset al dataene ind
+     på række... lad det stå pænt men man kan scroll til højre") — thead/
+     tbody/tr blev tidligere TVUNGET til hver sin egen display:table med
+     width:100%. Det betød at hver RÆKKE blev sin egen uafhængige mini-tabel
+     låst til skærmens bredde — kolonnerne krympede så meget at teksten
+     ombrød til flere linjer inde i hver celle (det "pressede" udseende), OG
+     header/krop fik ikke nødvendigvis samme kolonnebredder, fordi de er to
+     adskilte tabel-kontekster. Løsningen er at IKKE røre thead/tbody/tr's
+     display overhovedet: uden dem falder browseren tilbage til at generere
+     én fælles anonym tabel-boks om thead+tbody sammen (så kolonnerne altid
+     stemmer overens), og den anonyme boks får sin naturlige indholds-bredde
+     i stedet for at blive tvunget til 100% — bliver den bredere end skærmen,
+     er det SELVE <table>'et (display:block herunder) der scroller vandret,
+     præcis som Martin bad om, med pæne enkelt-linjede rækker i stedet for
+     ombrudt/presset tekst. */
   table.bly-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
-  table.bly-table thead,table.bly-table tbody,table.bly-table tr{display:table;width:100%;table-layout:auto}
+  table.bly-table td,table.bly-table th{white-space:nowrap}
+  /* RUNDE H #298b (samme billede 3: KPI-boksene "Alle/Kladde/Sendt/Godkendt/
+     Afvist/Konverteret" på Tilbud & Faktura klippede beløbet — fx
+     "24.729.397 kr" — fordi 3 bokse pr. række (auto-fit, minmax(115px,1fr))
+     ikke gav plads nok til et 8-cifret beløb i 23px fed skrift. To bokse pr.
+     række + lidt mindre skrift/luft giver plads nok, og overflow-wrap er en
+     sikkerhedsnet hvis et beløb en dag bliver endnu længere. */
+  .bly-kpi-row-tf{grid-template-columns:repeat(2,1fr)!important;gap:8px}
+  .bly-kpi-row-tf .bly-kpi-card{padding:12px 13px}
+  .bly-kpi-row-tf .bly-kpi-label{font-size:11px;margin-bottom:6px}
+  .bly-kpi-row-tf .bly-kpi-value{font-size:17px;overflow-wrap:anywhere}
   /* Søgefelter har flere steder en FAST pixel-bredde sat inline (fx
      #proj-search style="width:280px") — fint på computer, men på en smal
      telefon tvang den faste bredde hele værktøjslinjen (og dermed siden)
@@ -700,6 +725,14 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
      kant uanset venstre/højre-anker. Den låses derfor til selve skærmen i
      stedet for til knappen på mobil, med luft i begge sider. */
   #notifdrop-menu{position:fixed!important;left:10px!important;right:10px!important;top:60px!important;width:auto!important;max-width:none!important}
+  /* RUNDE H #300a (Martins billede 1: søgefeltets resultat-dropdown stod helt
+     ude i venstre side på tlf og var klippet af). Årsagen er den samme som
+     #notifdrop-menu ovenfor: #global-search-results er "right:0" ift. sin
+     egen (smalle, centrerede) .navdrop-forælder #globalsearch — med feltet
+     centreret midt på en smal skærm rager en 92vw-bred boks låst til feltets
+     højre kant langt ud over venstre skærmkant. Låses derfor til selve
+     skærmen ligesom notifikationsmenuen, med luft i begge sider. */
+  #global-search-results{position:fixed!important;left:10px!important;right:10px!important;top:60px!important;width:auto!important;max-width:none!important}
   /* RUNDE H #15 — Note-blokken kunne arve en position/størrelse gemt fra en
      stor computerskærm og dermed rage ud over kanten af en telefonskærm; som
      ekstra sikkerhedsnet (ud over JS-klampningen i applyNoteWidgetPosition)
@@ -796,6 +829,19 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-plan .week-bar .btn:hover{background:var(--bly-hover)}
 #page-plan .week-bar .btn.primary{background:var(--bly-ink);color:#fff}
 #page-plan .week-label{color:var(--bly-ink);font-weight:800;padding:0 8px}
+@media(max-width:760px){
+  /* RUNDE H #297 (Martins billede 2): på tlf var ugens knap-linje (Forrige/
+     Næste/I dag/Print ugeplan/Hvor er alle/Ruter & kort/Send-påmindelser) én
+     stor sammenhængende "pille"-boks hvor selve knapperne er usynlige
+     (border:0, background:transparent — linje 802-805 ovenfor), så teksten
+     bare lå i flæng i tre rodede linjer i stedet for at ligne knapper. Hver
+     knap får her sin egen synlige kant/baggrund, og linjen ombryder som en
+     pæn, luftig knap-række i stedet for én lang pille. */
+  #page-plan .week-bar{display:flex;flex-wrap:wrap;background:transparent;border:0;padding:0;gap:6px}
+  #page-plan .week-bar .btn{background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-pill);padding:7px 12px;font-size:11.5px}
+  #page-plan .week-bar .btn:hover{background:var(--bly-hover)}
+  #page-plan .week-bar .btn.primary{background:var(--bly-ink);color:#fff;border-color:var(--bly-ink)}
+}
 #page-plan .workforce-bar{background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);box-shadow:none}
 #page-plan .workforce-select{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);color:var(--bly-ink);font-weight:600}
 
@@ -3035,7 +3081,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-12.2</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-12.3</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3564,11 +3610,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="fin-header-logo">GM</div>
     <div style="flex:1">
       <div class="fin-header-title">Finansielt Dashboard</div>
-      <div class="fin-header-sub">Gulv Master Enterprise ApS · live udtræk fra JobTread + jeres egne tal</div>
+      <div class="fin-header-sub">Gulv Master Enterprise ApS · fra jeres egne tilbud, fakturaer og bankafstemning</div>
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn small" id="finance-email-report-btn" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3)">📧 Send rapport</button>
-      <button class="btn small primary" id="finance-refresh-btn">🔄 Genindlæs fra JobTread</button>
+      <button class="btn small primary" id="finance-refresh-btn">🔄 Genindlæs tal</button>
     </div>
   </div>
   <div class="tabs fin-pill-tabs" style="margin-bottom:16px">
@@ -3661,7 +3707,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="bly-pagehead">
       <div>
         <h2>Fakturaer</h2>
-        <div class="sub">Live udtræk fra JobTread — status og opfølgning styres her</div>
+        <div class="sub">Fra jeres egne fakturaer i programmet — status og opfølgning styres her</div>
       </div>
     </div>
     <div id="fin-invoices-kpis" class="bly-kpi-row"></div>
@@ -3871,7 +3917,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <!-- Status-oversigt som "kort" i stedet for almindelige tekst-faner — samme
          .bly-kpi-card-mønster som Økonomi-modulets fakturastatus-kort, efter
          Martins ønske om noget der ligner Billys "Overblik"-bokse. -->
-    <div class="bly-kpi-row" id="qz-quotes-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
+    <div class="bly-kpi-row bly-kpi-row-tf" id="qz-quotes-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:0 0 14px">
       <div class="bly-period" style="position:relative">
         <button class="bly-ctl" id="qz-quotes-period-btn" type="button">📅 <span id="qz-quotes-period-label">Alt tid</span></button>
@@ -3889,7 +3935,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-invoices-count">Fakturaer</span><input type="text" id="qz-invoice-search" class="bly-search" placeholder="Søg — navn, fakturanr., sagsnr., adresse, email eller telefon..."></div>
       <div class="bly-toolbar-right"><button class="bly-btn outline" id="qz-new-direct-invoice-btn" type="button" title="Til priser aftalt direkte/mundtligt med kunden, uden et forudgående tilbud">+ Ny faktura (uden tilbud)</button></div>
     </div>
-    <div class="bly-kpi-row" id="qz-invoices-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
+    <div class="bly-kpi-row bly-kpi-row-tf" id="qz-invoices-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:0 0 14px">
       <div class="bly-period" style="position:relative">
         <button class="bly-ctl" id="qz-invoices-period-btn" type="button">📅 <span id="qz-invoices-period-label">Alt tid</span></button>
@@ -10072,11 +10118,24 @@ async function vbLoadQuotesForCustomer(){
   var wrap=document.getElementById('vb-quote-picker-wrap');
   var sel=document.getElementById('vb-quote-select');
   if(!vbSelectedCustomerId){wrap.style.display='none';return;}
-  var quotes=await api('/api/customer-visits/customer/'+vbSelectedCustomerId+'/quotes');
+  // RUNDE H #300 — navn+telefon sendes med som fallback (se serverens matching),
+  // så tilbud der aldrig fik sat customer_id (fordi de blev oprettet uden at
+  // klikke et kunde-søgeresultat) stadig dukker op her for den samme kunde.
+  var name=document.getElementById('visit-customer').value.trim();
+  var phone=document.getElementById('visit-phone').value.trim();
+  var qs='?name='+encodeURIComponent(name)+'&phone='+encodeURIComponent(phone);
+  var quotes=await api('/api/customer-visits/customer/'+vbSelectedCustomerId+'/quotes'+qs);
   if(!quotes||!quotes.length){wrap.style.display='none';return;}
   sel.innerHTML='<option value="">Intet tilbud</option>'+quotes.map(function(q){
     return '<option value="'+q.id+'">'+esc(q.quote_number||('Tilbud #'+q.id))+' — '+krFmt(q.total)+' ('+esc(q.status||'')+')</option>';
   }).join('');
+  // Martins ønske ("med et klik") — er der PRÆCIS ét sendt tilbud (den typiske
+  // situation: ét tilbud er sendt, medarbejderen skal bare se omfanget), vælges
+  // det automatisk i stedet for at man selv skal åbne dropdown'en og lede.
+  // Findes der flere, eller ingen med status "sendt", forbliver "Intet tilbud"
+  // valgt, og man vælger selv — for ikke at gætte forkert blandt flere tilbud.
+  var sentOnes=quotes.filter(function(q){return q.status==='sent';});
+  if(sentOnes.length===1)sel.value=String(sentOnes[0].id);
   wrap.style.display='block';
 }
 async function saveVisitBooking(){
@@ -12332,7 +12391,7 @@ function renderFinNoter(){
   var partialN=finInvoices.filter(function(i){return i.overrideStatus==='partial';}).length;
   var unclearN=finInvoices.filter(function(i){return i.overrideStatus==='unclear';}).length;
   var html='';
-  html+='<div class="fin-note-card info"><h4>🧾 Fakturastatus lige nu</h4><p>'+finInvoices.length+' fakturaer fra JobTread: <b>'+paidN+' betalt</b>, <b>'+partialN+' delvist betalt</b>, <b>'+unpaidN+' udestående</b>, <b>'+unclearN+' uafklaret</b>. Ret status direkte under "Fakturaer".</p></div>';
+  html+='<div class="fin-note-card info"><h4>🧾 Fakturastatus lige nu</h4><p>'+finInvoices.length+' fakturaer i programmet: <b>'+paidN+' betalt</b>, <b>'+partialN+' delvist betalt</b>, <b>'+unpaidN+' udestående</b>, <b>'+unclearN+' uafklaret</b>. Ret status direkte under "Fakturaer".</p></div>';
   if(missingJobs.length){
     html+='<div class="fin-note-card"><h4>📋 '+missingJobs.length+' sag(er) mangler stadig et budget</h4><p>Disse har planlagte opgaver, men ingen pris sat på sagen endnu. Ret dem direkte her:</p>';
     html+=missingJobs.map(function(j){
@@ -12437,7 +12496,7 @@ function renderFinBankRightList(){
     var amt=inv.remaining!=null?inv.remaining:inv.priceWithTax;
     return '<button class="bly-right-card" draggable="true" data-bank-pick-manual data-inv-id="'+esc(inv.id)+'">'+
       '<div class="bly-right-card-top"><div><div class="name">'+esc(inv.customer)+
-      (inv.jobId?'<a href="https://app.jobtread.com/jobs/'+esc(inv.jobId)+'/documents" target="_blank" rel="noopener" class="jt-link" title="Åbn fakturaen i JobTread" onclick="event.stopPropagation()">🔗</a>':'')+
+      (inv.jobId?'<a href="javascript:void(0)" onclick="event.stopPropagation();openProjectDetail('+inv.jobId+')" class="jt-link" title="Åbn sagen">🔗</a>':'')+
       '</div>'+
       (inv.fullName?'<div class="sub">'+esc(inv.fullName)+'</div>':'')+'</div>'+
       '<div class="amt '+(amt<0?'neg':'pos')+'" style="color:'+(inv.overrideStatus==='unclear'?'var(--bly-dot-overdue)':inv.overrideStatus==='partial'?'var(--bly-dot-draft)':'var(--bly-dot-unpaid)')+'">'+krFmt(amt)+'</div></div>'+
@@ -12512,7 +12571,6 @@ function renderFinBankResults(){
     '</div>'+
     '<div class="bly-util-row" style="margin:0"><div class="left">'+
       '<span>'+visible.length+' banklinjer</span>'+
-      (finBankStatusFilter==='open'?'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--bly-ink);font-weight:600"><input type="checkbox" id="fin-bank-sync-jt" style="width:auto"> Skriv til JobTread</label>':'')+
     '</div>'+
     (finBankStatusFilter==='open'?('<button class="bly-btn" id="fin-bank-apply-btn" type="button">✓ Accepter '+withMatch.filter(function(t){return t._selected;}).length+' forslag</button>'+
       '<button class="bly-btn outline" id="fin-bank-download-btn" type="button">⬇ Download</button>'):'')+
@@ -12534,7 +12592,7 @@ function renderFinBankResults(){
         '<div class="bly-txn-zone'+(isIgnored?'':' matched')+'"'+(isIgnored?' style="background:#F9FAFB;border-top-color:var(--bly-border)"':'')+'><div class="bly-txn-picked"'+(isIgnored?' style="color:var(--bly-sub)"':'')+'>'+
           '<span>'+(isIgnored?'✕ Markeret ikke relevant':'✓ Bogført'+(rec.customer?' — '+esc(rec.customer):''))+'</span>'+
           '<span style="display:flex;gap:10px;align-items:center">'+
-          (rec.documentId&&recJobId?'<a href="https://app.jobtread.com/jobs/'+esc(recJobId)+'/documents" target="_blank" rel="noopener" title="Åbn fakturaen i JobTread">🔗</a>':'')+
+          (rec.documentId&&recJobId?'<a href="javascript:void(0)" onclick="openProjectDetail('+recJobId+')" title="Åbn sagen">🔗</a>':'')+
           '<button data-bank-unreconcile="'+esc(t.externalId)+'" title="'+(isIgnored?'Læg tilbage under Åbne':'Fortryd afstemning')+'">↩ Fortryd</button>'+
           '</span></div></div>'+
         '</div>';
@@ -12737,26 +12795,20 @@ function renderFinBankResults(){
   if(applyBtn)applyBtn.addEventListener('click',async function(){
     var toApply=openPayments.filter(function(t){return t._selected&&(t._manualMatch||t.matches[t._chosenIdx]);});
     if(!toApply.length){toast('Ingen matches markeret','⚠');return;}
-    var syncJtEl=document.getElementById('fin-bank-sync-jt');
-    var syncJt=syncJtEl?syncJtEl.checked:false;
-    if(!await gmConfirm('Markér '+toApply.length+' faktura(er) som betalt/delvist betalt ud fra de valgte matches?'+(syncJt?' Betalingerne oprettes også i JobTread.':'')))return;
+    if(!await gmConfirm('Markér '+toApply.length+' faktura(er) som betalt/delvist betalt ud fra de valgte matches?'))return;
     var btn=this;btn.disabled=true;btn.textContent='Anvender…';
-    var jtFailures=[];
     for(var i=0;i<toApply.length;i++){
       var t=toApply[i],m=t._manualMatch||t.matches[t._chosenIdx];
       var invAmount=m.remaining!=null?m.remaining:m.priceWithTax;
       var isFull=Math.abs(invAmount-t.amount)<1;
       var body=isFull?{status:'paid'}:{status:'partial',paidAmount:t.amount};
-      body.syncToJobtread=syncJt;
-      var r=await api('/api/finance/invoices/'+m.documentId,{method:'PUT',body:JSON.stringify(body)});
-      if(syncJt&&r&&!r.jobtreadSynced)jtFailures.push(m.customer+': '+(r.jobtreadError||'ukendt fejl'));
+      await api('/api/finance/invoices/'+m.documentId,{method:'PUT',body:JSON.stringify(body)});
       // Husk denne postering som bogført, så den ikke dukker op som "ny" ved næste upload.
       await api('/api/finance/bank-statement/mark-reconciled',{method:'POST',body:JSON.stringify({externalId:t.externalId,date:t.date,text:t.text,amount:t.amount,documentId:m.documentId,customer:m.customer})});
       t.alreadyReconciled={customer:m.customer,documentId:m.documentId,jobId:m.jobId,kind:'matched'};
     }
     btn.disabled=false;btn.textContent='✓ Anvend markerede matches';
-    if(jtFailures.length)toast('Fakturaer opdateret her, men '+jtFailures.length+' fejlede mod JobTread: '+jtFailures.slice(0,2).join('; '),'⚠');
-    else toast('Fakturaer opdateret ✓'+(syncJt?' — også i JobTread':''),'✓');
+    toast('Fakturaer opdateret ✓','✓');
     renderFinBankResults();
     loadFinance();
   });
@@ -12803,7 +12855,7 @@ function renderFinOverview(snapshots){
   loadFinWidgets();
   renderFinResultChart();
   renderFinInvoiceCard();
-  renderFinBankCard(snapshots);
+  renderFinBankCard();
   renderFinMomsCard();
   renderFinTodoCard();
   loadProfitSnapshots();
@@ -12955,26 +13007,34 @@ function renderFinInvoiceCard(){
   var btn=el.querySelector('[data-action="fin-goto-fakturaer"]');
   if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="fakturaer"]');if(t)t.click();});
 }
-function renderFinBankCard(snapshots){
+// RUNDE Ø (sep. 2026, Martins ønske: "Bank - Fra bankafstemning"): viste tidligere
+// summen af tre manuelt indtastede Lunar-saldi (finance_bank_snapshots). Nu vises i
+// stedet indbetalt/udbetalt for indeværende måned, sådan som det RENT FAKTISK står i
+// det senest uploadede bankudtog under Bankafstemning (finance_bank_month_statements —
+// se POST /api/finance/bank-statement/upload-month). Den gamle Lunar-saldo-boks
+// (✏️-knappen) er bevaret uændret ét sted for sig selv (bruges stadig af Profit-
+// analysens "Cash i banken"-kolonne), men er ikke længere det tal DENNE boks viser.
+async function renderFinBankCard(){
   var el=document.getElementById('fin-card-bank');
   if(!el)return;
-  var latest=(snapshots&&snapshots[0])||null;
-  var hoved=latest?(+latest.hovedkonto||0):null;
-  var moms=latest?(+latest.moms||0):null;
-  var forbrug=latest?(+latest.forbrug||0):null;
-  var total=latest?((+latest.hovedkonto||0)+(+latest.moms||0)+(+latest.forbrug||0)):null;
-  function acctBox(label,val){
-    return '<div style="flex:1;min-width:0"><div class="fin-muted" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin-bottom:3px">'+label+'</div><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">'+(val!=null?krFmt(val):'–')+'</div></div>';
+  var mk=iso(new Date()).slice(0,7);
+  var totals=await api('/api/finance/bank-statement/month-totals?months='+mk)||{};
+  var info=totals[mk]||null;
+  var netto=info?(info.incomeTotal-info.expenseTotal):null;
+  function acctBox(label,val,color){
+    return '<div style="flex:1;min-width:0"><div class="fin-muted" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin-bottom:3px">'+label+'</div><div style="font-size:15px;font-weight:800;color:'+(color||'var(--bly-ink)')+'">'+(val!=null?krFmt(val):'–')+'</div></div>';
   }
+  var MAANEDER_KORT2=['jan.','feb.','mar.','apr.','maj','jun.','jul.','aug.','sep.','okt.','nov.','dec.'];
+  var monthLbl=MAANEDER_KORT2[+mk.slice(5,7)-1]+' '+mk.slice(0,4);
   el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Bank</div>'+
     '<div style="display:flex;align-items:center;gap:6px">'+
-    '<button class="bly-btn outline small" data-action="fin-open-bank-snapshot" title="Registrér dagens Lunar-tal" style="padding:8px 10px">✏️</button>'+
+    '<button class="bly-btn outline small" data-action="fin-open-bank-snapshot" title="Registrér dagens Lunar-saldo (bruges til Profit-analysen)" style="padding:8px 10px">✏️</button>'+
     '<button class="bly-btn outline small" data-action="fin-goto-bank">Gå til bankafstemning</button>'+
     '</div></div>'+
-    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Samlet beholdning (3 konti)'+(latest?' · seneste snapshot '+esc(latest.snap_date):' — intet snapshot endnu')+'</div>'+
-    '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(total!=null?krFmt(total):'–')+'</div>'+
+    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Fra bankafstemning · '+esc(monthLbl)+(info?'':' — intet bankudtog uploadet for denne måned endnu')+'</div>'+
+    '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(netto!=null?krFmt(netto):'–')+'</div>'+
     '<div style="display:flex;gap:16px;padding:12px 0;border-top:1px solid var(--bly-border-soft)">'+
-    acctBox('Hovedkonto',hoved)+acctBox('Moms',moms)+acctBox('Forbrug',forbrug)+
+    acctBox('Indbetalt',info?info.incomeTotal:null,'#15803D')+acctBox('Udbetalt',info?info.expenseTotal:null,'#DC2626')+
     '</div>';
   var btn=el.querySelector('[data-action="fin-goto-bank"]');
   if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="bankafstemning"]');if(t)t.click();});
@@ -12995,7 +13055,7 @@ async function renderFinMomsCard(){
     '<div class="udg-month-nav" style="padding:3px"><button type="button" id="fin-moms-prev" title="Forrige kvartal" style="width:24px;height:24px;border-radius:50%;border:0;background:transparent;cursor:pointer">‹</button><span style="padding:0 6px;font-weight:700;font-size:11px">'+KVT[info.q]+' '+info.year+'</span><button type="button" id="fin-moms-next" title="Næste kvartal" style="width:24px;height:24px;border-radius:50%;border:0;background:transparent;cursor:pointer">›</button></div>'+
     '</div>'+
     '<div id="fin-moms-amount" style="font-size:26px;font-weight:800;color:#DC2626;margin-bottom:4px">Udregner…</div>'+
-    '<div id="fin-moms-empty-note" class="fin-muted" style="font-size:10.5px;display:none;margin-bottom:10px">Ingen fakturaer registreret i JobTread for denne periode — tjek om det stemmer, eller om der mangler data.</div>'+
+    '<div id="fin-moms-empty-note" class="fin-muted" style="font-size:10.5px;display:none;margin-bottom:10px">Ingen fakturaer registreret i programmet for denne periode — tjek om det stemmer, eller om der mangler data.</div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft);margin-top:10px"><span class="fin-muted" style="font-size:12px">Frist</span><b style="font-size:14px">'+fristHtml+'</b></div>';
   document.getElementById('fin-moms-prev').addEventListener('click',function(){
     finMomsQ--;if(finMomsQ<0){finMomsQ=3;finMomsYear--;}
@@ -13204,10 +13264,16 @@ document.getElementById('fin-widget-picker-cancel').addEventListener('click',fun
   document.getElementById('fin-widget-picker-modal').style.display='none';
 });
 
-function renderYearWidget(body){
+var finProjectTypes=null;
+// RUNDE Ø: fag-knapperne var før hårdkodet efter JobTreads "Projekt Type"-liste (og
+// stemte end ikke overens med appens egen — "Andet" fandtes aldrig som en rigtig
+// værdi). Henter nu den RIGTIGE, aktuelle liste (samme som CRM'ets sagsvælger bruger),
+// så en ny faggruppe Martin opretter i CRM automatisk dukker op her også.
+async function renderYearWidget(body){
+  if(!finProjectTypes)finProjectTypes=await api('/api/project-types')||['Gulvslibning','Gulvlægning','Maler','Enterprise'];
   body.innerHTML='<div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-bottom:6px" id="fin-year-fag-filter">'+
-    ['alle','Gulvlægning','Maler','Gulvslibning','Andet'].map(function(f){
-      return '<button class="tab-btn-sm'+(f==='alle'?' active':'')+'" data-fag="'+f+'">'+(f==='alle'?'Alle fag':f)+'</button>';
+    ['alle'].concat(finProjectTypes).concat(['Andet']).map(function(f){
+      return '<button class="tab-btn-sm'+(f==='alle'?' active':'')+'" data-fag="'+esc(f)+'">'+(f==='alle'?'Alle fag':f)+'</button>';
     }).join('')+'</div>'+
     '<p class="fin-muted" style="margin:-2px 0 12px">Klik på en søjle for at se hvilke sager der ligger bag den måneds tal.</p>'+
     '<div style="position:relative;height:280px"><canvas id="fin-year-chart"></canvas></div>'+
@@ -13260,8 +13326,9 @@ async function renderFinYearChart(){
 }
 function finYearFagSum(m,fag){
   var sum=0;
+  var knownFags=finProjectTypes||['Gulvslibning','Gulvlægning','Maler','Enterprise'];
   Object.keys(m.byFag||{}).forEach(function(f){
-    var isMatch=fag==='Andet'?!['Gulvlægning','Maler','Gulvslibning'].includes(f):f===fag;
+    var isMatch=fag==='Andet'?!knownFags.includes(f):f===fag;
     if(isMatch)sum+=m.byFag[f].sum;
   });
   return sum;
@@ -13270,8 +13337,9 @@ function renderFinYearDetail(mk){
   var el=document.getElementById('fin-year-detail');
   if(!el||!finYearData||!finYearData.months[mk])return;
   var m=finYearData.months[mk];
+  var knownFags=finProjectTypes||['Gulvslibning','Gulvlægning','Maler','Enterprise'];
   var jobs=finYearFag==='alle'?m.jobs:m.jobs.filter(function(j){
-    return finYearFag==='Andet'?!['Gulvlægning','Maler','Gulvslibning'].includes(j.fag):j.fag===finYearFag;
+    return finYearFag==='Andet'?!knownFags.includes(j.fag):j.fag===finYearFag;
   });
   var total=jobs.reduce(function(s,j){return s+(j.value||0);},0);
   el.innerHTML='<div class="fin-eyebrow" style="margin-bottom:8px">'+mk+(finYearFag!=='alle'?' · '+finYearFag:'')+' — '+jobs.length+' sag(er), '+krFmt(total)+'</div>'+
@@ -13292,7 +13360,7 @@ function renderFagPieWidget(body){
   finFagPieInstance=new Chart(canvas,{type:'doughnut',data:{labels:labels,datasets:[{data:data,backgroundColor:colors}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
 }
 function renderInvoiceStatusWidget(body){
-  body.innerHTML='<p class="fin-muted" style="margin:-2px 0 12px">Alle fakturaer fra JobTread, fordelt på status.</p><div style="position:relative;height:260px"><canvas id="fin-invoice-status-chart"></canvas></div>';
+  body.innerHTML='<p class="fin-muted" style="margin:-2px 0 12px">Alle fakturaer i programmet, fordelt på status.</p><div style="position:relative;height:260px"><canvas id="fin-invoice-status-chart"></canvas></div>';
   var canvas=document.getElementById('fin-invoice-status-chart');
   if(!canvas||typeof Chart==='undefined')return;
   var buckets={'Betalt':0,'Delvist betalt':0,'Udestående':0,'Uafklaret':0};
@@ -13447,7 +13515,6 @@ document.getElementById('fin-save-snapshot-btn').onclick=async function(){
     toast('Snapshot gemt ✓','💾');
     var s=await api('/api/finance/bank-snapshots');
     renderFinOverview(s||[]);
-    renderFinBankCard(s||[]);
     closeModal('fin-bank-snapshot-modal');
   }
   else if(r)toast(r.error||'Fejl','❌');
@@ -13698,10 +13765,10 @@ function renderFinRevenue(){
       }).join('');
       var otherMonths=months.filter(function(x){return x!==mk;});
       var moveBtn=(j.jobId&&!j.manual&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" data-cur-month="'+mk+'" title="Flyt sagen til en anden måned"><option value="">→ flyt</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+'</option>';}).join('')+'</select>'):'';
-      var jtBtn=(j.jobId?'<a href="https://app.jobtread.com/jobs/'+esc(j.jobId)+'/documents" target="_blank" rel="noopener" class="fin-edit-btn" title="Åbn sagen i JobTread">🔗</a>':'');
-      var SRC_META={invoice:{label:'Faktura',bg:'#DCFCE7',color:'#166534'},order:{label:'Tilbud accept',bg:'#DBEAFE',color:'#1D4ED8'},costItems:{label:'Budget (est.)',bg:'#FEF3C7',color:'#92400E'}};
+      var jtBtn=(j.projectId?'<a href="javascript:void(0)" onclick="openProjectDetail('+j.projectId+')" class="fin-edit-btn" title="Åbn sagen">🔗</a>':'');
+      var SRC_META={invoice:{label:'Faktura',bg:'#DCFCE7',color:'#166534'},quote:{label:'Tilbud accept',bg:'#DBEAFE',color:'#1D4ED8'}};
       var srcMeta=SRC_META[j.valueSource];
-      var srcLbl={invoice:'Beløb inkl. moms — hentet fra godkendt faktura',order:'Beløb inkl. moms — hentet fra godkendt/accepteret tilbud (ingen faktura endnu)',costItems:'Beløb inkl. moms — estimeret (25% lagt til) ud fra rå linjer, da der ikke er noget godkendt tilbud endnu'}[j.valueSource]||'';
+      var srcLbl={invoice:'Beløb inkl. moms — hentet fra en rigtig faktura',quote:'Beløb inkl. moms — tilbud accepteret af kunden, endnu ikke faktureret'}[j.valueSource]||'';
       var reasonBadge=srcMeta?'<span class="fin-badge" style="background:'+srcMeta.bg+';color:'+srcMeta.color+'"'+(j.placementReason?' title="'+esc(j.placementReason)+'"':'')+'>'+srcMeta.label+'</span>':'';
       var badges=reasonBadge+(j.hasOverride?'<span class="fin-badge ok">rettet</span>':'')+(j.manual?'<span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?'<span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(j.priceMismatch?'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Godkendt tilbud og faktura afviger mere end 15% — tjek om der blev lavet mere/mindre end aftalt">⚠ tilbud ≠ faktura</span>':'')+(stMeta?'<span class="fin-badge" style="background:'+stMeta.color+';color:#fff">'+stMeta.label+'</span>':'');
       return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'" '+(stMeta?'style="background:'+stMeta.bg+'"':'')+'>'+
@@ -13843,7 +13910,7 @@ function renderFinRevenue(){
         api('/api/finance/manual-revenue/'+btn.dataset.manualid,{method:'DELETE'}).then(function(){toast('Slettet ✓','✓');loadFinance();});
         return;
       }
-      if(!await gmConfirm('Udeluk "'+btn.dataset.jobname+'" fra omsætningsberegningen? (Sagen forbliver i JobTread — den tælles bare ikke med her)'))return;
+      if(!await gmConfirm('Udeluk "'+btn.dataset.jobname+'" fra omsætningsberegningen? (Fakturaen/tilbuddet forbliver i systemet — den tælles bare ikke med her)'))return;
       api('/api/finance/job-override/'+encodeURIComponent(btn.dataset.jobid),{method:'PUT',body:JSON.stringify({excluded:true})}).then(function(r){
         if(r&&r.ok){toast('Udelukket ✓','✓');loadFinance();}else if(r)toast(r.error||'Fejl','❌');
       });
@@ -14036,7 +14103,7 @@ function renderFinInvoices(){
         '<span class="fin-muted">rest: '+(inv.remaining!==null?krFmt(inv.remaining):'–')+'</span></div>':'';
     var canDun=inv.overrideStatus==='unpaid'||inv.overrideStatus==='partial';
     return '<tr class="bly-row"><td><input type="checkbox" class="fin-inv-select" data-inv-id="'+esc(inv.id)+'" '+(finInvSelected[inv.id]?'checked':'')+'></td>'+
-      '<td><span class="bly-status-dot" style="background:'+FIN_STATUS_DOT[inv.overrideStatus]+'"></span><b>'+esc(inv.customer)+'</b>'+(inv.jobId?' <a href="https://app.jobtread.com/jobs/'+esc(inv.jobId)+'/documents" target="_blank" rel="noopener" class="fin-edit-btn fin-edit-btn-icon" title="Åbn sagen i JobTread">🔗</a>':'')+'</td>'+
+      '<td><span class="bly-status-dot" style="background:'+FIN_STATUS_DOT[inv.overrideStatus]+'"></span><b>'+esc(inv.customer)+'</b>'+(inv.jobId?' <a href="javascript:void(0)" onclick="openProjectDetail('+inv.jobId+')" class="fin-edit-btn fin-edit-btn-icon" title="Åbn sagen">🔗</a>':'')+'</td>'+
       '<td><div class="bly-desc-inner" title="'+esc(inv.fullName)+'">'+esc(inv.fullName)+' <span style="color:var(--bly-sub)">· '+esc((inv.createdAt||'').slice(0,10))+'</span></div></td>'+
       '<td class="bly-num">'+krFmt(inv.price)+'</td><td class="bly-num">'+krFmt(inv.priceWithTax)+'</td><td class="bly-num">'+krFmt(inv.balance)+'</td>'+
       '<td class="bly-status-cell '+inv.overrideStatus+'"><select class="bly-status-select fin-inv-status" data-idx="'+idx+'">'+
@@ -14123,23 +14190,12 @@ document.getElementById('fin-inv-bulk-apply').addEventListener('click',async fun
 });
 async function saveFinInvoice(inv,status,note,paidAmount){
   var body={status:status||inv.overrideStatus,note:note!==null&&note!==undefined?note:inv.note,paidAmount:paidAmount!==undefined?paidAmount:inv.paidAmount};
-  // Kun spørg når status rent faktisk BLIVER betalt/delvist — ikke ved hver eneste
-  // notefelt-ændring, og aldrig automatisk, da det skriver en rigtig betaling i JobTread.
-  var becamePaid=(body.status==='paid'||body.status==='partial')&&inv.overrideStatus!==body.status;
-  if(becamePaid){
-    body.syncToJobtread=await gmConfirm('Skal denne betaling også registreres i JobTread (opretter en rigtig betalingspostering der)?');
-  }
   var r=await api('/api/finance/invoices/'+encodeURIComponent(inv.id),{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){
     inv.overrideStatus=body.status;inv.note=body.note;
     inv.paidAmount=body.paidAmount!==''&&body.paidAmount!==null?+body.paidAmount:null;
     inv.remaining=(inv.overrideStatus==='partial'&&inv.paidAmount!=null)?Math.max(0,(inv.priceWithTax||0)-inv.paidAmount):null;
-    if(body.syncToJobtread){
-      if(r.jobtreadSynced)toast('Gemt ✓ — også registreret i JobTread','✓');
-      else toast('Gemt her, men JobTread-delen fejlede: '+(r.jobtreadError||'ukendt fejl'),'⚠');
-    }else{
-      toast('Gemt ✓','✓');
-    }
+    toast('Gemt ✓','✓');
     renderFinInvoices();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);
   }
   else if(r)toast(r.error||'Fejl','❌');
@@ -15745,8 +15801,27 @@ async function bind(){
   // fortsætter med at virke normalt), ved klik på baggrunds-dimningen, eller
   // ved at åbne ☰-menuen igen. Bevidst IKKE samme klasse som den gemte
   // desktop-præference (body.sidebar-collapsed) — de skal ikke blande sig.
-  function toggleMobileSidebar(){document.body.classList.toggle('sidebar-mobile-open');}
-  function closeMobileSidebar(){document.body.classList.remove('sidebar-mobile-open');}
+  // RUNDE H #299 (Martins billede 4: mobilmenuen viste kun ikoner uden tekst,
+  // og "dropdown virker ikke") — årsagen var IKKE selve mobil-drawer'en, men
+  // at den arvede den gemte DESKTOP-præference body.sidebar-collapsed (fra
+  // gm_sidebar_collapsed i localStorage, sat hvis man nogensinde har foldet
+  // sidebaren sammen på computer, linje ~15699). .sidebar-collapsed skjuler
+  // ALTID (uanset skærmstørrelse) både tekstlabels (.stab-label m.fl.) OG
+  // undermenuernes .navdrop-caret/.navdrop-menu — så var den klasse sat, endte
+  // mobil-drawer'en med præcis det Martin så: ikon-kun-rækker og undermenuer
+  // der aldrig kunne åbnes. Vi fjerner derfor .sidebar-collapsed midlertidigt
+  // mens drawer'en er åben (uden at røre selve localStorage-præferencen), og
+  // sætter den tilbage når man lukker igen, så computerens foldede visning er
+  // upåvirket bagefter.
+  function syncMobileSidebarCollapse(){
+    if(document.body.classList.contains('sidebar-mobile-open')){
+      document.body.classList.remove('sidebar-collapsed');
+    }else if(localStorage.getItem('gm_sidebar_collapsed')==='1'){
+      document.body.classList.add('sidebar-collapsed');
+    }
+  }
+  function toggleMobileSidebar(){document.body.classList.toggle('sidebar-mobile-open');syncMobileSidebarCollapse();}
+  function closeMobileSidebar(){document.body.classList.remove('sidebar-mobile-open');syncMobileSidebarCollapse();}
   document.getElementById('mobilenavdrop-sidebar-item').addEventListener('click',function(e){
     e.preventDefault();
     document.getElementById('mobilenavdrop-menu').classList.remove('open');
