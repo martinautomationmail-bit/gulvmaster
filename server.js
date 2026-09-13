@@ -992,6 +992,27 @@ async function initSchema() {
     -- tilbuddet accepteres, se crmMoveEntityToWonStage nedenfor.
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS crm_lead_id INTEGER;
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS crm_opportunity_id INTEGER;
+    -- RUNDE H #312 (Martins ønske: "Lav en slette knap ikke så jeg sletter
+    -- tilbuddet, men så jeg sletter det [fra listen]") på "💰 Skal faktureres"-
+    -- modulet (se GET /api/quotes/pending-invoicing) — et tilbud kan bevidst
+    -- fjernes fra DENNE liste (fx fordi resten alligevel ikke skal faktureres)
+    -- UDEN at røre selve tilbuddet/linjerne/den rigtige delfaktureringslogik.
+    -- NULL = vises som normalt (standard); sat = skjult fra listen indtil
+    -- Martin evt. fortryder (se POST .../pending-invoicing/ignore|unignore).
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS pending_invoicing_ignored_at TEXT;
+    -- RUNDE H #312 (Martins ønske: "en knap der hurtig kan redigere Prisen
+    -- tilkoblet den" på samme "Skal faktureres"-modul) — en HURTIG manuel
+    -- rettelse af det resterende beløb Martin ser i cashflow-listen, UDEN at
+    -- skulle ind og rette på selve tilbuddets linjer/priser (som ville ændre
+    -- den RIGTIGE faktureringsmatematik/delfakturering). Kun ét formål: et
+    -- mere retvisende tal i netop denne liste, når Martin på forhånd ved at
+    -- resten fx bliver faktureret for et andet beløb end tilbuddet siger.
+    -- NULL/ingen række = vis det beregnede tal som hidtil.
+    CREATE TABLE IF NOT EXISTS quote_pending_invoicing_overrides (
+      quote_id INTEGER PRIMARY KEY,
+      override_amount NUMERIC NOT NULL,
+      updated_at TEXT
+    );
 
     CREATE TABLE IF NOT EXISTS invoices (
       id SERIAL PRIMARY KEY,
@@ -13997,7 +14018,8 @@ app.get('/api/quotes/pending-invoicing', auth, panelAccess('quotes'), asyncRoute
            p.id AS project_id,
            COALESCE(inv.invoiced_total,0)::float AS invoiced_total,
            COALESCE(rem.remaining_line_count,0)::int AS remaining_line_count,
-           COALESCE(gt.task_ranges,'[]') AS task_ranges
+           COALESCE(gt.task_ranges,'[]') AS task_ranges,
+           ov.override_amount::float AS override_amount
     FROM quotes q
     LEFT JOIN customers c ON c.id = q.customer_id
     LEFT JOIN projects p ON p.quote_id = q.id
@@ -14012,10 +14034,51 @@ app.get('/api/quotes/pending-invoicing', auth, panelAccess('quotes'), asyncRoute
       SELECT json_agg(json_build_object('start_date', gt2.start_date, 'end_date', gt2.end_date)) AS task_ranges
       FROM gantt_tasks gt2 WHERE gt2.project_id = p.id
     ) gt ON true
+    LEFT JOIN quote_pending_invoicing_overrides ov ON ov.quote_id = q.id
+    -- RUNDE H #312 — se kommentaren ved quotes.pending_invoicing_ignored_at:
+    -- et tilbud Martin bevidst har fjernet fra DENNE liste ("🗑 Fjern fra
+    -- listen") skal ikke dukke op igen, selvom der stadig er uinvoicerede
+    -- linjer tilbage.
     WHERE q.status IN ('accepted','converted') AND COALESCE(rem.remaining_line_count,0) > 0
+      AND q.pending_invoicing_ignored_at IS NULL
     ORDER BY q.created_at DESC
   `);
-  res.json(rows.rows.map(r => ({ ...r, remaining_total: Math.max(0, r.total - r.invoiced_total) })));
+  res.json(rows.rows.map(r => {
+    const computedRemaining = Math.max(0, r.total - r.invoiced_total);
+    return {
+      ...r,
+      remaining_total_computed: computedRemaining,
+      remaining_total: r.override_amount != null ? r.override_amount : computedRemaining
+    };
+  }));
+}));
+// RUNDE H #312 — se kommentaren ved quotes.pending_invoicing_ignored_at
+// ovenfor. Rører HVERKEN tilbuddet, linjerne eller den rigtige
+// faktureringsmatematik — kun om det vises i "💰 Skal faktureres"-listen.
+app.post('/api/quotes/:id/pending-invoicing/ignore', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  await pool.query(`UPDATE quotes SET pending_invoicing_ignored_at=${nowTextSQL()} WHERE id=$1`, [req.params.id]);
+  res.json({ ok: true });
+}));
+app.post('/api/quotes/:id/pending-invoicing/unignore', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  await pool.query('UPDATE quotes SET pending_invoicing_ignored_at=NULL WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+// RUNDE H #312 (Martins ønske: "en knap der hurtig kan redigere Prisen
+// tilkoblet den") — se kommentaren ved quote_pending_invoicing_overrides
+// ovenfor. amount:null fjerner overstyringen igen (viser det beregnede tal).
+app.put('/api/quotes/:id/pending-invoicing-override', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const amount = req.body?.amount;
+  if (amount === null || amount === undefined || amount === '') {
+    await pool.query('DELETE FROM quote_pending_invoicing_overrides WHERE quote_id=$1', [req.params.id]);
+    return res.json({ ok: true, override_amount: null });
+  }
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: 'Ugyldigt beløb' });
+  await pool.query(`
+    INSERT INTO quote_pending_invoicing_overrides (quote_id,override_amount,updated_at) VALUES ($1,$2,${nowTextSQL()})
+    ON CONFLICT (quote_id) DO UPDATE SET override_amount=$2,updated_at=${nowTextSQL()}
+  `, [req.params.id, n]);
+  res.json({ ok: true, override_amount: n });
 }));
 
 app.get('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -14549,6 +14612,7 @@ app.get('/api/credit-notes/:id/pdf', auth, panelAccess('quotes'), asyncRoute(asy
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${cn.credit_note_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
   drawCreditNotePdf(doc, cn, invoice, company);
   doc.end();
@@ -14643,6 +14707,29 @@ function richTextToPlain(html) {
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
 
+// RUNDE H #310 (Martins ønske: "kan du ikke finder nogle bedre fonte til mit
+// tilbud?") — Gulv Masters EGNE brand-fonte fra selve gulvmaster.dk (Barlow
+// Condensed til store overskrifter, DM Sans til brødtekst/labels — se
+// gulvmaster-design-system-skillets extraherede tokens) i stedet for pdfkits
+// indbyggede Helvetica. Fontfilerne ligger som .woff i fonts/-mappen ved
+// siden af server.js (SIL Open Font License — samme licens Google Fonts selv
+// bruger, fri til at indlejre i genererede dokumenter) og skal registreres på
+// HVER PDFDocument-instans for sig, da pdfkit ikke har en global fontliste.
+// BEVIDST fravalg: line-item-overskrifter i selve tabellen bruger stadig
+// DM Sans-Bold og IKKE Barlow Condensed — Barlow Condensed er et smalt,
+// kondenseret display-font beregnet til STORE overskrifter (hjemmesidens H1-
+// H3), og ville gå ud over læsbarheden ned på 9.5pt i en fakturas linjetekst.
+// Barlow Condensed Black bruges derfor kun til selve dokumentets store
+// "TILBUD"/"FAKTURA"-ord og virksomhedsnavnet øverst, ligesom hjemmesidens
+// egne display-overskrifter.
+const PDF_FONTS_DIR = path.join(__dirname, 'fonts');
+function registerBrandFonts(doc) {
+  doc.registerFont('BarlowCond-Black', path.join(PDF_FONTS_DIR, 'BarlowCondensed-Black.woff'));
+  doc.registerFont('DMSans', path.join(PDF_FONTS_DIR, 'DMSans-Regular.woff'));
+  doc.registerFont('DMSans-Bold', path.join(PDF_FONTS_DIR, 'DMSans-Bold.woff'));
+  doc.registerFont('DMSans-Italic', path.join(PDF_FONTS_DIR, 'DMSans-Italic.woff'));
+  doc.registerFont('DMSans-BoldItalic', path.join(PDF_FONTS_DIR, 'DMSans-BoldItalic.woff'));
+}
 // Tegner sanitizeRichText's HTML-undersæt som PDFKit-tekstkørsler (fed skrift
 // og klikbare, understregede links), linje for linje (<br> = ny linje). x/y
 // er startpunktet, width bruges til PDFKit's egen ombrydning inden for hver
@@ -14657,7 +14744,7 @@ function renderRichText(doc, html, x, y, width, opts) {
   let curY = y;
   lines.forEach((lineHtml) => {
     if (!lineHtml.trim()) {
-      doc.font('Helvetica').fontSize(fontSize).fillColor(color).text(' ', x, curY, { width, lineGap });
+      doc.font('DMSans').fontSize(fontSize).fillColor(color).text(' ', x, curY, { width, lineGap });
       curY = doc.y;
       return;
     }
@@ -14678,7 +14765,7 @@ function renderRichText(doc, html, x, y, width, opts) {
     if (!runs.length) runs.push({ text: '', bold: false });
     runs.forEach((run, i) => {
       const isFirst = i === 0, isLast = i === runs.length - 1;
-      doc.font(run.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize).fillColor(run.href ? '#4F46E5' : color);
+      doc.font(run.bold ? 'DMSans-Bold' : 'DMSans').fontSize(fontSize).fillColor(run.href ? '#4F46E5' : color);
       const textOpts = { width, lineGap, continued: !isLast };
       if (run.href) { textOpts.link = run.href; textOpts.underline = true; }
       if (isFirst) doc.text(run.text, x, curY, textOpts);
@@ -14686,7 +14773,7 @@ function renderRichText(doc, html, x, y, width, opts) {
     });
     curY = doc.y;
   });
-  doc.font('Helvetica');
+  doc.font('DMSans');
   return curY;
 }
 
@@ -14699,10 +14786,17 @@ function drawDocHeader(doc, docLabel, docNumber, metaLines, accent, company) {
   if (logoBuf) {
     try { doc.image(logoBuf, 40, 30, { fit: [220, 90] }); } catch (e) { /* korrupt billede — spring logoet over */ }
   } else {
-    doc.font('Helvetica-Bold').fontSize(18).fillColor('#111318').text(company.name, 40, 54);
-    doc.font('Helvetica');
+    // RUNDE H #310 — virksomhedsnavnet (kun når intet logo er sat) i Barlow
+    // Condensed Black, ligesom hjemmesidens egne display-overskrifter.
+    doc.font('BarlowCond-Black').fontSize(20).fillColor('#111318').text(company.name, 40, 54);
+    doc.font('DMSans');
   }
-  doc.fontSize(23).fillColor(accent).text(docLabel, 340, 40, { width: 215, align: 'right' });
+  // RUNDE H #310 — selve "TILBUD"/"FAKTURA"-ordet er dokumentets egen
+  // "overskrift", så den får samme Barlow Condensed Black som hjemmesidens
+  // H1-H3 (se drawing-tokens.md). Størrelsen er sat lidt op (23→26) fordi et
+  // kondenseret font virker en anelse mindre ved samme pointstørrelse.
+  doc.font('BarlowCond-Black').fontSize(26).fillColor(accent).text(docLabel, 340, 40, { width: 215, align: 'right' });
+  doc.font('DMSans');
   doc.fontSize(10).fillColor('#111318').text(docNumber, 340, 71, { width: 215, align: 'right' });
   doc.fontSize(9).fillColor('#9CA3AF');
   metaLines.forEach((l, i) => doc.text(l, 340, 87 + i * 13, { width: 215, align: 'right' }));
@@ -14715,20 +14809,20 @@ function drawDocHeader(doc, docLabel, docNumber, metaLines, accent, company) {
 // som Martin bad om, i stedet for kun "Til:" som før.
 function drawFraTilBlock(doc, y, company, record) {
   const colW = 235;
-  doc.font('Helvetica').fontSize(8).fillColor('#9CA3AF').text('FRA', 40, y, { characterSpacing: 0.5 });
+  doc.font('DMSans').fontSize(8).fillColor('#9CA3AF').text('FRA', 40, y, { characterSpacing: 0.5 });
   doc.text('TIL', 305, y, { characterSpacing: 0.5 });
   let leftY = y + 14, rightY = y + 14;
-  doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#111318').text(company.name, 40, leftY, { width: colW });
+  doc.font('DMSans-Bold').fontSize(10.5).fillColor('#111318').text(company.name, 40, leftY, { width: colW });
   leftY += 14;
-  doc.font('Helvetica').fontSize(9).fillColor('#6B7280');
+  doc.font('DMSans').fontSize(9).fillColor('#6B7280');
   [company.address, company.cvr ? `CVR ${company.cvr}` : '', company.phone, company.email].filter(Boolean).forEach((l) => { doc.text(l, 40, leftY, { width: colW }); leftY += 12; });
 
   const rightName = record.job_name || '';
   if (rightName) {
-    doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#111318').text(rightName, 305, rightY, { width: colW });
+    doc.font('DMSans-Bold').fontSize(10.5).fillColor('#111318').text(rightName, 305, rightY, { width: colW });
     rightY += 14;
   }
-  doc.font('Helvetica').fontSize(9).fillColor('#6B7280');
+  doc.font('DMSans').fontSize(9).fillColor('#6B7280');
   [record.customer_address, record.customer_phone ? 'Tlf. ' + record.customer_phone : '', record.customer_email].filter(Boolean).forEach((l) => { doc.text(l, 305, rightY, { width: colW }); rightY += 12; });
 
   return Math.max(leftY, rightY) + 12;
@@ -14747,11 +14841,11 @@ function drawDocFooter(doc, company) {
   if (parts.length) {
     doc.moveTo(190, y).lineTo(405, y).strokeColor('#EEF0F3').lineWidth(1).stroke();
     y += 9;
-    doc.font('Helvetica').fontSize(8).fillColor('#9CA3AF').text(parts.join('   ·   '), 40, y, { width: 515, align: 'center' });
+    doc.font('DMSans').fontSize(8).fillColor('#9CA3AF').text(parts.join('   ·   '), 40, y, { width: 515, align: 'center' });
     y += 13;
   }
   if (company.footerNote) {
-    doc.font('Helvetica').fontSize(8).fillColor('#B7BCC5').text(company.footerNote, 40, y, { width: 515, align: 'center' });
+    doc.font('DMSans').fontSize(8).fillColor('#B7BCC5').text(company.footerNote, 40, y, { width: 515, align: 'center' });
   }
 }
 
@@ -14918,7 +15012,7 @@ function _pdfLineDescParts(l) {
 const NOTE_LABEL_H = 10;
 function pdfLineDescHeight(doc, l, width) {
   const p = _pdfLineDescParts(l);
-  doc.font('Helvetica-Bold').fontSize(9.5);
+  doc.font('DMSans-Bold').fontSize(9.5);
   let h = doc.heightOfString(_rtStripBold(p.heading), { width });
   if (p.rest) {
     // RUNDE X — rest kan nu indeholde punkt-/nummererede lister og **fed** tekst.
@@ -14926,37 +15020,37 @@ function pdfLineDescHeight(doc, l, width) {
     // overskriften (8.5 mod 9.5) for at matche den dæmpede, grå stil i
     // admin.html/HTML-forhåndsvisningen — SAMME størrelse skal bruges her og i
     // drawPdfLineDesc nedenfor, ellers gentager vi RUNDE U's paginerings-bug.
-    h += 3 + rtBlocksHeight(doc, _rtParseBlocks(p.rest), width, 'Helvetica', 'Helvetica-Bold', 8.5);
+    h += 3 + rtBlocksHeight(doc, _rtParseBlocks(p.rest), width, 'DMSans', 'DMSans-Bold', 8.5);
   }
   if (p.note) {
-    const noteH = rtBlocksHeight(doc, _rtParseBlocks(p.note), width - 16, 'Helvetica-Oblique', 'Helvetica-BoldOblique', 8.5);
+    const noteH = rtBlocksHeight(doc, _rtParseBlocks(p.note), width - 16, 'DMSans-Italic', 'DMSans-BoldItalic', 8.5);
     h += 8 + NOTE_LABEL_H + noteH + 12;
   }
-  doc.font('Helvetica').fontSize(9.5);
+  doc.font('DMSans').fontSize(9.5);
   return h;
 }
 function drawPdfLineDesc(doc, l, x, y, width) {
   const p = _pdfLineDescParts(l);
   const headingPlain = _rtStripBold(p.heading);
-  doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#111318').text(headingPlain, x, y, { width });
+  doc.font('DMSans-Bold').fontSize(9.5).fillColor('#111318').text(headingPlain, x, y, { width });
   let cy = y + doc.heightOfString(headingPlain, { width });
   if (p.rest) {
     cy += 3;
-    cy += drawRtBlocks(doc, _rtParseBlocks(p.rest), x, cy, width, 'Helvetica', 'Helvetica-Bold', 8.5, '#6B7280');
+    cy += drawRtBlocks(doc, _rtParseBlocks(p.rest), x, cy, width, 'DMSans', 'DMSans-Bold', 8.5, '#6B7280');
   }
   if (p.note) {
     const noteInnerWidth = width - 16;
     const noteBlocks = _rtParseBlocks(p.note);
-    const noteH = rtBlocksHeight(doc, noteBlocks, noteInnerWidth, 'Helvetica-Oblique', 'Helvetica-BoldOblique', 8.5);
+    const noteH = rtBlocksHeight(doc, noteBlocks, noteInnerWidth, 'DMSans-Italic', 'DMSans-BoldItalic', 8.5);
     const noteBoxH = NOTE_LABEL_H + noteH + 12;
     cy += 8;
     doc.roundedRect(x - 2, cy, width + 4, noteBoxH, 4).fill('#F9FAFB');
     doc.rect(x - 2, cy, 2, noteBoxH).fill('#9CA3AF');
-    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#9CA3AF').text('NOTE', x + 6, cy + 5, { characterSpacing: 0.4 });
-    drawRtBlocks(doc, noteBlocks, x + 6, cy + 5 + NOTE_LABEL_H, noteInnerWidth, 'Helvetica-Oblique', 'Helvetica-BoldOblique', 8.5, '#4B5563');
+    doc.font('DMSans-Bold').fontSize(6.5).fillColor('#9CA3AF').text('NOTE', x + 6, cy + 5, { characterSpacing: 0.4 });
+    drawRtBlocks(doc, noteBlocks, x + 6, cy + 5 + NOTE_LABEL_H, noteInnerWidth, 'DMSans-Italic', 'DMSans-BoldItalic', 8.5, '#4B5563');
     cy += noteBoxH;
   }
-  doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
+  doc.font('DMSans').fontSize(9.5).fillColor('#111318');
   return cy - y;
 }
 // RUNDE U (Martins ønske: "Note se tilbuddet når det bliver for stort/langt
@@ -14979,13 +15073,13 @@ const PDF_CONTINUATION_TOP = 50; // hvor indhold starter igen på side 2, 3, ...
 function pdfStartContinuationPage(doc, isInvoice, docNumber, accent) {
   doc.addPage();
   let y = PDF_CONTINUATION_TOP;
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(accent).text((isInvoice ? 'FAKTURA ' : 'TILBUD ') + docNumber + ' — fortsat', 40, y);
+  doc.font('DMSans-Bold').fontSize(9).fillColor(accent).text((isInvoice ? 'FAKTURA ' : 'TILBUD ') + docNumber + ' — fortsat', 40, y);
   y += 20;
   return y;
 }
 function drawPdfLineTableHeader(doc, y) {
   doc.roundedRect(40, y, 515, 24, 6).fill('#F4F6FB');
-  doc.font('Helvetica').fontSize(9).fillColor('#374151');
+  doc.font('DMSans').fontSize(9).fillColor('#374151');
   doc.text('Beskrivelse', 52, y + 8);
   doc.text('Antal', 278, y + 8, { width: 42, align: 'right' });
   doc.text('Rabat', 325, y + 8, { width: 60, align: 'right' });
@@ -15050,14 +15144,14 @@ function drawDocumentPdf(doc, kind, record, company) {
       // nu med stort/spatieret ligesom i forhåndsvisningen, så de to steder
       // ser ens ud.
       const divText = String(l.description || '').toUpperCase();
-      doc.font('Helvetica-Bold').fontSize(10);
+      doc.font('DMSans-Bold').fontSize(10);
       const h = doc.heightOfString(divText, { width: 491, characterSpacing: 0.4 });
       const boxH = h + 20;
       y = ensurePdfSpace(doc, y, boxH + 12, { ...ctx, redrawTableHeader: true });
       doc.roundedRect(40, y, 515, boxH, 4).fill('#F3F4F6');
       doc.rect(40, y, 3, boxH).fill('#111318');
       doc.fillColor('#111318').text(divText, 56, y + 10, { width: 491, characterSpacing: 0.4 });
-      doc.font('Helvetica');
+      doc.font('DMSans');
       y += boxH + 12;
       return;
     }
@@ -15081,14 +15175,14 @@ function drawDocumentPdf(doc, kind, record, company) {
     const nameHeight = pdfLineDescHeight(doc, l, 220);
     const rowHeight = Math.max(nameHeight, 14) + 8;
     y = ensurePdfSpace(doc, y, rowHeight, { ...ctx, redrawTableHeader: true });
-    doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
+    doc.font('DMSans').fontSize(9.5).fillColor('#111318');
     doc.text(String(l.quantity) + ' ' + (l.unit || ''), 278, y, { width: 42, align: 'right' });
     if (lineDiscRateLabel) {
-      doc.font('Helvetica-Bold').fontSize(8).fillColor('#C0392B');
+      doc.font('DMSans-Bold').fontSize(8).fillColor('#C0392B');
       doc.text(lineDiscRateLabel, 325, y + 1, { width: 60, align: 'right' });
-      doc.font('Helvetica').fontSize(7).fillColor('#C0392B');
+      doc.font('DMSans').fontSize(7).fillColor('#C0392B');
       doc.text(lineDiscAmtLabel, 325, y + 11, { width: 60, align: 'right' });
-      doc.font('Helvetica').fontSize(9.5).fillColor('#111318');
+      doc.font('DMSans').fontSize(9.5).fillColor('#111318');
     }
     doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 390, y, { width: 70, align: 'right' });
     doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 465, y, { width: 75, align: 'right' });
@@ -15144,7 +15238,7 @@ function drawDocumentPdf(doc, kind, record, company) {
   if (!isInvoice && record.status === 'accepted' && record.signed_name) {
     y = ensurePdfSpace(doc, y, 78, ctx);
     y += 8;
-    doc.font('Helvetica').fontSize(9).fillColor('#15803D').text(`✓ Accepteret af ${record.signed_name} den ${String(record.signed_at || '').slice(0, 16).replace('T', ' ')}`, 40, y, { width: 515 });
+    doc.font('DMSans').fontSize(9).fillColor('#15803D').text(`✓ Accepteret af ${record.signed_name} den ${String(record.signed_at || '').slice(0, 16).replace('T', ' ')}`, 40, y, { width: 515 });
     y += 15;
     if (record.signature_data && /^data:image\/(png|jpeg);base64,/.test(record.signature_data)) {
       try {
@@ -15166,17 +15260,19 @@ function drawCreditNotePdf(doc, creditNote, invoice, company) {
   const metaLines = [`Dato: ${String(creditNote.created_at || '').slice(0, 10)}`, `Vedr. faktura: ${invoice ? invoice.invoice_number : ''}`];
   let y = drawDocHeader(doc, 'KREDITNOTA', creditNote.credit_note_number, metaLines, accent, company);
 
-  doc.font('Helvetica').fontSize(8).fillColor('#9CA3AF').text('TIL', 40, y);
+  doc.font('DMSans').fontSize(8).fillColor('#9CA3AF').text('TIL', 40, y);
   y += 14;
-  if (invoice && invoice.job_name) { doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#111318').text(invoice.job_name, 40, y); y += 14; }
-  doc.font('Helvetica').fontSize(9).fillColor('#6B7280');
+  if (invoice && invoice.job_name) { doc.font('DMSans-Bold').fontSize(10.5).fillColor('#111318').text(invoice.job_name, 40, y); y += 14; }
+  doc.font('DMSans').fontSize(9).fillColor('#6B7280');
   if (invoice && invoice.customer_address) { doc.text(invoice.customer_address, 40, y); y += 12; }
 
   y = Math.max(y + 20, 210);
   doc.roundedRect(40, y, 515, 64, 10).fill('#FEF2F2');
   doc.fontSize(9.5).fillColor('#6B7280').text('Krediteret beløb', 56, y + 14);
-  doc.font('Helvetica-Bold').fontSize(20).fillColor(accent).text(Math.round(Number(creditNote.amount)).toLocaleString('da-DK') + ' kr', 56, y + 30);
-  doc.font('Helvetica');
+  // RUNDE H #310 — det store kreditbeløb er en "hero-figur" ligesom
+  // hjemmesidens egne store Barlow Condensed-tal (fx "1.000+ tilfredse kunder").
+  doc.font('BarlowCond-Black').fontSize(24).fillColor(accent).text(Math.round(Number(creditNote.amount)).toLocaleString('da-DK') + ' kr', 56, y + 30);
+  doc.font('DMSans');
   y += 84;
 
   if (creditNote.reason) {
@@ -15195,6 +15291,7 @@ function renderDocumentPdfBuffer(kind, record, company) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
       const chunks = [];
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -15208,6 +15305,7 @@ function renderCreditNotePdfBuffer(creditNote, invoice, company) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
       const chunks = [];
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -15234,6 +15332,7 @@ app.get('/api/quotes/:id/pdf', auth, panelAccess('quotes'), asyncRoute(async (re
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${quote.quote_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
   drawDocumentPdf(doc, 'quote', quote, company);
   doc.end();
@@ -15287,6 +15386,7 @@ app.post('/api/quotes/preview-pdf', auth, panelAccess('quotes'), asyncRoute(asyn
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', 'inline; filename="forhaandsvisning.pdf"');
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
   drawDocumentPdf(doc, kind, record, company);
   doc.end();
@@ -15299,6 +15399,7 @@ app.get('/api/invoices/:id/pdf', auth, panelAccess('quotes'), asyncRoute(async (
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${invoice.invoice_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
   drawDocumentPdf(doc, 'invoice', invoice, company);
   doc.end();
@@ -15735,15 +15836,22 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   })();
   const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(quote.quote_number)} — ${esc(company.name)}</title>
+<!-- RUNDE H #310 — se registerBrandFonts i server.js: samme Barlow
+     Condensed/DM Sans som selve PDF'en og admin-forhåndsvisningen, så
+     kundens egen visning her ikke ser anderledes/dårligere ud end det Martin
+     selv ser. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=DM+Sans:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
   * { box-sizing:border-box; }
-  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:#111318;margin:0;padding:24px 16px 60px}
+  body{font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:#111318;margin:0;padding:24px 16px 60px}
   .wrap{max-width:640px;margin:0 auto}
   .card{background:#fff;border-radius:16px;padding:28px 24px;box-shadow:0 8px 30px rgba(15,17,24,.08);margin-bottom:16px}
   .doc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid #EEF0F3;margin-bottom:20px}
   .company-logo-lg{max-width:260px;max-height:96px;object-fit:contain}
-  .company-name-fallback{font-size:19px;font-weight:800}
-  .doctype{font-size:21px;font-weight:800;color:#4F46E5;text-align:right}
+  .company-name-fallback{font-size:20px;font-weight:900;font-family:'Barlow Condensed',sans-serif}
+  .doctype{font-size:24px;font-weight:900;color:#4F46E5;text-align:right;font-family:'Barlow Condensed',sans-serif}
   .docmeta{font-size:11px;color:#9CA3AF;text-align:right;margin-top:4px;line-height:1.7}
   .fratil{display:flex;gap:24px;flex-wrap:wrap;margin:0 0 18px}
   .fratil>div{flex:1;min-width:190px}
@@ -15758,7 +15866,7 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
      brødteksten derunder er nu almindelig vægt, dæmpet grå og en anelse
      mindre, ligesom i admin.html's forhåndsvisning og den rigtige PDF. */
   .ln-heading{font-weight:700}
-  .ln-desc{font-weight:400;color:#6B7280;font-size:12px;margin-top:3px;white-space:pre-line}
+  .ln-desc{font-weight:400;color:#6B7280;font-size:.85em;margin-top:3px;white-space:pre-line}
   .ln-note{margin-top:6px;background:#F9FAFB;border-left:2px solid #9CA3AF;border-radius:4px;padding:6px 9px;font-size:11.5px;font-weight:400;font-style:italic;color:#4B5563;white-space:pre-line}
   .ln-note-label{display:block;font-size:8.5px;font-weight:700;font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF;margin-bottom:2px}
   /* RUNDE X — punkt-/nummererede lister i beskrivelse/note (se richTextToHtml). */
@@ -16662,6 +16770,7 @@ app.get('/kunde/:token/tilbud/:quoteId/pdf', asyncRoute(async (req, res) => {
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${quote.quote_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
   drawDocumentPdf(doc, 'quote', quote, company);
   doc.end();
@@ -16678,6 +16787,7 @@ app.get('/kunde/:token/faktura/:invoiceId/pdf', asyncRoute(async (req, res) => {
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${invoice.invoice_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
   drawDocumentPdf(doc, 'invoice', invoice, company);
   doc.end();

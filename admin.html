@@ -7,6 +7,17 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
+<!-- RUNDE H #310 (Martins ønske: "kan du ikke finder nogle bedre fonte til mit
+     tilbud?") — Gulv Masters egne brand-fonte fra gulvmaster.dk (Barlow
+     Condensed 900 til overskrifter, DM Sans til brødtekst), KUN til selve
+     tilbud/faktura-forhåndsvisningen (.qe-pdf-* nedenfor) — resten af
+     admin-programmets egen UI-chrome er bevidst urørt, det er ikke det
+     Martin bad om. Skal matche PDF'ens egne indlejrede fonte (se
+     registerBrandFonts i server.js) så forhåndsvisningen ikke lyver om det
+     færdige resultat. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=DM+Sans:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
 :root{
   --navy:#0F2240;--navy2:#1C3557;--steel:#2E5086;--blue:#2563EB;--green:#059669;
@@ -1738,13 +1749,13 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    måling/paginering — se qeRenderPreview(). qe-preview-pages er den flex-
    kolonne der stabler siderne med luft imellem, ligesom en rigtig PDF-viewer. */
 .qe-preview-pages{display:flex;flex-direction:column;align-items:center;gap:18px;width:100%}
-.qe-pdf-page{width:100%;max-width:560px;background:#fff;box-shadow:0 8px 30px rgba(15,17,24,.15);position:relative;border-radius:4px;box-sizing:border-box}
+.qe-pdf-page{width:100%;max-width:560px;background:#fff;box-shadow:0 8px 30px rgba(15,17,24,.15);position:relative;border-radius:4px;box-sizing:border-box;font-family:'DM Sans',-apple-system,sans-serif}
 .qe-pdf-cont-head{font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.03em;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #EEF0F3}
 .qe-pdf-pagenum{margin-top:16px;text-align:center;font-size:8.5px;color:#B0B7C3}
 .qe-pdf-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px}
-.qe-pdf-company{font-size:16px;font-weight:800}
+.qe-pdf-company{font-size:19px;font-weight:900;font-family:'Barlow Condensed',sans-serif}
 .qe-pdf-company-sub{font-size:9px;color:#6B7280;line-height:1.6;margin-top:4px}
-.qe-pdf-doctype{font-size:19px;font-weight:800;color:var(--bly-accent);text-align:right}
+.qe-pdf-doctype{font-size:23px;font-weight:900;color:var(--bly-accent);text-align:right;font-family:'Barlow Condensed',sans-serif}
 .qe-pdf-docnum{font-size:10px;text-align:right;margin-top:2px}
 .qe-pdf-meta{font-size:9px;color:#6B7280;text-align:right;margin-top:2px}
 .qe-pdf-to{margin-bottom:18px;font-size:10px;line-height:1.6}
@@ -1764,9 +1775,19 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    PDF (drawPdfLineDesc bruger allerede almindelig 'Helvetica', ikke fed) —
    før var HTML-forhåndsvisningen (her og /tilbud/:token) faktisk federe end
    det kunden endte med at få i selve PDF'en. Noten i sin egen boks nederst
-   er uændret. */
+   er uændret.
+   RUNDE H #311 (Martins fejlrapport: "Du har lavet overskriften mindre end
+   teksten under. Det sku være omvendt") — BUGGEN: .ln-desc stod på en FAST
+   12px, som ganske vist er mindre end .ln-heading i de fleste sammenhænge,
+   MEN i selve PDF-forhåndsvisningen (.qe-pdf-table) er grundstørrelsen kun
+   9.5px (se .qe-pdf-table ovenfor) — og .ln-heading har bevidst INGEN egen
+   font-size (den arver bare de 9.5px), så en fast 12px på .ln-desc endte med
+   at være STØRRE end overskriften netop dér. Rettet ved at gøre .ln-desc
+   relativ (em, af sin egen kontekst) i stedet for en fast pixelstørrelse, så
+   den ALTID er mindre end overskriften, uanset hvilken grundstørrelse den
+   sidder i (9.5px i forhåndsvisningen, større andre steder). */
 .ln-heading{font-weight:700}
-.ln-desc{font-weight:400;color:var(--bly-sub);font-size:12px;margin-top:3px;white-space:pre-line}
+.ln-desc{font-weight:400;color:var(--bly-sub);font-size:.85em;margin-top:3px;white-space:pre-line}
 /* RUNDE W — note-boksen var en mættet orange "post-it"-farve (#FFF7ED/#FB923C/
    #7C2D12), som virkede barnlig/useriøs på et rigtigt tilbud. Neutral, lys
    gråtone i stedet, kursiv i stedet for farve til at markere at det er en
@@ -3089,7 +3110,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.6</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.7</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3988,7 +4009,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <table class="bly-table">
-      <thead><tr><th>Kunde/sag</th><th>Tilbud</th><th>Status</th><th>Planlagt periode</th><th class="num">Tilbud total</th><th class="num">Faktureret</th><th class="num">Resterende</th><th style="width:90px"></th></tr></thead>
+      <thead><tr><th>Kunde/sag</th><th>Tilbud</th><th>Status</th><th>Planlagt periode</th><th class="num">Tilbud total</th><th class="num">Faktureret</th><th class="num">Resterende</th><th style="width:130px"></th></tr></thead>
       <tbody id="qz-pending-body"></tbody>
     </table>
   </div>
@@ -4891,11 +4912,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <thead><tr><th>Navn</th><th>Status</th><th>Adresse</th><th>Kontakt</th><th class="num">Pris</th><th class="num">Opgaver</th><th class="num">Tid</th><th class="num">Billeder</th><th style="width:90px"></th></tr></thead>
       <tbody id="proj-body"></tbody>
     </table>
-    <!-- RUNDE H #308 (Martins ønske: "kan du ikke i toppen skrive hvor meget den
-         samlede pibeline er for?") — samlet værdi af de sager der vises i Kanban-
-         visningen lige nu (samme filtre — periode/søgning/vis arkiverede — som
-         selve kortene nedenfor). Kun synlig i Kanban, sat af renderPjKanban(). -->
-    <div id="proj-kanban-total" style="display:none;margin:0 0 12px;font-size:14px;color:var(--bly-sub)">Samlet pipeline: <b style="color:var(--bly-text);font-size:16px" id="proj-kanban-total-value">0 kr</b></div>
     <!-- Kanban-board — samme Billy-stils klasser (.crmp-board/.crmp-col/.crmp-card)
          som CRM-pipelinens Kanban-board, for ens udseende/adfærd i hele appen.
          Faserne er de FASTE projekt-statusser (Igangværende/På hold/Afsluttet, +
@@ -17398,7 +17414,11 @@ function renderQzPendingInvoicing(){
     return da<db?-1:(da>db?1:0);
   });
   body.innerHTML=list.map(function(x){
-    var invoicedTotal=Number(x.total)-Number(x.remaining_total);
+    // RUNDE H #312 — "Faktureret" skal altid vise det RIGTIGE fakturerede beløb
+    // (uafhængigt af en evt. manuel rettelse af "Resterende"), derfor regnet
+    // ud fra remaining_total_computed og IKKE det evt. overstyrede remaining_total.
+    var invoicedTotal=Number(x.total)-Number(x.remaining_total_computed);
+    var isOverridden=x.override_amount!=null;
     return '<tr>'
       +'<td>'+esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')+'</td>'
       +'<td>'+esc(x.quote_number||'–')+'</td>'
@@ -17406,10 +17426,59 @@ function renderQzPendingInvoicing(){
       +'<td>'+qzPendingPeriodLabel(x.task_ranges)+'</td>'
       +'<td class="num">'+krFmt(Number(x.total))+'</td>'
       +'<td class="num">'+krFmt(invoicedTotal)+'</td>'
-      +'<td class="num" style="font-weight:700">'+krFmt(Number(x.remaining_total))+'</td>'
-      +'<td><button class="qz-icon-btn" onclick="openQuoteEditor('+x.id+')" title="Åbn tilbud">✎</button></td>'
+      +'<td class="num" style="font-weight:700">'+krFmt(Number(x.remaining_total))+(isOverridden?' <span class="tag" title="Manuelt rettet fra '+krFmt(Number(x.remaining_total_computed))+'" style="font-weight:600">✎ rettet</span>':'')+'</td>'
+      +'<td style="white-space:nowrap">'
+      +'<button class="qz-icon-btn" onclick="openQuoteEditor('+x.id+')" title="Åbn tilbud">✎</button>'
+      +'<button class="qz-icon-btn" onclick="qzPendingEditPrice('+x.id+')" title="Ret hurtigt det resterende beløb i denne liste (rører ikke selve tilbuddet)">💰</button>'
+      +'<button class="qz-icon-btn" onclick="qzPendingDismiss('+x.id+')" title="Fjern fra denne liste (sletter IKKE tilbuddet)">🗑</button>'
+      +'</td>'
       +'</tr>';
   }).join('');
+}
+// RUNDE H #312 (Martins ønske: "Lav en slette knap ikke så jeg sletter
+// tilbuddet, men så jeg sletter det [fra listen]") — se
+// quotes.pending_invoicing_ignored_at i server.js. Tilbuddet/linjerne røres
+// slet ikke; kun synligheden i DENNE liste. "Fortryd"-knappen i toasten giver
+// et hurtigt sikkerhedsnet, siden handlingen ellers ikke har nogen synlig UI
+// et andet sted i programmet at fortryde den fra.
+async function qzPendingDismiss(quoteId){
+  var x=qzPendingData.find(function(q){return +q.id===+quoteId;});
+  if(!x)return;
+  if(!await gmConfirm('Fjern "'+(x.job_name||x.quote_number)+'" fra "Skal faktureres"-listen?\n\nSelve tilbuddet slettes IKKE — det forsvinder kun fra denne liste, indtil du evt. fortryder.','Fjern fra listen'))return;
+  var r=await api('/api/quotes/'+quoteId+'/pending-invoicing/ignore',{method:'POST'});
+  if(!r||!r.ok){toast('Kunne ikke fjerne fra listen','❌');return;}
+  qzPendingData=qzPendingData.filter(function(q){return +q.id!==+quoteId;});
+  renderQzPendingInvoicing();
+  // Samme klikbare "fortryd"-toast-mønster som resten af programmet (se
+  // toast()'s onClick-parameter) — klik på selve toasten inden for få
+  // sekunder fortryder fjernelsen igen.
+  toast('Fjernet fra listen — klik for at fortryde','↩️',async function(){
+    await api('/api/quotes/'+quoteId+'/pending-invoicing/unignore',{method:'POST'});
+    qzPendingData=null;
+    renderQzPendingInvoicing();
+    toast('Fortrudt — vises igen ✓','✓');
+  });
+}
+// RUNDE H #312 (Martins ønske: "en knap der hurtig kan redigere Prisen
+// tilkoblet den") — se quote_pending_invoicing_overrides i server.js. Ændrer
+// KUN det tal Martin ser i cashflow-listen her, aldrig selve tilbuddets
+// linjer/priser eller den rigtige faktureringsmatematik.
+async function qzPendingEditPrice(quoteId){
+  var x=qzPendingData.find(function(q){return +q.id===+quoteId;});
+  if(!x)return;
+  var current=Number(x.remaining_total);
+  var msg='Nyt resterende beløb for "'+(x.job_name||x.quote_number)+'" — kun i denne liste, ændrer ikke selve tilbuddet.\n\nRyd feltet for at nulstille til det beregnede tal ('+krFmt(Number(x.remaining_total_computed))+').';
+  var input=await gmPrompt(msg,String(current),'Ret resterende beløb');
+  if(input===null||input===undefined)return;
+  var trimmed=String(input).trim();
+  var amount=trimmed===''?null:Number(trimmed.replace(',','.'));
+  if(trimmed!==''&&(!Number.isFinite(amount)||amount<0)){toast('Angiv et gyldigt beløb (eller ryd feltet for at nulstille)','⚠️');return;}
+  var r=await api('/api/quotes/'+quoteId+'/pending-invoicing-override',{method:'PUT',body:JSON.stringify({amount:amount})});
+  if(!r||!r.ok){toast('Kunne ikke gemme beløbet','❌');return;}
+  x.override_amount=r.override_amount;
+  x.remaining_total=r.override_amount!=null?r.override_amount:x.remaining_total_computed;
+  renderQzPendingInvoicing();
+  toast(amount===null?'Nulstillet til det beregnede tal ✓':'Resterende beløb rettet ✓','✓');
 }
 
 var QZ_MORE_TABS=['products','templates','timetrack'];
@@ -21138,7 +21207,6 @@ function switchPjView(v){
   document.getElementById('proj-status-filter').style.display=v==='list'?'':'none';
   document.getElementById('proj-table').style.display=v==='list'?'':'none';
   document.getElementById('proj-kanban-board').style.display=v==='kanban'?'':'none';
-  document.getElementById('proj-kanban-total').style.display=v==='kanban'?'':'none';
   renderPjProjects();
 }
 function renderPjProjects(){
@@ -21510,18 +21578,25 @@ function pjKanbanCardHtml(p){
 }
 function renderPjKanban(list){
   var board=document.getElementById('proj-kanban-board');
-  // RUNDE H #308 — se kommentaren ved #proj-kanban-total i HTML'en. Samme
-  // pris-prioritering (quote_total frem for invoice_total) som pjKanbanCardHtml
-  // bruger på det enkelte kort ovenfor, så toppens tal og korttallene stemmer overens.
-  var total=list.reduce(function(s,p){var price=p.quote_total!=null?p.quote_total:p.invoice_total;return s+(Number(price)||0);},0);
-  document.getElementById('proj-kanban-total-value').textContent=krFmt(total);
   var stages=pjShowArchived?pjAllStagesSorted():pjNonArchivedStages();
   board.innerHTML=stages.map(function(s){
     var cards=list.filter(function(p){return p.status===s.key;});
+    // RUNDE H #313 (Martins fejlrapport: "Nej Kanban skal have over hver
+    // stage hvor meget. Og så også pænere en det du har lavet der?") — En
+    // enkelt sum i toppen af HELE boardet (forrige forsøg, RUNDE H #308) var
+    // hverken det Martin bad om eller den "Billy-stil" resten af programmet
+    // bruger. Genbruger nu PRÆCIS samme .crmp-col-sum-visning som CRM-
+    // salgspipelinens Kanban (se crmpRenderBoard) — én sum PR. STADIE, samme
+    // pris-prioritering (quote_total frem for invoice_total) som selve
+    // kortene (pjKanbanCardHtml) bruger, så stadiets sum og korttallene
+    // stemmer overens.
+    var sum=cards.reduce(function(s2,p){var price=p.quote_total!=null?p.quote_total:p.invoice_total;return s2+(Number(price)||0);},0);
     return '<div class="crmp-col" data-status="'+esc(s.key)+'">'
       +'<div class="crmp-col-head"><div class="crmp-col-headrow"><div class="crmp-col-title" style="flex:1;min-width:0">'
       +'<span class="crmp-col-dot" style="background:'+esc(s.color)+'"></span>'+esc(s.label)+'<span class="crmp-col-count">'+cards.length+'</span>'
-      +'</div></div></div>'
+      +'</div></div>'
+      +'<div class="crmp-col-sum" title="Samlet pris af sagerne i dette stadie"><span class="crmp-col-sum-label">I alt</span><span class="crmp-col-sum-value">'+krFmt(sum)+'</span></div>'
+      +'</div>'
       +'<div class="crmp-col-body" data-status="'+esc(s.key)+'">'+cards.map(pjKanbanCardHtml).join('')+'</div>'
       +'</div>';
   }).join('');
@@ -25036,6 +25111,13 @@ window.savePjRowStatus=savePjRowStatus;
 window.deletePjProject=deletePjProject;
 window.pjRowCtxMenu=pjRowCtxMenu;
 window.useTemplateForNewQuote=useTemplateForNewQuote;
+// RUNDE H #312 (Martins ønske: slette-knap + hurtig-redigér-pris-knap på
+// "Skal faktureres"-siden) — samme faldgrube som kommentaren ovenfor
+// beskriver: onclick="qzPendingEditPrice(...)"/"qzPendingDismiss(...)" i
+// renderQzPendingInvoicing() kalder dem i global scope, så de skal eksporteres
+// her, ellers virker 💰/🗑-knapperne bare ikke (stille ReferenceError).
+window.qzPendingEditPrice=qzPendingEditPrice;
+window.qzPendingDismiss=qzPendingDismiss;
 
 bind();
 loadSettings();
