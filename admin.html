@@ -3081,7 +3081,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.1</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.3</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3748,6 +3748,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <input type="file" id="fin-bank-upload-input" accept=".pdf,.xlsx,.xls,.csv" style="display:none">
         <button class="bly-btn outline" id="fin-bank-upload-btn" type="button">📤 Importér bankudtog</button>
         <span class="bly-toolbar-count" id="fin-bank-upload-hint">PDF, Excel eller CSV — fx fra Lunar</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto">
+        <span class="bly-toolbar-count" id="fin-bank-watermark-hint"></span>
+        <button class="bly-btn" id="fin-bank-watermark-btn" type="button" style="display:none;background:var(--bly-dot-paid);border-color:var(--bly-dot-paid);color:#fff" title="Markerer at du har gennemgået alt til og med den seneste dato i det aktuelt indlæste udtog. Næste upload springer automatisk alt på eller før den dato over.">✓ Færdig — gem seneste dato</button>
       </div>
     </div>
     <div id="fin-bank-results" style="margin-top:4px"></div>
@@ -12442,6 +12446,7 @@ document.getElementById('fin-dunning-run-btn').addEventListener('click',async fu
 // BANKAFSTEMNING
 var finBankTxns=[],finBankActiveTxnId=null,finBankSearchQuery='',finBankStatusFilter='open',finBankLeftSearch='',finBankSort='date-desc',finBankDateFilter='all',finBankSessionLoaded=false;
 var finBankRightSort='date',finBankRightTag='fakturaer';
+var finBankWatermark=null,finBankWatermarkLoaded=false;
 document.getElementById('fin-bank-upload-btn').addEventListener('click',function(){document.getElementById('fin-bank-upload-input').click();});
 document.getElementById('fin-bank-upload-input').addEventListener('change',async function(e){
   var file=e.target.files[0];
@@ -12454,22 +12459,70 @@ document.getElementById('fin-bank-upload-input').addEventListener('change',async
   btn.disabled=false;btn.textContent=origLabel;
   e.target.value='';
   if(!r||r.error){toast((r&&r.error)||'Kunne ikke læse filen','❌');return;}
-  finBankTxns=r.transactions.map(function(t,i){t._localId=i;var top=t.matches[0];t._selected=top&&(top.score>=50||top.overrideStatus==='paid');t._chosenIdx=0;return t;});
+  finBankTxns=(r.transactions||[]).map(function(t,i){t._localId=i;var top=t.matches[0];t._selected=top&&(top.score>=50||top.overrideStatus==='paid');t._chosenIdx=0;return t;});
   finBankStatusFilter='open';
   var alreadyCount=finBankTxns.filter(function(t){return t.amount>0&&t.alreadyReconciled;}).length;
-  toast('Fandt '+r.count+' transaktion(er)'+(alreadyCount?' — '+alreadyCount+' er allerede bogført fra tidligere':''),'✓');
+  // RUNDE H #303: server har allerede sorteret alt på/før vandmærket fra (se
+  // .../bank-statement/parse), så "skippedByWatermark" er kun til info her — det
+  // fortæller Martin hvor mange linjer der blev sprunget over, så han hurtigt kan se
+  // at det gav mening, uden selv at skulle tælle efter i banken.
+  var skipMsg=r.skippedByWatermark?(' — '+r.skippedByWatermark+' sprunget over (allerede gennemgået til og med '+finBankFmtDate(r.watermarkDate)+')'):'';
+  if(r.allSkippedByWatermark){
+    toast('Alle '+(r.skippedByWatermark||0)+' transaktioner i filen er allerede gennemgået (til og med '+finBankFmtDate(r.watermarkDate)+') — intet nyt at vise','ℹ️');
+  } else {
+    toast('Fandt '+finBankTxns.length+' transaktion(er)'+(alreadyCount?' — '+alreadyCount+' er allerede bogført fra tidligere':'')+skipMsg,'✓');
+  }
   renderFinBankResults();
+  renderFinBankWatermarkUi();
 });
+// RUNDE H #303 (Martins ønske om et "hint" med sidste dato, og en "✓ Færdig"-knap der
+// sørger for at næste upload kun viser nye linjer). Formaterer en ISO-dato (yyyy-mm-dd)
+// til dansk dd.mm.yyyy — bruges både til hint-teksten og bekræftelsesdialogen.
+function finBankFmtDate(iso){
+  if(!iso)return '—';
+  var p=String(iso).slice(0,10).split('-');
+  return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):iso;
+}
+async function loadFinBankWatermark(){
+  finBankWatermarkLoaded=true;
+  var r=await api('/api/finance/bank-statement/watermark');
+  finBankWatermark=(r&&r.lastDate)?r.lastDate:null;
+  renderFinBankWatermarkUi();
+}
+// Viser "Sidst gennemgået: dd.mm.yyyy" i værktøjslinjen, og viser kun "✓ Færdig"-knappen
+// når der rent faktisk er transaktioner indlæst at sætte datoen ud fra.
+function renderFinBankWatermarkUi(){
+  var hint=document.getElementById('fin-bank-watermark-hint');
+  var btn=document.getElementById('fin-bank-watermark-btn');
+  if(!hint||!btn)return;
+  hint.textContent=finBankWatermark?('Sidst gennemgået til: '+finBankFmtDate(finBankWatermark)):'Ingen dato gemt endnu';
+  btn.style.display=finBankTxns.length?'inline-flex':'none';
+}
+async function markBankReconciliationDone(){
+  var dates=finBankTxns.map(function(t){return t.date;}).filter(Boolean).sort();
+  if(!dates.length){toast('Ingen posteringer at markere ud fra','⚠️');return;}
+  var maxDate=dates[dates.length-1];
+  // Viser selve datoen i bekræftelsen — det ER hintet Martin bad om ("så jeg hurtigt kan
+  // analysere om det er korrekt"), bare vist lige inden det gemmes i stedet for kun bagefter.
+  var ok=await gmConfirm('Sidste dato i det indlæste udtog: '+finBankFmtDate(maxDate)+'. Gemmes dette som "gennemgået til"? Næste gang du uploader et bankudtog, springes alle posteringer på eller før denne dato automatisk over.','✓ Færdig med bankafstemning');
+  if(!ok)return;
+  var r=await api('/api/finance/bank-statement/watermark',{method:'POST',body:JSON.stringify({date:maxDate})});
+  if(r&&r.ok){finBankWatermark=r.lastDate;renderFinBankWatermarkUi();toast('Gemt — gennemgået til og med '+finBankFmtDate(maxDate),'✓');}
+  else toast((r&&r.error)||'Kunne ikke gemme datoen','❌');
+}
+document.getElementById('fin-bank-watermark-btn').addEventListener('click',markBankReconciliationDone);
 // Genindlæser automatisk det senest uploadede bankudtog, så man ikke behøver uploade
 // det igen bare fordi man har genindlæst browseren eller skiftet fane og er kommet
 // tilbage — det ligger gemt server-side indtil næste fil uploades.
 async function loadFinBankSessionIfNeeded(){
+  if(!finBankWatermarkLoaded)loadFinBankWatermark();
   if(finBankSessionLoaded||finBankTxns.length)return;
   finBankSessionLoaded=true;
   var r=await api('/api/finance/bank-statement/session');
   if(r&&r.transactions&&r.transactions.length){
     finBankTxns=r.transactions.map(function(t,i){t._localId=i;if(t._chosenIdx===undefined)t._chosenIdx=0;if(t._selected===undefined){var top=t.matches[0];t._selected=top&&(top.score>=50||top.overrideStatus==='paid');}return t;});
     renderFinBankResults();
+    renderFinBankWatermarkUi();
   }
 }
 // Fremhæver tal-sekvenser (potentielle fakturanumre/referencer) i bankens rå

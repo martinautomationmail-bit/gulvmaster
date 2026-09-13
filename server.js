@@ -488,6 +488,19 @@ async function initSchema() {
       uploaded_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- RUNDE H #303 (Martins ønske: "næste gang jeg uploader en ny så tager den kun de
+    -- nye [linjer] fra sidste dato ... et hint ... sidste dato xxx") — Lunar-eksporten
+    -- dækker altid en bred periode (fx hele juli-september), så et nyt upload hver uge
+    -- viste stort set de samme posteringer igen og igen. "Vandmærket" er den dato Martin
+    -- selv har bekræftet er gennemgået til — sat med "✓ Færdig"-knappen i bankafstemningen
+    -- (se /api/finance/bank-statement/watermark). Et nyt upload springer automatisk
+    -- posteringer PÅ eller FØR den dato over, så listen kun viser det der reelt er nyt.
+    CREATE TABLE IF NOT EXISTS finance_bank_watermark (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      last_date TEXT,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     -- SYSTEMLOG: én fælles logbog for alt der kører automatisk i baggrunden (JobTread-
     -- synk hver time, notifikationsscan, m.fl.) — så admin kan se om noget fejler
     -- stille, uden at skulle ind i Renders serverlogs.
@@ -12768,13 +12781,37 @@ function parseBankStatementSpreadsheet(buffer) {
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     const row = (rows[i] || []).map(c => String(c).toLowerCase());
     const dIdx = row.findIndex(c => /dato|date/.test(c));
-    const tIdx = row.findIndex(c => /tekst|beskrivelse|besked|text|title|narrative|memo|reference/.test(c));
+    // RUNDE H #302 (Martins fejlrapport: "skal ind i banken hver gang for at se
+    // noten kunden har skrevet") — Lunars eksport (se Martins uploadede CSV) bruger
+    // det danske "Titel" som kolonnenavn for selve posteringsteksten. "titel"
+    // matcher IKKE det engelske "title" som substring (bogstaverne står i en
+    // anden rækkefølge: t-i-t-e-l vs t-i-t-l-e), så kolonnen blev aldrig
+    // genkendt — koden faldt derfor tilbage til blot at bruge kolonne nr. 2
+    // (nul-indekseret), som i Lunar-filen tilfældigvis er "Tid" (klokkeslæt),
+    // IKKE teksten. Det er derfor Martin så et tidspunkt (fx "03.14") i stedet
+    // for den rigtige note/reference/fakturanummer kunden har skrevet.
+    const tIdx = row.findIndex(c => /tekst|beskrivelse|besked|text|titel|title|narrative|memo|reference|posteringstekst/.test(c));
     const aIdx = row.findIndex(c => /bel[øo]b|amount/.test(c));
-    const iIdx = row.findIndex(c => /transaction ?id|transaktions?id|reference ?nr/.test(c));
+    // Samme slags fejl gjaldt id-kolonnen: "transaktions-id" (med bindestreg,
+    // som i Lunars fil) matchede ikke "transaktions?id" (som kun tillader et
+    // valgfrit "s", intet tegn imellem "s" og "id") — [\s-]? tillader nu både
+    // mellemrum, bindestreg eller intet imellem.
+    const iIdx = row.findIndex(c => /transaction[\s-]?id|transaktions?[\s-]?id|reference ?nr/.test(c));
     if (dIdx > -1 && aIdx > -1) { headerRowIdx = i; dateCol = dIdx; textCol = tIdx; amountCol = aIdx; idCol = iIdx; break; }
   }
   const startRow = headerRowIdx > -1 ? headerRowIdx + 1 : 0;
-  const dc = dateCol > -1 ? dateCol : 0, tc = textCol > -1 ? textCol : 1, ac = amountCol > -1 ? amountCol : 2;
+  const dc = dateCol > -1 ? dateCol : 0, ac = amountCol > -1 ? amountCol : 2;
+  // Kunne teksten stadig ikke genkendes på kolonnenavn (ukendt bankformat), er det
+  // et bedre gæt at tage den første kolonne der IKKE allerede er dato/beløb/id, end
+  // blindt at gætte på kolonne 1 — som i Martins tilfælde ramte "Tid" i stedet for
+  // "Titel". Findes slet ingen ledig kolonne (meget smal fil), falder den tilbage
+  // til kolonne 1 som hidtil.
+  let tc = textCol;
+  if (tc === -1) {
+    const width = (rows[headerRowIdx] || rows[0] || []).length || 4;
+    tc = 1;
+    for (let c = 0; c < width; c++) { if (c !== dc && c !== ac && c !== idCol) { tc = c; break; } }
+  }
   const txns = [];
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -12868,6 +12905,21 @@ app.post('/api/finance/bank-statement/parse', auth, panelAccess('finance'), uplo
   if (!transactions.length) {
     return res.status(400).json({ error: 'Fandt ingen genkendelige transaktioner i filen. Prøv evt. en Excel/CSV-eksport i stedet for PDF — det læses langt mere pålideligt.' });
   }
+  // RUNDE H #303 (Martins ønske: "kun de nye [linjer] fra sidste dato ... så den ikke
+  // henter det samme data igen") — Lunar-eksporten dækker altid en bred periode, så
+  // langt de fleste linjer i et nyt upload er dem man allerede har gennemgået sidst.
+  // Er der sat et vandmærke (se .../watermark), sorteres posteringer PÅ eller FØR den
+  // dato fra HELT INDEN matchning — de bruger ingen tid på fakturamatching og fylder
+  // ikke listen. Intet slettes noget sted; et upload UDEN vandmærke (eller efter man
+  // selv nulstiller det) viser stadig alt som hidtil.
+  const watermarkRow = await pgOne('SELECT last_date FROM finance_bank_watermark WHERE id=1');
+  const watermarkDate = watermarkRow?.last_date || null;
+  const totalParsed = transactions.length;
+  if (watermarkDate) transactions = transactions.filter(t => t.date > watermarkDate);
+  const skippedByWatermark = totalParsed - transactions.length;
+  if (!transactions.length) {
+    return res.json({ transactions: [], count: 0, filename: req.file.originalname, watermarkDate, skippedByWatermark, allSkippedByWatermark: true });
+  }
   const reconciledRows = await pool.query('SELECT * FROM finance_bank_reconciled WHERE external_id = ANY($1)', [transactions.map(t => t.externalId)]);
   const reconciledByExternalId = {};
   for (const row of reconciledRows.rows) reconciledByExternalId[row.external_id] = row;
@@ -12882,7 +12934,7 @@ app.post('/api/finance/bank-statement/parse', auth, panelAccess('finance'), uplo
     INSERT INTO finance_bank_session (id,filename,transactions_json,uploaded_at) VALUES (1,$1,$2,${nowTextSQL()})
     ON CONFLICT (id) DO UPDATE SET filename=$1,transactions_json=$2,uploaded_at=${nowTextSQL()}
   `, [req.file.originalname || null, JSON.stringify(matched)]);
-  res.json({ transactions: matched, count: transactions.length, filename: req.file.originalname });
+  res.json({ transactions: matched, count: transactions.length, filename: req.file.originalname, watermarkDate, skippedByWatermark });
 }));
 app.get('/api/finance/bank-statement/session', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM finance_bank_session WHERE id=1');
@@ -12890,6 +12942,27 @@ app.get('/api/finance/bank-statement/session', auth, panelAccess('finance'), asy
   let transactions = [];
   try { transactions = JSON.parse(row.transactions_json || '[]'); } catch (e) { transactions = []; }
   res.json({ transactions, filename: row.filename, uploadedAt: row.uploaded_at });
+}));
+// RUNDE H #303 — "vandmærket" (sidste dato Martin har bekræftet er gennemgået).
+// GET bruges til at vise hint-teksten ("Sidste dato: xxx") i UI'en; POST sættes fra
+// "✓ Færdig"-knappen, normalt til den nyeste dato i det aktuelt indlæste udtog, men
+// klienten sender selve datoen så Martin i praksis kan bekræfte/justere den han ser.
+app.get('/api/finance/bank-statement/watermark', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT last_date, updated_at FROM finance_bank_watermark WHERE id=1');
+  res.json({ lastDate: row?.last_date || null, updatedAt: row?.updated_at || null });
+}));
+app.post('/api/finance/bank-statement/watermark', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const date = String(req.body?.date || '');
+  if (!validDate(date)) return res.status(400).json({ error: 'Ugyldig dato' });
+  await pool.query(`
+    INSERT INTO finance_bank_watermark (id,last_date,updated_at) VALUES (1,$1,${nowTextSQL()})
+    ON CONFLICT (id) DO UPDATE SET last_date=$1,updated_at=${nowTextSQL()}
+  `, [date]);
+  res.json({ ok: true, lastDate: date });
+}));
+app.delete('/api/finance/bank-statement/watermark', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM finance_bank_watermark WHERE id=1');
+  res.json({ ok: true });
 }));
 
 // ── Bagudgående måneders "rigtige" udgifter fra bank-CSV/Excel — se kommentar ved
