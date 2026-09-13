@@ -383,6 +383,34 @@ async function initSchema() {
       txn_count INTEGER DEFAULT 0,
       uploaded_at TEXT DEFAULT ${nowTextSQL()}
     );
+    -- RUNDE H #317 (Martin: "Jeg har 3 bankkontoer hvor den skal tage alle udgifter på
+    -- de 3 kontorer" — udtrykkeligt IKKE en del af Bankafstemning, se hans svar: "de 3
+    -- bankkontoer skal ikke tilvælges i bankafstemning"). Tabellen ovenfor
+    -- (finance_bank_month_statements) var kun bygget til ÉT udtog pr. måned (PK var
+    -- month_key alene) — i stedet for en risikabel ALTER PRIMARY KEY på en tabel der kan
+    -- indeholde data i forvejen, oprettes her en ny tabel med plads til 3 konti pr. måned.
+    -- Den gamle tabel bruges IKKE længere af koden, men bevares urørt (ingen data tabes),
+    -- og dens indhold overføres én gang nedenfor som "konto 1" i den nye tabel.
+    CREATE TABLE IF NOT EXISTS finance_bank_accounts (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL
+    );
+    INSERT INTO finance_bank_accounts (id,name) VALUES (1,'Bankkonto 1'),(2,'Bankkonto 2'),(3,'Bankkonto 3')
+      ON CONFLICT (id) DO NOTHING;
+    CREATE TABLE IF NOT EXISTS finance_bank_month_statements_v2 (
+      month_key TEXT NOT NULL,
+      account_id INTEGER NOT NULL REFERENCES finance_bank_accounts(id),
+      filename TEXT,
+      transactions_json TEXT,
+      expense_total DOUBLE PRECISION DEFAULT 0,
+      income_total DOUBLE PRECISION DEFAULT 0,
+      txn_count INTEGER DEFAULT 0,
+      uploaded_at TEXT DEFAULT ${nowTextSQL()},
+      PRIMARY KEY (month_key, account_id)
+    );
+    INSERT INTO finance_bank_month_statements_v2 (month_key,account_id,filename,transactions_json,expense_total,income_total,txn_count,uploaded_at)
+      SELECT month_key,1,filename,transactions_json,expense_total,income_total,txn_count,uploaded_at FROM finance_bank_month_statements
+      ON CONFLICT (month_key,account_id) DO NOTHING;
     -- Manuel status/note pr. JobTread-faktura (dokument-id), da JobTread/Billy ikke
     -- altid er opdateret — det er her admin selv retter "betalt/udestående/uafklaret".
     CREATE TABLE IF NOT EXISTS finance_invoice_overrides (
@@ -12354,18 +12382,34 @@ app.post('/api/customer-emails/send-today-reminders', auth, adminOnly, asyncRout
 // git-historik for den gamle, ~220 linjer lange JobTread-udgave med sideskift, batch-
 // opslag og prioritetslogik mellem ordre/faktura/cost-items). Nu bygges "hvilken
 // omsætning hører til hvilken måned, i hvilken faggruppe" i stedet direkte ud fra vores
-// EGNE fakturaer og tilbud (invoices/quotes), som er langt simplere og mere korrekt for
-// bogføring: en faktura tæller i den måned den faktisk er UDSTEDT (samme princip som
-// Resultat-grafen/Moms i Oversigt bruger), gruppéret pr. sag (job_number) og pr.
-// faggruppe (projects.project_type — samme felt CRM'et bruger, se GET /api/project-types).
+// EGNE fakturaer og tilbud (invoices/quotes), gruppéret pr. sag (job_number) og pr.
+// faggruppe (projects.project_type — samme felt CRM'et bruger, se GET /api/project-types;
+// mangler feltet helt, fx på ældre sager der er lavet før faggruppe fandtes, vises den som
+// "Ukendt", se `r.fag || 'Ukendt'` nedenfor).
 //
-// FORVENTET OMSÆTNING (kun i INDEVÆRENDE måned): tilbud kunden har ACCEPTERET, men som
-// endnu ikke er faktureret, vises som forventet/pipeline-omsætning i den måned man
-// kigger på nu — der findes ingen "planlagt startdato" på et tilbud i det nye system
-// (modsat JobTreads opgaveplan), så modsat før spredes det IKKE ud på fremtidige
-// måneder efter et gæt. Bagudgående (allerede overståede) måneder viser fortsat KUN
-// rigtige fakturaer — accepterede-men-ufakturerede tilbud forsvinder automatisk af sig
-// selv fra en overstået måned (se samme filter som før, nu bare på valueSource==='invoice').
+// RUNDE H #317 (sep. 2026, Martins store Økonomi-ønske — se hans lange besked om
+// "omsætning pr fag") — månedslogikken er lavet fuldstændig om her:
+//   • BAGUDGÅENDE måneder (mk < indeværende måned) = KUN rigtige fakturaer, tælles i den
+//     måned de faktisk er UDSTEDT. Det er "den data der faktisk var korrekt", som Martin
+//     selv formulerede det — præcis som Resultat-grafen/Moms-boksen i Oversigt allerede
+//     gør det. Tilbud tæller ALDRIG med i en overstået måned.
+//   • INDEVÆRENDE + FREMTIDIGE måneder = KUN tilbud kunden har ACCEPTERET (endnu ikke
+//     faktureret), placeret i den måned SAGENS PROJEKT reelt er planlagt afsluttet — det
+//     vil sige den SENESTE slutdato blandt sagens egne Gantt-opgaver (gantt_tasks.end_date
+//     for project_id). Det er Martins egen instruks: "Måden du kan se det på er ved at se
+//     hvornår projekt er udført og færdig ... det er sidste dato på projektet der tæller".
+//     Rigtige fakturaer tæller IKKE med i indeværende/fremtidige måneder mere — Martin har
+//     eksplicit bedt om dette ("i eksisterende måned skal det ikke tælle med altså faktura
+//     der er sendt, da jeg kan gå under faktura-modulet og se hvor mange vi har udestående
+//     for denne måned"), for at undgå dobbelt-tælling mellem denne graf og selve Faktura-
+//     modulet.
+//   • Har sagen slet ingen Gantt-opgaver endnu (fx en helt ny accepteret ordre), placeres
+//     den i INDEVÆRENDE måned som udgangspunkt — Martin kan altid selv flytte den til den
+//     rigtige måned med "→ flyt"-funktionen (finance_job_month_overrides, som nu bruges
+//     til både fakturaer OG tilbud).
+//   • Skulle en sags Gantt-slutdato (eller en manuel flytning) alligevel pege på en måned
+//     der allerede er overstået, klemmes den ind i indeværende måned i stedet — en overstået
+//     måned må ALDRIG indeholde forecast-tal, kun rigtige fakturaer (se ovenfor).
 //
 // BEMÆRK (fortalt til Martin ved leveringen): sager der udelukkende findes i JobTread,
 // og aldrig er indtastet som tilbud/faktura her i programmet, tæller ikke længere med —
@@ -12395,8 +12439,8 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   const buckets = {};
   for (const mk of monthKeys) buckets[mk] = {};
 
-  // 1) RIGTIGE FAKTURAER — tælles i den måned de faktisk er udstedt.
-  // RUNDE H #306 — 'draft' udelukket her ligesom 'void': en kladde-faktura er
+  // 1) RIGTIGE FAKTURAER — kun bagudgående måneder, tælles i den måned de faktisk er
+  // udstedt. RUNDE H #306 — 'draft' udelukket her ligesom 'void': en kladde-faktura er
   // ikke rigtig omsætning endnu (se fetchFinanceInvoices for samme regel).
   const invRows = (await pool.query(`
     SELECT i.id, i.job_number, i.job_name, i.total, i.created_at,
@@ -12407,10 +12451,12 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   `)).rows;
   for (const r of invRows) {
     const naturalMk = String(r.created_at).slice(0, 7);
-    if (!buckets[naturalMk] && !monthKeys.includes(naturalMk)) continue; // uden for det ønskede vindue
     const key = 'faktura-' + r.id;
     const manualMk = monthOverrides[key];
     const mk = manualMk || naturalMk;
+    // RUNDE H #317 — fakturaer tæller ALDRIG i indeværende eller fremtidige måneder
+    // mere, heller ikke via en manuel flytning derhen (se kommentar ved funktionen).
+    if (mk >= currentMonthKey) continue;
     if (!buckets[mk]) continue;
     const override = overrides[key];
     let value = Number(r.total) || 0, excluded = false;
@@ -12428,35 +12474,46 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     };
   }
 
-  // 2) FORVENTET OMSÆTNING — accepterede, men endnu ikke fakturerede tilbud. Vises kun
-  // i indeværende måned (se kommentaren ved funktionen ovenfor).
-  if (buckets[currentMonthKey]) {
-    const quoteRows = (await pool.query(`
-      SELECT q.id, q.job_number, q.job_name, q.total,
-             pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag
-      FROM quotes q
-      LEFT JOIN projects pr ON pr.job_number = q.job_number
-      WHERE q.status = 'accepted'
-    `)).rows;
-    for (const r of quoteRows) {
-      const key = 'tilbud-' + r.id;
-      const manualMk = monthOverrides[key];
-      const mk = manualMk || currentMonthKey;
-      if (!buckets[mk]) continue;
-      const override = overrides[key];
-      let value = Number(r.total) || 0, excluded = false;
-      if (override) {
-        if (override.excluded) excluded = true;
-        else if (override.amount !== null && override.amount !== undefined) value = Number(override.amount);
-      }
-      buckets[mk][key] = {
-        jobId: key, name: r.project_name || r.job_name || r.job_number || ('Tilbud #' + r.id),
-        fag: r.fag || 'Ukendt', value, excluded, hasOverride: !!override,
-        startDate: null, monthMoved: mk !== currentMonthKey, naturalMonth: currentMonthKey,
-        valueSource: 'quote', priceMismatch: false, projectId: r.project_id || null,
-        placementReason: manualMk ? 'Manuelt flyttet hertil af dig. (Tilbud accepteret, endnu ikke faktureret.)' : 'Tilbud accepteret af kunden, endnu ikke faktureret.'
-      };
+  // 2) FORVENTET OMSÆTNING — accepterede, men endnu ikke fakturerede tilbud. Placeres i
+  // indeværende + fremtidige måneder ud fra sagens egen Gantt-slutdato (RUNDE H #317,
+  // se store kommentar ved funktionen). `gantt_end_date` er den SENESTE end_date blandt
+  // projektets Gantt-opgaver — beregnes med en korreleret subquery, da end_date er TEXT
+  // (ISO-formaterede datoer sorterer/MAX'er korrekt som tekst, samme antagelse som resten
+  // af koden bruger for datoer af denne type).
+  const quoteRows = (await pool.query(`
+    SELECT q.id, q.job_number, q.job_name, q.total,
+           pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag,
+           (SELECT MAX(gt.end_date) FROM gantt_tasks gt WHERE gt.project_id = pr.id) AS gantt_end_date
+    FROM quotes q
+    LEFT JOIN projects pr ON pr.job_number = q.job_number
+    WHERE q.status = 'accepted'
+  `)).rows;
+  for (const r of quoteRows) {
+    const key = 'tilbud-' + r.id;
+    const hasGanttDate = r.gantt_end_date && /^\d{4}-\d{2}/.test(r.gantt_end_date);
+    let naturalMk = hasGanttDate ? String(r.gantt_end_date).slice(0, 7) : currentMonthKey;
+    // En overstået måned må aldrig få forecast-tal — klem ind i indeværende måned i stedet.
+    if (naturalMk < currentMonthKey) naturalMk = currentMonthKey;
+    let manualMk = monthOverrides[key];
+    if (manualMk && manualMk < currentMonthKey) manualMk = null; // samme regel gælder en manuel flytning
+    const mk = manualMk || naturalMk;
+    if (!buckets[mk]) continue;
+    const override = overrides[key];
+    let value = Number(r.total) || 0, excluded = false;
+    if (override) {
+      if (override.excluded) excluded = true;
+      else if (override.amount !== null && override.amount !== undefined) value = Number(override.amount);
     }
+    let baseReason;
+    if (hasGanttDate) baseReason = 'Tilbud accepteret af kunden. Projektets seneste Gantt-slutdato er ' + String(r.gantt_end_date).slice(0, 10) + '.';
+    else baseReason = 'Tilbud accepteret af kunden, endnu ikke faktureret. Sagen har ingen Gantt-slutdato endnu, så den vises i indeværende måned — flyt den selv, hvis den hører til en anden måned.';
+    buckets[mk][key] = {
+      jobId: key, name: r.project_name || r.job_name || r.job_number || ('Tilbud #' + r.id),
+      fag: r.fag || 'Ukendt', value, excluded, hasOverride: !!override,
+      startDate: hasGanttDate ? r.gantt_end_date : null, monthMoved: mk !== naturalMk, naturalMonth: naturalMk,
+      valueSource: 'quote', priceMismatch: false, projectId: r.project_id || null,
+      placementReason: manualMk ? 'Manuelt flyttet hertil af dig. (Tilbud accepteret, endnu ikke faktureret.)' : baseReason
+    };
   }
 
   const manualRows = await pool.query('SELECT * FROM finance_manual_revenue WHERE month_key = ANY($1)', [monthKeys]);
@@ -12464,9 +12521,9 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   const result = {};
   for (const mk of monthKeys) {
     let jobs = Object.values(buckets[mk]).filter(j => !j.excluded);
-    // BAGUDGÅENDE MÅNEDER = FAKTISKE TAL, IKKE FORECAST — en måned der allerede er
-    // overstået skal kun vise sager der reelt ER faktureret, aldrig et accepteret-men-
-    // ufaktureret tilbud (som fortsat kun placeres i indeværende måned alligevel).
+    // Ekstra sikkerhedsnet — bagudgående måneder skal aldrig kunne vise forecast-tal,
+    // selvom der skulle snige sig en fejl ind ovenfor. Rammer ikke noget i praksis, da
+    // fakturaer/tilbud allerede er delt op i hver sin side af `currentMonthKey` ovenfor.
     if (mk < currentMonthKey) jobs = jobs.filter(j => j.valueSource === 'invoice');
     const manualForMonth = manualRows.rows.filter(r => r.month_key === mk).map(r => ({ jobId: 'manual-' + r.id, manualId: r.id, name: r.name, fag: r.fag, value: r.amount, excluded: false, hasOverride: false, manual: true, placementReason: 'Tilføjet manuelt direkte i denne måned af dig.' }));
     const allJobs = jobs.concat(manualForMonth);
@@ -13154,15 +13211,30 @@ app.delete('/api/finance/bank-statement/watermark', auth, panelAccess('finance')
 }));
 
 // ── Bagudgående måneders "rigtige" udgifter fra bank-CSV/Excel — se kommentar ved
-// CREATE TABLE finance_bank_month_statements. Bevidst ADSKILT fra
+// CREATE TABLE finance_bank_month_statements_v2. Bevidst ADSKILT fra
 // /api/finance/bank-statement/parse ovenfor (som kun husker én fil ad
-// gangen og bruges til fakturamatching) — her uploader man én fil PR. MÅNED, og den
-// gemmes permanent under den måned, så man kan bygge et helt års rigtige udgiftstal op
-// måned for måned uden at nyere uploads sletter ældre måneders data.
+// gangen og bruges til fakturamatching) — her uploader man én fil PR. MÅNED PR. KONTO
+// (RUNDE H #317 — Martins 3 bankkontoer, som han udtrykkeligt IKKE vil have blandet ind
+// i Bankafstemning), og de gemmes permanent under måned+konto, så man kan bygge et helt
+// års rigtige udgiftstal op måned for måned uden at nyere uploads sletter ældre data.
+app.get('/api/finance/bank-accounts', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT id,name FROM finance_bank_accounts ORDER BY id ASC');
+  res.json(rows.rows);
+}));
+app.put('/api/finance/bank-accounts/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const id = Number(req.params.id);
+  if (![1, 2, 3].includes(id)) return res.status(400).json({ error: 'Ugyldig konto' });
+  const name = String((req.body || {}).name || '').trim().slice(0, 100);
+  if (!name) return res.status(400).json({ error: 'Navn skal udfyldes' });
+  await pool.query('UPDATE finance_bank_accounts SET name=$1 WHERE id=$2', [name, id]);
+  res.json({ ok: true });
+}));
 app.post('/api/finance/bank-statement/upload-month', auth, panelAccess('finance'), uploadBankStatement.single('file'), asyncRoute(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Ingen fil modtaget' });
   const monthKey = String(req.body?.month || req.query?.month || '');
   if (!/^\d{4}-\d{2}$/.test(monthKey)) return res.status(400).json({ error: 'Ugyldig eller manglende måned' });
+  const accountId = Number(req.body?.account_id || req.query?.account_id || 1);
+  if (![1, 2, 3].includes(accountId)) return res.status(400).json({ error: 'Ugyldig konto' });
   const lower = String(req.file.originalname || '').toLowerCase();
   let transactions = [];
   try {
@@ -13186,22 +13258,31 @@ app.post('/api/finance/bank-statement/upload-month', auth, panelAccess('finance'
   let expenseTotal = 0, incomeTotal = 0;
   transactions.forEach(t => { if (t.amount < 0) expenseTotal += Math.abs(t.amount); else incomeTotal += t.amount; });
   await pool.query(`
-    INSERT INTO finance_bank_month_statements (month_key,filename,transactions_json,expense_total,income_total,txn_count,uploaded_at)
-    VALUES ($1,$2,$3,$4,$5,$6,${nowTextSQL()})
-    ON CONFLICT (month_key) DO UPDATE SET filename=$2,transactions_json=$3,expense_total=$4,income_total=$5,txn_count=$6,uploaded_at=${nowTextSQL()}
-  `, [monthKey, req.file.originalname || null, JSON.stringify(transactions), expenseTotal, incomeTotal, transactions.length]);
-  res.json({ ok: true, month: monthKey, expenseTotal, incomeTotal, count: transactions.length, filename: req.file.originalname });
+    INSERT INTO finance_bank_month_statements_v2 (month_key,account_id,filename,transactions_json,expense_total,income_total,txn_count,uploaded_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()})
+    ON CONFLICT (month_key,account_id) DO UPDATE SET filename=$3,transactions_json=$4,expense_total=$5,income_total=$6,txn_count=$7,uploaded_at=${nowTextSQL()}
+  `, [monthKey, accountId, req.file.originalname || null, JSON.stringify(transactions), expenseTotal, incomeTotal, transactions.length]);
+  res.json({ ok: true, month: monthKey, accountId, expenseTotal, incomeTotal, count: transactions.length, filename: req.file.originalname });
 }));
+// Returnerer BÅDE en samlet sum pr. måned (expenseTotal/incomeTotal/count — bruges af
+// /api/finance/expenses-totals til Resultat-grafen) OG en opdeling pr. konto (accounts —
+// bruges af "Ret udgifter pr. måned"-panelet til at vise 3 separate upload-felter).
 app.get('/api/finance/bank-statement/month-totals', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
   const out = {};
   if (!months.length) return res.json(out);
-  const rows = await pool.query('SELECT month_key,filename,expense_total,income_total,txn_count,uploaded_at FROM finance_bank_month_statements WHERE month_key = ANY($1)', [months]);
-  for (const r of rows.rows) out[r.month_key] = { filename: r.filename, expenseTotal: r.expense_total, incomeTotal: r.income_total, count: r.txn_count, uploadedAt: r.uploaded_at };
+  const rows = await pool.query('SELECT month_key,account_id,filename,expense_total,income_total,txn_count,uploaded_at FROM finance_bank_month_statements_v2 WHERE month_key = ANY($1)', [months]);
+  for (const r of rows.rows) {
+    if (!out[r.month_key]) out[r.month_key] = { expenseTotal: 0, incomeTotal: 0, count: 0, accounts: {} };
+    out[r.month_key].accounts[r.account_id] = { filename: r.filename, expenseTotal: r.expense_total, incomeTotal: r.income_total, count: r.txn_count, uploadedAt: r.uploaded_at };
+    out[r.month_key].expenseTotal += Number(r.expense_total) || 0;
+    out[r.month_key].incomeTotal += Number(r.income_total) || 0;
+    out[r.month_key].count += Number(r.txn_count) || 0;
+  }
   res.json(out);
 }));
-app.delete('/api/finance/bank-statement/month/:month', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
-  await pool.query('DELETE FROM finance_bank_month_statements WHERE month_key=$1', [req.params.month]);
+app.delete('/api/finance/bank-statement/month/:month/:accountId', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM finance_bank_month_statements_v2 WHERE month_key=$1 AND account_id=$2', [req.params.month, Number(req.params.accountId)]);
   res.json({ ok: true });
 }));
 
@@ -13261,7 +13342,8 @@ app.get('/api/finance/expenses-totals', auth, panelAccess('finance'), asyncRoute
   const pastMonths = months.filter(mk => mk < currentMonthKey && overrides[mk] == null);
   const bankTotals = {};
   if (pastMonths.length) {
-    const bankRows = await pool.query('SELECT month_key, expense_total FROM finance_bank_month_statements WHERE month_key = ANY($1)', [pastMonths]);
+    // RUNDE H #317 — summeret på tværs af alle 3 bankkonti, se finance_bank_month_statements_v2.
+    const bankRows = await pool.query('SELECT month_key, SUM(expense_total)::float AS expense_total FROM finance_bank_month_statements_v2 WHERE month_key = ANY($1) GROUP BY month_key', [pastMonths]);
     for (const r of bankRows.rows) bankTotals[r.month_key] = r.expense_total;
   }
   for (const mk of months) {
