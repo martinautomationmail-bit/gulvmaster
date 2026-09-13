@@ -8791,8 +8791,21 @@ app.get('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async 
 // nogensinde har fået, på tværs af alle sager/handler denne kunde har haft).
 // Her filtreres på selve lead'et (quotes.crm_lead_id), så en kunde med flere
 // tidligere/samtidige handler ikke får tilbud fra andre sager blandet ind.
+// RUNDE H #309 (Martins ønske: "når du tilvælger en handel til et tilbud så
+// burde den handel også have et projekt så skal den tilføjes til dette også")
+// — p.id/p.job_number kommer nu med via en LEFT JOIN på projects.quote_id, så
+// fanen her (crmpx-view-quotes) kan vise/linke til det projekt der opstod da
+// tilbuddet blev accepteret, UDEN at skulle gemme en egen kopi af koblingen
+// nogen steder — den er altid udledt af selve tilbuddets crm_lead_id, som i
+// forvejen kan ændres frit i tilbudseditoren (se qePickCrmLink/qeUnlinkCrm),
+// så en omkobling til en anden handel automatisk "flytter" projekt-visningen
+// med, uden yderligere synkronisering.
 app.get('/api/crm/leads/:id/quotes', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
-  const rows = await pool.query('SELECT id, quote_number, job_name, status, total, created_at FROM quotes WHERE crm_lead_id=$1 ORDER BY created_at DESC', [req.params.id]);
+  const rows = await pool.query(`
+    SELECT q.id, q.quote_number, q.job_name, q.status, q.total, q.created_at, p.id AS project_id, p.job_number AS project_job_number
+    FROM quotes q LEFT JOIN projects p ON p.quote_id = q.id
+    WHERE q.crm_lead_id=$1 ORDER BY q.created_at DESC
+  `, [req.params.id]);
   res.json(rows.rows);
 }));
 app.put('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
@@ -9052,8 +9065,14 @@ app.get('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRout
 }));
 // RUNDE T — se kommentaren ved GET /api/crm/leads/:id/quotes ovenfor, samme
 // begrundelse: filtreret på DENNE handel (crm_opportunity_id), ikke kunden generelt.
+// RUNDE H #309 — se den udførlige kommentar ved GET /api/crm/leads/:id/quotes
+// ovenfor, samme begrundelse og samme LEFT JOIN-mønster for opportunities.
 app.get('/api/crm/opportunities/:id/quotes', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
-  const rows = await pool.query('SELECT id, quote_number, job_name, status, total, created_at FROM quotes WHERE crm_opportunity_id=$1 ORDER BY created_at DESC', [req.params.id]);
+  const rows = await pool.query(`
+    SELECT q.id, q.quote_number, q.job_name, q.status, q.total, q.created_at, p.id AS project_id, p.job_number AS project_job_number
+    FROM quotes q LEFT JOIN projects p ON p.quote_id = q.id
+    WHERE q.crm_opportunity_id=$1 ORDER BY q.created_at DESC
+  `, [req.params.id]);
   res.json(rows.rows);
 }));
 app.put('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
@@ -10501,7 +10520,24 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
       : Promise.resolve([]),
     pool.query('SELECT qa_template_id FROM project_qa_templates WHERE project_id=$1', [req.params.id]).then(r => r.rows.map(x => x.qa_template_id))
   ]);
-  res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds });
+  // RUNDE H #309 (Martins ønske: se den udførlige kommentar ved GET
+  // /api/crm/leads|opportunities/:id/quotes ovenfor) — modstykket set fra
+  // PROJEKTET: hvilken handel/lead gav anledning til denne sag, udledt
+  // dynamisk via quotes.crm_lead_id/crm_opportunity_id (aldrig en egen kopi
+  // gemt på projektet selv), så en omkobling i tilbudseditoren automatisk også
+  // slår igennem her uden yderligere synkronisering.
+  let crmEntity = null;
+  if (project.quote_id) {
+    const q = await pgOne('SELECT crm_lead_id, crm_opportunity_id FROM quotes WHERE id=$1', [project.quote_id]);
+    if (q && q.crm_lead_id) {
+      const lead = await pgOne('SELECT id, name FROM crm_leads WHERE id=$1', [q.crm_lead_id]);
+      if (lead) crmEntity = { type: 'lead', id: lead.id, name: lead.name };
+    } else if (q && q.crm_opportunity_id) {
+      const opp = await pgOne('SELECT id, name FROM crm_opportunities WHERE id=$1', [q.crm_opportunity_id]);
+      if (opp) crmEntity = { type: 'opportunity', id: opp.id, name: opp.name };
+    }
+  }
+  res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, crm_entity: crmEntity });
 }));
 
 // Projekt-budget (sep. 2026, Martins ønske #3 "Samlet budget visning under projekter"):
@@ -12893,6 +12929,26 @@ function matchTransactionsToInvoices(transactions, invoices) {
     return { ...txn, matches: scored };
   });
 }
+// RUNDE H #307 — fælles helper der stempler alreadyReconciled-feltet på en liste
+// transaktioner ud fra finance_bank_reconciled (den ENESTE kilde til sandhed for om
+// en postering er matchet/ignoreret — se mark-reconciled/unreconcile ovenfor). Brugt
+// BÅDE når et nyt udtog lige er parset, OG hver gang det gemte session-snapshot
+// hentes igen (GET .../session) — sidstnævnte er rettelsen for buggen hvor allerede
+// markerede posteringer så ud til at "komme igen" efter gem+reload, fordi det gamle
+// snapshot ikke fulgte med efterfølgende markeringer. Fjerner altid et evt. gammelt
+// alreadyReconciled fra input først, så en postering der er blevet FJERNET igen
+// (unreconcile) heller ikke bliver hængende med en forældet markering.
+async function mergeReconciledIntoTransactions(transactions) {
+  if (!transactions || !transactions.length) return transactions || [];
+  const reconciledRows = await pool.query('SELECT * FROM finance_bank_reconciled WHERE external_id = ANY($1)', [transactions.map(t => t.externalId)]);
+  const reconciledByExternalId = {};
+  for (const row of reconciledRows.rows) reconciledByExternalId[row.external_id] = row;
+  return transactions.map(t => {
+    const { alreadyReconciled, ...rest } = t;
+    const rec = reconciledByExternalId[t.externalId];
+    return rec ? { ...rest, alreadyReconciled: { customer: rec.customer, reconciledAt: rec.reconciled_at, documentId: rec.document_id, kind: rec.kind || 'matched' } } : rest;
+  });
+}
 app.post('/api/finance/bank-statement/parse', auth, panelAccess('finance'), uploadBankStatement.single('file'), asyncRoute(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Ingen fil modtaget' });
   const lower = String(req.file.originalname || '').toLowerCase();
@@ -12926,14 +12982,8 @@ app.post('/api/finance/bank-statement/parse', auth, panelAccess('finance'), uplo
   if (!transactions.length) {
     return res.json({ transactions: [], count: 0, filename: req.file.originalname, watermarkDate, skippedByWatermark, allSkippedByWatermark: true });
   }
-  const reconciledRows = await pool.query('SELECT * FROM finance_bank_reconciled WHERE external_id = ANY($1)', [transactions.map(t => t.externalId)]);
-  const reconciledByExternalId = {};
-  for (const row of reconciledRows.rows) reconciledByExternalId[row.external_id] = row;
   const invoices = await fetchFinanceInvoices();
-  const matched = matchTransactionsToInvoices(transactions, invoices).map(t => {
-    const rec = reconciledByExternalId[t.externalId];
-    return rec ? { ...t, alreadyReconciled: { customer: rec.customer, reconciledAt: rec.reconciled_at, documentId: rec.document_id, kind: rec.kind || 'matched' } } : t;
-  });
+  const matched = await mergeReconciledIntoTransactions(matchTransactionsToInvoices(transactions, invoices));
   // Gemmer filen server-side, så man kan forlade siden eller genindlæse browseren
   // uden at skulle uploade den samme fil igen — den ligger her indtil næste upload.
   await pool.query(`
@@ -12947,6 +12997,17 @@ app.get('/api/finance/bank-statement/session', auth, panelAccess('finance'), asy
   if (!row) return res.json({ transactions: null });
   let transactions = [];
   try { transactions = JSON.parse(row.transactions_json || '[]'); } catch (e) { transactions = []; }
+  // RUNDE H #307 (Martins fejlrapport: "jeg gemmer så og så reloader jeg så kommer alle
+  // posterne frem igen") — BUGGEN: transactions_json er et STATISK snapshot taget da
+  // filen blev uploadet/parset. Når man bagefter trykker "Ikke relevant" eller matcher
+  // en postering (POST mark-reconciled), blev det korrekt skrevet til
+  // finance_bank_reconciled-tabellen, men det gamle snapshot her blev ALDRIG opdateret
+  // med det — så et reload/genindlæsning hentede den forældede udgave uden de nye
+  // markeringer, og posterne dukkede tilsyneladende op igen som "Åbne". Fikset ved
+  // ALTID at slå den friskeste tilstand op i finance_bank_reconciled (samme kilde som
+  // selve mark-reconciled/unreconcile skriver til) i stedet for at stole på det
+  // cachede snapshots egen alreadyReconciled-felt — se mergeReconciledIntoTransactions.
+  transactions = await mergeReconciledIntoTransactions(transactions);
   res.json({ transactions, filename: row.filename, uploadedAt: row.uploaded_at });
 }));
 // RUNDE H #303 — "vandmærket" (sidste dato Martin har bekræftet er gennemgået).

@@ -3089,7 +3089,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.5</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.6</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4891,6 +4891,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <thead><tr><th>Navn</th><th>Status</th><th>Adresse</th><th>Kontakt</th><th class="num">Pris</th><th class="num">Opgaver</th><th class="num">Tid</th><th class="num">Billeder</th><th style="width:90px"></th></tr></thead>
       <tbody id="proj-body"></tbody>
     </table>
+    <!-- RUNDE H #308 (Martins ønske: "kan du ikke i toppen skrive hvor meget den
+         samlede pibeline er for?") — samlet værdi af de sager der vises i Kanban-
+         visningen lige nu (samme filtre — periode/søgning/vis arkiverede — som
+         selve kortene nedenfor). Kun synlig i Kanban, sat af renderPjKanban(). -->
+    <div id="proj-kanban-total" style="display:none;margin:0 0 12px;font-size:14px;color:var(--bly-sub)">Samlet pipeline: <b style="color:var(--bly-text);font-size:16px" id="proj-kanban-total-value">0 kr</b></div>
     <!-- Kanban-board — samme Billy-stils klasser (.crmp-board/.crmp-col/.crmp-card)
          som CRM-pipelinens Kanban-board, for ens udseende/adfærd i hele appen.
          Faserne er de FASTE projekt-statusser (Igangværende/På hold/Afsluttet, +
@@ -5136,6 +5141,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              som opgaver (den springer allerede-oprettede poster over). -->
         <button id="pd-quote-edit-btn" class="bly-btn outline" type="button" style="display:none" title="Åbn selve tilbuddet for at rette eller tilføje poster">✎ Rediger tilbud</button>
         <a id="pd-invoice-link" class="bly-btn outline" href="#" target="_blank" style="display:none">🧾 Se faktura</a>
+        <!-- RUNDE H #309 (Martins ønske: "den handel [skal] også have et projekt så
+             skal den tilføjes til dette også") — modstykket set fra sagen: hvilket
+             lead/handel gav anledning til denne sag (udledt af tilbuddets
+             crm_lead_id/crm_opportunity_id, se GET /api/projects/:id). Kun synlig
+             når sagen rent faktisk stammer fra et lead/en handel. -->
+        <button id="pd-crm-link-btn" class="bly-btn outline" type="button" style="display:none">🤝 </button>
         <button id="pd-send-portal-btn" class="bly-btn outline" type="button" title="Send linket til kundens egen side (alle sager, tilbud og fakturaer) på mail">🔗 Send kundeportal</button>
         <!-- RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter ... under
              projektet"). -->
@@ -19300,7 +19311,13 @@ async function crmpxLoadQuotes(){
   if(!quotes||quotes.error){list.innerHTML='<div class="crmpx-empty">Kunne ikke hente tilbud — '+esc((quotes&&quotes.error)||'ukendt fejl')+'</div>';return;}
   document.getElementById('crmpx-quotes-count').textContent=quotes.length?'('+quotes.length+')':'';
   if(!quotes.length){list.innerHTML='<div class="crmpx-empty">Ingen tilbud lavet på denne kunde endnu</div>';return;}
-  list.innerHTML='<table class="bly-table"><thead><tr><th>Tilbudsnr.</th><th>Sag</th><th>Status</th><th class="num">Beløb</th><th>Oprettet</th></tr></thead><tbody>'
+  // RUNDE H #309 (Martins ønske: "når du tilvælger en handel til et tilbud så
+  // burde den handel også have et projekt så skal den tilføjes til dette også")
+  // — egen "Projekt"-kolonne, der viser sagsnummeret og åbner projektet direkte
+  // (uden også at åbne tilbuddet — derfor stopPropagation, rækkens egen onclick
+  // åbner ellers tilbudseditoren). Intet projekt endnu (tilbuddet er ikke
+  // accepteret) = "–", helt normalt for de fleste tilbud.
+  list.innerHTML='<table class="bly-table"><thead><tr><th>Tilbudsnr.</th><th>Sag</th><th>Status</th><th class="num">Beløb</th><th>Oprettet</th><th>Projekt</th></tr></thead><tbody>'
     +quotes.map(function(x){
       return '<tr style="cursor:pointer" onclick="openQuoteEditorSafe('+x.id+')">'
         +'<td>'+esc(x.quote_number||'–')+'</td>'
@@ -19308,6 +19325,7 @@ async function crmpxLoadQuotes(){
         +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
         +'<td class="num">'+krFmt(x.total)+'</td>'
         +'<td>'+esc(fmtDaDate(x.created_at))+'</td>'
+        +'<td>'+(x.project_id?'<button type="button" class="bly-btn small outline" onclick="event.stopPropagation();openProjectDetail('+x.project_id+')" title="Åbn den sag tilbuddet blev til">📁 '+esc(x.project_job_number||'Åbn sag')+'</button>':'<span style="color:var(--bly-sub)">–</span>')+'</td>'
         +'</tr>';
     }).join('')
     +'</tbody></table>';
@@ -21120,6 +21138,7 @@ function switchPjView(v){
   document.getElementById('proj-status-filter').style.display=v==='list'?'':'none';
   document.getElementById('proj-table').style.display=v==='list'?'':'none';
   document.getElementById('proj-kanban-board').style.display=v==='kanban'?'':'none';
+  document.getElementById('proj-kanban-total').style.display=v==='kanban'?'':'none';
   renderPjProjects();
 }
 function renderPjProjects(){
@@ -21216,6 +21235,14 @@ async function openProjectDetail(id){
   var ilink=document.getElementById('pd-invoice-link');
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
+  // RUNDE H #309 — se kommentaren ved #pd-crm-link-btn i HTML'en.
+  var crmBtn=document.getElementById('pd-crm-link-btn');
+  if(d.crm_entity){
+    crmBtn.style.display='inline-flex';
+    crmBtn.textContent=(d.crm_entity.type==='lead'?'🎯 ':'🤝 ')+d.crm_entity.name;
+    crmBtn.title='Åbn det '+(d.crm_entity.type==='lead'?'lead':'handel')+' sagen stammer fra';
+    crmBtn.onclick=function(){openCrmpDetail(d.crm_entity.type,d.crm_entity.id);};
+  } else crmBtn.style.display='none';
   switchPdTab('tasks');
   renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
   // Genindlæs den delte opgavepool (tasks-variablen) her, så "Tilføj til
@@ -21399,7 +21426,17 @@ async function savePjRowStatus(id,status){
 // mellem List- og Kanban-visningen, se pjRowCtxMenu()/pjKanbanCtxMenu()
 // nedenfor.
 function pjCtxMenuItems(p){
-  var items=[{icon:'👁',text:'Åbn sagen',onClick:function(){openProjectDetail(p.id);}},{sep:true},{label:true,text:'Skift stadie'}];
+  // RUNDE H #308 (Martins ønske: "kan du ikke lave et felt med åbne i ny fane
+  // også?" om højreklik-menuen i Projekter/Kanban) — genbruger det EKSISTERENDE
+  // #project-detail/<id>-dybt-link (se openProjectDetail's pushState og
+  // hashchange-lytteren) i stedet for at opfinde en ny rute; window.open med kun
+  // et hash åbnes relativt til den aktuelle side, så den nye fane lander direkte
+  // på den rigtige sag.
+  var items=[
+    {icon:'👁',text:'Åbn sagen',onClick:function(){openProjectDetail(p.id);}},
+    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){window.open('#project-detail/'+p.id,'_blank');}},
+    {sep:true},{label:true,text:'Skift stadie'}
+  ];
   pjAllStagesSorted().forEach(function(s){
     if(s.key===p.status)return;
     items.push({icon:'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+esc(s.color)+'"></span>',text:s.label,onClick:function(){savePjRowStatus(p.id,s.key);}});
@@ -21473,6 +21510,11 @@ function pjKanbanCardHtml(p){
 }
 function renderPjKanban(list){
   var board=document.getElementById('proj-kanban-board');
+  // RUNDE H #308 — se kommentaren ved #proj-kanban-total i HTML'en. Samme
+  // pris-prioritering (quote_total frem for invoice_total) som pjKanbanCardHtml
+  // bruger på det enkelte kort ovenfor, så toppens tal og korttallene stemmer overens.
+  var total=list.reduce(function(s,p){var price=p.quote_total!=null?p.quote_total:p.invoice_total;return s+(Number(price)||0);},0);
+  document.getElementById('proj-kanban-total-value').textContent=krFmt(total);
   var stages=pjShowArchived?pjAllStagesSorted():pjNonArchivedStages();
   board.innerHTML=stages.map(function(s){
     var cards=list.filter(function(p){return p.status===s.key;});
