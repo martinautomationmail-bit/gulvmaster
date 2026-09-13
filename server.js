@@ -322,6 +322,23 @@ async function initSchema() {
       note TEXT,
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
+    -- RUNDE H #316 (Martin: "Lav også mit private budget om ligesom Udgifter er ...
+    -- ellers bare 1/1 som udgifter ser ud") — Privat budget fik samme måneds-opdelte
+    -- model med betalt-boks som Udgifter-fanen (se finance_expenses ovenfor for det
+    -- oprindelige mønster), men beholder sin egen frie kategori-styring (opret/omdøb/
+    -- slet), som er den "ekstra kategori-knap" Udgifter ikke har.
+    ALTER TABLE private_budget_items ADD COLUMN IF NOT EXISTS paid INTEGER DEFAULT 0;
+    ALTER TABLE private_budget_items ADD COLUMN IF NOT EXISTS month_key TEXT;
+    UPDATE private_budget_items SET month_key=TO_CHAR(CURRENT_DATE,'YYYY-MM') WHERE month_key IS NULL;
+    -- Fast, frit noteFelt nederst på Privat budget-siden ("som i Notions noter") —
+    -- én global boks (ikke måneds-opdelt), til løse noter/huskelister/planer der ikke
+    -- hører til én bestemt måned. Bevidst en HELT SEPARAT tabel fra notes_widget (den
+    -- delte flydende note-boks), for slet ikke at røre ved den.
+    CREATE TABLE IF NOT EXISTS private_budget_note (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      content TEXT,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
 
     CREATE TABLE IF NOT EXISTS finance_bank_snapshots (
       id SERIAL PRIMARY KEY,
@@ -402,6 +419,17 @@ async function initSchema() {
     -- RYKKER-MAILS: slået FRA som standard — skal aktivt slås til under Økonomi →
     -- Fakturaer, da automatiske kunde-mails tidligere har skabt problemer (se
     -- "vi kommer i morgen"-hændelsen). Kun ét sæt indstillinger for hele firmaet.
+    -- RUNDE H #316 (Martins ønske: "Jeg skal kunne trykke når jeg har indbetalt
+    -- for det givende kvartal. så man ligesom kan se den er betalt") — rører
+    -- ALDRIG selve moms-beregningen (den forbliver et estimat udregnet live fra
+    -- fakturaerne, se renderFinMomsCard/finInvoiceMonthTotals i admin.html), kun
+    -- en simpel "betalt"-markering pr. år+kvartal, uafhængig af det beregnede tal.
+    CREATE TABLE IF NOT EXISTS finance_moms_payments (
+      year INTEGER NOT NULL,
+      quarter INTEGER NOT NULL,
+      paid_at TEXT NOT NULL,
+      PRIMARY KEY (year, quarter)
+    );
     CREATE TABLE IF NOT EXISTS finance_dunning_settings (
       id INTEGER PRIMARY KEY DEFAULT 1,
       enabled INTEGER DEFAULT 0,
@@ -10874,6 +10902,37 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
   ]);
   res.json({ ok: true });
 
+  // RUNDE H #315 (Martins ønske: "opgaver i opgavepool får kundens adresse og
+  // tlf ikke med ind og i toppen af popuppen kan jeg ikke se kundens navn som
+  // jeg kunne før") — fundet: jt_tasks/gantt_tasks-rækker spejles kun fra
+  // projektet PÅ OPRETTELSESTIDSPUNKTET (se mirrorProjectTaskToPool/
+  // convertQuoteLinesToTasks) — retter man sagens navn/adresse/tlf/email
+  // BAGEFTER her, blev de allerede-oprettede opgaver aldrig opdateret, så
+  // Opgavepoolen/detalje-popuppen viste tomme eller forældede kundefelter.
+  // Samme princip som attach-quote nedenfor allerede bruger for job_number —
+  // udvidet til også at dække navn/adresse/tlf/email, og kun når noget rent
+  // faktisk ændrede sig (ikke ved hvert gem).
+  {
+    const newName = b.name !== undefined ? String(b.name).trim() : current.name;
+    const newAddress = b.customer_address !== undefined ? b.customer_address : current.customer_address;
+    const newPhone = b.customer_phone !== undefined ? b.customer_phone : current.customer_phone;
+    const newEmail = b.customer_email !== undefined ? b.customer_email : current.customer_email;
+    const customerFieldsChanged = newName !== current.name || newAddress !== current.customer_address
+      || newPhone !== current.customer_phone || newEmail !== current.customer_email;
+    if (customerFieldsChanged) {
+      pool.query(`
+        UPDATE jt_tasks SET job_name=$1, job_address=$2, customer_phone=$3, customer_email=$4
+        WHERE project_id=$5
+      `, [newName, newAddress || null, newPhone || null, newEmail || null, current.id])
+        .catch(e => console.error('Kunne ikke opdatere kundefelter på sagens opgavepool-opgaver:', e.message));
+      pool.query(`
+        UPDATE gantt_tasks SET job_name=$1, job_address=$2, job_phone=$3, job_email=$4
+        WHERE project_id=$5
+      `, [newName, newAddress || null, newPhone || null, newEmail || null, current.id])
+        .catch(e => console.error('Kunne ikke opdatere kundefelter på sagens Gantt-opgaver:', e.message));
+    }
+  }
+
   // RUNDE H #223d: den grønne ✓-knap (enkelt-opgave og bulk) i Opgavepool er
   // fjernet efter Martins ønske — at markere opgaver/bookinger som færdige sker
   // ikke længere derfra. I stedet sker BEGGE ting nu automatisk herfra, når
@@ -12427,17 +12486,22 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
 // ── RYKKER-MAILS (dunning) — kun aktiv hvis admin selv har slået den til under
 // Økonomi → Fakturaer. Sender Rykker 1 efter X dage, Rykker 2 efter Y dage, med et
 // gebyr lagt til hver gang. Sender aldrig samme niveau to gange for samme faktura.
-async function sendDunningEmailForInvoice(inv, targetLevel, settings, companyName) {
+async function sendDunningEmailForInvoice(inv, targetLevel, settings, companyName, templateIdOverride, toEmailOverride) {
   // RUNDE Ø: fandt tidligere kundens e-mail via jt_tasks (JobTread-synkroniserede
   // opgaver) — fakturaen har nu sin egen e-mail direkte (invoices.customer_email,
   // eller kundekortets, se fetchFinanceInvoices), så det er langt mere pålideligt.
-  const toEmail = inv.email || null;
+  // RUNDE H #316 (Martins ønske: en popup hvor man kan vælge modtager/skabelon for
+  // netop DENNE afsendelse) — toEmailOverride/templateIdOverride bruges kun ved
+  // manuel afsendelse fra Tilbud & Faktura (se POST .../dunning-send/:documentId
+  // nedenfor); det automatiske daglige scan (runDunningScan) kalder uden dem, og
+  // bruger derfor uændret kundens egen e-mail + den faste 'dunning'-standardskabelon.
+  const toEmail = toEmailOverride || inv.email || null;
   if (!toEmail) return { sent: false, reason: 'Ingen kunde-e-mail fundet for denne sag' };
 
   const owed = inv.overrideStatus === 'partial' && inv.remaining != null ? inv.remaining : inv.priceWithTax;
   const totalWithFee = owed + settings.fee_amount;
   let subject, html, text;
-  const templateId = await getAssignedTemplateId('dunning');
+  const templateId = templateIdOverride !== undefined ? templateIdOverride : await getAssignedTemplateId('dunning');
   const tpl = templateId ? await pgOne('SELECT * FROM document_email_templates WHERE id=$1', [templateId]) : null;
   if (tpl) {
     // Rykkere har ikke et rigtigt tilbuds-/fakturanummer i JobTread-modellen — {{dokument_nr}}
@@ -12560,11 +12624,38 @@ app.post('/api/finance/dunning-send/:documentId', auth, panelAccess('finance'), 
   const sentLevels = logRows.rows.map(r => r.level);
   const targetLevel = !sentLevels.includes(1) ? 1 : (!sentLevels.includes(2) ? 2 : null);
   if (!targetLevel) return res.status(400).json({ error: 'Der er allerede sendt både rykker 1 og 2 for denne faktura' });
-  const result = await sendDunningEmailForInvoice(inv, targetLevel, settings, companyName);
+  // RUNDE H #316 — manuel afsendelse fra Tilbud & Faktura kan nu vælge en anden
+  // skabelon og/eller modtager-mail end den faste standard, for netop denne ene
+  // afsendelse (ligesom "Send til kunde" allerede tillader for tilbud/faktura).
+  const body = req.body || {};
+  const templateIdOverride = body.template_id !== undefined ? (body.template_id || null) : undefined;
+  const toOverride = body.to ? String(body.to).trim() : null;
+  const result = await sendDunningEmailForInvoice(inv, targetLevel, settings, companyName, templateIdOverride, toOverride);
   if (!result.sent) return res.status(400).json({ error: result.reason });
   res.json({ ok: true, level: targetLevel, toEmail: result.toEmail });
 }));
 
+// RUNDE H #316 — Moms-boksens "betalt"-markering pr. kvartal. Rent display-lag,
+// se skema-kommentaren ved finance_moms_payments ovenfor.
+app.get('/api/finance/moms-payments', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT year, quarter, paid_at FROM finance_moms_payments');
+  res.json(rows.rows);
+}));
+app.post('/api/finance/moms-payments', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const year = Number(req.body?.year), quarter = Number(req.body?.quarter);
+  if (!Number.isInteger(year) || !Number.isInteger(quarter) || quarter < 0 || quarter > 3) {
+    return res.status(400).json({ error: 'Ugyldigt år/kvartal' });
+  }
+  await pool.query(`
+    INSERT INTO finance_moms_payments (year,quarter,paid_at) VALUES ($1,$2,${nowTextSQL()})
+    ON CONFLICT (year,quarter) DO UPDATE SET paid_at=${nowTextSQL()}
+  `, [year, quarter]);
+  res.json({ ok: true });
+}));
+app.delete('/api/finance/moms-payments/:year/:quarter', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM finance_moms_payments WHERE year=$1 AND quarter=$2', [Number(req.params.year), Number(req.params.quarter)]);
+  res.json({ ok: true });
+}));
 app.get('/api/finance/dunning-settings', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   res.json(await pgOne('SELECT * FROM finance_dunning_settings WHERE id=1'));
 }));
@@ -12576,6 +12667,15 @@ app.put('/api/finance/dunning-settings', auth, panelAccess('finance'), asyncRout
   res.json({ ok: true });
 }));
 app.get('/api/finance/dunning-log', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  // RUNDE H #316 — valgfrit document_id-filter, så "Send rykker"-popuppen på en
+  // enkelt faktura (openDunningSendModal) pålideligt kan se DEN fakturas allerede
+  // sendte niveauer, uafhængigt af hvor langt nede den ligger i den fælles log
+  // (den ufiltrerede liste herunder er stadig kun de seneste 100, til selve
+  // rykker-panelets historik-visning).
+  if (req.query.document_id) {
+    const rows = await pool.query('SELECT * FROM finance_dunning_log WHERE document_id=$1 ORDER BY id DESC', [String(req.query.document_id)]);
+    return res.json(rows.rows);
+  }
   const rows = await pool.query('SELECT * FROM finance_dunning_log ORDER BY id DESC LIMIT 100');
   res.json(rows.rows);
 }));
@@ -13223,10 +13323,25 @@ app.delete('/api/finance/expenses/:id', auth, panelAccess('finance'), asyncRoute
 // ── Privat budget: fuldt frit redigerbart — kategorier kan oprettes/omdøbes/slettes,
 // ikke kun poster inde i faste kategorier (modsat den almindelige Udgifter-fane).
 app.get('/api/finance/private-budget', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const monthKey = /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
   const cats = await pool.query('SELECT * FROM private_budget_categories ORDER BY sort_order ASC, id ASC');
-  const items = await pool.query('SELECT * FROM private_budget_items ORDER BY id ASC');
+  let items = await pool.query('SELECT * FROM private_budget_items WHERE month_key=$1 ORDER BY id ASC', [monthKey]);
+  // Samme "arv fra forrige måned"-logik som Udgifter (se /api/finance/expenses) —
+  // en ny/tom måned kloner navn+beløb fra seneste tidligere måned der HAR data, så
+  // Martin ikke skal genindtaste sit private budget hver måned. Betalt-status
+  // nulstilles altid, da det er en ny måneds poster.
+  if (items.rows.length === 0) {
+    const prior = await pgOne("SELECT month_key FROM private_budget_items WHERE month_key < $1 ORDER BY month_key DESC LIMIT 1", [monthKey]);
+    if (prior) {
+      const priorItems = await pool.query('SELECT * FROM private_budget_items WHERE month_key=$1', [prior.month_key]);
+      for (const it of priorItems.rows) {
+        await pool.query('INSERT INTO private_budget_items (category_id,name,amount,paid,note,month_key) VALUES ($1,$2,$3,0,$4,$5)', [it.category_id, it.name, it.amount, it.note, monthKey]);
+      }
+      items = await pool.query('SELECT * FROM private_budget_items WHERE month_key=$1 ORDER BY id ASC', [monthKey]);
+    }
+  }
   const byCategory = cats.rows.map(c => ({ ...c, items: items.rows.filter(i => i.category_id === c.id) }));
-  res.json(byCategory);
+  res.json({ month: monthKey, categories: byCategory });
 }));
 app.put('/api/finance/private-budget/reorder', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const order = (req.body || {}).order || [];
@@ -13255,16 +13370,31 @@ app.delete('/api/finance/private-budget/category/:id', auth, panelAccess('financ
 app.post('/api/finance/private-budget/item', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.category_id || !body.name) return res.status(400).json({ error: 'Kategori og navn skal udfyldes' });
-  const r = await pool.query('INSERT INTO private_budget_items (category_id,name,amount,note) VALUES ($1,$2,$3,$4) RETURNING id', [body.category_id, String(body.name).slice(0, 200), Number(body.amount) || 0, body.note ? String(body.note).slice(0, 500) : null]);
+  const monthKey = /^\d{4}-\d{2}$/.test(body.month_key) ? body.month_key : new Date().toISOString().slice(0, 7);
+  const r = await pool.query('INSERT INTO private_budget_items (category_id,name,amount,paid,note,month_key) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [body.category_id, String(body.name).slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, body.note ? String(body.note).slice(0, 500) : null, monthKey]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 app.put('/api/finance/private-budget/item/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
-  await pool.query(`UPDATE private_budget_items SET name=$1,amount=$2,note=$3,updated_at=${nowTextSQL()} WHERE id=$4`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.note ? String(body.note).slice(0, 500) : null, req.params.id]);
+  await pool.query(`UPDATE private_budget_items SET name=$1,amount=$2,paid=$3,note=$4,updated_at=${nowTextSQL()} WHERE id=$5`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, body.note ? String(body.note).slice(0, 500) : null, req.params.id]);
   res.json({ ok: true });
 }));
 app.delete('/api/finance/private-budget/item/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM private_budget_items WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+// RUNDE H #316 — fast, frit noteFelt nederst på Privat budget-siden ("som i Notions
+// noter"), se CREATE TABLE private_budget_note ovenfor.
+app.get('/api/finance/private-budget-note', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT content FROM private_budget_note WHERE id=1');
+  res.json({ content: row ? row.content : '' });
+}));
+app.put('/api/finance/private-budget-note', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const content = String((req.body || {}).content || '').slice(0, 20000);
+  await pool.query(`
+    INSERT INTO private_budget_note (id,content,updated_at) VALUES (1,$1,${nowTextSQL()})
+    ON CONFLICT (id) DO UPDATE SET content=$1,updated_at=${nowTextSQL()}
+  `, [content]);
   res.json({ ok: true });
 }));
 
@@ -13333,6 +13463,14 @@ app.get('/api/finance/profit-snapshots', auth, panelAccess('finance'), asyncRout
 app.post('/api/finance/profit-snapshots/save-now', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const snap = await saveMonthlyProfitSnapshot();
   res.json({ ok: true, snapshot: snap });
+}));
+// RUNDE H #316 (Martins ønske: "kan du lave en slet knap så jeg kan slette den
+// sidste jeg lavede da jeg har for meget fejl data så det skal gøres om") —
+// sletter ét enkelt snapshot ud fra dets month_key, så et fejlbehæftet snapshot
+// kan tages om (ved f.eks. at rette udgifterne og trykke "Gem snapshot nu" igen).
+app.delete('/api/finance/profit-snapshots/:monthKey', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM profit_snapshots WHERE month_key=$1', [req.params.monthKey]);
+  res.json({ ok: true });
 }));
 
 // ── Send dagens rapport til egen mail — genbruger den eksisterende mail-opsætning ──
@@ -17160,6 +17298,45 @@ async function runProductCatalogReplacement() {
 // deaktiverede produkter fra før kunde-skiftet, og rører aldrig et produkt Martin
 // selv har oprettet manuelt efter importen (de findes ikke i kataloget, matcher
 // derfor ingenting, og springes automatisk over).
+// RUNDE H #315 — engangs-BACKFILL (samme app_migrations-mønster som
+// prisrettelsen nedenfor) af allerede-oprettede Opgavepool-/Gantt-opgaver,
+// hvis sag siden er blevet rettet (navn/adresse/tlf/email), FØR PUT
+// /api/projects/:id-fixet ovenfor eksisterede. Uden denne backfill ville kun
+// FREMTIDIGE rettelser af en sag give korrekt kundeinfo på opgaverne —
+// alle sager der allerede har forældede/tomme kundefelter på deres opgaver
+// ville forblive forkerte for evigt, medmindre Martin manuelt rørte hver
+// sags stamdata igen. Kører højst én gang nogensinde.
+const OPGAVEPOOL_CUSTOMER_BACKFILL_MIGRATION = 'opgavepool_customer_fields_backfill_20260925';
+async function runOpgavepoolCustomerBackfill() {
+  const already = await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [OPGAVEPOOL_CUSTOMER_BACKFILL_MIGRATION]);
+  if (already) return { ok: true, skipped: true, reason: 'already_done' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const claimed = await client.query(
+      "INSERT INTO app_migrations (name, details) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING",
+      [OPGAVEPOOL_CUSTOMER_BACKFILL_MIGRATION, 'Kører…']
+    );
+    if (!claimed.rowCount) { await client.query('ROLLBACK'); return { ok: true, skipped: true, reason: 'already_done' }; }
+    const jt = await client.query(`
+      UPDATE jt_tasks SET job_name=p.name, job_address=p.customer_address, customer_phone=p.customer_phone, customer_email=p.customer_email
+      FROM projects p WHERE jt_tasks.project_id=p.id
+    `);
+    const gt = await client.query(`
+      UPDATE gantt_tasks SET job_name=p.name, job_address=p.customer_address, job_phone=p.customer_phone, job_email=p.customer_email
+      FROM projects p WHERE gantt_tasks.project_id=p.id
+    `);
+    await client.query("UPDATE app_migrations SET details=$2 WHERE name=$1", [OPGAVEPOOL_CUSTOMER_BACKFILL_MIGRATION, `Rettet ${jt.rowCount} jt_tasks + ${gt.rowCount} gantt_tasks`]);
+    await client.query('COMMIT');
+    console.log(`Opgavepool-kundefelt-backfill færdig: ${jt.rowCount} jt_tasks + ${gt.rowCount} gantt_tasks opdateret.`);
+    return { ok: true, jtUpdated: jt.rowCount, ganttUpdated: gt.rowCount };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
 const PRODUCT_CATALOG_PRICE_FIX_MIGRATION = 'product_catalog_price_correction_20260916';
 async function runProductCatalogPriceCorrection() {
   const already = await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [PRODUCT_CATALOG_PRICE_FIX_MIGRATION]);
@@ -17294,6 +17471,8 @@ async function start() {
       .catch(error => { console.error('Produktkatalog-import fejlede:', error.message); logSystemEvent('product_catalog_replacement', 'error', 'Produktkatalog-import fejlede: ' + error.message); })
       .then(() => runProductCatalogPriceCorrection())
       .catch(error => { console.error('Prisrettelse af produktkatalog fejlede:', error.message); logSystemEvent('product_catalog_price_correction', 'error', 'Prisrettelse af produktkatalog fejlede: ' + error.message); });
+    runOpgavepoolCustomerBackfill()
+      .catch(error => { console.error('Opgavepool-kundefelt-backfill fejlede:', error.message); logSystemEvent('opgavepool_customer_backfill', 'error', 'Opgavepool-kundefelt-backfill fejlede: ' + error.message); });
   }
   // OBS: kunde-påmindelsen ("vi kommer i morgen") sendes IKKE automatisk længere —
   // kun når admin selv trykker på knappen (se POST /api/customer-emails/send-reminders

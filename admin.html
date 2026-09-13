@@ -2547,6 +2547,7 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .note-widget-toolbar select{border:1px solid var(--bly-border);background:#fff;color:var(--bly-ink);border-radius:5px;font-size:10px;padding:3px 4px}
 .note-widget-body{flex:1;overflow:auto;padding:12px;font-size:13px;line-height:1.5;outline:none;color:var(--bly-ink)}
 .note-widget-body:empty:before{content:attr(placeholder);color:var(--bly-sub);opacity:.7}
+#pb-note-body:empty:before{content:attr(placeholder);color:var(--bly-sub);opacity:.7}
 .note-widget-resize{position:absolute;right:2px;bottom:2px;width:16px;height:16px;cursor:nwse-resize;color:var(--bly-sub);font-size:11px;display:flex;align-items:center;justify-content:center;opacity:.6}
 .note-widget-tabs{display:flex;align-items:center;gap:2px;padding:6px 6px 0;background:var(--bly-bg-soft,#F5F5F7);flex-shrink:0;overflow-x:auto}
 .nw-tab{display:flex;align-items:center;gap:5px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--bly-sub);background:transparent;border:0;border-radius:7px 7px 0 0;cursor:pointer;white-space:nowrap;opacity:.75}
@@ -3055,11 +3056,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
 
-    <!-- ØKONOMI — "🧾 Fakturaer" fjernet herfra efter Martins ønske (al fakturering
-         køres nu fra Tilbud & Faktura-modulets egen Fakturaer-fane ovenfor). Selve
-         Fakturaer-fanen/koden inde i Økonomi-dashboardet (fintab-fakturaer, bank-
-         afstemnings-/rykker-kædet) er IKKE slettet, kun sidebar-genvejen — se
-         leveringsnoten. -->
+    <!-- ØKONOMI — RUNDE H #316 (Martins ønske: "Fjern faktura fra Økonomi
+         Moduellet da det er i Tilbud og faktura ... fjern også rykker
+         moduellet fra Økonomi ... Adgangs moduellet burde rykkes under
+         indstillinger") — "🧾 Fakturaer" var allerede fjernet herfra som
+         sidebar-genvej i en tidligere runde; nu er selve fanerne/siderne
+         inde i Økonomi-dashboardet også fjernet helt: Fakturaer (duplikerede
+         Tilbud & Faktura-modulets egen Fakturaer-fane), Rykkere (flyttet IND
+         i Tilbud & Faktura, se qztab-invoices/iv-dunning-btn), og Adgang
+         (flyttet ind i Indstillinger → Roller & adgang, se fin-access-list
+         der nu). Se leveringsnoten for det fulde overblik. -->
     <div class="navdrop tab-navdrop hidden" id="finance-subdrop">
       <div class="stab-row">
         <a class="tab" href="#finance" data-page="finance" id="finance-tab-btn"><span class="stab-icon">💰</span><span class="stab-label">Økonomi</span></a>
@@ -3069,9 +3075,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#finance/oversigt" data-page="finance" data-fintab-jump="oversigt">📊 Oversigt</a>
         <a class="navdrop-item" href="#finance/omsaetning" data-page="finance" data-fintab-jump="omsaetning">💰 Omsætning pr. fag</a>
         <a class="navdrop-item" href="#finance/bankafstemning" data-page="finance" data-fintab-jump="bankafstemning">🏦 Bankafstemning</a>
-        <a class="navdrop-item" href="#finance/rykkere" data-page="finance" data-fintab-jump="rykkere">✉️ Rykkere</a>
         <a class="navdrop-item" href="#finance/udgifter" data-page="finance" data-fintab-jump="udgifter">📖 Udgifter</a>
-        <a class="navdrop-item" href="#finance/adgang" data-page="finance" data-fintab-jump="adgang">🔒 Adgang</a>
         <a class="navdrop-item" href="#finance/privatbudget" data-page="finance" data-fintab-jump="privatbudget">👤 Privat budget</a>
         <a class="navdrop-item" href="#finance/noter" data-page="finance" data-fintab-jump="noter">⚠️ Noter &amp; datakvalitet</a>
       </div>
@@ -3110,7 +3114,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.7</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.8</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3531,6 +3535,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div id="panel-roles-list" class="set-list"></div>
     </div>
+    <!-- RUNDE H #316 (Martins ønske: "Adgangs moduellet burde rykkes under
+         indstillinger og måske under roller og lignede") — den finansielle
+         "hvem må se Økonomi"-liste boede før som sin egen fane inde i selve
+         Økonomi-modulet (fintab-adgang/renderFinAccessList) — flyttet hertil,
+         så al adgangsstyring nu sidder ét sted. Uændret backend (samme
+         is_finance_admin-felt/endpoint), kun UI-placeringen er ny. -->
+    <div class="set-card realadmin-only" id="fin-access-card">
+      <div class="set-card-head">
+        <div>
+          <div class="set-card-title">💰 Adgang til Økonomi</div>
+          <div class="set-card-sub">Kun brugere herunder kan se Økonomi-modulet. Kun admin-konti kan få adgang.</div>
+        </div>
+      </div>
+      <div id="fin-access-list" class="set-list"></div>
+    </div>
   </div>
 
   <!-- ── AKKORDLISTE (flyttet fra #page-people) ──────────────────────── -->
@@ -3649,11 +3668,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="tabs fin-pill-tabs" style="margin-bottom:16px">
     <a class="tab-btn-sm active" data-fintab="oversigt" href="#finance/oversigt">📊 Oversigt</a>
     <a class="tab-btn-sm" data-fintab="omsaetning" href="#finance/omsaetning">💰 Omsætning pr. fag</a>
-    <a class="tab-btn-sm" data-fintab="fakturaer" href="#finance/fakturaer">🧾 Fakturaer</a>
     <a class="tab-btn-sm" data-fintab="bankafstemning" href="#finance/bankafstemning">🏦 Bankafstemning</a>
-    <a class="tab-btn-sm" data-fintab="rykkere" href="#finance/rykkere">✉️ Rykkere</a>
     <a class="tab-btn-sm" data-fintab="udgifter" href="#finance/udgifter">📖 Udgifter</a>
-    <a class="tab-btn-sm" data-fintab="adgang" href="#finance/adgang">🔒 Adgang</a>
     <a class="tab-btn-sm" data-fintab="privatbudget" href="#finance/privatbudget">👤 Privat budget</a>
     <a class="tab-btn-sm" data-fintab="noter" href="#finance/noter">⚠️ Noter &amp; datakvalitet</a>
   </div>
@@ -3732,44 +3748,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
    </div>
   </div>
 
-  <div class="fintabpage" id="fintab-fakturaer" style="display:none">
-    <div class="bly-pagehead">
-      <div>
-        <h2>Fakturaer</h2>
-        <div class="sub">Fra jeres egne fakturaer i programmet — status og opfølgning styres her</div>
-      </div>
-    </div>
-    <div id="fin-invoices-kpis" class="bly-kpi-row"></div>
-    <div class="bly-toolbar">
-      <div class="bly-toolbar-left">
-        <span class="bly-toolbar-title" id="fin-inv-count-label">Fakturaer</span>
-        <input type="text" id="fin-invoice-search" class="bly-search" placeholder="Søg...">
-      </div>
-      <div class="bly-toolbar-right">
-        <div class="bly-period" style="position:relative">
-          <button class="bly-ctl" id="fin-period-btn" type="button">📅 <span id="fin-period-label">Alt tid</span></button>
-          <div class="bly-period-pop" id="fin-period-pop" style="display:none"></div>
-        </div>
-        <button class="bly-ctl" id="fin-invoice-filter-clear" type="button" title="Ryd alle filtre">✕ Ryd filtre</button>
-      </div>
-    </div>
-    <div id="fin-inv-bulk-bar" style="display:none;align-items:center;gap:10px;background:var(--bly-ink);color:#fff;padding:10px 16px;border-radius:var(--bly-r-sm);margin-bottom:10px">
-      <span id="fin-inv-bulk-count" style="font-weight:800;font-size:12.5px"></span>
-      <select id="fin-inv-bulk-action" style="border-radius:7px;border:0;padding:6px 8px;font-size:12px">
-        <option value="paid">✓ Markér betalt</option>
-        <option value="unpaid">Markér udestående</option>
-        <option value="unclear">⚠ Markér uafklaret</option>
-        <option value="rykker">✉️ Send rykker til valgte</option>
-      </select>
-      <button class="btn small primary" id="fin-inv-bulk-apply">Anvend</button>
-      <button class="btn small" id="fin-inv-bulk-clear" style="background:rgba(255,255,255,.15);color:#fff">Fravælg alle</button>
-    </div>
-    <table class="bly-table">
-      <thead><tr><th style="width:30px"><input type="checkbox" id="fin-inv-select-all"></th><th>Kunde</th><th>Faktura</th><th class="num">Ekskl. moms</th><th class="num">Inkl. moms</th><th class="num">Saldo</th><th>Status</th><th>Note</th><th>Rykker</th></tr></thead>
-      <tbody id="fin-invoices-body"></tbody>
-    </table>
-  </div>
-
   <div class="fintabpage" id="fintab-bankafstemning" style="display:none">
     <div class="bly-bank-topbar">
       <div class="bly-account-pill">🏦 Bankafstemning <span class="dim">· Lunar</span></div>
@@ -3784,24 +3762,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <div id="fin-bank-results" style="margin-top:4px"></div>
-  </div>
-
-  <div class="fintabpage" id="fintab-rykkere" style="display:none">
-    <div class="fin-card">
-      <div class="fin-eyebrow">✉️ Automatiske rykker-mails</div>
-      <p class="fin-muted" style="margin:-4px 0 12px">Slået fra som standard. Sender kun rigtige mails til kunder, hvis den er slået til her.</p>
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="fin-dunning-enabled" style="width:18px;height:18px"> <b>Send automatiske rykkere</b></label>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
-        <div><label class="form-label">Rykker 1 efter (dage)</label><input type="number" id="fin-dunning-days1" class="input"></div>
-        <div><label class="form-label">Rykker 2 efter (dage)</label><input type="number" id="fin-dunning-days2" class="input"></div>
-        <div><label class="form-label">Rykkergebyr (kr.)</label><input type="number" id="fin-dunning-fee" class="input"></div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn small primary" id="fin-dunning-save-btn">Gem indstillinger</button>
-        <button class="btn small" id="fin-dunning-run-btn">▶ Kør scan nu (test)</button>
-      </div>
-      <div id="fin-dunning-log" style="margin-top:14px"></div>
-    </div>
   </div>
 
   <div class="fintabpage" id="fintab-udgifter" style="display:none">
@@ -3859,16 +3819,30 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 
-  <div class="fintabpage" id="fintab-adgang" style="display:none">
-    <p class="muted-sm" style="margin-bottom:12px">Kun brugere herunder kan se Økonomi. Kun admin-konti kan få adgang.</p>
-    <div class="fin-card"><div id="fin-access-list"></div></div>
-  </div>
-
   <div class="fintabpage" id="fintab-privatbudget" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div class="udg-month-nav"><button type="button" id="fin-privbudget-prev" title="Forrige måned" style="width:28px;height:28px;border-radius:50%;border:0;background:transparent;cursor:pointer">‹</button><span id="fin-privbudget-month-label" style="padding:0 8px;font-weight:700;font-size:13px"></span><button type="button" id="fin-privbudget-next" title="Næste måned" style="width:28px;height:28px;border-radius:50%;border:0;background:transparent;cursor:pointer">›</button></div>
+      <button class="fin-add-btn" id="fin-add-private-cat-btn" style="margin:0">+ Ny kategori</button>
+    </div>
     <div id="fin-privatbudget-kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px"></div>
-    <p class="muted-sm" style="margin-bottom:12px">Frit redigerbart — ret beløb, tilføj/slet poster, og opret helt nye kategorier efter behov.</p>
-    <button class="fin-add-btn" id="fin-add-private-cat-btn">+ Ny kategori</button>
-    <div id="fin-private-budget-categories" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start"></div>
+    <p class="muted-sm" style="margin-bottom:12px">Samme opsætning som Udgifter — betalt-boks pr. post, og nye måneder tager automatisk posterne med fra forrige måned. Modsat Udgifter kan du her selv oprette/omdøbe/slette hele kategorier.</p>
+    <div id="fin-private-budget-categories" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start"></div>
+
+    <!-- RUNDE H #316 (Martins ønske: "et note felt i bunden ... som i Notions noter") —
+         ét fast, frit noteFelt nederst på siden, ikke måneds-opdelt (løse noter/huskeliste
+         hører ikke til én bestemt måned). Egen, simpel rich-text-boks — bevidst IKKE den
+         delte flydende note-widget (note-widget-body), for ikke at røre ved den. -->
+    <div class="fin-card" style="margin-top:22px">
+      <div class="fin-eyebrow">📝 Noter</div>
+      <div style="display:flex;gap:4px;margin:8px 0;border-bottom:1px solid var(--bly-border-soft);padding-bottom:8px">
+        <button type="button" class="udg-btn outline" style="width:28px;padding:0" data-pbnote-cmd="bold" title="Fed"><b>B</b></button>
+        <button type="button" class="udg-btn outline" style="width:28px;padding:0" data-pbnote-cmd="italic" title="Kursiv"><i>I</i></button>
+        <button type="button" class="udg-btn outline" style="width:28px;padding:0" data-pbnote-cmd="underline" title="Understreget"><u>U</u></button>
+        <button type="button" class="udg-btn outline" style="width:28px;padding:0" data-pbnote-cmd="insertUnorderedList" title="Punktliste">•</button>
+        <button type="button" class="udg-btn outline" style="width:28px;padding:0" id="pb-note-check-btn" title="Tilføj afkrydsningsfelt">☑</button>
+      </div>
+      <div id="pb-note-body" contenteditable="true" spellcheck="false" placeholder="Skriv dine private noter her..." style="min-height:140px;padding:10px 4px;font-size:13px;line-height:1.55;outline:none;color:var(--bly-ink)"></div>
+    </div>
   </div>
 
   <div class="fintabpage" id="fintab-noter" style="display:none">
@@ -3971,7 +3945,29 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="qztabpage" id="qztab-invoices" style="display:none">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-invoices-count">Fakturaer</span><input type="text" id="qz-invoice-search" class="bly-search" placeholder="Søg — navn, fakturanr., sagsnr., adresse, email eller telefon..."></div>
-      <div class="bly-toolbar-right"><button class="bly-btn outline" id="qz-new-direct-invoice-btn" type="button" title="Til priser aftalt direkte/mundtligt med kunden, uden et forudgående tilbud">+ Ny faktura (uden tilbud)</button></div>
+      <div class="bly-toolbar-right">
+        <!-- RUNDE H #316 (Martins ønske: "fjern rykker moduellet fra Økonomi.
+             Det burde være under selve faktura modullet i tilbud og faktura")
+             — hele Rykker-modulet (indstillinger + log) bor nu her, som et
+             udfoldeligt panel, i stedet for sin egen fane i Økonomi. -->
+        <button class="bly-btn outline" id="qz-dunning-settings-toggle" type="button" title="Indstillinger for automatiske rykker-mails">✉️ Rykker-indstillinger</button>
+        <button class="bly-btn outline" id="qz-new-direct-invoice-btn" type="button" title="Til priser aftalt direkte/mundtligt med kunden, uden et forudgående tilbud">+ Ny faktura (uden tilbud)</button>
+      </div>
+    </div>
+    <div class="fin-card" id="qz-dunning-settings-panel" style="display:none;margin-bottom:16px">
+      <div class="fin-eyebrow">✉️ Automatiske rykker-mails</div>
+      <p class="fin-muted" style="margin:-4px 0 12px">Slået fra som standard. Sender kun rigtige mails til kunder, hvis den er slået til her. Skabeloner til rykker-mails oprettes samme sted som tilbud/faktura-skabeloner (Skabeloner → Mail).</p>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="fin-dunning-enabled" style="width:18px;height:18px"> <b>Send automatiske rykkere</b></label>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
+        <div><label class="form-label">Rykker 1 efter (dage)</label><input type="number" id="fin-dunning-days1" class="input"></div>
+        <div><label class="form-label">Rykker 2 efter (dage)</label><input type="number" id="fin-dunning-days2" class="input"></div>
+        <div><label class="form-label">Rykkergebyr (kr.)</label><input type="number" id="fin-dunning-fee" class="input"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn small primary" id="fin-dunning-save-btn">Gem indstillinger</button>
+        <button class="btn small" id="fin-dunning-run-btn">▶ Kør scan nu (test)</button>
+      </div>
+      <div id="fin-dunning-log" style="margin-top:14px"></div>
     </div>
     <div class="bly-kpi-row bly-kpi-row-tf" id="qz-invoices-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:0 0 14px">
@@ -6739,6 +6735,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              'draft' -> 'unpaid'). Herefter opfører den sig som enhver anden faktura. -->
         <button class="bly-btn small" id="iv-activate-btn" type="button" style="display:none;background:#4F46E5;border-color:#4F46E5;color:#fff" title="Gør kladden til en rigtig faktura — den tæller herefter med i Økonomi og kan sendes til kunden">✓ Aktivér faktura</button>
         <button class="bly-btn outline small" id="iv-send-btn" type="button" title="Send fakturaen som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
+        <!-- RUNDE H #316 (Martins ønske: "Det burde være en knap når jeg åbner en
+             faktura med send rykker og så en popup hvor jeg kan vælge template")
+             — vises kun når der reelt er noget udestående, ligesom "✓ Markér betalt". -->
+        <button class="bly-btn outline small" id="iv-dunning-btn" type="button" style="display:none" title="Send en rykker-mail til kunden med valgfri skabelon">✉️ Send rykker</button>
         <!-- RUNDE H #301 (Martins ønske: "burde jeg bare kunne trykke på en knap
              betalt? kan ikke finde den knap") — der fandtes kun den nederste
              "Registrér betaling"-formular, hvor man selv skal skrive beløbet
@@ -7224,6 +7224,33 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions">
       <button class="btn" id="close-doc-send">Annuller</button>
       <button class="btn primary" id="doc-send-confirm-btn">📧 Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE H #316 (Martins ønske: "en knap når jeg åbner en faktura med send
+     rykker og så en popup hvor jeg kan vælge template") — bevidst en SEPARAT
+     modal fra doc-send-modal ovenfor (i stedet for at genbruge/generalisere den),
+     da rykker-afsendelse har en anden backend-rute og andre variable (intet
+     tilbudsnr./gyldig_til, men et rykker-niveau og et rykkergebyr) — mindre
+     risiko for at rode i den eksisterende, meget brugte tilbud/faktura-afsendelse. -->
+<div class="mo" id="dunning-send-modal">
+  <div class="modal manual-modal-modern" style="max-width:520px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">✉️</span>
+      <div><div class="manual-modal-title" id="dunning-send-title">Send rykker</div><div class="manual-modal-sub" id="dunning-send-sub"></div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Til e-mail</label>
+      <input id="dunning-send-to" class="input" type="email" placeholder="kunde@eksempel.dk">
+      <label class="form-label" style="margin-top:12px">Mail-skabelon</label>
+      <select id="dunning-send-template" class="select"></select>
+      <label class="form-label" style="margin-top:12px">Forhåndsvisning</label>
+      <div id="dunning-send-preview" style="border:1px solid var(--border2);border-radius:10px;padding:12px;max-height:280px;overflow:auto;background:var(--ice);font-size:12.5px"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-dunning-send">Annuller</button>
+      <button class="btn primary" id="dunning-send-confirm-btn">✉️ Send rykker</button>
     </div>
   </div>
 </div>
@@ -12150,6 +12177,69 @@ async function confirmDocSend(){
   } else toast((r&&r.error)||'Kunne ikke sende mailen','❌');
 }
 
+// RUNDE H #316 — "Send rykker"-popup fra en åben faktura (se iv-dunning-btn).
+// Samme UX-mønster som doc-send-modal (mail-skabelon + live forhåndsvisning),
+// men mod dunning-specifikke ruter/variable (se sendDunningEmailForInvoice i
+// server.js: intet tilbudsnr., men et rykker-niveau + rykkergebyr).
+var dunningSendCtx=null;
+async function openDunningSendModal(invoiceId){
+  if(!docMailTemplatesCache.length)await loadDocMailTemplates();
+  var invP=api('/api/invoices/'+invoiceId);
+  var logP=api('/api/finance/dunning-log?document_id='+invoiceId);
+  var settingsP=api('/api/finance/dunning-settings');
+  var inv=await invP;
+  if(!inv||inv.error){toast('Kunne ikke hente fakturaen','❌');return;}
+  var log=(await logP)||[];
+  var settings=(await settingsP)||{fee_amount:100};
+  var sentLevels=log.filter(function(l){return l.status==='sent';}).map(function(l){return l.level;});
+  var targetLevel=sentLevels.indexOf(1)===-1?1:(sentLevels.indexOf(2)===-1?2:null);
+  if(!targetLevel){toast('Der er allerede sendt både rykker 1 og 2 for denne faktura','⚠️');return;}
+  dunningSendCtx={invoiceId:invoiceId,level:targetLevel,remaining:Number(inv.remaining)||0,feeAmount:Number(settings.fee_amount)||0,jobName:inv.job_name,jobNumber:inv.job_number,invoiceNumber:inv.invoice_number};
+  document.getElementById('dunning-send-title').textContent='Send rykker '+targetLevel;
+  document.getElementById('dunning-send-sub').textContent=(inv.invoice_number||'')+' · '+(inv.job_name||'');
+  document.getElementById('dunning-send-to').value=inv.customer_email||'';
+  var sel=document.getElementById('dunning-send-template');
+  sel.innerHTML=['<option value="">Standard (uden skabelon)</option>'].concat(docMailTemplatesCache.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>';})).join('');
+  var assignments=await api('/api/settings/email-template-assignments')||{};
+  var defaultTplId=assignments.dunning||'';
+  sel.value=defaultTplId&&docMailTemplatesCache.some(function(t){return String(t.id)===String(defaultTplId);})?String(defaultTplId):'';
+  dunningSendUpdatePreview();
+  document.getElementById('dunning-send-modal').classList.add('open');
+}
+function dunningSendUpdatePreview(){
+  var ctx=dunningSendCtx;if(!ctx)return;
+  var tplId=document.getElementById('dunning-send-template').value;
+  var tpl=tplId?docMailTemplatesCache.find(function(t){return String(t.id)===String(tplId);}):null;
+  var totalWithFee=ctx.remaining+ctx.feeAmount;
+  var vars={
+    kunde:ctx.jobName||'',dokument_nr:ctx.jobNumber||ctx.jobName||'',total:krFmt(ctx.remaining),
+    gyldig_til:'',forfald:'',restbeloeb:krFmt(totalWithFee),firma:settings.company_name||'',link:'',underskriv_link:''
+  };
+  var subject,body;
+  if(tpl){subject=fillDocEmailVarsClient(tpl.subject,vars);body=fillDocEmailVarsClient(tpl.body_html,vars);}
+  else{
+    subject='Rykker '+ctx.level+' — '+vars.kunde+' — '+vars.firma;
+    body='<p>Hej,</p><p>Vi kan se at <b>'+esc(vars.kunde)+'</b> på <b>'+krFmt(ctx.remaining)+'</b> stadig ikke er betalt.</p>'
+      +'<p>Dette er rykker '+ctx.level+'. Der er tillagt et rykkergebyr på '+krFmt(ctx.feeAmount)+'.</p>'
+      +'<p>Nyt beløb i alt: <b>'+krFmt(totalWithFee)+'</b>.</p><p>Betal venligst hurtigst muligt.</p>';
+  }
+  document.getElementById('dunning-send-preview').innerHTML='<div><b>Emne:</b> '+esc(subject)+'</div><hr style="margin:8px 0;border:none;border-top:1px solid var(--border2)">'+body;
+}
+async function confirmDunningSend(){
+  var ctx=dunningSendCtx;if(!ctx)return;
+  var to=document.getElementById('dunning-send-to').value.trim();
+  if(!to){toast('Angiv en modtager-mail','⚠️');return;}
+  var tplId=document.getElementById('dunning-send-template').value;
+  var btn=document.getElementById('dunning-send-confirm-btn');
+  btn.disabled=true;btn.textContent='Sender…';
+  var r=await api('/api/finance/dunning-send/'+ctx.invoiceId,{method:'POST',body:JSON.stringify({to:to,template_id:tplId||undefined})});
+  btn.disabled=false;btn.textContent='✉️ Send rykker';
+  if(r&&r.ok){
+    toast('Rykker '+r.level+' sendt ✓','✓');
+    closeModal('dunning-send-modal');
+  } else toast((r&&r.error)||'Kunne ikke sende rykkeren','❌');
+}
+
 async function loadTemplates(){
   var t=await api('/api/templates');
   templatesCache=t||[];
@@ -12267,6 +12357,9 @@ function switchSetTab(name,skipHash){
   // Fanerne henter kun deres egne data når man rent faktisk står på dem.
   if(name==='notif')loadNotificationSettings();
   if(name==='gmail')initGmailSettingsModule();
+  // RUNDE H #316 — "Roller & adgang" viser nu også Økonomi-adgangslisten (flyttet
+  // hertil fra Økonomi-modulets egen "Adgang"-fane). Samme lazy-mønster som notif/gmail.
+  if(name==='access')renderFinAccessList();
 }
 // Kaldes af switchPage() hver gang Indstillinger åbnes.
 function initSettingsPage(){
@@ -12284,6 +12377,7 @@ function initSettingsPage(){
   // switchPage kaldte loadNotificationSettings()/initGmailSettingsModule().
   if(activeName==='notif')loadNotificationSettings();
   if(activeName==='gmail')initGmailSettingsModule();
+  if(activeName==='access')renderFinAccessList();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -12378,7 +12472,7 @@ function saveNotifRule(row){
 // ══════════════════════════════════════════════════════════════
 // ØKONOMI
 // ══════════════════════════════════════════════════════════════
-var finRevenue=null,finInvoices=[],finExpenses=[],finInvSelected={},finJobStatusMarks={};
+var finRevenue=null,finInvoices=[],finExpenses=[],finJobStatusMarks={};
 function switchFintab(name){
   var btn=document.querySelector('[data-fintab="'+name+'"]');
   if(!btn)name='oversigt';
@@ -12407,6 +12501,7 @@ document.querySelectorAll('[data-fintab]').forEach(function(btn){
   });
 });
 var finExpenseMonth=new Date().toISOString().slice(0,7);
+var finPrivBudgetMonth=new Date().toISOString().slice(0,7);
 // --- Udgifter redesign: filter/søg/visnings-state + cache til måned-over-måned trend ---
 var finExpenseSearch='',finExpenseCatFilter='',finExpenseUnpaidOnly=false,finExpenseView='cards';
 var finExpenseSortCol=null,finExpenseSortDir=1;
@@ -12420,15 +12515,14 @@ async function loadFinance(){
   var invoicesP=api('/api/finance/invoices');
   var expensesP=api('/api/finance/expenses?month='+finExpenseMonth);
   var snapshotsP=api('/api/finance/bank-snapshots');
-  var privateBudgetP=api('/api/finance/private-budget');
-  var dunningSettingsP=api('/api/finance/dunning-settings');
-  var dunningLogP=api('/api/finance/dunning-log');
+  var privateBudgetP=api('/api/finance/private-budget?month='+finPrivBudgetMonth);
   var jobStatusMarksP=api('/api/finance/job-status-marks');
   finRevenue=await revenueP; finInvoices=(await invoicesP)||[];
   finJobStatusMarks=(await jobStatusMarksP)||{};
   var expensesResult=await expensesP;
   finExpenses=(expensesResult&&expensesResult.categories)||[];
-  finPrivateBudget=(await privateBudgetP)||[];
+  var privateBudgetResult=await privateBudgetP;
+  finPrivateBudget=(privateBudgetResult&&privateBudgetResult.categories)||[];
   var snapshots=(await snapshotsP)||[];
   // Hent det rigtige udgiftstal for HVER af de tre måneder grafen viser, i stedet for
   // at antage samme beløb overalt.
@@ -12436,11 +12530,15 @@ async function loadFinance(){
   finExpenseTotalsByMonth=revMonths.length?(await api('/api/finance/expenses-totals?months='+revMonths.join(','))||{}):{};
   renderFinOverview(snapshots);
   renderFinRevenue();
-  renderFinInvoices();
+  // RUNDE H #316 — renderFinInvoices()/renderFinAccessList()/renderFinDunning() kaldes
+  // ikke længere herfra: "Fakturaer" er fjernet (duplikerede Tilbud & Faktura), "Adgang"
+  // er flyttet til Indstillinger → Roller & adgang (kaldes nu der, se loadPanelRolesData-
+  // kaldet), og "Rykkere" er flyttet ind i Tilbud & Faktura (kaldes nu fra
+  // initQuotesModule). finInvoices-dataen ovenfor beholdes stadig — den bruges fortsat af
+  // Resultat-grafen/Moms-boksen/Omsætning pr. fag.
   renderFinExpenses();
-  renderFinAccessList();
   renderFinPrivateBudget();
-  renderFinDunning(await dunningSettingsP,(await dunningLogP)||[]);
+  loadPrivateBudgetNote();
   renderFinNoter();
   // Genindlæser evt. gemt bankudtog HER — efter finInvoices er sat — i stedet for kun
   // fra selve fane-skiftet, som kunne nå at køre FØR denne funktion var færdig og
@@ -13033,6 +13131,7 @@ async function loadProfitSnapshots(){
     '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Skal sendes</th>'+
     '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Bundlinje</th>'+
     '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">vs. forrige mdr.</th>'+
+    '<th style="padding:8px 10px;width:34px"></th>'+
     '</tr></thead><tbody>'+
     rows.map(function(r,i){
       var prev=i>0?rows[i-1]:null;
@@ -13047,11 +13146,18 @@ async function loadProfitSnapshots(){
         '<td style="padding:9px 10px;text-align:right;color:#B45309">'+krFmt(r.invoices_pending)+'</td>'+
         '<td style="padding:9px 10px;text-align:right;font-weight:800">'+krFmt(r.bottom_line)+'</td>'+
         '<td style="padding:9px 10px;text-align:right">'+deltaHtml+'</td>'+
+        '<td style="padding:9px 10px;text-align:right"><button type="button" class="bly-btn outline small" style="padding:4px 8px" title="Slet dette snapshot (f.eks. hvis det er lavet med forkerte tal)" onclick="deleteProfitSnapshot(\''+r.month_key+'\')">🗑</button></td>'+
       '</tr>';
     }).join('')+
     '</tbody></table></div>';
   el.innerHTML=html;
 }
+async function deleteProfitSnapshot(monthKey){
+  if(!confirm('Slet profit-snapshottet for '+profitMonthLabel(monthKey)+'? Du kan tage et nyt bagefter med "Gem snapshot nu".'))return;
+  var r=await api('/api/finance/profit-snapshots/'+monthKey,{method:'DELETE'});
+  if(r&&r.ok){toast('Snapshot slettet','🗑');await loadProfitSnapshots();}
+}
+window.deleteProfitSnapshot=deleteProfitSnapshot;
 document.getElementById('fin-profit-save-now').addEventListener('click',async function(){
   var btn=this;btn.disabled=true;var origText=btn.textContent;btn.textContent='Gemmer…';
   var r=await api('/api/finance/profit-snapshots/save-now',{method:'POST'});
@@ -13189,6 +13295,15 @@ async function renderFinBankCard(){
   if(snapBtn)snapBtn.addEventListener('click',function(){document.getElementById('fin-bank-snapshot-modal').classList.add('open');});
 }
 var finMomsYear=null,finMomsQ=null;
+// RUNDE H #316 (Martins ønske: "Jeg skal kunne trykke når jeg har indbetalt for
+// det givende kvartal, så man ligesom kan se den er betalt") — cache af alle
+// betalte kvartaler, hentet én gang og genbrugt (ikke genhentet ved hvert
+// måned/kvartal-skift), da det er en meget lille, sjældent-ændret liste.
+var finMomsPaidCache=null;
+async function finMomsIsPaid(year,q){
+  if(!finMomsPaidCache)finMomsPaidCache=(await api('/api/finance/moms-payments'))||[];
+  return finMomsPaidCache.some(function(p){return +p.year===+year&&+p.quarter===+q;});
+}
 async function renderFinMomsCard(){
   var el=document.getElementById('fin-card-moms');
   if(!el)return;
@@ -13198,18 +13313,33 @@ async function renderFinMomsCard(){
   var daysLeft=Math.round((info.deadline-today)/86400000);
   var KVT=['1. kvartal','2. kvartal','3. kvartal','4. kvartal'];
   var fristHtml=daysLeft>=0?(daysLeft+' dage · '+info.deadline.getDate()+'/'+(info.deadline.getMonth()+1)+'-'+info.deadline.getFullYear()):('Frist overskredet · '+info.deadline.getDate()+'/'+(info.deadline.getMonth()+1)+'-'+info.deadline.getFullYear());
+  var isPaid=await finMomsIsPaid(info.year,info.q);
   el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Moms <span class="fin-muted" style="font-weight:600;font-size:11px">(estimat)</span></div>'+
     '<div class="udg-month-nav" style="padding:3px"><button type="button" id="fin-moms-prev" title="Forrige kvartal" style="width:24px;height:24px;border-radius:50%;border:0;background:transparent;cursor:pointer">‹</button><span style="padding:0 6px;font-weight:700;font-size:11px">'+KVT[info.q]+' '+info.year+'</span><button type="button" id="fin-moms-next" title="Næste kvartal" style="width:24px;height:24px;border-radius:50%;border:0;background:transparent;cursor:pointer">›</button></div>'+
     '</div>'+
-    '<div id="fin-moms-amount" style="font-size:26px;font-weight:800;color:#DC2626;margin-bottom:4px">Udregner…</div>'+
+    '<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px"><div id="fin-moms-amount" style="font-size:26px;font-weight:800;color:'+(isPaid?'var(--bly-dot-paid)':'#DC2626')+'">Udregner…</div>'+
+    (isPaid?'<span class="tag" style="background:#DCFCE7;color:#166534;border-color:#BBF7D0">✓ Betalt</span>':'')+'</div>'+
     '<div id="fin-moms-empty-note" class="fin-muted" style="font-size:10.5px;display:none;margin-bottom:10px">Ingen fakturaer registreret i programmet for denne periode — tjek om det stemmer, eller om der mangler data.</div>'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft);margin-top:10px"><span class="fin-muted" style="font-size:12px">Frist</span><b style="font-size:14px">'+fristHtml+'</b></div>';
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--bly-border-soft);margin-top:10px"><span class="fin-muted" style="font-size:12px">Frist</span><b style="font-size:14px">'+fristHtml+'</b></div>'+
+    '<button class="bly-btn'+(isPaid?' outline':'')+' small" id="fin-moms-paid-toggle" type="button" style="width:100%;justify-content:center;margin-top:10px'+(isPaid?'':';background:var(--bly-dot-paid);border-color:var(--bly-dot-paid);color:#fff')+'">'+(isPaid?'↺ Fortryd — ikke betalt alligevel':'✓ Marker '+KVT[info.q]+' '+info.year+' som betalt')+'</button>';
   document.getElementById('fin-moms-prev').addEventListener('click',function(){
     finMomsQ--;if(finMomsQ<0){finMomsQ=3;finMomsYear--;}
     renderFinMomsCard();
   });
   document.getElementById('fin-moms-next').addEventListener('click',function(){
     finMomsQ++;if(finMomsQ>3){finMomsQ=0;finMomsYear++;}
+    renderFinMomsCard();
+  });
+  document.getElementById('fin-moms-paid-toggle').addEventListener('click',async function(){
+    var btn=this;btn.disabled=true;
+    if(isPaid){
+      await api('/api/finance/moms-payments/'+info.year+'/'+info.q,{method:'DELETE'});
+      toast('Fortrudt — kvartalet er ikke længere markeret betalt','↩️');
+    }else{
+      await api('/api/finance/moms-payments',{method:'POST',body:JSON.stringify({year:info.year,quarter:info.q})});
+      toast('Markeret som betalt ✓','✓');
+    }
+    finMomsPaidCache=null;
     renderFinMomsCard();
   });
   var amtEl=document.getElementById('fin-moms-amount');
@@ -13737,34 +13867,6 @@ document.querySelectorAll('#udg-list-view th[data-sort]').forEach(function(th){
     renderFinExpenseBody();
   });
 });
-document.getElementById('fin-invoice-filter-clear').addEventListener('click',function(){
-  finInvoiceStatusFilter='all';finInvoiceSearch='';finInvoiceMonthFilter='';finInvoiceYearFilter='';finInvoiceQuarterFilter='';finInvoiceRangeFrom='';finInvoiceRangeTo='';
-  document.getElementById('fin-invoice-search').value='';
-  renderFinInvoices();
-});
-var finInvoiceSearchTimer=null;
-document.getElementById('fin-invoice-search').addEventListener('input',function(e){
-  clearTimeout(finInvoiceSearchTimer);
-  finInvoiceSearchTimer=setTimeout(function(){finInvoiceSearch=e.target.value;renderFinInvoices();},200);
-});
-document.getElementById('fin-period-btn').addEventListener('click',function(e){
-  e.stopPropagation();
-  var pop=document.getElementById('fin-period-pop');
-  var opening=pop.style.display==='none';
-  pop.style.display=opening?'block':'none';
-  if(opening)renderFinPeriodPopover();
-});
-// Klik inde i selve popoveren (fx skift mellem Måned/Kvartal/Regnskabsår) må
-// ikke boble op til dokument-lytteren nedenfor — den genopbygger
-// pop.innerHTML, så det oprindelige e.target ikke længere findes i
-// popoverens DOM når "klik udenfor lukker den"-tjekket kører, og popoveren
-// lukkede sig selv i samme klik den skulle reagere på (fundet ved test af
-// den tilsvarende nye filter i Tilbud & Faktura, som genbruger dette mønster).
-document.getElementById('fin-period-pop').addEventListener('click',function(e){e.stopPropagation();});
-document.addEventListener('click',function(e){
-  var pop=document.getElementById('fin-period-pop');
-  if(pop&&pop.style.display!=='none'&&!pop.contains(e.target)&&e.target.id!=='fin-period-btn')pop.style.display='none';
-});
 document.getElementById('fin-revenue-period').addEventListener('change',async function(e){
   var parts=e.target.value.split(',');
   var el=document.getElementById('fin-revenue-months');
@@ -14077,276 +14179,7 @@ function renderFinRevenue(){
   });
 }
 
-var finInvoiceStatusFilter='all',finInvoiceSearch='';
-var finInvoiceMonthFilter='',finInvoiceYearFilter='',finInvoiceQuarterFilter='';
-var finInvoiceRangeFrom='',finInvoiceRangeTo='';
-var finPeriodTab='year';
-var finPeriodYearPage=null;
 var MAANEDE_KORT=['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
-// opts.ignoreStatus=true bruges af KPI-kortene, som skal vise hvor mange
-// fakturaer der ligger i HVER status ud fra dato/søgning — uafhængigt af
-// hvilket statuskort der aktuelt er valgt, ellers ville de andre kort altid vise 0.
-function finInvoicesFiltered(opts){
-  opts=opts||{};
-  var list=finInvoices;
-  if(finInvoiceRangeFrom||finInvoiceRangeTo){
-    list=list.filter(function(inv){
-      var d=(inv.createdAt||'').slice(0,10);
-      if(!d)return false;
-      if(finInvoiceRangeFrom&&d<finInvoiceRangeFrom)return false;
-      if(finInvoiceRangeTo&&d>finInvoiceRangeTo)return false;
-      return true;
-    });
-  }else if(finInvoiceMonthFilter){
-    list=list.filter(function(inv){return inv.createdAt&&(inv.createdAt||'').slice(0,7)===finInvoiceMonthFilter;});
-  }else if(finInvoiceQuarterFilter){
-    var qp=finInvoiceQuarterFilter.split('-Q'),qy=qp[0],qn=+qp[1],qStartM=(qn-1)*3+1,qEndM=qStartM+2;
-    var qFrom=qy+'-'+String(qStartM).padStart(2,'0')+'-01';
-    var qEndDate=new Date(+qy,qEndM,0);
-    var qTo=qy+'-'+String(qEndM).padStart(2,'0')+'-'+String(qEndDate.getDate()).padStart(2,'0');
-    list=list.filter(function(inv){var d=(inv.createdAt||'').slice(0,10);return d&&d>=qFrom&&d<=qTo;});
-  }else if(finInvoiceYearFilter){
-    list=list.filter(function(inv){return inv.createdAt&&(inv.createdAt||'').slice(0,4)===finInvoiceYearFilter;});
-  }
-  if(!opts.ignoreStatus&&finInvoiceStatusFilter!=='all')list=list.filter(function(inv){return inv.overrideStatus===finInvoiceStatusFilter;});
-  if(finInvoiceSearch.trim()){
-    var q=finInvoiceSearch.trim().toLowerCase();
-    list=list.filter(function(inv){
-      var hay=((inv.customer||'')+' '+(inv.fullName||'')+' '+(inv.jobNumber||'')+' '+(inv.priceWithTax||'')+' '+(inv.price||'')+' '+(inv.balance||'')).toLowerCase();
-      return hay.indexOf(q)>-1;
-    });
-  }
-  return list;
-}
-function finPeriodLabel(){
-  if(finInvoiceRangeFrom||finInvoiceRangeTo)return (finInvoiceRangeFrom||'…')+' – '+(finInvoiceRangeTo||'…');
-  if(finInvoiceMonthFilter)return MAANEDE_KORT[+finInvoiceMonthFilter.slice(5,7)-1]+' '+finInvoiceMonthFilter.slice(0,4);
-  if(finInvoiceQuarterFilter)return 'Kvartal '+finInvoiceQuarterFilter.split('-Q')[1]+' · '+finInvoiceQuarterFilter.split('-Q')[0];
-  if(finInvoiceYearFilter)return 'Regnskabsår: '+finInvoiceYearFilter;
-  return 'Alt tid';
-}
-function finPeriodClearAll(){
-  finInvoiceMonthFilter='';finInvoiceYearFilter='';finInvoiceQuarterFilter='';finInvoiceRangeFrom='';finInvoiceRangeTo='';
-}
-// Billy-stil kalender-dropdown: Måned / Kvartal / Regnskabsår / Alt tid, plus et
-// friere datointerval nederst der altid kan bruges uanset hvilken fane der er valgt.
-function renderFinPeriodPopover(){
-  var pop=document.getElementById('fin-period-pop');
-  if(!pop)return;
-  var curYear=new Date().getFullYear();
-  if(finPeriodYearPage===null)finPeriodYearPage=Math.floor((( +finInvoiceYearFilter||curYear)-curYear+2)/10)*10+curYear-2;
-  var yearsStart=finPeriodYearPage;
-  var years=[];for(var i=0;i<9;i++)years.push(yearsStart+i);
-  var tabs=['month','quarter','year','all'];
-  var tabLabels={month:'Måned',quarter:'Kvartal',year:'Regnskabsår',all:'Alt tid'};
-  var html='<div class="bly-period-tabs">'+tabs.map(function(t){
-    return '<button class="bly-period-tab'+(finPeriodTab===t?' active':'')+'" data-period-tab="'+t+'" type="button">'+tabLabels[t]+'</button>';
-  }).join('')+'</div>';
-  if(finPeriodTab==='month'){
-    html+='<div class="bly-period-month"><input type="month" id="fin-period-month-input" value="'+esc(finInvoiceMonthFilter)+'"></div>';
-  }else if(finPeriodTab==='quarter'){
-    var qy=finInvoiceQuarterFilter?finInvoiceQuarterFilter.split('-Q')[0]:String(curYear);
-    var qn=finInvoiceQuarterFilter?finInvoiceQuarterFilter.split('-Q')[1]:'';
-    html+='<div class="bly-period-label">Vælg år</div><div class="bly-period-years" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px">'+
-      [qy-1,qy,+qy+1].map(function(y){return '<button class="bly-period-year'+(String(y)===qy?' active':'')+'" data-period-qyear="'+y+'" type="button">'+y+'</button>';}).join('')+'</div>'+
-      '<div class="bly-period-label">Vælg kvartal</div><div class="bly-period-years">'+
-      ['1','2','3','4'].map(function(n){return '<button class="bly-period-year'+(qn===n?' active':'')+'" data-period-qnum="'+n+'" data-period-qyear-cur="'+qy+'" type="button">Q'+n+'</button>';}).join('')+'</div>';
-  }else if(finPeriodTab==='year'){
-    html+='<div class="bly-period-label">'+yearsStart+' – '+(yearsStart+8)+' <span data-period-year-prev style="cursor:pointer">‹</span> <span data-period-year-next style="cursor:pointer">›</span></div>'+
-      '<div class="bly-period-years">'+years.map(function(y){
-        return '<button class="bly-period-year'+(String(y)===finInvoiceYearFilter?' active':'')+'" data-period-year="'+y+'" type="button">'+y+'</button>';
-      }).join('')+'</div>';
-  }
-  html+='<div class="bly-period-label" style="margin-top:4px">Datointerval</div>'+
-    '<div class="bly-period-range"><input type="date" id="fin-period-range-from" value="'+esc(finInvoiceRangeFrom)+'"><span class="fin-muted">–</span><input type="date" id="fin-period-range-to" value="'+esc(finInvoiceRangeTo)+'"></div>'+
-    '<button class="bly-btn" id="fin-period-apply" type="button" style="width:100%;justify-content:center">Anvend</button>';
-  pop.innerHTML=html;
-  pop.querySelectorAll('[data-period-tab]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      finPeriodTab=btn.dataset.periodTab;
-      if(finPeriodTab==='all'){
-        finPeriodClearAll();pop.style.display='none';renderFinInvoices();
-        document.getElementById('fin-period-label').textContent=finPeriodLabel();
-        return;
-      }
-      renderFinPeriodPopover();
-    });
-  });
-  var monthInp=document.getElementById('fin-period-month-input');
-  if(monthInp)monthInp.addEventListener('change',function(){
-    finPeriodClearAll();finInvoiceMonthFilter=monthInp.value;
-    document.getElementById('fin-period-pop').style.display='none';
-    renderFinInvoices();document.getElementById('fin-period-label').textContent=finPeriodLabel();
-  });
-  pop.querySelectorAll('[data-period-year]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      finPeriodClearAll();finInvoiceYearFilter=btn.dataset.periodYear;
-      pop.style.display='none';renderFinInvoices();document.getElementById('fin-period-label').textContent=finPeriodLabel();
-    });
-  });
-  var prevY=pop.querySelector('[data-period-year-prev]'),nextY=pop.querySelector('[data-period-year-next]');
-  if(prevY)prevY.addEventListener('click',function(){finPeriodYearPage-=9;renderFinPeriodPopover();});
-  if(nextY)nextY.addEventListener('click',function(){finPeriodYearPage+=9;renderFinPeriodPopover();});
-  pop.querySelectorAll('[data-period-qyear]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      var y=btn.dataset.periodQyear,curQ=finInvoiceQuarterFilter?finInvoiceQuarterFilter.split('-Q')[1]:'1';
-      finInvoiceQuarterFilter=y+'-Q'+curQ;renderFinPeriodPopover();
-    });
-  });
-  pop.querySelectorAll('[data-period-qnum]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      finPeriodClearAll();finInvoiceQuarterFilter=btn.dataset.periodQyearCur+'-Q'+btn.dataset.periodQnum;
-      pop.style.display='none';renderFinInvoices();document.getElementById('fin-period-label').textContent=finPeriodLabel();
-    });
-  });
-  document.getElementById('fin-period-apply').addEventListener('click',function(){
-    var from=document.getElementById('fin-period-range-from').value,to=document.getElementById('fin-period-range-to').value;
-    if(from||to){finPeriodClearAll();finInvoiceRangeFrom=from;finInvoiceRangeTo=to;}
-    else if(finPeriodTab==='all'){finPeriodClearAll();}
-    pop.style.display='none';renderFinInvoices();document.getElementById('fin-period-label').textContent=finPeriodLabel();
-  });
-}
-var FIN_STATUS_DOT={all:'var(--bly-dot-total)',paid:'var(--bly-dot-paid)',partial:'var(--bly-dot-draft)',unpaid:'var(--bly-dot-unpaid)',unclear:'var(--bly-dot-overdue)'};
-function renderFinInvoiceKpis(){
-  var el=document.getElementById('fin-invoices-kpis');
-  if(!el)return;
-  // Facet-tal: alle kort tager udgangspunkt i det samme dato/måned/søge-filtrerede
-  // grundlag, uafhængigt af hvilket statuskort der er valgt — så man altid kan se
-  // hvor mange der ligger i de ANDRE statusser og klikke sig direkte derover.
-  var base=finInvoicesFiltered({ignoreStatus:true});
-  function bucket(status){return base.filter(function(i){return i.overrideStatus===status;});}
-  var paid=bucket('paid'),partial=bucket('partial'),unpaid=bucket('unpaid'),unclear=bucket('unclear');
-  function sum(list,field){return list.reduce(function(s,i){return s+(i[field]||0);},0);}
-  function card(status,label,count,amount){
-    var active=finInvoiceStatusFilter===status;
-    return '<button class="bly-kpi-card'+(active?' active':'')+'" data-inv-kpi-status="'+status+'" type="button">'+
-      '<div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:'+FIN_STATUS_DOT[status]+'"></span>'+count+' '+label+'</div>'+
-      '<div class="bly-kpi-value">'+krFmt(amount)+'</div></button>';
-  }
-  el.innerHTML=
-    card('all','Fakturaer',base.length,sum(base,'priceWithTax'))+
-    card('partial','Delvist betalt',partial.length,sum(partial,'remaining'))+
-    card('unclear','Uafklaret',unclear.length,sum(unclear,'priceWithTax'))+
-    card('unpaid','Udestående',unpaid.length,sum(unpaid,'priceWithTax'))+
-    card('paid','Betalte',paid.length,sum(paid,'priceWithTax'));
-  el.querySelectorAll('[data-inv-kpi-status]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      finInvoiceStatusFilter=btn.dataset.invKpiStatus;
-      renderFinInvoices();
-    });
-  });
-}
-function renderFinInvoices(){
-  renderFinInvoiceKpis();
-  var tbody=document.getElementById('fin-invoices-body');
-  var list=finInvoicesFiltered();
-  var countLbl=document.getElementById('fin-inv-count-label');
-  if(countLbl)countLbl.textContent=list.length+' faktura'+(list.length===1?'':'er')+' · '+krFmt(list.reduce(function(s,i){return s+(i.priceWithTax||0);},0))+' i alt';
-  tbody.innerHTML=list.map(function(inv){
-    var idx=finInvoices.indexOf(inv);
-    var partialInfo=inv.overrideStatus==='partial'?
-      '<div style="margin-top:4px;display:flex;gap:6px;align-items:center">'+
-        '<input type="number" class="fin-note-input fin-inv-paidamount" data-idx="'+idx+'" value="'+(inv.paidAmount!==null?inv.paidAmount:'')+'" placeholder="Betalt beløb" style="width:110px">'+
-        '<span class="fin-muted">rest: '+(inv.remaining!==null?krFmt(inv.remaining):'–')+'</span></div>':'';
-    var canDun=inv.overrideStatus==='unpaid'||inv.overrideStatus==='partial';
-    return '<tr class="bly-row"><td><input type="checkbox" class="fin-inv-select" data-inv-id="'+esc(inv.id)+'" '+(finInvSelected[inv.id]?'checked':'')+'></td>'+
-      '<td><span class="bly-status-dot" style="background:'+FIN_STATUS_DOT[inv.overrideStatus]+'"></span><b>'+esc(inv.customer)+'</b>'+(inv.jobId?' <a href="javascript:void(0)" onclick="openProjectDetail('+inv.jobId+')" class="fin-edit-btn fin-edit-btn-icon" title="Åbn sagen">🔗</a>':'')+'</td>'+
-      '<td><div class="bly-desc-inner" title="'+esc(inv.fullName)+'">'+esc(inv.fullName)+' <span style="color:var(--bly-sub)">· '+esc((inv.createdAt||'').slice(0,10))+'</span></div></td>'+
-      '<td class="bly-num">'+krFmt(inv.price)+'</td><td class="bly-num">'+krFmt(inv.priceWithTax)+'</td><td class="bly-num">'+krFmt(inv.balance)+'</td>'+
-      '<td class="bly-status-cell '+inv.overrideStatus+'"><select class="bly-status-select fin-inv-status" data-idx="'+idx+'">'+
-        '<option value="paid" '+(inv.overrideStatus==='paid'?'selected':'')+'>✓ Betalt</option>'+
-        '<option value="partial" '+(inv.overrideStatus==='partial'?'selected':'')+'>◐ Delvist betalt</option>'+
-        '<option value="unpaid" '+(inv.overrideStatus==='unpaid'?'selected':'')+'>Udestående</option>'+
-        '<option value="unclear" '+(inv.overrideStatus==='unclear'?'selected':'')+'>⚠ Uafklaret</option>'+
-      '</select>'+partialInfo+'</td>'+
-      '<td><input class="fin-note-input fin-inv-note" data-idx="'+idx+'" value="'+esc(inv.note)+'" placeholder="Note..." style="border:1px solid transparent;background:transparent;font-size:11.5px;width:100%;padding:4px 6px;border-radius:6px" onfocus="this.style.borderColor=\'var(--bly-border)\'" onblur="this.style.borderColor=\'transparent\'"></td>'+
-      '<td>'+(canDun?'<button class="btn small fin-send-rykker-btn" data-idx="'+idx+'">✉️ Send rykker</button>':(inv.overrideStatus==='paid'?'<span class="bly-mail-icon">✉ sendt</span>':'<span class="fin-muted">—</span>'))+'</td></tr>';
-  }).join('')||'<tr><td colspan="9" class="fin-empty">Ingen fakturaer i denne periode.</td></tr>';
-  tbody.querySelectorAll('.fin-inv-select').forEach(function(cb){
-    cb.addEventListener('change',function(){
-      if(cb.checked)finInvSelected[cb.dataset.invId]=true;else delete finInvSelected[cb.dataset.invId];
-      updateFinInvBulkBar();
-    });
-  });
-  tbody.querySelectorAll('.fin-inv-status').forEach(function(sel){
-    sel.addEventListener('change',function(e){saveFinInvoice(finInvoices[e.target.dataset.idx],e.target.value,null,undefined);});
-  });
-  tbody.querySelectorAll('.fin-inv-note').forEach(function(inp){
-    inp.addEventListener('change',function(e){saveFinInvoice(finInvoices[e.target.dataset.idx],null,e.target.value,undefined);});
-  });
-  tbody.querySelectorAll('.fin-inv-paidamount').forEach(function(inp){
-    inp.addEventListener('change',function(e){saveFinInvoice(finInvoices[e.target.dataset.idx],'partial',null,e.target.value);});
-  });
-  tbody.querySelectorAll('.fin-send-rykker-btn').forEach(function(btn){
-    btn.addEventListener('click',async function(){
-      var inv=finInvoices[btn.dataset.idx];
-      if(!await gmConfirm('Send en rykker-mail til '+inv.customer+' nu, for "'+inv.fullName+'"?'))return;
-      btn.disabled=true;btn.textContent='Sender…';
-      var r=await api('/api/finance/dunning-send/'+encodeURIComponent(inv.id),{method:'POST'});
-      btn.disabled=false;btn.textContent='✉️ Send rykker';
-      if(r&&r.ok)toast('Rykker '+r.level+' sendt til '+r.toEmail,'✓');
-      else if(r)toast(r.error||'Kunne ikke sende','❌');
-    });
-  });
-  updateFinInvBulkBar();
-  var selectAllCb=document.getElementById('fin-inv-select-all');
-  selectAllCb.checked=list.length>0&&list.every(function(inv){return finInvSelected[inv.id];});
-}
-// MASSEVALG — vælg flere fakturaer på én gang og anvend samme handling på dem alle
-// i stedet for at skulle klikke igennem hver enkelt.
-function updateFinInvBulkBar(){
-  var count=Object.keys(finInvSelected).length;
-  var bar=document.getElementById('fin-inv-bulk-bar');
-  bar.style.display=count?'flex':'none';
-  document.getElementById('fin-inv-bulk-count').textContent=count+' faktura(er) valgt';
-}
-document.getElementById('fin-inv-select-all').addEventListener('change',function(e){
-  var checked=e.target.checked;
-  finInvoicesFiltered().forEach(function(inv){if(checked)finInvSelected[inv.id]=true;else delete finInvSelected[inv.id];});
-  renderFinInvoices();
-});
-document.getElementById('fin-inv-bulk-clear').addEventListener('click',function(){finInvSelected={};renderFinInvoices();});
-document.getElementById('fin-inv-bulk-apply').addEventListener('click',async function(){
-  var ids=Object.keys(finInvSelected);
-  if(!ids.length)return;
-  var action=document.getElementById('fin-inv-bulk-action').value;
-  var selectedInvoices=finInvoices.filter(function(inv){return finInvSelected[inv.id];});
-  if(action==='rykker'){
-    var dunnable=selectedInvoices.filter(function(inv){return inv.overrideStatus==='unpaid'||inv.overrideStatus==='partial';});
-    if(!dunnable.length){toast('Ingen af de valgte kan få en rykker (skal være udestående/delvist betalt)','⚠');return;}
-    if(!await gmConfirm('Send rykker-mail til '+dunnable.length+' kunde(r) nu?'))return;
-    var btn=this;btn.disabled=true;btn.textContent='Sender…';
-    var sent=0;
-    for(var i=0;i<dunnable.length;i++){
-      var r=await api('/api/finance/dunning-send/'+encodeURIComponent(dunnable[i].id),{method:'POST'});
-      if(r&&r.ok)sent++;
-    }
-    btn.disabled=false;btn.textContent='Anvend';
-    toast('Rykker sendt til '+sent+' af '+dunnable.length,'✓');
-  }else{
-    if(!await gmConfirm('Sæt status til "'+action+'" for '+ids.length+' faktura(er)?'))return;
-    var btn2=this;btn2.disabled=true;btn2.textContent='Anvender…';
-    for(var j=0;j<selectedInvoices.length;j++){
-      await api('/api/finance/invoices/'+encodeURIComponent(selectedInvoices[j].id),{method:'PUT',body:JSON.stringify({status:action,note:selectedInvoices[j].note,paidAmount:null})});
-    }
-    btn2.disabled=false;btn2.textContent='Anvend';
-    toast('Status opdateret for '+ids.length+' faktura(er)','✓');
-  }
-  finInvSelected={};
-  loadFinance();
-});
-async function saveFinInvoice(inv,status,note,paidAmount){
-  var body={status:status||inv.overrideStatus,note:note!==null&&note!==undefined?note:inv.note,paidAmount:paidAmount!==undefined?paidAmount:inv.paidAmount};
-  var r=await api('/api/finance/invoices/'+encodeURIComponent(inv.id),{method:'PUT',body:JSON.stringify(body)});
-  if(r&&r.ok){
-    inv.overrideStatus=body.status;inv.note=body.note;
-    inv.paidAmount=body.paidAmount!==''&&body.paidAmount!==null?+body.paidAmount:null;
-    inv.remaining=(inv.overrideStatus==='partial'&&inv.paidAmount!=null)?Math.max(0,(inv.priceWithTax||0)-inv.paidAmount):null;
-    toast('Gemt ✓','✓');
-    renderFinInvoices();renderFinOverview(await api('/api/finance/bank-snapshots')||[]);
-  }
-  else if(r)toast(r.error||'Fejl','❌');
-}
 
 // ---- Udgifter — hjælpefunktioner (fladt array, filtrering, sortering) ----
 function finExpenseAllFlat(){
@@ -14544,8 +14377,14 @@ function finExpenseQuickAdd(){
   document.getElementById('udg-la-name').value='';document.getElementById('udg-la-amt').value='';
 }
 
-// PRIVAT BUDGET — samme visuelle mønster som Udgifter, men med fri kategori-styring
-// (opret/omdøb/slet hele sektioner, ikke kun poster inde i dem).
+// PRIVAT BUDGET — RUNDE H #316 (Martins ønske: "Lav også mit private budget om
+// ligesom Udgifter er ... ellers bare 1/1 som udgifter ser ud"). Samme
+// måneds-opdelte model som Udgifter (fast kort-grid, betalt-boks pr. post, nye
+// måneder arver automatisk posterne fra forrige måned) — men beholder muligheden
+// for selv at oprette/omdøbe/slette hele kategorier ("+ 1 ekstra kategori-knap"),
+// som den almindelige Udgifter-fane ikke har. Bevidst UDEN Udgifters søgning/
+// filtrering/liste-visning/fordelingsgraf — Martin bad ikke specifikt om dem her,
+// og de kan tilføjes senere hvis han ønsker fuld 1:1-parity.
 function renderFinPrivateBudgetKpis(){
   var el=document.getElementById('fin-privatbudget-kpis');
   if(!el)return;
@@ -14561,40 +14400,35 @@ function renderFinPrivateBudgetKpis(){
   el.innerHTML=card('Indtægt',income,'pos')+card('Alt andet (udgifter, gæld, opsparing mv.)',other)+card('Netto',net,net>=0?'pos':'neg');
 }
 function renderFinPrivateBudget(){
+  var labelEl=document.getElementById('fin-privbudget-month-label');
+  if(labelEl)labelEl.textContent=finExpenseMonthLabel(finPrivBudgetMonth);
   renderFinPrivateBudgetKpis();
   var el=document.getElementById('fin-private-budget-categories');
   if(!el)return;
   el.innerHTML=finPrivateBudget.map(function(cat){
     var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
-    return '<div class="fin-cat-card fin-resizable" draggable="true" data-catid="'+cat.id+'">'+
+    return '<div class="fin-cat-card" data-catid="'+cat.id+'">'+
       '<div class="fin-cat-head">'+
         '<input type="text" class="fin-privcat-name" data-catid="'+cat.id+'" value="'+esc(cat.name)+'" style="background:transparent;border:0;color:inherit;font-weight:800;font-size:13px;width:150px">'+
         '<span style="display:flex;align-items:center;gap:10px">'+krFmt(catTotal)+
         '<button class="fin-del-btn" data-action="fin-del-private-cat" data-catid="'+cat.id+'" title="Slet hele kategorien">×</button></span></div>'+
       '<div class="fin-cat-body">'+cat.items.map(function(it){
-        return '<div class="fin-exp-row" style="grid-template-columns:1fr 120px 34px" data-id="'+it.id+'">'+
-          '<input type="text" class="fin-priv-name" value="'+esc(it.name)+'">'+
+        return '<div class="fin-exp-row" style="grid-template-columns:26px 1fr 110px 34px'+(+it.paid?';opacity:.55':'')+'" data-id="'+it.id+'">'+
+          '<input type="checkbox" class="fin-priv-paid" title="Betalt" style="width:16px;height:16px;accent-color:var(--bly-dot-paid);cursor:pointer" '+(+it.paid?'checked':'')+'>'+
+          '<input type="text" class="fin-priv-name" value="'+esc(it.name)+'" style="text-decoration:'+(+it.paid?'line-through':'none')+'">'+
           '<input type="number" class="fin-priv-amount" value="'+it.amount+'">'+
           '<button class="fin-del-btn fin-priv-del">×</button></div>';
       }).join('')+'</div>'+
       '<div style="padding:0 20px 14px"><button class="fin-add-btn" style="width:100%" data-catid="'+cat.id+'" data-action="fin-add-private-item">+ Tilføj post</button></div></div>';
   }).join('')||'<div class="fin-empty">Ingen kategorier endnu — tryk "+ Ny kategori" for at starte.</div>';
 
-  // Træk i kortets navnelinje for at omarrangere — grib i hjørnet for at strække.
-  el.querySelectorAll('.fin-cat-card.fin-resizable').forEach(function(card){card.dataset.dragId=card.dataset.catid;});
-  makeFinBoxesDraggable(el,'.fin-cat-card.fin-resizable',function(order){
-    api('/api/finance/private-budget/reorder',{method:'PUT',body:JSON.stringify({order:order})});
-  });
-  applyFinPanelBoxSizes('privatbudget','fin-private-budget-categories','.fin-cat-card.fin-resizable').then(function(){
-    makeFinBoxesResizable(el,'.fin-cat-card.fin-resizable','privatbudget');
-  });
-
   el.querySelectorAll('[data-id]').forEach(function(row){
     var id=row.dataset.id;
     row.querySelector('.fin-priv-name').addEventListener('change',function(){saveFinPrivateItem(id,row);});
     row.querySelector('.fin-priv-amount').addEventListener('change',function(){saveFinPrivateItem(id,row);});
+    row.querySelector('.fin-priv-paid').addEventListener('change',function(){saveFinPrivateItem(id,row);});
     row.querySelector('.fin-priv-del').addEventListener('click',async function(){
-      if(await gmConfirm('Slet denne post?'))api('/api/finance/private-budget/item/'+id,{method:'DELETE'}).then(async function(){loadFinance();});
+      if(await gmConfirm('Slet denne post?'))api('/api/finance/private-budget/item/'+id,{method:'DELETE'}).then(async function(){loadPrivateBudgetForMonth();});
     });
   });
   el.querySelectorAll('.fin-privcat-name').forEach(function(inp){
@@ -14607,21 +14441,21 @@ function renderFinPrivateBudget(){
   el.querySelectorAll('[data-action="fin-del-private-cat"]').forEach(function(btn){
     btn.addEventListener('click',async function(){
       if(await gmConfirm('Slet hele kategorien og alle dens poster? Kan ikke fortrydes.'))
-        api('/api/finance/private-budget/category/'+btn.dataset.catid,{method:'DELETE'}).then(function(){loadFinance();});
+        api('/api/finance/private-budget/category/'+btn.dataset.catid,{method:'DELETE'}).then(function(){loadPrivateBudgetForMonth();});
     });
   });
   el.querySelectorAll('[data-action="fin-add-private-item"]').forEach(function(btn){
     btn.addEventListener('click',function(){
-      api('/api/finance/private-budget/item',{method:'POST',body:JSON.stringify({category_id:btn.dataset.catid,name:'Ny post',amount:0})}).then(function(){loadFinance();});
+      api('/api/finance/private-budget/item',{method:'POST',body:JSON.stringify({category_id:btn.dataset.catid,name:'Ny post',amount:0,month_key:finPrivBudgetMonth})}).then(function(){loadPrivateBudgetForMonth();});
     });
   });
 }
 async function saveFinPrivateItem(id,row){
-  var body={name:row.querySelector('.fin-priv-name').value,amount:row.querySelector('.fin-priv-amount').value};
+  var body={name:row.querySelector('.fin-priv-name').value,amount:row.querySelector('.fin-priv-amount').value,paid:row.querySelector('.fin-priv-paid').checked};
   var r=await api('/api/finance/private-budget/item/'+id,{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){
     finPrivateBudget.forEach(function(cat){cat.items.forEach(function(it){
-      if(String(it.id)===String(id)){it.name=body.name;it.amount=+body.amount||0;}
+      if(String(it.id)===String(id)){it.name=body.name;it.amount=+body.amount||0;it.paid=body.paid?1:0;}
     });});
     toast('Gemt','✓');renderFinPrivateBudget();
   }
@@ -14631,8 +14465,54 @@ document.getElementById('fin-add-private-cat-btn').addEventListener('click',asyn
   var name=await gmPrompt('Navn på ny kategori (fx "Investeringer", "Ønskeliste"):');
   if(!name||!name.trim())return;
   api('/api/finance/private-budget/category',{method:'POST',body:JSON.stringify({name:name.trim()})}).then(function(r){
-    if(r&&r.ok){toast('Kategori oprettet ✓','✓');loadFinance();}else if(r)toast(r.error||'Fejl','❌');
+    if(r&&r.ok){toast('Kategori oprettet ✓','✓');loadPrivateBudgetForMonth();}else if(r)toast(r.error||'Fejl','❌');
   });
+});
+// Måned-navigation — henter kun privat-budget-data på ny, i stedet for at genindlæse
+// hele Økonomi-siden (samme letvægts-mønster som Moms-boksens kvartal-skift).
+async function loadPrivateBudgetForMonth(){
+  var r=await api('/api/finance/private-budget?month='+finPrivBudgetMonth);
+  finPrivateBudget=(r&&r.categories)||[];
+  renderFinPrivateBudget();
+}
+document.getElementById('fin-privbudget-prev').addEventListener('click',function(){
+  finPrivBudgetMonth=finExpenseAdjMonthKey(finPrivBudgetMonth,-1);
+  loadPrivateBudgetForMonth();
+});
+document.getElementById('fin-privbudget-next').addEventListener('click',function(){
+  finPrivBudgetMonth=finExpenseAdjMonthKey(finPrivBudgetMonth,1);
+  loadPrivateBudgetForMonth();
+});
+
+// ── Privat budget-note ("som i Notions noter") — ét fast, frit tekstfelt nederst
+// på siden, autogemmes 700ms efter sidste tastetryk (samme debounce-mønster som
+// den flydende note-widget, se saveNoteWidgetSoon). ──────────────────────────
+var pbNoteSaveTimer=null;
+async function loadPrivateBudgetNote(){
+  var el=document.getElementById('pb-note-body');
+  if(!el)return;
+  var r=await api('/api/finance/private-budget-note');
+  el.innerHTML=(r&&r.content)||'';
+}
+function savePrivateBudgetNoteSoon(){
+  clearTimeout(pbNoteSaveTimer);
+  pbNoteSaveTimer=setTimeout(function(){
+    api('/api/finance/private-budget-note',{method:'PUT',body:JSON.stringify({content:document.getElementById('pb-note-body').innerHTML})});
+  },700);
+}
+document.getElementById('pb-note-body').addEventListener('input',savePrivateBudgetNoteSoon);
+document.querySelectorAll('[data-pbnote-cmd]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.getElementById('pb-note-body').focus();
+    document.execCommand(btn.dataset.pbnoteCmd,false,null);
+    savePrivateBudgetNoteSoon();
+  });
+});
+document.getElementById('pb-note-check-btn').addEventListener('click',function(){
+  var body=document.getElementById('pb-note-body');
+  body.focus();
+  document.execCommand('insertHTML',false,'<label style="display:flex;align-items:flex-start;gap:6px;margin:2px 0"><input type="checkbox" style="margin-top:3px"><span>Ny opgave</span></label><br>');
+  savePrivateBudgetNoteSoon();
 });
 
 function renderFinAccessList(){
@@ -16391,6 +16271,10 @@ async function bind(){
   document.getElementById('doc-send-template').addEventListener('change',docSendUpdatePreview);
   document.getElementById('qe-send-btn').addEventListener('click',function(){if(qeState.id)openDocSendModal('quote',qeState.id);});
   document.getElementById('iv-send-btn').addEventListener('click',function(){if(ivState.id)openDocSendModal('invoice',ivState.id);});
+  document.getElementById('iv-dunning-btn').addEventListener('click',function(){if(ivState.id)openDunningSendModal(ivState.id);});
+  document.getElementById('close-dunning-send').onclick=function(){closeModal('dunning-send-modal');};
+  document.getElementById('dunning-send-confirm-btn').onclick=confirmDunningSend;
+  document.getElementById('dunning-send-template').addEventListener('change',dunningSendUpdatePreview);
   document.getElementById('close-email-send').onclick=function(){closeModal('email-send-modal');};
   document.getElementById('close-tpl-edit').onclick=function(){closeModal('tpl-edit-modal');};
   document.getElementById('save-tpl-edit').onclick=saveTemplateEditor;
@@ -16707,7 +16591,7 @@ async function bind(){
   // ('quote-editor-modal', bruges til både ny og redigér) og faktura
   // ('invoice-detail-modal') — begge fjernet fra listen herunder, så de (som
   // 'crm-modal') kun kan lukkes via ✕/Annullér/Luk-knappen, aldrig ved klik udenfor.
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal','tt-photo-lightbox'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','dunning-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal','tt-photo-lightbox'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -17307,6 +17191,12 @@ async function initQuotesModule(){
   await Promise.all([loadQzProducts(),loadQzQuotes(),loadQzInvoices(),loadQzTemplates()]);
   renderQzProducts();renderQzQuotes();renderQzInvoices();renderQzTemplates();populateQeTemplatePicker();
   loadQzDeliveryWarning();
+  // RUNDE H #316 — Rykker-indstillinger/-log bor nu her (se qz-dunning-settings-panel)
+  // i stedet for i Økonomi-modulet. renderFinDunning() selv er uændret — den virker
+  // uanset hvor i DOM'en fin-dunning-*-elementerne befinder sig.
+  var dunningSettings=await api('/api/finance/dunning-settings');
+  var dunningLog=await api('/api/finance/dunning-log');
+  renderFinDunning(dunningSettings,dunningLog||[]);
 }
 // RUNDE M (sep. 2026, Martins presserende ønske) — se HTML-kommentaren ved
 // #qz-delivery-warning. Fejler kaldet (fx ældre server uden endpointet under
@@ -17483,6 +17373,15 @@ async function qzPendingEditPrice(quoteId){
 
 var QZ_MORE_TABS=['products','templates','timetrack'];
 function switchQzTab(name){
+  // RUNDE H #314 (Martins ønske: "når jeg har åbnet et tilbud kan jeg ikke
+  // bruge menuen til at navigere til andre sider i tilbud, jeg kan kun bruge
+  // tilbage knappen") — fundet: denne funktion skiftede altid kun panelerne
+  // INDE i qz-list-view, men når et tilbud er åbent er qz-list-view selv
+  // skjult (qz-detail-view vises ovenpå, se qzShowDetailView). Uden dette
+  // kald blev den nye fane bare gjort klar bagved det stadig-synlige åbne
+  // tilbud — så det så ud som om menuen slet ikke virkede. Skal lukke
+  // tilbudsvisningen først, ligesom "← Tilbage til alle tilbud"-knappen gør.
+  qzShowDetailView(false);
   qzActiveTab=name;
   document.querySelectorAll('#qz-tabs > .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
   // "Mere"-knappen (Produkter/Skabeloner) er flyttet ud af de altid-synlige
@@ -24592,6 +24491,9 @@ async function openInvoiceDetail(id){
   // annulleret — der er intet at "markere betalt" på et af de to.
   ivState.remaining=Math.max(0,Number(inv.remaining)||0);
   document.getElementById('iv-mark-paid-btn').style.display=(ivState.remaining>0&&inv.status!=='void'&&!isDraft)?'inline-flex':'none';
+  // RUNDE H #316 — samme betingelse som "✓ Markér betalt": kun relevant at rykke
+  // for penge der reelt mangler, aldrig på en kladde eller en annulleret faktura.
+  document.getElementById('iv-dunning-btn').style.display=(ivState.remaining>0&&inv.status!=='void'&&!isDraft)?'inline-flex':'none';
   document.getElementById('iv-lines-preview').innerHTML='<table class="bly-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Salgspris</th><th class="num">I alt</th></tr></thead><tbody>'
     +(inv.lines||[]).map(function(l){
       if(l.line_type==='text')return '<tr><td colspan="4"><div class="ln-textrow">'+esc(l.description||'')+'</div></td></tr>';
@@ -24812,6 +24714,10 @@ function bindQuotesModuleEvents(){
   });
   document.addEventListener('click',function(e){
     if(!e.target.closest('#qz-more-drop'))document.getElementById('qz-more-menu').classList.remove('open');
+  });
+  document.getElementById('qz-dunning-settings-toggle').addEventListener('click',function(){
+    var panel=document.getElementById('qz-dunning-settings-panel');
+    panel.style.display=panel.style.display==='none'?'':'none';
   });
   document.getElementById('qz-product-search').addEventListener('input',renderQzProducts);
   document.getElementById('qz-template-search').addEventListener('input',renderQzTemplates);
