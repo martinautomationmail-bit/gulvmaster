@@ -3081,7 +3081,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-12.3</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.1</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -6649,6 +6649,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="bly-btn outline small" id="iv-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
         <button class="bly-btn outline small" id="iv-edit-lines-btn" type="button" title="Redigér linjer/rabat — kun muligt før fakturaen er sendt">✎ Redigér linjer</button>
         <button class="bly-btn outline small" id="iv-send-btn" type="button" title="Send fakturaen som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
+        <!-- RUNDE H #301 (Martins ønske: "burde jeg bare kunne trykke på en knap
+             betalt? kan ikke finde den knap") — der fandtes kun den nederste
+             "Registrér betaling"-formular, hvor man selv skal skrive beløbet
+             (og selv regne resten ud). Samme ét-klik-mønster som "Hele beløbet"
+             ved kreditnotaer (RUNDE T) — udfylder IKKE bare beløbet, men
+             registrerer med det samme en betaling på hele restbeløbet med dags
+             dato, direkte fra den mest synlige plads (top af faktura-vinduet). -->
+        <button class="bly-btn small" id="iv-mark-paid-btn" type="button" style="background:var(--bly-dot-paid);border-color:var(--bly-dot-paid);color:#fff" title="Registrerer med det samme en betaling på hele det resterende beløb, med dags dato">✓ Markér betalt</button>
       </div>
     </div>
     <div class="sub" id="iv-subtitle" style="margin-bottom:16px"></div>
@@ -24203,6 +24211,11 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-credited-tile').style.display=Number(inv.credited_total)>0?'':'none';
   document.getElementById('iv-credited').textContent=krFmt(Number(inv.credited_total)||0);
   document.getElementById('iv-remaining').textContent=krFmt(Number(inv.remaining));
+  // RUNDE H #301 — bruges af "✓ Markér betalt"-knappen (se markIvFullPaid).
+  // Skjules når der reelt ikke er noget tilbage at betale, eller fakturaen er
+  // annulleret — der er intet at "markere betalt" på et af de to.
+  ivState.remaining=Math.max(0,Number(inv.remaining)||0);
+  document.getElementById('iv-mark-paid-btn').style.display=(ivState.remaining>0&&inv.status!=='void')?'inline-flex':'none';
   document.getElementById('iv-lines-preview').innerHTML='<table class="bly-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Salgspris</th><th class="num">I alt</th></tr></thead><tbody>'
     +(inv.lines||[]).map(function(l){
       if(l.line_type==='text')return '<tr><td colspan="4"><div class="ln-textrow">'+esc(l.description||'')+'</div></td></tr>';
@@ -24280,6 +24293,22 @@ async function addIvPayment(){
   var r=await api('/api/invoices/'+ivState.id+'/payments',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){toast('Betaling registreret','✓');await loadQzInvoices();renderQzInvoices();await openInvoiceDetail(ivState.id);}
   else toast((r&&r.error)||'Kunne ikke registrere betaling','❌');
+}
+// RUNDE H #301 (Martins ønske om en simpel "betalt"-knap) — registrerer i ét
+// klik en betaling på HELE det resterende beløb (ivState.remaining, sat i
+// openInvoiceDetail) med dags dato, uden at man selv skal skrive/regne noget.
+// Bruger samme endpoint som en almindelig delbetaling (POST .../payments) —
+// en fuld betaling er blot en delbetaling der tilfældigvis dækker resten.
+async function markIvFullyPaid(){
+  var amount=Math.round((ivState.remaining||0)*100)/100;
+  if(!amount||amount<=0){toast('Der er intet resterende beløb at markere som betalt','⚠️');return;}
+  var btn=document.getElementById('iv-mark-paid-btn');
+  btn.disabled=true;
+  var body={amount:amount,paid_at:new Date().toISOString().slice(0,10)};
+  var r=await api('/api/invoices/'+ivState.id+'/payments',{method:'POST',body:JSON.stringify(body)});
+  btn.disabled=false;
+  if(r&&r.ok){toast('Faktura markeret som betalt ✓','✓');await loadQzInvoices();renderQzInvoices();await openInvoiceDetail(ivState.id);}
+  else toast((r&&r.error)||'Kunne ikke markere som betalt','❌');
 }
 async function deleteIvPayment(paymentId){
   if(!await gmConfirm('Fjern denne betaling?'))return;
@@ -24628,6 +24657,7 @@ function bindQuotesModuleEvents(){
   document.addEventListener('keydown',function(e){if(e.key==='Escape')qzHideLineAutocomplete();});
 
   document.getElementById('iv-add-payment-btn').addEventListener('click',addIvPayment);
+  document.getElementById('iv-mark-paid-btn').addEventListener('click',markIvFullyPaid);
   document.getElementById('iv-add-credit-btn').addEventListener('click',addIvCreditNote);
   // RUNDE T — "Hele beløbet" + postevælgeren.
   document.getElementById('iv-credit-full-btn').addEventListener('click',function(){document.getElementById('iv-credit-amount').value=Math.round((ivState.maxCreditable||0)*100)/100;});
