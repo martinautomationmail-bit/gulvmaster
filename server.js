@@ -12280,12 +12280,14 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   for (const mk of monthKeys) buckets[mk] = {};
 
   // 1) RIGTIGE FAKTURAER — tælles i den måned de faktisk er udstedt.
+  // RUNDE H #306 — 'draft' udelukket her ligesom 'void': en kladde-faktura er
+  // ikke rigtig omsætning endnu (se fetchFinanceInvoices for samme regel).
   const invRows = (await pool.query(`
     SELECT i.id, i.job_number, i.job_name, i.total, i.created_at,
            pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag
     FROM invoices i
     LEFT JOIN projects pr ON pr.job_number = i.job_number
-    WHERE i.status <> 'void'
+    WHERE i.status NOT IN ('void','draft')
   `)).rows;
   for (const r of invRows) {
     const naturalMk = String(r.created_at).slice(0, 7);
@@ -12679,6 +12681,10 @@ app.put('/api/finance/job-override/:jobId', auth, panelAccess('finance'), asyncR
 // BEMÆRK (fortalt til Martin ved leveringen): gamle fakturaer der kun findes inde i
 // JobTread, og aldrig er blevet indtastet her i Tilbud & Faktura, vises IKKE her —
 // kun det der reelt findes i selve programmet.
+// RUNDE H #306 — 'draft'-fakturaer (se PUT .../:id/activate) er bevidst udelukket her,
+// ligesom 'void': en kladde er ikke en rigtig, talt-med faktura endnu, og skal derfor
+// heller ikke optræde i Økonomi-oversigten eller foreslås som match i bankafstemningen
+// (som bruger denne samme funktion, se matchTransactionsToInvoices).
 async function fetchFinanceInvoices() {
   const rows = (await pool.query(`
     SELECT i.id, i.invoice_number, i.job_name, i.job_number, i.customer_id, i.customer_email,
@@ -12690,7 +12696,7 @@ async function fetchFinanceInvoices() {
     FROM invoices i
     LEFT JOIN customers c ON c.id = i.customer_id
     LEFT JOIN projects pr ON pr.job_number = i.job_number
-    WHERE i.status <> 'void'
+    WHERE i.status NOT IN ('void','draft')
     ORDER BY i.created_at DESC, i.id DESC
   `)).rows;
   const overridesResult = await pool.query('SELECT * FROM finance_invoice_overrides');
@@ -13899,6 +13905,58 @@ app.get('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) 
   res.json(rows.rows);
 }));
 
+// RUNDE H #305 (sep. 2026, Martins ønske) — "SKAL FAKTURERES": et samlet
+// overblik over alle godkendte tilbud der stadig har linjer tilbage i puljen
+// (se remaining_lines/invoicing-status nedenfor), til cashflow-analyse: "vise
+// alle tilbud som har et projekt i denne uge, måned eller på interval ... så
+// kan jeg hurtigt se hvem vi skal have faktureret mere". Filtreringen på
+// uge/måned/interval sker bevidst CLIENT-SIDE i admin.html (samme mønster som
+// Tilbud/Fakturaer/Timetrackings periodefiltre, se makeBlyPeriodFilter) — denne
+// rute leverer bare de RÅ data ÉN gang (alle kandidater + hver sags fulde liste
+// af planlagte opgave-datoer), så et skift af periodefilter ikke kræver et nyt
+// serverkald hver gang.
+//
+// "Har et projekt i denne uge/måned" tolkes som: sagens opgaver (gantt_tasks,
+// linket via projects.quote_id -> project_id) er planlagt til at foregå i
+// perioden — IKKE hvornår tilbuddet blev oprettet. Hver opgaves fulde
+// start/slut-interval sendes med (task_ranges), så klienten selv kan afgøre om
+// PERIODEN overlapper mindst én opgave — en fælles MIN/MAX-udregning her på
+// serveren ville give falske match hen over et langt hul mellem to opgaver.
+//
+// 'converted'-tilbud er BEVIDST med, ikke kun 'accepted' — konverteret betyder
+// blot "der findes mindst én faktura" (se convert-to-invoice), og med
+// delfakturering kan der sagtens stå linjer tilbage i puljen alligevel.
+//
+// VIGTIGT: skal stå FØR /api/quotes/:id nedenfor — ellers matcher Express'
+// :id-rute "pending-invoicing" som et (ugyldigt) id først.
+app.get('/api/quotes/pending-invoicing', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT q.id, q.quote_number, q.job_name, q.job_number, q.status, q.total::float AS total,
+           c.name AS customer_name, q.customer_email,
+           p.id AS project_id,
+           COALESCE(inv.invoiced_total,0)::float AS invoiced_total,
+           COALESCE(rem.remaining_line_count,0)::int AS remaining_line_count,
+           COALESCE(gt.task_ranges,'[]') AS task_ranges
+    FROM quotes q
+    LEFT JOIN customers c ON c.id = q.customer_id
+    LEFT JOIN projects p ON p.quote_id = q.id
+    LEFT JOIN LATERAL (
+      SELECT SUM(i.total) AS invoiced_total FROM invoices i WHERE i.quote_id = q.id AND i.status <> 'void'
+    ) inv ON true
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS remaining_line_count FROM quote_lines ql
+      WHERE ql.quote_id = q.id AND ql.invoiced_in_invoice_id IS NULL AND ql.line_type <> 'text'
+    ) rem ON true
+    LEFT JOIN LATERAL (
+      SELECT json_agg(json_build_object('start_date', gt2.start_date, 'end_date', gt2.end_date)) AS task_ranges
+      FROM gantt_tasks gt2 WHERE gt2.project_id = p.id
+    ) gt ON true
+    WHERE q.status IN ('accepted','converted') AND COALESCE(rem.remaining_line_count,0) > 0
+    ORDER BY q.created_at DESC
+  `);
+  res.json(rows.rows.map(r => ({ ...r, remaining_total: Math.max(0, r.total - r.invoiced_total) })));
+}));
+
 app.get('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
@@ -14187,13 +14245,25 @@ app.post('/api/invoices/direct-create', auth, panelAccess('quotes'), asyncRoute(
   // klienten eksplicit en tom streng (fordi Martin bevidst har ryddet feltet), gemmes
   // det som ingen note, ligesom hidtil.
   const resolvedCustomerId = await resolveCustomerId(b.customer_id || null, b.customer_email || null, b.customer_phone || null);
+  // RUNDE H #306 (sep. 2026, Martins ønske) — "KLADDE"-FAKTURA: "jeg kan lave en
+  // faktura men når [jeg] sætte[r] den som kladde [skal] den ikke automatisk
+  // [være] låst". En direkte faktura fik hidtil ALTID status 'unpaid' med det
+  // samme — den var reelt en "rigtig", talt-med faktura fra sekundet den blev
+  // oprettet, selvom Martin bare ville forberede den. as_draft (sat fra
+  // "📝 Gem som kladde"-knappen, se qeSaveBtnDraft i admin.html) giver i stedet
+  // status 'draft' — IKKE låst for redigering (låsen styres udelukkende af
+  // sent_at, se PUT /api/invoices/:id), men holdt UDENFOR økonomital
+  // (fetchFinanceInvoices ekskluderer 'draft', ligesom 'void') og kan ikke
+  // sendes til kunden før den er aktiveret (se guard i POST .../:id/send og
+  // POST .../:id/activate nedenfor).
+  const initialStatus = b.as_draft ? 'draft' : 'unpaid';
   const r = await pool.query(`
     INSERT INTO invoices (invoice_number,job_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,discount_pct)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'unpaid',$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$17,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
   `, [invoiceNumber, jobNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total,
     b.notes !== undefined ? (b.notes ? sanitizeRichText(b.notes) : null) : (company.invoiceBottomNoteDefault || null),
     b.top_note !== undefined ? (b.top_note ? sanitizeRichText(b.top_note) : null) : (company.invoiceTopNoteDefault || null),
-    dueDate.toISOString().slice(0, 10), discountPct]);
+    dueDate.toISOString().slice(0, 10), discountPct, initialStatus]);
   const invoiceId = r.rows[0].id;
   let pos = 0;
   // BEMÆRK: invoice_lines har (til forskel fra quote_lines) INGEN discount_type-kolonne —
@@ -14237,7 +14307,12 @@ async function refreshInvoiceStatus(invoiceId) {
   const settled = Number(sum.paid) + Number(creditSum.credited);
   const total = Number(invoice.total);
   const status = settled <= 0 ? 'unpaid' : (settled >= total ? 'paid' : 'partial');
-  await pool.query(`UPDATE invoices SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2 AND status <> 'void'`, [status, invoiceId]);
+  // RUNDE H #306 — 'draft' beskyttes nu på samme måde som 'void': en kladde skal
+  // IKKE kunne skifte status stille og roligt til unpaid/partial/paid bare fordi
+  // en betaling et sted bliver registreret på den — den skal aktivt "Aktiveres"
+  // først (se POST /api/invoices/:id/activate, som selv kalder denne funktion
+  // BAGEFTER at have sat status='unpaid', så guarden ikke blokerer dét kald).
+  await pool.query(`UPDATE invoices SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2 AND status NOT IN ('void','draft')`, [status, invoiceId]);
 }
 
 app.get('/api/invoices', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -14287,6 +14362,24 @@ app.put('/api/invoices/:id', auth, panelAccess('quotes'), asyncRoute(async (req,
     req.params.id
   ]);
   logDocActivity('invoice', req.params.id, 'edited', req.user.name, null);
+  res.json({ ok: true });
+}));
+
+// RUNDE H #306 (sep. 2026, Martins ønske) — "AKTIVÉR"-KNAPPEN for en kladde-
+// faktura: gør den til en rigtig, talt-med faktura (status 'unpaid', eller
+// 'partial'/'paid' i det usandsynlige tilfælde at der allerede er registreret
+// betalinger på den, se refreshInvoiceStatus). Herefter opfører den sig som
+// enhver anden faktura — kan sendes, markeres betalt osv. Ren fremadrettet
+// overgang, ingen vej tilbage til 'draft' herfra (ligesom man ikke kan gøre en
+// sendt faktura om til ikke-sendt) — det er bevidst, en kladde er et
+// forberedelses-stadie, ikke noget man skal kunne toggle frem og tilbage.
+app.post('/api/invoices/:id/activate', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT id, status FROM invoices WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  if (current.status !== 'draft') return res.status(400).json({ error: 'Fakturaen er ikke en kladde' });
+  await pool.query(`UPDATE invoices SET status='unpaid', updated_at=${nowTextSQL()} WHERE id=$1`, [req.params.id]);
+  await refreshInvoiceStatus(req.params.id);
+  logDocActivity('invoice', req.params.id, 'edited', req.user.name, 'kladde aktiveret');
   res.json({ ok: true });
 }));
 
@@ -14768,7 +14861,11 @@ function pdfLineDescHeight(doc, l, width) {
   let h = doc.heightOfString(_rtStripBold(p.heading), { width });
   if (p.rest) {
     // RUNDE X — rest kan nu indeholde punkt-/nummererede lister og **fed** tekst.
-    h += 3 + rtBlocksHeight(doc, _rtParseBlocks(p.rest), width, 'Helvetica', 'Helvetica-Bold', 9.5);
+    // RUNDE H #304 (Martins ønske) — brødteksten er nu en anelse mindre end
+    // overskriften (8.5 mod 9.5) for at matche den dæmpede, grå stil i
+    // admin.html/HTML-forhåndsvisningen — SAMME størrelse skal bruges her og i
+    // drawPdfLineDesc nedenfor, ellers gentager vi RUNDE U's paginerings-bug.
+    h += 3 + rtBlocksHeight(doc, _rtParseBlocks(p.rest), width, 'Helvetica', 'Helvetica-Bold', 8.5);
   }
   if (p.note) {
     const noteH = rtBlocksHeight(doc, _rtParseBlocks(p.note), width - 16, 'Helvetica-Oblique', 'Helvetica-BoldOblique', 8.5);
@@ -14784,7 +14881,7 @@ function drawPdfLineDesc(doc, l, x, y, width) {
   let cy = y + doc.heightOfString(headingPlain, { width });
   if (p.rest) {
     cy += 3;
-    cy += drawRtBlocks(doc, _rtParseBlocks(p.rest), x, cy, width, 'Helvetica', 'Helvetica-Bold', 9.5, '#374151');
+    cy += drawRtBlocks(doc, _rtParseBlocks(p.rest), x, cy, width, 'Helvetica', 'Helvetica-Bold', 8.5, '#6B7280');
   }
   if (p.note) {
     const noteInnerWidth = width - 16;
@@ -15471,6 +15568,11 @@ app.get('/api/quotes/:id/sends/:sendId/pdf', auth, panelAccess('quotes'), asyncR
 app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const invoice = await loadInvoiceFull(req.params.id);
   if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  // RUNDE H #306 (Martins ønske: "jeg kan lave en faktura men når [jeg] sætte[r]
+  // den som kladde [skal] den ikke automatisk [være] låst") — en kladde er ikke
+  // en rigtig faktura endnu, så den skal ikke kunne sendes til kunden ved en
+  // fejl. Se qeSaveDirectInvoiceDraft/activateDraftInvoice i admin.html.
+  if (invoice.status === 'draft') return res.status(400).json({ error: 'Fakturaen er stadig en kladde — aktivér den først (se "✓ Aktivér faktura" på fakturaen), så den kan sendes til kunden.' });
   const b = req.body || {};
   const to = String(b.to || invoice.customer_email || '').trim();
   if (!to) return res.status(400).json({ error: 'Ingen modtager-mail angivet — udfyld kundens e-mail på fakturaen, eller angiv en her' });
@@ -15591,8 +15693,11 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   th{text-align:left;background:#F4F6FB;padding:8px 10px;font-size:11px;color:#374151}
   th.num,td.num{text-align:right}
   td{padding:8px 10px;border-bottom:1px solid #EEF0F3}
+  /* RUNDE H #304 (Martins ønske) — kun overskriften (første linje) er fed;
+     brødteksten derunder er nu almindelig vægt, dæmpet grå og en anelse
+     mindre, ligesom i admin.html's forhåndsvisning og den rigtige PDF. */
   .ln-heading{font-weight:700}
-  .ln-desc{font-weight:600;color:#374151;margin-top:3px;white-space:pre-line}
+  .ln-desc{font-weight:400;color:#6B7280;font-size:12px;margin-top:3px;white-space:pre-line}
   .ln-note{margin-top:6px;background:#F9FAFB;border-left:2px solid #9CA3AF;border-radius:4px;padding:6px 9px;font-size:11.5px;font-weight:400;font-style:italic;color:#4B5563;white-space:pre-line}
   .ln-note-label{display:block;font-size:8.5px;font-weight:700;font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF;margin-bottom:2px}
   /* RUNDE X — punkt-/nummererede lister i beskrivelse/note (se richTextToHtml). */

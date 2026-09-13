@@ -1755,11 +1755,18 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 /* RUNDE T (Martins ønske: rabat pr. linje skal stå tydeligt i sin egen kolonne,
    ikke klistret bag på Antal — se qeRenderPreview) */
 .qe-pdf-disc{color:#C0392B;font-weight:700;white-space:nowrap}
-/* Linje-overskrift/beskrivelse/note (sep. 2026, Martins ønske) — samme visuelle
-   hierarki som /tilbud/:token og den rigtige PDF: fed overskrift, lidt federe
-   beskrivelse lige under, og noten i sin egen fremhævede boks nederst. */
+/* Linje-overskrift/beskrivelse/note. RUNDE H #304 (Martins ønske: "kan du gøre
+   så brødteksten under ikke er fed altså kun den første linje er fed, og så
+   den tekst under er grålig og lidt mindre? det gør det pænere") — kun
+   OVERSKRIFTEN (første linje) er nu fed; selve brødteksten derunder er
+   almindelig vægt, dæmpet grå (samme --bly-sub-token som resten af Billy-
+   stilen) og en anelse mindre end normal tekst. Matcher nu også den rigtige
+   PDF (drawPdfLineDesc bruger allerede almindelig 'Helvetica', ikke fed) —
+   før var HTML-forhåndsvisningen (her og /tilbud/:token) faktisk federe end
+   det kunden endte med at få i selve PDF'en. Noten i sin egen boks nederst
+   er uændret. */
 .ln-heading{font-weight:700}
-.ln-desc{font-weight:600;color:#374151;margin-top:3px;white-space:pre-line}
+.ln-desc{font-weight:400;color:var(--bly-sub);font-size:12px;margin-top:3px;white-space:pre-line}
 /* RUNDE W — note-boksen var en mættet orange "post-it"-farve (#FFF7ED/#FB923C/
    #7C2D12), som virkede barnlig/useriøs på et rigtigt tilbud. Neutral, lys
    gråtone i stedet, kursiv i stedet for farve til at markere at det er en
@@ -2976,6 +2983,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="navdrop-menu">
         <a class="navdrop-item" href="#quotes/faktura-tab" data-page="quotes" data-qztab-jump="invoices">🧾 Fakturaer</a>
         <a class="navdrop-item" href="#quotes/tilbud-tab" data-page="quotes" data-qztab-jump="quotes">📝 Tilbud</a>
+        <a class="navdrop-item" href="#quotes/skal-faktureres" data-page="quotes" data-qztab-jump="pending-invoicing">💰 Skal faktureres</a>
         <a class="navdrop-item" href="#quotes/produkter" data-page="quotes" data-qztab-jump="products">📦 Produkter</a>
         <a class="navdrop-item" href="#quotes/skabeloner" data-page="quotes" data-qztab-jump="templates">📑 Skabeloner</a>
         <a class="navdrop-item" href="#quotes/timetracking" data-page="quotes" data-qztab-jump="timetrack">⏱️ Timetracking</a>
@@ -3081,7 +3089,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.3</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.5</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3870,6 +3878,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="bly-segtabs" id="qz-tabs">
     <button class="bly-segtab active" data-qztab="quotes" type="button">📝 Tilbud</button>
     <button class="bly-segtab" data-qztab="invoices" type="button">🧾 Fakturaer</button>
+    <!-- RUNDE H #305 (Martins ønske: "et modul med alle tilbud der accepteret som
+         skal faktureres ... vigtigt når jeg laver cashflow analyse") — egen
+         hovedfane (ikke gemt i "Mere") fordi Martin selv fremhævede at det er
+         vigtigt og noget han vil tjekke jævnligt. -->
+    <button class="bly-segtab" data-qztab="pending-invoicing" type="button">💰 Skal faktureres</button>
     <div class="qz-more-drop" id="qz-more-drop">
       <button class="bly-segtab qz-more-btn" id="qz-more-btn" type="button">⋯ Mere <span class="qz-more-caret">▾</span></button>
       <div class="qz-more-menu" id="qz-more-menu">
@@ -3949,6 +3962,34 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <table class="bly-table">
       <thead><tr><th>Nr.</th><th>Kunde/sag</th><th>Dato</th><th>Forfald</th><th>Status</th><th class="num">Total</th><th class="num">Betalt</th><th class="num">Rest</th><th style="width:90px"></th></tr></thead>
       <tbody id="qz-invoices-body"></tbody>
+    </table>
+  </div>
+
+  <!-- RUNDE H #305 (Martins ønske: "et modul med alle tilbud der accepteret som
+       skal faktureres. den kan vise alle tilbud som har et projekt i denne uge,
+       måned eller på interval ... vigtigt når jeg laver cashflow analyse") —
+       godkendte/konverterede tilbud der stadig har linjer tilbage i "puljen"
+       (se GET /api/quotes/pending-invoicing), filtrerbart på hvornår SAGENS
+       opgaver (gantt_tasks) er planlagt — ikke hvornår tilbuddet blev oprettet.
+       Samme periode-komponent (makeBlyPeriodFilter) og "Denne uge"-genvej som
+       Timetracking (RUNDE H #28/29), så det ser og opfører sig som resten. -->
+  <div class="qztabpage" id="qztab-pending-invoicing" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-pending-count">Skal faktureres</span><input type="text" id="qz-pending-search" class="bly-search" placeholder="Søg — navn, tilbudsnr., sagsnr...."></div>
+    </div>
+    <div class="bly-kpi-row" id="qz-pending-kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:0 0 14px;flex-wrap:wrap">
+      <span class="bly-toolbar-count" id="qz-pending-period-hint" style="margin-right:auto;color:var(--bly-sub)"></span>
+      <button class="bly-ctl" id="qz-pending-thisweek-btn" type="button">Denne uge</button>
+      <button class="bly-ctl" id="qz-pending-thismonth-btn" type="button">Denne måned</button>
+      <div class="bly-period" style="position:relative">
+        <button class="bly-ctl" id="qz-pending-period-btn" type="button">📅 <span id="qz-pending-period-label">Alt tid</span></button>
+        <div class="bly-period-pop" id="qz-pending-period-pop" style="display:none"></div>
+      </div>
+    </div>
+    <table class="bly-table">
+      <thead><tr><th>Kunde/sag</th><th>Tilbud</th><th>Status</th><th>Planlagt periode</th><th class="num">Tilbud total</th><th class="num">Faktureret</th><th class="num">Resterende</th><th style="width:90px"></th></tr></thead>
+      <tbody id="qz-pending-body"></tbody>
     </table>
   </div>
 
@@ -4049,6 +4090,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-btn outline" id="qe-request-btn" type="button" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
         <button class="bly-btn outline" id="qe-send-btn" type="button" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
         <button class="bly-btn outline" id="qe-convert-btn" type="button" style="display:none">➜ Konvertér til faktura</button>
+        <!-- RUNDE H #306 (Martins ønske: "jeg kan lave en faktura men når [jeg]
+             sætte[r] den som kladde [skal] den ikke automatisk [være] låst") —
+             kun vist for en NY direkte faktura (endnu ikke gemt), se
+             openDirectInvoiceEditor/qeState.directInvoice. Gemmer med status
+             'draft' i stedet for 'unpaid' — redigering er IKKE mere låst end en
+             normal faktura (låsen styres udelukkende af om den er SENDT, se
+             sent_at), men den tælles ikke med i Økonomi/bankafstemning og kan
+             ikke sendes til kunden før den er aktiveret (se "✓ Aktivér faktura"
+             på selve fakturaen bagefter). -->
+        <button class="bly-btn outline" id="qe-save-draft-btn" type="button" style="display:none" title="Gemmer fakturaen som en kladde — tæller ikke med i Økonomi og kan ikke sendes til kunden, før du aktiverer den">📝 Gem som kladde</button>
         <button class="bly-btn" id="qe-save-btn" type="button">💾 Gem</button>
       </div>
     </div>
@@ -6648,10 +6699,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <!-- RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: vises når fakturaen er
              sendt (sent_at sat). Rettelser herefter skal ske via kreditnota. -->
         <span id="iv-lock-badge" class="iv-lock-badge" style="display:none" title="Fakturaen er sendt til kunden og er låst for rettelser — brug en kreditnota">🔒 Sendt — låst</span>
+        <!-- RUNDE H #306 (Martins ønske: kladde-fakturaer) — vises når status='draft'.
+             Bevidst en ANDEN farve end lås-badgen ovenfor, så de to ikke forveksles:
+             denne betyder "ikke rigtig endnu", ikke "låst for redigering" (en kladde
+             er tværtimod fuldt redigerbar). -->
+        <span id="iv-draft-badge" class="iv-lock-badge" style="display:none;background:#EEF2FF;border-color:#C7D2FE;color:#3730A3" title="Kladde — tæller ikke med i Økonomi/bankafstemning og kan ikke sendes til kunden, før den er aktiveret">📝 Kladde</span>
       </h3>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a class="bly-btn outline small" id="iv-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
         <button class="bly-btn outline small" id="iv-edit-lines-btn" type="button" title="Redigér linjer/rabat — kun muligt før fakturaen er sendt">✎ Redigér linjer</button>
+        <!-- RUNDE H #306 — knappen der gør en kladde til en rigtig faktura (status
+             'draft' -> 'unpaid'). Herefter opfører den sig som enhver anden faktura. -->
+        <button class="bly-btn small" id="iv-activate-btn" type="button" style="display:none;background:#4F46E5;border-color:#4F46E5;color:#fff" title="Gør kladden til en rigtig faktura — den tæller herefter med i Økonomi og kan sendes til kunden">✓ Aktivér faktura</button>
         <button class="bly-btn outline small" id="iv-send-btn" type="button" title="Send fakturaen som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
         <!-- RUNDE H #301 (Martins ønske: "burde jeg bare kunne trykke på en knap
              betalt? kan ikke finde den knap") — der fandtes kun den nederste
@@ -15802,7 +15861,7 @@ async function bind(){
     if(parts[0]==='quotes'&&!parts[1])qzShowDetailView(false);
     // Dyb-link til en af Tilbud & Faktura-modulets egne faner fra sidebaren —
     // #quotes/<alias> (uden id-segment ovenfor) — se data-qztab-jump i sidebaren.
-    var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','timetracking':'timetrack'};
+    var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','timetracking':'timetrack','skal-faktureres':'pending-invoicing'};
     if(parts[0]==='quotes'&&parts[1]&&QZTAB_HASH_MAP[parts[1]])switchQzTab(QZTAB_HASH_MAP[parts[1]]);
     if(parts[0]==='crmp'&&parts[1]==='leads')crmpSelectPipelineByType('lead');
     if(parts[0]==='crmp'&&parts[1]==='sales')crmpSelectPipelineByType('opportunity');
@@ -16794,7 +16853,7 @@ async function bind(){
     // Åbnet direkte via et #quotes/tilbud/123-link (fx højreklik → åbn i ny fane)
     if(initialPage==='quotes'&&initialParts[1]==='tilbud'&&initialParts[2])openQuoteEditor(Number(initialParts[2]));
     if(initialPage==='quotes'&&initialParts[1]==='faktura'&&initialParts[2])openInvoiceDetail(Number(initialParts[2]));
-    var QZTAB_HASH_MAP_INIT={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','timetracking':'timetrack'};
+    var QZTAB_HASH_MAP_INIT={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','timetracking':'timetrack','skal-faktureres':'pending-invoicing'};
     if(initialPage==='quotes'&&initialParts[1]&&QZTAB_HASH_MAP_INIT[initialParts[1]])switchQzTab(QZTAB_HASH_MAP_INIT[initialParts[1]]);
     if(initialPage==='crmp'&&initialParts[1]==='leads')crmpSelectPipelineByType('lead');
     if(initialPage==='crmp'&&initialParts[1]==='sales')crmpSelectPipelineByType('opportunity');
@@ -17159,7 +17218,32 @@ function makeBlyPeriodFilter(btnId,popId,labelId,onChange){
     var pop=document.getElementById(popId);if(pop)pop.style.display='none';
     updateLabel();onChange();
   }
-  return {matches:matches,label:label,clear:function(){clearAll();updateLabel();},setRange:setRange};
+  // RUNDE H #305 (Martins ønske om "Skal faktureres"-modulet: "denne uge, måned,
+  // eller på interval") — matches() tjekker kun ÉN dato ad gangen mod det valgte
+  // filter, hvilket er fint når man filtrerer en liste af poster der hver har ét
+  // tidspunkt (oprettet-dato osv.). Her skal der i stedet tjekkes om et PROJEKTS
+  // planlagte periode (flere opgaver, hver med sit eget start/slut) overlapper det
+  // valgte filter — det kræver filterets faktiske [fra,til]-interval som konkrete
+  // datoer, uanset om Martin har valgt "Måned"/"Kvartal"/"Regnskabsår" eller et frit
+  // interval. getRange() oversætter den aktive fane til {from,to} (begge null ved
+  // "Alt tid") — rent tilføjet, ændrer intet for matches()/label() eller eksisterende
+  // kaldere.
+  function getRange(){
+    if(st.from||st.to)return {from:st.from||null,to:st.to||null};
+    if(st.month){
+      var y=+st.month.slice(0,4),m=+st.month.slice(5,7);
+      var last=new Date(y,m,0).getDate();
+      return {from:st.month+'-01',to:st.month+'-'+String(last).padStart(2,'0')};
+    }
+    if(st.quarter){
+      var qp=st.quarter.split('-Q'),qy=+qp[0],qn=+qp[1],qStartM=(qn-1)*3+1,qEndM=qStartM+2;
+      var qLast=new Date(qy,qEndM,0).getDate();
+      return {from:qy+'-'+String(qStartM).padStart(2,'0')+'-01',to:qy+'-'+String(qEndM).padStart(2,'0')+'-'+String(qLast).padStart(2,'0')};
+    }
+    if(st.year)return {from:st.year+'-01-01',to:st.year+'-12-31'};
+    return {from:null,to:null};
+  }
+  return {matches:matches,label:label,clear:function(){clearAll();updateLabel();},setRange:setRange,getRange:getRange};
 }
 var qeState={id:null,lines:[],jobName:'',quoteNumber:null,taxRate:25,lastStatus:'draft',customerId:null};
 var qztState={id:null,lines:[]};
@@ -17173,7 +17257,9 @@ var qeCustomerSearchTimer=null;
 var qeCrmLinkSearchTimer=null; // RUNDE T — se qeRunCrmLinkSearch
 var qePreviewRenderTimer=null; // RUNDE U — se qeRecalc
 var QZ_QUOTE_STATUS={draft:{label:'Kladde',dot:'var(--bly-dot-draft)'},sent:{label:'Sendt',dot:'var(--bly-dot-draft)'},accepted:{label:'Godkendt',dot:'var(--bly-dot-paid)'},declined:{label:'Afvist',dot:'var(--bly-dot-overdue)'},converted:{label:'Konverteret',dot:'var(--bly-dot-total)'}};
-var QZ_INVOICE_STATUS={unpaid:{label:'Ikke betalt',dot:'var(--bly-dot-unpaid)'},partial:{label:'Delvist betalt',dot:'var(--bly-dot-draft)'},paid:{label:'Betalt',dot:'var(--bly-dot-paid)'},void:{label:'Annulleret',dot:'var(--bly-dot-overdue)'}};
+// RUNDE H #306 (Martins ønske: "kladde ... ikke automatisk låst") — 'draft'
+// tilføjet, samme farve som tilbuds-statussens egen 'Kladde' (var(--bly-dot-draft)).
+var QZ_INVOICE_STATUS={draft:{label:'Kladde',dot:'var(--bly-dot-draft)'},unpaid:{label:'Ikke betalt',dot:'var(--bly-dot-unpaid)'},partial:{label:'Delvist betalt',dot:'var(--bly-dot-draft)'},paid:{label:'Betalt',dot:'var(--bly-dot-paid)'},void:{label:'Annulleret',dot:'var(--bly-dot-overdue)'}};
 var QZ_TYPE_LABEL={materialer:'Materialer',service:'Service'};
 
 function qzMarginPct(cost,sell){return sell>0?(sell-cost)/sell*100:null;}
@@ -17220,6 +17306,101 @@ async function loadQzQuotes(){var r=await api('/api/quotes');qzQuotes=Array.isAr
 async function loadQzInvoices(){var r=await api('/api/invoices');qzInvoices=Array.isArray(r)?r:[];}
 async function loadQzTemplates(){var r=await api('/api/quote-templates');qzTemplates=Array.isArray(r)?r:[];}
 
+// ── SKAL FAKTURERES (RUNDE H #305, Martins ønske: "et modul med alle tilbud
+// der accepteret som skal faktureres ... vigtigt når jeg laver cashflow
+// analyse ... Lav den billy style som resten") ─────────────────────────────
+var qzPendingData=null,qzPendingPeriodFilter=null;
+// Samme uge-beregning som Timetrackings "Denne uge" (RUNDE H #29) — mandag-
+// søndag, dansk konvention. Genbruges direkte i stedet for at duplikere den.
+function qzPendingMonthRange(offsetMonths){
+  var now=new Date();
+  var first=new Date(now.getFullYear(),now.getMonth()+offsetMonths,1);
+  var last=new Date(now.getFullYear(),now.getMonth()+offsetMonths+1,0);
+  return {from:iso(first),to:iso(last)};
+}
+// Sagens opgaver (task_ranges, hver med start/slut fra gantt_tasks) sammenlignes
+// mod det valgte filter — "match" hvis MINDST ÉN opgave overlapper perioden, ikke
+// kun sagens tidligste/seneste dato samlet (undgår falske match hen over et
+// langt hul mellem to opgaver, se serverens kommentar ved endepunktet).
+// Intet valgt interval (from og to begge null, "Alt tid") matcher altid.
+// En sag UDEN nogen planlagt opgave endnu matcher ALDRIG et konkret interval —
+// den dukker fortsat op under "Alt tid", men kan ikke bekræftes at ligge i en
+// bestemt uge/måned før den er planlagt.
+function qzRangeOverlaps(taskRanges,from,to){
+  if(!from&&!to)return true;
+  if(!taskRanges||!taskRanges.length)return false;
+  return taskRanges.some(function(t){
+    var s=t.start_date||t.end_date,e=t.end_date||t.start_date;
+    if(!s&&!e)return false;
+    if(!s)s=e;if(!e)e=s;
+    if(from&&e<from)return false;
+    if(to&&s>to)return false;
+    return true;
+  });
+}
+function qzPendingPeriodLabel(taskRanges){
+  if(!taskRanges||!taskRanges.length)return '<span style="color:var(--bly-sub)">Ikke planlagt endnu</span>';
+  var starts=taskRanges.map(function(t){return t.start_date;}).filter(Boolean).sort();
+  var ends=taskRanges.map(function(t){return t.end_date||t.start_date;}).filter(Boolean).sort();
+  if(!starts.length)return '<span style="color:var(--bly-sub)">Ikke planlagt endnu</span>';
+  var from=starts[0],to=ends[ends.length-1];
+  function fmt(d){return d.split('-').reverse().join('.');}
+  return from===to?fmt(from):(fmt(from)+' – '+fmt(to));
+}
+function renderQzPendingInvoicing(){
+  if(!qzPendingData){
+    api('/api/quotes/pending-invoicing').then(function(r){
+      qzPendingData=Array.isArray(r)?r:[];
+      renderQzPendingInvoicing();
+    });
+    return;
+  }
+  var q=(document.getElementById('qz-pending-search').value||'').trim();
+  var range=qzPendingPeriodFilter?qzPendingPeriodFilter.getRange():{from:null,to:null};
+  function fmtD(d){return d.split('-').reverse().join('.');}
+  document.getElementById('qz-pending-period-hint').textContent=(range.from||range.to)
+    ?('Viser sager planlagt'+(range.from?(' fra '+fmtD(range.from)):'')+(range.to?(' til '+fmtD(range.to)):''))
+    :'';
+  var list=qzPendingData.filter(function(x){
+    if(q&&!qzSearchHit(q,[x.job_name,x.quote_number,x.job_number,x.customer_email]))return false;
+    if(!qzRangeOverlaps(x.task_ranges,range.from,range.to))return false;
+    return true;
+  });
+  document.getElementById('qz-pending-count').textContent='Skal faktureres ('+list.length+')';
+  var totalRemaining=list.reduce(function(s,x){return s+(Number(x.remaining_total)||0);},0);
+  document.getElementById('qz-pending-kpis').innerHTML=[
+    {label:'Tilbud der mangler fakturering',value:String(list.length)},
+    {label:'Resterende at fakturere i alt',value:krFmt(totalRemaining)}
+  ].map(function(k){
+    return '<div class="bly-kpi-card" style="cursor:default"><div class="bly-kpi-label">'+k.label+'</div><div class="bly-kpi-value">'+k.value+'</div></div>';
+  }).join('');
+  var body=document.getElementById('qz-pending-body');
+  if(!list.length){
+    body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:24px">'+(qzPendingData.length?'Ingen tilbud mangler fakturering i den valgte periode':'Alt er faktureret — ingen tilbud mangler fakturering lige nu 🎉')+'</td></tr>';
+    return;
+  }
+  // Sorteres efter tidligste planlagte dato (de mest "presserende" for
+  // cashflow-analysen øverst) — sager uden dato sidst.
+  list=list.slice().sort(function(a,b){
+    var da=(a.task_ranges||[]).map(function(t){return t.start_date;}).filter(Boolean).sort()[0]||'9999-99-99';
+    var db=(b.task_ranges||[]).map(function(t){return t.start_date;}).filter(Boolean).sort()[0]||'9999-99-99';
+    return da<db?-1:(da>db?1:0);
+  });
+  body.innerHTML=list.map(function(x){
+    var invoicedTotal=Number(x.total)-Number(x.remaining_total);
+    return '<tr>'
+      +'<td>'+esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')+'</td>'
+      +'<td>'+esc(x.quote_number||'–')+'</td>'
+      +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
+      +'<td>'+qzPendingPeriodLabel(x.task_ranges)+'</td>'
+      +'<td class="num">'+krFmt(Number(x.total))+'</td>'
+      +'<td class="num">'+krFmt(invoicedTotal)+'</td>'
+      +'<td class="num" style="font-weight:700">'+krFmt(Number(x.remaining_total))+'</td>'
+      +'<td><button class="qz-icon-btn" onclick="openQuoteEditor('+x.id+')" title="Åbn tilbud">✎</button></td>'
+      +'</tr>';
+  }).join('');
+}
+
 var QZ_MORE_TABS=['products','templates','timetrack'];
 function switchQzTab(name){
   qzActiveTab=name;
@@ -17232,12 +17413,16 @@ function switchQzTab(name){
   document.getElementById('qz-more-btn').classList.toggle('active',isMoreTab);
   document.querySelectorAll('.qz-more-item').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
   document.getElementById('qz-more-menu').classList.remove('open');
-  ['products','templates','quotes','invoices','timetrack'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
+  ['products','templates','quotes','invoices','timetrack','pending-invoicing'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
   // RUNDE H #28 — Timetracking-rapporten hentes bevidst FØRST når man rent
   // faktisk åbner fanen (ikke i initQuotesModule ved siden af Tilbud/Fakturaer),
   // for ikke at bremse den almindelige Tilbud & Faktura-indlæsning med et
   // admin-only kald de fleste besøg på siden slet ikke bruger.
   if(name==='timetrack')renderTimetrackReport();
+  // RUNDE H #305 — samme lazy-indlæsningsmønster: "Skal faktureres" har sit eget
+  // kald (GET /api/quotes/pending-invoicing), som ikke skal ske hver gang man
+  // bare åbner Tilbud & Faktura.
+  if(name==='pending-invoicing')renderQzPendingInvoicing();
 }
 // RUNDE V (fortsat, Martins ønske: "hver tilbud får en side man lander på ...
 // lave sådan en tilbage knap til alle tilbud") — tilbudseditoren er en 2. visning
@@ -23153,6 +23338,9 @@ async function openQuoteEditor(id,prefillCustomer){
   qeSetLineButtonsLocked(false);
   document.getElementById('qe-status-select').style.display='';
   document.getElementById('qe-valid-until').parentElement.style.display='';
+  // RUNDE H #306 — skjules igen her hver gang editoren åbnes/nulstilles;
+  // openDirectInvoiceEditor() slår den til bagefter, kun for en NY direkte faktura.
+  document.getElementById('qe-save-draft-btn').style.display='none';
   qzProductSearchSelections['qe-product-results']={};
   document.getElementById('qe-customer-search').value='';
   document.getElementById('qe-customer-address').value='';
@@ -23290,6 +23478,10 @@ async function openDirectInvoiceEditor(prefillCustomer){
   document.getElementById('qe-subtitle').textContent='Uden forudgående tilbud — forfalder 4 dage efter oprettelse';
   document.getElementById('qe-status-select').style.display='none';
   document.getElementById('qe-valid-until').parentElement.style.display='none';
+  // RUNDE H #306 — "📝 Gem som kladde" er kun relevant HER (en helt ny direkte
+  // faktura, id er altid null på dette tidspunkt — openDirectInvoiceEditor()
+  // bruges udelukkende til at OPRETTE en, aldrig til at redigere en eksisterende).
+  document.getElementById('qe-save-draft-btn').style.display='inline-flex';
   // RUNDE K (sep. 2026, Martins ønske) — "Faktura-note uafhængig af tilbud". Tilbuddets
   // standard-noter (sat af openQuoteEditor ovenfor) giver ikke mening på en faktura, så
   // de erstattes her med fakturaens EGEN standardnote fra Indstillinger (kan altid
@@ -23914,7 +24106,7 @@ async function qeStatusChanged(e){
   }
   else{toast((r&&r.error)||'Kunne ikke opdatere status','❌');qePopulateStatusSelect(qeState.lastStatus);}
 }
-async function saveQuoteEditor(){
+async function saveQuoteEditor(asDraft){
   var jobName=document.getElementById('qe-customer-search').value.trim();
   if(!jobName){toast('Angiv kunde/sag','⚠️');return;}
   if(!qeState.lines.length){toast('Tilføj mindst én linje','⚠️');return;}
@@ -23946,9 +24138,11 @@ async function saveQuoteEditor(){
   // egen rute, egen succes-håndtering (lukker editoren og åbner den nye faktura,
   // ligesom "Konvertér til faktura" gør for et rigtigt tilbud).
   if(qeState.directInvoice){
+    // RUNDE H #306 — se knappen "📝 Gem som kladde" ved siden af "💾 Gem".
+    if(asDraft)body.as_draft=true;
     var dr=await api('/api/invoices/direct-create',{method:'POST',body:JSON.stringify(body)});
     if(dr&&dr.ok){
-      toast('Faktura '+dr.invoice_number+' oprettet','✓');
+      toast(asDraft?('Faktura '+dr.invoice_number+' gemt som kladde'):('Faktura '+dr.invoice_number+' oprettet'),'✓');
       qeGoBackToList();
       await loadQzInvoices();renderQzInvoices();
       switchQzTab('invoices');
@@ -24177,7 +24371,10 @@ function qeOpenTemplateMenu(e){
 // ── FAKTURAER + DELBETALINGER ────────────────────────────────
 function renderQzInvoiceStatusFilter(){
   var box=document.getElementById('qz-invoices-status-filter');
-  var order=['unpaid','partial','paid','void'];
+  // RUNDE H #306 — 'draft' (kladde) tilføjet forrest, samme mønster som tilbuds-
+  // statusserne. Holdes UDENFOR Økonomi-tallene (se fetchFinanceInvoices) men vises
+  // her som sin egen boks, så Martin kan se/filtrere sine kladder direkte.
+  var order=['draft','unpaid','partial','paid','void'];
   function sum(list){return list.reduce(function(s,x){return s+(Number(x.total)||0);},0);}
   function card(status,dot,label,list){
     var active=qzInvoiceStatusFilter===status;
@@ -24256,6 +24453,15 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-edit-lines-btn').style.display=locked?'none':'inline-flex';
   document.getElementById('iv-top-note').disabled=locked;
   document.getElementById('iv-notes').disabled=locked;
+  // RUNDE H #306 (Martins ønske: "kladde ... ikke automatisk låst") — en kladde
+  // er IKKE låst for redigering (det styres udelukkende af sent_at ovenfor,
+  // uændret) — den kan bare ikke sendes/markeres betalt før den er aktiveret,
+  // og skal aktiveres med et bevidst klik i stedet for stille at blive "rigtig"
+  // af sig selv. Se POST /api/invoices/:id/activate.
+  var isDraft=inv.status==='draft';
+  document.getElementById('iv-draft-badge').style.display=isDraft?'inline-flex':'none';
+  document.getElementById('iv-activate-btn').style.display=isDraft?'inline-flex':'none';
+  document.getElementById('iv-send-btn').style.display=isDraft?'none':'inline-flex';
   document.getElementById('iv-due-date').value=inv.due_date||'';
   document.getElementById('iv-top-note').value=inv.top_note||'';
   document.getElementById('iv-notes').value=inv.notes||'';
@@ -24268,7 +24474,7 @@ async function openInvoiceDetail(id){
   // Skjules når der reelt ikke er noget tilbage at betale, eller fakturaen er
   // annulleret — der er intet at "markere betalt" på et af de to.
   ivState.remaining=Math.max(0,Number(inv.remaining)||0);
-  document.getElementById('iv-mark-paid-btn').style.display=(ivState.remaining>0&&inv.status!=='void')?'inline-flex':'none';
+  document.getElementById('iv-mark-paid-btn').style.display=(ivState.remaining>0&&inv.status!=='void'&&!isDraft)?'inline-flex':'none';
   document.getElementById('iv-lines-preview').innerHTML='<table class="bly-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Salgspris</th><th class="num">I alt</th></tr></thead><tbody>'
     +(inv.lines||[]).map(function(l){
       if(l.line_type==='text')return '<tr><td colspan="4"><div class="ln-textrow">'+esc(l.description||'')+'</div></td></tr>';
@@ -24362,6 +24568,18 @@ async function markIvFullyPaid(){
   btn.disabled=false;
   if(r&&r.ok){toast('Faktura markeret som betalt ✓','✓');await loadQzInvoices();renderQzInvoices();await openInvoiceDetail(ivState.id);}
   else toast((r&&r.error)||'Kunne ikke markere som betalt','❌');
+}
+// RUNDE H #306 (Martins ønske: kladde-fakturaer) — "✓ Aktivér faktura"-knappen.
+// Ingen bekræftelsesdialog: det er en fremadrettet, ufarlig handling (gør bare
+// kladden "rigtig" — intet slettes, ingen mail sendes), samme ét-klik-mønster
+// som "✓ Markér betalt" ovenfor.
+async function activateInvoiceDraft(){
+  var btn=document.getElementById('iv-activate-btn');
+  btn.disabled=true;
+  var r=await api('/api/invoices/'+ivState.id+'/activate',{method:'POST'});
+  btn.disabled=false;
+  if(r&&r.ok){toast('Faktura aktiveret ✓','✓');await loadQzInvoices();renderQzInvoices();await openInvoiceDetail(ivState.id);}
+  else toast((r&&r.error)||'Kunne ikke aktivere fakturaen','❌');
 }
 async function deleteIvPayment(paymentId){
   if(!await gmConfirm('Fjern denne betaling?'))return;
@@ -24484,6 +24702,13 @@ function bindQuotesModuleEvents(){
   document.getElementById('qz-invoice-search').addEventListener('input',renderQzInvoices);
   qzQuotePeriodFilter=makeBlyPeriodFilter('qz-quotes-period-btn','qz-quotes-period-pop','qz-quotes-period-label',function(){renderQzQuotes();});
   qzInvoicePeriodFilter=makeBlyPeriodFilter('qz-invoices-period-btn','qz-invoices-period-pop','qz-invoices-period-label',function(){renderQzInvoices();});
+  // RUNDE H #305 — "Skal faktureres": samme periode-komponent + "Denne uge"-
+  // genvejsmønster som Timetracking (RUNDE H #29), plus en tilsvarende "Denne
+  // måned"-genvej (Martins ønske nævnte begge dele eksplicit).
+  document.getElementById('qz-pending-search').addEventListener('input',renderQzPendingInvoicing);
+  qzPendingPeriodFilter=makeBlyPeriodFilter('qz-pending-period-btn','qz-pending-period-pop','qz-pending-period-label',function(){renderQzPendingInvoicing();});
+  document.getElementById('qz-pending-thisweek-btn').addEventListener('click',function(){var w=ttWeekRange(0);qzPendingPeriodFilter.setRange(w.from,w.to);});
+  document.getElementById('qz-pending-thismonth-btn').addEventListener('click',function(){var m=qzPendingMonthRange(0);qzPendingPeriodFilter.setRange(m.from,m.to);});
   // RUNDE H #28/#29 — Timetracking-fanen.
   ttPeriodFilter=makeBlyPeriodFilter('tt-period-btn','tt-period-pop','tt-period-label',function(){renderTimetrackReport();});
   document.getElementById('tt-search').addEventListener('input',renderTimetrackReport);
@@ -24607,7 +24832,11 @@ function bindQuotesModuleEvents(){
   document.getElementById('qz-new-quote-btn').addEventListener('click',function(){openQuoteEditor(null);});
   document.getElementById('qz-new-direct-invoice-btn').addEventListener('click',function(){openDirectInvoiceEditor(null);});
   document.getElementById('qe-back-btn').addEventListener('click',qeGoBackToList);
-  document.getElementById('qe-save-btn').addEventListener('click',saveQuoteEditor);
+  // RUNDE H #306 — addEventListener sender selve click-Event'et som 1. argument;
+  // uden denne wrapper ville det (et sandt object) blive tolket som asDraft=true
+  // og gøre den ALMINDELIGE "Gem"-knap til en kladde-knap ved en fejl.
+  document.getElementById('qe-save-btn').addEventListener('click',function(){saveQuoteEditor(false);});
+  document.getElementById('qe-save-draft-btn').addEventListener('click',function(){saveQuoteEditor(true);});
   document.getElementById('qe-convert-btn').addEventListener('click',convertQuoteToInvoice);
   document.getElementById('qe-share-btn').addEventListener('click',qeShareLink);
   document.getElementById('qe-request-btn').addEventListener('click',qrOpenModal);
@@ -24711,6 +24940,7 @@ function bindQuotesModuleEvents(){
 
   document.getElementById('iv-add-payment-btn').addEventListener('click',addIvPayment);
   document.getElementById('iv-mark-paid-btn').addEventListener('click',markIvFullyPaid);
+  document.getElementById('iv-activate-btn').addEventListener('click',activateInvoiceDraft);
   document.getElementById('iv-add-credit-btn').addEventListener('click',addIvCreditNote);
   // RUNDE T — "Hele beløbet" + postevælgeren.
   document.getElementById('iv-credit-full-btn').addEventListener('click',function(){document.getElementById('iv-credit-amount').value=Math.round((ivState.maxCreditable||0)*100)/100;});
