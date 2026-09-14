@@ -1514,15 +1514,26 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    querySelectorAll('.qz-more-item') til switchQzTab(), som ville fyre (med
    dataset.qztab undefined) hver gang man klikkede et punkt i denne nye menu,
    hvis den delte klassen — samme type kollision som .fin-move-month-select
-   tidligere. -->
+   tidligere.
+   RETTELSE (RUNDE J #319): denne kommentar blev ved en fejl afsluttet med en
+   HTML-kommentar-lukker i stedet for CSS'ens egen lukke-tegn — inde i et
+   style-tag betød det at CSS-parseren opfattede ALT herfra som ÉN kæmpe
+   uafsluttet kommentar, helt frem til den næste rigtige CSS-lukning den fandt
+   (kommentaren ved faktura-visningens layout herunder). Det åd stiltiende
+   iv-more-drop, iv-more-menu og iv-more-item-reglerne — derfor så
+   "Mere"-menuen ustylet og forkert placeret ud i praksis, selvom koden så
+   rigtig ud ved et kig i filen. Fundet ved at fejlsøge Martins skærmbillede:
+   de flyttede knapper i menuen fik reelt browserens standard-udseende, fordi
+   ingen af CSS-reglerne nogensinde blev anvendt. */
 .iv-more-drop{position:relative}
 .iv-more-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);box-shadow:0 12px 32px rgba(15,17,24,.14);padding:6px;min-width:210px;z-index:40}
 .iv-more-menu.open{display:block}
 .iv-more-item{display:block;width:100%;text-align:left;border:0;background:none;padding:9px 10px;font-size:13px;font-weight:600;color:var(--bly-ink);border-radius:8px;cursor:pointer}
 .iv-more-item:hover{background:var(--bly-accent-soft)}
-/* Faktura-popup — Billy-style to-kolonne layout: PDF-forhåndsvisning til
+/* Faktura-visning (RUNDE I #318, ombygget til egen SIDE i RUNDE J #319 — se
+   #qz-invoice-view) — Billy-style to-kolonne layout: PDF-forhåndsvisning til
    venstre, status/betaling/kreditnota/aktivitet til højre i egen scroll. */
-#invoice-detail-modal .modal{max-width:1180px}
+#qz-invoice-view .qe-page-card{max-width:1180px;margin:0 auto}
 .iv-layout{display:grid;grid-template-columns:minmax(280px,420px) 1fr;gap:20px;align-items:start}
 .iv-pdf-pane{position:sticky;top:0;background:#F4F5F7;border:1px solid var(--bly-border,#E5E7EB);border-radius:var(--bly-r-lg,12px);overflow:hidden;height:min(78vh,900px);display:flex;flex-direction:column}
 .iv-pdf-pane iframe{flex:1;width:100%;border:0;background:#fff}
@@ -2016,7 +2027,12 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    herunder er BEVIDST afgrænset til #opgavepool-panel/.pool-filter-panel, så
    .panel/.search/.btn/.task-card fortsat ser ud og virker som hidtil overalt
    ELLERS i appen (Kapacitet/Tidslinje/andre ældre sider deler de samme
-   klassenavne) — kun selve Opgavepool-kortet skifter udseende. -->
+   klassenavne) — kun selve Opgavepool-kortet skifter udseende.
+   RETTELSE (RUNDE J #319): denne kommentar var (ligesom .iv-more-item-fejlen
+   samme runde) ved en fejl lukket med en HTML-kommentar-lukker i stedet for
+   CSS'ens egen — hele dette regelsæt (panel-baggrund, søgefelt, +/filter-
+   knapper) har derfor reelt ALDRIG virket, siden RUNDE Z blev leveret. Fundet
+   ved samme fejlsøgning som iv-more-item-fejlen ovenfor. */
 #opgavepool-panel{border-radius:var(--bly-r-lg);border-color:var(--bly-border-soft);box-shadow:0 1px 3px rgba(15,23,42,.05)}
 #opgavepool-panel .panel-head{background:#fff;border-bottom:1px solid var(--bly-border-soft);padding:16px 16px 2px}
 #opgavepool-panel .panel-title{font-size:14px;text-transform:none;letter-spacing:0;color:var(--bly-ink);font-weight:800}
@@ -3168,7 +3184,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.10</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-14.1</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3358,28 +3374,41 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
   <div id="templates-list" class="dash-panel"></div>
 
-  <div class="email-settings-card">
-    <div class="email-settings-head">
+  <!-- RUNDE J #319 (Martins ønske: "Lav mere margin mellem de 3 ting her og lav
+       alle ting Kollaps") — Fag & farver og Push/SMS er nu klap-ud-kort
+       (lukket som standard, samme klik-for-at-folde-ud-mønster som de
+       Automatiske systemmails fik i RUNDE I #318, se tplCardExpanded/
+       toggleTplCard herunder), og der er tilføjet luft mellem alle tre
+       blokke (#templates-list, Fag & farver, Push/SMS) via
+       .email-settings-card's egen margin nedenfor. -->
+  <div class="email-settings-card" style="margin-top:22px">
+    <div class="email-settings-head" data-action="tpl-card-toggle" data-tpl-card="colors" style="cursor:pointer">
       <div><div class="email-settings-title">🎨 Fag & farver</div><div class="email-settings-sub">Styrer farverne på opgaver i Daglig plan/Ugeplan og på opgavekortene. Kapacitetsboardet bruger bevidst én ensartet farve for alle opgaver, uanset fag.</div></div>
+      <span class="sysmail-chevron" id="tpl-card-colors-chevron" style="color:var(--muted);font-size:11px;flex-shrink:0">▸</span>
     </div>
-    <div id="task-types-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
-    <div class="form-row" style="align-items:flex-end">
-      <div class="form-group"><label class="form-label">Nyt fag/faggruppe</label><input id="new-type-label" class="input" placeholder="Fx VVS / El"></div>
-      <div class="form-group" style="max-width:90px"><label class="form-label">Farve</label><input id="new-type-color" class="input" type="color" value="#2563EB"></div>
-      <button class="btn primary small" id="add-type-btn" style="margin-bottom:14px">+ Tilføj fag</button>
+    <div class="email-settings-body" id="tpl-card-colors-body" style="display:none">
+      <div id="task-types-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group"><label class="form-label">Nyt fag/faggruppe</label><input id="new-type-label" class="input" placeholder="Fx VVS / El"></div>
+        <div class="form-group" style="max-width:90px"><label class="form-label">Farve</label><input id="new-type-color" class="input" type="color" value="#2563EB"></div>
+        <button class="btn primary small" id="add-type-btn" style="margin-bottom:14px">+ Tilføj fag</button>
+      </div>
     </div>
   </div>
 
   <div class="email-settings-card" style="margin-top:16px">
-    <div class="email-settings-head">
+    <div class="email-settings-head" data-action="tpl-card-toggle" data-tpl-card="push" style="cursor:pointer">
       <div><div class="email-settings-title">📲 Push- og SMS-notifikationer</div><div class="email-settings-sub">Push til medarbejdere (ny/ændret opgave) virker altid, uden opsætning. SMS til kunder ("din montør kommer") og medarbejdere kræver en SMS-udbyder — se forklaring nedenfor.</div></div>
       <span class="mail-status-pill" id="push-status-pill">Tjekker…</span>
+      <span class="sysmail-chevron" id="tpl-card-push-chevron" style="color:var(--muted);font-size:11px;flex-shrink:0">▸</span>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">SMS-status</label><div><span class="mail-status-pill" id="sms-status-pill">Tjekker…</span></div></div>
-      <div class="form-group"><label class="form-label">Send test-SMS til</label><div style="display:flex;gap:6px"><input id="sms-test-to" class="input" placeholder="Fx 12345678"><button class="btn small" id="sms-test-btn">Send test</button></div></div>
+    <div class="email-settings-body" id="tpl-card-push-body" style="display:none">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">SMS-status</label><div><span class="mail-status-pill" id="sms-status-pill">Tjekker…</span></div></div>
+        <div class="form-group"><label class="form-label">Send test-SMS til</label><div style="display:flex;gap:6px"><input id="sms-test-to" class="input" placeholder="Fx 12345678"><button class="btn small" id="sms-test-btn">Send test</button></div></div>
+      </div>
+      <div class="hint" style="margin-top:6px">For at aktivere SMS skal en af disse miljøvariabler sættes på serveren (Render → Environment): <b>INMOBILE_API_TOKEN</b> (dansk udbyder, jeres eksisterende inMobile-konto) <i>eller</i> <b>GATEWAYAPI_API_TOKEN</b> (dansk udbyder, gatewayapi.com) <i>eller</i> <b>TWILIO_ACCOUNT_SID</b> + <b>TWILIO_AUTH_TOKEN</b> + <b>TWILIO_FROM_NUMBER</b>. Push kræver ingen opsætning — det virker allerede, når en medarbejder trykker "Slå notifikationer til" på deres side.</div>
     </div>
-    <div class="hint" style="margin-top:6px">For at aktivere SMS skal en af disse miljøvariabler sættes på serveren (Render → Environment): <b>INMOBILE_API_TOKEN</b> (dansk udbyder, jeres eksisterende inMobile-konto) <i>eller</i> <b>GATEWAYAPI_API_TOKEN</b> (dansk udbyder, gatewayapi.com) <i>eller</i> <b>TWILIO_ACCOUNT_SID</b> + <b>TWILIO_AUTH_TOKEN</b> + <b>TWILIO_FROM_NUMBER</b>. Push kræver ingen opsætning — det virker allerede, når en medarbejder trykker "Slå notifikationer til" på deres side.</div>
   </div>
   <!-- "Færdig-mail til kunden" og "Mail-skabeloner" (booking-varianter) er
        flyttet herfra til mail-fanen på denne side (✉️ Mail-skabeloner
@@ -4368,6 +4397,125 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 </div>
+
+<!-- FAKTURA-VISNING — egen side (ikke popup), 3. visning inde i #page-quotes ved
+     siden af qz-list-view/qz-detail-view. Se qzShowInvoiceView()/openInvoiceDetail()
+     og kommentaren hvor den gamle #invoice-detail-modal-popup lå (RUNDE J #319,
+     Martins ønske: "de skal have hver deres side ligesom i tilbud"). Samme
+     to-kolonne PDF-layout som før (RUNDE I #318), blot uden modal-indpakningen. -->
+<div id="qz-invoice-view" style="display:none">
+  <div class="page-head">
+    <div><button class="bly-btn outline small" id="iv-back-btn" type="button">← Tilbage til fakturaer</button></div>
+  </div>
+  <div class="qe-page-card" style="background:#fff;border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,17,24,.08);padding:20px 22px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:10px;flex-wrap:wrap">
+      <h3 style="margin:0">
+        <span id="iv-title">Faktura</span>
+        <!-- RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: vises når fakturaen er
+             sendt (sent_at sat). Rettelser herefter skal ske via kreditnota. -->
+        <span id="iv-lock-badge" class="iv-lock-badge" style="display:none" title="Fakturaen er sendt til kunden og er låst for rettelser — brug en kreditnota">🔒 Sendt — låst</span>
+        <!-- RUNDE H #306 (Martins ønske: kladde-fakturaer) — vises når status='draft'.
+             Bevidst en ANDEN farve end lås-badgen ovenfor, så de to ikke forveksles:
+             denne betyder "ikke rigtig endnu", ikke "låst for redigering" (en kladde
+             er tværtimod fuldt redigerbar). -->
+        <span id="iv-draft-badge" class="iv-lock-badge" style="display:none;background:#EEF2FF;border-color:#C7D2FE;color:#3730A3" title="Kladde — tæller ikke med i Økonomi/bankafstemning og kan ikke sendes til kunden, før den er aktiveret">📝 Kladde</span>
+      </h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <!-- RUNDE H #306 — knappen der gør en kladde til en rigtig faktura (status
+             'draft' -> 'unpaid'). Herefter opfører den sig som enhver anden faktura. -->
+        <button class="bly-btn small" id="iv-activate-btn" type="button" style="display:none;background:#4F46E5;border-color:#4F46E5;color:#fff" title="Gør kladden til en rigtig faktura — den tæller herefter med i Økonomi og kan sendes til kunden">✓ Aktivér faktura</button>
+        <button class="bly-btn outline small" id="iv-send-btn" type="button" title="Send fakturaen som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
+        <!-- RUNDE H #301 (Martins ønske: "burde jeg bare kunne trykke på en knap
+             betalt? kan ikke finde den knap") — der fandtes kun den nederste
+             "Registrér betaling"-formular, hvor man selv skal skrive beløbet
+             (og selv regne resten ud). Samme ét-klik-mønster som "Hele beløbet"
+             ved kreditnotaer (RUNDE T) — udfylder IKKE bare beløbet, men
+             registrerer med det samme en betaling på hele restbeløbet med dags
+             dato, direkte fra den mest synlige plads (top af faktura-vinduet). -->
+        <button class="bly-btn small" id="iv-mark-paid-btn" type="button" style="background:var(--bly-dot-paid);border-color:var(--bly-dot-paid);color:#fff" title="Registrerer med det samme en betaling på hele det resterende beløb, med dags dato">✓ Markér betalt</button>
+        <div class="iv-more-drop" id="iv-more-drop">
+          <button class="bly-btn outline small" id="iv-more-btn" type="button">⋯ Mere <span class="qz-more-caret">▾</span></button>
+          <div class="iv-more-menu" id="iv-more-menu">
+            <button class="iv-more-item" id="iv-edit-lines-btn" type="button" title="Redigér linjer/rabat — kun muligt før fakturaen er sendt">✎ Redigér linjer</button>
+            <a class="iv-more-item" id="iv-pdf-link" href="#" target="_blank">📄 Åbn PDF i nyt vindue</a>
+            <!-- RUNDE H #316 (Martins ønske: "Det burde være en knap når jeg åbner en
+                 faktura med send rykker og så en popup hvor jeg kan vælge template")
+                 — vises kun når der reelt er noget udestående, ligesom "✓ Markér betalt". -->
+            <button class="iv-more-item" id="iv-dunning-btn" type="button" style="display:none" title="Send en rykker-mail til kunden med valgfri skabelon">✉️ Send rykker</button>
+            <button class="iv-more-item" id="iv-void-btn" type="button" style="color:#DC2626">🗑 Annullér faktura</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sub" id="iv-subtitle" style="margin-bottom:14px"></div>
+
+    <div class="iv-layout">
+      <div class="iv-pdf-pane">
+        <iframe id="iv-pdf-frame" title="Faktura PDF" style="display:none"></iframe>
+        <div id="iv-pdf-fallback" class="iv-pdf-fallback">
+          <div class="sub">Indlæser PDF-forhåndsvisning…</div>
+        </div>
+      </div>
+      <div class="iv-detail-col">
+        <div class="iv-balance-card">
+          <div class="iv-balance-tile"><div class="iv-balance-label">Total</div><div class="iv-balance-value" id="iv-total">—</div></div>
+          <div class="iv-balance-tile"><div class="iv-balance-label">Betalt</div><div class="iv-balance-value" style="color:var(--bly-dot-paid)" id="iv-paid">—</div></div>
+          <div class="iv-balance-tile" id="iv-credited-tile" style="display:none"><div class="iv-balance-label">Krediteret</div><div class="iv-balance-value" style="color:#DC2626" id="iv-credited">—</div></div>
+          <div class="iv-balance-tile"><div class="iv-balance-label">Rest</div><div class="iv-balance-value" style="color:var(--bly-dot-unpaid)" id="iv-remaining">—</div></div>
+        </div>
+        <div class="form-row" style="margin:10px 0 4px;max-width:220px">
+          <div class="form-group"><label class="form-label">Forfaldsdato</label><input id="iv-due-date" type="date" class="input"></div>
+        </div>
+        <div id="iv-lines-preview" style="margin-bottom:18px"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="qe-label" style="margin:0">Delbetalinger</span>
+        </div>
+        <div id="iv-payments-list" style="margin-bottom:12px"></div>
+        <div class="form-row" style="align-items:flex-end">
+          <div class="form-group"><label class="form-label">Beløb (kr.)</label><input id="iv-pay-amount" type="number" step="0.01" class="input"></div>
+          <div class="form-group"><label class="form-label">Dato</label><input id="iv-pay-date" type="date" class="input"></div>
+          <div class="form-group"><label class="form-label">Metode <span class="opt-tag">valgfrit</span></label><input id="iv-pay-method" class="input" placeholder="Fx bankoverførsel"></div>
+        </div>
+        <button class="bly-btn outline small" id="iv-add-payment-btn" type="button">+ Registrér betaling</button>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px">
+          <span class="qe-label" style="margin:0">Kreditnotaer</span>
+        </div>
+        <div id="iv-credit-notes-list" style="margin-bottom:12px"></div>
+        <!-- RUNDE T (Martins ønske: "ved 1 klik kunne trykke hele beløbet",
+             "er de tmed eller uden moms jeg skal indtaste det?", "hurtigt kunne
+             søge med de poster der er istedet for jeg skal side og regne") —
+             beløbet er ALTID inkl. moms (trækkes direkte fra fakturaens total,
+             ligesom en betaling), gjort tydeligt i label'en nu. "Hele resterende
+             beløb" udfylder med ét klik det der reelt er tilbage at kreditere.
+             "Vælg poster i stedet" summerer de afkrydsede fakturalinjer (inkl.
+             moms, samme fordeling af evt. rabat på hele fakturaen som selve
+             fakturatotalen bruger) ind i beløbfeltet i stedet for manuel regning. -->
+        <div class="form-row" style="align-items:flex-end">
+          <div class="form-group">
+            <label class="form-label">Beløb (kr., inkl. moms) <span class="opt-tag">valgfrit — hele eller delvist</span></label>
+            <div style="display:flex;gap:6px">
+              <input id="iv-credit-amount" type="number" step="0.01" class="input" style="flex:1;min-width:0">
+              <button class="bly-btn outline small" id="iv-credit-full-btn" type="button" title="Udfylder med det der er tilbage at kreditere">Hele beløbet</button>
+            </div>
+          </div>
+          <div class="form-group" style="flex:1"><label class="form-label">Begrundelse <span class="opt-tag">valgfrit</span></label><input id="iv-credit-reason" class="input" placeholder="Fx reklamation, prisfejl på linje 2"></div>
+        </div>
+        <button class="qz-link-btn" id="iv-credit-picker-toggle" type="button" style="margin:2px 0 8px">🔎 Vælg poster i stedet for at regne selv</button>
+        <div id="iv-credit-picker" style="display:none;background:var(--ice);border-radius:var(--bly-r-md);padding:10px 12px;margin-bottom:12px"></div>
+        <button class="bly-btn outline small" id="iv-add-credit-btn" type="button">+ Ny kreditnota</button>
+
+        <div class="form-group" style="margin-top:18px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
+        <div class="form-group" style="margin-top:10px"><label class="form-label">Betingelser / note <span class="opt-tag">valgfrit — vises nederst på PDF'en og hos kunden. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
+
+        <div class="form-group" id="iv-activity-wrap" style="margin-top:18px">
+          <label class="form-label">🕓 Tidslinje</label>
+          <div id="iv-activity-list" class="doc-activity-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 </section>
 
 <!-- KUNDER (CRM) — eget kundekartotek, uafhængigt af JobTread. Bruges i
@@ -4780,10 +4928,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="bly-pagehead">
     <div><h2>☑ Opfølgninger</h2><div class="sub">Alle opgaver på tværs af leads og sales, samlet ét sted</div></div>
   </div>
+  <!-- RUNDE J #319 (Martins ønske: "Lav Billy style med de forskellige collums
+       i toppen som filtre. Fx brug I dag, Næste uge Færdige") — samme
+       klikbare kort-filter-mønster som Fakturaer/Tilbud (.bly-kpi-card, se
+       renderQzInvoiceStatusFilter), i stedet for den gamle "Vis også
+       afsluttede"-afkrydsning. Se cptFilterRender()/cptFilter. -->
+  <div class="bly-kpi-row" id="cpt-filter-row" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));margin-bottom:14px"></div>
   <div class="bly-toolbar">
     <div class="bly-toolbar-left">
-      <select id="cpt-assignee-filter" class="select" style="width:auto"><option value="">Alle ansvarlige</option></select>
-      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--bly-sub);cursor:pointer"><input type="checkbox" id="cpt-include-done" style="width:auto">Vis også afsluttede</label>
+      <select id="cpt-assignee-filter" class="select" style="width:auto"><option value="">Vælg ansvarlig — alle</option></select>
     </div>
     <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="cpt-count"></span></div>
   </div>
@@ -6800,120 +6953,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      Sekundære handlinger (Redigér linjer, Åbn PDF i nyt vindue, Send rykker,
      Annullér faktura) er samlet i en "⋯ Mere"-menu, så topbjælken kun viser
      de vigtigste knapper — samme mønster Billy bruger. -->
-<div class="mo" id="invoice-detail-modal">
-  <div class="modal" style="width:96vw">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:10px;flex-wrap:wrap">
-      <h3 style="margin:0">
-        <span id="iv-title">Faktura</span>
-        <!-- RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: vises når fakturaen er
-             sendt (sent_at sat). Rettelser herefter skal ske via kreditnota. -->
-        <span id="iv-lock-badge" class="iv-lock-badge" style="display:none" title="Fakturaen er sendt til kunden og er låst for rettelser — brug en kreditnota">🔒 Sendt — låst</span>
-        <!-- RUNDE H #306 (Martins ønske: kladde-fakturaer) — vises når status='draft'.
-             Bevidst en ANDEN farve end lås-badgen ovenfor, så de to ikke forveksles:
-             denne betyder "ikke rigtig endnu", ikke "låst for redigering" (en kladde
-             er tværtimod fuldt redigerbar). -->
-        <span id="iv-draft-badge" class="iv-lock-badge" style="display:none;background:#EEF2FF;border-color:#C7D2FE;color:#3730A3" title="Kladde — tæller ikke med i Økonomi/bankafstemning og kan ikke sendes til kunden, før den er aktiveret">📝 Kladde</span>
-      </h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <!-- RUNDE H #306 — knappen der gør en kladde til en rigtig faktura (status
-             'draft' -> 'unpaid'). Herefter opfører den sig som enhver anden faktura. -->
-        <button class="bly-btn small" id="iv-activate-btn" type="button" style="display:none;background:#4F46E5;border-color:#4F46E5;color:#fff" title="Gør kladden til en rigtig faktura — den tæller herefter med i Økonomi og kan sendes til kunden">✓ Aktivér faktura</button>
-        <button class="bly-btn outline small" id="iv-send-btn" type="button" title="Send fakturaen som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
-        <!-- RUNDE H #301 (Martins ønske: "burde jeg bare kunne trykke på en knap
-             betalt? kan ikke finde den knap") — der fandtes kun den nederste
-             "Registrér betaling"-formular, hvor man selv skal skrive beløbet
-             (og selv regne resten ud). Samme ét-klik-mønster som "Hele beløbet"
-             ved kreditnotaer (RUNDE T) — udfylder IKKE bare beløbet, men
-             registrerer med det samme en betaling på hele restbeløbet med dags
-             dato, direkte fra den mest synlige plads (top af faktura-vinduet). -->
-        <button class="bly-btn small" id="iv-mark-paid-btn" type="button" style="background:var(--bly-dot-paid);border-color:var(--bly-dot-paid);color:#fff" title="Registrerer med det samme en betaling på hele det resterende beløb, med dags dato">✓ Markér betalt</button>
-        <div class="iv-more-drop" id="iv-more-drop">
-          <button class="bly-btn outline small" id="iv-more-btn" type="button">⋯ Mere <span class="qz-more-caret">▾</span></button>
-          <div class="iv-more-menu" id="iv-more-menu">
-            <button class="iv-more-item" id="iv-edit-lines-btn" type="button" title="Redigér linjer/rabat — kun muligt før fakturaen er sendt">✎ Redigér linjer</button>
-            <a class="iv-more-item" id="iv-pdf-link" href="#" target="_blank">📄 Åbn PDF i nyt vindue</a>
-            <!-- RUNDE H #316 (Martins ønske: "Det burde være en knap når jeg åbner en
-                 faktura med send rykker og så en popup hvor jeg kan vælge template")
-                 — vises kun når der reelt er noget udestående, ligesom "✓ Markér betalt". -->
-            <button class="iv-more-item" id="iv-dunning-btn" type="button" style="display:none" title="Send en rykker-mail til kunden med valgfri skabelon">✉️ Send rykker</button>
-            <button class="iv-more-item" id="iv-void-btn" type="button" style="color:#DC2626">🗑 Annullér faktura</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="sub" id="iv-subtitle" style="margin-bottom:14px"></div>
-
-    <div class="iv-layout">
-      <div class="iv-pdf-pane">
-        <iframe id="iv-pdf-frame" title="Faktura PDF" style="display:none"></iframe>
-        <div id="iv-pdf-fallback" class="iv-pdf-fallback">
-          <div class="sub">Indlæser PDF-forhåndsvisning…</div>
-        </div>
-      </div>
-      <div class="iv-detail-col">
-        <div class="iv-balance-card">
-          <div class="iv-balance-tile"><div class="iv-balance-label">Total</div><div class="iv-balance-value" id="iv-total">—</div></div>
-          <div class="iv-balance-tile"><div class="iv-balance-label">Betalt</div><div class="iv-balance-value" style="color:var(--bly-dot-paid)" id="iv-paid">—</div></div>
-          <div class="iv-balance-tile" id="iv-credited-tile" style="display:none"><div class="iv-balance-label">Krediteret</div><div class="iv-balance-value" style="color:#DC2626" id="iv-credited">—</div></div>
-          <div class="iv-balance-tile"><div class="iv-balance-label">Rest</div><div class="iv-balance-value" style="color:var(--bly-dot-unpaid)" id="iv-remaining">—</div></div>
-        </div>
-        <div class="form-row" style="margin:10px 0 4px;max-width:220px">
-          <div class="form-group"><label class="form-label">Forfaldsdato</label><input id="iv-due-date" type="date" class="input"></div>
-        </div>
-        <div id="iv-lines-preview" style="margin-bottom:18px"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span class="qe-label" style="margin:0">Delbetalinger</span>
-        </div>
-        <div id="iv-payments-list" style="margin-bottom:12px"></div>
-        <div class="form-row" style="align-items:flex-end">
-          <div class="form-group"><label class="form-label">Beløb (kr.)</label><input id="iv-pay-amount" type="number" step="0.01" class="input"></div>
-          <div class="form-group"><label class="form-label">Dato</label><input id="iv-pay-date" type="date" class="input"></div>
-          <div class="form-group"><label class="form-label">Metode <span class="opt-tag">valgfrit</span></label><input id="iv-pay-method" class="input" placeholder="Fx bankoverførsel"></div>
-        </div>
-        <button class="bly-btn outline small" id="iv-add-payment-btn" type="button">+ Registrér betaling</button>
-
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px">
-          <span class="qe-label" style="margin:0">Kreditnotaer</span>
-        </div>
-        <div id="iv-credit-notes-list" style="margin-bottom:12px"></div>
-        <!-- RUNDE T (Martins ønske: "ved 1 klik kunne trykke hele beløbet",
-             "er de tmed eller uden moms jeg skal indtaste det?", "hurtigt kunne
-             søge med de poster der er istedet for jeg skal side og regne") —
-             beløbet er ALTID inkl. moms (trækkes direkte fra fakturaens total,
-             ligesom en betaling), gjort tydeligt i label'en nu. "Hele resterende
-             beløb" udfylder med ét klik det der reelt er tilbage at kreditere.
-             "Vælg poster i stedet" summerer de afkrydsede fakturalinjer (inkl.
-             moms, samme fordeling af evt. rabat på hele fakturaen som selve
-             fakturatotalen bruger) ind i beløbfeltet i stedet for manuel regning. -->
-        <div class="form-row" style="align-items:flex-end">
-          <div class="form-group">
-            <label class="form-label">Beløb (kr., inkl. moms) <span class="opt-tag">valgfrit — hele eller delvist</span></label>
-            <div style="display:flex;gap:6px">
-              <input id="iv-credit-amount" type="number" step="0.01" class="input" style="flex:1;min-width:0">
-              <button class="bly-btn outline small" id="iv-credit-full-btn" type="button" title="Udfylder med det der er tilbage at kreditere">Hele beløbet</button>
-            </div>
-          </div>
-          <div class="form-group" style="flex:1"><label class="form-label">Begrundelse <span class="opt-tag">valgfrit</span></label><input id="iv-credit-reason" class="input" placeholder="Fx reklamation, prisfejl på linje 2"></div>
-        </div>
-        <button class="qz-link-btn" id="iv-credit-picker-toggle" type="button" style="margin:2px 0 8px">🔎 Vælg poster i stedet for at regne selv</button>
-        <div id="iv-credit-picker" style="display:none;background:var(--ice);border-radius:var(--bly-r-md);padding:10px 12px;margin-bottom:12px"></div>
-        <button class="bly-btn outline small" id="iv-add-credit-btn" type="button">+ Ny kreditnota</button>
-
-        <div class="form-group" style="margin-top:18px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
-        <div class="form-group" style="margin-top:10px"><label class="form-label">Betingelser / note <span class="opt-tag">valgfrit — vises nederst på PDF'en og hos kunden. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
-
-        <div class="form-group" id="iv-activity-wrap" style="margin-top:18px">
-          <label class="form-label">🕓 Tidslinje</label>
-          <div id="iv-activity-list" class="doc-activity-list"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="modal-actions">
-      <button class="btn" onclick="closeModal('invoice-detail-modal')">Luk</button>
-    </div>
-  </div>
-</div>
+<!-- RUNDE J #319 (Martins ønske: "Gaktura-popup er en ommer. de skal have hver
+     deres side ligesom i tilbud") — faktura-visningen er flyttet fra en popup
+     (.mo/.modal) til sin egen SIDE inde i #page-quotes, ved siden af
+     qz-list-view/qz-detail-view — se #qz-invoice-view lige efter
+     #qz-detail-view herover, samme mønster som RUNDE V gjorde for
+     tilbudseditoren. Alt indhold/id'er/handlers er flyttet uændret. -->
 
 <!-- RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: linjeredigering, kun muligt
      før fakturaen er sendt (se PUT /api/invoices/:id/lines). Fakturaer har hidtil
@@ -16071,7 +16116,9 @@ async function bind(){
     // #quotes/tilbud/123 til bare #quotes skal også skjule tilbudseditor-siden
     // igen, ellers blev den hængende synligt oven på listen, som var "tilbage"
     // aldrig sket. Se qzShowDetailView()/qeGoBackToList().
-    if(parts[0]==='quotes'&&!parts[1])qzShowDetailView(false);
+    // RUNDE J #319 — samme fix gælder nu også #quotes/faktura/123 -> #quotes,
+    // se qzShowInvoiceView()/ivGoBackToList().
+    if(parts[0]==='quotes'&&!parts[1]){qzShowDetailView(false);qzShowInvoiceView(false);}
     // Dyb-link til en af Tilbud & Faktura-modulets egne faner fra sidebaren —
     // #quotes/<alias> (uden id-segment ovenfor) — se data-qztab-jump i sidebaren.
     var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','timetracking':'timetrack','skal-faktureres':'pending-invoicing'};
@@ -16563,6 +16610,21 @@ async function bind(){
   });
   document.addEventListener('click',function(e){if(!e.target.closest('.filter-dropdown'))document.querySelectorAll('.filter-dropdown-menu.open').forEach(function(m){m.classList.remove('open');});});
   document.getElementById('new-template-btn').onclick=function(){openTemplateEditor(null);};
+  // RUNDE J #319 (Martins ønske: "lav alle ting Kollaps") — Fag & farver og
+  // Push/SMS på Opgave-skabeloner-siden er nu klap-ud-kort, lukket som
+  // standard. Ren visnings-toggle (ingen data at genindlæse), så det er bare
+  // et enkelt klik-for-at-folde-ud, samme visuelle mønster (chevron) som de
+  // Automatiske systemmails fik i RUNDE I #318.
+  document.querySelectorAll('[data-action="tpl-card-toggle"]').forEach(function(head){
+    head.addEventListener('click',function(){
+      var key=head.dataset.tplCard;
+      var body=document.getElementById('tpl-card-'+key+'-body');
+      var chevron=document.getElementById('tpl-card-'+key+'-chevron');
+      var open=body.style.display==='none';
+      body.style.display=open?'':'none';
+      chevron.textContent=open?'▾':'▸';
+    });
+  });
   document.getElementById('new-email-template-btn').onclick=function(){openEmailTemplateEditor(null);};
   document.getElementById('close-email-tpl-edit').onclick=function(){closeModal('email-tpl-edit-modal');};
   document.getElementById('save-email-tpl-edit').onclick=saveEmailTemplateEditor;
@@ -17725,7 +17787,9 @@ function switchQzTab(name){
   // kald blev den nye fane bare gjort klar bagved det stadig-synlige åbne
   // tilbud — så det så ud som om menuen slet ikke virkede. Skal lukke
   // tilbudsvisningen først, ligesom "← Tilbage til alle tilbud"-knappen gør.
+  // RUNDE J #319 — samme fix gælder nu også faktura-siden (#qz-invoice-view).
   qzShowDetailView(false);
+  qzShowInvoiceView(false);
   qzActiveTab=name;
   document.querySelectorAll('#qz-tabs > .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
   // "Mere"-knappen (Produkter/Skabeloner) er flyttet ud af de altid-synlige
@@ -17754,6 +17818,9 @@ function switchQzTab(name){
 function qzShowDetailView(show){
   document.getElementById('qz-list-view').style.display=show?'none':'';
   document.getElementById('qz-detail-view').style.display=show?'':'none';
+  // RUNDE J #319 — hvis tilbudseditoren åbnes, skal en evt. åben faktura-side
+  // lukkes (de to kan aldrig være åbne samtidig), se qzShowInvoiceView().
+  if(show)document.getElementById('qz-invoice-view').style.display='none';
 }
 function qeGoBackToList(){
   if(qeAiState.listening)qeAiCancel();
@@ -17761,6 +17828,23 @@ function qeGoBackToList(){
   qzShowDetailView(false);
   setAppTitle(null);
   navPushHash('quotes');
+}
+// RUNDE J #319 (Martins ønske: "Gaktura-popup er en ommer. de skal have hver
+// deres side ligesom i tilbud") — samme mønster som qzShowDetailView()/
+// qeGoBackToList() herover, blot for faktura-siden (#qz-invoice-view) i stedet
+// for tilbudseditoren.
+function qzShowInvoiceView(show){
+  document.getElementById('qz-list-view').style.display=show?'none':'';
+  document.getElementById('qz-invoice-view').style.display=show?'':'none';
+  if(show)document.getElementById('qz-detail-view').style.display='none';
+}
+function ivGoBackToList(){
+  setAppTitle(null);
+  // switchQzTab() viser selv listen igen (qzShowInvoiceView(false), se
+  // RUNDE J #319-tilføjelsen deroppe) og sikrer at "Fakturaer"-fanen er den
+  // aktive, ligesom hvis man var navigeret dertil almindeligt.
+  switchQzTab('invoices');
+  navPushHash('quotes/faktura-tab');
 }
 
 // ── FÆLLES LINJE-EDITOR — genbruges af både tilbudseditoren og
@@ -20573,30 +20657,76 @@ async function crmpxAddTask(){
 // selve leadet/opportunityen (☑ Opgaver-panelet) — en opgave hører altid til
 // én bestemt sag, så det er der den naturligt hører hjemme.
 var cptInitialized=false,cptTasks=[];
+// RUNDE J #319 (Martins ønske: "Lav Billy style med de forskellige collums i
+// toppen som filtre. Fx brug I dag, Næste uge Færdige") — erstatter den gamle
+// "Vis også afsluttede"-afkrydsning. Buckets (samme logik som crmpxTaskDueLabel
+// bruger til overdue-markering):
+//  'open'      — ikke afsluttede (uanset dato) — svarer til den gamle default.
+//  'today'     — ikke afsluttede, due_date === i dag.
+//  'week'      — ikke afsluttede, due_date de næste 7 dage (efter i dag).
+//  'done'      — afsluttede, uanset dato.
+// Henter ALTID med include_done=1 nu (uanset valgt filter), så "Færdige" kan
+// vises uden et ekstra API-kald, og tallene på de andre kort er korrekte.
+var cptFilter='open';
 function initCrmpTasksModule(){
   if(!cptInitialized){
     cptInitialized=true;
     document.getElementById('cpt-assignee-filter').addEventListener('change',cptRender);
-    document.getElementById('cpt-include-done').addEventListener('change',cptLoad);
+    document.getElementById('cpt-filter-row').addEventListener('click',function(e){
+      var b=e.target.closest('[data-cpt-filter]');
+      if(!b)return;
+      cptFilter=b.dataset.cptFilter;
+      cptRender();
+    });
   }
   cptLoad();
 }
 async function cptLoad(){
-  var includeDone=document.getElementById('cpt-include-done').checked;
   // Genopbyg filter-dropdownens options hver gang (samme fix som crmpx-task-assignee) —
   // så den ikke risikerer at forblive tom hvis users ikke var hentet endnu ved init.
   // Vent på loadAll() (se usersReadyPromise) af samme grund.
   await usersReadyPromise;
   var filterSel=document.getElementById('cpt-assignee-filter');
   var prevFilter=filterSel.value;
-  filterSel.innerHTML='<option value="">Alle ansvarlige</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  filterSel.innerHTML='<option value="">Vælg ansvarlig — alle</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
   filterSel.value=prevFilter;
-  cptTasks=await api('/api/crm/tasks/overview'+(includeDone?'?include_done=1':''))||[];
+  cptTasks=await api('/api/crm/tasks/overview?include_done=1')||[];
   cptRender();
+}
+function cptBucketMatch(t,bucket){
+  var today=iso(new Date());
+  if(bucket==='done')return !!t.done;
+  if(t.done)return false;
+  if(bucket==='open')return true;
+  if(!t.due_date)return false;
+  if(bucket==='today')return t.due_date===today;
+  if(bucket==='week'){
+    var in7=iso(new Date(Date.now()+7*86400000));
+    return t.due_date>today&&t.due_date<=in7;
+  }
+  return true;
+}
+function cptRenderFilterRow(assigneeRows){
+  var box=document.getElementById('cpt-filter-row');
+  var buckets=[
+    {key:'open',dot:'var(--bly-dot-total)',label:'Alle'},
+    {key:'today',dot:'var(--bly-dot-unpaid)',label:'I dag'},
+    {key:'week',dot:'var(--bly-dot-draft)',label:'Næste uge'},
+    {key:'done',dot:'var(--bly-dot-paid)',label:'Færdige'}
+  ];
+  box.innerHTML=buckets.map(function(b){
+    var n=assigneeRows.filter(function(t){return cptBucketMatch(t,b.key);}).length;
+    var active=cptFilter===b.key;
+    return '<button class="bly-kpi-card'+(active?' active':'')+'" data-cpt-filter="'+b.key+'" type="button">'
+      +'<div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:'+b.dot+'"></span>'+esc(b.label)+'</div>'
+      +'<div class="bly-kpi-value">'+n+'</div></button>';
+  }).join('');
 }
 function cptRender(){
   var filterId=document.getElementById('cpt-assignee-filter').value;
-  var rows=filterId?cptTasks.filter(function(t){return String(t.assigned_to)===filterId;}):cptTasks;
+  var assigneeRows=filterId?cptTasks.filter(function(t){return String(t.assigned_to)===filterId;}):cptTasks;
+  cptRenderFilterRow(assigneeRows);
+  var rows=assigneeRows.filter(function(t){return cptBucketMatch(t,cptFilter);});
   document.getElementById('cpt-count').textContent=rows.length?rows.length+' opgave(r)':'';
   document.getElementById('cpt-body').innerHTML=rows.length?rows.map(function(t){
     var assigneeOptions='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(t.assigned_to)?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
@@ -24811,7 +24941,12 @@ async function openInvoiceDetail(id){
   ivState.sentAt=inv.sent_at||null;
   var locked=!!ivState.sentAt;
   document.getElementById('iv-lock-badge').style.display=locked?'inline-flex':'none';
-  document.getElementById('iv-edit-lines-btn').style.display=locked?'none':'inline-flex';
+  // RETTELSE (RUNDE J #319): denne knap er nu et .iv-more-item i "⋯ Mere"-menuen
+  // (RUNDE I #318) og skal derfor vise sig som CSS-klassens display:block, IKKE
+  // 'inline-flex' (det gamle udseende fra dengang den var en almindelig knap i
+  // toppen) — ''  betyder "brug CSS'ens egen display-værdi" i stedet for at
+  // tvinge en forkert værdi via inline style, som ellers altid vinder over CSS.
+  document.getElementById('iv-edit-lines-btn').style.display=locked?'none':'';
   document.getElementById('iv-top-note').disabled=locked;
   document.getElementById('iv-notes').disabled=locked;
   // RUNDE H #306 (Martins ønske: "kladde ... ikke automatisk låst") — en kladde
@@ -24838,7 +24973,9 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-mark-paid-btn').style.display=(ivState.remaining>0&&inv.status!=='void'&&!isDraft)?'inline-flex':'none';
   // RUNDE H #316 — samme betingelse som "✓ Markér betalt": kun relevant at rykke
   // for penge der reelt mangler, aldrig på en kladde eller en annulleret faktura.
-  document.getElementById('iv-dunning-btn').style.display=(ivState.remaining>0&&inv.status!=='void'&&!isDraft)?'inline-flex':'none';
+  // RETTELSE (RUNDE J #319) — samme fix som iv-edit-lines-btn ovenfor: er nu et
+  // .iv-more-item, skal IKKE tvinges til 'inline-flex'.
+  document.getElementById('iv-dunning-btn').style.display=(ivState.remaining>0&&inv.status!=='void'&&!isDraft)?'':'none';
   document.getElementById('iv-lines-preview').innerHTML='<table class="bly-table"><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Salgspris</th><th class="num">I alt</th></tr></thead><tbody>'
     +(inv.lines||[]).map(function(l){
       if(l.line_type==='text')return '<tr><td colspan="4"><div class="ln-textrow">'+esc(l.description||'')+'</div></td></tr>';
@@ -24851,7 +24988,8 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-credit-notes-list').innerHTML=(inv.credit_notes||[]).length?inv.credit_notes.map(function(c){
     return '<div class="iv-payment-row"><div><b>'+esc(c.credit_note_number)+' — '+krFmt(Number(c.amount))+'</b><div class="iv-payment-meta">'+esc(String(c.created_at||'').slice(0,10))+(c.reason?' · '+esc(c.reason):'')+'</div></div><div style="display:flex;gap:4px"><a class="qz-icon-btn" href="/api/credit-notes/'+c.id+'/pdf" target="_blank" title="Åbn PDF">📄</a><button class="qz-icon-btn" onclick="sendIvCreditNote('+c.id+')" title="Send til kunde">📧</button><button class="qz-icon-btn" onclick="deleteIvCreditNote('+c.id+')" title="Fjern">✕</button></div></div>';
   }).join(''):'<div class="sub">Ingen kreditnotaer endnu</div>';
-  document.getElementById('iv-void-btn').style.display=inv.status==='void'?'none':'inline-flex';
+  // RETTELSE (RUNDE J #319) — samme fix: er nu et .iv-more-item.
+  document.getElementById('iv-void-btn').style.display=inv.status==='void'?'none':'';
   document.getElementById('iv-pay-amount').value='';
   document.getElementById('iv-pay-date').value=new Date().toISOString().slice(0,10);
   document.getElementById('iv-pay-method').value='';
@@ -24869,7 +25007,15 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-credit-picker').style.display='none';
   document.getElementById('iv-credit-picker-toggle').textContent='🔎 Vælg poster i stedet for at regne selv';
   loadDocActivity('invoice',id,'iv-activity-list');
-  document.getElementById('invoice-detail-modal').classList.add('open');
+  // RUNDE J #319 — egen SIDE i stedet for popup, se qzShowInvoiceView() og
+  // kommentaren ved #qz-invoice-view i HTML'en. Samme mønster som
+  // openQuoteEditor()/qzShowDetailView(): skift kun side hvis vi ikke allerede
+  // STÅR på #page-quotes (undgår at initQuotesModule() kører/genhenter listen
+  // to gange for ingenting ved det almindelige tilfælde: klik fra selve
+  // Fakturaer-listen).
+  if(!document.getElementById('page-quotes').classList.contains('active'))switchPage('quotes',true);
+  qzShowInvoiceView(true);
+  navPushHash('quotes/faktura/'+id);
 }
 // RUNDE T (Martins ønske: "hurtigt kunne søge med de poster der er istedet
 // for jeg skal side og regne men bare vælge af posterne") — beregner hver
@@ -25042,7 +25188,7 @@ async function ivlSave(){
 async function voidIvInvoice(){
   if(!await gmConfirm('Annullér denne faktura? Den vil blive markeret som annulleret.'))return;
   var r=await api('/api/invoices/'+ivState.id+'/void',{method:'PUT'});
-  if(r&&r.ok){toast('Faktura annulleret','✓');await loadQzInvoices();renderQzInvoices();closeModal('invoice-detail-modal');}
+  if(r&&r.ok){toast('Faktura annulleret','✓');await loadQzInvoices();renderQzInvoices();ivGoBackToList();}
 }
 
 // ── EVENT-BINDING (køres kun én gang) ────────────────────────
@@ -25200,6 +25346,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qz-new-quote-btn').addEventListener('click',function(){openQuoteEditor(null);});
   document.getElementById('qz-new-direct-invoice-btn').addEventListener('click',function(){openDirectInvoiceEditor(null);});
   document.getElementById('qe-back-btn').addEventListener('click',qeGoBackToList);
+  document.getElementById('iv-back-btn').addEventListener('click',ivGoBackToList);
   // RUNDE H #306 — addEventListener sender selve click-Event'et som 1. argument;
   // uden denne wrapper ville det (et sandt object) blive tolket som asDraft=true
   // og gøre den ALMINDELIGE "Gem"-knap til en kladde-knap ved en fejl.
