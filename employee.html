@@ -1177,14 +1177,24 @@ function toggleVoiceNote(fieldId){
   rec.continuous=true;
   rec.interimResults=true;
   rec.onstart=function(){if(btn){btn.classList.add('recording');btn.innerHTML='<span class="vr-mic-icon">⏹</span> Stop optagelse';}};
+  // RETTET (Martins rapport: "skriver alt flere gange... Hej Hej Hej jeg Hej jeg har...")
+  // — den oprindelige version stolede på e.resultIndex for kun at læse NYE resultater
+  // og lagde dem oveni voiceBaseText for hvert onresult-kald. På Android/Chromes
+  // fortløbende (continuous) genkendelse er det kendt upålideligt: den rapporterer
+  // ofte de samme tidligere "endelige" sætningsstykker igen fra starten (resultIndex
+  // går ikke fremad som forventet), så hele historikken blev lagt oveni sig selv igen
+  // ved hvert nyt ord — deraf det voksende gentagelsesmønster. Fix: byg HELE denne
+  // optage-sessions tekst forfra fra e.results[0] ved hvert kald (aldrig +=), og
+  // erstat feltets værdi med voiceBaseText+sessionText hver gang. Det er ligegyldigt
+  // hvor mange gange browseren "genfortæller" de samme ord — vi regner altid hele
+  // sessionens tekst forfra, så der aldrig lægges oveni sig selv.
   rec.onresult=function(e){
-    let finalT='',interimT='';
-    for(let i=e.resultIndex;i<e.results.length;i++){
+    let sessionText='';
+    for(let i=0;i<e.results.length;i++){
       const t=e.results[i][0].transcript;
-      if(e.results[i].isFinal)finalT+=t; else interimT+=t;
+      sessionText+=e.results[i].isFinal?t.trim()+' ':t;
     }
-    if(finalT)voiceBaseText+=finalT.trim()+' ';
-    field.value=(voiceBaseText+interimT).trim();
+    field.value=(voiceBaseText+sessionText).trim();
   };
   rec.onerror=function(e){
     if(e.error==='not-allowed'||e.error==='service-not-allowed'){toast('Mikrofon-adgang blev afvist — tillad mikrofon i browseren for at bruge indtaling.');}
