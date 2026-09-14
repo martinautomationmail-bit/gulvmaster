@@ -141,6 +141,15 @@
 @media(max-width:420px){.lib-btn-label{display:none}.lib-btn{padding:7px 9px;font-size:13px}}
 @media(max-width:480px){.week-overview{gap:3px}.day-chip{padding:5px 1px}.day-chip .d1{font-size:8px}.day-chip .d2{font-size:12px}.day-chip .d3{font-size:7px;min-height:9px}}
 .req-label{display:block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:12px 0 5px}
+/* RUNDE O (Martins ønske) — række med label + "🎤 Indtal"-knap til tale-til-tekst
+   på besøgsrapportens note-felt. Samme visuelle rytme som .req-label alene
+   (12px 0 5px margin), men som flex-række så knappen kan sidde ude til højre;
+   .req-label selv nulstilles til margin:0 hvor den bruges inde i denne række. */
+.req-label-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 5px}
+.vr-mic-btn{border:1px solid var(--border);border-radius:var(--radius-pill);padding:5px 11px;background:#fff;color:var(--accent,#4F46E5);font-weight:700;font-size:10.5px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;transition:.15s;flex-shrink:0}
+.vr-mic-btn:hover{background:var(--accent-soft);border-color:#C7D2FE}
+.vr-mic-btn.recording{background:#FEF2F2;border-color:#FCA5A5;color:#B91C1C;animation:vr-mic-pulse 1.4s ease-in-out infinite}
+@keyframes vr-mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.35)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}
 .req-input,.req-textarea{width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;box-sizing:border-box;transition:.15s;background:#fcfcfd}
 .req-input:focus,.req-textarea:focus{outline:none;border-color:var(--navy);background:#fff;box-shadow:0 0 0 3px rgba(17,19,24,.08)}
 .req-textarea{resize:vertical}
@@ -283,7 +292,10 @@
       <input id="vr-room-size" class="req-input" placeholder="Fx 24 m²">
       <label class="req-label" style="margin-top:10px">Ønsket gulvtype</label>
       <input id="vr-floor-type" class="req-input" placeholder="Fx eg plankegulv, olieret">
-      <label class="req-label" style="margin-top:10px">Observationer / noter fra besøget</label>
+      <div class="req-label-row" style="margin-top:10px">
+        <label class="req-label" style="margin:0">Observationer / noter fra besøget</label>
+        <button type="button" class="vr-mic-btn" id="vr-notes-mic-btn" onclick="toggleVoiceNote('vr-notes')" title="Indtal noten i stedet for at skrive — du kan altid rette i teksten bagefter"><span class="vr-mic-icon">🎤</span> Indtal</button>
+      </div>
       <textarea id="vr-notes" class="req-textarea" rows="3" placeholder="Fx underlagets stand, fugt, niveauforskelle, adgangsforhold"></textarea>
       <label class="req-label" style="margin-top:10px">Anbefalet løsning</label>
       <textarea id="vr-solution" class="req-textarea" rows="2" placeholder="Hvad anbefaler du kunden?"></textarea>
@@ -1128,8 +1140,62 @@ async function openVisitReportModal(id,taskId){
   vrRenderPhotoGrid();
   document.getElementById('visit-report-modal').classList.add('open');
 }
-function closeVisitReportModal(){document.getElementById('visit-report-modal').classList.remove('open');visitReportAssignmentId=null;visitReportTaskId=null;}
+function closeVisitReportModal(){document.getElementById('visit-report-modal').classList.remove('open');visitReportAssignmentId=null;visitReportTaskId=null;stopVoiceNote();}
 function closeVisitReportOnBackdrop(e){if(e.target===document.getElementById('visit-report-modal'))closeVisitReportModal();}
+// TALE-TIL-TEKST PÅ NOTE-FELTET — RUNDE O (Martins ønske: "tilføj at man kan snakke
+// til noten... den optager hvad der sagt men også transcriber det ned i noten og så
+// kan man rette i den bagefter... let for dem der ikke kan skrive så hurtig"). Bruger
+// browserens indbyggede Web Speech API (webkitSpeechRecognition) — ingen server-kald,
+// ingen ekstra omkostning eller API-nøgle nødvendig, men kun understøttet i Chrome-
+// baserede browsere (virker fint på Android, som de fleste medarbejdere formentlig
+// bruger ude på pladsen — Safari/iOS-understøttelsen er upålidelig pt.). Feltet er
+// stadig et helt normalt <textarea>, så det man har indtalt kan altid rettes bagefter,
+// præcis som Martin bad om. Antagelse: kun tilføjet på "Observationer / noter fra
+// besøget" (det felt Martin selv kaldte "et note felt") — "Anbefalet løsning" kan få
+// samme knap på samme måde, hvis Martin ønsker det.
+const SpeechRecognitionCtor=window.SpeechRecognition||window.webkitSpeechRecognition;
+let voiceRecognition=null;
+let voiceActiveFieldId=null;
+let voiceBaseText='';
+function hideUnsupportedMicButtons(){
+  if(SpeechRecognitionCtor)return;
+  document.querySelectorAll('.vr-mic-btn').forEach(function(b){b.style.display='none';});
+}
+hideUnsupportedMicButtons();
+function stopVoiceNote(){if(voiceRecognition){try{voiceRecognition.stop();}catch(e){}}}
+function toggleVoiceNote(fieldId){
+  if(!SpeechRecognitionCtor)return;
+  const btn=document.getElementById(fieldId+'-mic-btn');
+  if(voiceRecognition&&voiceActiveFieldId===fieldId){voiceRecognition.stop();return;}
+  if(voiceRecognition){voiceRecognition.stop();}
+  const field=document.getElementById(fieldId);
+  voiceActiveFieldId=fieldId;
+  voiceBaseText=field.value?field.value.trim()+' ':'';
+  const rec=new SpeechRecognitionCtor();
+  voiceRecognition=rec;
+  rec.lang='da-DK';
+  rec.continuous=true;
+  rec.interimResults=true;
+  rec.onstart=function(){if(btn){btn.classList.add('recording');btn.innerHTML='<span class="vr-mic-icon">⏹</span> Stop optagelse';}};
+  rec.onresult=function(e){
+    let finalT='',interimT='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal)finalT+=t; else interimT+=t;
+    }
+    if(finalT)voiceBaseText+=finalT.trim()+' ';
+    field.value=(voiceBaseText+interimT).trim();
+  };
+  rec.onerror=function(e){
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){toast('Mikrofon-adgang blev afvist — tillad mikrofon i browseren for at bruge indtaling.');}
+    else if(e.error!=='no-speech'&&e.error!=='aborted'){toast('Tale-til-tekst virkede ikke lige nu — skriv noten manuelt.');}
+  };
+  rec.onend=function(){
+    if(btn){btn.classList.remove('recording');btn.innerHTML='<span class="vr-mic-icon">🎤</span> Indtal';}
+    if(voiceActiveFieldId===fieldId){voiceRecognition=null;voiceActiveFieldId=null;}
+  };
+  try{rec.start();}catch(err){if(btn){btn.classList.remove('recording');btn.innerHTML='<span class="vr-mic-icon">🎤</span> Indtal';}voiceRecognition=null;voiceActiveFieldId=null;}
+}
 function vrRenderPhotoGrid(){
   const grid=document.getElementById('vr-photo-grid');
   grid.innerHTML=visitReportPhotos.map((url,i)=>`<div class="vr-photo-thumb"><img src="${esc(url)}"><button type="button" class="vr-photo-del" onclick="vrRemovePhoto(${i})">✕</button></div>`).join('')

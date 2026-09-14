@@ -1070,6 +1070,13 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-task-meta{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .crmpx-task-due{font-size:10.5px;color:var(--bly-sub);white-space:nowrap}
 .crmpx-task-due.overdue{color:#DC2626;font-weight:700}
+/* RUNDE M — det redigerbare dato-felt på selve Opfølgnings-oversigten
+   (#page-crmp-tasks, se cptRender/data-action="cpt-due-date"), samme
+   overskredet-markering som den skrivebeskyttede .crmpx-task-due.overdue
+   ovenfor bruger andre steder i appen, blot som kant-/tekstfarve på et input
+   fremfor på en <span> — feltet skal jo stadig se ud som et input man kan
+   klikke i, ikke bare rød tekst. */
+.cpt-date-input.overdue{border-color:#DC2626;color:#DC2626;font-weight:700}
 /* RUNDE L — slet-knappen er kun synlig ved museover, så listen ikke ser rodet
    ud med et fast rødt/gråt ikon på hver eneste række (matcher forslaget, som
    slet ikke viser en slet-handling i hvile). */
@@ -3054,7 +3061,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#customers" data-page="customers" id="customers-tab-btn">👥 Kunder</a>
         <a class="navdrop-item" href="#crmp/leads" data-page="crmp" data-crmp-pipeline-type="lead" id="crmp-leads-tab-btn">🧲 Leads</a>
         <a class="navdrop-item" href="#crmp/sales" data-page="crmp" data-crmp-pipeline-type="opportunity" id="crmp-sales-tab-btn">🤝 Sales</a>
-        <a class="navdrop-item" href="#crmp-tasks" data-page="crmp-tasks" id="crmp-tasks-tab-btn">☑ Opfølgninger</a>
+        <a class="navdrop-item" href="#crmp-tasks" data-page="crmp-tasks" id="crmp-tasks-tab-btn">⏰ Opfølgninger</a>
       </div>
     </div>
 
@@ -3184,7 +3191,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-14.2</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-14.5</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4780,7 +4787,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="tld-section"><label class="tld-label">🎯 Sandsynlighed (%)</label><input id="crmpx-probability" type="number" min="0" max="100" class="tld-input"></div>
         </div>
         <div class="tld-section"><label class="tld-label">👤 Ansvarlig</label><select id="crmpx-owner" class="tld-input"></select></div>
-        <div class="tld-section" id="crmpx-source-field" style="display:none"><label class="tld-label">🔗 Kilde</label><input id="crmpx-source" class="tld-input" placeholder="Fx Website form, Facebook/Instagram"></div>
+        <div class="tld-section" id="crmpx-source-field" style="display:none"><label class="tld-label">🔗 Lead Source</label><input id="crmpx-source" class="tld-input" placeholder="Fx Website form, Facebook/Instagram"></div>
         <div class="tld-section"><label class="tld-label">📝 Note</label><textarea id="crmpx-note" class="tld-input" rows="2"></textarea></div>
       </div>
 
@@ -4926,7 +4933,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      klikke ind på hvert enkelt lead/opportunity. -->
 <section class="page" id="page-crmp-tasks">
   <div class="bly-pagehead">
-    <div><h2>☑ Opfølgninger</h2><div class="sub">Alle opgaver på tværs af leads og sales, samlet ét sted</div></div>
+    <div><h2>⏰ Opfølgninger</h2><div class="sub">Alle opgaver på tværs af leads og sales, samlet ét sted</div></div>
   </div>
   <!-- RUNDE J #319 (Martins ønske: "Lav Billy style med de forskellige collums
        i toppen som filtre. Fx brug I dag, Næste uge Færdige") — samme
@@ -5270,15 +5277,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
            flyttet OP og lister nu BÅDE lead- og salgs-pipelines (crmcFillPipelines()),
            grupperet i optgroups. Vælger man en salgs-pipeline, opretter saveCrmCustomer()
            en OPPORTUNITY i stedet for et lead — se crmcSelectedPipelineType()/
-           crmcOnPipelineChange(). "Kilde" findes kun på leads (ingen tilsvarende kolonne på
-           opportunities noget andet sted i appen) og skjules derfor automatisk når en
-           salgs-pipeline er valgt. -->
+           crmcOnPipelineChange(). "Lead Source" (RUNDE L, sep. 2026 — omdøbt fra "Kilde"
+           efter Martins ønske, samme felt/samme source-kolonne) findes kun på leads (ingen
+           tilsvarende kolonne på opportunities noget andet sted i appen) og skjules derfor
+           automatisk når en salgs-pipeline er valgt. -->
       <div class="form-row">
         <div class="form-group"><label class="form-label">Pipeline</label><select id="crmc-pipeline" class="select"></select></div>
         <div class="form-group"><label class="form-label">Stage</label><select id="crmc-stage" class="select"></select></div>
       </div>
       <div class="form-row">
-        <div class="form-group" id="crmc-source-wrap"><label class="form-label">Kilde</label>
+        <div class="form-group" id="crmc-source-wrap"><label class="form-label">Lead Source</label>
           <select id="crmc-source" class="select">
             <option value="">Vælg…</option>
             <option value="Website form">Website form</option>
@@ -7649,7 +7657,7 @@ var meRefreshPromise=(async function(){
   }
 })();
 
-var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={},poolSelected={},assignAttachmentsReady=true;
+var users=[],tasks=[],bookings=[],planOffset=0,assignCtx=null,editUserId=null,dragPayload=null,dropBusy=false,suppressClick=0,vendorExpanded={},planVendorsOpen=false,poolSelected={},assignAttachmentsReady=true;
 var panelRoles=[],panelPagesCatalog=[],editPanelRoleId=null;
 // Akkordliste (sep. 2026): akkordItems = kun AKTIVE poster, indlæst bredt (bruges af
 // tidsregistrerings-modalen på en sag). akkordItemsAll = ALLE poster inkl. deaktiverede,
@@ -8722,15 +8730,31 @@ function renderPlan(){
     return '<tr>'+cells+'</tr>';
   }
   grouped.internal.forEach(function(u){html+=row(u);});
-  Object.keys(grouped.groups).sort().forEach(function(g){
-    // FEJL RETTET: grupper var altid sammenfoldet som standard — selv når man
-    // specifikt valgte "Vis: Vendors", så boardet virkede helt tomt. Nu foldes
-    // grupperne automatisk ud, når man aktivt har filtreret til vendors/et fag.
-    var forceOpen=filters.plan.team==='vendors'||filters.plan.team.indexOf('trade:')===0;
-    var isOpen=vendorExpanded[g]===true||(forceOpen&&vendorExpanded[g]!==false);
-    html+='<tr class="group-row"><td colspan="365"><button class="group-toggle" data-action="toggle-vendor" data-group="'+esc(g)+'">'+(isOpen?'▾':'▸')+' '+esc(g)+'</button> · '+grouped.groups[g].length+' undergrupper <button class="btn small" data-action="add-subgroup" data-group="'+esc(g)+'" style="margin-left:7px">+ Undergruppe</button></td></tr>';
-    if(isOpen)grouped.groups[g].forEach(function(u){html+=row(u);});
-  });
+  // RUNDE N (Martins ønske: "Det var mening der bare skulle stå vendors og så
+  // hvis jeg trykker på dem åbner den dem alle. Ellers er de collaps hele
+  // tiden da jeg ikke bruger dem så tit") — før var HVER enkelt vendor-gruppe
+  // (vendor_group-feltet, fx "AJB Gruppen APS") sin egen sammenfoldelige
+  // række, så man skulle klikke sig igennem dem én for én for overhovedet at
+  // se en vendor i Daglig planlægning. Nu er der ét samlet "🧰 Vendors"-hoved
+  // — samme genbrugte mønster som #people-vendor-container på Hold &
+  // vendors-siden (RUNDE K) — ét klik folder ALLE vendor-undergrupper ud på
+  // én gang. Egen tilstand (planVendorsOpen), bevidst UAFHÆNGIG af
+  // vendorExpanded/toggle-vendor som Kapacitet-boardet stadig bruger uændret
+  // herunder (kun Daglig planlægning var det Martin rapporterede som
+  // problemet — Kapacitet rørt ikke ved).
+  var vendorGroupKeys=Object.keys(grouped.groups).sort();
+  if(vendorGroupKeys.length){
+    var vendorForceOpen=filters.plan.team==='vendors'||filters.plan.team.indexOf('trade:')===0;
+    var vendorsOpen=planVendorsOpen===true||(vendorForceOpen&&planVendorsOpen!==false);
+    var vendorTotal=vendorGroupKeys.reduce(function(n,g){return n+grouped.groups[g].length;},0);
+    html+='<tr class="group-row"><td colspan="365"><button class="group-toggle" data-action="toggle-plan-vendors">'+(vendorsOpen?'▾':'▸')+' 🧰 Vendors</button> · '+vendorTotal+' i '+vendorGroupKeys.length+' grupper</td></tr>';
+    if(vendorsOpen){
+      vendorGroupKeys.forEach(function(g){
+        html+='<tr class="group-row"><td colspan="365" style="padding-left:28px">'+esc(g)+' · '+grouped.groups[g].length+' <button class="btn small" data-action="add-subgroup" data-group="'+esc(g)+'" style="margin-left:7px">+ Undergruppe</button></td></tr>';
+        grouped.groups[g].forEach(function(u){html+=row(u);});
+      });
+    }
+  }
   document.getElementById('daily-body').innerHTML=html||'<tr><td colspan="365" style="padding:18px;text-align:center;color:var(--muted)">Opret medarbejdere under Hold & vendors.</td></tr>';
   updatePlanWeekLabel(planCurrentWeekStart);
   // Scroller kun til "i dag" ved allerførste indlæsning — IKKE ved hver gentegning
@@ -11695,7 +11719,7 @@ function timeAgo(iso){
 // oprettelse OG enten forfalder i dag eller allerede er overskredet ("bagud")
 // — fremtidige høj-prioritets-opfølgninger er ikke akutte endnu og fylder
 // derfor ikke banneret unødigt. Klik åbner samme detalje-modal som
-// "☑ Opfølgninger"-siden (openCrmpDetail). Er der flere end én kvalificerende
+// "⏰ Opfølgninger"-siden (openCrmpDetail). Er der flere end én kvalificerende
 // sag, viser boksen dem ÉN ad gangen og skifter automatisk hvert 5. sekund
 // (se globalPriorityRows/globalPriorityIdx/globalPriorityTimer herunder) —
 // pause ved museover håndteres separat i bind() (mouseenter/mouseleave på
@@ -17078,6 +17102,7 @@ async function bind(){
       if(act==='pool-filter'){filters[a.dataset.scope][a.dataset.kind]=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else renderCapacity();}
       if(act==='team-filter'){filters[a.dataset.scope].team=a.dataset.value;if(a.dataset.scope==='plan')renderPlan();else if(a.dataset.scope==='availability')renderAvailability();else renderCapacity();}
       if(act==='toggle-vendor'){var g=a.dataset.group;vendorExpanded[g]=vendorExpanded[g]!==true;renderPlan();renderCapacity();}
+      if(act==='toggle-plan-vendors'){planVendorsOpen=planVendorsOpen!==true;renderPlan();}
       if(act==='add-subgroup')openUser(null,{vendorGroup:a.dataset.group});
       if(act==='scroll-week')scrollToWeek(a.dataset.week);
       if(act==='add-booking'){var el=document.querySelector('[data-action="add-booking"][data-user-id="'+a.dataset.userId+'"][data-date="'+a.dataset.date+'"]');openQuickPop(null,+a.dataset.userId,a.dataset.date,{clientX:a.getBoundingClientRect().left,clientY:a.getBoundingClientRect().top});}
@@ -18590,7 +18615,7 @@ function initCrmModule(){
     document.getElementById('crmc-cancel').addEventListener('click',function(){closeModal('crm-modal');});
     document.getElementById('crmc-is-company').addEventListener('change',crmSyncCompanyFields);
     document.getElementById('crmc-source').addEventListener('change',function(e){document.getElementById('crmc-source-other').classList.toggle('hidden',e.target.value!=='Andet');});
-    // Skifter man pipeline, skal stage-listen (og, RUNDE K fortsat, Kilde-feltets
+    // Skifter man pipeline, skal stage-listen (og, RUNDE K fortsat, Lead Source-feltets
     // synlighed + Projekttype-listen) med over — ellers kunne man sende et
     // stage_id fra en HELT anden pipeline med (samme greb som crmpNewFillStages).
     document.getElementById('crmc-pipeline').addEventListener('change',crmcOnPipelineChange);
@@ -18668,8 +18693,9 @@ function crmcSelectedPipelineType(){
   return p?p.type:'lead';
 }
 // Skifter man mellem en lead- og en salgs-pipeline, skal tre ting følge med:
-// stage-listen (anden pipeline = andre stages), "Kilde"-feltet (findes kun på
-// leads — ingen tilsvarende kolonne på opportunities), og Projekttype-listen
+// stage-listen (anden pipeline = andre stages), "Lead Source"-feltet (RUNDE L,
+// omdøbt fra "Kilde" — findes kun på leads, ingen tilsvarende kolonne på
+// opportunities), og Projekttype-listen
 // (samme custom field-KEY findes på begge entitetstyper, men er to adskilte
 // definitioner Martin kan redigere hver for sig under ⚙️ Indstillinger).
 function crmcOnPipelineChange(){
@@ -18709,7 +18735,7 @@ async function openCrmModal(id){
   document.getElementById('crmc-cvr').value=c?(c.cvr||''):'';
   crmSyncCompanyFields();
   document.getElementById('crmc-delete').classList.toggle('hidden',!c);
-  // Kilde/Projekttype (og dermed det automatisk oprettede lead) giver kun mening
+  // Lead Source/Projekttype (og dermed det automatisk oprettede lead) giver kun mening
   // ved oprettelse af en HELT NY kunde — ikke når en eksisterende kunde redigeres
   // (den har typisk allerede et lead/en opportunity et sted i pipelinen).
   document.getElementById('crmc-lead-fields').classList.toggle('hidden',!!c);
@@ -19487,7 +19513,7 @@ function crmpBuildBulkControls(){
   stageSel.innerHTML='<option value="">Skift stage…</option>'+stages.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
   var defs=(crmpState.customFieldDefs[p.type]||[]).filter(function(d){return d.field_type==='select';});
   var core=p.type==='lead'
-    ?[{v:'core:owner_id',l:'Ansvarlig'},{v:'core:source',l:'Kilde'}]
+    ?[{v:'core:owner_id',l:'Ansvarlig'},{v:'core:source',l:'Lead Source'}]
     :[{v:'core:owner_id',l:'Ansvarlig'}];
   fieldSel.innerHTML='<option value="">Opdater felt…</option>'
     +core.map(function(o){return '<option value="'+o.v+'">'+esc(o.l)+'</option>';}).join('')
@@ -19496,7 +19522,7 @@ function crmpBuildBulkControls(){
   crmpSyncBulkValueControl();
 }
 // Viser den rigtige værdi-kontrol for det valgte felt: dropdown for
-// select-felter og for Ansvarlig, fritekst for Kilde.
+// select-felter og for Ansvarlig, fritekst for Lead Source.
 function crmpSyncBulkValueControl(){
   var p=crmpCurrentPipeline();
   var sel=document.getElementById('crmp-bulk-field').value;
@@ -20753,13 +20779,25 @@ function cptRender(){
   document.getElementById('cpt-count').textContent=rows.length?rows.length+' opgave(r)':'';
   document.getElementById('cpt-body').innerHTML=rows.length?rows.map(function(t){
     var assigneeOptions='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(t.assigned_to)?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
+    // RUNDE M (Martins ønske: "Gør det muligt på siden at ændre Dato og hvis
+    // den er trykket færdig så untryk den og ændre datoen igen, hvis det nu
+    // har været en fejl") — datoen var før kun et skrivebeskyttet tekstlabel
+    // (crmpxTaskDueLabel), samme som på CRM-detaljesiden. Her på selve
+    // Opfølgnings-oversigten er den nu et rigtigt date-felt man kan rette
+    // direkte i listen, samme mønster som Ansvarlig-dropdownen ved siden af
+    // (data-action="cpt-due-date", PUT due_date med det samme ved ændring).
+    // Færdig-afkrydsningen herunder kunne godt afkrydses IGEN i forvejen
+    // (checkboksen sender bare done:false) — det nye er at man nu OGSÅ kan nå
+    // datoen bagefter, uanset om opgaven står som færdig eller ej, så en
+    // fejlagtig "færdig"-markering kan rettes helt: untryk, og sæt en ny dato.
+    var overdue=!t.done&&t.due_date&&t.due_date<iso(new Date());
     return '<tr class="'+(t.done?'done':'')+'" style="'+(t.done?'opacity:.55':'')+'">'
       +'<td><input type="checkbox" data-task-id="'+t.id+'" data-action="cpt-toggle"'+(t.done?' checked':'')+'></td>'
       +'<td>'+(t.priority?'⚡':'')+'</td>'
       +'<td style="'+(t.done?'text-decoration:line-through':'')+'">'+esc(t.title)+'</td>'
       +'<td><a href="#crmp-detail/'+t.entity_type+'/'+t.entity_id+'" onclick="openCrmpDetail(\''+t.entity_type+'\','+t.entity_id+');return false;">'+esc(t.entity_name||'(slettet)')+'</a></td>'
       +'<td><select class="select" style="width:100%" data-task-id="'+t.id+'" data-action="cpt-assignee">'+assigneeOptions+'</select></td>'
-      +'<td>'+(crmpxTaskDueLabel(t)||'<span class="crmpx-empty" style="padding:0">–</span>')+'</td>'
+      +'<td><input type="date" class="input cpt-date-input'+(overdue?' overdue':'')+'" style="width:100%;padding:6px 7px;font-size:11.5px" data-task-id="'+t.id+'" data-action="cpt-due-date" value="'+(t.due_date||'')+'">'+(t.due_time?'<div class="sub" style="font-size:10px;margin-top:2px;white-space:nowrap">'+esc(t.due_time)+'</div>':'')+'</td>'
       +'<td><button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="cpt-delete" title="Slet">🗑</button></td>'
       +'</tr>';
   }).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen opfølgninger fundet</td></tr>';
@@ -20768,6 +20806,9 @@ function cptRender(){
   });
   document.querySelectorAll('[data-action="cpt-assignee"]').forEach(function(sel){
     sel.addEventListener('change',async function(){await api('/api/crm/tasks/'+sel.dataset.taskId,{method:'PUT',body:JSON.stringify({assigned_to:sel.value||null})});cptLoad();});
+  });
+  document.querySelectorAll('[data-action="cpt-due-date"]').forEach(function(inp){
+    inp.addEventListener('change',async function(){await api('/api/crm/tasks/'+inp.dataset.taskId,{method:'PUT',body:JSON.stringify({due_date:inp.value||null})});cptLoad();});
   });
   document.querySelectorAll('[data-action="cpt-delete"]').forEach(function(btn){
     btn.addEventListener('click',async function(){await api('/api/crm/tasks/'+btn.dataset.taskId,{method:'DELETE'});cptLoad();});
@@ -21330,8 +21371,8 @@ async function saveCrmCustomer(){
   var isCompany=document.getElementById('crmc-is-company').checked;
   var phone=document.getElementById('crmc-phone').value.trim()||null,email=document.getElementById('crmc-email').value.trim()||null,address=document.getElementById('crmc-address').value.trim()||null;
   if(isNew){
-    // Kilde findes kun på leads (ingen tilsvarende kolonne på opportunities noget
-    // andet sted i appen) — springes helt over ved en salgs-pipeline.
+    // Lead Source findes kun på leads (ingen tilsvarende kolonne på opportunities
+    // noget andet sted i appen) — springes helt over ved en salgs-pipeline.
     if(!isOpp){
       if(!source){toast('Vælg en kilde','⚠️');return;}
       if(source==='Andet'&&!sourceOther){toast('Angiv kilden under "Andet"','⚠️');return;}
