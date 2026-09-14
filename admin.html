@@ -3184,7 +3184,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-14.1</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-14.2</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -6831,6 +6831,29 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions">
       <button class="btn" id="qcv-cancel-btn" type="button">Annuller</button>
       <button class="btn primary" id="qcv-confirm-btn" type="button">➜ Opret faktura</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE K (sep. 2026, Martins ønske: "kan du gøre når jeg vælger en skabaloner
+     kommer der en popup med alle linjerne i den og så kan jeg kryds af om jeg
+     vil have alle linjer. Lad bare alle være tilvalgt i starten så kan jeg
+     altid fjerne dem jeg vil") — samme linjevalgs-mønster som "Opret
+     faktura"-popup'en ovenfor (#quote-convert-modal / qcvState/renderQcvLines/
+     qcvConfirm), her genbrugt til at vælge hvilke af en SKABELONS linjer der
+     rent faktisk skal indsættes i tilbuddet, FØR de lægges ind — i stedet for
+     det gamle "alt eller intet" (useTemplateForNewQuote/qeApplyTemplate satte
+     tidligere direkte qeState.lines = skabelonens fulde linjeliste). Alle
+     linjer er tilvalgt som udgangspunkt, så uændret adfærd kræver blot at
+     trykke "Indsæt valgte linjer" uden at røre noget. -->
+<div class="mo" id="qz-template-apply-modal">
+  <div class="modal" style="max-width:560px;width:92vw">
+    <h3 style="margin:0 0 4px" id="qta-title">Anvend skabelon</h3>
+    <p class="sub" style="margin-top:0">Vælg hvilke linjer fra skabelonen der skal indsættes. Fravalgte linjer springes over.</p>
+    <div id="qta-lines" style="max-height:50vh;overflow:auto;margin:10px 0"></div>
+    <div class="modal-actions">
+      <button class="btn" id="qta-cancel-btn" type="button">Annuller</button>
+      <button class="btn primary" id="qta-confirm-btn" type="button">➜ Indsæt valgte linjer</button>
     </div>
   </div>
 </div>
@@ -23518,9 +23541,11 @@ function populateQeTemplatePicker(){
 async function useTemplateForNewQuote(id){
   var t=qzTemplates.find(function(x){return x.id===id;});
   if(!t)return;
-  await openQuoteEditor(null);
-  qeState.lines=(t.lines||[]).map(function(l){return Object.assign({},l);});
-  renderQeLines();qeRecalc();
+  qzOpenTemplateApplyPicker(id,async function(lines){
+    await openQuoteEditor(null);
+    qeState.lines=lines;
+    renderQeLines();qeRecalc();
+  });
 }
 
 // ── TILBUD — liste ───────────────────────────────────────────
@@ -24710,6 +24735,35 @@ async function qcvConfirm(){
     openInvoiceDetail(r.invoice_id);
   } else toast((r&&r.error)||'Kunne ikke konvertere','❌');
 }
+// ── SKABELON-ANVENDELSE MED LINJEVALG (RUNDE K, sep. 2026) — se
+// #qz-template-apply-modal-kommentaren ved markup'en for baggrunden. ──────────
+var qtaState={lines:[],onConfirm:null};
+function qzOpenTemplateApplyPicker(templateId,onConfirm){
+  var t=qzTemplates.find(function(x){return x.id===templateId;});
+  if(!t)return;
+  if(!(t.lines||[]).length){toast('Skabelonen har ingen linjer','⚠️');return;}
+  qtaState={lines:(t.lines||[]).map(function(l){return Object.assign({},l);}),onConfirm:onConfirm};
+  document.getElementById('qta-title').textContent='Anvend "'+t.name+'"';
+  renderQtaLines();
+  document.getElementById('qz-template-apply-modal').classList.add('open');
+}
+function renderQtaLines(){
+  document.getElementById('qta-lines').innerHTML=qtaState.lines.map(function(l,idx){
+    return '<label class="qcv-line-row"><input type="checkbox" class="qta-line-check" data-idx="'+idx+'" checked>'
+      +'<span style="flex:1">'+qzLineDescCellHtml(l)+(l.line_type!=='text'?'<div class="sub">'+(Number(l.quantity)||0)+' '+esc(l.unit||'')+' · '+krFmt(Number(l.sell_price))+'</div>':'')+'</span>'
+      +'</label>';
+  }).join('');
+}
+function qtaConfirm(){
+  var selected=[];
+  Array.prototype.forEach.call(document.querySelectorAll('.qta-line-check'),function(cb){
+    if(cb.checked)selected.push(qtaState.lines[Number(cb.dataset.idx)]);
+  });
+  if(!selected.length){toast('Vælg mindst én linje','⚠️');return;}
+  var fn=qtaState.onConfirm;
+  closeModal('qz-template-apply-modal');
+  if(fn)fn(selected.map(function(l){return Object.assign({},l);}));
+}
 // RUNDE J (sep. 2026, Martins ønske) — "+ Tilføj ekstra ydelser": åbner en lille
 // linjeeditor (genbruger samme mønster som skabelon-editoren, se qzRenderLines)
 // og sender de nye linjer additivt via POST /api/quotes/:id/lines — rører aldrig
@@ -24832,8 +24886,10 @@ async function qeApplyTemplate(id){
   var t=qzTemplates.find(function(x){return x.id===id;});
   if(!t)return;
   if(qeState.lines.length&&!await gmConfirm('Dette erstatter de nuværende linjer med skabelonens linjer — fortsæt?'))return;
-  qeState.lines=(t.lines||[]).map(function(l){return Object.assign({},l);});
-  renderQeLines();qeRecalc();
+  qzOpenTemplateApplyPicker(id,function(lines){
+    qeState.lines=lines;
+    renderQeLines();qeRecalc();
+  });
 }
 // RUNDE T (Martins ønske: se qe-insert-template-btn ovenfor) — erstatter det
 // gamle <select id="qe-template-picker">-felt: knappen genbruger den fælles
@@ -25294,6 +25350,8 @@ function bindQuotesModuleEvents(){
   document.getElementById('qcv-cancel-btn').addEventListener('click',function(){closeModal('quote-convert-modal');});
   document.getElementById('qcv-confirm-btn').addEventListener('click',qcvConfirm);
   document.getElementById('qcv-lines').addEventListener('change',function(e){if(e.target.classList.contains('qcv-line-check'))qcvRecalcTotal();});
+  document.getElementById('qta-cancel-btn').addEventListener('click',function(){closeModal('qz-template-apply-modal');});
+  document.getElementById('qta-confirm-btn').addEventListener('click',qtaConfirm);
   document.getElementById('qe-add-extra-lines-btn').addEventListener('click',openQalModal);
   document.getElementById('qal-cancel-btn').addEventListener('click',function(){closeModal('quote-add-lines-modal');});
   document.getElementById('qal-save-btn').addEventListener('click',qalSave);
