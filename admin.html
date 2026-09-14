@@ -1508,6 +1508,31 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .qz-more-menu.open{display:block}
 .qz-more-item{display:block;width:100%;text-align:left;border:0;background:none;padding:9px 10px;font-size:13px;font-weight:600;color:var(--bly-ink);border-radius:8px;cursor:pointer}
 .qz-more-item:hover{background:var(--bly-accent-soft)}
+/* RUNDE I #318 (Martins ønske: "faktura popuppen helt om ... lav alt det man
+   kan til knapper") — EGET klassenavn (iv-more-*), bevidst IKKE genbrug af
+   .qz-more-item/.qz-more-menu: dem binder bindQuotesModuleEvents() globalt via
+   querySelectorAll('.qz-more-item') til switchQzTab(), som ville fyre (med
+   dataset.qztab undefined) hver gang man klikkede et punkt i denne nye menu,
+   hvis den delte klassen — samme type kollision som .fin-move-month-select
+   tidligere. -->
+.iv-more-drop{position:relative}
+.iv-more-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);box-shadow:0 12px 32px rgba(15,17,24,.14);padding:6px;min-width:210px;z-index:40}
+.iv-more-menu.open{display:block}
+.iv-more-item{display:block;width:100%;text-align:left;border:0;background:none;padding:9px 10px;font-size:13px;font-weight:600;color:var(--bly-ink);border-radius:8px;cursor:pointer}
+.iv-more-item:hover{background:var(--bly-accent-soft)}
+/* Faktura-popup — Billy-style to-kolonne layout: PDF-forhåndsvisning til
+   venstre, status/betaling/kreditnota/aktivitet til højre i egen scroll. */
+#invoice-detail-modal .modal{max-width:1180px}
+.iv-layout{display:grid;grid-template-columns:minmax(280px,420px) 1fr;gap:20px;align-items:start}
+.iv-pdf-pane{position:sticky;top:0;background:#F4F5F7;border:1px solid var(--bly-border,#E5E7EB);border-radius:var(--bly-r-lg,12px);overflow:hidden;height:min(78vh,900px);display:flex;flex-direction:column}
+.iv-pdf-pane iframe{flex:1;width:100%;border:0;background:#fff}
+.iv-pdf-fallback{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;color:var(--muted)}
+.iv-detail-col{min-width:0;max-height:min(78vh,900px);overflow-y:auto;padding-right:4px}
+@media (max-width:900px){
+  .iv-layout{display:block}
+  .iv-pdf-pane{position:static;height:70vh;margin-bottom:18px}
+  .iv-detail-col{max-height:none;overflow-y:visible}
+}
 .qz-more-item.active{background:var(--bly-accent-soft);color:var(--bly-accent)}
 .pd-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .pd-photo-thumb{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bly-border-soft);aspect-ratio:1/1;background:#F4F6FB}
@@ -1896,6 +1921,15 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .notif-item .notif-time{font-size:9.5px;color:var(--muted);margin-top:2px}
 .template-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border2)}
 .template-row:last-child{border-bottom:0}
+/* RUNDE I #318 (Martins ønske: "Opgave skabeloner forbedre Layoutet her. more
+   billy style") — kun #templates-list's rækker løftes til et card-look med
+   skygge/radius/luft; #email-templates-list og sysmail-rækkerne beholder den
+   flade divider-liste, som passer bedre til deres tættere sammenhæng. */
+#templates-list.dash-panel{background:transparent;border:0;padding:0}
+#templates-list .template-row{background:#fff;border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:8px;box-shadow:var(--shadow)}
+#templates-list .template-row:last-child{margin-bottom:0}
+#templates-list .dash-row-title{font-size:12.5px}
+#templates-list .qz-row-actions{gap:6px}
 .notif-rule-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 8px;border-bottom:1px solid var(--border2);flex-wrap:wrap}
 .notif-rule-row:last-child{border-bottom:0}
 .notif-rule-label{font-size:12px;font-weight:600;color:var(--navy);flex:1;min-width:220px}
@@ -2462,6 +2496,13 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 /* Sidehoved/værktøjslinje på Hold & vendors — samme .bly-pagehead-mønster som
    Projekter/CRM, med en lille tælle-pille i stedet for den gamle .page-title. */
 #page-people .bly-pagehead h2{display:flex;align-items:center;gap:9px}
+/* RUNDE I #318 (Martins ønske: "Lav opfølgnings siden mere Billy style, Kan
+   slet ikke lide den store tekst i toppen") — kun denne sides overskrift
+   formindskes (den delte .bly-pagehead h2-klasse bruges af flere andre sider,
+   fx Indstillinger, som IKKE skal ændres). */
+#page-crmp-tasks .bly-pagehead{margin-bottom:12px}
+#page-crmp-tasks .bly-pagehead h2{font-size:17px;font-weight:700;display:flex;align-items:center;gap:7px}
+#page-crmp-tasks .bly-pagehead .sub{margin-top:1px}
 #people-count-pill{font-size:10.5px;font-weight:800;color:var(--bly-sub);background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-pill);padding:2px 10px;line-height:1.7;font-variant-numeric:tabular-nums}
 
 /* WEEKLY NOTE */
@@ -2518,18 +2559,28 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .tl-bg-cell.tl-cell-clickable:hover{background:#F4F6FF}
 .tl-bg-cell.over{background:#E4E9FF!important;outline:2px dashed #6C7FFF;outline-offset:-2px}
 .tl-todayline{position:absolute;top:0;bottom:0;width:1.5px;background:#FF8A80;z-index:2;pointer-events:none}
-.tl-bar{position:absolute;height:26px;border-radius:13px;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;padding:0 12px;overflow:hidden;white-space:nowrap;cursor:grab;box-shadow:none;border:none;user-select:none;transition:box-shadow .18s cubic-bezier(.2,.8,.3,1),transform .12s cubic-bezier(.2,.8,.3,1)}
+/* RUNDE I #318 (Martins ønske: Tidslinjen "ser barnlig ud", vil have den mere
+   proff/Billy-style) — bjælkerne var før massive, fuldt mættede farve-piller
+   (border-radius 13px, hvid tekst) der lignede klistermærker. De bruger nu
+   samme tonede baggrund + venstre-farvekant som bookingColorStyle() (Daglig
+   plan/Kapacitet), med et roligere, mere data-tæt hjørne-radius. */
+.tl-bar{position:absolute;height:26px;border-radius:6px;color:var(--navy);font-size:11px;font-weight:600;display:flex;align-items:center;padding:0 10px;overflow:hidden;white-space:nowrap;cursor:grab;box-shadow:none;border:none;user-select:none;transition:box-shadow .18s cubic-bezier(.2,.8,.3,1),transform .12s cubic-bezier(.2,.8,.3,1)}
 .tl-bar-label{overflow:hidden;text-overflow:ellipsis;pointer-events:none;letter-spacing:.01em}
 .tl-bar:hover{filter:none;z-index:5;box-shadow:0 6px 16px rgba(15,34,64,.16);transform:translateY(-1.5px) scale(1.01)}
 .tl-bar.dragging{opacity:.4;transform:scale(.98)}
 .tl-bar.resizing{z-index:6;box-shadow:0 6px 18px rgba(15,34,64,.2)}
 .tl-bar[draggable="true"]:active{cursor:grabbing}
 .tl-handle{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:7}
-.tl-handle-left{left:0;border-radius:13px 0 0 13px}
-.tl-handle-right{right:0;border-radius:0 13px 13px 0}
-.tl-handle::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:12px;border-radius:2px;background:rgba(255,255,255,.7);opacity:0;transition:opacity .1s}
+.tl-handle-left{left:0;border-radius:6px 0 0 6px}
+.tl-handle-right{right:0;border-radius:0 6px 6px 0}
+.tl-handle::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:12px;border-radius:2px;background:rgba(15,23,42,.35);opacity:0;transition:opacity .1s}
 .tl-bar:hover .tl-handle::after{opacity:1}
 .tl-empty{padding:24px;text-align:center;color:#9AA3B2;font-size:12px}
+/* RUNDE I #318 — farve-forklaring over selve tidslinjen (se renderTlLegend). */
+.tl-legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin:-6px 0 12px;padding:8px 12px;background:#fff;border:1px solid #EEF0F3;border-radius:10px}
+.tl-legend-item{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;color:#5B6472;white-space:nowrap}
+.tl-legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.tl-legend-sep{width:1px;align-self:stretch;background:#EEF0F3;margin:0 2px}
 
 /* FLYDENDE NOTE-BLOK — omlagt fra Gulv/Orange-farverne til en neutral,
    moderne Billy-stil (samme --bly-*-designsystem som resten af appen), efter
@@ -3101,7 +3152,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#tasklist" data-page="tasklist" data-tltab-jump="open">📋 Opgaveliste</a>
         <a class="navdrop-item" href="#requests" data-page="requests">✅ Godkendelser (sygdom)<span class="tab-badge hidden" id="requests-badge">0</span></a>
         <a class="navdrop-item" href="#people" data-page="people">👥 Hold &amp; vendors</a>
-        <a class="navdrop-item" href="#timer" data-page="timer">⏱ Timer</a>
+        <!-- RUNDE I #318: "⏱ Timer"-siden herunder er fjernet — den læste fra den
+             gamle time_logs-tabel, som intet i appen længere skriver til. Rigtig
+             tidsregistrering foregår nu via projektets "Tidsregistrering"-fane og
+             "⏱️ Timetracking" under Tilbud & Faktura. -->
         <a class="navdrop-item" href="#logs" data-page="logs">🛠 Log</a>
         <a class="navdrop-item" href="#templates" data-page="templates" data-tpltab-jump="tasks">📐 Skabeloner</a>
         <!-- Gmail-integrationen har ikke længere sit eget menupunkt (det var
@@ -3114,7 +3168,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.9</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-13.10</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3335,29 +3389,38 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <!-- MAIL-SKABELONER — samlet skabelon-center for ALLE mail-skabeloner i appen,
      jf. Martins ønske om ét sted til det hele. Lå tidligere på sin egen
      (praktisk talt uopnåelige) side #email-templates; er nu denne fane.
-     Fem underfaner: Automatiske mails (system_email_templates, ét aktivt
+     Fire underfaner: Automatiske mails (system_email_templates, ét aktivt
      eksemplar pr. handling), Planlægningsmail (email_templates, flere
      navngivne varianter man vælger imellem), Tilbud & faktura
-     (document_email_templates + faste koblinger pr. hændelse), Andre
-     skabeloner (custom_email_templates, uden fast handling endnu) og
-     Automatisering. Markup, id'er og handlers er flyttet uændret. -->
+     (document_email_templates + faste koblinger pr. hændelse) og Andre
+     skabeloner (custom_email_templates, uden fast handling endnu).
+     Markup, id'er og handlers er flyttet uændret.
+     RUNDE I #318: "🤖 Automatisering" boede tidligere som 5. underfane her
+     (3 niveauer nede: Skabeloner → Mail-skabeloner → Automatisering, uden
+     genvej) — Martins ønske om at den skal ligge under Indstillinger i
+     stedet. Flyttet til #settab-automation, se #set-tabs nedenfor i
+     #page-notif-settings. Markup/id'er/handlers uændret ved flytningen. -->
 <div class="tpltabpage" id="tpltab-mail">
   <div class="bly-segtabs" id="eml-tabs">
-    <button class="bly-segtab active" data-emltab="auto" type="button">⚡ Automatiske mails</button>
-    <button class="bly-segtab" data-emltab="booking" type="button">📅 Planlægningsmail</button>
+    <button class="bly-segtab active" data-emltab="booking" type="button">📅 Planlægningsmail</button>
     <button class="bly-segtab" data-emltab="documents" type="button">🧾 Tilbud &amp; faktura</button>
     <button class="bly-segtab" data-emltab="custom" type="button">✨ Andre skabeloner</button>
-    <button class="bly-segtab" data-emltab="automation" type="button">🤖 Automatisering</button>
   </div>
 
-  <div class="emltabpage" id="emltab-auto">
-    <div class="hint" style="margin-bottom:14px">Disse mails sendes automatisk (eller ved tryk på en fast knap i appen) — her styrer du emne, indhold og om de er slået til.</div>
-    <div id="sys-email-templates-list"></div>
-  </div>
+  <!-- RUNDE I #318 (Martins ønske: "kompress alt så det mere overskueligt ...
+       måske lav dem under Planlægnings mail så det jo alle er mails man kan
+       planlægge") — "⚡ Automatiske mails" er flettet ind i denne fane som
+       kompakte klap-ud-rækker (se renderSystemEmailTemplates) i stedet for at
+       være sin egen fane med 5 store, altid-åbne kort. -->
+  <div class="emltabpage active" id="emltab-booking">
+    <div class="hint" style="margin-bottom:14px">Alle mails I kan sende ved planlægning og faste hændelser, samlet ét sted.</div>
 
-  <div class="emltabpage" id="emltab-booking" style="display:none">
+    <div class="bly-toolbar-title" style="margin-bottom:8px">⚡ Automatiske systemmails</div>
+    <div class="hint" style="margin-bottom:10px">Sendes automatisk (eller ved tryk på en fast knap i appen). Klik en linje for at redigere emne, indhold og om den er slået til.</div>
+    <div id="sys-email-templates-list" class="dash-panel" style="margin-bottom:22px"></div>
+
     <div class="bly-toolbar">
-      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Mail-varianter ved booking</span></div>
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">🎯 Mail-varianter ved booking</span></div>
       <div class="bly-toolbar-right"><button class="bly-btn" id="new-email-template-btn" type="button">+ Ny mail-skabelon</button></div>
     </div>
     <div class="hint" style="margin-bottom:14px">Forskellige varianter af kunde-mailen — vælges når du trykker "Send planlægningsmail" ved en booking.</div>
@@ -3393,45 +3456,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </table>
   </div>
 
-  <!-- AUTOMATISERING — Martins ønske om SMS pr. pipeline-stage (inMobile),
-       lead-intake fra WordPress/Elementor + Facebook Ads (via Make.com), og
-       automatisk opfølgningsmail på tabte leads/sager. SMS/email-skabeloner
-       PR. STAGE redigeres ikke her, men inde på selve stagen i CRM-
-       pipeline-indstillingerne (⚙ ved siden af pipeline-vælgeren under CRM) —
-       denne fane er kun det der er FÆLLES: nøgler, status, og tabt-reglen. -->
-  <div class="emltabpage" id="emltab-automation" style="display:none">
-    <div class="hint" style="margin-bottom:14px">SMS pr. pipeline-stage redigeres inde på selve stagen (CRM → ⚙ Indstillinger → Pipelines). Her er det fælles: nøgler til lead-modtagelse, SMS-status, og den automatiske opfølgning på tabte leads/sager.</div>
-
-    <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-bottom:16px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:8px">📥 Modtag leads automatisk (WordPress/Elementor + Facebook Ads)</div>
-      <div class="hint" style="margin:0 0 10px">Sæt disse URL'er ind som mål i et Make.com-scenarie — ét for Elementor-formularen, ét for Facebook Lead Ads. Læg nøglen i en header <code>X-Webhook-Secret</code> (eller som <code>?token=</code> i selve URL'en, hvis Make gør headers besværlige).</div>
-      <div id="automation-webhook-info"></div>
-    </div>
-
-    <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-bottom:16px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:8px">📱 SMS-forbindelse</div>
-      <div id="automation-sms-status" class="hint" style="margin:0 0 10px"></div>
-      <div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">
-        <div class="form-group" style="margin:0"><label class="form-label">Send test-SMS til</label><input id="automation-sms-test-to" class="input" placeholder="Fx 12345678"></div>
-        <button class="btn small" id="automation-sms-test-btn">Send test</button>
-      </div>
-    </div>
-
-    <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:8px">📮 Automatisk opfølgning på tabte leads/sager</div>
-      <div class="hint" style="margin:0 0 10px">Sender én gang automatisk en mail til leadet/kunden, hvis et kort har ligget i en stage markeret "❌ Tabt" (se CRM-pipeline-indstillinger) i mindst X dage. Indsætninger: {{navn}}, {{firma}}.</div>
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><input type="checkbox" id="lostfollow-enabled"> <b>Slået til</b></label>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">
-        <label class="sub">Antal dage i "Tabt"<br><input class="input" id="lostfollow-days" type="number" min="1" style="width:100px"></label>
-        <label class="sub" style="display:flex;align-items:flex-end;gap:6px;padding-bottom:4px"><input type="checkbox" id="lostfollow-require-quote"> Kun hvis der findes et tilbud på kunden</label>
-      </div>
-      <input class="input" id="lostfollow-subject" placeholder="Emne" style="width:100%;margin-bottom:8px">
-      <textarea class="input" id="lostfollow-body" rows="4" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:10px"></textarea>
-      <button class="bly-btn" id="lostfollow-save-btn" type="button">Gem</button>
-      <button class="btn small" id="lostfollow-run-btn" type="button" style="margin-left:8px">Kør nu (test)</button>
-      <span class="sub" id="lostfollow-status" style="margin-left:8px"></span>
-    </div>
-  </div>
+  <!-- RUNDE I #318: "🤖 Automatisering"-fanen, der lå her, er flyttet til
+       Indstillinger → #settab-automation. -->
 </div><!-- /#tpltab-mail -->
 </section><!-- /#page-templates -->
 
@@ -3470,6 +3496,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="bly-segtab" data-settab="gmail" data-settab-page="gmail-settings" type="button">📧 Gmail</button>
     <button class="bly-segtab" data-settab="sync" data-settab-page="notif-settings" type="button">🔄 Synk &amp; import</button>
     <button class="bly-segtab" data-settab="notif" data-settab-page="notif-settings" type="button">🔔 Notifikationer</button>
+    <button class="bly-segtab" data-settab="automation" type="button">🤖 Automatisering</button>
   </div>
 
   <!-- ── VIRKSOMHEDSPROFIL (flyttet fra #page-people) ────────────────── -->
@@ -3650,6 +3677,57 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div id="notif-settings-list"></div>
     </div>
   </div>
+
+  <!-- RUNDE I #318: "🤖 Automatisering" flyttet hertil fra Skabeloner → Mail-
+       skabeloner (var 3 niveauer nede uden genvej). Martins ønske om SMS pr.
+       pipeline-stage (inMobile), lead-intake fra WordPress/Elementor +
+       Facebook Ads (via Make.com), og automatisk opfølgningsmail på tabte
+       leads/sager. SMS/email-skabeloner PR. STAGE redigeres ikke her, men
+       inde på selve stagen i CRM-pipeline-indstillingerne (⚙ ved siden af
+       pipeline-vælgeren under CRM) — denne fane er kun det der er FÆLLES:
+       nøgler, status, og tabt-reglen. Markup/id'er/handlers (loadAutomationSettings
+       m.fl.) er uændrede ved flytningen. -->
+  <div class="settabpage" id="settab-automation">
+    <div class="set-card">
+      <div class="set-card-head">
+        <div>
+          <div class="set-card-title">🤖 Automatisering</div>
+          <div class="set-card-sub">SMS pr. pipeline-stage redigeres inde på selve stagen (CRM → ⚙ Indstillinger → Pipelines). Her er det fælles: nøgler til lead-modtagelse, SMS-status, og den automatiske opfølgning på tabte leads/sager.</div>
+        </div>
+      </div>
+      <div class="set-card-body">
+        <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">📥 Modtag leads automatisk (WordPress/Elementor + Facebook Ads)</div>
+          <div class="hint" style="margin:0 0 10px">Sæt disse URL'er ind som mål i et Make.com-scenarie — ét for Elementor-formularen, ét for Facebook Lead Ads. Læg nøglen i en header <code>X-Webhook-Secret</code> (eller som <code>?token=</code> i selve URL'en, hvis Make gør headers besværlige).</div>
+          <div id="automation-webhook-info"></div>
+        </div>
+
+        <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">📱 SMS-forbindelse</div>
+          <div id="automation-sms-status" class="hint" style="margin:0 0 10px"></div>
+          <div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">
+            <div class="form-group" style="margin:0"><label class="form-label">Send test-SMS til</label><input id="automation-sms-test-to" class="input" placeholder="Fx 12345678"></div>
+            <button class="btn small" id="automation-sms-test-btn">Send test</button>
+          </div>
+        </div>
+
+        <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">📮 Automatisk opfølgning på tabte leads/sager</div>
+          <div class="hint" style="margin:0 0 10px">Sender én gang automatisk en mail til leadet/kunden, hvis et kort har ligget i en stage markeret "❌ Tabt" (se CRM-pipeline-indstillinger) i mindst X dage. Indsætninger: {{navn}}, {{firma}}.</div>
+          <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><input type="checkbox" id="lostfollow-enabled"> <b>Slået til</b></label>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">
+            <label class="sub">Antal dage i "Tabt"<br><input class="input" id="lostfollow-days" type="number" min="1" style="width:100px"></label>
+            <label class="sub" style="display:flex;align-items:flex-end;gap:6px;padding-bottom:4px"><input type="checkbox" id="lostfollow-require-quote"> Kun hvis der findes et tilbud på kunden</label>
+          </div>
+          <input class="input" id="lostfollow-subject" placeholder="Emne" style="width:100%;margin-bottom:8px">
+          <textarea class="input" id="lostfollow-body" rows="4" placeholder="Hej {{navn}}, ..." style="width:100%;margin-bottom:10px"></textarea>
+          <button class="bly-btn" id="lostfollow-save-btn" type="button">Gem</button>
+          <button class="btn small" id="lostfollow-run-btn" type="button" style="margin-left:8px">Kør nu (test)</button>
+          <span class="sub" id="lostfollow-status" style="margin-left:8px"></span>
+        </div>
+      </div>
+    </div>
+  </div>
 </section>
 
 <!-- ØKONOMI (kun for is_finance_admin) -->
@@ -3721,7 +3799,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
   <div class="fintabpage" id="fintab-omsaetning" style="display:none">
    <div class="om-months-center">
-    <div id="fin-revenue-kpis" class="bly-kpi-row" style="grid-template-columns:repeat(4,1fr)"></div>
+    <!-- RUNDE I #318: 4 → 5 kort (Faktisk/Forventet omsætning splittet ud) — auto-fit
+         i stedet for et hardkodet repeat(4,1fr), så rækken ikke bliver for trang. -->
+    <div id="fin-revenue-kpis" class="bly-kpi-row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
     <div class="bly-toolbar-left" style="margin-bottom:14px">
       <select class="fin-status bly-select" id="fin-revenue-period" style="width:auto">
         <option value="0,1">Denne og næste måned (standard)</option>
@@ -5519,6 +5599,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <option value="user">Gruppér: Medarbejder</option>
         <option value="type">Gruppér: Fag/type</option>
       </select>
+      <!-- RUNDE I #318 (Martins ønske: forbedre tidslinjens funktionalitet) —
+           "Gå til dato" var der intet af før; man kunne kun bladre en uge ad
+           gangen frem/tilbage. -->
+      <input type="date" id="tl-goto-date" class="input" style="width:auto" title="Gå til en bestemt dato">
       <button class="btn small" id="tl-prev">←</button>
       <button class="btn small primary" id="tl-today">I dag</button>
       <button class="btn small" id="tl-next">→</button>
@@ -5528,8 +5612,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        se kommentaren ved #plan-projstatus-filter. Her filtrerer den BÅDE
        Opgavepoolen til venstre og selve tidslinjens bjælker (bookinger). -->
   <div class="bly-kpi-row" id="timeline-projstatus-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));margin-bottom:14px"></div>
+  <!-- RUNDE I #318 (Martins ønske: forbedre tidslinjens design) — der var før
+       ingen forklaring på bjælkernes farver; nu en fast farve-forklaring så man
+       ikke skal huske den udenad. -->
+  <div id="tl-legend" class="tl-legend"></div>
   <div class="board-layout">
-    <aside class="panel">
+    <!-- RUNDE I #318 (Martins ønske: "ret også opgave pool som dagligplanlægning
+         her — det er stadig den gamle version") — id="opgavepool-panel" gør at
+         denne pool nu får samme "Billy"-polish (RUNDE Z) som Dagligplanlægnings
+         pool: se #opgavepool-panel-CSS-blokken samt poolGroupedMode.timeline
+         og taskCard()'s useNewPoolStyle. -->
+    <aside class="panel" id="opgavepool-panel">
       <div class="panel-head">
         <span class="panel-title">📥 Opgavepool</span>
         <button class="btn small primary" data-action="manual">+ Manuel</button>
@@ -5980,28 +6073,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 </section>
 
 <!-- TIMER & LOG -->
-<!-- TIMER — alle medarbejderes tidsregistrering samlet i sin egen fane/side,
-     Billy-stil (udskilt fra den tidligere fælles "Timer & log"-side, Runde H #5:
-     "lav en med Timer fra alle medarbejder overall. Med Billy layout"). -->
-<section class="page" id="page-timer">
-  <div class="bly-pagehead">
-    <div><h2>Timer</h2><div class="sub">Al tidsregistrering fra alle medarbejdere, samlet ét sted</div></div>
-  </div>
-  <div class="bly-kpi-row" id="timer-kpi-row" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
-  <div class="bly-toolbar">
-    <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="timer-count">Registreringer</span><input type="text" id="timer-search" class="bly-search" placeholder="Søg — medarbejder, opgave eller kunde..." style="width:280px"></div>
-    <div class="bly-toolbar-right">
-      <div class="bly-period" style="position:relative">
-        <button class="bly-ctl" id="timer-period-btn" type="button">📅 <span id="timer-period-label">Alt tid</span></button>
-        <div class="bly-period-pop" id="timer-period-pop" style="display:none"></div>
-      </div>
-    </div>
-  </div>
-  <table class="bly-table">
-    <thead><tr><th>Medarbejder</th><th>Opgave</th><th>Kunde</th><th>Start</th><th>Stop</th><th class="num">Varighed</th></tr></thead>
-    <tbody id="timer-body"></tbody>
-  </table>
-</section>
+<!-- RUNDE I #318: den tidligere "⏱ Timer"-side (alle medarbejderes tidsregistrering,
+     samlet fra den nu døde time_logs-tabel) er fjernet. Rigtig tidsregistrering
+     foregår i dag via projektets "Tidsregistrering"-fane og "⏱️ Timetracking" under
+     Tilbud & Faktura (time_entries-tabellen) — se loadTimerPage/renderTimerPage
+     som blev fjernet sammen med denne side. -->
 
 <!-- LOG — resten af den tidligere "Timer & log"-side (databackup, mail-logs,
      systemlog), efter Timer blev udskilt til sin egen side ovenfor. -->
@@ -6714,9 +6790,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 </div>
 
 <!-- FAKTURA-DETALJE — linjer (skrivebeskyttet) + delbetalinger -->
+<!-- RUNDE I #318 (Martins ønske: "Lav faktura popuppen helt om. Lav det så
+     man kan se PDF ligesom i billy her. Det mere nice og prof og så lav alt
+     det man kan til knapper osv der inde") — to-kolonne layout: en levende
+     PDF-forhåndsvisning (samme /api/invoices/:id/pdf som "Åbn PDF" altid har
+     brugt, se openIvPdfPreview) til venstre, og alt det eksisterende
+     indhold (status/betaling/kreditnota/noter/aktivitet) i en scrollbar
+     kolonne til højre — ingen felter/ID'er er fjernet, kun omorganiseret.
+     Sekundære handlinger (Redigér linjer, Åbn PDF i nyt vindue, Send rykker,
+     Annullér faktura) er samlet i en "⋯ Mere"-menu, så topbjælken kun viser
+     de vigtigste knapper — samme mønster Billy bruger. -->
 <div class="mo" id="invoice-detail-modal">
-  <div class="modal" style="max-width:760px;width:94vw">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+  <div class="modal" style="width:96vw">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:10px;flex-wrap:wrap">
       <h3 style="margin:0">
         <span id="iv-title">Faktura</span>
         <!-- RUNDE J (sep. 2026, Martins ønske) — FAKTURALÅS: vises når fakturaen er
@@ -6728,17 +6814,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              er tværtimod fuldt redigerbar). -->
         <span id="iv-draft-badge" class="iv-lock-badge" style="display:none;background:#EEF2FF;border-color:#C7D2FE;color:#3730A3" title="Kladde — tæller ikke med i Økonomi/bankafstemning og kan ikke sendes til kunden, før den er aktiveret">📝 Kladde</span>
       </h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a class="bly-btn outline small" id="iv-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
-        <button class="bly-btn outline small" id="iv-edit-lines-btn" type="button" title="Redigér linjer/rabat — kun muligt før fakturaen er sendt">✎ Redigér linjer</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <!-- RUNDE H #306 — knappen der gør en kladde til en rigtig faktura (status
              'draft' -> 'unpaid'). Herefter opfører den sig som enhver anden faktura. -->
         <button class="bly-btn small" id="iv-activate-btn" type="button" style="display:none;background:#4F46E5;border-color:#4F46E5;color:#fff" title="Gør kladden til en rigtig faktura — den tæller herefter med i Økonomi og kan sendes til kunden">✓ Aktivér faktura</button>
         <button class="bly-btn outline small" id="iv-send-btn" type="button" title="Send fakturaen som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
-        <!-- RUNDE H #316 (Martins ønske: "Det burde være en knap når jeg åbner en
-             faktura med send rykker og så en popup hvor jeg kan vælge template")
-             — vises kun når der reelt er noget udestående, ligesom "✓ Markér betalt". -->
-        <button class="bly-btn outline small" id="iv-dunning-btn" type="button" style="display:none" title="Send en rykker-mail til kunden med valgfri skabelon">✉️ Send rykker</button>
         <!-- RUNDE H #301 (Martins ønske: "burde jeg bare kunne trykke på en knap
              betalt? kan ikke finde den knap") — der fandtes kun den nederste
              "Registrér betaling"-formular, hvor man selv skal skrive beløbet
@@ -6747,67 +6827,89 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              registrerer med det samme en betaling på hele restbeløbet med dags
              dato, direkte fra den mest synlige plads (top af faktura-vinduet). -->
         <button class="bly-btn small" id="iv-mark-paid-btn" type="button" style="background:var(--bly-dot-paid);border-color:var(--bly-dot-paid);color:#fff" title="Registrerer med det samme en betaling på hele det resterende beløb, med dags dato">✓ Markér betalt</button>
-      </div>
-    </div>
-    <div class="sub" id="iv-subtitle" style="margin-bottom:16px"></div>
-    <div class="iv-balance-card">
-      <div class="iv-balance-tile"><div class="iv-balance-label">Total</div><div class="iv-balance-value" id="iv-total">—</div></div>
-      <div class="iv-balance-tile"><div class="iv-balance-label">Betalt</div><div class="iv-balance-value" style="color:var(--bly-dot-paid)" id="iv-paid">—</div></div>
-      <div class="iv-balance-tile" id="iv-credited-tile" style="display:none"><div class="iv-balance-label">Krediteret</div><div class="iv-balance-value" style="color:#DC2626" id="iv-credited">—</div></div>
-      <div class="iv-balance-tile"><div class="iv-balance-label">Rest</div><div class="iv-balance-value" style="color:var(--bly-dot-unpaid)" id="iv-remaining">—</div></div>
-    </div>
-    <div class="form-row" style="margin:10px 0 4px;max-width:220px">
-      <div class="form-group"><label class="form-label">Forfaldsdato</label><input id="iv-due-date" type="date" class="input"></div>
-    </div>
-    <div id="iv-lines-preview" style="margin-bottom:18px"></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <span class="qe-label" style="margin:0">Delbetalinger</span>
-    </div>
-    <div id="iv-payments-list" style="margin-bottom:12px"></div>
-    <div class="form-row" style="align-items:flex-end">
-      <div class="form-group"><label class="form-label">Beløb (kr.)</label><input id="iv-pay-amount" type="number" step="0.01" class="input"></div>
-      <div class="form-group"><label class="form-label">Dato</label><input id="iv-pay-date" type="date" class="input"></div>
-      <div class="form-group"><label class="form-label">Metode <span class="opt-tag">valgfrit</span></label><input id="iv-pay-method" class="input" placeholder="Fx bankoverførsel"></div>
-    </div>
-    <button class="bly-btn outline small" id="iv-add-payment-btn" type="button">+ Registrér betaling</button>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px">
-      <span class="qe-label" style="margin:0">Kreditnotaer</span>
-    </div>
-    <div id="iv-credit-notes-list" style="margin-bottom:12px"></div>
-    <!-- RUNDE T (Martins ønske: "ved 1 klik kunne trykke hele beløbet",
-         "er de tmed eller uden moms jeg skal indtaste det?", "hurtigt kunne
-         søge med de poster der er istedet for jeg skal side og regne") —
-         beløbet er ALTID inkl. moms (trækkes direkte fra fakturaens total,
-         ligesom en betaling), gjort tydeligt i label'en nu. "Hele resterende
-         beløb" udfylder med ét klik det der reelt er tilbage at kreditere.
-         "Vælg poster i stedet" summerer de afkrydsede fakturalinjer (inkl.
-         moms, samme fordeling af evt. rabat på hele fakturaen som selve
-         fakturatotalen bruger) ind i beløbfeltet i stedet for manuel regning. -->
-    <div class="form-row" style="align-items:flex-end">
-      <div class="form-group">
-        <label class="form-label">Beløb (kr., inkl. moms) <span class="opt-tag">valgfrit — hele eller delvist</span></label>
-        <div style="display:flex;gap:6px">
-          <input id="iv-credit-amount" type="number" step="0.01" class="input" style="flex:1;min-width:0">
-          <button class="bly-btn outline small" id="iv-credit-full-btn" type="button" title="Udfylder med det der er tilbage at kreditere">Hele beløbet</button>
+        <div class="iv-more-drop" id="iv-more-drop">
+          <button class="bly-btn outline small" id="iv-more-btn" type="button">⋯ Mere <span class="qz-more-caret">▾</span></button>
+          <div class="iv-more-menu" id="iv-more-menu">
+            <button class="iv-more-item" id="iv-edit-lines-btn" type="button" title="Redigér linjer/rabat — kun muligt før fakturaen er sendt">✎ Redigér linjer</button>
+            <a class="iv-more-item" id="iv-pdf-link" href="#" target="_blank">📄 Åbn PDF i nyt vindue</a>
+            <!-- RUNDE H #316 (Martins ønske: "Det burde være en knap når jeg åbner en
+                 faktura med send rykker og så en popup hvor jeg kan vælge template")
+                 — vises kun når der reelt er noget udestående, ligesom "✓ Markér betalt". -->
+            <button class="iv-more-item" id="iv-dunning-btn" type="button" style="display:none" title="Send en rykker-mail til kunden med valgfri skabelon">✉️ Send rykker</button>
+            <button class="iv-more-item" id="iv-void-btn" type="button" style="color:#DC2626">🗑 Annullér faktura</button>
+          </div>
         </div>
       </div>
-      <div class="form-group" style="flex:1"><label class="form-label">Begrundelse <span class="opt-tag">valgfrit</span></label><input id="iv-credit-reason" class="input" placeholder="Fx reklamation, prisfejl på linje 2"></div>
     </div>
-    <button class="qz-link-btn" id="iv-credit-picker-toggle" type="button" style="margin:2px 0 8px">🔎 Vælg poster i stedet for at regne selv</button>
-    <div id="iv-credit-picker" style="display:none;background:var(--ice);border-radius:var(--bly-r-md);padding:10px 12px;margin-bottom:12px"></div>
-    <button class="bly-btn outline small" id="iv-add-credit-btn" type="button">+ Ny kreditnota</button>
+    <div class="sub" id="iv-subtitle" style="margin-bottom:14px"></div>
 
-    <div class="form-group" style="margin-top:18px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
-    <div class="form-group" style="margin-top:10px"><label class="form-label">Betingelser / note <span class="opt-tag">valgfrit — vises nederst på PDF'en og hos kunden. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
+    <div class="iv-layout">
+      <div class="iv-pdf-pane">
+        <iframe id="iv-pdf-frame" title="Faktura PDF" style="display:none"></iframe>
+        <div id="iv-pdf-fallback" class="iv-pdf-fallback">
+          <div class="sub">Indlæser PDF-forhåndsvisning…</div>
+        </div>
+      </div>
+      <div class="iv-detail-col">
+        <div class="iv-balance-card">
+          <div class="iv-balance-tile"><div class="iv-balance-label">Total</div><div class="iv-balance-value" id="iv-total">—</div></div>
+          <div class="iv-balance-tile"><div class="iv-balance-label">Betalt</div><div class="iv-balance-value" style="color:var(--bly-dot-paid)" id="iv-paid">—</div></div>
+          <div class="iv-balance-tile" id="iv-credited-tile" style="display:none"><div class="iv-balance-label">Krediteret</div><div class="iv-balance-value" style="color:#DC2626" id="iv-credited">—</div></div>
+          <div class="iv-balance-tile"><div class="iv-balance-label">Rest</div><div class="iv-balance-value" style="color:var(--bly-dot-unpaid)" id="iv-remaining">—</div></div>
+        </div>
+        <div class="form-row" style="margin:10px 0 4px;max-width:220px">
+          <div class="form-group"><label class="form-label">Forfaldsdato</label><input id="iv-due-date" type="date" class="input"></div>
+        </div>
+        <div id="iv-lines-preview" style="margin-bottom:18px"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span class="qe-label" style="margin:0">Delbetalinger</span>
+        </div>
+        <div id="iv-payments-list" style="margin-bottom:12px"></div>
+        <div class="form-row" style="align-items:flex-end">
+          <div class="form-group"><label class="form-label">Beløb (kr.)</label><input id="iv-pay-amount" type="number" step="0.01" class="input"></div>
+          <div class="form-group"><label class="form-label">Dato</label><input id="iv-pay-date" type="date" class="input"></div>
+          <div class="form-group"><label class="form-label">Metode <span class="opt-tag">valgfrit</span></label><input id="iv-pay-method" class="input" placeholder="Fx bankoverførsel"></div>
+        </div>
+        <button class="bly-btn outline small" id="iv-add-payment-btn" type="button">+ Registrér betaling</button>
 
-    <div class="form-group" id="iv-activity-wrap" style="margin-top:18px">
-      <label class="form-label">🕓 Tidslinje</label>
-      <div id="iv-activity-list" class="doc-activity-list"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 8px">
+          <span class="qe-label" style="margin:0">Kreditnotaer</span>
+        </div>
+        <div id="iv-credit-notes-list" style="margin-bottom:12px"></div>
+        <!-- RUNDE T (Martins ønske: "ved 1 klik kunne trykke hele beløbet",
+             "er de tmed eller uden moms jeg skal indtaste det?", "hurtigt kunne
+             søge med de poster der er istedet for jeg skal side og regne") —
+             beløbet er ALTID inkl. moms (trækkes direkte fra fakturaens total,
+             ligesom en betaling), gjort tydeligt i label'en nu. "Hele resterende
+             beløb" udfylder med ét klik det der reelt er tilbage at kreditere.
+             "Vælg poster i stedet" summerer de afkrydsede fakturalinjer (inkl.
+             moms, samme fordeling af evt. rabat på hele fakturaen som selve
+             fakturatotalen bruger) ind i beløbfeltet i stedet for manuel regning. -->
+        <div class="form-row" style="align-items:flex-end">
+          <div class="form-group">
+            <label class="form-label">Beløb (kr., inkl. moms) <span class="opt-tag">valgfrit — hele eller delvist</span></label>
+            <div style="display:flex;gap:6px">
+              <input id="iv-credit-amount" type="number" step="0.01" class="input" style="flex:1;min-width:0">
+              <button class="bly-btn outline small" id="iv-credit-full-btn" type="button" title="Udfylder med det der er tilbage at kreditere">Hele beløbet</button>
+            </div>
+          </div>
+          <div class="form-group" style="flex:1"><label class="form-label">Begrundelse <span class="opt-tag">valgfrit</span></label><input id="iv-credit-reason" class="input" placeholder="Fx reklamation, prisfejl på linje 2"></div>
+        </div>
+        <button class="qz-link-btn" id="iv-credit-picker-toggle" type="button" style="margin:2px 0 8px">🔎 Vælg poster i stedet for at regne selv</button>
+        <div id="iv-credit-picker" style="display:none;background:var(--ice);border-radius:var(--bly-r-md);padding:10px 12px;margin-bottom:12px"></div>
+        <button class="bly-btn outline small" id="iv-add-credit-btn" type="button">+ Ny kreditnota</button>
+
+        <div class="form-group" style="margin-top:18px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
+        <div class="form-group" style="margin-top:10px"><label class="form-label">Betingelser / note <span class="opt-tag">valgfrit — vises nederst på PDF'en og hos kunden. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
+
+        <div class="form-group" id="iv-activity-wrap" style="margin-top:18px">
+          <label class="form-label">🕓 Tidslinje</label>
+          <div id="iv-activity-list" class="doc-activity-list"></div>
+        </div>
+      </div>
     </div>
 
     <div class="modal-actions">
-      <button class="btn danger" id="iv-void-btn">Annullér faktura</button>
       <button class="btn" onclick="closeModal('invoice-detail-modal')">Luk</button>
     </div>
   </div>
@@ -7371,7 +7473,7 @@ if(!meCachedShowsNoAccess){document.getElementById('app').style.display='block';
 // er en selvstændig SIDE: nøglen findes uændret i server.js' PANEL_PAGES og er
 // dét, panelAccess('gmail-settings') håndhæver på alle /api/gmail/*-ruter. Den
 // styrer nu Gmail-FANEN inde på Indstillinger (se applySetTabsVisibility).
-var PANEL_PAGE_KEYS_CLIENT=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','templates','email-templates','people','library','logs','notif-settings','gmail-settings','tasklist','requests','completed','timer'];
+var PANEL_PAGE_KEYS_CLIENT=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','templates','email-templates','people','library','logs','notif-settings','gmail-settings','tasklist','requests','completed'];
 function meHasPanelPage(key){return me.role==='admin'||(me.panel_pages||[]).indexOf(key)>-1;}
 // Indstillinger-siden rummer nu BÅDE notifikations-/synk-/profil-afsnittene og
 // Gmail-integrationen, som før havde sin egen side. En bruger der KUN havde
@@ -8171,11 +8273,16 @@ function taskCard(t,scope){
   // RUNDE Æ (Martins ønske: opgavepoolen skal ikke se "kedelig"/for ens ud) —
   // venstre kant på kortet farves nu efter Fag (samme farve som type-badgen
   // nedenfor, TYPE-objektets .bar), så man kan skimme poolen efter fag uden at
-  // læse hver eneste badge. KUN i selve Opgavepoolen (scope 'plan') — Kapacitet/
-  // Tidslinje-kortene rører vi ikke ved, for ikke at ændre deres udseende.
+  // læse hver eneste badge.
+  // RUNDE I #318 (Martins ønske: "ret også opgave pool som dagligplanlægning
+  // her [i Tidslinje] — det er stadig den gamle version") — accentkanten og de
+  // kompakte 2-kolonne-handlingsknapper gælder nu OGSÅ scope 'timeline', så
+  // Tidslinjens opgavepool ser ud og opfører sig som Dagligplanlægningens.
+  // Kapacitet er bevidst IKKE ændret her (kun Tidslinje blev efterspurgt).
   // .task-overdue's røde kant (se CSS, !important) vinder stadig altid over
   // denne, så en forsinket opgave er tydelig uanset fag.
-  var accentStyle=scope==='plan'&&!overdue?' style="border-left:3px solid '+esc(type.bar||'#94A3B8')+'"':'';
+  var useNewPoolStyle=scope==='plan'||scope==='timeline';
+  var accentStyle=useNewPoolStyle&&!overdue?' style="border-left:3px solid '+esc(type.bar||'#94A3B8')+'"':'';
   return '<article class="task-card draggable-task'+(completed?' completed':'')+(overdue?' task-overdue':'')+'" draggable="true" data-task-id="'+esc(t.id)+'" title="'+esc(t.job_name||'')+'"'+accentStyle+'>'+
     '<div class="task-card-head">'+
       (showBulkCb?'<input type="checkbox" class="pool-select-cb" data-task-id="'+esc(t.id)+'" '+(poolSelected[t.id]?'checked':'')+'>':'')+
@@ -8201,10 +8308,10 @@ function taskCard(t,scope){
     (t.is_visit?'<button class="btn small" style="width:100%;margin-top:6px" data-action="open-visit-form" data-task-id="'+esc(t.id)+'">📋 Besøgsformular</button>':'')+
     // RUNDE Æ — de to knapper stod tidligere hver i fuld bredde, stablet
     // ovenpå hinanden (to hele rækker for noget der reelt er to sekundære
-    // genveje) — i selve Opgavepoolen (scope 'plan') står de nu side om side
-    // i én kompakt 2-kolonne-række i stedet. Kapacitet/Tidslinje beholder det
-    // gamle, fuld-bredde udseende uændret (se .task-card-actions-CSS).
-    (scope==='plan'
+    // genveje) — i Opgavepoolen (scope 'plan') OG nu Tidslinje (RUNDE I #318,
+    // scope 'timeline') står de side om side i én kompakt 2-kolonne-række i
+    // stedet. Kapacitet beholder det gamle, fuld-bredde udseende uændret.
+    (useNewPoolStyle
       ?'<div class="task-card-actions">'
         +'<button class="btn small" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjek</button>'
         +(t.project_id?'<button class="btn small" data-action="pool-open-project" data-project-id="'+esc(t.project_id)+'">🔗 Sagen</button>':'')
@@ -8230,7 +8337,9 @@ function templateCard(t){
     '<div class="task-drag-hint">⠿ Træk ud på en dag — du bliver spurgt om kunden</div>'+
     '</article>';
 }
-var poolGroupedMode={plan:true,capacity:false,timeline:false};
+// RUNDE I #318: timeline (Tidslinjens opgavepool) grupperer nu også pr. kunde,
+// ligesom Dagligplanlægning — Kapacitet er bevidst uændret.
+var poolGroupedMode={plan:true,capacity:false,timeline:true};
 var poolGroupExpanded={};
 function renderPool(scope){
   filtersHTML(scope);
@@ -10912,8 +11021,26 @@ function renderAvailability(){
 // TIDSLINJE (Gantt) — grupperet efter medarbejder ELLER fag/type
 var TL_DAYS=35,TL_COLW=34,TL_ROWH=0;
 function daysBetween(a,b){return Math.round((date(iso(b))-date(iso(a)))/86400000);}
+// RUNDE I #318 (Martins ønske: forbedre tidslinjens design) — fast
+// farve-forklaring for bjælkerne, så farverne ikke skal huskes udenad.
+// Samme farvekilder som selve bjælkerne (TYPE for fag, DONE_COLOR/
+// STATUS_COLORS for status via bookingColorStyle/bookingStatusColor).
+function renderTlLegend(){
+  var el=document.getElementById('tl-legend');
+  if(!el)return;
+  var typeChips=Object.keys(TYPE).map(function(k){
+    return '<span class="tl-legend-item"><span class="tl-legend-dot" style="background:'+TYPE[k].bar+'"></span>'+esc(TYPE[k].label)+'</span>';
+  }).join('');
+  var statusChips=
+    '<span class="tl-legend-item"><span class="tl-legend-dot" style="background:'+DONE_COLOR+'"></span>✅ Færdig</span>'+
+    '<span class="tl-legend-item"><span class="tl-legend-dot" style="background:'+STATUS_COLORS.waiting+'"></span>⏳ Afventer</span>'+
+    '<span class="tl-legend-item"><span class="tl-legend-dot" style="background:'+STATUS_COLORS.behind+'"></span>🔻 Bagud</span>'+
+    '<span class="tl-legend-item"><span class="tl-legend-dot" style="background:'+STATUS_COLORS.cancelled+'"></span>🚫 Aflyst</span>';
+  el.innerHTML=typeChips+'<span class="tl-legend-sep"></span>'+statusChips;
+}
 function renderTimeline(){
   var grid=document.getElementById('tl-grid');if(!grid)return;
+  renderTlLegend();
   renderPool('timeline');
   var start=add(date(iso(new Date())),timelineOffset*7); // altid dags dato som første synlige dag (ikke mandag)
   var days=[];for(var i=0;i<TL_DAYS;i++)days.push(add(start,i));
@@ -10999,7 +11126,10 @@ function renderTimeline(){
       var label=(b.job_name||b.task_name||'Opgave')+(who?' · '+who:'');
       var handles=interactive?'<span class="tl-handle tl-handle-left" data-edge="left"></span><span class="tl-handle tl-handle-right" data-edge="right"></span>':'';
       var isDone=!!b.completed_at;
-      return '<div class="tl-bar draggable-assignment '+esc(b.type_guess||'other')+(isDone?' is-done':'')+'" draggable="'+(interactive?'true':'false')+'" data-action="open-timeline-drawer" data-booking-id="'+b.id+'" style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+bookingBarColor(b,type)+'" title="'+esc(label)+(isDone?' · ✅ Færdig':'')+' · '+esc(b.days)+' dag(e)">'+handles+'<span class="tl-bar-label">'+bookingStatusIcon(b)+esc(label)+'</span></div>';
+      // RUNDE I #318: samme tonede baggrund + venstre-farvekant som Daglig
+      // plan/Kapacitet (bookingColorStyle), i stedet for en massiv, fuldt
+      // mættet farve — se .tl-bar-CSS-kommentaren for baggrunden.
+      return '<div class="tl-bar draggable-assignment '+esc(b.type_guess||'other')+(isDone?' is-done':'')+'" draggable="'+(interactive?'true':'false')+'" data-action="open-timeline-drawer" data-booking-id="'+b.id+'" style="left:'+left+'px;width:'+width+'px;top:'+top+'px;'+bookingColorStyle(b,type)+'" title="'+esc(label)+(isDone?' · ✅ Færdig':'')+' · '+esc(b.days)+' dag(e)">'+handles+'<span class="tl-bar-label">'+bookingStatusIcon(b)+esc(label)+'</span></div>';
     }).join('');
 
     var labelHTML;
@@ -11893,13 +12023,13 @@ function initTemplatesPage(){
 
 // ══════════════════════════════════════════════════════════════
 // SAMLET MAIL-SKABELON-CENTER (fanen "✉️ Mail-skabeloner" på Skabeloner-siden)
-// — ét sted for ALLE mail-skabeloner i appen. Fem underfaner: Automatiske
-// mails (herunder), Planlægningsmail/Tilbud & faktura (genbruger listerne/
-// modalerne ovenfor, bare flyttet hertil), Andre skabeloner (herunder) og
-// Automatisering.
+// — ét sted for ALLE mail-skabeloner i appen. Tre underfaner: Planlægningsmail
+// (som nu ROMMER Automatiske systemmails + Mail-varianter ved booking i
+// samme fane, RUNDE I #318 — se markup ved #emltab-booking), Tilbud & faktura
+// og Andre skabeloner. "Automatisering" er flyttet til Indstillinger (samme runde).
 // ══════════════════════════════════════════════════════════════
 var emailTemplatesModuleInitialized=false;
-var emlActiveTab='auto';
+var emlActiveTab='booking';
 function initEmailTemplatesModule(){
   if(!emailTemplatesModuleInitialized){
     emailTemplatesModuleInitialized=true;
@@ -11916,12 +12046,13 @@ function initEmailTemplatesModule(){
 function switchEmlTab(name){
   emlActiveTab=name;
   document.querySelectorAll('#eml-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.emltab===name);});
-  ['auto','booking','documents','custom','automation'].forEach(function(n){document.getElementById('emltab-'+n).style.display=n===name?'':'none';});
-  if(name==='auto')loadSystemEmailTemplates();
-  if(name==='booking')loadEmailTemplates();
+  // RUNDE I #318: 'automation' fjernet fra listen herunder (flyttet til
+  // Indstillinger), og 'auto' findes ikke længere som egen fane — den er
+  // flettet ind i 'booking' (se markup ved #emltab-booking).
+  ['booking','documents','custom'].forEach(function(n){document.getElementById('emltab-'+n).style.display=n===name?'':'none';});
+  if(name==='booking'){loadSystemEmailTemplates();loadEmailTemplates();}
   if(name==='documents'){loadDocMailTemplates();loadDocTplAssignments();}
   if(name==='custom')loadCustomEmailTemplates();
-  if(name==='automation')loadAutomationSettings();
 }
 
 // ── AUTOMATISERING (🤖-fanen) — webhook-nøgler, SMS-status, tabt-opfølgning ──
@@ -11989,6 +12120,11 @@ var SYS_EMAIL_META=[
   {key:'quote_accepted',icon:'🤝',help:'Sendes automatisk når en kunde accepterer et tilbud online, med et link til deres faste kundeportal.',vars:'{{kunde}}, {{firma}}, {{dokument_nr}}, {{link}}'}
 ];
 var sysEmailTemplatesCache={};
+// RUNDE I #318 (Martins ønske: "layoutet er forfærdeligt ... kompress alt så
+// det mere overskueligt når du rammer siden") — hver systemmail var før et
+// stort, altid-åbent kort (~250-300px højt). Nu er de kompakte klap-ud-rækker
+// (samme ét-ad-gangen-mønster som andre steder i appen), lukket som standard.
+var sysEmailExpanded={};
 async function loadSystemEmailTemplates(){
   var rows=await api('/api/system-email-templates')||[];
   sysEmailTemplatesCache={};
@@ -12001,6 +12137,15 @@ function renderSystemEmailTemplates(){
   if(!el)return;
   el.innerHTML=SYS_EMAIL_META.map(function(m){
     var t=sysEmailTemplatesCache[m.key]||{name:m.key,subject:'',body_html:'',enabled:1};
+    var open=!!sysEmailExpanded[m.key];
+    var head='<div class="template-row sysmail-row-head" data-action="sysmail-toggle" data-sys-key="'+m.key+'" style="cursor:pointer">'+
+        '<div><div class="dash-row-title">'+m.icon+' '+esc(t.name)+'</div><div class="dash-row-sub">'+esc(m.help)+'</div></div>'+
+        '<span style="display:flex;align-items:center;gap:10px;flex-shrink:0">'+
+          '<span class="sysmail-status-badge" style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;'+(t.enabled?'background:#E7F7EE;color:#1E8E5A':'background:#F1F2F4;color:var(--muted)')+'">'+(t.enabled?'Aktiv':'Slået fra')+'</span>'+
+          '<span class="sysmail-chevron" style="color:var(--muted);font-size:11px">'+(open?'▾':'▸')+'</span>'+
+        '</span>'+
+      '</div>';
+    if(!open)return '<div data-sys-key="'+m.key+'">'+head+'</div>';
     var pdfTestHtml=m.hasPdfAndTest?(
       '<div class="form-row">'+
         '<div class="form-group"><label class="form-label">Rengørings-PDF (vedhæftes automatisk)</label><input id="email-pdf-file" type="file" accept="application/pdf" class="input"><div class="muted-sm" id="email-pdf-current" style="margin-top:4px"></div></div>'+
@@ -12008,27 +12153,36 @@ function renderSystemEmailTemplates(){
       '</div>'
     ):'';
     var statusPill=m.hasPdfAndTest?'<span class="mail-status-pill" id="mail-status-pill" style="margin-right:auto">Tjekker…</span>':'<span style="margin-right:auto"></span>';
-    return '<div class="email-settings-card" data-sys-key="'+m.key+'">'+
-      '<div class="email-settings-head">'+
-        '<div><div class="email-settings-title">'+m.icon+' '+esc(t.name)+'</div><div class="email-settings-sub">'+esc(m.help)+'</div></div>'+
-        '<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap;cursor:pointer"><input type="checkbox" class="sys-tpl-enabled" '+(t.enabled?'checked':'')+'> Aktiv</label>'+
+    return '<div data-sys-key="'+m.key+'">'+head+
+      '<div class="sysmail-row-body" style="padding:14px 8px 16px;border-bottom:1px solid var(--border2)">'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);cursor:pointer;margin-bottom:10px"><input type="checkbox" class="sys-tpl-enabled" '+(t.enabled?'checked':'')+'> Aktiv</label>'+
+        '<div class="form-row"><div class="form-group"><label class="form-label">Emne <span class="opt-tag">'+esc(m.vars)+' indsættes automatisk</span></label><input class="input sys-tpl-subject" value="'+esc(t.subject)+'"></div></div>'+
+        '<div class="form-group"><label class="form-label">Besked</label><textarea class="input sys-tpl-body" rows="6" style="font-family:inherit">'+esc(t.body_html)+'</textarea></div>'+
+        pdfTestHtml+
+        '<div class="modal-actions" style="padding:0;border:0;margin-top:10px;justify-content:flex-start;gap:10px">'+statusPill+'<button class="btn primary small sys-tpl-save" type="button" style="margin-left:auto">Gem</button></div>'+
       '</div>'+
-      '<div class="form-row"><div class="form-group"><label class="form-label">Emne <span class="opt-tag">'+esc(m.vars)+' indsættes automatisk</span></label><input class="input sys-tpl-subject" value="'+esc(t.subject)+'"></div></div>'+
-      '<div class="form-group"><label class="form-label">Besked</label><textarea class="input sys-tpl-body" rows="6" style="font-family:inherit">'+esc(t.body_html)+'</textarea></div>'+
-      pdfTestHtml+
-      '<div class="modal-actions" style="padding:0;border:0;margin-top:10px;justify-content:flex-start;gap:10px">'+statusPill+'<button class="btn primary small sys-tpl-save" type="button" style="margin-left:auto">Gem</button></div>'+
     '</div>';
   }).join('');
-  el.querySelectorAll('.sys-tpl-save').forEach(function(btn){
+  el.querySelectorAll('[data-action="sysmail-toggle"]').forEach(function(btn){
     btn.addEventListener('click',function(){
+      var key=btn.dataset.sysKey;
+      sysEmailExpanded[key]=!sysEmailExpanded[key];
+      renderSystemEmailTemplates();
+    });
+  });
+  el.querySelectorAll('.sys-tpl-save').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
       var card=btn.closest('[data-sys-key]');
       saveSystemEmailTemplate(card.dataset.sysKey,card);
     });
   });
   var completionCard=el.querySelector('[data-sys-key="completion"]');
-  if(completionCard){
-    document.getElementById('email-pdf-file').addEventListener('change',function(){});
-    document.getElementById('email-test-btn').onclick=sendTestCompletionEmail;
+  if(completionCard&&sysEmailExpanded.completion){
+    var pdfFile=document.getElementById('email-pdf-file');
+    if(pdfFile)pdfFile.addEventListener('change',function(){});
+    var testBtn=document.getElementById('email-test-btn');
+    if(testBtn)testBtn.onclick=sendTestCompletionEmail;
   }
 }
 async function saveSystemEmailTemplate(key,card){
@@ -12246,7 +12400,7 @@ async function loadTemplates(){
   var el=document.getElementById('templates-list');
   el.innerHTML=templatesCache.length?templatesCache.map(function(t){
     return '<div class="template-row"><div><div class="dash-row-title">'+esc(t.name)+'</div><div class="dash-row-sub">'+esc((TYPE[t.type_guess]||{}).label||t.type_guess)+' · '+t.default_days+' dage · '+t.checklist_items.length+' tjekpunkter</div></div>'+
-      '<span style="display:flex;gap:6px"><button class="btn small primary" data-action="use-template" data-template-id="'+t.id+'">Brug</button><button class="btn small" data-action="edit-template" data-template-id="'+t.id+'">✏</button><button class="btn small danger" data-action="delete-template" data-template-id="'+t.id+'">🗑</button></span></div>';
+      '<span class="qz-row-actions"><button class="btn small primary" data-action="use-template" data-template-id="'+t.id+'">Brug</button><button class="qz-icon-btn" data-action="edit-template" data-template-id="'+t.id+'" title="Redigér">✏</button><button class="qz-icon-btn" data-action="delete-template" data-template-id="'+t.id+'" title="Slet" style="color:var(--danger,#DC2626)">🗑</button></span></div>';
   }).join(''):'<div class="dash-empty">Ingen skabeloner endnu — opret den første.</div>';
 }
 var tplEditCtx=null,tplEditChecklist=[];
@@ -12314,7 +12468,7 @@ function useTemplate(id){
 // for at den aktive fane altid er en synlig fane — ellers ville fx en ikke-
 // admin lande på en tom "Virksomhedsprofil"-fane.
 // ══════════════════════════════════════════════════════════════
-var SET_TABS=['company','access','akkord','gmail','sync','notif'];
+var SET_TABS=['company','access','akkord','gmail','sync','notif','automation'];
 var settingsPageInitialized=false;
 function setTabBtn(name){return document.querySelector('#set-tabs [data-settab="'+name+'"]');}
 function setTabVisible(name){
@@ -12360,6 +12514,9 @@ function switchSetTab(name,skipHash){
   // RUNDE H #316 — "Roller & adgang" viser nu også Økonomi-adgangslisten (flyttet
   // hertil fra Økonomi-modulets egen "Adgang"-fane). Samme lazy-mønster som notif/gmail.
   if(name==='access')renderFinAccessList();
+  // RUNDE I #318 — "Automatisering" flyttet hertil fra Mail-skabeloner, samme
+  // lazy-load-mønster som notif/gmail/access herover.
+  if(name==='automation')loadAutomationSettings();
 }
 // Kaldes af switchPage() hver gang Indstillinger åbnes.
 function initSettingsPage(){
@@ -12378,6 +12535,7 @@ function initSettingsPage(){
   if(activeName==='notif')loadNotificationSettings();
   if(activeName==='gmail')initGmailSettingsModule();
   if(activeName==='access')renderFinAccessList();
+  if(activeName==='automation')loadAutomationSettings();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -13507,16 +13665,24 @@ document.getElementById('fin-quickexp-upload-input').addEventListener('change',a
   await renderFinQuickExpensePanel();
   renderFinResultChart();
 });
-// Forgangen måned: rigtig omsætning = betalte + delvist betalte fakturaer UDSTEDT den
-// måned (delvis tæller kun det faktisk modtagne beløb). Indeværende/næste måned bruger
-// stadig sagernes budget (fra fetchFinanceJobsByMonth), da fakturaer typisk ikke er
-// udstedt/betalt endnu for arbejde der er i gang eller kun planlagt.
+// Forgangen måned: rigtig omsætning = alle ikke-annullerede fakturaer UDSTEDT den
+// måned. Indeværende/næste måned bruger stadig sagernes budget (fra
+// fetchFinanceJobsByMonth), da fakturaer typisk ikke er udstedt/betalt endnu for
+// arbejde der er i gang eller kun planlagt.
+// RUNDE I #318 (Martins ønske: ret Økonomi-headerens forældede data) — denne
+// funktion brugte tidligere en ANDEN definition af "faktisk omsætning" end
+// finInvoiceMonthTotals() (Resultat-grafen): kun betalte/delvist betalte
+// fakturaer (delvis kun det modtagne beløb), mod finInvoiceMonthTotals' ALLE
+// ikke-annullerede fakturaer til fuld pris uanset betalingsstatus. For samme
+// bagudgående måned gav de to funktioner derfor FORSKELLIGE tal — nu rettet
+// til at bruge nøjagtig samme regel, så "Omsætning vs. udgifter"-widgettens
+// tal for "sidste måned" stemmer med Resultat-grafens tal for samme måned.
 function finInvoiceRevenueForMonth(mk){
   if(!mk)return 0;
   return finInvoices.filter(function(inv){
-    return inv.createdAt&&inv.createdAt.slice(0,7)===mk&&(inv.overrideStatus==='paid'||inv.overrideStatus==='partial');
+    return inv.createdAt&&inv.createdAt.slice(0,7)===mk;
   }).reduce(function(s,inv){
-    return s+(inv.overrideStatus==='partial'?(inv.paidAmount||0):(inv.priceWithTax||0));
+    return s+(inv.priceWithTax||0);
   },0);
 }
 // ══════════════════════════════════════════════════════════════
@@ -13961,17 +14127,30 @@ function finFagColor(fag){
   var h=0;for(var i=0;i<fag.length;i++)h=(h*31+fag.charCodeAt(i))>>>0;
   return FIN_FAG_PALETTE[h%FIN_FAG_PALETTE.length];
 }
+// RUNDE I #318 (Martins ønske: "Økonomi Site headeren har stadig alt sit
+// gamle data, men husk du har lige lavet den om så ret den") — denne KPI-
+// header (toppen af "Omsætning pr. fag") blev IKKE opdateret dengang
+// fetchFinanceJobsByMonth/finInvoiceMonthTotals blev omlagt til bagud=
+// faktiske fakturaer / indeværende+frem=forecast (RUNDE H #317). Den viste
+// stadig ét blandet "Samlet omsætning"-tal uden at skelne — nu splittet i
+// "Faktisk omsætning" (bagudgående måneder) og "Forventet omsætning"
+// (indeværende + fremtid), samme regel som Resultat-grafen og moms-kortet
+// allerede bruger, så tallene stemmer overens på tværs af siden.
 function renderFinRevenueKpis(){
   var el=document.getElementById('fin-revenue-kpis');
   if(!el||!finRevenue)return;
+  var thisMonthKey=iso(new Date()).slice(0,7);
   var allJobs=[];
-  Object.keys(finRevenue).forEach(function(mk){allJobs=allJobs.concat(finRevenue[mk].jobs);});
+  Object.keys(finRevenue).forEach(function(mk){
+    finRevenue[mk].jobs.forEach(function(j){allJobs.push(Object.assign({},j,{_bucketMonth:mk}));});
+  });
   allJobs=allJobs.filter(function(j){
     if(finRevenueDateFrom&&(!j.startDate||j.startDate<finRevenueDateFrom))return false;
     if(finRevenueDateTo&&(!j.startDate||j.startDate>finRevenueDateTo))return false;
     return true;
   });
-  var totalOms=allJobs.reduce(function(s,j){return s+(j.value||0);},0);
+  var totalActual=allJobs.filter(function(j){return j._bucketMonth<thisMonthKey;}).reduce(function(s,j){return s+(j.value||0);},0);
+  var totalForecast=allJobs.filter(function(j){return j._bucketMonth>=thisMonthKey;}).reduce(function(s,j){return s+(j.value||0);},0);
   var missing=allJobs.filter(function(j){return j.value===null;}).length;
   var manual=allJobs.filter(function(j){return j.manual;}).length;
   function card(label,value,sub){
@@ -13979,7 +14158,8 @@ function renderFinRevenueKpis(){
   }
   el.innerHTML=
     card('Sager i alt',allJobs.length,'på tværs af den valgte periode')+
-    card('Samlet omsætning',krFmt(totalOms))+
+    card('Faktisk omsætning',krFmt(totalActual),'bagudgående måneder · sendte fakturaer')+
+    card('Forventet omsætning',krFmt(totalForecast),'indeværende + fremtid · accepterede tilbud')+
     card('Uden budget',missing,missing?'ret dem under "Noter"':'alle har en pris ✓')+
     card('Manuelle linjer',manual,'tilføjet direkte her');
 }
@@ -15140,40 +15320,9 @@ async function loadLogs(){
   await loadSystemLog();
 }
 
-// ── TIMER — alle medarbejderes tid, Billy-stil (udskilt fra Log, Runde H #5) ──
-var timerEntries=[],timerPeriodFilter=null,timerInitialized=false;
-async function loadTimerPage(){
-  if(!timerInitialized){
-    document.getElementById('timer-search').addEventListener('input',renderTimerPage);
-    timerPeriodFilter=makeBlyPeriodFilter('timer-period-btn','timer-period-pop','timer-period-label',function(){renderTimerPage();});
-    timerInitialized=true;
-  }
-  var l=await api('/api/time/all');
-  timerEntries=Array.isArray(l)?l:[];
-  renderTimerPage();
-}
-function renderTimerPage(){
-  var q=(document.getElementById('timer-search').value||'').trim().toLowerCase();
-  var list=timerEntries.filter(function(x){
-    if(timerPeriodFilter&&!timerPeriodFilter.matches(x.started_at))return false;
-    if(!q)return true;
-    return (x.user_name||'').toLowerCase().indexOf(q)>-1||(x.task_name||'').toLowerCase().indexOf(q)>-1||(x.job_name||'').toLowerCase().indexOf(q)>-1;
-  });
-  // KPI-kort pr. medarbejder — samme .bly-kpi-card-mønster som sags-siden
-  // (renderPdTime), efter Martins ønske om at kunne analysere hurtigt.
-  var byUser={};
-  list.forEach(function(x){byUser[x.user_name]=(byUser[x.user_name]||0)+(+x.duration_minutes||0);});
-  var unames=Object.keys(byUser).sort(function(a,b){return byUser[b]-byUser[a];});
-  document.getElementById('timer-kpi-row').innerHTML=unames.map(function(uname){
-    var hrs=(byUser[uname]/60).toFixed(1).replace('.',',');
-    return '<div class="bly-kpi-card" style="cursor:default"><div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:var(--bly-accent)"></span>'+esc(uname)+'</div><div class="bly-kpi-value">'+hrs+' t</div></div>';
-  }).join('');
-  document.getElementById('timer-count').textContent='Registreringer ('+list.length+')';
-  document.getElementById('timer-body').innerHTML=list.map(function(x){
-    var m=+x.duration_minutes||0;
-    return '<tr><td>'+esc(x.user_name)+'</td><td>'+esc(x.task_name)+'</td><td>'+esc(x.job_name)+'</td><td>'+esc((x.started_at||'').replace('T',' ').slice(0,16))+'</td><td>'+esc((x.stopped_at||'').replace('T',' ').slice(0,16))+'</td><td class="num">'+Math.floor(m/60)+'t '+m%60+'m</td></tr>';
-  }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:24px">Ingen timer i denne periode.</td></tr>';
-}
+// RUNDE I #318: loadTimerPage()/renderTimerPage() (den gamle "⏱ Timer"-side,
+// læste fra den døde time_logs-tabel) er fjernet. Se Timetracking-analysen
+// lige nedenfor, som er den aktive erstatning.
 
 // RUNDE H #28 — TIMETRACKING-ANALYSE (Tilbud & Faktura → ⏱️ Timetracking).
 // Martins ønske: "en side hvor man kan analysere alle folks timetracking ...
@@ -15679,7 +15828,7 @@ if(window.ResizeObserver){
 // "Mail-skabeloner" er nu fanen #templates/mail. Begge gamle hash-adresser
 // fanges af alias-linjerne øverst i switchPage() (klik-navigation) og af
 // oversættelses-linjerne i "genskab siden ved genindlæsning"-blokken.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','timer','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','search-results'];
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','search-results'];
 // Roller & adgang (sep. 2026) — bruges af switchPage() nedenfor til at nægte
 // navigation til en side brugeren ikke har krydset af (server-siden håndhæver
 // det samme via panelAccess-middlewaren i server.js — dette er kun UI-lag).
@@ -15688,7 +15837,7 @@ var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','taskli
 // at sende brugeren hen — det forhindrer en uendelig switchPage-løkke i det
 // sjældne øjeblik lige efter login hvor /api/auth/me's friske panel_pages
 // endnu ikke er nået at overskrive den cachede (ældre) bruger i localStorage.
-var PANEL_PAGE_ORDER=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','tasklist','requests','completed','people','library','logs','templates','email-templates','notif-settings','gmail-settings','timer'];
+var PANEL_PAGE_ORDER=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','tasklist','requests','completed','people','library','logs','templates','email-templates','notif-settings','gmail-settings'];
 function firstAllowedPage(excludePage){
   for(var i=0;i<PANEL_PAGE_ORDER.length;i++){
     var k=PANEL_PAGE_ORDER[i];
@@ -15820,7 +15969,6 @@ function switchPage(page,skipHash){
   // (andet førstesegment) stadig gør det.
   if(!skipHash&&location.hash.slice(1).split('/')[0]!==page)navPushHash(page);
   if(page==='logs')loadLogs();
-  if(page==='timer')loadTimerPage();
   if(page==='library')loadLibrary();
   if(page==='availability')renderAvailability();
   if(page==='timeline')renderTimeline();
@@ -15864,7 +16012,6 @@ function switchPage(page,skipHash){
   if(page==='library'&&guardPage('library','Bibliotek'))return;
   if(page==='logs'&&guardPage('logs','Log'))return;
   if(page==='requests'&&guardPage('requests','Godkendelser'))return;
-  if(page==='timer'&&guardPage('timer','Timer'))return;
   // initProjectsModule() binder bl.a. "← Tilbage til Projekter"-knappen og alt
   // andet på selve sags-siden (fanerne, "+ Ny opgave", opgave-detalje-modalens
   // knapper...). Uden dette kald her virkede INGEN af de knapper hvis man kom
@@ -16681,8 +16828,18 @@ async function bind(){
   // Tidslinje
   document.getElementById('tl-prev').onclick=function(){timelineOffset--;renderTimeline();};
   document.getElementById('tl-next').onclick=function(){timelineOffset++;renderTimeline();};
-  document.getElementById('tl-today').onclick=function(){timelineOffset=0;renderTimeline();};
+  document.getElementById('tl-today').onclick=function(){timelineOffset=0;document.getElementById('tl-goto-date').value='';renderTimeline();};
   document.getElementById('tl-group-by').onchange=function(e){timelineGroupBy=e.target.value;renderTimeline();};
+  // RUNDE I #318 — "Gå til dato": timelineOffset er antal UGER fra i dag, så vi
+  // regner den valgte dato om til nærmeste hele uge-offset og lader den valgte
+  // dato blive den synlige start-dag (samme "altid dags dato / valgt dato som
+  // første synlige dag"-logik som renderTimeline() allerede bruger for "i dag").
+  document.getElementById('tl-goto-date').onchange=function(e){
+    if(!e.target.value)return;
+    var chosen=date(e.target.value),today=date(iso(new Date()));
+    timelineOffset=Math.round(daysBetween(today,chosen)/7);
+    renderTimeline();
+  };
   document.getElementById('tld-close').onclick=closeTimelineDrawer;
   document.getElementById('tld-save').onclick=saveTimelineDrawer;
   document.getElementById('tld-remove').onclick=removeTimelineDrawerBooking;
@@ -17343,6 +17500,34 @@ async function qzOpenPdf(path){
     var blob=await r.blob();
     window.open(URL.createObjectURL(blob),'_blank');
   }catch(e){toast('Netværksfejl','❌');}
+}
+// RUNDE I #318 (Martins ønske: "Lav det så man kan se PDF ligesom i billy
+// her") — samme blob-fetch-mønster som qzOpenPdf() ovenfor, men i stedet for
+// window.open() sættes den ind i #iv-pdf-frame inde i faktura-popuppen, så
+// PDF'en er synlig med det samme uden at forlade appen. Det er PRÆCIS den
+// samme /api/invoices/:id/pdf som "Åbn PDF i nyt vindue" altid har brugt —
+// ingen ny PDF-genereringslogik, kun en ny visningsmåde.
+var ivPdfObjectUrl=null;
+async function openIvPdfPreview(id){
+  var frame=document.getElementById('iv-pdf-frame'),fallback=document.getElementById('iv-pdf-fallback');
+  frame.style.display='none';
+  fallback.style.display='flex';
+  fallback.innerHTML='<div class="sub">Indlæser PDF-forhåndsvisning…</div>';
+  if(ivPdfObjectUrl){URL.revokeObjectURL(ivPdfObjectUrl);ivPdfObjectUrl=null;}
+  try{
+    var r=await fetch(API+'/api/invoices/'+id+'/pdf',{headers:{'Authorization':'Bearer '+token}});
+    if(!r.ok)throw new Error('http '+r.status);
+    var blob=await r.blob();
+    ivPdfObjectUrl=URL.createObjectURL(blob);
+    frame.src=ivPdfObjectUrl;
+    frame.style.display='block';
+    fallback.style.display='none';
+  }catch(e){
+    fallback.innerHTML='<div class="sub">Kunne ikke indlæse PDF-forhåndsvisningen.</div>'
+      +'<a class="bly-btn outline small" href="#" id="iv-pdf-fallback-retry">↻ Prøv igen</a>';
+    var retryBtn=document.getElementById('iv-pdf-fallback-retry');
+    if(retryBtn)retryBtn.addEventListener('click',function(ev){ev.preventDefault();openIvPdfPreview(id);});
+  }
 }
 
 async function initQuotesModule(){
@@ -24611,6 +24796,7 @@ function renderQzInvoices(){
 }
 async function openInvoiceDetail(id){
   ivState.id=id;
+  openIvPdfPreview(id); // RUNDE I #318 — kører parallelt med resten, blokerer ikke resten af popuppen
   var inv=await api('/api/invoices/'+id);
   if(!inv||inv.error){toast('Kunne ikke hente fakturaen','❌');return;}
   setAppTitle(inv.job_name||inv.invoice_number);
@@ -25133,6 +25319,19 @@ function bindQuotesModuleEvents(){
   document.getElementById('iv-notes').addEventListener('change',saveIvNotes);
   document.getElementById('iv-void-btn').addEventListener('click',voidIvInvoice);
   document.getElementById('iv-pdf-link').addEventListener('click',function(e){e.preventDefault();if(ivState.id)qzOpenPdf('/api/invoices/'+ivState.id+'/pdf');});
+  // RUNDE I #318 — "⋯ Mere"-menuen i faktura-popuppen. Se CSS-kommentaren ved
+  // .iv-more-menu for hvorfor den bruger sit eget klassenavn (iv-more-item)
+  // og ikke genbruger .qz-more-item.
+  document.getElementById('iv-more-btn').addEventListener('click',function(e){
+    e.stopPropagation();
+    document.getElementById('iv-more-menu').classList.toggle('open');
+  });
+  document.addEventListener('click',function(e){
+    if(!e.target.closest('#iv-more-drop'))document.getElementById('iv-more-menu').classList.remove('open');
+  });
+  document.querySelectorAll('.iv-more-item').forEach(function(b){
+    b.addEventListener('click',function(){document.getElementById('iv-more-menu').classList.remove('open');});
+  });
 }
 
 // Hele denne fil kører inde i ÉN stor lukning (se '(function(){"use strict";'

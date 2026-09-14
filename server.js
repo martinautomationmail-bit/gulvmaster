@@ -6653,69 +6653,14 @@ app.delete('/api/plan', auth, panelAccess('plan'), asyncRoute(async (req, res) =
   res.json({ ok: true });
 }));
 
-// ── TIME LOGS (legacy support) ───────────────────────────────
-app.post('/api/time/start', auth, asyncRoute(async (req, res) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(`
-      UPDATE time_logs
-      SET stopped_at=${nowTextSQL()},
-          duration_minutes=GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at::timestamptz))/60)::int)
-      WHERE user_id=$1 AND stopped_at IS NULL
-    `, [req.user.id]);
-    const result = await client.query(`
-      INSERT INTO time_logs (user_id,task_id,started_at)
-      VALUES ($1,$2,${nowTextSQL()})
-      RETURNING id
-    `, [req.user.id, (req.body || {}).task_id]);
-    await client.query('COMMIT');
-    res.json({ ok: true, id: result.rows[0].id });
-  } catch (error) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
-    throw error;
-  } finally {
-    client.release();
-  }
-}));
-
-app.post('/api/time/stop', auth, asyncRoute(async (req, res) => {
-  const log = await pgOne('SELECT * FROM time_logs WHERE id=$1 AND user_id=$2', [Number((req.body || {}).log_id), req.user.id]);
-  if (!log) return res.status(404).json({ error: 'Not found' });
-  await pool.query(`
-    UPDATE time_logs
-    SET stopped_at=${nowTextSQL()},
-        duration_minutes=GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at::timestamptz))/60)::int),
-        notes=$1
-    WHERE id=$2
-  `, [(req.body || {}).notes || null, log.id]);
-  const updated = await pgOne('SELECT duration_minutes FROM time_logs WHERE id=$1', [log.id]);
-  res.json({ ok: true, duration_minutes: updated.duration_minutes });
-}));
-
-app.get('/api/time/active', auth, asyncRoute(async (req, res) => {
-  const result = await pool.query(`
-    SELECT tl.*,t.job_name,t.name AS task_name
-    FROM time_logs tl
-    JOIN jt_tasks t ON tl.task_id=t.id
-    WHERE tl.user_id=$1 AND tl.stopped_at IS NULL
-    ORDER BY tl.id DESC
-    LIMIT 1
-  `, [req.user.id]);
-  res.json(result.rows[0] || null);
-}));
-
-app.get('/api/time/all', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
-  const result = await pool.query(`
-    SELECT tl.*,u.name AS user_name,t.job_name,t.name AS task_name
-    FROM time_logs tl
-    JOIN users u ON tl.user_id=u.id
-    JOIN jt_tasks t ON tl.task_id=t.id
-    ORDER BY tl.id DESC
-    LIMIT 200
-  `);
-  res.json(result.rows);
-}));
+// RUNDE I #318: de gamle "TIME LOGS (legacy support)"-endpoints herunder
+// (/api/time/start, /api/time/stop, /api/time/active, /api/time/all) er
+// fjernet sammen med den gamle "⏱ Timer"-side i admin.html. De læste/skrev
+// udelukkende til time_logs+jt_tasks, som intet aktivt UI længere rammer —
+// bekræftet ved grep efter '/api/time/' i admin.html, employee.html og
+// employee-demo.html (ingen hits). Selve time_logs-tabellen er bevidst IKKE
+// droppet fra databasen, så gammel historik ikke går tabt, hvis den skulle
+// blive relevant igen.
 
 // ── DASHBOARD ─────────────────────────────────────────────────
 app.get('/api/dashboard', auth, panelAccess('dashboard'), asyncRoute(async (req, res) => {
