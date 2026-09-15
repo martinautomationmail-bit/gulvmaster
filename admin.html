@@ -1979,6 +1979,12 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 /* LAYOUT */
 .main{padding:12px 14px}
 .page{display:none}.page.active{display:block}
+/* RUNDE P (sep. 2026) — #qz-detail-view/#qz-invoice-view er frit-svævende
+   overlejrings-"sider" (ikke .page-elementer, direkte børn af <main>), der
+   kan åbnes ovenpå EN HVILKEN SOM HELST af de 6 Tilbud & Faktura-sider (samt
+   fra Projekter/CRM). Denne regel skjuler den underliggende aktive .page
+   mens en af de to overlejringer er åben — se qzSyncOverlayBodyClass(). */
+body.qz-overlay-open .page.active{display:none}
 .page-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;margin:0 0 10px}
 .page-title{font-size:17px;font-weight:750;color:var(--navy)}
 .page-sub{font-size:11px;color:var(--muted);margin-top:2px}
@@ -3076,13 +3082,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="tab" href="#quotes" data-page="quotes" id="quotes-tab-btn"><span class="stab-icon">🧾</span><span class="stab-label">Tilbud &amp; Faktura</span></a>
         <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
       </div>
+      <!-- RUNDE P (sep. 2026, Martins ønske: "lave alle sider i Tilbud/faktura
+           til seperate sider, man kun kan tilgå ved Dropdown i siden") — de 6
+           punkter herunder pegede tidligere ALLE på data-page="quotes" med et
+           data-qztab-jump der internt skiftede fane PÅ den ene delte side. De
+           er nu almindelige navdrop-item'er, hver med sin egen data-page, der
+           fanges af den generiske .navdrop-item[data-page]-klikhåndtering —
+           nøjagtig samme mønster som CRM- og Dagligplanlægning-grupperne. -->
       <div class="navdrop-menu">
-        <a class="navdrop-item" href="#quotes/faktura-tab" data-page="quotes" data-qztab-jump="invoices">🧾 Fakturaer</a>
-        <a class="navdrop-item" href="#quotes/tilbud-tab" data-page="quotes" data-qztab-jump="quotes">📝 Tilbud</a>
-        <a class="navdrop-item" href="#quotes/skal-faktureres" data-page="quotes" data-qztab-jump="pending-invoicing">💰 Skal faktureres</a>
-        <a class="navdrop-item" href="#quotes/produkter" data-page="quotes" data-qztab-jump="products">📦 Produkter</a>
-        <a class="navdrop-item" href="#quotes/skabeloner" data-page="quotes" data-qztab-jump="templates">📑 Skabeloner</a>
-        <a class="navdrop-item" href="#quotes/timetracking" data-page="quotes" data-qztab-jump="timetrack">⏱️ Timetracking</a>
+        <a class="navdrop-item" href="#qz-invoices" data-page="qz-invoices">🧾 Fakturaer</a>
+        <a class="navdrop-item" href="#quotes" data-page="quotes">📝 Tilbud</a>
+        <a class="navdrop-item" href="#qz-pending-invoicing" data-page="qz-pending-invoicing">💰 Skal faktureres</a>
+        <a class="navdrop-item" href="#qz-products" data-page="qz-products">📦 Produkter</a>
+        <a class="navdrop-item" href="#qz-templates" data-page="qz-templates">📑 Skabeloner</a>
+        <a class="navdrop-item" href="#qz-timetrack" data-page="qz-timetrack">⏱️ Timetracking</a>
       </div>
     </div>
 
@@ -3191,7 +3204,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-14.5</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.1</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3969,75 +3982,47 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <!-- TILBUD & FAKTURA (kun for is_finance_admin, samme adgang som Økonomi) —
      eget produktkatalog + tilbud/faktura-system med delbetalinger, bevidst
      adskilt fra JobTread's egne dokumenter (se svar i chatten). -->
+<!-- RUNDE P (Martins ønske: "lav alle sider i Tilbud/faktura til separate sider,
+     man kun kan tilgå ved Dropdown i siden ... så de ikke er inde under
+     hinanden") — Tilbud & Faktura-modulets 6 faner (Tilbud/Fakturaer/Skal
+     faktureres/Produkter/Skabeloner/Timetracking) var hidtil ÉN delt side
+     (#page-quotes) med interne faner man skiftede mellem via switchQzTab()/
+     data-qztab-jump — se den fjernede #qz-list-view/#qz-tabs-markup i git-
+     historikken. Det var netop derfor sidebar-menuen ikke kunne blive
+     "stående åben imens" (RUNDE P's anden rettelse, se switchPage()): siden
+     set fra routeren var altid bare "quotes", uanset hvilken fane man reelt
+     stod på. De 6 faner er nu 6 ÆGTE separate sider/routes i VALID_PAGES,
+     nøjagtig samme mønster som Dagligplanlægning (Kapacitet/Ledighedsoversigt/
+     Tidslinje er hver sin side, ikke faner). Alle 6 deler stadig ét fælles
+     adgangstjek ('quotes' — der findes kun ét "Tilbud & Faktura"-punkt i
+     Roller & adgang) og ét fælles datainit (initQuotesModule), se
+     switchPage(). Selve indholdet i hver side er UÆNDRET — kun ydre
+     side-indpakning og navigation er anderledes.
+
+     #qz-detail-view (tilbudseditoren, bruges også til direkte fakturaer) og
+     #qz-invoice-view (faktura-visningen) boede før INDE i #page-quotes og
+     var derfor kun synlige når #page-quotes var den aktive side. De er nu
+     forfremmet til frit-svævende "overlægs-sider" (direkte børn af <main>,
+     ligesom .page-sektionerne, men UDEN selve .page-klassen) — se
+     body.qz-overlay-open-CSS'en og qzShowDetailView()/qzShowInvoiceView(),
+     der nu skjuler/viser den aktive .page bagved i stedet for kun
+     #qz-list-view (som ikke findes mere). Det gør at de fortsat kan åbnes
+     korrekt UANSET hvilken af de 6 nye sider man kommer fra (eller en helt
+     tredje side som et CRM-lead eller en sag). -->
 <section class="page" id="page-quotes">
-<!-- RUNDE V (fortsat) — tilbudseditoren er nu en EGEN SIDE inde i Tilbud &
-     Faktura-siden (qz-list-view/qz-detail-view), IKKE længere en popup
-     (Martins ønske: "hver tilbud får en side man lander på ... får du også
-     mere skærm plads"). Samme mønster som project-detail: se qzShowDetailView()
-     og openQuoteEditor(). Dyb-link'et #quotes/tilbud/<id> fandtes allerede
-     (bruges af rigtige <a href>-links i tabellerne) og virker uændret. -->
-<div id="qz-list-view">
   <div class="bly-pagehead">
-    <div><h2>Tilbud &amp; Faktura</h2><div class="sub">Eget produktkatalog, tilbudseditor med live PDF-forhåndsvisning, og fakturaer med delbetalinger</div></div>
+    <div><h2>📝 Tilbud</h2><div class="sub">Opret og redigér tilbud, med live PDF-forhåndsvisning</div></div>
   </div>
   <!-- RUNDE M (sep. 2026, Martins presserende ønske: "kun ca. 50% modtager mine
        tilbud/faktura") — proaktiv advarsel i stedet for at Martin selv skal opdage
        det ved at en kunde ringer og siger de aldrig fik noget. Se
        loadQzDeliveryWarning()/GET /api/outbound-emails/problems. Skjult som
-       standard — vises kun hvis der reelt er noget at vise. -->
+       standard — vises kun hvis der reelt er noget at vise. RUNDE P: viser
+       problemer for BÅDE tilbud og fakturaer — ligger bevidst kun her på
+       Tilbud-siden (modulets "forside"), ikke duplikeret på Fakturaer-siden
+       også, for ikke at vise brugeren den samme advarsel to steder. -->
   <div id="qz-delivery-warning" style="display:none;margin:0 0 16px;padding:12px 16px;border-radius:var(--bly-r-md);background:#FEF2F2;border:1px solid #FECACA"></div>
-  <div class="bly-segtabs" id="qz-tabs">
-    <button class="bly-segtab active" data-qztab="quotes" type="button">📝 Tilbud</button>
-    <button class="bly-segtab" data-qztab="invoices" type="button">🧾 Fakturaer</button>
-    <!-- RUNDE H #305 (Martins ønske: "et modul med alle tilbud der accepteret som
-         skal faktureres ... vigtigt når jeg laver cashflow analyse") — egen
-         hovedfane (ikke gemt i "Mere") fordi Martin selv fremhævede at det er
-         vigtigt og noget han vil tjekke jævnligt. -->
-    <button class="bly-segtab" data-qztab="pending-invoicing" type="button">💰 Skal faktureres</button>
-    <div class="qz-more-drop" id="qz-more-drop">
-      <button class="bly-segtab qz-more-btn" id="qz-more-btn" type="button">⋯ Mere <span class="qz-more-caret">▾</span></button>
-      <div class="qz-more-menu" id="qz-more-menu">
-        <button class="qz-more-item" data-qztab="products" type="button">📦 Produkter</button>
-        <button class="qz-more-item" data-qztab="templates" type="button">📑 Skabeloner</button>
-        <button class="qz-more-item" data-qztab="timetrack" type="button">⏱️ Timetracking</button>
-      </div>
-    </div>
-  </div>
 
-  <div class="qztabpage" id="qztab-products" style="display:none">
-    <div class="bly-toolbar">
-      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Produkter</span><input type="text" id="qz-product-search" class="bly-search" placeholder="Søg i produkter..."></div>
-      <!-- "📥 Importér fra JobTread" genaktiveret 08-09-2026 (var fjernet 05-09-2026) —
-           se server.js: /api/products/import-from-jobtread. Bruges nu primært til at
-           udfylde manglende beskrivelser fra JobTreads cost items. -->
-      <div class="bly-toolbar-right">
-        <!-- RUNDE Y (Martins ønske: "lave et dashboard hvor man kan se antal
-             kroner der omsat for henholdt faktura og henholdt tilbud så kan
-             man senere analysere hvilke produkter der sælger bedst og har
-             bedst margin") — se qzOpenProductDashboard() / #qz-product-dashboard-modal. -->
-        <button class="bly-btn" id="qz-product-dashboard-btn" type="button">📊 Dashboard</button>
-        <button class="bly-btn" id="qz-import-jt-btn" type="button">📥 Importér fra JobTread</button>
-        <button class="bly-btn" id="qz-new-product-btn" type="button">+ Nyt produkt</button>
-      </div>
-    </div>
-    <table class="bly-table">
-      <thead><tr><th>Navn</th><th>Type</th><th>Kategori</th><th>Enhed</th><th class="num">Cost-pris</th><th class="num">Salgspris</th><th class="num">Avance</th><th style="width:90px"></th></tr></thead>
-      <tbody id="qz-products-body"></tbody>
-    </table>
-  </div>
-
-  <div class="qztabpage" id="qztab-templates" style="display:none">
-    <div class="bly-toolbar">
-      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Skabeloner</span><input type="text" id="qz-template-search" class="bly-search" placeholder="Søg i skabeloner..."></div>
-      <div class="bly-toolbar-right"><button class="bly-btn" id="qz-new-template-btn" type="button">+ Ny skabelon</button></div>
-    </div>
-    <table class="bly-table">
-      <thead><tr><th>Navn</th><th>Beskrivelse</th><th class="num">Linjer</th><th style="width:110px"></th></tr></thead>
-      <tbody id="qz-templates-body"></tbody>
-    </table>
-  </div>
-
-  <div class="qztabpage" id="qztab-quotes">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-quotes-count">Tilbud</span><input type="text" id="qz-quote-search" class="bly-search" placeholder="Søg — navn, tilbudsnr., sagsnr., adresse, email eller telefon..."></div>
       <div class="bly-toolbar-right"><button class="bly-btn" id="qz-new-quote-btn" type="button">+ Nyt tilbud</button></div>
@@ -4056,9 +4041,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <thead><tr><th>Nr.</th><th>Kunde/sag</th><th>Dato</th><th>Status</th><th class="num">Total</th><th style="width:140px"></th></tr></thead>
       <tbody id="qz-quotes-body"></tbody>
     </table>
+  </section>
+
+<section class="page" id="page-qz-invoices">
+  <div class="bly-pagehead">
+    <div><h2>🧾 Fakturaer</h2><div class="sub">Fakturaer med delbetalinger, rykkere og betalingsstatus</div></div>
   </div>
 
-  <div class="qztabpage" id="qztab-invoices" style="display:none">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-invoices-count">Fakturaer</span><input type="text" id="qz-invoice-search" class="bly-search" placeholder="Søg — navn, fakturanr., sagsnr., adresse, email eller telefon..."></div>
       <div class="bly-toolbar-right">
@@ -4096,17 +4085,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <thead><tr><th>Nr.</th><th>Kunde/sag</th><th>Dato</th><th>Forfald</th><th>Status</th><th class="num">Total</th><th class="num">Betalt</th><th class="num">Rest</th><th style="width:90px"></th></tr></thead>
       <tbody id="qz-invoices-body"></tbody>
     </table>
+  </section>
+
+<section class="page" id="page-qz-pending-invoicing">
+  <div class="bly-pagehead">
+    <div><h2>💰 Skal faktureres</h2><div class="sub">Godkendte tilbud der endnu ikke er fuldt faktureret — til cashflow-analyse</div></div>
   </div>
 
-  <!-- RUNDE H #305 (Martins ønske: "et modul med alle tilbud der accepteret som
-       skal faktureres. den kan vise alle tilbud som har et projekt i denne uge,
-       måned eller på interval ... vigtigt når jeg laver cashflow analyse") —
-       godkendte/konverterede tilbud der stadig har linjer tilbage i "puljen"
-       (se GET /api/quotes/pending-invoicing), filtrerbart på hvornår SAGENS
-       opgaver (gantt_tasks) er planlagt — ikke hvornår tilbuddet blev oprettet.
-       Samme periode-komponent (makeBlyPeriodFilter) og "Denne uge"-genvej som
-       Timetracking (RUNDE H #28/29), så det ser og opfører sig som resten. -->
-  <div class="qztabpage" id="qztab-pending-invoicing" style="display:none">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-pending-count">Skal faktureres</span><input type="text" id="qz-pending-search" class="bly-search" placeholder="Søg — navn, tilbudsnr., sagsnr...."></div>
     </div>
@@ -4124,19 +4109,54 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <thead><tr><th>Kunde/sag</th><th>Tilbud</th><th>Status</th><th>Planlagt periode</th><th class="num">Tilbud total</th><th class="num">Faktureret</th><th class="num">Resterende</th><th style="width:130px"></th></tr></thead>
       <tbody id="qz-pending-body"></tbody>
     </table>
+  </section>
+
+<section class="page" id="page-qz-products">
+  <div class="bly-pagehead">
+    <div><h2>📦 Produkter</h2><div class="sub">Produktkatalog til tilbuds- og fakturalinjer</div></div>
   </div>
 
-  <!-- RUNDE H #28 — Martins ønske: "under Tilbud og faktura lave en side hvor
-       man kan analysere alle folks timetracking? gerny i billy style og gerne
-       så man kan filtre på forskellige ting fra uge til uge. interval,
-       Opgaver og hvad ellers du mener er intrassant". "Opgaver" er i praksis
-       "sager" her, da timeregistrering (time_entries) er knyttet til sagen,
-       ikke en enkelt opgave i sagens tidsplan — se søgefeltet nedenfor.
-       adminOnly på selve dataen (se GET /api/reports/time-tracking i
-       server.js) af samme grund som lønoplysninger er skjult andre steder i
-       appen — fanen er synlig for alle med adgang til Tilbud & Faktura, men
-       ikke-admins ser en tydelig besked i stedet for tal de ikke må se. -->
-  <div class="qztabpage" id="qztab-timetrack" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Produkter</span><input type="text" id="qz-product-search" class="bly-search" placeholder="Søg i produkter..."></div>
+      <!-- "📥 Importér fra JobTread" genaktiveret 08-09-2026 (var fjernet 05-09-2026) —
+           se server.js: /api/products/import-from-jobtread. Bruges nu primært til at
+           udfylde manglende beskrivelser fra JobTreads cost items. -->
+      <div class="bly-toolbar-right">
+        <!-- RUNDE Y (Martins ønske: "lave et dashboard hvor man kan se antal
+             kroner der omsat for henholdt faktura og henholdt tilbud så kan
+             man senere analysere hvilke produkter der sælger bedst og har
+             bedst margin") — se qzOpenProductDashboard() / #qz-product-dashboard-modal. -->
+        <button class="bly-btn" id="qz-product-dashboard-btn" type="button">📊 Dashboard</button>
+        <button class="bly-btn" id="qz-import-jt-btn" type="button">📥 Importér fra JobTread</button>
+        <button class="bly-btn" id="qz-new-product-btn" type="button">+ Nyt produkt</button>
+      </div>
+    </div>
+    <table class="bly-table">
+      <thead><tr><th>Navn</th><th>Type</th><th>Kategori</th><th>Enhed</th><th class="num">Cost-pris</th><th class="num">Salgspris</th><th class="num">Avance</th><th style="width:90px"></th></tr></thead>
+      <tbody id="qz-products-body"></tbody>
+    </table>
+  </section>
+
+<section class="page" id="page-qz-templates">
+  <div class="bly-pagehead">
+    <div><h2>📑 Skabeloner</h2><div class="sub">Linjeskabeloner til hurtig oprettelse af tilbud</div></div>
+  </div>
+
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Skabeloner</span><input type="text" id="qz-template-search" class="bly-search" placeholder="Søg i skabeloner..."></div>
+      <div class="bly-toolbar-right"><button class="bly-btn" id="qz-new-template-btn" type="button">+ Ny skabelon</button></div>
+    </div>
+    <table class="bly-table">
+      <thead><tr><th>Navn</th><th>Beskrivelse</th><th class="num">Linjer</th><th style="width:110px"></th></tr></thead>
+      <tbody id="qz-templates-body"></tbody>
+    </table>
+  </section>
+
+<section class="page" id="page-qz-timetrack">
+  <div class="bly-pagehead">
+    <div><h2>⏱️ Timetracking</h2><div class="sub">Analyse af registreret tid pr. medarbejder og sag</div></div>
+  </div>
+
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title">Timetracking</span><input type="text" id="tt-search" class="bly-search" placeholder="Søg — sag eller kunde..."></div>
       <div class="bly-toolbar-right"><button class="bly-btn outline" id="tt-export-btn" type="button">⬇️ Eksportér CSV</button></div>
@@ -4177,13 +4197,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <thead id="tt-thead"><tr><th style="width:26px"></th><th>Medarbejder</th><th>Fag</th><th>Løntype</th><th class="num">Timer</th><th class="num">Registreringer</th><th class="num">Estimeret løn</th></tr></thead>
       <tbody id="tt-body"></tbody>
     </table>
-  </div>
-<!-- RUNDE H #29 — Simpel, selvstændig fotolysboks til Timetracking-detaljerne
-     (bevidst IKKE genbrug af #pd-photo-lightbox/#file-lightbox-modal — de er tæt
-     koblet til hhv. sagsbillede-sletning og Gmail-vedhæftninger; her er det bare
-     visning af nogle billed-URL'er). ‹/› bladrer igennem billederne for ÉN
-     registrering ad gangen. -->
-<div class="mo" id="tt-photo-lightbox">
+  <div class="mo" id="tt-photo-lightbox">
   <div class="modal" style="max-width:min(880px,92vw);background:transparent;box-shadow:none;padding:0">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
       <span class="opt-tag" id="tt-lightbox-counter" style="background:#fff;padding:4px 8px;border-radius:6px"></span>
@@ -4196,16 +4210,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 </div>
+</section>
 
-  <!-- "Mail-skabeloner til tilbud & faktura" er flyttet herfra til det
-       samlede Skabeloner-center (✉️ Skabeloner i topmenuen) — se
-       leveringsnoten om konsolideringen. -->
-</div>
-
-<!-- TILBUDSEDITOR — egen side (ikke popup), se kommentaren ved #qz-list-view
-     ovenfor. Bruges til BÅDE nyt tilbud, redigering af eksisterende tilbud
-     OG direkte faktura (qeState.directInvoice) — samme indhold som den
-     tidligere quote-editor-modal, blot flyttet ind som en sektion her. -->
+<!-- RUNDE P — se HEADER_COMMENT-noten ovenfor: #qz-detail-view/#qz-invoice-view
+     er nu frit-svævende overlægs-sider, direkte børn af <main>, ikke længere
+     børn af #page-quotes. -->
 <div id="qz-detail-view" style="display:none">
   <div class="page-head">
     <div><button class="bly-btn outline small" id="qe-back-btn" type="button">← Tilbage til alle tilbud</button></div>
@@ -4405,11 +4414,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
-<!-- FAKTURA-VISNING — egen side (ikke popup), 3. visning inde i #page-quotes ved
-     siden af qz-list-view/qz-detail-view. Se qzShowInvoiceView()/openInvoiceDetail()
-     og kommentaren hvor den gamle #invoice-detail-modal-popup lå (RUNDE J #319,
-     Martins ønske: "de skal have hver deres side ligesom i tilbud"). Samme
-     to-kolonne PDF-layout som før (RUNDE I #318), blot uden modal-indpakningen. -->
 <div id="qz-invoice-view" style="display:none">
   <div class="page-head">
     <div><button class="bly-btn outline small" id="iv-back-btn" type="button">← Tilbage til fakturaer</button></div>
@@ -4523,7 +4527,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 </div>
-</section>
+
 
 <!-- KUNDER (CRM) — eget kundekartotek, uafhængigt af JobTread. Bruges i
      tilbudseditorens kunde-søgning sammen med JobTread-sagerne. -->
@@ -4572,19 +4576,47 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        POST /api/crm/customers/:id/opportunities. "+ Lav tilbud"/"+ Lav faktura"
        (nye, RUNDE I) genbruger samme tilbuds-/direkte-faktura-editor som resten
        af appen, blot forudfyldt med denne kundes oplysninger (se cdOpenQuote/
-       cdOpenDirectInvoice) — samme mønster som crmpx-quote-btn på en opportunity. -->
+       cdOpenDirectInvoice) — samme mønster som crmpx-quote-btn på en opportunity.
+
+       RETTELSE (sep. 2026, Martins fejlrapport: "jeg kan ikke under kundekortet
+       oprette en handel og hvilken pibeline den kommer i, den kommer
+       automatisk i Sale") — #cd-newopp-type er NY: en Lead/Salg-vælger FORAN
+       pipeline/stage-dropdownene. Før var "+ Ny handel" hardkodet til kun at
+       kunne oprette i en salgs-pipeline (se den nu forladte kommentar "en
+       'handel' på en eksisterende kunde er pr. definition et salg" i
+       cdFillNewOppPickers) — man kunne slet ikke vælge Lead. cdFillNewOppPickers()
+       fylder nu pipeline-dropdownen med enten Leads- eller Salgs-pipelines alt
+       efter typen, og cdCreateOpportunityOrLead() rammer den tilsvarende nye
+       POST /api/crm/customers/:id/leads eller den eksisterende .../opportunities.
+       En ny lille "🧲 Leads"-tabel er tilføjet lige under (samme opbygning som
+       Opportunities-tabellen), så et lead oprettet herfra rent faktisk kan SES
+       på kundekortet bagefter, i stedet for kun at kunne findes inde i selve
+       Leads-boardet. -->
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px">
-    <h3 style="font-size:14px;margin:0">🤝 Opportunities <span class="sub" id="cd-opps-count"></span></h3>
+    <h3 style="font-size:14px;margin:0">🤝 Handler <span class="sub" id="cd-opps-count"></span></h3>
     <div style="flex:1"></div>
+    <select id="cd-newopp-type" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px">
+      <option value="opportunity">Salg</option>
+      <option value="lead">Lead</option>
+    </select>
     <select id="cd-newopp-pipeline" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px"></select>
     <select id="cd-newopp-stage" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px"></select>
     <button class="bly-btn" id="cd-newopp-btn" type="button">+ Ny handel</button>
     <button class="bly-btn outline" id="cd-newquote-btn" type="button">+ Lav tilbud</button>
     <button class="bly-btn outline" id="cd-newinvoice-btn" type="button">+ Lav faktura</button>
   </div>
+  <div class="sub" style="margin:0 0 6px;font-weight:700">🤝 Opportunities (Salg)</div>
   <table class="bly-table">
     <thead><tr><th>Navn</th><th>Pipeline</th><th>Stage</th><th class="num">Værdi</th></tr></thead>
     <tbody id="cd-opps-body"></tbody>
+  </table>
+  <!-- RETTELSE (sep. 2026, se HEADER_COMMENT-noten ovenfor) — samme opbygning
+       som Opportunities-tabellen, blot for crm_leads. Ingen "Værdi"-kolonne
+       (leads har ikke en kronebeløb-værdi, kun opportunities). -->
+  <div class="sub" style="margin:16px 0 6px;font-weight:700">🧲 Leads</div>
+  <table class="bly-table">
+    <thead><tr><th>Navn</th><th>Pipeline</th><th>Stage</th><th>Kilde</th></tr></thead>
+    <tbody id="cd-leads-body"></tbody>
   </table>
 
   <!-- RUNDE L (Martins ønske #6): en kunde kan over tid have mange tilbud —
@@ -4730,6 +4762,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <a class="bly-btn outline" id="crmpx-call-btn" href="#">📞 Ring</a>
       <button class="bly-btn" id="crmpx-quote-btn" type="button" style="display:none">📝 Lav tilbud</button>
       <button class="bly-btn" id="crmpx-convert-btn" type="button" style="display:none;background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8">🤝 Konvertér</button>
+      <!-- RETTELSE (sep. 2026, Martins fejlrapport: "den kommer automatisk i
+           Sale og så kan jeg ikke flytte den") — modstykket til 🤝 Konvertér,
+           men den anden vej: en opportunity der er endt i den forkerte
+           pipeline (Sales) kan flyttes tilbage til Leads. Se
+           POST /api/crm/opportunities/:id/move-to-lead og crmpxMoveToLead()
+           for hvorfor dette er en ÆGTE FLYTNING (ikke en kopi som Konvertér). -->
+      <button class="bly-btn outline" id="crmpx-movelead-btn" type="button" style="display:none">↩️ Flyt til Leads</button>
       <button class="bly-btn danger" id="crmpx-delete-btn" type="button">🗑 Slet</button>
       <!-- Siden gemmer nu automatisk ved ændring (se crmpxAutoSave) — ingen
            "Gem ændringer"-knap længere, kun en diskret status ved siden af. -->
@@ -5096,6 +5135,25 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions">
       <button class="btn" id="crmpx-convert-cancel">Annuller</button>
       <button class="btn primary" id="crmpx-convert-ok">Konvertér</button>
+    </div>
+  </div>
+</div>
+
+<!-- RETTELSE (sep. 2026, Martins fejlrapport: "den kommer automatisk i Sale og
+     så kan jeg ikke flytte den") — modstykket til crmpx-convert-modal ovenfor,
+     men den anden vej (Sales → Leads). Se crmpxMoveToLead()/POST
+     /api/crm/opportunities/:id/move-to-lead. I MODSÆTNING til Konvertér er
+     dette en ÆGTE FLYTNING, ikke en kopi — derfor advares der eksplicit om at
+     opportunity-kortet forsvinder. -->
+<div class="mo" id="crmpx-movelead-modal">
+  <div class="modal" style="max-width:420px">
+    <h3>↩️ Flyt til Leads</h3>
+    <p style="font-size:13px;color:var(--ink);line-height:1.5;margin:0 0 14px">Handlen flyttes til et lead i Lead-pipelinen — hele historikken (noter, opgaver) flytter med. Denne opportunity forsvinder fra Sales-pipelinen (i modsætning til Konvertér er dette en flytning, ikke en kopi).</p>
+    <div class="form-group"><label class="form-label">Lead-pipeline</label><select id="crmpx-movelead-pipeline" class="input"></select></div>
+    <div class="form-group"><label class="form-label">Start-stage</label><select id="crmpx-movelead-stage" class="input"></select></div>
+    <div class="modal-actions">
+      <button class="btn" id="crmpx-movelead-cancel">Annuller</button>
+      <button class="btn primary" id="crmpx-movelead-ok">Flyt</button>
     </div>
   </div>
 </div>
@@ -15920,7 +15978,17 @@ if(window.ResizeObserver){
 // "Mail-skabeloner" er nu fanen #templates/mail. Begge gamle hash-adresser
 // fanges af alias-linjerne øverst i switchPage() (klik-navigation) og af
 // oversættelses-linjerne i "genskab siden ved genindlæsning"-blokken.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','templates','notif-settings','finance','quotes','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','search-results'];
+// RUNDE P (sep. 2026, Martins ønske: "kan du ikke lave alle sider i Tilbud/
+// faktura til seperate sider, man kun kan tilgå ved Dropdown i siden?, så de
+// ikke er inde under hinanden?") — Tilbud & Faktura-modulets 5 øvrige faner
+// ('qz-invoices','qz-pending-invoicing','qz-products','qz-templates',
+// 'qz-timetrack') er nu ÆGTE selvstændige sider i stedet for interne faner
+// under 'quotes' — se HEADER_COMMENT-noten ved #page-quotes i HTML'en.
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','templates','notif-settings','finance','quotes','qz-invoices','qz-pending-invoicing','qz-products','qz-templates','qz-timetrack','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','search-results'];
+// RUNDE P — de 6 sider Tilbud & Faktura-gruppen nu består af, brugt af
+// switchPage() nedenfor til at dispatche til initQuotesModule() m.fl. for alle
+// seks uden en lang if-kæde.
+var QZ_FAMILY_PAGES=['quotes','qz-invoices','qz-pending-invoicing','qz-products','qz-templates','qz-timetrack'];
 // Roller & adgang (sep. 2026) — bruges af switchPage() nedenfor til at nægte
 // navigation til en side brugeren ikke har krydset af (server-siden håndhæver
 // det samme via panelAccess-middlewaren i server.js — dette er kun UI-lag).
@@ -16047,7 +16115,39 @@ function switchPage(page,skipHash){
     if(parentBtn)parentBtn.classList.add('active');
   }
   document.getElementById('page-'+page).classList.add('active');
-  document.querySelectorAll('.navdrop-menu.open').forEach(function(m){m.classList.remove('open');});
+  // RUNDE P (sep. 2026, Martins ønske: "Når du er klikket ind i en menu fra
+  // siden. Kan du ikke lade den være dropdown imens? ... og så den bare altid
+  // er åben når man fx klikker tilbud?") — FØR lukkede ETHVERT sideskift ALLE
+  // åbne ▾-dropdowns i sidebaren, uanset om man blot klikkede videre til en
+  // anden side i SAMME gruppe (fx fra "Tilbud" til "Fakturaer", eller fra
+  // "Dagligplanlægning" til "Kapacitet"). Nu findes gruppen den nye side hører
+  // til — først via samme dropItem/parentDrop-opslag som herover (dækker
+  // Tilbud & Faktura/CRM/Projekter/Økonomi/Min side, hvor alle undermenuens
+  // punkter, OG i Tilbud & Faktura-tilfældet nu også selve "Tilbud"-punktet,
+  // har deres eget navdrop-item) — og hvis det ikke findes dér, via tabBtn
+  // (overskriftens EGEN ▾-række-link), som fanger Dagligplanlægning-gruppen,
+  // hvor 'plan' KUN findes som selve overskriften og ikke er duplikeret som
+  // et navdrop-item nede i undermenuen. Kun DEN gruppes dropdown holdes åben
+  // (og åbnes automatisk, jf. Martins "altid åben"-ønske) — alle andre lukkes,
+  // som før. Sider uden for enhver dropdown-gruppe (fx Dashboard, en kunde-
+  // eller sags-detaljeside) lukker fortsat alle dropdowns, uændret adfærd.
+  var ownGroup=parentDrop;
+  if(!ownGroup&&tabBtn)ownGroup=tabBtn.closest('.tab-navdrop');
+  document.querySelectorAll('.navdrop-menu.open').forEach(function(m){
+    if(ownGroup&&m.closest('.navdrop')===ownGroup)return;
+    m.classList.remove('open');
+  });
+  if(ownGroup){
+    var ownMenu=ownGroup.querySelector('.navdrop-menu');
+    if(ownMenu)ownMenu.classList.add('open');
+  }
+  // RUNDE P — tilbuds-/faktura-redigeringsoverlejringerne (#qz-detail-view/
+  // #qz-invoice-view) er forfremmet til frit-svævende sider (se HEADER_COMMENT
+  // ved #page-quotes) og skal derfor lukkes eksplicit ved ETHVERT sideskift,
+  // ligesom .page-elementerne herover — før skete dette implicit, fordi de lå
+  // FYSISK inde i #page-quotes og forsvandt sammen med den.
+  qzShowDetailView(false);
+  qzShowInvoiceView(false);
   // Sammenlignes på FØRSTE hash-segment, ikke på hele hash'en (ændret sammen
   // med skiftet til pushState ovenfor). Grunden: hashchange-lytteren kalder
   // switchPage(parts[0]) med SIDENAVNET alene, mens adresselinjen står på den
@@ -16086,7 +16186,21 @@ function switchPage(page,skipHash){
   // De enkelte faner gates hver for sig i applySetTabsVisibility().
   if(page==='notif-settings'){if(guardPageAny(['notif-settings','gmail-settings'],'Indstillinger'))return;initSettingsPage();}
   if(page==='finance'){if(guardPage('finance','Økonomi'))return;loadFinance();}
-  if(page==='quotes'){if(guardPage('quotes','Tilbud & Faktura'))return;initQuotesModule();}
+  // RUNDE P — de 6 Tilbud & Faktura-sider deler samme adgangsnøgle ('quotes',
+  // se panelAccess('quotes') i server.js — bekræftet at den bruges konsekvent
+  // for ALLE seks: tilbud, fakturaer, skal faktureres, produkter, skabeloner
+  // og timetracking, så ingen server-ændring er nødvendig) og samme data-
+  // indlæsning (initQuotesModule() henter Produkter/Tilbud/Fakturaer/
+  // Skabeloner samlet via Promise.all, uanset hvilken af de 6 sider man lander
+  // på — nøjagtig som før). Timetracking og "Skal faktureres" har derudover
+  // hver deres eget lazy-indlæste rapportkald, samme mønster som Dashboard/
+  // Kapacitet ovenfor.
+  if(QZ_FAMILY_PAGES.indexOf(page)>-1){
+    if(guardPage('quotes','Tilbud & Faktura'))return;
+    initQuotesModule();
+    if(page==='qz-timetrack')renderTimetrackReport();
+    if(page==='qz-pending-invoicing')renderQzPendingInvoicing();
+  }
   if(page==='customers'){if(guardPage('customers','Kunder'))return;initCrmModule();}
   if(page==='crmp'){if(guardPageAny(['crmp_leads','crmp_sales'],'CRM'))return;initCrmpModule();}
   if(page==='crmp-detail'){if(guardPageAny(['crmp_leads','crmp_sales'],'CRM'))return;crmpxInitOnce();}
@@ -16154,22 +16268,33 @@ async function bind(){
     // tilbage-knappen ændre adresselinjen uden at ændre det man ser.
     if(parts[0]==='tasklist')switchTlTab(parts[1]||'open',true);
     if(parts[0]==='templates')switchTplTab(parts[1]||'tasks',true);
-    // Dyb-link til et enkelt tilbud/faktura — #quotes/tilbud/123 eller
-    // #quotes/faktura/123 — bruges af de rigtige <a href>-links i tabellerne,
-    // så højreklik "åbn i ny fane" og ctrl/cmd-klik virker som forventet.
+    // Dyb-link til et enkelt tilbud — #quotes/tilbud/123 — bruges af de rigtige
+    // <a href>-links i tabellerne, så højreklik "åbn i ny fane" og ctrl/cmd-klik
+    // virker som forventet.
     if(parts[0]==='quotes'&&parts[1]==='tilbud'&&parts[2])openQuoteEditor(Number(parts[2]));
-    if(parts[0]==='quotes'&&parts[1]==='faktura'&&parts[2])openInvoiceDetail(Number(parts[2]));
+    // RUNDE P — faktura-dybe-links er flyttet fra #quotes/faktura/<id> til
+    // #qz-invoices/faktura/<id> (se href-opbygningen i renderQzInvoices()/
+    // loadQzDeliveryWarning()), så et højreklik-"åbn i ny fane" lander direkte
+    // på den rigtige Fakturaer-side i stedet for først at flashe Tilbud-siden
+    // (switchPage(parts[0]) herover ville ellers slå 'quotes' til FØR
+    // openInvoiceDetail() selv skiftede videre til 'qz-invoices').
+    if(parts[0]==='qz-invoices'&&parts[1]==='faktura'&&parts[2])openInvoiceDetail(Number(parts[2]));
     // RUNDE V (fortsat) — browserens EGEN tilbage-knap (ikke #qe-back-btn) fra
     // #quotes/tilbud/123 til bare #quotes skal også skjule tilbudseditor-siden
     // igen, ellers blev den hængende synligt oven på listen, som var "tilbage"
     // aldrig sket. Se qzShowDetailView()/qeGoBackToList().
-    // RUNDE J #319 — samme fix gælder nu også #quotes/faktura/123 -> #quotes,
-    // se qzShowInvoiceView()/ivGoBackToList().
-    if(parts[0]==='quotes'&&!parts[1]){qzShowDetailView(false);qzShowInvoiceView(false);}
-    // Dyb-link til en af Tilbud & Faktura-modulets egne faner fra sidebaren —
-    // #quotes/<alias> (uden id-segment ovenfor) — se data-qztab-jump i sidebaren.
-    var QZTAB_HASH_MAP={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','timetracking':'timetrack','skal-faktureres':'pending-invoicing'};
-    if(parts[0]==='quotes'&&parts[1]&&QZTAB_HASH_MAP[parts[1]])switchQzTab(QZTAB_HASH_MAP[parts[1]]);
+    if(parts[0]==='quotes'&&!parts[1])qzShowDetailView(false);
+    // RUNDE J #319 (nu RUNDE P) — samme fix, men for faktura-siden: tilbage fra
+    // #qz-invoices/faktura/123 til bare #qz-invoices skal skjule faktura-visningen.
+    // Se qzShowInvoiceView()/ivGoBackToList().
+    if(parts[0]==='qz-invoices'&&!parts[1])qzShowInvoiceView(false);
+    // RUNDE P — gamle bogmærker/links til #quotes/<alias> (fra dengang Tilbud &
+    // Faktura var 6 interne faner på én side) sendes videre til den rigtige
+    // NYE selvstændige side, i stedet for at skifte en intern fane der ikke
+    // findes mere. QZTAB_HASH_MAP peger nu på ægte page-id'er, og kaldet er
+    // switchPage() i stedet for det fjernede switchQzTab().
+    var QZTAB_HASH_MAP={'faktura-tab':'qz-invoices','tilbud-tab':'quotes','produkter':'qz-products','skabeloner':'qz-templates','timetracking':'qz-timetrack','skal-faktureres':'qz-pending-invoicing'};
+    if(parts[0]==='quotes'&&parts[1]&&QZTAB_HASH_MAP[parts[1]])switchPage(QZTAB_HASH_MAP[parts[1]]);
     if(parts[0]==='crmp'&&parts[1]==='leads')crmpSelectPipelineByType('lead');
     if(parts[0]==='crmp'&&parts[1]==='sales')crmpSelectPipelineByType('opportunity');
     if(parts[0]==='crmp-detail'&&parts[1]&&parts[2])openCrmpDetail(parts[1],Number(parts[2]));
@@ -16196,7 +16321,12 @@ async function bind(){
   // (pushState) gav ét klik TO punkter i browserhistorikken — først "#finance",
   // så "#finance/rykkere" — så tilbage-knappen skulle trykkes to gange pr.
   // skridt. Målt med en rigtig klik-test. Derfor springes de over her.
-  var NAVDROP_HAS_OWN_HANDLER='[data-fintab-jump],[data-qztab-jump],[data-projtab-jump],[data-crmp-pipeline-type],[data-tltab-jump],[data-tpltab-jump]';
+  // RUNDE P — '[data-qztab-jump]' er fjernet fra listen: Tilbud & Faktura-
+  // gruppens 6 punkter har ikke længere det attribut (de er nu almindelige
+  // navdrop-item'er, hver med sin egen data-page), så de falder nu naturligt
+  // igennem til det generiske switchPage(b.dataset.page)-kald nedenfor,
+  // ligesom CRM- og Dagligplanlægning-gruppernes punkter allerede gjorde.
+  var NAVDROP_HAS_OWN_HANDLER='[data-fintab-jump],[data-projtab-jump],[data-crmp-pipeline-type],[data-tltab-jump],[data-tpltab-jump]';
   document.querySelectorAll('.navdrop-item[data-page]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();if(b.matches(NAVDROP_HAS_OWN_HANDLER))return;switchPage(b.dataset.page);});});
   // "Min side" (#mypage-subdrop) er nu en almindelig .tab-navdrop-gruppe i
   // sidebaren (som CRM/Tilbud & Faktura/Dagligplanlægning/Økonomi) — dens
@@ -16268,7 +16398,7 @@ async function bind(){
     // Samme rettelse som page-guardene ovenfor: brug meHasPanelPage (den
     // granulære rolle-adgang), ikke det gamle is_finance_admin-flag.
     if(!meHasPanelPage('quotes')){toast('Du har ikke adgang til Tilbud & Faktura','🔒');return;}
-    switchPage('quotes');switchQzTab('quotes');openQuoteEditor(null);
+    switchPage('quotes');openQuoteEditor(null);
   });
   document.getElementById('sidebar-newshortcut-customer').addEventListener('click',function(e){
     e.preventDefault();document.getElementById('sidebar-newshortcut-menu').classList.remove('open');
@@ -16532,19 +16662,17 @@ async function bind(){
   // under Daglig plan, Ledighedsoversigt under Kapacitet, Økonomi-underfaner osv.)
   // åbnede TIDLIGERE bare ved at musen passerede henover gruppen (HOVER), hvilket
   // var irriterende hvis man bare var på vej forbi til noget andet i sidebaren.
-  // Åbning sker nu KUN ved klik — enten på selve overskriften (som stadig
-  // navigerer til hovedsiden bagefter, se .tab[data-page]-lytteren nedenfor) eller
-  // på den lille pil (se [data-action="tab-caret-toggle"] herunder). Et klik mere
-  // på overskriften lukker undermenuen igen (samme toggle-opførsel som pilen).
-  document.querySelectorAll('.tab-navdrop .stab-row .tab[data-page]').forEach(function(link){
-    link.addEventListener('click',function(){
-      var menu=link.closest('.tab-navdrop').querySelector('.navdrop-menu');
-      if(!menu)return;
-      var wasOpen=menu.classList.contains('open');
-      document.querySelectorAll('.tab-navdrop .navdrop-menu.open').forEach(function(m){m.classList.remove('open');});
-      if(!wasOpen)menu.classList.add('open');
-    });
-  });
+  // Åbning sker nu KUN ved klik — enten på selve overskriften eller på den lille
+  // pil (se [data-action="tab-caret-toggle"] herunder).
+  // RUNDE P (sep. 2026, Martins ønske: "lad den være dropdown imens ... altid
+  // åben når man fx klikker tilbud") — denne håndtering lukkede TIDLIGERE selv
+  // undermenuen igen ved et 2. klik på overskriften ("toggle"), hvilket direkte
+  // modarbejdede det nye ønske om at gruppen bare ALTID er åben mens man
+  // navigerer i den. Det tvungne toggle-kald er derfor fjernet herfra — selve
+  // åbningen sker nu udelukkende via switchPage()'s ownGroup-logik (se der),
+  // som allerede kører for ethvert sideskift, også et klik på overskriften selv
+  // (via den generiske .tab[data-page]-lytter nedenfor). Vil man lukke gruppen
+  // manuelt, er pilen ([data-action="tab-caret-toggle"]) stadig der til det.
   document.querySelectorAll('[data-action="tab-caret-toggle"]').forEach(function(btn){
     btn.addEventListener('click',function(e){
       e.stopPropagation();
@@ -16565,35 +16693,34 @@ async function bind(){
       // sted hen — skift ikke fane og skriv ikke en #finance-hash oveni.
       if(!document.getElementById('page-finance').classList.contains('active'))return;
       switchFintab(btn.dataset.fintabJump);
-      document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
+      // RUNDE P — det tvungne "luk ALLE dropdowns"-kald herefter er fjernet:
+      // switchPage() ovenfor holder nu selv sin egen gruppes dropdown åben
+      // (Martins ønske: "lad den være dropdown imens ... altid åben når man fx
+      // klikker tilbud"). Et ekstra lukke-kald HER ville underminere det, lige
+      // efter switchPage() selv lige havde åbnet/bevaret Økonomi-dropdownen.
     });
   });
-  // Samme dybe-link-mønster som Økonomis data-fintab-jump herover, men til
-  // Tilbud & Faktura-modulets egne in-page-faner (Fakturaer/Tilbud/Produkter/
-  // Skabeloner/Mail-skabeloner) — nu også tilgængelige direkte fra sidebaren.
-  document.querySelectorAll('[data-qztab-jump]').forEach(function(btn){
-    btn.addEventListener('click',function(e){
-      e.preventDefault();
-      switchPage('quotes');
-      switchQzTab(btn.dataset.qztabJump);
-      document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
-    });
-  });
+  // RUNDE P — data-qztab-jump-håndteringen der lå her er FJERNET: Tilbud &
+  // Faktura-modulets 6 punkter er nu almindelige navdrop-item'er med hver sin
+  // egen data-page (se sidebar-markup'en) og fanges derfor allerede af den
+  // generiske .navdrop-item[data-page]-lytter længere oppe — ligesom CRM- og
+  // Dagligplanlægning-punkterne. Se HEADER_COMMENT-noten ved #page-quotes.
   // Projekter fik sin egen ▾-dropdown (sep. 2026, Martins ønske) — samme dybe-
-  // link-mønster som data-qztab-jump/data-fintab-jump herover, til de fire
-  // in-page-faner (Sagsoversigt/Gantt/KS-skabeloner/Kontaktformularer).
+  // link-mønster som data-fintab-jump herover, til de fire in-page-faner
+  // (Sagsoversigt/Gantt/KS-skabeloner/Kontaktformularer).
   document.querySelectorAll('[data-projtab-jump]').forEach(function(btn){
     btn.addEventListener('click',function(e){
       e.preventDefault();
       switchPage('projects');
       setTimeout(function(){switchProjTab(btn.dataset.projtabJump);},0);
-      document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
+      // RUNDE P — se kommentaren ved data-fintab-jump herover: intet tvunget
+      // luk-alle-dropdowns-kald her længere, switchPage() håndterer det selv.
     });
   });
   // Opgaveliste og Skabeloner er nu sider med hver to faner (sep. 2026) — deres
-  // sidebar-punkter bruger derfor samme dybe-link-mønster som
-  // data-fintab-jump/data-qztab-jump herover, så et klik altid lander på den
-  // rigtige fane (og ikke bare på den man tilfældigvis stod på sidst).
+  // sidebar-punkter bruger derfor samme dybe-link-mønster som data-fintab-jump
+  // herover, så et klik altid lander på den rigtige fane (og ikke bare på den
+  // man tilfældigvis stod på sidst).
   // skipHash på switchPage: switch*Tab() nedenfor skriver selv den fulde hash,
   // så ét klik kun giver ÉT punkt i browserhistorikken.
   document.querySelectorAll('[data-tltab-jump]').forEach(function(btn){
@@ -16604,7 +16731,7 @@ async function bind(){
       // hen — skift ikke fane og skriv ikke en #tasklist-hash oveni.
       if(!document.getElementById('page-tasklist').classList.contains('active'))return;
       switchTlTab(btn.dataset.tltabJump);
-      document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
+      // RUNDE P — se kommentaren ved data-fintab-jump herover.
     });
   });
   document.querySelectorAll('[data-tpltab-jump]').forEach(function(btn){
@@ -16613,7 +16740,7 @@ async function bind(){
       switchPage('templates',true);
       if(!document.getElementById('page-templates').classList.contains('active'))return;
       switchTplTab(btn.dataset.tpltabJump);
-      document.querySelectorAll('.tab-navdrop .navdrop-menu').forEach(function(m){m.classList.remove('open');});
+      // RUNDE P — se kommentaren ved data-fintab-jump herover.
     });
   });
   // "Leads" og "Sales" i sidebaren peger begge på #page-crmp, men skal hver
@@ -17189,9 +17316,14 @@ async function bind(){
     if(initialPage==='templates')switchTplTab(initialParts[1]||'tasks',true);
     // Åbnet direkte via et #quotes/tilbud/123-link (fx højreklik → åbn i ny fane)
     if(initialPage==='quotes'&&initialParts[1]==='tilbud'&&initialParts[2])openQuoteEditor(Number(initialParts[2]));
-    if(initialPage==='quotes'&&initialParts[1]==='faktura'&&initialParts[2])openInvoiceDetail(Number(initialParts[2]));
-    var QZTAB_HASH_MAP_INIT={'faktura-tab':'invoices','tilbud-tab':'quotes','produkter':'products','skabeloner':'templates','timetracking':'timetrack','skal-faktureres':'pending-invoicing'};
-    if(initialPage==='quotes'&&initialParts[1]&&QZTAB_HASH_MAP_INIT[initialParts[1]])switchQzTab(QZTAB_HASH_MAP_INIT[initialParts[1]]);
+    // RUNDE P — faktura-dybe-links bruger nu #qz-invoices/faktura/<id>, se
+    // kommentaren i hashchange-lytteren ovenfor.
+    if(initialPage==='qz-invoices'&&initialParts[1]==='faktura'&&initialParts[2])openInvoiceDetail(Number(initialParts[2]));
+    // RUNDE P — samme oversættelse som QZTAB_HASH_MAP i hashchange-lytteren
+    // ovenfor, blot for det initiale sideload (bogmærke/delt link/genindlæsning
+    // på en gammel #quotes/<alias>-adresse).
+    var QZTAB_HASH_MAP_INIT={'faktura-tab':'qz-invoices','tilbud-tab':'quotes','produkter':'qz-products','skabeloner':'qz-templates','timetracking':'qz-timetrack','skal-faktureres':'qz-pending-invoicing'};
+    if(initialPage==='quotes'&&initialParts[1]&&QZTAB_HASH_MAP_INIT[initialParts[1]])switchPage(QZTAB_HASH_MAP_INIT[initialParts[1]]);
     if(initialPage==='crmp'&&initialParts[1]==='leads')crmpSelectPipelineByType('lead');
     if(initialPage==='crmp'&&initialParts[1]==='sales')crmpSelectPipelineByType('opportunity');
     if(initialPage==='crmp-detail'&&initialParts[1]&&initialParts[2])openCrmpDetail(initialParts[1],Number(initialParts[2]));
@@ -17661,7 +17793,7 @@ async function loadQzDeliveryWarning(){
     var r=await api('/api/outbound-emails/problems');
     if(!r||!r.webhook_configured||!Array.isArray(r.problems)||!r.problems.length){box.style.display='none';return;}
     var rowsHtml=r.problems.slice(0,8).map(function(p){
-      var href=p.kind==='invoice'?'#quotes/faktura/'+p.ref_id:'#';
+      var href=p.kind==='invoice'?'#qz-invoices/faktura/'+p.ref_id:'#';
       var label=(p.status==='bounced'?'❌ Afvist':'🚫 Markeret som spam')+' — '+esc(p.recipient||'?')+(p.subject?' · '+esc(p.subject):'');
       var onclick=p.kind==='quote'?' onclick="openQuoteEditor('+p.ref_id+');return false;"':'';
       return '<div style="padding:4px 0;font-size:12px"><a href="'+href+'"'+onclick+' style="color:#991B1B;text-decoration:underline">'+label+'</a></div>';
@@ -17825,50 +17957,34 @@ async function qzPendingEditPrice(quoteId){
   toast(amount===null?'Nulstillet til det beregnede tal ✓':'Resterende beløb rettet ✓','✓');
 }
 
-var QZ_MORE_TABS=['products','templates','timetrack'];
-function switchQzTab(name){
-  // RUNDE H #314 (Martins ønske: "når jeg har åbnet et tilbud kan jeg ikke
-  // bruge menuen til at navigere til andre sider i tilbud, jeg kan kun bruge
-  // tilbage knappen") — fundet: denne funktion skiftede altid kun panelerne
-  // INDE i qz-list-view, men når et tilbud er åbent er qz-list-view selv
-  // skjult (qz-detail-view vises ovenpå, se qzShowDetailView). Uden dette
-  // kald blev den nye fane bare gjort klar bagved det stadig-synlige åbne
-  // tilbud — så det så ud som om menuen slet ikke virkede. Skal lukke
-  // tilbudsvisningen først, ligesom "← Tilbage til alle tilbud"-knappen gør.
-  // RUNDE J #319 — samme fix gælder nu også faktura-siden (#qz-invoice-view).
-  qzShowDetailView(false);
-  qzShowInvoiceView(false);
-  qzActiveTab=name;
-  document.querySelectorAll('#qz-tabs > .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
-  // "Mere"-knappen (Produkter/Skabeloner) er flyttet ud af de altid-synlige
-  // faner og ind i en lille dropdown — se qz-more-drop/-menu/-btn ovenfor i #qz-tabs. Selve
-  // knappen skal fremstå "aktiv" (samme underline-stil som en almindelig fane) når en af
-  // dens undersider er den aktuelt viste, så man stadig kan se hvor man er.
-  var isMoreTab=QZ_MORE_TABS.indexOf(name)>-1;
-  document.getElementById('qz-more-btn').classList.toggle('active',isMoreTab);
-  document.querySelectorAll('.qz-more-item').forEach(function(b){b.classList.toggle('active',b.dataset.qztab===name);});
-  document.getElementById('qz-more-menu').classList.remove('open');
-  ['products','templates','quotes','invoices','timetrack','pending-invoicing'].forEach(function(n){document.getElementById('qztab-'+n).style.display=n===name?'':'none';});
-  // RUNDE H #28 — Timetracking-rapporten hentes bevidst FØRST når man rent
-  // faktisk åbner fanen (ikke i initQuotesModule ved siden af Tilbud/Fakturaer),
-  // for ikke at bremse den almindelige Tilbud & Faktura-indlæsning med et
-  // admin-only kald de fleste besøg på siden slet ikke bruger.
-  if(name==='timetrack')renderTimetrackReport();
-  // RUNDE H #305 — samme lazy-indlæsningsmønster: "Skal faktureres" har sit eget
-  // kald (GET /api/quotes/pending-invoicing), som ikke skal ske hver gang man
-  // bare åbner Tilbud & Faktura.
-  if(name==='pending-invoicing')renderQzPendingInvoicing();
-}
+// RUNDE P (sep. 2026, Martins ønske: "lave alle sider i Tilbud/faktura til
+// seperate sider") — switchQzTab() er FJERNET. Den skiftede før mellem 6
+// interne faner INDE i én delt #page-quotes-side (qztab-quotes/-invoices/
+// -pending-invoicing/-products/-templates/-timetrack, samt "Mere"-dropdownen
+// #qz-more-btn/#qz-more-menu til Produkter/Skabeloner/Timetracking) — al den
+// markup findes ikke længere, de 6 faner er nu 6 ÆGTE sider man navigerer
+// mellem via den almindelige switchPage(), ligesom Dagligplanlægning. Se
+// HEADER_COMMENT-noten ved #page-quotes for baggrunden.
+
 // RUNDE V (fortsat, Martins ønske: "hver tilbud får en side man lander på ...
-// lave sådan en tilbage knap til alle tilbud") — tilbudseditoren er en 2. visning
-// inde i #page-quotes, ved siden af listen (qz-list-view), i stedet for en
-// popup ovenpå den. Se openQuoteEditor() og #qe-back-btn.
+// lave sådan en tilbage knap til alle tilbud") — tilbudseditoren (#qz-detail-
+// view) og faktura-siden (#qz-invoice-view, RUNDE J #319) er 2 overlejrings-
+// "sider" der kan åbnes fra ALLE 6 Tilbud & Faktura-sider (og fra Projekter/
+// CRM, hvor et tilbud/en faktura også kan åbnes direkte). RUNDE P forfremmede
+// dem fra at ligge INDE i #page-quotes/#qz-list-view (som ikke findes mere)
+// til at være frit-svævende sider, direkte børn af <main> — se
+// qzSyncOverlayBodyClass() og CSS-reglen "body.qz-overlay-open .page.active"
+// for hvordan de nu skjuler den underliggende side i stedet.
+function qzSyncOverlayBodyClass(){
+  var anyOpen=document.getElementById('qz-detail-view').style.display!=='none'||document.getElementById('qz-invoice-view').style.display!=='none';
+  document.body.classList.toggle('qz-overlay-open',anyOpen);
+}
 function qzShowDetailView(show){
-  document.getElementById('qz-list-view').style.display=show?'none':'';
   document.getElementById('qz-detail-view').style.display=show?'':'none';
   // RUNDE J #319 — hvis tilbudseditoren åbnes, skal en evt. åben faktura-side
   // lukkes (de to kan aldrig være åbne samtidig), se qzShowInvoiceView().
   if(show)document.getElementById('qz-invoice-view').style.display='none';
+  qzSyncOverlayBodyClass();
 }
 function qeGoBackToList(){
   if(qeAiState.listening)qeAiCancel();
@@ -17882,17 +17998,19 @@ function qeGoBackToList(){
 // qeGoBackToList() herover, blot for faktura-siden (#qz-invoice-view) i stedet
 // for tilbudseditoren.
 function qzShowInvoiceView(show){
-  document.getElementById('qz-list-view').style.display=show?'none':'';
   document.getElementById('qz-invoice-view').style.display=show?'':'none';
   if(show)document.getElementById('qz-detail-view').style.display='none';
+  qzSyncOverlayBodyClass();
 }
 function ivGoBackToList(){
   setAppTitle(null);
-  // switchQzTab() viser selv listen igen (qzShowInvoiceView(false), se
-  // RUNDE J #319-tilføjelsen deroppe) og sikrer at "Fakturaer"-fanen er den
-  // aktive, ligesom hvis man var navigeret dertil almindeligt.
-  switchQzTab('invoices');
-  navPushHash('quotes/faktura-tab');
+  // RUNDE P — går nu tilbage via switchPage('qz-invoices') (den nye,
+  // selvstændige Fakturaer-side) i stedet for switchQzTab('invoices'), der
+  // ikke findes mere. switchPage() lukker selv overlejringerne (se dens
+  // qzShowDetailView(false)/qzShowInvoiceView(false)-kald) og sætter både
+  // hash og "Fakturaer"-fanens aktive-markering, ligesom hvis man var
+  // navigeret dertil almindeligt via sidebaren.
+  switchPage('qz-invoices');
 }
 
 // ── FÆLLES LINJE-EDITOR — genbruges af både tilbudseditoren og
@@ -18787,6 +18905,7 @@ function initCustomerDetailModule(){
   document.getElementById('cd-note-add-btn').addEventListener('click',cdAddNote);
   document.getElementById('cd-note-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();cdAddNote();}});
   document.getElementById('cd-notes-list').addEventListener('click',cdNotesListClick);
+  document.getElementById('cd-newopp-type').addEventListener('change',cdFillNewOppPipelines);
   document.getElementById('cd-newopp-pipeline').addEventListener('change',cdFillNewOppStages);
   document.getElementById('cd-newopp-btn').addEventListener('click',cdCreateOpportunity);
   // RUNDE I (sep. 2026, Martins ønske): "+ Lav tilbud"/"+ Lav faktura" ved siden
@@ -18896,14 +19015,22 @@ document.getElementById('cd-files-fullsync-btn').addEventListener('click',async 
   else toast((r&&r.error)||'Kunne ikke hente mailhistorikken','❌');
 });
 // ── "+ NY HANDEL" PÅ EN EKSISTERENDE KUNDE ───────────────────────
-// Ét klik = en ny opportunity koblet til den kunde man står på. Pipeline/stage
-// står som to små dropdowns ved siden af knappen i stedet for i en modal —
-// Martin bad udtrykkeligt om ÉT klik, men lige så udtrykkeligt om at kunne
-// bestemme hvor tingene lander; en inline-picker giver begge dele uden et
-// ekstra trin. Standardvalget er første salgs-pipeline + dens første stage
-// efter position, altså nøjagtig hvad serveren selv ville have valgt.
-// Kun OPPORTUNITY-pipelines: en "handel" på en eksisterende kunde er pr.
-// definition et salg, ikke et nyt lead.
+// Ét klik = en ny opportunity/et nyt lead koblet til den kunde man står på.
+// Type/pipeline/stage står som tre små dropdowns ved siden af knappen i
+// stedet for i en modal — Martin bad udtrykkeligt om ÉT klik, men lige så
+// udtrykkeligt om at kunne bestemme hvor tingene lander; en inline-picker
+// giver begge dele uden et ekstra trin. Standardvalget er "Salg" (uændret
+// tidligere standard — de fleste "+ Ny handel"-klik på en ETABLERET kunde er
+// stadig reelt et salg) + første pipeline af den valgte type + dens første
+// stage efter position.
+//
+// RETTELSE (sep. 2026, Martins fejlrapport: "jeg kan ikke ... vælge hvilken
+// pibeline den kommer i, den kommer automatisk i Sale") — #cd-newopp-type er
+// NY. Før var pipeline-dropdownen hardkodet til KUN at vise salgs-pipelines
+// (se den nu forladte begrundelse "en 'handel' på en eksisterende kunde er pr.
+// definition et salg, ikke et nyt lead") — der var simpelthen intet sted at
+// vælge Lead. Nu styrer typen hvilke pipelines der vises, og hvilken af de to
+// (søster-ens) server-ruter der rammes ved oprettelse.
 function cdFillNewOppStages(){
   var pid=Number(document.getElementById('cd-newopp-pipeline').value);
   var p=crmpState.pipelines.find(function(x){return x.id===pid;});
@@ -18912,36 +19039,43 @@ function cdFillNewOppStages(){
   sel.innerHTML=stages.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
   if(stages.length)sel.value=stages[0].id;
 }
+function cdFillNewOppPipelines(){
+  var type=document.getElementById('cd-newopp-type').value; // 'opportunity' | 'lead'
+  var sel=document.getElementById('cd-newopp-pipeline');
+  var pipelines=crmpState.pipelines.filter(function(p){return p.type===type;});
+  sel.innerHTML=pipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
+  if(pipelines.length)sel.value=pipelines[0].id;
+  cdFillNewOppStages();
+  // Findes der slet ingen pipeline af den valgte type, skjules hele rækken
+  // frem for at vise en knap der kun kan fejle.
+  var has=!!pipelines.length;
+  document.getElementById('cd-newopp-btn').style.display=has?'':'none';
+  sel.style.display=has?'':'none';
+  document.getElementById('cd-newopp-stage').style.display=has?'':'none';
+}
 async function cdFillNewOppPickers(){
   await crmpEnsurePipelinesLoaded();
-  var sel=document.getElementById('cd-newopp-pipeline');
-  var salesPipelines=crmpState.pipelines.filter(function(p){return p.type==='opportunity';});
-  sel.innerHTML=salesPipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
-  if(salesPipelines.length)sel.value=salesPipelines[0].id;
-  cdFillNewOppStages();
-  // Findes der slet ingen salgs-pipeline, skjules hele rækken frem for at
-  // vise en knap der kun kan fejle.
-  var hasSales=!!salesPipelines.length;
-  document.getElementById('cd-newopp-btn').style.display=hasSales?'':'none';
-  sel.style.display=hasSales?'':'none';
-  document.getElementById('cd-newopp-stage').style.display=hasSales?'':'none';
+  cdFillNewOppPipelines();
 }
 async function cdCreateOpportunity(){
   if(!cdCurrent)return;
   var btn=document.getElementById('cd-newopp-btn');
   btn.disabled=true;
+  var type=document.getElementById('cd-newopp-type').value; // 'opportunity' | 'lead'
   var body={
     pipeline_id:Number(document.getElementById('cd-newopp-pipeline').value)||null,
     stage_id:Number(document.getElementById('cd-newopp-stage').value)||null
   };
-  var r=await api('/api/crm/customers/'+cdCurrent.id+'/opportunities',{method:'POST',body:JSON.stringify(body)});
+  var endpoint='/api/crm/customers/'+cdCurrent.id+(type==='lead'?'/leads':'/opportunities');
+  var r=await api(endpoint,{method:'POST',body:JSON.stringify(body)});
   btn.disabled=false;
   if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke oprette handlen','❌');return;}
-  toast('Ny handel oprettet ✓','🤝');
-  // Tabellen genindlæses med det samme (ingen sidegenindlæsning) — og boardets
-  // cache tømmes, så Kanban'en henter forfra næste gang man går derind og
-  // dermed også viser den nye handel.
+  toast((type==='lead'?'Nyt lead oprettet ✓':'Ny handel oprettet ✓'),'🤝');
+  // Begge tabeller genindlæses med det samme (ingen sidegenindlæsning) — og
+  // boardets cache tømmes, så Kanban'en henter forfra næste gang man går
+  // derind og dermed også viser det nye kort.
   await cdReloadOpportunities(cdCurrent.id);
+  await cdReloadLeads(cdCurrent.id);
   crmpState.cards=[];
 }
 // Kun Opportunities-tabellen — bruges både ved opslag af kunden og efter at
@@ -18957,6 +19091,19 @@ async function cdReloadOpportunities(customerId){
       +'<td class="num">'+(o.value!=null?krFmt(o.value):'–')+'</td>'
       +'</tr>';
   }).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen opportunities endnu</td></tr>';
+}
+// RETTELSE (sep. 2026) — samme mønster som cdReloadOpportunities ovenfor, blot
+// for crm_leads (se HEADER_COMMENT-noten ved #cd-newopp-type-markuppen).
+async function cdReloadLeads(customerId){
+  var leads=await api('/api/crm/customers/'+customerId+'/leads')||[];
+  document.getElementById('cd-leads-body').innerHTML=leads.length?leads.map(function(l){
+    return '<tr style="cursor:pointer" onclick="openCrmpDetail(\'lead\','+l.id+')">'
+      +'<td>'+esc(l.name)+'</td>'
+      +'<td>'+esc(l.pipeline_name)+'</td>'
+      +'<td><span class="crmp-card-badge" style="background:'+esc(l.stage_color)+'22;color:'+esc(l.stage_color)+'">'+esc(l.stage_name)+'</span></td>'
+      +'<td>'+esc(l.source||'–')+'</td>'
+      +'</tr>';
+  }).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen leads endnu</td></tr>';
 }
 // KUNDE-NOTER — rigtig, redigerbar/sletbar liste (customer_notes), se
 // crmpx-activity-item-mønstret som denne er baseret på.
@@ -19136,6 +19283,7 @@ async function openCustomerDetail(id){
   }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen fakturaer endnu</td></tr>';
 
   await cdReloadOpportunities(id);
+  await cdReloadLeads(id);
 
   initCustomerDetailModule();
   // "+ Ny handel"-pickerne fyldes hver gang kundesiden åbnes — pipelines kan
@@ -19634,6 +19782,7 @@ function crmpxInitOnce(){
     if(ent)crmpSelectPipelineByType(ent.type,ent.data.pipeline_id);
   });
   document.getElementById('crmpx-convert-btn').addEventListener('click',crmpxConvert);
+  document.getElementById('crmpx-movelead-btn').addEventListener('click',crmpxMoveToLead);
   document.getElementById('crmpx-quote-btn').addEventListener('click',crmpxOpenQuote);
   document.getElementById('crmpx-delete-btn').addEventListener('click',crmpxDelete);
   document.getElementById('crmpx-note-add-btn').addEventListener('click',crmpxAddNote);
@@ -20133,6 +20282,11 @@ async function openCrmpDetail(entityType,id){
   crmpxUpdateStagePillColor();
   document.getElementById('crmpx-customfields').innerHTML=crmpxRenderCustomFieldInputs(d.custom_field_defs||[],d.custom_fields||{})||'<div class="crmpx-empty">Ingen felter oprettet — tilføj under ⚙️ Indstillinger</div>';
   document.getElementById('crmpx-convert-btn').style.display=entityType==='lead'&&!d.converted_opportunity_id?'':'none';
+  // RETTELSE (sep. 2026) — se HEADER_COMMENT-noten ved #crmpx-movelead-btn:
+  // modstykket til Konvertér, vist for enhver opportunity (ingen "allerede
+  // flyttet"-tilstand at tjekke for, i modsætning til Konvertér — når den er
+  // flyttet, findes opportunity-rækken og dermed denne side slet ikke mere).
+  document.getElementById('crmpx-movelead-btn').style.display=entityType==='opportunity'?'':'none';
   // "Lav tilbud" (sep. 2026, oprindeligt kun for opportunities — udvidet efter
   // Martins ønske til også at vise på LEADS, så man kan lave et tilbud med det
   // samme uden først at skulle konvertere leadet). Vises når der rent faktisk er
@@ -20540,6 +20694,66 @@ async function crmpxConvert(){
   var r=await api('/api/crm/leads/'+ent.id+'/convert',{method:'POST',body:JSON.stringify(target)});
   if(r&&r.ok){toast('Konverteret ✓','🤝');openCrmpDetail('opportunity',r.opportunity_id);}
   else toast((r&&r.error)||'Kunne ikke konvertere','❌');
+}
+// ── FLYT OPPORTUNITY TILBAGE TIL LEADS ───────────────────────────
+// RETTELSE (sep. 2026, Martins fejlrapport: "den kommer automatisk i Sale og
+// så kan jeg ikke flytte den") — nøjagtig samme modal-mønster som Konvertér
+// ovenfor (crmpxAskConvertTarget), blot mod Lead-pipelines i stedet for
+// salgs-pipelines, og mod den nye #crmpx-movelead-modal i stedet for
+// #crmpx-convert-modal. Se POST /api/crm/opportunities/:id/move-to-lead for
+// hvorfor dette er en ÆGTE FLYTNING og ikke en kopi som Konvertér.
+function crmpxMoveToLeadFillStages(){
+  var pid=Number(document.getElementById('crmpx-movelead-pipeline').value);
+  var p=crmpState.pipelines.find(function(x){return x.id===pid;});
+  var sel=document.getElementById('crmpx-movelead-stage');
+  var stages=crmpSortedStages(p);
+  sel.innerHTML=stages.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
+  if(stages.length)sel.value=stages[0].id;
+}
+function crmpxAskMoveLeadTarget(){
+  return new Promise(function(resolve){
+    var overlay=document.getElementById('crmpx-movelead-modal');
+    var pipeSel=document.getElementById('crmpx-movelead-pipeline');
+    var stageSel=document.getElementById('crmpx-movelead-stage');
+    var leadPipelines=crmpState.pipelines.filter(function(p){return p.type==='lead';});
+    if(!leadPipelines.length){toast('Ingen lead-pipeline findes — opret én under ⚙️ Indstillinger','⚠');resolve(null);return;}
+    pipeSel.innerHTML=leadPipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>';}).join('');
+    pipeSel.value=leadPipelines[0].id;
+    crmpxMoveToLeadFillStages();
+    overlay.classList.add('open');
+    var okBtn=document.getElementById('crmpx-movelead-ok'),cancelBtn=document.getElementById('crmpx-movelead-cancel');
+    function cleanup(result){
+      overlay.classList.remove('open');
+      okBtn.removeEventListener('click',onOk);
+      cancelBtn.removeEventListener('click',onCancel);
+      overlay.removeEventListener('click',onBackdrop);
+      pipeSel.removeEventListener('change',crmpxMoveToLeadFillStages);
+      resolve(result);
+    }
+    function onOk(){cleanup({pipeline_id:Number(pipeSel.value)||null,stage_id:Number(stageSel.value)||null});}
+    function onCancel(){cleanup(null);}
+    function onBackdrop(e){if(e.target===overlay)onCancel();}
+    okBtn.addEventListener('click',onOk);
+    cancelBtn.addEventListener('click',onCancel);
+    overlay.addEventListener('click',onBackdrop);
+    pipeSel.addEventListener('change',crmpxMoveToLeadFillStages);
+  });
+}
+async function crmpxMoveToLead(){
+  var ent=crmpDetailEntity;
+  if(!ent||ent.type!=='opportunity')return;
+  if(!crmpState.pipelines.length)await crmpLoadPipelines();
+  var target=await crmpxAskMoveLeadTarget();
+  if(!target)return;
+  var r=await api('/api/crm/opportunities/'+ent.id+'/move-to-lead',{method:'POST',body:JSON.stringify(target)});
+  if(r&&r.ok){
+    toast('Flyttet til Leads ✓','↩️');
+    // Boardets cache tømmes, så Sales-Kanban'en ikke stadig viser det
+    // opportunity-kort der lige er slettet server-side, næste gang man går
+    // derind (samme greb som cdCreateOpportunity/cdReloadOpportunities).
+    crmpState.cards=[];
+    openCrmpDetail('lead',r.lead_id);
+  } else toast((r&&r.error)||'Kunne ikke flytte','❌');
 }
 // "Lav tilbud" (sep. 2026) — åbner et nyt, blankt tilbud forudfyldt med
 // opportunityens koblede kunde, så man ikke skal søge kunden op igen manuelt.
@@ -24080,7 +24294,9 @@ function renderQeInvoicingPanel(){
     row.onclick=function(){
       var invId=Number(row.dataset.invid);
       qeGoBackToList();
-      switchQzTab('invoices');
+      // RUNDE P — switchQzTab('invoices') er erstattet af switchPage('qz-invoices'),
+      // se ivGoBackToList()/openInvoiceDetail() for baggrunden.
+      switchPage('qz-invoices');
       openInvoiceDetail(invId);
     };
   });
@@ -24701,7 +24917,7 @@ async function saveQuoteEditor(asDraft){
       toast(asDraft?('Faktura '+dr.invoice_number+' gemt som kladde'):('Faktura '+dr.invoice_number+' oprettet'),'✓');
       qeGoBackToList();
       await loadQzInvoices();renderQzInvoices();
-      switchQzTab('invoices');
+      switchPage('qz-invoices');
       openInvoiceDetail(dr.id);
     } else toast((dr&&dr.error)||'Kunne ikke oprette fakturaen','❌');
     return;
@@ -24772,7 +24988,7 @@ async function qcvConfirm(){
     qeGoBackToList();
     await Promise.all([loadQzQuotes(),loadQzInvoices()]);
     renderQzQuotes();renderQzInvoices();
-    switchQzTab('invoices');
+    switchPage('qz-invoices');
     openInvoiceDetail(r.invoice_id);
   } else toast((r&&r.error)||'Kunne ikke konvertere','❌');
 }
@@ -25006,7 +25222,7 @@ function renderQzInvoices(){
   var body=document.getElementById('qz-invoices-body');
   if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen fakturaer fundet':'Ingen fakturaer endnu')+'</td></tr>';return;}
   body.innerHTML=list.map(function(x){
-    var href='#quotes/faktura/'+x.id;
+    var href='#qz-invoices/faktura/'+x.id;
     var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
     return '<tr>'
       +'<td>'+a(esc(x.invoice_number||'–'))+'</td>'
@@ -25107,12 +25323,15 @@ async function openInvoiceDetail(id){
   // RUNDE J #319 — egen SIDE i stedet for popup, se qzShowInvoiceView() og
   // kommentaren ved #qz-invoice-view i HTML'en. Samme mønster som
   // openQuoteEditor()/qzShowDetailView(): skift kun side hvis vi ikke allerede
-  // STÅR på #page-quotes (undgår at initQuotesModule() kører/genhenter listen
-  // to gange for ingenting ved det almindelige tilfælde: klik fra selve
+  // STÅR på #page-qz-invoices (undgår at initQuotesModule() kører/genhenter
+  // listen to gange for ingenting ved det almindelige tilfælde: klik fra selve
   // Fakturaer-listen).
-  if(!document.getElementById('page-quotes').classList.contains('active'))switchPage('quotes',true);
+  // RUNDE P — peger nu på 'qz-invoices' (den nye, selvstændige Fakturaer-side)
+  // i stedet for 'quotes', så man lander tilbage på FAKTURA-listen (ikke
+  // Tilbud-listen) når faktura-visningen lukkes igen — se ivGoBackToList().
+  if(!document.getElementById('page-qz-invoices').classList.contains('active'))switchPage('qz-invoices',true);
   qzShowInvoiceView(true);
-  navPushHash('quotes/faktura/'+id);
+  navPushHash('qz-invoices/faktura/'+id);
 }
 // RUNDE T (Martins ønske: "hurtigt kunne søge med de poster der er istedet
 // for jeg skal side og regne men bare vælge af posterne") — beregner hver
@@ -25290,19 +25509,13 @@ async function voidIvInvoice(){
 
 // ── EVENT-BINDING (køres kun én gang) ────────────────────────
 function bindQuotesModuleEvents(){
-  document.querySelectorAll('#qz-tabs > .bly-segtab').forEach(function(b){
-    b.addEventListener('click',function(){switchQzTab(b.dataset.qztab);});
-  });
-  document.getElementById('qz-more-btn').addEventListener('click',function(e){
-    e.stopPropagation();
-    document.getElementById('qz-more-menu').classList.toggle('open');
-  });
-  document.querySelectorAll('.qz-more-item').forEach(function(b){
-    b.addEventListener('click',function(){switchQzTab(b.dataset.qztab);});
-  });
-  document.addEventListener('click',function(e){
-    if(!e.target.closest('#qz-more-drop'))document.getElementById('qz-more-menu').classList.remove('open');
-  });
+  // RUNDE P — segtab-fanebjælken (#qz-tabs, .bly-segtab) og "Mere"-dropdownen
+  // (#qz-more-btn/#qz-more-menu/.qz-more-item) er FJERNET fra HTML'en (de 6
+  // faner er nu 6 selvstændige sider, navigeret til via den almindelige
+  // sidebar/switchPage() i stedet). Bindingerne der stod her ville have kastet
+  // en TypeError ved appens opstart (getElementById('qz-more-btn') === null),
+  // så de er fjernet herfra sammen med markup'en. Se HEADER_COMMENT-noten ved
+  // #page-quotes.
   document.getElementById('qz-dunning-settings-toggle').addEventListener('click',function(){
     var panel=document.getElementById('qz-dunning-settings-panel');
     panel.style.display=panel.style.display==='none'?'':'none';

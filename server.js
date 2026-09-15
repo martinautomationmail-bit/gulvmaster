@@ -9837,26 +9837,52 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
   b.note = leadIntakeField(b, ['note', 'Note', 'besked', 'message', 'comments', 'kommentar']) || null;
   const sourceLabel = LEAD_WEBHOOK_SOURCE_LABELS[req.params.source] || (req.params.source ? String(req.params.source) : 'Webhook');
 
-  const p = await pgOne("SELECT id FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1");
-  if (!p) return res.status(400).json({ error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
-  const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [p.id]);
-  const stageId = s && s.id;
-  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [stageId]);
+  // RETTELSE (sep. 2026, Martins fejlrapport: "Alle mine facebook og make
+  // leads når de oprettes i systemet som kunde er det mening der skal
+  // oprettes en handel direkte inde i lead pibeline ... det har den ikke
+  // gjort") — de to trin herunder (opret lead-kortet, opret/kobl kunden) lå
+  // FØR som to uafhængige databasekald efter hinanden. Koden var logisk
+  // korrekt (lead oprettes FØRST, kunden bagefter, altid begge), men var
+  // IKKE atomisk: fejlede noget i trin 2 (fx en race på en dubletkontrol, en
+  // afbrudt forbindelse midt i webhook-kaldet), stod lead-kortet allerede
+  // committed i databasen mens resten af requesten fejlede med 500 — hvilket
+  // ville få Make til at vise scenariet som "fejlet" (og dermed formentlig
+  // blive forsøgt igen, med en NY lead-dublet til følge), IKKE det Martin så
+  // (en kunde uden noget lead-kort). Det modsatte — en kunde oprettet UDEN et
+  // lead-kort — kunne ikke reproduceres i nogen kodesti: der findes ingen
+  // anden ekstern (nøgle-baseret) rute der overhovedet kan oprette en kunde.
+  // Uanset hvad den præcise årsag var, gør denne rettelse det STRUKTURELT
+  // umuligt at ende med det ene uden det andet: hele blokken køres nu i én
+  // databasetransaktion (se crmWithTransaction) — enten committer BEGGE dele
+  // sammen, eller ingen af dem, og Make får en ægte fejl at vise/prøve igen
+  // hvis noget går galt, i stedet for et stille halvt resultat.
+  const result = await crmWithTransaction(async (client) => {
+    const one = async (sql, values) => (await client.query(sql, values)).rows[0] || null;
+    const p = await one("SELECT id FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1");
+    if (!p) return { error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' };
+    const s = await one('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [p.id]);
+    const stageId = s && s.id;
+    const posRow = await one('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [stageId]);
 
-  const r = await pgOne(`
-    INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,${nowTextSQL()}) RETURNING id
-  `, [name, b.email || null, b.phone || null, b.address || null, sourceLabel, b.note || null, p.id, stageId, posRow.pos]);
-  await crmLogActivity('lead', r.id, 'created', 'Lead modtaget automatisk via ' + sourceLabel, null);
+    const r = await one(`
+      INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,${nowTextSQL()}) RETURNING id
+    `, [name, b.email || null, b.phone || null, b.address || null, sourceLabel, b.note || null, p.id, stageId, posRow.pos]);
+    await crmLogActivity('lead', r.id, 'created', 'Lead modtaget automatisk via ' + sourceLabel, null, client);
 
-  const linked = await crmFindOrCreateContactAndCustomer(name, b.email || null, b.phone || null, b.address || null, b.note || null);
-  await pool.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
-  await crmLogActivity('lead', r.id, 'linked', (linked.customerCreated ? 'Ny kunde oprettet automatisk: ' : 'Koblet til eksisterende kunde: ') + name, null);
+    const linked = await crmFindOrCreateContactAndCustomer(name, b.email || null, b.phone || null, b.address || null, b.note || null, client);
+    await client.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
+    await crmLogActivity('lead', r.id, 'linked', (linked.customerCreated ? 'Ny kunde oprettet automatisk: ' : 'Koblet til eksisterende kunde: ') + name, null, client);
 
-  crmFireStageAutomation('lead', r.id, stageId, { name, email: b.email || null, phone: b.phone || null })
-    .catch(e => console.error('SMS/email-automatik fejlede for webhook-lead #' + r.id + ':', e.message));
+    return { leadId: r.id, stageId };
+  });
+  if (result.error) return res.status(400).json({ error: result.error });
 
-  res.json({ ok: true, id: r.id });
+  console.log('lead-intake webhook OK: lead #' + result.leadId + ' oprettet i Lead-pipeline (kilde=' + sourceLabel + ')');
+  crmFireStageAutomation('lead', result.leadId, result.stageId, { name, email: b.email || null, phone: b.phone || null })
+    .catch(e => console.error('SMS/email-automatik fejlede for webhook-lead #' + result.leadId + ':', e.message));
+
+  res.json({ ok: true, id: result.leadId });
 }));
 
 // ══════════════════════════════════════════════════════════════
@@ -10253,14 +10279,21 @@ async function resolveCustomerId(explicitId, email, phone) {
 // resten af appen allerede gør (Close-webhooken m.fl.). Genbruges både ved
 // lead-OPRETTELSE (så Lead/Kunde/Sales hænger sammen fra start) og ved
 // lead-KONVERTERING (uændret slutresultat, men nu ét fælles sted for logikken).
-async function crmFindOrCreateContactAndCustomer(name, email, phone, address, note) {
+// `exec` er valgfri, ligesom crmSetCustomFieldValues/crmLogActivity ovenfor —
+// enten poolen (standard, alle ældre kaldesteder) eller en transaktionsklient
+// (se crmWithTransaction), så en kalder der selv er inde i en transaktion kan
+// give sin egen klient med, i stedet for at denne funktion utilsigtet slår ud
+// af transaktionen og rammer poolen direkte.
+async function crmFindOrCreateContactAndCustomer(name, email, phone, address, note, exec) {
+  const db = exec || pool;
+  const one = async (sql, values) => (await db.query(sql, values)).rows[0] || null;
   let contact = null;
-  if (phone) contact = await pgOne('SELECT * FROM crm_contacts WHERE phone=$1', [phone]);
-  if (!contact && email) contact = await pgOne('SELECT * FROM crm_contacts WHERE email=$1', [email]);
+  if (phone) contact = await one('SELECT * FROM crm_contacts WHERE phone=$1', [phone]);
+  if (!contact && email) contact = await one('SELECT * FROM crm_contacts WHERE email=$1', [email]);
   let contactId, contactCreated = false;
   if (contact) { contactId = contact.id; }
   else {
-    const c = await pgOne('INSERT INTO crm_contacts (name,email,phone,address) VALUES ($1,$2,$3,$4) RETURNING id', [name, email, phone, address]);
+    const c = await one('INSERT INTO crm_contacts (name,email,phone,address) VALUES ($1,$2,$3,$4) RETURNING id', [name, email, phone, address]);
     contactId = c.id; contactCreated = true;
   }
 
@@ -10268,17 +10301,17 @@ async function crmFindOrCreateContactAndCustomer(name, email, phone, address, no
   // kunne oprette en ekstra kunde hvis kundens telefon/email er blevet
   // opdateret siden sidst, men kontakt-koblingen stadig er der).
   let customer = null;
-  if (contact && contact.customer_id) customer = await pgOne('SELECT id FROM customers WHERE id=$1', [contact.customer_id]);
-  if (!customer && phone) customer = await pgOne('SELECT id FROM customers WHERE phone=$1', [phone]);
-  if (!customer && email) customer = await pgOne('SELECT id FROM customers WHERE email=$1', [email]);
+  if (contact && contact.customer_id) customer = await one('SELECT id FROM customers WHERE id=$1', [contact.customer_id]);
+  if (!customer && phone) customer = await one('SELECT id FROM customers WHERE phone=$1', [phone]);
+  if (!customer && email) customer = await one('SELECT id FROM customers WHERE email=$1', [email]);
   let customerId, customerCreated = false;
   if (customer) { customerId = customer.id; }
   else {
-    const cust = await pgOne('INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id', [name, email, phone, address, note || null]);
+    const cust = await one('INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id', [name, email, phone, address, note || null]);
     customerId = cust.id; customerCreated = true;
   }
   if (!contact || contact.customer_id !== customerId) {
-    await pool.query('UPDATE crm_contacts SET customer_id=$1 WHERE id=$2', [customerId, contactId]);
+    await db.query('UPDATE crm_contacts SET customer_id=$1 WHERE id=$2', [customerId, contactId]);
   }
   return { contactId, customerId, contactCreated, customerCreated };
 }
@@ -11036,6 +11069,83 @@ app.delete('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncR
   const deleted = await crmWithTransaction(client => crmDeleteEntityCascade(client, 'opportunity', req.params.id));
   res.json({ ok: true, deleted });
 }));
+// RETTELSE (sep. 2026, Martins fejlrapport: "den kommer automatisk i Sale og
+// så kan jeg ikke flytte den") — der fandtes ingen vej fra Sales-pipelinen
+// TILBAGE til Leads-pipelinen: 🤝 Konvertér går kun én vej (Lead→Sale, se
+// POST /api/crm/leads/:id/convert), og PUT .../opportunities/:id kan kun sætte
+// pipeline_id på en ANDEN salgs-pipeline (crm_leads og crm_opportunities er
+// to forskellige tabeller — en opportunity-række kan aldrig blive en
+// lead-række ved en almindelig UPDATE).
+//
+// I MODSÆTNING til Konvertér (som bevidst er ADDITIV — Martins tidligere ord:
+// "INTET DATA fra lead-konverteringen til Sales-pipelinen må forsvinde", fordi
+// den repræsenterer en reel forretningsbegivenhed hvor både lead- og
+// salgs-historikken har værdi hver for sig) er denne handling en ÆGTE FLYTNING
+// (delete + genopret), fordi den her udelukkende retter en FEJLPLACERING —
+// "+ Ny handel" på et kundekort kunne før kun oprette i Sales (se
+// POST /api/crm/customers/:id/leads ovenfor for selve rettelsen af DEN årsag),
+// så en handel der reelt burde have været et lead, endte i Sales uden noget
+// alternativ. At lade begge rækker blive stående (som Konvertér gør) ville
+// bare efterlade et forladt "spøgelses-kort" i Sales-boardet — det modsatte
+// af det Martin bad om ("flytte den").
+//
+// Aktivitets-tidslinjen og opgaverne FLYTTES (UPDATE entity_type/entity_id),
+// ikke kopieres — det er samme post, ikke to. Custom fields kan derimod ikke
+// bare flyttes (field_id peger på en felt-definition der er specifik for
+// 'opportunity'), så de KOPIERES felt-for-felt på nøgle, samme fremgangsmåde
+// som Konvertér bruger, og de gamle opportunity-værdier ryddes til sidst
+// (crmDeleteEntityCascade-mønsteret).
+app.post('/api/crm/opportunities/:id/move-to-lead', auth, panelAccessAny(['crmp_sales', 'crmp_leads']), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const opp = await pgOne('SELECT * FROM crm_opportunities WHERE id=$1', [req.params.id]);
+  if (!opp) return res.status(404).json({ error: 'Opportunity ikke fundet' });
+
+  let targetPipelineId = b.pipeline_id;
+  if (!targetPipelineId) { const p = await pgOne("SELECT id FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1"); targetPipelineId = p && p.id; }
+  if (!targetPipelineId) return res.status(400).json({ error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
+  let targetStageId = b.stage_id;
+  if (!targetStageId) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [targetPipelineId]); targetStageId = s && s.id; }
+  const stage = targetStageId ? await pgOne('SELECT id FROM crm_stages WHERE id=$1 AND pipeline_id=$2', [targetStageId, targetPipelineId]) : null;
+  if (!stage) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [targetPipelineId]); targetStageId = s && s.id; }
+  if (!targetStageId) return res.status(400).json({ error: 'Lead-pipelinen har ingen stages' });
+
+  const contact = opp.contact_id ? await pgOne('SELECT * FROM crm_contacts WHERE id=$1', [opp.contact_id]) : null;
+
+  const result = await crmWithTransaction(async (client) => {
+    const one = async (sql, values) => (await client.query(sql, values)).rows[0] || null;
+    const posRow = await one('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [targetStageId]);
+    const newLead = await one(`
+      INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,contact_id,position,stage_changed_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()}) RETURNING id
+    `, [
+      opp.name, contact ? contact.email : null, contact ? contact.phone : null, contact ? contact.address : null,
+      'Flyttet fra Sales-pipeline', opp.note || null, targetPipelineId, targetStageId, opp.owner_id, opp.contact_id || null, posRow.pos
+    ]);
+
+    // Custom fields kopieres på nøgle (kun felter der findes på BEGGE typer) —
+    // se den lange kommentar ved POST .../leads/:id/convert for samme idé i
+    // den anden retning.
+    const oppValues = await crmGetCustomFieldValues('opportunity', opp.id);
+    await crmSetCustomFieldValues('lead', newLead.id, oppValues, client);
+    await client.query('DELETE FROM crm_custom_field_values WHERE entity_type=$1 AND entity_id=$2', ['opportunity', opp.id]);
+
+    // Aktiviteter + opgaver FLYTTES (samme rækker, ny ejer) — se kommentaren
+    // ved routen ovenfor.
+    await client.query('UPDATE crm_activities SET entity_type=$1, entity_id=$2 WHERE entity_type=$3 AND entity_id=$4', ['lead', newLead.id, 'opportunity', opp.id]);
+    await client.query('UPDATE crm_tasks SET entity_type=$1, entity_id=$2 WHERE entity_type=$3 AND entity_id=$4', ['lead', newLead.id, 'opportunity', opp.id]);
+    await crmLogActivity('lead', newLead.id, 'converted', 'Flyttet tilbage fra Sales-pipelinen (opportunity #' + opp.id + ')', req.user.id, client);
+
+    // Samme oprydning som crmDeleteEntityCascade laver for en almindelig
+    // sletning af en opportunity — se den lange kommentar der for hvorfor
+    // dette IKKE er en rigtig FK og derfor skal gøres eksplicit.
+    await client.query('UPDATE crm_leads SET converted_opportunity_id=NULL WHERE converted_opportunity_id=$1', [opp.id]);
+    await client.query('DELETE FROM crm_opportunities WHERE id=$1', [opp.id]);
+
+    return newLead.id;
+  });
+
+  res.json({ ok: true, lead_id: result, contact_id: opp.contact_id || null });
+}));
 // Masse-handlinger på flere opportunities ad gangen — se crmBulkAction ovenfor.
 app.post('/api/crm/opportunities/bulk', auth, panelAccess('crmp_sales'), asyncRoute((req, res) => crmBulkAction('opportunity', req, res)));
 app.post('/api/crm/opportunities/:id/notes', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
@@ -11154,6 +11264,66 @@ app.post('/api/crm/customers/:id/opportunities', auth, panelAccessAny(['customer
   await crmLogActivity('opportunity', r.id, 'created', 'Ny handel oprettet på kunden "' + customer.name + '"', req.user.id);
   crmFireStageAutomation('opportunity', r.id, stageId, { name: contact.name || customer.name, email: contact.email, phone: contact.phone })
     .catch(e => console.error('SMS/email-automatik fejlede for opportunity #' + r.id + ':', e.message));
+  res.json({ ok: true, id: r.id, contact_id: contact.id, customer_id: customer.id, pipeline_id: pipelineId, stage_id: stageId });
+}));
+
+// RETTELSE (sep. 2026, Martins fejlrapport: "jeg kan ikke under kundekortet
+// oprette en handel og hvilken pibeline den kommer i, den kommer automatisk i
+// Sale") — de to ruter herunder er nøjagtig samme mønster som Opportunities-
+// parret lige ovenfor (GET til at vise, POST med samme "genbrug/opret
+// kontakt"-logik), blot mod crm_leads/Lead-pipelinen i stedet for
+// crm_opportunities/Sales-pipelinen. Uden disse var "+ Ny handel" på et
+// kundekort strukturelt ude af stand til at oprette noget i Leads — der fandtes
+// slet ingen server-rute der kunne. Se cdFillTypeToggle()/cdCreateOpportunityOrLead()
+// i admin.html for UI-siden (en Lead/Salg-vælger foran de eksisterende
+// pipeline/stage-dropdowns).
+app.get('/api/crm/customers/:id/leads', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query(`
+    SELECT l.*, s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name
+    FROM crm_leads l
+    JOIN crm_contacts c ON c.id=l.contact_id
+    JOIN crm_stages s ON s.id=l.stage_id
+    JOIN crm_pipelines p ON p.id=l.pipeline_id
+    WHERE c.customer_id=$1 ORDER BY l.created_at DESC
+  `, [req.params.id])).rows;
+  res.json(rows);
+}));
+app.post('/api/crm/customers/:id/leads', auth, panelAccessAny(['customers', 'crmp_leads']), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const customer = await pgOne('SELECT * FROM customers WHERE id=$1', [req.params.id]);
+  if (!customer) return res.status(404).json({ error: 'Kunde ikke fundet' });
+
+  let pipelineId = b.pipeline_id;
+  if (!pipelineId) { const p = await pgOne("SELECT id FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1"); pipelineId = p && p.id; }
+  if (!pipelineId) return res.status(400).json({ error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
+  let stageId = b.stage_id;
+  if (!stageId) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [pipelineId]); stageId = s && s.id; }
+  // Se samme kommentar ved POST .../opportunities ovenfor: stagen SKAL høre
+  // til den valgte pipeline.
+  const stage = stageId ? await pgOne('SELECT id FROM crm_stages WHERE id=$1 AND pipeline_id=$2', [stageId, pipelineId]) : null;
+  if (!stage) { const s = await pgOne('SELECT id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [pipelineId]); stageId = s && s.id; }
+  if (!stageId) return res.status(400).json({ error: 'Lead-pipelinen har ingen stages' });
+
+  // Samme genbrug/opret-kontakt-logik som POST .../opportunities ovenfor.
+  let contact = await pgOne('SELECT * FROM crm_contacts WHERE customer_id=$1 AND phone=$2 ORDER BY id ASC LIMIT 1', [customer.id, customer.phone || null]);
+  if (!contact) contact = await pgOne('SELECT * FROM crm_contacts WHERE customer_id=$1 AND email=$2 ORDER BY id ASC LIMIT 1', [customer.id, customer.email || null]);
+  if (!contact) contact = await pgOne('SELECT * FROM crm_contacts WHERE customer_id=$1 ORDER BY id ASC LIMIT 1', [customer.id]);
+  if (!contact) {
+    contact = await pgOne('INSERT INTO crm_contacts (name,email,phone,address,customer_id) VALUES ($1,$2,$3,$4,$5) RETURNING *', [
+      customer.name, customer.email || null, customer.phone || null, customer.address || null, customer.id
+    ]);
+  }
+
+  const name = (b.name !== undefined && String(b.name).trim()) ? String(b.name).trim() : customer.name;
+  const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [stageId]);
+  const r = await pgOne(`
+    INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,contact_id,position,stage_changed_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()}) RETURNING id
+  `, [name, contact.email || customer.email || null, contact.phone || customer.phone || null, contact.address || customer.address || null, 'Oprettet på kundekort', b.note || null, pipelineId, stageId, b.owner_id || req.user.id, contact.id, posRow.pos]);
+  await crmSetCustomFieldValues('lead', r.id, b.custom_fields);
+  await crmLogActivity('lead', r.id, 'created', 'Nyt lead oprettet på kunden "' + customer.name + '"', req.user.id);
+  crmFireStageAutomation('lead', r.id, stageId, { name: contact.name || customer.name, email: contact.email, phone: contact.phone })
+    .catch(e => console.error('SMS/email-automatik fejlede for lead #' + r.id + ':', e.message));
   res.json({ ok: true, id: r.id, contact_id: contact.id, customer_id: customer.id, pipeline_id: pipelineId, stage_id: stageId });
 }));
 
