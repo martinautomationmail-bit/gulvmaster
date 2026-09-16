@@ -3240,7 +3240,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.5</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.6</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4887,6 +4887,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <input id="crmpx-phone" class="tld-input">
             <button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-phone" title="Kopiér telefonnummer">📋</button>
             <a class="qz-icon-btn crmpx-field-btn" id="crmpx-phone-link" href="#" title="Ring op">📞</a>
+            <!-- RUNDE S — RETTELSE (Martins tilbagemelding: "lad vær og lav et
+                 felt nede under de felter der. Bare tilføj et + tegn ved siden
+                 af kopier og ring knappen") — "+"-knappen sidder nu i SAMME
+                 række som 📋/📞, og opretter/skjuler kun selve tilføj-linjen
+                 nedenunder ved klik, se ccToggleAdd. Ingen synlig ekstra-boks
+                 medmindre der enten allerede findes en ekstra værdi, eller man
+                 selv har trykket "+". -->
+            <button type="button" class="qz-icon-btn crmpx-field-btn" title="Tilføj endnu et telefonnummer" onclick="ccToggleAddForLead('phone')">➕</button>
           </div>
           <!-- RUNDE S — ekstra (ikke-primære) telefonnumre, se ccLoadAndRenderExtras. -->
           <div id="crmpx-lead-cc-phone-extra"></div>
@@ -4896,6 +4904,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <input id="crmpx-email" class="tld-input" type="email">
             <button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-email" title="Kopiér email">📋</button>
             <a class="qz-icon-btn crmpx-field-btn" id="crmpx-email-link" href="#" target="_blank" rel="noopener" title="Skriv en mail">✉️</a>
+            <button type="button" class="qz-icon-btn crmpx-field-btn" title="Tilføj endnu en email" onclick="ccToggleAddForLead('email')">➕</button>
           </div>
           <div id="crmpx-lead-cc-email-extra"></div>
         </div>
@@ -4904,6 +4913,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <input id="crmpx-address" class="tld-input">
             <button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-address" title="Kopiér adresse">📋</button>
             <a class="qz-icon-btn crmpx-field-btn" id="crmpx-address-link" href="#" target="_blank" rel="noopener" title="Vis på Google Maps">📍</a>
+            <button type="button" class="qz-icon-btn crmpx-field-btn" title="Tilføj endnu en adresse" onclick="ccToggleAddForLead('address')">➕</button>
           </div>
           <div id="crmpx-lead-cc-address-extra"></div>
         </div>
@@ -19060,33 +19070,62 @@ function ccRenderGroupHtml(prefix,ownerType,ownerId,kind,channels){
     +'<input class="cc-row-input" type="'+meta.inputType+'" placeholder="'+meta.placeholder+'" id="'+prefix+'-'+kind+'-new" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\');}">'
     +'</div>';
 }
-// KUN de ekstra (ikke-primære) værdier + en lille "+"-tilføj-linje — brugt ved
-// siden af en allerede eksisterende, poleret primær-inputrække, se punkt 2)
-// ovenfor.
+// KUN de ekstra (ikke-primære) værdier — brugt ved siden af en allerede
+// eksisterende, poleret primær-inputrække, se punkt 2) ovenfor.
+// RUNDE S — RETTELSE (Martins 2. tilbagemelding: "lad vær og lav et felt
+// nede under de felter der ... tilføj et + tegn ved siden af kopier og ring
+// knappen ... Hvis man trykker på det kan man tilføje et nyt felt"). Der vises
+// IKKE længere en permanent synlig "tilføj"-linje her — kun eksisterende
+// ekstra-værdier (hvis nogen). Selve tilføj-linjen dukker kun op midlertidigt,
+// når man trykker på "+"-knappen der nu sidder inde i den eksisterende
+// kopiér/ring-knap-række (se crmpx-contact-card og lead-feltrækkerne), styret
+// af ccToggleAdd herunder.
+var ccAddOpenState={};
+function ccAddOpenKey(prefix,kind){return prefix+'|'+kind;}
+function ccRenderExtraGroupHtml(prefix,ownerType,ownerId,kind,list){
+  var meta=CC_KIND_META[kind];
+  var extras=list.filter(function(c){return c.kind===kind&&!c.is_primary;});
+  var rows=extras.map(function(c){
+    return '<div class="cc-row">'
+      +'<button type="button" class="cc-row-star" title="Gør primær" onclick="ccSetPrimary('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">☆</button>'
+      +'<input class="cc-row-input" type="'+meta.inputType+'" value="'+esc(c.value)+'" onchange="ccUpdateValue('+c.id+',this.value,\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'
+      +'<button type="button" class="cc-row-remove" title="Fjern" onclick="ccRemove('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">✕</button>'
+      +'</div>';
+  }).join('');
+  var addRow='';
+  if(ccAddOpenState[ccAddOpenKey(prefix,kind)]){
+    addRow='<div class="cc-add-row">'
+      +'<button type="button" class="cc-add-icon" title="'+meta.addLabel+'" onclick="ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\')">+</button>'
+      +'<input class="cc-row-input" type="'+meta.inputType+'" placeholder="'+meta.placeholder+' (ekstra)" id="'+prefix+'-'+kind+'-new" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\');}else if(event.key===\'Escape\'){ccToggleAdd(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\');}">'
+      +'</div>';
+  }
+  if(!rows&&!addRow)return '';
+  // .cc-extra-wrap rykker rækkerne ind under den eksisterende primær-række
+  // ovenfor (se CSS) — matcher bredden af dens ikon-badge, så det ser ud som
+  // én sammenhængende liste og ikke en løsrevet mini-formular.
+  return '<div class="cc-extra-wrap">'+rows+addRow+'</div>';
+}
 async function ccLoadAndRenderExtras(prefix,ownerType,ownerId){
   if(!ownerId)return;
   var list=await ccFetchChannels(ownerType,ownerId);
   ['phone','email','address'].forEach(function(kind){
     var el=document.getElementById(prefix+'-'+kind+'-extra');
     if(!el)return;
-    var extras=list.filter(function(c){return c.kind===kind&&!c.is_primary;});
-    var meta=CC_KIND_META[kind];
-    var rows=extras.map(function(c){
-      return '<div class="cc-row">'
-        +'<button type="button" class="cc-row-star" title="Gør primær" onclick="ccSetPrimary('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">☆</button>'
-        +'<input class="cc-row-input" type="'+meta.inputType+'" value="'+esc(c.value)+'" onchange="ccUpdateValue('+c.id+',this.value,\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'
-        +'<button type="button" class="cc-row-remove" title="Fjern" onclick="ccRemove('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">✕</button>'
-        +'</div>';
-    }).join('');
-    // .cc-extra-wrap rykker rækkerne ind under den eksisterende primær-række
-    // ovenfor (se CSS) — matcher bredden af dens ikon-badge, så det ser ud som
-    // én sammenhængende liste og ikke en løsrevet mini-formular.
-    el.innerHTML='<div class="cc-extra-wrap">'+rows
-      +'<div class="cc-add-row">'
-      +'<button type="button" class="cc-add-icon" title="'+meta.addLabel+'" onclick="ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\')">+</button>'
-      +'<input class="cc-row-input" type="'+meta.inputType+'" placeholder="'+meta.placeholder+' (ekstra)" id="'+prefix+'-'+kind+'-new" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\');}">'
-      +'</div></div>';
+    el.innerHTML=ccRenderExtraGroupHtml(prefix,ownerType,ownerId,kind,list);
   });
+}
+// Kaldes af den nye "+"-knap inde i kopiér/ring-knap-rækken (lead-felter og
+// opportunity-kontaktkortet). Slår tilføj-linjen til/fra og re-renderer kun
+// den relevante kind, uden at røre resten af kortet.
+async function ccToggleAdd(prefix,ownerType,ownerId,kind){
+  if(!ownerId){toast('Der er ikke oprettet en kontakt endnu','❌');return;}
+  var key=ccAddOpenKey(prefix,kind);
+  ccAddOpenState[key]=!ccAddOpenState[key];
+  await ccLoadAndRenderExtras(prefix,ownerType,ownerId);
+  if(ccAddOpenState[key]){
+    var input=document.getElementById(prefix+'-'+kind+'-new');
+    if(input)input.focus();
+  }
 }
 // Fælles genindlæsningsfunktion — vælges automatisk ud fra hvilken slags
 // containere prefixet har i DOM'et (fuld gruppe vs. kun-ekstra), så
@@ -19103,6 +19142,10 @@ async function ccAddValue(prefix,ownerType,ownerId,kind){
   if(!value){toast('Udfyld en værdi først','❌');return;}
   var r=await api('/api/contact-channels/'+ownerType+'/'+ownerId,{method:'POST',body:JSON.stringify({kind:kind,value:value})});
   if(!r||r.error){toast((r&&r.error)||'Kunne ikke tilføje','❌');return;}
+  // RUNDE S — luk tilføj-linjen igen efter en vellykket tilføjelse (kun
+  // relevant for ccRenderExtraGroupHtml/ccToggleAdd-visningen — no-op for den
+  // fulde kundekort-visning, som ikke bruger ccAddOpenState).
+  ccAddOpenState[ccAddOpenKey(prefix,kind)]=false;
   await ccReload(prefix,ownerType,ownerId);
 }
 async function ccUpdateValue(channelId,value,prefix,ownerType,ownerId){
@@ -19127,6 +19170,18 @@ window.ccSetPrimary=ccSetPrimary;
 window.ccRemove=ccRemove;
 window.ccAddValue=ccAddValue;
 window.ccUpdateValue=ccUpdateValue;
+window.ccToggleAdd=ccToggleAdd;
+// RUNDE S — hjælpe-wrapper til leadets STATISKE HTML-knapper (se
+// crmpx-lead-cc-*-extra-markup). Den statiske markup kan ikke referere
+// crmpDetailEntity direkte i sit onclick-attribut, fordi den variabel er
+// lokal til denne IIFE og derfor usynlig for inline onclick-handlere (som
+// kører i globalt scope) — nøjagtig samme begrænsning som window.functionName
+// -mønstret ellers løser for selve funktionerne. Denne lille wrapper læser
+// crmpDetailEntity INDEFRA IIFE'en og er selv den eneste ting der eksporteres.
+function ccToggleAddForLead(kind){
+  ccToggleAdd('crmpx-lead-cc','lead',crmpDetailEntity&&crmpDetailEntity.id,kind);
+}
+window.ccToggleAddForLead=ccToggleAddForLead;
 
 var cdCurrent=null,cdInitialized=false,cdNotes=[],cdQuotes=[];
 function initCustomerDetailModule(){
@@ -20684,19 +20739,26 @@ async function openCrmpDetail(entityType,id){
       +'<div class="crmpx-contact-row"><span class="crmpx-contact-icon">📞</span>'
       +'<input id="crmpx-contact-phone" class="tld-input crmpx-contact-input" value="'+esc(d.contact_phone||'')+'" placeholder="Telefon">'
       +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-phone" title="Kopiér telefonnummer">📋</button>'
-      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-phone-link" href="#" title="Ring op">📞</a></div>'
+      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-phone-link" href="#" title="Ring op">📞</a>'
+      // RUNDE S — RETTELSE (Martins tilbagemelding: "lad vær og lav et felt
+      // nede under de felter der. Bare tilføj et + tegn ved siden af kopier
+      // og ring knappen") — "+"-knappen sidder i samme række som 📋/📞, og
+      // åbner/lukker kun selve tilføj-linjen i -extra-containeren nedenunder.
+      +'<button type="button" class="qz-icon-btn crmpx-field-btn" title="Tilføj endnu et telefonnummer" onclick="ccToggleAdd(\'crmpx-cc\',\'contact\','+(d.contact_id||'null')+',\'phone\')">➕</button></div>'
       // RUNDE S — ekstra (ikke-primære) telefonnumre vises herunder, via
       // ccLoadAndRenderExtras. Selve rækken ovenfor er urørt (RUNDE L).
       +'<div id="crmpx-cc-phone-extra"></div>'
       +'<div class="crmpx-contact-row"><span class="crmpx-contact-icon">📧</span>'
       +'<input id="crmpx-contact-email" class="tld-input crmpx-contact-input" type="email" value="'+esc(d.contact_email||'')+'" placeholder="Email">'
       +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-email" title="Kopiér email">📋</button>'
-      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-email-link" href="#" target="_blank" rel="noopener" title="Skriv en mail">✉️</a></div>'
+      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-email-link" href="#" target="_blank" rel="noopener" title="Skriv en mail">✉️</a>'
+      +'<button type="button" class="qz-icon-btn crmpx-field-btn" title="Tilføj endnu en email" onclick="ccToggleAdd(\'crmpx-cc\',\'contact\','+(d.contact_id||'null')+',\'email\')">➕</button></div>'
       +'<div id="crmpx-cc-email-extra"></div>'
       +'<div class="crmpx-contact-row"><span class="crmpx-contact-icon">📍</span>'
       +'<input id="crmpx-contact-address" class="tld-input crmpx-contact-input" value="'+esc(d.contact_address||'')+'" placeholder="Adresse">'
       +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-address" title="Kopiér adresse">📋</button>'
-      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-address-link" href="#" target="_blank" rel="noopener" title="Vis på Google Maps">📍</a></div>'
+      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-address-link" href="#" target="_blank" rel="noopener" title="Vis på Google Maps">📍</a>'
+      +'<button type="button" class="qz-icon-btn crmpx-field-btn" title="Tilføj endnu en adresse" onclick="ccToggleAdd(\'crmpx-cc\',\'contact\','+(d.contact_id||'null')+',\'address\')">➕</button></div>'
       +'<div id="crmpx-cc-address-extra"></div>';
     // Kortet gen-renderes hver gang siden åbnes, så hrefs sættes HER (den
     // tidligere crmpxUpdateContactLinks()-kald ovenfor kørte før kortet fandtes).
