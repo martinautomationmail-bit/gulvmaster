@@ -1175,6 +1175,49 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_credit_notes_invoice ON credit_notes(invoice_id);
 
+    -- RUNDE AA (Martins ønske: "Når du laver en kreditnote og du vælger
+    -- direkte poster du kreditere. I den kreditnote faktura du laver, skal du
+    -- skrive de poster ind. Yderligere når du trykker vælg selv poster skal
+    -- man kunne skrive et beløb af den post man har valgt") — lægger et
+    -- ITEMISERET lag ovenpå credit_notes UDEN at ændre dens semantik:
+    -- credit_notes.amount er stadig den ENE kilde til "hvor meget er trukket
+    -- fra fakturaen" (se maxCreditable/refreshInvoiceStatus), og
+    -- credit_note_lines er blot en gennemsigtig kvittering for HVILKE poster
+    -- (og hvor meget af hver, ikke nødvendigvis hele linjens beløb) det
+    -- beløb dækker. invoice_line_id er bevidst nullable + ON DELETE SET NULL:
+    -- en kreditnota må aldrig kunne blive ugyldig eller forsvinde bare fordi
+    -- den oprindelige fakturalinje senere redigeres/slettes — 'description'
+    -- er derfor et selvstændigt snapshot af teksten på krediterings-tidspunktet.
+    CREATE TABLE IF NOT EXISTS credit_note_lines (
+      id SERIAL PRIMARY KEY,
+      credit_note_id INTEGER NOT NULL REFERENCES credit_notes(id) ON DELETE CASCADE,
+      invoice_line_id INTEGER REFERENCES invoice_lines(id) ON DELETE SET NULL,
+      description TEXT NOT NULL,
+      amount NUMERIC NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_credit_note_lines_cn ON credit_note_lines(credit_note_id);
+
+    -- RUNDE AA (Martins ønske: "måske enda oplode billeder som kunden får i
+    -- PDF filen ... fx et billede af en email hvor vi aftaler det") — generisk
+    -- vedhæftnings-tabel (doc_type/doc_id, samme mønster som document_activity
+    -- ovenfor) frem for en credit_note-specifik tabel, fordi Martin selv har
+    -- bedt om det samme på faktura (og evt. tilbud) som en kommende runde —
+    -- så den tabel/de ruter er allerede klar til genbrug dengang. Billeder
+    -- uploades til Cloudinary via det eksisterende /api/photos/upload (samme
+    -- mekanisme som tidsregistrering/projekt-billeder bruger) — her gemmes
+    -- kun den færdige URL.
+    CREATE TABLE IF NOT EXISTS document_attachments (
+      id SERIAL PRIMARY KEY,
+      doc_type TEXT NOT NULL,
+      doc_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      caption TEXT,
+      uploaded_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_document_attachments_doc ON document_attachments(doc_type, doc_id);
+
     -- AKTIVITETS-TIDSLINJE — hvem redigerede/sendte tilbud og fakturaer, og
     -- hvornår kunden selv åbnede dem. Fælles tabel for begge dokumenttyper
     -- (doc_type 'quote'|'invoice') så vi kun skal bygge/vedligeholde ét system.
@@ -17012,6 +17055,15 @@ async function loadInvoiceFull(id) {
   const lines = await pool.query('SELECT * FROM invoice_lines WHERE invoice_id=$1 ORDER BY position ASC, id ASC', [id]);
   const payments = await pool.query('SELECT * FROM invoice_payments WHERE invoice_id=$1 ORDER BY paid_at ASC, id ASC', [id]);
   const creditNotes = await pool.query('SELECT * FROM credit_notes WHERE invoice_id=$1 ORDER BY created_at ASC, id ASC', [id]);
+  // RUNDE AA — poster + vedhæftningsantal pr. kreditnota, så fakturasiden kan
+  // vise "📋 2 poster · 📎 1 billede" uden et ekstra API-kald pr. kreditnota.
+  // Få kreditnotaer pr. faktura i praksis, så N+1 her er ikke et problem.
+  for (const cn of creditNotes.rows) {
+    const cnLines = await pool.query('SELECT * FROM credit_note_lines WHERE credit_note_id=$1 ORDER BY position ASC, id ASC', [cn.id]);
+    cn.lines = cnLines.rows;
+    const attCount = await pgOne('SELECT COUNT(*)::int AS n FROM document_attachments WHERE doc_type=$1 AND doc_id=$2', ['credit_note', cn.id]);
+    cn.attachment_count = attCount.n;
+  }
   const paidTotal = payments.rows.reduce((s, p) => s + Number(p.amount), 0);
   const creditedTotal = creditNotes.rows.reduce((s, c) => s + Number(c.amount), 0);
   return {
@@ -17173,7 +17225,29 @@ app.get('/api/invoices/:id/credit-notes', auth, panelAccess('quotes'), asyncRout
 }));
 app.post('/api/invoices/:id/credit-notes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const b = req.body || {};
-  const amount = Number(b.amount);
+  // RUNDE AA (Martins ønske: "vælger direkte poster du kreditere ... skal du
+  // skrive de poster ind ... skrive et beløb af den post man har valgt") —
+  // 'lines' er nu det primære, itemiserede spor: en liste af
+  // {invoice_line_id, description, amount} som brugeren har valgt i
+  // postevælgeren og selv kan justere beløbet på (se ivCreditPickerRecalc i
+  // admin.html). Er 'lines' angivet, ER DEN kilden til det samlede beløb —
+  // den gamle 'amount' fra klienten ignoreres i så fald, så klient og server
+  // aldrig kan komme i splid om totalen (vi regner selv summen). Er 'lines'
+  // udeladt, virker ruten som hidtil (rent beløbsbaseret kreditnota, fx en
+  // hurtig afrundingsfejl uden behov for at pege på bestemte poster).
+  let lines = Array.isArray(b.lines) ? b.lines : null;
+  let amount;
+  if (lines && lines.length) {
+    lines = lines.map(l => ({
+      invoice_line_id: l.invoice_line_id ? Number(l.invoice_line_id) : null,
+      description: String(l.description || '').trim(),
+      amount: Number(l.amount),
+    })).filter(l => l.description && l.amount > 0);
+    if (!lines.length) return res.status(400).json({ error: 'Angiv mindst én post med et gyldigt beløb' });
+    amount = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
+  } else {
+    amount = Number(b.amount);
+  }
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Angiv et gyldigt beløb' });
   const invoice = await pgOne('SELECT * FROM invoices WHERE id=$1', [req.params.id]);
   if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
@@ -17188,9 +17262,56 @@ app.post('/api/invoices/:id/credit-notes', auth, panelAccess('quotes'), asyncRou
     'INSERT INTO credit_notes (credit_note_number,invoice_id,amount,reason,created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id',
     [creditNoteNumber, req.params.id, amount, b.reason || null, req.user.id]
   );
+  const creditNoteId = r.rows[0].id;
+  if (lines && lines.length) {
+    let pos = 0;
+    for (const l of lines) {
+      await pool.query(
+        'INSERT INTO credit_note_lines (credit_note_id,invoice_line_id,description,amount,position) VALUES ($1,$2,$3,$4,$5)',
+        [creditNoteId, l.invoice_line_id, l.description, l.amount, pos++]
+      );
+    }
+  }
+  // RUNDE AA (Martins ønske: "måske enda oplode billeder som kunden får i PDF
+  // filen") — vedhæftningerne er allerede uploadet til Cloudinary FØR dette
+  // kald (se ivUploadCreditAttachment i admin.html); her gemmes blot
+  // URL'erne, koblet til den nye kreditnota.
+  const attachments = Array.isArray(b.attachments) ? b.attachments : [];
+  for (const a of attachments) {
+    const url = String((a && a.url) || '').trim();
+    if (!url) continue;
+    await pool.query(
+      'INSERT INTO document_attachments (doc_type,doc_id,url,caption,uploaded_by) VALUES ($1,$2,$3,$4,$5)',
+      ['credit_note', creditNoteId, url, (a.caption || null), req.user.id]
+    );
+  }
   await refreshInvoiceStatus(req.params.id);
   logDocActivity('invoice', req.params.id, 'credit_note_added', req.user.name, `${creditNoteNumber} · ${krFmtServer(amount)}`);
-  res.json({ ok: true, id: r.rows[0].id, credit_note_number: creditNoteNumber });
+  res.json({ ok: true, id: creditNoteId, credit_note_number: creditNoteNumber });
+}));
+// RUNDE AA — generiske vedhæftnings-ruter (se document_attachments ovenfor).
+// Kun 'credit_note' er koblet til en UI endnu; 'invoice'/'quote' er tilladte
+// doc_type-værdier fra dag ét, klar til den kommende runde uden ny migration.
+const DOC_ATTACHMENT_TYPES = ['credit_note', 'invoice', 'quote'];
+app.get('/api/document-attachments/:docType/:docId', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  if (!DOC_ATTACHMENT_TYPES.includes(req.params.docType)) return res.status(400).json({ error: 'Ukendt dokumenttype' });
+  const rows = await pool.query('SELECT * FROM document_attachments WHERE doc_type=$1 AND doc_id=$2 ORDER BY created_at ASC, id ASC', [req.params.docType, req.params.docId]);
+  res.json(rows.rows);
+}));
+app.post('/api/document-attachments/:docType/:docId', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  if (!DOC_ATTACHMENT_TYPES.includes(req.params.docType)) return res.status(400).json({ error: 'Ukendt dokumenttype' });
+  const b = req.body || {};
+  const url = String(b.url || '').trim();
+  if (!url) return res.status(400).json({ error: 'Ingen billed-URL angivet' });
+  const r = await pool.query(
+    'INSERT INTO document_attachments (doc_type,doc_id,url,caption,uploaded_by) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+    [req.params.docType, req.params.docId, url, b.caption || null, req.user.id]
+  );
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.delete('/api/document-attachments/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM document_attachments WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
 }));
 app.delete('/api/credit-notes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const cn = await pgOne('SELECT * FROM credit_notes WHERE id=$1', [req.params.id]);
@@ -17205,12 +17326,17 @@ app.get('/api/credit-notes/:id/pdf', auth, panelAccess('quotes'), asyncRoute(asy
   if (!cn) return res.status(404).json({ error: 'Kreditnotaen blev ikke fundet' });
   const invoice = await loadInvoiceFull(cn.invoice_id);
   const company = await getCompanyInfo();
+  // RUNDE AA — poster + billeder hentes/downloades FØR selve PDF-tegningen
+  // (PDFKit tegner synkront, kan ikke vente på et netværkskald undervejs).
+  cn.lines = (await pool.query('SELECT * FROM credit_note_lines WHERE credit_note_id=$1 ORDER BY position ASC, id ASC', [cn.id])).rows;
+  const attachmentRows = (await pool.query('SELECT * FROM document_attachments WHERE doc_type=$1 AND doc_id=$2 ORDER BY created_at ASC, id ASC', ['credit_note', cn.id])).rows;
+  const attachments = await fetchAttachmentImages(attachmentRows);
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${cn.credit_note_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
-  drawCreditNotePdf(doc, cn, invoice, company);
+  drawCreditNotePdf(doc, cn, invoice, company, attachments);
   doc.end();
 }));
 app.post('/api/credit-notes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -17250,8 +17376,11 @@ app.post('/api/credit-notes/:id/send', auth, panelAccess('quotes'), asyncRoute(a
       ctaUrl: portalLink, ctaLabel: 'Se dine dokumenter'
     });
   }
+  cn.lines = (await pool.query('SELECT * FROM credit_note_lines WHERE credit_note_id=$1 ORDER BY position ASC, id ASC', [cn.id])).rows;
+  const cnAttachmentRows = (await pool.query('SELECT * FROM document_attachments WHERE doc_type=$1 AND doc_id=$2 ORDER BY created_at ASC, id ASC', ['credit_note', cn.id])).rows;
+  const cnAttachments = await fetchAttachmentImages(cnAttachmentRows);
   let pdfBuffer;
-  try { pdfBuffer = await renderCreditNotePdfBuffer(cn, invoice, company); }
+  try { pdfBuffer = await renderCreditNotePdfBuffer(cn, invoice, company, cnAttachments); }
   catch (e) { return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message }); }
   try {
     await sendMailUniversal({
@@ -17869,8 +17998,15 @@ function drawDocumentPdf(doc, kind, record, company) {
 // tilbud/faktura), så de har deres egen, langt enklere tegne-funktion frem for
 // at genbruge drawDocumentPdf's linje-tabel. Bruger samme fælles header/footer
 // som tilbud/faktura for et ensartet, moderne udtryk.
-function drawCreditNotePdf(doc, creditNote, invoice, company) {
+// RUNDE AA (Martins ønske: "skal du skrive de poster ind ... begrunde den og
+// måske enda oplode billeder som kunden får i PDF filen") — 'attachments' er
+// en liste af {buffer, caption} (billed-bytes allerede hentet af
+// fetchAttachmentImages, se kaldsstederne) og 'creditNote.lines' er de
+// eventuelt valgte kreditnota-poster (credit_note_lines). Begge er valgfrie —
+// en ældre/simpel kreditnota uden poster/billeder tegnes helt som før.
+function drawCreditNotePdf(doc, creditNote, invoice, company, attachments) {
   const accent = '#DC2626';
+  const ctx = { isInvoice: false, docNumber: creditNote.credit_note_number, accent };
   const metaLines = [`Dato: ${String(creditNote.created_at || '').slice(0, 10)}`, `Vedr. faktura: ${invoice ? invoice.invoice_number : ''}`];
   let y = drawDocHeader(doc, 'KREDITNOTA', creditNote.credit_note_number, metaLines, accent, company);
 
@@ -17889,14 +18025,89 @@ function drawCreditNotePdf(doc, creditNote, invoice, company) {
   doc.font('DMSans');
   y += 84;
 
+  // RUNDE AA — itemiseret opstilling af HVILKE poster beløbet dækker, når
+  // kreditnotaen er oprettet via postevælgeren. Ingen linjer (rent
+  // beløbsbaseret kreditnota) → springes helt over, uændret fra før.
+  const lines = creditNote.lines || [];
+  if (lines.length) {
+    y = ensurePdfSpace(doc, y, 24, ctx);
+    doc.font('DMSans-Bold').fontSize(9).fillColor('#374151').text('KREDITEREDE POSTER', 40, y);
+    y += 16;
+    lines.forEach(function (l) {
+      doc.font('DMSans').fontSize(9.5);
+      const descH = doc.heightOfString(l.description, { width: 400 });
+      const rowH = Math.max(descH, 12) + 8;
+      y = ensurePdfSpace(doc, y, rowH, ctx);
+      doc.fillColor('#111318').text(l.description, 40, y, { width: 400 });
+      doc.fillColor('#DC2626').text('-' + Math.round(Number(l.amount)).toLocaleString('da-DK') + ' kr', 455, y, { width: 100, align: 'right' });
+      y += rowH;
+      doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#EEF0F3').stroke();
+    });
+    y += 10;
+  }
+
   if (creditNote.reason) {
-    doc.fontSize(9).fillColor('#374151').text('Begrundelse:', 40, y);
+    y = ensurePdfSpace(doc, y, 40, ctx);
+    doc.font('DMSans').fontSize(9).fillColor('#374151').text('Begrundelse:', 40, y);
     y += 14;
     doc.fontSize(9.5).fillColor('#111318').text(creditNote.reason, 40, y, { width: 515 });
     y += doc.heightOfString(creditNote.reason, { width: 515 }) + 10;
   }
 
+  // RUNDE AA (Martins ønske: billeder af fejl/mangler, eller fx en email hvor
+  // kreditering er aftalt — printet DIREKTE ind i PDF'en, som Martin selv
+  // valgte frem for separate vedhæftede filer) — et lille "BILAG"-afsnit til
+  // sidst, to billeder pr. række, med billedtekst hvis der er skrevet en. Et
+  // enkelt billede der ikke kan åbnes (doc.openImage kaster) springes bare
+  // over i stedet for at vælte hele PDF'en.
+  if (attachments && attachments.length) {
+    y += 6;
+    y = ensurePdfSpace(doc, y, 30, ctx);
+    doc.font('DMSans-Bold').fontSize(9).fillColor('#374151').text('BILAG', 40, y);
+    y += 16;
+    const imgW = 240, gap = 15;
+    let col = 0, rowTop = y, rowMaxH = 0;
+    attachments.forEach(function (a) {
+      let dims;
+      try { dims = doc.openImage(a.buffer); } catch (e) { return; }
+      const scale = imgW / dims.width;
+      const imgH = Math.min(dims.height * scale, 320);
+      const boxH = imgH + (a.caption ? 26 : 14);
+      if (col === 0) {
+        rowTop = ensurePdfSpace(doc, rowTop, boxH, ctx);
+        rowMaxH = 0;
+      }
+      const x = 40 + col * (imgW + gap);
+      try {
+        doc.image(a.buffer, x, rowTop, { width: imgW, height: imgH });
+        if (a.caption) doc.font('DMSans').fontSize(8).fillColor('#6B7280').text(a.caption, x, rowTop + imgH + 4, { width: imgW });
+      } catch (e) { /* springer billedet over — resten af PDF'en skal stadig genereres */ }
+      rowMaxH = Math.max(rowMaxH, boxH);
+      col++;
+      if (col >= 2) { col = 0; rowTop += rowMaxH + 12; y = rowTop; }
+    });
+    if (col !== 0) y = rowTop + rowMaxH + 12;
+  }
+
   drawDocFooter(doc, company);
+}
+// RUNDE AA — henter billed-bytes for en liste vedhæftninger (Cloudinary-
+// URL'er) FØR selve PDF-tegningen, fordi PDFKit tegner synkront og ikke kan
+// vente på et netværkskald midt i doc.image(...). Fejler ét billede (fx en
+// død URL), springes det bare over i stedet for at vælte hele PDF'en.
+async function fetchAttachmentImages(rows) {
+  const out = [];
+  for (const a of rows || []) {
+    try {
+      const resp = await fetch(a.url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const buf = Buffer.from(await resp.arrayBuffer());
+      out.push({ buffer: buf, caption: a.caption || null });
+    } catch (e) {
+      console.warn('RUNDE AA — kunne ikke hente vedhæftet billede til PDF:', a.url, e.message);
+    }
+  }
+  return out;
 }
 // Samler PDF'en i hukommelsen i stedet for at streame den direkte til et
 // HTTP-svar — bruges når PDF'en skal vedhæftes en mail i stedet for vises i
@@ -17915,7 +18126,7 @@ function renderDocumentPdfBuffer(kind, record, company) {
     } catch (e) { reject(e); }
   });
 }
-function renderCreditNotePdfBuffer(creditNote, invoice, company) {
+function renderCreditNotePdfBuffer(creditNote, invoice, company, attachments) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margin: 40 });
@@ -17924,7 +18135,7 @@ function renderCreditNotePdfBuffer(creditNote, invoice, company) {
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
-      drawCreditNotePdf(doc, creditNote, invoice, company);
+      drawCreditNotePdf(doc, creditNote, invoice, company, attachments);
       doc.end();
     } catch (e) { reject(e); }
   });

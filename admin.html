@@ -1920,6 +1920,16 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .qcv-line-row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px}
 .qcv-line-row:last-child{border-bottom:none}
 .qcv-line-row input[type=checkbox]{margin-top:3px;width:16px;height:16px;flex-shrink:0}
+.qcv-line-row .iv-credit-line-amt{width:92px;text-align:right;flex-shrink:0}
+/* RUNDE AA — vedhæftede billeder på en kreditnota (både under oprettelse, se
+   #iv-credit-attachments, og i den kort visning på hver eksisterende
+   kreditnota-række, se ivToggleCreditDetail). */
+.iv-attach-chip{position:relative;width:64px;height:64px;border-radius:var(--bly-r-sm);overflow:hidden;background:var(--bly-border-soft);flex-shrink:0}
+.iv-attach-chip img{width:100%;height:100%;object-fit:cover;display:block}
+.iv-attach-chip .iv-attach-remove{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;border:none;background:rgba(17,19,24,.65);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.iv-attach-chip .iv-attach-spinner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--bly-border-soft)}
+.iv-credit-detail{background:var(--ice);border-radius:var(--bly-r-md);padding:10px 12px;margin:6px 0 10px}
+.iv-credit-detail .qcv-line-row{font-size:12px}
 /* FAKTURA-DETALJE — betalingsliste med delbetalinger, plus rest-saldo tydeligt fremhævet. */
 .iv-balance-card{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
 .iv-balance-tile{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:14px 16px}
@@ -3240,7 +3250,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.6</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.7</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4564,6 +4574,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         </div>
         <button class="qz-link-btn" id="iv-credit-picker-toggle" type="button" style="margin:2px 0 8px">🔎 Vælg poster i stedet for at regne selv</button>
         <div id="iv-credit-picker" style="display:none;background:var(--ice);border-radius:var(--bly-r-md);padding:10px 12px;margin-bottom:12px"></div>
+        <!-- RUNDE AA (Martins ønske: "måske enda oplode billeder som kunden
+             får i PDF filen da det jo ofte er grundet fejl og mangler ... det
+             kan også være jeg vedhæfter et billede af en email hvor vi
+             aftaler det") — billederne uploades med det samme (samme
+             Cloudinary-mekanisme som resten af appen bruger), og hænges på
+             kreditnotaen når den oprettes forneden. Se ivPickCreditAttachment/
+             ivHandleCreditAttachmentFiles/ivRenderCreditAttachments. -->
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">Billeder til kreditnotaen <span class="opt-tag">valgfrit — printes direkte ind i PDF'en kunden får, fx billede af fejl/mangler eller en mail-aftale</span></label>
+          <input type="file" id="iv-credit-attach-input" accept="image/*" multiple style="display:none">
+          <button class="bly-btn outline small" type="button" onclick="document.getElementById('iv-credit-attach-input').click()">📎 Vælg billeder</button>
+          <div id="iv-credit-attachments" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+        </div>
         <button class="bly-btn outline small" id="iv-add-credit-btn" type="button">+ Ny kreditnota</button>
 
         <div class="form-group" style="margin-top:18px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
@@ -25963,8 +25986,21 @@ async function openInvoiceDetail(id){
   // Authorization-headeren og åbner den som en blob-URL i nyt vindue — denne var
   // bare ved en fejl aldrig lavet om til samme mønster dengang kreditnotaer blev
   // bygget. Nu rettet til samme knap-stil og samme qzOpenPdf()-kald som resten.
+  // RUNDE AA (Martins ønske: "skal du skrive de poster ind" + billeder på
+  // kreditnotaen) — hver række viser nu et lille "📋 N poster"/"📎 N billede"-
+  // resumé når der er noget at vise, med en "▾ Detaljer"-knap der folder
+  // posterne/billed-thumbnails ud INLINE (ivToggleCreditDetail) — ingen ny
+  // modal, samme "fold ud i selve listen"-mønster som resten af siden.
+  ivState.creditNotesById={};
+  (inv.credit_notes||[]).forEach(function(c){ivState.creditNotesById[c.id]=c;});
   document.getElementById('iv-credit-notes-list').innerHTML=(inv.credit_notes||[]).length?inv.credit_notes.map(function(c){
-    return '<div class="iv-payment-row"><div><b>'+esc(c.credit_note_number)+' — '+krFmt(Number(c.amount))+'</b><div class="iv-payment-meta">'+esc(String(c.created_at||'').slice(0,10))+(c.reason?' · '+esc(c.reason):'')+'</div></div><div style="display:flex;gap:4px"><button class="qz-icon-btn" onclick="qzOpenPdf(\'/api/credit-notes/'+c.id+'/pdf\')" title="Åbn PDF">📄</button><button class="qz-icon-btn" onclick="sendIvCreditNote('+c.id+')" title="Send til kunde">📧</button><button class="qz-icon-btn" onclick="deleteIvCreditNote('+c.id+')" title="Fjern">✕</button></div></div>';
+    var badges=[];
+    if((c.lines||[]).length)badges.push('📋 '+c.lines.length+' post'+(c.lines.length===1?'':'er'));
+    if(c.attachment_count)badges.push('📎 '+c.attachment_count+' billede'+(c.attachment_count===1?'':'r'));
+    var detailBtn=badges.length?'<button class="qz-link-btn" style="font-size:11.5px" data-badges="'+esc(badges.join(' · '))+'" data-cn-detail="'+c.id+'" id="iv-cn-detail-toggle-'+c.id+'">▾ '+badges.join(' · ')+'</button>':'';
+    return '<div class="iv-payment-row" style="flex-direction:column;align-items:stretch"><div style="display:flex;justify-content:space-between"><div><b>'+esc(c.credit_note_number)+' — '+krFmt(Number(c.amount))+'</b><div class="iv-payment-meta">'+esc(String(c.created_at||'').slice(0,10))+(c.reason?' · '+esc(c.reason):'')+'</div></div><div style="display:flex;gap:4px;flex-shrink:0">'
+      +'<button class="qz-icon-btn" onclick="qzOpenPdf(\'/api/credit-notes/'+c.id+'/pdf\')" title="Åbn PDF">📄</button><button class="qz-icon-btn" onclick="sendIvCreditNote('+c.id+')" title="Send til kunde">📧</button><button class="qz-icon-btn" onclick="deleteIvCreditNote('+c.id+')" title="Fjern">✕</button></div></div>'
+      +detailBtn+'<div id="iv-cn-detail-'+c.id+'" style="display:none"></div></div>';
   }).join(''):'<div class="sub">Ingen kreditnotaer endnu</div>';
   // RETTELSE (RUNDE J #319) — samme fix: er nu et .iv-more-item.
   document.getElementById('iv-void-btn').style.display=inv.status==='void'?'none':'';
@@ -25973,6 +26009,10 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-pay-method').value='';
   document.getElementById('iv-credit-amount').value='';
   document.getElementById('iv-credit-reason').value='';
+  // RUNDE AA — nulstil de vedhæftede billeder fra en evt. forrige (ufuldendte)
+  // kreditnota-oprettelse, så de ikke ved en fejl hænges på den næste.
+  ivState.creditAttachments=[];
+  ivRenderCreditAttachments();
   // RUNDE T — "Hele beløbet"-knappen og postevælgeren har brug for det der
   // reelt er tilbage at kreditere (total minus allerede krediteret — BEVIDST
   // ikke inv.remaining, som også trækker betalinger fra: se maxCreditable i
@@ -26019,22 +26059,64 @@ function ivToggleCreditPicker(){
   var box=document.getElementById('iv-credit-picker');
   var open=box.style.display==='none';
   if(open){
+    // RUNDE AA (Martins ønske: "Yderligere når du trykker vælg selv poster
+    // skal man kunne skrive et beløb af den post man har valgt") — hver post
+    // har nu sit EGET redigerbare beløb-felt (forudfyldt med den beregnede
+    // andel, ligesom hidtil), i stedet for kun en afkrydsning der lægges sammen
+    // i baggrunden. Man kan altså kreditere MINDRE end en linjes fulde andel
+    // (fx kun halvdelen af en arbejdstime pga. delvis reklamation).
     box.innerHTML=ivCreditLineAmounts().map(function(x,idx){
       return '<label class="qcv-line-row"><input type="checkbox" class="iv-credit-line-check" data-idx="'+idx+'">'
-        +'<span style="flex:1">'+qzLineDescCellHtml(x.line)+'<div class="sub">'+(Number(x.line.quantity)||0)+' '+esc(x.line.unit||'')+' · '+krFmt(Number(x.line.sell_price))+'</div></span>'
-        +'<span style="flex-shrink:0;font-weight:700">'+krFmt(x.inclMoms)+'</span></label>';
+        +'<span style="flex:1">'+qzLineDescCellHtml(x.line)+'<div class="sub">'+(Number(x.line.quantity)||0)+' '+esc(x.line.unit||'')+' · '+krFmt(Number(x.line.sell_price))+' pr. stk</div></span>'
+        +'<input type="number" step="0.01" class="input iv-credit-line-amt" data-idx="'+idx+'" value="'+(Math.round(x.inclMoms*100)/100)+'"></label>';
     }).join('')||'<div class="sub">Ingen almindelige poster på denne faktura</div>';
   }
   box.style.display=open?'':'none';
   document.getElementById('iv-credit-picker-toggle').textContent=open?'🔎 Skjul postevælgeren':'🔎 Vælg poster i stedet for at regne selv';
 }
+// Retter man beløbet for en post, er det tydeligt en tilkendegivelse af at
+// man vil kreditere den — kryds den derfor automatisk af, så man ikke først
+// skal huske at sætte flueben OG rette beløbet hver gang.
+function ivCreditLineAmtEdited(idx){
+  var cb=document.querySelector('.iv-credit-line-check[data-idx="'+idx+'"]');
+  if(cb&&!cb.checked)cb.checked=true;
+  ivCreditPickerRecalc();
+}
 function ivCreditPickerRecalc(){
-  var amounts=ivCreditLineAmounts();
   var sum=0;
   Array.prototype.forEach.call(document.querySelectorAll('.iv-credit-line-check'),function(cb){
-    if(cb.checked)sum+=amounts[Number(cb.dataset.idx)].inclMoms;
+    if(cb.checked){
+      var amtInput=document.querySelector('.iv-credit-line-amt[data-idx="'+cb.dataset.idx+'"]');
+      sum+=Number(amtInput&&amtInput.value)||0;
+    }
   });
   document.getElementById('iv-credit-amount').value=Math.round(sum*100)/100;
+}
+// RUNDE AA — samler de VALGTE poster (afkrydset + gyldigt beløb) til en
+// {invoice_line_id,description,amount}-liste, som sendes med til serveren i
+// stedet for kun det samlede beløb — se POST /api/invoices/:id/credit-notes.
+// Tom liste hvis postevælgeren aldrig blev åbnet/brugt (så falder
+// addIvCreditNote() tilbage til det rene beløbs-spor, som hidtil).
+function ivPickedCreditLines(){
+  var amounts=ivCreditLineAmounts();
+  var out=[];
+  Array.prototype.forEach.call(document.querySelectorAll('.iv-credit-line-check'),function(cb){
+    if(!cb.checked)return;
+    var idx=Number(cb.dataset.idx);
+    var amtInput=document.querySelector('.iv-credit-line-amt[data-idx="'+idx+'"]');
+    var amount=Number(amtInput&&amtInput.value)||0;
+    if(amount<=0)return;
+    var l=amounts[idx]&&amounts[idx].line;
+    if(!l)return;
+    // Kun OVERSKRIFTEN (1. linje) af linjens beskrivelse — kreditnota-posten
+    // skal være kort og læsbar, ikke hele det evt. flerlinjede tilbudstekst-
+    // afsnit. Samme udtræk som qzLineDescCellHtml bruger til sin fede overskrift.
+    var full=String(l.description||'');
+    var nl=full.indexOf('\n');
+    var heading=qzRtStripBold(nl===-1?full:full.slice(0,nl));
+    out.push({invoice_line_id:l.id||null,description:heading||'(uden titel)',amount:amount});
+  });
+  return out;
 }
 async function addIvPayment(){
   var amount=Number(document.getElementById('iv-pay-amount').value);
@@ -26080,10 +26162,88 @@ async function deleteIvPayment(paymentId){
 async function addIvCreditNote(){
   var amount=Number(document.getElementById('iv-credit-amount').value);
   if(!amount||amount<=0){toast('Angiv et gyldigt beløb','⚠️');return;}
-  var body={amount:amount,reason:document.getElementById('iv-credit-reason').value.trim()||null};
+  // RUNDE AA — er postevælgeren brugt (mindst én post afkrydset med et
+  // gyldigt beløb), sendes de VALGTE POSTER med i stedet for kun totalen —
+  // serveren regner selv summen ud fra dem (se POST .../credit-notes). Er
+  // postevælgeren ikke brugt, virker det som hidtil: rent beløb + begrundelse.
+  var pickedLines=ivPickedCreditLines();
+  var body={amount:amount,reason:document.getElementById('iv-credit-reason').value.trim()||null,attachments:ivState.creditAttachments||[]};
+  if(pickedLines.length)body.lines=pickedLines;
+  var btn=document.getElementById('iv-add-credit-btn');
+  btn.disabled=true;
   var r=await api('/api/invoices/'+ivState.id+'/credit-notes',{method:'POST',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Kreditnota oprettet','✓');await loadQzInvoices();renderQzInvoices();await openInvoiceDetail(ivState.id);}
+  btn.disabled=false;
+  if(r&&r.ok){toast('Kreditnota oprettet','✓');ivState.creditAttachments=[];await loadQzInvoices();renderQzInvoices();await openInvoiceDetail(ivState.id);}
   else toast((r&&r.error)||'Kunne ikke oprette kreditnota','❌');
+}
+// RUNDE AA (Martins ønske: "måske enda oplode billeder som kunden får i PDF
+// filen ... fx et billede af en email hvor vi aftaler det") — billederne
+// uploades til Cloudinary MED DET SAMME man vælger dem (samme mønster som
+// projekt-billeder, se pdUploadPhoto), og samles i ivState.creditAttachments
+// indtil selve kreditnotaen oprettes (addIvCreditNote sender listen med).
+async function ivHandleCreditAttachmentFiles(files){
+  var list=Array.prototype.slice.call(files||[]);
+  if(!list.length)return;
+  if(!ivState.creditAttachments)ivState.creditAttachments=[];
+  for(var i=0;i<list.length;i++){
+    var file=list[i];
+    var placeholder={url:null,caption:'',uploading:true};
+    ivState.creditAttachments.push(placeholder);
+    ivRenderCreditAttachments();
+    try{
+      var dataUrl=await fileToDataURL(file);
+      var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'kreditnotaer'})});
+      if(!up||!up.ok)throw new Error((up&&up.error)||'Upload fejlede');
+      placeholder.url=up.url;
+      placeholder.uploading=false;
+    }catch(err){
+      toast('Kunne ikke uploade '+(file.name||'billedet')+': '+(err&&err.message||''),'❌');
+      var idx=ivState.creditAttachments.indexOf(placeholder);
+      if(idx!==-1)ivState.creditAttachments.splice(idx,1);
+    }
+    ivRenderCreditAttachments();
+  }
+}
+function ivRenderCreditAttachments(){
+  var box=document.getElementById('iv-credit-attachments');
+  if(!box)return;
+  var list=ivState.creditAttachments||[];
+  box.innerHTML=list.map(function(a,idx){
+    if(a.uploading)return '<div class="iv-attach-chip"><div class="iv-attach-spinner">⏳</div></div>';
+    return '<div class="iv-attach-chip"><img src="'+esc(a.url)+'" alt=""><button type="button" class="iv-attach-remove" title="Fjern billede">✕</button></div>';
+  }).join('');
+}
+function ivRemoveCreditAttachment(idx){
+  if(!ivState.creditAttachments)return;
+  ivState.creditAttachments.splice(idx,1);
+  ivRenderCreditAttachments();
+}
+// RUNDE AA — foldes ud fra "📋 N poster · 📎 N billede(r)"-knappen på en
+// allerede oprettet kreditnota (se iv-credit-notes-list-renderingen ovenfor).
+// Posterne har vi allerede (ivState.creditNotesById via loadInvoiceFull);
+// billederne hentes først når man rent faktisk folder ud, for ikke at hente
+// dem for alle kreditnotaer bare fordi fakturaen blev åbnet.
+async function ivToggleCreditDetail(id){
+  var box=document.getElementById('iv-cn-detail-'+id);
+  var toggleBtn=document.getElementById('iv-cn-detail-toggle-'+id);
+  if(!box)return;
+  var open=box.style.display==='none';
+  if(open){
+    var c=ivState.creditNotesById[id]||{};
+    var linesHtml=(c.lines||[]).map(function(l){
+      return '<div class="qcv-line-row"><span style="flex:1">'+esc(l.description)+'</span><span style="flex-shrink:0;font-weight:700;color:#DC2626">-'+krFmt(Number(l.amount))+'</span></div>';
+    }).join('');
+    box.innerHTML='<div class="iv-credit-detail">'+linesHtml+'<div id="iv-cn-detail-photos-'+id+'">'+(c.attachment_count?'<div class="sub" style="padding:6px 0">Henter billeder…</div>':'')+'</div></div>';
+    if(c.attachment_count){
+      var atts=await api('/api/document-attachments/credit_note/'+id);
+      var photosEl=document.getElementById('iv-cn-detail-photos-'+id);
+      if(photosEl)photosEl.innerHTML=(Array.isArray(atts)?atts:[]).map(function(a){
+        return '<a href="'+esc(a.url)+'" target="_blank" rel="noopener" class="iv-attach-chip" style="display:inline-block;margin:6px 6px 0 0" title="'+esc(a.caption||'')+'"><img src="'+esc(a.url)+'" alt=""></a>';
+      }).join('')||'<div class="sub">Ingen billeder</div>';
+    }
+  }
+  box.style.display=open?'':'none';
+  if(toggleBtn)toggleBtn.textContent=(open?'▴ ':'▾ ')+(toggleBtn.dataset.badges||'');
 }
 async function deleteIvCreditNote(creditNoteId){
   if(!await gmConfirm('Fjern denne kreditnota?'))return;
@@ -26442,6 +26602,15 @@ function bindQuotesModuleEvents(){
   document.getElementById('iv-credit-full-btn').addEventListener('click',function(){document.getElementById('iv-credit-amount').value=Math.round((ivState.maxCreditable||0)*100)/100;});
   document.getElementById('iv-credit-picker-toggle').addEventListener('click',ivToggleCreditPicker);
   document.getElementById('iv-credit-picker').addEventListener('change',function(e){if(e.target.classList.contains('iv-credit-line-check'))ivCreditPickerRecalc();});
+  // RUNDE AA — retter man beløbet for en post direkte (i stedet for kun at
+  // krydse den af), skal det både krydse posten af automatisk og genberegne
+  // totalen — delegeret 'input'-lytter, samme mønster som 'change' ovenfor,
+  // så vi ikke skal binde en ny listener pr. post hver gang postevælgeren
+  // gentegnes (ivToggleCreditPicker kalder innerHTML=, ikke DOM-append).
+  document.getElementById('iv-credit-picker').addEventListener('input',function(e){if(e.target.classList.contains('iv-credit-line-amt'))ivCreditLineAmtEdited(Number(e.target.dataset.idx));});
+  document.getElementById('iv-credit-attachments').addEventListener('click',function(e){var btn=e.target.closest('.iv-attach-remove');if(btn){var chips=Array.prototype.slice.call(document.querySelectorAll('#iv-credit-attachments .iv-attach-chip'));ivRemoveCreditAttachment(chips.indexOf(btn.closest('.iv-attach-chip')));}});
+  document.getElementById('iv-credit-attach-input').addEventListener('change',function(e){ivHandleCreditAttachmentFiles(e.target.files);e.target.value='';});
+  document.getElementById('iv-credit-notes-list').addEventListener('click',function(e){var btn=e.target.closest('[data-cn-detail]');if(btn)ivToggleCreditDetail(Number(btn.dataset.cnDetail));});
   document.getElementById('iv-due-date').addEventListener('change',saveIvDueDate);
   document.getElementById('iv-top-note').addEventListener('change',saveIvTopNote);
   document.getElementById('iv-notes').addEventListener('change',saveIvNotes);
