@@ -1476,6 +1476,92 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_crm_opp_stage ON crm_opportunities(stage_id);
+
+    -- ══════════════════════════════════════════════════════════════
+    -- RUNDE S (Martins ønske: "Mulighed for flere tlf. Nr, e-mail og adresser
+    -- ved kontakt oplysninger ... både ved kundens side, og i alle
+    -- Oppurnitires fra Leads, sale osv ... igennem et + icon. Ved tilbud skal
+    -- den fra start af vælge den primære, og så kan man skifte") — customers,
+    -- crm_contacts og crm_leads havde hidtil KUN ét enkelt phone/email/address-
+    -- felt hver (se kolonnerne ovenfor). contact_channels er en NY, generisk
+    -- tabel til VILKÅRLIGT mange værdier af hver slags pr. "ejer" — samme løse
+    -- (owner_type, owner_id)-mønster (INGEN rigtig FK) som crm_activities/
+    -- crm_tasks allerede bruger til at dele tabeller på tværs af flere
+    -- entitetstyper, se skema-kommentaren ved crm_activities.
+    --
+    -- owner_type: 'customer' (customers.id), 'contact' (crm_contacts.id, dvs.
+    -- kontaktkortet på en OPPORTUNITY — opportunities har selv INGEN egne
+    -- phone/email/address-kolonner, kun contact_id, se skema ovenfor) eller
+    -- 'lead' (crm_leads.id — leads har DERIMOD deres egne felter, uafhængigt af
+    -- crm_contacts). BEVIDST valg at IKKE lave om på den asymmetri i denne
+    -- omgang (lead vs. opportunity) — det ville være en langt større omskrivning
+    -- af hele CRM'et, og er ikke det Martin bad om.
+    --
+    -- De GAMLE enkelt-felter (customers.phone m.fl.) er IKKE fjernet og bliver
+    -- ikke det: de forbliver "den primære værdi lige nu", og holdes i sync med
+    -- den kanal der har is_primary=1 (se crmSyncPrimaryContactChannel()) — al
+    -- eksisterende kode der forudsætter ét telefonnummer/én email (SMS/mail-
+    -- automatik, dublet-tjek ved oprettelse af ny kunde/lead, søgning i
+    -- kunde-/tilbudslister) virker derfor helt uændret og ser altid den
+    -- primære værdi, uden at skulle omskrives. Kun kundekortet, opportunity-
+    -- kontaktkortet, lead-felterne og tilbuds-editoren taler direkte med denne
+    -- nye tabel.
+    -- ══════════════════════════════════════════════════════════════
+    CREATE TABLE IF NOT EXISTS contact_channels (
+      id SERIAL PRIMARY KEY,
+      owner_type TEXT NOT NULL,
+      owner_id INTEGER NOT NULL,
+      kind TEXT NOT NULL, -- 'phone' | 'email' | 'address'
+      value TEXT NOT NULL,
+      label TEXT,
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_contact_channels_owner ON contact_channels(owner_type, owner_id, kind);
+    -- Engangs-/selvhelbredende bagudkompatibilitets-fyldning: enhver ejer der
+    -- har en udfyldt gammel enkelt-værdi, men ENDNU ingen kanal-række af den
+    -- slags, får sin eksisterende værdi indsat som den primære kanal. Kører ved
+    -- HVER opstart, men er no-op for alt der allerede har mindst én kanal-række
+    -- af den slags — rammer derfor kun historiske rækker/nye rækker oprettet
+    -- via de gamle formularer, aldrig noget Martin selv har redigeret her.
+    INSERT INTO contact_channels (owner_type, owner_id, kind, value, is_primary, position)
+      SELECT 'customer', id, 'phone', phone, 1, 0 FROM customers
+      WHERE phone IS NOT NULL AND phone <> ''
+        AND NOT EXISTS (SELECT 1 FROM contact_channels cc WHERE cc.owner_type='customer' AND cc.owner_id=customers.id AND cc.kind='phone');
+    INSERT INTO contact_channels (owner_type, owner_id, kind, value, is_primary, position)
+      SELECT 'customer', id, 'email', email, 1, 0 FROM customers
+      WHERE email IS NOT NULL AND email <> ''
+        AND NOT EXISTS (SELECT 1 FROM contact_channels cc WHERE cc.owner_type='customer' AND cc.owner_id=customers.id AND cc.kind='email');
+    INSERT INTO contact_channels (owner_type, owner_id, kind, value, is_primary, position)
+      SELECT 'customer', id, 'address', address, 1, 0 FROM customers
+      WHERE address IS NOT NULL AND address <> ''
+        AND NOT EXISTS (SELECT 1 FROM contact_channels cc WHERE cc.owner_type='customer' AND cc.owner_id=customers.id AND cc.kind='address');
+    INSERT INTO contact_channels (owner_type, owner_id, kind, value, is_primary, position)
+      SELECT 'contact', id, 'phone', phone, 1, 0 FROM crm_contacts
+      WHERE phone IS NOT NULL AND phone <> ''
+        AND NOT EXISTS (SELECT 1 FROM contact_channels cc WHERE cc.owner_type='contact' AND cc.owner_id=crm_contacts.id AND cc.kind='phone');
+    INSERT INTO contact_channels (owner_type, owner_id, kind, value, is_primary, position)
+      SELECT 'contact', id, 'email', email, 1, 0 FROM crm_contacts
+      WHERE email IS NOT NULL AND email <> ''
+        AND NOT EXISTS (SELECT 1 FROM contact_channels cc WHERE cc.owner_type='contact' AND cc.owner_id=crm_contacts.id AND cc.kind='email');
+    INSERT INTO contact_channels (owner_type, owner_id, kind, value, is_primary, position)
+      SELECT 'contact', id, 'address', address, 1, 0 FROM crm_contacts
+      WHERE address IS NOT NULL AND address <> ''
+        AND NOT EXISTS (SELECT 1 FROM contact_channels cc WHERE cc.owner_type='contact' AND cc.owner_id=crm_contacts.id AND cc.kind='address');
+    INSERT INTO contact_channels (owner_type, owner_id, kind, value, is_primary, position)
+      SELECT 'lead', id, 'phone', phone, 1, 0 FROM crm_leads
+      WHERE phone IS NOT NULL AND phone <> ''
+        AND NOT EXISTS (SELECT 1 FROM contact_channels cc WHERE cc.owner_type='lead' AND cc.owner_id=crm_leads.id AND cc.kind='phone');
+    INSERT INTO contact_channels (owner_type, owner_id, kind, value, is_primary, position)
+      SELECT 'lead', id, 'email', email, 1, 0 FROM crm_leads
+      WHERE email IS NOT NULL AND email <> ''
+        AND NOT EXISTS (SELECT 1 FROM contact_channels cc WHERE cc.owner_type='lead' AND cc.owner_id=crm_leads.id AND cc.kind='email');
+    INSERT INTO contact_channels (owner_type, owner_id, kind, value, is_primary, position)
+      SELECT 'lead', id, 'address', address, 1, 0 FROM crm_leads
+      WHERE address IS NOT NULL AND address <> ''
+        AND NOT EXISTS (SELECT 1 FROM contact_channels cc WHERE cc.owner_type='lead' AND cc.owner_id=crm_leads.id AND cc.kind='address');
+
     ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS converted_opportunity_id INTEGER REFERENCES crm_opportunities(id) ON DELETE SET NULL;
     -- Se tilsvarende kommentar ved crm_leads.stage_changed_at ovenfor.
     ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS stage_changed_at TEXT;
@@ -8957,6 +9043,12 @@ app.post('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async 
   const r = await pool.query(`
     INSERT INTO customers (name,email,phone,address,notes,is_company,cvr) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
   `, [String(b.name).trim(), b.email || null, b.phone || null, b.address || null, b.notes || null, isCompany ? 1 : 0, cvr]);
+  // RUNDE S — sætter samme felter som primære kanaler fra oprettelsen, så
+  // kundekortets "+"-liste ikke starter tom for en kunde der fik udfyldt
+  // telefon/email/adresse i selve "Ny kunde"-formularen.
+  if (b.phone) await upsertPrimaryContactChannel('customer', r.rows[0].id, 'phone', b.phone);
+  if (b.email) await upsertPrimaryContactChannel('customer', r.rows[0].id, 'email', b.email);
+  if (b.address) await upsertPrimaryContactChannel('customer', r.rows[0].id, 'address', b.address);
   // AUTOMATISK VELKOMSTMAIL TIL NYE KUNDER — ny funktion (var ikke tidligere
   // muligt), styret af "Aktiv"-knappen på skabelonen i Skabeloner-centeret
   // (system_email_templates, key='customer_welcome'). Slået FRA som standard
@@ -8994,10 +9086,100 @@ app.put('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
     cvr,
     req.params.id
   ]);
+  // RUNDE S — se upsertPrimaryContactChannel-kommentaren: holder "+"-listen
+  // på kundekortet i sync med denne ældre formular.
+  if (b.phone !== undefined) await upsertPrimaryContactChannel('customer', req.params.id, 'phone', b.phone);
+  if (b.email !== undefined) await upsertPrimaryContactChannel('customer', req.params.id, 'email', b.email);
+  if (b.address !== undefined) await upsertPrimaryContactChannel('customer', req.params.id, 'address', b.address);
   res.json({ ok: true });
 }));
 app.delete('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM customers WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ══════════════════════════════════════════════════════════════
+// RUNDE S — KONTAKT-KANALER (flere tlf/email/adresser) — se den store
+// skema-kommentar ved contact_channels i initSchema() for hele baggrunden.
+// Fælles rute-sæt for alle tre owner_type ('customer'/'contact'/'lead'), så
+// kundekortet, opportunity-kontaktkortet og lead-felterne kan genbruge
+// PRÆCIS samme frontend-komponent og backend-logik. panelAccessAny dækker
+// alle tre steder disse kaldes fra (Kunder-siden, Leads-boardet, Sales-
+// boardet) uden at skulle vide hvilken af de tre man står på.
+// ══════════════════════════════════════════════════════════════
+const CONTACT_CHANNEL_OWNER_TYPES = ['customer', 'contact', 'lead'];
+const CONTACT_CHANNEL_KINDS = ['phone', 'email', 'address'];
+app.get('/api/contact-channels/:ownerType/:ownerId', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  if (!CONTACT_CHANNEL_OWNER_TYPES.includes(req.params.ownerType)) return res.status(400).json({ error: 'Ugyldig ejer-type' });
+  const rows = await pool.query(
+    'SELECT * FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 ORDER BY kind ASC, is_primary DESC, position ASC, id ASC',
+    [req.params.ownerType, req.params.ownerId]
+  );
+  res.json(rows.rows);
+}));
+// RÆKKEFØLGE VIGTIG: denne skal registreres FØR "POST /api/contact-channels/:ownerType/:ownerId"
+// nedenfor — begge har strukturelt 2 path-segmenter efter '/api/contact-channels',
+// så Express matcher første registrerede rute uanset hvor "specifik" den ser ud
+// (literal 'set-primary' vinder IKKE automatisk over en param blot fordi den
+// står "senere" i filen). Stod denne rute nedenfor .../:ownerType/:ownerId,
+// ville et kald til fx /api/contact-channels/3/set-primary blive tolket som
+// ownerType="3", ownerId="set-primary" af DEN rute i stedet — fundet under test
+// (gav "Ugyldig ejer-type" i stedet for at sætte kanalen som primær).
+app.post('/api/contact-channels/:id/set-primary', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const channel = await pgOne('SELECT * FROM contact_channels WHERE id=$1', [req.params.id]);
+  if (!channel) return res.status(404).json({ error: 'Kanalen blev ikke fundet' });
+  await pool.query('UPDATE contact_channels SET is_primary=0 WHERE owner_type=$1 AND owner_id=$2 AND kind=$3', [channel.owner_type, channel.owner_id, channel.kind]);
+  await pool.query('UPDATE contact_channels SET is_primary=1 WHERE id=$1', [req.params.id]);
+  await crmSyncPrimaryContactChannel(channel.owner_type, channel.owner_id, channel.kind, channel.value);
+  res.json({ ok: true });
+}));
+app.post('/api/contact-channels/:ownerType/:ownerId', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const ownerType = req.params.ownerType, ownerId = req.params.ownerId;
+  const b = req.body || {};
+  if (!CONTACT_CHANNEL_OWNER_TYPES.includes(ownerType)) return res.status(400).json({ error: 'Ugyldig ejer-type' });
+  if (!CONTACT_CHANNEL_KINDS.includes(b.kind)) return res.status(400).json({ error: 'Ugyldig type (skal være phone/email/address)' });
+  const value = String(b.value || '').trim();
+  if (!value) return res.status(400).json({ error: 'Værdi mangler' });
+  const existing = await pgOne('SELECT COUNT(*)::int AS n, COALESCE(MAX(position),-1) AS maxpos FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3', [ownerType, ownerId, b.kind]);
+  // Den FØRSTE kanal af sin slags for en ejer bliver automatisk primær — ellers
+  // ville et "+"-tilføjet nummer #1 stå som "ikke-primær" indtil man aktivt
+  // valgte det, hvilket ville se ud som en fejl (kundekortet ville pludselig
+  // vise "intet telefonnummer" efter man lige havde tilføjet ét).
+  const isPrimary = existing.n === 0;
+  const r = await pgOne(
+    'INSERT INTO contact_channels (owner_type,owner_id,kind,value,label,is_primary,position) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+    [ownerType, ownerId, b.kind, value, b.label ? String(b.label).trim() : null, isPrimary ? 1 : 0, existing.maxpos + 1]
+  );
+  if (isPrimary) await crmSyncPrimaryContactChannel(ownerType, ownerId, b.kind, value);
+  res.json({ ok: true, id: r.id, is_primary: isPrimary });
+}));
+app.put('/api/contact-channels/:id', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const channel = await pgOne('SELECT * FROM contact_channels WHERE id=$1', [req.params.id]);
+  if (!channel) return res.status(404).json({ error: 'Kanalen blev ikke fundet' });
+  const b = req.body || {};
+  const value = b.value !== undefined ? String(b.value).trim() : channel.value;
+  if (!value) return res.status(400).json({ error: 'Værdi mangler' });
+  await pool.query('UPDATE contact_channels SET value=$1, label=$2 WHERE id=$3', [value, b.label !== undefined ? (b.label ? String(b.label).trim() : null) : channel.label, req.params.id]);
+  if (channel.is_primary) await crmSyncPrimaryContactChannel(channel.owner_type, channel.owner_id, channel.kind, value);
+  res.json({ ok: true });
+}));
+app.delete('/api/contact-channels/:id', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const channel = await pgOne('SELECT * FROM contact_channels WHERE id=$1', [req.params.id]);
+  if (!channel) return res.status(404).json({ error: 'Kanalen blev ikke fundet' });
+  await pool.query('DELETE FROM contact_channels WHERE id=$1', [req.params.id]);
+  if (channel.is_primary) {
+    // Slettes den primære kanal, forfremmes den næste i rækken (hvis der er
+    // flere) til ny primær — findes ingen flere, ryddes den gamle
+    // enkelt-værdi-kolonne (customers.phone m.fl.), for det er reelt sandheden
+    // nu: ejeren har ikke længere nogen værdi af den slags.
+    const next = await pgOne('SELECT * FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3 ORDER BY position ASC, id ASC LIMIT 1', [channel.owner_type, channel.owner_id, channel.kind]);
+    if (next) {
+      await pool.query('UPDATE contact_channels SET is_primary=1 WHERE id=$1', [next.id]);
+      await crmSyncPrimaryContactChannel(channel.owner_type, channel.owner_id, channel.kind, next.value);
+    } else {
+      await crmSyncPrimaryContactChannel(channel.owner_type, channel.owner_id, channel.kind, null);
+    }
+  }
   res.json({ ok: true });
 }));
 
@@ -10398,6 +10580,33 @@ async function crmFindOrCreateContactAndCustomer(name, email, phone, address, no
   if (!contact || contact.customer_id !== customerId) {
     await db.query('UPDATE crm_contacts SET customer_id=$1 WHERE id=$2', [customerId, contactId]);
   }
+  // RUNDE S — RETTELSE (fundet under Playwright-test af "+"-multi-værdi-UI'et,
+  // IKKE rapporteret af Martin): denne funktion er den CENTRALE find-eller-
+  // opret-vej for kontakter/kunder — brugt af bl.a. lead-konvertering og al
+  // selvhelbredende kobling (se kaldene ovenfor), IKKE kun automatiserede
+  // webhooks som først antaget. Uden dette fik en NY kontakt/kunde oprettet
+  // herigennem aldrig en tilhørende contact_channels-række, før serveren blev
+  // genstartet (opstarts-backfillet, se migreringen). I praksis betød det at
+  // fx kontaktkortets "+"-ekstra-liste for en helt ny opportunity-kontakt var
+  // TOM, og den første værdi man selv tilføjede blev fejlagtigt (om end
+  // ufarligt) sat som "primær" i stedet for at stå ved siden af den
+  // eksisterende primære værdi — fordi der set fra tabellens perspektiv reelt
+  // ikke fandtes nogen kanal endnu. Bruger samme upsertPrimaryContactChannel
+  // som de gamle enkelt-felt-redigeringsruter, og kører KUN når rækken rent
+  // faktisk lige er oprettet her (en genbrugt eksisterende kontakt/kunde har
+  // enten allerede sine kanaler, eller får dem ved næste server-genstart —
+  // vi vil ikke risikere at overskrive en primær værdi nogen har redigeret
+  // siden).
+  if (contactCreated) {
+    if (phone) await upsertPrimaryContactChannel('contact', contactId, 'phone', phone);
+    if (email) await upsertPrimaryContactChannel('contact', contactId, 'email', email);
+    if (address) await upsertPrimaryContactChannel('contact', contactId, 'address', address);
+  }
+  if (customerCreated) {
+    if (phone) await upsertPrimaryContactChannel('customer', customerId, 'phone', phone);
+    if (email) await upsertPrimaryContactChannel('customer', customerId, 'email', email);
+    if (address) await upsertPrimaryContactChannel('customer', customerId, 'address', address);
+  }
   return { contactId, customerId, contactCreated, customerCreated };
 }
 
@@ -10421,6 +10630,61 @@ async function crmPropagateContactFields(contactId, fields) {
   const contact = await pgOne('SELECT customer_id FROM crm_contacts WHERE id=$1', [contactId]);
   if (contact && contact.customer_id) {
     await pool.query('UPDATE customers SET ' + setSql + ' WHERE id=$1', [contact.customer_id, ...keys.map(k => fields[k])]);
+  }
+}
+// RUNDE S — holder den ÆLDRE enkelt-værdi-kolonne (customers.phone/email/address,
+// crm_contacts.samme, crm_leads.samme) synkroniseret med hvad der er markeret
+// primær i den nye contact_channels-tabel, hver gang en kanal tilføjes/
+// redigeres/slettes/skifter primær. Genbruger crmPropagateContactFields()'s
+// eksisterende kontakt→kunde-kaskade for owner_type 'contact' og 'lead', så
+// AL eksisterende kode der kun kender én værdi (SMS/mail-automatik, dublet-tjek,
+// søgning, Gmail-synk) fortsat ser den rigtige/primære værdi uændret, uden at
+// skulle omskrives til at forstå flere værdier. value=null bruges når sidste
+// kanal af sin slags slettes (ejeren har ikke længere nogen værdi af den slags).
+async function crmSyncPrimaryContactChannel(ownerType, ownerId, kind, value) {
+  if (!CONTACT_CHANNEL_KINDS.includes(kind)) return; // defensivt — kind kommer altid valideret fra ruterne ovenfor
+  if (ownerType === 'customer') {
+    await pool.query(`UPDATE customers SET ${kind}=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [value, ownerId]);
+  } else if (ownerType === 'contact') {
+    await crmPropagateContactFields(ownerId, { [kind]: value });
+  } else if (ownerType === 'lead') {
+    await pool.query(`UPDATE crm_leads SET ${kind}=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [value, ownerId]);
+    const lead = await pgOne('SELECT contact_id FROM crm_leads WHERE id=$1', [ownerId]);
+    if (lead && lead.contact_id) await crmPropagateContactFields(lead.contact_id, { [kind]: value });
+  }
+}
+// RUNDE S — modsat retning af crmSyncPrimaryContactChannel ovenfor: kaldes fra
+// de GAMLE enkelt-felt-redigeringsruter (PUT /api/crm/customers/:id, .../leads/:id,
+// .../contacts/:id), så en redigering via den velkendte "✎ Redigér kunde"-
+// formular (eller lead-/kontaktkort-felterne) også opdaterer/opretter den
+// PRIMÆRE kanal i contact_channels — ellers ville de to steder kunne løbe fra
+// hinanden (fx: redigér telefon via den gamle formular, men "+"-listen på
+// kundekortet viser stadig det gamle nummer). Kaldes KUN når feltet rent
+// faktisk indgik i requesten (value===undefined betyder "ikke rørt").
+async function upsertPrimaryContactChannel(ownerType, ownerId, kind, value) {
+  if (value === undefined || !CONTACT_CHANNEL_KINDS.includes(kind)) return;
+  const v = value ? String(value).trim() : '';
+  const existingPrimary = await pgOne('SELECT id FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3 AND is_primary=1', [ownerType, ownerId, kind]);
+  if (!v) {
+    // Feltet er ryddet i den gamle formular — nulstil kun selve VÆRDIEN på en
+    // evt. eksisterende primær kanal (rører ikke andre, ikke-primære kanaler).
+    if (existingPrimary) await pool.query('UPDATE contact_channels SET value=$1 WHERE id=$2', ['', existingPrimary.id]);
+    return;
+  }
+  if (existingPrimary) {
+    await pool.query('UPDATE contact_channels SET value=$1 WHERE id=$2', [v, existingPrimary.id]);
+    return;
+  }
+  // Ingen primær endnu — findes der allerede en (ikke-primær) kanal af samme
+  // slags fra opstarts-seedningen, gør DEN primær i stedet for at oprette en
+  // duplikat-række.
+  const existingAny = await pgOne('SELECT id FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3 ORDER BY position ASC, id ASC LIMIT 1', [ownerType, ownerId, kind]);
+  if (existingAny) {
+    await pool.query('UPDATE contact_channels SET is_primary=0 WHERE owner_type=$1 AND owner_id=$2 AND kind=$3', [ownerType, ownerId, kind]);
+    await pool.query('UPDATE contact_channels SET is_primary=1, value=$1 WHERE id=$2', [v, existingAny.id]);
+  } else {
+    const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3', [ownerType, ownerId, kind]);
+    await pool.query('INSERT INTO contact_channels (owner_type,owner_id,kind,value,is_primary,position) VALUES ($1,$2,$3,$4,1,$5)', [ownerType, ownerId, kind, v, posRow.pos]);
   }
 }
 
@@ -10787,6 +11051,11 @@ app.post('/api/crm/leads', auth, panelAccess('crmp_leads'), asyncRoute(async (re
   const linked = await crmFindOrCreateContactAndCustomer(leadName, b.email || null, b.phone || null, b.address || null, b.note || null);
   await pool.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
   await crmLogActivity('lead', r.id, 'linked', (linked.customerCreated ? 'Ny kunde oprettet automatisk: ' : 'Koblet til eksisterende kunde: ') + leadName, req.user.id);
+  // RUNDE S — seeder primær kanal på selve leadet ved oprettelse (undgår at
+  // skulle vente på næste serverstarts bagudkompatibilitets-fyldning).
+  if (b.phone) await upsertPrimaryContactChannel('lead', r.id, 'phone', b.phone);
+  if (b.email) await upsertPrimaryContactChannel('lead', r.id, 'email', b.email);
+  if (b.address) await upsertPrimaryContactChannel('lead', r.id, 'address', b.address);
   // SMS/email-automatik for den stage leadet lander i (fx "Ny") — se
   // crmFireStageAutomation. Kører også for leads oprettet via webhooken
   // (POST /api/integrations/lead-intake/:source), som kalder samme kode.
@@ -10876,6 +11145,11 @@ app.put('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async 
       address: b.address !== undefined ? b.address : undefined
     });
   }
+  // RUNDE S — se upsertPrimaryContactChannel-kommentaren: holder leadets
+  // "+"-felter i sync med denne ældre inline-redigering.
+  if (b.phone !== undefined) await upsertPrimaryContactChannel('lead', req.params.id, 'phone', b.phone);
+  if (b.email !== undefined) await upsertPrimaryContactChannel('lead', req.params.id, 'email', b.email);
+  if (b.address !== undefined) await upsertPrimaryContactChannel('lead', req.params.id, 'address', b.address);
   if (b.custom_fields) await crmSetCustomFieldValues('lead', req.params.id, b.custom_fields);
   if (stageChanged) {
     const newStage = await pgOne('SELECT name FROM crm_stages WHERE id=$1', [b.stage_id]);
@@ -11030,6 +11304,11 @@ app.put('/api/crm/contacts/:id', auth, panelAccess('customers'), asyncRoute(asyn
       address: b.address !== undefined ? b.address : undefined
     });
   }
+  // RUNDE S — se upsertPrimaryContactChannel-kommentaren: holder opportunity-
+  // kontaktkortets "+"-felter i sync med denne ældre redigering.
+  if (b.phone !== undefined) await upsertPrimaryContactChannel('contact', req.params.id, 'phone', b.phone);
+  if (b.email !== undefined) await upsertPrimaryContactChannel('contact', req.params.id, 'email', b.email);
+  if (b.address !== undefined) await upsertPrimaryContactChannel('contact', req.params.id, 'address', b.address);
   res.json({ ok: true });
 }));
 app.get('/api/crm/opportunities', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {

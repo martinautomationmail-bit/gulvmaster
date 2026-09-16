@@ -3204,7 +3204,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.3</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.4</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4242,6 +4242,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              ikke sendes til kunden før den er aktiveret (se "✓ Aktivér faktura"
              på selve fakturaen bagefter). -->
         <button class="bly-btn outline" id="qe-save-draft-btn" type="button" style="display:none" title="Gemmer fakturaen som en kladde — tæller ikke med i Økonomi og kan ikke sendes til kunden, før du aktiverer den">📝 Gem som kladde</button>
+        <!-- RUNDE S (Martins ønske: "hvis jeg er i gang med at lave et tilbud og
+             jeg trykker ud af siden, at den ... bare automtisk gemmer") — samme
+             lille "Gemmer…/Gemt ✓"-pil som CRM-autogemmet (#crmpx-save-status),
+             se qeShowSaveStatus/qeAutoSave. Vises ikke for en direkte faktura
+             (qeState.directInvoice), som ikke har noget autogem-begreb. -->
+        <span class="sub" id="qe-save-status" style="min-width:70px"></span>
         <button class="bly-btn" id="qe-save-btn" type="button">💾 Gem</button>
       </div>
     </div>
@@ -4278,11 +4284,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <button class="qz-icon-btn" id="qe-ai-cancel-btn" type="button" title="Annullér optagelse">✕</button>
         </div>
         <div class="qe-field-row" style="margin-top:10px">
-          <div><label class="qe-label">Adresse</label><input id="qe-customer-address" class="qe-input"></div>
-          <div><label class="qe-label">Telefon</label><input id="qe-customer-phone" class="qe-input"></div>
+          <!-- RUNDE S (Martins ønske: "Ved tilbud skal den fra start af vælge
+               den primære, og så kan man skifte det gælder for alt fra email,
+               tlf og adresse") — qe-customer-*-switch vises KUN når kunden/
+               kontakten/leadet har mere end én værdi af den slags (se
+               qeLoadContactSwitchers). Feltet selv er urørt og starter altid
+               med den PRIMÆRE værdi (customers/crm_contacts/crm_leads' enkelt-
+               kolonne ER jo den primære, se contact_channels-synk-logikken i
+               server.js) — dropdownen tilbyder blot at SKIFTE til en anden. -->
+          <div><label class="qe-label">Adresse</label><input id="qe-customer-address" class="qe-input"><div id="qe-customer-address-switch" style="display:none;margin-top:4px"></div></div>
+          <div><label class="qe-label">Telefon</label><input id="qe-customer-phone" class="qe-input"><div id="qe-customer-phone-switch" style="display:none;margin-top:4px"></div></div>
         </div>
         <div class="qe-field-row">
-          <div><label class="qe-label">E-mail</label><input id="qe-customer-email" class="qe-input"></div>
+          <div><label class="qe-label">E-mail</label><input id="qe-customer-email" class="qe-input"><div id="qe-customer-email-switch" style="display:none;margin-top:4px"></div></div>
           <div><label class="qe-label">Gyldig til</label><input id="qe-valid-until" type="date" class="qe-input"></div>
         </div>
         <!-- RUNDE T (Martins ønske: "Vælg opportunity/lead ved manuel
@@ -4572,6 +4586,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 
+  <!-- RUNDE S (Martins ønske: "Mulighed for flere tlf. Nr, e-mail og adresser
+       ved kontakt oplysninger ... ved kundens side ... igennem et + icon") —
+       ny panel med op til flere værdier af hver slags, via den fælles
+       ccRenderAll()-komponent (se JS). Erstatter IKKE de gamle felter i
+       "✎ Redigér kunde"-modalen (som stadig virker og nu holdes i sync, se
+       upsertPrimaryContactChannel i server.js) — dette er et EKSTRA, mere
+       synligt sted at se/tilføje/vælge primær, direkte på kundesiden. -->
+  <div class="crmpx-panel" id="cd-contact-panel" style="margin-bottom:18px">
+    <h3 style="margin:0 0 12px;font-size:14px">📇 Kontaktoplysninger</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+      <div><div class="form-label" style="margin-bottom:6px">📞 Telefon</div><div id="cd-cc-phone"></div></div>
+      <div><div class="form-label" style="margin-bottom:6px">✉️ Email</div><div id="cd-cc-email"></div></div>
+      <div><div class="form-label" style="margin-bottom:6px">🏠 Adresse</div><div id="cd-cc-address"></div></div>
+    </div>
+  </div>
+
   <!-- RUNDE I (sep. 2026, Martins ønske): Opportunity/Tilbud/Faktura (+ Sager,
        som hører til samme "forretnings-data om kunden"-gruppe) flyttet op i
        TOPPEN af siden, lige under overskriften — det er det Martin oftest skal
@@ -4822,6 +4852,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-phone" title="Kopiér telefonnummer">📋</button>
             <a class="qz-icon-btn crmpx-field-btn" id="crmpx-phone-link" href="#" title="Ring op">📞</a>
           </div>
+          <!-- RUNDE S — ekstra (ikke-primære) telefonnumre, se ccLoadAndRenderExtras. -->
+          <div id="crmpx-lead-cc-phone-extra"></div>
         </div>
         <div class="tld-section"><label class="tld-label">📧 Email</label>
           <div class="crmpx-field-row">
@@ -4829,6 +4861,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-email" title="Kopiér email">📋</button>
             <a class="qz-icon-btn crmpx-field-btn" id="crmpx-email-link" href="#" target="_blank" rel="noopener" title="Skriv en mail">✉️</a>
           </div>
+          <div id="crmpx-lead-cc-email-extra"></div>
         </div>
         <div class="tld-section"><label class="tld-label">📍 Adresse</label>
           <div class="crmpx-field-row">
@@ -4836,6 +4869,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-address" title="Kopiér adresse">📋</button>
             <a class="qz-icon-btn crmpx-field-btn" id="crmpx-address-link" href="#" target="_blank" rel="noopener" title="Vis på Google Maps">📍</a>
           </div>
+          <div id="crmpx-lead-cc-address-extra"></div>
         </div>
         <div class="tld-row" id="crmpx-opp-fields" style="display:none">
           <div class="tld-section"><label class="tld-label">💰 Værdi (kr.)</label><input id="crmpx-value" type="number" class="tld-input"></div>
@@ -17996,6 +18030,15 @@ function qzSyncOverlayBodyClass(){
   document.body.classList.toggle('qz-overlay-open',anyOpen);
 }
 function qzShowDetailView(show){
+  // RUNDE S (Martins ønske: "hvis jeg ... trykker ud af siden, at den ...
+  // automtisk gemmer") — dette er det ENE sted i hele programmet der lukker
+  // tilbudseditoren, uanset ÅRSAG: almindelig sideskift (switchPage kalder
+  // altid qzShowDetailView(false), se dens kommentar), "← Tilbage til alle
+  // tilbud" (qeGoBackToList) osv. Var editoren rent faktisk synlig (ikke bare
+  // et no-op-kald), flushes et evt. ventende autogem STRAKS her, i stedet for
+  // at vente på debouncens fulde 900ms — se qeFlushAutoSave (som selv er
+  // ufarlig at kalde selvom der intet var at gemme).
+  if(!show&&document.getElementById('qz-detail-view').style.display!=='none')qeFlushAutoSave();
   document.getElementById('qz-detail-view').style.display=show?'':'none';
   // RUNDE J #319 — hvis tilbudseditoren åbnes, skal en evt. åben faktura-side
   // lukkes (de to kan aldrig være åbne samtidig), se qzShowInvoiceView().
@@ -18919,6 +18962,133 @@ function crmcFillProjektType(){
 // KUNDEDETALJE — klik på en kunde i listen. Egen side (samme mønster som
 // project-detail): sagen/tilbud/faktura-data hentes samlet fra
 // GET /api/crm/customers/:id og listerne kan klikkes videre ind på hver.
+// ══════════════════════════════════════════════════════════════
+// RUNDE S — KONTAKT-KANALER (Martins ønske: "Mulighed for flere tlf. Nr,
+// e-mail og adresser ved kontakt oplysninger ... både ved kundens side, og i
+// alle Oppurnitires fra Leads, sale osv ... igennem et + icon. Ved tilbud
+// skal den fra start af vælge den primære, og så kan man skifte"). Fælles
+// komponent bygget på GET/POST/PUT/DELETE /api/contact-channels/... (se
+// server.js — contact_channels-tabellen og hele synk-logikken mod de gamle
+// enkelt-felter). Bruges tre steder:
+//  1) Kundekortet (cd-cc-phone/-email/-address) — HELE gruppen (primær +
+//     ekstra) vises her, da kundekortet ikke havde nogen redigerbar
+//     kontakt-UI i forvejen (kun en skrivebeskyttet tekstlinje).
+//  2) Opportunity-kontaktkortet og lead-felterne — de har BEGGE en allerede
+//     veletableret, poleret "primær række" (kopiér-/ring-/mail-/kort-knapper,
+//     se RUNDE L-kommentaren ved crmpx-contact-card) som IKKE skal ændres —
+//     her vises kun de EKSTRA (ikke-primære) værdier nedenunder, via
+//     ccLoadAndRenderExtras, og selve primær-feltets værdi opdateres i stedet
+//     når man vælger en anden værdi som primær (ccOnChangeHandlers-krogen).
+// ══════════════════════════════════════════════════════════════
+var CC_KIND_META={
+  phone:{icon:'📞',placeholder:'Telefonnummer',inputType:'tel',addLabel:'+ telefon'},
+  email:{icon:'✉️',placeholder:'Email-adresse',inputType:'email',addLabel:'+ email'},
+  address:{icon:'🏠',placeholder:'Adresse',inputType:'text',addLabel:'+ adresse'}
+};
+// Krog pr. prefix: kaldes efter enhver ændring (tilføj/redigér/slet/vælg
+// primær), så den side komponenten er indsat på kan genopfriske SIN EGEN
+// visning af "den primære værdi lige nu" (fx en anden inputrække, eller en
+// sammenkædet tekstlinje) — uden at selve komponenten skal kende noget til de
+// forskellige sider den bruges på.
+var ccOnChangeHandlers={};
+function ccNotifyChanged(prefix,ownerType,ownerId){
+  if(ccOnChangeHandlers[prefix])ccOnChangeHandlers[prefix](ownerType,ownerId);
+}
+async function ccFetchChannels(ownerType,ownerId){
+  var list=await api('/api/contact-channels/'+ownerType+'/'+ownerId);
+  return Array.isArray(list)?list:[];
+}
+// FULD gruppe (primær + ekstra, alle redigerbare, + en "Tilføj"-række) — brugt
+// på kundekortet, se punkt 1) ovenfor.
+async function ccLoadAndRenderAll(prefix,ownerType,ownerId){
+  if(!ownerId)return;
+  var list=await ccFetchChannels(ownerType,ownerId);
+  ['phone','email','address'].forEach(function(kind){
+    var el=document.getElementById(prefix+'-'+kind);
+    if(!el)return;
+    el.innerHTML=ccRenderGroupHtml(prefix,ownerType,ownerId,kind,list.filter(function(c){return c.kind===kind;}));
+  });
+}
+function ccRenderGroupHtml(prefix,ownerType,ownerId,kind,channels){
+  var meta=CC_KIND_META[kind];
+  var rows=channels.map(function(c){
+    return '<div class="cc-row" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+      +'<button type="button" class="qz-icon-btn" style="'+(c.is_primary?'color:#D97706':'color:var(--bly-sub)')+'" title="'+(c.is_primary?'Primær':'Gør primær')+'" onclick="ccSetPrimary('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'+(c.is_primary?'★':'☆')+'</button>'
+      +'<input class="input" style="flex:1" type="'+meta.inputType+'" value="'+esc(c.value)+'" onchange="ccUpdateValue('+c.id+',this.value,\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'
+      +'<button type="button" class="qz-icon-btn" title="Fjern" onclick="ccRemove('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">✕</button>'
+      +'</div>';
+  }).join('');
+  return rows
+    +'<div class="cc-add-row" style="display:flex;gap:6px;margin-top:4px">'
+    +'<input class="input" style="flex:1" type="'+meta.inputType+'" placeholder="'+meta.placeholder+'" id="'+prefix+'-'+kind+'-new" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\');}">'
+    +'<button type="button" class="bly-btn outline small" title="'+meta.addLabel+'" onclick="ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\')">+</button>'
+    +'</div>';
+}
+// KUN de ekstra (ikke-primære) værdier + en lille "+"-tilføj-linje — brugt ved
+// siden af en allerede eksisterende, poleret primær-inputrække, se punkt 2)
+// ovenfor.
+async function ccLoadAndRenderExtras(prefix,ownerType,ownerId){
+  if(!ownerId)return;
+  var list=await ccFetchChannels(ownerType,ownerId);
+  ['phone','email','address'].forEach(function(kind){
+    var el=document.getElementById(prefix+'-'+kind+'-extra');
+    if(!el)return;
+    var extras=list.filter(function(c){return c.kind===kind&&!c.is_primary;});
+    var meta=CC_KIND_META[kind];
+    var rows=extras.map(function(c){
+      return '<div class="cc-row" style="display:flex;align-items:center;gap:6px;margin:4px 0 0 26px">'
+        +'<button type="button" class="qz-icon-btn" style="color:var(--bly-sub)" title="Gør primær" onclick="ccSetPrimary('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">☆</button>'
+        +'<input class="input" style="flex:1" type="'+meta.inputType+'" value="'+esc(c.value)+'" onchange="ccUpdateValue('+c.id+',this.value,\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'
+        +'<button type="button" class="qz-icon-btn" title="Fjern" onclick="ccRemove('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">✕</button>'
+        +'</div>';
+    }).join('');
+    el.innerHTML=rows
+      +'<div class="cc-add-row" style="display:flex;gap:6px;margin:4px 0 0 26px">'
+      +'<input class="input" style="flex:1" type="'+meta.inputType+'" placeholder="'+meta.placeholder+' (ekstra)" id="'+prefix+'-'+kind+'-new" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\');}">'
+      +'<button type="button" class="bly-btn outline small" title="'+meta.addLabel+'" onclick="ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\')">'+meta.addLabel+'</button>'
+      +'</div>';
+  });
+}
+// Fælles genindlæsningsfunktion — vælges automatisk ud fra hvilken slags
+// containere prefixet har i DOM'et (fuld gruppe vs. kun-ekstra), så
+// add/update/remove/set-primary kan kalde ÉT sted uden at vide hvilken visning
+// der bruges lige nu.
+async function ccReload(prefix,ownerType,ownerId){
+  if(document.getElementById(prefix+'-phone-extra')){await ccLoadAndRenderExtras(prefix,ownerType,ownerId);}
+  else{await ccLoadAndRenderAll(prefix,ownerType,ownerId);}
+  ccNotifyChanged(prefix,ownerType,ownerId);
+}
+async function ccAddValue(prefix,ownerType,ownerId,kind){
+  var input=document.getElementById(prefix+'-'+kind+'-new');
+  var value=(input&&input.value||'').trim();
+  if(!value){toast('Udfyld en værdi først','❌');return;}
+  var r=await api('/api/contact-channels/'+ownerType+'/'+ownerId,{method:'POST',body:JSON.stringify({kind:kind,value:value})});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke tilføje','❌');return;}
+  await ccReload(prefix,ownerType,ownerId);
+}
+async function ccUpdateValue(channelId,value,prefix,ownerType,ownerId){
+  value=(value||'').trim();
+  if(!value){toast('Værdi kan ikke være tom — brug ✕ for at fjerne','❌');await ccReload(prefix,ownerType,ownerId);return;}
+  var r=await api('/api/contact-channels/'+channelId,{method:'PUT',body:JSON.stringify({value:value})});
+  if(!r||r.error)toast((r&&r.error)||'Kunne ikke gemme','❌');
+  await ccReload(prefix,ownerType,ownerId);
+}
+async function ccSetPrimary(channelId,prefix,ownerType,ownerId){
+  var r=await api('/api/contact-channels/'+channelId+'/set-primary',{method:'POST',body:JSON.stringify({})});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke sætte som primær','❌');return;}
+  toast('Sat som primær ✓','★');
+  await ccReload(prefix,ownerType,ownerId);
+}
+async function ccRemove(channelId,prefix,ownerType,ownerId){
+  var r=await api('/api/contact-channels/'+channelId,{method:'DELETE'});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke fjerne','❌');return;}
+  await ccReload(prefix,ownerType,ownerId);
+}
+window.ccSetPrimary=ccSetPrimary;
+window.ccRemove=ccRemove;
+window.ccAddValue=ccAddValue;
+window.ccUpdateValue=ccUpdateValue;
+
 var cdCurrent=null,cdInitialized=false,cdNotes=[],cdQuotes=[];
 function initCustomerDetailModule(){
   if(cdInitialized)return;
@@ -19257,6 +19427,52 @@ async function cdDownloadAttachment(messageId,attachmentId,filename,mimetype){
     setTimeout(function(){URL.revokeObjectURL(url);},4000);
   }catch(e){toast('Netværksfejl ved hentning af vedhæftning','❌');}
 }
+// RUNDE S — efter enhver ændring i kontakt-kanal-panelet: genopfrisker
+// cd-subtitle/cd-email-btn/cd-call-btn's "primære værdi lige nu"-visning uden
+// at genindlæse hele kundesiden (sager/tilbud/fakturaer/noter er urørt af en
+// kontaktoplysnings-ændring, ingen grund til at hente det hele igen).
+ccOnChangeHandlers['cd-cc']=async function(ownerType,ownerId){
+  var d=await api('/api/crm/customers/'+ownerId);
+  if(!d||d.error)return;
+  cdCurrent=d.customer;
+  document.getElementById('cd-subtitle').textContent=[d.customer.phone,d.customer.email,d.customer.address].filter(Boolean).join(' · ')||'Ingen kontaktoplysninger endnu';
+  var cdEmailBtn=document.getElementById('cd-email-btn'),cdCallBtn=document.getElementById('cd-call-btn');
+  cdEmailBtn.href=d.customer.email?gmailComposeUrl(d.customer.email):'#';cdEmailBtn.style.opacity=d.customer.email?'1':'.4';cdEmailBtn.style.pointerEvents=d.customer.email?'':'none';
+  cdCallBtn.href=d.customer.phone?('tel:'+d.customer.phone):'#';cdCallBtn.style.opacity=d.customer.phone?'1':'.4';cdCallBtn.style.pointerEvents=d.customer.phone?'':'none';
+};
+// RUNDE S — samme princip som cd-cc ovenfor, men for opportunity-
+// kontaktkortet (crmpx-contact-card). Hvis man vælger en EKSTRA værdi som ny
+// primær (☆→★ i ccLoadAndRenderExtras-rækken), skal selve primær-rækkens
+// input (crmpx-contact-phone/-email/-address, RUNDE L) og dens ring/mail/
+// kort-links opdateres til at vise den nye primære værdi — ellers ville man
+// se den gamle værdi stående i den polerede række, mens den "nye primære"
+// kun ligger i ekstra-listen. ownerId her er contact_id (ikke opportunity-id).
+ccOnChangeHandlers['crmpx-cc']=async function(ownerType,ownerId){
+  var list=await ccFetchChannels(ownerType,ownerId);
+  function primaryVal(kind){var c=list.find(function(x){return x.kind===kind&&x.is_primary;});return c?c.value:'';}
+  var pv=primaryVal('phone'),ev=primaryVal('email'),av=primaryVal('address');
+  var pf=document.getElementById('crmpx-contact-phone'),ef=document.getElementById('crmpx-contact-email'),af=document.getElementById('crmpx-contact-address');
+  if(pf)pf.value=pv;
+  if(ef)ef.value=ev;
+  if(af)af.value=av;
+  crmpxUpdateContactLinks();
+};
+// RUNDE S — samme princip igen, for leadets EGNE inline-felter
+// (crmpx-phone/-email/-address). I modsætning til opportunity-kortet er disse
+// felter allerede koblet til crmpxAutoSave (autogem ved onchange) — men et
+// programmatisk .value-skift her trigger IKKE onchange, så det gemmer ikke
+// dobbelt. Det er heller ikke nødvendigt: backend har allerede skrevet den
+// nye primære værdi til crm_leads via crmSyncPrimaryContactChannel, da
+// set-primary/add/remove blev kaldt — dette er ren visnings-opdatering.
+ccOnChangeHandlers['crmpx-lead-cc']=async function(ownerType,ownerId){
+  var list=await ccFetchChannels(ownerType,ownerId);
+  function primaryVal(kind){var c=list.find(function(x){return x.kind===kind&&x.is_primary;});return c?c.value:'';}
+  var pf=document.getElementById('crmpx-phone'),ef=document.getElementById('crmpx-email'),af=document.getElementById('crmpx-address');
+  if(pf)pf.value=primaryVal('phone');
+  if(ef)ef.value=primaryVal('email');
+  if(af)af.value=primaryVal('address');
+  crmpxUpdateContactLinks();
+};
 async function openCustomerDetail(id){
   var d=await api('/api/crm/customers/'+id);
   if(!d||d.error){toast('Kunne ikke hente kunden','❌');return;}
@@ -19272,6 +19488,11 @@ async function openCustomerDetail(id){
   var cdOwes=Number(d.balance_due)||0;
   document.getElementById('cd-balance-badge').style.display=cdOwes>0?'':'none';
   if(cdOwes>0)document.getElementById('cd-balance-amount').textContent=krFmt(cdOwes);
+  // RUNDE S — kontakt-kanaler (flere tlf/email/adresser via "+"). Se
+  // ccLoadAndRenderAll ovenfor. cd-subtitle/cd-email-btn/cd-call-btn (lige
+  // ovenfor) viser stadig den PRIMÆRE værdi — genopfriskes automatisk efter
+  // enhver ændring i panelet via ccOnChangeHandlers['cd-cc'] nedenfor.
+  ccLoadAndRenderAll('cd-cc','customer',id);
   cdLoadNotes(id);
   cdLoadEmails(id);
   // Mails starter altid sammenklappet ved åbning af en kundeside (Martins ønske) —
@@ -20292,6 +20513,14 @@ async function openCrmpDetail(entityType,id){
   emailBtn.href=email?gmailComposeUrl(email):'#';emailBtn.style.opacity=email?'1':'.4';emailBtn.style.pointerEvents=email?'':'none';
   callBtn.href=phone?('tel:'+phone):'#';callBtn.style.opacity=phone?'1':'.4';callBtn.style.pointerEvents=phone?'':'none';
   crmpxUpdateContactLinks();
+  // RUNDE S — ekstra tlf/email/adresser på selve LEADET (crm_leads har egne
+  // felter, i modsætning til en opportunity der låner crm_contacts — se
+  // header-kommentaren ved CC_KIND_META). Kun leads har disse felter synlige
+  // overhovedet (se display:none-linjerne to linjer nedenfor), så det er
+  // trygt at kalde uanset entityType — for en opportunity findes
+  // -extra-containerne bare ikke i DOM'et lige nu, og ccLoadAndRenderExtras
+  // finder derfor ingen elementer at skrive i.
+  if(entityType==='lead')ccLoadAndRenderExtras('crmpx-lead-cc','lead',id);
   document.getElementById('crmpx-opp-fields').style.display=entityType==='opportunity'?'':'none';
   document.getElementById('crmpx-source-field').style.display=entityType==='lead'?'':'none';
   // 📝 Note vises nu for BEGGE typer. Før var sektionen skjult for
@@ -20417,17 +20646,29 @@ async function openCrmpDetail(entityType,id){
       +'<input id="crmpx-contact-phone" class="tld-input crmpx-contact-input" value="'+esc(d.contact_phone||'')+'" placeholder="Telefon">'
       +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-phone" title="Kopiér telefonnummer">📋</button>'
       +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-phone-link" href="#" title="Ring op">📞</a></div>'
+      // RUNDE S — ekstra (ikke-primære) telefonnumre vises herunder, via
+      // ccLoadAndRenderExtras. Selve rækken ovenfor er urørt (RUNDE L).
+      +'<div id="crmpx-cc-phone-extra"></div>'
       +'<div class="crmpx-contact-row"><span class="crmpx-contact-icon">📧</span>'
       +'<input id="crmpx-contact-email" class="tld-input crmpx-contact-input" type="email" value="'+esc(d.contact_email||'')+'" placeholder="Email">'
       +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-email" title="Kopiér email">📋</button>'
       +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-email-link" href="#" target="_blank" rel="noopener" title="Skriv en mail">✉️</a></div>'
+      +'<div id="crmpx-cc-email-extra"></div>'
       +'<div class="crmpx-contact-row"><span class="crmpx-contact-icon">📍</span>'
       +'<input id="crmpx-contact-address" class="tld-input crmpx-contact-input" value="'+esc(d.contact_address||'')+'" placeholder="Adresse">'
       +'<button type="button" class="qz-icon-btn crmpx-field-btn" data-crmpx-copy="crmpx-contact-address" title="Kopiér adresse">📋</button>'
-      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-address-link" href="#" target="_blank" rel="noopener" title="Vis på Google Maps">📍</a></div>';
+      +'<a class="qz-icon-btn crmpx-field-btn" id="crmpx-contact-address-link" href="#" target="_blank" rel="noopener" title="Vis på Google Maps">📍</a></div>'
+      +'<div id="crmpx-cc-address-extra"></div>';
     // Kortet gen-renderes hver gang siden åbnes, så hrefs sættes HER (den
     // tidligere crmpxUpdateContactLinks()-kald ovenfor kørte før kortet fandtes).
     crmpxUpdateContactLinks();
+    // RUNDE S — ekstra tlf/email/adresser på selve kontakten (crm_contacts-
+    // rækken, koblet via d.contact_id). Kun de EKSTRA værdier vises her (se
+    // ccLoadAndRenderExtras og komponent-headerkommentaren ovenfor) — den
+    // polerede primær-række ovenfor (RUNDE L) rører vi ikke ved. Ingen
+    // kontakt koblet endnu (fx et helt nyt lead der ikke er konverteret) →
+    // spring over, ccLoadAndRenderExtras tjekker selv for manglende ownerId.
+    if(d.contact_id)ccLoadAndRenderExtras('crmpx-cc','contact',d.contact_id);
   }
   crmpxRenderActivity(d.activities||[]);
   crmpxLoadTasks();
@@ -24130,6 +24371,18 @@ function qeCombineCrmNote(d){
   return parts.join('\n\n');
 }
 async function openQuoteEditor(id,prefillCustomer){
+  // RUNDE S — hvis editoren allerede var åben med et ANDET tilbud (eller et
+  // helt nyt, endnu ikke gemt), og der stod ugemte ændringer og ventede i
+  // autogem-debouncen, skal de gemmes FØR qeState nulstilles nedenfor — ellers
+  // ville et hurtigt "åbn tilbud A → klik straks videre til tilbud B" kunne
+  // tabe de sidste <900ms af arbejdet på A. Se qeFlushAutoSave.
+  qeFlushAutoSave();
+  // Undertrykker autogem mens VI SELV fylder felterne ind herunder (ellers
+  // ville det tælle som en "brugerredigering" og trigge et unødvendigt
+  // autogem-kald af præcis de data der lige blev indlæst) — slås til igen
+  // helt til sidst i funktionen, se kommentaren dernede.
+  qeAutoSaveSuppressed=true;
+  document.getElementById('qe-save-status').textContent='';
   // directInvoice=false nulstilles her hver gang — se openDirectInvoiceEditor()
   // nedenfor, som sætter den til true EFTER dette kald. qe-status-select og
   // "Gyldig til" (begge tilbuds-specifikke begreber, giver ikke mening for en
@@ -24248,6 +24501,12 @@ async function openQuoteEditor(id,prefillCustomer){
     }
   }
   qeRenderCrmLinkChip();
+  // RUNDE S — fælles for BÅDE et eksisterende tilbud og et nyt/forudfyldt et:
+  // qeState.crmEntityType/-Id og customerId er sat ovenfor uanset hvilken
+  // gren der blev kørt, så ét kald her dækker det hele. Ingen ejer fundet
+  // (helt nyt, tomt tilbud uden kobling) → funktionen skjuler bare eventuelle
+  // dropdowns fra et tidligere åbnet tilbud i samme session.
+  qeLoadContactSwitchers();
   renderQeLines();
   qeRecalc();
   // Egen side (ikke popup) — se kommentaren ved #qz-detail-view i HTML'en.
@@ -24274,6 +24533,13 @@ async function openQuoteEditor(id,prefillCustomer){
   qeAdjustPreviewHeight();
   if(id)navPushHash('quotes/tilbud/'+id);
   else navPushHash('quotes');
+  // RUNDE S — slår autogem til igen, nu hvor alle felterne er færdigfyldt fra
+  // det tilbud der blev åbnet (eller nulstillet for et nyt). En lille
+  // forsinkelse (ikke med det samme) er med vilje: et par af felterne ovenfor
+  // udløser selv 'input'/'change' på vej ind (fx qe-doc-discount-type sat via
+  // .value=), og uden forsinkelsen ville det tælle som brugerens egen
+  // redigering og trigge et unødvendigt "gensav det der lige blev indlæst".
+  setTimeout(function(){qeAutoSaveSuppressed=false;},300);
 }
 // RUNDE I (sep. 2026, Martins ønske): "Direkte faktura" — når prisen er aftalt
 // mundtligt/direkte med kunden, og der IKKE skal laves et tilbud først. Genbruger
@@ -24825,6 +25091,14 @@ function qeRecalc(){
   qeRenderTotals();
   clearTimeout(qePreviewRenderTimer);
   qePreviewRenderTimer=setTimeout(qeRenderPreview,150);
+  // RUNDE S — qeRecalc() kaldes allerede efter STORT SET enhver ændring i
+  // tilbudseditoren (linjer tilføjet/redigeret/fjernet/omrokeret, kunde valgt,
+  // rabat, felterne i qe-field-row-listen, se lytterne nederst i filen) — det
+  // gør den til det ene, naturlige sted at hægte autogemmet på, i stedet for
+  // at skulle binde endnu et sæt lyttere op til de samme felter. Se
+  // qeAutoSaveDebounced (tjekker selv qeAutoSaveSuppressed/directInvoice/
+  // minimumskrav — helt ufarligt at kalde den for tit).
+  qeAutoSaveDebounced();
 }
 function qeRunCustomerSearch(q){
   var box=document.getElementById('qe-customer-results');
@@ -24875,6 +25149,10 @@ async function qePickCrmLink(x){
   // vise den med det samme, uden at man først skal gemme og genåbne tilbuddet.
   var full=await api('/api/crm/'+(x.type==='lead'?'leads':'opportunities')+'/'+x.id);
   qeRenderCrmNotePanel(full&&!full.error?qeCombineCrmNote(full):'',x.type,x.name);
+  // RUNDE S — en manuel kobling til et lead/en handel her (efter tilbuddet er
+  // startet) skal også tilbyde skift-dropdowns for DEN kobling, ikke kun for
+  // den evt. tidligere valgte kunde.
+  qeLoadContactSwitchers();
 }
 function qeUnlinkCrm(){
   qeState.crmEntityType=null;qeState.crmEntityId=null;qeState.crmEntityName=null;
@@ -24897,6 +25175,63 @@ function qePickCustomer(r){
   document.getElementById('qe-customer-results').style.display='none';
   qeState.customerId=r.customer_id||null;
   qeRecalc();
+  // RUNDE S — se kommentaren ved qe-customer-*-switch i HTML'en. Felterne
+  // ovenfor er lige blevet sat til kundens PRIMÆRE tlf/email/adresse (det er
+  // hvad customers.phone/email/address altid er, jf. contact_channels-synken)
+  // — her tjekkes om der findes FLERE værdier at vælge imellem.
+  qeLoadContactSwitchers();
+}
+// RUNDE S — finder ud af hvilken contact_channels-"ejer" tilbuddets kunde-felter
+// hører til lige nu, i prioriteret rækkefølge: et koblet lead/opportunity (mest
+// specifikt — det er DEN kontakt/det lead tilbuddet reelt handler om) vinder
+// over den afledte customerId (som kan være en bredere/ældre kundepost, fx hvis
+// kontaktens telefonnummer for nylig blev skiftet ud og en ny kunde-kobling endnu
+// ikke er lavet). En opportunity har ingen egne phone/email/address-kolonner
+// (se header-kommentaren ved CC_KIND_META) — kanalerne ligger på den KOBLEDE
+// crm_contacts-række (contact_id), så den skal slås op separat.
+async function qeResolveContactOwner(){
+  if(qeState.crmEntityType==='lead'&&qeState.crmEntityId){
+    return {ownerType:'lead',ownerId:qeState.crmEntityId};
+  }
+  if(qeState.crmEntityType==='opportunity'&&qeState.crmEntityId){
+    var opp=await api('/api/crm/opportunities/'+qeState.crmEntityId);
+    if(opp&&!opp.error&&opp.contact_id)return {ownerType:'contact',ownerId:opp.contact_id};
+  }
+  if(qeState.customerId){
+    return {ownerType:'customer',ownerId:qeState.customerId};
+  }
+  return null;
+}
+// RUNDE S — viser en lille "skift værdi"-dropdown under tlf/email/adresse-
+// felterne, men KUN når der rent faktisk er mere end én værdi af den slags at
+// vælge imellem (ellers ingen grund til at rode UI'et til). Selve inputfeltet
+// rører vi IKKE ved her — det står allerede med den primære værdi (eller,
+// for et allerede gemt tilbud, den værdi tilbuddet blev gemt med) — dropdownen
+// er kun en genvej til at SKIFTE, aldrig en automatisk overskrivning.
+async function qeLoadContactSwitchers(){
+  var kinds=['phone','email','address'];
+  kinds.forEach(function(kind){
+    var wrap=document.getElementById('qe-customer-'+kind+'-switch');
+    if(wrap){wrap.innerHTML='';wrap.style.display='none';}
+  });
+  var owner=await qeResolveContactOwner();
+  if(!owner)return;
+  var list=await ccFetchChannels(owner.ownerType,owner.ownerId);
+  kinds.forEach(function(kind){
+    var wrap=document.getElementById('qe-customer-'+kind+'-switch');
+    var field=document.getElementById('qe-customer-'+kind);
+    if(!wrap||!field)return;
+    var opts=list.filter(function(c){return c.kind===kind;});
+    if(opts.length<2)return; // kun visning ved reelt valg — 0 eller 1 værdi = ingen dropdown
+    var currentVal=field.value;
+    var hasMatch=opts.some(function(c){return c.value===currentVal;});
+    var extraOpt=(!hasMatch&&currentVal)?'<option value="'+esc(currentVal)+'" selected>'+esc(currentVal)+' (nuværende)</option>':'';
+    wrap.innerHTML='<select class="qe-input" style="font-size:12px;padding:4px 8px;height:auto" title="Skift til en anden gemt '+(kind==='phone'?'telefon':kind==='email'?'email':'adresse')+'" onchange="document.getElementById(\'qe-customer-'+kind+'\').value=this.value">'
+      +extraOpt
+      +opts.map(function(c){return '<option value="'+esc(c.value)+'"'+(c.value===currentVal?' selected':'')+'>'+esc(c.value)+(c.is_primary?' (primær)':'')+'</option>';}).join('')
+      +'</select>';
+    wrap.style.display='';
+  });
 }
 async function qeStatusChanged(e){
   if(!qeState.id){e.target.value='draft';toast('Gem tilbuddet først, før du kan ændre status','ℹ️');return;}
@@ -24919,10 +25254,12 @@ async function qeStatusChanged(e){
   }
   else{toast((r&&r.error)||'Kunne ikke opdatere status','❌');qePopulateStatusSelect(qeState.lastStatus);}
 }
-async function saveQuoteEditor(asDraft){
+// RUNDE S — udtrukket fra saveQuoteEditor (som den var, uændret adfærd) til sin
+// egen funktion, så BÅDE det manuelle "💾 Gem"-klik og den nye autogem-funktion
+// (qeAutoSave, se nedenfor) bygger PRÆCIS samme body ud fra de samme felter —
+// ingen risiko for at de to veje langsomt kommer til at afvige fra hinanden.
+function qeBuildSaveBody(){
   var jobName=document.getElementById('qe-customer-search').value.trim();
-  if(!jobName){toast('Angiv kunde/sag','⚠️');return;}
-  if(!qeState.lines.length){toast('Tilføj mindst én linje','⚠️');return;}
   var body={
     job_name:jobName,
     customer_id:qeState.customerId||null,
@@ -24947,6 +25284,13 @@ async function saveQuoteEditor(asDraft){
   // Andre felter (kunde/noter/gyldig til/rabat) kan stadig gemmes som hidtil.
   var hasInvoices=!!(qeState.invStatus&&qeState.invStatus.invoices&&qeState.invStatus.invoices.length);
   if(!hasInvoices)body.lines=qeState.lines;
+  return body;
+}
+async function saveQuoteEditor(asDraft){
+  var jobName=document.getElementById('qe-customer-search').value.trim();
+  if(!jobName){toast('Angiv kunde/sag','⚠️');return;}
+  if(!qeState.lines.length){toast('Tilføj mindst én linje','⚠️');return;}
+  var body=qeBuildSaveBody();
   // RUNDE I (sep. 2026): direkte faktura opretter ALDRIG et tilbud undervejs —
   // egen rute, egen succes-håndtering (lukker editoren og åbner den nye faktura,
   // ligesom "Konvertér til faktura" gør for et rigtigt tilbud).
@@ -24963,7 +25307,20 @@ async function saveQuoteEditor(asDraft){
     } else toast((dr&&dr.error)||'Kunne ikke oprette fakturaen','❌');
     return;
   }
-  var r=qeState.id?await api('/api/quotes/'+qeState.id,{method:'PUT',body:JSON.stringify(body)}):await api('/api/quotes',{method:'POST',body:JSON.stringify(body)});
+  // RUNDE S — et evt. ventende autogem-kald (fra qeAutoSaveDebounced) annulleres
+  // her, FØR vi selv gemmer og bagefter genindlæser hele editoren via
+  // openQuoteEditor(). Uden dette kunne en timer der stadig var i gang nå at
+  // fyre MIDT i den genindlæsning og læse felter der lige er ved at blive
+  // nulstillet — se qeCancelPendingAutoSave.
+  qeCancelPendingAutoSave();
+  // RUNDE S — se den store kommentar ved qeEnqueueSave: går igennem SAMME kø
+  // som autogemmet, så et evt. autogem-kald der allerede var i gang (og derfor
+  // ikke nåede at blive annulleret af qeCancelPendingAutoSave ovenfor) garanteret
+  // er helt færdigt FØR dette kald selv beslutter PUT vs. POST — ellers risikerer
+  // et klik på "💾 Gem" i præcis det forkerte øjeblik at oprette et duplikat-tilbud.
+  var r=await qeEnqueueSave(function(){
+    return qeState.id?api('/api/quotes/'+qeState.id,{method:'PUT',body:JSON.stringify(body)}):api('/api/quotes',{method:'POST',body:JSON.stringify(body)});
+  });
   if(r&&r.ok){
     toast('Tilbud gemt','✓');
     await loadQzQuotes();renderQzQuotes();
@@ -24974,6 +25331,154 @@ async function saveQuoteEditor(asDraft){
     await openQuoteEditor(qeState.id||r.id);
   } else toast((r&&r.error)||'Kunne ikke gemme tilbuddet','❌');
 }
+// ══════════════════════════════════════════════════════════════
+// RUNDE S — AUTOGEM AF TILBUD (Martins ønske: "Kan du gøre sådan at hvis jeg
+// er i gang med at lave et tilbud og jeg trykker ud af siden, at den spørg om
+// jeg vil gemme tilbuddet, eller at den bare automtisk gemmer? det nok fedest
+// ved dog ikke om det er muligt?" — valgt løsning: STILLE autogem, ligesom
+// crmpxAutoSave for leads/opportunities, IKKE en "vil du gemme?"-dialog, da
+// Martin selv pegede på det som den bedste løsning). Samme mønster som
+// crmpxAutoSave: debounce (crmpxDebounce, genbrugt herfra) + en lille
+// "Gemmer…/Gemt ✓"-pil ved siden af tilbudsnummeret (#qe-save-status), ingen
+// toast ved hvert kald (kun ved reelle fejl — en toast for hver 900ms mens
+// man skriver ville være larmende).
+//
+// TRE BEVIDSTE VALG/BEGRÆNSNINGER:
+//  1) Kører KUN et rigtigt tilbud i editoren — ALDRIG en direkte faktura
+//     (qeState.directInvoice), som er sin egen atomare opret-handling uden
+//     kladde-begreb, se guard nedenfor.
+//  2) Samme minimumskrav som det manuelle "💾 Gem" (sagsnavn + mindst én
+//     linje) — men autogem springer BARE stille over og venter i stedet for
+//     at afbryde med en advarsels-toast, som ellers ville dukke op konstant
+//     mens man er ved at skrive sagsnavnet ind på et helt nyt tilbud.
+//  3) Ved FØRSTE vellykkede autogem af et HELT NYT tilbud (intet qeState.id
+//     endnu) sættes id/tilbudsnummer stille, så efterfølgende autogem bruger
+//     PUT i stedet for at oprette et nyt tilbud for hvert kald — men resten
+//     af "nu er det et rigtigt tilbud"-UI'et (PDF-/Send-/Del-knapper,
+//     aktivitetslog osv.) opdateres bevidst IKKE her (ville kræve at
+//     genindlæse hele editoren, med samme fokus-mistet-risiko som det
+//     manuelle Gem har valgt at acceptere via en hel gensidning). Det sker
+//     i stedet næste gang man selv trykker "💾 Gem", eller åbner tilbuddet
+//     igen — autogem's eneste opgave er at INTET ARBEJDE GÅR TABT.
+var qeAutoSaveSuppressed=false; // se openQuoteEditor — sand mens editoren selv fylder felterne ved åbning
+var qeSaveStatusClearTimer=null;
+function qeShowSaveStatus(text,isError){
+  var el=document.getElementById('qe-save-status');
+  if(!el)return;
+  el.textContent=text;
+  el.style.color=isError?'#DC2626':'';
+  clearTimeout(qeSaveStatusClearTimer);
+  if(!isError)qeSaveStatusClearTimer=setTimeout(function(){if(el.textContent===text)el.textContent='';},2000);
+}
+var qeAutoSaveDebounceTimer=null;
+function qeCancelPendingAutoSave(){
+  clearTimeout(qeAutoSaveDebounceTimer);
+}
+// RUNDE S — FEJLRETTELSE (fundet under Playwright-test af samspillet mellem
+// autogem og det manuelle "💾 Gem"): hvis man klikkede "Gem" i PRÆCIS det
+// øjeblik den debouncede autogem-timer selv nåede at fyre (fx lige efter man
+// er stoppet med at skrive), kunne BEGGE nå at sende et "opret tilbud"-kald
+// (POST) næsten samtidig, før nogen af dem havde fået et id tilbage at
+// annullere den anden med — resultat: to ens tilbud oprettet af ét klik.
+// qeCancelPendingAutoSave() alene løser kun den halvdel hvor timeren stadig
+// var UAFVIKLET — ikke hvis den allerede var i gang med selve netværkskaldet.
+// Løsningen er en simpel kø: ALT der rent faktisk sender et gem-kald til
+// serveren (autogem OG det manuelle Gem) går igennem qeEnqueueSave, som
+// garanterer at de kører ét ad gangen, i rækkefølge — aldrig samtidig. Det
+// andet kald i køen ser derfor altid qeState.id sat af det FØRSTE (og bruger
+// derfor korrekt PUT i stedet for endnu et POST).
+var qeSaveQueue=Promise.resolve();
+function qeEnqueueSave(taskFn){
+  var p=qeSaveQueue.then(taskFn,taskFn); // kør uanset om forrige led i køen fejlede
+  qeSaveQueue=p.catch(function(){}); // ...men lad ALDRIG køen selv gå i fejltilstand permanent
+  return p;
+}
+// keepaliveFlush=true bruges KUN af beforeunload-backstoppet nedenfor — sender
+// requesten med fetch keepalive:true, som (i modsætning til almindelig fetch)
+// er specificeret til at måtte fortsætte selvom siden lukkes/genindlæses lige
+// bagefter. Bruges IKKE ved normale autogem-kald (unødvendigt, og keepalive
+// har en lav samlet størrelsesgrænse man ikke skal bruge i utide).
+function qeAutoSave(keepaliveFlush){
+  if(qeAutoSaveSuppressed||!qeState||qeState.directInvoice)return Promise.resolve();
+  var jobNameEl=document.getElementById('qe-customer-search');
+  if(!jobNameEl)return Promise.resolve(); // editoren er slet ikke åben lige nu
+  if(!jobNameEl.value.trim()||!qeState.lines.length)return Promise.resolve(); // samme minimumskrav som manuelt Gem — venter bare stille
+  return qeEnqueueSave(async function(){
+    // Gentjekker minimumskravene HER (ikke kun ovenfor) — tilstanden kan sagtens
+    // have ændret sig mens dette kald ventede i køen på tur (fx et manuelt Gem
+    // der nåede at køre openQuoteEditor() færdig og nulstille alting imens).
+    if(qeAutoSaveSuppressed||!qeState||qeState.directInvoice)return;
+    var jobNameEl2=document.getElementById('qe-customer-search');
+    if(!jobNameEl2||!jobNameEl2.value.trim()||!qeState.lines.length)return;
+    // RUNDE S — VIGTIGT: gemmer en reference til DEN qeState der gælder lige nu.
+    // qeState er et HELT NYT objekt hver gang openQuoteEditor() kaldes (ikke
+    // genbrugt/muteret) — og qeFlushAutoSave() kalder bevidst denne funktion
+    // UDEN at afvente den, lige før openQuoteEditor selv nulstiller qeState til
+    // et nyt tilbud. Uden 'stateRef' herunder ville et svar der når frem for
+    // SENT (efter qeState allerede er skiftet til det NYE tilbud) skrive det
+    // forkerte id ind i det forkerte objekt.
+    var stateRef=qeState;
+    qeShowSaveStatus('Gemmer…');
+    var body=qeBuildSaveBody();
+    var opts={method:stateRef.id?'PUT':'POST',body:JSON.stringify(body)};
+    if(keepaliveFlush)opts.keepalive=true;
+    var r=stateRef.id?await api('/api/quotes/'+stateRef.id,opts):await api('/api/quotes',opts);
+    if(r&&r.ok){
+      if(qeState===stateRef)qeShowSaveStatus('Gemt ✓'); // undlad at opdatere pillen hvis brugeren nåede at åbne et andet tilbud i mellemtiden
+      if(!stateRef.id){
+        // Se punkt 3) i kommentaren ved autogem-headeren ovenfor.
+        stateRef.id=r.id;
+        stateRef.quoteNumber=r.quote_number;
+        if(qeState===stateRef)document.getElementById('qe-title').textContent=r.quote_number;
+        loadQzQuotes().then(renderQzQuotes);
+      }
+    } else {
+      if(qeState===stateRef)qeShowSaveStatus('Kunne ikke gemme',true);
+      toast((r&&r.error)||'Kunne ikke gemme tilbuddet automatisk','❌');
+    }
+  });
+}
+// Egen lille debounce i stedet for den delte crmpxDebounce(): qeCancelPendingAutoSave
+// (kaldt fra saveQuoteEditor og qeFlushAutoSave) skal kunne annullere en
+// ventende timer udefra, hvilket crmpxDebounce's egen skjulte closure-variabel
+// ikke tillader.
+function qeAutoSaveDebounced(){
+  // Undlader helt at sætte en timer mens suppressed er sand (editoren fylder
+  // selv felterne ind lige nu ved åbning) — ellers ville en timer sat HERUNDER
+  // godt kunne nå at fyre EFTER qeAutoSaveSuppressed er slået fra igen til
+  // sidst i openQuoteEditor, og dermed alligevel udløse et unødvendigt
+  // "gensav det der lige blev indlæst"-kald et lille øjeblik efter siden åbnede.
+  if(qeAutoSaveSuppressed)return;
+  clearTimeout(qeAutoSaveDebounceTimer);
+  qeAutoSaveDebounceTimer=setTimeout(function(){qeAutoSave(false);},900);
+}
+// Kaldes ved at FORLADE tilbudseditoren (se qzShowDetailView/beforeunload
+// nedenfor) — springer det ventende debounce-interval over og gemmer MED DET
+// SAMME, så et hurtigt klik væk lige efter en rettelse ikke taber de sidste
+// <900ms af arbejdet. Fire-and-forget: SPA-navigation genstarter ikke siden,
+// så det igangværende fetch-kald fuldføres i baggrunden uanset at brugeren
+// allerede kigger på en anden side.
+function qeFlushAutoSave(){
+  if(!document.getElementById('qe-customer-search'))return;
+  qeCancelPendingAutoSave();
+  qeAutoSave(false);
+}
+// RUNDE S — backstop for det tilfælde SPA-navigationen ovenfor ikke dækker:
+// brugeren lukker selve browser-fanen, genindlæser siden (F5) eller taster en
+// ny adresse, MENS tilbudseditoren er åben og der er ugemte, endnu ikke
+// autogemte ændringer (dvs. inden for det sidste <900ms). fetch(...,
+// {keepalive:true}) (se qeAutoSave) er den moderne, understøttede måde at lade
+// en sidste netværksrequest fuldføre selvom siden er ved at forsvinde — i
+// modsætning til navigator.sendBeacon() kan den bruge almindelige headers
+// (Authorization: Bearer-token'et), som denne app kræver på ALLE API-kald.
+// Ingen "vil du forlade siden?"-dialog vises — Martin pegede selv på stille
+// autogem som den bedste løsning, ikke en bekræftelsesboks der afbryder.
+window.addEventListener('beforeunload',function(){
+  if(document.getElementById('qz-detail-view')&&document.getElementById('qz-detail-view').style.display!=='none'){
+    qeCancelPendingAutoSave();
+    qeAutoSave(true);
+  }
+});
 // RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: "Konvertér til faktura" åbner nu
 // en linjevalgs-modal i stedet for kun en ja/nej-bekræftelse. Henter friske
 // faktureringstal ved KLIK (ikke genbruger qeState.invStatus fra editor-åbningen),
@@ -25790,7 +26295,11 @@ function bindQuotesModuleEvents(){
     qeCustomerSearchTimer=setTimeout(function(){qeRunCustomerSearch(q);},150);
     qeRecalc();
   });
-  ['qe-customer-address','qe-customer-phone','qe-customer-email','qe-valid-until','qe-notes','qe-top-note'].forEach(function(id){
+  // RUNDE S — 'qe-internal-note' tilføjet til listen (manglede før — feltet
+  // udløste hverken genberegning eller, nu, autogem ved redigering, kun ved
+  // manuelt klik på "💾 Gem"). Påvirker ikke totaler (samme som notes/top-note),
+  // men skal stadig trigge autogem, se qeRecalc → qeAutoSaveDebounced nedenfor.
+  ['qe-customer-address','qe-customer-phone','qe-customer-email','qe-valid-until','qe-notes','qe-top-note','qe-internal-note'].forEach(function(id){
     document.getElementById(id).addEventListener('input',qeRecalc);
   });
   document.getElementById('qe-crm-link-search').addEventListener('input',function(e){
