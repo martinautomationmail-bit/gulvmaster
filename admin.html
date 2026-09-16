@@ -3204,7 +3204,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.2</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.3</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -25345,8 +25345,20 @@ async function openInvoiceDetail(id){
   document.getElementById('iv-payments-list').innerHTML=(inv.payments||[]).length?inv.payments.map(function(p){
     return '<div class="iv-payment-row"><div><b>'+krFmt(Number(p.amount))+'</b><div class="iv-payment-meta">'+esc(p.paid_at)+(p.method?' · '+esc(p.method):'')+(p.note?' · '+esc(p.note):'')+'</div></div><button class="qz-icon-btn" onclick="deleteIvPayment('+p.id+')" title="Fjern">✕</button></div>';
   }).join(''):'<div class="sub">Ingen betalinger registreret endnu</div>';
+  // RETTELSE (okt. 2026, Martins fejlrapport: "får jeg denne fejl når jeg åbner
+  // PDF'en" — {"error":"No token"} på /api/credit-notes/:id/pdf) — BUG: "📄 Åbn
+  // PDF" var et almindeligt <a href="..." target="_blank">-link direkte til
+  // API-ruten. Den rute (som alle andre PDF-ruter i appen) kræver et
+  // Authorization-headers med login-token — men en almindelig linkklik/ny-faneblad-
+  // navigering kan IKKE sende custom headers, kun en almindelig browser-GET uden
+  // login. Serveren afviser derfor altid med "No token", uanset om man er logget
+  // ind i selve appen. Alle andre PDF-knapper i appen (faktura, tilbud) bruger
+  // allerede korrekt qzOpenPdf() — som henter PDF'en via fetch() MED
+  // Authorization-headeren og åbner den som en blob-URL i nyt vindue — denne var
+  // bare ved en fejl aldrig lavet om til samme mønster dengang kreditnotaer blev
+  // bygget. Nu rettet til samme knap-stil og samme qzOpenPdf()-kald som resten.
   document.getElementById('iv-credit-notes-list').innerHTML=(inv.credit_notes||[]).length?inv.credit_notes.map(function(c){
-    return '<div class="iv-payment-row"><div><b>'+esc(c.credit_note_number)+' — '+krFmt(Number(c.amount))+'</b><div class="iv-payment-meta">'+esc(String(c.created_at||'').slice(0,10))+(c.reason?' · '+esc(c.reason):'')+'</div></div><div style="display:flex;gap:4px"><a class="qz-icon-btn" href="/api/credit-notes/'+c.id+'/pdf" target="_blank" title="Åbn PDF">📄</a><button class="qz-icon-btn" onclick="sendIvCreditNote('+c.id+')" title="Send til kunde">📧</button><button class="qz-icon-btn" onclick="deleteIvCreditNote('+c.id+')" title="Fjern">✕</button></div></div>';
+    return '<div class="iv-payment-row"><div><b>'+esc(c.credit_note_number)+' — '+krFmt(Number(c.amount))+'</b><div class="iv-payment-meta">'+esc(String(c.created_at||'').slice(0,10))+(c.reason?' · '+esc(c.reason):'')+'</div></div><div style="display:flex;gap:4px"><button class="qz-icon-btn" onclick="qzOpenPdf(\'/api/credit-notes/'+c.id+'/pdf\')" title="Åbn PDF">📄</button><button class="qz-icon-btn" onclick="sendIvCreditNote('+c.id+')" title="Send til kunde">📧</button><button class="qz-icon-btn" onclick="deleteIvCreditNote('+c.id+')" title="Fjern">✕</button></div></div>';
   }).join(''):'<div class="sub">Ingen kreditnotaer endnu</div>';
   // RETTELSE (RUNDE J #319) — samme fix: er nu et .iv-more-item.
   document.getElementById('iv-void-btn').style.display=inv.status==='void'?'none':'';
@@ -25864,6 +25876,12 @@ window.deleteIvPayment=deleteIvPayment;
 // der 0 kr tilbage at kreditere, og en ny blev korrekt afvist af serveren.
 window.deleteIvCreditNote=deleteIvCreditNote;
 window.sendIvCreditNote=sendIvCreditNote;
+// RETTELSE (okt. 2026, Martins fejlrapport: "No token"-fejl ved "Åbn PDF" på en
+// kreditnota) — samme fejltype som RUNDE T lige ovenfor: qzOpenPdf() bruges nu
+// (siden denne rettelse) også via onclick="..." i iv-credit-notes-list, og skal
+// derfor eksporteres til window ligesom de to ovenfor, ellers gentager vi
+// PRÆCIS den samme "stille ReferenceError, knappen gør ingenting"-fejl.
+window.qzOpenPdf=qzOpenPdf;
 window.deleteQzQuote=deleteQzQuote;
 window.deleteQzTemplate=deleteQzTemplate;
 window.openContactTemplateModal=openContactTemplateModal;
