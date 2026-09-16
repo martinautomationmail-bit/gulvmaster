@@ -1152,6 +1152,42 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmpx-contact-input{flex:1;min-width:0}
 .crmpx-contact-row .crmpx-field-btn{opacity:0;transition:opacity .12s}
 .crmpx-contact-row:hover .crmpx-field-btn,.crmpx-contact-row:focus-within .crmpx-field-btn{opacity:1}
+/* RUNDE S — FEJLRETTELSE (Martins tilbagemelding på første udgave: "det her ser
+   helt dumt ud ... det skal laves elegant og sexede i eksisterende design").
+   Den oprindelige "+"-multi-værdi-komponent brugte synlige boks-inputs, en
+   orange stjerne-KNAP med baggrund, altid-synlige ✕-knapper og en bred
+   tekst-pille ("+ telefon") — fire ting der IKKE findes noget andet sted i
+   programmet. Genbrugt i stedet: PRÆCIS samme visuelle sprog som
+   .crmpx-contact-row ovenfor (tynd skillelinje mellem rækker, ingen boks om
+   inputtet, handlingsknapper der kun dukker op ved hover) — komponenten
+   bruges nu tre steder (kundekort, opportunity-kontaktkort, lead-felter), så
+   den SKAL matche det udseende Martin allerede har godkendt og bygget videre
+   på (RUNDE L), ikke opfinde sit eget. */
+.cc-row{display:flex;align-items:center;gap:8px;padding:6px 0}
+.cc-row+.cc-row{border-top:1px solid var(--bly-border-soft)}
+.cc-row-star{width:22px;height:22px;border-radius:7px;border:none;background:transparent;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;cursor:pointer;color:var(--bly-border);transition:color .12s,background .12s}
+.cc-row-star:hover{background:var(--bly-border-soft);color:var(--bly-sub)}
+.cc-row-star.is-primary{color:#D97706}
+.cc-row-star.is-primary:hover{color:#D97706}
+.cc-row-input{flex:1;min-width:0;border:none;background:transparent;font-size:13px;font-family:inherit;color:var(--bly-ink);padding:4px 5px;border-radius:6px;transition:background .12s}
+.cc-row-input:hover{background:var(--bly-border-soft)}
+.cc-row-input:focus{outline:none;background:var(--bly-border-soft)}
+.cc-row-remove{flex-shrink:0;opacity:0;transition:opacity .12s,background .12s,color .12s;width:22px;height:22px;border:none;background:transparent;border-radius:7px;color:var(--bly-sub);cursor:pointer;font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.cc-row:hover .cc-row-remove,.cc-row:focus-within .cc-row-remove{opacity:1}
+.cc-row-remove:hover{background:#FEF2F2;color:#DC2626}
+/* Tilføj-rækken ser ud som en fremtidig, endnu-ikke-udfyldt version af de
+   samme rækker ovenfor (samme ikon-badge-bredde, samme borderless input) —
+   IKKE en separat formular klistret nedenunder. */
+.cc-add-row{display:flex;align-items:center;gap:8px;padding:6px 0}
+.cc-add-icon{width:22px;height:22px;border-radius:7px;border:1px dashed var(--bly-border);display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;color:var(--bly-sub);cursor:pointer;background:transparent;transition:.12s}
+.cc-add-icon:hover{border-color:var(--bly-ink);border-style:solid;color:var(--bly-ink);background:var(--bly-border-soft)}
+/* Ekstra-værdier under en allerede eksisterende primær-række (opportunity-
+   kontaktkort/lead-felter) — indrykket til at flugte med selve inputtet i
+   rækken ovenfor (26px ikon-badge + 9px gap, se .crmpx-contact-icon), i
+   stedet for de tidligere fritsvævende rækker med ét stort mellemrum. */
+.cc-extra-wrap{margin-top:2px}
+.cc-extra-wrap .cc-row,.cc-extra-wrap .cc-add-row{padding-left:35px}
+.cc-extra-wrap .cc-row+.cc-row{border-top:none}
 /* Kopiér-knap ved siden af navnet i sidehovedet — samme knap, men følger
    overskriftens højde i stedet for feltets. */
 .crmpx-head-namerow{display:flex;align-items:center;gap:6px}
@@ -3204,7 +3240,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.4</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.5</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -19012,16 +19048,16 @@ async function ccLoadAndRenderAll(prefix,ownerType,ownerId){
 function ccRenderGroupHtml(prefix,ownerType,ownerId,kind,channels){
   var meta=CC_KIND_META[kind];
   var rows=channels.map(function(c){
-    return '<div class="cc-row" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
-      +'<button type="button" class="qz-icon-btn" style="'+(c.is_primary?'color:#D97706':'color:var(--bly-sub)')+'" title="'+(c.is_primary?'Primær':'Gør primær')+'" onclick="ccSetPrimary('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'+(c.is_primary?'★':'☆')+'</button>'
-      +'<input class="input" style="flex:1" type="'+meta.inputType+'" value="'+esc(c.value)+'" onchange="ccUpdateValue('+c.id+',this.value,\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'
-      +'<button type="button" class="qz-icon-btn" title="Fjern" onclick="ccRemove('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">✕</button>'
+    return '<div class="cc-row">'
+      +'<button type="button" class="cc-row-star'+(c.is_primary?' is-primary':'')+'" title="'+(c.is_primary?'Primær':'Gør primær')+'" onclick="ccSetPrimary('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'+(c.is_primary?'★':'☆')+'</button>'
+      +'<input class="cc-row-input" type="'+meta.inputType+'" value="'+esc(c.value)+'" onchange="ccUpdateValue('+c.id+',this.value,\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'
+      +'<button type="button" class="cc-row-remove" title="Fjern" onclick="ccRemove('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">✕</button>'
       +'</div>';
   }).join('');
   return rows
-    +'<div class="cc-add-row" style="display:flex;gap:6px;margin-top:4px">'
-    +'<input class="input" style="flex:1" type="'+meta.inputType+'" placeholder="'+meta.placeholder+'" id="'+prefix+'-'+kind+'-new" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\');}">'
-    +'<button type="button" class="bly-btn outline small" title="'+meta.addLabel+'" onclick="ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\')">+</button>'
+    +'<div class="cc-add-row">'
+    +'<button type="button" class="cc-add-icon" title="'+meta.addLabel+'" onclick="ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\')">+</button>'
+    +'<input class="cc-row-input" type="'+meta.inputType+'" placeholder="'+meta.placeholder+'" id="'+prefix+'-'+kind+'-new" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\');}">'
     +'</div>';
 }
 // KUN de ekstra (ikke-primære) værdier + en lille "+"-tilføj-linje — brugt ved
@@ -19036,17 +19072,20 @@ async function ccLoadAndRenderExtras(prefix,ownerType,ownerId){
     var extras=list.filter(function(c){return c.kind===kind&&!c.is_primary;});
     var meta=CC_KIND_META[kind];
     var rows=extras.map(function(c){
-      return '<div class="cc-row" style="display:flex;align-items:center;gap:6px;margin:4px 0 0 26px">'
-        +'<button type="button" class="qz-icon-btn" style="color:var(--bly-sub)" title="Gør primær" onclick="ccSetPrimary('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">☆</button>'
-        +'<input class="input" style="flex:1" type="'+meta.inputType+'" value="'+esc(c.value)+'" onchange="ccUpdateValue('+c.id+',this.value,\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'
-        +'<button type="button" class="qz-icon-btn" title="Fjern" onclick="ccRemove('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">✕</button>'
+      return '<div class="cc-row">'
+        +'<button type="button" class="cc-row-star" title="Gør primær" onclick="ccSetPrimary('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">☆</button>'
+        +'<input class="cc-row-input" type="'+meta.inputType+'" value="'+esc(c.value)+'" onchange="ccUpdateValue('+c.id+',this.value,\''+prefix+'\',\''+ownerType+'\','+ownerId+')">'
+        +'<button type="button" class="cc-row-remove" title="Fjern" onclick="ccRemove('+c.id+',\''+prefix+'\',\''+ownerType+'\','+ownerId+')">✕</button>'
         +'</div>';
     }).join('');
-    el.innerHTML=rows
-      +'<div class="cc-add-row" style="display:flex;gap:6px;margin:4px 0 0 26px">'
-      +'<input class="input" style="flex:1" type="'+meta.inputType+'" placeholder="'+meta.placeholder+' (ekstra)" id="'+prefix+'-'+kind+'-new" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\');}">'
-      +'<button type="button" class="bly-btn outline small" title="'+meta.addLabel+'" onclick="ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\')">'+meta.addLabel+'</button>'
-      +'</div>';
+    // .cc-extra-wrap rykker rækkerne ind under den eksisterende primær-række
+    // ovenfor (se CSS) — matcher bredden af dens ikon-badge, så det ser ud som
+    // én sammenhængende liste og ikke en løsrevet mini-formular.
+    el.innerHTML='<div class="cc-extra-wrap">'+rows
+      +'<div class="cc-add-row">'
+      +'<button type="button" class="cc-add-icon" title="'+meta.addLabel+'" onclick="ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\')">+</button>'
+      +'<input class="cc-row-input" type="'+meta.inputType+'" placeholder="'+meta.placeholder+' (ekstra)" id="'+prefix+'-'+kind+'-new" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ccAddValue(\''+prefix+'\',\''+ownerType+'\','+ownerId+',\''+kind+'\');}">'
+      +'</div></div>';
   });
 }
 // Fælles genindlæsningsfunktion — vælges automatisk ud fra hvilken slags
