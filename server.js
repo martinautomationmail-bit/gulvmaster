@@ -8770,6 +8770,64 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
   res.json(out);
 }));
 
+// RUNDE R (sep. 2026, Martins ønske: "kreditnote skal ... ændre kunden skyldige
+// beløb ... vise det tydeligt i toppen af siden ... og andre steder, så det er
+// klart kunden ikke skylder det der krediteret mere") — der fandtes IKKE noget
+// "skyldigt beløb pr. kunde"-begreb overhovedet i appen før nu: kun PR. FAKTURA
+// (invoices.total minus betalinger minus kreditnotaer, se loadInvoiceFull/
+// refreshInvoiceStatus nedenfor) — aldrig summeret op på tværs af en kundes
+// fakturaer. Denne funktion er det ene sted den beregning sker, så kundelisten,
+// kundekortet og CRM-kundekortet aldrig kan komme til at vise forskellige tal
+// for "hvad skylder denne kunde".
+//
+// VIGTIGT datakvalitets-hensyn: fakturaer har HISTORISK ikke altid en udfyldt
+// customer_id (se skema-kommentaren ved invoices.customer_id ovenfor — kolonnen
+// kom først til senere, og mange ældre/manuelt oprettede tilbud/fakturaer har
+// den aldrig fået sat). Et "skyldigt beløb" der KUN kigger på customer_id ville
+// derfor stille vise 0 kr. for en masse kunder med reelt ubetalte fakturaer —
+// det ville gøre funktionen decideret vildledende. Matcher derfor UDOVER
+// customer_id også via quotes.customer_id (den ældre kobling, se GET
+// /api/crm/customers/:id nedenfor) og som sidste fallback på email/telefon —
+// samme dedupliceringsmønster som resolveCustomerId og
+// crmFindOrCreateContactAndCustomer allerede bruger andre steder i appen.
+// 'draft' (endnu ikke sendt) og 'void' (annulleret) fakturaer tæller bevidst
+// ikke med — de er ikke et reelt tilgodehavende.
+async function getCustomerBalanceDue(customerId) {
+  const row = await pgOne(`
+    SELECT COALESCE(SUM(GREATEST(i.total - COALESCE(pay.paid,0) - COALESCE(cred.credited,0), 0)),0)::numeric AS balance
+    FROM invoices i
+    LEFT JOIN quotes q ON q.id = i.quote_id
+    LEFT JOIN (SELECT invoice_id, SUM(amount) AS paid FROM invoice_payments GROUP BY invoice_id) pay ON pay.invoice_id = i.id
+    LEFT JOIN (SELECT invoice_id, SUM(amount) AS credited FROM credit_notes GROUP BY invoice_id) cred ON cred.invoice_id = i.id
+    WHERE i.status NOT IN ('draft','void')
+      AND (
+        i.customer_id = $1
+        OR q.customer_id = $1
+        OR (i.customer_email IS NOT NULL AND i.customer_email <> '' AND lower(i.customer_email) = (SELECT lower(email) FROM customers WHERE id=$1))
+        OR (i.customer_phone IS NOT NULL AND i.customer_phone <> '' AND i.customer_phone = (SELECT phone FROM customers WHERE id=$1))
+      )
+  `, [customerId]);
+  return Number(row && row.balance) || 0;
+}
+// Samme beregning som getCustomerBalanceDue ovenfor, men som ét SQL-udtryk der
+// kan sættes ind i en SELECT for ALLE kunder på én gang (korreleret subquery pr.
+// række via c.id i stedet for $1) — bruges af kundelisten nedenfor, så vi undgår
+// ét ekstra DB-kald pr. kunde (N+1) for at vise "Skyldigt"-kolonnen.
+const CUSTOMER_BALANCE_DUE_SUBQUERY = `(
+  SELECT COALESCE(SUM(GREATEST(i.total - COALESCE(pay.paid,0) - COALESCE(cred.credited,0), 0)),0)
+  FROM invoices i
+  LEFT JOIN quotes q ON q.id = i.quote_id
+  LEFT JOIN (SELECT invoice_id, SUM(amount) AS paid FROM invoice_payments GROUP BY invoice_id) pay ON pay.invoice_id = i.id
+  LEFT JOIN (SELECT invoice_id, SUM(amount) AS credited FROM credit_notes GROUP BY invoice_id) cred ON cred.invoice_id = i.id
+  WHERE i.status NOT IN ('draft','void')
+    AND (
+      i.customer_id = c.id
+      OR q.customer_id = c.id
+      OR (i.customer_email IS NOT NULL AND i.customer_email <> '' AND lower(i.customer_email) = lower(c.email))
+      OR (i.customer_phone IS NOT NULL AND i.customer_phone <> '' AND i.customer_phone = c.phone)
+    )
+)::numeric`;
+
 // ── CRM: KUNDEKARTOTEK — eget kundekartotek Martin kan oprette kunder i
 // direkte, uafhængigt af om der findes en JobTread-sag på dem endnu. ────
 app.get('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
@@ -8781,44 +8839,65 @@ app.get('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async (
   // ORDER BY name (alfabetisk) — nu nyeste først. id DESC frem for created_at DESC,
   // da id (SERIAL, altid udfyldt) er en garanteret monoton oprettelsesrækkefølge,
   // mens ældre rækker fra før created_at-kolonnen fandtes kan mangle værdien.
+  // RUNDE R — "Skyldigt" (balance_due) tilføjet på hver række, se
+  // CUSTOMER_BALANCE_DUE_SUBQUERY-kommentaren ovenfor. Sat ind som en ekstra
+  // kolonne i SELECT'en (ikke et separat kald pr. kunde) i BEGGE grene.
   const rows = q
     ? await pool.query(`
-        SELECT * FROM customers c WHERE
+        SELECT c.*, ${CUSTOMER_BALANCE_DUE_SUBQUERY} AS balance_due FROM customers c WHERE
           c.name ILIKE $1 OR c.email ILIKE $1 OR c.phone ILIKE $1
           OR EXISTS (SELECT 1 FROM quotes qq WHERE qq.customer_id=c.id AND qq.total::text ILIKE $1)
           OR EXISTS (SELECT 1 FROM invoices ii JOIN quotes qq2 ON qq2.id=ii.quote_id WHERE qq2.customer_id=c.id AND ii.total::text ILIKE $1)
         ORDER BY c.id DESC
       `, [`%${q}%`])
-    : await pool.query('SELECT * FROM customers ORDER BY id DESC');
+    : await pool.query(`SELECT c.*, ${CUSTOMER_BALANCE_DUE_SUBQUERY} AS balance_due FROM customers c ORDER BY c.id DESC`);
   res.json(rows.rows);
 }));
 // Kundedetalje — alt data på én kunde samlet: sager (projekter), tilbud og
-// fakturaer. Fakturaer har ingen customer_id-kolonne (de oprettes altid via
-// konverter-fra-tilbud, se /api/quotes/:id/convert-to-invoice), så de findes
-// via invoices.quote_id -> quotes.customer_id i stedet.
+// fakturaer. RUNDE R RETTELSE: fakturaer har FÅET en customer_id-kolonne siden
+// denne kommentar oprindelig blev skrevet (se skema-noten ved
+// invoices.customer_id), men langt fra alle ældre fakturaer har den udfyldt —
+// derfor matches der stadig OGSÅ via invoices.quote_id -> quotes.customer_id
+// (den oprindelige metode), plus email/telefon som sidste fallback, samme
+// tre-trins matchning som getCustomerBalanceDue/CUSTOMER_BALANCE_DUE_SUBQUERY
+// ovenfor bruger — ellers ville en kundes egne fakturaer kunne mangle her.
+//
+// Hver faktura får nu også paid_total/credited_total/remaining med (samme
+// beregning som loadInvoiceFull), og hele svaret får et samlet balance_due for
+// kunden — Martins ønske om at "skyldigt beløb" er synligt på selve kundekortet.
 app.get('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const customer = await pgOne('SELECT * FROM customers WHERE id=$1', [req.params.id]);
   if (!customer) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
-  const [quotes, invoices, projects] = await Promise.all([
+  const [quotes, invoices, projects, balanceDue] = await Promise.all([
     pool.query(`
       SELECT id, quote_number, job_name, status, total, created_at, updated_at
       FROM quotes WHERE customer_id=$1 ORDER BY created_at DESC
     `, [req.params.id]),
     pool.query(`
-      SELECT i.id, i.invoice_number, i.job_name, i.status, i.total, i.due_date, i.created_at
-      FROM invoices i JOIN quotes q ON q.id = i.quote_id
-      WHERE q.customer_id=$1 ORDER BY i.created_at DESC
+      SELECT i.id, i.invoice_number, i.job_name, i.status, i.total, i.due_date, i.created_at,
+             COALESCE(pay.paid,0) AS paid_total, COALESCE(cred.credited,0) AS credited_total,
+             GREATEST(i.total - COALESCE(pay.paid,0) - COALESCE(cred.credited,0), 0) AS remaining
+      FROM invoices i
+      LEFT JOIN quotes q ON q.id = i.quote_id
+      LEFT JOIN (SELECT invoice_id, SUM(amount) AS paid FROM invoice_payments GROUP BY invoice_id) pay ON pay.invoice_id = i.id
+      LEFT JOIN (SELECT invoice_id, SUM(amount) AS credited FROM credit_notes GROUP BY invoice_id) cred ON cred.invoice_id = i.id
+      WHERE i.customer_id=$1 OR q.customer_id=$1
+        OR (i.customer_email IS NOT NULL AND i.customer_email <> '' AND lower(i.customer_email) = (SELECT lower(email) FROM customers WHERE id=$1))
+        OR (i.customer_phone IS NOT NULL AND i.customer_phone <> '' AND i.customer_phone = (SELECT phone FROM customers WHERE id=$1))
+      ORDER BY i.created_at DESC
     `, [req.params.id]),
     pool.query(`
       SELECT id, name, status, quote_id, invoice_id, created_at
       FROM projects WHERE customer_id=$1 ORDER BY created_at DESC
-    `, [req.params.id])
+    `, [req.params.id]),
+    getCustomerBalanceDue(req.params.id)
   ]);
   res.json({
     customer,
     quotes: quotes.rows,
     invoices: invoices.rows,
-    projects: projects.rows
+    projects: projects.rows,
+    balance_due: balanceDue
   });
 }));
 // RUNDE I (Martins ønske: rigtige tal — ikke opdigtede — på Kundekortet inde
@@ -8833,19 +8912,25 @@ app.get('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
 app.get('/api/crm/customers/:id/summary', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
   const customer = await pgOne('SELECT id FROM customers WHERE id=$1', [req.params.id]);
   if (!customer) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
-  const [projectCount, quoteCount, invoiceTotal] = await Promise.all([
+  // RUNDE R — invoice_total ovenfor er (og forbliver) BRUTTO faktureret, uændret
+  // for ikke at ramme andre steder der allerede læser feltet. balance_due er nyt
+  // og NETTO (minus betalinger og kreditnotaer, ligesom getCustomerBalanceDue) —
+  // det tal Martins CRM-mini-kundekort nu også viser ved siden af "faktureret".
+  const [projectCount, quoteCount, invoiceTotal, balanceDue] = await Promise.all([
     pgOne('SELECT COUNT(*)::int AS n FROM projects WHERE customer_id=$1', [req.params.id]),
     pgOne('SELECT COUNT(*)::int AS n FROM quotes WHERE customer_id=$1', [req.params.id]),
     pgOne(`
       SELECT COALESCE(SUM(i.total),0)::numeric AS sum
       FROM invoices i JOIN quotes q ON q.id = i.quote_id
       WHERE q.customer_id=$1
-    `, [req.params.id])
+    `, [req.params.id]),
+    getCustomerBalanceDue(req.params.id)
   ]);
   res.json({
     project_count: projectCount.n,
     quote_count: quoteCount.n,
-    invoice_total: Number(invoiceTotal.sum) || 0
+    invoice_total: Number(invoiceTotal.sum) || 0,
+    balance_due: balanceDue
   });
 }));
 
@@ -17448,11 +17533,29 @@ function drawDocumentPdf(doc, kind, record, company) {
   doc.text(Math.round(Number(record.total)).toLocaleString('da-DK') + ' kr', 457, y + 3, { width: 80, align: 'right' });
   y += 32;
 
-  if (isInvoice && record.paid_total > 0) {
-    y = ensurePdfSpace(doc, y, 36, ctx);
-    doc.fontSize(9.5).fillColor('#15803D').text('Betalt', totalsX, y, { width: 80, align: 'right' });
-    doc.text('-' + Math.round(Number(record.paid_total)).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
-    y += 16;
+  // RUNDE R RETTELSE (Martins ønske: kunden skal tydeligt kunne se på selve
+  // faktura-PDF'en at et krediteret beløb ikke skyldes mere) — BUG: denne blok
+  // (Betalt/Restbeløb) blev hidtil KUN tegnet hvis der var registreret mindst
+  // én betaling (paid_total > 0). En faktura der er blevet krediteret, men hvor
+  // kunden aldrig har betalt noget (fx en ren prisfejl rettet med en kreditnota
+  // FØR kunden nåede at betale), viste derfor stadig kun den fulde, oprindelige
+  // total på selve PDF'en — INTET tegn på at en del af den er krediteret væk.
+  // Betingelsen dækker nu ogå credited_total, og der vises en selvstændig
+  // "Krediteret"-linje (samme røde farve som "Kreditnota"-dokumentets accent)
+  // når der findes en, adskilt fra "Betalt" (grønt) — så det er tydeligt for
+  // kunden PRÆCIS hvor meget der er trukket fra, og af hvilken årsag.
+  if (isInvoice && (record.paid_total > 0 || record.credited_total > 0)) {
+    y = ensurePdfSpace(doc, y, 56, ctx);
+    if (record.paid_total > 0) {
+      doc.fontSize(9.5).fillColor('#15803D').text('Betalt', totalsX, y, { width: 80, align: 'right' });
+      doc.text('-' + Math.round(Number(record.paid_total)).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
+      y += 16;
+    }
+    if (record.credited_total > 0) {
+      doc.fontSize(9.5).fillColor('#DC2626').text('Krediteret', totalsX, y, { width: 80, align: 'right' });
+      doc.text('-' + Math.round(Number(record.credited_total)).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
+      y += 16;
+    }
     doc.fontSize(10).fillColor('#B91C1C').text('Restbeløb', totalsX, y, { width: 80, align: 'right' });
     doc.text(Math.round(Number(record.remaining)).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
     y += 20;

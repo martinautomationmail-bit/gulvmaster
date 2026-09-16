@@ -3204,7 +3204,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.1</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.2</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4540,7 +4540,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="bly-toolbar-right"><button class="bly-btn" id="crm-new-btn" type="button">+ Ny kunde</button></div>
   </div>
   <table class="bly-table">
-    <thead><tr><th>Navn</th><th>Telefon</th><th>E-mail</th><th>Adresse</th><th style="width:90px"></th></tr></thead>
+    <thead><tr><th>Navn</th><th>Telefon</th><th>E-mail</th><th>Adresse</th><th class="num">Skyldigt</th><th style="width:90px"></th></tr></thead>
     <tbody id="crm-body"></tbody>
   </table>
 </section>
@@ -4554,7 +4554,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <h2 id="cd-name">Kunde</h2>
       <div class="sub" id="cd-subtitle">–</div>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <!-- RUNDE R (Martins ønske: "vise det ... tydeligt i toppen af siden ...
+           så det er klart kunden ikke skylder det der krediteret mere") — et
+           samlet "skyldigt beløb" (balance_due fra GET /api/crm/customers/:id,
+           netto: total minus betalinger minus kreditnotaer, på tværs af ALLE
+           kundens fakturaer) har ALDRIG stået noget sted på kundekortet før.
+           Skjules helt hvis kunden ikke skylder noget (0 kr, eller ingen
+           fakturaer) — en tom/grøn boks ville bare være støj. -->
+      <div id="cd-balance-badge" style="display:none;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:var(--bly-r-md);padding:8px 14px;text-align:right">
+        <div style="font-size:11px;color:#B91C1C;font-weight:700;letter-spacing:.02em">💰 SKYLDIGT BELØB</div>
+        <div style="font-size:18px;font-weight:800;color:#B91C1C" id="cd-balance-amount">0 kr</div>
+      </div>
       <a class="bly-btn outline" id="cd-email-btn" href="#" target="_blank">✉️ Email</a>
       <a class="bly-btn outline" id="cd-call-btn" href="#">📞 Ring</a>
       <button class="bly-btn" id="cd-edit-btn" type="button">✎ Redigér kunde</button>
@@ -4633,7 +4644,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
   <h3 style="font-size:14px;margin:22px 0 10px">🧾 Fakturaer <span class="sub" id="cd-invoices-count"></span></h3>
   <table class="bly-table">
-    <thead><tr><th>Nr.</th><th>Sag</th><th>Status</th><th class="num">Beløb</th><th>Forfald</th><th style="width:90px"></th></tr></thead>
+    <!-- RUNDE R RETTELSE — "Rest" tilføjet (viste hidtil kun den oprindelige
+         "Beløb"/total, uanset betalinger/kreditnotaer — så en krediteret faktura
+         så ud til stadig at skylde det fulde beløb, netop det Martin klagede
+         over). "Beløb" er bevidst bevaret ved siden af (den oprindelige total,
+         til reference), "Rest" er det reelle skyldige beløb pr. faktura. -->
+    <thead><tr><th>Nr.</th><th>Sag</th><th>Status</th><th class="num">Beløb</th><th class="num">Rest</th><th>Forfald</th><th style="width:90px"></th></tr></thead>
     <tbody id="cd-invoices-body"></tbody>
   </table>
 
@@ -18760,13 +18776,20 @@ function renderCrmCustomers(){
   var q=(document.getElementById('crm-search').value||'').trim();
   document.getElementById('crm-count').textContent=list.length+' kunde'+(list.length===1?'':'r');
   var body=document.getElementById('crm-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen kunder fundet':'Ingen kunder endnu — opret den første')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen kunder fundet':'Ingen kunder endnu — opret den første')+'</td></tr>';return;}
+  // RUNDE R (Martins ønske: "skyldige beløb" skal kunne SES, "og andre steder")
+  // — "Skyldigt"-kolonnen viser balance_due fra GET /api/crm/customers (se
+  // CUSTOMER_BALANCE_DUE_SUBQUERY i server.js). Rød når kunden reelt skylder
+  // noget, ellers dæmpet "0 kr" — så en kunde der ER betalt/krediteret op ikke
+  // skiller sig unødigt ud fra en kunde der aldrig har haft en faktura.
   body.innerHTML=list.map(function(c){
+    var owes=Number(c.balance_due)||0;
     return '<tr style="cursor:pointer" onclick="openCustomerDetail('+c.id+')">'
       +'<td>'+(c.is_company?'🏢 ':'')+esc(c.name)+(c.is_company&&c.cvr?' <span class="sub">· CVR '+esc(c.cvr)+'</span>':'')+'</td>'
       +'<td>'+esc(c.phone||'–')+'</td>'
       +'<td>'+esc(c.email||'–')+'</td>'
       +'<td>'+esc(c.address||'–')+'</td>'
+      +'<td class="num" style="'+(owes>0?'color:#B91C1C;font-weight:700':'color:var(--bly-sub)')+'">'+krFmt(owes)+'</td>'
       +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="event.stopPropagation();openCrmModal('+c.id+')" title="Redigér">✎</button></div></td>'
       +'</tr>';
   }).join('');
@@ -19244,6 +19267,11 @@ async function openCustomerDetail(id){
   var cdEmailBtn=document.getElementById('cd-email-btn'),cdCallBtn=document.getElementById('cd-call-btn');
   cdEmailBtn.href=d.customer.email?gmailComposeUrl(d.customer.email):'#';cdEmailBtn.style.opacity=d.customer.email?'1':'.4';cdEmailBtn.style.pointerEvents=d.customer.email?'':'none';
   cdCallBtn.href=d.customer.phone?('tel:'+d.customer.phone):'#';cdCallBtn.style.opacity=d.customer.phone?'1':'.4';cdCallBtn.style.pointerEvents=d.customer.phone?'':'none';
+  // RUNDE R — "Skyldigt beløb"-badge øverst på kundekortet, se HTML-kommentaren
+  // ved #cd-balance-badge. Skjult helt når kunden ikke skylder noget.
+  var cdOwes=Number(d.balance_due)||0;
+  document.getElementById('cd-balance-badge').style.display=cdOwes>0?'':'none';
+  if(cdOwes>0)document.getElementById('cd-balance-amount').textContent=krFmt(cdOwes);
   cdLoadNotes(id);
   cdLoadEmails(id);
   // Mails starter altid sammenklappet ved åbning af en kundeside (Martins ønske) —
@@ -19271,16 +19299,23 @@ async function openCustomerDetail(id){
   cdRenderQuotes();
 
   document.getElementById('cd-invoices-count').textContent='('+d.invoices.length+')';
+  // RUNDE R RETTELSE — "Rest" (x.remaining, allerede netto for betalinger OG
+  // kreditnotaer, se GET /api/crm/customers/:id) tilføjet ved siden af "Beløb".
+  // Krediterede fakturaer (credited_total>0) får desuden en lille rød
+  // "↩️ krediteret X kr"-note under Rest, så det er tydeligt AT der er krediteret
+  // noget, ikke kun hvad der er tilbage.
   document.getElementById('cd-invoices-body').innerHTML=d.invoices.length?d.invoices.map(function(x){
+    var creditedNote=Number(x.credited_total)>0?'<div style="font-size:11px;color:#DC2626">↩️ krediteret '+krFmt(x.credited_total)+'</div>':'';
     return '<tr style="cursor:pointer" onclick="openInvoiceDetail('+x.id+')">'
       +'<td>'+esc(x.invoice_number||'–')+'</td>'
       +'<td>'+esc(x.job_name||'–')+'</td>'
       +'<td>'+qzStatusDot(QZ_INVOICE_STATUS,x.status)+'</td>'
       +'<td class="num">'+krFmt(x.total)+'</td>'
+      +'<td class="num">'+krFmt(x.remaining)+creditedNote+'</td>'
       +'<td>'+esc(fmtDaDate(x.due_date))+'</td>'
       +'<td><div class="qz-row-actions"><button class="qz-icon-btn" title="Åbn">→</button></div></td>'
       +'</tr>';
-  }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen fakturaer endnu</td></tr>';
+  }).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen fakturaer endnu</td></tr>';
 
   await cdReloadOpportunities(id);
   await cdReloadLeads(id);
@@ -20320,9 +20355,15 @@ async function openCrmpDetail(entityType,id){
     api('/api/crm/customers/'+d.customer_id+'/summary').then(function(s){
       var el=document.getElementById('crmpx-customer-stats');
       if(!el||!s||s.error)return;
+      // RUNDE R — 4. stat "skyldigt" (balance_due, netto) tilføjet ved siden af
+      // det oprindelige "faktureret" (invoice_total, bruttosum, uændret) — så
+      // "skyldigt beløb" også er synligt herfra (Martins ønske: "andre steder"),
+      // ikke kun inde på selve kundekortet. Kun rød/fremhævet når der reelt
+      // skyldes noget.
       el.innerHTML='<div class="crmpx-mini-stat"><b>'+s.project_count+'</b><span>sager</span></div>'
         +'<div class="crmpx-mini-stat"><b>'+s.quote_count+'</b><span>tilbud</span></div>'
-        +'<div class="crmpx-mini-stat"><b>'+krFmt(s.invoice_total)+'</b><span>faktureret</span></div>';
+        +'<div class="crmpx-mini-stat"><b>'+krFmt(s.invoice_total)+'</b><span>faktureret</span></div>'
+        +'<div class="crmpx-mini-stat"><b style="'+(Number(s.balance_due)>0?'color:#B91C1C':'')+'">'+krFmt(s.balance_due)+'</b><span>skyldigt</span></div>';
     });
   }
   document.getElementById('crmpx-visits-panel').style.display=d.customer_id?'':'none';
@@ -25224,6 +25265,12 @@ function renderQzInvoices(){
   body.innerHTML=list.map(function(x){
     var href='#qz-invoices/faktura/'+x.id;
     var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
+    // RUNDE R (Martins ønske: det skal være "klart kunden ikke skylder det der
+    // krediteret mere") — "Rest" var allerede korrekt (nettede kreditnotaer ud,
+    // se GET /api/invoices), men viste ikke AT/hvorfor et beløb var trukket fra.
+    // Lille rød undertekst gør det tydeligt her i den samlede fakturaliste også,
+    // ikke kun når man åbner selve fakturaen.
+    var creditedNote=Number(x.credited_total)>0?'<div style="font-size:11px;color:#DC2626">↩️ krediteret '+krFmt(x.credited_total)+'</div>':'';
     return '<tr>'
       +'<td>'+a(esc(x.invoice_number||'–'))+'</td>'
       +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':''))+'</td>'
@@ -25232,7 +25279,7 @@ function renderQzInvoices(){
       +'<td>'+a(qzStatusDot(QZ_INVOICE_STATUS,x.status))+'</td>'
       +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
       +'<td class="num">'+a(krFmt(Number(x.paid_total)))+'</td>'
-      +'<td class="num">'+a(krFmt(Number(x.remaining)))+'</td>'
+      +'<td class="num">'+a(krFmt(Number(x.remaining))+creditedNote)+'</td>'
       +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openInvoiceDetail('+x.id+')" title="Åbn">✎</button></div></td>'
       +'</tr>';
   }).join('');
