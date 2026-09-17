@@ -1930,6 +1930,15 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .iv-attach-chip .iv-attach-spinner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--bly-border-soft)}
 .iv-credit-detail{background:var(--ice);border-radius:var(--bly-r-md);padding:10px 12px;margin:6px 0 10px}
 .iv-credit-detail .qcv-line-row{font-size:12px}
+/* RUNDE AC — billedvælgeren i #doc-job-photos-modal (sagens egne billeder +
+   medarbejdernes timetracking-billeder). Egen, lidt større kort-stil end de
+   små 64px .iv-attach-chip-thumbnails, da man her rent faktisk skal kunne SE
+   og VÆLGE mellem flere billeder — .iv-attach-chip er for småt til det. */
+.doc-job-photo-item{cursor:pointer;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);overflow:hidden;background:#fff;transition:box-shadow .12s,transform .12s}
+.doc-job-photo-item:hover{box-shadow:0 4px 14px rgba(15,17,24,.14);transform:translateY(-1px)}
+.doc-job-photo-item img{width:100%;height:110px;object-fit:cover;display:block;background:var(--bly-border-soft)}
+.doc-job-photo-item .djp-meta{padding:6px 8px;font-size:11px;color:var(--bly-sub);line-height:1.4}
+.doc-job-photo-item .djp-source{display:inline-block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#4F46E5;background:#EEF2FF;border-radius:4px;padding:1px 5px;margin-bottom:2px}
 /* FAKTURA-DETALJE — betalingsliste med delbetalinger, plus rest-saldo tydeligt fremhævet. */
 .iv-balance-card{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
 .iv-balance-tile{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:14px 16px}
@@ -3005,6 +3014,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .form-label{font-size:11px;font-weight:700;color:var(--bly-sub);display:block;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
 .input,.select{width:100%;padding:10px 12px;border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);outline:none;font-size:12.5px;font-weight:500;color:var(--bly-ink);box-sizing:border-box;transition:border-color .12s,box-shadow .12s}
 .input:focus,.select:focus{border-color:var(--bly-accent);background:#fff;box-shadow:0 0 0 3px var(--bly-accent-soft)}
+/* RUNDE AD (sep. 2026, Martins ønske — "kan ikke finde ud af" et sted i en
+   modal): mange modaler afviser "Gem" med KUN en lille, hurtigt-forsvindende
+   toast (fx "Vælg en kilde") uden at vise HVOR i formularen fejlen er — især
+   i "Ny kunde"-modalen, hvor Lead Source/telefon-eller-email er påkrævet
+   (Martins egen, bevidste regel fra RUNDE K/L, for at det automatiske lead
+   kan kobles til kunden), men det typede navn+adresse ligger længere oppe,
+   så man let overser toasten og tror formularen bare ikke virker. Se
+   flashFieldError() nedenfor — kaldes nu ved siden af toast() på selve det
+   felt der blokerer, så det er UMULIGT at overse hvilket felt der mangler. */
+.field-flash-error{border-color:#DC2626!important;box-shadow:0 0 0 3px rgba(220,38,38,.16)!important;animation:fieldFlashShake .32s}
+@keyframes fieldFlashShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 .rte-wrap{display:flex;flex-direction:column;gap:0}
 .rte-toolbar{display:flex;gap:4px;margin-bottom:5px}
 .rte-btn{width:28px;height:28px;border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);color:var(--bly-sub);font-size:12px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:border-color .12s,color .12s}
@@ -3250,7 +3270,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-16.7</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-17.1</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4449,6 +4469,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <label class="form-label" id="qe-internal-note-label" style="color:#92400E;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none"><span id="qe-internal-note-caret" style="display:inline-block;transition:transform .15s;font-size:10px">▸</span> 🔒 Intern note <span class="opt-tag" style="text-transform:none;font-weight:400;color:#92400E">kun jer — kunden ser den ALDRIG</span></label>
           <div id="qe-internal-note-wrap" style="display:none;margin-top:6px"><textarea id="qe-internal-note" class="input" rows="2" style="resize:vertical" placeholder="Fx: kunden får gratis fugefyld med, aftalt telefonisk d. ..."></textarea></div>
         </div>
+        <!-- RUNDE AC (Martins ønske: "Vil endelig også gerne kunne upload filer
+             i PDF filen ... måske allerede ved tilbud inden jeg konventerer
+             den") — samme "indlejret i PDF'en"-vedhæftningsmekanisme som
+             RUNDE AA byggede til kreditnotaer (document_attachments,
+             doc_type='quote'), nu også på selve tilbuddet. Kræver at
+             tilbuddet er gemt mindst én gang (skal have et ID at hænge
+             vedhæftningerne på) — #qe-attach-need-save vises i stedet indtil
+             da, se qeToggleAttachSection(). -->
+        <div class="form-group" id="qe-attach-wrap" style="margin-top:14px">
+          <label class="form-label">📎 Vedhæftede filer <span class="opt-tag">valgfrit — printes direkte ind i PDF'en kunden får</span></label>
+          <div id="qe-attach-need-save" class="sub" style="display:none">Gem tilbuddet først (så det har et nummer), så kan du vedhæfte filer</div>
+          <div id="qe-attach-controls" style="display:flex;gap:6px;flex-wrap:wrap">
+            <input type="file" id="qe-attach-input" accept="image/*" multiple style="display:none">
+            <button class="bly-btn outline small" type="button" onclick="document.getElementById('qe-attach-input').click()">📎 Vælg billeder</button>
+            <button class="bly-btn outline small" id="qe-attach-job-photos-btn" type="button" title="Vælg blandt billeder fra sagen — fx medarbejdernes timetracking-billeder">🗂 Vælg fra sagens billeder</button>
+          </div>
+          <div id="qe-attach-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+        </div>
         <div class="form-group" id="qe-versions-wrap" style="margin-top:14px;display:none">
           <label class="form-label">📄 Sendte versioner <span class="opt-tag" style="text-transform:none;font-weight:400">den arkiverede PDF som faktisk blev sendt — ændres aldrig</span></label>
           <div id="qe-versions-list" class="doc-activity-list"></div>
@@ -4591,6 +4629,23 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
         <div class="form-group" style="margin-top:18px"><label class="form-label">Note i toppen <span class="opt-tag">valgfrit — vises øverst på PDF'en, under kundeoplysninger. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-top-note" class="input" rows="2" style="resize:vertical"></textarea></div>
         <div class="form-group" style="margin-top:10px"><label class="form-label">Betingelser / note <span class="opt-tag">valgfrit — vises nederst på PDF'en og hos kunden. Kopieres fra tilbuddet ved konvertering, men er sin egen tekst herfra</span></label><textarea id="iv-notes" class="input" rows="3" style="resize:vertical"></textarea></div>
+
+        <!-- RUNDE AC (Martins ønske: "Vil endelig også gerne kunne upload filer
+             i PDF filen ved kundens faktura ... billeder skal jeg kunne trække
+             filerne fra medarbejdens uploads under timetracking som tilhøre
+             den sag de har arbejdet på, så kan jeg hurtig bevise hvad vi har
+             lavet") — vedhæftninger til SELVE fakturaen (adskilt fra
+             kreditnotens egne, som ligger længere oppe). Gemmes med det samme
+             (ingen "gem"-knap nødvendig — fakturaen har altid et ID). -->
+        <div class="form-group" style="margin-top:18px">
+          <label class="form-label">📎 Vedhæftede filer <span class="opt-tag">valgfrit — printes direkte ind i PDF'en kunden får</span></label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <input type="file" id="iv-attach-input" accept="image/*" multiple style="display:none">
+            <button class="bly-btn outline small" type="button" onclick="document.getElementById('iv-attach-input').click()">📎 Vælg billeder</button>
+            <button class="bly-btn outline small" id="iv-attach-job-photos-btn" type="button" title="Vælg blandt billeder fra sagen — fx medarbejdernes timetracking-billeder">🗂 Vælg fra sagens billeder</button>
+          </div>
+          <div id="iv-attach-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+        </div>
 
         <div class="form-group" id="iv-activity-wrap" style="margin-top:18px">
           <label class="form-label">🕓 Tidslinje</label>
@@ -7197,6 +7252,26 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
+<!-- RUNDE AC (Martins ønske: "billeder skal jeg kunne trække filerne fra
+     medarbejdens uploads under timetracking som tilhøre den sag de har
+     arbejdet på, så kan jeg hurtig bevise hvad vi har lavet") — fælles
+     billedvælger for både tilbud og faktura, viser sagens egne billeder
+     (project_photos) OG medarbejdernes timetracking-billeder (time_entries)
+     for den sag dokumentet hører til, se GET /api/document-job-photos.
+     docJobPhotosCtx (sat af docAttachOpenJobPhotoPicker) husker hvilket
+     dokument der aktuelt vælges billeder til, så et klik på et billede ved
+     docJobPhotoPick(url) ved hvor det skal hægtes på. -->
+<div class="mo" id="doc-job-photos-modal">
+  <div class="modal" style="max-width:760px;width:95vw;max-height:88vh;overflow:auto">
+    <h3 style="margin:0 0 4px">Vælg fra sagens billeder</h3>
+    <p class="sub" style="margin-top:0" id="doc-job-photos-sub">Billeder fra sagen — inkl. medarbejdernes timetracking-billeder</p>
+    <div id="doc-job-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px"></div>
+    <div class="modal-actions">
+      <button class="btn" id="doc-job-photos-close-btn" type="button">Luk</button>
+    </div>
+  </div>
+</div>
+
 <!-- FULL ASSIGN MODAL (click on booking) -->
 <div class="mo" id="fin-widget-picker-modal">
   <div class="modal" style="width:420px">
@@ -8099,6 +8174,19 @@ function toast(msg,ic,onClick,ms){
   // visningstid i ms, til beskeder der er for lange til den normale 2.6s (fx
   // AI-fejlbeskeder — se qeAiStopAndParse). Ellers uændret standard-adfærd.
   el._t=setTimeout(function(){el.classList.remove('show');},ms||(onClick?4200:2600));
+}
+// RUNDE AD (sep. 2026, Martins ønske) — se CSS-kommentaren ved .field-flash-error.
+// Ruller det angivne felt i visning, sætter fokus og blinker en rød kant på det,
+// så en blokeret "Gem" (fx manglende Lead Source i "Ny kunde"-modalen) er
+// umulig at overse — i stedet for kun en lille toast man kan misse.
+function flashFieldError(id){
+  var el=document.getElementById(id);
+  if(!el)return;
+  el.scrollIntoView({behavior:'smooth',block:'center'});
+  el.focus();
+  el.classList.add('field-flash-error');
+  clearTimeout(el._flashT);
+  el._flashT=setTimeout(function(){el.classList.remove('field-flash-error');},1600);
 }
 // MODERNE ERSTATNING FOR window.await gmConfirm()/window.await gmPrompt() — samme trækbare
 // popup-stil som resten af programmet, i stedet for browserens grimme, låste bokse.
@@ -21978,7 +22066,7 @@ async function crmpAddCustomField(){
 
 async function saveCrmCustomer(){
   var name=document.getElementById('crmc-name').value.trim();
-  if(!name){toast('Navn mangler','⚠️');return;}
+  if(!name){toast('Navn mangler','⚠️');flashFieldError('crmc-name');return;}
   var isNew=!crmEditingId;
   // RUNDE K (fortsat, sep. 2026, Martins ønske) — "gør det også muligt at vælge den
   // anden sale pibline. måske er kunden ikke et lead længere": den valgte pipelines
@@ -21994,19 +22082,19 @@ async function saveCrmCustomer(){
     // Lead Source findes kun på leads (ingen tilsvarende kolonne på opportunities
     // noget andet sted i appen) — springes helt over ved en salgs-pipeline.
     if(!isOpp){
-      if(!source){toast('Vælg en kilde','⚠️');return;}
-      if(source==='Andet'&&!sourceOther){toast('Angiv kilden under "Andet"','⚠️');return;}
+      if(!source){toast('Vælg en kilde','⚠️');flashFieldError('crmc-source');return;}
+      if(source==='Andet'&&!sourceOther){toast('Angiv kilden under "Andet"','⚠️');flashFieldError('crmc-source-other');return;}
     }
     // Projekttype kræves KUN når feltet faktisk er der at udfylde. Er custom
     // field'et projekt_type slettet (eller har det ingen valgmuligheder),
     // skjuler crmcFillProjektType() rækken — og så må kravet ikke stå tilbage
     // og blokere for at gemme en kunde man umuligt kan udfylde det på.
-    if(!projektType&&document.getElementById('crmc-projekt-type-wrap').style.display!=='none'){toast('Vælg en projekttype','⚠️');return;}
+    if(!projektType&&document.getElementById('crmc-projekt-type-wrap').style.display!=='none'){toast('Vælg en projekttype','⚠️');flashFieldError('crmc-projekt-type');return;}
     // Telefon ELLER email er nødvendig for at det automatisk oprettede lead/opportunity
     // kan kobles til DENNE kunde (matcher på telefon/email) — uden nogen af delene
     // opretter den sin egen duplikat-kunde i stedet, se crmFindOrCreateContactAndCustomer
     // i server.js.
-    if(!phone&&!email){toast('Angiv telefon eller email — ellers kan det automatiske lead/opportunity ikke kobles til kunden','⚠️');return;}
+    if(!phone&&!email){toast('Angiv telefon eller email — ellers kan det automatiske lead/opportunity ikke kobles til kunden','⚠️');flashFieldError('crmc-phone');return;}
   }
   var body={name:name,phone:phone,email:email,address:address,notes:document.getElementById('crmc-notes').value.trim()||null,is_company:isCompany,cvr:isCompany?(document.getElementById('crmc-cvr').value.trim()||null):null};
   var r=crmEditingId?await api('/api/crm/customers/'+crmEditingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/crm/customers',{method:'POST',body:JSON.stringify(body)});
@@ -24549,6 +24637,14 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-activity-wrap').style.display=id?'':'none';
   document.getElementById('qe-versions-wrap').style.display='none';
   document.getElementById('qe-crm-note-panel').style.display='none';
+  // RUNDE AC — vedhæftninger kræver at tilbuddet allerede har et ID (se den
+  // store kommentar ved docAttachStateFor). Et helt NYT tilbud viser derfor
+  // "Gem tilbuddet først" i stedet for upload-knapperne, indtil det er gemt
+  // mindst én gang og åbnes igen (id sat).
+  qeState.attachments=[];
+  document.getElementById('qe-attach-need-save').style.display=id?'none':'';
+  document.getElementById('qe-attach-controls').style.display=id?'':'none';
+  docAttachRenderList('quote');
   if(id){
     var qd=await api('/api/quotes/'+id);
     if(!qd||qd.error){toast('Kunne ikke hente tilbuddet','❌');return;}
@@ -24568,6 +24664,9 @@ async function openQuoteEditor(id,prefillCustomer){
     // blev åbnet og gemt igen (qeState.lines fik ikke feltet med, og et efterfølgende
     // gem ville derfor overskrive den gemte note i databasen med null).
     qeState.lines=(qd.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,note:l.note||'',unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:l.discount_type==='fixed'?'fixed':'pct',line_type:l.line_type==='text'?'text':'item'};});
+    // RUNDE AC — se kommentaren ved docAttachStateFor.
+    qeState.attachments=qd.attachments||[];
+    docAttachRenderList('quote');
     document.getElementById('qe-customer-search').value=qd.job_name||'';
     document.getElementById('qe-customer-address').value=qd.customer_address||'';
     document.getElementById('qe-customer-phone').value=qd.customer_phone||'';
@@ -24999,14 +25098,47 @@ function qeComputeTotals(){
   var discountAmount=docDiscountType==='fixed'?Math.max(0,Math.min(docDiscountPct,rawSubtotal)):rawSubtotal*Math.max(0,Math.min(docDiscountPct,100))/100;
   // RUNDE T (Martins ønske: "Når jeg sætter % på et helt tilbud så udregner den
   // ikke den korrekte margin efter") — fordel rabatten på HELE tilbuddet ud på
-  // Materialer/Service-opdelingen proportionalt med deres andel af rawSubtotal,
-  // ellers viser "Samlet avance"-linjen (som RIGTIGT trækker rabatten fra) en
-  // anden margin end Materialer/Service-rækkerne (som hidtil kun kendte til
-  // rabat sat pr. linje, aldrig rabat sat på hele tilbuddet). Samme
-  // proportionalfordelings-teknik som ivCreditLineAmounts() bruger til kreditnotaer.
+  // Materialer/Service-opdelingen, ellers viser "Samlet avance"-linjen (som
+  // RIGTIGT trækker rabatten fra) en anden margin end Materialer/Service-
+  // rækkerne (som hidtil kun kendte til rabat sat pr. linje, aldrig rabat sat
+  // på hele tilbuddet).
+  //
+  // RUNDE AB (Martins ønske: "Hvordan kan den her sige at ved fodpaneler har
+  // vi 4000 ish i plus profit og 2500 med 100% profit ved materialer men kun
+  // vise en margin på 1114 kr altså 5%? Det virker jo ikke korrekt") — RUNDE T
+  // fordelte rabatten efter OMSÆTNINGS-andel (byType.revenue/rawSubtotal).
+  // Det er matematisk "korrekt" i den forstand at Materialer+Service altid
+  // summer til "Samlet avance", MEN det giver et vildledende billede: en
+  // lav-avance kategori som Materialer (typisk ~15-20% avance) mister
+  // PROCENTUELT langt mere af sin margin end en høj-avance kategori som
+  // Service (typisk ~80% avance), fordi begge betaler samme ANDEL AF DERES
+  // OMSÆTNING i rabat — men Materialer har meget mindre "luft" i sin margin
+  // til at tage det fra. Et eksempel fra Martins tilbud: Materialer havde reelt
+  // ca. 5.450 kr i avance (fodpanel-linjen alene gav ~4.725 kr), men fik hele
+  // 4.336 kr af den samlede 60.000 kr-rabat læsset over på sig — fordi
+  // Materialer stod for ~7% af den samlede omsætning, uanset at Materialer kun
+  // stod for under 2% af den samlede AVANCE. Resultatet: en kategori der reelt
+  // gav ham god fortjeneste blev vist med kun 5% margin, hvilket ikke stemmer
+  // overens med de enkelte linjers avance-tal lige ovenfor i tilbuddet.
+  //
+  // Fix: fordel rabatten efter AVANCE-andel (dækningsbidrag) i stedet for
+  // omsætnings-andel — dvs. den kategori der reelt bidrager mest profit,
+  // absorberer også mest af rabatten (den har mest "luft" til det), og en
+  // tynd-margin kategori som Materialer beholder mere af sin oprindelige
+  // margin. Totalen ("Samlet avance efter rabat") er UÆNDRET af dette — den
+  // regnes stadig som rawSubtotal-discountAmount-costTotal og er derfor
+  // matematisk identisk med før; kun FORDELINGEN mellem de to kort ændres, så
+  // den matcher det linjerne rent faktisk viser. Falder tilbage til den gamle
+  // omsætnings-baserede fordeling, hvis ingen af kategorierne har positiv
+  // avance at fordele efter (fx et tilbud solgt under kostpris).
   if(discountAmount>0&&rawSubtotal>0){
+    var rawMarginByType={
+      materialer:Math.max(0,byType.materialer.revenue-byType.materialer.cost),
+      service:Math.max(0,byType.service.revenue-byType.service.cost)
+    };
+    var rawMarginTotal=rawMarginByType.materialer+rawMarginByType.service;
     ['materialer','service'].forEach(function(type){
-      var share=byType[type].revenue/rawSubtotal;
+      var share=rawMarginTotal>0?(rawMarginByType[type]/rawMarginTotal):(byType[type].revenue/rawSubtotal);
       byType[type].revenue-=discountAmount*share;
     });
   }
@@ -26013,6 +26145,11 @@ async function openInvoiceDetail(id){
   // kreditnota-oprettelse, så de ikke ved en fejl hænges på den næste.
   ivState.creditAttachments=[];
   ivRenderCreditAttachments();
+  // RUNDE AC — fakturaens EGNE vedhæftninger (adskilt fra kreditnotens, se
+  // docAttachStateFor). Fakturaen har altid et ID, så disse indlæses direkte
+  // fra serveren hver gang fakturaen åbnes (ingen staging nødvendig).
+  ivState.attachments=inv.attachments||[];
+  docAttachRenderList('invoice');
   // RUNDE T — "Hele beløbet"-knappen og postevælgeren har brug for det der
   // reelt er tilbage at kreditere (total minus allerede krediteret — BEVIDST
   // ikke inv.remaining, som også trækker betalinger fra: se maxCreditable i
@@ -26244,6 +26381,117 @@ async function ivToggleCreditDetail(id){
   }
   box.style.display=open?'':'none';
   if(toggleBtn)toggleBtn.textContent=(open?'▴ ':'▾ ')+(toggleBtn.dataset.badges||'');
+}
+// ── RUNDE AC — fælles "Vedhæftede filer"-UI, delt mellem tilbud (qeState) og
+// faktura (ivState) ────────────────────────────────────────────────────────
+// Martins ønske: "Vil endelig også gerne kunne upload filer i PDF filen ved
+// kundens faktura, måske allerede ved tilbud inden jeg konventerer den,
+// billeder skal jeg kunne trække filerne fra medarbejdens uploads under
+// timetracking som tilhøre den sag de har arbejdet på, så kan jeg hurtig
+// bevise hvad vi har lavet."
+//
+// Genbruger PRÆCIS samme mekanik som RUNDE AA byggede til kreditnotaer
+// (document_attachments, "indlejret i PDF'en" via drawPdfAttachmentsAppendix
+// i server.js) — men i modsætning til en kreditnota, som ikke findes endnu
+// mens man arbejder på den, har et tilbud/en faktura der er nået hertil
+// ALTID et ID allerede. Vedhæftninger gemmes derfor MED DET SAMME (ingen
+// staging/"husk at trykke gem"), samme ét-klik-enkelhed som fx betalinger.
+//
+// docType er 'invoice' eller 'quote'; state er ivState/qeState — begge får et
+// .attachments-array ({id,url,caption}) sat når dokumentet indlæses (se
+// openInvoiceDetail / openQuoteEditor).
+function docAttachStateFor(docType){return docType==='invoice'?ivState:qeState;}
+function docAttachContainerIdFor(docType){return docType==='invoice'?'iv-attach-list':'qe-attach-list';}
+function docAttachRenderList(docType){
+  var el=document.getElementById(docAttachContainerIdFor(docType));
+  if(!el)return;
+  var list=docAttachStateFor(docType).attachments||[];
+  el.innerHTML=list.map(function(a,idx){
+    if(a.uploading)return '<div class="iv-attach-chip"><div class="iv-attach-spinner">⏳</div></div>';
+    return '<div class="iv-attach-chip"><img src="'+esc(a.url)+'" alt="" loading="lazy"><button type="button" class="iv-attach-remove" data-doctype="'+docType+'" data-idx="'+idx+'" title="Fjern">✕</button></div>';
+  }).join('');
+}
+// Uploader NYE billeder fra brugerens computer — samme Cloudinary-mekanisme
+// som ivHandleCreditAttachmentFiles ovenfor, men gemmer med det samme via den
+// generiske document-attachments-rute i stedet for at stage til et senere
+// "opret"-kald.
+async function docAttachUploadFiles(docType,files){
+  var state=docAttachStateFor(docType);
+  if(!state.id){toast((docType==='invoice'?'Fakturaen':'Tilbuddet')+' mangler et ID — kan ikke vedhæfte filer','⚠️');return;}
+  var list=Array.prototype.slice.call(files||[]);
+  if(!list.length)return;
+  if(!state.attachments)state.attachments=[];
+  for(var i=0;i<list.length;i++){
+    var file=list[i];
+    var placeholder={url:null,caption:'',uploading:true};
+    state.attachments.push(placeholder);
+    docAttachRenderList(docType);
+    try{
+      var dataUrl=await fileToDataURL(file);
+      var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:docType==='invoice'?'fakturaer':'tilbud'})});
+      if(!up||!up.ok)throw new Error((up&&up.error)||'Upload fejlede');
+      var r=await api('/api/document-attachments/'+docType+'/'+state.id,{method:'POST',body:JSON.stringify({url:up.url})});
+      if(!r||!r.ok)throw new Error((r&&r.error)||'Kunne ikke gemme vedhæftningen');
+      placeholder.url=up.url;
+      placeholder.id=r.id;
+      placeholder.uploading=false;
+    }catch(err){
+      toast('Kunne ikke vedhæfte '+(file.name||'billedet')+': '+(err&&err.message||''),'❌');
+      var idx=state.attachments.indexOf(placeholder);
+      if(idx!==-1)state.attachments.splice(idx,1);
+    }
+    docAttachRenderList(docType);
+  }
+}
+async function docAttachRemove(docType,idx){
+  var state=docAttachStateFor(docType);
+  var a=(state.attachments||[])[idx];
+  if(!a)return;
+  if(a.id)await api('/api/document-attachments/'+a.id,{method:'DELETE'});
+  state.attachments.splice(idx,1);
+  docAttachRenderList(docType);
+}
+// Billedvælgeren — se GET /api/document-job-photos/:docType/:docId i
+// server.js. docJobPhotosCtx husker hvilket dokument der lige nu vælges
+// billeder TIL, så docJobPhotoPick(url) ved hvor det skal hægtes på.
+var docJobPhotosCtx=null;
+async function docAttachOpenJobPhotoPicker(docType){
+  var state=docAttachStateFor(docType);
+  if(!state.id){toast((docType==='invoice'?'Fakturaen':'Tilbuddet')+' mangler et ID — kan ikke hente sagens billeder','⚠️');return;}
+  docJobPhotosCtx={docType:docType};
+  var grid=document.getElementById('doc-job-photos-grid');
+  var sub=document.getElementById('doc-job-photos-sub');
+  grid.innerHTML='<div class="sub">Henter sagens billeder…</div>';
+  document.getElementById('doc-job-photos-modal').classList.add('open');
+  var r=await api('/api/document-job-photos/'+docType+'/'+state.id);
+  if(!r||!r.project){
+    grid.innerHTML='<div class="sub">Ingen sag koblet på dette '+(docType==='invoice'?'faktura':'tilbud')+' endnu — der er derfor ingen sagsbilleder at vælge fra.</div>';
+    return;
+  }
+  sub.textContent='Sag: '+r.project.name;
+  if(!r.photos||!r.photos.length){grid.innerHTML='<div class="sub">Ingen billeder fundet på sagen endnu.</div>';return;}
+  grid.innerHTML=r.photos.map(function(p,idx){
+    var meta=[p.source,p.user_name,p.date?String(p.date).slice(0,10):''].filter(Boolean).join(' · ');
+    return '<div class="doc-job-photo-item" data-idx="'+idx+'">'
+      +'<img src="'+esc(p.url)+'" alt="" loading="lazy">'
+      +'<div class="djp-meta"><span class="djp-source">'+esc(p.source)+'</span><br>'+esc(p.user_name||'')+(p.date?'<br>'+esc(String(p.date).slice(0,10)):'')+'</div>'
+      +'</div>';
+  }).join('');
+  docJobPhotosCtx.photos=r.photos;
+}
+async function docJobPhotoPick(idx){
+  if(!docJobPhotosCtx)return;
+  var photo=(docJobPhotosCtx.photos||[])[idx];
+  if(!photo)return;
+  var docType=docJobPhotosCtx.docType;
+  var state=docAttachStateFor(docType);
+  if(!state.attachments)state.attachments=[];
+  var r=await api('/api/document-attachments/'+docType+'/'+state.id,{method:'POST',body:JSON.stringify({url:photo.url,caption:photo.user_name||null})});
+  if(r&&r.ok){
+    state.attachments.push({id:r.id,url:photo.url,caption:photo.user_name||null});
+    docAttachRenderList(docType);
+    toast('Billede vedhæftet ✓','📎');
+  }else toast((r&&r.error)||'Kunne ikke vedhæfte billedet','❌');
 }
 async function deleteIvCreditNote(creditNoteId){
   if(!await gmConfirm('Fjern denne kreditnota?'))return;
@@ -26531,6 +26779,14 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-internal-note-label').addEventListener('click',qeInternalNoteToggleClick);
   document.getElementById('qe-doc-discount').addEventListener('input',qeRecalc);
   document.getElementById('qe-doc-discount-type').addEventListener('change',qeRecalc);
+  // RUNDE AC — tilbuddets egne vedhæftninger (se docAttachStateFor).
+  document.getElementById('qe-attach-input').addEventListener('change',function(e){docAttachUploadFiles('quote',e.target.files);e.target.value='';});
+  document.getElementById('qe-attach-job-photos-btn').addEventListener('click',function(){docAttachOpenJobPhotoPicker('quote');});
+  document.getElementById('qe-attach-list').addEventListener('click',function(e){var btn=e.target.closest('.iv-attach-remove');if(btn)docAttachRemove(btn.dataset.doctype,Number(btn.dataset.idx));});
+  // RUNDE AC — fælles billedvælger-modal (sagens billeder/timetracking), delt
+  // mellem tilbud og faktura, se docAttachOpenJobPhotoPicker/docJobPhotoPick.
+  document.getElementById('doc-job-photos-grid').addEventListener('click',function(e){var item=e.target.closest('.doc-job-photo-item');if(item){docJobPhotoPick(Number(item.dataset.idx));closeModal('doc-job-photos-modal');}});
+  document.getElementById('doc-job-photos-close-btn').addEventListener('click',function(){closeModal('doc-job-photos-modal');});
   // RUNDE Y — qe-product-search/-results er fjernet fra HTML'en (Martins
   // ønske: "fjern det lille felt der er ved siden af tilføj linje"). Begge
   // dets funktioner findes stadig: produktsøgning direkte i linjens eget
@@ -26611,6 +26867,10 @@ function bindQuotesModuleEvents(){
   document.getElementById('iv-credit-attachments').addEventListener('click',function(e){var btn=e.target.closest('.iv-attach-remove');if(btn){var chips=Array.prototype.slice.call(document.querySelectorAll('#iv-credit-attachments .iv-attach-chip'));ivRemoveCreditAttachment(chips.indexOf(btn.closest('.iv-attach-chip')));}});
   document.getElementById('iv-credit-attach-input').addEventListener('change',function(e){ivHandleCreditAttachmentFiles(e.target.files);e.target.value='';});
   document.getElementById('iv-credit-notes-list').addEventListener('click',function(e){var btn=e.target.closest('[data-cn-detail]');if(btn)ivToggleCreditDetail(Number(btn.dataset.cnDetail));});
+  // RUNDE AC — fakturaens EGNE vedhæftninger (adskilt fra kreditnotens ovenfor).
+  document.getElementById('iv-attach-input').addEventListener('change',function(e){docAttachUploadFiles('invoice',e.target.files);e.target.value='';});
+  document.getElementById('iv-attach-job-photos-btn').addEventListener('click',function(){docAttachOpenJobPhotoPicker('invoice');});
+  document.getElementById('iv-attach-list').addEventListener('click',function(e){var btn=e.target.closest('.iv-attach-remove');if(btn)docAttachRemove(btn.dataset.doctype,Number(btn.dataset.idx));});
   document.getElementById('iv-due-date').addEventListener('change',saveIvDueDate);
   document.getElementById('iv-top-note').addEventListener('change',saveIvTopNote);
   document.getElementById('iv-notes').addEventListener('change',saveIvNotes);

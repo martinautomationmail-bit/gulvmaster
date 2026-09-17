@@ -16608,6 +16608,13 @@ async function loadQuoteFull(id) {
   const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [id]);
   if (!quote) return null;
   const lines = await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [id]);
+  // RUNDE AC (Martins ønske: "Vil endelig også gerne kunne upload filer i PDF
+  // filen ved kundens faktura, måske allerede ved tilbud inden jeg
+  // konventerer den") — vedhæftede billeder/filer til SELVE tilbuddet (ikke
+  // en kreditnota). Genbruger document_attachments-tabellen og hele
+  // "indlejret i PDF'en"-mekanikken (fetchAttachmentImages/BILAG-afsnittet)
+  // som RUNDE AA byggede til kreditnotaer — se DOC_ATTACHMENT_TYPES.
+  const attachments = await pool.query('SELECT * FROM document_attachments WHERE doc_type=$1 AND doc_id=$2 ORDER BY created_at ASC, id ASC', ['quote', id]);
   let crmEntityNote = null, crmEntityName = null, crmEntityType = null;
   try {
     if (quote.crm_lead_id) {
@@ -16618,7 +16625,7 @@ async function loadQuoteFull(id) {
       if (opp) { crmEntityNote = await getCrmEntityCombinedNote('opportunity', quote.crm_opportunity_id); crmEntityName = opp.name; crmEntityType = 'opportunity'; }
     }
   } catch (e) { console.error('Kunne ikke hente CRM-note til tilbud #' + id + ':', e.message); }
-  return { ...quote, lines: lines.rows, crm_entity_note: crmEntityNote, crm_entity_name: crmEntityName, crm_entity_type: crmEntityType };
+  return { ...quote, lines: lines.rows, attachments: attachments.rows, crm_entity_note: crmEntityNote, crm_entity_name: crmEntityName, crm_entity_type: crmEntityType };
 }
 
 app.get('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -17064,10 +17071,14 @@ async function loadInvoiceFull(id) {
     const attCount = await pgOne('SELECT COUNT(*)::int AS n FROM document_attachments WHERE doc_type=$1 AND doc_id=$2', ['credit_note', cn.id]);
     cn.attachment_count = attCount.n;
   }
+  // RUNDE AC — se den store kommentar ved samme linje i loadQuoteFull ovenfor:
+  // vedhæftede billeder/filer til SELVE fakturaen (adskilt fra kreditnotens
+  // egne vedhæftninger, som er cn.attachment_count ovenfor).
+  const attachments = await pool.query('SELECT * FROM document_attachments WHERE doc_type=$1 AND doc_id=$2 ORDER BY created_at ASC, id ASC', ['invoice', id]);
   const paidTotal = payments.rows.reduce((s, p) => s + Number(p.amount), 0);
   const creditedTotal = creditNotes.rows.reduce((s, c) => s + Number(c.amount), 0);
   return {
-    ...invoice, lines: lines.rows, payments: payments.rows, credit_notes: creditNotes.rows,
+    ...invoice, lines: lines.rows, payments: payments.rows, credit_notes: creditNotes.rows, attachments: attachments.rows,
     paid_total: paidTotal, credited_total: creditedTotal, remaining: Number(invoice.total) - paidTotal - creditedTotal
   };
 }
@@ -17290,8 +17301,9 @@ app.post('/api/invoices/:id/credit-notes', auth, panelAccess('quotes'), asyncRou
   res.json({ ok: true, id: creditNoteId, credit_note_number: creditNoteNumber });
 }));
 // RUNDE AA — generiske vedhæftnings-ruter (se document_attachments ovenfor).
-// Kun 'credit_note' er koblet til en UI endnu; 'invoice'/'quote' er tilladte
-// doc_type-værdier fra dag ét, klar til den kommende runde uden ny migration.
+// RUNDE AC: 'invoice'/'quote' er nu også koblet til en UI (se docAttach*-
+// funktionerne i admin.html) — 'credit_note' var den første, disse to var
+// tilladte doc_type-værdier fra dag ét, netop klar til denne runde uden ny migration.
 const DOC_ATTACHMENT_TYPES = ['credit_note', 'invoice', 'quote'];
 app.get('/api/document-attachments/:docType/:docId', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   if (!DOC_ATTACHMENT_TYPES.includes(req.params.docType)) return res.status(400).json({ error: 'Ukendt dokumenttype' });
@@ -17312,6 +17324,51 @@ app.post('/api/document-attachments/:docType/:docId', auth, panelAccess('quotes'
 app.delete('/api/document-attachments/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM document_attachments WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
+}));
+// RUNDE AC (Martins ønske: "billeder skal jeg kunne trække filerne fra
+// medarbejdens uploads under timetracking som tilhøre den sag de har
+// arbejdet på, så kan jeg hurtig bevise hvad vi har lavet") — i stedet for at
+// skulle downloade og genuploade et billede medarbejderne allerede har taget,
+// kan Martin vælge det direkte fra sagens egne billeder: dels
+// project_photos (billeder uploadet direkte til sagen), dels billederne
+// medarbejderne har vedhæftet deres tidsregistreringer (time_entries.photo_url/
+// photo_urls — samme normalisering af det gamle enkeltfelt vs. listefelt som
+// GET /api/reports/time-tracking bruger). Kun 'invoice'/'quote' giver mening
+// her (en kreditnota har ingen "sag" af sin egen — den hænger på en faktura).
+//
+// Sagen findes via projects.quote_id/invoice_id (den løse kobling — se
+// skema-kommentaren ved projects ovenfor): en FAKTURA kan enten have sin egen
+// sag direkte (projects.invoice_id, sat ved konvertering) eller, hvis den er
+// slettet/aldrig sat, findes via fakturaens quote_id. Et TILBUD har kun
+// quote_id-vejen (det har ingen invoice_id). Findes ingen sag endnu (fx et
+// helt nyt tilbud, før arbejdet er i gang), returneres bare en tom liste —
+// admin.html viser da "ingen sagsbilleder endnu" i stedet for en fejl.
+app.get('/api/document-job-photos/:docType/:docId', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const docType = req.params.docType;
+  if (docType !== 'invoice' && docType !== 'quote') return res.status(400).json({ error: 'Ukendt dokumenttype' });
+  const docId = req.params.docId;
+  let project = null;
+  if (docType === 'invoice') {
+    project = await pgOne('SELECT id, name FROM projects WHERE invoice_id=$1', [docId]);
+    if (!project) {
+      const inv = await pgOne('SELECT quote_id FROM invoices WHERE id=$1', [docId]);
+      if (inv && inv.quote_id) project = await pgOne('SELECT id, name FROM projects WHERE quote_id=$1', [inv.quote_id]);
+    }
+  } else {
+    project = await pgOne('SELECT id, name FROM projects WHERE quote_id=$1', [docId]);
+  }
+  if (!project) return res.json({ project: null, photos: [] });
+  const [projectPhotos, timeRows] = await Promise.all([
+    pool.query('SELECT pp.url, pp.caption, pp.created_at, u.name AS user_name FROM project_photos pp LEFT JOIN users u ON u.id=pp.uploaded_by WHERE pp.project_id=$1 ORDER BY pp.created_at DESC', [project.id]).then(r => r.rows),
+    pool.query('SELECT te.photo_url, te.photo_urls, te.note, te.entry_date, u.name AS user_name FROM time_entries te LEFT JOIN users u ON u.id=te.user_id WHERE te.project_id=$1 ORDER BY te.entry_date DESC, te.id DESC', [project.id]).then(r => r.rows)
+  ]);
+  const photos = [];
+  projectPhotos.forEach(p => photos.push({ url: p.url, caption: p.caption || null, user_name: p.user_name || null, date: p.created_at, source: 'Sagsbillede' }));
+  timeRows.forEach(te => {
+    const urls = Array.isArray(te.photo_urls) && te.photo_urls.length ? te.photo_urls : (te.photo_url ? [te.photo_url] : []);
+    urls.forEach(u => photos.push({ url: u, caption: te.note || null, user_name: te.user_name || null, date: te.entry_date, source: 'Timeregistrering' }));
+  });
+  res.json({ project: { id: project.id, name: project.name }, photos });
 }));
 app.delete('/api/credit-notes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const cn = await pgOne('SELECT * FROM credit_notes WHERE id=$1', [req.params.id]);
@@ -17821,7 +17878,7 @@ function ensurePdfSpace(doc, y, needed, ctx) {
   if (ctx.redrawTableHeader) ny = drawPdfLineTableHeader(doc, ny);
   return ny;
 }
-function drawDocumentPdf(doc, kind, record, company) {
+function drawDocumentPdf(doc, kind, record, company, attachments) {
   const isInvoice = kind === 'invoice';
   const accent = '#4F46E5';
   const docNumber = isInvoice ? record.invoice_number : record.quote_number;
@@ -17992,6 +18049,14 @@ function drawDocumentPdf(doc, kind, record, company) {
     }
   }
 
+  // RUNDE AC (Martins ønske: "Vil endelig også gerne kunne upload filer i PDF
+  // filen ved kundens faktura, måske allerede ved tilbud inden jeg
+  // konventerer den") — samme "BILAG"-afsnit som kreditnotaerne fik i RUNDE
+  // AA, genbrugt via drawPdfAttachmentsAppendix (se dér). 'attachments' er
+  // allerede hentede billed-bytes ({buffer,caption}, se fetchAttachmentImages)
+  // — kaldestederne henter dem FØR denne synkrone tegnefunktion kaldes.
+  y = drawPdfAttachmentsAppendix(doc, y, ctx, attachments);
+
   drawDocFooter(doc, company);
 }
 // Kreditnotaer er beløbs-/begrundelses-baserede (ikke linje-baserede som
@@ -18056,40 +18121,49 @@ function drawCreditNotePdf(doc, creditNote, invoice, company, attachments) {
 
   // RUNDE AA (Martins ønske: billeder af fejl/mangler, eller fx en email hvor
   // kreditering er aftalt — printet DIREKTE ind i PDF'en, som Martin selv
-  // valgte frem for separate vedhæftede filer) — et lille "BILAG"-afsnit til
-  // sidst, to billeder pr. række, med billedtekst hvis der er skrevet en. Et
-  // enkelt billede der ikke kan åbnes (doc.openImage kaster) springes bare
-  // over i stedet for at vælte hele PDF'en.
-  if (attachments && attachments.length) {
-    y += 6;
-    y = ensurePdfSpace(doc, y, 30, ctx);
-    doc.font('DMSans-Bold').fontSize(9).fillColor('#374151').text('BILAG', 40, y);
-    y += 16;
-    const imgW = 240, gap = 15;
-    let col = 0, rowTop = y, rowMaxH = 0;
-    attachments.forEach(function (a) {
-      let dims;
-      try { dims = doc.openImage(a.buffer); } catch (e) { return; }
-      const scale = imgW / dims.width;
-      const imgH = Math.min(dims.height * scale, 320);
-      const boxH = imgH + (a.caption ? 26 : 14);
-      if (col === 0) {
-        rowTop = ensurePdfSpace(doc, rowTop, boxH, ctx);
-        rowMaxH = 0;
-      }
-      const x = 40 + col * (imgW + gap);
-      try {
-        doc.image(a.buffer, x, rowTop, { width: imgW, height: imgH });
-        if (a.caption) doc.font('DMSans').fontSize(8).fillColor('#6B7280').text(a.caption, x, rowTop + imgH + 4, { width: imgW });
-      } catch (e) { /* springer billedet over — resten af PDF'en skal stadig genereres */ }
-      rowMaxH = Math.max(rowMaxH, boxH);
-      col++;
-      if (col >= 2) { col = 0; rowTop += rowMaxH + 12; y = rowTop; }
-    });
-    if (col !== 0) y = rowTop + rowMaxH + 12;
-  }
+  // valgte frem for separate vedhæftede filer) — se drawPdfAttachmentsAppendix
+  // nedenfor (RUNDE AC — udtrukket til en fælles funktion, da tilbud/fakturaer
+  // nu bruger PRÆCIS samme "BILAG"-afsnit, se drawDocumentPdf).
+  y = drawPdfAttachmentsAppendix(doc, y, ctx, attachments);
 
   drawDocFooter(doc, company);
+}
+// RUNDE AC — udtrukket fra drawCreditNotePdf (RUNDE AA byggede den oprindeligt
+// KUN til kreditnotaer) til en fælles funktion, fordi tilbud/fakturaer nu har
+// PRÆCIS samme behov: vedhæftede billeder printet direkte ind i PDF'en
+// (Martins valg — se svaret på spørgsmålet "indlejret i PDF'en eller som
+// separate filer?" ved RUNDE AA). To billeder pr. række, med billedtekst hvis
+// der er skrevet en. Et enkelt billede der ikke kan åbnes (doc.openImage
+// kaster) springes bare over i stedet for at vælte hele PDF'en.
+function drawPdfAttachmentsAppendix(doc, y, ctx, attachments) {
+  if (!attachments || !attachments.length) return y;
+  y += 6;
+  y = ensurePdfSpace(doc, y, 30, ctx);
+  doc.font('DMSans-Bold').fontSize(9).fillColor('#374151').text('BILAG', 40, y);
+  y += 16;
+  const imgW = 240, gap = 15;
+  let col = 0, rowTop = y, rowMaxH = 0;
+  attachments.forEach(function (a) {
+    let dims;
+    try { dims = doc.openImage(a.buffer); } catch (e) { return; }
+    const scale = imgW / dims.width;
+    const imgH = Math.min(dims.height * scale, 320);
+    const boxH = imgH + (a.caption ? 26 : 14);
+    if (col === 0) {
+      rowTop = ensurePdfSpace(doc, rowTop, boxH, ctx);
+      rowMaxH = 0;
+    }
+    const x = 40 + col * (imgW + gap);
+    try {
+      doc.image(a.buffer, x, rowTop, { width: imgW, height: imgH });
+      if (a.caption) doc.font('DMSans').fontSize(8).fillColor('#6B7280').text(a.caption, x, rowTop + imgH + 4, { width: imgW });
+    } catch (e) { /* springer billedet over — resten af PDF'en skal stadig genereres */ }
+    rowMaxH = Math.max(rowMaxH, boxH);
+    col++;
+    if (col >= 2) { col = 0; rowTop += rowMaxH + 12; y = rowTop; }
+  });
+  if (col !== 0) y = rowTop + rowMaxH + 12;
+  return y;
 }
 // RUNDE AA — henter billed-bytes for en liste vedhæftninger (Cloudinary-
 // URL'er) FØR selve PDF-tegningen, fordi PDFKit tegner synkront og ikke kan
@@ -18112,7 +18186,7 @@ async function fetchAttachmentImages(rows) {
 // Samler PDF'en i hukommelsen i stedet for at streame den direkte til et
 // HTTP-svar — bruges når PDF'en skal vedhæftes en mail i stedet for vises i
 // browseren.
-function renderDocumentPdfBuffer(kind, record, company) {
+function renderDocumentPdfBuffer(kind, record, company, attachments) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margin: 40 });
@@ -18121,7 +18195,7 @@ function renderDocumentPdfBuffer(kind, record, company) {
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
-      drawDocumentPdf(doc, kind, record, company);
+      drawDocumentPdf(doc, kind, record, company, attachments);
       doc.end();
     } catch (e) { reject(e); }
   });
@@ -18154,12 +18228,15 @@ app.get('/api/quotes/:id/pdf', auth, panelAccess('quotes'), asyncRoute(async (re
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const company = await getCompanyInfo();
+  // RUNDE AC — se fetchAttachmentImages: henter billed-bytes for tilbuddets
+  // egne vedhæftninger FØR den synkrone PDF-tegning.
+  const attachmentImages = await fetchAttachmentImages(quote.attachments);
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${quote.quote_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
-  drawDocumentPdf(doc, 'quote', quote, company);
+  drawDocumentPdf(doc, 'quote', quote, company, attachmentImages);
   doc.end();
 }));
 
@@ -18208,12 +18285,18 @@ app.post('/api/quotes/preview-pdf', auth, panelAccess('quotes'), asyncRoute(asyn
     paid_total: 0,
     remaining: totals.total
   };
+  // RUNDE AC — live-forhåndsvisningen skal vise NØJAGTIGT det samme som den
+  // rigtige PDF, inkl. vedhæftede billeder (hele pointen med RUNDE V, se
+  // kommentaren ovenfor). admin.html sender de allerede-gemte vedhæftningers
+  // URL'er med i qeBuildPreviewBody (b.attachments = [{url,caption}]) — intet
+  // databasekald nødvendigt her, kun at hente selve billed-bytes.
+  const attachmentImages = await fetchAttachmentImages(b.attachments);
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', 'inline; filename="forhaandsvisning.pdf"');
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
-  drawDocumentPdf(doc, kind, record, company);
+  drawDocumentPdf(doc, kind, record, company, attachmentImages);
   doc.end();
 }));
 
@@ -18221,12 +18304,14 @@ app.get('/api/invoices/:id/pdf', auth, panelAccess('quotes'), asyncRoute(async (
   const invoice = await loadInvoiceFull(req.params.id);
   if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
   const company = await getCompanyInfo();
+  // RUNDE AC — se tilsvarende kommentar ved GET /api/quotes/:id/pdf ovenfor.
+  const attachmentImages = await fetchAttachmentImages(invoice.attachments);
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${invoice.invoice_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
-  drawDocumentPdf(doc, 'invoice', invoice, company);
+  drawDocumentPdf(doc, 'invoice', invoice, company, attachmentImages);
   doc.end();
 }));
 
@@ -18488,7 +18573,12 @@ app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (
     });
   }
   let pdfBuffer;
-  try { pdfBuffer = await renderDocumentPdfBuffer('quote', quote, company); }
+  // RUNDE AC — mailen kunden modtager skal have PRÆCIS samme PDF som
+  // "Åbn PDF i nyt vindue"-knappen, inkl. evt. vedhæftede billeder.
+  try {
+    const attachmentImages = await fetchAttachmentImages(quote.attachments);
+    pdfBuffer = await renderDocumentPdfBuffer('quote', quote, company, attachmentImages);
+  }
   catch (e) { return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message }); }
   let sendResult;
   try {
@@ -18597,7 +18687,11 @@ app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async
     });
   }
   let pdfBuffer;
-  try { pdfBuffer = await renderDocumentPdfBuffer('invoice', invoice, company); }
+  // RUNDE AC — se tilsvarende kommentar ved tilbuddets sende-rute ovenfor.
+  try {
+    const attachmentImages = await fetchAttachmentImages(invoice.attachments);
+    pdfBuffer = await renderDocumentPdfBuffer('invoice', invoice, company, attachmentImages);
+  }
   catch (e) { return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message }); }
   let sendResult;
   try {
@@ -18641,24 +18735,67 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
     const discLabel = disc ? (discType === 'fixed' ? ` (-${Math.round(disc).toLocaleString('da-DK')} kr)` : ` (-${disc}%)`) : '';
     return `<tr><td>${lineDescCellHtml(l)}</td><td class="num">${Number(l.quantity)} ${esc(l.unit || '')}${discLabel}</td><td class="num">${krFmtServer(l.sell_price)}</td><td class="num">${krFmtServer(lineTotal)}</td></tr>`;
   }).join('');
+  // RUNDE AD (Martins ønske: "Folk kan ikke finde ud af at acceptere deres
+  // tilbud. kan du rette det så der en tydelig knap til det til enten
+  // underskriv med tekst eller tegn eller ligende") — 'pending' styrer BÅDE
+  // den flydende "✍️ Accepter tilbuddet"-knap forneden OG det store banner
+  // øverst på siden (se lige efter denne funktion, og HTML'en nedenfor) —
+  // begge skal væk igen så snart tilbuddet er accepteret/afvist/konverteret,
+  // ellers ville en kunde der ALLEREDE har skrevet under blive ved med at
+  // blive bedt om at gøre det igen.
+  const pending = !['accepted', 'declined', 'converted'].includes(quote.status);
   const statusBlock = (() => {
     if (quote.status === 'accepted') {
       return `<div class="accepted-box">✅ Accepteret af <b>${esc(quote.signed_name)}</b> den ${esc(String(quote.signed_at || '').slice(0, 16).replace('T', ' '))}${quote.signature_data ? `<div class="sig-preview"><img src="${esc(quote.signature_data)}" alt="Underskrift"></div>` : ''}</div>`;
     }
     if (quote.status === 'declined') return `<div class="declined-box">Dette tilbud er markeret som afvist.</div>`;
     if (quote.status === 'converted') return `<div class="declined-box">Dette tilbud er allerede godkendt og faktureret.</div>`;
+    // RUNDE AD — to måder at underskrive på, i faneblade: "Tegn" (den
+    // oprindelige, tegnede underskrift — canvas'et var her i forvejen) og
+    // "Skriv" (nyt — skriver bare sit navn, som så vises/gemmes i en pæn
+    // "underskrift-agtig" skrifttype, se renderTypedSig herunder). Før KRÆVEDE
+    // siden ALTID en tegnet underskrift, selv når man allerede havde skrevet
+    // sit fulde navn ovenfor — det er formentlig en stor del af hvorfor folk
+    // gav op: en tegnefelt-underskrift er akavet på mobil, og fejlen "Tegn din
+    // underskrift i feltet" dukkede op selvom man troede man var færdig.
     return `
-      <div class="accept-box">
-        <h3>Accepter tilbuddet</h3>
+      <div class="accept-box" id="accept-box">
+        <h3>✍️ Accepter tilbuddet</h3>
         <label>Dit fulde navn</label>
         <input id="accept-name" type="text" placeholder="Fornavn Efternavn">
-        <label>Underskrift <span class="sig-hint">— tegn med musen eller fingeren</span></label>
-        <canvas id="sigpad" width="600" height="180"></canvas>
-        <button type="button" id="sig-clear" class="btn-link">Ryd underskrift</button>
-        <button type="button" id="accept-btn" class="accept-btn" onclick="submitAccept()">Jeg accepterer tilbuddet</button>
+        <div class="sig-mode-tabs">
+          <button type="button" class="sig-mode-tab active" id="sig-mode-draw-btn" onclick="setSigMode('draw')">✍️ Tegn underskrift</button>
+          <button type="button" class="sig-mode-tab" id="sig-mode-type-btn" onclick="setSigMode('type')">⌨️ Skriv underskrift</button>
+        </div>
+        <div id="sig-draw-wrap">
+          <label>Underskrift <span class="sig-hint">— tegn med musen eller fingeren</span></label>
+          <canvas id="sigpad" width="600" height="180"></canvas>
+          <button type="button" id="sig-clear" class="btn-link">Ryd underskrift</button>
+        </div>
+        <div id="sig-type-wrap" style="display:none">
+          <label>Skriv dit navn som underskrift</label>
+          <input id="sig-type-input" type="text" placeholder="Fx Peter Hansen" oninput="renderTypedSig()">
+          <div class="sig-type-preview" id="sig-type-preview">Din underskrift vises her</div>
+        </div>
+        <button type="button" id="accept-btn" class="accept-btn" onclick="submitAccept()">✓ Jeg accepterer tilbuddet</button>
         <p class="legal-note">Ved at underskrive bekræfter du at have læst og accepteret tilbuddet. Din underskrift, dit navn, din IP-adresse og tidspunktet gemmes som bevis for accepten.</p>
       </div>`;
   })();
+  // RUNDE AD — det store, svært-at-overse banner lige under sidehovedet,
+  // OG den flydende knap nederst på skærmen: to uafhængige "husk at
+  // acceptere"-påmindelser, fordi problemet var at folk slet ikke opdagede at
+  // der VAR noget at gøre (accept-boksen lå gemt nederst, efter en potentielt
+  // lang linjeliste). Begge peger på/scroller til #accept-box i stedet for at
+  // duplikere selve underskrifts-UI'en — kun ÉT sted man rent faktisk skriver under.
+  const acceptBannerHtml = pending ? `
+    <div class="accept-banner" onclick="scrollToAccept()">
+      <div class="accept-banner-text"><b>Tilbuddet venter på din godkendelse</b><br>Se det igennem, og tryk her for at acceptere det.</div>
+      <div class="accept-banner-btn">✍️ Accepter tilbuddet</div>
+    </div>` : '';
+  const stickyAcceptBarHtml = pending ? `
+    <div class="sticky-accept-bar" id="sticky-accept-bar">
+      <button type="button" onclick="scrollToAccept()">✍️ Accepter tilbuddet</button>
+    </div>` : '';
   const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(quote.quote_number)} — ${esc(company.name)}</title>
 <!-- RUNDE H #310 — se registerBrandFonts i server.js: samme Barlow
@@ -18667,7 +18804,10 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
      selv ser. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=DM+Sans:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<!-- RUNDE AD — Caveat tilføjet: cursiv skrifttype til "⌨️ Skriv underskrift"-
+     fanen (se renderTypedSig), så en indtastet underskrift rent faktisk
+     ligner en underskrift i stedet for maskinskrift. -->
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=DM+Sans:ital,wght@0,400;0,700;1,400&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing:border-box; }
   body{font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:#111318;margin:0;padding:24px 16px 60px}
@@ -18702,14 +18842,18 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   .totals{margin-left:auto;width:240px;margin-top:10px}
   .totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:12.5px;color:#6B7280}
   .totals-row.grand{font-size:15px;font-weight:800;color:#111318;border-top:1px solid #EEF0F3;margin-top:6px;padding-top:8px}
-  .accept-box h3{margin:0 0 12px;font-size:15px}
+  /* RUNDE AD — accept-boksen fik en accent-kant/baggrund og en synlig
+     "handling påkrævet"-ramme i stedet for bare endnu et hvidt kort, så den
+     visuelt skiller sig ud fra resten af siden (tilbudsindholdet ovenfor). */
+  .accept-box{border:2px solid #C7D2FE;background:#F5F5FF;border-radius:16px;margin:-4px;padding:20px}
+  .accept-box h3{margin:0 0 12px;font-size:17px;color:#3730A3}
   .accept-box label{display:block;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;margin:12px 0 4px}
-  .accept-box input{width:100%;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;font-size:14px}
+  .accept-box input{width:100%;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;font-size:14px;background:#fff}
   #sigpad{width:100%;height:180px;border:2px dashed #CBD5E1;border-radius:12px;touch-action:none;background:#FAFAFB}
   .sig-hint{text-transform:none;font-weight:400}
   .btn-link{background:none;border:0;color:#6B7280;font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block}
-  .accept-btn{width:100%;margin-top:10px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer}
-  .accept-btn:disabled{opacity:.6}
+  .accept-btn{width:100%;margin-top:10px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(79,70,229,.35)}
+  .accept-btn:disabled{opacity:.6;box-shadow:none}
   .legal-note{font-size:10.5px;color:#9CA3AF;margin-top:10px;line-height:1.5}
   .accepted-box{background:#F0FDF4;border:1px solid #BBF7D0;color:#15803D;border-radius:12px;padding:16px;font-size:13.5px}
   .sig-preview{margin-top:10px;background:#fff;border-radius:8px;padding:8px;display:inline-block}
@@ -18719,7 +18863,26 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   .notecard a{color:#4F46E5}
   .pagefooter{max-width:640px;margin:0 auto;text-align:center;font-size:11px;color:#9CA3AF;padding:6px 8px 0;line-height:1.8}
   .pagefooter .note{color:#C6CBD3;font-size:10.5px;margin-top:4px}
+  /* RUNDE AD (Martins ønske: "Folk kan ikke finde ud af at acceptere deres
+     tilbud ... en tydelig knap") — bannerét lige under sidehovedet fanger
+     opmærksomheden FØR man overhovedet begynder at scrolle ned gennem
+     linjerne, og den flydende bjælke forneden (.sticky-accept-bar) betyder at
+     der ALTID er en synlig "Accepter"-knap på skærmen, uanset hvor langt man
+     er scrollet ned i et langt tilbud — samme mønster som en "Læg i kurv"-
+     bjælke i webshops. Begge peger på (scroller til) #accept-box. */
+  .accept-banner{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:linear-gradient(135deg,#4F46E5,#4338CA);color:#fff;border-radius:14px;padding:16px 18px;margin-bottom:16px;cursor:pointer;box-shadow:0 8px 24px rgba(67,56,202,.28)}
+  .accept-banner-text{font-size:13px;line-height:1.5}
+  .accept-banner-text b{font-size:15px}
+  .accept-banner-btn{background:#fff;color:#4338CA;font-weight:800;font-size:13px;border-radius:8px;padding:10px 16px;white-space:nowrap}
+  .sticky-accept-bar{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid #E5E7EB;box-shadow:0 -6px 20px rgba(15,17,24,.12);padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;justify-content:center}
+  .sticky-accept-bar button{width:100%;max-width:640px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:13px;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(79,70,229,.35)}
+  /* RUNDE AD — de to underskrifts-faneblade ("✍️ Tegn" / "⌨️ Skriv"). */
+  .sig-mode-tabs{display:flex;gap:6px;margin-top:14px}
+  .sig-mode-tab{flex:1;border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:9px 6px;font-size:12.5px;font-weight:700;color:#6B7280;cursor:pointer}
+  .sig-mode-tab.active{border-color:#4F46E5;background:#EEF2FF;color:#3730A3}
+  .sig-type-preview{margin-top:6px;background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;min-height:56px;display:flex;align-items:center;font-family:'Caveat',cursive;font-size:34px;color:#111318;font-weight:700;word-break:break-word}
 </style></head><body><div class="wrap">
+${acceptBannerHtml}
 <div class="card">
   <div class="doc-top">
     ${company.logoUrl ? `<img class="company-logo-lg" src="${esc(company.logoUrl)}" alt="${esc(company.name)}">` : `<div class="company-name-fallback">${esc(company.name)}</div>`}
@@ -18741,9 +18904,59 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
 </div>
 <div class="card">${statusBlock}</div>
 ${(company.cvr || company.bankReg || company.bankAccount || company.iban || company.swift || company.footerNote) ? `<div class="pagefooter">${[company.cvr ? 'CVR ' + company.cvr : '', (company.bankReg || company.bankAccount) ? ('Reg. ' + company.bankReg + '  Konto ' + company.bankAccount) : '', company.iban ? 'IBAN ' + company.iban : '', company.swift ? 'SWIFT/BIC ' + company.swift : ''].filter(Boolean).map(esc).join('  ·  ')}${company.footerNote ? `<div class="note">${esc(company.footerNote)}</div>` : ''}</div>` : ''}
+${pending ? '<div style="height:64px"></div>' : ''}
 </div>
+${stickyAcceptBarHtml}
 <script>
 var TOKEN=${JSON.stringify(req.params.token)};
+// RUNDE AD (Martins ønske: "en tydelig knap ... enten underskriv med tekst
+// eller tegn") — sigMode styrer hvilken af de to faneblade der er aktiv.
+// 'draw' er default (samme adfærd som hidtil, uændret canvas-logik
+// nedenfor); 'type' er nyt — se setSigMode/renderTypedSig.
+var sigMode='draw';
+function setSigMode(mode){
+  sigMode=mode;
+  var drawBtn=document.getElementById('sig-mode-draw-btn'),typeBtn=document.getElementById('sig-mode-type-btn');
+  var drawWrap=document.getElementById('sig-draw-wrap'),typeWrap=document.getElementById('sig-type-wrap');
+  if(drawBtn)drawBtn.classList.toggle('active',mode==='draw');
+  if(typeBtn)typeBtn.classList.toggle('active',mode==='type');
+  if(drawWrap)drawWrap.style.display=mode==='draw'?'':'none';
+  if(typeWrap)typeWrap.style.display=mode==='type'?'':'none';
+}
+// Live-forhåndsvisning af den SKREVNE underskrift, i den cursive Caveat-
+// skrifttype (indlæst i <head>) — selve forhåndsvisningen er bare CSS, ingen
+// canvas-tegning nødvendig her (det sker først ved submitAccept, se
+// renderTypedSigToDataUrl, hvor billedet der rent faktisk gemmes bygges).
+function renderTypedSig(){
+  var input=document.getElementById('sig-type-input');
+  var preview=document.getElementById('sig-type-preview');
+  if(!input||!preview)return;
+  var v=input.value.trim();
+  preview.textContent=v||'Din underskrift vises her';
+}
+// Tegner den skrevne underskrift ind på et skjult canvas i Caveat-skriften,
+// så den ender som PRÆCIS samme slags billede (PNG data-URL) som en tegnet
+// underskrift — resten af koden (submitAccept, PDF'en, admin-visningen) skal
+// derfor ikke vide eller bekymre sig om hvilken metode kunden valgte.
+// document.fonts.load() venter eksplicit på at Caveat er indlæst FØR der
+// tegnes — ellers ville canvas'et (i modsætning til almindelig CSS-tekst)
+// stille falde tilbage til en standard-skrifttype uden advarsel.
+async function renderTypedSigToDataUrl(name){
+  try{await document.fonts.load('700 44px Caveat');}catch(e){}
+  var c=document.createElement('canvas');c.width=600;c.height=180;
+  var ctx=c.getContext('2d');
+  ctx.fillStyle='#111318';
+  ctx.font="700 44px 'Caveat',cursive";
+  ctx.textBaseline='middle';
+  ctx.fillText(name,24,c.height/2,c.width-48);
+  return c.toDataURL('image/png');
+}
+function scrollToAccept(){
+  var box=document.getElementById('accept-box');
+  if(box){box.scrollIntoView({behavior:'smooth',block:'center'});}
+  var nameEl=document.getElementById('accept-name');
+  if(nameEl)setTimeout(function(){nameEl.focus();},350);
+}
 (function(){
   var canvas=document.getElementById('sigpad');
   if(!canvas)return;
@@ -18763,16 +18976,25 @@ async function submitAccept(){
   var nameEl=document.getElementById('accept-name');
   var name=nameEl?nameEl.value.trim():'';
   if(!name){alert('Skriv dit navn');return;}
-  var canvas=document.getElementById('sigpad');
-  var blank=document.createElement('canvas');blank.width=canvas.width;blank.height=canvas.height;
-  if(canvas.toDataURL()===blank.toDataURL()){alert('Tegn din underskrift i feltet');return;}
+  var signatureDataUrl;
+  if(sigMode==='type'){
+    var typeInput=document.getElementById('sig-type-input');
+    var typedName=typeInput?typeInput.value.trim():'';
+    if(!typedName){alert('Skriv dit navn som underskrift');return;}
+    signatureDataUrl=await renderTypedSigToDataUrl(typedName);
+  }else{
+    var canvas=document.getElementById('sigpad');
+    var blank=document.createElement('canvas');blank.width=canvas.width;blank.height=canvas.height;
+    if(canvas.toDataURL()===blank.toDataURL()){alert('Tegn din underskrift i feltet — eller skift til "⌨️ Skriv underskrift" ovenfor');return;}
+    signatureDataUrl=canvas.toDataURL('image/png');
+  }
   var btn=document.getElementById('accept-btn');btn.disabled=true;btn.textContent='Sender...';
   try{
-    var r=await fetch('/api/public/quotes/'+TOKEN+'/accept',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signed_name:name,signature_data:canvas.toDataURL('image/png')})});
+    var r=await fetch('/api/public/quotes/'+TOKEN+'/accept',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signed_name:name,signature_data:signatureDataUrl})});
     var d=await r.json().catch(function(){return{};});
     if(r.ok&&d.ok){window.location.reload();}
-    else{alert(d.error||'Der skete en fejl');btn.disabled=false;btn.textContent='Jeg accepterer tilbuddet';}
-  }catch(e){alert('Netværksfejl — prøv igen');btn.disabled=false;btn.textContent='Jeg accepterer tilbuddet';}
+    else{alert(d.error||'Der skete en fejl');btn.disabled=false;btn.textContent='✓ Jeg accepterer tilbuddet';}
+  }catch(e){alert('Netværksfejl — prøv igen');btn.disabled=false;btn.textContent='✓ Jeg accepterer tilbuddet';}
 }
 </script>
 </body></html>`;
@@ -19591,13 +19813,16 @@ app.get('/kunde/:token/tilbud/:quoteId/pdf', asyncRoute(async (req, res) => {
     return res.status(404).send(portalNotFoundPage());
   }
   const company = await getCompanyInfo();
+  // RUNDE AC — kundens egen PDF-visning skal naturligvis også vise de
+  // vedhæftede billeder, ikke kun den interne visning i admin.
+  const attachmentImages = await fetchAttachmentImages(quote.attachments);
   logDocActivity('quote', quote.id, 'viewed', 'Kunde', 'PDF via kundeportal');
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${quote.quote_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
-  drawDocumentPdf(doc, 'quote', quote, company);
+  drawDocumentPdf(doc, 'quote', quote, company, attachmentImages);
   doc.end();
 }));
 app.get('/kunde/:token/faktura/:invoiceId/pdf', asyncRoute(async (req, res) => {
@@ -19608,13 +19833,15 @@ app.get('/kunde/:token/faktura/:invoiceId/pdf', asyncRoute(async (req, res) => {
     return res.status(404).send(portalNotFoundPage());
   }
   const company = await getCompanyInfo();
+  // RUNDE AC — se tilsvarende kommentar ved kundeportal-tilbudets PDF ovenfor.
+  const attachmentImages = await fetchAttachmentImages(invoice.attachments);
   logDocActivity('invoice', invoice.id, 'viewed', 'Kunde', 'PDF via kundeportal');
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${invoice.invoice_number}.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
-  drawDocumentPdf(doc, 'invoice', invoice, company);
+  drawDocumentPdf(doc, 'invoice', invoice, company, attachmentImages);
   doc.end();
 }));
 
