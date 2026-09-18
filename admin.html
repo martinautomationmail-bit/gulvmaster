@@ -740,6 +740,14 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-privatbudget .pb-group-body.pb-collapsed{display:none}
 #page-finance #fintab-privatbudget .pb-move-select{font-size:10.5px;font-weight:600;padding:2px 5px;border-radius:6px;border:1px solid var(--bly-border-soft);background:#fff;color:var(--bly-sub);max-width:132px}
 @media(max-width:980px){#page-finance #fintab-privatbudget .pb-group-body{grid-template-columns:1fr}}
+/* RUNDE AR (Martin: "Det er Indtægter break down de forskellige bokse og det samme med
+   udgifter") — to tydeligt adskilte fordelinger i toppen af Privat budget, i stedet for
+   én blandet liste. pb-bd-netto er den lille "hurtig sammenligne"-linje øverst. */
+#page-finance #fintab-privatbudget .pb-bd-netto{font-size:12.5px;font-weight:600;color:var(--bly-sub);padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--bly-border-soft)}
+#page-finance #fintab-privatbudget .pb-bd-netto strong{color:var(--bly-ink);font-size:14px}
+#page-finance #fintab-privatbudget .pb-bd-section+.pb-bd-section{margin-top:16px}
+#page-finance #fintab-privatbudget .pb-bd-section-head{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;font-weight:800;margin-bottom:6px}
+#page-finance #fintab-privatbudget .pb-bd-section-total{font-weight:700;color:var(--bly-sub);font-size:12px}
 /* Lunar-snapshot-popup — Billy-stil i stedet for det gamle mørkeblå modal-header-look
    som resten af appens ældre modaler bruger. Scoped til denne ene modal, så de andre
    (endnu ikke redesignede) modaler i appen ikke rammes. */
@@ -3407,7 +3415,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.13</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.14</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4186,9 +4194,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
          den gamle 6-måneders trendgraf er skiftet ud med en "Fordeling pr. boks" for
          DENNE måned (samme mønster som Udgifter-fanens Fordeling pr. kategori), fordi
          privat budget ikke har rigtig historik for tidligere måneder endnu, så en
-         trendgraf mest viste flade 0'er. Denne bruger altid de rigtige, aktuelle tal. -->
+         trendgraf mest viste flade 0'er. Denne bruger altid de rigtige, aktuelle tal.
+         RUNDE AR (Martin, efter at have set RUNDE AQ's gruppe-total-version: "Det er
+         Indtægter break down de forskellige bokse og det samme med udgifter. For så kan
+         jeg hurtig samligne fx indtægter vs udgifter forventet profit pr måned. Jeg kan
+         se opsparing vs gældsposter osv.") — erstatter den ene blandede liste (kun
+         grupper) med TO adskilte fordelinger, én for Indtægter og én for Udgifter, hver
+         med alle SINE bokse/grupper som egne søjler — se renderFinPrivateBudgetBreakdown
+         i admin.html. -->
     <div class="udg-breakdown">
-      <div class="udg-breakdown-head"><h3>Fordeling pr. boks</h3><span>Denne måneds beløb, størst øverst</span></div>
+      <div class="udg-breakdown-head"><h3>Fordeling — Indtægter vs. Udgifter</h3><span>Denne måneds beløb, størst øverst</span></div>
       <div id="fin-privbudget-bd-rows"></div>
     </div>
 
@@ -15638,33 +15653,48 @@ function renderFinPrivateBudgetKpis(){
   var expTotalEl=document.getElementById('fin-pb-expense-total');
   if(expTotalEl)expTotalEl.textContent=krFmt(expense);
 }
-// RUNDE AQ (Martin: "I diagrammet Vis kun Indtægter samlet, Udgifter samlet og så alle
-// fremtide bokse/overskrifter jeg tilføjer") — erstatter den gamle pr.-kategori-boks
-// visning med kun 2 faste rækker (Indtægter/Udgifter samlet, altid vist, også ved 0 kr)
-// + én række pr. gruppe Martin selv opretter (kun grupper med indhold >0 kr, sorteret
-// størst først) — samme mønster som renderFinExpenseBreakdown() i Udgifter-fanen
-// (udg-bd-row/track/fill), grøn fyld for indtægt, rød for udgift.
+// RUNDE AR (Martin, efter at have set RUNDE AQ's version: "Det er Indtægter break down
+// de forskellige bokse og det samme med udgifter. For så kan jeg hurtig samligne fx
+// indtægter vs udgifter forventet profit pr måned. Jeg kan se opsparing vs gældsposter
+// osv.") — RUNDE AQ viste kun ÉN blandet liste (grupper sorteret på tværs af begge
+// sektioner). Nu: TO helt adskilte fordelinger, én under Indtægter og én under Udgifter,
+// så man kan sammenligne indbyrdes indenfor hver side (fx "Opsparing" mod "Gældsposter")
+// uden at skulle lede efter dem i én fælles, blandet liste. Hver fordeling viser BÅDE
+// løse bokse OG grupper (som én samlet søjle pr. gruppe) — dvs. præcis de "bokse" Martin
+// ser på siden, uanset om han har organiseret dem i grupper eller ej. Øverst en lille
+// netto-linje ("forventet profit"), så den hurtige indtægter-vs-udgifter-sammenligning
+// han bad om er der uden at skulle lægge de to sektioners tal sammen i hovedet.
+function pbBreakdownRowsForSection(section){
+  var rows=[];
+  finPrivateBudget.filter(function(c){return (c.section||'expense')===section && !c.group_id;}).forEach(function(c){
+    var v=c.items.reduce(function(s,i){return s+(+i.amount||0);},0);
+    rows.push({name:c.name,v:v});
+  });
+  finPrivateBudgetGroups.filter(function(g){return g.section===section;}).forEach(function(g){
+    var v=finPrivateBudget.filter(function(c){return String(c.group_id||'')===String(g.id);})
+      .reduce(function(s,c){return s+c.items.reduce(function(s2,i){return s2+(+i.amount||0);},0);},0);
+    rows.push({name:g.name,v:v});
+  });
+  return rows.filter(function(r){return r.v>0;}).sort(function(a,b){return b.v-a.v;});
+}
 function renderFinPrivateBudgetBreakdown(){
   var el=document.getElementById('fin-privbudget-bd-rows');
   if(!el)return;
-  var income=0,expense=0;
-  finPrivateBudget.forEach(function(cat){
-    var v=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
-    if((cat.section||'expense')==='income')income+=v;else expense+=v;
-  });
-  var groupRows=finPrivateBudgetGroups.map(function(g){
-    var v=finPrivateBudget.filter(function(c){return String(c.group_id)===String(g.id);})
-      .reduce(function(s,c){return s+c.items.reduce(function(s2,i){return s2+(+i.amount||0);},0);},0);
-    return {name:g.name,v:v,section:g.section};
-  }).filter(function(r){return r.v>0;});
-  groupRows.sort(function(a,b){return b.v-a.v;});
-  var rows=[{name:'Indtægter samlet',v:income,section:'income',fixed:true},{name:'Udgifter samlet',v:expense,section:'expense',fixed:true}].concat(groupRows);
-  var max=Math.max.apply(null,rows.map(function(r){return r.v;}).concat([1]));
-  el.innerHTML=rows.map(function(r){
-    var w=max?Math.max(3,Math.round(r.v/max*100)):0;
-    var color=r.section==='income'?'#16A34A':'#DC2626';
-    return '<div class="udg-bd-row"><div class="udg-bd-name">'+(r.fixed?'<strong>'+esc(r.name)+'</strong>':esc(r.name)+(r.section==='income'?' <span style="color:#16A34A;font-weight:600;font-size:10.5px">(indtægt)</span>':''))+'</div><div class="udg-bd-track"><div class="udg-bd-fill" style="width:'+w+'%;background:'+color+'"></div></div><div><div class="udg-bd-amt">'+krFmt(r.v)+'</div></div></div>';
-  }).join('');
+  var incomeRows=pbBreakdownRowsForSection('income'),expenseRows=pbBreakdownRowsForSection('expense');
+  var incomeTotal=incomeRows.reduce(function(s,r){return s+r.v;},0);
+  var expenseTotal=expenseRows.reduce(function(s,r){return s+r.v;},0);
+  var max=Math.max.apply(null,incomeRows.concat(expenseRows).map(function(r){return r.v;}).concat([1]));
+  function rowsHtml(rows,color){
+    return rows.length?rows.map(function(r){
+      var w=max?Math.max(3,Math.round(r.v/max*100)):0;
+      return '<div class="udg-bd-row"><div class="udg-bd-name">'+esc(r.name)+'</div><div class="udg-bd-track"><div class="udg-bd-fill" style="width:'+w+'%;background:'+color+'"></div></div><div><div class="udg-bd-amt">'+krFmt(r.v)+'</div></div></div>';
+    }).join(''):'<div class="udg-empty-hint">Ingen bokse endnu.</div>';
+  }
+  var net=incomeTotal-expenseTotal;
+  el.innerHTML=
+    '<div class="pb-bd-netto">Forventet profit denne måned: <strong>'+krFmt(net)+'</strong> '+(net>=0?'<span class="udg-trend udg-trend-good">Overskud</span>':'<span class="udg-trend udg-trend-bad">Underskud</span>')+'</div>'+
+    '<div class="pb-bd-section"><div class="pb-bd-section-head"><span>💰 Indtægter</span><span class="pb-bd-section-total">'+krFmt(incomeTotal)+'</span></div>'+rowsHtml(incomeRows,'#16A34A')+'</div>'+
+    '<div class="pb-bd-section"><div class="pb-bd-section-head"><span>💸 Udgifter</span><span class="pb-bd-section-total">'+krFmt(expenseTotal)+'</span></div>'+rowsHtml(expenseRows,'#DC2626')+'</div>';
 }
 // RUNDE AQ — kategori-boksens HTML er nu udtrukket til en fælles funktion, så både de
 // "løse" bokse (renderFinPrivateBudgetSection) og boksene inde i en gruppe
