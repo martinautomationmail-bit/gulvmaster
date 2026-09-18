@@ -722,6 +722,24 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-privatbudget .pb-collapse-btn.collapsed{transform:rotate(-90deg)}
 #page-finance #fintab-privatbudget .pb-section-total{font-size:12px;font-weight:700;color:var(--bly-sub);margin-left:2px}
 #page-finance #fintab-privatbudget .udg-cat-grid.pb-collapsed{display:none}
+/* RUNDE AQ (Martin: "oprette flere bokse hvor jeg inde i dem kan oprette de her små
+   bokse og så felter der inde. For jeg vil gerne lave en anden struktur") — Martins
+   egne overskrifter/grupper, der samler flere kategori-bokse under én fælles titel,
+   nedenunder de "løse" bokse i hver sektion. Egen let indrammet beholder, så det
+   visuelt er tydeligt hvilke bokse der hører til hvilken gruppe. */
+#page-finance #fintab-privatbudget .pb-groups.pb-collapsed{display:none}
+#page-finance #fintab-privatbudget .pb-groups{display:flex;flex-direction:column;gap:16px;margin-top:16px}
+#page-finance #fintab-privatbudget .pb-group-card{border:1.5px dashed var(--bly-border-soft);border-radius:var(--bly-r-lg,14px);overflow:hidden;background:var(--bly-hover)}
+#page-finance #fintab-privatbudget .pb-group-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;background:rgba(0,0,0,.02)}
+#page-finance #fintab-privatbudget .pb-group-icon{font-size:15px;flex-shrink:0;line-height:1}
+#page-finance #fintab-privatbudget .pb-group-name{background:transparent;border:0;color:inherit;font-weight:800;font-size:14px;flex:1;min-width:100px;padding:2px 0}
+#page-finance #fintab-privatbudget .pb-group-head .amt{font-weight:700;white-space:nowrap;flex-shrink:0}
+#page-finance #fintab-privatbudget .pb-group-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}
+#page-finance #fintab-privatbudget .pb-group-addbtn{font-size:10.5px;padding:4px 9px}
+#page-finance #fintab-privatbudget .pb-group-body{padding:14px;background:transparent;margin:0}
+#page-finance #fintab-privatbudget .pb-group-body.pb-collapsed{display:none}
+#page-finance #fintab-privatbudget .pb-move-select{font-size:10.5px;font-weight:600;padding:2px 5px;border-radius:6px;border:1px solid var(--bly-border-soft);background:#fff;color:var(--bly-sub);max-width:132px}
+@media(max-width:980px){#page-finance #fintab-privatbudget .pb-group-body{grid-template-columns:1fr}}
 /* Lunar-snapshot-popup — Billy-stil i stedet for det gamle mørkeblå modal-header-look
    som resten af appens ældre modaler bruger. Scoped til denne ene modal, så de andre
    (endnu ikke redesignede) modaler i appen ikke rammes. */
@@ -3389,7 +3407,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.12</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.13</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4186,9 +4204,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <span style="font-size:15px;font-weight:800">💰 Indtægter</span>
         <span class="pb-section-total" id="fin-pb-income-total"></span>
       </div>
-      <div class="udg-toolbar-right"><button type="button" class="udg-btn outline dashed" id="fin-add-private-cat-income-btn">+ Ny boks</button></div>
+      <div class="udg-toolbar-right">
+        <button type="button" class="udg-btn outline dashed" id="fin-add-private-cat-income-btn">+ Ny boks</button>
+        <button type="button" class="udg-btn outline dashed" id="fin-add-private-group-income-btn" title="Opret en overskrift, du selv kan samle flere bokse under">+ Ny gruppe</button>
+      </div>
     </div>
     <div class="udg-cat-grid pb-cat-grid" id="fin-private-budget-income" style="grid-template-columns:repeat(3,1fr)"></div>
+    <div class="pb-groups" id="fin-private-budget-income-groups"></div>
 
     <div class="udg-toolbar pb-section-head" data-pbsection="expense" style="margin-top:28px">
       <div class="udg-toolbar-left">
@@ -4196,9 +4218,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <span style="font-size:15px;font-weight:800">💸 Udgifter</span>
         <span class="pb-section-total" id="fin-pb-expense-total"></span>
       </div>
-      <div class="udg-toolbar-right"><button type="button" class="udg-btn outline dashed" id="fin-add-private-cat-expense-btn">+ Ny boks</button></div>
+      <div class="udg-toolbar-right">
+        <button type="button" class="udg-btn outline dashed" id="fin-add-private-cat-expense-btn">+ Ny boks</button>
+        <button type="button" class="udg-btn outline dashed" id="fin-add-private-group-expense-btn" title="Opret en overskrift, du selv kan samle flere bokse under">+ Ny gruppe</button>
+      </div>
     </div>
     <div class="udg-cat-grid pb-cat-grid" id="fin-private-budget-expense" style="grid-template-columns:repeat(3,1fr)"></div>
+    <div class="pb-groups" id="fin-private-budget-expense-groups"></div>
 
     <!-- RUNDE H #316 (Martins ønske: "et note felt i bunden ... som i Notions noter") —
          ét fast, frit noteFelt nederst på siden, ikke måneds-opdelt (løse noter/huskeliste
@@ -13289,6 +13315,12 @@ async function loadFinance(){
   finExpenses=(expensesResult&&expensesResult.categories)||[];
   var privateBudgetResult=await privateBudgetP;
   finPrivateBudget=(privateBudgetResult&&privateBudgetResult.categories)||[];
+  // RUNDE AQ — denne indlæsningssti (Finance-siden ved første åbning) glemte at sætte
+  // finPrivateBudgetGroups, som kun blev sat i loadPrivateBudgetForMonth() (måned-frem/
+  // tilbage-knapperne) — resultatet var, at Martins grupper først dukkede op EFTER man
+  // havde trykket måned-frem/tilbage eller oprettet/rettet noget (hvilket kalder
+  // loadPrivateBudgetForMonth), men var usynlige på en frisk sideindlæsning.
+  finPrivateBudgetGroups=(privateBudgetResult&&privateBudgetResult.groups)||[];
   var snapshots=(await snapshotsP)||[];
   // Hent det rigtige udgiftstal for HVER af de tre måneder grafen viser, i stedet for
   // at antage samme beløb overalt.
@@ -13846,6 +13878,11 @@ function renderFinBankResults(){
   });
 }
 var finPrivateBudget=[];
+// RUNDE AQ (Martin: "oprette flere bokse hvor jeg inde i dem kan oprette de her små
+// bokse og så felter der inde") — Martins egne overskrifter/grupper, der samler flere
+// kategori-bokse (finPrivateBudget-elementer) under én fælles titel. En kategori uden
+// gruppe (group_id null) opfører sig helt som før.
+var finPrivateBudgetGroups=[];
 // RUNDE AJ (Martins rettelse: "BANKEN SKAL VISE DET CASH JEG HAR I BANKEN ... DEN SKAL
 // VISE ET SNAPSHOT AF MINE 3 BANKKONTOER") — Bank-kortet på Oversigt skal IKKE vise en
 // månedlig ind/udbetalt-strøm fra bankafstemningen (det byggede RUNDE AI, som viste sig
@@ -15573,8 +15610,10 @@ function pbSectionCollapsed(section){
 function pbSetSectionCollapsed(section,collapsed){
   try{localStorage.setItem('gm_pb_collapsed_'+section,collapsed?'1':'0');}catch(e){}
   var grid=document.getElementById(section==='income'?'fin-private-budget-income':'fin-private-budget-expense');
+  var groups=document.getElementById(section==='income'?'fin-private-budget-income-groups':'fin-private-budget-expense-groups');
   var btn=document.getElementById('pb-collapse-'+section);
   if(grid)grid.classList.toggle('pb-collapsed',collapsed);
+  if(groups)groups.classList.toggle('pb-collapsed',collapsed);
   if(btn)btn.classList.toggle('collapsed',collapsed);
 }
 ['income','expense'].forEach(function(section){
@@ -15599,58 +15638,95 @@ function renderFinPrivateBudgetKpis(){
   var expTotalEl=document.getElementById('fin-pb-expense-total');
   if(expTotalEl)expTotalEl.textContent=krFmt(expense);
 }
-// Samme mønster som renderFinExpenseBreakdown() i Udgifter-fanen (udg-bd-row/track/fill),
-// bare på tværs af BEGGE sektioner samtidig — grøn fyld for indtægt, rød for udgift.
+// RUNDE AQ (Martin: "I diagrammet Vis kun Indtægter samlet, Udgifter samlet og så alle
+// fremtide bokse/overskrifter jeg tilføjer") — erstatter den gamle pr.-kategori-boks
+// visning med kun 2 faste rækker (Indtægter/Udgifter samlet, altid vist, også ved 0 kr)
+// + én række pr. gruppe Martin selv opretter (kun grupper med indhold >0 kr, sorteret
+// størst først) — samme mønster som renderFinExpenseBreakdown() i Udgifter-fanen
+// (udg-bd-row/track/fill), grøn fyld for indtægt, rød for udgift.
 function renderFinPrivateBudgetBreakdown(){
   var el=document.getElementById('fin-privbudget-bd-rows');
   if(!el)return;
-  var rows=finPrivateBudget.map(function(cat){
+  var income=0,expense=0;
+  finPrivateBudget.forEach(function(cat){
     var v=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
-    return {name:cat.name,v:v,section:cat.section||'expense'};
+    if((cat.section||'expense')==='income')income+=v;else expense+=v;
+  });
+  var groupRows=finPrivateBudgetGroups.map(function(g){
+    var v=finPrivateBudget.filter(function(c){return String(c.group_id)===String(g.id);})
+      .reduce(function(s,c){return s+c.items.reduce(function(s2,i){return s2+(+i.amount||0);},0);},0);
+    return {name:g.name,v:v,section:g.section};
   }).filter(function(r){return r.v>0;});
-  rows.sort(function(a,b){return b.v-a.v;});
-  var max=rows.length?rows[0].v:1;
+  groupRows.sort(function(a,b){return b.v-a.v;});
+  var rows=[{name:'Indtægter samlet',v:income,section:'income',fixed:true},{name:'Udgifter samlet',v:expense,section:'expense',fixed:true}].concat(groupRows);
+  var max=Math.max.apply(null,rows.map(function(r){return r.v;}).concat([1]));
   el.innerHTML=rows.map(function(r){
     var w=max?Math.max(3,Math.round(r.v/max*100)):0;
     var color=r.section==='income'?'#16A34A':'#DC2626';
-    return '<div class="udg-bd-row"><div class="udg-bd-name">'+esc(r.name)+(r.section==='income'?' <span style="color:#16A34A;font-weight:600;font-size:10.5px">(indtægt)</span>':'')+'</div><div class="udg-bd-track"><div class="udg-bd-fill" style="width:'+w+'%;background:'+color+'"></div></div><div><div class="udg-bd-amt">'+krFmt(r.v)+'</div></div></div>';
-  }).join('')||'<div class="udg-empty-hint">Ingen poster endnu denne måned.</div>';
+    return '<div class="udg-bd-row"><div class="udg-bd-name">'+(r.fixed?'<strong>'+esc(r.name)+'</strong>':esc(r.name)+(r.section==='income'?' <span style="color:#16A34A;font-weight:600;font-size:10.5px">(indtægt)</span>':''))+'</div><div class="udg-bd-track"><div class="udg-bd-fill" style="width:'+w+'%;background:'+color+'"></div></div><div><div class="udg-bd-amt">'+krFmt(r.v)+'</div></div></div>';
+  }).join('');
 }
-function renderFinPrivateBudgetSection(containerId,section){
-  var el=document.getElementById(containerId);
-  if(!el)return;
-  var cats=finPrivateBudget.filter(function(c){return (c.section||'expense')===section;});
-  var sectionTotal=cats.reduce(function(s,c){return s+c.items.reduce(function(s2,i){return s2+(+i.amount||0);},0);},0);
-  el.innerHTML=cats.map(function(cat,idx){
-    var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
-    var pct=sectionTotal?Math.round(catTotal/sectionTotal*100):0;
-    var rowsHtml=cat.items.length?cat.items.map(function(it){
-      return '<div class="udg-exp-row '+(it.paid?'paid':'unpaid')+'" style="grid-template-columns:20px 1fr 90px 26px" data-id="'+it.id+'">'+
-        '<input type="checkbox" class="fin-priv-paid" title="Betalt" '+(+it.paid?'checked':'')+'>'+
-        '<input type="text" class="udg-exp-name fin-priv-name" value="'+esc(it.name)+'">'+
-        '<input type="number" class="udg-exp-amt fin-priv-amount" value="'+it.amount+'">'+
-        '<button class="udg-exp-del fin-priv-del">×</button></div>';
-    }).join(''):'<div class="udg-empty-hint">Ingen poster endnu.</div>';
-    var otherSection=section==='income'?'expense':'income';
-    return '<div class="udg-cat-card pb-cat-card" data-catid="'+cat.id+'" style="--pb-accent:'+pbCatAccent(cat.id)+'">'+
-      '<div class="udg-cat-head pb-cat-head">'+
-        '<div class="pb-cat-title"><span class="pb-cat-icon">'+pbCatIcon(cat.name,section)+'</span><input type="text" class="udg-cat-name fin-privcat-name" data-catid="'+cat.id+'" value="'+esc(cat.name)+'" style="background:transparent;border:0;color:inherit;font-weight:800;font-size:13px;width:100%;padding:0;min-width:0"></div>'+
-        '<span class="amt">'+krFmt(catTotal)+'</span>'+
-      '</div>'+
-      '<div class="pb-cat-toolbar">'+
-        '<span class="pb-cat-pct">'+(catTotal>0?pct+'% af sektion':'—')+'</span>'+
-        '<span class="pb-cat-actions">'+
-          '<button type="button" class="pb-icon-btn" data-action="pb-move" data-dir="-1" data-catid="'+cat.id+'" title="Flyt op"'+(idx===0?' disabled':'')+'>↑</button>'+
-          '<button type="button" class="pb-icon-btn" data-action="pb-move" data-dir="1" data-catid="'+cat.id+'" title="Flyt ned"'+(idx===cats.length-1?' disabled':'')+'>↓</button>'+
-          '<button type="button" class="pb-icon-btn" data-action="pb-swap" data-catid="'+cat.id+'" data-newsection="'+otherSection+'" title="Flyt til '+(otherSection==='income'?'Indtægter':'Udgifter')+'">⇄</button>'+
-          '<button type="button" class="pb-icon-btn pb-icon-danger" data-action="fin-del-private-cat" data-catid="'+cat.id+'" title="Slet hele boksen og alle dens poster">×</button>'+
-        '</span>'+
-      '</div>'+
-      '<div class="udg-cat-body">'+rowsHtml+'</div>'+
-      '<div class="udg-quickadd-row"><input type="text" placeholder="+ Ny post..." data-qa-name="'+cat.id+'"><input type="number" class="amt" placeholder="kr" data-qa-amt="'+cat.id+'"><button data-qa-btn="'+cat.id+'">Tilføj</button></div>'+
-      '</div>';
-  }).join('')||'<div class="udg-empty-hint">Ingen bokse endnu — tryk "+ Ny boks" for at starte.</div>';
-
+// RUNDE AQ — kategori-boksens HTML er nu udtrukket til en fælles funktion, så både de
+// "løse" bokse (renderFinPrivateBudgetSection) og boksene inde i en gruppe
+// (renderFinPrivateBudgetGroups) kan bruge nøjagtig samme markup/opførsel. idx/
+// siblingsLen bruges KUN til at slå ↑/↓-knapperne fra i hver ende af boksens egen
+// beholder (sektionen, eller gruppen den ligger i) — containerTotal/pctLabel styrer
+// "X% af ..."-teksten, så den siger "af sektion" for løse bokse og "af gruppen" inde i
+// en gruppe.
+function pbCategoryCardHtml(cat,idx,siblingsLen,containerTotal,pctLabel){
+  var section=cat.section||'expense';
+  var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
+  var pct=containerTotal?Math.round(catTotal/containerTotal*100):0;
+  var rowsHtml=cat.items.length?cat.items.map(function(it){
+    return '<div class="udg-exp-row '+(it.paid?'paid':'unpaid')+'" style="grid-template-columns:20px 1fr 90px 26px" data-id="'+it.id+'">'+
+      '<input type="checkbox" class="fin-priv-paid" title="Betalt" '+(+it.paid?'checked':'')+'>'+
+      '<input type="text" class="udg-exp-name fin-priv-name" value="'+esc(it.name)+'">'+
+      '<input type="number" class="udg-exp-amt fin-priv-amount" value="'+it.amount+'">'+
+      '<button class="udg-exp-del fin-priv-del">×</button></div>';
+  }).join(''):'<div class="udg-empty-hint">Ingen poster endnu.</div>';
+  return '<div class="udg-cat-card pb-cat-card" data-catid="'+cat.id+'" style="--pb-accent:'+pbCatAccent(cat.id)+'">'+
+    '<div class="udg-cat-head pb-cat-head">'+
+      '<div class="pb-cat-title"><span class="pb-cat-icon">'+pbCatIcon(cat.name,section)+'</span><input type="text" class="udg-cat-name fin-privcat-name" data-catid="'+cat.id+'" value="'+esc(cat.name)+'" style="background:transparent;border:0;color:inherit;font-weight:800;font-size:13px;width:100%;padding:0;min-width:0"></div>'+
+      '<span class="amt">'+krFmt(catTotal)+'</span>'+
+    '</div>'+
+    '<div class="pb-cat-toolbar">'+
+      '<span class="pb-cat-pct">'+(catTotal>0?pct+'% af '+pctLabel:'—')+'</span>'+
+      '<span class="pb-cat-actions">'+
+        '<button type="button" class="pb-icon-btn" data-action="pb-move" data-dir="-1" data-catid="'+cat.id+'" title="Flyt op"'+(idx===0?' disabled':'')+'>↑</button>'+
+        '<button type="button" class="pb-icon-btn" data-action="pb-move" data-dir="1" data-catid="'+cat.id+'" title="Flyt ned"'+(idx===siblingsLen-1?' disabled':'')+'>↓</button>'+
+        pbBuildMoveSelectHtml(cat)+
+        '<button type="button" class="pb-icon-btn pb-icon-danger" data-action="fin-del-private-cat" data-catid="'+cat.id+'" title="Slet hele boksen og alle dens poster">×</button>'+
+      '</span>'+
+    '</div>'+
+    '<div class="udg-cat-body">'+rowsHtml+'</div>'+
+    '<div class="udg-quickadd-row"><input type="text" placeholder="+ Ny post..." data-qa-name="'+cat.id+'"><input type="number" class="amt" placeholder="kr" data-qa-amt="'+cat.id+'"><button data-qa-btn="'+cat.id+'">Tilføj</button></div>'+
+    '</div>';
+}
+// RUNDE AQ (Martin: "rykke Boksene fra den ene Collum til den anden") — erstatter den
+// gamle ⇄-knap (der kun kunne bytte Indtægter/Udgifter) med én samlet flyt-vælger pr.
+// boks: en dropdown der viser BÅDE sektion og gruppe på én gang ("Indtægter → Ingen
+// gruppe", "Udgifter → Faste udgifter", osv.) — man vælger direkte hvor boksen skal
+// ligge, i stedet for at skulle gætte hvad en op/ned/byt-side-knap gør ift. en 3-kolonne
+// grid der bare auto-flyder efter sort_order (det var forvirringen bag "Collum"-klagen).
+function pbBuildMoveSelectHtml(cat){
+  var sections=[['income','💰 Indtægter'],['expense','💸 Udgifter']];
+  var html='<select class="pb-move-select" data-catid="'+cat.id+'" title="Flyt boksen til en anden sektion/gruppe">';
+  sections.forEach(function(s){
+    html+='<optgroup label="'+s[1]+'">';
+    var noneSel=(cat.section===s[0]&&!cat.group_id)?' selected':'';
+    html+='<option value="'+s[0]+':"'+noneSel+'>— Ingen gruppe —</option>';
+    finPrivateBudgetGroups.filter(function(g){return g.section===s[0];}).forEach(function(g){
+      var sel=(cat.section===s[0]&&String(cat.group_id||'')===String(g.id))?' selected':'';
+      html+='<option value="'+s[0]+':'+g.id+'"'+sel+'>'+esc(g.name)+'</option>';
+    });
+    html+='</optgroup>';
+  });
+  html+='</select>';
+  return html;
+}
+// Fælles event-wiring for kategori-bokse — bruges af BÅDE de løse bokse og boksene inde
+// i en gruppe, så de to steder aldrig kan komme ud af trit med hinanden.
+function pbWireCategoryCardEvents(el){
   el.querySelectorAll('[data-id]').forEach(function(row){
     var id=row.dataset.id;
     row.querySelector('.fin-priv-name').addEventListener('change',function(){saveFinPrivateItem(id,row);});
@@ -15688,34 +15764,158 @@ function renderFinPrivateBudgetSection(containerId,section){
   });
   // RUNDE AN (Martin: "Kan flytte boksene op og ned samt bytte side med de andre") —
   // op/ned bruger den eksisterende bulk-reorder-route (sætter sort_order = index for hele
-  // den globale kategori-liste efter ombytning af de to bokse), byt-side sætter blot
-  // category.section om via den udvidede PUT category-route (se server.js RUNDE AN).
+  // den globale kategori-liste efter ombytning af de to bokse).
   el.querySelectorAll('[data-action="pb-move"]').forEach(function(btn){
     btn.addEventListener('click',function(){
       if(btn.disabled)return;
       movePrivateBudgetCategory(btn.dataset.catid,+btn.dataset.dir);
     });
   });
-  el.querySelectorAll('[data-action="pb-swap"]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      api('/api/finance/private-budget/category/'+btn.dataset.catid,{method:'PUT',body:JSON.stringify({section:btn.dataset.newsection})}).then(function(r){
-        if(r&&r.ok){toast('Boks flyttet ✓','✓');loadPrivateBudgetForMonth();}else if(r)toast(r.error||'Fejl','❌');
+  // RUNDE AQ — flyt-vælgeren sætter section OG group_id i ét kald (se PUT
+  // category-routen i server.js, som lader gruppens section vinde hvis der vælges en
+  // gruppe, så de to felter aldrig kan komme ud af sync).
+  el.querySelectorAll('.pb-move-select').forEach(function(sel){
+    sel.addEventListener('change',function(){
+      var parts=sel.value.split(':');
+      var newSection=parts[0],groupId=parts[1]?parts[1]:null;
+      api('/api/finance/private-budget/category/'+sel.dataset.catid,{method:'PUT',body:JSON.stringify({section:newSection,group_id:groupId})}).then(function(r){
+        if(r&&r.ok){toast('Boks flyttet ✓','✓');loadPrivateBudgetForMonth();}else if(r)toast((r&&r.error)||'Fejl','❌');
       });
     });
   });
 }
-// Flytter en boks op/ned INDEN FOR sin egen sektion — finder nærmeste nabo af samme
-// sektion i den globale sort_order-liste (der kan sagtens ligge bokse fra den anden
-// sektion imellem dem i den globale liste, det er OK — de rører vi ikke ved), bytter de
-// to bokses positioner og gemmer hele den nye globale rækkefølge via reorder-routen.
+// De "løse" bokse (uden gruppe) i en sektion — opfører sig 100% som før RUNDE AQ.
+function renderFinPrivateBudgetSection(containerId,section){
+  var el=document.getElementById(containerId);
+  if(!el)return;
+  var cats=finPrivateBudget.filter(function(c){return (c.section||'expense')===section && !c.group_id;});
+  var sectionTotal=cats.reduce(function(s,c){return s+c.items.reduce(function(s2,i){return s2+(+i.amount||0);},0);},0);
+  el.innerHTML=cats.map(function(cat,idx){
+    return pbCategoryCardHtml(cat,idx,cats.length,sectionTotal,'sektion');
+  }).join('')||'<div class="udg-empty-hint">Ingen løse bokse endnu — tryk "+ Ny boks" for at starte, eller "+ Ny gruppe" for at samle flere bokse under én overskrift.</div>';
+  pbWireCategoryCardEvents(el);
+}
+// RUNDE AQ (Martin: "oprette flere bokse hvor jeg inde i dem kan oprette de her små
+// bokse og så felter der inde") — Martins egne grupper/overskrifter, renderet som
+// indrammede beholdere UNDER de løse bokse i hver sektion. Hver gruppe har sin egen
+// kollaps-tilstand (localStorage), redigerbart navn, total, flyt op/ned blandt de
+// andre grupper i samme sektion, en "+ Boks i gruppen"-knap, og kan slettes uden at
+// dens bokse forsvinder (se server.js — group_id sættes bare tilbage til NULL).
+function pbGroupCollapsed(id){
+  try{return localStorage.getItem('gm_pb_group_collapsed_'+id)==='1';}catch(e){return false;}
+}
+function pbSetGroupCollapsed(id,collapsed){
+  try{localStorage.setItem('gm_pb_group_collapsed_'+id,collapsed?'1':'0');}catch(e){}
+}
+function renderFinPrivateBudgetGroups(containerId,section){
+  var el=document.getElementById(containerId);
+  if(!el)return;
+  var groups=finPrivateBudgetGroups.filter(function(g){return g.section===section;});
+  el.innerHTML=groups.map(function(grp,gidx){
+    var cats=finPrivateBudget.filter(function(c){return String(c.group_id||'')===String(grp.id);});
+    var groupTotal=cats.reduce(function(s,c){return s+c.items.reduce(function(s2,i){return s2+(+i.amount||0);},0);},0);
+    var collapsed=pbGroupCollapsed(grp.id);
+    var cardsHtml=cats.map(function(cat,idx){return pbCategoryCardHtml(cat,idx,cats.length,groupTotal,'gruppen');}).join('')
+      ||'<div class="udg-empty-hint">Ingen bokse i denne gruppe endnu — tryk "+ Boks i gruppen".</div>';
+    return '<div class="pb-group-card" data-groupid="'+grp.id+'">'+
+      '<div class="pb-group-head">'+
+        '<button type="button" class="pb-collapse-btn'+(collapsed?' collapsed':'')+'" data-action="pb-group-collapse" data-groupid="'+grp.id+'" title="Fold gruppen sammen/ud">▾</button>'+
+        '<span class="pb-group-icon">🗂️</span>'+
+        '<input type="text" class="pb-group-name" data-groupid="'+grp.id+'" value="'+esc(grp.name)+'">'+
+        '<span class="amt">'+krFmt(groupTotal)+'</span>'+
+        '<span class="pb-group-actions">'+
+          '<button type="button" class="pb-icon-btn" data-action="pb-group-move" data-dir="-1" data-groupid="'+grp.id+'" title="Flyt gruppe op"'+(gidx===0?' disabled':'')+'>↑</button>'+
+          '<button type="button" class="pb-icon-btn" data-action="pb-group-move" data-dir="1" data-groupid="'+grp.id+'" title="Flyt gruppe ned"'+(gidx===groups.length-1?' disabled':'')+'>↓</button>'+
+          '<button type="button" class="udg-btn outline dashed pb-group-addbtn" data-action="pb-group-addcat" data-groupid="'+grp.id+'" data-section="'+section+'">+ Boks i gruppen</button>'+
+          '<button type="button" class="pb-icon-btn pb-icon-danger" data-action="pb-group-del" data-groupid="'+grp.id+'" title="Slet gruppen (boksene i den forbliver, blot uden gruppe)">×</button>'+
+        '</span>'+
+      '</div>'+
+      '<div class="udg-cat-grid pb-cat-grid pb-group-body'+(collapsed?' pb-collapsed':'')+'" data-groupbody="'+grp.id+'">'+cardsHtml+'</div>'+
+    '</div>';
+  }).join('');
+  pbWireCategoryCardEvents(el);
+  el.querySelectorAll('[data-action="pb-group-collapse"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var id=btn.dataset.groupid;
+      var now=!pbGroupCollapsed(id);
+      pbSetGroupCollapsed(id,now);
+      btn.classList.toggle('collapsed',now);
+      var body=el.querySelector('[data-groupbody="'+id+'"]');
+      if(body)body.classList.toggle('pb-collapsed',now);
+    });
+  });
+  el.querySelectorAll('.pb-group-name').forEach(function(inp){
+    inp.addEventListener('change',function(e){
+      var name=e.target.value.trim();
+      if(!name){toast('Gruppens navn må ikke være tomt','⚠');loadPrivateBudgetForMonth();return;}
+      api('/api/finance/private-budget/group/'+e.target.dataset.groupid,{method:'PUT',body:JSON.stringify({name:name})}).then(function(r){
+        if(r&&r.ok)toast('Gruppe omdøbt ✓','✓');else if(r)toast(r.error||'Fejl','❌');
+      });
+    });
+  });
+  el.querySelectorAll('[data-action="pb-group-del"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      if(await gmConfirm('Slet gruppen? Boksene i den forbliver, men uden gruppe.'))
+        api('/api/finance/private-budget/group/'+btn.dataset.groupid,{method:'DELETE'}).then(function(){loadPrivateBudgetForMonth();});
+    });
+  });
+  el.querySelectorAll('[data-action="pb-group-addcat"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var name=await gmPrompt('Navn på ny boks i gruppen:');
+      if(!name||!name.trim())return;
+      api('/api/finance/private-budget/category',{method:'POST',body:JSON.stringify({name:name.trim(),section:btn.dataset.section,group_id:btn.dataset.groupid})}).then(function(r){
+        if(r&&r.ok){toast('Boks oprettet ✓','✓');loadPrivateBudgetForMonth();}else if(r)toast(r.error||'Fejl','❌');
+      });
+    });
+  });
+  el.querySelectorAll('[data-action="pb-group-move"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      if(btn.disabled)return;
+      movePrivateBudgetGroup(btn.dataset.groupid,+btn.dataset.dir);
+    });
+  });
+}
+function movePrivateBudgetGroup(groupId,dir){
+  var list=finPrivateBudgetGroups.slice();
+  var idx=list.findIndex(function(g){return String(g.id)===String(groupId);});
+  if(idx<0)return;
+  var section=list[idx].section;
+  var swapIdx=-1;
+  if(dir<0){for(var i=idx-1;i>=0;i--){if(list[i].section===section){swapIdx=i;break;}}}
+  else{for(var i=idx+1;i<list.length;i++){if(list[i].section===section){swapIdx=i;break;}}}
+  if(swapIdx<0)return;
+  var tmp=list[idx];list[idx]=list[swapIdx];list[swapIdx]=tmp;
+  var order=list.map(function(g){return g.id;});
+  api('/api/finance/private-budget/group/reorder',{method:'PUT',body:JSON.stringify({order:order})}).then(function(r){
+    if(r&&r.ok)loadPrivateBudgetForMonth();else if(r)toast((r&&r.error)||'Fejl','❌');
+  });
+}
+function addPrivateBudgetGroup(section){
+  return async function(){
+    var name=await gmPrompt('Navn på ny gruppe/overskrift (fx "Investeringer", "Gæld"):');
+    if(!name||!name.trim())return;
+    api('/api/finance/private-budget/group',{method:'POST',body:JSON.stringify({name:name.trim(),section:section})}).then(function(r){
+      if(r&&r.ok){toast('Gruppe oprettet ✓','✓');loadPrivateBudgetForMonth();}else if(r)toast(r.error||'Fejl','❌');
+    });
+  };
+}
+document.getElementById('fin-add-private-group-income-btn').addEventListener('click',addPrivateBudgetGroup('income'));
+document.getElementById('fin-add-private-group-expense-btn').addEventListener('click',addPrivateBudgetGroup('expense'));
+// Flytter en boks op/ned INDEN FOR sin egen beholder — sektionens løse bokse, ELLER
+// (hvis boksen ligger i en gruppe) blandt de andre bokse i samme gruppe. Finder
+// nærmeste nabo med samme section OG samme group_id i den globale sort_order-liste,
+// bytter de to bokses positioner og gemmer hele den nye globale rækkefølge via
+// reorder-routen (uændret bagvedliggende route ift. RUNDE AN).
 function movePrivateBudgetCategory(catId,dir){
   var list=finPrivateBudget.slice();
   var idx=list.findIndex(function(c){return String(c.id)===String(catId);});
   if(idx<0)return;
   var section=list[idx].section||'expense';
+  var groupId=list[idx].group_id||null;
+  var sameContainer=function(c){return (c.section||'expense')===section && (c.group_id||null)===groupId;};
   var swapIdx=-1;
-  if(dir<0){for(var i=idx-1;i>=0;i--){if((list[i].section||'expense')===section){swapIdx=i;break;}}}
-  else{for(var i=idx+1;i<list.length;i++){if((list[i].section||'expense')===section){swapIdx=i;break;}}}
+  if(dir<0){for(var i=idx-1;i>=0;i--){if(sameContainer(list[i])){swapIdx=i;break;}}}
+  else{for(var i=idx+1;i<list.length;i++){if(sameContainer(list[i])){swapIdx=i;break;}}}
   if(swapIdx<0)return;
   var tmp=list[idx];list[idx]=list[swapIdx];list[swapIdx]=tmp;
   var order=list.map(function(c){return c.id;});
@@ -15729,6 +15929,8 @@ function renderFinPrivateBudget(){
   renderFinPrivateBudgetKpis();
   renderFinPrivateBudgetSection('fin-private-budget-income','income');
   renderFinPrivateBudgetSection('fin-private-budget-expense','expense');
+  renderFinPrivateBudgetGroups('fin-private-budget-income-groups','income');
+  renderFinPrivateBudgetGroups('fin-private-budget-expense-groups','expense');
   renderFinPrivateBudgetBreakdown();
   pbSetSectionCollapsed('income',pbSectionCollapsed('income'));
   pbSetSectionCollapsed('expense',pbSectionCollapsed('expense'));
@@ -15764,6 +15966,7 @@ document.getElementById('fin-add-private-cat-expense-btn').addEventListener('cli
 async function loadPrivateBudgetForMonth(){
   var r=await api('/api/finance/private-budget?month='+finPrivBudgetMonth);
   finPrivateBudget=(r&&r.categories)||[];
+  finPrivateBudgetGroups=(r&&r.groups)||[];
   renderFinPrivateBudget();
 }
 document.getElementById('fin-privbudget-prev').addEventListener('click',function(){

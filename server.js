@@ -370,6 +370,31 @@ async function initSchema() {
     INSERT INTO private_budget_categories (name, sort_order, section)
       SELECT 'Gælds poster', (SELECT COALESCE(MAX(sort_order),0) FROM private_budget_categories)+1, 'expense'
       WHERE NOT EXISTS (SELECT 1 FROM private_budget_categories WHERE name ILIKE 'Gælds poster');
+    -- RUNDE AQ (Martin: "Gør det muligt at oprette flere bokse hvor jeg inde i dem kan
+    -- oprette de her små bokse og så felter der inde. For jeg vil gerne lave en anden
+    -- struktur" + "Gør det muligt også at rykke Boksene fra den ene Collum til den
+    -- anden") — ny gruppe-/overskrifts-lag OVEN PÅ de eksisterende kategori-bokse:
+    -- private_budget_groups er "boksen"/overskriften Martin selv opretter og navngiver
+    -- (fx "Investeringer", "Gæld"), private_budget_categories (de eksisterende "lille
+    -- bokse" med felter i) kan nu VALGFRIT tilhøre én gruppe via group_id. En kategori
+    -- UDEN gruppe (group_id NULL) opfører sig 100% som i dag — ingen data migreres, ingen
+    -- eksisterende visning ændres for dem, der ikke opretter grupper. ON DELETE SET NULL
+    -- (ikke CASCADE) — sletter man en gruppe, forsvinder kun overskriften; dens
+    -- kategori-bokse og felter består og lander tilbage som "løse" bokse i sektionen, i
+    -- stedet for at blive slettet med. En gruppe har sin egen 'section' (Indtægter/
+    -- Udgifter) — Martins svar på afklaringsspørgsmålet var at beholde den faste 2-deling
+    -- foroven med grupperne liggende INDE i hver sektion, så en kategoris egen 'section'
+    -- holdes altid synkroniseret med dens gruppes 'section' når den sættes ind i en
+    -- gruppe (se PUT category-routen nedenfor) — så al eksisterende total/diagram-logik,
+    -- der udelukkende kigger på category.section, fortsætter med at virke uændret.
+    CREATE TABLE IF NOT EXISTS private_budget_groups (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      section TEXT NOT NULL DEFAULT 'expense',
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    ALTER TABLE private_budget_categories ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES private_budget_groups(id) ON DELETE SET NULL;
     -- Fast, frit noteFelt nederst på Privat budget-siden ("som i Notions noter") —
     -- én global boks (ikke måneds-opdelt), til løse noter/huskelister/planer der ikke
     -- hører til én bestemt måned. Bevidst en HELT SEPARAT tabel fra notes_widget (den
@@ -16297,7 +16322,11 @@ app.get('/api/finance/private-budget', auth, panelAccess('finance'), asyncRoute(
     }
   }
   const byCategory = cats.rows.map(c => ({ ...c, items: items.rows.filter(i => i.category_id === c.id) }));
-  res.json({ month: monthKey, categories: byCategory });
+  // RUNDE AQ — grupperne (Martins egne overskrifter/"bokse") sendes med, så
+  // frontenden kan rendere dem som beholdere om deres medlems-kategorier
+  // (category.group_id) inde i hver sektion.
+  const groups = await pool.query('SELECT * FROM private_budget_groups ORDER BY sort_order ASC, id ASC');
+  res.json({ month: monthKey, categories: byCategory, groups: groups.rows });
 }));
 // RUNDE AM (Martin: "lav et Diagram som under udgifter i toppen") — samme princip som
 // /api/finance/expenses-totals, men opdelt på sektion (income/expense) pr. måned, så
@@ -16336,16 +16365,75 @@ app.post('/api/finance/private-budget/category', auth, panelAccess('finance'), a
   // RUNDE AM — hvilken sektion (Indtægter/Udgifter) den nye boks skal ligge i; den
   // "+ Ny boks"-knap man trykker på i frontenden afgør det, så vi stoler på body.section
   // her men falder tilbage til 'expense' hvis noget sender et forkert/manglende felt.
-  const section = body.section === 'income' ? 'income' : 'expense';
+  let section = body.section === 'income' ? 'income' : 'expense';
+  // RUNDE AQ — "+ Boks i gruppen"-knappen kan oprette kategorien DIREKTE inde i en
+  // gruppe (i stedet for at oprette den løs og flytte den ind bagefter i et 2. kald) —
+  // gruppens egen section vinder altid over body.section, samme regel som i PUT-routen.
+  let groupId = null;
+  if (body.group_id != null) {
+    const grp = await pgOne('SELECT * FROM private_budget_groups WHERE id=$1', [body.group_id]);
+    if (!grp) return res.status(400).json({ error: 'Gruppen findes ikke' });
+    groupId = grp.id;
+    section = grp.section;
+  }
   const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0)::int AS m FROM private_budget_categories');
-  const r = await pool.query('INSERT INTO private_budget_categories (name, sort_order, section) VALUES ($1,$2,$3) RETURNING id', [String(body.name).slice(0, 200), (maxOrder ? maxOrder.m : 0) + 1, section]);
+  const r = await pool.query('INSERT INTO private_budget_categories (name, sort_order, section, group_id) VALUES ($1,$2,$3,$4) RETURNING id', [String(body.name).slice(0, 200), (maxOrder ? maxOrder.m : 0) + 1, section, groupId]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 // RUNDE AN (Martin: "Kan flytte boksene op og ned samt bytte side med de andre") —
 // denne route dækkede før KUN omdøbning (krævede altid body.name). "Bytte side"-knappen
 // i frontenden skal kunne flytte en boks mellem Indtægter/Udgifter UDEN at skulle sende
 // et navn med — så begge felter er nu valgfrie hver for sig (mindst ét skal dog være med).
+// RUNDE AQ (Martin: "rykke Boksene fra den ene Collum til den anden") — body.group_id kan
+// nu også sendes med: et tal flytter kategorien IND i den gruppe (og — vigtigt —
+// overskriver automatisk kategoriens egen 'section' til gruppens, så de to aldrig kan
+// komme ud af sync, se skema-kommentaren ved private_budget_groups ovenfor), mens
+// group_id:null flytter kategorien UD af enhver gruppe igen ("Ingen gruppe" i
+// flyt-vælgeren) uden at ændre dens nuværende section.
 app.put('/api/finance/private-budget/category/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const sets = [], params = [];
+  let i = 1;
+  if (body.name != null) { sets.push(`name=$${i++}`); params.push(String(body.name).slice(0, 200)); }
+  let section = body.section === 'income' || body.section === 'expense' ? body.section : null;
+  if ('group_id' in body) {
+    if (body.group_id === null) {
+      sets.push(`group_id=NULL`);
+    } else {
+      const grp = await pgOne('SELECT * FROM private_budget_groups WHERE id=$1', [body.group_id]);
+      if (!grp) return res.status(400).json({ error: 'Gruppen findes ikke' });
+      sets.push(`group_id=$${i++}`); params.push(grp.id);
+      section = grp.section; // gruppens section vinder altid, uanset hvad body.section evt. siger
+    }
+  }
+  if (section) { sets.push(`section=$${i++}`); params.push(section); }
+  if (!sets.length) return res.status(400).json({ error: 'Navn, sektion eller gruppe skal udfyldes' });
+  params.push(req.params.id);
+  await pool.query(`UPDATE private_budget_categories SET ${sets.join(',')} WHERE id=$${i}`, params);
+  res.json({ ok: true });
+}));
+// RUNDE AQ — grupperne ("bokse"/overskrifter) Martin selv opretter til at samle flere
+// kategori-bokse under én fælles titel. Samme CRUD-mønster som kategorierne ovenfor.
+app.post('/api/finance/private-budget/group', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
+  const section = body.section === 'income' ? 'income' : 'expense';
+  const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0)::int AS m FROM private_budget_groups');
+  const r = await pool.query('INSERT INTO private_budget_groups (name, sort_order, section) VALUES ($1,$2,$3) RETURNING id', [String(body.name).slice(0, 200), (maxOrder ? maxOrder.m : 0) + 1, section]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+// VIGTIGT: denne generiske reorder-route SKAL stå FØR /group/:id nedenfor — ellers
+// ville Express matche et kald til '/group/reorder' som PUT /group/:id med
+// id="reorder" i stedet (samme fælde som ville ramme kategori-routerne, hvis deres
+// rækkefølge nogensinde byttes om).
+app.put('/api/finance/private-budget/group/reorder', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const order = (req.body || {}).order || [];
+  for (let i = 0; i < order.length; i++) {
+    await pool.query('UPDATE private_budget_groups SET sort_order=$1 WHERE id=$2', [i, order[i]]);
+  }
+  res.json({ ok: true });
+}));
+app.put('/api/finance/private-budget/group/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const sets = [], params = [];
   let i = 1;
@@ -16353,7 +16441,20 @@ app.put('/api/finance/private-budget/category/:id', auth, panelAccess('finance')
   if (body.section === 'income' || body.section === 'expense') { sets.push(`section=$${i++}`); params.push(body.section); }
   if (!sets.length) return res.status(400).json({ error: 'Navn eller sektion skal udfyldes' });
   params.push(req.params.id);
-  await pool.query(`UPDATE private_budget_categories SET ${sets.join(',')} WHERE id=$${i}`, params);
+  await pool.query(`UPDATE private_budget_groups SET ${sets.join(',')} WHERE id=$${i}`, params);
+  // Flytter man selve gruppen til den anden sektion, skal dens medlems-kategorier
+  // følge med — ellers ville en kategori pludselig stå i en Udgifter-gruppe men
+  // stadig tælle med i Indtægter-totalen (eller omvendt).
+  if (body.section === 'income' || body.section === 'expense') {
+    await pool.query('UPDATE private_budget_categories SET section=$1 WHERE group_id=$2', [body.section, req.params.id]);
+  }
+  res.json({ ok: true });
+}));
+app.delete('/api/finance/private-budget/group/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  // Bevidst INGEN cascade-sletning af medlems-kategorierne — group_id har
+  // ON DELETE SET NULL (se skema ovenfor), så de blot lander som "løse" bokse i
+  // sektionen igen. At slette en overskrift skal ikke kunne udslette Martins data.
+  await pool.query('DELETE FROM private_budget_groups WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 app.delete('/api/finance/private-budget/category/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
