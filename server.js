@@ -330,6 +330,46 @@ async function initSchema() {
     ALTER TABLE private_budget_items ADD COLUMN IF NOT EXISTS paid INTEGER DEFAULT 0;
     ALTER TABLE private_budget_items ADD COLUMN IF NOT EXISTS month_key TEXT;
     UPDATE private_budget_items SET month_key=TO_CHAR(CURRENT_DATE,'YYYY-MM') WHERE month_key IS NULL;
+    -- RUNDE AM (Martin: "Første section er Indtægter... Næste sektion under er
+    -- udgifter") — Privat budget-siden deles op i to sektioner (Indtægter/Udgifter)
+    -- i stedet for én flad liste af kategorier. 'section' styrer hvilken sektion en
+    -- kategori vises i på siden; 'expense' er default så gamle rækker (og enhver
+    -- fremtidig indsættelse der glemmer feltet) lander et fornuftigt sted.
+    ALTER TABLE private_budget_categories ADD COLUMN IF NOT EXISTS section TEXT DEFAULT 'expense';
+    -- Bagudgående kategorier havde ingen sektion — genbrug den samme
+    -- navn-baserede gætte-regel som frontenden hidtil har brugt til KPI-boksene
+    -- (se det gamle /indt[æa]gt/i-tjek i renderFinPrivateBudgetKpis), så en
+    -- eksisterende "Indtægt"-kategori automatisk havner i Indtægter-sektionen
+    -- første gang serveren starter med denne kolonne.
+    UPDATE private_budget_categories SET section='income' WHERE section='expense' AND name ~* 'indt[æa]gt';
+    UPDATE private_budget_categories SET section='income' WHERE section IS NULL AND name ~* 'indt[æa]gt';
+    UPDATE private_budget_categories SET section='expense' WHERE section IS NULL;
+    -- Standard-bokse (Martin: "der skal primært bare være 3 bokse, en med Aktiver, en
+    -- med Indtægt og en med Skyldner" / "en for faste, Malta og Gælds poster" +
+    -- opfølgning: "Det er malta for det mine udgifter til maalta. Lav også en boks
+    -- med med USA") — sat ind idempotent (kun hvis en kategori med samme navn ikke
+    -- allerede findes), så eksisterende kategorier hverken duplikeres eller røres.
+    INSERT INTO private_budget_categories (name, sort_order, section)
+      SELECT 'Aktiver', (SELECT COALESCE(MAX(sort_order),0) FROM private_budget_categories)+1, 'income'
+      WHERE NOT EXISTS (SELECT 1 FROM private_budget_categories WHERE name ILIKE 'Aktiver');
+    INSERT INTO private_budget_categories (name, sort_order, section)
+      SELECT 'Indtægt', (SELECT COALESCE(MAX(sort_order),0) FROM private_budget_categories)+1, 'income'
+      WHERE NOT EXISTS (SELECT 1 FROM private_budget_categories WHERE name ILIKE 'Indtægt');
+    INSERT INTO private_budget_categories (name, sort_order, section)
+      SELECT 'Skyldner', (SELECT COALESCE(MAX(sort_order),0) FROM private_budget_categories)+1, 'income'
+      WHERE NOT EXISTS (SELECT 1 FROM private_budget_categories WHERE name ILIKE 'Skyldner');
+    INSERT INTO private_budget_categories (name, sort_order, section)
+      SELECT 'Faste', (SELECT COALESCE(MAX(sort_order),0) FROM private_budget_categories)+1, 'expense'
+      WHERE NOT EXISTS (SELECT 1 FROM private_budget_categories WHERE name ILIKE 'Faste');
+    INSERT INTO private_budget_categories (name, sort_order, section)
+      SELECT 'Malta', (SELECT COALESCE(MAX(sort_order),0) FROM private_budget_categories)+1, 'expense'
+      WHERE NOT EXISTS (SELECT 1 FROM private_budget_categories WHERE name ILIKE 'Malta');
+    INSERT INTO private_budget_categories (name, sort_order, section)
+      SELECT 'USA', (SELECT COALESCE(MAX(sort_order),0) FROM private_budget_categories)+1, 'expense'
+      WHERE NOT EXISTS (SELECT 1 FROM private_budget_categories WHERE name ILIKE 'USA');
+    INSERT INTO private_budget_categories (name, sort_order, section)
+      SELECT 'Gælds poster', (SELECT COALESCE(MAX(sort_order),0) FROM private_budget_categories)+1, 'expense'
+      WHERE NOT EXISTS (SELECT 1 FROM private_budget_categories WHERE name ILIKE 'Gælds poster');
     -- Fast, frit noteFelt nederst på Privat budget-siden ("som i Notions noter") —
     -- én global boks (ikke måneds-opdelt), til løse noter/huskelister/planer der ikke
     -- hører til én bestemt måned. Bevidst en HELT SEPARAT tabel fra notes_widget (den
@@ -16238,6 +16278,30 @@ app.get('/api/finance/private-budget', auth, panelAccess('finance'), asyncRoute(
   const byCategory = cats.rows.map(c => ({ ...c, items: items.rows.filter(i => i.category_id === c.id) }));
   res.json({ month: monthKey, categories: byCategory });
 }));
+// RUNDE AM (Martin: "lav et Diagram som under udgifter i toppen") — samme princip som
+// /api/finance/expenses-totals, men opdelt på sektion (income/expense) pr. måned, så
+// frontenden kan tegne en Indtægter/Udgifter/Netto-graf ligesom Resultat-diagrammet på
+// Oversigt. Bevidst rene, udspecificerede summer pr. måned (ingen bank-CSV/override-lag
+// som den almindelige Udgifter-fane har) — privat budget har ikke den slags datakilder.
+app.get('/api/finance/private-budget-totals', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
+  const out = {};
+  if (!months.length) return res.json(out);
+  for (const mk of months) out[mk] = { income: 0, expense: 0 };
+  const rows = await pool.query(`
+    SELECT i.month_key AS month_key, c.section AS section, COALESCE(SUM(i.amount),0)::float AS total
+    FROM private_budget_items i
+    JOIN private_budget_categories c ON c.id = i.category_id
+    WHERE i.month_key = ANY($1)
+    GROUP BY i.month_key, c.section
+  `, [months]);
+  for (const r of rows.rows) {
+    if (!out[r.month_key]) out[r.month_key] = { income: 0, expense: 0 };
+    if (r.section === 'income') out[r.month_key].income = r.total;
+    else out[r.month_key].expense = r.total;
+  }
+  res.json(out);
+}));
 app.put('/api/finance/private-budget/reorder', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const order = (req.body || {}).order || [];
   for (let i = 0; i < order.length; i++) {
@@ -16248,8 +16312,12 @@ app.put('/api/finance/private-budget/reorder', auth, panelAccess('finance'), asy
 app.post('/api/finance/private-budget/category', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
+  // RUNDE AM — hvilken sektion (Indtægter/Udgifter) den nye boks skal ligge i; den
+  // "+ Ny boks"-knap man trykker på i frontenden afgør det, så vi stoler på body.section
+  // her men falder tilbage til 'expense' hvis noget sender et forkert/manglende felt.
+  const section = body.section === 'income' ? 'income' : 'expense';
   const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0)::int AS m FROM private_budget_categories');
-  const r = await pool.query('INSERT INTO private_budget_categories (name, sort_order) VALUES ($1,$2) RETURNING id', [String(body.name).slice(0, 200), (maxOrder ? maxOrder.m : 0) + 1]);
+  const r = await pool.query('INSERT INTO private_budget_categories (name, sort_order, section) VALUES ($1,$2,$3) RETURNING id', [String(body.name).slice(0, 200), (maxOrder ? maxOrder.m : 0) + 1, section]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 app.put('/api/finance/private-budget/category/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
