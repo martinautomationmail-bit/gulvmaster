@@ -1306,6 +1306,16 @@ async function initSchema() {
     -- CVR-nummer. Frivilligt for private kunder (is_company=0, cvr=NULL).
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_company INTEGER DEFAULT 0;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS cvr TEXT;
+    -- RUNDE AD (Martins ønske: "send Vundet-mailen enten når pipelinen
+    -- konverteres til Vundet ELLER når kundens projekt oprettes — men
+    -- krydstjek at den ikke sender 2 gange") — dette ene felt er den fælles
+    -- "sendt allerede"-spærre BEGGE udløsere tjekker/sætter (se
+    -- sendWonProjectEmail nedenfor), uanset hvilken af de to der rammer
+    -- først. Samme mønster som projects.completion_email_sent_at, blot på
+    -- KUNDEN i stedet for sagen, fordi de to udløsere ikke altid deler samme
+    -- sags-id (et pipeline-kort har intet projekt endnu første gang det
+    -- rykkes til Vundet), men de deler næsten altid samme customers.id.
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS won_email_sent_at TEXT;
 
     -- customer_notes: rigtig, redigerbar/sletbar note-liste på kundekortet
     -- (i stedet for det gamle enkelt-felt customers.notes, som stadig findes
@@ -2144,6 +2154,18 @@ async function initSchema() {
       ['quote_accepted', 'Tak for accept af tilbud',
         'Tak for din accept, {{kunde}}! 🎉',
         '<p>Hej {{kunde}},</p><p>Tusind tak fordi du har accepteret tilbuddet <b>{{dokument_nr}}</b> hos {{firma}} — vi glæder os til at komme i gang! 🛠️</p><p>Du kan altid følge dit projekt og se alle dine tilbud og fakturaer på din helt egen side her, uden at skulle logge ind:</p><p><a href="{{link}}">{{link}}</a></p><p>Gem gerne linket — det er dit permanente overblik fremover.</p><p>Har du spørgsmål, er du altid velkommen til at kontakte os.</p><p>Mange hilsner<br>{{firma}}</p>',
+        1],
+      // RUNDE AD (Martins ønske: "send denne mail hver gang kunden i pipeline
+      // konverteres til vundet ELLER kundens projekt er lavet") — kun selve
+      // BESKEDEN herunder er redigerbar fra Skabeloner-centeret ligesom de
+      // andre; selve det visuelle (logo, "Tillykke"-overskrift, PDF-boks og
+      // video-blok) er fast kodet i buildWonProjectEmailHtml() nedenfor, så
+      // Martin ikke skal redigere HTML for at ændre teksten. Erstatter den
+      // ældre, rent tekst-baserede "Vundet"-mail fra crm_stages.email_body
+      // (RUNDE S/V), som IKKE længere bruges til selve afsendelsen.
+      ['won_project', 'Vundet-mail til kunden (tillykke + betingelser + video)',
+        'Tillykke — vi har vundet opgaven! 🎉',
+        'Hej {{navn}},\n\nSuper nyhed — I har sagt ja, og jeres projekt er nu i gang hos {{firma}}! 🎉\n\nVi glæder os til at komme i gang og sætter snarest en tidsplan for jer.\n\nHar I spørgsmål i mellemtiden, er I altid velkomne til at ringe eller skrive.',
         1],
     ];
     for (const [key, name, subject, body, enabled] of systemEmailDefaults) {
@@ -4835,6 +4857,10 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
   // leveringsnoten om konsolideringen. Kun selve PDF-vedhæftningen bor stadig her.
   if (body.cleaning_pdf_base64 !== undefined) entries.push(['cleaning_pdf_base64', body.cleaning_pdf_base64 ? String(body.cleaning_pdf_base64).slice(0, 15000000) : null]);
   if (body.cleaning_pdf_filename !== undefined) entries.push(['cleaning_pdf_filename', body.cleaning_pdf_filename ? String(body.cleaning_pdf_filename).slice(0, 200) : null]);
+  // RUNDE AD — samme mønster som cleaning_pdf_* to linjer ovenfor, blot til
+  // "Vundet"-mailens betingelser/vigtig-info-PDF (se sendWonProjectEmail).
+  if (body.won_pdf_base64 !== undefined) entries.push(['won_pdf_base64', body.won_pdf_base64 ? String(body.won_pdf_base64).slice(0, 15000000) : null]);
+  if (body.won_pdf_filename !== undefined) entries.push(['won_pdf_filename', body.won_pdf_filename ? String(body.won_pdf_filename).slice(0, 200) : null]);
   for (const [key, value] of entries) {
     await pool.query(`
       INSERT INTO app_settings (key, value) VALUES ($1,$2)
@@ -4878,6 +4904,49 @@ app.post('/api/settings/test-completion-email', auth, adminOnly, asyncRoute(asyn
       attachments.push({ filename: settings.cleaning_pdf_filename || 'test.pdf', content: Buffer.from(settings.cleaning_pdf_base64, 'base64'), contentType: 'application/pdf' });
     }
     await sendMailUniversal({ to: toEmail, subject: '[TEST] ' + subject, text: bodyText, attachments });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: redactSecret(e.message || 'Ukendt fejl').slice(0, 500) });
+  }
+}));
+
+// RUNDE AD — samme to ruter som completion-email lige ovenfor (status +
+// PDF-info, og en ren test-afsendelse), blot for "Vundet"-mailen
+// (system_email_templates key='won_project'). Se sendWonProjectEmail og
+// buildWonProjectEmailHtml længere nede for selve skabelonen/logikken bag
+// den RIGTIGE, automatiske afsendelse — denne test-rute bruger nøjagtig
+// samme byggeklodser, så en testmail er et ægte forhåndsvisning af den.
+app.get('/api/settings/won-email', auth, adminOnly, asyncRoute(async (req, res) => {
+  const pdfFilenameRow = await pgOne("SELECT value FROM app_settings WHERE key='won_pdf_filename'");
+  const pdfRow = await pgOne("SELECT value FROM app_settings WHERE key='won_pdf_base64'");
+  res.json({
+    has_pdf: !!(pdfRow && pdfRow.value),
+    pdf_filename: (pdfFilenameRow && pdfFilenameRow.value) || null,
+    mail_configured: mailIsConfigured()
+  });
+}));
+
+app.post('/api/settings/test-won-email', auth, adminOnly, asyncRoute(async (req, res) => {
+  const toEmail = String((req.body || {}).to || '').trim();
+  if (!toEmail) return res.status(400).json({ error: 'Skriv en e-mailadresse at teste med' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'Hverken Resend eller SMTP er sat op endnu (mangler miljøvariabler på serveren)' });
+  try {
+    const settingsRows = await pool.query(
+      "SELECT key,value FROM app_settings WHERE key IN ('company_name','won_pdf_base64','won_pdf_filename')"
+    );
+    const settings = {};
+    settingsRows.rows.forEach(r => { settings[r.key] = r.value; });
+    const sysTpl = await pgOne("SELECT * FROM system_email_templates WHERE key='won_project'");
+    const companyName = settings.company_name || 'Gulv Master Enterprise ApS';
+    const subject = fillDocEmailVars(sysTpl?.subject || 'Tillykke — vi har vundet opgaven! 🎉', { navn: 'Test-kunde', firma: companyName });
+    const bodyTemplate = sysTpl?.body_html || 'Hej {{navn}},\n\nDette er en TEST af Vundet-mailen.\n\nVenlig hilsen\n{{firma}}';
+    const messageText = fillDocEmailVars(bodyTemplate, { navn: 'Test-kunde', firma: companyName });
+    const html = buildWonProjectEmailHtml({ messageText, hasPdf: !!settings.won_pdf_base64 });
+    const attachments = [];
+    if (settings.won_pdf_base64) {
+      attachments.push({ filename: settings.won_pdf_filename || 'Betingelser.pdf', content: Buffer.from(settings.won_pdf_base64, 'base64'), contentType: 'application/pdf' });
+    }
+    await sendMailUniversal({ to: toEmail, subject: '[TEST] ' + subject, text: messageText, html, attachments });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: redactSecret(e.message || 'Ukendt fejl').slice(0, 500) });
@@ -5811,6 +5880,163 @@ async function sendProjectCompletionEmail(project) {
     'INSERT INTO completion_emails (project_id,to_email,status,error,sent_at) VALUES ($1,$2,$3,$4,' + nowTextSQL() + ')',
     [project.id, toEmail, status, error]
   );
+}
+
+// ══════════════════════════════════════════════════════════════
+// "VUNDET"-MAILEN TIL KUNDEN — RUNDE AD (Martins ønske, sep. 2026):
+// "Folk kan ikke finde ud af at acceptere deres tilbud" (løst i /tilbud/:token,
+// se accept-banner/sticky-bar/skriv-eller-tegn-underskrift ovenfor) FULGT AF
+// "send denne mail hver gang: 1) kunden i pipeline konverteres til vundet
+// ELLER 2) kundens projekt er lavet. Krydstjek at den ikke sender 2 gange."
+//
+// TO UAFHÆNGIGE UDLØSERE, ÉN FÆLLES SPÆRRE:
+//   A) crmFireStageAutomation() nedenfor — når et CRM-kort (lead/opportunity)
+//      rykkes til en "Vundet"-stage (is_won=1), fx via crmMoveEntityToWonStage
+//      (automatisk ved tilbudsaccept) ELLER et manuelt Kanban-træk.
+//   B) Ethvert sted et projekt oprettes med en kunde koblet på — både
+//      createProjectFromAcceptedQuote (automatisk, ved tilbudsaccept) OG
+//      POST /api/projects (Martins egen "+ Nyt projekt"-knap).
+// Begge udløsere ender med at kalde sendWonProjectEmail(customerId) — den
+// tjekker/sætter customers.won_email_sent_at FØR den sender, så uanset
+// hvilken af de to der rammer FØRST (eller om begge rammer, som de reelt gør
+// ved en almindelig tilbudsaccept — se A og B1 ovenfor, som begge sker i
+// samme kald), bliver mailen aldrig sendt to gange for samme kunde. Martins
+// egen pointe ("glemmer jeg at flytte pipelinen, glemmer jeg nok ikke at
+// oprette projektet") er præcis derfor dækket: uanset hvilken af de to han
+// husker, sender den ene af dem mailen.
+//
+// Selve visuel skabelon (logo, "Tillykke"-overskrift, PDF-boks, video-blok)
+// er fast kodet her — kun BESKEDTEKSTEN imellem er redigerbar fra Martins
+// eget Skabeloner-center (system_email_templates, key='won_project'), samme
+// måde som færdig-mailen (completion) allerede fungerer.
+// ══════════════════════════════════════════════════════════════
+
+// Martins egen video, sendt til brug i netop denne mail ("en enorm vigtig
+// video hvor jeg på 1 minuts tid forklarer hvordan vi alle får et godt
+// forløb hos os"). Hardkodet bevidst (ikke en indstilling) — er det en helt
+// anden video en anden gang, rettes den her.
+const WON_EMAIL_VIDEO_URL = 'https://www.youtube.com/watch?v=qxPM_AfoE-k';
+const WON_EMAIL_VIDEO_THUMB_URL = 'https://i.ytimg.com/vi/qxPM_AfoE-k/hqdefault.jpg';
+
+// Bygger selve mail-HTML'en. messageText er den redigerbare, {{}}-udfyldte
+// besked (linjeskift, ikke HTML — samme som completion-mailens bodyText),
+// hasPdf styrer om "📎 Vedhæftet: betingelser"-boksen vises (viser den
+// naturligvis ikke løgnagtigt hvis der reelt ikke er uploadet en PDF endnu
+// under ⚙ Indstillinger → Skabeloner, se GET /api/settings/won-email).
+function buildWonProjectEmailHtml({ messageText, hasPdf }) {
+  const messageHtml = String(messageText || '').split('\n').map(line =>
+    line ? `<p style="font-size:16px;line-height:1.6;margin:0 0 14px;color:#0a0a0a;">${line.replace(/</g, '&lt;')}</p>` : ''
+  ).join('');
+  const pdfBlockHtml = hasPdf ? `
+          <tr>
+            <td style="padding:0 32px 8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef5f0;border-radius:14px;border:1px solid rgba(0,53,9,.10);">
+                <tr>
+                  <td style="padding:16px 18px;" valign="middle" width="46">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+                      <td width="40" height="48" align="center" valign="middle" style="background:#003509;border-radius:8px;font-family:Arial,sans-serif;font-weight:700;color:#ffffff;font-size:11px;">PDF</td>
+                    </tr></table>
+                  </td>
+                  <td style="padding:16px 18px 16px 0;" valign="middle">
+                    <div style="font-family:Arial,sans-serif;font-size:14.5px;font-weight:700;color:#0a0a0a;line-height:1.35;">📎 Vedhæftet: Betingelser &amp; vigtig information</div>
+                    <div style="font-family:Arial,sans-serif;font-size:13px;color:#6f7785;margin-top:2px;line-height:1.4;">Læs den gerne igennem — den samler det vigtigste, I skal vide om jeres forløb hos os.</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>` : '';
+  return `<!doctype html>
+<html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tillykke — vi har vundet opgaven!</title>
+<style>
+  body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
+  table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
+  img{-ms-interpolation-mode:bicubic;border:0;outline:none;text-decoration:none;}
+  body{margin:0;padding:0;width:100%!important;background:#F9F7F2;}
+</style></head>
+<body style="margin:0;padding:0;background:#F9F7F2;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">Tillykke — I har vundet opgaven! Se de vedhæftede betingelser, og se vores 1-minutters video om det gode forløb.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F9F7F2;"><tr><td align="center" style="padding:32px 16px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 18px 45px rgba(0,0,0,.05);">
+      <tr><td style="background:#003509;padding:22px 32px;">
+        <img src="${PUBLIC_APP_URL}/email-logo-white.png" width="302" height="26" alt="Gulv Master" style="display:block;width:302px;height:26px;border:0;">
+      </td></tr>
+      <tr><td style="padding:36px 32px 8px;">
+        <div style="font-size:40px;line-height:1;margin-bottom:14px;">🎉</div>
+        <div style="font-family:Arial,sans-serif;font-weight:900;font-size:32px;line-height:1.1;margin:0 0 14px;color:#003509;">Tillykke — vi har<br>vundet opgaven!</div>
+        ${messageHtml}
+      </td></tr>
+      ${pdfBlockHtml}
+      <tr><td style="padding:26px 32px 6px;">
+        <div style="font-family:Arial,sans-serif;font-weight:900;font-size:20px;color:#003509;margin:0 0 4px;">🎥 Se denne — det tager kun 1 minut</div>
+        <p style="font-size:15px;line-height:1.55;margin:0 0 16px;color:#0a0a0a;">Inden vi går i gang, vil vi gerne vise jer en kort video, hvor vi forklarer, hvordan I får det bedst mulige forløb hos os.</p>
+        <a href="${WON_EMAIL_VIDEO_URL}" target="_blank" style="text-decoration:none;display:block;">
+          <div style="position:relative;border-radius:14px;overflow:hidden;box-shadow:0 10px 35px rgba(0,0,0,.12);line-height:0;">
+            <img src="${WON_EMAIL_VIDEO_THUMB_URL}" width="536" alt="Inden vi går i gang – sådan får du et godt forløb med Gulv Master" style="display:block;width:100%;height:auto;">
+            <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(rgba(0,10,3,0.05),rgba(0,10,3,0.35));"></div>
+            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:68px;height:68px;background:rgba(220,38,38,0.95);border-radius:50%;box-shadow:0 6px 18px rgba(0,0,0,.35);">
+              <div style="position:absolute;top:50%;left:54%;transform:translate(-50%,-50%);width:0;height:0;border-top:14px solid transparent;border-bottom:14px solid transparent;border-left:22px solid #ffffff;"></div>
+            </div>
+            <div style="position:absolute;left:14px;bottom:12px;background:rgba(0,10,3,0.55);color:#ffffff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;padding:5px 10px;border-radius:999px;">▶ 1 min · YouTube</div>
+          </div>
+        </a>
+        <p style="text-align:center;margin:10px 0 0;"><a href="${WON_EMAIL_VIDEO_URL}" target="_blank" style="font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#003509;text-decoration:none;">▶ Se videoen på YouTube</a></p>
+      </td></tr>
+      <tr><td style="padding:26px 32px 30px;">
+        <hr style="border:none;border-top:1px solid rgba(0,53,9,.10);margin:0 0 16px;">
+        <p style="font-family:Arial,sans-serif;font-size:12px;color:#9a9fb0;line-height:1.5;margin:0;">Denne mail er sendt automatisk, fordi jeres opgave/projekt er markeret som vundet.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+}
+
+// Fælles afsender for BEGGE udløsere (se den store kommentar ovenfor).
+// Selvstændig, idempotent, og fejler ALDRIG hårdt ud af den kaldende
+// funktion — nøjagtig samme forsigtighedsprincip som resten af CRM-
+// automatikken (crmFireStageAutomation, crmMoveEntityToWonStage), da denne
+// kaldes midt inde i vigtige flows (tilbudsaccept, projekt-oprettelse) hvor
+// en mail-fejl ALDRIG må vælte selve handlingen.
+async function sendWonProjectEmail(customerId) {
+  try {
+    if (!customerId) return; // ingen kunde at sende til (fx et rent CRM-kort uden kobling til customers)
+    const customer = await pgOne('SELECT id, name, email, won_email_sent_at FROM customers WHERE id=$1', [customerId]);
+    if (!customer) return;
+    if (customer.won_email_sent_at) return; // allerede sendt — den anden udløser var her først
+    if (!customer.email) return; // intet at sende til; sættes IKKE som "sendt", så det kan lykkes senere hvis email tilføjes
+    if (!mailIsConfigured()) return; // samme — intet permanent flag ved en midlertidig server-opsætningsmangel
+
+    const sysTpl = await pgOne("SELECT * FROM system_email_templates WHERE key='won_project'");
+    if (sysTpl && !sysTpl.enabled) return; // slået fra i Skabeloner-centeret — ingen fejl, bare stille no-op
+
+    const settingsRows = await pool.query(
+      "SELECT key,value FROM app_settings WHERE key IN ('company_name','won_pdf_base64','won_pdf_filename')"
+    );
+    const settings = {};
+    settingsRows.rows.forEach(r => { settings[r.key] = r.value; });
+    const companyName = settings.company_name || 'Gulv Master Enterprise ApS';
+    const vars = { navn: customer.name || '', firma: companyName };
+    const subject = fillDocEmailVars(sysTpl?.subject || 'Tillykke — vi har vundet opgaven! 🎉', vars);
+    const bodyTemplate = sysTpl?.body_html || 'Hej {{navn}},\n\nSuper nyhed — jeres projekt er nu i gang hos {{firma}}! 🎉';
+    const messageText = fillDocEmailVars(bodyTemplate, vars);
+    const hasPdf = !!settings.won_pdf_base64;
+    const html = buildWonProjectEmailHtml({ messageText, hasPdf });
+    const attachments = [];
+    if (hasPdf) {
+      attachments.push({ filename: settings.won_pdf_filename || 'Betingelser.pdf', content: Buffer.from(settings.won_pdf_base64, 'base64'), contentType: 'application/pdf' });
+    }
+
+    const result = await sendMailUniversal({ to: customer.email, subject, text: messageText, html, attachments });
+    // Sættes KUN ved rent faktisk lykkedes afsendelse (bevidst forskel fra
+    // completion_email_sent_at-mønsteret, som sætter flaget uanset udfald) —
+    // fejler afsendelsen (fx en midlertidig Resend-fejl), skal den ANDEN
+    // udløser (eller et senere forsøg) stadig have en ægte chance for at
+    // lykkes, i stedet for at kunden aldrig får mailen pga. ét transient hik.
+    await pool.query(`UPDATE customers SET won_email_sent_at=${nowTextSQL()} WHERE id=$1`, [customerId]);
+    await logOutboundEmail({ kind: 'won_project', refId: customerId, recipient: customer.email, subject, sendResult: result });
+  } catch (e) {
+    console.error('Kunne ikke sende Vundet-mail til kunden:', e.message);
+  }
 }
 
 // Samme ALTERNATIV-logik som ved booking-færdig (se sendCompletionWebhook) —
@@ -10483,7 +10709,13 @@ async function crmFireStageAutomation(entityType, entityId, stageId, contactFiel
       }
     }
   }
-  if (stage.email_enabled && stage.email_body && contactFields.email) {
+  // RUNDE AD — "Vundet"-stager (is_won=1) sender IKKE længere den gamle,
+  // rent tekst-baserede stage-mail herunder (email_subject/email_body fra
+  // RUNDE S/V) — den er erstattet af den nye, faste "Vundet"-mail med logo/
+  // PDF/video (system_email_templates key='won_project', se
+  // sendWonProjectEmail). Enhver ANDEN stage med sin egen mail slået til
+  // (opfølgninger, andre milepæle) er helt upåvirket og fortsætter uændret.
+  if (stage.email_enabled && stage.email_body && contactFields.email && !stage.is_won) {
     const already = await pgOne('SELECT id FROM crm_activities WHERE entity_type=$1 AND entity_id=$2 AND kind=$3', [entityType, entityId, emailKind]);
     if (!already) {
       try {
@@ -10494,6 +10726,25 @@ async function crmFireStageAutomation(entityType, entityId, stageId, contactFiel
       } catch (e) {
         await crmLogActivity(entityType, entityId, 'email_failed', 'Email-automatik fejlede ("' + stage.name + '"): ' + e.message, null);
       }
+    }
+  }
+  // RUNDE AD, udløser A (se den store kommentar ved sendWonProjectEmail) —
+  // kortet ER lige rykket til en "Vundet"-stage. Løs kobling til customers
+  // via kortets egen contact_id (samme vej som crmFindOrCreateContactAndCustomer
+  // bruger til at linke dem ved oprettelse/konvertering) — findes ingen
+  // kobling endnu (rent CRM-kort uden nogensinde at være blevet en "kunde"),
+  // er der reelt ingen customers-række at sende/dedupliceres på, og
+  // sendWonProjectEmail no-op'er stille (se dens egen !customerId-check).
+  if (stage.is_won) {
+    try {
+      const table = entityType === 'lead' ? 'crm_leads' : 'crm_opportunities';
+      const row = await pgOne(`SELECT contact_id FROM ${table} WHERE id=$1`, [entityId]);
+      const contact = row && row.contact_id ? await pgOne('SELECT customer_id FROM crm_contacts WHERE id=$1', [row.contact_id]) : null;
+      if (contact && contact.customer_id) {
+        sendWonProjectEmail(contact.customer_id).catch(e => console.error('Vundet-mail (stage-flytning) fejlede:', e.message));
+      }
+    } catch (e) {
+      console.error('Kunne ikke slå kunde op til Vundet-mailen efter stage-flytning:', e.message);
     }
   }
 }
@@ -12940,6 +13191,13 @@ async function createProjectFromAcceptedQuote(quote) {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
     `, [quote.id, quote.job_name || quote.quote_number, quote.customer_id, quote.customer_address, quote.customer_phone, quote.customer_email, jobNumber, projectType]);
     const projectId = p.id;
+    // RUNDE AD, udløser B1 (se den store kommentar ved sendWonProjectEmail) —
+    // "kundens projekt er lavet". crmMoveEntityToWonStage() et par linjer
+    // ovenfor i denne samme funktion (udløser A) har typisk ALLEREDE sendt
+    // mailen for denne kunde på dette tidspunkt (samme kald, kører først) —
+    // customers.won_email_sent_at-spærren i sendWonProjectEmail sikrer at
+    // dette blot bliver et stille no-op i så fald, ikke en dublet-mail.
+    sendWonProjectEmail(quote.customer_id).catch(e => console.error('Vundet-mail (projekt fra tilbud) fejlede:', e.message));
     // RUNDE H #24 — Martins ønske: "når et projekt er oprettet i projekter,
     // oprettes det automatisk i opgavepool" — dvs. tilbuddets linjer skal ALTID
     // blive til rigtige opgaver med det samme sagen opstår.
@@ -13319,6 +13577,15 @@ app.post('/api/projects', auth, panelAccess('projects'), asyncRoute(async (req, 
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
   `, [name, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, jobNumber, status, b.project_type || null]);
   res.json({ ok: true, id: p.id });
+  // RUNDE AD, udløser B2 (se den store kommentar ved sendWonProjectEmail) —
+  // Martins egen "+ Nyt projekt"-knap. Dette er PRÆCIS den sikkerheds-vej
+  // Martin selv efterspurgte: "hvis jeg glemmer at flytte dem i pipelinen,
+  // glemmer jeg nok ikke at oprette projektet". Ingen kunde valgt/matchet
+  // (resolvedCustomerId null, fx et projekt uden en rigtig kunde endnu) —
+  // sendWonProjectEmail no-op'er stille, ingen fejl.
+  if (resolvedCustomerId) {
+    sendWonProjectEmail(resolvedCustomerId).catch(e => console.error('Vundet-mail (manuelt oprettet projekt) fejlede:', e.message));
+  }
 }));
 
 app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
@@ -15813,11 +16080,43 @@ app.post('/api/finance/expenses', auth, panelAccess('finance'), asyncRoute(async
 }));
 app.put('/api/finance/expenses/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
-  await pool.query(`UPDATE finance_expenses SET name=$1,amount=$2,paid=$3,updated_at=${nowTextSQL()} WHERE id=$4`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, req.params.id]);
+  // RUNDE AE (Martin: "kan jeg manuelt flytte de forskellige felter fra boks til boks?")
+  // — category_id er valgfri her: sendes den med, FLYTTER posten til en anden
+  // kategori-boks samtidig med at navn/beløb/betalt gemmes. Sendes den ikke (det
+  // gamle, almindelige "gem post"-kald), rører vi slet ikke category_id — 100%
+  // bagudkompatibelt med alle eksisterende kald til denne route.
+  if (body.category_id) {
+    await pool.query(`UPDATE finance_expenses SET name=$1,amount=$2,paid=$3,category_id=$4,updated_at=${nowTextSQL()} WHERE id=$5`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, body.category_id, req.params.id]);
+  } else {
+    await pool.query(`UPDATE finance_expenses SET name=$1,amount=$2,paid=$3,updated_at=${nowTextSQL()} WHERE id=$4`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, req.params.id]);
+  }
   res.json({ ok: true });
 }));
 app.delete('/api/finance/expenses/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM finance_expenses WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+// RUNDE AE — Martin ville have de samme "opret/omdøb/slet hele kategorien"-knapper i
+// den ALMINDELIGE Udgifter-fane, som Privat budget allerede har (se
+// /api/finance/private-budget/category ovenfor — nøjagtig samme mønster, bare på
+// finance_expense_categories i stedet for private_budget_categories). Sletning
+// rammer også kategoriens poster via ON DELETE CASCADE på finance_expenses.category_id
+// (se CREATE TABLE), så vi behøver ikke selv rydde op i poster her.
+app.post('/api/finance/expenses/category', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
+  const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0)::int AS m FROM finance_expense_categories');
+  const r = await pool.query('INSERT INTO finance_expense_categories (name, sort_order) VALUES ($1,$2) RETURNING id', [String(body.name).slice(0, 200), (maxOrder ? maxOrder.m : 0) + 1]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/finance/expenses/category/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
+  await pool.query('UPDATE finance_expense_categories SET name=$1 WHERE id=$2', [String(body.name).slice(0, 200), req.params.id]);
+  res.json({ ok: true });
+}));
+app.delete('/api/finance/expenses/category/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM finance_expense_categories WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
@@ -19875,6 +20174,15 @@ app.get('/manifest.webmanifest', (req, res) => {
 });
 app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));
 app.get('/icon-512.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-512.png')));
+// RUNDE AD (Martins ønske: "brug vores rigtige logo, gerne i hvid" til
+// "Vundet"-mailen) — beskåret direkte fra Martins egen hvide logo-fil (huset
+// + selve logo-teksten som billede, ikke gentegnet med en skrifttype).
+// Serveres som en almindelig hostet fil (samme mønster som icon-192/512
+// ovenfor) i stedet for en data-URI i selve mailens HTML, fordi mange
+// mailprogrammer (bl.a. Outlook) blokerer data-URI-billeder i modtagne
+// mails — en almindelig billed-URL virker overalt. Bruges af
+// buildWonProjectEmailHtml() nedenfor via PUBLIC_APP_URL.
+app.get('/email-logo-white.png', (req, res) => res.sendFile(path.join(__dirname, 'email-logo-white.png')));
 app.get('/', sendPage('index.html'));
 app.get('*', sendPage('index.html'));
 

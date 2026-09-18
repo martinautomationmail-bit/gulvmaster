@@ -563,7 +563,7 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-udgifter .udg-cat-head .name{font-weight:800;font-size:13px}
 #page-finance #fintab-udgifter .udg-cat-head .amt{font-weight:800;font-size:13px}
 #page-finance #fintab-udgifter .udg-cat-body{padding:6px 10px;flex:1}
-#page-finance #fintab-udgifter .udg-exp-row{display:grid;grid-template-columns:20px 1fr 90px 26px;align-items:center;gap:8px;padding:7px 6px;border-radius:8px;border-left:3px solid transparent}
+#page-finance #fintab-udgifter .udg-exp-row{display:grid;grid-template-columns:20px 1fr 80px 84px 26px;align-items:center;gap:6px;padding:7px 6px;border-radius:8px;border-left:3px solid transparent}
 #page-finance #fintab-udgifter .udg-exp-row:hover{background:var(--bly-hover)}
 #page-finance #fintab-udgifter .udg-exp-row.unpaid{border-left-color:var(--bly-dot-unpaid)}
 #page-finance #fintab-udgifter .udg-exp-row.paid .udg-exp-name,#page-finance #fintab-udgifter .udg-exp-row.paid .udg-exp-amt{color:var(--bly-sub);text-decoration:line-through;text-decoration-color:var(--bly-border)}
@@ -574,6 +574,10 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-udgifter .udg-exp-amt:focus{outline:none;background:#fff;box-shadow:0 0 0 2px var(--bly-accent-soft)}
 #page-finance #fintab-udgifter .udg-exp-del{border:0;background:transparent;color:var(--bly-sub);cursor:pointer;font-size:15px;border-radius:6px;width:24px;height:24px}
 #page-finance #fintab-udgifter .udg-exp-del:hover{background:#FEF2F2;color:#DC2626}
+#page-finance #fintab-udgifter .udg-exp-move{border:1px solid var(--bly-border-soft);background:transparent;font-size:10.5px;font-weight:600;color:var(--bly-sub);padding:2px 2px;border-radius:6px;max-width:84px;cursor:pointer}
+#page-finance #fintab-udgifter .udg-exp-move:focus{outline:none;border-color:var(--bly-accent);color:var(--bly-ink)}
+#page-finance #fintab-udgifter .udg-cat-name{cursor:text}
+#page-finance #fintab-udgifter .udg-cat-name:focus{outline:none;background:var(--bly-hover)!important;border-radius:6px}
 #page-finance #fintab-udgifter .udg-quickadd-row{display:flex;gap:6px;padding:8px 12px 12px}
 #page-finance #fintab-udgifter .udg-quickadd-row input{flex:1;border:1.5px dashed var(--bly-border);border-radius:var(--bly-r-sm);padding:7px 9px;font-size:12px;background:transparent}
 #page-finance #fintab-udgifter .udg-quickadd-row input:focus{outline:none;border-style:solid;border-color:var(--bly-accent);background:#fff}
@@ -3270,7 +3274,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-17.1</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.1</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3983,6 +3987,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <button type="button" id="udg-view-cards" class="active">Kort</button>
           <button type="button" id="udg-view-list">Liste</button>
         </div>
+        <button type="button" class="udg-btn outline dashed" id="udg-add-category">+ Ny boks</button>
         <button type="button" class="udg-btn" id="udg-add-expense">+ Ny udgift</button>
       </div>
     </div>
@@ -12469,12 +12474,26 @@ document.getElementById('lostfollow-run-btn').addEventListener('click',async fun
 });
 
 // ── AUTOMATISKE MAILS (system_email_templates) — ét aktivt eksemplar pr. handling ──
+// RUNDE AD — hasPdfAndTest er udvidet fra en simpel true/false til et lille
+// config-objekt, så FLERE skabeloner (nu: completion OG won_project) hver
+// kan have deres egen PDF-upload + test-afsendelse-UI uden at kollidere på
+// samme HTML-id'er (se renderSystemEmailTemplates, som nu sætter id'er pr.
+// nøgle: "email-pdf-file-"+key osv.). settingsEndpoint/testEndpoint peger på
+// nøglens EGEN server-rute (completion beholder sine gamle ruter/cleaning_pdf_*
+// app_settings-nøgler uændret, for ikke at miste en allerede uploadet PDF).
 var SYS_EMAIL_META=[
-  {key:'completion',icon:'📧',help:'Sendes automatisk til kundens e-mail, når en medarbejder markerer en opgave som færdig — med jeres rengørings-PDF vedhæftet.',vars:'{{kunde}}, {{opgave}}, {{firma}}',hasPdfAndTest:true},
+  {key:'completion',icon:'📧',help:'Sendes automatisk til kundens e-mail, når en medarbejder markerer en opgave som færdig — med jeres rengørings-PDF vedhæftet.',vars:'{{kunde}}, {{opgave}}, {{firma}}',hasPdfAndTest:{pdfLabel:'Rengørings-PDF (vedhæftes automatisk)',settingsEndpoint:'/api/settings/completion-email',testEndpoint:'/api/settings/test-completion-email',pdfBodyBase:'cleaning_pdf'}},
   {key:'customer_welcome',icon:'🎉',help:'Sendes automatisk når en ny kunde oprettes i CRM (kræver at kunden har en e-mailadresse). Slået fra som standard.',vars:'{{kunde}}, {{firma}}'},
   {key:'reminder_today',icon:'☀️',help:'Sendes fra knappen "Send vi kommer i dag" i Dagligplanlægning, til kunder booket i dag.',vars:'{{kunde}}, {{opgave}}, {{firma}}, {{tidspunkt}}, {{link}}'},
   {key:'reminder_tomorrow',icon:'🌙',help:'Sendes fra knappen "Send vi kommer i morgen" i Dagligplanlægning, til kunder booket i morgen.',vars:'{{kunde}}, {{opgave}}, {{firma}}, {{tidspunkt}}, {{link}}'},
-  {key:'quote_accepted',icon:'🤝',help:'Sendes automatisk når en kunde accepterer et tilbud online, med et link til deres faste kundeportal.',vars:'{{kunde}}, {{firma}}, {{dokument_nr}}, {{link}}'}
+  {key:'quote_accepted',icon:'🤝',help:'Sendes automatisk når en kunde accepterer et tilbud online, med et link til deres faste kundeportal.',vars:'{{kunde}}, {{firma}}, {{dokument_nr}}, {{link}}'},
+  // RUNDE AD (Martins ønske: "send denne mail hver gang: 1) kunden i pipeline
+  // konverteres til vundet ELLER 2) kundens projekt er lavet — krydstjek at
+  // den ikke sender 2 gange") — se sendWonProjectEmail i server.js for selve
+  // krydstjek-logikken. Indeholder jeres logo, en video-boks og evt. en
+  // vedhæftet PDF (uploades her); kun beskedteksten herunder er redigerbar,
+  // selve det visuelle er fast, ligesom Martin selv godkendte det.
+  {key:'won_project',icon:'🎉',help:'Sendes automatisk ÉN GANG pr. kunde, enten når kortet i CRM-pipelinen rykkes til en "Vundet"-stage, eller når kundens projekt oprettes — alt efter hvad der sker først. Indeholder jeres logo, jeres video og evt. en vedhæftet PDF.',vars:'{{navn}}, {{firma}}',hasPdfAndTest:{pdfLabel:'Betingelser/vigtig info-PDF (vedhæftes automatisk)',settingsEndpoint:'/api/settings/won-email',testEndpoint:'/api/settings/test-won-email',pdfBodyBase:'won_pdf'}}
 ];
 var sysEmailTemplatesCache={};
 // RUNDE I #318 (Martins ønske: "layoutet er forfærdeligt ... kompress alt så
@@ -12487,7 +12506,13 @@ async function loadSystemEmailTemplates(){
   sysEmailTemplatesCache={};
   rows.forEach(function(r){sysEmailTemplatesCache[r.key]=r;});
   renderSystemEmailTemplates();
-  if(sysEmailTemplatesCache.completion)loadEmailSettings();
+  // RUNDE AD — generisk nu: enhver skabelon MED hasPdfAndTest (ikke kun
+  // "completion") får sin PDF-status/mail-status-pil hentet, men kun hvis
+  // dens kort rent faktisk er foldet ud (ellers findes id'erne slet ikke i
+  // DOM'en endnu, se renderSystemEmailTemplates).
+  SYS_EMAIL_META.forEach(function(m){
+    if(m.hasPdfAndTest&&sysEmailExpanded[m.key])loadEmailSettings(m.key);
+  });
 }
 function renderSystemEmailTemplates(){
   var el=document.getElementById('sys-email-templates-list');
@@ -12505,11 +12530,11 @@ function renderSystemEmailTemplates(){
     if(!open)return '<div data-sys-key="'+m.key+'">'+head+'</div>';
     var pdfTestHtml=m.hasPdfAndTest?(
       '<div class="form-row">'+
-        '<div class="form-group"><label class="form-label">Rengørings-PDF (vedhæftes automatisk)</label><input id="email-pdf-file" type="file" accept="application/pdf" class="input"><div class="muted-sm" id="email-pdf-current" style="margin-top:4px"></div></div>'+
-        '<div class="form-group"><label class="form-label">Send test-mail til</label><div style="display:flex;gap:6px"><input id="email-test-to" class="input" placeholder="din@mail.dk"><button class="btn small" id="email-test-btn" type="button">Send test</button></div></div>'+
+        '<div class="form-group"><label class="form-label">'+esc(m.hasPdfAndTest.pdfLabel)+'</label><input id="email-pdf-file-'+m.key+'" type="file" accept="application/pdf" class="input"><div class="muted-sm" id="email-pdf-current-'+m.key+'" style="margin-top:4px"></div></div>'+
+        '<div class="form-group"><label class="form-label">Send test-mail til</label><div style="display:flex;gap:6px"><input id="email-test-to-'+m.key+'" class="input" placeholder="din@mail.dk"><button class="btn small" id="email-test-btn-'+m.key+'" type="button">Send test</button></div></div>'+
       '</div>'
     ):'';
-    var statusPill=m.hasPdfAndTest?'<span class="mail-status-pill" id="mail-status-pill" style="margin-right:auto">Tjekker…</span>':'<span style="margin-right:auto"></span>';
+    var statusPill=m.hasPdfAndTest?'<span class="mail-status-pill" id="mail-status-pill-'+m.key+'" style="margin-right:auto">Tjekker…</span>':'<span style="margin-right:auto"></span>';
     return '<div data-sys-key="'+m.key+'">'+head+
       '<div class="sysmail-row-body" style="padding:14px 8px 16px;border-bottom:1px solid var(--border2)">'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);cursor:pointer;margin-bottom:10px"><input type="checkbox" class="sys-tpl-enabled" '+(t.enabled?'checked':'')+'> Aktiv</label>'+
@@ -12525,6 +12550,12 @@ function renderSystemEmailTemplates(){
       var key=btn.dataset.sysKey;
       sysEmailExpanded[key]=!sysEmailExpanded[key];
       renderSystemEmailTemplates();
+      // RUNDE AD: PDF-status/mail-pillen blev tidligere kun hentet ved selve
+      // side-indlæsningen (loadSystemEmailTemplates), så en bruger der åbnede
+      // et kort ved at klikke på det, så bare "Tjekker…" for evigt. Henter nu
+      // status med det samme når et hasPdfAndTest-kort foldes ud.
+      var meta=SYS_EMAIL_META.find(function(m){return m.key===key;});
+      if(meta&&meta.hasPdfAndTest&&sysEmailExpanded[key])loadEmailSettings(key);
     });
   });
   el.querySelectorAll('.sys-tpl-save').forEach(function(btn){
@@ -12534,13 +12565,17 @@ function renderSystemEmailTemplates(){
       saveSystemEmailTemplate(card.dataset.sysKey,card);
     });
   });
-  var completionCard=el.querySelector('[data-sys-key="completion"]');
-  if(completionCard&&sysEmailExpanded.completion){
-    var pdfFile=document.getElementById('email-pdf-file');
+  // RUNDE AD: generisk wiring for ALLE skabeloner med hasPdfAndTest (completion + won_project m.fl.),
+  // ikke kun 'completion' — hver har sine egne per-key felt-id'er (se renderSystemEmailTemplates).
+  SYS_EMAIL_META.forEach(function(m){
+    if(!m.hasPdfAndTest)return;
+    var card=el.querySelector('[data-sys-key="'+m.key+'"]');
+    if(!card||!sysEmailExpanded[m.key])return;
+    var pdfFile=document.getElementById('email-pdf-file-'+m.key);
     if(pdfFile)pdfFile.addEventListener('change',function(){});
-    var testBtn=document.getElementById('email-test-btn');
-    if(testBtn)testBtn.onclick=sendTestCompletionEmail;
-  }
+    var testBtn=document.getElementById('email-test-btn-'+m.key);
+    if(testBtn)testBtn.onclick=function(){sendTestSystemEmail(m.key);};
+  });
 }
 async function saveSystemEmailTemplate(key,card){
   var body={
@@ -12552,11 +12587,12 @@ async function saveSystemEmailTemplate(key,card){
   var r=await api('/api/system-email-templates/'+key,{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){
     toast('Skabelon gemt ✓','✓');
-    if(key==='completion'){
+    var meta=SYS_EMAIL_META.find(function(m){return m.key===key;});
+    if(meta&&meta.hasPdfAndTest){
       // Selve PDF-filen (hvis en ny er valgt) og status-pillen håndteres stadig
-      // via de gamle PDF-specifikke felter/funktioner — kun emne/besked er nu
+      // via de PDF-specifikke felter/funktioner — kun emne/besked er nu
       // flyttet til system-email-templates.
-      await saveEmailSettings();
+      await saveEmailSettings(key);
     }
     await loadSystemEmailTemplates();
   }
@@ -14404,6 +14440,15 @@ document.getElementById('udg-add-expense').addEventListener('click',function(){
   document.getElementById('udg-view-list').click();
   document.getElementById('udg-la-name').focus();
 });
+// RUNDE AE — samme "+ Ny kategori"-mønster som Privat budget (fin-add-private-cat-btn
+// nedenfor), nu også i den almindelige Udgifter-fane.
+document.getElementById('udg-add-category').addEventListener('click',async function(){
+  var name=await gmPrompt('Navn på ny boks (fx "Software", "Køretøjer"):');
+  if(!name||!name.trim())return;
+  api('/api/finance/expenses/category',{method:'POST',body:JSON.stringify({name:name.trim()})}).then(function(r){
+    if(r&&r.ok){toast('Boks oprettet ✓','✓');loadFinance();}else if(r)toast(r.error||'Fejl','❌');
+  });
+});
 document.getElementById('udg-la-add').addEventListener('click',function(){finExpenseQuickAdd();});
 document.getElementById('udg-la-name').addEventListener('keydown',function(e){if(e.key==='Enter')finExpenseQuickAdd();});
 document.getElementById('udg-la-amt').addEventListener('keydown',function(e){if(e.key==='Enter')finExpenseQuickAdd();});
@@ -14965,31 +15010,50 @@ function renderFinExpenseBreakdown(){
     return '<div class="udg-bd-row"><div class="udg-bd-name">'+esc(r.name)+'</div><div class="udg-bd-track"><div class="udg-bd-fill" style="width:'+w+'%"></div></div><div><div class="udg-bd-amt">'+krFmt(r.v)+'</div><div class="udg-bd-pct">'+pct+'% af total</div></div></div>';
   }).join('')||'<div class="udg-empty-hint">Ingen udgiftskategorier endnu.</div>';
 }
+// RUNDE AE (Martin: "kan du under økonomi udgifter gøre så jeg kan tilføje flere
+// bokse. samt slette? ... kan jeg manuelt flytte de forskellige felter fra boks til
+// boks?") — kort-gridet fik samme "kategori er frit redigerbar"-opsætning som Privat
+// budget allerede havde (se renderFinPrivateBudget): omdøb-felt + slet-knap på selve
+// boksen, og nu ÉN ekstra ting Privat budget ikke har — en "flyt til"-vælger pr. post,
+// så en post kan rykkes over i en anden boks uden at skulle slettes og genoprettes.
+// Fordelingsgraf/KPI-række/kategori-filtre ovenover er allerede 100% data-drevne
+// (de looper bare finExpenses igennem), så nye/slettede/omdøbte bokse slår automatisk
+// igennem der uden yderligere kode — det var kun selve kort-gridet der manglede.
 function renderFinExpenseCardGrid(){
   var el=document.getElementById('fin-expense-categories');
   if(!el)return;
   el.innerHTML=finExpenses.map(function(cat){
     var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
     var items=cat.items.filter(function(it){return finExpensePassesFilter({catId:cat.id,name:it.name,amount:+it.amount||0,paid:!!it.paid});});
+    var moveOptionsHtml='<option value="">Flyt til…</option>'+finExpenses.filter(function(c){return c.id!==cat.id;}).map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('');
     var rowsHtml=items.length?items.map(function(it){
       return '<div class="udg-exp-row '+(it.paid?'paid':'unpaid')+'" data-id="'+it.id+'">'+
         '<input type="checkbox" class="udg-exp-paid" '+(it.paid?'checked':'')+'>'+
         '<input type="text" class="udg-exp-name" value="'+esc(it.name)+'">'+
         '<input type="number" class="udg-exp-amt" value="'+it.amount+'">'+
+        '<select class="udg-exp-move" title="Flyt denne post til en anden boks">'+moveOptionsHtml+'</select>'+
         '<button class="udg-exp-del">×</button></div>';
     }).join(''):'<div class="udg-empty-hint">Ingen poster matcher.</div>';
-    return '<div class="udg-cat-card">'+
-      '<div class="udg-cat-head"><span class="name">'+esc(cat.name)+'</span><span class="amt">'+krFmt(catTotal)+'</span></div>'+
+    return '<div class="udg-cat-card" data-catid="'+cat.id+'">'+
+      '<div class="udg-cat-head">'+
+        '<input type="text" class="udg-cat-name" data-catid="'+cat.id+'" value="'+esc(cat.name)+'" style="background:transparent;border:0;color:inherit;font-weight:800;font-size:13px;width:120px;padding:0">'+
+        '<span style="display:flex;align-items:center;gap:2px"><span class="amt">'+krFmt(catTotal)+'</span><button class="fin-del-btn" data-action="udg-del-cat" data-catid="'+cat.id+'" title="Slet hele boksen og alle dens poster">×</button></span>'+
+      '</div>'+
       '<div class="udg-cat-body">'+rowsHtml+'</div>'+
       '<div class="udg-quickadd-row"><input type="text" placeholder="+ Ny post..." data-qa-name="'+cat.id+'"><input type="number" class="amt" placeholder="kr" data-qa-amt="'+cat.id+'"><button data-qa-btn="'+cat.id+'">Tilføj</button></div>'+
       '</div>';
-  }).join('')||'<div class="udg-empty-hint">Ingen udgiftskategorier endnu.</div>';
+  }).join('')||'<div class="udg-empty-hint">Ingen udgiftskategorier endnu — tryk "+ Ny boks" for at starte.</div>';
   el.querySelectorAll('[data-id]').forEach(function(row){
     var id=row.dataset.id;
     row.querySelector('.udg-exp-paid').addEventListener('change',function(e){finExpenseUpdateItem(id,{paid:e.target.checked});});
     row.querySelector('.udg-exp-name').addEventListener('change',function(e){finExpenseUpdateItem(id,{name:e.target.value});});
     row.querySelector('.udg-exp-amt').addEventListener('change',function(e){finExpenseUpdateItem(id,{amount:e.target.value});});
     row.querySelector('.udg-exp-del').addEventListener('click',function(){finExpenseDeleteItem(id);});
+    row.querySelector('.udg-exp-move').addEventListener('change',function(e){
+      var newCatId=e.target.value;
+      if(!newCatId)return;
+      finExpenseUpdateItem(id,{category_id:newCatId});
+    });
   });
   el.querySelectorAll('[data-qa-btn]').forEach(function(btn){
     var catId=btn.dataset.qaBtn;
@@ -15000,6 +15064,27 @@ function renderFinExpenseCardGrid(){
       finExpenseAddItem(catId,name,amtEl.value);
     });
   });
+  el.querySelectorAll('.udg-cat-name').forEach(function(inp){
+    inp.addEventListener('change',function(e){
+      var name=e.target.value.trim();
+      if(!name){toast('Boksens navn må ikke være tomt','⚠');e.target.value=finExpenseFindCatName(e.target.dataset.catid);return;}
+      api('/api/finance/expenses/category/'+e.target.dataset.catid,{method:'PUT',body:JSON.stringify({name:name})}).then(function(r){
+        if(r&&r.ok){toast('Boks omdøbt ✓','✓');loadFinance();}else if(r)toast(r.error||'Fejl','❌');
+      });
+    });
+  });
+  el.querySelectorAll('[data-action="udg-del-cat"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      if(await gmConfirm('Slet hele boksen og alle dens poster? Kan ikke fortrydes.'))
+        api('/api/finance/expenses/category/'+btn.dataset.catid,{method:'DELETE'}).then(function(r){
+          if(r&&r.ok){toast('Boks slettet','✓');loadFinance();}else if(r)toast(r.error||'Fejl','❌');
+        });
+    });
+  });
+}
+function finExpenseFindCatName(catId){
+  var cat=finExpenses.find(function(c){return String(c.id)===String(catId);});
+  return cat?cat.name:'';
 }
 function renderFinExpenseListBody(){
   var body=document.getElementById('udg-list-body');
@@ -15049,6 +15134,13 @@ async function finExpenseUpdateItem(id,patch){
   var body=Object.assign({name:found.item.name,amount:found.item.amount,paid:!!found.item.paid},patch);
   var r=await api('/api/finance/expenses/'+id,{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){
+    // RUNDE AE — hvis posten er FLYTTET til en anden boks (category_id i patch),
+    // hopper den lokale kopi ud af den forkerte kategoris items-array. Nemmest og
+    // mest robust er en fuld genindlæsning (samme mønster som slet/tilføj-post
+    // allerede bruger), fremfor at flytte posten manuelt mellem arrays her.
+    if(patch.category_id&&String(patch.category_id)!==String(found.cat.id)){
+      toast('Post flyttet ✓','✓');loadFinance();return;
+    }
     // Opdater den lokale kopi FØR gentegning — ellers gentegner vi med gammel data,
     // og ændringen (fx afkrydsningen) ser ud til at "hoppe tilbage" med det samme.
     found.item.name=body.name;found.item.amount=+body.amount||0;found.item.paid=!!body.paid;
@@ -16083,37 +16175,46 @@ async function saveSettings(){
   if(r&&r.ok){toast('Virksomhedsprofil gemt','✓');await loadSettings();}else if(r)toast(r.error||'Fejl','❌');
 }
 
-// FÆRDIG-MAIL TIL KUNDEN — emne/besked er flyttet ind i skabelon-kortet
-// (system_email_templates, se saveSystemEmailTemplate), denne funktion styrer
-// nu kun selve PDF-vedhæftningen + mail-opsætnings-status-pillen på kortet.
-async function loadEmailSettings(){
-  var s=await api('/api/settings/completion-email');
+// SYSTEM-MAILS MED PDF-VEDHÆFTNING (færdig-mail, vundet-mail, ...) — emne/besked
+// er flyttet ind i skabelon-kortet (system_email_templates, se saveSystemEmailTemplate).
+// RUNDE AD: disse tre funktioner er generisk gjort ift. 'key', så de virker for
+// ALLE skabeloner med hasPdfAndTest (ikke kun 'completion') — hver har sine egne
+// endpoints/felt-navne defineret i SYS_EMAIL_META[key].hasPdfAndTest.
+async function loadEmailSettings(key){
+  var meta=SYS_EMAIL_META.find(function(m){return m.key===key;});
+  if(!meta||!meta.hasPdfAndTest)return;
+  var s=await api(meta.hasPdfAndTest.settingsEndpoint);
   if(!s)return;
-  var pdfCurrent=document.getElementById('email-pdf-current');
+  var pdfCurrent=document.getElementById('email-pdf-current-'+key);
   if(pdfCurrent)pdfCurrent.textContent=s.has_pdf?('📎 '+(s.pdf_filename||'PDF uploadet')):'Ingen PDF uploadet endnu';
-  var pill=document.getElementById('mail-status-pill');
+  var pill=document.getElementById('mail-status-pill-'+key);
   if(pill){
     if(s.mail_configured){pill.textContent='✓ Mail er sat op';pill.className='mail-status-pill ok';}
     else{pill.textContent='⚠ SMTP mangler at blive sat op på serveren';pill.className='mail-status-pill off';}
   }
 }
-async function saveEmailSettings(){
-  var fileEl=document.getElementById('email-pdf-file');
+async function saveEmailSettings(key){
+  var meta=SYS_EMAIL_META.find(function(m){return m.key===key;});
+  if(!meta||!meta.hasPdfAndTest)return;
+  var fileEl=document.getElementById('email-pdf-file-'+key);
   var file=fileEl?fileEl.files[0]:null;
   if(!file)return; // Intet nyt PDF-upload denne gang — emne/besked er allerede gemt separat.
+  var base=meta.hasPdfAndTest.pdfBodyBase;
   var body={};
   var dataUri=await fileToDataURL(file);
-  body.cleaning_pdf_base64=dataUri.split(',')[1]||'';
-  body.cleaning_pdf_filename=file.name;
+  body[base+'_base64']=dataUri.split(',')[1]||'';
+  body[base+'_filename']=file.name;
   var r=await api('/api/settings',{method:'PUT',body:JSON.stringify(body)});
-  if(r&&r.ok){fileEl.value='';await loadEmailSettings();}
+  if(r&&r.ok){fileEl.value='';await loadEmailSettings(key);}
   else if(r)toast(r.error||'Fejl ved upload af PDF','❌');
 }
-async function sendTestCompletionEmail(){
-  var to=document.getElementById('email-test-to').value.trim();
+async function sendTestSystemEmail(key){
+  var meta=SYS_EMAIL_META.find(function(m){return m.key===key;});
+  if(!meta||!meta.hasPdfAndTest)return;
+  var to=document.getElementById('email-test-to-'+key).value.trim();
   if(!to){toast('Skriv en e-mailadresse først','⚠');return;}
-  var btn=document.getElementById('email-test-btn');btn.disabled=true;btn.textContent='Sender…';
-  var r=await api('/api/settings/test-completion-email',{method:'POST',body:JSON.stringify({to:to})});
+  var btn=document.getElementById('email-test-btn-'+key);btn.disabled=true;btn.textContent='Sender…';
+  var r=await api(meta.hasPdfAndTest.testEndpoint,{method:'POST',body:JSON.stringify({to:to})});
   if(r&&r.ok)toast('Test-mail sendt til '+to,'✓');
   else toast((r&&r.error)||'Kunne ikke sende','❌');
   btn.disabled=false;btn.textContent='Send test';
