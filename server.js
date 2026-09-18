@@ -15633,7 +15633,13 @@ async function fetchFinanceInvoices() {
     const id = String(d.id);
     const ov = overrides[id];
     const nativeRemaining = Math.max(0, Number(d.total) - Number(d.paid_total) - Number(d.credited_total));
-    const remaining = ov?.status === 'partial' && ov?.paid_amount != null ? Math.max(0, (Number(d.total) || 0) - ov.paid_amount) : (Number(d.paid_total) > 0 ? nativeRemaining : null);
+    // RUNDE AK (Martins fund: "det er ikke 98.000 men nærmere de 40-50.000") — dækkede
+    // tidligere kun fakturaer med en RIGTIG betaling (paid_total>0); en faktura der kun
+    // er delvist afskrevet via en kreditnota (credited_total>0, paid_total=0, fx en
+    // rabat/fejlfaktura) fik derfor aldrig sit rigtige restbeløb her og faldt tilbage til
+    // det fulde beløb nedenfor i stedet — se remaining!=null-fald-tilbage i
+    // renderFinInvoiceCard()/finInvBoxHtml.
+    const remaining = ov?.status === 'partial' && ov?.paid_amount != null ? Math.max(0, (Number(d.total) || 0) - ov.paid_amount) : ((Number(d.paid_total) > 0 || Number(d.credited_total) > 0) ? nativeRemaining : null);
     return {
       id, fullName: d.job_name || d.invoice_number, customer: d.customer_name || d.job_name || 'Ukendt kunde',
       accountId: d.customer_id ? String(d.customer_id) : null, jobId: d.project_id || null, jobNumber: d.job_number || '',

@@ -3274,7 +3274,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.6</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.8</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3891,12 +3891,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div id="fin-quickexp-rows" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px"></div>
         </div>
       </div>
+      <!-- RUNDE AL (Martins ønske: "Så har jeg nemlig alt dette data på forsiden: 1.
+           Oversigt fra måned til måned 2. Bankkonto pt 3. Faktura status 4. Moms") — de
+           4 kort er nu ALLE de faste økonomital på forsiden (Fakturaer/Bank/Moms/nu også
+           Udgifter denne måned), og Opgaver-kortet (som ikke er et øknomital, men en
+           note-/opgaveliste) er flyttet ned i sin egen fulde bredde herunder, så det ikke
+           længere optager en af de 4 pladser. -->
       <div class="bly-dash-grid">
         <div class="bly-col" id="fin-card-fakturaer"></div>
         <div class="bly-col" id="fin-card-bank"></div>
         <div class="bly-col" id="fin-card-moms"></div>
-        <div class="bly-col" id="fin-card-todo"></div>
+        <div class="bly-col" id="fin-card-udgifter"></div>
       </div>
+      <div class="bly-col" id="fin-card-todo" style="margin-top:20px"></div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 10px">
       <div class="fin-eyebrow" style="margin:0">Grafer</div>
@@ -4589,6 +4596,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="form-group"><label class="form-label">Beløb (kr.)</label><input id="iv-pay-amount" type="number" step="0.01" class="input"></div>
           <div class="form-group"><label class="form-label">Dato</label><input id="iv-pay-date" type="date" class="input"></div>
           <div class="form-group"><label class="form-label">Metode <span class="opt-tag">valgfrit</span></label><input id="iv-pay-method" class="input" placeholder="Fx bankoverførsel"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1"><label class="form-label">Note <span class="opt-tag">valgfrit</span></label><input id="iv-pay-note" class="input" placeholder="Fx hvilken postering/konto det er betalt fra"></div>
         </div>
         <button class="bly-btn outline small" id="iv-add-payment-btn" type="button">+ Registrér betaling</button>
 
@@ -7354,6 +7364,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;padding:0;border:0">
       <button class="btn small" id="gm-dialog-cancel">Annuller</button>
       <button class="btn small primary" id="gm-dialog-ok">OK</button>
+    </div>
+  </div>
+</div>
+<!-- RUNDE AK (Martins ønske: "Gør du det under faktura skal den spørger om hvilken
+     dato og om der skal laves en note") — "✓ Markér betalt"-knappen registrerede
+     tidligere stille en betaling med dags dato og ingen note. Spørger nu om begge
+     dele først, i stedet for at gætte. -->
+<div class="mo" id="iv-mark-paid-modal">
+  <div class="modal" style="width:380px">
+    <h3>✓ Markér betalt</h3>
+    <p style="font-size:13px;color:var(--ink);line-height:1.5;margin:0 0 14px">Registrerer en betaling på hele det resterende beløb (<b id="iv-mark-paid-amount">–</b>). Hvornår er den indbetalt?</p>
+    <div class="form-group" style="margin-bottom:10px"><label class="form-label">Betalingsdato</label><input id="iv-mark-paid-date" type="date" class="input"></div>
+    <div class="form-group" style="margin-bottom:0"><label class="form-label">Note <span class="opt-tag">valgfrit</span></label><input id="iv-mark-paid-note" class="input" placeholder="Fx hvilken konto/postering det er betalt fra"></div>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;padding:0;border:0;margin-top:16px">
+      <button class="btn small" id="iv-mark-paid-cancel" type="button">Annuller</button>
+      <button class="btn small primary" id="iv-mark-paid-confirm" type="button">✓ Markér betalt</button>
     </div>
   </div>
 </div>
@@ -13615,6 +13641,24 @@ function renderFinBankResults(){
       var isFull=Math.abs(invAmount-t.amount)<1;
       var body=isFull?{status:'paid'}:{status:'partial',paidAmount:t.amount};
       await api('/api/finance/invoices/'+m.documentId,{method:'PUT',body:JSON.stringify(body)});
+      // RUNDE AK (Martins rettelse: "Når du markere en fakture betalt i bankafstemning
+      // skal den huske at godkende den i faktura som betalt og på hvilken post/dato")
+      // — PUT'et herover rørte KUN det manuelle Økonomi-overlay (finance_invoice_
+      // overrides), ikke selve fakturaen under Tilbud & Faktura, som derfor blev ved
+      // med at stå som ubetalt der uanset hvor mange matches man godkendte her.
+      // Registrerer nu ALTID en rigtig delbetaling direkte på fakturaen, med bank-
+      // posteringens egen dato og beløb, og en note der gør det sporbart hvilken
+      // postering betalingen stammer fra — samme endpoint som "Registrér betaling"
+      // under selve fakturaen bruger, så status/rest opdateres helt automatisk.
+      var payAmount=Math.round((Number(t.amount)||0)*100)/100;
+      if(payAmount>0){
+        await api('/api/invoices/'+m.documentId+'/payments',{method:'POST',body:JSON.stringify({
+          amount:payAmount,
+          paid_at:t.date||undefined,
+          method:'Bankafstemning',
+          note:'Matchet mod bankpostering: '+(t.text||t.externalId||'')
+        })});
+      }
       // Husk denne postering som bogført, så den ikke dukker op som "ny" ved næste upload.
       await api('/api/finance/bank-statement/mark-reconciled',{method:'POST',body:JSON.stringify({externalId:t.externalId,date:t.date,text:t.text,amount:t.amount,documentId:m.documentId,customer:m.customer})});
       t.alreadyReconciled={customer:m.customer,documentId:m.documentId,jobId:m.jobId,kind:'matched'};
@@ -13623,6 +13667,9 @@ function renderFinBankResults(){
     toast('Fakturaer opdateret ✓','✓');
     renderFinBankResults();
     loadFinance();
+    // Tilbud & Faktura-listen (og en evt. åben faktura) skal også afspejle de nye
+    // betalinger med det samme, hvis man skifter derhen bagefter.
+    loadQzInvoices().then(function(){if(document.getElementById('page-qz-invoices').classList.contains('active'))renderQzInvoices();});
   });
 }
 var finPrivateBudget=[];
@@ -13677,6 +13724,7 @@ function renderFinOverview(snapshots){
   renderFinInvoiceCard();
   renderFinBankCard();
   renderFinMomsCard();
+  renderFinExpenseCard();
   renderFinTodoCard();
   loadProfitSnapshots();
 }
@@ -13961,6 +14009,24 @@ async function renderFinMomsCard(){
   // note i stedet for at lade det stå som et bart "0 kr".
   var noteEl=document.getElementById('fin-moms-empty-note');
   if(noteEl)noteEl.style.display=quarterTotal===0?'block':'none';
+}
+// RUNDE AL (Martins ønske: "lav en boks der viser udgifterne denne måned ... Så har jeg
+// nemlig alt dette data på forsiden: 1. Oversigt fra måned til måned 2. Bankkonto pt
+// 3. Faktura status 4. Moms") — det 4. faste kort ved siden af Fakturaer/Bank/Moms.
+// Bruger samme rigtige per-måned udgiftstal som Resultat-grafen/Profit-analysen
+// (finExpenseTotalsByMonth, hentet i loadFinance — respekterer samme prioritet manuelt
+// tal > bank-CSV > udspecificeret sum), i stedet for at regne noget nyt ud selv.
+function renderFinExpenseCard(){
+  var el=document.getElementById('fin-card-udgifter');
+  if(!el)return;
+  var mk=iso(new Date()).slice(0,7);
+  var monthLbl=UDG_MONTH_NAMES[+mk.slice(5,7)-1]+' '+mk.slice(0,4);
+  var amt=(finExpenseTotalsByMonth&&finExpenseTotalsByMonth[mk]!=null)?finExpenseTotalsByMonth[mk]:(mk===finExpenseMonth?finExpenseTotal():null);
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Udgifter</div><button class="bly-btn outline small" data-action="fin-goto-udgifter">Se detaljer</button></div>'+
+    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+esc(monthLbl)+'</div>'+
+    '<div style="font-size:26px;font-weight:800;color:#DC2626">'+(amt!=null?('−'+krFmt(amt)):'–')+'</div>';
+  var btn=el.querySelector('[data-action="fin-goto-udgifter"]');
+  if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="udgifter"]');if(t)t.click();});
 }
 async function renderFinTodoCard(){
   var el=document.getElementById('fin-card-todo');
@@ -26263,12 +26329,18 @@ function renderQzInvoiceStatusFilter(){
   // statusserne. Holdes UDENFOR Økonomi-tallene (se fetchFinanceInvoices) men vises
   // her som sin egen boks, så Martin kan se/filtrere sine kladder direkte.
   var order=['draft','unpaid','partial','paid','void'];
-  function sum(list){return list.reduce(function(s,x){return s+(Number(x.total)||0);},0);}
+  // RUNDE AK (Martins fund: "det er ikke 98.000 men nærmere de 40-50.000") — "Delvist
+  // betalt"-boksen summerede tidligere HELE fakturabeløbet (x.total) i stedet for det der
+  // faktisk stadig mangler (x.remaining, som allerede nettes korrekt for betalinger og
+  // kreditnotaer af GET /api/invoices). De andre statusser beholder bevidst deres
+  // fulde beløb — "Betalt" skal fx stadig vise hvad der ER betalt, ikke 0 kr rest.
+  function amtFor(status,x){return status==='partial'?Number(x.remaining!=null?x.remaining:x.total):(Number(x.total)||0);}
+  function sum(status,list){return list.reduce(function(s,x){return s+amtFor(status,x);},0);}
   function card(status,dot,label,list){
     var active=qzInvoiceStatusFilter===status;
     return '<button class="bly-kpi-card'+(active?' active':'')+'" data-qz-invoice-status="'+status+'" type="button">'
       +'<div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:'+dot+'"></span>'+list.length+' '+esc(label)+'</div>'
-      +'<div class="bly-kpi-value">'+krFmt(sum(list))+'</div></button>';
+      +'<div class="bly-kpi-value">'+krFmt(sum(status,list))+'</div></button>';
   }
   var html=card('all','var(--bly-dot-total)','Alle',qzInvoices);
   html+=order.map(function(s){
@@ -26541,24 +26613,39 @@ function ivPickedCreditLines(){
 async function addIvPayment(){
   var amount=Number(document.getElementById('iv-pay-amount').value);
   if(!amount||amount<=0){toast('Angiv et gyldigt beløb','⚠️');return;}
-  var body={amount:amount,paid_at:document.getElementById('iv-pay-date').value||undefined,method:document.getElementById('iv-pay-method').value.trim()||null};
+  var body={amount:amount,paid_at:document.getElementById('iv-pay-date').value||undefined,method:document.getElementById('iv-pay-method').value.trim()||null,note:document.getElementById('iv-pay-note').value.trim()||null};
   var r=await api('/api/invoices/'+ivState.id+'/payments',{method:'POST',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Betaling registreret','✓');await loadQzInvoices();renderQzInvoices();await openInvoiceDetail(ivState.id);}
+  if(r&&r.ok){toast('Betaling registreret','✓');document.getElementById('iv-pay-note').value='';await loadQzInvoices();renderQzInvoices();await openInvoiceDetail(ivState.id);}
   else toast((r&&r.error)||'Kunne ikke registrere betaling','❌');
 }
 // RUNDE H #301 (Martins ønske om en simpel "betalt"-knap) — registrerer i ét
 // klik en betaling på HELE det resterende beløb (ivState.remaining, sat i
-// openInvoiceDetail) med dags dato, uden at man selv skal skrive/regne noget.
+// openInvoiceDetail), uden at man selv skal skrive/regne beløbet ud.
 // Bruger samme endpoint som en almindelig delbetaling (POST .../payments) —
 // en fuld betaling er blot en delbetaling der tilfældigvis dækker resten.
-async function markIvFullyPaid(){
+// RUNDE AK (Martins ønske: "skal den spørger om hvilken dato og om der skal
+// laves en note") — spurgte tidligere ikke om noget, brugte bare dags dato og
+// ingen note. Åbner nu en lille popup for begge dele i stedet for at gætte.
+function markIvFullyPaid(){
   var amount=Math.round((ivState.remaining||0)*100)/100;
   if(!amount||amount<=0){toast('Der er intet resterende beløb at markere som betalt','⚠️');return;}
-  var btn=document.getElementById('iv-mark-paid-btn');
+  document.getElementById('iv-mark-paid-amount').textContent=krFmt(amount);
+  document.getElementById('iv-mark-paid-date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('iv-mark-paid-note').value='';
+  document.getElementById('iv-mark-paid-modal').classList.add('open');
+}
+async function confirmIvMarkPaid(){
+  var amount=Math.round((ivState.remaining||0)*100)/100;
+  if(!amount||amount<=0){closeModal('iv-mark-paid-modal');return;}
+  var dateVal=document.getElementById('iv-mark-paid-date').value||new Date().toISOString().slice(0,10);
+  var noteVal=document.getElementById('iv-mark-paid-note').value.trim();
+  var btn=document.getElementById('iv-mark-paid-confirm');
   btn.disabled=true;
-  var body={amount:amount,paid_at:new Date().toISOString().slice(0,10)};
+  var body={amount:amount,paid_at:dateVal};
+  if(noteVal)body.note=noteVal;
   var r=await api('/api/invoices/'+ivState.id+'/payments',{method:'POST',body:JSON.stringify(body)});
   btn.disabled=false;
+  closeModal('iv-mark-paid-modal');
   if(r&&r.ok){toast('Faktura markeret som betalt ✓','✓');await loadQzInvoices();renderQzInvoices();await openInvoiceDetail(ivState.id);}
   else toast((r&&r.error)||'Kunne ikke markere som betalt','❌');
 }
@@ -27135,6 +27222,8 @@ function bindQuotesModuleEvents(){
 
   document.getElementById('iv-add-payment-btn').addEventListener('click',addIvPayment);
   document.getElementById('iv-mark-paid-btn').addEventListener('click',markIvFullyPaid);
+  document.getElementById('iv-mark-paid-confirm').addEventListener('click',confirmIvMarkPaid);
+  document.getElementById('iv-mark-paid-cancel').addEventListener('click',function(){closeModal('iv-mark-paid-modal');});
   document.getElementById('iv-activate-btn').addEventListener('click',activateInvoiceDraft);
   document.getElementById('iv-add-credit-btn').addEventListener('click',addIvCreditNote);
   // RUNDE T — "Hele beløbet" + postevælgeren.
