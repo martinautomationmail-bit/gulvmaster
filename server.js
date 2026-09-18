@@ -13216,6 +13216,27 @@ async function crmMoveEntityToWonStage(quote) {
     console.error('Kunne ikke flytte CRM-kort til "Vundet" efter tilbudsaccept:', e.message);
   }
 }
+// RUNDE AP (Martin: "Kan du automatisk når et tilbud er tilkoblet en sag give Den
+// Handel den værdi det tilbud der sidst er lavet/rettet har?") — kaldes hver gang et
+// tilbuds totalbeløb kan have ændret sig (oprettet, redigeret, fået ekstra linjer, eller
+// kopieret — se de fire kaldesteder). Sætter blot Handlens (crm_opportunities) value til
+// PRÆCIS dette tilbuds total. Fordi det sker ved HVERT gem, "vinder" automatisk altid det
+// senest oprettede/rettede tilbud på sagen — nøjagtig den opførsel Martin bad om, uden at
+// skulle slå op på tværs af flere tilbud for at afgøre hvilket der er nyest.
+// crm_leads har (endnu) ingen value-kolonne (et lead er per definition ikke prissat før
+// det konverteres til en opportunity, se skema-kommentaren ved crm_opportunities), så et
+// tilbud der kun er koblet til et LEAD rører bevidst intet her — samme entityType-logik
+// som crmMoveEntityToWonStage ovenfor, minus lead-grenen.
+async function crmSyncOpportunityValueFromQuote(quote) {
+  try {
+    if (!quote || !quote.crm_opportunity_id) return;
+    const r = await pool.query(`UPDATE crm_opportunities SET value=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [quote.total, quote.crm_opportunity_id]);
+    if (!r.rowCount) return; // handlen findes ikke (fx slettet) — stille no-op
+    await crmLogActivity('opportunity', quote.crm_opportunity_id, 'value_updated', 'Værdi sat til ' + Number(quote.total).toLocaleString('da-DK') + ' kr (automatisk — fra tilbud ' + (quote.quote_number || ('#' + quote.id)) + ')', null);
+  } catch (e) {
+    console.error('Kunne ikke opdatere Handel-værdi fra tilbud #' + (quote && quote.id) + ':', e.message);
+  }
+}
 async function createProjectFromAcceptedQuote(quote) {
   try {
     crmMoveEntityToWonStage(quote).catch(e => console.error('Won-automatik fejlede for tilbud #' + quote.id + ':', e.message));
@@ -17244,7 +17265,50 @@ app.post('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res)
   `, [quoteNumber, jobNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken, crmLeadId, crmOpportunityId]);
   await saveQuoteLines(r.rows[0].id, b.lines);
   logDocActivity('quote', r.rows[0].id, 'created', req.user.name, null);
+  crmSyncOpportunityValueFromQuote({ id: r.rows[0].id, total: totals.total, crm_opportunity_id: crmOpportunityId, quote_number: quoteNumber });
   res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber, job_number: jobNumber });
+}));
+
+// RUNDE AO (Martin: "Kan du lave så jeg kan kopiere et tilbud ... så kan jeg hurtig når
+// kunden skal have 2 tilbud hvor der bare er små ændringer kopiere det") — laver et helt
+// nyt, uafhængigt tilbud med samme kunde/linjer/priser/noter/rabat som kilden, klar til
+// Martin lige skal rette de få ting der er forskellige og sende. Bevidst IKKE en reference
+// til originalen (ingen "kopi af"-kobling i databasen) — de to tilbud skal kunne leve helt
+// adskilt derfra (redigeres, accepteres, konverteres til faktura osv. hver for sig), på
+// nøjagtig samme måde som hvis Martin havde tastet det hele ind forfra. Får derfor sit
+// helt eget tilbudsnummer OG sagsnummer (samme to kald som ved almindelig oprettelse
+// ovenfor) — vigtigt fordi job_number er 1:1 med projektoprettelse ved accept (se
+// createProjectFromAcceptedQuote), så to tilbud der potentielt begge kan blive
+// accepteret IKKE må dele ét sagsnummer. Status nulstilles til 'draft', og alt
+// underskrift-/accept-relateret (accept_token gendannes friskt, signed_*, det
+// bagvedliggende converted_invoice_id) starter helt forfra — kopien er reelt et
+// blankt, uafsendt tilbud, ikke en kloning af originalens livscyklus.
+app.post('/api/quotes/:id/duplicate', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const src = await pgOne('SELECT * FROM quotes WHERE id=$1', [req.params.id]);
+  if (!src) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const lines = await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [req.params.id]);
+  const quoteNumber = await nextDocNumber('quote', 'TIL');
+  const jobNumber = await nextDocNumber('project', 'GM');
+  const acceptToken = crypto.randomBytes(20).toString('hex');
+  const r = await pool.query(`
+    INSERT INTO quotes (quote_number,job_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token,crm_lead_id,crm_opportunity_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING id
+  `, [
+    quoteNumber, jobNumber,
+    src.job_name ? (src.job_name + ' (kopi)') : null,
+    src.job_id, src.customer_id, src.customer_address, src.customer_phone, src.customer_email,
+    src.subtotal, src.tax_rate, src.tax_amount, src.total, src.notes, src.top_note, src.internal_note,
+    src.valid_until, req.user.id, src.discount_pct, src.discount_type, acceptToken, src.crm_lead_id, src.crm_opportunity_id
+  ]);
+  const newId = r.rows[0].id;
+  await saveQuoteLines(newId, lines.rows.map(l => ({
+    product_id: l.product_id, description: l.description, unit: l.unit, quantity: l.quantity,
+    cost_price: l.cost_price, sell_price: l.sell_price, product_type: l.product_type,
+    discount_pct: l.discount_pct, discount_type: l.discount_type, line_type: l.line_type, note: l.note
+  })));
+  logDocActivity('quote', newId, 'created', req.user.name, 'Kopi af ' + (src.quote_number || ('#' + src.id)));
+  crmSyncOpportunityValueFromQuote({ id: newId, total: src.total, crm_opportunity_id: src.crm_opportunity_id, quote_number: quoteNumber });
+  res.json({ ok: true, id: newId, quote_number: quoteNumber, job_number: jobNumber });
 }));
 
 app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -17301,6 +17365,7 @@ app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, r
   ]);
   if (b.lines !== undefined) await saveQuoteLines(req.params.id, b.lines);
   logDocActivity('quote', req.params.id, 'edited', req.user.name, null);
+  crmSyncOpportunityValueFromQuote({ id: req.params.id, total: totals.total, crm_opportunity_id: crmOpportunityId, quote_number: current.quote_number });
   res.json({ ok: true });
 }));
 
@@ -17438,6 +17503,7 @@ app.post('/api/quotes/:id/lines', auth, panelAccess('quotes'), asyncRoute(async 
   const totals = computeTotals(allLines, quote.tax_rate, { value: Number(quote.discount_pct) || 0, type: quote.discount_type === 'fixed' ? 'fixed' : 'pct' });
   await pool.query(`UPDATE quotes SET subtotal=$1, tax_amount=$2, total=$3, updated_at=${nowTextSQL()} WHERE id=$4`, [totals.subtotal, totals.taxAmount, totals.total, quote.id]);
   logDocActivity('quote', quote.id, 'edited', req.user.name, `${inserted.length} ekstra ydelse(r) tilføjet`);
+  crmSyncOpportunityValueFromQuote({ id: quote.id, total: totals.total, crm_opportunity_id: quote.crm_opportunity_id, quote_number: quote.quote_number });
   res.json({ ok: true, added: inserted.length });
 }));
 

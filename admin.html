@@ -3389,7 +3389,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.10</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.12</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4473,6 +4473,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="qe-status-select" class="select" style="width:auto"></select>
         <a class="bly-btn outline" id="qe-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
+        <!-- RUNDE AO (Martin: "Kan du lave så jeg kan kopiere et tilbud ... så kan jeg
+             hurtig når kunden skal have 2 tilbud hvor der bare er små ændringer kopiere
+             det") — laver en helt ny, uafhængig kopi af DETTE tilbud (samme kunde/
+             linjer/priser/noter/rabat) og hopper direkte ind i den, klar til at rette de
+             få ting der er forskellige. Se qeDuplicateQuote()/POST /api/quotes/:id/duplicate. -->
+        <button class="bly-btn outline" id="qe-duplicate-btn" type="button" style="display:none" title="Opret en ny, uafhængig kopi af dette tilbud — samme kunde, linjer og priser, klar til at rette de få forskelle">⧉ Kopiér tilbud</button>
         <button class="bly-btn outline" id="qe-share-btn" type="button" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
         <button class="bly-btn outline" id="qe-request-btn" type="button" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
         <button class="bly-btn outline" id="qe-send-btn" type="button" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
@@ -25033,6 +25039,7 @@ function renderQzQuotes(){
       +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
       +'<td><div class="qz-row-actions">'
       +'<button class="qz-icon-btn" onclick="openQuoteEditor('+x.id+')" title="Åbn">✎</button>'
+      +'<button class="qz-icon-btn" onclick="duplicateQzQuote('+x.id+')" title="Kopiér tilbud — samme kunde/linjer/priser i et nyt, uafhængigt tilbud">⧉</button>'
       +(x.status!=='converted'?'<button class="qz-icon-btn" onclick="deleteQzQuote('+x.id+')" title="Slet">🗑</button>':'')
       +'</div></td>'
       +'</tr>';
@@ -25043,6 +25050,18 @@ async function deleteQzQuote(id){
   var r=await api('/api/quotes/'+id,{method:'DELETE'});
   if(r&&r.ok){toast('Tilbud slettet','🗑');await loadQzQuotes();renderQzQuotes();}
   else toast((r&&r.error)||'Kunne ikke slette tilbuddet','❌');
+}
+// RUNDE AO (Martin: "kunden skal have 2 tilbud hvor der bare er små ændringer kopiere
+// det") — kaldes både fra "⧉"-knappen i tilbudslisten og fra "⧉ Kopiér tilbud" inde i
+// selve editoren (se qe-duplicate-btn). Hopper direkte ind i den nye kopi bagefter, så
+// Martin kan gå i gang med at rette de få ting der er forskellige med det samme.
+async function duplicateQzQuote(id){
+  var r=await api('/api/quotes/'+id+'/duplicate',{method:'POST'});
+  if(r&&r.ok){
+    toast('Tilbud kopieret ✓','✓');
+    loadQzQuotes().then(renderQzQuotes);
+    openQuoteEditor(r.id);
+  } else toast((r&&r.error)||'Kunne ikke kopiere tilbuddet','❌');
 }
 
 // ── AKTIVITETS-TIDSLINJE — delt mellem tilbud og faktura ──────
@@ -25274,6 +25293,7 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-customer-results').style.display='none';
   document.getElementById('qe-convert-btn').style.display='none';
   document.getElementById('qe-pdf-link').style.display='none';
+  document.getElementById('qe-duplicate-btn').style.display='none';
   document.getElementById('qe-share-btn').style.display='none';
   document.getElementById('qe-request-btn').style.display='none';
   document.getElementById('qe-send-btn').style.display='none';
@@ -25330,6 +25350,7 @@ async function openQuoteEditor(id,prefillCustomer){
     setAppTitle(qd.job_name||qd.quote_number);
     qePopulateStatusSelect(qd.status);
     document.getElementById('qe-pdf-link').style.display='inline-flex';
+    document.getElementById('qe-duplicate-btn').style.display='inline-flex';
     document.getElementById('qe-share-btn').style.display=qd.status==='converted'?'none':'inline-flex';
     document.getElementById('qe-request-btn').style.display='inline-flex';
     document.getElementById('qe-send-btn').style.display='inline-flex';
@@ -27402,6 +27423,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-save-btn').addEventListener('click',function(){saveQuoteEditor(false);});
   document.getElementById('qe-save-draft-btn').addEventListener('click',function(){saveQuoteEditor(true);});
   document.getElementById('qe-convert-btn').addEventListener('click',convertQuoteToInvoice);
+  document.getElementById('qe-duplicate-btn').addEventListener('click',function(){if(qeState.id)duplicateQzQuote(qeState.id);});
   document.getElementById('qe-share-btn').addEventListener('click',qeShareLink);
   document.getElementById('qe-request-btn').addEventListener('click',qrOpenModal);
   document.getElementById('qr-close-btn').addEventListener('click',function(){closeModal('quote-request-modal');});
@@ -27588,6 +27610,7 @@ window.sendIvCreditNote=sendIvCreditNote;
 // PRÆCIS den samme "stille ReferenceError, knappen gør ingenting"-fejl.
 window.qzOpenPdf=qzOpenPdf;
 window.deleteQzQuote=deleteQzQuote;
+window.duplicateQzQuote=duplicateQzQuote;
 window.deleteQzTemplate=deleteQzTemplate;
 window.openContactTemplateModal=openContactTemplateModal;
 window.openCrmModal=openCrmModal;
