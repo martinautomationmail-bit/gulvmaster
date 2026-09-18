@@ -16320,10 +16320,19 @@ app.post('/api/finance/private-budget/category', auth, panelAccess('finance'), a
   const r = await pool.query('INSERT INTO private_budget_categories (name, sort_order, section) VALUES ($1,$2,$3) RETURNING id', [String(body.name).slice(0, 200), (maxOrder ? maxOrder.m : 0) + 1, section]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
+// RUNDE AN (Martin: "Kan flytte boksene op og ned samt bytte side med de andre") —
+// denne route dækkede før KUN omdøbning (krævede altid body.name). "Bytte side"-knappen
+// i frontenden skal kunne flytte en boks mellem Indtægter/Udgifter UDEN at skulle sende
+// et navn med — så begge felter er nu valgfrie hver for sig (mindst ét skal dog være med).
 app.put('/api/finance/private-budget/category/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
-  if (!body.name) return res.status(400).json({ error: 'Navn skal udfyldes' });
-  await pool.query('UPDATE private_budget_categories SET name=$1 WHERE id=$2', [String(body.name).slice(0, 200), req.params.id]);
+  const sets = [], params = [];
+  let i = 1;
+  if (body.name != null) { sets.push(`name=$${i++}`); params.push(String(body.name).slice(0, 200)); }
+  if (body.section === 'income' || body.section === 'expense') { sets.push(`section=$${i++}`); params.push(body.section); }
+  if (!sets.length) return res.status(400).json({ error: 'Navn eller sektion skal udfyldes' });
+  params.push(req.params.id);
+  await pool.query(`UPDATE private_budget_categories SET ${sets.join(',')} WHERE id=$${i}`, params);
   res.json({ ok: true });
 }));
 app.delete('/api/finance/private-budget/category/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {

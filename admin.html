@@ -697,6 +697,31 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 #page-finance #fintab-udgifter .udg-empty-hint,
 #page-finance #fintab-privatbudget .udg-empty-hint{padding:20px;text-align:center;color:var(--bly-sub);font-size:12px}
 @media(max-width:980px){#page-finance #fintab-udgifter .udg-kpi-row,#page-finance #fintab-privatbudget .udg-kpi-row{grid-template-columns:repeat(2,1fr)}#page-finance #fintab-udgifter .udg-cat-grid,#page-finance #fintab-privatbudget .udg-cat-grid{grid-template-columns:1fr}}
+/* RUNDE AN (Martin: "Alle boksene er ... kedelig" + "kan flytte boksene op og ned samt
+   bytte side" + "SÅ jeg kollaps dem") — ekstra styling KUN for Privat budget-siden, lagt
+   OVENPÅ de delte .udg-cat-card-regler ovenfor (samme specificitet, men senere i
+   stylesheet'et = vinder), så Udgifter-fanen forbliver 100% uændret af dette. Giver
+   boksene en farvet accent-kant + ikon, en kompakt handlings-stribe (flyt op/ned/side/
+   slet) og gør sektionerne fold-bare. */
+#page-finance #fintab-privatbudget .pb-cat-card{border-top:4px solid var(--pb-accent,var(--bly-accent));transition:box-shadow .15s,transform .15s}
+#page-finance #fintab-privatbudget .pb-cat-card:hover{box-shadow:0 8px 22px rgba(20,22,30,.09);transform:translateY(-2px)}
+#page-finance #fintab-privatbudget .pb-cat-head{padding-bottom:8px;gap:8px}
+#page-finance #fintab-privatbudget .pb-cat-title{display:flex;align-items:center;gap:7px;flex:1;min-width:0}
+#page-finance #fintab-privatbudget .pb-cat-icon{font-size:15px;flex-shrink:0;line-height:1}
+#page-finance #fintab-privatbudget .pb-cat-title input.udg-cat-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#page-finance #fintab-privatbudget .pb-cat-head .amt{white-space:nowrap;flex-shrink:0}
+#page-finance #fintab-privatbudget .pb-cat-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 8px;padding:0 16px 10px;border-bottom:1px solid var(--bly-border-soft);margin-bottom:2px}
+#page-finance #fintab-privatbudget .pb-cat-pct{font-size:10px;font-weight:700;color:var(--bly-sub);background:var(--bly-hover);padding:2px 8px;border-radius:var(--bly-r-pill);white-space:nowrap}
+#page-finance #fintab-privatbudget .pb-cat-actions{display:flex;gap:3px;flex-shrink:0}
+#page-finance #fintab-privatbudget .pb-icon-btn{border:1px solid var(--bly-border-soft);background:#fff;border-radius:6px;width:20px;height:20px;font-size:10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--bly-sub);padding:0;line-height:1}
+#page-finance #fintab-privatbudget .pb-icon-btn:hover{background:var(--bly-hover);color:var(--bly-ink)}
+#page-finance #fintab-privatbudget .pb-icon-btn.pb-icon-danger:hover{background:#FEF2F2;color:#DC2626;border-color:#FECACA}
+#page-finance #fintab-privatbudget .pb-icon-btn:disabled{opacity:.3;cursor:default;pointer-events:none}
+#page-finance #fintab-privatbudget .pb-section-head{cursor:default}
+#page-finance #fintab-privatbudget .pb-collapse-btn{border:0;background:transparent;cursor:pointer;font-size:12px;color:var(--bly-sub);width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;transition:transform .15s;flex-shrink:0}
+#page-finance #fintab-privatbudget .pb-collapse-btn.collapsed{transform:rotate(-90deg)}
+#page-finance #fintab-privatbudget .pb-section-total{font-size:12px;font-weight:700;color:var(--bly-sub);margin-left:2px}
+#page-finance #fintab-privatbudget .udg-cat-grid.pb-collapsed{display:none}
 /* Lunar-snapshot-popup — Billy-stil i stedet for det gamle mørkeblå modal-header-look
    som resten af appens ældre modaler bruger. Scoped til denne ene modal, så de andre
    (endnu ikke redesignede) modaler i appen ikke rammes. */
@@ -3364,7 +3389,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.9</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.10</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4138,24 +4163,42 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
 
+    <!-- RUNDE AN (Martin: "Diagrammet i toppen er dårligt ... den data de viser er ikke
+         korrekt. Lav måske et diagram der viser alle de forskellige Bokse udgifter") —
+         den gamle 6-måneders trendgraf er skiftet ud med en "Fordeling pr. boks" for
+         DENNE måned (samme mønster som Udgifter-fanens Fordeling pr. kategori), fordi
+         privat budget ikke har rigtig historik for tidligere måneder endnu, så en
+         trendgraf mest viste flade 0'er. Denne bruger altid de rigtige, aktuelle tal. -->
     <div class="udg-breakdown">
-      <div class="udg-breakdown-head"><h3>Indtægter vs. udgifter</h3><span>Seneste 6 måneder</span></div>
-      <div style="position:relative;height:220px"><canvas id="fin-privbudget-chart"></canvas></div>
+      <div class="udg-breakdown-head"><h3>Fordeling pr. boks</h3><span>Denne måneds beløb, størst øverst</span></div>
+      <div id="fin-privbudget-bd-rows"></div>
     </div>
 
     <div class="udg-kpi-row" id="fin-privatbudget-kpis" style="grid-template-columns:repeat(3,1fr)"></div>
 
-    <div class="udg-toolbar">
-      <div class="udg-toolbar-left"><span style="font-size:15px;font-weight:800">💰 Indtægter</span></div>
+    <!-- RUNDE AN (Martin: "det mening du skal inddel dem i Intægter, Udgifter sektioner.
+         SÅ jeg kollaps dem") — hele pointen med sektionerne var at kunne folde dem sammen;
+         pb-collapse-btn'en gør netop det (se pbToggleSection()), og huskes i
+         localStorage så det ikke nulstiller sig ved hver genindlæsning. -->
+    <div class="udg-toolbar pb-section-head" data-pbsection="income">
+      <div class="udg-toolbar-left">
+        <button type="button" class="pb-collapse-btn" id="pb-collapse-income" title="Fold sektionen sammen/ud">▾</button>
+        <span style="font-size:15px;font-weight:800">💰 Indtægter</span>
+        <span class="pb-section-total" id="fin-pb-income-total"></span>
+      </div>
       <div class="udg-toolbar-right"><button type="button" class="udg-btn outline dashed" id="fin-add-private-cat-income-btn">+ Ny boks</button></div>
     </div>
-    <div class="udg-cat-grid" id="fin-private-budget-income" style="grid-template-columns:repeat(3,1fr)"></div>
+    <div class="udg-cat-grid pb-cat-grid" id="fin-private-budget-income" style="grid-template-columns:repeat(3,1fr)"></div>
 
-    <div class="udg-toolbar" style="margin-top:28px">
-      <div class="udg-toolbar-left"><span style="font-size:15px;font-weight:800">💸 Udgifter</span></div>
+    <div class="udg-toolbar pb-section-head" data-pbsection="expense" style="margin-top:28px">
+      <div class="udg-toolbar-left">
+        <button type="button" class="pb-collapse-btn" id="pb-collapse-expense" title="Fold sektionen sammen/ud">▾</button>
+        <span style="font-size:15px;font-weight:800">💸 Udgifter</span>
+        <span class="pb-section-total" id="fin-pb-expense-total"></span>
+      </div>
       <div class="udg-toolbar-right"><button type="button" class="udg-btn outline dashed" id="fin-add-private-cat-expense-btn">+ Ny boks</button></div>
     </div>
-    <div class="udg-cat-grid" id="fin-private-budget-expense" style="grid-template-columns:repeat(4,1fr)"></div>
+    <div class="udg-cat-grid pb-cat-grid" id="fin-private-budget-expense" style="grid-template-columns:repeat(3,1fr)"></div>
 
     <!-- RUNDE H #316 (Martins ønske: "et note felt i bunden ... som i Notions noter") —
          ét fast, frit noteFelt nederst på siden, ikke måneds-opdelt (løse noter/huskeliste
@@ -15497,9 +15540,41 @@ function finExpenseQuickAdd(){
 // måneds-opdelte model som Udgifter (fast kort-grid, betalt-boks pr. post, nye
 // måneder arver automatisk posterne fra forrige måned) — men beholder muligheden
 // for selv at oprette/omdøbe/slette hele kategorier ("+ 1 ekstra kategori-knap"),
-// som den almindelige Udgifter-fane ikke har. Bevidst UDEN Udgifters søgning/
-// filtrering/liste-visning/fordelingsgraf — Martin bad ikke specifikt om dem her,
-// og de kan tilføjes senere hvis han ønsker fuld 1:1-parity.
+// som den almindelige Udgifter-fane ikke har.
+// RUNDE AN (Martin: "Alle boksene er ... kedelig" / "kan flytte boksene op og ned
+// samt bytte side med de andre" / "SÅ jeg kollaps dem" / "Diagrammet ... den data ...
+// ikke korrekt") — fire ting rettet i denne runde: (1) hver boks fik en farvet
+// accent-kant + ikon + procent-badge i stedet for den flade hvide udg-cat-card, (2) en
+// kompakt handlings-stribe pr. boks (↑/↓ flyt inden for sektionen, ⇄ byt sektion, ×
+// slet), (3) sektionerne kan foldes sammen (huskes i localStorage), (4) den gamle
+// 6-måneders trendgraf (som mest viste flade 0'er, da der ikke er historik endnu) er
+// erstattet af en "Fordeling pr. boks" for den viste måned med de reelle, aktuelle tal.
+var PB_ACCENTS=['#6366F1','#F59E0B','#10B981','#EC4899','#3B82F6','#EF4444','#8B5CF6','#14B8A6','#F97316','#0EA5E9'];
+function pbCatAccent(catId){
+  var s=String(catId),sum=0;
+  for(var i=0;i<s.length;i++)sum+=s.charCodeAt(i);
+  return PB_ACCENTS[sum%PB_ACCENTS.length];
+}
+var PB_ICON_MAP=[['aktiv','📈'],['indt','💰'],['skyldner','🤝'],['fast','🏠'],['malta','🏝️'],['usa','🇺🇸'],['gæld','💳'],['gaeld','💳'],['opspar','🏦'],['rejse','✈️'],['bil','🚗'],['bolig','🏡'],['forsikring','🛡️']];
+function pbCatIcon(name,section){
+  var n=(name||'').toLowerCase();
+  for(var i=0;i<PB_ICON_MAP.length;i++){if(n.indexOf(PB_ICON_MAP[i][0])>-1)return PB_ICON_MAP[i][1];}
+  return section==='income'?'💰':'💸';
+}
+function pbSectionCollapsed(section){
+  try{return localStorage.getItem('gm_pb_collapsed_'+section)==='1';}catch(e){return false;}
+}
+function pbSetSectionCollapsed(section,collapsed){
+  try{localStorage.setItem('gm_pb_collapsed_'+section,collapsed?'1':'0');}catch(e){}
+  var grid=document.getElementById(section==='income'?'fin-private-budget-income':'fin-private-budget-expense');
+  var btn=document.getElementById('pb-collapse-'+section);
+  if(grid)grid.classList.toggle('pb-collapsed',collapsed);
+  if(btn)btn.classList.toggle('collapsed',collapsed);
+}
+['income','expense'].forEach(function(section){
+  var btn=document.getElementById('pb-collapse-'+section);
+  if(btn)btn.addEventListener('click',function(){pbSetSectionCollapsed(section,!pbSectionCollapsed(section));});
+});
 function renderFinPrivateBudgetKpis(){
   var el=document.getElementById('fin-privatbudget-kpis');
   if(!el)return;
@@ -15513,16 +15588,36 @@ function renderFinPrivateBudgetKpis(){
     finExpenseCard('Indtægter',krFmt(income))+
     finExpenseCard('Udgifter',krFmt(expense))+
     finExpenseCard('Netto',krFmt(net),net>=0?'<span class="udg-trend udg-trend-good">Overskud</span>':'<span class="udg-trend udg-trend-bad">Underskud</span>');
+  var incTotalEl=document.getElementById('fin-pb-income-total');
+  if(incTotalEl)incTotalEl.textContent=krFmt(income);
+  var expTotalEl=document.getElementById('fin-pb-expense-total');
+  if(expTotalEl)expTotalEl.textContent=krFmt(expense);
 }
-// RUNDE AM — samme kort-grid-markup/mønster som renderFinExpenseCardGrid() (Udgifter-
-// fanen), bare kørt to gange (én pr. sektion) og uden "flyt til anden boks"-vælgeren
-// (der findes ikke en modsvarende "flyt mellem sektioner"-workflow her endnu).
+// Samme mønster som renderFinExpenseBreakdown() i Udgifter-fanen (udg-bd-row/track/fill),
+// bare på tværs af BEGGE sektioner samtidig — grøn fyld for indtægt, rød for udgift.
+function renderFinPrivateBudgetBreakdown(){
+  var el=document.getElementById('fin-privbudget-bd-rows');
+  if(!el)return;
+  var rows=finPrivateBudget.map(function(cat){
+    var v=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
+    return {name:cat.name,v:v,section:cat.section||'expense'};
+  }).filter(function(r){return r.v>0;});
+  rows.sort(function(a,b){return b.v-a.v;});
+  var max=rows.length?rows[0].v:1;
+  el.innerHTML=rows.map(function(r){
+    var w=max?Math.max(3,Math.round(r.v/max*100)):0;
+    var color=r.section==='income'?'#16A34A':'#DC2626';
+    return '<div class="udg-bd-row"><div class="udg-bd-name">'+esc(r.name)+(r.section==='income'?' <span style="color:#16A34A;font-weight:600;font-size:10.5px">(indtægt)</span>':'')+'</div><div class="udg-bd-track"><div class="udg-bd-fill" style="width:'+w+'%;background:'+color+'"></div></div><div><div class="udg-bd-amt">'+krFmt(r.v)+'</div></div></div>';
+  }).join('')||'<div class="udg-empty-hint">Ingen poster endnu denne måned.</div>';
+}
 function renderFinPrivateBudgetSection(containerId,section){
   var el=document.getElementById(containerId);
   if(!el)return;
   var cats=finPrivateBudget.filter(function(c){return (c.section||'expense')===section;});
-  el.innerHTML=cats.map(function(cat){
+  var sectionTotal=cats.reduce(function(s,c){return s+c.items.reduce(function(s2,i){return s2+(+i.amount||0);},0);},0);
+  el.innerHTML=cats.map(function(cat,idx){
     var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
+    var pct=sectionTotal?Math.round(catTotal/sectionTotal*100):0;
     var rowsHtml=cat.items.length?cat.items.map(function(it){
       return '<div class="udg-exp-row '+(it.paid?'paid':'unpaid')+'" style="grid-template-columns:20px 1fr 90px 26px" data-id="'+it.id+'">'+
         '<input type="checkbox" class="fin-priv-paid" title="Betalt" '+(+it.paid?'checked':'')+'>'+
@@ -15530,10 +15625,20 @@ function renderFinPrivateBudgetSection(containerId,section){
         '<input type="number" class="udg-exp-amt fin-priv-amount" value="'+it.amount+'">'+
         '<button class="udg-exp-del fin-priv-del">×</button></div>';
     }).join(''):'<div class="udg-empty-hint">Ingen poster endnu.</div>';
-    return '<div class="udg-cat-card" data-catid="'+cat.id+'">'+
-      '<div class="udg-cat-head">'+
-        '<input type="text" class="udg-cat-name fin-privcat-name" data-catid="'+cat.id+'" value="'+esc(cat.name)+'" style="background:transparent;border:0;color:inherit;font-weight:800;font-size:13px;width:120px;padding:0">'+
-        '<span style="display:flex;align-items:center;gap:2px"><span class="amt">'+krFmt(catTotal)+'</span><button class="fin-del-btn" data-action="fin-del-private-cat" data-catid="'+cat.id+'" title="Slet hele boksen og alle dens poster">×</button></span>'+
+    var otherSection=section==='income'?'expense':'income';
+    return '<div class="udg-cat-card pb-cat-card" data-catid="'+cat.id+'" style="--pb-accent:'+pbCatAccent(cat.id)+'">'+
+      '<div class="udg-cat-head pb-cat-head">'+
+        '<div class="pb-cat-title"><span class="pb-cat-icon">'+pbCatIcon(cat.name,section)+'</span><input type="text" class="udg-cat-name fin-privcat-name" data-catid="'+cat.id+'" value="'+esc(cat.name)+'" style="background:transparent;border:0;color:inherit;font-weight:800;font-size:13px;width:100%;padding:0;min-width:0"></div>'+
+        '<span class="amt">'+krFmt(catTotal)+'</span>'+
+      '</div>'+
+      '<div class="pb-cat-toolbar">'+
+        '<span class="pb-cat-pct">'+(catTotal>0?pct+'% af sektion':'—')+'</span>'+
+        '<span class="pb-cat-actions">'+
+          '<button type="button" class="pb-icon-btn" data-action="pb-move" data-dir="-1" data-catid="'+cat.id+'" title="Flyt op"'+(idx===0?' disabled':'')+'>↑</button>'+
+          '<button type="button" class="pb-icon-btn" data-action="pb-move" data-dir="1" data-catid="'+cat.id+'" title="Flyt ned"'+(idx===cats.length-1?' disabled':'')+'>↓</button>'+
+          '<button type="button" class="pb-icon-btn" data-action="pb-swap" data-catid="'+cat.id+'" data-newsection="'+otherSection+'" title="Flyt til '+(otherSection==='income'?'Indtægter':'Udgifter')+'">⇄</button>'+
+          '<button type="button" class="pb-icon-btn pb-icon-danger" data-action="fin-del-private-cat" data-catid="'+cat.id+'" title="Slet hele boksen og alle dens poster">×</button>'+
+        '</span>'+
       '</div>'+
       '<div class="udg-cat-body">'+rowsHtml+'</div>'+
       '<div class="udg-quickadd-row"><input type="text" placeholder="+ Ny post..." data-qa-name="'+cat.id+'"><input type="number" class="amt" placeholder="kr" data-qa-amt="'+cat.id+'"><button data-qa-btn="'+cat.id+'">Tilføj</button></div>'+
@@ -15575,6 +15680,42 @@ function renderFinPrivateBudgetSection(containerId,section){
         api('/api/finance/private-budget/category/'+btn.dataset.catid,{method:'DELETE'}).then(function(){loadPrivateBudgetForMonth();});
     });
   });
+  // RUNDE AN (Martin: "Kan flytte boksene op og ned samt bytte side med de andre") —
+  // op/ned bruger den eksisterende bulk-reorder-route (sætter sort_order = index for hele
+  // den globale kategori-liste efter ombytning af de to bokse), byt-side sætter blot
+  // category.section om via den udvidede PUT category-route (se server.js RUNDE AN).
+  el.querySelectorAll('[data-action="pb-move"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      if(btn.disabled)return;
+      movePrivateBudgetCategory(btn.dataset.catid,+btn.dataset.dir);
+    });
+  });
+  el.querySelectorAll('[data-action="pb-swap"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      api('/api/finance/private-budget/category/'+btn.dataset.catid,{method:'PUT',body:JSON.stringify({section:btn.dataset.newsection})}).then(function(r){
+        if(r&&r.ok){toast('Boks flyttet ✓','✓');loadPrivateBudgetForMonth();}else if(r)toast(r.error||'Fejl','❌');
+      });
+    });
+  });
+}
+// Flytter en boks op/ned INDEN FOR sin egen sektion — finder nærmeste nabo af samme
+// sektion i den globale sort_order-liste (der kan sagtens ligge bokse fra den anden
+// sektion imellem dem i den globale liste, det er OK — de rører vi ikke ved), bytter de
+// to bokses positioner og gemmer hele den nye globale rækkefølge via reorder-routen.
+function movePrivateBudgetCategory(catId,dir){
+  var list=finPrivateBudget.slice();
+  var idx=list.findIndex(function(c){return String(c.id)===String(catId);});
+  if(idx<0)return;
+  var section=list[idx].section||'expense';
+  var swapIdx=-1;
+  if(dir<0){for(var i=idx-1;i>=0;i--){if((list[i].section||'expense')===section){swapIdx=i;break;}}}
+  else{for(var i=idx+1;i<list.length;i++){if((list[i].section||'expense')===section){swapIdx=i;break;}}}
+  if(swapIdx<0)return;
+  var tmp=list[idx];list[idx]=list[swapIdx];list[swapIdx]=tmp;
+  var order=list.map(function(c){return c.id;});
+  api('/api/finance/private-budget/reorder',{method:'PUT',body:JSON.stringify({order:order})}).then(function(r){
+    if(r&&r.ok)loadPrivateBudgetForMonth();else if(r)toast((r&&r.error)||'Fejl','❌');
+  });
 }
 function renderFinPrivateBudget(){
   var labelEl=document.getElementById('fin-privbudget-month-label');
@@ -15582,7 +15723,9 @@ function renderFinPrivateBudget(){
   renderFinPrivateBudgetKpis();
   renderFinPrivateBudgetSection('fin-private-budget-income','income');
   renderFinPrivateBudgetSection('fin-private-budget-expense','expense');
-  renderFinPrivateBudgetTrendChart();
+  renderFinPrivateBudgetBreakdown();
+  pbSetSectionCollapsed('income',pbSectionCollapsed('income'));
+  pbSetSectionCollapsed('expense',pbSectionCollapsed('expense'));
 }
 async function saveFinPrivateItem(id,row){
   var body={name:row.querySelector('.fin-priv-name').value,amount:row.querySelector('.fin-priv-amount').value,paid:row.querySelector('.fin-priv-paid').checked};
@@ -15610,36 +15753,6 @@ function addPrivateBudgetCategory(section){
 }
 document.getElementById('fin-add-private-cat-income-btn').addEventListener('click',addPrivateBudgetCategory('income'));
 document.getElementById('fin-add-private-cat-expense-btn').addEventListener('click',addPrivateBudgetCategory('expense'));
-// RUNDE AM (Martin: "lav et Diagram som under udgifter i toppen") — samme
-// bar+bar+line-opskrift som renderFinResultChart() på Oversigt, bare drevet af
-// /api/finance/private-budget-totals i stedet for omsætning/udgifter. Viser altid de
-// 6 måneder der ender ved den måned man står på i måneds-navigatoren, så grafen flytter
-// sig med, når man blader frem/tilbage.
-var finPrivBudgetChartInstance=null;
-async function renderFinPrivateBudgetTrendChart(){
-  var canvas=document.getElementById('fin-privbudget-chart');
-  if(!canvas||typeof Chart==='undefined')return;
-  var months=[];
-  for(var i=5;i>=0;i--)months.push(finExpenseAdjMonthKey(finPrivBudgetMonth,-i));
-  var totals=await api('/api/finance/private-budget-totals?months='+months.join(','))||{};
-  var labels=[],inc=[],expNeg=[],net=[];
-  months.forEach(function(mk){
-    var t=totals[mk]||{income:0,expense:0};
-    labels.push(UDG_MONTH_NAMES[+mk.slice(5,7)-1].slice(0,3)+' '+mk.slice(2,4));
-    inc.push(t.income);expNeg.push(-t.expense);net.push(t.income-t.expense);
-  });
-  if(finPrivBudgetChartInstance)finPrivBudgetChartInstance.destroy();
-  finPrivBudgetChartInstance=new Chart(canvas,{
-    data:{labels:labels,datasets:[
-      {type:'bar',label:'Indtægter',data:inc,backgroundColor:'#4ADE80',borderRadius:4,stack:'r',maxBarThickness:34,order:2},
-      {type:'bar',label:'Udgifter',data:expNeg,backgroundColor:'#FCA5A5',borderRadius:4,stack:'r',maxBarThickness:34,order:2},
-      {type:'line',label:'Netto',data:net,borderColor:'#C9CDD6',backgroundColor:'transparent',tension:.4,pointRadius:3,pointBackgroundColor:'#fff',pointBorderColor:'#9AA3B2',borderWidth:2,order:1,spanGaps:true}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,
-      scales:{y:{stacked:true,grid:{color:'#F0F1F3'},ticks:{callback:function(v){return Math.abs(v)>=1000?(v/1000)+'k':v;}}},x:{stacked:true,grid:{display:false}}},
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+krFmt(Math.abs(ctx.parsed.y||0));}}}}}
-  });
-}
 // Måned-navigation — henter kun privat-budget-data på ny, i stedet for at genindlæse
 // hele Økonomi-siden (samme letvægts-mønster som Moms-boksens kvartal-skift).
 async function loadPrivateBudgetForMonth(){
