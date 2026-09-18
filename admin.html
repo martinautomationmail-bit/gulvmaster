@@ -3274,7 +3274,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.3</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.4</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -22520,7 +22520,13 @@ function renderPjStatusFilter(nonArchived){
 // filter, som ikke giver mening når man netop vil se ALLE faser på én gang).
 function pjPeriodSearchFilter(base,q,qDigits){
   return base.filter(function(p){
-    if(pjPeriodFilter&&!pjPeriodFilter.matches(p.created_at))return false;
+    // RUNDE AH (Martins fejlrapport: sag med december-Gantt-datoer dukkede op under
+    // "sep 2026"-filteret) — brug sagens planlagte startdato (tidligste Gantt-
+    // opgave, hentet server-side som p.gantt_start) når den findes, ikke
+    // oprettelsesdatoen. Har sagen endnu ingen planlagte opgaver, falder vi
+    // tilbage til oprettelsesdatoen, så helt nye sager stadig kan findes et sted
+    // i stedet for slet ikke at kunne filtreres.
+    if(pjPeriodFilter&&!pjPeriodFilter.matches(p.gantt_start||p.created_at))return false;
     if(!q)return true;
     // RUNDE T (Martins ønske: "Ret alle projekters Priser da mange af dem har
     // trukket forkert pris") — BUG: prioriterede hidtil invoice_total, men ved

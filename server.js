@@ -13242,7 +13242,15 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
     SELECT p.*, q.quote_number${includePrice ? ', q.total AS quote_total, i.total AS invoice_total' : ''},
       (SELECT COUNT(*)::int FROM gantt_tasks WHERE project_id=p.id) AS task_count,
       (SELECT COUNT(*)::int FROM time_entries WHERE project_id=p.id) AS time_entry_count,
-      (SELECT COUNT(*)::int FROM project_photos WHERE project_id=p.id) AS photo_count
+      (SELECT COUNT(*)::int FROM project_photos WHERE project_id=p.id) AS photo_count,
+      -- RUNDE AH (Martins fejlrapport: "Sophia is showing in september but look at
+      -- her projekt date that is december") — periode-filteret på Projekter-listen
+      -- brugte kun p.created_at (hvornår SAGEN blev oprettet i systemet), ikke
+      -- hvornår arbejdet rent faktisk er planlagt (Gantt-opgavernes datoer). En sag
+      -- oprettet i september med arbejde planlagt i december dukkede derfor forkert
+      -- op under "sep 2026". Her hentes den tidligste planlagte Gantt-startdato pr.
+      -- sag, så frontenden kan filtrere på DEN i stedet for oprettelsesdatoen.
+      (SELECT MIN(start_date) FROM gantt_tasks WHERE project_id=p.id AND start_date IS NOT NULL AND start_date<>'') AS gantt_start
     FROM projects p LEFT JOIN quotes q ON q.id = p.quote_id${includePrice ? ' LEFT JOIN invoices i ON i.id = p.invoice_id' : ''}
     ORDER BY p.created_at DESC
   `);
