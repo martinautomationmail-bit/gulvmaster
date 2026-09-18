@@ -15973,6 +15973,41 @@ app.delete('/api/finance/bank-statement/month/:month/:accountId', auth, panelAcc
   await pool.query('DELETE FROM finance_bank_month_statements_v2 WHERE month_key=$1 AND account_id=$2', [req.params.month, Number(req.params.accountId)]);
   res.json({ ok: true });
 }));
+// RUNDE AG (sep. 2026, Martins ønske: "jeg skal kunne trykke på den for at se hvilke
+// poster den har tilkoblet ... slette ikke korrekte poster hvis den laver fejl") —
+// henter de gemte enkelt-posteringer for én måned+konto, så de kan vises i en liste i
+// UI'en i stedet for kun at stole på det samlede sumtal.
+app.get('/api/finance/bank-statement/month/:month/:accountId/transactions', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT filename,transactions_json,uploaded_at FROM finance_bank_month_statements_v2 WHERE month_key=$1 AND account_id=$2', [req.params.month, Number(req.params.accountId)]);
+  if (!row) return res.json({ transactions: [], filename: null, uploadedAt: null });
+  let transactions = [];
+  try { transactions = JSON.parse(row.transactions_json || '[]'); } catch (e) { transactions = []; }
+  res.json({ transactions, filename: row.filename, uploadedAt: row.uploaded_at });
+}));
+// Sletter ÉN enkelt postering (ved index i den gemte liste) uden at skulle slette og
+// genuploade hele udskriften — genberegner expense_total/income_total/txn_count ud fra
+// de resterende posteringer. Bliver listen tom, fjernes hele måned+konto-rækken (så
+// kontoen igen fremstår som "ikke uploadet").
+app.delete('/api/finance/bank-statement/month/:month/:accountId/transaction/:index', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT transactions_json FROM finance_bank_month_statements_v2 WHERE month_key=$1 AND account_id=$2', [req.params.month, Number(req.params.accountId)]);
+  if (!row) return res.status(404).json({ error: 'Ingen udskrift fundet for denne konto/måned' });
+  let transactions = [];
+  try { transactions = JSON.parse(row.transactions_json || '[]'); } catch (e) { transactions = []; }
+  const idx = Number(req.params.index);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= transactions.length) return res.status(400).json({ error: 'Ugyldig postering' });
+  transactions.splice(idx, 1);
+  if (!transactions.length) {
+    await pool.query('DELETE FROM finance_bank_month_statements_v2 WHERE month_key=$1 AND account_id=$2', [req.params.month, Number(req.params.accountId)]);
+    return res.json({ ok: true, deleted: true, transactions: [], expenseTotal: 0, incomeTotal: 0, count: 0 });
+  }
+  let expenseTotal = 0, incomeTotal = 0;
+  transactions.forEach(t => { if (t.amount < 0) expenseTotal += Math.abs(t.amount); else incomeTotal += t.amount; });
+  await pool.query(`
+    UPDATE finance_bank_month_statements_v2 SET transactions_json=$3,expense_total=$4,income_total=$5,txn_count=$6
+    WHERE month_key=$1 AND account_id=$2
+  `, [req.params.month, Number(req.params.accountId), JSON.stringify(transactions), expenseTotal, incomeTotal, transactions.length]);
+  res.json({ ok: true, transactions, expenseTotal, incomeTotal, count: transactions.length });
+}));
 
 app.post('/api/finance/bank-statement/mark-reconciled', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};

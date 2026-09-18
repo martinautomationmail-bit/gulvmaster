@@ -3274,7 +3274,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.2</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.3</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -7309,6 +7309,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="bly-modal-actions">
       <button class="bly-btn outline" id="fin-bank-snapshot-cancel">Luk</button>
       <button class="bly-btn" id="fin-save-snapshot-btn">💾 Gem snapshot af i dag</button>
+    </div>
+  </div>
+</div>
+<div class="mo" id="fin-txn-list-modal">
+  <div class="modal" style="width:560px;max-width:92vw">
+    <h3 id="fin-txn-list-title">Posteringer</h3>
+    <p class="bly-modal-sub">De enkelte bank-posteringer der udgør udgiftstallet for denne konto/måned.</p>
+    <div id="fin-txn-list-body"></div>
+    <div class="bly-modal-actions">
+      <button class="bly-btn outline" id="fin-txn-list-close">Luk</button>
     </div>
   </div>
 </div>
@@ -13841,15 +13851,31 @@ async function renderFinBankCard(){
   el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Bank</div>'+
     '<div style="display:flex;align-items:center;gap:6px">'+
     '<button class="bly-btn outline small" data-action="fin-open-bank-snapshot" title="Registrér dagens Lunar-saldo (bruges til Profit-analysen)" style="padding:8px 10px">✏️</button>'+
-    '<button class="bly-btn outline small" data-action="fin-goto-bank">Gå til bankafstemning</button>'+
+    '<button class="bly-btn outline small" data-action="fin-goto-bank">'+(info?'Se/ret kontoudtog':'Upload kontoudtog')+'</button>'+
     '</div></div>'+
-    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Fra bankafstemning · '+esc(monthLbl)+(info?'':' — intet bankudtog uploadet for denne måned endnu')+'</div>'+
+    // RUNDE AG — "Fra bankafstemning" var her misvisende: tallet kommer IKKE fra
+    // Bankafstemning-fanen (som kun matcher posteringer mod fakturaer og aldrig
+    // gemmer pr. måned), men fra de 3 bankkontoers CSV-upload under Udgifter-fanen
+    // (RUNDE H #317). Knappen herunder peger nu også derhen i stedet for til
+    // Bankafstemning-fanen, så "upload en fil men kortet viser stadig ingenting"
+    // ikke sker igen.
+    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Fra dine 3 bankkonti (Udgifter-fanen) · '+esc(monthLbl)+(info?'':' — intet kontoudtog uploadet for denne måned endnu, tryk "Upload kontoudtog"')+'</div>'+
     '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(netto!=null?krFmt(netto):'–')+'</div>'+
     '<div style="display:flex;gap:16px;padding:12px 0;border-top:1px solid var(--bly-border-soft)">'+
     acctBox('Indbetalt',info?info.incomeTotal:null,'#15803D')+acctBox('Udbetalt',info?info.expenseTotal:null,'#DC2626')+
     '</div>';
   var btn=el.querySelector('[data-action="fin-goto-bank"]');
-  if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="bankafstemning"]');if(t)t.click();});
+  if(btn)btn.addEventListener('click',function(){
+    // RUNDE AG — "Ret udgifter pr. måned"-panelet (som rummer selve bank-CSV
+    // uploaden pr. konto) sidder allerede her på Oversigt-fanen, samme fane som
+    // dette Bank-kort — ingen fane-skift nødvendigt, bare åbn/udvid og scroll ned.
+    finQuickExpAccountsOpenFor[mk]=true;
+    var panel=document.getElementById('fin-quickexp-panel');
+    var toggle=document.getElementById('fin-quickexp-toggle');
+    if(panel&&panel.style.display==='none'&&toggle){toggle.click();}
+    else{renderFinQuickExpensePanel();}
+    setTimeout(function(){var p=document.getElementById('fin-quickexp-panel');if(p)p.scrollIntoView({behavior:'smooth',block:'start'});},80);
+  });
   var snapBtn=el.querySelector('[data-action="fin-open-bank-snapshot"]');
   if(snapBtn)snapBtn.addEventListener('click',function(){document.getElementById('fin-bank-snapshot-modal').classList.add('open');});
 }
@@ -13903,12 +13929,23 @@ async function renderFinMomsCard(){
   });
   var amtEl=document.getElementById('fin-moms-amount');
   if(!amtEl)return;
-  // Samme lette datakilde som Resultat-grafen: rigtige fakturaer i kvartalets måneder,
-  // ikke sagernes planlagte budget — momsen skal jo betales af det I faktisk har faktureret.
+  // RUNDE AG (Martins fejlrapport: "Moms virker heler ikke den står bare på 0") — brugte
+  // hidtil finInvoiceMonthTotals(), som BEVIDST udelader indeværende (og fremtidige)
+  // måneder, fordi den fælles Resultat-graf viser indeværende måned som forecast i
+  // stedet for rigtige tal (se kommentaren ved den funktion). For et kvartal der
+  // stadig er i gang (fx 3. kvartal mens vi er i september) betød det at ALLE
+  // fakturaer udstedt i den løbende måned aldrig talte med i moms-estimatet — for et
+  // firma der fakturerer løbende hen over måneden gav det ofte 0 kr, selvom der er
+  // masser af rigtige fakturaer. Moms skal beregnes af det der RENT FAKTISK er
+  // faktureret i kvartalet til dato — inkl. indeværende måned — så her summeres
+  // direkte fra finInvoices uden den udelukkelse.
   var qMonthKeys=[];
   for(var m=info.startMonth;m<=info.endMonth;m++)qMonthKeys.push(info.year+'-'+String(m+1).padStart(2,'0'));
-  var qByMonth=await finInvoiceMonthTotals(qMonthKeys);
-  var quarterTotal=qMonthKeys.reduce(function(s,mk){return s+(qByMonth[mk]||0);},0);
+  var quarterTotal=(finInvoices||[]).reduce(function(s,inv){
+    if(!inv.createdAt)return s;
+    if(qMonthKeys.indexOf(inv.createdAt.slice(0,7))===-1)return s;
+    return s+(inv.priceWithTax||0);
+  },0);
   amtEl.textContent=krFmt(quarterTotal*0.25);
   // 0 kr kan sagtens være korrekt (fx hvis der reelt ingen fakturaer er i JobTread for
   // perioden endnu) — men det ser ud som en fejl uden forklaring, så vis en tydelig
@@ -13964,29 +14001,32 @@ async function renderFinQuickExpensePanel(){
     var d=data[mk]||{override:null,itemized:0};
     var bank=bankData[mk]||null;
     var isPast=mk<currentMonthKey;
+    // RUNDE AG (Martins ønske: bank-kortet på Oversigt viser INDEVÆRENDE måned, så
+    // kontoudtog skal kunne uploades for den måned også, ikke kun bagudgående måneder).
+    var canUploadBank=mk<=currentMonthKey;
     var isOverridden=d.override!=null;
     var uploadedCount=bank?Object.keys(bank.accounts||{}).length:0;
     var val,badge;
     if(isOverridden){
       val=d.override;
       badge='<span class="fin-badge ok" title="Manuelt sat — ville ellers have været '+krFmt(bank?bank.expenseTotal:d.itemized)+'">manuelt</span>';
-    }else if(bank&&isPast&&uploadedCount){
+    }else if(bank&&canUploadBank&&uploadedCount){
       val=bank.expenseTotal;
       badge='<span class="fin-badge ok" style="background:#DBEAFE;color:#1D4ED8" title="Samlet fra '+uploadedCount+' af 3 konti">📄 '+uploadedCount+'/3 konti</span>';
     }else{
       val=d.itemized;
       badge='<span class="fin-muted" style="font-size:10px">fra Udgifter-fanen</span>';
     }
-    var accountsToggle=isPast?'<button class="bly-btn outline small" data-action="fin-quickexp-accounts-toggle" data-month="'+mk+'" title="Upload/slet bankudskrift pr. konto">🏦'+(uploadedCount?' '+uploadedCount+'/3':'')+'</button>':'';
+    var accountsToggle=canUploadBank?'<button class="bly-btn outline small" data-action="fin-quickexp-accounts-toggle" data-month="'+mk+'" title="Upload/slet bankudskrift pr. konto">🏦'+(uploadedCount?' '+uploadedCount+'/3':'')+'</button>':'';
     var accountsOpen=!!finQuickExpAccountsOpenFor[mk];
-    var accountsRows=(isPast&&accountsOpen)?('<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--bly-border-soft);display:flex;flex-direction:column;gap:6px">'+
+    var accountsRows=(canUploadBank&&accountsOpen)?('<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--bly-border-soft);display:flex;flex-direction:column;gap:6px">'+
       accounts.map(function(acc){
         var accBank=bank&&bank.accounts?bank.accounts[acc.id]:null;
         return '<div style="display:flex;align-items:center;gap:6px;font-size:11.5px">'+
           '<span style="flex:1" class="fin-muted">'+esc(acc.name)+'</span>'+
-          (accBank?'<span class="fin-badge ok" style="font-size:10px" title="'+accBank.count+' transaktioner · '+esc(accBank.filename||'')+'">'+krFmt(accBank.expenseTotal)+'</span>':'<span class="fin-muted" style="font-size:10px">ikke uploadet</span>')+
+          (accBank?'<button type="button" class="fin-badge ok" style="font-size:10px;cursor:pointer;border:0" data-action="fin-quickexp-view-txns" data-month="'+mk+'" data-account="'+acc.id+'" data-accname="'+esc(acc.name)+'" title="Klik for at se de '+accBank.count+' transaktioner der tæller med · '+esc(accBank.filename||'')+'">'+krFmt(accBank.expenseTotal)+' · '+accBank.count+' posteringer 🔍</button>':'<span class="fin-muted" style="font-size:10px">ikke uploadet</span>')+
           '<button class="bly-btn outline small" style="padding:3px 7px" data-action="fin-quickexp-upload" data-month="'+mk+'" data-account="'+acc.id+'" title="Upload udskrift for '+esc(acc.name)+'">📄</button>'+
-          (accBank?'<button class="bly-btn outline small" style="padding:3px 7px" data-action="fin-quickexp-delete-csv" data-month="'+mk+'" data-account="'+acc.id+'" title="Slet udskrift for '+esc(acc.name)+'">🗑</button>':'')+
+          (accBank?'<button class="bly-btn outline small" style="padding:3px 7px" data-action="fin-quickexp-delete-csv" data-month="'+mk+'" data-account="'+acc.id+'" title="Slet HELE udskriften for '+esc(acc.name)+'">🗑</button>':'')+
           '</div>';
       }).join('')+'</div>'):'';
     return '<div style="border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-sm);padding:10px 12px">'+
@@ -14044,7 +14084,57 @@ async function renderFinQuickExpensePanel(){
       renderFinResultChart();
     });
   });
+  rowsEl.querySelectorAll('[data-action="fin-quickexp-view-txns"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      finQuickExpOpenTxnModal(btn.dataset.month,btn.dataset.account,btn.dataset.accname);
+    });
+  });
 }
+// RUNDE AG (Martins ønske: "jeg skal kunne trykke på den for at se hvilke poster den
+// har tilkoblet ... slette ikke korrekte poster") — popup med alle enkelt-posteringer
+// bag ét konto/måned-udgiftstal, med mulighed for at slette en forkert postering
+// (fx en intern overførsel eller morms-betaling der ikke er en rigtig driftsudgift).
+async function finQuickExpOpenTxnModal(mk,accId,accName){
+  var modal=document.getElementById('fin-txn-list-modal');
+  var titleEl=document.getElementById('fin-txn-list-title');
+  var bodyEl=document.getElementById('fin-txn-list-body');
+  titleEl.textContent=(accName||'Konto')+' · '+mk;
+  bodyEl.innerHTML='<div class="fin-muted">Henter…</div>';
+  modal.classList.add('open');
+  await finQuickExpRenderTxnModal(mk,accId);
+}
+async function finQuickExpRenderTxnModal(mk,accId){
+  var bodyEl=document.getElementById('fin-txn-list-body');
+  var r=await api('/api/finance/bank-statement/month/'+mk+'/'+accId+'/transactions')||{transactions:[]};
+  var txns=r.transactions||[];
+  if(!txns.length){
+    bodyEl.innerHTML='<div class="fin-muted">Ingen posteringer tilbage for denne konto/måned — luk og upload evt. en ny udskrift.</div>';
+    return;
+  }
+  bodyEl.innerHTML='<div style="font-size:11px;color:var(--bly-sub);margin-bottom:10px">Kun negative posteringer (hævninger) tæller med i udgiftstallet — positive posteringer (indbetalinger) vises her men trækkes IKKE fra som udgift. Se en postering der ikke burde tælle med (fx en intern overførsel eller momsbetaling)? Slet den med 🗑.</div>'+
+    '<div style="display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow:auto">'+
+    txns.map(function(t,i){
+      var isExpense=Number(t.amount)<0;
+      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid var(--bly-border-soft);font-size:12px">'+
+        '<span class="fin-muted" style="width:78px;flex-shrink:0">'+esc(t.date||'')+'</span>'+
+        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(t.text||'')+'">'+esc(t.text||'')+'</span>'+
+        '<b style="width:100px;text-align:right;flex-shrink:0;color:'+(isExpense?'#DC2626':'#15803D')+'">'+krFmt(t.amount)+'</b>'+
+        '<button class="bly-btn outline small" style="padding:3px 7px;flex-shrink:0" data-action="fin-txn-delete" data-index="'+i+'" title="Slet denne postering">🗑</button>'+
+        '</div>';
+    }).join('')+'</div>';
+  bodyEl.querySelectorAll('[data-action="fin-txn-delete"]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      if(!await gmConfirm('Slet denne ene postering fra udgiftstallet?'))return;
+      var idx=btn.dataset.index;
+      await api('/api/finance/bank-statement/month/'+mk+'/'+accId+'/transaction/'+idx,{method:'DELETE'});
+      toast('Postering slettet ✓','🗑');
+      await finQuickExpRenderTxnModal(mk,accId);
+      await renderFinQuickExpensePanel();
+      renderFinResultChart();
+    });
+  });
+}
+document.getElementById('fin-txn-list-close').addEventListener('click',function(){closeModal('fin-txn-list-modal');});
 document.getElementById('fin-quickexp-upload-input').addEventListener('change',async function(e){
   var file=e.target.files[0];
   var mk=finQuickExpUploadTargetMonth;
