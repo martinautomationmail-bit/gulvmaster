@@ -5916,7 +5916,11 @@ async function sendProjectCompletionEmail(project) {
 // forløb hos os"). Hardkodet bevidst (ikke en indstilling) — er det en helt
 // anden video en anden gang, rettes den her.
 const WON_EMAIL_VIDEO_URL = 'https://www.youtube.com/watch?v=qxPM_AfoE-k';
-const WON_EMAIL_VIDEO_THUMB_URL = 'https://i.ytimg.com/vi/qxPM_AfoE-k/hqdefault.jpg';
+// RUNDE AF (Martin: "det skal blot inkludere den i mailen som en frame fra Youtube,
+// se også HTML template den ser ikke godt ud") — img.youtube.com i stedet for
+// i.ytimg.com, som er den ældre/mere bredt cachede YouTube-thumbnail-adresse og
+// generelt mere pålidelig gennem mail-udbyderes billed-proxyer (Gmail m.fl.).
+const WON_EMAIL_VIDEO_THUMB_URL = 'https://img.youtube.com/vi/qxPM_AfoE-k/hqdefault.jpg';
 
 // Bygger selve mail-HTML'en. messageText er den redigerbare, {{}}-udfyldte
 // besked (linjeskift, ikke HTML — samme som completion-mailens bodyText),
@@ -5970,17 +5974,15 @@ function buildWonProjectEmailHtml({ messageText, hasPdf }) {
       <tr><td style="padding:26px 32px 6px;">
         <div style="font-family:Arial,sans-serif;font-weight:900;font-size:20px;color:#003509;margin:0 0 4px;">🎥 Se denne — det tager kun 1 minut</div>
         <p style="font-size:15px;line-height:1.55;margin:0 0 16px;color:#0a0a0a;">Inden vi går i gang, vil vi gerne vise jer en kort video, hvor vi forklarer, hvordan I får det bedst mulige forløb hos os.</p>
-        <a href="${WON_EMAIL_VIDEO_URL}" target="_blank" style="text-decoration:none;display:block;">
-          <div style="position:relative;border-radius:14px;overflow:hidden;box-shadow:0 10px 35px rgba(0,0,0,.12);line-height:0;">
-            <img src="${WON_EMAIL_VIDEO_THUMB_URL}" width="536" alt="Inden vi går i gang – sådan får du et godt forløb med Gulv Master" style="display:block;width:100%;height:auto;">
-            <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(rgba(0,10,3,0.05),rgba(0,10,3,0.35));"></div>
-            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:68px;height:68px;background:rgba(220,38,38,0.95);border-radius:50%;box-shadow:0 6px 18px rgba(0,0,0,.35);">
-              <div style="position:absolute;top:50%;left:54%;transform:translate(-50%,-50%);width:0;height:0;border-top:14px solid transparent;border-bottom:14px solid transparent;border-left:22px solid #ffffff;"></div>
-            </div>
-            <div style="position:absolute;left:14px;bottom:12px;background:rgba(0,10,3,0.55);color:#ffffff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;padding:5px 10px;border-radius:999px;">▶ 1 min · YouTube</div>
-          </div>
+        <!-- RUNDE AF: én flad YouTube-frame uden lag-på-lag-overlays (afspilningsikon
+             m.v. oven på billedet) — mail-klienter som Gmail understøtter ikke den
+             slags CSS-lag pålideligt i HTML-mails, hvilket tidligere gav en synligt
+             ødelagt rød cirkel i stedet for et pænt billede. Se commit-historik for
+             detaljer. -->
+        <a href="${WON_EMAIL_VIDEO_URL}" target="_blank" style="text-decoration:none;display:block;border-radius:14px;overflow:hidden;box-shadow:0 10px 35px rgba(0,0,0,.12);">
+          <img src="${WON_EMAIL_VIDEO_THUMB_URL}" width="536" alt="▶ Se videoen: Inden vi går i gang – sådan får du et godt forløb med Gulv Master" style="display:block;width:100%;height:auto;border:0;">
         </a>
-        <p style="text-align:center;margin:10px 0 0;"><a href="${WON_EMAIL_VIDEO_URL}" target="_blank" style="font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#003509;text-decoration:none;">▶ Se videoen på YouTube</a></p>
+        <p style="text-align:center;margin:10px 0 0;"><a href="${WON_EMAIL_VIDEO_URL}" target="_blank" style="font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#003509;text-decoration:none;">▶ Se videoen på YouTube (1 min)</a></p>
       </td></tr>
       <tr><td style="padding:26px 32px 30px;">
         <hr style="border:none;border-top:1px solid rgba(0,53,9,.10);margin:0 0 16px;">

@@ -3274,7 +3274,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.1</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.2</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -16214,6 +16214,16 @@ async function sendTestSystemEmail(key){
   var to=document.getElementById('email-test-to-'+key).value.trim();
   if(!to){toast('Skriv en e-mailadresse først','⚠');return;}
   var btn=document.getElementById('email-test-btn-'+key);btn.disabled=true;btn.textContent='Sender…';
+  // RUNDE AF (Martin valgte en PDF i filvælgeren, men trykkede "Send test" uden
+  // først at trykke "Gem" — testen brugte derfor stadig den GAMLE (ingen) PDF, og
+  // det så ud som om PDF'en "ikke blev tilføjet". Filvalget uploades derfor nu
+  // automatisk her, hvis der ligger et uploadet-men-ikke-gemt filvalg, FØR selve
+  // testen sendes — "vælg fil, tryk Send test" virker nu som man ville forvente,
+  // uden man behøver huske at trykke Gem først bagefter.
+  var fileEl=document.getElementById('email-pdf-file-'+key);
+  if(fileEl&&fileEl.files&&fileEl.files[0]){
+    await saveEmailSettings(key);
+  }
   var r=await api(meta.hasPdfAndTest.testEndpoint,{method:'POST',body:JSON.stringify({to:to})});
   if(r&&r.ok)toast('Test-mail sendt til '+to,'✓');
   else toast((r&&r.error)||'Kunne ikke sende','❌');
