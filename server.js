@@ -557,6 +557,23 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- RUNDE AI (Martins rettelse: "Bank"-kortet på Oversigt skal IKKE hente fra
+    -- Udgifter-fanens 3-bankkonto-CSV — det skal enten hente fra det senest
+    -- uploadede udtog i selve Bankafstemningen, eller fra et tal Martin selv retter
+    -- manuelt. En tidligere runde (RUNDE Ø) skrev netop dét i sin kommentar, men
+    -- koden endte forkert forbundet til Udgifter-fanens system i stedet — se
+    -- renderFinBankCard() i admin.html. Denne tabel holder et evt. manuelt
+    -- overstyret Indbetalt/Udbetalt-tal pr. måned (samme mønster som
+    -- finance_expense_month_totals-overstyringen) — findes ingen overstyring for
+    -- måneden, beregnes tallet i stedet live ud fra finance_bank_session's
+    -- posteringer i den måned.
+    CREATE TABLE IF NOT EXISTS finance_bank_card_overrides (
+      month_key TEXT PRIMARY KEY,
+      income_override DOUBLE PRECISION,
+      expense_override DOUBLE PRECISION,
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     -- SYSTEMLOG: én fælles logbog for alt der kører automatisk i baggrunden (JobTread-
     -- synk hver time, notifikationsscan, m.fl.) — så admin kan se om noget fejler
     -- stille, uden at skulle ind i Renders serverlogs.
@@ -15903,6 +15920,33 @@ app.post('/api/finance/bank-statement/watermark', auth, panelAccess('finance'), 
 }));
 app.delete('/api/finance/bank-statement/watermark', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM finance_bank_watermark WHERE id=1');
+  res.json({ ok: true });
+}));
+// RUNDE AI — manuel overstyring af "Bank"-kortets Indbetalt/Udbetalt pr. måned (se
+// finance_bank_card_overrides ovenfor). Et gemt tal her vinder altid over det der
+// ellers udregnes live fra det uploadede bankudtog i Bankafstemningen.
+app.get('/api/finance/bank-card-override', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
+  const out = {};
+  if (!months.length) return res.json(out);
+  const rows = await pool.query('SELECT month_key,income_override,expense_override,updated_at FROM finance_bank_card_overrides WHERE month_key = ANY($1)', [months]);
+  for (const r of rows.rows) out[r.month_key] = { income: r.income_override, expense: r.expense_override, updatedAt: r.updated_at };
+  res.json(out);
+}));
+app.put('/api/finance/bank-card-override/:month', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const monthKey = req.params.month;
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) return res.status(400).json({ error: 'Ugyldig måned' });
+  const body = req.body || {};
+  const income = body.income !== '' && body.income != null ? Number(body.income) : null;
+  const expense = body.expense !== '' && body.expense != null ? Number(body.expense) : null;
+  await pool.query(`
+    INSERT INTO finance_bank_card_overrides (month_key,income_override,expense_override,updated_at) VALUES ($1,$2,$3,${nowTextSQL()})
+    ON CONFLICT (month_key) DO UPDATE SET income_override=$2,expense_override=$3,updated_at=${nowTextSQL()}
+  `, [monthKey, income, expense]);
+  res.json({ ok: true });
+}));
+app.delete('/api/finance/bank-card-override/:month', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM finance_bank_card_overrides WHERE month_key=$1', [req.params.month]);
   res.json({ ok: true });
 }));
 

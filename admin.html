@@ -3274,7 +3274,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.4</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.5</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5375,6 +5375,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
          Skjules i Kanban-visning — der ER faserne selv kolonnerne, se switchPjView(). -->
     <div class="bly-kpi-row" id="proj-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:0 0 14px">
+      <!-- RUNDE AI (Martins ønske: "gør så jeg kan insnævre det endnu mere også på
+           filtre på FAGGRUPPE så jeg kan få breaked det helt ned") — samme
+           filter-dropdown-komponent som allerede bruges til faggruppe-filteret i
+           Opgavepool (se planProjectTypeFilterHTML), genbrugt her for ens udseende.
+           Kombineres med status-boblerne og dato-filteret, se pjPeriodSearchFilter(). -->
+      <div id="proj-projecttype-filter"></div>
       <button class="bly-ctl" id="proj-archived-toggle" type="button">📦 <span id="proj-archived-toggle-label">Vis arkiverede</span></button>
       <div class="bly-period" style="position:relative">
         <button class="bly-ctl" id="proj-period-btn" type="button">📅 <span id="proj-period-label">Alt tid</span></button>
@@ -7947,7 +7953,7 @@ var timeOffApproved=[],timeOffRequests=[];
 // RUNDE Z: projectType er kun tilføjet til 'plan' (Opgavepool) — se
 // filterTasks()/filtersHTML() nedenfor for hvorfor den ikke er nødvendig på de
 // andre visninger endnu (Martins ønske nævnte specifikt Opgavepool).
-var filters={plan:{status:'all',type:'all',team:'all',dateWeek:null,projectType:'all'},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'},availability:{status:'all',type:'all',team:'all'}};
+var filters={plan:{status:'all',type:'all',team:'all',dateWeek:null,projectType:'all'},capacity:{status:'all',type:'all',team:'all'},timeline:{status:'all',type:'all',team:'all'},availability:{status:'all',type:'all',team:'all'},projects:{projectType:'all'}};
 // SAGSSTATUS-FILTER for Opgavepool/Kapacitet/Tidslinje (sep. 2026, Martins ønske:
 // "Den samme opdeling skal være i Opgavepool også, så jeg nemt kan se kun
 // igangværende sager — både i Kapacitetsboard og Dagligplanlægning og Tidslinje").
@@ -13836,48 +13842,88 @@ function renderFinInvoiceCard(){
 // se POST /api/finance/bank-statement/upload-month). Den gamle Lunar-saldo-boks
 // (✏️-knappen) er bevaret uændret ét sted for sig selv (bruges stadig af Profit-
 // analysens "Cash i banken"-kolonne), men er ikke længere det tal DENNE boks viser.
+// RUNDE AI (Martins rettelse af RUNDE AG/AG's forgænger RUNDE Ø: "den skal ikke
+// hente fra Udgift fanen? den skal hente enten fra jeg retter det manuelt eller fra
+// Bank afstemmening") — RUNDE Ø's egen kommentar sagde altid at kortet skulle vise
+// "det senest uploadede bankudtog under Bankafstemning", men blev ved en fejl kodet
+// op mod Udgifter-fanens 3-bankkonto-system i stedet (finance_bank_month_statements_v2)
+// — det rettede RUNDE AG kun VÆRRE ved at lene sig endnu mere ind i den forkerte
+// kilde. Her rettet rigtigt: automatisk beregning sker nu live ud fra det aktuelt
+// uploadede udtog i selve Bankafstemningen (finance_bank_session, samme data som
+// /api/finance/bank-statement/session), summeret for indeværende måneds posteringer
+// — og Martin kan altid overstyre begge tal manuelt (finance_bank_card_overrides),
+// med et "↩ Nulstil"-ikon der falder tilbage til den automatiske beregning igen.
 async function renderFinBankCard(){
   var el=document.getElementById('fin-card-bank');
   if(!el)return;
   var mk=iso(new Date()).slice(0,7);
-  var totals=await api('/api/finance/bank-statement/month-totals?months='+mk)||{};
-  var info=totals[mk]||null;
-  var netto=info?(info.incomeTotal-info.expenseTotal):null;
+  var MAANEDER_KORT2=['jan.','feb.','mar.','apr.','maj','jun.','jul.','aug.','sep.','okt.','nov.','dec.'];
+  var monthLbl=MAANEDER_KORT2[+mk.slice(5,7)-1]+' '+mk.slice(0,4);
+  var sessionP=api('/api/finance/bank-statement/session');
+  var overrideP=api('/api/finance/bank-card-override?months='+mk);
+  var session=(await sessionP)||{transactions:null};
+  var overrides=(await overrideP)||{};
+  var ov=overrides[mk]||null;
+  var txnsThisMonth=(session.transactions||[]).filter(function(t){return String(t.date||'').slice(0,7)===mk;});
+  var autoIncome=null,autoExpense=null;
+  if(session.transactions&&txnsThisMonth.length){
+    autoIncome=0;autoExpense=0;
+    txnsThisMonth.forEach(function(t){if(Number(t.amount)<0)autoExpense+=Math.abs(Number(t.amount));else autoIncome+=Number(t.amount);});
+  }
+  var hasOverride=ov&&(ov.income!=null||ov.expense!=null);
+  var income=hasOverride?ov.income:autoIncome;
+  var expense=hasOverride?ov.expense:autoExpense;
+  var netto=(income!=null&&expense!=null)?(income-expense):null;
   function acctBox(label,val,color){
     return '<div style="flex:1;min-width:0"><div class="fin-muted" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin-bottom:3px">'+label+'</div><div style="font-size:15px;font-weight:800;color:'+(color||'var(--bly-ink)')+'">'+(val!=null?krFmt(val):'–')+'</div></div>';
   }
-  var MAANEDER_KORT2=['jan.','feb.','mar.','apr.','maj','jun.','jul.','aug.','sep.','okt.','nov.','dec.'];
-  var monthLbl=MAANEDER_KORT2[+mk.slice(5,7)-1]+' '+mk.slice(0,4);
-  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Bank</div>'+
+  var emptyNote;
+  if(hasOverride)emptyNote='';
+  else if(!session.transactions)emptyNote=' — intet bankudtog uploadet i Bankafstemning endnu';
+  else if(!txnsThisMonth.length)emptyNote=' — det uploadede udtog dækker ikke '+esc(monthLbl)+' endnu';
+  else emptyNote='';
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Bank'+(hasOverride?' <span class="fin-badge ok" style="font-size:10px;vertical-align:middle">manuelt</span>':'')+'</div>'+
     '<div style="display:flex;align-items:center;gap:6px">'+
     '<button class="bly-btn outline small" data-action="fin-open-bank-snapshot" title="Registrér dagens Lunar-saldo (bruges til Profit-analysen)" style="padding:8px 10px">✏️</button>'+
-    '<button class="bly-btn outline small" data-action="fin-goto-bank">'+(info?'Se/ret kontoudtog':'Upload kontoudtog')+'</button>'+
+    '<button class="bly-btn outline small" data-action="fin-bank-edit" title="Ret Indbetalt/Udbetalt manuelt for denne måned" style="padding:8px 10px">✎ Ret</button>'+
+    (hasOverride?'<button class="bly-btn outline small" data-action="fin-bank-reset" title="Nulstil — brug bankudtoget igen">↩</button>':'')+
+    '<button class="bly-btn outline small" data-action="fin-goto-bank">Gå til bankafstemning</button>'+
     '</div></div>'+
-    // RUNDE AG — "Fra bankafstemning" var her misvisende: tallet kommer IKKE fra
-    // Bankafstemning-fanen (som kun matcher posteringer mod fakturaer og aldrig
-    // gemmer pr. måned), men fra de 3 bankkontoers CSV-upload under Udgifter-fanen
-    // (RUNDE H #317). Knappen herunder peger nu også derhen i stedet for til
-    // Bankafstemning-fanen, så "upload en fil men kortet viser stadig ingenting"
-    // ikke sker igen.
-    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Fra dine 3 bankkonti (Udgifter-fanen) · '+esc(monthLbl)+(info?'':' — intet kontoudtog uploadet for denne måned endnu, tryk "Upload kontoudtog"')+'</div>'+
+    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Fra bankafstemning · '+esc(monthLbl)+emptyNote+'</div>'+
+    '<div id="fin-bank-view" style="display:block">'+
     '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(netto!=null?krFmt(netto):'–')+'</div>'+
     '<div style="display:flex;gap:16px;padding:12px 0;border-top:1px solid var(--bly-border-soft)">'+
-    acctBox('Indbetalt',info?info.incomeTotal:null,'#15803D')+acctBox('Udbetalt',info?info.expenseTotal:null,'#DC2626')+
+    acctBox('Indbetalt',income,'#15803D')+acctBox('Udbetalt',expense,'#DC2626')+
+    '</div></div>'+
+    '<div id="fin-bank-edit-row" style="display:none;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--bly-border-soft)">'+
+    '<div style="display:flex;gap:8px;align-items:center"><label class="fin-muted" style="width:70px;font-size:11.5px">Indbetalt</label><input type="number" id="fin-bank-income-input" class="input bly-input" value="'+(income!=null?income:'')+'" placeholder="0"></div>'+
+    '<div style="display:flex;gap:8px;align-items:center"><label class="fin-muted" style="width:70px;font-size:11.5px">Udbetalt</label><input type="number" id="fin-bank-expense-input" class="input bly-input" value="'+(expense!=null?expense:'')+'" placeholder="0"></div>'+
+    '<button class="bly-btn small" id="fin-bank-save-btn" type="button" style="align-self:flex-start">💾 Gem</button>'+
     '</div>';
   var btn=el.querySelector('[data-action="fin-goto-bank"]');
-  if(btn)btn.addEventListener('click',function(){
-    // RUNDE AG — "Ret udgifter pr. måned"-panelet (som rummer selve bank-CSV
-    // uploaden pr. konto) sidder allerede her på Oversigt-fanen, samme fane som
-    // dette Bank-kort — ingen fane-skift nødvendigt, bare åbn/udvid og scroll ned.
-    finQuickExpAccountsOpenFor[mk]=true;
-    var panel=document.getElementById('fin-quickexp-panel');
-    var toggle=document.getElementById('fin-quickexp-toggle');
-    if(panel&&panel.style.display==='none'&&toggle){toggle.click();}
-    else{renderFinQuickExpensePanel();}
-    setTimeout(function(){var p=document.getElementById('fin-quickexp-panel');if(p)p.scrollIntoView({behavior:'smooth',block:'start'});},80);
-  });
+  if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="bankafstemning"]');if(t)t.click();});
   var snapBtn=el.querySelector('[data-action="fin-open-bank-snapshot"]');
   if(snapBtn)snapBtn.addEventListener('click',function(){document.getElementById('fin-bank-snapshot-modal').classList.add('open');});
+  var editBtn=el.querySelector('[data-action="fin-bank-edit"]');
+  if(editBtn)editBtn.addEventListener('click',function(){
+    el.querySelector('#fin-bank-view').style.display='none';
+    el.querySelector('#fin-bank-edit-row').style.display='flex';
+  });
+  var resetBtn=el.querySelector('[data-action="fin-bank-reset"]');
+  if(resetBtn)resetBtn.addEventListener('click',async function(){
+    if(!await gmConfirm('Nulstil det manuelle tal og brug det uploadede bankudtog igen?'))return;
+    await api('/api/finance/bank-card-override/'+mk,{method:'DELETE'});
+    toast('Nulstillet ✓','↩');
+    renderFinBankCard();
+  });
+  var saveBtn=el.querySelector('#fin-bank-save-btn');
+  if(saveBtn)saveBtn.addEventListener('click',async function(){
+    var incVal=el.querySelector('#fin-bank-income-input').value;
+    var expVal=el.querySelector('#fin-bank-expense-input').value;
+    await api('/api/finance/bank-card-override/'+mk,{method:'PUT',body:JSON.stringify({income:incVal,expense:expVal})});
+    toast('Gemt ✓','💾');
+    renderFinBankCard();
+  });
 }
 var finMomsYear=null,finMomsQ=null;
 // RUNDE H #316 (Martins ønske: "Jeg skal kunne trykke når jeg har indbetalt for
@@ -17624,6 +17670,7 @@ async function bind(){
         a.closest('.filter-dropdown-menu').classList.remove('open');
         if(a.dataset.scope==='plan')renderPlan();
         else if(a.dataset.scope==='timeline')renderTimeline();
+        else if(a.dataset.scope==='projects')renderPjProjects();
         else renderCapacity();
       }
       if(act==='move-booking'){e.stopPropagation();api('/api/assignments/'+a.dataset.bookingId+'/move',{method:'PUT',body:JSON.stringify({direction:a.dataset.dir,date:a.dataset.date})}).then(function(r){if(r&&r.ok)loadAll();else if(r)toast(r.error||'Fejl','❌');});}
@@ -22515,6 +22562,20 @@ function renderPjStatusFilter(nonArchived){
     b.onclick=function(){pjStatusFilter=b.dataset.pjStatus;renderPjProjects();};
   });
 }
+// RUNDE AI (Martins ønske: "gør så jeg kan insnævre det endnu mere også på filtre
+// på FAGGRUPPE så jeg kan få breaked det helt ned") — samme filter-dropdown-
+// komponent (filterDropdownHTML) som Opgavepools eget faggruppe-filter allerede
+// bruger (se planProjectTypeFilterHTML), for ens udseende/adfærd. pjProjectTypes
+// hentes lazy (samme mønster) — vises som kun "Alle" indtil listen er hentet.
+function renderPjProjectTypeFilter(){
+  var el=document.getElementById('proj-projecttype-filter');
+  if(!el)return;
+  if(!pjProjectTypes.length){
+    loadPjProjectTypes().then(function(){if(document.getElementById('page-projects').classList.contains('active'))renderPjProjectTypeFilter();});
+  }
+  var opts=[['all','Alle']].concat(pjProjectTypes.map(function(t){return [t,t];}));
+  el.innerHTML=filterDropdownHTML('projects','projectType','Faggruppe',opts,filters.projects.projectType,'Filtrér sagerne på faggruppe (Gulvslibning, Gulvlægning, Maler m.fl.)');
+}
 // RUNDE K (sep. 2026, Martins ønske) — Kanban-visning: samme faste faser vises
 // altid som kolonner (i modsætning til liste-visningens ét-ad-gangen status-
 // filter, som ikke giver mening når man netop vil se ALLE faser på én gang).
@@ -22527,6 +22588,10 @@ function pjPeriodSearchFilter(base,q,qDigits){
     // tilbage til oprettelsesdatoen, så helt nye sager stadig kan findes et sted
     // i stedet for slet ikke at kunne filtreres.
     if(pjPeriodFilter&&!pjPeriodFilter.matches(p.gantt_start||p.created_at))return false;
+    // RUNDE AI — faggruppe-filteret (Faggruppe-dropdown ved siden af "Vis
+    // arkiverede"/dato-filteret) skal gælde ALLE steder pjPeriodSearchFilter
+    // bruges (liste, Kanban, status-KPI-boblerne), ligesom periodefilteret.
+    if(filters.projects.projectType!=='all'&&(p.project_type||'')!==filters.projects.projectType)return false;
     if(!q)return true;
     // RUNDE T (Martins ønske: "Ret alle projekters Priser da mange af dem har
     // trukket forkert pris") — BUG: prioriterede hidtil invoice_total, men ved
@@ -22568,11 +22633,21 @@ function renderPjProjects(){
   var qDigits=q.replace(/\s+/g,'');
   var nonArchived=pjProjects.filter(function(p){return p.status!=='archived';});
   var base=pjShowArchived?pjProjects:nonArchived;
+  renderPjProjectTypeFilter();
   if(pjView==='kanban'){
     renderPjKanban(pjPeriodSearchFilter(base,q,qDigits));
     return;
   }
-  renderPjStatusFilter(nonArchived);
+  // RUNDE AI (Martins fejlrapport: "viser den 14 kommende sager men viser kun 6
+  // sager ... de filtre der filtrer på sagen status [bliver] ikke påvirket af dato
+  // setting") — status-KPI-boksenes tal blev talt op fra ALLE ikke-arkiverede sager
+  // (nonArchived), uden hensyn til det aktive dato/periode-filter, mens selve
+  // listen NEDENUNDER var periode-filtreret. Et tal på 14 i "Kommende sag"-boksen
+  // som førte til kun 6 rækker i tabellen så derfor ud som en fejl. Boksene bygges
+  // nu af den SAMME periode(+søg)-filtrerede mængde som tabellen, så tallene altid
+  // stemmer overens.
+  var periodFilteredNonArchived=pjPeriodSearchFilter(nonArchived,q,qDigits);
+  renderPjStatusFilter(periodFilteredNonArchived);
   var list=pjPeriodSearchFilter(base,q,qDigits).filter(function(p){
     if(pjStatusFilter!=='all'&&p.status!==pjStatusFilter)return false;
     return true;
