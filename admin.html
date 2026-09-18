@@ -3274,7 +3274,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.5</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.6</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -13626,6 +13626,13 @@ function renderFinBankResults(){
   });
 }
 var finPrivateBudget=[];
+// RUNDE AJ (Martins rettelse: "BANKEN SKAL VISE DET CASH JEG HAR I BANKEN ... DEN SKAL
+// VISE ET SNAPSHOT AF MINE 3 BANKKONTOER") — Bank-kortet på Oversigt skal IKKE vise en
+// månedlig ind/udbetalt-strøm fra bankafstemningen (det byggede RUNDE AI, som viste sig
+// forkert), men den faktiske kontosaldo fra det seneste Lunar-snapshot (samme tal som
+// "Registrér dagens Lunar-tal"-popuppen selv viser under "Samlet beholdning"). Sat i
+// renderFinOverview(), læst af renderFinBankCard().
+var finBankSnapshots=[];
 function finExpenseTotal(){var t=0;finExpenses.forEach(function(c){c.items.forEach(function(i){t+=(+i.amount||0);});});return t;}
 function finTilgodehavende(){return finInvoices.filter(function(i){return i.overrideStatus==='unpaid';}).reduce(function(s,i){return s+(+i.priceWithTax||0);},0);}
 function krFmt(n){return (n===null||n===undefined||isNaN(n))?'–':Math.round(n).toLocaleString('da-DK')+' kr';}
@@ -13640,6 +13647,7 @@ function finSnapshotUpdateTotal(){
   document.getElementById(id).addEventListener('input',finSnapshotUpdateTotal);
 });
 function renderFinOverview(snapshots){
+  finBankSnapshots=snapshots||[];
   var latest=snapshots[0];
   document.getElementById('fin-bank-hoved').value=latest?latest.hovedkonto:'';
   document.getElementById('fin-bank-moms').value=latest?latest.moms:'';
@@ -13856,74 +13864,29 @@ function renderFinInvoiceCard(){
 async function renderFinBankCard(){
   var el=document.getElementById('fin-card-bank');
   if(!el)return;
-  var mk=iso(new Date()).slice(0,7);
-  var MAANEDER_KORT2=['jan.','feb.','mar.','apr.','maj','jun.','jul.','aug.','sep.','okt.','nov.','dec.'];
-  var monthLbl=MAANEDER_KORT2[+mk.slice(5,7)-1]+' '+mk.slice(0,4);
-  var sessionP=api('/api/finance/bank-statement/session');
-  var overrideP=api('/api/finance/bank-card-override?months='+mk);
-  var session=(await sessionP)||{transactions:null};
-  var overrides=(await overrideP)||{};
-  var ov=overrides[mk]||null;
-  var txnsThisMonth=(session.transactions||[]).filter(function(t){return String(t.date||'').slice(0,7)===mk;});
-  var autoIncome=null,autoExpense=null;
-  if(session.transactions&&txnsThisMonth.length){
-    autoIncome=0;autoExpense=0;
-    txnsThisMonth.forEach(function(t){if(Number(t.amount)<0)autoExpense+=Math.abs(Number(t.amount));else autoIncome+=Number(t.amount);});
+  // RUNDE AJ: kortet viser nu den FAKTISKE kontosaldo (seneste Lunar-snapshot), ikke en
+  // månedlig ind/udbetalt-strøm — se kommentar ved var finBankSnapshots.
+  var latest=(finBankSnapshots&&finBankSnapshots[0])||null;
+  var hoved=latest?(Number(latest.hovedkonto)||0):null;
+  var moms=latest?(Number(latest.moms)||0):null;
+  var forbrug=latest?(Number(latest.forbrug)||0):null;
+  var total=latest?(hoved+moms+forbrug):null;
+  var dateLbl=latest?fmtDaDate(latest.snap_date):null;
+  function acctBox(label,val){
+    return '<div style="flex:1;min-width:0"><div class="fin-muted" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin-bottom:3px">'+label+'</div><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">'+(val!=null?krFmt(val):'–')+'</div></div>';
   }
-  var hasOverride=ov&&(ov.income!=null||ov.expense!=null);
-  var income=hasOverride?ov.income:autoIncome;
-  var expense=hasOverride?ov.expense:autoExpense;
-  var netto=(income!=null&&expense!=null)?(income-expense):null;
-  function acctBox(label,val,color){
-    return '<div style="flex:1;min-width:0"><div class="fin-muted" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin-bottom:3px">'+label+'</div><div style="font-size:15px;font-weight:800;color:'+(color||'var(--bly-ink)')+'">'+(val!=null?krFmt(val):'–')+'</div></div>';
-  }
-  var emptyNote;
-  if(hasOverride)emptyNote='';
-  else if(!session.transactions)emptyNote=' — intet bankudtog uploadet i Bankafstemning endnu';
-  else if(!txnsThisMonth.length)emptyNote=' — det uploadede udtog dækker ikke '+esc(monthLbl)+' endnu';
-  else emptyNote='';
-  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Bank'+(hasOverride?' <span class="fin-badge ok" style="font-size:10px;vertical-align:middle">manuelt</span>':'')+'</div>'+
+  var subLbl=latest?('Cash i banken · seneste optælling '+esc(dateLbl)):'Cash i banken — ingen saldo registreret endnu';
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Bank</div>'+
     '<div style="display:flex;align-items:center;gap:6px">'+
-    '<button class="bly-btn outline small" data-action="fin-open-bank-snapshot" title="Registrér dagens Lunar-saldo (bruges til Profit-analysen)" style="padding:8px 10px">✏️</button>'+
-    '<button class="bly-btn outline small" data-action="fin-bank-edit" title="Ret Indbetalt/Udbetalt manuelt for denne måned" style="padding:8px 10px">✎ Ret</button>'+
-    (hasOverride?'<button class="bly-btn outline small" data-action="fin-bank-reset" title="Nulstil — brug bankudtoget igen">↩</button>':'')+
-    '<button class="bly-btn outline small" data-action="fin-goto-bank">Gå til bankafstemning</button>'+
+    '<button class="bly-btn outline small" data-action="fin-open-bank-snapshot" title="Registrér dagens Lunar-saldo">✏️ Opdatér</button>'+
     '</div></div>'+
-    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">Fra bankafstemning · '+esc(monthLbl)+emptyNote+'</div>'+
-    '<div id="fin-bank-view" style="display:block">'+
-    '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(netto!=null?krFmt(netto):'–')+'</div>'+
-    '<div style="display:flex;gap:16px;padding:12px 0;border-top:1px solid var(--bly-border-soft)">'+
-    acctBox('Indbetalt',income,'#15803D')+acctBox('Udbetalt',expense,'#DC2626')+
-    '</div></div>'+
-    '<div id="fin-bank-edit-row" style="display:none;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--bly-border-soft)">'+
-    '<div style="display:flex;gap:8px;align-items:center"><label class="fin-muted" style="width:70px;font-size:11.5px">Indbetalt</label><input type="number" id="fin-bank-income-input" class="input bly-input" value="'+(income!=null?income:'')+'" placeholder="0"></div>'+
-    '<div style="display:flex;gap:8px;align-items:center"><label class="fin-muted" style="width:70px;font-size:11.5px">Udbetalt</label><input type="number" id="fin-bank-expense-input" class="input bly-input" value="'+(expense!=null?expense:'')+'" placeholder="0"></div>'+
-    '<button class="bly-btn small" id="fin-bank-save-btn" type="button" style="align-self:flex-start">💾 Gem</button>'+
+    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+subLbl+'</div>'+
+    '<div style="font-size:26px;font-weight:800;color:var(--bly-ink);margin-bottom:14px">'+(total!=null?krFmt(total):'–')+'</div>'+
+    '<div style="display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--bly-border-soft)">'+
+    acctBox('Hovedkonto',hoved)+acctBox('Moms',moms)+acctBox('Forbrug',forbrug)+
     '</div>';
-  var btn=el.querySelector('[data-action="fin-goto-bank"]');
-  if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="bankafstemning"]');if(t)t.click();});
   var snapBtn=el.querySelector('[data-action="fin-open-bank-snapshot"]');
   if(snapBtn)snapBtn.addEventListener('click',function(){document.getElementById('fin-bank-snapshot-modal').classList.add('open');});
-  var editBtn=el.querySelector('[data-action="fin-bank-edit"]');
-  if(editBtn)editBtn.addEventListener('click',function(){
-    el.querySelector('#fin-bank-view').style.display='none';
-    el.querySelector('#fin-bank-edit-row').style.display='flex';
-  });
-  var resetBtn=el.querySelector('[data-action="fin-bank-reset"]');
-  if(resetBtn)resetBtn.addEventListener('click',async function(){
-    if(!await gmConfirm('Nulstil det manuelle tal og brug det uploadede bankudtog igen?'))return;
-    await api('/api/finance/bank-card-override/'+mk,{method:'DELETE'});
-    toast('Nulstillet ✓','↩');
-    renderFinBankCard();
-  });
-  var saveBtn=el.querySelector('#fin-bank-save-btn');
-  if(saveBtn)saveBtn.addEventListener('click',async function(){
-    var incVal=el.querySelector('#fin-bank-income-input').value;
-    var expVal=el.querySelector('#fin-bank-expense-input').value;
-    await api('/api/finance/bank-card-override/'+mk,{method:'PUT',body:JSON.stringify({income:incVal,expense:expVal})});
-    toast('Gemt ✓','💾');
-    renderFinBankCard();
-  });
 }
 var finMomsYear=null,finMomsQ=null;
 // RUNDE H #316 (Martins ønske: "Jeg skal kunne trykke når jeg har indbetalt for
@@ -14701,6 +14664,21 @@ function renderFinRevenueKpis(){
     card('Uden budget',missing,missing?'ret dem under "Noter"':'alle har en pris ✓')+
     card('Manuelle linjer',manual,'tilføjet direkte her');
 }
+// RUNDE AJ (Martins ønske: "Jeg skal kunne flytte disse poster til alle måneder i løbet
+// af året ... Nogle opgaver er placeret forkert eller kan blive udskudt mange måneder")
+// — "→ flyt"-dropdownen viste tidligere kun de 1-2 måneder der allerede var hentet fra
+// serveren (finRevenue har typisk kun indeværende + næste måned). Nu bygges der i stedet
+// en fast liste over ALLE måneder i sagens eget år + det følgende år (24 måneder), så en
+// sag kan flyttes vilkårligt langt frem eller tilbage. finMoveJobHandler nedenfor opretter
+// selv en ny måned-nøgle i finRevenue hvis målmåneden ikke findes i forvejen.
+function finYearMonthOptions(){
+  var y=new Date().getFullYear();
+  var opts=[];
+  [y-1,y,y+1].forEach(function(yr){
+    for(var m=1;m<=12;m++)opts.push(yr+'-'+String(m).padStart(2,'0'));
+  });
+  return opts;
+}
 function renderFinRevenue(){
   renderFinRevenueKpis();
   var el=document.getElementById('fin-revenue-months');
@@ -14775,8 +14753,18 @@ function renderFinRevenue(){
       var dots=Object.keys(STATUS_META).map(function(k){
         return '<button class="fin-status-dot'+(st===k?' active':'')+'" data-job-status-key="'+esc(jobKey)+'" data-job-status-val="'+k+'" style="background:'+STATUS_META[k].dot+'" title="'+STATUS_META[k].label+'"></button>';
       }).join('');
-      var otherMonths=months.filter(function(x){return x!==mk;});
-      var moveBtn=(j.jobId&&!j.manual&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" data-cur-month="'+mk+'" title="Flyt sagen til en anden måned"><option value="">→ flyt</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+'</option>';}).join('')+'</select>'):'';
+      // RUNDE AJ: fakturaer må (jf. serverens regel, se fetchFinanceJobsByMonth) kun ligge
+      // i en BAGUDGÅENDE måned, og tilbud/forecast kun i indeværende eller en KOMMENDE
+      // måned — vælges en måned der bryder med det, forsvinder linjen bare stille uden at
+      // flytte sig. Dropdownen begrænses derfor til de måneder der reelt kan vælges, i
+      // stedet for at love alle 12 og så fejle tavst.
+      var otherMonths=finYearMonthOptions().filter(function(x){
+        if(x===mk)return false;
+        if(j.valueSource==='invoice')return x<thisMonthKey;
+        if(j.valueSource==='quote')return x>=thisMonthKey;
+        return true;
+      });
+      var moveBtn=(j.jobId&&!j.manual&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" data-cur-month="'+mk+'" title="Flyt sagen til en anden måned"><option value="">→ flyt</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+' '+om.slice(0,4)+'</option>';}).join('')+'</select>'):'';
       var jtBtn=(j.projectId?'<a href="javascript:void(0)" onclick="openProjectDetail('+j.projectId+')" class="fin-edit-btn" title="Åbn sagen">🔗</a>':'');
       var SRC_META={invoice:{label:'Faktura',bg:'#DCFCE7',color:'#166534'},quote:{label:'Tilbud accept',bg:'#DBEAFE',color:'#1D4ED8'}};
       var srcMeta=SRC_META[j.valueSource];
@@ -14811,10 +14799,23 @@ function renderFinRevenue(){
     });
     var selForMonth=finJobSelected[mk]||{};
     var selCountForMonth=Object.keys(selForMonth).filter(function(k){return selForMonth[k];}).length;
+    // RUNDE AJ: samme bagudgående/kommende-begrænsning som den enkelte "→ flyt"-dropdown
+    // (se kommentar ved finJobRowHtml) — kun anvendt når de valgte linjer er ensartede
+    // (kun fakturaer eller kun tilbud); ved blandet valg vises hele listen som hidtil.
+    var selectedJobsForMonth=m.jobs.filter(function(j){return selForMonth[j.jobId];});
+    var selectedSources=selectedJobsForMonth.reduce(function(acc,j){if(j.valueSource&&acc.indexOf(j.valueSource)===-1)acc.push(j.valueSource);return acc;},[]);
+    var bulkMonthOptions=finYearMonthOptions().filter(function(x){
+      if(x===mk)return false;
+      if(selectedSources.length===1){
+        if(selectedSources[0]==='invoice')return x<thisMonthKey;
+        if(selectedSources[0]==='quote')return x>=thisMonthKey;
+      }
+      return true;
+    });
     var bulkToolbar=selCountForMonth?('<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;margin-bottom:8px">'+
       '<b style="font-size:12px">'+selCountForMonth+' valgt</b>'+
       '<button class="bly-btn outline small" data-action="fin-bulk-exclude" data-month="'+mk+'">🗑 Udeluk/slet valgte</button>'+
-      '<select class="fin-bulk-move-select" data-action="fin-bulk-move" data-month="'+mk+'"><option value="">→ flyt valgte til...</option>'+months.filter(function(x){return x!==mk;}).map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+'</option>';}).join('')+'</select>'+
+      '<select class="fin-bulk-move-select" data-action="fin-bulk-move" data-month="'+mk+'"><option value="">→ flyt valgte til...</option>'+bulkMonthOptions.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+' '+om.slice(0,4)+'</option>';}).join('')+'</select>'+
       '<button class="fin-edit-btn" data-action="fin-bulk-clear" data-month="'+mk+'" title="Fravælg alle">✕ Fravælg</button>'+
       '</div>'):'';
     var jobRows=GROUP_DEFS.map(function(gd){
