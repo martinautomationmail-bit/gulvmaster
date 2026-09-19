@@ -3415,7 +3415,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.14</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.15</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4520,6 +4520,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              linjer/priser/noter/rabat) og hopper direkte ind i den, klar til at rette de
              få ting der er forskellige. Se qeDuplicateQuote()/POST /api/quotes/:id/duplicate. -->
         <button class="bly-btn outline" id="qe-duplicate-btn" type="button" style="display:none" title="Opret en ny, uafhængig kopi af dette tilbud — samme kunde, linjer og priser, klar til at rette de få forskelle">⧉ Kopiér tilbud</button>
+        <!-- RUNDE AS (Martin: "fra det tilbud man åbner kan gå til Projektet
+             og eller Handlen?") — kun vist når tilbuddet er blevet til en sag
+             (d.project_id, se loadQuoteFull()). Modstykket til pd-quote-link
+             på selve sagen. -->
+        <button class="bly-btn outline" id="qe-project-link-btn" type="button" style="display:none" title="Åbn den sag tilbuddet blev til">📁 Åbn sag</button>
         <button class="bly-btn outline" id="qe-share-btn" type="button" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
         <button class="bly-btn outline" id="qe-request-btn" type="button" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
         <button class="bly-btn outline" id="qe-send-btn" type="button" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
@@ -5011,7 +5016,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <input type="text" id="cd-quotes-search" class="bly-search" style="width:220px" placeholder="🔍 Find tilbud...">
   </div>
   <table class="bly-table">
-    <thead><tr><th>Nr.</th><th>Sag</th><th>Status</th><th class="num">Beløb</th><th>Oprettet</th><th style="width:90px"></th></tr></thead>
+    <!-- RUNDE AS (Martin: "Under en kunde kan man pt se hvad tilbud der er
+         koblet til. Kan du ikke lave så man kan se de projekter der tilkoblet
+         handlen") — "Sag" og "Handel" viser pr. tilbud hvilken sag det evt. er
+         blevet til, og hvilket lead/hvilken handel det evt. kom fra. -->
+    <thead><tr><th>Nr.</th><th>Sag</th><th>Status</th><th class="num">Beløb</th><th>Oprettet</th><th>Projekt</th><th>Handel</th><th style="width:90px"></th></tr></thead>
     <tbody id="cd-quotes-body"></tbody>
   </table>
 
@@ -5028,7 +5037,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
   <h3 style="font-size:14px;margin:22px 0 10px">🏗️ Sager <span class="sub" id="cd-projects-count"></span></h3>
   <table class="bly-table">
-    <thead><tr><th>Navn</th><th>Status</th><th>Adresse</th><th style="width:90px"></th></tr></thead>
+    <!-- RUNDE AS — "Handel" viser hvilket lead/hvilken handel sagen kom fra
+         (udledt via sagens tilbud, se GET /api/crm/customers/:id). -->
+    <thead><tr><th>Navn</th><th>Status</th><th>Adresse</th><th>Handel</th><th style="width:90px"></th></tr></thead>
     <tbody id="cd-projects-body"></tbody>
   </table>
 
@@ -20180,16 +20191,27 @@ function cdRenderQuotes(){
       ||statusLabel.toLowerCase().indexOf(q)>-1;
   });
   document.getElementById('cd-quotes-count').textContent='('+cdQuotes.length+')';
+  // RUNDE AS (Martin: "Under en kunde kan man pt se hvad tilbud der er koblet
+  // til. Kan du ikke lave så man kan se de projekter der tilkoblet handlen")
+  // — samme Projekt-knap-mønster som crmpxLoadQuotes (RUNDE H #309), plus en
+  // tilsvarende Handel-knap ud fra q.crm_lead_id/crm_opportunity_id (se GET
+  // /api/crm/customers/:id). stopPropagation så knapperne ikke også åbner
+  // selve tilbuddet (rækkens egen onclick).
   document.getElementById('cd-quotes-body').innerHTML=list.length?list.map(function(x){
+    var crmType=x.crm_lead_id?'lead':(x.crm_opportunity_id?'opportunity':null);
+    var crmId=x.crm_lead_id||x.crm_opportunity_id||null;
+    var crmName=x.crm_lead_id?x.crm_lead_name:x.crm_opportunity_name;
     return '<tr style="cursor:pointer" onclick="openQuoteEditorSafe('+x.id+')">'
       +'<td>'+esc(x.quote_number||'–')+'</td>'
       +'<td>'+esc(x.job_name||'–')+'</td>'
       +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
       +'<td class="num">'+krFmt(x.total)+'</td>'
       +'<td>'+esc(fmtDaDate(x.created_at))+'</td>'
+      +'<td>'+(x.project_id?'<button type="button" class="bly-btn small outline" onclick="event.stopPropagation();openProjectDetail('+x.project_id+')" title="Åbn den sag tilbuddet blev til">📁 '+esc(x.project_job_number||'Åbn sag')+'</button>':'<span style="color:var(--bly-sub)">–</span>')+'</td>'
+      +'<td>'+(crmId?'<button type="button" class="bly-btn small outline" onclick="event.stopPropagation();openCrmpDetail(\''+crmType+'\','+crmId+')" title="Åbn '+(crmType==='lead'?'lead':'handel')+'">'+(crmType==='lead'?'🎯':'🤝')+' '+esc(crmName||'Åbn')+'</button>':'<span style="color:var(--bly-sub)">–</span>')+'</td>'
       +'<td><div class="qz-row-actions"><button class="qz-icon-btn" title="Åbn">→</button></div></td>'
       +'</tr>';
-  }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:16px">'+(q?'Intet tilbud matcher "'+esc(q)+'"':'Ingen tilbud endnu')+'</td></tr>';
+  }).join(''):'<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:16px">'+(q?'Intet tilbud matcher "'+esc(q)+'"':'Ingen tilbud endnu')+'</td></tr>';
 }
 // Samme "hent init/data hvis det ikke allerede er gjort"-forsigtighed som
 // crmpxOpenQuote (se dens kommentar) — "+ Lav tilbud"/"+ Lav faktura" kan være
@@ -20559,14 +20581,20 @@ async function openCustomerDetail(id){
   cdFilesLoaded=false;
 
   document.getElementById('cd-projects-count').textContent='('+d.projects.length+')';
+  // RUNDE AS — "Handel"-kolonne, udledt af sagens tilbud (samme idé som
+  // crm_entity på GET /api/projects/:id), se GET /api/crm/customers/:id.
   document.getElementById('cd-projects-body').innerHTML=d.projects.length?d.projects.map(function(p){
+    var crmType=p.crm_lead_id?'lead':(p.crm_opportunity_id?'opportunity':null);
+    var crmId=p.crm_lead_id||p.crm_opportunity_id||null;
+    var crmName=p.crm_lead_id?p.crm_lead_name:p.crm_opportunity_name;
     return '<tr style="cursor:pointer" onclick="openProjectDetail('+p.id+')">'
       +'<td>'+esc(p.name)+'</td>'
       +'<td>'+esc(pjStageLabel(p.status))+'</td>'
       +'<td>'+esc(d.customer.address||'–')+'</td>'
+      +'<td>'+(crmId?'<button type="button" class="bly-btn small outline" onclick="event.stopPropagation();openCrmpDetail(\''+crmType+'\','+crmId+')" title="Åbn '+(crmType==='lead'?'lead':'handel')+'">'+(crmType==='lead'?'🎯':'🤝')+' '+esc(crmName||'Åbn')+'</button>':'<span style="color:var(--bly-sub)">–</span>')+'</td>'
       +'<td><div class="qz-row-actions"><button class="qz-icon-btn" title="Åbn">→</button></div></td>'
       +'</tr>';
-  }).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen sager endnu</td></tr>';
+  }).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--bly-sub);padding:16px">Ingen sager endnu</td></tr>';
 
   cdQuotes=d.quotes||[];
   document.getElementById('cd-quotes-search').value='';
@@ -25501,7 +25529,7 @@ async function openQuoteEditor(id,prefillCustomer){
   // genindlæst fra det gemte tilbud nedenfor). Bruges af serveren til at flytte
   // CRM-kortet til pipelinens "Vundet"-fase når tilbuddet accepteres, se
   // crm_lead_id/crm_opportunity_id på quotes i server.js.
-  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false,invStatus:null,crmEntityType:null,crmEntityId:null,crmEntityName:null};
+  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false,invStatus:null,crmEntityType:null,crmEntityId:null,crmEntityName:null,projectId:null};
   document.getElementById('qe-crm-link-search').value='';
   document.getElementById('qe-crm-link-results').style.display='none';
   document.getElementById('qe-invoicing-panel').style.display='none';
@@ -25527,6 +25555,7 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-convert-btn').style.display='none';
   document.getElementById('qe-pdf-link').style.display='none';
   document.getElementById('qe-duplicate-btn').style.display='none';
+  document.getElementById('qe-project-link-btn').style.display='none';
   document.getElementById('qe-share-btn').style.display='none';
   document.getElementById('qe-request-btn').style.display='none';
   document.getElementById('qe-send-btn').style.display='none';
@@ -25553,6 +25582,9 @@ async function openQuoteEditor(id,prefillCustomer){
     qeState.crmEntityType=qd.crm_lead_id?'lead':(qd.crm_opportunity_id?'opportunity':null);
     qeState.crmEntityId=qd.crm_lead_id||qd.crm_opportunity_id||null;
     qeState.crmEntityName=qd.crm_entity_name||null;
+    // RUNDE AS — se qe-project-link-btn/loadQuoteFull(): sagen tilbuddet evt.
+    // allerede er blevet til (null indtil tilbuddet er konverteret/sagen oprettet).
+    qeState.projectId=qd.project_id||null;
     qeRenderCrmLinkChip();
     qeRenderCrmNotePanel(qd.crm_entity_note,qeState.crmEntityType,qd.crm_entity_name);
     // FEJLRETTELSE (sep. 2026, opdaget under implementering af note-feltet): denne mapping
@@ -25584,6 +25616,7 @@ async function openQuoteEditor(id,prefillCustomer){
     qePopulateStatusSelect(qd.status);
     document.getElementById('qe-pdf-link').style.display='inline-flex';
     document.getElementById('qe-duplicate-btn').style.display='inline-flex';
+    document.getElementById('qe-project-link-btn').style.display=qeState.projectId?'inline-flex':'none';
     document.getElementById('qe-share-btn').style.display=qd.status==='converted'?'none':'inline-flex';
     document.getElementById('qe-request-btn').style.display='inline-flex';
     document.getElementById('qe-send-btn').style.display='inline-flex';
@@ -26316,7 +26349,12 @@ function qeRenderCrmLinkChip(){
   var chip=document.getElementById('qe-crm-link-chip');
   var searchWrap=document.getElementById('qe-crm-link-search-wrap');
   if(!qeState.crmEntityType||!qeState.crmEntityId){chip.style.display='none';searchWrap.style.display='';return;}
-  chip.innerHTML='<span class="ic-chip">'+(qeState.crmEntityType==='lead'?'🎯':'🤝')+' '+esc(qeState.crmEntityName||('#'+qeState.crmEntityId))+' <button type="button" class="qz-icon-btn" style="width:18px;height:18px;font-size:11px" title="Fjern kobling" onclick="qeUnlinkCrm()">✕</button></span>';
+  // RUNDE AS (Martin: "fra det tilbud man åbner kan gå til ... Handlen?") — ny
+  // "åbn"-knap (→) foran fjern-knappen (✕), så man kan hoppe direkte til
+  // lead'et/handlen tilbuddet er koblet til. openCrmpDetail er allerede på
+  // window-allowlisten (bruges bl.a. af pd-crm-link-btn), så inline onclick her
+  // følger samme etablerede mønster som ✕-knappen lige ved siden af.
+  chip.innerHTML='<span class="ic-chip">'+(qeState.crmEntityType==='lead'?'🎯':'🤝')+' '+esc(qeState.crmEntityName||('#'+qeState.crmEntityId))+' <button type="button" class="qz-icon-btn" style="width:18px;height:18px;font-size:11px" title="Åbn '+(qeState.crmEntityType==='lead'?'lead':'handel')+'" onclick="openCrmpDetail(\''+qeState.crmEntityType+'\','+qeState.crmEntityId+')">→</button> <button type="button" class="qz-icon-btn" style="width:18px;height:18px;font-size:11px" title="Fjern kobling" onclick="qeUnlinkCrm()">✕</button></span>';
   chip.style.display='';
   searchWrap.style.display='none';
 }
@@ -27657,6 +27695,8 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-save-draft-btn').addEventListener('click',function(){saveQuoteEditor(true);});
   document.getElementById('qe-convert-btn').addEventListener('click',convertQuoteToInvoice);
   document.getElementById('qe-duplicate-btn').addEventListener('click',function(){if(qeState.id)duplicateQzQuote(qeState.id);});
+  // RUNDE AS — se qe-project-link-btn ovenfor.
+  document.getElementById('qe-project-link-btn').addEventListener('click',function(){if(qeState.projectId)openProjectDetail(qeState.projectId);});
   document.getElementById('qe-share-btn').addEventListener('click',qeShareLink);
   document.getElementById('qe-request-btn').addEventListener('click',qrOpenModal);
   document.getElementById('qr-close-btn').addEventListener('click',function(){closeModal('quote-request-modal');});

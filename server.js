@@ -9308,9 +9308,22 @@ app.get('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
   const customer = await pgOne('SELECT * FROM customers WHERE id=$1', [req.params.id]);
   if (!customer) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
   const [quotes, invoices, projects, balanceDue] = await Promise.all([
+    // RUNDE AS (Martin: "Under en kunde kan man pt se hvad tilbud der er koblet
+    // til. Kan du ikke lave så man kan se de projekter der er tilkoblet
+    // handlen") — samme LEFT JOIN-mønster som GET /api/crm/leads|opportunities/
+    // :id/quotes (RUNDE H #309), men her på TVÆRS af alle en kundes tilbud, ikke
+    // kun ét lead/én handel — en kunde kan sagtens have haft flere handler over
+    // tid, så "Handel"-kolonnen viser hver enkelt tilbuds EGEN kobling.
     pool.query(`
-      SELECT id, quote_number, job_name, status, total, created_at, updated_at
-      FROM quotes WHERE customer_id=$1 ORDER BY created_at DESC
+      SELECT q.id, q.quote_number, q.job_name, q.status, q.total, q.created_at, q.updated_at,
+             p.id AS project_id, p.job_number AS project_job_number,
+             q.crm_lead_id, q.crm_opportunity_id,
+             cl.name AS crm_lead_name, co.name AS crm_opportunity_name
+      FROM quotes q
+      LEFT JOIN projects p ON p.quote_id = q.id
+      LEFT JOIN crm_leads cl ON cl.id = q.crm_lead_id
+      LEFT JOIN crm_opportunities co ON co.id = q.crm_opportunity_id
+      WHERE q.customer_id=$1 ORDER BY q.created_at DESC
     `, [req.params.id]),
     pool.query(`
       SELECT i.id, i.invoice_number, i.job_name, i.status, i.total, i.due_date, i.created_at,
@@ -9325,9 +9338,19 @@ app.get('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
         OR (i.customer_phone IS NOT NULL AND i.customer_phone <> '' AND i.customer_phone = (SELECT phone FROM customers WHERE id=$1))
       ORDER BY i.created_at DESC
     `, [req.params.id]),
+    // RUNDE AS — samme idé som ovenfor, men set fra SAGEN: hvilken handel/lead gav
+    // anledning til den, udledt via dens tilbud (projects.quote_id ->
+    // quotes.crm_lead_id/crm_opportunity_id), samme udledning som crm_entity på
+    // GET /api/projects/:id (RUNDE H #309) — ingen egen kobling gemt på projects.
     pool.query(`
-      SELECT id, name, status, quote_id, invoice_id, created_at
-      FROM projects WHERE customer_id=$1 ORDER BY created_at DESC
+      SELECT p.id, p.name, p.status, p.quote_id, p.invoice_id, p.created_at,
+             q.crm_lead_id, q.crm_opportunity_id,
+             cl.name AS crm_lead_name, co.name AS crm_opportunity_name
+      FROM projects p
+      LEFT JOIN quotes q ON q.id = p.quote_id
+      LEFT JOIN crm_leads cl ON cl.id = q.crm_lead_id
+      LEFT JOIN crm_opportunities co ON co.id = q.crm_opportunity_id
+      WHERE p.customer_id=$1 ORDER BY p.created_at DESC
     `, [req.params.id]),
     getCustomerBalanceDue(req.params.id)
   ]);
@@ -17218,7 +17241,12 @@ async function loadQuoteFull(id) {
       if (opp) { crmEntityNote = await getCrmEntityCombinedNote('opportunity', quote.crm_opportunity_id); crmEntityName = opp.name; crmEntityType = 'opportunity'; }
     }
   } catch (e) { console.error('Kunne ikke hente CRM-note til tilbud #' + id + ':', e.message); }
-  return { ...quote, lines: lines.rows, attachments: attachments.rows, crm_entity_note: crmEntityNote, crm_entity_name: crmEntityName, crm_entity_type: crmEntityType };
+  // RUNDE AS (Martin: "fra det tilbud man åbner kan gå til Projektet og eller
+  // Handlen?") — modstykket til crm_entity_* ovenfor, men den anden vej: hvilken
+  // SAG (projekt) blev tilbuddet til, hvis det er accepteret. Ingen sag endnu
+  // (tilbuddet er stadig draft/sendt) = project_id null, helt normalt.
+  const project = await pgOne('SELECT id, job_number FROM projects WHERE quote_id=$1', [id]);
+  return { ...quote, lines: lines.rows, attachments: attachments.rows, crm_entity_note: crmEntityNote, crm_entity_name: crmEntityName, crm_entity_type: crmEntityType, project_id: project ? project.id : null, project_job_number: project ? project.job_number : null };
 }
 
 app.get('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
