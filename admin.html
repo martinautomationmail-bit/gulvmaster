@@ -3493,7 +3493,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.17</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.18</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -17999,7 +17999,19 @@ async function bind(){
   // Åbner/lukker sin egen lille menu; de to punkter i den genbruger blot de
   // eksisterende 🔔/📝-handlinger 1:1 i stedet for at duplikere dem.
   document.getElementById('mobilenavdrop-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('mobilenavdrop-menu').classList.toggle('open');});
-  document.addEventListener('click',function(e){if(!e.target.closest('#mobilenavdrop'))document.getElementById('mobilenavdrop-menu').classList.remove('open');});
+  // RUNDE AV — "klik udenfor"-lytteren herunder lå tidligere på bubble-fasen
+  // (sidste argument udeladt = false). Det virkede fint SÅ LÆNGE ingen andre
+  // elementer stoppede klikket undervejs op til document — men fx tab-navdrop-
+  // grupperne (linje ~18335) og #notifdrop-btn/#sidebar-newshortcut-btn kalder
+  // alle e.stopPropagation() i deres EGEN klik-handler for kun at styre deres
+  // egen menu. Et klik på ÉT af dem nåede derfor aldrig op til document, og alle
+  // ANDRE åbne dropdowns (fx "+ Ny") blev aldrig lukket af det klik — de blev
+  // hængende åbne, indtil man klikkede et sted der IKKE havde sin egen
+  // stopPropagation. Fix: lyt i CAPTURE-fasen (sidste argument true) i stedet.
+  // Capture-fasen kører TOP-NED, altså på document FØR klikket når selve
+  // knappen (og dermed før dens egen stopPropagation kan nå at stoppe noget) —
+  // så "klik udenfor"-lukningen virker nu uanset hvad man klikker på.
+  document.addEventListener('click',function(e){if(!e.target.closest('#mobilenavdrop'))document.getElementById('mobilenavdrop-menu').classList.remove('open');},true);
   document.getElementById('mobilenavdrop-notif-item').addEventListener('click',function(e){
     e.preventDefault();
     document.getElementById('mobilenavdrop-menu').classList.remove('open');
@@ -18051,7 +18063,17 @@ async function bind(){
   // CSS/markup ovenfor) — "+ Ny"-genvej til nyt tilbud/ny kunde. Genbruger de
   // eksisterende opret-funktioner (openQuoteEditor/openCrmModal) uændret.
   document.getElementById('sidebar-newshortcut-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('sidebar-newshortcut-menu').classList.toggle('open');});
-  document.addEventListener('click',function(e){if(!e.target.closest('#sidebar-newshortcut-drop'))document.getElementById('sidebar-newshortcut-menu').classList.remove('open');});
+  // RUNDE AV (Martins fejlrapport: "+NY knappen er udfoldet hele tiden det
+  // duer ikke") — se den udførlige forklaring ved #mobilenavdrop herover.
+  // Kort fortalt: klik på fx en sidebar-gruppes lille pil (▾) kaldte sin egen
+  // e.stopPropagation(), så klikket aldrig nåede op til document — og denne
+  // "klik udenfor luk +Ny"-lytter fik derfor ALDRIG chancen for at lukke +Ny
+  // igen. Så snart man klikkede ét sted i sidebaren efter at have åbnet +Ny
+  // (fx for at folde en anden gruppe ud), blev +Ny hængende åbent, og fordi
+  // RUNDE AT lige havde hævet dens z-index til 200 (så den nu ligger ØVERST
+  // i stedet for at gemme sig bagved), var det nu tydeligt synligt i stedet
+  // for skjult — deraf "udfoldet hele tiden". Fix: capture-fase (true).
+  document.addEventListener('click',function(e){if(!e.target.closest('#sidebar-newshortcut-drop'))document.getElementById('sidebar-newshortcut-menu').classList.remove('open');},true);
   document.getElementById('sidebar-newshortcut-quote').addEventListener('click',function(e){
     e.preventDefault();document.getElementById('sidebar-newshortcut-menu').classList.remove('open');
     // Samme rettelse som page-guardene ovenfor: brug meHasPanelPage (den
@@ -18315,7 +18337,10 @@ async function bind(){
     });
   }
   window.renderSearchResultsPage=renderSearchResultsPage;
-  document.addEventListener('click',function(e){if(!e.target.closest('#notifdrop')&&!e.target.closest('#mobilenavdrop'))document.getElementById('notifdrop-menu').classList.remove('open');});
+  // RUNDE AV — samme capture-fase-fix som #sidebar-newshortcut-drop/
+  // #mobilenavdrop ovenfor, og af samme grund (andre knappers egen
+  // e.stopPropagation() forhindrede ellers denne lytter i nogensinde at køre).
+  document.addEventListener('click',function(e){if(!e.target.closest('#notifdrop')&&!e.target.closest('#mobilenavdrop'))document.getElementById('notifdrop-menu').classList.remove('open');},true);
   // RUNDE Z (Martins ønske: "når du hover menu i siden kan du ikke lave om så
   // man skal klikke på overskriften for den går ned") — undermenuerne (Tidslinje
   // under Daglig plan, Ledighedsoversigt under Kapacitet, Økonomi-underfaner osv.)
