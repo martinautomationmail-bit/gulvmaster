@@ -142,7 +142,26 @@ button,input,select{font:inherit}
    tegnede browseren dem OVEN PÅ denne absolut-positionerede dropdown, selvom
    z-index kun var 50 — sat væsentligt højere (200, samme skala som appens
    andre "skal altid ligge øverst"-lag, fx .mo/.tl-drawer/.quick-pop) løser
-   det pålideligt (bekræftet med Playwright — se test_at.js). -->
+   det pålideligt (bekræftet med Playwright — se test_at.js). */
+/* RUNDE AV (Martins fejlrapport: "Ny kunde og Nyt tilbud skal komme når man
+   trykker på knappen og ikke før") — kommentaren herover blev i RUNDE AT ved
+   en fejl lukket med HTML-syntaksen (pil-parentes) i stedet for den rigtige
+   CSS-kommentar-lukning (stjerne efterfulgt af skråstreg). CSS-kommentarer
+   genkender ikke HTML's lukning som en afslutning, så browseren blev ved med
+   at "spise" alt som kommentar-tekst helt frem til den NÆSTE rigtige CSS-
+   lukning den kunne finde (som lå længere nede, efter den efterfølgende
+   kommentar om text-decoration) — og med det forsvandt BÅDE grundreglen for
+   .sidebar-newbtn-menu (display:none) OG .sidebar-newbtn-menu.open-reglen
+   ind i kommentaren og blev aldrig fortolket som rigtig CSS. Uden
+   display:none-reglen var menuen (som er en helt almindelig <div>) derfor
+   synlig HELE TIDEN som standard — den så bare ud som om "Nyt tilbud"/
+   "Ny kunde" altid stod der, uanset om man havde klikket + Ny eller ej.
+   Bekræftet ved at læse browserens parsede CSSOM direkte (document.styleSheets
+   -> cssRules): grundreglen manglede fuldstændig fra listen af fortolkede
+   regler, mens reglerne lige efter parsede fint. PAS PÅ i fremtidige CSS-
+   kommentarer: skriv ALDRIG stjerne+skråstreg som bogstavelig tekst inde i en
+   kommentar (selv i citationstegn) — det lukker kommentaren med det samme,
+   uanset citationstegn, præcis den fejl der næsten sneg sig ind her igen. */
 .sidebar-newbtn-menu{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);box-shadow:0 8px 24px rgba(0,0,0,.12);padding:6px;z-index:200}
 .sidebar-newbtn-menu.open{display:flex;flex-direction:column;gap:1px}
 /* RUNDE AT — manglede text-decoration:none (i modsætning til søster-klassen
@@ -3493,7 +3512,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.18</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.19</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
