@@ -405,6 +405,100 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- RUNDE AU (Martin: "kan du bygge en ny side/overskrift i menuen... et modul
+    -- for træning og dokumenter — samarbejdspartner liste, leverandør liste,
+    -- trænings dokumenter, osv." + opfølgning: "Fil upload MEN også lister med
+    -- data ligesom Excel bare i en mere moderne form") — nyt "Videnscenter"-
+    -- modul med to dele:
+    --  1) FRIE, SELVBETJENTE "Excel-agtige" lister (kb_lists/kb_columns/kb_rows)
+    --     — Martin opretter selv en liste (fx "Samarbejdspartnere"), tilføjer
+    --     selv de kolonner han vil have (tekst/tal/dato/select/checkbox/url/
+    --     email/telefon/note) og redigerer rækker direkte i UI'en, uden at det
+    --     kræver ny kode hver gang han vil have "en anden struktur" (samme
+    --     grundtanke som RUNDE AQ's frie privatbudget-grupper, men generisk nok
+    --     til hvad som helst — kb_rows.data er en JSONB {kolonne_id: værdi}, så
+    --     skemaet ikke skal ændres for hver ny kolonnetype/liste).
+    --  2) Et rigtigt DOKUMENT-BIBLIOTEK (kb_doc_categories/kb_documents) til
+    --     træningsmateriale — enten en uploadet fil (billede/PDF, samme
+    --     Cloudinary-mekanisme som resten af appen, se uploadPhotoToCloudinary)
+    --     eller et eksternt link (fx en video), kategoriseret frit.
+    -- Adgang: samme mønster som Bibliotek (library) — enhver logget ind bruger
+    -- kan SE (kun 'auth' på GET-ruterne), men kun admin/brugere med 'knowledge'
+    -- i deres panel-rolle kan oprette/rette/slette (panelAccess('knowledge') på
+    -- alle skriverruter).
+    CREATE TABLE IF NOT EXISTS kb_lists (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      icon TEXT DEFAULT '📋',
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS kb_columns (
+      id SERIAL PRIMARY KEY,
+      list_id INTEGER NOT NULL REFERENCES kb_lists(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'text', -- text|number|date|select|checkbox|url|email|phone|note
+      options JSONB DEFAULT '[]', -- kun 'select': [{label,color}]
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS kb_rows (
+      id SERIAL PRIMARY KEY,
+      list_id INTEGER NOT NULL REFERENCES kb_lists(id) ON DELETE CASCADE,
+      data JSONB NOT NULL DEFAULT '{}', -- {kolonne_id: værdi}
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    -- Startlister — idempotent på NAVN (samme mønster som private_budget_
+    -- categories' faste standard-bokse ovenfor): oprettes kun hvis en liste med
+    -- samme navn ikke allerede findes, rører aldrig ved noget Martin selv har
+    -- lavet/rettet/slettet.
+    INSERT INTO kb_lists (name, icon, sort_order)
+      SELECT 'Samarbejdspartnere', '🤝', 1 WHERE NOT EXISTS (SELECT 1 FROM kb_lists WHERE name='Samarbejdspartnere');
+    INSERT INTO kb_lists (name, icon, sort_order)
+      SELECT 'Leverandører', '🚚', 2 WHERE NOT EXISTS (SELECT 1 FROM kb_lists WHERE name='Leverandører');
+    INSERT INTO kb_columns (list_id, name, type, sort_order)
+      SELECT l.id, c.name, c.type, c.sort_order
+      FROM kb_lists l, (VALUES
+        ('Navn','text',1),('Kontaktperson','text',2),('Telefon','phone',3),
+        ('Email','email',4),('Samarbejde om','note',5),('Note','note',6)
+      ) AS c(name,type,sort_order)
+      WHERE l.name='Samarbejdspartnere' AND NOT EXISTS (SELECT 1 FROM kb_columns WHERE list_id=l.id);
+    INSERT INTO kb_columns (list_id, name, type, sort_order)
+      SELECT l.id, c.name, c.type, c.sort_order
+      FROM kb_lists l, (VALUES
+        ('Navn','text',1),('Primære produkter','note',2),('Kontaktperson','text',3),
+        ('Telefon','phone',4),('Email','email',5),('Kundenummer','text',6),('Note','note',7)
+      ) AS c(name,type,sort_order)
+      WHERE l.name='Leverandører' AND NOT EXISTS (SELECT 1 FROM kb_columns WHERE list_id=l.id);
+    CREATE TABLE IF NOT EXISTS kb_doc_categories (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS kb_documents (
+      id SERIAL PRIMARY KEY,
+      category_id INTEGER REFERENCES kb_doc_categories(id) ON DELETE SET NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      url TEXT NOT NULL, -- Cloudinary-url (uploadet fil) eller eksternt link
+      file_type TEXT NOT NULL DEFAULT 'link', -- 'pdf'|'image'|'link'
+      file_name TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    INSERT INTO kb_doc_categories (name, sort_order)
+      SELECT 'Onboarding', 1 WHERE NOT EXISTS (SELECT 1 FROM kb_doc_categories WHERE name='Onboarding');
+    INSERT INTO kb_doc_categories (name, sort_order)
+      SELECT 'Sikkerhed', 2 WHERE NOT EXISTS (SELECT 1 FROM kb_doc_categories WHERE name='Sikkerhed');
+    INSERT INTO kb_doc_categories (name, sort_order)
+      SELECT 'Produkt & teknik', 3 WHERE NOT EXISTS (SELECT 1 FROM kb_doc_categories WHERE name='Produkt & teknik');
+    INSERT INTO kb_doc_categories (name, sort_order)
+      SELECT 'Interne procedurer', 4 WHERE NOT EXISTS (SELECT 1 FROM kb_doc_categories WHERE name='Interne procedurer');
+
     CREATE TABLE IF NOT EXISTS finance_bank_snapshots (
       id SERIAL PRIMARY KEY,
       snap_date TEXT UNIQUE NOT NULL,
@@ -4607,6 +4701,10 @@ const PANEL_PAGES = [
   { key: 'email-templates', label: 'Mail-skabeloner', group: 'Administration' },
   { key: 'people', label: 'Hold & vendors', group: 'Administration' },
   { key: 'library', label: 'Bibliotek', group: 'Administration' },
+  // RUNDE AU — Videnscenter (Lister + Dokumenter). Samme mønster som 'library':
+  // enhver logget ind bruger kan SE (kun 'auth' på GET-ruterne), denne
+  // side-nøgle styrer kun hvem der må oprette/rette/slette.
+  { key: 'knowledge', label: 'Videnscenter (lister + dokumenter)', group: 'Videnscenter' },
   { key: 'logs', label: 'Log', group: 'Administration' },
   { key: 'notif-settings', label: 'Indstillinger', group: 'Administration' },
   // Gmail har ikke længere sin egen side i admin-panelet — indholdet er en fane
@@ -8068,6 +8166,212 @@ app.post('/api/library', auth, panelAccess('library'), asyncRoute(async (req, re
 
 app.delete('/api/library/:id', auth, panelAccess('library'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM library_files WHERE id=$1', [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+// ══════════════════════════════════════════════════════════════════════════
+// RUNDE AU — VIDENSCENTER (Martin: "kan du bygge en ny side/overskrift i
+// menuen... et modul for træning og dokumenter — samarbejdspartner liste,
+// leverandør liste, trænings dokumenter, osv." + "Fil upload MEN også lister
+// med data ligesom Excel bare i en mere moderne form"). Se skema-kommentaren
+// ved kb_lists (initSchema) for den fulde baggrund/tankegang. To dele:
+//   1) Lister (kb_lists/kb_columns/kb_rows) — Martin bygger selv sine egne
+//      "Excel-agtige" lister med frit valgte kolonner.
+//   2) Dokumenter (kb_doc_categories/kb_documents) — et kategoriseret
+//      fil-/link-bibliotek til træningsmateriale.
+// Adgang: alle GET-ruter er kun 'auth' (enhver logget ind medarbejder må SE),
+// alle skriverruter kræver panelAccess('knowledge') (admin altid, andre kun
+// hvis 'knowledge' er sat i deres panel-rolle) — nøjagtig samme adgangsmønster
+// som Bibliotek (library) ovenfor.
+// ══════════════════════════════════════════════════════════════════════════
+
+const KB_COLUMN_TYPES = ['text', 'number', 'date', 'select', 'checkbox', 'url', 'email', 'phone', 'note'];
+
+// ── LISTER ──────────────────────────────────────────────────
+app.get('/api/kb/lists', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM kb_lists ORDER BY sort_order ASC, id ASC');
+  res.json(rows.rows);
+}));
+app.post('/api/kb/lists', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Navn mangler' });
+  const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0) AS m FROM kb_lists');
+  const r = await pool.query(
+    'INSERT INTO kb_lists (name, icon, sort_order) VALUES ($1,$2,$3) RETURNING id',
+    [name.slice(0, 200), String(b.icon || '📋').slice(0, 8), (maxOrder.m || 0) + 1]
+  );
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+// VIGTIGT: denne generiske reorder-route SKAL stå FØR /api/kb/lists/:id
+// nedenfor — ellers ville Express matche et kald til '/lists/reorder' som
+// PUT /lists/:id med id='reorder' (samme faldgrube som privatbudget-grupperne,
+// se RUNDE AQ).
+app.put('/api/kb/lists/reorder', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids : [];
+  for (let i = 0; i < ids.length; i++) {
+    await pool.query('UPDATE kb_lists SET sort_order=$1 WHERE id=$2', [i, Number(ids[i])]);
+  }
+  res.json({ ok: true });
+}));
+app.put('/api/kb/lists/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const fields = [], params = [];
+  if (b.name !== undefined) { fields.push('name=$' + (params.length + 1)); params.push(String(b.name).trim().slice(0, 200)); }
+  if (b.icon !== undefined) { fields.push('icon=$' + (params.length + 1)); params.push(String(b.icon).slice(0, 8)); }
+  if (!fields.length) return res.status(400).json({ error: 'Intet at opdatere' });
+  params.push(Number(req.params.id));
+  await pool.query(`UPDATE kb_lists SET ${fields.join(',')} WHERE id=$${params.length}`, params);
+  res.json({ ok: true });
+}));
+app.delete('/api/kb/lists/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  // ON DELETE CASCADE på kb_columns/kb_rows — sletter en liste, slettes dens
+  // kolonner og rækker automatisk med (i modsætning til privatbudget-grupper,
+  // giver det ingen mening at "løsrive" rækker fra en slettet liste).
+  await pool.query('DELETE FROM kb_lists WHERE id=$1', [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+app.get('/api/kb/lists/:id/columns', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM kb_columns WHERE list_id=$1 ORDER BY sort_order ASC, id ASC', [req.params.id]);
+  res.json(rows.rows);
+}));
+app.post('/api/kb/lists/:id/columns', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Navn mangler' });
+  const type = KB_COLUMN_TYPES.includes(b.type) ? b.type : 'text';
+  const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0) AS m FROM kb_columns WHERE list_id=$1', [req.params.id]);
+  const r = await pool.query(
+    'INSERT INTO kb_columns (list_id, name, type, options, sort_order) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+    [req.params.id, name.slice(0, 120), type, JSON.stringify(type === 'select' ? (b.options || []) : []), (maxOrder.m || 0) + 1]
+  );
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+// Samme rækkefølge-faldgrube som ovenfor — reorder SKAL stå før /api/kb/columns/:id.
+app.put('/api/kb/lists/:id/columns/reorder', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids : [];
+  for (let i = 0; i < ids.length; i++) {
+    await pool.query('UPDATE kb_columns SET sort_order=$1 WHERE id=$2 AND list_id=$3', [i, Number(ids[i]), req.params.id]);
+  }
+  res.json({ ok: true });
+}));
+app.put('/api/kb/columns/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const fields = [], params = [];
+  if (b.name !== undefined) { fields.push('name=$' + (params.length + 1)); params.push(String(b.name).trim().slice(0, 120)); }
+  if (b.type !== undefined && KB_COLUMN_TYPES.includes(b.type)) { fields.push('type=$' + (params.length + 1)); params.push(b.type); }
+  if (b.options !== undefined) { fields.push('options=$' + (params.length + 1)); params.push(JSON.stringify(b.options || [])); }
+  if (!fields.length) return res.status(400).json({ error: 'Intet at opdatere' });
+  params.push(Number(req.params.id));
+  await pool.query(`UPDATE kb_columns SET ${fields.join(',')} WHERE id=$${params.length}`, params);
+  res.json({ ok: true });
+}));
+app.delete('/api/kb/columns/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  // Sletter man en kolonne, forsvinder dens værdi bare fra hver rækkes data-
+  // JSONB (ubrugte nøgler i JSONB koster intet og læses aldrig igen) — ingen
+  // grund til at rydde op i eksisterende rækker, det ville kun være ekstra
+  // arbejde for et resultat ingen nogensinde ser.
+  await pool.query('DELETE FROM kb_columns WHERE id=$1', [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+app.get('/api/kb/lists/:id/rows', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM kb_rows WHERE list_id=$1 ORDER BY sort_order ASC, id ASC', [req.params.id]);
+  res.json(rows.rows);
+}));
+app.post('/api/kb/lists/:id/rows', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0) AS m FROM kb_rows WHERE list_id=$1', [req.params.id]);
+  const r = await pool.query(
+    'INSERT INTO kb_rows (list_id, data, sort_order) VALUES ($1,$2,$3) RETURNING id',
+    [req.params.id, JSON.stringify((req.body && req.body.data) || {}), (maxOrder.m || 0) + 1]
+  );
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/kb/lists/:id/rows/reorder', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids : [];
+  for (let i = 0; i < ids.length; i++) {
+    await pool.query('UPDATE kb_rows SET sort_order=$1 WHERE id=$2 AND list_id=$3', [i, Number(ids[i]), req.params.id]);
+  }
+  res.json({ ok: true });
+}));
+app.put('/api/kb/rows/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  // Fuld erstatning af data-JSONB'en (frontenden sender altid hele det
+  // opdaterede objekt, samme mønster som quote_lines) — simplere og mere
+  // robust end at merge felt-for-felt server-side.
+  await pool.query(`UPDATE kb_rows SET data=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [JSON.stringify((req.body && req.body.data) || {}), Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+app.delete('/api/kb/rows/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM kb_rows WHERE id=$1', [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+// ── DOKUMENTER (træningsmateriale) ─────────────────────────────
+app.get('/api/kb/doc-categories', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM kb_doc_categories ORDER BY sort_order ASC, id ASC');
+  res.json(rows.rows);
+}));
+app.post('/api/kb/doc-categories', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const name = String((req.body && req.body.name) || '').trim();
+  if (!name) return res.status(400).json({ error: 'Navn mangler' });
+  const maxOrder = await pgOne('SELECT COALESCE(MAX(sort_order),0) AS m FROM kb_doc_categories');
+  const r = await pool.query('INSERT INTO kb_doc_categories (name, sort_order) VALUES ($1,$2) RETURNING id', [name.slice(0, 120), (maxOrder.m || 0) + 1]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/kb/doc-categories/reorder', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids : [];
+  for (let i = 0; i < ids.length; i++) {
+    await pool.query('UPDATE kb_doc_categories SET sort_order=$1 WHERE id=$2', [i, Number(ids[i])]);
+  }
+  res.json({ ok: true });
+}));
+app.put('/api/kb/doc-categories/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const name = String((req.body && req.body.name) || '').trim();
+  if (!name) return res.status(400).json({ error: 'Navn mangler' });
+  await pool.query('UPDATE kb_doc_categories SET name=$1 WHERE id=$2', [name.slice(0, 120), Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+app.delete('/api/kb/doc-categories/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  // ON DELETE SET NULL — dokumenter i en slettet kategori bliver "ukategoriseret"
+  // i stedet for at blive slettet med (samme skånsomme mønster som privatbudget-
+  // gruppers ON DELETE SET NULL, se RUNDE AQ).
+  await pool.query('DELETE FROM kb_doc_categories WHERE id=$1', [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+app.get('/api/kb/documents', auth, asyncRoute(async (req, res) => {
+  const catId = req.query.category_id ? Number(req.query.category_id) : null;
+  const rows = catId
+    ? await pool.query('SELECT * FROM kb_documents WHERE category_id=$1 ORDER BY sort_order ASC, id DESC', [catId])
+    : await pool.query('SELECT * FROM kb_documents ORDER BY sort_order ASC, id DESC');
+  res.json(rows.rows);
+}));
+app.post('/api/kb/documents', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const title = String(b.title || '').trim();
+  const url = String(b.url || '').trim();
+  if (!title || !url) return res.status(400).json({ error: 'Titel og fil/link skal udfyldes' });
+  const fileType = ['pdf', 'image', 'link'].includes(b.file_type) ? b.file_type : 'link';
+  const r = await pool.query(
+    'INSERT INTO kb_documents (category_id, title, description, url, file_type, file_name, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+    [b.category_id ? Number(b.category_id) : null, title.slice(0, 200), b.description ? String(b.description).slice(0, 2000) : null, url, fileType, b.file_name ? String(b.file_name).slice(0, 200) : null, req.user.id]
+  );
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.put('/api/kb/documents/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const fields = [], params = [];
+  if (b.title !== undefined) { fields.push('title=$' + (params.length + 1)); params.push(String(b.title).trim().slice(0, 200)); }
+  if (b.description !== undefined) { fields.push('description=$' + (params.length + 1)); params.push(b.description ? String(b.description).slice(0, 2000) : null); }
+  if (b.category_id !== undefined) { fields.push('category_id=$' + (params.length + 1)); params.push(b.category_id ? Number(b.category_id) : null); }
+  if (!fields.length) return res.status(400).json({ error: 'Intet at opdatere' });
+  params.push(Number(req.params.id));
+  await pool.query(`UPDATE kb_documents SET ${fields.join(',')} WHERE id=$${params.length}`, params);
+  res.json({ ok: true });
+}));
+app.delete('/api/kb/documents/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM kb_documents WHERE id=$1', [Number(req.params.id)]);
   res.json({ ok: true });
 }));
 

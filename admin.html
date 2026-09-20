@@ -135,9 +135,20 @@ button,input,select{font:inherit}
 .sidebar-newbtn:hover{background:var(--bly-accent-dark,#3730A3)}
 .sidebar-newbtn:active{transform:scale(.98)}
 .sidebar-newbtn .sidebar-newbtn-plus{font-size:16px;line-height:1;font-weight:800}
-.sidebar-newbtn-menu{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);box-shadow:0 8px 24px rgba(0,0,0,.12);padding:6px;z-index:50}
+/* RUNDE AT (Martin: "Når jeg trykker + Ny og har en menu fase åben så går
+   den under den") — sidebarens grupper (CRM/Tilbud & Faktura/osv., .navdrop-
+   menu) sidder som flex-items i samme .sidebar-nav-flex-container som denne
+   dropdown; når en af dem er slået op (.open, fylder normal plads i flowet),
+   tegnede browseren dem OVEN PÅ denne absolut-positionerede dropdown, selvom
+   z-index kun var 50 — sat væsentligt højere (200, samme skala som appens
+   andre "skal altid ligge øverst"-lag, fx .mo/.tl-drawer/.quick-pop) løser
+   det pålideligt (bekræftet med Playwright — se test_at.js). -->
+.sidebar-newbtn-menu{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);box-shadow:0 8px 24px rgba(0,0,0,.12);padding:6px;z-index:200}
 .sidebar-newbtn-menu.open{display:flex;flex-direction:column;gap:1px}
-.sidebar-newbtn-menu a{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;color:var(--bly-ink);font-size:12.5px;font-weight:600}
+/* RUNDE AT — manglede text-decoration:none (i modsætning til søster-klassen
+   .navdrop-item, se linje ~58), så "Nyt tilbud"/"Ny kunde" fik browserens
+   standard-understregning af <a>-links. */
+.sidebar-newbtn-menu a{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;color:var(--bly-ink);font-size:12.5px;font-weight:600;text-decoration:none}
 .sidebar-newbtn-menu a:hover{background:var(--bly-hover)}
 body.sidebar-collapsed .sidebar-newbtn-label{display:none}
 body.sidebar-collapsed .sidebar-newbtn{padding:11px;border-radius:50%;width:40px;height:40px}
@@ -3028,6 +3039,54 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .lib-add{background:#fff;border:1px dashed var(--border);border-radius:10px;padding:11px;display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin:0 0 12px}
 .lib-add .input,.lib-add .select{width:auto;min-width:160px}
 
+/* VIDENSCENTER — LISTER (RUNDE AU) — "Excel-agtig", men moderne: sticky
+   kolonneoverskrifter, klik-for-at-redigere celler, ingen rammer i vejen. */
+.kb-shell{display:flex;gap:20px;align-items:flex-start}
+.kb-rail{width:220px;flex-shrink:0}
+.kb-list-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:2px}
+.kb-list-item:hover{background:var(--bg2,#F3F4F6)}
+.kb-list-item.active{background:#EEF2FF;color:#4338CA}
+.kb-list-item .kb-list-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kb-list-item .kb-list-menu-btn{opacity:0;width:20px;height:20px;flex-shrink:0;transition:opacity .1s}
+.kb-list-item:hover .kb-list-menu-btn{opacity:.6}
+.kb-list-item .kb-list-menu-btn:hover{opacity:1}
+.kb-main{flex:1;min-width:0}
+.kb-main-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:16px;font-weight:800;color:var(--ink)}
+.kb-table-wrap{overflow-x:auto;border:1px solid var(--border2);border-radius:12px;background:#fff;box-shadow:var(--shadow)}
+.kb-table{border-collapse:collapse;width:100%;font-size:13px;min-width:100%}
+.kb-table th{background:#F9FAFB;text-align:left;padding:0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);border-bottom:1px solid var(--border2);white-space:nowrap}
+.kb-col-th{display:flex;align-items:center;gap:5px;padding:9px 10px;cursor:pointer}
+.kb-col-th:hover{background:#F1F2F4}
+.kb-col-th-type-icon{opacity:.55;font-size:11px}
+.kb-col-add-th{width:44px;text-align:center!important}
+.kb-col-add-btn{width:26px;height:26px;border-radius:7px;border:1px dashed var(--border);background:#fff;color:var(--muted);cursor:pointer;font-size:14px;line-height:1}
+.kb-col-add-btn:hover{background:#F3F4F6;color:var(--ink)}
+.kb-table td{padding:0;border-bottom:1px solid var(--border2);vertical-align:top}
+.kb-table tr:last-child td{border-bottom:0}
+.kb-cell{padding:9px 12px;min-height:20px;display:flex;align-items:center;cursor:text;font-size:13px;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.kb-cell:hover{background:#FAFAFB}
+.kb-cell.empty{color:var(--muted)}
+.kb-cell input,.kb-cell textarea,.kb-cell select{border:1.5px solid #4338CA;border-radius:6px;padding:6px 8px;font-size:13px;width:100%;font-family:inherit;outline:none}
+.kb-cell textarea{resize:vertical;min-height:60px}
+.kb-cell a{color:#1D4ED8;text-decoration:none}
+.kb-cell a:hover{text-decoration:underline}
+.kb-chip{display:inline-flex;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:700;background:#EEF2FF;color:#4338CA}
+.kb-row-actions-cell{width:34px;text-align:center!important}
+.kb-row-del-btn{opacity:0;transition:opacity .1s;width:24px;height:24px;border-radius:6px;border:0;background:transparent;color:#B91C1C;cursor:pointer;font-size:13px}
+.kb-table tr:hover .kb-row-del-btn{opacity:.7}
+.kb-row-del-btn:hover{opacity:1!important;background:#FEF2F2}
+.kb-empty-state{padding:40px 20px;text-align:center;color:var(--muted);font-size:13px}
+
+/* VIDENSCENTER — DOKUMENTER */
+.kb-doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:14px}
+.kb-doc-card{background:#fff;border:1px solid var(--border2);border-radius:12px;padding:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px}
+.kb-doc-icon{font-size:22px;line-height:1}
+.kb-doc-title{font-weight:700;font-size:13.5px;color:var(--ink)}
+.kb-doc-desc{font-size:12px;color:var(--muted);line-height:1.4;margin:0}
+.kb-doc-meta{font-size:10.5px;color:var(--muted);margin-top:auto;padding-top:6px;display:flex;justify-content:space-between;align-items:center}
+.kb-doc-actions{display:flex;gap:6px;margin-top:2px}
+.kb-doc-actions .btn{flex:1}
+
 /* LOGS */
 .log-wrap{background:#fff;border:1px solid var(--border2);border-radius:var(--radius);overflow:auto;box-shadow:var(--shadow)}
 .logs{width:100%;border-collapse:collapse;min-width:600px}
@@ -3378,6 +3437,25 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#finance/noter" data-page="finance" data-fintab-jump="noter">⚠️ Noter &amp; datakvalitet</a>
       </div>
     </div>
+
+    <!-- VIDENSCENTER (RUNDE AU, Martin: "kan du bygge en ny side/overskrift i
+         menuen... et modul for træning og dokumenter — samarbejdspartner
+         liste, leverandør liste, trænings dokumenter, osv." + "Fil upload MEN
+         også lister med data ligesom Excel bare i en mere moderne form") —
+         samme ▾-dropdown-mønster som CRM/Tilbud & Faktura/Økonomi ovenfor. To
+         undersider: en fri, selvbetjent "Excel-agtig" liste-opbygger (Lister,
+         se kb_lists/kb_columns/kb_rows) og et kategoriseret fil-/link-
+         bibliotek til træningsmateriale (Dokumenter, se kb_documents). -->
+    <div class="navdrop tab-navdrop hidden" id="knowledge-subdrop">
+      <div class="stab-row">
+        <a class="tab" href="#kb-lists" data-page="kb-lists" id="knowledge-main-tab-btn"><span class="stab-icon">📚</span><span class="stab-label">Videnscenter</span></a>
+        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
+      </div>
+      <div class="navdrop-menu">
+        <a class="navdrop-item" href="#kb-lists" data-page="kb-lists">📊 Lister</a>
+        <a class="navdrop-item" href="#kb-docs" data-page="kb-docs">🎓 Dokumenter</a>
+      </div>
+    </div>
   </nav>
   <!-- MIN SIDE + LOG UD — flyttet herned fra topbjælken efter Martins ønske
        (Runde H #4: "Flyt min side ned i bunden af headeren... Lav Logud Icon
@@ -3415,7 +3493,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.15</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.17</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -6711,6 +6789,106 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="lib-grid" id="lib-grid"></div>
 </section>
 
+<!-- VIDENSCENTER — LISTER (RUNDE AU, Martin: "Fil upload MEN også lister med
+     data ligesom Excel bare i en mere moderne form så kan man virkelig lave
+     noget fedt") — venstre skinne med Martins egne lister (start: "Samarbejds-
+     partnere"/"Leverandører", han kan tilføje/omdøbe/slette frit), til højre
+     den valgte listes tabel. Kolonner og rækker er 100% frie — se kb_columns/
+     kb_rows i server.js. -->
+<section class="page" id="page-kb-lists">
+  <div class="page-head">
+    <div>
+      <div class="page-title">📚 Videnscenter — Lister</div>
+      <div class="page-sub">Byg dine egne lister — samarbejdspartnere, leverandører, eller hvad du har brug for. Klik i en celle for at redigere, tilføj selv de kolonner du vil have.</div>
+    </div>
+  </div>
+  <div class="kb-shell">
+    <div class="kb-rail">
+      <div id="kb-lists-rail"></div>
+      <button class="btn outline small" id="kb-add-list-btn" style="width:100%;margin-top:8px">+ Ny liste</button>
+    </div>
+    <div class="kb-main">
+      <div class="kb-main-head" id="kb-list-head"></div>
+      <div class="kb-table-wrap"><table class="kb-table" id="kb-table"></table></div>
+      <button class="btn outline small" id="kb-add-row-btn" style="margin-top:12px">+ Tilføj række</button>
+    </div>
+  </div>
+</section>
+
+<!-- Ny/redigér kolonne — navn + type (+ select-valgmuligheder når type=select).
+     Egen lille modal, fordi gmPrompt() kun har ét tekstfelt. -->
+<div class="mo" id="kb-column-modal">
+  <div class="modal" style="max-width:380px">
+    <h3 id="kb-column-modal-title">Ny kolonne</h3>
+    <div class="form-group"><label class="form-label">Navn</label><input id="kb-column-name" class="input" maxlength="120"></div>
+    <div class="form-group"><label class="form-label">Type</label>
+      <select id="kb-column-type" class="select">
+        <option value="text">Tekst</option>
+        <option value="note">Note (flere linjer)</option>
+        <option value="number">Tal</option>
+        <option value="date">Dato</option>
+        <option value="select">Vælg fra liste</option>
+        <option value="checkbox">Afkrydsning</option>
+        <option value="url">Link (URL)</option>
+        <option value="email">Email</option>
+        <option value="phone">Telefon</option>
+      </select>
+    </div>
+    <div class="form-group" id="kb-column-options-wrap" style="display:none">
+      <label class="form-label">Valgmuligheder (én pr. linje)</label>
+      <textarea id="kb-column-options" class="input" rows="4" placeholder="Fx:&#10;Ja&#10;Nej&#10;Måske"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="kb-column-cancel">Annuller</button>
+      <button class="btn danger" id="kb-column-delete" style="display:none;margin-right:auto">Slet kolonne</button>
+      <button class="btn primary" id="kb-column-save">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIDENSCENTER — DOKUMENTER (træningsmateriale). Kategori-chips foroven
+     (samme "chip"-filter-mønster som mail-log-filters), dokument-kort i et
+     grid. En "fil" er enten en rigtig uploadet fil (billede/PDF via samme
+     Cloudinary-mekanisme som resten af appen) eller et eksternt link. -->
+<section class="page" id="page-kb-docs">
+  <div class="page-head">
+    <div>
+      <div class="page-title">🎓 Videnscenter — Dokumenter</div>
+      <div class="page-sub">Træningsmateriale, vejledninger og links — kategoriseret så det er nemt at finde igen.</div>
+    </div>
+    <button class="btn primary" id="kb-doc-add-btn">+ Tilføj dokument</button>
+  </div>
+  <div class="filter-row" id="kb-doc-cat-filters"></div>
+  <div class="kb-doc-grid" id="kb-doc-grid"></div>
+</section>
+
+<div class="mo" id="kb-doc-modal">
+  <div class="modal" style="max-width:460px">
+    <h3 id="kb-doc-modal-title">Nyt dokument</h3>
+    <div class="form-group"><label class="form-label">Titel</label><input id="kb-doc-title" class="input" maxlength="200"></div>
+    <div class="form-group"><label class="form-label">Beskrivelse (valgfri)</label><textarea id="kb-doc-desc" class="input" rows="2"></textarea></div>
+    <div class="form-group"><label class="form-label">Kategori</label><select id="kb-doc-category" class="select"></select></div>
+    <div class="form-group">
+      <div class="filter-row">
+        <button type="button" class="chip active" id="kb-doc-mode-file" data-action="kb-doc-mode" data-value="file">📎 Upload fil</button>
+        <button type="button" class="chip" id="kb-doc-mode-link" data-action="kb-doc-mode" data-value="link">🔗 Indsæt link</button>
+      </div>
+    </div>
+    <div class="form-group" id="kb-doc-file-wrap">
+      <input type="file" id="kb-doc-file-input" accept="image/*,.pdf" class="input">
+      <div class="sub" style="margin-top:4px;font-size:11px">Billeder eller PDF — andre filtyper: brug et link i stedet (fx til Google Drive).</div>
+      <div id="kb-doc-file-status" class="sub" style="margin-top:4px;font-size:12px"></div>
+    </div>
+    <div class="form-group" id="kb-doc-link-wrap" style="display:none">
+      <input id="kb-doc-link-input" class="input" placeholder="https://...">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="kb-doc-cancel">Annuller</button>
+      <button class="btn primary" id="kb-doc-save">Gem</button>
+    </div>
+  </div>
+</div>
+
 <!-- TIMER & LOG -->
 <!-- RUNDE I #318: den tidligere "⏱ Timer"-side (alle medarbejderes tidsregistrering,
      samlet fra den nu døde time_logs-tabel) er fjernet. Rigtig tidsregistrering
@@ -8073,7 +8251,7 @@ if(!meCachedShowsNoAccess){document.getElementById('app').style.display='block';
 // er en selvstændig SIDE: nøglen findes uændret i server.js' PANEL_PAGES og er
 // dét, panelAccess('gmail-settings') håndhæver på alle /api/gmail/*-ruter. Den
 // styrer nu Gmail-FANEN inde på Indstillinger (se applySetTabsVisibility).
-var PANEL_PAGE_KEYS_CLIENT=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','templates','email-templates','people','library','logs','notif-settings','gmail-settings','tasklist','requests','completed'];
+var PANEL_PAGE_KEYS_CLIENT=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','templates','email-templates','people','library','logs','notif-settings','gmail-settings','tasklist','requests','completed','knowledge'];
 function meHasPanelPage(key){return me.role==='admin'||(me.panel_pages||[]).indexOf(key)>-1;}
 // Indstillinger-siden rummer nu BÅDE notifikations-/synk-/profil-afsnittene og
 // Gmail-integrationen, som før havde sin egen side. En bruger der KUN havde
@@ -8092,7 +8270,7 @@ function meHasSettingsPage(){return meHasPanelPage('notif-settings')||meHasPanel
 // sin egen fane (se applyTlTabsVisibility/applyTplTabsVisibility).
 function meHasTasklistPage(){return meHasPanelPage('tasklist')||meHasPanelPage('completed');}
 function meHasTemplatesPage(){return meHasPanelPage('templates')||meHasPanelPage('email-templates');}
-function panelItemKey(el){var k=el.dataset.page;if(k==='crmp')k=el.dataset.crmpPipelineType==='lead'?'crmp_leads':'crmp_sales';if(k==='crmp-tasks')k='crmp_tasks';return k;}
+function panelItemKey(el){var k=el.dataset.page;if(k==='crmp')k=el.dataset.crmpPipelineType==='lead'?'crmp_leads':'crmp_sales';if(k==='crmp-tasks')k='crmp_tasks';if(k==='kb-lists'||k==='kb-docs')k='knowledge';return k;}
 // Skjuler/viser hver enkelt sidebar-genvej efter den indloggede brugers samlede
 // panel_pages (rolle + evt. is_finance_admin-bundt + personlige undtagelser,
 // beregnet server-side i /api/auth/me). role==='admin' ser som altid alt.
@@ -16090,6 +16268,415 @@ async function deleteLibraryFile(id){
   if(r&&r.ok){toast('Slettet','🗑');await loadLibrary();}
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// RUNDE AU — VIDENSCENTER (se server.js for baggrund/skema-kommentar).
+//   • LISTER: kbLists/kbColumns/kbRows — en fri "Excel-agtig" liste-opbygger,
+//     Martin vælger selv navn/ikon på listen og kolonnernes navn+type. Celler
+//     redigeres ved klik (kbEditCell), gemmes med det samme ved blur/Enter.
+//   • DOKUMENTER: kbDocCategories/kbDocs — kategoriseret fil-/link-bibliotek.
+// Al klik-håndtering foregår via ÉT delegeret click-lag (se bunden af
+// blokken) i stedet for at (gen)binde enkelt-lyttere hver gang en tabel/et
+// grid gentegnes — nødvendigt fordi kb-table/kb-lists-rail/kb-doc-grid/
+// kb-doc-cat-filters alle bliver skrevet helt om (innerHTML) ved hver
+// data-ændring, hvilket ville rive alle direkte bundne lyttere med sig.
+// ══════════════════════════════════════════════════════════════════════════
+var kbLists=[],kbActiveListId=null,kbColumns=[],kbRows=[];
+var kbDocCategories=[],kbDocs=[],kbActiveDocCat='all';
+var kbEditingColumnId=null,kbEditingDocId=null;
+var kbDocMode='file',kbDocUploadedUrl=null,kbDocUploadedFileName=null,kbDocUploadedFileType=null;
+var KB_TYPE_ICON={text:'Aa',note:'≣',number:'#',date:'📅',select:'▾',checkbox:'☑',url:'🔗',email:'@',phone:'☎'};
+
+// ── LISTER ──────────────────────────────────────────────────
+async function kbListsInit(){
+  kbLists=await api('/api/kb/lists')||[];
+  if(!kbActiveListId||!kbLists.some(function(l){return String(l.id)===String(kbActiveListId);})){
+    kbActiveListId=kbLists.length?kbLists[0].id:null;
+  }
+  renderKbListsRail();
+  await kbLoadActiveList();
+}
+function renderKbListsRail(){
+  var el=document.getElementById('kb-lists-rail');
+  if(!el)return;
+  el.innerHTML=kbLists.map(function(l){
+    return '<div class="kb-list-item'+(String(l.id)===String(kbActiveListId)?' active':'')+'" data-id="'+l.id+'" data-action="kb-select-list">'
+      +'<span>'+esc(l.icon||'📋')+'</span><span class="kb-list-name">'+esc(l.name)+'</span>'
+      +'<button type="button" class="qz-icon-btn kb-list-menu-btn" data-action="kb-list-menu" data-id="'+l.id+'" title="Redigér liste">⋮</button>'
+      +'</div>';
+  }).join('')||'<div class="sub" style="padding:8px 10px;font-size:12px">Ingen lister endnu.</div>';
+}
+async function kbSelectList(id){
+  if(String(id)===String(kbActiveListId))return;
+  kbActiveListId=id;
+  renderKbListsRail();
+  await kbLoadActiveList();
+}
+async function kbLoadActiveList(){
+  if(!kbActiveListId){kbColumns=[];kbRows=[];kbRenderTable();return;}
+  var r=await Promise.all([api('/api/kb/lists/'+kbActiveListId+'/columns'),api('/api/kb/lists/'+kbActiveListId+'/rows')]);
+  kbColumns=r[0]||[];
+  kbRows=r[1]||[];
+  kbRenderTable();
+}
+function kbRenderTable(){
+  var headEl=document.getElementById('kb-list-head'),tableEl=document.getElementById('kb-table'),addRowBtn=document.getElementById('kb-add-row-btn');
+  if(!headEl||!tableEl)return;
+  var activeList=kbLists.filter(function(l){return String(l.id)===String(kbActiveListId);})[0];
+  if(!activeList){
+    headEl.innerHTML='';
+    tableEl.innerHTML=kbLists.length?'':'<tbody><tr><td class="kb-empty-state">Opret din første liste med "+ Ny liste" til venstre.</td></tr></tbody>';
+    if(addRowBtn)addRowBtn.style.display='none';
+    return;
+  }
+  headEl.innerHTML='<span>'+esc(activeList.icon||'📋')+'</span><span>'+esc(activeList.name)+'</span>';
+  if(addRowBtn)addRowBtn.style.display=kbColumns.length?'':'none';
+  var thead='<thead><tr>'+kbColumns.map(function(c){
+    return '<th><div class="kb-col-th" data-action="kb-edit-column" data-id="'+c.id+'" title="Klik for at redigere kolonnen"><span class="kb-col-th-type-icon">'+(KB_TYPE_ICON[c.type]||'')+'</span>'+esc(c.name)+'</div></th>';
+  }).join('')+'<th class="kb-col-add-th"><button type="button" class="kb-col-add-btn" id="kb-col-add-btn" title="Ny kolonne">+</button></th>'+(kbColumns.length?'<th style="width:34px"></th>':'')+'</tr></thead>';
+  var bodyHtml;
+  if(!kbColumns.length){
+    bodyHtml='<tbody><tr><td class="kb-empty-state">Tilføj din første kolonne med "+" for at komme i gang.</td></tr></tbody>';
+  }else if(!kbRows.length){
+    bodyHtml='<tbody><tr><td colspan="'+(kbColumns.length+2)+'" class="kb-empty-state">Ingen rækker endnu — klik "+ Tilføj række" nedenfor.</td></tr></tbody>';
+  }else{
+    bodyHtml='<tbody>'+kbRows.map(function(row){
+      return '<tr data-row-id="'+row.id+'">'+kbColumns.map(function(c){return '<td>'+kbCellHtml(row,c)+'</td>';}).join('')
+        +'<td></td><td class="kb-row-actions-cell"><button type="button" class="kb-row-del-btn" data-action="kb-delete-row" data-id="'+row.id+'" title="Slet række">✕</button></td></tr>';
+    }).join('')+'</tbody>';
+  }
+  tableEl.innerHTML=thead+bodyHtml;
+}
+function kbCellValue(row,col){return (row.data&&row.data[col.id]!==undefined&&row.data[col.id]!==null)?row.data[col.id]:'';}
+function kbCellHtml(row,col){
+  var v=kbCellValue(row,col);
+  var base='data-action="kb-edit-cell" data-row="'+row.id+'" data-col="'+col.id+'"';
+  if(col.type==='checkbox'){
+    return '<div class="kb-cell" style="cursor:default"><input type="checkbox" data-action="kb-toggle-checkbox" data-row="'+row.id+'" data-col="'+col.id+'" '+(v?'checked':'')+' style="width:16px;height:16px;cursor:pointer"></div>';
+  }
+  if(col.type==='select'){
+    if(!v)return '<div class="kb-cell empty" '+base+'>—</div>';
+    return '<div class="kb-cell" '+base+'><span class="kb-chip">'+esc(String(v))+'</span></div>';
+  }
+  if(!v)return '<div class="kb-cell empty" '+base+'>—</div>';
+  if(col.type==='url')return '<div class="kb-cell" '+base+'><a href="'+esc(kbNormalizeUrl(String(v)))+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+esc(String(v))+'</a></div>';
+  if(col.type==='email')return '<div class="kb-cell" '+base+'><a href="mailto:'+esc(String(v))+'" onclick="event.stopPropagation()">'+esc(String(v))+'</a></div>';
+  if(col.type==='phone')return '<div class="kb-cell" '+base+'><a href="tel:'+esc(String(v).replace(/\s+/g,''))+'" onclick="event.stopPropagation()">'+esc(String(v))+'</a></div>';
+  return '<div class="kb-cell" '+base+'>'+esc(String(v))+'</div>';
+}
+function kbNormalizeUrl(u){return /^https?:\/\//i.test(u)?u:('https://'+u);}
+function kbEditCell(rowId,colId,cellEl){
+  var row=kbRows.filter(function(r){return String(r.id)===String(rowId);})[0];
+  var col=kbColumns.filter(function(c){return String(c.id)===String(colId);})[0];
+  if(!row||!col)return;
+  var v=kbCellValue(row,col),inputEl;
+  if(col.type==='note'){
+    cellEl.innerHTML='<textarea rows="3">'+esc(String(v))+'</textarea>';
+    inputEl=cellEl.querySelector('textarea');
+  }else if(col.type==='select'){
+    var opts=col.options||[];
+    cellEl.innerHTML='<select><option value="">—</option>'+opts.map(function(o){var label=typeof o==='string'?o:o.label;return '<option value="'+esc(label)+'"'+(label===v?' selected':'')+'>'+esc(label)+'</option>';}).join('')+'</select>';
+    inputEl=cellEl.querySelector('select');
+  }else if(col.type==='date'){
+    cellEl.innerHTML='<input type="date" value="'+esc(String(v))+'">';
+    inputEl=cellEl.querySelector('input');
+  }else if(col.type==='number'){
+    cellEl.innerHTML='<input type="number" step="any" value="'+esc(String(v))+'">';
+    inputEl=cellEl.querySelector('input');
+  }else{
+    cellEl.innerHTML='<input type="text" value="'+esc(String(v))+'">';
+    inputEl=cellEl.querySelector('input');
+  }
+  inputEl.focus();
+  if(inputEl.select)inputEl.select();
+  var saved=false;
+  function doSave(){
+    if(saved)return;saved=true;
+    var newVal=inputEl.value;
+    if(col.type==='number')newVal=newVal===''?'':Number(newVal);
+    kbSaveCell(row,col,newVal,cellEl);
+  }
+  inputEl.addEventListener('blur',doSave);
+  inputEl.addEventListener('keydown',function(e){
+    if(e.key==='Enter'&&col.type!=='note'){e.preventDefault();doSave();}
+    if(e.key==='Escape'){saved=true;kbRenderTable();}
+  });
+  if(col.type==='select')inputEl.addEventListener('change',doSave);
+}
+async function kbSaveCell(row,col,newVal,cellEl){
+  if(!row.data)row.data={};
+  row.data[col.id]=newVal;
+  if(cellEl&&cellEl.isConnected)cellEl.outerHTML=kbCellHtml(row,col);
+  var r=await api('/api/kb/rows/'+row.id,{method:'PUT',body:JSON.stringify({data:row.data})});
+  if(!r||!r.ok)toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+async function kbToggleCheckbox(rowId,colId,checked){
+  var row=kbRows.filter(function(r){return String(r.id)===String(rowId);})[0];
+  if(!row)return;
+  if(!row.data)row.data={};
+  row.data[colId]=checked;
+  var r=await api('/api/kb/rows/'+row.id,{method:'PUT',body:JSON.stringify({data:row.data})});
+  if(!r||!r.ok)toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+async function kbAddList(){
+  var name=await gmPrompt('Navn på den nye liste:','','Ny liste');
+  if(!name)return;
+  var r=await api('/api/kb/lists',{method:'POST',body:JSON.stringify({name:name,icon:'📋'})});
+  if(r&&r.ok){
+    kbLists=await api('/api/kb/lists')||[];
+    kbActiveListId=r.id;
+    renderKbListsRail();
+    await kbLoadActiveList();
+    toast('Liste oprettet','✓');
+  }else if(r)toast(r.error||'Fejl','❌');
+}
+function kbShowListMenu(x,y,listId){
+  var list=kbLists.filter(function(l){return String(l.id)===String(listId);})[0];
+  if(!list)return;
+  showCtxMenu(x,y,[
+    {text:'Omdøb liste',icon:'✎',onClick:function(){kbRenameList(list);}},
+    {text:'Skift ikon',icon:'🎨',onClick:function(){kbChangeListIcon(list);}},
+    {sep:true},
+    {text:'Slet liste',icon:'🗑',danger:true,onClick:function(){kbDeleteList(list);}}
+  ]);
+}
+async function kbRenameList(list){
+  var name=await gmPrompt('Nyt navn:',list.name,'Omdøb liste');
+  if(!name||name===list.name)return;
+  var r=await api('/api/kb/lists/'+list.id,{method:'PUT',body:JSON.stringify({name:name})});
+  if(r&&r.ok){kbLists=await api('/api/kb/lists')||[];renderKbListsRail();kbRenderTable();}else if(r)toast(r.error||'Fejl','❌');
+}
+async function kbChangeListIcon(list){
+  var icon=await gmPrompt('Vælg et ikon/emoji (fx 🤝 🚚 📦 🛠️ 📐):',list.icon||'📋','Skift ikon');
+  if(!icon)return;
+  var r=await api('/api/kb/lists/'+list.id,{method:'PUT',body:JSON.stringify({icon:icon})});
+  if(r&&r.ok){kbLists=await api('/api/kb/lists')||[];renderKbListsRail();kbRenderTable();}else if(r)toast(r.error||'Fejl','❌');
+}
+async function kbDeleteList(list){
+  if(!await gmConfirm('Slet listen "'+list.name+'" og alt dens indhold? Dette kan ikke fortrydes.'))return;
+  var r=await api('/api/kb/lists/'+list.id,{method:'DELETE'});
+  if(r&&r.ok){
+    if(String(kbActiveListId)===String(list.id))kbActiveListId=null;
+    await kbListsInit();
+    toast('Liste slettet','🗑');
+  }else if(r)toast(r.error||'Fejl','❌');
+}
+async function kbAddRow(){
+  if(!kbActiveListId||!kbColumns.length)return;
+  var r=await api('/api/kb/lists/'+kbActiveListId+'/rows',{method:'POST',body:JSON.stringify({data:{}})});
+  if(r&&r.ok)await kbLoadActiveList();else if(r)toast(r.error||'Fejl','❌');
+}
+async function kbDeleteRow(id){
+  if(!await gmConfirm('Slet denne række?'))return;
+  var r=await api('/api/kb/rows/'+id,{method:'DELETE'});
+  if(r&&r.ok){toast('Slettet','🗑');await kbLoadActiveList();}else if(r)toast(r.error||'Fejl','❌');
+}
+function kbOpenColumnModal(columnId){
+  kbEditingColumnId=columnId||null;
+  var col=columnId?kbColumns.filter(function(c){return String(c.id)===String(columnId);})[0]:null;
+  document.getElementById('kb-column-modal-title').textContent=col?'Redigér kolonne':'Ny kolonne';
+  document.getElementById('kb-column-name').value=col?col.name:'';
+  document.getElementById('kb-column-type').value=col?col.type:'text';
+  document.getElementById('kb-column-options').value=col&&col.options?col.options.map(function(o){return typeof o==='string'?o:o.label;}).join('\n'):'';
+  kbColumnTypeChange();
+  document.getElementById('kb-column-delete').style.display=col?'':'none';
+  document.getElementById('kb-column-modal').classList.add('open');
+  setTimeout(function(){document.getElementById('kb-column-name').focus();},50);
+}
+function kbColumnTypeChange(){
+  document.getElementById('kb-column-options-wrap').style.display=document.getElementById('kb-column-type').value==='select'?'':'none';
+}
+async function kbSaveColumn(){
+  var name=document.getElementById('kb-column-name').value.trim();
+  var type=document.getElementById('kb-column-type').value;
+  if(!name){toast('Navn mangler','⚠️');return;}
+  var options=type==='select'?document.getElementById('kb-column-options').value.split('\n').map(function(s){return s.trim();}).filter(Boolean):[];
+  if(kbEditingColumnId){
+    var r=await api('/api/kb/columns/'+kbEditingColumnId,{method:'PUT',body:JSON.stringify({name:name,type:type,options:options})});
+    if(r&&r.ok){closeModal('kb-column-modal');await kbLoadActiveList();toast('Kolonne opdateret','✓');}else if(r)toast(r.error||'Fejl','❌');
+  }else{
+    var r2=await api('/api/kb/lists/'+kbActiveListId+'/columns',{method:'POST',body:JSON.stringify({name:name,type:type,options:options})});
+    if(r2&&r2.ok){closeModal('kb-column-modal');await kbLoadActiveList();toast('Kolonne tilføjet','✓');}else if(r2)toast(r2.error||'Fejl','❌');
+  }
+}
+async function kbDeleteColumnConfirm(){
+  if(!kbEditingColumnId)return;
+  if(!await gmConfirm('Slet denne kolonne? Alle værdier i den går tabt.'))return;
+  var r=await api('/api/kb/columns/'+kbEditingColumnId,{method:'DELETE'});
+  if(r&&r.ok){closeModal('kb-column-modal');await kbLoadActiveList();toast('Kolonne slettet','🗑');}else if(r)toast(r.error||'Fejl','❌');
+}
+
+// ── DOKUMENTER (træningsmateriale) ─────────────────────────────
+async function kbDocsInit(){
+  var r=await Promise.all([api('/api/kb/doc-categories'),api('/api/kb/documents')]);
+  kbDocCategories=r[0]||[];
+  kbDocs=r[1]||[];
+  renderKbDocCatFilters();
+  renderKbDocGrid();
+}
+function renderKbDocCatFilters(){
+  var el=document.getElementById('kb-doc-cat-filters');
+  if(!el)return;
+  el.innerHTML='<button type="button" class="chip'+(kbActiveDocCat==='all'?' active':'')+'" data-action="kb-doc-filter" data-value="all">Alle</button>'
+    +kbDocCategories.map(function(c){
+      return '<button type="button" class="chip'+(String(kbActiveDocCat)===String(c.id)?' active':'')+'" data-action="kb-doc-filter" data-value="'+c.id+'">'+esc(c.name)+'</button>';
+    }).join('')
+    +'<button type="button" class="chip" id="kb-doc-add-cat-btn" title="Ny kategori">+ Ny kategori</button>';
+}
+function renderKbDocGrid(){
+  var el=document.getElementById('kb-doc-grid');
+  if(!el)return;
+  var list=kbActiveDocCat==='all'?kbDocs:kbDocs.filter(function(d){return String(d.category_id)===String(kbActiveDocCat);});
+  if(!list.length){el.innerHTML='<div class="kb-empty-state">Ingen dokumenter endnu — klik "+ Tilføj dokument" ovenfor.</div>';return;}
+  var typeIcon={pdf:'📄',image:'🖼️',link:'🔗'};
+  var catNameById={};
+  kbDocCategories.forEach(function(c){catNameById[c.id]=c.name;});
+  el.innerHTML=list.map(function(d){
+    return '<div class="kb-doc-card">'
+      +'<div class="kb-doc-icon">'+(typeIcon[d.file_type]||'📄')+'</div>'
+      +'<div class="kb-doc-title">'+esc(d.title)+'</div>'
+      +(d.description?'<p class="kb-doc-desc">'+esc(d.description)+'</p>':'')
+      +'<div class="kb-doc-meta"><span>'+(d.category_id&&catNameById[d.category_id]?esc(catNameById[d.category_id]):'Ukategoriseret')+'</span><span>'+esc(fmtDaDate(d.created_at))+'</span></div>'
+      +'<div class="kb-doc-actions">'
+      +'<a class="btn small outline" href="'+esc(d.url)+'" target="_blank" rel="noopener">'+(d.file_type==='link'?'🔗 Åbn':'⬇ Hent')+'</a>'
+      +'<button type="button" class="btn small outline" data-action="kb-doc-edit" data-id="'+d.id+'">✎</button>'
+      +'<button type="button" class="btn small danger" data-action="kb-doc-delete" data-id="'+d.id+'">🗑</button>'
+      +'</div></div>';
+  }).join('');
+}
+async function kbAddDocCategory(){
+  var name=await gmPrompt('Navn på ny kategori:','','Ny kategori');
+  if(!name)return;
+  var r=await api('/api/kb/doc-categories',{method:'POST',body:JSON.stringify({name:name})});
+  if(r&&r.ok){await kbDocsInit();toast('Kategori tilføjet','✓');}else if(r)toast(r.error||'Fejl','❌');
+}
+function kbFillDocCategorySelect(){
+  var sel=document.getElementById('kb-doc-category');
+  sel.innerHTML='<option value="">Ingen kategori</option>'+kbDocCategories.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('');
+}
+function kbOpenDocModal(doc){
+  kbEditingDocId=doc?doc.id:null;
+  document.getElementById('kb-doc-modal-title').textContent=doc?'Redigér dokument':'Nyt dokument';
+  document.getElementById('kb-doc-title').value=doc?doc.title:'';
+  document.getElementById('kb-doc-desc').value=doc?(doc.description||''):'';
+  kbFillDocCategorySelect();
+  document.getElementById('kb-doc-category').value=doc&&doc.category_id?String(doc.category_id):'';
+  kbDocUploadedUrl=null;kbDocUploadedFileName=null;kbDocUploadedFileType=null;
+  document.getElementById('kb-doc-file-input').value='';
+  document.getElementById('kb-doc-file-status').textContent='';
+  document.getElementById('kb-doc-link-input').value='';
+  var modeFileBtn=document.getElementById('kb-doc-mode-file'),modeLinkBtn=document.getElementById('kb-doc-mode-link');
+  var switcher=modeFileBtn.closest('.form-group');
+  var fileWrap=document.getElementById('kb-doc-file-wrap'),linkWrap=document.getElementById('kb-doc-link-wrap');
+  // Ved redigering af et eksisterende dokument kan man kun rette titel/
+  // beskrivelse/kategori (se PUT-routen) — selve filen/linket kan ikke
+  // udskiftes, så vælgeren skjules helt i det tilfælde.
+  if(doc){
+    if(switcher)switcher.style.display='none';
+    fileWrap.style.display='none';
+    linkWrap.style.display='none';
+  }else{
+    if(switcher)switcher.style.display='';
+    kbDocModeSwitch('file');
+  }
+  document.getElementById('kb-doc-modal').classList.add('open');
+}
+function kbDocModeSwitch(mode){
+  kbDocMode=mode;
+  document.getElementById('kb-doc-mode-file').classList.toggle('active',mode==='file');
+  document.getElementById('kb-doc-mode-link').classList.toggle('active',mode==='link');
+  document.getElementById('kb-doc-file-wrap').style.display=mode==='file'?'':'none';
+  document.getElementById('kb-doc-link-wrap').style.display=mode==='link'?'':'none';
+}
+async function kbDocFileChange(e){
+  var file=e.target.files&&e.target.files[0];
+  var statusEl=document.getElementById('kb-doc-file-status');
+  kbDocUploadedUrl=null;kbDocUploadedFileName=null;kbDocUploadedFileType=null;
+  if(!file){statusEl.textContent='';return;}
+  statusEl.textContent='⏳ Uploader...';
+  try{
+    var dataUrl=await fileToDataURL(file);
+    var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'videnscenter'})});
+    if(!up||!up.ok)throw new Error((up&&up.error)||'Upload fejlede');
+    kbDocUploadedUrl=up.url;
+    kbDocUploadedFileName=file.name;
+    kbDocUploadedFileType=file.type&&file.type.indexOf('image/')===0?'image':'pdf';
+    statusEl.textContent='✓ '+file.name;
+  }catch(err){
+    statusEl.textContent='';
+    toast('Kunne ikke uploade filen: '+((err&&err.message)||''),'❌');
+    e.target.value='';
+  }
+}
+async function kbSaveDoc(){
+  var title=document.getElementById('kb-doc-title').value.trim();
+  var desc=document.getElementById('kb-doc-desc').value.trim();
+  var catId=document.getElementById('kb-doc-category').value||null;
+  if(!title){toast('Titel mangler','⚠️');return;}
+  if(kbEditingDocId){
+    var r=await api('/api/kb/documents/'+kbEditingDocId,{method:'PUT',body:JSON.stringify({title:title,description:desc,category_id:catId})});
+    if(r&&r.ok){closeModal('kb-doc-modal');toast('Gemt','✓');await kbDocsInit();}else if(r)toast(r.error||'Fejl','❌');
+    return;
+  }
+  var url,fileType,fileName=null;
+  if(kbDocMode==='file'){
+    if(!kbDocUploadedUrl){toast('Vælg en fil og vent på at den er uploadet','⚠️');return;}
+    url=kbDocUploadedUrl;fileType=kbDocUploadedFileType;fileName=kbDocUploadedFileName;
+  }else{
+    url=document.getElementById('kb-doc-link-input').value.trim();
+    if(!url){toast('Indsæt et link','⚠️');return;}
+    fileType='link';
+  }
+  var r2=await api('/api/kb/documents',{method:'POST',body:JSON.stringify({title:title,description:desc,category_id:catId,url:url,file_type:fileType,file_name:fileName})});
+  if(r2&&r2.ok){closeModal('kb-doc-modal');toast('Dokument tilføjet','✓');await kbDocsInit();}else if(r2)toast(r2.error||'Fejl','❌');
+}
+async function kbDeleteDoc(id){
+  if(!await gmConfirm('Slet dette dokument?'))return;
+  var r=await api('/api/kb/documents/'+id,{method:'DELETE'});
+  if(r&&r.ok){toast('Slettet','🗑');await kbDocsInit();}else if(r)toast(r.error||'Fejl','❌');
+}
+
+// ── Ét delegeret klik-lag for hele Videnscenter-modulet (se forklaringen
+// øverst i blokken) — samme mønster som #ctx-menu's egen globale klik-lytter.
+document.addEventListener('click',function(e){
+  var t=e.target;
+  var listMenuBtn=t.closest('[data-action="kb-list-menu"]');
+  if(listMenuBtn){e.stopPropagation();var r=listMenuBtn.getBoundingClientRect();kbShowListMenu(r.left,r.bottom+4,Number(listMenuBtn.dataset.id));return;}
+  var listItem=t.closest('[data-action="kb-select-list"]');
+  if(listItem){kbSelectList(Number(listItem.dataset.id));return;}
+  if(t.closest('#kb-add-list-btn')){kbAddList();return;}
+  if(t.closest('#kb-add-row-btn')){kbAddRow();return;}
+  if(t.closest('#kb-col-add-btn')){kbOpenColumnModal(null);return;}
+  var colTh=t.closest('[data-action="kb-edit-column"]');
+  if(colTh){kbOpenColumnModal(Number(colTh.dataset.id));return;}
+  var delRowBtn=t.closest('[data-action="kb-delete-row"]');
+  if(delRowBtn){kbDeleteRow(Number(delRowBtn.dataset.id));return;}
+  var editCell=t.closest('[data-action="kb-edit-cell"]');
+  if(editCell){kbEditCell(editCell.dataset.row,editCell.dataset.col,editCell);return;}
+  if(t.closest('#kb-column-cancel')){closeModal('kb-column-modal');return;}
+  if(t.closest('#kb-column-save')){kbSaveColumn();return;}
+  if(t.closest('#kb-column-delete')){kbDeleteColumnConfirm();return;}
+  var docFilterBtn=t.closest('[data-action="kb-doc-filter"]');
+  if(docFilterBtn){kbActiveDocCat=docFilterBtn.dataset.value==='all'?'all':Number(docFilterBtn.dataset.value);renderKbDocCatFilters();renderKbDocGrid();return;}
+  if(t.closest('#kb-doc-add-cat-btn')){kbAddDocCategory();return;}
+  if(t.closest('#kb-doc-add-btn')){kbOpenDocModal(null);return;}
+  var docEditBtn=t.closest('[data-action="kb-doc-edit"]');
+  if(docEditBtn){var doc=kbDocs.filter(function(d){return String(d.id)===docEditBtn.dataset.id;})[0];if(doc)kbOpenDocModal(doc);return;}
+  var docDelBtn=t.closest('[data-action="kb-doc-delete"]');
+  if(docDelBtn){kbDeleteDoc(Number(docDelBtn.dataset.id));return;}
+  if(t.closest('#kb-doc-cancel')){closeModal('kb-doc-modal');return;}
+  if(t.closest('#kb-doc-save')){kbSaveDoc();return;}
+  var docModeBtn=t.closest('[data-action="kb-doc-mode"]');
+  if(docModeBtn){kbDocModeSwitch(docModeBtn.dataset.value);return;}
+});
+document.addEventListener('change',function(e){
+  var t=e.target;
+  if(!t)return;
+  if(t.id==='kb-column-type'){kbColumnTypeChange();return;}
+  if(t.id==='kb-doc-file-input'){kbDocFileChange(e);return;}
+  var cb=t.closest?t.closest('[data-action="kb-toggle-checkbox"]'):null;
+  if(cb){kbToggleCheckbox(cb.dataset.row,cb.dataset.col,cb.checked);return;}
+});
+
 // PEOPLE
 // ── ROLLER & ADGANG (Hold & vendors → "Roller & adgang"-kort) ──────────────
 // Kun for role==='admin' (se applyRealAdminOnlyVisibility) — kortet er skjult
@@ -17049,7 +17636,7 @@ if(window.ResizeObserver){
 // ('qz-invoices','qz-pending-invoicing','qz-products','qz-templates',
 // 'qz-timetrack') er nu ÆGTE selvstændige sider i stedet for interne faner
 // under 'quotes' — se HEADER_COMMENT-noten ved #page-quotes i HTML'en.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','templates','notif-settings','finance','quotes','qz-invoices','qz-pending-invoicing','qz-products','qz-templates','qz-timetrack','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','search-results'];
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','templates','notif-settings','finance','quotes','qz-invoices','qz-pending-invoicing','qz-products','qz-templates','qz-timetrack','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','search-results','kb-lists','kb-docs'];
 // RUNDE P — de 6 sider Tilbud & Faktura-gruppen nu består af, brugt af
 // switchPage() nedenfor til at dispatche til initQuotesModule() m.fl. for alle
 // seks uden en lang if-kæde.
@@ -17062,14 +17649,15 @@ var QZ_FAMILY_PAGES=['quotes','qz-invoices','qz-pending-invoicing','qz-products'
 // at sende brugeren hen — det forhindrer en uendelig switchPage-løkke i det
 // sjældne øjeblik lige efter login hvor /api/auth/me's friske panel_pages
 // endnu ikke er nået at overskrive den cachede (ældre) bruger i localStorage.
-var PANEL_PAGE_ORDER=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','tasklist','requests','completed','people','library','logs','templates','email-templates','notif-settings','gmail-settings'];
+var PANEL_PAGE_ORDER=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','tasklist','requests','completed','people','library','logs','templates','email-templates','notif-settings','gmail-settings','knowledge'];
 function firstAllowedPage(excludePage){
   for(var i=0;i<PANEL_PAGE_ORDER.length;i++){
     var k=PANEL_PAGE_ORDER[i];
     // 'gmail-settings', 'completed' og 'email-templates' beholdes i rækkefølgen
     // (nøglerne findes alle stadig server-side og håndhæves af panelAccess),
-    // men de peger nu på den side hvor deres fane bor.
-    var MERGED_TARGET={'gmail-settings':'notif-settings','completed':'tasklist','email-templates':'templates'};
+    // men de peger nu på den side hvor deres fane bor. 'knowledge' (RUNDE AU)
+    // peger på Videnscenrets første underside, "Lister".
+    var MERGED_TARGET={'gmail-settings':'notif-settings','completed':'tasklist','email-templates':'templates','knowledge':'kb-lists'};
     var target=(k==='crmp_leads'||k==='crmp_sales')?'crmp':(k==='crmp_tasks'?'crmp-tasks':(MERGED_TARGET[k]||k));
     if(target===excludePage)continue;
     if(meHasPanelPage(k))return target;
@@ -17227,6 +17815,12 @@ function switchPage(page,skipHash){
   if(!skipHash&&location.hash.slice(1).split('/')[0]!==page)navPushHash(page);
   if(page==='logs')loadLogs();
   if(page==='library')loadLibrary();
+  // RUNDE AU — Videnscenter. Begge undersider deler samme adgangsnøgle
+  // ('knowledge', se panelItemKey ovenfor), men har hver deres egen
+  // indlæsning (kbListsInit/kbDocsInit), samme mønster som Tilbud & Faktura-
+  // gruppens 6 sider der alle deler nøglen 'quotes'.
+  if(page==='kb-lists'){if(guardPage('knowledge','Videnscenter'))return;kbListsInit();}
+  if(page==='kb-docs'){if(guardPage('knowledge','Videnscenter'))return;kbDocsInit();}
   if(page==='availability')renderAvailability();
   if(page==='timeline')renderTimeline();
   if(page==='requests')renderRequests();
