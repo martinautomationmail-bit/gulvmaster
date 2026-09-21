@@ -1214,11 +1214,12 @@ async function initSchema() {
     -- trykke at den skal vise den samlede pris af alle poster under
     -- tekstlinjen indtil næste tekstlinje") — kun relevant på en line_type='text'-
     -- række (en sektionsoverskrift, se ovenfor). Når sat, viser BÅDE den
-    -- levende forhåndsvisning og den rigtige PDF en "Sum for sektion"-linje
-    -- lige inden næste tekstlinje (eller sidst i tilbuddet, hvis det er den
-    -- sidste sektion) med summen af alle almindelige linjer i mellem. Se
-    -- qzRefreshSectionSums/qeBuildVirtualRows (admin.html) og
-    -- flushSectionSum (drawDocumentPdf nedenfor).
+    -- levende forhåndsvisning og den rigtige PDF summen af alle almindelige
+    -- linjer indtil næste tekstlinje (eller sidst i tilbuddet, hvis det er
+    -- den sidste sektion) direkte inde i selve sektions-bjælken, ved siden af
+    -- overskriften (RUNDE AZ, Martins ønske — sad tidligere som sin egen linje
+    -- efter sektionen). Se qzRefreshSectionSums/qeBuildVirtualRows
+    -- (admin.html) og sectionSumByIdx (drawDocumentPdf nedenfor).
     ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS show_sum BOOLEAN NOT NULL DEFAULT false;
     -- Note i TOPPEN af tilbuddet (under kundeoplysninger) — adskilt fra "notes" som vises
     -- i BUNDEN (typisk betingelser). Begge kan forudfyldes fra en standardtekst i
@@ -13622,6 +13623,23 @@ async function crmMoveEntityToWonStage(quote) {
 async function crmSyncOpportunityValueFromQuote(quote) {
   try {
     if (!quote || !quote.crm_opportunity_id) return;
+    // RUNDE BA (Martin: "Den trigger alt for tit med Værdi automatisk sætning.
+    // Den trigger nok hver gang tilbuddet gemmes kan du ikke sætte den til ikke
+    // at gøre det?") — denne funktion kaldes ved HVERT gem af et tilbud (se de
+    // fire kaldesteder: opret, kopiér, redigér tilbud, gem linjer), men langt de
+    // fleste gem ændrer slet ikke selve totalbeløbet (fx en tekstrettelse, eller
+    // bare at åbne og gemme igen). Før RUNDE BA blev der logget en ny "Værdi sat
+    // til X kr"-aktivitet hver eneste gang, uanset om beløbet reelt var
+    // anderledes — det druknede handlens aktivitetsflig i identiske linjer.
+    // Slår derfor den eksisterende værdi op FØRST og springer helt over
+    // (hverken opdatering eller log) hvis den ikke reelt har ændret sig —
+    // sammenlignet med 1 øres margin for at undgå at flydende-komma-afrunding
+    // udløser en "ændring" der reelt ingen er.
+    const before = await pgOne('SELECT value FROM crm_opportunities WHERE id=$1', [quote.crm_opportunity_id]);
+    if (!before) return; // handlen findes ikke (fx slettet) — stille no-op
+    const oldVal = before.value === null ? null : Number(before.value);
+    const newVal = Number(quote.total);
+    if (oldVal !== null && Math.abs(oldVal - newVal) < 0.01) return; // uændret — intet at gøre
     const r = await pool.query(`UPDATE crm_opportunities SET value=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [quote.total, quote.crm_opportunity_id]);
     if (!r.rowCount) return; // handlen findes ikke (fx slettet) — stille no-op
     await crmLogActivity('opportunity', quote.crm_opportunity_id, 'value_updated', 'Værdi sat til ' + Number(quote.total).toLocaleString('da-DK') + ' kr (automatisk — fra tilbud ' + (quote.quote_number || ('#' + quote.id)) + ')', null);
@@ -18922,30 +18940,36 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
   y = drawPdfLineTableHeader(doc, y);
   doc.fontSize(9.5).fillColor('#111318');
   let rawSubtotal = 0;
-  // RUNDE AW (Martins ønske: "når man laver en tekstlinje kan jeg trykke at
-  // den skal vise den samlede pris af alle poster under tekstlinjen indtil
-  // næste tekstlinje") — se skema-kommentaren ved quote_lines.show_sum.
-  // sectionSumOpen/sectionSum holder styr på den AKTUELLE sektion mens vi
-  // tegner linje for linje; flushSectionSum tegner en "Sum for sektion"-linje
-  // for den FORRIGE sektion, lige inden en ny tekstlinje starter (eller til
-  // sidst, efter den allersidste linje) — kun hvis den sektion faktisk havde
-  // show_sum slået til. Samme beregning/visning som den levende forhåndsvisning
-  // (qeBuildVirtualRows/qeSectionSumRowHtml i admin.html) — skal holdes i trit.
-  let sectionSumOpen = false, sectionSum = 0;
-  function flushSectionSum() {
-    if (!sectionSumOpen) return;
-    y = ensurePdfSpace(doc, y, 22, { ...ctx, redrawTableHeader: true });
-    doc.font('DMSans-Bold').fontSize(9.5).fillColor('#111318');
-    doc.text('SUM FOR SEKTION', 278, y, { width: 187, align: 'right' });
-    doc.text(Math.round(sectionSum).toLocaleString('da-DK') + ' kr', 465, y, { width: 75, align: 'right' });
-    doc.font('DMSans').fontSize(9.5).fillColor('#111318');
-    y += 18;
-    sectionSumOpen = false;
-    sectionSum = 0;
+  // RUNDE AZ (Martin, efter RUNDE AW/AX: "Smid summen oppe i selve
+  // tekslinjen feltet i den grå boks i højre side og bare skriv") — sad
+  // hidtil som sin EGEN "SUM FOR SEKTION"-linje til sidst i sektionen (se
+  // flushSectionSum, fjernet). Martin vil i stedet have beløbet skrevet
+  // direkte i selve sektions-bjælken (den grå header-boks), ved siden af
+  // overskriften. PDFKit tegner sekventielt uden nogen "gå tilbage og ret"-
+  // mekanisme, så header-bjælken for en sektion tegnes FØR vi overhovedet har
+  // set dens poster — derfor denne forudberegning i ét separat gennemløb, KUN
+  // for at kende hver show_sum-sektions total, inden selve tegningen starter.
+  // Samme udregning som qzRefreshSectionSums/qeBuildVirtualRows i admin.html —
+  // skal holdes i trit.
+  const sectionSumByIdx = {};
+  {
+    let openIdx = null, sum = 0;
+    (record.lines || []).forEach((l, i) => {
+      if (l.line_type === 'text') {
+        if (openIdx !== null) sectionSumByIdx[openIdx] = sum;
+        openIdx = l.show_sum ? i : null;
+        sum = 0;
+        return;
+      }
+      if (openIdx !== null) {
+        const gross = Number(l.quantity) * Number(l.sell_price);
+        sum += gross - lineDiscountAmount(l, gross);
+      }
+    });
+    if (openIdx !== null) sectionSumByIdx[openIdx] = sum;
   }
-  (record.lines || []).forEach(l => {
+  (record.lines || []).forEach((l, lineIdx) => {
     if (l.line_type === 'text') {
-      flushSectionSum();
       // RUNDE U (Martins ønske: "lav det mere tydeligt det bryder det
       // eksisterende tilbud med en linje så man kan bruge det til at indele
       // tilbuddet i faggrupper") — en tekstlinje var bare fed tekst midt i
@@ -18958,17 +18982,26 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
       // nu med stort/spatieret ligesom i forhåndsvisningen, så de to steder
       // ser ens ud.
       const divText = String(l.description || '').toUpperCase();
+      const sectionSum = sectionSumByIdx[lineIdx];
+      const hasSum = sectionSum !== undefined;
+      const sumText = hasSum ? Math.round(sectionSum).toLocaleString('da-DK') + ' kr' : '';
+      // RUNDE AZ — når der er en sum at vise, gives overskriften mindre
+      // bredde (491-110 i stedet for 491) så den aldrig kan løbe ind under
+      // beløbet, der er højrestillet i sin egen faste zone til sidst i bjælken.
+      const headingWidth = hasSum ? 381 : 491;
       doc.font('DMSans-Bold').fontSize(10);
-      const h = doc.heightOfString(divText, { width: 491, characterSpacing: 0.4 });
+      const h = doc.heightOfString(divText, { width: headingWidth, characterSpacing: 0.4 });
       const boxH = h + 20;
       y = ensurePdfSpace(doc, y, boxH + 12, { ...ctx, redrawTableHeader: true });
       doc.roundedRect(40, y, 515, boxH, 4).fill('#F3F4F6');
       doc.rect(40, y, 3, boxH).fill('#111318');
-      doc.fillColor('#111318').text(divText, 56, y + 10, { width: 491, characterSpacing: 0.4 });
+      doc.fillColor('#111318').text(divText, 56, y + 10, { width: headingWidth, characterSpacing: 0.4 });
+      if (hasSum) {
+        doc.font('DMSans-Bold').fontSize(10).fillColor('#111318');
+        doc.text(sumText, 445, y + 10, { width: 100, align: 'right' });
+      }
       doc.font('DMSans');
       y += boxH + 12;
-      sectionSumOpen = !!l.show_sum;
-      sectionSum = 0;
       return;
     }
     const lineDiscType = l.discount_type === 'fixed' ? 'fixed' : 'pct';
@@ -18977,7 +19010,6 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     const lineDiscAmt = lineDiscountAmount(l, gross);
     const lineTotal = gross - lineDiscAmt;
     rawSubtotal += lineTotal;
-    if (sectionSumOpen) sectionSum += lineTotal;
     // RUNDE T: rabat vises nu i egen kolonne, rød tekst, i stedet for klistret
     // på Antal-cellen — se kommentar ved kolonneoverskrifterne. Viser BÅDE
     // satsen ("-10%"/"-450 kr") OG selve rabatbeløbet i kr, som to stablede
@@ -19007,7 +19039,6 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     y += rowHeight;
     doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#EEF0F3').stroke();
   });
-  flushSectionSum(); // sidste sektion, hvis den havde show_sum slået til
 
   y += 12;
   // RUNDE U — totalblokken (rabat/subtotal/moms/total, evt. betalt/restbeløb)

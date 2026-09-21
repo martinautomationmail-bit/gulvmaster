@@ -1257,6 +1257,13 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
    slet ikke viser en slet-handling i hvile). */
 .crmpx-task-del{opacity:0;transition:opacity .12s}
 .crmpx-task-row:hover .crmpx-task-del{opacity:1}
+/* RUNDE BB (Martin: "Ved opgaver gør så jeg kan trykke ret") — samme
+   hover-kun-mønster som slet-knappen ovenfor, plus en redigeringstilstand
+   (crmpx-task-row-editing) der ligner tilføj-formularen, i stedet for den
+   normale ét-linje-visning. */
+.crmpx-task-edit{opacity:0;transition:opacity .12s}
+.crmpx-task-row:hover .crmpx-task-edit{opacity:1}
+.crmpx-task-row-editing{display:block;padding:8px 0}
 .crmpx-task-add-toggle{width:100%;margin-top:10px;padding:8px;border:1px dashed var(--bly-border);background:none;border-radius:var(--bly-r-sm);color:var(--bly-sub);font-size:12px;font-weight:700;cursor:pointer;transition:.12s}
 .crmpx-task-add-toggle:hover{background:var(--bly-hover);color:var(--bly-accent);border-color:var(--bly-accent)}
 .crmpx-task-assignee{width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;font-size:8px;font-weight:800;color:#fff;flex-shrink:0}
@@ -1926,6 +1933,12 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .qe-line-num-label{font-size:9px;color:var(--bly-sub);font-weight:700;text-transform:uppercase}
 .qe-line-margin{font-size:10.5px;font-weight:800;margin-top:2px}
 .qe-remove-line{border:0;background:transparent;color:var(--bly-dot-overdue);cursor:pointer;font-size:15px}
+/* RUNDE BB (Martin: "kan du ikke gøre så jeg kan kopiere en linje så hvis jeg
+   midt i tilbuddet gerne vil lave en ny linje kan jeg bare trykke på en copy
+   knap") — samme diskrete ikon-stil som .qe-remove-line, blot i den neutrale
+   sub-farve i stedet for rød (det er jo ikke en farlig/destruktiv handling). */
+.qe-line-duplicate{border:0;background:transparent;color:var(--bly-sub);cursor:pointer;font-size:14px}
+.qe-line-duplicate:hover{color:var(--bly-accent)}
 /* RUNDE AW — "Vis sum"-afkrydsning på en tekstlinje, og selve sumtallet ved
    siden af (kun synligt når krydset af — se :has()-reglen, samme mønster som
    fx .tab-navdrop:has(.navdrop-menu.open) andetsteds i denne fil). Bevidst
@@ -2097,14 +2110,16 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    den levende forhåndsvisning (her) og den faktiske PDF (drawDocumentPdf).*/
 /* RUNDE W — samme "for barnlig" farve-boks (lilla/indigo) som .qe-line-text,
    nu neutral/mørk i stedet, se kommentaren ved .qe-line-text ovenfor. Samme
-   ændring i den rigtige PDF (drawDocumentPdf i server.js). */
-.qe-divider-row{background:var(--bly-border-soft);color:var(--bly-ink);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;padding:9px 14px;border-radius:4px;border-left:3px solid var(--bly-ink);white-space:pre-line}
-/* RUNDE AW — den levende forhåndsvisnings udgave af en "Sum for sektion"-
-   række (se qeSectionSumRowHtml/qeBuildVirtualRows). Samme placering/skrift
-   som en almindelig linjerække i tabellen, bare fed og med en tynd streg
-   over, så den skiller sig ud som en delsum — samme visuelle idé som den
-   rigtige PDF's udgave (flushSectionSum i drawDocumentPdf, server.js). */
-.qe-section-sum-row td{font-weight:800;font-size:10.5px;color:var(--bly-ink);border-top:1.5px solid var(--bly-ink);padding-top:6px}
+   ændring i den rigtige PDF (drawDocumentPdf i server.js).
+   RUNDE AZ (Martin: "Smid summen oppe i selve tekslinjen feltet i den grå
+   boks i højre side") — bjælken er nu en flex-række, så en evt. sum
+   (.qe-divider-sum) kan stå til højre på SAMME linje som overskriften i
+   stedet for som sin egen række nedenunder. white-space:pre-line er flyttet
+   til .qe-divider-label, som er den eneste del der skal kunne linjeskifte —
+   sum-tallet skal aldrig ombrydes. */
+.qe-divider-row{background:var(--bly-border-soft);color:var(--bly-ink);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;padding:9px 14px;border-radius:4px;border-left:3px solid var(--bly-ink);display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.qe-divider-label{white-space:pre-line}
+.qe-divider-sum{white-space:nowrap;flex-shrink:0}
 .qe-pdf-totals{margin-left:auto;width:220px}
 .qe-pdf-totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#6B7280}
 .qe-pdf-totals-row.grand{background:var(--bly-accent);color:#fff;font-weight:800;font-size:11.5px;padding:6px 8px;border-radius:6px;margin-top:6px}
@@ -3541,7 +3556,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.21</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.23</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -19811,6 +19826,7 @@ function qzLineRowHtml(l,idx,prefix){
         +'<input type="checkbox" class="qe-line-field" data-idx="'+idx+'" data-field="show_sum"'+(l.show_sum?' checked':'')+'> Vis sum'
       +'</label>'
       +'<span class="qe-textline-sum" id="'+prefix+'-line-sectionsum-'+idx+'"></span>'
+      +'<button type="button" class="qe-line-duplicate" data-idx="'+idx+'" title="Kopiér linje">⧉</button>'
       +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
       +'</div></div>';
   }
@@ -19831,6 +19847,7 @@ function qzLineRowHtml(l,idx,prefix){
       +'<option value="service"'+(type==='service'?' selected':'')+'>Service</option>'
       +'<option value="materialer"'+(type==='materialer'?' selected':'')+'>Materialer</option>'
     +'</select>'
+    +'<button type="button" class="qe-line-duplicate" data-idx="'+idx+'" title="Kopiér linje">⧉</button>'
     +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
     +'</div>'
     // Note (sep. 2026, Martins ønske) — helt separat felt fra beskrivelsen ovenfor.
@@ -19971,6 +19988,33 @@ function makeLinesRemoveHandler(getLines,renderFn){
     renderFn();
   };
 }
+// RUNDE BB (Martin: "hvis jeg midt i tilbuddet gerne vil lave en ny linje kan
+// jeg bare trykke på en copy knap og så kommer samme linje nedeunder men så
+// kan jeg jo bare rette den til med den nye post?") — indsætter en kopi af
+// linjen LIGE UNDER originalen (i stedet for nederst i listen, som "+ Tilføj
+// linje" gør), så man hurtigt kan lave en ny post der minder om en man
+// allerede har, uden at skulle taste alting forfra eller lede den frem
+// bagefter. Virker på både almindelige linjer og tekstoverskrifter.
+// JSON-rundtur er en fin "dyb kopi" her, da en linje kun indeholder simple
+// felter (tal/strenge/booleans) — men id'et fjernes bevidst bagefter: uden
+// det ville kopien (kortvarigt, indtil næste gem) dele database-identitet
+// med originalen, hvilket kunne forvirre alt der matcher på linje-id
+// (fx quote_lines.invoiced_in_invoice_id-sporingen, se RUNDE J-kommentaren
+// ved PUT /api/quotes/:id i server.js).
+function makeLinesDuplicateHandler(getLines,renderFn){
+  return function(e){
+    var btn=e.target.closest('.qe-line-duplicate');
+    if(!btn)return;
+    var idx=Number(btn.dataset.idx);
+    var lines=getLines();
+    var orig=lines[idx];
+    if(!orig)return;
+    var copy=JSON.parse(JSON.stringify(orig));
+    delete copy.id;
+    lines.splice(idx+1,0,copy);
+    renderFn();
+  };
+}
 // RUNDE W — åbner note-boksen på klik (se qzLineRowHtml). Ren visuel toggle,
 // ingen state i selve linjen og ingen gentegning, så det ikke forstyrrer andet
 // man er ved at redigere på tilbuddet. Bruges som en EKSTRA delegeret
@@ -20095,6 +20139,25 @@ function qzDragScrollStop(){
   qzDragScroll.y=null;
   if(qzDragScroll.raf){cancelAnimationFrame(qzDragScroll.raf);qzDragScroll.raf=null;}
 }
+// RUNDE AZ (Martin: "slip træk virker stadig ikke... den skal kunne rulle op")
+// — auto-scroll opad virkede slet ikke, fordi linje-boksens EGEN dragover-
+// lytter (i makeLinesDragHandler, bundet på #qe-lines/#qzt-lines/osv.) kun
+// fyrer mens musen er over SELVE boksen eller dens børn. Når man trækker en
+// linje OPAD forlader musen hurtigt den boks (der står jo kundefelter,
+// overskrift osv. OVENOVER linjerne på siden) og rammer elementer UDENFOR
+// linje-boksen — dér findes ingen dragover-lytter, så qzDragScroll.y holder
+// op med at blive opdateret, og scroll-loopet hænger fast på musens SIDSTE
+// position inde i boksen i stedet for dens reelle (høje) position nu.
+// Modsat virker nedad-træk fint, fordi linjelisten typisk fylder helt ned
+// mod bunden af siden, så musen forbliver inde over/nær boksen hele vejen.
+// Løsning: ét document-niveau dragover-listener, der ALTID opdaterer
+// y-positionen så længe scroll-loopet kører (qzDragScroll.raf), uanset
+// hvilket DOM-element musen præcis er over — dragover bobler op til
+// document uanset om målelementet selv kalder preventDefault, så dette
+// fanger musen pålideligt overalt på siden, også over toppen af listen.
+document.addEventListener('dragover',function(e){
+  if(qzDragScroll.raf)qzDragScroll.y=e.clientY;
+});
 function makeLinesDragHandler(getLines,renderFn){
   var fromIdx=null,scrollParent=null;
   function clearDragoverMarks(root){
@@ -23029,33 +23092,98 @@ function crmpxTaskDueLabel(t){
   var label=fmtDaDate(t.due_date)+(t.due_time?' · '+t.due_time:'');
   return '<span class="crmpx-task-due'+(overdue?' overdue':'')+'">'+(overdue?'⚠️ ':'')+esc(label)+'</span>';
 }
-async function crmpxLoadTasks(){
-  var ent=crmpDetailEntity;
-  if(!ent)return;
-  var tasks=await api('/api/crm/tasks?entity_type='+ent.type+'&entity_id='+ent.id)||[];
+// RUNDE BB (Martin: "Ved opgaver gør så jeg kan trykke ret, fx hvis samme
+// opgave bare lige hurtig skal have rettet datoen") — før var eneste måde at
+// ændre en opgaves dato/ansvarlig/tekst på at slette den og oprette en ny.
+// crmpxEditingTaskId holder hvilken opgave (hvis nogen) der lige nu vises som
+// en redigerbar formular i stedet for den normale visnings-række — kun ÉN ad
+// gangen. crmpxTasksCache gemmer sidste hentede liste, så vi kan skifte
+// ind/ud af redigeringstilstand med et rent gentegn (crmpxRenderTasksList)
+// uden at skulle ramme API'et igen hver gang.
+var crmpxEditingTaskId=null,crmpxTasksCache=[];
+function crmpxTaskRowHtml(t){
+  if(String(t.id)===String(crmpxEditingTaskId)){
+    var opts=(users||[]).map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(t.assigned_to)?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
+    return '<div class="crmpx-task-row crmpx-task-row-editing">'
+      +'<input id="crmpx-task-edit-title-'+t.id+'" class="tld-input" value="'+esc(t.title)+'" style="margin-bottom:6px">'
+      +'<div class="tld-row">'
+        +'<select id="crmpx-task-edit-assignee-'+t.id+'" class="tld-input" style="flex:1.3">'+opts+'</select>'
+        +'<input type="date" id="crmpx-task-edit-date-'+t.id+'" class="tld-input" style="flex:1" value="'+esc(t.due_date||'')+'">'
+        +'<input type="time" id="crmpx-task-edit-time-'+t.id+'" class="tld-input" style="width:95px" value="'+esc(t.due_time||'')+'">'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">'
+        +'<label style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--bly-sub);cursor:pointer"><input type="checkbox" id="crmpx-task-edit-priority-'+t.id+'" style="width:auto"'+(t.priority?' checked':'')+'>⚡ Høj prioritet</label>'
+        +'<div style="display:flex;gap:6px">'
+          +'<button class="btn small outline" type="button" data-task-id="'+t.id+'" data-action="task-edit-cancel">Annullér</button>'
+          +'<button class="btn small" type="button" data-task-id="'+t.id+'" data-action="task-edit-save">Gem</button>'
+        +'</div>'
+      +'</div>'
+      +'</div>';
+  }
+  var initials=t.assigned_initials||(t.assigned_name?t.assigned_name.split(' ').map(function(w){return w[0];}).slice(0,2).join('').toUpperCase():'');
+  var assigneeBadge=t.assigned_to?'<span class="crmpx-task-assignee" style="background:'+crmpOwnerColor(t.assigned_to)+'" title="'+esc(t.assigned_name||'')+'">'+esc(initials)+'</span>':'';
+  // RUNDE L (Martins gentagne ønske: "opgave sektionen ser stadig anderledes
+  // ud") — rækkefølgen er nu titel → prioritet-mærke → dato/ansvarlig, samme
+  // som forslags-billedet, i stedet for mærke → titel. Ret-/slet-knapperne
+  // vises kun ved museover (se .crmpx-task-row .qz-icon-btn i CSS), så
+  // listen ved hvile ser lige så ren ud som i forslaget.
+  return '<div class="crmpx-task-row'+(t.done?' done':'')+'">'
+    +'<input type="checkbox" data-task-id="'+t.id+'" data-action="task-toggle"'+(t.done?' checked':'')+'>'
+    +'<span class="crmpx-task-title">'+esc(t.title)+'</span>'
+    +(t.priority?'<span class="crmpx-task-hoej" title="Høj prioritet">⚡ Høj</span>':'')
+    +'<span class="crmpx-task-meta">'+crmpxTaskDueLabel(t)+assigneeBadge+'</span>'
+    +'<button type="button" class="qz-icon-btn crmpx-task-edit" data-task-id="'+t.id+'" data-action="task-edit" title="Ret">✏️</button>'
+    +'<button type="button" class="qz-icon-btn crmpx-task-del" data-task-id="'+t.id+'" data-action="task-delete" title="Slet">🗑</button></div>';
+}
+async function crmpxRenderTasksList(){
   var list=document.getElementById('crmpx-tasks-list');
-  document.getElementById('crmpx-tasks-count').textContent='('+tasks.length+')';
-  list.innerHTML=tasks.length?tasks.map(function(t){
-    var initials=t.assigned_initials||(t.assigned_name?t.assigned_name.split(' ').map(function(w){return w[0];}).slice(0,2).join('').toUpperCase():'');
-    var assigneeBadge=t.assigned_to?'<span class="crmpx-task-assignee" style="background:'+crmpOwnerColor(t.assigned_to)+'" title="'+esc(t.assigned_name||'')+'">'+esc(initials)+'</span>':'';
-    // RUNDE L (Martins gentagne ønske: "opgave sektionen ser stadig anderledes
-    // ud") — rækkefølgen er nu titel → prioritet-mærke → dato/ansvarlig, samme
-    // som forslags-billedet, i stedet for mærke → titel. Slet-knappen vises kun
-    // ved museover (se .crmpx-task-row .qz-icon-btn i CSS), så listen ved
-    // hvile ser lige så ren ud som i forslaget.
-    return '<div class="crmpx-task-row'+(t.done?' done':'')+'">'
-      +'<input type="checkbox" data-task-id="'+t.id+'" data-action="task-toggle"'+(t.done?' checked':'')+'>'
-      +'<span class="crmpx-task-title">'+esc(t.title)+'</span>'
-      +(t.priority?'<span class="crmpx-task-hoej" title="Høj prioritet">⚡ Høj</span>':'')
-      +'<span class="crmpx-task-meta">'+crmpxTaskDueLabel(t)+assigneeBadge+'</span>'
-      +'<button type="button" class="qz-icon-btn crmpx-task-del" data-task-id="'+t.id+'" data-action="task-delete" title="Slet">🗑</button></div>';
-  }).join(''):'<div class="crmpx-empty">Ingen opgaver endnu</div>';
+  document.getElementById('crmpx-tasks-count').textContent='('+crmpxTasksCache.length+')';
+  // Ventes her (ikke kun i crmpxLoadTasks) så selve REDIGERINGS-formularens
+  // ansvarlig-dropdown også altid har data — den bygges jo hver gang denne
+  // funktion kaldes, inkl. ved skift ind/ud af redigeringstilstand.
+  await usersReadyPromise;
+  list.innerHTML=crmpxTasksCache.length?crmpxTasksCache.map(crmpxTaskRowHtml).join(''):'<div class="crmpx-empty">Ingen opgaver endnu</div>';
   list.querySelectorAll('[data-action="task-toggle"]').forEach(function(cb){
     cb.addEventListener('change',async function(){await api('/api/crm/tasks/'+cb.dataset.taskId,{method:'PUT',body:JSON.stringify({done:cb.checked})});crmpxLoadTasks();});
   });
   list.querySelectorAll('[data-action="task-delete"]').forEach(function(btn){
     btn.addEventListener('click',async function(){await api('/api/crm/tasks/'+btn.dataset.taskId,{method:'DELETE'});crmpxLoadTasks();});
   });
+  list.querySelectorAll('[data-action="task-edit"]').forEach(function(btn){
+    btn.addEventListener('click',function(){crmpxEditingTaskId=btn.dataset.taskId;crmpxRenderTasksList();});
+  });
+  list.querySelectorAll('[data-action="task-edit-cancel"]').forEach(function(btn){
+    btn.addEventListener('click',function(){crmpxEditingTaskId=null;crmpxRenderTasksList();});
+  });
+  list.querySelectorAll('[data-action="task-edit-save"]').forEach(function(btn){
+    btn.addEventListener('click',function(){crmpxSaveTaskEdit(btn.dataset.taskId);});
+  });
+  if(crmpxEditingTaskId!==null){
+    var titleInput=document.getElementById('crmpx-task-edit-title-'+crmpxEditingTaskId);
+    if(titleInput){titleInput.focus();titleInput.select();}
+  }
+}
+async function crmpxSaveTaskEdit(id){
+  var titleEl=document.getElementById('crmpx-task-edit-title-'+id);
+  var title=titleEl?titleEl.value.trim():'';
+  if(!title){toast('Titel må ikke være tom','❌');return;}
+  var body={
+    title:title,
+    assigned_to:document.getElementById('crmpx-task-edit-assignee-'+id).value||null,
+    due_date:document.getElementById('crmpx-task-edit-date-'+id).value||null,
+    due_time:document.getElementById('crmpx-task-edit-time-'+id).value||null,
+    priority:document.getElementById('crmpx-task-edit-priority-'+id).checked
+  };
+  var r=await api('/api/crm/tasks/'+id,{method:'PUT',body:JSON.stringify(body)});
+  if(r&&r.ok){crmpxEditingTaskId=null;crmpxLoadTasks();}
+  else toast((r&&r.error)||'Kunne ikke gemme ændringen','❌');
+}
+async function crmpxLoadTasks(){
+  var ent=crmpDetailEntity;
+  if(!ent)return;
+  crmpxTasksCache=await api('/api/crm/tasks?entity_type='+ent.type+'&entity_id='+ent.id)||[];
+  crmpxEditingTaskId=null;
+  await crmpxRenderTasksList();
   // Genopbyg assignee-dropdownens options hver gang (ikke kun én gang ved init) —
   // så den altid har data selv hvis crmpxInitOnce kørte før users var hentet.
   // Vent desuden på at loadAll() rent faktisk har hentet users (se usersReadyPromise
@@ -26969,9 +27097,18 @@ function qeRenderTotals(){
 // den, ikke en pixel-for-pixel kopi, men den viser nu i det mindste ægte
 // sideskift i stedet for at foregive tilbuddet altid er én side langt.
 var QE_PAGE_W=560,QE_PAGE_PAD='36px 34px',QE_PAGE_CONTENT_H=740; // px — ca. A4-forhold ved 560px bredde
-function qeLineRowHtml(l){
+function qeLineRowHtml(l,sectionSum){
   if(l.line_type==='text'){
-    return '<tr><td colspan="5" style="padding:8px 0;border-top:none"><div class="qe-divider-row">'+esc(l.description||'')+'</div></td></tr>';
+    // RUNDE AZ (Martin, efter RUNDE AW/AX: "Smid summen oppe i selve
+    // tekslinjen feltet i den grå boks i højre side og bare skriv") — sad
+    // hidtil som sin egen "Sum for sektion"-række til sidst i sektionen (se
+    // det fjernede qeSectionSumRowHtml/flushSum nedenfor). Skrives nu i
+    // stedet direkte ind i selve sektions-bjælken, ved siden af overskriften
+    // — sectionSum kommer forudberegnet fra qeBuildVirtualRows, da denne
+    // funktion (som bygger ÉN linje ad gangen) ikke selv kender resten af
+    // sektionens poster endnu.
+    var sumHtml=sectionSum!=null?'<span class="qe-divider-sum">'+krFmt(sectionSum)+'</span>':'';
+    return '<tr><td colspan="5" style="padding:8px 0;border-top:none"><div class="qe-divider-row"><span class="qe-divider-label">'+esc(l.description||'')+'</span>'+sumHtml+'</div></td></tr>';
   }
   var qty=Number(l.quantity)||0,disc=Number(l.discount_pct)||0;
   var gross=qty*(Number(l.sell_price)||0);
@@ -26980,44 +27117,33 @@ function qeLineRowHtml(l){
   var discCell=disc?('<span class="qe-pdf-disc">-'+(l.discount_type==='fixed'?krFmt(disc):disc+'%')+' (-'+krFmt(lineDiscAmt)+')</span>'):'';
   return '<tr><td>'+qzLineDescCellHtml(l)+'</td><td class="num">'+qty+' '+esc(l.unit||'')+'</td><td class="num">'+discCell+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lineTotal)+'</td></tr>';
 }
-// RUNDE AW (Martins ønske: "når man laver en tekstlinje kan jeg trykke at den
-// skal vise den samlede pris af alle poster under tekstlinjen indtil næste
-// tekstlinje") — en ekstra "virtuel" tabelrække, der ikke svarer til nogen
-// linje i qeState.lines. Samme visuelle sprog som selve totalblokken
-// (.qe-pdf-totals-row.grand), men mindre fremtrædende — det er en delsum
-// undervejs, ikke tilbuddets faktiske total.
-function qeSectionSumRowHtml(sum){
-  return '<tr class="qe-section-sum-row"><td colspan="4" style="text-align:right">Sum for sektion</td><td class="num">'+krFmt(sum)+'</td></tr>';
-}
-// Bygger den FLADE liste af tabelrækker pagineringen nedenfor arbejder på.
-// Før RUNDE AW var der altid præcis én række pr. linje i qeState.lines
-// (qeState.lines.map(qeLineRowHtml)), og selve pagineringen antog det samme
-// 1:1-forhold ved at måle/pakke ud fra qeState.lines' egne indekser. En
-// sum-række hører ikke til nogen linje, så det 1:1-forhold er brudt — i
-// stedet bygges nu en flad liste HTML-rækker her (linjer + evt. indskudte
-// sum-rækker), som pagineringen blot pakker efter INDEKS I DENNE LISTE, uden
-// at vide noget om hvor rækkerne kom fra.
+// Bygger den FLADE liste af tabelrækker pagineringen nedenfor arbejder på —
+// én række pr. linje i qeState.lines (1:1, samme rækkefølge). RUNDE AZ: en
+// sektions sum skal nu tegnes INDE i dens egen header-række (se
+// qeLineRowHtml), men den kan først kendes efter vi har set alle poster i
+// sektionen — derfor et forudberegnings-gennemløb her FØRST, der finder hver
+// show_sum-sektions total (nøglet på tekstlinjens indeks i lines), inden de
+// faktiske rækker bygges.
 function qeBuildVirtualRows(lines){
-  var rows=[],openSum=null;
-  function flushSum(){
-    if(openSum!==null)rows.push(qeSectionSumRowHtml(openSum));
-    openSum=null;
+  var sums={},openIdx=null,sum=0;
+  function flush(){
+    if(openIdx!==null)sums[openIdx]=sum;
+    openIdx=null;sum=0;
   }
-  lines.forEach(function(l){
+  lines.forEach(function(l,i){
     if(l.line_type==='text'){
-      flushSum();
-      rows.push(qeLineRowHtml(l));
-      openSum=l.show_sum?0:null;
+      flush();
+      openIdx=l.show_sum?i:null;
+      sum=0;
       return;
     }
-    rows.push(qeLineRowHtml(l));
-    if(openSum!==null){
+    if(openIdx!==null){
       var qty=Number(l.quantity)||0,gross=qty*(Number(l.sell_price)||0);
-      openSum+=gross-qzLineDiscountAmount(l,gross);
+      sum+=gross-qzLineDiscountAmount(l,gross);
     }
   });
-  flushSum();
-  return rows;
+  flush();
+  return lines.map(function(l,i){return qeLineRowHtml(l,l.line_type==='text'?sums[i]:null);});
 }
 function qeTableHeadHtml(){
   return '<thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Rabat</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead>';
@@ -28501,6 +28627,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzt-lines').addEventListener('input',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('change',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
+  document.getElementById('qzt-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
   document.getElementById('qzt-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('qzt-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
@@ -28531,6 +28658,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qal-lines').addEventListener('input',qalFieldHandler);
   document.getElementById('qal-lines').addEventListener('change',qalFieldHandler);
   document.getElementById('qal-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
+  document.getElementById('qal-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
   document.getElementById('qal-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('qal-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
@@ -28553,6 +28681,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('ivl-lines').addEventListener('input',ivlFieldHandler);
   document.getElementById('ivl-lines').addEventListener('change',ivlFieldHandler);
   document.getElementById('ivl-lines').addEventListener('click',makeLinesRemoveHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
+  document.getElementById('ivl-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
   document.getElementById('ivl-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('ivl-lines').addEventListener('click',qzRichTextToolbarHandler);
   document.getElementById('ivl-discount').addEventListener('input',ivlRenderTotals);
@@ -28639,6 +28768,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-lines').addEventListener('input',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('change',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
+  document.getElementById('qe-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
   document.getElementById('qe-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('qe-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
