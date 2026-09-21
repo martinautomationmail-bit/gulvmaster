@@ -11834,6 +11834,22 @@ app.get('/api/crm/leads/:id/quotes', auth, panelAccess('crmp_leads'), asyncRoute
   `, [req.params.id]);
   res.json(rows.rows);
 }));
+// RUNDE AY (Martins ønske: "Oppe ved siden af knappen tilbud lav en der hedder
+// projekter så alle projekter tilknyttet handel vises der") — modstykket til
+// .../quotes lige ovenfor, men for PROJEKTER i stedet for tilbud. Et projekt
+// har ingen egen crm_lead_id/crm_opportunity_id-kolonne (samme princip som
+// crm_entity på GET /api/projects/:id, se den lange kommentar dér) — det
+// udledes altid via projects.quote_id -> quotes.crm_lead_id, så en omkobling
+// af tilbuddet til en anden handel automatisk "flytter" projekt-fanen her med,
+// helt uden egen synkronisering.
+app.get('/api/crm/leads/:id/projects', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT p.id, p.name, p.job_number, p.status, p.customer_address, q.id AS quote_id, q.quote_number
+    FROM projects p JOIN quotes q ON q.id = p.quote_id
+    WHERE q.crm_lead_id=$1 ORDER BY p.created_at DESC
+  `, [req.params.id]);
+  res.json(rows.rows);
+}));
 app.put('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   const b = req.body || {};
   const current = await pgOne('SELECT * FROM crm_leads WHERE id=$1', [req.params.id]);
@@ -12108,6 +12124,15 @@ app.get('/api/crm/opportunities/:id/quotes', auth, panelAccess('crmp_sales'), as
     SELECT q.id, q.quote_number, q.job_name, q.status, q.total, q.created_at, p.id AS project_id, p.job_number AS project_job_number
     FROM quotes q LEFT JOIN projects p ON p.quote_id = q.id
     WHERE q.crm_opportunity_id=$1 ORDER BY q.created_at DESC
+  `, [req.params.id]);
+  res.json(rows.rows);
+}));
+// RUNDE AY — se den udførlige kommentar ved GET /api/crm/leads/:id/projects.
+app.get('/api/crm/opportunities/:id/projects', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT p.id, p.name, p.job_number, p.status, p.customer_address, q.id AS quote_id, q.quote_number
+    FROM projects p JOIN quotes q ON q.id = p.quote_id
+    WHERE q.crm_opportunity_id=$1 ORDER BY p.created_at DESC
   `, [req.params.id]);
   res.json(rows.rows);
 }));
@@ -19843,7 +19868,8 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
      mindre, ligesom i admin.html's forhåndsvisning og den rigtige PDF. */
   .ln-heading{font-weight:700}
   .ln-desc{font-weight:400;color:#6B7280;font-size:.85em;margin-top:3px;white-space:pre-line}
-  .ln-note{margin-top:6px;background:#F9FAFB;border-left:2px solid #9CA3AF;border-radius:4px;padding:6px 9px;font-size:11.5px;font-weight:400;font-style:italic;color:#4B5563;white-space:pre-line}
+  /* RUNDE AX — se samme rettelse (og forklaring) ved .ln-note i admin.html. */
+  .ln-note{margin-top:8px;margin-bottom:4px;background:#F9FAFB;border-left:2px solid #9CA3AF;border-radius:4px;padding:6px 9px;font-size:8.5px;font-weight:400;font-style:italic;color:#4B5563;white-space:pre-line}
   .ln-note-label{display:block;font-size:8.5px;font-weight:700;font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF;margin-bottom:2px}
   /* RUNDE X — punkt-/nummererede lister i beskrivelse/note (se richTextToHtml). */
   .ln-rt-list{margin:4px 0 0;padding-left:17px}

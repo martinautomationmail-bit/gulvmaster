@@ -2063,7 +2063,15 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    sidebemærkning, og en lille diskret "NOTE"-label så boksens formål stadig
    er tydeligt uden at skulle bruge farve til det. Samme ændring i server.js'
    .ln-note (kundens portal-side) og drawPdfLineDesc (den rigtige PDF). */
-.ln-note{margin-top:6px;background:#F9FAFB;border-left:2px solid #9CA3AF;border-radius:4px;padding:6px 9px;font-size:11.5px;font-weight:400;font-style:italic;color:#4B5563;white-space:pre-line}
+/* RUNDE AX (Martins fejlrapport: "Teksten i notes feltet er alt for stor px" —
+   11.5px stak markant ud fra resten af det diskrete dokument, hvor selv
+   hoved-beskrivelsen kun kører 9.5px og .ln-desc ned mod 8px). Sat ned til
+   8.5px, samme størrelse som den RIGTIGE PDF allerede brugte hele tiden (se
+   drawPdfLineDesc i server.js — DENNE visning, den levende forhåndsvisning,
+   var altså den eneste af de tre steder der stak ud). Desuden en smule luft
+   under boksen (margin-bottom), så den ikke klistrer direkte op ad næste
+   linjes tekst, som Martin også bad om. */
+.ln-note{margin-top:8px;margin-bottom:4px;background:#F9FAFB;border-left:2px solid #9CA3AF;border-radius:4px;padding:6px 9px;font-size:8.5px;font-weight:400;font-style:italic;color:#4B5563;white-space:pre-line}
 .ln-note-label{display:block;font-size:8.5px;font-weight:700;font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF;margin-bottom:2px}
 /* RUNDE X (Martins ønske: "punktfelter, tal 1,2,3 og fed skrift" i beskrivelse/note)
    — punkt-/nummererede lister i den levende forhåndsvisning (qzRichTextHtml). Samme
@@ -3533,7 +3541,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.20</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.21</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5306,6 +5314,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="bly-segtab" data-crmpxview="emails" type="button">✉️ Emails <span class="sub" id="crmpx-emails-count"></span></button>
     <button class="bly-segtab" data-crmpxview="notes" type="button">📝 Noter <span class="sub" id="crmpx-notes-count"></span></button>
     <button class="bly-segtab" data-crmpxview="quotes" type="button">📄 Tilbud <span class="sub" id="crmpx-quotes-count"></span></button>
+    <!-- RUNDE AY (Martins ønske: "Oppe ved siden af knappen tilbud lav en der
+         hedder projekter så alle projekter tilknyttet handel vises der") —
+         samme fane-mønster som Tilbud lige ovenfor, se crmpxLoadProjects. -->
+    <button class="bly-segtab" data-crmpxview="projects" type="button">📁 Projekter <span class="sub" id="crmpx-projects-count"></span></button>
   </div>
 
   <div id="crmpx-view-details">
@@ -5495,6 +5507,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        Tilbud-fane) — ingen ny server-endpoint nødvendig. -->
   <div id="crmpx-view-quotes" style="display:none">
     <div id="crmpx-quotes-list"></div>
+  </div>
+  <!-- PROJEKTER (#crmpx-view-projects, RUNDE AY) — samme idé som Tilbud-fanen
+       lige ovenfor, men for de sager (projekter) der er opstået fra et
+       accepteret tilbud på denne handel/dette lead. -->
+  <div id="crmpx-view-projects" style="display:none">
+    <div id="crmpx-projects-list"></div>
   </div>
 </section>
 
@@ -20115,18 +20133,23 @@ function makeLinesDragHandler(getLines,renderFn){
       if(row){
         var toIdx=Number(row.dataset.idx);
         if(toIdx!==fromIdx){
+          // RETTELSE (RUNDE AY — Martin: "det her virker slet ikke", efter
+          // RUNDE AW's forsøg på samme fejl) — RUNDE AW's "insertIdx=toIdx>
+          // fromIdx?toIdx-1:toIdx" var selv en fejl, ikke en rigtig rettelse:
+          // den gjorde kun retningen om, i stedet for at fjerne problemet.
+          // array.splice(i,0,item) placerer ALTID item på plads `i` i det
+          // FÆRDIGE array bagefter — det gælder uanset om man trækker op eller
+          // ned, og uanset hvor fromIdx lå, fordi splice regner ud fra det
+          // array det får givet (her: allerede uden den fjernede linje). Der
+          // skal altså IKKE korrigeres for retning overhovedet — en linje der
+          // slippes "på" en anden linje skal bare indsættes på præcis dén
+          // linjes indeks, punktum. Den tidligere -1-korrektion ramte kun ved
+          // et tilfælde rigtigt (når man trak opad) og var faktisk MODSAT
+          // forkert nedad, hvilket er præcis derfor det stadig føltes helt
+          // ved siden af efter "fixet".
           var lines=getLines();
           var moved=lines.splice(fromIdx,1)[0];
-          // FEJLRETTELSE (Martins ønske: "når man slipper den et sted syntes
-          // jeg tit den finder plads ovenpå det sted man slipper den") —
-          // splice(fromIdx,1) herover FJERNER linjen først, hvilket rykker
-          // alle SENERE indekser i arrayet ét ned. Hvis man trak en linje
-          // NEDAD (fromIdx<toIdx), pegede toIdx derfor på ét felt for langt
-          // nede EFTER fjernelsen — linjen landede en plads under der hvor
-          // man rent faktisk slap den, i stedet for oven i/foran den. Rettet
-          // ved at trække 1 fra måltal-indekset i netop dette tilfælde.
-          var insertIdx=toIdx>fromIdx?toIdx-1:toIdx;
-          lines.splice(insertIdx,0,moved);
+          lines.splice(toIdx,0,moved);
           renderFn();
         }
       }
@@ -21997,7 +22020,7 @@ function crmpxInitOnce(){
   // i crmpxLoadTasks() i stedet, som altid kører efter users er hentet.
   document.getElementById('crmpx-task-assignee').addEventListener('change',function(e){e.target.dataset.userTouched='1';});
 }
-var crmpxCurrentCustomerId=null,crmpxFilesLoaded=false,crmpxEmailsLoaded=false,crmpxNotesLoaded=false,crmpxQuotesLoaded=false;
+var crmpxCurrentCustomerId=null,crmpxFilesLoaded=false,crmpxEmailsLoaded=false,crmpxNotesLoaded=false,crmpxQuotesLoaded=false,crmpxProjectsLoaded=false;
 function crmpxSwitchView(view){
   document.querySelectorAll('#crmpx-viewtabs [data-crmpxview]').forEach(function(btn){btn.classList.toggle('active',btn.dataset.crmpxview===view);});
   document.getElementById('crmpx-view-details').style.display=view==='details'?'':'none';
@@ -22005,11 +22028,13 @@ function crmpxSwitchView(view){
   document.getElementById('crmpx-view-emails').style.display=view==='emails'?'':'none';
   document.getElementById('crmpx-view-notes').style.display=view==='notes'?'':'none';
   document.getElementById('crmpx-view-quotes').style.display=view==='quotes'?'':'none';
+  document.getElementById('crmpx-view-projects').style.display=view==='projects'?'':'none';
   document.getElementById('crmpx-mailsync-toolbar').style.display=(view==='files'||view==='emails')?'flex':'none';
   if(view==='files'&&!crmpxFilesLoaded)crmpxLoadFiles();
   if(view==='emails'&&!crmpxEmailsLoaded)crmpxLoadEmails();
   if(view==='notes'&&!crmpxNotesLoaded)crmpxLoadCustomerNotes();
   if(view==='quotes'&&!crmpxQuotesLoaded)crmpxLoadQuotes();
+  if(view==='projects'&&!crmpxProjectsLoaded)crmpxLoadProjects();
 }
 // TILBUD-fanen (sep. 2026) — oprindeligt kundekortets fulde Tilbud-liste
 // (cdRenderQuotes), altså ALLE tilbud kunden nogensinde har fået.
@@ -22044,6 +22069,35 @@ async function crmpxLoadQuotes(){
         +'<td class="num">'+krFmt(x.total)+'</td>'
         +'<td>'+esc(fmtDaDate(x.created_at))+'</td>'
         +'<td>'+(x.project_id?'<button type="button" class="bly-btn small outline" onclick="event.stopPropagation();openProjectDetail('+x.project_id+')" title="Åbn den sag tilbuddet blev til">📁 '+esc(x.project_job_number||'Åbn sag')+'</button>':'<span style="color:var(--bly-sub)">–</span>')+'</td>'
+        +'</tr>';
+    }).join('')
+    +'</tbody></table>';
+}
+// PROJEKTER-fanen (RUNDE AY, Martins ønske: "Oppe ved siden af knappen tilbud
+// lav en der hedder projekter så alle projekter tilknyttet handel vises der")
+// — samme mønster som crmpxLoadQuotes lige ovenfor, blot for de sager der er
+// opstået fra et accepteret tilbud på denne handel/dette lead (se GET
+// /api/crm/leads|opportunities/:id/projects). De fleste handler har højst ét
+// projekt (ét accepteret tilbud = én sag), men en handel kan i teorien have
+// flere tilbud der hver er blevet accepteret over tid, så listen viser dem alle.
+async function crmpxLoadProjects(){
+  var ent=crmpDetailEntity;
+  if(!ent)return;
+  crmpxProjectsLoaded=true;
+  var list=document.getElementById('crmpx-projects-list');
+  list.innerHTML='<div class="crmpx-empty">Henter projekter...</div>';
+  var projects=await api('/api/crm/'+(ent.type==='lead'?'leads':'opportunities')+'/'+ent.id+'/projects');
+  if(!projects||projects.error){list.innerHTML='<div class="crmpx-empty">Kunne ikke hente projekter — '+esc((projects&&projects.error)||'ukendt fejl')+'</div>';return;}
+  document.getElementById('crmpx-projects-count').textContent=projects.length?'('+projects.length+')':'';
+  if(!projects.length){list.innerHTML='<div class="crmpx-empty">Ingen projekter oprettet på denne handel endnu — opstår automatisk når et tilbud accepteres</div>';return;}
+  list.innerHTML='<table class="bly-table"><thead><tr><th>Sag</th><th>Sagsnr.</th><th>Status</th><th>Adresse</th><th>Tilbud</th></tr></thead><tbody>'
+    +projects.map(function(p){
+      return '<tr style="cursor:pointer" onclick="openProjectDetail('+p.id+')">'
+        +'<td>'+esc(p.name||'–')+'</td>'
+        +'<td>'+esc(p.job_number||'–')+'</td>'
+        +'<td>'+esc(pjStageLabel(p.status))+'</td>'
+        +'<td>'+esc(p.customer_address||'–')+'</td>'
+        +'<td><button type="button" class="bly-btn small outline" onclick="event.stopPropagation();openQuoteEditorSafe('+p.quote_id+')" title="Åbn tilbuddet sagen kom fra">📄 '+esc(p.quote_number||'Åbn tilbud')+'</button></td>'
         +'</tr>';
     }).join('')
     +'</tbody></table>';
@@ -22475,6 +22529,7 @@ async function openCrmpDetail(entityType,id){
   crmpxEmailsLoaded=false;
   crmpxNotesLoaded=false;
   crmpxQuotesLoaded=false;
+  crmpxProjectsLoaded=false;
   crmpxSwitchView('details');
   document.getElementById('crmpx-viewtabs').style.display=d.customer_id?'':'none';
   var gmailStatusForFiles=d.customer_id?await api('/api/gmail/connected'):null;
