@@ -1210,6 +1210,16 @@ async function initSchema() {
     -- Note pr. linje (sep. 2026, Martins ønske) — se kommentar ved products.note. Vises i
     -- egen boks under beskrivelsen på både tilbuds-PDF'en og kundens tilbudsside.
     ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS note TEXT;
+    -- RUNDE AW (sep. 2026, Martins ønske: "når man laver en tekstlinje kan jeg
+    -- trykke at den skal vise den samlede pris af alle poster under
+    -- tekstlinjen indtil næste tekstlinje") — kun relevant på en line_type='text'-
+    -- række (en sektionsoverskrift, se ovenfor). Når sat, viser BÅDE den
+    -- levende forhåndsvisning og den rigtige PDF en "Sum for sektion"-linje
+    -- lige inden næste tekstlinje (eller sidst i tilbuddet, hvis det er den
+    -- sidste sektion) med summen af alle almindelige linjer i mellem. Se
+    -- qzRefreshSectionSums/qeBuildVirtualRows (admin.html) og
+    -- flushSectionSum (drawDocumentPdf nedenfor).
+    ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS show_sum BOOLEAN NOT NULL DEFAULT false;
     -- Note i TOPPEN af tilbuddet (under kundeoplysninger) — adskilt fra "notes" som vises
     -- i BUNDEN (typisk betingelser). Begge kan forudfyldes fra en standardtekst i
     -- Indstillinger (quote_top_note_default/quote_bottom_note_default), men redigeres frit
@@ -1325,6 +1335,11 @@ async function initSchema() {
     -- Note pr. linje (sep. 2026) — kopieres fra quote_lines.note ved konvertering til
     -- faktura (se POST /api/quotes/:id/convert-to-invoice), samme visning som på tilbuddet.
     ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS note TEXT;
+    -- RUNDE AW — se den udførlige forklaring ved quote_lines.show_sum ovenfor.
+    -- Samme funktion her (en fakturas egne tekstlinjer/sektioner kan også vise
+    -- en sum), og kopieres videre fra quote_lines.show_sum ved konvertering
+    -- til faktura (se POST /api/quotes/:id/convert-to-invoice).
+    ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS show_sum BOOLEAN NOT NULL DEFAULT false;
 
     CREATE TABLE IF NOT EXISTS invoice_payments (
       id SERIAL PRIMARY KEY,
@@ -17669,9 +17684,9 @@ async function saveQuoteLines(quoteId, lines, exec) {
     if (!l.description) continue;
     const isText = l.line_type === 'text';
     await db.query(`
-      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type,line_type,note)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-    `, [quoteId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), l.discount_type === 'fixed' ? 'fixed' : 'pct', isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null)]);
+      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type,line_type,note,show_sum)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    `, [quoteId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), l.discount_type === 'fixed' ? 'fixed' : 'pct', isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null), isText ? !!l.show_sum : false]);
   }
 }
 
@@ -17885,9 +17900,9 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyn
   let pos = 0;
   for (const l of linesToInvoice) {
     await pool.query(`
-      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,note)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', equivalentLinePct(l), l.line_type === 'text' ? 'text' : 'item', l.note || null]);
+      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,note,show_sum)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', equivalentLinePct(l), l.line_type === 'text' ? 'text' : 'item', l.note || null, l.line_type === 'text' ? !!l.show_sum : false]);
   }
   await pool.query(`UPDATE quote_lines SET invoiced_in_invoice_id=$1 WHERE id = ANY($2::int[])`, [invoiceId, linesToInvoice.map(l => l.id)]);
   // 'converted' markerer nu "der findes mindst én faktura" — blokerer IKKE
@@ -18014,9 +18029,9 @@ app.post('/api/invoices/direct-create', auth, panelAccess('quotes'), asyncRoute(
     if (!l.description) continue;
     const isText = l.line_type === 'text';
     await pool.query(`
-      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,note)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-    `, [invoiceId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : equivalentLinePct(l), isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null)]);
+      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,note,show_sum)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    `, [invoiceId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : equivalentLinePct(l), isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null), isText ? !!l.show_sum : false]);
   }
   logDocActivity('invoice', invoiceId, 'created', req.user.name, 'direkte faktura, uden tilbud');
   res.json({ ok: true, id: invoiceId, invoice_id: invoiceId, invoice_number: invoiceNumber, job_number: jobNumber });
@@ -18156,9 +18171,9 @@ app.put('/api/invoices/:id/lines', auth, panelAccess('quotes'), asyncRoute(async
     if (!l.description) continue;
     const isText = l.line_type === 'text';
     await pool.query(`
-      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,note)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-    `, [req.params.id, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null)]);
+      INSERT INTO invoice_lines (invoice_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,note,show_sum)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    `, [req.params.id, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null), isText ? !!l.show_sum : false]);
   }
   const savedLines = (await pool.query('SELECT * FROM invoice_lines WHERE invoice_id=$1 ORDER BY position ASC, id ASC', [req.params.id])).rows;
   const totals = computeTotals(savedLines, current.tax_rate, { value: discountPct, type: 'pct' });
@@ -18882,8 +18897,30 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
   y = drawPdfLineTableHeader(doc, y);
   doc.fontSize(9.5).fillColor('#111318');
   let rawSubtotal = 0;
+  // RUNDE AW (Martins ønske: "når man laver en tekstlinje kan jeg trykke at
+  // den skal vise den samlede pris af alle poster under tekstlinjen indtil
+  // næste tekstlinje") — se skema-kommentaren ved quote_lines.show_sum.
+  // sectionSumOpen/sectionSum holder styr på den AKTUELLE sektion mens vi
+  // tegner linje for linje; flushSectionSum tegner en "Sum for sektion"-linje
+  // for den FORRIGE sektion, lige inden en ny tekstlinje starter (eller til
+  // sidst, efter den allersidste linje) — kun hvis den sektion faktisk havde
+  // show_sum slået til. Samme beregning/visning som den levende forhåndsvisning
+  // (qeBuildVirtualRows/qeSectionSumRowHtml i admin.html) — skal holdes i trit.
+  let sectionSumOpen = false, sectionSum = 0;
+  function flushSectionSum() {
+    if (!sectionSumOpen) return;
+    y = ensurePdfSpace(doc, y, 22, { ...ctx, redrawTableHeader: true });
+    doc.font('DMSans-Bold').fontSize(9.5).fillColor('#111318');
+    doc.text('SUM FOR SEKTION', 278, y, { width: 187, align: 'right' });
+    doc.text(Math.round(sectionSum).toLocaleString('da-DK') + ' kr', 465, y, { width: 75, align: 'right' });
+    doc.font('DMSans').fontSize(9.5).fillColor('#111318');
+    y += 18;
+    sectionSumOpen = false;
+    sectionSum = 0;
+  }
   (record.lines || []).forEach(l => {
     if (l.line_type === 'text') {
+      flushSectionSum();
       // RUNDE U (Martins ønske: "lav det mere tydeligt det bryder det
       // eksisterende tilbud med en linje så man kan bruge det til at indele
       // tilbuddet i faggrupper") — en tekstlinje var bare fed tekst midt i
@@ -18905,6 +18942,8 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
       doc.fillColor('#111318').text(divText, 56, y + 10, { width: 491, characterSpacing: 0.4 });
       doc.font('DMSans');
       y += boxH + 12;
+      sectionSumOpen = !!l.show_sum;
+      sectionSum = 0;
       return;
     }
     const lineDiscType = l.discount_type === 'fixed' ? 'fixed' : 'pct';
@@ -18913,6 +18952,7 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     const lineDiscAmt = lineDiscountAmount(l, gross);
     const lineTotal = gross - lineDiscAmt;
     rawSubtotal += lineTotal;
+    if (sectionSumOpen) sectionSum += lineTotal;
     // RUNDE T: rabat vises nu i egen kolonne, rød tekst, i stedet for klistret
     // på Antal-cellen — se kommentar ved kolonneoverskrifterne. Viser BÅDE
     // satsen ("-10%"/"-450 kr") OG selve rabatbeløbet i kr, som to stablede
@@ -18942,6 +18982,7 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     y += rowHeight;
     doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#EEF0F3').stroke();
   });
+  flushSectionSum(); // sidste sektion, hvis den havde show_sum slået til
 
   y += 12;
   // RUNDE U — totalblokken (rabat/subtotal/moms/total, evt. betalt/restbeløb)

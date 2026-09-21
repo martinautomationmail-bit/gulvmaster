@@ -1912,7 +1912,13 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    ændring er lavet i .qe-divider-row (selve forhåndsvisningen) og i den
    RIGTIGE PDF (drawDocumentPdf i server.js), så alle tre steder stemmer overens. */
 .qe-line-text{background:var(--bly-border-soft);border-color:var(--bly-border);border-left:3px solid var(--bly-ink)}
-.qe-line-text .qe-line-top{grid-template-columns:18px 1fr 30px;margin-bottom:0}
+/* RUNDE AW — "Vis sum"-afkrydsning + sumtal (se qzLineRowHtml) er to NYE
+   direkte børn af .qe-line-top på en tekstlinje, så gitteret her fik to
+   ekstra auto-brede kolonner tilføjet FØR fjern-knappens 30px — ellers ville
+   de to nye elementer enten blive klemt ind i den eksisterende beskrivelses-
+   kolonne eller flyde uden for gitteret (CSS grid placerer overskydende børn
+   i en implicit, uforudsigelig bredde, når der ikke er kolonner nok). */
+.qe-line-text .qe-line-top{grid-template-columns:18px 1fr auto auto 30px;margin-bottom:0}
 .qe-line-text input.qe-line-field{font-weight:700;color:var(--bly-ink);text-transform:uppercase;letter-spacing:.03em;font-size:12.5px}
 .qe-line-top{display:grid;grid-template-columns:18px 1fr 80px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
 .qe-line-top textarea.qe-desc-area{resize:vertical;min-height:36px;max-height:200px;line-height:1.4;font-family:inherit;overflow-y:auto;white-space:pre-wrap}
@@ -1920,6 +1926,15 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .qe-line-num-label{font-size:9px;color:var(--bly-sub);font-weight:700;text-transform:uppercase}
 .qe-line-margin{font-size:10.5px;font-weight:800;margin-top:2px}
 .qe-remove-line{border:0;background:transparent;color:var(--bly-dot-overdue);cursor:pointer;font-size:15px}
+/* RUNDE AW — "Vis sum"-afkrydsning på en tekstlinje, og selve sumtallet ved
+   siden af (kun synligt når krydset af — se :has()-reglen, samme mønster som
+   fx .tab-navdrop:has(.navdrop-menu.open) andetsteds i denne fil). Bevidst
+   underspillet/diskret stil, ligesom "+ Note"-knappen, ikke en fremhævet
+   farveboks — det er et redigerings-værktøj, ikke selve tilbuddets indhold. */
+.qe-textline-sum-toggle{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;text-transform:none;letter-spacing:normal;color:var(--bly-sub);cursor:pointer;white-space:nowrap;justify-self:end}
+.qe-textline-sum-toggle input{margin:0;width:13px;height:13px;flex-shrink:0}
+.qe-textline-sum{display:none;font-size:11px;font-weight:800;color:var(--bly-ink);white-space:nowrap;justify-self:end}
+.qe-textline-sum-toggle:has(input:checked)+.qe-textline-sum{display:inline-block}
 /* RUNDE W — lille, diskret "+ Note"-knap der åbner note-feltet (se qzLineRowHtml
    / qzNoteToggleClickHandler). Bevidst underspillet stil (ingen farve, ingen
    kant) så den ikke konkurrerer visuelt med de rigtige felter på linjen. */
@@ -2076,6 +2091,12 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    nu neutral/mørk i stedet, se kommentaren ved .qe-line-text ovenfor. Samme
    ændring i den rigtige PDF (drawDocumentPdf i server.js). */
 .qe-divider-row{background:var(--bly-border-soft);color:var(--bly-ink);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;padding:9px 14px;border-radius:4px;border-left:3px solid var(--bly-ink);white-space:pre-line}
+/* RUNDE AW — den levende forhåndsvisnings udgave af en "Sum for sektion"-
+   række (se qeSectionSumRowHtml/qeBuildVirtualRows). Samme placering/skrift
+   som en almindelig linjerække i tabellen, bare fed og med en tynd streg
+   over, så den skiller sig ud som en delsum — samme visuelle idé som den
+   rigtige PDF's udgave (flushSectionSum i drawDocumentPdf, server.js). */
+.qe-section-sum-row td{font-weight:800;font-size:10.5px;color:var(--bly-ink);border-top:1.5px solid var(--bly-ink);padding-top:6px}
 .qe-pdf-totals{margin-left:auto;width:220px}
 .qe-pdf-totals-row{display:flex;justify-content:space-between;padding:3px 0;font-size:10px;color:#6B7280}
 .qe-pdf-totals-row.grand{background:var(--bly-accent);color:#fff;font-weight:800;font-size:11.5px;padding:6px 8px;border-radius:6px;margin-top:6px}
@@ -3512,7 +3533,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.19</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.20</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -19754,10 +19775,24 @@ function qzRtToolbarHtml(){
 }
 function qzLineRowHtml(l,idx,prefix){
   if(l.line_type==='text'){
+    // RUNDE AW (Martins ønske: "når man laver en tekstlinje kan jeg trykke at
+    // den skal vise den samlede pris af alle poster under tekstlinjen indtil
+    // næste tekstlinje") — "Vis sum"-afkrydsning + selve sumtallet ved siden
+    // af. Summen selv opdateres IKKE her (denne funktion kender kun til DENNE
+    // linje, ikke resten af tilbuddet) — det gør qzRefreshSectionSums, kaldt
+    // efter hver gentegning/felt-ændring. Sum-feltet er altid i DOM'en (også
+    // når afkrydsningen er slået fra), og vises/skjules rent med CSS
+    // (:has(input:checked)) — ELLERS ville man skulle gentegne HELE linjen
+    // (og dermed miste fokus midt i en tastning) bare for at afsløre feltet
+    // igen efter at have krydset af.
     return '<div class="qe-line qe-line-text" data-idx="'+idx+'">'
       +'<div class="qe-line-top">'
       +qzLineDragHandle(idx)
       +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="description" value="'+esc(l.description||'')+'" placeholder="✦ Sektionsoverskrift — fx en faggruppe (\'Gulvarbejde\', \'Malerarbejde\'...) — vises som en tydelig adskiller i tilbuddet">'
+      +'<label class="qe-textline-sum-toggle" title="Vis den samlede pris af alle linjer under denne overskrift, frem til næste tekstlinje (eller slutningen af tilbuddet)">'
+        +'<input type="checkbox" class="qe-line-field" data-idx="'+idx+'" data-field="show_sum"'+(l.show_sum?' checked':'')+'> Vis sum'
+      +'</label>'
+      +'<span class="qe-textline-sum" id="'+prefix+'-line-sectionsum-'+idx+'"></span>'
       +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
       +'</div></div>';
   }
@@ -19794,7 +19829,7 @@ function qzLineRowHtml(l,idx,prefix){
     // visuelt (qzToggleNoteArea), uden en fuld gentegning af linjerne.
     +(l.note?'':'<button type="button" class="qz-note-toggle" data-idx="'+idx+'">+ Note</button>')
     +'<div class="qz-note-wrap"'+(l.note?'':' style="display:none"')+'>'
-    +'<div class="qz-rt-host">'+qzRtToolbarHtml()+'<textarea class="qe-input qe-line-field qz-note-area" data-idx="'+idx+'" data-field="note" placeholder="Note (valgfrit) — vises i egen boks under beskrivelsen på tilbud/faktura" rows="1" style="margin-top:4px;font-size:12.5px;min-height:34px">'+esc(l.note||'')+'</textarea></div>'
+    +'<div class="qz-rt-host">'+qzRtToolbarHtml()+'<textarea class="qe-input qe-line-field qz-note-area" data-idx="'+idx+'" data-field="note" placeholder="Note (valgfrit) — vises i egen boks under beskrivelsen på tilbud/faktura" rows="1" style="margin-top:4px;font-size:11px;line-height:1.35;min-height:26px">'+esc(l.note||'')+'</textarea></div>'
     +'</div>'
     +'<div class="qe-line-nums">'
     +'<div><div class="qe-line-num-label">Antal</div><input class="qe-input qe-line-field" type="number" step="0.01" data-idx="'+idx+'" data-field="quantity" value="'+qty+'"></div>'
@@ -19815,16 +19850,54 @@ function qzLineRowHtml(l,idx,prefix){
 // Lader et beskrivelses-tekstfelt vokse i højden efter indholdet — bruges så en
 // produktbeskrivelse med flere linjer (fra JobTread-import) er synlig og redigerbar
 // i selve tilbudslinjen, i stedet for at blive skjult i et enkeltlinjet inputfelt.
+// RUNDE AW (Martins ønske: "når jeg trykker note, så den tekst der står i
+// noten skal gøre mindre den fylder ret meget") — noten voksede tidligere med
+// samme loft (200px) som selve beskrivelsesfeltet, som kan indeholde hele
+// produktteksten. Noten er typisk et par korte linjer, så den får nu sit eget,
+// lavere loft (90px, med sin egen scroll hvis nogen alligevel skriver en lang
+// note) — se også font-size/min-height sat direkte på .qz-note-area nedenfor.
 function qzAutoGrowTextarea(el){
   if(!el)return;
+  var cap=el.classList.contains('qz-note-area')?90:200;
   el.style.height='auto';
-  el.style.height=Math.min(el.scrollHeight,200)+'px';
+  el.style.height=Math.min(el.scrollHeight,cap)+'px';
+}
+// RUNDE AW — se qzLineRowHtml (tekstlinjens "Vis sum"-afkrydsning). Går
+// linjerne igennem i rækkefølge og lægger alle almindelige linjers I ALT
+// sammen, for hver sektion (en tekstlinje) der har show_sum slået til, indtil
+// enten næste tekstlinje eller listens slutning — og skriver tallet ind i det
+// tilhørende sum-felt i DOM'en. Kaldes efter HVER gentegning (qzRenderLines)
+// OG efter enhver felt-ændring (en linjes antal/pris/rabat kan jo ændre
+// summen for den sektion den sidder i) — se makeLinesFieldHandler nedenfor.
+function qzRefreshSectionSums(lines,prefix){
+  var openIdx=null,sum=0;
+  function flush(){
+    if(openIdx===null)return;
+    var el=document.getElementById(prefix+'-line-sectionsum-'+openIdx);
+    if(el)el.textContent='Sum: '+krFmt(sum);
+  }
+  for(var i=0;i<lines.length;i++){
+    var l=lines[i];
+    if(l.line_type==='text'){
+      flush();
+      openIdx=l.show_sum?i:null;
+      sum=0;
+      continue;
+    }
+    if(openIdx!==null){
+      var qty=Number(l.quantity)||0,sell=Number(l.sell_price)||0;
+      var gross=qty*sell;
+      sum+=gross-qzLineDiscountAmount(l,gross);
+    }
+  }
+  flush();
 }
 function qzRenderLines(containerId,lines,prefix){
   var el=document.getElementById(containerId);
   if(!lines.length){el.innerHTML='<div class="sub" style="padding:14px 0">Ingen linjer endnu — tilføj fra produktkataloget eller opret en fri linje.</div>';return;}
   el.innerHTML=lines.map(function(l,idx){return qzLineRowHtml(l,idx,prefix);}).join('');
   Array.prototype.forEach.call(el.querySelectorAll('.qe-desc-area,.qz-note-area'),qzAutoGrowTextarea);
+  qzRefreshSectionSums(lines,prefix);
 }
 function qzRefreshLineDisplay(lines,idx,prefix){
   var l=lines[idx];if(!l)return;
@@ -19849,7 +19922,12 @@ function makeLinesFieldHandler(getLines,prefix,onChange,renderLinesFn){
     var lines=getLines();
     var idx=Number(t.dataset.idx),field=t.dataset.field;
     var l=lines[idx];if(!l)return;
-    if(field==='description'||field==='unit'||field==='product_type'||field==='discount_type'||field==='note'){l[field]=t.value;if(field==='discount_type')qzRefreshLineDisplay(lines,idx,prefix);}
+    // RUNDE AW — "Vis sum"-afkrydsningen på en tekstlinje er et checkbox-felt,
+    // ikke tekst/tal — t.value på en checkbox er altid strengen "on" uanset
+    // status, så den skal læses via t.checked, ellers ville den blive gemt
+    // som enten tom streng ELLER 0 (Number('on')||0) regardless af hak.
+    if(field==='show_sum'){l[field]=t.checked;}
+    else if(field==='description'||field==='unit'||field==='product_type'||field==='discount_type'||field==='note'){l[field]=t.value;if(field==='discount_type')qzRefreshLineDisplay(lines,idx,prefix);}
     else{l[field]=Number(t.value)||0;qzRefreshLineDisplay(lines,idx,prefix);}
     if((field==='description'||field==='note')&&t.tagName==='TEXTAREA')qzAutoGrowTextarea(t);
     // Live produkt-søgning DIREKTE i linjens eget beskrivelsesfelt — ikke kun i det
@@ -19859,6 +19937,11 @@ function makeLinesFieldHandler(getLines,prefix,onChange,renderLinesFn){
     if(field==='description'&&l.line_type!=='text'&&e.type==='input'&&renderLinesFn){
       qzShowLineAutocomplete(t,lines,idx,prefix,renderLinesFn,onChange);
     }
+    // RUNDE AW — enhver felt-ændring kan i princippet påvirke en sektions sum
+    // (antal/pris/rabat på en almindelig linje, eller selve "Vis sum"-hakket),
+    // så tallet holdes opdateret efter hvert tastetryk, ligesom linjens egen
+    // "I alt" gør (qzRefreshLineDisplay ovenfor).
+    qzRefreshSectionSums(lines,prefix);
     if(onChange)onChange();
   };
 }
@@ -19945,8 +20028,57 @@ function qzRichTextToolbarHandler(e){
 // uændret efter hver gentegning uden at skulle genbindes pr. linje.
 // Kun håndtaget (.qe-line-drag) er draggable — se qzLineDragHandle.
 function qzLineRow(el){return el&&el.closest('.qe-line,.qe-line-text');}
+// RUNDE AW (Martins ønske: "når jeg laver et tilbud med fx 10 linjer og skal
+// rykke en post op tager det en evighed, da den ikke får skærmen til at
+// rulle op så jeg skal slippe den flere gange") — browserens NATIVE HTML5
+// drag-and-drop autoscroller ALDRIG selv, heller ikke når man holder musen
+// helt ude ved kanten af skærmen/boksen. Løsningen er en selvstændig
+// requestAnimationFrame-løkke der ruller det relevante område, mens man
+// trækker, når musen er tæt på top/bund — starter når et træk begynder,
+// stopper når det slipper/afbrydes. "Det relevante område" er enten selve
+// linje-boksen HVIS den har sin egen scroll (fx #qzt-lines/#qal-lines/
+// #ivl-lines i skabelon-/faktura-modalerne, som alle har overflow:auto), eller
+// hele VINDUET hvis den ikke har (det er tilfældet for selve #qe-lines i
+// tilbudseditoren — den scroller sammen med resten af siden) — se
+// qzScrollParent.
+function qzScrollParent(el){
+  var node=el&&el.parentElement;
+  while(node&&node!==document.body){
+    var cs=getComputedStyle(node);
+    if((cs.overflowY==='auto'||cs.overflowY==='scroll')&&node.scrollHeight>node.clientHeight)return node;
+    node=node.parentElement;
+  }
+  return null; // ingen selvstændigt scrollende forælder — brug vinduet
+}
+var qzDragScroll={raf:null,y:null,container:null};
+function qzDragScrollTick(){
+  if(qzDragScroll.y===null){qzDragScroll.raf=null;return;}
+  var margin=70,maxSpeed=16;
+  var top,bottom,scrollFn;
+  if(qzDragScroll.container){
+    var r=qzDragScroll.container.getBoundingClientRect();
+    top=r.top;bottom=r.bottom;
+    scrollFn=function(dy){qzDragScroll.container.scrollTop+=dy;};
+  }else{
+    top=0;bottom=window.innerHeight;
+    scrollFn=function(dy){window.scrollBy(0,dy);};
+  }
+  var y=qzDragScroll.y,dy=0;
+  if(y<top+margin)dy=-maxSpeed*(1-Math.max(0,y-top)/margin);
+  else if(y>bottom-margin)dy=maxSpeed*(1-Math.max(0,bottom-y)/margin);
+  if(dy)scrollFn(dy);
+  qzDragScroll.raf=requestAnimationFrame(qzDragScrollTick);
+}
+function qzDragScrollStart(container){
+  qzDragScroll.container=container;
+  if(!qzDragScroll.raf)qzDragScroll.raf=requestAnimationFrame(qzDragScrollTick);
+}
+function qzDragScrollStop(){
+  qzDragScroll.y=null;
+  if(qzDragScroll.raf){cancelAnimationFrame(qzDragScroll.raf);qzDragScroll.raf=null;}
+}
 function makeLinesDragHandler(getLines,renderFn){
-  var fromIdx=null;
+  var fromIdx=null,scrollParent=null;
   function clearDragoverMarks(root){
     root.querySelectorAll('.qe-line-dragover').forEach(function(el){el.classList.remove('qe-line-dragover');});
   }
@@ -19957,12 +20089,18 @@ function makeLinesDragHandler(getLines,renderFn){
       var row=qzLineRow(handle);
       if(!row)return;
       fromIdx=Number(row.dataset.idx);
+      scrollParent=qzScrollParent(e.currentTarget);
       e.dataTransfer.effectAllowed='move';
       e.dataTransfer.setData('text/plain',String(fromIdx));
       row.classList.add('qe-line-dragging');
     },
     dragover:function(e){
       if(fromIdx===null)return;
+      // Auto-scroll skal reagere uanset om musen lige nu er over en bestemt
+      // linje eller mellemrummet omkring den — opdateres derfor FØR
+      // row-specifik logik, og uafhængigt af om der findes en row.
+      qzDragScroll.y=e.clientY;
+      qzDragScrollStart(scrollParent);
       var row=qzLineRow(e.target);
       if(!row)return;
       e.preventDefault();
@@ -19979,14 +20117,25 @@ function makeLinesDragHandler(getLines,renderFn){
         if(toIdx!==fromIdx){
           var lines=getLines();
           var moved=lines.splice(fromIdx,1)[0];
-          lines.splice(toIdx,0,moved);
+          // FEJLRETTELSE (Martins ønske: "når man slipper den et sted syntes
+          // jeg tit den finder plads ovenpå det sted man slipper den") —
+          // splice(fromIdx,1) herover FJERNER linjen først, hvilket rykker
+          // alle SENERE indekser i arrayet ét ned. Hvis man trak en linje
+          // NEDAD (fromIdx<toIdx), pegede toIdx derfor på ét felt for langt
+          // nede EFTER fjernelsen — linjen landede en plads under der hvor
+          // man rent faktisk slap den, i stedet for oven i/foran den. Rettet
+          // ved at trække 1 fra måltal-indekset i netop dette tilfælde.
+          var insertIdx=toIdx>fromIdx?toIdx-1:toIdx;
+          lines.splice(insertIdx,0,moved);
           renderFn();
         }
       }
       fromIdx=null;
+      qzDragScrollStop();
     },
     dragend:function(e){
       fromIdx=null;
+      qzDragScrollStop();
       var container=e.currentTarget;
       if(container){
         container.querySelectorAll('.qe-line-dragging,.qe-line-dragover').forEach(function(el){el.classList.remove('qe-line-dragging','qe-line-dragover');});
@@ -26229,7 +26378,7 @@ async function openQuoteEditor(id,prefillCustomer){
     // manglede 'note' — uden den blev linjens note tabt hver gang et EKSISTERENDE tilbud
     // blev åbnet og gemt igen (qeState.lines fik ikke feltet med, og et efterfølgende
     // gem ville derfor overskrive den gemte note i databasen med null).
-    qeState.lines=(qd.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,note:l.note||'',unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:l.discount_type==='fixed'?'fixed':'pct',line_type:l.line_type==='text'?'text':'item'};});
+    qeState.lines=(qd.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,note:l.note||'',unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:l.discount_type==='fixed'?'fixed':'pct',line_type:l.line_type==='text'?'text':'item',show_sum:!!l.show_sum};});
     // RUNDE AC — se kommentaren ved docAttachStateFor.
     qeState.attachments=qd.attachments||[];
     docAttachRenderList('quote');
@@ -26776,6 +26925,45 @@ function qeLineRowHtml(l){
   var discCell=disc?('<span class="qe-pdf-disc">-'+(l.discount_type==='fixed'?krFmt(disc):disc+'%')+' (-'+krFmt(lineDiscAmt)+')</span>'):'';
   return '<tr><td>'+qzLineDescCellHtml(l)+'</td><td class="num">'+qty+' '+esc(l.unit||'')+'</td><td class="num">'+discCell+'</td><td class="num">'+krFmt(Number(l.sell_price))+'</td><td class="num">'+krFmt(lineTotal)+'</td></tr>';
 }
+// RUNDE AW (Martins ønske: "når man laver en tekstlinje kan jeg trykke at den
+// skal vise den samlede pris af alle poster under tekstlinjen indtil næste
+// tekstlinje") — en ekstra "virtuel" tabelrække, der ikke svarer til nogen
+// linje i qeState.lines. Samme visuelle sprog som selve totalblokken
+// (.qe-pdf-totals-row.grand), men mindre fremtrædende — det er en delsum
+// undervejs, ikke tilbuddets faktiske total.
+function qeSectionSumRowHtml(sum){
+  return '<tr class="qe-section-sum-row"><td colspan="4" style="text-align:right">Sum for sektion</td><td class="num">'+krFmt(sum)+'</td></tr>';
+}
+// Bygger den FLADE liste af tabelrækker pagineringen nedenfor arbejder på.
+// Før RUNDE AW var der altid præcis én række pr. linje i qeState.lines
+// (qeState.lines.map(qeLineRowHtml)), og selve pagineringen antog det samme
+// 1:1-forhold ved at måle/pakke ud fra qeState.lines' egne indekser. En
+// sum-række hører ikke til nogen linje, så det 1:1-forhold er brudt — i
+// stedet bygges nu en flad liste HTML-rækker her (linjer + evt. indskudte
+// sum-rækker), som pagineringen blot pakker efter INDEKS I DENNE LISTE, uden
+// at vide noget om hvor rækkerne kom fra.
+function qeBuildVirtualRows(lines){
+  var rows=[],openSum=null;
+  function flushSum(){
+    if(openSum!==null)rows.push(qeSectionSumRowHtml(openSum));
+    openSum=null;
+  }
+  lines.forEach(function(l){
+    if(l.line_type==='text'){
+      flushSum();
+      rows.push(qeLineRowHtml(l));
+      openSum=l.show_sum?0:null;
+      return;
+    }
+    rows.push(qeLineRowHtml(l));
+    if(openSum!==null){
+      var qty=Number(l.quantity)||0,gross=qty*(Number(l.sell_price)||0);
+      openSum+=gross-qzLineDiscountAmount(l,gross);
+    }
+  });
+  flushSum();
+  return rows;
+}
 function qeTableHeadHtml(){
   return '<thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Rabat</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead>';
 }
@@ -26848,7 +27036,7 @@ function qeRenderPreview(){
   // som den rigtige side) og læser hver <tr>'s reelle højde, så pagineringen
   // pakker efter hvor højt indholdet FAKTISK bliver (lange flerlinjede
   // beskrivelser/noter fylder mere) i stedet for at gætte på en fast højde.
-  var rowsHtmlArr=qeState.lines.map(qeLineRowHtml);
+  var rowsHtmlArr=qeBuildVirtualRows(qeState.lines);
   var measure=document.createElement('div');
   measure.style.cssText='position:absolute;left:-9999px;top:0;width:'+QE_PAGE_W+'px;visibility:hidden';
   document.body.appendChild(measure);
@@ -26871,7 +27059,11 @@ function qeRenderPreview(){
   // Martin pegede på, løst ved rent faktisk at oprette et nyt side-element.
   var pages=[{rows:[],isFirst:true}];
   var used=headH+theadH;
-  qeState.lines.forEach(function(l,i){
+  // RUNDE AW — pakkede tidligere via qeState.lines.forEach (1 linje = 1 række).
+  // Pakker nu i stedet den flade rowsHtmlArr (linjer + evt. indskudte sum-
+  // rækker fra qeBuildVirtualRows) direkte — rowHeights blev jo også målt på
+  // netop DEN liste herover, så indekserne passer stadig 1:1.
+  rowsHtmlArr.forEach(function(rowHtml,i){
     var h=rowHeights[i];
     var cur=pages[pages.length-1];
     if(cur.rows.length&&used+h>QE_PAGE_CONTENT_H){
@@ -26879,7 +27071,7 @@ function qeRenderPreview(){
       pages.push(cur);
       used=contHeadH+theadH;
     }
-    cur.rows.push(rowsHtmlArr[i]);
+    cur.rows.push(rowHtml);
     used+=h;
   });
   // Totaler/note-boks skal blive på SAMME side som sidste linje hvis der er
@@ -28126,7 +28318,7 @@ async function openIvlModal(){
   if(!ivState.id||ivState.sentAt)return;
   var inv=await api('/api/invoices/'+ivState.id);
   if(!inv||inv.error){toast('Kunne ikke hente fakturaen','❌');return;}
-  ivlState={invoiceId:ivState.id,lines:(inv.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,note:l.note||'',unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:'pct',line_type:l.line_type==='text'?'text':'item'};}),taxRate:Number(inv.tax_rate)||25};
+  ivlState={invoiceId:ivState.id,lines:(inv.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,note:l.note||'',unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:'pct',line_type:l.line_type==='text'?'text':'item',show_sum:!!l.show_sum};}),taxRate:Number(inv.tax_rate)||25};
   document.getElementById('ivl-title').textContent='Redigér linjer — '+inv.invoice_number;
   document.getElementById('ivl-discount').value=Number(inv.discount_pct)||0;
   qzRenderLines('ivl-lines',ivlState.lines,'ivl');
