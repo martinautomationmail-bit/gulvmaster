@@ -1357,21 +1357,30 @@ function render(){
       // SAGS-HANDLINGER: alle opgaver styres nu fra Martins eget program, så
       // "Se sagen"/"Registrér tid"/"Udfyld KS-formular"/"Materialer" åbner en
       // formular i selve appen, sat direkte på opgavens sag.
-      // De vises KUN når opgaven faktisk hører til en sag (task_project_id sat —
-      // dvs. opgaven er oprettet via Projekter/Gantt). Gamle opgaver uden sag har
-      // ingen sag at registrere på, og får derfor ikke fire knapper der ikke kan
-      // gøre noget: kortet har simpelthen færre handlinger (kort/note/regler/færdig),
-      // hvilket er den ærlige tilstand. Samme betingelse bruges i
-      // confirmDocumentationAndComplete().
+      // isCaseTask afgør kun om knapperne kan gå DIREKTE til opgavens egen sag —
+      // den bruges stadig i confirmDocumentationAndComplete() og til 📁 Sag-mærket.
       const isCaseTask=!!a.task_project_id;
       const caseIcon=isCaseTask?`<span class="case-chip" style="background:#EEF2FF;color:#4F46E5;border-color:#C7D2FE" title="Denne opgave hører til en sag i dit eget program">📁 Sag</span>`:'';
       // RUNDE H #21 — Martin fjernede "Se sagen" og "Regler og lovgivning" fra
       // handlingerne (mindre rod, færre knapper der sjældent bruges). "Registrér tid"
       // er nu en fuld-bredde knap nederst, da tidsregistrering er den vigtigste
       // handling. "Udfyld KS-formular" hedder nu bare "Kvalitetssikring".
-      const caseActions=isCaseTask?`
-        <button class="action qc" type="button" onclick="openQaPickerForTask(${a.task_project_id})">🛡 Kvalitetssikring</button>
-        <button class="action files" type="button" onclick="openMaterialsFormForTask(${a.task_project_id})">🧾 Materialer</button>`:'';
+      // RUNDE BC (Martin: "der er et sted medarbejderen kan uploade deres
+      // regninger på sagen? ... tror det er væk nu?") — knapperne blev FØR kun
+      // vist når opgaven havde task_project_id sat (dvs. var oprettet via
+      // Projekter/Gantt) — se backfillLegacyJobTaskProjectLinks i server.js for
+      // hvor ofte det IKKE er tilfældet for JobTread-synkede opgaver (timing af
+      // synk vs. import, eller opgaver oprettet før sagen fandtes som projekt).
+      // For de opgaver var "🧾 Materialer" og "🛡 Kvalitetssikring" simpelthen
+      // usynlige — ikke fjernet fra koden, men aldrig tegnet — nøjagtig samme
+      // fejl som RUNDE H #30 allerede fandt og rettede for "⏱ Registrér tid"
+      // nedenfor (se den kommentar). Samme løsning her: knapperne vises nu
+      // ALTID; har opgaven en sag går de direkte derind som hidtil, har den
+      // ikke, åbner de i stedet "🔍 Find projekt" så medarbejderen selv kan
+      // søge/vælge den rigtige sag (nøjagtig som tid-knappens fallback).
+      const caseActions=`
+        <button class="action qc" type="button" onclick="${isCaseTask?('openQaPickerForTask('+a.task_project_id+')'):'openProjectsModal()'}">🛡 Kvalitetssikring</button>
+        <button class="action files" type="button" onclick="${isCaseTask?('openMaterialsFormForTask('+a.task_project_id+')'):'openProjectsModal()'}">🧾 Materialer</button>`;
       // RUNDE H #30 — Martins fejlrapport: han vidste hans folk havde arbejdet,
       // men Timetracking-rapporten viste kun ét navn. Årsagen var her — en opgave
       // uden task_project_id (ældre/JobTread-synkede opgaver, IKKE oprettet via
