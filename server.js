@@ -65,14 +65,21 @@ if (!JWT_SECRET) {
 }
 
 app.disable('x-powered-by');
-// 20mb: rummer base64 logo/avatar-billeder OG op til 8 note-vedhæftninger
-// (billeder/PDF'er, maks ~15mb tekst i alt, se cleanNoteAttachments) sendt som
-// data-URI'er fra admin-UI'et.
+// 40mb (RUNDE BD, op fra 20mb): rummer base64 logo/avatar-billeder OG op til 8
+// note-vedhæftninger (billeder/PDF'er, maks ~15mb tekst i alt, se
+// cleanNoteAttachments) sendt som data-URI'er fra admin-UI'et — samt nu også
+// korte videoklip fra medarbejdernes billed-/videoupload i Employee-appen
+// (tid, materialer, besøgsrapport, sagsbilleder — se uploadPhotoToCloudinary).
+// Et par sekunders mobilvideo fylder hurtigt 10-20mb som base64 (33% større
+// end selve filen), så 20mb var for stramt til at rumme det. Stadig bevidst
+// IKKE ubegrænset: et langt videoklip skal stadig afvises med en klar fejl
+// (413 fra Express) i stedet for at æde serverens hukommelse eller hænge i
+// evigheder over en mobil-forbindelse.
 // verify: gemmer den RÅ request-body på req.rawBody, udelukkende brugt til at
 // verificere Close CRM-webhookets signatur (se CLOSE-integrationen nederst i
 // filen) — Close signerer den originale byte-for-byte body, ikke den
 // genparsede/genserialiserede JSON, så den skal fanges her inden parsing.
-app.use(express.json({ limit: '20mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
+app.use(express.json({ limit: '40mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: false }));
 
 const upload = multer({
@@ -2250,6 +2257,15 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_project_materials_project ON project_materials(project_id);
+    -- RUNDE BD (Martin: "kan kun tage et billede ikke vælge mulitpy fra
+    -- Kamera ... mange af dem klager over det") — en regning/faktura har tit
+    -- flere sider (for-/bagside, eller flere separate boner fra samme tur), så
+    -- medarbejderne skal kunne vedhæfte MERE end ét billede pr. materialepost.
+    -- Samme mønster som time_entries.photo_url/photo_urls nedenfor: den gamle
+    -- entals-kolonne beholdes uændret (sat til det FØRSTE billede, for alt der
+    -- stadig kun kigger på den), og den nye flertals-liste her er den fulde
+    -- sandhed fremover.
+    ALTER TABLE project_materials ADD COLUMN IF NOT EXISTS receipt_photo_urls JSONB NOT NULL DEFAULT '[]';
     CREATE TABLE IF NOT EXISTS project_photos (
       id SERIAL PRIMARY KEY,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -14618,13 +14634,21 @@ app.post('/api/projects/:id/materials', auth, asyncRoute(async (req, res) => {
   const b = req.body || {};
   const price = Number(b.price);
   const store = String(b.store || '').trim();
-  if (!b.receipt_photo_url) return res.status(400).json({ error: 'Upload et billede af regningen/fakturaen' });
+  // RUNDE BD — tager nu ENTEN den nye liste (receipt_photo_urls, flere
+  // billeder/videoer af samme regning) ELLER, for bagudkompatibilitet, det
+  // gamle enkelt-felt (receipt_photo_url) hvis en ældre klient stadig sender
+  // det. Den entals-kolonne skal stadig altid udfyldes (NOT NULL i skemaet) —
+  // sættes her til det FØRSTE billede i listen.
+  const photoUrls = Array.isArray(b.receipt_photo_urls)
+    ? b.receipt_photo_urls.filter(Boolean).map(String).slice(0, 10)
+    : (b.receipt_photo_url ? [String(b.receipt_photo_url)] : []);
+  if (!photoUrls.length) return res.status(400).json({ error: 'Upload et billede af regningen/fakturaen' });
   if (!price || price <= 0) return res.status(400).json({ error: 'Angiv prisen' });
   if (!store) return res.status(400).json({ error: 'Angiv hvilken butik/leverandør' });
   const r = await pool.query(`
-    INSERT INTO project_materials (project_id,user_id,price,store,note,receipt_photo_url)
-    VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
-  `, [req.params.id, req.user.id, price, store, b.note || null, b.receipt_photo_url]);
+    INSERT INTO project_materials (project_id,user_id,price,store,note,receipt_photo_url,receipt_photo_urls)
+    VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id
+  `, [req.params.id, req.user.id, price, store, b.note || null, photoUrls[0], JSON.stringify(photoUrls)]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
@@ -17132,7 +17156,14 @@ async function uploadPhotoToCloudinary(dataUri, folder) {
   form.set('timestamp', String(timestamp));
   form.set('signature', signature);
   form.set('folder', params.folder);
-  const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: form });
+  // RUNDE BD (Martin: medarbejderne skal kunne vedhæfte videoer, ikke kun
+  // billeder) — 'auto' i stedet for det tidligere faste 'image' lader
+  // Cloudinary selv genkende om den modtagne fil er et billede eller en
+  // video og route'r den til den rigtige intern håndtering. resource_type
+  // indgår bevidst IKKE i signaturen ovenfor — det er en del af selve
+  // URL-stien, ikke et signeret parameter, så det kan ændres uden at røre
+  // signaturberegningen.
+  const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, { method: 'POST', body: form });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error((data.error && data.error.message) || 'Cloudinary-upload fejlede');
   return data.secure_url;

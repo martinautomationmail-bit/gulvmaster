@@ -3556,7 +3556,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.24</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.25</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -25880,13 +25880,22 @@ function renderPdMaterials(){
   if(!mats.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen materialer registreret endnu</td></tr>';return;}
   body.innerHTML=mats.map(function(m){
     var uname=(users.find(function(x){return +x.id===+m.user_id;})||{}).name||'–';
+    // RUNDE BD: en materialepost kan nu have flere billeder/videoer (regning
+    // med for-/bagside, eller flere boner). receipt_photo_urls er den nye
+    // flertalskolonne; falder tilbage til den gamle entals-url for ældre
+    // rækker gemt før denne ændring.
+    var urls=Array.isArray(m.receipt_photo_urls)&&m.receipt_photo_urls.length?m.receipt_photo_urls:(m.receipt_photo_url?[m.receipt_photo_url]:[]);
+    var linksHtml=urls.length?urls.map(function(u,i){
+      var isVideo=/\.(mp4|mov|webm|m4v|avi)(\?|$)/i.test(u);
+      return '<a href="'+esc(u)+'" target="_blank">'+(isVideo?'🎥':'📷')+' '+(urls.length>1?(i+1):'Se')+'</a>';
+    }).join(' '):'–';
     return '<tr>'
       +'<td>'+esc(fmtDaDate(m.created_at))+'</td>'
       +'<td>'+esc(uname)+'</td>'
       +'<td>'+esc(m.store||'–')+'</td>'
       +'<td class="num">'+krFmt(Number(m.price))+'</td>'
       +'<td>'+esc(m.note||'–')+'</td>'
-      +'<td>'+(m.receipt_photo_url?'<a href="'+esc(m.receipt_photo_url)+'" target="_blank">📷 Se</a>':'–')+'</td>'
+      +'<td>'+linksHtml+'</td>'
       +'<td><div class="qz-row-actions">'
       +'<button class="qz-icon-btn" data-action="pd-materials-invoice" data-id="'+m.id+'" title="Tilføj til faktura som ny linje">🧾→</button>'
       +'<button class="qz-icon-btn" data-action="pd-materials-delete" data-id="'+m.id+'" title="Slet">🗑</button>'
