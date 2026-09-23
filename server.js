@@ -11590,6 +11590,14 @@ app.get('/api/crm/lead-webhook-info', auth, panelAccessAny(['customers','crmp_le
     secret: row && row.value,
     url_elementor: base + 'elementor',
     url_facebook: base + 'facebook-ads',
+    // RUNDE BI (Martin: "kan se facebook og make begge har et link burde
+    // instancall ikke også få det?") — "base" sendes nu med, så admin.html
+    // kan bygge en URL til ENHVER kilde Martin selv skriver et navn til (se
+    // "🔧 Andre kilder"-feltet i loadAutomationSettings), uden at hvert nyt
+    // partner-navn kræver en kode-ændring her på serveren. <kilde> var
+    // allerede fri tekst i selve /api/integrations/lead-intake/:source-ruten
+    // — kun admin-UI'et manglede en generel måde at lave URL'en på.
+    base: base,
     sms_configured: smsIsConfigured(),
     sms_provider: smsProviderName(),
     mail_configured: mailIsConfigured()

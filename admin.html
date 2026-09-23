@@ -3587,7 +3587,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -13080,6 +13080,17 @@ function switchEmlTab(name){
   if(name==='custom')loadCustomEmailTemplates();
 }
 
+// RUNDE BI — laver et navn som "InstantCall" eller "Google Ads!" om til en
+// pæn, URL-sikker "kilde"-streng (kun a-z/0-9/bindestreg), til brug i
+// /api/integrations/lead-intake/:kilde. Bruges kun til visningen i "Andre
+// kilder"-feltet nedenfor — serveren selv stiller ingen krav til :kilde
+// (den er altid fri tekst, se kommentaren ved LEAD_WEBHOOK_SOURCE_LABELS i
+// server.js), men et rent slug er pænere at sende videre til en partner.
+function leadIntakeSlugify(s){
+  return String(s||'').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'') // æ/ø/å m.fl. → nærmeste ascii
+    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+}
 // ── AUTOMATISERING (🤖-fanen) — webhook-nøgler, SMS-status, tabt-opfølgning ──
 async function loadAutomationSettings(){
   var info=await api('/api/crm/lead-webhook-info');
@@ -13089,8 +13100,24 @@ async function loadAutomationSettings(){
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.url_elementor)+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.url_elementor)+'" title="Kopiér">📋</button></div></div>'
       +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Facebook Ads</div>'
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.url_facebook)+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.url_facebook)+'" title="Kopiér">📋</button></div></div>'
-      +'<div><div class="sub" style="margin-bottom:2px">Nøgle (X-Webhook-Secret)</div>'
-      +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.secret||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.secret||'')+'" title="Kopiér">📋</button><button class="btn small" id="automation-webhook-regen">Generér ny nøgle</button></div></div>';
+      +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Nøgle (X-Webhook-Secret)</div>'
+      +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.secret||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.secret||'')+'" title="Kopiér">📋</button><button class="btn small" id="automation-webhook-regen">Generér ny nøgle</button></div></div>'
+      // RUNDE BI (Martin: "kan se facebook og make begge har et link burde
+      // instancall ikke også få det? hvordan laver man det til dem?") —
+      // Elementor og Facebook Ads ovenfor er bare TO faste eksempler på den
+      // samme underliggende rute (POST /api/integrations/lead-intake/:kilde,
+      // hvor :kilde altid har været fri tekst på serveren — kun admin-UI'et
+      // manglede en måde at lave URL'en for en VILKÅRLIG kilde, uden at skulle
+      // hardcodes her hver gang der kommer en ny partner som InstantCall).
+      // Feltet nedenfor bygger URL'en live i browseren ud fra "base" (sendt
+      // med fra /api/crm/lead-webhook-info) + det navn Martin selv skriver —
+      // ingen server-tur nødvendig for at generere den, samme delte nøgle som
+      // Elementor/Facebook bruger ovenfor.
+      +'<div style="padding-top:10px;border-top:1px solid var(--border2,#E5E7EB)">'
+      +'<div class="sub" style="margin-bottom:2px">Andre kilder (fx InstantCall, Google Ads...)</div>'
+      +'<input class="input" id="automation-webhook-custom-name" placeholder="Skriv et navn, fx instantcall" style="margin-bottom:6px">'
+      +'<div style="display:flex;gap:6px"><input class="input" readonly id="automation-webhook-custom-url" value="" placeholder="Skriv et navn herover for at få linket" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" id="automation-webhook-custom-copy" title="Kopiér">📋</button></div>'
+      +'</div>';
     document.querySelectorAll('#automation-webhook-info [data-copy]').forEach(function(btn){
       btn.addEventListener('click',async function(){
         try{await navigator.clipboard.writeText(btn.dataset.copy);toast('Kopieret','✓');}catch(e){toast('Kunne ikke kopiere — markér og kopiér manuelt','⚠');}
@@ -13101,6 +13128,19 @@ async function loadAutomationSettings(){
       if(!await gmConfirm('Generér en ny nøgle? Den GAMLE nøgle holder op med at virke med det samme — husk at opdatere den i Make bagefter.'))return;
       var r=await api('/api/crm/lead-webhook-regenerate',{method:'POST'});
       if(r&&r.ok)loadAutomationSettings();else toast((r&&r.error)||'Kunne ikke generere ny nøgle','❌');
+    });
+    var customNameInput=document.getElementById('automation-webhook-custom-name');
+    var customUrlInput=document.getElementById('automation-webhook-custom-url');
+    if(customNameInput&&customUrlInput){
+      customNameInput.addEventListener('input',function(){
+        var slug=leadIntakeSlugify(customNameInput.value);
+        customUrlInput.value=slug?(info.base+slug):'';
+      });
+    }
+    var customCopyBtn=document.getElementById('automation-webhook-custom-copy');
+    if(customCopyBtn)customCopyBtn.addEventListener('click',async function(){
+      if(!customUrlInput||!customUrlInput.value){toast('Skriv et navn til kilden først','⚠');return;}
+      try{await navigator.clipboard.writeText(customUrlInput.value);toast('Kopieret','✓');}catch(e){toast('Kunne ikke kopiere — markér og kopiér manuelt','⚠');}
     });
     document.getElementById('automation-sms-status').innerHTML=info.sms_configured
       ?('SMS er sat op via <b>'+esc(info.sms_provider)+'</b> — stage-automatikken (se CRM-pipeline-indstillinger) kan sende.')
