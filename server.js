@@ -17272,6 +17272,58 @@ app.delete('/api/products/:id', auth, panelAccess('quotes'), asyncRoute(async (r
   res.json({ ok: true });
 }));
 
+// RUNDE BE (Martin: "ved produkter kan du ikke gøre så jeg kan markere alle
+// og masse opdatere felter herunder: Type, Kategori, Enhed, Cost-pris,
+// Salgspris, Avance ... da der mange fejl i dem hurtigere") — massopdatering
+// af flere produkter på én gang. Avance er BEVIDST ikke med her — det er ikke
+// et gemt felt, kun cost-pris/salgspris regnet sammen, så den kan ikke sættes
+// direkte (afklaret med Martin). Cost-pris og salgspris kan enten sættes til
+// et fast kr-beløb for alle valgte, eller justeres med en procentsats i
+// forhold til HVERT produkts egen nuværende pris (fx leverandør sætter priser
+// op 5% — så skal alle produkter justeres relativt, ikke sættes til samme tal).
+app.post('/api/products/bulk-update', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const ids = Array.isArray(b.ids) ? b.ids.map(Number).filter(n => Number.isFinite(n) && n > 0) : [];
+  if (!ids.length) return res.status(400).json({ error: 'Ingen produkter valgt' });
+  const f = b.fields || {};
+  const hasType = f.product_type !== undefined && f.product_type !== null;
+  const hasCategory = f.category !== undefined;
+  const hasUnit = f.unit !== undefined;
+  const hasCost = f.cost_price && typeof f.cost_price === 'object' && (f.cost_price.mode === 'set' || f.cost_price.mode === 'percent');
+  const hasSell = f.sell_price && typeof f.sell_price === 'object' && (f.sell_price.mode === 'set' || f.sell_price.mode === 'percent');
+  if (!hasType && !hasCategory && !hasUnit && !hasCost && !hasSell) {
+    return res.status(400).json({ error: 'Vælg mindst ét felt der skal opdateres' });
+  }
+  const rows = await pool.query('SELECT id, cost_price, sell_price FROM products WHERE id = ANY($1) AND active = 1', [ids]);
+  let updated = 0;
+  for (const row of rows.rows) {
+    const sets = [];
+    const vals = [];
+    let i = 1;
+    if (hasType) { sets.push(`product_type=$${i++}`); vals.push(f.product_type === 'materialer' ? 'materialer' : 'service'); }
+    if (hasCategory) { sets.push(`category=$${i++}`); vals.push(f.category ? String(f.category).trim() : null); }
+    if (hasUnit) { sets.push(`unit=$${i++}`); vals.push(f.unit ? String(f.unit).trim() : 'stk'); }
+    if (hasCost) {
+      const base = Number(row.cost_price) || 0;
+      const amt = Number(f.cost_price.value) || 0;
+      const newCost = Math.max(0, Math.round((f.cost_price.mode === 'percent' ? base * (1 + amt / 100) : amt) * 100) / 100);
+      sets.push(`cost_price=$${i++}`); vals.push(newCost);
+    }
+    if (hasSell) {
+      const base = Number(row.sell_price) || 0;
+      const amt = Number(f.sell_price.value) || 0;
+      const newSell = Math.max(0, Math.round((f.sell_price.mode === 'percent' ? base * (1 + amt / 100) : amt) * 100) / 100);
+      sets.push(`sell_price=$${i++}`); vals.push(newSell);
+    }
+    if (!sets.length) continue;
+    sets.push(`updated_at=${nowTextSQL()}`);
+    vals.push(row.id);
+    await pool.query(`UPDATE products SET ${sets.join(',')} WHERE id=$${i}`, vals);
+    updated++;
+  }
+  res.json({ ok: true, updated, requested: ids.length });
+}));
+
 // ── AI-DIKTERING AF TILBUD (sep. 2026, Martins ønske: "kan du tilføje AI så jeg
 // kan tale til programmet med hvad jeg ønsker tilbuddet skal være, og den
 // lynhurtigt finder det i databasen med produkter eller selv laver produktet" —

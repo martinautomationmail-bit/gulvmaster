@@ -3556,7 +3556,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.25</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.26</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4558,8 +4558,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-btn" id="qz-new-product-btn" type="button">+ Nyt produkt</button>
       </div>
     </div>
+    <!-- RUNDE BE (Martin: "kan du ikke gøre så jeg kan markere alle og masse
+         opdatere felter herunder ... da der mange fejl i dem hurtigere") —
+         vises kun når mindst ét produkt er markeret i tabellen nedenfor. -->
+    <div class="bly-toolbar" id="qz-product-bulk-bar" style="display:none;background:var(--bly-accent-soft);border-radius:var(--bly-r-md);padding:8px 12px;margin-bottom:10px">
+      <div class="bly-toolbar-left"><span id="qz-bulk-count" style="font-weight:600">0 valgt</span></div>
+      <div class="bly-toolbar-right">
+        <button class="bly-btn" id="qz-bulk-clear-btn" type="button">Fravælg alle</button>
+        <button class="bly-btn primary" id="qz-bulk-edit-btn" type="button">✎ Redigér valgte</button>
+      </div>
+    </div>
     <table class="bly-table">
-      <thead><tr><th>Navn</th><th>Type</th><th>Kategori</th><th>Enhed</th><th class="num">Cost-pris</th><th class="num">Salgspris</th><th class="num">Avance</th><th style="width:90px"></th></tr></thead>
+      <thead><tr><th style="width:34px"><input type="checkbox" id="qz-products-select-all" title="Markér alle"></th><th>Navn</th><th>Type</th><th>Kategori</th><th>Enhed</th><th class="num">Cost-pris</th><th class="num">Salgspris</th><th class="num">Avance</th><th style="width:90px"></th></tr></thead>
       <tbody id="qz-products-body"></tbody>
     </table>
   </section>
@@ -7516,6 +7526,51 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="btn danger hidden" id="qzp-delete">Slet</button>
       <button class="btn" id="qzp-cancel">Annuller</button>
       <button class="btn primary" id="qzp-save">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE BE — MASSEOPDATERING AF PRODUKTER (Martin: "kan du ikke gøre så jeg
+     kan markere alle og masse opdatere felter herunder ... da der mange fejl
+     i dem hurtigere") — se qzOpenBulkProductModal()/saveQzBulkProducts() og
+     POST /api/products/bulk-update i server.js. -->
+<div class="mo" id="qz-bulk-product-modal">
+  <div class="modal" style="width:480px">
+    <h3>Redigér valgte produkter</h3>
+    <div class="hint" id="qz-bulk-modal-count" style="margin-bottom:12px">0 produkter valgt</div>
+    <div class="hint" style="margin-bottom:14px">Sæt kun flueben ved de felter, du vil ændre — resten rører vi ikke ved.</div>
+    <div class="form-group">
+      <label class="form-label" style="cursor:pointer"><input type="checkbox" id="qzb-type-on" style="margin-right:6px;vertical-align:middle">Type</label>
+      <select id="qzb-type" class="select" disabled><option value="service">Service</option><option value="materialer">Materialer</option></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="cursor:pointer"><input type="checkbox" id="qzb-category-on" style="margin-right:6px;vertical-align:middle">Kategori</label>
+      <input id="qzb-category" class="input" disabled placeholder="Ny kategori for alle valgte">
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="cursor:pointer"><input type="checkbox" id="qzb-unit-on" style="margin-right:6px;vertical-align:middle">Enhed</label>
+      <input id="qzb-unit" class="input" disabled placeholder="Fx m2, stk, time">
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="cursor:pointer"><input type="checkbox" id="qzb-cost-on" style="margin-right:6px;vertical-align:middle">Cost-pris</label>
+      <div style="display:flex;gap:8px">
+        <select id="qzb-cost-mode" class="select" disabled style="flex:0 0 150px"><option value="set">Sæt til (kr.)</option><option value="percent">Justér med (%)</option></select>
+        <input id="qzb-cost-value" type="number" step="0.01" class="input" disabled placeholder="0" style="flex:1">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="cursor:pointer"><input type="checkbox" id="qzb-sell-on" style="margin-right:6px;vertical-align:middle">Salgspris</label>
+      <div style="display:flex;gap:8px">
+        <select id="qzb-sell-mode" class="select" disabled style="flex:0 0 150px"><option value="set">Sæt til (kr.)</option><option value="percent">Justér med (%)</option></select>
+        <input id="qzb-sell-value" type="number" step="0.01" class="input" disabled placeholder="0" style="flex:1">
+      </div>
+    </div>
+    <!-- Avance er bevidst IKKE med her — det er ikke et gemt felt, kun cost-pris/
+         salgspris regnet sammen (afklaret med Martin). -->
+    <div class="hint" style="margin-top:2px">Avance kan ikke masseopdateres direkte — den regnes automatisk ud fra cost-pris og salgspris.</div>
+    <div class="modal-actions">
+      <button class="btn" id="qzb-cancel">Annuller</button>
+      <button class="btn primary" id="qzb-save">Opdatér</button>
     </div>
   </div>
 </div>
@@ -20493,16 +20548,29 @@ function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange)
 }
 
 // ── PRODUKTER ────────────────────────────────────────────────
-function renderQzProducts(){
+// RUNDE BE: markering på tværs af gen-renderinger (søgning m.v.) holdes i dette
+// Set af produkt-id'er, ikke i DOM'en — body.innerHTML skrives helt om ved hvert
+// renderQzProducts()-kald, så DOM-tilstand ville gå tabt.
+var qzProductSelection=new Set();
+function qzFilteredProducts(){
   var q=(document.getElementById('qz-product-search').value||'').trim();
   // RUNDE W — samme søge-fejlrettelse som tilbud/fakturaer (se qzSearchHit).
-  var list=qzProducts.filter(function(p){return qzSearchHit(q,[p.name,p.category,p.sku]);});
+  return qzProducts.filter(function(p){return qzSearchHit(q,[p.name,p.category,p.sku]);});
+}
+function renderQzProducts(){
+  var list=qzFilteredProducts();
+  // Fjern markeringer af produkter der ikke længere findes/er filtreret væk af søgning
+  // — undgår at "N valgt" tæller produkter man ikke længere kan se.
+  var visibleIds=new Set(list.map(function(p){return p.id;}));
+  Array.from(qzProductSelection).forEach(function(id){if(!qzProducts.some(function(p){return p.id===id;}))qzProductSelection.delete(id);});
   var body=document.getElementById('qz-products-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen produkter fundet':'Ingen produkter endnu — opret det første')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+((document.getElementById('qz-product-search').value||'').trim()?'Ingen produkter fundet':'Ingen produkter endnu — opret det første')+'</td></tr>';qzUpdateProductBulkBar();return;}
   body.innerHTML=list.map(function(p){
     var cost=Number(p.cost_price),sell=Number(p.sell_price);
     var pct=qzMarginPct(cost,sell);
+    var checked=qzProductSelection.has(p.id);
     return '<tr>'
+      +'<td><input type="checkbox" class="qz-product-row-check" data-pid="'+p.id+'"'+(checked?' checked':'')+'></td>'
       +'<td>'+esc(p.name)+'</td>'
       +'<td>'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+'</td>'
       +'<td>'+esc(p.category||'–')+'</td>'
@@ -20513,6 +20581,64 @@ function renderQzProducts(){
       +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openProductModal('+p.id+')" title="Redigér">✎</button></div></td>'
       +'</tr>';
   }).join('');
+  var allBtn=document.getElementById('qz-products-select-all');
+  var selectedVisible=list.filter(function(p){return qzProductSelection.has(p.id);}).length;
+  allBtn.checked=list.length>0&&selectedVisible===list.length;
+  allBtn.indeterminate=selectedVisible>0&&selectedVisible<list.length;
+  qzUpdateProductBulkBar();
+}
+function qzUpdateProductBulkBar(){
+  var bar=document.getElementById('qz-product-bulk-bar');
+  var n=qzProductSelection.size;
+  if(n>0){
+    bar.style.display='';
+    document.getElementById('qz-bulk-count').textContent=n+(n===1?' produkt valgt':' produkter valgt');
+  }else{
+    bar.style.display='none';
+  }
+}
+// RUNDE BE-hjælpefunktion: aktivér/deaktivér ét felt i masseopdaterings-formularen
+// ud fra dets tilhørende flueben, så man tydeligt kan se hvad man er ved at ændre.
+function qzBulkFieldToggle(checkboxId,controlIds){
+  var on=document.getElementById(checkboxId).checked;
+  controlIds.forEach(function(id){document.getElementById(id).disabled=!on;});
+}
+function qzOpenBulkProductModal(){
+  if(!qzProductSelection.size){toast('Markér mindst ét produkt først','⚠️');return;}
+  document.getElementById('qz-bulk-modal-count').textContent=qzProductSelection.size+(qzProductSelection.size===1?' produkt valgt':' produkter valgt');
+  // Nulstil formularen hver gang — ingen grund til at et gammelt valg hænger ved.
+  ['qzb-type-on','qzb-category-on','qzb-unit-on','qzb-cost-on','qzb-sell-on'].forEach(function(id){document.getElementById(id).checked=false;});
+  document.getElementById('qzb-type').value='service';document.getElementById('qzb-type').disabled=true;
+  document.getElementById('qzb-category').value='';document.getElementById('qzb-category').disabled=true;
+  document.getElementById('qzb-unit').value='';document.getElementById('qzb-unit').disabled=true;
+  document.getElementById('qzb-cost-mode').value='set';document.getElementById('qzb-cost-mode').disabled=true;
+  document.getElementById('qzb-cost-value').value='';document.getElementById('qzb-cost-value').disabled=true;
+  document.getElementById('qzb-sell-mode').value='set';document.getElementById('qzb-sell-mode').disabled=true;
+  document.getElementById('qzb-sell-value').value='';document.getElementById('qzb-sell-value').disabled=true;
+  document.getElementById('qz-bulk-product-modal').classList.add('open');
+}
+async function saveQzBulkProducts(){
+  var ids=Array.from(qzProductSelection);
+  if(!ids.length){toast('Ingen produkter markeret','⚠️');return;}
+  var fields={};
+  if(document.getElementById('qzb-type-on').checked)fields.product_type=document.getElementById('qzb-type').value;
+  if(document.getElementById('qzb-category-on').checked)fields.category=document.getElementById('qzb-category').value.trim();
+  if(document.getElementById('qzb-unit-on').checked)fields.unit=document.getElementById('qzb-unit').value.trim();
+  if(document.getElementById('qzb-cost-on').checked)fields.cost_price={mode:document.getElementById('qzb-cost-mode').value,value:Number(document.getElementById('qzb-cost-value').value)||0};
+  if(document.getElementById('qzb-sell-on').checked)fields.sell_price={mode:document.getElementById('qzb-sell-mode').value,value:Number(document.getElementById('qzb-sell-value').value)||0};
+  if(!Object.keys(fields).length){toast('Sæt flueben ved mindst ét felt, du vil ændre','⚠️');return;}
+  var btn=document.getElementById('qzb-save');var origText=btn.textContent;
+  btn.disabled=true;btn.textContent='Opdaterer…';
+  var r=await api('/api/products/bulk-update',{method:'POST',body:JSON.stringify({ids:ids,fields:fields})});
+  btn.disabled=false;btn.textContent=origText;
+  if(r&&r.ok){
+    toast(r.updated+' produkt(er) opdateret ✓','✓');
+    closeModal('qz-bulk-product-modal');
+    qzProductSelection.clear();
+    await loadQzProducts();renderQzProducts();
+  }else{
+    toast((r&&r.error)||'Kunne ikke opdatere produkterne','❌');
+  }
 }
 // ── PRODUKT-DASHBOARD (RUNDE Y, se #qz-product-dashboard-modal i HTML) ──────
 // Henter aggregeret omsætning pr. produkt fra GET /api/products/analytics
@@ -28621,6 +28747,33 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzp-delete').addEventListener('click',deleteQzProduct);
   document.getElementById('qzp-cost').addEventListener('input',updateQzpMarginPreview);
   document.getElementById('qzp-sell').addEventListener('input',updateQzpMarginPreview);
+
+  // RUNDE BE — markering + masseopdatering af produkter. Event-delegation på
+  // tbody'en i stedet for at binde et onclick pr. checkbox: body.innerHTML
+  // skrives helt om ved hvert renderQzProducts()-kald, så individuelt bundne
+  // listeners ville forsvinde igen med det samme.
+  document.getElementById('qz-products-body').addEventListener('change',function(e){
+    var cb=e.target.closest('.qz-product-row-check');
+    if(!cb)return;
+    var pid=Number(cb.dataset.pid);
+    if(cb.checked)qzProductSelection.add(pid);else qzProductSelection.delete(pid);
+    renderQzProducts();
+  });
+  document.getElementById('qz-products-select-all').addEventListener('change',function(e){
+    var list=qzFilteredProducts();
+    if(e.target.checked)list.forEach(function(p){qzProductSelection.add(p.id);});
+    else list.forEach(function(p){qzProductSelection.delete(p.id);});
+    renderQzProducts();
+  });
+  document.getElementById('qz-bulk-clear-btn').addEventListener('click',function(){qzProductSelection.clear();renderQzProducts();});
+  document.getElementById('qz-bulk-edit-btn').addEventListener('click',qzOpenBulkProductModal);
+  document.getElementById('qzb-cancel').addEventListener('click',function(){closeModal('qz-bulk-product-modal');});
+  document.getElementById('qzb-save').addEventListener('click',saveQzBulkProducts);
+  document.getElementById('qzb-type-on').addEventListener('change',function(){qzBulkFieldToggle('qzb-type-on',['qzb-type']);});
+  document.getElementById('qzb-category-on').addEventListener('change',function(){qzBulkFieldToggle('qzb-category-on',['qzb-category']);});
+  document.getElementById('qzb-unit-on').addEventListener('change',function(){qzBulkFieldToggle('qzb-unit-on',['qzb-unit']);});
+  document.getElementById('qzb-cost-on').addEventListener('change',function(){qzBulkFieldToggle('qzb-cost-on',['qzb-cost-mode','qzb-cost-value']);});
+  document.getElementById('qzb-sell-on').addEventListener('change',function(){qzBulkFieldToggle('qzb-sell-on',['qzb-sell-mode','qzb-sell-value']);});
 
   document.getElementById('qz-new-template-btn').addEventListener('click',function(){openTemplateModal(null);});
   document.getElementById('qzt-cancel').addEventListener('click',function(){closeModal('qz-template-modal');});
