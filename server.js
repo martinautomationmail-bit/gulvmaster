@@ -8665,11 +8665,20 @@ app.put('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
   // submitted_at sættes første gang formularen gemmes og ændres ikke bagefter
   // (COALESCE nedenfor) — bruges til at afgøre om besøget vises i CRM og om det
   // obligatoriske krav ved "Markér som færdig" i medarbejder-appen er opfyldt.
+  //
+  // RUNDE BG (Martin: "Gør så man under handler kan rette i en kundebesøgs
+  // note hvis man vil") — nu hvor admin også kan redigere en besøgsrapport
+  // (fra CRM-Handel, se crmpxSaveVisitEdit i admin.html), IKKE bare
+  // medarbejderen selv (via denne samme rute), må filled_by IKKE længere
+  // overskrives til req.user.id ved en almindelig opdatering — det ville
+  // ellers stille tage æren for besøget fra den medarbejder der faktisk var
+  // ude hos kunden, blot fordi Martin rettede en tastefejl i noten bagefter.
+  // filled_by sættes derfor kun ÉN gang, ved selve oprettelsen.
   if (existing) {
     await pool.query(`
-      UPDATE customer_visits SET customer_name=$1,address=$2,phone=$3,email=$4,room_size=$5,floor_type_wanted=$6,notes=$7,recommended_solution=$8,estimated_price=$9,filled_by=$10,photo_urls=$11,submitted_at=COALESCE(submitted_at,${nowTextSQL()}),updated_at=${nowTextSQL()}
-      WHERE task_id=$12
-    `, [fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, req.user.id, JSON.stringify(fields.photo_urls), req.params.taskId]);
+      UPDATE customer_visits SET customer_name=$1,address=$2,phone=$3,email=$4,room_size=$5,floor_type_wanted=$6,notes=$7,recommended_solution=$8,estimated_price=$9,photo_urls=$10,submitted_at=COALESCE(submitted_at,${nowTextSQL()}),updated_at=${nowTextSQL()}
+      WHERE task_id=$11
+    `, [fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, JSON.stringify(fields.photo_urls), req.params.taskId]);
   } else {
     await pool.query(`
       INSERT INTO customer_visits (task_id,customer_name,address,phone,email,room_size,floor_type_wanted,notes,recommended_solution,estimated_price,filled_by,photo_urls,submitted_at,created_at,updated_at)
@@ -10028,11 +10037,26 @@ function gmailB64UrlDecode(data) {
 }
 // Går rekursivt igennem en Gmail-besked-payload og finder tekst-krop (html
 // foretrukket, ellers plain) + en liste af rigtige vedhæftninger.
+//
+// RUNDE BG (Martin: "Billeder under handler kommer nærmeste aldrig ind under
+// kunden ... specielt hvis kunden tilføjer dem i mailen kommer de slet ikke
+// ind, nogle gange men ikke altid som filer") — den gamle betingelse krævede
+// et FILNAVN for at tælle noget med som vedhæftning. Mange mailklienter
+// (typisk webmail/mobil, når man limer eller trækker et billede direkte ind i
+// selve mailteksten i stedet for at trykke "vedhæft fil") sætter INTET
+// filnavn på et sådant indlejret billede — kun en Content-ID — selvom Gmail
+// stadig giver det et rigtigt attachmentId man kan hente indholdet med. Det
+// er netop derfor det virkede "nogle gange men ikke altid": en rigtig
+// vedhæftet fil (med filnavn) kom altid med, et indsat/limet billede uden
+// filnavn blev droppet allerede her. Nu tæller ALT med et attachmentId med,
+// uanset filnavn — og får et gæt-navn når Gmail ikke selv gav ét.
 function gmailWalkPayload(part, acc) {
   if (!part) return;
   const filename = part.filename;
-  if (filename && part.body && part.body.attachmentId) {
-    acc.attachments.push({ filename, mimeType: part.mimeType || 'application/octet-stream', attachmentId: part.body.attachmentId, size: part.body.size || 0 });
+  if (part.body && part.body.attachmentId) {
+    const mimeType = part.mimeType || 'application/octet-stream';
+    const guessedExt = mimeType.indexOf('image/') === 0 ? mimeType.split('/')[1].split(';')[0] : (mimeType === 'application/pdf' ? 'pdf' : 'fil');
+    acc.attachments.push({ filename: filename || ('billede-' + (acc.attachments.length + 1) + '.' + guessedExt), mimeType, attachmentId: part.body.attachmentId, size: part.body.size || 0 });
   } else if (part.mimeType === 'text/html' && part.body && part.body.data && !acc.html) {
     acc.html = gmailB64UrlDecode(part.body.data).toString('utf8');
   } else if (part.mimeType === 'text/plain' && part.body && part.body.data && !acc.text) {
@@ -10173,23 +10197,52 @@ async function gmailSyncAll() {
 // Fælles indsætningslogik for begge synk-veje nedenfor (den hurtige 40-nyeste
 // synk der kører hvert 5. minut, og den on-demand fulde historik-synk) — for
 // ikke at have to kopier af INSERT/ON CONFLICT-logikken der kan løbe fra
-// hinanden. messages = Gmail-listeresultatets .messages[] (kun {id,threadId}),
-// attachmentIds = et Set af besked-id'er vi allerede ved har vedhæftninger.
-async function gmailUpsertMessages(messages, customerId, accessToken, connEmail, attachmentIds) {
+// hinanden. messages = Gmail-listeresultatets .messages[] (kun {id,threadId}).
+//
+// RUNDE BG (Martin: "Billeder under handler kommer nærmeste aldrig ind under
+// kunden ... specielt hvis kunden tilføjer dem i mailen kommer de slet ikke
+// ind") — brugte FØR Gmails eget "has:attachment"-søgeord til billigt at
+// afgøre hvilke mails der havde vedhæftninger, uden at skulle hente hver
+// besked i fuld detalje. Problemet: "has:attachment" er Gmails EGEN
+// definition af en vedhæftning, og den tæller IKKE et billede der er
+// limet/trukket direkte ind i selve mailteksten (typisk webmail/mobil) med —
+// kun "rigtige" filvedhæftninger. Sådan en mail blev derfor ALDRIG markeret
+// has_attachments=1, uanset hvad der blev rettet i gmailWalkPayload — den
+// dukkede simpelthen aldrig op i "Filer"-fanens forespørgsel til at starte
+// med. Løsningen er at holde op med at stole på Gmails "has:attachment" og i
+// stedet hente den fulde besked (format=full) og se EFTER i den rigtige
+// MIME-struktur (gmailWalkPayload) — det er den samme detalje-hentning
+// "Filer"-fanen alligevel foretager senere, blot flyttet hertil, ÉN gang pr.
+// ny mail, ikke gentaget ved hvert fanebesøg.
+async function gmailUpsertMessages(messages, customerId, accessToken, connEmail, opts) {
+  opts = opts || {};
   let added = 0;
   for (const m of messages) {
-    const hasAttachment = attachmentIds.has(m.id) ? 1 : 0;
     const exists = await pgOne('SELECT id, has_attachments FROM customer_emails WHERE gmail_message_id=$1', [m.id]);
     if (exists) {
-      if (hasAttachment && !exists.has_attachments) {
-        await pool.query('UPDATE customer_emails SET has_attachments=1 WHERE id=$1', [exists.id]);
+      // Rettelse for mails der allerede blev synket FØR denne ændring, og som
+      // den gamle "has:attachment"-søgning fejlagtigt sprang over (se ovenfor)
+      // — kun tjekket igen ved den on-demand "Fuld synk" (gmailFullSyncCustomer),
+      // ikke ved den hurtige synk hvert 5. minut, så den forbliver hurtig.
+      if (opts.recheck && !exists.has_attachments) {
+        try {
+          const detail = await gmailApiFetch('/messages/' + m.id + '?format=full', accessToken);
+          const acc = { html: null, text: null, attachments: [] };
+          gmailWalkPayload(detail.payload, acc);
+          if (acc.attachments.length) {
+            await pool.query('UPDATE customer_emails SET has_attachments=1 WHERE id=$1', [exists.id]);
+          }
+        } catch (e) { console.error('Kunne ikke gen-tjekke vedhæftninger for mail ' + m.id + ':', e.message); }
       }
       continue;
     }
-    const detail = await gmailApiFetch('/messages/' + m.id + '?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date', accessToken);
+    const detail = await gmailApiFetch('/messages/' + m.id + '?format=full', accessToken);
     const headers = (detail.payload && detail.payload.headers) || [];
     const fromParsed = gmailParseFromHeader(gmailHeader(headers, 'From'));
     const direction = fromParsed.email && connEmail && fromParsed.email.toLowerCase() === connEmail.toLowerCase() ? 'out' : 'in';
+    const acc = { html: null, text: null, attachments: [] };
+    gmailWalkPayload(detail.payload, acc);
+    const hasAttachment = acc.attachments.length ? 1 : 0;
     try {
       await pool.query(`
         INSERT INTO customer_emails (customer_id, gmail_message_id, gmail_thread_id, subject, snippet, from_email, from_name, to_emails, direction, internal_date, has_attachments)
@@ -10205,16 +10258,8 @@ async function gmailSyncCustomer(customer, accessToken) {
   const q = '(to:"' + customer.email + '" OR from:"' + customer.email + '")';
   const list = await gmailApiFetch('/messages?maxResults=40&q=' + encodeURIComponent(q), accessToken);
   const messages = list.messages || [];
-  // Billig ekstra søgning: hvilke af disse mails har en vedhæftning? (bruges af
-  // "Filer"-fanen, se GET /api/crm/customers/:id/files) — undgår at skulle hente
-  // fulde besked-detaljer for hver eneste mail bare for at vide det.
-  let attachmentIds = new Set();
-  try {
-    const attList = await gmailApiFetch('/messages?maxResults=100&q=' + encodeURIComponent(q + ' has:attachment'), accessToken);
-    attachmentIds = new Set((attList.messages || []).map(x => x.id));
-  } catch (e) { console.error('Kunne ikke tjekke vedhæftninger for kunde #' + customer.id + ':', e.message); }
   const connEmail = (await gmailGetConnection() || {}).email || '';
-  return gmailUpsertMessages(messages, customer.id, accessToken, connEmail, attachmentIds);
+  return gmailUpsertMessages(messages, customer.id, accessToken, connEmail, { recheck: false });
 }
 
 // ── Fuld mail-historik (on-demand) ───────────────────────────────
@@ -10228,29 +10273,26 @@ async function gmailSyncCustomer(customer, accessToken) {
 // Filer/Emails-fanen, se crmpxFullMailSync i admin.html) der bladrer igennem
 // ALLE Gmails søgeresultater via pageToken, op til en sikkerhedsgrænse, så det
 // ikke kan løbe løbsk for en kunde med tusindvis af mails.
+//
+// RUNDE BG — kører nu med { recheck: true } (se gmailUpsertMessages), så et
+// klik på "Fuld synk" OGSÅ retter allerede synkede mails der blev fejlagtigt
+// markeret uden vedhæftning af den gamle "has:attachment"-baserede metode
+// (typisk et billede limet direkte ind i mailteksten) — ikke kun nye mails.
+// Det er dermed også svaret på selve billed-problemet for mails der ligger
+// LÆNGERE TILBAGE end de 40 nyeste: Martin (eller en kollega) kan trykke
+// "Fuld synk" på en kunde for at få de manglende billeder frem.
 const GMAIL_FULL_SYNC_MAX_MESSAGES = 500;
 const GMAIL_FULL_SYNC_MAX_PAGES = 20;
 async function gmailFullSyncCustomer(customer, accessToken) {
   const q = '(to:"' + customer.email + '" OR from:"' + customer.email + '")';
   const connEmail = (await gmailGetConnection() || {}).email || '';
 
-  let attachmentIds = new Set();
-  try {
-    let attPageToken, attGuard = 0;
-    do {
-      const attList = await gmailApiFetch('/messages?maxResults=100&q=' + encodeURIComponent(q + ' has:attachment') + (attPageToken ? '&pageToken=' + attPageToken : ''), accessToken);
-      (attList.messages || []).forEach(x => attachmentIds.add(x.id));
-      attPageToken = attList.nextPageToken;
-      attGuard++;
-    } while (attPageToken && attGuard < GMAIL_FULL_SYNC_MAX_PAGES);
-  } catch (e) { console.error('Kunne ikke tjekke vedhæftninger (fuld synk) for kunde #' + customer.id + ':', e.message); }
-
   let added = 0, fetched = 0, pageToken, pages = 0;
   do {
     const list = await gmailApiFetch('/messages?maxResults=100&q=' + encodeURIComponent(q) + (pageToken ? '&pageToken=' + pageToken : ''), accessToken);
     const messages = list.messages || [];
     fetched += messages.length;
-    added += await gmailUpsertMessages(messages, customer.id, accessToken, connEmail, attachmentIds);
+    added += await gmailUpsertMessages(messages, customer.id, accessToken, connEmail, { recheck: true });
     pageToken = list.nextPageToken;
     pages++;
   } while (pageToken && fetched < GMAIL_FULL_SYNC_MAX_MESSAGES && pages < GMAIL_FULL_SYNC_MAX_PAGES);

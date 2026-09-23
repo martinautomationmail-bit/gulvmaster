@@ -1290,7 +1290,8 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
    spørgsmål/svar som kv-rækker (samme sprog som .crmpx-mini-card) og evt.
    billeder i et lille thumbnail-grid, matcher .pd-photo-thumb men uden
    slet-knappen (besøgsrapporter redigeres kun fra medarbejder-appen). */
-.crmpx-visit-card{background:var(--bly-border-soft);border-radius:var(--bly-r-md);padding:12px}
+.crmpx-visit-card{background:var(--bly-border-soft);border-radius:var(--bly-r-md);padding:12px;cursor:pointer}
+.crmpx-visit-card:hover{background:var(--bly-accent-soft)}
 .crmpx-visit-card+.crmpx-visit-card{margin-top:10px}
 .crmpx-visit-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
 .crmpx-visit-date{font-weight:800;font-size:12px;color:var(--bly-ink)}
@@ -1315,6 +1316,11 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 /* Rette/slet-knapper vises kun på NOTE-linjer i tidslinjen (kind='note') — resten
    er systemhændelser og er bevidst uforanderlige, se PUT /api/crm/activities/:id. */
 .crmpx-activity-actions{display:flex;gap:4px;flex-shrink:0}
+/* RUNDE BG — gruppefiltre over aktivitetstidslinjen (se crmpxRenderActivity). */
+.crmpx-activity-filter{display:flex;gap:6px;flex-wrap:wrap}
+.crmpx-af-btn{border:1px solid var(--bly-border);background:#fff;color:var(--bly-sub);border-radius:var(--bly-r-pill);padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer}
+.crmpx-af-btn:hover{background:var(--bly-hover)}
+.crmpx-af-btn.active{background:var(--bly-accent);border-color:var(--bly-accent);color:#fff}
 .crmpx-empty{color:var(--bly-sub);font-size:12px;padding:4px 0}
 /* KONTAKTFELTER PÅ DETALJESIDEN — inputfeltet beholdes som det er (det gemmer
    automatisk, se crmpxAutoSaveDebounced), og kopiér/åbn-knapperne lægges i en
@@ -1939,6 +1945,10 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    sub-farve i stedet for rød (det er jo ikke en farlig/destruktiv handling). */
 .qe-line-duplicate{border:0;background:transparent;color:var(--bly-sub);cursor:pointer;font-size:14px}
 .qe-line-duplicate:hover{color:var(--bly-accent)}
+/* RUNDE BG — samme diskrete ikon-stil, "Gem som nyt produkt"-knappen på en
+   ikke-genkendt linje (se qzLineRowHtml/qzOpenProductModalFromLine). */
+.qe-line-save-product{border:0;background:transparent;color:var(--bly-sub);cursor:pointer;font-size:14px}
+.qe-line-save-product:hover{color:var(--bly-accent)}
 /* RUNDE AW — "Vis sum"-afkrydsning på en tekstlinje, og selve sumtallet ved
    siden af (kun synligt når krydset af — se :has()-reglen, samme mønster som
    fx .tab-navdrop:has(.navdrop-menu.open) andetsteds i denne fil). Bevidst
@@ -3556,7 +3566,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.28</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5503,7 +5513,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <textarea id="crmpx-note-new" class="tld-input" rows="4" placeholder="Skriv en note...  (Enter = gem, Shift+Enter = ny linje)" style="resize:vertical;min-height:88px"></textarea>
           <div style="margin-top:6px;text-align:right"><button class="btn small" type="button" id="crmpx-note-add-btn">+ Tilføj</button></div>
         </div>
-        <div id="crmpx-activity" style="margin-top:14px"></div>
+        <!-- RUNDE BG (Martin: "Aktvitet feltet under handler spasser helt ud
+             ... kan man måske ikke dele den op så Aktivitet indeddels i
+             forskellige grupper så hvis man vil se aktivitet om noter,
+             hertil fx Automations, Noter osv osv osv") — gruppefiltrering af
+             aktivitetstidslinjen, se crmpxRenderActivity/crmpxActivityGroup.
+             Kun grupper der rent faktisk indeholder noget vises (ud over
+             "Alle"), så barren ikke fyldes med tomme knapper på en handel med
+             få aktiviteter. -->
+        <div class="crmpx-activity-filter" id="crmpx-activity-filter" style="margin-top:12px"></div>
+        <div id="crmpx-activity" style="margin-top:10px"></div>
       </div>
     </div>
   </div>
@@ -5615,6 +5634,40 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="bly-btn outline small" id="file-lightbox-prev-btn" type="button" title="Forrige fil (←)" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:2;background:#fff;display:none">‹</button>
       <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:#F5F5F7" id="file-lightbox-body"></div>
       <button class="bly-btn outline small" id="file-lightbox-next-btn" type="button" title="Næste fil (→)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:2;background:#fff;display:none">›</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE BG (Martin: "Gør så man under handler kan rette i en kundebesøgs
+     note hvis man vil og få den ud i en stor popup så man kan se billederne
+     der tilføjet og teksten mm") — stor redigerbar visning af ÉN
+     besøgsrapport, åbnet ved klik på et besøgskort i Handel-detaljens højre
+     kolonne (se crmpxOpenVisitModal/crmpxSaveVisitEdit). Gemmer via den
+     samme PUT /api/customer-visits/:taskId som medarbejder-appen selv bruger
+     — "Udfyldt af" ændres bevidst IKKE ved en admin-redigering her (se
+     serverkommentar ved den rute), så æren for selve besøget bliver stående. -->
+<div class="mo" id="crmpx-visit-modal">
+  <div class="modal" style="max-width:min(760px,94vw);max-height:92vh;overflow:auto">
+    <h3 style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <span>📅 Besøgsrapport <span class="sub" id="crmpx-visit-modal-date"></span></span>
+      <span class="sub" id="crmpx-visit-modal-by"></span>
+    </h3>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Rummets størrelse</label><input id="crmpxv-room" class="input"></div>
+      <div class="form-group"><label class="form-label">Ønsket gulvtype</label><input id="crmpxv-floortype" class="input"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Anbefalet løsning</label><input id="crmpxv-solution" class="input"></div>
+      <div class="form-group"><label class="form-label">Estimeret pris</label><input id="crmpxv-price" class="input"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Note</label><textarea id="crmpxv-notes" class="input" rows="5" style="resize:vertical"></textarea></div>
+    <div class="form-group">
+      <label class="form-label">Billeder</label>
+      <div id="crmpxv-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="closeModal('crmpx-visit-modal')">Annuller</button>
+      <button class="btn primary" type="button" id="crmpxv-save-btn">Gem</button>
     </div>
   </div>
 </div>
@@ -19382,6 +19435,14 @@ initNoteWidget();
 // delbetalinger.
 // ══════════════════════════════════════════════════════════════
 var qzProducts=[],qzQuotes=[],qzInvoices=[],qzTemplates=[],qzActiveTab='quotes',qzInitialized=false,qzEditingProductId=null;
+// RUNDE BG (Martin: "At man ikke kan gemme et nyt produkt under selve
+// tilbuddet ... uden at den gør det automatisk men med en knap ... popup ...
+// udfylde alle felterne og trykke gem") — når produkt-modalen åbnes FRA en
+// tilbuds-/skabelon-/fakturalinje (se qzOpenProductModalFromLine), husker
+// denne var HVILKEN linje der udløste det, så saveQzProduct() bagefter kan
+// koble den nyoprettede produkt-id tilbage på netop den linje. null = normal
+// åbning fra selve Produkter-siden, hvor intet skal kobles bagefter.
+var qzProductModalLinkTarget=null;
 // Se qzLineAcSuppressFieldEvents-brugen i qzShowLineAutocomplete's valg-håndtering.
 var qzLineAcSuppressFieldEvents=false;
 var qzQuoteStatusFilter='all',qzInvoiceStatusFilter='all';
@@ -19918,6 +19979,12 @@ function qzLineRowHtml(l,idx,prefix){
       +'<option value="service"'+(type==='service'?' selected':'')+'>Service</option>'
       +'<option value="materialer"'+(type==='materialer'?' selected':'')+'>Materialer</option>'
     +'</select>'
+    // RUNDE BG (Martin: "Når man skriver en linje der ikke er genkendt kan du
+    // ikke gøre så man kan gemme det?") — kun vist når linjen IKKE allerede er
+    // koblet til et rigtigt produkt (l.product_id), altså netop de frit
+    // indtastede linjer autocomplete ikke fandt noget match til. Se
+    // qzOpenProductModalFromLine/makeLinesSaveProductHandler.
+    +(l.product_id?'':'<button type="button" class="qe-line-save-product" data-idx="'+idx+'" title="Gem denne linje som et nyt produkt">💾</button>')
     +'<button type="button" class="qe-line-duplicate" data-idx="'+idx+'" title="Kopiér linje">⧉</button>'
     +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
     +'</div>'
@@ -20084,6 +20151,18 @@ function makeLinesDuplicateHandler(getLines,renderFn){
     delete copy.id;
     lines.splice(idx+1,0,copy);
     renderFn();
+  };
+}
+// RUNDE BG — se qzOpenProductModalFromLine (knappen selv sidder i qzLineRowHtml,
+// kun vist på linjer uden product_id). renderFn videregives til modalen, så den
+// kan gentegne DENNE linjeliste efter et vellykket "Gem", uden at handleren her
+// selv skal vide hvilken editor (tilbud/skabelon/faktura) den blev kaldt fra.
+function makeLinesSaveProductHandler(getLines,renderFn){
+  return function(e){
+    var btn=e.target.closest('.qe-line-save-product');
+    if(!btn)return;
+    var idx=Number(btn.dataset.idx);
+    qzOpenProductModalFromLine(getLines(),idx,renderFn);
   };
 }
 // RUNDE W — åbner note-boksen på klik (se qzLineRowHtml). Ren visuel toggle,
@@ -20777,6 +20856,9 @@ function qzPdSortClick(key){
 function openProductModal(id){
   var p=id?qzProducts.find(function(x){return x.id===id;}):null;
   qzEditingProductId=id||null;
+  // Ryddes her (normal åbning) — qzOpenProductModalFromLine sætter den IGEN
+  // bagefter, EFTER dette kald, så den overlever selve dette nulstillings-trin.
+  qzProductModalLinkTarget=null;
   document.getElementById('qz-product-title').textContent=p?'Redigér produkt':'Nyt produkt';
   document.getElementById('qzp-name').value=p?p.name:'';
   document.getElementById('qzp-category').value=p?(p.category||''):'';
@@ -20798,6 +20880,29 @@ function updateQzpMarginPreview(){
   if(pct===null){el.innerHTML='Avance: –';return;}
   el.innerHTML='Avance: <span class="qz-margin '+qzMarginClass(pct)+'">'+pct.toFixed(1)+'%</span> · Dækningsbidrag '+krFmt(sell-cost)+' pr. enhed';
 }
+// RUNDE BG (Martin: "Når man skriver en linje der ikke er genkendt kan du
+// ikke gøre så man kan gemme det? ... løbende kan lave nye produkter sådan?
+// den skal ikke gøre det automatisk men med en knap eller lignende hvor en
+// popup så kommer og man skal udfylde alle felterne og trykke gem") — åbner
+// den HELT ALMINDELIGE "Nyt produkt"-modal, blot forudfyldt med det linjen
+// allerede indeholder (beskrivelse/enhed/cost-/salgspris/type), så man kun
+// skal rette til og trykke Gem — intet oprettes automatisk. Se
+// makeLinesSaveProductHandler nedenfor for selve knappen på linjen, og
+// saveQzProduct() ovenfor for hvordan den nye produkt-id kobles tilbage.
+function qzOpenProductModalFromLine(lines,idx,renderLinesFn){
+  var l=lines[idx];
+  if(!l)return;
+  openProductModal(null);
+  document.getElementById('qzp-name').value=l.description||'';
+  document.getElementById('qzp-unit').value=l.unit||'stk';
+  document.getElementById('qzp-cost').value=Number(l.cost_price)||0;
+  document.getElementById('qzp-sell').value=Number(l.sell_price)||0;
+  document.getElementById('qzp-type').value=qzType(l.product_type);
+  updateQzpMarginPreview();
+  // SAT EFTER openProductModal(null) — den kalder selv nulstiller denne var,
+  // så rækkefølgen her er vigtig (se kommentar ved openProductModal).
+  qzProductModalLinkTarget={lines:lines,idx:idx,renderLinesFn:renderLinesFn};
+}
 async function saveQzProduct(){
   var name=document.getElementById('qzp-name').value.trim();
   if(!name){toast('Navn mangler','⚠️');return;}
@@ -20811,8 +20916,29 @@ async function saveQzProduct(){
     description:document.getElementById('qzp-description').value.trim()||null,
     note:document.getElementById('qzp-note').value.trim()||null
   };
+  var wasNew=!qzEditingProductId;
+  var linkTarget=qzProductModalLinkTarget;
   var r=qzEditingProductId?await api('/api/products/'+qzEditingProductId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/products',{method:'POST',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Produkt gemt','✓');closeModal('qz-product-modal');await loadQzProducts();renderQzProducts();}
+  if(r&&r.ok){
+    toast('Produkt gemt','✓');
+    closeModal('qz-product-modal');
+    // Koblingen tilbage til tilbuds-/skabelon-/fakturalinjen der udløste det
+    // (r.id findes kun ved oprettelse, ikke ved redigering — matcher wasNew).
+    if(wasNew&&linkTarget&&r.id){
+      var l=linkTarget.lines[linkTarget.idx];
+      if(l){
+        l.product_id=r.id;
+        l.description=body.name;
+        l.unit=body.unit;
+        l.cost_price=body.cost_price;
+        l.sell_price=body.sell_price;
+        l.product_type=qzType(body.product_type);
+      }
+      linkTarget.renderLinesFn();
+    }
+    qzProductModalLinkTarget=null;
+    await loadQzProducts();renderQzProducts();
+  }
   else toast((r&&r.error)||'Kunne ikke gemme produktet','❌');
 }
 async function deleteQzProduct(){
@@ -22169,6 +22295,8 @@ function crmpxInitOnce(){
   document.getElementById('crmpx-quote-btn').addEventListener('click',crmpxOpenQuote);
   document.getElementById('crmpx-delete-btn').addEventListener('click',crmpxDelete);
   document.getElementById('crmpx-note-add-btn').addEventListener('click',crmpxAddNote);
+  // RUNDE BG — "Gem" i den store besøgsrapport-popup (se crmpxOpenVisitModal).
+  document.getElementById('crmpxv-save-btn').addEventListener('click',crmpxSaveVisitEdit);
   // RUNDE V — note-diktering på CRM-aktivitetsnoten (se noteDictToggle).
   document.getElementById('crmpx-note-new-mic-btn').addEventListener('click',function(){noteDictToggle('crmpx-note-new','crmpx-note-new-mic-btn');});
   document.getElementById('crmpx-task-add-btn').addEventListener('click',crmpxAddTask);
@@ -22836,6 +22964,11 @@ async function openCrmpDetail(entityType,id){
     // spring over, ccLoadAndRenderExtras tjekker selv for manglende ownerId.
     if(d.contact_id)ccLoadAndRenderExtras('crmpx-cc','contact',d.contact_id);
   }
+  // RUNDE BG — nulstil aktivitetsgruppe-filteret til "Alle" hver gang man
+  // åbner en ANDEN handel/lead (men ikke ved en almindelig genindlæsning af
+  // samme, se crmpxReloadActivity), så man ikke ved et uheld sidder og kigger
+  // på fx kun "Automatik" på en helt ny sag uden at opdage det.
+  crmpxActivityFilter='all';
   crmpxRenderActivity(d.activities||[]);
   crmpxLoadTasks();
   switchPage('crmp-detail',true);
@@ -22895,9 +23028,55 @@ function crmpxOppMiniCard(opp){
 // Rette-i-stedet-mønstret er kopieret 1:1 fra kunde-noterne (crmpxStartEdit-
 // CustomerNote), så de to noteliste-typer opfører sig ens.
 var crmpxActivities=[];
+// RUNDE BG (Martin: "Aktvitet feltet under handler spasser helt ud når et
+// tilbud på handelen opdateres sættes prisen automatisk, men da vi har auto
+// gem på tilbuddet gør den det nogle gange 40 gange og det gør akvititet
+// feltet under handlen rodet og kan man måske ikke dele den op så Aktivitet
+// indeddels i forskellige grupper så hvis man vil se aktivitet om noter,
+// hertil fx Automations, Noter osv osv osv") — hver aktivitetslinjes 'kind'
+// (se crmLogActivity i server.js) sorteres ind i én af disse faste grupper,
+// så man kan filtrere den støjende automatik (fx de mange "Værdi sat til X kr
+// (automatisk)"-linjer fra RUNDE BA) væk fra fx Noter, uden at de er slettet
+// — de er der stadig, bare skjult indtil man selv vælger at se dem.
+var CRMPX_ACTIVITY_GROUPS=[
+  {key:'note',icon:'📝',label:'Noter'},
+  {key:'automation',icon:'⚙️',label:'Automatik'},
+  {key:'stage',icon:'🔀',label:'Status'},
+  {key:'field',icon:'✏️',label:'Felter'},
+  {key:'created',icon:'🤝',label:'Oprettelse'},
+  {key:'other',icon:'✨',label:'Andet'}
+];
+function crmpxActivityGroup(kind){
+  kind=kind||'';
+  if(kind==='note')return 'note';
+  if(kind==='field_update')return 'field';
+  if(kind==='stage_change')return 'stage';
+  if(kind==='created'||kind==='linked'||kind==='converted'||kind==='lead_history')return 'created';
+  // Alt automatiseret: den automatiske Værdi-synk fra tilbud (se
+  // crmSyncOpportunityValueFromQuote — netop den Martin klager over spammer),
+  // stage-triggede og tidsbaserede SMS/mail-opfølgninger, samt deres
+  // fejl-varianter. sms_sent_stage*/email_sent_stage*/stage_followup_*_r*
+  // har et dynamisk suffiks (stage-/regel-id), derfor præfiks-match.
+  if(kind==='value_updated'||/^sms_sent_stage/.test(kind)||/^email_sent_stage/.test(kind)||kind==='sms_failed'||kind==='email_failed'||/^stage_followup_(sms|email)_r/.test(kind)||kind==='stage_followup_sms_failed'||kind==='stage_followup_email_failed'||kind==='lost_followup_sent'||kind==='lost_followup_failed')return 'automation';
+  return 'other';
+}
+var crmpxActivityFilter='all';
 function crmpxRenderActivity(activities){
   if(activities)crmpxActivities=activities;
-  document.getElementById('crmpx-activity').innerHTML=(crmpxActivities||[]).map(function(a){
+  var counts={};
+  (crmpxActivities||[]).forEach(function(a){var g=crmpxActivityGroup(a.kind);counts[g]=(counts[g]||0)+1;});
+  var filterBar=document.getElementById('crmpx-activity-filter');
+  if(filterBar){
+    var total=(crmpxActivities||[]).length;
+    var btnsHtml='<button type="button" class="crmpx-af-btn'+(crmpxActivityFilter==='all'?' active':'')+'" data-crmpxaf="all">Alle ('+total+')</button>'
+      +CRMPX_ACTIVITY_GROUPS.filter(function(g){return counts[g.key];}).map(function(g){
+        return '<button type="button" class="crmpx-af-btn'+(crmpxActivityFilter===g.key?' active':'')+'" data-crmpxaf="'+g.key+'">'+g.icon+' '+g.label+' ('+counts[g.key]+')</button>';
+      }).join('');
+    filterBar.innerHTML=btnsHtml;
+    filterBar.style.display=total?'':'none';
+  }
+  var shown=(crmpxActivities||[]).filter(function(a){return crmpxActivityFilter==='all'||crmpxActivityGroup(a.kind)===crmpxActivityFilter;});
+  document.getElementById('crmpx-activity').innerHTML=shown.map(function(a){
     // 'lead_history' = en loglinje der er kopieret med over fra leadet ved
     // konvertering (se crmCopyActivitiesToOpportunity i server.js) — egen ikon,
     // så man kan se hvad der skete FØR konverteringen uden at forveksle det med
@@ -22911,8 +23090,14 @@ function crmpxRenderActivity(activities){
       +'<div class="crmpx-activity-meta">'+esc(a.user_name||'System')+' · '+esc(fmtDaDate(a.created_at))+(edited?' · <span class="crmpx-activity-meta-edited">redigeret</span>':'')+'</div></div>'
       +(a.kind==='note'?'<div class="crmpx-activity-actions"><button class="qz-icon-btn" data-crmpx-act="edit" type="button" title="Redigér">✎</button><button class="qz-icon-btn" data-crmpx-act="delete" type="button" title="Slet">🗑</button></div>':'')
       +'</div>';
-  }).join('')||'<div class="crmpx-empty">Ingen aktivitet endnu</div>';
+  }).join('')||'<div class="crmpx-empty">'+((crmpxActivities||[]).length?'Ingen aktivitet i denne gruppe':'Ingen aktivitet endnu')+'</div>';
 }
+document.getElementById('crmpx-activity-filter').addEventListener('click',function(e){
+  var btn=e.target.closest('[data-crmpxaf]');
+  if(!btn)return;
+  crmpxActivityFilter=btn.dataset.crmpxaf;
+  crmpxRenderActivity();
+});
 document.getElementById('crmpx-activity').addEventListener('click',function(e){
   var btn=e.target.closest('[data-crmpx-act]');
   if(!btn)return;
@@ -23375,10 +23560,14 @@ async function crmpxLoadTasks(){
 // BESØGSRAPPORT — RUNDE L (Martins ønske: "kommer ind på kunden i mit CRM system").
 // Viser svar+billeder fra medarbejderens obligatoriske besøgsformular. Kun besøg
 // der faktisk er udfyldt (server-siden filtrerer på submitted_at IS NOT NULL).
+// RUNDE BG: den fulde besøgsliste holdes her, så et klik på et kort (se
+// crmpxOpenVisitModal) kan slå besøget op uden at hente det igen.
+var crmpxVisitsCache=[],crmpxVisitEditingTaskId=null;
 async function crmpxLoadVisits(customerId){
   var list=document.getElementById('crmpx-visits-list');
   var countEl=document.getElementById('crmpx-visits-count');
   var visits=await api('/api/crm/customers/'+customerId+'/visits')||[];
+  crmpxVisitsCache=visits;
   if(countEl)countEl.textContent=visits.length?'('+visits.length+')':'';
   if(!list)return;
   if(!visits.length){list.innerHTML='<div class="crmpx-empty">Ingen besøgsrapporter endnu</div>';return;}
@@ -23392,13 +23581,66 @@ async function crmpxLoadVisits(customerId){
     var kvHtml=kv.length?'<div class="crmpx-visit-kv">'+kv.map(function(x){return '<div class="crmpx-visit-kv-item"><span>'+esc(x.l)+'</span><b>'+esc(x.val)+'</b></div>';}).join('')+'</div>':'';
     var noteHtml=v.notes?'<div class="crmpx-visit-note">'+esc(v.notes).replace(/\n/g,'<br>')+'</div>':'';
     var photos=Array.isArray(v.photo_urls)?v.photo_urls:[];
-    var photosHtml=photos.length?'<div class="crmpx-visit-photos">'+photos.map(function(url){return '<a class="crmpx-visit-thumb" href="'+esc(url)+'" target="_blank" rel="noopener"><img src="'+esc(url)+'" loading="lazy"></a>';}).join('')+'</div>':'';
-    return '<div class="crmpx-visit-card">'
+    // RUNDE BG — ikke længere et link der åbner det rå billede i en ny fane:
+    // hele kortet åbner nu i stedet den store redigerbare popup (se
+    // crmpxOpenVisitModal), som selv viser billederne noget større.
+    var photosHtml=photos.length?'<div class="crmpx-visit-photos">'+photos.map(function(url){return '<span class="crmpx-visit-thumb"><img src="'+esc(url)+'" loading="lazy"></span>';}).join('')+'</div>':'';
+    return '<div class="crmpx-visit-card" data-task-id="'+esc(v.task_id)+'" title="Klik for at se/rette besøgsrapporten">'
       +'<div class="crmpx-visit-head"><span class="crmpx-visit-date">📅 '+esc(fmtDaDate((v.submitted_at||'').slice(0,10)))+'</span><span class="crmpx-visit-by">'+esc(v.filled_by_name||'')+'</span></div>'
       +kvHtml+noteHtml+photosHtml
       +(!kv.length&&!noteHtml&&!photosHtml?'<div class="crmpx-empty">Ingen detaljer udfyldt</div>':'')
       +'</div>';
   }).join('');
+}
+document.addEventListener('click',function(e){
+  var card=e.target.closest('.crmpx-visit-card');
+  if(!card)return;
+  crmpxOpenVisitModal(card.dataset.taskId);
+});
+// RUNDE BG (Martin: "Gør så man under handler kan rette i en kundebesøgs
+// note hvis man vil og få den ud i en stor popup så man kan se billederne
+// der tilføjet og teksten mm") — forudfylder den store popup med ALT hvad
+// besøgsrapporten indeholder (både tekstfelter og billeder), klar til at
+// rette til og gemme. Billederne selv redigeres ikke herfra (det er stadig
+// medarbejder-appens jobs at tilføje dem) — kun tekstfelterne.
+function crmpxOpenVisitModal(taskId){
+  var v=crmpxVisitsCache.find(function(x){return String(x.task_id)===String(taskId);});
+  if(!v)return;
+  crmpxVisitEditingTaskId=taskId;
+  document.getElementById('crmpx-visit-modal-date').textContent='· '+fmtDaDate((v.submitted_at||'').slice(0,10));
+  document.getElementById('crmpx-visit-modal-by').textContent=v.filled_by_name?('Udfyldt af '+v.filled_by_name):'';
+  document.getElementById('crmpxv-room').value=v.room_size||'';
+  document.getElementById('crmpxv-floortype').value=v.floor_type_wanted||'';
+  document.getElementById('crmpxv-solution').value=v.recommended_solution||'';
+  document.getElementById('crmpxv-price').value=v.estimated_price||'';
+  document.getElementById('crmpxv-notes').value=v.notes||'';
+  var photos=Array.isArray(v.photo_urls)?v.photo_urls:[];
+  var photosBox=document.getElementById('crmpxv-photos');
+  photosBox.innerHTML=photos.length?photos.map(function(url){
+    return '<a href="'+esc(url)+'" target="_blank" rel="noopener" style="display:block;border-radius:8px;overflow:hidden;border:1px solid var(--bly-border-soft);aspect-ratio:1/1"><img src="'+esc(url)+'" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy"></a>';
+  }).join(''):'<div class="crmpx-empty">Ingen billeder</div>';
+  document.getElementById('crmpx-visit-modal').classList.add('open');
+}
+async function crmpxSaveVisitEdit(){
+  if(!crmpxVisitEditingTaskId)return;
+  var btn=document.getElementById('crmpxv-save-btn');var origText=btn.textContent;
+  btn.disabled=true;btn.textContent='Gemmer…';
+  var body={
+    room_size:document.getElementById('crmpxv-room').value,
+    floor_type_wanted:document.getElementById('crmpxv-floortype').value,
+    recommended_solution:document.getElementById('crmpxv-solution').value,
+    estimated_price:document.getElementById('crmpxv-price').value,
+    notes:document.getElementById('crmpxv-notes').value
+  };
+  var r=await api('/api/customer-visits/'+crmpxVisitEditingTaskId,{method:'PUT',body:JSON.stringify(body)});
+  btn.disabled=false;btn.textContent=origText;
+  if(r&&r.ok){
+    toast('Besøgsrapport gemt','✓');
+    closeModal('crmpx-visit-modal');
+    if(crmpxCurrentCustomerId)crmpxLoadVisits(crmpxCurrentCustomerId);
+  } else {
+    toast((r&&r.error)||'Kunne ikke gemme','❌');
+  }
 }
 async function crmpxAddTask(){
   var ent=crmpDetailEntity;
@@ -28848,6 +29090,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzt-lines').addEventListener('change',qztFieldHandler);
   document.getElementById('qzt-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
   document.getElementById('qzt-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
+  document.getElementById('qzt-lines').addEventListener('click',makeLinesSaveProductHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
   document.getElementById('qzt-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('qzt-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
@@ -28879,6 +29122,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qal-lines').addEventListener('change',qalFieldHandler);
   document.getElementById('qal-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
   document.getElementById('qal-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
+  document.getElementById('qal-lines').addEventListener('click',makeLinesSaveProductHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
   document.getElementById('qal-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('qal-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
@@ -28902,6 +29146,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('ivl-lines').addEventListener('change',ivlFieldHandler);
   document.getElementById('ivl-lines').addEventListener('click',makeLinesRemoveHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
   document.getElementById('ivl-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
+  document.getElementById('ivl-lines').addEventListener('click',makeLinesSaveProductHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
   document.getElementById('ivl-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('ivl-lines').addEventListener('click',qzRichTextToolbarHandler);
   document.getElementById('ivl-discount').addEventListener('input',ivlRenderTotals);
@@ -28989,6 +29234,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-lines').addEventListener('change',qeFieldHandler);
   document.getElementById('qe-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
   document.getElementById('qe-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
+  document.getElementById('qe-lines').addEventListener('click',makeLinesSaveProductHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
   document.getElementById('qe-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('qe-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
