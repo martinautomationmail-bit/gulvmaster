@@ -1933,8 +1933,29 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    i en implicit, uforudsigelig bredde, når der ikke er kolonner nok). */
 .qe-line-text .qe-line-top{grid-template-columns:18px 1fr auto auto 30px;margin-bottom:0}
 .qe-line-text input.qe-line-field{font-weight:700;color:var(--bly-ink);text-transform:uppercase;letter-spacing:.03em;font-size:12.5px}
-.qe-line-top{display:grid;grid-template-columns:18px 1fr 80px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
+/* RUNDE BH (Martin: "Delete, save produkt, Dublicate og Note, Avance etc. er
+   ikke positioneret godt") — item-linjens top-række havde tidligere en sidste
+   30px-kolonne til ÉN knap (fjern), men RUNDE BG (💾 "Gem som produkt")
+   tilføjede en ekstra knap oveni ⧉-kopiér, så tre ikoner nu skulle dele den
+   samme smalle plads — de flød uden for kortet i stedet for at have plads.
+   Løsningen (Martin valgte "Idé A" af tre viste forslag): top-rækken mister
+   sin sidste kolonne helt (kun beskrivelse/enhed/type tilbage — se
+   .qe-line-item-body herunder), og de tre handlings-knapper flyttes i stedet
+   ud i en lodret ikon-skinne langs HELE kortets højre kant (.qe-line-rail) —
+   der er altid plads dér, uanset hvor mange knapper der måtte komme til
+   senere. Kun ITEM-linjer (ikke tekstlinjer, som stadig kun har to knapper og
+   aldrig har haft pladsproblemet) er ombygget — se .qe-line-item/-body/-rail
+   og den tilsvarende gren i qzLineRowHtml. */
+.qe-line-top{display:grid;grid-template-columns:18px minmax(0,1fr) 80px 110px;gap:8px;align-items:center;margin-bottom:8px}
 .qe-line-top textarea.qe-desc-area{resize:vertical;min-height:36px;max-height:200px;line-height:1.4;font-family:inherit;overflow-y:auto;white-space:pre-wrap}
+.qe-line-item{padding:0;display:flex;align-items:stretch}
+.qe-line-item-body{flex:1;min-width:0;padding:12px}
+.qe-line-rail{flex:0 0 40px;border-left:1px solid var(--bly-border-soft);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 0}
+.qe-line-rail button{width:32px;height:32px;border-radius:var(--bly-r-sm);display:flex;align-items:center;justify-content:center}
+.qe-line-rail button:hover{background:var(--bly-hover)}
+.qe-line-rail .qe-remove-line:hover{background:#FEE2E2}
+.qe-line-rail-sep{width:20px;height:1px;background:var(--bly-border-soft);margin:2px 0}
+@media(max-width:640px){.qe-line-top{grid-template-columns:1fr;gap:6px}.qe-line-item .qe-line-drag{display:none}}
 .qe-line-nums{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .qe-line-num-label{font-size:9px;color:var(--bly-sub);font-weight:700;text-transform:uppercase}
 .qe-line-margin{font-size:10.5px;font-weight:800;margin-top:2px}
@@ -3566,7 +3587,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.28</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -19970,7 +19991,13 @@ function qzLineRowHtml(l,idx,prefix){
   var pct=qzMarginPct(cost,sell);
   var marginTxt=pct===null?'Avance: –':('Avance: '+pct.toFixed(0)+'% · DB '+krFmt((sell-cost)*qty));
   var type=qzType(l.product_type);
-  return '<div class="qe-line" data-idx="'+idx+'">'
+  // RUNDE BH — ydre kort er nu KUN en flex-ramme (.qe-line-item): selve
+  // felterne bor i .qe-line-item-body til venstre, og de tre handlings-
+  // knapper (💾/⧉/✕, tidligere klemt ind i toppens sidste 30px-kolonne) bor
+  // nu i en fast ikon-skinne (.qe-line-rail) til højre langs HELE kortets
+  // højde — se den store CSS-kommentar ved .qe-line-top for baggrunden.
+  return '<div class="qe-line qe-line-item" data-idx="'+idx+'">'
+    +'<div class="qe-line-item-body">'
     +'<div class="qe-line-top">'
     +qzLineDragHandle(idx)
     +'<div class="qz-rt-host">'+qzRtToolbarHtml()+'<textarea class="qe-input qe-line-field qe-desc-area" data-idx="'+idx+'" data-field="description" placeholder="Beskrivelse" rows="1">'+esc(l.description||'')+'</textarea></div>'
@@ -19979,14 +20006,6 @@ function qzLineRowHtml(l,idx,prefix){
       +'<option value="service"'+(type==='service'?' selected':'')+'>Service</option>'
       +'<option value="materialer"'+(type==='materialer'?' selected':'')+'>Materialer</option>'
     +'</select>'
-    // RUNDE BG (Martin: "Når man skriver en linje der ikke er genkendt kan du
-    // ikke gøre så man kan gemme det?") — kun vist når linjen IKKE allerede er
-    // koblet til et rigtigt produkt (l.product_id), altså netop de frit
-    // indtastede linjer autocomplete ikke fandt noget match til. Se
-    // qzOpenProductModalFromLine/makeLinesSaveProductHandler.
-    +(l.product_id?'':'<button type="button" class="qe-line-save-product" data-idx="'+idx+'" title="Gem denne linje som et nyt produkt">💾</button>')
-    +'<button type="button" class="qe-line-duplicate" data-idx="'+idx+'" title="Kopiér linje">⧉</button>'
-    +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
     +'</div>'
     // Note (sep. 2026, Martins ønske) — helt separat felt fra beskrivelsen ovenfor.
     // Vises i sin egen fremhævede boks UNDER beskrivelsen på tilbud/faktura.
@@ -20018,6 +20037,18 @@ function qzLineRowHtml(l,idx,prefix){
     +'<div><div class="qe-line-num-label">I alt</div><div id="'+prefix+'-line-total-'+idx+'" style="font-weight:800;padding-top:4px">'+krFmt(lineTotal)+'</div></div>'
     +'</div>'
     +'<div class="qe-line-margin qz-margin '+qzMarginClass(pct)+'" id="'+prefix+'-line-margin-'+idx+'">'+marginTxt+'</div>'
+    +'</div>'
+    +'<div class="qe-line-rail">'
+    // RUNDE BG (Martin: "Når man skriver en linje der ikke er genkendt kan du
+    // ikke gøre så man kan gemme det?") — kun vist når linjen IKKE allerede er
+    // koblet til et rigtigt produkt (l.product_id), altså netop de frit
+    // indtastede linjer autocomplete ikke fandt noget match til. Se
+    // qzOpenProductModalFromLine/makeLinesSaveProductHandler.
+    +(l.product_id?'':'<button type="button" class="qe-line-save-product" data-idx="'+idx+'" title="Gem denne linje som et nyt produkt">💾</button>')
+    +'<button type="button" class="qe-line-duplicate" data-idx="'+idx+'" title="Kopiér linje">⧉</button>'
+    +'<div class="qe-line-rail-sep"></div>'
+    +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
+    +'</div>'
     +'</div>';
 }
 // Lader et beskrivelses-tekstfelt vokse i højden efter indholdet — bruges så en
