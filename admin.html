@@ -3556,7 +3556,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.26</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4556,6 +4556,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-btn" id="qz-product-dashboard-btn" type="button">📊 Dashboard</button>
         <button class="bly-btn" id="qz-import-jt-btn" type="button">📥 Importér fra JobTread</button>
         <button class="bly-btn" id="qz-new-product-btn" type="button">+ Nyt produkt</button>
+      </div>
+    </div>
+    <!-- RUNDE BF (Martin: "kan du gøre så jeg også kan filtre på 1. Kategori
+         2. Type 3. Enhed ... når der så er 3-400 produkter eller mere kan jeg
+         hurtig fjerne områder jeg har lavet når jeg skal gennemgå det hele og
+         derved går det hurtigere") — filtrene kombineres med søgefeltet og med
+         hinanden (alle skal matche), og styrer HVILKE produkter markér-alle og
+         masseopdatering (RUNDE BE) rammer. Kategori/Enhed udfyldes dynamisk fra
+         de værdier der faktisk findes i produktkataloget (se qzPopulateProductFilters).
+         Type er en fast liste (service/materialer), se QZ_TYPE_LABEL. -->
+    <div class="bly-toolbar" id="qz-product-filter-bar" style="margin-bottom:10px">
+      <div class="bly-toolbar-left" style="gap:8px;flex-wrap:wrap">
+        <select class="bly-select bly-ctl" id="qz-product-filter-category"><option value="">Alle kategorier</option></select>
+        <select class="bly-select bly-ctl" id="qz-product-filter-type"><option value="">Alle typer</option><option value="service">Service</option><option value="materialer">Materialer</option></select>
+        <select class="bly-select bly-ctl" id="qz-product-filter-unit"><option value="">Alle enheder</option></select>
+        <button class="bly-btn" id="qz-product-filter-reset-btn" type="button" style="display:none">✕ Nulstil filtre</button>
       </div>
     </div>
     <!-- RUNDE BE (Martin: "kan du ikke gøre så jeg kan markere alle og masse
@@ -19617,7 +19633,7 @@ async function loadQzDeliveryWarning(){
     box.style.display='';
   }catch(e){box.style.display='none';}
 }
-async function loadQzProducts(){var r=await api('/api/products');qzProducts=Array.isArray(r)?r:[];}
+async function loadQzProducts(){var r=await api('/api/products');qzProducts=Array.isArray(r)?r:[];qzPopulateProductFilters();}
 async function loadQzQuotes(){var r=await api('/api/quotes');qzQuotes=Array.isArray(r)?r:[];}
 async function loadQzInvoices(){var r=await api('/api/invoices');qzInvoices=Array.isArray(r)?r:[];}
 async function loadQzTemplates(){var r=await api('/api/quote-templates');qzTemplates=Array.isArray(r)?r:[];}
@@ -20552,10 +20568,38 @@ function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange)
 // Set af produkt-id'er, ikke i DOM'en — body.innerHTML skrives helt om ved hvert
 // renderQzProducts()-kald, så DOM-tilstand ville gå tabt.
 var qzProductSelection=new Set();
+// RUNDE BF (Martin: "kan du gøre så jeg også kan filtre på 1. Kategori 2. Type
+// 3. Enhed ... når der så er 3-400 produkter eller mere kan jeg hurtig fjerne
+// områder jeg har lavet når jeg skal gennemgå det hele") — de tre dropdowns
+// kombineres MED HINANDEN (alle skal matche) og med det almindelige søgefelt.
 function qzFilteredProducts(){
   var q=(document.getElementById('qz-product-search').value||'').trim();
+  var catF=document.getElementById('qz-product-filter-category').value;
+  var typeF=document.getElementById('qz-product-filter-type').value;
+  var unitF=document.getElementById('qz-product-filter-unit').value;
   // RUNDE W — samme søge-fejlrettelse som tilbud/fakturaer (se qzSearchHit).
-  return qzProducts.filter(function(p){return qzSearchHit(q,[p.name,p.category,p.sku]);});
+  return qzProducts.filter(function(p){
+    if(catF&&(p.category||'')!==catF)return false;
+    if(typeF&&qzType(p.product_type)!==typeF)return false;
+    if(unitF&&(p.unit||'stk')!==unitF)return false;
+    return qzSearchHit(q,[p.name,p.category,p.sku]);
+  });
+}
+// Udfylder Kategori/Enhed-dropdownsene med de værdier der reelt findes i
+// produktkataloget lige nu — kaldes hver gang produkter (gen)hentes fra
+// serveren, så listen aldrig kommer bagud efter man opretter/retter produkter.
+// Beholder det aktive filter hvis værdien stadig findes bagefter.
+function qzPopulateProductFilters(){
+  var catSel=document.getElementById('qz-product-filter-category');
+  var unitSel=document.getElementById('qz-product-filter-unit');
+  if(!catSel||!unitSel)return; // HTML'en er evt. ikke indlæst endnu ved allerførste kald
+  var curCat=catSel.value,curUnit=unitSel.value;
+  var cats=Array.from(new Set(qzProducts.map(function(p){return (p.category||'').trim();}).filter(Boolean))).sort(function(a,b){return a.localeCompare(b,'da');});
+  var units=Array.from(new Set(qzProducts.map(function(p){return (p.unit||'stk').trim();}).filter(Boolean))).sort(function(a,b){return a.localeCompare(b,'da');});
+  catSel.innerHTML='<option value="">Alle kategorier</option>'+cats.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('');
+  unitSel.innerHTML='<option value="">Alle enheder</option>'+units.map(function(u){return '<option value="'+esc(u)+'">'+esc(u)+'</option>';}).join('');
+  if(cats.indexOf(curCat)!==-1)catSel.value=curCat;
+  if(units.indexOf(curUnit)!==-1)unitSel.value=curUnit;
 }
 function renderQzProducts(){
   var list=qzFilteredProducts();
@@ -20563,8 +20607,11 @@ function renderQzProducts(){
   // — undgår at "N valgt" tæller produkter man ikke længere kan se.
   var visibleIds=new Set(list.map(function(p){return p.id;}));
   Array.from(qzProductSelection).forEach(function(id){if(!qzProducts.some(function(p){return p.id===id;}))qzProductSelection.delete(id);});
+  var anyFilterActive=!!(document.getElementById('qz-product-filter-category').value||document.getElementById('qz-product-filter-type').value||document.getElementById('qz-product-filter-unit').value);
+  document.getElementById('qz-product-filter-reset-btn').style.display=anyFilterActive?'':'none';
   var body=document.getElementById('qz-products-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+((document.getElementById('qz-product-search').value||'').trim()?'Ingen produkter fundet':'Ingen produkter endnu — opret det første')+'</td></tr>';qzUpdateProductBulkBar();return;}
+  var anyActive=anyFilterActive||(document.getElementById('qz-product-search').value||'').trim();
+  if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(anyActive?'Ingen produkter fundet':'Ingen produkter endnu — opret det første')+'</td></tr>';qzUpdateProductBulkBar();return;}
   body.innerHTML=list.map(function(p){
     var cost=Number(p.cost_price),sell=Number(p.sell_price);
     var pct=qzMarginPct(cost,sell);
@@ -28774,6 +28821,17 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzb-unit-on').addEventListener('change',function(){qzBulkFieldToggle('qzb-unit-on',['qzb-unit']);});
   document.getElementById('qzb-cost-on').addEventListener('change',function(){qzBulkFieldToggle('qzb-cost-on',['qzb-cost-mode','qzb-cost-value']);});
   document.getElementById('qzb-sell-on').addEventListener('change',function(){qzBulkFieldToggle('qzb-sell-on',['qzb-sell-mode','qzb-sell-value']);});
+
+  // RUNDE BF — filtrér produktlisten på Kategori/Type/Enhed (se qzFilteredProducts).
+  document.getElementById('qz-product-filter-category').addEventListener('change',renderQzProducts);
+  document.getElementById('qz-product-filter-type').addEventListener('change',renderQzProducts);
+  document.getElementById('qz-product-filter-unit').addEventListener('change',renderQzProducts);
+  document.getElementById('qz-product-filter-reset-btn').addEventListener('click',function(){
+    document.getElementById('qz-product-filter-category').value='';
+    document.getElementById('qz-product-filter-type').value='';
+    document.getElementById('qz-product-filter-unit').value='';
+    renderQzProducts();
+  });
 
   document.getElementById('qz-new-template-btn').addEventListener('click',function(){openTemplateModal(null);});
   document.getElementById('qzt-cancel').addEventListener('click',function(){closeModal('qz-template-modal');});
