@@ -1035,20 +1035,12 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_customer_visits_task ON customer_visits(task_id);
-    -- RUNDE L (sep. 2026, Martins ønske): "Book kundebesøg" kan nu koble besøget til en
-    -- rigtig kunde (customer_id) og et konkret tilbud (quote_id) — så medarbejderen der
-    -- skal ud kan se hvad der er givet tilbud på (uden priser, se /quote-scope), og
-    -- besøgsrapporten (billeder + spørgsmål, udfyldes obligatorisk ved "Markér som
-    -- færdig" for et kundebesøg) kan vises på selve kunden i CRM.
-    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
-    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS quote_id INTEGER REFERENCES quotes(id) ON DELETE SET NULL;
-    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS photo_urls JSONB NOT NULL DEFAULT '[]';
-    -- Sat første gang formularen gemmes (fra admin ELLER medarbejder-appen) — bruges til
-    -- at afgøre om besøgsrapporten skal vises i CRM (kun rigtigt udfyldte besøg, ikke
-    -- tomme rækker der kun er oprettet ved booking) og om det obligatoriske krav ved
-    -- "Markér som færdig" er opfyldt.
-    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS submitted_at TEXT;
-    CREATE INDEX IF NOT EXISTS idx_customer_visits_customer ON customer_visits(customer_id);
+    -- RUNDE L-tilføjelserne til customer_visits (customer_id/quote_id/photo_urls/
+    -- submitted_at + deres index) er FLYTTET ned til lige efter CREATE TABLE customers
+    -- OG CREATE TABLE quotes (se dér) — de to FK'er (customers(id), quotes(id)) skal
+    -- eksistere FØR disse ALTER TABLE-linjer kører, ellers fejler en helt frisk
+    -- database-bootstrapning ("relation customers does not exist"), fundet ifm.
+    -- opsætning af et nyt dev-miljø fra bunden (sep. 2026).
 
     CREATE TABLE IF NOT EXISTS note_tabs (
       id SERIAL PRIMARY KEY,
@@ -1423,31 +1415,10 @@ async function initSchema() {
     -- vil") — offentligt, token-baseret svar-link (se /svar/:token og
     -- /api/public/photo-requests/:token/*) hvor kunden kan besvare et
     -- fritekst-spørgsmål Martin selv skriver ("hint-spørgsmålet") og
-    -- uploade et vilkårligt antal billeder, UDEN at afhænge af at Gmail
-    -- rent faktisk fanger dem korrekt (se gmailWalkPayload-rettelsen,
-    -- RUNDE BG) — dette er en helt uafhængig kanal. Ét spørgsmål kan
-    -- besvares/genbesvares flere gange (fx kunden lægger flere billeder op
-    -- senere) — note/photo_urls overskrives/udvides ved hvert svar, se
-    -- POST .../respond. Knyttet til customer_id (ikke en bestemt CRM-
-    -- opportunity/handel), præcis samme model som GET
-    -- /api/crm/customers/:id/files allerede bruger for Gmail-vedhæftninger —
-    -- så det ene kundekort viser AL kommunikation, uanset hvilken handel man
-    -- kigger på. answered_at sættes kun ved allerførste svar (se COALESCE i
-    -- routen) — bruges til at vise "❓ Afventer"/"✓ Besvaret" i Handler-UI'et.
-    CREATE TABLE IF NOT EXISTS customer_photo_requests (
-      id SERIAL PRIMARY KEY,
-      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-      token TEXT NOT NULL,
-      question TEXT NOT NULL,
-      note TEXT,
-      photo_urls JSONB NOT NULL DEFAULT '[]',
-      created_by INTEGER,
-      created_at TEXT DEFAULT ${nowTextSQL()},
-      updated_at TEXT,
-      answered_at TEXT
-    );
-    CREATE INDEX IF NOT EXISTS idx_customer_photo_requests_customer ON customer_photo_requests(customer_id);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_photo_requests_token ON customer_photo_requests(token);
+    -- customer_photo_requests (RUNDE BK) er FLYTTET ned til lige efter CREATE TABLE
+    -- customers — den refererer customers(id), som ellers ikke findes endnu her,
+    -- hvilket fik en helt frisk database-bootstrapning til at fejle (se note ved
+    -- customer_visits-flytningen ovenfor, samme årsag).
 
     -- AKTIVITETS-TIDSLINJE — hvem redigerede/sendte tilbud og fakturaer, og
     -- hvornår kunden selv åbnede dem. Fælles tabel for begge dokumenttyper
@@ -1533,6 +1504,43 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
+    -- RUNDE L (sep. 2026, Martins ønske): "Book kundebesøg" kan nu koble besøget til en
+    -- rigtig kunde (customer_id) og et konkret tilbud (quote_id) — så medarbejderen der
+    -- skal ud kan se hvad der er givet tilbud på (uden priser, se /quote-scope), og
+    -- besøgsrapporten (billeder + spørgsmål, udfyldes obligatorisk ved "Markér som
+    -- færdig" for et kundebesøg) kan vises på selve kunden i CRM. FLYTTET hertil (fra
+    -- lige efter customer_visits-tabellens egen CREATE TABLE) fordi disse ALTER-linjer
+    -- refererer customers(id) og quotes(id), som først findes nu.
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS quote_id INTEGER REFERENCES quotes(id) ON DELETE SET NULL;
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS photo_urls JSONB NOT NULL DEFAULT '[]';
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS submitted_at TEXT;
+    CREATE INDEX IF NOT EXISTS idx_customer_visits_customer ON customer_visits(customer_id);
+    -- customer_photo_requests (RUNDE BK) — kundens svar-/billed-link (/svar/:token).
+    -- Kunden kan uploade et vilkårligt antal billeder, UDEN at afhænge af at Gmail
+    -- rent faktisk fanger dem korrekt (se gmailWalkPayload-rettelsen, RUNDE BG) —
+    -- dette er en helt uafhængig kanal. Ét spørgsmål kan besvares/genbesvares flere
+    -- gange (fx kunden lægger flere billeder op senere) — note/photo_urls
+    -- overskrives/udvides ved hvert svar, se POST .../respond. Knyttet til
+    -- customer_id (ikke en bestemt CRM-opportunity/handel), præcis samme model som
+    -- GET /api/crm/customers/:id/files allerede bruger for Gmail-vedhæftninger —
+    -- så det ene kundekort viser AL kommunikation, uanset hvilken handel man kigger
+    -- på. answered_at sættes kun ved allerførste svar (se COALESCE i routen) —
+    -- bruges til at vise "❓ Afventer"/"✓ Besvaret" i Handler-UI'et.
+    CREATE TABLE IF NOT EXISTS customer_photo_requests (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      token TEXT NOT NULL,
+      question TEXT NOT NULL,
+      note TEXT,
+      photo_urls JSONB NOT NULL DEFAULT '[]',
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT,
+      answered_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_photo_requests_customer ON customer_photo_requests(customer_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_photo_requests_token ON customer_photo_requests(token);
     -- Firmakunder: "Navn" bruges som firmanavn når is_company er sat, plus et
     -- CVR-nummer. Frivilligt for private kunder (is_company=0, cvr=NULL).
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_company INTEGER DEFAULT 0;
@@ -1562,6 +1570,13 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_customer_notes_customer ON customer_notes(customer_id);
+    -- RUNDE BO (Martin: "den note de laver skal under vores noter og flagges som en
+    -- note kunden har lavet") — når kunden selv skriver en note via et svar-link
+    -- (/svar/:token, se POST /api/public/photo-requests/:token/respond), oprettes den
+    -- nu også som en RIGTIG customer_notes-række (user_id NULL, is_customer_note=1) i
+    -- stedet for kun at ligge gemt på selve customer_photo_requests-rækken — så den
+    -- dukker op i den almindelige Noter-liste, tydeligt mærket som kundens egen note.
+    ALTER TABLE customer_notes ADD COLUMN IF NOT EXISTS is_customer_note INTEGER NOT NULL DEFAULT 0;
 
     -- ══════════════════════════════════════════════════════════════
     -- GMAIL-INTEGRATION — Martins ønske om at kunne se al mailkorrespondance
@@ -10459,16 +10474,52 @@ app.get('/api/crm/customers/:id/photo-requests', auth, panelAccess('customers'),
   res.json(rows.rows.map(r => ({ ...r, url: PUBLIC_APP_URL + '/svar/' + r.token })));
 }));
 app.post('/api/crm/customers/:id/photo-requests', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
-  const question = String((req.body || {}).question || '').trim();
+  const b = req.body || {};
+  const question = String(b.question || '').trim();
   if (!question) return res.status(400).json({ error: 'Skriv et spørgsmål til kunden først' });
-  const customer = await pgOne('SELECT id FROM customers WHERE id=$1', [req.params.id]);
+  const customer = await pgOne('SELECT id, name FROM customers WHERE id=$1', [req.params.id]);
   if (!customer) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
   const token = crypto.randomBytes(20).toString('hex');
   const r = await pgOne(
     `INSERT INTO customer_photo_requests (customer_id,token,question,created_by) VALUES ($1,$2,$3,$4) RETURNING id,token`,
     [req.params.id, token, question, req.user.id]
   );
-  res.json({ ok: true, id: r.id, token: r.token, url: PUBLIC_APP_URL + '/svar/' + r.token });
+  const url = PUBLIC_APP_URL + '/svar/' + r.token;
+  // RUNDE BO (Martin: "kan du ikke gøre så når man trykker på knappen bed kunden om
+  // svar/billeder. Så sender den automatisk en mail til kunden med den mail der er i
+  // handlen med linket?") — sender nu automatisk en pæn, brandet mail med linket, til
+  // den e-mail admin.html sender med (handlens/leadets kontakt-email, se
+  // openCrmpDetail() — IKKE nødvendigvis customers.email, en kunde kan have flere
+  // kontakter/handler). Fejler afsendelsen (ikke sat op, ugyldig adresse osv.), må det
+  // ALDRIG vælte selve link-oprettelsen — linket findes og kan altid kopieres manuelt
+  // (se crmpxLoadPhotoRequests), så fejlen returneres blot som emailError i svaret.
+  const toEmail = String(b.to_email || '').trim();
+  let emailSent = false, emailError = null;
+  if (toEmail) {
+    if (!mailIsConfigured()) {
+      emailError = 'E-mail er ikke konfigureret på serveren';
+    } else {
+      try {
+        const company = await getCompanyInfo();
+        const bodyHtml = renderDefaultDocEmailHtml({
+          company, greetingName: customer.name || '',
+          introHtml: 'Vi har brug for lidt hjælp fra dig: <b>' + escPublic(question) + '</b><br><br>Du kan svare og evt. lægge billeder op direkte online — det tager kun et øjeblik, og du kan altid vende tilbage og tilføje flere.',
+          ctaUrl: url, ctaLabel: 'Svar / upload billeder'
+        });
+        const subject = 'Vi har et spørgsmål til dig — ' + company.name;
+        const sendResult = await sendMailUniversal({ to: toEmail, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml) });
+        emailSent = true;
+        logOutboundEmail({ kind: 'photo_request', refId: r.id, recipient: toEmail, subject, sendResult });
+        if (b.entity_type && b.entity_id) {
+          crmLogActivity(b.entity_type, b.entity_id, 'photo_request_sent', 'Bad kunden om svar/billeder (mail sendt til ' + toEmail + '): "' + question + '"', req.user.id)
+            .catch(e => console.error('Kunne ikke logge aktivitet for svar-anmodning:', e.message));
+        }
+      } catch (e) {
+        emailError = e.message;
+      }
+    }
+  }
+  res.json({ ok: true, id: r.id, token: r.token, url, emailSent, emailError, toEmail: toEmail || null });
 }));
 app.delete('/api/crm/photo-requests/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM customer_photo_requests WHERE id=$1', [req.params.id]);
@@ -10506,7 +10557,7 @@ app.post('/api/public/photo-requests/:token/upload-photo', asyncRoute(async (req
   }
 }));
 app.post('/api/public/photo-requests/:token/respond', asyncRoute(async (req, res) => {
-  const existing = await pgOne('SELECT id,photo_urls,answered_at FROM customer_photo_requests WHERE token=$1', [req.params.token]);
+  const existing = await pgOne('SELECT id,customer_id,question,note,photo_urls,answered_at FROM customer_photo_requests WHERE token=$1', [req.params.token]);
   if (!existing) return res.status(404).json({ error: 'Linket er ugyldigt eller findes ikke længere' });
   const b = req.body || {};
   const note = b.note != null ? String(b.note).trim().slice(0, 4000) : null;
@@ -10520,6 +10571,21 @@ app.post('/api/public/photo-requests/:token/respond', asyncRoute(async (req, res
     `UPDATE customer_photo_requests SET note=COALESCE($1,note), photo_urls=$2, updated_at=${nowTextSQL()}, answered_at=COALESCE(answered_at,${nowTextSQL()}) WHERE id=$3`,
     [note, JSON.stringify(mergedUrls), existing.id]
   );
+  // RUNDE BO (Martin: "den note de laver skal under vores noter og flagges som en
+  // note kunden har lavet") — kundens note skal IKKE kun ligge gemt på selve
+  // svar-linket, den skal også dukke op i den almindelige Noter-liste på kunden
+  // (customer_notes), tydeligt mærket som kundens egen note (is_customer_note=1,
+  // user_id NULL). Opretter kun en NY note-række når kunden rent faktisk har
+  // skrevet noget, OG det er nyt/ændret siden sidst — ellers ville et rent
+  // billed-genbesøg (uden ændret notetekst) sprøjte den samme note ind igen for
+  // hver upload. Spørgsmålet citeres med, så noten giver mening løsrevet fra
+  // selve svar-linket.
+  if (note && note !== (existing.note || '')) {
+    await pool.query(
+      'INSERT INTO customer_notes (customer_id,body,user_id,is_customer_note) VALUES ($1,$2,NULL,1)',
+      [existing.customer_id, 'Kundens svar på "' + existing.question + '":\n\n' + note]
+    );
+  }
   res.json({ ok: true });
 }));
 
@@ -11984,7 +12050,21 @@ app.get('/api/crm/leads', auth, panelAccess('crmp_leads'), asyncRoute(async (req
   if (req.query.stage_id) { params.push(req.query.stage_id); conds.push('l.stage_id=$' + params.length); }
   if (req.query.owner_id) { params.push(req.query.owner_id); conds.push('l.owner_id=$' + params.length); }
   if (req.query.q) { params.push('%' + req.query.q + '%'); conds.push('(l.name ILIKE $' + params.length + ' OR l.email ILIKE $' + params.length + ' OR l.phone ILIKE $' + params.length + ')'); }
-  const rows = (await pool.query(`SELECT l.*, u.name AS owner_name, u.color AS owner_color, u.initials AS owner_initials FROM crm_leads l LEFT JOIN users u ON u.id=l.owner_id WHERE ${conds.join(' AND ')} ORDER BY l.position ASC, l.id DESC`, params)).rows;
+  const rows = (await pool.query(`
+    SELECT l.*, u.name AS owner_name, u.color AS owner_color, u.initials AS owner_initials,
+      -- RUNDE BN — samme badge-logik som Handler-pipelinen (se /api/crm/opportunities),
+      -- via crm_contacts.customer_id koblet på leadets contact_id (sat allerede ved
+      -- lead-oprettelse, se crmFindOrCreateContactAndCustomer()).
+      EXISTS(
+        SELECT 1 FROM customer_photo_requests cpr
+        WHERE cpr.customer_id=cc.customer_id AND cpr.answered_at IS NOT NULL
+          AND jsonb_array_length(COALESCE(cpr.photo_urls,'[]'::jsonb)) > 0
+      ) AS has_customer_photos
+    FROM crm_leads l
+    LEFT JOIN users u ON u.id=l.owner_id
+    LEFT JOIN crm_contacts cc ON cc.id=l.contact_id
+    WHERE ${conds.join(' AND ')} ORDER BY l.position ASC, l.id DESC
+  `, params)).rows;
   const cfValues = await crmGetCustomFieldValuesBulk('lead', rows.map(r => r.id));
   res.json(rows.map(r => ({ ...r, custom_fields: cfValues[r.id] || {} })));
 }));
@@ -12294,7 +12374,15 @@ app.get('/api/crm/opportunities', auth, panelAccess('crmp_sales'), asyncRoute(as
   if (req.query.q) { params.push('%' + req.query.q + '%'); conds.push('(o.name ILIKE $' + params.length + ' OR c.name ILIKE $' + params.length + ' OR c.phone ILIKE $' + params.length + ' OR c.email ILIKE $' + params.length + ')'); }
   const rows = (await pool.query(`
     SELECT o.*, u.name AS owner_name, u.color AS owner_color, u.initials AS owner_initials,
-      c.name AS contact_name, c.phone AS contact_phone, c.email AS contact_email, c.customer_id AS customer_id
+      c.name AS contact_name, c.phone AS contact_phone, c.email AS contact_email, c.customer_id AS customer_id,
+      -- RUNDE BN (Martin: "kan se at kunden har oploadet filer ... uden at skal åbne
+      -- handlen?") — lille badge på selve pipeline-kortet når kunden har svaret på et
+      -- billed-link med mindst ét billede. Se crmpCardHtml() i admin.html.
+      EXISTS(
+        SELECT 1 FROM customer_photo_requests cpr
+        WHERE cpr.customer_id=c.customer_id AND cpr.answered_at IS NOT NULL
+          AND jsonb_array_length(COALESCE(cpr.photo_urls,'[]'::jsonb)) > 0
+      ) AS has_customer_photos
     FROM crm_opportunities o
     LEFT JOIN users u ON u.id=o.owner_id
     LEFT JOIN crm_contacts c ON c.id=o.contact_id
@@ -22095,6 +22183,6 @@ async function start() {
 }
 
 start().catch(error => {
-  console.error('FATAL STARTUP ERROR:', error.message);
+  console.error('FATAL STARTUP ERROR:', error.stack);
   process.exit(1);
 });

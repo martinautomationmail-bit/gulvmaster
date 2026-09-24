@@ -1388,6 +1388,11 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .cd-note-meta{color:var(--bly-sub);font-size:11px;margin-top:4px;display:flex;align-items:center;gap:8px}
 .cd-note-meta-edited{font-style:italic}
 .cd-note-actions{display:flex;gap:4px;flex-shrink:0}
+/* RUNDE BO (Martin: "noten de laver skal ... flagges som en note kunden har lavet") —
+   lille pille der markerer at noten kom fra kunden selv (via et svar-link), ikke fra
+   en medarbejder. Samme ikon (🙋) som kundens egne uploads allerede bruger i
+   Filer-fanen, så de to hænger visuelt sammen som "samme kilde". */
+.cd-note-customer-tag{background:#EEF2FF;color:#4F46E5;font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px}
 /* MAILS (#cd-emails-panel) — foldbar liste, samme klik-til-udfold-mønster
    som resten af siden (fx crmp-card). */
 .cd-email-item{border-bottom:1px solid var(--bly-border-soft);padding:10px 0;cursor:pointer}
@@ -1433,7 +1438,7 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmp-col-sum-label{font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--bly-sub);opacity:.8;flex-shrink:0}
 .crmp-col-sum-value{font-size:13px;font-weight:800;color:var(--bly-ink);letter-spacing:-.018em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crmp-col-body{flex:1;overflow-y:auto;padding:0 10px 10px;display:flex;flex-direction:column;gap:8px}
-.crmp-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:11px 12px;cursor:grab;box-shadow:0 1px 2px rgba(15,17,24,.04);transition:box-shadow .12s,transform .12s;display:block;text-decoration:none;color:inherit}
+.crmp-card{position:relative;background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:11px 12px;cursor:grab;box-shadow:0 1px 2px rgba(15,17,24,.04);transition:box-shadow .12s,transform .12s;display:block;text-decoration:none;color:inherit}
 /* RUNDE L — dato-linjen (oprettet + kom i denne fase) nederst på kortet, se crmpCardHtml */
 .crmp-card-dates{margin-top:6px;padding-top:6px;border-top:1px solid var(--bly-border-soft);font-size:10px;color:var(--bly-sub);display:flex}
 /* RUNDE L — lille fremdrifts-bjælke på opgave-pipeline-kortene, se pdPipelineCardHtml */
@@ -1449,6 +1454,15 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .crmp-card-owner{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0}
 .crmp-card-value{font-size:11.5px;font-weight:800;color:var(--bly-ink)}
 .crmp-card-note{font-size:11px;color:var(--bly-sub);margin-top:6px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4}
+/* RUNDE BN (Martin: "kan se at kunden har oploadet filer ... måske et neon gulv lille
+   mærke ... uden at skal åbne handlen?") — lille selvlysende mærke øverst i hjørnet af
+   kortet, synligt uden at åbne handlen/leadet. Bevidst en helt anden (limegrøn/"neon")
+   farve end den stille indigo .crmp-card-badge-pille, så det ikke drukner blandt de
+   almindelige felt-badges — og en svag pulserende glød så øjet fanger det med det
+   samme ved et overblik over pipelinen. Sat via has_customer_photos fra
+   /api/crm/opportunities og /api/crm/leads (server.js). */
+.crmp-card-photo-badge{position:absolute;top:-7px;right:-7px;display:flex;align-items:center;gap:3px;background:#C6FF00;color:#243B00;font-size:10px;font-weight:800;line-height:1;padding:4px 7px 4px 6px;border-radius:999px;box-shadow:0 0 0 2px #fff,0 0 9px 1px rgba(198,255,0,.85);animation:crmpPhotoPulse 2.2s ease-in-out infinite;pointer-events:none}
+@keyframes crmpPhotoPulse{0%,100%{box-shadow:0 0 0 2px #fff,0 0 6px 0 rgba(198,255,0,.65)}50%{box-shadow:0 0 0 2px #fff,0 0 13px 3px rgba(198,255,0,1)}}
 .crmp-card-cf-foot{font-size:10.5px;color:var(--bly-sub);margin-top:6px;padding-top:6px;border-top:1px solid var(--bly-border-soft)}
 .crmp-card-cf-foot b{color:var(--bly-ink);font-weight:700}
 
@@ -3587,7 +3601,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.32</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.34</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5292,7 +5306,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <h3 id="cd-files-toggle" style="cursor:pointer;user-select:none">📎 Filer <span class="sub" id="cd-files-count"></span> <span id="cd-files-toggle-icon" style="float:right;font-size:11px;color:var(--bly-sub)">▸ Vis</span></h3>
     <div id="cd-files-wrap" hidden>
       <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
-        <button class="btn small" type="button" id="cd-files-fullsync-btn" title="Henter hele mailhistorikken med denne kunde (ikke kun de seneste)">🔄 Hent hele mail-historikken</button>
+        <button class="bly-btn outline small" type="button" id="cd-files-fullsync-btn" title="Henter hele mailhistorikken med denne kunde (ikke kun de seneste)">🔄 Hent hele mail-historikken</button>
       </div>
       <div id="cd-files-grid" class="cd-files-grid"></div>
     </div>
@@ -5569,7 +5583,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        bygget på samme customer_emails-data (se gmailFullSyncCustomer). -->
   <div id="crmpx-mailsync-toolbar" style="display:none;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:10px">
     <span class="sub" id="crmpx-fullsync-status"></span>
-    <button class="btn small" type="button" id="crmpx-fullsync-btn" title="Henter hele mailhistorikken med denne kunde (ikke kun de seneste)">🔄 Hent hele mail-historikken</button>
+    <button class="bly-btn outline small" type="button" id="crmpx-fullsync-btn" title="Henter hele mailhistorikken med denne kunde (ikke kun de seneste)">🔄 Hent hele mail-historikken</button>
   </div>
 
   <div id="crmpx-view-files" style="display:none">
@@ -5581,7 +5595,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
          crmpxOpenPhotoRequestModal/crmpxLoadPhotoRequests. Ligger som egen
          værktøjslinje over selve filgitteret, kun synlig på Filer-fanen. -->
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:12px">
-      <button class="btn small" type="button" id="crmpx-photoreq-new-btn">📩 Bed kunden om svar/billeder</button>
+      <button class="bly-btn small" type="button" id="crmpx-photoreq-new-btn">📩 Bed kunden om svar/billeder</button>
     </div>
     <div id="crmpx-photoreq-list" style="margin-bottom:16px"></div>
     <div id="crmpx-files-grid" class="cd-files-grid"></div>
@@ -5691,26 +5705,28 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <div class="mo" id="photoreq-new-modal">
   <div class="modal" style="max-width:480px">
     <h3>📩 Bed kunden om svar/billeder</h3>
-    <p style="font-size:13px;color:var(--ink);line-height:1.5;margin:0 0 14px">Kunden får et link uden login, hvor de kan svare på dit spørgsmål og uploade billeder/video. Svaret og billederne lander automatisk her under Filer.</p>
+    <p style="font-size:13px;color:var(--ink);line-height:1.5;margin:0 0 14px">Kunden får et link uden login, hvor de kan svare på dit spørgsmål og uploade billeder/video. Er der en e-mail på handlen, sendes linket automatisk med det samme — ellers kan du kopiere det manuelt. Svaret lander som en note her, og billederne under Filer.</p>
     <div class="form-group"><label class="form-label">Spørgsmål/hint til kunden</label><textarea id="photoreq-question" class="input" rows="3" placeholder="Fx: Kan du sende et par billeder af gulvet hvor det er mest slidt?"></textarea></div>
     <div class="modal-actions">
-      <button class="btn" type="button" onclick="closeModal('photoreq-new-modal')">Annuller</button>
-      <button class="btn primary" type="button" id="photoreq-create-btn">Opret link</button>
+      <button class="bly-btn outline small" type="button" onclick="closeModal('photoreq-new-modal')">Annuller</button>
+      <button class="bly-btn small" type="button" id="photoreq-create-btn">Opret &amp; send</button>
     </div>
   </div>
 </div>
 
-<!-- Selve linket, klar til at kopiere/sende til kunden. -->
+<!-- Selve linket, klar til at kopiere/sende til kunden. RUNDE BO: viser nu også om
+     linket blev sendt automatisk pr. mail (photoreq-link-status), se
+     crmpxCreatePhotoRequest. -->
 <div class="mo" id="photoreq-link-modal">
   <div class="modal" style="max-width:480px">
-    <h3>✓ Link oprettet</h3>
-    <p style="font-size:13px;color:var(--ink);line-height:1.5;margin:0 0 10px">Send linket til kunden, fx på SMS eller mail.</p>
+    <h3 id="photoreq-link-title">✓ Link oprettet</h3>
+    <p id="photoreq-link-status" style="font-size:13px;color:var(--ink);line-height:1.5;margin:0 0 10px"></p>
     <div style="display:flex;gap:8px">
       <input type="text" id="photoreq-link-url" class="input" readonly style="flex:1;font-size:12px">
-      <button class="btn small" type="button" id="photoreq-link-copy-btn">Kopiér</button>
+      <button class="bly-btn outline small" type="button" id="photoreq-link-copy-btn">Kopiér</button>
     </div>
     <div class="modal-actions">
-      <button class="btn" type="button" onclick="closeModal('photoreq-link-modal')">Luk</button>
+      <button class="bly-btn outline small" type="button" onclick="closeModal('photoreq-link-modal')">Luk</button>
     </div>
   </div>
 </div>
@@ -21744,9 +21760,13 @@ function cdRenderNotes(){
   document.getElementById('cd-notes-count').textContent=cdNotes.length?'('+cdNotes.length+')':'';
   document.getElementById('cd-notes-list').innerHTML=cdNotes.length?cdNotes.map(function(n){
     var edited=n.updated_at&&n.updated_at!==n.created_at;
+    // RUNDE BO — noter kunden selv har skrevet via et svar-link (se
+    // /api/public/photo-requests/:token/respond) er flagget is_customer_note=1 og
+    // vises med 🙋-ikon + en lille "Kunden" -pille i stedet for medarbejderens navn.
+    var isCustomer=!!n.is_customer_note;
     return '<div class="cd-note-item" data-note-id="'+n.id+'">'
-      +'<div class="cd-note-icon">📝</div>'
-      +'<div class="cd-note-body">'+esc(n.body)+'<div class="cd-note-meta">'+esc(n.user_name||'System')+' · '+esc(fmtDaDate(n.created_at))+(edited?' · <span class="cd-note-meta-edited">redigeret</span>':'')+'</div></div>'
+      +'<div class="cd-note-icon">'+(isCustomer?'🙋':'📝')+'</div>'
+      +'<div class="cd-note-body">'+esc(n.body)+'<div class="cd-note-meta">'+(isCustomer?'<span class="cd-note-customer-tag">Kunden</span>':esc(n.user_name||'System'))+' · '+esc(fmtDaDate(n.created_at))+(edited?' · <span class="cd-note-meta-edited">redigeret</span>':'')+'</div></div>'
       +'<div class="cd-note-actions"><button class="qz-icon-btn" data-note-act="edit" type="button" title="Redigér">✎</button><button class="qz-icon-btn" data-note-act="delete" type="button" title="Slet">🗑</button></div>'
       +'</div>';
   }).join(''):'<div class="crmpx-empty">Ingen noter endnu — tilføj den første ovenfor</div>';
@@ -22301,7 +22321,11 @@ function crmpCardHtml(c,pipeline,defs){
   // KUN når stage_id rent faktisk ændres, ikke ved enhver anden redigering.
   var datesLine='<span title="Oprettet">🕓 '+esc(fmtRelativeDa(c.created_at))+'</span>'
     +'<span title="Kom i denne fase" style="margin-left:8px">➜ '+esc(fmtRelativeDa(c.stage_changed_at||c.created_at))+'</span>';
+  // RUNDE BN — badge når kunden har uploadet billeder via et svar-link (se
+  // /svar/:token), synligt her uden at åbne handlen/leadet.
+  var photoBadge=c.has_customer_photos?'<span class="crmp-card-photo-badge" title="Kunden har uploadet billeder">📸</span>':'';
   return '<a href="#crmp-detail/'+esc(pipeline.type)+'/'+c.id+'" class="crmp-card'+(crmpState.selectMode&&selected?' crmp-card-selected':'')+'" draggable="'+(crmpState.selectMode?'false':'true')+'" data-id="'+c.id+'">'
+    +photoBadge
     +'<div class="crmp-card-row" style="margin:0 0 6px">'+ownerLine+'</div>'
     +'<div class="crmp-card-name">'+esc(pipeline.type==='opportunity'?(c.contact_name||c.name):c.name)+'</div>'
     +(contactLine?'<div class="crmp-card-row">'+esc(contactLine)+'</div>':'')
@@ -22724,8 +22748,8 @@ async function crmpxLoadPhotoRequests(){
           +'<div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r.question)+'</div>'
           +'<div class="sub" style="font-size:11px">'+(answered?'Besvaret'+(photoCount?' — '+photoCount+' billede(r)':' (uden billeder)'):'Afventer svar fra kunden')+'</div>'
         +'</div>'
-        +'<button type="button" class="btn small" data-photoreq-copy="'+esc(r.url)+'">Kopiér link</button>'
-        +'<button type="button" class="btn small" data-photoreq-delete="'+r.id+'" title="Slet dette link">✕</button>'
+        +'<button type="button" class="bly-btn outline small" data-photoreq-copy="'+esc(r.url)+'">Kopiér link</button>'
+        +'<button type="button" class="bly-btn outline small" data-photoreq-delete="'+r.id+'" title="Slet dette link">✕</button>'
         +'</div>';
     }).join('');
 }
@@ -22738,11 +22762,32 @@ document.getElementById('photoreq-create-btn').addEventListener('click',async fu
   if(!q){toast('Skriv et spørgsmål til kunden først','⚠');return;}
   if(!crmpxCurrentCustomerId)return;
   var btn=this;btn.disabled=true;
-  var r=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/photo-requests',{method:'POST',body:JSON.stringify({question:q})});
+  // RUNDE BO (Martin: "sender den automatisk en mail til kunden med den mail der er
+  // i handlen med linket?") — "den mail der er i handlen" er PRÆCIS det samme felt
+  // openCrmpDetail() selv viser/bruger i kontakt-boksen (crmpxCurrentEntityType==='lead'
+  // ? d.email : d.contact_email) — IKKE nødvendigvis customers.email, en kunde kan
+  // sagtens have flere handler/kontakter. entity_type/entity_id sendes med, så
+  // serveren kan logge afsendelsen på selve handlens aktivitets-tidslinje.
+  var ent=crmpDetailEntity,dealEmail=null;
+  if(ent&&ent.data)dealEmail=ent.type==='lead'?ent.data.email:ent.data.contact_email;
+  var r=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/photo-requests',{method:'POST',body:JSON.stringify({question:q,to_email:dealEmail||'',entity_type:ent&&ent.type,entity_id:ent&&ent.id})});
   btn.disabled=false;
   if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke oprette linket','❌');return;}
   closeModal('photoreq-new-modal');
   document.getElementById('photoreq-link-url').value=r.url;
+  var titleEl=document.getElementById('photoreq-link-title'),statusEl=document.getElementById('photoreq-link-status');
+  if(r.emailSent){
+    titleEl.textContent='✓ Sendt til kunden';
+    statusEl.textContent='Mailen med linket er sendt automatisk til '+r.toEmail+'. Du kan også kopiere linket herunder, hvis du fx vil sende det på SMS.';
+    toast('Mail sendt til '+r.toEmail+' ✓','📩');
+  } else if(r.toEmail){
+    titleEl.textContent='⚠️ Kunne ikke sende automatisk';
+    statusEl.textContent='Prøvede at sende til '+r.toEmail+', men det fejlede ('+(r.emailError||'ukendt fejl')+'). Kopiér linket herunder og send det manuelt.';
+    toast('Kunne ikke sende mail automatisk — kopiér linket i stedet','⚠️');
+  } else {
+    titleEl.textContent='✓ Link oprettet';
+    statusEl.textContent='Der er ingen e-mail på denne handel, så linket blev ikke sendt automatisk — kopiér det herunder og send det manuelt, fx på SMS.';
+  }
   document.getElementById('photoreq-link-modal').classList.add('open');
   crmpxLoadPhotoRequests();
 });
@@ -23003,9 +23048,11 @@ function crmpxRenderCustomerNotes(){
   document.getElementById('crmpx-notes-count').textContent=crmpxCustomerNotes.length?'('+crmpxCustomerNotes.length+')':'';
   document.getElementById('crmpx-notes-list').innerHTML=crmpxCustomerNotes.length?crmpxCustomerNotes.map(function(n){
     var edited=n.updated_at&&n.updated_at!==n.created_at;
+    // RUNDE BO — se cdRenderNotes-kommentaren, samme is_customer_note-flag/visning.
+    var isCustomer=!!n.is_customer_note;
     return '<div class="cd-note-item" data-note-id="'+n.id+'">'
-      +'<div class="cd-note-icon">📝</div>'
-      +'<div class="cd-note-body">'+esc(n.body)+'<div class="cd-note-meta">'+esc(n.user_name||'System')+' · '+esc(fmtDaDate(n.created_at))+(edited?' · <span class="cd-note-meta-edited">redigeret</span>':'')+'</div></div>'
+      +'<div class="cd-note-icon">'+(isCustomer?'🙋':'📝')+'</div>'
+      +'<div class="cd-note-body">'+esc(n.body)+'<div class="cd-note-meta">'+(isCustomer?'<span class="cd-note-customer-tag">Kunden</span>':esc(n.user_name||'System'))+' · '+esc(fmtDaDate(n.created_at))+(edited?' · <span class="cd-note-meta-edited">redigeret</span>':'')+'</div></div>'
       +'<div class="cd-note-actions"><button class="qz-icon-btn" data-crmpx-note-act="edit" type="button" title="Redigér">✎</button><button class="qz-icon-btn" data-crmpx-note-act="delete" type="button" title="Slet">🗑</button></div>'
       +'</div>';
   }).join(''):'<div class="crmpx-empty">Ingen noter endnu — tilføj den første ovenfor</div>';
