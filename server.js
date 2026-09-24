@@ -1417,6 +1417,38 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_document_attachments_doc ON document_attachments(doc_type, doc_id);
 
+    -- RUNDE BK (Martin: "billeder under handler kommer næsten aldrig ind ...
+    -- kan vi ikke bygge et link hvor de kan tilføje deres svar/note på
+    -- opgaven ... en upload-knap hvor de kan uploade så mange billeder de
+    -- vil") — offentligt, token-baseret svar-link (se /svar/:token og
+    -- /api/public/photo-requests/:token/*) hvor kunden kan besvare et
+    -- fritekst-spørgsmål Martin selv skriver ("hint-spørgsmålet") og
+    -- uploade et vilkårligt antal billeder, UDEN at afhænge af at Gmail
+    -- rent faktisk fanger dem korrekt (se gmailWalkPayload-rettelsen,
+    -- RUNDE BG) — dette er en helt uafhængig kanal. Ét spørgsmål kan
+    -- besvares/genbesvares flere gange (fx kunden lægger flere billeder op
+    -- senere) — note/photo_urls overskrives/udvides ved hvert svar, se
+    -- POST .../respond. Knyttet til customer_id (ikke en bestemt CRM-
+    -- opportunity/handel), præcis samme model som GET
+    -- /api/crm/customers/:id/files allerede bruger for Gmail-vedhæftninger —
+    -- så det ene kundekort viser AL kommunikation, uanset hvilken handel man
+    -- kigger på. answered_at sættes kun ved allerførste svar (se COALESCE i
+    -- routen) — bruges til at vise "❓ Afventer"/"✓ Besvaret" i Handler-UI'et.
+    CREATE TABLE IF NOT EXISTS customer_photo_requests (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      token TEXT NOT NULL,
+      question TEXT NOT NULL,
+      note TEXT,
+      photo_urls JSONB NOT NULL DEFAULT '[]',
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT,
+      answered_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_photo_requests_customer ON customer_photo_requests(customer_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_photo_requests_token ON customer_photo_requests(token);
+
     -- AKTIVITETS-TIDSLINJE — hvem redigerede/sendte tilbud og fakturaer, og
     -- hvornår kunden selv åbnede dem. Fælles tabel for begge dokumenttyper
     -- (doc_type 'quote'|'invoice') så vi kun skal bygge/vedligeholde ét system.
@@ -5678,7 +5710,17 @@ function mailIsConfigured() {
 // nedenfor) kan gemme Resends "email_id" og senere matche leverance-status
 // (webhook) tilbage til den rigtige mail. SMTP har ingen tilsvarende async
 // status, så resendEmailId er der bevidst null.
-async function sendMailUniversal({ to, subject, text, html, attachments }) {
+// RUNDE BJ (Martin: "faktura sendes fra info@gulvmaster.dk, kan vi ikke få
+// den til at sende ud fra Debitor@gulvmaster.dk? navnet skal være Lina -
+// Bogholderiet") — "from" er nu en VALGFRI parameter, så en enkelt afsendelse
+// (fx fakturaer/rykkere, se invoiceMailFrom() nedenfor) kan bruge en anden
+// afsenderadresse/-navn end alt det almindelige (tilbud, opgave-mails, osv.),
+// som stadig falder tilbage til RESEND_FROM/SMTP_FROM som før. Kræver INGEN
+// ekstra domæneverificering hos Resend for selve gulvmaster.dk-domænet — det
+// er allerede gjort (derfor virker info@ i dag) — Resend/SPF+DKIM verificerer
+// hele domænet, ikke enkelte postkasser, så enhver @gulvmaster.dk-adresse kan
+// sendes FRA med det samme. Se den store forklaring ved invoiceMailFrom().
+async function sendMailUniversal({ to, subject, text, html, attachments, from }) {
   if (process.env.RESEND_API_KEY) {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -5687,7 +5729,7 @@ async function sendMailUniversal({ to, subject, text, html, attachments }) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: process.env.RESEND_FROM || 'Gulv Master <onboarding@resend.dev>',
+        from: from || process.env.RESEND_FROM || 'Gulv Master <onboarding@resend.dev>',
         to: [to],
         subject,
         text,
@@ -5707,8 +5749,22 @@ async function sendMailUniversal({ to, subject, text, html, attachments }) {
   }
   const transport = getMailTransport();
   if (!transport) throw new Error('Hverken RESEND_API_KEY eller SMTP er sat op');
-  await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, text, html, attachments });
+  await transport.sendMail({ from: from || process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, text, html, attachments });
   return { provider: 'smtp', resendEmailId: null };
+}
+
+// RUNDE BJ (rettet i RUNDE BM til regnskab@ — Martin: "lavede en fejl kan du
+// lave den til regnskab@gulvmaster.dk?") — afsenderadresse/-navn for
+// FAKTURAER og RYKKERE specifikt (se kaldene i POST /api/invoices/:id/send og
+// sendDunningEmailForInvoice). Standardværdien er præcis det Martin bad om,
+// men kan overstyres uden en ny kode-udrulning ved at sætte miljøvariablen
+// INVOICE_RESEND_FROM i Render — fx hvis Lina holder op, eller navnet skal
+// ændres. VIGTIGT (Martin bør vide det, ikke noget jeg kan ordne herfra):
+// regnskab@gulvmaster.dk skal være en postkasse der rent faktisk FINDES og
+// bliver læst, for hvis en kunde svarer på en faktura- eller rykker-mail,
+// lander svaret DER — ikke i info@-indbakken.
+function invoiceMailFrom() {
+  return process.env.INVOICE_RESEND_FROM || 'Lina - Bogholderiet <regnskab@gulvmaster.dk>';
 }
 
 // RUNDE M — logger EN sendt mail i outbound_emails (se skema-kommentaren ved
@@ -10338,21 +10394,133 @@ app.get('/api/crm/customers/:id/emails', auth, panelAccess('customers'), asyncRo
 // Kappet til de 40 nyeste mails-med-vedhæftning pr. kald, for ikke at kunne løbe
 // løbsk hvis en kunde en dag har hundredvis.
 app.get('/api/crm/customers/:id/files', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
-  const accessToken = await gmailGetValidAccessToken();
-  const emails = (await pool.query('SELECT * FROM customer_emails WHERE customer_id=$1 AND has_attachments=1 ORDER BY internal_date DESC LIMIT 40', [req.params.id])).rows;
   const files = [];
-  for (const e of emails) {
+  // RUNDE BK — Filer-fanen er ikke længere kun for Gmail-vedhæftninger (se
+  // customer_photo_requests-blokken nedenfor), så den skal fungere fint uden
+  // Gmail forbundet. gmailGetValidAccessToken() KASTER hvis ingen Gmail-konto
+  // er forbundet — det må derfor ikke længere fælde hele ruten. Springes helt
+  // over hvis der ikke engang er nogen mails-med-vedhæftning at hente.
+  const emails = (await pool.query('SELECT * FROM customer_emails WHERE customer_id=$1 AND has_attachments=1 ORDER BY internal_date DESC LIMIT 40', [req.params.id])).rows;
+  if (emails.length) {
     try {
-      const detail = await gmailApiFetch('/messages/' + e.gmail_message_id + '?format=full', accessToken);
-      const acc = { html: null, text: null, attachments: [] };
-      gmailWalkPayload(detail.payload, acc);
-      acc.attachments.forEach(a => files.push({
-        filename: a.filename, mimeType: a.mimeType, size: a.size, attachmentId: a.attachmentId,
-        gmail_message_id: e.gmail_message_id, subject: e.subject, internal_date: e.internal_date
-      }));
-    } catch (err) { console.error('Kunne ikke hente vedhæftninger for mail ' + e.gmail_message_id + ':', err.message); }
+      const accessToken = await gmailGetValidAccessToken();
+      for (const e of emails) {
+        try {
+          const detail = await gmailApiFetch('/messages/' + e.gmail_message_id + '?format=full', accessToken);
+          const acc = { html: null, text: null, attachments: [] };
+          gmailWalkPayload(detail.payload, acc);
+          acc.attachments.forEach(a => files.push({
+            filename: a.filename, mimeType: a.mimeType, size: a.size, attachmentId: a.attachmentId,
+            gmail_message_id: e.gmail_message_id, subject: e.subject, internal_date: e.internal_date
+          }));
+        } catch (err) { console.error('Kunne ikke hente vedhæftninger for mail ' + e.gmail_message_id + ':', err.message); }
+      }
+    } catch (err) { console.error('Gmail ikke forbundet/tilgængeligt ved hentning af Filer-fanen:', err.message); }
   }
+  // RUNDE BK — billeder kunden selv har uploadet via et svar-link (se
+  // customer_photo_requests/POST .../respond) blandes ind i SAMME liste, så
+  // Filer-fanen viser ALT ét sted, uanset kilde. Disse har allerede en
+  // direkte, offentlig Cloudinary-URL (ingen Gmail-attachmentId-runde-tur
+  // nødvendig) — "direct_url" er signalet admin.html bruger til at springe
+  // den runde-tur over, se crmpxOpenFileLightbox.
+  const photoReqs = (await pool.query(
+    'SELECT id,question,note,photo_urls,created_at,updated_at,answered_at FROM customer_photo_requests WHERE customer_id=$1 AND answered_at IS NOT NULL ORDER BY updated_at DESC NULLS LAST, created_at DESC',
+    [req.params.id]
+  )).rows;
+  for (const r of photoReqs) {
+    const urls = Array.isArray(r.photo_urls) ? r.photo_urls : [];
+    const whenMs = Date.parse((r.updated_at || r.created_at || '') + ' UTC') || Date.now();
+    urls.forEach((url, i) => {
+      const extMatch = String(url).match(/\.(jpe?g|png|gif|webp|heic|mp4|mov)(\?|$)/i);
+      const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+      const mimeType = /mp4|mov/.test(ext) ? 'video/' + ext : 'image/' + (ext === 'jpg' ? 'jpeg' : ext);
+      files.push({
+        filename: 'kunde-svar-' + r.id + '-' + (i + 1) + '.' + ext,
+        mimeType, direct_url: url, subject: 'Kundens svar: ' + r.question,
+        internal_date: whenMs
+      });
+    });
+  }
+  files.sort((a, b) => Number(b.internal_date) - Number(a.internal_date));
   res.json(files);
+}));
+
+// ══════════════════════════════════════════════════════════════
+// RUNDE BK — SVAR-/BILLED-ANMODNINGER (customer_photo_requests). Se den
+// store skema-kommentar ved CREATE TABLE for baggrunden. Staff-siden
+// (opret/list) kræver login; kundens side (vis/besvar/upload) er offentlig
+// og ligger under /svar/:token, se den selvstændige HTML-side nedenfor.
+// ══════════════════════════════════════════════════════════════
+app.get('/api/crm/customers/:id/photo-requests', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+  const rows = await pool.query(
+    'SELECT id,token,question,note,photo_urls,created_at,updated_at,answered_at FROM customer_photo_requests WHERE customer_id=$1 ORDER BY created_at DESC',
+    [req.params.id]
+  );
+  res.json(rows.rows.map(r => ({ ...r, url: PUBLIC_APP_URL + '/svar/' + r.token })));
+}));
+app.post('/api/crm/customers/:id/photo-requests', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+  const question = String((req.body || {}).question || '').trim();
+  if (!question) return res.status(400).json({ error: 'Skriv et spørgsmål til kunden først' });
+  const customer = await pgOne('SELECT id FROM customers WHERE id=$1', [req.params.id]);
+  if (!customer) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
+  const token = crypto.randomBytes(20).toString('hex');
+  const r = await pgOne(
+    `INSERT INTO customer_photo_requests (customer_id,token,question,created_by) VALUES ($1,$2,$3,$4) RETURNING id,token`,
+    [req.params.id, token, question, req.user.id]
+  );
+  res.json({ ok: true, id: r.id, token: r.token, url: PUBLIC_APP_URL + '/svar/' + r.token });
+}));
+app.delete('/api/crm/photo-requests/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM customer_photo_requests WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── Offentlig side (uden login) — se den fulde forklaring i skema-
+// kommentaren ved customer_photo_requests. escPublic/portalNotFoundPage
+// genbruges fra kvitterings-/portal-siderne ovenfor, samme visuelle stil. ──
+app.get('/api/public/photo-requests/:token', asyncRoute(async (req, res) => {
+  const r = await pgOne(
+    `SELECT pr.id,pr.question,pr.note,pr.photo_urls,pr.answered_at,c.name AS customer_name
+     FROM customer_photo_requests pr JOIN customers c ON c.id=pr.customer_id WHERE pr.token=$1`,
+    [req.params.token]
+  );
+  if (!r) return res.status(404).json({ error: 'Linket er ugyldigt eller findes ikke længere' });
+  const settingsRow = await pgOne("SELECT value FROM app_settings WHERE key='company_name'");
+  res.json({ question: r.question, note: r.note || '', photo_urls: r.photo_urls || [], answered_at: r.answered_at, customer_name: r.customer_name, company_name: settingsRow?.value || 'Gulv Master' });
+}));
+// Billed-/videoupload fra det OFFENTLIGE svar-link — samme Cloudinary-vej som
+// POST /api/photos/upload (auth), men uden login: i stedet valideres at
+// tokenet rent faktisk findes, så ruten ikke kan misbruges til gratis,
+// uautoriseret filupload af hvem som helst der finder URL'en.
+app.post('/api/public/photo-requests/:token/upload-photo', asyncRoute(async (req, res) => {
+  const r = await pgOne('SELECT id FROM customer_photo_requests WHERE token=$1', [req.params.token]);
+  if (!r) return res.status(404).json({ error: 'Linket er ugyldigt eller findes ikke længere' });
+  const b = req.body || {};
+  if (!b.image) return res.status(400).json({ error: 'Intet billede modtaget' });
+  if (!cloudinaryConfigured()) return res.status(400).json({ error: 'Billedlager er ikke konfigureret på serveren endnu — kontakt Gulv Master' });
+  try {
+    const url = await uploadPhotoToCloudinary(b.image, 'kunde-svar');
+    res.json({ ok: true, url });
+  } catch (e) {
+    res.status(400).json({ error: 'Kunne ikke uploade billedet: ' + e.message });
+  }
+}));
+app.post('/api/public/photo-requests/:token/respond', asyncRoute(async (req, res) => {
+  const existing = await pgOne('SELECT id,photo_urls,answered_at FROM customer_photo_requests WHERE token=$1', [req.params.token]);
+  if (!existing) return res.status(404).json({ error: 'Linket er ugyldigt eller findes ikke længere' });
+  const b = req.body || {};
+  const note = b.note != null ? String(b.note).trim().slice(0, 4000) : null;
+  // RUNDE BK — kunden kan vende tilbage og lægge FLERE billeder op senere (fx
+  // "her er et par stykker mere") — nye URL'er lægges til den eksisterende
+  // liste i stedet for at overskrive den, så intet tidligere upload forsvinder.
+  const existingUrls = Array.isArray(existing.photo_urls) ? existing.photo_urls : [];
+  const newUrls = Array.isArray(b.photo_urls) ? b.photo_urls.filter(u => typeof u === 'string' && u) : [];
+  const mergedUrls = [...existingUrls, ...newUrls.filter(u => !existingUrls.includes(u))];
+  await pool.query(
+    `UPDATE customer_photo_requests SET note=COALESCE($1,note), photo_urls=$2, updated_at=${nowTextSQL()}, answered_at=COALESCE(answered_at,${nowTextSQL()}) WHERE id=$3`,
+    [note, JSON.stringify(mergedUrls), existing.id]
+  );
+  res.json({ ok: true });
 }));
 
 // FEJLRETTELSE (sep. 2026): Ligesom GET /api/gmail/status (se ovenfor) sad
@@ -11600,7 +11768,11 @@ app.get('/api/crm/lead-webhook-info', auth, panelAccessAny(['customers','crmp_le
     base: base,
     sms_configured: smsIsConfigured(),
     sms_provider: smsProviderName(),
-    mail_configured: mailIsConfigured()
+    mail_configured: mailIsConfigured(),
+    // RUNDE BJ — vist i "🤖 Automatisering"-fanen, se loadAutomationSettings,
+    // så Martin kan se den nuværende faktura/rykker/kreditnota-afsender uden
+    // at skulle kigge i koden eller på Render.
+    invoice_mail_from: invoiceMailFrom()
   });
 }));
 app.post('/api/crm/lead-webhook-regenerate', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -15837,7 +16009,9 @@ async function sendDunningEmailForInvoice(inv, targetLevel, settings, companyNam
   }
   let status = 'sent', error = null;
   try {
-    await sendMailUniversal({ to: toEmail, subject, text, html });
+    // RUNDE BJ — rykkere er samme "Bogholderiet"-korrespondance som selve
+    // fakturaen, så de sendes fra samme afsender, se invoiceMailFrom().
+    await sendMailUniversal({ to: toEmail, subject, text, html, from: invoiceMailFrom() });
   } catch (e) { status = 'error'; error = redactSecret(e.message || '').slice(0, 500); }
   await pool.query('INSERT INTO finance_dunning_log (document_id,level,to_email,status,error) VALUES ($1,$2,$3,$4,$5)', [inv.id, targetLevel, toEmail, status, error]);
   return status === 'sent' ? { sent: true, level: targetLevel, toEmail } : { sent: false, reason: error };
@@ -18531,6 +18705,86 @@ app.get('/api/document-job-photos/:docType/:docId', auth, panelAccess('quotes'),
   });
   res.json({ project: { id: project.id, name: project.name }, photos });
 }));
+// ══════════════════════════════════════════════════════════════
+// RUNDE BL (Martin: "kan man jo nu trække dem ind i tilbud, faktura og
+// kreditnoter ... det vil jo være sindsygt smart") — samme idé som
+// GET /api/document-job-photos ovenfor, men kilden er billederne KUNDEN
+// SELV har uploadet via et /svar/:token-svar-link (customer_photo_requests),
+// ikke sagens egne billeder. Genbruger docAttachOpenJobPhotoPicker-mønsteret
+// i admin.html (samme modal, samme docJobPhotoPick-flow til selve
+// vedhæftningen via document_attachments) — kun DENNE rute og knappen "🙋
+// Vælg fra kundens billeder" er nyt.
+//
+// Kunden findes forskelligt for tilbud vs. faktura, samme kobling som
+// document-job-photos bruger til at finde SAGEN: et tilbud har kun
+// quotes.customer_id; en faktura har sit eget invoices.customer_id, men kan
+// også (ældre fakturaer, eller hvis feltet af en eller anden grund ikke blev
+// sat) findes via dens quote_id -> quotes.customer_id.
+// ══════════════════════════════════════════════════════════════
+// Fælles opslag: kundens BESVAREDE svar-billeder, givet et customer_id.
+// Genbrugt af document-customer-photos (docType/docId), customer-photos-by-
+// job-name (projektstyring/dagligplanlægning-bookinger) og /kunde/:token
+// (kundeportal-galleriet) — tre forskellige veje til at FINDE customer_id,
+// men samme billed-udtræk derfra.
+async function answeredCustomerPhotosFor(customerId) {
+  if (!customerId) return [];
+  const reqs = (await pool.query(
+    'SELECT id, question, photo_urls, updated_at, created_at FROM customer_photo_requests WHERE customer_id=$1 AND answered_at IS NOT NULL ORDER BY updated_at DESC NULLS LAST, created_at DESC',
+    [customerId]
+  )).rows;
+  const photos = [];
+  reqs.forEach(r => {
+    const urls = Array.isArray(r.photo_urls) ? r.photo_urls : [];
+    urls.forEach(u => photos.push({ url: u, caption: r.question, date: r.updated_at || r.created_at, source: 'Kundens svar' }));
+  });
+  return photos;
+}
+app.get('/api/document-customer-photos/:docType/:docId', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const docType = req.params.docType;
+  if (docType !== 'invoice' && docType !== 'quote') return res.status(400).json({ error: 'Ukendt dokumenttype' });
+  const docId = req.params.docId;
+  let customerId = null;
+  if (docType === 'invoice') {
+    const inv = await pgOne('SELECT customer_id, quote_id FROM invoices WHERE id=$1', [docId]);
+    if (inv) {
+      customerId = inv.customer_id || null;
+      if (!customerId && inv.quote_id) {
+        const q = await pgOne('SELECT customer_id FROM quotes WHERE id=$1', [inv.quote_id]);
+        customerId = q ? q.customer_id : null;
+      }
+    }
+  } else {
+    const q = await pgOne('SELECT customer_id FROM quotes WHERE id=$1', [docId]);
+    customerId = q ? q.customer_id : null;
+  }
+  if (!customerId) return res.json({ customer: null, photos: [] });
+  const customer = await pgOne('SELECT id, name FROM customers WHERE id=$1', [customerId]);
+  if (!customer) return res.json({ customer: null, photos: [] });
+  const photos = (await answeredCustomerPhotosFor(customerId)).map(p => ({ ...p, user_name: customer.name }));
+  res.json({ customer: { id: customer.id, name: customer.name }, photos });
+}));
+// RUNDE BL (Martin: "... samt når skal booke sagen i projektstyring eller
+// dagligplanlægning?") — samme billedkilde som ovenfor, men opslaget sker fra
+// en booking-note (Projektstyring-pulje-booking / Dagligplanlægning), som
+// kun kender opgavens job_name, ikke noget quote/invoice-ID. Matches på
+// samme normaliserede (lowercase/trim) job_name som resten af portalen
+// (customer_portal_tokens, /kunde/:token) bruger til at slå kunder op —
+// finder et tilbud/en faktura på den sag og læser dets customer_id derfra.
+app.get('/api/customer-photos-by-job-name', auth, asyncRoute(async (req, res) => {
+  const jobName = String(req.query.job_name || '').trim();
+  if (!jobName) return res.json({ customer: null, photos: [] });
+  const inv = await pgOne('SELECT customer_id FROM invoices WHERE lower(trim(job_name))=lower(trim($1)) AND customer_id IS NOT NULL LIMIT 1', [jobName]);
+  let customerId = inv ? inv.customer_id : null;
+  if (!customerId) {
+    const q = await pgOne('SELECT customer_id FROM quotes WHERE lower(trim(job_name))=lower(trim($1)) AND customer_id IS NOT NULL LIMIT 1', [jobName]);
+    customerId = q ? q.customer_id : null;
+  }
+  if (!customerId) return res.json({ customer: null, photos: [] });
+  const customer = await pgOne('SELECT id, name FROM customers WHERE id=$1', [customerId]);
+  if (!customer) return res.json({ customer: null, photos: [] });
+  const photos = (await answeredCustomerPhotosFor(customerId)).map(p => ({ ...p, user_name: customer.name }));
+  res.json({ customer: { id: customer.id, name: customer.name }, photos });
+}));
 app.delete('/api/credit-notes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const cn = await pgOne('SELECT * FROM credit_notes WHERE id=$1', [req.params.id]);
   if (!cn) return res.status(404).json({ error: 'Kreditnotaen blev ikke fundet' });
@@ -18601,9 +18855,12 @@ app.post('/api/credit-notes/:id/send', auth, panelAccess('quotes'), asyncRoute(a
   try { pdfBuffer = await renderCreditNotePdfBuffer(cn, invoice, company, cnAttachments); }
   catch (e) { return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message }); }
   try {
+    // RUNDE BJ — en kreditnota hører til samme "Bogholderiet"-korrespondance
+    // som fakturaen den retter, se invoiceMailFrom().
     await sendMailUniversal({
       to, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml),
-      attachments: [{ filename: cn.credit_note_number + '.pdf', content: pdfBuffer }]
+      attachments: [{ filename: cn.credit_note_number + '.pdf', content: pdfBuffer }],
+      from: invoiceMailFrom()
     });
   } catch (e) {
     return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
@@ -19897,7 +20154,8 @@ app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async
   try {
     sendResult = await sendMailUniversal({
       to, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml),
-      attachments: [{ filename: invoice.invoice_number + '.pdf', content: pdfBuffer }]
+      attachments: [{ filename: invoice.invoice_number + '.pdf', content: pdfBuffer }],
+      from: invoiceMailFrom()
     });
   } catch (e) {
     return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
@@ -20534,6 +20792,162 @@ ${row.user_name ? `<div class="row"><div class="ico">👷</div><div><div class="
 }));
 
 // ══════════════════════════════════════════════════════════════
+// RUNDE BK — /svar/:token: kundens offentlige svar-/billed-side. Se den
+// store skema-kommentar ved customer_photo_requests for baggrunden. Bruger
+// samme visuelle stil (farver/skrifttyper) som /tilbud/:token ovenfor, så
+// det ikke føles som et andet, mindre poleret system for kunden. Selve
+// uploaden foregår klient-side: hver valgt fil læses til en data-URI
+// (FileReader), sendes ÉN AD GANGEN til upload-photo-ruten (skånsomt for en
+// langsom mobilforbindelse — parallelle store uploads ville konkurrere om
+// samme båndbredde og gøre det hele langsommere, ikke hurtigere), og den
+// færdige Cloudinary-URL føjes til en synlig miniature-grid med et ✕ for at
+// fortryde FØR "Send svar" trykkes.
+// ══════════════════════════════════════════════════════════════
+app.get('/svar/:token', asyncRoute(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const esc = escPublic;
+  const r = await pgOne(
+    `SELECT pr.id,pr.question,pr.note,pr.photo_urls,pr.answered_at,c.name AS customer_name
+     FROM customer_photo_requests pr JOIN customers c ON c.id=pr.customer_id WHERE pr.token=$1`,
+    [req.params.token]
+  );
+  if (!r) return res.status(404).send(portalNotFoundPage());
+  const company = await getCompanyInfo();
+  const existingPhotos = Array.isArray(r.photo_urls) ? r.photo_urls : [];
+  const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Svar til ${esc(company.name)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=DM+Sans:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing:border-box; }
+  body{font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:#111318;margin:0;padding:24px 16px 60px}
+  .wrap{max-width:560px;margin:0 auto}
+  .card{background:#fff;border-radius:16px;padding:24px 22px;box-shadow:0 8px 30px rgba(15,17,24,.08);margin-bottom:16px}
+  .doc-top{display:flex;align-items:center;gap:12px;padding-bottom:16px;border-bottom:1px solid #EEF0F3;margin-bottom:18px}
+  .company-logo-lg{max-width:200px;max-height:72px;object-fit:contain}
+  .company-name-fallback{font-size:18px;font-weight:900;font-family:'Barlow Condensed',sans-serif}
+  .question-box{background:#F5F5FF;border:2px solid #C7D2FE;border-radius:14px;padding:16px 18px;margin-bottom:18px}
+  .question-eyebrow{font-size:10px;font-weight:700;color:#4F46E5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+  .question-text{font-size:15px;font-weight:700;color:#3730A3;line-height:1.5;white-space:pre-line}
+  label{display:block;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.03em;margin:14px 0 6px}
+  textarea{width:100%;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;resize:vertical;min-height:90px}
+  .upload-btn{display:block;width:100%;text-align:center;border:2px dashed #C7D2FE;background:#F9FAFF;border-radius:12px;padding:16px;font-size:13.5px;font-weight:700;color:#4F46E5;cursor:pointer}
+  .upload-btn input{display:none}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:12px}
+  .photo-thumb{position:relative;aspect-ratio:1/1;border-radius:10px;overflow:hidden;background:#F1F5F9}
+  .photo-thumb img,.photo-thumb video{width:100%;height:100%;object-fit:cover;display:block}
+  .photo-thumb .rm{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:rgba(17,19,24,.65);color:#fff;border:0;font-size:13px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
+  .photo-thumb .spin{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.75);font-size:11px;font-weight:700;color:#4F46E5}
+  .photo-thumb.existing .rm{display:none}
+  .send-btn{width:100%;margin-top:18px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(79,70,229,.35)}
+  .send-btn:disabled{opacity:.55;box-shadow:none;cursor:default}
+  .thanks-box{background:#F0FDF4;border:1px solid #BBF7D0;color:#15803D;border-radius:12px;padding:14px 16px;font-size:13px;margin-top:14px;display:none}
+  .thanks-box.show{display:block}
+  .hint{font-size:11.5px;color:#9CA3AF;margin-top:6px}
+  .pagefooter{max-width:560px;margin:0 auto;text-align:center;font-size:11px;color:#9CA3AF;padding:6px 8px 0}
+</style></head><body><div class="wrap">
+<div class="card">
+  <div class="doc-top">
+    ${company.logoUrl ? `<img class="company-logo-lg" src="${esc(company.logoUrl)}" alt="${esc(company.name)}">` : `<div class="company-name-fallback">${esc(company.name)}</div>`}
+  </div>
+  <div class="question-box">
+    <div class="question-eyebrow">Spørgsmål fra ${esc(company.name)}</div>
+    <div class="question-text">${esc(r.question)}</div>
+  </div>
+  <label for="note-field">Dit svar</label>
+  <textarea id="note-field" placeholder="Skriv dit svar her...">${esc(r.note || '')}</textarea>
+  <label>Billeder ${existingPhotos.length ? '(' + existingPhotos.length + ' allerede tilføjet)' : ''}</label>
+  <label class="upload-btn" id="upload-label">📷 Tryk for at vælge billeder (du kan vælge flere ad gangen)
+    <input type="file" id="file-input" accept="image/*,video/*" multiple>
+  </label>
+  <div class="hint">Du kan altid komme tilbage til dette link og tilføje flere billeder senere.</div>
+  <div class="photo-grid" id="photo-grid"></div>
+  <button type="button" class="send-btn" id="send-btn">Send svar</button>
+  <div class="thanks-box" id="thanks-box">✓ Tak! Dit svar er sendt.</div>
+</div>
+<div class="pagefooter">${esc(company.name)}${company.phone ? ' · ' + esc(company.phone) : ''}</div>
+</div>
+<script>
+(function(){
+  var TOKEN=${JSON.stringify(req.params.token)};
+  var existing=${JSON.stringify(existingPhotos)};
+  var newUrls=[];
+  var grid=document.getElementById('photo-grid');
+  function isVideo(url){return /\\.(mp4|mov|webm)(\\?|$)/i.test(url);}
+  function renderExisting(){
+    existing.forEach(function(url){
+      var cell=document.createElement('div');
+      cell.className='photo-thumb existing';
+      cell.innerHTML=isVideo(url)?('<video src="'+url+'" muted></video>'):('<img src="'+url+'">');
+      grid.appendChild(cell);
+    });
+  }
+  renderExisting();
+  document.getElementById('file-input').addEventListener('change',function(e){
+    var files=Array.prototype.slice.call(e.target.files||[]);
+    files.forEach(uploadOne);
+    e.target.value='';
+  });
+  function uploadOne(file){
+    var cell=document.createElement('div');
+    cell.className='photo-thumb';
+    var previewUrl=URL.createObjectURL(file);
+    cell.innerHTML=(file.type&&file.type.indexOf('video/')===0?('<video src="'+previewUrl+'" muted></video>'):('<img src="'+previewUrl+'">'))+'<div class="spin">Uploader…</div>';
+    grid.appendChild(cell);
+    var reader=new FileReader();
+    reader.onload=function(){
+      fetch('/api/public/photo-requests/'+TOKEN+'/upload-photo',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({image:reader.result})
+      }).then(function(r){return r.json();}).then(function(d){
+        var spin=cell.querySelector('.spin');
+        if(d&&d.ok){
+          newUrls.push(d.url);
+          if(spin)spin.remove();
+          var rm=document.createElement('button');
+          rm.type='button';rm.className='rm';rm.textContent='✕';
+          rm.addEventListener('click',function(){
+            var i=newUrls.indexOf(d.url);if(i>-1)newUrls.splice(i,1);
+            cell.remove();
+          });
+          cell.appendChild(rm);
+        } else {
+          if(spin){spin.textContent='Fejlede';spin.style.color='#B91C1C';}
+        }
+      }).catch(function(){
+        var spin=cell.querySelector('.spin');
+        if(spin){spin.textContent='Fejlede';spin.style.color='#B91C1C';}
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+  document.getElementById('send-btn').addEventListener('click',function(){
+    var btn=this;
+    btn.disabled=true;btn.textContent='Sender…';
+    fetch('/api/public/photo-requests/'+TOKEN+'/respond',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({note:document.getElementById('note-field').value,photo_urls:newUrls})
+    }).then(function(r){return r.json();}).then(function(d){
+      btn.disabled=false;btn.textContent='Send svar';
+      if(d&&d.ok){
+        document.getElementById('thanks-box').classList.add('show');
+        existing=existing.concat(newUrls);newUrls=[];
+      } else {
+        alert((d&&d.error)||'Kunne ikke sende svaret — prøv igen');
+      }
+    }).catch(function(){
+      btn.disabled=false;btn.textContent='Send svar';
+      alert('Netværksfejl — prøv igen');
+    });
+  });
+})();
+</script>
+</body></html>`;
+  res.send(html);
+}));
+
+// ══════════════════════════════════════════════════════════════
 // KUNDEPORTAL 2.0 — /kunde/:token. Modsat /portal/:token ovenfor (som kun viser ÉN
 // booking) viser denne siden ALT hvad kunden nogensinde har haft hos os, med et
 // pipeline-overblik og en kronologisk timeline — samme data og samme
@@ -20597,6 +21011,28 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     `SELECT * FROM invoices WHERE lower(trim(job_name))=lower(trim($1)) ORDER BY created_at DESC`,
     [tokenRow.job_name]
   )).rows;
+
+  // ══════════════════════════════════════════════════════════════
+  // RUNDE BL (Martin: "Kunden skal også på sit kundelink hvor de har deres
+  // portal kunne finde et sted hvor de har uploadet billeder og se hvad de
+  // har lagt op") — kundeportalen har intet customer_id direkte (kun
+  // job_name/customer_key, se skema-kommentaren ved customer_portal_tokens),
+  // så kunden findes samme vej som document-customer-photos: via
+  // customer_id på et af kundens egne tilbud/fakturaer på denne sag.
+  // ══════════════════════════════════════════════════════════════
+  const portalCustomerId = (ourInvoices.find(i => i.customer_id) || ourQuotes.find(q => q.customer_id) || {}).customer_id || null;
+  let portalPhotoReqs = [];
+  if (portalCustomerId) {
+    portalPhotoReqs = (await pool.query(
+      'SELECT id,question,photo_urls,updated_at,created_at FROM customer_photo_requests WHERE customer_id=$1 AND answered_at IS NOT NULL ORDER BY updated_at DESC NULLS LAST, created_at DESC',
+      [portalCustomerId]
+    )).rows;
+  }
+  const portalPhotos = [];
+  portalPhotoReqs.forEach(r => {
+    const urls = Array.isArray(r.photo_urls) ? r.photo_urls : [];
+    urls.forEach(u => portalPhotos.push({ url: u, question: r.question, when: r.updated_at || r.created_at }));
+  });
 
   // PROJEKT-TIDSLINJE — læses direkte fra gantt_tasks (samme tabel som admins
   // Gantt-kort), IKKE fra planning_bookings. Det er bevidst: kunden skal se det
@@ -20805,6 +21241,19 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     }).join('');
   })();
 
+  // RUNDE BL — "Billeder"-fanen, grupperet pr. svar-anmodning (samme spørgsmål
+  // sammen), nyeste besvarelse først. Kun BESVAREDE anmodninger med mindst ét
+  // billede vises — en anmodning uden billeder (kun tekstsvar) hører hjemme
+  // andetsteds, ikke i et billedgalleri.
+  const photosHtml = (() => {
+    const groups = portalPhotoReqs.filter(r => Array.isArray(r.photo_urls) && r.photo_urls.length);
+    if (!groups.length) return '<div class="empty">Ingen billeder uploadet endnu.</div>';
+    return groups.map(r => `<div class="photo-group-portal">
+      <div class="pg-question">${esc(r.question)}${r.updated_at || r.created_at ? `<span class="pg-when">${esc(fmt(r.updated_at || r.created_at))}</span>` : ''}</div>
+      <div class="photo-grid-portal">${r.photo_urls.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" loading="lazy" alt=""></a>`).join('')}</div>
+    </div>`).join('');
+  })();
+
   const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Din side hos ${esc(companyName)}</title><style>
 :root{--ink:#111318;--sub:#6B7280;--border:#E5E7EB;--accent:#4F46E5;--accent-soft:#EEF2FF}
@@ -20880,6 +21329,16 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 .tm-row-icon{width:20px;flex-shrink:0;text-align:center}
 .tm-row-label{font-size:9.5px;font-weight:800;color:var(--sub);text-transform:uppercase;letter-spacing:.02em}
 .tm-row-value{font-size:13px;color:var(--ink);margin-top:2px;white-space:pre-wrap}
+/* RUNDE BL — "Billeder"-fanen: et simpelt billedgalleri af det kunden selv
+   har uploadet via et /svar/:token-link. Klik åbner billedet i fuld
+   størrelse i en ny fane (ingen grund til en hel lightbox-komponent for en
+   liste kunden kun kigger på, ikke redigerer). */
+.photo-grid-portal{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+.photo-grid-portal a{display:block;aspect-ratio:1/1;border-radius:12px;overflow:hidden;box-shadow:0 4px 14px rgba(15,17,24,.08)}
+.photo-grid-portal img{width:100%;height:100%;object-fit:cover;display:block;background:#EEF0F3}
+.photo-group-portal{margin-bottom:16px}
+.photo-group-portal .pg-question{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:7px}
+.photo-group-portal .pg-when{font-size:10.5px;color:var(--sub);font-weight:600;margin-left:6px}
 </style></head><body><div class="wrap">
 <div class="brand">${esc(companyName)}</div>
 <h1>Hej ${esc(tokenRow.job_name)} 👋</h1>
@@ -20892,10 +21351,12 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
   <div class="tab active" id="tab-pipeline" onclick="showTab('pipeline')">Oversigt</div>
   <div class="tab" id="tab-timeline" onclick="showTab('timeline')">Timeline</div>
   <div class="tab" id="tab-docs" onclick="showTab('docs')">Tilbud &amp; Faktura</div>
+  <div class="tab" id="tab-photos" onclick="showTab('photos')">📷 Billeder</div>
 </div>
 <div class="panel active" id="panel-pipeline">${pipelineHtml}</div>
 <div class="panel" id="panel-timeline">${ganttHtml}</div>
 <div class="panel" id="panel-docs">${docsHtml}</div>
+<div class="panel" id="panel-photos">${photosHtml}</div>
 <div class="foot">Spørgsmål? Kontakt ${esc(companyName)} direkte.</div>
 </div>
 <div class="tm-backdrop" id="tm-backdrop" onclick="if(event.target===this)closeTaskModal()">
@@ -20917,7 +21378,7 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 function showTab(name){
-  ['pipeline','timeline','docs'].forEach(function(n){
+  ['pipeline','timeline','docs','photos'].forEach(function(n){
     document.getElementById('tab-'+n).classList.toggle('active',n===name);
     document.getElementById('panel-'+n).classList.toggle('active',n===name);
   });

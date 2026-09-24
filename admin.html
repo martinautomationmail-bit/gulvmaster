@@ -3587,7 +3587,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.32</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4141,6 +4141,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <div class="form-group" style="margin:0"><label class="form-label">Send test-SMS til</label><input id="automation-sms-test-to" class="input" placeholder="Fx 12345678"></div>
             <button class="btn small" id="automation-sms-test-btn">Send test</button>
           </div>
+        </div>
+
+        <!-- RUNDE BJ (Martin: "faktura sendes fra info@gulvmaster.dk, kan vi
+             ikke få den til at sende ud fra Debitor@gulvmaster.dk? navnet
+             skal være Lina - Bogholderiet") — rent visnings-kort, ingen
+             gem-knap: selve afsenderen sættes via miljøvariablen
+             INVOICE_RESEND_FROM på Render (se invoiceMailFrom() i server.js),
+             ikke her i UI'et — men Martin skal kunne SE hvad der er sat, uden
+             at spørge om det igen. -->
+        <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">📧 Faktura/rykker/kreditnota-afsender</div>
+          <div id="automation-invoice-from" class="hint" style="margin:0"></div>
         </div>
 
         <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px">
@@ -4913,6 +4925,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <input type="file" id="qe-attach-input" accept="image/*" multiple style="display:none">
             <button class="bly-btn outline small" type="button" onclick="document.getElementById('qe-attach-input').click()">📎 Vælg billeder</button>
             <button class="bly-btn outline small" id="qe-attach-job-photos-btn" type="button" title="Vælg blandt billeder fra sagen — fx medarbejdernes timetracking-billeder">🗂 Vælg fra sagens billeder</button>
+            <button class="bly-btn outline small" id="qe-attach-customer-photos-btn" type="button" title="Vælg blandt billeder kunden selv har uploadet via et svar-link (se Filer-fanen under Handler)">🙋 Vælg fra kundens billeder</button>
           </div>
           <div id="qe-attach-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
         </div>
@@ -5055,6 +5068,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <label class="form-label">Billeder til kreditnotaen <span class="opt-tag">valgfrit — printes direkte ind i PDF'en kunden får, fx billede af fejl/mangler eller en mail-aftale</span></label>
           <input type="file" id="iv-credit-attach-input" accept="image/*" multiple style="display:none">
           <button class="bly-btn outline small" type="button" onclick="document.getElementById('iv-credit-attach-input').click()">📎 Vælg billeder</button>
+          <button class="bly-btn outline small" id="iv-credit-attach-customer-photos-btn" type="button" title="Vælg blandt billeder kunden selv har uploadet via et svar-link">🙋 Vælg fra kundens billeder</button>
           <div id="iv-credit-attachments" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
         </div>
         <button class="bly-btn outline small" id="iv-add-credit-btn" type="button">+ Ny kreditnota</button>
@@ -5075,6 +5089,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <input type="file" id="iv-attach-input" accept="image/*" multiple style="display:none">
             <button class="bly-btn outline small" type="button" onclick="document.getElementById('iv-attach-input').click()">📎 Vælg billeder</button>
             <button class="bly-btn outline small" id="iv-attach-job-photos-btn" type="button" title="Vælg blandt billeder fra sagen — fx medarbejdernes timetracking-billeder">🗂 Vælg fra sagens billeder</button>
+            <button class="bly-btn outline small" id="iv-attach-customer-photos-btn" type="button" title="Vælg blandt billeder kunden selv har uploadet via et svar-link (se Filer-fanen under Handler)">🙋 Vælg fra kundens billeder</button>
           </div>
           <div id="iv-attach-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
         </div>
@@ -5558,6 +5573,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
   <div id="crmpx-view-files" style="display:none">
+    <!-- RUNDE BK (Martin: "kan vi ikke bygge et link hvor de kan tilføje deres
+         svar note på opgaven ... upload knap hvor de kan uploade så mange
+         billeder de vil") — knap der opretter et offentligt, login-frit
+         svar-link (/svar/:token) kunden kan bruge til at besvare et
+         hint-spørgsmål og uploade billeder/video. Se
+         crmpxOpenPhotoRequestModal/crmpxLoadPhotoRequests. Ligger som egen
+         værktøjslinje over selve filgitteret, kun synlig på Filer-fanen. -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:12px">
+      <button class="btn small" type="button" id="crmpx-photoreq-new-btn">📩 Bed kunden om svar/billeder</button>
+    </div>
+    <div id="crmpx-photoreq-list" style="margin-bottom:16px"></div>
     <div id="crmpx-files-grid" class="cd-files-grid"></div>
   </div>
 
@@ -5655,6 +5681,36 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="bly-btn outline small" id="file-lightbox-prev-btn" type="button" title="Forrige fil (←)" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:2;background:#fff;display:none">‹</button>
       <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:#F5F5F7" id="file-lightbox-body"></div>
       <button class="bly-btn outline small" id="file-lightbox-next-btn" type="button" title="Næste fil (→)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:2;background:#fff;display:none">›</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE BK — opret et svar-/billed-link til kunden. Simpelt: ét spørgsmål-
+     felt, server genererer et unikt token og bygger URL'en (/svar/:token).
+     Se crmpxCreatePhotoRequest. -->
+<div class="mo" id="photoreq-new-modal">
+  <div class="modal" style="max-width:480px">
+    <h3>📩 Bed kunden om svar/billeder</h3>
+    <p style="font-size:13px;color:var(--ink);line-height:1.5;margin:0 0 14px">Kunden får et link uden login, hvor de kan svare på dit spørgsmål og uploade billeder/video. Svaret og billederne lander automatisk her under Filer.</p>
+    <div class="form-group"><label class="form-label">Spørgsmål/hint til kunden</label><textarea id="photoreq-question" class="input" rows="3" placeholder="Fx: Kan du sende et par billeder af gulvet hvor det er mest slidt?"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="closeModal('photoreq-new-modal')">Annuller</button>
+      <button class="btn primary" type="button" id="photoreq-create-btn">Opret link</button>
+    </div>
+  </div>
+</div>
+
+<!-- Selve linket, klar til at kopiere/sende til kunden. -->
+<div class="mo" id="photoreq-link-modal">
+  <div class="modal" style="max-width:480px">
+    <h3>✓ Link oprettet</h3>
+    <p style="font-size:13px;color:var(--ink);line-height:1.5;margin:0 0 10px">Send linket til kunden, fx på SMS eller mail.</p>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="photoreq-link-url" class="input" readonly style="flex:1;font-size:12px">
+      <button class="btn small" type="button" id="photoreq-link-copy-btn">Kopiér</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="closeModal('photoreq-link-modal')">Luk</button>
     </div>
   </div>
 </div>
@@ -7202,6 +7258,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="note-attach-row note-attach-file-row">
         <label class="btn small note-image-btn" for="qp-note-files">📎 Vedhæft filer</label>
         <input id="qp-note-files" type="file" accept="image/*,application/pdf" multiple style="display:none">
+        <button type="button" class="btn small" id="qp-note-customer-photos-btn" title="Vælg blandt billeder kunden selv har uploadet via et svar-link">🙋 Kundens billeder</button>
         <span class="opt-tag" id="qp-note-attach-count"></span>
       </div>
       <div class="note-att-grid" id="qp-note-attachments"></div>
@@ -7902,10 +7959,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      for den sag dokumentet hører til, se GET /api/document-job-photos.
      docJobPhotosCtx (sat af docAttachOpenJobPhotoPicker) husker hvilket
      dokument der aktuelt vælges billeder til, så et klik på et billede ved
-     docJobPhotoPick(url) ved hvor det skal hægtes på. -->
-<div class="mo" id="doc-job-photos-modal">
+     docJobPhotoPick(url) ved hvor det skal hægtes på.
+     RUNDE BL: åbnes nu OGSÅ oven på #quick-pop (z-index 400) og #assign-modal
+     (almindelig .mo, z-index 200 — men senere i DOM'en, så den uden en
+     eksplicit override ville vinde ved uafgjort og blokere klik på selve
+     billedvælgeren, se noteAttachOpenCustomerPhotoPicker). Samme mønster som
+     #timeoff-block-modal (z-index 400) allerede bruger for en modal-over-
+     modal — sat højere end begge for at være sikker uanset hvilken af de to
+     den åbnes oven på. -->
+<div class="mo" id="doc-job-photos-modal" style="z-index:450">
   <div class="modal" style="max-width:760px;width:95vw;max-height:88vh;overflow:auto">
-    <h3 style="margin:0 0 4px">Vælg fra sagens billeder</h3>
+    <h3 style="margin:0 0 4px" id="doc-job-photos-title">Vælg fra sagens billeder</h3>
     <p class="sub" style="margin-top:0" id="doc-job-photos-sub">Billeder fra sagen — inkl. medarbejdernes timetracking-billeder</p>
     <div id="doc-job-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px"></div>
     <div class="modal-actions">
@@ -8065,6 +8129,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="note-attach-row note-attach-file-row">
         <label class="btn small note-image-btn" for="assign-note-files">📎 Vedhæft filer</label>
         <input id="assign-note-files" type="file" accept="image/*,application/pdf" multiple style="display:none">
+        <button type="button" class="btn small" id="assign-note-customer-photos-btn" title="Vælg blandt billeder kunden selv har uploadet via et svar-link">🙋 Kundens billeder</button>
         <span class="opt-tag" id="assign-note-attach-count"></span>
         <span class="opt-tag note-attach-hint">billeder + PDF · medarbejderen kan se dem i deres eget system</span>
       </div>
@@ -10693,6 +10758,53 @@ function wireNoteAttachInput(prefix){
     e.target.value='';
   });
 }
+// RUNDE BL (Martin: "... samt når skal booke sagen i projektstyring eller
+// dagligplanlægning?") — samme "🙋 kundens billeder"-idé som docAttach*-
+// billedvælgeren for tilbud/faktura, men her er destinationen note_attachments
+// (base64 data-URI'er indlejret direkte i bookingens note, se kommentaren ved
+// NOTE_ATTACH_MAX_FILES ovenfor) i stedet for document_attachments (en
+// Cloudinary-URL). Billedet hentes derfor klient-side og konverteres til en
+// data-URI, PRÆCIS som en lokalt valgt fil ville blive det.
+//
+// Opgavens (og dermed kundens) identitet er forskellig for de to popups:
+// "qp" (projektstyring/hurtig-booking) og "assign" (dagligplanlægning) — se
+// samme taskId-opslags-idiom som assign-checklist-knapperne allerede bruger.
+function noteAttachTaskIdFor(prefix){
+  if(prefix==='qp')return quickCtx&&quickCtx.taskId;
+  if(prefix==='assign')return assignCtx&&(assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id));
+  return null;
+}
+async function noteAttachOpenCustomerPhotoPicker(prefix){
+  var taskId=noteAttachTaskIdFor(prefix);
+  var task=taskId?tasks.find(function(x){return String(x.id)===String(taskId);}):null;
+  if(!task||!task.job_name){toast('Vælg/opret opgaven først — kan ikke finde kunden endnu','⚠️');return;}
+  // #doc-job-photos-grid/-close-btn's klik-lyttere kobles først på i
+  // bindQuotesModuleEvents(), som ellers kun kører når man selv har åbnet
+  // Tilbud & Faktura-modulet mindst én gang i sessionen (se openQuoteEditorSafe
+  // for samme værn) — uden dette virker billedvælgeren slet ikke, hvis man
+  // booker en opgave FØR man nogensinde har rørt tilbud/fakturaer.
+  if(!qzInitialized)await initQuotesModule();
+  docJobPhotosCtx={mode:'note-stage',prefix:prefix};
+  var grid=document.getElementById('doc-job-photos-grid');
+  var sub=document.getElementById('doc-job-photos-sub');
+  document.getElementById('doc-job-photos-title').textContent='Vælg fra kundens billeder';
+  grid.innerHTML='<div class="sub">Henter kundens billeder…</div>';
+  document.getElementById('doc-job-photos-modal').classList.add('open');
+  var r=await api('/api/customer-photos-by-job-name?job_name='+encodeURIComponent(task.job_name));
+  if(!r||!r.customer){
+    grid.innerHTML='<div class="sub">Ingen kunde fundet på denne sag (kræver et tilbud/en faktura koblet til sagen) — der er derfor ingen kundebilleder at vælge fra.</div>';
+    return;
+  }
+  sub.textContent='Kunde: '+r.customer.name+' — billeder kunden selv har uploadet via et svar-link (se Filer-fanen under Handler)';
+  if(!r.photos||!r.photos.length){grid.innerHTML='<div class="sub">Kunden har ikke uploadet nogen billeder endnu.</div>';return;}
+  grid.innerHTML=r.photos.map(function(p,idx){
+    return '<div class="doc-job-photo-item" data-idx="'+idx+'">'
+      +'<img src="'+esc(p.url)+'" alt="" loading="lazy">'
+      +'<div class="djp-meta"><span class="djp-source">'+esc(p.source)+'</span><br>'+esc(p.caption||'')+(p.date?'<br>'+esc(String(p.date).slice(0,10)):'')+'</div>'
+      +'</div>';
+  }).join('');
+  docJobPhotosCtx.photos=r.photos;
+}
 // FULL ASSIGN MODAL
 function openAssign(ctx){
   assignCtx=ctx||{};
@@ -13146,6 +13258,10 @@ async function loadAutomationSettings(){
       ?('SMS er sat op via <b>'+esc(info.sms_provider)+'</b> — stage-automatikken (se CRM-pipeline-indstillinger) kan sende.')
       :'SMS er endnu ikke sat op på serveren. Sæt <code>INMOBILE_API_TOKEN</code> (og evt. <code>INMOBILE_SENDER</code>) som miljøvariabler på Render for at bruge inMobile.';
     document.getElementById('automation-sms-test-btn').onclick=function(){sendTestSms('automation-sms-test-to','automation-sms-test-btn');};
+    document.getElementById('automation-invoice-from').innerHTML=
+      'Sendes lige nu som <b>'+esc(info.invoice_mail_from||'')+'</b>.'
+      +'<br>Ændres ved at sætte miljøvariablen <code>INVOICE_RESEND_FROM</code> på Render (fx <code>Lina - Bogholderiet &lt;regnskab@gulvmaster.dk&gt;</code>) — ingen ny domæneverificering nødvendig, da gulvmaster.dk allerede er verificeret hos Resend.'
+      +'<br>⚠️ Husk at <b>regnskab@gulvmaster.dk</b> rent faktisk skal være en postkasse der bliver læst — svarer en kunde på en faktura/rykker, lander svaret dér, ikke i info@.';
   }
   var lf=await api('/api/crm/lost-followup-settings');
   if(lf&&!lf.error){
@@ -19037,6 +19153,8 @@ async function bind(){
   document.getElementById('delete-assignment').onclick=function(){if(assignCtx&&assignCtx.bookingId)removeBooking(assignCtx.bookingId);};
   wireNoteAttachInput('assign');
   wireNoteAttachInput('qp');
+  document.getElementById('assign-note-customer-photos-btn').addEventListener('click',function(){noteAttachOpenCustomerPhotoPicker('assign');});
+  document.getElementById('qp-note-customer-photos-btn').addEventListener('click',function(){noteAttachOpenCustomerPhotoPicker('qp');});
   // Manual modal
   document.getElementById('close-manual').onclick=function(){closeModal('manual-modal');};
   document.getElementById('save-manual').onclick=saveManual;
@@ -22556,16 +22674,22 @@ async function crmpxLoadFiles(){
   crmpxFiles=[]; // aldrig bladre videre i den FORRIGE kundes filliste
   var grid=document.getElementById('crmpx-files-grid');
   grid.innerHTML='<div class="crmpx-empty">Henter filer...</div>';
+  crmpxLoadPhotoRequests(); // uafhængig liste, ingen grund til at vente på den
   var files=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/files');
   if(!files||files.error){grid.innerHTML='<div class="crmpx-empty">Kunne ikke hente filer — '+esc((files&&files.error)||'ukendt fejl')+'</div>';return;}
   document.getElementById('crmpx-files-count').textContent=files.length?'('+files.length+')':'';
-  if(!files.length){grid.innerHTML='<div class="crmpx-empty">Ingen filer fundet i mailkorrespondancen endnu</div>';return;}
+  if(!files.length){grid.innerHTML='<div class="crmpx-empty">Ingen filer endnu — hverken i mailkorrespondancen eller fra et svar-link</div>';return;}
   // Gemmes så lightboxen kan bladre frem/tilbage i PRÆCIS den her liste uden at
   // hente noget igen — se crmpxOpenFileLightboxAt.
   crmpxFiles=files;
   grid.innerHTML=files.map(function(f,i){
-    var icon=f.mimeType&&f.mimeType.indexOf('image/')===0?'🖼️':(f.mimeType==='application/pdf'?'📄':'📎');
-    return '<div class="cd-file-card" data-file-idx="'+i+'" data-msg-id="'+esc(f.gmail_message_id)+'" data-att-id="'+esc(f.attachmentId)+'" data-filename="'+esc(f.filename)+'" data-mimetype="'+esc(f.mimeType)+'">'
+    // RUNDE BK — filer kunden selv har uploadet via /svar/:token har et
+    // direct_url (Cloudinary) i stedet for en Gmail-vedhæftnings-id. Får sit
+    // eget ikon (🙋) så det er tydeligt i gitteret at det er kundens EGET
+    // upload, ikke noget der er fundet i mailkorrespondancen.
+    var isCustomerUpload=!!f.direct_url;
+    var icon=isCustomerUpload?'🙋':(f.mimeType&&f.mimeType.indexOf('image/')===0?'🖼️':(f.mimeType==='application/pdf'?'📄':'📎'));
+    return '<div class="cd-file-card" data-file-idx="'+i+'" data-msg-id="'+esc(f.gmail_message_id)+'" data-att-id="'+esc(f.attachmentId)+'" data-filename="'+esc(f.filename)+'" data-mimetype="'+esc(f.mimeType)+'" title="'+esc(f.subject||'')+'">'
       +'<div class="cd-file-icon">'+icon+'</div>'
       +'<div class="cd-file-name">'+esc(f.filename)+'</div>'
       +'<div class="cd-file-meta">'+esc(fmtDaDate(new Date(Number(f.internal_date)).toISOString()))+'</div>'
@@ -22576,6 +22700,71 @@ document.addEventListener('click',function(e){
   var card=e.target.closest('.cd-file-card');
   if(!card)return;
   crmpxOpenFileLightboxAt(Number(card.dataset.fileIdx)||0);
+});
+
+// ── SVAR-/BILLED-ANMODNINGER (RUNDE BK) — knappen "📩 Bed kunden om svar/
+// billeder" over Filer-gitteret. Se GET/POST /api/crm/customers/:id/
+// photo-requests i server.js. Simpel liste med status (afventer/besvaret) +
+// kopiér-link + slet, over selve filgitteret.
+var crmpxPhotoRequests=[];
+async function crmpxLoadPhotoRequests(){
+  if(!crmpxCurrentCustomerId)return;
+  var list=document.getElementById('crmpx-photoreq-list');
+  var reqs=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/photo-requests');
+  if(!reqs||reqs.error){list.innerHTML='';return;}
+  crmpxPhotoRequests=reqs;
+  if(!reqs.length){list.innerHTML='';return;}
+  list.innerHTML='<div class="sub" style="margin-bottom:6px">Svar-/billed-links til denne kunde</div>'
+    +reqs.map(function(r){
+      var answered=!!r.answered_at;
+      var photoCount=Array.isArray(r.photo_urls)?r.photo_urls.length:0;
+      return '<div style="display:flex;align-items:center;gap:10px;border:1px solid var(--bly-border-soft,#EEF0F3);border-radius:10px;padding:8px 12px;margin-bottom:6px">'
+        +'<div style="flex-shrink:0;font-size:16px">'+(answered?'✅':'⏳')+'</div>'
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r.question)+'</div>'
+          +'<div class="sub" style="font-size:11px">'+(answered?'Besvaret'+(photoCount?' — '+photoCount+' billede(r)':' (uden billeder)'):'Afventer svar fra kunden')+'</div>'
+        +'</div>'
+        +'<button type="button" class="btn small" data-photoreq-copy="'+esc(r.url)+'">Kopiér link</button>'
+        +'<button type="button" class="btn small" data-photoreq-delete="'+r.id+'" title="Slet dette link">✕</button>'
+        +'</div>';
+    }).join('');
+}
+document.getElementById('crmpx-photoreq-new-btn').addEventListener('click',function(){
+  document.getElementById('photoreq-question').value='';
+  document.getElementById('photoreq-new-modal').classList.add('open');
+});
+document.getElementById('photoreq-create-btn').addEventListener('click',async function(){
+  var q=document.getElementById('photoreq-question').value.trim();
+  if(!q){toast('Skriv et spørgsmål til kunden først','⚠');return;}
+  if(!crmpxCurrentCustomerId)return;
+  var btn=this;btn.disabled=true;
+  var r=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/photo-requests',{method:'POST',body:JSON.stringify({question:q})});
+  btn.disabled=false;
+  if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke oprette linket','❌');return;}
+  closeModal('photoreq-new-modal');
+  document.getElementById('photoreq-link-url').value=r.url;
+  document.getElementById('photoreq-link-modal').classList.add('open');
+  crmpxLoadPhotoRequests();
+});
+document.getElementById('photoreq-link-copy-btn').addEventListener('click',async function(){
+  var val=document.getElementById('photoreq-link-url').value;
+  try{await navigator.clipboard.writeText(val);toast('Kopieret','📋');}
+  catch(err){toast('Kunne ikke kopiere — markér og kopiér manuelt','⚠');}
+});
+document.getElementById('crmpx-photoreq-list').addEventListener('click',async function(e){
+  var copyBtn=e.target.closest('[data-photoreq-copy]');
+  if(copyBtn){
+    try{await navigator.clipboard.writeText(copyBtn.dataset.photoreqCopy);toast('Kopieret','📋');}
+    catch(err){toast('Kunne ikke kopiere — markér og kopiér manuelt','⚠');}
+    return;
+  }
+  var delBtn=e.target.closest('[data-photoreq-delete]');
+  if(delBtn){
+    if(!confirm('Slet dette svar-link? Kunden kan ikke længere bruge det, og eventuelle billeder forsvinder fra Filer-fanen.'))return;
+    var r=await api('/api/crm/photo-requests/'+delBtn.dataset.photoreqDelete,{method:'DELETE'});
+    if(r&&r.ok){crmpxLoadPhotoRequests();crmpxLoadFiles();}
+    else toast((r&&r.error)||'Kunne ikke slette','❌');
+  }
 });
 
 // ── FIL-LIGHTBOX — se crmpxOpenFileLightbox() ovenfor #file-lightbox-modal i
@@ -22601,8 +22790,10 @@ var crmpxLightboxUrl=null,crmpxLightboxFilename=null;
 // de altid har gjort; ‹/› springer altså ikke over dem.
 var crmpxFiles=[],crmpxLightboxIdx=0;
 var crmpxLightboxSeq=0; // værn mod at et langsomt svar overskriver et nyere
+var crmpxLightboxDirectUrl=null;
 function crmpxCloseLightbox(){
   if(crmpxLightboxUrl){URL.revokeObjectURL(crmpxLightboxUrl);crmpxLightboxUrl=null;}
+  crmpxLightboxDirectUrl=null;
   crmpxLightboxFilename=null;
   crmpxLightboxSeq++;
   closeModal('file-lightbox-modal');
@@ -22626,7 +22817,35 @@ function crmpxOpenFileLightboxAt(idx){
   document.getElementById('file-lightbox-prev-btn').style.display=multi?'':'none';
   document.getElementById('file-lightbox-next-btn').style.display=multi?'':'none';
   document.getElementById('file-lightbox-counter').textContent=multi?(idx+1)+' / '+crmpxFiles.length:'';
+  // RUNDE BK — filer kunden selv har uploadet via /svar/:token har allerede en
+  // OFFENTLIG, direkte Cloudinary-URL (f.direct_url) — ingen grund til den
+  // autentificerede Gmail-vedhæftnings-runde-tur (som de slet ikke findes i).
+  if(f.direct_url)return crmpxOpenFileLightboxDirect(f.direct_url,f.filename,f.mimeType);
   return crmpxOpenFileLightbox(f.gmail_message_id,f.attachmentId,f.filename,f.mimeType);
+}
+// Simplere variant af crmpxOpenFileLightbox() for filer der allerede har en
+// direkte, offentlig URL — ingen fetch/blob nødvendig, billedet/videoen kan
+// bare pege direkte på URL'en. Download-knappen åbner blot samme URL i en ny
+// fane (kan ikke tvinge "download" på tværs af domæner uden CORS-besvær, men
+// Cloudinary-URL'er kan altid ses/gemmes derfra).
+function crmpxOpenFileLightboxDirect(url,filename,mimetype){
+  crmpxLightboxUrl=null; // intet objectURL at rydde op på ved luk denne gang
+  crmpxLightboxFilename=filename;
+  crmpxLightboxDirectUrl=url;
+  document.getElementById('file-lightbox-title').textContent=filename||'Fil';
+  var body=document.getElementById('file-lightbox-body');
+  document.getElementById('file-lightbox-modal').classList.add('open');
+  if(mimetype&&mimetype.indexOf('video/')===0){
+    body.innerHTML='';
+    var vid=document.createElement('video');
+    vid.src=url;vid.controls=true;vid.style.maxWidth='100%';vid.style.maxHeight='80vh';vid.style.display='block';
+    body.appendChild(vid);
+  }else{
+    body.innerHTML='';
+    var img=document.createElement('img');
+    img.src=url;img.style.maxWidth='100%';img.style.maxHeight='80vh';img.style.display='block';img.alt=filename||'';
+    body.appendChild(img);
+  }
 }
 document.getElementById('file-lightbox-prev-btn').addEventListener('click',function(){crmpxLightboxStep(-1);});
 document.getElementById('file-lightbox-next-btn').addEventListener('click',function(){crmpxLightboxStep(1);});
@@ -22676,6 +22895,10 @@ async function crmpxOpenFileLightbox(messageId,attachmentId,filename,mimetype){
   }catch(e){if(seq===crmpxLightboxSeq)body.innerHTML='<div class="crmpx-empty">Netværksfejl ved hentning af filen</div>';}
 }
 document.getElementById('file-lightbox-download').addEventListener('click',function(){
+  // RUNDE BK — crmpxLightboxDirectUrl (Cloudinary) er et ANDET domæne, så
+  // browserens download-attribut ignoreres der (kun samme-origin) — åbnes i
+  // stedet i en ny fane, hvorfra man kan gemme/downloade som normalt.
+  if(crmpxLightboxDirectUrl){window.open(crmpxLightboxDirectUrl,'_blank');return;}
   if(!crmpxLightboxUrl||!crmpxLightboxFilename)return;
   var a=document.createElement('a');
   a.href=crmpxLightboxUrl;a.download=crmpxLightboxFilename;document.body.appendChild(a);a.click();a.remove();
@@ -22956,9 +23179,13 @@ async function openCrmpDetail(entityType,id){
   if(d.customer_id)crmpxLoadVisits(d.customer_id);
   // Detaljer/Filer/Emails/Noter-faneskift — nulstilles til "Detaljer" for hvert
   // lead/opportunity man åbner. Selve fanebjælken kræver kun en kobling til en
-  // kunde (Noter virker uden Gmail) — Filer og Emails afhænger derudover af at
-  // Gmail rent faktisk er forbundet, så kun DE to faner skjules hver for sig
-  // hvis det ikke er tilfældet, i stedet for at skjule hele bjælken.
+  // kunde (Noter virker uden Gmail) — Emails afhænger derudover af at Gmail
+  // rent faktisk er forbundet, så kun DEN fane skjules hvis det ikke er
+  // tilfældet, i stedet for at skjule hele bjælken.
+  // RUNDE BK: Filer-fanen viste FØR kun Gmail-vedhæftninger og blev derfor
+  // skjult uden Gmail — men fanen kan nu også vise kundens svar/billeder fra
+  // et /svar/:token-link, hvilket er helt uafhængigt af Gmail. Filer skal
+  // derfor vises altid (ligesom Noter), ikke kun når Gmail er forbundet.
   crmpxCurrentCustomerId=d.customer_id||null;
   crmpxFilesLoaded=false;
   crmpxEmailsLoaded=false;
@@ -22969,7 +23196,7 @@ async function openCrmpDetail(entityType,id){
   document.getElementById('crmpx-viewtabs').style.display=d.customer_id?'':'none';
   var gmailStatusForFiles=d.customer_id?await api('/api/gmail/connected'):null;
   var gmailOnForFiles=!!(gmailStatusForFiles&&gmailStatusForFiles.connected);
-  document.querySelector('#crmpx-viewtabs [data-crmpxview="files"]').style.display=gmailOnForFiles?'':'none';
+  document.querySelector('#crmpx-viewtabs [data-crmpxview="files"]').style.display=d.customer_id?'':'none';
   document.querySelector('#crmpx-viewtabs [data-crmpxview="emails"]').style.display=gmailOnForFiles?'':'none';
   document.getElementById('crmpx-files-count').textContent='';
   document.getElementById('crmpx-emails-count').textContent='';
@@ -28916,13 +29143,20 @@ async function docAttachRemove(docType,idx){
 // Billedvælgeren — se GET /api/document-job-photos/:docType/:docId i
 // server.js. docJobPhotosCtx husker hvilket dokument der lige nu vælges
 // billeder TIL, så docJobPhotoPick(url) ved hvor det skal hægtes på.
+// RUNDE BL: samme modal/grid genbruges nu til TO forskellige kilder —
+// sagens billeder (source='job') og kundens egne svar-billeder
+// (source='customer', se GET /api/document-customer-photos) — for at undgå
+// endnu en næsten-identisk modal. docJobPhotosCtx.source husker hvilken af
+// de to der er åben, kun brugt til visningstekst, selve valg-flowet
+// (docJobPhotoPick) er ens for begge.
 var docJobPhotosCtx=null;
 async function docAttachOpenJobPhotoPicker(docType){
   var state=docAttachStateFor(docType);
   if(!state.id){toast((docType==='invoice'?'Fakturaen':'Tilbuddet')+' mangler et ID — kan ikke hente sagens billeder','⚠️');return;}
-  docJobPhotosCtx={docType:docType};
+  docJobPhotosCtx={docType:docType,source:'job'};
   var grid=document.getElementById('doc-job-photos-grid');
   var sub=document.getElementById('doc-job-photos-sub');
+  document.getElementById('doc-job-photos-title').textContent='Vælg fra sagens billeder';
   grid.innerHTML='<div class="sub">Henter sagens billeder…</div>';
   document.getElementById('doc-job-photos-modal').classList.add('open');
   var r=await api('/api/document-job-photos/'+docType+'/'+state.id);
@@ -28941,16 +29175,114 @@ async function docAttachOpenJobPhotoPicker(docType){
   }).join('');
   docJobPhotosCtx.photos=r.photos;
 }
+// RUNDE BL — samme som ovenfor, men kilden er kundens EGNE svar-billeder
+// (customer_photo_requests via GET /api/document-customer-photos), ikke
+// sagens. "Kunden" findes ud fra dokumentets customer_id (faktura) eller
+// quotes.customer_id (tilbud) — se serverruten for detaljen.
+async function docAttachOpenCustomerPhotoPicker(docType){
+  var state=docAttachStateFor(docType);
+  if(!state.id){toast((docType==='invoice'?'Fakturaen':'Tilbuddet')+' mangler et ID — kan ikke hente kundens billeder','⚠️');return;}
+  docJobPhotosCtx={docType:docType,source:'customer'};
+  var grid=document.getElementById('doc-job-photos-grid');
+  var sub=document.getElementById('doc-job-photos-sub');
+  document.getElementById('doc-job-photos-title').textContent='Vælg fra kundens billeder';
+  grid.innerHTML='<div class="sub">Henter kundens billeder…</div>';
+  document.getElementById('doc-job-photos-modal').classList.add('open');
+  var r=await api('/api/document-customer-photos/'+docType+'/'+state.id);
+  if(!r||!r.customer){
+    grid.innerHTML='<div class="sub">Ingen kunde koblet på dette '+(docType==='invoice'?'faktura':'tilbud')+' endnu — der er derfor ingen kundebilleder at vælge fra.</div>';
+    return;
+  }
+  sub.textContent='Kunde: '+r.customer.name+' — billeder kunden selv har uploadet via et svar-link (se Filer-fanen under Handler)';
+  if(!r.photos||!r.photos.length){grid.innerHTML='<div class="sub">Kunden har ikke uploadet nogen billeder endnu. Opret et svar-link under kundens Handler-side, fane Filer.</div>';return;}
+  grid.innerHTML=r.photos.map(function(p,idx){
+    return '<div class="doc-job-photo-item" data-idx="'+idx+'">'
+      +'<img src="'+esc(p.url)+'" alt="" loading="lazy">'
+      +'<div class="djp-meta"><span class="djp-source">'+esc(p.source)+'</span><br>'+esc(p.caption||'')+(p.date?'<br>'+esc(String(p.date).slice(0,10)):'')+'</div>'
+      +'</div>';
+  }).join('');
+  docJobPhotosCtx.photos=r.photos;
+}
+// RUNDE BL — samme billedvælger, men kaldt fra "Ny kreditnota"-formularen
+// (endnu ingen kreditnota-ID) i stedet for en allerede-gemt faktura/tilbud.
+// Kunden findes via den FAKTURA kreditnotaen laves på (ivState.id — man er
+// altid inde på en åben faktura når man opretter en kreditnota på den).
+// docJobPhotoPick() lægger valget i ivState.creditAttachments i stedet for
+// at gemme det med det samme, se kommentaren dér.
+async function ivOpenCreditCustomerPhotoPicker(){
+  if(!ivState.id){toast('Fakturaen mangler et ID','⚠️');return;}
+  docJobPhotosCtx={docType:'invoice',source:'customer',mode:'credit-stage'};
+  var grid=document.getElementById('doc-job-photos-grid');
+  var sub=document.getElementById('doc-job-photos-sub');
+  document.getElementById('doc-job-photos-title').textContent='Vælg fra kundens billeder';
+  grid.innerHTML='<div class="sub">Henter kundens billeder…</div>';
+  document.getElementById('doc-job-photos-modal').classList.add('open');
+  var r=await api('/api/document-customer-photos/invoice/'+ivState.id);
+  if(!r||!r.customer){
+    grid.innerHTML='<div class="sub">Ingen kunde koblet på denne faktura — der er derfor ingen kundebilleder at vælge fra.</div>';
+    return;
+  }
+  sub.textContent='Kunde: '+r.customer.name+' — billeder kunden selv har uploadet via et svar-link (se Filer-fanen under Handler)';
+  if(!r.photos||!r.photos.length){grid.innerHTML='<div class="sub">Kunden har ikke uploadet nogen billeder endnu. Opret et svar-link under kundens Handler-side, fane Filer.</div>';return;}
+  grid.innerHTML=r.photos.map(function(p,idx){
+    return '<div class="doc-job-photo-item" data-idx="'+idx+'">'
+      +'<img src="'+esc(p.url)+'" alt="" loading="lazy">'
+      +'<div class="djp-meta"><span class="djp-source">'+esc(p.source)+'</span><br>'+esc(p.caption||'')+(p.date?'<br>'+esc(String(p.date).slice(0,10)):'')+'</div>'
+      +'</div>';
+  }).join('');
+  docJobPhotosCtx.photos=r.photos;
+}
 async function docJobPhotoPick(idx){
   if(!docJobPhotosCtx)return;
   var photo=(docJobPhotosCtx.photos||[])[idx];
   if(!photo)return;
+  // RUNDE BL — kreditnota-oprettelsen har ENDNU IKKE noget ID (den oprettes
+  // først når man trykker "+ Ny kreditnota", se addIvCreditNote), så der er
+  // ingen document_attachments-række at gemme til endnu. Billedet lægges i
+  // stedet direkte i ivState.creditAttachments — samme "staging"-liste som
+  // ivHandleCreditAttachmentFiles allerede bruger for lokalt uploadede
+  // billeder — og sendes med NÅR kreditnotaen rent faktisk oprettes.
+  if(docJobPhotosCtx.mode==='credit-stage'){
+    if(!ivState.creditAttachments)ivState.creditAttachments=[];
+    ivState.creditAttachments.push({url:photo.url,caption:photo.caption||photo.user_name||null});
+    ivRenderCreditAttachments();
+    toast('Billede tilføjet til kreditnotaen ✓','📎');
+    return;
+  }
+  // RUNDE BL — booking-noten (projektstyring/dagligplanlægning) gemmer sine
+  // vedhæftninger som base64 data-URI'er DIREKTE i noten (note_attachments),
+  // ikke som en URL (se kommentaren ved NOTE_ATTACH_MAX_FILES) — kundens
+  // billede skal derfor hentes og konverteres, PRÆCIS som en lokalt valgt fil
+  // ville blive det (samme resizeImageFile-vej, som også holder størrelsen
+  // nede for en telefonkamera-opløsning).
+  if(docJobPhotosCtx.mode==='note-stage'){
+    var prefix=docJobPhotosCtx.prefix;
+    try{
+      var resp=await fetch(photo.url);
+      if(!resp.ok)throw new Error('HTTP '+resp.status);
+      var blob=await resp.blob();
+      var dataUrl=await resizeImageFile(blob,1400,.75);
+      var list=noteAttachState(prefix);
+      if(list.length>=NOTE_ATTACH_MAX_FILES){toast('Maks '+NOTE_ATTACH_MAX_FILES+' filer pr. note','⚠');return;}
+      list.push({name:'kundebillede.jpg',type:'image',data:dataUrl});
+      renderNoteAttachments(prefix);
+      toast('Billede tilføjet ✓','📎');
+    }catch(err){
+      toast('Kunne ikke hente billedet fra kunden: '+(err&&err.message||''),'❌');
+    }
+    return;
+  }
   var docType=docJobPhotosCtx.docType;
   var state=docAttachStateFor(docType);
   if(!state.attachments)state.attachments=[];
-  var r=await api('/api/document-attachments/'+docType+'/'+state.id,{method:'POST',body:JSON.stringify({url:photo.url,caption:photo.user_name||null})});
+  // RUNDE BL — kundens billeder har et rigtigt caption-felt (spørgsmålet de
+  // svarede på), som er langt mere sigende i PDF-bilaget end blot kundens
+  // navn — bruges derfor FØR user_name, hvor det findes (sagsbilleder har det
+  // typisk ikke sat, og falder derfor fortsat tilbage til user_name som hidtil).
+  var pickedCaption=photo.caption||photo.user_name||null;
+  var r=await api('/api/document-attachments/'+docType+'/'+state.id,{method:'POST',body:JSON.stringify({url:photo.url,caption:pickedCaption})});
   if(r&&r.ok){
-    state.attachments.push({id:r.id,url:photo.url,caption:photo.user_name||null});
+    state.attachments.push({id:r.id,url:photo.url,caption:pickedCaption});
     docAttachRenderList(docType);
     toast('Billede vedhæftet ✓','📎');
   }else toast((r&&r.error)||'Kunne ikke vedhæfte billedet','❌');
@@ -29291,6 +29623,7 @@ function bindQuotesModuleEvents(){
   // RUNDE AC — tilbuddets egne vedhæftninger (se docAttachStateFor).
   document.getElementById('qe-attach-input').addEventListener('change',function(e){docAttachUploadFiles('quote',e.target.files);e.target.value='';});
   document.getElementById('qe-attach-job-photos-btn').addEventListener('click',function(){docAttachOpenJobPhotoPicker('quote');});
+  document.getElementById('qe-attach-customer-photos-btn').addEventListener('click',function(){docAttachOpenCustomerPhotoPicker('quote');});
   document.getElementById('qe-attach-list').addEventListener('click',function(e){var btn=e.target.closest('.iv-attach-remove');if(btn)docAttachRemove(btn.dataset.doctype,Number(btn.dataset.idx));});
   // RUNDE AC — fælles billedvælger-modal (sagens billeder/timetracking), delt
   // mellem tilbud og faktura, se docAttachOpenJobPhotoPicker/docJobPhotoPick.
@@ -29379,10 +29712,12 @@ function bindQuotesModuleEvents(){
   document.getElementById('iv-credit-picker').addEventListener('input',function(e){if(e.target.classList.contains('iv-credit-line-amt'))ivCreditLineAmtEdited(Number(e.target.dataset.idx));});
   document.getElementById('iv-credit-attachments').addEventListener('click',function(e){var btn=e.target.closest('.iv-attach-remove');if(btn){var chips=Array.prototype.slice.call(document.querySelectorAll('#iv-credit-attachments .iv-attach-chip'));ivRemoveCreditAttachment(chips.indexOf(btn.closest('.iv-attach-chip')));}});
   document.getElementById('iv-credit-attach-input').addEventListener('change',function(e){ivHandleCreditAttachmentFiles(e.target.files);e.target.value='';});
+  document.getElementById('iv-credit-attach-customer-photos-btn').addEventListener('click',ivOpenCreditCustomerPhotoPicker);
   document.getElementById('iv-credit-notes-list').addEventListener('click',function(e){var btn=e.target.closest('[data-cn-detail]');if(btn)ivToggleCreditDetail(Number(btn.dataset.cnDetail));});
   // RUNDE AC — fakturaens EGNE vedhæftninger (adskilt fra kreditnotens ovenfor).
   document.getElementById('iv-attach-input').addEventListener('change',function(e){docAttachUploadFiles('invoice',e.target.files);e.target.value='';});
   document.getElementById('iv-attach-job-photos-btn').addEventListener('click',function(){docAttachOpenJobPhotoPicker('invoice');});
+  document.getElementById('iv-attach-customer-photos-btn').addEventListener('click',function(){docAttachOpenCustomerPhotoPicker('invoice');});
   document.getElementById('iv-attach-list').addEventListener('click',function(e){var btn=e.target.closest('.iv-attach-remove');if(btn)docAttachRemove(btn.dataset.doctype,Number(btn.dataset.idx));});
   document.getElementById('iv-due-date').addEventListener('change',saveIvDueDate);
   document.getElementById('iv-top-note').addEventListener('change',saveIvTopNote);
