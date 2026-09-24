@@ -487,6 +487,15 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 .bly-kpi-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .bly-kpi-value{font-size:23px;font-weight:800;color:var(--bly-ink);line-height:1.1;letter-spacing:-.01em}
 .bly-kpi-value .unit{font-size:12px;font-weight:700;color:var(--bly-sub);margin-left:3px}
+/* RETTELSE (Martins fejlrapport: "kan du ikke rykke søgefeltet under de 4
+   bokse og gøre det lidt pænere og størrer? glemmer altid det er ovenover
+   dem") — søgefeltet på Tilbud/Fakturaer boede i selve .bly-toolbar, altså
+   OVER KPI-kortene, hvor det var let at overse. Flyttet ned under kortene i
+   sin egen række (sammen med periode-filteret, som allerede lå der), og gjort
+   fysisk større — samme mønster brugt ens på begge sider (#qz-quote-search og
+   #qz-invoice-search) for konsistens. */
+.bly-search-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 14px}
+input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:16px;background-position:14px center;border-radius:var(--bly-r-md);flex:1;min-width:240px;max-width:460px}
 /* Projekt budget-dashboard (sep. 2026) — samme kort-stil som bly-kpi-*, men uden
    klik-interaktion (rene nøgletal, ikke filtre) og et bredere grid til 6 tal. */
 .pd-budget-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:10px}
@@ -1241,7 +1250,18 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
    for at forstå. */
 .crmpx-task-row input[type="checkbox"]{width:15px;height:15px;accent-color:#16A34A;cursor:pointer;flex-shrink:0}
 .crmpx-task-hoej{font-size:9px;font-weight:800;background:#FFFBEB;color:#B45309;border-radius:var(--bly-r-pill);padding:2px 7px;flex-shrink:0;white-space:nowrap}
-.crmpx-task-title{flex:1;min-width:0}
+/* RETTELSE (Martins fejlrapport: "tekst ser helt dum ud når det er den er
+   for lang [...] fordi der så lidt plads") — rækken er et smalt flex-layout
+   (checkbox + prioritet-mærke + dato/ansvarlig + rediger/slet-knapper tager
+   det meste af bredden), så en lang opgavetekst uden nogen wrap-begrænsning
+   endte med at bryde ét ord pr. linje i den lille rest-plads. Titlen er nu
+   låst til ÉN linje med "…"-afkortning, og en lille "Læs mere"-knap dukker
+   op ved siden af når teksten rent faktisk er for lang til at stå i sin
+   helhed (se crmpxTaskRowHtml + crmpxOpenTaskModal), som åbner hele opgaven
+   i en popup i stedet. */
+.crmpx-task-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crmpx-task-more{flex-shrink:0;font-size:10.5px;font-weight:700;color:var(--bly-accent);cursor:pointer;background:none;border:0;padding:0;white-space:nowrap}
+.crmpx-task-more:hover{text-decoration:underline}
 .crmpx-task-meta{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .crmpx-task-due{font-size:10.5px;color:var(--bly-sub);white-space:nowrap}
 .crmpx-task-due.overdue{color:#DC2626;font-weight:700}
@@ -2771,6 +2791,10 @@ body.qz-overlay-open .page.active{display:none}
 .set-row-value{font-size:12.5px;font-weight:800;color:var(--bly-ink);white-space:nowrap;font-variant-numeric:tabular-nums}
 .set-list{display:flex;flex-direction:column;gap:8px}
 .set-empty{font-size:12px;color:var(--bly-sub);margin:0;padding:12px 2px}
+/* RETTELSE (Martins fejlrapport om akkordpriser pr. Hold/Vendor) — samme
+   .set-row-udseende som Akkordlisten under Indstillinger, blot i en scrollbar
+   boks der passer inde i det smallere medarbejder-modal. */
+.user-akkord-rates-box{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto;padding-right:2px}
 /* Handlingsbjælke nederst i et kort — adskilt med en blød linje, så "Gem"
    altid er tydeligt knyttet til netop dét kort. */
 .set-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px;padding-top:14px;border-top:1px solid var(--bly-border-soft)}
@@ -3620,7 +3644,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.37</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.39</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4202,6 +4226,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <button class="btn small" id="lostfollow-run-btn" type="button" style="margin-left:8px">Kør nu (test)</button>
           <span class="sub" id="lostfollow-status" style="margin-left:8px"></span>
         </div>
+
+        <!-- RUNDE BC (Martin: "Jeg vil gerne få en email send til
+             info@gulvmaster.dk når en kunde acceptere et tilbud fucking
+             vigtigt! og måske en daglig email hver morgen 07:00 med følgende
+             status ...") — begge de nye mails går til samme faste adresse
+             (QUOTE_ACCEPTED_NOTIFY_EMAIL i server.js), ikke noget der
+             redigeres herfra endnu. Kortet her er derfor kun status +
+             en test-knap til morgen-mailen, ikke to fulde indstillings-
+             formularer som Tabt-opfølgningen ovenfor. -->
+        <div style="background:#F8FAFC;border:1px solid var(--border2,#E5E7EB);border-radius:10px;padding:14px 16px;margin-top:16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">📊 Interne varsler til info@gulvmaster.dk</div>
+          <div class="hint" style="margin:0 0 10px">
+            <b>Tilbud accepteret:</b> sendes automatisk med det samme, hver gang et tilbud bliver accepteret — uanset om kunden underskriver online, eller I selv markerer det som godkendt i admin. Altid slået til, kan ikke slås fra herfra.<br><br>
+            <b>Daglig status kl. 07:00:</b> nye leads, hvor mange der er talt med (rykket til Salg), tilbud sendt/accepteret, samt eventuelle fejl/leveringsproblemer det seneste døgn.
+          </div>
+          <button class="btn small" id="daily-status-run-btn" type="button">Kør daglig status-mail nu (test)</button>
+          <span class="sub" id="daily-status-run-status" style="margin-left:8px"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -4527,14 +4569,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div id="qz-delivery-warning" style="display:none;margin:0 0 16px;padding:12px 16px;border-radius:var(--bly-r-md);background:#FEF2F2;border:1px solid #FECACA"></div>
 
     <div class="bly-toolbar">
-      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-quotes-count">Tilbud</span><input type="text" id="qz-quote-search" class="bly-search" placeholder="Søg — navn, tilbudsnr., sagsnr., adresse, email eller telefon..."></div>
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-quotes-count">Tilbud</span></div>
       <div class="bly-toolbar-right"><button class="bly-btn" id="qz-new-quote-btn" type="button">+ Nyt tilbud</button></div>
     </div>
     <!-- Status-oversigt som "kort" i stedet for almindelige tekst-faner — samme
          .bly-kpi-card-mønster som Økonomi-modulets fakturastatus-kort, efter
          Martins ønske om noget der ligner Billys "Overblik"-bokse. -->
     <div class="bly-kpi-row bly-kpi-row-tf" id="qz-quotes-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
-    <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:0 0 14px">
+    <!-- RETTELSE — søgefeltet flyttet ned under kortene (se .bly-search-row) og
+         gjort større, se CSS-kommentaren ved .bly-search-lg. -->
+    <div class="bly-search-row">
+      <input type="text" id="qz-quote-search" class="bly-search bly-search-lg" placeholder="Søg — navn, tilbudsnr., sagsnr., adresse, email eller telefon...">
       <div class="bly-period" style="position:relative">
         <button class="bly-ctl" id="qz-quotes-period-btn" type="button">📅 <span id="qz-quotes-period-label">Alt tid</span></button>
         <div class="bly-period-pop" id="qz-quotes-period-pop" style="display:none"></div>
@@ -4552,7 +4597,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 
     <div class="bly-toolbar">
-      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-invoices-count">Fakturaer</span><input type="text" id="qz-invoice-search" class="bly-search" placeholder="Søg — navn, fakturanr., sagsnr., adresse, email eller telefon..."></div>
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="qz-invoices-count">Fakturaer</span></div>
       <div class="bly-toolbar-right">
         <!-- RUNDE H #316 (Martins ønske: "fjern rykker moduellet fra Økonomi.
              Det burde være under selve faktura modullet i tilbud og faktura")
@@ -4578,7 +4623,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div id="fin-dunning-log" style="margin-top:14px"></div>
     </div>
     <div class="bly-kpi-row bly-kpi-row-tf" id="qz-invoices-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
-    <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:0 0 14px">
+    <!-- RETTELSE — samme flytning/forstørrelse af søgefeltet som Tilbud-siden,
+         for ensartet stil, se CSS-kommentaren ved .bly-search-lg. -->
+    <div class="bly-search-row">
+      <input type="text" id="qz-invoice-search" class="bly-search bly-search-lg" placeholder="Søg — navn, fakturanr., sagsnr., adresse, email eller telefon...">
       <div class="bly-period" style="position:relative">
         <button class="bly-ctl" id="qz-invoices-period-btn" type="button">📅 <span id="qz-invoices-period-label">Alt tid</span></button>
         <div class="bly-period-pop" id="qz-invoices-period-pop" style="display:none"></div>
@@ -5784,6 +5832,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
 </div>
 
+<!-- OPGAVE-DETALJER — RETTELSE (Martins fejlrapport om for lang opgavetekst i
+     den smalle opgave-række): fuld opgavetekst + metadata i en popup, åbnet
+     via "Læs mere"-knappen som crmpxTaskRowHtml sætter på når titlen er
+     afkortet, se crmpxOpenTaskModal(). -->
+<div class="mo" id="crmpx-task-modal">
+  <div class="modal" style="max-width:min(520px,94vw)">
+    <h3 id="crmpx-task-modal-title" style="word-break:break-word"></h3>
+    <div class="sub" id="crmpx-task-modal-meta" style="margin-top:-6px;margin-bottom:14px"></div>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="closeModal('crmpx-task-modal')">Luk</button>
+    </div>
+  </div>
+</div>
+
 <!-- CRM-PIPELINE — INDSTILLINGER (stages pr. pipeline + custom fields) -->
 <div class="mo" id="crmp-settings-modal">
   <div class="modal" style="max-width:640px">
@@ -5841,7 +5903,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <div class="mo" id="crmp-email-preview-modal" style="z-index:260">
   <div class="modal" style="width:min(760px,96vw);max-width:96vw;padding:0;overflow:hidden;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--bly-border)">
-      <div style="flex:1;font-weight:800;font-size:15px;letter-spacing:-.01em">👁 Forhåndsvisning af email</div>
+      <div style="flex:1;font-weight:800;font-size:15px;letter-spacing:-.01em" id="crmp-email-preview-heading">👁 Forhåndsvisning af email</div>
       <button class="btn small" type="button" id="crmp-email-preview-close">✕ Luk</button>
     </div>
     <div style="padding:12px 18px;border-bottom:1px solid var(--bly-border-soft);background:var(--bly-bg-soft,#F5F5F7)">
@@ -5851,7 +5913,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div style="flex:1;min-height:0;display:flex;justify-content:center;background:#F5F5F7;padding:12px">
       <iframe id="crmp-email-preview-frame" sandbox="allow-same-origin" title="Forhåndsvisning af email" style="width:100%;max-width:700px;height:500px;border:1px solid var(--bly-border);border-radius:8px;background:#fff"></iframe>
     </div>
-    <div class="sub" style="padding:10px 18px;border-top:1px solid var(--bly-border-soft);font-size:11.5px">Forhåndsvisning med eksempeldata — de rigtige oplysninger indsættes ved afsendelse.</div>
+    <div class="sub" style="padding:10px 18px;border-top:1px solid var(--bly-border-soft);font-size:11.5px" id="crmp-email-preview-footer">Forhåndsvisning med eksempeldata — de rigtige oplysninger indsættes ved afsendelse.</div>
   </div>
 </div>
 
@@ -8506,7 +8568,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div class="form-group" id="user-hourly-wage-group"><label class="form-label">Timeløn (kr/time)</label><input id="user-hourly-wage" class="input" type="number" min="0" step="0.01" placeholder="Fx 200"></div>
     </div>
-    <div class="hint hidden" id="user-akkord-hint" style="margin:-4px 0 4px">Medarbejderen vælger en post fra Akkordlisten (nedenfor på denne side) hver gang der registreres tid, i stedet for timer × timeløn.</div>
+    <div class="hint hidden" id="user-akkord-hint" style="margin:-4px 0 4px">Medarbejderen vælger en post fra Akkordlisten hver gang der registreres tid, i stedet for timer × timeløn. Priserne herunder er DENNE medarbejders egne aftalte priser — nye poster oprettes/redigeres stadig under ⚙️ Indstillinger → Akkordliste.</div>
+    <!-- RETTELSE (Martins fejlrapport: "kan du ikke lave så jeg kan lave den
+         under den enkle Hold/Vendor, så det let for mig at tilføje listen til
+         dem men rette den under dem da de kan have forskellige aftale
+         priser?") — akkordlistens POSTER (navne) styres stadig ét sted
+         (Indstillinger → Akkordliste), men PRISEN pr. post kan nu sættes
+         individuelt for denne medarbejder/vendor lige her, se
+         renderUserAkkordRates() + saveUserAkkordRate(). Tom = brug listens
+         standardpris. -->
+    <div class="form-group hidden" id="user-akkord-rates-group">
+      <label class="form-label">Akkordpriser for denne medarbejder</label>
+      <div id="user-akkord-rates-box" class="user-akkord-rates-box"></div>
+    </div>
     <div class="form-group"><label class="form-label">Privat mail <span class="opt-tag">til kalender-notifikationer, kan afvige fra login-mail</span></label><input id="user-personal-email" type="email" class="input" placeholder="Fx ahmed@privat.dk"></div>
     <div class="form-group"><label class="form-label">Mobilnummer <span class="opt-tag">til push/SMS ved ny/ændret opgave</span></label><input id="user-phone" type="tel" class="input" placeholder="Fx 12345678"></div>
     <label class="login-row"><input id="user-notify-changes" type="checkbox"> Send besked (mail + evt. SMS) til medarbejderen, når kalenderen ændres</label>
@@ -13429,6 +13503,14 @@ document.getElementById('lostfollow-run-btn').addEventListener('click',async fun
   if(!r||r.ran===false){statusEl.textContent='Kørte ikke ('+((r&&r.reason)||'ukendt fejl')+')';return;}
   statusEl.textContent=r.sent+' mail(s) sendt, '+r.skippedNoEmail+' uden email, '+r.skippedNoQuote+' uden tilbud.';
 });
+// RUNDE BC — test-knap for den daglige status-mail, se runDailyStatusEmail i server.js.
+document.getElementById('daily-status-run-btn').addEventListener('click',async function(){
+  var statusEl=document.getElementById('daily-status-run-status');
+  statusEl.textContent='Kører...';
+  var r=await api('/api/reports/daily-status/run',{method:'POST'});
+  if(!r||r.ran===false){statusEl.textContent='Kørte ikke ('+((r&&r.reason)||'ukendt fejl')+')';return;}
+  statusEl.textContent='Sendt ✓ — '+r.newLeads+' nye leads, '+r.talkedTo+' talt med, '+r.quotesSent+' tilbud sendt, '+r.quotesAccepted+' accepteret, '+r.issueCount+' fejl/problemer.';
+});
 
 // ── AUTOMATISKE MAILS (system_email_templates) — ét aktivt eksemplar pr. handling ──
 // RUNDE AD — hasPdfAndTest er udvidet fra en simpel true/false til et lille
@@ -17536,6 +17618,59 @@ function toggleUserPayTypeField(){
   var isAkkord=document.getElementById('user-pay-type').value==='akkord';
   document.getElementById('user-hourly-wage-group').classList.toggle('hidden',isAkkord);
   document.getElementById('user-akkord-hint').classList.toggle('hidden',!isAkkord);
+  // RETTELSE (Martins fejlrapport om Hold/Vendor-specifikke akkordpriser) —
+  // prislisten pr. medarbejder kan kun sættes for en medarbejder der allerede
+  // findes (skal have et rigtigt id at hænge priserne på) — en helt ny,
+  // endnu ikke gemt medarbejder viser derfor ikke boksen selvom "Akkord" er
+  // valgt; den dukker op første gang man åbner medarbejderen igen efter at
+  // have gemt.
+  var showBox=isAkkord&&!!editUserId;
+  document.getElementById('user-akkord-rates-group').classList.toggle('hidden',!showBox);
+  if(showBox)loadUserAkkordRates(editUserId);
+}
+// ── AKKORDPRISER PR. MEDARBEJDER/VENDOR (RETTELSE, Martins fejlrapport) ─────
+// Samme grund-idé som Akkordlisten under Indstillinger (renderAkkordItemsList
+// ovenfor), men her er det IKKE selve posterne (navne) der administreres —
+// kun DENNE medarbejders egen pris pr. post, se GET/PUT/DELETE
+// /api/users/:id/akkord-rates(/:itemId) i server.js. Tomt/nulstillet felt =
+// medarbejderen bruger listens fælles standardpris.
+async function loadUserAkkordRates(userId){
+  var box=document.getElementById('user-akkord-rates-box');
+  box.innerHTML='<p class="set-empty">Henter…</p>';
+  var rows=await api('/api/users/'+userId+'/akkord-rates');
+  renderUserAkkordRates(userId,Array.isArray(rows)?rows:[]);
+}
+function renderUserAkkordRates(userId,rows){
+  var box=document.getElementById('user-akkord-rates-box');
+  var active=rows.filter(function(r){return r.active;});
+  if(!active.length){box.innerHTML='<p class="set-empty">Ingen akkordposter oprettet endnu — opret dem under ⚙️ Indstillinger → Akkordliste.</p>';return;}
+  box.innerHTML=active.map(function(it){
+    var current=it.has_override?Number(it.override_rate):Number(it.default_rate);
+    return '<div class="set-row" data-akkord-id="'+it.id+'">'
+      +'<div class="set-row-main"><div class="set-row-title">'+esc(it.name)+'</div>'
+      +'<div class="set-row-sub">'+(it.has_override?'Egen pris — listens standard er '+krFmt(Number(it.default_rate)):'Bruger listens standardpris')+'</div></div>'
+      +'<input type="number" min="0" step="0.01" class="input" style="width:105px" data-uar-input="'+it.id+'" value="'+current+'">'
+      +(it.has_override?'<button class="btn small" type="button" data-action="uar-reset" data-id="'+it.id+'">Nulstil</button>':'')
+      +'</div>';
+  }).join('');
+  box.querySelectorAll('[data-uar-input]').forEach(function(input){
+    input.addEventListener('change',function(){saveUserAkkordRate(userId,input.dataset.uarInput,input);});
+  });
+  box.querySelectorAll('[data-action="uar-reset"]').forEach(function(btn){
+    btn.addEventListener('click',function(){resetUserAkkordRate(userId,btn.dataset.id);});
+  });
+}
+async function saveUserAkkordRate(userId,itemId,input){
+  var rate=Number(String(input.value).replace(',','.'));
+  if(isNaN(rate)||rate<0){toast('Ugyldig pris','⚠');return;}
+  var r=await api('/api/users/'+userId+'/akkord-rates/'+itemId,{method:'PUT',body:JSON.stringify({rate:rate})});
+  if(r&&r.ok){toast('Pris gemt ✓','✓');await loadUserAkkordRates(userId);}
+  else toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+async function resetUserAkkordRate(userId,itemId){
+  var r=await api('/api/users/'+userId+'/akkord-rates/'+itemId,{method:'DELETE'});
+  if(r&&r.ok){toast('Nulstillet til standardpris','✓');await loadUserAkkordRates(userId);}
+  else toast((r&&r.error)||'Kunne ikke nulstille','❌');
 }
 function toggleUserRoleWarning(){
   var isAdmin=document.getElementById('user-role').value==='admin';
@@ -23551,10 +23686,14 @@ function crmpxRenderActivity(activities){
     // ud (og kan rettes/slettes) præcis som noter skrevet her.
     var icon=a.kind==='note'?'📝':a.kind==='stage_change'?'🔀':a.kind==='converted'?'🤝':a.kind==='lead_history'?'📜':'✨';
     var edited=a.updated_at&&a.updated_at!==a.created_at;
+    // RUNDE BB — aktiviteter der har en gemt, faktisk afsendt mail
+    // (email_html, se crmLogEmailActivity i server.js) får en "Se mail"-knap,
+    // så Martin kan validere ORDRET hvad kunden fik, ikke kun emnelinjen.
+    var hasMail=!!(a.email_html&&a.email_html.trim());
     return '<div class="crmpx-activity-item" data-activity-id="'+a.id+'">'
       +'<div class="crmpx-activity-icon">'+icon+'</div>'
       +'<div class="crmpx-activity-body">'+esc(a.body||'')
-      +'<div class="crmpx-activity-meta">'+esc(a.user_name||'System')+' · '+esc(fmtDaDate(a.created_at))+(edited?' · <span class="crmpx-activity-meta-edited">redigeret</span>':'')+'</div></div>'
+      +'<div class="crmpx-activity-meta">'+esc(a.user_name||'System')+' · '+esc(fmtDaDate(a.created_at))+(edited?' · <span class="crmpx-activity-meta-edited">redigeret</span>':'')+(hasMail?' · <button type="button" class="crmpx-task-more" data-crmpx-act="view-mail" style="display:inline">✉️ Se mail</button>':'')+'</div></div>'
       +(a.kind==='note'?'<div class="crmpx-activity-actions"><button class="qz-icon-btn" data-crmpx-act="edit" type="button" title="Redigér">✎</button><button class="qz-icon-btn" data-crmpx-act="delete" type="button" title="Slet">🗑</button></div>':'')
       +'</div>';
   }).join('')||'<div class="crmpx-empty">'+((crmpxActivities||[]).length?'Ingen aktivitet i denne gruppe':'Ingen aktivitet endnu')+'</div>';
@@ -23574,6 +23713,8 @@ document.getElementById('crmpx-activity').addEventListener('click',function(e){
   if(!act)return;
   if(btn.dataset.crmpxAct==='delete'){
     gmConfirm('Slet denne note? Kan ikke fortrydes.','Slet note').then(function(ok){if(ok)crmpxDeleteActivityNote(actId);});
+  } else if(btn.dataset.crmpxAct==='view-mail'){
+    crmpOpenSentEmailPreview(act.email_subject||'',act.email_html||'');
   } else {
     crmpxStartEditActivityNote(item,act);
   }
@@ -23954,7 +24095,8 @@ function crmpxTaskRowHtml(t){
   // listen ved hvile ser lige så ren ud som i forslaget.
   return '<div class="crmpx-task-row'+(t.done?' done':'')+'">'
     +'<input type="checkbox" data-task-id="'+t.id+'" data-action="task-toggle"'+(t.done?' checked':'')+'>'
-    +'<span class="crmpx-task-title">'+esc(t.title)+'</span>'
+    +'<span class="crmpx-task-title" data-task-id="'+t.id+'" title="'+esc(t.title)+'">'+esc(t.title)+'</span>'
+    +'<button type="button" class="crmpx-task-more" data-task-id="'+t.id+'" data-action="task-view" style="display:none">Læs mere</button>'
     +(t.priority?'<span class="crmpx-task-hoej" title="Høj prioritet">⚡ Høj</span>':'')
     +'<span class="crmpx-task-meta">'+crmpxTaskDueLabel(t)+assigneeBadge+'</span>'
     +'<button type="button" class="qz-icon-btn crmpx-task-edit" data-task-id="'+t.id+'" data-action="task-edit" title="Ret">✏️</button>'
@@ -23983,10 +24125,35 @@ async function crmpxRenderTasksList(){
   list.querySelectorAll('[data-action="task-edit-save"]').forEach(function(btn){
     btn.addEventListener('click',function(){crmpxSaveTaskEdit(btn.dataset.taskId);});
   });
+  // RETTELSE (Martins fejlrapport om for lang opgavetekst) — "Læs mere"-
+  // knappen er altid i markup'et (skjult), og vises kun for de rækker hvor
+  // titlen rent faktisk er afkortet af CSS-ellipsen (scrollWidth>clientWidth
+  // efter render), i stedet for et gættet tegn-antal der ville ramme forkert
+  // ved forskellige sidebar-/skærmbredder.
+  list.querySelectorAll('.crmpx-task-title').forEach(function(el){
+    if(el.scrollWidth>el.clientWidth+1){
+      var moreBtn=list.querySelector('.crmpx-task-more[data-task-id="'+el.dataset.taskId+'"]');
+      if(moreBtn)moreBtn.style.display='';
+    }
+  });
+  list.querySelectorAll('[data-action="task-view"]').forEach(function(btn){
+    btn.addEventListener('click',function(){crmpxOpenTaskModal(btn.dataset.taskId);});
+  });
   if(crmpxEditingTaskId!==null){
     var titleInput=document.getElementById('crmpx-task-edit-title-'+crmpxEditingTaskId);
     if(titleInput){titleInput.focus();titleInput.select();}
   }
+}
+function crmpxOpenTaskModal(taskId){
+  var t=crmpxTasksCache.find(function(x){return String(x.id)===String(taskId);});
+  if(!t)return;
+  document.getElementById('crmpx-task-modal-title').textContent=t.title;
+  var metaParts=[];
+  if(t.priority)metaParts.push('⚡ Høj prioritet');
+  if(t.due_date)metaParts.push(fmtDaDate(t.due_date)+(t.due_time?' · '+t.due_time:''));
+  if(t.assigned_name)metaParts.push(t.assigned_name);
+  document.getElementById('crmpx-task-modal-meta').textContent=metaParts.join(' · ');
+  document.getElementById('crmpx-task-modal').classList.add('open');
 }
 async function crmpxSaveTaskEdit(id){
   var titleEl=document.getElementById('crmpx-task-edit-title-'+id);
@@ -24346,6 +24513,8 @@ function crmpFollowupPreviewSampleVars(){
   return {navn:'Peter Jensen',firma:'Gulv Master Enterprise ApS'};
 }
 function crmpOpenEmailPreview(subject,body,vars){
+  document.getElementById('crmp-email-preview-heading').textContent='👁 Forhåndsvisning af email';
+  document.getElementById('crmp-email-preview-footer').textContent='Forhåndsvisning med eksempeldata — de rigtige oplysninger indsættes ved afsendelse.';
   document.getElementById('crmp-email-preview-subject').textContent=fillDocEmailVarsClient(subject,vars);
   var html=fillDocEmailVarsClient(body,vars);
   // Ingen egen padding på body: mailens HTML ER dokumentet hos modtageren, og
@@ -24353,6 +24522,19 @@ function crmpOpenEmailPreview(subject,body,vars){
   // hvid kant hele vejen rundt. Skrifttypen er kun en fallback for de templates
   // der ikke selv sætter en — præcis som en mailklient gør det.
   document.getElementById('crmp-email-preview-frame').srcdoc='<!doctype html><meta charset="utf-8"><body style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#222">'+(html.trim()?html:'<span style="color:#888;display:inline-block;padding:12px">(tom mail-tekst)</span>')+'</body>';
+  document.getElementById('crmp-email-preview-modal').classList.add('open');
+}
+// RUNDE BB (Martin: "kan du ikke kun læse den automation der lavet men måske
+// en da poppe mailen op? [...] vil sikre jeg kan validere når jeg konventere
+// kunder at de får de mails de skal") — samme modal/iframe som
+// crmpOpenEmailPreview ovenfor, men uden {{tag}}-udfyldning: dette ER den
+// FAKTISK afsendte mail (email_subject/email_html fra crm_activities, sat af
+// crmLogEmailActivity i server.js), ikke en levende skabelon-forhåndsvisning.
+function crmpOpenSentEmailPreview(subject,html){
+  document.getElementById('crmp-email-preview-heading').textContent='✉️ Mail sendt til kunden';
+  document.getElementById('crmp-email-preview-footer').textContent='Dette er den faktisk afsendte mail, ordret som kunden modtog den.';
+  document.getElementById('crmp-email-preview-subject').textContent=subject||'';
+  document.getElementById('crmp-email-preview-frame').srcdoc='<!doctype html><meta charset="utf-8"><body style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#222">'+(html&&html.trim()?html:'<span style="color:#888;display:inline-block;padding:12px">(tom mail-tekst)</span>')+'</body>';
   document.getElementById('crmp-email-preview-modal').classList.add('open');
 }
 function crmpCloseEmailPreview(){

@@ -1959,6 +1959,18 @@ async function initSchema() {
     -- kun når en note rent faktisk er rettet, så "redigeret"-mærket i UI'et kan vises
     -- præcis som på kunde-noterne (customer_notes.updated_at).
     ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS updated_at TEXT;
+    -- RUNDE BB (Martin: "kan du sikre hvergang en mail eller andet trigger på en
+    -- kunde står det under automatin og man kan ikke kun læse den automation der
+    -- lavet men måske en da poppe mailen op? [...] vil sikre jeg kan validere når
+    -- jeg konventere kunder at de får de mails de skal") — loglinjen for en
+    -- automatisk email har hidtil kun vist emnelinjen (fx 'Email sendt ("Ny"):
+    -- Velkommen!'), ikke selve mailens indhold. email_subject/email_html gemmer nu
+    -- den PRÆCIS udfyldte mail (efter {{navn}}/{{firma}} osv. er sat ind) som
+    -- rent faktisk blev sendt til kunden, så Martin kan åbne den i en popup og se
+    -- ordret hvad kunden fik — se crmLogEmailActivity nedenfor og
+    -- crmpOpenSentEmailPreview i admin.html.
+    ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS email_subject TEXT;
+    ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS email_html TEXT;
 
     -- Engangs-migrering (idempotent, pga. NOT EXISTS — kan trygt køre ved hver
     -- opstart uden at gøre noget efter første gang): da vi tilføjede once-per-
@@ -2278,6 +2290,32 @@ async function initSchema() {
     -- for en akkord-lønnet medarbejder udregnes ud fra akkord-linjen, ikke minutter×timeløn.
     ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS akkord_item_id INTEGER REFERENCES akkord_items(id) ON DELETE SET NULL;
     ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS akkord_quantity NUMERIC NOT NULL DEFAULT 0;
+    -- RUNDE BB (Martin: "kan du ikke lave så jeg kan lave den under den enkle
+    -- Hold/Vendor, så det let for mig at tilføje listen til dem men rette den
+    -- under dem da de kan have forskellige aftale priser?") — akkord_items
+    -- ovenfor er STADIG den fælles, navngivne prisliste (så alle akkord-
+    -- medarbejdere vælger fra samme poster, ingen stavefejl/dubletter pr.
+    -- medarbejder) — men en given medarbejder/vendor kan nu have sin egen
+    -- AFTALTE pris pr. post, i stedet for altid at bruge listens standardpris.
+    -- Ingen række her = brug akkord_items.rate som hidtil (bagudkompatibelt).
+    -- Se GET/PUT/DELETE /api/users/:id/akkord-rates.
+    CREATE TABLE IF NOT EXISTS user_akkord_rates (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      akkord_item_id INTEGER NOT NULL REFERENCES akkord_items(id) ON DELETE CASCADE,
+      rate NUMERIC NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      UNIQUE(user_id, akkord_item_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_akkord_rates_user ON user_akkord_rates(user_id);
+    -- Snapshot af den pris der REELT blev brugt ved oprettelsen af netop denne
+    -- linje (medarbejderens egen aftalte pris, hvis sat, ellers listens
+    -- standardpris på det tidspunkt) — så en senere prisændring (global eller
+    -- pr. medarbejder) aldrig ændrer historiske, allerede udbetalte/beregnede
+    -- linjer. NULL på gamle rækker (før denne kolonne fandtes) er fortsat
+    -- forventet og håndteres med COALESCE(te.akkord_rate, ai.rate) i
+    -- budget-udregningen, præcis som hidtil.
+    ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS akkord_rate NUMERIC;
 
     -- ── KS-SKABELON PR. SAG: Martin kan begrænse hvilke KS-skabeloner en
     -- medarbejder må udfylde på en given sag. Ingen rækker for en sag =
@@ -5479,6 +5517,47 @@ app.get('/api/users/:id/pay', auth, adminOnly, asyncRoute(async (req, res) => {
   res.json(row);
 }));
 
+// RUNDE BB (Martin: "kan du ikke lave så jeg kan lave den under den enkle
+// Hold/Vendor, så det let for mig at tilføje listen til dem men rette den
+// under dem da de kan have forskellige aftale priser?") — samme smalle,
+// adminOnly-mønster som GET /api/users/:id/pay ovenfor: kun hentes når
+// "Rediger medarbejder"-modalen faktisk åbnes for en akkord-lønnet
+// medarbejder. Returnerer HELE den fælles akkordliste (se akkord_items),
+// med denne medarbejders egen aftalte pris (user_akkord_rates) hvis sat,
+// ellers listens standardpris — så UI'en altid kan vise "aktuel pris" og
+// om den er en override eller ej (has_override).
+app.get('/api/users/:id/akkord-rates', auth, adminOnly, asyncRoute(async (req, res) => {
+  const user = await pgOne('SELECT id FROM users WHERE id=$1', [req.params.id]);
+  if (!user) return res.status(404).json({ error: 'Bruger blev ikke fundet' });
+  const rows = (await pool.query(`
+    SELECT ai.id, ai.name, ai.rate AS default_rate, ai.active,
+           uar.rate AS override_rate, (uar.id IS NOT NULL) AS has_override
+    FROM akkord_items ai
+    LEFT JOIN user_akkord_rates uar ON uar.akkord_item_id = ai.id AND uar.user_id = $1
+    ORDER BY ai.position ASC, ai.id ASC
+  `, [req.params.id])).rows;
+  res.json(rows);
+}));
+app.put('/api/users/:id/akkord-rates/:itemId', auth, adminOnly, asyncRoute(async (req, res) => {
+  const rate = Number((req.body || {}).rate);
+  if (!isFinite(rate) || rate < 0) return res.status(400).json({ error: 'Ugyldig pris' });
+  const item = await pgOne('SELECT id FROM akkord_items WHERE id=$1', [req.params.itemId]);
+  if (!item) return res.status(404).json({ error: 'Akkordposten blev ikke fundet' });
+  const user = await pgOne('SELECT id FROM users WHERE id=$1', [req.params.id]);
+  if (!user) return res.status(404).json({ error: 'Bruger blev ikke fundet' });
+  await pool.query(`
+    INSERT INTO user_akkord_rates (user_id, akkord_item_id, rate) VALUES ($1,$2,$3)
+    ON CONFLICT (user_id, akkord_item_id) DO UPDATE SET rate=$3
+  `, [req.params.id, req.params.itemId, rate]);
+  res.json({ ok: true });
+}));
+app.delete('/api/users/:id/akkord-rates/:itemId', auth, adminOnly, asyncRoute(async (req, res) => {
+  // Fjerner overrideet — medarbejderen falder blot tilbage til listens
+  // standardpris igen, akkordposten selv røres ikke.
+  await pool.query('DELETE FROM user_akkord_rates WHERE user_id=$1 AND akkord_item_id=$2', [req.params.id, req.params.itemId]);
+  res.json({ ok: true });
+}));
+
 // Manuel gensendelse af login-vejledningen (fx hvis medarbejderen har mistet mailen).
 app.post('/api/users/:id/send-login-guide', auth, adminOnly, asyncRoute(async (req, res) => {
   const user = await pgOne('SELECT * FROM users WHERE id=$1', [req.params.id]);
@@ -6321,6 +6400,45 @@ async function sendWonProjectEmail(customerId) {
     await logOutboundEmail({ kind: 'won_project', refId: customerId, recipient: customer.email, subject, sendResult: result });
   } catch (e) {
     console.error('Kunne ikke sende Vundet-mail til kunden:', e.message);
+  }
+}
+
+// RUNDE BC (Martin: "Jeg vil gerne få en email send til info@gulvmaster.dk når
+// en kunde acceptere et tilbud fucking vigtigt!") — INTERN varsling til kontoret,
+// adskilt fra kundens egne mails (velkomst/Vundet-mail ovenfor). Sendes uanset
+// hvilken af de to veje tilbuddet blev accepteret ad (kunden selv via e-signatur-
+// linket, ELLER Martin/Sarah der sætter status til "Godkendt" manuelt i admin fx
+// efter en telefonisk accept) — begge kalder createProjectFromAcceptedQuote, som
+// kalder denne herfra, kun første gang (created===true), så et gentaget kald
+// (fx admin der åbner/gemmer et allerede accepteret tilbud igen) aldrig sender
+// en dublet-notifikation. Adressen er bevidst en fast konstant og ikke afhængig
+// af company_email-indstillingen (som bruges som AFSENDER-adresse på kundemails
+// og kan være sat til noget andet) — vil Martin ændre den, er det denne linje.
+const QUOTE_ACCEPTED_NOTIFY_EMAIL = 'info@gulvmaster.dk';
+async function sendQuoteAcceptedInternalNotification(quote) {
+  try {
+    if (!mailIsConfigured()) return;
+    const customerName = quote.job_name || quote.quote_number || ('Tilbud #' + quote.id);
+    const value = Math.round(Number(quote.total) || 0).toLocaleString('da-DK') + ' kr';
+    const link = `${PUBLIC_APP_URL}/admin#quotes/tilbud/${quote.id}`;
+    const via = quote.signed_name ? `Underskrevet online af ${quote.signed_name}` : 'Markeret som godkendt i admin (fx telefonisk accept)';
+    const subject = `🎉 Tilbud accepteret — ${customerName} (${quote.quote_number || '#' + quote.id})`;
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">
+      <p><b>Et tilbud er lige blevet accepteret!</b></p>
+      <table style="border-collapse:collapse;margin:12px 0">
+        <tr><td style="padding:3px 12px 3px 0;color:#666">Sag/kunde</td><td style="padding:3px 0"><b>${escPublic(customerName)}</b></td></tr>
+        <tr><td style="padding:3px 12px 3px 0;color:#666">Tilbudsnr.</td><td style="padding:3px 0">${escPublic(quote.quote_number || ('#' + quote.id))}</td></tr>
+        <tr><td style="padding:3px 12px 3px 0;color:#666">Værdi</td><td style="padding:3px 0"><b>${value}</b></td></tr>
+        <tr><td style="padding:3px 12px 3px 0;color:#666">Hvordan</td><td style="padding:3px 0">${escPublic(via)}</td></tr>
+        ${quote.customer_phone ? `<tr><td style="padding:3px 12px 3px 0;color:#666">Telefon</td><td style="padding:3px 0">${escPublic(quote.customer_phone)}</td></tr>` : ''}
+        ${quote.customer_email ? `<tr><td style="padding:3px 12px 3px 0;color:#666">Email</td><td style="padding:3px 0">${escPublic(quote.customer_email)}</td></tr>` : ''}
+      </table>
+      <p><a href="${link}" style="display:inline-block;background:#4F46E5;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:700">Åbn tilbuddet</a></p>
+    </div>`;
+    const text = `Et tilbud er lige blevet accepteret!\n\nSag/kunde: ${customerName}\nTilbudsnr.: ${quote.quote_number || ('#' + quote.id)}\nVærdi: ${value}\nHvordan: ${via}\n\nÅbn tilbuddet: ${link}`;
+    await sendMailUniversal({ to: QUOTE_ACCEPTED_NOTIFY_EMAIL, subject, html, text });
+  } catch (e) {
+    console.error('Kunne ikke sende intern "tilbud accepteret"-varsling:', e.message);
   }
 }
 
@@ -11196,6 +11314,14 @@ async function crmSetCustomFieldValues(entityType, entityId, valuesObj, exec) {
 async function crmLogActivity(entityType, entityId, kind, body, userId, exec) {
   await (exec || pool).query('INSERT INTO crm_activities (entity_type,entity_id,kind,body,user_id) VALUES ($1,$2,$3,$4,$5)', [entityType, entityId, kind, body || null, userId || null]);
 }
+// RUNDE BB — samme som crmLogActivity ovenfor, men gemmer ALSO den fulde,
+// færdig-udfyldte mail (emne + HTML), så en automatisk email-udsendelse kan
+// åbnes og læses ordret bagefter, se kolonnekommentaren ved crm_activities
+// (email_subject/email_html) og GET /api/crm/leads/:id + /opportunities/:id
+// nedenfor som sender de to felter med til frontenden.
+async function crmLogEmailActivity(entityType, entityId, kind, body, subject, html, userId, exec) {
+  await (exec || pool).query('INSERT INTO crm_activities (entity_type,entity_id,kind,body,email_subject,email_html,user_id) VALUES ($1,$2,$3,$4,$5,$6,$7)', [entityType, entityId, kind, body || null, subject || null, html || null, userId || null]);
+}
 
 // ── Fælles transaktions-indpakning for CRM-skrivninger ───────────
 // Samme BEGIN/COMMIT/ROLLBACK-mønster som resten af filen allerede bruger
@@ -11441,7 +11567,7 @@ async function crmFireStageAutomation(entityType, entityId, stageId, contactFiel
         const subject = fillDocEmailVars(stage.email_subject || 'Besked fra ' + vars.firma, vars);
         const html = fillDocEmailVars(stage.email_body, vars);
         await sendMailUniversal({ to: contactFields.email, subject, html, text: html.replace(/<[^>]+>/g, ' ') });
-        await crmLogActivity(entityType, entityId, emailKind, 'Email sendt ("' + stage.name + '"): ' + subject, null);
+        await crmLogEmailActivity(entityType, entityId, emailKind, 'Email sendt ("' + stage.name + '"): ' + subject, subject, html, null);
       } catch (e) {
         await crmLogActivity(entityType, entityId, 'email_failed', 'Email-automatik fejlede ("' + stage.name + '"): ' + e.message, null);
       }
@@ -11526,7 +11652,7 @@ async function runStageFollowupScan() {
             const subject = fillDocEmailVars(rule.email_subject || 'Opfølgning', vars);
             const html = fillDocEmailVars(rule.email_body, vars);
             await sendMailUniversal({ to: email, subject, html, text: html.replace(/<[^>]+>/g, ' ') });
-            await crmLogActivity(entityType, row.id, emailKind, 'Tidsbaseret email-opfølgning sendt (' + daysOld + ' dage i "' + rule.stage_name + '"): ' + subject, null);
+            await crmLogEmailActivity(entityType, row.id, emailKind, 'Tidsbaseret email-opfølgning sendt (' + daysOld + ' dage i "' + rule.stage_name + '"): ' + subject, subject, html, null);
             processed++;
           } catch (e) {
             await crmLogActivity(entityType, row.id, 'stage_followup_email_failed', 'Tidsbaseret email-opfølgning fejlede ("' + rule.stage_name + '"): ' + e.message, null);
@@ -11864,6 +11990,14 @@ app.put('/api/crm/lost-followup-settings', auth, panelAccessAny(['customers','cr
 }));
 app.post('/api/crm/lost-followup/run', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const result = await runLostFollowupScan(true);
+  res.json(result);
+}));
+// RUNDE BC — manuel "Kør nu (test)" for den daglige status-mail (se
+// runDailyStatusEmail), så Martin kan se hvordan den ser ud uden at vente til
+// kl. 07 dagen efter. adminOnly, ikke panelAccess — det er en ren
+// admin/teknisk test-knap, ikke en del af det daglige CRM-arbejde.
+app.post('/api/reports/daily-status/run', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await runDailyStatusEmail();
   res.json(result);
 }));
 
@@ -13968,7 +14102,18 @@ async function crmSyncOpportunityValueFromQuote(quote) {
     if (oldVal !== null && Math.abs(oldVal - newVal) < 0.01) return; // uændret — intet at gøre
     const r = await pool.query(`UPDATE crm_opportunities SET value=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [quote.total, quote.crm_opportunity_id]);
     if (!r.rowCount) return; // handlen findes ikke (fx slettet) — stille no-op
-    await crmLogActivity('opportunity', quote.crm_opportunity_id, 'value_updated', 'Værdi sat til ' + Number(quote.total).toLocaleString('da-DK') + ' kr (automatisk — fra tilbud ' + (quote.quote_number || ('#' + quote.id)) + ')', null);
+    // RUNDE BB (Martin: "Lige den del gider jeg ikke have den spammer
+    // fuldstændig fordi vi har auto gem på kan du fjerne den ene del?") —
+    // selve værdi-synkroniseringen ovenfor er stadig aktiv (det var Martins
+    // oprindelige RUNDE AP-ønske), men aktivitets-LOGGEN af hver enkelt
+    // automatisk værdi-ændring er fjernet. RUNDE BA's "kun log ved reel
+    // ændring" var ikke nok, fordi hver ny linje/produkt man tilføjer under
+    // redigering AF SAMME tilbud reelt ÆNDRER totalen — med autogem betyder
+    // det stadig én log-linje pr. lille rettelse, hvilket er præcis den
+    // spam Martin peger på i sit skærmbillede (20 "Automatik"-linjer for ét
+    // tilbud). Handlens værdi opdateres derfor fortsat automatisk i
+    // baggrunden, men det vises ikke længere som en støjende linje i
+    // aktivitetsfligen.
   } catch (e) {
     console.error('Kunne ikke opdatere Handel-værdi fra tilbud #' + (quote && quote.id) + ':', e.message);
   }
@@ -14014,6 +14159,14 @@ async function createProjectFromAcceptedQuote(quote) {
     // customers.won_email_sent_at-spærren i sendWonProjectEmail sikrer at
     // dette blot bliver et stille no-op i så fald, ikke en dublet-mail.
     sendWonProjectEmail(quote.customer_id).catch(e => console.error('Vundet-mail (projekt fra tilbud) fejlede:', e.message));
+    // RUNDE BC — intern kontor-varsling (info@gulvmaster.dk), se
+    // sendQuoteAcceptedInternalNotification ovenfor. Vi er her netop KUN første
+    // gang tilbuddets projekt oprettes (existingProject-checket ovenfor har
+    // allerede returneret tidligt ved et gentaget kald), så dette sikrer præcis
+    // én notifikation pr. accepteret tilbud, uanset hvilken af de to
+    // accept-veje der blev brugt.
+    sendQuoteAcceptedInternalNotification(quote).catch(e => console.error('Intern "tilbud accepteret"-varsling fejlede:', e.message));
+    logDocActivity('quote', quote.id, 'accepted', quote.signed_name ? 'Kunde (e-signatur)' : 'System', quote.signed_name || null);
     // RUNDE H #24 — Martins ønske: "når et projekt er oprettet i projekter,
     // oprettes det automatisk i opgavepool" — dvs. tilbuddets linjer skal ALTID
     // blive til rigtige opgaver med det samme sagen opstår.
@@ -14158,11 +14311,16 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   }
 
   // Løn-/akkord-omkostning: hver tidsregistrering på sagen omregnes til kr ud fra
-  // medarbejderens NUVÆRENDE lønform/-sats (der gemmes ikke en historisk sats pr. registrering).
+  // medarbejderens NUVÆRENDE timeløn (for timeansatte), men for akkord bruges nu
+  // (RUNDE BB) det PRISSNAPSHOT der blev gemt på selve linjen ved oprettelsen
+  // (te.akkord_rate — medarbejderens aftalte pris dengang, se
+  // user_akkord_rates), så en senere prisændring ikke ændrer allerede
+  // beregnede/udbetalte linjer. COALESCE til listens nuværende standardpris
+  // dækker gamle rækker fra før denne kolonne fandtes (altid NULL der).
   const laborRows = await pool.query(`
     SELECT te.id, te.user_id, te.minutes, te.akkord_item_id, te.akkord_quantity,
            u.name AS user_name, u.pay_type, u.hourly_wage,
-           ai.name AS akkord_name, ai.rate AS akkord_rate
+           ai.name AS akkord_name, COALESCE(te.akkord_rate, ai.rate) AS akkord_rate
     FROM time_entries te
     LEFT JOIN users u ON u.id = te.user_id
     LEFT JOIN akkord_items ai ON ai.id = te.akkord_item_id
@@ -14247,7 +14405,7 @@ app.get('/api/reports/time-tracking', auth, adminOnly, asyncRoute(async (req, re
            c.name AS customer_name,
            te.user_id, u.name AS user_name, u.trade AS user_trade, u.worker_type,
            u.pay_type, u.hourly_wage, u.active AS user_active,
-           ai.name AS akkord_name, ai.rate AS akkord_rate
+           ai.name AS akkord_name, COALESCE(te.akkord_rate, ai.rate) AS akkord_rate
     FROM time_entries te
     LEFT JOIN projects p ON p.id = te.project_id
     LEFT JOIN customers c ON c.id = p.customer_id
@@ -14849,10 +15007,23 @@ app.post('/api/projects/:id/time-entries', auth, asyncRoute(async (req, res) => 
   if (!photoUrls.length && !isManualByOffice) return res.status(400).json({ error: 'Upload et billede som dokumentation' });
   if ((!minutes || minutes <= 0) && !hasAkkord) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt, eller vælg en akkord-post' });
   const entryDate = validDate(b.entry_date) ? b.entry_date : new Date().toISOString().slice(0, 10);
+  // RUNDE BB — den pris der GÆLDER for targetUserId lige nu (egen aftalte pris
+  // hvis sat, ellers listens standardpris) gemmes som et snapshot på selve
+  // linjen, se kolonnekommentaren ved time_entries.akkord_rate — en senere
+  // prisændring må ikke ændre en allerede oprettet registrering.
+  let akkordRate = null;
+  if (hasAkkord) {
+    const rateRow = await pgOne(`
+      SELECT COALESCE(uar.rate, ai.rate) AS rate FROM akkord_items ai
+      LEFT JOIN user_akkord_rates uar ON uar.akkord_item_id = ai.id AND uar.user_id = $1
+      WHERE ai.id = $2
+    `, [targetUserId, akkordItemId]);
+    akkordRate = rateRow ? Number(rateRow.rate) : null;
+  }
   const r = await pool.query(`
-    INSERT INTO time_entries (project_id,user_id,minutes,note,photo_url,photo_urls,bought_materials,quote_line_id,entry_date,created_by,akkord_item_id,akkord_quantity)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id
-  `, [req.params.id, targetUserId, Math.max(0, Math.round(minutes) || 0), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, req.user.id, hasAkkord ? akkordItemId : null, hasAkkord ? akkordQuantity : 0]);
+    INSERT INTO time_entries (project_id,user_id,minutes,note,photo_url,photo_urls,bought_materials,quote_line_id,entry_date,created_by,akkord_item_id,akkord_quantity,akkord_rate)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id
+  `, [req.params.id, targetUserId, Math.max(0, Math.round(minutes) || 0), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, req.user.id, hasAkkord ? akkordItemId : null, hasAkkord ? akkordQuantity : 0, akkordRate]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
@@ -14873,11 +15044,22 @@ app.put('/api/projects/:id/time-entries/:entryId', auth, panelAccess('projects')
   const entryDate = validDate(b.entry_date) ? b.entry_date : new Date().toISOString().slice(0, 10);
   let photoUrls = Array.isArray(b.photo_urls) ? b.photo_urls.filter(Boolean).map(String) : [];
   if (!photoUrls.length && b.photo_url) photoUrls = [String(b.photo_url)];
+  // RUNDE BB — samme prissnapshot som POST-routen ovenfor, opdateret ud fra
+  // den (evt. nye) medarbejder linjen nu står på.
+  let akkordRate = null;
+  if (hasAkkord) {
+    const rateRow = await pgOne(`
+      SELECT COALESCE(uar.rate, ai.rate) AS rate FROM akkord_items ai
+      LEFT JOIN user_akkord_rates uar ON uar.akkord_item_id = ai.id AND uar.user_id = $1
+      WHERE ai.id = $2
+    `, [Number(b.user_id), akkordItemId]);
+    akkordRate = rateRow ? Number(rateRow.rate) : null;
+  }
   await pool.query(`
     UPDATE time_entries SET user_id=$1, minutes=$2, note=$3, photo_url=$4, photo_urls=$5,
-      bought_materials=$6, quote_line_id=$7, entry_date=$8, updated_at=${nowTextSQL()}, akkord_item_id=$9, akkord_quantity=$10
-    WHERE id=$11 AND project_id=$12
-  `, [Number(b.user_id), Math.max(0, Math.round(minutes) || 0), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, hasAkkord ? akkordItemId : null, hasAkkord ? akkordQuantity : 0, req.params.entryId, req.params.id]);
+      bought_materials=$6, quote_line_id=$7, entry_date=$8, updated_at=${nowTextSQL()}, akkord_item_id=$9, akkord_quantity=$10, akkord_rate=$11
+    WHERE id=$12 AND project_id=$13
+  `, [Number(b.user_id), Math.max(0, Math.round(minutes) || 0), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, hasAkkord ? akkordItemId : null, hasAkkord ? akkordQuantity : 0, hasAkkord ? akkordRate : null, req.params.entryId, req.params.id]);
   res.json({ ok: true });
 }));
 
@@ -16176,7 +16358,7 @@ async function runLostFollowupScan(triggeredManually) {
         const subject = fillDocEmailVars(settings.subject || 'Er du stadig interesseret?', vars);
         const html = fillDocEmailVars(settings.body || '', vars);
         await sendMailUniversal({ to: email, subject, html, text: html.replace(/<[^>]+>/g, ' ') });
-        await crmLogActivity(entityType, row.id, 'lost_followup_sent', 'Opfølgningsmail sendt (' + daysOld + ' dage i "Tabt"): ' + subject, null);
+        await crmLogEmailActivity(entityType, row.id, 'lost_followup_sent', 'Opfølgningsmail sendt (' + daysOld + ' dage i "Tabt"): ' + subject, subject, html, null);
         sent++;
       } catch (e) {
         await crmLogActivity(entityType, row.id, 'lost_followup_failed', 'Opfølgningsmail fejlede: ' + e.message, null);
@@ -16185,6 +16367,68 @@ async function runLostFollowupScan(triggeredManually) {
   }
   await logSystemEvent('lost_followup_scan', 'info', `Tabt-opfølgning: ${sent} mail(s) sendt, ${skippedNoEmail} sprunget over (ingen e-mail), ${skippedNoQuote} sprunget over (intet tilbud).`);
   return { ran: true, sent, skippedNoEmail, skippedNoQuote };
+}
+
+// ── DAGLIG STATUS-MAIL (RUNDE BC, Martins ønske: "en daglig email hver morgen
+// 07:00 med følgende status: 1. Antal nye leads i dag samt hvor mange der tog
+// telefonen 2. Antal tilbud sendt og accepteret [+] Features der ikke
+// fungerer ordentligt") — sendes til samme adresse som accept-varslingen
+// (QUOTE_ACCEPTED_NOTIFY_EMAIL), planlagt kl. 07:00 DANSK tid (se
+// cron.schedule-kaldet nedenfor, med explicit timezone — serverens egen
+// klokke kan sagtens stå i UTC).
+//
+// "Hvor mange der tog telefonen": Martin præciserede selv betydningen — "det
+// kan du se ved at de bliver konventeret fra leads til sales pipeline, for vi
+// rykker dem kun fra leads til sales hvis vi har snakket med dem". Det tælles
+// derfor som antal NYE crm_opportunities med source_lead_id sat (dvs. en
+// lead-konvertering, se POST /api/crm/leads/:id/convert), IKKE et separat
+// opkalds-tal — der findes ingen telefoni-integration i systemet.
+//
+// Vinduet er de seneste 24 timer op til afsendelsestidspunktet (kl. 07 i går
+// til kl. 07 i dag), ikke et stift kalenderdøgn — enklere og uden
+// tidszone-regnefejl omkring midnat, og reelt identisk med "i går" så længe
+// jobbet rent faktisk kører kl. 07 hver dag.
+async function runDailyStatusEmail() {
+  if (!mailIsConfigured()) return { ran: false, reason: 'E-mail er ikke konfigureret' };
+  const since = `((CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - interval '24 hours')::text`;
+  const [newLeads, talkedTo, quotesSent, quotesAccepted, errorRows, bouncedRows] = await Promise.all([
+    pgOne(`SELECT COUNT(*)::int AS n FROM crm_leads WHERE created_at > ${since}`),
+    pgOne(`SELECT COUNT(*)::int AS n FROM crm_opportunities WHERE source_lead_id IS NOT NULL AND created_at > ${since}`),
+    pgOne(`SELECT COUNT(*)::int AS n FROM document_activity WHERE doc_type='quote' AND event_type='sent' AND created_at > ${since}`),
+    pgOne(`SELECT COUNT(*)::int AS n FROM document_activity WHERE doc_type='quote' AND event_type='accepted' AND created_at > ${since}`),
+    pool.query(`SELECT source, message, created_at FROM system_log WHERE level='error' AND created_at > ${since} ORDER BY created_at DESC LIMIT 15`).then(r => r.rows),
+    pool.query(`SELECT kind, recipient, subject, status, created_at FROM outbound_emails WHERE kind IN ('quote','invoice') AND status IN ('bounced','complained') AND created_at > ${since} ORDER BY created_at DESC LIMIT 15`).then(r => r.rows)
+  ]);
+  const issueCount = errorRows.length + bouncedRows.length;
+  const issuesHtml = issueCount
+    ? '<ul style="margin:6px 0;padding-left:20px">'
+      + errorRows.map(r => `<li>⚠️ <b>${escPublic(r.source)}</b>: ${escPublic(r.message)}</li>`).join('')
+      + bouncedRows.map(r => `<li>✉️ Mail til <b>${escPublic(r.recipient)}</b> (${escPublic(r.kind)}) kunne ikke leveres (${escPublic(r.status)}): ${escPublic(r.subject || '')}</li>`).join('')
+      + '</ul>'
+    : '<p style="color:#16A34A;margin:6px 0">Ingen fejl eller leveringsproblemer registreret det seneste døgn. ✓</p>';
+  const issuesText = issueCount
+    ? errorRows.map(r => `- [${r.source}] ${r.message}`).concat(bouncedRows.map(r => `- Mail til ${r.recipient} (${r.kind}) leveret ikke: ${r.status}`)).join('\n')
+    : 'Ingen fejl eller leveringsproblemer registreret det seneste døgn.';
+  const subject = `📊 Gulv Master — daglig status (${newLeads.n} nye leads, ${quotesAccepted.n} tilbud accepteret)`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">
+    <p><b>Status for det seneste døgn:</b></p>
+    <table style="border-collapse:collapse;margin:12px 0">
+      <tr><td style="padding:3px 12px 3px 0;color:#666">Nye leads</td><td style="padding:3px 0"><b>${newLeads.n}</b></td></tr>
+      <tr><td style="padding:3px 12px 3px 0;color:#666">— heraf talt med (rykket til Salg)</td><td style="padding:3px 0">${talkedTo.n}</td></tr>
+      <tr><td style="padding:3px 12px 3px 0;color:#666">Tilbud sendt</td><td style="padding:3px 0"><b>${quotesSent.n}</b></td></tr>
+      <tr><td style="padding:3px 12px 3px 0;color:#666">Tilbud accepteret</td><td style="padding:3px 0"><b>${quotesAccepted.n}</b></td></tr>
+    </table>
+    <p><b>Features der ikke fungerer ordentligt:</b></p>
+    ${issuesHtml}
+  </div>`;
+  const text = `Status for det seneste døgn:\n\nNye leads: ${newLeads.n}\n— heraf talt med (rykket til Salg): ${talkedTo.n}\nTilbud sendt: ${quotesSent.n}\nTilbud accepteret: ${quotesAccepted.n}\n\nFeatures der ikke fungerer ordentligt:\n${issuesText}`;
+  try {
+    await sendMailUniversal({ to: QUOTE_ACCEPTED_NOTIFY_EMAIL, subject, html, text });
+  } catch (e) {
+    console.error('Daglig status-mail kunne ikke sendes:', e.message);
+    return { ran: false, reason: e.message };
+  }
+  return { ran: true, newLeads: newLeads.n, talkedTo: talkedTo.n, quotesSent: quotesSent.n, quotesAccepted: quotesAccepted.n, issueCount };
 }
 
 // Manuel afsendelse for ÉN faktura — uanset dag-tærskler, og uanset til/fra-knappen.
@@ -17782,8 +18026,21 @@ app.post('/api/ai/clean-note', auth, asyncRoute(async (req, res) => {
 // forskellige akkord-poster betaler pr. stk., nødvendigt for at kunne
 // registrere korrekt), præcis som de allerede kender deres egen timeløn. Kun
 // en ægte admin må stadig ÆNDRE selve listen (se POST/PUT/DELETE nedenfor).
+// RUNDE BB — hver enkelt medarbejder/vendor kan have sin egen aftalte pris pr.
+// akkordpost (se user_akkord_rates + GET/PUT/DELETE /api/users/:id/akkord-rates).
+// Denne route bruges af selve medarbejderens tidsregistrerings-formular, så
+// "rate" herfra er ALTID den pris DENNE medarbejder (req.user.id) reelt får —
+// egen override hvis sat, ellers listens standardpris — så den viste kr/stk i
+// checklisten stemmer overens med hvad der rent faktisk bliver udregnet.
 app.get('/api/akkord-items', auth, asyncRoute(async (req, res) => {
-  const rows = (await pool.query('SELECT * FROM akkord_items WHERE active=1 ORDER BY position ASC, id ASC')).rows;
+  const rows = (await pool.query(`
+    SELECT ai.id, ai.name, ai.active, ai.position, ai.created_at,
+           COALESCE(uar.rate, ai.rate) AS rate
+    FROM akkord_items ai
+    LEFT JOIN user_akkord_rates uar ON uar.akkord_item_id = ai.id AND uar.user_id = $1
+    WHERE ai.active = 1
+    ORDER BY ai.position ASC, ai.id ASC
+  `, [req.user.id])).rows;
   res.json(rows);
 }));
 app.get('/api/akkord-items/all', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -22164,6 +22421,13 @@ async function start() {
   // måned, så Martin kan sammenligne måned for måned uden at tallene ændrer sig
   // bagefter. Kan også udløses manuelt via "Gem nu"-knappen i Oversigt.
   cron.schedule('0 8 15 * *', () => saveMonthlyProfitSnapshot().catch(e => { console.error('Profit-snapshot fejlede:', e.message); logSystemEvent('profit_snapshot', 'error', 'Månedligt profit-snapshot fejlede: ' + e.message); }));
+  // RUNDE BC — daglig status-mail kl. 07:00 DANSK tid (se runDailyStatusEmail
+  // ovenfor for indhold/definitioner). Eksplicit "timezone", i modsætning til
+  // alle andre cron.schedule-kald ovenfor (som kører i serverens egen —
+  // formentlig UTC — klokke), fordi Martin bad om et PRÆCIST klokkeslæt for en
+  // morgen-rapport han læser med kaffen, hvor "et par timer forskudt" reelt
+  // ville gøre den ubrugelig.
+  cron.schedule('0 7 * * *', () => runDailyStatusEmail().catch(e => { console.error('Daglig status-mail fejlede:', e.message); logSystemEvent('daily_status_email', 'error', 'Daglig status-mail fejlede: ' + e.message); }), { timezone: 'Europe/Copenhagen' });
   // Gmail-synk hver 5. minut — kører kun når GOOGLE_CLIENT_ID/SECRET er sat op
   // OG en postkasse rent faktisk er forbundet (se GET /api/gmail/status). Kan
   // også udløses manuelt via "Synk nu" på Gmail-indstillingssiden. (Sat op fra
