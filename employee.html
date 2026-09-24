@@ -1169,6 +1169,19 @@ function closeRulesOnBackdrop(e){if(e.target===document.getElementById('rules-mo
 let visitReportAssignmentId=null;
 let visitReportTaskId=null;
 let visitReportPhotos=[];
+// RETTELSE (Martins fejlrapport: "Connection terminated unexpectedly" ved indsendelse
+// af besøgsrapport med billeder) — vrAddPhotos lagde tidligere billeder ind som RÅ,
+// ukomprimerede base64 data-URL'er direkte i visitReportPhotos, og HELE besøgsrapporten
+// (inkl. alle billeder på én gang) blev sendt som ÉT kæmpe PUT-kald ved "Gem & markér
+// som færdig". 6 billeder fra en telefonkamera kan sagtens blive 20-40+ MB rå — det er
+// PRÆCIS den samme situation som allerede er løst korrekt andre steder i appen (se
+// pmSubmitMaterials/pmSubmitTimeEntry ovenfor): billeder holdes som almindelige File-
+// objekter (+ en billig lokal object-URL til forhåndsvisning) og uploades først ÉT AD
+// GANGEN til Cloudinary (/api/photos/upload) ved selve indsendelsen — samme
+// robuste mønster, nu også her. vrNewPhotoFiles/vrNewPhotoPreviewUrls holder de
+// NYE, endnu ikke uploadede billeder; visitReportPhotos holder de ALLEREDE uploadede
+// URL'er (enten fra et tidligere gemt besøg, eller lige uploadet i dette kald).
+let vrNewPhotoFiles=[],vrNewPhotoPreviewUrls=[];
 // id = planning_bookings.id (bruges til toggleTaskDone), taskId = jt_tasks.id
 // (den "visit-..." tekst-id customer_visits/quote-scope er nøglet på — IKKE
 // samme værdi som id, se bookingSelect).
@@ -1176,6 +1189,9 @@ async function openVisitReportModal(id,taskId){
   visitReportAssignmentId=id;
   visitReportTaskId=taskId;
   visitReportPhotos=[];
+  vrNewPhotoFiles.length=0;
+  vrNewPhotoPreviewUrls.forEach(u=>{try{URL.revokeObjectURL(u);}catch(e){}});
+  vrNewPhotoPreviewUrls.length=0;
   ['vr-room-size','vr-floor-type','vr-notes','vr-solution','vr-price'].forEach(fid=>{document.getElementById(fid).value='';});
   document.getElementById('vr-feedback').className='req-feedback';
   const r=await api('/api/customer-visits/'+encodeURIComponent(taskId));
@@ -1259,46 +1275,96 @@ function toggleVoiceNote(fieldId){
 }
 function vrRenderPhotoGrid(){
   const grid=document.getElementById('vr-photo-grid');
-  grid.innerHTML=visitReportPhotos.map((url,i)=>`<div class="vr-photo-thumb"><img src="${esc(url)}"><button type="button" class="vr-photo-del" onclick="vrRemovePhoto(${i})">✕</button></div>`).join('')
+  // Eksisterende (allerede uploadede, se visitReportPhotos) og nye (endnu ikke
+  // uploadede filer, se vrNewPhotoFiles/-PreviewUrls) vises som ÉT samlet grid —
+  // men holdes i to separate lister bagved, se kommentaren ved vrNewPhotoFiles.
+  grid.innerHTML=visitReportPhotos.map((url,i)=>`<div class="vr-photo-thumb"><img src="${esc(url)}"><button type="button" class="vr-photo-del" onclick="vrRemoveExistingPhoto(${i})">✕</button></div>`).join('')
+    +vrNewPhotoPreviewUrls.map((url,i)=>`<div class="vr-photo-thumb"><img src="${esc(url)}"><button type="button" class="vr-photo-del" onclick="vrRemoveNewPhoto(${i})">✕</button></div>`).join('')
     +`<div class="vr-photo-add" onclick="document.getElementById('vr-photo-input').click()">+</div>`;
 }
-function vrRemovePhoto(i){visitReportPhotos.splice(i,1);vrRenderPhotoGrid();}
-async function vrAddPhotos(e){
+function vrRemoveExistingPhoto(i){visitReportPhotos.splice(i,1);vrRenderPhotoGrid();}
+function vrRemoveNewPhoto(i){
+  try{URL.revokeObjectURL(vrNewPhotoPreviewUrls[i]);}catch(e){}
+  vrNewPhotoFiles.splice(i,1);
+  vrNewPhotoPreviewUrls.splice(i,1);
+  vrRenderPhotoGrid();
+}
+function vrAddPhotos(e){
+  // RETTELSE — læser IKKE længere filen ind som base64 med det samme (det var
+  // netop det der gjorde den efterfølgende samlede indsendelse så tung, se
+  // kommentaren ved vrNewPhotoFiles). Gemmer i stedet den rå File + en billig
+  // lokal object-URL til forhåndsvisning — selve uploaden sker først i
+  // submitVisitReportAndComplete, ét billede ad gangen, samme mønster som
+  // pmSubmitMaterials/pmSubmitTimeEntry.
   const files=Array.from(e.target.files||[]);
   e.target.value='';
-  for(const f of files){
-    try{const dataUrl=await pmReadFileAsDataUrl(f);visitReportPhotos.push(dataUrl);}catch(err){console.error('Photo read failed:',err);}
-  }
+  files.forEach(f=>{
+    vrNewPhotoFiles.push(f);
+    vrNewPhotoPreviewUrls.push(URL.createObjectURL(f));
+  });
   vrRenderPhotoGrid();
 }
 async function submitVisitReportAndComplete(){
   const feedback=document.getElementById('vr-feedback');
-  const body={
-    room_size:document.getElementById('vr-room-size').value.trim(),
-    floor_type_wanted:document.getElementById('vr-floor-type').value.trim(),
-    notes:document.getElementById('vr-notes').value,
-    recommended_solution:document.getElementById('vr-solution').value,
-    estimated_price:document.getElementById('vr-price').value.trim(),
-    photo_urls:visitReportPhotos
-  };
-  const hasContent=body.room_size||body.floor_type_wanted||body.notes||body.recommended_solution||body.estimated_price||body.photo_urls.length;
+  const roomSize=document.getElementById('vr-room-size').value.trim();
+  const floorType=document.getElementById('vr-floor-type').value.trim();
+  const notes=document.getElementById('vr-notes').value;
+  const solution=document.getElementById('vr-solution').value;
+  const price=document.getElementById('vr-price').value.trim();
+  const hasContent=roomSize||floorType||notes||solution||price||visitReportPhotos.length||vrNewPhotoFiles.length;
   if(!hasContent){
     feedback.textContent='Udfyld mindst ét felt eller tilføj et billede, før du fortsætter';
     feedback.className='req-feedback show error';
     return;
   }
   const btn=document.getElementById('vr-submit-btn');
+  const btnLabel=btn.querySelector('.req-submit-label');
+  const origLabel=btnLabel?btnLabel.textContent:btn.textContent;
   btn.disabled=true;
   const taskId=visitReportTaskId;
   const assignmentId=visitReportAssignmentId;
+  const setBtnText=t=>{if(btnLabel)btnLabel.textContent=t;else btn.textContent=t;};
   try{
+    // RETTELSE (Martins fejlrapport om "Connection terminated unexpectedly") —
+    // uploader nu hvert NYT billede ét ad gangen til Cloudinary FØR selve
+    // besøgsrapporten gemmes, i stedet for at sende alle billeder som rå base64
+    // i ét kæmpe PUT-kald. Fejler ét enkelt billede (fx dårlig mobildækning),
+    // stopper vi med det samme og fortæller hvilket — resten af rapporten og de
+    // øvrige billeder er ikke tabt, brugeren kan bare prøve igen.
+    const uploadedUrls=[];
+    for(let i=0;i<vrNewPhotoFiles.length;i++){
+      setBtnText('Uploader billede '+(i+1)+'/'+vrNewPhotoFiles.length+'…');
+      const dataUrl=await pmReadFileAsDataUrl(vrNewPhotoFiles[i]);
+      const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'visits/'+taskId})});
+      if(!up||!up.ok){
+        feedback.textContent=(up&&up.data&&up.data.error)||'Kunne ikke uploade et billede — prøv igen';
+        feedback.className='req-feedback show error';
+        btn.disabled=false;
+        setBtnText(origLabel);
+        return;
+      }
+      uploadedUrls.push(up.data.url);
+    }
+    setBtnText('Gemmer…');
+    const body={
+      room_size:roomSize,floor_type_wanted:floorType,notes,recommended_solution:solution,
+      estimated_price:price,photo_urls:visitReportPhotos.concat(uploadedUrls)
+    };
     const r=await api('/api/customer-visits/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify(body)});
     if(!r||!r.ok){
       feedback.textContent=(r&&r.data&&r.data.error)||'Kunne ikke gemme — prøv igen';
       feedback.className='req-feedback show error';
       btn.disabled=false;
+      setBtnText(origLabel);
       return;
     }
+    // De lige uploadede billeder er nu gemt server-side — flyt dem fra "nye" til
+    // "eksisterende" så en evt. fejl i toggleTaskDone nedenfor ikke får det til
+    // at se ud som om de skal uploades (og dermed dubleres) igen.
+    visitReportPhotos=visitReportPhotos.concat(uploadedUrls);
+    vrNewPhotoFiles.length=0;
+    vrNewPhotoPreviewUrls.forEach(u=>{try{URL.revokeObjectURL(u);}catch(e){}});
+    vrNewPhotoPreviewUrls.length=0;
     closeVisitReportModal();
     await toggleTaskDone(assignmentId,true,true,'Besøgsrapport udfyldt');
   }catch(err){
@@ -1307,6 +1373,7 @@ async function submitVisitReportAndComplete(){
     console.error('Visit report save error:',err);
   }finally{
     btn.disabled=false;
+    setBtnText(origLabel);
   }
 }
 async function confirmDocumentationAndComplete(){
