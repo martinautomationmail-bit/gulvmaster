@@ -2795,6 +2795,38 @@ body.qz-overlay-open .page.active{display:none}
    .set-row-udseende som Akkordlisten under Indstillinger, blot i en scrollbar
    boks der passer inde i det smallere medarbejder-modal. */
 .user-akkord-rates-box{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto;padding-right:2px}
+/* RUNDE BD (Martin: "kan du lave en ny side Dokumentation... fyldsgørende
+   dokumentation for nye bruger") — Indstillinger → 📚 Dokumentation. Egen lille
+   "docs-site"-layout: sticky venstre-TOC + søgbart højre indhold, bygget som en
+   almindelig settab-side (samme #settab-<navn>-mønster som de andre faner), så
+   den ikke kræver noget nyt sideskifte-system. Links i TOC'en/indholdet bruger
+   IKKE rigtige #hash-anchors (ville kollidere med appens egen hash-router,
+   navPushHash/switchPage) — de er almindelige knapper, styret af JS
+   (scrollIntoView), se docsTocJump() nedenfor i scriptet.*/
+.docwrap{display:flex;align-items:flex-start;background:#fff;border:1px solid var(--border2,#E5E7EB);border-radius:12px;overflow:hidden}
+.doc-toc{width:230px;flex-shrink:0;border-right:1px solid var(--border2,#E5E7EB);padding:16px 12px;position:sticky;top:0;align-self:flex-start;max-height:78vh;overflow-y:auto;background:#FAFBFC}
+.doc-toc input.bly-search{width:100%;box-sizing:border-box;margin-bottom:10px}
+.doc-toc nav{display:flex;flex-direction:column;gap:2px}
+.doc-toc nav a{display:block;padding:7px 10px;border-radius:7px;font-size:12.5px;color:var(--bly-sub,#6B7280);text-decoration:none;font-weight:600;cursor:pointer}
+.doc-toc nav a:hover{background:#EEF0F3;color:#111318}
+.doc-content{flex:1;min-width:0;padding:26px 32px;max-height:78vh;overflow-y:auto}
+.doc-section{margin-bottom:36px;padding-bottom:26px;border-bottom:1px solid #F0F1F4}
+.doc-section:last-child{border-bottom:0;margin-bottom:0}
+.doc-section h2{font-size:18px;margin:0 0 14px;color:#111318}
+.doc-section h3{font-size:14.5px;margin:20px 0 8px;color:#111318}
+.doc-section p{font-size:13.5px;line-height:1.65;color:#374151;margin:0 0 10px}
+.doc-section ul{margin:0 0 12px;padding-left:20px;font-size:13.5px;line-height:1.65;color:#374151}
+.doc-section li{margin-bottom:5px}
+.doc-section a.doc-link{color:#4F46E5;font-weight:600;text-decoration:none;cursor:pointer}
+.doc-section a.doc-link:hover{text-decoration:underline}
+.doc-section code{background:#F3F4F6;border-radius:4px;padding:1px 5px;font-size:12px}
+.doc-callout{background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#4B5563;margin:12px 0;line-height:1.6}
+.doc-table{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0 16px}
+.doc-table th,.doc-table td{text-align:left;padding:7px 10px;border-bottom:1px solid #EEF0F3;vertical-align:top}
+.doc-table th{color:#6B7280;font-weight:700;font-size:11px;text-transform:uppercase}
+.doc-hidden{display:none!important}
+.doc-toc nav a.doc-hidden{display:none!important}
+@media (max-width:900px){.docwrap{flex-direction:column}.doc-toc{width:100%;position:static;max-height:none;border-right:0;border-bottom:1px solid var(--border2,#E5E7EB)}.doc-content{max-height:none}}
 /* Handlingsbjælke nederst i et kort — adskilt med en blød linje, så "Gem"
    altid er tydeligt knyttet til netop dét kort. */
 .set-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px;padding-top:14px;border-top:1px solid var(--bly-border-soft)}
@@ -3644,7 +3676,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.39</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.40</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3986,6 +4018,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="bly-segtab" data-settab="sync" data-settab-page="notif-settings" type="button">🔄 Synk &amp; import</button>
     <button class="bly-segtab" data-settab="notif" data-settab-page="notif-settings" type="button">🔔 Notifikationer</button>
     <button class="bly-segtab" data-settab="automation" type="button">🤖 Automatisering</button>
+    <button class="bly-segtab" data-settab="docs" type="button">📚 Dokumentation</button>
   </div>
 
   <!-- ── VIRKSOMHEDSPROFIL (flyttet fra #page-people) ────────────────── -->
@@ -4244,6 +4277,357 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <button class="btn small" id="daily-status-run-btn" type="button">Kør daglig status-mail nu (test)</button>
           <span class="sub" id="daily-status-run-status" style="margin-left:8px"></span>
         </div>
+      </div>
+    </div>
+  </div>
+  <!-- RUNDE BD (Martin: "Under indstillinger i menuen kan du lave en ny side
+       Dokumentation hvor du fortæller hvordan man bruger hele programmet, alle
+       features, Api etc... alt fra de små knapper der er i tilbuddet, hvordan
+       man laver skabloner, hvordan leads kommer ind osv") — fyldestgørende
+       dokumentation til nye brugere, bygget som en almindelig settab (samme
+       #settab-<navn>-mønster som de andre Indstillinger-faner). Rent statisk
+       indhold (ingen API-kald) — sticky venstre-TOC + søgbart indhold til
+       højre. Se docsTocJump()/initDocsTab() i scriptet nedenfor for søgning
+       og TOC-navigation (bevidst IKKE rigtige #hash-links, for ikke at
+       kollidere med appens egen hash-router). -->
+  <div class="settabpage" id="settab-docs">
+    <div class="docwrap">
+      <aside class="doc-toc">
+        <input type="text" class="bly-search" id="docs-search" placeholder="Søg i dokumentationen...">
+        <nav id="docs-toc-nav">
+        <a class="doc-link" data-doc-jump="doc-intro">🚀 Velkommen</a>
+        <a class="doc-link" data-doc-jump="doc-oversigt">🧭 Sådan er appen bygget op</a>
+        <a class="doc-link" data-doc-jump="doc-crm">🧲 CRM — Leads &amp; Salg</a>
+        <a class="doc-link" data-doc-jump="doc-tilbud">📝 Tilbud</a>
+        <a class="doc-link" data-doc-jump="doc-faktura">🧾 Fakturaer</a>
+        <a class="doc-link" data-doc-jump="doc-projekter">🏗️ Projekter</a>
+        <a class="doc-link" data-doc-jump="doc-hold">👥 Hold &amp; vendors</a>
+        <a class="doc-link" data-doc-jump="doc-planlaegning">📅 Planlægning</a>
+        <a class="doc-link" data-doc-jump="doc-akkord">⏱️ Akkord &amp; tidsregistrering</a>
+        <a class="doc-link" data-doc-jump="doc-oekonomi">📊 Økonomi &amp; rapporter</a>
+        <a class="doc-link" data-doc-jump="doc-skabeloner">📐 Skabeloner</a>
+        <a class="doc-link" data-doc-jump="doc-indstillinger">⚙️ Indstillinger</a>
+        <a class="doc-link" data-doc-jump="doc-automatik">🔌 Automatik &amp; integrationer</a>
+        <a class="doc-link" data-doc-jump="doc-faq">❓ Ofte stillede spørgsmål</a>
+        </nav>
+      </aside>
+      <div class="doc-content" id="docs-content">
+<section id="doc-intro" class="doc-section">
+  <h2>🚀 Velkommen til Gulv Master</h2>
+  <p>Denne side samler en fyldestgørende gennemgang af hele programmet — fra de små knapper inde i et tilbud, til hvordan leads kommer ind udefra, og hvordan automatik-mails fungerer. Brug menuen til venstre (eller søgefeltet øverst) til at hoppe direkte til det, du leder efter.</p>
+  <p>Dokumentationen er skrevet ud fra, hvordan programmet faktisk er bygget lige nu, og opdateres løbende når der kommer nye funktioner. Står der noget, der ikke stemmer med det, du ser på skærmen, så sig til — så retter vi det.</p>
+  <div class="doc-callout">
+    <b>Tommelfingerregel for hele appen:</b> næsten alt gemmes automatisk, mens du skriver (autosave, typisk et lille sekund efter du stopper med at skrive). Du skal sjældent lede efter en "Gem"-knap — men på nogle sider (fx et helt nyt tilbud) skal du gemme første gang, før autosave kan overtage.
+  </div>
+</section>
+
+<section id="doc-oversigt" class="doc-section">
+  <h2>🧭 Sådan er appen bygget op</h2>
+  <p>Til venstre i skærmen har du hovedmenuen, grupperet i emner. Her er en oversigt over hver gruppe og hvad den bruges til — de enkelte sider er beskrevet i detaljer længere nede i dokumentationen.</p>
+  <table class="doc-table">
+    <tr><th>Menugruppe</th><th>Indeholder</th><th>Bruges til</th></tr>
+    <tr><td><b>CRM</b></td><td>Kunder, Leads, Sales, Opfølgninger</td><td>Salgspipeline — fra første henvendelse til vundet kunde</td></tr>
+    <tr><td><b>Tilbud &amp; Faktura</b></td><td>Fakturaer, Tilbud, Skal faktureres, Produkter, Skabeloner, Timetracking</td><td>Alt omkring tilbud, fakturering og produktkatalog</td></tr>
+    <tr><td><b>Dagligplanlægning</b></td><td>Plan, Kapacitet, Ledighedsoversigt, Tidslinje</td><td>Booking af medarbejdere/vendors på konkrete dage og opgaver</td></tr>
+    <tr><td><b>Projekter</b></td><td>Sagsoversigt, Gantt, KS-skabeloner, Kontaktformularer</td><td>Selve sagerne (projekterne) — tid, budget, billeder, kvalitetssikring</td></tr>
+    <tr><td><b>Økonomi</b></td><td>Oversigt, Omsætning pr. fag, Bankafstemning, Udgifter, Privat budget, Noter</td><td>Det økonomiske overblik og rapportering</td></tr>
+    <tr><td><b>Videnscenter</b></td><td>Lister, Dokumenter</td><td>Interne opslagslister og et bibliotek af filer/vejledninger</td></tr>
+    <tr><td><b>Min side</b></td><td>Mit skema, Opgaveliste, Godkendelser, Hold &amp; vendors, Log, Skabeloner, Indstillinger</td><td>Personlige ting, medarbejderadministration og hele opsætningen af programmet</td></tr>
+  </table>
+  <p>Klik på Gulv Master-logoet øverst i menuen for altid at komme tilbage til "Kommandocenter" — det er appens forside/dashboard.</p>
+</section>
+
+<section id="doc-crm" class="doc-section">
+  <h2>🧲 CRM — Leads &amp; Salg</h2>
+  <p>CRM-delen er opdelt i to pipelines, der ser ens ud, men er to forskellige "brætter": <b>Leads</b> (nye/uafklarede henvendelser) og <b>Sales</b> (kunder I aktivt er i gang med at sælge til). Begge vises som kanban-tavler med søjler, du selv kan navngive, farve og sortere — det gør du under den lille tandhjuls-knap øverst på siden ("Pipeline-indstillinger").</p>
+
+  <h3>Fra lead til salg</h3>
+  <p>Et kort på Leads-tavlen bliver til et kort på Sales-tavlen ved at trykke <b>"Konvertér"</b> på kortet. Hele aktivitetshistorikken (noter, mails, opgaver) bliver kopieret med over, så I ikke mister sporet af, hvad der er sagt til kunden — det oprindelige lead-kort bliver liggende (ikke slettet), så historikken også findes der.</p>
+  <div class="doc-callout"><b>Vigtigt for rapportering:</b> den daglige status-mail (se afsnittet om Automatik) tæller "hvor mange der er talt med i telefonen" som antallet af leads, der er konverteret til Sales — fordi I i praksis kun rykker et lead videre, når I faktisk har talt med kunden.</p></div>
+
+  <h3>Kortets detaljeside</h3>
+  <p>Klik på et kort for at åbne hele siden om den kunde/sag. Her finder du: kontaktoplysninger, en evt. tilknyttet "Kunde" (hvis personen/firmaet allerede findes som kunde), et <b>Besøgsrapport</b>-felt (bruges når en medarbejder har været på besøg hos kunden), en <b>Opgaver</b>-liste (se nedenfor), custom felter I selv har defineret, samt faner til Filer, Emails (hvis Gmail er koblet på, se Indstillinger), Noter, Tilbud og Projekter for den kunde. I højre side ligger en fuld <b>aktivitetstidslinje</b> med alt, der er sket — og et notefelt, hvor du kan diktere en note med mikrofonen, som AI'en renskriver for dig.</p>
+
+  <h3>Opgaver (⏰ Opfølgninger)</h3>
+  <p>Hvert lead/salg-kort kan have sine egne opgaver — navn, ansvarlig, en opfølgningsdato/-tid, og evt. "⚡ Høj prioritet". Alle opgaver på tværs af alle kort samles på siden <b>⏰ Opfølgninger</b>, med klikbare filterkort (fx "I dag", "Næste uge", "Færdige"), så du hurtigt kan se, hvad der venter.</p>
+
+  <h3>Automatik i CRM</h3>
+  <ul>
+    <li><b>Stage-regler:</b> på hver søjle i pipelinen kan I sætte en regel, der siger "hvis et kort har ligget her i X dage, så send automatisk en sms og/eller mail" — med jeres egen tekst. Opsættes under pipeline-indstillingerne på den enkelte søjle.</li>
+    <li><b>Opfølgning på tabte/kolde leads:</b> kort, der har ligget i en "tabt"-søjle i mere end X dage, kan automatisk få sendt én opfølgningsmail (kun én gang pr. kort). Slås til/fra og indstilles under Indstillinger → 🤖 Automatisering.</li>
+    <li><b>Tilbud accepteret:</b> når et kort fører til et tilbud, der bliver accepteret, flyttes kortet automatisk til "Vundet"-søjlen, og en evt. stage-mail/sms for den søjle sendes.</li>
+  </ul>
+
+  <h3>Hvordan kommer leads ind udefra?</h3>
+  <p>Der er tre veje ind, alle beskrevet i detaljer under <a class="doc-link" data-doc-jump="doc-automatik">Automatik &amp; integrationer</a>:</p>
+  <ul>
+    <li><b>Elementor/hjemmesideformular og Facebook Lead Ads</b> — går gennem Make.com og rammer en webhook i Gulv Master, som automatisk opretter et lead-kort.</li>
+    <li><b>Close CRM</b> — hvis I bruger Close som "opkaldsværktøj", kan et opkald/opportunity i Close automatisk oprette en kunde + et salgskort i Gulv Master.</li>
+    <li><b>Manuelt</b> — "+ Nyt" øverst i menuen, eller en "+ Nyt kort"-knap direkte på pipeline-tavlen.</li>
+  </ul>
+</section>
+
+<section id="doc-tilbud" class="doc-section">
+  <h2>📝 Tilbud — knap for knap</h2>
+  <p>Tilbudslisten viser alle jeres tilbud med klikbare status-bokse øverst (Kladde/Sendt/Godkendt/Afvist/Konverteret) som fungerer som filtre — klik på en boks for kun at se de tilbud. Søgefeltet og periodefilteret sidder <i>under</i> boksene, og søger på navn, tilbudsnr., sagsnr., adresse, mail og telefon på én gang.</p>
+
+  <h3>Sådan laver du et nyt tilbud</h3>
+  <p>Klik "+ Nyt tilbud". Søg kunden frem (eller opret en ny), og felterne (adresse/telefon/mail) udfyldes automatisk — har kunden flere adresser/mails, kan du vælge mellem dem. Tilbuddet starter med 3 tomme linjer, du kan bygge videre på.</p>
+
+  <h3>Linjer</h3>
+  <ul>
+    <li><b>+ Tilføj linje</b> — en almindelig produktlinje (kobles til jeres produktkatalog, med antal/enhed/kostpris/salgspris).</li>
+    <li><b>+ Tekstlinje</b> — en overskrift/fritekst-linje uden pris, fx til at dele tilbuddet op i afsnit.</li>
+    <li><b>💾 Gem som skabelon</b> — gemmer de nuværende linjer som en genbrugelig skabelon.</li>
+    <li><b>📥 Indsæt skabelon</b> — indsætter linjer fra en gemt skabelon. Du får en liste med afkrydsningsfelter (alt er forhåndskrydset af) — fjern flueben ud for de linjer, du ikke vil have med denne gang.</li>
+    <li>Hver linje kan have sin egen <b>rabat</b> (% eller kr.), og hele tilbuddet kan desuden have en samlet dokumentrabat.</li>
+    <li>Linjerne kan trækkes rundt (ændre rækkefølge) med musen.</li>
+  </ul>
+
+  <h3>🎤 AI-diktering</h3>
+  <p>I stedet for at skrive linjer manuelt kan du trykke mikrofon-knappen og tale tilbuddet ind — AI'en lytter, forsøger at matche varer fra jeres produktkatalog (eller foreslår nye), og viser et forslag, du skal godkende, før noget indsættes.</p>
+
+  <h3>Knapperne i toppen af et åbent tilbud</h3>
+  <table class="doc-table">
+    <tr><th>Knap</th><th>Hvad den gør</th></tr>
+    <tr><td>Status-dropdown</td><td>Kladde → Sendt → Godkendt/Afvist. Når status sættes til "sendt" via denne dropdown ændres kun status — vil du faktisk sende en mail til kunden, brug "📧 Send til kunde" nedenfor.</td></tr>
+    <tr><td>📄 Åbn PDF</td><td>Åbner tilbuddet som PDF i en ny fane — præcis den PDF, kunden ville modtage.</td></tr>
+    <tr><td>⧉ Kopiér tilbud</td><td>Laver en helt uafhængig kopi af tilbuddet (samme kunde/linjer/priser), praktisk hvis kunden skal have to lignende tilbud at vælge imellem.</td></tr>
+    <tr><td>🔗 Kundelink</td><td>Kopierer et link til udklipsholderen, som kunden selv kan bruge til at se og underskrive tilbuddet online — uden at skulle vente på, at I sender en mail.</td></tr>
+    <tr><td>📨 Prisforespørgsler</td><td>Sender materialelinjerne til en leverandør (uden priser vist) eller hele tilbuddet til en underentreprenør (med tomme prisfelter) — modtageren får et unikt link, hvor de selv kan udfylde priser.</td></tr>
+    <tr><td>📧 Send til kunde</td><td>Genererer PDF'en, sender den til kundens mail (med jeres valgte mail-skabelon), sætter status til "Sendt" og gemmer en uforanderlig kopi af netop den udgave, der blev sendt (så I altid kan se, hvad kunden faktisk har modtaget — selv efter I har rettet i tilbuddet bagefter).</td></tr>
+    <tr><td>➜ Konvertér til faktura</td><td>Se afsnittet "Fra tilbud til faktura" nedenfor.</td></tr>
+    <tr><td>💾 Gem</td><td>Vises kun de første få sekunder på et helt nyt tilbud — derefter overtager autosave.</td></tr>
+  </table>
+
+  <h3>Noter og vedhæftninger</h3>
+  <p>Der er to slags noter: en <b>"Betingelser/note i bunden"</b>, som vises på selve PDF'en, og en separat <b>🔒 intern note</b> (fremhævet med gul), som aldrig vises for kunden — kun til internt brug. Du kan også vedhæfte billeder direkte på tilbuddet (enten uploade nye, eller vælge blandt sagens egne billeder/kundens indsendte billeder) — de printes med direkte i PDF'en. Tilbuddet skal være gemt (have et nummer), før du kan vedhæfte billeder.</p>
+
+  <h3>Sådan underskriver kunden online</h3>
+  <p>Kunden modtager linket enten via "📧 Send til kunde" eller "🔗 Kundelink". På siden kan kunden skrive sit navn og underskrive med musen/fingeren. Så snart kunden accepterer:</p>
+  <ul>
+    <li>Status sættes automatisk til "Godkendt", og tidspunkt/IP-adresse/underskrift gemmes.</li>
+    <li>Der oprettes automatisk et <b>projekt</b> (sag) ud fra tilbuddet — I skal ikke selv oprette sagen manuelt.</li>
+    <li>Kunden får automatisk en kvitteringsmail med et permanent link til sin egen "kundeportal" (alle tilbud/fakturaer/opgaver samlet ét sted).</li>
+    <li>Der sendes med det samme en intern mail til <b>info@gulvmaster.dk</b>, så kontoret altid ved, at et tilbud lige er blevet accepteret — se Automatik-afsnittet.</li>
+  </ul>
+  <p>Accepterer kunden i stedet mundtligt/telefonisk, sætter I bare status til "Godkendt" manuelt i dropdownen — det udløser præcis de samme automatiske trin (projekt oprettes, intern mail sendes) som den online underskrift.</p>
+
+  <h3>Fra tilbud til faktura (også delvis fakturering)</h3>
+  <p>Tryk "➜ Konvertér til faktura". Du får en liste over alle linjer, der endnu ikke er faktureret (forhåndskrydset af) — fjern flueben på de linjer, der ikke skal faktureres <i>denne gang</i>. Det betyder, I sagtens kan fakturere et tilbud i flere omgange, efterhånden som arbejdet udføres. Linjer, der allerede er faktureret, låses for redigering — vil I tilføje helt nye ydelser til et tilbud, der allerede er delvist faktureret, bruger I <b>"+ Tilføj ekstra ydelser"</b>, som lægger de nye linjer i "puljen" til næste faktura.</p>
+  <p>I selve tilbuds-editoren kan I altid se en <b>faktureringsstatus</b>-boks, der viser, hvor meget der er faktureret ud af det samlede beløb, med en progress-bar og links direkte til de tilhørende fakturaer.</p>
+
+  <h3>Tidslinje / aktivitetslog</h3>
+  <p>Nederst i tilbuddet ligger en fuld log over alt, der er sket med dokumentet — oprettet, redigeret, status ændret, sendt, konverteret osv. — så I altid kan se historikken.</p>
+</section>
+
+<section id="doc-faktura" class="doc-section">
+  <h2>🧾 Fakturaer</h2>
+  <p>Samme opbygning som Tilbud: status-bokse øverst (Kladde/Ikke betalt/Delvist betalt/Betalt/Annulleret) som filtre, søgefelt og periodefilter under boksene.</p>
+
+  <h3>Direkte faktura (uden et tilbud først)</h3>
+  <p>Knappen <b>"+ Ny faktura (uden tilbud)"</b> åbner samme editor som tilbud, bare uden de felter, der kun giver mening for tilbud (status-dropdown, gyldig-til-dato). Du kan gemme den som kladde først ("📝 Gem som kladde") — kladder tælles ikke med i Økonomi/bankafstemning og kan ikke sendes, før de er "aktiveret" (et ét-vejs skift, kladde → rigtig faktura).</p>
+
+  <h3>Når en faktura er sendt, er den låst</h3>
+  <p>Så snart en faktura rent faktisk er sendt til kunden, kan I ikke længere redigere i noter, adresse eller linjer/rabatter — det er med vilje, så en kunde aldrig kan opleve, at en faktura "ændrer sig" efter modtagelsen. Forfaldsdato er en undtagelse og kan altid rykkes. Skal noget rettes efter afsendelse, laver I i stedet en <b>kreditnota</b>.</p>
+
+  <h3>Betalinger</h3>
+  <p>Registrér en eller flere delbetalinger (beløb, dato, metode, note). Fakturaens status (Ikke betalt/Delvist/Betalt) regnes automatisk ud fra summen af registrerede betalinger.</p>
+
+  <h3>Kreditnota</h3>
+  <p>Et selvstændigt dokument (eget nummerserie, KN-ÅÅÅÅ-NNNN) knyttet til en faktura. Kan dække hele fakturaen eller kun et beløb/udvalgte linjer, og har sin egen PDF og sende-funktion.</p>
+
+  <h3>Rykkere (dunning)</h3>
+  <p>Under fanen "✉️ Rykker-indstillinger" på Fakturaer-siden sætter I: om rykkere skal sendes automatisk, hvor mange dage der skal gå før rykker 1 og rykker 2, og et evt. rykkergebyr. Kører automatisk hver dag kl. 10:00 (og kan altid testes manuelt med "▶ Kør scan nu") — kræver, at mail er sat op, og er som udgangspunkt slået fra, indtil I aktivt slår det til.</p>
+
+  <h3>Afsender på faktura, rykker og kreditnota</h3>
+  <p>Disse tre sendes fra en fast, dedikeret afsenderadresse (i skrivende stund <b>Lina - Bogholderiet</b>), adskilt fra den almindelige info@-adresse, som tilbud og andre mails sendes fra. Se hele forklaringen under <a class="doc-link" data-doc-jump="doc-automatik">Automatik &amp; integrationer</a>.</p>
+
+  <h3>Leveringsproblemer</h3>
+  <p>En advarselslinje øverst på Tilbud/Fakturaer-siden viser automatisk, hvis en mail til en kunde er "bounced" (kom retur) eller markeret som spam inden for de sidste 30 dage — så I ikke først opdager det, når kunden ringer og siger, de aldrig har hørt fra jer.</p>
+</section>
+
+<section id="doc-projekter" class="doc-section">
+  <h2>🏗️ Projekter (sager)</h2>
+  <p>Et projekt (en "sag") oprettes normalt automatisk, når et tilbud accepteres — men kan også oprettes manuelt med "+ Nyt projekt". Listen kan vises som liste eller kanban-tavle, med redigérbare stadier ("⚙️ Rediger stadier").</p>
+  <h3>Fanerne på en sag</h3>
+  <ul>
+    <li><b>📅 Opgaver</b> — sagens egen Gantt-oversigt. "🔨 Opret opgaver fra tilbud" laver automatisk én opgave pr. tilbudslinje. "📊 Book alt i Kapacitetsbordet" booker alle uplanlagte opgaver ind i planlægningen med ét klik.</li>
+    <li><b>🗂 Pipeline</b> — en kanban-visning af sagens egne opgaver (Ikke startet/I gang/Venter/Færdig) — ikke det samme som CRM-pipelinen.</li>
+    <li><b>📷 Billeder</b> — billedgalleri med upload og lightbox.</li>
+    <li><b>⏱️ Tidsregistrering</b> — se afsnittet <a class="doc-link" data-doc-jump="doc-akkord">Akkord &amp; tidsregistrering</a>.</li>
+    <li><b>💰 Budget</b> (kun admin) — godkendt pris, opkrævet beløb, restsaldo, forventet omkostning/fortjeneste/margin, samt en tabel med løn/akkord-omkostning pr. medarbejder.</li>
+    <li><b>🧾 Materialer</b> — indkøbte materialer med kvitteringsbilleder.</li>
+    <li><b>📋 Kvalitetssikring</b> — hvilke KS-skabeloner der må bruges på denne sag, plus indsendte KS-formularer.</li>
+    <li><b>📇 Kontaktformular</b> — indsendte kontaktformularer fra besøg på adressen.</li>
+  </ul>
+  <h3>Når en sag markeres "Afsluttet"</h3>
+  <p>Første gang en sags status sættes til "Afsluttet", sker der to ting automatisk: alle sagens bookinger/opgaver markeres som færdige, og der sendes enten en afslutningsmail til kunden, eller — hvis det er sat op — et webhook-kald til Zapier (aldrig begge dele samtidig).</p>
+</section>
+
+<section id="doc-hold" class="doc-section">
+  <h2>👥 Hold &amp; vendors</h2>
+  <p>Her administrerer I både egne medarbejdere og eksterne vendors/underleverandører (vendors vises samlet under et udvideligt "🧰 Vendors"-felt for sig).</p>
+  <h3>Når du opretter/redigerer en person</h3>
+  <ul>
+    <li><b>Skal kunne logge ind</b> — afkrydses kun for personer, der faktisk skal have adgang til appen.</li>
+    <li><b>Rolle</b> — Medarbejder (kun adgang til medarbejder-appen i marken) eller Admin (fuld, ubegrænset adgang — brug med omtanke), eller en af jeres selv-oprettede "panel-roller" (fx "Kontor"), som giver adgang til bestemte sider i administrationen. Roller oprettes under Indstillinger → 🔐 Roller &amp; adgang.</li>
+    <li><b>Kapacitet pr. uge</b>, farve, type (intern medarbejder/vendor), fagområde.</li>
+    <li><b>Løntype</b> — Timeløn (kr/time) eller Akkord. Vælges Akkord, erstattes almindelig tidsregistrering af en liste, hvor man tjekker af, hvilke akkord-poster der er udført.</li>
+    <li><b>Akkordpriser for denne person</b> — selve <i>listen</i> af akkord-poster er fælles for hele virksomheden (se Indstillinger → Akkordliste), men <i>prisen</i> pr. post kan I overstyre for netop denne medarbejder/vendor her på profilen — praktisk, når forskellige folk har forskellige aftalte priser for samme arbejde. Feltet stående tomt betyder "brug standardprisen fra listen".</li>
+  </ul>
+</section>
+
+<section id="doc-planlaegning" class="doc-section">
+  <h2>📅 Planlægning</h2>
+  <h3>Daglig planlægning</h3>
+  <p>Venstre side viser en "opgavepool" (opgaver, der endnu ikke er booket ind på en dag), grupperet pr. kunde. "+ Book / Opgave" lader jer oprette en manuel opgave eller booke et kundebesøg direkte. Højre side er selve ugeplanen — træk en opgave fra poolen ud på en dag/medarbejder for at booke den. I værktøjslinjen finder I bl.a.: print af ugeplanen, "👥 Hvor er alle" (overblik over hele holdets placering lige nu), "🗺️ Ruter &amp; kort", samt to knapper til automatiske kundepåmindelser: <b>"☀️ Send 'vi kommer i dag'"</b> og <b>"✉️ Send 'vi kommer i morgen'"</b> (sender kun til kunder, der ikke allerede er varslet).</p>
+  <h3>Kapacitet</h3>
+  <p>Et 52-ugers overblik, grupperet pr. medarbejder eller fag — god til langtidsplanlægning og til at se, hvor der er ledig kapacitet flere uger frem.</p>
+  <h3>Tidslinje</h3>
+  <p>En Gantt-agtig visning af alle bookinger. Klik på en booking for at åbne en redigeringspanel i højre side, hvor I kan ændre medarbejder/dato/tid/adresse/tjekliste — og sende en planlægningsmail til kunden derfra.</p>
+  <h3>Ledighedsoversigt</h3>
+  <p>Viser, hvem der har ledige dage, ud fra den ugentlige kapacitet, I har sat på hver medarbejder.</p>
+  <div class="doc-callout"><b>Om JobTread:</b> planlægningen kørte tidligere med to-vejs synk til JobTread, men er nu fuldt migreret væk og kører udelukkende på Gulv Masters egne data. Den eneste rest af JobTread-integrationen er en manuel "📥 Importér fra JobTread"-knap under Produkter, som kun bruges til at hente manglende produktbeskrivelser — den overskriver aldrig noget, I allerede har liggende.</div>
+</section>
+
+<section id="doc-akkord" class="doc-section">
+  <h2>⏱️ Akkord &amp; tidsregistrering</h2>
+  <p>Akkord-listen (de forskellige akkord-poster og deres standardpris) administreres ét sted for hele virksomheden under <b>Indstillinger → 🧱 Akkordliste</b>. Den <i>pris</i>, en bestemt medarbejder/vendor får for en post, kan derefter overstyres individuelt på personens profil under Hold &amp; vendors (se ovenfor) — praktisk når I har forskellige aftaler med forskellige folk for samme type arbejde.</p>
+  <h3>Sådan registrerer en medarbejder tid i marken</h3>
+  <p>I medarbejder-appen afhænger formularen af personens løntype: er man timelønnet, registrerer man almindelige minutter (evt. koblet til en bestemt tilbudslinje). Er man på akkord, viser appen i stedet en tjekliste af akkord-poster — man kan krydse <i>flere</i> poster af i samme registrering, og hver afkrydset post får sit eget "Antal"-felt.</p>
+  <p>Kontoret kan registrere tid på samme måde direkte på sagen (fanen "⏱️ Tidsregistrering" → "+ Registrér tid") — formularen skifter automatisk mellem minutter og akkord-poster ud fra, hvilken medarbejder der vælges.</p>
+  <div class="doc-callout">Prisen, der bruges, "låses fast" på selve registreringen, i det øjeblik den indtastes. Ændrer I senere prisen på en akkord-post (eller en medarbejders individuelle pris), påvirker det <i>kun</i> nye registreringer — allerede indtastede/betalte registreringer beholder den pris, de blev lavet med.</div>
+  <h3>Rapportering</h3>
+  <p>Se pr. sag under sagens 💰 Budget-fane, eller på tværs af alle sager under <b>Tilbud &amp; Faktura → ⏱️ Timetracking</b> — her kan I vælge mellem "👤 Efter medarbejder" (grupperet, godt til løn/kalkulation) og "🕐 Kronologisk" (nyeste øverst, med billeder/noter — godt til en hurtig fredags-gennemgang), filtrere på person/fag/løntype, og eksportere til CSV.</p>
+</section>
+
+<section id="doc-oekonomi" class="doc-section">
+  <h2>📊 Økonomi &amp; rapporter</h2>
+  <p>Der findes ikke én samlet "Rapporter"-side — rapportering er i stedet fordelt ud på de steder, det giver mest mening:</p>
+  <ul>
+    <li><b>Økonomi → Oversigt</b> er hovedsiden for rapportering: resultatopgørelse (indtægter/udgifter over tid), KPI-bokse for fakturaer/bank/moms/udgifter, selvvalgte grafer, en automatisk månedlig profit-analyse (låst fast den 15. hver måned, så tallene ikke ændrer sig bagudrettet), og en "📧 Send rapport"-knap.</li>
+    <li><b>Økonomi → Omsætning pr. fag</b> — omsætning brudt ned pr. fagområde, med periodefilter.</li>
+    <li><b>Økonomi → Bankafstemning</b> — importér en CSV fra banken, og match posteringer mod fakturaer.</li>
+    <li><b>Økonomi → Udgifter</b> og <b>Privat budget</b> — udgiftskladde hhv. ejerens private budgetopfølgning.</li>
+    <li><b>Tilbud &amp; Faktura → ⏱️ Timetracking</b> — tidsrapport (se ovenfor).</li>
+    <li><b>Produkter → 📊 Dashboard</b> — hvilke produkter/ydelser, der reelt tjener mest.</li>
+    <li><b>Sag → 💰 Budget-fane</b> — profit/margin pr. enkelt sag.</li>
+  </ul>
+  <p>Adgang til hele Økonomi-modulet er admin-only som udgangspunkt, men kan gives til udvalgte personer under Indstillinger → 🔐 Roller &amp; adgang.</p>
+</section>
+
+<section id="doc-skabeloner" class="doc-section">
+  <h2>📐 Skabeloner</h2>
+  <p>Der findes flere forskellige slags skabeloner i systemet, hver til sit formål. Fælles for dem alle: en skabelon er en <i>opskrift</i>, I selv bygger — brugen af den ændrer aldrig skabelonen selv.</p>
+
+  <h3>Tilbudslinje-skabeloner</h3>
+  <p><b>Tilbud &amp; Faktura → 📑 Skabeloner.</b> "+ Ny skabelon" → giv den et navn og byg linjer op ligesom i et rigtigt tilbud (eller gem et eksisterende tilbuds linjer som skabelon direkte fra tilbudseditoren med "💾 Gem som skabelon"). Indsæt i et tilbud med "📥 Indsæt skabelon" — I får en liste med alle linjerne forhåndskrydset af, og kan fjerne flueben på dem, I ikke vil have med.</p>
+
+  <h3>Mail-skabeloner — alle typer, ét sted</h3>
+  <p><b>Min side → 📐 Skabeloner → ✉️ Mail-skabeloner.</b> Opdelt i tre underfaner:</p>
+  <ul>
+    <li><b>📅 Planlægningsmail</b> — indeholder to ting: øverst de <b>faste automatiske systemmails</b> (fx "Sag afsluttet", "Ny kunde oprettet", "Vi kommer i dag/i morgen", "Tilbud accepteret", "Kunde vundet") — der er kun ét sæt tekst pr. hændelse, som I slår til/fra og redigerer. Nedenunder ligger <b>mail-varianter til booking</b>, hvor I selv kan oprette flere navngivne varianter — når man sender en planlægningsmail fra en booking, bliver man bedt om at vælge, hvilken variant (eller standardteksten) der skal bruges denne gang.</li>
+    <li><b>🧾 Tilbud &amp; faktura</b> — skabeloner til selve tilbuds-/faktura-/rykker-/kreditnota-mails, med rigtig HTML-indhold og en <b>live forhåndsvisning</b>, så I kan se præcis, hvordan mailen ser ud, mens I skriver. Her sætter I også, hvilken skabelon der er <b>standard</b> for hver hændelse (tilbud/faktura/kreditnota/rykker) — den bruges automatisk, men kan altid overstyres manuelt, når I trykker "Send", hvis I lige denne ene gang vil bruge en anden.</li>
+    <li><b>✨ Andre skabeloner</b> — frie skabeloner, der endnu ikke er koblet til en bestemt automatisk hændelse.</li>
+  </ul>
+  <p>I skabelonerne kan I indsætte variabler som <code>{{kunde}}</code>, <code>{{firma}}</code>, <code>{{dokument_nr}}</code>, <code>{{total}}</code>, <code>{{link}}</code> m.fl. — de udfyldes automatisk med de rigtige oplysninger, når mailen rent faktisk sendes.</p>
+
+  <h3>PDF-udseende</h3>
+  <p>Selve layoutet, farverne og skrifttyperne på tilbuds-/faktura-PDF'er er faste og kan ikke ændres fra appen. Det, I <i>kan</i> style selv, er under Indstillinger → 🏢 Virksomhedsprofil: logo, firmanavn, adresse, bankoplysninger og en fri "footer-note", der vises nederst på alle jeres dokumenter (tilbud, fakturaer og kreditnotaer — bemærk at den er fælles for alle tre, ikke kun fakturaer).</p>
+
+  <h3>KS-skabeloner (kvalitetssikring)</h3>
+  <p><b>Projekter → 📋 KS-skabeloner.</b> Byg felter af typen Afkrydsning/Tekst/Tal/Billede. Begræns evt., hvilke KS-skabeloner der må bruges på en given sag, under sagens egen 📋 Kvalitetssikring-fane (er intet valgt, må alle skabeloner bruges). Medarbejderne udfylder dem i felt-appen; svarene ses tilbage på sagen i admin.</p>
+
+  <h3>Kontaktformular-skabeloner</h3>
+  <p><b>Projekter → 📇 Kontaktformularer.</b> Samme opbygning som KS-skabeloner, men uden mulighed for at begrænse pr. sag — alle kontaktformular-skabeloner er altid tilgængelige for medarbejderne i felten.</p>
+
+  <h3>Opgave-skabeloner</h3>
+  <p><b>Min side → 📐 Skabeloner → 📋 Opgave-skabeloner.</b> En genbrugelig opgave-type med navn, fag, standard-varighed og en tjekliste. Kan enten bruges via "Brug"-knappen på listen, eller trækkes direkte ud på en kalenderdag fra planlægningens opgavepool, når poolens filter er sat til "📐 Skabeloner".</p>
+
+  <h3>Fag &amp; farver</h3>
+  <p>Samme side, under en udvidelig boks. Her sætter I en farve pr. fagområde — bruges til farvekodning af opgavekort i Daglig plan og Ugeplan. Bemærk: Kapacitetsboardet bruger bevidst kun én ensartet farve for alle opgaver, uanset fag.</p>
+</section>
+
+<section id="doc-indstillinger" class="doc-section">
+  <h2>⚙️ Indstillinger — alle faner</h2>
+  <table class="doc-table">
+    <tr><th>Fane</th><th>Hvad den styrer</th></tr>
+    <tr><td>🏢 Virksomhedsprofil</td><td>Firmanavn, logo, adresse, CVR, bankoplysninger, faktura-footer, standard top-/bundnoter for nye tilbud og fakturaer (uafhængige af hinanden).</td></tr>
+    <tr><td>🔐 Roller &amp; adgang</td><td>Jeres egne navngivne "panel-roller" (fx "Kontor") med adgang til bestemte sider, samt en separat liste over hvem der må se Økonomi-modulet.</td></tr>
+    <tr><td>🧱 Akkordliste</td><td>Den fælles liste af akkord-poster og standardpriser (se afsnittet om Akkord).</td></tr>
+    <tr><td>📧 Gmail</td><td>Kobl en firma-mailboks på (læse-adgang), så indkommende mails matches automatisk til kunder på mail-adresse. Synkroniseres hvert 30. minut, eller manuelt med "Synk nu".</td></tr>
+    <tr><td>🔄 Synk &amp; import</td><td>Engangs-import af historiske leads/opportunities fra Close CRM (CSV-eksport).</td></tr>
+    <tr><td>🔔 Notifikationer</td><td>Hvilke hændelser der udløser interne notifikationer, og hvordan.</td></tr>
+    <tr><td>🤖 Automatisering</td><td>Webhook-adresser/nøgle til lead-indtag (Elementor/Facebook), SMS-status, den faste faktura-/rykker-/kreditnota-afsender, den tabte-lead-opfølgningsregel, samt status og "Kør nu (test)"-knapper for de to interne info@-mails (se næste afsnit).</td></tr>
+  </table>
+  <p>Under "Min side" ligger desuden <b>📐 Skabeloner</b> (se ovenfor) og <b>🛠 Log</b>, hvor I bl.a. kan downloade en fuld backup af databasen som en JSON-fil (manuelt — der køres ikke nogen automatisk, planlagt backup).</p>
+</section>
+
+<section id="doc-automatik" class="doc-section">
+  <h2>🔌 Automatik, webhooks &amp; "API"</h2>
+  <p>Gulv Master har <b>ikke</b> en åben API, som en ekstern udvikler eller et andet firma kan koble sig på og bygge videre på selv. Alt, der findes af "API", er enten (a) interne adresser, kun de to apps (admin og medarbejder-appen) selv bruger, eller (b) et lille, fast sæt af automatiske integrationer til navngivne tjenester, beskrevet herunder.</p>
+
+  <h3>Automatiske interne mails til info@gulvmaster.dk</h3>
+  <ul>
+    <li><b>Tilbud accepteret</b> — sendes øjeblikkeligt, hver gang et tilbud bliver accepteret (online underskrift eller manuelt sat til "Godkendt"). Altid slået til.</li>
+    <li><b>Daglig status kl. 07:00</b> — antal nye leads, hvor mange der blev talt med (rykket til Sales), antal tilbud sendt/accepteret, samt en liste over evt. fejl/leveringsproblemer det seneste døgn.</li>
+  </ul>
+  <p>Begge kan testes manuelt fra Indstillinger → 🤖 Automatisering uden at vente på, at de udløses/rammer klokkeslættet.</p>
+
+  <h3>Afsender på faktura/rykker/kreditnota</h3>
+  <p>Disse tre sendes bevidst fra en anden afsenderadresse end resten af programmet (fx <code>Lina - Bogholderiet &lt;debitor@gulvmaster.dk&gt;</code> i stedet for info@) — styres af en indstilling på selve serveren (miljøvariablen <code>INVOICE_RESEND_FROM</code> på Render), ikke fra selve appen. Den aktuelle afsender kan altid ses under Indstillinger → 🤖 Automatisering. <b>Vigtigt:</b> svarer en kunde på en faktura/rykker/kreditnota-mail, lander svaret i den postkasse — så den skal rent faktisk eksistere og blive tjekket.</p>
+
+  <h3>Hvordan leads kommer ind udefra</h3>
+  <ul>
+    <li><b>Elementor (hjemmesideformular) og Facebook Lead Ads</b> — går gennem Make.com, som normaliserer data og sender det videre til en webhook-adresse i Gulv Master, beskyttet af en hemmelig nøgle (kan ses/gendannes under Indstillinger → 🤖 Automatisering). Opretter automatisk et lead-kort i CRM.</li>
+    <li><b>Close CRM</b> — et realtids-webhook, der (når et opkald/en opportunity i Close når en bestemt status) automatisk opretter en kunde og et salgskort i Gulv Master. Kræver egen opsætning på serveren (API-nøgle + signeringsnøgle).</li>
+  </ul>
+
+  <h3>Andre automatiske integrationer</h3>
+  <ul>
+    <li><b>Zapier</b> — hvis sat op, sendes et webhook-kald til Zapier, når en sag markeres "Afsluttet" (i stedet for den almindelige afslutningsmail).</li>
+    <li><b>Resend (mailudbyder)</b> — leveringsstatus (leveret/bounced/markeret som spam) på sendte mails hentes automatisk tilbage via et webhook, og er det, der driver leveringsadvarslen på Tilbud/Fakturaer-siderne.</li>
+    <li><b>Cloudinary</b> — opbevarer billeder/videoer, kunder eller medarbejdere uploader (fx svar på en "send os billeder"-anmodning).</li>
+    <li><b>JobTread</b> — tidligere brugt til to-vejs synk af sager/planlægning, nu fuldt migreret væk. Den eneste rest er en manuel, valgfri "Importér fra JobTread"-knap på Produkter-siden, der kun udfylder manglende produktbeskrivelser.</li>
+  </ul>
+
+  <h3>Offentlige links uden login (kun til ét bestemt dokument/kunde ad gangen)</h3>
+  <p>Disse er ikke en generel API — hvert link låser kun op for netop dét dokument/den kunde, det er lavet til:</p>
+  <ul>
+    <li>Tilbuddets underskrivelseslink (🔗 Kundelink)</li>
+    <li>Kundens permanente portal-link (alle tilbud/fakturaer/opgaver samlet)</li>
+    <li>Prisforespørgsel-links til leverandører/underentreprenører</li>
+    <li>"Send os billeder"-links til kunder</li>
+  </ul>
+
+  <h3>Automatiske baggrundsjobs (kører uden I gør noget)</h3>
+  <table class="doc-table">
+    <tr><th>Hvornår</th><th>Hvad</th></tr>
+    <tr><td>Hver time</td><td>Geokodning af adresser (til kort/ruter)</td></tr>
+    <tr><td>Dagligt kl. 10:00</td><td>Rykker-scan (rykker 1/2 på forfaldne fakturaer)</td></tr>
+    <tr><td>Dagligt kl. 10:30</td><td>Opfølgning på tabte/kolde leads</td></tr>
+    <tr><td>Dagligt kl. 10:45</td><td>Tidsbaserede stage-regler i CRM-pipelinen</td></tr>
+    <tr><td>Dagligt kl. 07:00</td><td>Den daglige status-mail til info@</td></tr>
+    <tr><td>Den 15. hver måned</td><td>Låser en profit-øjebliksmåling fast for måneden</td></tr>
+    <tr><td>Hvert 5. minut</td><td>Gmail-synkronisering (kun hvis Gmail er koblet på)</td></tr>
+  </table>
+</section>
+
+<section id="doc-faq" class="doc-section">
+  <h2>❓ Ofte stillede spørgsmål</h2>
+  <h3>Hvorfor kan jeg ikke redigere i en faktura?</h3>
+  <p>Fordi den allerede er sendt til kunden — det er med vilje, så en kunde aldrig ser en faktura ændre sig efter modtagelsen. Lav en kreditnota i stedet.</p>
+  <h3>Kunden siger, de aldrig modtog tilbuddet/fakturaen — hvad nu?</h3>
+  <p>Kig efter leveringsadvarslen øverst på Tilbud/Fakturaer-siden — den viser automatisk, om mailen er kommet retur eller er markeret som spam. Husk også at tjekke, at den relevante afsender-postkasse (info@ eller debitor@ osv.) rent faktisk findes og læses, hvis kunden har svaret på mailen.</p>
+  <h3>Hvorfor ser jeg ikke Økonomi i menuen?</h3>
+  <p>Adgang til Økonomi gives specifikt pr. person under Indstillinger → 🔐 Roller &amp; adgang — spørg en admin.</p>
+  <h3>En medarbejder er på akkord, men jeg kan ikke se prisfeltet ved tidsregistrering</h3>
+  <p>Tjek, at personens løntype rent faktisk står som "Akkord" under Hold &amp; vendors, og at akkord-posten findes på den fælles Akkordliste (Indstillinger).</p>
+  <h3>Findes der en "Rapporter"-side?</h3>
+  <p>Ikke som en enkelt samlet side — se afsnittet <a class="doc-link" data-doc-jump="doc-oekonomi">Økonomi &amp; rapporter</a> for, hvor de forskellige rapporter faktisk ligger.</p>
+</section>
+
       </div>
     </div>
   </div>
@@ -13900,7 +14284,7 @@ function useTemplate(id){
 // for at den aktive fane altid er en synlig fane — ellers ville fx en ikke-
 // admin lande på en tom "Virksomhedsprofil"-fane.
 // ══════════════════════════════════════════════════════════════
-var SET_TABS=['company','access','akkord','gmail','sync','notif','automation'];
+var SET_TABS=['company','access','akkord','gmail','sync','notif','automation','docs'];
 var settingsPageInitialized=false;
 function setTabBtn(name){return document.querySelector('#set-tabs [data-settab="'+name+'"]');}
 function setTabVisible(name){
@@ -13949,6 +14333,43 @@ function switchSetTab(name,skipHash){
   // RUNDE I #318 — "Automatisering" flyttet hertil fra Mail-skabeloner, samme
   // lazy-load-mønster som notif/gmail/access herover.
   if(name==='automation')loadAutomationSettings();
+  // RUNDE BD — "Dokumentation" er rent statisk indhold (ingen data at hente),
+  // så vi kalder bare initDocsTab() (som selv sørger for kun at binde sine
+  // click/input-listeners én gang, samme mønster som initSettingsPage()).
+  if(name==='docs')initDocsTab();
+}
+// RUNDE BD — Dokumentations-fanen: TOC-klik/søgning. Bevidst IKKE rigtige
+// #hash-links (se kommentaren ved selve markup'et i #settab-docs) — i stedet
+// almindelige click-handlers der scroller sektionen i visning med
+// scrollIntoView, uden at røre window.location.hash (som ville udløse appens
+// egen hash-router og navigere væk fra Indstillinger). Søgefeltet filtrerer
+// simpelt på sektionens tekstindhold og skjuler både sektionen og dens
+// TOC-link, når teksten ikke matcher.
+var docsTabInited=false;
+function initDocsTab(){
+  if(docsTabInited)return;
+  docsTabInited=true;
+  var content=document.getElementById('docs-content');
+  if(!content)return;
+  document.querySelectorAll('#settab-docs a.doc-link').forEach(function(a){
+    a.addEventListener('click',function(e){
+      e.preventDefault();
+      var target=document.getElementById(a.dataset.docJump);
+      if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
+    });
+  });
+  var searchEl=document.getElementById('docs-search');
+  if(searchEl){
+    searchEl.addEventListener('input',function(){
+      var q=searchEl.value.trim().toLowerCase();
+      content.querySelectorAll('.doc-section').forEach(function(sec){
+        var match=!q||sec.innerText.toLowerCase().indexOf(q)!==-1;
+        sec.classList.toggle('doc-hidden',!match);
+        var link=document.querySelector('#docs-toc-nav a[data-doc-jump="'+sec.id+'"]');
+        if(link)link.classList.toggle('doc-hidden',!match);
+      });
+    });
+  }
 }
 // Kaldes af switchPage() hver gang Indstillinger åbnes.
 function initSettingsPage(){
