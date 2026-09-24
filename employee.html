@@ -121,6 +121,17 @@
 .doc-check input{width:19px;height:19px;flex-shrink:0;margin-top:1px;accent-color:#16A34A}
 .doc-check span{font-size:12.5px;line-height:1.45;color:var(--ink,#0f172a)}
 .doc-check span strong{display:block;font-size:13px;margin-bottom:1px}
+/* RUNDE H #31 (Martins ønske: "give dem en dropdown hvor de kan krydse de
+   forskellige ting de har lavet samt skrive antal af dem") — akkordlisten i
+   Registrér tid-formularen (se pmOpenTimeForm) er nu en flueben-liste (samme
+   visuelle stil som .doc-check ovenfor) i stedet for kun ét enkelt dropdown-
+   valg, så en akkord-lønnet medarbejder kan sætte flueben ved FLERE
+   akkordposter på én gang og skrive et antal for hver — fx både "Slibning"
+   og "Lakering" samme dag i stedet for at skulle udfylde og indsende hele
+   formularen forfra for hver post. */
+.akkord-check-row{margin-bottom:10px}
+.akkord-check-row .doc-check{margin-bottom:0}
+.akkord-check-row .pmt-akkord-qty{display:none;margin-top:6px}
 .req-tabs{display:flex;gap:6px;margin-bottom:14px;background:#F1F5F9;border-radius:10px;padding:4px}
 .req-tab{flex:1;border:0;background:none;padding:8px 6px;font-size:12px;font-weight:700;color:var(--muted);border-radius:8px;cursor:pointer;transition:.15s}
 .req-tab.active{background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.1)}
@@ -684,12 +695,19 @@ async function pmOpenTimeForm(){
     pmState.akkordItems=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
   }
   const lineOptions=(p.quote_line_options||[]).map(l=>`<option value="${l.id}">${esc(l.description)}</option>`).join('');
-  const akkordOptions=isAkkord?(pmState.akkordItems||[]).map(a=>`<option value="${a.id}">${esc(a.name)} — ${Number(a.rate).toFixed(2)} kr/stk</option>`).join(''):'';
+  // RUNDE H #31 — flueben-liste i stedet for ét enkelt <select>, se CSS-
+  // kommentaren ved .akkord-check-row for baggrunden. Antal-feltet vises/
+  // aktiveres kun for de poster der rent faktisk er sat flueben ved, se
+  // pmToggleAkkordQty().
+  const akkordRows=isAkkord?(pmState.akkordItems||[]).map(a=>`
+    <div class="akkord-check-row" data-akkord-row="${a.id}">
+      <label class="doc-check"><input type="checkbox" class="pmt-akkord-check" data-id="${a.id}" data-name="${esc(a.name)}" onchange="pmToggleAkkordQty(${a.id},this.checked)"><span><strong>${esc(a.name)}</strong>${Number(a.rate).toFixed(2)} kr/stk</span></label>
+      <input class="req-input pmt-akkord-qty" type="number" id="pmt-akkord-qty-${a.id}" min="0" step="0.01" placeholder="Antal, fx 12,5" disabled>
+    </div>
+  `).join(''):'';
   const workBlock=isAkkord?`
-    <label class="req-label">Akkordpost</label>
-    <select class="req-input" id="pmt-akkord-item"><option value="">Vælg akkordpost…</option>${akkordOptions}</select>
-    <label class="req-label">Antal</label>
-    <input class="req-input" type="number" id="pmt-akkord-qty" min="0" step="0.01" placeholder="Fx 12,5">
+    <label class="req-label">Akkordposter — sæt flueben ved dem du har lavet i dag</label>
+    ${akkordRows||'<p class="sub">Ingen akkordposter oprettet endnu — kontakt admin.</p>'}
   `:`
     <label class="req-label">Arbejdstid</label>
     <div style="display:flex;gap:8px">
@@ -716,6 +734,17 @@ async function pmOpenTimeForm(){
     <button class="req-submit" type="button" id="pmt-submit" onclick="pmSubmitTime()">Gem tidsregistrering</button>
   `;
   pmRenderTimePhotosPreview();
+}
+// RUNDE H #31 — viser/aktiverer antal-feltet for en akkordpost når den fluebenes,
+// og skjuler/rydder+deaktiverer det igen hvis fluebenet fjernes (så et evt.
+// gammelt antal ikke sniger sig med, hvis man fortryder og fjerner fluebenet).
+function pmToggleAkkordQty(id,checked){
+  const qtyInput=document.getElementById('pmt-akkord-qty-'+id);
+  if(!qtyInput)return;
+  qtyInput.disabled=!checked;
+  qtyInput.style.display=checked?'block':'none';
+  if(checked)qtyInput.focus();
+  else qtyInput.value='';
 }
 function pmAddTimePhoto(e){
   // multiple-attributten på filfeltet betyder man nu kan vælge flere billeder på
@@ -776,33 +805,64 @@ async function pmSubmitTime(){
   const date=document.getElementById('pmt-date').value;
   const lineId=document.getElementById('pmt-line').value;
   const materials=document.getElementById('pmt-materials').value.trim();
-  let payload;
+  let akkordLines=null,minutesPayload=null;
   if(isAkkord){
-    const akkordItemId=document.getElementById('pmt-akkord-item').value;
-    const qtyRaw=document.getElementById('pmt-akkord-qty').value;
-    const qty=qtyRaw?Number(qtyRaw.replace(',','.')):NaN;
-    if(!akkordItemId){pmFeedback('pmt-feedback','Vælg en akkordpost',false);return}
-    if(!qty||qty<=0){pmFeedback('pmt-feedback','Skriv et gyldigt antal',false);return}
-    payload={akkord_item_id:akkordItemId,akkord_quantity:qty};
+    // RUNDE H #31 — én eller flere fluebenede akkordposter, hver med sit eget
+    // antal, i stedet for kun ét valgt dropdown-item. Se .akkord-check-row.
+    const checks=Array.from(document.querySelectorAll('.pmt-akkord-check:checked'));
+    if(!checks.length){pmFeedback('pmt-feedback','Sæt flueben ved mindst én akkordpost',false);return}
+    akkordLines=[];
+    for(const cb of checks){
+      const id=cb.dataset.id;
+      const qtyEl=document.getElementById('pmt-akkord-qty-'+id);
+      const qtyRaw=qtyEl?qtyEl.value:'';
+      const qty=qtyRaw?Number(String(qtyRaw).replace(',','.')):NaN;
+      if(!qty||qty<=0){pmFeedback('pmt-feedback','Skriv et gyldigt antal for "'+cb.dataset.name+'"',false);return}
+      akkordLines.push({akkord_item_id:id,akkord_quantity:qty,name:cb.dataset.name});
+    }
   }else{
     const minutes=pmComputeTimeMinutes();
     if(!minutes){pmFeedback('pmt-feedback','Udfyld "Fra kl." og "Til kl." — til skal være efter fra',false);return}
-    payload={minutes};
+    minutesPayload={minutes};
   }
   if(!note){pmFeedback('pmt-feedback','Skriv en note om det udførte arbejde',false);return}
   if(!pmtPhotoFiles.length){pmFeedback('pmt-feedback','Upload mindst ét billede som dokumentation',false);return}
   const btn=document.getElementById('pmt-submit');btn.disabled=true;btn.textContent='Gemmer…';
   try{
     const photoUrls=[];
-    for(const file of pmtPhotoFiles){
-      const dataUrl=await pmReadFileAsDataUrl(file);
+    for(let i=0;i<pmtPhotoFiles.length;i++){
+      if(pmtPhotoFiles.length>1)btn.textContent='Uploader billede '+(i+1)+'/'+pmtPhotoFiles.length+'…';
+      const dataUrl=await pmReadFileAsDataUrl(pmtPhotoFiles[i]);
       const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
       if(!up||!up.ok){pmFeedback('pmt-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade et billede',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
       photoUrls.push(up.data.url);
     }
-    const r=await api('/api/projects/'+pmState.current.id+'/time-entries',{method:'POST',body:JSON.stringify({...payload,note,photo_urls:photoUrls,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date})});
-    if(r&&r.ok){toast('Tid registreret ✓');await pmOpenProject(pmState.current.id)}
-    else{pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
+    const baseBody={note,photo_urls:photoUrls,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date};
+    if(isAkkord){
+      // Databasen gemmer ét akkord-item pr. tidsregistrerings-række (se
+      // akkord_item_id/akkord_quantity i server.js) — flere fluebenede poster
+      // betyder derfor flere separate gem-kald herunder, der alle deler samme
+      // note/billeder/dato/materialer. Hver post markeres som gemt (fluebenet
+      // fjernes+deaktiveres) EFTERHÅNDEN, så et evt. genforsøg efter en fejl
+      // midtvejs kun forsøger at gemme de(n) resterende post(er) igen — ikke
+      // opretter den/de allerede gemte en gang til.
+      for(let i=0;i<akkordLines.length;i++){
+        const line=akkordLines[i];
+        if(akkordLines.length>1)btn.textContent='Gemmer post '+(i+1)+'/'+akkordLines.length+'…';
+        const r=await api('/api/projects/'+pmState.current.id+'/time-entries',{method:'POST',body:JSON.stringify({...baseBody,akkord_item_id:line.akkord_item_id,akkord_quantity:line.akkord_quantity})});
+        if(!r||!r.ok){
+          pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||('Kunne ikke gemme "'+line.name+'" — prøv igen (de(n) allerede gemte er ikke berørt)'),false);
+          btn.disabled=false;btn.textContent='Gem tidsregistrering';
+          return;
+        }
+        const cb=document.querySelector('.pmt-akkord-check[data-id="'+line.akkord_item_id+'"]');
+        if(cb){cb.checked=false;cb.disabled=true;pmToggleAkkordQty(line.akkord_item_id,false);const row=cb.closest('.akkord-check-row');if(row)row.style.opacity='.5';}
+      }
+    }else{
+      const r=await api('/api/projects/'+pmState.current.id+'/time-entries',{method:'POST',body:JSON.stringify({...baseBody,...minutesPayload})});
+      if(!r||!r.ok){pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
+    }
+    toast('Tid registreret ✓');await pmOpenProject(pmState.current.id)
   }catch(e){pmFeedback('pmt-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
 }
 function pmOpenPhotoForm(){

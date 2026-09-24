@@ -1569,34 +1569,45 @@ select.bly-select{appearance:none;border:1px solid var(--bly-border);border-radi
 @media(max-width:760px){.dash-priority-row-sub{display:none}}
 
 /* ══════════════════════════════════════════════════════════════
-   GANTT — samme Billy-behandling, scoped til #page-gantt (samt de to
-   Gantt-modaler, som ligger uden for sektionen i DOM'en). */
-#page-gantt .page-head{margin-bottom:18px}
-#page-gantt .page-title{font-size:25px;font-weight:800;color:var(--bly-ink);letter-spacing:-.01em}
-#page-gantt .page-sub{color:var(--bly-sub);font-size:12px}
-#page-gantt .btn{border-radius:var(--bly-r-pill);font-weight:700;border-color:var(--bly-border)}
-#page-gantt .btn.primary{background:var(--bly-ink);border-color:var(--bly-ink)}
-#page-gantt .input,#page-gantt .select{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);color:var(--bly-ink);background:#fff}
-#page-gantt .input:focus,#page-gantt .select:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
-#page-gantt .gantt-job-result{border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md)}
-#page-gantt .gantt-job-result:hover{border-color:var(--bly-accent);background:var(--bly-accent-soft)}
-#page-gantt .gantt-toolbar{background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:12px 14px}
-#page-gantt .board-outer{border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);box-shadow:none;height:calc(100vh - 260px);min-height:420px;max-height:1400px;overflow-y:auto}
+   GANTT — samme Billy-behandling, scoped til #projtab-gantt (samt de to
+   Gantt-modaler, som ligger uden for sektionen i DOM'en).
+   RETTELSE (Martins fejlrapport: "Tror gantkortet ikke virker mere?", skærm-
+   billede med spredte, ustyrede bjælker og ingen synlig opgaveliste i venstre
+   side) — HELE denne CSS-blok var scoped til "#page-gantt", som var id'et på
+   Gantt'ets gamle, selvstændige side FØR den 05-09-2026 blev flyttet ind som
+   en fane under Projekter (se #projtab-gantt-diven nedenfor). Id'et blev
+   aldrig opdateret her, så samtlige regler nedenfor — border-radius, farver,
+   OG (vigtigst) ".gantt-chart{overflow:visible}" som selve kommentaren ved
+   den regel forklarer er nødvendig for at position:sticky (opgavelisten i
+   venstre side + dato-headerne) overhovedet virker — har ramt et id der ikke
+   findes noget sted i DOM'en siden migreringen, og har derfor været dødt
+   siden. Rettet ved at pege hele blokken på #projtab-gantt i stedet. */
+#projtab-gantt .page-head{margin-bottom:18px}
+#projtab-gantt .page-title{font-size:25px;font-weight:800;color:var(--bly-ink);letter-spacing:-.01em}
+#projtab-gantt .page-sub{color:var(--bly-sub);font-size:12px}
+#projtab-gantt .btn{border-radius:var(--bly-r-pill);font-weight:700;border-color:var(--bly-border)}
+#projtab-gantt .btn.primary{background:var(--bly-ink);border-color:var(--bly-ink)}
+#projtab-gantt .input,#projtab-gantt .select{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);color:var(--bly-ink);background:#fff}
+#projtab-gantt .input:focus,#projtab-gantt .select:focus{outline:none;border-color:var(--bly-accent);box-shadow:0 0 0 3px var(--bly-accent-soft)}
+#projtab-gantt .gantt-job-result{border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md)}
+#projtab-gantt .gantt-job-result:hover{border-color:var(--bly-accent);background:var(--bly-accent-soft)}
+#projtab-gantt .gantt-toolbar{background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:12px 14px}
+#projtab-gantt .board-outer{border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);box-shadow:none;height:calc(100vh - 260px);min-height:420px;max-height:1400px;overflow-y:auto}
 /* .gantt-chart's egen overflow:hidden (til afrundede hjørner) sad MELLEM board-outer
    (den boks der nu faktisk scroller) og de sticky headere — det ødelagde position:sticky
    helt (headerne "klæbede" til gantt-chart's egen — aldrig-scrollende — boks i stedet for
    board-outer, så de forsvandt op i ingenting når man scrollede). board-outer klipper
    allerede selv sine afrundede hjørner (den har border-radius + ikke-visible overflow),
    så vi kan roligt fjerne klipningen her uden at miste det visuelle udtryk. */
-#page-gantt .gantt-chart{overflow:visible}
-#page-gantt .gantt-week-head{background:var(--bly-border-soft);border-bottom:1px solid var(--bly-border-soft)}
-#page-gantt .gantt-timeline-head{background:#fff;border-bottom:1px solid var(--bly-border-soft)}
-#page-gantt .gantt-day-col{border-right:1px solid var(--bly-border-soft);color:var(--bly-sub)}
-#page-gantt .gantt-day-col.weekend{background:var(--bly-border-soft)}
-#page-gantt .gantt-day-col.today span{background:var(--bly-accent)}
-#page-gantt .gantt-row{border-bottom:1px solid var(--bly-border-soft)}
-#page-gantt .gantt-bar{border-radius:var(--bly-r-sm);box-shadow:none}
-#page-gantt .gantt-bar:hover{box-shadow:0 4px 14px rgba(15,17,24,.15)}
+#projtab-gantt .gantt-chart{overflow:visible}
+#projtab-gantt .gantt-week-head{background:var(--bly-border-soft);border-bottom:1px solid var(--bly-border-soft)}
+#projtab-gantt .gantt-timeline-head{background:#fff;border-bottom:1px solid var(--bly-border-soft)}
+#projtab-gantt .gantt-day-col{border-right:1px solid var(--bly-border-soft);color:var(--bly-sub)}
+#projtab-gantt .gantt-day-col.weekend{background:var(--bly-border-soft)}
+#projtab-gantt .gantt-day-col.today span{background:var(--bly-accent)}
+#projtab-gantt .gantt-row{border-bottom:1px solid var(--bly-border-soft)}
+#projtab-gantt .gantt-bar{border-radius:var(--bly-r-sm);box-shadow:none}
+#projtab-gantt .gantt-bar:hover{box-shadow:0 4px 14px rgba(15,17,24,.15)}
 
 #gantt-task-modal .modal,#gantt-detail-modal .gd-modal{border-radius:var(--bly-r-lg)}
 #gantt-task-modal .modal h3{background:none;color:var(--bly-ink);margin:0 0 18px;padding:0;border-radius:0;font-size:19px;font-weight:800;cursor:default}
@@ -2672,6 +2683,14 @@ body.qz-overlay-open .page.active{display:none}
 .captl-sub{font-size:11.5px;color:var(--bly-sub);margin-top:2px}
 .captl-scroll{overflow-x:auto;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding-bottom:2px}
 .captl-legend{margin-top:12px;font-size:11.5px;color:var(--bly-sub);line-height:1.5;background:var(--bly-accent-soft);border-radius:var(--bly-r-sm);padding:10px 12px}
+/* RUNDE H #33 (Martins ønske: "vise en uge ad gangen ... hurtigt se hvilke
+   datoer projekterne starter") — nav-linje med frem/tilbage-uge-knapper over
+   selve tidslinjen, plus toggle til den gamle "hele forløbet presset sammen
+   i én visning"-tilstand. Se capTlGoWeek()/capTlToggleMode()/renderCapTimeline(). */
+.captl-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.captl-nav-arrows{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.captl-nav-label{font-size:12.5px;font-weight:700;color:#1F2937;min-width:150px;text-align:center}
+.captl-daytoday{background:var(--bly-accent-soft)!important;color:var(--bly-ink)!important;border-radius:4px 4px 0 0}
 
 /* CAP SUMMARY ROW */
 .cap-num{text-align:center;font-size:10px;font-weight:700;padding:2px 4px;margin-bottom:2px;color:var(--muted)}
@@ -3052,7 +3071,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
    (det gjorde den meget lille med få opgaver). Ved mange opgaver scroller
    den internt i stedet for at vokse i det uendelige. */
 #pd-gantt-strip{min-height:min(66vh,600px);max-height:78vh;overflow:auto;display:flex}
-/* Samme fix som #page-gantt (se kommentar ved #page-gantt .gantt-chart): denne boks er selv
+/* Samme fix som #projtab-gantt (se kommentar ved #projtab-gantt .gantt-chart): denne boks er selv
    den scrollende beholder (overflow:auto ovenfor), så .gantt-chart's egen overflow:hidden
    sad mellem den og de sticky headere og ødelagde position:sticky helt — det var derfor
    første opgave-række visuelt gemte sig bagved/under dato-headeren. */
@@ -3601,7 +3620,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.35</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.37</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5993,7 +6012,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="page-head">
       <div>
         <div class="page-title">Gantt</div>
-        <div class="page-sub">Tidsplanen for én af dine sager — vælg sagen nedenfor. Ændringer gemmes med det samme på sagen og slår igennem i Opgavepool, Kapacitet og Tidslinje.</div>
+        <div class="page-sub">Tidsplanen på tværs af alle dine sager. Tryk "← Skift sag" for kun at se én bestemt sag. Ændringer gemmes med det samme på sagen og slår igennem i Opgavepool, Kapacitet og Tidslinje.</div>
       </div>
       <button class="btn primary" id="gantt-all-tasks-btn">📊 Se alle opgaver</button>
     </div>
@@ -10424,6 +10443,16 @@ async function deleteCapacityReservation(){
 // overlap der ligger måneder fra hinanden.
 function capTlValidDate(s){return !!s&&/^\d{4}-\d{2}-\d{2}/.test(String(s));}
 function capTlShortDate(s){var d=date(s);return d.getDate()+'/'+(d.getMonth()+1);}
+// RUNDE H #33 (Martins ønske: "vise en uge ad gangen ... hurtigt se hvilke
+// datoer projekterne starter") — modalens data hentes/beregnes stadig kun i
+// openCapTimelinePopup(), men selve tegningen er flyttet til renderCapTimeline()
+// så den kan genkøres når man skifter uge eller visnings-tilstand, uden at
+// hente kapacitetsdata igen. capTlMode styrer om vi viser ÉN uge ad gangen i
+// fuld bredde (default, letlæseligt — bjælkerne var før presset så meget
+// sammen at Martin ikke kunne se hvornår ting startede) eller den gamle
+// "hele forløbet på én gang" visning (nu en valgfri "Vis hele forløbet"-knap).
+var capTlMode='week',capTlWeekStart=null,capTlItems=[],capTlUser=null;
+
 function openCapTimelinePopup(userId,clickedWeekIso){
   var u=users.find(function(x){return +x.id===+userId;});
   if(!u){toast('Medarbejderen blev ikke fundet','⚠');return;}
@@ -10445,31 +10474,70 @@ function openCapTimelinePopup(userId,clickedWeekIso){
   else{avatarEl.outerHTML='<div class="avatar" id="cap-timeline-avatar" style="background:'+(u.color||'#2563EB')+'22;color:'+(u.color||'#2563EB')+'">'+esc(u.initials||u.name.slice(0,2))+'</div>';}
   document.getElementById('cap-timeline-title').textContent=u.name;
   document.getElementById('cap-timeline-sub').textContent=(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+' · '+(+u.weekly_capacity||5)+' d/uge · '+items.length+' kapacitetsreservation'+(items.length!==1?'er':'');
+  capTlUser=u;capTlItems=items;
   var body=document.getElementById('cap-timeline-body');
   if(!items.length){
     body.innerHTML='<div class="tl-empty">Ingen kapacitetsreservationer endnu for '+esc(u.name)+'.</div>';
     document.getElementById('cap-timeline-modal').classList.add('open');
     return;
   }
-  // Samlet datointerval, med lidt luft i hver ende, startende på en mandag
-  // (samme rytme som resten af Kapacitetsboardet).
-  var minStart=items.reduce(function(m,b){return date(b._capTlStart)<date(m)?b._capTlStart:m;},items[0]._capTlStart);
-  var maxEnd=items.reduce(function(m,b){return date(b._capTlEnd)>date(m)?b._capTlEnd:m;},items[0]._capTlEnd);
-  var rangeStart=mon(add(date(minStart),-3));
-  var rangeEndPadded=add(date(maxEnd),4);
-  var totalDays=Math.max(14,daysBetween(rangeStart,rangeEndPadded)+1);
-  // Dag-bredde skaleres ned for lange perioder (så en medarbejder booket over
-  // et helt år stadig kan rummes), med et fornuftigt min/maks og vandret scroll.
-  var DAY_W=Math.max(4,Math.min(26,Math.round(1500/totalDays)));
+  capTlMode='week';
+  var targetIso=clickedWeekIso&&capTlValidDate(clickedWeekIso)?clickedWeekIso:iso(new Date());
+  capTlWeekStart=mon(date(targetIso));
+  renderCapTimeline();
+  document.getElementById('cap-timeline-modal').classList.add('open');
+}
+
+function capTlGoWeek(dir){capTlWeekStart=add(capTlWeekStart,dir*7);renderCapTimeline();}
+function capTlGoToday(){capTlWeekStart=mon(new Date());renderCapTimeline();}
+function capTlToggleMode(){
+  capTlMode=capTlMode==='week'?'all':'week';
+  if(capTlMode==='week'&&!capTlWeekStart)capTlWeekStart=mon(new Date());
+  renderCapTimeline();
+}
+
+function renderCapTimeline(){
+  var u=capTlUser,items=capTlItems;
+  var body=document.getElementById('cap-timeline-body');
+  if(!u||!items.length)return;
+
+  var rangeStart,totalDays,DAY_W,visibleItems;
+  if(capTlMode==='week'){
+    // Uge-visning: fast, generøs dagbredde (ingen sammenpresning/afkortning),
+    // kun bjælker der rammer ind i den viste uge tages med.
+    rangeStart=capTlWeekStart;
+    totalDays=7;
+    DAY_W=118;
+    var winEnd=add(rangeStart,6);
+    visibleItems=items.filter(function(b){return date(b._capTlEnd)>=rangeStart&&date(b._capTlStart)<=winEnd;});
+  }else{
+    // "Hele forløbet" — samlet datointerval, med lidt luft i hver ende,
+    // startende på en mandag (samme rytme som resten af Kapacitetsboardet).
+    var minStart=items.reduce(function(m,b){return date(b._capTlStart)<date(m)?b._capTlStart:m;},items[0]._capTlStart);
+    var maxEnd=items.reduce(function(m,b){return date(b._capTlEnd)>date(m)?b._capTlEnd:m;},items[0]._capTlEnd);
+    rangeStart=mon(add(date(minStart),-3));
+    var rangeEndPadded=add(date(maxEnd),4);
+    totalDays=Math.max(14,daysBetween(rangeStart,rangeEndPadded)+1);
+    // Dag-bredde skaleres ned for lange perioder (så en medarbejder booket
+    // over et helt år stadig kan rummes), med et fornuftigt min/maks.
+    DAY_W=Math.max(4,Math.min(26,Math.round(1500/totalDays)));
+    visibleItems=items;
+  }
   var totalW=totalDays*DAY_W;
   var todayIdx=daysBetween(rangeStart,new Date());
+  var winEndIdx=totalDays-1;
 
   // Lane-pakning — samme grådige algoritme som renderTimeline() — så
   // overlappende reservationer stables i stedet for at kollidere visuelt.
+  // I uge-mode klippes segmentet til det synlige vindue først, så en bjælke
+  // der reelt startede for flere uger siden ikke skubber layoutet skævt.
   var lanes=[];
-  items.slice().sort(function(a,b){return String(a._capTlStart).localeCompare(String(b._capTlStart));}).forEach(function(b){
-    var s=daysBetween(rangeStart,date(b._capTlStart));
-    var span=Math.max(1,daysBetween(date(b._capTlStart),date(b._capTlEnd))+1);
+  visibleItems.slice().sort(function(a,b){return String(a._capTlStart).localeCompare(String(b._capTlStart));}).forEach(function(b){
+    var segStartD=(capTlMode==='week'&&date(b._capTlStart)<rangeStart)?rangeStart:date(b._capTlStart);
+    var segEndD=(capTlMode==='week'&&date(b._capTlEnd)>add(rangeStart,winEndIdx))?add(rangeStart,winEndIdx):date(b._capTlEnd);
+    var s=daysBetween(rangeStart,segStartD);
+    var span=Math.max(1,daysBetween(segStartD,segEndD)+1);
+    b._segStart=s;b._segSpan=span;
     var placed=false;
     for(var li=0;li<lanes.length;li++){
       if(lanes[li]<=s){lanes[li]=s+span;b._lane=li;placed=true;break;}
@@ -10480,50 +10548,89 @@ function openCapTimelinePopup(userId,clickedWeekIso){
   var hasOverlap=laneCount>1;
   var trackH=laneCount*32+12;
 
-  var weekHTML='<div class="tl-weekrow">';
-  for(var w=0;w<totalDays;w+=7){
-    var wd=add(rangeStart,w);
-    var span=Math.min(7,totalDays-w);
-    weekHTML+='<div class="tl-weekcell" style="width:'+(span*DAY_W)+'px">Uge '+weekNo(wd)+' · '+wd.getDate()+'/'+(wd.getMonth()+1)+'</div>';
+  var headHTML;
+  if(capTlMode==='week'){
+    var todayIso=iso(new Date());
+    headHTML='<div class="tl-weekrow">';
+    for(var di=0;di<7;di++){
+      var d=add(rangeStart,di);
+      headHTML+='<div class="tl-weekcell'+(iso(d)===todayIso?' captl-daytoday':'')+'" style="width:'+DAY_W+'px">'+DAYS[d.getDay()]+' · '+d.getDate()+'/'+(d.getMonth()+1)+'</div>';
+    }
+    headHTML+='</div>';
+  }else{
+    headHTML='<div class="tl-weekrow">';
+    for(var w=0;w<totalDays;w+=7){
+      var wd=add(rangeStart,w);
+      var span=Math.min(7,totalDays-w);
+      headHTML+='<div class="tl-weekcell" style="width:'+(span*DAY_W)+'px">Uge '+weekNo(wd)+' · '+wd.getDate()+'/'+(wd.getMonth()+1)+'</div>';
+    }
+    headHTML+='</div>';
   }
-  weekHTML+='</div>';
 
   var bgHTML='<div class="tl-track-bg">';
-  for(var di=0;di<totalDays;di++){
-    var d=add(rangeStart,di);
-    var isWeekend=(d.getDay()===0||d.getDay()===6);
+  for(var dj=0;dj<totalDays;dj++){
+    var d2=add(rangeStart,dj);
+    var isWeekend=(d2.getDay()===0||d2.getDay()===6);
     bgHTML+='<div class="tl-bg-cell'+(isWeekend?' weekend':'')+'" style="width:'+DAY_W+'px"></div>';
   }
   bgHTML+='</div>';
   var todayLine=(todayIdx>=0&&todayIdx<totalDays)?'<div class="tl-todayline" style="left:'+(todayIdx*DAY_W+DAY_W/2)+'px"></div>':'';
 
-  var barsHTML=items.map(function(b){
-    var s=daysBetween(rangeStart,date(b._capTlStart));
-    var span=Math.max(1,daysBetween(date(b._capTlStart),date(b._capTlEnd))+1);
+  var barsHTML=visibleItems.map(function(b){
+    var s,span;
+    if(capTlMode==='week'){s=b._segStart;span=b._segSpan;}
+    else{s=daysBetween(rangeStart,date(b._capTlStart));span=Math.max(1,daysBetween(date(b._capTlStart),date(b._capTlEnd))+1);}
     var left=s*DAY_W+1,width=Math.max(DAY_W-2,span*DAY_W-2);
     var top=6+b._lane*32;
     var type=TYPE[b.type_guess||'other']||TYPE.other;
     var label=b.capacity_label||b.job_name||b.task_name||'Kapacitetsreservation';
     var dashIdx=label.indexOf(' — ');
     if(dashIdx>-1)label=label.slice(0,dashIdx);
+    // Kontinuerings-pile — viser tydeligt at bjælken fortsætter uden for den
+    // viste uge, i stedet for bare at se afskåret/mærkelig ud.
+    var contL=capTlMode==='week'&&date(b._capTlStart)<rangeStart;
+    var contR=capTlMode==='week'&&date(b._capTlEnd)>add(rangeStart,winEndIdx);
+    var dispLabel=(contL?'◀ ':'')+label+(contR?' ▶':'');
     var basisTxt=b._capTlProjectBased?'sagens planlagte datoer':'den bookede kapacitetsuge';
-    var tip=label+' — '+capTlShortDate(b._capTlStart)+' til '+capTlShortDate(b._capTlEnd)+' ('+basisTxt+') · '+capDaysOf(b)+' d reserveret';
-    return '<div class="tl-bar" data-action="open-cap-from-timeline" data-booking-id="'+b.id+'" style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+(type.bar||'#94A3B8')+'" title="'+esc(tip)+'"><span class="tl-bar-label">'+esc(label)+'</span></div>';
+    var tip=label+' — '+capTlShortDate(b._capTlStart)+' til '+capTlShortDate(b._capTlEnd)+' ('+basisTxt+') · '+capDaysOf(b)+' d reserveret'+((contL||contR)?' · fortsætter uden for denne uge':'');
+    return '<div class="tl-bar" data-action="open-cap-from-timeline" data-booking-id="'+b.id+'" style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+(type.bar||'#94A3B8')+'" title="'+esc(tip)+'"><span class="tl-bar-label">'+esc(dispLabel)+'</span></div>';
   }).join('');
 
-  body.innerHTML='<div class="captl-scroll"><div class="tl-grid" style="width:'+totalW+'px">'+weekHTML+
+  var navHTML='<div class="captl-nav">';
+  if(capTlMode==='week'){
+    var we=add(rangeStart,6);
+    var weekLabel='Uge '+weekNo(rangeStart)+' · '+rangeStart.getDate()+'/'+(rangeStart.getMonth()+1)+'–'+we.getDate()+'/'+(we.getMonth()+1);
+    navHTML+='<div class="captl-nav-arrows">'
+      +'<button type="button" class="bly-btn outline small" onclick="capTlGoWeek(-1)">← Forrige uge</button>'
+      +'<div class="captl-nav-label">'+weekLabel+'</div>'
+      +'<button type="button" class="bly-btn outline small" onclick="capTlGoWeek(1)">Næste uge →</button>'
+      +'<button type="button" class="bly-btn outline small" onclick="capTlGoToday()">I dag</button>'
+      +'</div>'
+      +'<button type="button" class="bly-btn outline small" onclick="capTlToggleMode()">Vis hele forløbet</button>';
+  }else{
+    navHTML+='<div class="captl-nav-label">Hele forløbet</div>'
+      +'<button type="button" class="bly-btn outline small" onclick="capTlToggleMode()">Uge for uge</button>';
+  }
+  navHTML+='</div>';
+
+  var legendHTML=visibleItems.length
+    ?('<div class="captl-legend">'+(hasOverlap?'⚠️ <strong>'+esc(u.name.split(' ')[0])+' er booket flere steder samtidig</strong> — bjælker der ligger i flere rækker overlapper i tid.':'✓ Ingen overlap fundet — alle reservationer ligger efter hinanden.')+' Bjælkerne viser '+esc(u.name.split(' ')[0])+'s kapacitetsreservationer, som udgangspunkt baseret på sagens egne planlagte start-/slutdatoer (ellers den bookede kapacitetsuge). Klik en bjælke for at åbne/redigere reservationen.</div>')
+    :('<div class="captl-legend">Ingen reservationer i denne uge for '+esc(u.name.split(' ')[0])+'.</div>');
+
+  body.innerHTML=navHTML+'<div class="captl-scroll"><div class="tl-grid" style="width:'+totalW+'px">'+headHTML+
     '<div class="tl-row" style="border-bottom:none"><div class="tl-track" style="height:'+trackH+'px;width:'+totalW+'px">'+bgHTML+todayLine+barsHTML+'</div></div>'+
-    '</div></div>'+
-    '<div class="captl-legend">'+(hasOverlap?'⚠️ <strong>'+esc(u.name.split(' ')[0])+' er booket flere steder samtidig</strong> — bjælker der ligger i flere rækker overlapper i tid.':'✓ Ingen overlap fundet — alle reservationer ligger efter hinanden.')+' Bjælkerne viser '+esc(u.name.split(' ')[0])+'s kapacitetsreservationer, som udgangspunkt baseret på sagens egne planlagte start-/slutdatoer (ellers den bookede kapacitetsuge). Klik en bjælke for at åbne/redigere reservationen.</div>';
-  document.getElementById('cap-timeline-modal').classList.add('open');
-  // Rul tidslinjen hen til den uge, knappen blev trykket fra (falder tilbage
-  // til dags dato) — ellers ville en medarbejder med bookinger langt tilbage
-  // altid åbne visningen helt til venstre, uden den relevante uge i syne.
-  var scrollEl=body.querySelector('.captl-scroll');
-  if(scrollEl){
-    var targetIso=clickedWeekIso&&capTlValidDate(clickedWeekIso)?clickedWeekIso:iso(new Date());
-    var targetIdx=daysBetween(rangeStart,date(targetIso));
-    scrollEl.scrollLeft=Math.max(0,targetIdx*DAY_W-scrollEl.clientWidth/2);
+    '</div></div>'+legendHTML;
+
+  // I "hele forløbet"-visningen ruller vi hen til den uge der senest var
+  // fokuseret (falder tilbage til dags dato) — ellers ville en medarbejder
+  // med bookinger langt tilbage altid åbne visningen helt til venstre.
+  if(capTlMode==='all'){
+    var scrollEl=body.querySelector('.captl-scroll');
+    if(scrollEl){
+      var scrollTargetIso=capTlWeekStart?iso(capTlWeekStart):iso(new Date());
+      var targetIdx=daysBetween(rangeStart,date(scrollTargetIso));
+      scrollEl.scrollLeft=Math.max(0,targetIdx*DAY_W-scrollEl.clientWidth/2);
+    }
   }
 }
 function closeCapTimelinePopup(){document.getElementById('cap-timeline-modal').classList.remove('open');}
@@ -11615,16 +11722,31 @@ async function clearPlan(){
 var ganttState={projectId:null,projectName:'',project:null,tasks:[],dayWidth:32,rangeStart:null,rangeDays:60,allMode:false};
 var ganttAllProjects=[],ganttGroupBy='none';
 async function initGanttPage(){
-  document.getElementById('gantt-job-picker').style.display='block';
-  document.getElementById('gantt-board-wrap').style.display='none';
   var input=document.getElementById('gantt-job-search');
   input.value='';
   input.oninput=renderGanttProjectList;
   document.getElementById('gantt-group-by').onchange=function(e){ganttGroupBy=e.target.value;renderGanttProjectList();};
   document.getElementById('gantt-job-results').innerHTML='<p class="muted-sm">Henter sager…</p>';
-  var r=await api('/api/gantt/projects');
-  ganttAllProjects=Array.isArray(r)?r:[];
-  renderGanttProjectList();
+  // Sagslisten (til "← Skift sag") hentes i baggrunden med det samme — vi
+  // venter ikke på den her, se RETTELSE nedenfor.
+  api('/api/gantt/projects').then(function(r){
+    ganttAllProjects=Array.isArray(r)?r:[];
+    renderGanttProjectList();
+  });
+  // RETTELSE (Martins fejlrapport: "Det er grimt og tager lang tid jeg skal
+  // hoppe flere steps for at komme ind i denne view. Når jeg trykker på gant
+  // skal jeg bare direkte ind og se det som her.") — Gantt-fanen krævede før
+  // ALTID at man enten valgte en bestemt sag eller trykkede "Se alle
+  // opgaver" først, selvom "alle opgaver på tværs af alle sager" jo netop er
+  // det man som regel vil se. Fanen åbner derfor nu med det samme i "Alle
+  // opgaver"-visningen. Sagsvælgeren (til at se tidsplanen for ÉN bestemt
+  // sag) er stadig ét klik væk via "← Skift sag" i værktøjslinjen — se
+  // showGanttJobPicker(), som har overtaget den knaps onclick.
+  openGanttAllTasks();
+}
+function showGanttJobPicker(){
+  document.getElementById('gantt-job-picker').style.display='block';
+  document.getElementById('gantt-board-wrap').style.display='none';
 }
 // (TRADE_LABELS er fjernet 05-09-2026 — den blev kun brugt af "Gruppér:
 // Faggruppe" i sagsvælgeren, som er udgået sammen med JobTread-fagfeltet.)
@@ -19061,7 +19183,7 @@ async function bind(){
   document.getElementById('cap-today').onclick=function(){scrollToWeek(weekKey(new Date()));};
   document.getElementById('cap-groupby').onchange=function(e){capacityGroupBy=e.target.value;renderCapacity();};
   document.getElementById('avail-groupby').onchange=function(e){availGroupBy=e.target.value;renderAvailability();};
-  document.getElementById('gantt-change-job').onclick=initGanttPage;
+  document.getElementById('gantt-change-job').onclick=showGanttJobPicker;
   document.getElementById('gantt-all-tasks-btn').onclick=openGanttAllTasks;
   document.getElementById('gantt-detail-close').onclick=function(){closeModal('gantt-detail-modal');};
   document.getElementById('gd-save-btn').onclick=saveGanttDetailEdit;
@@ -29841,6 +29963,12 @@ window.useTemplateForNewQuote=useTemplateForNewQuote;
 // her, ellers virker 💰/🗑-knapperne bare ikke (stille ReferenceError).
 window.qzPendingEditPrice=qzPendingEditPrice;
 window.qzPendingDismiss=qzPendingDismiss;
+// RUNDE H #33 — uge-nav/toggle-knapperne i tidslinje-popup'en (renderCapTimeline)
+// genereres som en HTML-streng med onclick="capTlGoWeek(...)" osv., ligesom
+// eksemplerne ovenfor — samme faldgrube, samme løsning: eksportér til window.
+window.capTlGoWeek=capTlGoWeek;
+window.capTlGoToday=capTlGoToday;
+window.capTlToggleMode=capTlToggleMode;
 
 bind();
 loadSettings();
