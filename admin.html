@@ -2012,9 +2012,11 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .qe-line-duplicate{border:0;background:transparent;color:var(--bly-sub);cursor:pointer;font-size:14px}
 .qe-line-duplicate:hover{color:var(--bly-accent)}
 /* RUNDE BG — samme diskrete ikon-stil, "Gem som nyt produkt"-knappen på en
-   ikke-genkendt linje (se qzLineRowHtml/qzOpenProductModalFromLine). */
-.qe-line-save-product{border:0;background:transparent;color:var(--bly-sub);cursor:pointer;font-size:14px}
-.qe-line-save-product:hover{color:var(--bly-accent)}
+   ikke-genkendt linje (se qzLineRowHtml/qzOpenProductModalFromLine).
+   RUNDE BP — .qe-line-edit-product genbruger samme stil til modstykket:
+   "✏️ Redigér produkt" på en linje der ALLEREDE er koblet til et katalogprodukt. */
+.qe-line-save-product,.qe-line-edit-product{border:0;background:transparent;color:var(--bly-sub);cursor:pointer;font-size:14px}
+.qe-line-save-product:hover,.qe-line-edit-product:hover{color:var(--bly-accent)}
 /* RUNDE AW — "Vis sum"-afkrydsning på en tekstlinje, og selve sumtallet ved
    siden af (kun synligt når krydset af — se :has()-reglen, samme mønster som
    fx .tab-navdrop:has(.navdrop-menu.open) andetsteds i denne fil). Bevidst
@@ -3700,7 +3702,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.42</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.43</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -20998,11 +21000,18 @@ function qzLineRowHtml(l,idx,prefix){
     +'</div>'
     +'<div class="qe-line-rail">'
     // RUNDE BG (Martin: "Når man skriver en linje der ikke er genkendt kan du
-    // ikke gøre så man kan gemme det?") — kun vist når linjen IKKE allerede er
-    // koblet til et rigtigt produkt (l.product_id), altså netop de frit
+    // ikke gøre så man kan gemme det?") — 💾 vises kun når linjen IKKE allerede
+    // er koblet til et rigtigt produkt (l.product_id), altså netop de frit
     // indtastede linjer autocomplete ikke fandt noget match til. Se
     // qzOpenProductModalFromLine/makeLinesSaveProductHandler.
-    +(l.product_id?'':'<button type="button" class="qe-line-save-product" data-idx="'+idx+'" title="Gem denne linje som et nyt produkt">💾</button>')
+    // RUNDE BP (Martin: "der er gem knap på de produkter der ikke findes og
+    // ingen på dem der findes — kan man ikke lave en redigere knap på dem der
+    // findes ... så man ikke skal navigere ind på produktsiden for at rette
+    // dem løbende") — modstykket: er linjen DERIMOD allerede koblet til et
+    // katalogprodukt, vises i stedet ✏️, som åbner PRÆCIS samme "Redigér
+    // produkt"-modal som Produkter-siden bruger, uden at forlade tilbuddet/
+    // fakturaen. Se qzOpenProductModalForLineEdit/makeLinesEditProductHandler.
+    +(l.product_id?'<button type="button" class="qe-line-edit-product" data-idx="'+idx+'" title="Redigér produktet i kataloget">✏️</button>':'<button type="button" class="qe-line-save-product" data-idx="'+idx+'" title="Gem denne linje som et nyt produkt">💾</button>')
     +'<button type="button" class="qe-line-duplicate" data-idx="'+idx+'" title="Kopiér linje">⧉</button>'
     +'<div class="qe-line-rail-sep"></div>'
     +'<button type="button" class="qe-remove-line qe-line-remove" data-idx="'+idx+'" title="Fjern linje">✕</button>'
@@ -21152,6 +21161,16 @@ function makeLinesSaveProductHandler(getLines,renderFn){
     if(!btn)return;
     var idx=Number(btn.dataset.idx);
     qzOpenProductModalFromLine(getLines(),idx,renderFn);
+  };
+}
+// RUNDE BP — se knappens kommentar i qzLineRowHtml. Samme delegerings-mønster
+// som makeLinesSaveProductHandler ovenfor, blot på ✏️-knappen i stedet for 💾.
+function makeLinesEditProductHandler(getLines,renderFn){
+  return function(e){
+    var btn=e.target.closest('.qe-line-edit-product');
+    if(!btn)return;
+    var idx=Number(btn.dataset.idx);
+    qzOpenProductModalForLineEdit(getLines(),idx,renderFn);
   };
 }
 // RUNDE W — åbner note-boksen på klik (se qzLineRowHtml). Ren visuel toggle,
@@ -21892,6 +21911,23 @@ function qzOpenProductModalFromLine(lines,idx,renderLinesFn){
   // så rækkefølgen her er vigtig (se kommentar ved openProductModal).
   qzProductModalLinkTarget={lines:lines,idx:idx,renderLinesFn:renderLinesFn};
 }
+// RUNDE BP (Martin: "der er gem knap på de produkter der ikke findes og ingen
+// på dem der findes — kan man ikke lave en redigere knap på dem der findes og
+// så den popper produktet op? så man ikke skal navigere ind på produktsiden
+// for at rette dem løbende") — modstykket til qzOpenProductModalFromLine
+// ovenfor: åbner den HELT ALMINDELIGE "Redigér produkt"-modal (openProductModal
+// med produktets RIGTIGE id, samme som "✏️ Redigér" på selve Produkter-siden),
+// forudfyldt med produktets EGNE, gemte tal — ikke linjens, som kan afvige (fx
+// hvis antal/pris er justeret manuelt på netop denne linje uden at røre selve
+// kataloget). qzProductModalLinkTarget sættes bagefter (samme rækkefølge-
+// pointe som ovenfor), så saveQzProduct() også kan opdatere DENNE linje med de
+// rettede tal, se dens kommentar.
+function qzOpenProductModalForLineEdit(lines,idx,renderLinesFn){
+  var l=lines[idx];
+  if(!l||!l.product_id)return;
+  openProductModal(l.product_id);
+  qzProductModalLinkTarget={lines:lines,idx:idx,renderLinesFn:renderLinesFn};
+}
 async function saveQzProduct(){
   var name=document.getElementById('qzp-name').value.trim();
   if(!name){toast('Navn mangler','⚠️');return;}
@@ -21906,17 +21942,24 @@ async function saveQzProduct(){
     note:document.getElementById('qzp-note').value.trim()||null
   };
   var wasNew=!qzEditingProductId;
+  var editingId=qzEditingProductId;
   var linkTarget=qzProductModalLinkTarget;
   var r=qzEditingProductId?await api('/api/products/'+qzEditingProductId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/products',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
     toast('Produkt gemt','✓');
     closeModal('qz-product-modal');
-    // Koblingen tilbage til tilbuds-/skabelon-/fakturalinjen der udløste det
-    // (r.id findes kun ved oprettelse, ikke ved redigering — matcher wasNew).
-    if(wasNew&&linkTarget&&r.id){
+    // Koblingen tilbage til tilbuds-/skabelon-/fakturalinjen der udløste det.
+    // RUNDE BP (se qzOpenProductModalForLineEdit) — gjaldt FØR kun ved
+    // oprettelse af et helt NYT produkt (r.id findes kun der, ikke ved
+    // redigering); udvidet til også at opdatere linjen når man har rettet et
+    // EKSISTERENDE produkt via ✏️-knappen på linjen, så linjen ikke bliver
+    // stående med de gamle, forkerte tal efter man netop har rettet dem.
+    // r.id findes stadig kun ved oprettelse — ved redigering bruges den kendte
+    // editingId i stedet.
+    if(linkTarget){
       var l=linkTarget.lines[linkTarget.idx];
       if(l){
-        l.product_id=r.id;
+        l.product_id=wasNew?r.id:editingId;
         l.description=body.name;
         l.unit=body.unit;
         l.cost_price=body.cost_price;
@@ -30392,6 +30435,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qzt-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
   document.getElementById('qzt-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
   document.getElementById('qzt-lines').addEventListener('click',makeLinesSaveProductHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
+  document.getElementById('qzt-lines').addEventListener('click',makeLinesEditProductHandler(function(){return qztState.lines;},function(){qzRenderLines('qzt-lines',qztState.lines,'qzt');}));
   document.getElementById('qzt-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('qzt-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
@@ -30424,6 +30468,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qal-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
   document.getElementById('qal-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
   document.getElementById('qal-lines').addEventListener('click',makeLinesSaveProductHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
+  document.getElementById('qal-lines').addEventListener('click',makeLinesEditProductHandler(function(){return qalState.lines;},function(){qzRenderLines('qal-lines',qalState.lines,'qal');}));
   document.getElementById('qal-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('qal-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
@@ -30448,6 +30493,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('ivl-lines').addEventListener('click',makeLinesRemoveHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
   document.getElementById('ivl-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
   document.getElementById('ivl-lines').addEventListener('click',makeLinesSaveProductHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
+  document.getElementById('ivl-lines').addEventListener('click',makeLinesEditProductHandler(function(){return ivlState.lines;},function(){qzRenderLines('ivl-lines',ivlState.lines,'ivl');ivlRenderTotals();}));
   document.getElementById('ivl-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('ivl-lines').addEventListener('click',qzRichTextToolbarHandler);
   document.getElementById('ivl-discount').addEventListener('input',ivlRenderTotals);
@@ -30537,6 +30583,7 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-lines').addEventListener('click',makeLinesRemoveHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
   document.getElementById('qe-lines').addEventListener('click',makeLinesDuplicateHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
   document.getElementById('qe-lines').addEventListener('click',makeLinesSaveProductHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
+  document.getElementById('qe-lines').addEventListener('click',makeLinesEditProductHandler(function(){return qeState.lines;},function(){renderQeLines();qeRecalc();}));
   document.getElementById('qe-lines').addEventListener('click',qzNoteToggleClickHandler);
   document.getElementById('qe-lines').addEventListener('click',qzRichTextToolbarHandler);
   (function(){
