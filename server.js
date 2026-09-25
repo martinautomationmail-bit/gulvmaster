@@ -21458,6 +21458,27 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     const ganttRes = await pool.query('SELECT * FROM gantt_tasks WHERE job_id = ANY($1::text[]) ORDER BY job_id, position ASC, id ASC', [jobIds]);
     projectTasks = ganttRes.rows;
   }
+  // RUNDE BR (Martin: "Den siger jeg ikke kan downloade det her fordi kunden
+  // ikke har en tidslinje men det er da ikke korrekt? jeg har lige lavet en?")
+  // — ovenstående forudsætter at ALLE opgaver i gantt_tasks stammer fra et
+  // JobTread-synkroniseret job (fundet via jt_tasks, se jobIds herover). Men
+  // opgaver oprettet direkte på Sagen i admin (fx "+ Ny opgave"/"Opret opgaver
+  // fra tilbud") får i stedet et syntetisk job_id ('project-<id>', se
+  // POST /api/projects/:id/tasks) som ALDRIG findes i jt_tasks — så jobIds er
+  // tom for sådan en sag, selvom sagens eget Gantt-kort er fuldt udfyldt, og
+  // kunden fik fejlagtigt at vide at der ingen tidslinje var. Løsningen: slå
+  // projektet selv op via samme job_name-nøgle som ourQuotes/ourInvoices
+  // allerede bruger ovenfor, og medtag dets gantt_tasks direkte via
+  // project_id — ikke kun via job_id/jt_tasks-vejen.
+  const portalProject = await pgOne(
+    `SELECT id FROM projects WHERE lower(trim(name))=lower(trim($1)) ORDER BY created_at DESC LIMIT 1`,
+    [tokenRow.job_name]
+  );
+  if (portalProject) {
+    const nativeRes = await pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 ORDER BY position ASC, id ASC', [portalProject.id]);
+    const seenIds = new Set(projectTasks.map(t => t.id));
+    for (const t of nativeRes.rows) { if (!seenIds.has(t.id)) { projectTasks.push(t); seenIds.add(t.id); } }
+  }
 
   const byTask = {};
   bookings.forEach(b => { (byTask[b.task_id] = byTask[b.task_id] || []).push(b); });
