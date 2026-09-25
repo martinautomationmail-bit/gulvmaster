@@ -4751,6 +4751,31 @@ function auth(req, res, next) {
   }
 }
 
+// RUNDE BQ (Martin: "Jeg kan stadig ikke højreklikke og åbne de knapper der
+// er?" — testet direkte på "📄 Åbn PDF" i tilbudseditoren) — almindelig auth()
+// kræver en Authorization-header, som browserens EGEN "åbn link i ny fane"
+// ved et højreklik ALDRIG kan sætte (kun vores egen JS-fetch, som
+// qzOpenPdf() bruger, kan tilføje en header). Derfor har PDF-visnings-
+// knapperne hidtil stået med href="#" og kun virket ved venstreklik (se
+// admin.html: qe-pdf-link/iv-pdf-link/pd-quote-link/pd-invoice-link).
+// authOrQueryToken tillader i stedet at PRÆCIS SAMME JWT sendes som
+// ?token=... i selve URL'en — så en ÆGTE <a href> med tokenet indbygget kan
+// bruges, og højreklik/ctrl-klik/"kopiér link" virker som forventet. Bruges
+// BEVIDST kun på disse to læse-/visningsruter (PDF-visning, ingen
+// skriveadgang) — resten af API'et bruger fortsat almindelig auth() uændret,
+// så tokenet ikke pludselig accepteres i query-strings alle andre steder.
+function authOrQueryToken(req, res, next) {
+  const header = req.headers.authorization;
+  const raw = header ? header.replace(/^Bearer\s+/i, '') : (req.query.token || null);
+  if (!raw) return res.status(401).json({ error: 'No token' });
+  try {
+    req.user = jwt.verify(raw, JWT_SECRET);
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
 // FEJLRETTELSE (sep. 2026, samme baggrund som Martins rolle/adgang-fejlrapport
 // — se den tilsvarende rettelse i admin.html/index.html): stolede FØR kun på
 // req.user.role fra selve JWT'en, som kan være op til 30 dage gammel og derfor
@@ -20068,7 +20093,8 @@ function stripHtmlToText(html) {
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-app.get('/api/quotes/:id/pdf', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+// RUNDE BQ — authOrQueryToken i stedet for almindelig auth, se dens kommentar.
+app.get('/api/quotes/:id/pdf', authOrQueryToken, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const company = await getCompanyInfo();
@@ -20144,7 +20170,8 @@ app.post('/api/quotes/preview-pdf', auth, panelAccess('quotes'), asyncRoute(asyn
   doc.end();
 }));
 
-app.get('/api/invoices/:id/pdf', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+// RUNDE BQ — authOrQueryToken i stedet for almindelig auth, se dens kommentar.
+app.get('/api/invoices/:id/pdf', authOrQueryToken, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const invoice = await loadInvoiceFull(req.params.id);
   if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
   const company = await getCompanyInfo();

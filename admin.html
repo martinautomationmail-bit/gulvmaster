@@ -3702,7 +3702,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.43</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.44</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -20574,6 +20574,18 @@ async function qzOpenPdf(path){
     window.open(URL.createObjectURL(blob),'_blank');
   }catch(e){toast('Netværksfejl','❌');}
 }
+// RUNDE BQ (Martin: "Jeg kan stadig ikke højreklikke og åbne de knapper der
+// er?" — testet på "📄 Åbn PDF" i tilbudseditoren) — "Åbn PDF"-knapperne
+// (qe-pdf-link/iv-pdf-link/pd-quote-link/pd-invoice-link) har hidtil stået med
+// href="#" og kun virket ved venstreklik (qzOpenPdf() ovenfor sætter selv
+// Authorization-headeren via JS — noget en browsers EGEN "åbn link i ny fane"
+// ved et højreklik aldrig kan gøre). Bygger i stedet en ÆGTE, klikbar URL med
+// JWT'et som ?token=... (se authOrQueryToken i server.js, som KUN de to
+// PDF-visningsruter accepterer det på), så højreklik/ctrl-klik/"kopiér link"
+// virker som forventet — venstreklikkets JS-adfærd (qzOpenPdf, øjeblikkeligt
+// blob-preview) er uændret og bruges stadig, se preventDefault() ved hver
+// knaps click-lytter.
+function qzPdfUrl(path){return API+path+(path.indexOf('?')>-1?'&':'?')+'token='+encodeURIComponent(token);}
 // RUNDE I #318 (Martins ønske: "Lav det så man kan se PDF ligesom i billy
 // her") — samme blob-fetch-mønster som qzOpenPdf() ovenfor, men i stedet for
 // window.open() sættes den ind i #iv-pdf-frame inde i faktura-popuppen, så
@@ -25953,7 +25965,8 @@ async function openProjectDetail(id){
   pdTypeSel.innerHTML='<option value="">🏷️ (ingen faggruppe)</option>'+pjProjectTypes.map(function(t){return '<option value="'+esc(t)+'">🏷️ '+esc(t)+'</option>';}).join('');
   pdTypeSel.value=d.project_type||'';
   var qlink=document.getElementById('pd-quote-link');
-  if(d.quote_id){qlink.style.display='inline-flex';qlink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/quotes/'+d.quote_id+'/pdf');};}
+  // RUNDE BQ — ægte href (qzPdfUrl) sat SAMMEN med onclick, se dens kommentar.
+  if(d.quote_id){qlink.style.display='inline-flex';qlink.href=qzPdfUrl('/api/quotes/'+d.quote_id+'/pdf');qlink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/quotes/'+d.quote_id+'/pdf');};}
   else qlink.style.display='none';
   // RUNDE S — se kommentaren ved #pd-quote-edit-btn i HTML'en.
   var qeditBtn=document.getElementById('pd-quote-edit-btn');
@@ -25962,7 +25975,7 @@ async function openProjectDetail(id){
   // RUNDE T — se kommentaren ved #pd-attach-quote-btn i HTML'en.
   document.getElementById('pd-attach-quote-btn').style.display=d.quote_id?'none':'inline-flex';
   var ilink=document.getElementById('pd-invoice-link');
-  if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
+  if(d.invoice_id){ilink.style.display='inline-flex';ilink.href=qzPdfUrl('/api/invoices/'+d.invoice_id+'/pdf');ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
   // RUNDE H #309 — se kommentaren ved #pd-crm-link-btn i HTML'en.
   var crmBtn=document.getElementById('pd-crm-link-btn');
@@ -25991,7 +26004,7 @@ async function reloadPdCurrent(){
   if(!d||d.error)return;
   pjCurrent=d;
   var ilink=document.getElementById('pd-invoice-link');
-  if(d.invoice_id){ilink.style.display='inline-flex';ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
+  if(d.invoice_id){ilink.style.display='inline-flex';ilink.href=qzPdfUrl('/api/invoices/'+d.invoice_id+'/pdf');ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
   renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
   await loadPjProjects();renderPjProjects();
@@ -28238,6 +28251,7 @@ async function openQuoteEditor(id,prefillCustomer){
     setAppTitle(qd.job_name||qd.quote_number);
     qePopulateStatusSelect(qd.status);
     document.getElementById('qe-pdf-link').style.display='inline-flex';
+    document.getElementById('qe-pdf-link').href=qzPdfUrl('/api/quotes/'+id+'/pdf'); // RUNDE BQ
     document.getElementById('qe-duplicate-btn').style.display='inline-flex';
     document.getElementById('qe-project-link-btn').style.display=qeState.projectId?'inline-flex':'none';
     document.getElementById('qe-share-btn').style.display=qd.status==='converted'?'none':'inline-flex';
@@ -29654,6 +29668,7 @@ function renderQzInvoices(){
 }
 async function openInvoiceDetail(id){
   ivState.id=id;
+  document.getElementById('iv-pdf-link').href=qzPdfUrl('/api/invoices/'+id+'/pdf'); // RUNDE BQ
   openIvPdfPreview(id); // RUNDE I #318 — kører parallelt med resten, blokerer ikke resten af popuppen
   var inv=await api('/api/invoices/'+id);
   if(!inv||inv.error){toast('Kunne ikke hente fakturaen','❌');return;}
