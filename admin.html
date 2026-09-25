@@ -3457,6 +3457,30 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .toast.clickable{cursor:pointer}
 .toast.clickable:hover{transform:translateY(-2px)}
 
+/* RUNDE BF (Martin: "lav en større knap med et mere moderne design ... Billy
+   style ... umulig at fange" om "oprettet"-bekræftelsen nede i højre hjørne)
+   — ny, større "kort"-variant af toasten, BRUGT KUN ved oprettelse af kunde/
+   projekt/lead/handel (se toastCreated() i scriptet). Den lille .toast ovenfor
+   er bevidst uændret og bruges stadig til alle almindelige "Gemt ✓"/"Slettet
+   ✓"/fejl-beskeder i resten af programmet — kun de fire "noget nyt blev
+   oprettet"-steder er flyttet over på dette design (Forslag 1 af de tre Martin
+   fik præsenteret: hvidt kort, grøn kant, rundt ikon, indigo CTA-linje). */
+.toast-card{
+  position:fixed;right:16px;bottom:16px;max-width:340px;width:calc(100vw - 32px);
+  display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--bly-border,#E5E7EB);
+  border-left:4px solid var(--green,#059669);border-radius:var(--bly-r-lg,16px);
+  box-shadow:0 14px 40px rgba(17,24,39,.16);padding:14px 16px 14px 14px;cursor:pointer;
+  transform:translateY(16px);opacity:0;pointer-events:none;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .22s;
+  z-index:501;
+}
+.toast-card.show{transform:translateY(0);opacity:1;pointer-events:auto}
+.toast-card-ic{width:32px;height:32px;border-radius:999px;background:#DCFCE7;color:#15803D;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.toast-card-body{min-width:0}
+.toast-card-title{font-weight:800;font-size:14px;margin:0 0 2px;color:var(--bly-ink,#111318)}
+.toast-card-sub{font-size:12px;color:var(--bly-sub,#6B7280);margin:0 0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toast-card-cta{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:800;color:var(--bly-accent,#4F46E5)}
+@media(max-width:520px){.toast-card{left:12px;right:12px;bottom:12px;max-width:none;width:auto}}
+
 @media(max-width:900px){
   /* RUNDE H #18 — root cause for "Dagligplanlægning er slet ikke mobilvenlig":
      denne enkelte-kolonne-grid manglede minmax(0,...). Uden den bruger browseren
@@ -3676,7 +3700,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.40</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.41</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -6559,6 +6583,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <option value="Facebook/Instagram">Facebook/Instagram</option>
             <option value="Telefon">Telefon</option>
             <option value="Anbefaling">Anbefaling</option>
+            <option value="3byggetilbud">3byggetilbud</option>
+            <option value="E-mail">E-mail</option>
             <option value="Andet">Andet…</option>
           </select>
           <input id="crmc-source-other" class="input hidden" style="margin-top:6px" placeholder="Angiv kilde">
@@ -8994,6 +9020,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 </div>
 
 <div id="toast" class="toast"></div>
+<!-- RUNDE BF — se CSS-kommentaren ved .toast-card. Egen DOM-node, adskilt fra
+     #toast, så de to aldrig kan overlappe/konkurrere om samme plads i hjørnet. -->
+<div id="toast-card" class="toast-card">
+  <div class="toast-card-ic" id="toast-card-ic">✓</div>
+  <div class="toast-card-body">
+    <p class="toast-card-title" id="toast-card-title"></p>
+    <p class="toast-card-sub" id="toast-card-sub" style="display:none"></p>
+    <span class="toast-card-cta" id="toast-card-cta"></span>
+  </div>
+</div>
 
 <script>
 (function(){'use strict';
@@ -9400,6 +9436,29 @@ function toast(msg,ic,onClick,ms){
   // visningstid i ms, til beskeder der er for lange til den normale 2.6s (fx
   // AI-fejlbeskeder — se qeAiStopAndParse). Ellers uændret standard-adfærd.
   el._t=setTimeout(function(){el.classList.remove('show');},ms||(onClick?4200:2600));
+}
+// RUNDE BF (Martin: "en større knap med et mere moderne design ... Billy
+// style ... giv mig 3 design muligheder før du implementerer det" — Martin
+// valgte "Forslag 1") — større, klikbar "kort"-bekræftelse KUN til "noget nyt
+// blev oprettet" (kunde/projekt/lead/handel), se .toast-card i CSS'en.
+// Altid klikbar (der findes ikke en ikke-klikbar udgave af denne — er der intet
+// at klikke ind på, brug den almindelige toast() i stedet). subtitle er
+// valgfri (skjules helt hvis ikke angivet, fx hvis der ikke er noget kunde-/
+// sagsnavn at vise). ctaText er selve linjen nederst, fx "Tryk her for at åbne
+// kunden →" — sættes forskelligt pr. kaldested, så den altid passer til hvad
+// der rent faktisk blev oprettet.
+function toastCreated(icon,title,subtitle,ctaText,onClick){
+  var el=document.getElementById('toast-card');
+  document.getElementById('toast-card-ic').textContent=icon||'✓';
+  document.getElementById('toast-card-title').textContent=title;
+  var subEl=document.getElementById('toast-card-sub');
+  if(subtitle){subEl.textContent=subtitle;subEl.style.display='';}
+  else{subEl.style.display='none';}
+  document.getElementById('toast-card-cta').textContent=(ctaText||'Tryk her for at åbne →');
+  el.classList.add('show');
+  el.onclick=function(){el.classList.remove('show');clearTimeout(el._t);if(onClick)onClick();};
+  clearTimeout(el._t);
+  el._t=setTimeout(function(){el.classList.remove('show');},5200);
 }
 // RUNDE AD (sep. 2026, Martins ønske) — se CSS-kommentaren ved .field-flash-error.
 // Ruller det angivne felt i visning, sætter fokus og blinker en rød kant på det,
@@ -24894,7 +24953,8 @@ async function crmpCreateNewItem(){
     // RUNDE K (fortsat, sep. 2026, Martins ønske) — bekræftelsen er nu klikbar:
     // fører direkte ind på det lead/den opportunity der lige blev oprettet.
     var createdId=r.id,createdType=p.type;
-    toast('Oprettet ✓','✓',function(){openCrmpDetail(createdType,createdId);});
+    // RUNDE BF — se toastCreated()-kommentaren. "🧲"=lead, "🤝"=handel(opportunity).
+    toastCreated(createdType==='lead'?'🧲':'🤝',(createdType==='lead'?'Lead':'Handel')+' oprettet',name,'Tryk her for at åbne '+(createdType==='lead'?'leadet':'handlen')+' →',function(){openCrmpDetail(createdType,createdId);});
     closeModal('crmp-new-modal');
     // Blev der valgt en ANDEN pipeline end den man står på, skiftes boardet med
     // over til den — ellers ville det nye lead se ud som om det forsvandt.
@@ -25459,7 +25519,8 @@ async function saveCrmCustomer(){
   // RUNDE K (fortsat, sep. 2026, Martins ønske) — klikbar bekræftelse ind på det
   // lige oprettede lead/opportunity, samme mønster som crmpCreateNewItem(). Kun
   // klikbar når der rent faktisk blev oprettet ét (dvs. en helt ny kunde).
-  if(createdEntityId)toast('Kunde gemt','✓',function(){openCrmpDetail(createdEntityType,createdEntityId);});
+  // RUNDE BF — se toastCreated()-kommentaren.
+  if(createdEntityId)toastCreated('👤','Kunde oprettet',name,'Tryk her for at åbne kunden →',function(){openCrmpDetail(createdEntityType,createdEntityId);});
   else toast('Kunde gemt','✓');
   closeModal('crm-modal');await loadCrmCustomers();renderCrmCustomers();
 }
@@ -26196,7 +26257,8 @@ async function savePjNew(){
     // RUNDE L — klikbar "oprettet"-toast, samme mønster som ved leads/opportunities.
     // Siden åbnes allerede automatisk herunder, men toasten skal stadig kunne
     // klikkes/pege på sagen, så det er ens overalt i programmet.
-    toast('Projekt oprettet ✓','✓',function(){openProjectDetail(r.id);});
+    // RUNDE BF — opgraderet til toastCreated() (se dens kommentar).
+    toastCreated('🏗️','Projekt oprettet',document.getElementById('pjn-address').value.trim()||null,'Tryk her for at åbne sagen →',function(){openProjectDetail(r.id);});
     closeModal('pj-new-modal');
     await loadPjProjects();renderPjProjects();
     openProjectDetail(r.id);
@@ -28942,7 +29004,8 @@ async function qeStatusChanged(e){
     // et lead/en opportunity, kunne klikkes direkte ind på den nyoprettede sag —
     // samme klikbare toast-mønster (toast(msg,ic,onClick)) som resten af CRM'et.
     if(newStatus==='accepted'&&r.project_id){
-      toast('Godkendt — projekt oprettet ✓','✓',function(){qzShowDetailView(false);openProjectDetail(r.project_id);});
+      // RUNDE BF — opgraderet til toastCreated() (se dens kommentar).
+      toastCreated('🏗️','Godkendt — projekt oprettet',qeState.jobName||null,'Tryk her for at åbne sagen →',function(){qzShowDetailView(false);openProjectDetail(r.project_id);});
     } else {
       toast('Status opdateret','✓');
     }

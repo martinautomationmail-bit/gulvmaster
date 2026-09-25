@@ -9959,6 +9959,18 @@ app.post('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async 
   if (b.phone) await upsertPrimaryContactChannel('customer', r.rows[0].id, 'phone', b.phone);
   if (b.email) await upsertPrimaryContactChannel('customer', r.rows[0].id, 'email', b.email);
   if (b.address) await upsertPrimaryContactChannel('customer', r.rows[0].id, 'address', b.address);
+  // RUNDE BE (Martin/kollega: "den note der laves ikke kommer med ind på
+  // kunden") — root cause: "Ny kunde"-modalens notefelt (crmc-notes) blev kun
+  // gemt i det korte, legacy customers.notes-felt, som INGEN steder i UI'et
+  // rent faktisk vises igen — kundekortets synlige "📝 Noter"-panel læser fra
+  // den helt separate customer_notes-tabel (se POST .../:id/notes nedenfor),
+  // som oprettelsesflowet aldrig skrev til. Note'n var altså ikke tabt, bare
+  // usynlig. Spejler den nu også ind i customer_notes, så den dukker op i
+  // Noter-panelet med det samme — samme mønster som POST .../:id/notes.
+  // customers.notes beholdes uændret (kort felt i redigér-modalen).
+  if (b.notes && String(b.notes).trim()) {
+    await pool.query('INSERT INTO customer_notes (customer_id,body,user_id) VALUES ($1,$2,$3)', [r.rows[0].id, String(b.notes).trim(), req.user.id]);
+  }
   // AUTOMATISK VELKOMSTMAIL TIL NYE KUNDER — ny funktion (var ikke tidligere
   // muligt), styret af "Aktiv"-knappen på skabelonen i Skabeloner-centeret
   // (system_email_templates, key='customer_welcome'). Slået FRA som standard
@@ -13174,6 +13186,28 @@ async function closeEnsureOption(cache, value) {
   cache.lowerSet.add(lower);
   await pool.query('UPDATE crm_custom_fields SET options=$1 WHERE id=$2', [JSON.stringify(cache.list), cache.id]);
   return true;
+}
+
+// RUNDE BE (Martin: "hvor er det jeg til de forskellige custom spørgsmål er
+// der fx lead source at jeg kan tilføje flere muligheder? mangler
+// 3byggetilbud og E-mail") — "Lead Source" er allerede et rigtigt,
+// admin-redigerbart custom field (CRM → ⚙ Indstillinger → 🏷 Custom fields →
+// Lead-felter → Lead Source → ✏️), så INGEN kode er nødvendig for at Martin
+// selv kan tilføje/fjerne valgmuligheder fremover. De to specifikke
+// værdier han efterspurgte lige nu tilføjes automatisk her (idempotent,
+// case-insensitive — samme genbrugte closeEnsureOption-logik som Close-
+// importen bruger til nøjagtig samme ting), på BÅDE lead- og
+// opportunity-udgaven af feltet (de deler options via sync_twin i UI'et,
+// men har hver deres egen options-kolonne i DB'en). Kører ved hver opstart —
+// helt harmløst at køre igen og igen, da closeEnsureOption selv springer
+// værdier over den allerede kan se i listen.
+async function ensureLeadSourceExtraOptions() {
+  const extra = ['3byggetilbud', 'E-mail'];
+  for (const entityType of ['lead', 'opportunity']) {
+    const cache = await closeLoadFieldOptionCache(entityType, 'lead_source');
+    if (!cache) continue;
+    for (const value of extra) { await closeEnsureOption(cache, value); }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -22403,6 +22437,9 @@ async function start() {
       .catch(error => { console.error('Prisrettelse af produktkatalog fejlede:', error.message); logSystemEvent('product_catalog_price_correction', 'error', 'Prisrettelse af produktkatalog fejlede: ' + error.message); });
     runOpgavepoolCustomerBackfill()
       .catch(error => { console.error('Opgavepool-kundefelt-backfill fejlede:', error.message); logSystemEvent('opgavepool_customer_backfill', 'error', 'Opgavepool-kundefelt-backfill fejlede: ' + error.message); });
+    // RUNDE BE — se kommentaren ved ensureLeadSourceExtraOptions() ovenfor.
+    ensureLeadSourceExtraOptions()
+      .catch(error => { console.error('Kunne ikke sikre ekstra Lead Source-muligheder:', error.message); logSystemEvent('lead_source_options', 'error', 'Kunne ikke sikre ekstra Lead Source-muligheder: ' + error.message); });
   }
   // OBS: kunde-påmindelsen ("vi kommer i morgen") sendes IKKE automatisk længere —
   // kun når admin selv trykker på knappen (se POST /api/customer-emails/send-reminders
