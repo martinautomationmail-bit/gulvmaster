@@ -1904,7 +1904,7 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .qz-multiselect-bar button{align-self:flex-start;margin-top:2px}
 .qe-customer-result label{display:flex;align-items:center;gap:8px;cursor:pointer;margin:0}
 .qe-customer-result input[type="checkbox"]{flex-shrink:0;width:16px;height:16px}
-.qz-icon-btn{border:1px solid var(--bly-border);background:#fff;border-radius:7px;width:28px;height:28px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
+.qz-icon-btn{border:1px solid var(--bly-border);background:#fff;border-radius:7px;width:28px;height:28px;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;justify-content:center;color:inherit;text-decoration:none}
 /* RUNDE V — talediktering til note-felter (qe-top-note/crmpx-note-new), se
    noteDictToggle() i JS. .recording pulserer rødt mens der optages. */
 .qe-note-mic-btn.recording{background:#DC2626;border-color:#DC2626;color:#fff;animation:qeNoteMicPulse 1.4s ease-in-out infinite}
@@ -3700,7 +3700,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.41</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.42</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5057,6 +5057,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="bly-kpi-row" id="qz-pending-kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:0 0 14px;flex-wrap:wrap">
       <span class="bly-toolbar-count" id="qz-pending-period-hint" style="margin-right:auto;color:var(--bly-sub)"></span>
+      <!-- RUNDE BG (Martins ønske: "så denne bare er så tydelig på hvem der skal
+           faktureres ... i stedet for jeg skal sidde og analysere hvilke projekter
+           der er færdige") — hurtig til/fra-knap der skjuler alt undtagen sager
+           hvis Kanban-stadie er 'done' (samme til/fra-mønster som proj-archived-toggle
+           på Projekter-siden). Default FRA — ændrer intet ved den eksisterende liste,
+           før Martin selv slår den til. -->
+      <button class="bly-ctl" id="qz-pending-onlydone-btn" type="button" title="Vis kun sager hvor arbejdet er markeret afsluttet på Projekter-siden">✅ <span id="qz-pending-onlydone-label">Kun afsluttede sager</span></button>
       <button class="bly-ctl" id="qz-pending-thisweek-btn" type="button">Denne uge</button>
       <button class="bly-ctl" id="qz-pending-thismonth-btn" type="button">Denne måned</button>
       <div class="bly-period" style="position:relative">
@@ -5065,7 +5072,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <table class="bly-table">
-      <thead><tr><th>Kunde/sag</th><th>Tilbud</th><th>Status</th><th>Planlagt periode</th><th class="num">Tilbud total</th><th class="num">Faktureret</th><th class="num">Resterende</th><th style="width:130px"></th></tr></thead>
+      <thead><tr><th>Kunde/sag</th><th>Tilbud</th><th>Sagsstatus</th><th>Planlagt periode</th><th class="num">Tilbud total</th><th class="num">Faktureret</th><th class="num">Resterende</th><th style="width:130px"></th></tr></thead>
       <tbody id="qz-pending-body"></tbody>
     </table>
   </section>
@@ -20635,6 +20642,22 @@ async function loadQzTemplates(){var r=await api('/api/quote-templates');qzTempl
 // der accepteret som skal faktureres ... vigtigt når jeg laver cashflow
 // analyse ... Lav den billy style som resten") ─────────────────────────────
 var qzPendingData=null,qzPendingPeriodFilter=null;
+// RUNDE BG — se knappens HTML-kommentar (#qz-pending-onlydone-btn) og
+// qzPendingProjectStatusBadge() nedenfor.
+var qzPendingOnlyDone=false;
+// Sagens Kanban-stadie (pjStages, samme liste som Projekter-siden — se
+// pjStageMeta) er den ENESTE pålidelige kilde til "er arbejdet faktisk
+// færdigt", i modsætning til tilbudsstatussen (altid 'accepted'/'converted'
+// i denne liste, se serverens WHERE — fortæller intet om selve arbejdet) og
+// den planlagte periode (kan sagtens ligge i fortiden uden at være udført,
+// eller slet ikke være planlagt endnu). Ingen sag oprettet endnu på tilbuddet
+// vises som en tydelig, neutral "Ingen sag oprettet" i stedet for at falde
+// tilbage på pjStageMeta(null)'s generiske '—'.
+function qzPendingProjectStatusBadge(x){
+  if(!x.project_id)return '<span style="color:var(--bly-sub)">Ingen sag oprettet</span>';
+  var meta=pjStageMeta(x.project_status);
+  return '<span class="bly-status-dot" style="background:'+meta.dot+'"></span>'+esc(meta.label);
+}
 // Samme uge-beregning som Timetrackings "Denne uge" (RUNDE H #29) — mandag-
 // søndag, dansk konvention. Genbruges direkte i stedet for at duplikere den.
 function qzPendingMonthRange(offsetMonths){
@@ -20689,13 +20712,24 @@ function renderQzPendingInvoicing(){
   var list=qzPendingData.filter(function(x){
     if(q&&!qzSearchHit(q,[x.job_name,x.quote_number,x.job_number,x.customer_email]))return false;
     if(!qzRangeOverlaps(x.task_ranges,range.from,range.to))return false;
+    // RUNDE BG — se knappens HTML-kommentar. Kun sagens Kanban-stadie 'done'
+    // tæller som "afsluttet" her (samme key som resten af appens 'done'-
+    // specialbehandling, fx den automatiske afslutningsmail) — ikke fx
+    // 'archived', som er et bevidst ANDET stadie (se proj-archived-toggle).
+    if(qzPendingOnlyDone&&x.project_status!=='done')return false;
     return true;
   });
   document.getElementById('qz-pending-count').textContent='Skal faktureres ('+list.length+')';
   var totalRemaining=list.reduce(function(s,x){return s+(Number(x.remaining_total)||0);},0);
+  // RUNDE BG — 3. KPI: hvor mange af dem er der FAKTISK intet tilbage at
+  // vente på (sagen markeret 'done' på Projekter-siden) — det tal Martin selv
+  // efterspurgte ("tydelig på hvem der skal faktureres"), uden at skulle
+  // tælle de grønne rækker i tabellen selv.
+  var readyCount=list.filter(function(x){return x.project_status==='done';}).length;
   document.getElementById('qz-pending-kpis').innerHTML=[
     {label:'Tilbud der mangler fakturering',value:String(list.length)},
-    {label:'Resterende at fakturere i alt',value:krFmt(totalRemaining)}
+    {label:'Resterende at fakturere i alt',value:krFmt(totalRemaining)},
+    {label:'✅ Klar til fakturering nu',value:String(readyCount)}
   ].map(function(k){
     return '<div class="bly-kpi-card" style="cursor:default"><div class="bly-kpi-label">'+k.label+'</div><div class="bly-kpi-value">'+k.value+'</div></div>';
   }).join('');
@@ -20717,16 +20751,29 @@ function renderQzPendingInvoicing(){
     // ud fra remaining_total_computed og IKKE det evt. overstyrede remaining_total.
     var invoicedTotal=Number(x.total)-Number(x.remaining_total_computed);
     var isOverridden=x.override_amount!=null;
-    return '<tr>'
-      +'<td>'+esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')+'</td>'
-      +'<td>'+esc(x.quote_number||'–')+'</td>'
-      +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
-      +'<td>'+qzPendingPeriodLabel(x.task_ranges)+'</td>'
-      +'<td class="num">'+krFmt(Number(x.total))+'</td>'
-      +'<td class="num">'+krFmt(invoicedTotal)+'</td>'
-      +'<td class="num" style="font-weight:700">'+krFmt(Number(x.remaining_total))+(isOverridden?' <span class="tag" title="Manuelt rettet fra '+krFmt(Number(x.remaining_total_computed))+'" style="font-weight:600">✎ rettet</span>':'')+'</td>'
+    // RUNDE BG (Martins ønske: "jeg kan højreklikke og åbne alle sagerne i en
+    // anden fane hurtigt og derved fakturere 10 kunder på 2 minutter") — samme
+    // "row-link"-mønster som Tilbud-/Faktura-listerne allerede bruger
+    // (renderQzQuotes/renderQzInvoices): en ÆGTE <a href="#quotes/tilbud/…">
+    // om hver celle, ikke en onclick-håndteret <tr>, så højreklik "åbn i ny
+    // fane"/ctrl-klik virker uden ekstra JS — det globale hashchange-lyt i
+    // initApp() åbner allerede #quotes/tilbud/<id> korrekt, se kommentaren der.
+    var href='#quotes/tilbud/'+x.id;
+    var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
+    // Let, grøn baggrundstone på afsluttede sager — samme farvepar som resten
+    // af appens "success soft"-badges (se fx .fin-badge.ok) — så de ægte
+    // faktureringsklare rækker springer i øjnene uden at skulle læse teksten.
+    var rowStyle=x.project_status==='done'?' style="background:#F0FDF4"':'';
+    return '<tr'+rowStyle+'>'
+      +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':''))+'</td>'
+      +'<td>'+a(esc(x.quote_number||'–'))+'</td>'
+      +'<td>'+a(qzPendingProjectStatusBadge(x))+'</td>'
+      +'<td>'+a(qzPendingPeriodLabel(x.task_ranges))+'</td>'
+      +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
+      +'<td class="num">'+a(krFmt(invoicedTotal))+'</td>'
+      +'<td class="num" style="font-weight:700">'+a(krFmt(Number(x.remaining_total))+(isOverridden?' <span class="tag" title="Manuelt rettet fra '+krFmt(Number(x.remaining_total_computed))+'" style="font-weight:600">✎ rettet</span>':''))+'</td>'
       +'<td style="white-space:nowrap">'
-      +'<button class="qz-icon-btn" onclick="openQuoteEditor('+x.id+')" title="Åbn tilbud">✎</button>'
+      +'<a class="qz-icon-btn" href="'+href+'" title="Åbn tilbud">✎</a>'
       +'<button class="qz-icon-btn" onclick="qzPendingEditPrice('+x.id+')" title="Ret hurtigt det resterende beløb i denne liste (rører ikke selve tilbuddet)">💰</button>'
       +'<button class="qz-icon-btn" onclick="qzPendingDismiss('+x.id+')" title="Fjern fra denne liste (sletter IKKE tilbuddet)">🗑</button>'
       +'</td>'
@@ -27825,7 +27872,14 @@ function renderQzQuotes(){
       +'<td>'+a(qzStatusDot(QZ_QUOTE_STATUS,x.status))+'</td>'
       +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
       +'<td><div class="qz-row-actions">'
-      +'<button class="qz-icon-btn" onclick="openQuoteEditor('+x.id+')" title="Åbn">✎</button>'
+      // RUNDE BG (Martins ønske: "vil jeg også gerne kunne højreklikke på de
+      // knapper der er og åbne det i en ny fane") — "Åbn"-knappen er nu en
+      // ÆGTE <a href="#quotes/tilbud/…"> (samme href som resten af rækken,
+      // se a() ovenfor), så højreklik/ctrl-klik virker direkte på selve
+      // ikonet, ikke kun ved at klikke andre steder i rækken. ⧉/🗑 er bevidst
+      // IKKE links — de udfører en handling med det samme og giver ikke
+      // mening at "åbne i en ny fane".
+      +'<a class="qz-icon-btn" href="'+href+'" title="Åbn">✎</a>'
       +'<button class="qz-icon-btn" onclick="duplicateQzQuote('+x.id+')" title="Kopiér tilbud — samme kunde/linjer/priser i et nyt, uafhængigt tilbud">⧉</button>'
       +(x.status!=='converted'?'<button class="qz-icon-btn" onclick="deleteQzQuote('+x.id+')" title="Slet">🗑</button>':'')
       +'</div></td>'
@@ -29550,7 +29604,8 @@ function renderQzInvoices(){
       +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
       +'<td class="num">'+a(krFmt(Number(x.paid_total)))+'</td>'
       +'<td class="num">'+a(krFmt(Number(x.remaining))+creditedNote)+'</td>'
-      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openInvoiceDetail('+x.id+')" title="Åbn">✎</button></div></td>'
+      // RUNDE BG — se kommentaren ved samme ændring i renderQzQuotes().
+      +'<td><div class="qz-row-actions"><a class="qz-icon-btn" href="'+href+'" title="Åbn">✎</a></div></td>'
       +'</tr>';
   }).join('');
 }
@@ -30235,6 +30290,14 @@ function bindQuotesModuleEvents(){
   qzPendingPeriodFilter=makeBlyPeriodFilter('qz-pending-period-btn','qz-pending-period-pop','qz-pending-period-label',function(){renderQzPendingInvoicing();});
   document.getElementById('qz-pending-thisweek-btn').addEventListener('click',function(){var w=ttWeekRange(0);qzPendingPeriodFilter.setRange(w.from,w.to);});
   document.getElementById('qz-pending-thismonth-btn').addEventListener('click',function(){var m=qzPendingMonthRange(0);qzPendingPeriodFilter.setRange(m.from,m.to);});
+  // RUNDE BG — se knappens HTML-kommentar (#qz-pending-onlydone-btn), samme
+  // til/fra-mønster som proj-archived-toggle på Projekter-siden.
+  document.getElementById('qz-pending-onlydone-btn').addEventListener('click',function(){
+    qzPendingOnlyDone=!qzPendingOnlyDone;
+    this.classList.toggle('active',qzPendingOnlyDone);
+    document.getElementById('qz-pending-onlydone-label').textContent=qzPendingOnlyDone?'Kun afsluttede sager ✓':'Kun afsluttede sager';
+    renderQzPendingInvoicing();
+  });
   // RUNDE H #28/#29 — Timetracking-fanen.
   ttPeriodFilter=makeBlyPeriodFilter('tt-period-btn','tt-period-pop','tt-period-label',function(){renderTimetrackReport();});
   document.getElementById('tt-search').addEventListener('input',renderTimetrackReport);

@@ -18326,11 +18326,19 @@ app.get('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) 
 //
 // VIGTIGT: skal stå FØR /api/quotes/:id nedenfor — ellers matcher Express'
 // :id-rute "pending-invoicing" som et (ugyldigt) id først.
+//
+// RUNDE BG (Martins ønske: "så denne bare er så tydelig på hvem der skal
+// faktureres ... i stedet for jeg skal sidde og analysere hvilke projekter
+// der er færdige") — p.status (sagens Kanban-stadie, fx 'done') tilføjet til
+// svaret, så admin.html kan vise et tydeligt sagsstatus-badge/fremhævning
+// direkte i listen i stedet for at Martin selv skal slå det op på
+// Projekter-siden. Ren tilføjelse af én kolonne til en eksisterende
+// LEFT JOIN — ændrer intet ved selve udvælgelsen/sorteringen af tilbud.
 app.get('/api/quotes/pending-invoicing', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT q.id, q.quote_number, q.job_name, q.job_number, q.status, q.total::float AS total,
            c.name AS customer_name, q.customer_email,
-           p.id AS project_id,
+           p.id AS project_id, p.status AS project_status,
            COALESCE(inv.invoiced_total,0)::float AS invoiced_total,
            COALESCE(rem.remaining_line_count,0)::int AS remaining_line_count,
            COALESCE(gt.task_ranges,'[]') AS task_ranges,
