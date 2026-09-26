@@ -2361,6 +2361,26 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_project_photos_project ON project_photos(project_id);
 
+    -- RUNDE BR (Martin: "Gør det muligt her at inkludere billeder fra kundens
+    -- handel ... billeder taget ved kundebesøg også kommer ind under filer og
+    -- så kan jeg bare tage dem derfra. For når jeg så booker det hos en
+    -- medarbejder får de billederne direkte med") — det KURATEREDE sæt billeder
+    -- Martin selv har valgt til én bestemt opgave (gantt_tasks), til forskel
+    -- fra sagens FULDE billedbibliotek (se projectPhotoLibrary() nedenfor, som
+    -- samler project_photos + tidsregistrerings- + kundebesøgs-billeder). Kun
+    -- selve URL'en gemmes her (ikke billedet selv) — samme "peg på et billede
+    -- der allerede ligger et sted" mønster som document_attachments allerede
+    -- bruger til tilbud/fakturaer, se docJobPhotoPick() i admin.html.
+    CREATE TABLE IF NOT EXISTS task_photos (
+      id SERIAL PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES gantt_tasks(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      caption TEXT,
+      added_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_photos_task ON task_photos(task_id);
+
     -- ── KONTAKTFORMULAR: samme mønster som KS-skabeloner ovenfor —
     -- Martin bygger felterne, medarbejdere udfylder pr. projekt (fx
     -- kundens kontaktoplysninger indhentet på stedet). ─────────────────
@@ -14297,8 +14317,20 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
         -- booket på og hvornår, vist i den udvidede opgave-popup (pdtd-bookings).
         -- En opgave kan sagtens have flere bookinger (flere medarbejdere/perioder).
         (SELECT json_agg(json_build_object('user_name', u.name, 'start_date', b.start_date, 'end_date', b.end_date) ORDER BY b.start_date)
-         FROM planning_bookings b LEFT JOIN users u ON u.id = b.user_id WHERE b.task_id = g.id) AS bookings
-      FROM gantt_tasks g WHERE g.project_id=$1 ORDER BY position ASC, id ASC
+         FROM planning_bookings b LEFT JOIN users u ON u.id = b.user_id WHERE b.task_id = g.id) AS bookings,
+        -- RUNDE BR — opgavens egne kuraterede referencebilleder (task_photos),
+        -- samme mønster som bookings herover, så pdtd-photos-fanen kan vises
+        -- direkte uden endnu et API-kald hver gang opgaven åbnes.
+        (SELECT json_agg(json_build_object('id', tp.id, 'url', tp.url, 'caption', tp.caption) ORDER BY tp.id)
+         FROM task_photos tp WHERE tp.task_id = g.id) AS photos
+      -- RUNDE BS — position::int, ikke bare position (TEXT-sortering ville
+      -- placere '10' FØR '2' alfabetisk). Sikkert kun her, fordi et
+      -- project_id-scoped gantt_tasks-position ALTID er et rent tal som
+      -- tekst (sat af enten POST .../tasks eller convertQuoteLinesToTasks,
+      -- se String(pos)/String(countRes.n)) — modsat job_id-baserede,
+      -- JobTread-synkroniserede opgaver, hvor position kan være en hvilken
+      -- som helst streng fra JobTread selv, og derfor IKKE må castes sådan.
+      FROM gantt_tasks g WHERE g.project_id=$1 ORDER BY position::int ASC, id ASC
     `, [req.params.id]).then(r => r.rows.map(t => ({ ...t, depends_on: safeJsonParse(t.depends_on, []) || [] }))),
     pool.query('SELECT * FROM project_photos WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM time_entries WHERE project_id=$1 ORDER BY entry_date DESC, id DESC', [req.params.id]).then(r => r.rows),
@@ -14907,6 +14939,37 @@ app.post('/api/projects/:id/tasks', auth, panelAccess('projects'), asyncRoute(as
   res.json({ ok: true, id });
 }));
 
+// RUNDE BS (Martin: "Kan du ikke gøre ved gantkortet under projekter at jeg
+// kan bytte rundt på rækken følgen af opgaver ved at trække dem op og ned i
+// venstre bjælke ... hvis det nu er en anden rækkefølge de kommer i") —
+// opgavernes position blev hidtil kun sat ÉN gang ved oprettelse (se
+// String(pos)/String(countRes.n) ovenfor og convertQuoteLinesToTasks) og der
+// fandtes ingen vej til at ÆNDRE den bagefter. Tager bevidst en HELE, ny
+// rækkefølge (alle opgave-id'er i sagen, i den nye orden) i stedet for et
+// enkelt "flyt denne ét trin op/ned" — det matcher hvordan admin.html
+// allerede regner den nye rækkefølge ud lokalt (array.splice, samme mønster
+// som tilbudslinjernes drag-and-drop, se makeLinesDragHandler) og betyder ét
+// samlet kald pr. træk-og-slip i stedet for N.
+// PLACERING: skal stå FØR PUT .../tasks/:taskId nedenfor — Express matcher
+// ruter i registreringsrækkefølge, og :taskId er et param der ville matche
+// den bogstavelige sti ".../tasks/reorder" først, hvis den literale rute var
+// registreret senere (fundet under test: PUT .../tasks/reorder endte i
+// :taskId-routen og gav 404 "Opgaven blev ikke fundet", fordi den ledte
+// efter en opgave med id='reorder').
+app.put('/api/projects/:id/tasks/reorder', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const order = Array.isArray((req.body || {}).order) ? req.body.order.map(String) : null;
+  if (!order || !order.length) return res.status(400).json({ error: 'Ingen rækkefølge angivet' });
+  const existing = (await pool.query('SELECT id FROM gantt_tasks WHERE project_id=$1', [req.params.id])).rows;
+  const validIds = new Set(existing.map(r => r.id));
+  for (const id of order) {
+    if (!validIds.has(id)) return res.status(400).json({ error: 'Rækkefølgen indeholder en opgave der ikke findes i sagen' });
+  }
+  for (let i = 0; i < order.length; i++) {
+    await pool.query('UPDATE gantt_tasks SET position=$1 WHERE id=$2 AND project_id=$3', [String(i), order[i], req.params.id]);
+  }
+  res.json({ ok: true });
+}));
+
 app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM gantt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
   if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
@@ -15030,6 +15093,72 @@ app.post('/api/projects/:id/photos', auth, asyncRoute(async (req, res) => {
 
 app.delete('/api/projects/:id/photos/:photoId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM project_photos WHERE id=$1 AND project_id=$2', [req.params.photoId, req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ══════════════════════════════════════════════════════════════
+// RUNDE BR (Martin: "Gør det muligt her at inkludere billeder fra kundens
+// handel. Enten fra kundebesøget eller dem der lagt under filer. Alternativt
+// som nok er bedre er billeder taget ved kundebesøg også kommer ind under
+// filer og så kan jeg bare tage dem derfra. For når jeg så booker det hos en
+// medarbejder får de billederne direkte med") — sagens FULDE billedbibliotek,
+// samlet fra alle steder billeder allerede havner i dag: dels sagens egne
+// uploads (project_photos) og medarbejdernes tidsregistrerings-billeder
+// (samme kilder som GET /api/document-job-photos ovenfor), dels — nyt her —
+// billeder taget ved selve KUNDEBESØGET (customer_visits.photo_urls), som
+// Martin bad om skal "komme ind under Filer" i stedet for at leve isoleret
+// på besøgs-rapporten. customer_visits har ingen egen project_id-kolonne
+// (den kendes typisk ikke endnu på besøgstidspunktet), så koblingen sker
+// samme vej som resten af portalen/fakturering allerede bruger:
+// customer_id og/eller quote_id matchet mod PROJEKTETS egne (se projects-
+// skemaet). Genbruges af både Billeder-fanen (renderPdPhotos) og den nye
+// opgave-billedvælger (pdtd-photos, docJobPhotoPick 'task-stage').
+async function projectPhotoLibrary(projectId) {
+  const project = await pgOne('SELECT id, customer_id, quote_id FROM projects WHERE id=$1', [projectId]);
+  if (!project) return [];
+  const [projectPhotos, timeRows, visitRows] = await Promise.all([
+    pool.query('SELECT pp.url, pp.caption, pp.created_at, u.name AS user_name FROM project_photos pp LEFT JOIN users u ON u.id=pp.uploaded_by WHERE pp.project_id=$1 ORDER BY pp.created_at DESC', [project.id]).then(r => r.rows),
+    pool.query('SELECT te.photo_url, te.photo_urls, te.note, te.entry_date, u.name AS user_name FROM time_entries te LEFT JOIN users u ON u.id=te.user_id WHERE te.project_id=$1 ORDER BY te.entry_date DESC, te.id DESC', [project.id]).then(r => r.rows),
+    (project.customer_id || project.quote_id)
+      ? pool.query('SELECT customer_name, photo_urls, notes, created_at FROM customer_visits WHERE (customer_id=$1 AND $1 IS NOT NULL) OR (quote_id=$2 AND $2 IS NOT NULL) ORDER BY created_at DESC', [project.customer_id, project.quote_id]).then(r => r.rows)
+      : Promise.resolve([])
+  ]);
+  const photos = [];
+  projectPhotos.forEach(p => photos.push({ url: p.url, caption: p.caption || null, user_name: p.user_name || null, date: p.created_at, source: 'Sagsbillede' }));
+  timeRows.forEach(te => {
+    const urls = Array.isArray(te.photo_urls) && te.photo_urls.length ? te.photo_urls : (te.photo_url ? [te.photo_url] : []);
+    urls.forEach(u => photos.push({ url: u, caption: te.note || null, user_name: te.user_name || null, date: te.entry_date, source: 'Timeregistrering' }));
+  });
+  visitRows.forEach(v => {
+    const urls = Array.isArray(v.photo_urls) ? v.photo_urls : [];
+    urls.forEach(u => photos.push({ url: u, caption: v.notes || null, user_name: v.customer_name || null, date: v.created_at, source: 'Kundebesøg' }));
+  });
+  photos.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  return photos;
+}
+app.get('/api/projects/:id/photo-library', auth, asyncRoute(async (req, res) => {
+  res.json({ photos: await projectPhotoLibrary(req.params.id) });
+}));
+
+// ── OPGAVENS EGNE BILLEDER (kuraterede referencebilleder, se task_photos
+// ovenfor) — det Martin faktisk vælger ud fra billedbiblioteket til at følge
+// MED en bestemt opgave, så en medarbejder der bookes på opgaven automatisk
+// får dem, se hydrateret i openBookingNote() i employee.html. ──
+app.get('/api/tasks/:id/photos', auth, asyncRoute(async (req, res) => {
+  const rows = await pool.query('SELECT * FROM task_photos WHERE task_id=$1 ORDER BY id ASC', [req.params.id]);
+  res.json(rows.rows);
+}));
+app.post('/api/tasks/:id/photos', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const task = await pgOne('SELECT id FROM gantt_tasks WHERE id=$1', [req.params.id]);
+  if (!task) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
+  const b = req.body || {};
+  if (!b.url) return res.status(400).json({ error: 'Intet billede angivet' });
+  const r = await pool.query('INSERT INTO task_photos (task_id,url,caption,added_by) VALUES ($1,$2,$3,$4) RETURNING id',
+    [req.params.id, b.url, b.caption || null, req.user.id]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+app.delete('/api/task-photos/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM task_photos WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
@@ -21475,7 +21604,8 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     [tokenRow.job_name]
   );
   if (portalProject) {
-    const nativeRes = await pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 ORDER BY position ASC, id ASC', [portalProject.id]);
+    // RUNDE BS — position::int, se samme forklaring ved GET /api/projects/:id.
+    const nativeRes = await pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 ORDER BY position::int ASC, id ASC', [portalProject.id]);
     const seenIds = new Set(projectTasks.map(t => t.id));
     for (const t of nativeRes.rows) { if (!seenIds.has(t.id)) { projectTasks.push(t); seenIds.add(t.id); } }
   }

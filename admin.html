@@ -2234,6 +2234,7 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .doc-job-photo-item{cursor:pointer;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);overflow:hidden;background:#fff;transition:box-shadow .12s,transform .12s}
 .doc-job-photo-item:hover{box-shadow:0 4px 14px rgba(15,17,24,.14);transform:translateY(-1px)}
 .doc-job-photo-item img{width:100%;height:110px;object-fit:cover;display:block;background:var(--bly-border-soft)}
+.doc-job-photo-item .djp-noimg{width:100%;height:110px;display:flex;align-items:center;justify-content:center;font-size:30px;background:var(--bly-border-soft);color:var(--bly-sub)}
 .doc-job-photo-item .djp-meta{padding:6px 8px;font-size:11px;color:var(--bly-sub);line-height:1.4}
 .doc-job-photo-item .djp-source{display:inline-block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#4F46E5;background:#EEF2FF;border-radius:4px;padding:1px 5px;margin-bottom:2px}
 /* FAKTURA-DETALJE — betalingsliste med delbetalinger, plus rest-saldo tydeligt fremhævet. */
@@ -3149,6 +3150,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
    dato-felt ("Skal jeg hurtig kunne sætte en dato", Martins ønske) ind uden at
    gøre navnefeltet urimeligt smalt. */
 #pd-gantt-strip .gantt-list-row[data-task-id]{flex-direction:column;align-items:stretch;justify-content:center;gap:3px;padding:6px 8px 6px 14px}
+/* RUNDE BS (Martin: "kan jeg bytte rundt på rækken følgen af opgaver ved at
+   trække dem op og ned i venstre bjælke hvor navnet på opgaven er") — samme
+   greb som tilbudslinjernes drag-and-drop (se makeLinesDragHandler): en lille
+   ⠿-håndtag, IKKE hele rækken, så navnefeltet/dato/kæde-dropdown stadig kan
+   klikkes og redigeres uden at starte et træk. */
+#pd-gantt-strip .glr-line1{display:flex;align-items:center;gap:4px}
+#pd-gantt-strip .glr-drag{cursor:grab;color:var(--bly-sub);font-size:13px;flex-shrink:0;padding:0 2px;line-height:1;user-select:none}
+#pd-gantt-strip .glr-drag:active{cursor:grabbing}
+#pd-gantt-strip .gantt-list-row[data-task-id].glr-dragging{opacity:.4}
+#pd-gantt-strip .gantt-list-row[data-task-id].glr-dragover{box-shadow:0 -2px 0 0 var(--bly-accent) inset}
 #pd-gantt-strip .glr-line2{display:flex;align-items:center;gap:4px}
 #pd-gantt-strip .gantt-inline-name{flex:1;min-width:0;border:1px solid transparent;background:transparent;border-radius:6px;padding:4px 6px;font:inherit;color:inherit}
 #pd-gantt-strip .gantt-inline-name:hover{border-color:var(--bly-border)}
@@ -3702,7 +3713,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.45</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.47</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -6778,6 +6789,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="bly-toolbar-right"><label class="bly-btn outline small" style="cursor:pointer">+ Tilføj billede<input type="file" accept="image/*" id="pd-photo-input" style="display:none"></label></div>
         </div>
         <div id="pd-photos-grid" class="pd-photos-grid"></div>
+        <!-- RUNDE BR (Martin: "billeder taget ved kundebesøg også kommer ind
+             under filer og så kan jeg bare tage dem derfra") — read-only
+             oversigt over billeder sagen HAR, men som ikke er uploadet direkte
+             her: kundebesøgets egne billeder og medarbejdernes tidsregistrerings-
+             billeder (se projectPhotoLibrary() i server.js). Ingen upload/slet
+             her — de billeder redigeres/slettes hvor de faktisk hører hjemme
+             (besøgsrapporten/tidsregistreringen); denne sektion er bare "her
+             kan du SE og bruge dem", fx til at vælge dem på en opgave, se
+             pdtdOpenPhotoPicker() i "Opgave i sagen". -->
+        <div id="pd-other-photos-wrap" style="margin-top:20px;display:none">
+          <div style="margin-bottom:8px"><span class="bly-toolbar-title" style="font-size:13px">Andre billeder på sagen</span><br><span class="sub">Fra kundebesøg og medarbejdernes tidsregistrering — klik for at åbne i fuld størrelse</span></div>
+          <div id="pd-other-photos-grid" class="pd-photos-grid"></div>
+        </div>
       </div>
 
       <div class="mo" id="pd-photo-lightbox">
@@ -7320,6 +7344,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <button class="btn small" type="button" id="pdtd-checklist-add-btn">+ Tilføj</button>
         </div>
       </div>
+      <!-- RUNDE BR (Martin: "Gør det muligt her at inkludere billeder fra
+           kundens handel ... billeder taget ved kundebesøg også kommer ind
+           under filer og så kan jeg bare tage dem derfra. For når jeg så
+           booker det hos en medarbejder får de billederne direkte med") —
+           billedvælgeren genbruger den delte #doc-job-photos-modal (samme
+           modal som tilbud/faktura allerede bruger til sagsbilleder), men
+           kilden er nu HELE sagens billedbibliotek (project_photos +
+           tidsregistrering + kundebesøg, se GET /api/projects/:id/photo-library),
+           så et kundebesøgsbillede er lige så let at vælge som et sagsbillede.
+           Medarbejderen ser de valgte billeder i sin note, når opgaven bookes
+           (se openBookingNote/loadNoteTaskPhotos i employee.html). -->
+      <div class="form-group" style="margin-top:14px">
+        <label class="form-label">📷 Billeder til medarbejderen</label>
+        <div id="pdtd-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;margin-bottom:8px"></div>
+        <button class="btn small" type="button" id="pdtd-add-photo-btn">📷 Vælg billede fra sagen</button>
+      </div>
       <!-- RUNDE L (Martins ønske #1 "flere data oplysninger") — hvem opgaven
            allerede er booket på i Kapacitetsbordet, hvis nogen. Skjult helt
            når opgaven slet ikke er booket endnu. -->
@@ -7329,6 +7369,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div class="gd-info-grid" style="margin-top:22px">
         <div style="grid-column:1/-1;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Kundekontakt</div>
+        <!-- RUNDE BS (Martin: "kan jeg se om kundens adresse er korrekt så når
+             den bookes i Opgavepool så har den alt dataen") — adressen ER
+             allerede med i Opgavepool-spejlingen (mirrorProjectTaskToPool
+             sætter job_address=project.customer_address), problemet var
+             udelukkende at man ikke kunne SE/tjekke den herfra før man
+             booker. Linker til Google Maps (samme mønster som
+             medarbejderens egen "📍"-adresselink i employee.html) — et hurtigt
+             visuelt tjek af om nålen rammer det rigtige sted er den bedste
+             måde at "se om adressen er korrekt" på. -->
+        <div style="grid-column:1/-1"><div class="gd-info-label">📍 Adresse</div><div id="pdtd-address" class="gd-info-value"></div></div>
         <div><div class="gd-info-label">📞 Kundetelefon</div><div id="pdtd-phone" class="gd-info-value"></div></div>
         <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="pdtd-email" class="gd-info-value"></div></div>
         <div><div class="gd-info-label">🔢 Sagsnummer</div><div id="pdtd-jobnumber" class="gd-info-value"></div></div>
@@ -22554,7 +22604,13 @@ async function cdCreateOpportunity(){
   var r=await api(endpoint,{method:'POST',body:JSON.stringify(body)});
   btn.disabled=false;
   if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke oprette handlen','❌');return;}
-  toast((type==='lead'?'Nyt lead oprettet ✓':'Ny handel oprettet ✓'),'🤝');
+  // RUNDE BS (Martin: "Når jeg under denne side opretter en handel har den
+  // stadig den gamle popup styl med den lille ting der kommer i højre
+  // hjørne") — denne ældre "cd-"-side var aldrig blevet migreret til den nye
+  // toastCreated()-kort-bekræftelse fra RUNDE BF (bruges allerede ved
+  // oprettelse af kunde/projekt og ved lead/handel-oprettelse andre steder i
+  // programmet). Ren visuel efterslæb, ingen datafejl.
+  toastCreated(type==='lead'?'🧲':'🤝',(type==='lead'?'Lead':'Handel')+' oprettet',cdCurrent.name||null,'Tryk her for at åbne '+(type==='lead'?'leadet':'handlen')+' →',function(){openCrmpDetail(type,r.id);});
   // Begge tabeller genindlæses med det samme (ingen sidegenindlæsning) — og
   // boardets cache tømmes, så Kanban'en henter forfra næste gang man går
   // derind og dermed også viser det nye kort.
@@ -25714,6 +25770,12 @@ function initProjectsModule(){
     document.getElementById('pd-gantt-prev-btn').addEventListener('click',function(){pdGanttPan(-14);});
     document.getElementById('pd-gantt-next-btn').addEventListener('click',function(){pdGanttPan(14);});
     document.getElementById('pd-gantt-today-btn').addEventListener('click',pdGanttResetToToday);
+    // RUNDE BS (Martin: "kan jeg bytte rundt på rækken følgen af opgaver ved
+    // at trække dem op og ned i venstre bjælke") — bundet ÉN gang her (ikke i
+    // renderPdGanttStrip(), som kalder innerHTML og dermed ville nulstille
+    // event-lyttere ved hver genrendering af opgavelisten/Gantt'et). Se
+    // makePdGanttDragHandler().
+    makePdGanttDragHandler(document.getElementById('pd-gantt-strip'));
     document.getElementById('close-bulk-capacity').addEventListener('click',function(){closeModal('bulk-capacity-modal');});
     document.getElementById('save-bulk-capacity').addEventListener('click',saveBulkCapacityReservation);
     document.getElementById('bcap-apply-all-btn').addEventListener('click',bcapApplyUserToAll);
@@ -25755,6 +25817,7 @@ function initProjectsModule(){
       document.getElementById('pdtd-status-label').textContent=meta.label;
     });
     document.getElementById('pdtd-checklist-add-btn').addEventListener('click',function(){addChecklistItem('pdtd-checklist-items',pdTaskDetailId,'pdtd-checklist-new');});
+    document.getElementById('pdtd-add-photo-btn').addEventListener('click',pdtdOpenPhotoPicker);
     document.getElementById('pdtd-capacity-btn').addEventListener('click',function(){
       if(!pdTaskDetailId)return;
       var id=pdTaskDetailId;
@@ -25986,7 +26049,7 @@ async function openProjectDetail(id){
     crmBtn.onclick=function(){openCrmpDetail(d.crm_entity.type,d.crm_entity.id);};
   } else crmBtn.style.display='none';
   switchPdTab('tasks');
-  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
+  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
   // Genindlæs den delte opgavepool (tasks-variablen) her, så "Tilføj til
   // Kapacitetsbordet" og tjekpunkter på en netop oprettet/redigeret sags-opgave
   // altid har den friske spejl-række fra jt_tasks at slå op i.
@@ -26006,7 +26069,7 @@ async function reloadPdCurrent(){
   var ilink=document.getElementById('pd-invoice-link');
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.href=qzPdfUrl('/api/invoices/'+d.invoice_id+'/pdf');ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
-  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
+  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
   await loadPjProjects();renderPjProjects();
   loadAll();
 }
@@ -26519,6 +26582,13 @@ async function pdSendPortalLink(){
 // simplere end Daglig Plans mandags-anker (ren dage×dayWidth-regning).
 var PD_GANTT_DAYS_BACK_MAX=200,PD_GANTT_DAYS_FORWARD_MAX=400;
 var pdGanttState={dayWidth:38,autoStart:null,autoDays:null,daysBack:0,daysForward:0,renderedStart:null},pdGanttDrag=null,pdGanttLinkDrag=null,pdGanttSelectedDepKey=null;
+// RUNDE BS — hvilken opgave (id) der lige nu trækkes i venstre bjælke, se
+// makePdGanttDragHandler(). Modul-niveau (ikke lokal i funktionen), fordi
+// selve dragstart-lytteren bindes PR. RÆKKE i renderPdGanttStrip() (rækkerne
+// gentegnes ved hver ændring), mens dragover/drop/dragend bindes ÉN gang på
+// den faste container (#pd-gantt-strip) i initProjectsModule — begge dele
+// skal kunne læse/sætte samme værdi.
+var pdGanttRowDragId=null;
 function pdGanttDateRange(){
   var tasks=pjCurrent.tasks||[];
   var starts=tasks.map(function(t){return t.start_date;}).filter(Boolean);
@@ -26616,6 +26686,55 @@ function pdGanttLinkOptionsHtml(tasks,selfId,selectedId){
   });
   return html;
 }
+// RUNDE BS (Martin: "kan jeg bytte rundt på rækken følgen af opgaver ved at
+// trække dem op og ned i venstre bjælke hvor navnet på opgaven er") —
+// finder den nærmeste opgave-række ud fra et hvilket som helst element inde
+// i den (samme greb som qzLineRow, bare for Gantt-listen).
+function pdGanttListRow(el){return el&&el.closest&&el.closest('.gantt-list-row[data-task-id]');}
+// Bindes ÉN gang på #pd-gantt-strip (se initProjectsModule) — selve trækket
+// starter pr. række (dragstart-lytteren på ⠿-håndtaget i renderPdGanttStrip,
+// som sætter pdGanttRowDragId), men dragover/drop/dragend er fælles for hele
+// listen og overlever renderPdGanttStrip()'s innerHTML-genopbygning, fordi de
+// er delegerede på den faste container i stedet for på de enkelte rækker.
+// Selve rækkefølge-beregningen er samme mønster som tilbudslinjernes
+// drag-and-drop (se makeLinesDragHandler/RUNDE AY) — array.splice(i,0,item)
+// placerer altid item på plads i i det færdige array, ingen retningskorrektion
+// nødvendig — bare med opgave-id som nøgle i stedet for et index, da
+// pjCurrent.tasks omsorteres/gentegnes ved hver ændring.
+function makePdGanttDragHandler(container){
+  container.addEventListener('dragover',function(e){
+    if(!pdGanttRowDragId)return;
+    var row=pdGanttListRow(e.target);
+    if(!row)return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect='move';
+    container.querySelectorAll('.glr-dragover').forEach(function(el){el.classList.remove('glr-dragover');});
+    if(row.dataset.taskId!==pdGanttRowDragId)row.classList.add('glr-dragover');
+  });
+  container.addEventListener('drop',async function(e){
+    if(!pdGanttRowDragId)return;
+    var row=pdGanttListRow(e.target);
+    e.preventDefault();
+    var fromId=pdGanttRowDragId;
+    pdGanttRowDragId=null;
+    container.querySelectorAll('.glr-dragging,.glr-dragover').forEach(function(el){el.classList.remove('glr-dragging','glr-dragover');});
+    if(!row||row.dataset.taskId===fromId)return;
+    var toId=row.dataset.taskId;
+    var tasks=pjCurrent.tasks||[];
+    var fromIdx=tasks.findIndex(function(t){return String(t.id)===String(fromId);});
+    var toIdx=tasks.findIndex(function(t){return String(t.id)===String(toId);});
+    if(fromIdx===-1||toIdx===-1)return;
+    var moved=tasks.splice(fromIdx,1)[0];
+    tasks.splice(toIdx,0,moved);
+    renderPdGanttStrip();
+    var r=await api('/api/projects/'+pjCurrent.id+'/tasks/reorder',{method:'PUT',body:JSON.stringify({order:tasks.map(function(t){return t.id;})})});
+    if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke gemme den nye rækkefølge','❌');reloadPdCurrent();}
+  });
+  container.addEventListener('dragend',function(){
+    pdGanttRowDragId=null;
+    container.querySelectorAll('.glr-dragging,.glr-dragover').forEach(function(el){el.classList.remove('glr-dragging','glr-dragover');});
+  });
+}
 function renderPdGanttStrip(){
   var el=document.getElementById('pd-gantt-strip');
   // RETTET (RUNDE P, Martins ønske) — listen blev FØR sorteret efter startdato,
@@ -26649,7 +26768,10 @@ function renderPdGanttStrip(){
     // kunne sætte en dato") + kæde-vælger ("en tråd mellem hver task").
     var depId=(t.depends_on&&t.depends_on[0])||'';
     listRows+='<div class="gantt-list-row" data-task-id="'+t.id+'">'
+      +'<div class="glr-line1">'
+      +'<span class="glr-drag" data-action="glr-drag" draggable="true" title="Træk for at ændre rækkefølgen">⠿</span>'
       +'<input class="gantt-inline-name" data-action="glr-name" value="'+esc(t.name||'')+'" title="'+esc(t.name||'')+'">'
+      +'</div>'
       +'<div class="glr-line2">'
       +'<input type="date" class="gantt-inline-date" data-action="glr-date" value="'+esc((t.start_date||'').slice(0,10))+'" title="Sæt/ret startdato hurtigt">'
       +'<select class="gantt-link-select'+(depId?' linked':'')+'" data-action="glr-link" title="Kæd sammen med en anden opgave — når den kædede opgave flytter dato, flytter denne med (og omvendt)">'+pdGanttLinkOptionsHtml(tasks,t.id,depId)+'</select>'
@@ -26771,6 +26893,17 @@ function renderPdGanttStrip(){
       if(!await gmConfirm('Slet opgaven?'))return;
       await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'DELETE'});
       reloadPdCurrent();
+    });
+    // RUNDE BS — selve trækket håndteres af ÉN delegeret handler bundet på
+    // #pd-gantt-strip (se makePdGanttDragHandler i initProjectsModule), da
+    // renderPdGanttStrip() kalder innerHTML og dermed erstatter alle rækker
+    // ved hver genrendering. Håndtaget skal bare markere HVILKEN række der
+    // trækkes.
+    row.querySelector('[data-action="glr-drag"]').addEventListener('dragstart',function(e){
+      pdGanttRowDragId=taskId;
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',taskId);
+      row.classList.add('glr-dragging');
     });
   });
   document.querySelectorAll('#pd-gantt-strip .gantt-bar[data-pd-task-id]').forEach(function(bar){
@@ -27008,7 +27141,8 @@ function openPdTaskDetail(taskId){
   pdtdCal.start=sd||null;pdtdCal.end=ed||null;pdtdCal.viewMonth=date(sd||iso(new Date()));
   document.getElementById('pdtd-daterange-pop').style.display='none';
   updatePdtdDateRangeBtn();
-  var phone=pjCurrent.customer_phone,email=pjCurrent.customer_email;
+  var phone=pjCurrent.customer_phone,email=pjCurrent.customer_email,address=pjCurrent.customer_address;
+  document.getElementById('pdtd-address').innerHTML=address?'<a href="https://maps.google.com/?q='+encodeURIComponent(address)+'" target="_blank" rel="noopener noreferrer">'+esc(address)+' ↗</a>':'<span class="muted-sm">Ingen adresse registreret</span>';
   document.getElementById('pdtd-phone').innerHTML=phone?'<a href="tel:'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
   document.getElementById('pdtd-email').innerHTML=email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
   document.getElementById('pdtd-jobnumber').innerHTML=pjCurrent.job_number?esc(pjCurrent.job_number):'<span class="muted-sm">Intet sagsnummer</span>';
@@ -27036,7 +27170,86 @@ function openPdTaskDetail(taskId){
     var period=b.start_date===b.end_date?fmtDaDate(b.start_date):(fmtDaDate(b.start_date)+' – '+fmtDaDate(b.end_date));
     return '<div>'+esc(b.user_name||'Ukendt medarbejder')+' <span class="muted-sm">· '+esc(period)+'</span></div>';
   }).join('');
+  renderPdtdPhotos();
   document.getElementById('pd-task-detail-modal').classList.add('open');
+}
+// RUNDE BR — de billeder Martin selv har valgt til DENNE opgave (task_photos,
+// spejlet ind på hver opgave af GET /api/projects/:id, se t.photos). Genbruger
+// samme .pd-photo-thumb/.pd-photo-del-klasser som sagens egen Billeder-fane
+// (renderPdPhotos), så det ser ens ud — bare uden lightbox, det er en lille
+// kuraterings-liste, ikke et galleri.
+function renderPdtdPhotos(){
+  var grid=document.getElementById('pdtd-photos-grid');
+  var t=(pjCurrent.tasks||[]).find(function(x){return x.id===pdTaskDetailId;});
+  var photos=(t&&t.photos)||[];
+  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder valgt endnu — medarbejderen får ingen billeder med når opgaven bookes.</div>';return;}
+  grid.innerHTML=photos.map(function(p){
+    return '<div class="pd-photo-thumb"><img src="'+esc(p.url)+'" loading="lazy" title="'+esc(p.caption||'')+'"><button type="button" class="pd-photo-del" data-id="'+p.id+'" title="Fjern fra opgaven">✕</button></div>';
+  }).join('');
+  Array.prototype.forEach.call(grid.querySelectorAll('.pd-photo-del'),function(btn){
+    btn.onclick=async function(e){
+      e.stopPropagation();
+      await api('/api/task-photos/'+btn.dataset.id,{method:'DELETE'});
+      await reloadPdCurrent();
+      renderPdtdPhotos();
+    };
+  });
+}
+// Åbner den delte sagsbillede-vælger (#doc-job-photos-modal), men kilden er nu
+// HELE sagens billedbibliotek (se GET /api/projects/:id/photo-library og
+// projectPhotoLibrary() i server.js) — ikke kun ét dokuments sagsbilleder.
+// Selve valget håndteres i docJobPhotoPick() via mode==='task-stage'.
+// #doc-job-photos-grid's klik-lytter bindes normalt først når man selv har
+// åbnet Tilbud & Faktura mindst én gang (bindQuotesModuleEvents() kører
+// lazy, se initQuotesModule/qzInitialized) — men man kan sagtens åbne en Sag
+// fra Projekter uden nogensinde at have været inde på Tilbud & Faktura i den
+// session, og så ville et klik på et billede her ellers ikke gøre noget.
+// Samme lette guard som initQuotesModule() selv bruger, men UDEN resten af
+// dens tunge indlæsning (loadQzQuotes/loadQzInvoices osv.) — vi skal kun
+// have selve klik-lytterne bundet, ikke genindlæse hele tilbuds-/faktura-listen.
+// RUNDE BS (Martin: "Kan du ikke også gøre så jeg kan tilføje billeder fra
+// Handels Filer?") — "Handlens Filer" er samme fane/data som kundekortets
+// egen 📎 Filer-fane (#crmpx-files-grid, GET /api/crm/customers/:id/files):
+// dels Gmail-vedhæftninger fra mailkorrespondancen, dels kundens egne
+// svar-link-uploads (direct_url, allerede en stabil Cloudinary-URL). Slås op
+// via sagens customer_id (samme felt Kundekontakt-adressen ovenfor bruger).
+// Gmail-vedhæftninger har IKKE nogen stabil URL i sig selv (kræver et
+// autentificeret opslag pr. billede, se crmpxOpenFileLightbox) — ligesom i
+// den fane vises de derfor kun med et 🖼️-ikon i selve vælgeren (ingen live
+// thumbnail), og selve billedet hentes/konverteres til en rigtig URL
+// FØRST når man faktisk vælger det, se docJobPhotoPick()'s task-stage-gren.
+async function pdtdOpenPhotoPicker(){
+  if(!pjCurrent||!pdTaskDetailId)return;
+  if(!qzInitialized){bindQuotesModuleEvents();qzInitialized=true;}
+  docJobPhotosCtx={mode:'task-stage',taskId:pdTaskDetailId};
+  var grid=document.getElementById('doc-job-photos-grid');
+  var sub=document.getElementById('doc-job-photos-sub');
+  document.getElementById('doc-job-photos-title').textContent='Vælg billede til opgaven';
+  grid.innerHTML='<div class="sub">Henter sagens billeder…</div>';
+  document.getElementById('doc-job-photos-modal').classList.add('open');
+  var calls=[api('/api/projects/'+pjCurrent.id+'/photo-library')];
+  calls.push(pjCurrent.customer_id?api('/api/crm/customers/'+pjCurrent.customer_id+'/files').catch(function(){return null;}):Promise.resolve(null));
+  var results=await Promise.all(calls);
+  var libRes=results[0],filesRes=results[1];
+  var photos=(libRes&&libRes.photos)||[];
+  if(Array.isArray(filesRes)){
+    filesRes.filter(function(f){return f.mimeType&&f.mimeType.indexOf('image/')===0;}).forEach(function(f){
+      var when=f.internal_date?new Date(Number(f.internal_date)).toISOString():null;
+      photos.push(f.direct_url
+        ?{url:f.direct_url,caption:f.subject||null,source:'Handel (Filer)',date:when}
+        :{needsFetch:true,messageId:f.gmail_message_id,attachmentId:f.attachmentId,filename:f.filename,mimetype:f.mimeType,caption:f.subject||f.filename||null,source:'Handel (Filer)',date:when});
+    });
+  }
+  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder fundet på sagen endnu — hverken uploadet direkte, fra tidsregistrering, kundebesøget eller Handlens filer.</div>';return;}
+  sub.textContent='Sagens billeder — vælg ét til denne opgave, så medarbejderen får det med når opgaven bookes';
+  grid.innerHTML=photos.map(function(p,idx){
+    var imgHtml=p.needsFetch?'<div class="djp-noimg" title="Hentes først når du vælger den">🖼️</div>':'<img src="'+esc(p.url)+'" alt="" loading="lazy">';
+    return '<div class="doc-job-photo-item" data-idx="'+idx+'">'
+      +imgHtml
+      +'<div class="djp-meta"><span class="djp-source">'+esc(p.source)+'</span><br>'+esc(p.user_name||p.caption||'')+(p.date?'<br>'+esc(String(p.date).slice(0,10)):'')+'</div>'
+      +'</div>';
+  }).join('');
+  docJobPhotosCtx.photos=photos;
 }
 // ── ÉT kalendervisning til start+slutdato — klik en dag for start, klik en
 // anden dag for slut (eller samme dag igen for en 1-dags opgave), i stedet
@@ -27314,6 +27527,26 @@ function renderPdPhotos(){
       reloadPdCurrent();
     };
   });
+}
+// RUNDE BR — "Andre billeder på sagen": kundebesøg + tidsregistrering, hentet
+// via det fælles billedbibliotek-endpoint (samme kilde som opgavens egen
+// billedvælger bruger, se pdtdOpenPhotoPicker). Sagsbilleder (project_photos)
+// vises bevidst IKKE her igen — de har allerede deres eget grid lige ovenfor,
+// med upload/slet — denne sektion er kun de kilder der IKKE findes der endnu.
+// Read-only: klik åbner billedet i en ny fane i stedet for lightboxen ovenfor,
+// da disse billeder ikke "ejes" af sagens egen billedliste (ingen slet-knap
+// her — de redigeres/slettes hvor de faktisk hører hjemme).
+async function renderPdOtherPhotos(){
+  var wrap=document.getElementById('pd-other-photos-wrap');
+  var grid=document.getElementById('pd-other-photos-grid');
+  if(!pjCurrent){wrap.style.display='none';return;}
+  var r=await api('/api/projects/'+pjCurrent.id+'/photo-library');
+  var photos=((r&&r.photos)||[]).filter(function(p){return p.source!=='Sagsbillede';});
+  if(!photos.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  grid.innerHTML=photos.map(function(p){
+    return '<a class="pd-photo-thumb" href="'+esc(p.url)+'" target="_blank" rel="noopener noreferrer" title="'+esc([p.source,p.user_name,p.caption].filter(Boolean).join(' · '))+'"><img src="'+esc(p.url)+'" loading="lazy"></a>';
+  }).join('');
 }
 // ── Billeder i stor stil: klik et thumbnail for at åbne, med ‹/› mellem alle
 // billeder i sagen, download-link og slet — alt uden at forlade siden. ──────
@@ -30218,6 +30451,44 @@ async function docJobPhotoPick(idx){
     }catch(err){
       toast('Kunne ikke hente billedet fra kunden: '+(err&&err.message||''),'❌');
     }
+    return;
+  }
+  // RUNDE BR/BS — vælges fra opgave-detaljevinduets billedvælger
+  // (pdtdOpenPhotoPicker), hvor billedet skal gemmes som et af DENNE
+  // OPGAVES kuraterede referencebilleder (task_photos), ikke som en
+  // dokument-vedhæftning. RUNDE BS: et billede fra Handlens Filer, der kom
+  // fra Gmail-korrespondancen (photo.needsFetch), har ingen stabil URL i sig
+  // selv — hentes derfor FØRST her (samme autentificerede opslag som
+  // crmpxOpenFileLightbox bruger), konverteres/nedskaleres (resizeImageFile,
+  // samme vej som note-stage-grenen ovenfor bruger), og uploades til
+  // Cloudinary (samme /api/photos/upload alle andre billed-uploads i appen
+  // bruger), så task_photos.url ender som en almindelig, permanent URL —
+  // præcis som for de øvrige kilder.
+  if(docJobPhotosCtx.mode==='task-stage'){
+    var taskId=docJobPhotosCtx.taskId;
+    var finalUrl=photo.url;
+    if(!finalUrl&&photo.needsFetch){
+      toast('Henter billedet fra Handlens filer…','⏳');
+      try{
+        var resp=await fetch(API+'/api/gmail/messages/'+photo.messageId+'/attachments/'+photo.attachmentId+'?filename='+encodeURIComponent(photo.filename||'')+'&mimetype='+encodeURIComponent(photo.mimetype||''),{headers:{'Authorization':'Bearer '+token}});
+        if(!resp.ok)throw new Error('HTTP '+resp.status);
+        var blob=await resp.blob();
+        var dataUrl=await resizeImageFile(blob,1400,.75);
+        var upl=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'gulvmaster/task-photos'})});
+        if(!upl||!upl.ok||!upl.url)throw new Error((upl&&upl.error)||'Upload fejlede');
+        finalUrl=upl.url;
+      }catch(err){
+        toast('Kunne ikke hente billedet fra Handlens filer: '+(err&&err.message||''),'❌');
+        return;
+      }
+    }
+    if(!finalUrl)return;
+    var pr=await api('/api/tasks/'+taskId+'/photos',{method:'POST',body:JSON.stringify({url:finalUrl,caption:photo.caption||photo.user_name||null})});
+    if(pr&&pr.ok){
+      toast('Billede tilføjet til opgaven ✓','📎');
+      await reloadPdCurrent();
+      renderPdtdPhotos();
+    }else toast((pr&&pr.error)||'Kunne ikke tilføje billedet','❌');
     return;
   }
   var docType=docJobPhotosCtx.docType;

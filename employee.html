@@ -215,7 +215,7 @@
   <div id="selected-notice"></div>
   <div id="tasks-container"><div class="empty"><div class="empty-icon">⏳</div><h3>Loading your tasks...</h3></div></div>
 </main>
-<div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div><div id="note-quote-section" style="display:none;margin-top:12px"></div></div></div></div>
+<div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div><div id="note-task-photos" style="display:none;margin-top:12px"><div class="qn-title">📷 Reference photos</div><div class="modal-note-attachments" id="note-task-photos-grid"></div></div><div id="note-quote-section" style="display:none;margin-top:12px"></div></div></div></div>
 <!-- PROJEKTER — sager der er blevet til efter en kunde har underskrevet et
      tilbud. Herfra kan medarbejdere registrere tid (note + billede påkrævet),
      tilføje billeder til sagen, og udfylde KS-formularer. -->
@@ -484,7 +484,25 @@ async function toggleMyChecklistItem(id,done){
   const r=await api('/api/checklist/'+id,{method:'PUT',body:JSON.stringify({done:done})});
   if(!r||!r.ok)toast('Could not save — try again');
 }
-function openBookingNote(id){const x=bookingNotes.get(String(id))||{};document.getElementById('note-task').textContent=x.title||'Task';const note=String(x.note||'').trim();const nt=document.getElementById('note-text');if(note){nt.innerHTML=x.noteIsHtml?note:esc(note).replace(/\n/g,'<br>');}else{nt.textContent='No note has been added to this booking yet.';}nt.classList.toggle('modal-empty',!note);const linkWrap=document.getElementById('note-link-wrap'),linkEl=document.getElementById('note-link');if(x.link){linkEl.href=x.link;linkWrap.style.display='block';}else{linkWrap.style.display='none';}let attachments=[];if(x.attachments){try{attachments=JSON.parse(x.attachments)||[];}catch(e){attachments=[];}}const attEl=document.getElementById('note-attachments');attEl.innerHTML=attachments.map(a=>{const name=esc(a.name||(a.type==='pdf'?'document.pdf':'image'));return a.type==='pdf'?`<a class="modal-note-att" href="${esc(a.data)}" target="_blank" rel="noopener noreferrer"><div class="modal-note-att-pdf">📄</div><span class="modal-note-att-name" title="${name}">${name}</span></a>`:`<a class="modal-note-att" href="${esc(a.data)}" target="_blank" rel="noopener noreferrer"><img src="${esc(a.data)}" alt="${name}"><span class="modal-note-att-name" title="${name}">${name}</span></a>`;}).join('');document.getElementById('note-modal').classList.add('open');loadNoteQuoteSection(x);}
+function openBookingNote(id){const x=bookingNotes.get(String(id))||{};document.getElementById('note-task').textContent=x.title||'Task';const note=String(x.note||'').trim();const nt=document.getElementById('note-text');if(note){nt.innerHTML=x.noteIsHtml?note:esc(note).replace(/\n/g,'<br>');}else{nt.textContent='No note has been added to this booking yet.';}nt.classList.toggle('modal-empty',!note);const linkWrap=document.getElementById('note-link-wrap'),linkEl=document.getElementById('note-link');if(x.link){linkEl.href=x.link;linkWrap.style.display='block';}else{linkWrap.style.display='none';}let attachments=[];if(x.attachments){try{attachments=JSON.parse(x.attachments)||[];}catch(e){attachments=[];}}const attEl=document.getElementById('note-attachments');attEl.innerHTML=attachments.map(a=>{const name=esc(a.name||(a.type==='pdf'?'document.pdf':'image'));return a.type==='pdf'?`<a class="modal-note-att" href="${esc(a.data)}" target="_blank" rel="noopener noreferrer"><div class="modal-note-att-pdf">📄</div><span class="modal-note-att-name" title="${name}">${name}</span></a>`:`<a class="modal-note-att" href="${esc(a.data)}" target="_blank" rel="noopener noreferrer"><img src="${esc(a.data)}" alt="${name}"><span class="modal-note-att-name" title="${name}">${name}</span></a>`;}).join('');document.getElementById('note-modal').classList.add('open');loadNoteQuoteSection(x);loadNoteTaskPhotos(x);}
+// RUNDE BR (Martin: "billeder taget ved kundebesøg også kommer ind under
+// filer ... for når jeg så booker det hos en medarbejder får de billederne
+// direkte med") — task_photos er de referencebilleder Martin selv har
+// udvalgt til denne opgave (i "Opgave i sagen"-vinduet i admin), hentet her
+// via x.taskId (samme felt loadNoteQuoteSection allerede bruger) og vist som
+// tapbare thumbnails, samme mønster/klasse som de almindelige note-vedhæftninger
+// ovenfor (modal-note-att) — bare her peger de på en rigtig URL i stedet for
+// en base64 data-URI, så almindelig <a target="_blank"> er nok.
+async function loadNoteTaskPhotos(x){
+  const wrap=document.getElementById('note-task-photos'),grid=document.getElementById('note-task-photos-grid');
+  wrap.style.display='none';grid.innerHTML='';
+  if(!x||!x.taskId)return;
+  const r=await api('/api/tasks/'+encodeURIComponent(x.taskId)+'/photos');
+  const photos=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
+  if(!photos.length)return;
+  grid.innerHTML=photos.map(p=>`<a class="modal-note-att" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(p.url)}" alt="${esc(p.caption||'')}"><span class="modal-note-att-name" title="${esc(p.caption||'')}">${esc(p.caption||'Photo')}</span></a>`).join('');
+  wrap.style.display='block';
+}
 // RUNDE L (Martins ønske) — "med et klik tilføje det tilbud der sendt uden priser".
 // Vises kun for kundebesøg (x.isVisit), og kun beskrivelse/omfang — ALDRIG priser,
 // uanset hvad der kommer tilbage fra /quote-scope (server-siden garanterer det, men
