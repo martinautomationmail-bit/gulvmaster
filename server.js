@@ -8012,10 +8012,18 @@ app.get('/api/tasks', auth, asyncRoute(async (req, res) => {
            -- projects.project_type / GET /api/project-types) følger nu også med
            -- hver opgave, så Opgavepool kan filtrere på DEN i stedet. Samme
            -- NULL-for-opgaver-uden-sag-regel som prof_status ovenfor.
-           p.project_type AS project_type
+           p.project_type AS project_type,
+           -- RUNDE BT (Martin: "Når jeg fra Projekter booker ting i Kapacitets
+           -- bord for jeg hurtig kan se hvilken kunde der tale om så start med
+           -- Navnet på kunden") — sagens EGEN, rigtige kundenavn (customers.name),
+           -- ikke job_name (sagens frit indtastede titel, som langt fra altid
+           -- starter med kundens navn — se qeCapacityDefaultLabel i admin.html).
+           -- NULL for opgaver uden sag, ligesom project_status/project_type.
+           c.name AS customer_name
     FROM jt_tasks t
     LEFT JOIN planning_bookings b ON b.task_id=t.id
     LEFT JOIN projects p ON p.id = t.project_id
+    LEFT JOIN customers c ON c.id = p.customer_id
     -- RUNDE Æ (Martins ønske: "fjern alle opgaver der kommet ind fra JobTread
     -- ... så der ikke er 2 af de samme") — de sidste source='jobtread'-rækker
     -- (kun dem der havde rigtig historik hængende på sig, se
@@ -8029,7 +8037,7 @@ app.get('/api/tasks', auth, asyncRoute(async (req, res) => {
     -- task_checklist_items m.fl. skal ikke gå tabt) — de skjules bare fra selve
     -- opgave-listen, præcis som 'capacity'-rækker allerede blev.
     WHERE COALESCE(t.source,'jobtread') NOT IN ('capacity','jobtread')
-    GROUP BY t.id, p.status, p.project_type
+    GROUP BY t.id, p.status, p.project_type, c.name
     ORDER BY CASE WHEN t.source='manual' THEN 0 ELSE 1 END,
              CASE WHEN t.start_date IS NULL OR t.start_date='' THEN 1 ELSE 0 END,
              t.start_date ASC NULLS LAST,
@@ -8139,9 +8147,24 @@ app.post('/api/capacity-reservations', auth, panelAccess('capacity'), asyncRoute
     let taskLabel = requestedLabel;
     const overallEnd = segments[segments.length - 1].end_date;
     if (taskId) {
-      const task = await client.query("SELECT id,job_name,name FROM jt_tasks WHERE id=$1 AND COALESCE(source,'jobtread') <> 'capacity'", [taskId]);
+      // RUNDE BT (Martin: "Når jeg fra Projekter booker ting i Kapacitets bord
+      // for jeg hurtig kan se hvilken kunde der tale om så start med Navnet på
+      // kunden ... beskrivelse på opgaven bagefter") — foretrækker nu sagens
+      // RIGTIGE kundenavn (customers.name via projects.customer_id) frem for
+      // job_name (sagens frit indtastede titel, som ikke altid starter med
+      // kundens navn — fx når titlen i stedet er selve opgavebeskrivelsen).
+      // job_name bruges kun som fallback for opgaver uden sag (rigtige
+      // JobTread-jobs, som Martin selv navngiver "Kunde - Fag").
+      const task = await client.query(`
+        SELECT t.id, t.job_name, t.name, c.name AS customer_name
+        FROM jt_tasks t
+        LEFT JOIN projects p ON p.id = t.project_id
+        LEFT JOIN customers c ON c.id = p.customer_id
+        WHERE t.id=$1 AND COALESCE(t.source,'jobtread') <> 'capacity'
+      `, [taskId]);
       if (!task.rowCount) throw new Error('Opgaven blev ikke fundet');
-      taskLabel = taskLabel || [task.rows[0].job_name, task.rows[0].name].filter(Boolean).join(' — ') || 'Kapacitetsreservation';
+      const primaryName = task.rows[0].customer_name || task.rows[0].job_name;
+      taskLabel = taskLabel || [primaryName, task.rows[0].name].filter(Boolean).join(' — ') || 'Kapacitetsreservation';
     } else {
       taskId = `capacity-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
       taskLabel = taskLabel || 'Kapacitetsreservation';
@@ -9703,7 +9726,27 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
   // springes telefon-matchet helt over (ellers ville '%%' matche alle rækker).
   const digits = term.replace(/[^0-9]/g, '');
   const digitPat = digits.length >= 3 ? '%' + digits + '%' : '';
-  const params = [term, prefixPat, containsPat, digitPat];
+  // RUNDE BV (Martin: "når jeg søger på Email vil jeg kune have exact match.
+  // Fordi det er unikt og der burde ikke komme andre") — en e-mailadresse er
+  // (i modsætning til navn/adresse) unik pr. kunde/lead/kontakt, så en almindelig
+  // "indeholder"-søgning (containsPat, $3) kan slå fejl: søger man fx på
+  // "ad@gmail.com" ville den også ramme "mano02ad@gmail.com", "triad@gmail.com"
+  // osv. — helt andre personer, bare fordi teksten tilfældigt indgår i deres
+  // adresse. Når søgeteksten SER UD SOM en fuld e-mailadresse, bruges derfor et
+  // eksakt (case-insensitivt) match på selve email-feltet i stedet for
+  // containsPat — kun for email-sammenligningen, ikke for navn/adresse/telefon,
+  // som stadig søges bredt som hidtil (der er reelt ingen risiko for at en hel
+  // e-mailadresse ved et tilfælde også matcher nogens navn).
+  const isEmailTerm = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(term);
+  const emailCol = isEmailTerm ? '$5' : '$3';
+  // $5 skal ALTID stå i selve SQL-teksten (også når søgeteksten ikke ser ud
+  // som en e-mail) — ellers matcher antallet af parametre, vi sender til
+  // Postgres (5), ikke antallet af $-pladsholdere Postgres rent faktisk ser i
+  // forespørgslen (4), og driveren fejler med "bind message supplies 5
+  // parameters, but prepared statement requires 4". Når det ikke er en
+  // e-mail-søgning, sættes $5 derfor til NULL — "ILIKE NULL" giver NULL
+  // (aldrig sandt), så klausulen er et no-op uden at ændre resultatet.
+  const params = [term, prefixPat, containsPat, digitPat, isEmailTerm ? esc : null];
 
   // RUNDE I (sep. 2026, Martins ønske): den dedikerede søgeresultat-side (Enter i
   // søgefeltet) vil vise ALLE resultater, ikke kun dropdownens korte forhåndsvisning —
@@ -9720,16 +9763,22 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
 
   const queries = {};
 
+  // RUNDE BV — når søgeteksten er en fuld e-mailadresse, rangerer et EKSAKT
+  // match på email som en 0'er (samme prioritet som "navn starter med"), i
+  // stedet for kun rang 1 ("indeholder et sted") — det er trods alt et
+  // fuldstændigt sikkert match, ikke bare en tilfældig delstrengs-ramt.
+  const emailRank0 = col => ` OR COALESCE(${col},'') ILIKE $5`;
+
   if (may('customers')) {
     queries.customers = pool.query(`
       SELECT c.id, c.name, c.email, c.phone, c.address, c.is_company, c.cvr,
-        CASE WHEN c.name ILIKE $2 THEN 0
-             WHEN c.name ILIKE $3 OR COALESCE(c.email,'') ILIKE $3 OR COALESCE(c.address,'') ILIKE $3
+        CASE WHEN c.name ILIKE $2${emailRank0('c.email')} THEN 0
+             WHEN c.name ILIKE $3 OR COALESCE(c.email,'') ILIKE ${emailCol} OR COALESCE(c.address,'') ILIKE $3
                   OR ${phoneWhere('c.phone')} THEN 1
              ELSE 2 END AS match_rank,
         ${simExpr(['c.name', "COALESCE(c.address,'')"])} AS score
       FROM customers c
-      WHERE c.name ILIKE $3 OR COALESCE(c.email,'') ILIKE $3 OR COALESCE(c.address,'') ILIKE $3
+      WHERE c.name ILIKE $3 OR COALESCE(c.email,'') ILIKE ${emailCol} OR COALESCE(c.address,'') ILIKE $3
          OR ${phoneWhere('c.phone')}${fuzzyWhere(['c.name', "COALESCE(c.address,'')"])}
       ORDER BY match_rank ASC, score DESC, c.name ASC
       LIMIT ${LIMIT}
@@ -9740,15 +9789,15 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
     queries.leads = pool.query(`
       SELECT l.id, l.name, l.email, l.phone, l.address, l.source,
              s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name,
-        CASE WHEN l.name ILIKE $2 THEN 0
-             WHEN l.name ILIKE $3 OR COALESCE(l.email,'') ILIKE $3 OR COALESCE(l.address,'') ILIKE $3
+        CASE WHEN l.name ILIKE $2${emailRank0('l.email')} THEN 0
+             WHEN l.name ILIKE $3 OR COALESCE(l.email,'') ILIKE ${emailCol} OR COALESCE(l.address,'') ILIKE $3
                   OR ${phoneWhere('l.phone')} THEN 1
              ELSE 2 END AS match_rank,
         ${simExpr(['l.name', "COALESCE(l.address,'')"])} AS score
       FROM crm_leads l
       LEFT JOIN crm_stages s ON s.id = l.stage_id
       LEFT JOIN crm_pipelines p ON p.id = l.pipeline_id
-      WHERE l.name ILIKE $3 OR COALESCE(l.email,'') ILIKE $3 OR COALESCE(l.address,'') ILIKE $3
+      WHERE l.name ILIKE $3 OR COALESCE(l.email,'') ILIKE ${emailCol} OR COALESCE(l.address,'') ILIKE $3
          OR ${phoneWhere('l.phone')}${fuzzyWhere(['l.name', "COALESCE(l.address,'')"])}
       ORDER BY match_rank ASC, score DESC, l.updated_at DESC NULLS LAST, l.name ASC
       LIMIT ${LIMIT}
@@ -9765,8 +9814,8 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
              ct.name AS contact_name, ct.email AS contact_email,
              ct.phone AS contact_phone, ct.address AS contact_address,
              s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name,
-        CASE WHEN o.name ILIKE $2 OR COALESCE(ct.name,'') ILIKE $2 THEN 0
-             WHEN o.name ILIKE $3 OR COALESCE(ct.name,'') ILIKE $3 OR COALESCE(ct.email,'') ILIKE $3
+        CASE WHEN o.name ILIKE $2 OR COALESCE(ct.name,'') ILIKE $2${emailRank0('ct.email')} THEN 0
+             WHEN o.name ILIKE $3 OR COALESCE(ct.name,'') ILIKE $3 OR COALESCE(ct.email,'') ILIKE ${emailCol}
                   OR COALESCE(ct.address,'') ILIKE $3 OR ${phoneWhere('ct.phone')} THEN 1
              ELSE 2 END AS match_rank,
         ${simExpr(['o.name', "COALESCE(ct.name,'')", "COALESCE(ct.address,'')"])} AS score
@@ -9774,7 +9823,7 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
       LEFT JOIN crm_contacts ct ON ct.id = o.contact_id
       LEFT JOIN crm_stages s ON s.id = o.stage_id
       LEFT JOIN crm_pipelines p ON p.id = o.pipeline_id
-      WHERE o.name ILIKE $3 OR COALESCE(ct.name,'') ILIKE $3 OR COALESCE(ct.email,'') ILIKE $3
+      WHERE o.name ILIKE $3 OR COALESCE(ct.name,'') ILIKE $3 OR COALESCE(ct.email,'') ILIKE ${emailCol}
          OR COALESCE(ct.address,'') ILIKE $3 OR ${phoneWhere('ct.phone')}${fuzzyWhere(['o.name', "COALESCE(ct.name,'')", "COALESCE(ct.address,'')"])}
       ORDER BY match_rank ASC, score DESC, o.updated_at DESC NULLS LAST, o.name ASC
       LIMIT ${LIMIT}

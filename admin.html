@@ -2683,8 +2683,24 @@ body.qz-overlay-open .page.active{display:none}
 .capacity-board .staff-cell{min-width:185px}
 /* RUNDE V (Martins ønske: "alle opgaver i kapacitetsbord felterne skal have
    samme brede som i Dagligplanlægning det mere overskueligt") — 128px, samme
-   som Dagligplanlægnings .day-cell herunder, i stedet for de 120px før. */
-.cap-cell{padding:4px;min-width:128px;vertical-align:top}
+   som Dagligplanlægnings .day-cell herunder, i stedet for de 120px før.
+   RUNDE BT (Martins fejlrapport: "før uge 39 der var alle bokse samme brede
+   ligemeget hvor meget tekst der var ... nu ser det ud som det ikke fungerer
+   længere") — RUNDE V's rettelse satte kun min-width, ALDRIG max-width. I en
+   almindelig (auto-layout) tabel er min-width bare et gulv, ikke et loft —
+   browseren regner stadig hver kolonnes endelige bredde ud fra det BREDESTE
+   indhold i kolonnen (selv tekst der efterfølgende klippes af med
+   overflow:hidden/ellipsis LÆNGERE INDE i cellen tæller stadig med i denne
+   udregning, fordi den sker FØR selve afklipningen). Så længe alle opgaver i
+   en given uge tilfældigvis var korte nok til at være under ~128px u-ombrudt,
+   så det ud som om det virkede — men ramte ugen én eneste lang
+   opgavebeskrivelse (som uge 39), blev HELE den uges kolonne skubbet bredere,
+   uden at de andre uger fulgte med, og hele tabellen så skæv ud. Rettelsen er
+   at sætte BÅDE min-width OG max-width (præcis samme greb som .day-cell
+   allerede bruger nedenfor, og som IKKE har dette problem) — så er 128px et
+   fast loft uanset tekstlængde, hele året, ikke kun i de uger hvor teksten
+   tilfældigvis er kort. */
+.cap-cell{padding:4px;min-width:128px;max-width:128px;vertical-align:top}
 .cap-drop{position:relative;min-height:68px;border-radius:6px;border:1px dashed transparent;padding:3px;transition:.14s}
 .cap-drop.over{background:#EFF6FF;border-color:var(--blue)}
 
@@ -3158,6 +3174,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 #pd-gantt-strip .glr-line1{display:flex;align-items:center;gap:4px}
 #pd-gantt-strip .glr-drag{cursor:grab;color:var(--bly-sub);font-size:13px;flex-shrink:0;padding:0 2px;line-height:1;user-select:none}
 #pd-gantt-strip .glr-drag:active{cursor:grabbing}
+/* RUNDE BU (Martin: "der bør være et flueben så man kan se" at en opgave
+   allerede er booket, "man skal nemlig ikke dobbelt booke") — lille grønt
+   flueben-badge, samme farve/sprog som den grønne "done"-status andre steder
+   i appen (fx PD_PIPELINE_STATUS_META.done). Kun synlig når t.has_booking. */
+#pd-gantt-strip .glr-booked-badge{flex-shrink:0;width:15px;height:15px;border-radius:999px;background:#DCFCE7;color:#15803D;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1}
 #pd-gantt-strip .gantt-list-row[data-task-id].glr-dragging{opacity:.4}
 #pd-gantt-strip .gantt-list-row[data-task-id].glr-dragover{box-shadow:0 -2px 0 0 var(--bly-accent) inset}
 #pd-gantt-strip .glr-line2{display:flex;align-items:center;gap:4px}
@@ -3713,7 +3734,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.47</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.50</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -10930,10 +10951,26 @@ function populateCapacityUsers(selectedUid){
 // RUNDE V — se kommentaren ved capacity-label ovenfor. t.job_name er sagens/
 // kundens navn (typisk "Fornavn Efternavn", da sager altid oprettes med
 // kundens navn som titel), t.name er selve opgavens beskrivelse.
+// RUNDE BT (Martin: "Når jeg fra Projekter booker ting i Kapacitets bord for
+// jeg hurtig kan se hvilken kunde der tale om så start med Navnet på kunden
+// og så beskrivelse på opgaven bagefter") — to ting rettet:
+// 1) Brugte FØR kun t.job_name — sagens EGEN, frit indtastede titel — som slet
+//    ikke altid starter med kundens navn (fx når Martin har navngivet sagen
+//    efter selve opgavebeskrivelsen i stedet). t.customer_name (nyt felt, se
+//    GET /api/tasks i server.js) er sagens RIGTIGE kundenavn slået op via
+//    projects.customer_id, og er derfor altid pålideligt, uanset hvordan
+//    sagen selv er navngivet. job_name bruges stadig som fallback for
+//    opgaver uden sag (rigtige JobTread-jobs).
+// 2) Brugte FØR kun FØRSTE ORD af navnet (for at holde den lille 128px-boks
+//    kort) — men det er for kort til hurtigt at kunne se HVEM det er, især
+//    ved firmakunder eller flere kunder med samme fornavn. Bruger nu HELE
+//    navnet — selve visningen (.cap-job-name) har allerede
+//    text-overflow:ellipsis, så et langt navn afkortes pænt i UI'et i stedet
+//    for at blive klippet her og miste information man ikke kan se igen.
 function qeCapacityDefaultLabel(t){
-  var firstName=t.job_name?String(t.job_name).trim().split(/\s+/)[0]:'';
+  var custName=(t.customer_name||t.job_name)?String(t.customer_name||t.job_name).trim():'';
   var taskDesc=t.name?String(t.name).trim():'';
-  return [firstName,taskDesc].filter(Boolean).join(' — ');
+  return [custName,taskDesc].filter(Boolean).join(' — ');
 }
 function openCapacityModal(opts){
   opts=opts||{};var b=opts.booking||null;var taskId=opts.taskId||(b&&b.task_id)||null;var t=taskId?tasks.find(function(x){return String(x.id)===String(taskId);}):null;
@@ -26770,6 +26807,18 @@ function renderPdGanttStrip(){
     listRows+='<div class="gantt-list-row" data-task-id="'+t.id+'">'
       +'<div class="glr-line1">'
       +'<span class="glr-drag" data-action="glr-drag" draggable="true" title="Træk for at ændre rækkefølgen">⠿</span>'
+      // RUNDE BU (Martin: "Hvis man har booket alt i kapacitetsbordet engang
+      // på et projekt. Burde der være et flueben, så man kan se det. Man skal
+      // nemlig ikke dobbelt booke så der risiko for man tror man har mere
+      // arbejde end man har") — t.has_booking findes allerede (server.js'
+      // GET /api/projects/:id, EXISTS(...) mod planning_bookings, dækker
+      // BÅDE Kapacitetsbordet og Daglig plan) og bruges allerede som en lille
+      // "✓" på "📊 Book"-knappen i Pipeline-fanen (se pdPipelineCardHtml) —
+      // men var slet ikke synlig her på selve opgavelisten, som er der Martin
+      // rent faktisk kigger når han skal vurdere hvad der mangler at blive
+      // booket. Et grønt flueben, direkte ved siden af navnet, så det ses med
+      // det samme uden at åbne hver opgave.
+      +(t.has_booking?'<span class="glr-booked-badge" title="Allerede booket (Kapacitetsbordet eller Daglig plan) — pas på ikke at booke den igen">✓</span>':'')
       +'<input class="gantt-inline-name" data-action="glr-name" value="'+esc(t.name||'')+'" title="'+esc(t.name||'')+'">'
       +'</div>'
       +'<div class="glr-line2">'
