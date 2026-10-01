@@ -1791,6 +1791,16 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_crm_opp_stage ON crm_opportunities(stage_id);
+    -- NYT (okt. 2026, Martins ønske: "Lav en portal hvor man kan oprette en
+    -- kunde og så den laver leadet automatisk ind i program ... så jeg bare
+    -- har 1 link hvor jeg kan sende det på sms eller mail til dem så opretter
+    -- de sig") — flager en opportunity der er oprettet af KUNDEN SELV via det
+    -- offentlige, token-løse formular-link (GET /ny-kunde, se routen
+    -- nedenfor), så den kan vises med samme slags lille "kunden gjorde selv
+    -- dette"-mærke som allerede findes for selv-uploadede billeder
+    -- (has_customer_photos/📸, se crmpCardHtml() i admin.html).
+    ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS self_registered INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS self_registered_note TEXT;
 
     -- ══════════════════════════════════════════════════════════════
     -- RUNDE S (Martins ønske: "Mulighed for flere tlf. Nr, e-mail og adresser
@@ -16980,14 +16990,32 @@ async function runLostFollowupScan(triggeredManually) {
 async function runDailyStatusEmail() {
   if (!mailIsConfigured()) return { ran: false, reason: 'E-mail er ikke konfigureret' };
   const since = `((CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - interval '24 hours')::text`;
-  const [newLeads, talkedTo, quotesSent, quotesAccepted, errorRows, bouncedRows] = await Promise.all([
-    pgOne(`SELECT COUNT(*)::int AS n FROM crm_leads WHERE created_at > ${since}`),
-    pgOne(`SELECT COUNT(*)::int AS n FROM crm_opportunities WHERE source_lead_id IS NOT NULL AND created_at > ${since}`),
-    pgOne(`SELECT COUNT(*)::int AS n FROM document_activity WHERE doc_type='quote' AND event_type='sent' AND created_at > ${since}`),
-    pgOne(`SELECT COUNT(*)::int AS n FROM document_activity WHERE doc_type='quote' AND event_type='accepted' AND created_at > ${since}`),
+  // RETTET (okt. 2026, Martin: "i MAILEN du sender dagligt hvor man får en
+  // opdateirng på hvem der har accepteret osv. Kan du ikke tilføje så man kan
+  // klikke og se hvem det er så man hurtig kan tilgå de forskellige data du
+  // sender ud?") — hver kategori henter nu ID+navn for de ENKELTE rækker (ikke
+  // kun et antal), så hver linje kan vises som en liste af rigtige links der
+  // åbner direkte på den pågældende lead/opportunity/tilbud i admin-panelet.
+  // Genbruger de allerede fuldt indkoblede deep-link hash-mønstre
+  // (#crmp-detail/..., #quotes/tilbud/...) — ingen ny frontend-routing krævet.
+  const [newLeadRows, talkedToRows, quotesSentRows, quotesAcceptedRows, selfRegRows, errorRows, bouncedRows] = await Promise.all([
+    pool.query(`SELECT id, name FROM crm_leads WHERE created_at > ${since} ORDER BY created_at DESC`).then(r => r.rows),
+    pool.query(`SELECT id, name FROM crm_opportunities WHERE source_lead_id IS NOT NULL AND created_at > ${since} ORDER BY created_at DESC`).then(r => r.rows),
+    pool.query(`
+      SELECT q.id, q.job_name FROM document_activity da JOIN quotes q ON q.id=da.doc_id
+      WHERE da.doc_type='quote' AND da.event_type='sent' AND da.created_at > ${since} ORDER BY da.created_at DESC
+    `).then(r => r.rows),
+    pool.query(`
+      SELECT q.id, q.job_name FROM document_activity da JOIN quotes q ON q.id=da.doc_id
+      WHERE da.doc_type='quote' AND da.event_type='accepted' AND da.created_at > ${since} ORDER BY da.created_at DESC
+    `).then(r => r.rows),
+    // NYT — selv-registrerede kunder via /ny-kunde (Feature A/B), så Martin
+    // direkte i den daglige mail kan se hvem der selv har oprettet sig.
+    pool.query(`SELECT id, name FROM crm_opportunities WHERE self_registered=1 AND created_at > ${since} ORDER BY created_at DESC`).then(r => r.rows),
     pool.query(`SELECT source, message, created_at FROM system_log WHERE level='error' AND created_at > ${since} ORDER BY created_at DESC LIMIT 15`).then(r => r.rows),
     pool.query(`SELECT kind, recipient, subject, status, created_at FROM outbound_emails WHERE kind IN ('quote','invoice') AND status IN ('bounced','complained') AND created_at > ${since} ORDER BY created_at DESC LIMIT 15`).then(r => r.rows)
   ]);
+  const newLeads = { n: newLeadRows.length }, talkedTo = { n: talkedToRows.length }, quotesSent = { n: quotesSentRows.length }, quotesAccepted = { n: quotesAcceptedRows.length };
   const issueCount = errorRows.length + bouncedRows.length;
   const issuesHtml = issueCount
     ? '<ul style="margin:6px 0;padding-left:20px">'
@@ -16998,26 +17026,45 @@ async function runDailyStatusEmail() {
   const issuesText = issueCount
     ? errorRows.map(r => `- [${r.source}] ${r.message}`).concat(bouncedRows.map(r => `- Mail til ${r.recipient} (${r.kind}) leveret ikke: ${r.status}`)).join('\n')
     : 'Ingen fejl eller leveringsproblemer registreret det seneste døgn.';
+  // Lille hjælper til at bygge en klikbar liste under hver optælling. Tomme
+  // lister udelades helt (ingen tom <ul>), så mailen ikke fyldes med luft.
+  function linkListHtml(rows, hrefFn, labelFn) {
+    if (!rows.length) return '';
+    return '<ul style="margin:3px 0 10px;padding-left:18px;font-size:12.5px">'
+      + rows.map(r => `<li><a href="${PUBLIC_APP_URL}/admin#${hrefFn(r)}" style="color:#4F46E5;text-decoration:none">${escPublic(labelFn(r))}</a></li>`).join('')
+      + '</ul>';
+  }
+  function linkListText(rows, hrefFn, labelFn) {
+    return rows.map(r => `  - ${labelFn(r)}: ${PUBLIC_APP_URL}/admin#${hrefFn(r)}`).join('\n');
+  }
+  const newLeadsList = linkListHtml(newLeadRows, r => `crmp-detail/lead/${r.id}`, r => r.name || 'Uden navn');
+  const talkedToList = linkListHtml(talkedToRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn');
+  const quotesSentList = linkListHtml(quotesSentRows, r => `quotes/tilbud/${r.id}`, r => r.job_name || 'Uden navn');
+  const quotesAcceptedList = linkListHtml(quotesAcceptedRows, r => `quotes/tilbud/${r.id}`, r => r.job_name || 'Uden navn');
+  const selfRegHtml = selfRegRows.length
+    ? `<p style="margin:14px 0 0"><b>🙋 Kunder der selv har oprettet sig (via /ny-kunde)</b></p>${linkListHtml(selfRegRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn')}`
+    : '';
   const subject = `📊 Gulv Master — daglig status (${newLeads.n} nye leads, ${quotesAccepted.n} tilbud accepteret)`;
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">
     <p><b>Status for det seneste døgn:</b></p>
-    <table style="border-collapse:collapse;margin:12px 0">
-      <tr><td style="padding:3px 12px 3px 0;color:#666">Nye leads</td><td style="padding:3px 0"><b>${newLeads.n}</b></td></tr>
-      <tr><td style="padding:3px 12px 3px 0;color:#666">— heraf talt med (rykket til Salg)</td><td style="padding:3px 0">${talkedTo.n}</td></tr>
-      <tr><td style="padding:3px 12px 3px 0;color:#666">Tilbud sendt</td><td style="padding:3px 0"><b>${quotesSent.n}</b></td></tr>
-      <tr><td style="padding:3px 12px 3px 0;color:#666">Tilbud accepteret</td><td style="padding:3px 0"><b>${quotesAccepted.n}</b></td></tr>
+    <table style="border-collapse:collapse;margin:12px 0;width:100%">
+      <tr><td style="padding:3px 12px 3px 0;color:#666;vertical-align:top">Nye leads</td><td style="padding:3px 0"><b>${newLeads.n}</b>${newLeadsList}</td></tr>
+      <tr><td style="padding:3px 12px 3px 0;color:#666;vertical-align:top">— heraf talt med (rykket til Salg)</td><td style="padding:3px 0">${talkedTo.n}${talkedToList}</td></tr>
+      <tr><td style="padding:3px 12px 3px 0;color:#666;vertical-align:top">Tilbud sendt</td><td style="padding:3px 0"><b>${quotesSent.n}</b>${quotesSentList}</td></tr>
+      <tr><td style="padding:3px 12px 3px 0;color:#666;vertical-align:top">Tilbud accepteret</td><td style="padding:3px 0"><b>${quotesAccepted.n}</b>${quotesAcceptedList}</td></tr>
     </table>
+    ${selfRegHtml}
     <p><b>Features der ikke fungerer ordentligt:</b></p>
     ${issuesHtml}
   </div>`;
-  const text = `Status for det seneste døgn:\n\nNye leads: ${newLeads.n}\n— heraf talt med (rykket til Salg): ${talkedTo.n}\nTilbud sendt: ${quotesSent.n}\nTilbud accepteret: ${quotesAccepted.n}\n\nFeatures der ikke fungerer ordentligt:\n${issuesText}`;
+  const text = `Status for det seneste døgn:\n\nNye leads: ${newLeads.n}\n${linkListText(newLeadRows, r => `crmp-detail/lead/${r.id}`, r => r.name || 'Uden navn')}\n— heraf talt med (rykket til Salg): ${talkedTo.n}\n${linkListText(talkedToRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn')}\nTilbud sendt: ${quotesSent.n}\n${linkListText(quotesSentRows, r => `quotes/tilbud/${r.id}`, r => r.job_name || 'Uden navn')}\nTilbud accepteret: ${quotesAccepted.n}\n${linkListText(quotesAcceptedRows, r => `quotes/tilbud/${r.id}`, r => r.job_name || 'Uden navn')}\n${selfRegRows.length ? '\nKunder der selv har oprettet sig (via /ny-kunde):\n' + linkListText(selfRegRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn') + '\n' : ''}\nFeatures der ikke fungerer ordentligt:\n${issuesText}`;
   try {
     await sendMailUniversal({ to: QUOTE_ACCEPTED_NOTIFY_EMAIL, subject, html, text });
   } catch (e) {
     console.error('Daglig status-mail kunne ikke sendes:', e.message);
     return { ran: false, reason: e.message };
   }
-  return { ran: true, newLeads: newLeads.n, talkedTo: talkedTo.n, quotesSent: quotesSent.n, quotesAccepted: quotesAccepted.n, issueCount };
+  return { ran: true, newLeads: newLeads.n, talkedTo: talkedTo.n, quotesSent: quotesSent.n, quotesAccepted: quotesAccepted.n, selfRegistered: selfRegRows.length, issueCount };
 }
 
 // Manuel afsendelse for ÉN faktura — uanset dag-tærskler, og uanset til/fra-knappen.
@@ -21865,6 +21912,197 @@ ${row.user_name ? `<div class="row"><div class="ico">👷</div><div><div class="
 <div class="foot">Spørgsmål? Kontakt ${esc(companyName)} direkte.</div>
 </div></body></html>`;
   res.send(html);
+}));
+
+// ══════════════════════════════════════════════════════════════
+// NYT (okt. 2026, Martin: "Lav en portal hvor man kan oprette en kunde og så
+// den laver leadet automatisk ind i program ... så jeg bare har 1 link hvor
+// jeg kan sende det på sms eller mail til dem så opretter de sig lidt
+// ligesom hvor de kan uploade billeder. Når de har gjort det skal de ind i
+// pipeline manglede data") — ÉT fast, offentligt link (IKKE et token-link pr.
+// kunde som /svar/:token — Martin var tydelig: "1 link" han selv kan
+// sende/dele via sms/mail/overalt) hvor en ny, ukendt kunde selv kan udfylde
+// sine oplysninger. Ved indsendelse oprettes/genbruges kontakt+kunde (samme
+// find-eller-opret-logik som den almindelige "+ Nyt lead"-knap bruger, se
+// crmFindOrCreateContactAndCustomer) og der oprettes en opportunity direkte i
+// Sales-pipelinens "Manglende data"-stage — PRÆCIS den stage Martin selv
+// navngav, ikke Leads-pipelinens "Nyt lead" (en ekstra konverterings-tur
+// Martin ikke bad om). Flages med self_registered=1 (se ALTER TABLE
+// ovenfor) så den kan vises med et lille mærke på kortet/handlen, ligesom
+// allerede sker for selv-uploadede billeder.
+//
+// SIKKERHED: dette er bevidst et offentligt, UBESKYTTET (intet login, intet
+// hemmeligt token) skriveendpoint — hvem som helst med linket kan indsende.
+// To lette, afhængighedsfrie værn, samme stil som resten af filens
+// hjemmelavede løsninger (ingen ny npm-pakke):
+//  1) Honeypot-felt ("website") — usynligt for et menneske (skjult med CSS),
+//     men ofte udfyldt automatisk af simple spam-bots. Udfyldt = lader som om
+//     det lykkedes (så en bot ikke lærer at undgå det), men gemmer intet.
+//  2) Simpel IP-baseret hastighedsbegrænsning i hukommelsen (nulstilles ved
+//     genstart af serveren — acceptabelt her, formålet er kun at dæmpe
+//     automatiseret spam, ikke en hård sikkerhedsgrænse).
+const ngKundeRateLimit = new Map(); // ip -> [timestamps]
+function ngKundeRateLimited(ip) {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000; // 1 time
+  const maxPerWindow = 8;
+  const hits = (ngKundeRateLimit.get(ip) || []).filter(t => now - t < windowMs);
+  hits.push(now);
+  ngKundeRateLimit.set(ip, hits);
+  // Ryd gamle IP'er ud en gang imellem, så Map'en ikke vokser i det uendelige
+  // på en server der kører i ugevis — billigt nok til bare at gøre det ved
+  // lejlighed (hver gang Map'en vokser sig forbi en rund tærskel).
+  if (ngKundeRateLimit.size > 500 && Math.random() < 0.02) {
+    for (const [k, v] of ngKundeRateLimit) {
+      if (!v.some(t => now - t < windowMs)) ngKundeRateLimit.delete(k);
+    }
+  }
+  return hits.length > maxPerWindow;
+}
+app.get('/ny-kunde', asyncRoute(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const esc = escPublic;
+  const company = await getCompanyInfo();
+  const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bliv kunde hos ${esc(company.name)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&family=DM+Sans:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing:border-box; }
+  body{font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F6FB;color:#111318;margin:0;padding:24px 16px 60px}
+  .wrap{max-width:560px;margin:0 auto}
+  .card{background:#fff;border-radius:16px;padding:24px 22px;box-shadow:0 8px 30px rgba(15,17,24,.08);margin-bottom:16px}
+  .doc-top{display:flex;align-items:center;gap:12px;padding-bottom:16px;border-bottom:1px solid #EEF0F3;margin-bottom:18px}
+  .company-logo-lg{max-width:200px;max-height:72px;object-fit:contain}
+  .company-name-fallback{font-size:18px;font-weight:900;font-family:'Barlow Condensed',sans-serif}
+  .intro-box{background:#F5F5FF;border:2px solid #C7D2FE;border-radius:14px;padding:16px 18px;margin-bottom:18px}
+  .intro-eyebrow{font-size:10px;font-weight:700;color:#4F46E5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+  .intro-text{font-size:15px;font-weight:700;color:#3730A3;line-height:1.5}
+  label{display:block;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.03em;margin:14px 0 6px}
+  input[type=text],input[type=tel],input[type=email],textarea{width:100%;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;font-size:14.5px;font-family:inherit}
+  textarea{resize:vertical;min-height:80px}
+  .req{color:#DC2626}
+  .hint{font-size:11.5px;color:#9CA3AF;margin-top:6px}
+  .hp-field{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}
+  .send-btn{width:100%;margin-top:18px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(79,70,229,.35)}
+  .send-btn:disabled{opacity:.55;box-shadow:none;cursor:default}
+  .err-box{background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C;border-radius:12px;padding:12px 14px;font-size:13px;margin-top:14px;display:none}
+  .err-box.show{display:block}
+  .thanks-box{background:#F0FDF4;border:1px solid #BBF7D0;color:#15803D;border-radius:12px;padding:20px 18px;text-align:center;display:none}
+  .thanks-box.show{display:block}
+  .thanks-box h2{margin:0 0 6px;font-size:17px}
+  .thanks-box p{margin:0;font-size:13.5px;line-height:1.5}
+  .pagefooter{max-width:560px;margin:0 auto;text-align:center;font-size:11px;color:#9CA3AF;padding:6px 8px 0}
+</style></head><body><div class="wrap">
+<div class="card" id="form-card">
+  <div class="doc-top">
+    ${company.logoUrl ? `<img class="company-logo-lg" src="${esc(company.logoUrl)}" alt="${esc(company.name)}">` : `<div class="company-name-fallback">${esc(company.name)}</div>`}
+  </div>
+  <div class="intro-box">
+    <div class="intro-eyebrow">Bliv kunde</div>
+    <div class="intro-text">Udfyld dine oplysninger herunder, så kontakter vi dig hurtigst muligt angående din opgave.</div>
+  </div>
+  <label for="f-name">Navn <span class="req">*</span></label>
+  <input type="text" id="f-name" placeholder="Dit fulde navn">
+  <label for="f-phone">Telefon</label>
+  <input type="tel" id="f-phone" placeholder="Dit telefonnummer">
+  <label for="f-email">Email</label>
+  <input type="email" id="f-email" placeholder="Din emailadresse">
+  <div class="hint">Udfyld mindst ét af telefon eller email, så vi kan kontakte dig.</div>
+  <label for="f-address">Adresse</label>
+  <input type="text" id="f-address" placeholder="Adresse for opgaven (valgfrit)">
+  <label for="f-note">Hvad drejer det sig om?</label>
+  <textarea id="f-note" placeholder="Kort beskrivelse af opgaven (valgfrit)"></textarea>
+  <div class="hp-field" aria-hidden="true"><label for="f-website">Website</label><input type="text" id="f-website" tabindex="-1" autocomplete="off"></div>
+  <button type="button" class="send-btn" id="send-btn">Send</button>
+  <div class="err-box" id="err-box"></div>
+  <div class="thanks-box" id="thanks-box"><h2>✓ Tak!</h2><p>Vi har modtaget dine oplysninger og kontakter dig hurtigst muligt.</p></div>
+</div>
+<div class="pagefooter">${esc(company.name)}${company.phone ? ' · ' + esc(company.phone) : ''}</div>
+</div>
+<script>
+(function(){
+  document.getElementById('send-btn').addEventListener('click',function(){
+    var btn=this;
+    var name=document.getElementById('f-name').value.trim();
+    var phone=document.getElementById('f-phone').value.trim();
+    var email=document.getElementById('f-email').value.trim();
+    var address=document.getElementById('f-address').value.trim();
+    var note=document.getElementById('f-note').value.trim();
+    var website=document.getElementById('f-website').value;
+    var errBox=document.getElementById('err-box');
+    errBox.classList.remove('show');
+    if(!name){errBox.textContent='Skriv dit navn.';errBox.classList.add('show');return;}
+    if(!phone&&!email){errBox.textContent='Udfyld mindst ét af telefon eller email.';errBox.classList.add('show');return;}
+    btn.disabled=true;btn.textContent='Sender…';
+    fetch('/api/public/ny-kunde-lead',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:name,phone:phone,email:email,address:address,note:note,website:website})
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d&&d.ok){
+        document.getElementById('form-card').querySelectorAll('label,input,textarea,.send-btn,.intro-box,.hint').forEach(function(el){el.style.display='none';});
+        document.getElementById('thanks-box').classList.add('show');
+      } else {
+        btn.disabled=false;btn.textContent='Send';
+        errBox.textContent=(d&&d.error)||'Kunne ikke sende — prøv igen';
+        errBox.classList.add('show');
+      }
+    }).catch(function(){
+      btn.disabled=false;btn.textContent='Send';
+      errBox.textContent='Netværksfejl — prøv igen';
+      errBox.classList.add('show');
+    });
+  });
+})();
+</script>
+</body></html>`;
+  res.send(html);
+}));
+
+app.post('/api/public/ny-kunde-lead', asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  // Honeypot udfyldt → en bot. Svar "succes" uden at gemme noget, så botten
+  // ikke lærer at undgå feltet ved at se en fejl.
+  if (b.website) return res.json({ ok: true });
+  const ip = req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : req.ip;
+  if (ngKundeRateLimited(ip)) return res.status(429).json({ error: 'For mange forsøg — prøv igen senere' });
+  const name = String(b.name || '').trim().slice(0, 200);
+  const phone = String(b.phone || '').trim().slice(0, 50) || null;
+  const email = String(b.email || '').trim().slice(0, 200) || null;
+  const address = String(b.address || '').trim().slice(0, 300) || null;
+  const note = String(b.note || '').trim().slice(0, 2000) || null;
+  if (!name) return res.status(400).json({ error: 'Skriv dit navn' });
+  if (!phone && !email) return res.status(400).json({ error: 'Udfyld mindst ét af telefon eller email' });
+  try {
+    const linked = await crmFindOrCreateContactAndCustomer(name, email, phone, address, note);
+    // "Manglende data" — PRÆCIS den stage Martin selv navngav. Slået op på navn
+    // (ikke en hårdkodet id, som resten af filens pipeline/stage-opslag) med
+    // fallback til salgs-pipelinens første stage, hvis stagen nogensinde skulle
+    // blive omdøbt eller slettet — aldrig en hård fejl for kunden selv.
+    let stage = await pgOne(`
+      SELECT s.id, s.pipeline_id FROM crm_stages s JOIN crm_pipelines p ON p.id=s.pipeline_id
+      WHERE p.type='opportunity' AND s.name='Manglende data' ORDER BY p.position ASC LIMIT 1
+    `);
+    if (!stage) {
+      const pipeline = await pgOne("SELECT id FROM crm_pipelines WHERE type='opportunity' ORDER BY position ASC LIMIT 1");
+      if (pipeline) stage = await pgOne('SELECT id, pipeline_id FROM crm_stages WHERE pipeline_id=$1 ORDER BY position ASC LIMIT 1', [pipeline.id]);
+    }
+    if (!stage) return res.status(500).json({ error: 'Ingen salgs-pipeline er sat op endnu — kontakt os venligst direkte' });
+    const lead = await pgOne(
+      `INSERT INTO crm_opportunities (name,contact_id,pipeline_id,stage_id,self_registered,self_registered_note)
+       VALUES ($1,$2,$3,$4,1,$5) RETURNING id`,
+      [name, linked.contactId, stage.pipeline_id, stage.id, note]
+    );
+    await crmLogActivity('opportunity', lead.id, 'created',
+      'Kunden oprettede sig selv via det offentlige kunde-link' + (note ? (': "' + note + '"') : ''), null);
+    crmFireStageAutomation('opportunity', lead.id, stage.id, { name, phone, email })
+      .catch(e => console.error('Stage-automatik fejlede (selv-oprettet kunde):', e.message));
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Kunne ikke oprette selv-registreret kunde:', e.message);
+    res.status(500).json({ error: 'Der gik noget galt — prøv igen, eller kontakt os direkte' });
+  }
 }));
 
 // ══════════════════════════════════════════════════════════════

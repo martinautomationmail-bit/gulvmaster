@@ -1483,6 +1483,15 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
    /api/crm/opportunities og /api/crm/leads (server.js). */
 .crmp-card-photo-badge{position:absolute;top:-7px;right:-7px;display:flex;align-items:center;gap:3px;background:#C6FF00;color:#243B00;font-size:10px;font-weight:800;line-height:1;padding:4px 7px 4px 6px;border-radius:999px;box-shadow:0 0 0 2px #fff,0 0 9px 1px rgba(198,255,0,.85);animation:crmpPhotoPulse 2.2s ease-in-out infinite;pointer-events:none}
 @keyframes crmpPhotoPulse{0%,100%{box-shadow:0 0 0 2px #fff,0 0 6px 0 rgba(198,255,0,.65)}50%{box-shadow:0 0 0 2px #fff,0 0 13px 3px rgba(198,255,0,1)}}
+/* NYT (okt. 2026, Martins ønske: "et lille tegn der viser at det er en kunde
+   der selv har oprette sig ligesom ved dem som med billederne") — samme
+   opskrift som .crmp-card-photo-badge (fast hjørne, hvid ring, pulserende
+   glød), men i det MODSATTE hjørne (øverst til VENSTRE) og i indigo i stedet
+   for lime, så den ikke forveksles med billede-badgen og begge kan vises på
+   samme kort uden at overlappe. Sat via self_registered fra
+   /api/crm/opportunities (server.js, GET /ny-kunde-flowet). */
+.crmp-card-self-badge{position:absolute;top:-7px;left:-7px;display:flex;align-items:center;gap:3px;background:#4F46E5;color:#fff;font-size:10px;font-weight:800;line-height:1;padding:4px 7px 4px 6px;border-radius:999px;box-shadow:0 0 0 2px #fff,0 0 9px 1px rgba(79,70,229,.75);animation:crmpSelfRegPulse 2.2s ease-in-out infinite;pointer-events:none}
+@keyframes crmpSelfRegPulse{0%,100%{box-shadow:0 0 0 2px #fff,0 0 6px 0 rgba(79,70,229,.55)}50%{box-shadow:0 0 0 2px #fff,0 0 13px 3px rgba(79,70,229,.95)}}
 .crmp-card-cf-foot{font-size:10.5px;color:var(--bly-sub);margin-top:6px;padding-top:6px;border-top:1px solid var(--bly-border-soft)}
 .crmp-card-cf-foot b{color:var(--bly-ink);font-weight:700}
 
@@ -3752,7 +3761,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-01.54</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-01.55</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -23481,8 +23490,13 @@ function crmpCardHtml(c,pipeline,defs){
   // RUNDE BN — badge når kunden har uploadet billeder via et svar-link (se
   // /svar/:token), synligt her uden at åbne handlen/leadet.
   var photoBadge=c.has_customer_photos?'<span class="crmp-card-photo-badge" title="Kunden har uploadet billeder">📸</span>':'';
+  // NYT (okt. 2026, Martins ønske: "et lille tegn der viser at det er en
+  // kunde der selv har oprette sig ligesom ved dem som med billederne") —
+  // samme idé/placering-princip som photoBadge ovenfor, bare i det modsatte
+  // hjørne så de to kan vises samtidig uden at overlappe.
+  var selfRegBadge=c.self_registered?'<span class="crmp-card-self-badge" title="Kunden oprettede selv denne via det offentlige kunde-link">🙋</span>':'';
   return '<a href="#crmp-detail/'+esc(pipeline.type)+'/'+c.id+'" class="crmp-card'+(crmpState.selectMode&&selected?' crmp-card-selected':'')+'" draggable="'+(crmpState.selectMode?'false':'true')+'" data-id="'+c.id+'">'
-    +photoBadge
+    +photoBadge+selfRegBadge
     +'<div class="crmp-card-row" style="margin:0 0 6px">'+ownerLine+'</div>'
     +'<div class="crmp-card-name">'+esc(pipeline.type==='opportunity'?(c.contact_name||c.name):c.name)+'</div>'
     +(contactLine?'<div class="crmp-card-row">'+esc(contactLine)+'</div>':'')
@@ -24285,7 +24299,11 @@ async function openCrmpDetail(entityType,id){
   var avatar=document.getElementById('crmpx-avatar');
   avatar.textContent=initials;
   avatar.style.background=crmpOwnerColor(d.owner_id||d.id);
-  document.getElementById('crmpx-sub').textContent=entityType==='lead'?'Lead':'Opportunity';
+  // NYT (okt. 2026): samme selv-oprettet-mærke som på pipeline-kortet
+  // (.crmp-card-self-badge), her som en lille pille ved siden af
+  // Lead/Opportunity-undertitlen, så det også ses på selve detaljesiden.
+  document.getElementById('crmpx-sub').innerHTML=esc(entityType==='lead'?'Lead':'Opportunity')
+    +(d.self_registered?' <span class="cd-note-customer-tag" title="Kunden oprettede selv denne via det offentlige kunde-link">🙋 Selv-oprettet</span>':'');
   var phone=entityType==='lead'?d.phone:d.contact_phone, email=entityType==='lead'?d.email:d.contact_email, address=entityType==='lead'?d.address:d.contact_address;
   document.getElementById('crmpx-phone').closest('.tld-section').style.display=entityType==='lead'?'':'none';
   document.getElementById('crmpx-email').closest('.tld-section').style.display=entityType==='lead'?'':'none';
