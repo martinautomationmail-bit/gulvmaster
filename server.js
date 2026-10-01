@@ -1187,6 +1187,15 @@ async function initSchema() {
     -- Intern note — vises KUN i admin (team), aldrig på PDF/kunde-side/mails.
     -- Til forskel fra "notes" som er kunde-synlig.
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS internal_note TEXT;
+    -- RUNDE CC (Martin: "under tilbud ... en knap hvor AI ud fra tilbuddet kan
+    -- tilføje en betalingsplan ... så store tilbud får en betalingsplan man kan
+    -- faktuere efter") — ÉN betalingsplan pr. tilbud (overskrives ved ny AI-
+    -- generering/redigering, ligesom fx discount_pct — intet behov for en
+    -- separat tabel/historik, det er diskussionen med kunden der tæller, ikke
+    -- forrige udkast). Formen er {"phases":[{"label","milestone","pct","amount"},...]} —
+    -- se POST .../ai-payment-plan og PUT .../payment-plan.
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_plan JSONB;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_plan_generated_at TEXT;
 
     CREATE TABLE IF NOT EXISTS quote_lines (
       id SERIAL PRIMARY KEY,
@@ -1541,6 +1550,13 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_customer_photo_requests_customer ON customer_photo_requests(customer_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_photo_requests_token ON customer_photo_requests(token);
+    -- RUNDE CC (Martin: "når kunden har trykket gem ... send en kvittering på
+    -- billederne er modtaget") — kvitteringsmailen skal sendes til den SAMME
+    -- adresse linket oprindeligt blev sendt til (handlens/leadets kontakt-
+    -- email, se POST .../photo-requests ovenfor — ikke nødvendigvis
+    -- customers.email, en kunde kan have flere kontakter/handler), ikke en
+    -- adresse vi først gætter på senere. Gemmes derfor direkte på raden.
+    ALTER TABLE customer_photo_requests ADD COLUMN IF NOT EXISTS sent_to_email TEXT;
     -- Firmakunder: "Navn" bruges som firmanavn når is_company er sat, plus et
     -- CVR-nummer. Frivilligt for private kunder (is_company=0, cvr=NULL).
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_company INTEGER DEFAULT 0;
@@ -9924,17 +9940,39 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
   // fuldstændigt sikkert match, ikke bare en tilfældig delstrengs-ramt.
   const emailRank0 = col => ` OR COALESCE(${col},'') ILIKE $5`;
 
+  // RUNDE CB (Martin: "når man tilføjet et ekstra tlf eller email til en
+  // kunde så kan man pt i søgemodulet ... ikke finde kunden på det") — søgningen
+  // ovenfor kiggede hidtil KUN på kundens/leadets/kontaktens egne, primære
+  // phone/email-kolonner (c.phone/c.email osv.). "Tilføj ekstra telefon/email"
+  // (RUNDE S, se ccLoadAndRenderExtras i admin.html) gemmer derimod i en helt
+  // separat tabel, contact_channels (owner_type/owner_id/kind/value) — den blev
+  // aldrig slået op her, så et ekstra nummer/email var usynligt for søgningen,
+  // selvom det var synligt og gemt korrekt på selve kunde-/lead-/kontaktkortet.
+  // Disse to hjælpere slår contact_channels op for den pågældende ejer (samme
+  // emailCol — inkl. RUNDE BV's eksakt-match-regel — og samme phoneWhere()-
+  // ciffermatch som allerede bruges på de primære kolonner ovenfor) og bruges
+  // BÅDE i match_rank-CASE'et og i selve WHERE-klausulen for alle tre
+  // forespørgsler nedenfor, så et ekstra tlf/email tæller fuldstændigt som var
+  // det det primære.
+  const extraEmailExists = (ownerType, ownerIdCol) => isEmailTerm
+    ? ` OR EXISTS (SELECT 1 FROM contact_channels cc WHERE cc.owner_type='${ownerType}' AND cc.owner_id=${ownerIdCol} AND cc.kind='email' AND COALESCE(cc.value,'') ILIKE $5)`
+    : '';
+  const extraContactExists = (ownerType, ownerIdCol) => ` OR EXISTS (
+    SELECT 1 FROM contact_channels cc WHERE cc.owner_type='${ownerType}' AND cc.owner_id=${ownerIdCol}
+      AND ((cc.kind='email' AND COALESCE(cc.value,'') ILIKE ${emailCol}) OR (cc.kind='phone' AND ${phoneWhere('cc.value')}))
+  )`;
+
   if (may('customers')) {
     queries.customers = pool.query(`
       SELECT c.id, c.name, c.email, c.phone, c.address, c.is_company, c.cvr,
-        CASE WHEN c.name ILIKE $2${emailRank0('c.email')} THEN 0
+        CASE WHEN c.name ILIKE $2${emailRank0('c.email')}${extraEmailExists('customer', 'c.id')} THEN 0
              WHEN c.name ILIKE $3 OR COALESCE(c.email,'') ILIKE ${emailCol} OR COALESCE(c.address,'') ILIKE $3
-                  OR ${phoneWhere('c.phone')} THEN 1
+                  OR ${phoneWhere('c.phone')}${extraContactExists('customer', 'c.id')} THEN 1
              ELSE 2 END AS match_rank,
         ${simExpr(['c.name', "COALESCE(c.address,'')"])} AS score
       FROM customers c
       WHERE c.name ILIKE $3 OR COALESCE(c.email,'') ILIKE ${emailCol} OR COALESCE(c.address,'') ILIKE $3
-         OR ${phoneWhere('c.phone')}${fuzzyWhere(['c.name', "COALESCE(c.address,'')"])}
+         OR ${phoneWhere('c.phone')}${extraContactExists('customer', 'c.id')}${fuzzyWhere(['c.name', "COALESCE(c.address,'')"])}
       ORDER BY match_rank ASC, score DESC, c.name ASC
       LIMIT ${LIMIT}
     `, params);
@@ -9944,16 +9982,16 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
     queries.leads = pool.query(`
       SELECT l.id, l.name, l.email, l.phone, l.address, l.source,
              s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name,
-        CASE WHEN l.name ILIKE $2${emailRank0('l.email')} THEN 0
+        CASE WHEN l.name ILIKE $2${emailRank0('l.email')}${extraEmailExists('lead', 'l.id')} THEN 0
              WHEN l.name ILIKE $3 OR COALESCE(l.email,'') ILIKE ${emailCol} OR COALESCE(l.address,'') ILIKE $3
-                  OR ${phoneWhere('l.phone')} THEN 1
+                  OR ${phoneWhere('l.phone')}${extraContactExists('lead', 'l.id')} THEN 1
              ELSE 2 END AS match_rank,
         ${simExpr(['l.name', "COALESCE(l.address,'')"])} AS score
       FROM crm_leads l
       LEFT JOIN crm_stages s ON s.id = l.stage_id
       LEFT JOIN crm_pipelines p ON p.id = l.pipeline_id
       WHERE l.name ILIKE $3 OR COALESCE(l.email,'') ILIKE ${emailCol} OR COALESCE(l.address,'') ILIKE $3
-         OR ${phoneWhere('l.phone')}${fuzzyWhere(['l.name', "COALESCE(l.address,'')"])}
+         OR ${phoneWhere('l.phone')}${extraContactExists('lead', 'l.id')}${fuzzyWhere(['l.name', "COALESCE(l.address,'')"])}
       ORDER BY match_rank ASC, score DESC, l.updated_at DESC NULLS LAST, l.name ASC
       LIMIT ${LIMIT}
     `, params);
@@ -9969,9 +10007,9 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
              ct.name AS contact_name, ct.email AS contact_email,
              ct.phone AS contact_phone, ct.address AS contact_address,
              s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name,
-        CASE WHEN o.name ILIKE $2 OR COALESCE(ct.name,'') ILIKE $2${emailRank0('ct.email')} THEN 0
+        CASE WHEN o.name ILIKE $2 OR COALESCE(ct.name,'') ILIKE $2${emailRank0('ct.email')}${extraEmailExists('contact', 'ct.id')} THEN 0
              WHEN o.name ILIKE $3 OR COALESCE(ct.name,'') ILIKE $3 OR COALESCE(ct.email,'') ILIKE ${emailCol}
-                  OR COALESCE(ct.address,'') ILIKE $3 OR ${phoneWhere('ct.phone')} THEN 1
+                  OR COALESCE(ct.address,'') ILIKE $3 OR ${phoneWhere('ct.phone')}${extraContactExists('contact', 'ct.id')} THEN 1
              ELSE 2 END AS match_rank,
         ${simExpr(['o.name', "COALESCE(ct.name,'')", "COALESCE(ct.address,'')"])} AS score
       FROM crm_opportunities o
@@ -9979,7 +10017,7 @@ app.get('/api/search', auth, asyncRoute(async (req, res) => {
       LEFT JOIN crm_stages s ON s.id = o.stage_id
       LEFT JOIN crm_pipelines p ON p.id = o.pipeline_id
       WHERE o.name ILIKE $3 OR COALESCE(ct.name,'') ILIKE $3 OR COALESCE(ct.email,'') ILIKE ${emailCol}
-         OR COALESCE(ct.address,'') ILIKE $3 OR ${phoneWhere('ct.phone')}${fuzzyWhere(['o.name', "COALESCE(ct.name,'')", "COALESCE(ct.address,'')"])}
+         OR COALESCE(ct.address,'') ILIKE $3 OR ${phoneWhere('ct.phone')}${extraContactExists('contact', 'ct.id')}${fuzzyWhere(['o.name', "COALESCE(ct.name,'')", "COALESCE(ct.address,'')"])}
       ORDER BY match_rank ASC, score DESC, o.updated_at DESC NULLS LAST, o.name ASC
       LIMIT ${LIMIT}
     `, params);
@@ -10875,6 +10913,11 @@ app.post('/api/crm/customers/:id/photo-requests', auth, panelAccess('customers')
   const toEmail = String(b.to_email || '').trim();
   let emailSent = false, emailError = null;
   if (toEmail) {
+    // RUNDE CC — gemmes med det samme, UANSET om selve afsendelsen nedenfor
+    // lykkes, så kvitteringsmailen (se .../respond) altid har den rigtige
+    // modtager-adresse at svare tilbage til, også hvis mailserveren var
+    // nede/ikke konfigureret i netop dette øjeblik.
+    await pool.query('UPDATE customer_photo_requests SET sent_to_email=$1 WHERE id=$2', [toEmail, r.id]);
     if (!mailIsConfigured()) {
       emailError = 'E-mail er ikke konfigureret på serveren';
     } else {
@@ -10936,7 +10979,12 @@ app.post('/api/public/photo-requests/:token/upload-photo', asyncRoute(async (req
   }
 }));
 app.post('/api/public/photo-requests/:token/respond', asyncRoute(async (req, res) => {
-  const existing = await pgOne('SELECT id,customer_id,question,note,photo_urls,answered_at FROM customer_photo_requests WHERE token=$1', [req.params.token]);
+  const existing = await pgOne(
+    `SELECT pr.id,pr.customer_id,pr.question,pr.note,pr.photo_urls,pr.answered_at,pr.sent_to_email,
+            c.name AS customer_name, c.email AS customer_email
+     FROM customer_photo_requests pr JOIN customers c ON c.id=pr.customer_id WHERE pr.token=$1`,
+    [req.params.token]
+  );
   if (!existing) return res.status(404).json({ error: 'Linket er ugyldigt eller findes ikke længere' });
   const b = req.body || {};
   const note = b.note != null ? String(b.note).trim().slice(0, 4000) : null;
@@ -10945,11 +10993,43 @@ app.post('/api/public/photo-requests/:token/respond', asyncRoute(async (req, res
   // liste i stedet for at overskrive den, så intet tidligere upload forsvinder.
   const existingUrls = Array.isArray(existing.photo_urls) ? existing.photo_urls : [];
   const newUrls = Array.isArray(b.photo_urls) ? b.photo_urls.filter(u => typeof u === 'string' && u) : [];
-  const mergedUrls = [...existingUrls, ...newUrls.filter(u => !existingUrls.includes(u))];
+  const newUrlsFiltered = newUrls.filter(u => !existingUrls.includes(u));
+  const mergedUrls = [...existingUrls, ...newUrlsFiltered];
   await pool.query(
     `UPDATE customer_photo_requests SET note=COALESCE($1,note), photo_urls=$2, updated_at=${nowTextSQL()}, answered_at=COALESCE(answered_at,${nowTextSQL()}) WHERE id=$3`,
     [note, JSON.stringify(mergedUrls), existing.id]
   );
+  // RUNDE CC (Martin: "når kunden har trykket gem ... send en kvittering på
+  // billederne er modtaget og vi vender tilbage formentligt i løbet af ugen
+  // med et tilbud") — sendes kun når kunden rent faktisk har lagt mindst ét
+  // NYT billede op i denne omgang (newUrlsFiltered), ikke blot ved et rent
+  // note-svar uden billeder — "kvittering på billederne" ville ellers være
+  // vildledende. Modtageren er den adresse linket blev sendt til (sent_to_email,
+  // se POST .../photo-requests), med kundens primære e-mail som fallback for
+  // ældre links oprettet før dette felt fandtes. Fejler afsendelsen (ikke sat
+  // op, ugyldig adresse osv.), må det — ligesom ved selve anmodnings-mailen —
+  // ALDRIG vælte kundens svar: billederne/noten er allerede gemt ovenfor.
+  if (newUrlsFiltered.length) {
+    const receiptTo = (existing.sent_to_email || existing.customer_email || '').trim();
+    if (receiptTo && mailIsConfigured()) {
+      (async () => {
+        try {
+          const company = await getCompanyInfo();
+          const bodyHtml = renderDefaultDocEmailHtml({
+            company, greetingName: existing.customer_name || '',
+            introHtml: 'Tak! Vi har modtaget dine billeder' + (note ? ' og din besked' : '') +
+              ' til spørgsmålet: <b>' + escPublic(existing.question) + '</b><br><br>' +
+              'Vi kigger på det og vender tilbage til dig i løbet af ugen med et tilbud.'
+          });
+          const subject = 'Vi har modtaget dine billeder — ' + company.name;
+          const sendResult = await sendMailUniversal({ to: receiptTo, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml) });
+          logOutboundEmail({ kind: 'photo_request_receipt', refId: existing.id, recipient: receiptTo, subject, sendResult });
+        } catch (e) {
+          console.error('Kvittering for kundesvar (#' + existing.id + ') kunne ikke sendes:', e.message);
+        }
+      })();
+    }
+  }
   // RUNDE BO (Martin: "den note de laver skal under vores noter og flagges som en
   // note kunden har lavet") — kundens note skal IKKE kun ligge gemt på selve
   // svar-linket, den skal også dukke op i den almindelige Noter-liste på kunden
@@ -18407,6 +18487,81 @@ app.post('/api/ai/clean-note', auth, asyncRoute(async (req, res) => {
   res.json({ ok: true, text });
 }));
 
+// ══════════════════════════════════════════════════════════════
+// RUNDE CC (Martin: "Kan du under tilbud tilføje en knap hvor AI ud fra
+// tilbuddet kan tilføje en betalingsplan til tilbuddet ... Så laver den en
+// pdf hvordan den mener det skal opdeles bedst muligt oftes vil denne
+// feature kun blive brugt ved tilbud over 100.000 kroner eller hvor der er
+// store materiale udgifter med") — AI'en forslår en opdeling af tilbuddets
+// TOTAL i betalingsfaser (fx "Depositum ved underskrift 30%"), som gemmes på
+// selve tilbuddet (quotes.payment_plan, se migrations-blokken), kan rettes i
+// admin.html, og hentes som sin egen PDF (se GET .../payment-plan/pdf
+// nedenfor). Genbruger callAnthropicJSON-mønstret fra AI-diktering ovenfor.
+// ══════════════════════════════════════════════════════════════
+// Kr-beløbet pr. fase udregnes ALTID autoritativt her, af den FAKTISKE total
+// på tilbuddet i databasen — aldrig af en kr-værdi klienten selv måtte sende
+// — så et forældet/forkert total i browseren aldrig kan gemme en forkert sum.
+function normalizePaymentPlanPhases(rawPhases, total) {
+  const phases = (Array.isArray(rawPhases) ? rawPhases : []).map(p => {
+    const label = String((p && p.label) || '').trim().slice(0, 200);
+    const milestone = String((p && p.milestone) || '').trim().slice(0, 300);
+    const pct = Math.max(0, Math.min(100, Number(p && p.pct) || 0));
+    return { label, milestone, pct };
+  }).filter(p => p.label || p.pct);
+  phases.forEach(p => { p.amount = Math.round(total * p.pct) / 100; });
+  return phases;
+}
+app.post('/api/quotes/:id/ai-payment-plan', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const quote = await loadQuoteFull(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const total = Number(quote.total) || 0;
+  if (total <= 0) return res.status(400).json({ error: 'Tilbuddet har ingen linjer/total at dele op endnu — tilføj linjer og gem først' });
+  const lineItems = (quote.lines || [])
+    .filter(l => String(l.line_type || 'item') === 'item')
+    .map(l => ({ description: l.description, quantity: Number(l.quantity) || 0, unit: l.unit, product_type: l.product_type, sell_price: Number(l.sell_price) || 0 }));
+  const materialSum = lineItems.filter(l => l.product_type === 'materialer').reduce((s, l) => s + l.quantity * l.sell_price, 0);
+  const systemPrompt = 'Du hjælper en dansk gulvfirma (Gulv Master) med at opdele et tilbud i betalingsfaser (en betalingsplan), så store tilbud kan faktureres i rater i stedet for ét samlet beløb.\n'
+    + 'Du får tilbuddets linjer (beskrivelse, mængde, enhed, type, salgspris) og totalen.\n'
+    + 'Forslå 2-4 faser der tilsammen summer til NØJAGTIGT 100%. Almindelig dansk byggebranche-praksis: et depositum ved aftale/underskrift (typisk 25-40%), én eller flere rater undervejs (fx ved levering af materialer, ved påbegyndt arbejde, ved et bestemt stadie), og en sidste rate ved aflevering/færdigt arbejde (typisk 10-30%). Jo større andel materialer (dyre fliser/gulve der skal købes ind før arbejdet kan starte), jo mere bør lægges i den FØRSTE rate, så firmaet ikke selv skal lægge ud for materialerne. Et lille tilbud med mest arbejdsløn kan nøjes med 2 faser.\n'
+    + 'For hver fase:\n'
+    + '- "label": kort dansk navn, fx "Depositum ved underskrift"\n'
+    + '- "milestone": hvad der udløser fakturering af denne rate, fx "Ved underskrift af tilbuddet" eller "Ved levering af materialer på adressen"\n'
+    + '- "pct": andel af totalen som et tal (0-100), alle faser skal summe til 100\n'
+    + 'Svar KUN med gyldig JSON på formen {"phases":[...]} — ingen forklaring, ingen kodeblok-hegn.';
+  const userPrompt = 'TILBUD: ' + (quote.job_name || quote.quote_number) + '\nTOTAL: ' + total + ' kr (heraf ca. ' + Math.round(materialSum) + ' kr materialer)\nLINJER:\n' + JSON.stringify(lineItems);
+  let parsed;
+  try {
+    parsed = await callAnthropicJSON(systemPrompt, userPrompt);
+  } catch (e) {
+    await logSystemEvent('ai_payment_plan', 'error', 'AI-betalingsplan fejlede for tilbud #' + quote.id + ': ' + e.message);
+    return res.status(e.isConfig ? 501 : 502).json({ error: e.message });
+  }
+  const rawPhases = Array.isArray(parsed && parsed.phases) ? parsed.phases : [];
+  let phases = normalizePaymentPlanPhases(rawPhases, total);
+  if (!phases.length) return res.status(502).json({ error: 'AI-svaret indeholdt ingen brugelige faser' });
+  // AI'en bedes summe til 100%, men er ikke altid perfekt (afrunding, eller
+  // overholder det simpelthen ikke) — korrigeres automatisk ved at justere
+  // SIDSTE fase, så Martin aldrig præsenteres et forslag der ikke rammer
+  // totalen (han kan stadig frit rette tallene bagefter i admin.html).
+  const pctSum = phases.reduce((s, p) => s + p.pct, 0);
+  if (Math.abs(pctSum - 100) > 0.1) {
+    phases[phases.length - 1].pct = Math.max(0, Math.round((phases[phases.length - 1].pct + (100 - pctSum)) * 100) / 100);
+    phases = normalizePaymentPlanPhases(phases, total);
+  }
+  await pool.query(`UPDATE quotes SET payment_plan=$1, payment_plan_generated_at=${nowTextSQL()} WHERE id=$2`, [JSON.stringify({ phases }), quote.id]);
+  await logSystemEvent('ai_payment_plan', 'info', 'AI-betalingsplan genereret for tilbud #' + quote.id + ' (' + phases.length + ' faser).');
+  res.json({ ok: true, phases, total });
+}));
+app.put('/api/quotes/:id/payment-plan', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const quote = await pgOne('SELECT id, total FROM quotes WHERE id=$1', [req.params.id]);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const total = Number(quote.total) || 0;
+  const phases = normalizePaymentPlanPhases((req.body || {}).phases, total);
+  if (!phases.length) return res.status(400).json({ error: 'Tilføj mindst én fase' });
+  await pool.query(`UPDATE quotes SET payment_plan=$1, payment_plan_generated_at=${nowTextSQL()} WHERE id=$2`, [JSON.stringify({ phases }), quote.id]);
+  res.json({ ok: true, phases, total });
+}));
+
 // ── AKKORDLISTE (sep. 2026) — global prisliste til stykløn, se akkord_items i
 // migrations-blokken. Skulle læses af tidsregistrerings-modalen — men
 // panelAccess('projects') dækker kun admin-panelets Projekter-side, ikke
@@ -20440,6 +20595,63 @@ app.get('/api/quotes/:id/pdf', authOrQueryToken, panelAccess('quotes'), asyncRou
   registerBrandFonts(doc); // RUNDE H #310 — se registerBrandFonts ovenfor.
   doc.pipe(res);
   drawDocumentPdf(doc, 'quote', quote, company, attachmentImages);
+  doc.end();
+}));
+
+// RUNDE CC — se den store kommentar ved POST .../ai-payment-plan ovenfor.
+// Egen, enkel PDF (ikke en gren af drawDocumentPdf, som er bygget til det
+// fulde tilbud/faktura-linjelayout) — genbruger kun de FÆLLES byggeklodser
+// (header/fra-til/footer/brandfonte) så den stadig ser ud som resten af
+// Gulv Masters dokumenter, uden at skulle vride det fulde linje-layout til
+// noget det ikke er.
+function pdfKr(n) { return Math.round(Number(n) || 0).toLocaleString('da-DK') + ' kr'; }
+function drawPaymentPlanPdf(doc, quote, company) {
+  const metaLines = [`Dato: ${new Date().toISOString().slice(0, 10)}`, `Vedr. tilbud: ${quote.quote_number}`];
+  let y = drawDocHeader(doc, 'BETALINGSPLAN', quote.quote_number, metaLines, '#4F46E5', company);
+  y = drawFraTilBlock(doc, y, company, quote);
+  y += 6;
+  doc.font('DMSans').fontSize(9).fillColor('#6B7280')
+    .text('Forslag til opdeling af tilbuddets samlede pris i ' + (quote.payment_plan.phases.length) + ' betalingsrater, til fakturering i faser.', 40, y, { width: 515 });
+  y = doc.y + 18;
+  // Tabel-header
+  doc.font('DMSans-Bold').fontSize(9).fillColor('#9CA3AF');
+  doc.text('FASE', 40, y, { width: 240 });
+  doc.text('ANDEL', 300, y, { width: 60, align: 'right' });
+  doc.text('BELØB', 390, y, { width: 125, align: 'right' });
+  y += 14;
+  doc.moveTo(40, y).lineTo(555, y).strokeColor('#EEF0F3').lineWidth(1).stroke();
+  y += 10;
+  quote.payment_plan.phases.forEach((p) => {
+    doc.font('DMSans-Bold').fontSize(10.5).fillColor('#111318').text(p.label || '', 40, y, { width: 240 });
+    doc.font('DMSans').fontSize(10.5).fillColor('#111318').text((Number(p.pct) || 0) + '%', 300, y, { width: 60, align: 'right' });
+    doc.font('DMSans-Bold').fontSize(10.5).fillColor('#4F46E5').text(pdfKr(p.amount), 390, y, { width: 125, align: 'right' });
+    y = doc.y + 2;
+    if (p.milestone) {
+      doc.font('DMSans').fontSize(9).fillColor('#6B7280').text(p.milestone, 40, y, { width: 475 });
+      y = doc.y;
+    }
+    y += 10;
+    doc.moveTo(40, y).lineTo(555, y).strokeColor('#F4F5F7').lineWidth(1).stroke();
+    y += 10;
+  });
+  y += 4;
+  doc.font('DMSans-Bold').fontSize(11).fillColor('#111318').text('I alt', 300, y, { width: 60, align: 'right' });
+  doc.font('DMSans-Bold').fontSize(11).fillColor('#111318').text(pdfKr(quote.total), 390, y, { width: 125, align: 'right' });
+  drawDocFooter(doc, company);
+}
+app.get('/api/quotes/:id/payment-plan/pdf', authOrQueryToken, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const quote = await pgOne('SELECT id, quote_number, job_name, customer_address, customer_phone, customer_email, total, payment_plan FROM quotes WHERE id=$1', [req.params.id]);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  if (!quote.payment_plan || !Array.isArray(quote.payment_plan.phases) || !quote.payment_plan.phases.length) {
+    return res.status(404).json({ error: 'Der er ingen betalingsplan på dette tilbud endnu' });
+  }
+  const company = await getCompanyInfo();
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `inline; filename="${quote.quote_number}-betalingsplan.pdf"`);
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  registerBrandFonts(doc);
+  doc.pipe(res);
+  drawPaymentPlanPdf(doc, quote, company);
   doc.end();
 }));
 

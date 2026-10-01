@@ -3751,7 +3751,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-01.51</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-01.52</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5285,6 +5285,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-btn outline" id="qe-share-btn" type="button" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
         <button class="bly-btn outline" id="qe-request-btn" type="button" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
         <button class="bly-btn outline" id="qe-send-btn" type="button" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
+        <!-- RUNDE CC — se den store kommentar ved #payment-plan-modal. Kun vist på et
+             GEMT tilbud (kræver et tilbudsnummer + en total at dele op). -->
+        <button class="bly-btn outline" id="qe-payment-plan-btn" type="button" style="display:none" title="Lad AI forslå en betalingsplan (faser) for store tilbud, og generér en PDF">💳 Betalingsplan</button>
         <button class="bly-btn outline" id="qe-convert-btn" type="button" style="display:none">➜ Konvertér til faktura</button>
         <!-- RUNDE H #306 (Martins ønske: "jeg kan lave en faktura men når [jeg]
              sætte[r] den som kladde [skal] den ikke automatisk [være] låst") —
@@ -8505,6 +8508,36 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="form-group"><label class="form-label">Besked <span class="opt-tag">valgfrit, internt — sendes ikke til modtager</span></label><textarea id="qr-note" class="input" rows="2" style="resize:vertical"></textarea></div>
     <button class="bly-btn" id="qr-send-btn" type="button">📨 Send forespørgsel</button>
     <div id="qr-history" style="margin-top:22px"></div>
+  </div>
+</div>
+
+<!-- RUNDE CC (Martin: "under tilbud tilføje en knap hvor AI ud fra tilbuddet
+     kan tilføje en betalingsplan ... laver en pdf ... oftest kun ved tilbud
+     over 100.000 kroner eller store materialeudgifter") — AI'en forslår en
+     opdeling af tilbuddets TOTAL i betalingsfaser (fx "Depositum ved
+     underskrift 30%", "Ved levering af materialer 40%", "Ved aflevering
+     30%"), som Martin kan rette i og derefter gemme + hente som PDF, til at
+     fakturere efter. Se qpOpenModal()/POST .../ai-payment-plan/PUT
+     .../payment-plan/GET .../payment-plan/pdf i server.js. -->
+<div class="mo" id="payment-plan-modal">
+  <div class="modal" style="max-width:640px;width:94vw;max-height:88vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h3 style="margin:0">💳 Betalingsplan</h3>
+      <button class="qz-icon-btn" id="qp-close-btn" type="button" title="Luk">✕</button>
+    </div>
+    <div class="sub" style="margin-bottom:14px">Del tilbuddets total op i faser, så I kan fakturere undervejs i stedet for ét samlet beløb — mest relevant ved store tilbud. Tilbuddets total: <strong id="qp-total-label">0 kr</strong></div>
+    <div id="qp-loading" class="sub" style="display:none">Henter…</div>
+    <div id="qp-empty-hint" class="sub" style="display:none;margin-bottom:10px">Ingen betalingsplan endnu — tryk "🤖 Generér forslag med AI" for et forslag, eller tilføj faser manuelt.</div>
+    <div id="qp-rows" style="margin-bottom:8px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <button class="bly-btn outline small" id="qp-add-row-btn" type="button">+ Tilføj fase</button>
+      <span class="sub" id="qp-summary"></span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="bly-btn outline" id="qp-ai-btn" type="button">🤖 Generér forslag med AI</button>
+      <button class="bly-btn" id="qp-save-btn" type="button">💾 Gem betalingsplan</button>
+      <a class="bly-btn outline" id="qp-pdf-link" href="#" target="_blank" style="display:none">📄 Download PDF</a>
+    </div>
   </div>
 </div>
 
@@ -28616,6 +28649,7 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-share-btn').style.display='none';
   document.getElementById('qe-request-btn').style.display='none';
   document.getElementById('qe-send-btn').style.display='none';
+  document.getElementById('qe-payment-plan-btn').style.display='none';
   document.getElementById('qe-activity-wrap').style.display=id?'':'none';
   document.getElementById('qe-versions-wrap').style.display='none';
   document.getElementById('qe-crm-note-panel').style.display='none';
@@ -28678,6 +28712,7 @@ async function openQuoteEditor(id,prefillCustomer){
     document.getElementById('qe-share-btn').style.display=qd.status==='converted'?'none':'inline-flex';
     document.getElementById('qe-request-btn').style.display='inline-flex';
     document.getElementById('qe-send-btn').style.display='inline-flex';
+    document.getElementById('qe-payment-plan-btn').style.display='inline-flex';
     // RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: konverter-knappen og
     // linjelåsen styres nu af om der findes fakturaer/resterende ufakturerede
     // linjer, ikke længere kun af tilbuddets status (som forbliver 'converted'
@@ -29968,6 +30003,120 @@ async function qrSend(){
     qrOpenModal();
   } else toast((r&&r.error)||'Kunne ikke sende forespørgslen','❌');
 }
+// RUNDE CC (Martin: "under tilbud ... en knap hvor AI ud fra tilbuddet kan
+// tilføje en betalingsplan ... laver en pdf") — se den store kommentar ved
+// #payment-plan-modal i HTML'en og POST/PUT/GET .../payment-plan i server.js.
+// qpState holder kun hvilket tilbud modalen er åben for og den sidst kendte
+// total (til at udregne kr-beløb af procenterne LIVE i browseren, mens man
+// retter — selve procent/kr-beregningen gemmes/regnes autoritativt på
+// serveren igen ved Gem, så en gammel total i browseren aldrig kan gemme en
+// forkert sum).
+var qpState={quoteId:null,total:0};
+async function qpOpenModal(){
+  if(!qeState.id){toast('Gem tilbuddet først','⚠️');return;}
+  qpState.quoteId=qeState.id;
+  document.getElementById('qp-rows').innerHTML='';
+  document.getElementById('qp-summary').textContent='';
+  document.getElementById('qp-empty-hint').style.display='none';
+  document.getElementById('qp-pdf-link').style.display='none';
+  document.getElementById('qp-loading').style.display='';
+  document.getElementById('payment-plan-modal').classList.add('open');
+  var qd=await api('/api/quotes/'+qpState.quoteId);
+  document.getElementById('qp-loading').style.display='none';
+  if(!qd||qd.error){toast('Kunne ikke hente tilbuddet','❌');return;}
+  qpState.total=Number(qd.total)||0;
+  document.getElementById('qp-total-label').textContent=krFmt(qpState.total);
+  var phases=(qd.payment_plan&&Array.isArray(qd.payment_plan.phases))?qd.payment_plan.phases:[];
+  if(phases.length){
+    phases.forEach(qpAddRow);
+    document.getElementById('qp-pdf-link').style.display='inline-flex';
+    document.getElementById('qp-pdf-link').href=qzPdfUrl('/api/quotes/'+qpState.quoteId+'/payment-plan/pdf');
+  } else {
+    document.getElementById('qp-empty-hint').style.display='';
+  }
+  qpRecalcSummary();
+}
+function qpAddRow(phase){
+  phase=phase||{};
+  var row=document.createElement('div');
+  row.className='qp-row';
+  row.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--bly-border-soft)';
+  row.innerHTML=
+    '<div style="flex:2">'+
+      '<input class="qe-input qp-label" placeholder="Fase, fx Depositum ved underskrift">'+
+      '<input class="qe-input qp-milestone" placeholder="Milepæl, fx Ved underskrift af tilbuddet" style="margin-top:4px;font-size:12px">'+
+    '</div>'+
+    '<div style="flex:0 0 70px"><input class="qe-input qp-pct" type="number" min="0" max="100" step="0.5" style="text-align:right"></div>'+
+    '<div style="flex:0 0 100px;text-align:right;padding-top:9px;font-weight:700;font-size:13px" class="qp-amount">0 kr</div>'+
+    '<button type="button" class="qz-icon-btn qp-remove" title="Fjern fase">✕</button>';
+  row.querySelector('.qp-label').value=phase.label||'';
+  row.querySelector('.qp-milestone').value=phase.milestone||'';
+  row.querySelector('.qp-pct').value=phase.pct!=null?phase.pct:'';
+  row.querySelector('.qp-pct').addEventListener('input',qpRecalcSummary);
+  row.querySelector('.qp-remove').addEventListener('click',function(){row.remove();qpRecalcSummary();});
+  document.getElementById('qp-rows').appendChild(row);
+  return row;
+}
+// Genberegner hver fases kr-beløb (ud fra qpState.total) og den samlede %-sum
+// — farves rød hvis summen ikke rammer 100%, så Martin ser det med det
+// samme i stedet for først ved Gem.
+function qpRecalcSummary(){
+  var rows=Array.prototype.slice.call(document.querySelectorAll('#qp-rows .qp-row'));
+  var sumPct=0;
+  rows.forEach(function(row){
+    var pct=Number(row.querySelector('.qp-pct').value)||0;
+    sumPct+=pct;
+    row.querySelector('.qp-amount').textContent=krFmt(Math.round(qpState.total*pct)/100);
+  });
+  var summaryEl=document.getElementById('qp-summary');
+  var roundedSum=Math.round(sumPct*100)/100;
+  summaryEl.textContent='Total: '+roundedSum+'% / '+krFmt(Math.round(qpState.total*roundedSum)/100);
+  summaryEl.style.color=Math.abs(roundedSum-100)<0.5?'#15803D':'#B91C1C';
+}
+function qpCollectPhases(){
+  return Array.prototype.slice.call(document.querySelectorAll('#qp-rows .qp-row')).map(function(row){
+    return {
+      label: row.querySelector('.qp-label').value.trim(),
+      milestone: row.querySelector('.qp-milestone').value.trim(),
+      pct: Number(row.querySelector('.qp-pct').value)||0
+    };
+  }).filter(function(p){return p.label||p.pct;});
+}
+async function qpGenerateAi(){
+  if(!qpState.quoteId)return;
+  var btn=document.getElementById('qp-ai-btn');
+  btn.disabled=true;btn.textContent='Tænker…';
+  var r=await api('/api/quotes/'+qpState.quoteId+'/ai-payment-plan',{method:'POST'});
+  btn.disabled=false;btn.textContent='🤖 Generér forslag med AI';
+  if(r&&r.ok){
+    qpState.total=Number(r.total)||qpState.total;
+    document.getElementById('qp-total-label').textContent=krFmt(qpState.total);
+    document.getElementById('qp-rows').innerHTML='';
+    (r.phases||[]).forEach(qpAddRow);
+    document.getElementById('qp-empty-hint').style.display='none';
+    qpRecalcSummary();
+    toast('AI-forslag indsat — tjek og juster efter behov','✓');
+  } else toast((r&&r.error)||'AI-forslaget kunne ikke genereres','❌');
+}
+async function qpSave(){
+  if(!qpState.quoteId)return;
+  var phases=qpCollectPhases();
+  if(!phases.length){toast('Tilføj mindst én fase først','⚠️');return;}
+  var btn=document.getElementById('qp-save-btn');
+  btn.disabled=true;btn.textContent='Gemmer…';
+  var r=await api('/api/quotes/'+qpState.quoteId+'/payment-plan',{method:'PUT',body:JSON.stringify({phases:phases})});
+  btn.disabled=false;btn.textContent='💾 Gem betalingsplan';
+  if(r&&r.ok){
+    qpState.total=Number(r.total)||qpState.total;
+    document.getElementById('qp-total-label').textContent=krFmt(qpState.total);
+    document.getElementById('qp-rows').innerHTML='';
+    (r.phases||[]).forEach(qpAddRow);
+    qpRecalcSummary();
+    document.getElementById('qp-pdf-link').style.display='inline-flex';
+    document.getElementById('qp-pdf-link').href=qzPdfUrl('/api/quotes/'+qpState.quoteId+'/payment-plan/pdf');
+    toast('Betalingsplan gemt','✓');
+  } else toast((r&&r.error)||'Kunne ikke gemme betalingsplanen','❌');
+}
 async function qeSaveCurrentAsTemplate(){
   if(!qeState.lines.length){toast('Der er ingen linjer at gemme','⚠️');return;}
   var name=await gmPrompt('Navn på skabelonen','','Gem linjer som skabelon');
@@ -31002,6 +31151,12 @@ function bindQuotesModuleEvents(){
   document.getElementById('qr-close-btn').addEventListener('click',function(){closeModal('quote-request-modal');});
   document.getElementById('qr-add-recipient').addEventListener('click',function(){qrAddRecipientRow();});
   document.getElementById('qr-send-btn').addEventListener('click',qrSend);
+  // RUNDE CC — se qpOpenModal() m.fl.
+  document.getElementById('qe-payment-plan-btn').addEventListener('click',qpOpenModal);
+  document.getElementById('qp-close-btn').addEventListener('click',function(){closeModal('payment-plan-modal');});
+  document.getElementById('qp-add-row-btn').addEventListener('click',function(){qpAddRow({label:'',milestone:'',pct:0});qpRecalcSummary();});
+  document.getElementById('qp-ai-btn').addEventListener('click',qpGenerateAi);
+  document.getElementById('qp-save-btn').addEventListener('click',qpSave);
   document.getElementById('qe-status-select').addEventListener('change',qeStatusChanged);
   document.getElementById('qe-pdf-link').addEventListener('click',function(e){e.preventDefault();if(qeState.id)qzOpenPdf('/api/quotes/'+qeState.id+'/pdf');});
   document.getElementById('qe-ai-mic-btn').addEventListener('click',qeAiToggleListen);
