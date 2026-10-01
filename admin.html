@@ -2557,6 +2557,14 @@ body.qz-overlay-open .page.active{display:none}
 .capacity-context{display:flex;align-items:center;gap:7px;padding:8px 10px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:9px;color:#5B21B6;font-size:10px;font-weight:700;margin:0 0 8px}
 .capacity-jt-hint{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 11px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;color:#92400E;font-size:11px;font-weight:600;margin:-6px 0 12px}
 .capacity-modal-note{font-size:10px;color:var(--muted);line-height:1.45;margin:-2px 0 12px}
+/* FEJL RETTET (okt. 2026, Martin: "dato men lidt gemt") — selve datoen i
+   .capacity-modal-note ovenfor er for diskret til at kunne læses i et hurtigt
+   overblik. Denne boks (sat via innerHTML i openCapacityModal) er bevidst
+   markant: farvet baggrund, større skrift, fed dato, så man ALDRIG er i tvivl
+   om hvilken dag/ugedag opgaven reelt starter uden at skulle læse en lille
+   grå linje nøje igennem. */
+.capacity-date-prominent{display:block;font-size:13px;font-weight:600;color:#1D4ED8;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:9px;padding:9px 12px;margin:-2px 0 12px;line-height:1.4}
+.capacity-date-prominent strong{font-weight:800}
 /* RUNDE H #24 — "Book alt i Kapacitetsbordet"-opgavelisten (#bulk-capacity-modal).
    RUNDE O: hver række fik sin egen dato (forudfyldt fra opgavens planlagte
    periode) og sin egen medarbejder-vælger (forudfyldt fra "Book alle hos"
@@ -2629,7 +2637,16 @@ body.qz-overlay-open .page.active{display:none}
    er også hvad flerdags-boblernes egen bredde-udregning (assignPillSpan,
    calc(N*128px + ...)) allerede antog, så det retter samtidig evt.
    fejljustering af dem hvis en kolonne tidligere var blevet bredere end 128px. */
-.day-cell{padding:4px;min-width:128px;max-width:128px;overflow:visible}
+/* FEJL RETTET (okt. 2026, Martin: "kan du ikke gøre så ... dagskalender er lidt
+   bredere i feltet. Det lidt sammenpresset, det bad jeg dig om men bare lidt
+   mere så det ikke virker så sammenpresset") — 128px løste tidligere KUN
+   uensartede bredder (se kommentaren ovenfor), men var aldrig i sig selv
+   tænkt som den optimale bredde. Sat op til 150px — samme ændring er lavet
+   samtidig i .cap-cell herunder, dags-<th> i renderPlan() og
+   assignPillSpan()'s flerdags-breddeudregning, så alle fire forbliver
+   indbyrdes konsistente (se kommentaren ved .day-cell ovenfor for hvorfor det
+   er vigtigt at de altid matcher). */
+.day-cell{padding:4px;min-width:150px;max-width:150px;overflow:visible}
 .day-cell.today-col{background:#FBFDFF}
 .drop-zone{min-height:70px;border:1px dashed transparent;border-radius:6px;padding:2px;transition:.14s;overflow:visible}
 .drop-zone.over{background:#EFF6FF;border-color:var(--blue)}
@@ -2700,7 +2717,7 @@ body.qz-overlay-open .page.active{display:none}
    allerede bruger nedenfor, og som IKKE har dette problem) — så er 128px et
    fast loft uanset tekstlængde, hele året, ikke kun i de uger hvor teksten
    tilfældigvis er kort. */
-.cap-cell{padding:4px;min-width:128px;max-width:128px;vertical-align:top}
+.cap-cell{padding:4px;min-width:150px;max-width:150px;vertical-align:top}
 .cap-drop{position:relative;min-height:68px;border-radius:6px;border:1px dashed transparent;padding:3px;transition:.14s}
 .cap-drop.over{background:#EFF6FF;border-color:var(--blue)}
 
@@ -3734,7 +3751,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-09-18.50</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-01.51</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -8694,15 +8711,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="form-group"><label class="form-label">Startdato</label><input id="assign-date" type="date" class="input"></div>
       <div class="form-group"><label class="form-label">Antal dage (Daglig plan)</label><input id="assign-days" type="number" min=".25" max="60" step=".25" class="input"></div>
     </div>
-    <div class="form-group" id="assign-capacity-toggle-wrap">
-      <label class="form-label" style="display:flex;align-items:center;gap:7px;cursor:pointer">
-        <input type="checkbox" id="assign-capacity-toggle" style="width:auto">
-        📊 Reservér også kapacitet på Kapacitetsboardet <span style="opacity:.6;font-weight:500">(valgfrit — helt adskilt fra Daglig plan, sker kun hvis du krydser af her)</span>
-      </label>
-      <div class="form-row" id="assign-capacity-fields" style="display:none;margin-top:8px">
-        <div class="form-group"><label class="form-label">Kapacitetsdage</label><input id="assign-capacity-days" type="number" min=".25" max="60" step=".25" class="input"></div>
-      </div>
-    </div>
+    <!-- FEJL RETTET (okt. 2026, Martin: "Fjern dette 📊 Reservér også kapacitet
+         på Kapacitetsboardet(valgfrit — helt adskilt fra Daglig plan, sker kun
+         hvis du krydser af her)") — checkboksen (og dens skjulte
+         "Kapacitetsdage"-felt) er fjernet helt fra denne popup efter Martins
+         eksplicitte ønske. At reservere kapacitet sker stadig via den
+         selvstændige "+ reservér"-knap direkte på Kapacitetsboardet
+         (openCapacityModal) — kun GENVEJEN herfra, inde i Daglig plans egen
+         booking-popup, er fjernet. -->
     <div class="form-row">
       <div class="form-group"><label class="form-label">Mødetid</label><input id="assign-time" type="time" class="input"></div>
       <div class="form-group"><label class="form-label">Reference (JT)</label><input class="input" id="assign-ref" disabled></div>
@@ -10192,7 +10208,7 @@ function assignPillSpan(b,spanDays,ds,canUp,canDown){
   var type=TYPE[b.type_guess||'other']||TYPE.other;
   var daysLabel=+b.days>1?' <span style="font-size:8px;opacity:.75;background:rgba(0,0,0,.1);padding:1px 4px;border-radius:3px">'+b.days+'d</span>':'';
   var isDone=!!b.completed_at;
-  var extraStyle=bookingColorStyle(b,type)+(spanDays>1?'position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(128px + 8px) - 10px);width:calc('+spanDays+'*(128px) + '+(spanDays-1)+'*8px - 10px);min-width:0':'');
+  var extraStyle=bookingColorStyle(b,type)+(spanDays>1?'position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(150px + 8px) - 10px);width:calc('+spanDays+'*(150px) + '+(spanDays-1)+'*8px - 10px);min-width:0':'');
   // ▲▼ til manuel rækkefølge — vises kun når opgaven IKKE har et mødetidspunkt, da
   // tidspunkt-satte opgaver altid sorterer kronologisk af sig selv.
   var reorderBtns=(ds&&!b.start_time)?('<span class="pill-reorder">'+
@@ -10300,7 +10316,7 @@ function renderPlan(){
   head+='</tr><tr><th class="staff-th">Medarbejder / undergruppe</th>';
   days.forEach(function(d,i){
     var weekBoundary=i>0&&d.getDay()===1; // tynd adskillelseslinje ved hver ny uges mandag
-    head+='<th class="'+(isToday(d)?'today-th':'')+(weekBoundary?' plan-week-boundary':'')+'" data-plan-monday="'+(d.getDay()===1?iso(d):'')+'" style="min-width:128px;max-width:128px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';
+    head+='<th class="'+(isToday(d)?'today-th':'')+(weekBoundary?' plan-week-boundary':'')+'" data-plan-monday="'+(d.getDay()===1?iso(d):'')+'" style="min-width:150px;max-width:150px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';
   });
   document.getElementById('daily-head').innerHTML=head+'</tr>';
   var grouped=teamList('plan'),html='';
@@ -10870,7 +10886,20 @@ function renderCapacity(){
       var items=bookings.filter(function(b){return isCapacityBooking(b)&&+b.user_id===+u.id&&workDates(b).some(function(ds){var q=date(ds);return q>=m&&q<=end;});});
       var pills=items.map(function(b){
         var capacityOnly=isCapacityBooking(b);
-        var label=capacityOnly?(b.capacity_label||b.task_name||'Kapacitetsreservation'):(b.job_name||b.task_name||'');
+        // FEJL RETTET (okt. 2026, Martin: "navnet på kunden ikke ses før opgave
+        // beskrivelsen [i den lille boks], den ses hvis du popper up") —
+        // capacity_label gemmes kun som en FROSSET tekststreng på selve
+        // oprettelses-/redigeringstidspunktet (se qeCapacityDefaultLabel/
+        // openCapacityModal). En reservation booket FØR den kundenavn-først-regel
+        // fandtes (eller hvor sagens navn siden er ændret) viser derfor stadig
+        // det gamle/forkerte format her i boksen — selvom "Rediger
+        // kapacitetsreservation"-popup'en (som slår opgaven op LIVE via tasks[])
+        // allerede viste det rigtige. Slår nu opgaven op live her også, præcis
+        // som popup'en gør, så boksen ALDRIG kan blive forældet — kun helt
+        // frie reservationer uden en rigtig sag bagved (task_id starter med
+        // "capacity-", findes ikke i tasks[]) falder tilbage til den gemte label.
+        var linkedTask=capacityOnly?tasks.find(function(x){return String(x.id)===String(b.task_id);}):null;
+        var label=capacityOnly?(linkedTask?qeCapacityDefaultLabel(linkedTask):(b.capacity_label||b.task_name||'Kapacitetsreservation')):(b.job_name||b.task_name||'');
         // RUNDE V — se CSS-kommentaren ved .cap-job-desc: labelen gemmes som ét
         // sammensat "Fornavn — opgavebeskrivelse"-felt (capacity_label), splittes
         // her igen til to viste linjer. Ingen " — " i teksten (fx ældre bookinger,
@@ -11016,10 +11045,22 @@ function openCapacityModal(opts){
   }
   // Viser altid opgavens planlagte start/slut-dato her (uanset om ugen matcher), så
   // man hurtigt kan analysere opgaven uden at skulle slå den op andetsteds.
+  // FEJL RETTET (okt. 2026, Martin: "når du har poppet den op må det gerne være
+  // klar og tydeligt hvad dato og dag den starter. Det er det ikke, der står
+  // dato men lidt gemt") — stod tidligere som en lille, grå 10px-tekstlinje
+  // (.capacity-modal-note, samme stil som almindelige hjælpetekster) med kun
+  // tal-datoen (fx "2026-10-06") og ingen ugedag — let at overse og svær at
+  // omsætte til "det er en tirsdag" uden selv at tælle efter i en kalender.
+  // Vises nu i en tydelig, farvet boks med ugedagsnavn + dag/måned.
   var jtInfo=document.getElementById('capacity-jt-date-info');
   if(t&&(t.start_date||t.end_date)){
     jtInfo.style.display='block';
-    jtInfo.textContent='📅 Planlagt: '+(t.start_date?String(t.start_date).slice(0,10):'?')+' – '+(t.end_date?String(t.end_date).slice(0,10):(t.start_date?String(t.start_date).slice(0,10):'?'));
+    var jtS=t.start_date?date(t.start_date):null;
+    var jtE=t.end_date?date(t.end_date):jtS;
+    var jtSameDay=jtS&&jtE&&iso(jtS)===iso(jtE);
+    var jtSLbl=jtS?(DAYS[jtS.getDay()]+' '+jtS.getDate()+'/'+(jtS.getMonth()+1)):'?';
+    var jtELbl=(!jtSameDay&&jtE)?(DAYS[jtE.getDay()]+' '+jtE.getDate()+'/'+(jtE.getMonth()+1)):null;
+    jtInfo.innerHTML='<div class="capacity-date-prominent">📅 Opgaven starter <strong>'+esc(jtSLbl)+'</strong>'+(jtELbl?' og slutter <strong>'+esc(jtELbl)+'</strong>':'')+'</div>';
   }else{
     jtInfo.style.display='none';
   }
@@ -11549,7 +11590,21 @@ function openAssign(ctx){
   var taskId=ctx.taskId||(b&&b.task_id);
   var t=tasks.find(function(x){return String(x.id)===String(taskId);});
   document.getElementById('assign-title').textContent=b?'Rediger booking':'Planlæg opgave';
-  document.getElementById('assign-info').innerHTML=t?'<strong>'+esc(t.job_name||t.name)+'</strong>'+(t.job_number?' <span style="opacity:.7">· Sag #'+esc(t.job_number)+'</span>':'')+'<br>'+esc(t.name||''):'<strong>Vælg en task fra opgavepoolen.</strong>';
+  // FEJL RETTET (okt. 2026, Martin: "tilføjer kundens navn og link til deres
+  // sag i toppen så vi hurtigt kan navigere der hen. Gør det muligt at højre
+  // klikke på sagens link så man ikke skal væk fra sin browser") — viste
+  // tidligere kun opgavens egen (frit indtastede) job_name/opgavenavn, uden
+  // kundens rigtige navn og uden noget link til selve sagen. t.customer_name
+  // (sagens rigtige kundenavn via projects.customer_id, se GET /api/tasks)
+  // bruges nu FØRST, med job_name som fallback for opgaver uden sag. Linket er
+  // et RIGTIGT <a href="#project-detail/<id>"> (samme dybe-link-rute som resten
+  // af appens "åbn i ny fane"-links allerede bruger, se hashchange-lytteren i
+  // bind()) — ikke et onclick-only JS-kald — så højreklik → "Åbn link i ny
+  // fane"/"Kopiér link" rent faktisk virker. onclick lukker blot DENNE popup
+  // først ved et almindeligt venstreklik, uden at ændre selve linket.
+  var caseLink=(t&&t.project_id)?(' <a href="#project-detail/'+t.project_id+'" onclick="closeModal(\'assign-modal\')" style="color:#1D4ED8;font-weight:700;text-decoration:underline">↗ Åbn sagen</a>'):'';
+  var primaryName=t?esc(t.customer_name||t.job_name||t.name):'';
+  document.getElementById('assign-info').innerHTML=t?('<strong>'+primaryName+'</strong>'+(t.job_number?' <span style="opacity:.7">· Sag #'+esc(t.job_number)+'</span>':'')+caseLink+'<br>'+esc(t.name||'')):'<strong>Vælg en task fra opgavepoolen.</strong>';
   document.getElementById('assign-address').value=t?(t.job_address||''):'';
   document.getElementById('assign-phone').value=t?(t.customer_phone||''):'';
   document.getElementById('assign-ref').value=t?(t.start_date||'—'):'—';
@@ -11557,9 +11612,6 @@ function openAssign(ctx){
   document.getElementById('assign-user').innerHTML=workforce.map(function(u){var sel=(b?+b.user_id===+u.id:+ctx.userId===+u.id)?' selected':'';return '<option value="'+u.id+'"'+sel+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
   document.getElementById('assign-date').value=(b?b.start_date:(ctx.date||iso(new Date()))).slice(0,10);
   document.getElementById('assign-days').value=b?b.days:1;
-  document.getElementById('assign-capacity-days').value=b?capDaysOf(b):1;
-  document.getElementById('assign-capacity-toggle').checked=false;
-  document.getElementById('assign-capacity-fields').style.display='none';
   document.getElementById('assign-time').value=b&&b.start_time||'';
   document.getElementById('assign-note').value=b&&b.notes||'';
   // RUNDE H #25 — Martins ønske: "Note til medarbejder ... som et note felt
@@ -11624,7 +11676,6 @@ async function saveAssignment(){
   if(!taskId){toast('Vælg en task','⚠');return;}
   if(!assignAttachmentsReady){toast('Henter eksisterende vedhæftninger — prøv lige igen om et øjeblik','⏳');return;}
   var body={user_id:+document.getElementById('assign-user').value,start_date:document.getElementById('assign-date').value,days:+document.getElementById('assign-days').value||1,start_time:document.getElementById('assign-time').value||null,notes:document.getElementById('assign-note').value.trim()||null,note_link:document.getElementById('assign-note-link').value.trim()||null,note_attachments:noteAttachState('assign')};
-  if(document.getElementById('assign-capacity-toggle').checked){body.capacity_days=+document.getElementById('assign-capacity-days').value||1;}
   var calls=[assignCtx.bookingId?api('/api/assignments/'+assignCtx.bookingId,{method:'PUT',body:JSON.stringify(body)}):api('/api/assignments',{method:'POST',body:JSON.stringify(Object.assign({task_id:taskId},body))})];
   // FEJL RETTET (adresse/telefon kunne blive slettet): sender kun adresse/telefon/
   // e-mail videre hvis opgaven rent faktisk blev fundet ved åbning af popup'en — ellers
@@ -11641,6 +11692,14 @@ async function saveAssignment(){
 async function copyBooking(id){
   var b=bookings.find(function(x){return +x.id===+id;});
   if(!b)return;
+  // FEJL RETTET — se den store kommentar ved openCopyDayChoice() herunder.
+  // Kapacitetsreservationer (ingen "dage i rækken" på samme måde) og
+  // almindelige 1-dags Dagligplan-bookinger kopieres stadig direkte uden at
+  // spørge, præcis som før.
+  if(!isCapacityBooking(b)){
+    var dates=planWorkDates(b);
+    if(dates.length>1){openCopyDayChoice(b,dates);return;}
+  }
   var body={task_id:b.task_id,user_id:b.user_id,start_date:b.start_date,days:b.days,capacity_days:capDaysOf(b),start_time:b.start_time,notes:b.notes};
   var r=await api('/api/assignments',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){toast('Kopieret — træk den til den ønskede dag/uge','⧉');await loadAll();}
@@ -11673,8 +11732,51 @@ function openDeleteDayChoice(b,dates){
     var d=date(ds);
     return '<button class="btn small" data-action="delete-booking-day" data-booking-id="'+b.id+'" data-date="'+ds+'">Kun '+d.getDate()+'/'+(d.getMonth()+1)+'</button>';
   }).join('');
-  document.getElementById('delete-day-all').onclick=function(){deleteBookingDay(b.id,null,'all');};
+  // Deler modal med openCopyDayChoice() herunder — nulstiller derfor altid
+  // "alle dage"-knappens tekst/klasse tilbage til SLET-varianten her, så en
+  // tidligere KOPIÉR-visning ikke efterlader forkert tekst/farve stående.
+  var allBtn=document.getElementById('delete-day-all');
+  allBtn.className='btn danger';
+  allBtn.textContent='🗑 Slet alle dage';
+  allBtn.onclick=function(){deleteBookingDay(b.id,null,'all');};
   document.getElementById('delete-day-modal').classList.add('open');
+}
+// FEJL RETTET (okt. 2026, Martin: "når jeg vil kopiere den så kopierer den
+// alle 4 ... det er som om den er forbundet, det er fucking træls") — en
+// flerdages Dagligplan-booking er (med vilje, se RUNDE H #24) ÉN
+// sammenhængende række i databasen, der vises som ÉN bred bjælke — det gamle
+// ⧉-kopiér-tryk kopierede derfor altid HELE bjælken (alle dage på én gang) i
+// stedet for at lade Martin vælge. Spørger nu, ligesom "Fjern booking" allerede
+// gjorde (se openDeleteDayChoice ovenfor), hvilken ENKELT dag han vil kopiere —
+// med "alle dage" som et eksplicit, synligt ekstra valg for de gange han
+// rent faktisk mener hele perioden.
+function openCopyDayChoice(b,dates){
+  var label=b.job_name||b.task_name||'Opgaven';
+  document.getElementById('delete-day-title').textContent='Kopiér "'+esc(label)+'" — hvilken dag?';
+  document.getElementById('delete-day-days').innerHTML=dates.map(function(ds){
+    var d=date(ds);
+    return '<button class="btn small" data-action="copy-booking-day" data-booking-id="'+b.id+'" data-date="'+ds+'">Kun '+d.getDate()+'/'+(d.getMonth()+1)+'</button>';
+  }).join('');
+  var allBtn=document.getElementById('delete-day-all');
+  allBtn.className='btn primary';
+  allBtn.textContent='⧉ Kopiér alle '+dates.length+' dage';
+  allBtn.onclick=function(){closeModal('delete-day-modal');copyBookingAllDays(b);};
+  document.getElementById('delete-day-modal').classList.add('open');
+}
+async function copyBookingAllDays(b){
+  var body={task_id:b.task_id,user_id:b.user_id,start_date:b.start_date,days:b.days,capacity_days:capDaysOf(b),start_time:b.start_time,notes:b.notes};
+  var r=await api('/api/assignments',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Kopieret — træk den til den ønskede dag/uge','⧉');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function copyBookingDay(id,ds){
+  var b=bookings.find(function(x){return +x.id===+id;});
+  closeModal('delete-day-modal');
+  if(!b)return;
+  var body={task_id:b.task_id,user_id:b.user_id,start_date:ds,days:1,start_time:b.start_time,notes:b.notes};
+  var r=await api('/api/assignments',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){toast('Dagen er kopieret — træk den til den ønskede dag/uge','⧉');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
 }
 
 // TIDSLINJE — højre side-panel (erstatter den centrerede modal specifikt for Tidslinjen,
@@ -11979,9 +12081,22 @@ async function handleDrop(e,zone){
     }else if(p.kind==='booking'){
       var b=bookings.find(function(x){return +x.id===+p.bookingId;});
       if(!b||( +b.user_id===uid&&b.start_date===ds))return;
+      var onTimeline=document.getElementById('page-timeline').classList.contains('active');
+      // FEJL RETTET — se den store kommentar ved dragstart-lytteren ovenfor.
+      // En flerdages Dagligplan-booking flyttes nu KUN på den ene dag Martin
+      // rent faktisk greb (p.originDate) — resten af dagene i opgaven bliver
+      // liggende uændret. Gælder ikke Tidslinjen (sin egen, bevidst
+      // "flyt hele perioden"-semantik) og ikke kapacitetsreservationer (de
+      // håndteres allerede separat ovenfor via handleCapacityDrop/isCapacityBooking).
+      if(!onTimeline&&!isCapacityBooking(b)&&planWorkDates(b).length>1){
+        var originDate=(p.originDate&&planWorkDates(b).indexOf(p.originDate)>-1)?p.originDate:b.start_date;
+        var rMove=await api('/api/assignments/'+b.id+'/move-day',{method:'PUT',body:JSON.stringify({origin_date:originDate,user_id:uid,start_date:ds})});
+        if(rMove&&rMove.ok){toast('Dagen er flyttet — resten af opgaven ligger stadig hvor den var','↔');await loadAll();}
+        else if(rMove)toast(rMove.error||'Fejl','❌');
+        return;
+      }
       var delta=daysBetween(date(b.start_date),date(ds));
       var newEnd=iso(add(date(b.end_date||b.start_date),delta));
-      var onTimeline=document.getElementById('page-timeline').classList.contains('active');
       if(onTimeline){
         // FEJL RETTET ("statisk følelse" ved træk i Tidslinje): før udløste hver
         // flytning en FULD genindlæsning af al data i hele appen (loadAll), som
@@ -19998,7 +20113,6 @@ async function bind(){
   // Assign modal
   document.getElementById('close-assign').onclick=function(){closeModal('assign-modal');};
   document.getElementById('save-assignment').onclick=saveAssignment;
-  document.getElementById('assign-capacity-toggle').onchange=function(e){document.getElementById('assign-capacity-fields').style.display=e.target.checked?'flex':'none';};
   document.getElementById('delete-assignment').onclick=function(){if(assignCtx&&assignCtx.bookingId)removeBooking(assignCtx.bookingId);};
   wireNoteAttachInput('assign');
   wireNoteAttachInput('qp');
@@ -20061,7 +20175,31 @@ async function bind(){
     var booking=e.target.closest('.draggable-assignment,.cap-job');
     if(task&&!e.target.closest('a,button,input,select,textarea')){beginDrag(e,{kind:'task',taskId:task.dataset.taskId});task.classList.add('dragging');}
     else if(tpl&&!e.target.closest('a,button,input,select,textarea')){beginDrag(e,{kind:'template',templateId:tpl.dataset.templateId});tpl.classList.add('dragging');}
-    else if(booking&&!e.target.closest('a,button,input,select,textarea')){beginDrag(e,{kind:'booking',bookingId:booking.dataset.bookingId});booking.classList.add('dragging');}
+    else if(booking&&!e.target.closest('a,button,input,select,textarea')){
+      var bPayload={kind:'booking',bookingId:booking.dataset.bookingId};
+      // FEJL RETTET (okt. 2026, Martin: "hvis jeg bare vil rykke en dag i den
+      // række så rykker den alle 4 ... det er fucking træls") — en flerdages
+      // Dagligplan-booking vises som ÉN bred bjælke der visuelt dækker alle
+      // sine dage (assignPillSpan, se .day-cell-bredden 150px). Udregner her,
+      // ud fra museposition i bjælken, hvilken af dagene der rent faktisk blev
+      // grebet, så handleDrop() kan splitte netop DEN dag ud via den nye
+      // /move-day-rute i stedet for at flytte hele bjælken — se
+      // PUT /api/assignments/:id/move-day i server.js. Kun relevant for
+      // .draggable-assignment (Dagligplan) — .cap-job (Kapacitetsboardet)
+      // flyttes stadig som én samlet reservation, uændret.
+      if(booking.classList.contains('draggable-assignment')){
+        var grabbedBooking=bookings.find(function(x){return +x.id===+booking.dataset.bookingId;});
+        if(grabbedBooking&&!isCapacityBooking(grabbedBooking)){
+          var wds=planWorkDates(grabbedBooking);
+          if(wds.length>1){
+            var rect=booking.getBoundingClientRect();
+            var dayOffset=Math.max(0,Math.min(wds.length-1,Math.floor((e.clientX-rect.left)/(150+8))));
+            bPayload.originDate=wds[dayOffset];
+          }
+        }
+      }
+      beginDrag(e,bPayload);booking.classList.add('dragging');
+    }
   });
   document.addEventListener('dragend',function(){dragPayload=null;document.getElementById('capacity-scroll').classList.remove('drag-active');document.querySelectorAll('.dragging,.over').forEach(function(x){x.classList.remove('dragging','over');});});
   document.addEventListener('dragover',function(e){var z=e.target.closest('[data-drop]');if(z){e.preventDefault();z.classList.add('over');}});
@@ -20146,6 +20284,7 @@ async function bind(){
       if(act==='remove-booking'){e.stopPropagation();removeBooking(+a.dataset.bookingId);}
       if(act==='delete-booking-day'){e.stopPropagation();deleteBookingDay(+a.dataset.bookingId,a.dataset.date,'day');}
       if(act==='copy-booking'){e.stopPropagation();copyBooking(+a.dataset.bookingId);}
+      if(act==='copy-booking-day'){e.stopPropagation();copyBookingDay(+a.dataset.bookingId,a.dataset.date);}
       if(act==='edit-booking'){e.stopPropagation();openAssign({bookingId:+a.dataset.bookingId});}
       if(act==='open-timeline-drawer'){e.stopPropagation();openTimelineDrawer(+a.dataset.bookingId);}
       if(act==='edit-user')openUser(+a.dataset.userId);

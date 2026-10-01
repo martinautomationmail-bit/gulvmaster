@@ -4643,6 +4643,25 @@ function workDatesForBooking(startDate, endDate) {
   }
   return out.length ? out : [startDate];
 }
+// RUNDE CA — workDatesForBooking() ovenfor regner med vilje Kapacitetsboardets
+// Mon-Fre-uge (ingen lørdag), og bruges til det i weeklyLoadForUser(). Men
+// Dagligplanlægningens egen dag-splitnings-logik (DELETE /api/assignments/:id
+// ?scope=day og PUT /api/assignments/:id/move-day) skal matche
+// Dagligplanlægningens EGEN regel i stedet (RUNDE H #24: lørdag ER en normal
+// bookbar dag her, kun søndag springes over — se planWorkDates() i
+// admin.html). Uden denne separate funktion ville en flerdages booking der
+// dækker en lørdag få talt/splittet forkert antal dage i de to ruter.
+function dailyWorkDatesForBooking(startDate, endDate) {
+  const s = new Date(`${startDate}T12:00:00`);
+  const e = new Date(`${endDate || startDate}T12:00:00`);
+  const out = [];
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+    if (d.getDay() !== 0) {
+      out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    }
+  }
+  return out.length ? out : [startDate];
+}
 
 function weekdayDates(weekMonday) {
   const d = new Date(`${weekMonday}T12:00:00`);
@@ -8089,8 +8108,27 @@ app.post('/api/tasks/manual-and-book', auth, panelAccess('plan'), asyncRoute(asy
       // ind i Kapacitet, ikke Daglig plan.
       const user = await pgOne("SELECT id,weekly_capacity FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id)]);
       if (!user) throw new Error('Medarbejderen blev ikke fundet');
-      const weeklyCapacity = Number(user.weekly_capacity) || 5;
-      const segments = await splitCapacityAcrossWeeks(user.id, weeklyCapacity, body.start_date, days);
+      // FEJL RETTET (okt. 2026, Martin: "hvis jeg prøver at booke Melissa manuelt
+      // så deler den over 1,5 dage i uge 41 og 1,5 dage i uge 42 ... det har jeg
+      // aldrig sagt") — splitCapacityAcrossWeeks() er bygget til BULK-booking (se
+      // dens egen kommentar), hvor det giver mening automatisk at fordele mange
+      // opgaver ud over flere uger, hvis en enkelt uge ikke har kapacitet til det
+      // hele. For en ENKELT manuel booking som denne (trukket fra skabelon-poolen
+      // ind på Kapacitetsboardet) er det uventet og forkert at dele den samme
+      // sammenhængende opgave op i flere rækker i databasen — det er præcis det
+      // der fik Kapacitetsboardet til at vise forkerte uge-opdelinger OG fantom-
+      // dobbeltbookinger i overlap-popup'en (se openCapTimelinePopup i admin.html,
+      // som ikke deduplikerer på task_id). Opretter nu altid ÉN sammenhængende
+      // reservation fra den valgte startdato, uanset om ugen "i forvejen" ser
+      // fyldt ud — ligesom PUT /api/capacity-reservations/:id (redigering)
+      // allerede gjorde. Kun selve BULK-knappen ("📊 Book alt i
+      // Kapacitetsbordet", se nedenfor) bruger stadig splitCapacityAcrossWeeks().
+      const segments = [{
+        week_key: getWeekKey(body.start_date),
+        capacity_days: days,
+        start_date: body.start_date,
+        end_date: addWorkingDays(body.start_date, days)
+      }];
       let firstBookingId = null;
       for (const seg of segments) {
         const result = await pool.query(`
@@ -8136,9 +8174,28 @@ app.post('/api/capacity-reservations', auth, panelAccess('capacity'), asyncRoute
   const requestedLabel = String(body.label || '').trim().slice(0, 120);
   const existingTaskId = body.task_id ? String(body.task_id) : null;
 
-  // Fordel dagene ud over lige så mange uger som nødvendigt — fylder hver uges
-  // resterende kapacitet op først, i stedet for at proppe alt ind i uge 1.
-  const segments = await splitCapacityAcrossWeeks(user.id, weeklyCapacity, startDate, capacityDays);
+  // FEJL RETTET (okt. 2026, Martin: "hvis jeg prøver at booke melissa manuelt så
+  // deler den over 1,5 dage i uge 41 og 1,5 dage i uge 42 ... men det har jeg
+  // aldrig sagt") — denne rute (den manuelle "+ reservér"/træk-opgave-til-
+  // Kapacitet-flow) kaldte tidligere splitCapacityAcrossWeeks(), som er bygget
+  // til BULK-booking (se dens kommentar) og derfor fordeler dagene ud over
+  // flere uger, hvis ugens "resterende kapacitet" (udregnet fra ALT ANDET
+  // arbejde den uge) ikke er stor nok — selvom Martin bare bad om ÉN
+  // sammenhængende reservation. Det gav både forkerte uge-opdelinger OG
+  // fantom-dobbeltbookinger i overlap-popup'en (openCapTimelinePopup i
+  // admin.html deduplikerer ikke på task_id, så to rækker for samme opgave
+  // vises som to separate bjælker). Opretter nu altid ÉN sammenhængende
+  // reservation fra den valgte uge/startdato — samme adfærd som redigering
+  // (PUT /api/capacity-reservations/:id) altid har haft. Kun selve
+  // BULK-knappen ("📊 Book alt i Kapacitetsbordet") bruger stadig
+  // splitCapacityAcrossWeeks(), da den rent faktisk booker mange forskellige
+  // opgaver på én gang og med vilje skal undgå at overbelaste én enkelt uge.
+  const segments = [{
+    week_key: getWeekKey(startDate),
+    capacity_days: capacityDays,
+    start_date: startDate,
+    end_date: addWorkingDays(startDate, capacityDays)
+  }];
 
   const client = await pool.connect();
   try {
@@ -9503,6 +9560,104 @@ app.put('/api/assignments/:id', auth, panelAccess('plan'), asyncRoute(async (req
   }
 }));
 
+// RUNDE CA (okt. 2026, Martin: "hvis jeg bare vil rykke en dag i den række så
+// rykker den alle 4 ... det er fucking træls") — en flerdages Dagligplan-
+// booking er ÉN sammenhængende række (start_date + days), som DELETE
+// /api/assignments/:id?scope=day allerede kunne splitte EN enkelt dag ud af
+// (se dens kommentar). Denne rute gør det samme for en FLYTNING: splitter
+// kun den angivne dag (origin_date) ud af den eksisterende række og flytter
+// PRÆCIS den ene dag til den nye medarbejder/dato — resten af bookingens
+// dage bliver liggende upåvirket, i stedet for at hele bjælken (og dermed
+// alle dens dage) flyttes samlet, som admin.html's almindelige drag&drop
+// (PUT /api/assignments/:id) ellers gør. Bruges af handleDrop() i admin.html,
+// som udregner origin_date fra museposition i den trukne bjælke.
+app.put('/api/assignments/:id/move-day', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query('SELECT * FROM planning_bookings WHERE id=$1', [Number(req.params.id)]);
+    if (!current.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+    }
+    const row = current.rows[0];
+    if (String(row.planning_mode || 'daily') === 'capacity') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Kan ikke bruges på en kapacitetsreservation' });
+    }
+    const body = req.body || {};
+    const originDate = validDate(String(body.origin_date || '')) ? String(body.origin_date) : null;
+    const newStartDate = validDate(String(body.start_date || '')) ? String(body.start_date) : null;
+    const newUserId = Number(body.user_id) || row.user_id;
+    if (!originDate || !newStartDate) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Ugyldig dato' });
+    }
+    const workDates = dailyWorkDatesForBooking(row.start_date, row.end_date);
+    const idx = workDates.indexOf(originDate);
+    let movedId;
+    if (idx === -1 || workDates.length <= 1) {
+      // Kun én dag i alt (eller den angivne dato findes slet ikke i
+      // intervallet — bør ikke ske) — intet at splitte, flyt hele rækken.
+      const newEndDate = addBookableDays(newStartDate, Number(row.days) || 1);
+      await client.query(
+        `UPDATE planning_bookings SET user_id=$1,week_key=$2,start_date=$3,end_date=$4,updated_at=${nowTextSQL()} WHERE id=$5`,
+        [newUserId, getWeekKey(newStartDate), newStartDate, newEndDate, row.id]
+      );
+      movedId = row.id;
+    } else {
+      const originalDays = Number(row.days) || workDates.length;
+      const perDay = originalDays / workDates.length;
+      const before = workDates.slice(0, idx);
+      const after = workDates.slice(idx + 1);
+      if (before.length) {
+        await client.query(
+          `UPDATE planning_bookings SET end_date=$1, days=$2, updated_at=${nowTextSQL()} WHERE id=$3`,
+          [before[before.length - 1], Math.round(before.length * perDay * 4) / 4, row.id]
+        );
+      }
+      if (after.length) {
+        if (before.length) {
+          await client.query(`
+            INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_attachments,start_time,start_date,end_date,planning_mode,updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()})
+          `, [row.task_id, row.user_id, getWeekKey(after[0]), Math.round(after.length * perDay * 4) / 4, row.capacity_days, row.notes, row.note_link, row.note_attachments, row.start_time, after[0], after[after.length - 1], row.planning_mode || 'daily']);
+        } else {
+          await client.query(
+            `UPDATE planning_bookings SET start_date=$1, week_key=$2, days=$3, updated_at=${nowTextSQL()} WHERE id=$4`,
+            [after[0], getWeekKey(after[0]), Math.round(after.length * perDay * 4) / 4, row.id]
+          );
+        }
+      }
+      if (!before.length && !after.length) {
+        // Bælte-tilfælde (bør ikke ske, givet tjekket ovenfor) — slet den
+        // oprindelige række; den udtrukne dag genopstår som en ny række nedenfor.
+        await client.query('DELETE FROM planning_bookings WHERE id=$1', [row.id]);
+      }
+      const movedDays = Math.max(0.25, Math.round(perDay * 4) / 4);
+      const movedEnd = addBookableDays(newStartDate, movedDays);
+      const result = await client.query(`
+        INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_attachments,start_time,start_date,end_date,planning_mode,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()}) RETURNING id
+      `, [row.task_id, newUserId, getWeekKey(newStartDate), movedDays, row.capacity_days, row.notes, row.note_link, row.note_attachments, row.start_time, newStartDate, movedEnd, row.planning_mode || 'daily']);
+      movedId = result.rows[0].id;
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true, id: movedId });
+    sendScheduleChangeEmail(newUserId, `Din kalender er blevet opdateret: en opgave er flyttet til ${newStartDate}.`)
+      .catch(e => console.error('Kalender-mail fejlede:', e.message));
+    if (Number(row.user_id) !== Number(newUserId)) {
+      sendScheduleChangeEmail(row.user_id, 'En opgave er blevet flyttet væk fra din kalender.')
+        .catch(e => console.error('Kalender-mail fejlede:', e.message));
+    }
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    res.status(400).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+}));
+
 app.delete('/api/assignments/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const client = await pool.connect();
   try {
@@ -9517,7 +9672,7 @@ app.delete('/api/assignments/:id', auth, panelAccess('plan'), asyncRoute(async (
     const targetDate = validDate(String(req.query.date || '')) ? String(req.query.date) : null;
 
     if (scope === 'day' && targetDate && String(row.planning_mode || 'daily') !== 'capacity') {
-      const workDates = workDatesForBooking(row.start_date, row.end_date);
+      const workDates = dailyWorkDatesForBooking(row.start_date, row.end_date);
       const idx = workDates.indexOf(targetDate);
       if (idx === -1 || workDates.length <= 1) {
         // Kun én dag i alt, eller datoen findes slet ikke i intervallet — så er der
@@ -22536,6 +22691,89 @@ async function runOpgavepoolCustomerBackfill() {
     client.release();
   }
 }
+// RUNDE CA — engangs-OPRYDNING (okt. 2026, samme app_migrations-mønster som
+// migrationerne ovenfor) af kapacitetsreservationer der blev fragmenteret af
+// den nu rettede splitCapacityAcrossWeeks()-fejl (se "FEJL RETTET"-kommentaren
+// ved POST /api/capacity-reservations og POST /api/tasks/manual-and-book
+// ovenfor) — ÉN manuel reservation Martin oprettede som en sammenhængende
+// periode kunne tidligere blive gemt som FLERE separate rækker i
+// planning_bookings (samme task_id+user_id, hver med sin egen smalle
+// start/slut-uge), fordi algoritmen fyldte hver uges "resterende kapacitet"
+// op først i stedet for at gemme det som Martin bad om. Selve koden der
+// OPRETTER nye reservationer er rettet ovenfor, men det retter ikke de
+// rækker der allerede ligger fragmenterede i databasen fra før rettelsen —
+// uden denne backfill ville Martin fortsætte med at se de forkerte
+// uge-opdelinger og fantom-dobbeltbookinger (se Nikolaj-eksemplet) for alle
+// reservationer booket FØR dette deploy, uanset at nye bookinger nu er
+// korrekte. Samler kun grupper hvor segmenterne reelt hænger sammenhængende
+// (hvert segments startdato ligger EFTER det foregående segments slutdato,
+// uden at de to overlapper i tid — en stor afstand mellem to segmenter er
+// normal og forventet her: splitCapacityAcrossWeeks() springer en uge helt
+// over, hvis den i forvejen var 100% fyldt med andet arbejde, så to segmenter
+// af samme opgave kan ligge flere uger fra hinanden uden at det er en
+// uafhængig, ny reservation). En gruppe hvor segmenterne rent faktisk
+// OVERLAPPER i tid (burde ikke kunne ske givet hvordan splitCapacityAcrossWeeks
+// selv bygger segmenterne) røres ikke og logges i stedet, for ikke at gætte
+// forkert. Kører højst én gang nogensinde.
+const CAPACITY_SPLIT_MERGE_MIGRATION = 'capacity_manual_split_merge_20261001';
+async function runCapacitySplitMerge() {
+  const already = await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [CAPACITY_SPLIT_MERGE_MIGRATION]);
+  if (already) return { ok: true, skipped: true, reason: 'already_done' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const claimed = await client.query(
+      "INSERT INTO app_migrations (name, details) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING",
+      [CAPACITY_SPLIT_MERGE_MIGRATION, 'Kører…']
+    );
+    if (!claimed.rowCount) { await client.query('ROLLBACK'); return { ok: true, skipped: true, reason: 'already_done' }; }
+    const groups = await client.query(`
+      SELECT task_id, user_id,
+             array_agg(id ORDER BY start_date) AS ids,
+             array_agg(start_date ORDER BY start_date) AS starts,
+             array_agg(end_date ORDER BY start_date) AS ends,
+             array_agg(capacity_days ORDER BY start_date) AS caps
+      FROM planning_bookings
+      WHERE COALESCE(planning_mode,'daily')='capacity'
+      GROUP BY task_id, user_id
+      HAVING COUNT(*) > 1
+    `);
+    let mergedGroups = 0, mergedRows = 0, skippedGroups = 0;
+    for (const g of groups.rows) {
+      const n = g.ids.length;
+      let contiguous = true;
+      for (let i = 1; i < n; i++) {
+        const prevEnd = new Date(`${g.ends[i - 1]}T12:00:00`);
+        const curStart = new Date(`${g.starts[i]}T12:00:00`);
+        const gapDays = Math.round((curStart - prevEnd) / 86400000);
+        if (gapDays < 1) { contiguous = false; break; }
+      }
+      if (!contiguous) { skippedGroups += 1; continue; }
+      const totalCapDays = g.caps.reduce((s, c) => s + Number(c), 0);
+      const newStart = g.starts[0];
+      const newEnd = g.ends[n - 1];
+      const keepId = g.ids[0];
+      const dropIds = g.ids.slice(1);
+      await client.query(
+        `UPDATE planning_bookings SET start_date=$1, end_date=$2, capacity_days=$3, week_key=$4, updated_at=${nowTextSQL()} WHERE id=$5`,
+        [newStart, newEnd, totalCapDays, getWeekKey(newStart), keepId]
+      );
+      await client.query('DELETE FROM planning_bookings WHERE id = ANY($1)', [dropIds]);
+      mergedGroups += 1;
+      mergedRows += dropIds.length;
+    }
+    const message = `Samlede ${mergedGroups} opdelte kapacitetsreservationer (fjernede ${mergedRows} overflødige rækker), sprang ${skippedGroups} ikke-sammenhængende grupper over`;
+    await client.query('UPDATE app_migrations SET details=$2, completed_at=' + nowTextSQL() + ' WHERE name=$1', [CAPACITY_SPLIT_MERGE_MIGRATION, message]);
+    await client.query('COMMIT');
+    console.log(`Kapacitets-sammenlægning færdig: ${message}`);
+    return { ok: true, mergedGroups, mergedRows, skippedGroups };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
 const PRODUCT_CATALOG_PRICE_FIX_MIGRATION = 'product_catalog_price_correction_20260916';
 async function runProductCatalogPriceCorrection() {
   const already = await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [PRODUCT_CATALOG_PRICE_FIX_MIGRATION]);
@@ -22672,6 +22910,9 @@ async function start() {
       .catch(error => { console.error('Prisrettelse af produktkatalog fejlede:', error.message); logSystemEvent('product_catalog_price_correction', 'error', 'Prisrettelse af produktkatalog fejlede: ' + error.message); });
     runOpgavepoolCustomerBackfill()
       .catch(error => { console.error('Opgavepool-kundefelt-backfill fejlede:', error.message); logSystemEvent('opgavepool_customer_backfill', 'error', 'Opgavepool-kundefelt-backfill fejlede: ' + error.message); });
+    // RUNDE CA — se kommentaren ved runCapacitySplitMerge() ovenfor.
+    runCapacitySplitMerge()
+      .catch(error => { console.error('Kapacitets-sammenlægning fejlede:', error.message); logSystemEvent('capacity_split_merge', 'error', 'Kapacitets-sammenlægning fejlede: ' + error.message); });
     // RUNDE BE — se kommentaren ved ensureLeadSourceExtraOptions() ovenfor.
     ensureLeadSourceExtraOptions()
       .catch(error => { console.error('Kunne ikke sikre ekstra Lead Source-muligheder:', error.message); logSystemEvent('lead_source_options', 'error', 'Kunne ikke sikre ekstra Lead Source-muligheder: ' + error.message); });
