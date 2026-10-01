@@ -1715,7 +1715,7 @@ async function initSchema() {
     -- fillDocEmailVars/crmFireStageAutomation).
     UPDATE crm_stages SET
       email_enabled = 1,
-      email_subject = 'Tillykke — vi har vundet opgaven! 🎉',
+      email_subject = 'Tak for opgaven — vi glæder os til at gå i gang! 🎉',
       email_body = '<p>Hej {{navn}},</p><p>Super nyhed — I har sagt ja til tilbuddet, og opgaven er nu markeret som <strong>vundet</strong> hos {{firma}}! 🎉</p><p>Vi glæder os til at komme i gang og sætter snarest en tidsplan for jer.</p><p>Har I spørgsmål i mellemtiden, er I altid velkomne til at ringe eller skrive.</p><p>Mange hilsner<br>{{firma}}</p>'
     WHERE is_won = 1 AND (email_body IS NULL OR email_body = '');
     -- Tidsbaserede opfølgninger pr. stage (adskilt fra sms_enabled/email_enabled
@@ -2492,8 +2492,8 @@ async function initSchema() {
       // Martin ikke skal redigere HTML for at ændre teksten. Erstatter den
       // ældre, rent tekst-baserede "Vundet"-mail fra crm_stages.email_body
       // (RUNDE S/V), som IKKE længere bruges til selve afsendelsen.
-      ['won_project', 'Vundet-mail til kunden (tillykke + betingelser + video)',
-        'Tillykke — vi har vundet opgaven! 🎉',
+      ['won_project', 'Vundet-mail til kunden (tak for opgaven + betingelser + video)',
+        'Tak for opgaven — vi glæder os til at gå i gang! 🎉',
         'Hej {{navn}},\n\nSuper nyhed — I har sagt ja, og jeres projekt er nu i gang hos {{firma}}! 🎉\n\nVi glæder os til at komme i gang og sætter snarest en tidsplan for jer.\n\nHar I spørgsmål i mellemtiden, er I altid velkomne til at ringe eller skrive.',
         1],
     ];
@@ -2503,6 +2503,25 @@ async function initSchema() {
         [key, name, subject, body, enabled]
       );
     }
+    // FEJL RETTET (okt. 2026, Martin: "Ændre overskriften til noget mere
+    // normalt ikke Tillykke vi har vundet opgaven det virker mærkligt") —
+    // ON CONFLICT DO NOTHING ovenfor betyder at en allerede-seedet
+    // 'won_project'-række (som Martins — seedet for længst) ALDRIG ville få
+    // den nye standardtekst med, selvom selve koden ovenfor er rettet. Denne
+    // ene UPDATE retter kun det — og KUN hvis emnefeltet stadig er UÆNDRET
+    // siden den oprindelige seed ('Tillykke — vi har vundet opgaven! 🎉'),
+    // så en tekst Martin selv måtte have rettet til i mellemtiden i
+    // Skabeloner-centeret aldrig overskrives.
+    await pool.query(
+      `UPDATE system_email_templates SET subject=$1 WHERE key='won_project' AND subject='Tillykke — vi har vundet opgaven! 🎉'`,
+      ['Tak for opgaven — vi glæder os til at gå i gang! 🎉']
+    );
+    // Samme princip for det interne (kun admin-synlige) navn på skabelonen i
+    // Skabeloner-centeret — kosmetisk, men opdateres kun hvis stadig uændret.
+    await pool.query(
+      `UPDATE system_email_templates SET name=$1 WHERE key='won_project' AND name='Vundet-mail til kunden (tillykke + betingelser + video)'`,
+      ['Vundet-mail til kunden (tak for opgaven + betingelser + video)']
+    );
   }
 
   // ── ØKONOMI: engangs-bootstrap ──────────────────────────────
@@ -5315,7 +5334,7 @@ app.post('/api/settings/test-won-email', auth, adminOnly, asyncRoute(async (req,
     settingsRows.rows.forEach(r => { settings[r.key] = r.value; });
     const sysTpl = await pgOne("SELECT * FROM system_email_templates WHERE key='won_project'");
     const companyName = settings.company_name || 'Gulv Master Enterprise ApS';
-    const subject = fillDocEmailVars(sysTpl?.subject || 'Tillykke — vi har vundet opgaven! 🎉', { navn: 'Test-kunde', firma: companyName });
+    const subject = fillDocEmailVars(sysTpl?.subject || 'Tak for opgaven — vi glæder os til at gå i gang! 🎉', { navn: 'Test-kunde', firma: companyName });
     const bodyTemplate = sysTpl?.body_html || 'Hej {{navn}},\n\nDette er en TEST af Vundet-mailen.\n\nVenlig hilsen\n{{firma}}';
     const messageText = fillDocEmailVars(bodyTemplate, { navn: 'Test-kunde', firma: companyName });
     const html = buildWonProjectEmailHtml({ messageText, hasPdf: !!settings.won_pdf_base64 });
@@ -6393,7 +6412,7 @@ function buildWonProjectEmailHtml({ messageText, hasPdf }) {
           </tr>` : '';
   return `<!doctype html>
 <html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tillykke — vi har vundet opgaven!</title>
+<title>Tak for opgaven</title>
 <style>
   body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
   table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
@@ -6401,7 +6420,7 @@ function buildWonProjectEmailHtml({ messageText, hasPdf }) {
   body{margin:0;padding:0;width:100%!important;background:#F9F7F2;}
 </style></head>
 <body style="margin:0;padding:0;background:#F9F7F2;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">Tillykke — I har vundet opgaven! Se de vedhæftede betingelser, og se vores 1-minutters video om det gode forløb.</div>
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">Tak for opgaven! Se de vedhæftede betingelser, og se vores 1-minutters video om det gode forløb.</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F9F7F2;"><tr><td align="center" style="padding:32px 16px;">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 18px 45px rgba(0,0,0,.05);">
       <tr><td style="background:#003509;padding:22px 32px;">
@@ -6409,7 +6428,12 @@ function buildWonProjectEmailHtml({ messageText, hasPdf }) {
       </td></tr>
       <tr><td style="padding:36px 32px 8px;">
         <div style="font-size:40px;line-height:1;margin-bottom:14px;">🎉</div>
-        <div style="font-family:Arial,sans-serif;font-weight:900;font-size:32px;line-height:1.1;margin:0 0 14px;color:#003509;">Tillykke — vi har<br>vundet opgaven!</div>
+        <!-- FEJL RETTET (okt. 2026, Martin: "Ændre overskriften til noget mere
+             normalt ikke Tillykke vi har vundet opgaven det virker mærkligt")
+             — "Tillykke — vi har vundet opgaven!" lød som om VI fejrer en
+             sejr over for kunden, i stedet for at takke KUNDEN. Overskriften
+             taler nu til kunden i stedet for om os selv. -->
+        <div style="font-family:Arial,sans-serif;font-weight:900;font-size:32px;line-height:1.1;margin:0 0 14px;color:#003509;">Tak for opgaven!</div>
         ${messageHtml}
       </td></tr>
       ${pdfBlockHtml}
@@ -6460,7 +6484,7 @@ async function sendWonProjectEmail(customerId) {
     settingsRows.rows.forEach(r => { settings[r.key] = r.value; });
     const companyName = settings.company_name || 'Gulv Master Enterprise ApS';
     const vars = { navn: customer.name || '', firma: companyName };
-    const subject = fillDocEmailVars(sysTpl?.subject || 'Tillykke — vi har vundet opgaven! 🎉', vars);
+    const subject = fillDocEmailVars(sysTpl?.subject || 'Tak for opgaven — vi glæder os til at gå i gang! 🎉', vars);
     const bodyTemplate = sysTpl?.body_html || 'Hej {{navn}},\n\nSuper nyhed — jeres projekt er nu i gang hos {{firma}}! 🎉';
     const messageText = fillDocEmailVars(bodyTemplate, vars);
     const hasPdf = !!settings.won_pdf_base64;
@@ -10875,6 +10899,70 @@ app.get('/api/crm/customers/:id/files', auth, panelAccess('customers'), asyncRou
   }
   files.sort((a, b) => Number(b.internal_date) - Number(a.internal_date));
   res.json(files);
+}));
+
+// ══════════════════════════════════════════════════════════════
+// AUTOMATIK / UDGÅENDE MAILS PÅ KUNDEKORTET (okt. 2026, Martin: "kan jeg under
+// automation af kunderne i handler ikke åbne se alt der sker? Se fx hende
+// Helle Torp. Hun burde have fået en mail med at vi har vundet og den pdf
+// fil, men det kan jeg ikke se? vil gerne kunne se alt under kunden så jeg
+// hurtig kan verificere om de har fået den") — outbound_emails (se den store
+// skema-kommentar ved tabellen) logger allerede ALLE udgående mails
+// (vundet-mail, tilbud, faktura, foto-anmodning + kvittering), men der har
+// hidtil IKKE været noget sted på selve kundekortet der samlede dem, så
+// Martin måtte lede i hvert enkelt tilbud/faktura for sig — og vundet-mailen
+// (knyttet direkte til kunden, ikke et dokument) kunne overhovedet ikke ses
+// nogen steder. Denne rute samler det ÉT sted, krydsrefereret til denne
+// specifikke kunde:
+//  - 'won_project': ref_id ER kundens id direkte (se sendWonProjectEmail).
+//  - 'photo_request'/'photo_request_receipt': ref_id er en
+//    customer_photo_requests-række, kobles via dennes customer_id.
+//  - 'quote'/'invoice': ref_id er selve tilbuddet/fakturaen. De fleste har
+//    quotes.customer_id/invoices.customer_id sat, men IKKE alle gamle (se den
+//    store forklaring ved findOrAttachQuoteForBooking-mønsteret andetsteds i
+//    filen — customer_id har ikke altid været udfyldt) — derfor samme
+//    sikkerheds-net her: falder tilbage til at matche på kundens egen
+//    email/telefon når customer_id er NULL, så ældre tilbud/fakturaer uden
+//    koblingen stadig dukker op under kunden.
+app.get('/api/crm/customers/:id/automation', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+  const customer = await pgOne('SELECT id, email, phone FROM customers WHERE id=$1', [req.params.id]);
+  if (!customer) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
+  const custEmail = customer.email || '';
+  const custPhone = customer.phone || '';
+  const rows = await pool.query(`
+    WITH my_quotes AS (
+      SELECT id, quote_number FROM quotes
+      WHERE customer_id=$1
+         OR (customer_id IS NULL AND $2<>'' AND customer_email=$2)
+         OR (customer_id IS NULL AND $3<>'' AND customer_phone=$3)
+    ), my_invoices AS (
+      SELECT id, invoice_number FROM invoices
+      WHERE customer_id=$1
+         OR (customer_id IS NULL AND $2<>'' AND customer_email=$2)
+         OR (customer_id IS NULL AND $3<>'' AND customer_phone=$3)
+    ), my_photo_reqs AS (
+      SELECT id, question FROM customer_photo_requests WHERE customer_id=$1
+    )
+    SELECT oe.id, oe.kind, oe.ref_id, oe.recipient, oe.subject, oe.status, oe.status_detail,
+           oe.created_at, oe.status_updated_at,
+           CASE
+             WHEN oe.kind='quote' THEN mq.quote_number
+             WHEN oe.kind='invoice' THEN mi.invoice_number
+             WHEN oe.kind IN ('photo_request','photo_request_receipt') THEN mp.question
+             ELSE NULL
+           END AS context_label
+    FROM outbound_emails oe
+    LEFT JOIN my_quotes mq ON oe.kind='quote' AND mq.id::text = oe.ref_id
+    LEFT JOIN my_invoices mi ON oe.kind='invoice' AND mi.id::text = oe.ref_id
+    LEFT JOIN my_photo_reqs mp ON oe.kind IN ('photo_request','photo_request_receipt') AND mp.id::text = oe.ref_id
+    WHERE (oe.kind='won_project' AND oe.ref_id=$1::text)
+       OR (oe.kind='quote' AND oe.ref_id IN (SELECT id::text FROM my_quotes))
+       OR (oe.kind='invoice' AND oe.ref_id IN (SELECT id::text FROM my_invoices))
+       OR (oe.kind IN ('photo_request','photo_request_receipt') AND oe.ref_id IN (SELECT id::text FROM my_photo_reqs))
+    ORDER BY oe.created_at DESC
+    LIMIT 100
+  `, [req.params.id, custEmail, custPhone]);
+  res.json(rows.rows);
 }));
 
 // ══════════════════════════════════════════════════════════════

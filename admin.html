@@ -2641,12 +2641,13 @@ body.qz-overlay-open .page.active{display:none}
    bredere i feltet. Det lidt sammenpresset, det bad jeg dig om men bare lidt
    mere så det ikke virker så sammenpresset") — 128px løste tidligere KUN
    uensartede bredder (se kommentaren ovenfor), men var aldrig i sig selv
-   tænkt som den optimale bredde. Sat op til 150px — samme ændring er lavet
-   samtidig i .cap-cell herunder, dags-<th> i renderPlan() og
-   assignPillSpan()'s flerdags-breddeudregning, så alle fire forbliver
-   indbyrdes konsistente (se kommentaren ved .day-cell ovenfor for hvorfor det
-   er vigtigt at de altid matcher). */
-.day-cell{padding:4px;min-width:150px;max-width:150px;overflow:visible}
+   tænkt som den optimale bredde. Sat op til 150px, og (samme ønske gentaget,
+   okt. 2026) videre op til 180px — samme ændring er lavet samtidig i
+   .cap-cell herunder, dags-<th> i renderPlan() og assignPillSpan()'s
+   flerdags-breddeudregning, så alle fire forbliver indbyrdes konsistente (se
+   kommentaren ved .day-cell ovenfor for hvorfor det er vigtigt at de altid
+   matcher). */
+.day-cell{padding:4px;min-width:180px;max-width:180px;overflow:visible}
 .day-cell.today-col{background:#FBFDFF}
 .drop-zone{min-height:70px;border:1px dashed transparent;border-radius:6px;padding:2px;transition:.14s;overflow:visible}
 .drop-zone.over{background:#EFF6FF;border-color:var(--blue)}
@@ -2717,7 +2718,7 @@ body.qz-overlay-open .page.active{display:none}
    allerede bruger nedenfor, og som IKKE har dette problem) — så er 128px et
    fast loft uanset tekstlængde, hele året, ikke kun i de uger hvor teksten
    tilfældigvis er kort. */
-.cap-cell{padding:4px;min-width:150px;max-width:150px;vertical-align:top}
+.cap-cell{padding:4px;min-width:180px;max-width:180px;vertical-align:top}
 .cap-drop{position:relative;min-height:68px;border-radius:6px;border:1px dashed transparent;padding:3px;transition:.14s}
 .cap-drop.over{background:#EFF6FF;border-color:var(--blue)}
 
@@ -3751,7 +3752,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-01.52</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-01.53</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5830,6 +5831,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
   <div class="hint" id="cd-emails-not-connected" style="margin-bottom:20px;display:none">📧 Forbind jeres Gmail under "Min side → Indstillinger → Gmail" for automatisk at se mailkorrespondance med kunden her.</div>
 
+  <!-- AUTOMATIK — RETTET (okt. 2026, Martin: "kan jeg under automation af
+       kunderne i handler ikke åbne se alt der sker? Se fx hende Helle Torp.
+       Hun burde have fået en mail med at vi har vundet og den pdf fil, men
+       det kan jeg ikke se? vil gerne kunne se alt under kunden så jeg hurtig
+       kan verificere om de har fået den") — samler ALLE automatisk udsendte
+       mails til denne kunde (vundet-mail, tilbud, faktura, foto-anmodning +
+       kvittering) ét sted, med leverance-status når Resend-webhooken er sat
+       op (se GET /api/crm/customers/:id/automation i server.js). Samme
+       sammenklappede mønster som Mails/Filer-panelerne ovenfor. -->
+  <div class="crmpx-panel" id="cd-automation-panel" style="margin-bottom:20px">
+    <h3 id="cd-automation-toggle" style="cursor:pointer;user-select:none">🔔 Automatik <span class="sub" id="cd-automation-count"></span> <span id="cd-automation-toggle-icon" style="float:right;font-size:11px;color:var(--bly-sub)">▾ Skjul</span></h3>
+    <div id="cd-automation-list" style="margin-top:12px"></div>
+  </div>
+
   <!-- FILER — RUNDE L (Martins ønske #8): denne sektion fandtes hidtil KUN på et
        lead/en opportunity (crmpx-view-files), ikke på selve kundens egen side —
        derfor virkede det som om "kundernes filer ikke kom ind i programmet", når
@@ -7191,12 +7206,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="tld-row">
       <div class="tld-section"><label class="tld-label">📋 Dage (Daglig plan)</label><input id="tld-days" type="number" min=".25" max="60" step=".25" class="tld-input"></div>
     </div>
-    <div class="tld-section">
-      <label class="tld-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
-        <input type="checkbox" id="tld-capacity-toggle" style="width:auto">📊 Reservér også kapacitet <span style="opacity:.6;font-weight:500">(valgfrit, adskilt fra Daglig plan)</span>
-      </label>
-      <input id="tld-capdays" type="number" min=".25" max="60" step=".25" class="tld-input" style="display:none;margin-top:6px">
-    </div>
+    <!-- FEJL RETTET (okt. 2026, Martin: "Fjern dette 📊 Reservér også kapacitet
+         på Kapacitetsboardet(valgfrit — helt adskilt fra Daglig plan, sker kun
+         hvis du krydser af her)") — samme princip som allerede fjernet fra Daglig
+         plans egen booking-popup (assign-modal, se kommentaren der): checkboksen
+         (og dens skjulte "Kapacitetsdage"-felt) er fjernet helt herfra, i
+         Tidslinjens drawer, også. At reservere kapacitet sker udelukkende via
+         den selvstændige "+ reservér"-knap direkte på Kapacitetsboardet
+         (openCapacityModal). -->
     <div class="tld-section">
       <label class="tld-label">📍 Adresse</label>
       <input id="tld-address" class="tld-input" placeholder="Gade, postnr, by">
@@ -10241,7 +10258,7 @@ function assignPillSpan(b,spanDays,ds,canUp,canDown){
   var type=TYPE[b.type_guess||'other']||TYPE.other;
   var daysLabel=+b.days>1?' <span style="font-size:8px;opacity:.75;background:rgba(0,0,0,.1);padding:1px 4px;border-radius:3px">'+b.days+'d</span>':'';
   var isDone=!!b.completed_at;
-  var extraStyle=bookingColorStyle(b,type)+(spanDays>1?'position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(150px + 8px) - 10px);width:calc('+spanDays+'*(150px) + '+(spanDays-1)+'*8px - 10px);min-width:0':'');
+  var extraStyle=bookingColorStyle(b,type)+(spanDays>1?'position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(180px + 8px) - 10px);width:calc('+spanDays+'*(180px) + '+(spanDays-1)+'*8px - 10px);min-width:0':'');
   // ▲▼ til manuel rækkefølge — vises kun når opgaven IKKE har et mødetidspunkt, da
   // tidspunkt-satte opgaver altid sorterer kronologisk af sig selv.
   var reorderBtns=(ds&&!b.start_time)?('<span class="pill-reorder">'+
@@ -10349,7 +10366,7 @@ function renderPlan(){
   head+='</tr><tr><th class="staff-th">Medarbejder / undergruppe</th>';
   days.forEach(function(d,i){
     var weekBoundary=i>0&&d.getDay()===1; // tynd adskillelseslinje ved hver ny uges mandag
-    head+='<th class="'+(isToday(d)?'today-th':'')+(weekBoundary?' plan-week-boundary':'')+'" data-plan-monday="'+(d.getDay()===1?iso(d):'')+'" style="min-width:150px;max-width:150px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';
+    head+='<th class="'+(isToday(d)?'today-th':'')+(weekBoundary?' plan-week-boundary':'')+'" data-plan-monday="'+(d.getDay()===1?iso(d):'')+'" style="min-width:180px;max-width:180px">'+DAYS[d.getDay()]+'<br><span style="font-size:9px;font-weight:500">'+d.getDate()+'/'+(d.getMonth()+1)+'</span></th>';
   });
   document.getElementById('daily-head').innerHTML=head+'</tr>';
   var grouped=teamList('plan'),html='';
@@ -11829,9 +11846,6 @@ function openTimelineDrawer(bookingId){
   document.getElementById('tld-date').value=String(b.start_date).slice(0,10);
   document.getElementById('tld-time').value=b.start_time||'';
   document.getElementById('tld-days').value=b.days;
-  document.getElementById('tld-capdays').value=capDaysOf(b);
-  document.getElementById('tld-capacity-toggle').checked=false;
-  document.getElementById('tld-capdays').style.display='none';
   document.getElementById('tld-address').value=b.job_address||'';
   document.getElementById('tld-phone').value=b.customer_phone||'';
   document.getElementById('tld-email').value=b.customer_email||'';
@@ -11945,7 +11959,6 @@ function closeTimelineDrawer(){document.getElementById('tl-drawer').classList.re
 async function saveTimelineDrawer(){
   if(!tlDrawerBookingId)return;
   var body={user_id:+document.getElementById('tld-user').value,start_date:document.getElementById('tld-date').value,start_time:document.getElementById('tld-time').value||null,days:+document.getElementById('tld-days').value||1,notes:document.getElementById('tld-note').value.trim()||null};
-  if(document.getElementById('tld-capacity-toggle').checked){body.capacity_days=+document.getElementById('tld-capdays').value||1;}
   var taskBody={job_address:document.getElementById('tld-address').value.trim(),customer_phone:document.getElementById('tld-phone').value.trim(),customer_email:document.getElementById('tld-email').value.trim(),job_number:document.getElementById('tld-job-number').value.trim()};
   var calls=[api('/api/assignments/'+tlDrawerBookingId,{method:'PUT',body:JSON.stringify(body)})];
   if(tlDrawerTaskId)calls.push(api('/api/tasks/'+encodeURIComponent(tlDrawerTaskId),{method:'PUT',body:JSON.stringify(taskBody)}));
@@ -20142,7 +20155,6 @@ async function bind(){
   document.getElementById('assign-portal-link-btn').onclick=fetchAssignPortalLink;
   document.getElementById('assign-portal-copy-btn').onclick=copyAssignPortalLink;
   document.getElementById('backup-download-btn').onclick=downloadBackup;
-  document.getElementById('tld-capacity-toggle').onchange=function(e){document.getElementById('tld-capdays').style.display=e.target.checked?'block':'none';};
   // Assign modal
   document.getElementById('close-assign').onclick=function(){closeModal('assign-modal');};
   document.getElementById('save-assignment').onclick=saveAssignment;
@@ -22654,6 +22666,9 @@ function initCustomerDetailModule(){
   // RUNDE L (Martins ønske #8) — Filer-panellet, samme mønster som Mails
   // herover: altid sammenklappet, foldes ud ved klik på overskriften.
   document.getElementById('cd-files-toggle').addEventListener('click',cdToggleFilesPanel);
+  // Automatik-panellet starter udfoldet (se cdToggleAutomationPanel) — klik på
+  // overskriften folder det bare sammen/ud igen, samme mønster som Mails/Filer.
+  document.getElementById('cd-automation-toggle').addEventListener('click',cdToggleAutomationPanel);
 }
 // RUNDE L (Martins ønske #6): filtrerer cdQuotes på tilbudsnr., sagsnavn eller
 // status-tekst — case-uafhængigt, ingen nyt API-kald.
@@ -23064,6 +23079,11 @@ async function openCustomerDetail(id){
   document.getElementById('cd-files-wrap').hidden=true;
   document.getElementById('cd-files-toggle-icon').textContent='▸ Vis';
   cdFilesLoaded=false;
+  // Automatik-panellet (okt. 2026) starter derimod UDFOLDET og hentes med det
+  // samme hver gang kundesiden åbnes — se cdToggleAutomationPanel/cdLoadAutomation.
+  document.getElementById('cd-automation-list').style.display='';
+  document.getElementById('cd-automation-toggle-icon').textContent='▾ Skjul';
+  cdLoadAutomation(id);
 
   document.getElementById('cd-projects-count').textContent='('+d.projects.length+')';
   // RUNDE AS — "Handel"-kolonne, udledt af sagens tilbud (samme idé som
@@ -28478,6 +28498,48 @@ function qeDeliveryBadgeHtml(status,detail){
   if(!status)return '<span title="Kræver at Resend-webhooken er sat op — se leveringsnoten" style="font-size:10px;color:var(--bly-sub)">— leverance ukendt</span>';
   var m=QE_DELIVERY_META[status]||{icon:'•',label:status,color:'var(--bly-sub)'};
   return '<span style="font-size:10.5px;font-weight:700;color:'+m.color+'"'+(detail?' title="'+esc(detail)+'"':'')+'>'+m.icon+' '+m.label+'</span>';
+}
+// AUTOMATIK-PANELET på kundekortet (okt. 2026, Martin: "kan jeg under
+// automation af kunderne i handler ikke åbne se alt der sker?") — se den
+// store kommentar ved GET /api/crm/customers/:id/automation i server.js.
+// Genbruger samme leverance-status-badge (qeDeliveryBadgeHtml/QE_DELIVERY_META)
+// som Tilbud/Faktura-editoren allerede viser, så "✅ Leveret"/"❌ Afvist" betyder
+// det samme overalt i appen.
+var CD_AUTOMATION_KIND_META={
+  won_project:{icon:'🎉',label:'Vundet-mail til kunden'},
+  quote:{icon:'📄',label:'Tilbud sendt'},
+  invoice:{icon:'🧾',label:'Faktura sendt'},
+  photo_request:{icon:'📸',label:'Foto-anmodning sendt'},
+  photo_request_receipt:{icon:'📬',label:'Kvittering for billeder sendt'}
+};
+async function cdLoadAutomation(id){
+  var list=document.getElementById('cd-automation-list');
+  list.innerHTML='<div class="crmpx-empty">Henter...</div>';
+  var rows=await api('/api/crm/customers/'+id+'/automation');
+  if(!rows||rows.error){list.innerHTML='<div class="crmpx-empty">Kunne ikke hente automatik — '+esc((rows&&rows.error)||'ukendt fejl')+'</div>';return;}
+  document.getElementById('cd-automation-count').textContent=rows.length?'('+rows.length+')':'';
+  if(!rows.length){list.innerHTML='<div class="crmpx-empty">Ingen automatiske mails sendt til denne kunde endnu</div>';return;}
+  list.innerHTML=rows.map(function(r){
+    var meta=CD_AUTOMATION_KIND_META[r.kind]||{icon:'✉️',label:r.kind};
+    var ctx=r.context_label?' · '+esc(r.context_label):'';
+    return '<div class="doc-activity-row"><div>'
+      +'<div class="doc-activity-what">'+meta.icon+' '+meta.label+'</div>'
+      +'<div class="doc-activity-meta">Til '+esc(r.recipient||'–')+ctx+' · '+esc(r.subject||'')+'</div>'
+      +'</div><div style="text-align:right">'
+      +qeDeliveryBadgeHtml(r.status,r.status_detail)
+      +'<div class="doc-activity-when">'+fmtActivityWhen(r.created_at)+'</div>'
+      +'</div></div>';
+  }).join('');
+}
+// Automatik-panellet starter UDFOLDET (i modsætning til Mails/Filer) — det er
+// netop det Martin skal kunne se med ét blik uden ekstra klik, se
+// openCustomerDetail. Klik på overskriften folder det bare sammen/ud igen.
+function cdToggleAutomationPanel(){
+  var list=document.getElementById('cd-automation-list');
+  var icon=document.getElementById('cd-automation-toggle-icon');
+  var nowHidden=list.style.display!=='none';
+  list.style.display=nowHidden?'none':'';
+  icon.textContent=nowHidden?'▸ Vis':'▾ Skjul';
 }
 async function loadQeVersions(id){
   var wrap=document.getElementById('qe-versions-wrap');
