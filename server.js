@@ -11122,6 +11122,14 @@ app.post('/api/public/photo-requests/:token/respond', asyncRoute(async (req, res
   const newUrls = Array.isArray(b.photo_urls) ? b.photo_urls.filter(u => typeof u === 'string' && u) : [];
   const newUrlsFiltered = newUrls.filter(u => !existingUrls.includes(u));
   const mergedUrls = [...existingUrls, ...newUrlsFiltered];
+  // RETTET (okt. 2026, Martin: "Gør så de skal uploade mindst 1 billede. Da
+  // nogle slet ikke uploader noget.") — håndhæves her server-side (ikke kun i
+  // knappens disabled-tilstand ovenfor i GET-ruten), så svaret heller ikke kan
+  // gemmes via et direkte API-kald uden om knappen. Kun en fejl når der
+  // STADIG ikke findes noget billede efter denne indsendelse (dvs. hverken
+  // tidligere eller nu) — et rent note-opfølgningssvar, hvor billeder allerede
+  // blev lagt op ved et tidligere besøg, er fortsat tilladt.
+  if (!mergedUrls.length) return res.status(400).json({ error: 'Upload mindst ét billede før du sender svaret' });
   await pool.query(
     `UPDATE customer_photo_requests SET note=COALESCE($1,note), photo_urls=$2, updated_at=${nowTextSQL()}, answered_at=COALESCE(answered_at,${nowTextSQL()}) WHERE id=$3`,
     [note, JSON.stringify(mergedUrls), existing.id]
@@ -21959,6 +21967,51 @@ function ngKundeRateLimited(ip) {
   }
   return hits.length > maxPerWindow;
 }
+// NYT (okt. 2026, Martin: "Kunden SKAL uploade billeder og have mulighed for
+// at uploade flere ... De kan ikke trykke send uden") — separat, mere rummelig
+// hastighedsgrænse specifikt til billed-uploads (i modsætning til
+// ngKundeRateLimited ovenfor, som gælder selve FORMULAR-indsendelsen og med
+// vilje er stram, 8/time). Et par billeder pr. opgave kan sagtens blive til
+// 10-20 enkelt-uploads for én rigtig kunde, så den grænse ville blokere
+// legitim brug — men stadig med et loft, så det ikke bliver en gratis,
+// ubegrænset Cloudinary-proxy for hvem som helst.
+const ngKundePhotoRateLimit = new Map();
+function ngKundePhotoRateLimited(ip) {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000;
+  const maxPerWindow = 60;
+  const hits = (ngKundePhotoRateLimit.get(ip) || []).filter(t => now - t < windowMs);
+  hits.push(now);
+  ngKundePhotoRateLimit.set(ip, hits);
+  if (ngKundePhotoRateLimit.size > 500 && Math.random() < 0.02) {
+    for (const [k, v] of ngKundePhotoRateLimit) {
+      if (!v.some(t => now - t < windowMs)) ngKundePhotoRateLimit.delete(k);
+    }
+  }
+  return hits.length > maxPerWindow;
+}
+// NYT — billed-staging-ruten der bruges FØR selve kunden/handlen findes (modsat
+// /api/public/photo-requests/:token/upload-photo, som kræver en allerede
+// oprettet customer_photo_requests-token). Kunden vælger billeder undervejs i
+// selve tilmeldingsformularen, inden "Send" overhovedet er trykket — så der
+// er endnu intet kunde-id at hænge dem op på. Uploader derfor direkte til
+// Cloudinary (samme hjælpefunktion som resten af appen bruger,
+// uploadPhotoToCloudinary) og returnerer blot URL'en; selve
+// POST /api/public/ny-kunde-lead gemmer den færdige liste af URL'er på den
+// nyoprettede kunde, se der.
+app.post('/api/public/ny-kunde-lead/upload-photo', asyncRoute(async (req, res) => {
+  const ip = req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : req.ip;
+  if (ngKundePhotoRateLimited(ip)) return res.status(429).json({ error: 'For mange uploads — prøv igen senere' });
+  const b = req.body || {};
+  if (!b.image) return res.status(400).json({ error: 'Intet billede modtaget' });
+  if (!cloudinaryConfigured()) return res.status(400).json({ error: 'Billedlager er ikke konfigureret på serveren endnu — kontakt Gulv Master' });
+  try {
+    const url = await uploadPhotoToCloudinary(b.image, 'ny-kunde');
+    res.json({ ok: true, url });
+  } catch (e) {
+    res.status(400).json({ error: 'Kunne ikke uploade billedet: ' + e.message });
+  }
+}));
 // RETTET (okt. 2026, Martin: "Når jeg skriver dette login
 // https://gulvmaster.onrender.com/Ny-kunde så skal kunden logge ind først er
 // det korrekt? for det vil vi ikke have?") — Express' ruter er som standard
@@ -22004,11 +22057,34 @@ app.get(/^\/ny-kunde$/i, asyncRoute(async (req, res) => {
   .intro-eyebrow{font-size:10px;font-weight:700;color:#4F46E5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
   .intro-text{font-size:15px;font-weight:700;color:#3730A3;line-height:1.5}
   label{display:block;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.03em;margin:14px 0 6px}
-  input[type=text],input[type=tel],input[type=email],textarea{width:100%;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;font-size:14.5px;font-family:inherit}
+  input[type=text],input[type=tel],input[type=email],select,textarea{width:100%;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;font-size:14.5px;font-family:inherit}
   textarea{resize:vertical;min-height:80px}
+  /* RETTET (okt. 2026, Martin: "Ret knappens stil ved projek type til billy
+     style") — select-dropdownen (Projekt Type) manglede helt sin egen styling
+     og faldt derfor tilbage til browserens grimme standardudseende, mens alle
+     andre felter på siden allerede var pænt formaterede — rettet ved at lade
+     select'en dele samme ramme/radius/padding som input-felterne ovenfor, plus
+     en ensartet, selvtegnet pil (appearance:none fjerner browserens egen) så
+     den ser ud som et rigtigt, konsistent valg-felt i stedet for et løst,
+     uensartet element. Sig endelig til hvis du mente noget andet specifikt
+     med "billy style" — så retter jeg til.*/
+  select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%234F46E5'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:38px;cursor:pointer;color:#111318}
+  select:invalid{color:#9CA3AF}
   .req{color:#DC2626}
   .hint{font-size:11.5px;color:#9CA3AF;margin-top:6px}
   .hp-field{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}
+  /* NYT (okt. 2026, Martin: "Kunden SKAL uploade billeder og have mulighed for
+     at uploade flere ... De kan ikke trykke send uden") — samme visuelle
+     upload-knap/miniature-grid som /svar/:token allerede bruger (genbrugt
+     ordret, se CSS-klasserne dér), så det føles som ét sammenhængende system
+     og ikke et andet, mindre poleret flow. */
+  .upload-btn{display:block;width:100%;text-align:center;border:2px dashed #C7D2FE;background:#F9FAFF;border-radius:12px;padding:16px;font-size:13.5px;font-weight:700;color:#4F46E5;cursor:pointer}
+  .upload-btn input{display:none}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:12px}
+  .photo-thumb{position:relative;aspect-ratio:1/1;border-radius:10px;overflow:hidden;background:#F1F5F9}
+  .photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .photo-thumb .rm{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:rgba(17,19,24,.65);color:#fff;border:0;font-size:13px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
+  .photo-thumb .spin{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.75);font-size:11px;font-weight:700;color:#4F46E5}
   .send-btn{width:100%;margin-top:18px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(79,70,229,.35)}
   .send-btn:disabled{opacity:.55;box-shadow:none;cursor:default}
   .err-box{background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C;border-radius:12px;padding:12px 14px;font-size:13px;margin-top:14px;display:none}
@@ -22040,8 +22116,14 @@ app.get(/^\/ny-kunde$/i, asyncRoute(async (req, res) => {
   <select id="f-projekt-type"><option value="">— Vælg —</option>${projektTypeOptions.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select>` : ''}
   <label for="f-note">Hvad drejer det sig om?</label>
   <textarea id="f-note" placeholder="Kort beskrivelse af opgaven (valgfrit)"></textarea>
+  <label>Billeder af opgaven <span class="req">*</span></label>
+  <label class="upload-btn" id="upload-label">📷 Tryk for at vælge billeder (du kan vælge flere ad gangen)
+    <input type="file" id="file-input" accept="image/*" multiple>
+  </label>
+  <div class="hint">Mindst ét billede er påkrævet, så vi bedre kan forberede os på opgaven.</div>
+  <div class="photo-grid" id="photo-grid"></div>
   <div class="hp-field" aria-hidden="true"><label for="f-website">Website</label><input type="text" id="f-website" tabindex="-1" autocomplete="off"></div>
-  <button type="button" class="send-btn" id="send-btn">Send</button>
+  <button type="button" class="send-btn" id="send-btn" disabled>Send</button>
   <div class="err-box" id="err-box"></div>
   <div class="thanks-box" id="thanks-box"><h2>✓ Tak!</h2><p>Vi har modtaget dine oplysninger og kontakter dig hurtigst muligt.</p></div>
 </div>
@@ -22049,7 +22131,60 @@ app.get(/^\/ny-kunde$/i, asyncRoute(async (req, res) => {
 </div>
 <script>
 (function(){
-  document.getElementById('send-btn').addEventListener('click',function(){
+  // NYT (okt. 2026, Martin: "Kunden SKAL uploade billeder og have mulighed
+  // for at uploade flere ... De kan ikke trykke send uden") — samme
+  // upload-ét-ad-gangen-mønster som /svar/:token (skånsomt for mobil-
+  // forbindelser), men mod den nye, kunde-uafhængige stagings-rute
+  // (/api/public/ny-kunde-lead/upload-photo), da der endnu ikke findes nogen
+  // kunde at knytte billederne til på dette tidspunkt. "Send"-knappen starter
+  // disabled (se disabled-attributten i HTML'en) og først når mindst ét
+  // billede er færdig-uploadet, aktiveres den — og tjekkes IGEN server-side i
+  // selve /api/public/ny-kunde-lead, så den heller ikke kan omgås.
+  var photoUrls=[];
+  var grid=document.getElementById('photo-grid');
+  var sendBtnEl=document.getElementById('send-btn');
+  function updateSendBtnState(){ sendBtnEl.disabled=photoUrls.length===0; }
+  document.getElementById('file-input').addEventListener('change',function(e){
+    var files=Array.prototype.slice.call(e.target.files||[]);
+    files.forEach(uploadOne);
+    e.target.value='';
+  });
+  function uploadOne(file){
+    var cell=document.createElement('div');
+    cell.className='photo-thumb';
+    var previewUrl=URL.createObjectURL(file);
+    cell.innerHTML='<img src="'+previewUrl+'"><div class="spin">Uploader…</div>';
+    grid.appendChild(cell);
+    var reader=new FileReader();
+    reader.onload=function(){
+      fetch('/api/public/ny-kunde-lead/upload-photo',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({image:reader.result})
+      }).then(function(r){return r.json();}).then(function(d){
+        var spin=cell.querySelector('.spin');
+        if(d&&d.ok){
+          photoUrls.push(d.url);
+          if(spin)spin.remove();
+          var rm=document.createElement('button');
+          rm.type='button';rm.className='rm';rm.textContent='✕';
+          rm.addEventListener('click',function(){
+            var i=photoUrls.indexOf(d.url);if(i>-1)photoUrls.splice(i,1);
+            cell.remove();
+            updateSendBtnState();
+          });
+          cell.appendChild(rm);
+          updateSendBtnState();
+        } else {
+          if(spin){spin.textContent='Fejlede';spin.style.color='#B91C1C';}
+        }
+      }).catch(function(){
+        var spin=cell.querySelector('.spin');
+        if(spin){spin.textContent='Fejlede';spin.style.color='#B91C1C';}
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+  sendBtnEl.addEventListener('click',function(){
     var btn=this;
     var name=document.getElementById('f-name').value.trim();
     var phone=document.getElementById('f-phone').value.trim();
@@ -22064,14 +22199,15 @@ app.get(/^\/ny-kunde$/i, asyncRoute(async (req, res) => {
     if(!name){errBox.textContent='Skriv dit navn.';errBox.classList.add('show');return;}
     if(!phone&&!email){errBox.textContent='Udfyld mindst ét af telefon eller email.';errBox.classList.add('show');return;}
     if(projektTypeField&&!projektType){errBox.textContent='Vælg venligst projekt type.';errBox.classList.add('show');return;}
+    if(photoUrls.length===0){errBox.textContent='Upload mindst ét billede af opgaven.';errBox.classList.add('show');return;}
     btn.disabled=true;btn.textContent='Sender…';
     var customFields=projektTypeField?{projekt_type:projektType}:{};
     fetch('/api/public/ny-kunde-lead',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:name,phone:phone,email:email,address:address,note:note,website:website,custom_fields:customFields})
+      body:JSON.stringify({name:name,phone:phone,email:email,address:address,note:note,website:website,custom_fields:customFields,photo_urls:photoUrls})
     }).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){
-        document.getElementById('form-card').querySelectorAll('label,input,select,textarea,.send-btn,.intro-box,.hint').forEach(function(el){el.style.display='none';});
+        document.getElementById('form-card').querySelectorAll('label,input,select,textarea,.send-btn,.intro-box,.hint,.photo-grid').forEach(function(el){el.style.display='none';});
         document.getElementById('thanks-box').classList.add('show');
       } else {
         btn.disabled=false;btn.textContent='Send';
@@ -22117,6 +22253,18 @@ app.post('/api/public/ny-kunde-lead', asyncRoute(async (req, res) => {
   if (projektTypeFieldDef && Array.isArray(projektTypeFieldDef.options) && projektTypeFieldDef.options.length && !String(customFields.projekt_type || '').trim()) {
     return res.status(400).json({ error: 'Vælg venligst projekt type' });
   }
+  // NYT (okt. 2026, Martin: "Kunden SKAL uploade billeder ... De kan ikke
+  // trykke send uden") — håndhæves her IGEN server-side (ikke kun ved at
+  // knappen er disabled i browseren), så formularen heller ikke kan sendes
+  // uden billeder via et direkte API-kald uden om knappen. Kun rigtige
+  // Cloudinary-URL'er accepteres (samme sanity-tjek som ellers ingen steder i
+  // kodebasen findes for denne slags klient-indsendte lister) — alt andet
+  // filtreres stille fra, så et tomt/ugyldigt array korrekt rammer samme
+  // "mindst ét billede"-fejl i stedet for at gemme skrald.
+  const photoUrls = Array.isArray(b.photo_urls)
+    ? b.photo_urls.filter(u => typeof u === 'string' && /^https:\/\/res\.cloudinary\.com\//.test(u)).slice(0, 30)
+    : [];
+  if (!photoUrls.length) return res.status(400).json({ error: 'Upload mindst ét billede af opgaven' });
   try {
     const linked = await crmFindOrCreateContactAndCustomer(name, email, phone, address, note);
     // "Manglende data" — PRÆCIS den stage Martin selv navngav. Slået op på navn
@@ -22138,8 +22286,23 @@ app.post('/api/public/ny-kunde-lead', asyncRoute(async (req, res) => {
       [name, linked.contactId, stage.pipeline_id, stage.id, note]
     );
     await crmSetCustomFieldValues('opportunity', lead.id, customFields);
+    // NYT — gemmer billederne i PRÆCIS samme tabel/struktur som den
+    // eksisterende "Bed kunden om svar/billeder"-funktion allerede bruger
+    // (customer_photo_requests), blot oprettet og besvaret i ét hug i stedet
+    // for staff-anmodning → kunde-svar i to trin. Det betyder billederne
+    // automatisk dukker op under kundens "Filer"-fane (GET
+    // /api/crm/customers/:id/files) og tænder det eksisterende
+    // has_customer_photos-flag (📸-mærket), uden at jeg skulle opfinde en ny
+    // fil-visning. answered_at sættes med det samme, da billederne jo allerede
+    // er endeligt indsendt sammen med resten af formularen.
+    const photoToken = crypto.randomBytes(20).toString('hex');
+    await pool.query(
+      `INSERT INTO customer_photo_requests (customer_id,token,question,photo_urls,answered_at)
+       VALUES ($1,$2,$3,$4,${nowTextSQL()})`,
+      [linked.customerId, photoToken, 'Billeder af opgaven (indsendt ved selvoprettelse)', JSON.stringify(photoUrls)]
+    );
     await crmLogActivity('opportunity', lead.id, 'created',
-      'Kunden oprettede sig selv via det offentlige kunde-link' + (note ? (': "' + note + '"') : ''), null);
+      'Kunden oprettede sig selv via det offentlige kunde-link med ' + photoUrls.length + ' billede' + (photoUrls.length === 1 ? '' : 'r') + (note ? (': "' + note + '"') : ''), null);
     crmFireStageAutomation('opportunity', lead.id, stage.id, { name, phone, email })
       .catch(e => console.error('Stage-automatik fejlede (selv-oprettet kunde):', e.message));
     res.json({ ok: true });
@@ -22241,7 +22404,17 @@ app.get('/svar/:token', asyncRoute(async (req, res) => {
       grid.appendChild(cell);
     });
   }
+  // RETTET (okt. 2026, Martin: "ved Den email vi sender ud til 'Bed kunden om
+  // svar/billeder' Gør så de skal uploade mindst 1 billede. Da nogle slet
+  // ikke uploader noget.") — "Send svar"-knappen er nu slået fra (samme
+  // nedtonede stil som allerede fandtes i CSS'en, .send-btn:disabled, men som
+  // intet faktisk satte den til før nu) indtil mindst ét billede (nyt ELLER
+  // allerede tilføjet ved et tidligere besøg) findes. Opdateres efter hver
+  // upload/fjernelse, så knappen tænder/slukker live uden sideindlæsning.
+  var sendBtnEl=document.getElementById('send-btn');
+  function updateSendBtnState(){ sendBtnEl.disabled=(existing.length+newUrls.length)===0; }
   renderExisting();
+  updateSendBtnState();
   document.getElementById('file-input').addEventListener('change',function(e){
     var files=Array.prototype.slice.call(e.target.files||[]);
     files.forEach(uploadOne);
@@ -22268,8 +22441,10 @@ app.get('/svar/:token', asyncRoute(async (req, res) => {
           rm.addEventListener('click',function(){
             var i=newUrls.indexOf(d.url);if(i>-1)newUrls.splice(i,1);
             cell.remove();
+            updateSendBtnState();
           });
           cell.appendChild(rm);
+          updateSendBtnState();
         } else {
           if(spin){spin.textContent='Fejlede';spin.style.color='#B91C1C';}
         }
@@ -22280,8 +22455,9 @@ app.get('/svar/:token', asyncRoute(async (req, res) => {
     };
     reader.readAsDataURL(file);
   }
-  document.getElementById('send-btn').addEventListener('click',function(){
+  sendBtnEl.addEventListener('click',function(){
     var btn=this;
+    if((existing.length+newUrls.length)===0){alert('Upload mindst ét billede før du sender svaret.');return;}
     btn.disabled=true;btn.textContent='Sender…';
     fetch('/api/public/photo-requests/'+TOKEN+'/respond',{
       method:'POST',headers:{'Content-Type':'application/json'},
