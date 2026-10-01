@@ -6412,7 +6412,7 @@ function buildWonProjectEmailHtml({ messageText, hasPdf }) {
           </tr>` : '';
   return `<!doctype html>
 <html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tak for opgaven</title>
+<title>Vi glæder os til din opgave</title>
 <style>
   body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
   table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
@@ -6420,7 +6420,7 @@ function buildWonProjectEmailHtml({ messageText, hasPdf }) {
   body{margin:0;padding:0;width:100%!important;background:#F9F7F2;}
 </style></head>
 <body style="margin:0;padding:0;background:#F9F7F2;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">Tak for opgaven! Se de vedhæftede betingelser, og se vores 1-minutters video om det gode forløb.</div>
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">Vi glæder os til at varetage din opgave! Se de vedhæftede betingelser, og se vores 1-minutters video om det gode forløb.</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F9F7F2;"><tr><td align="center" style="padding:32px 16px;">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 18px 45px rgba(0,0,0,.05);">
       <tr><td style="background:#003509;padding:22px 32px;">
@@ -6431,9 +6431,11 @@ function buildWonProjectEmailHtml({ messageText, hasPdf }) {
         <!-- FEJL RETTET (okt. 2026, Martin: "Ændre overskriften til noget mere
              normalt ikke Tillykke vi har vundet opgaven det virker mærkligt")
              — "Tillykke — vi har vundet opgaven!" lød som om VI fejrer en
-             sejr over for kunden, i stedet for at takke KUNDEN. Overskriften
-             taler nu til kunden i stedet for om os selv. -->
-        <div style="font-family:Arial,sans-serif;font-weight:900;font-size:32px;line-height:1.1;margin:0 0 14px;color:#003509;">Tak for opgaven!</div>
+             sejr over for kunden, i stedet for at takke KUNDEN. Rettet først
+             til "Tak for opgaven!", og siden (samme runde, Martin sendte
+             ordlyden direkte: "Skriv ... Vi glæder os til at varetage din
+             opgave.") til den endelige tekst herunder. -->
+        <div style="font-family:Arial,sans-serif;font-weight:900;font-size:32px;line-height:1.1;margin:0 0 14px;color:#003509;">Vi glæder os til at varetage din opgave.</div>
         ${messageHtml}
       </td></tr>
       ${pdfBlockHtml}
@@ -6465,7 +6467,24 @@ function buildWonProjectEmailHtml({ messageText, hasPdf }) {
 // automatikken (crmFireStageAutomation, crmMoveEntityToWonStage), da denne
 // kaldes midt inde i vigtige flows (tilbudsaccept, projekt-oprettelse) hvor
 // en mail-fejl ALDRIG må vælte selve handlingen.
-async function sendWonProjectEmail(customerId) {
+// RETTET (okt. 2026, Martin: skærmbillede af Helle Torps "Automatik"-fane i
+// selve HANDLEN/opportunityen, som kun viste en SMS — "Jeg ser stadig ikke at
+// kunden modtager en Mail med opgaven er vundet under automation?") — dette
+// er en ANDEN aktivitets-liste end kundekortets nye "🔔 Automatik"-panel
+// (outbound_emails, se GET /api/crm/customers/:id/automation): det her er
+// crm_activities, den aktivitets-tidslinje der vises nede på selve
+// handlen/leadet (crmp-detail), med sine egne "Automatik"/"Status"/"Noter"-
+// filtre (se CRMPX_ACTIVITY_GROUPS i admin.html). Vundet-mailen blev ALDRIG
+// logget her, kun i outbound_emails — fordi sendWonProjectEmail kun kendte
+// customerId, ikke hvilken handel/lead den hørte til. crmRef (valgfri,
+// {entityType,entityId}) løser det: de to kald der RENT FAKTISK har en
+// handel/et lead ved hånden på kaldetidspunktet (crmMoveEntityToWonStage og
+// createProjectFromAcceptedQuote — se deres kaldesteder) sender den med, så
+// mailen nu ALSO dukker op under "⚙️ Automatik" på selve handlen, med en
+// "✉️ Se mail"-knap ligesom de andre automatiske mails. Det tredje kald
+// (manuel "+ Nyt projekt" uden nogen CRM-handel) har intet at logge imod og
+// sender bevidst intet crmRef.
+async function sendWonProjectEmail(customerId, crmRef) {
   try {
     if (!customerId) return; // ingen kunde at sende til (fx et rent CRM-kort uden kobling til customers)
     const customer = await pgOne('SELECT id, name, email, won_email_sent_at FROM customers WHERE id=$1', [customerId]);
@@ -6502,6 +6521,16 @@ async function sendWonProjectEmail(customerId) {
     // lykkes, i stedet for at kunden aldrig får mailen pga. ét transient hik.
     await pool.query(`UPDATE customers SET won_email_sent_at=${nowTextSQL()} WHERE id=$1`, [customerId]);
     await logOutboundEmail({ kind: 'won_project', refId: customerId, recipient: customer.email, subject, sendResult: result });
+    // Se den store kommentar ovenfor ved funktionens start — gør mailen
+    // synlig på selve handlens/leadets egen "⚙️ Automatik"-fane, ikke kun på
+    // kundekortet. Fejler aldrig hårdt (samme forsigtighedsprincip som resten
+    // af funktionen) — en logningsfejl her må ikke se ud som om selve mailen
+    // (som på dette tidspunkt allerede ER sendt) fejlede.
+    if (crmRef && crmRef.entityType && crmRef.entityId) {
+      try {
+        await crmLogEmailActivity(crmRef.entityType, crmRef.entityId, 'won_project_email_sent', 'Vundet-mail sendt til kunden: ' + subject, subject, html, null);
+      } catch (e2) { console.error('Kunne ikke logge Vundet-mail på handlens aktivitetstidslinje:', e2.message); }
+    }
   } catch (e) {
     console.error('Kunne ikke sende Vundet-mail til kunden:', e.message);
   }
@@ -12015,7 +12044,7 @@ async function crmFireStageAutomation(entityType, entityId, stageId, contactFiel
       const row = await pgOne(`SELECT contact_id FROM ${table} WHERE id=$1`, [entityId]);
       const contact = row && row.contact_id ? await pgOne('SELECT customer_id FROM crm_contacts WHERE id=$1', [row.contact_id]) : null;
       if (contact && contact.customer_id) {
-        sendWonProjectEmail(contact.customer_id).catch(e => console.error('Vundet-mail (stage-flytning) fejlede:', e.message));
+        sendWonProjectEmail(contact.customer_id, { entityType, entityId }).catch(e => console.error('Vundet-mail (stage-flytning) fejlede:', e.message));
       }
     } catch (e) {
       console.error('Kunne ikke slå kunde op til Vundet-mailen efter stage-flytning:', e.message);
@@ -14609,7 +14638,7 @@ async function createProjectFromAcceptedQuote(quote) {
     // mailen for denne kunde på dette tidspunkt (samme kald, kører først) —
     // customers.won_email_sent_at-spærren i sendWonProjectEmail sikrer at
     // dette blot bliver et stille no-op i så fald, ikke en dublet-mail.
-    sendWonProjectEmail(quote.customer_id).catch(e => console.error('Vundet-mail (projekt fra tilbud) fejlede:', e.message));
+    sendWonProjectEmail(quote.customer_id, quote.crm_lead_id ? { entityType: 'lead', entityId: quote.crm_lead_id } : (quote.crm_opportunity_id ? { entityType: 'opportunity', entityId: quote.crm_opportunity_id } : undefined)).catch(e => console.error('Vundet-mail (projekt fra tilbud) fejlede:', e.message));
     // RUNDE BC — intern kontor-varsling (info@gulvmaster.dk), se
     // sendQuoteAcceptedInternalNotification ovenfor. Vi er her netop KUN første
     // gang tilbuddets projekt oprettes (existingProject-checket ovenfor har

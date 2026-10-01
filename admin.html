@@ -3752,7 +3752,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-01.53</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-01.54</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -11287,7 +11287,22 @@ function renderCapTimeline(){
     var left=s*DAY_W+1,width=Math.max(DAY_W-2,span*DAY_W-2);
     var top=6+b._lane*32;
     var type=TYPE[b.type_guess||'other']||TYPE.other;
-    var label=b.capacity_label||b.job_name||b.task_name||'Kapacitetsreservation';
+    // RETTET (okt. 2026, Martin: "navnet på kunden ikke ses før opgave
+    // beskrivelsen" — samme princip genbrugt her for Tidslinjens bjælker) —
+    // genbruger NØJAGTIGT samme live opslag+formatering som Kapacitetsbordets
+    // egne pills allerede blev rettet til i sidste runde (se kommentaren ved
+    // qeCapacityDefaultLabel-kaldet i renderCapacity ovenfor): slår opgaven op
+    // live i tasks[] og bruger qeCapacityDefaultLabel(), som sætter kundens
+    // RIGTIGE navn (t.customer_name, med t.job_name kun som fallback) FØRST.
+    // job_name på selve bookingen (b.job_name) er BEVIDST ikke brugt direkte
+    // her: for en ren kapacitetsreservation uden sag (oprettet via
+    // "+ reservér" uden at vælge en opgave) sætter POST .../manual-and-book
+    // b.job_name til den faste placeholder-tekst "Kapacitetsreserve" (se
+    // kommentaren ved den indsættelse i server.js) — det ville ellers
+    // fejlagtigt vinde over det rigtige, medarbejder-indtastede navn i
+    // capacity_label.
+    var linkedTlTask=tasks.find(function(x){return String(x.id)===String(b.task_id);});
+    var label=linkedTlTask?qeCapacityDefaultLabel(linkedTlTask):(b.capacity_label||b.job_name||b.task_name||'Kapacitetsreservation');
     var dashIdx=label.indexOf(' — ');
     if(dashIdx>-1)label=label.slice(0,dashIdx);
     // Kontinuerings-pile — viser tydeligt at bjælken fortsætter uden for den
@@ -11296,8 +11311,21 @@ function renderCapTimeline(){
     var contR=capTlMode==='week'&&date(b._capTlEnd)>add(rangeStart,winEndIdx);
     var dispLabel=(contL?'◀ ':'')+label+(contR?' ▶':'');
     var basisTxt=b._capTlProjectBased?'sagens planlagte datoer':'den bookede kapacitetsuge';
-    var tip=label+' — '+capTlShortDate(b._capTlStart)+' til '+capTlShortDate(b._capTlEnd)+' ('+basisTxt+') · '+capDaysOf(b)+' d reserveret'+((contL||contR)?' · fortsætter uden for denne uge':'');
-    return '<div class="tl-bar" data-action="open-cap-from-timeline" data-booking-id="'+b.id+'" style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+(type.bar||'#94A3B8')+'" title="'+esc(tip)+'"><span class="tl-bar-label">'+esc(dispLabel)+'</span></div>';
+    var tip=label+' — '+capTlShortDate(b._capTlStart)+' til '+capTlShortDate(b._capTlEnd)+' ('+basisTxt+') · '+capDaysOf(b)+' d reserveret'+((contL||contR)?' · fortsætter uden for denne uge':'')+(b.task_project_id?' · højreklik for at åbne sagen':'');
+    // RETTET (okt. 2026, Martin: "gør så man kan højre klikke på tidslinjens
+    // opgave og komme hen til opgaven hvis man vil") — når bjælken hører til
+    // en rigtig sag (task_project_id, se bookingSelect() i server.js), er den
+    // nu et RIGTIGT <a href="#project-detail/<id>"> i stedet for en <div> —
+    // det giver browserens egen native højreklik-menu ("Åbn link i ny fane" /
+    // "Kopiér link") gratis, uden en separat knap der stjæler plads i den
+    // i forvejen smalle bjælke. Venstreklik skal stadig åbne redigerings-
+    // modalen som hidtil (uændret), ikke navigere væk — derfor et
+    // e.preventDefault() lige i starten af 'open-cap-from-timeline'-handleren
+    // (se document-click-delegeringen), så selve navigationen kun sker ved
+    // højreklik/"åbn i ny fane", aldrig ved almindeligt venstreklik.
+    var tag=b.task_project_id?'a':'div';
+    var hrefAttr=b.task_project_id?' href="#project-detail/'+b.task_project_id+'"':'';
+    return '<'+tag+' class="tl-bar" data-action="open-cap-from-timeline" data-booking-id="'+b.id+'"'+hrefAttr+' style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+(type.bar||'#94A3B8')+'" title="'+esc(tip)+'"><span class="tl-bar-label">'+esc(dispLabel)+'</span></'+tag+'>';
   }).join('');
 
   var navHTML='<div class="captl-nav">';
@@ -20315,7 +20343,12 @@ async function bind(){
       if(act==='capacity-add')openCapacityModal({weekStart:iso(mon(new Date()))});
       if(act==='add-capacity')openCapacityModal({userId:+a.dataset.userId,weekStart:a.dataset.date});
       if(act==='open-cap-timeline'){e.stopPropagation();openCapTimelinePopup(+a.dataset.userId,a.dataset.date);}
-      if(act==='open-cap-from-timeline'){e.stopPropagation();var ctlB=bookings.find(function(x){return +x.id===+a.dataset.bookingId;});closeCapTimelinePopup();if(ctlB)openCapacityModal({booking:ctlB});}
+      // RETTET (okt. 2026) — bjælken kan nu være et RIGTIGT <a href="#project-
+      // detail/..."> (se renderCapTimeline), kun for at give browserens egen
+      // højreklik-menu ("Åbn i ny fane"/"Kopiér link"). Almindeligt venstreklik
+      // skal stadig åbne redigerings-modalen som altid, IKKE navigere væk —
+      // derfor preventDefault() her, før selve navigationen når at ske.
+      if(act==='open-cap-from-timeline'){e.preventDefault();e.stopPropagation();var ctlB=bookings.find(function(x){return +x.id===+a.dataset.bookingId;});closeCapTimelinePopup();if(ctlB)openCapacityModal({booking:ctlB});}
       if(act==='toggle-tt-row'){e.stopPropagation();ttExpanded[a.dataset.userId]=!ttExpanded[a.dataset.userId];renderTimetrackReport();}
       if(act==='tt-open-photos'){e.stopPropagation();ttOpenLightbox(a.dataset.entryId,+a.dataset.idx);}
       if(act==='tt-view'){ttSetView(a.dataset.ttView);}
@@ -24526,7 +24559,11 @@ function crmpxActivityGroup(kind){
   // stage-triggede og tidsbaserede SMS/mail-opfølgninger, samt deres
   // fejl-varianter. sms_sent_stage*/email_sent_stage*/stage_followup_*_r*
   // har et dynamisk suffiks (stage-/regel-id), derfor præfiks-match.
-  if(kind==='value_updated'||/^sms_sent_stage/.test(kind)||/^email_sent_stage/.test(kind)||kind==='sms_failed'||kind==='email_failed'||/^stage_followup_(sms|email)_r/.test(kind)||kind==='stage_followup_sms_failed'||kind==='stage_followup_email_failed'||kind==='lost_followup_sent'||kind==='lost_followup_failed')return 'automation';
+  // RETTET (okt. 2026, Martin: "Jeg ser stadig ikke at kunden modtager en
+  // Mail med opgaven er vundet under automation?") — won_project_email_sent
+  // tilføjet, se den store kommentar ved sendWonProjectEmail(crmRef) i
+  // server.js.
+  if(kind==='value_updated'||kind==='won_project_email_sent'||/^sms_sent_stage/.test(kind)||/^email_sent_stage/.test(kind)||kind==='sms_failed'||kind==='email_failed'||/^stage_followup_(sms|email)_r/.test(kind)||kind==='stage_followup_sms_failed'||kind==='stage_followup_email_failed'||kind==='lost_followup_sent'||kind==='lost_followup_failed')return 'automation';
   return 'other';
 }
 var crmpxActivityFilter='all';
@@ -24551,7 +24588,7 @@ function crmpxRenderActivity(activities){
     // så man kan se hvad der skete FØR konverteringen uden at forveksle det med
     // salgets egne linjer. Kopierede NOTER beholder kind='note' og ser derfor
     // ud (og kan rettes/slettes) præcis som noter skrevet her.
-    var icon=a.kind==='note'?'📝':a.kind==='stage_change'?'🔀':a.kind==='converted'?'🤝':a.kind==='lead_history'?'📜':'✨';
+    var icon=a.kind==='note'?'📝':a.kind==='stage_change'?'🔀':a.kind==='converted'?'🤝':a.kind==='lead_history'?'📜':a.kind==='won_project_email_sent'?'🎉':'✨';
     var edited=a.updated_at&&a.updated_at!==a.created_at;
     // RUNDE BB — aktiviteter der har en gemt, faktisk afsendt mail
     // (email_html, se crmLogEmailActivity i server.js) får en "Se mail"-knap,
