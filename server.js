@@ -21959,10 +21959,34 @@ function ngKundeRateLimited(ip) {
   }
   return hits.length > maxPerWindow;
 }
-app.get('/ny-kunde', asyncRoute(async (req, res) => {
+// RETTET (okt. 2026, Martin: "Når jeg skriver dette login
+// https://gulvmaster.onrender.com/Ny-kunde så skal kunden logge ind først er
+// det korrekt? for det vil vi ikke have?") — Express' ruter er som standard
+// CASE-SENSITIVE. Martin skrev linket med stort N ("/Ny-kunde"), hvilket IKKE
+// matchede den oprindelige rute ('/ny-kunde', kun småt n) og derfor i stedet
+// endte i app'ens catch-all nederst i filen (app.get('*', sendPage(...))),
+// som rammer index.html — og index.html ER login-siden. Det var altså ikke
+// en rigtig login-spærring på selve kundeformularen, men et rute-mismatch
+// der (uheldigt) viste login-siden i stedet. Rettet ved at matche '/ny-kunde'
+// med et case-insensitivt regex-mønster i stedet for en almindelig
+// streng-sti, så BÅDE '/ny-kunde', '/Ny-kunde', '/NY-KUNDE' osv. rammer
+// formularen uden login, uanset hvordan linket skrives/kopieres.
+app.get(/^\/ny-kunde$/i, asyncRoute(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const esc = escPublic;
   const company = await getCompanyInfo();
+  // NYT (okt. 2026, Martin: "Og be dem også vælge Projekt Type MM så vi får
+  // den perfekt Tilmelding") — henter den SAMME "Projekt Type"-feltdefinition
+  // (med akkurat de valgmuligheder Martin selv har sat op under CRM → ⚙️
+  // Indstillinger) som allerede bruges internt for opportunities, så
+  // dropdown'en her ALTID matcher det staff ser, selv hvis Martin senere
+  // tilføjer/omdøber en valgmulighed. Kun dette ene felt vises bevidst — de
+  // øvrige interne opportunity-felter (fx "Sagsnummer", som systemet selv
+  // tildeler) giver ikke mening at bede en helt ny kunde om at udfylde.
+  const projektTypeDef = await pgOne(
+    "SELECT label, options FROM crm_custom_fields WHERE entity_type='opportunity' AND key='projekt_type' LIMIT 1"
+  );
+  const projektTypeOptions = projektTypeDef && Array.isArray(projektTypeDef.options) ? projektTypeDef.options : [];
   const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Bliv kunde hos ${esc(company.name)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -22012,6 +22036,8 @@ app.get('/ny-kunde', asyncRoute(async (req, res) => {
   <div class="hint">Udfyld mindst ét af telefon eller email, så vi kan kontakte dig.</div>
   <label for="f-address">Adresse</label>
   <input type="text" id="f-address" placeholder="Adresse for opgaven (valgfrit)">
+  ${projektTypeOptions.length ? `<label for="f-projekt-type">${esc(projektTypeDef.label || 'Projekt Type')} <span class="req">*</span></label>
+  <select id="f-projekt-type"><option value="">— Vælg —</option>${projektTypeOptions.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select>` : ''}
   <label for="f-note">Hvad drejer det sig om?</label>
   <textarea id="f-note" placeholder="Kort beskrivelse af opgaven (valgfrit)"></textarea>
   <div class="hp-field" aria-hidden="true"><label for="f-website">Website</label><input type="text" id="f-website" tabindex="-1" autocomplete="off"></div>
@@ -22031,17 +22057,21 @@ app.get('/ny-kunde', asyncRoute(async (req, res) => {
     var address=document.getElementById('f-address').value.trim();
     var note=document.getElementById('f-note').value.trim();
     var website=document.getElementById('f-website').value;
+    var projektTypeField=document.getElementById('f-projekt-type');
+    var projektType=projektTypeField?projektTypeField.value:'';
     var errBox=document.getElementById('err-box');
     errBox.classList.remove('show');
     if(!name){errBox.textContent='Skriv dit navn.';errBox.classList.add('show');return;}
     if(!phone&&!email){errBox.textContent='Udfyld mindst ét af telefon eller email.';errBox.classList.add('show');return;}
+    if(projektTypeField&&!projektType){errBox.textContent='Vælg venligst projekt type.';errBox.classList.add('show');return;}
     btn.disabled=true;btn.textContent='Sender…';
+    var customFields=projektTypeField?{projekt_type:projektType}:{};
     fetch('/api/public/ny-kunde-lead',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:name,phone:phone,email:email,address:address,note:note,website:website})
+      body:JSON.stringify({name:name,phone:phone,email:email,address:address,note:note,website:website,custom_fields:customFields})
     }).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){
-        document.getElementById('form-card').querySelectorAll('label,input,textarea,.send-btn,.intro-box,.hint').forEach(function(el){el.style.display='none';});
+        document.getElementById('form-card').querySelectorAll('label,input,select,textarea,.send-btn,.intro-box,.hint').forEach(function(el){el.style.display='none';});
         document.getElementById('thanks-box').classList.add('show');
       } else {
         btn.disabled=false;btn.textContent='Send';
@@ -22074,6 +22104,19 @@ app.post('/api/public/ny-kunde-lead', asyncRoute(async (req, res) => {
   const note = String(b.note || '').trim().slice(0, 2000) || null;
   if (!name) return res.status(400).json({ error: 'Skriv dit navn' });
   if (!phone && !email) return res.status(400).json({ error: 'Udfyld mindst ét af telefon eller email' });
+  // NYT (okt. 2026, Martin: "Og be dem også vælge Projekt Type MM så vi får
+  // den perfekt Tilmelding") — ukendte feltnøgler i custom_fields filtreres
+  // automatisk fra af crmSetCustomFieldValues() nedenfor, så vi roligt kan
+  // sende hele det klient-indsendte objekt videre uden selv at hvidliste
+  // hver nøgle. Her tjekkes KUN at Projekt Type rent faktisk blev udfyldt —
+  // samme "*"-krav som i formularen — men kun hvis feltet overhovedet findes
+  // og har valgmuligheder sat op, så en kunde aldrig kan blive spærret ude af
+  // en formular-konfiguration (fx hvis Martin en dag sletter feltet).
+  const customFields = (b.custom_fields && typeof b.custom_fields === 'object') ? b.custom_fields : {};
+  const projektTypeFieldDef = await pgOne("SELECT options FROM crm_custom_fields WHERE entity_type='opportunity' AND key='projekt_type' LIMIT 1");
+  if (projektTypeFieldDef && Array.isArray(projektTypeFieldDef.options) && projektTypeFieldDef.options.length && !String(customFields.projekt_type || '').trim()) {
+    return res.status(400).json({ error: 'Vælg venligst projekt type' });
+  }
   try {
     const linked = await crmFindOrCreateContactAndCustomer(name, email, phone, address, note);
     // "Manglende data" — PRÆCIS den stage Martin selv navngav. Slået op på navn
@@ -22094,6 +22137,7 @@ app.post('/api/public/ny-kunde-lead', asyncRoute(async (req, res) => {
        VALUES ($1,$2,$3,$4,1,$5) RETURNING id`,
       [name, linked.contactId, stage.pipeline_id, stage.id, note]
     );
+    await crmSetCustomFieldValues('opportunity', lead.id, customFields);
     await crmLogActivity('opportunity', lead.id, 'created',
       'Kunden oprettede sig selv via det offentlige kunde-link' + (note ? (': "' + note + '"') : ''), null);
     crmFireStageAutomation('opportunity', lead.id, stage.id, { name, phone, email })
