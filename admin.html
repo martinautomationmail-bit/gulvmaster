@@ -3761,7 +3761,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-01.57</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-02.59</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -14178,7 +14178,29 @@ async function loadAutomationSettings(){
       +'<div class="sub" style="margin-bottom:2px">Andre kilder (fx InstantCall, Google Ads...)</div>'
       +'<input class="input" id="automation-webhook-custom-name" placeholder="Skriv et navn, fx instantcall" style="margin-bottom:6px">'
       +'<div style="display:flex;gap:6px"><input class="input" readonly id="automation-webhook-custom-url" value="" placeholder="Skriv et navn herover for at få linket" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" id="automation-webhook-custom-copy" title="Kopiér">📋</button></div>'
-      +'</div>';
+      +'</div>'
+      // NYT (okt. 2026, InstantCalls udvikler via Martin: "lave en api nøgle
+      // til os, så vi kan læse leads samt flytte et lead til en anden stage,
+      // skrive en note og oprette en opgave") — webhook-nøglen OVENFOR kan
+      // kun OPRETTE et nyt lead; denne nye, separate nøgle giver et eksternt
+      // system læse/skrive-adgang til EKSISTERENDE leads (læs, flyt stage,
+      // note, opgave), se de 5 nye /api/external/...-ruter i server.js. Egen
+      // sektion med egen "Generér ny nøgle"-knap, da det er en helt anden
+      // nøgle/formål end webhook-nøglen foroven, selvom begge bor i samme
+      // "🤖 Automatisering"-fane for Martin set udefra.
+      +'<div style="padding-top:10px;margin-top:10px;border-top:1px solid var(--border2,#E5E7EB)">'
+      +'<div class="sub" style="margin-bottom:2px">Ekstern læse/skrive-API til leads (fx InstantCall)</div>'
+      +'<div style="font-size:11.5px;color:var(--bly-sub,#6B7280);margin-bottom:6px">Giv udvikleren base-URL\'en og nøglen herunder. De sender nøglen i en HTTP-header kaldet <code>X-Api-Key</code> på hvert kald.</div>'
+      +'<div style="margin-bottom:6px"><div class="sub" style="margin-bottom:2px">Base-URL</div>'
+      +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.external_api_base||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.external_api_base||'')+'" title="Kopiér">📋</button></div></div>'
+      +'<div class="sub" style="margin-bottom:2px">Nøgle (X-Api-Key)</div>'
+      +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.external_api_key||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.external_api_key||'')+'" title="Kopiér">📋</button><button class="btn small" id="automation-external-api-regen">Generér ny nøgle</button></div>'
+      +'<div style="font-size:11px;color:var(--bly-sub,#6B7280);margin-top:8px;line-height:1.6">'
+      +'<b>GET</b> leads — <b>GET</b> leads/:id — <b>GET</b> stages<br>'
+      +'<b>PUT</b> leads/:id/stage &nbsp;<span style="color:#9CA3AF">body: {stage_id} eller {stage_name}</span><br>'
+      +'<b>POST</b> leads/:id/notes &nbsp;<span style="color:#9CA3AF">body: {note}</span><br>'
+      +'<b>POST</b> leads/:id/tasks &nbsp;<span style="color:#9CA3AF">body: {title, due_date?, due_time?}</span>'
+      +'</div></div>';
     document.querySelectorAll('#automation-webhook-info [data-copy]').forEach(function(btn){
       btn.addEventListener('click',async function(){
         try{await navigator.clipboard.writeText(btn.dataset.copy);toast('Kopieret','✓');}catch(e){toast('Kunne ikke kopiere — markér og kopiér manuelt','⚠');}
@@ -14188,6 +14210,12 @@ async function loadAutomationSettings(){
     if(regenBtn)regenBtn.addEventListener('click',async function(){
       if(!await gmConfirm('Generér en ny nøgle? Den GAMLE nøgle holder op med at virke med det samme — husk at opdatere den i Make bagefter.'))return;
       var r=await api('/api/crm/lead-webhook-regenerate',{method:'POST'});
+      if(r&&r.ok)loadAutomationSettings();else toast((r&&r.error)||'Kunne ikke generere ny nøgle','❌');
+    });
+    var extRegenBtn=document.getElementById('automation-external-api-regen');
+    if(extRegenBtn)extRegenBtn.addEventListener('click',async function(){
+      if(!await gmConfirm('Generér en ny ekstern API-nøgle? Den GAMLE nøgle holder op med at virke med det samme — husk at give den nye til InstantCall (eller hvem der bruger den) bagefter.'))return;
+      var r=await api('/api/crm/external-api-key-regenerate',{method:'POST'});
       if(r&&r.ok)loadAutomationSettings();else toast((r&&r.error)||'Kunne ikke generere ny nøgle','❌');
     });
     var customNameInput=document.getElementById('automation-webhook-custom-name');

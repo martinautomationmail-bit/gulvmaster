@@ -1944,6 +1944,20 @@ async function initSchema() {
     -- Make.com) — genereres én gang ved første opstart, ligger derefter fast
     -- indtil nogen trykker "Generér ny nøgle" i UI'en. Se POST /api/leads/webhook/:source.
     INSERT INTO app_settings (key, value) VALUES ('lead_webhook_secret', '${crypto.randomBytes(20).toString('hex')}') ON CONFLICT (key) DO NOTHING;
+    -- NYT (okt. 2026, Martin: "Har lige fået en ekstra kommentar fra vores
+    -- udvikler [InstantCall], han siger at du skal lave en api nøgle til os,
+    -- så vi kan læse leads samt flytte et lead til en anden stage, skrive en
+    -- note og oprette en opgave") — delt hemmelig nøgle til den NYE, separate
+    -- læse/skrive-API til eksterne partnere (se app.use('/api/external/...',
+    -- apiKeyAuth) nedenfor). Modsat lead_webhook_secret ovenfor (som kun kan
+    -- OPRETTE et lead, intet andet) giver denne nøgle adgang til at læse,
+    -- flytte stage, skrive noter og oprette opgaver på ALLE leads. Sat til en
+    -- fast, allerede-genereret værdi (i stedet for ren tilfældig ved hver
+    -- opstart som webhook-nøglen) netop denne ene gang, så Martin kan sende
+    -- PRÆCIS denne værdi direkte til InstantCalls udvikler med det samme, uden
+    -- selv at skulle logge ind og hente den efter deploy — kan altid
+    -- regenereres bagefter via UI'en, ligesom webhook-nøglen.
+    INSERT INTO app_settings (key, value) VALUES ('external_api_key', 'b7c995d9d4d8e53cf2625c7e9b7f51024d2102c4993916af50a2f76bd98946f4') ON CONFLICT (key) DO NOTHING;
     CREATE TABLE IF NOT EXISTS crm_custom_fields (
       id SERIAL PRIMARY KEY,
       entity_type TEXT NOT NULL, -- 'lead' | 'opportunity' | 'contact'
@@ -11735,6 +11749,147 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
 }));
 
 // ══════════════════════════════════════════════════════════════
+// EKSTERN LÆSE/SKRIVE-API (okt. 2026, Martin, videreformidlet fra InstantCalls
+// udvikler: "lave en api nøgle til os, så vi kan læse leads samt flytte et
+// lead til en anden stage, skrive en note og oprette en opgave. Det kan man
+// nemlige IKKE få lige nu inde på dit system.") — modsat lead-intake-webhooken
+// ovenfor (som KUN kan oprette et nyt lead og intet andet) giver denne et
+// eksternt system fire konkrete handlinger på eksisterende leads, autentificeret
+// via en delt nøgle i HTTP-headeren "X-Api-Key" (ikke login/JWT som resten af
+// appen — en ekstern partner har ingen bruger i systemet). Nøglen ligger i
+// app_settings (key='external_api_key', se seed-INSERT'en i initSchema() for
+// baggrund) og kan altid roteres via POST /api/crm/external-api-key-regenerate
+// (adminOnly), ligesom den eksisterende webhook-nøgle.
+//
+// Bevidst IKKE kørt gennem panelAccess('crmp_leads') (som antager en rigtig
+// medarbejder-bruger slået op live i users-tabellen) — samme princip som de
+// øvrige integrations-ruter i denne fil. req.user sættes i stedet til et
+// syntetisk, ikke-null objekt med id:null, så de GENBRUGTE interne
+// hjælpefunktioner (crmLogActivity, crmFireStageAutomation) fortsat kan kaldes
+// uændret: crm_activities.user_id/crm_tasks.created_by er begge nullable FK'er
+// til users, og NULL er allerede den etablerede konvention i hele filen for
+// "systemet/en integration gjorde dette", se fx webhook-leadets egen
+// crmLogActivity(...,'created',...,null) ovenfor.
+async function verifyExternalApiKey(req) {
+  const provided = req.headers['x-api-key'] || '';
+  if (!provided) return false;
+  const row = await pgOne("SELECT value FROM app_settings WHERE key='external_api_key'");
+  const expected = row && row.value;
+  if (!expected) return false;
+  try {
+    return provided.length === expected.length && crypto.timingSafeEqual(Buffer.from(String(provided)), Buffer.from(String(expected)));
+  } catch (e) { return false; }
+}
+async function externalApiKeyAuth(req, res, next) {
+  if (!(await verifyExternalApiKey(req))) return res.status(401).json({ error: 'Manglende eller ugyldig X-Api-Key header' });
+  req.user = { id: null, external: true, name: 'Ekstern API' };
+  next();
+}
+// Fælles SELECT-form for et lead, brugt af både liste- og enkelt-rute
+// herunder — holder feltnavnene ens, så en integration ikke skal håndtere to
+// forskellige former af det samme objekt.
+function externalLeadSelectSql(whereClause) {
+  return `
+    SELECT l.id, l.name, l.email, l.phone, l.address, l.source, l.note,
+           l.pipeline_id, p.name AS pipeline_name, l.stage_id, s.name AS stage_name,
+           l.owner_id, u.name AS owner_name, l.created_at, l.updated_at, l.stage_changed_at
+    FROM crm_leads l
+    LEFT JOIN crm_pipelines p ON p.id = l.pipeline_id
+    LEFT JOIN crm_stages s ON s.id = l.stage_id
+    LEFT JOIN users u ON u.id = l.owner_id
+    ${whereClause}
+  `;
+}
+// GET — liste over alle leads. Simpel ?limit=&offset= paginering (default 100,
+// maks 500 ad gangen) så en integration ikke ved et uheld kan trække hele
+// databasen i ét kald; ?stage_id= filtrerer til én stage.
+app.get('/api/external/leads', externalApiKeyAuth, asyncRoute(async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+  const params = [];
+  let where = '';
+  if (req.query.stage_id) { params.push(Number(req.query.stage_id)); where = `WHERE l.stage_id=$${params.length}`; }
+  params.push(limit, offset);
+  const rows = await pool.query(
+    externalLeadSelectSql(where) + ` ORDER BY l.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
+  );
+  res.json({ leads: rows.rows, limit, offset });
+}));
+// GET — ét enkelt lead.
+app.get('/api/external/leads/:id', externalApiKeyAuth, asyncRoute(async (req, res) => {
+  const lead = await pgOne(externalLeadSelectSql('WHERE l.id=$1'), [req.params.id]);
+  if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
+  res.json(lead);
+}));
+// GET — alle gyldige stages i Leads-pipelinen, så en integration kan slå
+// navne/id'er op selv i stedet for at skulle have dem hårdkodet/tilsendt af
+// Martin og håbe de aldrig ændres.
+app.get('/api/external/stages', externalApiKeyAuth, asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT s.id, s.name, s.position, s.pipeline_id, p.name AS pipeline_name
+    FROM crm_stages s JOIN crm_pipelines p ON p.id=s.pipeline_id
+    WHERE p.type='lead' ORDER BY p.position ASC, s.position ASC
+  `);
+  res.json({ stages: rows.rows });
+}));
+// PUT — flyt et lead til en anden stage. Tager ENTEN stage_id (hvis
+// integrationen allerede har slået det op via GET /api/external/stages)
+// ELLER stage_name (så de kan hardkode fx "Kontaktet" uden at kende id'et) —
+// stage_name slås op blandt Leads-pipelinens stages (aldrig Sales-pipelinens,
+// selvom de skulle hedde det samme). Replikerer PRÆCIS samme sideeffekter som
+// den interne PUT /api/crm/leads/:id gør ved et stage-skift (stage_changed_at,
+// aktivitetslog, SMS/email-automatik) — IKKE bare en rå UPDATE stage_id, for
+// ikke at omgå den automatik Martin allerede har sat op pr. stage.
+app.put('/api/external/leads/:id/stage', externalApiKeyAuth, asyncRoute(async (req, res) => {
+  const lead = await pgOne('SELECT * FROM crm_leads WHERE id=$1', [req.params.id]);
+  if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
+  const b = req.body || {};
+  let stage = null;
+  if (b.stage_id) {
+    stage = await pgOne('SELECT s.id, s.name FROM crm_stages s JOIN crm_pipelines p ON p.id=s.pipeline_id WHERE s.id=$1 AND p.type=\'lead\'', [Number(b.stage_id)]);
+  } else if (b.stage_name) {
+    stage = await pgOne('SELECT s.id, s.name FROM crm_stages s JOIN crm_pipelines p ON p.id=s.pipeline_id WHERE p.type=\'lead\' AND lower(s.name)=lower($1)', [String(b.stage_name).trim()]);
+  }
+  if (!stage) return res.status(400).json({ error: 'Angiv en gyldig stage_id eller stage_name (se GET /api/external/stages)' });
+  if (stage.id === lead.stage_id) return res.json({ ok: true, unchanged: true, stage_id: stage.id, stage_name: stage.name });
+  await pool.query(`UPDATE crm_leads SET stage_id=$1, updated_at=${nowTextSQL()}, stage_changed_at=${nowTextSQL()} WHERE id=$2`, [stage.id, lead.id]);
+  await crmLogActivity('lead', lead.id, 'stage_change', 'Status ændret til "' + stage.name + '" (via ekstern API)', null);
+  crmFireStageAutomation('lead', lead.id, stage.id, { name: lead.name, email: lead.email, phone: lead.phone })
+    .catch(e => console.error('SMS/email-automatik fejlede for lead #' + lead.id + ' (ekstern API):', e.message));
+  res.json({ ok: true, stage_id: stage.id, stage_name: stage.name });
+}));
+// POST — skriv en note på leadet (samme aktivitetstidslinje som "+Note" i
+// admin-panelet bruger, kind='note').
+app.post('/api/external/leads/:id/notes', externalApiKeyAuth, asyncRoute(async (req, res) => {
+  const lead = await pgOne('SELECT id FROM crm_leads WHERE id=$1', [req.params.id]);
+  if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
+  const body = String((req.body || {}).note || (req.body || {}).body || '').trim().slice(0, 4000);
+  if (!body) return res.status(400).json({ error: 'Note mangler (felt "note")' });
+  await crmLogActivity('lead', lead.id, 'note', body, null);
+  res.json({ ok: true });
+}));
+// POST — opret en opgave på leadet (samme crm_tasks-tabel som "+ Tilføj
+// opgave" i admin-panelet skriver til).
+app.post('/api/external/leads/:id/tasks', externalApiKeyAuth, asyncRoute(async (req, res) => {
+  const lead = await pgOne('SELECT id FROM crm_leads WHERE id=$1', [req.params.id]);
+  if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
+  const b = req.body || {};
+  const title = String(b.title || '').trim().slice(0, 300);
+  if (!title) return res.status(400).json({ error: 'Titel mangler (felt "title")' });
+  const row = await pgOne(`
+    INSERT INTO crm_tasks (entity_type,entity_id,title,assigned_to,created_by,due_date,due_time,priority)
+    VALUES ('lead',$1,$2,$3,NULL,$4,$5,$6) RETURNING id, title, due_date, due_time, priority, created_at
+  `, [lead.id, title, b.assigned_to || null, b.due_date || null, b.due_time || null, b.priority ? 1 : 0]);
+  res.json({ ok: true, task: row });
+}));
+app.post('/api/crm/external-api-key-regenerate', auth, adminOnly, asyncRoute(async (req, res) => {
+  const newKey = crypto.randomBytes(32).toString('hex');
+  await pool.query("UPDATE app_settings SET value=$1 WHERE key='external_api_key'", [newKey]);
+  res.json({ ok: true, key: newKey });
+}));
+
+// ══════════════════════════════════════════════════════════════
 // INDBYGGET CRM — Leads-pipeline → konverter til Kontakt + Opportunity i
 // Sales-pipelinen, redigerbare pipelines/stages, brugerdefinerede felter.
 // Se migrationen i initSchema() for tabellerne. Alt herunder kræver
@@ -12173,8 +12328,24 @@ async function crmFindOrCreateContactAndCustomer(name, email, phone, address, no
   if (phone) contact = await one('SELECT * FROM crm_contacts WHERE phone=$1', [phone]);
   if (!contact && email) contact = await one('SELECT * FROM crm_contacts WHERE email=$1', [email]);
   let contactId, contactCreated = false;
-  if (contact) { contactId = contact.id; }
-  else {
+  if (contact) {
+    contactId = contact.id;
+    // RETTET (okt. 2026, Martin: "Når selv opretter en kunde alle steder man
+    // kan det og indtaster adressen så kommer den ikke med ind på
+    // kunden/leadet") — denne gren (en kontakt med samme telefon/email
+    // findes allerede) satte FØR kun customer_id-koblingen (se nedenfor), men
+    // skrev aldrig den nyligt indtastede adresse til den eksisterende række —
+    // kun "opret ny kontakt"-grenen ovenfor gjorde det. For enhver kunde der
+    // ikke er splinterny i CRM'et (dvs. langt de fleste, fx fordi de allerede
+    // har en tidligere sag/tilbud) blev adressen derfor stille smidt væk, hver
+    // gang de selv udfyldte en formular — uanset om det var det nye
+    // /ny-kunde-link, et tilbuds-/svar-link, eller en anden selvbetjent
+    // indgang, da de ALLE går igennem denne ene, fælles funktion. Rettet ved
+    // nu også at opdatere adressen her, når der rent faktisk er indtastet en
+    // (aldrig med en TOM værdi — det ville kunne slette en adresse en
+    // medarbejder allerede har noteret, hvis et kald sker uden adresse).
+    if (address) await db.query(`UPDATE crm_contacts SET address=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [address, contactId]);
+  } else {
     const c = await one('INSERT INTO crm_contacts (name,email,phone,address) VALUES ($1,$2,$3,$4) RETURNING id', [name, email, phone, address]);
     contactId = c.id; contactCreated = true;
   }
@@ -12187,8 +12358,13 @@ async function crmFindOrCreateContactAndCustomer(name, email, phone, address, no
   if (!customer && phone) customer = await one('SELECT id FROM customers WHERE phone=$1', [phone]);
   if (!customer && email) customer = await one('SELECT id FROM customers WHERE email=$1', [email]);
   let customerId, customerCreated = false;
-  if (customer) { customerId = customer.id; }
-  else {
+  if (customer) {
+    customerId = customer.id;
+    // Samme rettelse som ved kontakten lige ovenfor, blot for selve
+    // kunde-kortet (customers.address) — det er typisk DENNE adresse Martin
+    // rent faktisk ser først, da kundekortet er den primære visning.
+    if (address) await db.query(`UPDATE customers SET address=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [address, customerId]);
+  } else {
     const cust = await one('INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id', [name, email, phone, address, note || null]);
     customerId = cust.id; customerCreated = true;
   }
@@ -12422,10 +12598,17 @@ app.post('/api/crm/followup-rules/run-now', auth, panelAccessAny(['customers','c
 app.get('/api/crm/lead-webhook-info', auth, panelAccessAny(['customers','crmp_leads','crmp_sales','crmp_tasks']), asyncRoute(async (req, res) => {
   const row = await pgOne("SELECT value FROM app_settings WHERE key='lead_webhook_secret'");
   const base = req.protocol + '://' + req.get('host') + '/api/integrations/lead-intake/';
+  // NYT (okt. 2026, InstantCalls udvikler via Martin) — den nye eksterne
+  // læse/skrive-API-nøgle vises her i samme svar/samme fane som
+  // webhook-nøglen ovenfor, da det hele hører under "🤖 Automatisering" for
+  // Martin set udefra, selvom det er to adskilte nøgler/formål bag kulisserne.
+  const extKeyRow = await pgOne("SELECT value FROM app_settings WHERE key='external_api_key'");
   res.json({
     secret: row && row.value,
     url_elementor: base + 'elementor',
     url_facebook: base + 'facebook-ads',
+    external_api_key: extKeyRow && extKeyRow.value,
+    external_api_base: req.protocol + '://' + req.get('host') + '/api/external/',
     // RUNDE BI (Martin: "kan se facebook og make begge har et link burde
     // instancall ikke også få det?") — "base" sendes nu med, så admin.html
     // kan bygge en URL til ENHVER kilde Martin selv skriver et navn til (se
