@@ -18784,8 +18784,30 @@ async function callAnthropicJSONMulti(systemPrompt, messages) {
     const msg = (data && data.error && data.error.message) || ('AI-kald fejlede (HTTP ' + r.status + ')');
     throw new Error(msg);
   }
-  const text = data && data.content && data.content[0] && data.content[0].text;
-  if (!text) throw new Error('AI-svaret var tomt');
+  // RUNDE (okt. 2026-fix #2, Martin: "Ai svaret er tomt" — stadig, EFTER
+  // forrige rettelse) — fejlen sad her hele tiden, et andet sted end først
+  // antaget. Koden tog hidtil UBETINGET content[0].text — altså KUN den
+  // allerførste blok i modellens svar. Anthropics API kan sagtens sende
+  // content som flere blokke (fx en "thinking"-blok uden noget "text"-felt
+  // FØR selve tekst-blokken), og så var content[0].text undefined, selvom
+  // den rigtige, fulde tekst lå lige bagved i content[1] — modellen svarede
+  // ALDRIG tomt, vi læste bare det forkerte element. Leder nu efter den
+  // FØRSTE blok af typen "text" uanset hvor i listen den ligger, i stedet
+  // for at antage den altid er først.
+  // Foretræk en blok der eksplicit er markeret "text" (den normale form fra
+  // det rigtige API), men falder tolerant tilbage til den første blok der
+  // overhovedet HAR et udfyldt .text-felt, hvis ingen blok er typemærket —
+  // så vi aldrig fejlagtigt springer et gyldigt svar over pga. et manglende
+  // type-felt.
+  const content = (data && Array.isArray(data.content)) ? data.content : [];
+  const textBlock = content.find(c => c && c.type === 'text' && c.text) || content.find(c => c && c.text);
+  const text = textBlock && textBlock.text;
+  if (!text) {
+    const blockTypes = data && Array.isArray(data.content) ? data.content.map(c => c && c.type).join(',') : '(intet content-array)';
+    const err = new Error('AI-svaret var tomt');
+    err.rawSnippet = 'content-blokke modtaget: [' + blockTypes + '], stop_reason: ' + (data && data.stop_reason);
+    throw err;
+  }
   // Modellen bedes KUN svare med JSON, men vi renser defensivt for evt.
   // ```json ... ``` kodeblok-hegn, hvis den alligevel skulle tilføje det.
   const cleaned = text.trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
