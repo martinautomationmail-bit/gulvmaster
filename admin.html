@@ -65,6 +65,34 @@ button,input,select{font:inherit}
 .filter-dropdown-item{display:block;width:100%;text-align:left;padding:8px 10px;font-size:11.5px;font-weight:600;color:var(--navy);background:none;border:0;border-radius:6px;cursor:pointer}
 .filter-dropdown-item:hover{background:var(--ice)}
 .filter-dropdown-item.active{background:#EFF6FF;color:#1D4ED8;font-weight:800}
+/* RUNDE (okt. 2026, Martins ønske: konsolidér tilbuds-toolbarens 9 knapper til
+   2-3 grupperede dropdowns, "moderne sexede dropdown") — genbruger samme
+   .filter-dropdown/.filter-dropdown-menu-mekanik som Opgavepool/Projekter-
+   filtrene (åbn/luk/klik-udenfor er allerede wired, se data-action="filter-
+   dropdown-toggle"), men scoped bredden til indholdet i stedet for
+   .filter-dropdown's normale width:100%/left:0;right:0 (lavet til et fuldt-
+   bredt filter-felt, ikke en lille knap i en værktøjslinje) — samme
+   override-mønster som .pool-filter-panel allerede bruger nedenfor. */
+.qe-toolbar-dropdown{width:auto}
+.qe-toolbar-dropdown .filter-dropdown-btn{width:auto;justify-content:flex-start}
+.qe-toolbar-dropdown .filter-dropdown-menu{left:auto;right:0;min-width:200px}
+.qe-toolbar-dropdown .filter-dropdown-item[href]{text-decoration:none}
+/* RUNDE (okt. 2026) — se #qe-mode-modal i HTML'en. To lige store, klikbare
+   kort (ikke en radio/select) — samme "vælg en vej"-følelse som mockup'en
+   Martin godkendte. */
+.qe-mode-card{flex:1;min-width:230px;text-align:left;background:#fff;border:1.5px solid var(--border2);border-radius:var(--bly-r-md,12px);padding:18px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.qe-mode-card:hover{border-color:var(--navy);box-shadow:0 6px 20px rgba(15,17,24,.1)}
+.qe-mode-card-icon{font-size:28px;margin-bottom:8px}
+.qe-mode-card-title{font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px}
+.qe-mode-card-desc{font-size:12px;color:var(--bly-sub);line-height:1.5}
+#qe-ai-mode-toggle-btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.qe-ai-chat-panel{margin-top:10px;border:1px solid var(--border2);border-radius:var(--bly-r-md);padding:10px;background:#FAFAFB}
+.qe-ai-chat-messages{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.qe-ai-chat-msg{padding:8px 11px;border-radius:10px;font-size:12.5px;line-height:1.5;max-width:85%;white-space:pre-wrap}
+.qe-ai-chat-msg.user{background:var(--navy);color:#fff;align-self:flex-end}
+.qe-ai-chat-msg.assistant{background:#fff;border:1px solid var(--border2);color:var(--ink);align-self:flex-start}
+.qe-ai-chat-input-row{display:flex;gap:6px}
+.qe-ai-chat-input-row .qe-input{flex:1}
 .tab{display:inline-block;border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;text-decoration:none;box-sizing:border-box}
 .tab.active{color:#fff;background:rgba(255,255,255,.16)}
 .tab-navdrop{display:flex;align-items:center;gap:0}
@@ -3761,7 +3789,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-03.60</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-03.61</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5265,6 +5293,38 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 </div>
 </section>
 
+<!-- RUNDE (okt. 2026, Martins ønske: "en knap når man skal oprette et tilbud
+     til en AI tilbudsgiver ... og så det normale manuelt program") — vises af
+     qeStartNewQuote() i stedet for at hoppe direkte i editoren, for alle de
+     RIGTIGE "start forfra"-indgange (sidebar-genvej, "+ Nyt tilbud" på
+     Tilbud-siden, "Nyt tilbud" fra en kunde/et lead). Skabelon-baserede og
+     "direkte faktura"-indgange (useTemplateForNewQuote/openDirectInvoiceEditor)
+     springer bevidst modalen over — der er intet AI/manuelt-valg at tage når
+     indholdet/dokumenttypen allerede er bestemt. Begge valg lander i PRÆCIS
+     samme editor/datamodel bagefter (qeModeChosen→openQuoteEditor) — det er
+     kun om AI-assistent-panelet (qeSetAiMode, se nedenfor) starter tændt eller
+     slukket der er forskel, aldrig to separate programmer. -->
+<div class="mo" id="qe-mode-modal">
+  <div class="modal" style="width:580px">
+    <h3 style="margin-bottom:4px">Nyt tilbud</h3>
+    <p class="sub" style="margin:0 0 18px">Vælg hvordan du vil bygge tilbuddet — du kan skifte mellem dem bagefter med AI-knappen i tilbuddet.</p>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <button type="button" class="qe-mode-card" id="qe-mode-ai-btn">
+        <div class="qe-mode-card-icon">🤖</div>
+        <div class="qe-mode-card-title">AI Tilbudsgiver</div>
+        <div class="qe-mode-card-desc">Diktér eller chat tilbuddet sammen med AI, som finder/opretter produkter fra dit katalog. Du bekræfter altid linjerne, før noget gemmes.</div>
+      </button>
+      <button type="button" class="qe-mode-card" id="qe-mode-manual-btn">
+        <div class="qe-mode-card-icon">✍️</div>
+        <div class="qe-mode-card-title">Manuel</div>
+        <div class="qe-mode-card-desc">Byg tilbuddet linje for linje, som du plejer — ingen AI involveret.</div>
+      </button>
+    </div>
+    <div class="modal-actions" style="display:flex;justify-content:flex-end;padding:0;border:0;margin-top:18px">
+      <button class="btn small" id="qe-mode-cancel-btn" type="button">Annuller</button>
+    </div>
+  </div>
+</div>
 <!-- RUNDE P — se HEADER_COMMENT-noten ovenfor: #qz-detail-view/#qz-invoice-view
      er nu frit-svævende overlægs-sider, direkte børn af <main>, ikke længere
      børn af #page-quotes. -->
@@ -5280,25 +5340,56 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="qe-status-select" class="select" style="width:auto"></select>
-        <a class="bly-btn outline" id="qe-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
-        <!-- RUNDE AO (Martin: "Kan du lave så jeg kan kopiere et tilbud ... så kan jeg
-             hurtig når kunden skal have 2 tilbud hvor der bare er små ændringer kopiere
-             det") — laver en helt ny, uafhængig kopi af DETTE tilbud (samme kunde/
-             linjer/priser/noter/rabat) og hopper direkte ind i den, klar til at rette de
-             få ting der er forskellige. Se qeDuplicateQuote()/POST /api/quotes/:id/duplicate. -->
-        <button class="bly-btn outline" id="qe-duplicate-btn" type="button" style="display:none" title="Opret en ny, uafhængig kopi af dette tilbud — samme kunde, linjer og priser, klar til at rette de få forskelle">⧉ Kopiér tilbud</button>
-        <!-- RUNDE AS (Martin: "fra det tilbud man åbner kan gå til Projektet
-             og eller Handlen?") — kun vist når tilbuddet er blevet til en sag
-             (d.project_id, se loadQuoteFull()). Modstykket til pd-quote-link
-             på selve sagen. -->
-        <button class="bly-btn outline" id="qe-project-link-btn" type="button" style="display:none" title="Åbn den sag tilbuddet blev til">📁 Åbn sag</button>
-        <button class="bly-btn outline" id="qe-share-btn" type="button" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
-        <button class="bly-btn outline" id="qe-request-btn" type="button" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
-        <button class="bly-btn outline" id="qe-send-btn" type="button" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
-        <!-- RUNDE CC — se den store kommentar ved #payment-plan-modal. Kun vist på et
-             GEMT tilbud (kræver et tilbudsnummer + en total at dele op). -->
-        <button class="bly-btn outline" id="qe-payment-plan-btn" type="button" style="display:none" title="Lad AI forslå en betalingsplan (faser) for store tilbud, og generér en PDF">💳 Betalingsplan</button>
-        <button class="bly-btn outline" id="qe-convert-btn" type="button" style="display:none">➜ Konvertér til faktura</button>
+        <!-- RUNDE (okt. 2026) — persistent til/fra-knap for AI-panelet
+             (#qe-ai-mode-wrap), uanset om tilbuddet startede som AI eller
+             manuelt — se qeSetAiMode()/qeStartNewQuote() i JS'en. Skjules kun
+             for en direkte faktura (qeState.directInvoice), som aldrig har
+             noget AI-spor. -->
+        <button type="button" class="bly-btn outline" id="qe-ai-mode-toggle-btn" title="Slå AI-assistenten til eller fra for dette tilbud">🤖 AI-assistent</button>
+        <!-- RUNDE (okt. 2026, Martins ønske: "måske du skulle lave 2-3 knapper
+             inddel dem i kategorier og med en moderne sexede dropdown") — de
+             oprindelige 9 enkeltknapper er grupperet i 3 dropdowns (Dokumenter/
+             Kunde/Fakturering). Hver knap INDENI har PRÆCIS samme id, samme
+             addEventListener (se bind() nedenfor) og samme show/hide-logik
+             (loadQuoteFull/renderQeInvoicingPanel) som før — kun placeringen er
+             flyttet, ingen funktion er ændret eller duplikeret. Gruppens EGEN
+             synlighed (skjul en tom gruppe-knap i stedet for at vise en dropdown
+             der åbner til ingenting) styres af qeToolbarSyncGroupVisibility(),
+             kaldt fra de samme steder som sætter de enkelte knappers display. -->
+        <div class="filter-dropdown qe-toolbar-dropdown" id="qe-docs-group">
+          <button type="button" class="bly-btn outline filter-dropdown-btn" data-action="filter-dropdown-toggle">📄 Dokumenter ▾</button>
+          <div class="filter-dropdown-menu">
+            <a class="filter-dropdown-item" id="qe-pdf-link" href="#" target="_blank">📄 Åbn PDF</a>
+            <!-- RUNDE AO (Martin: "Kan du lave så jeg kan kopiere et tilbud ... så kan jeg
+                 hurtig når kunden skal have 2 tilbud hvor der bare er små ændringer kopiere
+                 det") — laver en helt ny, uafhængig kopi af DETTE tilbud (samme kunde/
+                 linjer/priser/noter/rabat) og hopper direkte ind i den, klar til at rette de
+                 få ting der er forskellige. Se qeDuplicateQuote()/POST /api/quotes/:id/duplicate. -->
+            <button type="button" class="filter-dropdown-item" id="qe-duplicate-btn" style="display:none" title="Opret en ny, uafhængig kopi af dette tilbud — samme kunde, linjer og priser, klar til at rette de få forskelle">⧉ Kopiér tilbud</button>
+            <!-- RUNDE AS (Martin: "fra det tilbud man åbner kan gå til Projektet
+                 og eller Handlen?") — kun vist når tilbuddet er blevet til en sag
+                 (d.project_id, se loadQuoteFull()). Modstykket til pd-quote-link
+                 på selve sagen. -->
+            <button type="button" class="filter-dropdown-item" id="qe-project-link-btn" style="display:none" title="Åbn den sag tilbuddet blev til">📁 Åbn sag</button>
+          </div>
+        </div>
+        <div class="filter-dropdown qe-toolbar-dropdown" id="qe-customer-group">
+          <button type="button" class="bly-btn outline filter-dropdown-btn" data-action="filter-dropdown-toggle">👤 Kunde ▾</button>
+          <div class="filter-dropdown-menu">
+            <button type="button" class="filter-dropdown-item" id="qe-share-btn" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
+            <button type="button" class="filter-dropdown-item" id="qe-request-btn" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
+            <button type="button" class="filter-dropdown-item" id="qe-send-btn" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
+          </div>
+        </div>
+        <div class="filter-dropdown qe-toolbar-dropdown" id="qe-billing-group">
+          <button type="button" class="bly-btn outline filter-dropdown-btn" data-action="filter-dropdown-toggle">💳 Fakturering ▾</button>
+          <div class="filter-dropdown-menu">
+            <!-- RUNDE CC — se den store kommentar ved #payment-plan-modal. Kun vist på et
+                 GEMT tilbud (kræver et tilbudsnummer + en total at dele op). -->
+            <button type="button" class="filter-dropdown-item" id="qe-payment-plan-btn" style="display:none" title="Lad AI forslå en betalingsplan (faser) for store tilbud, og generér en PDF">💳 Betalingsplan</button>
+            <button type="button" class="filter-dropdown-item" id="qe-convert-btn" style="display:none">➜ Konvertér til faktura</button>
+          </div>
+        </div>
         <!-- RUNDE H #306 (Martins ønske: "jeg kan lave en faktura men når [jeg]
              sætte[r] den som kladde [skal] den ikke automatisk [være] låst") —
              kun vist for en NY direkte faktura (endnu ikke gemt), se
@@ -5325,30 +5416,52 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <input id="qe-customer-search" class="qe-input" placeholder="Søg efter eksisterende sag, eller skriv et nyt navn...">
           <div class="qe-customer-results" id="qe-customer-results"></div>
         </div>
-        <!-- Martins fejlrapport: han forvekslede denne funktion med note-mikrofonen
-             nedenfor (🎤 ved "Note i toppen"), som kun renser talt tekst op til en
-             note — IKKE tilbudslinjer. Knappen sad før nede i "Linjer"-værktøjs-
-             linjen, klemt ind som en lille outline-knap på linje med "+ Tilføj
-             linje"/"+ Tekstlinje" og let at overse/forveksle. Flyttet herop som
-             det første man kan gøre efter at have valgt kunden ("trin 1", som
-             Martin selv beskrev det), og givet et tydeligt afvigende udseende
-             (accentfarve + to linjers forklarende tekst) så den ikke kan
-             forveksles med note-mikrofonen igen. Samme #qe-ai-mic-btn/
-             qeAiToggleListen()/POST /api/quotes/ai-parse-lines som før — kun
-             placering og udseende er ændret, ingen ny funktionalitet. -->
-        <button class="qe-ai-cta-btn" id="qe-ai-mic-btn" type="button" title="Diktér hele tilbuddet — AI finder eller foreslår produkter fra dit katalog og udfylder linjerne til godkendelse">
-          <span class="qe-ai-cta-icon">🎤</span>
-          <span class="qe-ai-cta-text">
-            <strong>AI-diktering af tilbud</strong>
-            <small>Sig hvad tilbuddet skal indeholde — AI finder eller opretter produkterne og foreslår linjerne til din godkendelse</small>
-          </span>
-        </button>
-        <div id="qe-ai-listening-bar" class="qe-ai-listening-bar" hidden>
-          <span class="qe-ai-listening-dot"></span>
-          <span>Lytter... sig hele tilbuddet, tryk "Stop &amp; tolk" når du er færdig.</span>
-          <span id="qe-ai-live-transcript" class="qe-ai-live-transcript"></span>
-          <button class="bly-btn small" id="qe-ai-stop-btn" type="button" style="margin-left:auto">⏹ Stop &amp; tolk</button>
-          <button class="qz-icon-btn" id="qe-ai-cancel-btn" type="button" title="Annullér optagelse">✕</button>
+        <!-- RUNDE (okt. 2026, Martins ønske: "flytte AI dikteringen under AI
+             versionen") — hele AI-siden af editoren (diktering herunder, samt
+             #qe-ai-chat-panel som fase 3 bygger ud) ligger nu bag ÉT fælles
+             wrap, vist/skjult af qeSetAiMode() — ikke mere altid synlig. Tændt
+             som standard når man vælger "🤖 AI Tilbudsgiver" i #qe-mode-modal,
+             slukket ved "✍️ Manuel", og altid om-skiftelig bagefter via
+             #qe-ai-mode-toggle-btn i toolbar'en (se bind() nedenfor) — samme
+             redigering, samme data, kun om AI-panelet er fremme eller ikke. -->
+        <div id="qe-ai-mode-wrap" style="display:none">
+          <!-- Martins fejlrapport: han forvekslede denne funktion med note-mikrofonen
+               nedenfor (🎤 ved "Note i toppen"), som kun renser talt tekst op til en
+               note — IKKE tilbudslinjer. Knappen sad før nede i "Linjer"-værktøjs-
+               linjen, klemt ind som en lille outline-knap på linje med "+ Tilføj
+               linje"/"+ Tekstlinje" og let at overse/forveksle. Flyttet herop som
+               det første man kan gøre efter at have valgt kunden ("trin 1", som
+               Martin selv beskrev det), og givet et tydeligt afvigende udseende
+               (accentfarve + to linjers forklarende tekst) så den ikke kan
+               forveksles med note-mikrofonen igen. Samme #qe-ai-mic-btn/
+               qeAiToggleListen()/POST /api/quotes/ai-parse-lines som før — kun
+               placering og udseende er ændret, ingen ny funktionalitet. -->
+          <button class="qe-ai-cta-btn" id="qe-ai-mic-btn" type="button" title="Diktér hele tilbuddet — AI finder eller foreslår produkter fra dit katalog og udfylder linjerne til godkendelse">
+            <span class="qe-ai-cta-icon">🎤</span>
+            <span class="qe-ai-cta-text">
+              <strong>AI-diktering af tilbud</strong>
+              <small>Sig hvad tilbuddet skal indeholde — AI finder eller opretter produkterne og foreslår linjerne til din godkendelse</small>
+            </span>
+          </button>
+          <div id="qe-ai-listening-bar" class="qe-ai-listening-bar" hidden>
+            <span class="qe-ai-listening-dot"></span>
+            <span>Lytter... sig hele tilbuddet, tryk "Stop &amp; tolk" når du er færdig.</span>
+            <span id="qe-ai-live-transcript" class="qe-ai-live-transcript"></span>
+            <button class="bly-btn small" id="qe-ai-stop-btn" type="button" style="margin-left:auto">⏹ Stop &amp; tolk</button>
+            <button class="qz-icon-btn" id="qe-ai-cancel-btn" type="button" title="Annullér optagelse">✕</button>
+          </div>
+          <!-- RUNDE (okt. 2026, "AI tilbudsgiver"-chatten) — alternativ til
+               diktering ovenfor: skriv frem og tilbage i stedet for at tale.
+               Samme forslag→gennemgang→bekræft-flow (qzRenderAiReview/
+               qeAiReviewConfirm genbruges 1:1, se qeAiChatSend() i JS'en) —
+               chatten foreslår ALDRIG noget direkte ind i tilbuddet. -->
+          <div id="qe-ai-chat-panel" class="qe-ai-chat-panel">
+            <div id="qe-ai-chat-messages" class="qe-ai-chat-messages"></div>
+            <div class="qe-ai-chat-input-row">
+              <input id="qe-ai-chat-input" class="qe-input" placeholder="Skriv hvad tilbuddet skal indeholde...">
+              <button type="button" class="bly-btn" id="qe-ai-chat-send-btn">Send</button>
+            </div>
+          </div>
         </div>
         <div class="qe-field-row" style="margin-top:10px">
           <!-- RUNDE S (Martins ønske: "Ved tilbud skal den fra start af vælge
@@ -19528,7 +19641,7 @@ async function bind(){
     // Samme rettelse som page-guardene ovenfor: brug meHasPanelPage (den
     // granulære rolle-adgang), ikke det gamle is_finance_admin-flag.
     if(!meHasPanelPage('quotes')){toast('Du har ikke adgang til Tilbud & Faktura','🔒');return;}
-    switchPage('quotes');openQuoteEditor(null);
+    switchPage('quotes');qeStartNewQuote();
   });
   document.getElementById('sidebar-newshortcut-customer').addEventListener('click',function(e){
     e.preventDefault();document.getElementById('sidebar-newshortcut-menu').classList.remove('open');
@@ -22804,7 +22917,7 @@ async function cdOpenQuote(){
   if(!cdCurrent)return;
   if(!qzInitialized)await initQuotesModule();
   else await Promise.all([loadQzProducts(),loadQzTemplates()]);
-  openQuoteEditor(null,{customerId:cdCurrent.id,name:cdCurrent.name||'',phone:cdCurrent.phone||'',email:cdCurrent.email||'',address:cdCurrent.address||''});
+  qeStartNewQuote({customerId:cdCurrent.id,name:cdCurrent.name||'',phone:cdCurrent.phone||'',email:cdCurrent.email||'',address:cdCurrent.address||''});
 }
 async function cdOpenDirectInvoice(){
   if(!cdCurrent)return;
@@ -25035,7 +25148,7 @@ async function crmpxOpenQuote(){
   // "Vundet" automatisk når tilbuddet senere accepteres.
   // RUNDE T — se qe-crm-note-panel: giver tilbudseditoren kortets EGEN note og
   // navn med det samme, uden et ekstra API-kald (d er allerede hele kortets data).
-  openQuoteEditor(null,{customerId:crmpxCurrentCustomerId,name:name||'',phone:phone||'',email:email||'',address:address||'',crmEntityType:ent.type,crmEntityId:ent.id,crmEntityName:d.name||name||'',note:qeCombineCrmNote(d)});
+  qeStartNewQuote({customerId:crmpxCurrentCustomerId,name:name||'',phone:phone||'',email:email||'',address:address||'',crmEntityType:ent.type,crmEntityId:ent.id,crmEntityName:d.name||name||'',note:qeCombineCrmNote(d)});
 }
 async function crmpxDelete(){
   var ent=crmpDetailEntity;
@@ -28828,6 +28941,34 @@ function qeCombineCrmNote(d){
   }
   return parts.join('\n\n');
 }
+// RUNDE (okt. 2026, Martins ønske: "en knap når man skal oprette et tilbud
+// til en AI tilbudsgiver ... og så det normale manuelt program") — se den
+// store kommentar ved #qe-mode-modal i HTML'en. qeStartNewQuote() ERSTATTER
+// et direkte openQuoteEditor(null,...)-kald fra en "start forfra"-indgang
+// (sidebar-genvej, "+ Nyt tilbud", "Nyt tilbud" fra kunde/lead) — viser
+// valg-modalen, og lander derefter i PRÆCIS samme editor uanset valg.
+var qeStartNewQuotePrefill=null;
+function qeStartNewQuote(prefillCustomer){
+  qeStartNewQuotePrefill=prefillCustomer||null;
+  document.getElementById('qe-mode-modal').style.display='flex';
+}
+async function qeModeChosen(ai){
+  document.getElementById('qe-mode-modal').style.display='none';
+  var prefill=qeStartNewQuotePrefill;qeStartNewQuotePrefill=null;
+  await openQuoteEditor(null,prefill);
+  qeSetAiMode(ai);
+}
+// Tænder/slukker AI-panelet (#qe-ai-mode-wrap: diktering + fase 3's
+// chat-panel) — bruges BÅDE af qeModeChosen() ved oprettelse og af den
+// persistente #qe-ai-mode-toggle-btn i toolbar'en, så man altid kan skifte
+// bagefter. Ændrer intet ved selve tilbuddets data — kun om panelet er synligt.
+function qeSetAiMode(on){
+  qeState.aiMode=!!on;
+  var wrap=document.getElementById('qe-ai-mode-wrap');
+  if(wrap)wrap.style.display=qeState.aiMode?'':'none';
+  var btn=document.getElementById('qe-ai-mode-toggle-btn');
+  if(btn)btn.classList.toggle('active',qeState.aiMode);
+}
 async function openQuoteEditor(id,prefillCustomer){
   // RUNDE S — hvis editoren allerede var åben med et ANDET tilbud (eller et
   // helt nyt, endnu ikke gemt), og der stod ugemte ændringer og ventede i
@@ -28852,7 +28993,9 @@ async function openQuoteEditor(id,prefillCustomer){
   // genindlæst fra det gemte tilbud nedenfor). Bruges af serveren til at flytte
   // CRM-kortet til pipelinens "Vundet"-fase når tilbuddet accepteres, se
   // crm_lead_id/crm_opportunity_id på quotes i server.js.
-  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false,invStatus:null,crmEntityType:null,crmEntityId:null,crmEntityName:null,projectId:null};
+  qeState={id:id||null,lines:[],jobName:'',quoteNumber:null,taxRate:Number(settings.default_tax_rate)||25,lastStatus:'draft',customerId:null,directInvoice:false,invStatus:null,crmEntityType:null,crmEntityId:null,crmEntityName:null,projectId:null,aiMode:false};
+  qeSetAiMode(false);
+  qeAiChatReset(); // RUNDE (okt. 2026) — ny samtale pr. tilbud, aldrig genbrug af forrige tilbuds chat-historik.
   document.getElementById('qe-crm-link-search').value='';
   document.getElementById('qe-crm-link-results').style.display='none';
   document.getElementById('qe-invoicing-panel').style.display='none';
@@ -28860,6 +29003,7 @@ async function openQuoteEditor(id,prefillCustomer){
   qeSetLineButtonsLocked(false);
   document.getElementById('qe-status-select').style.display='';
   document.getElementById('qe-valid-until').parentElement.style.display='';
+  document.getElementById('qe-ai-mode-toggle-btn').style.display='';
   // RUNDE H #306 — skjules igen her hver gang editoren åbnes/nulstilles;
   // openDirectInvoiceEditor() slår den til bagefter, kun for en NY direkte faktura.
   document.getElementById('qe-save-draft-btn').style.display='none';
@@ -28883,6 +29027,7 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-request-btn').style.display='none';
   document.getElementById('qe-send-btn').style.display='none';
   document.getElementById('qe-payment-plan-btn').style.display='none';
+  qeToolbarSyncGroupVisibility();
   document.getElementById('qe-activity-wrap').style.display=id?'':'none';
   document.getElementById('qe-versions-wrap').style.display='none';
   document.getElementById('qe-crm-note-panel').style.display='none';
@@ -28935,7 +29080,7 @@ async function openQuoteEditor(id,prefillCustomer){
     // Sagsnummer (se skema-kommentaren ved quotes.job_number, Martins ønske) —
     // vist her så det er synligt allerede mens man arbejder i tilbuddet, ikke
     // kun i listen/på PDF'en/i mailen.
-    document.getElementById('qe-subtitle').textContent='Oprettet '+String(qd.created_at||'').slice(0,10)+(qd.job_number?' · Sag '+qd.job_number:'');
+    document.getElementById('qe-subtitle').textContent='Oprettet '+String(qd.created_at||'').slice(0,10)+(qd.job_number?' · Sag '+qd.job_number:'')+(qd.created_via==='ai'?' · 🤖 Startede som AI-tilbud':'');
     setAppTitle(qd.job_name||qd.quote_number);
     qePopulateStatusSelect(qd.status);
     document.getElementById('qe-pdf-link').style.display='inline-flex';
@@ -29034,6 +29179,10 @@ async function openDirectInvoiceEditor(prefillCustomer){
   document.getElementById('qe-subtitle').textContent='Uden forudgående tilbud — forfalder 4 dage efter oprettelse';
   document.getElementById('qe-status-select').style.display='none';
   document.getElementById('qe-valid-until').parentElement.style.display='none';
+  // RUNDE (okt. 2026) — en direkte faktura har intet AI/manuelt-valg (den
+  // bruges altid uden om qeStartNewQuote/#qe-mode-modal), så knappen giver
+  // ingen mening her.
+  document.getElementById('qe-ai-mode-toggle-btn').style.display='none';
   // RUNDE H #306 — "📝 Gem som kladde" er kun relevant HER (en helt ny direkte
   // faktura, id er altid null på dette tidspunkt — openDirectInvoiceEditor()
   // bruges udelukkende til at OPRETTE en, aldrig til at redigere en eksisterende).
@@ -29060,6 +29209,21 @@ function qeSetLineButtonsLocked(locked){
 // "+ Tilføj ekstra ydelser", se PUT /api/quotes/:id's guard i server.js) så snart
 // tilbuddet har mindst én faktura knyttet til sig. Uden fakturaer opfører alt sig
 // som hidtil (fuldt redigerbare linjer, ingen panel).
+// RUNDE (okt. 2026) — se den store kommentar ved #qe-docs-group i HTML'en.
+// En gruppe-dropdown skal selv skjules når ALLE knapper indeni den er
+// skjulte (fx "Fakturering" på et helt nyt, ugemt tilbud) — ellers kan man
+// åbne en dropdown der er helt tom. Kaldes overalt hvor en af knappernes
+// EGEN display sættes (loadQuoteFull() og renderQeInvoicingPanel() nedenfor).
+function qeToolbarSyncGroupVisibility(){
+  [['qe-docs-group',['qe-pdf-link','qe-duplicate-btn','qe-project-link-btn']],
+   ['qe-customer-group',['qe-share-btn','qe-request-btn','qe-send-btn']],
+   ['qe-billing-group',['qe-payment-plan-btn','qe-convert-btn']]
+  ].forEach(function(g){
+    var anyVisible=g[1].some(function(id){var el=document.getElementById(id);return el&&el.style.display!=='none';});
+    var wrap=document.getElementById(g[0]);
+    if(wrap)wrap.style.display=anyVisible?'':'none';
+  });
+}
 function renderQeInvoicingPanel(){
   var st=qeState.invStatus;
   var hasInvoices=!!(st&&st.invoices&&st.invoices.length);
@@ -29069,6 +29233,7 @@ function renderQeInvoicingPanel(){
   var remaining=st?(st.remaining_lines||[]):qeState.lines;
   document.getElementById('qe-convert-btn').style.display=remaining.length?'inline-flex':'none';
   document.getElementById('qe-convert-btn').textContent=hasInvoices?'➜ Fakturér flere linjer':'➜ Konvertér til faktura';
+  qeToolbarSyncGroupVisibility();
   if(!hasInvoices)return;
   var pct=st.quote_total>0?Math.min(100,Math.round(st.invoiced_total/st.quote_total*100)):0;
   document.getElementById('qe-invoicing-summary').textContent='Faktureret '+krFmt(st.invoiced_total)+' af '+krFmt(st.quote_total)+' ('+pct+'%)'+(remaining.length?'':' — alt faktureret');
@@ -29246,6 +29411,48 @@ async function qeAiReviewConfirm(){
   renderQeLines();qeRecalc();
   closeModal('qe-ai-review-modal');
   toast(chosen.length+' linje(r) tilføjet'+(freeText?' · '+freeText+' som fri linje (ikke i produktkataloget)':''),'✓');
+}
+// RUNDE (okt. 2026, "AI tilbudsgiver"-chatten, se #qe-ai-chat-panel i HTML'en
+// og POST /api/quotes/ai-chat i server.js) — chat-udgaven af diktering
+// ovenfor. Ingen hukommelse på serveren: HELE samtalen (qeAiChatState.messages)
+// sendes med ved hvert kald, ligesom chat-demoen Martin først fik vist.
+// Forslåede linjer går ALTID gennem den SAMME gennemgangs-/bekræft-modal som
+// diktering (qzRenderAiReview/qeAiReviewConfirm, uændret) — chatten lægger
+// intet direkte ind i tilbuddet på egen hånd.
+var qeAiChatState={messages:[],sending:false};
+function qeAiChatReset(){
+  qeAiChatState={messages:[],sending:false};
+  qeAiChatRenderMessages();
+}
+function qeAiChatRenderMessages(){
+  var box=document.getElementById('qe-ai-chat-messages');
+  if(!box)return;
+  box.innerHTML=qeAiChatState.messages.length?qeAiChatState.messages.map(function(m){
+    return '<div class="qe-ai-chat-msg '+(m.role==='user'?'user':'assistant')+'">'+esc(m.content)+'</div>';
+  }).join(''):'<div class="qe-ai-chat-msg assistant">Skriv hvad tilbuddet skal indeholde — jeg finder eller opretter produkterne og forslår linjer til din godkendelse, ligesom diktering.</div>';
+  box.scrollTop=box.scrollHeight;
+}
+async function qeAiChatSend(){
+  if(qeAiChatState.sending)return;
+  var input=document.getElementById('qe-ai-chat-input');
+  var text=(input.value||'').trim();
+  if(!text)return;
+  input.value='';
+  qeAiChatState.messages.push({role:'user',content:text});
+  qeAiChatRenderMessages();
+  qeAiChatState.sending=true;
+  var sendBtn=document.getElementById('qe-ai-chat-send-btn');
+  sendBtn.disabled=true;sendBtn.textContent='...';
+  var custName=document.getElementById('qe-customer-search').value||'';
+  var r=await api('/api/quotes/ai-chat',{method:'POST',body:JSON.stringify({messages:qeAiChatState.messages,job_name:qeState.jobName||custName,customer_name:custName})});
+  qeAiChatState.sending=false;
+  sendBtn.disabled=false;sendBtn.textContent='Send';
+  // Samme lange toast-varighed som diktering (RUNDE W) — fejlbeskeden (fx
+  // manglende API-nøgle) skal kunne nås at læses.
+  if(!r||r.error){toast(r&&r.error?r.error:'AI-chatten svarede ikke','❌',null,7000);return;}
+  if(r.reply)qeAiChatState.messages.push({role:'assistant',content:r.reply});
+  qeAiChatRenderMessages();
+  if(r.lines&&r.lines.length)qzRenderAiReview(r.lines);
 }
 // ── GENERISK NOTE-DIKTERING (RUNDE V, Martins ønske: "Opsæt AI indtaler til
 // tilbud at jeg kan levere en note med alt data fra et kundebesøg... tilføj
@@ -29843,6 +30050,15 @@ function qeBuildSaveBody(){
   // Andre felter (kunde/noter/gyldig til/rabat) kan stadig gemmes som hidtil.
   var hasInvoices=!!(qeState.invStatus&&qeState.invStatus.invoices&&qeState.invStatus.invoices.length);
   if(!hasInvoices)body.lines=qeState.lines;
+  // RUNDE (okt. 2026) — se skema-kommentaren ved quotes.created_via i
+  // server.js. Sendes KUN ved selve oprettelsen (POST, qeState.id endnu
+  // ikke sat) — PUT /api/quotes/:id læser ikke disse felter, og vi vil
+  // ikke risikere at et AI-startet tilbuds mærke bliver overskrevet eller
+  // misvisende ved en senere, almindelig redigering.
+  if(!qeState.id&&!qeState.directInvoice){
+    body.created_via=qeState.aiMode?'ai':'manual';
+    if(qeState.aiMode&&qeAiChatState.messages.length)body.ai_chat_transcript=qeAiChatState.messages;
+  }
   return body;
 }
 async function saveQuoteEditor(asDraft){
@@ -31388,8 +31604,13 @@ function bindQuotesModuleEvents(){
   makeRichField('qe-notes');
   makeRichField('iv-notes');
   makeRichField('iv-top-note');
-  document.getElementById('qz-new-quote-btn').addEventListener('click',function(){openQuoteEditor(null);});
+  document.getElementById('qz-new-quote-btn').addEventListener('click',function(){qeStartNewQuote();});
   document.getElementById('qz-new-direct-invoice-btn').addEventListener('click',function(){openDirectInvoiceEditor(null);});
+  // RUNDE (okt. 2026) — se #qe-mode-modal/qeModeChosen() ovenfor.
+  document.getElementById('qe-mode-ai-btn').addEventListener('click',function(){qeModeChosen(true);});
+  document.getElementById('qe-mode-manual-btn').addEventListener('click',function(){qeModeChosen(false);});
+  document.getElementById('qe-mode-cancel-btn').addEventListener('click',function(){document.getElementById('qe-mode-modal').style.display='none';qeStartNewQuotePrefill=null;});
+  document.getElementById('qe-ai-mode-toggle-btn').addEventListener('click',function(){qeSetAiMode(!qeState.aiMode);});
   document.getElementById('qe-back-btn').addEventListener('click',qeGoBackToList);
   document.getElementById('iv-back-btn').addEventListener('click',ivGoBackToList);
   // RUNDE H #306 — addEventListener sender selve click-Event'et som 1. argument;
@@ -31419,6 +31640,8 @@ function bindQuotesModuleEvents(){
   // er fjernet fra HTML'en (se kommentaren der) — ingen lytter at binde her mere.
   document.getElementById('qe-ai-stop-btn').addEventListener('click',qeAiStopAndParse);
   document.getElementById('qe-ai-cancel-btn').addEventListener('click',qeAiCancel);
+  document.getElementById('qe-ai-chat-send-btn').addEventListener('click',qeAiChatSend);
+  document.getElementById('qe-ai-chat-input').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();qeAiChatSend();}});
   document.getElementById('qe-ai-review-cancel').addEventListener('click',function(){closeModal('qe-ai-review-modal');});
   document.getElementById('qe-ai-review-confirm').addEventListener('click',qeAiReviewConfirm);
   document.getElementById('qe-add-blank-line').addEventListener('click',function(){qeAddLine(null);});

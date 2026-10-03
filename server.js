@@ -2112,6 +2112,25 @@ async function initSchema() {
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS job_number TEXT;
     CREATE INDEX IF NOT EXISTS idx_invoices_job_number ON invoices(job_number);
 
+    -- RUNDE (okt. 2026, Martins ønske: "sikre mig ... at de modeller den
+    -- arbejder på/den data den bruger bliver bedre og bedre over tid") —
+    -- grundlaget for det: created_via markerer om tilbuddet startede som
+    -- "🤖 AI Tilbudsgiver" eller "✍️ Manuel" (se qeModeChosen() i admin.html),
+    -- sat ÉN gang ved oprettelse (POST /api/quotes) og aldrig ændret
+    -- bagefter — selvom et AI-startet tilbud redigeres manuelt derefter, er
+    -- det stadig interessant at vide at det STARTEDE som AI. NULL = tilbud
+    -- oprettet før denne kolonne fandtes (ikke registreret, ikke antaget
+    -- at være hverken/eller). ai_chat_transcript gemmer selve chat-samtalen
+    -- (hvis nogen) fra AI-tilbudsgiveren på det tidspunkt tilbuddet FØRST
+    -- blev gemt — ikke løbende opdateret ved senere redigeringer. Bruges
+    -- ikke til noget automatisk i dag, men er det rå materiale til senere at
+    -- kunne sammenligne "hvad AI'en forslog" mod "hvad tilbuddet endte med
+    -- at blive" (fx hvor meget blev rettet manuelt bagefter), som er
+    -- forudsætningen for at kunne forbedre AI-promten med Martins EGNE
+    -- rigtige sager i stedet for gæt.
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS created_via TEXT;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS ai_chat_transcript JSONB;
+
     -- MAIL-SKABELONER TIL TILBUD/FAKTURA (HTML) — adskilt fra email_templates
     -- ovenfor (som er til booking-/planlægningsmails med andre variabler).
     -- body_html er RÅ HTML som skrives direkte i mailen, ikke tekst der
@@ -18732,7 +18751,15 @@ app.post('/api/products/bulk-update', auth, panelAccess('quotes'), asyncRoute(as
 // stadig ikke virker efter denne opdatering, se fejlbeskeden der nu vises i
 // toasten (den viser AI-kaldets rigtige fejltekst) og send den til mig.
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
-async function callAnthropicJSON(systemPrompt, userPrompt) {
+// RUNDE (okt. 2026, "AI tilbudsgiver"-chatten nedenfor) — udtrukket fra den
+// oprindelige callAnthropicJSON(systemPrompt,userPrompt) til en generel
+// FLER-tur-variant (messages er en rigtig samtale, ikke kun én brugerbesked),
+// fordi en chat-dialog (i modsætning til ét diktat) skal sendes som den
+// rigtige turrækkefølge til modellen for at den forstår hvad der allerede er
+// sagt. callAnthropicJSON (herunder) er nu bare et tyndt skal om denne, så de
+// 3 eksisterende AI-kald (diktering/note-oprydning/betalingsplan) er 100%
+// uændrede i adfærd.
+async function callAnthropicJSONMulti(systemPrompt, messages) {
   if (!process.env.ANTHROPIC_API_KEY) {
     const err = new Error('AI-diktering er ikke aktiveret på serveren endnu — ANTHROPIC_API_KEY mangler i Render-miljøvariablerne.');
     err.isConfig = true;
@@ -18749,7 +18776,7 @@ async function callAnthropicJSON(systemPrompt, userPrompt) {
       model: ANTHROPIC_MODEL,
       max_tokens: 2000,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }]
+      messages: messages
     })
   });
   const data = await r.json().catch(() => null);
@@ -18763,6 +18790,9 @@ async function callAnthropicJSON(systemPrompt, userPrompt) {
   // ```json ... ``` kodeblok-hegn, hvis den alligevel skulle tilføje det.
   const cleaned = text.trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
   return JSON.parse(cleaned);
+}
+async function callAnthropicJSON(systemPrompt, userPrompt) {
+  return callAnthropicJSONMulti(systemPrompt, [{ role: 'user', content: userPrompt }]);
 }
 app.post('/api/quotes/ai-parse-lines', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const transcript = String((req.body && req.body.transcript) || '').trim();
@@ -18788,8 +18818,18 @@ app.post('/api/quotes/ai-parse-lines', auth, panelAccess('quotes'), asyncRoute(a
     return res.status(e.isConfig ? 501 : 502).json({ error: e.message });
   }
   const rawLines = Array.isArray(parsed && parsed.lines) ? parsed.lines : [];
+  const lines = mapAiRawLinesToReviewLines(rawLines, products);
+  await logSystemEvent('ai_parse_quote', 'info', 'AI-diktering: ' + lines.length + ' linje(r) tolket ud af diktat på ' + transcript.length + ' tegn (' + rawLines.length + ' rå linjer fra modellen).');
+  res.json({ ok: true, lines });
+}));
+// RUNDE (okt. 2026, "AI tilbudsgiver"-chatten) — samme match/new_product-
+// linjeformat og samme udtræk fra AI-svaret som diktering ovenfor, delt ud i
+// sin egen funktion så begge AI-funktioner (diktering + chat) bruger NØJAGTIG
+// samme fortolkning af modellens linjer, i stedet for at vedligeholde to
+// kopier der kan glide fra hinanden.
+function mapAiRawLinesToReviewLines(rawLines, products) {
   const byId = new Map(products.map(p => [p.id, p]));
-  const lines = rawLines.map(l => {
+  return rawLines.map(l => {
     const quantity = Number(l.quantity) || 1;
     const unit = String(l.unit || 'stk').trim() || 'stk';
     const description = String(l.description || '').trim();
@@ -18807,8 +18847,54 @@ app.post('/api/quotes/ai-parse-lines', auth, panelAccess('quotes'), asyncRoute(a
     if (!match && !newProduct) return null; // hverken match eller forslag — kan ikke bruges
     return { quantity, unit, description, match, new_product: newProduct };
   }).filter(Boolean);
-  await logSystemEvent('ai_parse_quote', 'info', 'AI-diktering: ' + lines.length + ' linje(r) tolket ud af diktat på ' + transcript.length + ' tegn (' + rawLines.length + ' rå linjer fra modellen).');
-  res.json({ ok: true, lines });
+}
+// RUNDE (okt. 2026, Martins ønske: "en knap når man skal oprette et tilbud
+// til en AI tilbudsgiver ... chat-baseret som platform.tilbudsgenerator.dk")
+// — den LØBENDE chat-udgave af diktering ovenfor: i stedet for ét diktat delt
+// op i linjer, kan brugeren chatte frem og tilbage, og AI'en forslår linjer
+// baseret på SIDSTE besked (ikke en gentagelse af alt tidligere foreslået —
+// klienten har allerede sine egne linjer liggende, og tilføjer kun det der
+// bliver bekræftet i gennemgangsvinduet, se qzRenderAiReview/qeAiReviewConfirm
+// i admin.html, som genbruges 1:1 her). Ingen hukommelse på serveren mellem
+// kald — klienten sender hele samtalen med hver gang, ligesom AI-chat-demoen
+// Martin først fik vist. Opretter, ligesom diktering, ALDRIG selv et produkt
+// eller en linje i databasen — kun forslag til gennemgang.
+app.post('/api/quotes/ai-chat', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const rawMessages = Array.isArray(req.body && req.body.messages) ? req.body.messages : [];
+  const messages = rawMessages
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && m.content)
+    .map(m => ({ role: m.role, content: String(m.content).slice(0, 4000) }))
+    .slice(-20); // sidste 20 beskeder — nok til en reel dialog, uden ubegrænset prompt-vækst
+  if (!messages.length) return res.status(400).json({ error: 'Ingen besked modtaget' });
+  const jobName = String((req.body && req.body.job_name) || '').trim().slice(0, 200);
+  const customerName = String((req.body && req.body.customer_name) || '').trim().slice(0, 200);
+  const products = (await pool.query("SELECT id,name,unit,sell_price,cost_price,category,product_type FROM products WHERE active=1 ORDER BY name LIMIT 1000")).rows;
+  const catalogForPrompt = products.map(p => ({ id: p.id, name: p.name, unit: p.unit, sell_price: Number(p.sell_price), category: p.category || null, type: p.product_type }));
+  let systemPrompt = 'Du er en AI-tilbudsassistent for Gulv Master, et dansk gulvfirma. Du hjælper en medarbejder med at bygge et tilbud sammen, i en løbende chat-dialog (ikke ét diktat).\n'
+    + 'Du får firmaets produktkatalog som JSON, og hele samtalen indtil nu.\n'
+    + 'For hver ny besked fra brugeren:\n'
+    + '- Svar kort og venligt på dansk i "reply". Still gerne 1 KONKRET opklarende spørgsmål hvis noget vigtigt er uklart (fx m2, materialevalg, antal rum/døre) — undgå flere spørgsmål på én gang, og gæt ALDRIG priser/mængder du ikke har grundlag for.\n'
+    + '- Foreslå i "lines" KUN de linjer der hører til DENNE besked (ikke alt der er nævnt tidligere i samtalen — brugeren har allerede fået tidligere forslag til gennemgang). Er beskeden ren smalltalk/et spørgsmål uden nyt indhold til tilbuddet, så lad "lines" være en tom liste.\n'
+    + '- Hvis brugeren beder om at RETTE eller FJERNE en linje der allerede er tilføjet, kan du ikke gøre det her (du kan kun forslå NYE linjer) — sig det i "reply" og bed dem rette/slette linjen direkte i tilbuddet i stedet.\n'
+    + 'LINJE-FORMAT (identisk med AI-diktering): for hver linje, "quantity" (tal), "unit" (enhed, gæt "stk" hvis uklart), "description" (kort dansk beskrivelse), og PRÆCIS ét af:\n'
+    + '  "match": {"product_id": <id>} — kun ved en tydeligt god match i kataloget\n'
+    + '  "new_product": {"name": <kort produktnavn>, "unit": <enhed>, "product_type": "materialer" eller "service"} — ellers, lad prisfelter være ude\n'
+    + 'Svar KUN med gyldig JSON på formen {"reply": "...", "lines": [...]} — ingen forklaring, ingen kodeblok-hegn.'
+    + '\n\nPRODUKTKATALOG:\n' + JSON.stringify(catalogForPrompt);
+  if (jobName || customerName) systemPrompt += '\n\nSAG: ' + (jobName || '(uden navn endnu)') + (customerName ? ' · Kunde: ' + customerName : '');
+  let parsed;
+  try {
+    parsed = await callAnthropicJSONMulti(systemPrompt, messages);
+  } catch (e) {
+    await logSystemEvent('ai_quote_chat', 'error', 'AI-tilbudschat fejlede: ' + e.message);
+    return res.status(e.isConfig ? 501 : 502).json({ error: e.message });
+  }
+  const rawLines = Array.isArray(parsed && parsed.lines) ? parsed.lines : [];
+  const lines = mapAiRawLinesToReviewLines(rawLines, products);
+  const reply = String((parsed && parsed.reply) || '').trim();
+  if (!reply && !lines.length) return res.status(502).json({ error: 'AI-svaret var tomt' });
+  await logSystemEvent('ai_quote_chat', 'info', 'AI-tilbudschat: ' + lines.length + ' linje(r) forslået ud af ' + rawLines.length + ' rå linjer fra modellen.');
+  res.json({ ok: true, reply, lines });
 }));
 
 // RUNDE V (Martins ønske: "Opsæt AI indtaler til tilbud at jeg kan levere en
@@ -19312,10 +19398,16 @@ app.post('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res)
   // RUNDE S — se skema-kommentaren ved quotes.crm_lead_id/crm_opportunity_id.
   const crmLeadId = b.crm_lead_id || null;
   const crmOpportunityId = crmLeadId ? null : (b.crm_opportunity_id || null);
+  // RUNDE (okt. 2026) — se skema-kommentaren ved quotes.created_via. Sættes
+  // KUN her ved selve oprettelsen — aldrig på PUT /api/quotes/:id bagefter.
+  const createdVia = b.created_via === 'ai' ? 'ai' : (b.created_via === 'manual' ? 'manual' : null);
+  const aiChatTranscript = createdVia === 'ai' && Array.isArray(b.ai_chat_transcript) && b.ai_chat_transcript.length
+    ? JSON.stringify(b.ai_chat_transcript.slice(-40).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 4000) })))
+    : null;
   const r = await pool.query(`
-    INSERT INTO quotes (quote_number,job_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token,crm_lead_id,crm_opportunity_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING id
-  `, [quoteNumber, jobNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken, crmLeadId, crmOpportunityId]);
+    INSERT INTO quotes (quote_number,job_number,job_name,job_id,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,internal_note,valid_until,created_by,discount_pct,discount_type,accept_token,crm_lead_id,crm_opportunity_id,created_via,ai_chat_transcript)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING id
+  `, [quoteNumber, jobNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken, crmLeadId, crmOpportunityId, createdVia, aiChatTranscript]);
   await saveQuoteLines(r.rows[0].id, b.lines);
   logDocActivity('quote', r.rows[0].id, 'created', req.user.name, null);
   crmSyncOpportunityValueFromQuote({ id: r.rows[0].id, total: totals.total, crm_opportunity_id: crmOpportunityId, quote_number: quoteNumber });
