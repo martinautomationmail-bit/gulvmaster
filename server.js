@@ -18774,7 +18774,17 @@ async function callAnthropicJSONMulti(systemPrompt, messages) {
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 2000,
+      // RUNDE (okt. 2026-fix #3, Martin: "den burde være LANGT bedre ... bygge
+      // alt i et helt hus") — den konkrete fejl han ramte ("AI-svaret blev
+      // afbrudt, for langt") var IKKE en gætte-fejl denne gang, den nye
+      // diagnostik fra forrige rettelse fangede den præcist: en bred besked
+      // ("50 kvm, alt fra fundament til gulvlægning, tag, vvs og el, opdel i
+      // faggrupper") beder reelt om et helt husprojekt i én omgang, og 2000
+      // tokens er nok til et par linjer, ikke et dusin+ linjer fordelt på
+      // flere faggrupper. Sat markant op, så et reelt stort/bredt svar ikke
+      // bliver skåret midt over. Gælder alle 4 AI-kald (diktering/note-
+      // oprydning/betalingsplan/chat) — samme billige forsikring alle steder.
+      max_tokens: 8000,
       system: systemPrompt,
       messages: messages
     })
@@ -18847,7 +18857,7 @@ app.post('/api/quotes/ai-parse-lines', auth, panelAccess('quotes'), asyncRoute(a
     + '- "unit": enhed (fx "m2", "stk", "timer", "lbm") — gæt ud fra sammenhængen, ellers "stk"\n'
     + '- "description": en kort, naturlig beskrivelse af linjen på dansk\n'
     + '- "match": hvis et produkt i kataloget TYDELIGVIS er det samme, sæt {"product_id": <id>} — vær IKKE overfortolkende, kun ved en reelt god match\n'
-    + '- "new_product": hvis INTET produkt i kataloget passer, sæt i stedet {"name": <kort produktnavn>, "unit": <enhed>, "product_type": "materialer" eller "service"} — lad prisfelter være ude, dem sætter brugeren selv bagefter\n'
+    + '- "new_product": hvis INTET produkt i kataloget passer, sæt i stedet {"name": <kort produktnavn>, "unit": <enhed>, "product_type": "materialer" eller "service", "estimated_sell_price": <dit bedste skøn i DKK pr. enhed, baseret på almindelige danske markedspriser for 2025/2026>}. "estimated_sell_price" er ALTID kun et vejledende udgangspunkt som brugeren selv retter til — sæt den alligevel efter bedste evne (udelad den kun hvis du virkelig ingen idé har), fremfor at lade brugeren starte fra 0 kr hver gang.\n'
     + 'Præcis ét af "match"/"new_product" skal være sat pr. linje, aldrig begge, aldrig ingen.\n'
     + 'Svar KUN med gyldig JSON på formen {"lines":[...]} — ingen forklaring, ingen kodeblok-hegn.';
   const userPrompt = 'PRODUKTKATALOG:\n' + JSON.stringify(catalogForPrompt) + '\n\nDIKTAT:\n' + transcript;
@@ -18879,10 +18889,21 @@ function mapAiRawLinesToReviewLines(rawLines, products) {
       const p = byId.get(Number(l.match.product_id));
       match = { product_id: p.id, name: p.name, unit: p.unit, sell_price: Number(p.sell_price), cost_price: Number(p.cost_price), product_type: p.product_type };
     } else if (l.new_product && l.new_product.name) {
+      // RUNDE (okt. 2026-fix #3, Martin: "den kender alle markedspriser") —
+      // for en linje der IKKE findes i Gulv Masters eget produktkatalog, beder
+      // vi nu modellen om et vejledende prisskøn (dens almindelige
+      // markedskendskab, IKKE en live prisopslag — det findes ikke). Sanitetet
+      // her (positivt tal, loftet ved 1.000.000 kr/enhed som et sanity-check
+      // mod en model der render et absurd tal): en fri linje starter altid
+      // med ET tal i stedet for 0 kr, men er STADIG 100% en fri linje brugeren
+      // selv retter/bekræfter — se qzRenderAiReview/qeAiReviewConfirm i
+      // admin.html, intet gemmes i produktkataloget (uændret RUNDE Y-beslutning).
+      const estSell = Number(l.new_product.estimated_sell_price);
       newProduct = {
         name: String(l.new_product.name).trim(),
         unit: String(l.new_product.unit || unit || 'stk').trim(),
-        product_type: l.new_product.product_type === 'materialer' ? 'materialer' : 'service'
+        product_type: l.new_product.product_type === 'materialer' ? 'materialer' : 'service',
+        estimated_sell_price: (Number.isFinite(estSell) && estSell > 0 && estSell < 1000000) ? Math.round(estSell * 100) / 100 : null
       };
     }
     if (!match && !newProduct) return null; // hverken match eller forslag — kan ikke bruges
@@ -18911,15 +18932,17 @@ app.post('/api/quotes/ai-chat', auth, panelAccess('quotes'), asyncRoute(async (r
   const customerName = String((req.body && req.body.customer_name) || '').trim().slice(0, 200);
   const products = (await pool.query("SELECT id,name,unit,sell_price,cost_price,category,product_type FROM products WHERE active=1 ORDER BY name LIMIT 1000")).rows;
   const catalogForPrompt = products.map(p => ({ id: p.id, name: p.name, unit: p.unit, sell_price: Number(p.sell_price), category: p.category || null, type: p.product_type }));
-  let systemPrompt = 'Du er en AI-tilbudsassistent for Gulv Master, et dansk gulvfirma. Du hjælper en medarbejder med at bygge et tilbud sammen, i en løbende chat-dialog (ikke ét diktat).\n'
+  let systemPrompt = 'Du er en AI-tilbudsassistent for Gulv Master, et dansk gulvfirma (primært gulvafslibning/-lægning og malerarbejde, men tager også større "Enterprise"-renoveringsopgaver). Du hjælper en medarbejder med at bygge et tilbud sammen, i en løbende chat-dialog (ikke ét diktat).\n'
     + 'Du får firmaets produktkatalog som JSON, og hele samtalen indtil nu.\n'
     + 'For hver ny besked fra brugeren:\n'
-    + '- Svar kort og venligt på dansk i "reply". Still gerne 1 KONKRET opklarende spørgsmål hvis noget vigtigt er uklart (fx m2, materialevalg, antal rum/døre) — undgå flere spørgsmål på én gang, og gæt ALDRIG priser/mængder du ikke har grundlag for.\n'
+    + '- Svar kort og venligt på dansk i "reply". Still gerne 1 KONKRET opklarende spørgsmål hvis noget vigtigt er uklart (fx m2, materialevalg, antal rum/døre) — undgå flere spørgsmål på én gang.\n'
     + '- Foreslå i "lines" KUN de linjer der hører til DENNE besked (ikke alt der er nævnt tidligere i samtalen — brugeren har allerede fået tidligere forslag til gennemgang). Er beskeden ren smalltalk/et spørgsmål uden nyt indhold til tilbuddet, så lad "lines" være en tom liste.\n'
     + '- Hvis brugeren beder om at RETTE eller FJERNE en linje der allerede er tilføjet, kan du ikke gøre det her (du kan kun forslå NYE linjer) — sig det i "reply" og bed dem rette/slette linjen direkte i tilbuddet i stedet.\n'
+    + '- RUNDE (okt. 2026): hvis beskeden beder om et HELT, bredt projekt på én gang (fx "hele huset", flere faggrupper som fundament+tømrer+el+vvs+gulv+maler i én sætning) — foreslå IKKE alt på én gang. Opdel i "reply" projektet i naturlige faser/faggrupper, foreslå KUN linjer for den første, mest oplagte fase (typisk den Gulv Master selv udfører), og spørg om du skal fortsætte med de næste faser én ad gangen. Det giver et mere overskueligt tilbud at gennemgå, og undgår at svaret bliver for langt.\n'
+    + '- For fag Gulv Master ikke selv arbejder med (fx el, vvs, fundament) — gør det i "reply" klart at dette er et ESTIMAT og bør bekræftes af en relevant fagmand/underleverandør, især for arbejde der kræver autorisation (el, vvs).\n'
     + 'LINJE-FORMAT (identisk med AI-diktering): for hver linje, "quantity" (tal), "unit" (enhed, gæt "stk" hvis uklart), "description" (kort dansk beskrivelse), og PRÆCIS ét af:\n'
     + '  "match": {"product_id": <id>} — kun ved en tydeligt god match i kataloget\n'
-    + '  "new_product": {"name": <kort produktnavn>, "unit": <enhed>, "product_type": "materialer" eller "service"} — ellers, lad prisfelter være ude\n'
+    + '  "new_product": {"name": <kort produktnavn>, "unit": <enhed>, "product_type": "materialer" eller "service", "estimated_sell_price": <dit bedste skøn i DKK pr. enhed, baseret på almindelige danske markedspriser for 2025/2026 — udelad kun hvis du virkelig ingen idé har>}\n'
     + 'Svar KUN med gyldig JSON på formen {"reply": "...", "lines": [...]} — ingen forklaring, ingen kodeblok-hegn.'
     + '\n\nPRODUKTKATALOG:\n' + JSON.stringify(catalogForPrompt);
   if (jobName || customerName) systemPrompt += '\n\nSAG: ' + (jobName || '(uden navn endnu)') + (customerName ? ' · Kunde: ' + customerName : '');

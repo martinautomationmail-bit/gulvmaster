@@ -3804,7 +3804,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-03.64</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-03.65</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -29370,16 +29370,26 @@ function qzRenderAiReview(lines){
     var isNew=!!l.new_product;
     var tag=isNew?'<span class="qe-ai-review-tag">🆕 Ny linje</span>':'<span class="qe-ai-review-tag">✓ Matchet</span>';
     var nameVal=isNew?l.new_product.name:l.match.name;
-    var priceInfo=isNew?'Fri linje — pris sættes direkte på tilbuddet':(krFmt(l.match.sell_price)+' / '+esc(l.match.unit));
+    // RUNDE (okt. 2026-fix #3, Martin: "den kender alle markedspriser") — en
+    // ny/fri linje viste FØR altid bare "pris sættes direkte på tilbuddet"
+    // uden noget tal, og linjen landede altid på 0 kr indtil man selv slog
+    // en pris op. AI'en leverer nu et vejledende DKK-skøn (se new_product.
+    // estimated_sell_price i server.js) — vist her som et redigerbart felt
+    // man bekræfter/retter FØR linjen tilføjes, i stedet for at skulle finde
+    // prisen et andet sted bagefter. Stadig en fri linje, intet gemmes i
+    // produktkataloget (uændret RUNDE Y-beslutning).
+    var priceInfo=isNew
+      ?('<input class="qe-input" type="number" step="0.01" style="width:90px" data-ai-field="estPrice" data-idx="'+idx+'" value="'+(l.new_product.estimated_sell_price!=null?l.new_product.estimated_sell_price:'')+'" placeholder="kr" title="AI-estimeret pris pr. enhed — vejledende, ret til"> <span class="opt-tag" style="font-weight:600">kr/'+esc(l.unit||'stk')+' · AI-estimat, ret til</span>')
+      :(krFmt(l.match.sell_price)+' / '+esc(l.match.unit));
     return '<div class="qe-ai-review-row '+(isNew?'new':'matched')+'" data-idx="'+idx+'">'
       +'<input type="checkbox" data-ai-include="'+idx+'"'+(l.include?' checked':'')+' style="margin-top:4px">'
       +'<div class="qe-ai-review-fields">'
       +tag
       +'<input class="qe-input" data-ai-field="name" data-idx="'+idx+'" value="'+esc(nameVal||'')+'">'
-      +'<div style="display:flex;gap:6px">'
+      +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
       +'<input class="qe-input" type="number" step="0.01" style="width:70px" data-ai-field="quantity" data-idx="'+idx+'" value="'+(Number(l.quantity)||1)+'" title="Antal">'
       +'<input class="qe-input" style="width:70px" data-ai-field="unit" data-idx="'+idx+'" value="'+esc(l.unit||'stk')+'" title="Enhed">'
-      +'<span class="opt-tag" style="align-self:center">'+priceInfo+'</span>'
+      +priceInfo
       +'</div>'
       +'<input class="qe-input" data-ai-field="description" data-idx="'+idx+'" value="'+esc(l.description||'')+'" placeholder="Beskrivelse på linjen">'
       +'</div></div>';
@@ -29394,6 +29404,7 @@ function qzRenderAiReview(lines){
       else if(field==='quantity')l.quantity=Number(inp.value)||1;
       else if(field==='unit')l.unit=inp.value;
       else if(field==='description')l.description=inp.value;
+      else if(field==='estPrice'&&l.new_product)l.new_product.estimated_sell_price=inp.value===''?null:(Number(inp.value)||0);
     };
   });
   document.getElementById('qe-ai-review-modal').classList.add('open');
@@ -29414,7 +29425,12 @@ async function qeAiReviewConfirm(){
       // kun hørte til dette ene tilbud. Linjen tilføjes nu i stedet direkte som
       // en almindelig fri linje (uden product_id) — den optræder kun på DETTE
       // tilbud, ligesom hvis man selv havde skrevet teksten i beskrivelsesfeltet.
-      line=qzMakeBlankLine({id:null,name:l.new_product.name,description:'',unit:l.unit||l.new_product.unit,cost_price:0,sell_price:0,product_type:l.new_product.product_type,note:''});
+      // RUNDE (okt. 2026-fix #3) — bruger AI'ens (redigerbare) prisestimat som
+      // sell_price i stedet for altid 0 kr, se qzRenderAiReview ovenfor. Ingen
+      // cost_price-estimat fra AI'en (kender ikke Gulv Masters indkøbspriser),
+      // den sættes stadig til 0 og er op til brugeren, ligesom hele linjen er.
+      var estPrice=Number(l.new_product.estimated_sell_price)||0;
+      line=qzMakeBlankLine({id:null,name:l.new_product.name,description:'',unit:l.unit||l.new_product.unit,cost_price:0,sell_price:estPrice,product_type:l.new_product.product_type,note:''});
       freeText++;
     }else{
       line=qzMakeBlankLine({id:l.match.product_id,name:l.match.name,description:'',unit:l.unit||l.match.unit,cost_price:l.match.cost_price,sell_price:l.match.sell_price,product_type:l.match.product_type,note:''});
