@@ -18789,7 +18789,26 @@ async function callAnthropicJSONMulti(systemPrompt, messages) {
   // Modellen bedes KUN svare med JSON, men vi renser defensivt for evt.
   // ```json ... ``` kodeblok-hegn, hvis den alligevel skulle tilføje det.
   const cleaned = text.trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
-  return JSON.parse(cleaned);
+  // RUNDE (okt. 2026-fix, Martin: "virker stadig ikke" — nu "AI-svaret var
+  // tomt" på PRODUKTIONEN, dvs. ANTHROPIC_API_KEY ER sat og selve kaldet
+  // lykkes, men noget i svaret går galt). JSON.parse herunder stod FØR denne
+  // rettelse uden try/catch — en afbrudt/for lang modelrespons (ramt
+  // max_tokens, se data.stop_reason) eller et svar der ikke var ren JSON gav
+  // en kryptisk native fejl ("Unexpected end of JSON input") som ALDRIG blev
+  // logget nogen steder, så der var ingen måde at se hvad modellen rent
+  // faktisk svarede. Fanger den nu, logger starten af det rå svar (se
+  // kaldernes catch-blokke, som logger e.message via logSystemEvent), og
+  // giver en tydeligere besked end den indbyggede JSON-fejl.
+  try {
+    return JSON.parse(cleaned);
+  } catch (parseErr) {
+    const truncated = data.stop_reason === 'max_tokens';
+    const err = new Error(truncated
+      ? 'AI-svaret blev afbrudt (for langt) — prøv en kortere besked.'
+      : 'AI-svaret kunne ikke læses som JSON: ' + parseErr.message);
+    err.rawSnippet = text.slice(0, 500);
+    throw err;
+  }
 }
 async function callAnthropicJSON(systemPrompt, userPrompt) {
   return callAnthropicJSONMulti(systemPrompt, [{ role: 'user', content: userPrompt }]);
@@ -18814,7 +18833,7 @@ app.post('/api/quotes/ai-parse-lines', auth, panelAccess('quotes'), asyncRoute(a
   try {
     parsed = await callAnthropicJSON(systemPrompt, userPrompt);
   } catch (e) {
-    await logSystemEvent('ai_parse_quote', 'error', 'AI-diktering fejlede: ' + e.message);
+    await logSystemEvent('ai_parse_quote', 'error', 'AI-diktering fejlede: ' + e.message + (e.rawSnippet ? ' | rå svar: ' + e.rawSnippet : ''));
     return res.status(e.isConfig ? 501 : 502).json({ error: e.message });
   }
   const rawLines = Array.isArray(parsed && parsed.lines) ? parsed.lines : [];
@@ -18886,13 +18905,25 @@ app.post('/api/quotes/ai-chat', auth, panelAccess('quotes'), asyncRoute(async (r
   try {
     parsed = await callAnthropicJSONMulti(systemPrompt, messages);
   } catch (e) {
-    await logSystemEvent('ai_quote_chat', 'error', 'AI-tilbudschat fejlede: ' + e.message);
+    await logSystemEvent('ai_quote_chat', 'error', 'AI-tilbudschat fejlede: ' + e.message + (e.rawSnippet ? ' | rå svar: ' + e.rawSnippet : ''));
     return res.status(e.isConfig ? 501 : 502).json({ error: e.message });
   }
   const rawLines = Array.isArray(parsed && parsed.lines) ? parsed.lines : [];
   const lines = mapAiRawLinesToReviewLines(rawLines, products);
-  const reply = String((parsed && parsed.reply) || '').trim();
-  if (!reply && !lines.length) return res.status(502).json({ error: 'AI-svaret var tomt' });
+  let reply = String((parsed && parsed.reply) || '').trim();
+  // RUNDE (okt. 2026-fix, Martin: "virker stadig ikke" — "AI-svaret var tomt"
+  // på en besked der tydeligvis HAVDE indhold, fx "Lav et tilbud på en ny
+  // tilbygning 50kvm") — modellen SVAREDE gyldig JSON (intet kald-fejlede),
+  // men ramte med "reply" og "lines" begge tomme, uden at systemprompten
+  // reelt tillader det for en besked med indhold. I stedet for at lade
+  // samtalen gå helt i stå med en fejl, givers der nu en brugbar fallback-
+  // besked og en 200'er, så Martin ALTID får noget at arbejde videre med —
+  // og selve det tomme svar logges, så jeg kan se mønsteret hvis det sker
+  // igen (fx en bestemt type besked modellen misforstår).
+  if (!reply && !lines.length) {
+    await logSystemEvent('ai_quote_chat', 'warn', 'AI-tilbudschat: modellen svarede gyldig JSON men uden reply/lines. Rå svar: ' + JSON.stringify(parsed).slice(0, 500));
+    reply = 'Jeg kunne ikke lave et konkret forslag ud fra den besked — prøv at uddybe lidt mere (fx størrelse i m2, hvilke rum, og hvad arbejdet omfatter).';
+  }
   await logSystemEvent('ai_quote_chat', 'info', 'AI-tilbudschat: ' + lines.length + ' linje(r) forslået ud af ' + rawLines.length + ' rå linjer fra modellen.');
   res.json({ ok: true, reply, lines });
 }));
