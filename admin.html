@@ -3761,7 +3761,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-02.59</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-03.60</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -22400,7 +22400,7 @@ function renderCrmCustomers(){
   // skiller sig unødigt ud fra en kunde der aldrig har haft en faktura.
   body.innerHTML=list.map(function(c){
     var owes=Number(c.balance_due)||0;
-    return '<tr style="cursor:pointer" onclick="openCustomerDetail('+c.id+')">'
+    return '<tr style="cursor:pointer" onclick="openCustomerDetail('+c.id+')" oncontextmenu="crmCustomerCtxMenu(event,'+c.id+')">'
       +'<td>'+(c.is_company?'🏢 ':'')+esc(c.name)+(c.is_company&&c.cvr?' <span class="sub">· CVR '+esc(c.cvr)+'</span>':'')+'</td>'
       +'<td>'+esc(c.phone||'–')+'</td>'
       +'<td>'+esc(c.email||'–')+'</td>'
@@ -22409,6 +22409,30 @@ function renderCrmCustomers(){
       +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="event.stopPropagation();openCrmModal('+c.id+')" title="Redigér">✎</button></div></td>'
       +'</tr>';
   }).join('');
+}
+// Højreklik-menu på kunderækken — samme genbrugte #ctx-menu/showCtxMenu() som
+// Projekter (se pjCtxMenuItems()). Egne, uafhængige funktioner i stedet for at
+// genbruge deleteCrmCustomer() (som er koblet til den globale crmEditingId fra
+// redigér-modalen), så højreklik aldrig kan forstyrre en modal der er åben et
+// andet sted i appen.
+function crmCustomerCtxMenu(e,id){
+  e.preventDefault();
+  var c=crmCustomers.find(function(x){return +x.id===+id;});
+  if(!c)return;
+  showCtxMenu(e.clientX,e.clientY,[
+    {icon:'👁',text:'Åbn kunden',onClick:function(){openCustomerDetail(c.id);}},
+    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){window.open('#customer-detail/'+c.id,'_blank');}},
+    {sep:true},
+    {icon:'✎',text:'Redigér',onClick:function(){openCrmModal(c.id);}},
+    {sep:true},
+    {icon:'🗑',text:'Slet kunden',danger:true,onClick:function(){crmCtxDeleteCustomer(c.id,c.name);}}
+  ]);
+}
+async function crmCtxDeleteCustomer(id,name){
+  if(!await gmConfirm('Slet kunden'+(name?' "'+name+'"':'')+'? Tidligere tilbud/fakturaer på kunden bevares.'))return;
+  var r=await api('/api/crm/customers/'+id,{method:'DELETE'});
+  if(r&&r.ok){toast('Kunde slettet','🗑');await loadCrmCustomers();renderCrmCustomers();}
+  else toast((r&&r.error)||'Kunne ikke slette kunden','❌');
 }
 function crmSyncCompanyFields(){
   var isCompany=document.getElementById('crmc-is-company').checked;
@@ -23432,6 +23456,7 @@ function crmpRenderBoard(){
       }
       openCrmpDetail(p.type,id);
     });
+    card.addEventListener('contextmenu',function(e){crmpCardCtxMenu(e,p.type,id);});
     card.addEventListener('dragstart',function(e){
       // Dobbelt sikring ud over draggable="false" i markuppen.
       if(crmpState.selectMode){e.preventDefault();return;}
@@ -23477,6 +23502,41 @@ function crmpRenderBoard(){
     });
   });
   crmpRenderBulkBar();
+}
+// Højreklik-menu på lead/opportunity-kortet — samme genbrugte #ctx-menu/
+// showCtxMenu() og samme opbygning (åbn, åbn i ny fane, skift stadie-liste,
+// slet) som Projekter. Slår op i crmpState.cards/crmpCurrentPipeline() ud fra
+// id, ligesom pjRowCtxMenu() slår op i pjProjects — undgår helt at skulle
+// genbruge crmpxDelete()/crmpDetailEntity, som kun er sat når man reelt har
+// åbnet kortets egen detaljeside.
+function crmpCardCtxMenu(e,type,id){
+  e.preventDefault();
+  var c=crmpState.cards.find(function(x){return +x.id===+id;});
+  var pipeline=crmpCurrentPipeline();
+  if(!c||!pipeline)return;
+  var items=[
+    {icon:'👁',text:'Åbn',onClick:function(){openCrmpDetail(type,id);}},
+    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){window.open('#crmp-detail/'+type+'/'+id,'_blank');}},
+    {sep:true},{label:true,text:'Skift stadie'}
+  ];
+  crmpSortedStages(pipeline).forEach(function(s){
+    if(s.id===c.stage_id)return;
+    items.push({icon:'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+esc(s.color)+'"></span>',text:s.name,onClick:function(){crmpCtxMoveStage(type,id,s.id);}});
+  });
+  items.push({sep:true},{icon:'🗑',text:'Slet',danger:true,onClick:function(){crmpCtxDelete(type,id,c.name);}});
+  showCtxMenu(e.clientX,e.clientY,items);
+}
+async function crmpCtxMoveStage(type,id,stageId){
+  var endpoint=(type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+id;
+  var r=await api(endpoint,{method:'PUT',body:JSON.stringify({stage_id:stageId})});
+  if(r&&r.ok){toast('Flyttet ✓','✓');crmpLoadBoard();}else toast((r&&r.error)||'Kunne ikke flytte','❌');
+}
+async function crmpCtxDelete(type,id,name){
+  if(!await gmConfirm('Slet '+(type==='lead'?'leadet':'opportunity')+(name?' "'+name+'"':'')+'? Kan ikke fortrydes.'))return;
+  var endpoint=(type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+id;
+  var r=await api(endpoint,{method:'DELETE'});
+  if(r&&r.ok){toast('Slettet','🗑');crmpLoadBoard();}
+  else toast((r&&r.error)||'Kunne ikke slette','❌');
 }
 function crmpCardHtml(c,pipeline,defs){
   // Kort-felter (sep. 2026, Martins ønske): INGEN automatik længere — kun felter Martin
@@ -28478,7 +28538,7 @@ function renderQzQuotes(){
   body.innerHTML=list.map(function(x){
     var href='#quotes/tilbud/'+x.id;
     var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
-    return '<tr>'
+    return '<tr oncontextmenu="qzQuoteCtxMenu(event,'+x.id+')">'
       +'<td>'+a(esc(x.quote_number||'–'))+'</td>'
       +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':''))+'</td>'
       +'<td>'+a(esc(String(x.created_at||'').slice(0,10)))+'</td>'
@@ -28498,6 +28558,34 @@ function renderQzQuotes(){
       +'</div></td>'
       +'</tr>';
   }).join('');
+}
+// Højreklik-menu på tilbudsrækken — samme genbrugte #ctx-menu/showCtxMenu()
+// som Projekter/CRM. "Skift status" bruger PUT /api/quotes/:id/status direkte
+// (samme endpoint som statusfeltet inde i selve tilbuddet, qeStatusChanged())
+// i stedet for at genbruge den funktion, som kun virker på det tilbud der
+// reelt er åbent i editoren lige nu (qeState.id).
+function qzQuoteCtxMenu(e,id){
+  e.preventDefault();
+  var x=qzQuotes.find(function(q){return +q.id===+id;});
+  if(!x)return;
+  var items=[
+    {icon:'👁',text:'Åbn tilbuddet',onClick:function(){location.hash='#quotes/tilbud/'+id;}},
+    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){window.open('#quotes/tilbud/'+id,'_blank');}},
+    {sep:true},
+    {icon:'⧉',text:'Kopiér tilbud',onClick:function(){duplicateQzQuote(id);}},
+    {sep:true},{label:true,text:'Skift status'}
+  ];
+  Object.keys(QZ_QUOTE_STATUS).forEach(function(key){
+    if(key===x.status)return;
+    items.push({icon:'<span class="bly-status-dot" style="background:'+QZ_QUOTE_STATUS[key].dot+'"></span>',text:QZ_QUOTE_STATUS[key].label,onClick:function(){qzCtxSetQuoteStatus(id,key);}});
+  });
+  if(x.status!=='converted')items.push({sep:true},{icon:'🗑',text:'Slet tilbud',danger:true,onClick:function(){deleteQzQuote(id);}});
+  showCtxMenu(e.clientX,e.clientY,items);
+}
+async function qzCtxSetQuoteStatus(id,status){
+  var r=await api('/api/quotes/'+id+'/status',{method:'PUT',body:JSON.stringify({status:status})});
+  if(r&&r.ok){toast('Status opdateret','✓');await loadQzQuotes();renderQzQuotes();}
+  else toast((r&&r.error)||'Kunne ikke opdatere status','❌');
 }
 async function deleteQzQuote(id){
   if(!await gmConfirm('Slet dette tilbud?'))return;
@@ -30367,7 +30455,7 @@ function renderQzInvoices(){
     // Lille rød undertekst gør det tydeligt her i den samlede fakturaliste også,
     // ikke kun når man åbner selve fakturaen.
     var creditedNote=Number(x.credited_total)>0?'<div style="font-size:11px;color:#DC2626">↩️ krediteret '+krFmt(x.credited_total)+'</div>':'';
-    return '<tr>'
+    return '<tr oncontextmenu="qzInvoiceCtxMenu(event,'+x.id+')">'
       +'<td>'+a(esc(x.invoice_number||'–'))+'</td>'
       +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':''))+'</td>'
       +'<td>'+a(esc(String(x.created_at||'').slice(0,10)))+'</td>'
@@ -30380,6 +30468,28 @@ function renderQzInvoices(){
       +'<td><div class="qz-row-actions"><a class="qz-icon-btn" href="'+href+'" title="Åbn">✎</a></div></td>'
       +'</tr>';
   }).join('');
+}
+// Højreklik-menu på fakturarækken — samme genbrugte #ctx-menu/showCtxMenu().
+// "Annullér faktura" er en selvstændig, id-parametreret udgave af
+// voidIvInvoice() (som ellers kun kan køre på den faktura der er åben i
+// ivState), så højreklik aldrig kan annullere den FORKERTE faktura, hvis en
+// anden faktura tilfældigvis stod åben i en modal et andet sted.
+function qzInvoiceCtxMenu(e,id){
+  e.preventDefault();
+  var x=qzInvoices.find(function(i){return +i.id===+id;});
+  if(!x)return;
+  var items=[
+    {icon:'👁',text:'Åbn fakturaen',onClick:function(){location.hash='#qz-invoices/faktura/'+id;}},
+    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){window.open('#qz-invoices/faktura/'+id,'_blank');}}
+  ];
+  if(x.status!=='void')items.push({sep:true},{icon:'🚫',text:'Annullér faktura',danger:true,onClick:function(){qzCtxVoidInvoice(id);}});
+  showCtxMenu(e.clientX,e.clientY,items);
+}
+async function qzCtxVoidInvoice(id){
+  if(!await gmConfirm('Annullér denne faktura? Den vil blive markeret som annulleret.'))return;
+  var r=await api('/api/invoices/'+id+'/void',{method:'PUT'});
+  if(r&&r.ok){toast('Faktura annulleret','✓');await loadQzInvoices();renderQzInvoices();}
+  else toast((r&&r.error)||'Kunne ikke annullere fakturaen','❌');
 }
 async function openInvoiceDetail(id){
   ivState.id=id;
@@ -31506,6 +31616,17 @@ window.savePjRowStatus=savePjRowStatus;
 window.deletePjProject=deletePjProject;
 window.pjRowCtxMenu=pjRowCtxMenu;
 window.useTemplateForNewQuote=useTemplateForNewQuote;
+// RUNDE (okt. 2026, højreklik-udrulning til resten af programmet) — samme
+// faldgrube som alle kommentarerne ovenfor beskriver, denne gang for de nye
+// højrekliks-menuer på Kunder/Tilbud/Fakturaer-listerne: de bruges via
+// oncontextmenu="..." i HTML-strengen (renderCrmCustomers/renderQzQuotes/
+// renderQzInvoices), så de SKAL eksporteres her, ellers er det den samme
+// stille ReferenceError igen. (crmpCardCtxMenu på CRM-kanban-kortene bruger i
+// stedet addEventListener fra en closure inde i selve IIFE'en — den rammer
+// IKKE denne faldgrube og skal derfor ikke på listen her.)
+window.crmCustomerCtxMenu=crmCustomerCtxMenu;
+window.qzQuoteCtxMenu=qzQuoteCtxMenu;
+window.qzInvoiceCtxMenu=qzInvoiceCtxMenu;
 // RUNDE H #312 (Martins ønske: slette-knap + hurtig-redigér-pris-knap på
 // "Skal faktureres"-siden) — samme faldgrube som kommentaren ovenfor
 // beskriver: onclick="qzPendingEditPrice(...)"/"qzPendingDismiss(...)" i
