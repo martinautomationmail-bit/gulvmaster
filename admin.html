@@ -73,7 +73,15 @@ button,input,select{font:inherit}
    .filter-dropdown's normale width:100%/left:0;right:0 (lavet til et fuldt-
    bredt filter-felt, ikke en lille knap i en værktøjslinje) — samme
    override-mønster som .pool-filter-panel allerede bruger nedenfor. */
-.qe-toolbar-dropdown{width:auto}
+/* RUNDE (okt. 2026-fix, Martin: "Din Assisent virker ikke" + skærmbillede af
+   knapperne stablet oveni hinanden) — .filter-dropdown med width 100% procent
+   længere nede i arket (oprindeligt skrevet til .pool-filters-sidebaren) har
+   samme specificitet som den oprindelige .qe-toolbar-dropdown-regel og står
+   SENERE i filen, så den vandt og tvang hver knap-gruppe til 100% bredde =
+   egen linje i toolbar'en. Fastlåst med en sammensat selector (højere
+   specificitet) i stedet for at flytte regler rundt, så rækkefølgen i filen
+   ikke kan vælte det igen. */
+.qe-toolbar-dropdown.filter-dropdown{width:auto}
 .qe-toolbar-dropdown .filter-dropdown-btn{width:auto;justify-content:flex-start}
 .qe-toolbar-dropdown .filter-dropdown-menu{left:auto;right:0;min-width:200px}
 .qe-toolbar-dropdown .filter-dropdown-item[href]{text-decoration:none}
@@ -87,12 +95,19 @@ button,input,select{font:inherit}
 .qe-mode-card-desc{font-size:12px;color:var(--bly-sub);line-height:1.5}
 #qe-ai-mode-toggle-btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
 .qe-ai-chat-panel{margin-top:10px;border:1px solid var(--border2);border-radius:var(--bly-r-md);padding:10px;background:#FAFAFB}
-.qe-ai-chat-messages{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.qe-ai-chat-messages{max-height:400px;min-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
 .qe-ai-chat-msg{padding:8px 11px;border-radius:10px;font-size:12.5px;line-height:1.5;max-width:85%;white-space:pre-wrap}
 .qe-ai-chat-msg.user{background:var(--navy);color:#fff;align-self:flex-end}
 .qe-ai-chat-msg.assistant{background:#fff;border:1px solid var(--border2);color:var(--ink);align-self:flex-start}
-.qe-ai-chat-input-row{display:flex;gap:6px}
+.qe-ai-chat-msg.error{background:#fdecec;border:1px solid #f3b6b6;color:#9c2b2b;align-self:flex-start}
+.qe-ai-chat-input-row{display:flex;gap:6px;align-items:flex-end}
 .qe-ai-chat-input-row .qe-input{flex:1}
+/* RUNDE (okt. 2026, Martins ønske: "feltet man skriver i bliver langt
+   større så man kan se samtalen") — var et ét-linjet <input>, er nu en
+   <textarea> der vokser med indholdet (se qeAiChatAutoGrow() i JS'en),
+   så man kan skrive længere beskeder og se dem mens man skriver, i
+   stedet for at teksten scroller usynligt til siden i et lille felt. */
+textarea.qe-ai-chat-input{resize:none;min-height:38px;max-height:160px;overflow-y:auto;line-height:1.4;font-family:inherit}
 .tab{display:inline-block;border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;text-decoration:none;box-sizing:border-box}
 .tab.active{color:#fff;background:rgba(255,255,255,.16)}
 .tab-navdrop{display:flex;align-items:center;gap:0}
@@ -3789,7 +3804,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-03.61</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-03.62</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5458,7 +5473,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div id="qe-ai-chat-panel" class="qe-ai-chat-panel">
             <div id="qe-ai-chat-messages" class="qe-ai-chat-messages"></div>
             <div class="qe-ai-chat-input-row">
-              <input id="qe-ai-chat-input" class="qe-input" placeholder="Skriv hvad tilbuddet skal indeholde...">
+              <textarea id="qe-ai-chat-input" class="qe-input qe-ai-chat-input" rows="1" placeholder="Skriv hvad tilbuddet skal indeholde... (Enter sender, Shift+Enter ny linje)"></textarea>
               <button type="button" class="bly-btn" id="qe-ai-chat-send-btn">Send</button>
             </div>
           </div>
@@ -29419,18 +29434,35 @@ async function qeAiReviewConfirm(){
 // Forslåede linjer går ALTID gennem den SAMME gennemgangs-/bekræft-modal som
 // diktering (qzRenderAiReview/qeAiReviewConfirm, uændret) — chatten lægger
 // intet direkte ind i tilbuddet på egen hånd.
-var qeAiChatState={messages:[],sending:false};
+var qeAiChatState={messages:[],sending:false,lastError:null};
 function qeAiChatReset(){
-  qeAiChatState={messages:[],sending:false};
+  qeAiChatState={messages:[],sending:false,lastError:null};
   qeAiChatRenderMessages();
+  qeAiChatAutoGrow();
 }
 function qeAiChatRenderMessages(){
   var box=document.getElementById('qe-ai-chat-messages');
   if(!box)return;
-  box.innerHTML=qeAiChatState.messages.length?qeAiChatState.messages.map(function(m){
+  var html=qeAiChatState.messages.length?qeAiChatState.messages.map(function(m){
     return '<div class="qe-ai-chat-msg '+(m.role==='user'?'user':'assistant')+'">'+esc(m.content)+'</div>';
   }).join(''):'<div class="qe-ai-chat-msg assistant">Skriv hvad tilbuddet skal indeholde — jeg finder eller opretter produkterne og forslår linjer til din godkendelse, ligesom diktering.</div>';
+  // RUNDE (okt. 2026, Martins fejlrapport: "trykkede send, der skete intet
+  // overhovedet") — en fejl (fx manglende API-nøgle, netværksfejl) blev kun
+  // vist som en toast der forsvinder efter nogle sekunder, så det så ud som
+  // om intet skete. Fejlen vises nu OGSÅ som en rød besked direkte i
+  // samtalen, så den bliver stående til man har set den. Lægges IKKE ind i
+  // qeAiChatState.messages (sendes ikke til AI'en som en del af samtalen).
+  if(qeAiChatState.lastError)html+='<div class="qe-ai-chat-msg error">⚠️ '+esc(qeAiChatState.lastError)+'</div>';
+  box.innerHTML=html;
   box.scrollTop=box.scrollHeight;
+}
+// Samme ønske som ovenfor — feltet skal vokse med teksten i stedet for at
+// forblive ét lille linje, så man rent faktisk kan se hvad man skriver.
+function qeAiChatAutoGrow(){
+  var el=document.getElementById('qe-ai-chat-input');
+  if(!el)return;
+  el.style.height='auto';
+  el.style.height=Math.min(el.scrollHeight,160)+'px';
 }
 async function qeAiChatSend(){
   if(qeAiChatState.sending)return;
@@ -29438,18 +29470,32 @@ async function qeAiChatSend(){
   var text=(input.value||'').trim();
   if(!text)return;
   input.value='';
+  qeAiChatAutoGrow();
+  qeAiChatState.lastError=null;
   qeAiChatState.messages.push({role:'user',content:text});
   qeAiChatRenderMessages();
   qeAiChatState.sending=true;
   var sendBtn=document.getElementById('qe-ai-chat-send-btn');
   sendBtn.disabled=true;sendBtn.textContent='...';
   var custName=document.getElementById('qe-customer-search').value||'';
-  var r=await api('/api/quotes/ai-chat',{method:'POST',body:JSON.stringify({messages:qeAiChatState.messages,job_name:qeState.jobName||custName,customer_name:custName})});
+  var r;
+  try{
+    r=await api('/api/quotes/ai-chat',{method:'POST',body:JSON.stringify({messages:qeAiChatState.messages,job_name:qeState.jobName||custName,customer_name:custName})});
+  }catch(e){
+    r=null;
+  }
   qeAiChatState.sending=false;
   sendBtn.disabled=false;sendBtn.textContent='Send';
   // Samme lange toast-varighed som diktering (RUNDE W) — fejlbeskeden (fx
-  // manglende API-nøgle) skal kunne nås at læses.
-  if(!r||r.error){toast(r&&r.error?r.error:'AI-chatten svarede ikke','❌',null,7000);return;}
+  // manglende API-nøgle) skal kunne nås at læses. Vises nu OGSÅ i selve
+  // samtalen (qeAiChatState.lastError), se qeAiChatRenderMessages ovenfor.
+  if(!r||r.error){
+    var msg=r&&r.error?r.error:'AI-chatten svarede ikke — prøv igen, eller tjek om ANTHROPIC_API_KEY er sat på serveren.';
+    qeAiChatState.lastError=msg;
+    qeAiChatRenderMessages();
+    toast(msg,'❌',null,7000);
+    return;
+  }
   if(r.reply)qeAiChatState.messages.push({role:'assistant',content:r.reply});
   qeAiChatRenderMessages();
   if(r.lines&&r.lines.length)qzRenderAiReview(r.lines);
@@ -31641,7 +31687,10 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-ai-stop-btn').addEventListener('click',qeAiStopAndParse);
   document.getElementById('qe-ai-cancel-btn').addEventListener('click',qeAiCancel);
   document.getElementById('qe-ai-chat-send-btn').addEventListener('click',qeAiChatSend);
-  document.getElementById('qe-ai-chat-input').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();qeAiChatSend();}});
+  // RUNDE (okt. 2026) — feltet er nu en <textarea> (var et <input>), så Enter
+  // sender (som før) men Shift+Enter laver ny linje i stedet for at sende.
+  document.getElementById('qe-ai-chat-input').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();qeAiChatSend();}});
+  document.getElementById('qe-ai-chat-input').addEventListener('input',qeAiChatAutoGrow);
   document.getElementById('qe-ai-review-cancel').addEventListener('click',function(){closeModal('qe-ai-review-modal');});
   document.getElementById('qe-ai-review-confirm').addEventListener('click',qeAiReviewConfirm);
   document.getElementById('qe-add-blank-line').addEventListener('click',function(){qeAddLine(null);});
