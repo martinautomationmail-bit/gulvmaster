@@ -119,6 +119,21 @@ button,input,select{font:inherit}
 #crmp-date-filter .filter-dropdown-btn.active{border-color:var(--navy);color:var(--navy)}
 .crmp-date-filter-label{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--bly-sub);margin:8px 0 3px}
 .crmp-date-filter-label:first-child{margin-top:0}
+/* RUNDE (okt. 2026, Martins ønske: "lav en knap der hedder Mere valg, tilføj
+   Alle ansvarlige, Vælg, CSV, Ryd filtre der, så der kun er 3 knapper i alt")
+   — samler de sidste fire løse kontroller (ansvarlig-filter, massevalg, CSV-
+   eksport, ryd filtre) under ÉN "⋯ Mere valg"-dropdown, så værktøjslinjen nu
+   kun har tre knapper tilbage i alt: 🏷️ Felter, 📅 Oprettet og ⋯ Mere valg.
+   Samme bredde-fix-mønster som de to andre (sammensat selector, vinder uanset
+   rækkefølge i filen). "Ansvarlig"-vælgeren bruger samme sektions-overskrift-
+   klasse som Felter-dropdownen (.crmp-cf-filter-heading), adskilt fra
+   handlings-knapperne nedenunder med en tynd streg (.crmp-more-sep). */
+.crmp-more-filter.filter-dropdown{width:auto}
+.crmp-more-filter .filter-dropdown-btn{width:auto;justify-content:flex-start}
+.crmp-more-filter .filter-dropdown-menu{left:auto;right:0;min-width:200px;padding:7px}
+#crmp-more-group .filter-dropdown-btn.active{border-color:var(--navy);color:var(--navy)}
+.crmp-more-filter select#crmp-owner-filter{margin:2px 0 6px}
+.crmp-more-sep{height:1px;background:var(--bly-border-soft);margin:4px 2px 6px}
 /* RUNDE (okt. 2026) — se #qe-mode-modal i HTML'en. To lige store, klikbare
    kort (ikke en radio/select) — samme "vælg en vej"-følelse som mockup'en
    Martin godkendte. */
@@ -3843,7 +3858,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-04.67</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-04.68</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -6037,21 +6052,23 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      adskilt fra det ELDRE "crm"-præfiks som Kunder-modulet allerede bruger
      (initCrmModule/crm-modal/loadCrmCustomers m.fl.) — for ikke at kollidere. -->
 <section class="page" id="page-crmp">
+  <!-- RUNDE (okt. 2026, Martins ønske: "lav en knap der hedder Mere valg,
+       tilføj Alle ansvarlige, Vælg, CSV, Ryd filtre der, så der kun er 3
+       knapper i alt. Og lav søgefeltet lidt længere og bredere og smid
+       knapperne op ved siden af Indstillinger og leads") — hele værktøjs-
+       linjen (søg + filtre) er flyttet OP i selve sidehovedet, ved siden af
+       pipeline-vælgeren/Indstillinger/+Ny, i stedet for at stå i en egen
+       række nedenunder. De sidste fire løse kontroller (ansvarlig-filter,
+       massevalg, CSV, ryd filtre) er samlet under ÉN "⋯ Mere valg"-dropdown
+       (se .crmp-more-filter-CSS-kommentaren), så der nu kun står tre knapper
+       tilbage i alt: 🏷️ Felter, 📅 Oprettet, ⋯ Mere valg. -->
   <div class="bly-pagehead">
     <div>
       <h2 id="crmp-pipeline-title">Pipeline</h2>
       <div class="sub" id="crmp-pipeline-sub">–</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <select id="crmp-pipeline-select" class="select" style="width:auto"></select>
-      <button class="bly-btn outline" id="crmp-settings-btn" type="button">⚙️ Indstillinger</button>
-      <button class="bly-btn" id="crmp-new-btn" type="button">+ Ny</button>
-    </div>
-  </div>
-  <div class="bly-toolbar">
-    <div class="bly-toolbar-left" style="flex-wrap:wrap">
-      <input type="text" id="crmp-search" class="bly-search" placeholder="Søg navn, telefon eller email..." style="width:240px">
-      <select id="crmp-owner-filter" class="select" style="width:auto"><option value="">Alle ansvarlige</option></select>
+      <input type="text" id="crmp-search" class="bly-search" placeholder="Søg navn, telefon eller email..." style="width:300px">
       <!-- RUNDE (okt. 2026, Martins ønske: "jeg skal kunne vælge flere
            Projekt typer eller andre custom fields ... så jeg hurtigt kan
            analysere", senere fulgt op med: "kan du ikke samle de forskellige
@@ -6086,15 +6103,33 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <input type="date" id="crmp-date-to" class="select" style="width:100%" title="Oprettet til og med">
         </div>
       </div>
-      <button class="bly-ctl" id="crmp-filter-clear" type="button" title="Ryd filtre">✕ Ryd filtre</button>
-      <button class="bly-ctl" id="crmp-select-toggle" type="button" title="Vælg flere kort og udfør en handling på dem alle">☑️ Vælg</button>
-      <!-- RUNDE (okt. 2026, Martins ønske: "trække en CSV fil ud på den data
-           den finder med alt data om kunderne så jeg hurtig kan smide den ind
-           i AI og få en analyse") — eksporterer PRÆCIS de kort der står på
-           boardet lige nu (dvs. alle aktive filtre ovenfor er allerede
-           anvendt), se crmpExportCsv(). -->
-      <button class="bly-ctl" id="crmp-export-csv-btn" type="button" title="Eksportér de filtrerede kort som CSV">⬇ CSV</button>
+      <!-- "Mere valg" — se CSS-kommentaren ved .crmp-more-filter. Ansvarlig-
+           vælgeren er den SAMME <select id="crmp-owner-filter"> som før (ingen
+           JS-ændring i selve logikken), bare flyttet ind i menuen, med
+           massevalg/CSV/ryd-filtre som almindelige menu-punkter nedenunder. -->
+      <div class="filter-dropdown crmp-more-filter" id="crmp-more-group">
+        <button type="button" class="bly-ctl filter-dropdown-btn" id="crmp-more-btn" data-action="filter-dropdown-toggle">⋯ Mere valg ▾</button>
+        <div class="filter-dropdown-menu">
+          <div class="crmp-cf-filter-heading">Ansvarlig</div>
+          <select id="crmp-owner-filter" class="select" style="width:100%"><option value="">Alle ansvarlige</option></select>
+          <div class="crmp-more-sep"></div>
+          <button type="button" class="filter-dropdown-item" id="crmp-select-toggle" title="Vælg flere kort og udfør en handling på dem alle">☑️ Vælg</button>
+          <!-- RUNDE (okt. 2026, Martins ønske: "trække en CSV fil ud på den
+               data den finder med alt data om kunderne så jeg hurtig kan
+               smide den ind i AI og få en analyse") — eksporterer PRÆCIS de
+               kort der står på boardet lige nu (dvs. alle aktive filtre
+               ovenfor er allerede anvendt), se crmpExportCsv(). -->
+          <button type="button" class="filter-dropdown-item" id="crmp-export-csv-btn" title="Eksportér de filtrerede kort som CSV">⬇ CSV</button>
+          <button type="button" class="filter-dropdown-item" id="crmp-filter-clear" title="Ryd filtre">✕ Ryd filtre</button>
+        </div>
+      </div>
+      <select id="crmp-pipeline-select" class="select" style="width:auto"></select>
+      <button class="bly-btn outline" id="crmp-settings-btn" type="button">⚙️ Indstillinger</button>
+      <button class="bly-btn" id="crmp-new-btn" type="button">+ Ny</button>
     </div>
+  </div>
+  <div class="bly-toolbar">
+    <div></div>
     <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="crmp-count"></span></div>
   </div>
   <div class="crmp-board" id="crmp-board"></div>
@@ -23457,16 +23492,25 @@ async function initCrmpModule(){
     document.getElementById('crmp-settings-btn').addEventListener('click',openCrmpSettingsModal);
     document.getElementById('crmp-new-btn').addEventListener('click',openCrmpNewModal);
     document.getElementById('crmp-search').addEventListener('input',function(){crmpState.filters.q=this.value;clearTimeout(crmpState._searchTimer);crmpState._searchTimer=setTimeout(crmpLoadBoard,250);});
-    document.getElementById('crmp-owner-filter').addEventListener('change',function(){crmpState.filters.owner_id=this.value;crmpLoadBoard();});
+    document.getElementById('crmp-owner-filter').addEventListener('change',function(){crmpState.filters.owner_id=this.value;crmpUpdateMoreBtn();crmpLoadBoard();});
     document.getElementById('crmp-date-from').addEventListener('change',function(){crmpState.filters.dateFrom=this.value;crmpUpdateDateFilterBtn();crmpLoadBoard();});
     document.getElementById('crmp-date-to').addEventListener('change',function(){crmpState.filters.dateTo=this.value;crmpUpdateDateFilterBtn();crmpLoadBoard();});
-    document.getElementById('crmp-export-csv-btn').addEventListener('click',crmpExportCsv);
+    // RUNDE (okt. 2026) — CSV/Ryd filtre ligger nu som menu-punkter inde i
+    // "⋯ Mere valg"-dropdownen (se .crmp-more-filter) i stedet for som egne
+    // knapper i værktøjslinjen. Begge er "ét-klik og færdig"-handlinger (ingen
+    // grund til at lade brugeren fortsætte justere noget bagefter), så menuen
+    // lukkes eksplicit efter klik — ellers ville den blive stående åben uden
+    // selv at navigere væk (den automatiske luk-ved-klik-udenfor rammer ikke,
+    // da klikket sker INDE i dropdownen). Se crmpCloseMoreMenu().
+    document.getElementById('crmp-export-csv-btn').addEventListener('click',function(){crmpExportCsv();crmpCloseMoreMenu();});
     document.getElementById('crmp-filter-clear').addEventListener('click',function(){
       crmpState.filters={q:'',owner_id:'',cf:{},dateFrom:'',dateTo:''};
       document.getElementById('crmp-search').value='';document.getElementById('crmp-owner-filter').value='';
       document.getElementById('crmp-date-from').value='';document.getElementById('crmp-date-to').value='';
       crmpBuildCfFilterControls();
       crmpUpdateDateFilterBtn();
+      crmpUpdateMoreBtn();
+      crmpCloseMoreMenu();
       crmpLoadBoard();
     });
     // Luk-knappen wires her (og ikke som inline onclick) fordi hele scriptet
@@ -23544,6 +23588,7 @@ async function crmpAfterPipelineSwitch(){
   crmpState.filters.cf={};
   crmpBuildCfFilterControls();
   crmpUpdateDateFilterBtn();
+  crmpUpdateMoreBtn();
   // Markerede kort hører til DEN pipeline man stod på — de må ikke følge med
   // over på et andet board (hvor de samme id'er er en helt anden entitetstype).
   crmpState.selected={};
@@ -23616,6 +23661,23 @@ function crmpUpdateDateFilterBtn(){
   else if(to)label+=' til '+crmpFormatDateShort(to);
   btn.textContent=label+' ▾';
   btn.classList.toggle('active',!!(from||to));
+}
+// RUNDE (okt. 2026, Martins ønske: "lav en knap der hedder Mere valg...så
+// der kun er 3 knapper i alt") — #crmp-more-btn får samme "active"-kant-stil
+// som de to andre grupperede filter-knapper når noget indeni er sat: enten en
+// valgt ansvarlig, eller at massevalg-tilstand står slået til.
+function crmpUpdateMoreBtn(){
+  var btn=document.getElementById('crmp-more-btn');
+  if(!btn)return;
+  btn.classList.toggle('active',!!crmpState.filters.owner_id||!!crmpState.selectMode);
+}
+// CSV-eksport og Ryd filtre er "ét-klik og færdig"-punkter inde i "Mere
+// valg"-menuen (ikke noget man justerer videre på, som ansvarlig-vælgeren
+// eller massevalg kan være) — lukkes derfor eksplicit efter klik, se
+// kaldesteder i initCrmpModule().
+function crmpCloseMoreMenu(){
+  var menu=document.querySelector('#crmp-more-group .filter-dropdown-menu');
+  if(menu)menu.classList.remove('open');
 }
 async function crmpLoadBoard(){
   var p=crmpCurrentPipeline();
@@ -23951,6 +24013,12 @@ function crmpSetSelectMode(on){
     btn.classList.toggle('active',crmpState.selectMode);
     btn.textContent=crmpState.selectMode?'✕ Afslut valg':'☑️ Vælg';
   }
+  // RUNDE (okt. 2026) — "Vælg" sidder nu inde i "⋯ Mere valg"-menuen (se
+  // .crmp-more-filter); knappen selv viser aktiv-tilstanden med samme kant-
+  // stil som de andre grupperede filtre. Menuen lukkes med det samme man har
+  // valgt til/fra, så man kan se boardet og begynde at krydse kort af.
+  crmpUpdateMoreBtn();
+  crmpCloseMoreMenu();
   if(crmpCurrentPipeline())crmpRenderBoard();else crmpRenderBulkBar();
 }
 // Bygger dropdown'ernes indhold. Kun når pipelinen (og dermed stages/felter)
