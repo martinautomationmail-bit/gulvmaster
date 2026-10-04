@@ -100,6 +100,25 @@ button,input,select{font:inherit}
 .crmp-cf-filter-row input{margin:0}
 .crmp-cf-badge{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 4px;border-radius:99px;background:var(--navy);color:#fff;font-size:9.5px;font-weight:800;margin-left:5px}
 #crmp-cf-filters .filter-dropdown-btn.active{border-color:var(--navy);color:var(--navy)}
+/* RUNDE (okt. 2026, Martins ønske: "saml custom fields sammen, og dato-
+   elementerne sammen, lidt som i Tilbud") — ALLE select-type custom field-
+   filtre (tidligere én løs knap pr. felt, lige meget hvor mange der var) er nu
+   samlet under ÉN "🏷️ Felter"-knap, og de to løse dato-<input>'er under ÉN
+   "📅 Oprettet"-knap — nøjagtig samme "moderne sexede dropdown"-mønster Martin
+   selv bad om og fik på tilbuds-editorens værktøjslinje (#qe-docs-group m.fl.).
+   #crmp-cf-filters ER nu SELVE den ene filter-dropdown (ikke længere en
+   flex-wrap-beholder af flere), med ét afsnit pr. felt i menuen
+   (.crmp-cf-filter-section), adskilt af en tynd streg. */
+.crmp-cf-filter-menu{min-width:230px;max-height:360px}
+.crmp-cf-filter-section+.crmp-cf-filter-section{border-top:1px solid var(--bly-border-soft);margin-top:4px;padding-top:4px}
+.crmp-cf-filter-heading{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--bly-sub);padding:4px 8px 2px}
+.crmp-cf-filter-empty{padding:10px 8px;font-size:11.5px;color:var(--bly-sub)}
+.crmp-date-filter.filter-dropdown{width:auto}
+.crmp-date-filter .filter-dropdown-btn{width:auto;justify-content:flex-start}
+.crmp-date-filter .filter-dropdown-menu{left:0;right:auto;min-width:200px;padding:10px}
+#crmp-date-filter .filter-dropdown-btn.active{border-color:var(--navy);color:var(--navy)}
+.crmp-date-filter-label{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--bly-sub);margin:8px 0 3px}
+.crmp-date-filter-label:first-child{margin-top:0}
 /* RUNDE (okt. 2026) — se #qe-mode-modal i HTML'en. To lige store, klikbare
    kort (ikke en radio/select) — samme "vælg en vej"-følelse som mockup'en
    Martin godkendte. */
@@ -3824,7 +3843,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-04.66</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-04.67</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -6035,23 +6054,38 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <select id="crmp-owner-filter" class="select" style="width:auto"><option value="">Alle ansvarlige</option></select>
       <!-- RUNDE (okt. 2026, Martins ønske: "jeg skal kunne vælge flere
            Projekt typer eller andre custom fields ... så jeg hurtigt kan
-           analysere") — erstatter det GAMLE ét-felt/én-værdi-par
-           (#crmp-cf-filter-field/#crmp-cf-filter-value) med ÉN
-           multi-vælger-dropdown PR. select-type custom field, bygget dynamisk
-           i crmpBuildCfFilterControls() ud fra crmpState.customFieldDefs for
-           den aktuelle pipelines type (lead/opportunity) — samme princip som
-           tilbuds-editorens grupperede dropdowns, men med checkboxes i stedet
-           for enkelt-klik-punkter, så man kan vælge FLERE værdier ad gangen
-           og FLERE felter samtidig (fx Projekt Type OG Lead Source på én
-           gang). Se qeToolbarSyncGroupVisibility()-mønsteret for hvordan
-           .filter-dropdown/.filter-dropdown-menu allerede genbruges i appen. -->
-      <div id="crmp-cf-filters" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+           analysere", senere fulgt op med: "kan du ikke samle de forskellige
+           knapper, fx alle custom fields sammen, alle dato-elementer under
+           samme, lidt som i Tilbud, det er mere moderne") — ÉN samlet
+           "🏷️ Felter"-dropdown i stedet for én løs knap pr. custom field (var
+           ved at blive en hel række knapper hvis man havde mange felter), med
+           ét afsnit pr. felt i menuen og checkboxe i stedet for enkelt-klik,
+           så man stadig kan vælge FLERE værdier og FLERE felter samtidig (fx
+           Projekt Type OG Lead Source på én gang). Selve opbygningen sker i
+           crmpBuildCfFilterControls() ud fra crmpState.customFieldDefs for den
+           aktuelle pipelines type (lead/opportunity) — samme "moderne sexede
+           dropdown"-princip Martin selv bad om på tilbuds-editorens
+           værktøjslinje (#qe-docs-group m.fl.), blot med checkbox-afsnit i
+           stedet for enkeltpunkter. -->
+      <div class="filter-dropdown crmp-cf-filter" id="crmp-cf-filters">
+        <button type="button" class="bly-ctl filter-dropdown-btn" id="crmp-cf-filters-btn" data-action="filter-dropdown-toggle">🏷️ Felter ▾</button>
+        <div class="filter-dropdown-menu crmp-cf-filter-menu" id="crmp-cf-filters-menu"></div>
+      </div>
       <!-- Datointerval på "Oprettet" (created_at) — rent klient-side filter
-           ligesom cf-filtrene, da alle rækker allerede hentes til boardet. -->
-      <span class="sub" style="font-size:11px;white-space:nowrap">Oprettet:</span>
-      <input type="date" id="crmp-date-from" class="select" style="width:auto" title="Oprettet fra og med">
-      <span class="sub" style="font-size:11px">–</span>
-      <input type="date" id="crmp-date-to" class="select" style="width:auto" title="Oprettet til og med">
+           ligesom cf-filtrene, da alle rækker allerede hentes til boardet.
+           Samme samlings-ønske som ovenfor: Fra/Til var to løse <input>'er
+           direkte i værktøjslinjen, nu ÉN "📅 Oprettet"-dropdown der rummer
+           begge, se crmpUpdateDateFilterBtn() i JS'en for knappens
+           aktiv-visning (viser den valgte periode kort på selve knappen). -->
+      <div class="filter-dropdown crmp-date-filter" id="crmp-date-filter">
+        <button type="button" class="bly-ctl filter-dropdown-btn" id="crmp-date-filter-btn" data-action="filter-dropdown-toggle">📅 Oprettet ▾</button>
+        <div class="filter-dropdown-menu">
+          <label class="crmp-date-filter-label" for="crmp-date-from">Fra</label>
+          <input type="date" id="crmp-date-from" class="select" style="width:100%" title="Oprettet fra og med">
+          <label class="crmp-date-filter-label" for="crmp-date-to">Til</label>
+          <input type="date" id="crmp-date-to" class="select" style="width:100%" title="Oprettet til og med">
+        </div>
+      </div>
       <button class="bly-ctl" id="crmp-filter-clear" type="button" title="Ryd filtre">✕ Ryd filtre</button>
       <button class="bly-ctl" id="crmp-select-toggle" type="button" title="Vælg flere kort og udfør en handling på dem alle">☑️ Vælg</button>
       <!-- RUNDE (okt. 2026, Martins ønske: "trække en CSV fil ud på den data
@@ -23424,14 +23458,15 @@ async function initCrmpModule(){
     document.getElementById('crmp-new-btn').addEventListener('click',openCrmpNewModal);
     document.getElementById('crmp-search').addEventListener('input',function(){crmpState.filters.q=this.value;clearTimeout(crmpState._searchTimer);crmpState._searchTimer=setTimeout(crmpLoadBoard,250);});
     document.getElementById('crmp-owner-filter').addEventListener('change',function(){crmpState.filters.owner_id=this.value;crmpLoadBoard();});
-    document.getElementById('crmp-date-from').addEventListener('change',function(){crmpState.filters.dateFrom=this.value;crmpLoadBoard();});
-    document.getElementById('crmp-date-to').addEventListener('change',function(){crmpState.filters.dateTo=this.value;crmpLoadBoard();});
+    document.getElementById('crmp-date-from').addEventListener('change',function(){crmpState.filters.dateFrom=this.value;crmpUpdateDateFilterBtn();crmpLoadBoard();});
+    document.getElementById('crmp-date-to').addEventListener('change',function(){crmpState.filters.dateTo=this.value;crmpUpdateDateFilterBtn();crmpLoadBoard();});
     document.getElementById('crmp-export-csv-btn').addEventListener('click',crmpExportCsv);
     document.getElementById('crmp-filter-clear').addEventListener('click',function(){
       crmpState.filters={q:'',owner_id:'',cf:{},dateFrom:'',dateTo:''};
       document.getElementById('crmp-search').value='';document.getElementById('crmp-owner-filter').value='';
       document.getElementById('crmp-date-from').value='';document.getElementById('crmp-date-to').value='';
       crmpBuildCfFilterControls();
+      crmpUpdateDateFilterBtn();
       crmpLoadBoard();
     });
     // Luk-knappen wires her (og ikke som inline onclick) fordi hele scriptet
@@ -23508,34 +23543,47 @@ async function crmpAfterPipelineSwitch(){
   // Sales, og se ud til bare at gøre ingenting).
   crmpState.filters.cf={};
   crmpBuildCfFilterControls();
+  crmpUpdateDateFilterBtn();
   // Markerede kort hører til DEN pipeline man stod på — de må ikke følge med
   // over på et andet board (hvor de samme id'er er en helt anden entitetstype).
   crmpState.selected={};
   crmpBulkBuiltFor=null;
   await crmpLoadBoard();
 }
-// Bygger ÉN multi-vælger-dropdown pr. select-type custom field for den
-// aktuelle pipelines entitetstype (lead/opportunity) — se #crmp-cf-filters i
-// HTML'en og CSS-kommentaren ved .crmp-cf-filter. Checkbokse i stedet for
-// enkelt-klik, så flere værdier (og flere felter) kan vælges samtidig.
+// Bygger ÉN samlet "🏷️ Felter"-dropdown med ét afsnit pr. select-type custom
+// field for den aktuelle pipelines entitetstype (lead/opportunity) — se
+// #crmp-cf-filters i HTML'en og CSS-kommentaren ved .crmp-cf-filter (RUNDE,
+// okt. 2026: var tidligere én løs knap PR. felt, samlet efter Martins ønske
+// "saml custom fields sammen ... lidt som i Tilbud"). Checkbokse i stedet for
+// enkelt-klik, så flere værdier OG flere felter kan vælges samtidig.
 function crmpBuildCfFilterControls(){
-  var wrap=document.getElementById('crmp-cf-filters');
-  if(!wrap)return;
+  var btn=document.getElementById('crmp-cf-filters-btn');
+  var menu=document.getElementById('crmp-cf-filters-menu');
+  if(!btn||!menu)return;
+  var wasOpen=menu.classList.contains('open'); // se bemærkning nedenfor
   var p=crmpCurrentPipeline();
   var defs=(p&&crmpState.customFieldDefs[p.type]||[]).filter(function(d){return d.field_type==='select'&&(d.options||[]).length;});
-  wrap.innerHTML=defs.map(function(d){
+  menu.innerHTML=defs.length?defs.map(function(d){
     var selected=crmpState.filters.cf[d.key]||[];
-    var n=selected.length;
-    return '<div class="filter-dropdown crmp-cf-filter" id="crmp-cf-filter-'+esc(d.key)+'">'
-      +'<button type="button" class="bly-ctl filter-dropdown-btn'+(n?' active':'')+'" data-action="filter-dropdown-toggle">'+esc(d.label)+(n?'<span class="crmp-cf-badge">'+n+'</span>':'')+' ▾</button>'
-      +'<div class="filter-dropdown-menu">'
+    return '<div class="crmp-cf-filter-section">'
+      +'<div class="crmp-cf-filter-heading">'+esc(d.label)+'</div>'
       +d.options.map(function(o){
         var id='crmp-cf-opt-'+d.key+'-'+o.replace(/[^a-zA-Z0-9]/g,'_');
         return '<label class="crmp-cf-filter-row" for="'+id+'"><input type="checkbox" id="'+id+'" data-cf-key="'+esc(d.key)+'" value="'+esc(o)+'"'+(selected.indexOf(o)!==-1?' checked':'')+'>'+esc(o)+'</label>';
       }).join('')
-      +'</div></div>';
-  }).join('');
-  wrap.querySelectorAll('input[data-cf-key]').forEach(function(cb){
+      +'</div>';
+  }).join(''):'<div class="crmp-cf-filter-empty">Ingen felter til filtrering på denne pipeline — opret et under ⚙️ Indstillinger → Felter.</div>';
+  // RUNDE — menuen bygges helt forfra ved hvert checkbox-klik (for at opdatere
+  // tal-badge'et på selve knappen med det samme), hvilket ellers nulstiller
+  // .open-klassen og lukker panelet efter PRÆCIS ét klik — dårlig følelse ved
+  // multi-valg, hvor man typisk vil krydse flere værdier af i træk. Genåbnes
+  // derfor med det samme hvis den stod åben, så man kan blive ved med at
+  // krydse af uden at skulle åbne menuen igen for hver værdi.
+  if(wasOpen)menu.classList.add('open');
+  var totalN=Object.keys(crmpState.filters.cf).reduce(function(n,k){return n+(crmpState.filters.cf[k]||[]).length;},0);
+  btn.classList.toggle('active',totalN>0);
+  btn.innerHTML='🏷️ Felter'+(totalN?'<span class="crmp-cf-badge">'+totalN+'</span>':'')+' ▾';
+  menu.querySelectorAll('input[data-cf-key]').forEach(function(cb){
     cb.addEventListener('change',function(){
       var key=cb.dataset.cfKey;
       var arr=crmpState.filters.cf[key]||(crmpState.filters.cf[key]=[]);
@@ -23547,6 +23595,27 @@ function crmpBuildCfFilterControls(){
       crmpLoadBoard();
     });
   });
+}
+// Samme samlings-ønske, nu for datointervallet: #crmp-date-filter-btn viser
+// selv den valgte periode kort (i stedet for at to løse <input>'er bare stod
+// synlige i værktøjslinjen hele tiden), og får samme "active"-kant-stil som
+// de andre filter-knapper når mindst én af datoerne er sat.
+function crmpFormatDateShort(iso){
+  if(!iso)return '';
+  var parts=String(iso).split('-'); // 'YYYY-MM-DD' → 'D/M'
+  if(parts.length!==3)return iso;
+  return Number(parts[2])+'/'+Number(parts[1]);
+}
+function crmpUpdateDateFilterBtn(){
+  var btn=document.getElementById('crmp-date-filter-btn');
+  if(!btn)return;
+  var from=crmpState.filters.dateFrom,to=crmpState.filters.dateTo;
+  var label='📅 Oprettet';
+  if(from&&to)label+=' '+crmpFormatDateShort(from)+'–'+crmpFormatDateShort(to);
+  else if(from)label+=' fra '+crmpFormatDateShort(from);
+  else if(to)label+=' til '+crmpFormatDateShort(to);
+  btn.textContent=label+' ▾';
+  btn.classList.toggle('active',!!(from||to));
 }
 async function crmpLoadBoard(){
   var p=crmpCurrentPipeline();
