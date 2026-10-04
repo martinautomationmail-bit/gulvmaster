@@ -85,6 +85,21 @@ button,input,select{font:inherit}
 .qe-toolbar-dropdown .filter-dropdown-btn{width:auto;justify-content:flex-start}
 .qe-toolbar-dropdown .filter-dropdown-menu{left:auto;right:0;min-width:200px}
 .qe-toolbar-dropdown .filter-dropdown-item[href]{text-decoration:none}
+/* RUNDE (okt. 2026, Leads/Sales multi-vælger-filtre, se #crmp-cf-filters i
+   HTML'en og crmpBuildCfFilterControls() i JS'en) — samme bredde-fix-mønster
+   som .qe-toolbar-dropdown ovenfor (sammensat selector, så den altid vinder
+   over .filter-dropdown{width:100%} uanset rækkefølge i filen). Knappen viser
+   et lille tal-badge når filteret er aktivt (.crmp-cf-badge), og menuen
+   indeholder almindelige checkbox-rækker i stedet for enkelt-klik-punkter, så
+   flere værdier kan vælges samtidig. */
+.crmp-cf-filter.filter-dropdown{width:auto}
+.crmp-cf-filter .filter-dropdown-btn{width:auto;justify-content:flex-start}
+.crmp-cf-filter .filter-dropdown-menu{left:0;right:auto;min-width:190px}
+.crmp-cf-filter-row{display:flex;align-items:center;gap:7px;padding:6px 8px;font-size:11.5px;font-weight:600;color:var(--navy);border-radius:6px;cursor:pointer}
+.crmp-cf-filter-row:hover{background:var(--ice)}
+.crmp-cf-filter-row input{margin:0}
+.crmp-cf-badge{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 4px;border-radius:99px;background:var(--navy);color:#fff;font-size:9.5px;font-weight:800;margin-left:5px}
+#crmp-cf-filters .filter-dropdown-btn.active{border-color:var(--navy);color:var(--navy)}
 /* RUNDE (okt. 2026) — se #qe-mode-modal i HTML'en. To lige store, klikbare
    kort (ikke en radio/select) — samme "vælg en vej"-følelse som mockup'en
    Martin godkendte. */
@@ -108,6 +123,18 @@ button,input,select{font:inherit}
    så man kan skrive længere beskeder og se dem mens man skriver, i
    stedet for at teksten scroller usynligt til siden i et lille felt. */
 textarea.qe-ai-chat-input{resize:none;min-height:38px;max-height:160px;overflow-y:auto;line-height:1.4;font-family:inherit}
+/* AI DASHBOARD (okt. 2026) — genbruger .qe-ai-chat-* klasserne ovenfor 1:1
+   (bobler, fejl-boble, voksende textarea), men i sin egen større "shell" i
+   stedet for det lille panel i tilbuds-editoren, da chatten her er hele
+   sidens indhold og ikke bare et sekundært panel. Se #page-dashboard. */
+.dash-ai-shell{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.dash-ai-chat-messages{max-height:none;min-height:360px;background:#fff;border:1.5px solid var(--border2);border-radius:var(--bly-r-lg,14px);padding:16px}
+.dash-ai-suggestions{display:flex;flex-wrap:wrap;gap:6px}
+.dash-ai-suggest-btn{cursor:pointer;border:1px solid var(--border2);background:#fff;font-size:11.5px;font-weight:600;text-transform:none;letter-spacing:normal;color:var(--ink);padding:6px 12px;border-radius:999px;white-space:normal;text-align:left;line-height:1.3}
+.dash-ai-suggest-btn:hover{border-color:var(--navy);color:var(--navy);background:var(--ice)}
+.dash-ai-chat-msg.data-table{background:#fff;border:1px solid var(--border2);align-self:flex-start;max-width:100%;width:100%}
+.dash-ai-chat-msg.data-table table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:6px}
+.dash-ai-chat-msg.data-table th,.dash-ai-chat-msg.data-table td{border-bottom:1px solid var(--border2);padding:3px 6px;text-align:left}
 .tab{display:inline-block;border:0;background:transparent;color:rgba(255,255,255,.65);border-radius:5px;padding:4px 11px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;text-decoration:none;box-sizing:border-box}
 .tab.active{color:#fff;background:rgba(255,255,255,.16)}
 .tab-navdrop{display:flex;align-items:center;gap:0}
@@ -1592,21 +1619,14 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .crmp-set-opt-twin input{width:auto}
 
 /* ══════════════════════════════════════════════════════════════
-   KOMMANDOCENTER — samme Billy-behandling, scoped til #page-dashboard. */
+   AI DASHBOARD — samme Billy-behandling på sidehovedet, scoped til
+   #page-dashboard. Det gamle Kommandocenters kort/paneler/rækker
+   (.kpi-card/.dash-h3/.dash-panel/.dash-row osv.) er fjernet herfra sammen
+   med selve indholdet (okt. 2026, se #page-dashboard i HTML'en og
+   loadDashboard() i JS'en) — de klasser bruges stadig andre steder i appen
+   (skabelon-lister m.fl.), bare ikke scoped til #page-dashboard længere. */
 #page-dashboard .page-head h2{font-size:25px;font-weight:800;color:var(--bly-ink);letter-spacing:-.01em;margin:0}
 #page-dashboard .page-sub{color:var(--bly-sub);font-size:12px}
-#page-dashboard .kpi-card{background:#fff;border:1.5px solid var(--bly-border);box-shadow:none;border-radius:var(--bly-r-lg);padding:16px 18px}
-#page-dashboard .kpi-card.warn{border-color:#FECACA;background:#FEF9F9}
-#page-dashboard .kpi-card .kpi-label{text-transform:none;color:var(--bly-sub);font-size:11.5px;font-weight:600;letter-spacing:0}
-#page-dashboard .kpi-card .kpi-value{font-size:22px;color:var(--bly-ink);font-weight:800;letter-spacing:-.01em}
-#page-dashboard .kpi-card .kpi-sub{font-size:10.5px;color:var(--bly-sub)}
-#page-dashboard .kpi-card.warn .kpi-value{color:#DC2626}
-#page-dashboard .dash-h3{font-size:13px;font-weight:800;color:var(--bly-ink);text-transform:none}
-#page-dashboard .dash-panel{background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:8px 14px}
-#page-dashboard .dash-row{border-bottom:1px solid var(--bly-border-soft);padding:11px 4px}
-#page-dashboard .dash-row-title{color:var(--bly-ink);font-weight:700}
-#page-dashboard .dash-row-sub{color:var(--bly-sub)}
-#page-dashboard .dash-empty{color:var(--bly-sub)}
 /* Høj prioritet-banner (sep. 2026, RUNDE H #24 gjort GLOBAL, RUNDE H #223b
    lavet om til en SLANK slider-linje inde i selve headeren i stedet for en
    boks midt i siden — se HTML-kommentaren ved #dash-priority-banner og
@@ -3804,7 +3824,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-03.65</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-04.66</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -3913,43 +3933,33 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <main class="main">
 
-<!-- KOMMANDOCENTER -->
+<!-- AI DASHBOARD (okt. 2026) — erstatter 1:1 det gamle "Kommandocenter"
+     (opgavepool/overbookinger/kapacitetsprognose/notifikationer/bagud-liste),
+     på Martins eksplicitte ønske: "Så lav et AI Dashboard istedet for det jeg
+     har pt" + bekræftet via opklarende spørgsmål at det operationelle
+     Kommandocenter-indhold aldrig blev brugt ("Bare erstat det helt for
+     bruger det aldrig."). Selve det gamle indhold (og loadDashboard()'s
+     gamle krop) er derfor fjernet, ikke bare suppleret — se git-historik hvis
+     det skal findes igen.
+     Samme chat-mønster som AI-tilbudsgiveren i tilbuds-editoren
+     (#qe-ai-chat-panel) — voksende textarea, chat-bobler, rød fejl-boble der
+     bliver stående — men her er svaret ren tekst-analyse (ingen linjer/
+     bekræft-modal, se POST /api/dashboard/ai-chat i server.js). Banneret
+     #dash-priority-banner er nu globalt (RUNDE H #24) og ligger uden for
+     denne sektion, så det er uændret og stadig synligt her. -->
 <section class="page" id="page-dashboard">
-  <div class="page-head"><h2>Kommandocenter</h2><p class="page-sub">Samlet overblik — hvad skal du tage stilling til lige nu.</p></div>
-  <!-- RUNDE H #24 — høj prioritet-banneret er flyttet ud herfra og op på
-       GLOBALT niveau (lige under .nav, uden for <main>/.page-routeren), se
-       #dash-priority-banner ved .app-content ovenfor. Det står derfor IKKE
-       længere her, men vises stadig automatisk øverst når man kigger på
-       Kommandocenter, ligesom på alle andre sider. -->
-  <div class="dash-grid" id="dash-kpi-cards"></div>
-  <div class="dash-cols">
-    <div class="dash-col">
-      <h3 class="dash-h3">📥 Prioriteret opgavepool</h3>
-      <div id="dash-pool-priority" class="dash-panel"></div>
+  <div class="page-head"><h2>🤖 AI Dashboard</h2><p class="page-sub">Spørg om dine leads, salgsmuligheder og konverteringer — i almindeligt dansk. Svarene bygger altid på de rigtige, udregnede tal fra dit CRM, aldrig gæt.</p></div>
+  <div class="dash-ai-shell">
+    <div id="dash-ai-chat-messages" class="qe-ai-chat-messages dash-ai-chat-messages"></div>
+    <div class="dash-ai-suggestions" id="dash-ai-suggestions">
+      <button type="button" class="dash-ai-suggest-btn">Hvor mange leads fik vi sidste måned, og hvor mange konverterede?</button>
+      <button type="button" class="dash-ai-suggest-btn">Hvad er gennemsnitlig konverteringsværdi pr. projekttype?</button>
+      <button type="button" class="dash-ai-suggest-btn">Hvor mange salgsmuligheder har vi vundet denne måned?</button>
+      <button type="button" class="dash-ai-suggest-btn">Fordel leads på kilde de sidste 3 måneder</button>
     </div>
-    <div class="dash-col">
-      <h3 class="dash-h3">⚠️ Overbookede medarbejdere (næste uger)</h3>
-      <div id="dash-overbooked" class="dash-panel"></div>
-    </div>
-  </div>
-  <div class="dash-cols">
-    <div class="dash-col" style="flex:2">
-      <h3 class="dash-h3">📊 Kapacitetsprognose — 8 uger frem, pr. fag</h3>
-      <div id="dash-forecast" class="dash-panel"></div>
-    </div>
-    <div class="dash-col">
-      <h3 class="dash-h3">🔔 Seneste notifikationer</h3>
-      <div id="dash-notif-feed" class="dash-panel"></div>
-    </div>
-  </div>
-  <div class="dash-cols">
-    <div class="dash-col">
-      <h3 class="dash-h3">✅ Nyligt afsluttede projekter</h3>
-      <div id="dash-finished-projects" class="dash-panel"></div>
-    </div>
-    <div class="dash-col">
-      <h3 class="dash-h3">🚧 Bagud på faser (startdato overskredet, ikke færdig)</h3>
-      <div id="dash-behind-phases" class="dash-panel"></div>
+    <div class="qe-ai-chat-input-row">
+      <textarea id="dash-ai-chat-input" class="qe-input qe-ai-chat-input" rows="1" placeholder="Spørg om dine leads og salgsmuligheder... (Enter sender, Shift+Enter ny linje)"></textarea>
+      <button type="button" class="bly-btn" id="dash-ai-chat-send-btn">Send</button>
     </div>
   </div>
 </section>
@@ -6023,10 +6033,33 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="bly-toolbar-left" style="flex-wrap:wrap">
       <input type="text" id="crmp-search" class="bly-search" placeholder="Søg navn, telefon eller email..." style="width:240px">
       <select id="crmp-owner-filter" class="select" style="width:auto"><option value="">Alle ansvarlige</option></select>
-      <select id="crmp-cf-filter-field" class="select" style="width:auto"><option value="">Filtrér på felt...</option></select>
-      <select id="crmp-cf-filter-value" class="select" style="width:auto;display:none"></select>
+      <!-- RUNDE (okt. 2026, Martins ønske: "jeg skal kunne vælge flere
+           Projekt typer eller andre custom fields ... så jeg hurtigt kan
+           analysere") — erstatter det GAMLE ét-felt/én-værdi-par
+           (#crmp-cf-filter-field/#crmp-cf-filter-value) med ÉN
+           multi-vælger-dropdown PR. select-type custom field, bygget dynamisk
+           i crmpBuildCfFilterControls() ud fra crmpState.customFieldDefs for
+           den aktuelle pipelines type (lead/opportunity) — samme princip som
+           tilbuds-editorens grupperede dropdowns, men med checkboxes i stedet
+           for enkelt-klik-punkter, så man kan vælge FLERE værdier ad gangen
+           og FLERE felter samtidig (fx Projekt Type OG Lead Source på én
+           gang). Se qeToolbarSyncGroupVisibility()-mønsteret for hvordan
+           .filter-dropdown/.filter-dropdown-menu allerede genbruges i appen. -->
+      <div id="crmp-cf-filters" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <!-- Datointerval på "Oprettet" (created_at) — rent klient-side filter
+           ligesom cf-filtrene, da alle rækker allerede hentes til boardet. -->
+      <span class="sub" style="font-size:11px;white-space:nowrap">Oprettet:</span>
+      <input type="date" id="crmp-date-from" class="select" style="width:auto" title="Oprettet fra og med">
+      <span class="sub" style="font-size:11px">–</span>
+      <input type="date" id="crmp-date-to" class="select" style="width:auto" title="Oprettet til og med">
       <button class="bly-ctl" id="crmp-filter-clear" type="button" title="Ryd filtre">✕ Ryd filtre</button>
       <button class="bly-ctl" id="crmp-select-toggle" type="button" title="Vælg flere kort og udfør en handling på dem alle">☑️ Vælg</button>
+      <!-- RUNDE (okt. 2026, Martins ønske: "trække en CSV fil ud på den data
+           den finder med alt data om kunderne så jeg hurtig kan smide den ind
+           i AI og få en analyse") — eksporterer PRÆCIS de kort der står på
+           boardet lige nu (dvs. alle aktive filtre ovenfor er allerede
+           anvendt), se crmpExportCsv(). -->
+      <button class="bly-ctl" id="crmp-export-csv-btn" type="button" title="Eksportér de filtrerede kort som CSV">⬇ CSV</button>
     </div>
     <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="crmp-count"></span></div>
   </div>
@@ -13915,92 +13948,83 @@ async function refreshGlobalPriorityBanner(){
   var list=await api('/api/crm/tasks/overview');
   renderPriorityBanner(Array.isArray(list)?list:[]);
 }
-async function loadDashboard(){
-  var el=document.getElementById('dash-kpi-cards');
-  el.innerHTML='<div class="dash-empty">Henter…</div>';
-  var overview=await api('/api/dashboard/overview');
-  var kpis=await api('/api/dashboard/kpis');
-  var forecast=await api('/api/dashboard/capacity-forecast');
-  var notifs=await api('/api/notifications');
-  // Banneret er nu globalt (RUNDE H #24) og hentes/opdateres i forvejen ved
-  // opstart + hvert 90. sekund (se refreshGlobalPriorityBanner). Kaldes også
-  // her, så det med det samme er frisk når man lander på Kommandocenter.
+// AI DASHBOARD (okt. 2026) — erstatter det gamle operationelle Kommandocenter
+// 1:1 (se #page-dashboard i HTML'en og POST /api/dashboard/ai-chat i
+// server.js). Samme grund-mønster som tilbuds-AI-chatten (qeAiChatState/
+// qeAiChatSend ovenfor i filen) — hele samtalen sendes med ved hvert kald,
+// ingen hukommelse på serveren — men svaret her er altid ren analyse-tekst
+// plus evt. en lille talt-tabel, ALDRIG forslag der skal godkendes, så der
+// er ingen review-modal at koble på.
+var dashAiState={messages:[],sending:false,lastError:null};
+function loadDashboard(){
+  // Banneret er globalt (RUNDE H #24) og opdateres allerede i forvejen ved
+  // opstart + hvert 90. sekund — kaldes også her så det er frisk med det
+  // samme når man lander på AI Dashboard.
   refreshGlobalPriorityBanner();
-  if(!overview){el.innerHTML='<div class="dash-empty">Kunne ikke hente overblik.</div>';return;}
-
-  var waitingN=(overview.status_counts.find(function(s){return s.status_flag==='waiting';})||{}).n||0;
-  var behindN=(overview.status_counts.find(function(s){return s.status_flag==='behind';})||{}).n||0;
-  el.innerHTML=[
-    ['📥 I poolen',overview.pool_open_count,overview.pool_oldest?'ældste: '+timeAgo(overview.pool_oldest):'',false],
-    ['⏳ Afventer',waitingN,'bookinger',waitingN>0],
-    ['🔻 Bagud',behindN,'bookinger',behindN>0],
-    ['🧾 Ikke faktureret',overview.unbilled_completed_count,'færdige opgaver',overview.unbilled_completed_count>0],
-    ['👥 Overbooket',overview.overbooked_employees.length,'medarbejder-uger',overview.overbooked_employees.length>0],
-    ['⏱ Gnsn. gennemløb',kpis&&kpis.avg_turnaround_days?kpis.avg_turnaround_days+' d':'—','start → færdig',false]
-  ].map(function(x){return '<div class="kpi-card'+(x[3]?' warn':'')+'"><div class="kpi-label">'+x[0]+'</div><div class="kpi-value">'+x[1]+'</div><div class="kpi-sub">'+x[2]+'</div></div>';}).join('');
-
-  // Prioriteret pool: opgaver uden daglig-booking, sorteret efter alder (ældst øverst)
-  var poolTasks=tasks.filter(function(t){return t.start_date&&!bookings.some(function(b){return b.task_id===t.id&&!isCapacityBooking(b);});});
-  poolTasks.sort(function(a,b){return String(a.created_at||a.start_date).localeCompare(String(b.created_at||b.start_date));});
-  var poolEl=document.getElementById('dash-pool-priority');
-  poolEl.innerHTML=poolTasks.length?poolTasks.slice(0,12).map(function(t){
-    return '<div class="dash-row" data-action="goto-tasklist-task" data-task-id="'+t.id+'" style="cursor:pointer">'+
-      '<div><div class="dash-row-title">'+esc(t.job_name||t.name)+'</div><div class="dash-row-sub">'+esc(t.name||'')+(t.job_number?' · #'+esc(t.job_number):'')+'</div></div>'+
-      '<span class="opt-tag">'+timeAgo(t.created_at||t.start_date)+'</span></div>';
-  }).join(''):'<div class="dash-empty">Poolen er tom — flot! 🎉</div>';
-
-  var obEl=document.getElementById('dash-overbooked');
-  obEl.innerHTML=overview.overbooked_employees.length?overview.overbooked_employees.map(function(r){
-    return '<div class="dash-row"><div><div class="dash-row-title">'+esc(r.name)+'</div><div class="dash-row-sub">Uge '+esc(r.week_key)+'</div></div>'+
-      '<span class="opt-tag" style="color:#B91C1C">'+r.booked+' / '+r.capacity+' d</span></div>';
-  }).join(''):'<div class="dash-empty">Ingen overbookinger fundet 👍</div>';
-
-  var fcEl=document.getElementById('dash-forecast');
-  if(forecast&&forecast.capacity_by_trade){
-    var trades=forecast.capacity_by_trade.map(function(x){return x.trade;});
-    fcEl.innerHTML=trades.map(function(trade){
-      var cap=+((forecast.capacity_by_trade.find(function(x){return x.trade===trade;})||{}).capacity||0);
-      var rows=forecast.weeks.map(function(wk){
-        var wkKey=weekKey(date(wk));
-        var booked=forecast.booked_by_trade_week.filter(function(b){return b.trade===trade&&b.week_key===wkKey;}).reduce(function(n,b){return n+ +b.booked;},0);
-        var pct=cap>0?Math.min(150,Math.round(booked/cap*100)):0;
-        var color=pct>=100?'#DC2626':pct>=80?'#F59E0B':'#16A34A';
-        return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:9px;color:var(--muted);width:34px">'+wkKey.split('-W')[1]+'</span><div class="forecast-bar-track"><div class="forecast-bar-fill" style="width:'+pct+'%;background:'+color+'"></div></div><span style="font-size:9px;color:var(--muted);width:60px;text-align:right">'+booked+' / '+cap+' d</span></div>';
-      }).join('');
-      return '<div style="margin-bottom:12px"><div class="dash-row-title" style="margin-bottom:4px">'+esc(trade)+'</div>'+rows+'</div>';
-    }).join('')||'<div class="dash-empty">Ingen data endnu.</div>';
+  dashAiRenderMessages();
+  dashAiAutoGrow();
+}
+function dashAiRenderMessages(){
+  var box=document.getElementById('dash-ai-chat-messages');
+  if(!box)return;
+  var html=dashAiState.messages.length?dashAiState.messages.map(function(m){
+    if(m.role==='user')return '<div class="qe-ai-chat-msg user">'+esc(m.content)+'</div>';
+    var out='<div class="qe-ai-chat-msg assistant">'+esc(m.content)+'</div>';
+    if(m.data&&m.data.length)out+=dashAiRenderDataTables(m.data);
+    return out;
+  }).join(''):'<div class="qe-ai-chat-msg assistant">Spørg mig om dine leads og salgsmuligheder — fx antal, konverteringer, gennemsnitsværdi eller en fordeling på kilde/projekttype/ansvarlig/måned. Jeg svarer kun med rigtige, udregnede tal fra dit CRM.</div>';
+  if(dashAiState.lastError)html+='<div class="qe-ai-chat-msg error">⚠️ '+esc(dashAiState.lastError)+'</div>';
+  box.innerHTML=html;
+  box.scrollTop=box.scrollHeight;
+}
+// Viser de rå udregnede tal som små tabeller under AI'ens svar — så Martin
+// selv kan se de konkrete tal bag analysen, ikke kun den sammenfattede tekst.
+function dashAiRenderDataTables(data){
+  return data.map(function(d){
+    if(d.result===null||typeof d.result!=='object'){
+      return '<div class="qe-ai-chat-msg assistant data-table"><strong>'+esc(d.label)+':</strong> '+esc(String(d.result))+' <span class="dash-row-sub">('+d.row_count+' rækker)</span></div>';
+    }
+    var rows=Object.keys(d.result).map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+esc(String(d.result[k]))+'</td></tr>';}).join('');
+    return '<div class="qe-ai-chat-msg assistant data-table"><strong>'+esc(d.label)+'</strong><table>'+rows+'</table></div>';
+  }).join('');
+}
+function dashAiAutoGrow(){
+  var el=document.getElementById('dash-ai-chat-input');
+  if(!el)return;
+  el.style.height='auto';
+  el.style.height=Math.min(el.scrollHeight,160)+'px';
+}
+async function dashAiChatSend(presetText){
+  if(dashAiState.sending)return;
+  var input=document.getElementById('dash-ai-chat-input');
+  var text=(presetText!=null?presetText:(input.value||'')).trim();
+  if(!text)return;
+  if(presetText==null)input.value='';
+  dashAiAutoGrow();
+  dashAiState.lastError=null;
+  dashAiState.messages.push({role:'user',content:text});
+  dashAiRenderMessages();
+  dashAiState.sending=true;
+  var sendBtn=document.getElementById('dash-ai-chat-send-btn');
+  sendBtn.disabled=true;sendBtn.textContent='...';
+  var r;
+  try{
+    r=await api('/api/dashboard/ai-chat',{method:'POST',body:JSON.stringify({messages:dashAiState.messages})});
+  }catch(e){
+    r=null;
   }
-
-  var nfEl=document.getElementById('dash-notif-feed');
-  nfEl.innerHTML=(notifs&&notifs.length)?notifs.slice(0,15).map(function(n){
-    return '<div class="notif-item'+(n.read_at?'':' unread')+'"><div class="notif-title">'+esc(n.title)+'</div><div class="notif-time">'+timeAgo(n.created_at)+'</div></div>';
-  }).join(''):'<div class="dash-empty">Ingen notifikationer endnu.</div>';
-
-  // Projektstatus: "afsluttet" = alle dagens bookinger for opgaven er markeret færdige.
-  // "Bagud" = startdato er passeret uden at være færdig — uanset om den er planlagt eller ej.
-  var todayIso=iso(new Date());
-  var finishedTasks=tasks.filter(function(t){return taskIsCompleted(t);});
-  finishedTasks.sort(function(a,b){
-    var la=dailyBookingsForTask(a).map(function(b2){return b2.completed_at||'';}).sort().pop()||'';
-    var lb=dailyBookingsForTask(b).map(function(b2){return b2.completed_at||'';}).sort().pop()||'';
-    return String(lb).localeCompare(String(la));
-  });
-  var fpEl=document.getElementById('dash-finished-projects');
-  fpEl.innerHTML=finishedTasks.length?finishedTasks.slice(0,10).map(function(t){
-    var lastDone=dailyBookingsForTask(t).map(function(b2){return b2.completed_at||'';}).sort().pop();
-    return '<div class="dash-row"><div><div class="dash-row-title">'+esc(t.job_name||t.name)+'</div><div class="dash-row-sub">'+esc(t.name||'')+'</div></div>'+
-      '<span class="opt-tag" style="color:#15803D">'+(lastDone?timeAgo(lastDone):'')+'</span></div>';
-  }).join(''):'<div class="dash-empty">Ingen afsluttede opgaver endnu.</div>';
-
-  var behindTasks=tasks.filter(function(t){return !taskIsCompleted(t)&&t.start_date&&String(t.start_date).slice(0,10)<todayIso;});
-  behindTasks.sort(function(a,b){return String(a.start_date).localeCompare(String(b.start_date));});
-  var bpEl=document.getElementById('dash-behind-phases');
-  bpEl.innerHTML=behindTasks.length?behindTasks.slice(0,12).map(function(t){
-    var daysLate=Math.round((new Date(todayIso)-new Date(t.start_date))/86400000);
-    return '<div class="dash-row" data-action="goto-tasklist-task" data-task-id="'+t.id+'" style="cursor:pointer">'+
-      '<div><div class="dash-row-title">'+esc(t.job_name||t.name)+'</div><div class="dash-row-sub">'+esc(t.name||'')+'</div></div>'+
-      '<span class="opt-tag" style="color:#B91C1C">'+daysLate+' d bagud</span></div>';
-  }).join(''):'<div class="dash-empty">Ingen faser bagud — flot! 🎉</div>';
+  dashAiState.sending=false;
+  sendBtn.disabled=false;sendBtn.textContent='Send';
+  if(!r||r.error){
+    var msg=r&&r.error?r.error:'AI Dashboard svarede ikke — prøv igen, eller tjek om ANTHROPIC_API_KEY er sat på serveren.';
+    dashAiState.lastError=msg;
+    dashAiRenderMessages();
+    toast(msg,'❌',null,7000);
+    return;
+  }
+  dashAiState.messages.push({role:'assistant',content:r.reply||''});
+  if(r.data&&r.data.length)dashAiState.messages[dashAiState.messages.length-1].data=r.data;
+  dashAiRenderMessages();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -19636,6 +19660,20 @@ async function bind(){
   document.getElementById('app-sidebar').addEventListener('click',function(e){
     if(e.target.closest('.tab,.navdrop-item'))closeMobileSidebar();
   });
+  // AI DASHBOARD (okt. 2026) — #page-dashboard er en TOP-NIVEAU side man kan
+  // lande direkte på uden først at have åbnet Tilbud & Faktura, så disse
+  // lyttere bindes her i det globale bind() der kører ÉN gang ved opstart —
+  // IKKE i bindQuotesModuleEvents() (som kun kører lazy, første gang man selv
+  // åbner Tilbud & Faktura, se qzInitialized). Blev først fejlagtigt sat op
+  // dernede ved siden af den tilsvarende tilbuds-AI-chat og ville ellers give
+  // nøjagtig den "trykker send, der sker intet"-fejl Martin allerede har
+  // rapporteret én gang denne runde — fundet og rettet i egen Playwright-test
+  // før levering. Samme Enter-sender/Shift+Enter-ny-linje/voksende-textarea-
+  // mønster, se dashAiChatSend()/dashAiAutoGrow().
+  document.getElementById('dash-ai-chat-send-btn').addEventListener('click',function(){dashAiChatSend();});
+  document.getElementById('dash-ai-chat-input').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();dashAiChatSend();}});
+  document.getElementById('dash-ai-chat-input').addEventListener('input',dashAiAutoGrow);
+  document.getElementById('dash-ai-suggestions').addEventListener('click',function(e){var btn=e.target.closest('.dash-ai-suggest-btn');if(btn)dashAiChatSend(btn.textContent);});
   // RUNDE H #9 (senere flyttet til sidebaren, sep. 2026, se sidebar-newbtn-*
   // CSS/markup ovenfor) — "+ Ny"-genvej til nyt tilbud/ny kunde. Genbruger de
   // eksisterende opret-funktioner (openQuoteEditor/openCrmModal) uændret.
@@ -23363,7 +23401,11 @@ async function openCustomerDetail(id){
 // kollidere med det ældre "crm"-præfiks Kunder-modulet allerede bruger
 // (initCrmModule/crm-modal/loadCrmCustomers m.fl., se lige ovenfor).
 // ══════════════════════════════════════════════════════════════
-var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[]},customFieldDefsLoaded:false,filters:{q:'',owner_id:'',cf_key:'',cf_value:''},initialized:false,detailInitialized:false,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead',selectMode:false,selected:{}};
+// RUNDE (okt. 2026) — filters.cf er nu {felt_key: [valg1,valg2,...]} i stedet
+// for ét enkelt cf_key/cf_value-par, så flere felter OG flere værdier pr.
+// felt kan være aktive samtidig (se crmpBuildCfFilterControls/crmpLoadBoard).
+// dateFrom/dateTo filtrerer på created_at (YYYY-MM-DD, rent klient-side).
+var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[]},customFieldDefsLoaded:false,filters:{q:'',owner_id:'',cf:{},dateFrom:'',dateTo:''},initialized:false,detailInitialized:false,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead',selectMode:false,selected:{}};
 // ── SAMMENKLAPPEDE KOLONNER — hvilke stages brugeren SELV har foldet ud i
 // denne session. Martin har udtrykkeligt bedt om at "Konverteret"/"Afvist"/
 // "Tabt" ALTID starter krympede, så dette må IKKE gemmes i localStorage: ved
@@ -23382,19 +23424,14 @@ async function initCrmpModule(){
     document.getElementById('crmp-new-btn').addEventListener('click',openCrmpNewModal);
     document.getElementById('crmp-search').addEventListener('input',function(){crmpState.filters.q=this.value;clearTimeout(crmpState._searchTimer);crmpState._searchTimer=setTimeout(crmpLoadBoard,250);});
     document.getElementById('crmp-owner-filter').addEventListener('change',function(){crmpState.filters.owner_id=this.value;crmpLoadBoard();});
-    document.getElementById('crmp-cf-filter-field').addEventListener('change',function(){
-      crmpState.filters.cf_key=this.value;crmpState.filters.cf_value='';
-      var valSel=document.getElementById('crmp-cf-filter-value');
-      var def=(crmpCurrentPipeline()&&crmpState.customFieldDefs[crmpCurrentPipeline().type]||[]).find(function(d){return d.key===this.value;}.bind(this));
-      if(def&&def.field_type==='select'){valSel.innerHTML='<option value="">Alle værdier</option>'+def.options.map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join('');valSel.style.display='';}
-      else valSel.style.display='none';
-      crmpLoadBoard();
-    });
-    document.getElementById('crmp-cf-filter-value').addEventListener('change',function(){crmpState.filters.cf_value=this.value;crmpLoadBoard();});
+    document.getElementById('crmp-date-from').addEventListener('change',function(){crmpState.filters.dateFrom=this.value;crmpLoadBoard();});
+    document.getElementById('crmp-date-to').addEventListener('change',function(){crmpState.filters.dateTo=this.value;crmpLoadBoard();});
+    document.getElementById('crmp-export-csv-btn').addEventListener('click',crmpExportCsv);
     document.getElementById('crmp-filter-clear').addEventListener('click',function(){
-      crmpState.filters={q:'',owner_id:'',cf_key:'',cf_value:''};
+      crmpState.filters={q:'',owner_id:'',cf:{},dateFrom:'',dateTo:''};
       document.getElementById('crmp-search').value='';document.getElementById('crmp-owner-filter').value='';
-      document.getElementById('crmp-cf-filter-field').value='';document.getElementById('crmp-cf-filter-value').style.display='none';
+      document.getElementById('crmp-date-from').value='';document.getElementById('crmp-date-to').value='';
+      crmpBuildCfFilterControls();
       crmpLoadBoard();
     });
     // Luk-knappen wires her (og ikke som inline onclick) fordi hele scriptet
@@ -23465,15 +23502,51 @@ async function crmpAfterPipelineSwitch(){
   document.getElementById('crmp-pipeline-title').textContent=p.name;
   document.getElementById('crmp-pipeline-sub').textContent=p.type==='lead'?'Nye henvendelser — konvertér til en opportunity når de er kvalificeret':'Salgsmuligheder i gang';
   document.getElementById('crmp-new-btn').textContent=p.type==='lead'?'+ Nyt lead':'+ Ny opportunity';
-  var cfSel=document.getElementById('crmp-cf-filter-field');
-  var defs=crmpState.customFieldDefs[p.type]||[];
-  cfSel.innerHTML='<option value="">Filtrér på felt...</option>'+defs.map(function(d){return '<option value="'+esc(d.key)+'">'+esc(d.label)+'</option>';}).join('');
-  document.getElementById('crmp-cf-filter-value').style.display='none';
+  // RUNDE (okt. 2026) — cf-filtrene er nøglet på felt-key, og lead/opportunity
+  // har hver deres egne custom field-definitioner, så de ryddes ved pipeline-
+  // skift (ellers kunne et filter fra Leads pege på en key der ikke findes på
+  // Sales, og se ud til bare at gøre ingenting).
+  crmpState.filters.cf={};
+  crmpBuildCfFilterControls();
   // Markerede kort hører til DEN pipeline man stod på — de må ikke følge med
   // over på et andet board (hvor de samme id'er er en helt anden entitetstype).
   crmpState.selected={};
   crmpBulkBuiltFor=null;
   await crmpLoadBoard();
+}
+// Bygger ÉN multi-vælger-dropdown pr. select-type custom field for den
+// aktuelle pipelines entitetstype (lead/opportunity) — se #crmp-cf-filters i
+// HTML'en og CSS-kommentaren ved .crmp-cf-filter. Checkbokse i stedet for
+// enkelt-klik, så flere værdier (og flere felter) kan vælges samtidig.
+function crmpBuildCfFilterControls(){
+  var wrap=document.getElementById('crmp-cf-filters');
+  if(!wrap)return;
+  var p=crmpCurrentPipeline();
+  var defs=(p&&crmpState.customFieldDefs[p.type]||[]).filter(function(d){return d.field_type==='select'&&(d.options||[]).length;});
+  wrap.innerHTML=defs.map(function(d){
+    var selected=crmpState.filters.cf[d.key]||[];
+    var n=selected.length;
+    return '<div class="filter-dropdown crmp-cf-filter" id="crmp-cf-filter-'+esc(d.key)+'">'
+      +'<button type="button" class="bly-ctl filter-dropdown-btn'+(n?' active':'')+'" data-action="filter-dropdown-toggle">'+esc(d.label)+(n?'<span class="crmp-cf-badge">'+n+'</span>':'')+' ▾</button>'
+      +'<div class="filter-dropdown-menu">'
+      +d.options.map(function(o){
+        var id='crmp-cf-opt-'+d.key+'-'+o.replace(/[^a-zA-Z0-9]/g,'_');
+        return '<label class="crmp-cf-filter-row" for="'+id+'"><input type="checkbox" id="'+id+'" data-cf-key="'+esc(d.key)+'" value="'+esc(o)+'"'+(selected.indexOf(o)!==-1?' checked':'')+'>'+esc(o)+'</label>';
+      }).join('')
+      +'</div></div>';
+  }).join('');
+  wrap.querySelectorAll('input[data-cf-key]').forEach(function(cb){
+    cb.addEventListener('change',function(){
+      var key=cb.dataset.cfKey;
+      var arr=crmpState.filters.cf[key]||(crmpState.filters.cf[key]=[]);
+      var i=arr.indexOf(cb.value);
+      if(cb.checked&&i===-1)arr.push(cb.value);
+      else if(!cb.checked&&i!==-1)arr.splice(i,1);
+      if(!arr.length)delete crmpState.filters.cf[key];
+      crmpBuildCfFilterControls(); // genopbygger kun for at opdatere badge-tallet/active-styling
+      crmpLoadBoard();
+    });
+  });
 }
 async function crmpLoadBoard(){
   var p=crmpCurrentPipeline();
@@ -23483,11 +23556,64 @@ async function crmpLoadBoard(){
   if(crmpState.filters.owner_id)qs.push('owner_id='+crmpState.filters.owner_id);
   var endpoint=p.type==='lead'?'/api/crm/leads':'/api/crm/opportunities';
   var rows=await api(endpoint+'?'+qs.join('&'))||[];
-  if(crmpState.filters.cf_key&&crmpState.filters.cf_value){
-    rows=rows.filter(function(r){return r.custom_fields&&r.custom_fields[crmpState.filters.cf_key]===crmpState.filters.cf_value;});
+  // RUNDE (okt. 2026) — flere felter samtidig (AND mellem felter), flere
+  // værdier pr. felt (OR inden for samme felt) — fx "Projekt Type er
+  // Gulvlægning ELLER Enterprise, OG Lead Source er Website form".
+  Object.keys(crmpState.filters.cf).forEach(function(key){
+    var values=crmpState.filters.cf[key];
+    if(!values||!values.length)return;
+    rows=rows.filter(function(r){return r.custom_fields&&values.indexOf(r.custom_fields[key])!==-1;});
+  });
+  // Datointerval på "Oprettet" — created_at gemmes som ISO-agtig tekst, så en
+  // ren streng-sammenligning på YYYY-MM-DD-præfikset er nok.
+  if(crmpState.filters.dateFrom){
+    var from=crmpState.filters.dateFrom;
+    rows=rows.filter(function(r){return r.created_at&&String(r.created_at).slice(0,10)>=from;});
+  }
+  if(crmpState.filters.dateTo){
+    var to=crmpState.filters.dateTo;
+    rows=rows.filter(function(r){return r.created_at&&String(r.created_at).slice(0,10)<=to;});
   }
   crmpState.cards=rows;
   crmpRenderBoard();
+}
+// RUNDE (okt. 2026, Martins ønske: "trække en CSV fil ud ... med alt data om
+// kunderne så jeg hurtig kan smide den ind i AI") — eksporterer PRÆCIS de
+// kort der står på boardet lige nu (crmpState.cards, dvs. alle filtre
+// ovenfor er allerede anvendt), samme CSV-opskrift som ttExportCsv (semikolon,
+// BOM foran så dansk Excel læser æ/ø/å rigtigt).
+function crmpExportCsv(){
+  var p=crmpCurrentPipeline();
+  if(!p)return;
+  var rows=crmpState.cards||[];
+  if(!rows.length){toast('Ingen kort at eksportere — prøv at rydde et filter','⚠');return;}
+  var defs=(crmpState.customFieldDefs[p.type]||[]);
+  var isOpp=p.type!=='lead';
+  // "Kilde" her er leadets EGET, ældre tekstfelt (l.source) — ikke at
+  // forveksle med det nyere "Lead Source"-custom field (crm_custom_fields),
+  // som også kan være sat og i så fald får sin egen kolonne nedenfor via
+  // defs. De to kan godt stå med forskelligt indhold, så begge er med.
+  var header=['Navn','Email','Telefon','Adresse','Ansvarlig','Stage','Oprettet'
+    ,isOpp?'Værdi (kr)':'Kilde (fritekst)',isOpp?'Sandsynlighed (%)':'Note'
+  ].concat(defs.map(function(d){return d.label;}));
+  var stageById={};(p.stages||[]).forEach(function(s){stageById[s.id]=s.name;});
+  var lines=[header.join(';')];
+  rows.forEach(function(r){
+    var cells=[
+      r.name||'',r.email||'',r.phone||'',r.address||'',r.owner_name||'',stageById[r.stage_id]||'',
+      String(r.created_at||'').slice(0,10),
+      isOpp?(r.value!=null?r.value:''):(r.source||''),
+      isOpp?(r.probability!=null?r.probability:''):(r.note||'')
+    ].concat(defs.map(function(d){return (r.custom_fields&&r.custom_fields[d.key])||'';}));
+    lines.push(cells.map(function(c){var s=String(c==null?'':c);return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(';'));
+  });
+  var blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download=(p.type==='lead'?'leads':'sales')+'-'+iso(new Date())+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(rows.length+' kort eksporteret til CSV','✓');
 }
 var CRMP_OWNER_PALETTE=['#4F46E5','#0EA5E9','#16A34A','#D97706','#DB2777','#7C3AED','#DC2626'];
 function crmpOwnerColor(userId){return userId?CRMP_OWNER_PALETTE[userId%CRMP_OWNER_PALETTE.length]:'#9CA3AF';}

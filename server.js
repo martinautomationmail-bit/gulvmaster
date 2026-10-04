@@ -16556,6 +16556,211 @@ app.get('/api/dashboard/kpis', auth, panelAccess('dashboard'), asyncRoute(async 
 }));
 
 // ══════════════════════════════════════════════════════════════
+// AI-DASHBOARD (okt. 2026, Martins ønske: "en Ai Chat bot ... på min Dashboard
+// side som kan give mig data omkring mit program" — erstatter det gamle
+// drifts-Kommandocenter, se #page-dashboard i admin.html. Martin har bekræftet
+// eksplicit at han aldrig brugte opgavepool/overbookings-overblikket, så det
+// er helt fjernet, ikke bare suppleret.
+//
+// SIKKERHED: modellen får ALDRIG lov at skrive eller se rå SQL. Den må kun
+// vælge blandt et FAST, VALIDERET sæt metrics/dimensioner (se ALLOWED_* og
+// dashAiValidateSpec herunder) — ALT den foreslår tjekkes server-side før
+// noget køres, og selve tallene beregnes med almindelig, parametriseret SQL
+// (samme mønster som alle andre routes i filen) plus almindelig JS-aggregering
+// over allerede-hentede rækker (ligesom crmpLoadBoard's klient-side filtre,
+// bare server-side) — ALDRIG ved at bygge en SQL-streng ud fra modellens svar.
+// Selve forklarings-teksten modellen skriver bagefter får KUN lov at se de
+// RIGTIGE, allerede udregnede tal (2. AI-kald, se dashAiChat-routen) — den kan
+// derfor ikke opdigte et tal der ikke kommer fra databasen.
+// ══════════════════════════════════════════════════════════════
+const DASH_AI_METRICS = ['count', 'conversion_count', 'conversion_rate', 'avg_value', 'sum_value', 'won_count', 'won_rate'];
+const DASH_AI_GROUPBY_CORE = ['owner', 'month'];
+function dashAiIsValidDate(s) { return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s); }
+// Validerer ÉN forespørgsel fra modellen mod det faste whitelist. Returnerer
+// enten en renset, sikker spec, eller null hvis den slet ikke giver mening
+// (droppes så stille i stedet for at fejle hele svaret — én dårlig delspørgsmål
+// skal ikke vælte resten af et flerdelt spørgsmål).
+function dashAiValidateSpec(raw, cfDefsByEntity) {
+  if (!raw || typeof raw !== 'object') return null;
+  const entity = raw.entity === 'opportunity' ? 'opportunity' : (raw.entity === 'lead' ? 'lead' : null);
+  if (!entity) return null;
+  const metric = DASH_AI_METRICS.includes(raw.metric) ? raw.metric : null;
+  if (!metric) return null;
+  if ((metric === 'conversion_count' || metric === 'conversion_rate') && entity !== 'lead') return null;
+  if ((metric === 'won_count' || metric === 'won_rate') && entity !== 'opportunity') return null;
+  const cfKeys = (cfDefsByEntity[entity] || []).map(d => d.key);
+  let groupBy = null;
+  if (raw.group_by != null) {
+    if (DASH_AI_GROUPBY_CORE.includes(raw.group_by) || cfKeys.includes(raw.group_by)) groupBy = raw.group_by;
+  }
+  const dateFrom = dashAiIsValidDate(raw.date_from) ? raw.date_from : null;
+  const dateTo = dashAiIsValidDate(raw.date_to) ? raw.date_to : null;
+  const filters = {};
+  if (raw.filters && typeof raw.filters === 'object') {
+    for (const k of Object.keys(raw.filters)) {
+      const v = raw.filters[k];
+      if (typeof v !== 'string' || !v.trim()) continue;
+      if (k === 'owner_name' || cfKeys.includes(k)) filters[k] = v.trim();
+    }
+  }
+  const label = typeof raw.label === 'string' ? raw.label.slice(0, 120) : (metric + ' (' + entity + ')');
+  return { label, entity, metric, groupBy, dateFrom, dateTo, filters };
+}
+// Henter alle rækker for én entitetstype inden for et evt. datointerval,
+// MED custom_fields påhæftet — nøjagtig samme opskrift som GET /api/crm/leads
+// og GET /api/crm/opportunities (parametriseret SQL, ingen modeldata i
+// SQL-strengen nogen steder). Grouping/filtrering på custom fields og
+// metrik-udregning sker herefter i almindelig JS, se dashAiRunSpec.
+async function dashAiFetchRows(entity, dateFrom, dateTo) {
+  const conds = ['1=1']; const params = [];
+  if (dateFrom) { params.push(dateFrom); conds.push("created_at >= $" + params.length); }
+  // created_at er TEXT (fuldt timestamp-format, se nowTextSQL), ikke en ren
+  // dato — en øvre grænse skrevet som 'YYYY-MM-DD 23:59:59' ville som
+  // STRENG-sammenligning kunne snyde en række oprettet kl. 23:59:59,4xxxxx
+  // (længere streng, samme prefix = "større") til fejlagtigt at blive
+  // udeladt. Bruger derfor en EKSKLUSIV øvre grænse (næste dags midnat, <)
+  // i stedet — ingen brøkdel-af-sekund-kant at ramme forkert.
+  if (dateTo) { params.push(dateTo); conds.push("created_at < ($" + params.length + "::date + INTERVAL '1 day')::text"); }
+  const table = entity === 'lead' ? 'crm_leads' : 'crm_opportunities';
+  const rows = (await pool.query(`SELECT * FROM ${table} WHERE ${conds.join(' AND ')}`, params)).rows;
+  const cfValues = await crmGetCustomFieldValuesBulk(entity, rows.map(r => r.id));
+  const owners = await pool.query('SELECT id,name FROM users');
+  const ownerNameById = {}; owners.rows.forEach(u => { ownerNameById[u.id] = u.name; });
+  return rows.map(r => ({ ...r, custom_fields: cfValues[r.id] || {}, owner_name: ownerNameById[r.owner_id] || null }));
+}
+async function dashAiStageWonMap() {
+  const stages = (await pool.query('SELECT id,is_won,is_lost FROM crm_stages')).rows;
+  const m = {}; stages.forEach(s => { m[s.id] = { won: Number(s.is_won) === 1, lost: Number(s.is_lost) === 1 }; });
+  return m;
+}
+function dashAiGroupKey(row, groupBy) {
+  if (!groupBy) return '_all';
+  if (groupBy === 'owner') return row.owner_name || '(ingen ansvarlig)';
+  if (groupBy === 'month') return String(row.created_at || '').slice(0, 7) || '(ukendt måned)';
+  return (row.custom_fields && row.custom_fields[groupBy]) || '(ikke udfyldt)';
+}
+function dashAiRowMatchesFilters(row, filters) {
+  for (const k of Object.keys(filters)) {
+    if (k === 'owner_name') { if (row.owner_name !== filters[k]) return false; continue; }
+    if ((row.custom_fields && row.custom_fields[k]) !== filters[k]) return false;
+  }
+  return true;
+}
+async function dashAiRunSpec(spec) {
+  const rows = (await dashAiFetchRows(spec.entity, spec.dateFrom, spec.dateTo)).filter(r => dashAiRowMatchesFilters(r, spec.filters));
+  const stageMap = (spec.metric === 'won_count' || spec.metric === 'won_rate') ? await dashAiStageWonMap() : null;
+  // For konverteringsmetrikker på opportunities skabt VIA et lead i denne
+  // delmængde skal vi slå deres value op — hent dem i én omgang.
+  let oppValueById = null;
+  if (spec.metric === 'conversion_count' || spec.metric === 'conversion_rate' || (spec.entity === 'lead' && spec.metric === 'avg_value') || (spec.entity === 'lead' && spec.metric === 'sum_value')) {
+    const oppIds = rows.map(r => r.converted_opportunity_id).filter(Boolean);
+    if (oppIds.length) {
+      const oppRows = (await pool.query('SELECT id,value FROM crm_opportunities WHERE id = ANY($1::int[])', [oppIds])).rows;
+      oppValueById = {}; oppRows.forEach(o => { oppValueById[o.id] = Number(o.value) || 0; });
+    } else oppValueById = {};
+  }
+  function metricForGroup(groupRows) {
+    switch (spec.metric) {
+      case 'count': return groupRows.length;
+      case 'conversion_count': return groupRows.filter(r => r.converted_opportunity_id).length;
+      case 'conversion_rate': {
+        const conv = groupRows.filter(r => r.converted_opportunity_id).length;
+        return groupRows.length ? Math.round(conv / groupRows.length * 1000) / 10 : 0;
+      }
+      case 'avg_value': {
+        if (spec.entity === 'opportunity') {
+          const vals = groupRows.map(r => Number(r.value) || 0);
+          return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+        }
+        const vals = groupRows.filter(r => r.converted_opportunity_id).map(r => oppValueById[r.converted_opportunity_id] || 0);
+        return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+      }
+      case 'sum_value': {
+        if (spec.entity === 'opportunity') return Math.round(groupRows.reduce((s, r) => s + (Number(r.value) || 0), 0));
+        return Math.round(groupRows.filter(r => r.converted_opportunity_id).reduce((s, r) => s + (oppValueById[r.converted_opportunity_id] || 0), 0));
+      }
+      case 'won_count': return groupRows.filter(r => stageMap[r.stage_id] && stageMap[r.stage_id].won).length;
+      case 'won_rate': {
+        const won = groupRows.filter(r => stageMap[r.stage_id] && stageMap[r.stage_id].won).length;
+        return groupRows.length ? Math.round(won / groupRows.length * 1000) / 10 : 0;
+      }
+      default: return null;
+    }
+  }
+  if (!spec.groupBy) return { label: spec.label, result: metricForGroup(rows), row_count: rows.length };
+  const byGroup = {};
+  rows.forEach(r => { const k = dashAiGroupKey(r, spec.groupBy); (byGroup[k] = byGroup[k] || []).push(r); });
+  const result = {};
+  Object.keys(byGroup).forEach(k => { result[k] = metricForGroup(byGroup[k]); });
+  return { label: spec.label, result, row_count: rows.length };
+}
+app.post('/api/dashboard/ai-chat', auth, panelAccess('dashboard'), asyncRoute(async (req, res) => {
+  const rawMessages = Array.isArray(req.body && req.body.messages) ? req.body.messages : [];
+  const messages = rawMessages
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && m.content)
+    .map(m => ({ role: m.role, content: String(m.content).slice(0, 4000) }))
+    .slice(-20);
+  if (!messages.length) return res.status(400).json({ error: 'Ingen besked modtaget' });
+  const cfDefsByEntity = {
+    lead: await crmGetCustomFieldDefsForAnalytics('lead'),
+    opportunity: await crmGetCustomFieldDefsForAnalytics('opportunity')
+  };
+  const fieldDescLines = ['lead', 'opportunity'].map(ent =>
+    '  ' + ent + ': ' + (cfDefsByEntity[ent].length ? cfDefsByEntity[ent].map(d => '"' + d.key + '" (' + d.label + (d.options && d.options.length ? ', værdier: ' + d.options.join('/') : '') + ')').join(', ') : '(ingen)')
+  ).join('\n');
+  const planPrompt = 'Du oversætter et dansk spørgsmål om Gulv Masters CRM-data (leads og salgsmuligheder/opportunities) til et PRÆCIST, struktureret forespørgsels-spec. Du har IKKE adgang til databasen selv — du vælger kun blandt faste, gyldige byggeklodser herunder, som serveren derefter kører sikkert.\n'
+    + 'Tilgængelige "entity": "lead" (henvendelser/leads) eller "opportunity" (salgsmuligheder i Sales-pipelinen).\n'
+    + 'Tilgængelige "metric": "count" (antal), "conversion_count"/"conversion_rate" (kun entity=lead — hvor mange/hvor stor andel er blevet konverteret til en opportunity), "avg_value"/"sum_value" (gennemsnit/total værdi i kr — for lead betyder det værdien af den opportunity leadet blev til), "won_count"/"won_rate" (kun entity=opportunity — endte i en "vundet"-stage).\n'
+    + 'Tilgængelig "group_by" (valgfri): "owner" (ansvarlig), "month" (måned, YYYY-MM), eller et custom field-KEY fra listen herunder.\n'
+    + 'Tilgængelige custom fields pr. entitetstype (brug KUN disse keys, aldrig andre, i group_by eller filters):\n' + fieldDescLines + '\n'
+    + 'Et spørgsmål kan kræve FLERE delforespørgsler på én gang (fx "hvor mange leads fra Website sidste måned, hvor mange konverterede, og hvad er gnsn. værdi" = 3 stk). Lav én spec PR. delspørgsmål.\n'
+    + '"date_from"/"date_to": "YYYY-ÅÅÅÅ-MM-DD"-format eller udelad. "Sidste måned" osv. regner du selv ud fra dags dato: ' + new Date().toISOString().slice(0, 10) + '.\n'
+    + '"filters": et objekt med custom field-keys (fra listen ovenfor, for den valgte entity) som nøgler og den PRÆCISE værdi (skal matche en af de opgivne værdier) som streng.\n'
+    + 'Svar KUN med gyldig JSON på formen {"queries":[{"label":"kort dansk label","entity":"lead","metric":"count","group_by":null,"date_from":null,"date_to":null,"filters":{}}, ...]} — ingen forklaring, ingen kodeblok-hegn. Er spørgsmålet slet ikke om CRM-data (fx smalltalk), så svar {"queries":[]}.';
+  let planned;
+  try {
+    planned = await callAnthropicJSONMulti(planPrompt, messages);
+  } catch (e) {
+    await logSystemEvent('dashboard_ai', 'error', 'AI-dashboard (planlægning) fejlede: ' + e.message + (e.rawSnippet ? ' | ' + e.rawSnippet : ''));
+    return res.status(e.isConfig ? 501 : 502).json({ error: e.message });
+  }
+  const rawQueries = Array.isArray(planned && planned.queries) ? planned.queries.slice(0, 6) : [];
+  const validSpecs = rawQueries.map(q => dashAiValidateSpec(q, cfDefsByEntity)).filter(Boolean);
+  let results = [];
+  try {
+    for (const spec of validSpecs) results.push(await dashAiRunSpec(spec));
+  } catch (e) {
+    await logSystemEvent('dashboard_ai', 'error', 'AI-dashboard (udregning) fejlede: ' + e.message);
+    return res.status(502).json({ error: 'Kunne ikke beregne tallene: ' + e.message });
+  }
+  if (!validSpecs.length) {
+    // Intet at regne på (smalltalk, eller et spørgsmål uden for CRM-data) —
+    // svarer stadig pænt i stedet for at fejle, samme "aldrig et dødt svar"-
+    // princip som tilbuds-AI-chatten (RUNDE okt. 2026-fix #2).
+    const lastUser = messages.slice().reverse().find(m => m.role === 'user');
+    return res.json({ ok: true, reply: 'Det kunne jeg ikke lave en analyse ud fra — spørg gerne om fx antal leads, konverteringer eller gennemsnitsværdier, evt. opdelt på kilde, projekttype, ansvarlig eller måned.', data: [] });
+  }
+  const explainPrompt = 'Du har stillet Gulv Masters CRM-database de spørgsmål brugeren bad om, og her er de RIGTIGE, udregnede tal (JSON herunder) — brug KUN disse tal, opdigt aldrig andre. "result" er enten ét tal, eller et objekt {gruppenavn: tal} hvis spørgsmålet var opdelt (group_by).\n'
+    + 'Skriv et kort, klart, analytisk svar på dansk i "reply" — ligesom en dygtig analytiker ville opsummere tallene for en kollega. Nævn konkrete tal. Brug gerne "kr" for pengebeløb og "%" for rater. Hold det til et par sætninger eller en kort opstilling, ikke en roman.\n'
+    + 'DATA:\n' + JSON.stringify(results) + '\n'
+    + 'Svar KUN med gyldig JSON på formen {"reply":"..."} — ingen forklaring, ingen kodeblok-hegn.';
+  let explained;
+  try {
+    explained = await callAnthropicJSONMulti(explainPrompt, messages);
+  } catch (e) {
+    // Udregningen lykkedes selvom forklarings-kaldet fejlede — giv Martin
+    // tallene rå i stedet for slet intet.
+    await logSystemEvent('dashboard_ai', 'error', 'AI-dashboard (forklaring) fejlede: ' + e.message);
+    return res.json({ ok: true, reply: 'Her er de udregnede tal (kunne ikke skrive en opsummering lige nu):', data: results });
+  }
+  res.json({ ok: true, reply: String((explained && explained.reply) || '').trim() || 'Se tallene herunder.', data: results });
+}));
+async function crmGetCustomFieldDefsForAnalytics(entityType) {
+  const r = await pool.query('SELECT key,label,field_type,options FROM crm_custom_fields WHERE entity_type=$1 AND field_type=$2 ORDER BY position ASC', [entityType, 'select']);
+  return r.rows.map(f => ({ key: f.key, label: f.label, options: f.options || [] }));
+}
+
+// ══════════════════════════════════════════════════════════════
 // GEOGRAFISK FORSLAG — hvilken medarbejder er tættest på i forvejen
 // (afstandsberegning, ikke fuld rute-optimering — se svar i chatten)
 // ══════════════════════════════════════════════════════════════
