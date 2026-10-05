@@ -3858,7 +3858,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-04.68</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-05.70</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -9306,6 +9306,39 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions">
       <button class="btn" id="close-dunning-send">Annuller</button>
       <button class="btn primary" id="dunning-send-confirm-btn">✉️ Send rykker</button>
+    </div>
+  </div>
+</div>
+
+<!-- RETTELSE (okt. 2026, Martins fejlrapport: "Hver gang jeg prøver at sende en
+     kreditnote siger den der ingen email er?") — BUG: "📧 Send til kunde"-knappen
+     på en kreditnota brugte bare et almindeligt ja/nej-bekræft-spørgsmål og
+     sendte ALDRIG en modtager-mail med (tomt body). Serveren falder da tilbage
+     til fakturaens customer_email, og har kunden (som på screenshottet) ingen
+     mail registreret, fejler det 100% af gangene med "Ingen modtager-mail
+     angivet...". Samme mønster/bug-klasse som allerede løst for tilbud/faktura
+     (doc-send-modal) og rykkere (dunning-send-modal ovenfor) — løses her på
+     samme måde: en EGEN dedikeret modal (ikke genbrug af doc-send-modal, samme
+     begrundelse som ved rykker-modalen: anden rute/andre variable), hvor man kan
+     se/rette modtager-mailen og vælge skabelon før afsendelse. -->
+<div class="mo" id="credit-note-send-modal">
+  <div class="modal manual-modal-modern" style="max-width:520px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">📧</span>
+      <div><div class="manual-modal-title" id="credit-note-send-title">Send kreditnota</div><div class="manual-modal-sub" id="credit-note-send-sub"></div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Til e-mail</label>
+      <input id="credit-note-send-to" class="input" type="email" placeholder="kunde@eksempel.dk">
+      <label class="form-label" style="margin-top:12px">Mail-skabelon</label>
+      <select id="credit-note-send-template" class="select"></select>
+      <label class="form-label" style="margin-top:12px">Forhåndsvisning</label>
+      <div id="credit-note-send-preview" style="border:1px solid var(--border2);border-radius:10px;padding:12px;max-height:280px;overflow:auto;background:var(--ice);font-size:12.5px"></div>
+      <div class="geo-hint" style="margin-top:8px">📎 PDF'en vedhæftes automatisk til mailen.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-credit-note-send">Annuller</button>
+      <button class="btn primary" id="credit-note-send-confirm-btn">📧 Send</button>
     </div>
   </div>
 </div>
@@ -14812,6 +14845,65 @@ async function confirmDunningSend(){
   } else toast((r&&r.error)||'Kunne ikke sende rykkeren','❌');
 }
 
+// RETTELSE (okt. 2026, Martins fejlrapport om "ingen email" ved kreditnota-
+// afsendelse) — samme UX-mønster som doc-send-modal/dunning-send-modal
+// ovenfor (mail-skabelon + live forhåndsvisning), mod kreditnota-specifikke
+// variable. Kreditnotaens egne felter kommer fra ivState.creditNotesById
+// (allerede hentet med fakturaen, se openInvoiceDetail), fakturaens
+// customer_email/restbeløb hentes friskt her, samme som i openDunningSendModal.
+var creditNoteSendCtx=null;
+async function openCreditNoteSendModal(creditNoteId){
+  var cn=ivState.creditNotesById&&ivState.creditNotesById[creditNoteId];
+  if(!cn){toast('Kunne ikke finde kreditnotaen','❌');return;}
+  if(!docMailTemplatesCache.length)await loadDocMailTemplates();
+  var invP=api('/api/invoices/'+cn.invoice_id);
+  var assignP=api('/api/settings/email-template-assignments');
+  var inv=await invP;
+  if(!inv||inv.error){toast('Kunne ikke hente fakturaen','❌');return;}
+  creditNoteSendCtx={creditNoteId:creditNoteId,creditNoteNumber:cn.credit_note_number,amount:Number(cn.amount)||0,reason:cn.reason||'',invoiceNumber:inv.invoice_number,jobName:inv.job_name,remaining:Number(inv.remaining)||0};
+  document.getElementById('credit-note-send-title').textContent='Send kreditnota til kunde';
+  document.getElementById('credit-note-send-sub').textContent=(cn.credit_note_number||'')+' · '+(inv.job_name||'');
+  document.getElementById('credit-note-send-to').value=inv.customer_email||'';
+  var sel=document.getElementById('credit-note-send-template');
+  sel.innerHTML=['<option value="">Standard (uden skabelon)</option>'].concat(docMailTemplatesCache.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>';})).join('');
+  var assignments=(await assignP)||{};
+  var defaultTplId=assignments.credit_note||'';
+  sel.value=defaultTplId&&docMailTemplatesCache.some(function(t){return String(t.id)===String(defaultTplId);})?String(defaultTplId):'';
+  creditNoteSendUpdatePreview();
+  document.getElementById('credit-note-send-modal').classList.add('open');
+}
+function creditNoteSendUpdatePreview(){
+  var ctx=creditNoteSendCtx;if(!ctx)return;
+  var tplId=document.getElementById('credit-note-send-template').value;
+  var tpl=tplId?docMailTemplatesCache.find(function(t){return String(t.id)===String(tplId);}):null;
+  var vars={
+    kunde:ctx.jobName||'',dokument_nr:ctx.creditNoteNumber||'',total:krFmt(ctx.amount),
+    gyldig_til:'',forfald:'',restbeloeb:krFmt(ctx.remaining),firma:settings.company_name||'',link:'',underskriv_link:''
+  };
+  var subject,body;
+  if(tpl){subject=fillDocEmailVarsClient(tpl.subject,vars);body=fillDocEmailVarsClient(tpl.body_html,vars);}
+  else{
+    subject='Kreditnota '+vars.dokument_nr+' fra '+vars.firma;
+    body='<p>Hej,</p><p>Vi har udstedt en kreditnota <b>'+esc(vars.dokument_nr)+'</b> vedr. faktura <b>'+esc(ctx.invoiceNumber||'')+'</b> på <b>'+esc(vars.total)+'</b> — vedhæftet som PDF.</p>'+(ctx.reason?'<p style="color:#6B7280">Begrundelse: '+esc(ctx.reason)+'</p>':'');
+  }
+  document.getElementById('credit-note-send-preview').innerHTML='<div><b>Emne:</b> '+esc(subject)+'</div><hr style="margin:8px 0;border:none;border-top:1px solid var(--border2)">'+body;
+}
+async function confirmCreditNoteSend(){
+  var ctx=creditNoteSendCtx;if(!ctx)return;
+  var to=document.getElementById('credit-note-send-to').value.trim();
+  if(!to){toast('Angiv en modtager-mail','⚠️');return;}
+  var tplId=document.getElementById('credit-note-send-template').value;
+  var btn=document.getElementById('credit-note-send-confirm-btn');
+  btn.disabled=true;btn.textContent='Sender…';
+  var r=await api('/api/credit-notes/'+ctx.creditNoteId+'/send',{method:'POST',body:JSON.stringify({to:to,template_id:tplId||undefined})});
+  btn.disabled=false;btn.textContent='📧 Send';
+  if(r&&r.ok){
+    toast('Kreditnota sendt ✓','✓');
+    closeModal('credit-note-send-modal');
+    loadDocActivity('invoice',ivState.id,'iv-activity-list');
+  } else toast((r&&r.error)||'Kunne ikke sende kreditnotaen','❌');
+}
+
 async function loadTemplates(){
   var t=await api('/api/templates');
   templatesCache=t||[];
@@ -20183,6 +20275,9 @@ async function bind(){
   document.getElementById('iv-send-btn').addEventListener('click',function(){if(ivState.id)openDocSendModal('invoice',ivState.id);});
   document.getElementById('iv-dunning-btn').addEventListener('click',function(){if(ivState.id)openDunningSendModal(ivState.id);});
   document.getElementById('close-dunning-send').onclick=function(){closeModal('dunning-send-modal');};
+  document.getElementById('close-credit-note-send').onclick=function(){closeModal('credit-note-send-modal');};
+  document.getElementById('credit-note-send-confirm-btn').onclick=confirmCreditNoteSend;
+  document.getElementById('credit-note-send-template').addEventListener('change',creditNoteSendUpdatePreview);
   document.getElementById('dunning-send-confirm-btn').onclick=confirmDunningSend;
   document.getElementById('dunning-send-template').addEventListener('change',dunningSendUpdatePreview);
   document.getElementById('close-email-send').onclick=function(){closeModal('email-send-modal');};
@@ -20511,7 +20606,7 @@ async function bind(){
   // ('quote-editor-modal', bruges til både ny og redigér) og faktura
   // ('invoice-detail-modal') — begge fjernet fra listen herunder, så de (som
   // 'crm-modal') kun kan lukkes via ✕/Annullér/Luk-knappen, aldrig ved klik udenfor.
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','dunning-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal','tt-photo-lightbox'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','dunning-send-modal','credit-note-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal','tt-photo-lightbox'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -30631,7 +30726,26 @@ async function qcvConfirm(){
   if(r&&r.ok){
     toast('Faktura '+r.invoice_number+' oprettet','✓');
     closeModal('quote-convert-modal');
+    // RETTELSE (okt. 2026, Martins fejlrapport: "Hver gang jeg konverterer et
+    // tilbud siger den en fejl") — BUG: qeGoBackToList() herunder lukker
+    // tilbudseditoren, hvilket (se qzShowDetailView) udløser et sidste
+    // autogem-flush (qeFlushAutoSave) af selve tilbuddet. Det autogem bygger
+    // sin body ud fra qeState.invStatus, som blev hentet FØR konverteringen
+    // (da "Konvertér til faktura"-modalen blev åbnet, se convertQuoteToInvoice)
+    // — var tilbuddet uden fakturaer indtil nu (det helt normale, første
+    // konvertering), sendte autogemmet derfor 'lines' med, selvom fakturaen vi
+    // LIGE har oprettet ovenfor gør at serverens guard i PUT /api/quotes/:id nu
+    // (med rette) afviser det 400 — og brugeren så en skræmmende fejltoast
+    // umiddelbart efter succes-toasten, selvom selve konverteringen rent
+    // faktisk var gået helt fint (det var kun det overflødige autogem bagefter
+    // der fejlede, ikke konverteringen). Undertrykker derfor autogemmet
+    // akkurat her — der er under alle omstændigheder intet nyt at gemme på
+    // selve tilbuddet i det her øjeblik, det er jo netop konverteret, og
+    // editoren lukker med det samme uanset. Samme flag som openQuoteEditor
+    // selv bruger mens den fylder felterne ind ved åbning, se qeAutoSave.
+    qeAutoSaveSuppressed=true;
     qeGoBackToList();
+    qeAutoSaveSuppressed=false;
     await Promise.all([loadQzQuotes(),loadQzInvoices()]);
     renderQzQuotes();renderQzInvoices();
     switchPage('qz-invoices');
@@ -31645,11 +31759,13 @@ async function deleteIvCreditNote(creditNoteId){
   if(r&&r.ok){toast('Kreditnota fjernet','🗑');await loadQzInvoices();renderQzInvoices();await openInvoiceDetail(ivState.id);}
   else toast((r&&r.error)||'Kunne ikke fjerne kreditnota','❌');
 }
-async function sendIvCreditNote(creditNoteId){
-  if(!await gmConfirm('Send denne kreditnota til kunden på mail?'))return;
-  var r=await api('/api/credit-notes/'+creditNoteId+'/send',{method:'POST',body:JSON.stringify({})});
-  if(r&&r.ok){toast('Kreditnota sendt ✓','✓');loadDocActivity('invoice',ivState.id,'iv-activity-list');}
-  else toast((r&&r.error)||'Kunne ikke sende kreditnotaen','❌');
+function sendIvCreditNote(creditNoteId){
+  // RETTELSE (okt. 2026) — se credit-note-send-modal/openCreditNoteSendModal
+  // ovenfor: brugte før et tomt ja/nej-bekræft uden mulighed for at angive en
+  // modtager-mail, hvilket fejlede 100% af gangene for kunder uden mail på
+  // fakturaen (Martins fejlrapport). Åbner nu samme slags modal som ved
+  // tilbud/faktura/rykkere.
+  openCreditNoteSendModal(creditNoteId);
 }
 async function saveIvDueDate(){
   if(!ivState.id)return;
