@@ -3703,6 +3703,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#crmp/leads" data-page="crmp" data-crmp-pipeline-type="lead" id="crmp-leads-tab-btn">🧲 Leads</a>
         <a class="navdrop-item" href="#crmp/sales" data-page="crmp" data-crmp-pipeline-type="opportunity" id="crmp-sales-tab-btn">🤝 Sales</a>
         <a class="navdrop-item" href="#crmp-tasks" data-page="crmp-tasks" id="crmp-tasks-tab-btn">⏰ Opfølgninger</a>
+        <!-- RETTELSE (okt. 2026, Martins ønske om en samlet "hvem er ude
+             hvornår"-oversigt over alle bookede kundebesøg) -->
+        <a class="navdrop-item" href="#kundebesog" data-page="kundebesog" id="kundebesog-tab-btn">📅 Kundebesøg</a>
       </div>
     </div>
 
@@ -3858,7 +3861,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-05.70</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-07.71</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -6000,6 +6003,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div id="cd-notes-list" style="margin-top:12px"></div>
   </div>
 
+  <!-- KUNDEBESØG — okt. 2026, Martins ønske: "du hos kunde siden skal lave
+       så man kan se alle kundebesøg fortaget hos vilken kunde samt dato."
+       Genbruger den EKSISTERENDE GET /api/crm/customers/:id/visits-rute og
+       crmpxLoadVisits()/crmpxOpenVisitModal() fra Handler-detaljesiden
+       (crmp-detail) — samme kort-udseende (.crmpx-visit-card), samme store
+       redigerbare popup ved klik — i stedet for at bygge en ny, parallel
+       rute/rendering, bare målrettet cd-visits-list/cd-visits-count her. -->
+  <div class="crmpx-panel" id="cd-visits-panel" style="margin:22px 0 20px">
+    <h3>📅 Kundebesøg <span class="sub" id="cd-visits-count"></span></h3>
+    <div id="cd-visits-list" style="margin-top:12px"></div>
+  </div>
+
   <!-- MAILS — viser mails synkroniseret fra den forbundne firma-Gmail til/fra
        denne kundes email-adresse (se GET /api/crm/customers/:id/emails). Selve
        brødtekst/vedhæftninger hentes først live når man folder en mail ud, ikke
@@ -6452,6 +6467,77 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <tbody id="cpt-body"></tbody>
   </table>
 </section>
+
+<!-- RETTELSE (okt. 2026, Martins ønske: "en moderne side hvor man kan se alle
+     kunde besøg der booket... så Sarah og andre medarbejdere kan se hvem der
+     ude hvornår") — samme "Billy style" KPI-kort-filter-mønster som
+     Opfølgninger ovenfor (cpt-filter-row), bare med kundebesøg-specifikke
+     tidsrum (I dag/Denne uge/Denne måned) + "Ikke planlagt" (besøg der endnu
+     ikke er lagt på en medarbejder/dag) + "Færdige". Datagrundlaget er
+     GET /api/customer-visits/overview (se server.js) — samme underliggende
+     planning_bookings/customer_visits-data som Dagligplanlægnings "Book
+     kundebesøg", så et besøg booket dér automatisk dukker op her, og omvendt. -->
+<section class="page" id="page-kundebesog">
+  <div class="bly-pagehead">
+    <div><h2>📅 Kundebesøg</h2><div class="sub">Alle bookede kundebesøg — hvem er ude hvornår</div></div>
+    <button class="bly-btn" id="kb-new-btn" type="button">+ Nyt kundebesøg</button>
+  </div>
+  <div class="bly-kpi-row" id="kb-filter-row" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));margin-bottom:14px"></div>
+  <div class="bly-toolbar">
+    <div class="bly-toolbar-left" style="display:flex;align-items:center;gap:8px">
+      <label for="kb-custom-date" style="font-size:12.5px;color:var(--bly-sub)">Eller vælg en bestemt dato:</label>
+      <input type="date" id="kb-custom-date" class="select" style="width:auto">
+      <button class="qz-link-btn" id="kb-custom-date-clear" type="button" style="display:none">✕ Ryd</button>
+    </div>
+    <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="kb-count"></span></div>
+  </div>
+  <table class="bly-table">
+    <thead><tr><th style="width:130px">Dato / tid</th><th>Kunde</th><th>Adresse / telefon</th><th style="width:170px">Medarbejder</th><th style="width:150px"></th></tr></thead>
+    <tbody id="kb-body"></tbody>
+  </table>
+</section>
+
+<!-- Book/opret kundebesøg MED medarbejder+dato med det samme (til forskel fra
+     "📅 Book kundebesøg" i Dagligplanlægning, som bevidst kun lægger det i
+     poolen — se kommentaren ved POST /api/customer-visits/book-and-assign i
+     server.js). Egen, separat modal/state (kb*) frem for at genbruge
+     visit-book-modal/vb*, samme begrundelse som dunning-send-modal: anden
+     rute, andre påkrævede felter (medarbejder+dato er her IKKE valgfrie). -->
+<div class="mo" id="kb-assign-modal">
+  <div class="modal manual-modal-modern">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">📅</span>
+      <div><div class="manual-modal-title">Nyt kundebesøg</div><div class="manual-modal-sub">Bookes direkte på medarbejder/dato</div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Kundens navn</label>
+      <div class="qe-customer-pop">
+        <input id="kb-customer" class="input" placeholder="Fx Peter Lindgren" autocomplete="off">
+        <div class="qe-customer-results" id="kb-customer-results"></div>
+      </div>
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group"><label class="form-label">Medarbejder</label><select id="kb-user" class="select"></select></div>
+        <div class="form-group"><label class="form-label">Dato</label><input id="kb-date" type="date" class="input"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Tidspunkt <span class="opt-tag">valgfrit</span></label><input id="kb-time" type="time" class="input"></div>
+        <div class="form-group"><label class="form-label">Telefon <span class="opt-tag">valgfrit</span></label><input id="kb-phone" class="input" placeholder="Fx 12 34 56 78"></div>
+      </div>
+      <label class="form-label">Adresse <span class="opt-tag">valgfrit</span></label>
+      <input id="kb-address" class="input" placeholder="Gade, postnr, by">
+      <label class="form-label" style="margin-top:12px">Note <span class="opt-tag">valgfrit</span></label>
+      <input id="kb-notes" class="input" placeholder="Fx aftalt telefonisk, ring 15 min før">
+      <div id="kb-quote-picker-wrap" style="display:none;margin-top:12px">
+        <label class="form-label">Vedhæft tilbud <span class="opt-tag">valgfrit</span></label>
+        <select id="kb-quote-select" class="input"><option value="">Intet tilbud</option></select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-kb-assign">Annuller</button>
+      <button class="btn primary" id="save-kb-assign">Book kundebesøg</button>
+    </div>
+  </div>
+</div>
 
 <!-- SØGERESULTAT-SIDE (sep. 2026, Martins ønske) — nås ved Enter i den globale
      søgning eller "Se alle resultater"-linket i dropdownen. Til forskel fra
@@ -7259,6 +7345,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <div class="navdrop-menu" id="pool-add-menu" style="left:0;right:auto;width:100%;min-width:0">
               <a class="navdrop-item" href="#" id="pool-add-manual-item">📝 Manuel opgave</a>
               <a class="navdrop-item" href="#" id="pool-add-visit-item">📅 Book kundebesøg</a>
+              <!-- RETTELSE (okt. 2026, Martins ønske: "kan jeg få en Manuel
+                   Task? Hvor den så ikke oprettes i Opgavepool") — en bevidst
+                   MINDRE formular end "Manuel opgave" (kun titel+medarbejder+
+                   dato, intet kunde/fag-felt) til små interne ting der ikke
+                   fortjener at fylde i selve Opgavepool-listen — se
+                   POST /api/tasks/quick og dens source='manual_quick'-
+                   udelukkelse i GET /api/tasks. -->
+              <a class="navdrop-item" href="#" id="pool-add-quick-item">⚡ Hurtig opgave</a>
             </div>
           </div>
           <div class="navdrop" id="pool-filter-dropdown" style="position:relative">
@@ -9086,6 +9180,34 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions">
       <button class="btn" id="close-manual">Annuller</button>
       <button class="btn primary" id="save-manual">Opret i opgavepool</button>
+    </div>
+  </div>
+</div>
+
+<!-- RETTELSE (okt. 2026, Martins ønske: "kan jeg få en Manuel Task? Hvor den
+     så ikke oprettes i Opgavepool") — "Hurtig opgave": lægges DIREKTE på
+     kalenderen (medarbejder+dato vælges her, med det samme — ingen
+     pool-trin), men vises aldrig i selve Opgavepool-listen, se
+     POST /api/tasks/quick. -->
+<div class="mo" id="quick-task-modal">
+  <div class="modal manual-modal-modern">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">⚡</span>
+      <div><div class="manual-modal-title">Hurtig opgave</div><div class="manual-modal-sub">Lægges direkte på kalenderen — vises ikke i Opgavepool</div></div>
+    </div>
+    <div class="modal-body-pad">
+      <label class="form-label">Titel</label>
+      <input id="quick-task-name" class="input" placeholder="Fx Hente materialer på STARK">
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group"><label class="form-label">Medarbejder</label><select id="quick-task-user" class="select"></select></div>
+        <div class="form-group"><label class="form-label">Dato</label><input id="quick-task-date" class="input" type="date"></div>
+      </div>
+      <label class="form-label" style="margin-top:12px">Note <span class="opt-tag">valgfrit</span></label>
+      <input id="quick-task-notes" class="input" placeholder="Fx detaljer om opgaven">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="close-quick-task">Annuller</button>
+      <button class="btn primary" id="save-quick-task">Opret</button>
     </div>
   </div>
 </div>
@@ -12768,6 +12890,253 @@ async function saveManual(){
   var r=await api('/api/tasks/manual',{method:'POST',body:JSON.stringify(b)});
   if(r&&r.ok){closeModal('manual-modal');toast('Opgave i pool','✓');await loadAll();}
   else if(r)toast(r.error||'Fejl','❌');
+}
+// RETTELSE (okt. 2026, Martins ønske) — "Hurtig opgave": samme medarbejder-
+// filtrering (aktiv + role==='employee') som resten af appens medarbejder-
+// vælgere (se fx workforce-opbygningen ved assign-modal).
+function openQuickTaskModal(){
+  document.getElementById('quick-task-name').value='';
+  document.getElementById('quick-task-notes').value='';
+  document.getElementById('quick-task-date').value=iso(new Date());
+  var sel=document.getElementById('quick-task-user');
+  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){return a.name.localeCompare(b.name,'da');});
+  sel.innerHTML=workforce.map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  document.getElementById('quick-task-modal').classList.add('open');
+}
+async function saveQuickTask(){
+  var name=document.getElementById('quick-task-name').value.trim();
+  if(!name){toast('Skriv en titel','⚠');return;}
+  var b={
+    name:name,
+    user_id:document.getElementById('quick-task-user').value,
+    start_date:document.getElementById('quick-task-date').value,
+    notes:document.getElementById('quick-task-notes').value.trim()
+  };
+  var r=await api('/api/tasks/quick',{method:'POST',body:JSON.stringify(b)});
+  if(r&&r.ok){closeModal('quick-task-modal');toast('Hurtig opgave oprettet ✓','⚡');await loadAll();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+
+// ══════════════════════════════════════════════════════════════
+// KUNDEBESØG-OVERSIGT (okt. 2026, Martins ønske: "kan du lave en moderne
+// side hvor man kan se alle kunde besøg der booket, Der er i dag, Der er
+// næste uge, Næste måned ... og når folk så har trykket done er der en for
+// færdige kundebesøg") — samme "Billy style" KPI-kort-filter-mønster som
+// Opfølgninger (cptFilter/cptBucketMatch/cptRenderFilterRow), bare med
+// kundebesøg-specifikke tidsrum. Henter ALT fra GET /api/customer-visits/
+// overview, som indeholder BÅDE allerede-bookede besøg (planning_bookings)
+// OG besøg der stadig kun ligger i poolen (booket via Dagligplanlægnings
+// "📅 Book kundebesøg", endnu ikke trukket ud på en medarbejder/dag) —
+// "Ikke planlagt"-bucket'en dækker de sidste.
+var kbData={booked:[],unbooked:[]};
+var kbFilter='today';
+var kbCustomDate=null;
+var kbSelectedCustomerId=null;
+var kbInitialized=false;
+function initKundebesogPage(){
+  if(!kbInitialized){
+    kbInitialized=true;
+    document.getElementById('kb-filter-row').addEventListener('click',function(e){
+      var b=e.target.closest('[data-kb-filter]');
+      if(!b)return;
+      kbFilter=b.dataset.kbFilter;
+      kbCustomDate=null;
+      document.getElementById('kb-custom-date').value='';
+      document.getElementById('kb-custom-date-clear').style.display='none';
+      kbRender();
+    });
+    document.getElementById('kb-custom-date').addEventListener('change',function(e){
+      kbCustomDate=e.target.value||null;
+      document.getElementById('kb-custom-date-clear').style.display=kbCustomDate?'inline-block':'none';
+      kbRender();
+    });
+    document.getElementById('kb-custom-date-clear').addEventListener('click',function(){
+      kbCustomDate=null;
+      document.getElementById('kb-custom-date').value='';
+      this.style.display='none';
+      kbRender();
+    });
+    document.getElementById('kb-new-btn').addEventListener('click',function(){openKbAssignModal();});
+    document.getElementById('kb-body').addEventListener('click',function(e){
+      var doneBtn=e.target.closest('[data-kb-done]');
+      if(doneBtn){kbMarkDone(doneBtn.dataset.kbDone);return;}
+      var bookBtn=e.target.closest('[data-kb-book-task]');
+      if(bookBtn){openKbAssignModal(kbData.unbooked.find(function(u){return u.task_id===bookBtn.dataset.kbBookTask;}));return;}
+    });
+  }
+  kbLoad();
+}
+async function kbLoad(){
+  var r=await api('/api/customer-visits/overview');
+  kbData=r||{booked:[],unbooked:[]};
+  kbRender();
+}
+// Bucket-logik — svarer til cptBucketMatch, bare med kundebesøgets egne
+// tidsrum (dag/uge/måned) og "unbooked" (endnu ikke lagt på en medarbejder).
+function kbBucketMatch(v,bucket){
+  var today=iso(new Date());
+  if(bucket==='unbooked')return !!v._unbooked;
+  if(v._unbooked)return false; // et ikke-planlagt besøg hører kun til "Ikke planlagt"
+  if(bucket==='done')return !!v.completed_at;
+  if(v.completed_at)return false;
+  if(bucket==='all')return true;
+  var d=String(v.start_date||'').slice(0,10);
+  if(!d)return false;
+  if(bucket==='today')return d===today;
+  if(bucket==='week'){
+    var in7=iso(new Date(Date.now()+7*86400000));
+    return d>=today&&d<=in7;
+  }
+  if(bucket==='month'){
+    var in30=iso(new Date(Date.now()+30*86400000));
+    return d>=today&&d<=in30;
+  }
+  return true;
+}
+function kbAllRows(){
+  return kbData.booked.map(function(v){return v;}).concat(kbData.unbooked.map(function(v){
+    return Object.assign({},v,{_unbooked:true,start_date:v.ref_date});
+  }));
+}
+function kbRenderFilterRow(){
+  var box=document.getElementById('kb-filter-row');
+  var rows=kbAllRows();
+  var buckets=[
+    {key:'today',dot:'var(--bly-dot-unpaid)',label:'I dag'},
+    {key:'week',dot:'var(--bly-dot-draft)',label:'Denne uge'},
+    {key:'month',dot:'var(--bly-dot-total)',label:'Denne måned'},
+    {key:'unbooked',dot:'var(--bly-dot-overdue)',label:'Ikke planlagt'},
+    {key:'done',dot:'var(--bly-dot-paid)',label:'Færdige'}
+  ];
+  box.innerHTML=buckets.map(function(b){
+    var n=rows.filter(function(v){return kbBucketMatch(v,b.key);}).length;
+    var active=!kbCustomDate&&kbFilter===b.key;
+    return '<button class="bly-kpi-card'+(active?' active':'')+'" data-kb-filter="'+b.key+'" type="button">'
+      +'<div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:'+b.dot+'"></span>'+esc(b.label)+'</div>'
+      +'<div class="bly-kpi-value">'+n+'</div></button>';
+  }).join('');
+}
+function kbRender(){
+  kbRenderFilterRow();
+  var rows=kbAllRows();
+  if(kbCustomDate){
+    rows=rows.filter(function(v){return !v._unbooked&&String(v.start_date||'').slice(0,10)===kbCustomDate;});
+  } else {
+    rows=rows.filter(function(v){return kbBucketMatch(v,kbFilter);});
+  }
+  rows.sort(function(a,b){return String(a.start_date||'').localeCompare(String(b.start_date||''))||String(a.start_time||'').localeCompare(String(b.start_time||''));});
+  document.getElementById('kb-count').textContent=rows.length?rows.length+' kundebesøg':'';
+  document.getElementById('kb-body').innerHTML=rows.length?rows.map(function(v){
+    var dateLabel=v.start_date?fmtDaDate(v.start_date)+(v.start_time?' · '+v.start_time:''):(v._unbooked?'Ikke planlagt':'');
+    var addrPhone=[v.job_address,v.customer_phone].filter(Boolean).join(' · ')||'—';
+    var empHtml=v._unbooked?'<span style="color:var(--bly-sub)">—</span>':('<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(v.user_color||'#9CA3AF')+';margin-right:5px"></span>'+esc(v.user_name||'—'));
+    var actionHtml;
+    if(v._unbooked){
+      actionHtml='<button type="button" class="qz-icon-btn" data-kb-book-task="'+esc(v.task_id)+'" title="Book på medarbejder/dato">📌 Book</button>';
+    } else if(v.completed_at){
+      actionHtml='<span class="sub" style="color:var(--bly-dot-paid)">✓ Færdig</span>';
+    } else {
+      actionHtml='<button type="button" class="qz-icon-btn" data-kb-done="'+v.id+'" title="Markér som færdig">✅ Færdig</button>';
+    }
+    return '<tr>'
+      +'<td>'+esc(dateLabel)+'</td>'
+      +'<td>'+esc(v.job_name||v.customer_name||'(uden navn)')+(v.visit_notes?'<div class="sub" style="font-size:11px;margin-top:2px">'+esc(v.visit_notes)+'</div>':'')+'</td>'
+      +'<td>'+esc(addrPhone)+'</td>'
+      +'<td>'+empHtml+'</td>'
+      +'<td>'+actionHtml+'</td>'
+      +'</tr>';
+  }).join(''):'<tr><td colspan="5" class="sub" style="text-align:center;padding:24px">Ingen kundebesøg i denne kategori</td></tr>';
+}
+async function kbMarkDone(bookingId){
+  var r=await api('/api/assignments/'+bookingId+'/complete',{method:'PUT',body:JSON.stringify({completed:true})});
+  if(r&&r.ok){toast('Kundebesøg markeret som færdigt ✓','✅');await kbLoad();}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+// Book/opret-modal — "prefill" er sat når man klikker "📌 Book" på et
+// ikke-planlagt besøg (allerede en jt_tasks/customer_visits-række, mangler
+// bare medarbejder+dato), og udeladt ved "+ Nyt kundebesøg" (helt tom).
+var kbPrefillTaskId=null;
+function openKbAssignModal(prefill){
+  kbPrefillTaskId=(prefill&&prefill.task_id)||null;
+  document.getElementById('kb-customer').value=(prefill&&(prefill.job_name||prefill.customer_name))||'';
+  document.getElementById('kb-address').value=(prefill&&prefill.job_address)||'';
+  document.getElementById('kb-phone').value=(prefill&&prefill.customer_phone)||'';
+  document.getElementById('kb-notes').value=(prefill&&prefill.visit_notes)||'';
+  document.getElementById('kb-date').value=(prefill&&prefill.ref_date)||iso(new Date());
+  document.getElementById('kb-time').value='';
+  document.getElementById('kb-customer-results').style.display='none';
+  kbSelectedCustomerId=(prefill&&prefill.customer_id)||null;
+  document.getElementById('kb-quote-picker-wrap').style.display='none';
+  document.getElementById('kb-quote-select').innerHTML='<option value="">Intet tilbud</option>';
+  var sel=document.getElementById('kb-user');
+  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){return a.name.localeCompare(b.name,'da');});
+  sel.innerHTML=workforce.map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  if(kbSelectedCustomerId)kbLoadQuotesForCustomer();
+  document.getElementById('kb-assign-modal').classList.add('open');
+}
+// Samme kunde-søgning som "Book kundebesøg" (vbRunCustomerSearch/vbPickCustomer) —
+// se kommentaren der om at det kun er en udfyldnings-genvej.
+function kbRunCustomerSearch(q){
+  var box=document.getElementById('kb-customer-results');
+  if(!q||q.length<2){box.style.display='none';box.innerHTML='';return;}
+  api('/api/customers/search?customers_only=1&q='+encodeURIComponent(q)).then(function(rows){
+    if(!rows||!rows.length){box.style.display='none';box.innerHTML='';return;}
+    box.innerHTML=rows.map(function(r,i){
+      return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+esc(r.job_name)+'</b><br><span style="color:var(--bly-sub)">'+esc(r.job_address||'Ingen adresse')+(r.customer_phone?' · '+esc(r.customer_phone):'')+'</span></div>';
+    }).join('');
+    box.style.display='block';
+    Array.prototype.forEach.call(box.querySelectorAll('.qe-customer-result'),function(elx,i){
+      elx.onclick=function(){kbPickCustomer(rows[i]);};
+    });
+  });
+}
+function kbPickCustomer(r){
+  document.getElementById('kb-customer').value=r.job_name||'';
+  document.getElementById('kb-address').value=r.job_address||'';
+  document.getElementById('kb-phone').value=r.customer_phone||'';
+  document.getElementById('kb-customer-results').style.display='none';
+  kbSelectedCustomerId=r.customer_id||null;
+  kbLoadQuotesForCustomer();
+}
+async function kbLoadQuotesForCustomer(){
+  var wrap=document.getElementById('kb-quote-picker-wrap');
+  var sel=document.getElementById('kb-quote-select');
+  if(!kbSelectedCustomerId){wrap.style.display='none';return;}
+  var name=document.getElementById('kb-customer').value.trim();
+  var phone=document.getElementById('kb-phone').value.trim();
+  var qs='?name='+encodeURIComponent(name)+'&phone='+encodeURIComponent(phone);
+  var quotes=await api('/api/customer-visits/customer/'+kbSelectedCustomerId+'/quotes'+qs);
+  if(!quotes||!quotes.length){wrap.style.display='none';return;}
+  sel.innerHTML='<option value="">Intet tilbud</option>'+quotes.map(function(q){
+    return '<option value="'+q.id+'">'+esc(q.quote_number||('Tilbud #'+q.id))+' — '+krFmt(q.total)+' ('+esc(q.status||'')+')</option>';
+  }).join('');
+  var sentOnes=quotes.filter(function(q){return q.status==='sent';});
+  if(sentOnes.length===1)sel.value=String(sentOnes[0].id);
+  wrap.style.display='block';
+}
+async function saveKbAssign(){
+  var name=document.getElementById('kb-customer').value.trim();
+  if(!name){toast('Skriv kundens navn','⚠');return;}
+  var userId=document.getElementById('kb-user').value;
+  var date=document.getElementById('kb-date').value;
+  if(!userId||!date){toast('Vælg medarbejder og dato','⚠');return;}
+  var body={
+    customer_name:name,
+    user_id:userId,
+    date:date,
+    time:document.getElementById('kb-time').value||null,
+    phone:document.getElementById('kb-phone').value.trim(),
+    address:document.getElementById('kb-address').value.trim(),
+    notes:document.getElementById('kb-notes').value.trim(),
+    customer_id:kbSelectedCustomerId||null,
+    quote_id:document.getElementById('kb-quote-select').value||null
+  };
+  var r=await api('/api/customer-visits/book-and-assign',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){
+    closeModal('kb-assign-modal');
+    toast(r.warning?r.warning:'Kundebesøg booket ✓','📅');
+    await kbLoad();
+  } else if(r)toast(r.error||'Fejl','❌');
 }
 
 // JOBTREAD-SYNKHANDLERS FJERNET 05-09-2026 — syncNow(), syncPhonesNow() og
@@ -19398,7 +19767,7 @@ if(window.ResizeObserver){
 // ('qz-invoices','qz-pending-invoicing','qz-products','qz-templates',
 // 'qz-timetrack') er nu ÆGTE selvstændige sider i stedet for interne faner
 // under 'quotes' — se HEADER_COMMENT-noten ved #page-quotes i HTML'en.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','templates','notif-settings','finance','quotes','qz-invoices','qz-pending-invoicing','qz-products','qz-templates','qz-timetrack','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','search-results','kb-lists','kb-docs'];
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','templates','notif-settings','finance','quotes','qz-invoices','qz-pending-invoicing','qz-products','qz-templates','qz-timetrack','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','kundebesog','search-results','kb-lists','kb-docs'];
 // RUNDE P — de 6 sider Tilbud & Faktura-gruppen nu består af, brugt af
 // switchPage() nedenfor til at dispatche til initQuotesModule() m.fl. for alle
 // seks uden en lang if-kæde.
@@ -19626,6 +19995,12 @@ function switchPage(page,skipHash){
   if(page==='crmp'){if(guardPageAny(['crmp_leads','crmp_sales'],'CRM'))return;initCrmpModule();}
   if(page==='crmp-detail'){if(guardPageAny(['crmp_leads','crmp_sales'],'CRM'))return;crmpxInitOnce();}
   if(page==='crmp-tasks'){if(guardPage('crmp_tasks','CRM: Opfølgninger'))return;initCrmpTasksModule();}
+  // RETTELSE (okt. 2026, Martins ønske: "en moderne side hvor man kan se alle
+  // kunde besøg der booket... så Sarah og andre medarbejdere kan se hvem der
+  // ude hvornår") — samme adgangsnøgler som /api/customer-visits/overview på
+  // serveren, så både planlæggere OG CRM/kontor-roller (som Sarahs) kan se
+  // siden, uden at kræve FULD Dagligplanlægning-adgang.
+  if(page==='kundebesog'){if(guardPageAny(['plan','customers','crmp_leads','crmp_sales'],'Kundebesøg'))return;initKundebesogPage();}
   // Søgeresultat-siden gates ikke selv — den er kun et andet visningslag oven på
   // /api/search, som allerede filtrerer pr. kategori efter brugerens Roller & adgang
   // (se panelAccess/computeUserPanelPages i server.js), samme princip som dropdownen.
@@ -20363,6 +20738,7 @@ async function bind(){
     document.getElementById('pool-add-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('pool-add-menu').classList.toggle('open');});
     document.getElementById('pool-add-manual-item').addEventListener('click',function(e){e.preventDefault();document.getElementById('pool-add-menu').classList.remove('open');openManual();});
     document.getElementById('pool-add-visit-item').addEventListener('click',function(e){e.preventDefault();document.getElementById('pool-add-menu').classList.remove('open');openVisitBookModal();});
+    document.getElementById('pool-add-quick-item').addEventListener('click',function(e){e.preventDefault();document.getElementById('pool-add-menu').classList.remove('open');openQuickTaskModal();});
   })();
   // Samme mønster for "🔍 Filtre"-dropdownen (Fag/uge/status-filtrene, som før
   // stod fremme i panelet hele tiden).
@@ -20561,6 +20937,11 @@ async function bind(){
   // Manual modal
   document.getElementById('close-manual').onclick=function(){closeModal('manual-modal');};
   document.getElementById('save-manual').onclick=saveManual;
+  document.getElementById('close-quick-task').onclick=function(){closeModal('quick-task-modal');};
+  document.getElementById('save-quick-task').onclick=saveQuickTask;
+  document.getElementById('close-kb-assign').onclick=function(){closeModal('kb-assign-modal');};
+  document.getElementById('save-kb-assign').onclick=saveKbAssign;
+  document.getElementById('kb-customer').addEventListener('input',function(e){kbRunCustomerSearch(e.target.value.trim());});
   document.getElementById('close-tpldrop').onclick=function(){closeModal('tpldrop-modal');tpldropCtx=null;};
   document.getElementById('save-tpldrop').onclick=saveTemplateDrop;
   // Capacity-only modal
@@ -20606,7 +20987,7 @@ async function bind(){
   // ('quote-editor-modal', bruges til både ny og redigér) og faktura
   // ('invoice-detail-modal') — begge fjernet fra listen herunder, så de (som
   // 'crm-modal') kun kan lukkes via ✕/Annullér/Luk-knappen, aldrig ved klik udenfor.
-  ['assign-modal','manual-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','dunning-send-modal','credit-note-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal','tt-photo-lightbox'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','quick-task-modal','kb-assign-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','dunning-send-modal','credit-note-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal','tt-photo-lightbox'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -23493,6 +23874,7 @@ async function openCustomerDetail(id){
   // enhver ændring i panelet via ccOnChangeHandlers['cd-cc'] nedenfor.
   ccLoadAndRenderAll('cd-cc','customer',id);
   cdLoadNotes(id);
+  crmpxLoadVisits(id,'cd-visits-list','cd-visits-count');
   cdLoadEmails(id);
   // Mails starter altid sammenklappet ved åbning af en kundeside (Martins ønske) —
   // nulstilles her hver gang, så en tidligere udfoldning (denne kunde, eller en
@@ -25693,9 +26075,14 @@ async function crmpxLoadTasks(){
 // RUNDE BG: den fulde besøgsliste holdes her, så et klik på et kort (se
 // crmpxOpenVisitModal) kan slå besøget op uden at hente det igen.
 var crmpxVisitsCache=[],crmpxVisitEditingTaskId=null;
-async function crmpxLoadVisits(customerId){
-  var list=document.getElementById('crmpx-visits-list');
-  var countEl=document.getElementById('crmpx-visits-count');
+async function crmpxLoadVisits(customerId,listElId,countElId){
+  // RUNDE AT (okt. 2026) — listElId/countElId tilføjet så funktionen også kan
+  // genbruges af den klassiske kunde-detaljeside (cd-visits-list/cd-visits-count,
+  // se openCustomerDetail) uden at duplikere rendering-logikken; falder tilbage
+  // til de oprindelige crmpx-element-id'er, så de eksisterende kaldesteder (fra
+  // Handler-detaljesiden) er uændrede.
+  var list=document.getElementById(listElId||'crmpx-visits-list');
+  var countEl=document.getElementById(countElId||'crmpx-visits-count');
   var visits=await api('/api/crm/customers/'+customerId+'/visits')||[];
   crmpxVisitsCache=visits;
   if(countEl)countEl.textContent=visits.length?'('+visits.length+')':'';
@@ -25767,7 +26154,11 @@ async function crmpxSaveVisitEdit(){
   if(r&&r.ok){
     toast('Besøgsrapport gemt','✓');
     closeModal('crmpx-visit-modal');
+    // RUNDE AT — denne modal kan nu åbnes fra TO steder (Handler-detaljesiden
+    // OG den klassiske kunde-detaljeside, se cd-visits-panel) — genopfrisk
+    // begge paneler, hvis de er relevante, i stedet for kun crmpx-siden.
     if(crmpxCurrentCustomerId)crmpxLoadVisits(crmpxCurrentCustomerId);
+    if(cdCurrent&&cdCurrent.id)crmpxLoadVisits(cdCurrent.id,'cd-visits-list','cd-visits-count');
   } else {
     toast((r&&r.error)||'Kunne ikke gemme','❌');
   }

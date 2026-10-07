@@ -8167,7 +8167,15 @@ app.get('/api/tasks', auth, asyncRoute(async (req, res) => {
     -- Rækkerne SLETTES ikke (deres historik i planning_bookings/time_logs/
     -- task_checklist_items m.fl. skal ikke gå tabt) — de skjules bare fra selve
     -- opgave-listen, præcis som 'capacity'-rækker allerede blev.
-    WHERE COALESCE(t.source,'jobtread') NOT IN ('capacity','jobtread')
+    -- RETTELSE (okt. 2026, Martins ønske: "kan jeg få en Manuel Task? Hvor den
+    -- så ikke oprettes i Opgavepool, fordi det bare kan være en simpel lille
+    -- opgave jeg vil helst ikke at det fylder i opgave pool") — "Hurtig
+    -- opgave" (se POST /api/tasks/quick) booker sig selv direkte på en
+    -- medarbejder/dag ved oprettelsen, akkurat som en almindelig manuel
+    -- opgave/kundebesøg — men den skal ALDRIG optræde i selve Opgavepool-
+    -- listen (kun på kalenderen for den dag den blev lagt på), så dens
+    -- source='manual_quick' udelukkes her ligesom 'capacity'/'jobtread'.
+    WHERE COALESCE(t.source,'jobtread') NOT IN ('capacity','jobtread','manual_quick')
     GROUP BY t.id, p.status, p.project_type, c.name
     ORDER BY CASE WHEN t.source='manual' THEN 0 ELSE 1 END,
              CASE WHEN t.start_date IS NULL OR t.start_date='' THEN 1 ELSE 0 END,
@@ -8265,6 +8273,40 @@ app.post('/api/tasks/manual-and-book', auth, panelAccess('plan'), asyncRoute(asy
     // ikke spammer kunden med gentagne mails.
   } catch (error) {
     res.json({ ok: true, id, warning: 'Opgaven blev oprettet, men kunne ikke bookes automatisk: ' + error.message });
+  }
+}));
+
+// RETTELSE (okt. 2026, Martins ønske) — "Hurtig opgave": en bevidst MINDRE
+// formular end "Manuel opgave" (intet kunde/projekt-felt, ingen fag/dage) til
+// de små interne ting der ikke fortjener en fuld sag i opgavepoolen (fx
+// "hente materialer", "ringe til leverandør") — kun en titel, en medarbejder
+// og en dato. Opretter (som skabelon-trækket ovenfor) BÅDE jt_tasks-rækken OG
+// selve bookingen i ét hug, så den ligger direkte på kalenderen med det
+// samme — men med source='manual_quick', som GET /api/tasks eksplicit
+// udelukker (se WHERE-klausulen der), så den aldrig fylder i selve
+// Opgavepool-listen, kun på kalenderdagen den er lagt på.
+app.post('/api/tasks/quick', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name || !String(body.name).trim() || !validDate(body.start_date) || !body.user_id) {
+    return res.status(400).json({ error: 'Titel, medarbejder og dato skal udfyldes' });
+  }
+  const name = String(body.name).trim().slice(0, 200);
+  const id = `quick-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+  // job_name=navnet (ingen separat kunde/sag-titel at vise) — samme fallback
+  // som resten af kalenderen bruger når en opgave ikke hænger på en rigtig sag.
+  await pool.query(`
+    INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
+    VALUES ($1,$2,NULL,$2,'',$3,$3,'other',NULL,NULL,${nowTextSQL()},'manual_quick',${nowTextSQL()})
+  `, [id, name, body.start_date]);
+  try {
+    const booking = await normalizeBooking({ task_id: id, user_id: body.user_id, start_date: body.start_date, days: 0.25, notes: body.notes || null }, true);
+    const result = await pool.query(`
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,notes,start_date,end_date,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()}) RETURNING id
+    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.notes, booking.start_date, booking.end_date]);
+    res.json({ ok: true, id, booking_id: result.rows[0].id });
+  } catch (error) {
+    res.status(400).json({ error: 'Opgaven kunne ikke bookes: ' + error.message });
   }
 }));
 
@@ -9019,6 +9061,97 @@ app.post('/api/customer-visits/book', auth, panelAccess('plan'), asyncRoute(asyn
   } finally {
     client.release();
   }
+}));
+
+// RETTELSE (okt. 2026, Martins ønske: ny "Kundebesøg"-oversigt i CRM, hvor man
+// "også kan oprette dem under denne side ligesom ved kunder... og manuelt kan
+// vælge tidspunkt") — i modsætning til "Book kundebesøg" ovenfor (som bevidst
+// KUN lægger opgaven i poolen, uden medarbejder/dato, se kommentaren derover)
+// vil denne nye side gerne kunne booke et kundebesøg FÆRDIGT med det samme —
+// kunde + medarbejder + dato i ét hug, så det straks indgår i "hvem er ude
+// hvornår"-overblikket. Opretter derfor (ligesom /api/tasks/manual-and-book)
+// BÅDE opgaven/besøget OG selve bookingen — men kunde/besøgs-delen forbliver
+// sin egen lille transaktion (samme garanti som booke-ruten ovenfor: kunden
+// og besøget hænger altid sammen), mens selve booking-forsøget bevidst ikke
+// kan vælte det igen — findes der fx ikke flere ledige hænder, oprettes
+// besøget stadig (ubooket, synligt under "Ikke planlagt" på den nye side) i
+// stedet for at fejle helt.
+app.post('/api/customer-visits/book-and-assign', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const customerName = String(body.customer_name || '').trim();
+  if (!customerName) return res.status(400).json({ error: 'Skriv kundens navn' });
+  if (!validDate(String(body.date || ''))) return res.status(400).json({ error: 'Vælg en gyldig dato' });
+  if (!body.user_id) return res.status(400).json({ error: 'Vælg en medarbejder' });
+
+  const taskId = `visit-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+  const address = body.address ? String(body.address).trim().slice(0, 300) : '';
+  const phone = body.phone ? String(body.phone).trim().slice(0, 60) : '';
+  const notes = body.notes ? String(body.notes).trim().slice(0, 500) : '';
+  const customerId = body.customer_id ? Number(body.customer_id) || null : null;
+  const quoteId = body.quote_id ? Number(body.quote_id) || null : null;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`
+      INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,is_visit,created_at)
+      VALUES ($1,'Kundebesøg',NULL,$2,$3,$4,$5,$5,'other',NULL,NULL,${nowTextSQL()},'manual',1,${nowTextSQL()})
+    `, [taskId, customerName, address, phone || null, body.date]);
+    await client.query(`
+      INSERT INTO customer_visits (task_id,customer_name,address,phone,notes,customer_id,quote_id,created_at,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()},${nowTextSQL()})
+    `, [taskId, customerName, address, phone, notes || null, customerId, quoteId]);
+    await client.query('COMMIT');
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    client.release();
+    return res.status(400).json({ error: error.message || 'Kundebesøget kunne ikke oprettes' });
+  }
+  client.release();
+  try {
+    const booking = await normalizeBooking({ task_id: taskId, user_id: body.user_id, start_date: body.date, days: 0.5, notes: notes || null, start_time: body.time || null }, true);
+    const result = await pool.query(`
+      INSERT INTO planning_bookings (task_id,user_id,week_key,days,notes,start_time,start_date,end_date,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()}) RETURNING id
+    `, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.notes, booking.start_time, booking.start_date, booking.end_date]);
+    res.json({ ok: true, task_id: taskId, booking_id: result.rows[0].id });
+  } catch (error) {
+    res.json({ ok: true, task_id: taskId, warning: 'Kundebesøget blev oprettet, men kunne ikke bookes på medarbejderen: ' + error.message });
+  }
+}));
+
+// RETTELSE (okt. 2026) — datagrundlaget for den nye "Kundebesøg"-oversigt:
+// 'booked' er alle kundebesøg der allerede ligger på en medarbejder/dag
+// (uanset om de er oprettet her, fra "Book kundebesøg" i Dagligplanlægning,
+// eller trukket ud på en dag fra poolen bagefter — samme planning_bookings-
+// række uanset vej ind, se bookingSelect()), afgrænset til et rimeligt
+// vindue (60 dage tilbage, 180 dage frem) så listen ikke vokser ubegrænset
+// med årene. 'unbooked' er besøg der stadig ligger ubooket i poolen (fra den
+// gamle "Book kundebesøg"-pool-only-vej) — vises som "Ikke planlagt", så
+// Sarah kan se hvad der mangler en dato.
+app.get('/api/customer-visits/overview', auth, panelAccessAny(['plan', 'customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const booked = await pool.query(bookingSelect(`
+    WHERE t.is_visit=1 AND b.start_date >= (CURRENT_DATE - INTERVAL '60 days')::text
+      AND b.start_date <= (CURRENT_DATE + INTERVAL '180 days')::text
+    ORDER BY b.start_date ASC, b.start_time ASC NULLS LAST
+  `));
+  const visitExtras = await pool.query(`
+    SELECT task_id, notes AS visit_notes, customer_id, quote_id, submitted_at AS visit_submitted_at
+    FROM customer_visits WHERE task_id = ANY($1::text[])
+  `, [booked.rows.map(r => r.task_id)]);
+  const extraByTask = {};
+  visitExtras.rows.forEach(r => { extraByTask[r.task_id] = r; });
+  const bookedOut = booked.rows.map(r => Object.assign({}, r, extraByTask[r.task_id] || {}));
+
+  const unbooked = await pool.query(`
+    SELECT t.id AS task_id, t.job_name, t.job_address, t.customer_phone, t.start_date AS ref_date,
+           cv.notes AS visit_notes, cv.customer_id, cv.quote_id
+    FROM jt_tasks t
+    LEFT JOIN customer_visits cv ON cv.task_id = t.id
+    WHERE t.is_visit = 1 AND NOT EXISTS (SELECT 1 FROM planning_bookings b WHERE b.task_id = t.id)
+    ORDER BY t.start_date ASC NULLS LAST
+  `);
+  res.json({ booked: bookedOut, unbooked: unbooked.rows });
 }));
 
 app.get('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
@@ -12676,6 +12809,14 @@ app.post('/api/crm/lost-followup/run', auth, panelAccessAny(['customers','crmp_l
 // admin/teknisk test-knap, ikke en del af det daglige CRM-arbejde.
 app.post('/api/reports/daily-status/run', auth, adminOnly, asyncRoute(async (req, res) => {
   const result = await runDailyStatusEmail();
+  res.json(result);
+}));
+// Samme mønster (RUNDE BC) som ovenstående, nu for den nye interne
+// kundebesøg-påmindelsesmail (se sendInternalVisitReminders, okt. 2026,
+// Martins ønske om en morgen+dagen-før-mail) — manuel "Kør nu (test)",
+// adminOnly.
+app.post('/api/reports/visit-reminders/run', auth, adminOnly, asyncRoute(async (req, res) => {
+  const result = await sendInternalVisitReminders();
   res.json(result);
 }));
 
@@ -17460,18 +17601,36 @@ async function runDailyStatusEmail() {
     ? `<p style="margin:14px 0 0"><b>🙋 Kunder der selv har oprettet sig (via /ny-kunde)</b></p>${linkListHtml(selfRegRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn')}`
     : '';
   const subject = `📊 Gulv Master — daglig status (${newLeads.n} nye leads, ${quotesAccepted.n} tilbud accepteret)`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">
-    <p><b>Status for det seneste døgn:</b></p>
-    <table style="border-collapse:collapse;margin:12px 0;width:100%">
-      <tr><td style="padding:3px 12px 3px 0;color:#666;vertical-align:top">Nye leads</td><td style="padding:3px 0"><b>${newLeads.n}</b>${newLeadsList}</td></tr>
-      <tr><td style="padding:3px 12px 3px 0;color:#666;vertical-align:top">— heraf talt med (rykket til Salg)</td><td style="padding:3px 0">${talkedTo.n}${talkedToList}</td></tr>
-      <tr><td style="padding:3px 12px 3px 0;color:#666;vertical-align:top">Tilbud sendt</td><td style="padding:3px 0"><b>${quotesSent.n}</b>${quotesSentList}</td></tr>
-      <tr><td style="padding:3px 12px 3px 0;color:#666;vertical-align:top">Tilbud accepteret</td><td style="padding:3px 0"><b>${quotesAccepted.n}</b>${quotesAcceptedList}</td></tr>
-    </table>
-    ${selfRegHtml}
-    <p><b>Features der ikke fungerer ordentligt:</b></p>
-    ${issuesHtml}
-  </div>`;
+  // RETTELSE (okt. 2026, Martins ønske om en pænere/mere moderne mail) — samme
+  // tal/lister som før, bare lagt i branded "stat-pille"-rækker (se
+  // dsStatRowHtml) i stedet for den gamle rå <table>, via den fælles
+  // renderInternalDigestEmailHtml-skal (se den, lige ovenfor DOC_EMAIL_VARS).
+  function dsStatRowHtml(label, value, listHtml) {
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px"><tr>
+      <td style="width:46px;vertical-align:top;font-size:20px;font-weight:800;color:#4F46E5;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${value}</td>
+      <td style="vertical-align:top;font-size:13.5px;color:#374151;padding-top:3px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(label)}${listHtml}</td>
+    </tr></table>`;
+  }
+  const company = await getCompanyInfo();
+  const sections = [
+    {
+      heading: 'Leads & salg (seneste døgn)',
+      bodyHtml: dsStatRowHtml('Nye leads', newLeads.n, newLeadsList)
+        + dsStatRowHtml('— heraf talt med (rykket til Salg)', talkedTo.n, talkedToList)
+        + dsStatRowHtml('Tilbud sendt', quotesSent.n, quotesSentList)
+        + dsStatRowHtml('Tilbud accepteret', quotesAccepted.n, quotesAcceptedList)
+    }
+  ];
+  if (selfRegRows.length) {
+    sections.push({ heading: '🙋 Kunder der selv har oprettet sig (via /ny-kunde)', bodyHtml: linkListHtml(selfRegRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn') });
+  }
+  sections.push({
+    heading: 'Features der ikke fungerer ordentligt',
+    bodyHtml: issueCount ? issuesHtml : '<div style="background:#F0FDF4;border:1px solid #DCFCE7;border-radius:8px;padding:10px 14px;color:#15803D">Ingen fejl eller leveringsproblemer registreret det seneste døgn. ✓</div>'
+  });
+  const html = renderInternalDigestEmailHtml({
+    company, title: '📊 Daglig status', subtitle: 'Opsummering af det seneste døgn', sections
+  });
   const text = `Status for det seneste døgn:\n\nNye leads: ${newLeads.n}\n${linkListText(newLeadRows, r => `crmp-detail/lead/${r.id}`, r => r.name || 'Uden navn')}\n— heraf talt med (rykket til Salg): ${talkedTo.n}\n${linkListText(talkedToRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn')}\nTilbud sendt: ${quotesSent.n}\n${linkListText(quotesSentRows, r => `quotes/tilbud/${r.id}`, r => r.job_name || 'Uden navn')}\nTilbud accepteret: ${quotesAccepted.n}\n${linkListText(quotesAcceptedRows, r => `quotes/tilbud/${r.id}`, r => r.job_name || 'Uden navn')}\n${selfRegRows.length ? '\nKunder der selv har oprettet sig (via /ny-kunde):\n' + linkListText(selfRegRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn') + '\n' : ''}\nFeatures der ikke fungerer ordentligt:\n${issuesText}`;
   try {
     await sendMailUniversal({ to: QUOTE_ACCEPTED_NOTIFY_EMAIL, subject, html, text });
@@ -17480,6 +17639,72 @@ async function runDailyStatusEmail() {
     return { ran: false, reason: e.message };
   }
   return { ran: true, newLeads: newLeads.n, talkedTo: talkedTo.n, quotesSent: quotesSent.n, quotesAccepted: quotesAccepted.n, selfRegistered: selfRegRows.length, issueCount };
+}
+
+// RETTELSE (okt. 2026, Martins ønske: "hver morgen samt dagen før et
+// kundebesøg sendes en intern mail til os med hvem man skal forbi så man
+// ikke glemmer det") — ÉN mail hver morgen dækker begge dele: den viser
+// BÅDE dagens kundebesøg OG i morgen-dags kundebesøg (dvs. "dagen før"-
+// varslet for i morgen ligger allerede i dagens morgenmail) — enklere end to
+// separate afsendelser, og man får stadig et helt døgns varsel før hvert
+// besøg. Udelades helt (ingen mail) hvis der hverken er besøg i dag eller i
+// morgen, så det ikke bliver en daglig tom spam-mail i stille perioder.
+async function sendInternalVisitReminders() {
+  if (!mailIsConfigured()) return { ran: false, reason: 'E-mail er ikke konfigureret' };
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const rows = (await pool.query(`
+    SELECT b.start_date, b.start_time, u.name AS user_name, u.color AS user_color,
+           t.job_name AS customer_name, t.job_address, t.customer_phone, cv.notes AS visit_notes
+    FROM planning_bookings b
+    JOIN users u ON u.id = b.user_id
+    JOIN jt_tasks t ON t.id = b.task_id
+    LEFT JOIN customer_visits cv ON cv.task_id = t.id
+    WHERE t.is_visit = 1 AND b.start_date IN ($1, $2)
+    ORDER BY b.start_date ASC, b.start_time ASC NULLS LAST, u.name ASC
+  `, [todayStr, tomorrowStr])).rows;
+  const todayRows = rows.filter(r => String(r.start_date).slice(0, 10) === todayStr);
+  const tomorrowRows = rows.filter(r => String(r.start_date).slice(0, 10) === tomorrowStr);
+  if (!todayRows.length && !tomorrowRows.length) return { ran: false, reason: 'Ingen kundebesøg i dag eller i morgen' };
+
+  function visitCardHtml(r) {
+    const time = r.start_time ? String(r.start_time).slice(0, 5) : 'Tidspunkt ikke sat';
+    const where = [r.job_address, r.customer_phone].filter(Boolean).join(' · ');
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F9FAFB;border:1px solid #EEF0F3;border-radius:10px;margin-bottom:8px"><tr>
+      <td style="padding:12px 16px;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
+        <b style="color:#111318">${escPublic(time)} — ${escPublic(r.customer_name || 'Ukendt kunde')}</b><br>
+        <span style="color:#6B7280">👤 ${escPublic(r.user_name)}${where ? ' · ' + escPublic(where) : ''}</span>
+        ${r.visit_notes ? `<br><span style="color:#374151">📝 ${escPublic(r.visit_notes)}</span>` : ''}
+      </td>
+    </tr></table>`;
+  }
+  function visitListHtml(list) {
+    return list.length
+      ? list.map(visitCardHtml).join('')
+      : '<div style="color:#9CA3AF;font-size:13px">Ingen kundebesøg</div>';
+  }
+  function visitListText(list) {
+    return list.length
+      ? list.map(r => `  - ${r.start_time ? String(r.start_time).slice(0, 5) : '(tid ikke sat)'} ${r.customer_name || 'Ukendt kunde'} — ${r.user_name}${r.job_address ? ' — ' + r.job_address : ''}`).join('\n')
+      : '  Ingen kundebesøg';
+  }
+  const company = await getCompanyInfo();
+  const subject = `📅 Kundebesøg: ${todayRows.length} i dag, ${tomorrowRows.length} i morgen`;
+  const html = renderInternalDigestEmailHtml({
+    company, title: '📅 Kundebesøg', subtitle: 'Hvem skal forbi hvem — i dag og i morgen',
+    sections: [
+      { heading: `I dag · ${todayStr}`, bodyHtml: visitListHtml(todayRows) },
+      { heading: `I morgen · ${tomorrowStr}`, bodyHtml: visitListHtml(tomorrowRows) }
+    ]
+  });
+  const text = `Kundebesøg i dag (${todayStr}):\n${visitListText(todayRows)}\n\nKundebesøg i morgen (${tomorrowStr}):\n${visitListText(tomorrowRows)}`;
+  try {
+    await sendMailUniversal({ to: QUOTE_ACCEPTED_NOTIFY_EMAIL, subject, html, text });
+  } catch (e) {
+    console.error('Kundebesøg-påmindelsesmail kunne ikke sendes:', e.message);
+    return { ran: false, reason: e.message };
+  }
+  return { ran: true, today: todayRows.length, tomorrow: tomorrowRows.length };
 }
 
 // Manuel afsendelse for ÉN faktura — uanset dag-tærskler, og uanset til/fra-knappen.
@@ -21615,6 +21840,39 @@ ${portalHtml}
 </table>
 </body></html>`;
 }
+// RETTELSE (okt. 2026, Martins ønske: "den daglige status mail der sendes er
+// enormt grim og kluderet kan du lave den pænere og mere moderne?") — fælles
+// branded skal til INTERNE drifts-/oversigtsmails (dagsstatus, kundebesøg-
+// påmindelse), i samme visuelle stil som renderDefaultDocEmailHtml ovenfor
+// (indigo logo-bånd, hvidt afrundet kort, samme skrifttype/farver) — men uden
+// dokument-boks/CTA-knap, som ikke giver mening her. Indholdet kommer som
+// allerede-bygget HTML pr. sektion (overskrift + krop), så begge mails kan
+// beholde deres egen indholdslogik og bare aflevere pæne, ensartede kasser.
+function renderInternalDigestEmailHtml(opts) {
+  const company = opts.company;
+  const logoHtml = company.logoUrl
+    ? `<img src="${escPublic(company.logoUrl)}" alt="${escPublic(company.name)}" style="max-height:34px;max-width:200px;display:block;border:0">`
+    : `<div style="font-size:16px;font-weight:800;color:#fff;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(company.name)}</div>`;
+  const sectionsHtml = (opts.sections || []).map(s => `
+    <tr><td style="padding:0 32px 22px">
+      <div style="font-size:12px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(s.heading)}</div>
+      <div style="font-size:13.5px;color:#111318;line-height:1.6;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${s.bodyHtml}</div>
+    </td></tr>`).join('');
+  const addrLine = [company.address, company.phone, company.email].filter(Boolean).join(' · ');
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#F4F6FB;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F6FB;padding:32px 12px">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:580px;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(15,23,42,.06)">
+<tr><td style="background:#4F46E5;padding:20px 32px">${logoHtml}</td></tr>
+<tr><td style="padding:26px 32px 4px;font-size:17px;font-weight:800;color:#111318;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(opts.title)}</td></tr>
+${opts.subtitle ? `<tr><td style="padding:4px 32px 20px;font-size:13px;color:#6B7280;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(opts.subtitle)}</td></tr>` : '<tr><td style="padding:0 32px 10px"></td></tr>'}
+${sectionsHtml}
+<tr><td style="padding:18px 32px;border-top:1px solid #EEF0F3;font-size:11.5px;color:#9CA3AF;line-height:1.6;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">Automatisk besked fra <b style="color:#374151">${escPublic(company.name)}</b>s interne system${addrLine ? '<br>' + escPublic(addrLine) : ''}</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
 const DOC_EMAIL_VARS = [
   ['{{kunde}}', 'Kunde/sagsnavn'], ['{{dokument_nr}}', 'Tilbuds-/fakturanummer'], ['{{total}}', 'Totalbeløb'],
   ['{{gyldig_til}}', 'Gyldig til (kun tilbud)'], ['{{forfald}}', 'Forfaldsdato (kun faktura)'], ['{{restbeloeb}}', 'Restbeløb (kun faktura)'],
@@ -24284,6 +24542,11 @@ async function start() {
   // morgen-rapport han læser med kaffen, hvor "et par timer forskudt" reelt
   // ville gøre den ubrugelig.
   cron.schedule('0 7 * * *', () => runDailyStatusEmail().catch(e => { console.error('Daglig status-mail fejlede:', e.message); logSystemEvent('daily_status_email', 'error', 'Daglig status-mail fejlede: ' + e.message); }), { timezone: 'Europe/Copenhagen' });
+  // RETTELSE (okt. 2026, Martins ønske) — kundebesøg-påmindelsen sendes 06:30,
+  // altså FØR dagsstatus-mailen (07:00), så den ligger øverst i indbakken når
+  // man tjekker mail om morgenen med kaffen — man skal kunne se hvem der er
+  // ude i dag, inden man når til resten af den daglige status.
+  cron.schedule('30 6 * * *', () => sendInternalVisitReminders().catch(e => { console.error('Kundebesøg-påmindelsesmail fejlede:', e.message); logSystemEvent('visit_reminder_email', 'error', 'Kundebesøg-påmindelsesmail fejlede: ' + e.message); }), { timezone: 'Europe/Copenhagen' });
   // Gmail-synk hver 5. minut — kører kun når GOOGLE_CLIENT_ID/SECRET er sat op
   // OG en postkasse rent faktisk er forbundet (se GET /api/gmail/status). Kan
   // også udløses manuelt via "Synk nu" på Gmail-indstillingssiden. (Sat op fra
