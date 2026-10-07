@@ -215,7 +215,7 @@
   <div id="selected-notice"></div>
   <div id="tasks-container"><div class="empty"><div class="empty-icon">⏳</div><h3>Loading your tasks...</h3></div></div>
 </main>
-<div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div><div id="note-task-photos" style="display:none;margin-top:12px"><div class="qn-title">📷 Reference photos</div><div class="modal-note-attachments" id="note-task-photos-grid"></div></div><div id="note-quote-section" style="display:none;margin-top:12px"></div></div></div></div>
+<div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div><div id="note-task-photos" style="display:none;margin-top:12px"><div class="qn-title">📷 Reference photos &amp; files</div><div class="modal-note-attachments" id="note-task-photos-grid"></div></div><div id="note-quote-section" style="display:none;margin-top:12px"></div></div></div></div>
 <!-- PROJEKTER — sager der er blevet til efter en kunde har underskrevet et
      tilbud. Herfra kan medarbejdere registrere tid (note + billede påkrævet),
      tilføje billeder til sagen, og udfylde KS-formularer. -->
@@ -493,6 +493,13 @@ function openBookingNote(id){const x=bookingNotes.get(String(id))||{};document.g
 // tapbare thumbnails, samme mønster/klasse som de almindelige note-vedhæftninger
 // ovenfor (modal-note-att) — bare her peger de på en rigtig URL i stedet for
 // en base64 data-URI, så almindelig <a target="_blank"> er nok.
+// RETTELSE (okt. 2026, Martin: "så jeg kan tilføje [PDF-filer] til hver task
+// i projektet") — task_photos kan nu også pege på en PDF (project_photos har
+// ingen type-kolonne, se admin.html's pdIsPdfUrl), ikke kun billeder. Samme
+// 📄-ikon-mønster som note-attachments ovenfor (.modal-note-att-pdf) bruges
+// her i stedet for et ellers knækket <img>, så en medarbejder på telefonen
+// stadig kan åbne/se filen.
+function isPdfTaskPhotoUrl(u){return /\.pdf(\?|#|$)/i.test(String(u||''));}
 async function loadNoteTaskPhotos(x){
   const wrap=document.getElementById('note-task-photos'),grid=document.getElementById('note-task-photos-grid');
   wrap.style.display='none';grid.innerHTML='';
@@ -500,7 +507,12 @@ async function loadNoteTaskPhotos(x){
   const r=await api('/api/tasks/'+encodeURIComponent(x.taskId)+'/photos');
   const photos=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
   if(!photos.length)return;
-  grid.innerHTML=photos.map(p=>`<a class="modal-note-att" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(p.url)}" alt="${esc(p.caption||'')}"><span class="modal-note-att-name" title="${esc(p.caption||'')}">${esc(p.caption||'Photo')}</span></a>`).join('');
+  grid.innerHTML=photos.map(p=>{
+    const name=esc(p.caption||(isPdfTaskPhotoUrl(p.url)?'Document.pdf':'Photo'));
+    return isPdfTaskPhotoUrl(p.url)
+      ?`<a class="modal-note-att" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer"><div class="modal-note-att-pdf">📄</div><span class="modal-note-att-name" title="${name}">${name}</span></a>`
+      :`<a class="modal-note-att" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(p.url)}" alt="${name}"><span class="modal-note-att-name" title="${name}">${name}</span></a>`;
+  }).join('');
   wrap.style.display='block';
 }
 // RUNDE L (Martins ønske) — "med et klik tilføje det tilbud der sendt uden priser".

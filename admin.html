@@ -1931,6 +1931,8 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .pd-photo-thumb{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bly-border-soft);aspect-ratio:1/1;background:#F4F6FB}
 .pd-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .pd-photo-thumb .pd-photo-del{position:absolute;top:4px;right:4px;background:rgba(17,19,24,.65);color:#fff;border:0;border-radius:6px;width:22px;height:22px;font-size:11px;cursor:pointer}
+.pd-photo-thumb .pd-file-icon{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:#FEF2F2;color:var(--bly-sub);font-size:28px;padding:8px;text-align:center}
+.pd-photo-thumb .pd-file-icon span{font-size:10px;font-weight:700;color:var(--bly-ink);line-height:1.25;word-break:break-word;max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .pd-task-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bly-border-soft)}
 .pd-task-row input.input{padding:6px 8px;font-size:12.5px}
 .bly-util-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--bly-sub);margin-bottom:14px}
@@ -3861,7 +3863,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-07.71</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-07.72</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -7106,7 +7108,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              (ikke at forveksle med CRM-pipelinen for leads/sales) — se
              renderPdPipeline()/pdPipelineCardHtml() og gantt_tasks.status. -->
         <button class="bly-segtab" data-pdtab="pipeline" type="button">🗂 Pipeline</button>
-        <button class="bly-segtab" data-pdtab="photos" type="button">📷 Billeder</button>
+        <button class="bly-segtab" data-pdtab="photos" type="button">📷 Billeder & filer</button>
         <button class="bly-segtab" data-pdtab="time" type="button">⏱️ Tidsregistrering</button>
         <!-- Budget-dashboard (sep. 2026, Martins ønske #3) — kun for rigtige admins, da den
              viser løn-/akkord-omkostninger udregnet ud fra medarbejdernes lønsatser. -->
@@ -7165,9 +7167,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="crmp-board" id="pd-pipeline-board"></div>
       </div>
       <div class="pdtabpage" id="pdtab-photos" style="display:none">
+        <!-- RETTELSE (okt. 2026, Martins ønske: "Gør så jeg også kan uploade
+             pdf filer her, og så jeg kan tilføje dem til hver task i
+             projektet") — accept udvidet med application/pdf. Selve
+             upload-vejen (Cloudinary 'auto', se uploadPhotoToCloudinary) var
+             allerede type-agnostisk, og hverken project_photos eller
+             task_photos (se renderPdPhotos/pdtdOpenPhotoPicker/
+             renderPdtdPhotos) har nogen billede-specifik validering server-
+             side — kun selve VISNINGEN skelner nu mellem billede og PDF
+             (pdIsPdfUrl), med et 📄-ikon-flisemønster i stedet for et
+             (ellers knækket) <img>-thumbnail for PDF'er. -->
         <div class="bly-toolbar">
-          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Billeder</span></div>
-          <div class="bly-toolbar-right"><label class="bly-btn outline small" style="cursor:pointer">+ Tilføj billede<input type="file" accept="image/*" id="pd-photo-input" style="display:none"></label></div>
+          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Billeder &amp; filer</span></div>
+          <div class="bly-toolbar-right"><label class="bly-btn outline small" style="cursor:pointer">+ Tilføj billede/fil<input type="file" accept="image/*,application/pdf" id="pd-photo-input" style="display:none"></label></div>
         </div>
         <div id="pd-photos-grid" class="pd-photos-grid"></div>
         <!-- RUNDE BR (Martin: "billeder taget ved kundebesøg også kommer ind
@@ -28443,9 +28455,13 @@ function renderPdtdPhotos(){
   var grid=document.getElementById('pdtd-photos-grid');
   var t=(pjCurrent.tasks||[]).find(function(x){return x.id===pdTaskDetailId;});
   var photos=(t&&t.photos)||[];
-  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder valgt endnu — medarbejderen får ingen billeder med når opgaven bookes.</div>';return;}
+  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder eller filer valgt endnu — medarbejderen får ingenting med når opgaven bookes.</div>';return;}
   grid.innerHTML=photos.map(function(p){
-    return '<div class="pd-photo-thumb"><img src="'+esc(p.url)+'" loading="lazy" title="'+esc(p.caption||'')+'"><button type="button" class="pd-photo-del" data-id="'+p.id+'" title="Fjern fra opgaven">✕</button></div>';
+    var isPdf=pdIsPdfUrl(p.url);
+    var inner=isPdf
+      ?'<a href="'+esc(p.url)+'" target="_blank" rel="noopener noreferrer" class="pd-file-icon" title="'+esc(p.caption||'')+'">📄<span>'+esc(p.caption||'PDF-fil')+'</span></a>'
+      :'<img src="'+esc(p.url)+'" loading="lazy" title="'+esc(p.caption||'')+'">';
+    return '<div class="pd-photo-thumb">'+inner+'<button type="button" class="pd-photo-del" data-id="'+p.id+'" title="Fjern fra opgaven">✕</button></div>';
   }).join('');
   Array.prototype.forEach.call(grid.querySelectorAll('.pd-photo-del'),function(btn){
     btn.onclick=async function(e){
@@ -28485,8 +28501,8 @@ async function pdtdOpenPhotoPicker(){
   docJobPhotosCtx={mode:'task-stage',taskId:pdTaskDetailId};
   var grid=document.getElementById('doc-job-photos-grid');
   var sub=document.getElementById('doc-job-photos-sub');
-  document.getElementById('doc-job-photos-title').textContent='Vælg billede til opgaven';
-  grid.innerHTML='<div class="sub">Henter sagens billeder…</div>';
+  document.getElementById('doc-job-photos-title').textContent='Vælg billede eller fil til opgaven';
+  grid.innerHTML='<div class="sub">Henter sagens billeder og filer…</div>';
   document.getElementById('doc-job-photos-modal').classList.add('open');
   var calls=[api('/api/projects/'+pjCurrent.id+'/photo-library')];
   calls.push(pjCurrent.customer_id?api('/api/crm/customers/'+pjCurrent.customer_id+'/files').catch(function(){return null;}):Promise.resolve(null));
@@ -28501,10 +28517,16 @@ async function pdtdOpenPhotoPicker(){
         :{needsFetch:true,messageId:f.gmail_message_id,attachmentId:f.attachmentId,filename:f.filename,mimetype:f.mimeType,caption:f.subject||f.filename||null,source:'Handel (Filer)',date:when});
     });
   }
-  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder fundet på sagen endnu — hverken uploadet direkte, fra tidsregistrering, kundebesøget eller Handlens filer.</div>';return;}
-  sub.textContent='Sagens billeder — vælg ét til denne opgave, så medarbejderen får det med når opgaven bookes';
+  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder eller filer fundet på sagen endnu — hverken uploadet direkte, fra tidsregistrering, kundebesøget eller Handlens filer.</div>';return;}
+  sub.textContent='Sagens billeder og filer — vælg én til denne opgave, så medarbejderen får den med når opgaven bookes';
   grid.innerHTML=photos.map(function(p,idx){
-    var imgHtml=p.needsFetch?'<div class="djp-noimg" title="Hentes først når du vælger den">🖼️</div>':'<img src="'+esc(p.url)+'" alt="" loading="lazy">';
+    // RETTELSE (okt. 2026) — p.needsFetch-grenen rammer kun Handlens
+    // Gmail-vedhæftninger, som allerede er filtreret til billeder (se
+    // mimeType-filteret et par linjer oppe) — PDF'er kommer udelukkende fra
+    // sagens egne project_photos (p.url sat, aldrig needsFetch), derfor er
+    // pdIsPdfUrl-tjekket kun nødvendigt i den gren.
+    var imgHtml=p.needsFetch?'<div class="djp-noimg" title="Hentes først når du vælger den">🖼️</div>'
+      :(pdIsPdfUrl(p.url)?'<div class="djp-noimg" title="PDF-fil">📄</div>':'<img src="'+esc(p.url)+'" alt="" loading="lazy">');
     return '<div class="doc-job-photo-item" data-idx="'+idx+'">'
       +imgHtml
       +'<div class="djp-meta"><span class="djp-source">'+esc(p.source)+'</span><br>'+esc(p.user_name||p.caption||'')+(p.date?'<br>'+esc(String(p.date).slice(0,10)):'')+'</div>'
@@ -28770,20 +28792,39 @@ async function saveBulkCapacityReservation(){
     reloadPdCurrent();
   }else toast((r&&r.error)||'Kunne ikke booke opgaverne','❌');
 }
+// RETTELSE (okt. 2026) — genkender en PDF-fil ud fra selve URL'en (Cloudinary
+// bevarer filendelsen i stien/public_id'et, uanset resource_type), så billeder
+// og PDF'er kan ligge i samme liste/tabel (project_photos/task_photos har
+// ingen egen type-kolonne) og stadig vises rigtigt hver for sig. Bruges af
+// renderPdPhotos, pdtdOpenPhotoPicker og renderPdtdPhotos.
+function pdIsPdfUrl(u){return /\.pdf(\?|#|$)/i.test(String(u||''));}
 function renderPdPhotos(){
   var grid=document.getElementById('pd-photos-grid');
   var photos=pjCurrent.photos||[];
-  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder endnu.</div>';return;}
+  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder eller filer endnu.</div>';return;}
   grid.innerHTML=photos.map(function(p,i){
-    return '<div class="pd-photo-thumb" data-idx="'+i+'" style="cursor:pointer"><img src="'+esc(p.url)+'" loading="lazy"><button class="pd-photo-del" data-id="'+p.id+'" title="Slet">✕</button></div>';
+    var isPdf=pdIsPdfUrl(p.url);
+    var inner=isPdf
+      ?'<div class="pd-file-icon">📄<span>'+esc(p.caption||'PDF-fil')+'</span></div>'
+      :'<img src="'+esc(p.url)+'" loading="lazy">';
+    return '<div class="pd-photo-thumb" data-idx="'+i+'"'+(isPdf?' data-pdf="1"':'')+' style="cursor:pointer">'+inner+'<button class="pd-photo-del" data-id="'+p.id+'" title="Slet">✕</button></div>';
   }).join('');
   Array.prototype.forEach.call(grid.querySelectorAll('.pd-photo-thumb'),function(thumb){
-    thumb.querySelector('img').onclick=function(){openPdPhotoLightbox(+thumb.dataset.idx);};
+    var idx=+thumb.dataset.idx;
+    if(thumb.dataset.pdf){
+      // PDF'er har ingen lightbox (det er en billed-visning) — åbner i stedet
+      // filen direkte i en ny fane, samme mønster som "Andre billeder på
+      // sagen" (renderPdOtherPhotos) allerede bruger for read-only links.
+      thumb.addEventListener('click',function(e){if(e.target.closest('.pd-photo-del'))return;window.open(photos[idx].url,'_blank','noopener');});
+    } else {
+      var img=thumb.querySelector('img');
+      if(img)img.onclick=function(){openPdPhotoLightbox(idx);};
+    }
   });
   Array.prototype.forEach.call(grid.querySelectorAll('.pd-photo-del'),function(btn){
     btn.onclick=async function(e){
       e.stopPropagation();
-      if(!await gmConfirm('Slet billedet?'))return;
+      if(!await gmConfirm('Slet filen?'))return;
       await api('/api/projects/'+pjCurrent.id+'/photos/'+btn.dataset.id,{method:'DELETE'});
       reloadPdCurrent();
     };
@@ -28850,14 +28891,20 @@ async function pdUploadPhoto(e){
   var file=e.target.files&&e.target.files[0];
   if(!file)return;
   e.target.value='';
-  toast('Uploader billede…','⏳');
+  var isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name||'');
+  toast(isPdf?'Uploader fil…':'Uploader billede…','⏳');
   try{
     var dataUrl=await pdReadFileAsDataUrl(file);
     var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pjCurrent.id})});
-    if(!up||!up.ok){toast((up&&up.error)||'Kunne ikke uploade billedet','❌');return;}
-    var r=await api('/api/projects/'+pjCurrent.id+'/photos',{method:'POST',body:JSON.stringify({url:up.url})});
-    if(r&&r.ok){toast('Billede tilføjet','✓');reloadPdCurrent();}
-  }catch(err){toast('Kunne ikke uploade billedet','❌');}
+    if(!up||!up.ok){toast((up&&up.error)||(isPdf?'Kunne ikke uploade filen':'Kunne ikke uploade billedet'),'❌');return;}
+    // RETTELSE (okt. 2026) — caption sendes nu med (filnavnet), så en PDF kan
+    // vises/genkendes med et meningsfuldt navn i stedet for bare "PDF-fil"
+    // (se pdIsPdfUrl-grenen i renderPdPhotos/pdtdOpenPhotoPicker). Harmløst
+    // for almindelige billeder — captionen vises der ikke i dag, men er klar
+    // hvis det bliver relevant senere.
+    var r=await api('/api/projects/'+pjCurrent.id+'/photos',{method:'POST',body:JSON.stringify({url:up.url,caption:file.name||null})});
+    if(r&&r.ok){toast(isPdf?'Fil tilføjet ✓':'Billede tilføjet ✓','✓');reloadPdCurrent();}
+  }catch(err){toast(isPdf?'Kunne ikke uploade filen':'Kunne ikke uploade billedet','❌');}
 }
 function renderPdTime(){
   var body=document.getElementById('pd-time-body');
@@ -32123,10 +32170,10 @@ async function docJobPhotoPick(idx){
     if(!finalUrl)return;
     var pr=await api('/api/tasks/'+taskId+'/photos',{method:'POST',body:JSON.stringify({url:finalUrl,caption:photo.caption||photo.user_name||null})});
     if(pr&&pr.ok){
-      toast('Billede tilføjet til opgaven ✓','📎');
+      toast(pdIsPdfUrl(finalUrl)?'Fil tilføjet til opgaven ✓':'Billede tilføjet til opgaven ✓','📎');
       await reloadPdCurrent();
       renderPdtdPhotos();
-    }else toast((pr&&pr.error)||'Kunne ikke tilføje billedet','❌');
+    }else toast((pr&&pr.error)||'Kunne ikke tilføje filen','❌');
     return;
   }
   var docType=docJobPhotosCtx.docType;
