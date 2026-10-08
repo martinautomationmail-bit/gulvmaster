@@ -8291,13 +8291,21 @@ app.post('/api/tasks/quick', auth, panelAccess('plan'), asyncRoute(async (req, r
     return res.status(400).json({ error: 'Titel, medarbejder og dato skal udfyldes' });
   }
   const name = String(body.name).trim().slice(0, 200);
+  // RETTELSE (okt. 2026, Martin: "jeg kan ikke finde den nogle steder" +
+  // "kan du ikke gøre så jeg kan tilføje Adresse også") — opgaven BLEV rent
+  // faktisk booket direkte på medarbejderen/dagen hele tiden (se
+  // planning_bookings-INSERT nedenfor, uændret), men kortet på kalenderen så
+  // tomt/svært-genkendeligt ud uden en adresse-linje (assign-address vises
+  // slet ikke når job_address=''), hvilket var den reelle årsag til at den
+  // var svær at få øje på. job_address kommer nu med fra modalen (valgfrit).
+  const jobAddress = body.job_address ? String(body.job_address).trim().slice(0, 300) : '';
   const id = `quick-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
   // job_name=navnet (ingen separat kunde/sag-titel at vise) — samme fallback
   // som resten af kalenderen bruger når en opgave ikke hænger på en rigtig sag.
   await pool.query(`
     INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,created_at)
-    VALUES ($1,$2,NULL,$2,'',$3,$3,'other',NULL,NULL,${nowTextSQL()},'manual_quick',${nowTextSQL()})
-  `, [id, name, body.start_date]);
+    VALUES ($1,$2,NULL,$2,$3,$4,$4,'other',NULL,NULL,${nowTextSQL()},'manual_quick',${nowTextSQL()})
+  `, [id, name, jobAddress, body.start_date]);
   try {
     const booking = await normalizeBooking({ task_id: id, user_id: body.user_id, start_date: body.start_date, days: 0.25, notes: body.notes || null }, true);
     const result = await pool.query(`
@@ -10506,19 +10514,68 @@ app.post('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async 
   } catch (e) { console.error('Kunne ikke sende velkomstmail til ny kunde:', e.message); }
   res.json({ ok: true, id: r.rows[0].id });
 }));
+// RETTELSE (okt. 2026, Martin: "Da jeg ændre i kundedataen Britts Adresse...
+// der ændre den ikke i dagligplanlægning, Opgavepool hmmm? Burde det ikke alt
+// sammen være forbundet...") — kundens adresse/telefon/email var ALDRIG
+// forbundet nogen steder: hvert kundebesøg, opgave og sag gemmer sin egen
+// kopi på oprettelsestidspunktet, og intet rørte dem bagefter. Martin valgte
+// (AskUserQuestion) kun at lade det opdatere automatisk for IKKE-afsluttet
+// fremtidigt arbejde — afsluttede kundebesøg og sendte tilbud/fakturaer skal
+// stadig stå som et historisk øjebliksbillede, som regnskabspraksis normalt
+// kræver. Dækker to steder:
+//  1) customer_visits (+ deres jt_tasks-spejl, job_address/customer_phone/
+//     customer_email på is_visit=1-rækker) — kun besøg der hverken er
+//     markeret færdige (planning_bookings.completed_at) eller allerede har
+//     fået udfyldt en besøgsrapport (customer_visits.submitted_at), uanset
+//     om de er booket på en medarbejder/dag endnu eller stadig kun i poolen.
+//  2) Sager (projects) der er koblet til kunden og ikke er "Afsluttet"
+//     (status='done', det systemfaste stadie) — genbruger PRÆCIS samme
+//     kaskade til jt_tasks/gantt_tasks som PUT /api/projects/:id allerede
+//     bruger når man retter sagens EGNE kundefelter (se RUNDE H #315),
+//     bare nu også trigget fra selve kundekortet.
+// "Manuel opgave"/"Hurtig opgave" i Dagligplanlægning har bevidst ingen
+// customer_id-kobling overhovedet (rene fritekstfelter) — der er derfor
+// intet at synkronisere FRA for den slags opgaver.
+async function syncCustomerContactToActiveWork(customerId, { name, address, phone, email }) {
+  const visitTasks = (await pool.query(`
+    SELECT cv.task_id FROM customer_visits cv
+    JOIN jt_tasks t ON t.id = cv.task_id
+    LEFT JOIN planning_bookings b ON b.task_id = cv.task_id
+    WHERE cv.customer_id = $1 AND cv.submitted_at IS NULL AND b.completed_at IS NULL
+  `, [customerId])).rows.map(r => r.task_id);
+  if (visitTasks.length) {
+    await pool.query(`UPDATE customer_visits SET address=$1, phone=$2, email=$3, updated_at=${nowTextSQL()} WHERE task_id = ANY($4::text[])`,
+      [address || null, phone || null, email || null, visitTasks]);
+    await pool.query(`UPDATE jt_tasks SET job_address=$1, customer_phone=$2, customer_email=$3 WHERE id = ANY($4::text[]) AND is_visit=1`,
+      [address || '', phone || null, email || null, visitTasks]);
+  }
+  const openProjects = (await pool.query(`SELECT id FROM projects WHERE customer_id=$1 AND COALESCE(status,'')!='done'`, [customerId])).rows.map(r => r.id);
+  if (openProjects.length) {
+    await pool.query(`UPDATE projects SET customer_address=$1, customer_phone=$2, customer_email=$3, updated_at=${nowTextSQL()} WHERE id = ANY($4::int[])`,
+      [address || null, phone || null, email || null, openProjects]);
+    await pool.query(`UPDATE jt_tasks SET job_address=$1, customer_phone=$2, customer_email=$3 WHERE project_id = ANY($4::int[])`,
+      [address || null, phone || null, email || null, openProjects]);
+    await pool.query(`UPDATE gantt_tasks SET job_address=$1, job_phone=$2, job_email=$3 WHERE project_id = ANY($4::int[])`,
+      [address || null, phone || null, email || null, openProjects]);
+  }
+  return { visitsSynced: visitTasks.length, projectsSynced: openProjects.length };
+}
 app.put('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM customers WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Kunden blev ikke fundet' });
   const b = req.body || {};
   const isCompany = b.is_company !== undefined ? !!b.is_company : !!current.is_company;
   const cvr = b.cvr !== undefined ? (isCompany && b.cvr ? String(b.cvr).trim().slice(0, 20) : null) : current.cvr;
+  const newAddress = b.address !== undefined ? b.address : current.address;
+  const newPhone = b.phone !== undefined ? b.phone : current.phone;
+  const newEmail = b.email !== undefined ? b.email : current.email;
   await pool.query(`
     UPDATE customers SET name=$1,email=$2,phone=$3,address=$4,notes=$5,is_company=$6,cvr=$7,updated_at=${nowTextSQL()} WHERE id=$8
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
-    b.email !== undefined ? b.email : current.email,
-    b.phone !== undefined ? b.phone : current.phone,
-    b.address !== undefined ? b.address : current.address,
+    newEmail,
+    newPhone,
+    newAddress,
     b.notes !== undefined ? b.notes : current.notes,
     isCompany ? 1 : 0,
     cvr,
@@ -10529,7 +10586,16 @@ app.put('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
   if (b.phone !== undefined) await upsertPrimaryContactChannel('customer', req.params.id, 'phone', b.phone);
   if (b.email !== undefined) await upsertPrimaryContactChannel('customer', req.params.id, 'email', b.email);
   if (b.address !== undefined) await upsertPrimaryContactChannel('customer', req.params.id, 'address', b.address);
-  res.json({ ok: true });
+  const contactChanged = newAddress !== current.address || newPhone !== current.phone || newEmail !== current.email;
+  let syncResult = null;
+  if (contactChanged) {
+    try {
+      syncResult = await syncCustomerContactToActiveWork(req.params.id, { address: newAddress, phone: newPhone, email: newEmail });
+    } catch (e) {
+      console.error('Kunne ikke synkronisere kundens kontaktoplysninger til kommende arbejde:', e.message);
+    }
+  }
+  res.json({ ok: true, contact_synced: syncResult });
 }));
 app.delete('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM customers WHERE id=$1', [req.params.id]);

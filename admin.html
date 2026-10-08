@@ -3863,7 +3863,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-07.72</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-07.74</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -9214,6 +9214,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="form-group"><label class="form-label">Medarbejder</label><select id="quick-task-user" class="select"></select></div>
         <div class="form-group"><label class="form-label">Dato</label><input id="quick-task-date" class="input" type="date"></div>
       </div>
+      <!-- RETTELSE (okt. 2026, Martins ønske: "kan du ikke gøre så jeg kan
+           tilføje Adresse også") — samme felt/konvention som manual-address i
+           Manuel opgave-modalen (📍 Adresse, valgfrit) — gemmes på
+           jt_tasks.job_address, så kortet på kalenderen viser adresse-linjen
+           ligesom andre opgaver (se assign-address i assignPillSpan),
+           i stedet for at se tomt/sparsomt ud. -->
+      <label class="form-label" style="margin-top:12px">📍 Adresse <span class="opt-tag">valgfrit</span></label>
+      <input id="quick-task-address" class="input" placeholder="Gade, postnr, by">
       <label class="form-label" style="margin-top:12px">Note <span class="opt-tag">valgfrit</span></label>
       <input id="quick-task-notes" class="input" placeholder="Fx detaljer om opgaven">
     </div>
@@ -12908,6 +12916,7 @@ async function saveManual(){
 // vælgere (se fx workforce-opbygningen ved assign-modal).
 function openQuickTaskModal(){
   document.getElementById('quick-task-name').value='';
+  document.getElementById('quick-task-address').value='';
   document.getElementById('quick-task-notes').value='';
   document.getElementById('quick-task-date').value=iso(new Date());
   var sel=document.getElementById('quick-task-user');
@@ -12922,10 +12931,11 @@ async function saveQuickTask(){
     name:name,
     user_id:document.getElementById('quick-task-user').value,
     start_date:document.getElementById('quick-task-date').value,
+    job_address:document.getElementById('quick-task-address').value.trim(),
     notes:document.getElementById('quick-task-notes').value.trim()
   };
   var r=await api('/api/tasks/quick',{method:'POST',body:JSON.stringify(b)});
-  if(r&&r.ok){closeModal('quick-task-modal');toast('Hurtig opgave oprettet ✓','⚡');await loadAll();}
+  if(r&&r.ok){closeModal('quick-task-modal');toast('Hurtig opgave oprettet og booket ✓','⚡');await loadAll();}
   else if(r)toast(r.error||'Fejl','❌');
 }
 
