@@ -5863,7 +5863,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="bly-pagehead">
     <div>
       <button class="btn small" id="cd-back-btn" type="button" style="margin-bottom:10px">← Tilbage til Kunder</button>
-      <h2 id="cd-name">Kunde</h2>
+      <!-- RUNDE AX (Martins ønske: "tit skriver kunderne sig kun op med fornavn,
+           men det gør det svært at bruge søgefunktioner ... hvis alle hedder det
+           samme" — han skal kunne rette kundens fulde navn DIREKTE på kundesiden)
+           — navnet har teknisk set altid kunnet rettes via "✎ Redigér kunde"
+           (crmc-name, se openCrmModal), men den knap bruges primært til
+           kontaktoplysninger og er let at overse som "navne-redigering". Derfor
+           et ekstra, synligt blyant-ikon lige ved siden af selve overskriften —
+           samme PUT /api/crm/customers/:id som den store modal bruger, bare
+           hurtigere adgang til kun navnet. -->
+      <h2 style="display:flex;align-items:center;gap:8px">
+        <span id="cd-name">Kunde</span>
+        <button type="button" id="cd-name-edit-btn" class="qz-icon-btn" title="Ret kundens fulde navn">✎</button>
+      </h2>
+      <div id="cd-name-edit-row" class="hidden" style="display:flex;gap:8px;align-items:center;margin:6px 0">
+        <input type="text" id="cd-name-input" class="input" placeholder="Kundens fulde navn" style="max-width:320px">
+        <button type="button" id="cd-name-save-btn" class="bly-btn small">Gem</button>
+        <button type="button" id="cd-name-cancel-btn" class="btn small">Annullér</button>
+      </div>
       <div class="sub" id="cd-subtitle">–</div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -23473,6 +23490,17 @@ function initCustomerDetailModule(){
   cdInitialized=true;
   document.getElementById('cd-back-btn').addEventListener('click',function(){switchPage('customers');});
   document.getElementById('cd-edit-btn').addEventListener('click',function(){if(cdCurrent)openCrmModal(cdCurrent.id);});
+  // RUNDE AX — hurtig navne-redigering direkte på kundesiden (se HTML-kommentaren
+  // ved cd-name-edit-btn). Genbruger PUT /api/crm/customers/:id (samme rute som
+  // den store "✎ Redigér kunde"-modal), men sender kun name, så resten af
+  // kundens data ikke rører sig.
+  document.getElementById('cd-name-edit-btn').addEventListener('click',cdOpenNameEdit);
+  document.getElementById('cd-name-cancel-btn').addEventListener('click',cdCloseNameEdit);
+  document.getElementById('cd-name-save-btn').addEventListener('click',cdSaveName);
+  document.getElementById('cd-name-input').addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();cdSaveName();}
+    if(e.key==='Escape'){e.preventDefault();cdCloseNameEdit();}
+  });
   document.getElementById('cd-note-add-btn').addEventListener('click',cdAddNote);
   document.getElementById('cd-note-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();cdAddNote();}});
   document.getElementById('cd-notes-list').addEventListener('click',cdNotesListClick);
@@ -23875,10 +23903,36 @@ ccOnChangeHandlers['crmpx-lead-cc']=async function(ownerType,ownerId){
   if(af)af.value=primaryVal('address');
   crmpxUpdateContactLinks();
 };
+// RUNDE AX — se HTML-kommentaren ved cd-name-edit-btn. Tre små funktioner: åbn
+// inputfeltet (forudfyldt med det RÅ navn, uden 🏢/CVR-tilføjelser), luk det
+// igen (annullér, eller efter et vellykket gem), og selve gemmet.
+function cdOpenNameEdit(){
+  if(!cdCurrent)return;
+  document.getElementById('cd-name-input').value=cdCurrent.name||'';
+  document.getElementById('cd-name-edit-row').classList.remove('hidden');
+  document.getElementById('cd-name-input').focus();
+  document.getElementById('cd-name-input').select();
+}
+function cdCloseNameEdit(){
+  document.getElementById('cd-name-edit-row').classList.add('hidden');
+}
+async function cdSaveName(){
+  if(!cdCurrent)return;
+  var name=document.getElementById('cd-name-input').value.trim();
+  if(!name){toast('Navn mangler','⚠️');flashFieldError('cd-name-input');return;}
+  var r=await api('/api/crm/customers/'+cdCurrent.id,{method:'PUT',body:JSON.stringify({name:name})});
+  if(!r||r.error){toast(r&&r.error?r.error:'Kunne ikke gemme navnet','❌');return;}
+  cdCurrent.name=name;
+  setAppTitle(name);
+  document.getElementById('cd-name').textContent=(cdCurrent.is_company?'🏢 ':'')+name+(cdCurrent.is_company&&cdCurrent.cvr?' · CVR '+cdCurrent.cvr:'');
+  cdCloseNameEdit();
+  toast('Navn opdateret ✓','✓');
+}
 async function openCustomerDetail(id){
   var d=await api('/api/crm/customers/'+id);
   if(!d||d.error){toast('Kunne ikke hente kunden','❌');return;}
   cdCurrent=d.customer;
+  cdCloseNameEdit();
   setAppTitle(d.customer.name);
   document.getElementById('cd-name').textContent=(d.customer.is_company?'🏢 ':'')+d.customer.name+(d.customer.is_company&&d.customer.cvr?' · CVR '+d.customer.cvr:'');
   document.getElementById('cd-subtitle').textContent=[d.customer.phone,d.customer.email,d.customer.address].filter(Boolean).join(' · ')||'Ingen kontaktoplysninger endnu';
