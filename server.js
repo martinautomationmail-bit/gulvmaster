@@ -12101,6 +12101,58 @@ app.post('/api/external/leads/:id/tasks', externalApiKeyAuth, asyncRoute(async (
   `, [lead.id, title, b.assigned_to || null, b.due_date || null, b.due_time || null, b.priority ? 1 : 0]);
   res.json({ ok: true, task: row });
 }));
+// GET — leadets custom field-definitioner (key/label/type/options), så en
+// integration (fx AI-opkaldssystemet) kan slå gyldige valgmuligheder op selv
+// i stedet for at have dem hårdkodet og håbe de aldrig ændres — samme
+// begrundelse som GET /api/external/stages ovenfor. Kun 'lead'-feltdefinitioner
+// (det er den eneste entitetstype den eksterne API arbejder med).
+app.get('/api/external/custom-fields', externalApiKeyAuth, asyncRoute(async (req, res) => {
+  const defs = await crmGetCustomFieldDefs('lead');
+  res.json({ fields: defs.map(d => ({ key: d.key, label: d.label, field_type: d.field_type, options: d.options })) });
+}));
+// PATCH — ret adresse og/eller custom fields på et lead (Martins ønske: AI'et
+// der ringer leads op bekræfter ofte adressen og hvilken type projekt det er,
+// og det skal kunne skrives direkte på leadet i stedet for kun i en note).
+// Bevidst et SMALT felt-sæt (kun address + custom_fields) — ikke navn/telefon/
+// email/stage, som allerede har deres egne, mere specifikke ruter ovenfor
+// (PUT .../stage) eller slet ingen ekstern skriverute endnu. Genbruger PRÆCIS
+// samme sideeffekt-kæde som den interne PUT /api/crm/leads/:id ved en
+// adresseændring (propagér til koblet kontakt/kunde, hold "+"-kontaktkanalen i
+// sync), så et lead redigeret her ikke løber fra det samme lead redigeret i
+// admin-panelet. custom_fields er et fladt key→value-objekt, fx
+// {"projekt_type":"Gulvslibning"} — ukendte nøgler ignoreres stille (se
+// crmSetCustomFieldValues), gyldige nøgler/værdier slås op via GET
+// /api/external/custom-fields ovenfor.
+app.patch('/api/external/leads/:id', externalApiKeyAuth, asyncRoute(async (req, res) => {
+  const lead = await pgOne('SELECT * FROM crm_leads WHERE id=$1', [req.params.id]);
+  if (!lead) return res.status(404).json({ error: 'Lead ikke fundet' });
+  const b = req.body || {};
+  if (b.address === undefined && !b.custom_fields) {
+    return res.status(400).json({ error: 'Angiv mindst ét felt at opdatere: "address" og/eller "custom_fields"' });
+  }
+  if (b.address !== undefined) {
+    await pool.query(`UPDATE crm_leads SET address=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [b.address, lead.id]);
+    if (lead.contact_id) await crmPropagateContactFields(lead.contact_id, { address: b.address });
+    await upsertPrimaryContactChannel('lead', lead.id, 'address', b.address);
+  }
+  let customFieldsSet = null;
+  if (b.custom_fields && typeof b.custom_fields === 'object') {
+    await crmSetCustomFieldValues('lead', lead.id, b.custom_fields);
+    // Kun de nøgler der RENT FAKTISK er et kendt felt tælles med i aktivitetsloggen
+    // herunder — crmSetCustomFieldValues ignorerer selv ukendte nøgler stille, men
+    // uden dette tjek ville loggen fejlagtigt sige "opdateret" for et felt der
+    // reelt ikke blev rørt (fx en tastefejl i feltnøglen fra integrationen).
+    const knownKeys = new Set((await crmGetCustomFieldDefs('lead')).map(d => d.key));
+    customFieldsSet = Object.keys(b.custom_fields).filter(k => knownKeys.has(k));
+  }
+  const changedParts = [];
+  if (b.address !== undefined) changedParts.push('adresse');
+  if (customFieldsSet && customFieldsSet.length) changedParts.push(customFieldsSet.join(', '));
+  if (changedParts.length) await crmLogActivity('lead', lead.id, 'note', 'Opdateret via ekstern API: ' + changedParts.join(' · '), null);
+  const updated = await pgOne(externalLeadSelectSql('WHERE l.id=$1'), [lead.id]);
+  const customFieldValues = await crmGetCustomFieldValues('lead', lead.id);
+  res.json({ ok: true, lead: updated, custom_fields: customFieldValues });
+}));
 app.post('/api/crm/external-api-key-regenerate', auth, adminOnly, asyncRoute(async (req, res) => {
   const newKey = crypto.randomBytes(32).toString('hex');
   await pool.query("UPDATE app_settings SET value=$1 WHERE key='external_api_key'", [newKey]);
@@ -14080,6 +14132,23 @@ async function ensureLeadSourceExtraOptions() {
     const cache = await closeLoadFieldOptionCache(entityType, 'lead_source');
     if (!cache) continue;
     for (const value of extra) { await closeEnsureOption(cache, value); }
+  }
+}
+// RUNDE CD (Martin: AI-opkaldssystemet skal kunne skrive "Projekt Type" direkte
+// på et lead via den nye PATCH /api/external/leads/:id, og en af de værdier det
+// skal kunne sætte er "Tømrer", som ikke var med i den oprindelige options-liste
+// (Gulvslibning/Gulvlægning/Maler/Enterprise) — se seedFields i initSchema().
+// Samme idempotente, harmløse "ensure"-mønster som ensureLeadSourceExtraOptions
+// ovenfor (kører ved hver opstart, springer stille over hvis "Tømrer" allerede
+// findes — fx fordi Martin selv har tilføjet den under CRM → ⚙ Indstillinger →
+// 🏷 Custom fields i mellemtiden). Både lead- og opportunity-udgaven af feltet
+// opdateres, så en værdi ikke forsvinder fra dropdownen hvis leadet senere
+// konverteres til en handel.
+async function ensureProjektTypeTomrerOption() {
+  for (const entityType of ['lead', 'opportunity']) {
+    const cache = await closeLoadFieldOptionCache(entityType, 'projekt_type');
+    if (!cache) continue;
+    await closeEnsureOption(cache, 'Tømrer');
   }
 }
 
@@ -24583,6 +24652,9 @@ async function start() {
     // RUNDE BE — se kommentaren ved ensureLeadSourceExtraOptions() ovenfor.
     ensureLeadSourceExtraOptions()
       .catch(error => { console.error('Kunne ikke sikre ekstra Lead Source-muligheder:', error.message); logSystemEvent('lead_source_options', 'error', 'Kunne ikke sikre ekstra Lead Source-muligheder: ' + error.message); });
+    // RUNDE CD — se kommentaren ved ensureProjektTypeTomrerOption() ovenfor.
+    ensureProjektTypeTomrerOption()
+      .catch(error => { console.error('Kunne ikke sikre "Tømrer" som Projekt Type-mulighed:', error.message); logSystemEvent('projekt_type_options', 'error', 'Kunne ikke sikre "Tømrer" som Projekt Type-mulighed: ' + error.message); });
   }
   // OBS: kunde-påmindelsen ("vi kommer i morgen") sendes IKKE automatisk længere —
   // kun når admin selv trykker på knappen (se POST /api/customer-emails/send-reminders
