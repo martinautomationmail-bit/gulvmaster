@@ -1326,6 +1326,15 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .crmpx-col-left{display:flex;flex-direction:column;gap:14px;min-width:0}
 .crmpx-col-right{min-width:0}
 .crmpx-panel{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,23,42,.04);padding:16px 18px}
+/* RUNDE CI — de 4 valgkort i md-choice-modal ("Planlæg online møde" osv.),
+   matcher kort-stilen Martin viste fra det andet program. */
+.md-choice-card{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:14px;cursor:pointer;transition:border-color .12s,box-shadow .12s}
+.md-choice-card:hover{border-color:var(--bly-accent);box-shadow:0 2px 10px rgba(15,23,42,.06)}
+.md-choice-icon{font-size:20px}
+.md-choice-label{font-weight:700;font-size:13.5px;color:var(--bly-ink)}
+.md-choice-desc{font-size:11.5px;color:var(--bly-sub);line-height:1.4}
+.md-choice-list-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--bly-border-soft);font-size:12.5px}
+.md-choice-list-item .pill{font-size:10px;padding:2px 8px}
 /* RUNDE I (Martins fejlrapport: venstre-panelerne Om/Kunde/Opgaver/Kontakt/
    Opportunities/Custom fields var alle identiske hvide kasser med kun et
    emoji + gråt label — "borring"). Hver overskrift får nu et lille tegnet
@@ -1884,6 +1893,28 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .bly-segtabs{display:flex;gap:22px;border-bottom:1px solid var(--bly-border-soft);margin-bottom:14px}
 .bly-segtab{border:0;background:transparent;padding:0 0 11px;font-size:13px;font-weight:700;color:var(--bly-sub);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
 .bly-segtab.active{color:var(--bly-ink);border-bottom-color:var(--bly-ink)}
+/* KUNDEBESØG — moderne kalendervisning (okt. 2026, Martins ønske: "Under
+   kundebesøg tilføj så man kan se det i en moderne kalender view som google
+   kalender. Det vil være ret nice."). Måneds-gitter, 7 kolonner (mandag
+   først, dansk konvention), events som små farvede piller der genbruger
+   samme user_color som listevisningen allerede farver prikken med. */
+.kb-cal-nav{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.kb-cal-nav-btn{border:1px solid var(--bly-border);background:#fff;border-radius:var(--bly-r-sm);width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--bly-ink)}
+.kb-cal-nav-btn:hover{border-color:#C7CBD1}
+.kb-cal-month-label{font-size:16px;font-weight:800;color:var(--bly-ink);min-width:150px;text-align:center}
+.kb-cal-today-btn{margin-left:auto}
+.kb-cal-head-row{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--bly-border-soft);border-radius:var(--bly-r-md) var(--bly-r-md) 0 0;overflow:hidden}
+.kb-cal-head-cell{background:#FAFBFC;padding:8px 4px;text-align:center;font-size:10.5px;font-weight:800;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.02em}
+.kb-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--bly-border-soft);border:1px solid var(--bly-border-soft);border-top:0;border-radius:0 0 var(--bly-r-md) var(--bly-r-md);overflow:hidden}
+.kb-cal-cell{background:#fff;min-height:96px;padding:6px;display:flex;flex-direction:column;gap:3px;cursor:pointer;transition:background .12s}
+.kb-cal-cell:hover{background:var(--bly-hover)}
+.kb-cal-cell.out{background:#FAFBFC}
+.kb-cal-cell.out .kb-cal-daynum{color:#C7CBD1}
+.kb-cal-cell.today .kb-cal-daynum{background:var(--bly-accent);color:#fff;border-radius:50%}
+.kb-cal-daynum{font-size:11.5px;font-weight:700;color:var(--bly-ink);width:20px;height:20px;display:flex;align-items:center;justify-content:center}
+.kb-cal-event{font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:5px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb-cal-event.done{opacity:.55;text-decoration:line-through}
+.kb-cal-more{font-size:10px;font-weight:700;color:var(--bly-sub);padding:1px 6px;text-align:left}
 .qz-more-drop{position:relative;margin-bottom:-11px}
 .qz-more-caret{font-size:9px}
 .qz-more-menu{display:none;position:absolute;top:calc(100% + 8px);left:0;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);box-shadow:0 12px 32px rgba(15,17,24,.14);padding:6px;min-width:190px;z-index:40}
@@ -6326,9 +6357,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
            crmpxLoadMeetings/renderCrmpMeetings i JS'en. -->
       <div class="crmpx-panel" id="crmpx-meetings-panel">
         <h3><span class="crmpx-badge crmpx-badge-neutral">📹</span>Møder</h3>
-        <div style="display:flex;gap:8px;margin-bottom:10px">
-          <button class="bly-btn outline small" id="crmpx-meeting-start-btn" type="button">📹 Start møde</button>
-          <button class="bly-btn outline small" id="crmpx-meeting-add-btn" type="button">+ Mødenotat</button>
+        <div style="margin-bottom:10px">
+          <button class="bly-btn outline small" id="crmpx-meeting-btn" type="button">📹 Møde</button>
         </div>
         <div id="crmpx-meetings-list"></div>
       </div>
@@ -6542,13 +6572,55 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <input type="date" id="kb-custom-date" class="select" style="width:auto">
       <button class="qz-link-btn" id="kb-custom-date-clear" type="button" style="display:none">✕ Ryd</button>
     </div>
-    <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="kb-count"></span></div>
+    <div class="bly-toolbar-right" style="display:flex;align-items:center;gap:10px">
+      <div class="bly-segtabs" id="kb-view-tabs" style="border-bottom:0;margin-bottom:0;gap:14px">
+        <button class="bly-segtab active" data-kb-view="list" type="button">📋 Liste</button>
+        <button class="bly-segtab" data-kb-view="calendar" type="button">📅 Kalender</button>
+      </div>
+      <span class="bly-toolbar-count" id="kb-count"></span>
+    </div>
   </div>
-  <table class="bly-table">
-    <thead><tr><th style="width:130px">Dato / tid</th><th>Kunde</th><th>Adresse / telefon</th><th style="width:170px">Medarbejder</th><th style="width:150px"></th></tr></thead>
-    <tbody id="kb-body"></tbody>
-  </table>
+  <div id="kb-list-view">
+    <table class="bly-table">
+      <thead><tr><th style="width:130px">Dato / tid</th><th>Kunde</th><th>Adresse / telefon</th><th style="width:170px">Medarbejder</th><th style="width:150px"></th></tr></thead>
+      <tbody id="kb-body"></tbody>
+    </table>
+  </div>
+  <!-- KALENDERVISNING — se CSS-kommentaren ved .kb-cal-nav for baggrund.
+       Måned-gitter bygget rent klient-side fra samme kbAllRows()-data som
+       listevisningen, så der aldrig er to datakilder at holde i sync. -->
+  <div id="kb-calendar-view" style="display:none">
+    <div class="kb-cal-nav">
+      <button class="kb-cal-nav-btn" id="kb-cal-prev" type="button" title="Forrige måned">‹</button>
+      <div class="kb-cal-month-label" id="kb-cal-month-label"></div>
+      <button class="kb-cal-nav-btn" id="kb-cal-next" type="button" title="Næste måned">›</button>
+      <button class="bly-btn outline small kb-cal-today-btn" id="kb-cal-today" type="button">I dag</button>
+    </div>
+    <div class="kb-cal-head-row">
+      <div class="kb-cal-head-cell">Man</div><div class="kb-cal-head-cell">Tir</div><div class="kb-cal-head-cell">Ons</div>
+      <div class="kb-cal-head-cell">Tor</div><div class="kb-cal-head-cell">Fre</div><div class="kb-cal-head-cell">Lør</div><div class="kb-cal-head-cell">Søn</div>
+    </div>
+    <div class="kb-cal-grid" id="kb-cal-grid"></div>
+  </div>
 </section>
+
+<!-- KUNDEBESØG — dag-detalje-popup, åbnes ved klik på en kalenderdag. Lister
+     alle besøg den dag med samme "✅ Færdig"/"📌 Book"-handlinger som
+     listevisningens rækker (kbMarkDone/openKbAssignModal), så man ikke skal
+     skifte til listevisning for at handle på et besøg man ser i kalenderen. -->
+<div class="mo" id="kb-day-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">📅</span>
+      <div><div class="manual-modal-title" id="kb-day-modal-title"></div><div class="manual-modal-sub">Kundebesøg denne dag</div></div>
+    </div>
+    <div class="modal-body-pad" id="kb-day-modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn" id="kb-day-modal-close" type="button">Luk</button>
+      <button class="btn primary" id="kb-day-modal-new" type="button">+ Nyt kundebesøg</button>
+    </div>
+  </div>
+</div>
 
 <!-- Book/opret kundebesøg MED medarbejder+dato med det samme (til forskel fra
      "📅 Book kundebesøg" i Dagligplanlægning, som bevidst kun lægger det i
@@ -7212,17 +7284,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-segtab realadmin-only" data-pdtab="budget" type="button">💰 Budget</button>
         <button class="bly-segtab" data-pdtab="materials" type="button">🧾 Materialer</button>
         <button class="bly-segtab" data-pdtab="qa" type="button">📋 Kvalitetssikring</button>
-        <button class="bly-segtab" data-pdtab="contact" type="button">📇 Kontaktformular</button>
-        <!-- RUNDE CF — de 6 resterende "store programmer"-features der har en
-             naturlig plads på selve sagsdetaljesiden (de to sidste, Sags-skabeloner
-             og Kundeportal, ligger i stedet hhv. på Projekter-oversigten og i
-             kundeportal-routen, se dem for baggrund). -->
-        <button class="bly-segtab" data-pdtab="dagbog" type="button">📓 Dagbog</button>
-        <button class="bly-segtab" data-pdtab="drawings" type="button">📐 Tegninger</button>
-        <button class="bly-segtab" data-pdtab="milestones" type="button">🏁 Milepæle</button>
         <button class="bly-segtab" data-pdtab="meetings" type="button">🗒️ Møder</button>
-        <button class="bly-segtab" data-pdtab="rfi" type="button">❓ RFI</button>
-        <button class="bly-segtab" data-pdtab="changeorders" type="button">✏️ Ændringsønsker</button>
+        <!-- RUNDE CI (okt. 2026, Martins ønske efter at have vist skærmbilleder fra
+             et andet program: "jeg kan ikke lide hvordan du har opbygget projekter
+             ... se her er hvordan du har gjort for mig i et andet program, det er
+             meget mere prof") — Dagbog/Spørgsmål(RFI)/Tegninger/Ændringsønsker/
+             Milepæle/Kundeside var før 6 separate topniveau-faner; samlet nu under
+             ÉN "Byggestyring"-fane med sin egen under-navigation (pd-bs-tabs), der
+             matcher strukturen i det andet program 1:1. Selve indholdet/routerne
+             er UÆNDREDE — kun hvor de bor i faneorganiseringen er flyttet. -->
+        <button class="bly-segtab" data-pdtab="byggestyring" type="button">🏗 Byggestyring</button>
+        <button class="bly-segtab" data-pdtab="contact" type="button">📇 Kontaktformular</button>
       </div>
     </div>
     <div style="padding:16px 22px 22px">
@@ -7434,71 +7506,113 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Indsendte kontaktformularer</span></div></div>
         <div id="pd-contact-body"></div>
       </div>
-      <!-- DAGBOG (feature #5) -->
-      <div class="pdtabpage" id="pdtab-dagbog" style="display:none">
-        <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Dagbog for byggepladsen</span></div></div>
-        <div class="hint" style="margin-bottom:14px">Vejr, bemanding, leverancer og hændelser — vigtigt dokumentation ved evt. tvister. Noter kan ikke redigeres efter oprettelse.</div>
-        <div class="bly-form-row" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:flex-end">
-          <div><label class="sub">Dato</label><input type="date" class="input" id="pd-diary-date"></div>
-          <div style="flex:1;min-width:140px"><label class="sub">Vejr</label><input class="input" id="pd-diary-weather" placeholder="fx Solrigt, 12°"></div>
-          <div style="flex:1;min-width:140px"><label class="sub">Bemanding</label><input class="input" id="pd-diary-staffing" placeholder="fx 3 mand på pladsen"></div>
-          <div style="flex:1;min-width:140px"><label class="sub">Leverancer</label><input class="input" id="pd-diary-deliveries" placeholder="fx 20 paller fliser"></div>
-          <div style="flex:2;min-width:200px"><label class="sub">Hændelser/noter</label><input class="input" id="pd-diary-notes" placeholder="Fri tekst"></div>
-          <button class="bly-btn" id="pd-diary-add-btn" type="button">+ Tilføj</button>
-        </div>
-        <div id="pd-diary-body"></div>
-      </div>
-      <!-- TEGNINGSLISTE MED VERSIONER (feature #2) -->
-      <div class="pdtabpage" id="pdtab-drawings" style="display:none">
-        <div class="bly-toolbar">
-          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Tegninger</span></div>
-          <div class="bly-toolbar-right"><button class="bly-btn" id="pd-drawing-add-btn" type="button">+ Ny tegning</button></div>
-        </div>
-        <div id="pd-drawings-body"></div>
-      </div>
-      <!-- MILEPÆLE MED AUTOMATISK FAKTURA-FORSLAG (feature #7) -->
-      <div class="pdtabpage" id="pdtab-milestones" style="display:none">
-        <div class="bly-toolbar">
-          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Betalingsplan / milepæle</span></div>
-          <div class="bly-toolbar-right"><button class="bly-btn" id="pd-milestone-add-btn" type="button">+ Ny milepæl</button></div>
-        </div>
-        <table class="bly-table">
-          <thead><tr><th style="width:36px"></th><th>Milepæl</th><th class="num">Beløb</th><th style="width:220px"></th></tr></thead>
-          <tbody id="pd-milestones-body"></tbody>
-        </table>
-      </div>
       <!-- BYGGEMØDEREFERAT → AUTOMATISKE TO-DOS (feature #3) + VIDEOMØDER
            (RUNDE CH, Martins ønske: "integrere Google Meet/Zoom ... ved et
            tryk ... mødenotater under opgaven og/eller handlen") — samme fane,
            da begge bare er "møde → referat", se header-kommentaren ved
-           site_meetings-tabellen i server.js for hele baggrunden. -->
+           site_meetings-tabellen i server.js for hele baggrunden. RUNDE CI:
+           knapperne er nu ét "📹 Møde"-ikon der åbner md-meeting-modal med 4
+           valg, se renderPdMeetings/mdOpenModal i JS'en.
+      -->
       <div class="pdtabpage" id="pdtab-meetings" style="display:none">
         <div class="bly-toolbar">
           <div class="bly-toolbar-left"><span class="bly-toolbar-title">Møder &amp; referater</span></div>
           <div class="bly-toolbar-right">
-            <button class="bly-btn outline" id="pd-meeting-video-start-btn" type="button">📹 Start møde</button>
-            <button class="bly-btn outline" id="pd-meeting-video-add-btn" type="button">+ Mødenotat</button>
-            <button class="bly-btn" id="pd-meeting-add-btn" type="button">+ Nyt byggemødereferat</button>
+            <button class="bly-btn" id="pd-meeting-btn" type="button">📹 Møde</button>
           </div>
         </div>
-        <div class="sub" style="margin-bottom:10px">📹 Start møde åbner Google Meet i en ny fane — tryk bagefter "+ Mødenotat" for at gemme hvad der blev aftalt.</div>
         <div id="pd-meetings-body"></div>
       </div>
-      <!-- RFI MELLEM FAGFOLK (feature #6) -->
-      <div class="pdtabpage" id="pdtab-rfi" style="display:none">
-        <div class="bly-toolbar">
-          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Spørgsmål til fagfolk (RFI)</span></div>
-          <div class="bly-toolbar-right"><button class="bly-btn" id="pd-rfi-add-btn" type="button">+ Nyt spørgsmål</button></div>
+      <!-- RUNDE CI (okt. 2026) — "Byggestyring" samler Dagbog/Spørgsmål(RFI)/
+           Tegninger/Ændringer/Betaling(milepæle)/Kundeside under én fane med
+           egen under-navigation (pd-bs-tabs), matcher strukturen Martin viste
+           fra et andet program. Hver under-fane er indholdsmæssigt UÆNDRET —
+           kun flyttet ind under et fælles tag. -->
+      <div class="pdtabpage" id="pdtab-byggestyring" style="display:none">
+        <div class="bly-segtabs" id="pd-bs-tabs" style="margin-bottom:16px">
+          <button class="bly-segtab active" data-pdbstab="dagbog" type="button">📓 Dagbog</button>
+          <button class="bly-segtab" data-pdbstab="rfi" type="button">❓ Spørgsmål</button>
+          <button class="bly-segtab" data-pdbstab="drawings" type="button">📐 Tegninger</button>
+          <button class="bly-segtab" data-pdbstab="changeorders" type="button">✏️ Ændringer</button>
+          <button class="bly-segtab" data-pdbstab="milestones" type="button">💳 Betaling</button>
+          <button class="bly-segtab" data-pdbstab="kundeside" type="button">🌐 Kundeside</button>
         </div>
-        <div id="pd-rfi-body"></div>
-      </div>
-      <!-- ÆNDRINGSØNSKER / EKSTRAARBEJDE (feature #4) -->
-      <div class="pdtabpage" id="pdtab-changeorders" style="display:none">
-        <div class="bly-toolbar">
-          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Ændringsønsker / ekstraarbejde</span></div>
-          <div class="bly-toolbar-right"><button class="bly-btn" id="pd-co-add-btn" type="button">+ Nyt ændringsønske</button></div>
+        <!-- DAGBOG (feature #5) -->
+        <div class="bs-tabpage" id="bstab-dagbog">
+          <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Dagbog for byggepladsen</span></div></div>
+          <div class="hint" style="margin-bottom:14px">Vejr, bemanding, leverancer og hændelser — vigtigt dokumentation ved evt. tvister. Noter kan ikke redigeres efter oprettelse.</div>
+          <div class="bly-form-row" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:flex-end">
+            <div><label class="sub">Dato</label><input type="date" class="input" id="pd-diary-date"></div>
+            <div style="flex:1;min-width:140px"><label class="sub">Vejr</label><input class="input" id="pd-diary-weather" placeholder="fx Solrigt, 12°"></div>
+            <div style="flex:1;min-width:140px"><label class="sub">Bemanding</label><input class="input" id="pd-diary-staffing" placeholder="fx 3 mand på pladsen"></div>
+            <div style="flex:1;min-width:140px"><label class="sub">Leverancer</label><input class="input" id="pd-diary-deliveries" placeholder="fx 20 paller fliser"></div>
+            <div style="flex:2;min-width:200px"><label class="sub">Hændelser/noter</label><input class="input" id="pd-diary-notes" placeholder="Fri tekst"></div>
+            <button class="bly-btn" id="pd-diary-add-btn" type="button">+ Tilføj</button>
+          </div>
+          <div id="pd-diary-body"></div>
         </div>
-        <div id="pd-co-body"></div>
+        <!-- RFI MELLEM FAGFOLK (feature #6) -->
+        <div class="bs-tabpage" id="bstab-rfi" style="display:none">
+          <div class="bly-toolbar">
+            <div class="bly-toolbar-left"><span class="bly-toolbar-title">Spørgsmål til fagfolk (RFI)</span></div>
+            <div class="bly-toolbar-right"><button class="bly-btn" id="pd-rfi-add-btn" type="button">+ Nyt spørgsmål</button></div>
+          </div>
+          <div id="pd-rfi-body"></div>
+        </div>
+        <!-- TEGNINGSLISTE MED VERSIONER (feature #2) -->
+        <div class="bs-tabpage" id="bstab-drawings" style="display:none">
+          <div class="bly-toolbar">
+            <div class="bly-toolbar-left"><span class="bly-toolbar-title">Tegninger</span></div>
+            <div class="bly-toolbar-right"><button class="bly-btn" id="pd-drawing-add-btn" type="button">+ Ny tegning</button></div>
+          </div>
+          <div id="pd-drawings-body"></div>
+        </div>
+        <!-- ÆNDRINGSØNSKER / EKSTRAARBEJDE (feature #4) -->
+        <div class="bs-tabpage" id="bstab-changeorders" style="display:none">
+          <div class="bly-toolbar">
+            <div class="bly-toolbar-left"><span class="bly-toolbar-title">Ændringsønsker / ekstraarbejde</span></div>
+            <div class="bly-toolbar-right"><button class="bly-btn" id="pd-co-add-btn" type="button">+ Nyt ændringsønske</button></div>
+          </div>
+          <div id="pd-co-body"></div>
+        </div>
+        <!-- MILEPÆLE MED AUTOMATISK FAKTURA-FORSLAG (feature #7) + RUNDE CJ:
+             "Hent fra tilbud"-knap, se pdMilestonesFetchFromQuote. -->
+        <div class="bs-tabpage" id="bstab-milestones" style="display:none">
+          <div class="bly-toolbar">
+            <div class="bly-toolbar-left"><span class="bly-toolbar-title">Betalingsplan / milepæle</span></div>
+            <div class="bly-toolbar-right">
+              <button class="bly-btn outline" id="pd-milestone-from-quote-btn" type="button">📄 Hent fra tilbud</button>
+              <button class="bly-btn" id="pd-milestone-add-btn" type="button">+ Ny milepæl</button>
+            </div>
+          </div>
+          <div class="sub" id="pd-milestone-quote-hint" style="margin-bottom:10px;display:none"></div>
+          <table class="bly-table">
+            <thead><tr><th style="width:36px"></th><th>Milepæl</th><th class="num">Beløb</th><th style="width:220px"></th></tr></thead>
+            <tbody id="pd-milestones-body"></tbody>
+          </table>
+        </div>
+        <!-- KUNDESIDE (RUNDE CI) — IKKE et separat kundelink. Dette er
+             synligheds-styringen for det ene eksisterende kundeportal-link
+             (/kunde/:token) — se portal_visibility på projects og qaHtml-stil
+             faner i kundeportal-routen i server.js. -->
+        <div class="bs-tabpage" id="bstab-kundeside" style="display:none">
+          <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Kundens projektside</span></div></div>
+          <div class="sub" style="margin-bottom:14px;max-width:560px">Styrer hvad kunden kan se på sin ÉNE kundeside (samme link som "🔗 Send kundeportal" foroven) — ikke et ekstra link.</div>
+          <div style="display:flex;gap:24px;flex-wrap:wrap">
+            <div style="flex:1;min-width:280px" id="pd-kundeside-toggles"></div>
+            <div style="flex:1;min-width:280px">
+              <div class="sub" style="font-weight:700;margin-bottom:8px">Det ser kunden</div>
+              <ul class="sub" style="padding-left:18px;line-height:1.7;margin:0">
+                <li>Fremdrift i procent, hvad der sker nu og næste skridt</li>
+                <li>Ændringer der venter på godkendelse — med knap</li>
+                <li>Tidsplan som bjælker</li>
+                <li>Betalingsplan med status</li>
+                <li>Kontrolpunkter godkendt af jer, med fotos</li>
+                <li>Tegninger I vælger at dele</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -8412,26 +8526,92 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 </main>
 </div><!-- /app -->
 
-<!-- VIDEOMØDE-NOTAT (RUNDE CH) — DELT modal mellem sagsdetaljen
+<!-- MØDE-SYSTEM (RUNDE CH/CI, Martins ønske: "ved et tryk under kunden og
+     projekter kan holde møder" — og efter at have set et andet program:
+     "mødets titel / Planlæg online møde / Start online møde nu / Fysisk
+     møde / Upload eller indsæt") — DELTE modaler mellem sagsdetaljen
      (#page-project-detail) og handel-detaljen (#page-crmp-detail), derfor
      placeret UDENFOR alle .page-sektioner (ligesom capacity-drop-pop
      nedenfor) — en modal inde i en ikke-aktiv .page er usynlig pga.
      .page{display:none}, se den dokumenterede fælde andre steder i filen.
-     vmOpen(scope,id) sætter hvilken sag/handel der gemmes på, før modalen
-     vises. -->
+     mdOpenChoice(scope,id) sætter hvilken sag/handel der gemmes på, før
+     nogen af modalerne vises; mdState husker det på tværs af dem. -->
+<div class="mo" id="md-choice-modal">
+  <div class="modal" style="max-width:520px;width:92vw">
+    <h3 id="md-choice-title">Møde</h3>
+    <div class="sub" id="md-choice-sub" style="margin-bottom:14px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <button class="md-choice-card" id="md-choice-plan" type="button">
+        <div class="md-choice-icon">📅</div>
+        <div class="md-choice-label">Planlæg online møde</div>
+        <div class="md-choice-desc">Google Meet i kalenderen — kunden inviteres</div>
+      </button>
+      <button class="md-choice-card" id="md-choice-start" type="button">
+        <div class="md-choice-icon">▶️</div>
+        <div class="md-choice-label">Start online møde nu</div>
+        <div class="md-choice-desc">Nyt Google Meet + optag og lav referat</div>
+      </button>
+      <button class="md-choice-card" id="md-choice-physical" type="button">
+        <div class="md-choice-icon">📝</div>
+        <div class="md-choice-label">Fysisk møde</div>
+        <div class="md-choice-desc">Optag med computerens mikrofon — fx på pladsen</div>
+      </button>
+      <button class="md-choice-card" id="md-choice-upload" type="button">
+        <div class="md-choice-icon">⬆️</div>
+        <div class="md-choice-label">Upload eller indsæt</div>
+        <div class="md-choice-desc">Lydfil fra telefonen, eller tekst fra Meet/Teams</div>
+      </button>
+    </div>
+    <div id="md-choice-list" style="margin-top:16px"></div>
+    <div class="modal-actions"><button class="btn" id="md-choice-cancel">Luk</button></div>
+  </div>
+</div>
+
+<!-- Planlæg online møde — opretter en FREMTIDIG mødepost og (hvis kunde-email
+     findes) sender en mail med dato/tid. Bevidst IKKE et rigtigt
+     Google Kalender-kaldelse (det kræver OAuth mod Google Calendar API, se
+     vmSave-kommentaren i JS'en for hele afvejningen) — men datoen/kunden er
+     gemt og synlig på sagen/handlen med det samme, og "▶️ Start møde nu" på
+     selve dagen opretter det rigtige Google Meet-link. -->
+<div class="mo" id="md-plan-modal">
+  <div class="modal" style="max-width:420px;width:92vw">
+    <h3>📅 Planlæg online møde</h3>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Dato</label><input type="date" id="mdp-date" class="input"></div>
+      <div class="form-group"><label class="form-label">Tidspunkt</label><input type="time" id="mdp-time" class="input"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Deltagere</label><input type="text" id="mdp-participants" class="input" placeholder="Fx Martin, kunden"></div>
+    <div class="form-group"><label class="form-label">Send invitation til e-mail <span class="opt-tag">valgfrit</span></label><input type="email" id="mdp-email" class="input" placeholder="kunde@email.dk"></div>
+    <div class="modal-actions">
+      <button class="btn" id="mdp-cancel">Annuller</button>
+      <button class="btn primary" id="mdp-save">Planlæg møde</button>
+    </div>
+  </div>
+</div>
+
 <div class="mo" id="video-meeting-modal">
   <div class="modal" style="max-width:480px;width:92vw">
-    <h3>📹 Mødenotat</h3>
+    <h3 id="vm-title">📹 Mødenotat</h3>
     <div class="form-group"><label class="form-label">Dato</label><input type="date" id="vm-date" class="input"></div>
     <div class="form-group"><label class="form-label">Deltagere</label><input type="text" id="vm-participants" class="input" placeholder="Fx Martin, kunden"></div>
     <div class="form-group"><label class="form-label">Platform</label>
       <select id="vm-platform" class="select">
         <option value="google_meet">Google Meet</option>
         <option value="zoom">Zoom</option>
+        <option value="physical">Fysisk møde</option>
         <option value="other">Andet</option>
       </select>
     </div>
     <div class="form-group"><label class="form-label">Mødelink (valgfrit)</label><input type="text" id="vm-link" class="input" placeholder="https://meet.google.com/..."></div>
+    <!-- RUNDE CI — "Upload eller indsæt": en .txt/.vtt-transskriptionsfil (det
+         Meet/Teams selv eksporterer) læses direkte ind i noter-feltet herunder
+         med FileReader — INGEN lydoptagelse/transskription sker her (det
+         kræver en tale-til-tekst-API), kun en genvej til at slippe for at
+         copy-paste en lang tekstfils indhold manuelt. -->
+    <div class="form-group" id="vm-upload-wrap" style="display:none">
+      <label class="form-label">Upload transskription (.txt/.vtt)</label>
+      <input type="file" id="vm-file" class="input" accept=".txt,.vtt">
+    </div>
     <div class="form-group"><label class="form-label">Noter / aftalt på mødet</label><textarea id="vm-notes" class="input" rows="8" placeholder="Indsæt transskriptionen eller skriv hvad der blev aftalt..."></textarea></div>
     <div class="modal-actions">
       <button class="btn" id="vm-cancel">Annuller</button>
@@ -13382,6 +13562,12 @@ var kbFilter='today';
 var kbCustomDate=null;
 var kbSelectedCustomerId=null;
 var kbInitialized=false;
+// KALENDERVISNING — kbViewMode styrer hvilken af de to containere
+// (#kb-list-view/#kb-calendar-view) der er synlig; kbCalMonth er den 1. i
+// den måned kalenderen pt. viser (altid dag 1, så måneds-frem/tilbage aldrig
+// "driver" pga. korte måneder — se kbCalShift).
+var kbViewMode='list';
+var kbCalMonth=null;
 function initKundebesogPage(){
   if(!kbInitialized){
     kbInitialized=true;
@@ -13412,8 +13598,47 @@ function initKundebesogPage(){
       var bookBtn=e.target.closest('[data-kb-book-task]');
       if(bookBtn){openKbAssignModal(kbData.unbooked.find(function(u){return u.task_id===bookBtn.dataset.kbBookTask;}));return;}
     });
+    document.getElementById('kb-view-tabs').addEventListener('click',function(e){
+      var b=e.target.closest('[data-kb-view]');
+      if(!b)return;
+      kbSwitchView(b.dataset.kbView);
+    });
+    document.getElementById('kb-cal-prev').addEventListener('click',function(){kbCalShift(-1);});
+    document.getElementById('kb-cal-next').addEventListener('click',function(){kbCalShift(1);});
+    document.getElementById('kb-cal-today').addEventListener('click',function(){kbCalMonth=kbMonthStart(new Date());kbRenderCalendar();});
+    document.getElementById('kb-cal-grid').addEventListener('click',function(e){
+      var cell=e.target.closest('[data-kb-cal-day]');
+      if(cell)kbOpenDayModal(cell.dataset.kbCalDay);
+    });
+    document.getElementById('kb-day-modal-close').addEventListener('click',function(){document.getElementById('kb-day-modal').classList.remove('open');});
+    document.getElementById('kb-day-modal-new').addEventListener('click',function(){
+      document.getElementById('kb-day-modal').classList.remove('open');
+      openKbAssignModal(kbDayModalDate?{ref_date:kbDayModalDate}:null);
+    });
+    document.getElementById('kb-day-modal-body').addEventListener('click',function(e){
+      var doneBtn=e.target.closest('[data-kb-done]');
+      if(doneBtn){kbMarkDone(doneBtn.dataset.kbDone);document.getElementById('kb-day-modal').classList.remove('open');return;}
+      var bookBtn=e.target.closest('[data-kb-book-task]');
+      if(bookBtn){
+        document.getElementById('kb-day-modal').classList.remove('open');
+        openKbAssignModal(kbData.unbooked.find(function(u){return u.task_id===bookBtn.dataset.kbBookTask;}));
+      }
+    });
   }
+  kbCalMonth=kbCalMonth||kbMonthStart(new Date());
   kbLoad();
+}
+function kbSwitchView(mode){
+  kbViewMode=mode;
+  document.querySelectorAll('#kb-view-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.kbView===mode);});
+  document.getElementById('kb-list-view').style.display=mode==='list'?'':'none';
+  document.getElementById('kb-calendar-view').style.display=mode==='calendar'?'':'none';
+  if(mode==='calendar')kbRenderCalendar();
+}
+function kbMonthStart(d){return new Date(d.getFullYear(),d.getMonth(),1);}
+function kbCalShift(delta){
+  kbCalMonth=new Date(kbCalMonth.getFullYear(),kbCalMonth.getMonth()+delta,1);
+  kbRenderCalendar();
 }
 async function kbLoad(){
   var r=await api('/api/customer-visits/overview');
@@ -13495,6 +13720,75 @@ function kbRender(){
       +'<td>'+actionHtml+'</td>'
       +'</tr>';
   }).join(''):'<tr><td colspan="5" class="sub" style="text-align:center;padding:24px">Ingen kundebesøg i denne kategori</td></tr>';
+  if(kbViewMode==='calendar')kbRenderCalendar();
+}
+// KALENDERVISNING — bygger et måned-gitter (mandag først) rent klient-side
+// fra samme kbAllRows()-data som listevisningen (ingen separat fetch), så
+// de to visninger aldrig kan vise forskellige ting. Viser ALLE besøg i
+// måneden uanset kb-filter-row-bucket'en (kalenderen er bevidst sin egen,
+// uafhængige visning — ligesom Google Kalender ikke har en "I dag"-filter-
+// knap der skjuler andre dage).
+function kbRenderCalendar(){
+  var MONTHS=['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+  document.getElementById('kb-cal-month-label').textContent=MONTHS[kbCalMonth.getMonth()]+' '+kbCalMonth.getFullYear();
+  var firstWeekday=(kbCalMonth.getDay()+6)%7; // 0=mandag, ..., 6=søndag
+  var gridStart=new Date(kbCalMonth.getFullYear(),kbCalMonth.getMonth(),1-firstWeekday);
+  var daysInMonth=new Date(kbCalMonth.getFullYear(),kbCalMonth.getMonth()+1,0).getDate();
+  var totalCells=Math.ceil((firstWeekday+daysInMonth)/7)*7;
+  var byDate={};
+  kbAllRows().forEach(function(v){
+    var d=String(v.start_date||'').slice(0,10);
+    if(!d)return;
+    (byDate[d]=byDate[d]||[]).push(v);
+  });
+  var todayIso=iso(new Date());
+  var MAX_SHOW=3;
+  var html='';
+  for(var i=0;i<totalCells;i++){
+    var d=new Date(gridStart.getFullYear(),gridStart.getMonth(),gridStart.getDate()+i);
+    var dIso=iso(d);
+    var inMonth=d.getMonth()===kbCalMonth.getMonth();
+    var events=(byDate[dIso]||[]).slice().sort(function(a,b){return String(a.start_time||'').localeCompare(String(b.start_time||''));});
+    var pills=events.slice(0,MAX_SHOW).map(function(v){
+      var color=v._unbooked?'var(--bly-dot-overdue)':(v.user_color||'#9CA3AF');
+      var lbl=(v.start_time?v.start_time+' ':'')+(v.job_name||v.customer_name||'Besøg');
+      return '<div class="kb-cal-event'+(v.completed_at?' done':'')+'" style="background:'+color+'">'+esc(lbl)+'</div>';
+    }).join('');
+    var more=events.length>MAX_SHOW?'<div class="kb-cal-more">+'+(events.length-MAX_SHOW)+' mere</div>':'';
+    html+='<div class="kb-cal-cell'+(inMonth?'':' out')+(dIso===todayIso?' today':'')+'" data-kb-cal-day="'+dIso+'">'
+      +'<div class="kb-cal-daynum">'+d.getDate()+'</div>'+pills+more+'</div>';
+  }
+  document.getElementById('kb-cal-grid').innerHTML=html;
+}
+// Dag-detalje-popup — samme rækker som kbAllRows(), bare filtreret til én
+// dato, og samme ✅ Færdig/📌 Book-handlinger som listevisningens rækker.
+var kbDayModalDate=null;
+function kbOpenDayModal(dateIso){
+  kbDayModalDate=dateIso;
+  var rows=kbAllRows().filter(function(v){return String(v.start_date||'').slice(0,10)===dateIso;});
+  rows.sort(function(a,b){return String(a.start_time||'').localeCompare(String(b.start_time||''));});
+  document.getElementById('kb-day-modal-title').textContent=fmtDaDate(dateIso);
+  document.getElementById('kb-day-modal-body').innerHTML=rows.length?rows.map(function(v){
+    var addrPhone=[v.job_address,v.customer_phone].filter(Boolean).join(' · ')||'—';
+    var empHtml=v._unbooked?'<span style="color:var(--bly-sub)">Ikke planlagt</span>':('<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(v.user_color||'#9CA3AF')+';margin-right:5px"></span>'+esc(v.user_name||'—'));
+    var actionHtml;
+    if(v._unbooked){
+      actionHtml='<button type="button" class="qz-icon-btn" data-kb-book-task="'+esc(v.task_id)+'" title="Book på medarbejder/dato">📌 Book</button>';
+    } else if(v.completed_at){
+      actionHtml='<span class="sub" style="color:var(--bly-dot-paid)">✓ Færdig</span>';
+    } else {
+      actionHtml='<button type="button" class="qz-icon-btn" data-kb-done="'+v.id+'" title="Markér som færdig">✅ Færdig</button>';
+    }
+    return '<div style="padding:10px 0;border-bottom:1px solid var(--bly-border-soft)">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      +'<div><div style="font-weight:700;font-size:13px">'+esc(v.job_name||v.customer_name||'(uden navn)')+'</div>'
+      +(v.start_time?'<div class="sub" style="font-size:11.5px;margin-top:2px">'+esc(v.start_time)+'</div>':'')
+      +'<div class="sub" style="font-size:11.5px;margin-top:2px">'+esc(addrPhone)+'</div>'
+      +'<div style="font-size:11.5px;margin-top:4px">'+empHtml+'</div>'
+      +(v.visit_notes?'<div class="sub" style="font-size:11px;margin-top:4px">'+esc(v.visit_notes)+'</div>':'')
+      +'</div><div>'+actionHtml+'</div></div></div>';
+  }).join(''):'<div class="sub" style="padding:14px 0;text-align:center">Ingen kundebesøg denne dag</div>';
+  document.getElementById('kb-day-modal').classList.add('open');
 }
 async function kbMarkDone(bookingId){
   var r=await api('/api/assignments/'+bookingId+'/complete',{method:'PUT',body:JSON.stringify({completed:true})});
@@ -21379,10 +21673,20 @@ async function bind(){
   // en sag i den session — ellers ville addEventListener aldrig være kørt
   // endnu, og knapperne ville se ud til slet ikke at virke (fanget ved test:
   // direkte navigation til #crmp-detail/lead/x uden først at besøge Projekter).
-  document.getElementById('crmpx-meeting-start-btn').addEventListener('click',vmStartMeeting);
-  document.getElementById('crmpx-meeting-add-btn').addEventListener('click',function(){if(crmpDetailEntity)vmOpen(crmpDetailEntity.type,crmpDetailEntity.id);});
+  document.getElementById('crmpx-meeting-btn').addEventListener('click',function(){if(crmpDetailEntity)mdOpenChoice(crmpDetailEntity.type,crmpDetailEntity.id,crmpDetailEntity.data&&(crmpDetailEntity.data.name||crmpDetailEntity.data.contact_name));});
   document.getElementById('vm-cancel').addEventListener('click',function(){document.getElementById('video-meeting-modal').classList.remove('open');});
   document.getElementById('vm-save').addEventListener('click',vmSave);
+  document.getElementById('vm-file').addEventListener('change',vmFileChange);
+  document.getElementById('md-choice-cancel').addEventListener('click',mdCloseChoice);
+  document.getElementById('md-choice-plan').addEventListener('click',function(){mdCloseChoice();mdOpenPlan();});
+  document.getElementById('md-choice-start').addEventListener('click',function(){mdCloseChoice();vmStartMeeting();vmOpen(mdState.scope,mdState.id,'start');});
+  document.getElementById('md-choice-physical').addEventListener('click',function(){
+    mdCloseChoice();
+    if(mdState.scope==='project')pdMeetingAdd(); else vmOpen(mdState.scope,mdState.id,'physical');
+  });
+  document.getElementById('md-choice-upload').addEventListener('click',function(){mdCloseChoice();vmOpen(mdState.scope,mdState.id,'upload');});
+  document.getElementById('mdp-cancel').addEventListener('click',function(){document.getElementById('md-plan-modal').classList.remove('open');});
+  document.getElementById('mdp-save').addEventListener('click',mdPlanSave);
   document.getElementById('tld-close').onclick=closeTimelineDrawer;
   document.getElementById('tld-save').onclick=saveTimelineDrawer;
   document.getElementById('tld-remove').onclick=removeTimelineDrawerBooking;
@@ -27551,9 +27855,8 @@ function initProjectsModule(){
     document.getElementById('pd-diary-add-btn').addEventListener('click',pdDiaryAdd);
     document.getElementById('pd-drawing-add-btn').addEventListener('click',pdDrawingAdd);
     document.getElementById('pd-milestone-add-btn').addEventListener('click',pdMilestoneAdd);
-    document.getElementById('pd-meeting-add-btn').addEventListener('click',pdMeetingAdd);
-    document.getElementById('pd-meeting-video-start-btn').addEventListener('click',vmStartMeeting);
-    document.getElementById('pd-meeting-video-add-btn').addEventListener('click',function(){if(pjCurrent)vmOpen('project',pjCurrent.id);});
+    document.getElementById('pd-milestone-from-quote-btn').addEventListener('click',pdMilestonesFetchFromQuote);
+    document.getElementById('pd-meeting-btn').addEventListener('click',function(){if(pjCurrent)mdOpenChoice('project',pjCurrent.id,pjCurrent.name);});
     document.getElementById('pd-rfi-add-btn').addEventListener('click',pdRfiAdd);
     document.getElementById('pd-co-add-btn').addEventListener('click',pdCoAdd);
     document.getElementById('pd-photo-input').addEventListener('change',pdUploadPhoto);
@@ -27569,6 +27872,7 @@ function initProjectsModule(){
     document.getElementById('pd-lightbox-next-btn').addEventListener('click',function(){pdLightboxIdx++;renderPdLightbox();});
     document.getElementById('pd-lightbox-delete-btn').addEventListener('click',deletePdLightboxPhoto);
     document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){switchPdTab(b.dataset.pdtab);});});
+    document.querySelectorAll('#pd-bs-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){switchPdBsTab(b.dataset.pdbstab);});});
     document.getElementById('pdtd-close-btn').addEventListener('click',function(){closeModal('pd-task-detail-modal');});
     document.getElementById('pdtd-daterange-btn').addEventListener('click',function(e){e.stopPropagation();togglePdtdCalendar();});
     document.addEventListener('click',function(e){
@@ -27831,8 +28135,9 @@ async function openProjectDetail(id){
     crmBtn.title='Åbn det '+(d.crm_entity.type==='lead'?'lead':'handel')+' sagen stammer fra';
     crmBtn.onclick=function(){openCrmpDetail(d.crm_entity.type,d.crm_entity.id);};
   } else crmBtn.style.display='none';
+  pdBsCurrentTab=null;
   switchPdTab('tasks');
-  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();renderPdDiary();renderPdDrawings();renderPdMilestones();renderPdMeetings();renderPdRfi();renderPdChangeOrders();
+  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();renderPdDiary();renderPdDrawings();renderPdMilestones();renderPdMeetings();renderPdRfi();renderPdChangeOrders();renderPdKundeside();
   // Genindlæs den delte opgavepool (tasks-variablen) her, så "Tilføj til
   // Kapacitetsbordet" og tjekpunkter på en netop oprettet/redigeret sags-opgave
   // altid har den friske spejl-række fra jt_tasks at slå op i.
@@ -27917,12 +28222,27 @@ function renderPdBudget(){
 }
 function switchPdTab(name){
   document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdtab===name);});
-  ['tasks','pipeline','photos','time','budget','materials','qa','contact','dagbog','drawings','milestones','meetings','rfi','changeorders'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
+  ['tasks','pipeline','photos','time','budget','materials','qa','contact','meetings','byggestyring'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
   if(name==='budget'&&me.role==='admin')loadPdBudget();
   // RUNDE L (#2) — Pipeline-kortene skal altid være friske når man rent
   // faktisk klikker ind på fanen (fx efter at have redigeret en opgave på
   // Opgaver-fanen lige inden).
   if(name==='pipeline')renderPdPipeline();
+  // RUNDE CI — Byggestyring åbner altid på sin FØRSTE under-fane (Dagbog),
+  // medmindre en bestemt under-fane allerede var valgt (fx man klikkede væk
+  // og tilbage igen uden at ville miste stedet).
+  if(name==='byggestyring'&&!pdBsCurrentTab)switchPdBsTab('dagbog');
+}
+// RUNDE CI — under-navigationen inde i "Byggestyring", samme mønster som
+// switchPdTab ovenfor men ét niveau dybere (pd-bs-tabs/.bs-tabpage i stedet
+// for pd-tabs/.pdtabpage).
+var pdBsCurrentTab=null;
+var PD_BS_TABS=['dagbog','rfi','drawings','changeorders','milestones','kundeside'];
+function switchPdBsTab(name){
+  pdBsCurrentTab=name;
+  document.querySelectorAll('#pd-bs-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdbstab===name);});
+  PD_BS_TABS.forEach(function(t){document.getElementById('bstab-'+t).style.display=t===name?'':'none';});
+  if(name==='kundeside')renderPdKundeside();
 }
 // ── OPGAVE-PIPELINE (RUNDE L, Martins ønske #2 og #3) ──────────────────────
 // Sagens egne opgaver som et kanban med 4 faste faser (gantt_tasks.status),
@@ -29980,6 +30300,39 @@ function pdDrawingUploadRevision(drawingId){
 }
 
 // ── MILEPÆLE MED AUTOMATISK FAKTURA-FORSLAG (feature #7) ────────────────
+// RUNDE CI — Kundeside-synlighed. Ét sæt flueben der styrer hvilke faner
+// kunden ser på DET ENE kundeportal-link (/kunde/:token), se
+// portal_visibility-kolonnen og portalVisible()-hjælperen i server.js.
+// Manglende nøgle = vist (bagudkompatibelt), så checkboxen er checket
+// medmindre der eksplicit står false.
+var PD_KUNDESIDE_TOGGLES=[
+  {key:'tidsplan',label:'Tidsplan og fremdrift'},
+  {key:'aendringer',label:'Ændringer — og godkendelse af nye'},
+  {key:'betaling',label:'Tilbud, fakturaer og betalingsplan'},
+  {key:'qa',label:'Godkendte kontrolpunkter med fotos (kvalitetssikring)'},
+  {key:'tegninger',label:'Tegninger'},
+  {key:'billeder',label:'Sagens billeder'},
+  {key:'dagbog',label:'Dagbog (udført arbejde)'}
+];
+function renderPdKundeside(){
+  var box=document.getElementById('pd-kundeside-toggles');
+  if(!box||!pjCurrent)return;
+  var vis=pjCurrent.portal_visibility||{};
+  box.innerHTML=PD_KUNDESIDE_TOGGLES.map(function(t){
+    var checked=vis[t.key]!==false;
+    return '<label style="display:flex;align-items:center;gap:10px;padding:7px 0;cursor:pointer;font-size:13.5px">'
+      +'<input type="checkbox" data-pdks-key="'+t.key+'" '+(checked?'checked':'')+'> '+esc(t.label)+'</label>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('[data-pdks-key]'),function(cb){
+    cb.onchange=async function(){
+      var vis=Object.assign({},pjCurrent.portal_visibility||{});
+      vis[cb.dataset.pdksKey]=cb.checked;
+      pjCurrent.portal_visibility=vis;
+      await api('/api/projects/'+pjCurrent.id+'/portal-visibility',{method:'PUT',body:JSON.stringify({visibility:vis})});
+      toast(cb.checked?'Vist for kunden':'Skjult for kunden','✓');
+    };
+  });
+}
 function renderPdMilestones(){
   var body=document.getElementById('pd-milestones-body');
   var ms=(pjCurrent&&pjCurrent.milestones)||[];
@@ -30016,6 +30369,19 @@ function renderPdMilestones(){
     };
   });
 }
+// RUNDE CJ — "Hent fra tilbud". Henter payment_plan.phases fra det
+// accepterede tilbud og opretter dem som rigtige milepæle, se
+// GET/POST .../milestones/from-quote i server.js for baggrunden.
+async function pdMilestonesFetchFromQuote(){
+  if(!pjCurrent)return;
+  var info=await api('/api/projects/'+pjCurrent.id+'/milestones/quote-payment-plan');
+  if(!info||!info.has_quote){toast('Sagen har intet tilbud tilknyttet','❌');return;}
+  if(!info.phases||!info.phases.length){toast('Tilbuddet ('+(info.quote_number||'')+') har ingen betalingsplan endnu — lav den under Tilbud','❌');return;}
+  var lines=info.phases.map(function(p){return '• '+p.label+' — '+p.pct+'% ('+krFmt(p.amount)+')'+(p.milestone?' — '+p.milestone:'');}).join('\n');
+  if(!await gmConfirm('Opret disse '+info.phases.length+' milepæle fra tilbud '+(info.quote_number||'')+'?\n\n'+lines,'Hent fra tilbud'))return;
+  var r=await api('/api/projects/'+pjCurrent.id+'/milestones/from-quote',{method:'POST',body:JSON.stringify({})});
+  if(r&&r.ok){toast(r.created+' milepæle hentet fra tilbuddet','✓');reloadPdCurrent();} else toast((r&&r.error)||'Kunne ikke hente betalingsplan','❌');
+}
 async function pdMilestoneAdd(){
   if(!pjCurrent)return;
   var name=prompt('Navn på milepælen (fx "1. rate ved underskrift"):');
@@ -30032,7 +30398,9 @@ async function pdMilestoneAdd(){
 // deleteFn/sendFn er valgfri (handel-møder har ingen "send til kunde"-knap endnu).
 function vmMeetingCardHtml(m,deleteAttr,sendAttr){
   var isVideo=m.meeting_type==='video';
-  var platformLabel=({google_meet:'Google Meet',zoom:'Zoom',other:'Andet mødeprogram'})[m.video_platform]||'';
+  var isPlanned=isVideo&&!m.decisions&&m.meeting_date>=iso(new Date());
+  var platformLabel=({google_meet:'Google Meet',zoom:'Zoom',physical:'Fysisk møde',other:'Andet mødeprogram'})[m.video_platform]||'';
+  var icon=isPlanned?'📅':(isVideo?'📹':'🏗');
   var items=(m.action_items||[]).map(function(a){
     return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0">'
       +'<input type="checkbox" data-action="pd-meeting-item-toggle" data-meeting="'+m.id+'" data-id="'+a.id+'" '+(a.done?'checked':'')+'>'
@@ -30041,7 +30409,7 @@ function vmMeetingCardHtml(m,deleteAttr,sendAttr){
   }).join('');
   return '<div style="border:1px solid var(--bly-border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-    +'<div style="font-weight:700">'+(isVideo?'📹 ':'🏗 ')+esc(fmtDaDate(m.meeting_date))+(platformLabel?' <span class="sub" style="font-weight:400">· '+esc(platformLabel)+'</span>':'')+'</div>'
+    +'<div style="font-weight:700">'+icon+' '+esc(fmtDaDate(m.meeting_date))+(platformLabel?' <span class="sub" style="font-weight:400">· '+esc(platformLabel)+'</span>':'')+(isPlanned?' <span class="pill" style="background:var(--bly-accent-soft);color:var(--bly-accent)">Planlagt</span>':'')+'</div>'
     +'<div style="display:flex;gap:6px">'
     +(m.video_link?'<a class="bly-btn outline small" href="'+esc(m.video_link)+'" target="_blank" rel="noopener">🔗 Åbn link</a>':'')
     +(sendAttr||'')
@@ -30097,32 +30465,58 @@ async function pdMeetingAdd(){
 }
 
 // ══════════════════════════════════════════════════════════════
-// VIDEOMØDER (RUNDE CH, Martins ønske: "integrere Google Meet/Zoom ... ved et
-// tryk under kunden og projekter kan holde møder og den så ... gemmer det som
-// mødenotater under opgaven og/eller handlen ... opstiller det pænt").
+// MØDE-SYSTEM (RUNDE CH/CI, Martins ønske: "integrere Google Meet/Zoom ...
+// ved et tryk under kunden og projekter kan holde møder ... gemmer det som
+// mødenotater under opgaven og/eller handlen ... opstiller det pænt" — og
+// senere, efter at have set et andet program: ét "Møde"-ikon der åbner en
+// lille menu med 4 valg i stedet for separate knapper).
 //
 // Bevidst INGEN API-integration/OAuth her — Martin behøver ikke oprette
-// noget hos Google/Zoom for at bruge dette. "Start møde" åbner bare
-// meet.google.com/new i en ny fane (helt almindeligt, virker med den Google-
-// konto man allerede er logget ind med i browseren). Selve transskriptionen
-// kommer fra Google Meets eget indbyggede "Optag & transskribér"-ikon i selve
-// mødet (Google Workspace-konti har dette; gratis Google-konti har det ikke) —
-// man kopierer bare teksten derfra ind i "Noter / aftalt på mødet"-feltet
-// herunder, og "Gem mødenotat" lægger det pænt formateret ind under sagen
-// og/eller handlen, så det altid kan findes igen bagefter.
+// noget hos Google/Zoom for at bruge dette. "Start møde nu" åbner bare
+// meet.google.com/new i en ny fane (virker med den Google-konto man allerede
+// er logget ind med). Selve transskriptionen kommer enten fra Google Meets
+// eget "Optag & transskribér"-ikon (Workspace-konti) eller en uploadet
+// .txt/.vtt-fil fra Meet/Teams — begge dele ender som almindelig tekst i
+// "Noter"-feltet, som "Gem mødenotat" lægger pænt formateret ind under sagen
+// og/eller handlen. "Planlæg online møde" opretter en FREMTIDIG mødepost
+// (se md-plan-modal) — uden Google Calendar API kan vi ikke forudgenerere et
+// rigtigt, holdbart Meet-link til en fremtidig dato, så det rigtige link
+// laves når man trykker "Start møde nu" PÅ selve mødedagen.
 // ══════════════════════════════════════════════════════════════
-var vmState={scope:null,id:null};
-function vmOpen(scope,id){
-  vmState={scope:scope,id:id};
-  document.getElementById('vm-date').value=new Date().toISOString().slice(0,10);
-  document.getElementById('vm-participants').value='';
-  document.getElementById('vm-platform').value='google_meet';
-  document.getElementById('vm-link').value='';
-  document.getElementById('vm-notes').value='';
-  document.getElementById('video-meeting-modal').classList.add('open');
+var mdState={scope:null,id:null,name:''};
+function mdOpenChoice(scope,id,name){
+  mdState={scope:scope,id:id,name:name||''};
+  document.getElementById('md-choice-title').textContent='Møde'+(name?' · '+name:'');
+  document.getElementById('md-choice-sub').textContent=scope==='project'?'Sag':'Handel';
+  var list=document.getElementById('md-choice-list');
+  var meetings=scope==='project'?((pjCurrent&&pjCurrent.meetings)||[]):mdCrmMeetingsCache;
+  if(meetings&&meetings.length){
+    list.innerHTML='<div class="sub" style="font-weight:700;margin-bottom:4px">TIDLIGERE MØDER</div>'
+      +meetings.slice(0,4).map(function(m){
+        var isPlanned=m.meeting_type==='video'&&!m.decisions&&m.meeting_date>=iso(new Date());
+        return '<div class="md-choice-list-item"><span>'+(isPlanned?'📅':(m.meeting_type==='video'?'📹':'🏗'))+' '+esc(fmtDaDate(m.meeting_date))+'</span>'+(isPlanned?'<span class="pill" style="background:var(--bly-accent-soft);color:var(--bly-accent)">Planlagt</span>':'<span class="pill" style="background:#F1F5F9;color:var(--bly-sub)">Oprettet</span>')+'</div>';
+      }).join('');
+  } else list.innerHTML='';
+  document.getElementById('md-choice-modal').classList.add('open');
 }
+function mdCloseChoice(){document.getElementById('md-choice-modal').classList.remove('open');}
 function vmStartMeeting(){
   window.open('https://meet.google.com/new','_blank','noopener');
+}
+// mode: 'start' (efter Start møde nu) | 'upload' (Upload eller indsæt) |
+// 'physical' (fysisk møde, kun handel-siden — sags-siden bruger i stedet
+// pdMeetingAdd()'s prompt-flow for at bevare opfølgningspunkter→tjekliste).
+function vmOpen(scope,id,mode){
+  mdState.scope=scope;mdState.id=id;
+  document.getElementById('vm-date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('vm-participants').value='';
+  document.getElementById('vm-platform').value=mode==='physical'?'physical':'google_meet';
+  document.getElementById('vm-link').value='';
+  document.getElementById('vm-notes').value='';
+  document.getElementById('vm-file').value='';
+  document.getElementById('vm-upload-wrap').style.display=mode==='upload'?'':'none';
+  document.getElementById('vm-title').textContent=mode==='upload'?'⬆️ Upload eller indsæt':(mode==='physical'?'📝 Referat af fysisk møde':'📹 Mødenotat');
+  document.getElementById('video-meeting-modal').classList.add('open');
 }
 async function vmSave(){
   var date=document.getElementById('vm-date').value||new Date().toISOString().slice(0,10);
@@ -30132,22 +30526,66 @@ async function vmSave(){
   var notes=document.getElementById('vm-notes').value.trim();
   if(!notes){toast('Skriv eller indsæt mødenotater først','❌');return;}
   var endpoint=null;
-  if(vmState.scope==='project')endpoint='/api/projects/'+vmState.id+'/meetings';
-  else if(vmState.scope==='lead')endpoint='/api/crm/leads/'+vmState.id+'/meetings';
-  else if(vmState.scope==='opportunity')endpoint='/api/crm/opportunities/'+vmState.id+'/meetings';
+  if(mdState.scope==='project')endpoint='/api/projects/'+mdState.id+'/meetings';
+  else if(mdState.scope==='lead')endpoint='/api/crm/leads/'+mdState.id+'/meetings';
+  else if(mdState.scope==='opportunity')endpoint='/api/crm/opportunities/'+mdState.id+'/meetings';
   if(!endpoint)return;
   var r=await api(endpoint,{method:'POST',body:JSON.stringify({meeting_date:date,agenda:participants,decisions:notes,meeting_type:'video',video_platform:platform,video_link:link||null})});
   if(r&&r.ok){
     toast('Mødenotat gemt','✓');
     document.getElementById('video-meeting-modal').classList.remove('open');
-    if(vmState.scope==='project')reloadPdCurrent();
+    if(mdState.scope==='project')reloadPdCurrent();
     else crmpxLoadMeetings();
   } else toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+// .txt/.vtt-transskription læst direkte ind i noter-feltet, se kommentaren
+// ved #vm-upload-wrap i HTML'en.
+function vmFileChange(e){
+  var file=e.target.files&&e.target.files[0];
+  if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(){
+    var ta=document.getElementById('vm-notes');
+    ta.value=(ta.value?ta.value+'\n\n':'')+String(reader.result||'');
+    toast('Fil indsat i noter-feltet','✓');
+  };
+  reader.onerror=function(){toast('Kunne ikke læse filen','❌');};
+  reader.readAsText(file);
+}
+// "Planlæg online møde" — se header-kommentaren ovenfor for hvorfor dette
+// IKKE genererer et rigtigt Google Calendar-kald.
+function mdOpenPlan(){
+  document.getElementById('mdp-date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('mdp-time').value='09:00';
+  document.getElementById('mdp-participants').value='';
+  document.getElementById('mdp-email').value=mdState.scope==='project'?(pjCurrent&&pjCurrent.customer_email||''):'';
+  document.getElementById('md-plan-modal').classList.add('open');
+}
+async function mdPlanSave(){
+  var date=document.getElementById('mdp-date').value;
+  if(!date){toast('Vælg en dato','❌');return;}
+  var time=document.getElementById('mdp-time').value;
+  var participants=document.getElementById('mdp-participants').value.trim();
+  var email=document.getElementById('mdp-email').value.trim();
+  var endpoint=null;
+  if(mdState.scope==='project')endpoint='/api/projects/'+mdState.id+'/meetings';
+  else if(mdState.scope==='lead')endpoint='/api/crm/leads/'+mdState.id+'/meetings';
+  else if(mdState.scope==='opportunity')endpoint='/api/crm/opportunities/'+mdState.id+'/meetings';
+  if(!endpoint)return;
+  var r=await api(endpoint,{method:'POST',body:JSON.stringify({meeting_date:date,agenda:participants,decisions:'',meeting_type:'video',video_platform:'google_meet'})});
+  if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke planlægge mødet','❌');return;}
+  if(email&&r.id){
+    var inviteR=await api('/api/meetings/'+r.id+'/send-invite',{method:'POST',body:JSON.stringify({email:email,time:time,participants:participants})});
+    if(inviteR&&inviteR.ok)toast('Møde planlagt og invitation sendt','✓'); else toast('Møde planlagt, men invitationen kunne ikke sendes','⚠');
+  } else toast('Møde planlagt','✓');
+  document.getElementById('md-plan-modal').classList.remove('open');
+  if(mdState.scope==='project')reloadPdCurrent(); else crmpxLoadMeetings();
 }
 // ── HANDEL-SIDEN (CRM lead/opportunity) — se crmpx-meetings-panel i HTML'en.
 // Altid indlæst ved åbning af en handel/lead (uanset kunde-kobling), i
 // modsætning til Tilbud/Projekter-fanerne der kræver klik — møder er ikke en
 // "ekstra fane", men et lille altid-synligt panel ligesom Note-feltet.
+var mdCrmMeetingsCache=[];
 async function crmpxLoadMeetings(){
   var ent=crmpDetailEntity;
   if(!ent)return;
@@ -30155,6 +30593,7 @@ async function crmpxLoadMeetings(){
   list.innerHTML='<div class="crmpx-empty">Henter møder...</div>';
   var meetings=await api('/api/crm/'+(ent.type==='lead'?'leads':'opportunities')+'/'+ent.id+'/meetings');
   if(!meetings||meetings.error){list.innerHTML='<div class="crmpx-empty">Kunne ikke hente møder</div>';return;}
+  mdCrmMeetingsCache=meetings;
   if(!meetings.length){list.innerHTML='<div class="crmpx-empty">Ingen møder gemt endnu</div>';return;}
   list.innerHTML=meetings.map(function(m){return vmMeetingCardHtml(m,'crmpx-meeting-delete','');}).join('');
   Array.prototype.forEach.call(list.querySelectorAll('[data-action="crmpx-meeting-delete"]'),function(btn){

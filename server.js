@@ -2321,6 +2321,17 @@ async function initSchema() {
     -- manuelt (almindeligt tekstfelt, ingen FK, ligesom projects.status).
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type TEXT;
 
+    -- RUNDE CI (okt. 2026, Martins ønske efter at have set et andet program:
+    -- "fint hvis man under sagen kan styre hvad kunden faktisk har adgang
+    -- til" — men IKKE som et ekstra kundelink, ét link skal bare vise/skjule
+    -- afsnit) — hvilke afsnit af DET ENE kundeportal-link (/kunde/:token) der
+    -- vises for netop denne sags kunde. NULL/manglende nøgle = vist
+    -- (bagudkompatibelt: alle sager der fandtes før denne kolonne skal blive
+    -- ved med at vise alt, præcis som de altid har). Nøgler: tidsplan,
+    -- aendringer, betaling, qa, tegninger, billeder, dagbog — se
+    -- portalVisible()-hjælperen ved kundeportal-routen.
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS portal_visibility JSONB;
+
     -- ── KVALITETSSIKRING: Martin bygger skabeloner (ordnet liste af felter),
     -- medarbejdere udfylder dem pr. projekt. ────────────────────────────
     CREATE TABLE IF NOT EXISTS qa_templates (
@@ -16014,6 +16025,48 @@ app.get('/api/projects/:id/milestones', auth, panelAccess('projects'), asyncRout
   const rows = (await pool.query('SELECT * FROM project_milestones WHERE project_id=$1 ORDER BY position ASC, id ASC', [req.params.id])).rows;
   res.json(rows);
 }));
+// RUNDE CJ (okt. 2026, Martins ønske: "betaling og betalingsplan skal
+// afstemme med den der er lavet på tilbuddet ... koordineret og spiller
+// sammen") — sagens milepæle var hidtil en helt løsrevet liste man selv
+// skulle genindtaste, selvom det accepterede tilbud (quotes.payment_plan,
+// se RUNDE-kommentaren ved den kolonne) ofte allerede har en AI-genereret
+// eller manuelt rettet betalingsplan. Denne route henter de faser og opretter
+// dem som rigtige milepæle — IKKE automatisk/stiltiende, kun når Martin selv
+// trykker "📄 Hent fra tilbud" på sagen (se pdMilestonesFetchFromQuote i
+// admin.html), så det aldrig overskriver noget han allerede har rettet uden
+// at spørge. Tilføjer OVEN I eksisterende milepæle, sletter intet — findes
+// en milepæl allerede med nøjagtig samme navn (fx hentet to gange ved en
+// fejl), springes den over for ikke at duplikere.
+app.get('/api/projects/:id/milestones/quote-payment-plan', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id, quote_id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  if (!project.quote_id) return res.json({ has_quote: false, phases: [] });
+  const quote = await pgOne('SELECT id, quote_number, payment_plan FROM quotes WHERE id=$1', [project.quote_id]);
+  const phases = (quote && quote.payment_plan && Array.isArray(quote.payment_plan.phases)) ? quote.payment_plan.phases : [];
+  res.json({ has_quote: !!quote, quote_number: quote ? quote.quote_number : null, phases });
+}));
+app.post('/api/projects/:id/milestones/from-quote', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id, quote_id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  if (!project.quote_id) return res.status(400).json({ error: 'Sagen har intet tilbud tilknyttet' });
+  const quote = await pgOne('SELECT payment_plan FROM quotes WHERE id=$1', [project.quote_id]);
+  const phases = (quote && quote.payment_plan && Array.isArray(quote.payment_plan.phases)) ? quote.payment_plan.phases : [];
+  if (!phases.length) return res.status(400).json({ error: 'Tilbuddet har ingen betalingsplan endnu' });
+  const existing = (await pool.query('SELECT name FROM project_milestones WHERE project_id=$1', [req.params.id])).rows.map(r => r.name);
+  const countRes = await pgOne('SELECT COUNT(*)::int AS n FROM project_milestones WHERE project_id=$1', [req.params.id]);
+  let pos = countRes ? countRes.n : 0;
+  let created = 0;
+  for (const phase of phases) {
+    const name = phase.milestone ? `${phase.label} (${phase.milestone})`.slice(0, 250) : String(phase.label || '').slice(0, 250);
+    if (!name || existing.includes(name)) continue;
+    await pool.query(
+      'INSERT INTO project_milestones (project_id, name, amount, percent, position) VALUES ($1,$2,$3,$4,$5)',
+      [req.params.id, name, phase.amount != null ? Number(phase.amount) : null, phase.pct != null ? Number(phase.pct) : null, pos++]
+    );
+    created++;
+  }
+  res.json({ ok: true, created });
+}));
 app.post('/api/projects/:id/milestones', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
@@ -16205,6 +16258,39 @@ app.post('/api/crm/opportunities/:id/meetings', auth, panelAccess('crmp_sales'),
 }));
 app.delete('/api/crm/opportunities/:id/meetings/:meetingId', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM site_meetings WHERE id=$1 AND crm_opportunity_id=$2', [req.params.meetingId, req.params.id]);
+  res.json({ ok: true });
+}));
+// RUNDE CI — "Planlæg online møde" sender denne invitation (dato/tid/
+// deltagere) uanset om mødet hænger på en sag ELLER en handel, derfor en
+// generisk route på selve møde-id'et i stedet for at duplikere den på begge
+// /api/projects/.../meetings og /api/crm/.../meetings. Bevidst INGEN .ics-
+// vedhæftning/rigtig Google Calendar-indkaldelse her — kun en almindelig
+// mail med dato/tid, se header-kommentaren ved mdOpenPlan() i admin.html for
+// hele afvejningen omkring hvorfor et ægte forhåndsgenereret Meet-link kræver
+// Google Calendar API (OAuth) og derfor er en bevidst udskudt udvidelse.
+app.post('/api/meetings/:id/send-invite', auth, asyncRoute(async (req, res) => {
+  const meeting = await pgOne('SELECT * FROM site_meetings WHERE id=$1', [req.params.id]);
+  if (!meeting) return res.status(404).json({ error: 'Mødet blev ikke fundet' });
+  const b = req.body || {};
+  const toEmail = String(b.email || '').trim();
+  if (!toEmail) return res.status(400).json({ error: 'Ingen e-mail at sende til' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'Mail er ikke konfigureret' });
+  let subjectWho = '';
+  if (meeting.project_id) {
+    const p = await pgOne('SELECT name FROM projects WHERE id=$1', [meeting.project_id]);
+    subjectWho = p ? p.name : '';
+  } else if (meeting.crm_lead_id) {
+    const l = await pgOne('SELECT name FROM crm_leads WHERE id=$1', [meeting.crm_lead_id]);
+    subjectWho = l ? l.name : '';
+  } else if (meeting.crm_opportunity_id) {
+    const o = await pgOne('SELECT name FROM crm_opportunities WHERE id=$1', [meeting.crm_opportunity_id]);
+    subjectWho = o ? o.name : '';
+  }
+  const html = `<h2>Mødeindkaldelse${subjectWho ? ' — ' + escPublic(subjectWho) : ''}</h2>
+    <p><b>Dato:</b> ${escPublic(meeting.meeting_date)}${b.time ? ' kl. ' + escPublic(b.time) : ''}</p>
+    ${b.participants ? `<p><b>Deltagere:</b> ${escPublic(b.participants)}</p>` : ''}
+    <p>Vi sender Google Meet-linket til dig lige inden mødet starter.</p>`;
+  await sendMailUniversal({ to: toEmail, subject: `Mødeindkaldelse${subjectWho ? ' — ' + subjectWho : ''}`, html, text: html.replace(/<[^>]+>/g, ' ') });
   res.json({ ok: true });
 }));
 
@@ -16572,6 +16658,19 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
         .catch(e => console.error('Sags-færdig-mail fejlede:', e.message));
     }
   }
+}));
+
+// RUNDE CI (okt. 2026) — gemmer hvilke afsnit af DET ENE kundeportal-link
+// kunden ser, se skema-kommentaren ved projects.portal_visibility. Egen lille
+// route frem for at udvide den store PUT /api/projects/:id ovenfor — den
+// opdaterer hele sags-formularen og ville ellers kræve at admin.html sender
+// ALLE felter med hver gang, bare for at rette ét flueben.
+app.put('/api/projects/:id/portal-visibility', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = (req.body && req.body.visibility) || {};
+  await pool.query('UPDATE projects SET portal_visibility=$1 WHERE id=$2', [JSON.stringify(b), req.params.id]);
+  res.json({ ok: true });
 }));
 
 // RUNDE T (Martins ønske: "Hver projekt skal have et tilbud tilkoblet, som
@@ -24509,9 +24608,15 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
   // allerede bruger ovenfor, og medtag dets gantt_tasks direkte via
   // project_id — ikke kun via job_id/jt_tasks-vejen.
   const portalProject = await pgOne(
-    `SELECT id FROM projects WHERE lower(trim(name))=lower(trim($1)) ORDER BY created_at DESC LIMIT 1`,
+    `SELECT id, portal_visibility FROM projects WHERE lower(trim(name))=lower(trim($1)) ORDER BY created_at DESC LIMIT 1`,
     [tokenRow.job_name]
   );
+  // RUNDE CI — se skema-kommentaren ved projects.portal_visibility. Manglende
+  // nøgle = vist (bagudkompatibelt: sager uden en portal_visibility-værdi
+  // overhovedet viser ALT, præcis som portalen altid har gjort før denne
+  // funktion fandtes).
+  const portalVis = (portalProject && portalProject.portal_visibility) || {};
+  function portalVisible(key) { return portalVis[key] !== false; }
   if (portalProject) {
     // RUNDE BS — position::int, se samme forklaring ved GET /api/projects/:id.
     const nativeRes = await pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 ORDER BY position::int ASC, id ASC', [portalProject.id]);
@@ -24533,6 +24638,32 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
       `SELECT q.*, g.name AS task_name FROM qa_submissions q LEFT JOIN gantt_tasks g ON g.id=q.task_id
        WHERE q.project_id=$1 ORDER BY q.submitted_at DESC`,
       [portalProject.id]
+    )).rows;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // RUNDE CI (okt. 2026, Martins ønske: "smid alt fra kundelinket ind under
+  // den side kunden i forvejen har adgang til ... istedet for at have 2
+  // kundelink sider") — Dagbog/Tegninger/Ændringsønsker var før kun synlige
+  // internt (sagsdetaljen), nu også her i DET ENE kundeportal-link, hver
+  // bag sin egen portalVisible()-togle (se portal_visibility ovenfor).
+  // ══════════════════════════════════════════════════════════════
+  let portalDiaryEntries = [], portalDrawings = [], portalChangeOrders = [];
+  if (portalProject) {
+    portalDiaryEntries = (await pool.query(
+      'SELECT * FROM site_diary_entries WHERE project_id=$1 ORDER BY entry_date DESC, id DESC LIMIT 30',
+      [portalProject.id]
+    )).rows;
+    const drawingsRes = (await pool.query(
+      'SELECT * FROM drawings WHERE project_id=$1 ORDER BY created_at DESC', [portalProject.id]
+    )).rows;
+    const revisionsRes = drawingsRes.length ? (await pool.query(
+      'SELECT * FROM drawing_revisions WHERE drawing_id=ANY($1) ORDER BY uploaded_at DESC',
+      [drawingsRes.map(d => d.id)]
+    )).rows : [];
+    portalDrawings = drawingsRes.map(d => ({ ...d, revisions: revisionsRes.filter(r => r.drawing_id === d.id) }));
+    portalChangeOrders = (await pool.query(
+      'SELECT * FROM change_orders WHERE project_id=$1 ORDER BY created_at DESC', [portalProject.id]
     )).rows;
   }
 
@@ -24771,6 +24902,83 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     }).join('');
   })();
 
+  // RUNDE CI — "Dagbog"-fanen (sagens byggedagbog, skrivebeskyttet for kunden).
+  const dagbogHtml = (() => {
+    if (!portalDiaryEntries.length) return '<div class="empty">Ingen dagbogsnotater endnu.</div>';
+    return portalDiaryEntries.map(d => {
+      const metaBits = [];
+      if (d.weather) metaBits.push('☁️ ' + esc(d.weather));
+      if (d.staffing) metaBits.push('👷 ' + esc(d.staffing));
+      if (d.deliveries) metaBits.push('🚚 ' + esc(d.deliveries));
+      return `<div class="qa-card-portal">
+        <div class="qa-card-top"><div class="qa-card-title">${esc(fmt(d.entry_date))}</div></div>
+        ${metaBits.length ? `<div class="job-meta">${metaBits.join(' · ')}</div>` : ''}
+        ${d.notes ? `<div class="tm-row-value" style="margin-top:6px">${esc(d.notes)}</div>` : ''}
+      </div>`;
+    }).join('');
+  })();
+
+  // RUNDE CI — "Tegninger"-fanen: pr. tegning vises seneste/aktuelle revision
+  // tydeligt, aeldre revisioner som en lille linkliste (skrivebeskyttet
+  // udgave af admins drawings-liste).
+  const drawingsHtml = (() => {
+    if (!portalDrawings.length) return '<div class="empty">Ingen tegninger uploadet endnu.</div>';
+    return portalDrawings.map(d => {
+      const revs = (d.revisions || []).slice().sort((a, b) => String(b.uploaded_at || '').localeCompare(String(a.uploaded_at || '')));
+      const current = revs.find(r => r.id === d.current_revision_id) || revs[0];
+      const older = revs.filter(r => !current || r.id !== current.id);
+      return `<div class="job-card">
+        <div class="job-top"><div class="job-title">📐 ${esc(d.name)}</div></div>
+        ${current ? `<div class="job-meta">Revision ${esc(current.rev_label || '')}${current.uploaded_at ? ' · ' + esc(fmt(current.uploaded_at)) : ''}</div>
+        <a class="doc-action" href="${esc(current.url)}" target="_blank" rel="noopener">Se tegning →</a>` : ''}
+        ${current && current.note ? `<div class="job-meta">${esc(current.note)}</div>` : ''}
+        ${older.length ? `<div class="job-meta" style="margin-top:8px">Ældre revisioner: ${older.map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700">${esc(r.rev_label || ('#' + r.id))}</a>`).join(', ')}</div>` : ''}
+      </div>`;
+    }).join('');
+  })();
+
+  // RUNDE CI — "AEndringer"-fanen: afventende aendringsoensker linker ud til
+  // den eksisterende /ekstraarbejde/:token-side til online-godkendelse
+  // (samme moenster som tilbuds-signering) — ingen grund til at genopbygge
+  // selve godkendelsesflowet inde i kundeportalen.
+  const CO_STATUS_LABELS = {
+    pending: { label: 'Afventer din godkendelse', bg: '#FEF3C7', fg: '#92400E' },
+    approved: { label: 'Godkendt', bg: '#DCFCE7', fg: '#15803D' },
+    declined: { label: 'Afvist', bg: '#FEE2E2', fg: '#B91C1C' }
+  };
+  const changeOrdersHtml = (() => {
+    if (!portalChangeOrders.length) return '<div class="empty">Ingen ændringsønsker endnu.</div>';
+    return portalChangeOrders.map(c => {
+      const st = CO_STATUS_LABELS[c.status] || { label: c.status, bg: '#F1F5F9', fg: '#475569' };
+      return `<div class="job-card">
+        <div class="job-top"><div class="job-title">${esc(c.title)}</div><span class="pill" style="background:${st.bg};color:${st.fg}">${st.label}</span></div>
+        ${c.description ? `<div class="job-meta">${esc(c.description)}</div>` : ''}
+        <div class="job-meta doc-price">${fmtKr(Number(c.amount))}</div>
+        ${c.created_at ? `<div class="job-meta">${esc(fmt(c.created_at))}</div>` : ''}
+        ${c.status === 'pending' ? `<a class="doc-action doc-action-sign" href="/ekstraarbejde/${esc(c.approve_token)}">Se &amp; godkend →</a>` : ''}
+      </div>`;
+    }).join('');
+  })();
+
+  // RUNDE CI — EEN kilde til sandhed for hvilke faner der findes OG hvilke
+  // der er synlige (portal_visibility), saa fane-knapper, fane-paneler og
+  // showTab()-listen i klienten aldrig kan komme ud af sync med hinanden.
+  // Falder tilbage til altid at vise "Oversigt" hvis samtlige faner skulle
+  // vaere slaaet fra under Kundeside.
+  let PORTAL_TABS = [
+    { key: 'pipeline', vis: 'tidsplan', label: 'Oversigt', body: pipelineHtml },
+    { key: 'timeline', vis: 'tidsplan', label: 'Timeline', body: ganttHtml },
+    { key: 'docs', vis: 'betaling', label: 'Tilbud &amp; Faktura', body: docsHtml },
+    { key: 'changeorders', vis: 'aendringer', label: '📝 Ændringer', body: changeOrdersHtml },
+    { key: 'qa', vis: 'qa', label: '🛡 KS', body: qaHtml },
+    { key: 'drawings', vis: 'tegninger', label: '📐 Tegninger', body: drawingsHtml },
+    { key: 'dagbog', vis: 'dagbog', label: '📓 Dagbog', body: dagbogHtml },
+    { key: 'photos', vis: 'billeder', label: '📷 Billeder', body: photosHtml }
+  ].filter(t => portalVisible(t.vis));
+  if (!PORTAL_TABS.length) PORTAL_TABS = [{ key: 'pipeline', vis: 'tidsplan', label: 'Oversigt', body: pipelineHtml }];
+  const portalTabsHtml = PORTAL_TABS.map((t, i) => `<div class="tab${i === 0 ? ' active' : ''}" id="tab-${t.key}" onclick="showTab('${t.key}')">${t.label}</div>`).join('');
+  const portalPanelsHtml = PORTAL_TABS.map((t, i) => `<div class="panel${i === 0 ? ' active' : ''}" id="panel-${t.key}">${t.body}</div>`).join('');
+
   const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Din side hos ${esc(companyName)}</title><style>
 :root{--ink:#111318;--sub:#6B7280;--border:#E5E7EB;--accent:#4F46E5;--accent-soft:#EEF2FF}
@@ -24874,17 +25082,9 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
   <div class="stat"><b>${bookings.length}</b><span>Besøg</span></div>
 </div>
 <div class="tabs">
-  <div class="tab active" id="tab-pipeline" onclick="showTab('pipeline')">Oversigt</div>
-  <div class="tab" id="tab-timeline" onclick="showTab('timeline')">Timeline</div>
-  <div class="tab" id="tab-docs" onclick="showTab('docs')">Tilbud &amp; Faktura</div>
-  <div class="tab" id="tab-photos" onclick="showTab('photos')">📷 Billeder</div>
-  <div class="tab" id="tab-qa" onclick="showTab('qa')">🛡 KS</div>
+  ${portalTabsHtml}
 </div>
-<div class="panel active" id="panel-pipeline">${pipelineHtml}</div>
-<div class="panel" id="panel-timeline">${ganttHtml}</div>
-<div class="panel" id="panel-docs">${docsHtml}</div>
-<div class="panel" id="panel-photos">${photosHtml}</div>
-<div class="panel" id="panel-qa">${qaHtml}</div>
+${portalPanelsHtml}
 <div class="foot">Spørgsmål? Kontakt ${esc(companyName)} direkte.</div>
 </div>
 <div class="tm-backdrop" id="tm-backdrop" onclick="if(event.target===this)closeTaskModal()">
@@ -24906,7 +25106,7 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 function showTab(name){
-  ['pipeline','timeline','docs','photos','qa'].forEach(function(n){
+  ${JSON.stringify(PORTAL_TABS.map(t => t.key))}.forEach(function(n){
     document.getElementById('tab-'+n).classList.toggle('active',n===name);
     document.getElementById('panel-'+n).classList.toggle('active',n===name);
   });
