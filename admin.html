@@ -8140,8 +8140,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <div class="mo" id="pd-task-detail-modal">
   <!-- RUNDE CE (Martins ønske #2: "lav popup lidt mere bred så det hele står
        pænere") — bredere end den gamle 560px, så de nye sektioner (custom
-       fields, KS) ikke klemmer. -->
-  <div class="modal gd-modal" style="max-width:820px">
+       fields, KS) ikke klemmer.
+       RUNDE CL (okt. 2026, Martins fejlrapport: "lav popuppen bredere for at
+       det ser ud som på det billede jeg har vist") — FEJL FUNDET: der stod
+       kun "max-width:820px" her, men den delte .modal-klasse sætter
+       "width:420px" (se CSS ved .modal), og en EKSPLICIT width på 420px
+       vinder altid over en max-width på 820px (max-width begrænser kun en
+       bredde der ellers ville være større — den udvider aldrig en mindre,
+       fast bredde). Popup'en har derfor reelt været låst fast på 420px lige
+       siden RUNDE CE, selvom den runde netop handlede om at gøre den bredere
+       — "width:" skal altid sættes med, ikke kun "max-width:", for at det
+       virker (samme mønster som fx #cap-timeline-modal/.captl-modal
+       herover). Sat til samme bredde-stil som app'ens andre store popups. -->
+  <div class="modal gd-modal" style="width:min(960px,95vw);max-width:95vw">
     <div class="gd-head">
       <!-- RUNDE L (Martins ønske #1): farvet prik der følger opgavens status,
            samme idé som type-prikken i Tidslinje-drawerens hoved (tl-drawer-type-dot). -->
