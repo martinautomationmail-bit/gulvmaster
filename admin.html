@@ -5322,10 +5322,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-period-pop" id="qz-quotes-period-pop" style="display:none"></div>
       </div>
     </div>
-    <!-- RUNDE CJ: skiftet tilbage til "Rolig kant" (.bly-flat-list) —
-         Martins ønske: "den simple version" alle andre steder, da det
-         farverige "rige kort"-design virkede rodet. -->
-    <div id="qz-quotes-body" class="bly-flat-list"></div>
+    <!-- RUNDE CK (Martins ønske: "gå tilbage til den gamle stil... ligesom
+         den der er under Timetracking den er super") — en rigtig tabel,
+         samme stil/klasse (.bly-table) som Timetracking-siden Martin pegede
+         på som forbilledet, i stedet for kort (hverken "rige" eller "flade"). -->
+    <table class="bly-table">
+      <thead><tr><th>Tilbud</th><th>Status</th><th>Dato</th><th class="num">Total</th><th></th></tr></thead>
+      <tbody id="qz-quotes-body"></tbody>
+    </table>
   </section>
 
 <section class="page" id="page-qz-invoices">
@@ -5369,9 +5373,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-period-pop" id="qz-invoices-period-pop" style="display:none"></div>
       </div>
     </div>
-    <!-- RUNDE CJ: skiftet tilbage til "Rolig kant" (.bly-flat-list), jf.
-         Tilbud — Martin ønsker den simple stil her også. -->
-    <div id="qz-invoices-body" class="bly-flat-list"></div>
+    <!-- RUNDE CK — rigtig tabel (.bly-table), jf. Tilbud/Timetracking. -->
+    <table class="bly-table">
+      <thead><tr><th>Faktura</th><th>Status</th><th>Forfald</th><th class="num">Total</th><th class="num">Betalt</th><th class="num">Rest</th><th></th></tr></thead>
+      <tbody id="qz-invoices-body"></tbody>
+    </table>
   </section>
 
 <section class="page" id="page-qz-pending-invoicing">
@@ -5399,9 +5405,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-period-pop" id="qz-pending-period-pop" style="display:none"></div>
       </div>
     </div>
-    <!-- RUNDE CJ: skiftet tilbage til "Rolig kant" (.bly-flat-list), jf.
-         Tilbud/Faktura. -->
-    <div id="qz-pending-body" class="bly-flat-list"></div>
+    <!-- RUNDE CK — rigtig tabel (.bly-table), jf. Tilbud/Fakturaer/Timetracking,
+         for ensartethed på tværs af alle "sags-økonomi"-listerne. -->
+    <table class="bly-table">
+      <thead><tr><th>Sag</th><th>Status</th><th>Periode</th><th class="num">Tilbud total</th><th class="num">Faktureret</th><th class="num">Resterende</th><th></th></tr></thead>
+      <tbody id="qz-pending-body"></tbody>
+    </table>
   </section>
 
 <section class="page" id="page-qz-products">
@@ -7094,13 +7103,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-period-pop" id="proj-period-pop" style="display:none"></div>
       </div>
     </div>
-    <!-- RUNDE CJ: skiftet tilbage til "Rolig kant" (.bly-flat-list), jf.
-         Tilbud/Fakturaer/Skal faktureres. Status er stadig en RIGTIG
-         <select> (ikke kun en farvet prik) — Martin bad specifikt om at
-         kunne ændre status direkte i listen uden at åbne sagen (RUNDE R),
-         det skal den enkle stil heller ikke regressere. -->
+    <!-- RUNDE CK (Martins ønske: "gå tilbage til den gamle stil... samme ved
+         projekter... ligesom Timetracking") — rigtig tabel (.bly-table).
+         Status er stadig en RIGTIG <select> i sin egen kolonne (ikke kun en
+         farvet prik) — Martin bad specifikt om at kunne ændre status direkte
+         i listen uden at åbne sagen (RUNDE R), det skal tabel-stilen heller
+         ikke regressere. -->
     <div id="proj-table">
-      <div id="proj-body" class="bly-flat-list"></div>
+      <table class="bly-table">
+        <thead><tr><th>Sag</th><th>Kontakt</th><th>Status</th><th class="num">Opgaver</th><th class="num">Tid</th><th class="num">Billeder</th><th class="num">Pris</th><th></th></tr></thead>
+        <tbody id="proj-body"></tbody>
+      </table>
     </div>
     <!-- Kanban-board — samme Billy-stils klasser (.crmp-board/.crmp-col/.crmp-card)
          som CRM-pipelinens Kanban-board, for ens udseende/adfærd i hele appen.
@@ -22830,7 +22843,7 @@ function renderQzPendingInvoicing(){
   }).join('');
   var body=document.getElementById('qz-pending-body');
   if(!list.length){
-    body.innerHTML='<div class="bly-list-empty">'+(qzPendingData.length?'Ingen tilbud mangler fakturering i den valgte periode':'Alt er faktureret — ingen tilbud mangler fakturering lige nu 🎉')+'</div>';
+    body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:32px">'+(qzPendingData.length?'Ingen tilbud mangler fakturering i den valgte periode':'Alt er faktureret — ingen tilbud mangler fakturering lige nu 🎉')+'</td></tr>';
     return;
   }
   // Sorteres efter tidligste planlagte dato (de mest "presserende" for
@@ -22857,25 +22870,24 @@ function renderQzPendingInvoicing(){
     // Let, grøn baggrundstone på afsluttede sager — samme farvepar som resten
     // af appens "success soft"-badges (se fx .fin-badge.ok) — så de ægte
     // faktureringsklare kort springer i øjnene uden at skulle læse teksten.
-    // RUNDE CJ: flad "Rolig kant"-række, jf. Tilbud/Fakturaer. Den grønne
-    // baggrundstone for afsluttede sager er bevaret (informativ, ikke bare
-    // pynt) — nu som en svag tint på selve den flade række.
-    var cardStyle=x.project_status==='done'?'background:#F0FDF4;border-color:#BBF7D0;':'';
-    return '<div class="bly-flat-row clickable" style="'+cardStyle+'" onclick="location.hash=\''+href+'\'">'
-      +'<div class="bly-flat-main"><div class="name">'+esc(x.job_name||'(uden navn)')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')+'</div>'
-      +'<div class="sub2">'+esc(x.quote_number||'–')+' · '+qzPendingPeriodLabel(x.task_ranges)+'</div></div>'
-      +'<div class="bly-flat-col" style="width:140px"><span class="bly-status-dot" style="background:'+dot+'"></span>'+esc(statusLabel)+'</div>'
-      +'<div style="display:flex;gap:14px">'
-      +'<div style="text-align:right"><div class="bly-flat-num" style="font-size:12.5px">'+krFmt(Number(x.total))+'</div><div class="sub" style="font-size:10px">Tilbud total</div></div>'
-      +'<div style="text-align:right"><div class="bly-flat-num" style="font-size:12.5px">'+krFmt(invoicedTotal)+'</div><div class="sub" style="font-size:10px">Faktureret</div></div>'
-      +'<div style="text-align:right"><div class="bly-flat-num" style="font-size:12.5px">'+krFmt(Number(x.remaining_total))+(isOverridden?' <span class="tag" title="Manuelt rettet fra '+krFmt(Number(x.remaining_total_computed))+'">✎</span>':'')+'</div><div class="sub" style="font-size:10px">Resterende</div></div>'
-      +'</div>'
-      +'<div class="bly-flat-action" onclick="event.stopPropagation()"><div class="qz-row-actions">'
+    // RUNDE CK — rigtig tabelrække (.bly-row), jf. Tilbud/Fakturaer/Timetracking.
+    // Den grønne baggrundstone for afsluttede sager er bevaret (informativ,
+    // ikke bare pynt) — nu som en svag tint på selve tabelrækken.
+    var rowStyle=x.project_status==='done'?'background:#F0FDF4;':'';
+    return '<tr class="bly-row" style="cursor:pointer;'+rowStyle+'" onclick="location.hash=\''+href+'\'">'
+      +'<td><div style="font-weight:700">'+esc(x.job_name||'(uden navn)')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')+'</div>'
+      +'<div class="sub" style="font-size:11.5px;margin-top:2px">'+esc(x.quote_number||'–')+'</div></td>'
+      +'<td><span class="bly-status-dot" style="background:'+dot+'"></span>'+esc(statusLabel)+'</td>'
+      +'<td>'+qzPendingPeriodLabel(x.task_ranges)+'</td>'
+      +'<td class="num">'+krFmt(Number(x.total))+'</td>'
+      +'<td class="num">'+krFmt(invoicedTotal)+'</td>'
+      +'<td class="num">'+krFmt(Number(x.remaining_total))+(isOverridden?' <span class="tag" title="Manuelt rettet fra '+krFmt(Number(x.remaining_total_computed))+'">✎</span>':'')+'</td>'
+      +'<td onclick="event.stopPropagation()"><div class="qz-row-actions">'
       +'<a class="qz-icon-btn" href="'+href+'" title="Åbn tilbud">✎</a>'
       +'<button class="qz-icon-btn" onclick="qzPendingEditPrice('+x.id+')" title="Ret hurtigt det resterende beløb i denne liste (rører ikke selve tilbuddet)">💰</button>'
       +'<button class="qz-icon-btn" onclick="qzPendingDismiss('+x.id+')" title="Fjern fra denne liste (sletter IKKE tilbuddet)">🗑</button>'
-      +'</div></div>'
-      +'</div>';
+      +'</div></td>'
+      +'</tr>';
   }).join('');
 }
 // RUNDE H #312 (Martins ønske: "Lav en slette knap ikke så jeg sletter
@@ -28389,7 +28401,7 @@ function renderPjProjects(){
   });
   document.getElementById('proj-count').textContent=list.length+' projekt'+(list.length===1?'':'er');
   var body=document.getElementById('proj-body');
-  if(!list.length){body.innerHTML='<div class="bly-list-empty">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når et tilbud godkendes, eller opret ét manuelt med "+ Nyt projekt"')+'</div>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:32px">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når et tilbud godkendes, eller opret ét manuelt med "+ Nyt projekt"')+'</td></tr>';return;}
   // Status-dropdown direkte i listen (sep. 2026, Martins ønske: "jeg burde kunne
   // vælge status via dropdown, det gør jeg ikke behøves at åbne alle sagerne for
   // at ændre status — hurtig oprydning"). onclick="event.stopPropagation()" på
@@ -28416,29 +28428,24 @@ function renderPjProjects(){
     var price=p.quote_total!=null?p.quote_total:p.invoice_total;
     var contact=[p.customer_address,p.customer_email,p.customer_phone].filter(Boolean).join(' · ');
     var meta=pjStageMeta(p.status);
-    // RUNDE CJ: flad "Rolig kant"-række, jf. de andre "sags-økonomi"-lister.
-    // Status er stadig den ÆGTE <select> (pjRowStatusSelect) — ikke en
-    // farvet prik — se CSS-kommentaren ved #proj-table-containeren.
-    return '<div class="bly-flat-row clickable" onclick="openProjectDetail('+p.id+')" oncontextmenu="pjRowCtxMenu(event,'+p.id+')">'
-      +'<div class="bly-flat-main"><div class="name">'+esc(p.name)+''
+    // RUNDE CK — rigtig tabelrække (.bly-row), jf. Tilbud/Fakturaer/
+    // Timetracking. Status er stadig den ÆGTE <select> (pjRowStatusSelect)
+    // — ikke en farvet prik — se CSS-kommentaren ved #proj-table-containeren.
+    return '<tr class="bly-row" style="cursor:pointer" onclick="openProjectDetail('+p.id+')" oncontextmenu="pjRowCtxMenu(event,'+p.id+')">'
+      +'<td><div style="font-weight:700">'+esc(p.name)+''
       +(p.job_number?' <span class="tag" title="Sagsnummer">#'+esc(p.job_number)+'</span>':'')
       +(p.project_type?' <span class="tag" title="Faggruppe" style="background:var(--bly-accent-soft);color:var(--bly-accent)">🏷️ '+esc(p.project_type)+'</span>':'')
-      +(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</div>'
-      +'<div class="sub2">'+esc(contact||'–')+'</div></div>'
-      +'<div style="display:flex;gap:12px">'
-      +'<div style="text-align:right"><div class="bly-flat-num" style="font-size:12.5px">'+(p.task_count||0)+'</div><div class="sub" style="font-size:10px">Opgaver</div></div>'
-      +'<div style="text-align:right"><div class="bly-flat-num" style="font-size:12.5px">'+(p.time_entry_count||0)+'</div><div class="sub" style="font-size:10px">Tid</div></div>'
-      +'<div style="text-align:right"><div class="bly-flat-num" style="font-size:12.5px">'+(p.photo_count||0)+'</div><div class="sub" style="font-size:10px">Billeder</div></div>'
-      +'<div style="text-align:right"><div class="bly-flat-num" style="font-size:12.5px">'+(price!=null?krFmt(price):'–')+'</div><div class="sub" style="font-size:10px">Pris</div></div>'
-      +'</div>'
-      +'<div class="bly-flat-action" onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:6px">'
-      +pjRowStatusSelect(p)
-      +'<div class="qz-row-actions"><button class="qz-icon-btn" onclick="openProjectDetail('+p.id+')" title="Åbn">→</button>'
-      // RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter") —
-      // stopPropagation sidder nu på HELE action-området ovenfor.
-      +'<button class="qz-icon-btn" onclick="deletePjProject('+p.id+')" title="Slet sagen">🗑</button></div>'
-      +'</div>'
-      +'</div>';
+      +(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</div></td>'
+      +'<td>'+esc(contact||'–')+'</td>'
+      +'<td onclick="event.stopPropagation()">'+pjRowStatusSelect(p)+'</td>'
+      +'<td class="num">'+(p.task_count||0)+'</td>'
+      +'<td class="num">'+(p.time_entry_count||0)+'</td>'
+      +'<td class="num">'+(p.photo_count||0)+'</td>'
+      +'<td class="num">'+(price!=null?krFmt(price):'–')+'</td>'
+      +'<td onclick="event.stopPropagation()"><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openProjectDetail('+p.id+')" title="Åbn">→</button>'
+      // RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter").
+      +'<button class="qz-icon-btn" onclick="deletePjProject('+p.id+')" title="Slet sagen">🗑</button></div></td>'
+      +'</tr>';
   }).join('');
 }
 async function openProjectDetail(id){
@@ -31417,7 +31424,7 @@ function renderQzQuotes(){
   });
   document.getElementById('qz-quotes-count').textContent='Tilbud ('+list.length+')';
   var body=document.getElementById('qz-quotes-body');
-  if(!list.length){body.innerHTML='<div class="bly-list-empty">'+(q?'Ingen tilbud fundet':'Ingen tilbud endnu')+'</div>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--bly-sub);padding:32px">'+(q?'Ingen tilbud fundet':'Ingen tilbud endnu')+'</td></tr>';return;}
   body.innerHTML=list.map(function(x){
     var href='#quotes/tilbud/'+x.id;
     var st=QZ_QUOTE_STATUS[x.status]||{label:x.status||'',dot:'var(--bly-dot-total)'};
@@ -31426,21 +31433,21 @@ function renderQzQuotes(){
     // <a href="#quotes/tilbud/…">, så højreklik/ctrl-klik virker direkte på
     // selve ikonet. ⧉/🗑 er bevidst IKKE links — de udfører en handling med
     // det samme og giver ikke mening at "åbne i en ny fane".
-    // RUNDE CJ (Martins ønske: "den simple version" alle andre steder) —
-    // samme flade "Rolig kant"-række som Kunder/Skabeloner, i stedet for
-    // det farverige "Rige kort"-design. Status vises som lille prik+label
-    // (ligesom qzStatusDot bruges andre steder) i stedet for en pille.
-    return '<div class="bly-flat-row clickable" onclick="location.hash=\''+href+'\'" oncontextmenu="qzQuoteCtxMenu(event,'+x.id+')">'
-      +'<div class="bly-flat-main"><div class="name">'+esc(x.job_name||'(uden navn)')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')+'</div>'
-      +'<div class="sub2">'+esc(x.quote_number||'–')+' · '+esc(String(x.created_at||'').slice(0,10))+'</div></div>'
-      +'<div class="bly-flat-col" style="width:110px"><span class="bly-status-dot" style="background:'+st.dot+'"></span>'+esc(st.label)+'</div>'
-      +'<div class="bly-flat-num" style="width:90px">'+krFmt(Number(x.total))+'</div>'
-      +'<div class="bly-flat-action" onclick="event.stopPropagation()"><div class="qz-row-actions">'
+    // RUNDE CK (Martins ønske: "gå tilbage til den gamle stil ... ligesom
+    // Timetracking") — en rigtig tabelrække (.bly-row), samme mønster som
+    // Timetracking-tabellen, i stedet for kort/rækker-som-kort.
+    return '<tr class="bly-row" style="cursor:pointer" onclick="location.hash=\''+href+'\'" oncontextmenu="qzQuoteCtxMenu(event,'+x.id+')">'
+      +'<td><div style="font-weight:700">'+esc(x.job_name||'(uden navn)')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')+'</div>'
+      +'<div class="sub" style="font-size:11.5px;margin-top:2px">'+esc(x.quote_number||'–')+'</div></td>'
+      +'<td><span class="bly-status-dot" style="background:'+st.dot+'"></span>'+esc(st.label)+'</td>'
+      +'<td>'+esc(String(x.created_at||'').slice(0,10))+'</td>'
+      +'<td class="num">'+krFmt(Number(x.total))+'</td>'
+      +'<td onclick="event.stopPropagation()"><div class="qz-row-actions">'
       +'<a class="qz-icon-btn" href="'+href+'" title="Åbn">✎</a>'
       +'<button class="qz-icon-btn" onclick="duplicateQzQuote('+x.id+')" title="Kopiér tilbud — samme kunde/linjer/priser i et nyt, uafhængigt tilbud">⧉</button>'
       +(x.status!=='converted'?'<button class="qz-icon-btn" onclick="deleteQzQuote('+x.id+')" title="Slet">🗑</button>':'')
-      +'</div></div>'
-      +'</div>';
+      +'</div></td>'
+      +'</tr>';
   }).join('');
 }
 // Højreklik-menu på tilbudsrækken — samme genbrugte #ctx-menu/showCtxMenu()
@@ -33498,7 +33505,7 @@ function renderQzInvoices(){
   });
   document.getElementById('qz-invoices-count').textContent='Fakturaer ('+list.length+')';
   var body=document.getElementById('qz-invoices-body');
-  if(!list.length){body.innerHTML='<div class="bly-list-empty">'+(q?'Ingen fakturaer fundet':'Ingen fakturaer endnu')+'</div>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:32px">'+(q?'Ingen fakturaer fundet':'Ingen fakturaer endnu')+'</td></tr>';return;}
   body.innerHTML=list.map(function(x){
     var href='#qz-invoices/faktura/'+x.id;
     var st=QZ_INVOICE_STATUS[x.status]||{label:x.status||'',dot:'var(--bly-dot-total)'};
@@ -33509,23 +33516,18 @@ function renderQzInvoices(){
     // Forfaldsdato vist i rødt når den er overskredet og fakturaen stadig
     // skylder noget — rent visuelt, rører ikke ved selve status-logikken.
     var isOverdue=(x.status==='unpaid'||x.status==='partial')&&x.due_date&&x.due_date<iso(new Date());
-    // RUNDE CJ: samme flade "Rolig kant"-række som Tilbud. De 3 beløb
-    // (Total/Betalt/Rest) er bevaret, bare uden stat-kort-pyntet — hver
-    // vist som lille label over tal, så det stadig er let at se forskellen
-    // mellem dem uden det "rodede" rige-kort-look.
-    return '<div class="bly-flat-row clickable" onclick="location.hash=\''+href+'\'" oncontextmenu="qzInvoiceCtxMenu(event,'+x.id+')">'
-      +'<div class="bly-flat-main"><div class="name">'+esc(x.job_name||'(uden navn)')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')+'</div>'
-      +'<div class="sub2">'+esc(x.invoice_number||'–')+' · '+esc(String(x.created_at||'').slice(0,10))
-      +(x.due_date?' · <span'+(isOverdue?' style="color:#DC2626;font-weight:700"':'')+'>Forfald '+esc(x.due_date)+'</span>':'')+'</div></div>'
-      +'<div class="bly-flat-col" style="width:100px"><span class="bly-status-dot" style="background:'+(isOverdue?'var(--bly-dot-overdue)':st.dot)+'"></span>'+esc(st.label)+'</div>'
-      +'<div style="display:flex;gap:14px">'
-      +'<div style="text-align:right"><div class="bly-flat-num" style="font-size:12.5px">'+krFmt(Number(x.total))+'</div><div class="sub" style="font-size:10px">Total</div></div>'
-      +'<div style="text-align:right"><div class="bly-flat-num" style="font-size:12.5px">'+krFmt(Number(x.paid_total))+'</div><div class="sub" style="font-size:10px">Betalt</div></div>'
-      +'<div style="text-align:right"><div class="bly-flat-num" style="font-size:12.5px">'+krFmt(Number(x.remaining))+'</div><div class="sub" style="font-size:10px">Rest</div>'+creditedNote+'</div>'
-      +'</div>'
+    // RUNDE CK — rigtig tabelrække, jf. Tilbud/Timetracking.
+    return '<tr class="bly-row" style="cursor:pointer" onclick="location.hash=\''+href+'\'" oncontextmenu="qzInvoiceCtxMenu(event,'+x.id+')">'
+      +'<td><div style="font-weight:700">'+esc(x.job_name||'(uden navn)')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')+'</div>'
+      +'<div class="sub" style="font-size:11.5px;margin-top:2px">'+esc(x.invoice_number||'–')+'</div></td>'
+      +'<td><span class="bly-status-dot" style="background:'+(isOverdue?'var(--bly-dot-overdue)':st.dot)+'"></span>'+esc(st.label)+'</td>'
+      +'<td'+(isOverdue?' style="color:#DC2626;font-weight:700"':'')+'>'+(x.due_date?esc(x.due_date):'–')+'</td>'
+      +'<td class="num">'+krFmt(Number(x.total))+'</td>'
+      +'<td class="num">'+krFmt(Number(x.paid_total))+'</td>'
+      +'<td class="num">'+krFmt(Number(x.remaining))+creditedNote+'</td>'
       // RUNDE BG — se kommentaren ved samme ændring i renderQzQuotes().
-      +'<div class="bly-flat-action" onclick="event.stopPropagation()"><div class="qz-row-actions"><a class="qz-icon-btn" href="'+href+'" title="Åbn">✎</a></div></div>'
-      +'</div>';
+      +'<td onclick="event.stopPropagation()"><div class="qz-row-actions"><a class="qz-icon-btn" href="'+href+'" title="Åbn">✎</a></div></td>'
+      +'</tr>';
   }).join('');
 }
 // Højreklik-menu på fakturarækken — samme genbrugte #ctx-menu/showCtxMenu().
