@@ -216,7 +216,11 @@ textarea.qe-ai-chat-input{resize:none;min-height:38px;max-height:160px;overflow-
 .sidebar-nav .tab-navdrop,.sidebar-bottom .tab-navdrop{display:flex;flex-direction:column;gap:0;align-items:stretch}
 .sidebar-nav .tab-navdrop .stab-row,.sidebar-bottom .tab-navdrop .stab-row{display:flex;align-items:center;gap:2px}
 .sidebar-nav .tab-navdrop .tab,.sidebar-bottom .tab-navdrop .tab{flex:1;min-width:0;border-radius:var(--bly-r-sm);padding-right:6px}
-.sidebar-nav .tab-navdrop .navdrop-caret,.sidebar-bottom .tab-navdrop .navdrop-caret{border:0;background:transparent;color:var(--bly-sub);border-radius:6px;padding:6px 7px;font-size:9px;cursor:pointer;flex-shrink:0;transition:transform .15s ease,background .12s,color .12s}
+/* RUNDE CM (Martins ønske: "lav pilen til menuens dropdown lidt større") —
+   font-size var 9px, hvilket gjorde ▾-pilen svær at se/ramme ved siden af
+   fanenavnet. Hævet til 13px + lidt mere luft, uden at ændre selve layoutet
+   (samme ikon, samme placering). */
+.sidebar-nav .tab-navdrop .navdrop-caret,.sidebar-bottom .tab-navdrop .navdrop-caret{border:0;background:transparent;color:var(--bly-sub);border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer;flex-shrink:0;transition:transform .15s ease,background .12s,color .12s}
 .sidebar-nav .tab-navdrop .navdrop-caret:hover,.sidebar-bottom .tab-navdrop .navdrop-caret:hover{color:var(--bly-ink);background:var(--bly-hover)}
 .sidebar-nav .tab-navdrop:has(.navdrop-menu.open) .navdrop-caret,.sidebar-bottom .tab-navdrop:has(.navdrop-menu.open) .navdrop-caret{transform:rotate(180deg)}
 .sidebar-nav .tab-navdrop:has(.navdrop-btn.active) .stab-row .tab,.sidebar-bottom .tab-navdrop:has(.navdrop-btn.active) .stab-row .tab{color:var(--bly-accent);background:var(--bly-accent-soft);font-weight:800}
@@ -3950,12 +3954,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="tab" href="#projects" data-page="projects" id="projects-tab-btn"><span class="stab-icon">🏗️</span><span class="stab-label">Projekter</span></a>
         <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
       </div>
+      <!-- RUNDE CM (Martins ønske: "der skal kun være sagsstyring og gantkort" i
+           ▾-dropdown'en) — KS-skabeloner/Kontaktformularer/Sags-skabeloner er
+           bevidst fjernet HERFRA, men findes stadig præcis som før som faner
+           oppe på selve Projekter-siden (se .bly-segtab-stripen ved
+           #page-projects), så intet er faktisk utilgængeligt — kun dropdown'en
+           er renset for dubleret navigation. -->
       <div class="navdrop-menu">
-        <a class="navdrop-item" href="#projects" data-page="projects" data-projtab-jump="list">🏗️ Sagsoversigt</a>
-        <a class="navdrop-item" href="#gantt" data-page="projects" data-projtab-jump="gantt">📶 Gantt</a>
-        <a class="navdrop-item" href="#projects/ks-skabeloner" data-page="projects" data-projtab-jump="qa-templates">📋 KS-skabeloner</a>
-        <a class="navdrop-item" href="#projects/kontaktformularer" data-page="projects" data-projtab-jump="contact-templates">📇 Kontaktformularer</a>
-        <a class="navdrop-item" href="#projects/sags-skabeloner" data-page="projects" data-projtab-jump="project-templates">📦 Sags-skabeloner</a>
+        <a class="navdrop-item" href="#projects" data-page="projects" data-projtab-jump="list">🏗️ Sagsstyring</a>
+        <a class="navdrop-item" href="#gantt" data-page="projects" data-projtab-jump="gantt">📶 Gantkort</a>
       </div>
     </div>
 
@@ -6037,10 +6044,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="crm-count">Kunder</span><input type="text" id="crm-search" class="bly-search" placeholder="Søg — navn, pris, email eller telefon..." style="width:280px"></div>
     <div class="bly-toolbar-right"><button class="bly-btn" id="crm-new-btn" type="button">+ Ny kunde</button></div>
   </div>
-  <!-- "Rolig kant" (se CSS-kommentaren ved .bly-flat-list) — valgt til Kunder
-       fordi listen er kontaktdata uden en stærk status-dimension at vise
-       frem; en kompakt bordered+shadowed række pr. kunde er nok. -->
-  <div id="crm-body" class="bly-flat-list"></div>
+  <!-- RUNDE CM (Martin: "lav kundelisten tilbage til den gamle stil ...
+       ligesom du har ved tilbud nu") — tilbage til en rigtig .bly-table (se
+       CSS-kommentaren ved table.bly-table), samme opskrift som Tilbud/
+       Fakturaer/Projekter blev konverteret til tidligere denne runde.
+       Erstatter den tidligere "Rolig kant" (.bly-flat-list) forsøgsstil. -->
+  <table class="bly-table">
+    <thead><tr><th>Kunde</th><th>Kontakt</th><th class="num">Skyldigt</th><th></th></tr></thead>
+    <tbody id="crm-body"></tbody>
+  </table>
 </section>
 
 <!-- KUNDEDETALJE — klik på en kunde i Kunder-listen. Viser al data samlet:
@@ -11679,21 +11691,50 @@ function renderPlan(){
   // konstant blive nulstillet under dem.
   if(!window._planInitialScrollDone){
     window._planInitialScrollDone=true;
-    requestAnimationFrame(function(){
+    // RUNDE CM (Martin, med video: "nogle gange starter den fra uge 34 eller 37 ...
+    // trykker du på pilen i dag og så ruller den frem og tilbage ... trykker du
+    // igen så rammer den rigtigt") — root cause: et ENKELT requestAnimationFrame
+    // var ikke altid nok til at sidebar/layout var helt færdigt sat før vi målte
+    // curMondayTh.offsetLeft, så målingen af og til ramte en for tidlig/forkert
+    // bredde og landede et vilkårligt stykke inde i vinduet (ofte tæt på venstre
+    // kant). Det udløste DEREFTER bindPlanScrollTracking()'s "er vi tæt på kanten
+    // af det indlæste vindue?"-logik (se detect() nedenfor), som troede brugeren
+    // selv havde scrollet derhen, udvidede vinduet og gentegnede — det er den
+    // kaskade der så ud som "ruller frem og tilbage" og krævede et ekstra klik på
+    // "I dag" for at rette op. Rettet med to lag: (1) window._planPositioning
+    // sættes mens vi placerer os, så detect() helt springer over kant-logikken
+    // indtil vi er landet korrekt — ingen kaskade kan starte; (2) et dobbelt
+    // requestAnimationFrame plus et selvkorrigerende eftertjek, så selv hvis
+    // FØRSTE måling skulle være forkert, retter vi stille op uden at brugeren
+    // skal gøre noget — ingen synlig frem-og-tilbage, intet ekstra klik.
+    window._planPositioning=true;
+    var _planPositionToToday=function(){
       var outer=document.getElementById('plan-board-outer');
-      // FEJL RETTET: brugte tidligere ".today-th" (dagens EGEN dag-kolonne) som mål —
-      // det skubber ugens tidligere dage uden for skærmen når "i dag" ligger sidst i
-      // ugen (fx fredag), så man kom til at se NÆSTE uge i stedet for hele den
-      // nuværende uge. Nu bruges mandag i den uge vi er i som mål, så hele
-      // ugen (man-søn) er synlig med det samme.
       var curMondayTh=document.querySelector('#daily-head th[data-plan-monday="'+iso(mon(new Date()))+'"]');
+      if(!outer||!curMondayTh){
+        if(outer)outer.classList.remove('plan-positioning');
+        window._planPositioning=false;
+        return;
+      }
       // behavior:'instant' (IKKE 'smooth', som #plan-board-outer ellers bruger til
       // Forrige/Næste-knapperne) — ellers animerer browseren en lang, hakkende
       // glidetur hen over ~26 ugers kolonner samtidig med at hele tabellen stadig
-      // bliver bygget, hvilket er præcis det der så ud som "scroller frem og tilbage".
-      if(outer&&curMondayTh)outer.scrollTo({left:Math.max(0,curMondayTh.offsetLeft-40),behavior:'instant'});
-      if(outer)outer.classList.remove('plan-positioning');
-    });
+      // bliver bygget.
+      outer.scrollTo({left:Math.max(0,curMondayTh.offsetLeft-40),behavior:'instant'});
+      requestAnimationFrame(function(){
+        // Eftertjek: mål igen efter endnu et billede (nu er sidebar/layout med
+        // sikkerhed helt færdigt) og korrigér stille, hvis det første forsøg var
+        // en smule ved siden af.
+        var freshTh=document.querySelector('#daily-head th[data-plan-monday="'+iso(mon(new Date()))+'"]');
+        if(outer&&freshTh){
+          var freshTarget=Math.max(0,freshTh.offsetLeft-40);
+          if(Math.abs(outer.scrollLeft-freshTarget)>4)outer.scrollTo({left:freshTarget,behavior:'instant'});
+        }
+        if(outer)outer.classList.remove('plan-positioning');
+        window._planPositioning=false;
+      });
+    };
+    requestAnimationFrame(function(){requestAnimationFrame(_planPositionToToday);});
   }
   bindPlanScrollTracking();
 }
@@ -11987,6 +12028,13 @@ function bindPlanScrollTracking(){
   var isFirstDetection=true,ticking=false;
   function detect(){
     ticking=false;
+    // RUNDE CM — spring kant-udvidelsen helt over mens renderPlan() selv er i
+    // gang med at placere boardet ved "i dag" (window._planPositioning, sat i
+    // renderPlan()). Det var denne logik der — udløst af en programmatisk
+    // scroll den fejlagtigt troede var brugerens egen — kunne starte en
+    // kaskade af gentegninger og give indtryk af at boardet "ruller frem og
+    // tilbage" ved åbning. Se den store kommentar ved renderPlan().
+    if(window._planPositioning)return;
     var mondays=Array.prototype.slice.call(document.querySelectorAll('#daily-head th[data-plan-monday]')).filter(function(th){return th.dataset.planMonday;});
     if(!mondays.length)return;
     var target=mondays[0];
@@ -24183,7 +24231,7 @@ function renderCrmCustomers(){
   var q=(document.getElementById('crm-search').value||'').trim();
   document.getElementById('crm-count').textContent=list.length+' kunde'+(list.length===1?'':'r');
   var body=document.getElementById('crm-body');
-  if(!list.length){body.innerHTML='<div class="bly-list-empty">'+(q?'Ingen kunder fundet':'Ingen kunder endnu — opret den første')+'</div>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:32px">'+(q?'Ingen kunder fundet':'Ingen kunder endnu — opret den første')+'</td></tr>';return;}
   // RUNDE R (Martins ønske: "skyldige beløb" skal kunne SES, "og andre steder")
   // — "Skyldigt"-beløbet viser balance_due fra GET /api/crm/customers (se
   // CUSTOMER_BALANCE_DUE_SUBQUERY i server.js). Rød når kunden reelt skylder
@@ -24192,12 +24240,12 @@ function renderCrmCustomers(){
   body.innerHTML=list.map(function(c){
     var owes=Number(c.balance_due)||0;
     var contactParts=[c.phone,c.email,c.address].filter(Boolean).join(' · ')||'–';
-    return '<div class="bly-flat-row clickable" onclick="openCustomerDetail('+c.id+')" oncontextmenu="crmCustomerCtxMenu(event,'+c.id+')">'
-      +'<div class="bly-flat-main"><div class="name">'+(c.is_company?'🏢 ':'')+esc(c.name)+(c.is_company&&c.cvr?' <span class="sub">· CVR '+esc(c.cvr)+'</span>':'')+'</div>'
-      +'<div class="sub2">'+esc(contactParts)+'</div></div>'
-      +'<div class="bly-flat-num" style="'+(owes>0?'color:#B91C1C':'color:var(--bly-sub);font-weight:600')+'">'+krFmt(owes)+'</div>'
-      +'<div class="bly-flat-action"><button class="qz-icon-btn" onclick="event.stopPropagation();openCrmModal('+c.id+')" title="Redigér">✎</button></div>'
-      +'</div>';
+    return '<tr class="bly-row" style="cursor:pointer" onclick="openCustomerDetail('+c.id+')" oncontextmenu="crmCustomerCtxMenu(event,'+c.id+')">'
+      +'<td><div>'+(c.is_company?'🏢 ':'')+esc(c.name)+(c.is_company&&c.cvr?' <span class="sub">· CVR '+esc(c.cvr)+'</span>':'')+'</div></td>'
+      +'<td class="sub">'+esc(contactParts)+'</td>'
+      +'<td class="num" style="'+(owes>0?'color:#B91C1C':'color:var(--bly-sub);font-weight:600')+'">'+krFmt(owes)+'</td>'
+      +'<td onclick="event.stopPropagation()"><button class="qz-icon-btn" onclick="openCrmModal('+c.id+')" title="Redigér">✎</button></td>'
+      +'</tr>';
   }).join('');
 }
 // Højreklik-menu på kunderækken — samme genbrugte #ctx-menu/showCtxMenu() som
@@ -25553,21 +25601,22 @@ function crmpCardHtml(c,pipeline,defs){
   // KUN når stage_id rent faktisk ændres, ikke ved enhver anden redigering.
   var datesLine='<span title="Oprettet">🕓 '+esc(fmtRelativeDa(c.created_at))+'</span>'
     +'<span title="Kom i denne fase" style="margin-left:8px">➜ '+esc(fmtRelativeDa(c.stage_changed_at||c.created_at))+'</span>';
-  // RUNDE BN — badge når kunden har uploadet billeder via et svar-link (se
-  // /svar/:token), synligt her uden at åbne handlen/leadet.
-  var photoBadge=c.has_customer_photos?'<span class="crmp-card-photo-badge" title="Kunden har uploadet billeder">📸</span>':'';
-  // NYT (okt. 2026, Martins ønske: "et lille tegn der viser at det er en
-  // kunde der selv har oprette sig ligesom ved dem som med billederne") —
-  // samme idé/placering-princip som photoBadge ovenfor, bare i det modsatte
-  // hjørne så de to kan vises samtidig uden at overlappe.
-  var selfRegBadge=c.self_registered?'<span class="crmp-card-self-badge" title="Kunden oprettede selv denne via det offentlige kunde-link">🙋</span>':'';
+  // RUNDE CM (Martin: "kan du ikke lave det til et felt inde i selve kundens
+  // firkant, ligesom Projekttype osv er?") — de to pulserende hjørne-mærker
+  // (📸 billeder / 🙋 selv-oprettet, se de nu UBRUGTE .crmp-card-photo-badge/
+  // .crmp-card-self-badge-klasser i CSS'en, bevaret for evt. senere genbrug)
+  // er flyttet ind i den almindelige badge-række sammen med de andre felter,
+  // som en helt almindelig pille i hvert sit tema-farve i stedet for et
+  // flydende, selvlysende hjørne-ikon.
+  var photoBadge=c.has_customer_photos?'<span class="crmp-card-badge" style="background:#ECFCCB;color:#3F6212;border:1px solid #BEF264" title="Kunden har uploadet billeder">📸 Billeder</span>':'';
+  var selfRegBadge=c.self_registered?'<span class="crmp-card-badge" style="background:#EEF2FF;color:#4F46E5;border:1px solid #C7D2FE" title="Kunden oprettede selv denne via det offentlige kunde-link">🙋 Selv-oprettet</span>':'';
+  var allBadges=photoBadge+selfRegBadge+badges;
   return '<a href="#crmp-detail/'+esc(pipeline.type)+'/'+c.id+'" class="crmp-card'+(crmpState.selectMode&&selected?' crmp-card-selected':'')+'" draggable="'+(crmpState.selectMode?'false':'true')+'" data-id="'+c.id+'">'
-    +photoBadge+selfRegBadge
     +'<div class="crmp-card-row" style="margin:0 0 6px">'+ownerLine+'</div>'
     +'<div class="crmp-card-name">'+esc(pipeline.type==='opportunity'?(c.contact_name||c.name):c.name)+'</div>'
     +(contactLine?'<div class="crmp-card-row">'+esc(contactLine)+'</div>':'')
     +(noteText?'<div class="crmp-card-note">'+esc(noteText)+'</div>':'')
-    +(badges?'<div class="crmp-card-badges">'+badges+'</div>':'')
+    +(allBadges?'<div class="crmp-card-badges">'+allBadges+'</div>':'')
     +'<div class="crmp-card-foot">'
     +(pipeline.type==='opportunity'&&c.value!=null?'<span class="crmp-card-value">'+krFmt(c.value)+'</span>':'<span></span>')
     +'</div>'
