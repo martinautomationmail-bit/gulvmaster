@@ -6283,6 +6283,63 @@ async function logOutboundEmail({ kind, refId, recipient, subject, sendResult })
       [kind, refId != null ? String(refId) : null, recipient, subject, sendResult && sendResult.resendEmailId, sendResult && sendResult.provider]
     );
   } catch (e) { console.error('Kunne ikke logge udgående mail (outbound_emails):', e.message); }
+  // RUNDE CM (okt. 2026, Martins ønske: "hvis den rammer 95 emails om dagen så
+  // sender den en personlig email til info@gulvmaster.dk at limit for i dag
+  // snart er ramt") — Resends GRATIS plan tillader 100 mails/døgn. Rammes
+  // loftet midt på dagen, bliver ALLE efterfølgende mails — inkl. tilbud og
+  // fakturaer — stille afvist af Resend resten af døgnet, uden at nogen
+  // opdager det her i appen, før en kunde ringer og spørger hvor tilbuddet
+  // blev af (samme blinde-vinkel-problem som RUNDE M løste for bounce/spam).
+  // Tjekkes derfor efter HVER logget mail — fejler (ligesom selve loggen
+  // ovenfor) ALDRIG hårdt, det må aldrig vælte en afsendelse der allerede er
+  // lykkedes.
+  try { await checkEmailQuotaWarning(); }
+  catch (e) { console.error('Kunne ikke tjekke mail-kvote:', e.message); }
+}
+// Kan overstyres uden ny udrulning via miljøvariablen EMAIL_QUOTA_WARNING_AT
+// på Render, hvis Resend-planen eller -grænsen ændrer sig.
+const EMAIL_QUOTA_WARNING_THRESHOLD = Number(process.env.EMAIL_QUOTA_WARNING_AT) || 95;
+async function checkEmailQuotaWarning() {
+  // UTC-kalenderdag — samme tidszone som created_at gemmes i (se nowTextSQL),
+  // og efter bedste overbevisning samme døgn-afgrænsning Resend selv bruger
+  // til at nulstille deres gratis-plan-tæller. 'quota_warning' selv tælles
+  // IKKE med i sent_today (den advarsel bruger jo også 1 af de 100, men skal
+  // ikke kunne trigge "endnu en advarsel" af sig selv).
+  const { rows } = await pool.query(`
+    SELECT
+      count(*) FILTER (WHERE kind <> 'quota_warning') AS sent_today,
+      count(*) FILTER (WHERE kind =  'quota_warning') AS warnings_today
+    FROM outbound_emails
+    WHERE created_at::date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date
+  `);
+  const sentToday = Number((rows[0] && rows[0].sent_today) || 0);
+  const warningsToday = Number((rows[0] && rows[0].warnings_today) || 0);
+  // Under grænsen, eller der er allerede sendt én advarsel i dag — stop, så
+  // Martin ikke drukner i gentagne advarsler resten af dagen.
+  if (sentToday < EMAIL_QUOTA_WARNING_THRESHOLD || warningsToday > 0) return;
+  if (!mailIsConfigured()) return;
+  const subject = `⚠️ Mail-grænsen er snart nået (${sentToday} sendt i dag)`;
+  const html = `
+    <p>Gulv Master-portalen har sendt <b>${sentToday} mails i dag</b> — tæt på det gratis Resend-abonnements grænse på 100 mails/døgn.</p>
+    <p><b>Når grænsen er nået, bliver ALLE efterfølgende mails i dag — inkl. tilbud, fakturaer og rykkere — stille afvist af Resend</b>, uden at nogen opdager det automatisk her i portalen. En kunde kan altså tro de har fået et tilbud, uden at det nogensinde er landet i deres indbakke.</p>
+    <p>Hvad I kan gøre lige nu:</p>
+    <ul>
+      <li>Vent med ikke-akutte udsendelser (interne notifikationer, rykkere der ikke haster) til i morgen.</li>
+      <li>Følg særligt op telefonisk på vigtige tilbud/fakturaer I sender resten af i dag — bekræft at kunden faktisk har modtaget den.</li>
+      <li>Overvej at opgradere Resend-abonnementet (resend.com/pricing) hvis I jævnligt rammer loftet — det billigste betalte niveau løfter grænsen markant.</li>
+    </ul>
+    <p style="color:#888;font-size:12px">Denne besked sendes automatisk højst én gang pr. døgn af Gulv Master-portalen.</p>`;
+  try {
+    const sendResult = await sendMailUniversal({
+      to: 'info@gulvmaster.dk',
+      subject,
+      html,
+      text: `${sentToday} mails sendt i dag — tæt på Resends gratis grænse på 100/døgn. Fra og med grænsen afvises nye mails (tilbud/fakturaer inkl.) resten af dagen uden varsel i appen. Se detaljer i portalen under Indstillinger → Mail-leverance.`
+    });
+    await logOutboundEmail({ kind: 'quota_warning', refId: null, recipient: 'info@gulvmaster.dk', subject, sendResult });
+  } catch (e) {
+    console.error('Kunne ikke sende mail-kvote-advarsel:', e.message);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
