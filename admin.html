@@ -1786,6 +1786,40 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #pd-task-detail-modal #pdtd-progress-input::-moz-range-track{height:6px;border-radius:var(--bly-r-pill);background:var(--bly-border)}
 #pd-task-detail-modal #pdtd-progress-input::-moz-range-progress{height:6px;border-radius:var(--bly-r-pill);background:var(--bly-accent)}
 #pd-task-detail-modal .form-label{display:flex;align-items:center;gap:5px}
+/* RUNDE CI (okt. 2026, Martins ønske: "ombyg popup'en som den i arkitekt") —
+   erstatter den boksede "Kundekontakt"-gd-info-grid (delt med gantt-detail-
+   modal, må ikke ændres der) med en slank vandret strip direkte under
+   titlen, og giver Status/Periode/Fremdrift en 3-kolonne række i stedet for
+   2-kolonne+egen-række, så toppen af popup'en matcher referencens mere
+   kompakte layout. */
+#pd-task-detail-modal .pdtd-contact-strip{display:flex;flex-wrap:wrap;gap:6px 22px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--bly-border-soft)}
+#pd-task-detail-modal .pdtd-contact-item{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--bly-sub);font-weight:600}
+#pd-task-detail-modal .pdtd-contact-item a{color:var(--bly-accent);font-weight:700;text-decoration:none}
+#pd-task-detail-modal .pdtd-contact-item a:hover{text-decoration:underline}
+#pd-task-detail-modal .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+@media(max-width:640px){#pd-task-detail-modal .form-row-3{grid-template-columns:1fr}}
+/* To-kolonne gruppering af Tjekpunkter (venstre) og Billeder/Underleverandør/
+   Booket på (højre), som i referencens layout — begge sider får samme
+   .pdtd-card-ramme som Status/Periode/Fremdrift-kortet ovenfor, så siderne
+   visuelt vejer det samme selvom indholdet er forskelligt langt. */
+#pd-task-detail-modal .pdtd-split{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+@media(max-width:640px){#pd-task-detail-modal .pdtd-split{grid-template-columns:1fr}}
+#pd-task-detail-modal .pdtd-detaljer-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:2px}
+#pd-task-detail-modal .pdtd-tilpas-link{font-size:11.5px;font-weight:700;color:var(--bly-accent);background:none;border:0;cursor:pointer;padding:0}
+#pd-task-detail-modal .pdtd-tilpas-link:hover{text-decoration:underline}
+#pd-task-detail-modal .pdtd-detaljer-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+@media(max-width:640px){#pd-task-detail-modal .pdtd-detaljer-grid{grid-template-columns:1fr}}
+/* Note-editorens udvidede værktøjslinje (B/I/U/S, H1/H2/¶, nummereret liste,
+   tjek-liste, citat) — se makeRichTaskNoteField(). Separator-streger mellem
+   grupper, samme visuelle opdeling som referencens værktøjslinje. */
+#pd-task-detail-modal .rte-toolbar{flex-wrap:wrap}
+#pd-task-detail-modal .rte-sep{width:1px;align-self:stretch;background:var(--bly-border-soft);margin:2px 2px}
+.rte-editable.rte-task-note h1{font-size:18px;font-weight:800;color:var(--bly-ink);margin:12px 0 5px;letter-spacing:-.01em}
+.rte-editable.rte-task-note h1:first-child{margin-top:0}
+.rte-editable.rte-task-note h2{font-size:15.5px;font-weight:800;color:var(--bly-ink);margin:10px 0 4px}
+.rte-editable.rte-task-note h2:first-child{margin-top:0}
+.rte-editable.rte-task-note blockquote{margin:6px 0;padding:4px 12px;border-left:3px solid var(--bly-border);color:var(--bly-sub);font-style:italic}
+.rte-editable.rte-task-note s,.rte-editable.rte-task-note strike{color:var(--bly-sub)}
 
 /* ══════════════════════════════════════════════════════════════
    LEDIGHEDSOVERSIGT — samme Billy-behandling, scoped til
@@ -1877,6 +1911,94 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .tt-chrono-project{color:var(--bly-ink);font-weight:600}
 .tt-chrono-customer{color:var(--bly-sub);font-weight:400}
 .tt-chrono-note{color:var(--bly-sub);font-size:11.5px;margin-top:2px;white-space:pre-wrap;max-width:260px}
+/* RUNDE CI (okt. 2026, Martins ønske: "lav en ny liste version der ser
+   fucking lækker ud... giv mig 2-3 versioner så jeg kan bestemme hvordan
+   lister generalt skal se ud i dette program") — Martin fik 3 mockup-
+   versioner at vælge imellem for Kundebesøg-listen og valgte "Version 3 ·
+   Dagsgrupperet". Klassenavnene her er bevidst GENERISKE (bly-list-*, ikke
+   kb-list-*), fordi denne stil nu er tiltænkt som skabelonen for lister
+   generelt i appen fremover, ikke kun kundebesøg — næste liste der skal
+   moderniseres kan genbruge disse klasser direkte i stedet for at opfinde
+   en ny stil. Hver dags-gruppe er sin egen bordered+shadowed container
+   (det "lille kant + skygge" Martin bad om); rækkerne indeni er kun
+   adskilt af en tynd streg, ikke deres egen kant. */
+.bly-list-groups{display:flex;flex-direction:column}
+.bly-list-group{background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,23,42,.05);margin-bottom:14px;overflow:hidden}
+.bly-list-group:last-child{margin-bottom:0}
+.bly-list-group-head{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1.5px solid var(--bly-border-soft);background:var(--bly-hover)}
+.bly-list-group-head .d{font-weight:800;font-size:13px;color:var(--bly-ink)}
+.bly-list-group-head .n{font-size:11.5px;color:var(--bly-sub);font-weight:600}
+.bly-list-row{display:flex;align-items:center;gap:16px;padding:13px 18px;border-bottom:1px solid var(--bly-border-soft);transition:background .12s}
+.bly-list-row:last-child{border-bottom:0}
+.bly-list-row:hover{background:var(--bly-hover)}
+.bly-list-time{width:52px;flex-shrink:0;font-weight:800;font-size:12.5px;color:var(--bly-accent)}
+.bly-list-main{flex:1;min-width:0}
+.bly-list-main .name{font-weight:700;font-size:13.5px;color:var(--bly-ink)}
+.bly-list-main .sub2{font-size:11.5px;color:var(--bly-sub);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bly-list-emp{flex-shrink:0;display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;width:140px;color:var(--bly-ink)}
+.bly-list-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.bly-list-action{flex-shrink:0}
+.bly-list-empty{padding:28px 18px;text-align:center;color:var(--bly-sub);font-size:12.5px}
+@media(max-width:760px){
+  .bly-list-row{flex-wrap:wrap;gap:6px 14px}
+  .bly-list-main{width:100%;order:1;flex-basis:100%}
+  .bly-list-emp{width:auto}
+}
+/* RUNDE CI, fortsat (okt. 2026, Martins ønske: "kan du ikke bare fiks det
+   over alt?... selv skal du huske at hver liste har et formål, så designet
+   skal tilpasses til hver liste så det fungerer") — Martin valgte "Dagsgrupperet"
+   (ovenfor, .bly-list-group) til kundebesøg, men bad udtrykkeligt om at
+   designet tilpasses PR. LISTE i stedet for mekanisk at tvinge dato-grupper
+   ind i lister der ikke har en dato at gruppere efter. To yderligere
+   genbrugelige varianter, bygget på de SAMME farver/kanter/skygger:
+
+   1) .bly-flat-list — "Rolig kant": hver række er sit eget lille bordered+
+      shadowed kort, IKKE grupperet. Til enkle, kompakte lister uden stærk
+      visuel status-dimension (Kunder, Skabeloner).
+
+   2) .bly-rcard-list — "Rige kort": luftige kort med farvet venstre-kant
+      (status), evt. nøgletal-stribe (fx Total/Betalt/Rest), tydeligt
+      hover-løft. Til lister med status + beløb der fortjener mere vægt
+      (Tilbud, Fakturaer, Skal faktureres, Projekter). */
+.bly-flat-list{display:flex;flex-direction:column;gap:8px}
+.bly-flat-row{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-md);padding:13px 16px;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:box-shadow .15s,border-color .15s}
+.bly-flat-row:hover{box-shadow:0 4px 14px rgba(15,23,42,.08);border-color:#D8DBE1}
+.bly-flat-row.clickable{cursor:pointer}
+.bly-flat-main{flex:1;min-width:0}
+.bly-flat-main .name{font-weight:700;font-size:13.5px;color:var(--bly-ink)}
+.bly-flat-main .sub2{font-size:11.5px;color:var(--bly-sub);margin-top:2px}
+.bly-flat-col{flex-shrink:0;font-size:12px;color:var(--bly-sub)}
+.bly-flat-num{flex-shrink:0;font-weight:700;font-size:13px;color:var(--bly-ink);font-variant-numeric:tabular-nums;text-align:right}
+.bly-flat-action{flex-shrink:0}
+@media(max-width:760px){
+  .bly-flat-row{flex-wrap:wrap;gap:6px 14px}
+  .bly-flat-main{width:100%;order:1;flex-basis:100%}
+}
+
+.bly-rcard-list{display:flex;flex-direction:column;gap:12px}
+.bly-rcard{position:relative;display:flex;align-items:center;gap:18px;background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);padding:16px 20px 16px 22px;box-shadow:0 1px 3px rgba(15,23,42,.05);transition:transform .15s,box-shadow .15s;overflow:hidden}
+.bly-rcard.clickable{cursor:pointer}
+.bly-rcard:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(15,23,42,.10)}
+.bly-rcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent-bar,var(--bly-accent))}
+.bly-rcard-body{flex:1;min-width:0}
+.bly-rcard-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:3px}
+.bly-rcard-name{font-weight:800;font-size:14.5px;letter-spacing:-.005em;color:var(--bly-ink)}
+.bly-rcard-pill{font-size:10.5px;font-weight:800;border-radius:var(--bly-r-pill);padding:3px 10px;white-space:nowrap}
+.bly-rcard-meta{display:flex;flex-wrap:wrap;gap:3px 14px;font-size:12px;color:var(--bly-sub)}
+.bly-rcard-meta b{color:var(--bly-ink);font-weight:700}
+.bly-rcard-stats{display:flex;gap:18px;flex-shrink:0}
+.bly-rcard-stat{text-align:right}
+.bly-rcard-stat .v{font-weight:800;font-size:13.5px;color:var(--bly-ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bly-rcard-stat .l{font-size:10px;color:var(--bly-sub);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-top:1px}
+.bly-rcard-side{flex-shrink:0;text-align:right;width:108px}
+.bly-rcard-side .d{font-weight:800;font-size:13px;color:var(--bly-ink)}
+.bly-rcard-side .t{font-size:11.5px;color:var(--bly-sub)}
+.bly-rcard-action{flex-shrink:0}
+@media(max-width:900px){
+  .bly-rcard{flex-wrap:wrap}
+  .bly-rcard-stats{order:1;flex-basis:100%;justify-content:flex-start;margin-top:6px}
+  .bly-rcard-side{order:1}
+}
 .bly-mail-icon{color:var(--bly-sub);font-size:11px;margin-left:6px}
 .bly-tag{display:inline-flex;align-items:center;font-size:9.5px;font-weight:800;color:var(--bly-sub);background:var(--ice);border-radius:5px;padding:2px 6px;margin-right:6px;text-transform:uppercase;letter-spacing:.03em}
 .bly-desc-inner{color:var(--bly-sub);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
@@ -5196,10 +5318,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-period-pop" id="qz-quotes-period-pop" style="display:none"></div>
       </div>
     </div>
-    <table class="bly-table">
-      <thead><tr><th>Nr.</th><th>Kunde/sag</th><th>Dato</th><th>Status</th><th class="num">Total</th><th style="width:140px"></th></tr></thead>
-      <tbody id="qz-quotes-body"></tbody>
-    </table>
+    <!-- "Rige kort" (se .bly-rcard-list) — valgt til Tilbud fordi status +
+         beløb er de to ting Martin skal kunne se på et øjekast her; den
+         farvede kant (pr. status) og det fremhævede total-beløb er netop
+         det "rige kort" giver, som den enkle "rolig kant"-stil ikke gjorde. -->
+    <div id="qz-quotes-body" class="bly-rcard-list"></div>
   </section>
 
 <section class="page" id="page-qz-invoices">
@@ -5243,10 +5366,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-period-pop" id="qz-invoices-period-pop" style="display:none"></div>
       </div>
     </div>
-    <table class="bly-table">
-      <thead><tr><th>Nr.</th><th>Kunde/sag</th><th>Dato</th><th>Forfald</th><th>Status</th><th class="num">Total</th><th class="num">Betalt</th><th class="num">Rest</th><th style="width:90px"></th></tr></thead>
-      <tbody id="qz-invoices-body"></tbody>
-    </table>
+    <!-- "Rige kort" (se .bly-rcard-list) — samme begrundelse som Tilbud, men
+         med 3 nøgletal (Total/Betalt/Rest) i stedet for ét, da det netop er
+         forskellen mellem dem Martin skal kunne se her. -->
+    <div id="qz-invoices-body" class="bly-rcard-list"></div>
   </section>
 
 <section class="page" id="page-qz-pending-invoicing">
@@ -5274,10 +5397,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-period-pop" id="qz-pending-period-pop" style="display:none"></div>
       </div>
     </div>
-    <table class="bly-table">
-      <thead><tr><th>Kunde/sag</th><th>Tilbud</th><th>Sagsstatus</th><th>Planlagt periode</th><th class="num">Tilbud total</th><th class="num">Faktureret</th><th class="num">Resterende</th><th style="width:130px"></th></tr></thead>
-      <tbody id="qz-pending-body"></tbody>
-    </table>
+    <!-- "Rige kort" (se .bly-rcard-list) — samme begrundelse som Faktura:
+         sagsstatus + 3 beløb, og de "klar til fakturering nu"-sager skal
+         springe i øjnene (grøn baggrundstone bevares, nu på selve kortet). -->
+    <div id="qz-pending-body" class="bly-rcard-list"></div>
   </section>
 
 <section class="page" id="page-qz-products">
@@ -5326,10 +5449,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-btn primary" id="qz-bulk-edit-btn" type="button">✎ Redigér valgte</button>
       </div>
     </div>
-    <table class="bly-table">
-      <thead><tr><th style="width:34px"><input type="checkbox" id="qz-products-select-all" title="Markér alle"></th><th>Navn</th><th>Type</th><th>Kategori</th><th>Enhed</th><th class="num">Cost-pris</th><th class="num">Salgspris</th><th class="num">Avance</th><th style="width:90px"></th></tr></thead>
-      <tbody id="qz-products-body"></tbody>
-    </table>
+    <!-- Grupperet pr. kategori (se .bly-list-group) — samme skabelon som
+         Kundebesøg/Opfølgninger, men grupperet efter KATEGORI i stedet for
+         dato, fordi det er sådan Martin selv allerede filtrerer/tænker på
+         produktkataloget (se qz-product-filter-category ovenfor). -->
+    <label style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--bly-sub);margin-bottom:10px;cursor:pointer;width:fit-content">
+      <input type="checkbox" id="qz-products-select-all" title="Markér alle synlige"> Markér alle synlige
+    </label>
+    <div id="qz-products-body" class="bly-list-groups"></div>
   </section>
 
 <section class="page" id="page-qz-templates">
@@ -5341,10 +5468,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="bly-toolbar-left"><span class="bly-toolbar-title">Skabeloner</span><input type="text" id="qz-template-search" class="bly-search" placeholder="Søg i skabeloner..."></div>
       <div class="bly-toolbar-right"><button class="bly-btn" id="qz-new-template-btn" type="button">+ Ny skabelon</button></div>
     </div>
-    <table class="bly-table">
-      <thead><tr><th>Navn</th><th>Beskrivelse</th><th class="num">Linjer</th><th style="width:110px"></th></tr></thead>
-      <tbody id="qz-templates-body"></tbody>
-    </table>
+    <!-- "Rolig kant" (se .bly-flat-list) — samme begrundelse som Kunder:
+         simpel liste uden status-dimension, ikke behov for "rige kort". -->
+    <div id="qz-templates-body" class="bly-flat-list"></div>
   </section>
 
 <section class="page" id="page-qz-timetrack">
@@ -5901,10 +6027,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="crm-count">Kunder</span><input type="text" id="crm-search" class="bly-search" placeholder="Søg — navn, pris, email eller telefon..." style="width:280px"></div>
     <div class="bly-toolbar-right"><button class="bly-btn" id="crm-new-btn" type="button">+ Ny kunde</button></div>
   </div>
-  <table class="bly-table">
-    <thead><tr><th>Navn</th><th>Telefon</th><th>E-mail</th><th>Adresse</th><th class="num">Skyldigt</th><th style="width:90px"></th></tr></thead>
-    <tbody id="crm-body"></tbody>
-  </table>
+  <!-- "Rolig kant" (se CSS-kommentaren ved .bly-flat-list) — valgt til Kunder
+       fordi listen er kontaktdata uden en stærk status-dimension at vise
+       frem; en kompakt bordered+shadowed række pr. kunde er nok. -->
+  <div id="crm-body" class="bly-flat-list"></div>
 </section>
 
 <!-- KUNDEDETALJE — klik på en kunde i Kunder-listen. Viser al data samlet:
@@ -6545,10 +6671,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="cpt-count"></span></div>
   </div>
-  <table class="bly-table">
-    <thead><tr><th style="width:30px"></th><th style="width:24px"></th><th>Opgave</th><th>Lead / Sale</th><th style="width:170px">Ansvarlig</th><th style="width:130px">Dato</th><th style="width:44px"></th></tr></thead>
-    <tbody id="cpt-body"></tbody>
-  </table>
+  <!-- Dagsgrupperet (se .bly-list-group) — samme mønster som Kundebesøg,
+       fordi Opfølgninger ligesom kundebesøg er due-date-drevet: det giver
+       mening at se "hvad skylder jeg i dag / i morgen" grupperet pr. dag. -->
+  <div id="cpt-body" class="bly-list-groups"></div>
 </section>
 
 <!-- RETTELSE (okt. 2026, Martins ønske: "en moderne side hvor man kan se alle
@@ -6580,11 +6706,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <span class="bly-toolbar-count" id="kb-count"></span>
     </div>
   </div>
+  <!-- Dagsgrupperet (se CSS-kommentaren ved .bly-list-groups for baggrund) —
+       erstatter den gamle flade tabel. kbRender() bygger grupperne. -->
   <div id="kb-list-view">
-    <table class="bly-table">
-      <thead><tr><th style="width:130px">Dato / tid</th><th>Kunde</th><th>Adresse / telefon</th><th style="width:170px">Medarbejder</th><th style="width:150px"></th></tr></thead>
-      <tbody id="kb-body"></tbody>
-    </table>
+    <div id="kb-body" class="bly-list-groups"></div>
   </div>
   <!-- KALENDERVISNING — se CSS-kommentaren ved .kb-cal-nav for baggrund.
        Måned-gitter bygget rent klient-side fra samme kbAllRows()-data som
@@ -6968,10 +7093,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="bly-period-pop" id="proj-period-pop" style="display:none"></div>
       </div>
     </div>
-    <table class="bly-table" id="proj-table">
-      <thead><tr><th>Navn</th><th>Status</th><th>Adresse</th><th>Kontakt</th><th class="num">Pris</th><th class="num">Opgaver</th><th class="num">Tid</th><th class="num">Billeder</th><th style="width:90px"></th></tr></thead>
-      <tbody id="proj-body"></tbody>
-    </table>
+    <!-- "Rige kort" (se .bly-rcard-list) — samme stil som Tilbud/Fakturaer/
+         Skal faktureres, konsistent for alle "sags-økonomi"-lister. Status
+         er bevidst stadig en RIGTIG <select> (ikke kun en farvet pil) —
+         Martin bad specifikt om at kunne ændre status direkte i listen uden
+         at åbne sagen (RUNDE R), det må "rige kort"-stilen ikke regressere. -->
+    <div id="proj-table">
+      <div id="proj-body" class="bly-rcard-list"></div>
+    </div>
     <!-- Kanban-board — samme Billy-stils klasser (.crmp-board/.crmp-col/.crmp-card)
          som CRM-pipelinens Kanban-board, for ens udseende/adfærd i hele appen.
          Faserne er de FASTE projekt-statusser (Igangværende/På hold/Afsluttet, +
@@ -8014,39 +8143,41 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </select>
     </div>
     <div class="modal-body-pad">
-      <!-- RUNDE CE (Martins ønske #1: "placere kundekontakt i toppen") — flyttet
-           herop fra bunden af popup'en, så man ser adresse/telefon/mail FØRST,
-           inden man overhovedet begynder at redigere opgaven. -->
-      <div class="gd-info-grid" style="margin-bottom:18px">
-        <div style="grid-column:1/-1;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Kundekontakt</div>
-        <!-- RUNDE BS (Martin: "kan jeg se om kundens adresse er korrekt så når
-             den bookes i Opgavepool så har den alt dataen") — adressen ER
-             allerede med i Opgavepool-spejlingen (mirrorProjectTaskToPool
-             sætter job_address=project.customer_address), problemet var
-             udelukkende at man ikke kunne SE/tjekke den herfra før man
-             booker. Linker til Google Maps (samme mønster som
-             medarbejderens egen "📍"-adresselink i employee.html) — et hurtigt
-             visuelt tjek af om nålen rammer det rigtige sted er den bedste
-             måde at "se om adressen er korrekt" på. -->
-        <div style="grid-column:1/-1"><div class="gd-info-label">📍 Adresse</div><div id="pdtd-address" class="gd-info-value"></div></div>
-        <div><div class="gd-info-label">📞 Kundetelefon</div><div id="pdtd-phone" class="gd-info-value"></div></div>
-        <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="pdtd-email" class="gd-info-value"></div></div>
-        <div><div class="gd-info-label">🔢 Sagsnummer</div><div id="pdtd-jobnumber" class="gd-info-value"></div></div>
+      <!-- RUNDE CI (okt. 2026, Martins ønske: "ombyg popup'en som den i
+           arkitekt") — kundekontakt er nu en slank strip direkte under
+           titlen i stedet for en boksed gd-info-grid-sektion ("Kundekontakt"),
+           så adresse/telefon/mail/sagsnummer kan læses i ét blik, ligesom i
+           referencens layout. Samme kilde-data/Google Maps-link som før. -->
+      <div class="pdtd-contact-strip">
+        <div class="pdtd-contact-item"><span>📍</span><span id="pdtd-address">Ingen adresse registreret</span></div>
+        <div class="pdtd-contact-item"><span>📞</span><span id="pdtd-phone">Ikke registreret</span></div>
+        <div class="pdtd-contact-item"><span>✉️</span><span id="pdtd-email">—</span></div>
+        <div class="pdtd-contact-item"><span>🔢</span><span id="pdtd-jobnumber">—</span></div>
       </div>
       <!-- RUNDE L (Martins ønske #1 og #2) — samme 4 faser som den nye
            Pipeline-fane (PD_PIPELINE_STATUS_META), redigerbar direkte herfra
            også, så man ikke behøver skifte til kanban-visningen for bare at
-           flytte én opgave videre. -->
+           flytte én opgave videre.
+           RUNDE CI — Status/Periode/Fremdrift samlet i ÉN 3-kolonne række
+           (var før 2-kolonne + periode på sin egen linje), som matcher
+           referencens mere kompakte toplayout. -->
       <div class="pdtd-card">
-      <div class="form-row">
+      <div class="form-row form-row-3">
       <div class="form-group">
-        <label class="form-label">📌 Status i pipeline</label>
+        <label class="form-label" style="white-space:nowrap">📌 Status</label>
         <select id="pdtd-status-select" class="tld-status-select" style="width:100%">
           <option value="todo" style="background:#F1F5F9;color:#475569">📝 Ikke startet</option>
           <option value="in_progress" style="background:#DBEAFE;color:#1D4ED8">🔨 I gang</option>
           <option value="waiting" style="background:#FEF9C3;color:#92570A">⏳ Afventer</option>
           <option value="done" style="background:#DCFCE7;color:#15803D">✅ Færdig</option>
         </select>
+      </div>
+      <div class="form-group" style="position:relative">
+        <label class="form-label">📅 Periode</label>
+        <input id="pdtd-start-input" type="hidden">
+        <input id="pdtd-end-input" type="hidden">
+        <button type="button" id="pdtd-daterange-btn" class="input" style="text-align:left;cursor:pointer;background:#fff">Vælg periode…</button>
+        <div id="pdtd-daterange-pop" class="bly-period-pop" style="display:none;width:300px;left:0;right:auto"></div>
       </div>
       <div class="form-group">
         <label class="form-label">📈 Fremdrift</label>
@@ -8056,61 +8187,64 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         </div>
       </div>
       </div>
-      <div class="form-group" style="position:relative">
-        <label class="form-label">📅 Periode</label>
-        <input id="pdtd-start-input" type="hidden">
-        <input id="pdtd-end-input" type="hidden">
-        <button type="button" id="pdtd-daterange-btn" class="input" style="text-align:left;cursor:pointer;background:#fff">Vælg periode…</button>
-        <div id="pdtd-daterange-pop" class="bly-period-pop" style="display:none;width:300px;left:0;right:auto"></div>
-      </div>
       </div>
       <!-- RUNDE CE (Martins ønske #3: "rigtig moderne note felt" — Tyk skrift,
            Headlines, Indhak, Dots, indhak-under-indhak der folder sammen) —
            textarea'en initialiseres som en rig editor af
            makeRichTaskNoteField() i openPdTaskDetail(), se admin.html's
-           JS-sektion. -->
+           JS-sektion. RUNDE CI — værktøjslinjen udvidet med kursiv/under-
+           streget/gennemstreget, H1/H2, nummereret liste, tjek-liste og
+           citat, så den matcher referencens værktøjslinje. -->
       <div class="form-group" style="margin-top:14px"><label class="form-label">📝 Note</label><textarea id="pdtd-note-input" class="input" rows="3" placeholder="Fx særlige forhold på pladsen, adgang, aftaler med kunden..."></textarea></div>
-      <!-- RUNDE CE (Martins ønske #4: "custom fields så jeg kan lave det langt
-           mere detaljeret") — felt-DEFINITIONER oprettes/redigeres under CRM →
-           ⚙️ Indstillinger → Felter → "Opgave-felter" (samme sted som lead-/
-           opportunity-felter), VÆRDIERNE gemmes her pr. opgave. Skjules helt
-           hvis der slet ikke er oprettet nogen opgave-felter endnu. -->
-      <div class="form-group" id="pdtd-customfields-wrap" style="margin-top:14px;display:none">
-        <label class="form-label">⚙️ Custom fields</label>
-        <div id="pdtd-customfields" style="display:flex;flex-direction:column;gap:10px"></div>
-      </div>
-      <!-- RUNDE S (Martins ønske: "hvis en underleverandør har lavet opgave at
-           lægge deres faktura ind på opgaven ... i stedet for den bruger
-           medarbejdernes timer") — bruges kun hvis opgaven er lavet af en
-           underleverandør i stedet for egne folk; beløbet trækkes fra avancen i
-           stedet for de normale løn-timer, se renderPdBudget(). -->
-      <div class="pdtd-card" style="margin-top:14px">
-        <div class="form-group" style="margin-bottom:10px">
-          <label class="form-label">🧾 Underleverandør-faktura</label>
-          <input id="pdtd-subcost-input" class="input" type="number" min="0" step="0.01" placeholder="Beløb i kr., fx 4500 — udfyld kun hvis en underleverandør har lavet opgaven">
+      <!-- RUNDE CI — Tjekpunkter (venstre) og Billeder/Underleverandør-faktura/
+           Booket på (højre) i to kolonner, som i referencens layout. Samme
+           felter/id'er/logik som før, kun layoutet er ændret. -->
+      <div class="pdtd-split" style="margin-top:14px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">☑ Tjekpunkter</label>
+          <div id="pdtd-checklist-items" style="margin-bottom:8px"></div>
+          <div style="display:flex;gap:8px">
+            <input id="pdtd-checklist-new" class="input" placeholder="Fx Tag billede før opstart" style="flex:1">
+            <button class="btn small" type="button" id="pdtd-checklist-add-btn">+ Tilføj</button>
+          </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Note til fakturaen</label>
-          <input id="pdtd-subnote-input" class="input" placeholder="Fx fakturanr. eller firmanavn">
-        </div>
-      </div>
-      <div class="form-row" style="margin-top:14px;align-items:start">
-      <div class="form-group">
-        <label class="form-label">☑ Tjekpunkter</label>
-        <div id="pdtd-checklist-items" style="margin-bottom:8px"></div>
-        <div style="display:flex;gap:8px">
-          <input id="pdtd-checklist-new" class="input" placeholder="Fx Tag billede før opstart" style="flex:1">
-          <button class="btn small" type="button" id="pdtd-checklist-add-btn">+ Tilføj</button>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <!-- RUNDE BR (Martin: "Gør det muligt her at inkludere billeder fra
+               kundens handel ... billeder taget ved kundebesøg også kommer ind
+               under filer og så kan jeg bare tage dem derfra") — billedvælgeren
+               genbruger den delte #doc-job-photos-modal, kilden er sagens
+               samlede billedbibliotek. RUNDE CE (Martins ønske #5) — direkte
+               upload-knap ved siden af "vælg fra sagen". -->
+          <div class="form-group" style="margin:0">
+            <label class="form-label">📷 Billeder til medarbejderen</label>
+            <div id="pdtd-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;margin-bottom:8px"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn small" type="button" id="pdtd-add-photo-btn">📷 Vælg fra sagen</button>
+              <label class="btn small" style="cursor:pointer">📤 Upload<input type="file" accept="image/*,application/pdf" id="pdtd-upload-photo-input" style="display:none"></label>
+            </div>
+          </div>
+          <!-- RUNDE S (Martins ønske: "hvis en underleverandør har lavet
+               opgave at lægge deres faktura ind på opgaven") — beløbet
+               trækkes fra avancen i stedet for normale løn-timer, se
+               renderPdBudget(). -->
+          <div class="form-group" style="margin:0">
+            <label class="form-label">🧾 Underleverandør-faktura</label>
+            <input id="pdtd-subcost-input" class="input" type="number" min="0" step="0.01" placeholder="Beløb i kr., fx 4500" style="margin-bottom:8px">
+            <input id="pdtd-subnote-input" class="input" placeholder="Note til fakturaen, fx fakturanr.">
+          </div>
+          <!-- RUNDE L (Martins ønske #1 "flere data oplysninger") — hvem
+               opgaven allerede er booket på i Kapacitetsbordet. Skjult helt
+               når opgaven slet ikke er booket endnu. -->
+          <div class="form-group" id="pdtd-bookings-wrap" style="margin:0;display:none">
+            <label class="form-label">👤 Booket på</label>
+            <div id="pdtd-bookings-list" class="gd-info-value"></div>
+          </div>
         </div>
       </div>
       <!-- RUNDE CE (Martins ønske #1 under "Projekt styring generalt": "mere
            kvalitets kontrol ... hvordan laver vi det?") — KS pr. OPGAVE i
-           stedet for kun pr. sag (Martins eget valg: scope-udvidelse, ikke en
-           obligatorisk/blokerende regel — en opgave kan stadig markeres
-           færdig uden udfyldt KS). Genbruger de eksisterende KS-skabeloner
-           (samme fields-typer check/text/number/photo som sagens egen
-           KS-fane), blot med task_id sat på submission'en. -->
-      <div class="form-group">
+           stedet for kun pr. sag. Genbruger de eksisterende KS-skabeloner. -->
+      <div class="form-group" style="margin-top:14px">
         <label class="form-label">🛡 Kvalitetssikring (denne opgave)</label>
         <div id="pdtd-qa-list" style="margin-bottom:8px"></div>
         <div style="display:flex;gap:8px">
@@ -8118,41 +8252,31 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <button class="btn small" type="button" id="pdtd-qa-fill-btn">Udfyld</button>
         </div>
       </div>
-      </div>
-      <!-- RUNDE BR (Martin: "Gør det muligt her at inkludere billeder fra
-           kundens handel ... billeder taget ved kundebesøg også kommer ind
-           under filer og så kan jeg bare tage dem derfra. For når jeg så
-           booker det hos en medarbejder får de billederne direkte med") —
-           billedvælgeren genbruger den delte #doc-job-photos-modal (samme
-           modal som tilbud/faktura allerede bruger til sagsbilleder), men
-           kilden er nu HELE sagens billedbibliotek (project_photos +
-           tidsregistrering + kundebesøg, se GET /api/projects/:id/photo-library),
-           så et kundebesøgsbillede er lige så let at vælge som et sagsbillede.
-           Medarbejderen ser de valgte billeder i sin note, når opgaven bookes
-           (se openBookingNote/loadNoteTaskPhotos i employee.html).
-           RUNDE CE (Martins ønske #5: "men også indsætte selv") — tilføjet en
-           direkte upload-knap/filvælger, ved siden af "vælg fra sagen", så
-           Martin ikke er tvunget til først at lægge et nyt billede et andet
-           sted på sagen for at kunne vælge det. -->
-      <div class="form-group" style="margin-top:14px">
-        <label class="form-label">📷 Billeder til medarbejderen</label>
-        <div id="pdtd-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;margin-bottom:8px"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn small" type="button" id="pdtd-add-photo-btn">📷 Vælg billede fra sagen</button>
-          <label class="btn small" style="cursor:pointer">📤 Upload nyt billede/fil<input type="file" accept="image/*,application/pdf" id="pdtd-upload-photo-input" style="display:none"></label>
+      <!-- RUNDE CE (Martins ønske #4: "custom fields så jeg kan lave det langt
+           mere detaljeret") — felt-DEFINITIONER oprettes/redigeres under CRM →
+           ⚙️ Indstillinger → Felter → "Opgave-felter" (samme sted som lead-/
+           opportunity-felter), VÆRDIERNE gemmes her pr. opgave. Skjules helt
+           hvis der slet ikke er oprettet nogen opgave-felter endnu — som nu
+           altid er tilfældet efter RUNDE CI's startsæt (se initSchema()).
+           RUNDE CI — omdøbt til "Detaljer" + "Tilpas felter"-genvej direkte
+           til felt-editoren, matcher referencens "⚙ Tilpas felter"-link. -->
+      <div class="form-group" id="pdtd-customfields-wrap" style="margin-top:14px;display:none">
+        <div class="pdtd-detaljer-head">
+          <label class="form-label" style="margin:0">⚙️ Detaljer</label>
+          <button type="button" class="pdtd-tilpas-link" id="pdtd-tilpas-felter-btn">Tilpas felter</button>
         </div>
-      </div>
-      <!-- RUNDE L (Martins ønske #1 "flere data oplysninger") — hvem opgaven
-           allerede er booket på i Kapacitetsbordet, hvis nogen. Skjult helt
-           når opgaven slet ikke er booket endnu. -->
-      <div class="form-group" id="pdtd-bookings-wrap" style="margin-top:14px;display:none">
-        <label class="form-label">👤 Booket på</label>
-        <div id="pdtd-bookings-list" class="gd-info-value"></div>
+        <div id="pdtd-customfields" class="pdtd-detaljer-grid"></div>
       </div>
     </div>
     <div class="modal-actions">
       <button class="btn" id="pdtd-close-btn">Luk</button>
       <button class="btn" id="pdtd-capacity-btn" type="button">📊 Tilføj til Kapacitetsbordet</button>
+      <!-- RUNDE CI — genbruger samme 4-valgs møde-flow som sagens/CRM-handlens
+           egen "📹 Møde"-knap (mdOpenChoice), scope='project' (sagen opgaven
+           hører til) — der findes ikke et selvstændigt opgave-niveau for
+           møder i site_meetings, så mødet logges på SAGEN, ikke kun denne
+           opgave. Praktisk forenkling, flagget til Martin. -->
+      <button class="btn" id="pdtd-meeting-btn" type="button">📹 Møde</button>
       <button class="btn primary" id="pdtd-save-btn" type="button">Gem</button>
     </div>
   </div>
@@ -10476,12 +10600,28 @@ function makeRichTaskNoteField(id){
   ta.style.display='none';
   var wrap=document.createElement('div');
   wrap.className='rte-wrap';
+  // RUNDE CI (okt. 2026, Martins ønske: "ombyg popup'en som den i arkitekt")
+  // — udvidet fra 5 til 13 knapper (kursiv/understreget/gennemstreget, H1/H2/
+  // normal-tekst, nummereret liste, tjek-liste, citat), matcher referencens
+  // værktøjslinje. Fold-håndtaget (▾/▸ ved punkter med under-punkter) er
+  // allerede automatisk (updateFoldHandles) og har derfor ingen egen knap her.
   wrap.innerHTML='<div class="rte-toolbar">'+
-    '<button type="button" class="rte-btn" data-cmd="bold" title="Fed skrift"><b>F</b></button>'+
-    '<button type="button" class="rte-btn" data-cmd="h4" title="Overskrift">H</button>'+
-    '<button type="button" class="rte-btn" data-cmd="ul" title="Punktopstilling (Dots)">•</button>'+
+    '<button type="button" class="rte-btn" data-cmd="bold" title="Fed skrift (Bold)"><b>B</b></button>'+
+    '<button type="button" class="rte-btn" data-cmd="italic" title="Kursiv (Italic)"><i>I</i></button>'+
+    '<button type="button" class="rte-btn" data-cmd="underline" title="Understreget (Underline)"><u>U</u></button>'+
+    '<button type="button" class="rte-btn" data-cmd="strike" title="Gennemstreget (Strikethrough)"><s>S</s></button>'+
+    '<span class="rte-sep"></span>'+
+    '<button type="button" class="rte-btn" data-cmd="h1" title="Stor overskrift (H1)">H1</button>'+
+    '<button type="button" class="rte-btn" data-cmd="h2" title="Lille overskrift (H2)">H2</button>'+
+    '<button type="button" class="rte-btn" data-cmd="p" title="Normal tekst">¶</button>'+
+    '<span class="rte-sep"></span>'+
+    '<button type="button" class="rte-btn" data-cmd="ul" title="Punktopstilling (Liste)">•</button>'+
+    '<button type="button" class="rte-btn" data-cmd="ol" title="Nummereret liste">1.</button>'+
+    '<button type="button" class="rte-btn" data-cmd="todo" title="Tjek-liste — indsætter et tjekpunkt du kan klikke af direkte i noten">☑</button>'+
     '<button type="button" class="rte-btn" data-cmd="indent" title="Indhak (gør punktet til et under-punkt)">→</button>'+
     '<button type="button" class="rte-btn" data-cmd="outdent" title="Fjern indhak">←</button>'+
+    '<span class="rte-sep"></span>'+
+    '<button type="button" class="rte-btn" data-cmd="quote" title="Citat">&quot;</button>'+
     '</div>';
   var editable=document.createElement('div');
   editable.className='rte-editable input rte-task-note';
@@ -10525,6 +10665,23 @@ function makeRichTaskNoteField(id){
     var li=el&&el.closest&&el.closest('li');
     return !!(li&&editable.contains(li));
   }
+  // RUNDE CI — fix: execCommand('formatBlock',false,'<div>') er upålidelig i
+  // Chrome når markøren står inde i en liste (no-op, eller laver uens
+  // markup). Før H1/H2/normal-tekst/citat-knapperne forsøger formatBlock, skal
+  // en evt. omgivende liste først slås fra med insertOrderedList/
+  // insertUnorderedList (som Chrome HAR en pålidelig toggle-off-adfærd for) —
+  // ellers risikerer man fx et ☐-tjekpunkt der aldrig bliver indsat, eller et
+  // citat der ender nestet forkert inde i <ol><li>.
+  function exitListIfAny(){
+    if(!inList())return;
+    var sel=window.getSelection();
+    var node=sel&&sel.anchorNode;
+    var el=node&&(node.nodeType===1?node:node.parentElement);
+    var li=el&&el.closest&&el.closest('li');
+    var listEl=li&&li.parentElement&&li.parentElement.closest&&li.parentElement.closest('ul,ol');
+    if(listEl&&listEl.tagName==='OL')document.execCommand('insertOrderedList');
+    else if(listEl)document.execCommand('insertUnorderedList');
+  }
   var toolbar=wrap.querySelector('.rte-toolbar');
   toolbar.addEventListener('mousedown',function(e){e.preventDefault();});
   toolbar.addEventListener('click',function(e){
@@ -10533,18 +10690,53 @@ function makeRichTaskNoteField(id){
     var cmd=btn.getAttribute('data-cmd');
     if(cmd==='bold'){
       document.execCommand('bold');
-    }else if(cmd==='h4'){
+    }else if(cmd==='italic'){
+      document.execCommand('italic');
+    }else if(cmd==='underline'){
+      document.execCommand('underline');
+    }else if(cmd==='strike'){
+      document.execCommand('strikeThrough');
+    }else if(cmd==='h1'||cmd==='h2'||cmd==='h4'){
+      exitListIfAny();
+      var tag='<'+cmd+'>';
       var cur=(document.queryCommandValue('formatBlock')||'').toLowerCase();
-      document.execCommand('formatBlock',false,cur==='h4'?'<div>':'<h4>');
+      document.execCommand('formatBlock',false,cur===cmd?'<div>':tag);
+    }else if(cmd==='p'){
+      exitListIfAny();
+      document.execCommand('formatBlock',false,'<div>');
+    }else if(cmd==='quote'){
+      exitListIfAny();
+      var curQ=(document.queryCommandValue('formatBlock')||'').toLowerCase();
+      document.execCommand('formatBlock',false,curQ==='blockquote'?'<div>':'<blockquote>');
     }else if(cmd==='ul'){
       document.execCommand('insertUnorderedList');
       updateFoldHandles(editable);
+    }else if(cmd==='ol'){
+      document.execCommand('insertOrderedList');
+      updateFoldHandles(editable);
+    }else if(cmd==='todo'){
+      // RUNDE CI — "Tjek-liste": indsætter et klikbart ☐-tjekpunkt som ren
+      // tekst (ingen ny HTML-tag nødvendig, holder serverens whitelist simpel).
+      // Klik direkte på ☐/☑-tegnet skifter det (se click-listeneren nedenfor).
+      document.execCommand('insertText',false,'☐ ');
     }else if(cmd==='indent'){
       if(inList()){document.execCommand('indent');updateFoldHandles(editable);}
       else{toast('Lav først en punktliste (•), så kan du indhakke punkterne');}
     }else if(cmd==='outdent'){
       if(inList()){document.execCommand('outdent');updateFoldHandles(editable);}
     }
+    internal=stripFoldHandlesHtml(editable.innerHTML);
+    ta.dispatchEvent(new Event('input'));
+  });
+  // RUNDE CI — klik direkte på et ☐/☑-tegn (indsat af "Tjek"-knappen ovenfor)
+  // skifter det mellem ikke-udført/udført, uden at skulle slette og
+  // genskrive tegnet manuelt.
+  editable.addEventListener('click',function(e){
+    var sel=window.getSelection();
+    if(!sel||!sel.anchorNode||sel.anchorNode.nodeType!==3)return;
+    var text=sel.anchorNode.textContent;
+    if(!/^[☐☑]/.test(text)||sel.anchorOffset>2)return;
+    sel.anchorNode.textContent=(text.charAt(0)==='☐'?'☑':'☐')+text.slice(1);
     internal=stripFoldHandlesHtml(editable.innerHTML);
     ta.dispatchEvent(new Event('input'));
   });
@@ -13568,6 +13760,10 @@ var kbInitialized=false;
 // "driver" pga. korte måneder — se kbCalShift).
 var kbViewMode='list';
 var kbCalMonth=null;
+// Dagsgrupperet liste-visning (Martins valgte "Version 3 · Dagsgrupperet" af
+// de 3 mockups han fik at vælge imellem) — bruges af kbRenderGroups().
+var KB_WEEKDAYS=['Søndag','Mandag','Tirsdag','Onsdag','Torsdag','Fredag','Lørdag'];
+var KB_MONTHS=['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'];
 function initKundebesogPage(){
   if(!kbInitialized){
     kbInitialized=true;
@@ -13700,27 +13896,60 @@ function kbRender(){
   }
   rows.sort(function(a,b){return String(a.start_date||'').localeCompare(String(b.start_date||''))||String(a.start_time||'').localeCompare(String(b.start_time||''));});
   document.getElementById('kb-count').textContent=rows.length?rows.length+' kundebesøg':'';
-  document.getElementById('kb-body').innerHTML=rows.length?rows.map(function(v){
-    var dateLabel=v.start_date?fmtDaDate(v.start_date)+(v.start_time?' · '+v.start_time:''):(v._unbooked?'Ikke planlagt':'');
-    var addrPhone=[v.job_address,v.customer_phone].filter(Boolean).join(' · ')||'—';
-    var empHtml=v._unbooked?'<span style="color:var(--bly-sub)">—</span>':('<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(v.user_color||'#9CA3AF')+';margin-right:5px"></span>'+esc(v.user_name||'—'));
-    var actionHtml;
-    if(v._unbooked){
-      actionHtml='<button type="button" class="qz-icon-btn" data-kb-book-task="'+esc(v.task_id)+'" title="Book på medarbejder/dato">📌 Book</button>';
-    } else if(v.completed_at){
-      actionHtml='<span class="sub" style="color:var(--bly-dot-paid)">✓ Færdig</span>';
-    } else {
-      actionHtml='<button type="button" class="qz-icon-btn" data-kb-done="'+v.id+'" title="Markér som færdig">✅ Færdig</button>';
-    }
-    return '<tr>'
-      +'<td>'+esc(dateLabel)+'</td>'
-      +'<td>'+esc(v.job_name||v.customer_name||'(uden navn)')+(v.visit_notes?'<div class="sub" style="font-size:11px;margin-top:2px">'+esc(v.visit_notes)+'</div>':'')+'</td>'
-      +'<td>'+esc(addrPhone)+'</td>'
-      +'<td>'+empHtml+'</td>'
-      +'<td>'+actionHtml+'</td>'
-      +'</tr>';
-  }).join(''):'<tr><td colspan="5" class="sub" style="text-align:center;padding:24px">Ingen kundebesøg i denne kategori</td></tr>';
+  document.getElementById('kb-body').innerHTML=rows.length?kbRenderGroups(rows):'<div class="bly-list-empty">Ingen kundebesøg i denne kategori</div>';
   if(kbViewMode==='calendar')kbRenderCalendar();
+}
+// Grupperer de allerede filtrerede/sorterede rækker pr. dato (Dagsgrupperet,
+// se CSS-kommentaren ved .bly-list-groups). Ikke-planlagte besøg samles i
+// deres egen gruppe for sig, uanset evt. ref_date — den er ofte tom/
+// upålidelig for opgaver der aldrig er blevet booket på en konkret dag — og
+// vises altid sidst, så den ikke konkurrerer med reelle dato-grupper.
+function kbGroupKey(v){return v._unbooked?'__unbooked__':String(v.start_date||'').slice(0,10);}
+function kbGroupLabel(key){
+  if(key==='__unbooked__')return'Ikke planlagt';
+  if(!key)return'Uden dato';
+  var d=date(key);
+  return KB_WEEKDAYS[d.getDay()]+' '+d.getDate()+'. '+KB_MONTHS[d.getMonth()];
+}
+function kbRenderGroups(rows){
+  var order=[],byKey={};
+  rows.forEach(function(v){
+    var k=kbGroupKey(v);
+    if(!byKey[k]){byKey[k]=[];order.push(k);}
+    byKey[k].push(v);
+  });
+  order.sort(function(a,b){
+    if(a==='__unbooked__')return 1;
+    if(b==='__unbooked__')return-1;
+    return a.localeCompare(b);
+  });
+  return order.map(function(k){
+    var items=byKey[k];
+    return '<div class="bly-list-group">'
+      +'<div class="bly-list-group-head"><span class="d">'+esc(kbGroupLabel(k))+'</span><span class="n">'+items.length+' besøg</span></div>'
+      +items.map(kbRenderRow).join('')
+      +'</div>';
+  }).join('');
+}
+function kbRenderRow(v){
+  var timeLabel=v._unbooked?'—':(v.start_time||'—');
+  var addrPhone=[v.job_address,v.customer_phone].filter(Boolean).join(' · ');
+  var subParts=[addrPhone,v.visit_notes].filter(Boolean).join(' · ')||'—';
+  var empHtml=v._unbooked?'<span style="color:var(--bly-sub)">—</span>':('<span class="bly-list-dot" style="background:'+(v.user_color||'#9CA3AF')+'"></span>'+esc(v.user_name||'—'));
+  var actionHtml;
+  if(v._unbooked){
+    actionHtml='<button type="button" class="qz-icon-btn" data-kb-book-task="'+esc(v.task_id)+'" title="Book på medarbejder/dato">📌 Book</button>';
+  } else if(v.completed_at){
+    actionHtml='<span class="sub" style="color:var(--bly-dot-paid);font-weight:700;font-size:11.5px">✓ Færdig</span>';
+  } else {
+    actionHtml='<button type="button" class="qz-icon-btn" data-kb-done="'+v.id+'" title="Markér som færdig">✅ Færdig</button>';
+  }
+  return '<div class="bly-list-row">'
+    +'<div class="bly-list-time">'+esc(timeLabel)+'</div>'
+    +'<div class="bly-list-main"><div class="name">'+esc(v.job_name||v.customer_name||'(uden navn)')+'</div><div class="sub2">'+esc(subParts)+'</div></div>'
+    +'<div class="bly-list-emp">'+empHtml+'</div>'
+    +'<div class="bly-list-action">'+actionHtml+'</div>'
+    +'</div>';
 }
 // KALENDERVISNING — bygger et måned-gitter (mandag først) rent klient-side
 // fra samme kbAllRows()-data som listevisningen (ingen separat fetch), så
@@ -22573,7 +22802,7 @@ function renderQzPendingInvoicing(){
   }).join('');
   var body=document.getElementById('qz-pending-body');
   if(!list.length){
-    body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--bly-sub);padding:24px">'+(qzPendingData.length?'Ingen tilbud mangler fakturering i den valgte periode':'Alt er faktureret — ingen tilbud mangler fakturering lige nu 🎉')+'</td></tr>';
+    body.innerHTML='<div class="bly-list-empty">'+(qzPendingData.length?'Ingen tilbud mangler fakturering i den valgte periode':'Alt er faktureret — ingen tilbud mangler fakturering lige nu 🎉')+'</div>';
     return;
   }
   // Sorteres efter tidligste planlagte dato (de mest "presserende" for
@@ -22590,32 +22819,35 @@ function renderQzPendingInvoicing(){
     var invoicedTotal=Number(x.total)-Number(x.remaining_total_computed);
     var isOverridden=x.override_amount!=null;
     // RUNDE BG (Martins ønske: "jeg kan højreklikke og åbne alle sagerne i en
-    // anden fane hurtigt og derved fakturere 10 kunder på 2 minutter") — samme
-    // "row-link"-mønster som Tilbud-/Faktura-listerne allerede bruger
-    // (renderQzQuotes/renderQzInvoices): en ÆGTE <a href="#quotes/tilbud/…">
-    // om hver celle, ikke en onclick-håndteret <tr>, så højreklik "åbn i ny
-    // fane"/ctrl-klik virker uden ekstra JS — det globale hashchange-lyt i
-    // initApp() åbner allerede #quotes/tilbud/<id> korrekt, se kommentaren der.
+    // anden fane hurtigt og derved fakturere 10 kunder på 2 minutter") — en
+    // ÆGTE <a href="#quotes/tilbud/…"> om "Åbn"-knappen, så højreklik "åbn i
+    // ny fane"/ctrl-klik virker uden ekstra JS.
     var href='#quotes/tilbud/'+x.id;
-    var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
+    var meta=x.project_id?pjStageMeta(x.project_status):null;
+    var dot=meta?meta.dot:'var(--bly-sub)';
+    var statusLabel=meta?meta.label:'Ingen sag oprettet';
     // Let, grøn baggrundstone på afsluttede sager — samme farvepar som resten
     // af appens "success soft"-badges (se fx .fin-badge.ok) — så de ægte
-    // faktureringsklare rækker springer i øjnene uden at skulle læse teksten.
-    var rowStyle=x.project_status==='done'?' style="background:#F0FDF4"':'';
-    return '<tr'+rowStyle+'>'
-      +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':''))+'</td>'
-      +'<td>'+a(esc(x.quote_number||'–'))+'</td>'
-      +'<td>'+a(qzPendingProjectStatusBadge(x))+'</td>'
-      +'<td>'+a(qzPendingPeriodLabel(x.task_ranges))+'</td>'
-      +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
-      +'<td class="num">'+a(krFmt(invoicedTotal))+'</td>'
-      +'<td class="num" style="font-weight:700">'+a(krFmt(Number(x.remaining_total))+(isOverridden?' <span class="tag" title="Manuelt rettet fra '+krFmt(Number(x.remaining_total_computed))+'" style="font-weight:600">✎ rettet</span>':''))+'</td>'
-      +'<td style="white-space:nowrap">'
+    // faktureringsklare kort springer i øjnene uden at skulle læse teksten.
+    var cardStyle=x.project_status==='done'?'background:#F0FDF4;':'';
+    return '<div class="bly-rcard clickable" style="'+cardStyle+'--accent-bar:'+dot+'" onclick="location.hash=\''+href+'\'">'
+      +'<div class="bly-rcard-body">'
+      +'<div class="bly-rcard-top"><span class="bly-rcard-name">'+esc(x.job_name||'(uden navn)')+'</span>'
+      +(x.job_number?'<span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')
+      +'<span class="bly-rcard-pill" style="background:color-mix(in srgb,'+dot+' 16%, white);color:'+dot+'">'+esc(statusLabel)+'</span></div>'
+      +'<div class="bly-rcard-meta"><span><b>'+esc(x.quote_number||'–')+'</b></span><span>'+qzPendingPeriodLabel(x.task_ranges)+'</span></div>'
+      +'</div>'
+      +'<div class="bly-rcard-stats">'
+      +'<div class="bly-rcard-stat"><div class="v">'+krFmt(Number(x.total))+'</div><div class="l">Tilbud total</div></div>'
+      +'<div class="bly-rcard-stat"><div class="v">'+krFmt(invoicedTotal)+'</div><div class="l">Faktureret</div></div>'
+      +'<div class="bly-rcard-stat"><div class="v">'+krFmt(Number(x.remaining_total))+(isOverridden?' <span class="tag" title="Manuelt rettet fra '+krFmt(Number(x.remaining_total_computed))+'">✎</span>':'')+'</div><div class="l">Resterende</div></div>'
+      +'</div>'
+      +'<div class="bly-rcard-action" onclick="event.stopPropagation()"><div class="qz-row-actions">'
       +'<a class="qz-icon-btn" href="'+href+'" title="Åbn tilbud">✎</a>'
       +'<button class="qz-icon-btn" onclick="qzPendingEditPrice('+x.id+')" title="Ret hurtigt det resterende beløb i denne liste (rører ikke selve tilbuddet)">💰</button>'
       +'<button class="qz-icon-btn" onclick="qzPendingDismiss('+x.id+')" title="Fjern fra denne liste (sletter IKKE tilbuddet)">🗑</button>'
-      +'</td>'
-      +'</tr>';
+      +'</div></div>'
+      +'</div>';
   }).join('');
 }
 // RUNDE H #312 (Martins ønske: "Lav en slette knap ikke så jeg sletter
@@ -23524,6 +23756,46 @@ function qzPopulateProductFilters(){
   if(cats.indexOf(curCat)!==-1)catSel.value=curCat;
   if(units.indexOf(curUnit)!==-1)unitSel.value=curUnit;
 }
+// Grupperet pr. kategori (se CSS-kommentaren ved .bly-list-groups) — hver
+// kategori sin egen bordered+shadowed container, produkter uden kategori
+// samlet i "Ingen kategori" for sig, altid sidst.
+function qzProductGroupKey(p){return(p.category||'').trim()||'__nocat__';}
+function qzRenderProductGroups(list){
+  var order=[],byKey={};
+  list.forEach(function(p){
+    var k=qzProductGroupKey(p);
+    if(!byKey[k]){byKey[k]=[];order.push(k);}
+    byKey[k].push(p);
+  });
+  order.sort(function(a,b){
+    if(a==='__nocat__')return 1;
+    if(b==='__nocat__')return-1;
+    return a.localeCompare(b,'da');
+  });
+  return order.map(function(k){
+    var items=byKey[k];
+    return '<div class="bly-list-group">'
+      +'<div class="bly-list-group-head"><span class="d">'+esc(k==='__nocat__'?'Ingen kategori':k)+'</span><span class="n">'+items.length+' produkt'+(items.length===1?'':'er')+'</span></div>'
+      +items.map(qzRenderProductRow).join('')
+      +'</div>';
+  }).join('');
+}
+function qzRenderProductRow(p){
+  var cost=Number(p.cost_price),sell=Number(p.sell_price);
+  var pct=qzMarginPct(cost,sell);
+  var checked=qzProductSelection.has(p.id);
+  return '<div class="bly-list-row">'
+    +'<input type="checkbox" class="qz-product-row-check" data-pid="'+p.id+'"'+(checked?' checked':'')+' style="flex-shrink:0;width:16px;height:16px">'
+    +'<div class="bly-list-main"><div class="name">'+esc(p.name)+'</div>'
+    +'<div class="sub2">'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+' · '+esc(p.unit||'stk')+'</div></div>'
+    +'<div style="display:flex;gap:18px;flex-shrink:0">'
+    +'<div class="bly-rcard-stat"><div class="v">'+krFmt(cost)+'</div><div class="l">Cost</div></div>'
+    +'<div class="bly-rcard-stat"><div class="v">'+krFmt(sell)+'</div><div class="l">Salg</div></div>'
+    +'<div class="bly-rcard-stat"><div class="v"><span class="qz-margin '+qzMarginClass(pct)+'">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span></div><div class="l">Avance</div></div>'
+    +'</div>'
+    +'<div class="bly-list-action"><button class="qz-icon-btn" onclick="openProductModal('+p.id+')" title="Redigér">✎</button></div>'
+    +'</div>';
+}
 function renderQzProducts(){
   var list=qzFilteredProducts();
   // Fjern markeringer af produkter der ikke længere findes/er filtreret væk af søgning
@@ -23534,23 +23806,8 @@ function renderQzProducts(){
   document.getElementById('qz-product-filter-reset-btn').style.display=anyFilterActive?'':'none';
   var body=document.getElementById('qz-products-body');
   var anyActive=anyFilterActive||(document.getElementById('qz-product-search').value||'').trim();
-  if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(anyActive?'Ingen produkter fundet':'Ingen produkter endnu — opret det første')+'</td></tr>';qzUpdateProductBulkBar();return;}
-  body.innerHTML=list.map(function(p){
-    var cost=Number(p.cost_price),sell=Number(p.sell_price);
-    var pct=qzMarginPct(cost,sell);
-    var checked=qzProductSelection.has(p.id);
-    return '<tr>'
-      +'<td><input type="checkbox" class="qz-product-row-check" data-pid="'+p.id+'"'+(checked?' checked':'')+'></td>'
-      +'<td>'+esc(p.name)+'</td>'
-      +'<td>'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+'</td>'
-      +'<td>'+esc(p.category||'–')+'</td>'
-      +'<td>'+esc(p.unit||'stk')+'</td>'
-      +'<td class="num">'+krFmt(cost)+'</td>'
-      +'<td class="num">'+krFmt(sell)+'</td>'
-      +'<td class="num"><span class="qz-margin '+qzMarginClass(pct)+'">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span></td>'
-      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openProductModal('+p.id+')" title="Redigér">✎</button></div></td>'
-      +'</tr>';
-  }).join('');
+  if(!list.length){body.innerHTML='<div class="bly-list-empty">'+(anyActive?'Ingen produkter fundet':'Ingen produkter endnu — opret det første')+'</div>';qzUpdateProductBulkBar();return;}
+  body.innerHTML=qzRenderProductGroups(list);
   var allBtn=document.getElementById('qz-products-select-all');
   var selectedVisible=list.filter(function(p){return qzProductSelection.has(p.id);}).length;
   allBtn.checked=list.length>0&&selectedVisible===list.length;
@@ -23875,22 +24132,21 @@ function renderCrmCustomers(){
   var q=(document.getElementById('crm-search').value||'').trim();
   document.getElementById('crm-count').textContent=list.length+' kunde'+(list.length===1?'':'r');
   var body=document.getElementById('crm-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen kunder fundet':'Ingen kunder endnu — opret den første')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<div class="bly-list-empty">'+(q?'Ingen kunder fundet':'Ingen kunder endnu — opret den første')+'</div>';return;}
   // RUNDE R (Martins ønske: "skyldige beløb" skal kunne SES, "og andre steder")
-  // — "Skyldigt"-kolonnen viser balance_due fra GET /api/crm/customers (se
+  // — "Skyldigt"-beløbet viser balance_due fra GET /api/crm/customers (se
   // CUSTOMER_BALANCE_DUE_SUBQUERY i server.js). Rød når kunden reelt skylder
   // noget, ellers dæmpet "0 kr" — så en kunde der ER betalt/krediteret op ikke
   // skiller sig unødigt ud fra en kunde der aldrig har haft en faktura.
   body.innerHTML=list.map(function(c){
     var owes=Number(c.balance_due)||0;
-    return '<tr style="cursor:pointer" onclick="openCustomerDetail('+c.id+')" oncontextmenu="crmCustomerCtxMenu(event,'+c.id+')">'
-      +'<td>'+(c.is_company?'🏢 ':'')+esc(c.name)+(c.is_company&&c.cvr?' <span class="sub">· CVR '+esc(c.cvr)+'</span>':'')+'</td>'
-      +'<td>'+esc(c.phone||'–')+'</td>'
-      +'<td>'+esc(c.email||'–')+'</td>'
-      +'<td>'+esc(c.address||'–')+'</td>'
-      +'<td class="num" style="'+(owes>0?'color:#B91C1C;font-weight:700':'color:var(--bly-sub)')+'">'+krFmt(owes)+'</td>'
-      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="event.stopPropagation();openCrmModal('+c.id+')" title="Redigér">✎</button></div></td>'
-      +'</tr>';
+    var contactParts=[c.phone,c.email,c.address].filter(Boolean).join(' · ')||'–';
+    return '<div class="bly-flat-row clickable" onclick="openCustomerDetail('+c.id+')" oncontextmenu="crmCustomerCtxMenu(event,'+c.id+')">'
+      +'<div class="bly-flat-main"><div class="name">'+(c.is_company?'🏢 ':'')+esc(c.name)+(c.is_company&&c.cvr?' <span class="sub">· CVR '+esc(c.cvr)+'</span>':'')+'</div>'
+      +'<div class="sub2">'+esc(contactParts)+'</div></div>'
+      +'<div class="bly-flat-num" style="'+(owes>0?'color:#B91C1C':'color:var(--bly-sub);font-weight:600')+'">'+krFmt(owes)+'</div>'
+      +'<div class="bly-flat-action"><button class="qz-icon-btn" onclick="event.stopPropagation();openCrmModal('+c.id+')" title="Redigér">✎</button></div>'
+      +'</div>';
   }).join('');
 }
 // Højreklik-menu på kunderækken — samme genbrugte #ctx-menu/showCtxMenu() som
@@ -27071,36 +27327,61 @@ function cptRenderFilterRow(assigneeRows){
       +'<div class="bly-kpi-value">'+n+'</div></button>';
   }).join('');
 }
+// Dagsgrupperet (se CSS-kommentaren ved .bly-list-groups og kbRenderGroups
+// for forbilledet) — grupperer opfølgningerne pr. forfaldsdato, ligesom
+// Kundebesøg. Opgaver uden dato samles i deres egen gruppe for sig, sidst.
+function cptGroupKey(t){return t.due_date?String(t.due_date).slice(0,10):'__nodate__';}
+function cptGroupLabel(key){
+  if(key==='__nodate__')return'Uden dato';
+  var d=date(key);
+  return KB_WEEKDAYS[d.getDay()]+' '+d.getDate()+'. '+KB_MONTHS[d.getMonth()];
+}
+function cptRenderGroups(rows){
+  var order=[],byKey={};
+  rows.forEach(function(t){
+    var k=cptGroupKey(t);
+    if(!byKey[k]){byKey[k]=[];order.push(k);}
+    byKey[k].push(t);
+  });
+  order.sort(function(a,b){
+    if(a==='__nodate__')return 1;
+    if(b==='__nodate__')return-1;
+    return a.localeCompare(b);
+  });
+  return order.map(function(k){
+    var items=byKey[k];
+    return '<div class="bly-list-group">'
+      +'<div class="bly-list-group-head"><span class="d">'+esc(cptGroupLabel(k))+'</span><span class="n">'+items.length+' opgave'+(items.length===1?'':'r')+'</span></div>'
+      +items.map(cptRenderRow).join('')
+      +'</div>';
+  }).join('');
+}
+function cptRenderRow(t){
+  var assigneeOptions='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(t.assigned_to)?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
+  // RUNDE M (Martins ønske: "Gør det muligt på siden at ændre Dato og hvis
+  // den er trykket færdig så untryk den og ændre datoen igen, hvis det nu
+  // har været en fejl") — datoen er et rigtigt date-felt man kan rette
+  // direkte i listen (data-action="cpt-due-date", PUT due_date med det
+  // samme ved ændring). Færdig-afkrydsningen kan afkrydses IGEN i forvejen
+  // (checkboksen sender bare done:false) — så en fejlagtig "færdig"-
+  // markering kan rettes helt: untryk, og sæt en ny dato.
+  var overdue=!t.done&&t.due_date&&t.due_date<iso(new Date());
+  return '<div class="bly-list-row"'+(t.done?' style="opacity:.55"':'')+'>'
+    +'<input type="checkbox" data-task-id="'+t.id+'" data-action="cpt-toggle"'+(t.done?' checked':'')+' style="flex-shrink:0;width:16px;height:16px">'
+    +'<div class="bly-list-main"><div class="name">'+(t.priority?'⚡ ':'')+'<span style="'+(t.done?'text-decoration:line-through':'')+'">'+esc(t.title)+'</span></div>'
+    +'<div class="sub2"><a href="#crmp-detail/'+t.entity_type+'/'+t.entity_id+'" onclick="openCrmpDetail(\''+t.entity_type+'\','+t.entity_id+');return false;">'+esc(t.entity_name||'(slettet)')+'</a>'+(t.due_time?' · '+esc(t.due_time):'')+'</div></div>'
+    +'<select class="select" style="width:150px;flex-shrink:0" data-task-id="'+t.id+'" data-action="cpt-assignee">'+assigneeOptions+'</select>'
+    +'<input type="date" class="input cpt-date-input'+(overdue?' overdue':'')+'" style="width:140px;flex-shrink:0;padding:6px 7px;font-size:11.5px" data-task-id="'+t.id+'" data-action="cpt-due-date" value="'+(t.due_date||'')+'">'
+    +'<button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="cpt-delete" title="Slet">🗑</button>'
+    +'</div>';
+}
 function cptRender(){
   var filterId=document.getElementById('cpt-assignee-filter').value;
   var assigneeRows=filterId?cptTasks.filter(function(t){return String(t.assigned_to)===filterId;}):cptTasks;
   cptRenderFilterRow(assigneeRows);
   var rows=assigneeRows.filter(function(t){return cptBucketMatch(t,cptFilter);});
   document.getElementById('cpt-count').textContent=rows.length?rows.length+' opgave(r)':'';
-  document.getElementById('cpt-body').innerHTML=rows.length?rows.map(function(t){
-    var assigneeOptions='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(t.assigned_to)?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
-    // RUNDE M (Martins ønske: "Gør det muligt på siden at ændre Dato og hvis
-    // den er trykket færdig så untryk den og ændre datoen igen, hvis det nu
-    // har været en fejl") — datoen var før kun et skrivebeskyttet tekstlabel
-    // (crmpxTaskDueLabel), samme som på CRM-detaljesiden. Her på selve
-    // Opfølgnings-oversigten er den nu et rigtigt date-felt man kan rette
-    // direkte i listen, samme mønster som Ansvarlig-dropdownen ved siden af
-    // (data-action="cpt-due-date", PUT due_date med det samme ved ændring).
-    // Færdig-afkrydsningen herunder kunne godt afkrydses IGEN i forvejen
-    // (checkboksen sender bare done:false) — det nye er at man nu OGSÅ kan nå
-    // datoen bagefter, uanset om opgaven står som færdig eller ej, så en
-    // fejlagtig "færdig"-markering kan rettes helt: untryk, og sæt en ny dato.
-    var overdue=!t.done&&t.due_date&&t.due_date<iso(new Date());
-    return '<tr class="'+(t.done?'done':'')+'" style="'+(t.done?'opacity:.55':'')+'">'
-      +'<td><input type="checkbox" data-task-id="'+t.id+'" data-action="cpt-toggle"'+(t.done?' checked':'')+'></td>'
-      +'<td>'+(t.priority?'⚡':'')+'</td>'
-      +'<td style="'+(t.done?'text-decoration:line-through':'')+'">'+esc(t.title)+'</td>'
-      +'<td><a href="#crmp-detail/'+t.entity_type+'/'+t.entity_id+'" onclick="openCrmpDetail(\''+t.entity_type+'\','+t.entity_id+');return false;">'+esc(t.entity_name||'(slettet)')+'</a></td>'
-      +'<td><select class="select" style="width:100%" data-task-id="'+t.id+'" data-action="cpt-assignee">'+assigneeOptions+'</select></td>'
-      +'<td><input type="date" class="input cpt-date-input'+(overdue?' overdue':'')+'" style="width:100%;padding:6px 7px;font-size:11.5px" data-task-id="'+t.id+'" data-action="cpt-due-date" value="'+(t.due_date||'')+'">'+(t.due_time?'<div class="sub" style="font-size:10px;margin-top:2px;white-space:nowrap">'+esc(t.due_time)+'</div>':'')+'</td>'
-      +'<td><button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="cpt-delete" title="Slet">🗑</button></td>'
-      +'</tr>';
-  }).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen opfølgninger fundet</td></tr>';
+  document.getElementById('cpt-body').innerHTML=rows.length?cptRenderGroups(rows):'<div class="bly-list-empty">Ingen opfølgninger fundet</div>';
   document.querySelectorAll('[data-action="cpt-toggle"]').forEach(function(cb){
     cb.addEventListener('change',async function(){await api('/api/crm/tasks/'+cb.dataset.taskId,{method:'PUT',body:JSON.stringify({done:cb.checked})});cptLoad();});
   });
@@ -27182,14 +27463,30 @@ async function crmpCreateNewItem(){
 }
 
 // ── INDSTILLINGER: pipelines/stages + custom fields ───────────────
-function openCrmpSettingsModal(){
+// RUNDE CI (okt. 2026) — jumpToTaskFields: true når modalen åbnes via
+// opgave-popup'ens "Tilpas felter"-genvej (se initProjectsModule). Springer
+// direkte til Custom fields-fanen med "Opgave-felter" forvalgt, og
+// genindlæser dem friskt fra serveren (crmGetCustomFieldDefsCache), da
+// crmpState.customFieldDefs.task ellers kan være tom — CRM-modulets eget
+// initCrmpModule()/bind() er en LAZY init der aldrig kørte, hvis man åbner
+// denne genvej uden først selv at have besøgt CRM-siden i denne session.
+async function openCrmpSettingsModal(jumpToTaskFields){
   crmpState.settingsPipelineId=crmpState.currentPipelineId;
   var sel=document.getElementById('crmp-set-pipeline-select');
   sel.innerHTML=crmpState.pipelines.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+' ('+(p.type==='lead'?'Lead':'Opportunity')+')</option>';}).join('');
   sel.value=crmpState.settingsPipelineId;
   crmpRenderSettingsStages();
+  if(jumpToTaskFields){
+    crmpState.settingsFieldEntity='task';
+    crmpState.customFieldDefs.task=await crmGetCustomFieldDefsCache('task');
+  }
   document.getElementById('crmp-set-field-entity').value=crmpState.settingsFieldEntity;
   crmpRenderSettingsFields();
+  if(jumpToTaskFields){
+    document.querySelectorAll('#crmp-settings-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.crmpsettab==='fields');});
+    document.getElementById('crmpsettab-pipelines').style.display='none';
+    document.getElementById('crmpsettab-fields').style.display='';
+  }
   document.getElementById('crmp-settings-modal').classList.add('open');
 }
 // ── FORHÅNDSVISNING AF AUTOMATIK-EMAILS ─────────────────────────────────────
@@ -27912,6 +28209,20 @@ function initProjectsModule(){
       // reloadPdCurrent sørger for at "tasks" allerede kender den.
       openCapacityModal({taskId:id});
     });
+    // RUNDE CI — "Tilpas felter"-genvej fra Detaljer-sektionen, hopper direkte
+    // til CRM-indstillingers Felter-fane med "Opgave-felter" forvalgt (se
+    // openCrmpSettingsModal(jumpToTaskFields)), i stedet for at Martin selv
+    // skal finde vej dertil fra et helt andet sted i appen.
+    document.getElementById('pdtd-tilpas-felter-btn').addEventListener('click',function(){
+      closeModal('pd-task-detail-modal');
+      openCrmpSettingsModal(true);
+    });
+    // RUNDE CI — genbruger det eksisterende 4-valgs møde-flow (samme som
+    // sagens/CRM-handlens egen "📹 Møde"-knap), scope='project' da der ikke
+    // findes et selvstændigt opgave-niveau for møder i site_meetings.
+    document.getElementById('pdtd-meeting-btn').addEventListener('click',function(){
+      if(pjCurrent)mdOpenChoice('project',pjCurrent.id,pjCurrent.name);
+    });
     pjInitialized=true;
   }
   loadPjProjects().then(renderPjProjects);
@@ -28050,13 +28361,15 @@ function renderPjProjects(){
   });
   document.getElementById('proj-count').textContent=list.length+' projekt'+(list.length===1?'':'er');
   var body=document.getElementById('proj-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når et tilbud godkendes, eller opret ét manuelt med "+ Nyt projekt"')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<div class="bly-list-empty">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når et tilbud godkendes, eller opret ét manuelt med "+ Nyt projekt"')+'</div>';return;}
   // Status-dropdown direkte i listen (sep. 2026, Martins ønske: "jeg burde kunne
   // vælge status via dropdown, det gør jeg ikke behøves at åbne alle sagerne for
   // at ændre status — hurtig oprydning"). onclick="event.stopPropagation()" på
   // selve select'en, ellers ville et klik for at åbne dropdown'en også trigge
-  // rækkens egen onclick (åbner sagen) — se savePjRowStatus(). RUNDE R — bygges nu
+  // kortets egen onclick (åbner sagen) — se savePjRowStatus(). RUNDE R — bygges nu
   // ud fra pjStages (Martins egne stadier) i stedet for en hårdkodet liste.
+  // Bevidst stadig en RIGTIG <select>, ikke kun en farvet pille — se
+  // CSS-kommentaren ved #proj-table ovenfor.
   function pjRowStatusSelect(p){
     return '<select class="select" style="width:auto;font-size:11.5px;padding:3px 6px" onclick="event.stopPropagation()" onchange="savePjRowStatus('+p.id+',this.value)">'
       +pjAllStagesSorted().map(function(s){return '<option value="'+esc(s.key)+'"'+(p.status===s.key?' selected':'')+'>'+esc(s.label)+'</option>';}).join('')
@@ -28073,22 +28386,30 @@ function renderPjProjects(){
     // foretrækkes nu altid når der er et tilbud koblet på. invoice_total er
     // kun fallback for rene direkte-fakturaer UDEN noget tilbud overhovedet.
     var price=p.quote_total!=null?p.quote_total:p.invoice_total;
-    var contact=[p.customer_email,p.customer_phone].filter(Boolean).join(' · ');
-    return '<tr style="cursor:pointer" onclick="openProjectDetail('+p.id+')" oncontextmenu="pjRowCtxMenu(event,'+p.id+')">'
-      +'<td>'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer">#'+esc(p.job_number)+'</span>':'')+(p.project_type?' <span class="tag" title="Faggruppe" style="background:var(--bly-accent-soft);color:var(--bly-accent)">🏷️ '+esc(p.project_type)+'</span>':'')+(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</td>'
-      +'<td>'+pjRowStatusSelect(p)+'</td>'
-      +'<td>'+esc(p.customer_address||'–')+'</td>'
-      +'<td>'+esc(contact||'–')+'</td>'
-      +'<td class="num">'+(price!=null?krFmt(price):'–')+'</td>'
-      +'<td class="num">'+(p.task_count||0)+'</td>'
-      +'<td class="num">'+(p.time_entry_count||0)+'</td>'
-      +'<td class="num">'+(p.photo_count||0)+'</td>'
-      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" title="Åbn">→</button>'
+    var contact=[p.customer_address,p.customer_email,p.customer_phone].filter(Boolean).join(' · ');
+    var meta=pjStageMeta(p.status);
+    return '<div class="bly-rcard clickable" style="--accent-bar:'+meta.dot+'" onclick="openProjectDetail('+p.id+')" oncontextmenu="pjRowCtxMenu(event,'+p.id+')">'
+      +'<div class="bly-rcard-body">'
+      +'<div class="bly-rcard-top"><span class="bly-rcard-name">'+esc(p.name)+'</span>'
+      +(p.job_number?'<span class="tag" title="Sagsnummer">#'+esc(p.job_number)+'</span>':'')
+      +(p.project_type?'<span class="tag" title="Faggruppe" style="background:var(--bly-accent-soft);color:var(--bly-accent)">🏷️ '+esc(p.project_type)+'</span>':'')
+      +(p.quote_number?'<span class="sub">('+esc(p.quote_number)+')</span>':'')+'</div>'
+      +'<div class="bly-rcard-meta"><span>'+esc(contact||'–')+'</span></div>'
+      +'</div>'
+      +'<div class="bly-rcard-stats">'
+      +'<div class="bly-rcard-stat"><div class="v">'+(p.task_count||0)+'</div><div class="l">Opgaver</div></div>'
+      +'<div class="bly-rcard-stat"><div class="v">'+(p.time_entry_count||0)+'</div><div class="l">Tid</div></div>'
+      +'<div class="bly-rcard-stat"><div class="v">'+(p.photo_count||0)+'</div><div class="l">Billeder</div></div>'
+      +'<div class="bly-rcard-stat"><div class="v">'+(price!=null?krFmt(price):'–')+'</div><div class="l">Pris</div></div>'
+      +'</div>'
+      +'<div class="bly-rcard-action" onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:6px">'
+      +pjRowStatusSelect(p)
+      +'<div class="qz-row-actions"><button class="qz-icon-btn" onclick="openProjectDetail('+p.id+')" title="Åbn">→</button>'
       // RUNDE S (Martins ønske: "jeg mangler en slet knap på projekter") —
-      // stopPropagation, ellers ville klikket også trigge rækkens egen
-      // onclick (åbner sagen), samme mønster som pjRowStatusSelect().
-      +'<button class="qz-icon-btn" onclick="event.stopPropagation();deletePjProject('+p.id+')" title="Slet sagen">🗑</button></div></td>'
-      +'</tr>';
+      // stopPropagation sidder nu på HELE action-området ovenfor.
+      +'<button class="qz-icon-btn" onclick="deletePjProject('+p.id+')" title="Slet sagen">🗑</button></div>'
+      +'</div>'
+      +'</div>';
   }).join('');
 }
 async function openProjectDetail(id){
@@ -30922,18 +31243,19 @@ function renderQzTemplates(){
   // RUNDE W — samme søge-fejlrettelse som tilbud/fakturaer/produkter (se qzSearchHit).
   var list=qzTemplates.filter(function(t){return qzSearchHit(q,[t.name]);});
   var body=document.getElementById('qz-templates-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen skabeloner fundet':'Ingen skabeloner endnu — byg en herunder, eller gem et tilbud som skabelon')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<div class="bly-list-empty">'+(q?'Ingen skabeloner fundet':'Ingen skabeloner endnu — byg en herunder, eller gem et tilbud som skabelon')+'</div>';return;}
   body.innerHTML=list.map(function(t){
-    return '<tr>'
-      +'<td>'+esc(t.name)+'</td>'
-      +'<td>'+esc(t.description||'–')+'</td>'
-      +'<td class="num">'+((t.lines||[]).length)+'</td>'
-      +'<td><div class="qz-row-actions">'
+    var n=(t.lines||[]).length;
+    return '<div class="bly-flat-row">'
+      +'<div class="bly-flat-main"><div class="name">'+esc(t.name)+'</div>'
+      +(t.description?'<div class="sub2">'+esc(t.description)+'</div>':'')+'</div>'
+      +'<div class="bly-flat-col" style="width:70px;text-align:right">'+n+' linje'+(n===1?'':'r')+'</div>'
+      +'<div class="bly-flat-action"><div class="qz-row-actions">'
       +'<button class="qz-icon-btn" onclick="useTemplateForNewQuote('+t.id+')" title="Brug i nyt tilbud">➜</button>'
       +'<button class="qz-icon-btn" onclick="openTemplateModal('+t.id+')" title="Redigér">✎</button>'
       +'<button class="qz-icon-btn" onclick="deleteQzTemplate('+t.id+')" title="Slet">🗑</button>'
-      +'</div></td>'
-      +'</tr>';
+      +'</div></div>'
+      +'</div>';
   }).join('');
 }
 function openTemplateModal(id){
@@ -31066,29 +31388,29 @@ function renderQzQuotes(){
   });
   document.getElementById('qz-quotes-count').textContent='Tilbud ('+list.length+')';
   var body=document.getElementById('qz-quotes-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen tilbud fundet':'Ingen tilbud endnu')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<div class="bly-list-empty">'+(q?'Ingen tilbud fundet':'Ingen tilbud endnu')+'</div>';return;}
   body.innerHTML=list.map(function(x){
     var href='#quotes/tilbud/'+x.id;
-    var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
-    return '<tr oncontextmenu="qzQuoteCtxMenu(event,'+x.id+')">'
-      +'<td>'+a(esc(x.quote_number||'–'))+'</td>'
-      +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':''))+'</td>'
-      +'<td>'+a(esc(String(x.created_at||'').slice(0,10)))+'</td>'
-      +'<td>'+a(qzStatusDot(QZ_QUOTE_STATUS,x.status))+'</td>'
-      +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
-      +'<td><div class="qz-row-actions">'
-      // RUNDE BG (Martins ønske: "vil jeg også gerne kunne højreklikke på de
-      // knapper der er og åbne det i en ny fane") — "Åbn"-knappen er nu en
-      // ÆGTE <a href="#quotes/tilbud/…"> (samme href som resten af rækken,
-      // se a() ovenfor), så højreklik/ctrl-klik virker direkte på selve
-      // ikonet, ikke kun ved at klikke andre steder i rækken. ⧉/🗑 er bevidst
-      // IKKE links — de udfører en handling med det samme og giver ikke
-      // mening at "åbne i en ny fane".
+    var st=QZ_QUOTE_STATUS[x.status]||{label:x.status||'',dot:'var(--bly-dot-total)'};
+    // RUNDE BG (Martins ønske: "vil jeg også gerne kunne højreklikke på de
+    // knapper der er og åbne det i en ny fane") — "Åbn"-knappen er en ÆGTE
+    // <a href="#quotes/tilbud/…">, så højreklik/ctrl-klik virker direkte på
+    // selve ikonet. ⧉/🗑 er bevidst IKKE links — de udfører en handling med
+    // det samme og giver ikke mening at "åbne i en ny fane".
+    return '<div class="bly-rcard clickable" style="--accent-bar:'+st.dot+'" onclick="location.hash=\''+href+'\'" oncontextmenu="qzQuoteCtxMenu(event,'+x.id+')">'
+      +'<div class="bly-rcard-body">'
+      +'<div class="bly-rcard-top"><span class="bly-rcard-name">'+esc(x.job_name||'(uden navn)')+'</span>'
+      +(x.job_number?'<span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')
+      +'<span class="bly-rcard-pill" style="background:color-mix(in srgb,'+st.dot+' 16%, white);color:'+st.dot+'">'+esc(st.label)+'</span></div>'
+      +'<div class="bly-rcard-meta"><span><b>'+esc(x.quote_number||'–')+'</b></span><span>'+esc(String(x.created_at||'').slice(0,10))+'</span></div>'
+      +'</div>'
+      +'<div class="bly-rcard-stats"><div class="bly-rcard-stat"><div class="v">'+krFmt(Number(x.total))+'</div><div class="l">Total</div></div></div>'
+      +'<div class="bly-rcard-action" onclick="event.stopPropagation()"><div class="qz-row-actions">'
       +'<a class="qz-icon-btn" href="'+href+'" title="Åbn">✎</a>'
       +'<button class="qz-icon-btn" onclick="duplicateQzQuote('+x.id+')" title="Kopiér tilbud — samme kunde/linjer/priser i et nyt, uafhængigt tilbud">⧉</button>'
       +(x.status!=='converted'?'<button class="qz-icon-btn" onclick="deleteQzQuote('+x.id+')" title="Slet">🗑</button>':'')
-      +'</div></td>'
-      +'</tr>';
+      +'</div></div>'
+      +'</div>';
   }).join('');
 }
 // Højreklik-menu på tilbudsrækken — samme genbrugte #ctx-menu/showCtxMenu()
@@ -33146,28 +33468,33 @@ function renderQzInvoices(){
   });
   document.getElementById('qz-invoices-count').textContent='Fakturaer ('+list.length+')';
   var body=document.getElementById('qz-invoices-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen fakturaer fundet':'Ingen fakturaer endnu')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<div class="bly-list-empty">'+(q?'Ingen fakturaer fundet':'Ingen fakturaer endnu')+'</div>';return;}
   body.innerHTML=list.map(function(x){
     var href='#qz-invoices/faktura/'+x.id;
-    var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
+    var st=QZ_INVOICE_STATUS[x.status]||{label:x.status||'',dot:'var(--bly-dot-total)'};
     // RUNDE R (Martins ønske: det skal være "klart kunden ikke skylder det der
-    // krediteret mere") — "Rest" var allerede korrekt (nettede kreditnotaer ud,
-    // se GET /api/invoices), men viste ikke AT/hvorfor et beløb var trukket fra.
-    // Lille rød undertekst gør det tydeligt her i den samlede fakturaliste også,
-    // ikke kun når man åbner selve fakturaen.
-    var creditedNote=Number(x.credited_total)>0?'<div style="font-size:11px;color:#DC2626">↩️ krediteret '+krFmt(x.credited_total)+'</div>':'';
-    return '<tr oncontextmenu="qzInvoiceCtxMenu(event,'+x.id+')">'
-      +'<td>'+a(esc(x.invoice_number||'–'))+'</td>'
-      +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':''))+'</td>'
-      +'<td>'+a(esc(String(x.created_at||'').slice(0,10)))+'</td>'
-      +'<td>'+a(esc(x.due_date||'–'))+'</td>'
-      +'<td>'+a(qzStatusDot(QZ_INVOICE_STATUS,x.status))+'</td>'
-      +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
-      +'<td class="num">'+a(krFmt(Number(x.paid_total)))+'</td>'
-      +'<td class="num">'+a(krFmt(Number(x.remaining))+creditedNote)+'</td>'
+    // krediteret mere") — "Rest" nettede allerede kreditnotaer ud (se GET
+    // /api/invoices), men viste ikke AT/hvorfor et beløb var trukket fra.
+    var creditedNote=Number(x.credited_total)>0?'<div style="font-size:10.5px;color:#DC2626;margin-top:1px">↩️ krediteret '+krFmt(x.credited_total)+'</div>':'';
+    // Forfaldsdato vist i rødt når den er overskredet og fakturaen stadig
+    // skylder noget — rent visuelt, rører ikke ved selve status-logikken.
+    var isOverdue=(x.status==='unpaid'||x.status==='partial')&&x.due_date&&x.due_date<iso(new Date());
+    return '<div class="bly-rcard clickable" style="--accent-bar:'+(isOverdue?'var(--bly-dot-overdue)':st.dot)+'" onclick="location.hash=\''+href+'\'" oncontextmenu="qzInvoiceCtxMenu(event,'+x.id+')">'
+      +'<div class="bly-rcard-body">'
+      +'<div class="bly-rcard-top"><span class="bly-rcard-name">'+esc(x.job_name||'(uden navn)')+'</span>'
+      +(x.job_number?'<span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')
+      +'<span class="bly-rcard-pill" style="background:color-mix(in srgb,'+st.dot+' 16%, white);color:'+st.dot+'">'+esc(st.label)+'</span></div>'
+      +'<div class="bly-rcard-meta"><span><b>'+esc(x.invoice_number||'–')+'</b></span><span>'+esc(String(x.created_at||'').slice(0,10))+'</span>'
+      +(x.due_date?'<span'+(isOverdue?' style="color:#DC2626;font-weight:700"':'')+'>Forfald '+esc(x.due_date)+'</span>':'')+'</div>'
+      +'</div>'
+      +'<div class="bly-rcard-stats">'
+      +'<div class="bly-rcard-stat"><div class="v">'+krFmt(Number(x.total))+'</div><div class="l">Total</div></div>'
+      +'<div class="bly-rcard-stat"><div class="v">'+krFmt(Number(x.paid_total))+'</div><div class="l">Betalt</div></div>'
+      +'<div class="bly-rcard-stat"><div class="v">'+krFmt(Number(x.remaining))+'</div><div class="l">Rest</div>'+creditedNote+'</div>'
+      +'</div>'
       // RUNDE BG — se kommentaren ved samme ændring i renderQzQuotes().
-      +'<td><div class="qz-row-actions"><a class="qz-icon-btn" href="'+href+'" title="Åbn">✎</a></div></td>'
-      +'</tr>';
+      +'<div class="bly-rcard-action" onclick="event.stopPropagation()"><div class="qz-row-actions"><a class="qz-icon-btn" href="'+href+'" title="Åbn">✎</a></div></div>'
+      +'</div>';
   }).join('');
 }
 // Højreklik-menu på fakturarækken — samme genbrugte #ctx-menu/showCtxMenu().

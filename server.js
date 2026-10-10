@@ -2008,6 +2008,25 @@ async function initSchema() {
       UNIQUE(field_id, task_id)
     );
     CREATE INDEX IF NOT EXISTS idx_task_cfv_task ON task_custom_field_values(task_id);
+    -- RUNDE CI (okt. 2026, Martins ønske: "ombyg popup'en som den i arkitekt" —
+    -- den app havde en udfyldt "Detaljer"-sektion med Fase/Rum-etage/Leverance-
+    -- dato osv., mens vores egen opgave-felt-motor (ovenfor) stod helt tom, da
+    -- Martin aldrig selv havde nået at oprette nogen "Opgave-felter"). Et
+    -- fornuftigt flise/gulv-relevant startsæt, så Detaljer-sektionen ikke er
+    -- tom første gang popup'en åbnes — Martin kan frit redigere/slette/tilføje
+    -- flere selv under CRM → ⚙️ Indstillinger → Custom fields → Opgave-felter,
+    -- ligesom resten af felt-motoren altid har kunnet. ON CONFLICT DO NOTHING
+    -- (entity_type+key er unik) betyder dette kun sker ÉN gang — rører aldrig
+    -- felter Martin selv har oprettet eller ændret siden.
+    INSERT INTO crm_custom_fields (entity_type, key, label, field_type, options, position) VALUES
+      ('task', 'fase', 'Fase', 'select', '["Opmåling","Forberedelse","Udførelse","Aflevering"]', 0),
+      ('task', 'rum_etage', 'Rum / etage', 'text', '[]', 1),
+      ('task', 'leverancedato', 'Leverancedato', 'date', '[]', 2),
+      ('task', 'materialer_bestilt', 'Materialer bestilt', 'checkbox', '[]', 3),
+      ('task', 'estimerede_timer', 'Estimerede timer', 'number', '[]', 4),
+      ('task', 'kritisk_for_tidsplanen', 'Kritisk for tidsplanen', 'checkbox', '[]', 5),
+      ('task', 'kraever_ks_godkendelse', 'Kræver KS-godkendelse', 'checkbox', '[]', 6)
+    ON CONFLICT (entity_type, key) DO NOTHING;
     CREATE TABLE IF NOT EXISTS crm_activities (
       id SERIAL PRIMARY KEY,
       entity_type TEXT NOT NULL, -- 'lead' | 'opportunity' | 'contact'
@@ -22930,9 +22949,23 @@ function sanitizeTaskNoteHtml(html) {
   s = s.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
   s = s.replace(/<ul\b[^>]*>/gi, '<ul>');
   s = s.replace(/<li\b[^>]*>/gi, tag => /class\s*=\s*["']?[^"'>]*\brte-fold-closed\b/i.test(tag) ? '<li class="rte-fold-closed">' : '<li>');
-  s = s.replace(/<(\/?)(b|strong|br|ol|h4)\b[^>]*>/gi, '<$1$2>');
+  // RUNDE CI (okt. 2026, Martins ønske: "ombyg popup'en som den i arkitekt" —
+  // reference-appens note-værktøjslinje havde kursiv/understreget/gennemstreget,
+  // H1/H2 og citat ud over det der allerede fandtes her) — whitelisten udvidet
+  // tilsvarende. h4 beholdes (ikke kun h1/h2), så ældre noter skrevet FØR denne
+  // udvidelse (som kun kunne producere <h4>) stadig vises korrekt.
+  s = s.replace(/<(\/?)(b|strong|i|em|u|s|strike|br|ol|h1|h2|h4|blockquote)\b[^>]*>/gi, '<$1$2>');
   s = s.replace(/<\/li>/gi, '</li>');
-  s = s.replace(/<(?!\/?(b|strong|br|ul|ol|li|h4)\b)[^>]*>/gi, '');
+  // RUNDE CI (okt. 2026): Chrome's contentEditable indsætter <div>linje</div>
+  // pr. linje ved Enter i stedet for <br>, især lige efter et formatBlock-kald.
+  // <div> var ikke på whitelisten, og blev tidligere bare slettet af catch-all
+  // strip-reglen nedenfor UDEN at indsætte noget i stedet — så flere linjer
+  // separeret af <div> endte sammenklistret til én løbende linje uden
+  // linjeskift efter gem+genindlæs. Konverter <div>-grænser til <br> FØR
+  // catch-all-strippen kører, så linjeskiftet bevares.
+  s = s.replace(/<div[^>]*>/gi, '<br>').replace(/<\/div>/gi, '');
+  s = s.replace(/^(<br>)+/, '');
+  s = s.replace(/<(?!\/?(b|strong|i|em|u|s|strike|br|ul|ol|li|h1|h2|h4|blockquote)\b)[^>]*>/gi, '');
   return s.trim();
 }
 // Gør en opgave-note sikker at rendere som innerHTML, UANSET om den er
@@ -22943,7 +22976,7 @@ function sanitizeTaskNoteHtml(html) {
 function taskNoteToSafeHtml(raw) {
   if (!raw) return '';
   const s = String(raw);
-  if (/<(b|strong|br|ul|ol|li|h4)\b/i.test(s)) return sanitizeTaskNoteHtml(s);
+  if (/<(b|strong|i|em|u|s|strike|br|ul|ol|li|h1|h2|h4|blockquote)\b/i.test(s)) return sanitizeTaskNoteHtml(s);
   return escPublic(s).replace(/\n/g, '<br>');
 }
 // Linje-beskrivelse på tilbud/faktura (sep. 2026, Martins ønske): 1. linje af
