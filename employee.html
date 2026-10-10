@@ -72,7 +72,7 @@
 .task-timeline-seg.tl-today{background:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.22)}
 .task-timeline-seg.tl-future{background:#E2E8F0}
 .task.done .task-timeline{background:#F0FDF4;border-color:#BBF7D0}
-.task.done .task-timeline-seg.tl-past,.task.done .task-timeline-seg.tl-today{background:#16A34A;box-shadow:none}.case-chip{font-size:9px;font-weight:800;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:2px 7px;white-space:nowrap;text-decoration:none;display:inline-block}.untimed-divider{font-size:10px;font-weight:700;color:var(--muted);background:#F1F5F9;border:1px dashed var(--border);border-radius:8px;padding:6px 10px;margin:0 0 9px}.job-details{margin:11px 0 12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px 0;display:grid;gap:6px}.detail-line{display:flex;align-items:flex-start;gap:6px;font-size:11px;color:var(--muted);line-height:1.35}.detail-line a{color:#4F46E5;text-decoration:none;font-weight:650}.detail-line a:hover{text-decoration:underline}.detail-line.planned{color:#475569}.weather-line{font-size:11px;color:var(--muted)}.weather-line.loading{color:var(--ghost)}.task-checklist{margin:0 0 10px}.task-checklist:empty{display:none}.task-description{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin:0 0 12px}.task-description-label{font-size:9.5px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px}.task-description-body{font-size:12.5px;color:#78350F;line-height:1.5;white-space:pre-line}.tc-title{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}.tc-item{display:flex;align-items:center;gap:8px;padding:7px 9px;background:#F8FAFC;border-radius:8px;margin-bottom:5px}.tc-item.done{background:#F0FDF4}.tc-item.done span{text-decoration:line-through;opacity:.6}.tc-item input{width:17px;height:17px;accent-color:#16A34A;flex-shrink:0}.tc-item span{font-size:12px;color:var(--navy)}
+.task.done .task-timeline-seg.tl-past,.task.done .task-timeline-seg.tl-today{background:#16A34A;box-shadow:none}.case-chip{font-size:9px;font-weight:800;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:2px 7px;white-space:nowrap;text-decoration:none;display:inline-block}.untimed-divider{font-size:10px;font-weight:700;color:var(--muted);background:#F1F5F9;border:1px dashed var(--border);border-radius:8px;padding:6px 10px;margin:0 0 9px}.job-details{margin:11px 0 12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px 0;display:grid;gap:6px}.detail-line{display:flex;align-items:flex-start;gap:6px;font-size:11px;color:var(--muted);line-height:1.35}.detail-line a{color:#4F46E5;text-decoration:none;font-weight:650}.detail-line a:hover{text-decoration:underline}.detail-line.planned{color:#475569}.weather-line{font-size:11px;color:var(--muted)}.weather-line.loading{color:var(--ghost)}.task-checklist{margin:0 0 10px}.task-checklist:empty{display:none}.task-description{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin:0 0 12px}.task-description-label{font-size:9.5px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px}.task-description-body{font-size:12.5px;color:#78350F;line-height:1.5;white-space:pre-line}.tc-title{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}.tc-item{display:flex;align-items:center;gap:8px;padding:7px 9px;background:#F8FAFC;border-radius:8px;margin-bottom:5px}.tc-item.done{background:#F0FDF4}.tc-item.done span{text-decoration:line-through;opacity:.6}.tc-item input{width:17px;height:17px;accent-color:#16A34A;flex-shrink:0}.tc-item span{font-size:12px;color:var(--navy)}.tc-assignee{color:var(--muted);font-size:11px;font-weight:600}
 /* RUNDE H #21 — Martin syntes farveblokkene (gul/lilla/cyan osv.) så "børneagtige"
    ud. Skiftet til én neutral, rolig knap-stil (hvid + tynd kant, som .small-btn/
    .lib-btn) for alle sekundære handlinger, og kun to solide "vigtigt"-farver
@@ -476,7 +476,9 @@ async function hydrateChecklists(){
     const r=await api('/api/tasks/'+encodeURIComponent(taskId)+'/checklist');
     const items=r&&r.ok?r.data:null;
     if(!items||!items.length)return;
-    const html='<div class="tc-title">✓ To document for this task</div>'+items.map(it=>`<div class="tc-item ${it.done?'done':''}"><input type="checkbox" ${it.done?'checked':''} onchange="toggleMyChecklistItem(${it.id},this.checked)"><span>${esc(it.title)}</span></div>`).join('');
+    // RUNDE CE — viser hvem der er ansvarlig for punktet (assigned_to_name,
+    // sendt med af GET /api/tasks/:id/checklist), hvis nogen er sat.
+    const html='<div class="tc-title">✓ To document for this task</div>'+items.map(it=>`<div class="tc-item ${it.done?'done':''}"><input type="checkbox" ${it.done?'checked':''} onchange="toggleMyChecklistItem(${it.id},this.checked)"><span>${esc(it.title)}${it.assigned_to_name?' <span class=\"tc-assignee\">· '+esc(it.assigned_to_name)+'</span>':''}</span></div>`).join('');
     document.querySelectorAll('[data-checklist-task-id="'+CSS.escape(taskId)+'"]').forEach(el=>{el.innerHTML=html;});
   }));
 }
@@ -544,7 +546,7 @@ function closeNoteOnBackdrop(e){if(e.target===document.getElementById('note-moda
 // PÅKRÆVET som dokumentation), tilføje billeder til sagen, og udfylde
 // KS-formularer Martin har bygget.
 // ══════════════════════════════════════════════════════════════
-let pmState={view:'list',projects:[],current:null,qaTemplates:[],qaAnswering:null,contactTemplates:[],contactAnswering:null,akkordItems:null};
+let pmState={view:'list',projects:[],current:null,qaTemplates:[],qaAnswering:null,qaTaskId:null,contactTemplates:[],contactAnswering:null,akkordItems:null};
 function openProjectsModal(){
   pmState.view='list';
   document.getElementById('projects-modal').classList.add('open');
@@ -922,9 +924,14 @@ async function pmSubmitPhoto(){
     else{pmFeedback('pmp-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Upload billede'}
   }catch(e){pmFeedback('pmp-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Upload billede'}
 }
-async function pmOpenQaPicker(){
+async function pmOpenQaPicker(taskId){
   pmState.view='qa-picker';
-  document.getElementById('pm-title').textContent='🛡 Vælg KS-formular';
+  // RUNDE CG — gemmes på state'et, ikke kun som funktionsparameter, da
+  // pmOpenQaForm/pmSubmitQa kaldes senere (fra et klik i et helt andet DOM-
+  // render) og ikke selv har adgang til den oprindelige parameter.
+  pmState.qaTaskId=taskId||null;
+  const taskNote=pmState.qaTaskId?' <span style="font-weight:400;color:var(--muted);font-size:12px">— denne opgave</span>':'';
+  document.getElementById('pm-title').innerHTML='🛡 Vælg KS-formular'+taskNote;
   const body=document.getElementById('pm-body');
   body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p style="color:var(--muted)">Henter…</p>';
   const r=await api('/api/qa-templates?project_id='+pmState.current.id);
@@ -938,7 +945,8 @@ function pmOpenQaForm(templateId){
   if(!t)return;
   pmState.qaAnswering=t;
   pmState.view='qa-form';
-  document.getElementById('pm-title').textContent=esc(t.name);
+  const taskNote=pmState.qaTaskId?' <span style="font-weight:400;color:var(--muted);font-size:12px">— denne opgave</span>':'';
+  document.getElementById('pm-title').innerHTML=esc(t.name)+taskNote;
   const fieldsHtml=(t.fields||[]).map((f,i)=>{
     if(f.type==='check')return `<label class="doc-check"><input type="checkbox" data-qa-idx="${i}"><span><strong>${esc(f.label)}</strong></span></label>`;
     if(f.type==='number')return `<label class="req-label">${esc(f.label)}</label><input class="req-input" type="number" data-qa-idx="${i}">`;
@@ -946,7 +954,7 @@ function pmOpenQaForm(templateId){
     return `<label class="req-label">${esc(f.label)}</label><input class="req-input" data-qa-idx="${i}">`;
   }).join('');
   document.getElementById('pm-body').innerHTML=`
-    <button class="small-btn" onclick="pmOpenQaPicker()" style="margin-bottom:12px">← Tilbage</button>
+    <button class="small-btn" onclick="pmOpenQaPicker(pmState.qaTaskId)" style="margin-bottom:12px">← Tilbage</button>
     ${fieldsHtml}
     <div id="pmq-feedback" class="req-feedback"></div>
     <button class="req-submit" type="button" id="pmq-submit" onclick="pmSubmitQa()">Indsend KS-formular</button>
@@ -972,7 +980,10 @@ async function pmSubmitQa(){
       } else value=el.value;
       answers.push({label:f.label,type:f.type,value});
     }
-    const r=await api('/api/projects/'+pmState.current.id+'/qa-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers})});
+    // RUNDE CG — task_id sendes med når formularen blev åbnet fra et konkret
+    // opgavekort (se openQaPickerForTask), så KS-punktet knyttes til DENNE
+    // opgave i stedet for hele sagen (qa_submissions.task_id, se server.js).
+    const r=await api('/api/projects/'+pmState.current.id+'/qa-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers,task_id:pmState.qaTaskId||undefined})});
     if(r&&r.ok){toast('KS-formular indsendt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmq-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
   }catch(e){pmFeedback('pmq-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
@@ -1061,12 +1072,17 @@ async function openTimeFormForTask(projectId){
   document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
   if(await pmOpenProjectFor(projectId))pmOpenTimeForm();
 }
-async function openQaPickerForTask(projectId){
+// RUNDE CG (Martins ønske #1: "håndværkerne selv tager fotos og godkender
+// kontrolpunkter fra pladsen") — taskId videregives nu med, så KS-formularen
+// knyttes til DENNE konkrete opgave (qa_submissions.task_id), ikke hele sagen.
+// Kaldes fra opgavekortets "🛡 Kvalitetssikring"-knap med både sagens id
+// (til at hente KS-skabeloner/sende data) og selve opgavens eget id.
+async function openQaPickerForTask(projectId,taskId){
   if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
   document.getElementById('projects-modal').classList.add('open');
   document.getElementById('pm-title').textContent='Henter…';
   document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
-  if(await pmOpenProjectFor(projectId))pmOpenQaPicker();
+  if(await pmOpenProjectFor(projectId))pmOpenQaPicker(taskId||null);
 }
 async function openMaterialsFormForTask(projectId){
   if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
@@ -1539,13 +1555,17 @@ function render(){
       // RUNDE H #25 — a.notes kan nu indeholde sikker, sanitiseret HTML (fed
       // skrift/punkt-/tal-/pil-lister) fra den nye note-editor i admin.html.
       // noteIsHtml markerer det, så openBookingNote() ved om den skal rendere
-      // som HTML (a.notes, server-saniteret) eller escape'e ren tekst
-      // (a.task_description-fallback, som ALDRIG er HTML).
+      // som HTML eller escape'e ren tekst.
+      // RUNDE CE: a.task_description er nu OGSÅ altid sikker HTML (server
+      // sender den gennem taskNoteToSafeHtml() i /api/assignments/my, se
+      // server.js), uanset om opgaven bruger den nye note-editor eller stadig
+      // har ren tekst fra før den fandtes — derfor noteIsHtml:true altid nu,
+      // ikke kun når a.notes er sat.
       // RUNDE L (Martins ønske) — "med et klik tilføje det tilbud der sendt uden
       // priser" til et kundebesøg, så medarbejderen kan se omfanget. Vises i samme
       // note-modal som notes/vedhæftninger allerede bruger (isVisit markerer at
       // openBookingNote skal hente og vise tilbuds-omfanget, se quote-scope-endpointet).
-      bookingNotes.set(String(a.id),{note:a.notes||a.task_description,noteIsHtml:!!a.notes,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||''),isVisit:!!a.is_visit,taskId:a.task_id});
+      bookingNotes.set(String(a.id),{note:a.notes||a.task_description,noteIsHtml:true,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||''),isVisit:!!a.is_visit,taskId:a.task_id});
       const mapButton=maps?`<a class="action maps" href="${maps}" target="_blank" rel="noopener">📍 Maps</a>`:`<button class="action maps" type="button" onclick="toast('No address on this task')">📍 Maps</button>`;
       const addressMarkup=address?(maps?`<a href="${maps}" target="_blank" rel="noopener">${esc(address)}</a>`:esc(address)):'No address';
       const phoneMarkup=phone?`<a href="${esc(phoneHref(phone))}">${esc(phone)}</a>`:'<span>No customer phone number</span>';
@@ -1561,7 +1581,11 @@ function render(){
       // stedet for den almindelige dokumentations-tjekliste (fugtmålinger mv.),
       // som ikke giver mening for et salgsbesøg. Se openVisitReportModal().
       const doneBtn=isDone?`<button class="action undone-btn" type="button" style="grid-column:1/-1" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:(a.is_visit?`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openVisitReportModal(${noteId},'${esc(a.task_id)}')">✅ Mark as done</button>`:`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openDocModal(${noteId})">✅ Mark as done</button>`);
-      const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse'}</div><div class="task-description-body">${esc(a.task_description).replace(/\n/g,'<br>')}</div></div>`:'';
+      // RUNDE CE: a.task_description er allerede sikker HTML fra serveren
+      // (taskNoteToSafeHtml i /api/assignments/my) — IKKE esc()'et her længere,
+      // ellers ville fed skrift/lister fra den nye note-editor vises som rå
+      // tags i stedet for formateret tekst.
+      const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse'}</div><div class="task-description-body">${a.task_description}</div></div>`:'';
       // SAGS-HANDLINGER: alle opgaver styres nu fra Martins eget program, så
       // "Se sagen"/"Registrér tid"/"Udfyld KS-formular"/"Materialer" åbner en
       // formular i selve appen, sat direkte på opgavens sag.
@@ -1587,7 +1611,7 @@ function render(){
       // ikke, åbner de i stedet "🔍 Find projekt" så medarbejderen selv kan
       // søge/vælge den rigtige sag (nøjagtig som tid-knappens fallback).
       const caseActions=`
-        <button class="action qc" type="button" onclick="${isCaseTask?('openQaPickerForTask('+a.task_project_id+')'):'openProjectsModal()'}">🛡 Kvalitetssikring</button>
+        <button class="action qc" type="button" onclick="${isCaseTask?('openQaPickerForTask('+a.task_project_id+',\''+esc(a.task_id||'')+'\')'):'openProjectsModal()'}">🛡 Kvalitetssikring</button>
         <button class="action files" type="button" onclick="${isCaseTask?('openMaterialsFormForTask('+a.task_project_id+')'):'openProjectsModal()'}">🧾 Materialer</button>`;
       // RUNDE H #30 — Martins fejlrapport: han vidste hans folk havde arbejdet,
       // men Timetracking-rapporten viste kun ét navn. Årsagen var her — en opgave

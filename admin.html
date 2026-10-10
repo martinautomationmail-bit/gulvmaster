@@ -2702,6 +2702,8 @@ body.qz-overlay-open .page.active{display:none}
 .checklist-item-title{flex:1;font-size:12px}
 .checklist-item-del{border:0;background:transparent;cursor:pointer;opacity:.5;font-size:13px}
 .checklist-item-del:hover{opacity:1}
+/* RUNDE CE — ansvarlig medarbejder pr. tjekpunkt. */
+.checklist-item-assignee{flex-shrink:0;max-width:112px;font-size:11px;padding:3px 4px;border:1px solid var(--bly-border);border-radius:6px;background:#fff;color:var(--bly-sub)}
 .capacity-chip{display:inline-flex;align-items:center;gap:4px;background:#F5F3FF;color:#5B21B6;border:1px solid #DDD6FE;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:800}
 .task-completion-section{margin:8px 0 6px;padding:7px 8px;border-radius:8px;background:#F0FDF4;border:1px solid #BBF7D0;color:#166534;font-size:10px;font-weight:800}
 .task-card.completed{cursor:grab}.task-card.completed:hover{border-color:#86EFAC;box-shadow:none}
@@ -3588,6 +3590,22 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .rte-editable ul.arrow-list li{position:relative;padding-left:20px}
 .rte-editable ul.arrow-list li::before{content:'→';position:absolute;left:0;top:0;color:var(--bly-accent);font-weight:700}
 .rte-btn.active{border-color:var(--bly-accent);color:var(--bly-accent);background:var(--bly-accent-soft)}
+/* RUNDE CE — "rigtig moderne note felt" på opgaven (#pdtd-note-input): fed
+   skrift, headlines (h4), punktopstilling, indhak (nestede lister via
+   execCommand indent/outdent), og indhak-under-indhak der kan foldes sammen.
+   Egen variant af .rte-editable/.rte-note, ikke en ændring af dem — de andre
+   note-felter (booking-note, tilbud) skal ikke kunne påvirkes af dette. */
+.rte-editable.rte-task-note{min-height:90px}
+.rte-editable.rte-task-note h4{font-size:14.5px;font-weight:800;color:var(--bly-ink);margin:10px 0 4px;letter-spacing:-.01em}
+.rte-editable.rte-task-note h4:first-child{margin-top:0}
+.rte-editable.rte-task-note ul,.rte-editable.rte-task-note ol{margin:4px 0;padding-left:22px}
+.rte-editable.rte-task-note li{position:relative}
+/* Fold-håndtaget er en ren UI-ting (indsættes/fjernes af JS, aldrig gemt i
+   databasen — se stripFoldHandles() i makeRichTaskNoteField) — vises kun på
+   et <li> der reelt har en nestet under-liste. */
+.rte-fold-handle{display:inline-block;width:13px;margin-right:1px;text-align:center;cursor:pointer;user-select:none;color:var(--bly-sub);font-size:10px;vertical-align:1px}
+.rte-fold-handle:hover{color:var(--bly-accent)}
+.rte-editable.rte-task-note li.rte-fold-closed>ul,.rte-editable.rte-task-note li.rte-fold-closed>ol{display:none}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--bly-border-soft)}
 .modal-actions .btn,.gd-modal .modal-actions .btn{height:38px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px;border-radius:var(--bly-r-pill);font-size:11.5px;white-space:nowrap}
@@ -3780,6 +3798,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#gantt" data-page="projects" data-projtab-jump="gantt">📶 Gantt</a>
         <a class="navdrop-item" href="#projects/ks-skabeloner" data-page="projects" data-projtab-jump="qa-templates">📋 KS-skabeloner</a>
         <a class="navdrop-item" href="#projects/kontaktformularer" data-page="projects" data-projtab-jump="contact-templates">📇 Kontaktformularer</a>
+        <a class="navdrop-item" href="#projects/sags-skabeloner" data-page="projects" data-projtab-jump="project-templates">📦 Sags-skabeloner</a>
       </div>
     </div>
 
@@ -6299,6 +6318,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="tld-section"><label class="tld-label">📝 Note</label><textarea id="crmpx-note" class="tld-input" rows="2"></textarea></div>
       </div>
 
+      <!-- VIDEOMØDER PÅ HANDLEN (RUNDE CH, Martins ønske: "ved et tryk under
+           kunden ... kan holde møder ... gemmes som mødenotater under ...
+           handlen") — altid synlig uanset kunde-kobling (i modsætning til
+           Kunde-panelet nedenfor), da et møde med et lead/en opportunity ikke
+           kræver at der allerede findes en kunde-post. Se vmOpen/vmSave og
+           crmpxLoadMeetings/renderCrmpMeetings i JS'en. -->
+      <div class="crmpx-panel" id="crmpx-meetings-panel">
+        <h3><span class="crmpx-badge crmpx-badge-neutral">📹</span>Møder</h3>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button class="bly-btn outline small" id="crmpx-meeting-start-btn" type="button">📹 Start møde</button>
+          <button class="bly-btn outline small" id="crmpx-meeting-add-btn" type="button">+ Mødenotat</button>
+        </div>
+        <div id="crmpx-meetings-list"></div>
+      </div>
+
       <!-- KUNDE-PANEL — link direkte ind på den rigtige, fyldige kundeside
            (#page-customer-detail), som allerede viser Sager/Tilbud/Fakturaer/
            Opportunities samlet for kunden. I stedet for at duplikere de tabeller
@@ -6699,6 +6733,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <select id="crmp-set-field-entity" class="select" style="width:auto">
           <option value="lead">Lead-felter</option>
           <option value="opportunity">Opportunity-felter</option>
+          <!-- RUNDE CE (Martins ønske: "custom fields så jeg kan lave opgaven
+               langt mere detaljeret") — genbruger denne samme felt-editor;
+               værdierne gemmes blot i en anden tabel (task_custom_field_values),
+               se taskGetCustomFieldValues/taskSetCustomFieldValues i server.js. -->
+          <option value="task">Opgave-felter</option>
         </select>
       </div>
       <div id="crmp-set-fields-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
@@ -6816,6 +6855,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="bly-segtab" data-projtab="gantt" type="button">📶 Gantt</button>
     <button class="bly-segtab" data-projtab="qa-templates" type="button">📋 KS-skabeloner</button>
     <button class="bly-segtab" data-projtab="contact-templates" type="button">📇 Kontaktformularer</button>
+    <!-- RUNDE CF (feature #9) — SAGS-SKABELONER: Martins ønske "fx 'Tilbygning'
+         med opgaver, to-dos og KS-plan på én gang". -->
+    <button class="bly-segtab" data-projtab="project-templates" type="button">📦 Sags-skabeloner</button>
   </div>
 
   <div class="projtabpage" id="projtab-list">
@@ -6887,6 +6929,44 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <thead><tr><th>Navn</th><th class="num">Felter</th><th style="width:90px"></th></tr></thead>
       <tbody id="contact-templates-body"></tbody>
     </table>
+  </div>
+
+  <!-- SAGS-SKABELONER (feature #9) — fx "Tilbygning": et sæt opgaver (med
+       dage-forskydning ift. sagens valgte startdato) + tjekpunkter + KS-
+       skabeloner, der kan "stemples" på en sag med ét klik (se
+       pd-apply-template-btn på sagsdetaljesiden). -->
+  <div class="projtabpage" id="projtab-project-templates" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">Sags-skabeloner</span></div>
+      <div class="bly-toolbar-right"><button class="bly-btn" id="pt-new-template-btn" type="button">+ Ny skabelon</button></div>
+    </div>
+    <div class="hint" style="margin-bottom:14px">En skabelon opretter et fast sæt opgaver (med tjekpunkter) + tildeler KS-skabeloner, når den anvendes på en sag.</div>
+    <table class="bly-table">
+      <thead><tr><th>Navn</th><th class="num">Opgaver</th><th style="width:90px"></th></tr></thead>
+      <tbody id="pt-templates-body"></tbody>
+    </table>
+  </div>
+
+  <!-- SAGS-SKABELON-EDITOR -->
+  <div class="mo" id="project-template-modal">
+    <div class="modal" style="max-width:640px;width:94vw">
+      <h3 id="project-template-modal-title">Ny sags-skabelon</h3>
+      <div class="form-group"><label class="form-label">Navn</label><input id="pt-name" class="input" placeholder="Fx Tilbygning"></div>
+      <div class="form-group"><label class="form-label">Beskrivelse</label><input id="pt-description" class="input" placeholder="Valgfrit"></div>
+      <div class="form-group">
+        <label class="form-label">Opgaver — én pr. linje: <code>Navn | forskydning i dage | varighed i dage | tjekpunkter adskilt med ;</code></label>
+        <textarea id="pt-tasks" class="input" rows="6" placeholder="Fundament | 0 | 3 | Udgravning; Armering&#10;Rejsning | 3 | 5 | Spær; Tag"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">KS-skabeloner der automatisk tildeles</label>
+        <div id="pt-qa-body" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn danger hidden" id="pt-delete">Slet</button>
+        <button class="btn" id="pt-cancel">Annuller</button>
+        <button class="btn primary" id="pt-save">Gem skabelon</button>
+      </div>
+    </div>
   </div>
 
   <!-- GANTT — flyttet herind under Projekter fra sin tidligere plads i
@@ -7133,6 +7213,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-segtab" data-pdtab="materials" type="button">🧾 Materialer</button>
         <button class="bly-segtab" data-pdtab="qa" type="button">📋 Kvalitetssikring</button>
         <button class="bly-segtab" data-pdtab="contact" type="button">📇 Kontaktformular</button>
+        <!-- RUNDE CF — de 6 resterende "store programmer"-features der har en
+             naturlig plads på selve sagsdetaljesiden (de to sidste, Sags-skabeloner
+             og Kundeportal, ligger i stedet hhv. på Projekter-oversigten og i
+             kundeportal-routen, se dem for baggrund). -->
+        <button class="bly-segtab" data-pdtab="dagbog" type="button">📓 Dagbog</button>
+        <button class="bly-segtab" data-pdtab="drawings" type="button">📐 Tegninger</button>
+        <button class="bly-segtab" data-pdtab="milestones" type="button">🏁 Milepæle</button>
+        <button class="bly-segtab" data-pdtab="meetings" type="button">🗒️ Møder</button>
+        <button class="bly-segtab" data-pdtab="rfi" type="button">❓ RFI</button>
+        <button class="bly-segtab" data-pdtab="changeorders" type="button">✏️ Ændringsønsker</button>
       </div>
     </div>
     <div style="padding:16px 22px 22px">
@@ -7164,6 +7254,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
                  nu, med alle rækker, ikke kun det synlige udsnit) som en PDF-fil, se
                  pdDownloadGanttPdf(). -->
             <button class="bly-btn outline" id="pd-gantt-pdf-btn" type="button" title="Download ganttkortet som PDF">📄 Download PDF</button>
+            <!-- RUNDE CF (feature #9, Martins ønske: "Skabeloner for hele sagen, fx
+                 'Tilbygning' ... så en ny sag er sat op på 10 sekunder") — anvender en
+                 sags-skabelon på DENNE sag: opretter dens opgaver+tjeklister+KS-tildeling
+                 fra en valgt startdato, se openApplyTemplateModal()/apply-template-routen. -->
+            <button class="bly-btn outline" id="pd-apply-template-btn" type="button" title="Anvend en sags-skabelon (opgaver + KS) på denne sag">📦 Anvend skabelon</button>
             <button class="bly-btn" id="pd-new-task-btn" type="button">+ Ny opgave</button>
           </div>
         </div>
@@ -7301,6 +7396,23 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           </div>
         </div>
       </div>
+      <!-- ANVEND SKABELON (knap på sagsdetaljesiden, #pd-apply-template-btn) — ligger
+           HERINDE under #page-project-detail, ikke under #page-projects, da den åbnes fra
+           en knap på selve sagsdetaljesiden (Sags-skabeloner-FANEN ligger derimod rigtigt
+           nok under #page-projects, se project-template-modal). En tidligere version lå
+           ved en fejl under #page-projects, hvor .page{display:none} (uden .active) skjulte
+           den helt, så intet skete når man klikkede "Anvend skabelon" — fundet under test. -->
+      <div class="mo" id="apply-template-modal">
+        <div class="modal" style="max-width:420px;width:92vw">
+          <h3>Anvend sags-skabelon</h3>
+          <div class="form-group"><label class="form-label">Skabelon</label><select id="at-template-select" class="select"></select></div>
+          <div class="form-group"><label class="form-label">Startdato for sagen</label><input type="date" id="at-start-date" class="input"></div>
+          <div class="modal-actions">
+            <button class="btn" id="at-cancel">Annuller</button>
+            <button class="btn primary" id="at-apply">Anvend</button>
+          </div>
+        </div>
+      </div>
       <div class="pdtabpage" id="pdtab-materials" style="display:none">
         <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Materialer</span></div></div>
         <table class="bly-table">
@@ -7321,6 +7433,72 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="pdtabpage" id="pdtab-contact" style="display:none">
         <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Indsendte kontaktformularer</span></div></div>
         <div id="pd-contact-body"></div>
+      </div>
+      <!-- DAGBOG (feature #5) -->
+      <div class="pdtabpage" id="pdtab-dagbog" style="display:none">
+        <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Dagbog for byggepladsen</span></div></div>
+        <div class="hint" style="margin-bottom:14px">Vejr, bemanding, leverancer og hændelser — vigtigt dokumentation ved evt. tvister. Noter kan ikke redigeres efter oprettelse.</div>
+        <div class="bly-form-row" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:flex-end">
+          <div><label class="sub">Dato</label><input type="date" class="input" id="pd-diary-date"></div>
+          <div style="flex:1;min-width:140px"><label class="sub">Vejr</label><input class="input" id="pd-diary-weather" placeholder="fx Solrigt, 12°"></div>
+          <div style="flex:1;min-width:140px"><label class="sub">Bemanding</label><input class="input" id="pd-diary-staffing" placeholder="fx 3 mand på pladsen"></div>
+          <div style="flex:1;min-width:140px"><label class="sub">Leverancer</label><input class="input" id="pd-diary-deliveries" placeholder="fx 20 paller fliser"></div>
+          <div style="flex:2;min-width:200px"><label class="sub">Hændelser/noter</label><input class="input" id="pd-diary-notes" placeholder="Fri tekst"></div>
+          <button class="bly-btn" id="pd-diary-add-btn" type="button">+ Tilføj</button>
+        </div>
+        <div id="pd-diary-body"></div>
+      </div>
+      <!-- TEGNINGSLISTE MED VERSIONER (feature #2) -->
+      <div class="pdtabpage" id="pdtab-drawings" style="display:none">
+        <div class="bly-toolbar">
+          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Tegninger</span></div>
+          <div class="bly-toolbar-right"><button class="bly-btn" id="pd-drawing-add-btn" type="button">+ Ny tegning</button></div>
+        </div>
+        <div id="pd-drawings-body"></div>
+      </div>
+      <!-- MILEPÆLE MED AUTOMATISK FAKTURA-FORSLAG (feature #7) -->
+      <div class="pdtabpage" id="pdtab-milestones" style="display:none">
+        <div class="bly-toolbar">
+          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Betalingsplan / milepæle</span></div>
+          <div class="bly-toolbar-right"><button class="bly-btn" id="pd-milestone-add-btn" type="button">+ Ny milepæl</button></div>
+        </div>
+        <table class="bly-table">
+          <thead><tr><th style="width:36px"></th><th>Milepæl</th><th class="num">Beløb</th><th style="width:220px"></th></tr></thead>
+          <tbody id="pd-milestones-body"></tbody>
+        </table>
+      </div>
+      <!-- BYGGEMØDEREFERAT → AUTOMATISKE TO-DOS (feature #3) + VIDEOMØDER
+           (RUNDE CH, Martins ønske: "integrere Google Meet/Zoom ... ved et
+           tryk ... mødenotater under opgaven og/eller handlen") — samme fane,
+           da begge bare er "møde → referat", se header-kommentaren ved
+           site_meetings-tabellen i server.js for hele baggrunden. -->
+      <div class="pdtabpage" id="pdtab-meetings" style="display:none">
+        <div class="bly-toolbar">
+          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Møder &amp; referater</span></div>
+          <div class="bly-toolbar-right">
+            <button class="bly-btn outline" id="pd-meeting-video-start-btn" type="button">📹 Start møde</button>
+            <button class="bly-btn outline" id="pd-meeting-video-add-btn" type="button">+ Mødenotat</button>
+            <button class="bly-btn" id="pd-meeting-add-btn" type="button">+ Nyt byggemødereferat</button>
+          </div>
+        </div>
+        <div class="sub" style="margin-bottom:10px">📹 Start møde åbner Google Meet i en ny fane — tryk bagefter "+ Mødenotat" for at gemme hvad der blev aftalt.</div>
+        <div id="pd-meetings-body"></div>
+      </div>
+      <!-- RFI MELLEM FAGFOLK (feature #6) -->
+      <div class="pdtabpage" id="pdtab-rfi" style="display:none">
+        <div class="bly-toolbar">
+          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Spørgsmål til fagfolk (RFI)</span></div>
+          <div class="bly-toolbar-right"><button class="bly-btn" id="pd-rfi-add-btn" type="button">+ Nyt spørgsmål</button></div>
+        </div>
+        <div id="pd-rfi-body"></div>
+      </div>
+      <!-- ÆNDRINGSØNSKER / EKSTRAARBEJDE (feature #4) -->
+      <div class="pdtabpage" id="pdtab-changeorders" style="display:none">
+        <div class="bly-toolbar">
+          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Ændringsønsker / ekstraarbejde</span></div>
+          <div class="bly-toolbar-right"><button class="bly-btn" id="pd-co-add-btn" type="button">+ Nyt ændringsønske</button></div>
+        </div>
+        <div id="pd-co-body"></div>
       </div>
     </div>
   </div>
@@ -7703,91 +7881,29 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      checklist-modalens generiske add/toggle/slet) og en genvej til at booke
      opgaven på Kapacitetsboardet. -->
 <div class="mo" id="pd-task-detail-modal">
-  <div class="modal gd-modal" style="max-width:560px">
+  <!-- RUNDE CE (Martins ønske #2: "lav popup lidt mere bred så det hele står
+       pænere") — bredere end den gamle 560px, så de nye sektioner (custom
+       fields, KS) ikke klemmer. -->
+  <div class="modal gd-modal" style="max-width:820px">
     <div class="gd-head">
       <!-- RUNDE L (Martins ønske #1): farvet prik der følger opgavens status,
            samme idé som type-prikken i Tidslinje-drawerens hoved (tl-drawer-type-dot). -->
       <span class="gd-head-icon" style="position:relative"><span id="pdtd-status-dot" style="width:11px;height:11px;border-radius:50%;position:absolute;bottom:-1px;right:-1px;border:2px solid #fff"></span>📋</span>
       <div style="flex:1"><div class="gd-head-title">Opgave i sagen · <span id="pdtd-status-label" style="opacity:.8;font-weight:600"></span></div><input id="pdtd-name-input" class="gd-name-input"></div>
+      <!-- RUNDE CE (egen tilføjelse) — prioritet, se skema-kommentaren ved
+           gantt_tasks.priority i server.js. -->
+      <select id="pdtd-priority-select" class="tld-status-select" style="width:auto;margin-left:10px">
+        <option value="low">🔵 Lav</option>
+        <option value="normal">⚪ Normal</option>
+        <option value="high">🟠 Høj</option>
+        <option value="urgent">🔴 Akut</option>
+      </select>
     </div>
     <div class="modal-body-pad">
-      <!-- RUNDE L (Martins ønske #1 og #2) — samme 4 faser som den nye
-           Pipeline-fane (PD_PIPELINE_STATUS_META), redigerbar direkte herfra
-           også, så man ikke behøver skifte til kanban-visningen for bare at
-           flytte én opgave videre. -->
-      <div class="pdtd-card">
-      <div class="form-group">
-        <label class="form-label">📌 Status i pipeline</label>
-        <select id="pdtd-status-select" class="tld-status-select" style="width:100%">
-          <option value="todo" style="background:#F1F5F9;color:#475569">📝 Ikke startet</option>
-          <option value="in_progress" style="background:#DBEAFE;color:#1D4ED8">🔨 I gang</option>
-          <option value="waiting" style="background:#FEF9C3;color:#92570A">⏳ Afventer</option>
-          <option value="done" style="background:#DCFCE7;color:#15803D">✅ Færdig</option>
-        </select>
-      </div>
-      <div class="form-group" style="position:relative">
-        <label class="form-label">📅 Periode</label>
-        <input id="pdtd-start-input" type="hidden">
-        <input id="pdtd-end-input" type="hidden">
-        <button type="button" id="pdtd-daterange-btn" class="input" style="text-align:left;cursor:pointer;background:#fff">Vælg periode…</button>
-        <div id="pdtd-daterange-pop" class="bly-period-pop" style="display:none;width:300px;left:0;right:auto"></div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">📈 Fremdrift</label>
-        <div style="display:flex;align-items:center;gap:10px">
-          <input id="pdtd-progress-input" type="range" min="0" max="100" step="5" value="0" style="flex:1">
-          <span id="pdtd-progress-value" style="font-size:12.5px;font-weight:700;color:var(--bly-ink);width:38px;text-align:right">0%</span>
-        </div>
-      </div>
-      </div>
-      <div class="form-group" style="margin-top:14px"><label class="form-label">📝 Note</label><textarea id="pdtd-note-input" class="input" rows="3" placeholder="Fx særlige forhold på pladsen, adgang, aftaler med kunden..."></textarea></div>
-      <!-- RUNDE S (Martins ønske: "hvis en underleverandør har lavet opgave at
-           lægge deres faktura ind på opgaven ... i stedet for den bruger
-           medarbejdernes timer") — bruges kun hvis opgaven er lavet af en
-           underleverandør i stedet for egne folk; beløbet trækkes fra avancen i
-           stedet for de normale løn-timer, se renderPdBudget(). -->
-      <div class="pdtd-card" style="margin-top:14px">
-        <div class="form-group" style="margin-bottom:10px">
-          <label class="form-label">🧾 Underleverandør-faktura</label>
-          <input id="pdtd-subcost-input" class="input" type="number" min="0" step="0.01" placeholder="Beløb i kr., fx 4500 — udfyld kun hvis en underleverandør har lavet opgaven">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Note til fakturaen</label>
-          <input id="pdtd-subnote-input" class="input" placeholder="Fx fakturanr. eller firmanavn">
-        </div>
-      </div>
-      <div class="form-group" style="margin-top:14px">
-        <label class="form-label">☑ Tjekpunkter</label>
-        <div id="pdtd-checklist-items" style="margin-bottom:8px"></div>
-        <div style="display:flex;gap:8px">
-          <input id="pdtd-checklist-new" class="input" placeholder="Fx Tag billede før opstart" style="flex:1">
-          <button class="btn small" type="button" id="pdtd-checklist-add-btn">+ Tilføj</button>
-        </div>
-      </div>
-      <!-- RUNDE BR (Martin: "Gør det muligt her at inkludere billeder fra
-           kundens handel ... billeder taget ved kundebesøg også kommer ind
-           under filer og så kan jeg bare tage dem derfra. For når jeg så
-           booker det hos en medarbejder får de billederne direkte med") —
-           billedvælgeren genbruger den delte #doc-job-photos-modal (samme
-           modal som tilbud/faktura allerede bruger til sagsbilleder), men
-           kilden er nu HELE sagens billedbibliotek (project_photos +
-           tidsregistrering + kundebesøg, se GET /api/projects/:id/photo-library),
-           så et kundebesøgsbillede er lige så let at vælge som et sagsbillede.
-           Medarbejderen ser de valgte billeder i sin note, når opgaven bookes
-           (se openBookingNote/loadNoteTaskPhotos i employee.html). -->
-      <div class="form-group" style="margin-top:14px">
-        <label class="form-label">📷 Billeder til medarbejderen</label>
-        <div id="pdtd-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;margin-bottom:8px"></div>
-        <button class="btn small" type="button" id="pdtd-add-photo-btn">📷 Vælg billede fra sagen</button>
-      </div>
-      <!-- RUNDE L (Martins ønske #1 "flere data oplysninger") — hvem opgaven
-           allerede er booket på i Kapacitetsbordet, hvis nogen. Skjult helt
-           når opgaven slet ikke er booket endnu. -->
-      <div class="form-group" id="pdtd-bookings-wrap" style="margin-top:14px;display:none">
-        <label class="form-label">👤 Booket på</label>
-        <div id="pdtd-bookings-list" class="gd-info-value"></div>
-      </div>
-      <div class="gd-info-grid" style="margin-top:22px">
+      <!-- RUNDE CE (Martins ønske #1: "placere kundekontakt i toppen") — flyttet
+           herop fra bunden af popup'en, så man ser adresse/telefon/mail FØRST,
+           inden man overhovedet begynder at redigere opgaven. -->
+      <div class="gd-info-grid" style="margin-bottom:18px">
         <div style="grid-column:1/-1;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Kundekontakt</div>
         <!-- RUNDE BS (Martin: "kan jeg se om kundens adresse er korrekt så når
              den bookes i Opgavepool så har den alt dataen") — adressen ER
@@ -7803,11 +7919,144 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="pdtd-email" class="gd-info-value"></div></div>
         <div><div class="gd-info-label">🔢 Sagsnummer</div><div id="pdtd-jobnumber" class="gd-info-value"></div></div>
       </div>
+      <!-- RUNDE L (Martins ønske #1 og #2) — samme 4 faser som den nye
+           Pipeline-fane (PD_PIPELINE_STATUS_META), redigerbar direkte herfra
+           også, så man ikke behøver skifte til kanban-visningen for bare at
+           flytte én opgave videre. -->
+      <div class="pdtd-card">
+      <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">📌 Status i pipeline</label>
+        <select id="pdtd-status-select" class="tld-status-select" style="width:100%">
+          <option value="todo" style="background:#F1F5F9;color:#475569">📝 Ikke startet</option>
+          <option value="in_progress" style="background:#DBEAFE;color:#1D4ED8">🔨 I gang</option>
+          <option value="waiting" style="background:#FEF9C3;color:#92570A">⏳ Afventer</option>
+          <option value="done" style="background:#DCFCE7;color:#15803D">✅ Færdig</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">📈 Fremdrift</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input id="pdtd-progress-input" type="range" min="0" max="100" step="5" value="0" style="flex:1">
+          <span id="pdtd-progress-value" style="font-size:12.5px;font-weight:700;color:var(--bly-ink);width:38px;text-align:right">0%</span>
+        </div>
+      </div>
+      </div>
+      <div class="form-group" style="position:relative">
+        <label class="form-label">📅 Periode</label>
+        <input id="pdtd-start-input" type="hidden">
+        <input id="pdtd-end-input" type="hidden">
+        <button type="button" id="pdtd-daterange-btn" class="input" style="text-align:left;cursor:pointer;background:#fff">Vælg periode…</button>
+        <div id="pdtd-daterange-pop" class="bly-period-pop" style="display:none;width:300px;left:0;right:auto"></div>
+      </div>
+      </div>
+      <!-- RUNDE CE (Martins ønske #3: "rigtig moderne note felt" — Tyk skrift,
+           Headlines, Indhak, Dots, indhak-under-indhak der folder sammen) —
+           textarea'en initialiseres som en rig editor af
+           makeRichTaskNoteField() i openPdTaskDetail(), se admin.html's
+           JS-sektion. -->
+      <div class="form-group" style="margin-top:14px"><label class="form-label">📝 Note</label><textarea id="pdtd-note-input" class="input" rows="3" placeholder="Fx særlige forhold på pladsen, adgang, aftaler med kunden..."></textarea></div>
+      <!-- RUNDE CE (Martins ønske #4: "custom fields så jeg kan lave det langt
+           mere detaljeret") — felt-DEFINITIONER oprettes/redigeres under CRM →
+           ⚙️ Indstillinger → Felter → "Opgave-felter" (samme sted som lead-/
+           opportunity-felter), VÆRDIERNE gemmes her pr. opgave. Skjules helt
+           hvis der slet ikke er oprettet nogen opgave-felter endnu. -->
+      <div class="form-group" id="pdtd-customfields-wrap" style="margin-top:14px;display:none">
+        <label class="form-label">⚙️ Custom fields</label>
+        <div id="pdtd-customfields" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+      <!-- RUNDE S (Martins ønske: "hvis en underleverandør har lavet opgave at
+           lægge deres faktura ind på opgaven ... i stedet for den bruger
+           medarbejdernes timer") — bruges kun hvis opgaven er lavet af en
+           underleverandør i stedet for egne folk; beløbet trækkes fra avancen i
+           stedet for de normale løn-timer, se renderPdBudget(). -->
+      <div class="pdtd-card" style="margin-top:14px">
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">🧾 Underleverandør-faktura</label>
+          <input id="pdtd-subcost-input" class="input" type="number" min="0" step="0.01" placeholder="Beløb i kr., fx 4500 — udfyld kun hvis en underleverandør har lavet opgaven">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Note til fakturaen</label>
+          <input id="pdtd-subnote-input" class="input" placeholder="Fx fakturanr. eller firmanavn">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:14px;align-items:start">
+      <div class="form-group">
+        <label class="form-label">☑ Tjekpunkter</label>
+        <div id="pdtd-checklist-items" style="margin-bottom:8px"></div>
+        <div style="display:flex;gap:8px">
+          <input id="pdtd-checklist-new" class="input" placeholder="Fx Tag billede før opstart" style="flex:1">
+          <button class="btn small" type="button" id="pdtd-checklist-add-btn">+ Tilføj</button>
+        </div>
+      </div>
+      <!-- RUNDE CE (Martins ønske #1 under "Projekt styring generalt": "mere
+           kvalitets kontrol ... hvordan laver vi det?") — KS pr. OPGAVE i
+           stedet for kun pr. sag (Martins eget valg: scope-udvidelse, ikke en
+           obligatorisk/blokerende regel — en opgave kan stadig markeres
+           færdig uden udfyldt KS). Genbruger de eksisterende KS-skabeloner
+           (samme fields-typer check/text/number/photo som sagens egen
+           KS-fane), blot med task_id sat på submission'en. -->
+      <div class="form-group">
+        <label class="form-label">🛡 Kvalitetssikring (denne opgave)</label>
+        <div id="pdtd-qa-list" style="margin-bottom:8px"></div>
+        <div style="display:flex;gap:8px">
+          <select id="pdtd-qa-template-select" class="input" style="flex:1"><option value="">Vælg KS-skabelon…</option></select>
+          <button class="btn small" type="button" id="pdtd-qa-fill-btn">Udfyld</button>
+        </div>
+      </div>
+      </div>
+      <!-- RUNDE BR (Martin: "Gør det muligt her at inkludere billeder fra
+           kundens handel ... billeder taget ved kundebesøg også kommer ind
+           under filer og så kan jeg bare tage dem derfra. For når jeg så
+           booker det hos en medarbejder får de billederne direkte med") —
+           billedvælgeren genbruger den delte #doc-job-photos-modal (samme
+           modal som tilbud/faktura allerede bruger til sagsbilleder), men
+           kilden er nu HELE sagens billedbibliotek (project_photos +
+           tidsregistrering + kundebesøg, se GET /api/projects/:id/photo-library),
+           så et kundebesøgsbillede er lige så let at vælge som et sagsbillede.
+           Medarbejderen ser de valgte billeder i sin note, når opgaven bookes
+           (se openBookingNote/loadNoteTaskPhotos i employee.html).
+           RUNDE CE (Martins ønske #5: "men også indsætte selv") — tilføjet en
+           direkte upload-knap/filvælger, ved siden af "vælg fra sagen", så
+           Martin ikke er tvunget til først at lægge et nyt billede et andet
+           sted på sagen for at kunne vælge det. -->
+      <div class="form-group" style="margin-top:14px">
+        <label class="form-label">📷 Billeder til medarbejderen</label>
+        <div id="pdtd-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;margin-bottom:8px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn small" type="button" id="pdtd-add-photo-btn">📷 Vælg billede fra sagen</button>
+          <label class="btn small" style="cursor:pointer">📤 Upload nyt billede/fil<input type="file" accept="image/*,application/pdf" id="pdtd-upload-photo-input" style="display:none"></label>
+        </div>
+      </div>
+      <!-- RUNDE L (Martins ønske #1 "flere data oplysninger") — hvem opgaven
+           allerede er booket på i Kapacitetsbordet, hvis nogen. Skjult helt
+           når opgaven slet ikke er booket endnu. -->
+      <div class="form-group" id="pdtd-bookings-wrap" style="margin-top:14px;display:none">
+        <label class="form-label">👤 Booket på</label>
+        <div id="pdtd-bookings-list" class="gd-info-value"></div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn" id="pdtd-close-btn">Luk</button>
       <button class="btn" id="pdtd-capacity-btn" type="button">📊 Tilføj til Kapacitetsbordet</button>
       <button class="btn primary" id="pdtd-save-btn" type="button">Gem</button>
+    </div>
+  </div>
+</div>
+<!-- RUNDE CE — lille udfyldelses-modal til en KS-skabelon, scopet til DEN
+     opgave popup'en allerede er åben på (pdTaskDetailId). Egen, lille modal i
+     stedet for at genbruge #qa-template-modal (som er skabelon-EDITOREN, et
+     helt andet formål) eller presse en hel udfyldelsesflade ind i den i
+     forvejen lange opgave-popup. -->
+<div class="mo" id="pdtd-qa-fill-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-head"><div class="modal-title">🛡 <span id="pdtd-qa-fill-title">KS-formular</span></div><button class="modal-close" id="pdtd-qa-fill-close-btn">✕</button></div>
+    <div class="modal-body-pad">
+      <div id="pdtd-qa-fill-fields" style="display:flex;flex-direction:column;gap:12px"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" id="pdtd-qa-fill-cancel-btn">Annullér</button>
+      <button class="btn primary" type="button" id="pdtd-qa-fill-submit-btn">Gem KS-formular</button>
     </div>
   </div>
 </div>
@@ -8162,6 +8411,34 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 </main>
 </div><!-- /app -->
+
+<!-- VIDEOMØDE-NOTAT (RUNDE CH) — DELT modal mellem sagsdetaljen
+     (#page-project-detail) og handel-detaljen (#page-crmp-detail), derfor
+     placeret UDENFOR alle .page-sektioner (ligesom capacity-drop-pop
+     nedenfor) — en modal inde i en ikke-aktiv .page er usynlig pga.
+     .page{display:none}, se den dokumenterede fælde andre steder i filen.
+     vmOpen(scope,id) sætter hvilken sag/handel der gemmes på, før modalen
+     vises. -->
+<div class="mo" id="video-meeting-modal">
+  <div class="modal" style="max-width:480px;width:92vw">
+    <h3>📹 Mødenotat</h3>
+    <div class="form-group"><label class="form-label">Dato</label><input type="date" id="vm-date" class="input"></div>
+    <div class="form-group"><label class="form-label">Deltagere</label><input type="text" id="vm-participants" class="input" placeholder="Fx Martin, kunden"></div>
+    <div class="form-group"><label class="form-label">Platform</label>
+      <select id="vm-platform" class="select">
+        <option value="google_meet">Google Meet</option>
+        <option value="zoom">Zoom</option>
+        <option value="other">Andet</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Mødelink (valgfrit)</label><input type="text" id="vm-link" class="input" placeholder="https://meet.google.com/..."></div>
+    <div class="form-group"><label class="form-label">Noter / aftalt på mødet</label><textarea id="vm-notes" class="input" rows="8" placeholder="Indsæt transskriptionen eller skriv hvad der blev aftalt..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn" id="vm-cancel">Annuller</button>
+      <button class="btn primary" id="vm-save">Gem mødenotat</button>
+    </div>
+  </div>
+</div>
 
 <!-- HURTIG KAPACITETSRESERVATION (drop fra opgavepool) -->
 <div class="capacity-drop-pop" id="capacity-drop-pop" role="dialog" aria-modal="true" aria-labelledby="cdp-title">
@@ -9973,6 +10250,122 @@ function makeRichNoteField(id){
       }
     }
     internal=editable.innerHTML;
+    ta.dispatchEvent(new Event('input'));
+  });
+}
+// RUNDE CE — "rigtig moderne note felt" på selve OPGAVEN (#pdtd-note-input,
+// gantt_tasks.description). Martins ønske: Tyk skrift, Headlines, Indhak,
+// Dots, og indhak-under-indhak der folder sammen. Egen funktion (ikke en
+// udvidelse af makeRichNoteField ovenfor), så booking-noten til medarbejdere
+// ikke kan påvirkes. Serveren saniterer ved gem (sanitizeTaskNoteHtml i
+// server.js): b/strong/br/ul/ol/li/h4, + class="rte-fold-closed" på <li>.
+function stripFoldHandlesHtml(html){
+  var tmp=document.createElement('div');
+  tmp.innerHTML=html||'';
+  tmp.querySelectorAll('.rte-fold-handle').forEach(function(h){h.remove();});
+  return tmp.innerHTML;
+}
+// Finder hvert <li> der har en NESTET under-liste direkte i sig (indhak under
+// indhak) og sætter et lille klikbart ▾/▸-håndtag forrest i den, som folder
+// under-listen sammen/ud (rte-fold-closed-klassen på <li>'et, se CSS). Selve
+// håndtaget er ren UI — fjernes altid igen af stripFoldHandlesHtml() før noten
+// gemmes, så ▾/▸-tegnet aldrig ender som tekst i databasen.
+function updateFoldHandles(editable){
+  editable.querySelectorAll('.rte-fold-handle').forEach(function(h){h.remove();});
+  editable.querySelectorAll('li').forEach(function(li){
+    var nested=li.querySelector(':scope > ul, :scope > ol');
+    if(!nested)return;
+    var handle=document.createElement('span');
+    handle.className='rte-fold-handle';
+    handle.contentEditable='false';
+    handle.textContent=li.classList.contains('rte-fold-closed')?'▸':'▾';
+    handle.addEventListener('mousedown',function(e){e.preventDefault();e.stopPropagation();});
+    handle.addEventListener('click',function(e){
+      e.preventDefault();e.stopPropagation();
+      li.classList.toggle('rte-fold-closed');
+      handle.textContent=li.classList.contains('rte-fold-closed')?'▸':'▾';
+    });
+    li.insertBefore(handle,li.firstChild);
+  });
+}
+function makeRichTaskNoteField(id){
+  var ta=document.getElementById(id);
+  if(!ta||ta.dataset.rteInit)return;
+  ta.dataset.rteInit='1';
+  var seed=ta.value||'';
+  ta.style.display='none';
+  var wrap=document.createElement('div');
+  wrap.className='rte-wrap';
+  wrap.innerHTML='<div class="rte-toolbar">'+
+    '<button type="button" class="rte-btn" data-cmd="bold" title="Fed skrift"><b>F</b></button>'+
+    '<button type="button" class="rte-btn" data-cmd="h4" title="Overskrift">H</button>'+
+    '<button type="button" class="rte-btn" data-cmd="ul" title="Punktopstilling (Dots)">•</button>'+
+    '<button type="button" class="rte-btn" data-cmd="indent" title="Indhak (gør punktet til et under-punkt)">→</button>'+
+    '<button type="button" class="rte-btn" data-cmd="outdent" title="Fjern indhak">←</button>'+
+    '</div>';
+  var editable=document.createElement('div');
+  editable.className='rte-editable input rte-task-note';
+  editable.contentEditable='true';
+  if(ta.placeholder)editable.setAttribute('data-placeholder',ta.placeholder);
+  wrap.appendChild(editable);
+  ta.parentNode.insertBefore(wrap,ta.nextSibling);
+  var internal=seed;
+  var syncingFromValue=false;
+  Object.defineProperty(ta,'value',{
+    get:function(){return internal;},
+    set:function(v){
+      internal=v||'';
+      syncingFromValue=true;
+      editable.innerHTML=internal;
+      updateFoldHandles(editable);
+      syncingFromValue=false;
+    },
+    configurable:true
+  });
+  if(seed){editable.innerHTML=seed;updateFoldHandles(editable);}
+  editable.addEventListener('input',function(){
+    if(syncingFromValue)return;
+    internal=stripFoldHandlesHtml(editable.innerHTML);
+    ta.dispatchEvent(new Event('input'));
+  });
+  editable.addEventListener('blur',function(){
+    updateFoldHandles(editable);
+    ta.dispatchEvent(new Event('change'));
+  });
+  // Enter skal give <br> (whitelistet), ikke <div>/<p> (ikke whitelistet og
+  // ville blive fjernet ved gem) — samme løsning som den øvrige note-editor.
+  editable.addEventListener('keydown',function(){
+    document.execCommand('defaultParagraphSeparator',false,'br');
+  });
+  function inList(){
+    var sel=window.getSelection();
+    var node=sel&&sel.anchorNode;
+    if(!node)return false;
+    var el=node.nodeType===1?node:node.parentElement;
+    var li=el&&el.closest&&el.closest('li');
+    return !!(li&&editable.contains(li));
+  }
+  var toolbar=wrap.querySelector('.rte-toolbar');
+  toolbar.addEventListener('mousedown',function(e){e.preventDefault();});
+  toolbar.addEventListener('click',function(e){
+    var btn=e.target.closest('.rte-btn');if(!btn)return;
+    editable.focus();
+    var cmd=btn.getAttribute('data-cmd');
+    if(cmd==='bold'){
+      document.execCommand('bold');
+    }else if(cmd==='h4'){
+      var cur=(document.queryCommandValue('formatBlock')||'').toLowerCase();
+      document.execCommand('formatBlock',false,cur==='h4'?'<div>':'<h4>');
+    }else if(cmd==='ul'){
+      document.execCommand('insertUnorderedList');
+      updateFoldHandles(editable);
+    }else if(cmd==='indent'){
+      if(inList()){document.execCommand('indent');updateFoldHandles(editable);}
+      else{toast('Lav først en punktliste (•), så kan du indhakke punkterne');}
+    }else if(cmd==='outdent'){
+      if(inList()){document.execCommand('outdent');updateFoldHandles(editable);}
+    }
+    internal=stripFoldHandlesHtml(editable.innerHTML);
     ta.dispatchEvent(new Event('input'));
   });
 }
@@ -12760,6 +13153,17 @@ async function openChecklistModal(taskId){
   await renderChecklistItems('checklist-items',taskId);
   document.getElementById('checklist-modal').classList.add('open');
 }
+// RUNDE CE (Martins ønske: "task man kan uddele på sagen og tilføje en
+// medarbejder ... så det ikke kun er opgave men også task") — i stedet for et
+// helt nyt to-do-system (Martins eget, mindre valg) får hvert tjekpunkt her nu
+// en valgfri ansvarlig medarbejder (data-action="assign-checklist-item"),
+// delt mellem denne opgave-popup OG Opgavepoolens egen tjekliste-modal, da de
+// begge kalder denne samme funktion.
+function checklistAssigneeOptionsHtml(selectedId){
+  return '<option value="">— Ingen —</option>'+(users||[]).map(function(u){
+    return '<option value="'+u.id+'"'+(+selectedId===+u.id?' selected':'')+'>'+esc(u.name)+'</option>';
+  }).join('');
+}
 async function renderChecklistItems(containerId,taskId){
   var el=document.getElementById(containerId);
   if(!el)return;
@@ -12771,6 +13175,7 @@ async function renderChecklistItems(containerId,taskId){
     return '<div class="checklist-item'+(it.done?' done':'')+'">'+
       '<input type="checkbox" '+(it.done?'checked':'')+' data-action="toggle-checklist-item" data-id="'+it.id+'" data-container="'+containerId+'" data-task-id="'+esc(taskId)+'">'+
       '<span class="checklist-item-title">'+esc(it.title)+'</span>'+
+      '<select class="checklist-item-assignee" title="Ansvarlig medarbejder" data-action="assign-checklist-item" data-id="'+it.id+'" data-container="'+containerId+'" data-task-id="'+esc(taskId)+'">'+checklistAssigneeOptionsHtml(it.assigned_to)+'</select>'+
       '<button class="checklist-item-del" data-action="delete-checklist-item" data-id="'+it.id+'" data-container="'+containerId+'" data-task-id="'+esc(taskId)+'" title="Slet">×</button>'+
       '</div>';
   }).join('');
@@ -12781,6 +13186,11 @@ async function addChecklistItem(containerId,taskId,inputId){
   if(!title||!taskId)return;
   var r=await api('/api/tasks/'+encodeURIComponent(taskId)+'/checklist',{method:'POST',body:JSON.stringify({title:title})});
   if(r&&r.ok){input.value='';await renderChecklistItems(containerId,taskId);}
+  else if(r)toast(r.error||'Fejl','❌');
+}
+async function assignChecklistItem(id,userId,containerId,taskId){
+  var r=await api('/api/checklist/'+id,{method:'PUT',body:JSON.stringify({assigned_to:userId||null})});
+  if(r&&r.ok){toast('Ansvarlig opdateret ✓');await renderChecklistItems(containerId,taskId);}
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function toggleChecklistItem(id,done,containerId,taskId){
@@ -13675,7 +14085,11 @@ function openGanttTaskDetail(taskId){
   if(t.type_guess&&TYPE[t.type_guess]){typeBadge.style.display='inline-block';typeBadge.textContent=TYPE[t.type_guess].label;}
   else{typeBadge.style.display='none';}
   var descWrap=document.getElementById('gd-desc-wrap');
-  if(t.description){descWrap.style.display='block';document.getElementById('gd-desc').textContent=t.description;}else{descWrap.style.display='none';}
+  // RUNDE CE: t.description er allerede sikker HTML fra serveren
+  // (taskNoteToSafeHtml, se /api/gantt/all-tasks og /api/projects/:id) — bruger
+  // nu innerHTML i stedet for textContent, så fed skrift/headlines/lister fra
+  // den nye note-editor vises formateret her også.
+  if(t.description){descWrap.style.display='block';document.getElementById('gd-desc').innerHTML=t.description;}else{descWrap.style.display='none';}
   // "Åbn sagen ↗" peger på sagens egen detaljeside i appen (tidligere: sagens
   // tidsplan i JobTread). Skjules helt hvis vi mod forventning ikke kan udpege
   // sagen — bedre end en knap der ikke gør noget.
@@ -18792,6 +19206,10 @@ document.addEventListener('change',function(e){
   if(t.id==='kb-doc-file-input'){kbDocFileChange(e);return;}
   var cb=t.closest?t.closest('[data-action="kb-toggle-checkbox"]'):null;
   if(cb){kbToggleCheckbox(cb.dataset.row,cb.dataset.col,cb.checked);return;}
+  // RUNDE CE — ansvarlig-dropdown på et tjekpunkt (delt mellem Opgavepoolens
+  // tjekliste-modal og opgave-popup'en, se renderChecklistItems).
+  var asn=t.closest?t.closest('[data-action="assign-checklist-item"]'):null;
+  if(asn){assignChecklistItem(+asn.dataset.id,asn.value,asn.dataset.container,asn.dataset.taskId);return;}
 });
 
 // PEOPLE
@@ -20954,6 +21372,17 @@ async function bind(){
     timelineOffset=Math.round(daysBetween(today,chosen)/7);
     renderTimeline();
   };
+  // VIDEOMØDE-MODAL (RUNDE CH) — bevidst bundet her i det globale bind(), som
+  // altid kører ved opstart, IKKE i initProjectsModule/initCrmpModule (som kun
+  // kører lazy, første gang man åbner hhv. en sag eller en handel). Knapperne
+  // på handel-siden (crmpx-meeting-*) skal virke selvom man aldrig har åbnet
+  // en sag i den session — ellers ville addEventListener aldrig være kørt
+  // endnu, og knapperne ville se ud til slet ikke at virke (fanget ved test:
+  // direkte navigation til #crmp-detail/lead/x uden først at besøge Projekter).
+  document.getElementById('crmpx-meeting-start-btn').addEventListener('click',vmStartMeeting);
+  document.getElementById('crmpx-meeting-add-btn').addEventListener('click',function(){if(crmpDetailEntity)vmOpen(crmpDetailEntity.type,crmpDetailEntity.id);});
+  document.getElementById('vm-cancel').addEventListener('click',function(){document.getElementById('video-meeting-modal').classList.remove('open');});
+  document.getElementById('vm-save').addEventListener('click',vmSave);
   document.getElementById('tld-close').onclick=closeTimelineDrawer;
   document.getElementById('tld-save').onclick=saveTimelineDrawer;
   document.getElementById('tld-remove').onclick=removeTimelineDrawerBooking;
@@ -21026,7 +21455,7 @@ async function bind(){
   // ('quote-editor-modal', bruges til både ny og redigér) og faktura
   // ('invoice-detail-modal') — begge fjernet fra listen herunder, så de (som
   // 'crm-modal') kun kan lukkes via ✕/Annullér/Luk-knappen, aldrig ved klik udenfor.
-  ['assign-modal','manual-modal','quick-task-modal','kb-assign-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','dunning-send-modal','credit-note-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal','tt-photo-lightbox'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
+  ['assign-modal','manual-modal','quick-task-modal','kb-assign-modal','user-modal','capacity-modal','print-week-modal','team-overview-modal','route-map-modal','qz-product-modal','qz-template-modal','quote-request-modal','qa-template-modal','doc-tpl-edit-modal','doc-send-modal','dunning-send-modal','credit-note-send-modal','contact-template-modal','pd-task-detail-modal','crmp-settings-modal','crmp-new-modal','panel-role-modal','tt-photo-lightbox','pdtd-qa-fill-modal','project-template-modal','apply-template-modal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);});});
 
   // DRAG START
   document.addEventListener('dragstart',function(e){
@@ -24027,7 +24456,7 @@ async function openCustomerDetail(id){
 // for ét enkelt cf_key/cf_value-par, så flere felter OG flere værdier pr.
 // felt kan være aktive samtidig (se crmpBuildCfFilterControls/crmpLoadBoard).
 // dateFrom/dateTo filtrerer på created_at (YYYY-MM-DD, rent klient-side).
-var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[]},customFieldDefsLoaded:false,filters:{q:'',owner_id:'',cf:{},dateFrom:'',dateTo:''},initialized:false,detailInitialized:false,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead',selectMode:false,selected:{}};
+var crmpState={pipelines:[],currentPipelineId:null,cards:[],customFieldDefs:{lead:[],opportunity:[],task:[]},customFieldDefsLoaded:false,filters:{q:'',owner_id:'',cf:{},dateFrom:'',dateTo:''},initialized:false,detailInitialized:false,dragCardId:null,settingsPipelineId:null,settingsFieldEntity:'lead',selectMode:false,selected:{}};
 // ── SAMMENKLAPPEDE KOLONNER — hvilke stages brugeren SELV har foldet ud i
 // denne session. Martin har udtrykkeligt bedt om at "Konverteret"/"Afvist"/
 // "Tabt" ALTID starter krympede, så dette må IKKE gemmes i localStorage: ved
@@ -25446,6 +25875,7 @@ async function openCrmpDetail(entityType,id){
   crmpxNotesLoaded=false;
   crmpxQuotesLoaded=false;
   crmpxProjectsLoaded=false;
+  crmpxLoadMeetings();
   crmpxSwitchView('details');
   document.getElementById('crmpx-viewtabs').style.display=d.customer_id?'':'none';
   var gmailStatusForFiles=d.customer_id?await api('/api/gmail/connected'):null;
@@ -26921,6 +27351,10 @@ async function crmpSaveFieldOptions(row){
 async function crmpReloadCustomFieldDefs(){
   crmpState.customFieldDefs.lead=await crmGetCustomFieldDefsCache('lead');
   crmpState.customFieldDefs.opportunity=await crmGetCustomFieldDefsCache('opportunity');
+  // RUNDE CE — opgave-felter har ingen "sync_twin"-modpart (kun lead/
+  // opportunity spejler hinanden), men genindlæses her alligevel, så
+  // "Opgave-felter"-fanen i indstillinger altid viser den nyeste liste.
+  crmpState.customFieldDefs.task=await crmGetCustomFieldDefsCache('task');
   crmpState.customFieldDefsLoaded=true;
 }
 async function crmpAddCustomField(){
@@ -27078,6 +27512,12 @@ function initProjectsModule(){
     document.getElementById('cft-cancel').addEventListener('click',function(){closeModal('contact-template-modal');});
     document.getElementById('cft-save').addEventListener('click',saveContactTemplate);
     document.getElementById('cft-delete').addEventListener('click',deleteContactTemplate);
+    document.getElementById('pt-new-template-btn').addEventListener('click',function(){openProjectTemplateModal();});
+    document.getElementById('pt-cancel').addEventListener('click',function(){closeModal('project-template-modal');});
+    document.getElementById('pt-save').addEventListener('click',saveProjectTemplate);
+    document.getElementById('pt-delete').addEventListener('click',deleteProjectTemplate);
+    document.getElementById('at-cancel').addEventListener('click',function(){closeModal('apply-template-modal');});
+    document.getElementById('at-apply').addEventListener('click',applyProjectTemplate);
     document.getElementById('pd-back-btn').addEventListener('click',function(){switchPage('projects');});
     document.getElementById('pd-status-select').addEventListener('change',savePdStatus);
     // RUNDE T — faggruppe + tilknyt-tilbud.
@@ -27105,6 +27545,17 @@ function initProjectsModule(){
     document.getElementById('save-bulk-capacity').addEventListener('click',saveBulkCapacityReservation);
     document.getElementById('bcap-apply-all-btn').addEventListener('click',bcapApplyUserToAll);
     document.getElementById('pd-new-task-btn').addEventListener('click',function(){pdAddTaskRow();});
+    // RUNDE CF — de 6 nye sagsdetalje-faners knapper (Dagbog/Tegninger/Milepæle/
+    // Byggemøder/RFI/Ændringsønsker) + "Anvend skabelon".
+    document.getElementById('pd-apply-template-btn').addEventListener('click',openApplyTemplateModal);
+    document.getElementById('pd-diary-add-btn').addEventListener('click',pdDiaryAdd);
+    document.getElementById('pd-drawing-add-btn').addEventListener('click',pdDrawingAdd);
+    document.getElementById('pd-milestone-add-btn').addEventListener('click',pdMilestoneAdd);
+    document.getElementById('pd-meeting-add-btn').addEventListener('click',pdMeetingAdd);
+    document.getElementById('pd-meeting-video-start-btn').addEventListener('click',vmStartMeeting);
+    document.getElementById('pd-meeting-video-add-btn').addEventListener('click',function(){if(pjCurrent)vmOpen('project',pjCurrent.id);});
+    document.getElementById('pd-rfi-add-btn').addEventListener('click',pdRfiAdd);
+    document.getElementById('pd-co-add-btn').addEventListener('click',pdCoAdd);
     document.getElementById('pd-photo-input').addEventListener('change',pdUploadPhoto);
     document.getElementById('pd-time-add-btn').addEventListener('click',function(){openPdTimeModal(null);});
     document.getElementById('pd-budget-toggle-btn').addEventListener('click',function(){pdBudgetHidden=!pdBudgetHidden;renderPdBudget();});
@@ -27143,6 +27594,11 @@ function initProjectsModule(){
     });
     document.getElementById('pdtd-checklist-add-btn').addEventListener('click',function(){addChecklistItem('pdtd-checklist-items',pdTaskDetailId,'pdtd-checklist-new');});
     document.getElementById('pdtd-add-photo-btn').addEventListener('click',pdtdOpenPhotoPicker);
+    document.getElementById('pdtd-upload-photo-input').addEventListener('change',pdtdUploadPhoto);
+    document.getElementById('pdtd-qa-fill-btn').addEventListener('click',pdtdFillQa);
+    document.getElementById('pdtd-qa-fill-submit-btn').addEventListener('click',pdtdSubmitQaFill);
+    document.getElementById('pdtd-qa-fill-close-btn').addEventListener('click',function(){closeModal('pdtd-qa-fill-modal');});
+    document.getElementById('pdtd-qa-fill-cancel-btn').addEventListener('click',function(){closeModal('pdtd-qa-fill-modal');});
     document.getElementById('pdtd-capacity-btn').addEventListener('click',function(){
       if(!pdTaskDetailId)return;
       var id=pdTaskDetailId;
@@ -27168,10 +27624,12 @@ function switchProjTab(name){
   document.getElementById('projtab-qa-templates').style.display=name==='qa-templates'?'':'none';
   document.getElementById('projtab-contact-templates').style.display=name==='contact-templates'?'':'none';
   document.getElementById('projtab-gantt').style.display=name==='gantt'?'':'none';
+  document.getElementById('projtab-project-templates').style.display=name==='project-templates'?'':'none';
   // Gantt-kortet er flyttet herind under Projekter efter Martins ønske — initGanttPage()
   // kaldes først når man rent faktisk klikker ind på fanen (ikke ved hvert projekt-sidebesøg),
   // ellers ville den forsøge at hente/tegne data unødvendigt hver gang.
   if(name==='gantt')initGanttPage();
+  if(name==='project-templates')loadPjProjectTemplates().then(renderPjProjectTemplates);
 }
 async function loadPjProjects(){var r=await api('/api/projects');pjProjects=Array.isArray(r)?r:[];}
 // Status-bobler — samme .bly-kpi-card-mønster som Tilbud/Faktura, efter Martins
@@ -27374,7 +27832,7 @@ async function openProjectDetail(id){
     crmBtn.onclick=function(){openCrmpDetail(d.crm_entity.type,d.crm_entity.id);};
   } else crmBtn.style.display='none';
   switchPdTab('tasks');
-  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
+  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();renderPdDiary();renderPdDrawings();renderPdMilestones();renderPdMeetings();renderPdRfi();renderPdChangeOrders();
   // Genindlæs den delte opgavepool (tasks-variablen) her, så "Tilføj til
   // Kapacitetsbordet" og tjekpunkter på en netop oprettet/redigeret sags-opgave
   // altid har den friske spejl-række fra jt_tasks at slå op i.
@@ -27394,7 +27852,7 @@ async function reloadPdCurrent(){
   var ilink=document.getElementById('pd-invoice-link');
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.href=qzPdfUrl('/api/invoices/'+d.invoice_id+'/pdf');ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
-  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
+  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();renderPdDiary();renderPdDrawings();renderPdMilestones();renderPdMeetings();renderPdRfi();renderPdChangeOrders();
   await loadPjProjects();renderPjProjects();
   loadAll();
 }
@@ -27459,7 +27917,7 @@ function renderPdBudget(){
 }
 function switchPdTab(name){
   document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.pdtab===name);});
-  ['tasks','pipeline','photos','time','budget','materials','qa','contact'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
+  ['tasks','pipeline','photos','time','budget','materials','qa','contact','dagbog','drawings','milestones','meetings','rfi','changeorders'].forEach(function(t){document.getElementById('pdtab-'+t).style.display=t===name?'':'none';});
   if(name==='budget'&&me.role==='admin')loadPdBudget();
   // RUNDE L (#2) — Pipeline-kortene skal altid være friske når man rent
   // faktisk klikker ind på fanen (fx efter at have redigeret en opgave på
@@ -28471,7 +28929,11 @@ function openPdTaskDetail(taskId){
   var t=(pjCurrent.tasks||[]).find(function(x){return x.id===taskId;});
   if(!t)return;
   pdTaskDetailId=taskId;
+  // Init'er sig selv kun første gang (dataset.rteInit), ligesom
+  // makeRichNoteField() andre steder — billigt at kalde hver gang modalen åbnes.
+  makeRichTaskNoteField('pdtd-note-input');
   document.getElementById('pdtd-name-input').value=t.name||'';
+  document.getElementById('pdtd-priority-select').value=t.priority||'normal';
   var sd=(t.start_date||'').slice(0,10),ed=(t.end_date||t.start_date||'').slice(0,10);
   document.getElementById('pdtd-start-input').value=sd;
   document.getElementById('pdtd-end-input').value=ed;
@@ -28508,7 +28970,139 @@ function openPdTaskDetail(taskId){
     return '<div>'+esc(b.user_name||'Ukendt medarbejder')+' <span class="muted-sm">· '+esc(period)+'</span></div>';
   }).join('');
   renderPdtdPhotos();
+  renderPdtdCustomFields(taskId);
+  renderPdtdQa(taskId);
   document.getElementById('pd-task-detail-modal').classList.add('open');
+}
+// RUNDE CE (Martins ønske #4: custom fields på opgaver) — felt-DEFINITIONER
+// (crm_custom_fields, entity_type='task') kommer med på hele sagen (sendes af
+// GET /api/projects/:id som pjCurrent.task_custom_field_defs, ikke pr.
+// opgave), VÆRDIERNE er pr. opgave (pjCurrent.task_custom_field_values[taskId]).
+// Skjuler sektionen helt hvis der ikke er oprettet nogen opgave-felter endnu —
+// ingen grund til at vise en tom boks på hver opgave.
+function renderPdtdCustomFields(taskId){
+  var defs=pjCurrent.task_custom_field_defs||[];
+  var wrap=document.getElementById('pdtd-customfields-wrap');
+  var box=document.getElementById('pdtd-customfields');
+  if(!defs.length){wrap.style.display='none';box.innerHTML='';return;}
+  wrap.style.display='';
+  var values=(pjCurrent.task_custom_field_values&&pjCurrent.task_custom_field_values[taskId])||{};
+  box.innerHTML=defs.map(function(d){
+    var val=values[d.key]!=null?values[d.key]:'';
+    var inputHtml;
+    if(d.field_type==='select'){
+      inputHtml='<select class="input" data-cf-key="'+esc(d.key)+'"><option value="">—</option>'+(d.options||[]).map(function(o){return '<option value="'+esc(o)+'"'+(o===val?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>';
+    }else if(d.field_type==='checkbox'){
+      inputHtml='<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" data-cf-key="'+esc(d.key)+'" style="width:auto"'+(val==='1'||val===true||val==='true'?' checked':'')+'> '+esc(d.label)+'</label>';
+    }else if(d.field_type==='number'){
+      inputHtml='<input class="input" type="number" data-cf-key="'+esc(d.key)+'" value="'+esc(val)+'">';
+    }else if(d.field_type==='date'){
+      inputHtml='<input class="input" type="date" data-cf-key="'+esc(d.key)+'" value="'+esc(val)+'">';
+    }else{
+      inputHtml='<input class="input" type="text" data-cf-key="'+esc(d.key)+'" value="'+esc(val)+'">';
+    }
+    // Checkbox-feltet har allerede sin egen label indbygget (doc-check), så vi
+    // springer den separate <label> over for den — ellers ville feltnavnet stå der to gange.
+    return d.field_type==='checkbox'
+      ?('<div class="form-group" style="margin:0">'+inputHtml+'</div>')
+      :('<div class="form-group" style="margin:0"><label class="form-label">'+esc(d.label)+'</label>'+inputHtml+'</div>');
+  }).join('');
+}
+// Samler custom-fields-sektionens værdier til ét objekt klar til at sende med
+// i PUT /api/projects/:id/tasks/:taskId (se taskSetCustomFieldValues i
+// server.js) — kaldes fra savePdTaskDetail().
+function collectPdtdCustomFieldValues(){
+  var out={};
+  document.querySelectorAll('#pdtd-customfields [data-cf-key]').forEach(function(el){
+    out[el.dataset.cfKey]=el.type==='checkbox'?(el.checked?'1':''):el.value;
+  });
+  return out;
+}
+// RUNDE CE (Martins ønske #1 under "Projekt styring generalt": KS pr. opgave)
+// — viser allerede indsendte task-scopede KS-formularer, og lader en
+// skabelon vælges + udfyldes direkte her. Skabelonerne hentes fra sagens
+// egne tildelte KS-skabeloner (samme GET /api/qa-templates?project_id=X som
+// medarbejder-appens pmOpenQaPicker() bruger), så valget altid matcher det
+// Martin selv har tildelt sagen under 📋 KS-skabeloner.
+var pdtdQaTemplates=[];
+async function renderPdtdQa(taskId){
+  var listBox=document.getElementById('pdtd-qa-list');
+  var sel=document.getElementById('pdtd-qa-template-select');
+  var subs=(pjCurrent.qa_submissions||[]).filter(function(s){return s.task_id===taskId;});
+  listBox.innerHTML=subs.length?subs.map(function(s){
+    var answers=(typeof s.answers==='string'?JSON.parse(s.answers):s.answers)||[];
+    var rows=answers.map(function(a){
+      var val=a.type==='photo'&&a.value?('<a href="'+esc(a.value)+'" target="_blank">📷 Se billede</a>'):esc(a.value===true?'Ja':a.value===false?'Nej':(a.value||'–'));
+      return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11.5px"><span>'+esc(a.label)+'</span><span>'+val+'</span></div>';
+    }).join('');
+    return '<div style="border:1px solid var(--bly-border-soft);border-radius:8px;padding:8px 10px;margin-bottom:6px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700;font-size:12px">'+esc(s.template_name||'KS-formular')+' <span class="muted-sm" style="font-weight:400">· '+esc(String(s.submitted_at||'').slice(0,16).replace('T',' '))+'</span></div>'
+      +'<button class="qz-icon-btn" data-action="pdtd-qa-delete" data-id="'+s.id+'" title="Slet">🗑</button></div>'+rows+'</div>';
+  }).join(''):'<div class="muted-sm" style="padding:4px 0">Ingen KS-formular udfyldt for denne opgave endnu.</div>';
+  Array.prototype.forEach.call(listBox.querySelectorAll('[data-action="pdtd-qa-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet denne KS-formular?'))return;
+      await api('/api/qa-submissions/'+btn.dataset.id,{method:'DELETE'});
+      await reloadPdCurrent();
+      renderPdtdQa(taskId);
+    };
+  });
+  var r=await api('/api/qa-templates?project_id='+pjCurrent.id);
+  pdtdQaTemplates=Array.isArray(r)?r:[];
+  sel.innerHTML='<option value="">Vælg KS-skabelon…</option>'+pdtdQaTemplates.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>';}).join('');
+}
+// Åbner en lille udfyldelses-formular for den valgte KS-skabelon, direkte i
+// en prompt-baseret mini-dialog pr. felt — samme felt-typer (check/text/
+// number/photo) som medarbejder-appens pmOpenQaForm(), men ét samlet lille
+// modalvindue i stedet for en hel sideskift, da admin typisk kun udfylder ét
+// eller to felter her (fx "fugt målt: 11%") og ikke hele besøgsrapporten.
+async function pdtdFillQa(){
+  var sel=document.getElementById('pdtd-qa-template-select');
+  var tid=Number(sel.value);
+  if(!tid){toast('Vælg en KS-skabelon først','❌');return;}
+  var t=pdtdQaTemplates.find(function(x){return +x.id===tid;});
+  if(!t)return;
+  var fields=t.fields||[];
+  if(!fields.length){toast('Skabelonen har ingen felter','❌');return;}
+  var body=document.getElementById('pdtd-qa-fill-fields');
+  body.innerHTML=fields.map(function(f,i){
+    if(f.field_type==='check'||f.type==='check')return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" data-qa-idx="'+i+'" style="width:auto"> '+esc(f.label)+'</label>';
+    if(f.type==='number')return '<div class="form-group"><label class="form-label">'+esc(f.label)+'</label><input class="input" type="number" data-qa-idx="'+i+'"></div>';
+    if(f.type==='photo')return '<div class="form-group"><label class="form-label">'+esc(f.label)+'</label><input class="input" type="file" accept="image/*" data-qa-idx="'+i+'"></div>';
+    return '<div class="form-group"><label class="form-label">'+esc(f.label)+'</label><input class="input" type="text" data-qa-idx="'+i+'"></div>';
+  }).join('');
+  document.getElementById('pdtd-qa-fill-title').textContent=t.name;
+  document.getElementById('pdtd-qa-fill-modal').dataset.templateId=tid;
+  document.getElementById('pdtd-qa-fill-modal').classList.add('open');
+}
+async function pdtdSubmitQaFill(){
+  var tid=Number(document.getElementById('pdtd-qa-fill-modal').dataset.templateId);
+  var t=pdtdQaTemplates.find(function(x){return +x.id===tid;});
+  if(!t||!pdTaskDetailId)return;
+  var fields=t.fields||[];
+  var answers=[];
+  for(var i=0;i<fields.length;i++){
+    var f=fields[i];
+    var el=document.querySelector('#pdtd-qa-fill-fields [data-qa-idx="'+i+'"]');
+    var value=null;
+    if(f.type==='check'){value=el.checked;}
+    else if(f.type==='photo'){
+      var file=el.files&&el.files[0];
+      if(file){
+        var dataUrl=await pdReadFileAsDataUrl(file);
+        var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'qa/'+pjCurrent.id})});
+        value=(up&&up.ok)?up.url:null;
+      }
+    }else{value=el.value;}
+    answers.push({label:f.label,type:f.type,value:value});
+  }
+  var r=await api('/api/projects/'+pjCurrent.id+'/qa-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers:answers,task_id:pdTaskDetailId})});
+  if(r&&r.ok){
+    toast('KS-formular gemt ✓');
+    closeModal('pdtd-qa-fill-modal');
+    await reloadPdCurrent();
+    renderPdtdQa(pdTaskDetailId);
+  }else toast((r&&r.error)||'Kunne ikke gemme','❌');
 }
 // RUNDE BR — de billeder Martin selv har valgt til DENNE opgave (task_photos,
 // spejlet ind på hver opgave af GET /api/projects/:id, se t.photos). Genbruger
@@ -28519,7 +29113,11 @@ function renderPdtdPhotos(){
   var grid=document.getElementById('pdtd-photos-grid');
   var t=(pjCurrent.tasks||[]).find(function(x){return x.id===pdTaskDetailId;});
   var photos=(t&&t.photos)||[];
-  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder eller filer valgt endnu — medarbejderen får ingenting med når opgaven bookes.</div>';return;}
+  // RUNDE CE (Martins ønske #6: "fjern denne tekst det ser dumt ud") — kortere,
+  // neutral tom-tilstand i stedet for den gamle, lidt skræmmende formulering.
+  // grid-column:1/-1, så teksten spænder hele grid'et i stedet for at folde
+  // sig sammen i første 76px-kolonne.
+  if(!photos.length){grid.innerHTML='<div class="sub" style="grid-column:1/-1">Ingen billeder endnu.</div>';return;}
   grid.innerHTML=photos.map(function(p){
     var isPdf=pdIsPdfUrl(p.url);
     var inner=isPdf
@@ -28535,6 +29133,26 @@ function renderPdtdPhotos(){
       renderPdtdPhotos();
     };
   });
+}
+// RUNDE CE (Martins ønske #5: "men også indsætte selv") — direkte upload af
+// et NYT billede/fil til opgaven, ved siden af "vælg billede fra sagen".
+// Samme upload-mønster som pdUploadPhoto() (sagens egen Billeder-fane), men
+// lander i task_photos (POST /api/tasks/:id/photos) i stedet for
+// project_photos, så den med det samme optræder i denne opgaves egen liste.
+async function pdtdUploadPhoto(e){
+  var file=e.target.files&&e.target.files[0];
+  if(!file||!pdTaskDetailId)return;
+  e.target.value='';
+  var isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name||'');
+  toast(isPdf?'Uploader fil…':'Uploader billede…','⏳');
+  try{
+    var dataUrl=await pdReadFileAsDataUrl(file);
+    var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pjCurrent.id+'/tasks'})});
+    if(!up||!up.ok){toast((up&&up.error)||(isPdf?'Kunne ikke uploade filen':'Kunne ikke uploade billedet'),'❌');return;}
+    var r=await api('/api/tasks/'+encodeURIComponent(pdTaskDetailId)+'/photos',{method:'POST',body:JSON.stringify({url:up.url,caption:file.name||null})});
+    if(r&&r.ok){toast(isPdf?'Fil tilføjet ✓':'Billede tilføjet ✓','✓');await reloadPdCurrent();renderPdtdPhotos();}
+    else toast((r&&r.error)||'Kunne ikke gemme','❌');
+  }catch(err){toast(isPdf?'Kunne ikke uploade filen':'Kunne ikke uploade billedet','❌');}
 }
 // Åbner den delte sagsbillede-vælger (#doc-job-photos-modal), men kilden er nu
 // HELE sagens billedbibliotek (se GET /api/projects/:id/photo-library og
@@ -28679,7 +29297,10 @@ async function savePdTaskDetail(){
     // gantt_tasks.subcontractor_cost i server.js. Tom værdi sender null og
     // rydder feltet igen (fx hvis man fortryder).
     subcontractor_cost:document.getElementById('pdtd-subcost-input').value===''?null:Number(document.getElementById('pdtd-subcost-input').value),
-    subcontractor_note:document.getElementById('pdtd-subnote-input').value
+    subcontractor_note:document.getElementById('pdtd-subnote-input').value,
+    // RUNDE CE — prioritet (egen tilføjelse) + custom fields (Martins ønske #4).
+    priority:document.getElementById('pdtd-priority-select').value,
+    custom_fields:collectPdtdCustomFieldValues()
   };
   var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+pdTaskDetailId,{method:'PUT',body:JSON.stringify(body)});
   if(r&&r.ok){closeModal('pd-task-detail-modal');toast('Gemt ✓','✓');reloadPdCurrent();}
@@ -29247,6 +29868,400 @@ function renderPdContact(){
     };
   });
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// RUNDE CF — de 6 nye "store programmer"-faner på sagsdetaljesiden.
+// ════════════════════════════════════════════════════════════════════════
+
+// ── DAGBOG (feature #5) ─────────────────────────────────────────────────
+function renderPdDiary(){
+  var box=document.getElementById('pd-diary-body');
+  var entries=(pjCurrent&&pjCurrent.diary_entries)||[];
+  if(!entries.length){box.innerHTML='<div class="sub" style="padding:16px 0">Ingen dagbogsnotater endnu.</div>';return;}
+  box.innerHTML=entries.map(function(e){
+    var parts=[];
+    if(e.weather)parts.push('☀️ '+esc(e.weather));
+    if(e.staffing)parts.push('👷 '+esc(e.staffing));
+    if(e.deliveries)parts.push('🚚 '+esc(e.deliveries));
+    return '<div style="border:1px solid var(--bly-border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+      +'<div style="font-weight:700">'+esc(fmtDaDate(e.entry_date))+'</div>'
+      +(me.role==='admin'?'<button class="qz-icon-btn" data-action="pd-diary-delete" data-id="'+e.id+'" title="Slet">🗑</button>':'')
+      +'</div>'
+      +(parts.length?'<div class="sub" style="margin-bottom:6px">'+parts.join(' · ')+'</div>':'')
+      +(e.notes?'<div style="font-size:13px;white-space:pre-wrap">'+esc(e.notes)+'</div>':'')
+      +'<div class="sub" style="margin-top:6px">Oprettet af '+esc(e.created_by_name||'–')+'</div>'
+      +'</div>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-diary-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet dette dagbogsnotat? (kun admin kan rette en fejltastning)'))return;
+      await api('/api/projects/'+pjCurrent.id+'/diary/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+}
+async function pdDiaryAdd(){
+  if(!pjCurrent)return;
+  var body={
+    entry_date:document.getElementById('pd-diary-date').value||undefined,
+    weather:document.getElementById('pd-diary-weather').value.trim(),
+    staffing:document.getElementById('pd-diary-staffing').value.trim(),
+    deliveries:document.getElementById('pd-diary-deliveries').value.trim(),
+    notes:document.getElementById('pd-diary-notes').value.trim()
+  };
+  var r=await api('/api/projects/'+pjCurrent.id+'/diary',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){
+    toast('Dagbogsnotat tilføjet','✓');
+    ['pd-diary-weather','pd-diary-staffing','pd-diary-deliveries','pd-diary-notes'].forEach(function(id){document.getElementById(id).value='';});
+    reloadPdCurrent();
+  } else toast((r&&r.error)||'Kunne ikke tilføje','❌');
+}
+
+// ── TEGNINGSLISTE MED VERSIONER (feature #2) ────────────────────────────
+function renderPdDrawings(){
+  var box=document.getElementById('pd-drawings-body');
+  var drawings=(pjCurrent&&pjCurrent.drawings)||[];
+  if(!drawings.length){box.innerHTML='<div class="sub" style="padding:16px 0">Ingen tegninger endnu.</div>';return;}
+  box.innerHTML=drawings.map(function(d){
+    var revs=d.revisions||[];
+    var current=revs.length?revs[revs.length-1]:null;
+    var history=revs.slice(0,-1).reverse().map(function(r){
+      return '<div class="sub" style="padding:3px 0">Rev. '+esc(r.rev_label)+' — '+esc(String(r.uploaded_at||'').slice(0,16).replace('T',' '))+' af '+esc(r.uploaded_by_name||'–')+(r.note?' — '+esc(r.note):'')+' — <a href="'+esc(r.url)+'" target="_blank">Se fil</a></div>';
+    }).join('');
+    return '<div style="border:1px solid var(--bly-border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center">'
+      +'<div style="font-weight:700">'+esc(d.name)+(current?' <span class="sub" style="font-weight:400">· Rev. '+esc(current.rev_label)+'</span>':'')+'</div>'
+      +'<div style="display:flex;gap:6px">'
+      +(current?'<a class="bly-btn outline small" href="'+esc(current.url)+'" target="_blank">📄 Se nyeste</a>':'')
+      +'<button class="bly-btn outline small" data-action="pd-drawing-upload" data-id="'+d.id+'">+ Ny revision</button>'
+      +'<button class="qz-icon-btn" data-action="pd-drawing-delete" data-id="'+d.id+'" title="Slet">🗑</button>'
+      +'</div></div>'
+      +(history?'<div style="margin-top:8px;border-top:1px solid var(--bly-border-soft);padding-top:6px">'+history+'</div>':'')
+      +'</div>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-drawing-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet denne tegning og hele dens historik?'))return;
+      await api('/api/projects/'+pjCurrent.id+'/drawings/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-drawing-upload"]'),function(btn){
+    btn.onclick=function(){pdDrawingUploadRevision(btn.dataset.id);};
+  });
+}
+async function pdDrawingAdd(){
+  if(!pjCurrent)return;
+  var name=prompt('Navn/nummer på tegningen (fx "Facadetegning Nord"):');
+  if(!name||!name.trim())return;
+  var r=await api('/api/projects/'+pjCurrent.id+'/drawings',{method:'POST',body:JSON.stringify({name:name.trim()})});
+  if(r&&r.ok){toast('Tegning tilføjet','✓');reloadPdCurrent();} else toast((r&&r.error)||'Kunne ikke tilføje','❌');
+}
+// Upload sker som data-URI via samme Cloudinary-pipeline som projekt-billeder
+// (uploadPhotoToCloudinary bruges allerede andre steder — her bruges samme
+// filinput->base64->/api/upload-flow, se pdUploadPhoto for forbilledet).
+function pdDrawingUploadRevision(drawingId){
+  var input=document.createElement('input');
+  input.type='file';input.accept='image/*,application/pdf';
+  input.onchange=async function(){
+    var file=input.files[0];if(!file)return;
+    var note=prompt('Note til denne revision (valgfrit):')||'';
+    toast('Uploader…','⏳');
+    try{
+      var dataUrl=await pdReadFileAsDataUrl(file);
+      var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pjCurrent.id+'/drawings'})});
+      if(!up||!up.ok){toast((up&&up.error)||'Upload mislykkedes','❌');return;}
+      var r=await api('/api/projects/'+pjCurrent.id+'/drawings/'+drawingId+'/revisions',{method:'POST',body:JSON.stringify({url:up.url,note:note.trim()})});
+      if(r&&r.ok){toast('Revision '+r.rev_label+' uploadet','✓');reloadPdCurrent();} else toast((r&&r.error)||'Kunne ikke uploade','❌');
+    }catch(err){toast('Kunne ikke uploade filen','❌');}
+  };
+  input.click();
+}
+
+// ── MILEPÆLE MED AUTOMATISK FAKTURA-FORSLAG (feature #7) ────────────────
+function renderPdMilestones(){
+  var body=document.getElementById('pd-milestones-body');
+  var ms=(pjCurrent&&pjCurrent.milestones)||[];
+  if(!ms.length){body.innerHTML='<tr><td colspan="4" class="sub" style="padding:16px 0">Ingen milepæle oprettet endnu.</td></tr>';return;}
+  body.innerHTML=ms.map(function(m){
+    var amount=m.percent!=null?'('+m.percent+'% af tilbud)':krFmt(Number(m.amount));
+    return '<tr>'
+      +'<td><input type="checkbox" data-action="pd-milestone-toggle" data-id="'+m.id+'" '+(m.done?'checked':'')+'></td>'
+      +'<td>'+esc(m.name)+(m.done?' <span class="sub">— færdig '+esc(fmtDaDate((m.done_at||'').slice(0,10)))+'</span>':'')+'</td>'
+      +'<td class="num">'+amount+'</td>'
+      +'<td style="text-align:right">'
+      +(m.invoice_id?'<a class="bly-btn outline small" href="/api/invoices/'+m.invoice_id+'/pdf" target="_blank">📄 Se faktura</a>':(m.done?'<button class="bly-btn outline small" data-action="pd-milestone-invoice" data-id="'+m.id+'">💰 Opret faktura</button>':''))
+      +' <button class="qz-icon-btn" data-action="pd-milestone-delete" data-id="'+m.id+'" title="Slet">🗑</button>'
+      +'</td></tr>';
+  }).join('');
+  Array.prototype.forEach.call(body.querySelectorAll('[data-action="pd-milestone-toggle"]'),function(cb){
+    cb.onchange=async function(){
+      await api('/api/projects/'+pjCurrent.id+'/milestones/'+cb.dataset.id,{method:'PUT',body:JSON.stringify({done:cb.checked})});
+      reloadPdCurrent();
+    };
+  });
+  Array.prototype.forEach.call(body.querySelectorAll('[data-action="pd-milestone-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet denne milepæl?'))return;
+      await api('/api/projects/'+pjCurrent.id+'/milestones/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+  Array.prototype.forEach.call(body.querySelectorAll('[data-action="pd-milestone-invoice"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Opret en kladde-faktura med milepælens beløb?'))return;
+      var r=await api('/api/projects/'+pjCurrent.id+'/milestones/'+btn.dataset.id+'/create-invoice',{method:'POST',body:JSON.stringify({})});
+      if(r&&r.ok){toast('Kladde-faktura oprettet','✓');reloadPdCurrent();} else toast((r&&r.error)||'Kunne ikke oprette faktura','❌');
+    };
+  });
+}
+async function pdMilestoneAdd(){
+  if(!pjCurrent)return;
+  var name=prompt('Navn på milepælen (fx "1. rate ved underskrift"):');
+  if(!name||!name.trim())return;
+  var amountStr=prompt('Beløb i kr. (uden moms):','0');
+  if(amountStr===null)return;
+  var r=await api('/api/projects/'+pjCurrent.id+'/milestones',{method:'POST',body:JSON.stringify({name:name.trim(),amount:Number(amountStr)||0})});
+  if(r&&r.ok){toast('Milepæl tilføjet','✓');reloadPdCurrent();} else toast((r&&r.error)||'Kunne ikke tilføje','❌');
+}
+
+// ── BYGGEMØDEREFERAT → AUTOMATISKE TO-DOS (feature #3) ───────────────────
+// Fælles "pænt opstillet" kort for ét møde — bruges af BÅDE sags-fanen
+// (renderPdMeetings) og handel-panelet (renderCrmpMeetings), se RUNDE CH.
+// deleteFn/sendFn er valgfri (handel-møder har ingen "send til kunde"-knap endnu).
+function vmMeetingCardHtml(m,deleteAttr,sendAttr){
+  var isVideo=m.meeting_type==='video';
+  var platformLabel=({google_meet:'Google Meet',zoom:'Zoom',other:'Andet mødeprogram'})[m.video_platform]||'';
+  var items=(m.action_items||[]).map(function(a){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0">'
+      +'<input type="checkbox" data-action="pd-meeting-item-toggle" data-meeting="'+m.id+'" data-id="'+a.id+'" '+(a.done?'checked':'')+'>'
+      +'<span style="flex:1;font-size:13px'+(a.done?';text-decoration:line-through;color:var(--bly-sub)':'')+'">'+esc(a.title)+(a.due_date?' <span class="sub">— frist '+esc(fmtDaDate(a.due_date))+'</span>':'')+'</span>'
+      +'</div>';
+  }).join('');
+  return '<div style="border:1px solid var(--bly-border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+    +'<div style="font-weight:700">'+(isVideo?'📹 ':'🏗 ')+esc(fmtDaDate(m.meeting_date))+(platformLabel?' <span class="sub" style="font-weight:400">· '+esc(platformLabel)+'</span>':'')+'</div>'
+    +'<div style="display:flex;gap:6px">'
+    +(m.video_link?'<a class="bly-btn outline small" href="'+esc(m.video_link)+'" target="_blank" rel="noopener">🔗 Åbn link</a>':'')
+    +(sendAttr||'')
+    +'<button class="qz-icon-btn" data-action="'+(deleteAttr)+'" data-id="'+m.id+'" title="Slet">🗑</button>'
+    +'</div></div>'
+    +(m.agenda?'<div class="sub" style="margin-bottom:4px"><b>'+(isVideo?'Deltagere':'Dagsorden')+':</b> '+esc(m.agenda)+'</div>':'')
+    +(m.decisions?'<div style="margin-bottom:8px;font-size:13px;white-space:pre-wrap;line-height:1.5"><b class="sub">'+(isVideo?'Aftalt på mødet':'Beslutninger')+':</b><br>'+esc(m.decisions)+'</div>':'')
+    +(items?'<div style="border-top:1px solid var(--bly-border-soft);padding-top:6px">'+items+'</div>':'')
+    +'</div>';
+}
+function renderPdMeetings(){
+  var box=document.getElementById('pd-meetings-body');
+  var meetings=(pjCurrent&&pjCurrent.meetings)||[];
+  if(!meetings.length){box.innerHTML='<div class="sub" style="padding:16px 0">Ingen møder eller referater endnu.</div>';return;}
+  box.innerHTML=meetings.map(function(m){
+    return vmMeetingCardHtml(m,'pd-meeting-delete',m.meeting_type!=='video'?'<button class="bly-btn outline small" data-action="pd-meeting-send" data-id="'+m.id+'">📧 Send til kunde</button>':'');
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-meeting-item-toggle"]'),function(cb){
+    cb.onchange=async function(){
+      await api('/api/projects/'+pjCurrent.id+'/meetings/'+cb.dataset.meeting+'/action-items/'+cb.dataset.id,{method:'PUT',body:JSON.stringify({done:cb.checked})});
+      reloadPdCurrent();
+    };
+  });
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-meeting-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet dette referat?'))return;
+      await api('/api/projects/'+pjCurrent.id+'/meetings/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-meeting-send"]'),function(btn){
+    btn.onclick=async function(){
+      var email=prompt('Send til hvilken e-mail?',(pjCurrent.customer_email||''));
+      if(!email)return;
+      var r=await api('/api/projects/'+pjCurrent.id+'/meetings/'+btn.dataset.id+'/send-to-customer',{method:'POST',body:JSON.stringify({email:email})});
+      if(r&&r.ok)toast('Referat sendt','✓'); else toast((r&&r.error)||'Kunne ikke sende','❌');
+    };
+  });
+}
+async function pdMeetingAdd(){
+  if(!pjCurrent)return;
+  var agenda=prompt('Dagsorden:')||'';
+  var decisions=prompt('Beslutninger:')||'';
+  var actionItems=[];
+  while(true){
+    var title=prompt('Opfølgningspunkt (lad stå tomt for at stoppe):');
+    if(!title||!title.trim())break;
+    var due=prompt('Frist (ÅÅÅÅ-MM-DD, valgfrit):')||null;
+    actionItems.push({title:title.trim(),due_date:due});
+  }
+  var r=await api('/api/projects/'+pjCurrent.id+'/meetings',{method:'POST',body:JSON.stringify({agenda:agenda,decisions:decisions,action_items:actionItems})});
+  if(r&&r.ok){toast('Referat tilføjet','✓');reloadPdCurrent();} else toast((r&&r.error)||'Kunne ikke tilføje','❌');
+}
+
+// ══════════════════════════════════════════════════════════════
+// VIDEOMØDER (RUNDE CH, Martins ønske: "integrere Google Meet/Zoom ... ved et
+// tryk under kunden og projekter kan holde møder og den så ... gemmer det som
+// mødenotater under opgaven og/eller handlen ... opstiller det pænt").
+//
+// Bevidst INGEN API-integration/OAuth her — Martin behøver ikke oprette
+// noget hos Google/Zoom for at bruge dette. "Start møde" åbner bare
+// meet.google.com/new i en ny fane (helt almindeligt, virker med den Google-
+// konto man allerede er logget ind med i browseren). Selve transskriptionen
+// kommer fra Google Meets eget indbyggede "Optag & transskribér"-ikon i selve
+// mødet (Google Workspace-konti har dette; gratis Google-konti har det ikke) —
+// man kopierer bare teksten derfra ind i "Noter / aftalt på mødet"-feltet
+// herunder, og "Gem mødenotat" lægger det pænt formateret ind under sagen
+// og/eller handlen, så det altid kan findes igen bagefter.
+// ══════════════════════════════════════════════════════════════
+var vmState={scope:null,id:null};
+function vmOpen(scope,id){
+  vmState={scope:scope,id:id};
+  document.getElementById('vm-date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('vm-participants').value='';
+  document.getElementById('vm-platform').value='google_meet';
+  document.getElementById('vm-link').value='';
+  document.getElementById('vm-notes').value='';
+  document.getElementById('video-meeting-modal').classList.add('open');
+}
+function vmStartMeeting(){
+  window.open('https://meet.google.com/new','_blank','noopener');
+}
+async function vmSave(){
+  var date=document.getElementById('vm-date').value||new Date().toISOString().slice(0,10);
+  var participants=document.getElementById('vm-participants').value.trim();
+  var platform=document.getElementById('vm-platform').value;
+  var link=document.getElementById('vm-link').value.trim();
+  var notes=document.getElementById('vm-notes').value.trim();
+  if(!notes){toast('Skriv eller indsæt mødenotater først','❌');return;}
+  var endpoint=null;
+  if(vmState.scope==='project')endpoint='/api/projects/'+vmState.id+'/meetings';
+  else if(vmState.scope==='lead')endpoint='/api/crm/leads/'+vmState.id+'/meetings';
+  else if(vmState.scope==='opportunity')endpoint='/api/crm/opportunities/'+vmState.id+'/meetings';
+  if(!endpoint)return;
+  var r=await api(endpoint,{method:'POST',body:JSON.stringify({meeting_date:date,agenda:participants,decisions:notes,meeting_type:'video',video_platform:platform,video_link:link||null})});
+  if(r&&r.ok){
+    toast('Mødenotat gemt','✓');
+    document.getElementById('video-meeting-modal').classList.remove('open');
+    if(vmState.scope==='project')reloadPdCurrent();
+    else crmpxLoadMeetings();
+  } else toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+// ── HANDEL-SIDEN (CRM lead/opportunity) — se crmpx-meetings-panel i HTML'en.
+// Altid indlæst ved åbning af en handel/lead (uanset kunde-kobling), i
+// modsætning til Tilbud/Projekter-fanerne der kræver klik — møder er ikke en
+// "ekstra fane", men et lille altid-synligt panel ligesom Note-feltet.
+async function crmpxLoadMeetings(){
+  var ent=crmpDetailEntity;
+  if(!ent)return;
+  var list=document.getElementById('crmpx-meetings-list');
+  list.innerHTML='<div class="crmpx-empty">Henter møder...</div>';
+  var meetings=await api('/api/crm/'+(ent.type==='lead'?'leads':'opportunities')+'/'+ent.id+'/meetings');
+  if(!meetings||meetings.error){list.innerHTML='<div class="crmpx-empty">Kunne ikke hente møder</div>';return;}
+  if(!meetings.length){list.innerHTML='<div class="crmpx-empty">Ingen møder gemt endnu</div>';return;}
+  list.innerHTML=meetings.map(function(m){return vmMeetingCardHtml(m,'crmpx-meeting-delete','');}).join('');
+  Array.prototype.forEach.call(list.querySelectorAll('[data-action="crmpx-meeting-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet dette mødenotat?'))return;
+      await api('/api/crm/'+(ent.type==='lead'?'leads':'opportunities')+'/'+ent.id+'/meetings/'+btn.dataset.id,{method:'DELETE'});
+      crmpxLoadMeetings();
+    };
+  });
+}
+
+// ── RFI MELLEM FAGFOLK (feature #6) ──────────────────────────────────────
+function renderPdRfi(){
+  var box=document.getElementById('pd-rfi-body');
+  var rfis=(pjCurrent&&pjCurrent.rfis)||[];
+  if(!rfis.length){box.innerHTML='<div class="sub" style="padding:16px 0">Ingen spørgsmål endnu.</div>';return;}
+  box.innerHTML=rfis.map(function(r){
+    var open=r.status==='open';
+    return '<div style="border:1px solid var(--bly-border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px'+(open?'':';opacity:.75')+'">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+      +'<div style="font-weight:700">'+esc(r.question)+'</div>'
+      +'<button class="qz-icon-btn" data-action="pd-rfi-delete" data-id="'+r.id+'" title="Slet">🗑</button>'
+      +'</div>'
+      +'<div class="sub" style="margin-bottom:6px">Til: '+esc(r.asked_to||'–')+(r.due_date?' · Svarfrist: '+esc(fmtDaDate(r.due_date)):'')+' · '+(open?'⏳ Afventer svar':'✅ Besvaret')+'</div>'
+      +(r.answer?'<div style="font-size:13px;background:var(--bly-border-soft);border-radius:8px;padding:8px 10px">'+esc(r.answer)+'</div>':'<button class="bly-btn outline small" data-action="pd-rfi-answer" data-id="'+r.id+'">Besvar</button>')
+      +'</div>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-rfi-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet dette spørgsmål?'))return;
+      await api('/api/projects/'+pjCurrent.id+'/rfis/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-rfi-answer"]'),function(btn){
+    btn.onclick=async function(){
+      var answer=prompt('Svar:');
+      if(!answer||!answer.trim())return;
+      var r=await api('/api/projects/'+pjCurrent.id+'/rfis/'+btn.dataset.id,{method:'PUT',body:JSON.stringify({answer:answer.trim()})});
+      if(r&&r.ok){toast('Besvaret','✓');reloadPdCurrent();} else toast((r&&r.error)||'Kunne ikke besvare','❌');
+    };
+  });
+}
+async function pdRfiAdd(){
+  if(!pjCurrent)return;
+  var question=prompt('Spørgsmål:');
+  if(!question||!question.trim())return;
+  var askedTo=prompt('Til hvem? (fx "Arkitekt Jensen"):')||'';
+  var due=prompt('Svarfrist (ÅÅÅÅ-MM-DD, valgfrit):')||null;
+  var r=await api('/api/projects/'+pjCurrent.id+'/rfis',{method:'POST',body:JSON.stringify({question:question.trim(),asked_to:askedTo.trim(),due_date:due})});
+  if(r&&r.ok){toast('Spørgsmål tilføjet','✓');reloadPdCurrent();} else toast((r&&r.error)||'Kunne ikke tilføje','❌');
+}
+
+// ── ÆNDRINGSØNSKER / EKSTRAARBEJDE MED ONLINE GODKENDELSE (feature #4) ──
+function renderPdChangeOrders(){
+  var box=document.getElementById('pd-co-body');
+  var cos=(pjCurrent&&pjCurrent.change_orders)||[];
+  if(!cos.length){box.innerHTML='<div class="sub" style="padding:16px 0">Ingen ændringsønsker endnu.</div>';return;}
+  var statusLabel={pending:'⏳ Afventer kunde',approved:'✅ Godkendt',declined:'❌ Afvist'};
+  box.innerHTML=cos.map(function(c){
+    return '<div style="border:1px solid var(--bly-border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+      +'<div style="font-weight:700">'+esc(c.title)+' <span class="sub" style="font-weight:400">· '+krFmt(Number(c.amount))+'</span></div>'
+      +'<button class="qz-icon-btn" data-action="pd-co-delete" data-id="'+c.id+'" title="Slet">🗑</button>'
+      +'</div>'
+      +(c.description?'<div class="sub" style="margin-bottom:6px">'+esc(c.description)+'</div>':'')
+      +'<div style="display:flex;justify-content:space-between;align-items:center">'
+      +'<span class="sub">'+(statusLabel[c.status]||c.status)+(c.signed_name?' af '+esc(c.signed_name):'')+'</span>'
+      +'<div style="display:flex;gap:6px">'
+      +(c.status==='pending'?'<button class="bly-btn outline small" data-action="pd-co-send" data-id="'+c.id+'">📧 Send til kunde</button>':'')
+      +(c.status==='approved'&&!c.invoice_id?'<button class="bly-btn outline small" data-action="pd-co-invoice" data-id="'+c.id+'">💰 Opret faktura</button>':'')
+      +(c.invoice_id?'<a class="bly-btn outline small" href="/api/invoices/'+c.invoice_id+'/pdf" target="_blank">📄 Se faktura</a>':'')
+      +'</div></div></div>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-co-delete"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Slet dette ændringsønske?'))return;
+      await api('/api/projects/'+pjCurrent.id+'/change-orders/'+btn.dataset.id,{method:'DELETE'});
+      reloadPdCurrent();
+    };
+  });
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-co-send"]'),function(btn){
+    btn.onclick=async function(){
+      var email=prompt('Send til hvilken e-mail?',(pjCurrent.customer_email||''));
+      if(!email)return;
+      var r=await api('/api/projects/'+pjCurrent.id+'/change-orders/'+btn.dataset.id+'/send',{method:'POST',body:JSON.stringify({email:email})});
+      if(r&&r.ok)toast('Sendt til kunden','✓'); else toast((r&&r.error)||'Kunne ikke sende','❌');
+    };
+  });
+  Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-co-invoice"]'),function(btn){
+    btn.onclick=async function(){
+      if(!await gmConfirm('Opret en kladde-faktura med ændringsønskets beløb?'))return;
+      var r=await api('/api/projects/'+pjCurrent.id+'/change-orders/'+btn.dataset.id+'/create-invoice',{method:'POST',body:JSON.stringify({})});
+      if(r&&r.ok){toast('Kladde-faktura oprettet','✓');reloadPdCurrent();} else toast((r&&r.error)||'Kunne ikke oprette faktura','❌');
+    };
+  });
+}
+async function pdCoAdd(){
+  if(!pjCurrent)return;
+  var title=prompt('Titel (fx "Ekstra isolering i tag"):');
+  if(!title||!title.trim())return;
+  var description=prompt('Beskrivelse:')||'';
+  var amountStr=prompt('Pris i kr. (uden moms):','0');
+  if(amountStr===null)return;
+  var r=await api('/api/projects/'+pjCurrent.id+'/change-orders',{method:'POST',body:JSON.stringify({title:title.trim(),description:description.trim(),amount:Number(amountStr)||0})});
+  if(r&&r.ok){toast('Ændringsønske tilføjet','✓');reloadPdCurrent();} else toast((r&&r.error)||'Kunne ikke tilføje','❌');
+}
 // KONTAKTFORMULAR-skabelon-builder (samme mønster som KS-skabeloner)
 var pjContactTemplates=[],cftEditingId=null;
 function loadPjContactTemplates(){return api('/api/contact-form-templates').then(function(r){pjContactTemplates=Array.isArray(r)?r:[];});}
@@ -29367,6 +30382,96 @@ async function deleteQaTemplate(){
   if(!await gmConfirm('Slet skabelonen? Tidligere indsendte KS-formularer bevares.'))return;
   var r=await api('/api/qa-templates/'+qatEditingId,{method:'DELETE'});
   if(r&&r.ok){toast('Skabelon slettet','🗑');closeModal('qa-template-modal');await loadPjQaTemplates();renderPjQaTemplates();}
+}
+
+// ── SAGS-SKABELONER (feature #9) ─────────────────────────────────────────
+var pjProjectTemplates=[],ptEditingId=null,ptQaSelected=[];
+function loadPjProjectTemplates(){return api('/api/project-templates').then(function(r){pjProjectTemplates=Array.isArray(r)?r:[];});}
+function renderPjProjectTemplates(){
+  var body=document.getElementById('pt-templates-body');
+  if(!pjProjectTemplates.length){body.innerHTML='<tr><td colspan="3" style="text-align:center;color:var(--bly-sub);padding:24px">Ingen skabeloner endnu</td></tr>';return;}
+  body.innerHTML=pjProjectTemplates.map(function(t){
+    return '<tr><td>'+esc(t.name)+(t.description?' <span class="sub">— '+esc(t.description)+'</span>':'')+'</td><td class="num">'+(t.task_count!=null?t.task_count:'–')+'</td>'
+      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openProjectTemplateModal('+t.id+')" title="Redigér">✎</button></div></td></tr>';
+  }).join('');
+}
+async function openProjectTemplateModal(id){
+  if(!pjQaTemplates.length)await loadPjQaTemplates();
+  ptEditingId=id||null;
+  var detail=id?await api('/api/project-templates/'+id):null;
+  document.getElementById('project-template-modal-title').textContent=detail?'Redigér skabelon':'Ny sags-skabelon';
+  document.getElementById('pt-name').value=detail?detail.name:'';
+  document.getElementById('pt-description').value=detail?(detail.description||''):'';
+  document.getElementById('pt-tasks').value=detail?(detail.tasks||[]).map(function(t){
+    return [t.name,t.offset_days,t.duration_days,(t.checklist_items||[]).join('; ')].join(' | ');
+  }).join('\n'):'';
+  ptQaSelected=detail?(detail.qa_template_ids||[]).map(Number):[];
+  var qaBox=document.getElementById('pt-qa-body');
+  qaBox.innerHTML=pjQaTemplates.length?pjQaTemplates.map(function(t){
+    var checked=ptQaSelected.indexOf(t.id)>-1;
+    return '<label class="bly-ctl'+(checked?' active':'')+'" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px" data-pt-qa-id="'+t.id+'"><input type="checkbox" data-pt-qa-cb="'+t.id+'" '+(checked?'checked':'')+' style="margin:0">'+esc(t.name)+'</label>';
+  }).join(''):'<span class="sub">Ingen KS-skabeloner oprettet endnu.</span>';
+  Array.prototype.forEach.call(qaBox.querySelectorAll('[data-pt-qa-cb]'),function(cb){
+    cb.onchange=function(){
+      var id2=Number(cb.dataset.ptQaCb);
+      var label=cb.closest('[data-pt-qa-id]');
+      if(cb.checked){if(ptQaSelected.indexOf(id2)===-1)ptQaSelected.push(id2);label.classList.add('active');}
+      else{ptQaSelected=ptQaSelected.filter(function(x){return x!==id2;});label.classList.remove('active');}
+    };
+  });
+  document.getElementById('pt-delete').classList.toggle('hidden',!detail);
+  document.getElementById('project-template-modal').classList.add('open');
+}
+// Parser tekstarealets "Navn | forskydning | varighed | tjekpunkter"-linjer
+// til den form apply-template/PUT .../tasks-routen forventer.
+function ptParseTasks(){
+  return document.getElementById('pt-tasks').value.split('\n').map(function(line){
+    var parts=line.split('|').map(function(s){return s.trim();});
+    if(!parts[0])return null;
+    return {
+      name:parts[0],
+      offset_days:Number(parts[1])||0,
+      duration_days:Math.max(1,Number(parts[2])||1),
+      checklist_items:(parts[3]||'').split(';').map(function(s){return s.trim();}).filter(Boolean)
+    };
+  }).filter(Boolean);
+}
+async function saveProjectTemplate(){
+  var name=document.getElementById('pt-name').value.trim();
+  if(!name){toast('Navn mangler','⚠️');return;}
+  var description=document.getElementById('pt-description').value.trim();
+  var body={name:name,description:description};
+  var r=ptEditingId?await api('/api/project-templates/'+ptEditingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/project-templates',{method:'POST',body:JSON.stringify(body)});
+  if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke gemme skabelonen','❌');return;}
+  var id=ptEditingId||r.id;
+  await api('/api/project-templates/'+id+'/tasks',{method:'PUT',body:JSON.stringify({tasks:ptParseTasks()})});
+  await api('/api/project-templates/'+id+'/qa',{method:'PUT',body:JSON.stringify({qa_template_ids:ptQaSelected})});
+  toast('Skabelon gemt','✓');closeModal('project-template-modal');await loadPjProjectTemplates();renderPjProjectTemplates();
+}
+async function deleteProjectTemplate(){
+  if(!ptEditingId)return;
+  if(!await gmConfirm('Slet skabelonen? Sager den allerede er anvendt på ændres ikke.'))return;
+  var r=await api('/api/project-templates/'+ptEditingId,{method:'DELETE'});
+  if(r&&r.ok){toast('Skabelon slettet','🗑');closeModal('project-template-modal');await loadPjProjectTemplates();renderPjProjectTemplates();}
+}
+// "Anvend skabelon"-knappen på sagsdetaljesiden (#pd-apply-template-btn).
+async function openApplyTemplateModal(){
+  if(!pjCurrent)return;
+  if(!pjProjectTemplates.length)await loadPjProjectTemplates();
+  var sel=document.getElementById('at-template-select');
+  if(!pjProjectTemplates.length){toast('Ingen sags-skabeloner oprettet endnu — se Projekter → Sags-skabeloner','⚠️');return;}
+  sel.innerHTML=pjProjectTemplates.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>';}).join('');
+  document.getElementById('at-start-date').value=iso(new Date());
+  document.getElementById('apply-template-modal').classList.add('open');
+}
+async function applyProjectTemplate(){
+  if(!pjCurrent)return;
+  var templateId=Number(document.getElementById('at-template-select').value);
+  var startDate=document.getElementById('at-start-date').value;
+  if(!startDate){toast('Vælg en startdato','⚠️');return;}
+  var r=await api('/api/projects/'+pjCurrent.id+'/apply-template',{method:'POST',body:JSON.stringify({template_id:templateId,start_date:startDate})});
+  if(r&&r.ok){toast(r.task_count+' opgaver oprettet fra skabelonen ✓','✓');closeModal('apply-template-modal');reloadPdCurrent();}
+  else toast((r&&r.error)||'Kunne ikke anvende skabelonen','❌');
 }
 
 // importProductsFromJobtread() er fjernet 05-09-2026 sammen med "📥 Importér fra
@@ -32809,6 +33914,9 @@ window.qzPendingDismiss=qzPendingDismiss;
 window.capTlGoWeek=capTlGoWeek;
 window.capTlGoToday=capTlGoToday;
 window.capTlToggleMode=capTlToggleMode;
+// RUNDE CF — samme faldgrube igen: onclick="openProjectTemplateModal(...)" i
+// renderPjProjectTemplates() kalder den i global scope.
+window.openProjectTemplateModal=openProjectTemplateModal;
 
 bind();
 loadSettings();

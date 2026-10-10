@@ -1002,6 +1002,12 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_task_checklist_task ON task_checklist_items(task_id);
+    -- RUNDE CE (Martins ønske: "task man kan uddele på sagen og tilføje en
+    -- medarbejder") — lille udvidelse af den eksisterende tjekliste frem for et
+    -- helt nyt to-do-system: hvert tjekpunkt kan nu have én ansvarlig medarbejder.
+    -- Ingen FK (samme løse mønster som resten af filen bruger for bruger-id'er
+    -- der kan referere en siden-slettet bruger uden at fejle).
+    ALTER TABLE task_checklist_items ADD COLUMN IF NOT EXISTS assigned_to INTEGER;
 
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS is_visit INTEGER DEFAULT 0;
     -- Manuel "færdig"-markering for opgaver der IKKE er booket endnu (ingen booking at
@@ -1985,6 +1991,23 @@ async function initSchema() {
       UNIQUE(field_id, entity_type, entity_id)
     );
     CREATE INDEX IF NOT EXISTS idx_crm_cfv_entity ON crm_custom_field_values(entity_type, entity_id);
+    -- RUNDE CE (Martins ønske: "custom fields så jeg kan lave opgaven langt mere
+    -- detaljeret") — genbruger crm_custom_fields til selve FELT-DEFINITIONERNE
+    -- (entity_type='task', bare endnu en streng, ingen skemaændring nødvendig
+    -- dér), men VÆRDIERNE kan ikke ligge i crm_custom_field_values, fordi den
+    -- tabels entity_id er INTEGER — en opgaves id (gantt_tasks.id/jt_tasks.id,
+    -- samme TEXT-id delt mellem de to, se mirrorProjectTaskToPool) er en TEXT-
+    -- streng som 'p'+24 hex-tegn. Derfor en helt separat, ellers identisk
+    -- værdi-tabel, så den langt mere brugte crm_custom_field_values ikke skal
+    -- røres/risikeres for resten af CRM'et.
+    CREATE TABLE IF NOT EXISTS task_custom_field_values (
+      id SERIAL PRIMARY KEY,
+      field_id INTEGER NOT NULL REFERENCES crm_custom_fields(id) ON DELETE CASCADE,
+      task_id TEXT NOT NULL,
+      value TEXT,
+      UNIQUE(field_id, task_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_cfv_task ON task_custom_field_values(task_id);
     CREATE TABLE IF NOT EXISTS crm_activities (
       id SERIAL PRIMARY KEY,
       entity_type TEXT NOT NULL, -- 'lead' | 'opportunity' | 'contact'
@@ -2273,6 +2296,14 @@ async function initSchema() {
     -- her i stedet, og trækkes fra avancen ligesom løn-/materialeomkostning.
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS subcontractor_cost NUMERIC;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS subcontractor_note TEXT;
+    -- RUNDE CE (Martins ønske #7: "tilføj hvad du mener er korrekt ... så den
+    -- bliver bedre til store projekter") — en lille, selvstændig tilføjelse:
+    -- en opgave kan nu markeres med en prioritet, så en stor sag med mange
+    -- åbne opgaver kan sorteres/filtreres efter hvad der er mest akut, uden at
+    -- det kræver en hel ny opgavetype. NULL/'normal' = som hidtil (ingen
+    -- synlig badge), så eksisterende opgaver ikke pludselig ser "forhastede"
+    -- ud af ingenting.
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS priority TEXT;
     -- RUNDE H: Færdig-mailen til kunden sendes nu automatisk når SAGEN sættes til
     -- "Afsluttet" (status='done'), ikke længere manuelt pr. opgave i Opgavepool.
     -- Dette felt forhindrer at samme sag udløser mailen mere end én gang, selvom
@@ -2309,6 +2340,14 @@ async function initSchema() {
       submitted_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_qa_submissions_project ON qa_submissions(project_id);
+    -- RUNDE CE (Martins ønske: "KS pr. opgave, ikke kun pr. sag" — større sager
+    -- som tilbygninger har mange faser, og ét samlet KS-skema for hele sagen er
+    -- for upræcist til fx at knytte en fugtmåling til DEN specifikke
+    -- gulvlægnings-opgave). Nullable og UDEN FK (samme løse TEXT-id-mønster som
+    -- task_photos/task_checklist_items — en opgaves id er 'p'+24 hex-tegn, ikke
+    -- et tal) — NULL betyder fortsat "hele sagen", som før denne kolonne fandtes.
+    ALTER TABLE qa_submissions ADD COLUMN IF NOT EXISTS task_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_qa_submissions_task ON qa_submissions(task_id);
 
     -- ── TIDSREGISTRERING: note + billede er obligatorisk, indkøbte
     -- materialer og tilbudspost er valgfrit, men gør det hurtigt at se
@@ -2386,6 +2425,205 @@ async function initSchema() {
       PRIMARY KEY (project_id, qa_template_id)
     );
     CREATE INDEX IF NOT EXISTS idx_project_qa_templates_project ON project_qa_templates(project_id);
+
+    -- ════════════════════════════════════════════════════════════════════
+    -- RUNDE CF (Martins ønske: "byg de andre 9 features") — de 9 "store
+    -- programmer"-features fra den oprindelige forespørgsel. Hver fik sin
+    -- egen, SELVSTÆNDIGE tabel (ingen genbrug af gantt_tasks/jt_tasks' løse
+    -- TEXT-id-mønster her, da disse features alle har et helt eget, simplere
+    -- livsforløb og ikke behøver spejles ind i Opgavepool/Kapacitetsboard).
+    -- ════════════════════════════════════════════════════════════════════
+
+    -- SAGS-SKABELONER (feature #9) — en skabelon (fx "Tilbygning") med et
+    -- fast sæt opgaver (med dage-forskydning ift. sagens startdato) +
+    -- tjekpunkter + KS-skabeloner, der kan "stemples" på en sag på én gang.
+    CREATE TABLE IF NOT EXISTS project_templates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS project_template_tasks (
+      id SERIAL PRIMARY KEY,
+      template_id INTEGER NOT NULL REFERENCES project_templates(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      -- offset_days: opgavens startdato = sagens valgte startdato + offset_days.
+      offset_days INTEGER NOT NULL DEFAULT 0,
+      duration_days INTEGER NOT NULL DEFAULT 1,
+      position INTEGER NOT NULL DEFAULT 0,
+      -- checklist_items: JSON-array af strenge, bliver til task_checklist_items
+      -- på hver genereret opgave når skabelonen anvendes.
+      checklist_items JSONB NOT NULL DEFAULT '[]'
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_template_tasks_template ON project_template_tasks(template_id);
+    -- Samme mønster som project_qa_templates ovenfor: hvilke KS-skabeloner
+    -- der automatisk tildeles sagen når denne sags-skabelon anvendes.
+    CREATE TABLE IF NOT EXISTS project_template_qa (
+      template_id INTEGER NOT NULL REFERENCES project_templates(id) ON DELETE CASCADE,
+      qa_template_id INTEGER NOT NULL REFERENCES qa_templates(id) ON DELETE CASCADE,
+      PRIMARY KEY (template_id, qa_template_id)
+    );
+
+    -- DAGBOG FOR BYGGEPLADSEN (feature #5) — én række pr. dag pr. sag: vejr,
+    -- bemanding, leverancer, hændelser. Martins egen begrundelse: "vigtigt
+    -- ved tvister" — derfor ingen redigering af entry_date efter oprettelse,
+    -- og ingen sletteknap i UI'et (kun admin kan via DELETE-routen, hvis en
+    -- åbenlys fejltastning skal rettes).
+    CREATE TABLE IF NOT EXISTS site_diary_entries (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      entry_date TEXT NOT NULL,
+      weather TEXT,
+      staffing TEXT,
+      deliveries TEXT,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_site_diary_project ON site_diary_entries(project_id, entry_date DESC);
+
+    -- TEGNINGSLISTE MED VERSIONER (feature #2) — drawings er selve
+    -- tegningen (fast navn/nummer pr. sag), drawing_revisions er historikken
+    -- af A/B/C-versioner uploadet til den. current_revision_id peger altid på
+    -- den nyeste, så visninger der kun vil se "den aktive tegning" ikke selv
+    -- skal regne ud hvilken revision der er nyest.
+    CREATE TABLE IF NOT EXISTS drawings (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      current_revision_id INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS drawing_revisions (
+      id SERIAL PRIMARY KEY,
+      drawing_id INTEGER NOT NULL REFERENCES drawings(id) ON DELETE CASCADE,
+      -- rev_label: 'A','B','C'... sat automatisk ud fra hvor mange revisioner
+      -- tegningen allerede har (se POST-routen), men gemt som TEXT så Martin
+      -- ikke er låst til kun bogstaver, hvis han en dag vil bruge tal i stedet.
+      rev_label TEXT NOT NULL,
+      url TEXT NOT NULL,
+      note TEXT,
+      uploaded_by INTEGER,
+      uploaded_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_drawings_project ON drawings(project_id);
+    CREATE INDEX IF NOT EXISTS idx_drawing_revisions_drawing ON drawing_revisions(drawing_id);
+
+    -- MILEPÆLE MED AUTOMATISK FAKTURA-FORSLAG (feature #7) — en betalingsplan
+    -- pr. sag: når en milepæl markeres færdig, foreslås den tilsvarende rate
+    -- oprettet som ny faktura (kun et FORSLAG — opretter intet automatisk af
+    -- sig selv, Martin bekræfter altid selv beløb/kunde først, se routen).
+    CREATE TABLE IF NOT EXISTS project_milestones (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      -- amount: fast kronebeløb. percent: valgfri alternativ (% af sagens
+      -- tilbudssum) — hvis sat, bruges den til at UDREGNE amount ved oprettelse/
+      -- visning i stedet for et fast beløb, så en milepælsplan lavet før den
+      -- endelige pris kendes stadig giver mening.
+      amount NUMERIC,
+      percent NUMERIC,
+      position INTEGER NOT NULL DEFAULT 0,
+      done INTEGER NOT NULL DEFAULT 0,
+      done_at TEXT,
+      -- invoice_id: sat når "Opret faktura"-forslaget er fulgt og en rigtig
+      -- faktura er blevet oprettet herfra, så knappen ikke vises igen/dobbelt-fakturerer.
+      invoice_id INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(project_id);
+
+    -- BYGGEMØDEREFERAT → AUTOMATISKE TO-DOS (feature #3) — referatet selv
+    -- (dagsorden/beslutninger som fri tekst) + strukturerede opfølgningspunkter
+    -- med ansvarlig+frist, der hver bliver til et tjekpunkt på en valgt opgave
+    -- (task_checklist_items, samme tabel som opgave-popup'ens tjekliste).
+    CREATE TABLE IF NOT EXISTS site_meetings (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+      meeting_date TEXT NOT NULL,
+      agenda TEXT,
+      decisions TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    -- RUNDE CH (okt. 2026, Martins ønske: "integrere Google Meet/Zoom ... ved
+    -- et tryk under kunden OG projekter kan holde møder ... gemmes som
+    -- mødenotater under opgaven og/eller handlen") — genbruger denne tabel i
+    -- stedet for en ny parallel én, da den allerede dækker "møde → struktureret
+    -- referat (+evt. to-dos)" perfekt. project_id blev derfor løsnet fra NOT
+    -- NULL ovenfor, og handel-kobling (lead ELLER opportunity) tilføjes her, så
+    -- et møde kan høre til en SAG, en HANDEL, eller begge (fx når man holder et
+    -- Google Meet-møde med en kunde om en handel der allerede har fået et
+    -- projekt). meeting_type skelner et fysisk byggemøde (feature #3, "site")
+    -- fra et video-møde ("video") — kun video-møder viser Platform/Link-felter
+    -- i UI'en. video_link gemmer selve meet.google.com/...-linket (eller en
+    -- manuelt indsat Zoom-linje), så man altid kan se/åbne det samme møde igen.
+    ALTER TABLE site_meetings ALTER COLUMN project_id DROP NOT NULL;
+    ALTER TABLE site_meetings ADD COLUMN IF NOT EXISTS crm_lead_id INTEGER REFERENCES crm_leads(id) ON DELETE CASCADE;
+    ALTER TABLE site_meetings ADD COLUMN IF NOT EXISTS crm_opportunity_id INTEGER REFERENCES crm_opportunities(id) ON DELETE CASCADE;
+    ALTER TABLE site_meetings ADD COLUMN IF NOT EXISTS meeting_type TEXT NOT NULL DEFAULT 'site';
+    ALTER TABLE site_meetings ADD COLUMN IF NOT EXISTS video_platform TEXT;
+    ALTER TABLE site_meetings ADD COLUMN IF NOT EXISTS video_link TEXT;
+    CREATE INDEX IF NOT EXISTS idx_site_meetings_lead ON site_meetings(crm_lead_id);
+    CREATE INDEX IF NOT EXISTS idx_site_meetings_opp ON site_meetings(crm_opportunity_id);
+    CREATE TABLE IF NOT EXISTS meeting_action_items (
+      id SERIAL PRIMARY KEY,
+      meeting_id INTEGER NOT NULL REFERENCES site_meetings(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      assigned_to INTEGER,
+      due_date TEXT,
+      done INTEGER NOT NULL DEFAULT 0,
+      -- checklist_item_id: sat når punktet er blevet "til en to-do" (se POST-
+      -- routen, som automatisk opretter et task_checklist_items-punkt, hvis
+      -- mødet er knyttet til en bestemt opgave) — NULL hvis det kun er et
+      -- referat-punkt uden en konkret opgave at hænge det på.
+      checklist_item_id INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_site_meetings_project ON site_meetings(project_id);
+    CREATE INDEX IF NOT EXISTS idx_meeting_action_items_meeting ON meeting_action_items(meeting_id);
+
+    -- RFI MELLEM FAGFOLK (feature #6) — simpelt spørgsmål/svar-log pr. sag,
+    -- fx håndværker → arkitekt/statiker, med svarfrist.
+    CREATE TABLE IF NOT EXISTS project_rfis (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      question TEXT NOT NULL,
+      asked_to TEXT,
+      due_date TEXT,
+      answer TEXT,
+      answered_at TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_rfis_project ON project_rfis(project_id);
+
+    -- ÆNDRINGSØNSKER/EKSTRAARBEJDE MED ONLINE GODKENDELSE (feature #4) —
+    -- samme online-signerings-mønster som quotes (signed_name/signed_at),
+    -- men en meget lettere tabel, da et ændringsønske ikke har linjer/rabatter
+    -- osv. som et helt tilbud — kun ÉT samlet beløb og én beskrivelse.
+    -- approve_token bruges til den offentlige /ekstraarbejde/:token-side,
+    -- samme princip som customer_portal_tokens.
+    CREATE TABLE IF NOT EXISTS change_orders (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      description TEXT,
+      amount NUMERIC NOT NULL DEFAULT 0,
+      approve_token TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      signed_name TEXT,
+      signed_at TEXT,
+      declined_at TEXT,
+      -- invoice_id: sat hvis/når det godkendte ekstraarbejde er faktureret
+      -- (samme "forslag, ikke automatik"-princip som milepælene ovenfor).
+      invoice_id INTEGER,
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_change_orders_project ON change_orders(project_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_change_orders_token ON change_orders(approve_token);
 
     -- ── MATERIALER: strukturerede indkøb (kvitteringsbillede + pris + butik)
     -- knyttet til en sag — erstatter det gamle "Upload Bill"-link ud til
@@ -7696,7 +7934,7 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
     tasks: rows.rows.map(r => ({
       id: r.id, project_id: r.project_id, project_name: r.project_name,
       job_number: r.job_number, project_status: r.project_status,
-      name: r.name, description: r.description,
+      name: r.name, description: taskNoteToSafeHtml(r.description),
       start_date: r.start_date, end_date: r.end_date,
       progress: r.progress, is_group: !!r.is_group, parent_task_id: r.parent_task_id,
       // Sags-opgaver får aldrig sat depends_on (POST/PUT /api/projects/:id/tasks
@@ -8995,7 +9233,15 @@ app.put('/api/task-requests/:id/reject', auth, panelAccess('requests'), asyncRou
 
 // ── TJEKPUNKTER PÅ EN OPGAVE (sub-opgaver, fx krav om dokumentation) ──
 app.get('/api/tasks/:id/checklist', auth, asyncRoute(async (req, res) => {
-  const rows = await pool.query('SELECT * FROM task_checklist_items WHERE task_id=$1 ORDER BY id ASC', [req.params.id]);
+  // RUNDE CE — assigned_to_name sendes med, så medarbejder-appen (som ikke har
+  // en fuld brugerliste at slå id'et op i, kun sin egen bruger) alligevel kan
+  // vise hvem der er ansvarlig for punktet, ikke kun admin.html (der har
+  // "users"-listen i hukommelsen fra før).
+  const rows = await pool.query(`
+    SELECT tci.*, u.name AS assigned_to_name
+    FROM task_checklist_items tci LEFT JOIN users u ON u.id = tci.assigned_to
+    WHERE tci.task_id=$1 ORDER BY tci.id ASC
+  `, [req.params.id]);
   res.json(rows.rows);
 }));
 
@@ -9004,19 +9250,29 @@ app.post('/api/tasks/:id/checklist', auth, panelAccess('plan'), asyncRoute(async
   if (!title) return res.status(400).json({ error: 'Skriv hvad tjekpunktet handler om' });
   const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [req.params.id]);
   if (!task) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
+  // RUNDE CE (Martins ønske: "task man kan uddele på sagen og tilføje en
+  // medarbejder") — valgfri ansvarlig medarbejder, kan sættes med det samme
+  // ved oprettelsen eller tilføjes/ændres senere via PUT nedenfor.
+  const assignedTo = (req.body || {}).assigned_to ? Number((req.body || {}).assigned_to) || null : null;
   const result = await pool.query(`
-    INSERT INTO task_checklist_items (task_id,title,created_by,created_at) VALUES ($1,$2,$3,${nowTextSQL()}) RETURNING id
-  `, [req.params.id, title.slice(0, 300), req.user.id]);
+    INSERT INTO task_checklist_items (task_id,title,created_by,created_at,assigned_to) VALUES ($1,$2,$3,${nowTextSQL()},$4) RETURNING id
+  `, [req.params.id, title.slice(0, 300), req.user.id, assignedTo]);
   res.json({ ok: true, id: result.rows[0].id });
 }));
 
 app.put('/api/checklist/:id', auth, asyncRoute(async (req, res) => {
   const item = await pgOne('SELECT * FROM task_checklist_items WHERE id=$1', [req.params.id]);
   if (!item) return res.status(404).json({ error: 'Tjekpunktet blev ikke fundet' });
-  const done = !!(req.body || {}).done;
+  const b = req.body || {};
+  // RUNDE CE — 'done' og 'assigned_to' kan sættes uafhængigt af hinanden (en
+  // enkelt PUT behøver kun sende det der rent faktisk ændres), så det
+  // eksisterende "toggle done"-kald andre steder i admin.html/employee.html
+  // fortsætter uændret og ikke risikerer at nulstille en sat ansvarlig.
+  const done = b.done !== undefined ? !!b.done : !!item.done;
+  const assignedTo = b.assigned_to !== undefined ? (b.assigned_to ? Number(b.assigned_to) || null : null) : item.assigned_to;
   await pool.query(
-    `UPDATE task_checklist_items SET done=$1, done_by=$2, done_at=${done ? nowTextSQL() : 'NULL'} WHERE id=$3`,
-    [done ? 1 : 0, done ? req.user.id : null, item.id]
+    `UPDATE task_checklist_items SET done=$1, done_by=$2, done_at=${done ? nowTextSQL() : 'NULL'}, assigned_to=$3 WHERE id=$4`,
+    [done ? 1 : 0, done ? req.user.id : null, assignedTo, item.id]
   );
   res.json({ ok: true });
 }));
@@ -9575,11 +9831,18 @@ async function normalizeBooking(body, isNew) {
   // fra den nye note-editor i admin.html. explicitNote saniteres derfor gennem
   // sanitizeBookingNote() (fjerner alt undtagen b/strong/br/ul/ol/li), så vi
   // aldrig gemmer vilkårlig HTML fra klienten i databasen. fallbackNote kommer
-  // derimod fra jt_tasks.description, som er REN TEKST — den skal HTML-escapes
-  // (ikke saniteres) før den flyder ind i samme, nu HTML-fortolkede, felt, ellers
-  // ville fx et "<" i en gammel JobTread-beskrivelse blive tolket som et tag.
+  // derimod fra jt_tasks.description, som normalt er REN TEKST fra JobTread —
+  // den skal HTML-escapes (ikke saniteres) før den flyder ind i samme, nu
+  // HTML-fortolkede, felt, ellers ville fx et "<" i en gammel JobTread-
+  // beskrivelse blive tolket som et tag. RUNDE CE: for en sags-opgave (ikke
+  // JobTread-synkroniseret) kan task.description nu OGSÅ allerede være rig
+  // HTML fra den nye note-editor på opgaven (mirrorProjectTaskToPool kopierer
+  // gantt_tasks.description uændret ind i jt_tasks.description) — derfor
+  // taskNoteToSafeHtml() først (skelner selv mellem de to), og DEREFTER
+  // sanitizeBookingNote() for at barbere evt. <h4> væk (booking-noten har ingen
+  // headline-styling), så begge kilder lander sikkert i samme smalle whitelist.
   const explicitNoteRaw = booking.notes !== undefined && booking.notes !== null ? sanitizeBookingNote(booking.notes) : '';
-  const fallbackNote = (isNew && !explicitNoteRaw && task.description) ? escPublic(String(task.description).trim()).replace(/\n/g, '<br>') : '';
+  const fallbackNote = (isNew && !explicitNoteRaw && task.description) ? sanitizeBookingNote(taskNoteToSafeHtml(task.description)) : '';
   const explicitNote = explicitNoteRaw;
   const finalNote = explicitNote || fallbackNote;
   // Link + vedhæftninger der hører til noten (fx et link til en tegning, eller
@@ -9724,7 +9987,12 @@ app.get('/api/assignments/:id/note', auth, panelAccess('plan'), asyncRoute(async
 app.get('/api/assignments/my', auth, asyncRoute(async (req, res) => {
   // Employees only see actual daily work. Capacity-only blocks are an admin planning tool.
   const result = await pool.query(`${bookingSelect("WHERE b.user_id=$1 AND COALESCE(b.planning_mode,'daily') <> 'capacity'")} ORDER BY b.start_date ASC,b.id ASC`, [req.user.id]);
-  res.json(result.rows);
+  // RUNDE CE: task_description (fra jt_tasks, se bookingSelect) kan nu være rig
+  // HTML fra opgavens nye note-editor i admin.html (mirrorProjectTaskToPool)
+  // eller stadig ren tekst (ældre opgaver/JobTread) — gøres sikker at vise som
+  // HTML her (kun i DENNE medarbejder-vendte route), så medarbejder-appens
+  // fallback-visning altid kan sætte den direkte som innerHTML.
+  res.json(result.rows.map(r => ({ ...r, task_description: taskNoteToSafeHtml(r.task_description) })));
 }));
 
 // Medarbejdere kan selv hente en opgave fra poolen ind på deres egen dag —
@@ -12209,6 +12477,39 @@ async function crmSetCustomFieldValues(entityType, entityId, valuesObj, exec) {
         INSERT INTO crm_custom_field_values (field_id, entity_type, entity_id, value) VALUES ($1,$2,$3,$4)
         ON CONFLICT (field_id, entity_type, entity_id) DO UPDATE SET value=$4
       `, [def.id, entityType, entityId, String(val)]);
+    }
+  }
+}
+// RUNDE CE — søskende-funktioner til crmGetCustomFieldValues/crmSetCustomFieldValues
+// ovenfor, men for OPGAVER (entity_type='task' i crm_custom_fields — selve
+// felt-DEFINITIONERNE genbruges direkte derfra, ingen ændring nødvendig der).
+// VÆRDIERNE kan ikke ligge i crm_custom_field_values (entity_id er INTEGER,
+// en opgaves id er en TEXT-streng) — se task_custom_field_values i initSchema().
+async function taskGetCustomFieldValues(taskId) {
+  const r = await pool.query(`
+    SELECT cf.key, tcfv.value FROM task_custom_field_values tcfv
+    JOIN crm_custom_fields cf ON cf.id = tcfv.field_id
+    WHERE tcfv.task_id=$1
+  `, [taskId]);
+  const out = {};
+  r.rows.forEach(row => { out[row.key] = row.value; });
+  return out;
+}
+async function taskSetCustomFieldValues(taskId, valuesObj) {
+  if (!valuesObj || typeof valuesObj !== 'object') return;
+  const defs = await crmGetCustomFieldDefs('task');
+  const byKey = {}; defs.forEach(d => { byKey[d.key] = d; });
+  for (const key of Object.keys(valuesObj)) {
+    const def = byKey[key];
+    if (!def) continue; // ukendt felt-nøgle — ignoreres stille (fx et felt der lige er slettet)
+    const val = valuesObj[key];
+    if (val === null || val === undefined || val === '') {
+      await pool.query('DELETE FROM task_custom_field_values WHERE field_id=$1 AND task_id=$2', [def.id, taskId]);
+    } else {
+      await pool.query(`
+        INSERT INTO task_custom_field_values (field_id, task_id, value) VALUES ($1,$2,$3)
+        ON CONFLICT (field_id, task_id) DO UPDATE SET value=$3
+      `, [def.id, taskId, String(val)]);
     }
   }
 }
@@ -15203,7 +15504,8 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
 app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
-  const [tasks, photos, timeEntries, materials, qaSubmissions, contactSubmissions, quoteLines, qaTemplateIds] = await Promise.all([
+  const [tasks, photos, timeEntries, materials, qaSubmissions, contactSubmissions, quoteLines, qaTemplateIds, taskCustomFieldDefs, taskCustomFieldValues,
+    diaryEntries, drawings, drawingRevisions, milestones, meetings, meetingActionItems, rfis, changeOrders] = await Promise.all([
     // RUNDE H #24 — has_booking bruges af "📊 Book alt i Kapacitetsbordet" (se
     // POST /api/projects/:id/bulk-book-capacity) til kun at tilbyde/vise
     // opgaver der IKKE allerede har en booking (kapacitet ELLER daglig plan),
@@ -15228,7 +15530,7 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
       -- JobTread-synkroniserede opgaver, hvor position kan være en hvilken
       -- som helst streng fra JobTread selv, og derfor IKKE må castes sådan.
       FROM gantt_tasks g WHERE g.project_id=$1 ORDER BY position::int ASC, id ASC
-    `, [req.params.id]).then(r => r.rows.map(t => ({ ...t, depends_on: safeJsonParse(t.depends_on, []) || [] }))),
+    `, [req.params.id]).then(r => r.rows.map(t => ({ ...t, depends_on: safeJsonParse(t.depends_on, []) || [], description: taskNoteToSafeHtml(t.description) }))),
     pool.query('SELECT * FROM project_photos WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM time_entries WHERE project_id=$1 ORDER BY entry_date DESC, id DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM project_materials WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
@@ -15237,8 +15539,44 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
     project.quote_id
       ? pool.query('SELECT id, description FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id]).then(r => r.rows)
       : Promise.resolve([]),
-    pool.query('SELECT qa_template_id FROM project_qa_templates WHERE project_id=$1', [req.params.id]).then(r => r.rows.map(x => x.qa_template_id))
+    pool.query('SELECT qa_template_id FROM project_qa_templates WHERE project_id=$1', [req.params.id]).then(r => r.rows.map(x => x.qa_template_id)),
+    // RUNDE CE (Martins ønske: custom fields på opgaver) — felt-DEFINITIONER
+    // genbruger crm_custom_fields (entity_type='task'), sendes med én gang for
+    // hele sagen (ikke pr. opgave) så popup'en kan tegne felterne uden en ekstra
+    // forespørgsel.
+    crmGetCustomFieldDefs('task'),
+    // VÆRDIERNE derimod ER pr. opgave — hentes samlet for alle sagens opgaver
+    // (JOIN på gantt_tasks for at afgrænse til denne sags opgaver) og sendes
+    // som { [task_id]: { [key]: value } }.
+    pool.query(`
+      SELECT tcfv.task_id, cf.key, tcfv.value FROM task_custom_field_values tcfv
+      JOIN crm_custom_fields cf ON cf.id = tcfv.field_id
+      JOIN gantt_tasks g ON g.id = tcfv.task_id
+      WHERE g.project_id=$1
+    `, [req.params.id]).then(r => {
+      const out = {};
+      r.rows.forEach(row => { (out[row.task_id] = out[row.task_id] || {})[row.key] = row.value; });
+      return out;
+    }),
+    // RUNDE CF — de 9 nye "store programmer"-features (sep./okt. 2026): hentes
+    // samlet her, samme "alt med én gang"-princip som resten af denne route, så
+    // sagsdetaljesidens nye faner (Dagbog/Tegninger/Milepæle/Møder/RFI/
+    // Ændringsønsker) kan tegnes uden hver deres eget API-kald ved sidens åbning.
+    pool.query('SELECT d.*, u.name AS created_by_name FROM site_diary_entries d LEFT JOIN users u ON u.id=d.created_by WHERE d.project_id=$1 ORDER BY d.entry_date DESC, d.id DESC', [req.params.id]).then(r => r.rows),
+    pool.query('SELECT * FROM drawings WHERE project_id=$1 ORDER BY name ASC', [req.params.id]).then(r => r.rows),
+    pool.query(`SELECT r.*, u.name AS uploaded_by_name FROM drawing_revisions r LEFT JOIN users u ON u.id=r.uploaded_by WHERE r.drawing_id IN (SELECT id FROM drawings WHERE project_id=$1) ORDER BY r.uploaded_at ASC`, [req.params.id]).then(r => r.rows),
+    pool.query('SELECT * FROM project_milestones WHERE project_id=$1 ORDER BY position ASC, id ASC', [req.params.id]).then(r => r.rows),
+    pool.query('SELECT * FROM site_meetings WHERE project_id=$1 ORDER BY meeting_date DESC, id DESC', [req.params.id]).then(r => r.rows),
+    pool.query(`SELECT a.*, u.name AS assigned_to_name FROM meeting_action_items a LEFT JOIN users u ON u.id=a.assigned_to WHERE a.meeting_id IN (SELECT id FROM site_meetings WHERE project_id=$1) ORDER BY a.id ASC`, [req.params.id]).then(r => r.rows),
+    pool.query('SELECT * FROM project_rfis WHERE project_id=$1 ORDER BY (status=\'open\') DESC, due_date ASC NULLS LAST, id DESC', [req.params.id]).then(r => r.rows),
+    pool.query('SELECT * FROM change_orders WHERE project_id=$1 ORDER BY id DESC', [req.params.id]).then(r => r.rows)
   ]);
+  const drawingsById = {};
+  drawings.forEach(d => { drawingsById[d.id] = { ...d, revisions: [] }; });
+  drawingRevisions.forEach(r => { if (drawingsById[r.drawing_id]) drawingsById[r.drawing_id].revisions.push(r); });
+  const meetingsById = {};
+  meetings.forEach(m => { meetingsById[m.id] = { ...m, action_items: [] }; });
+  meetingActionItems.forEach(a => { if (meetingsById[a.meeting_id]) meetingsById[a.meeting_id].action_items.push(a); });
   // RUNDE H #309 (Martins ønske: se den udførlige kommentar ved GET
   // /api/crm/leads|opportunities/:id/quotes ovenfor) — modstykket set fra
   // PROJEKTET: hvilken handel/lead gav anledning til denne sag, udledt
@@ -15256,7 +15594,8 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
       if (opp) crmEntity = { type: 'opportunity', id: opp.id, name: opp.name };
     }
   }
-  res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, crm_entity: crmEntity });
+  res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, crm_entity: crmEntity, task_custom_field_defs: taskCustomFieldDefs, task_custom_field_values: taskCustomFieldValues,
+    diary_entries: diaryEntries, drawings: Object.values(drawingsById), milestones, meetings: Object.values(meetingsById), rfis, change_orders: changeOrders });
 }));
 
 // Projekt-budget (sep. 2026, Martins ønske #3 "Samlet budget visning under projekter"):
@@ -15443,6 +15782,33 @@ app.get('/api/reports/time-tracking', auth, adminOnly, asyncRoute(async (req, re
   res.json({ entries });
 }));
 
+// Fælles hjælper til milepæl-fakturaer OG ekstraarbejde-fakturaer (feature #7
+// og #4): opretter en helt almindelig KLADDE-faktura (samme status som "📝 Gem
+// som kladde", se direct-create ovenfor) med sagens kundeoplysninger og ÉN
+// linje med det angivne beløb. Kun et FORSLAG — Martin redigerer/aktiverer/
+// sender den som alle andre fakturaer bagefter, intet sendes automatisk.
+async function createDraftInvoiceFromProject(project, lineDescription, amount) {
+  const company = await getCompanyInfo();
+  const taxRate = company.defaultTaxRate;
+  const totals = computeTotals([{ quantity: 1, sell_price: amount, cost_price: 0 }], taxRate, 0);
+  const invoiceNumber = await nextDocNumber('invoice', 'FAK');
+  const resolvedCustomerId = project ? await resolveCustomerId(project.customer_id || null, project.customer_email || null, project.customer_phone || null) : null;
+  const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 4);
+  const r = await pool.query(`
+    INSERT INTO invoices (invoice_number,job_name,customer_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,due_date)
+    VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8,$9,$10,$11) RETURNING id
+  `, [invoiceNumber, project ? project.name : '', resolvedCustomerId, project ? (project.customer_address || null) : null,
+      project ? (project.customer_phone || null) : null, project ? (project.customer_email || null) : null,
+      totals.subtotal, taxRate, totals.taxAmount, totals.total, dueDate.toISOString().slice(0, 10)]);
+  const invoiceId = r.rows[0].id;
+  await pool.query(`
+    INSERT INTO invoice_lines (invoice_id,description,unit,quantity,cost_price,sell_price,position,product_type,line_type)
+    VALUES ($1,$2,'stk',1,0,$3,0,'service','item')
+  `, [invoiceId, lineDescription, amount]);
+  logDocActivity('invoice', invoiceId, 'created', 'System', 'kladde oprettet automatisk fra milepæl/ekstraarbejde-forslag');
+  return invoiceId;
+}
+
 // Kontoret vælger hvilke KS-skabeloner der er tilgængelige for medarbejderen på DENNE
 // sag. Ingen rækker gemt = ingen begrænsning (alle skabeloner tilladt, bagudkompatibelt).
 app.put('/api/projects/:id/qa-templates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
@@ -15454,6 +15820,555 @@ app.put('/api/projects/:id/qa-templates', auth, panelAccess('projects'), asyncRo
     const values = ids.map((_, i) => `($1,$${i + 2})`).join(',');
     await pool.query(`INSERT INTO project_qa_templates (project_id, qa_template_id) VALUES ${values} ON CONFLICT DO NOTHING`, [req.params.id, ...ids]);
   }
+  res.json({ ok: true });
+}));
+
+// ════════════════════════════════════════════════════════════════════════
+// SAGS-SKABELONER (feature #9, Martins ønske: "fx 'Tilbygning' med opgaver,
+// to-dos og KS-plan på én gang" — en ny sag sat op på 10 sekunder). CRUD på
+// selve skabelonen + "Anvend skabelon"-routen der rent faktisk stempler
+// opgaverne/tjeklisterne/KS-tildelingen ind på en konkret sag.
+// ════════════════════════════════════════════════════════════════════════
+app.get('/api/project-templates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query(`
+    SELECT t.*, (SELECT COUNT(*)::int FROM project_template_tasks tt WHERE tt.template_id=t.id) AS task_count
+    FROM project_templates t ORDER BY t.name ASC
+  `)).rows;
+  res.json(rows);
+}));
+app.get('/api/project-templates/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const tpl = await pgOne('SELECT * FROM project_templates WHERE id=$1', [req.params.id]);
+  if (!tpl) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  const tasks = (await pool.query('SELECT * FROM project_template_tasks WHERE template_id=$1 ORDER BY position ASC, id ASC', [req.params.id])).rows;
+  const qa = (await pool.query('SELECT qa_template_id FROM project_template_qa WHERE template_id=$1', [req.params.id])).rows.map(r => r.qa_template_id);
+  res.json({ ...tpl, tasks, qa_template_ids: qa });
+}));
+app.post('/api/project-templates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const name = String((req.body || {}).name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Skriv et navn til skabelonen' });
+  const row = await pgOne(`INSERT INTO project_templates (name, description) VALUES ($1,$2) RETURNING id`, [name, (req.body || {}).description || '']);
+  res.json({ ok: true, id: row.id });
+}));
+app.put('/api/project-templates/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const tpl = await pgOne('SELECT id FROM project_templates WHERE id=$1', [req.params.id]);
+  if (!tpl) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  const b = req.body || {};
+  await pool.query(`UPDATE project_templates SET name=$1, description=$2, updated_at=${nowTextSQL()} WHERE id=$3`,
+    [String(b.name || '').trim() || tpl.name, b.description || '', req.params.id]);
+  res.json({ ok: true });
+}));
+app.delete('/api/project-templates/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM project_templates WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+// Erstatter ALLE opgaver på skabelonen med den indsendte liste (samme
+// "hele listen på én gang"-mønster som tilbudslinjer/tjeklister andre steder
+// i filen — enklest for et skabelon-editor-UI der viser en redigerbar liste).
+app.put('/api/project-templates/:id/tasks', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const tpl = await pgOne('SELECT id FROM project_templates WHERE id=$1', [req.params.id]);
+  if (!tpl) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  const tasks = Array.isArray((req.body || {}).tasks) ? req.body.tasks : [];
+  await pool.query('DELETE FROM project_template_tasks WHERE template_id=$1', [req.params.id]);
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i] || {};
+    const name = String(t.name || '').trim();
+    if (!name) continue;
+    await pool.query(
+      `INSERT INTO project_template_tasks (template_id, name, offset_days, duration_days, position, checklist_items) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [req.params.id, name, Number(t.offset_days) || 0, Math.max(1, Number(t.duration_days) || 1), i, JSON.stringify(Array.isArray(t.checklist_items) ? t.checklist_items.map(String).filter(Boolean) : [])]
+    );
+  }
+  res.json({ ok: true });
+}));
+app.put('/api/project-templates/:id/qa', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const tpl = await pgOne('SELECT id FROM project_templates WHERE id=$1', [req.params.id]);
+  if (!tpl) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  const ids = Array.isArray((req.body || {}).qa_template_ids) ? req.body.qa_template_ids.map(Number).filter(Boolean) : [];
+  await pool.query('DELETE FROM project_template_qa WHERE template_id=$1', [req.params.id]);
+  if (ids.length) {
+    const values = ids.map((_, i) => `($1,$${i + 2})`).join(',');
+    await pool.query(`INSERT INTO project_template_qa (template_id, qa_template_id) VALUES ${values} ON CONFLICT DO NOTHING`, [req.params.id, ...ids]);
+  }
+  res.json({ ok: true });
+}));
+// "Stempel" skabelonen ind på en konkret sag: opretter rigtige gantt_tasks
+// (med start-dato = sagens valgte startdato + offset_days), rigtige
+// task_checklist_items pr. opgave, og tildeler skabelonens KS-skabeloner til
+// sagen (merge, ikke erstat — samme princip som PUT .../qa-templates, så en
+// sag der allerede har egne KS-tildelinger ikke pludselig mister dem).
+app.post('/api/projects/:id/apply-template', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const templateId = Number((req.body || {}).template_id);
+  const startDate = (req.body || {}).start_date;
+  if (!templateId) return res.status(400).json({ error: 'Vælg en skabelon' });
+  if (!validDate(startDate)) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
+  const tpl = await pgOne('SELECT * FROM project_templates WHERE id=$1', [templateId]);
+  if (!tpl) return res.status(404).json({ error: 'Skabelonen blev ikke fundet' });
+  const tasks = (await pool.query('SELECT * FROM project_template_tasks WHERE template_id=$1 ORDER BY position ASC, id ASC', [templateId])).rows;
+  const countRes = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks WHERE project_id=$1', [req.params.id]);
+  let pos = countRes ? countRes.n : 0;
+  const createdIds = [];
+  for (const t of tasks) {
+    const taskStart = addCalendarDays(startDate, t.offset_days || 0);
+    const taskEnd = addCalendarDays(taskStart, Math.max(0, (t.duration_days || 1) - 1));
+    const id = 'p' + crypto.randomBytes(12).toString('hex');
+    await pool.query(`
+      INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,synced_at)
+      VALUES ($1,$2,$3,$4,'',$5,$6,0,0,$7,$8,${nowTextSQL()})
+    `, [id, 'project-' + project.id, project.name, t.name, taskStart, taskEnd, String(pos++), req.params.id]);
+    await mirrorProjectTaskToPool(id, project, { name: t.name, start_date: taskStart, end_date: taskEnd, description: '' });
+    const checklistItems = Array.isArray(t.checklist_items) ? t.checklist_items : (() => { try { return JSON.parse(t.checklist_items || '[]'); } catch (e) { return []; } })();
+    for (const title of checklistItems) {
+      await pool.query('INSERT INTO task_checklist_items (task_id, title, created_by) VALUES ($1,$2,$3)', [id, String(title), req.user.id]);
+    }
+    createdIds.push(id);
+  }
+  const qaIds = (await pool.query('SELECT qa_template_id FROM project_template_qa WHERE template_id=$1', [templateId])).rows.map(r => r.qa_template_id);
+  if (qaIds.length) {
+    const values = qaIds.map((_, i) => `($1,$${i + 2})`).join(',');
+    await pool.query(`INSERT INTO project_qa_templates (project_id, qa_template_id) VALUES ${values} ON CONFLICT DO NOTHING`, [req.params.id, ...qaIds]);
+  }
+  res.json({ ok: true, created_task_ids: createdIds, task_count: createdIds.length });
+}));
+
+// ════════════════════════════════════════════════════════════════════════
+// DAGBOG FOR BYGGEPLADSEN (feature #5) — én note pr. dag pr. sag. Ingen
+// PUT/redigerings-route med vilje (se skema-kommentaren) — kun oprettelse,
+// visning og (kun for admin) sletning af en åbenlys fejltastning.
+// ════════════════════════════════════════════════════════════════════════
+app.get('/api/projects/:id/diary', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT d.*, u.name AS created_by_name FROM site_diary_entries d LEFT JOIN users u ON u.id=d.created_by WHERE d.project_id=$1 ORDER BY d.entry_date DESC, d.id DESC', [req.params.id])).rows;
+  res.json(rows);
+}));
+app.post('/api/projects/:id/diary', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const entryDate = b.entry_date || new Date().toISOString().slice(0, 10);
+  if (!validDate(entryDate)) return res.status(400).json({ error: 'Vælg en gyldig dato' });
+  const row = await pgOne(
+    `INSERT INTO site_diary_entries (project_id, entry_date, weather, staffing, deliveries, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [req.params.id, entryDate, b.weather || '', b.staffing || '', b.deliveries || '', b.notes || '', req.user.id]
+  );
+  res.json({ ok: true, id: row.id });
+}));
+app.delete('/api/projects/:id/diary/:entryId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Kun admin kan slette dagbogsnotater' });
+  await pool.query('DELETE FROM site_diary_entries WHERE id=$1 AND project_id=$2', [req.params.entryId, req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ════════════════════════════════════════════════════════════════════════
+// TEGNINGSLISTE MED VERSIONER (feature #2) — Rev A/B/C pr. tegning, med
+// historik over hvem der fik hvilken version og hvornår.
+// ════════════════════════════════════════════════════════════════════════
+app.get('/api/projects/:id/drawings', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const drawings = (await pool.query('SELECT * FROM drawings WHERE project_id=$1 ORDER BY name ASC', [req.params.id])).rows;
+  const revisions = (await pool.query(
+    `SELECT r.*, u.name AS uploaded_by_name FROM drawing_revisions r LEFT JOIN users u ON u.id=r.uploaded_by
+     WHERE r.drawing_id IN (SELECT id FROM drawings WHERE project_id=$1) ORDER BY r.uploaded_at ASC`, [req.params.id]
+  )).rows;
+  const byDrawing = {};
+  for (const r of revisions) (byDrawing[r.drawing_id] = byDrawing[r.drawing_id] || []).push(r);
+  res.json(drawings.map(d => ({ ...d, revisions: byDrawing[d.id] || [] })));
+}));
+app.post('/api/projects/:id/drawings', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const name = String((req.body || {}).name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Skriv et navn/nummer på tegningen' });
+  const row = await pgOne('INSERT INTO drawings (project_id, name) VALUES ($1,$2) RETURNING id', [req.params.id, name]);
+  res.json({ ok: true, id: row.id });
+}));
+app.delete('/api/projects/:id/drawings/:drawingId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM drawings WHERE id=$1 AND project_id=$2', [req.params.drawingId, req.params.id]);
+  res.json({ ok: true });
+}));
+// Ny revision uploades som data-URI (samme princip som booking-vedhæftninger
+// og logo/avatar — intet permanent fil-lager på Render). rev_label sættes
+// automatisk ud fra antal eksisterende revisioner: 0→A, 1→B, 2→C, 3→D osv.
+app.post('/api/projects/:id/drawings/:drawingId/revisions', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const drawing = await pgOne('SELECT * FROM drawings WHERE id=$1 AND project_id=$2', [req.params.drawingId, req.params.id]);
+  if (!drawing) return res.status(404).json({ error: 'Tegningen blev ikke fundet' });
+  const b = req.body || {};
+  const url = String(b.url || '').trim();
+  if (!url) return res.status(400).json({ error: 'Vedhæft en tegningsfil' });
+  const countRes = await pgOne('SELECT COUNT(*)::int AS n FROM drawing_revisions WHERE drawing_id=$1', [req.params.drawingId]);
+  const revLabel = String.fromCharCode(65 + (countRes ? countRes.n : 0));
+  const row = await pgOne(
+    'INSERT INTO drawing_revisions (drawing_id, rev_label, url, note, uploaded_by) VALUES ($1,$2,$3,$4,$5) RETURNING id, uploaded_at',
+    [req.params.drawingId, revLabel, url, b.note || '', req.user.id]
+  );
+  await pool.query('UPDATE drawings SET current_revision_id=$1 WHERE id=$2', [row.id, req.params.drawingId]);
+  res.json({ ok: true, id: row.id, rev_label: revLabel, uploaded_at: row.uploaded_at });
+}));
+
+// ════════════════════════════════════════════════════════════════════════
+// MILEPÆLE MED AUTOMATISK FAKTURA-FORSLAG (feature #7) — betalingsplan pr.
+// sag. "Marker færdig" + "Opret faktura herfra" er to separate kald: at
+// markere en milepæl færdig opretter IKKE automatisk en faktura — Martin
+// skal selv trykke "Opret faktura herfra", som udfylder beløbet for ham.
+// ════════════════════════════════════════════════════════════════════════
+app.get('/api/projects/:id/milestones', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT * FROM project_milestones WHERE project_id=$1 ORDER BY position ASC, id ASC', [req.params.id])).rows;
+  res.json(rows);
+}));
+app.post('/api/projects/:id/milestones', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Skriv et navn til milepælen' });
+  const countRes = await pgOne('SELECT COUNT(*)::int AS n FROM project_milestones WHERE project_id=$1', [req.params.id]);
+  const row = await pgOne(
+    'INSERT INTO project_milestones (project_id, name, amount, percent, position) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+    [req.params.id, name, b.amount != null ? Number(b.amount) : null, b.percent != null ? Number(b.percent) : null, countRes ? countRes.n : 0]
+  );
+  res.json({ ok: true, id: row.id });
+}));
+app.put('/api/projects/:id/milestones/:milestoneId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const m = await pgOne('SELECT * FROM project_milestones WHERE id=$1 AND project_id=$2', [req.params.milestoneId, req.params.id]);
+  if (!m) return res.status(404).json({ error: 'Milepælen blev ikke fundet' });
+  const b = req.body || {};
+  const wasDone = !!m.done;
+  const nowDone = b.done !== undefined ? !!b.done : wasDone;
+  await pool.query(
+    `UPDATE project_milestones SET name=$1, amount=$2, percent=$3, done=$4, done_at=${nowDone && !wasDone ? nowTextSQL() : (nowDone ? 'done_at' : 'NULL')} WHERE id=$5`,
+    [b.name !== undefined ? String(b.name).trim() || m.name : m.name,
+     b.amount !== undefined ? (b.amount != null ? Number(b.amount) : null) : m.amount,
+     b.percent !== undefined ? (b.percent != null ? Number(b.percent) : null) : m.percent,
+     nowDone ? 1 : 0,
+     req.params.milestoneId]
+  );
+  res.json({ ok: true });
+}));
+app.delete('/api/projects/:id/milestones/:milestoneId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM project_milestones WHERE id=$1 AND project_id=$2', [req.params.milestoneId, req.params.id]);
+  res.json({ ok: true });
+}));
+// Opretter en rigtig faktura (native invoices-tabel) med milepælens beløb
+// som ÉN linje, og kobler fakturaen til milepælen så "Opret faktura"-knappen
+// ikke vises igen. percent-baserede milepæle skal have et konkret amount
+// sendt med (udregnet i UI'et ift. sagens tilbudssum), da invoices-linjer
+// ikke selv kender til en "procent af sagen"-logik.
+app.post('/api/projects/:id/milestones/:milestoneId/create-invoice', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const m = await pgOne('SELECT * FROM project_milestones WHERE id=$1 AND project_id=$2', [req.params.milestoneId, req.params.id]);
+  if (!m) return res.status(404).json({ error: 'Milepælen blev ikke fundet' });
+  if (m.invoice_id) return res.status(400).json({ error: 'Der er allerede oprettet en faktura for denne milepæl' });
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  const amount = Number((req.body || {}).amount != null ? (req.body || {}).amount : m.amount) || 0;
+  const invoiceId = await createDraftInvoiceFromProject(project, `Milepæl: ${m.name}`, amount);
+  await pool.query('UPDATE project_milestones SET invoice_id=$1 WHERE id=$2', [invoiceId, req.params.milestoneId]);
+  res.json({ ok: true, invoice_id: invoiceId });
+}));
+
+// ════════════════════════════════════════════════════════════════════════
+// BYGGEMØDEREFERAT → AUTOMATISKE TO-DOS (feature #3) — dagsorden/beslutninger
+// som fri tekst + strukturerede opfølgningspunkter. Et opfølgningspunkt der
+// peger på en opgave (task_id angivet) bliver automatisk til et rigtigt
+// tjekpunkt (task_checklist_items), med samme ansvarlig+frist.
+// ════════════════════════════════════════════════════════════════════════
+app.get('/api/projects/:id/meetings', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const meetings = (await pool.query('SELECT * FROM site_meetings WHERE project_id=$1 ORDER BY meeting_date DESC, id DESC', [req.params.id])).rows;
+  const items = (await pool.query(
+    `SELECT a.*, u.name AS assigned_to_name FROM meeting_action_items a LEFT JOIN users u ON u.id=a.assigned_to
+     WHERE a.meeting_id IN (SELECT id FROM site_meetings WHERE project_id=$1) ORDER BY a.id ASC`, [req.params.id]
+  )).rows;
+  const byMeeting = {};
+  for (const it of items) (byMeeting[it.meeting_id] = byMeeting[it.meeting_id] || []).push(it);
+  res.json(meetings.map(m => ({ ...m, action_items: byMeeting[m.id] || [] })));
+}));
+app.post('/api/projects/:id/meetings', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const meetingDate = b.meeting_date || new Date().toISOString().slice(0, 10);
+  if (!validDate(meetingDate)) return res.status(400).json({ error: 'Vælg en gyldig mødedato' });
+  const meetingRow = await pgOne(
+    `INSERT INTO site_meetings (project_id, meeting_date, agenda, decisions, meeting_type, video_platform, video_link, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [req.params.id, meetingDate, b.agenda || '', b.decisions || '', b.meeting_type || 'site', b.video_platform || null, b.video_link || null, req.user.id]
+  );
+  const actionItems = Array.isArray(b.action_items) ? b.action_items : [];
+  const createdItems = [];
+  for (const it of actionItems) {
+    const title = String((it || {}).title || '').trim();
+    if (!title) continue;
+    let checklistItemId = null;
+    // Hvis punktet er knyttet til en konkret opgave i sagen, opret et rigtigt
+    // tjekpunkt der med det samme kan ses/afkrydses i opgave-popup'en.
+    if (it.task_id) {
+      const task = await pgOne('SELECT id FROM gantt_tasks WHERE id=$1 AND project_id=$2', [String(it.task_id), req.params.id]);
+      if (task) {
+        const ci = await pgOne('INSERT INTO task_checklist_items (task_id, title, assigned_to, created_by) VALUES ($1,$2,$3,$4) RETURNING id',
+          [task.id, title, it.assigned_to ? Number(it.assigned_to) : null, req.user.id]);
+        checklistItemId = ci.id;
+      }
+    }
+    const aiRow = await pgOne(
+      'INSERT INTO meeting_action_items (meeting_id, title, assigned_to, due_date, checklist_item_id) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+      [meetingRow.id, title, it.assigned_to ? Number(it.assigned_to) : null, it.due_date || null, checklistItemId]
+    );
+    createdItems.push(aiRow.id);
+  }
+  res.json({ ok: true, id: meetingRow.id, action_item_ids: createdItems });
+}));
+app.put('/api/projects/:id/meetings/:meetingId/action-items/:itemId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  await pool.query('UPDATE meeting_action_items SET done=$1 WHERE id=$2 AND meeting_id=$3', [b.done ? 1 : 0, req.params.itemId, req.params.meetingId]);
+  const item = await pgOne('SELECT checklist_item_id FROM meeting_action_items WHERE id=$1', [req.params.itemId]);
+  if (item && item.checklist_item_id) {
+    await pool.query(`UPDATE task_checklist_items SET done=$1, done_by=$2, done_at=${b.done ? nowTextSQL() : 'NULL'} WHERE id=$3`,
+      [b.done ? 1 : 0, b.done ? req.user.id : null, item.checklist_item_id]);
+  }
+  res.json({ ok: true });
+}));
+app.delete('/api/projects/:id/meetings/:meetingId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM site_meetings WHERE id=$1 AND project_id=$2', [req.params.meetingId, req.params.id]);
+  res.json({ ok: true });
+}));
+// Sender referatet til kunden (samme mail-infrastruktur som kundeportal-
+// linket og tilbud, sendMail/mailIsConfigured — se eksisterende brug).
+app.post('/api/projects/:id/meetings/:meetingId/send-to-customer', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const meeting = await pgOne('SELECT * FROM site_meetings WHERE id=$1 AND project_id=$2', [req.params.meetingId, req.params.id]);
+  if (!meeting) return res.status(404).json({ error: 'Mødet blev ikke fundet' });
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  const toEmail = (req.body || {}).email || (project && project.customer_email) || '';
+  if (!toEmail) return res.status(400).json({ error: 'Ingen kunde-email at sende til' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'Mail er ikke konfigureret' });
+  const html = `<h2>Byggemødereferat — ${escPublic(project ? project.name : '')}</h2>
+    <p><b>Dato:</b> ${escPublic(meeting.meeting_date)}</p>
+    <p><b>Dagsorden:</b><br>${escPublic(meeting.agenda || '').replace(/\n/g, '<br>')}</p>
+    <p><b>Beslutninger:</b><br>${escPublic(meeting.decisions || '').replace(/\n/g, '<br>')}</p>`;
+  await sendMailUniversal({ to: toEmail, subject: `Byggemødereferat — ${project ? project.name : ''}`, html, text: html.replace(/<[^>]+>/g, ' ') });
+  res.json({ ok: true });
+}));
+
+// ════════════════════════════════════════════════════════════════════════
+// VIDEOMØDER PÅ HANDLER (lead/opportunity) — RUNDE CH, se header-kommentaren
+// ved site_meetings-tabellen ovenfor for hele baggrunden. Samme tabel/shape
+// som sags-møderne lige ovenfor, bare scopet på crm_lead_id/crm_opportunity_id
+// i stedet for project_id. Ingen "send til kunde"-route her endnu (handler har
+// ikke altid en fast kunde-email på samme måde som et projekt) — kan tilføjes
+// senere hvis Martin efterspørger det.
+// ════════════════════════════════════════════════════════════════════════
+app.get('/api/crm/leads/:id/meetings', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
+  const meetings = (await pool.query('SELECT * FROM site_meetings WHERE crm_lead_id=$1 ORDER BY meeting_date DESC, id DESC', [req.params.id])).rows;
+  const items = (await pool.query(
+    `SELECT a.*, u.name AS assigned_to_name FROM meeting_action_items a LEFT JOIN users u ON u.id=a.assigned_to
+     WHERE a.meeting_id IN (SELECT id FROM site_meetings WHERE crm_lead_id=$1) ORDER BY a.id ASC`, [req.params.id]
+  )).rows;
+  const byMeeting = {};
+  for (const it of items) (byMeeting[it.meeting_id] = byMeeting[it.meeting_id] || []).push(it);
+  res.json(meetings.map(m => ({ ...m, action_items: byMeeting[m.id] || [] })));
+}));
+app.post('/api/crm/leads/:id/meetings', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
+  const lead = await pgOne('SELECT id FROM crm_leads WHERE id=$1', [req.params.id]);
+  if (!lead) return res.status(404).json({ error: 'Leadet blev ikke fundet' });
+  const b = req.body || {};
+  const meetingDate = b.meeting_date || new Date().toISOString().slice(0, 10);
+  if (!validDate(meetingDate)) return res.status(400).json({ error: 'Vælg en gyldig mødedato' });
+  const meetingRow = await pgOne(
+    `INSERT INTO site_meetings (crm_lead_id, meeting_date, agenda, decisions, meeting_type, video_platform, video_link, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [req.params.id, meetingDate, b.agenda || '', b.decisions || '', b.meeting_type || 'video', b.video_platform || null, b.video_link || null, req.user.id]
+  );
+  res.json({ ok: true, id: meetingRow.id });
+}));
+app.delete('/api/crm/leads/:id/meetings/:meetingId', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM site_meetings WHERE id=$1 AND crm_lead_id=$2', [req.params.meetingId, req.params.id]);
+  res.json({ ok: true });
+}));
+app.get('/api/crm/opportunities/:id/meetings', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
+  const meetings = (await pool.query('SELECT * FROM site_meetings WHERE crm_opportunity_id=$1 ORDER BY meeting_date DESC, id DESC', [req.params.id])).rows;
+  const items = (await pool.query(
+    `SELECT a.*, u.name AS assigned_to_name FROM meeting_action_items a LEFT JOIN users u ON u.id=a.assigned_to
+     WHERE a.meeting_id IN (SELECT id FROM site_meetings WHERE crm_opportunity_id=$1) ORDER BY a.id ASC`, [req.params.id]
+  )).rows;
+  const byMeeting = {};
+  for (const it of items) (byMeeting[it.meeting_id] = byMeeting[it.meeting_id] || []).push(it);
+  res.json(meetings.map(m => ({ ...m, action_items: byMeeting[m.id] || [] })));
+}));
+app.post('/api/crm/opportunities/:id/meetings', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
+  const opp = await pgOne('SELECT id FROM crm_opportunities WHERE id=$1', [req.params.id]);
+  if (!opp) return res.status(404).json({ error: 'Handlen blev ikke fundet' });
+  const b = req.body || {};
+  const meetingDate = b.meeting_date || new Date().toISOString().slice(0, 10);
+  if (!validDate(meetingDate)) return res.status(400).json({ error: 'Vælg en gyldig mødedato' });
+  const meetingRow = await pgOne(
+    `INSERT INTO site_meetings (crm_opportunity_id, meeting_date, agenda, decisions, meeting_type, video_platform, video_link, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [req.params.id, meetingDate, b.agenda || '', b.decisions || '', b.meeting_type || 'video', b.video_platform || null, b.video_link || null, req.user.id]
+  );
+  res.json({ ok: true, id: meetingRow.id });
+}));
+app.delete('/api/crm/opportunities/:id/meetings/:meetingId', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM site_meetings WHERE id=$1 AND crm_opportunity_id=$2', [req.params.meetingId, req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ════════════════════════════════════════════════════════════════════════
+// RFI MELLEM FAGFOLK (feature #6) — spørgsmål/svar-log pr. sag med svarfrist.
+// ════════════════════════════════════════════════════════════════════════
+app.get('/api/projects/:id/rfis', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT * FROM project_rfis WHERE project_id=$1 ORDER BY (status=\'open\') DESC, due_date ASC NULLS LAST, id DESC', [req.params.id])).rows;
+  res.json(rows);
+}));
+app.post('/api/projects/:id/rfis', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const question = String(b.question || '').trim();
+  if (!question) return res.status(400).json({ error: 'Skriv et spørgsmål' });
+  const row = await pgOne(
+    'INSERT INTO project_rfis (project_id, question, asked_to, due_date, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+    [req.params.id, question, b.asked_to || '', b.due_date || null, req.user.id]
+  );
+  res.json({ ok: true, id: row.id });
+}));
+app.put('/api/projects/:id/rfis/:rfiId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const rfi = await pgOne('SELECT * FROM project_rfis WHERE id=$1 AND project_id=$2', [req.params.rfiId, req.params.id]);
+  if (!rfi) return res.status(404).json({ error: 'RFI blev ikke fundet' });
+  const b = req.body || {};
+  const answer = b.answer !== undefined ? String(b.answer) : rfi.answer;
+  const justAnswered = b.answer !== undefined && String(b.answer).trim() && !rfi.answered_at;
+  await pool.query(
+    'UPDATE project_rfis SET question=$1, asked_to=$2, due_date=$3, answer=$4, answered_at=$5, status=$6 WHERE id=$7',
+    [b.question !== undefined ? String(b.question).trim() || rfi.question : rfi.question,
+     b.asked_to !== undefined ? b.asked_to : rfi.asked_to,
+     b.due_date !== undefined ? b.due_date : rfi.due_date,
+     answer,
+     justAnswered ? closeNowTimestamp() : rfi.answered_at,
+     b.status !== undefined ? b.status : (justAnswered ? 'answered' : rfi.status),
+     req.params.rfiId]
+  );
+  res.json({ ok: true });
+}));
+app.delete('/api/projects/:id/rfis/:rfiId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM project_rfis WHERE id=$1 AND project_id=$2', [req.params.rfiId, req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ════════════════════════════════════════════════════════════════════════
+// ÆNDRINGSØNSKER / EKSTRAARBEJDE MED ONLINE KUNDEGODKENDELSE (feature #4) —
+// offentlig signerings-side (/ekstraarbejde/:token), samme princip som
+// tilbuds-signering (signed_name/signed_at). approve_token er unik pr.
+// ændringsønske, genereret ved oprettelse.
+// ════════════════════════════════════════════════════════════════════════
+app.get('/api/projects/:id/change-orders', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT * FROM change_orders WHERE project_id=$1 ORDER BY id DESC', [req.params.id])).rows;
+  res.json(rows);
+}));
+app.post('/api/projects/:id/change-orders', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const title = String(b.title || '').trim();
+  if (!title) return res.status(400).json({ error: 'Skriv en titel på ændringsønsket' });
+  const token = crypto.randomBytes(20).toString('hex');
+  const row = await pgOne(
+    'INSERT INTO change_orders (project_id, title, description, amount, approve_token, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+    [req.params.id, title, b.description || '', Number(b.amount) || 0, token, req.user.id]
+  );
+  res.json({ ok: true, id: row.id, approve_url: `/ekstraarbejde/${token}` });
+}));
+app.delete('/api/projects/:id/change-orders/:coId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM change_orders WHERE id=$1 AND project_id=$2', [req.params.coId, req.params.id]);
+  res.json({ ok: true });
+}));
+// Sender godkendelseslinket til kunden pr. mail (samme mønster som
+// kundeportal-linket og tilbud).
+app.post('/api/projects/:id/change-orders/:coId/send', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const co = await pgOne('SELECT * FROM change_orders WHERE id=$1 AND project_id=$2', [req.params.coId, req.params.id]);
+  if (!co) return res.status(404).json({ error: 'Ændringsønsket blev ikke fundet' });
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  const toEmail = (req.body || {}).email || (project && project.customer_email) || '';
+  if (!toEmail) return res.status(400).json({ error: 'Ingen kunde-email at sende til' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'Mail er ikke konfigureret' });
+  const base = (process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  const url = `${base}/ekstraarbejde/${co.approve_token}`;
+  const html = `<h2>Ændringsønske til godkendelse — ${escPublic(project ? project.name : '')}</h2>
+    <p><b>${escPublic(co.title)}</b></p>
+    <p>${escPublic(co.description || '').replace(/\n/g, '<br>')}</p>
+    <p><b>Pris:</b> ${Number(co.amount).toLocaleString('da-DK')} kr.</p>
+    <p><a href="${url}">Se og godkend ændringsønsket her</a></p>`;
+  await sendMailUniversal({ to: toEmail, subject: `Ændringsønske til godkendelse — ${project ? project.name : ''}`, html, text: html.replace(/<[^>]+>/g, ' ') });
+  res.json({ ok: true });
+}));
+// Opretter en faktura med ændringsønskets beløb — kun TILGÆNGELIG når det er
+// godkendt (status='approved'), samme "forslag, aldrig automatik"-princip.
+app.post('/api/projects/:id/change-orders/:coId/create-invoice', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const co = await pgOne('SELECT * FROM change_orders WHERE id=$1 AND project_id=$2', [req.params.coId, req.params.id]);
+  if (!co) return res.status(404).json({ error: 'Ændringsønsket blev ikke fundet' });
+  if (co.status !== 'approved') return res.status(400).json({ error: 'Ændringsønsket er ikke godkendt endnu' });
+  if (co.invoice_id) return res.status(400).json({ error: 'Der er allerede oprettet en faktura for dette ændringsønske' });
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  const invoiceId = await createDraftInvoiceFromProject(project, `Ekstraarbejde: ${co.title}`, Number(co.amount));
+  await pool.query('UPDATE change_orders SET invoice_id=$1 WHERE id=$2', [invoiceId, req.params.coId]);
+  res.json({ ok: true, invoice_id: invoiceId });
+}));
+// OFFENTLIG godkendelsesside (ingen auth — samme princip som /kunde/:token).
+app.get('/ekstraarbejde/:token', asyncRoute(async (req, res) => {
+  const co = await pgOne('SELECT c.*, p.name AS project_name FROM change_orders c LEFT JOIN projects p ON p.id=c.project_id WHERE c.approve_token=$1', [req.params.token]);
+  if (!co) return res.status(404).send('Linket er ugyldigt eller udløbet.');
+  const statusHtml = co.status === 'approved'
+    ? `<div class="status ok">✅ Godkendt af ${escPublic(co.signed_name || '')} ${co.signed_at ? new Date(co.signed_at).toLocaleDateString('da-DK') : ''}</div>`
+    : co.status === 'declined'
+    ? `<div class="status no">❌ Afvist</div>`
+    : `<div class="fg"><label>Dit navn</label><input id="sign-name" placeholder="Fulde navn"><button class="btn" onclick="approve()">Godkend ændringsønske</button>
+       <button class="btn outline" onclick="decline()">Afvis</button></div>`;
+  res.send(`<!DOCTYPE html><html lang="da"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ændringsønske — ${escPublic(co.project_name || '')}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:linear-gradient(135deg,#0F2240 0%,#1C3557 50%,#2E5086 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+      .card{background:#fff;border-radius:16px;padding:36px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+      h2{color:#0F2240;margin-bottom:6px;font-size:20px}
+      .sub{color:#5A6A7E;font-size:13px;margin-bottom:20px}
+      .desc{white-space:pre-wrap;color:#1F2937;font-size:14px;margin-bottom:16px;line-height:1.5}
+      .amount{font-size:22px;font-weight:700;color:#0F2240;margin-bottom:20px}
+      .fg{margin-top:10px}
+      label{display:block;font-size:11px;font-weight:700;color:#5A6A7E;text-transform:uppercase;margin-bottom:5px}
+      input{width:100%;padding:11px 14px;border-radius:8px;border:1.5px solid #CBD5E1;font-size:14px;margin-bottom:10px}
+      .btn{width:100%;padding:13px;border-radius:9px;background:linear-gradient(135deg,#0F2240,#2E5086);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px}
+      .btn.outline{background:#fff;color:#B91C1C;border:1.5px solid #FECACA}
+      .status.ok{background:#F0FDF4;border:1px solid #BBF7D0;color:#15803D;border-radius:8px;padding:12px;font-weight:700}
+      .status.no{background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:8px;padding:12px;font-weight:700}
+    </style></head><body>
+    <div class="card">
+      <h2>${escPublic(co.title)}</h2>
+      <div class="sub">${escPublic(co.project_name || '')}</div>
+      <div class="desc">${escPublic(co.description || '')}</div>
+      <div class="amount">${Number(co.amount).toLocaleString('da-DK')} kr.</div>
+      ${statusHtml}
+    </div>
+    <script>
+      async function approve(){
+        const name = document.getElementById('sign-name').value.trim();
+        if(!name){ alert('Skriv dit navn'); return; }
+        const r = await fetch('/api/ekstraarbejde/${req.params.token}/approve', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+        if (r.ok) location.reload(); else alert('Noget gik galt');
+      }
+      async function decline(){
+        const r = await fetch('/api/ekstraarbejde/${req.params.token}/decline', { method:'POST' });
+        if (r.ok) location.reload(); else alert('Noget gik galt');
+      }
+    </script>
+    </body></html>`);
+}));
+app.post('/api/ekstraarbejde/:token/approve', asyncRoute(async (req, res) => {
+  const co = await pgOne('SELECT * FROM change_orders WHERE approve_token=$1', [req.params.token]);
+  if (!co) return res.status(404).json({ error: 'Ugyldigt link' });
+  const name = String((req.body || {}).name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Angiv navn' });
+  await pool.query(`UPDATE change_orders SET status='approved', signed_name=$1, signed_at=${nowTextSQL()} WHERE id=$2`, [name, co.id]);
+  res.json({ ok: true });
+}));
+app.post('/api/ekstraarbejde/:token/decline', asyncRoute(async (req, res) => {
+  const co = await pgOne('SELECT * FROM change_orders WHERE approve_token=$1', [req.params.token]);
+  if (!co) return res.status(404).json({ error: 'Ugyldigt link' });
+  await pool.query(`UPDATE change_orders SET status='declined', declined_at=${nowTextSQL()} WHERE id=$1`, [co.id]);
   res.json({ ok: true });
 }));
 
@@ -15880,9 +16795,19 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
     progress: b.progress !== undefined ? Math.max(0, Math.min(1, Number(b.progress))) : current.progress,
     // "Note" på opgaven — samme description-felt der bruges i det almindelige
     // Gantt-opgave-detaljevindue (gd-desc), vist i sagens opgave-detaljer.
-    description: b.description !== undefined ? String(b.description).slice(0, 2000) : (current.description || ''),
+    // RUNDE CE (Martins ønske: "rigtig moderne note felt" — fed skrift,
+    // headlines, indhak, dots, fold) — feltet gemmer nu saniteret HTML i stedet
+    // for ren tekst. Saniteres på SKRIVE-siden her (whitelist, se
+    // sanitizeTaskNoteHtml) så feltet er sikkert at rendere som innerHTML alle
+    // de steder der læser det (opgave-popup, gd-desc, booking-note-fallback,
+    // medarbejder-appen) — ikke kun hvor det blev skrevet. Grænsen hævet fra
+    // 2000 til 10000 tegn, da HTML-markup tager plads fra det samme indhold.
+    description: b.description !== undefined ? truncateNoteHtml(sanitizeTaskNoteHtml(String(b.description)), 10000) : (current.description || ''),
     // RUNDE L (Martins ønske #2) — opgavens fase i Pipeline-visningen.
     status: b.status !== undefined && GANTT_TASK_STATUSES.includes(b.status) ? b.status : (current.status || 'todo'),
+    // RUNDE CE (Martins ønske #7, egen tilføjelse) — prioritet, se skema-
+    // kommentaren ved gantt_tasks.priority.
+    priority: b.priority !== undefined && ['low', 'normal', 'high', 'urgent'].includes(b.priority) ? b.priority : (current.priority || 'normal'),
     // RUNDE P (Martins ønske) — "en tråd mellem hver task ... så hele sagen
     // rykker frem og tilbage". depends_on fandtes allerede som kolonne (brugt af
     // JobTread-synkroniseringen til hoved-Gantt'et), men blev bevidst ALDRIG sat
@@ -15908,9 +16833,12 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
     subcontractor_note: b.subcontractor_note !== undefined ? String(b.subcontractor_note || '').slice(0, 500) : (current.subcontractor_note || '')
   };
   await pool.query(`
-    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, status=$6, depends_on=$7, subcontractor_cost=$8, subcontractor_note=$9, synced_at=${nowTextSQL()} WHERE id=$10
-  `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, JSON.stringify(merged.depends_on), merged.subcontractor_cost, merged.subcontractor_note, req.params.taskId]);
+    UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, status=$6, depends_on=$7, subcontractor_cost=$8, subcontractor_note=$9, priority=$11, synced_at=${nowTextSQL()} WHERE id=$10
+  `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, JSON.stringify(merged.depends_on), merged.subcontractor_cost, merged.subcontractor_note, req.params.taskId, merged.priority]);
   if (project) await mirrorProjectTaskToPool(req.params.taskId, project, merged);
+  // RUNDE CE (Martins ønske: custom fields på opgaver) — samme mønster som
+  // lead/opportunity-opdateringerne andre steder i filen (if (b.custom_fields) ...).
+  if (b.custom_fields) await taskSetCustomFieldValues(req.params.taskId, b.custom_fields);
 
   // RUNDE P — hvis opgavens STARTDATO ændrede sig, og den (direkte eller via andre
   // opgaver) er kædet sammen med andre opgaver i samme sag, rykkes hele den
@@ -15962,6 +16890,12 @@ app.delete('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asy
   await pool.query('DELETE FROM task_checklist_items WHERE task_id=$1', [req.params.taskId]);
   await pool.query('DELETE FROM planning_bookings WHERE task_id=$1', [req.params.taskId]);
   await pool.query('DELETE FROM assignments WHERE task_id=$1', [req.params.taskId]);
+  // RUNDE CE — samme oprydningsbehov som ovenstående: hverken
+  // task_custom_field_values eller qa_submissions.task_id har en FK til
+  // gantt_tasks (løst TEXT-id-mønster, se skema-kommentarerne), så de rydder
+  // ikke op af sig selv når opgaven slettes.
+  await pool.query('DELETE FROM task_custom_field_values WHERE task_id=$1', [req.params.taskId]);
+  await pool.query('UPDATE qa_submissions SET task_id=NULL WHERE task_id=$1', [req.params.taskId]);
   await pool.query('DELETE FROM jt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
   await pool.query('DELETE FROM gantt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
   // RUNDE P — fjerner evt. "kæde"-referencer ANDRE opgaver i sagen havde til den
@@ -16311,10 +17245,15 @@ app.post('/api/projects/:id/qa-submissions', auth, asyncRoute(async (req, res) =
   const b = req.body || {};
   const answers = Array.isArray(b.answers) ? b.answers : [];
   if (!answers.length) return res.status(400).json({ error: 'Udfyld mindst ét felt' });
+  // RUNDE CE: valgfri task_id, så en KS-udfyldelse kan knyttes til én konkret
+  // opgave i stedet for altid hele sagen (Martins ønske: "KS pr. opgave").
+  // NULL/udeladt = hele sagen, som før denne kolonne fandtes — ingen
+  // påkrævet/blokerende logik tilføjet, kun denne scoping.
+  const taskId = b.task_id ? String(b.task_id).slice(0, 64) : null;
   const r = await pool.query(`
-    INSERT INTO qa_submissions (project_id,template_id,template_name,answers,submitted_by)
-    VALUES ($1,$2,$3,$4,$5) RETURNING id
-  `, [req.params.id, b.template_id || null, b.template_name || null, JSON.stringify(answers), req.user.id]);
+    INSERT INTO qa_submissions (project_id,template_id,template_name,answers,submitted_by,task_id)
+    VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
+  `, [req.params.id, b.template_id || null, b.template_name || null, JSON.stringify(answers), req.user.id, taskId]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
@@ -21878,6 +22817,36 @@ function richNoteToPlain(html) {
   s = s.replace(/\n{3,}/g, '\n\n').trim();
   return s;
 }
+// RUNDE CE (Martins ønske: "rigtig moderne note felt" på opgaver — Tyk skrift,
+// Headlines, Indhak, Dots, og indhak-under-indhak der kan folde sammen).
+// Klon af sanitizeBookingNote frem for at udvide den, så den allerede
+// fungerende booking-note-funktion (bruges af SMS/booking-visning) ikke
+// risikeres af denne udvidelse. Whitelisten er booking-notens + <h4>
+// (headline) + at <li> nu også må have attributten class="rte-fold-closed"
+// (markerer at et indhaks underliste er foldet sammen i admin-UI'et — rent
+// visuelt, ændrer ikke selve indholdet).
+function sanitizeTaskNoteHtml(html) {
+  if (!html) return '';
+  let s = String(html);
+  s = s.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  s = s.replace(/<ul\b[^>]*>/gi, '<ul>');
+  s = s.replace(/<li\b[^>]*>/gi, tag => /class\s*=\s*["']?[^"'>]*\brte-fold-closed\b/i.test(tag) ? '<li class="rte-fold-closed">' : '<li>');
+  s = s.replace(/<(\/?)(b|strong|br|ol|h4)\b[^>]*>/gi, '<$1$2>');
+  s = s.replace(/<\/li>/gi, '</li>');
+  s = s.replace(/<(?!\/?(b|strong|br|ul|ol|li|h4)\b)[^>]*>/gi, '');
+  return s.trim();
+}
+// Gør en opgave-note sikker at rendere som innerHTML, UANSET om den er
+// skrevet med den nye rige note-editor (allerede saniteret HTML — se
+// sanitizeTaskNoteHtml) eller er ældre ren tekst fra før den fandtes (hvor et
+// stray "<" eller "&" i kundens adresse/note ellers ville se forkert ud eller
+// blive tolket som et tag, hvis vi bare satte den direkte som innerHTML).
+function taskNoteToSafeHtml(raw) {
+  if (!raw) return '';
+  const s = String(raw);
+  if (/<(b|strong|br|ul|ol|li|h4)\b/i.test(s)) return sanitizeTaskNoteHtml(s);
+  return escPublic(s).replace(/\n/g, '<br>');
+}
 // Linje-beskrivelse på tilbud/faktura (sep. 2026, Martins ønske): 1. linje af
 // l.description er OVERSKRIFTEN (produktnavnet — se qzProductLineText i admin.html, som
 // sætter navn+beskrivelse sammen med et linjeskift NÅR man vælger et produkt), resten af
@@ -23550,6 +24519,23 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     for (const t of nativeRes.rows) { if (!seenIds.has(t.id)) { projectTasks.push(t); seenIds.add(t.id); } }
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // RUNDE CG (feature #8, Martins ønske: "Kundeportal med fremdrift ... kunden
+  // ser ... godkendte KS-punkter løbende") — kundens egen, skrivebeskyttede
+  // visning af de KS-formularer håndværkerne allerede har udfyldt (sagsniveau
+  // OG opgaveniveau, se qa_submissions.task_id). Kun muligt når sagen findes
+  // som et native projekt (portalProject) — en sag der kun lever i JobTread
+  // har ingen qa_submissions-rækker overhovedet, så listen er så bare tom.
+  // ══════════════════════════════════════════════════════════════
+  let portalQaSubmissions = [];
+  if (portalProject) {
+    portalQaSubmissions = (await pool.query(
+      `SELECT q.*, g.name AS task_name FROM qa_submissions q LEFT JOIN gantt_tasks g ON g.id=q.task_id
+       WHERE q.project_id=$1 ORDER BY q.submitted_at DESC`,
+      [portalProject.id]
+    )).rows;
+  }
+
   const byTask = {};
   bookings.forEach(b => { (byTask[b.task_id] = byTask[b.task_id] || []).push(b); });
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -23759,6 +24745,32 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
     </div>`).join('');
   })();
 
+  // RUNDE CG — KS-fanen. Samme svar-format som renderPdQa()/renderPdContact() i
+  // admin.html (answers = [{label,type,value}]), bare serverrenderet og
+  // skrivebeskyttet (ingen slet-knap, det er kundens visning).
+  const qaHtml = (() => {
+    if (!portalQaSubmissions.length) return '<div class="empty">Ingen kvalitetssikring indsendt endnu.</div>';
+    return portalQaSubmissions.map(s => {
+      let answers = s.answers;
+      try { answers = typeof answers === 'string' ? JSON.parse(answers) : answers; } catch (e) { answers = []; }
+      if (!Array.isArray(answers)) answers = [];
+      const rows = answers.map(a => {
+        let val;
+        if (a.type === 'photo' && a.value) val = `<a href="${esc(a.value)}" target="_blank" rel="noopener">📷 Se billede</a>`;
+        else if (a.value === true) val = 'Ja';
+        else if (a.value === false) val = 'Nej';
+        else val = esc(a.value || '–');
+        return `<div class="qa-row-portal"><span>${esc(a.label)}</span><span>${val}</span></div>`;
+      }).join('');
+      const scopeTag = s.task_name ? `<span class="qa-scope-portal">📌 ${esc(s.task_name)}</span>` : '';
+      return `<div class="qa-card-portal">
+        <div class="qa-card-top"><div class="qa-card-title">${esc(s.template_name || 'KS-formular')}</div>${s.submitted_at ? `<span class="pg-when">${esc(fmt(s.submitted_at))}</span>` : ''}</div>
+        ${scopeTag}
+        <div class="qa-card-rows">${rows}</div>
+      </div>`;
+    }).join('');
+  })();
+
   const html = `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Din side hos ${esc(companyName)}</title><style>
 :root{--ink:#111318;--sub:#6B7280;--border:#E5E7EB;--accent:#4F46E5;--accent-soft:#EEF2FF}
@@ -23843,7 +24855,16 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 .photo-grid-portal img{width:100%;height:100%;object-fit:cover;display:block;background:#EEF0F3}
 .photo-group-portal{margin-bottom:16px}
 .photo-group-portal .pg-question{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:7px}
-.photo-group-portal .pg-when{font-size:10.5px;color:var(--sub);font-weight:600;margin-left:6px}
+.photo-group-portal .pg-when,.qa-card-top .pg-when{font-size:10.5px;color:var(--sub);font-weight:600;margin-left:6px;white-space:nowrap}
+.qa-card-portal{background:#fff;border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 4px 16px rgba(15,17,24,.06)}
+.qa-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px}
+.qa-card-title{font-weight:800;font-size:13.5px}
+.qa-scope-portal{display:inline-block;font-size:10.5px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:2px 9px;margin:4px 0 8px}
+.qa-card-rows{margin-top:6px}
+.qa-row-portal{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid #F0F1F4;font-size:12px}
+.qa-row-portal:last-child{border-bottom:none}
+.qa-row-portal span:first-child{color:var(--sub);font-weight:600}
+.qa-row-portal span:last-child{font-weight:700;text-align:right}
 </style></head><body><div class="wrap">
 <div class="brand">${esc(companyName)}</div>
 <h1>Hej ${esc(tokenRow.job_name)} 👋</h1>
@@ -23857,11 +24878,13 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
   <div class="tab" id="tab-timeline" onclick="showTab('timeline')">Timeline</div>
   <div class="tab" id="tab-docs" onclick="showTab('docs')">Tilbud &amp; Faktura</div>
   <div class="tab" id="tab-photos" onclick="showTab('photos')">📷 Billeder</div>
+  <div class="tab" id="tab-qa" onclick="showTab('qa')">🛡 KS</div>
 </div>
 <div class="panel active" id="panel-pipeline">${pipelineHtml}</div>
 <div class="panel" id="panel-timeline">${ganttHtml}</div>
 <div class="panel" id="panel-docs">${docsHtml}</div>
 <div class="panel" id="panel-photos">${photosHtml}</div>
+<div class="panel" id="panel-qa">${qaHtml}</div>
 <div class="foot">Spørgsmål? Kontakt ${esc(companyName)} direkte.</div>
 </div>
 <div class="tm-backdrop" id="tm-backdrop" onclick="if(event.target===this)closeTaskModal()">
@@ -23883,7 +24906,7 @@ h1{font-size:20px;margin:0 0 14px;text-align:center}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 function showTab(name){
-  ['pipeline','timeline','docs','photos'].forEach(function(n){
+  ['pipeline','timeline','docs','photos','qa'].forEach(function(n){
     document.getElementById('tab-'+n).classList.toggle('active',n===name);
     document.getElementById('panel-'+n).classList.toggle('active',n===name);
   });
