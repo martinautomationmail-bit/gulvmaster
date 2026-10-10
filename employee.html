@@ -555,7 +555,59 @@ function openProjectsModal(){
 function closeProjectsModal(){document.getElementById('projects-modal').classList.remove('open')}
 function closeProjectsOnBackdrop(e){if(e.target===document.getElementById('projects-modal'))closeProjectsModal()}
 function pmFeedback(id,msg,ok){const el=document.getElementById(id);el.textContent=msg;el.className='req-feedback show '+(ok?'success':'error')}
-function pmReadFileAsDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
+// RUNDE CL — henter en SPECIFIK fejlbesked (fx "videoen er for stor...", sat
+// med .pmFriendly=true i pmReadFileAsDataUrl) når vi har én, ellers falder den
+// tilbage til den generiske "Netværksfejl"-tekst. Uden denne ville en god,
+// forklarende fejl fra pmReadFileAsDataUrl blive overskrevet af den samme
+// uforklarlige generiske tekst som alle andre fejl i try/catch-blokkene.
+function pmFriendlyErrMsg(e,fallback){return (e&&e.pmFriendly&&e.message)?e.message:fallback}
+// RUNDE CL (okt. 2026, Martins fejlrapport: én bestemt medarbejder fik
+// konsekvent "Netværksfejl" ved tidsregistrering — kun ham, ikke resten).
+// Mistænkt årsag: billeder (og video, se accept="image/*,video/*" på
+// upload-knapperne) blev sendt helt urørt/ukomprimerede som base64 i selve
+// JSON-body'en. Et moderne telefonkamera-billede i fuld opløsning kan sagtens
+// fylde 8-15 MB per styk, base64 lægger ca. 33% oveni, og med flere billeder i
+// samme upload er det let at ramme enten serverens 40MB-grænse (se
+// express.json({limit:'40mb'}) i server.js) eller bare bruge SÅ lang tid på en
+// svag mobilforbindelse at browserens fetch opgiver undervejs — begge dele
+// viser sig her som en uspecifik "Netværksfejl", uanset den egentlige årsag.
+// Det forklarer også hvorfor det ramte netop ÉN medarbejder: enten en telefon
+// der tager større billeder end kollegernes, eller en svagere forbindelse på
+// hans arbejdssteder — begge dele gør det langt mere sandsynligt at ramme
+// grænsen/timeouten, uden at resten nogensinde mærker noget.
+//
+// Billeder skaleres nu ned til maks 1920px på den lange led og gen-
+// komprimeres som JPEG (kvalitet 0.82) FØR de sendes — typisk 5-15× mindre
+// filer, uden mærkbart kvalitetstab til dokumentationsbrug. Video kan ikke
+// komprimeres sikkert i browseren, så den sendes stadig urørt, men får nu et
+// tydeligt dansk fejlsvar MED DET SAMME hvis filen er for stor, i stedet for
+// et langt "hængende" forsøg der alligevel ender i samme uforklarlige fejl.
+function pmReadFileAsDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    function rawRead(){const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)}
+    if(file.type&&file.type.indexOf('video/')===0){
+      if(file.size>35*1024*1024){var vErr=new Error('Videoen "'+file.name+'" er for stor ('+(file.size/1024/1024).toFixed(1)+' MB) til at blive uploadet. Optag en kortere video, eller i lavere kvalitet, og prøv igen.');vErr.pmFriendly=true;reject(vErr);return}
+      rawRead();return;
+    }
+    if(!file.type||file.type.indexOf('image/')!==0){rawRead();return}
+    const img=new Image();
+    const objUrl=URL.createObjectURL(file);
+    img.onload=()=>{
+      URL.revokeObjectURL(objUrl);
+      var MAX=1920,w=img.naturalWidth,h=img.naturalHeight;
+      if(w>MAX||h>MAX){if(w>=h){h=Math.round(h*MAX/w);w=MAX}else{w=Math.round(w*MAX/h);h=MAX}}
+      var canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+      var ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,w,h);
+      try{resolve(canvas.toDataURL('image/jpeg',0.82))}
+      // Canvas kan i sjældne tilfælde fejle (fx visse HEIC-varianter browseren
+      // ikke selv kan tegne) — falder tilbage til det oprindelige, ukomprimerede
+      // billede frem for at fejle hele uploaden.
+      catch(e){rawRead()}
+    };
+    img.onerror=()=>{URL.revokeObjectURL(objUrl);rawRead()};
+    img.src=objUrl;
+  });
+}
 function fmtPmDate(d){if(!d)return '';const parts=String(d).slice(0,10).split('-');return parts.length===3?parts[2]+'/'+parts[1]:d}
 async function pmLoadList(){
   const body=document.getElementById('pm-body');
@@ -708,7 +760,7 @@ async function pmSubmitMaterials(){
     const r=await api('/api/projects/'+pmState.current.id+'/materials',{method:'POST',body:JSON.stringify({price,store,note:note||null,receipt_photo_urls:photoUrls})});
     if(r&&r.ok){toast('Materiale gemt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmm-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem materiale'}
-  }catch(e){pmFeedback('pmm-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem materiale'}
+  }catch(e){pmFeedback('pmm-feedback',pmFriendlyErrMsg(e,'Netværksfejl — prøv igen'),false);btn.disabled=false;btn.textContent='Gem materiale'}
 }
 let pmtPhotoFiles=[],pmtPhotoPreviewUrls=[];
 // RUNDE H #30 — Martin har sat nogle medarbejdere til akkord (stykpris pr.
@@ -895,7 +947,7 @@ async function pmSubmitTime(){
       if(!r||!r.ok){pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
     }
     toast('Tid registreret ✓');await pmOpenProject(pmState.current.id)
-  }catch(e){pmFeedback('pmt-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
+  }catch(e){pmFeedback('pmt-feedback',pmFriendlyErrMsg(e,'Netværksfejl — prøv igen'),false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
 }
 function pmOpenPhotoForm(){
   pmState.view='photo-form';
@@ -922,7 +974,7 @@ async function pmSubmitPhoto(){
     const r=await api('/api/projects/'+pmState.current.id+'/photos',{method:'POST',body:JSON.stringify({url:up.data.url,caption:caption||null})});
     if(r&&r.ok){toast('Billede tilføjet ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmp-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Upload billede'}
-  }catch(e){pmFeedback('pmp-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Upload billede'}
+  }catch(e){pmFeedback('pmp-feedback',pmFriendlyErrMsg(e,'Netværksfejl — prøv igen'),false);btn.disabled=false;btn.textContent='Upload billede'}
 }
 async function pmOpenQaPicker(taskId){
   pmState.view='qa-picker';
@@ -986,7 +1038,7 @@ async function pmSubmitQa(){
     const r=await api('/api/projects/'+pmState.current.id+'/qa-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers,task_id:pmState.qaTaskId||undefined})});
     if(r&&r.ok){toast('KS-formular indsendt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmq-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
-  }catch(e){pmFeedback('pmq-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
+  }catch(e){pmFeedback('pmq-feedback',pmFriendlyErrMsg(e,'Netværksfejl — prøv igen'),false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
 }
 async function pmOpenContactPicker(){
   pmState.view='contact-picker';
@@ -1041,7 +1093,7 @@ async function pmSubmitContact(){
     const r=await api('/api/projects/'+pmState.current.id+'/contact-form-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers})});
     if(r&&r.ok){toast('Kontaktformular indsendt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmc-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
-  }catch(e){pmFeedback('pmc-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
+  }catch(e){pmFeedback('pmc-feedback',pmFriendlyErrMsg(e,'Netværksfejl — prøv igen'),false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
 }
 // ══════════════════════════════════════════════════════════════
 // GENVEJE INDE FRA EN DAGS-OPGAVE og direkte ind i sags-modulet ovenfor.
