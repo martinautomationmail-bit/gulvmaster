@@ -72,7 +72,7 @@
 .task-timeline-seg.tl-today{background:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.22)}
 .task-timeline-seg.tl-future{background:#E2E8F0}
 .task.done .task-timeline{background:#F0FDF4;border-color:#BBF7D0}
-.task.done .task-timeline-seg.tl-past,.task.done .task-timeline-seg.tl-today{background:#16A34A;box-shadow:none}.case-chip{font-size:9px;font-weight:800;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:2px 7px;white-space:nowrap;text-decoration:none;display:inline-block}.untimed-divider{font-size:10px;font-weight:700;color:var(--muted);background:#F1F5F9;border:1px dashed var(--border);border-radius:8px;padding:6px 10px;margin:0 0 9px}.job-details{margin:11px 0 12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px 0;display:grid;gap:6px}.detail-line{display:flex;align-items:flex-start;gap:6px;font-size:11px;color:var(--muted);line-height:1.35}.detail-line a{color:#4F46E5;text-decoration:none;font-weight:650}.detail-line a:hover{text-decoration:underline}.detail-line.planned{color:#475569}.weather-line{font-size:11px;color:var(--muted)}.weather-line.loading{color:var(--ghost)}.task-checklist{margin:0 0 10px}.task-checklist:empty{display:none}.task-description{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin:0 0 12px}.task-description-label{font-size:9.5px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px}.task-description-body{font-size:12.5px;color:#78350F;line-height:1.5;white-space:pre-line}.tc-title{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}.tc-item{display:flex;align-items:center;gap:8px;padding:7px 9px;background:#F8FAFC;border-radius:8px;margin-bottom:5px}.tc-item.done{background:#F0FDF4}.tc-item.done span{text-decoration:line-through;opacity:.6}.tc-item input{width:17px;height:17px;accent-color:#16A34A;flex-shrink:0}.tc-item span{font-size:12px;color:var(--navy)}.tc-assignee{color:var(--muted);font-size:11px;font-weight:600}
+.task.done .task-timeline-seg.tl-past,.task.done .task-timeline-seg.tl-today{background:#16A34A;box-shadow:none}.case-chip{font-size:9px;font-weight:800;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:2px 7px;white-space:nowrap;text-decoration:none;display:inline-block}.untimed-divider{font-size:10px;font-weight:700;color:var(--muted);background:#F1F5F9;border:1px dashed var(--border);border-radius:8px;padding:6px 10px;margin:0 0 9px}.job-details{margin:11px 0 12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px 0;display:grid;gap:6px}.detail-line{display:flex;align-items:flex-start;gap:6px;font-size:11px;color:var(--muted);line-height:1.35}.detail-line a{color:#4F46E5;text-decoration:none;font-weight:650}.detail-line a:hover{text-decoration:underline}.detail-line.planned{color:#475569}.weather-line{font-size:11px;color:var(--muted)}.weather-line.loading{color:var(--ghost)}.task-checklist{margin:0 0 10px}.task-checklist:empty{display:none}.task-description{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin:0 0 12px}.task-description-label{font-size:9.5px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px}.task-description-body{font-size:12.5px;color:#78350F;line-height:1.5;white-space:pre-line}.tc-title{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}.tc-item{display:flex;align-items:center;gap:8px;padding:7px 9px;background:#F8FAFC;border-radius:8px;margin-bottom:5px}.tc-item.done{background:#F0FDF4}.tc-item.done span{text-decoration:line-through;opacity:.6}.tc-item input{width:17px;height:17px;accent-color:#16A34A;flex-shrink:0}.tc-item span{font-size:12px;color:var(--navy)}
 /* RUNDE H #21 — Martin syntes farveblokkene (gul/lilla/cyan osv.) så "børneagtige"
    ud. Skiftet til én neutral, rolig knap-stil (hvid + tynd kant, som .small-btn/
    .lib-btn) for alle sekundære handlinger, og kun to solide "vigtigt"-farver
@@ -241,8 +241,12 @@
         <button class="small-btn" id="tm-next">Next day →</button>
         <button class="small-btn primary" id="tm-today">Today</button>
       </div>
+      <div class="tm-nav" style="margin-top:4px">
+        <button class="small-btn primary" id="tm-group-employee" data-group="employee">👷 Employees</button>
+        <button class="small-btn" id="tm-group-vendor" data-group="vendor">🚚 Vendors</button>
+      </div>
       <div id="tm-map" class="tm-map"></div>
-      <div class="tm-section-label">This week, by person</div>
+      <div class="tm-section-label" id="tm-section-label">This week, by person</div>
       <div id="tm-week-list"></div>
     </div>
   </div>
@@ -476,9 +480,7 @@ async function hydrateChecklists(){
     const r=await api('/api/tasks/'+encodeURIComponent(taskId)+'/checklist');
     const items=r&&r.ok?r.data:null;
     if(!items||!items.length)return;
-    // RUNDE CE — viser hvem der er ansvarlig for punktet (assigned_to_name,
-    // sendt med af GET /api/tasks/:id/checklist), hvis nogen er sat.
-    const html='<div class="tc-title">✓ To document for this task</div>'+items.map(it=>`<div class="tc-item ${it.done?'done':''}"><input type="checkbox" ${it.done?'checked':''} onchange="toggleMyChecklistItem(${it.id},this.checked)"><span>${esc(it.title)}${it.assigned_to_name?' <span class=\"tc-assignee\">· '+esc(it.assigned_to_name)+'</span>':''}</span></div>`).join('');
+    const html='<div class="tc-title">✓ To document for this task</div>'+items.map(it=>`<div class="tc-item ${it.done?'done':''}"><input type="checkbox" ${it.done?'checked':''} onchange="toggleMyChecklistItem(${it.id},this.checked)"><span>${esc(it.title)}</span></div>`).join('');
     document.querySelectorAll('[data-checklist-task-id="'+CSS.escape(taskId)+'"]').forEach(el=>{el.innerHTML=html;});
   }));
 }
@@ -546,7 +548,7 @@ function closeNoteOnBackdrop(e){if(e.target===document.getElementById('note-moda
 // PÅKRÆVET som dokumentation), tilføje billeder til sagen, og udfylde
 // KS-formularer Martin har bygget.
 // ══════════════════════════════════════════════════════════════
-let pmState={view:'list',projects:[],current:null,qaTemplates:[],qaAnswering:null,qaTaskId:null,contactTemplates:[],contactAnswering:null,akkordItems:null};
+let pmState={view:'list',projects:[],current:null,qaTemplates:[],qaAnswering:null,contactTemplates:[],contactAnswering:null,akkordItems:null};
 function openProjectsModal(){
   pmState.view='list';
   document.getElementById('projects-modal').classList.add('open');
@@ -555,59 +557,7 @@ function openProjectsModal(){
 function closeProjectsModal(){document.getElementById('projects-modal').classList.remove('open')}
 function closeProjectsOnBackdrop(e){if(e.target===document.getElementById('projects-modal'))closeProjectsModal()}
 function pmFeedback(id,msg,ok){const el=document.getElementById(id);el.textContent=msg;el.className='req-feedback show '+(ok?'success':'error')}
-// RUNDE CL — henter en SPECIFIK fejlbesked (fx "videoen er for stor...", sat
-// med .pmFriendly=true i pmReadFileAsDataUrl) når vi har én, ellers falder den
-// tilbage til den generiske "Netværksfejl"-tekst. Uden denne ville en god,
-// forklarende fejl fra pmReadFileAsDataUrl blive overskrevet af den samme
-// uforklarlige generiske tekst som alle andre fejl i try/catch-blokkene.
-function pmFriendlyErrMsg(e,fallback){return (e&&e.pmFriendly&&e.message)?e.message:fallback}
-// RUNDE CL (okt. 2026, Martins fejlrapport: én bestemt medarbejder fik
-// konsekvent "Netværksfejl" ved tidsregistrering — kun ham, ikke resten).
-// Mistænkt årsag: billeder (og video, se accept="image/*,video/*" på
-// upload-knapperne) blev sendt helt urørt/ukomprimerede som base64 i selve
-// JSON-body'en. Et moderne telefonkamera-billede i fuld opløsning kan sagtens
-// fylde 8-15 MB per styk, base64 lægger ca. 33% oveni, og med flere billeder i
-// samme upload er det let at ramme enten serverens 40MB-grænse (se
-// express.json({limit:'40mb'}) i server.js) eller bare bruge SÅ lang tid på en
-// svag mobilforbindelse at browserens fetch opgiver undervejs — begge dele
-// viser sig her som en uspecifik "Netværksfejl", uanset den egentlige årsag.
-// Det forklarer også hvorfor det ramte netop ÉN medarbejder: enten en telefon
-// der tager større billeder end kollegernes, eller en svagere forbindelse på
-// hans arbejdssteder — begge dele gør det langt mere sandsynligt at ramme
-// grænsen/timeouten, uden at resten nogensinde mærker noget.
-//
-// Billeder skaleres nu ned til maks 1920px på den lange led og gen-
-// komprimeres som JPEG (kvalitet 0.82) FØR de sendes — typisk 5-15× mindre
-// filer, uden mærkbart kvalitetstab til dokumentationsbrug. Video kan ikke
-// komprimeres sikkert i browseren, så den sendes stadig urørt, men får nu et
-// tydeligt dansk fejlsvar MED DET SAMME hvis filen er for stor, i stedet for
-// et langt "hængende" forsøg der alligevel ender i samme uforklarlige fejl.
-function pmReadFileAsDataUrl(file){
-  return new Promise((resolve,reject)=>{
-    function rawRead(){const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)}
-    if(file.type&&file.type.indexOf('video/')===0){
-      if(file.size>35*1024*1024){var vErr=new Error('Videoen "'+file.name+'" er for stor ('+(file.size/1024/1024).toFixed(1)+' MB) til at blive uploadet. Optag en kortere video, eller i lavere kvalitet, og prøv igen.');vErr.pmFriendly=true;reject(vErr);return}
-      rawRead();return;
-    }
-    if(!file.type||file.type.indexOf('image/')!==0){rawRead();return}
-    const img=new Image();
-    const objUrl=URL.createObjectURL(file);
-    img.onload=()=>{
-      URL.revokeObjectURL(objUrl);
-      var MAX=1920,w=img.naturalWidth,h=img.naturalHeight;
-      if(w>MAX||h>MAX){if(w>=h){h=Math.round(h*MAX/w);w=MAX}else{w=Math.round(w*MAX/h);h=MAX}}
-      var canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
-      var ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,w,h);
-      try{resolve(canvas.toDataURL('image/jpeg',0.82))}
-      // Canvas kan i sjældne tilfælde fejle (fx visse HEIC-varianter browseren
-      // ikke selv kan tegne) — falder tilbage til det oprindelige, ukomprimerede
-      // billede frem for at fejle hele uploaden.
-      catch(e){rawRead()}
-    };
-    img.onerror=()=>{URL.revokeObjectURL(objUrl);rawRead()};
-    img.src=objUrl;
-  });
-}
+function pmReadFileAsDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
 function fmtPmDate(d){if(!d)return '';const parts=String(d).slice(0,10).split('-');return parts.length===3?parts[2]+'/'+parts[1]:d}
 async function pmLoadList(){
   const body=document.getElementById('pm-body');
@@ -760,7 +710,7 @@ async function pmSubmitMaterials(){
     const r=await api('/api/projects/'+pmState.current.id+'/materials',{method:'POST',body:JSON.stringify({price,store,note:note||null,receipt_photo_urls:photoUrls})});
     if(r&&r.ok){toast('Materiale gemt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmm-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem materiale'}
-  }catch(e){pmFeedback('pmm-feedback',pmFriendlyErrMsg(e,'Netværksfejl — prøv igen'),false);btn.disabled=false;btn.textContent='Gem materiale'}
+  }catch(e){pmFeedback('pmm-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem materiale'}
 }
 let pmtPhotoFiles=[],pmtPhotoPreviewUrls=[];
 // RUNDE H #30 — Martin har sat nogle medarbejdere til akkord (stykpris pr.
@@ -947,7 +897,7 @@ async function pmSubmitTime(){
       if(!r||!r.ok){pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
     }
     toast('Tid registreret ✓');await pmOpenProject(pmState.current.id)
-  }catch(e){pmFeedback('pmt-feedback',pmFriendlyErrMsg(e,'Netværksfejl — prøv igen'),false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
+  }catch(e){pmFeedback('pmt-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
 }
 function pmOpenPhotoForm(){
   pmState.view='photo-form';
@@ -974,16 +924,11 @@ async function pmSubmitPhoto(){
     const r=await api('/api/projects/'+pmState.current.id+'/photos',{method:'POST',body:JSON.stringify({url:up.data.url,caption:caption||null})});
     if(r&&r.ok){toast('Billede tilføjet ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmp-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Upload billede'}
-  }catch(e){pmFeedback('pmp-feedback',pmFriendlyErrMsg(e,'Netværksfejl — prøv igen'),false);btn.disabled=false;btn.textContent='Upload billede'}
+  }catch(e){pmFeedback('pmp-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Upload billede'}
 }
-async function pmOpenQaPicker(taskId){
+async function pmOpenQaPicker(){
   pmState.view='qa-picker';
-  // RUNDE CG — gemmes på state'et, ikke kun som funktionsparameter, da
-  // pmOpenQaForm/pmSubmitQa kaldes senere (fra et klik i et helt andet DOM-
-  // render) og ikke selv har adgang til den oprindelige parameter.
-  pmState.qaTaskId=taskId||null;
-  const taskNote=pmState.qaTaskId?' <span style="font-weight:400;color:var(--muted);font-size:12px">— denne opgave</span>':'';
-  document.getElementById('pm-title').innerHTML='🛡 Vælg KS-formular'+taskNote;
+  document.getElementById('pm-title').textContent='🛡 Vælg KS-formular';
   const body=document.getElementById('pm-body');
   body.innerHTML='<button class="small-btn" onclick="pmRenderDetail()" style="margin-bottom:12px">← Tilbage</button><p style="color:var(--muted)">Henter…</p>';
   const r=await api('/api/qa-templates?project_id='+pmState.current.id);
@@ -997,8 +942,7 @@ function pmOpenQaForm(templateId){
   if(!t)return;
   pmState.qaAnswering=t;
   pmState.view='qa-form';
-  const taskNote=pmState.qaTaskId?' <span style="font-weight:400;color:var(--muted);font-size:12px">— denne opgave</span>':'';
-  document.getElementById('pm-title').innerHTML=esc(t.name)+taskNote;
+  document.getElementById('pm-title').textContent=esc(t.name);
   const fieldsHtml=(t.fields||[]).map((f,i)=>{
     if(f.type==='check')return `<label class="doc-check"><input type="checkbox" data-qa-idx="${i}"><span><strong>${esc(f.label)}</strong></span></label>`;
     if(f.type==='number')return `<label class="req-label">${esc(f.label)}</label><input class="req-input" type="number" data-qa-idx="${i}">`;
@@ -1006,7 +950,7 @@ function pmOpenQaForm(templateId){
     return `<label class="req-label">${esc(f.label)}</label><input class="req-input" data-qa-idx="${i}">`;
   }).join('');
   document.getElementById('pm-body').innerHTML=`
-    <button class="small-btn" onclick="pmOpenQaPicker(pmState.qaTaskId)" style="margin-bottom:12px">← Tilbage</button>
+    <button class="small-btn" onclick="pmOpenQaPicker()" style="margin-bottom:12px">← Tilbage</button>
     ${fieldsHtml}
     <div id="pmq-feedback" class="req-feedback"></div>
     <button class="req-submit" type="button" id="pmq-submit" onclick="pmSubmitQa()">Indsend KS-formular</button>
@@ -1032,13 +976,10 @@ async function pmSubmitQa(){
       } else value=el.value;
       answers.push({label:f.label,type:f.type,value});
     }
-    // RUNDE CG — task_id sendes med når formularen blev åbnet fra et konkret
-    // opgavekort (se openQaPickerForTask), så KS-punktet knyttes til DENNE
-    // opgave i stedet for hele sagen (qa_submissions.task_id, se server.js).
-    const r=await api('/api/projects/'+pmState.current.id+'/qa-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers,task_id:pmState.qaTaskId||undefined})});
+    const r=await api('/api/projects/'+pmState.current.id+'/qa-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers})});
     if(r&&r.ok){toast('KS-formular indsendt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmq-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
-  }catch(e){pmFeedback('pmq-feedback',pmFriendlyErrMsg(e,'Netværksfejl — prøv igen'),false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
+  }catch(e){pmFeedback('pmq-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
 }
 async function pmOpenContactPicker(){
   pmState.view='contact-picker';
@@ -1093,7 +1034,7 @@ async function pmSubmitContact(){
     const r=await api('/api/projects/'+pmState.current.id+'/contact-form-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers})});
     if(r&&r.ok){toast('Kontaktformular indsendt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmc-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
-  }catch(e){pmFeedback('pmc-feedback',pmFriendlyErrMsg(e,'Netværksfejl — prøv igen'),false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
+  }catch(e){pmFeedback('pmc-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
 }
 // ══════════════════════════════════════════════════════════════
 // GENVEJE INDE FRA EN DAGS-OPGAVE og direkte ind i sags-modulet ovenfor.
@@ -1124,17 +1065,12 @@ async function openTimeFormForTask(projectId){
   document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
   if(await pmOpenProjectFor(projectId))pmOpenTimeForm();
 }
-// RUNDE CG (Martins ønske #1: "håndværkerne selv tager fotos og godkender
-// kontrolpunkter fra pladsen") — taskId videregives nu med, så KS-formularen
-// knyttes til DENNE konkrete opgave (qa_submissions.task_id), ikke hele sagen.
-// Kaldes fra opgavekortets "🛡 Kvalitetssikring"-knap med både sagens id
-// (til at hente KS-skabeloner/sende data) og selve opgavens eget id.
-async function openQaPickerForTask(projectId,taskId){
+async function openQaPickerForTask(projectId){
   if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
   document.getElementById('projects-modal').classList.add('open');
   document.getElementById('pm-title').textContent='Henter…';
   document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
-  if(await pmOpenProjectFor(projectId))pmOpenQaPicker(taskId||null);
+  if(await pmOpenProjectFor(projectId))pmOpenQaPicker();
 }
 async function openMaterialsFormForTask(projectId){
   if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
@@ -1607,17 +1543,13 @@ function render(){
       // RUNDE H #25 — a.notes kan nu indeholde sikker, sanitiseret HTML (fed
       // skrift/punkt-/tal-/pil-lister) fra den nye note-editor i admin.html.
       // noteIsHtml markerer det, så openBookingNote() ved om den skal rendere
-      // som HTML eller escape'e ren tekst.
-      // RUNDE CE: a.task_description er nu OGSÅ altid sikker HTML (server
-      // sender den gennem taskNoteToSafeHtml() i /api/assignments/my, se
-      // server.js), uanset om opgaven bruger den nye note-editor eller stadig
-      // har ren tekst fra før den fandtes — derfor noteIsHtml:true altid nu,
-      // ikke kun når a.notes er sat.
+      // som HTML (a.notes, server-saniteret) eller escape'e ren tekst
+      // (a.task_description-fallback, som ALDRIG er HTML).
       // RUNDE L (Martins ønske) — "med et klik tilføje det tilbud der sendt uden
       // priser" til et kundebesøg, så medarbejderen kan se omfanget. Vises i samme
       // note-modal som notes/vedhæftninger allerede bruger (isVisit markerer at
       // openBookingNote skal hente og vise tilbuds-omfanget, se quote-scope-endpointet).
-      bookingNotes.set(String(a.id),{note:a.notes||a.task_description,noteIsHtml:true,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||''),isVisit:!!a.is_visit,taskId:a.task_id});
+      bookingNotes.set(String(a.id),{note:a.notes||a.task_description,noteIsHtml:!!a.notes,link:a.note_link,attachments:a.note_attachments,title:(a.job_name||'Task')+' — '+(a.task_name||''),isVisit:!!a.is_visit,taskId:a.task_id});
       const mapButton=maps?`<a class="action maps" href="${maps}" target="_blank" rel="noopener">📍 Maps</a>`:`<button class="action maps" type="button" onclick="toast('No address on this task')">📍 Maps</button>`;
       const addressMarkup=address?(maps?`<a href="${maps}" target="_blank" rel="noopener">${esc(address)}</a>`:esc(address)):'No address';
       const phoneMarkup=phone?`<a href="${esc(phoneHref(phone))}">${esc(phone)}</a>`:'<span>No customer phone number</span>';
@@ -1633,11 +1565,7 @@ function render(){
       // stedet for den almindelige dokumentations-tjekliste (fugtmålinger mv.),
       // som ikke giver mening for et salgsbesøg. Se openVisitReportModal().
       const doneBtn=isDone?`<button class="action undone-btn" type="button" style="grid-column:1/-1" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:(a.is_visit?`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openVisitReportModal(${noteId},'${esc(a.task_id)}')">✅ Mark as done</button>`:`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openDocModal(${noteId})">✅ Mark as done</button>`);
-      // RUNDE CE: a.task_description er allerede sikker HTML fra serveren
-      // (taskNoteToSafeHtml i /api/assignments/my) — IKKE esc()'et her længere,
-      // ellers ville fed skrift/lister fra den nye note-editor vises som rå
-      // tags i stedet for formateret tekst.
-      const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse'}</div><div class="task-description-body">${a.task_description}</div></div>`:'';
+      const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse'}</div><div class="task-description-body">${esc(a.task_description).replace(/\n/g,'<br>')}</div></div>`:'';
       // SAGS-HANDLINGER: alle opgaver styres nu fra Martins eget program, så
       // "Se sagen"/"Registrér tid"/"Udfyld KS-formular"/"Materialer" åbner en
       // formular i selve appen, sat direkte på opgavens sag.
@@ -1663,7 +1591,7 @@ function render(){
       // ikke, åbner de i stedet "🔍 Find projekt" så medarbejderen selv kan
       // søge/vælge den rigtige sag (nøjagtig som tid-knappens fallback).
       const caseActions=`
-        <button class="action qc" type="button" onclick="${isCaseTask?('openQaPickerForTask('+a.task_project_id+',\''+esc(a.task_id||'')+'\')'):'openProjectsModal()'}">🛡 Kvalitetssikring</button>
+        <button class="action qc" type="button" onclick="${isCaseTask?('openQaPickerForTask('+a.task_project_id+')'):'openProjectsModal()'}">🛡 Kvalitetssikring</button>
         <button class="action files" type="button" onclick="${isCaseTask?('openMaterialsFormForTask('+a.task_project_id+')'):'openProjectsModal()'}">🧾 Materialer</button>`;
       // RUNDE H #30 — Martins fejlrapport: han vidste hans folk havde arbejdet,
       // men Timetracking-rapporten viste kun ét navn. Årsagen var her — en opgave
@@ -1847,14 +1775,20 @@ async function refreshTeamOverviewAccess(){
 }
 refreshTeamOverviewAccess();
 
-var teamMap={map:null,markers:null,dateStr:null};
+var teamMap={map:null,markers:null,dateStr:null,group:'employee'};
 function openTeamMap(){
   teamMap.dateStr=iso(new Date());
+  teamMap.group='employee';
   document.getElementById('tm-date').value=teamMap.dateStr;
   document.getElementById('team-map-modal').classList.add('open');
+  tmSetGroupButtons();
   if(!teamMap.map){
     teamMap.map=L.map('tm-map',{scrollWheelZoom:false}).setView([56.2,10.5],7);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap, &copy; CARTO',maxZoom:19}).addTo(teamMap.map);
+    // RUNDE BS (okt. 2026, Martin: "Google maps virker ikke længere") — CARTOs
+    // gratis fliser kræver nu en API-nøgle og viste kun "API KEY REQUIRED"
+    // ovenpå kortet. Skiftet til almindelige OpenStreetMap-fliser, som stadig
+    // er gratis og ikke kræver nøgle/login.
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap-bidragydere',maxZoom:19}).addTo(teamMap.map);
     teamMap.markers=L.layerGroup().addTo(teamMap.map);
   }
   setTimeout(function(){teamMap.map.invalidateSize();},60);
@@ -1862,10 +1796,28 @@ function openTeamMap(){
 }
 function closeTeamMap(){document.getElementById('team-map-modal').classList.remove('open')}
 function closeTeamMapOnBackdrop(e){if(e.target===document.getElementById('team-map-modal'))closeTeamMap()}
+// RUNDE BS (Martin: "kun se hvor alle medarbejderne er og så en knap der
+// skifter til vendors, det bliver ret mange at scrolle igennem") — kortet og
+// uge-listen viste før BÅDE medarbejdere og vendors i én lang liste (API'en
+// filtrerede kun på role='employee', som vendors også har — de adskilles kun
+// via worker_type). Nu er der to faner: Employees (default) og Vendors.
+function tmSetGroup(g){
+  if(teamMap.group===g)return;
+  teamMap.group=g;
+  tmSetGroupButtons();
+  loadTeamOverview();
+}
+function tmSetGroupButtons(){
+  document.getElementById('tm-group-employee').classList.toggle('primary',teamMap.group==='employee');
+  document.getElementById('tm-group-vendor').classList.toggle('primary',teamMap.group==='vendor');
+  document.getElementById('tm-section-label').textContent='This week, by person — '+(teamMap.group==='vendor'?'vendors':'employees');
+}
+document.getElementById('tm-group-employee').onclick=function(){tmSetGroup('employee');};
+document.getElementById('tm-group-vendor').onclick=function(){tmSetGroup('vendor');};
 var TM_DAY_NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 async function loadTeamOverview(){
   document.getElementById('tm-week-list').innerHTML='<p style="color:var(--muted)">Loading…</p>';
-  var r=await api('/api/team/overview?date='+encodeURIComponent(teamMap.dateStr));
+  var r=await api('/api/team/overview?date='+encodeURIComponent(teamMap.dateStr)+'&group='+teamMap.group);
   if(!r||!r.ok){document.getElementById('tm-week-list').innerHTML='<p style="color:var(--muted)">'+((r&&r.data&&r.data.error)||'Could not load the team overview.')+'</p>';return;}
   var d=r.data;
   teamMap.markers.clearLayers();
@@ -1892,7 +1844,7 @@ async function loadTeamOverview(){
       return '<div class="tm-day-row"><div class="tm-day-label">'+label+'</div><div class="tm-day-items">'+body+'</div></div>';
     }).join('');
     return '<div class="tm-person"><div class="tm-person-head"><span style="width:9px;height:9px;border-radius:50%;background:'+color+';display:inline-block"></span>'+esc(emp.name)+'</div>'+rows+'</div>';
-  }).join('')||'<p style="color:var(--muted)">No active employees found.</p>';
+  }).join('')||'<p style="color:var(--muted)">'+(teamMap.group==='vendor'?'No active vendors found.':'No active employees found.')+'</p>';
   document.getElementById('tm-week-list').innerHTML=html;
 }
 function tmShiftDay(n){var d=new Date(teamMap.dateStr+'T12:00:00');d.setDate(d.getDate()+n);teamMap.dateStr=iso(d);document.getElementById('tm-date').value=teamMap.dateStr;loadTeamOverview();}

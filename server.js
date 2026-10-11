@@ -9676,7 +9676,17 @@ app.get('/api/team/overview', auth, asyncRoute(async (req, res) => {
   weekEndDate.setDate(weekEndDate.getDate() + 6);
   const weekEnd = weekEndDate.toISOString().slice(0, 10);
 
-  const employeesRes = await pool.query("SELECT id,name,color,initials,avatar_url,trade FROM users WHERE active=1 AND role='employee' ORDER BY name");
+  // RUNDE BS (Martin: "kun se hvor alle medarbejderne er og så en knap der
+  // skifter til vendors, det bliver ret mange at scrolle igennem") — denne
+  // rute filtrerede før kun på role='employee', men vendors HAR også
+  // role='employee' (de adskilles udelukkende via worker_type, se Hold &
+  // vendors-rollefilteret i admin.html) — derfor landede begge grupper i én
+  // lang fælles liste. ?group=vendor viser nu kun vendors, alt andet (eller
+  // intet) viser almindelige medarbejdere som før.
+  const wantVendors = String(req.query.group || '') === 'vendor';
+  const employeesRes = await pool.query(
+    `SELECT id,name,color,initials,avatar_url,trade FROM users WHERE active=1 AND role='employee' AND COALESCE(worker_type,'employee') ${wantVendors ? '=' : '!='} 'vendor' ORDER BY name`
+  );
   const byUser = {};
   employeesRes.rows.forEach(u => { byUser[u.id] = { ...u, today: [], week: {} }; });
 
@@ -9686,7 +9696,7 @@ app.get('/api/team/overview', auth, asyncRoute(async (req, res) => {
 
   for (const b of bookingsRes.rows) {
     const bucket = byUser[b.user_id];
-    if (!bucket) continue; // vendor/inaktiv medarbejder — vises ikke i holdoverblikket
+    if (!bucket) continue; // uden for den valgte gruppe (medarbejder/vendor), eller inaktiv — vises ikke her
     const item = { job_name: b.job_name, task_name: b.task_name, job_address: b.job_address, job_lat: b.job_lat, job_lng: b.job_lng, start_time: b.start_time };
     let d = new Date(`${String(b.start_date).slice(0, 10)}T12:00:00`);
     const endD = new Date(`${String(b.end_date || b.start_date).slice(0, 10)}T12:00:00`);
@@ -20546,16 +20556,16 @@ app.get('/api/document-job-photos/:docType/:docId', auth, panelAccess('quotes'),
     project = await pgOne('SELECT id, name FROM projects WHERE quote_id=$1', [docId]);
   }
   if (!project) return res.json({ project: null, photos: [] });
-  const [projectPhotos, timeRows] = await Promise.all([
-    pool.query('SELECT pp.url, pp.caption, pp.created_at, u.name AS user_name FROM project_photos pp LEFT JOIN users u ON u.id=pp.uploaded_by WHERE pp.project_id=$1 ORDER BY pp.created_at DESC', [project.id]).then(r => r.rows),
-    pool.query('SELECT te.photo_url, te.photo_urls, te.note, te.entry_date, u.name AS user_name FROM time_entries te LEFT JOIN users u ON u.id=te.user_id WHERE te.project_id=$1 ORDER BY te.entry_date DESC, te.id DESC', [project.id]).then(r => r.rows)
-  ]);
-  const photos = [];
-  projectPhotos.forEach(p => photos.push({ url: p.url, caption: p.caption || null, user_name: p.user_name || null, date: p.created_at, source: 'Sagsbillede' }));
-  timeRows.forEach(te => {
-    const urls = Array.isArray(te.photo_urls) && te.photo_urls.length ? te.photo_urls : (te.photo_url ? [te.photo_url] : []);
-    urls.forEach(u => photos.push({ url: u, caption: te.note || null, user_name: te.user_name || null, date: te.entry_date, source: 'Timeregistrering' }));
-  });
+  // RUNDE BS (Martin: "billeder fra kundebesøg kommer ind under Filer på
+  // handlen, men jeg kan ikke få dem ind i tilbuddet/fakturaen") — denne rute
+  // byggede før sin egen, SNÆVRERE udgave af billedlisten (kun project_photos
+  // + time_entries), som blev til FØR kundebesøgs-billederne (customer_visits)
+  // blev koblet på. projectPhotoLibrary() nedenfor er allerede sagens FULDE,
+  // ajourførte billedbibliotek (samme kilde som Billeder-fanen og opgave-
+  // billedvælgeren bruger) — genbruger den her i stedet for at vedligeholde to
+  // udgaver af samme opslag, så kundebesøgs-billeder nu også kan vælges ind i
+  // tilbud/fakturaer.
+  const photos = await projectPhotoLibrary(project.id);
   res.json({ project: { id: project.id, name: project.name }, photos });
 }));
 // ══════════════════════════════════════════════════════════════
