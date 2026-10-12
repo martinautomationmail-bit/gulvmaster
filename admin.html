@@ -6753,6 +6753,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
          crmpNewFillStages(). -->
     <div class="form-group"><label class="form-label">Pipeline</label><select id="crmp-new-pipeline" class="input"></select></div>
     <div class="form-group"><label class="form-label">Stage</label><select id="crmp-new-stage" class="input"></select></div>
+    <!-- RUNDE CS (Martin: "når du vælger stage Leads ... på knappen i menuen
+         ... kommer Leadsource som option ikke?") — denne hurtig-modal havde
+         slet intet Lead Source-felt, i modsætning til "+ Ny kunde"-modalen på
+         Kunder-siden (crmc-source-wrap). Samme valgmuligheder, samme skjul-ved-
+         opportunity-logik, se openCrmpNewModal()/crmpCreateNewItem(). -->
+    <div class="form-group" id="crmp-new-source-wrap"><label class="form-label">Lead Source</label>
+      <select id="crmp-new-source" class="input">
+        <option value="">Vælg…</option>
+        <option value="Website form">Website form</option>
+        <option value="Facebook/Instagram">Facebook/Instagram</option>
+        <option value="Telefon">Telefon</option>
+        <option value="Anbefaling">Anbefaling</option>
+        <option value="3byggetilbud">3byggetilbud</option>
+        <option value="E-mail">E-mail</option>
+        <option value="Andet">Andet…</option>
+      </select>
+      <input id="crmp-new-source-other" class="input hidden" style="margin-top:6px" placeholder="Angiv kilde">
+    </div>
     <div class="modal-actions">
       <button class="btn" id="crmp-new-cancel">Annuller</button>
       <button class="btn primary" id="crmp-new-create">Opret</button>
@@ -24107,6 +24125,7 @@ async function initCrmpModule(){
     document.getElementById('crmp-set-field-new-type').addEventListener('change',function(){document.getElementById('crmp-set-field-new-options').style.display=this.value==='select'?'':'none';});
     document.getElementById('crmp-set-field-add').addEventListener('click',crmpAddCustomField);
     document.getElementById('crmp-new-cancel').addEventListener('click',function(){closeModal('crmp-new-modal');});
+    document.getElementById('crmp-new-source').addEventListener('change',function(e){document.getElementById('crmp-new-source-other').classList.toggle('hidden',e.target.value!=='Andet');});
     // Skift af pipeline skal ALTID fylde stage-listen forfra (og vælge "Nyt lead"
     // igen, hvis den nye pipeline har en sådan) — ellers ville der stå stages
     // tilbage fra den forrige pipeline, som slet ikke findes i den valgte.
@@ -25279,6 +25298,20 @@ function crmpxRenderCustomerNotes(){
       +'</div>';
   }).join(''):'<div class="crmpx-empty">Ingen noter endnu — tilføj den første ovenfor</div>';
 }
+// RUNDE CR (Martin: "hvis jeg trykker på noter men den kommer ikke under
+// noter ved aktivitet ... jeg skal op og trykke på knappen note ved siden
+// af Emails") — en note tilføjet her i "📝 Noter"-fanen (customer_notes) og
+// en note tilføjet i "Aktivitet"-boksen på Detaljer-fanen (crm_activities,
+// se crmpxAddNote nedenfor) var hidtil to HELT adskilte systemer, der aldrig
+// viste hinandens noter — man skulle vide/huske at skrive den samme note to
+// gange for at se den begge steder. Begge bevares (customer_notes-delen var
+// et bevidst tidligere ønske fra Martin, se crmpxLoadCustomerNotes-
+// kommentaren: den note følger KUNDEN på tværs af flere leads/handler, ikke
+// kun dette ene lead), men spejles nu til hinanden: en note herfra logges
+// også i leadets/opportunity'ens egen aktivitetstidslinje (samme endpoint
+// som crmpxAddNote bruger), og omvendt. Fejler selve spejlingen (fx en
+// forbindelsesfejl), lader vi det stille være — den oprindelige note er
+// allerede gemt korrekt, det er kun den ekstra synlighed der går tabt.
 async function crmpxAddCustomerNote(){
   if(!crmpxCurrentCustomerId)return;
   var input=document.getElementById('crmpx-notes-new');
@@ -25288,6 +25321,14 @@ async function crmpxAddCustomerNote(){
   if(!r||r.error){toast((r&&r.error)||'Kunne ikke tilføje note','❌');return;}
   input.value='';
   await crmpxLoadCustomerNotes();
+  var ent=crmpDetailEntity;
+  if(ent){
+    try{
+      var actEndpoint=(ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id+'/notes';
+      await api(actEndpoint,{method:'POST',body:JSON.stringify({body:body})});
+      await crmpxReloadActivity();
+    }catch(e){/* se RUNDE CR-kommentaren ovenfor — ikke kritisk */}
+  }
 }
 document.getElementById('page-crmp-detail').addEventListener('click',function(e){
   var btn=e.target.closest('[data-crmpx-note-act]');
@@ -26017,12 +26058,24 @@ async function crmpxAddNote(){
   var ent=crmpDetailEntity;
   var input=document.getElementById('crmpx-note-new');
   if(!ent||!input.value.trim())return;
+  var body=input.value.trim();
   var endpoint=(ent.type==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+ent.id+'/notes';
-  var r=await api(endpoint,{method:'POST',body:JSON.stringify({body:input.value.trim()})});
+  var r=await api(endpoint,{method:'POST',body:JSON.stringify({body:body})});
   // Genindlæser KUN tidslinjen (før: hele siden via openCrmpDetail, hvilket
   // hoppede tilbage til Detaljer-fanen og skubbede et nyt hash på historikken —
   // unødvendigt, når det eneste der er ændret er aktivitetslisten).
-  if(r&&r.ok){input.value='';toast('Note tilføjet ✓','📝');await crmpxReloadActivity();}
+  if(r&&r.ok){
+    input.value='';toast('Note tilføjet ✓','📝');await crmpxReloadActivity();
+    // RUNDE CR — spejl også til "📝 Noter"-fanen (customer_notes), se den
+    // store kommentar ved crmpxAddCustomerNote ovenfor. Best-effort: fejler
+    // spejlingen, er selve noten allerede gemt korrekt i aktiviteten.
+    if(crmpxCurrentCustomerId){
+      try{
+        await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/notes',{method:'POST',body:JSON.stringify({body:body})});
+        await crmpxLoadCustomerNotes();
+      }catch(e){/* ikke kritisk, se kommentar */}
+    }
+  }
   else toast((r&&r.error)||'Kunne ikke tilføje note','❌');
 }
 function crmpxTaskDueLabel(t){
@@ -26432,6 +26485,11 @@ function openCrmpNewModal(){
   document.getElementById('crmp-new-name').value='';
   document.getElementById('crmp-new-phone').value='';
   document.getElementById('crmp-new-email').value='';
+  document.getElementById('crmp-new-source').value='';
+  document.getElementById('crmp-new-source-other').value='';
+  document.getElementById('crmp-new-source-other').classList.add('hidden');
+  // Lead Source findes kun på leads (se samme kommentar ved crmc-source-wrap).
+  document.getElementById('crmp-new-source-wrap').classList.toggle('hidden',p.type==='opportunity');
   // Kun pipelines af SAMME type som det board man står på — man opretter ikke et
   // lead i en salgs-pipeline (og omvendt) ved et uheld.
   var sel=document.getElementById('crmp-new-pipeline');
@@ -26447,7 +26505,13 @@ async function crmpCreateNewItem(){
   var name=document.getElementById('crmp-new-name').value.trim();
   if(!name){toast('Navn mangler','⚠');return;}
   var stageId=Number(document.getElementById('crmp-new-stage').value)||null;
+  var source=document.getElementById('crmp-new-source').value,sourceOther=document.getElementById('crmp-new-source-other').value.trim();
+  if(p.type==='lead'){
+    if(!source){toast('Vælg en kilde','⚠️');flashFieldError('crmp-new-source');return;}
+    if(source==='Andet'&&!sourceOther){toast('Angiv kilden under "Andet"','⚠️');flashFieldError('crmp-new-source-other');return;}
+  }
   var body={name:name,phone:document.getElementById('crmp-new-phone').value,email:document.getElementById('crmp-new-email').value,pipeline_id:p.id,stage_id:stageId};
+  if(p.type==='lead')body.source=source==='Andet'?sourceOther:source;
   var endpoint=p.type==='lead'?'/api/crm/leads':'/api/crm/opportunities';
   if(p.type==='opportunity'){body.contact_name=name;body.contact_phone=body.phone;body.contact_email=body.email;}
   var r=await api(endpoint,{method:'POST',body:JSON.stringify(body)});

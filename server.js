@@ -10550,6 +10550,19 @@ app.put('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
   if (b.phone !== undefined) await upsertPrimaryContactChannel('customer', req.params.id, 'phone', b.phone);
   if (b.email !== undefined) await upsertPrimaryContactChannel('customer', req.params.id, 'email', b.email);
   if (b.address !== undefined) await upsertPrimaryContactChannel('customer', req.params.id, 'address', b.address);
+  // RUNDE CQ — samme root cause/rettelse som RUNDE BE ved POST ovenfor, men
+  // for "Redigér kunde" (samme #crmc-notes-felt, genbrugt modal). Her er der
+  // dog en ÆGTE gammel værdi at sammenligne med (i modsætning til ved
+  // oprettelse) — mirrores derfor KUN når notefeltet faktisk er ÆNDRET
+  // (og ikke tomt), så man ikke får en ny, identisk Noter-række hver gang
+  // man gemmer formularen af en helt anden grund (fx retter telefonnummeret).
+  if (b.notes !== undefined) {
+    const trimmedNew = b.notes ? String(b.notes).trim() : '';
+    const trimmedOld = current.notes ? String(current.notes).trim() : '';
+    if (trimmedNew && trimmedNew !== trimmedOld) {
+      await pool.query('INSERT INTO customer_notes (customer_id,body,user_id) VALUES ($1,$2,$3)', [req.params.id, trimmedNew, req.user.id]);
+    }
+  }
   res.json({ ok: true });
 }));
 app.delete('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
@@ -11741,6 +11754,22 @@ app.post('/api/webhooks/resend', asyncRoute(async (req, res) => {
 //           navne i et "Set variable"/"Compose"-trin i Make FØR I sender videre.
 // ══════════════════════════════════════════════════════════════
 const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'facebook-ads': 'Facebook Ads' };
+// RUNDE CP (Martin: "Lead source tilvælges ikke når leadet kommer ind fra
+// facebook og website?") — crm_leads.source (sat ovenfor til sourceLabel)
+// er en FRI tekstkolonne og er ikke det samme som den synlige "Lead
+// Source"-dropdown Martin ser/bruger på selve leadkortet, som i stedet er
+// en custom field (crm_custom_fields, key='lead_source', se seed'en i
+// initSchema() — 'Website form'/'Facebook/Instagram'/'Telefon'/
+// 'Anbefaling'). Webhooken satte hidtil KUN source-kolonnen, aldrig denne
+// custom field — så dropdownen stod tom/uvalgt for ethvert lead der kom
+// ind automatisk fra Facebook Ads eller Elementor-formularen, selvom kilden
+// reelt var kendt. Kortlægger her :source til den matchende dropdown-værdi
+// og sætter den via crmSetCustomFieldValues (samme funktion UI'en selv
+// bruger når man sætter felter manuelt), i SAMME transaktion som selve
+// lead-oprettelsen. Et ukendt/fremtidigt :source-navn springes stille over
+// her (kan ikke gætte en passende dropdown-værdi) — kun source-kolonnen
+// sættes stadig, ligesom før.
+const LEAD_WEBHOOK_SOURCE_FIELD_VALUES = { 'elementor': 'Website form', 'facebook-ads': 'Facebook/Instagram' };
 async function verifyLeadWebhookSecret(req) {
   const provided = req.headers['x-webhook-secret'] || req.query.token || '';
   if (!provided) return false;
@@ -11905,6 +11934,9 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,${nowTextSQL()}) RETURNING id
     `, [name, b.email || null, b.phone || null, b.address || null, sourceLabel, b.note || null, p.id, stageId, posRow.pos]);
     await crmLogActivity('lead', r.id, 'created', 'Lead modtaget automatisk via ' + sourceLabel, null, client);
+    // RUNDE CP — se kommentaren ved LEAD_WEBHOOK_SOURCE_FIELD_VALUES ovenfor.
+    const sourceFieldValue = LEAD_WEBHOOK_SOURCE_FIELD_VALUES[req.params.source];
+    if (sourceFieldValue) await crmSetCustomFieldValues('lead', r.id, { lead_source: sourceFieldValue }, client);
 
     const linked = await crmFindOrCreateContactAndCustomer(name, b.email || null, b.phone || null, b.address || null, b.note || null, client);
     await client.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
@@ -12540,6 +12572,20 @@ async function crmFindOrCreateContactAndCustomer(name, email, phone, address, no
   } else {
     const cust = await one('INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id', [name, email, phone, address, note || null]);
     customerId = cust.id; customerCreated = true;
+    // RUNDE CQ (Martin: "Når du opretter en kunde selv kommer noten ikke ind
+    // under noter ordenligt") — samme root cause og samme rettelse som RUNDE
+    // BE ved POST /api/crm/customers ovenfor: en note skrevet her endte KUN i
+    // det usynlige, legacy customers.notes-felt, aldrig i customer_notes, som
+    // er det kundekortets rigtige "📝 Noter"-panel rent faktisk læser fra.
+    // Denne funktion er den DELTE find-eller-opret-vej for ALLE selvbetjente/
+    // automatiske kunde-oprettelser (lead-konvertering, /ny-kunde-linket,
+    // webhooks m.fl., se kommentaren ved RUNDE S ovenfor) — så en note
+    // indtastet i NOGEN af dem ramte samme usynlige hul. user_id sættes til
+    // NULL (ingen rigtig bruger-kontekst her, samme konvention som ellers i
+    // denne funktion/webhooken).
+    if (note && String(note).trim()) {
+      await db.query('INSERT INTO customer_notes (customer_id,body,user_id) VALUES ($1,$2,NULL)', [customerId, String(note).trim()]);
+    }
   }
   if (!contact || contact.customer_id !== customerId) {
     await db.query('UPDATE crm_contacts SET customer_id=$1 WHERE id=$2', [customerId, contactId]);
@@ -13054,7 +13100,20 @@ app.post('/api/crm/leads', auth, panelAccess('crmp_leads'), asyncRoute(async (re
   const r = await pgOne(`
     INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()}) RETURNING id
   `, [leadName, b.email || null, b.phone || null, b.address || null, b.source || null, b.note || null, pipelineId, stageId, b.owner_id || req.user.id, posRow.pos]);
-  await crmSetCustomFieldValues('lead', r.id, b.custom_fields);
+  // RUNDE CS (Martin: "når du opretter en kunde selv ... kommer Leadsource
+  // som option ikke?") — samme todelte Lead Source-model som RUNDE CP løste
+  // for webhook-leads: b.source sættes altid på den indbyggede crm_leads.source-
+  // kolonne (lige ovenfor), men UI'et på selve leadets detaljeside viser et
+  // ANDET felt, nemlig custom field'et 'lead_source' (crm_custom_fields) — de to
+  // blev aldrig holdt i sync ved manuel oprettelse (hverken fra "+ Ny kunde"-
+  // modalen på Kunder-siden eller "+ Ny"-hurtigmodalen på selve Pipeline-siden),
+  // så Lead Source stod tom på detaljesiden selvom kilden faktisk var valgt ved
+  // oprettelsen. Spejles her ÉT sted, så det gælder for enhver fremtidig
+  // oprettelsesvej, ikke kun de to der findes i dag — men kun hvis klienten ikke
+  // selv allerede har sendt en eksplicit værdi for custom field'et.
+  const customFieldsToSet = Object.assign({}, b.custom_fields);
+  if (b.source && customFieldsToSet.lead_source === undefined) customFieldsToSet.lead_source = b.source;
+  await crmSetCustomFieldValues('lead', r.id, customFieldsToSet);
   await crmLogActivity('lead', r.id, 'created', 'Lead oprettet', req.user.id);
 
   // Lead, Kunde og Sales skal hænge sammen fra dag ét (Martins ønske) — opret/kobl
