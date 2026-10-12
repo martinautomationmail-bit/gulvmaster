@@ -5435,25 +5435,32 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
                  (d.project_id, se loadQuoteFull()). Modstykket til pd-quote-link
                  på selve sagen. -->
             <button type="button" class="filter-dropdown-item" id="qe-project-link-btn" style="display:none" title="Åbn den sag tilbuddet blev til">📁 Åbn sag</button>
+            <!-- RUNDE CO (Martin: "kalde Materialeliste for prisforspørgelse
+                 og sætte den under Dokumenter istedet for den nuværende
+                 prisforspørgelse der er. Samt betalingsplan under
+                 dokumenter") — Materialeliste (RUNDE CM) har overtaget
+                 "Prisforespørgsel"-navnet og -pladsen fra den gamle,
+                 token-baserede RFQ-funktion. Den gamle #qe-request-btn er
+                 derfor fjernet fra værktøjslinjen (quote_requests-tabellen/
+                 -backend rører vi IKKE, kun adgangen herfra, da den nye
+                 funktion nu dækker samme behov — vælg leverandør, send en
+                 liste, få et svar pr. mail i stedet for via en portal-link).
+                 Betalingsplan (RUNDE CC) er flyttet herned fra Fakturering
+                 af samme grund. Begge kun vist på et GEMT tilbud. -->
+            <button type="button" class="filter-dropdown-item" id="qe-materials-list-btn" style="display:none" title="Lad AI udregne en materialeliste ud fra tilbuddet, ret den og send den som PDF til en leverandør">📨 Prisforespørgsel</button>
+            <button type="button" class="filter-dropdown-item" id="qe-payment-plan-btn" style="display:none" title="Lad AI forslå en betalingsplan (faser) for store tilbud, og generér en PDF">💳 Betalingsplan</button>
           </div>
         </div>
         <div class="filter-dropdown qe-toolbar-dropdown" id="qe-customer-group">
           <button type="button" class="bly-btn outline filter-dropdown-btn" data-action="filter-dropdown-toggle">👤 Kunde ▾</button>
           <div class="filter-dropdown-menu">
             <button type="button" class="filter-dropdown-item" id="qe-share-btn" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
-            <button type="button" class="filter-dropdown-item" id="qe-request-btn" style="display:none" title="Send materiale-/tilbudslinjer som prisforespørgsel til leverandører eller underleverandører">📨 Prisforespørgsler</button>
             <button type="button" class="filter-dropdown-item" id="qe-send-btn" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
           </div>
         </div>
         <div class="filter-dropdown qe-toolbar-dropdown" id="qe-billing-group">
           <button type="button" class="bly-btn outline filter-dropdown-btn" data-action="filter-dropdown-toggle">💳 Fakturering ▾</button>
           <div class="filter-dropdown-menu">
-            <!-- RUNDE CC — se den store kommentar ved #payment-plan-modal. Kun vist på et
-                 GEMT tilbud (kræver et tilbudsnummer + en total at dele op). -->
-            <button type="button" class="filter-dropdown-item" id="qe-payment-plan-btn" style="display:none" title="Lad AI forslå en betalingsplan (faser) for store tilbud, og generér en PDF">💳 Betalingsplan</button>
-            <!-- RUNDE CM — se den store kommentar ved #materials-list-modal. Kun vist på et
-                 GEMT tilbud (kræver et tilbudsnummer + linjer at udregne materialer fra). -->
-            <button type="button" class="filter-dropdown-item" id="qe-materials-list-btn" style="display:none" title="Lad AI udregne en materialeliste ud fra tilbuddet, ret den og send den som PDF til en leverandør">📦 Materialeliste</button>
             <button type="button" class="filter-dropdown-item" id="qe-convert-btn" style="display:none">➜ Konvertér til faktura</button>
           </div>
         </div>
@@ -8946,7 +8953,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <input class="input" id="ml-supplier-name" placeholder="Navn (valgfrit)" style="flex:1">
         <input class="input" id="ml-supplier-email" placeholder="E-mail" style="flex:1.4">
       </div>
-      <div class="form-group"><label class="form-label">Besked <span class="opt-tag">valgfrit</span></label><textarea id="ml-note" class="input" rows="2" style="resize:vertical"></textarea></div>
+      <!-- RUNDE CO (Martin: "smider en leveringsdato på når man skal sende
+           den der materiale liste til ens leverandør") — fri tekst (ikke en
+           streng dato-kalender), for Martin kan sagtens ville skrive "uge
+           44" eller "hurtigst muligt" i stedet for en præcis dato. Vises
+           tydeligt øverst på selve PDF'en og i mailteksten til leverandøren. -->
+      <div class="form-group"><label class="form-label">Ønsket leveringsdato <span class="opt-tag">valgfrit</span></label><input class="input" id="ml-delivery-date" placeholder="fx 2026-11-03 eller 'uge 44'"></div>
+      <div class="form-group"><label class="form-label">Besked <span class="opt-tag">valgfrit</span></label><textarea id="ml-note" class="input" rows="2" style="resize:vertical;font-family:inherit;line-height:1.4"></textarea></div>
       <button class="bly-btn" id="ml-send-btn" type="button">📨 Send til leverandør</button>
     </div>
   </div>
@@ -29905,7 +29918,6 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-duplicate-btn').style.display='none';
   document.getElementById('qe-project-link-btn').style.display='none';
   document.getElementById('qe-share-btn').style.display='none';
-  document.getElementById('qe-request-btn').style.display='none';
   document.getElementById('qe-send-btn').style.display='none';
   document.getElementById('qe-payment-plan-btn').style.display='none';
   document.getElementById('qe-materials-list-btn').style.display='none';
@@ -29970,7 +29982,6 @@ async function openQuoteEditor(id,prefillCustomer){
     document.getElementById('qe-duplicate-btn').style.display='inline-flex';
     document.getElementById('qe-project-link-btn').style.display=qeState.projectId?'inline-flex':'none';
     document.getElementById('qe-share-btn').style.display=qd.status==='converted'?'none':'inline-flex';
-    document.getElementById('qe-request-btn').style.display='inline-flex';
     document.getElementById('qe-send-btn').style.display='inline-flex';
     document.getElementById('qe-payment-plan-btn').style.display='inline-flex';
     document.getElementById('qe-materials-list-btn').style.display='inline-flex';
@@ -30098,9 +30109,9 @@ function qeSetLineButtonsLocked(locked){
 // åbne en dropdown der er helt tom. Kaldes overalt hvor en af knappernes
 // EGEN display sættes (loadQuoteFull() og renderQeInvoicingPanel() nedenfor).
 function qeToolbarSyncGroupVisibility(){
-  [['qe-docs-group',['qe-pdf-link','qe-duplicate-btn','qe-project-link-btn']],
-   ['qe-customer-group',['qe-share-btn','qe-request-btn','qe-send-btn']],
-   ['qe-billing-group',['qe-payment-plan-btn','qe-materials-list-btn','qe-convert-btn']]
+  [['qe-docs-group',['qe-pdf-link','qe-duplicate-btn','qe-project-link-btn','qe-materials-list-btn','qe-payment-plan-btn']],
+   ['qe-customer-group',['qe-share-btn','qe-send-btn']],
+   ['qe-billing-group',['qe-convert-btn']]
   ].forEach(function(g){
     var anyVisible=g[1].some(function(id){var el=document.getElementById(id);return el&&el.style.display!=='none';});
     var wrap=document.getElementById(g[0]);
@@ -31443,6 +31454,14 @@ async function qpOpenModal(){
 // "+ Indsæt linje"-vælger der sætter en af tilbuddets egne linjebeskrivelser
 // ind som ny linje i milepæl-teksten, så Martin ikke selv skal skrive dem
 // af fra tilbuddet.
+// RUNDE CO (Martin: "det lille note felt du har lavet til hver post er
+// mega fin men lav lige tekst typen moderne og så når jeg skriver det ikke
+// ligner robot font") — <textarea>-elementer arver IKKE font-family fra
+// resten af siden medmindre man eksplicit sætter det (samme regel som
+// .qe-desc-area/.bly-textarea andre steder i filen bruger font-family:
+// inherit for) — uden det falder browseren tilbage til sin egen
+// standard-monospace-skrifttype for tekstfelter, hvilket var "robot
+// fonten". Rettet med font-family:inherit på qp-milestone-feltet herunder.
 function qpAddRow(phase){
   phase=phase||{};
   var row=document.createElement('div');
@@ -31451,7 +31470,7 @@ function qpAddRow(phase){
   row.innerHTML=
     '<div style="flex:2">'+
       '<input class="qe-input qp-label" placeholder="Fase, fx Depositum ved underskrift">'+
-      '<textarea class="qe-input qp-milestone" placeholder="Milepæl, fx Ved underskrift af tilbuddet — tryk Enter for linjeskift" rows="2" style="margin-top:4px;font-size:12px;resize:vertical;width:100%"></textarea>'+
+      '<textarea class="qe-input qp-milestone" placeholder="Milepæl, fx Ved underskrift af tilbuddet — tryk Enter for linjeskift" rows="2" style="margin-top:4px;font-size:12px;font-family:inherit;line-height:1.4;resize:vertical;width:100%"></textarea>'+
       '<select class="qe-input qp-insert-line" style="margin-top:4px;font-size:11px;width:100%"><option value="">+ Indsæt linje fra tilbuddet…</option></select>'+
     '</div>'+
     '<div style="flex:0 0 70px"><input class="qe-input qp-pct" type="number" min="0" max="100" step="0.5" style="text-align:right"></div>'+
@@ -31561,6 +31580,7 @@ async function mlOpenModal(){
   document.getElementById('ml-supplier-select').innerHTML='<option value="">— Vælg leverandør fra Videnscenter —</option>';
   document.getElementById('ml-supplier-name').value='';
   document.getElementById('ml-supplier-email').value='';
+  document.getElementById('ml-delivery-date').value='';
   document.getElementById('ml-note').value='';
   document.getElementById('ml-loading').style.display='';
   document.getElementById('materials-list-modal').classList.add('open');
@@ -31691,6 +31711,7 @@ async function mlSend(){
   var r=await api('/api/quotes/'+mlState.quoteId+'/materials-list/send',{method:'POST',body:JSON.stringify({
     to:email,
     supplier_name:document.getElementById('ml-supplier-name').value.trim()||null,
+    delivery_date:document.getElementById('ml-delivery-date').value.trim()||null,
     note:document.getElementById('ml-note').value.trim()||null
   })});
   btn.disabled=false;btn.textContent='📨 Send til leverandør';
@@ -32757,7 +32778,11 @@ function bindQuotesModuleEvents(){
   // RUNDE AS — se qe-project-link-btn ovenfor.
   document.getElementById('qe-project-link-btn').addEventListener('click',function(){if(qeState.projectId)openProjectDetail(qeState.projectId);});
   document.getElementById('qe-share-btn').addEventListener('click',qeShareLink);
-  document.getElementById('qe-request-btn').addEventListener('click',qrOpenModal);
+  // RUNDE CO — #qe-request-btn (den gamle "Prisforespørgsler"-adgang) er
+  // fjernet fra værktøjslinjen, se kommentaren ved #qe-docs-group i
+  // HTML'en. quote-request-modal og dens øvrige knapper herunder rører vi
+  // ikke (ingen aktiv adgangsvej længere, men ingen grund til at rive
+  // historik-visningen ned).
   document.getElementById('qr-close-btn').addEventListener('click',function(){closeModal('quote-request-modal');});
   document.getElementById('qr-add-recipient').addEventListener('click',function(){qrAddRecipientRow();});
   document.getElementById('qr-send-btn').addEventListener('click',qrSend);

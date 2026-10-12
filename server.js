@@ -21791,10 +21791,15 @@ function mlEnsureSpace(doc, y, needed, docNumber, accent) {
   ny = mlDrawTableHeader(doc, ny);
   return ny;
 }
-function drawMaterialsListPdf(doc, quote, company, supplierName) {
+function drawMaterialsListPdf(doc, quote, company, supplierName, deliveryDate) {
   const accent = '#4F46E5';
   const metaLines = [`Dato: ${new Date().toISOString().slice(0, 10)}`, `Vedr. tilbud: ${quote.quote_number}`];
   if (supplierName) metaLines.push(`Til: ${supplierName}`);
+  // RUNDE CO (Martin: "smider en leveringsdato på når man skal sende den
+  // der materiale liste til ens leverandør") — valgfri ønsket leveringsdato,
+  // vist tydeligt øverst på selve PDF'en (ligesom tilbudsnr./til-feltet
+  // ovenfor), så leverandøren ser den uden at skulle lede i mailteksten.
+  if (deliveryDate) metaLines.push(`Ønsket levering: ${deliveryDate}`);
   let y = drawDocHeader(doc, 'MATERIALELISTE', quote.quote_number, metaLines, accent, company);
   y = drawFraTilBlock(doc, y, company, quote);
   y += 6;
@@ -21822,7 +21827,7 @@ function drawMaterialsListPdf(doc, quote, company, supplierName) {
   });
   drawDocFooter(doc, company);
 }
-function renderMaterialsListPdfBuffer(quote, company, supplierName) {
+function renderMaterialsListPdfBuffer(quote, company, supplierName, deliveryDate) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margin: 40 });
@@ -21831,7 +21836,7 @@ function renderMaterialsListPdfBuffer(quote, company, supplierName) {
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
-      drawMaterialsListPdf(doc, quote, company, supplierName);
+      drawMaterialsListPdf(doc, quote, company, supplierName, deliveryDate);
       doc.end();
     } catch (e) { reject(e); }
   });
@@ -21844,12 +21849,13 @@ app.get('/api/quotes/:id/materials-list/pdf', authOrQueryToken, panelAccess('quo
   }
   const company = await getCompanyInfo();
   const supplierName = String(req.query.supplier_name || '').trim().slice(0, 200) || null;
+  const deliveryDate = String(req.query.delivery_date || '').trim().slice(0, 40) || null;
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', `inline; filename="${quote.quote_number}-materialeliste.pdf"`);
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   registerBrandFonts(doc);
   doc.pipe(res);
-  drawMaterialsListPdf(doc, quote, company, supplierName);
+  drawMaterialsListPdf(doc, quote, company, supplierName, deliveryDate);
   doc.end();
 }));
 app.post('/api/quotes/:id/materials-list/send', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -21862,18 +21868,23 @@ app.post('/api/quotes/:id/materials-list/send', auth, panelAccess('quotes'), asy
   const to = String(b.to || '').trim();
   const supplierName = String(b.supplier_name || '').trim().slice(0, 200) || null;
   const note = String(b.note || '').trim().slice(0, 1000);
+  // RUNDE CO — se kommentaren ved drawMaterialsListPdf ovenfor. Fri tekst
+  // (ikke streng dato-validering) — Martin kan sagtens ønske at skrive
+  // "uge 44" eller "hurtigst muligt" i stedet for en præcis kalenderdato.
+  const deliveryDate = String(b.delivery_date || '').trim().slice(0, 40) || null;
   if (!to) return res.status(400).json({ error: 'Angiv leverandørens e-mail' });
   if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
   const company = await getCompanyInfo();
   let pdfBuffer;
   try {
-    pdfBuffer = await renderMaterialsListPdfBuffer(quote, company, supplierName);
+    pdfBuffer = await renderMaterialsListPdfBuffer(quote, company, supplierName, deliveryDate);
   } catch (e) {
     return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message });
   }
   const subject = `Materialeliste — ${quote.quote_number}${quote.job_name ? ' (' + quote.job_name + ')' : ''}`;
+  const deliveryLine = deliveryDate ? `<p><b>Ønsket leveringsdato:</b> ${escPublic(deliveryDate)}</p>` : '';
   const introLine = note ? `<p>${escPublic(note)}</p>` : '';
-  const bodyHtml = `<p>Hej${supplierName ? ' ' + escPublic(supplierName) : ''},</p><p>Vedhæftet finder du en materialeliste til bestilling, vedr. ${escPublic(quote.job_name || quote.quote_number)}.</p>${introLine}<p>Mange hilsner<br>${escPublic(company.name)}</p>`;
+  const bodyHtml = `<p>Hej${supplierName ? ' ' + escPublic(supplierName) : ''},</p><p>Vedhæftet finder du en materialeliste til bestilling, vedr. ${escPublic(quote.job_name || quote.quote_number)}.</p>${deliveryLine}${introLine}<p>Mange hilsner<br>${escPublic(company.name)}</p>`;
   let sendResult;
   try {
     sendResult = await sendMailUniversal({
@@ -21883,7 +21894,7 @@ app.post('/api/quotes/:id/materials-list/send', auth, panelAccess('quotes'), asy
   } catch (e) {
     return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
   }
-  logDocActivity('quote', quote.id, 'materials_list_sent', req.user.name, `til ${to}${supplierName ? ' (' + supplierName + ')' : ''}`);
+  logDocActivity('quote', quote.id, 'materials_list_sent', req.user.name, `til ${to}${supplierName ? ' (' + supplierName + ')' : ''}${deliveryDate ? ' — ønsket levering ' + deliveryDate : ''}`);
   logOutboundEmail({ kind: 'quote', refId: quote.id, recipient: to, subject, sendResult });
   res.json({ ok: true });
 }));
