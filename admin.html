@@ -2993,6 +2993,34 @@ body.qz-overlay-open .page.active{display:none}
    så der ikke opstår endnu et fane-system i filen. */
 .tltabpage,.tpltabpage{display:none}
 .tltabpage.active,.tpltabpage.active{display:block}
+/* RUNDE CU — samme vis/skjul-mekanik, til Mails-sidens to faner (den delte
+   liste-visning Modtaget/Sendt/Ulæste/Planlagt, og Signaturer). */
+.mailtabpage{display:none}
+.mailtabpage.active{display:block}
+/* Én linje pr. mail i #mail-list (dash-panel). Ulæst = fed overskrift + en
+   lille blå prik, samme visuelle "ulæst"-sprog som fx #requests-badge. */
+.mail-row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-bottom:1px solid var(--bly-border-soft,#EEF1F5);cursor:pointer}
+.mail-row:hover{background:#F8FAFC}
+.mail-row:last-child{border-bottom:none}
+.mail-row.unread .mail-row-subject{font-weight:700}
+.mail-row-dot{width:8px;height:8px;border-radius:50%;background:#2563EB;flex-shrink:0;margin-top:6px}
+.mail-row-dot.hidden{visibility:hidden}
+.mail-row-main{flex:1;min-width:0}
+.mail-row-top{display:flex;justify-content:space-between;gap:10px}
+.mail-row-from{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.mail-row-date{font-size:11.5px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.mail-row-subject{font-size:13.5px;margin-top:2px}
+.mail-row-snippet{font-size:12.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mail-row-tags{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+.mail-row-tag{font-size:10.5px;background:#EEF2FF;color:#4338CA;border-radius:5px;padding:2px 7px;white-space:nowrap}
+.mail-row-tag.status-failed{background:#FEF2F2;color:#B91C1C}
+.mail-row-tag.status-scheduled{background:#FFFBEB;color:#92400E}
+.mail-attach-chip{display:flex;align-items:center;gap:6px;background:#F1F5F9;border-radius:7px;padding:5px 10px;font-size:12px}
+.mail-attach-chip button{border:none;background:none;cursor:pointer;color:var(--muted);font-size:13px}
+/* Kompose-værktøjslinjen (makeMailComposeField) — samme .rte-wrap/.rte-
+   toolbar/.rte-btn-mønster som makeRichField/makeRichNoteField ovenfor
+   (se CSS-definitionen for .rte-*), bare med flere knapper. */
+.rte-toolbar .rte-btn.active{background:var(--bly-blue-050,#EFF6FF);color:#2563EB}
 /* Mail-skabelonernes egen (indre) fanestribe ligger nu inde i en ydre fane på
    Skabeloner-siden. Samme .bly-segtabs-mekanik, men en anelse mindre og med
    luft over, så de to fane-niveauer kan skelnes fra hinanden. */
@@ -3808,6 +3836,31 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
 
+    <!-- MAILS (RUNDE CU, Martin: "lav en ny Overskrift i headeren både på
+         mobil og computer der hedder Mails ... Lav dropdown med gør så jeg
+         kan få mapper ... Sendt / Modtaget / Ulæste") — samme ▾-dropdown-
+         mønster som CRM/Tilbud & Faktura/Økonomi/Videnscenter ovenfor. Denne
+         ENE markup dækker BÅDE mobil og computer (se researchnoten: sidebaren
+         er allerede fælles for begge). Underpunkterne er dybe genveje til
+         faner INDE på #page-mail (data-mailtab-jump, samme mønster som
+         data-fintab-jump/data-tltab-jump) — selve mappe-oprettelsen/-listen
+         ligger som en dropdown INDE på siden, ikke her i hovedmenuen, da
+         mapper er brugerdefinerede og kan blive mange. Badge'n viser antal
+         ulæste, samme mønster som #requests-badge. -->
+    <div class="navdrop tab-navdrop hidden" id="mail-subdrop">
+      <div class="stab-row">
+        <a class="tab" href="#mail" data-page="mail" id="mail-main-tab-btn"><span class="stab-icon">✉️</span><span class="stab-label">Mails</span><span class="tab-badge hidden" id="mail-unread-badge">0</span></a>
+        <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
+      </div>
+      <div class="navdrop-menu">
+        <a class="navdrop-item" href="#mail" data-page="mail" data-mailtab-jump="modtaget">📥 Modtaget</a>
+        <a class="navdrop-item" href="#mail/sendt" data-page="mail" data-mailtab-jump="sendt">📤 Sendt</a>
+        <a class="navdrop-item" href="#mail/ulaest" data-page="mail" data-mailtab-jump="ulaest">🔵 Ulæste</a>
+        <a class="navdrop-item" href="#mail/planlagt" data-page="mail" data-mailtab-jump="planlagt">🕒 Planlagt</a>
+        <a class="navdrop-item" href="#mail/signaturer" data-page="mail" data-mailtab-jump="signaturer">✍️ Signaturer</a>
+      </div>
+    </div>
+
     <!-- VIDENSCENTER (RUNDE AU, Martin: "kan du bygge en ny side/overskrift i
          menuen... et modul for træning og dokumenter — samarbejdspartner
          liste, leverandør liste, trænings dokumenter, osv." + "Fil upload MEN
@@ -4158,6 +4211,158 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        Indstillinger → #settab-automation. -->
 </div><!-- /#tpltab-mail -->
 </section><!-- /#page-templates -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     MAILS — RUNDE CU (Martin: "Kan man bygge et fucking godt email program
+     i ens program så man kan sende almindelig mails under handlen leads og
+     sales og under kunden direkte? ... Lav også et sted jeg kan se alle
+     mails send ... Sendt / Modtaget / Ulæste ... Lav En Send ny email,
+     schudale email Smily funktion, cc funktion, subject på email").
+     Fem faner: Modtaget/Sendt/Ulæste/Planlagt deler ÉN liste-visning
+     (#mailtab-list, filtreret via mailState.box — se mailInit/switchMailTab),
+     Signaturer er sin egen underside. Selve komponering sker i en separat
+     overlejrings-modal (#mail-compose-modal nedenfor), åbnet herfra, fra
+     Leads/Sales-detaljen, fra kundekortet, og fra bulk-vælg-barerne på CRM-
+     boardet og Kundeliste-siden (se mailOpenCompose()). -->
+<section class="page" id="page-mail">
+  <div class="bly-pagehead">
+    <div><h2>✉️ Mails</h2><div class="sub">Skriv, send og se alle mails til leads, handler og kunder — ét sted. Modtaget/Ulæste hentes direkte fra jeres forbundne Gmail-postkasse.</div></div>
+    <button class="nb blue" id="mail-compose-btn" type="button">✍️ Skriv ny mail</button>
+  </div>
+
+  <div class="bly-segtabs" id="mail-tabs">
+    <button class="bly-segtab active" data-mailtab="modtaget" type="button">📥 Modtaget</button>
+    <button class="bly-segtab" data-mailtab="sendt" type="button">📤 Sendt</button>
+    <button class="bly-segtab" data-mailtab="ulaest" type="button">🔵 Ulæste</button>
+    <button class="bly-segtab" data-mailtab="planlagt" type="button">🕒 Planlagt</button>
+    <button class="bly-segtab" data-mailtab="signaturer" type="button">✍️ Signaturer</button>
+  </div>
+
+  <div class="mailtabpage active" id="mailtab-list">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left">
+        <select class="input" id="mail-folder-filter" style="width:auto;max-width:200px">
+          <option value="">📂 Alle mapper</option>
+        </select>
+        <button class="nb" id="mail-new-folder-btn" type="button">+ Ny mappe</button>
+      </div>
+      <div class="bly-toolbar-right">
+        <input class="input" id="mail-search" placeholder="🔎 Søg i mails..." style="width:220px">
+      </div>
+    </div>
+    <div id="mail-list" class="dash-panel"></div>
+    <div id="mail-list-more-wrap" style="text-align:center;margin-top:12px;display:none">
+      <button class="nb" id="mail-list-more-btn" type="button">Vis flere</button>
+    </div>
+  </div>
+
+  <div class="mailtabpage" id="mailtab-signaturer" style="display:none">
+    <div class="bly-toolbar">
+      <div class="bly-toolbar-left"><span class="bly-toolbar-title">✍️ Dine mail-signaturer</span></div>
+      <div class="bly-toolbar-right"><button class="bly-btn" id="mail-sig-new-btn" type="button">+ Ny signatur</button></div>
+    </div>
+    <div class="hint" style="margin-bottom:14px">Indsættes i en ny mail med ét klik på signatur-knappen i værktøjslinjen. Sæt én som standard, og den sættes automatisk ind når du åbner "Skriv ny mail".</div>
+    <div id="mail-sig-list" class="dash-panel"></div>
+    <div class="hint" style="margin-top:16px">Leder du efter de genbrugelige <b>mail-skabeloner</b> (emne + indhold, fx tilbuds-opfølgning)? De bor under <a href="#templates" data-page="templates" data-tpltab-jump="mail">📐 Skabeloner → ✉️ Mail-skabeloner → Andre skabeloner</a> — kompose-vinduet henter dem automatisk derfra.</div>
+  </div>
+</section><!-- /#page-mail -->
+
+<!-- MAIL-DETALJE — fuldskærms-overlejring der viser ÉN mail (hele HTML-
+     indholdet, evt. vedhæftninger), åbnet fra #mail-list ovenfor. Samme
+     overlejrings-mønster som qz-detail-view/qz-invoice-view (se HEADER_
+     COMMENT ved #page-quotes): skjult som standard, lagt oven på resten af
+     appen med fast position, og lukket eksplicit af switchPage() (se der). -->
+<div class="page" id="mail-detail-view" style="display:none;position:fixed;inset:0;z-index:500;background:var(--bg,#F8FAFC);overflow:auto">
+  <div style="max-width:860px;margin:0 auto;padding:24px 20px 60px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+      <button class="btn" id="mail-detail-back-btn" type="button">← Tilbage</button>
+      <button class="btn primary" id="mail-detail-reply-btn" type="button">↩️ Svar</button>
+      <button class="btn" id="mail-detail-folders-btn" type="button">📂 Mapper</button>
+      <button class="btn danger" id="mail-detail-delete-btn" type="button" style="margin-left:auto">🗑️ Fjern fra listen</button>
+    </div>
+    <div id="mail-detail-body"></div>
+  </div>
+</div>
+
+<!-- SKRIV NY MAIL — kompose-modal. Samme generiske .mo/.modal-mønster som
+     appens øvrige modaler (fx "Ny kunde"/#crm-modal: .mo skjult som standard,
+     vist via classList.add('open'), lukket via closeModal('mail-compose-
+     modal')). mailOpenCompose() (se JS) fylder felterne afhængigt af HVOR
+     den åbnes fra: tomt felt fra Mails-siden selv, forudfyldt modtager+
+     kobling fra et lead/en handel/en kunde, eller FLERE modtagere ved bulk-
+     afsendelse (se mailState.bulk). -->
+<div class="mo" id="mail-compose-modal">
+  <div class="modal" style="max-width:720px;width:94vw;max-height:88vh;overflow:auto">
+    <h3 id="mail-compose-title">✍️ Skriv ny mail</h3>
+    <div id="mail-compose-bulk-hint" class="hint" style="display:none;margin-bottom:10px"></div>
+    <div class="form-group">
+      <label class="form-label">Til</label>
+      <input class="input" id="mail-compose-to" placeholder="navn@eksempel.dk, flere adskilt med komma">
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:2px">
+      <button class="bly-btn outline small" id="mail-compose-cc-toggle-btn" type="button">+ Cc</button>
+    </div>
+    <div class="form-group" id="mail-compose-cc-wrap" style="display:none">
+      <label class="form-label">Cc</label>
+      <input class="input" id="mail-compose-cc" placeholder="navn@eksempel.dk, flere adskilt med komma">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Emne</label>
+      <div style="display:flex;gap:8px">
+        <input class="input" id="mail-compose-subject" placeholder="Emne" style="flex:1">
+        <select class="select" id="mail-compose-template-select" style="width:auto;max-width:170px"><option value="">📐 Indsæt skabelon…</option></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Besked</label>
+      <textarea class="input" id="mail-compose-body" rows="10" placeholder="Skriv din mail her..."></textarea>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 12px">
+      <select class="select" id="mail-compose-signature-select" style="width:auto;max-width:170px"><option value="">✍️ Indsæt signatur…</option></select>
+      <input type="file" id="mail-compose-attach-input" multiple style="display:none">
+      <button class="bly-btn outline small" id="mail-compose-attach-btn" type="button">📎 Vedhæft fil</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-left:auto">
+        <input type="checkbox" id="mail-compose-schedule-chk"> 🕒 Planlæg afsendelse
+      </label>
+      <input class="input" type="datetime-local" id="mail-compose-schedule-at" style="display:none;width:auto">
+    </div>
+    <div id="mail-compose-attachments-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+    <div class="modal-actions">
+      <div id="mail-compose-status" class="hint" style="margin-right:auto"></div>
+      <button class="btn" id="mail-compose-cancel-btn" type="button">Annullér</button>
+      <button class="btn primary" id="mail-compose-send-btn" type="button">📤 Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lille modal til mappevalg pr. mail (åbnet fra #mail-detail-folders-btn
+     og fra "📂"-knappen direkte på en listerække). -->
+<div class="mo" id="mail-folders-modal">
+  <div class="modal" style="max-width:360px">
+    <h3>📂 Mapper</h3>
+    <div id="mail-folders-checklist" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px">
+      <input class="input" id="mail-folders-new-name" placeholder="Ny mappe...">
+      <button class="bly-btn outline small" id="mail-folders-new-btn" type="button">+ Opret</button>
+    </div>
+    <div class="modal-actions"><button class="btn" id="mail-folders-cancel-btn" type="button">Luk</button><button class="btn primary" id="mail-folders-save-btn" type="button">Gem</button></div>
+  </div>
+</div>
+
+<!-- Signatur-redigering (navn + rig-tekst-krop + standard-checkbox). -->
+<div class="mo" id="mail-sig-modal">
+  <div class="modal" style="max-width:600px">
+    <h3 id="mail-sig-modal-title">✍️ Ny signatur</h3>
+    <div class="form-group"><label class="form-label">Navn</label><input class="input" id="mail-sig-name" placeholder="Fx 'Standard' eller dit navn"></div>
+    <div class="form-group"><label class="form-label">Indhold</label><textarea class="input" id="mail-sig-body" rows="6"></textarea></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mail-sig-default-chk"> Brug som standard-signatur</label>
+    <div class="modal-actions">
+      <button class="btn danger hidden" id="mail-sig-delete-btn" type="button">Slet</button>
+      <button class="btn" id="mail-sig-cancel-btn" type="button">Annullér</button>
+      <button class="btn primary" id="mail-sig-save-btn" type="button">Gem</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════════════════════════
      INDSTILLINGER — ÉN samlet side (sep. 2026).
@@ -5859,12 +6064,25 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   </div>
   <div class="bly-toolbar">
     <div class="bly-toolbar-left"><span class="bly-toolbar-title" id="crm-count">Kunder</span><input type="text" id="crm-search" class="bly-search" placeholder="Søg — navn, pris, email eller telefon..." style="width:280px"></div>
-    <div class="bly-toolbar-right"><button class="bly-btn" id="crm-new-btn" type="button">+ Ny kunde</button></div>
+    <!-- RUNDE CU (Martin: "... samt Kundeliste siden kan mærkere og sende en
+         email til alle dem man vælger") — Kundelisten havde INTET massevalg
+         før. Samme ☑️-togglemønster som CRM-boardets "☑️ Vælg" (crmp-select-
+         toggle), men bygget til en almindelig <table> i stedet for kort. -->
+    <div class="bly-toolbar-right"><button class="bly-btn outline" id="crm-select-toggle" type="button">☑️ Vælg</button><button class="bly-btn" id="crm-new-btn" type="button">+ Ny kunde</button></div>
   </div>
   <table class="bly-table">
-    <thead><tr><th>Navn</th><th>Telefon</th><th>E-mail</th><th>Adresse</th><th class="num">Skyldigt</th><th style="width:90px"></th></tr></thead>
+    <thead><tr><th style="width:30px" id="crm-th-check"></th><th>Navn</th><th>Telefon</th><th>E-mail</th><th>Adresse</th><th class="num">Skyldigt</th><th style="width:90px"></th></tr></thead>
     <tbody id="crm-body"></tbody>
   </table>
+  <!-- Massevalgs-bjælke — samme klasser/udseende som crmp-bulk-bar (CRM-
+       boardet), så det ikke opstår endnu et visuelt sprog i appen. -->
+  <div class="crmp-bulk-bar" id="crm-bulk-bar">
+    <span class="crmp-bulk-count" id="crm-bulk-count"></span>
+    <span class="crmp-bulk-sep"></span>
+    <button class="crmp-bulk-btn" id="crm-bulk-email" type="button">✉️ Email</button>
+    <span class="crmp-bulk-sep"></span>
+    <button class="crmp-bulk-btn ghost" id="crm-bulk-clear" type="button">Fravælg alle</button>
+  </div>
 </section>
 
 <!-- KUNDEDETALJE — klik på en kunde i Kunder-listen. Viser al data samlet:
@@ -6172,6 +6390,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <select id="crmp-bulk-field-value" style="display:none"></select>
     <input type="text" id="crmp-bulk-field-text" style="display:none" placeholder="Værdi (tom = ryd)">
     <button class="crmp-bulk-btn" id="crmp-bulk-field-apply" type="button">Opdater</button>
+    <span class="crmp-bulk-sep"></span>
+    <!-- RUNDE CU (Martin: "under handler, sales og leads ... kan mærkere og
+         sende en email til alle dem man vælger") — samme massevalgs-bjælke,
+         ny knap der åbner kompose-modulet med alle valgte som modtagere
+         (se mailOpenComposeBulk, bundet i crmpBindBulkBar nedenfor). -->
+    <button class="crmp-bulk-btn" id="crmp-bulk-email" type="button">✉️ Email</button>
     <span class="crmp-bulk-sep"></span>
     <button class="crmp-bulk-btn danger" id="crmp-bulk-delete" type="button">🗑 Slet</button>
     <button class="crmp-bulk-btn ghost" id="crmp-bulk-clear" type="button">Fravælg alle</button>
@@ -9705,7 +9929,7 @@ if(!meCachedShowsNoAccess){document.getElementById('app').style.display='block';
 // er en selvstændig SIDE: nøglen findes uændret i server.js' PANEL_PAGES og er
 // dét, panelAccess('gmail-settings') håndhæver på alle /api/gmail/*-ruter. Den
 // styrer nu Gmail-FANEN inde på Indstillinger (se applySetTabsVisibility).
-var PANEL_PAGE_KEYS_CLIENT=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','templates','email-templates','people','library','logs','notif-settings','gmail-settings','tasklist','requests','completed','knowledge'];
+var PANEL_PAGE_KEYS_CLIENT=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','templates','email-templates','people','library','logs','notif-settings','gmail-settings','tasklist','requests','completed','knowledge','mail'];
 function meHasPanelPage(key){return me.role==='admin'||(me.panel_pages||[]).indexOf(key)>-1;}
 // Indstillinger-siden rummer nu BÅDE notifikations-/synk-/profil-afsnittene og
 // Gmail-integrationen, som før havde sin egen side. En bruger der KUN havde
@@ -10041,6 +10265,584 @@ function makeRichNoteField(id){
     ta.dispatchEvent(new Event('input'));
   });
 }
+// RUNDE CU — kompose-værktøjslinjen i det nye Mails-modul. Samme .value-
+// transparens-trick som makeRichField/makeRichNoteField ovenfor (egen
+// funktion, ikke en udvidelse — kompose-boksen skal kunne RIGTIG meget mere:
+// Fed, Link, Punkt-/Talopstilling MED indryk (Martins "Indhak med breakdown
+// af lister som går ind"), billedupload og smiley). Saniteres server-side af
+// sanitizeMailBody() ved afsendelse — se RUNDE CU-kommentaren der.
+function makeMailComposeField(id){
+  var ta=document.getElementById(id);
+  if(!ta||ta.dataset.rteInit)return;
+  ta.dataset.rteInit='1';
+  var seed=ta.value||'';
+  ta.style.display='none';
+  var wrap=document.createElement('div');
+  wrap.className='rte-wrap';
+  wrap.innerHTML='<div class="rte-toolbar">'+
+    '<button type="button" class="rte-btn" data-cmd="bold" title="Fed skrift"><b>F</b></button>'+
+    '<button type="button" class="rte-btn" data-cmd="link" title="Indsæt link">🔗</button>'+
+    '<button type="button" class="rte-btn" data-cmd="ul" title="Punktopstilling">•</button>'+
+    '<button type="button" class="rte-btn" data-cmd="ol" title="Talopstilling">1.</button>'+
+    '<button type="button" class="rte-btn" data-cmd="indent" title="Ryk ind (indhak nøstet liste)">→</button>'+
+    '<button type="button" class="rte-btn" data-cmd="outdent" title="Ryk ud">←</button>'+
+    '<button type="button" class="rte-btn" data-cmd="image" title="Indsæt billede">🖼️</button>'+
+    '<button type="button" class="rte-btn" data-cmd="emoji" title="Indsæt smiley">😀</button>'+
+    '</div>';
+  var editable=document.createElement('div');
+  editable.className='rte-editable input';
+  editable.style.minHeight='200px';
+  editable.contentEditable='true';
+  if(ta.placeholder)editable.setAttribute('data-placeholder',ta.placeholder);
+  wrap.appendChild(editable);
+  ta.parentNode.insertBefore(wrap,ta.nextSibling);
+  var internal=seed;
+  var syncingFromValue=false;
+  Object.defineProperty(ta,'value',{
+    get:function(){return internal;},
+    set:function(v){internal=v||'';syncingFromValue=true;editable.innerHTML=internal;syncingFromValue=false;},
+    configurable:true
+  });
+  if(seed)editable.innerHTML=seed;
+  editable.addEventListener('input',function(){
+    if(syncingFromValue)return;
+    internal=editable.innerHTML;
+    ta.dispatchEvent(new Event('input'));
+  });
+  editable.addEventListener('blur',function(){ta.dispatchEvent(new Event('change'));});
+  editable.addEventListener('keydown',function(){
+    document.execCommand('defaultParagraphSeparator',false,'div');
+  });
+  // Indsætter rå HTML ved cursoren — bruges af signatur-/skabelon-indsæt-
+  // dropdownene og af emoji-/billed-knapperne herunder, ikke kun af selve
+  // værktøjslinjen.
+  editable.mailInsertHtml=function(html){
+    editable.focus();
+    document.execCommand('insertHTML',false,html);
+    internal=editable.innerHTML;
+    ta.dispatchEvent(new Event('input'));
+  };
+  // Giver kompose-modalens signatur-/skabelon-vælgere adgang til "indsæt ved
+  // markøren" uden at skulle genimplementere wrap/.rte-editable-opslaget selv.
+  ta.mailEditable=editable;
+  var toolbar=wrap.querySelector('.rte-toolbar');
+  toolbar.addEventListener('mousedown',function(e){e.preventDefault();});
+  toolbar.addEventListener('click',function(e){
+    var btn=e.target.closest('.rte-btn');if(!btn)return;
+    editable.focus();
+    var cmd=btn.getAttribute('data-cmd');
+    if(cmd==='bold'){document.execCommand('bold');}
+    else if(cmd==='link'){
+      var url=window.prompt('Link-adresse (https://...)','https://');
+      if(url&&url.trim())document.execCommand('createLink',false,url.trim());
+    }
+    else if(cmd==='ul'){document.execCommand('insertUnorderedList');}
+    else if(cmd==='ol'){document.execCommand('insertOrderedList');}
+    // "indent"/"outdent" på en MARKERET linje inde i en ul/ol nøster listen ét
+    // niveau ind/ud (browserens indbyggede opførsel for execCommand('indent')
+    // når markøren allerede står i en liste) — uden for en liste bruges det
+    // ikke, der er ingen "indryk uden liste"-knap, jf. Martins ønske handlede
+    // specifikt om LISTE-indhak.
+    else if(cmd==='indent'){document.execCommand('indent');}
+    else if(cmd==='outdent'){document.execCommand('outdent');}
+    else if(cmd==='image'){
+      var fi=document.createElement('input');
+      fi.type='file';fi.accept='image/*';
+      fi.onchange=function(){
+        var f=fi.files&&fi.files[0];if(!f)return;
+        if(f.size>4*1024*1024){toast('Billedet er for stort (maks 4 MB) — brug evt. "📎 Vedhæft fil" i stedet','⚠');return;}
+        var reader=new FileReader();
+        reader.onload=function(){editable.mailInsertHtml('<img src="'+reader.result+'" style="max-width:100%">');};
+        reader.readAsDataURL(f);
+      };
+      fi.click();
+      return; // undgår at trigge internal/dispatch nedenfor før filen er valgt
+    }
+    else if(cmd==='emoji'){mailOpenEmojiPicker(btn,editable);return;}
+    internal=editable.innerHTML;
+    ta.dispatchEvent(new Event('input'));
+  });
+}
+// RUNDE CU — lille smiley-vælger (ingen ekstern afhængighed/CDN nødvendig —
+// et fast sæt af de mest brugte, samme princip som appens øvrige emoji-brug,
+// fx toast-ikonerne). Åbnes som en lille svævende boks under knappen; lukkes
+// ved klik udenfor eller ved valg af en smiley.
+var MAIL_EMOJI_SET=['😀','😄','😊','🙂','😉','😍','👍','🙏','🎉','✅','❌','⚠️','📌','📎','🏠','🛠️','📅','💬','❤️','🔥'];
+function mailOpenEmojiPicker(anchorBtn,editable){
+  var old=document.getElementById('mail-emoji-pop');if(old)old.remove();
+  var pop=document.createElement('div');
+  pop.id='mail-emoji-pop';
+  pop.style.cssText='position:absolute;z-index:400;background:#fff;border:1px solid var(--bly-border,#E5E7EB);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:8px;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;width:180px';
+  pop.innerHTML=MAIL_EMOJI_SET.map(function(em){return '<button type="button" style="border:none;background:none;font-size:18px;cursor:pointer;padding:4px;border-radius:6px" data-emoji="'+em+'">'+em+'</button>';}).join('');
+  document.body.appendChild(pop);
+  var r=anchorBtn.getBoundingClientRect();
+  pop.style.top=(r.bottom+window.scrollY+4)+'px';
+  pop.style.left=(r.left+window.scrollX)+'px';
+  pop.addEventListener('mousedown',function(e){e.preventDefault();});
+  pop.addEventListener('click',function(e){
+    var b=e.target.closest('[data-emoji]');if(!b)return;
+    editable.mailInsertHtml(b.dataset.emoji);
+    pop.remove();
+  });
+  setTimeout(function(){
+    document.addEventListener('click',function closeOnce(e){
+      if(pop.contains(e.target)||e.target===anchorBtn)return;
+      pop.remove();document.removeEventListener('click',closeOnce);
+    });
+  },0);
+}
+
+// ══════════════════════════════════════════════════════════════
+// RUNDE CU — "Mails"-modulet (frontend). Fem faner deler ÉN liste-visning
+// (Modtaget/Sendt/Ulæste/Planlagt — mailState.tab → MAIL_TAB_BOX → ?box=
+// på GET /api/mail/messages) plus en separat Signaturer-underside.
+// Kompose-modalen (#mail-compose-modal) åbnes herfra OG fra Leads/Sales-
+// detaljen, kundekortet og bulk-vælg-barerne på CRM-boardet/Kundeliste (se
+// mailOpenCompose/mailOpenComposeBulk — bundet dér, ikke her, da de moduler
+// indlæses før/efter dette afsnit forskelligt afhængigt af hvilken side man
+// åbner appen på).
+// ══════════════════════════════════════════════════════════════
+var mailState={tab:'modtaget',folderFilter:'',search:'',messages:[],offset:0,limit:60,folders:[],signatures:[],templates:[],compose:{attachments:[],customerId:null,leadId:null,opportunityId:null,bulk:null}};
+var mailDetailCurrent=null,mailBound=false,mailComposeBound=false,mailSearchDebounce=null,mailEditingSigId=null;
+var MAIL_TAB_BOX={modtaget:'received',sendt:'sent',ulaest:'unread',planlagt:'scheduled'};
+// RUNDE CU — kompose-modulets ÉN-GANGS-opsætning (værktøjslinje, modal-
+// knapper, signaturer/skabeloner/mapper indlæst). Udtrukket fra mailInit()
+// til sin egen funktion, FORDI kompose-modalen skal kunne åbnes direkte fra
+// kundekortet/Lead-Sale-detaljen/bulk-vælg-barerne, UDEN at man først har
+// besøgt selve Mails-siden (som ellers er det eneste sted mailInit() kaldes
+// fra) — ellers ville "Send"-knappen i modalen simpelthen ikke have nogen
+// klik-lytter endnu. Kaldes derfor både fra mailInit() OG fra toppen af
+// mailOpenCompose()/mailOpenComposeBulk() nedenfor.
+async function mailEnsureComposeReady(){
+  if(mailComposeBound)return;
+  mailComposeBound=true;
+  makeMailComposeField('mail-compose-body');
+  mailBindComposeModal();
+  mailBindFoldersModal();
+  mailBindSigModal();
+  await mailLoadFolders();
+  await mailLoadSignatures();
+  await mailLoadTemplates();
+}
+async function mailInit(){
+  await mailEnsureComposeReady();
+  if(!mailBound){
+    mailBound=true;
+    document.querySelectorAll('#mail-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){switchMailTab(b.dataset.mailtab);});});
+    document.getElementById('mail-compose-btn').addEventListener('click',function(){mailOpenCompose({});});
+    document.getElementById('mail-folder-filter').addEventListener('change',function(){mailState.folderFilter=this.value;mailLoadList(true);});
+    document.getElementById('mail-new-folder-btn').addEventListener('click',async function(){
+      var name=window.prompt('Navn på ny mappe:');
+      if(!name||!name.trim())return;
+      var r=await api('/api/mail/folders',{method:'POST',body:JSON.stringify({name:name.trim()})});
+      if(r&&r.ok){toast('Mappe oprettet ✓','✓');await mailLoadFolders();}
+      else toast(r&&r.error||'Fejl','❌');
+    });
+    document.getElementById('mail-search').addEventListener('input',function(){
+      clearTimeout(mailSearchDebounce);
+      var v=this.value;
+      mailSearchDebounce=setTimeout(function(){mailState.search=v;mailLoadList(true);},350);
+    });
+    document.getElementById('mail-list-more-btn').addEventListener('click',function(){mailLoadList(false);});
+    document.addEventListener('click',function(e){
+      var row=e.target.closest('#mail-list .mail-row');
+      if(row)mailOpenDetail(+row.dataset.id);
+    });
+    mailBindDetailView();
+  }
+  await mailLoadFolders();
+  await mailLoadSignatures();
+  await mailLoadTemplates();
+  switchMailTab(mailState.tab||'modtaget',true);
+  mailRefreshUnreadBadge();
+}
+function switchMailTab(name,skipHash){
+  if(!MAIL_TAB_BOX.hasOwnProperty(name)&&name!=='signaturer')name='modtaget';
+  mailState.tab=name;
+  document.querySelectorAll('#mail-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.mailtab===name);});
+  document.getElementById('mailtab-list').classList.toggle('active',name!=='signaturer');
+  document.getElementById('mailtab-signaturer').classList.toggle('active',name==='signaturer');
+  if(!skipHash)navPushHash('mail'+(name==='modtaget'?'':'/'+name));
+  if(name==='signaturer'){mailRenderSignatures();return;}
+  mailLoadList(true);
+}
+async function mailLoadFolders(){
+  mailState.folders=await api('/api/mail/folders')||[];
+  var sel=document.getElementById('mail-folder-filter');
+  var cur=sel.value;
+  sel.innerHTML='<option value="">📂 Alle mapper</option>'+mailState.folders.map(function(f){
+    return '<option value="'+f.id+'">'+esc(f.name)+' ('+f.mail_count+')</option>';
+  }).join('');
+  sel.value=cur;
+}
+async function mailLoadSignatures(){
+  mailState.signatures=await api('/api/mail/signatures')||[];
+  var sel=document.getElementById('mail-compose-signature-select');
+  sel.innerHTML='<option value="">✍️ Indsæt signatur…</option>'+mailState.signatures.map(function(s){
+    return '<option value="'+s.id+'">'+esc(s.name)+(s.is_default?' (standard)':'')+'</option>';
+  }).join('');
+}
+async function mailLoadTemplates(){
+  mailState.templates=await api('/api/mail/templates')||[];
+  var sel=document.getElementById('mail-compose-template-select');
+  sel.innerHTML='<option value="">📐 Indsæt skabelon…</option>'+mailState.templates.map(function(t){
+    return '<option value="'+t.id+'">'+esc(t.name)+'</option>';
+  }).join('');
+}
+async function mailRefreshUnreadBadge(){
+  var r=await api('/api/mail/unread-count');
+  var n=r&&r.unread||0;
+  var badge=document.getElementById('mail-unread-badge');
+  badge.textContent=n;
+  badge.classList.toggle('hidden',!n);
+}
+async function mailLoadList(reset){
+  if(reset){mailState.offset=0;mailState.messages=[];}
+  var box=MAIL_TAB_BOX[mailState.tab];
+  var qs=['limit='+mailState.limit,'offset='+mailState.offset];
+  if(box)qs.push('box='+box);
+  if(mailState.folderFilter)qs.push('folder_id='+mailState.folderFilter);
+  if(mailState.search)qs.push('q='+encodeURIComponent(mailState.search));
+  var list=document.getElementById('mail-list');
+  if(reset)list.innerHTML='<div class="crmpx-empty">Henter mails...</div>';
+  var rows=await api('/api/mail/messages?'+qs.join('&'));
+  if(!rows){if(reset)list.innerHTML='<div class="crmpx-empty">Kunne ikke hente mails</div>';return;}
+  mailState.messages=reset?rows:mailState.messages.concat(rows);
+  mailState.offset=mailState.messages.length;
+  document.getElementById('mail-list-more-wrap').style.display=rows.length>=mailState.limit?'':'none';
+  mailRenderList();
+}
+function mailRenderList(){
+  var list=document.getElementById('mail-list');
+  if(!mailState.messages.length){list.innerHTML='<div class="crmpx-empty">Ingen mails fundet</div>';return;}
+  list.innerHTML=mailState.messages.map(function(m){
+    var who=m.direction==='out'?('Til: '+(m.to_emails||'')):(m.from_name||m.from_email||'(ukendt)');
+    var unread=m.direction==='in'&&!m.is_read;
+    var tags=[];
+    if(m.customer_name)tags.push('<span class="mail-row-tag">👤 '+esc(m.customer_name)+'</span>');
+    if(m.lead_name)tags.push('<span class="mail-row-tag">🎯 '+esc(m.lead_name)+'</span>');
+    if(m.opportunity_name)tags.push('<span class="mail-row-tag">🤝 '+esc(m.opportunity_name)+'</span>');
+    if(m.status==='scheduled')tags.push('<span class="mail-row-tag status-scheduled">🕒 Planlagt '+esc(fmtDaDate(new Date(m.scheduled_at).toISOString()))+'</span>');
+    if(m.status==='failed')tags.push('<span class="mail-row-tag status-failed">❌ Kunne ikke sendes</span>');
+    return '<div class="mail-row'+(unread?' unread':'')+'" data-id="'+m.id+'">'
+      +'<span class="mail-row-dot'+(unread?'':' hidden')+'"></span>'
+      +'<div class="mail-row-main">'
+        +'<div class="mail-row-top"><span class="mail-row-from">'+esc(who)+'</span><span class="mail-row-date">'+esc(fmtDaDate(new Date(Number(m.internal_date)).toISOString()))+'</span></div>'
+        +'<div class="mail-row-subject">'+esc(m.subject||'(uden emne)')+'</div>'
+        +'<div class="mail-row-snippet">'+esc(m.snippet||'')+'</div>'
+        +(tags.length?'<div class="mail-row-tags">'+tags.join('')+'</div>':'')
+      +'</div>'
+    +'</div>';
+  }).join('');
+}
+async function mailOpenDetail(id){
+  var d=await api('/api/mail/messages/'+id);
+  if(!d||d.error){toast(d&&d.error||'Kunne ikke hente mailen','❌');return;}
+  mailDetailCurrent=d;
+  var who=d.direction==='out'?('Til: '+esc(d.to_emails||'')):('Fra: '+esc((d.from_name?d.from_name+' ':'')+'<'+(d.from_email||'')+'>'));
+  document.getElementById('mail-detail-body').innerHTML=
+    '<h2 style="margin:0 0 4px">'+esc(d.subject||'(uden emne)')+'</h2>'
+    +'<div class="hint" style="margin-bottom:16px">'+who+(d.cc_emails?'<br>Cc: '+esc(d.cc_emails):'')+'<br>'+esc(fmtDaDate(new Date(Number(d.internal_date)).toISOString()))+'</div>'
+    +(d.status==='failed'&&d.send_error?'<div class="hint" style="color:#B91C1C;margin-bottom:10px">❌ Kunne ikke sendes: '+esc(d.send_error)+'</div>':'')
+    +'<div style="background:#fff;border:1px solid var(--bly-border-soft,#EEF1F5);border-radius:10px;padding:18px">'+(d.html||'<span class="hint">Intet indhold</span>')+'</div>'
+    +((d.attachments||[]).length?'<div style="margin-top:14px"><div class="bly-toolbar-title" style="margin-bottom:8px">📎 Vedhæftninger</div>'+d.attachments.map(function(a,i){
+        return a.url
+          ?'<a class="mail-attach-chip" style="margin-bottom:6px;display:inline-flex;margin-right:8px;text-decoration:none" href="'+esc(a.url)+'" target="_blank">📄 '+esc(a.filename||'fil')+' ↓</a>'
+          // Synkede Gmail-vedhæftninger har ingen offentlig URL — samme
+          // mønster som cdDownloadAttachment() på kundekortet: hent via
+          // fetch() med Authorization-header (almindelig auth() på
+          // /api/gmail/messages/.../attachments/... kræver headeren og
+          // forstår IKKE en ?token=-query-parameter, i modsætning til
+          // PDF-visningens egen authOrQueryToken).
+          :'<button type="button" class="mail-attach-chip" style="margin-bottom:6px;display:inline-flex;margin-right:8px;border:1px solid var(--bly-border,#E5E7EB);cursor:pointer" data-mail-dl-idx="'+i+'">📄 '+esc(a.filename||'fil')+' ↓</button>';
+      }).join('')+'</div>':'')
+  ;
+  document.getElementById('mail-detail-view').querySelectorAll('[data-mail-dl-idx]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var a=d.attachments[+btn.dataset.mailDlIdx];
+      if(a)cdDownloadAttachment(a.gmail_message_id,a.attachmentId,a.filename||'vedhaeftning',a.content_type||'');
+    });
+  });
+  document.getElementById('mail-detail-view').style.display='block';
+  if(d.direction==='in'&&!d.is_read)mailRefreshUnreadBadge();
+}
+function mailBindDetailView(){
+  document.getElementById('mail-detail-back-btn').addEventListener('click',function(){
+    document.getElementById('mail-detail-view').style.display='none';
+    mailLoadList(true);
+  });
+  document.getElementById('mail-detail-reply-btn').addEventListener('click',function(){
+    if(!mailDetailCurrent)return;
+    var d=mailDetailCurrent;
+    var replyTo=d.direction==='out'?d.to_emails:d.from_email;
+    mailOpenCompose({to:replyTo,subject:(/^re:/i.test(d.subject||'')?d.subject:'Re: '+(d.subject||'')),customerId:d.customer_id,leadId:d.lead_id,opportunityId:d.opportunity_id});
+  });
+  document.getElementById('mail-detail-delete-btn').addEventListener('click',async function(){
+    if(!mailDetailCurrent)return;
+    if(!await gmConfirm('Fjern denne mail fra listen? Selve mailen i postkassen røres ikke — den kommer tilbage ved næste synk hvis den stadig findes i Gmail.'))return;
+    var r=await api('/api/mail/messages/'+mailDetailCurrent.id,{method:'DELETE'});
+    if(r&&r.ok){toast('Fjernet','🗑');document.getElementById('mail-detail-view').style.display='none';mailLoadList(true);}
+  });
+  document.getElementById('mail-detail-folders-btn').addEventListener('click',function(){
+    if(mailDetailCurrent)mailOpenFoldersModal(mailDetailCurrent.id,mailDetailCurrent.folder_ids||[]);
+  });
+}
+// ── Mappe-vælger-modal (pr. mail) ──────────────────────────────────
+var mailFoldersModalMsgId=null;
+function mailOpenFoldersModal(msgId,selectedIds){
+  mailFoldersModalMsgId=msgId;
+  renderMailFoldersChecklist(selectedIds||[]);
+  document.getElementById('mail-folders-modal').classList.add('open');
+}
+function renderMailFoldersChecklist(selectedIds){
+  var box=document.getElementById('mail-folders-checklist');
+  if(!mailState.folders.length){box.innerHTML='<div class="hint">Ingen mapper endnu — opret én nedenfor.</div>';return;}
+  box.innerHTML=mailState.folders.map(function(f){
+    return '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" value="'+f.id+'" '+(selectedIds.indexOf(f.id)>-1?'checked':'')+'> '+esc(f.name)+'</label>';
+  }).join('');
+}
+function mailBindFoldersModal(){
+  document.getElementById('mail-folders-cancel-btn').addEventListener('click',function(){closeModal('mail-folders-modal');});
+  document.getElementById('mail-folders-new-btn').addEventListener('click',async function(){
+    var inp=document.getElementById('mail-folders-new-name');
+    var name=inp.value.trim();
+    if(!name)return;
+    var r=await api('/api/mail/folders',{method:'POST',body:JSON.stringify({name:name})});
+    if(r&&r.ok){inp.value='';await mailLoadFolders();renderMailFoldersChecklist(Array.prototype.map.call(document.querySelectorAll('#mail-folders-checklist input:checked'),function(c){return +c.value;}));}
+    else toast(r&&r.error||'Fejl','❌');
+  });
+  document.getElementById('mail-folders-save-btn').addEventListener('click',async function(){
+    if(!mailFoldersModalMsgId)return;
+    var ids=Array.prototype.map.call(document.querySelectorAll('#mail-folders-checklist input:checked'),function(c){return +c.value;});
+    var r=await api('/api/mail/messages/'+mailFoldersModalMsgId+'/folders',{method:'PUT',body:JSON.stringify({folder_ids:ids})});
+    if(r&&r.ok){toast('Gemt ✓','✓');closeModal('mail-folders-modal');mailLoadFolders();}
+    else toast(r&&r.error||'Fejl','❌');
+  });
+}
+// ── Signaturer ──────────────────────────────────────────────────
+function mailRenderSignatures(){
+  var box=document.getElementById('mail-sig-list');
+  box.innerHTML=mailState.signatures.length?mailState.signatures.map(function(s){
+    return '<div class="mail-row" data-sig-id="'+s.id+'" style="cursor:pointer">'
+      +'<div class="mail-row-main"><div class="mail-row-subject">'+esc(s.name)+(s.is_default?' <span class="mail-row-tag">Standard</span>':'')+'</div>'
+      +'<div class="mail-row-snippet">'+esc(richNoteToPlainClient(s.body_html||'').slice(0,120))+'</div></div>'
+      +'</div>';
+  }).join(''):'<div class="crmpx-empty">Ingen signaturer endnu — opret din første med "+ Ny signatur".</div>';
+}
+function mailBindSigModal(){
+  document.getElementById('mail-sig-new-btn').addEventListener('click',function(){mailOpenSigModal(null);});
+  document.addEventListener('click',function(e){
+    var row=e.target.closest('#mail-sig-list .mail-row');
+    if(row)mailOpenSigModal(+row.dataset.sigId);
+  });
+  document.getElementById('mail-sig-cancel-btn').addEventListener('click',function(){closeModal('mail-sig-modal');});
+  document.getElementById('mail-sig-delete-btn').addEventListener('click',async function(){
+    if(!mailEditingSigId)return;
+    if(!await gmConfirm('Slet denne signatur?'))return;
+    var r=await api('/api/mail/signatures/'+mailEditingSigId,{method:'DELETE'});
+    if(r&&r.ok){toast('Slettet','🗑');closeModal('mail-sig-modal');await mailLoadSignatures();mailRenderSignatures();}
+  });
+  document.getElementById('mail-sig-save-btn').addEventListener('click',async function(){
+    var name=document.getElementById('mail-sig-name').value.trim();
+    if(!name){toast('Skriv et navn','⚠');return;}
+    var body={name:name,body_html:document.getElementById('mail-sig-body').value,is_default:document.getElementById('mail-sig-default-chk').checked};
+    var r=mailEditingSigId?await api('/api/mail/signatures/'+mailEditingSigId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/mail/signatures',{method:'POST',body:JSON.stringify(body)});
+    if(r&&r.ok){toast('Gemt ✓','✓');closeModal('mail-sig-modal');await mailLoadSignatures();mailRenderSignatures();}
+    else toast(r&&r.error||'Fejl','❌');
+  });
+}
+function mailOpenSigModal(id){
+  mailEditingSigId=id;
+  var s=id?mailState.signatures.find(function(x){return x.id===id;}):null;
+  document.getElementById('mail-sig-modal-title').textContent=s?'Redigér signatur':'Ny signatur';
+  document.getElementById('mail-sig-name').value=s?s.name:'';
+  document.getElementById('mail-sig-body').value=s?(s.body_html||''):'';
+  document.getElementById('mail-sig-default-chk').checked=!!(s&&s.is_default);
+  document.getElementById('mail-sig-delete-btn').classList.toggle('hidden',!s);
+  document.getElementById('mail-sig-modal').classList.add('open');
+}
+// ── Kompose-modal ──────────────────────────────────────────────────
+// mailOpenCompose(opts) — opts: {to,cc,subject,bodyHtml,customerId,leadId,
+// opportunityId}. Kaldes fra: "✍️ Skriv ny mail" på Mails-siden (tomt),
+// "↩️ Svar" i mail-detaljen, og — vigtigst, jf. Martins ønske — fra selve
+// Lead/Sale-detaljen og kundekortet (se de respektive moduler, hvor
+// mailOpenCompose kaldes med den rigtige kobling forudfyldt).
+async function mailOpenCompose(opts){
+  // mailEnsureComposeReady() gør det sikkert at kalde denne funktion FØR man
+  // nogensinde har besøgt Mails-siden selv (se dens kommentar) — uden dette
+  // ville "Send"-knappen i modalen mangle sin klik-lytter, og signatur-/
+  // skabelon-vælgerne ville stå tomme, hvis man åbner kompose direkte fra
+  // kundekortet/Lead-Sale-detaljen som den allerførste handling i appen.
+  await mailEnsureComposeReady();
+  opts=opts||{};
+  mailState.compose={attachments:[],customerId:opts.customerId||null,leadId:opts.leadId||null,opportunityId:opts.opportunityId||null,bulk:null};
+  document.getElementById('mail-compose-title').textContent='✍️ Skriv ny mail';
+  document.getElementById('mail-compose-bulk-hint').style.display='none';
+  document.getElementById('mail-compose-to').value=opts.to||'';
+  document.getElementById('mail-compose-to').disabled=false;
+  document.getElementById('mail-compose-cc').value=opts.cc||'';
+  document.getElementById('mail-compose-cc-wrap').style.display=opts.cc?'':'none';
+  document.getElementById('mail-compose-subject').value=opts.subject||'';
+  var ta=document.getElementById('mail-compose-body');
+  ta.value=opts.bodyHtml||'';
+  var def=mailState.signatures.find(function(s){return s.is_default;});
+  if(!opts.bodyHtml&&def)ta.value=(ta.value?ta.value+'<br><br>':'')+def.body_html;
+  document.getElementById('mail-compose-schedule-chk').checked=false;
+  document.getElementById('mail-compose-schedule-at').style.display='none';
+  document.getElementById('mail-compose-schedule-at').value='';
+  document.getElementById('mail-compose-status').textContent='';
+  mailRenderComposeAttachments();
+  document.getElementById('mail-compose-modal').classList.add('open');
+}
+// mailOpenComposeBulk — åbnet fra bulk-vælg-barerne på CRM-boardet (Leads/
+// Sales) og Kundeliste-siden (Martins ønske: "kan mærkere og sende en email
+// til alle dem man vælger"). "Til"-feltet låses (serveren slår selv hver
+// enkelt modtagers email op pr. markeret post, se POST /api/mail/bulk-send),
+// så man ikke kan skrive en forkert adresse der overskriver bulk-listen.
+async function mailOpenComposeBulk(entityType,ids){
+  await mailEnsureComposeReady();
+  mailState.compose={attachments:[],customerId:null,leadId:null,opportunityId:null,bulk:{entityType:entityType,ids:ids}};
+  document.getElementById('mail-compose-title').textContent='✍️ Skriv mail til '+ids.length+' valgte';
+  var label=entityType==='lead'?'leads':(entityType==='opportunity'?'handler':'kunder');
+  document.getElementById('mail-compose-bulk-hint').style.display='';
+  document.getElementById('mail-compose-bulk-hint').textContent='📣 Sendes individuelt til hver af de '+ids.length+' valgte '+label+' — de kan ikke se hinandens adresser. Kun dem med en registreret e-mail modtager den.';
+  document.getElementById('mail-compose-to').value='('+ids.length+' valgte '+label+')';
+  document.getElementById('mail-compose-to').disabled=true;
+  document.getElementById('mail-compose-cc').value='';
+  document.getElementById('mail-compose-cc-wrap').style.display='none';
+  document.getElementById('mail-compose-subject').value='';
+  var ta=document.getElementById('mail-compose-body');
+  ta.value='';
+  var def=mailState.signatures.find(function(s){return s.is_default;});
+  if(def)ta.value=def.body_html;
+  document.getElementById('mail-compose-schedule-chk').checked=false;
+  document.getElementById('mail-compose-schedule-at').style.display='none';
+  document.getElementById('mail-compose-status').textContent='';
+  mailRenderComposeAttachments();
+  document.getElementById('mail-compose-modal').classList.add('open');
+}
+function mailRenderComposeAttachments(){
+  var wrap=document.getElementById('mail-compose-attachments-list');
+  wrap.innerHTML=mailState.compose.attachments.map(function(a,i){
+    return '<span class="mail-attach-chip">📎 '+esc(a.filename)+' <button type="button" data-idx="'+i+'">✕</button></span>';
+  }).join('');
+  wrap.querySelectorAll('button[data-idx]').forEach(function(b){
+    b.addEventListener('click',function(){mailState.compose.attachments.splice(+b.dataset.idx,1);mailRenderComposeAttachments();});
+  });
+}
+function mailBindComposeModal(){
+  document.getElementById('mail-compose-close-btn') && document.getElementById('mail-compose-close-btn').addEventListener('click',function(){closeModal('mail-compose-modal');});
+  document.getElementById('mail-compose-cancel-btn').addEventListener('click',function(){closeModal('mail-compose-modal');});
+  document.getElementById('mail-compose-cc-toggle-btn').addEventListener('click',function(){
+    var w=document.getElementById('mail-compose-cc-wrap');
+    w.style.display=w.style.display==='none'?'':'none';
+  });
+  document.getElementById('mail-compose-schedule-chk').addEventListener('change',function(){
+    document.getElementById('mail-compose-schedule-at').style.display=this.checked?'':'none';
+  });
+  document.getElementById('mail-compose-attach-btn').addEventListener('click',function(){document.getElementById('mail-compose-attach-input').click();});
+  document.getElementById('mail-compose-attach-input').addEventListener('change',async function(){
+    var files=Array.prototype.slice.call(this.files||[]);
+    this.value='';
+    var statusEl=document.getElementById('mail-compose-status');
+    for(var i=0;i<files.length;i++){
+      var f=files[i];
+      if(f.size>15*1024*1024){toast('"'+f.name+'" er for stor (maks 15 MB)','⚠');continue;}
+      statusEl.textContent='Uploader '+f.name+'...';
+      var dataUrl=await fileToDataURL(f);
+      var r=await api('/api/mail/upload-attachment',{method:'POST',body:JSON.stringify({data_uri:dataUrl,filename:f.name,content_type:f.type,size_bytes:f.size})});
+      if(r&&r.ok){mailState.compose.attachments.push({filename:f.name,content_type:f.type,size_bytes:f.size,url:r.url});mailRenderComposeAttachments();}
+      else toast(r&&r.error||'Kunne ikke uploade '+f.name,'❌');
+    }
+    statusEl.textContent='';
+  });
+  document.getElementById('mail-compose-signature-select').addEventListener('change',function(){
+    var id=+this.value;this.value='';
+    var s=mailState.signatures.find(function(x){return x.id===id;});
+    if(!s)return;
+    var ta=document.getElementById('mail-compose-body');
+    if(ta.mailEditable)ta.mailEditable.mailInsertHtml(s.body_html||'');
+  });
+  document.getElementById('mail-compose-template-select').addEventListener('change',function(){
+    var id=+this.value;this.value='';
+    var t=mailState.templates.find(function(x){return x.id===id;});
+    if(!t)return;
+    var subjEl=document.getElementById('mail-compose-subject');
+    if(!subjEl.value)subjEl.value=t.subject||'';
+    var ta=document.getElementById('mail-compose-body');
+    if(ta.mailEditable)ta.mailEditable.mailInsertHtml(t.body_html||'');
+  });
+  document.getElementById('mail-compose-send-btn').addEventListener('click',mailSendCompose);
+}
+async function mailSendCompose(){
+  var bulk=mailState.compose.bulk;
+  var toRaw=document.getElementById('mail-compose-to').value.trim();
+  if(!bulk&&!toRaw){toast('Angiv mindst én modtager','⚠');return;}
+  var subject=document.getElementById('mail-compose-subject').value.trim();
+  if(!subject){toast('Skriv et emne','⚠');return;}
+  var bodyHtml=document.getElementById('mail-compose-body').value;
+  var scheduleAt=null;
+  if(document.getElementById('mail-compose-schedule-chk').checked){
+    var v=document.getElementById('mail-compose-schedule-at').value;
+    if(!v){toast('Vælg et tidspunkt for planlagt afsendelse','⚠');return;}
+    scheduleAt=new Date(v).toISOString();
+  }
+  var sendBtn=document.getElementById('mail-compose-send-btn');
+  sendBtn.disabled=true;sendBtn.textContent='Sender…';
+  var r;
+  if(bulk){
+    r=await api('/api/mail/bulk-send',{method:'POST',body:JSON.stringify({entity_type:bulk.entityType,ids:bulk.ids,subject:subject,body_html:bodyHtml,attachments:mailState.compose.attachments})});
+  }else{
+    var to=toRaw.split(',').map(function(s){return s.trim();}).filter(Boolean);
+    var cc=document.getElementById('mail-compose-cc').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+    r=await api('/api/mail/send',{method:'POST',body:JSON.stringify({
+      to:to,cc:cc,subject:subject,body_html:bodyHtml,attachments:mailState.compose.attachments,
+      customer_id:mailState.compose.customerId,lead_id:mailState.compose.leadId,opportunity_id:mailState.compose.opportunityId,
+      schedule_at:scheduleAt
+    })});
+  }
+  sendBtn.disabled=false;sendBtn.textContent='📤 Send';
+  if(r&&r.ok){
+    if(bulk)toast('Sendt til '+r.sent+' ud af '+(r.sent+r.skipped+r.failed)+(r.skipped?' ('+r.skipped+' uden e-mail)':'')+(r.failed?' ('+r.failed+' fejlede)':''),'✓');
+    else toast(r.scheduled?'Planlagt ✓':'Sendt ✓','✓');
+    closeModal('mail-compose-modal');
+    if(document.getElementById('page-mail').classList.contains('active'))mailLoadList(true);
+    mailRefreshUnreadBadge();
+  }else{
+    toast(r&&r.error||'Kunne ikke sende mailen','❌');
+  }
+}
+// ── Kompose-genveje fra kundekortet og Lead/Sale-detaljen ──────────────────
+// RUNDE CU (Martin: "... og under kunden direkte?" / "under handlen leads og
+// sales"): "✉️ Email"-knapperne på hhv. kundekortet (#cd-email-btn) og Lead/
+// Sale-detaljen (#crmpx-email-btn) åbnede FØR altid Gmails eget web-compose i
+// en ny fane (gmailComposeUrl, husreglen "ikke mailto:" — se kommentaren ved
+// gmailComposeUrl). Et almindeligt venstreklik åbner dem nu i stedet i det
+// nye kompose-modul herover, forudfyldt med modtager + den rigtige kobling
+// (customer_id/lead_id/opportunity_id), så mailen automatisk lander under
+// den rigtige kunde/lead/handel bagefter. Href'en er bevidst UÆNDRET
+// (stadig sat af openCustomerDetail/openCrmpDetail som før) — et midterklik
+// eller "åbn i ny fane" falder derfor stadig tilbage til Gmails web-compose,
+// som en ren bekvemmelighed hvis man hellere vil det. Denne ÉNE delegerede
+// listener er bundet med det samme (ikke i mailInit, som først kører når man
+// rent faktisk besøger Mails-siden) — ellers ville knapperne ikke virke før
+// man havde været forbi Mails-siden mindst én gang.
+document.addEventListener('click',function(e){
+  var btn=e.target.closest('#cd-email-btn, #crmpx-email-btn');
+  if(!btn)return;
+  if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey)return; // midterklik/ctrl+klik = lad browseren åbne href'en som før
+  if(btn.style.pointerEvents==='none')return; // intet email registreret endnu
+  e.preventDefault();
+  if(btn.id==='cd-email-btn'){
+    if(!cdCurrent||!cdCurrent.email)return;
+    mailOpenCompose({to:cdCurrent.email,customerId:cdCurrent.id});
+  }else{
+    var email=document.getElementById('crmpx-email').value||document.getElementById('crmpx-contact-email').value;
+    if(!email||!crmpDetailEntity)return;
+    mailOpenCompose(crmpDetailEntity.type==='lead'?{to:email,leadId:crmpDetailEntity.id}:{to:email,opportunityId:crmpDetailEntity.id});
+  }
+});
+
 // Rig note-HTML (b/br/ul/ol/li) → ren tekst. Bruges hvor noten skal vises et
 // sted der ikke kan/skal vise HTML — fx en title=""-tooltip på et kort.
 // Speciltilfælde af server.js' richNoteToPlain(), holdt i sync med den.
@@ -19879,6 +20681,10 @@ async function loadAll(){
   if(document.getElementById('page-library').classList.contains('active'))loadLibrary();
   if(document.getElementById('page-timeline').classList.contains('active'))renderTimeline();
   refreshRequestsBadge();
+  // RUNDE CU — samme periodiske badge-opdatering som refreshRequestsBadge
+  // ovenfor, så "✉️ Mails"-punktet i sidebaren viser et ulæst-antal uden at
+  // man først skal åbne selve Mails-siden.
+  if(meHasPanelPage('mail'))mailRefreshUnreadBadge();
   if(activePageId==='page-tasklist'&&tlActiveTab()==='completed')renderCompleted();
   if(document.getElementById('page-requests').classList.contains('active'))renderRequests();
 }
@@ -19927,7 +20733,7 @@ if(window.ResizeObserver){
 // ('qz-invoices','qz-pending-invoicing','qz-products','qz-templates',
 // 'qz-timetrack') er nu ÆGTE selvstændige sider i stedet for interne faner
 // under 'quotes' — se HEADER_COMMENT-noten ved #page-quotes i HTML'en.
-var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','templates','notif-settings','finance','quotes','qz-invoices','qz-pending-invoicing','qz-products','qz-templates','qz-timetrack','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','kundebesog','search-results','kb-lists','kb-docs'];
+var VALID_PAGES=['dashboard','plan','capacity','timeline','availability','tasklist','requests','people','library','logs','templates','notif-settings','finance','quotes','qz-invoices','qz-pending-invoicing','qz-products','qz-templates','qz-timetrack','customers','customer-detail','projects','project-detail','crmp','crmp-detail','crmp-tasks','kundebesog','search-results','kb-lists','kb-docs','mail'];
 // RUNDE P — de 6 sider Tilbud & Faktura-gruppen nu består af, brugt af
 // switchPage() nedenfor til at dispatche til initQuotesModule() m.fl. for alle
 // seks uden en lang if-kæde.
@@ -19940,7 +20746,7 @@ var QZ_FAMILY_PAGES=['quotes','qz-invoices','qz-pending-invoicing','qz-products'
 // at sende brugeren hen — det forhindrer en uendelig switchPage-løkke i det
 // sjældne øjeblik lige efter login hvor /api/auth/me's friske panel_pages
 // endnu ikke er nået at overskrive den cachede (ældre) bruger i localStorage.
-var PANEL_PAGE_ORDER=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','tasklist','requests','completed','people','library','logs','templates','email-templates','notif-settings','gmail-settings','knowledge'];
+var PANEL_PAGE_ORDER=['plan','capacity','availability','timeline','projects','customers','crmp_leads','crmp_sales','crmp_tasks','quotes','finance','mail','tasklist','requests','completed','people','library','logs','templates','email-templates','notif-settings','gmail-settings','knowledge'];
 function firstAllowedPage(excludePage){
   for(var i=0;i<PANEL_PAGE_ORDER.length;i++){
     var k=PANEL_PAGE_ORDER[i];
@@ -20092,6 +20898,11 @@ function switchPage(page,skipHash){
   // FYSISK inde i #page-quotes og forsvandt sammen med den.
   qzShowDetailView(false);
   qzShowInvoiceView(false);
+  // RUNDE CU — samme greb for #mail-detail-view (den frit-svævende mail-
+  // læse-overlejring): skal lukkes eksplicit ved ETHVERT sideskift, ellers
+  // kunne den stå hængende synligt oven på en helt anden side.
+  var mailDetailEl=document.getElementById('mail-detail-view');
+  if(mailDetailEl)mailDetailEl.style.display='none';
   // Sammenlignes på FØRSTE hash-segment, ikke på hele hash'en (ændret sammen
   // med skiftet til pushState ovenfor). Grunden: hashchange-lytteren kalder
   // switchPage(parts[0]) med SIDENAVNET alene, mens adresselinjen står på den
@@ -20112,6 +20923,8 @@ function switchPage(page,skipHash){
   // gruppens 6 sider der alle deler nøglen 'quotes'.
   if(page==='kb-lists'){if(guardPage('knowledge','Videnscenter'))return;kbListsInit();}
   if(page==='kb-docs'){if(guardPage('knowledge','Videnscenter'))return;kbDocsInit();}
+  // RUNDE CU — "Mails"-siden.
+  if(page==='mail'){if(guardPage('mail','Mails'))return;mailInit();}
   if(page==='availability')renderAvailability();
   if(page==='timeline')renderTimeline();
   if(page==='requests')renderRequests();
@@ -20262,6 +21075,11 @@ async function bind(){
     // Dyb-link til en kundedetalje — #customer-detail/7 — samme mønster som
     // #project-detail/<id> ovenfor.
     if(parts[0]==='customer-detail'&&parts[1])openCustomerDetail(Number(parts[1]));
+    // RUNDE CU — dyb-link til en af Mails-sidens faner, samme mønster som
+    // #tasklist/<fane> ovenfor (læser også det TOMME andet segment, så
+    // tilbage-knappen fra #mail/sendt til bare #mail rent faktisk skifter
+    // fanen tilbage til Indbakke).
+    if(parts[0]==='mail')switchMailTab(parts[1]||'modtaget',true);
   });
   // .tab/.navdrop-item er nu rigtige <a href="#side">-links (i stedet for <button>),
   // så man kan højreklikke og åbne en side i en ny fane/vindue. Venstreklik håndteres
@@ -20282,7 +21100,7 @@ async function bind(){
   // navdrop-item'er, hver med sin egen data-page), så de falder nu naturligt
   // igennem til det generiske switchPage(b.dataset.page)-kald nedenfor,
   // ligesom CRM- og Dagligplanlægning-gruppernes punkter allerede gjorde.
-  var NAVDROP_HAS_OWN_HANDLER='[data-fintab-jump],[data-projtab-jump],[data-crmp-pipeline-type],[data-tltab-jump],[data-tpltab-jump]';
+  var NAVDROP_HAS_OWN_HANDLER='[data-fintab-jump],[data-projtab-jump],[data-crmp-pipeline-type],[data-tltab-jump],[data-tpltab-jump],[data-mailtab-jump]';
   document.querySelectorAll('.navdrop-item[data-page]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();if(b.matches(NAVDROP_HAS_OWN_HANDLER))return;switchPage(b.dataset.page);});});
   // "Min side" (#mypage-subdrop) er nu en almindelig .tab-navdrop-gruppe i
   // sidebaren (som CRM/Tilbud & Faktura/Dagligplanlægning/Økonomi) — dens
@@ -20736,6 +21554,16 @@ async function bind(){
       if(!document.getElementById('page-templates').classList.contains('active'))return;
       switchTplTab(btn.dataset.tpltabJump);
       // RUNDE P — se kommentaren ved data-fintab-jump herover.
+    });
+  });
+  // RUNDE CU — Mails-sidens dybe genveje (Indbakke/Sendt/Ulæste/Planlagt/
+  // Signaturer), samme mønster som data-tltab-jump/data-tpltab-jump herover.
+  document.querySelectorAll('[data-mailtab-jump]').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.preventDefault();
+      switchPage('mail',true);
+      if(!document.getElementById('page-mail').classList.contains('active'))return;
+      switchMailTab(btn.dataset.mailtabJump);
     });
   });
   // "Leads" og "Sales" i sidebaren peger begge på #page-crmp, men skal hver
@@ -21349,6 +22177,7 @@ async function bind(){
     if(initialPage==='notif-settings'&&initialParts[1])switchSetTab(initialParts[1],true);
     if(initialPage==='tasklist')switchTlTab(initialParts[1]||'open',true);
     if(initialPage==='templates')switchTplTab(initialParts[1]||'tasks',true);
+    if(initialPage==='mail')switchMailTab(initialParts[1]||'modtaget',true);
     // Åbnet direkte via et #quotes/tilbud/123-link (fx højreklik → åbn i ny fane)
     if(initialPage==='quotes'&&initialParts[1]==='tilbud'&&initialParts[2])openQuoteEditor(Number(initialParts[2]));
     // RUNDE P — faktura-dybe-links bruger nu #qz-invoices/faktura/<id>, se
@@ -23226,6 +24055,24 @@ async function importProductsFromJobtread(){
 // KUNDER (CRM) — eget kundekartotek, uafhængigt af JobTread.
 // ══════════════════════════════════════════════════════════════
 var crmCustomers=[],crmEditingId=null,crmInitialized=false,crmSearchTimer=null;
+// RUNDE CU — massevalgs-tilstand for Kundelisten. Egen, lille state (ikke
+// crmpState, som hører til CRM-boardet) — samme navngivningsmønster
+// (selectMode/selected) for genkendelighed, men en helt separat variabel.
+var crmSelectMode=false,crmSelected={};
+function crmSetSelectMode(on){
+  crmSelectMode=!!on;
+  if(!crmSelectMode)crmSelected={};
+  var btn=document.getElementById('crm-select-toggle');
+  btn.classList.toggle('active',crmSelectMode);
+  btn.textContent=crmSelectMode?'✕ Afslut valg':'☑️ Vælg';
+  renderCrmCustomers();
+}
+function crmRenderBulkBar(){
+  var ids=Object.keys(crmSelected).map(Number);
+  var bar=document.getElementById('crm-bulk-bar');
+  bar.classList.toggle('open',crmSelectMode&&ids.length>0);
+  document.getElementById('crm-bulk-count').textContent=ids.length+' valgt';
+}
 function initCrmModule(){
   if(!crmInitialized){
     document.getElementById('crm-search').addEventListener('input',function(){
@@ -23242,6 +24089,22 @@ function initCrmModule(){
     document.getElementById('crmc-pipeline').addEventListener('change',crmcOnPipelineChange);
     document.getElementById('crmc-save').addEventListener('click',saveCrmCustomer);
     document.getElementById('crmc-delete').addEventListener('click',deleteCrmCustomer);
+    // RUNDE CU — massevalg + "✉️ Email".
+    document.getElementById('crm-select-toggle').addEventListener('click',function(){crmSetSelectMode(!crmSelectMode);});
+    document.getElementById('crm-bulk-clear').addEventListener('click',function(){crmSelected={};renderCrmCustomers();});
+    document.getElementById('crm-bulk-email').addEventListener('click',function(){
+      var ids=Object.keys(crmSelected).map(Number);
+      if(!ids.length)return;
+      mailOpenComposeBulk('customer',ids);
+    });
+    document.addEventListener('click',function(e){
+      var chk=e.target.closest('.crm-row-check');
+      if(!chk)return;
+      e.stopPropagation();
+      var id=+chk.dataset.id;
+      if(chk.checked)crmSelected[id]=true;else delete crmSelected[id];
+      crmRenderBulkBar();
+    });
     crmInitialized=true;
   }
   loadCrmCustomers().then(renderCrmCustomers);
@@ -23263,7 +24126,7 @@ function renderCrmCustomers(){
   var q=(document.getElementById('crm-search').value||'').trim();
   document.getElementById('crm-count').textContent=list.length+' kunde'+(list.length===1?'':'r');
   var body=document.getElementById('crm-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen kunder fundet':'Ingen kunder endnu — opret den første')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen kunder fundet':'Ingen kunder endnu — opret den første')+'</td></tr>';return;}
   // RUNDE R (Martins ønske: "skyldige beløb" skal kunne SES, "og andre steder")
   // — "Skyldigt"-kolonnen viser balance_due fra GET /api/crm/customers (se
   // CUSTOMER_BALANCE_DUE_SUBQUERY i server.js). Rød når kunden reelt skylder
@@ -23271,7 +24134,9 @@ function renderCrmCustomers(){
   // skiller sig unødigt ud fra en kunde der aldrig har haft en faktura.
   body.innerHTML=list.map(function(c){
     var owes=Number(c.balance_due)||0;
-    return '<tr style="cursor:pointer" onclick="openCustomerDetail('+c.id+')" oncontextmenu="crmCustomerCtxMenu(event,'+c.id+')">'
+    var checkCell=crmSelectMode?'<td><input type="checkbox" class="crm-row-check" data-id="'+c.id+'"'+(crmSelected[c.id]?' checked':'')+'></td>':'<td></td>';
+    return '<tr style="cursor:pointer" onclick="'+(crmSelectMode?'':'openCustomerDetail('+c.id+')')+'" oncontextmenu="crmCustomerCtxMenu(event,'+c.id+')">'
+      +checkCell
       +'<td>'+(c.is_company?'🏢 ':'')+esc(c.name)+(c.is_company&&c.cvr?' <span class="sub">· CVR '+esc(c.cvr)+'</span>':'')+'</td>'
       +'<td>'+esc(c.phone||'–')+'</td>'
       +'<td>'+esc(c.email||'–')+'</td>'
@@ -23280,6 +24145,7 @@ function renderCrmCustomers(){
       +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="event.stopPropagation();openCrmModal('+c.id+')" title="Redigér">✎</button></div></td>'
       +'</tr>';
   }).join('');
+  crmRenderBulkBar();
 }
 // Højreklik-menu på kunderækken — samme genbrugte #ctx-menu/showCtxMenu() som
 // Projekter (se pjCtxMenuItems()). Egne, uafhængige funktioner i stedet for at
@@ -23942,6 +24808,15 @@ document.addEventListener('click',function(e){
 });
 async function cdLoadEmailBody(id,gmailMessageId){
   var wrap=document.getElementById('cd-email-body-'+id);
+  // RUNDE CU — en mail sendt fra det nye Mails-modul har intet Gmail-id (den
+  // blev aldrig sendt via Gmail API'et, se arkitektur-kommentaren i server.js
+  // ved sendMailUniversal) — dens brødtekst ligger allerede lokalt i stedet
+  // for at skulle hentes live, så vis den direkte uden et API-kald.
+  if(!gmailMessageId){
+    var localRow=cdEmails.find(function(x){return x.id===id;});
+    if(wrap)wrap.innerHTML='<div class="cd-email-body">'+((localRow&&localRow.body_html)||'<span class="crmpx-empty">Intet indhold</span>')+'</div>';
+    return;
+  }
   var d=await api('/api/gmail/messages/'+gmailMessageId);
   if(!wrap)return; // brugeren nåede at folde den sammen igen inden svaret kom
   if(!d||d.error){wrap.innerHTML='<div class="crmpx-empty">Kunne ikke hente mailen — '+esc((d&&d.error)||'ukendt fejl')+'</div>';return;}
@@ -24733,6 +25608,16 @@ async function crmpBulkRun(body,btn,busyLabel){
 function crmpInitBulkBar(){
   document.getElementById('crmp-select-toggle').addEventListener('click',function(){crmpSetSelectMode(!crmpState.selectMode);});
   document.getElementById('crmp-bulk-clear').addEventListener('click',function(){crmpState.selected={};crmpRenderBoard();});
+  // RUNDE CU — "✉️ Email" i massevalgs-bjælken: åbner kompose-modulet med alle
+  // valgte som modtagere (entity_type følger pipelinens egen type, lead eller
+  // opportunity — samme felt crmpBulkEndpoint() allerede bruger til at vælge
+  // rigtigt API-endpoint, se dens definition).
+  document.getElementById('crmp-bulk-email').addEventListener('click',function(){
+    var ids=crmpSelectedIds();
+    if(!ids.length)return;
+    var p=crmpCurrentPipeline();
+    mailOpenComposeBulk(p&&p.type==='opportunity'?'opportunity':'lead',ids);
+  });
   document.getElementById('crmp-bulk-field').addEventListener('change',crmpSyncBulkValueControl);
   document.getElementById('crmp-bulk-delete').addEventListener('click',async function(){
     var n=crmpSelectedIds().length;
@@ -25305,6 +26190,14 @@ document.addEventListener('click',function(e){
 });
 async function crmpxLoadEmailBody(id,gmailMessageId){
   var wrap=document.getElementById('crmpx-email-body-'+id);
+  // RUNDE CU — se den tilsvarende kommentar i cdLoadEmailBody ovenfor (samme
+  // situation: mail sendt fra det nye Mails-modul, intet Gmail-id, brødteksten
+  // ligger allerede lokalt).
+  if(!gmailMessageId){
+    var localRow=crmpxEmails.find(function(x){return x.id===id;});
+    if(wrap)wrap.innerHTML='<div class="cd-email-body">'+((localRow&&localRow.body_html)||'<span class="crmpx-empty">Intet indhold</span>')+'</div>';
+    return;
+  }
   var d=await api('/api/gmail/messages/'+gmailMessageId);
   if(!wrap)return; // brugeren nåede at folde den sammen igen inden svaret kom
   if(!d||d.error){wrap.innerHTML='<div class="crmpx-empty">Kunne ikke hente mailen — '+esc((d&&d.error)||'ukendt fejl')+'</div>';return;}

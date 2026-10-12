@@ -1648,6 +1648,94 @@ async function initSchema() {
     -- for at gennemgå ALLE kundens mails hver gang fanen åbnes.
     ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS has_attachments INTEGER NOT NULL DEFAULT 0;
 
+    -- ══════════════════════════════════════════════════════════════
+    -- RUNDE CU (Martin: "Kan man bygge et fucking godt email program i ens
+    -- program så man kan sende almindelig mails under handlen leads og sales
+    -- og under kunden direkte? ... Lav også et sted jeg kan se alle mails
+    -- send, lav en ny Overskrift i headeren ... der hedder Mails ... Lav
+    -- dropdown med gør så jeg kan få mapper ... Sendt / Modtaget / Ulæste")
+    -- — det nye "Mails"-modul. customer_emails (ovenfor) genbruges som den
+    -- fælles mail-tabel i stedet for en parallel struktur: den rummede
+    -- allerede metadata for SYNKEDE mails (ind/ud via den forbundne
+    -- Gmail-konto); kolonnerne herunder udvider den samme tabel til også at
+    -- rumme mails man rent faktisk SENDER herfra (nu-sendte, planlagte,
+    -- fejlede) og kobler dem til leads/opportunities (ikke kun customer_id som
+    -- før). customer_id/gmail_message_id gøres NULLABLE: en planlagt mail har
+    -- intet gmail_message_id endnu (sendes ikke via Gmail API, se
+    -- mailSendCompose — sendes via samme sendMailUniversal/Resend-SMTP-vej som
+    -- resten af appens mail, så "Modtaget"/svar fortsat kommer ind via den
+    -- ALLEREDE kørende 5-minutters Gmail-synk uden at kræve udvidet
+    -- Gmail-tilladelse/gen-godkendelse), og en mail til en helt ukendt adresse
+    -- (ingen matchende kunde) har intet customer_id.
+    ALTER TABLE customer_emails ALTER COLUMN customer_id DROP NOT NULL;
+    ALTER TABLE customer_emails ALTER COLUMN gmail_message_id DROP NOT NULL;
+    ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES crm_leads(id) ON DELETE SET NULL;
+    ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS opportunity_id INTEGER REFERENCES crm_opportunities(id) ON DELETE SET NULL;
+    -- INTEGER-som-boolean, samme konvention som has_attachments ovenfor.
+    -- Default 1 (læst), så ALLE mails synket FØR denne ændring ikke pludselig
+    -- popper op som ulæste — kun NYE indkomne mails sættes eksplicit til 0.
+    ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS is_read INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS cc_emails TEXT;
+    -- body_html gemmes KUN for mails sendt herfra (vi har allerede indholdet,
+    -- ingen grund til en live Gmail-runde-tur bagefter) — synkede mails
+    -- (status='synced') har den fortsat NULL og henter brødteksten live, som
+    -- customer_emails altid har gjort (se kommentaren foroven).
+    ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS body_html TEXT;
+    ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'synced';
+    ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS scheduled_at TEXT;
+    ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE customer_emails ADD COLUMN IF NOT EXISTS send_error TEXT;
+    CREATE INDEX IF NOT EXISTS idx_customer_emails_lead ON customer_emails(lead_id, internal_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_customer_emails_opp ON customer_emails(opportunity_id, internal_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_customer_emails_status ON customer_emails(status);
+    CREATE INDEX IF NOT EXISTS idx_customer_emails_unread ON customer_emails(is_read) WHERE is_read=0;
+
+    -- Mapper (Martins ønske: "Lav dropdown med ... jeg kan få mapper også som
+    -- jeg kan tilføje de forskellige mails til") — mange-til-mange, så samme
+    -- mail kan ligge i flere mapper ad gangen, lidt som labels.
+    CREATE TABLE IF NOT EXISTS mail_folders (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE TABLE IF NOT EXISTS mail_message_folders (
+      message_id INTEGER NOT NULL REFERENCES customer_emails(id) ON DELETE CASCADE,
+      folder_id INTEGER NOT NULL REFERENCES mail_folders(id) ON DELETE CASCADE,
+      PRIMARY KEY (message_id, folder_id)
+    );
+    -- Vedhæftninger på mails sendt HERFRA (billede/PDF/andre filer, se
+    -- POST /api/mail/upload-attachment — uploades til Cloudinary ligesom alle
+    -- andre filer i appen, se uploadPhotoToCloudinary). Indkomne/synkede mails
+    -- har fortsat deres vedhæftninger live fra Gmail (gmailWalkPayload) — ingen
+    -- dublering her.
+    CREATE TABLE IF NOT EXISTS mail_attachments (
+      id SERIAL PRIMARY KEY,
+      message_id INTEGER NOT NULL REFERENCES customer_emails(id) ON DELETE CASCADE,
+      filename TEXT,
+      content_type TEXT,
+      size_bytes INTEGER,
+      url TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_mail_attachments_message ON mail_attachments(message_id);
+    -- Signaturskabeloner (Martins ønske: "Sigantur skabloner") — flere pr.
+    -- bruger, én markeret som standard (autofyldes ind i et nyt kompose-vindue).
+    CREATE TABLE IF NOT EXISTS mail_signatures (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      body_html TEXT,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_mail_signatures_user ON mail_signatures(user_id);
+    -- Cursor for den nye GLOBALE indbakke-synk (gmailSyncGlobalInbox) — adskilt
+    -- fra customer_emails' egen pr.-kunde synk (gmailSyncAll/gmailSyncCustomer,
+    -- uændret), så "Mails"-sidens Modtaget/Ulæste også fanger mails fra/til
+    -- adresser der slet ikke er en kendt kunde endnu.
+    ALTER TABLE gmail_connection ADD COLUMN IF NOT EXISTS last_global_sync_at BIGINT;
+
     -- ── CLOSE CRM-INTEGRATION: undgår at oprette samme kunde to gange, hvis
     -- Close afsender det samme webhook-event flere gange (Close retrier selv
     -- ved alt andet end 2xx-svar). Se app.post('/api/integrations/close/webhook').
@@ -4966,6 +5054,10 @@ const PANEL_PAGES = [
   { key: 'crmp_sales', label: 'CRM: Sales', group: 'CRM' },
   { key: 'crmp_tasks', label: 'CRM: Opfølgninger', group: 'CRM' },
   { key: 'quotes', label: 'Tilbud & Faktura', group: 'Tilbud & Faktura' },
+  // RUNDE CU — ny top-niveau side "✉️ Mails" (eget compose/indbakke-modul,
+  // se GET/POST /api/mail/*). Egen gruppe, så den ikke drukner inde under CRM
+  // eller Tilbud & Faktura — den bruges fra begge (og fra Kundeliste).
+  { key: 'mail', label: 'Mails', group: 'Mails' },
   { key: 'finance', label: 'Økonomi', group: 'Økonomi' },
   { key: 'templates', label: 'Skabeloner (automatisering)', group: 'Administration' },
   { key: 'email-templates', label: 'Mail-skabeloner', group: 'Administration' },
@@ -5967,7 +6059,19 @@ function mailIsConfigured() {
 // er allerede gjort (derfor virker info@ i dag) — Resend/SPF+DKIM verificerer
 // hele domænet, ikke enkelte postkasser, så enhver @gulvmaster.dk-adresse kan
 // sendes FRA med det samme. Se den store forklaring ved invoiceMailFrom().
-async function sendMailUniversal({ to, subject, text, html, attachments, from }) {
+// RUNDE CU — "to" accepterede hidtil kun ÉN adresse (Resend-grenen pakkede den
+// selv ind i et array af præcis ét element), og der var slet ingen cc-støtte.
+// Det nye Mails-modul skal kunne sende til flere modtagere på én gang samt
+// sætte Cc — udvidet her til at acceptere "to"/"cc" som enten en streng ELLER
+// et array, bagudkompatibelt med alle eksisterende kald (som fortsat sender
+// "to" som en enkelt streng og intet "cc").
+function mailAddrList(v) {
+  if (!v) return [];
+  return Array.isArray(v) ? v.filter(Boolean) : [v];
+}
+async function sendMailUniversal({ to, cc, subject, text, html, attachments, from }) {
+  const toList = mailAddrList(to);
+  const ccList = mailAddrList(cc);
   if (process.env.RESEND_API_KEY) {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -5977,7 +6081,8 @@ async function sendMailUniversal({ to, subject, text, html, attachments, from })
       },
       body: JSON.stringify({
         from: from || process.env.RESEND_FROM || 'Gulv Master <onboarding@resend.dev>',
-        to: [to],
+        to: toList,
+        ...(ccList.length ? { cc: ccList } : {}),
         subject,
         text,
         html,
@@ -5996,7 +6101,7 @@ async function sendMailUniversal({ to, subject, text, html, attachments, from })
   }
   const transport = getMailTransport();
   if (!transport) throw new Error('Hverken RESEND_API_KEY eller SMTP er sat op');
-  await transport.sendMail({ from: from || process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, text, html, attachments });
+  await transport.sendMail({ from: from || process.env.SMTP_FROM || process.env.SMTP_USER, to: toList.join(','), ...(ccList.length ? { cc: ccList.join(',') } : {}), subject, text, html, attachments });
   return { provider: 'smtp', resendEmailId: null };
 }
 
@@ -11077,7 +11182,14 @@ app.post('/api/crm/customers/:id/full-mail-sync', auth, panelAccess('customers')
 
 // ── Kundens synkroniserede mails + live besked-/vedhæftnings-visning ────────
 app.get('/api/crm/customers/:id/emails', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
-  const rows = (await pool.query('SELECT * FROM customer_emails WHERE customer_id=$1 ORDER BY internal_date DESC', [req.params.id])).rows;
+  // RUNDE CU — denne (ældre) fane viser nu AUTOMATISK også mails sendt fra det
+  // nye Mails-modul (customer_id er sat på dem præcis som på synkede mails),
+  // uden at denne rute selv skulle ændres — bortset fra ÉT filter: en mail der
+  // kun er PLANLAGT (status='scheduled', endnu ikke afsendt) udelades her, da
+  // denne fanes visning altid tegner et "↗" (sendt)-ikon og ingen "planlagt"-
+  // tilstand — at vise den her ville se ud som om kunden allerede har fået
+  // den. Den ses stadig i den nye Mails-sides "🕒 Planlagt"-fane.
+  const rows = (await pool.query("SELECT * FROM customer_emails WHERE customer_id=$1 AND status <> 'scheduled' ORDER BY internal_date DESC", [req.params.id])).rows;
   res.json(rows);
 }));
 
@@ -11139,6 +11251,461 @@ app.get('/api/crm/customers/:id/files', auth, panelAccess('customers'), asyncRou
   files.sort((a, b) => Number(b.internal_date) - Number(a.internal_date));
   res.json(files);
 }));
+
+// ══════════════════════════════════════════════════════════════
+// "MAILS" — RUNDE CU (Martin: "Kan man bygge et fucking godt email program i
+// ens program så man kan sende almindelig mails under handlen leads og sales
+// og under kunden direkte? ... Lav også et sted jeg kan se alle mails send,
+// lav en ny Overskrift i headeren ... der hedder Mails ... Lav dropdown med
+// gør så jeg kan få mapper ... Sendt / Modtaget / Ulæste ... Lav En Send ny
+// email, schudale email Smily funktion, cc funktion, subject på email").
+//
+// ARKITEKTUR-VALG (vigtigt, skal forstås før man rører ved dette afsnit):
+// Selve AFSENDELSEN går gennem sendMailUniversal (samme Resend/SMTP-vej som
+// ALT andet udgående i appen — tilbud, fakturaer, vundet-mail osv.), IKKE
+// via Gmail API'et. Det er bevidst: Gmail-forbindelsen har i dag kun
+// "gmail.readonly"-tilladelse (se GMAIL_SCOPES) — at sende via Gmail API ville
+// kræve en udvidet tilladelse og en helt ny gennemklikning af Googles
+// samtykke-skærm, med risiko for at noget går galt midt i (og ingen måde for
+// mig at afprøve det selv, siden det kræver en rigtig browser-login). Ved i
+// stedet at sende fra samme afsenderadresse/-domæne som Gmail-kontoen allerede
+// overvåger, lander kundens SVAR stadig i den rigtige indbakke og hentes
+// automatisk ind af den allerede kørende 5-minutters synk (gmailSyncAll,
+// udvidet herunder med gmailSyncGlobalInbox til også at fange ukendte
+// afsendere) — uden at skulle røre selve Gmail-forbindelsen overhovedet.
+// "Sendt"/"Modtaget"/"Ulæste" er dermed ægte og automatiske, præcis som
+// efterspurgt, bare via en mere robust vej.
+//
+// customer_emails (se skema-kommentaren RUNDE CU foroven) er den fælles
+// tabel for BÅDE synkede mails (status='synced', som hele tiden) OG mails
+// sendt/planlagt herfra (status='sent'/'scheduled'/'failed'). En mails
+// fulde brødtekst hentes stadig LIVE fra Gmail for synkede mails (samme
+// mønster som GET .../files ovenfor) — kun for mails sendt HERFRA er
+// body_html gemt direkte (vi har den jo allerede).
+// ══════════════════════════════════════════════════════════════
+
+// Matcher en emailadresse til en kendt kunde/lead/opportunity — bruges både
+// når en NY mail sendes herfra (compose) og når den globale indbakke-synk
+// (gmailSyncGlobalInbox) støder på en mail til/fra en adresse der ikke er
+// koblet til nogen bestemt kunde endnu. Returnerer det NYESTE match pr. type
+// (ikke alle — en adresse kan i teorien gå igen på flere gamle leads, og vi
+// vil hellere vise den mest relevante/nylige end at skulle vise en liste).
+async function mailResolveLinks(email) {
+  const out = { customerId: null, leadId: null, opportunityId: null };
+  const addr = String(email || '').trim().toLowerCase();
+  if (!addr) return out;
+  const cust = await pgOne('SELECT id FROM customers WHERE lower(email)=$1 ORDER BY id DESC LIMIT 1', [addr]);
+  if (cust) out.customerId = cust.id;
+  const lead = await pgOne('SELECT id FROM crm_leads WHERE lower(email)=$1 ORDER BY id DESC LIMIT 1', [addr]);
+  if (lead) out.leadId = lead.id;
+  const opp = await pgOne(`
+    SELECT o.id FROM crm_opportunities o JOIN crm_contacts c ON c.id=o.contact_id
+    WHERE lower(c.email)=$1 ORDER BY o.id DESC LIMIT 1
+  `, [addr]);
+  if (opp) out.opportunityId = opp.id;
+  return out;
+}
+
+// Henter indholdet af en gemt vedhæftning (Cloudinary-URL, se
+// POST /api/mail/upload-attachment) som en Buffer, så den kan vedhæftes den
+// RIGTIGE afsendte mail — sendMailUniversal/Resend/SMTP tager imod rå
+// filindhold, ikke en URL.
+async function mailFetchAttachmentBuffer(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('Kunne ikke hente vedhæftning (HTTP ' + resp.status + ')');
+  return Buffer.from(await resp.arrayBuffer());
+}
+
+// Simpel HTML → ren tekst, til e-mailens tekst-fallback (nogle mailklienter/
+// spamfiltre foretrækker en mail der har BÅDE text og html) samt uddraget
+// (snippet) vist i mail-listen.
+function mailHtmlToText(html) {
+  return String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Selve kernen: bygger, sender og logger én mail (ét sæt modtagere — til
+// massemail, se POST /api/mail/bulk-send, kaldes denne én gang PR. modtager,
+// så de ikke kan se hinandens adresser). Indsætter en customer_emails-række
+// og de tilhørende mail_attachments og returnerer den færdige række.
+// "existingRowId" bruges af den planlagte-mail-drainer nedenfor, som allerede
+// har oprettet rækken (status='scheduled') ved selve planlægningen og nu blot
+// skal opdatere den samme række i stedet for at oprette en ny.
+async function mailSendCompose({ toList, ccList, subject, bodyHtml, attachmentRows, customerId, leadId, opportunityId, userId, existingRowId }) {
+  attachmentRows = attachmentRows || [];
+  const buffered = [];
+  for (const a of attachmentRows) {
+    buffered.push({ filename: a.filename || 'fil', content: await mailFetchAttachmentBuffer(a.url), contentType: a.content_type || undefined });
+  }
+  const text = mailHtmlToText(bodyHtml);
+  const conn = await gmailGetConnection().catch(() => null);
+  const fromEmail = (conn && conn.email) || process.env.RESEND_FROM || process.env.SMTP_FROM || null;
+
+  let sendResult;
+  try {
+    sendResult = await sendMailUniversal({ to: toList, cc: ccList, subject, text, html: bodyHtml, attachments: buffered });
+  } catch (e) {
+    if (existingRowId) {
+      await pool.query(`UPDATE customer_emails SET status='failed', send_error=$1 WHERE id=$2`, [String(e.message).slice(0, 500), existingRowId]);
+    }
+    throw e;
+  }
+
+  let row;
+  if (existingRowId) {
+    row = await pgOne(`
+      UPDATE customer_emails SET status='sent', send_error=NULL, internal_date=$1, has_attachments=$2
+      WHERE id=$3 RETURNING *
+    `, [Date.now(), attachmentRows.length ? 1 : 0, existingRowId]);
+  } else {
+    row = await pgOne(`
+      INSERT INTO customer_emails (customer_id, lead_id, opportunity_id, gmail_message_id, gmail_thread_id, subject, snippet, from_email, from_name, to_emails, cc_emails, direction, internal_date, has_attachments, is_read, body_html, status, created_by)
+      VALUES ($1,$2,$3,NULL,NULL,$4,$5,$6,$7,$8,$9,'out',$10,$11,1,$12,'sent',$13)
+      RETURNING *
+    `, [customerId || null, leadId || null, opportunityId || null, subject || '(uden emne)', text.slice(0, 200), fromEmail, null, toList.join(', '), ccList.join(', '), Date.now(), attachmentRows.length ? 1 : 0, bodyHtml, userId || null]);
+    if (attachmentRows.length) {
+      for (const a of attachmentRows) {
+        await pool.query('INSERT INTO mail_attachments (message_id, filename, content_type, size_bytes, url) VALUES ($1,$2,$3,$4,$5)', [row.id, a.filename || null, a.content_type || null, a.size_bytes || null, a.url]);
+      }
+    }
+  }
+  await logOutboundEmail({ kind: 'mail', refId: row.id, recipient: toList.join(', '), subject, sendResult });
+  return row;
+}
+
+// ── Vedhæftningsupload (billede/PDF/andre filer) ─────────────────
+app.post('/api/mail/upload-attachment', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.data_uri) return res.status(400).json({ error: 'Ingen fil modtaget' });
+  if (!cloudinaryConfigured()) return res.status(400).json({ error: 'Fillager er ikke konfigureret på serveren endnu — kontakt admin' });
+  try {
+    const url = await uploadPhotoToCloudinary(b.data_uri, 'gulvmaster/mail-attachments');
+    res.json({ ok: true, url, filename: b.filename || null, content_type: b.content_type || null, size_bytes: b.size_bytes || null });
+  } catch (e) {
+    res.status(400).json({ error: 'Kunne ikke uploade filen: ' + e.message });
+  }
+}));
+
+// ── Afsendelse (ny mail, evt. planlagt) ───────────────────────────
+app.post('/api/mail/send', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const toList = mailAddrList(b.to).map(s => String(s).trim()).filter(Boolean);
+  const ccList = mailAddrList(b.cc).map(s => String(s).trim()).filter(Boolean);
+  if (!toList.length) return res.status(400).json({ error: 'Angiv mindst én modtager' });
+  if (!b.subject) return res.status(400).json({ error: 'Emne mangler' });
+  const attachmentRows = Array.isArray(b.attachments) ? b.attachments : [];
+  let customerId = b.customer_id || null, leadId = b.lead_id || null, opportunityId = b.opportunity_id || null;
+  // Mangler en eksplicit kobling (fx sendt fra den globale Mails-side uden
+  // kontekst), forsøges den udledt af modtagerens adresse — samme logik som
+  // bruges når en mail kommer IND, se mailResolveLinks/gmailSyncGlobalInbox.
+  if (!customerId && !leadId && !opportunityId && toList[0]) {
+    const linked = await mailResolveLinks(toList[0]);
+    customerId = linked.customerId; leadId = linked.leadId; opportunityId = linked.opportunityId;
+  }
+  const scheduleAt = b.schedule_at ? new Date(b.schedule_at) : null;
+  const isFutureSchedule = scheduleAt && !isNaN(scheduleAt.getTime()) && scheduleAt.getTime() > Date.now() + 30000; // mindst 30 sek. frem, ellers sendes med det samme
+  const bodyHtml = sanitizeMailBody(b.body_html);
+
+  if (isFutureSchedule) {
+    const row = await pgOne(`
+      INSERT INTO customer_emails (customer_id, lead_id, opportunity_id, gmail_message_id, gmail_thread_id, subject, snippet, from_email, to_emails, cc_emails, direction, internal_date, has_attachments, is_read, body_html, status, scheduled_at, created_by)
+      VALUES ($1,$2,$3,NULL,NULL,$4,$5,NULL,$6,$7,'out',$8,$9,1,$10,'scheduled',$11,$12)
+      RETURNING *
+    `, [customerId, leadId, opportunityId, b.subject, mailHtmlToText(bodyHtml).slice(0, 200), toList.join(', '), ccList.join(', '), Date.now(), attachmentRows.length ? 1 : 0, bodyHtml, scheduleAt.toISOString(), req.user.id]);
+    for (const a of attachmentRows) {
+      await pool.query('INSERT INTO mail_attachments (message_id, filename, content_type, size_bytes, url) VALUES ($1,$2,$3,$4,$5)', [row.id, a.filename || null, a.content_type || null, a.size_bytes || null, a.url]);
+    }
+    return res.json({ ok: true, scheduled: true, id: row.id });
+  }
+
+  try {
+    const row = await mailSendCompose({ toList, ccList, subject: b.subject, bodyHtml, attachmentRows, customerId, leadId, opportunityId, userId: req.user.id });
+    res.json({ ok: true, id: row.id });
+  } catch (e) {
+    res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
+  }
+}));
+
+// ── Massemail — "mærk flere og send til alle valgte" på Leads/Sales/Kundeliste ──
+app.post('/api/mail/bulk-send', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const entityType = b.entity_type;
+  const ids = Array.isArray(b.ids) ? b.ids.map(Number).filter(Boolean) : [];
+  if (!['lead', 'opportunity', 'customer'].includes(entityType)) return res.status(400).json({ error: 'Ukendt type' });
+  if (!ids.length) return res.status(400).json({ error: 'Ingen markeret' });
+  if (!b.subject) return res.status(400).json({ error: 'Emne mangler' });
+  const attachmentRows = Array.isArray(b.attachments) ? b.attachments : [];
+
+  let recipients = [];
+  if (entityType === 'lead') {
+    recipients = (await pool.query('SELECT id, name, email FROM crm_leads WHERE id = ANY($1)', [ids])).rows.map(r => ({ leadId: r.id, name: r.name, email: r.email }));
+  } else if (entityType === 'opportunity') {
+    recipients = (await pool.query(`
+      SELECT o.id, o.name, c.email FROM crm_opportunities o LEFT JOIN crm_contacts c ON c.id=o.contact_id WHERE o.id = ANY($1)
+    `, [ids])).rows.map(r => ({ opportunityId: r.id, name: r.name, email: r.email }));
+  } else {
+    recipients = (await pool.query('SELECT id, name, email FROM customers WHERE id = ANY($1)', [ids])).rows.map(r => ({ customerId: r.id, name: r.name, email: r.email }));
+  }
+
+  let sent = 0, skipped = 0, failed = 0;
+  const errors = [];
+  const bodyHtml = sanitizeMailBody(b.body_html);
+  for (const r of recipients) {
+    if (!r.email) { skipped++; continue; }
+    try {
+      await mailSendCompose({
+        toList: [r.email], ccList: [], subject: b.subject, bodyHtml, attachmentRows,
+        customerId: r.customerId || null, leadId: r.leadId || null, opportunityId: r.opportunityId || null, userId: req.user.id
+      });
+      sent++;
+    } catch (e) {
+      failed++; errors.push(r.name + ': ' + e.message);
+    }
+  }
+  res.json({ ok: true, sent, skipped, failed, errors: errors.slice(0, 10) });
+}));
+
+// ── Mails-oversigt (den nye side) ──────────────────────────────────
+app.get('/api/mail/messages', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const q = req.query || {};
+  const where = [], params = [];
+  function addParam(v) { params.push(v); return '$' + params.length; }
+  if (q.box === 'sent') where.push("direction='out'");
+  else if (q.box === 'received') where.push("direction='in'");
+  else if (q.box === 'unread') where.push("direction='in' AND is_read=0");
+  else if (q.box === 'scheduled') where.push("status='scheduled'");
+  if (q.box !== 'scheduled') where.push("status <> 'scheduled'"); // skjul planlagte (endnu-ikke-sendte) fra alle andre lister end selve "Planlagt"
+  if (q.customer_id) where.push('customer_id=' + addParam(Number(q.customer_id)));
+  if (q.lead_id) where.push('lead_id=' + addParam(Number(q.lead_id)));
+  if (q.opportunity_id) where.push('opportunity_id=' + addParam(Number(q.opportunity_id)));
+  if (q.folder_id) where.push('id IN (SELECT message_id FROM mail_message_folders WHERE folder_id=' + addParam(Number(q.folder_id)) + ')');
+  if (q.q) {
+    const p = addParam('%' + String(q.q).toLowerCase() + '%');
+    where.push('(lower(subject) LIKE ' + p + ' OR lower(snippet) LIKE ' + p + ' OR lower(from_email) LIKE ' + p + ' OR lower(to_emails) LIKE ' + p + ')');
+  }
+  const limit = Math.min(200, Number(q.limit) || 60);
+  const offset = Number(q.offset) || 0;
+  const sql = `
+    SELECT ce.*, cu.name AS customer_name, l.name AS lead_name, o.name AS opportunity_name,
+           COALESCE(array_agg(mf.folder_id) FILTER (WHERE mf.folder_id IS NOT NULL), '{}') AS folder_ids
+    FROM customer_emails ce
+    LEFT JOIN customers cu ON cu.id=ce.customer_id
+    LEFT JOIN crm_leads l ON l.id=ce.lead_id
+    LEFT JOIN crm_opportunities o ON o.id=ce.opportunity_id
+    LEFT JOIN mail_message_folders mf ON mf.message_id=ce.id
+    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    GROUP BY ce.id, cu.name, l.name, o.name
+    ORDER BY ce.internal_date DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+  const rows = (await pool.query(sql, params)).rows;
+  res.json(rows);
+}));
+
+app.get('/api/mail/unread-count', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const r = await pgOne("SELECT COUNT(*)::int AS n FROM customer_emails WHERE direction='in' AND is_read=0");
+  res.json({ unread: r ? r.n : 0 });
+}));
+
+// Fuld visning af én mail. Synkede mails (status='synced', dvs. kommet via
+// Gmail-synkroniseringen) henter stadig deres brødtekst/vedhæftninger LIVE
+// fra Gmail her — nøjagtig samme mønster som "Filer"-fanen ovenfor — så vi
+// aldrig dublerer et helt mailarkiv i Postgres. Mails sendt/planlagt herfra
+// har allerede body_html/mail_attachments liggende direkte.
+app.get('/api/mail/messages/:id', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT * FROM customer_emails WHERE id=$1', [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Mail ikke fundet' });
+  let html = row.body_html, attachments = [];
+  if (row.status === 'synced' && row.gmail_message_id) {
+    try {
+      const accessToken = await gmailGetValidAccessToken();
+      const detail = await gmailApiFetch('/messages/' + row.gmail_message_id + '?format=full', accessToken);
+      const acc = { html: null, text: null, attachments: [] };
+      gmailWalkPayload(detail.payload, acc);
+      html = acc.html || (acc.text ? '<pre style="white-space:pre-wrap;font-family:inherit">' + acc.text.replace(/</g, '&lt;') + '</pre>' : '');
+      attachments = acc.attachments.map(a => ({ filename: a.filename, content_type: a.mimeType, size_bytes: a.size, gmail_message_id: row.gmail_message_id, attachmentId: a.attachmentId }));
+    } catch (e) {
+      console.error('Kunne ikke hente mailindhold live fra Gmail for #' + row.id + ':', e.message);
+    }
+  } else {
+    attachments = (await pool.query('SELECT id, filename, content_type, size_bytes, url FROM mail_attachments WHERE message_id=$1', [row.id])).rows;
+  }
+  if (row.direction === 'in' && !row.is_read) {
+    await pool.query('UPDATE customer_emails SET is_read=1 WHERE id=$1', [row.id]);
+    row.is_read = 1;
+  }
+  const folderIds = (await pool.query('SELECT folder_id FROM mail_message_folders WHERE message_id=$1', [row.id])).rows.map(r => r.folder_id);
+  res.json({ ...row, html, attachments, folder_ids: folderIds });
+}));
+
+// Vedhæftninger på en SYNKET mail (de har ingen gemt URL, kun et Gmail
+// attachmentId, se gmailWalkPayload) downloades via den ALLEREDE EKSISTERENDE
+// GET /api/gmail/messages/:messageId/attachments/:attachmentId (se den
+// generelle Gmail-sektion ovenfor — "Filer"-fanen på kundekortet bruger
+// samme rute) i stedet for en ny — den gør allerede præcis det rigtige
+// (streamer selve filen med korrekt Content-Type/-Disposition) og tjekker
+// kun at gmail_message_id findes i customer_emails, ikke at en bestemt
+// customer_id er sat, så den virker uændret for mails koblet til et lead/en
+// opportunity eller slet ingen af delene (se GLOBAL INDBAKKE-SYNK ovenfor).
+
+app.put('/api/mail/messages/:id/read', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const isRead = (req.body || {}).is_read ? 1 : 0;
+  await pool.query('UPDATE customer_emails SET is_read=$1 WHERE id=$2', [isRead, req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/mail/messages/:id', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  // Sletter kun vores EGEN pejling af mailen (listevisning/mappe/læst-status)
+  // — rører aldrig selve mailen i den rigtige postkasse. En synket mail dukker
+  // derfor roligt op igen ved næste synk, hvis den stadig findes i Gmail;
+  // det er altså kun en "fjern fra denne liste", ikke en permanent sletning.
+  await pool.query('DELETE FROM customer_emails WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.put('/api/mail/messages/:id/folders', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const folderIds = Array.isArray((req.body || {}).folder_ids) ? (req.body.folder_ids).map(Number).filter(Boolean) : [];
+  await pool.query('DELETE FROM mail_message_folders WHERE message_id=$1', [req.params.id]);
+  for (const fid of folderIds) {
+    await pool.query('INSERT INTO mail_message_folders (message_id, folder_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, fid]);
+  }
+  res.json({ ok: true });
+}));
+
+// ── Mapper ──────────────────────────────────────────────────────
+app.get('/api/mail/folders', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query(`
+    SELECT f.*, (SELECT COUNT(*) FROM mail_message_folders mf WHERE mf.folder_id=f.id)::int AS mail_count
+    FROM mail_folders f ORDER BY f.name ASC
+  `)).rows;
+  res.json(rows);
+}));
+app.post('/api/mail/folders', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const name = String((req.body || {}).name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Mappenavn mangler' });
+  const row = await pgOne('INSERT INTO mail_folders (name, created_by) VALUES ($1,$2) RETURNING *', [name, req.user.id]);
+  res.json({ ok: true, folder: row });
+}));
+app.put('/api/mail/folders/:id', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const name = String((req.body || {}).name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Mappenavn mangler' });
+  await pool.query('UPDATE mail_folders SET name=$1 WHERE id=$2', [name, req.params.id]);
+  res.json({ ok: true });
+}));
+app.delete('/api/mail/folders/:id', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM mail_folders WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── Signaturer ──────────────────────────────────────────────────
+app.get('/api/mail/signatures', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT * FROM mail_signatures WHERE user_id=$1 ORDER BY is_default DESC, name ASC', [req.user.id])).rows;
+  res.json(rows);
+}));
+app.post('/api/mail/signatures', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'Navn mangler' });
+  if (b.is_default) await pool.query('UPDATE mail_signatures SET is_default=0 WHERE user_id=$1', [req.user.id]);
+  const row = await pgOne('INSERT INTO mail_signatures (user_id, name, body_html, is_default) VALUES ($1,$2,$3,$4) RETURNING *', [req.user.id, b.name, sanitizeMailBody(b.body_html), b.is_default ? 1 : 0]);
+  res.json({ ok: true, signature: row });
+}));
+app.put('/api/mail/signatures/:id', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (b.is_default) await pool.query('UPDATE mail_signatures SET is_default=0 WHERE user_id=$1', [req.user.id]);
+  await pool.query('UPDATE mail_signatures SET name=COALESCE($1,name), body_html=COALESCE($2,body_html), is_default=COALESCE($3,is_default) WHERE id=$4 AND user_id=$5', [b.name || null, b.body_html != null ? sanitizeMailBody(b.body_html) : null, b.is_default != null ? (b.is_default ? 1 : 0) : null, req.params.id, req.user.id]);
+  res.json({ ok: true });
+}));
+app.delete('/api/mail/signatures/:id', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM mail_signatures WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+  res.json({ ok: true });
+}));
+
+// ── Skabeloner — genbruger den ALLEREDE eksisterende custom_email_templates
+// (samme tabel som "Skabeloner → ✉️ Mail-skabeloner"-fanen allerede har fuld
+// CRUD for), i stedet for at opfinde endnu et parallelt skabelon-system.
+// Mails-modulet læser den blot her for "indsæt skabelon"-vælgeren i kompose.
+app.get('/api/mail/templates', auth, panelAccess('mail'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query('SELECT id, name, subject, body_html FROM custom_email_templates ORDER BY name ASC')).rows;
+  res.json(rows);
+}));
+
+// ══════════════════════════════════════════════════════════════
+// GLOBAL INDBAKKE-SYNK — udvider den eksisterende, pr.-kunde Gmail-synk
+// (gmailSyncAll/gmailSyncCustomer ovenfor, UÆNDRET og stadig den der fodrer
+// "📎 Filer"/"📧 Emails"-fanerne på selve kundekortet) med en bredere synk der
+// også fanger mails til/fra adresser der IKKE allerede er en kendt kunde —
+// nødvendigt for at "Mails"-sidens globale Modtaget/Ulæste rent faktisk viser
+// ALT, ikke kun det der allerede var koblet til en kunde. Kører i samme
+// 5-minutters cron-tick (se bunden af filen), lige efter gmailSyncAll().
+// ══════════════════════════════════════════════════════════════
+const MAIL_GLOBAL_SYNC_MAX_PER_TICK = 150;
+async function gmailSyncGlobalInbox() {
+  const accessToken = await gmailGetValidAccessToken();
+  const conn = await gmailGetConnection();
+  const connEmail = (conn && conn.email) || '';
+  // Første gang denne kører findes intet cursor-tidspunkt — starter da 14 dage
+  // tilbage i stedet for appens fulde Gmail-historik, for ikke at importere år
+  // af gammel mail på én gang (og i stedet lade den allerede eksisterende
+  // pr.-kunde-synk/Fuld synk-knappen dække det historiske behov for KENDTE kunder).
+  const afterSec = Math.floor((Number(conn && conn.last_global_sync_at) || (Date.now() - 14 * 24 * 3600 * 1000)) / 1000);
+  const q = '(in:inbox OR in:sent) after:' + afterSec;
+  let processed = 0, added = 0, pageToken;
+  do {
+    const list = await gmailApiFetch('/messages?maxResults=50&q=' + encodeURIComponent(q) + (pageToken ? '&pageToken=' + pageToken : ''), accessToken);
+    const messages = list.messages || [];
+    for (const m of messages) {
+      if (processed >= MAIL_GLOBAL_SYNC_MAX_PER_TICK) break;
+      processed++;
+      const exists = await pgOne('SELECT id FROM customer_emails WHERE gmail_message_id=$1', [m.id]);
+      if (exists) continue; // allerede indsat (fx af den pr.-kunde synk for en kendt kunde)
+      try {
+        const detail = await gmailApiFetch('/messages/' + m.id + '?format=full', accessToken);
+        const headers = (detail.payload && detail.payload.headers) || [];
+        const fromParsed = gmailParseFromHeader(gmailHeader(headers, 'From'));
+        const direction = fromParsed.email && connEmail && fromParsed.email.toLowerCase() === connEmail.toLowerCase() ? 'out' : 'in';
+        const toHeader = gmailHeader(headers, 'To') || '';
+        const otherParty = direction === 'in' ? fromParsed.email : (toHeader.split(',')[0] || '').trim();
+        const linked = await mailResolveLinks(gmailParseFromHeader(otherParty).email || otherParty);
+        const acc = { html: null, text: null, attachments: [] };
+        gmailWalkPayload(detail.payload, acc);
+        await pool.query(`
+          INSERT INTO customer_emails (customer_id, lead_id, opportunity_id, gmail_message_id, gmail_thread_id, subject, snippet, from_email, from_name, to_emails, direction, internal_date, has_attachments, is_read, status)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'synced')
+          ON CONFLICT (gmail_message_id) DO NOTHING
+        `, [linked.customerId, linked.leadId, linked.opportunityId, m.id, detail.threadId || null, gmailHeader(headers, 'Subject') || '(uden emne)', detail.snippet || '', fromParsed.email || null, fromParsed.name || null, toHeader || null, direction, Number(detail.internalDate) || Date.now(), acc.attachments.length ? 1 : 0, direction === 'in' ? 0 : 1]);
+        added++;
+      } catch (e) { console.error('Global mail-synk fejlede for besked ' + m.id + ':', e.message); }
+    }
+    pageToken = processed < MAIL_GLOBAL_SYNC_MAX_PER_TICK ? list.nextPageToken : null;
+  } while (pageToken);
+  await pool.query('UPDATE gmail_connection SET last_global_sync_at=$1 WHERE id=1', [Date.now()]);
+  return added;
+}
+
+// ── Planlagte mails — sendes af en lille cron-drainer (se bunden af filen) ──
+async function mailDrainScheduled() {
+  const due = (await pool.query("SELECT * FROM customer_emails WHERE status='scheduled'")).rows.filter(r => r.scheduled_at && new Date(r.scheduled_at).getTime() <= Date.now());
+  for (const row of due) {
+    const toList = mailAddrList(row.to_emails ? row.to_emails.split(',').map(s => s.trim()) : []);
+    const ccList = mailAddrList(row.cc_emails ? row.cc_emails.split(',').map(s => s.trim()) : []);
+    const attachmentRows = (await pool.query('SELECT filename, content_type, size_bytes, url FROM mail_attachments WHERE message_id=$1', [row.id])).rows;
+    try {
+      await mailSendCompose({
+        toList, ccList, subject: row.subject, bodyHtml: row.body_html || '', attachmentRows,
+        customerId: row.customer_id, leadId: row.lead_id, opportunityId: row.opportunity_id, userId: row.created_by, existingRowId: row.id
+      });
+    } catch (e) {
+      console.error('Planlagt mail #' + row.id + ' kunne ikke sendes:', e.message);
+    }
+  }
+  return due.length;
+}
 
 // ══════════════════════════════════════════════════════════════
 // AUTOMATIK / UDGÅENDE MAILS PÅ KUNDEKORTET (okt. 2026, Martin: "kan jeg under
@@ -20905,6 +21472,33 @@ function sanitizeRichText(html) {
   return s.trim();
 }
 
+// RUNDE CU — saniterer brødteksten på en mail sendt fra det nye Mails-modul.
+// sanitizeRichText ovenfor er med VILJE for snæver til formålet her (kun
+// b/strong/br/a) — mail-komponeringen skal jo netop også kunne indeholde
+// punkt-/talopstillinger (med indryk/nøstede lister), billeder og generel
+// formatering (<span style>/<div style> fra contentEditable). Da kun
+// medarbejdere (panelAccess('mail')) kan sende herfra — samme tillidsniveau
+// som custom_email_templates/document_email_templates, der i dag gemmes helt
+// usaniteret — er formålet her IKKE at beskytte mod Martins eget personale,
+// men at luge <script>/<style>/event-handlere/"javascript:"-links ud, så en
+// evt. uheldig copy-paste fra en ekstern side ikke injicerer kørende kode.
+function sanitizeMailBody(html) {
+  if (!html) return '';
+  let s = String(html);
+  s = s.replace(/<(script|style|iframe|object|embed)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  s = s.replace(/<(script|style|iframe|object|embed)[^>]*\/?>/gi, '');
+  // Fjern ALLE on*-event-handler-attributter (onclick, onerror, osv.) uanset hvilket tag de sidder på.
+  s = s.replace(/\son\w+\s*=\s*"[^"]*"/gi, '').replace(/\son\w+\s*=\s*'[^']*'/gi, '');
+  // href/src må kun pege på http(s)/mailto/data:image — aldrig javascript:.
+  s = s.replace(/\s(href|src)\s*=\s*"([^"]*)"/gi, (m, attr, val) => {
+    const v = val.trim();
+    const safe = /^(https?:|mailto:)/i.test(v) || (attr.toLowerCase() === 'src' && /^data:image\//i.test(v));
+    return safe ? ` ${attr}="${v.replace(/"/g, '&quot;')}"` : '';
+  });
+  // Tilladte tags — resten af markeringen (ikke indholdet) fjernes, men teksten imellem beholdes.
+  s = s.replace(/<(?!\/?(p|br|b|strong|i|em|u|ul|ol|li|a|img|span|div|blockquote|table|tr|td|tbody)\b)[^>]*>/gi, '');
+  return s.trim();
+}
 // Ren tekst-udgave af en rig-tekst-note (bruges til højde-beregning og andre
 // steder der ikke kan/skal vise HTML, fx sms/notifikations-tekster).
 function richTextToPlain(html) {
@@ -24937,6 +25531,22 @@ async function start() {
       console.error('Gmail-synk fejlede:', e.message);
       await pool.query('UPDATE gmail_connection SET last_sync_error=$1 WHERE id=1', [String(e.message).slice(0, 500)]).catch(() => {});
       await logSystemEvent('gmail', 'error', 'Planlagt Gmail-synk fejlede: ' + e.message);
+    }
+    // RUNDE CU — den nye "Mails"-sides globale indbakke-synk (fanger mails
+    // til/fra adresser der ikke allerede er en kendt kunde), kører i samme
+    // 5-minutters tick lige efter den eksisterende pr.-kunde-synk ovenfor.
+    try { await gmailSyncGlobalInbox(); }
+    catch (e) {
+      console.error('Global mail-synk fejlede:', e.message);
+      await logSystemEvent('gmail', 'error', 'Planlagt global mail-synk (Mails-modul) fejlede: ' + e.message);
+    }
+  });
+  // RUNDE CU — drainer for planlagte mails ("schudale email"), hvert minut.
+  cron.schedule('* * * * *', async () => {
+    try { await mailDrainScheduled(); }
+    catch (e) {
+      console.error('Afsendelse af planlagte mails fejlede:', e.message);
+      await logSystemEvent('mail', 'error', 'Afsendelse af planlagte mails fejlede: ' + e.message);
     }
   });
 }
