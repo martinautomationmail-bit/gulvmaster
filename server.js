@@ -21651,15 +21651,28 @@ app.get('/api/quotes/:id/pdf', authOrQueryToken, panelAccess('quotes'), asyncRou
 // Gulv Masters dokumenter, uden at skulle vride det fulde linje-layout til
 // noget det ikke er.
 function pdfKr(n) { return Math.round(Number(n) || 0).toLocaleString('da-DK') + ' kr'; }
-function drawPaymentPlanPdf(doc, quote, company) {
-  const metaLines = [`Dato: ${new Date().toISOString().slice(0, 10)}`, `Vedr. tilbud: ${quote.quote_number}`];
-  let y = drawDocHeader(doc, 'BETALINGSPLAN', quote.quote_number, metaLines, '#4F46E5', company);
-  y = drawFraTilBlock(doc, y, company, quote);
-  y += 6;
-  doc.font('DMSans').fontSize(9).fillColor('#6B7280')
-    .text('Forslag til opdeling af tilbuddets samlede pris i ' + (quote.payment_plan.phases.length) + ' betalingsrater, til fakturering i faser.', 40, y, { width: 515 });
-  y = doc.y + 18;
-  // Tabel-header
+// RUNDE CN (Martin, vedhæftet skærmbillede af en betalingsplan-PDF hvor
+// milepæl-teksten lå hen over en flerlinjet faseoverskrift: "når man laver
+// en betalingsplan ... når man arbejder i brødteksten under overskriften
+// ... kan man lave linebreaks som i et note program så det står pænere og
+// opdelt tydeligt for kunden") — TO rettelser i samme ombæring:
+// 1) Selve overlap-FEJLEN: y-positionen efter FASE/ANDEL/BELØB-rækken blev
+//    taget fra doc.y efter det SIDSTE (korteste, ét-linjes) felt, ikke fra
+//    det LÆNGSTE — så en fase-overskrift der ombrød til 2 linjer fik
+//    milepæl-teksten tegnet oven i sig selv, præcis som på Martins billede.
+//    Rettet ved at tage MAX af begge kolonners slut-y.
+// 2) Milepæl-feltet understøtter nu rigtige linjeskift (\n bevares fra
+//    qp-milestone-textarea'en i admin.html og tegnes som flere linjer her —
+//    PDFKit's .text() respekterer \n i strengen), og rækkens højde udregnes
+//    PÅ FORHÅND (heightOfString) i stedet for at antage én linje, så næste
+//    fase aldrig kan overlappe en flerlinjet milepæl.
+// Samtidig tilføjet egen, ISOLERET paginering (ppEnsureSpace nedenfor, samme
+// mønster som materialelisten/RUNDE CM) — med linjeskift kan en fase nu fylde
+// meget mere end før, så en liste med mange faser/lange milepæle skal kunne
+// fortsætte på side 2 ligesom resten af Gulv Masters PDF'er.
+const PP_PDF_PAGE_BOTTOM = 760;
+const PP_PDF_CONTINUATION_TOP = 50;
+function ppDrawTableHeader(doc, y) {
   doc.font('DMSans-Bold').fontSize(9).fillColor('#9CA3AF');
   doc.text('FASE', 40, y, { width: 240 });
   doc.text('ANDEL', 300, y, { width: 60, align: 'right' });
@@ -21667,13 +21680,43 @@ function drawPaymentPlanPdf(doc, quote, company) {
   y += 14;
   doc.moveTo(40, y).lineTo(555, y).strokeColor('#EEF0F3').lineWidth(1).stroke();
   y += 10;
+  return y;
+}
+function ppPdfStartContinuationPage(doc, docNumber, accent) {
+  doc.addPage();
+  let y = PP_PDF_CONTINUATION_TOP;
+  doc.font('DMSans-Bold').fontSize(9).fillColor(accent).text('BETALINGSPLAN ' + docNumber + ' — fortsat', 40, y);
+  y += 20;
+  return ppDrawTableHeader(doc, y);
+}
+function ppEnsureSpace(doc, y, needed, docNumber, accent) {
+  if (y + needed <= PP_PDF_PAGE_BOTTOM) return y;
+  return ppPdfStartContinuationPage(doc, docNumber, accent);
+}
+function drawPaymentPlanPdf(doc, quote, company) {
+  const accent = '#4F46E5';
+  const metaLines = [`Dato: ${new Date().toISOString().slice(0, 10)}`, `Vedr. tilbud: ${quote.quote_number}`];
+  let y = drawDocHeader(doc, 'BETALINGSPLAN', quote.quote_number, metaLines, accent, company);
+  y = drawFraTilBlock(doc, y, company, quote);
+  y += 6;
+  doc.font('DMSans').fontSize(9).fillColor('#6B7280')
+    .text('Forslag til opdeling af tilbuddets samlede pris i ' + (quote.payment_plan.phases.length) + ' betalingsrater, til fakturering i faser.', 40, y, { width: 515 });
+  y = doc.y + 18;
+  y = ppDrawTableHeader(doc, y);
   quote.payment_plan.phases.forEach((p) => {
-    doc.font('DMSans-Bold').fontSize(10.5).fillColor('#111318').text(p.label || '', 40, y, { width: 240 });
+    const labelText = p.label || '';
+    const milestoneText = p.milestone || '';
+    const labelH = doc.font('DMSans-Bold').fontSize(10.5).heightOfString(labelText, { width: 240 });
+    const milestoneH = milestoneText ? doc.font('DMSans').fontSize(9).heightOfString(milestoneText, { width: 475 }) : 0;
+    const rowH = Math.max(labelH, 14) + (milestoneText ? milestoneH + 4 : 0) + 20;
+    y = ppEnsureSpace(doc, y, rowH, quote.quote_number, accent);
+    doc.font('DMSans-Bold').fontSize(10.5).fillColor('#111318').text(labelText, 40, y, { width: 240 });
+    const labelEndY = doc.y;
     doc.font('DMSans').fontSize(10.5).fillColor('#111318').text((Number(p.pct) || 0) + '%', 300, y, { width: 60, align: 'right' });
-    doc.font('DMSans-Bold').fontSize(10.5).fillColor('#4F46E5').text(pdfKr(p.amount), 390, y, { width: 125, align: 'right' });
-    y = doc.y + 2;
-    if (p.milestone) {
-      doc.font('DMSans').fontSize(9).fillColor('#6B7280').text(p.milestone, 40, y, { width: 475 });
+    doc.font('DMSans-Bold').fontSize(10.5).fillColor(accent).text(pdfKr(p.amount), 390, y, { width: 125, align: 'right' });
+    y = Math.max(labelEndY, doc.y) + 2; // RUNDE CN — MAX af begge kolonner, se kommentaren ovenfor.
+    if (milestoneText) {
+      doc.font('DMSans').fontSize(9).fillColor('#6B7280').text(milestoneText, 40, y, { width: 475 });
       y = doc.y;
     }
     y += 10;
@@ -21681,9 +21724,24 @@ function drawPaymentPlanPdf(doc, quote, company) {
     y += 10;
   });
   y += 4;
+  y = ppEnsureSpace(doc, y, 20, quote.quote_number, accent);
   doc.font('DMSans-Bold').fontSize(11).fillColor('#111318').text('I alt', 300, y, { width: 60, align: 'right' });
   doc.font('DMSans-Bold').fontSize(11).fillColor('#111318').text(pdfKr(quote.total), 390, y, { width: 125, align: 'right' });
   drawDocFooter(doc, company);
+}
+function renderPaymentPlanPdfBuffer(quote, company) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      registerBrandFonts(doc);
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      drawPaymentPlanPdf(doc, quote, company);
+      doc.end();
+    } catch (e) { reject(e); }
+  });
 }
 app.get('/api/quotes/:id/payment-plan/pdf', authOrQueryToken, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await pgOne('SELECT id, quote_number, job_name, customer_address, customer_phone, customer_email, total, payment_plan FROM quotes WHERE id=$1', [req.params.id]);
@@ -22204,17 +22262,30 @@ app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (
     pdfBuffer = await renderDocumentPdfBuffer('quote', quote, company, attachmentImages);
   }
   catch (e) { return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message }); }
+  const attachments = [{ filename: quote.quote_number + '.pdf', content: pdfBuffer }];
+  // RUNDE CN (Martin: "når man laver en betalingsplan at man kan tilføje
+  // den til tilbuddet man sender") — valgfri medsendelse af betalingsplanen
+  // som en EKSTRA vedhæftet PDF, samme mail, samme afsendelse. Kun relevant
+  // hvis tilbuddet rent faktisk har en gemt betalingsplan — en manglende
+  // eller tom plan må aldrig stoppe selve tilbuds-afsendelsen, så fejl her
+  // logges blot og springes stille over i stedet for at fejle hele kaldet.
+  if (b.include_payment_plan && quote.payment_plan && Array.isArray(quote.payment_plan.phases) && quote.payment_plan.phases.length) {
+    try {
+      const paymentPlanBuffer = await renderPaymentPlanPdfBuffer(quote, company);
+      attachments.push({ filename: quote.quote_number + '-betalingsplan.pdf', content: paymentPlanBuffer });
+    } catch (e) { console.error('Kunne ikke vedhæfte betalingsplan til tilbud #' + quote.id + ':', e.message); }
+  }
   let sendResult;
   try {
     sendResult = await sendMailUniversal({
       to, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml),
-      attachments: [{ filename: quote.quote_number + '.pdf', content: pdfBuffer }]
+      attachments
     });
   } catch (e) {
     return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
   }
   if (quote.status === 'draft') await pool.query(`UPDATE quotes SET status='sent', updated_at=${nowTextSQL()} WHERE id=$1`, [quote.id]);
-  logDocActivity('quote', quote.id, 'sent', req.user.name, `til ${to}`);
+  logDocActivity('quote', quote.id, 'sent', req.user.name, `til ${to}` + (attachments.length > 1 ? ' (inkl. betalingsplan)' : ''));
   logOutboundEmail({ kind: 'quote', refId: quote.id, recipient: to, subject, sendResult });
   // ARKIVERING — gem den PRÆCISE PDF (som blev sendt) + et datasnapshot som en ny
   // nummereret version, så tilbuddet altid kan redigeres/gensendes videre uden at en

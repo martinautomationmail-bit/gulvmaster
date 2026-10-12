@@ -9458,6 +9458,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <label class="form-label" style="margin-top:12px">Forhåndsvisning</label>
       <div id="doc-send-preview" style="border:1px solid var(--border2);border-radius:10px;padding:12px;max-height:280px;overflow:auto;background:var(--ice);font-size:12.5px"></div>
       <div class="geo-hint" style="margin-top:8px">📎 PDF'en vedhæftes automatisk til mailen.</div>
+      <!-- RUNDE CN (Martin: "når man laver en betalingsplan at man kan
+           tilføje den til tilbuddet man sender") — kun vist for et tilbud
+           der rent faktisk HAR en gemt betalingsplan, se mlOpenModal-
+           mønsteret ovenfor/openDocSendModal nedenfor. -->
+      <div id="doc-send-payment-plan-row" style="display:none;margin-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="doc-send-include-payment-plan" checked>
+          📎 Vedhæft betalingsplan som ekstra PDF
+        </label>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn" id="close-doc-send">Annuller</button>
@@ -15180,6 +15190,10 @@ async function openDocSendModal(kind,id){
   var defaultTplId=docTplAssignCache[kind]||'';
   sel.value=defaultTplId&&docMailTemplatesCache.some(function(t){return String(t.id)===String(defaultTplId);})?String(defaultTplId):'';
   docSendUpdatePreview();
+  // RUNDE CN — se kommentaren ved #doc-send-payment-plan-row i HTML'en.
+  var hasPaymentPlan=kind==='quote'&&rec.payment_plan&&Array.isArray(rec.payment_plan.phases)&&rec.payment_plan.phases.length>0;
+  document.getElementById('doc-send-payment-plan-row').style.display=hasPaymentPlan?'':'none';
+  document.getElementById('doc-send-include-payment-plan').checked=true;
   document.getElementById('doc-send-modal').classList.add('open');
 }
 function docSendUpdatePreview(){
@@ -15208,7 +15222,8 @@ async function confirmDocSend(){
   var btn=document.getElementById('doc-send-confirm-btn');
   btn.disabled=true;btn.textContent='Sender…';
   var path='/api/'+(docSendCtx.kind==='quote'?'quotes':'invoices')+'/'+docSendCtx.id+'/send';
-  var r=await api(path,{method:'POST',body:JSON.stringify({to:to,template_id:tplId||undefined})});
+  var includePaymentPlan=docSendCtx.kind==='quote'&&document.getElementById('doc-send-payment-plan-row').style.display!=='none'&&document.getElementById('doc-send-include-payment-plan').checked;
+  var r=await api(path,{method:'POST',body:JSON.stringify({to:to,template_id:tplId||undefined,include_payment_plan:includePaymentPlan||undefined})});
   btn.disabled=false;btn.textContent='📧 Send';
   if(r&&r.ok){
     toast('Sendt ✓','✓');
@@ -31419,6 +31434,15 @@ async function qpOpenModal(){
   }
   qpRecalcSummary();
 }
+// RUNDE CN (Martin: "når man arbejder i brødteksten under overskriften,
+// tænker det den der hedder milepæl, enten kan søge fra linjer i tilbuddet
+// og eller man kan lave linebreaks som i et note program så det står
+// pænere og opdelt tydeligt for kunden") — milepæl er nu en RIGTIG
+// flerliniet <textarea> (Enter giver et ægte linjeskift, som gemmes 1:1 og
+// tegnes som flere linjer i PDF'en, se drawPaymentPlanPdf), plus en lille
+// "+ Indsæt linje"-vælger der sætter en af tilbuddets egne linjebeskrivelser
+// ind som ny linje i milepæl-teksten, så Martin ikke selv skal skrive dem
+// af fra tilbuddet.
 function qpAddRow(phase){
   phase=phase||{};
   var row=document.createElement('div');
@@ -31427,7 +31451,8 @@ function qpAddRow(phase){
   row.innerHTML=
     '<div style="flex:2">'+
       '<input class="qe-input qp-label" placeholder="Fase, fx Depositum ved underskrift">'+
-      '<input class="qe-input qp-milestone" placeholder="Milepæl, fx Ved underskrift af tilbuddet" style="margin-top:4px;font-size:12px">'+
+      '<textarea class="qe-input qp-milestone" placeholder="Milepæl, fx Ved underskrift af tilbuddet — tryk Enter for linjeskift" rows="2" style="margin-top:4px;font-size:12px;resize:vertical;width:100%"></textarea>'+
+      '<select class="qe-input qp-insert-line" style="margin-top:4px;font-size:11px;width:100%"><option value="">+ Indsæt linje fra tilbuddet…</option></select>'+
     '</div>'+
     '<div style="flex:0 0 70px"><input class="qe-input qp-pct" type="number" min="0" max="100" step="0.5" style="text-align:right"></div>'+
     '<div style="flex:0 0 100px;text-align:right;padding-top:9px;font-weight:700;font-size:13px" class="qp-amount">0 kr</div>'+
@@ -31437,6 +31462,23 @@ function qpAddRow(phase){
   row.querySelector('.qp-pct').value=phase.pct!=null?phase.pct:'';
   row.querySelector('.qp-pct').addEventListener('input',qpRecalcSummary);
   row.querySelector('.qp-remove').addEventListener('click',function(){row.remove();qpRecalcSummary();});
+  var insertSel=row.querySelector('.qp-insert-line');
+  (qeState.lines||[]).forEach(function(l,i){
+    if(!l.description)return;
+    var opt=document.createElement('option');
+    opt.value=String(i);
+    opt.textContent=l.description.length>60?l.description.slice(0,60)+'…':l.description;
+    insertSel.appendChild(opt);
+  });
+  insertSel.addEventListener('change',function(){
+    if(insertSel.value==='')return;
+    var line=(qeState.lines||[])[Number(insertSel.value)];
+    if(line&&line.description){
+      var ta=row.querySelector('.qp-milestone');
+      ta.value=ta.value?(ta.value.replace(/\s+$/,'')+'\n'+line.description):line.description;
+    }
+    insertSel.value='';
+  });
   document.getElementById('qp-rows').appendChild(row);
   return row;
 }
