@@ -10819,6 +10819,44 @@ function timeOffLabel(t){return t.type==='sick'?'🤒 Sygdom':(t.type==='vacatio
 // før, det sker bare gradvist i stedet for alt på én gang.
 var PLAN_WEEKS_BACK=26,PLAN_WEEKS_FORWARD=52;
 var planWinBack=4,planWinForward=10;
+// RUNDE CT (Martin: "Dagligplanlægning er helt fuckt. Den starter på 37 hver
+// gang og jeg skal trykke i dag 2-3 gange hvor den bare scroller frem og
+// tilbage") — selve årsagen: #plan-board-outer har CSS scroll-behavior:smooth
+// (se CSS-kommentaren samme sted, som allerede ADVARER om at den kombination
+// tidligere gav "en vedvarende strøm af scroll-hændelser der aldrig faldt til
+// ro" for museknap-scroll). bindPlanScrollTracking()'s detect() reagerer på
+// ETHVERT scroll-event — inkl. dem der opstår MIDT i en igangværende, bevidst
+// programmeret scroll (allerførste indlæsning, "I dag", Forrige/Næste) — og
+// kan undervejs tro man sidder tæt på kanten af det indlæste vindue, hvilket
+// udløser planEnsureWindow() → en FULD gentegning (renderPlan()) PLUS dens
+// egen kompenserende scrollTo. Den ekstra scroll afbryder/overskriver den
+// oprindelige, bevidste scroll — præcis det samme mønster som den ældre
+// museknap-kommentar advarer om, nu bare genopstået i vindues-udvidelsen.
+// Resultatet: landingen sker et tilfældigt sted i stedet for ved "i dag"
+// (derfor "uge 37"), og man skal klikke flere gange før det tilfældigvis
+// lander rigtigt. Løsningen er IKKE at fjerne uendelig-scroll-funktionen
+// (den virker fint ved ÆGTE museknap/trackpad-scroll), men at planEnsureWindow
+// aldrig selv må udløses af et scroll-event der stammer fra en af vores EGNE,
+// bevidste scrollTo-kald. planScrollTo() nedenfor er derfor den ENESTE vej
+// alt Daglig Plan-kode bruger til at flytte #plan-board-outer programmatisk
+// — den tæller op/ned omkring selve scrollTo-kaldet, og detect() springer
+// kante-udvidelsen over så længe tælleren er over 0. Selve ugelabel/
+// highlight-opdateringen holdes UDENFOR denne spærring med vilje, så man
+// stadig ser ugenummeret tikke pænt videre mens en lang "I dag"-scroll glider
+// hen over mellemliggende uger.
+var planProgrammaticScrollDepth=0;
+function planScrollTo(outer,opts){
+  if(!outer)return;
+  planProgrammaticScrollDepth++;
+  outer.scrollTo(opts);
+  var done=function(){planProgrammaticScrollDepth=Math.max(0,planProgrammaticScrollDepth-1);outer.removeEventListener('scrollend',done);};
+  // 'scrollend' dækker nu alle moderne browsere og er langt mere pålideligt end et
+  // gættet timeout (som enten stopper for tidligt — samme fejl vi retter her — eller
+  // unødigt blokerer ægte bruger-scroll et stykke tid efter et knaptryk). Ældre
+  // browsere uden 'scrollend' falder tilbage til et rundhåndet timeout.
+  if('onscrollend' in window)outer.addEventListener('scrollend',done,{once:true});
+  else setTimeout(done,700);
+}
 function planAllDays(){var out=[],m=add(mon(new Date()),-planWinBack*7);for(var i=0;i<(planWinBack+planWinForward)*7;i++)out.push(add(m,i));return out;}
 // Udvider planWinBack/planWinForward (op til PLAN_WEEKS_BACK/FORWARD) og gentegner
 // boardet — men bevarer scrollpositionen ift. en "anker"-mandag, så man ikke ser
@@ -10838,7 +10876,7 @@ function planEnsureWindow(weeksBackNeeded,weeksForwardNeeded,anchorKey){
   renderPlan();
   if(outer&&anchorKey&&anchorOffset!==null){
     var newTh=document.querySelector('#daily-head th[data-plan-monday="'+anchorKey+'"]');
-    if(newTh)outer.scrollTo({left:Math.max(0,newTh.offsetLeft-(anchorOffset-anchorScrollLeft)),behavior:'instant'});
+    if(newTh)planScrollTo(outer,{left:Math.max(0,newTh.offsetLeft-(anchorOffset-anchorScrollLeft)),behavior:'instant'});
   }
   return true;
 }
@@ -10966,7 +11004,10 @@ function renderPlan(){
       // Forrige/Næste-knapperne) — ellers animerer browseren en lang, hakkende
       // glidetur hen over ~26 ugers kolonner samtidig med at hele tabellen stadig
       // bliver bygget, hvilket er præcis det der så ud som "scroller frem og tilbage".
-      if(outer&&curMondayTh)outer.scrollTo({left:Math.max(0,curMondayTh.offsetLeft-40),behavior:'instant'});
+      // RUNDE CT — går nu via planScrollTo() (se kommentaren ved planProgrammaticScrollDepth),
+      // så et scroll-event der opstår midt i DENNE placering ikke selv kan udløse
+      // planEnsureWindow() og rive landingen med sig et andet sted hen.
+      if(outer&&curMondayTh)planScrollTo(outer,{left:Math.max(0,curMondayTh.offsetLeft-40),behavior:'instant'});
       if(outer)outer.classList.remove('plan-positioning');
     });
   }
@@ -11259,7 +11300,7 @@ function planScrollByWeeks(dir){
   var idx=mondays.findIndex(function(th){return th.dataset.planMonday===curKey;});
   if(idx===-1)idx=0;
   var targetIdx=Math.max(0,Math.min(mondays.length-1,idx+dir));
-  outer.scrollTo({left:Math.max(0,mondays[targetIdx].offsetLeft-40),behavior:'smooth'});
+  planScrollTo(outer,{left:Math.max(0,mondays[targetIdx].offsetLeft-40),behavior:'smooth'});
 }
 function bindPlanScrollTracking(){
   var outer=document.getElementById('plan-board-outer');
@@ -11280,8 +11321,14 @@ function bindPlanScrollTracking(){
     // Nærmer man sig kanten af det vindue der er indlæst/tegnet lige nu (ved ALMINDELIG
     // native scroll, ikke kun pilene)? Udvid stille og roligt i baggrunden, så det føles
     // som uendelig scroll i praksis, uden at man nogensinde rammer en synlig "mur".
+    // RUNDE CT — men ALDRIG mens en af vores EGNE scrollTo-kald (planScrollTo) stadig
+    // er i gang, se kommentaren ved planProgrammaticScrollDepth. Ellers afbryder/
+    // overskriver denne udvidelse en bevidst "I dag"/Forrige/Næste-scroll, som var
+    // præcis det der gjorde at man skulle klikke "I dag" flere gange og så boardet
+    // "hoppe" frem og tilbage i stedet for at lande roligt.
     var scrollMax=outer.scrollWidth-outer.clientWidth,edgeBuffer=3*128;
-    if(outer.scrollLeft<edgeBuffer&&planWinBack<PLAN_WEEKS_BACK){
+    if(planProgrammaticScrollDepth>0){/* vent til vores egen scroll er faldet til ro */}
+    else if(outer.scrollLeft<edgeBuffer&&planWinBack<PLAN_WEEKS_BACK){
       planEnsureWindow(planWinBack+8,0,mk);
     }else if(scrollMax-outer.scrollLeft<edgeBuffer&&planWinForward<PLAN_WEEKS_FORWARD){
       planEnsureWindow(0,planWinForward+8,mk);
@@ -20899,7 +20946,7 @@ async function bind(){
     // (ikke selve "i dag"-kolonnen), så hele den aktuelle uge vises — ikke kun
     // halerne af den plus næste uge.
     var curMondayTh=document.querySelector('#daily-head th[data-plan-monday="'+iso(mon(new Date()))+'"]');
-    if(outer&&curMondayTh)outer.scrollTo({left:Math.max(0,curMondayTh.offsetLeft-40),behavior:'smooth'});
+    if(outer&&curMondayTh)planScrollTo(outer,{left:Math.max(0,curMondayTh.offsetLeft-40),behavior:'smooth'});
   };
   document.getElementById('plan-print-btn').onclick=openPrintWeekModal;
   document.getElementById('print-week-go').onclick=generatePrintWeek;
