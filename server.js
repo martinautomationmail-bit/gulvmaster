@@ -1196,6 +1196,17 @@ async function initSchema() {
     -- se POST .../ai-payment-plan og PUT .../payment-plan.
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_plan JSONB;
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_plan_generated_at TEXT;
+    -- RUNDE CM (Martins ønske: "en knap jeg kan gerener og sende en pdf med
+    -- en materiale liste til mine suppliers ... Den skal med AI udregne alt
+    -- vi skal bruge baseret på tilbuddet ... Jeg skal efterfølgende kunne
+    -- slette, tilføje og rette i den inden afsendelse") — ÉN materialeliste
+    -- pr. tilbud (overskrives ved ny AI-generering/redigering), nøjagtig
+    -- samme enkle mønster som payment_plan ovenfor: ingen separat
+    -- tabel/historik nødvendig, det er den aktuelle, redigerede liste der
+    -- tæller. Formen er {"items":[{"description","quantity","unit","note"},...]} —
+    -- se POST .../ai-materials-list og PUT .../materials-list.
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS materials_list JSONB;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS materials_list_generated_at TEXT;
 
     CREATE TABLE IF NOT EXISTS quote_lines (
       id SERIAL PRIMARY KEY,
@@ -19519,6 +19530,78 @@ app.put('/api/quotes/:id/payment-plan', auth, panelAccess('quotes'), asyncRoute(
   res.json({ ok: true, phases, total });
 }));
 
+// ══════════════════════════════════════════════════════════════
+// RUNDE CM (Martins ønske: "en knap jeg kan gerener og sende en pdf med en
+// materiale liste til mine suppliers som jeg har gemt i programmet. Den
+// skal med AI udregne alt vi skal bruge baseret på tilbuddet der analyseres
+// fra. Jeg skal efterfølgende kunne slette, tilføje og rette i den inden
+// afsendelse") — AI'en analyserer tilbuddets linjer (der ofte er skrevet som
+// ARBEJDE, fx "80 m² afhøvling + hvidolie", ikke som en indkøbsliste) og
+// udregner en konkret materiale-/indkøbsliste med realistisk spildmargin,
+// som gemmes på selve tilbuddet (quotes.materials_list, se migrations-
+// blokken) og kan redigeres frit i admin.html (tilføj/ret/slet rækker) inden
+// den sendes som PDF til en leverandør — leverandøren vælges fra Videns-
+// centrets "Leverandører"-liste (kb_lists, læses via de eksisterende
+// generiske /api/kb/*-ruter), med fri navn/mail som fallback hvis den
+// ønskede leverandør ikke står der. Genbruger callAnthropicJSON-mønstret og
+// payment_plan-persisteringsmønstret ovenfor.
+// ══════════════════════════════════════════════════════════════
+function normalizeMaterialsListItems(rawItems) {
+  return (Array.isArray(rawItems) ? rawItems : []).map(it => {
+    const description = String((it && it.description) || '').trim().slice(0, 300);
+    const quantity = Math.max(0, Number(it && it.quantity) || 0);
+    const unit = String((it && it.unit) || 'stk').trim().slice(0, 30) || 'stk';
+    const note = String((it && it.note) || '').trim().slice(0, 300);
+    return { description, quantity, unit, note };
+  }).filter(it => it.description);
+}
+app.post('/api/quotes/:id/ai-materials-list', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const quote = await loadQuoteFull(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const lineItems = (quote.lines || [])
+    .filter(l => String(l.line_type || 'item') === 'item')
+    .map(l => ({ description: l.description, quantity: Number(l.quantity) || 0, unit: l.unit, product_type: l.product_type }));
+  if (!lineItems.length) return res.status(400).json({ error: 'Tilbuddet har ingen linjer at udregne en materialeliste fra endnu — tilføj linjer og gem først' });
+  const materialProducts = (await pool.query("SELECT name,unit,category FROM products WHERE active=1 AND product_type='materialer' ORDER BY name LIMIT 500")).rows;
+  const catalogForPrompt = materialProducts.map(p => ({ name: p.name, unit: p.unit, category: p.category || null }));
+  const systemPrompt = 'Du hjælper en dansk gulvfirma (Gulv Master) med at udregne en konkret INDKØBSLISTE (materialeliste) til et tilbud, som skal sendes til en leverandør for at bestille materialerne hjem.\n'
+    + 'Du får tilbuddets linjer (beskrivelse, mængde, enhed, type: "materialer" eller "service") og — til inspiration for navngivning/enhed — firmaets eget materialekatalog som JSON.\n'
+    + 'Tilbudslinjerne er ofte skrevet som ARBEJDE/SERVICE der skal udføres (fx "80 m² afhøvling af gulv i stue + 2 lag hvidolie"), ikke som en indkøbsliste — din opgave er at UDREGNE de konkrete materialer og mængder der reelt skal købes ind for at udføre arbejdet, ikke blot gengive tilbudslinjerne 1:1.\n'
+    + 'For hver linje der kræver indkøbte materialer:\n'
+    + '- Udregn den nødvendige mængde ud fra arbejdets omfang (m², lbm, stk osv. nævnt i linjen eller dens mængde/enhed)\n'
+    + '- Læg en realistisk SPILD-/sikkerhedsmargin til (typisk ca. 10%, gerne lidt mere ved fliser/klinker pga. tilskæring og brud, mindre ved store ensartede flader) — nævn ALDRIG selve spildprocenten i beskrivelsen, inkluder den bare i mængden\n'
+    + '- Rund mængden praktisk op til hvordan materialet reelt sælges (fx hele dunke/dåser/pakker/ruller/sække i stedet for et upræcist decimaltal)\n'
+    + '- Brug naturlige danske handelsenheder (m², liter, dunk, pakke, stk, rulle, sæk, lbm) — ikke nødvendigvis samme enhed som selve tilbudslinjen\n'
+    + '- Findes et lignende materiale i firmaets eget katalog, brug samme navngivning/enhed som der, så listen matcher det firmaet er vant til at bestille\n'
+    + 'Linjer der er RENT arbejdsløn/service uden eget materialeforbrug (fx "afslibning af gulv" i sig selv, transport, rådgivning) skal du IKKE lave en selvstændig linje for her — spring dem over, medmindre de implicit kræver et forbrugsstof (fx slibepapir til afslibning).\n'
+    + 'For hvert materiale i svaret, giv:\n'
+    + '- "description": kort, konkret dansk navn på materialet\n'
+    + '- "quantity": mængden som tal (inkl. spildmargin, praktisk afrundet)\n'
+    + '- "unit": enhed (m², liter, dunk, pakke, stk, rulle, sæk, lbm)\n'
+    + '- "note": valgfri kort note, fx hvilken tilbudslinje det stammer fra — udelad hvis ikke nødvendig\n'
+    + 'Svar KUN med gyldig JSON på formen {"items":[...]} — ingen forklaring, ingen kodeblok-hegn.';
+  const userPrompt = 'TILBUD: ' + (quote.job_name || quote.quote_number) + '\nLINJER:\n' + JSON.stringify(lineItems) + '\n\nFIRMAETS MATERIALEKATALOG (til navngivning/enhed-inspiration, ikke en facitliste):\n' + JSON.stringify(catalogForPrompt);
+  let parsed;
+  try {
+    parsed = await callAnthropicJSON(systemPrompt, userPrompt);
+  } catch (e) {
+    await logSystemEvent('ai_materials_list', 'error', 'AI-materialeliste fejlede for tilbud #' + quote.id + ': ' + e.message);
+    return res.status(e.isConfig ? 501 : 502).json({ error: e.message });
+  }
+  const items = normalizeMaterialsListItems(parsed && parsed.items);
+  if (!items.length) return res.status(502).json({ error: 'AI-svaret indeholdt ingen brugelige materialer' });
+  await pool.query(`UPDATE quotes SET materials_list=$1, materials_list_generated_at=${nowTextSQL()} WHERE id=$2`, [JSON.stringify({ items }), quote.id]);
+  await logSystemEvent('ai_materials_list', 'info', 'AI-materialeliste genereret for tilbud #' + quote.id + ' (' + items.length + ' materialer).');
+  res.json({ ok: true, items });
+}));
+app.put('/api/quotes/:id/materials-list', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const quote = await pgOne('SELECT id FROM quotes WHERE id=$1', [req.params.id]);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const items = normalizeMaterialsListItems((req.body || {}).items);
+  await pool.query(`UPDATE quotes SET materials_list=$1, materials_list_generated_at=${nowTextSQL()} WHERE id=$2`, [JSON.stringify({ items }), quote.id]);
+  res.json({ ok: true, items });
+}));
+
 // ── AKKORDLISTE (sep. 2026) — global prisliste til stykløn, se akkord_items i
 // migrations-blokken. Skulle læses af tidsregistrerings-modalen — men
 // panelAccess('projects') dækker kun admin-panelets Projekter-side, ikke
@@ -21616,6 +21699,135 @@ app.get('/api/quotes/:id/payment-plan/pdf', authOrQueryToken, panelAccess('quote
   doc.pipe(res);
   drawPaymentPlanPdf(doc, quote, company);
   doc.end();
+}));
+
+// RUNDE CM — se den store kommentar ved POST .../ai-materials-list ovenfor.
+// Egen, ISOLERET paginerings-logik (helt uafhængig af
+// ensurePdfSpace/pdfStartContinuationPage/drawPdfLineTableHeader som
+// drawDocumentPdf bruger) — en materialeliste kan i princippet blive lang
+// (mange forskellige materialer på et stort tilbud), så den skal kunne slå
+// over på side 2, 3, ... lige så sikkert som selve tilbuds-PDF'en gør (se
+// RUNDE U's "SIKKERHEDSKRITISK PDF-BUG"-kommentar ovenfor for HVORFOR dette
+// er vigtigt) — men uden at dele kode med/risikere at påvirke den eksisterende,
+// allerede skarpt testede tilbuds/faktura-paginering.
+const ML_PDF_PAGE_BOTTOM = 760;
+const ML_PDF_CONTINUATION_TOP = 50;
+function mlPdfStartContinuationPage(doc, docNumber, accent) {
+  doc.addPage();
+  let y = ML_PDF_CONTINUATION_TOP;
+  doc.font('DMSans-Bold').fontSize(9).fillColor(accent).text('MATERIALELISTE ' + docNumber + ' — fortsat', 40, y);
+  y += 20;
+  return y;
+}
+function mlDrawTableHeader(doc, y) {
+  doc.roundedRect(40, y, 515, 24, 6).fill('#F4F6FB');
+  doc.font('DMSans').fontSize(9).fillColor('#374151');
+  doc.text('Materiale', 52, y + 8);
+  doc.text('Antal', 390, y + 8, { width: 55, align: 'right' });
+  doc.text('Enhed', 455, y + 8, { width: 85, align: 'right' });
+  return y + 32;
+}
+function mlEnsureSpace(doc, y, needed, docNumber, accent) {
+  if (y + needed <= ML_PDF_PAGE_BOTTOM) return y;
+  let ny = mlPdfStartContinuationPage(doc, docNumber, accent);
+  ny = mlDrawTableHeader(doc, ny);
+  return ny;
+}
+function drawMaterialsListPdf(doc, quote, company, supplierName) {
+  const accent = '#4F46E5';
+  const metaLines = [`Dato: ${new Date().toISOString().slice(0, 10)}`, `Vedr. tilbud: ${quote.quote_number}`];
+  if (supplierName) metaLines.push(`Til: ${supplierName}`);
+  let y = drawDocHeader(doc, 'MATERIALELISTE', quote.quote_number, metaLines, accent, company);
+  y = drawFraTilBlock(doc, y, company, quote);
+  y += 6;
+  doc.font('DMSans').fontSize(9).fillColor('#6B7280')
+    .text('Materialer til indkøb baseret på tilbuddet, til brug for bestilling hos leverandør.', 40, y, { width: 515 });
+  y = doc.y + 18;
+  y = mlDrawTableHeader(doc, y);
+  const items = (quote.materials_list && Array.isArray(quote.materials_list.items)) ? quote.materials_list.items : [];
+  items.forEach((it) => {
+    const descWidth = 330;
+    const descH = doc.heightOfString(it.description || '', { width: descWidth });
+    const noteH = it.note ? doc.heightOfString(it.note, { width: descWidth, fontSize: 8 }) + 4 : 0;
+    const rowH = Math.max(descH, 12) + noteH + 12;
+    y = mlEnsureSpace(doc, y, rowH, quote.quote_number, accent);
+    doc.font('DMSans').fontSize(9.5).fillColor('#111318').text(it.description || '', 52, y, { width: descWidth });
+    doc.font('DMSans-Bold').fontSize(9.5).fillColor('#111318').text(String(it.quantity ?? ''), 390, y, { width: 55, align: 'right' });
+    doc.font('DMSans').fontSize(9.5).fillColor('#6B7280').text(it.unit || '', 455, y, { width: 85, align: 'right' });
+    let cy = Math.max(doc.y, y + 12);
+    if (it.note) {
+      doc.font('DMSans-Italic').fontSize(8).fillColor('#9CA3AF').text(it.note, 52, cy, { width: descWidth });
+      cy = doc.y;
+    }
+    y = cy + 10;
+    doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#F4F5F7').lineWidth(1).stroke();
+  });
+  drawDocFooter(doc, company);
+}
+function renderMaterialsListPdfBuffer(quote, company, supplierName) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      registerBrandFonts(doc);
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      drawMaterialsListPdf(doc, quote, company, supplierName);
+      doc.end();
+    } catch (e) { reject(e); }
+  });
+}
+app.get('/api/quotes/:id/materials-list/pdf', authOrQueryToken, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const quote = await pgOne('SELECT id, quote_number, job_name, customer_address, customer_phone, customer_email, total, materials_list FROM quotes WHERE id=$1', [req.params.id]);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  if (!quote.materials_list || !Array.isArray(quote.materials_list.items) || !quote.materials_list.items.length) {
+    return res.status(404).json({ error: 'Der er ingen materialeliste på dette tilbud endnu' });
+  }
+  const company = await getCompanyInfo();
+  const supplierName = String(req.query.supplier_name || '').trim().slice(0, 200) || null;
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `inline; filename="${quote.quote_number}-materialeliste.pdf"`);
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  registerBrandFonts(doc);
+  doc.pipe(res);
+  drawMaterialsListPdf(doc, quote, company, supplierName);
+  doc.end();
+}));
+app.post('/api/quotes/:id/materials-list/send', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const quote = await pgOne('SELECT id, quote_number, job_name, customer_address, customer_phone, customer_email, total, materials_list FROM quotes WHERE id=$1', [req.params.id]);
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  if (!quote.materials_list || !Array.isArray(quote.materials_list.items) || !quote.materials_list.items.length) {
+    return res.status(400).json({ error: 'Der er ingen materialeliste på dette tilbud at sende — generer eller tilføj linjer først' });
+  }
+  const b = req.body || {};
+  const to = String(b.to || '').trim();
+  const supplierName = String(b.supplier_name || '').trim().slice(0, 200) || null;
+  const note = String(b.note || '').trim().slice(0, 1000);
+  if (!to) return res.status(400).json({ error: 'Angiv leverandørens e-mail' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
+  const company = await getCompanyInfo();
+  let pdfBuffer;
+  try {
+    pdfBuffer = await renderMaterialsListPdfBuffer(quote, company, supplierName);
+  } catch (e) {
+    return res.status(500).json({ error: 'Kunne ikke generere PDF: ' + e.message });
+  }
+  const subject = `Materialeliste — ${quote.quote_number}${quote.job_name ? ' (' + quote.job_name + ')' : ''}`;
+  const introLine = note ? `<p>${escPublic(note)}</p>` : '';
+  const bodyHtml = `<p>Hej${supplierName ? ' ' + escPublic(supplierName) : ''},</p><p>Vedhæftet finder du en materialeliste til bestilling, vedr. ${escPublic(quote.job_name || quote.quote_number)}.</p>${introLine}<p>Mange hilsner<br>${escPublic(company.name)}</p>`;
+  let sendResult;
+  try {
+    sendResult = await sendMailUniversal({
+      to, subject, html: bodyHtml, text: stripHtmlToText(bodyHtml),
+      attachments: [{ filename: quote.quote_number + '-materialeliste.pdf', content: pdfBuffer }]
+    });
+  } catch (e) {
+    return res.status(400).json({ error: 'Kunne ikke sende mailen: ' + e.message });
+  }
+  logDocActivity('quote', quote.id, 'materials_list_sent', req.user.name, `til ${to}${supplierName ? ' (' + supplierName + ')' : ''}`);
+  logOutboundEmail({ kind: 'quote', refId: quote.id, recipient: to, subject, sendResult });
+  res.json({ ok: true });
 }));
 
 // RUNDE V (Martins ønske: "PDF filen virker, men ikke live view" — efter RUNDE

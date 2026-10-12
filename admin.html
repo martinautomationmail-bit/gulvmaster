@@ -5451,6 +5451,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <!-- RUNDE CC — se den store kommentar ved #payment-plan-modal. Kun vist på et
                  GEMT tilbud (kræver et tilbudsnummer + en total at dele op). -->
             <button type="button" class="filter-dropdown-item" id="qe-payment-plan-btn" style="display:none" title="Lad AI forslå en betalingsplan (faser) for store tilbud, og generér en PDF">💳 Betalingsplan</button>
+            <!-- RUNDE CM — se den store kommentar ved #materials-list-modal. Kun vist på et
+                 GEMT tilbud (kræver et tilbudsnummer + linjer at udregne materialer fra). -->
+            <button type="button" class="filter-dropdown-item" id="qe-materials-list-btn" style="display:none" title="Lad AI udregne en materialeliste ud fra tilbuddet, ret den og send den som PDF til en leverandør">📦 Materialeliste</button>
             <button type="button" class="filter-dropdown-item" id="qe-convert-btn" style="display:none">➜ Konvertér til faktura</button>
           </div>
         </div>
@@ -8899,6 +8902,52 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <button class="bly-btn outline" id="qp-ai-btn" type="button">🤖 Generér forslag med AI</button>
       <button class="bly-btn" id="qp-save-btn" type="button">💾 Gem betalingsplan</button>
       <a class="bly-btn outline" id="qp-pdf-link" href="#" target="_blank" style="display:none">📄 Download PDF</a>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE CM (Martin: "en knap jeg kan gerener og sende en pdf med en
+     materiale liste til mine suppliers ... Den skal med AI udregne alt vi
+     skal bruge baseret på tilbuddet ... Jeg skal efterfølgende kunne
+     slette, tilføje og rette i den inden afsendelse") — AI'en analyserer
+     tilbuddets linjer og forslår en konkret indkøbsliste (materiale +
+     mængde + enhed), som kan rettes/tilføjes/slettes helt frit herunder
+     inden den gemmes og sendes som PDF til en leverandør valgt fra
+     Videnscentrets "Leverandører"-liste (eller indtastet manuelt). Se
+     mlOpenModal()/POST .../ai-materials-list/PUT .../materials-list/
+     GET .../materials-list/pdf/POST .../materials-list/send i server.js. -->
+<div class="mo" id="materials-list-modal">
+  <div class="modal" style="max-width:720px;width:94vw;max-height:88vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h3 style="margin:0">📦 Materialeliste</h3>
+      <button class="qz-icon-btn" id="ml-close-btn" type="button" title="Luk">✕</button>
+    </div>
+    <div class="sub" style="margin-bottom:14px">Lad AI udregne en indkøbsliste baseret på tilbuddets linjer, ret/tilføj/slet som nødvendigt, og send den som PDF til en leverandør.</div>
+    <div id="ml-loading" class="sub" style="display:none">Henter…</div>
+    <div id="ml-empty-hint" class="sub" style="display:none;margin-bottom:10px">Ingen materialeliste endnu — tryk "🤖 Generér forslag med AI" for et forslag, eller tilføj materialer manuelt.</div>
+    <div id="ml-rows" style="margin-bottom:8px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <button class="bly-btn outline small" id="ml-add-row-btn" type="button">+ Tilføj materiale</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:18px">
+      <button class="bly-btn outline" id="ml-ai-btn" type="button">🤖 Generér forslag med AI</button>
+      <button class="bly-btn" id="ml-save-btn" type="button">💾 Gem materialeliste</button>
+      <a class="bly-btn outline" id="ml-pdf-link" href="#" target="_blank" style="display:none">📄 Download PDF</a>
+    </div>
+    <div style="border-top:1px solid var(--bly-border-soft);padding-top:14px">
+      <div style="font-weight:800;font-size:12px;color:var(--bly-sub);text-transform:uppercase;margin-bottom:8px">Send til leverandør</div>
+      <div class="form-group">
+        <label class="form-label">Leverandør</label>
+        <select id="ml-supplier-select" class="select">
+          <option value="">— Vælg leverandør fra Videnscenter —</option>
+        </select>
+      </div>
+      <div id="ml-manual-supplier" style="display:flex;gap:6px;margin-bottom:10px">
+        <input class="input" id="ml-supplier-name" placeholder="Navn (valgfrit)" style="flex:1">
+        <input class="input" id="ml-supplier-email" placeholder="E-mail" style="flex:1.4">
+      </div>
+      <div class="form-group"><label class="form-label">Besked <span class="opt-tag">valgfrit</span></label><textarea id="ml-note" class="input" rows="2" style="resize:vertical"></textarea></div>
+      <button class="bly-btn" id="ml-send-btn" type="button">📨 Send til leverandør</button>
     </div>
   </div>
 </div>
@@ -29844,6 +29893,7 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-request-btn').style.display='none';
   document.getElementById('qe-send-btn').style.display='none';
   document.getElementById('qe-payment-plan-btn').style.display='none';
+  document.getElementById('qe-materials-list-btn').style.display='none';
   qeToolbarSyncGroupVisibility();
   document.getElementById('qe-activity-wrap').style.display=id?'':'none';
   document.getElementById('qe-versions-wrap').style.display='none';
@@ -29908,6 +29958,7 @@ async function openQuoteEditor(id,prefillCustomer){
     document.getElementById('qe-request-btn').style.display='inline-flex';
     document.getElementById('qe-send-btn').style.display='inline-flex';
     document.getElementById('qe-payment-plan-btn').style.display='inline-flex';
+    document.getElementById('qe-materials-list-btn').style.display='inline-flex';
     // RUNDE J (sep. 2026, Martins ønske) — DELBETALINGER: konverter-knappen og
     // linjelåsen styres nu af om der findes fakturaer/resterende ufakturerede
     // linjer, ikke længere kun af tilbuddets status (som forbliver 'converted'
@@ -30034,7 +30085,7 @@ function qeSetLineButtonsLocked(locked){
 function qeToolbarSyncGroupVisibility(){
   [['qe-docs-group',['qe-pdf-link','qe-duplicate-btn','qe-project-link-btn']],
    ['qe-customer-group',['qe-share-btn','qe-request-btn','qe-send-btn']],
-   ['qe-billing-group',['qe-payment-plan-btn','qe-convert-btn']]
+   ['qe-billing-group',['qe-payment-plan-btn','qe-materials-list-btn','qe-convert-btn']]
   ].forEach(function(g){
     var anyVisible=g[1].some(function(id){var el=document.getElementById(id);return el&&el.style.display!=='none';});
     var wrap=document.getElementById(g[0]);
@@ -31449,6 +31500,162 @@ async function qpSave(){
     toast('Betalingsplan gemt','✓');
   } else toast((r&&r.error)||'Kunne ikke gemme betalingsplanen','❌');
 }
+// RUNDE CM (Martin: "en knap jeg kan gerener og sende en pdf med en
+// materiale liste til mine suppliers ... Den skal med AI udregne alt vi
+// skal bruge baseret på tilbuddet ... Jeg skal efterfølgende kunne slette,
+// tilføje og rette i den inden afsendelse") — se den store kommentar ved
+// #materials-list-modal i HTML'en og POST .../ai-materials-list, PUT
+// .../materials-list, GET .../materials-list/pdf, POST .../materials-list/send
+// i server.js. Samme mønster som betalingsplanen ovenfor (qpState/qpAddRow
+// osv.), men med materiale/mængde/enhed-rækker i stedet for betalingsfaser,
+// og en ekstra "send til leverandør"-del til sidst.
+var mlState={quoteId:null};
+async function mlOpenModal(){
+  if(!qeState.id){toast('Gem tilbuddet først','⚠️');return;}
+  mlState.quoteId=qeState.id;
+  document.getElementById('ml-rows').innerHTML='';
+  document.getElementById('ml-empty-hint').style.display='none';
+  document.getElementById('ml-pdf-link').style.display='none';
+  document.getElementById('ml-supplier-select').innerHTML='<option value="">— Vælg leverandør fra Videnscenter —</option>';
+  document.getElementById('ml-supplier-name').value='';
+  document.getElementById('ml-supplier-email').value='';
+  document.getElementById('ml-note').value='';
+  document.getElementById('ml-loading').style.display='';
+  document.getElementById('materials-list-modal').classList.add('open');
+  mlLoadSuppliers();
+  var qd=await api('/api/quotes/'+mlState.quoteId);
+  document.getElementById('ml-loading').style.display='none';
+  if(!qd||qd.error){toast('Kunne ikke hente tilbuddet','❌');return;}
+  var items=(qd.materials_list&&Array.isArray(qd.materials_list.items))?qd.materials_list.items:[];
+  if(items.length){
+    items.forEach(mlAddRow);
+    document.getElementById('ml-pdf-link').style.display='inline-flex';
+    document.getElementById('ml-pdf-link').href=qzPdfUrl('/api/quotes/'+mlState.quoteId+'/materials-list/pdf');
+  } else {
+    document.getElementById('ml-empty-hint').style.display='';
+  }
+}
+function mlAddRow(item){
+  item=item||{};
+  var row=document.createElement('div');
+  row.className='ml-row';
+  row.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--bly-border-soft)';
+  row.innerHTML=
+    '<div style="flex:2">'+
+      '<input class="qe-input ml-desc" placeholder="Materiale, fx Hvidolie til gulv">'+
+      '<input class="qe-input ml-item-note" placeholder="Note (valgfrit)" style="margin-top:4px;font-size:12px">'+
+    '</div>'+
+    '<div style="flex:0 0 80px"><input class="qe-input ml-qty" type="number" min="0" step="0.1" style="text-align:right"></div>'+
+    '<div style="flex:0 0 90px"><input class="qe-input ml-unit" placeholder="Enhed"></div>'+
+    '<button type="button" class="qz-icon-btn ml-remove" title="Fjern materiale">✕</button>';
+  row.querySelector('.ml-desc').value=item.description||'';
+  row.querySelector('.ml-item-note').value=item.note||'';
+  row.querySelector('.ml-qty').value=item.quantity!=null?item.quantity:'';
+  row.querySelector('.ml-unit').value=item.unit||'';
+  row.querySelector('.ml-remove').addEventListener('click',function(){row.remove();});
+  document.getElementById('ml-rows').appendChild(row);
+  return row;
+}
+function mlCollectItems(){
+  return Array.prototype.slice.call(document.querySelectorAll('#ml-rows .ml-row')).map(function(row){
+    return {
+      description: row.querySelector('.ml-desc').value.trim(),
+      quantity: Number(row.querySelector('.ml-qty').value)||0,
+      unit: row.querySelector('.ml-unit').value.trim()||'stk',
+      note: row.querySelector('.ml-item-note').value.trim()
+    };
+  }).filter(function(it){return it.description;});
+}
+async function mlGenerateAi(){
+  if(!mlState.quoteId)return;
+  var btn=document.getElementById('ml-ai-btn');
+  btn.disabled=true;btn.textContent='Tænker…';
+  var r=await api('/api/quotes/'+mlState.quoteId+'/ai-materials-list',{method:'POST'});
+  btn.disabled=false;btn.textContent='🤖 Generér forslag med AI';
+  if(r&&r.ok){
+    document.getElementById('ml-rows').innerHTML='';
+    (r.items||[]).forEach(mlAddRow);
+    document.getElementById('ml-empty-hint').style.display='none';
+    toast('AI-forslag indsat — tjek og juster efter behov','✓');
+  } else toast((r&&r.error)||'AI-forslaget kunne ikke genereres','❌');
+}
+async function mlSave(){
+  if(!mlState.quoteId)return;
+  var items=mlCollectItems();
+  var btn=document.getElementById('ml-save-btn');
+  btn.disabled=true;btn.textContent='Gemmer…';
+  var r=await api('/api/quotes/'+mlState.quoteId+'/materials-list',{method:'PUT',body:JSON.stringify({items:items})});
+  btn.disabled=false;btn.textContent='💾 Gem materialeliste';
+  if(r&&r.ok){
+    document.getElementById('ml-rows').innerHTML='';
+    (r.items||[]).forEach(mlAddRow);
+    if(r.items&&r.items.length){
+      document.getElementById('ml-pdf-link').style.display='inline-flex';
+      document.getElementById('ml-pdf-link').href=qzPdfUrl('/api/quotes/'+mlState.quoteId+'/materials-list/pdf');
+    } else {
+      document.getElementById('ml-pdf-link').style.display='none';
+    }
+    toast('Materialeliste gemt','✓');
+  } else toast((r&&r.error)||'Kunne ikke gemme materialelisten','❌');
+}
+// Leverandør-vælgeren læser direkte fra Videnscenterets "Leverandører"-liste
+// (samme generiske /api/kb/*-ruter som Videnscenter-siden selv bruger) — helt
+// fri navn/mail-indtastning forbliver altid muligt som fallback herunder,
+// hvis den ønskede leverandør ikke står i listen eller listen ikke findes.
+async function mlLoadSuppliers(){
+  var sel=document.getElementById('ml-supplier-select');
+  try{
+    var lists=await api('/api/kb/lists');
+    var list=(Array.isArray(lists)?lists:[]).find(function(l){return l.name==='Leverandører';});
+    if(!list)return;
+    var cols=await api('/api/kb/lists/'+list.id+'/columns');
+    var nameCol=(cols||[]).find(function(c){return c.name==='Navn';});
+    var emailCol=(cols||[]).find(function(c){return c.type==='email';});
+    if(!emailCol)return;
+    var rows=await api('/api/kb/lists/'+list.id+'/rows');
+    (rows||[]).forEach(function(r){
+      var data=r.data||{};
+      var email=String(data[emailCol.id]||'').trim();
+      if(!email)return;
+      var name=nameCol?String(data[nameCol.id]||'').trim():'';
+      var opt=document.createElement('option');
+      opt.value=JSON.stringify({name:name,email:email});
+      opt.textContent=name?(name+' ('+email+')'):email;
+      sel.appendChild(opt);
+    });
+  }catch(e){/* Videnscenter-listen kunne ikke hentes — manuel indtastning af navn/e-mail fungerer stadig */}
+}
+function mlSupplierSelected(){
+  var v=document.getElementById('ml-supplier-select').value;
+  if(!v)return;
+  try{
+    var sup=JSON.parse(v);
+    document.getElementById('ml-supplier-name').value=sup.name||'';
+    document.getElementById('ml-supplier-email').value=sup.email||'';
+  }catch(e){}
+}
+async function mlSend(){
+  if(!mlState.quoteId)return;
+  var items=mlCollectItems();
+  if(!items.length){toast('Tilføj mindst ét materiale først','⚠️');return;}
+  var email=document.getElementById('ml-supplier-email').value.trim();
+  if(!email){toast('Angiv leverandørens e-mail (vælg fra listen eller indtast selv)','⚠️');return;}
+  var btn=document.getElementById('ml-send-btn');
+  btn.disabled=true;btn.textContent='Gemmer & sender…';
+  // Gemmer altid listen FØRST, så PDF'en der sendes nøjagtigt matcher det
+  // Martin ser i gennemgangsvinduet lige inden afsendelse.
+  var saveR=await api('/api/quotes/'+mlState.quoteId+'/materials-list',{method:'PUT',body:JSON.stringify({items:items})});
+  if(!saveR||!saveR.ok){btn.disabled=false;btn.textContent='📨 Send til leverandør';toast((saveR&&saveR.error)||'Kunne ikke gemme materialelisten','❌');return;}
+  var r=await api('/api/quotes/'+mlState.quoteId+'/materials-list/send',{method:'POST',body:JSON.stringify({
+    to:email,
+    supplier_name:document.getElementById('ml-supplier-name').value.trim()||null,
+    note:document.getElementById('ml-note').value.trim()||null
+  })});
+  btn.disabled=false;btn.textContent='📨 Send til leverandør';
+  if(r&&r.ok){
+    toast('Materialeliste sendt til '+email,'✓');
+  } else toast((r&&r.error)||'Kunne ikke sende materialelisten','❌');
+}
 async function qeSaveCurrentAsTemplate(){
   if(!qeState.lines.length){toast('Der er ingen linjer at gemme','⚠️');return;}
   var name=await gmPrompt('Navn på skabelonen','','Gem linjer som skabelon');
@@ -32518,6 +32725,14 @@ function bindQuotesModuleEvents(){
   document.getElementById('qp-add-row-btn').addEventListener('click',function(){qpAddRow({label:'',milestone:'',pct:0});qpRecalcSummary();});
   document.getElementById('qp-ai-btn').addEventListener('click',qpGenerateAi);
   document.getElementById('qp-save-btn').addEventListener('click',qpSave);
+  // RUNDE CM — se mlOpenModal() m.fl.
+  document.getElementById('qe-materials-list-btn').addEventListener('click',mlOpenModal);
+  document.getElementById('ml-close-btn').addEventListener('click',function(){closeModal('materials-list-modal');});
+  document.getElementById('ml-add-row-btn').addEventListener('click',function(){mlAddRow({});});
+  document.getElementById('ml-ai-btn').addEventListener('click',mlGenerateAi);
+  document.getElementById('ml-save-btn').addEventListener('click',mlSave);
+  document.getElementById('ml-supplier-select').addEventListener('change',mlSupplierSelected);
+  document.getElementById('ml-send-btn').addEventListener('click',mlSend);
   document.getElementById('qe-status-select').addEventListener('change',qeStatusChanged);
   document.getElementById('qe-pdf-link').addEventListener('click',function(e){e.preventDefault();if(qeState.id)qzOpenPdf('/api/quotes/'+qeState.id+'/pdf');});
   document.getElementById('qe-ai-mic-btn').addEventListener('click',qeAiToggleListen);
