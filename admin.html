@@ -621,17 +621,29 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #page-finance #fintab-omsaetning .fin-kpi-sub{color:var(--bly-sub)}
 .bly-dash-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
 @media(max-width:860px){.bly-dash-grid{grid-template-columns:1fr}}
-.om-months-center{max-width:1180px;margin:0 auto;padding:0 40px}
-@media(max-width:900px){.om-months-center{padding:0 16px}}
-#fin-revenue-months{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;align-items:start}
+/* RUNDE BN (Martin: "brug fuld wide på skærmen så der mere plads") — denne side
+   havde sit eget 1180px-loft OVEN I #page-finance's egen 110px sidepadding, så den
+   sad som en smal søjle midt i en ellers bred side (modsat alle andre faneblade
+   under Økonomi, der bare bruger hele den paddede bredde). Loftet er fjernet. */
+.om-months-center{width:100%}
+/* RUNDE BN — auto-fit i stedet for et fast repeat(2,1fr), så de ekstra måneds-
+   kort der nu er plads til (efter .om-months-center-loftet blev fjernet) rent
+   faktisk bruges, i stedet for to brede kolonner med masser af luft imellem. */
+#fin-revenue-months{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:24px;align-items:start}
 @media(max-width:860px){#fin-revenue-months{grid-template-columns:1fr}}
 #page-finance #fintab-omsaetning .fin-month-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,23,42,.04);overflow:visible;padding:20px;margin-bottom:0}
 #page-finance #fintab-omsaetning .fin-month-card:last-child{margin-bottom:0}
 /* RUNDE BM (Martin: "Opgave poolen skal laves i siden ... ligesom i
    Dagligplanlægning ... skal kunne kollaps opgavepoolen") — Poolen er nu en rigtig
    sticky venstre sidebar-kolonne (#fin-pool-col i HTML'en), ikke en bred bjælke eller
-   en grid-celle blandt månederne. */
-#page-finance #fintab-omsaetning .fin-pool-card{border:1.5px solid #6366F1;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+   en grid-celle blandt månederne.
+   RUNDE BN (Martin: "designet er pisse grimt ... lav designet som den under
+   bankafstemming") — kortets ramme er nedtonet fra en kraftig indigo-kant til samme
+   stille ramme som resten af siden (var(--bly-border-soft), som .bly-col i
+   Bankafstemning), og selve sags-rækkerne herunder er lagt om til Bankafstemnings
+   .bly-txn-card-udseende: egne hvide, afrundede rækker i en liste med luft imellem i
+   stedet for én sammenhængende kasse med kun bund-streger mellem sagerne. */
+#page-finance #fintab-omsaetning .fin-pool-card{border:1px solid var(--bly-border-soft);position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
 @media(max-width:1100px){
   #fin-revenue-layout{flex-direction:column}
   #fin-pool-col{width:100%!important}
@@ -644,7 +656,22 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #page-finance #fintab-omsaetning .fin-job-row[draggable="true"]{cursor:grab}
 #page-finance #fintab-omsaetning .fin-job-row[draggable="true"]:active{cursor:grabbing}
 #page-finance #fintab-omsaetning .fin-job-row.fin-dragging{opacity:.4}
-#page-finance #fintab-omsaetning .fin-month-card.fin-drop-over{outline:2px dashed #6366F1;outline-offset:-2px;background:#EEF2FF}
+/* RUNDE BN — droppe-målet fremhæves nu ligesom en aktiv/matchet bank-postering
+   (farvet kant + blødt skær) i stedet for en stiplet ramme, så det matcher resten af
+   sidens trækfølelse (se .bly-txn-card.active/.drag-over i Bankafstemning). */
+#page-finance #fintab-omsaetning .fin-month-card.fin-drop-over{border-color:var(--bly-accent)!important;box-shadow:0 0 0 3px var(--bly-accent-soft)}
+/* RUNDE BN — Opgaver (Poolen) får sit eget, nedtonede hoved uden farvet bjælke, og
+   sags-listen herunder bruger Bankafstemnings kort-i-kort-liste i stedet for den tunge
+   "en kasse med indre linjer"-stil (.fin-card) resten af siden ellers bruger. */
+#page-finance #fintab-omsaetning .fin-pool-card .fin-month-head{cursor:pointer}
+#page-finance #fintab-omsaetning .fin-pool-card .fin-card{background:none;border:0;box-shadow:none;padding:0}
+#page-finance #fintab-omsaetning .fin-pool-card .fin-job-group-body{display:flex;flex-direction:column;gap:10px;padding-top:10px}
+#page-finance #fintab-omsaetning .fin-pool-card .fin-job-row{border:1px solid var(--bly-border);border-radius:var(--bly-r-md);background:#fff;padding:0;gap:0}
+#page-finance #fintab-omsaetning .fin-pool-card .fin-job-row:hover{background:#fff;border-color:var(--bly-accent)}
+#page-finance #fintab-omsaetning .fin-pool-card .fin-job-row.fin-job-status-marked{border-color:transparent}
+#page-finance #fintab-omsaetning .fin-pool-card .om-row-top{padding:14px 16px;gap:10px}
+#page-finance #fintab-omsaetning .fin-pool-card .om-row-bottom{background:#FAFAFB;border-top:1px dashed var(--bly-border);border-radius:0 0 var(--bly-r-md) var(--bly-r-md);padding:10px 16px;margin:0}
+#page-finance #fintab-omsaetning .fin-pool-card .om-row-controls{gap:8px}
 #page-finance #fintab-omsaetning .fin-month-head{background:none;padding:0 0 14px;border-bottom:1.5px solid var(--bly-border-soft);text-align:left;display:flex;align-items:center;justify-content:space-between;border-radius:0;margin-bottom:16px}
 #page-finance #fintab-omsaetning .fin-month-head-current{background:none}
 #page-finance #fintab-omsaetning .fin-month-name{font-size:19px;font-weight:800;color:var(--bly-ink)}
@@ -18802,9 +18829,13 @@ function renderFinRevenue(){
     // titel (den er jo netop IKKE en måned, se finCardHtml-kommentaren ovenfor).
     var headHtml;
     if(isPool){
-      headHtml='<div class="fin-month-head" style="background:#EEF2FF;border-bottom:2px solid #6366F1;cursor:pointer" data-action="fin-pool-collapse-toggle" title="Fold Poolen sammen/ud">'+
-        '<div class="fin-month-name">'+(poolCollapsed?'▸':'▾')+' 📥 Pool — tilbud der venter på at blive trukket ind</div>'+
-        '<span class="fin-month-badge" style="background:#6366F1">'+m.jobs.length+' · '+krFmt(m.total)+'</span>'+
+      // RUNDE BN (Martin: "designet som den under bankafstemming ... bare kald den
+      // Opgaver") — den brede indigo-farvede bjælke er droppet til fordel for samme
+      // nedtonede, flade stil som bankafstemningens kolonne-hoved (se .fin-pool-card
+      // .fin-month-head nedenfor); titlen er nu bare "Opgaver", ikke en forklarende sætning.
+      headHtml='<div class="fin-month-head" data-action="fin-pool-collapse-toggle" title="Fold Opgaver sammen/ud">'+
+        '<div class="fin-month-name">'+(poolCollapsed?'▸':'▾')+' Opgaver</div>'+
+        '<span class="fin-month-badge">'+m.jobs.length+' · '+krFmt(m.total)+'</span>'+
         '</div>';
     }else{
       var isCur=mk===thisMonthKey;
