@@ -1629,23 +1629,24 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .crmp-card-value{font-size:11.5px;font-weight:800;color:var(--bly-ink)}
 .crmp-card-note{font-size:11px;color:var(--bly-sub);margin-top:6px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4}
 /* RUNDE BN (Martin: "kan se at kunden har oploadet filer ... måske et neon gulv lille
-   mærke ... uden at skal åbne handlen?") — lille selvlysende mærke øverst i hjørnet af
-   kortet, synligt uden at åbne handlen/leadet. Bevidst en helt anden (limegrøn/"neon")
-   farve end den stille indigo .crmp-card-badge-pille, så det ikke drukner blandt de
-   almindelige felt-badges — og en svag pulserende glød så øjet fanger det med det
-   samme ved et overblik over pipelinen. Sat via has_customer_photos fra
-   /api/crm/opportunities og /api/crm/leads (server.js). */
-.crmp-card-photo-badge{position:absolute;top:-7px;right:-7px;display:flex;align-items:center;gap:3px;background:#C6FF00;color:#243B00;font-size:10px;font-weight:800;line-height:1;padding:4px 7px 4px 6px;border-radius:999px;box-shadow:0 0 0 2px #fff,0 0 9px 1px rgba(198,255,0,.85);animation:crmpPhotoPulse 2.2s ease-in-out infinite;pointer-events:none}
-@keyframes crmpPhotoPulse{0%,100%{box-shadow:0 0 0 2px #fff,0 0 6px 0 rgba(198,255,0,.65)}50%{box-shadow:0 0 0 2px #fff,0 0 13px 3px rgba(198,255,0,1)}}
+   mærke ... uden at skal åbne handlen?") — markerer at kunden har uploadet billeder,
+   synligt uden at åbne handlen/leadet. Bevidst en helt anden (limegrøn/"neon") farve
+   end den stille indigo .crmp-card-badge-pille, så den ikke drukner blandt de
+   almindelige felt-badges. Sat via has_customer_photos fra /api/crm/opportunities og
+   /api/crm/leads (server.js).
+   RUNDE BN (Martin: "lav det grønne icon og det lille icon ting som en tekst inde på
+   selve kunden under Custom fields ... lignede custom fields ... kan bare ikke li den
+   måde det står på lige nu. Stadig samme farver") — var før et selvlysende/pulserende
+   mærke fastgjort ude i kortets hjørne; er nu en almindelig pille i samme stil og
+   samme række som de rigtige Custom fields-badges nedenfor (se badges-opbygningen i
+   crmpCardHtml), med samme to farver som før. */
+.crmp-card-photo-badge{display:inline-flex;align-items:center;gap:3px;background:#C6FF00;color:#243B00;font-size:10px;font-weight:800;line-height:1.4;padding:2px 7px;border-radius:999px}
 /* NYT (okt. 2026, Martins ønske: "et lille tegn der viser at det er en kunde
    der selv har oprette sig ligesom ved dem som med billederne") — samme
-   opskrift som .crmp-card-photo-badge (fast hjørne, hvid ring, pulserende
-   glød), men i det MODSATTE hjørne (øverst til VENSTRE) og i indigo i stedet
-   for lime, så den ikke forveksles med billede-badgen og begge kan vises på
-   samme kort uden at overlappe. Sat via self_registered fra
+   opskrift som .crmp-card-photo-badge, men i indigo i stedet for lime, så den
+   ikke forveksles med billede-badgen. Sat via self_registered fra
    /api/crm/opportunities (server.js, GET /ny-kunde-flowet). */
-.crmp-card-self-badge{position:absolute;top:-7px;left:-7px;display:flex;align-items:center;gap:3px;background:#4F46E5;color:#fff;font-size:10px;font-weight:800;line-height:1;padding:4px 7px 4px 6px;border-radius:999px;box-shadow:0 0 0 2px #fff,0 0 9px 1px rgba(79,70,229,.75);animation:crmpSelfRegPulse 2.2s ease-in-out infinite;pointer-events:none}
-@keyframes crmpSelfRegPulse{0%,100%{box-shadow:0 0 0 2px #fff,0 0 6px 0 rgba(79,70,229,.55)}50%{box-shadow:0 0 0 2px #fff,0 0 13px 3px rgba(79,70,229,.95)}}
+.crmp-card-self-badge{display:inline-flex;align-items:center;gap:3px;background:#4F46E5;color:#fff;font-size:10px;font-weight:800;line-height:1.4;padding:2px 7px;border-radius:999px}
 .crmp-card-cf-foot{font-size:10.5px;color:var(--bly-sub);margin-top:6px;padding-top:6px;border-top:1px solid var(--bly-border-soft)}
 .crmp-card-cf-foot b{color:var(--bly-ink);font-weight:700}
 
@@ -26172,21 +26173,25 @@ function crmpCardHtml(c,pipeline,defs){
   // KUN når stage_id rent faktisk ændres, ikke ved enhver anden redigering.
   var datesLine='<span title="Oprettet">🕓 '+esc(fmtRelativeDa(c.created_at))+'</span>'
     +'<span title="Kom i denne fase" style="margin-left:8px">➜ '+esc(fmtRelativeDa(c.stage_changed_at||c.created_at))+'</span>';
-  // RUNDE BN — badge når kunden har uploadet billeder via et svar-link (se
-  // /svar/:token), synligt her uden at åbne handlen/leadet.
-  var photoBadge=c.has_customer_photos?'<span class="crmp-card-photo-badge" title="Kunden har uploadet billeder">📸</span>':'';
+  // RUNDE BN (Martin: "lav det grønne icon og det lille icon ting som en tekst inde
+  // på selve kunden under Custom fields ... lignede custom fields") — badge når
+  // kunden har uploadet billeder via et svar-link (se /svar/:token), synligt her
+  // uden at åbne handlen/leadet. Var før et pulserende mærke ude i kortets hjørne
+  // (.crmp-card-photo-badge var position:absolute) — er nu en almindelig tekst-
+  // pille, der vises i SAMME række som de rigtige Custom fields-badges nedenfor i
+  // stedet for at flyde oven på kortet, men stadig i samme to farver som før.
+  var photoBadge=c.has_customer_photos?'<span class="crmp-card-badge crmp-card-photo-badge" title="Kunden har uploadet billeder">📸 Billeder</span>':'';
   // NYT (okt. 2026, Martins ønske: "et lille tegn der viser at det er en
   // kunde der selv har oprette sig ligesom ved dem som med billederne") —
-  // samme idé/placering-princip som photoBadge ovenfor, bare i det modsatte
-  // hjørne så de to kan vises samtidig uden at overlappe.
-  var selfRegBadge=c.self_registered?'<span class="crmp-card-self-badge" title="Kunden oprettede selv denne via det offentlige kunde-link">🙋</span>':'';
+  // samme idé som photoBadge ovenfor, nu også som tekst-pille i badge-rækken.
+  var selfRegBadge=c.self_registered?'<span class="crmp-card-badge crmp-card-self-badge" title="Kunden oprettede selv denne via det offentlige kunde-link">🙋 Selv oprettet</span>':'';
+  var allBadges=photoBadge+selfRegBadge+badges;
   return '<a href="#crmp-detail/'+esc(pipeline.type)+'/'+c.id+'" class="crmp-card'+(crmpState.selectMode&&selected?' crmp-card-selected':'')+'" draggable="'+(crmpState.selectMode?'false':'true')+'" data-id="'+c.id+'">'
-    +photoBadge+selfRegBadge
     +'<div class="crmp-card-row" style="margin:0 0 6px">'+ownerLine+'</div>'
     +'<div class="crmp-card-name">'+esc(pipeline.type==='opportunity'?(c.contact_name||c.name):c.name)+'</div>'
     +(contactLine?'<div class="crmp-card-row">'+esc(contactLine)+'</div>':'')
     +(noteText?'<div class="crmp-card-note">'+esc(noteText)+'</div>':'')
-    +(badges?'<div class="crmp-card-badges">'+badges+'</div>':'')
+    +(allBadges?'<div class="crmp-card-badges">'+allBadges+'</div>':'')
     +'<div class="crmp-card-foot">'
     +(pipeline.type==='opportunity'&&c.value!=null?'<span class="crmp-card-value">'+krFmt(c.value)+'</span>':'<span></span>')
     +'</div>'
