@@ -12656,6 +12656,21 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
     const linked = await crmFindOrCreateContactAndCustomer(name, b.email || null, b.phone || null, b.address || null, b.note || null, client);
     await client.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
     await crmLogActivity('lead', r.id, 'linked', (linked.customerCreated ? 'Ny kunde oprettet automatisk: ' : 'Koblet til eksisterende kunde: ') + name, null, client);
+    // RUNDE BU (Martin, Make.com-skærmbilleder af Facebook/Elementor-flowet:
+    // "noget i mit make flow ... gør at kundens note ALDRIG kommer med ind?") —
+    // Make-opsætningen er korrekt (den sender feltet som "note", som
+    // leadIntakeField()-listen ovenfor allerede matcher) — fejlen er her på
+    // serveren, i denne webhook-rute specifikt. b.note bliver allerede gemt
+    // korrekt to steder (crm_leads.note herover, og customer_notes via
+    // crmFindOrCreateContactAndCustomer, som er grunden til at noten ER synlig
+    // under kundens "📝 Noter"-fane) — men denne rute har ALDRIG spejlet den
+    // ind i selve leadets AKTIVITET-tidslinje, i modsætning til den almindelige
+    // "+ Ny lead"-oprettelse (POST /api/crm/leads, rettet i RUNDE BR) og "+ Ny
+    // kunde"-modalen (RUNDE BS). Samme spejling indføres nu her, i samme
+    // transaktion som resten af webhook-oprettelsen.
+    if (b.note && String(b.note).trim()) {
+      await crmLogActivity('lead', r.id, 'note', String(b.note).trim(), null, client);
+    }
 
     return { leadId: r.id, stageId };
   });
