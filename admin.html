@@ -485,6 +485,10 @@ body.sidebar-collapsed .sidebar-logout-btn{justify-content:center;padding-left:0
 .fin-status-dot:hover{opacity:.85;transform:scale(1.15)}
 .fin-status-dot.active{opacity:1;border-color:#fff;box-shadow:0 0 0 1.5px rgba(0,0,0,.35)}
 .fin-move-month-select{font-size:9.5px;font-weight:700;border:1px solid var(--border2);border-radius:6px;padding:2px 4px;background:#fff;color:var(--navy);cursor:pointer;max-width:80px}
+/* RUNDE (okt. 2026, Martin: "ændre projekt type på projektet") — samme
+   knap-størrelse/stil som .fin-move-month-select ved siden af, så "ret fag"-
+   dropdownen ikke springer visuelt ud fra resten af sagslinjens kontroller. */
+.fin-type-select{font-size:9.5px;font-weight:700;border:1px solid var(--border2);border-radius:6px;padding:2px 4px;background:#fff;color:var(--navy);cursor:pointer;max-width:110px}
 .fin-search-result-btn{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--border2);border-radius:7px;padding:7px 9px;font-size:11.5px;color:var(--navy);cursor:pointer}
 .fin-search-result-btn:hover{background:var(--ice);border-color:#94A3B8}
 .fin-recon-hero{background:linear-gradient(135deg,var(--navy),#1e3a6e);border-radius:16px;padding:20px 22px;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;box-shadow:0 8px 24px rgba(15,34,64,.18)}
@@ -623,6 +627,10 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 @media(max-width:860px){#fin-revenue-months{grid-template-columns:1fr}}
 #page-finance #fintab-omsaetning .fin-month-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,23,42,.04);overflow:visible;padding:20px;margin-bottom:0}
 #page-finance #fintab-omsaetning .fin-month-card:last-child{margin-bottom:0}
+/* RUNDE BL — Poolen (uplacerede tilbud) spænder over begge kolonner som en bred bjælke
+   øverst, i stedet for at konkurrere om plads i én enkelt grid-celle ved siden af en
+   tilfældig måned — det er trods alt der Martin starter hver gang han skal placere nyt. */
+#page-finance #fintab-omsaetning .fin-pool-card{grid-column:1/-1;border:1.5px solid #6366F1}
 #page-finance #fintab-omsaetning .fin-month-head{background:none;padding:0 0 14px;border-bottom:1.5px solid var(--bly-border-soft);text-align:left;display:flex;align-items:center;justify-content:space-between;border-radius:0;margin-bottom:16px}
 #page-finance #fintab-omsaetning .fin-month-head-current{background:none}
 #page-finance #fintab-omsaetning .fin-month-name{font-size:19px;font-weight:800;color:var(--bly-ink)}
@@ -651,6 +659,7 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #page-finance #fintab-omsaetning .fin-status-dot{width:13px;height:13px}
 #page-finance #fintab-omsaetning .fin-badge{margin:0}
 #page-finance #fintab-omsaetning .fin-move-month-select{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:6px 10px;font-size:11px;font-weight:600;color:var(--bly-ink);background:#fff}
+#page-finance #fintab-omsaetning .fin-type-select{border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:6px 10px;font-size:11px;font-weight:600;color:var(--bly-ink);background:#fff;max-width:140px}
 #page-finance #fintab-omsaetning .fin-add-btn{border:1.5px dashed var(--bly-border);color:var(--bly-sub);border-radius:var(--bly-r-sm);font-weight:700;background:transparent}
 #page-finance #fintab-omsaetning .fin-add-btn:hover{border-color:var(--bly-accent);color:var(--bly-accent)}
 #page-finance #fintab-omsaetning .fin-badge{background:var(--bly-accent-soft);color:var(--bly-accent);border-radius:var(--bly-r-pill);font-weight:700;text-transform:none;letter-spacing:0;font-size:10px}
@@ -5095,14 +5104,38 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
          i stedet for et hardkodet repeat(4,1fr), så rækken ikke bliver for trang. -->
     <div id="fin-revenue-kpis" class="bly-kpi-row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
     <div class="bly-toolbar-left" style="margin-bottom:14px">
-      <select class="fin-status bly-select" id="fin-revenue-period" style="width:auto">
-        <option value="0,1">Denne og næste måned (standard)</option>
-        <option value="0,2">Denne, næste og måneden efter</option>
-        <option value="1,1">Sidste, denne og næste måned</option>
-        <option value="3,1">Sidste 3 måneder</option>
-        <option value="6,1">Sidste 6 måneder</option>
-        <option value="12,1">Hele året (12 mdr. bagud)</option>
-      </select>
+      <!-- RUNDE (okt. 2026, Martin: "Main ide med denne side er jeg kan se 1.
+           tidligere måned Nuværende og næste måned Hvordan bliver det mere
+           automatisk pt. Viser den stadig august og har prøvet at skifte") —
+           standardvalget er nu "forrige+denne+næste måned" (det Martin faktisk
+           vil se som udgangspunkt), og selve "sidder fast"-fejlen er rettet i
+           loadFinance()/finRevenuePeriod nedenfor: den nulstillede FØR altid
+           til "0,1" for hver eneste handling på siden (gem note, kør
+           rykker-scan, osv.), uanset hvad der stod i denne dropdown — derfor
+           virkede det til at sidde fast uanset hvad man skiftede til. -->
+      <!-- RUNDE BL (Martin: "OG JEG SKAL KUNNE filtre pr måned, dag til dag(
+           manuelt bestemmelse ), kvartal osv. ... Skal jeg bare i en filtre
+           downdown knap kunne klikke de måneder af jeg gerne vil se") —
+           erstatter den gamle forrige/næste-periode-select med en rigtig
+           flueben-dropdown (samme .filter-dropdown-mekanik som "📄
+           Dokumenter"/"🏷️ Felter" bruger andre steder i appen), hvor Martin
+           selv klikker de enkelte måneder af/på, plus genvejsknapper for
+           kvartal/år. Data hentes nu ALTID i et fast, rigeligt vindue (±12
+           måneder) — fluebenene styrer kun hvad der RENDERES, ikke hvad der
+           hentes, så der ikke skal et nyt serverkald til for hvert klik. -->
+      <div class="filter-dropdown" style="width:auto;display:inline-block;position:relative">
+        <button type="button" class="bly-btn outline filter-dropdown-btn" data-action="filter-dropdown-toggle" id="fin-revenue-month-filter-btn" style="width:auto">📅 Måneder ▾</button>
+        <div class="filter-dropdown-menu" id="fin-revenue-month-filter-menu" style="min-width:270px;max-height:380px;right:auto;left:0">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;padding:4px 4px 8px;border-bottom:1px solid var(--border2);margin-bottom:4px">
+            <button type="button" class="btn small bly-btn outline small" data-action="fin-month-filter-preset" data-preset="default">Standard</button>
+            <button type="button" class="btn small bly-btn outline small" data-action="fin-month-filter-preset" data-preset="quarter">Dette kvartal</button>
+            <button type="button" class="btn small bly-btn outline small" data-action="fin-month-filter-preset" data-preset="nextquarter">Næste kvartal</button>
+            <button type="button" class="btn small bly-btn outline small" data-action="fin-month-filter-preset" data-preset="year">Hele året</button>
+            <button type="button" class="btn small bly-btn outline small" data-action="fin-month-filter-preset" data-preset="all">Alle</button>
+          </div>
+          <div id="fin-revenue-month-checkboxes"></div>
+        </div>
+      </div>
       <span class="fin-muted">Vis kun opgaver med startdato:</span>
       <input type="date" id="fin-revenue-date-from" class="input bly-input" style="width:auto">
       <span class="fin-muted">til</span>
@@ -7114,7 +7147,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
     </div>
     <table class="bly-table" id="proj-table">
-      <thead><tr><th>Navn</th><th>Status</th><th>Adresse</th><th>Kontakt</th><th class="num">Pris</th><th class="num">Opgaver</th><th class="num">Tid</th><th class="num">Billeder</th><th style="width:90px"></th></tr></thead>
+      <!-- RUNDE (okt. 2026, Martin: "Gør det også muligt på Projekt siden
+           ligesom jeg kan ændre projekt status at ændre projekt type") —
+           "Faggruppe"-kolonnen var hidtil kun et statisk skilt ved navnet
+           (se p.project_type-badge'n ovenfor i renderPjProjects), nu en
+           redigerbar dropdown ligesom Status-kolonnen, se pjRowTypeSelect(). -->
+      <thead><tr><th>Navn</th><th>Status</th><th>Faggruppe</th><th>Adresse</th><th>Kontakt</th><th class="num">Pris</th><th class="num">Opgaver</th><th class="num">Tid</th><th class="num">Billeder</th><th style="width:90px"></th></tr></thead>
       <tbody id="proj-body"></tbody>
     </table>
     <!-- Kanban-board — samme Billy-stils klasser (.crmp-board/.crmp-col/.crmp-card)
@@ -9808,6 +9846,36 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-actions">
       <button class="btn" id="close-dunning-send">Annuller</button>
       <button class="btn primary" id="dunning-send-confirm-btn">✉️ Send rykker</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE (okt. 2026, Martin: "Og så kan jeg under Økonomien Omsætning pr fag
+     også kun rykke kunden fremad. Men fx isabella er sat til December. det
+     også delvis korrekt men dele af hendes betalinger falder i Oktober og
+     november også så skal have mulighed for at opdele kunden sådan så jeg
+     får et retvisende billede af mit cashflow") — "→ flyt" kan kun flytte
+     HELE beløbet til ÉN måned. Denne modal lader i stedet beløbet fordeles
+     over flere måneder med hver sin delsum, se splitBtn/fin-job-split-btn og
+     finance_job_splits i server.js. -->
+<div class="mo" id="fin-split-modal">
+  <div class="modal manual-modal-modern" style="max-width:560px">
+    <div class="manual-modal-head">
+      <span class="manual-modal-icon">✂️</span>
+      <div><div class="manual-modal-title">Opdel over flere måneder</div><div class="manual-modal-sub" id="fin-split-sub"></div></div>
+    </div>
+    <div class="modal-body-pad">
+      <p class="sub" style="margin-top:0">Fordel sagens beløb på de måneder pengene reelt forventes at falde, i stedet for at det hele ligger i én måned. Perfekt til delbetalinger.</p>
+      <div id="fin-split-rows"></div>
+      <button class="btn small" id="fin-split-add-row-btn" type="button" style="margin-top:8px">+ Tilføj måned</button>
+      <div id="fin-split-sum-note" style="margin-top:10px;font-size:12.5px"></div>
+    </div>
+    <div class="modal-actions" style="justify-content:space-between">
+      <button class="btn" id="fin-split-clear-btn" style="color:#B91C1C" type="button">✕ Fjern opdeling</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="close-fin-split">Annuller</button>
+        <button class="btn primary" id="fin-split-save-btn">✂️ Gem opdeling</button>
+      </div>
     </div>
   </div>
 </div>
@@ -16626,15 +16694,58 @@ var UDG_MONTH_NAMES=['Januar','Februar','Marts','April','Maj','Juni','Juli','Aug
 function finExpenseMonthLabel(mk){var y=+mk.slice(0,4),m=+mk.slice(5,7);return UDG_MONTH_NAMES[m-1]+' '+y;}
 function finExpenseAdjMonthKey(mk,delta){var y=+mk.slice(0,4),m=+mk.slice(5,7)-1+delta;y+=Math.floor(m/12);m=((m%12)+12)%12;return y+'-'+String(m+1).padStart(2,'0');}
 function finExpensePrevMonthKey(mk){return finExpenseAdjMonthKey(mk,-1);}
+// RUNDE (okt. 2026, Martin: "pt. Viser den stadig august og har prøvet at
+// skifte") — BUG: loadFinance() hardkodede ?monthsBack=0&monthsForward=1
+// hver gang den kørte, UANSET hvad Martin havde valgt i #fin-revenue-period.
+// loadFinance() kaldes fra RIGTIG mange steder (hver gang man retter en sag,
+// kører rykker-scan, gemmer en note, osv. — se de ~15 loadFinance()-kald
+// nedenfor i filen), så i praksis blev hans periodevalg nulstillet igen få
+// sekunder efter han skiftede det. finRevenuePeriod er nu DEN ene sandhed om
+// hvilken periode der er valgt — sat af periode-dropdown'ens egen
+// change-lytter, gemt i localStorage (så valget også overlever en
+// sideopdatering), og brugt her i stedet for en hardkodet streng. Se også
+// "fin-revenue-period"-dropdown'ens HTML-kommentar.
+// RUNDE BL (Martin: "OG JEG SKAL KUNNE filtre pr måned, dag til dag(manuelt
+// bestemmelse), kvartal osv. ... Skal jeg bare i en filtre downdown knap kunne klikke de
+// måneder af jeg gerne vil se") — den gamle forrige/næste-periode-select (finRevenuePeriod)
+// er erstattet af en flueben-dropdown (se #fin-revenue-month-filter-menu). Data hentes nu
+// ALTID i et fast, rigeligt vindue (±12 måneder) uanset filter — finRevenueVisibleMonths
+// styrer udelukkende hvilke af de allerede hentede måneder der VISES, så et klik på et
+// flueben er øjeblikkeligt og aldrig kræver et nyt serverkald (se renderFinRevenue).
+// 24/24 (ikke 12/12) er bevidst — det matcher PRÆCIS det vindue "→ flyt"/opdelings-
+// dropdownen (finYearMonthOptions: år-1 til år+1) selv tilbyder, så en sag der flyttes
+// helt ud til kanten af det vindue altid har et tilsvarende flueben at blive vist med
+// her, i stedet for stille at blive usynlig fordi den falder udenfor et snævrere hente-
+// vindue end flytte-vinduet.
+var FIN_REVENUE_FETCH_BACK=24,FIN_REVENUE_FETCH_FWD=24;
+function finDefaultVisibleMonths(){
+  var cur=iso(new Date()).slice(0,7);
+  return [finExpenseAdjMonthKey(cur,-1),cur,finExpenseAdjMonthKey(cur,1)];
+}
+var finRevenueVisibleMonths=(function(){
+  try{
+    var raw=localStorage.getItem('fin_revenue_visible_months');
+    if(raw){var arr=JSON.parse(raw);if(Array.isArray(arr)&&arr.length)return arr;}
+  }catch(e){}
+  return finDefaultVisibleMonths();
+})();
+function finSaveVisibleMonths(){try{localStorage.setItem('fin_revenue_visible_months',JSON.stringify(finRevenueVisibleMonths));}catch(e){}}
 async function loadFinance(){
-  var revenueP=api('/api/finance/revenue?monthsBack=0&monthsForward=1');
+  var revenueP=api('/api/finance/revenue?monthsBack='+FIN_REVENUE_FETCH_BACK+'&monthsForward='+FIN_REVENUE_FETCH_FWD);
   var invoicesP=api('/api/finance/invoices');
   var expensesP=api('/api/finance/expenses?month='+finExpenseMonth);
   var snapshotsP=api('/api/finance/bank-snapshots');
   var privateBudgetP=api('/api/finance/private-budget?month='+finPrivBudgetMonth);
   var jobStatusMarksP=api('/api/finance/job-status-marks');
+  // RUNDE (okt. 2026, Martin: "Gør det også muligt under kunden hvor jeg kan
+  // flyt måned at ændre projekt type på projektet") — finProjectTypes skal
+  // være hentet FØR renderFinRevenue() tegner sagslisten, ellers ville
+  // "ret fag"-dropdownen på hver sagslinje stå tom ved første besøg på siden
+  // (den blev tidligere først hentet lazy, første gang Års-widget'en blev vist).
+  var projectTypesP=finProjectTypes?null:api('/api/project-types');
   finRevenue=await revenueP; finInvoices=(await invoicesP)||[];
   finJobStatusMarks=(await jobStatusMarksP)||{};
+  if(projectTypesP)finProjectTypes=(await projectTypesP)||['Gulvslibning','Gulvlægning','Maler','Enterprise'];
   var expensesResult=await expensesP;
   finExpenses=(expensesResult&&expensesResult.categories)||[];
   var privateBudgetResult=await privateBudgetP;
@@ -16648,7 +16759,7 @@ async function loadFinance(){
   var snapshots=(await snapshotsP)||[];
   // Hent det rigtige udgiftstal for HVER af de tre måneder grafen viser, i stedet for
   // at antage samme beløb overalt.
-  var revMonths=finRevenue?Object.keys(finRevenue).sort():[];
+  var revMonths=finRevenue?Object.keys(finRevenue).filter(function(k){return k!=='__pool__';}).sort():[];
   finExpenseTotalsByMonth=revMonths.length?(await api('/api/finance/expenses-totals?months='+revMonths.join(','))||{}):{};
   renderFinOverview(snapshots);
   renderFinRevenue();
@@ -17240,7 +17351,9 @@ function renderFinOverview(snapshots){
     return '<div class="fin-snap-item"><span class="fin-muted">'+s.snap_date+'</span><b>'+krFmt(+s.hovedkonto+ +s.moms+ +s.forbrug+ +s.tilgodehavende)+'</b></div>';
   }).join(''):'<div class="fin-empty">Ingen snapshots endnu.</div>';
 
-  var months=finRevenue?Object.keys(finRevenue).sort():[];
+  // RUNDE BL — __pool__ (uplacerede tilbud) er ikke en rigtig kalendermåned og skal
+  // aldrig kunne optræde som "næste måned" her, se fetchFinanceJobsByMonth i server.js.
+  var months=finRevenue?Object.keys(finRevenue).filter(function(k){return k!=='__pool__';}).sort():[];
   var todayKey=iso(new Date()).slice(0,7);
   var curKey=months.find(function(m){return m===todayKey;})||months[1];
   var prevKey=months[months.indexOf(curKey)-1];
@@ -17998,6 +18111,23 @@ async function renderTodoTodayWidget(body){
   if(missing.length){
     items.push({icon:'📋',color:'#B45309',bg:'#FFFBEB',title:missing.length+' sag(er) mangler budget',sub:'Ret dem under Noter & datakvalitet',tab:'noter'});
   }
+  // RUNDE BL (Martin: "Under opgaver her som Dashboard skal der stå hvor mange opgaver
+  // der stadig arbejdes på i denne måned. Det er altså dataen fra Omsætning pr fag SOM
+  // Så skal med når man laver en snapshot analyse") — genbruger samme finRevenue-data som
+  // Omsætning pr. fag (ikke et nyt datakald). "Stadig arbejdes på" = sager i indeværende
+  // måned der IKKE er markeret 'done' (færdig), 'invoiced' (fakturaer) eller 'hold' (på
+  // hold) — dvs. 'kørende' ELLER helt umarkerede, da en umarkeret sag som udgangspunkt
+  // må regnes for stadig i gang.
+  var curMonthJobs=finRevenue&&finRevenue[curKey]?finRevenue[curKey].jobs:[];
+  var stillWorking=curMonthJobs.filter(function(j){
+    var jobKey=j.jobId?('job:'+j.jobId):('manual:'+j.manualId);
+    var st=finJobStatusMarks[jobKey];
+    return st!=='done'&&st!=='invoiced'&&st!=='hold';
+  });
+  if(stillWorking.length){
+    var stillWorkingSum=stillWorking.reduce(function(s,j){return s+(j.value||0);},0);
+    items.push({icon:'🟢',color:'#15803D',bg:'#F0FDF4',title:stillWorking.length+' sag(er) arbejdes der stadig på i denne måned',sub:krFmt(stillWorkingSum)+' i alt — se under Omsætning pr. fag',tab:'omsaetning'});
+  }
   // 3) Moms-frist hvis den nærmer sig
   var vatInfo=nextVatDeadline();
   var today0=new Date();today0.setHours(0,0,0,0);
@@ -18174,14 +18304,62 @@ document.querySelectorAll('#udg-list-view th[data-sort]').forEach(function(th){
     renderFinExpenseBody();
   });
 });
-document.getElementById('fin-revenue-period').addEventListener('change',async function(e){
-  var parts=e.target.value.split(',');
-  var el=document.getElementById('fin-revenue-months');
-  el.innerHTML='<div class="fin-empty">Henter…</div>';
-  finRevenue=await api('/api/finance/revenue?monthsBack='+parts[0]+'&monthsForward='+parts[1]);
-  finFagFilter={};
-  renderFinRevenue();
-  renderFinOverview(await api('/api/finance/bank-snapshots')||[]);
+// RUNDE BL — flueben-månedsfilteret: renderes i renderFinRevenue() (se
+// finRenderMonthFilterMenu nedenfor), kræver intet serverkald pr. klik, da det kun
+// filtrerer i det der allerede er hentet (se FIN_REVENUE_FETCH_BACK/FWD ovenfor).
+function finMonthFilterOptionsRange(){
+  var cur=iso(new Date()).slice(0,7),opts=[];
+  for(var i=-FIN_REVENUE_FETCH_BACK;i<=FIN_REVENUE_FETCH_FWD;i++)opts.push(finExpenseAdjMonthKey(cur,i));
+  return opts;
+}
+function finQuarterMonths(yearOffsetQuarters){
+  var cur=iso(new Date()).slice(0,7),y=+cur.slice(0,4),m=+cur.slice(5,7)-1;
+  var q=Math.floor(m/3)+yearOffsetQuarters;
+  var startY=y+Math.floor(q/4);
+  var startQ=((q%4)+4)%4;
+  var startM=startQ*3;
+  var out=[];
+  for(var i=0;i<3;i++){
+    var mm=startM+i,yy=startY+Math.floor(mm/12);mm=((mm%12)+12)%12;
+    out.push(yy+'-'+String(mm+1).padStart(2,'0'));
+  }
+  return out;
+}
+function finRenderMonthFilterMenu(){
+  var btn=document.getElementById('fin-revenue-month-filter-btn');
+  var box=document.getElementById('fin-revenue-month-checkboxes');
+  if(!btn||!box)return;
+  var MAANEDE_KORT2=['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
+  var n=finRevenueVisibleMonths.length;
+  btn.textContent='📅 '+n+' måned'+(n===1?'':'er')+' valgt ▾';
+  box.innerHTML=finMonthFilterOptionsRange().map(function(mk){
+    var checked=finRevenueVisibleMonths.indexOf(mk)>-1;
+    var label=MAANEDE_KORT2[+mk.slice(5,7)-1]+' '+mk.slice(0,4);
+    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px" onmouseover="this.style.background=\'var(--ice)\'" onmouseout="this.style.background=\'\'">'+
+      '<input type="checkbox" class="fin-month-filter-cb" data-month="'+mk+'" '+(checked?'checked':'')+' style="width:14px;height:14px;cursor:pointer">'+
+      '<span>'+label+'</span></label>';
+  }).join('');
+  box.querySelectorAll('.fin-month-filter-cb').forEach(function(cb){
+    cb.addEventListener('change',function(){
+      var mk=cb.dataset.month;
+      if(cb.checked){if(finRevenueVisibleMonths.indexOf(mk)===-1)finRevenueVisibleMonths.push(mk);}
+      else finRevenueVisibleMonths=finRevenueVisibleMonths.filter(function(x){return x!==mk;});
+      finSaveVisibleMonths();
+      renderFinRevenue();
+    });
+  });
+}
+document.querySelectorAll('[data-action="fin-month-filter-preset"]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var p=btn.dataset.preset;
+    if(p==='default')finRevenueVisibleMonths=finDefaultVisibleMonths();
+    else if(p==='quarter')finRevenueVisibleMonths=finQuarterMonths(0);
+    else if(p==='nextquarter')finRevenueVisibleMonths=finQuarterMonths(1);
+    else if(p==='year'){var y=iso(new Date()).slice(0,4);finRevenueVisibleMonths=Array.from({length:12},function(_,i){return y+'-'+String(i+1).padStart(2,'0');});}
+    else if(p==='all')finRevenueVisibleMonths=finMonthFilterOptionsRange();
+    finSaveVisibleMonths();
+    renderFinRevenue();
+  });
 });
 document.getElementById('finance-email-report-btn').onclick=async function(){
   var r=await api('/api/finance/email-report',{method:'POST'});
@@ -18243,7 +18421,10 @@ function renderFinRevenueKpis(){
   if(!el||!finRevenue)return;
   var thisMonthKey=iso(new Date()).slice(0,7);
   var allJobs=[];
+  // RUNDE BL — KPI-rækken følger nu det samme flueben-månedsfilter som kortene nedenfor
+  // (finRevenueVisibleMonths), så tallene altid matcher det Martin faktisk ser.
   Object.keys(finRevenue).forEach(function(mk){
+    if(mk==='__pool__'||finRevenueVisibleMonths.indexOf(mk)===-1)return;
     finRevenue[mk].jobs.forEach(function(j){allJobs.push(Object.assign({},j,{_bucketMonth:mk}));});
   });
   allJobs=allJobs.filter(function(j){
@@ -18280,15 +18461,105 @@ function finYearMonthOptions(){
   });
   return opts;
 }
+// RUNDE (okt. 2026, Martin: "Og så kan jeg under Økonomien Omsætning pr fag
+// også kun rykke kunden fremad. Men fx isabella er sat til December. det
+// også delvis korrekt men dele af hendes betalinger falder i Oktober og
+// november også så skal have mulighed for at opdele kunden sådan så jeg får
+// et retvisende billede af mit cashflow") — "✂ Opdel"-modalen. finSplitCtx
+// holder modalens arbejdskopi ({jobId,jobName,total,rows:[{month_key,amount}]})
+// indtil "Gem opdeling" sender den samlet til PUT /api/finance/job-month-split
+// (se server.js), som erstatter sagens HELE opdeling i én omgang.
+var finSplitCtx=null;
+var FIN_SPLIT_MAANEDE=['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'];
+function finSplitMonthLabel(mk){return FIN_SPLIT_MAANEDE[+mk.slice(5,7)-1]+' '+mk.slice(0,4);}
+function openFinSplitModal(jobId,jobName,totalValue,curMonth,existingSplits){
+  finSplitCtx={
+    jobId:jobId,jobName:jobName,total:totalValue,
+    rows:(existingSplits&&existingSplits.length)?existingSplits.map(function(s){return {month_key:s.month_key,amount:Number(s.amount)||0};}):[{month_key:curMonth,amount:totalValue}]
+  };
+  document.getElementById('fin-split-sub').textContent=jobName+' · Samlet beløb: '+krFmt(totalValue);
+  document.getElementById('fin-split-clear-btn').style.display=(existingSplits&&existingSplits.length)?'':'none';
+  renderFinSplitRows();
+  document.getElementById('fin-split-modal').classList.add('open');
+}
+function renderFinSplitRows(){
+  var el=document.getElementById('fin-split-rows');
+  var monthOpts=finYearMonthOptions();
+  el.innerHTML=finSplitCtx.rows.map(function(row,idx){
+    return '<div class="fin-split-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'+
+      '<select class="select fin-split-month" data-idx="'+idx+'" style="flex:1">'+
+        monthOpts.map(function(om){return '<option value="'+om+'"'+(om===row.month_key?' selected':'')+'>'+finSplitMonthLabel(om)+'</option>';}).join('')+
+      '</select>'+
+      '<input type="number" class="input fin-split-amount" data-idx="'+idx+'" value="'+(row.amount||0)+'" style="width:140px" placeholder="kr">'+
+      '<button class="fin-edit-btn fin-split-remove" data-idx="'+idx+'" title="Fjern denne måned" style="color:#B91C1C">🗑</button>'+
+    '</div>';
+  }).join('')||'<div class="fin-empty">Ingen måneder tilføjet endnu — tryk "+ Tilføj måned"</div>';
+  el.querySelectorAll('.fin-split-month').forEach(function(sel){
+    sel.addEventListener('change',function(){finSplitCtx.rows[+sel.dataset.idx].month_key=sel.value;finSplitUpdateSumNote();});
+  });
+  el.querySelectorAll('.fin-split-amount').forEach(function(inp){
+    inp.addEventListener('input',function(){finSplitCtx.rows[+inp.dataset.idx].amount=Number(inp.value)||0;finSplitUpdateSumNote();});
+  });
+  el.querySelectorAll('.fin-split-remove').forEach(function(btn){
+    btn.addEventListener('click',function(){finSplitCtx.rows.splice(+btn.dataset.idx,1);renderFinSplitRows();});
+  });
+  finSplitUpdateSumNote();
+}
+// Rent informativt — blokerer IKKE gem, da Martin selv kan have gode grunde til
+// bevidst at fordele mindre/mere end det oprindelige beløb (fx hvis en del af
+// betalingen slet ikke kommer, eller der er lagt et tillæg på).
+function finSplitUpdateSumNote(){
+  var sum=finSplitCtx.rows.reduce(function(s,r){return s+(Number(r.amount)||0);},0);
+  var diff=finSplitCtx.total-sum;
+  var note=document.getElementById('fin-split-sum-note');
+  if(Math.abs(diff)<1)note.innerHTML='<span style="color:#15803D">✓ Fordelt '+krFmt(sum)+' af '+krFmt(finSplitCtx.total)+' — går op</span>';
+  else if(diff>0)note.innerHTML='<span style="color:#92400E">Fordelt '+krFmt(sum)+' af '+krFmt(finSplitCtx.total)+' — '+krFmt(diff)+' er endnu ikke placeret i nogen måned</span>';
+  else note.innerHTML='<span style="color:#92400E">Fordelt '+krFmt(sum)+' af '+krFmt(finSplitCtx.total)+' — '+krFmt(-diff)+' mere end det samlede beløb</span>';
+}
+document.getElementById('fin-split-add-row-btn').addEventListener('click',function(){
+  var usedMonths=finSplitCtx.rows.map(function(r){return r.month_key;});
+  var nextMonth=finYearMonthOptions().find(function(om){return usedMonths.indexOf(om)===-1;})||iso(new Date()).slice(0,7);
+  finSplitCtx.rows.push({month_key:nextMonth,amount:0});
+  renderFinSplitRows();
+});
+document.getElementById('close-fin-split').onclick=function(){closeModal('fin-split-modal');};
+document.getElementById('fin-split-clear-btn').addEventListener('click',async function(){
+  if(!finSplitCtx)return;
+  if(!await gmConfirm('Fjern opdelingen af "'+finSplitCtx.jobName+'"? Beløbet lægger sig derefter tilbage i sin normale, enkelte måned.'))return;
+  var r=await api('/api/finance/job-month-split/'+encodeURIComponent(finSplitCtx.jobId),{method:'DELETE'});
+  if(r&&r.ok){toast('Opdeling fjernet ✓','✓');closeModal('fin-split-modal');await loadFinance();}
+  else if(r)toast(r.error||'Fejl','❌');
+});
+document.getElementById('fin-split-save-btn').addEventListener('click',async function(){
+  if(!finSplitCtx)return;
+  var splits=finSplitCtx.rows.filter(function(r){return r.month_key&&Number(r.amount)>0;}).map(function(r){return {month_key:r.month_key,amount:Number(r.amount)};});
+  if(!splits.length){toast('Tilføj mindst én måned med et beløb — eller brug "✕ Fjern opdeling"','❌');return;}
+  var months=splits.map(function(s){return s.month_key;});
+  if(months.length!==new Set(months).size){toast('Samme måned er brugt to gange — ret det først','❌');return;}
+  var r=await api('/api/finance/job-month-split/'+encodeURIComponent(finSplitCtx.jobId),{method:'PUT',body:JSON.stringify({splits:splits})});
+  if(r&&r.ok){toast('Opdeling gemt ✓','✓');closeModal('fin-split-modal');await loadFinance();}
+  else if(r)toast(r.error||'Fejl','❌');
+});
 function renderFinRevenue(){
   renderFinRevenueKpis();
+  // RUNDE BL — holder flueben-dropdown'en synkroniseret med finRevenueVisibleMonths
+  // (erstatter den gamle periode-select-synkronisering).
+  finRenderMonthFilterMenu();
   var el=document.getElementById('fin-revenue-months');
   if(!finRevenue){el.innerHTML='<div class="fin-empty">Kunne ikke hente data.</div>';return;}
+  // Sikkerhedsnet — hvis finRevenue af en eller anden grund ikke har en __pool__-nøgle
+  // (fx en ældre cached værdi), skal Poolkortet stadig kunne tegnes tomt i stedet for at
+  // kaste en fejl.
+  if(!finRevenue.__pool__)finRevenue.__pool__={jobs:[],byFag:{},total:0,missingBudgetCount:0};
   var MAANEDE_FULDE=['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'];
   var thisMonthKey=iso(new Date()).slice(0,7);
-  var months=Object.keys(finRevenue).sort();
+  // RUNDE BL — __pool__ er ikke en rigtig måned (se fetchFinanceJobsByMonth i server.js)
+  // og vises altid separat FØRST (venstre/øverste kort, se finCardHtml('__pool__')
+  // nedenfor) — fluebenfilteret gælder kun de rigtige måneder.
+  var months=Object.keys(finRevenue).filter(function(k){return k!=='__pool__'&&finRevenueVisibleMonths.indexOf(k)>-1;}).sort();
   var STATUS_META=FIN_STATUS_META;
-  el.innerHTML=months.map(function(mk){
+  function finCardHtml(mk){
+    var isPool=mk==='__pool__';
     var mAll=finRevenue[mk];
     // Dato-filter: kun sager hvis planlagte startdato falder i det valgte interval.
     var dateFilteredJobs=mAll.jobs.filter(function(j){
@@ -18334,7 +18605,7 @@ function renderFinRevenue(){
       return '<div class="fin-fagbar-row'+(activeFag===f?' active':'')+'" data-month="'+mk+'" data-fag="'+esc(f)+'" title="Klik for at filtrere sagerne herunder">'+
         '<div class="fin-fagbar-top"><span class="fin-fagbar-name">'+esc(f)+'</span><span class="fin-fagbar-meta">'+d.count+' sag'+(d.count===1?'':'er')+' · '+krFmt(d.sum)+' · '+pct+'%</span></div>'+
         '<div class="fin-fagbar-track"><div class="fin-fagbar-fill" style="width:'+barPct+'%;background:'+col.bar+'"></div></div></div>';
-    }).join('')||'<div class="fin-empty">Ingen sager i denne periode</div>';
+    }).join('')||'<div class="fin-empty">'+(isPool?'Poolen er tom — alle accepterede tilbud er trukket ind i en måned 🎉':'Ingen sager i denne periode')+'</div>';
     var visibleJobs=activeFag?m.jobs.filter(function(j){return j.fag===activeFag;}):m.jobs;
     // SØG PÅ NAVN/BELØB — kun relevant når man rent faktisk kigger på en sagsliste (fag
     // valgt eller "vis sager i detaljer" åbnet), ellers er der intet at søge i endnu.
@@ -18345,7 +18616,10 @@ function renderFinRevenue(){
         return hay.indexOf(jobSearchQ)>-1;
       });
     }
-    var expanded=!!finRevenueExpanded[mk]||!!activeFag;
+    // RUNDE BL — Poolen folder sig som udgangspunkt ud af sig selv (det er jo hele
+    // pointen, at Martin kan se og trække i den med det samme), medmindre han selv har
+    // foldet den sammen igen (finRevenueExpanded[mk]===false, et eksplicit valg).
+    var expanded=finRevenueExpanded[mk]!==undefined?!!finRevenueExpanded[mk]:(isPool||!!activeFag);
     function finJobRowHtml(j){
       var jobKey=j.jobId?('job:'+j.jobId):('manual:'+j.manualId);
       var st=finJobStatusMarks[jobKey];
@@ -18355,23 +18629,59 @@ function renderFinRevenue(){
         return '<button class="fin-status-dot'+(st===k?' active':'')+'" data-job-status-key="'+esc(jobKey)+'" data-job-status-val="'+k+'" style="background:'+STATUS_META[k].dot+'" title="'+STATUS_META[k].label+'"></button>';
       }).join('');
       // RUNDE AJ: fakturaer må (jf. serverens regel, se fetchFinanceJobsByMonth) kun ligge
-      // i en BAGUDGÅENDE måned, og tilbud/forecast kun i indeværende eller en KOMMENDE
-      // måned — vælges en måned der bryder med det, forsvinder linjen bare stille uden at
-      // flytte sig. Dropdownen begrænses derfor til de måneder der reelt kan vælges, i
-      // stedet for at love alle 12 og så fejle tavst.
+      // i en BAGUDGÅENDE måned — vælges en måned der bryder med det, forsvinder linjen
+      // bare stille uden at flytte sig. Dropdownen begrænses derfor til de måneder der
+      // reelt kan vælges, i stedet for at love alle 12 og så fejle tavst.
+      // RUNDE BL (Martin: "jeg kan ps stadig ikke rykke opgaven bagud med måneder kun
+      // fremad") — den tilsvarende begrænsning for TILBUD ("kun fremad") er fjernet helt:
+      // et tilbud trækkes nu manuelt ind fra Poolen (eller flyttes videre derfra), og
+      // Martin skal kunne placere det i en HVILKEN SOM HELST måned, også bagud i tiden,
+      // for et retvisende cashflow-billede.
       var otherMonths=finYearMonthOptions().filter(function(x){
         if(x===mk)return false;
         if(j.valueSource==='invoice')return x<thisMonthKey;
-        if(j.valueSource==='quote')return x>=thisMonthKey;
         return true;
       });
-      var moveBtn=(j.jobId&&!j.manual&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" data-cur-month="'+mk+'" title="Flyt sagen til en anden måned"><option value="">→ flyt</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+' '+om.slice(0,4)+'</option>';}).join('')+'</select>'):'';
+      // RUNDE (okt. 2026, Martin: "Og så kan jeg under Økonomien Omsætning pr
+      // fag også kun rykke kunden fremad ... skal have mulighed for at
+      // opdele kunden") — et opdelt beløb (finance_job_splits, se server.js)
+      // har INTET enkelt "flyt"-mål mere, det ligger allerede spredt over
+      // flere måneder med hver sin del — "→ flyt" skjules derfor og erstattes
+      // af "✂ Rediger opdeling"-knappen nedenfor.
+      var moveBtn=(j.jobId&&!j.manual&&!j.split&&otherMonths.length)?('<select class="fin-move-month-select" data-jobid="'+esc(j.jobId)+'" data-cur-month="'+mk+'" title="'+(isPool?'Træk sagen ind i en måned':'Flyt sagen til en anden måned')+'"><option value="">'+(isPool?'→ træk ind i...':'→ flyt')+'</option>'+otherMonths.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+' '+om.slice(0,4)+'</option>';}).join('')+'</select>'):'';
+      // RUNDE (okt. 2026, Martin: "Gør det også muligt under kunden hvor jeg
+      // kan flyt måned at ændre projekt type på projektet så den kan rykke
+      // til den rigtige kategorie") — retter faggruppen direkte fra
+      // sagslinjen i stedet for at skulle åbne hele sagen: for en rigtig sag
+      // (projectId) rettes projects.project_type (samme felt som Projekt-
+      // siden/Projekt-detaljens "Faggruppe"-vælger bruger, se savePdProjectType),
+      // for en manuel linje rettes dens eget fag-felt (finance_manual_revenue.
+      // fag). Håndteres af .fin-type-select-lytteren nedenfor i renderFinRevenue.
+      var typeOptions=finProjectTypes||[];
+      var canEditType=!!(j.manual||j.projectId);
+      var typeSelect=canEditType?('<select class="fin-type-select" data-jobid="'+esc(j.jobId)+'" data-manual="'+(j.manual?'1':'0')+'" data-manualid="'+(j.manualId||'')+'" data-projectid="'+(j.projectId||'')+'" title="Ret faggruppe — flytter sagen til den rigtige kategori i grafen ovenfor">'+
+        typeOptions.map(function(t){return '<option value="'+esc(t)+'"'+(t===j.fag?' selected':'')+'>🏷️ '+esc(t)+'</option>';}).join('')+
+        (typeOptions.indexOf(j.fag)===-1&&j.fag?('<option value="'+esc(j.fag)+'" selected>🏷️ '+esc(j.fag)+'</option>'):'')+
+        '</select>'):'';
       var jtBtn=(j.projectId?'<a href="javascript:void(0)" onclick="openProjectDetail('+j.projectId+')" class="fin-edit-btn" title="Åbn sagen">🔗</a>':'');
+      // RUNDE (okt. 2026, samme ønske — se kommentaren ved moveBtn) — "✂ Opdel"
+      // lader et tilbud/en faktura (ikke manuelle linjer, de er allerede en
+      // enkelt fri linje) deles over flere måneder med hver sin delbeløb, i
+      // stedet for at hele beløbet kun kan ligge i ÉN måned ad gangen.
+      // RUNDE BL — mk er '__pool__' for en Pool-sag, hvilket ikke er en gyldig måned at
+      // forudvælge i opdelings-modalens dropdown (den kender kun rigtige YYYY-MM-måneder,
+      // se finYearMonthOptions) — brug sagens forslåede naturalMonth som udgangspunkt i
+      // stedet, så modalen altid åbner med et gyldigt valg.
+      var splitBtn=(j.jobId&&!j.manual)?('<button class="fin-edit-btn fin-job-split-btn" style="width:auto;padding:0 8px;white-space:nowrap" data-jobid="'+esc(j.jobId)+'" data-jobname="'+esc(j.name)+'" data-jobval="'+(j.split?j.splitTotal:(j.value===null?'':j.value))+'" data-cur-month="'+(isPool?(j.naturalMonth||thisMonthKey):mk)+'" data-split="'+(j.split?esc(JSON.stringify(j.splits||[])):'')+'" title="'+(j.split?'Rediger opdelingen over flere måneder':'Opdel beløbet over flere måneder')+'">'+(j.split?'✂ Opdelt':'✂ Opdel')+'</button>'):'';
       var SRC_META={invoice:{label:'Faktura',bg:'#DCFCE7',color:'#166534'},quote:{label:'Tilbud accept',bg:'#DBEAFE',color:'#1D4ED8'}};
       var srcMeta=SRC_META[j.valueSource];
       var srcLbl={invoice:'Beløb inkl. moms — hentet fra en rigtig faktura',quote:'Beløb inkl. moms — tilbud accepteret af kunden, endnu ikke faktureret'}[j.valueSource]||'';
       var reasonBadge=srcMeta?'<span class="fin-badge" style="background:'+srcMeta.bg+';color:'+srcMeta.color+'"'+(j.placementReason?' title="'+esc(j.placementReason)+'"':'')+'>'+srcMeta.label+'</span>':'';
-      var badges=reasonBadge+(j.hasOverride?'<span class="fin-badge ok">rettet</span>':'')+(j.manual?'<span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?'<span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(j.priceMismatch?'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Godkendt tilbud og faktura afviger mere end 15% — tjek om der blev lavet mere/mindre end aftalt">⚠ tilbud ≠ faktura</span>':'')+(stMeta?'<span class="fin-badge" style="background:'+stMeta.color+';color:#fff">'+stMeta.label+'</span>':'');
+      var splitBadge=j.split?('<span class="fin-badge" style="background:#EDE9FE;color:#6D28D9" title="Denne del er '+krFmt(j.value)+' af et samlet beløb på '+krFmt(j.splitTotal)+', opdelt over '+((j.splitMonths&&j.splitMonths.length)||0)+' måneder">✂ del af '+krFmt(j.splitTotal)+'</span>'):'';
+      // RUNDE BL — Poolens eget "forslag" (sagens Gantt-slutdato, hvis den har en) — rent
+      // informativt, Martin kan sagtens trække sagen til en helt anden måned.
+      var poolSuggestBadge=(isPool&&j.naturalMonth)?('<span class="fin-badge" style="background:#EEF2FF;color:#4338CA" title="'+esc(j.placementReason||'')+'">💡 forslag: '+MAANEDE_FULDE[+j.naturalMonth.slice(5,7)-1]+' '+j.naturalMonth.slice(0,4)+'</span>'):'';
+      var badges=reasonBadge+splitBadge+poolSuggestBadge+(j.hasOverride?'<span class="fin-badge ok">rettet</span>':'')+(j.manual?'<span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?'<span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(j.priceMismatch?'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Godkendt tilbud og faktura afviger mere end 15% — tjek om der blev lavet mere/mindre end aftalt">⚠ tilbud ≠ faktura</span>':'')+(stMeta?'<span class="fin-badge" style="background:'+stMeta.color+';color:#fff">'+stMeta.label+'</span>':'');
       var selForMonth=finJobSelected[mk]||{};
       var checkbox='<input type="checkbox" class="fin-job-select-cb" data-month="'+mk+'" data-jobid="'+esc(j.jobId)+'" style="width:15px;height:15px;margin-top:2px;flex-shrink:0;cursor:pointer" '+(selForMonth[j.jobId]?'checked':'')+'>';
       return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'" '+(stMeta?'style="background:'+stMeta.bg+'"':'')+'>'+
@@ -18383,9 +18693,14 @@ function renderFinRevenue(){
           '<div class="fin-muted">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div>'+
           '<div class="om-row-controls">'+
             '<span class="fin-status-dots">'+dots+'</span>'+
-            moveBtn+jtBtn+
-            '<button class="fin-edit-btn fin-job-edit-btn" '+editAttrs+' title="Ret beløb">✏</button>'+
-            '<button class="fin-edit-btn fin-job-del-btn" '+editAttrs+' title="'+(j.manual?'Slet linjen':'Udeluk fra beregningen')+'" style="color:#B91C1C">🗑</button>'+
+            moveBtn+typeSelect+jtBtn+splitBtn+
+            // Et opdelt beløb har ikke ÉT enkelt tal/én enkelt plads at
+            // rette/udelukke mere — det styres udelukkende via "✂ Opdelt"-
+            // knappen ovenfor (se splitBtn), ellers ville ✏/🗑 her stille
+            // ikke gøre noget (backenden ignorerer finance_job_overrides for
+            // en opdelt sag, se fetchFinanceJobsByMonth i server.js).
+            (j.split?'':'<button class="fin-edit-btn fin-job-edit-btn" '+editAttrs+' title="Ret beløb">✏</button>'+
+            '<button class="fin-edit-btn fin-job-del-btn" '+editAttrs+' title="'+(j.manual?'Slet linjen':'Udeluk fra beregningen')+'" style="color:#B91C1C">🗑</button>')+
           '</div>'+
         '</div></div>';
     }
@@ -18405,18 +18720,17 @@ function renderFinRevenue(){
     // (kun fakturaer eller kun tilbud); ved blandet valg vises hele listen som hidtil.
     var selectedJobsForMonth=m.jobs.filter(function(j){return selForMonth[j.jobId];});
     var selectedSources=selectedJobsForMonth.reduce(function(acc,j){if(j.valueSource&&acc.indexOf(j.valueSource)===-1)acc.push(j.valueSource);return acc;},[]);
+    // RUNDE BL — "kun fremad"-begrænsningen for tilbud fjernet her også, se kommentaren
+    // ved den enkelte "→ flyt"-dropdown (otherMonths) ovenfor.
     var bulkMonthOptions=finYearMonthOptions().filter(function(x){
       if(x===mk)return false;
-      if(selectedSources.length===1){
-        if(selectedSources[0]==='invoice')return x<thisMonthKey;
-        if(selectedSources[0]==='quote')return x>=thisMonthKey;
-      }
+      if(selectedSources.length===1&&selectedSources[0]==='invoice')return x<thisMonthKey;
       return true;
     });
     var bulkToolbar=selCountForMonth?('<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;margin-bottom:8px">'+
       '<b style="font-size:12px">'+selCountForMonth+' valgt</b>'+
       '<button class="bly-btn outline small" data-action="fin-bulk-exclude" data-month="'+mk+'">🗑 Udeluk/slet valgte</button>'+
-      '<select class="fin-bulk-move-select" data-action="fin-bulk-move" data-month="'+mk+'"><option value="">→ flyt valgte til...</option>'+bulkMonthOptions.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+' '+om.slice(0,4)+'</option>';}).join('')+'</select>'+
+      '<select class="fin-bulk-move-select" data-action="fin-bulk-move" data-month="'+mk+'"><option value="">'+(isPool?'→ træk valgte ind i...':'→ flyt valgte til...')+'</option>'+bulkMonthOptions.map(function(om){return '<option value="'+om+'">'+MAANEDE_FULDE[+om.slice(5,7)-1]+' '+om.slice(0,4)+'</option>';}).join('')+'</select>'+
       '<button class="fin-edit-btn" data-action="fin-bulk-clear" data-month="'+mk+'" title="Fravælg alle">✕ Fravælg</button>'+
       '</div>'):'';
     var jobRows=GROUP_DEFS.map(function(gd){
@@ -18443,21 +18757,33 @@ function renderFinRevenue(){
       (jobsHeader+jobSearchBox+bulkToolbar+'<div class="fin-card" style="padding-top:8px;margin-top:4px">'+(jobRows||(jobSearchQ?'<div class="fin-empty">Ingen sager matcher "'+esc(finJobSearch[mk])+'"</div>':'<div class="fin-empty">Ingen sager</div>'))+'</div>'+
         (activeFag?'':'<button class="fin-add-btn" data-action="fin-toggle-jobs" data-month="'+mk+'" style="width:100%">▲ Skjul sagerne igen</button>')):
       '<button class="fin-add-btn" data-action="fin-toggle-jobs" data-month="'+mk+'" style="width:100%">▾ Vis '+m.jobs.length+' sag'+(m.jobs.length===1?'':'er')+' i detaljer</button>';
-    var isCur=mk===thisMonthKey;
-    var isPastMonth=mk<thisMonthKey;
-    var monthNum=+mk.slice(5,7)-1,yearNum=mk.slice(0,4);
-    var actualBadge=isPastMonth?'<span class="fin-badge ok" title="Kun sager med en godkendt faktura tæller med her — sager uden faktura vises ikke i en overstået måned">✓ Faktisk</span>':'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Baseret på budget/tilbud — bliver til det faktiske tal når sagen faktureres">📈 Forecast</span>';
-    var headHtml='<div class="fin-month-head'+(isCur?' fin-month-head-current':'')+'">'+
-      '<div class="fin-month-name">'+MAANEDE_FULDE[monthNum]+' '+yearNum+' '+actualBadge+'</div>'+
-      (isCur?'<span class="fin-month-badge">Denne måned</span>':'')+
-      '</div>';
-    return '<div class="fin-month-card">'+headHtml+'<div class="fin-month-body">'+
+    // RUNDE BL — Poolen får sit eget, visuelt distinkte hoved i stedet for en måneds-
+    // titel (den er jo netop IKKE en måned, se finCardHtml-kommentaren ovenfor).
+    var headHtml;
+    if(isPool){
+      headHtml='<div class="fin-month-head" style="background:#EEF2FF;border-bottom:2px solid #6366F1">'+
+        '<div class="fin-month-name">📥 Pool — tilbud der venter på at blive trukket ind</div>'+
+        '</div>';
+    }else{
+      var isCur=mk===thisMonthKey;
+      var isPastMonth=mk<thisMonthKey;
+      var monthNum=+mk.slice(5,7)-1,yearNum=mk.slice(0,4);
+      var actualBadge=isPastMonth?'<span class="fin-badge ok" title="Kun sager med en godkendt faktura tæller med her — sager uden faktura vises ikke i en overstået måned">✓ Faktisk</span>':'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Baseret på budget/tilbud — bliver til det faktiske tal når sagen faktureres">📈 Forecast</span>';
+      headHtml='<div class="fin-month-head'+(isCur?' fin-month-head-current':'')+'">'+
+        '<div class="fin-month-name">'+MAANEDE_FULDE[monthNum]+' '+yearNum+' '+actualBadge+'</div>'+
+        (isCur?'<span class="fin-month-badge">Denne måned</span>':'')+
+        '</div>';
+    }
+    // RUNDE BL — "+ Tilføj sag manuelt" giver ikke mening i Poolen (en manuel linje
+    // oprettes jo direkte i den måned den hører til, den venter aldrig på placering).
+    return '<div class="fin-month-card'+(isPool?' fin-pool-card':'')+'">'+headHtml+'<div class="fin-month-body">'+
       '<div class="fin-fagbar-list">'+fagBars+'</div>'+
       (statusBreakdown?'<div class="fin-status-totals">'+statusBreakdown+'</div>':'')+
       '<div class="fin-fagbar-total"><span>Total</span><span>'+m.jobs.length+' sager · '+krFmt(m.total)+'</span></div>'+
-      '<button class="fin-add-btn" data-action="fin-add-manual-revenue" data-month="'+mk+'" style="width:100%;margin-top:6px">+ Tilføj sag manuelt</button>'+
+      (isPool?'':'<button class="fin-add-btn" data-action="fin-add-manual-revenue" data-month="'+mk+'" style="width:100%;margin-top:6px">+ Tilføj sag manuelt</button>')+
       '<div style="margin-top:12px">'+jobsSection+'</div></div></div>';
-  }).join('');
+  }
+  el.innerHTML=finCardHtml('__pool__')+months.map(finCardHtml).join('');
   // Genskab fokus + markørposition i søgefeltet efter gentegning — ellers ville man
   // miste fokus efter hvert eneste tastetryk (samme mønster som bank-quicksearch).
   if(finJobSearchFocus){
@@ -18508,11 +18834,55 @@ function renderFinRevenue(){
           var job=srcJobs.splice(idx,1)[0];
           job.monthMoved=true;
           job.naturalMonth=job.naturalMonth||curMonth;
+          // RUNDE BL — sagen er nu manuelt placeret (uanset om den kom fra Poolen eller
+          // fra en anden måned), så forslags-badgen/pool-markeringen ryddes lokalt med det
+          // samme i stedet for at vente på næste fulde loadFinance().
+          job.pool=false;job.hasOverride=job.hasOverride||false;
           finRevenue[targetMonth].jobs.push(job);
         }
-        toast('Sag flyttet ✓','✓');
+        toast(curMonth==='__pool__'?'Sag trukket ind ✓':'Sag flyttet ✓','✓');
         renderFinRevenue();
       }else if(r)toast(r.error||'Fejl','❌');
+    });
+  });
+  // RUNDE (okt. 2026, Martin: "Gør det også muligt under kunden hvor jeg kan
+  // flyt måned at ændre projekt type på projektet så den kan rykke til den
+  // rigtige kategorie") — ret-fag-dropdownen direkte fra sagslinjen. Rigtige
+  // sager (projectId sat) retter projects.project_type via samme PUT-rute som
+  // Projekt-detaljens "Faggruppe"-vælger (savePdProjectType); manuelle linjer
+  // retter deres eget fag-felt. Opdaterer lokalt + gentegner i stedet for en
+  // fuld loadFinance(), så man ikke mister sin plads/åbne fag-filter.
+  el.querySelectorAll('.fin-type-select').forEach(function(sel){
+    sel.addEventListener('click',function(e){e.stopPropagation();});
+    sel.addEventListener('change',async function(){
+      var newType=sel.value,jobId=sel.dataset.jobid,isManual=sel.dataset.manual==='1',manualId=sel.dataset.manualid,projectId=sel.dataset.projectid;
+      var r;
+      if(isManual){
+        var mRow=null;
+        Object.keys(finRevenue).forEach(function(k){finRevenue[k].jobs.forEach(function(j){if(j.manual&&String(j.manualId)===String(manualId))mRow=j;});});
+        if(!mRow)return;
+        r=await api('/api/finance/manual-revenue/'+manualId,{method:'PUT',body:JSON.stringify({name:mRow.name,fag:newType,amount:mRow.value})});
+      }else if(projectId){
+        r=await api('/api/projects/'+projectId,{method:'PUT',body:JSON.stringify({project_type:newType})});
+      }else return;
+      if(r&&r.ok){
+        Object.keys(finRevenue).forEach(function(k){
+          finRevenue[k].jobs.forEach(function(j){
+            if((isManual&&j.manual&&String(j.manualId)===String(manualId))||(!isManual&&j.jobId===jobId))j.fag=newType;
+          });
+        });
+        toast('Faggruppe opdateret ✓','✓');
+        renderFinRevenue();
+      }else if(r)toast(r.error||'Kunne ikke opdatere faggruppe','❌');
+    });
+  });
+  // RUNDE (okt. 2026, Martin: "skal have mulighed for at opdele kunden") —
+  // åbner split-modalen, se openFinSplitModal() nedenfor.
+  el.querySelectorAll('.fin-job-split-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var existing=btn.dataset.split?JSON.parse(btn.dataset.split):[];
+      openFinSplitModal(btn.dataset.jobid,btn.dataset.jobname,Number(btn.dataset.jobval)||0,btn.dataset.curMonth,existing);
     });
   });
   el.querySelectorAll('.fin-fagbar-row').forEach(function(row){
@@ -18945,11 +19315,20 @@ function pbSetSectionCollapsed(section,collapsed){
   var btn=document.getElementById('pb-collapse-'+section);
   if(btn)btn.addEventListener('click',function(){pbSetSectionCollapsed(section,!pbSectionCollapsed(section));});
 });
+// RUNDE BL (Martin: "Aktiver skal stå seperat i Fordelin - Indtægter vs udgifter da det
+// ikke er en indtægt men en værdi" / "gæld poster skal heller ikke regne med ... Det kun
+// udgifter") — bokse mærket kind='info' (Aktiver, Gælds poster, se server.js-migrationen)
+// tæller IKKE med i Indtægter/Udgifter/Netto herunder, de vises i stedet i deres egen
+// "📦 Andre poster"-sektion i renderFinPrivateBudgetBreakdown. krFmtSigned() sætter et
+// eksplicit +/- foran Netto ("i bunden skal jeg så have et +/- af hvor meget jeg har i
+// profit pt").
+function krFmtSigned(v){return (v>=0?'+':'−')+krFmt(Math.abs(v));}
 function renderFinPrivateBudgetKpis(){
   var el=document.getElementById('fin-privatbudget-kpis');
   if(!el)return;
   var income=0,expense=0;
   finPrivateBudget.forEach(function(cat){
+    if(cat.kind==='info')return;
     var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
     if((cat.section||'expense')==='income')income+=catTotal;else expense+=catTotal;
   });
@@ -18957,7 +19336,7 @@ function renderFinPrivateBudgetKpis(){
   el.innerHTML=
     finExpenseCard('Indtægter',krFmt(income))+
     finExpenseCard('Udgifter',krFmt(expense))+
-    finExpenseCard('Netto',krFmt(net),net>=0?'<span class="udg-trend udg-trend-good">Overskud</span>':'<span class="udg-trend udg-trend-bad">Underskud</span>');
+    finExpenseCard('Netto',krFmtSigned(net),net>=0?'<span class="udg-trend udg-trend-good">Overskud</span>':'<span class="udg-trend udg-trend-bad">Underskud</span>');
   var incTotalEl=document.getElementById('fin-pb-income-total');
   if(incTotalEl)incTotalEl.textContent=krFmt(income);
   var expTotalEl=document.getElementById('fin-pb-expense-total');
@@ -18974,18 +19353,32 @@ function renderFinPrivateBudgetKpis(){
 // ser på siden, uanset om han har organiseret dem i grupper eller ej. Øverst en lille
 // netto-linje ("forventet profit"), så den hurtige indtægter-vs-udgifter-sammenligning
 // han bad om er der uden at skulle lægge de to sektioners tal sammen i hovedet.
+// RUNDE BL — kind='info'-bokse (Aktiver, Gælds poster) holdes helt udenfor disse rækker;
+// de har deres egen opsamlings-funktion (pbInfoRowsForSection) og eget afsnit nedenfor.
 function pbBreakdownRowsForSection(section){
   var rows=[];
-  finPrivateBudget.filter(function(c){return (c.section||'expense')===section && !c.group_id;}).forEach(function(c){
+  finPrivateBudget.filter(function(c){return (c.section||'expense')===section && !c.group_id && c.kind!=='info';}).forEach(function(c){
     var v=c.items.reduce(function(s,i){return s+(+i.amount||0);},0);
     rows.push({name:c.name,v:v});
   });
   finPrivateBudgetGroups.filter(function(g){return g.section===section;}).forEach(function(g){
-    var v=finPrivateBudget.filter(function(c){return String(c.group_id||'')===String(g.id);})
+    var v=finPrivateBudget.filter(function(c){return String(c.group_id||'')===String(g.id) && c.kind!=='info';})
       .reduce(function(s,c){return s+c.items.reduce(function(s2,i){return s2+(+i.amount||0);},0);},0);
     rows.push({name:g.name,v:v});
   });
   return rows.filter(function(r){return r.v>0;}).sort(function(a,b){return b.v-a.v;});
+}
+// RUNDE BL — samme rækker som ovenfor, men KUN kind='info'-boksene (løse, grupper
+// regnes ikke med her da en gruppe altid er en Martin-oprettet overskrift for "rigtige"
+// bokse). Vises i et separat "Andre poster"-afsnit, så Aktiver/Gælds poster stadig er
+// synlige men aldrig bliver blandet ind i Indtægter/Udgifter-sammenligningen.
+function pbInfoRowsForSection(section){
+  var rows=[];
+  finPrivateBudget.filter(function(c){return (c.section||'expense')===section && c.kind==='info';}).forEach(function(c){
+    var v=c.items.reduce(function(s,i){return s+(+i.amount||0);},0);
+    rows.push({name:c.name,v:v});
+  });
+  return rows.sort(function(a,b){return b.v-a.v;});
 }
 function renderFinPrivateBudgetBreakdown(){
   var el=document.getElementById('fin-privbudget-bd-rows');
@@ -18993,18 +19386,22 @@ function renderFinPrivateBudgetBreakdown(){
   var incomeRows=pbBreakdownRowsForSection('income'),expenseRows=pbBreakdownRowsForSection('expense');
   var incomeTotal=incomeRows.reduce(function(s,r){return s+r.v;},0);
   var expenseTotal=expenseRows.reduce(function(s,r){return s+r.v;},0);
+  var infoRows=pbInfoRowsForSection('income').map(function(r){return {name:r.name,v:r.v,note:'værdi'};})
+    .concat(pbInfoRowsForSection('expense').map(function(r){return {name:r.name,v:r.v,note:'ønske'};}));
   var max=Math.max.apply(null,incomeRows.concat(expenseRows).map(function(r){return r.v;}).concat([1]));
-  function rowsHtml(rows,color){
+  var maxInfo=Math.max.apply(null,infoRows.map(function(r){return r.v;}).concat([1]));
+  function rowsHtml(rows,color,maxVal){
     return rows.length?rows.map(function(r){
-      var w=max?Math.max(3,Math.round(r.v/max*100)):0;
-      return '<div class="udg-bd-row"><div class="udg-bd-name">'+esc(r.name)+'</div><div class="udg-bd-track"><div class="udg-bd-fill" style="width:'+w+'%;background:'+color+'"></div></div><div><div class="udg-bd-amt">'+krFmt(r.v)+'</div></div></div>';
+      var w=maxVal?Math.max(3,Math.round(r.v/maxVal*100)):0;
+      return '<div class="udg-bd-row"><div class="udg-bd-name">'+esc(r.name)+(r.note?' <span class="fin-muted">('+r.note+')</span>':'')+'</div><div class="udg-bd-track"><div class="udg-bd-fill" style="width:'+w+'%;background:'+color+'"></div></div><div><div class="udg-bd-amt">'+krFmt(r.v)+'</div></div></div>';
     }).join(''):'<div class="udg-empty-hint">Ingen bokse endnu.</div>';
   }
   var net=incomeTotal-expenseTotal;
   el.innerHTML=
-    '<div class="pb-bd-netto">Forventet profit denne måned: <strong>'+krFmt(net)+'</strong> '+(net>=0?'<span class="udg-trend udg-trend-good">Overskud</span>':'<span class="udg-trend udg-trend-bad">Underskud</span>')+'</div>'+
-    '<div class="pb-bd-section"><div class="pb-bd-section-head"><span>💰 Indtægter</span><span class="pb-bd-section-total">'+krFmt(incomeTotal)+'</span></div>'+rowsHtml(incomeRows,'#16A34A')+'</div>'+
-    '<div class="pb-bd-section"><div class="pb-bd-section-head"><span>💸 Udgifter</span><span class="pb-bd-section-total">'+krFmt(expenseTotal)+'</span></div>'+rowsHtml(expenseRows,'#DC2626')+'</div>';
+    '<div class="pb-bd-netto">Forventet profit denne måned: <strong>'+krFmtSigned(net)+'</strong> '+(net>=0?'<span class="udg-trend udg-trend-good">Overskud</span>':'<span class="udg-trend udg-trend-bad">Underskud</span>')+'</div>'+
+    '<div class="pb-bd-section"><div class="pb-bd-section-head"><span>💰 Indtægter</span><span class="pb-bd-section-total">'+krFmt(incomeTotal)+'</span></div>'+rowsHtml(incomeRows,'#16A34A',max)+'</div>'+
+    '<div class="pb-bd-section"><div class="pb-bd-section-head"><span>💸 Udgifter</span><span class="pb-bd-section-total">'+krFmt(expenseTotal)+'</span></div>'+rowsHtml(expenseRows,'#DC2626',max)+'</div>'+
+    (infoRows.length?'<div class="pb-bd-section"><div class="pb-bd-section-head"><span>📦 Andre poster <span class="fin-muted">(tæller ikke med i Indtægter/Udgifter)</span></span><span class="pb-bd-section-total">—</span></div>'+rowsHtml(infoRows,'#94A3B8',maxInfo)+'</div>':'');
 }
 // RUNDE AQ — kategori-boksens HTML er nu udtrukket til en fælles funktion, så både de
 // "løse" bokse (renderFinPrivateBudgetSection) og boksene inde i en gruppe
@@ -19024,17 +19421,19 @@ function pbCategoryCardHtml(cat,idx,siblingsLen,containerTotal,pctLabel){
       '<input type="number" class="udg-exp-amt fin-priv-amount" value="'+it.amount+'">'+
       '<button class="udg-exp-del fin-priv-del">×</button></div>';
   }).join(''):'<div class="udg-empty-hint">Ingen poster endnu.</div>';
-  return '<div class="udg-cat-card pb-cat-card" data-catid="'+cat.id+'" style="--pb-accent:'+pbCatAccent(cat.id)+'">'+
+  var isInfo=cat.kind==='info';
+  return '<div class="udg-cat-card pb-cat-card" data-catid="'+cat.id+'" style="--pb-accent:'+pbCatAccent(cat.id)+(isInfo?';opacity:.82':'')+'">'+
     '<div class="udg-cat-head pb-cat-head">'+
-      '<div class="pb-cat-title"><span class="pb-cat-icon">'+pbCatIcon(cat.name,section)+'</span><input type="text" class="udg-cat-name fin-privcat-name" data-catid="'+cat.id+'" value="'+esc(cat.name)+'" style="background:transparent;border:0;color:inherit;font-weight:800;font-size:13px;width:100%;padding:0;min-width:0"></div>'+
+      '<div class="pb-cat-title"><span class="pb-cat-icon">'+pbCatIcon(cat.name,section)+'</span><input type="text" class="udg-cat-name fin-privcat-name" data-catid="'+cat.id+'" value="'+esc(cat.name)+'" style="background:transparent;border:0;color:inherit;font-weight:800;font-size:13px;width:100%;padding:0;min-width:0">'+(isInfo?'<span class="fin-muted" style="white-space:nowrap">📦 tæller ikke med</span>':'')+'</div>'+
       '<span class="amt">'+krFmt(catTotal)+'</span>'+
     '</div>'+
     '<div class="pb-cat-toolbar">'+
-      '<span class="pb-cat-pct">'+(catTotal>0?pct+'% af '+pctLabel:'—')+'</span>'+
+      '<span class="pb-cat-pct">'+(catTotal>0&&!isInfo?pct+'% af '+pctLabel:'—')+'</span>'+
       '<span class="pb-cat-actions">'+
         '<button type="button" class="pb-icon-btn" data-action="pb-move" data-dir="-1" data-catid="'+cat.id+'" title="Flyt op"'+(idx===0?' disabled':'')+'>↑</button>'+
         '<button type="button" class="pb-icon-btn" data-action="pb-move" data-dir="1" data-catid="'+cat.id+'" title="Flyt ned"'+(idx===siblingsLen-1?' disabled':'')+'>↓</button>'+
         pbBuildMoveSelectHtml(cat)+
+        '<button type="button" class="pb-icon-btn" data-action="pb-toggle-kind" data-catid="'+cat.id+'" data-kind="'+(isInfo?'real':'info')+'" title="'+(isInfo?'Lad den tælle med i Indtægter/Udgifter igen':'Udelad fra Indtægter/Udgifter (fx en værdi eller et ønske, ikke løbende indtægt/udgift)')+'">'+(isInfo?'↩':'📦')+'</button>'+
         '<button type="button" class="pb-icon-btn pb-icon-danger" data-action="fin-del-private-cat" data-catid="'+cat.id+'" title="Slet hele boksen og alle dens poster">×</button>'+
       '</span>'+
     '</div>'+
@@ -19093,6 +19492,14 @@ function pbWireCategoryCardEvents(el){
       if(!name){toast('Boksens navn må ikke være tomt','⚠');loadPrivateBudgetForMonth();return;}
       api('/api/finance/private-budget/category/'+e.target.dataset.catid,{method:'PUT',body:JSON.stringify({name:name})}).then(function(r){
         if(r&&r.ok)toast('Boks omdøbt ✓','✓');else if(r)toast(r.error||'Fejl','❌');
+      });
+    });
+  });
+  // RUNDE BL — 📦/↩-knappen slår kind real↔info til/fra (se pbCategoryCardHtml).
+  el.querySelectorAll('[data-action="pb-toggle-kind"]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      api('/api/finance/private-budget/category/'+btn.dataset.catid,{method:'PUT',body:JSON.stringify({kind:btn.dataset.kind})}).then(function(r){
+        if(r&&r.ok)loadPrivateBudgetForMonth();else if(r)toast((r&&r.error)||'Fejl','❌');
       });
     });
   });
@@ -28354,7 +28761,11 @@ function initProjectsModule(){
   // RUNDE R — genindlæses hver gang man besøger siden, så en lige tilføjet/
   // omdøbt/slettet stadie (fx redigeret i en anden fane) altid er frisk.
   loadPjStages().then(renderPjProjects);
-  if(!pjProjectTypes.length)loadPjProjectTypes();
+  // RUNDE (okt. 2026) — gentegner EFTER hentning, ellers stod den nye
+  // faggruppe-dropdown (pjRowTypeSelect) tom ved første besøg på siden, da
+  // pjProjectTypes før kun blev hentet "i baggrunden" uden at liste/tabel
+  // vidste at skulle tegnes om bagefter.
+  if(!pjProjectTypes.length)loadPjProjectTypes().then(renderPjProjects);
   loadPjQaTemplates().then(renderPjQaTemplates);
   loadPjContactTemplates().then(renderPjContactTemplates);
 }
@@ -28484,7 +28895,7 @@ function renderPjProjects(){
   });
   document.getElementById('proj-count').textContent=list.length+' projekt'+(list.length===1?'':'er');
   var body=document.getElementById('proj-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når et tilbud godkendes, eller opret ét manuelt med "+ Nyt projekt"')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen projekter fundet':'Ingen projekter endnu — de oprettes automatisk når et tilbud godkendes, eller opret ét manuelt med "+ Nyt projekt"')+'</td></tr>';return;}
   // Status-dropdown direkte i listen (sep. 2026, Martins ønske: "jeg burde kunne
   // vælge status via dropdown, det gør jeg ikke behøves at åbne alle sagerne for
   // at ændre status — hurtig oprydning"). onclick="event.stopPropagation()" på
@@ -28494,6 +28905,20 @@ function renderPjProjects(){
   function pjRowStatusSelect(p){
     return '<select class="select" style="width:auto;font-size:11.5px;padding:3px 6px" onclick="event.stopPropagation()" onchange="savePjRowStatus('+p.id+',this.value)">'
       +pjAllStagesSorted().map(function(s){return '<option value="'+esc(s.key)+'"'+(p.status===s.key?' selected':'')+'>'+esc(s.label)+'</option>';}).join('')
+      +'</select>';
+  }
+  // RUNDE (okt. 2026, Martin: "Gør det også muligt på Projekt siden ligesom
+  // jeg kan ændre projekt status at ændre projekt type") — samme mønster som
+  // pjRowStatusSelect() ovenfor, bare for faggruppen (project_type), som
+  // hidtil kun var et statisk skilt ved navnet man skulle åbne hele sagen for
+  // at rette. pjProjectTypes er samme dynamiske liste som Projekt-detaljens
+  // "Faggruppe"-vælger og CRM'ets "Projekt Type"-felt bruger (se pjProjectTypes
+  // ved loadPjProjectTypes()).
+  function pjRowTypeSelect(p){
+    return '<select class="select" style="width:auto;font-size:11.5px;padding:3px 6px" onclick="event.stopPropagation()" onchange="savePjRowType('+p.id+',this.value)">'
+      +'<option value=""'+(!p.project_type?' selected':'')+'>🏷️ (ingen)</option>'
+      +pjProjectTypes.map(function(t){return '<option value="'+esc(t)+'"'+(p.project_type===t?' selected':'')+'>🏷️ '+esc(t)+'</option>';}).join('')
+      +(p.project_type&&pjProjectTypes.indexOf(p.project_type)===-1?('<option value="'+esc(p.project_type)+'" selected>🏷️ '+esc(p.project_type)+'</option>'):'')
       +'</select>';
   }
   body.innerHTML=list.map(function(p){
@@ -28509,8 +28934,9 @@ function renderPjProjects(){
     var price=p.quote_total!=null?p.quote_total:p.invoice_total;
     var contact=[p.customer_email,p.customer_phone].filter(Boolean).join(' · ');
     return '<tr style="cursor:pointer" onclick="openProjectDetail('+p.id+')" oncontextmenu="pjRowCtxMenu(event,'+p.id+')">'
-      +'<td>'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer">#'+esc(p.job_number)+'</span>':'')+(p.project_type?' <span class="tag" title="Faggruppe" style="background:var(--bly-accent-soft);color:var(--bly-accent)">🏷️ '+esc(p.project_type)+'</span>':'')+(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</td>'
+      +'<td>'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer">#'+esc(p.job_number)+'</span>':'')+(p.quote_number?' <span class="sub">('+esc(p.quote_number)+')</span>':'')+'</td>'
       +'<td>'+pjRowStatusSelect(p)+'</td>'
+      +'<td>'+pjRowTypeSelect(p)+'</td>'
       +'<td>'+esc(p.customer_address||'–')+'</td>'
       +'<td>'+esc(contact||'–')+'</td>'
       +'<td class="num">'+(price!=null?krFmt(price):'–')+'</td>'
@@ -28745,6 +29171,19 @@ async function savePjRowStatus(id,status){
     toast('Status opdateret','✓');
     renderPjProjects();
   }else{toast((r&&r.error)||'Kunne ikke opdatere status','❌');await loadPjProjects();renderPjProjects();}
+}
+// RUNDE (okt. 2026, Martin: "Gør det også muligt på Projekt siden ligesom jeg
+// kan ændre projekt status at ændre projekt type") — samme mønster som
+// savePjRowStatus() ovenfor, bare for faggruppen (project_type).
+async function savePjRowType(id,type){
+  var r=await api('/api/projects/'+id,{method:'PUT',body:JSON.stringify({project_type:type||null})});
+  if(r&&r.ok){
+    var row=pjProjects.find(function(p){return +p.id===+id;});
+    if(row)row.project_type=type||null;
+    if(pjCurrent&&+pjCurrent.id===+id)pjCurrent.project_type=type||null;
+    toast('Faggruppe opdateret','✓');
+    renderPjProjects();
+  }else{toast((r&&r.error)||'Kunne ikke opdatere faggruppe','❌');await loadPjProjects();renderPjProjects();}
 }
 // RUNDE T (Martins ønske: "Højre klikke alle projekter i List view And Kanban
 // view") — samme handlinger der allerede findes som knapper (Martins eget
