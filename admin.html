@@ -3784,9 +3784,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#crmp/leads" data-page="crmp" data-crmp-pipeline-type="lead" id="crmp-leads-tab-btn">🧲 Leads</a>
         <a class="navdrop-item" href="#crmp/sales" data-page="crmp" data-crmp-pipeline-type="opportunity" id="crmp-sales-tab-btn">🤝 Sales</a>
         <a class="navdrop-item" href="#crmp-tasks" data-page="crmp-tasks" id="crmp-tasks-tab-btn">⏰ Opfølgninger</a>
-        <!-- RETTELSE (okt. 2026, Martins ønske om en samlet "hvem er ude
-             hvornår"-oversigt over alle bookede kundebesøg) -->
-        <a class="navdrop-item" href="#kundebesog" data-page="kundebesog" id="kundebesog-tab-btn">📅 Kundebesøg</a>
       </div>
     </div>
 
@@ -3831,6 +3828,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="navdrop-item" href="#capacity" data-page="capacity">📊 Kapacitet</a>
         <a class="navdrop-item" href="#availability" data-page="availability">🟢 Ledighedsoversigt</a>
         <a class="navdrop-item" href="#timeline" data-page="timeline">🕒 Tidslinje</a>
+        <!-- RUNDE BP (Martin: "Ryk kundebesøg ned i Dagligplanlægning") — flyttet
+             hertil fra CRM-dropdown'en (lå der fra den oprindelige "hvem er ude
+             hvornår"-tilføjelse). data-page/href uændret, kun placeringen i
+             menuen er ny. -->
+        <a class="navdrop-item" href="#kundebesog" data-page="kundebesog" id="kundebesog-tab-btn">📅 Kundebesøg</a>
       </div>
     </div>
     <!-- Gantt boede her tidligere — flyttet ned under Projekter som en fane
@@ -3854,11 +3856,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <a class="tab" href="#projects" data-page="projects" id="projects-tab-btn"><span class="stab-icon">🏗️</span><span class="stab-label">Projekter</span></a>
         <button class="nb navdrop-btn navdrop-caret" data-action="tab-caret-toggle" type="button">▾</button>
       </div>
+      <!-- RUNDE BP (Martin: "Bad dig under projekter at i dropdown at fjerne
+           Ks Skabeloner, Kontakt formular") — begge genveje fjernet fra
+           dropdown'en igen. -->
       <div class="navdrop-menu">
         <a class="navdrop-item" href="#projects" data-page="projects" data-projtab-jump="list">🏗️ Sagsoversigt</a>
         <a class="navdrop-item" href="#gantt" data-page="projects" data-projtab-jump="gantt">📶 Gantt</a>
-        <a class="navdrop-item" href="#projects/ks-skabeloner" data-page="projects" data-projtab-jump="qa-templates">📋 KS-skabeloner</a>
-        <a class="navdrop-item" href="#projects/kontaktformularer" data-page="projects" data-projtab-jump="contact-templates">📇 Kontaktformularer</a>
       </div>
     </div>
 
@@ -18853,11 +18856,17 @@ function renderFinRevenue(){
     // RUNDE BM — data-findrop="<mk>" gør hele kortet til en drop-zone for det nye,
     // scopede træk/slip-system (se finFinanceDragWiring nedenfor) — "__pool__" er et
     // lige så gyldigt drop-mål som en rigtig måned (trækker sagen tilbage i Poolen).
+    // RUNDE BP (Martin: "I opgave pool fjern ALT data med enterprise,
+    // Gulvslibning, Total færdige osv. Dette er en opgave pool ikke data") —
+    // fag-fordelingsbjælkerne og status-subtotalerne (Total færdige/fakturaer/
+    // kørende) er omsætnings-ANALYSE, ikke noget der hører til i Poolen — den
+    // skal bare være en ren, hurtig liste af opgaver man trækker ud, uden
+    // analyse-støj. Vises derfor KUN for rigtige måneder, aldrig for Poolen.
     var bodyHtml=(isPool&&poolCollapsed)?'':('<div class="fin-month-body">'+
-      '<div class="fin-fagbar-list">'+fagBars+'</div>'+
-      (statusBreakdown?'<div class="fin-status-totals">'+statusBreakdown+'</div>':'')+
-      '<div class="fin-fagbar-total"><span>Total</span><span>'+m.jobs.length+' sager · '+krFmt(m.total)+'</span></div>'+
-      (isPool?'':'<button class="fin-add-btn" data-action="fin-add-manual-revenue" data-month="'+mk+'" style="width:100%;margin-top:6px">+ Tilføj sag manuelt</button>')+
+      (isPool?'':('<div class="fin-fagbar-list">'+fagBars+'</div>'+
+        (statusBreakdown?'<div class="fin-status-totals">'+statusBreakdown+'</div>':'')+
+        '<div class="fin-fagbar-total"><span>Total</span><span>'+m.jobs.length+' sager · '+krFmt(m.total)+'</span></div>'+
+        '<button class="fin-add-btn" data-action="fin-add-manual-revenue" data-month="'+mk+'" style="width:100%;margin-top:6px">+ Tilføj sag manuelt</button>'))+
       '<div style="margin-top:12px">'+jobsSection+'</div></div>');
     return '<div class="fin-month-card'+(isPool?' fin-pool-card':'')+'" data-findrop="'+mk+'">'+headHtml+bodyHtml+'</div>';
   }
