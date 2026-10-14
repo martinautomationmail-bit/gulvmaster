@@ -13284,6 +13284,18 @@ async function crmFindOrCreateContactAndCustomer(name, email, phone, address, no
     // kunde-kortet (customers.address) — det er typisk DENNE adresse Martin
     // rent faktisk ser først, da kundekortet er den primære visning.
     if (address) await db.query(`UPDATE customers SET address=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [address, customerId]);
+    // RUNDE BO (Martin: "når noten laves ved selv at oprette kunden kommer de
+    // også ind på activits siden hvor noter er") — RUNDE CQ herunder (se
+    // kommentaren i else-grenen) rettede kun det tilfælde hvor kunden er helt
+    // NY. Er personen/firmaet derimod allerede kunde (matchet på telefon/email
+    // — fx en returkunde der selv udfylder /ny-kunde-formularen igen, eller et
+    // manuelt oprettet lead for en eksisterende kunde), endte en indtastet note
+    // her i INTET — hverken customer_notes (det rigtige "Noter"-faneblad) eller
+    // noget andet synligt sted. Samme fix som i else-grenen, bare for den
+    // genbrugte kunde i stedet for en splinterny.
+    if (note && String(note).trim()) {
+      await db.query('INSERT INTO customer_notes (customer_id,body,user_id) VALUES ($1,$2,NULL)', [customerId, String(note).trim()]);
+    }
   } else {
     const cust = await one('INSERT INTO customers (name,email,phone,address,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id', [name, email, phone, address, note || null]);
     customerId = cust.id; customerCreated = true;
@@ -13876,7 +13888,9 @@ app.get('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async 
   const customFields = await crmGetCustomFieldDefs('lead');
   const customValues = await crmGetCustomFieldValues('lead', lead.id);
   const activities = (await pool.query('SELECT a.*, u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.entity_type=$1 AND a.entity_id=$2 ORDER BY a.created_at DESC, a.id DESC', ['lead', lead.id])).rows;
-  res.json({ ...lead, custom_fields: customValues, custom_field_defs: customFields, activities });
+  // RUNDE BO — se samme kommentar ved GET /api/crm/opportunities/:id.
+  const customerNotes = lead.customer_id ? (await pool.query('SELECT n.*, u.name AS user_name FROM customer_notes n LEFT JOIN users u ON u.id=n.user_id WHERE n.customer_id=$1 ORDER BY n.created_at DESC, n.id DESC', [lead.customer_id])).rows : [];
+  res.json({ ...lead, custom_fields: customValues, custom_field_defs: customFields, activities, customer_notes: customerNotes });
 }));
 // RUNDE T (Martins ønske: "en Knap ved siden af filer hvor man trykker og kan
 // se alle tilbud der lavet på denne opptunitury") — BEVIDST forskellig fra
@@ -14188,7 +14202,14 @@ app.get('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRout
   const customFields = await crmGetCustomFieldDefs('opportunity');
   const customValues = await crmGetCustomFieldValues('opportunity', opp.id);
   const activities = (await pool.query('SELECT a.*, u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.entity_type=$1 AND a.entity_id=$2 ORDER BY a.created_at DESC, a.id DESC', ['opportunity', opp.id])).rows;
-  res.json({ ...opp, custom_fields: customValues, custom_field_defs: customFields, activities });
+  // RUNDE BO (Martin: "noten laves manuelt ved Ny kunde ... kommer ikke med ind
+  // under når jeg skal lave tilbud") — kundens RIGTIGE noteliste ("Noter"-fanen,
+  // customer_notes, se GET /api/crm/customers/:id/notes) er en tredje note-kilde
+  // ud over handlens egen note og dens aktivitets-noter — tages med her så
+  // qeCombineCrmNote (admin.html) kan kombinere ALLE tre, uanset hvilken boks
+  // man rent faktisk skrev noten i.
+  const customerNotes = opp.customer_id ? (await pool.query('SELECT n.*, u.name AS user_name FROM customer_notes n LEFT JOIN users u ON u.id=n.user_id WHERE n.customer_id=$1 ORDER BY n.created_at DESC, n.id DESC', [opp.customer_id])).rows : [];
+  res.json({ ...opp, custom_fields: customValues, custom_field_defs: customFields, activities, customer_notes: customerNotes });
 }));
 // RUNDE T — se kommentaren ved GET /api/crm/leads/:id/quotes ovenfor, samme
 // begrundelse: filtreret på DENNE handel (crm_opportunity_id), ikke kunden generelt.

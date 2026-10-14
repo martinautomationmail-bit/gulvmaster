@@ -31607,9 +31607,23 @@ function qeInternalNoteToggleClick(){
 // kilder: det fastgjorte notefelt (hvis udfyldt) efterfulgt af de seneste
 // aktivitets-noter (nyeste øverst, med dato), så uanset hvilken af de to
 // bokse man bruger, dukker den op i tilbudseditoren.
+// RUNDE BO (Martin: "når noten laves manuelt ved Ny kunde ... kommer ikke med
+// ind under når jeg skal lave tilbud") — der viser sig at være en TREDJE
+// note-kilde ud over de to RUNDE V allerede kombinerede: kundens egen "📝
+// Noter"-faneblad (customer_notes, se GET .../customers/:id/notes), som er
+// DEN boks Martin rent faktisk bruger ved manuel kunde-/lead-oprettelse (jf.
+// skærmbilledet). Den hænger ved KUNDEN, ikke selve lead'et/handlen — derfor
+// kommer den nu med via d.customer_notes (sat på GET /api/crm/leads/:id og
+// GET /api/crm/opportunities/:id i server.js).
 function qeCombineCrmNote(d){
   var parts=[];
   if(d&&d.note&&String(d.note).trim())parts.push(String(d.note).trim());
+  if(d&&Array.isArray(d.customer_notes)){
+    d.customer_notes.filter(function(n){return n.body&&String(n.body).trim();}).forEach(function(n){
+      var dt=(n.created_at||'').slice(0,10);
+      parts.push((dt?'['+dt+'] ':'')+String(n.body).trim());
+    });
+  }
   if(d&&Array.isArray(d.activities)){
     d.activities.filter(function(a){return a.kind==='note'&&a.body&&String(a.body).trim();}).forEach(function(a){
       var dt=(a.created_at||'').slice(0,10);
@@ -31617,6 +31631,23 @@ function qeCombineCrmNote(d){
     });
   }
   return parts.join('\n\n');
+}
+// RUNDE BO — selve manglen Martin pegede på: qeCombineCrmNote/qeRenderCrmNotePanel
+// viste KUN noten i den gule info-boks (qe-crm-note-panel) — det rigtige "Note i
+// toppen"-felt (det kunden ser på selve tilbuddet) blev ALDRIG selv udfyldt med
+// den, kun med standardteksten fra Indstillinger. Sættes nu ind i feltet også,
+// tilføjet EFTER det der allerede står (så Martins faste standard-indledning
+// bevares), og kun hvis noten ikke allerede er sat ind (undgår dubletter hvis
+// man linker/afkobler/linker samme lead flere gange, eller linker igen efter en
+// genindlæsning af tilbuddet).
+function qeApplyCrmNoteToTopNote(note){
+  if(!note||!String(note).trim())return;
+  note=String(note).trim();
+  var ta=document.getElementById('qe-top-note');
+  if(!ta)return;
+  var cur=ta.value||'';
+  if(cur.indexOf(note)>-1)return;
+  ta.value=(cur.replace(/\s+$/,'')?cur.replace(/\s+$/,'')+'\n\n':'')+note;
 }
 // RUNDE (okt. 2026, Martins ønske: "en knap når man skal oprette et tilbud
 // til en AI tilbudsgiver ... og så det normale manuelt program") — se den
@@ -31799,6 +31830,7 @@ async function openQuoteEditor(id,prefillCustomer){
       qeState.crmEntityId=prefillCustomer.crmEntityId||null;
       qeState.crmEntityName=prefillCustomer.crmEntityName||null;
       qeRenderCrmNotePanel(prefillCustomer.note,prefillCustomer.crmEntityType,prefillCustomer.crmEntityName);
+      qeApplyCrmNoteToTopNote(prefillCustomer.note);
     }
   }
   qeRenderCrmLinkChip();
@@ -32636,7 +32668,14 @@ async function qePickCrmLink(x){
   // Henter selve noten (ikke med i søgeresultatet) så qe-crm-note-panel kan
   // vise den med det samme, uden at man først skal gemme og genåbne tilbuddet.
   var full=await api('/api/crm/'+(x.type==='lead'?'leads':'opportunities')+'/'+x.id);
-  qeRenderCrmNotePanel(full&&!full.error?qeCombineCrmNote(full):'',x.type,x.name);
+  var combinedNote=full&&!full.error?qeCombineCrmNote(full):'';
+  qeRenderCrmNotePanel(combinedNote,x.type,x.name);
+  // RUNDE BO (Martin: "noten laves manuelt ved Ny kunde ... kommer ikke med
+  // ind under når jeg skal lave tilbud") — en manuel kobling HERFRA (efter
+  // tilbuddet allerede er startet via "Tilknyt til lead/handel" — Martins
+  // faktiske scenarie i skærmbilledet) skal opføre sig som den dedikerede
+  // "📝 Lav tilbud"-knap, se qeApplyCrmNoteToTopNote.
+  qeApplyCrmNoteToTopNote(combinedNote);
   // RUNDE S — en manuel kobling til et lead/en handel her (efter tilbuddet er
   // startet) skal også tilbyde skift-dropdowns for DEN kobling, ikke kun for
   // den evt. tidligere valgte kunde.
