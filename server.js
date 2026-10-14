@@ -627,11 +627,19 @@ async function initSchema() {
     CREATE TABLE IF NOT EXISTS finance_dunning_settings (
       id INTEGER PRIMARY KEY DEFAULT 1,
       enabled INTEGER DEFAULT 0,
-      days_rykker1 INTEGER DEFAULT 14,
-      days_rykker2 INTEGER DEFAULT 28,
+      days_rykker1 INTEGER DEFAULT 10,
+      days_rykker2 INTEGER DEFAULT 20,
       fee_amount DOUBLE PRECISION DEFAULT 100,
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
+    -- RUNDE (okt. 2026, Martin: "gør det muligt at vælge mellem rykker 1, 2 og
+    -- 3. De kan sendes med 10 dages varsel") — tredje rykker-niveau tilføjet.
+    -- ADD COLUMN IF NOT EXISTS i stedet for at ændre CREATE TABLE-blokken
+    -- ovenfor, så eksisterende installationer (som allerede har kørt CREATE
+    -- TABLE én gang) også får kolonnen uden en manuel migrering. Standard på
+    -- 30 dage (10 dages mellemrum fra rykker 2's 20 dage), men begge/alle tre
+    -- dagstal er altid frit redigerbare under ✉️ Rykker-indstillinger.
+    ALTER TABLE finance_dunning_settings ADD COLUMN IF NOT EXISTS days_rykker3 INTEGER DEFAULT 30;
     CREATE TABLE IF NOT EXISTS finance_dunning_log (
       id SERIAL PRIMARY KEY,
       document_id TEXT NOT NULL,
@@ -640,6 +648,23 @@ async function initSchema() {
       status TEXT,
       error TEXT,
       sent_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    -- RUNDE (okt. 2026, Martin: "jeg skal have en note email tilsendt
+    -- info@gulvmaster.dk når folk går over rykker tid") — HELT adskilt fra
+    -- finance_dunning_log ovenfor (som kun logger mails der rent faktisk er
+    -- sendt TIL KUNDEN). Denne tabel dedupe'r Martins egen interne besked —
+    -- "faktura X er nu nået rykker-niveau N" — så den kun sendes ÉN gang pr.
+    -- faktura+niveau, uanset hvor mange gange det daglige scan kører, og
+    -- uanset om automatisk kunde-afsendelse overhovedet er slået til (det er
+    -- den som udgangspunkt ikke — se finance_dunning_settings.enabled — men
+    -- Martin skal stadig have beskeden, så han selv kan nå at sende rykkeren
+    -- manuelt fra Tilbud & Faktura).
+    CREATE TABLE IF NOT EXISTS finance_dunning_notify_log (
+      id SERIAL PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      level INTEGER NOT NULL,
+      notified_at TEXT DEFAULT ${nowTextSQL()},
+      UNIQUE (document_id, level)
     );
     -- Husker rækkefølgen når Martin trækker rundt på boksene i Oversigt/Udgifter/
     -- Privat budget, så layoutet ikke nulstilles hver gang siden genindlæses.
@@ -4677,6 +4702,54 @@ async function initSchema() {
     console.log('CRM: standard custom fields oprettet (Projekt Type, Lead Source, Sagsnummer).');
   }
 
+  // RUNDE (okt. 2026, Martin: "lav alle 3 rykker til kunden forskellige i
+  // følge dansk lovgivning. Men stadig flink og rar da vi ikke gider sætte
+  // ild på bålet") — seeder tre FORSKELLIGE, navngivne rykker-mail-skabeloner
+  // (samme skabelon-system som tilbud/faktura, se document_email_templates),
+  // og kobler dem automatisk som standard for hhv. rykker 1/2/3 (samme
+  // "faste koblinger"-system som allerede findes for tilbud/faktura/
+  // kreditnota, se DOC_EMAIL_EVENT_TYPES/getAssignedTemplateId ovenfor).
+  // Kører KUN hvis email_tpl_event_dunning_1 slet ikke er sat endnu, så det
+  // aldrig overskriver noget Martin selv har redigeret eller koblet om.
+  const dunningTplSeeded = await pgOne("SELECT 1 AS x FROM app_settings WHERE key='email_tpl_event_dunning_1'");
+  if (!dunningTplSeeded) {
+    function dunningSeedHtml(badgeLabel, badgeBg, badgeColor, bodyParas) {
+      const paras = bodyParas.map(p => `<p style="margin:0 0 14px">${p}</p>`).join('');
+      return `<div style="font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto">
+<div style="margin-bottom:18px"><img src="{{logo}}" alt="{{firma}}" style="max-height:40px;max-width:200px;display:block;border:0"></div>
+<div style="display:inline-block;background:${badgeBg};color:${badgeColor};border-radius:999px;padding:4px 13px;font-size:12px;font-weight:800;letter-spacing:.02em;margin-bottom:16px">${badgeLabel}</div>
+<div style="font-size:14px;color:#0a0a0a;line-height:1.65">${paras}</div>
+<div style="margin:18px 0;padding:14px 16px;background:#eef5f0;border-radius:12px"><div style="font-size:11.5px;color:#6f7785;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Skal betales</div><div style="font-size:19px;font-weight:800;color:#003509">{{restbeloeb}}</div></div>
+<p style="margin:0 0 20px;font-size:13px;color:#374151">{{rykkergebyr_note}}</p>
+<p style="margin:0;font-size:14px">Mange hilsner<br><b>{{firma}}</b></p>
+<div style="margin-top:22px;padding-top:14px;border-top:1px solid rgba(0,53,9,.12);font-size:12px;color:#6f7785">{{telefon}} · {{firma_email}}</div>
+</div>`;
+    }
+    const dunningSeedTemplates = [
+      ['Rykker 1 (venlig påmindelse)', 'Lille påmindelse — {{kunde}} — {{firma}}', 'dunning_1', dunningSeedHtml('PÅMINDELSE', '#eef5f0', '#003509', [
+        'Hej {{kunde}},',
+        'Vi kan se, at fakturaen <b>{{dokument_nr}}</b> stadig ikke er betalt — det er sikkert bare gledet i glemmebogen, det sker for de fleste af os.',
+        'Kan du nå at betale inden for de næste 10 dage? Så er den ude af verden. Har du allerede betalt, eller undrer du dig over noget, må du meget gerne bare svare på denne mail.'
+      ])],
+      ['Rykker 2 (anden rykker)', '2. rykker — {{kunde}} — {{firma}}', 'dunning_2', dunningSeedHtml('2. RYKKER', '#eef5f0', '#003509', [
+        'Hej {{kunde}},',
+        'Vi har tidligere sendt en påmindelse om fakturaen <b>{{dokument_nr}}</b>, men kan se den desværre stadig ikke er betalt. Dette er derfor anden rykker.',
+        'Vi vil gerne bede om, at beløbet bliver betalt inden for 10 dage. Sidder du med spørgsmål til fakturaen, eller er der en god grund til at den ikke er betalt endnu, så hører vi meget gerne fra dig — vi vil helst finde en løsning sammen med dig.'
+      ])],
+      ['Rykker 3 (sidste rykker)', '3. og sidste rykker — {{kunde}} — {{firma}}', 'dunning_3', dunningSeedHtml('3. OG SIDSTE RYKKER', '#f5f6f4', '#374151', [
+        'Hej {{kunde}},',
+        'Dette er tredje og sidste rykker for fakturaen <b>{{dokument_nr}}</b>, som vi desværre endnu ikke har modtaget betaling for.',
+        'Vi vil naturligvis helst undgå at sende sagen videre, så vi beder om, at beløbet bliver betalt inden for 10 dage. Bliver fakturaen ikke betalt, eller hører vi ikke fra dig inden da, kan vi desværre blive nødt til at lade sagen overgå til inkasso, hvilket vil medføre yderligere omkostninger for dig — det vil vi hellere end gerne undgå.',
+        'Har du spørgsmål, eller vil du gerne lave en aftale om betaling, så ring eller skriv til os — vi sidder klar til at hjælpe.'
+      ])]
+    ];
+    for (const [name, subject, eventKey, bodyHtml] of dunningSeedTemplates) {
+      const row = await pgOne('INSERT INTO document_email_templates (name,subject,body_html,updated_at) VALUES ($1,$2,$3,' + nowTextSQL() + ') RETURNING id', [name, subject, bodyHtml]);
+      await pool.query('INSERT INTO app_settings (key,value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING', ['email_tpl_event_' + eventKey, String(row.id)]);
+    }
+    console.log('Rykkere: tre standard-skabeloner (rykker 1/2/3) oprettet og koblet som standard.');
+  }
+
   await initSearchTrigrams();
 }
 
@@ -6069,9 +6142,47 @@ function mailAddrList(v) {
   if (!v) return [];
   return Array.isArray(v) ? v.filter(Boolean) : [v];
 }
+// RUNDE (okt. 2026, Martin: "Logoet kan ikke ses og se hvor grim den er") —
+// firmalogoet (og alt andet Martin evt. limer direkte ind som billede i en
+// mail-skabelon) gemmes som en data:-URI (base64) i Indstillinger. Det virker
+// fint i PDF'er og på kundeportalen, fordi begge rendere direkte i en browser/
+// PDF-motor — men stort set ALLE rigtige mailklienter (Gmail iblandt dem)
+// blokerer eller fjerner data:-URI'er i <img src> af sikkerhedshensyn, så
+// billedet vises i stedet som et ødelagt billed-ikon (præcis det Martin viste
+// et skærmbillede af). Den rigtige løsning i en mail er en vedhæftet "inline"-
+// fil der refereres via cid: i stedet for data:. Gøres HER, ét sted i
+// sendMailUniversal, så ALLE udgående mails (daglig status, rykkere, tilbud/
+// faktura, Mails-modulet osv.) automatisk retter sig selv, uanset hvor i
+// koden den enkelte mail er bygget — ingen af de ca. 20 andre steder der i
+// dag sætter company.logoUrl ind som <img src> skal selv ændres.
+function inlineBase64ImagesAsCid(html) {
+  if (!html || typeof html !== 'string') return { html, attachments: [] };
+  const attachments = [];
+  const seen = new Map(); // samme data-URI genbruges som samme cid, hvis den optræder flere gange
+  let n = 0;
+  const newHtml = html.replace(/src="(data:image\/(png|jpe?g|gif|webp);base64,[^"]+)"/gi, (whole, dataUri, extRaw) => {
+    let cid = seen.get(dataUri);
+    if (cid) return `src="cid:${cid}"`;
+    const comma = dataUri.indexOf(',');
+    const b64 = comma >= 0 ? dataUri.slice(comma + 1) : '';
+    let buf = null;
+    try { buf = Buffer.from(b64, 'base64'); } catch (e) { /* ugyldig base64 — behold data:-URI'en uændret */ }
+    if (!buf || !buf.length) return whole;
+    const ext = extRaw.toLowerCase() === 'jpg' ? 'jpeg' : extRaw.toLowerCase();
+    n++;
+    cid = `inline-img-${Date.now()}-${n}@gulvmaster.dk`;
+    seen.set(dataUri, cid);
+    attachments.push({ filename: `inline-${n}.${ext === 'jpeg' ? 'jpg' : ext}`, content: buf, contentType: `image/${ext}`, cid, contentDisposition: 'inline' });
+    return `src="cid:${cid}"`;
+  });
+  return { html: newHtml, attachments };
+}
 async function sendMailUniversal({ to, cc, subject, text, html, attachments, from }) {
   const toList = mailAddrList(to);
   const ccList = mailAddrList(cc);
+  const inlined = inlineBase64ImagesAsCid(html);
+  const finalHtml = inlined.html;
+  const allAttachments = (attachments || []).concat(inlined.attachments);
   if (process.env.RESEND_API_KEY) {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -6085,10 +6196,14 @@ async function sendMailUniversal({ to, cc, subject, text, html, attachments, fro
         ...(ccList.length ? { cc: ccList } : {}),
         subject,
         text,
-        html,
-        attachments: (attachments || []).map(a => ({
+        html: finalHtml,
+        attachments: allAttachments.map(a => ({
           filename: a.filename,
-          content: a.content.toString('base64')
+          content: a.content.toString('base64'),
+          // Resends egen "indlejret billede"-støtte — content_id matcher cid:
+          // i html'en ovenfor. Har attachmentet intet cid (en almindelig
+          // vedhæftet fil, fx en PDF), udelades feltet som hidtil.
+          ...(a.cid ? { content_id: a.cid } : {})
         }))
       })
     });
@@ -6101,7 +6216,7 @@ async function sendMailUniversal({ to, cc, subject, text, html, attachments, fro
   }
   const transport = getMailTransport();
   if (!transport) throw new Error('Hverken RESEND_API_KEY eller SMTP er sat op');
-  await transport.sendMail({ from: from || process.env.SMTP_FROM || process.env.SMTP_USER, to: toList.join(','), ...(ccList.length ? { cc: ccList.join(',') } : {}), subject, text, html, attachments });
+  await transport.sendMail({ from: from || process.env.SMTP_FROM || process.env.SMTP_USER, to: toList.join(','), ...(ccList.length ? { cc: ccList.join(',') } : {}), subject, text, html: finalHtml, attachments: allAttachments });
   return { provider: 'smtp', resendEmailId: null };
 }
 
@@ -18042,42 +18157,107 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   return result;
 }
 
+// RUNDE (okt. 2026, Martin: "lav alle 3 rykker til kunden forskellige i følge
+// dansk lovgivning. Men stadig flink og rar da vi ikke gider sætte ild på
+// bålet") — hardkodet SIDSTE-udvej-tekst (bruges kun hvis der hverken er en
+// niveau-specifik skabelon ELLER en gammel fælles 'dunning'-standardskabelon
+// sat op, se opslagsrækkefølgen i sendDunningEmailForInvoice). Tre reelt
+// forskellige breve, tonen trappes roligt op fra "du har nok bare glemt det"
+// til "sidste rykker før vi er nødt til at gå videre med sagen" — men
+// aldrig vredt eller truende. OBS til Martin: dette er alm. praksis for
+// rykkerskrivelser i Danmark (rykkergebyr op til 100 kr./rykker, højst 3
+// rykkere), ikke juridisk rådgivning — tjek selv ordlyden med en revisor/
+// advokat hvis I vil være 100% skarpe på det.
+function dunningFallbackCopy(level, custName, owed, feeAmount, totalWithFee, companyName) {
+  const name = custName || 'dig';
+  const owedFmt = krFmtServer(owed), totalFmt = krFmtServer(totalWithFee);
+  const feeLine = feeAmount > 0 ? `Der er tillagt et rykkergebyr på ${krFmtServer(feeAmount)}, så det samlede beløb nu er ${totalFmt}.` : `Der er ikke tillagt noget rykkergebyr denne gang.`;
+  let subject, lines;
+  if (level === 1) {
+    subject = `Lille påmindelse — ${name} — ${companyName}`;
+    lines = [
+      `Hej ${name},`, '',
+      `Vi kan se, at fakturaen på ${owedFmt} stadig ikke er betalt — det er sikkert bare gledet i glemmebogen, det sker for de fleste af os.`,
+      feeLine, '',
+      `Kan du nå at betale inden for de næste 10 dage? Så er den ude af verden. Har du allerede betalt, eller er der noget du undrer dig over, må du meget gerne bare svare på denne mail.`, '',
+      `Mange hilsner,`, companyName
+    ];
+  } else if (level === 2) {
+    subject = `2. rykker — ${name} — ${companyName}`;
+    lines = [
+      `Hej ${name},`, '',
+      `Vi har tidligere sendt en påmindelse om fakturaen, men kan se den desværre stadig ikke er betalt. Dette er derfor anden rykker.`,
+      feeLine, '',
+      `Vi vil gerne bede om, at beløbet på ${totalFmt} bliver betalt inden for 10 dage. Sidder du med spørgsmål til fakturaen, eller er der en god grund til at den ikke er betalt endnu, så hører vi meget gerne fra dig — vi vil helst finde en løsning sammen med dig.`, '',
+      `Venlig hilsen,`, companyName
+    ];
+  } else {
+    subject = `3. og sidste rykker — ${name} — ${companyName}`;
+    lines = [
+      `Hej ${name},`, '',
+      `Dette er tredje og sidste rykker for fakturaen på ${owedFmt}, som vi desværre endnu ikke har modtaget betaling for.`,
+      feeLine, '',
+      `Vi vil naturligvis helst undgå at sende sagen videre, så vi beder om, at det samlede beløb på ${totalFmt} bliver betalt inden for 10 dage. Bliver fakturaen ikke betalt eller kontaktet os inden da, kan vi desværre blive nødt til at lade sagen overgå til inkasso, hvilket vil medføre yderligere omkostninger for dig — det vil vi hellere end gerne undgå.`, '',
+      `Har du spørgsmål, eller vil du gerne lave en aftale om betaling, så ring eller skriv til os — vi sidder klar til at hjælpe.`, '',
+      `Venlig hilsen,`, companyName
+    ];
+  }
+  const text = lines.join('\n');
+  const html = lines.map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('');
+  return { subject, text, html };
+}
 // ── RYKKER-MAILS (dunning) — kun aktiv hvis admin selv har slået den til under
-// Økonomi → Fakturaer. Sender Rykker 1 efter X dage, Rykker 2 efter Y dage, med et
-// gebyr lagt til hver gang. Sender aldrig samme niveau to gange for samme faktura.
-async function sendDunningEmailForInvoice(inv, targetLevel, settings, companyName, templateIdOverride, toEmailOverride) {
+// Økonomi → Fakturaer. Sender Rykker 1 efter X dage, Rykker 2 efter Y dage,
+// Rykker 3 efter Z dage, med et evt. gebyr lagt til hver gang. Sender aldrig
+// samme niveau to gange for samme faktura.
+async function sendDunningEmailForInvoice(inv, targetLevel, settings, companyName, opts) {
+  opts = opts || {};
   // RUNDE Ø: fandt tidligere kundens e-mail via jt_tasks (JobTread-synkroniserede
   // opgaver) — fakturaen har nu sin egen e-mail direkte (invoices.customer_email,
   // eller kundekortets, se fetchFinanceInvoices), så det er langt mere pålideligt.
   // RUNDE H #316 (Martins ønske: en popup hvor man kan vælge modtager/skabelon for
-  // netop DENNE afsendelse) — toEmailOverride/templateIdOverride bruges kun ved
-  // manuel afsendelse fra Tilbud & Faktura (se POST .../dunning-send/:documentId
-  // nedenfor); det automatiske daglige scan (runDunningScan) kalder uden dem, og
-  // bruger derfor uændret kundens egen e-mail + den faste 'dunning'-standardskabelon.
-  const toEmail = toEmailOverride || inv.email || null;
+  // netop DENNE afsendelse) — opts.toEmailOverride/templateIdOverride bruges kun
+  // ved manuel afsendelse fra Tilbud & Faktura (se POST .../dunning-send/:documentId
+  // nedenfor); det automatiske daglige scan (runDunningScan) kalder uden dem.
+  const toEmail = opts.toEmailOverride || inv.email || null;
   if (!toEmail) return { sent: false, reason: 'Ingen kunde-e-mail fundet for denne sag' };
 
   const owed = inv.overrideStatus === 'partial' && inv.remaining != null ? inv.remaining : inv.priceWithTax;
-  const totalWithFee = owed + settings.fee_amount;
+  // RUNDE (okt. 2026, Martin: "gør det muligt at tilføje 100 kroner på den
+  // første rykker eller ikke. Det ikke altid jeg gider det første gang") —
+  // gebyret er nu VALGFRIT pr. afsendelse i stedet for automatisk hver gang.
+  // Default (chargeFee ikke angivet, fx det automatiske daglige scan) er
+  // uændret true — der er ingen til at slå det til/fra manuelt dér.
+  const chargeFee = opts.chargeFee !== false;
+  const feeAmount = chargeFee ? (settings.fee_amount || 0) : 0;
+  const totalWithFee = owed + feeAmount;
   let subject, html, text;
-  const templateId = templateIdOverride !== undefined ? templateIdOverride : await getAssignedTemplateId('dunning');
+  // RUNDE (okt. 2026, Martin: "lav alle 3 rykker til kunden forskellige") —
+  // slår FØRST op efter en skabelon sat specifikt for DETTE niveau
+  // (hændelsestype 'dunning_1'/'dunning_2'/'dunning_3', se
+  // DOC_EMAIL_EVENT_TYPES/DOC_TPL_EVENT_LABELS), dernæst den ældre fælles
+  // 'dunning'-standardkobling (så en evt. tidligere opsætning ikke går tabt),
+  // og til sidst den hardkodede, niveau-forskellige tekst i dunningFallbackCopy.
+  const templateId = opts.templateIdOverride !== undefined ? opts.templateIdOverride
+    : (await getAssignedTemplateId('dunning_' + targetLevel)) || await getAssignedTemplateId('dunning');
   const tpl = templateId ? await pgOne('SELECT * FROM document_email_templates WHERE id=$1', [templateId]) : null;
   if (tpl) {
     // Rykkere har ikke et rigtigt tilbuds-/fakturanummer i JobTread-modellen — {{dokument_nr}}
-    // fyldes derfor med sagsnavnet, og {{restbeloeb}} med beløbet inkl. rykkergebyret.
+    // fyldes derfor med sagsnavnet, og {{restbeloeb}} med beløbet inkl. et evt. rykkergebyr.
     const vars = {
       kunde: inv.fullName || inv.customer || '', dokument_nr: inv.jobNumber || inv.fullName || '', total: krFmtServer(owed),
-      gyldig_til: '', forfald: '', restbeloeb: krFmtServer(totalWithFee), firma: companyName, link: '', underskriv_link: ''
+      gyldig_til: '', forfald: '', restbeloeb: krFmtServer(totalWithFee), firma: companyName, link: '', underskriv_link: '',
+      // RUNDE (okt. 2026, samme ønske) — gebyr-linjen er tekst, ikke kun et tal,
+      // fordi den skal kunne forsvinde helt når chargeFee=false. Tom streng når
+      // intet gebyr er tillagt denne gang, ellers én sætning med beløbet.
+      rykkergebyr_note: chargeFee ? `Der er tillagt et rykkergebyr på ${krFmtServer(feeAmount)}.` : ''
     };
     subject = fillDocEmailVars(tpl.subject, vars);
     html = fillDocEmailVars(tpl.body_html, vars);
     text = stripHtmlToText(html);
   } else {
-    subject = `Rykker ${targetLevel} — ${inv.fullName} — ${companyName}`;
-    text = `Hej,\n\nVi kan se at ${inv.fullName} på ${Math.round(owed).toLocaleString('da-DK')} kr. stadig ikke er betalt.\n\n` +
-      `Dette er rykker ${targetLevel}. Der er tillagt et rykkergebyr på ${Math.round(settings.fee_amount).toLocaleString('da-DK')} kr.\n\n` +
-      `Nyt beløb i alt: ${Math.round(totalWithFee).toLocaleString('da-DK')} kr.\n\nBetal venligst hurtigst muligt.\n\nVenlig hilsen\n${companyName}`;
-    html = text.split('\n').map(l => l ? `<p>${l.replace(/</g, '&lt;')}</p>` : '<br>').join('');
+    const copy = dunningFallbackCopy(targetLevel, inv.fullName, owed, feeAmount, totalWithFee, companyName);
+    subject = copy.subject; text = copy.text; html = copy.html;
   }
   let status = 'sent', error = null;
   try {
@@ -18089,31 +18269,103 @@ async function sendDunningEmailForInvoice(inv, targetLevel, settings, companyNam
   return status === 'sent' ? { sent: true, level: targetLevel, toEmail } : { sent: false, reason: error };
 }
 
-async function runDunningScan(triggeredManually) {
-  const settings = await pgOne('SELECT * FROM finance_dunning_settings WHERE id=1');
-  if (!settings || (!settings.enabled && !triggeredManually)) return { ran: false, reason: 'Slået fra' };
-  if (!mailIsConfigured()) return { ran: false, reason: 'E-mail er ikke konfigureret' };
+// RUNDE (okt. 2026, Martin: "gør det muligt at vælge mellem rykker 1, 2 og
+// 3 ... jeg skal have en note email tilsendt info@gulvmaster.dk når folk går
+// over rykker tid ... og gerne hvad stadie de er gået over") — beregner
+// hvilket rykker-"stadie" en faktura aktuelt befinder sig i, UD FRA ren
+// forfaldstid (dage siden oprettelse), uafhængigt af om nogen rykker rent
+// faktisk ER sendt endnu. Det er det stadie Martin skal have at vide om —
+// "er gået over rykker tid" handler om hvor gammel fakturaen er, ikke om en
+// mail allerede er afsendt. Bruges af BÅDE info@-notifikationen og den
+// daglige status-mails rykker-afsnit nedenfor.
+function dunningLevelForDaysOld(daysOld, settings) {
+  if (daysOld >= (settings.days_rykker3 || 30)) return 3;
+  if (daysOld >= (settings.days_rykker2 || 20)) return 2;
+  if (daysOld >= (settings.days_rykker1 || 10)) return 1;
+  return null;
+}
+// Fælles grundlag: alle ubetalte/delvist betalte fakturaer der p.t. har nået
+// mindst rykker-niveau 1, med deres aktuelle stadie, antal dage og restbeløb.
+async function getOverdueDunningInvoices(settings) {
   const invoices = await fetchFinanceInvoices();
   const today = new Date();
-  const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
-  const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
-  let sent1 = 0, sent2 = 0, skippedNoEmail = 0;
+  const out = [];
   for (const inv of invoices) {
     if (inv.overrideStatus !== 'unpaid' && inv.overrideStatus !== 'partial') continue;
     if (!inv.createdAt) continue;
     const daysOld = Math.floor((today - new Date(inv.createdAt)) / 86400000);
-    const logRows = await pool.query('SELECT level FROM finance_dunning_log WHERE document_id=$1 AND status=$2', [inv.id, 'sent']);
-    const sentLevels = logRows.rows.map(r => r.level);
-    let targetLevel = null;
-    if (daysOld >= settings.days_rykker2 && !sentLevels.includes(2) && sentLevels.includes(1)) targetLevel = 2;
-    else if (daysOld >= settings.days_rykker1 && !sentLevels.includes(1)) targetLevel = 1;
-    if (!targetLevel) continue;
-    const result = await sendDunningEmailForInvoice(inv, targetLevel, settings, companyName);
-    if (result.sent) { if (targetLevel === 1) sent1++; else sent2++; }
-    else if (result.reason === 'Ingen kunde-e-mail fundet for denne sag') skippedNoEmail++;
+    const level = dunningLevelForDaysOld(daysOld, settings);
+    if (!level) continue;
+    const owed = inv.overrideStatus === 'partial' && inv.remaining != null ? inv.remaining : inv.priceWithTax;
+    out.push({ inv, daysOld, level, owed });
   }
-  await logSystemEvent('dunning_scan', 'info', `Rykker-scan: ${sent1} rykker 1, ${sent2} rykker 2 sendt, ${skippedNoEmail} sprunget over (ingen e-mail).`);
-  return { ran: true, sent1, sent2, skippedNoEmail };
+  return out;
+}
+// Den interne note-mail til info@gulvmaster.dk — "kunde X er nu nået rykker-
+// niveau N". Samme branded skal som daglig status/kundebesøg (renderInternalDigestEmailHtml).
+async function sendDunningNotifyEmail(items) {
+  const company = await getCompanyInfo();
+  const rowsHtml = items.map(o => {
+    const href = `${PUBLIC_APP_URL}/admin#qz-invoices/faktura/${o.inv.id}`;
+    return `<tr><td style="padding:7px 0;border-bottom:1px solid rgba(0,53,9,.08)"><a href="${href}" style="color:#003509;text-decoration:none;font-weight:700">${escPublic(o.inv.fullName || o.inv.customer || 'Ukendt kunde')}</a><br><span style="color:#6f7785;font-size:12px">${o.daysOld} dage siden fakturadato · ${krFmtServer(o.owed)} kr.</span></td>
+      <td style="padding:7px 0;border-bottom:1px solid rgba(0,53,9,.08);text-align:right;vertical-align:top"><span style="display:inline-block;background:#eef5f0;color:#003509;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800">Rykker ${o.level}</span></td></tr>`;
+  }).join('');
+  const bodyHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rowsHtml}</table>`;
+  const subject = `⏰ ${items.length} faktura${items.length === 1 ? ' er' : 'er er'} nået et nyt rykker-stadie`;
+  const html = renderInternalDigestEmailHtml({
+    company, title: '⏰ Rykker-stadie nået', subtitle: 'Disse fakturaer er lige nået et nyt rykker-niveau',
+    sections: [{ heading: 'Fakturaer', bodyHtml }]
+  });
+  const text = `Disse fakturaer er nået et nyt rykker-stadie:\n\n` + items.map(o => `- ${o.inv.fullName || o.inv.customer} — Rykker ${o.level} (${o.daysOld} dage, ${Math.round(o.owed).toLocaleString('da-DK')} kr.) — ${PUBLIC_APP_URL}/admin#qz-invoices/faktura/${o.inv.id}`).join('\n');
+  await sendMailUniversal({ to: QUOTE_ACCEPTED_NOTIFY_EMAIL, subject, html, text });
+}
+async function runDunningScan(triggeredManually) {
+  const settings = await pgOne('SELECT * FROM finance_dunning_settings WHERE id=1');
+  if (!settings) return { ran: false, reason: 'Ingen rykker-indstillinger fundet' };
+  if (!mailIsConfigured()) return { ran: false, reason: 'E-mail er ikke konfigureret' };
+  const overdue = await getOverdueDunningInvoices(settings);
+
+  // ── 1) INTERN NOTIFIKATION TIL info@gulvmaster.dk — kører ALTID, uanset om
+  // automatisk kunde-afsendelse er slået til (den er som udgangspunkt IKKE),
+  // for Martin skal stadig have besked så han selv kan sende rykkeren manuelt
+  // fra Tilbud & Faktura. Dedupet pr. faktura+niveau (finance_dunning_notify_log),
+  // så den aldrig sendes to gange for samme stadie.
+  const newlyOverdue = [];
+  for (const o of overdue) {
+    const already = await pgOne('SELECT 1 AS x FROM finance_dunning_notify_log WHERE document_id=$1 AND level=$2', [o.inv.id, o.level]);
+    if (already) continue;
+    await pool.query('INSERT INTO finance_dunning_notify_log (document_id,level) VALUES ($1,$2) ON CONFLICT (document_id,level) DO NOTHING', [o.inv.id, o.level]);
+    newlyOverdue.push(o);
+  }
+  if (newlyOverdue.length) {
+    try { await sendDunningNotifyEmail(newlyOverdue); }
+    catch (e) { console.error('Rykker-notifikation til info@ kunne ikke sendes:', e.message); }
+  }
+
+  // ── 2) EVT. AUTOMATISK AFSENDELSE TIL KUNDEN — uændret opførsel: kun hvis
+  // Martin selv har slået den til under ✉️ Rykker-indstillinger, eller testet
+  // manuelt med "▶ Kør scan nu". Niveauerne sendes stadig i rækkefølge (2 kan
+  // først sendes når 1 er sendt, nu udvidet med 3 der kræver 2).
+  let sent1 = 0, sent2 = 0, sent3 = 0, skippedNoEmail = 0;
+  if (settings.enabled || triggeredManually) {
+    const settingsRows = await pool.query("SELECT key,value FROM app_settings WHERE key='company_name'");
+    const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
+    for (const o of overdue) {
+      const inv = o.inv, daysOld = o.daysOld;
+      const logRows = await pool.query('SELECT level FROM finance_dunning_log WHERE document_id=$1 AND status=$2', [inv.id, 'sent']);
+      const sentLevels = logRows.rows.map(r => r.level);
+      let targetLevel = null;
+      if (daysOld >= settings.days_rykker3 && !sentLevels.includes(3) && sentLevels.includes(2)) targetLevel = 3;
+      else if (daysOld >= settings.days_rykker2 && !sentLevels.includes(2) && sentLevels.includes(1)) targetLevel = 2;
+      else if (daysOld >= settings.days_rykker1 && !sentLevels.includes(1)) targetLevel = 1;
+      if (!targetLevel) continue;
+      const result = await sendDunningEmailForInvoice(inv, targetLevel, settings, companyName);
+      if (result.sent) { if (targetLevel === 1) sent1++; else if (targetLevel === 2) sent2++; else sent3++; }
+      else if (result.reason === 'Ingen kunde-e-mail fundet for denne sag') skippedNoEmail++;
+    }
+  }
+  await logSystemEvent('dunning_scan', 'info', `Rykker-scan: ${sent1} rykker 1, ${sent2} rykker 2, ${sent3} rykker 3 sendt til kunder, ${skippedNoEmail} sprunget over (ingen e-mail), ${newlyOverdue.length} ny(e) info@-notifikation(er).`);
+  return { ran: true, sent1, sent2, sent3, skippedNoEmail, notified: newlyOverdue.length };
 }
 
 // ── Automatisk opfølgning på tabte leads/sager (Martins "5 dage i lost med
@@ -18252,10 +18504,16 @@ async function runDailyStatusEmail() {
   // tal/lister som før, bare lagt i branded "stat-pille"-rækker (se
   // dsStatRowHtml) i stedet for den gamle rå <table>, via den fælles
   // renderInternalDigestEmailHtml-skal (se den, lige ovenfor DOC_EMAIL_VARS).
+  // RUNDE (okt. 2026, samme ønske om en pænere mail) — tallet var før bare rå
+  // indigo tekst. Tegnes nu som en lille afrundet "pille" i Gulv Masters egen
+  // lysegrønne tone (--gm-green-light), med teksten i den mørke skovgrønne
+  // brand-farve — samme stil som hjemmesidens egne stat-callouts.
   function dsStatRowHtml(label, value, listHtml) {
-    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px"><tr>
-      <td style="width:46px;vertical-align:top;font-size:20px;font-weight:800;color:#4F46E5;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${value}</td>
-      <td style="vertical-align:top;font-size:13.5px;color:#374151;padding-top:3px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(label)}${listHtml}</td>
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px"><tr>
+      <td style="width:50px;vertical-align:top">
+        <div style="display:inline-block;min-width:34px;text-align:center;background:#eef5f0;color:#003509;border-radius:999px;padding:5px 10px;font-size:15px;font-weight:800;font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif">${value}</div>
+      </td>
+      <td style="vertical-align:top;font-size:13.5px;color:#0a0a0a;padding-top:6px;font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(label)}${listHtml}</td>
     </tr></table>`;
   }
   const company = await getCompanyInfo();
@@ -18271,14 +18529,34 @@ async function runDailyStatusEmail() {
   if (selfRegRows.length) {
     sections.push({ heading: '🙋 Kunder der selv har oprettet sig (via /ny-kunde)', bodyHtml: linkListHtml(selfRegRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn') });
   }
+  // RUNDE (okt. 2026, Martin: "jeg skal have en note email tilsendt
+  // info@gulvmaster.dk når folk går over rykker tid ... Inkludere den i
+  // morgen mailen du sender med status. og gerne hvad stadie de er gået
+  // over") — viser den AKTUELLE tilstand hver morgen (ikke kun gårsdagens
+  // nye), så Martin altid kan se hele rykker-billedet på ét sted, med link
+  // direkte ind på hver faktura. Udelades helt hvis ingen fakturaer er gået
+  // over rykker-tid, så mailen ikke fyldes med en tom overskrift i stille
+  // perioder.
+  const dunningSettingsForDigest = await pgOne('SELECT * FROM finance_dunning_settings WHERE id=1');
+  const overdueForDigest = dunningSettingsForDigest ? await getOverdueDunningInvoices(dunningSettingsForDigest) : [];
+  if (overdueForDigest.length) {
+    const overdueHtml = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+      + overdueForDigest.map(o => `<tr><td style="padding:5px 0"><a href="${PUBLIC_APP_URL}/admin#qz-invoices/faktura/${o.inv.id}" style="color:#003509;text-decoration:none;font-weight:700">${escPublic(o.inv.fullName || o.inv.customer || 'Ukendt kunde')}</a> <span style="color:#6f7785;font-size:12px">· ${o.daysOld} dage · ${krFmtServer(o.owed)}</span></td>
+        <td style="padding:5px 0;text-align:right"><span style="display:inline-block;background:#eef5f0;color:#003509;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800">Rykker ${o.level}</span></td></tr>`).join('')
+      + '</table>';
+    sections.push({ heading: `⏰ Overforfaldne fakturaer (${overdueForDigest.length})`, bodyHtml: overdueHtml });
+  }
+  const overdueText = overdueForDigest.length
+    ? '\nOverforfaldne fakturaer:\n' + overdueForDigest.map(o => `  - ${o.inv.fullName || o.inv.customer} — Rykker ${o.level} (${o.daysOld} dage, ${Math.round(o.owed).toLocaleString('da-DK')} kr.): ${PUBLIC_APP_URL}/admin#qz-invoices/faktura/${o.inv.id}`).join('\n') + '\n'
+    : '';
   sections.push({
     heading: 'Features der ikke fungerer ordentligt',
-    bodyHtml: issueCount ? issuesHtml : '<div style="background:#F0FDF4;border:1px solid #DCFCE7;border-radius:8px;padding:10px 14px;color:#15803D">Ingen fejl eller leveringsproblemer registreret det seneste døgn. ✓</div>'
+    bodyHtml: issueCount ? issuesHtml : '<div style="background:#eef5f0;border:1px solid rgba(0,53,9,.12);border-radius:10px;padding:10px 14px;color:#003509">Ingen fejl eller leveringsproblemer registreret det seneste døgn. ✓</div>'
   });
   const html = renderInternalDigestEmailHtml({
     company, title: '📊 Daglig status', subtitle: 'Opsummering af det seneste døgn', sections
   });
-  const text = `Status for det seneste døgn:\n\nNye leads: ${newLeads.n}\n${linkListText(newLeadRows, r => `crmp-detail/lead/${r.id}`, r => r.name || 'Uden navn')}\n— heraf talt med (rykket til Salg): ${talkedTo.n}\n${linkListText(talkedToRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn')}\nTilbud sendt: ${quotesSent.n}\n${linkListText(quotesSentRows, r => `quotes/tilbud/${r.id}`, r => r.job_name || 'Uden navn')}\nTilbud accepteret: ${quotesAccepted.n}\n${linkListText(quotesAcceptedRows, r => `quotes/tilbud/${r.id}`, r => r.job_name || 'Uden navn')}\n${selfRegRows.length ? '\nKunder der selv har oprettet sig (via /ny-kunde):\n' + linkListText(selfRegRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn') + '\n' : ''}\nFeatures der ikke fungerer ordentligt:\n${issuesText}`;
+  const text = `Status for det seneste døgn:\n\nNye leads: ${newLeads.n}\n${linkListText(newLeadRows, r => `crmp-detail/lead/${r.id}`, r => r.name || 'Uden navn')}\n— heraf talt med (rykket til Salg): ${talkedTo.n}\n${linkListText(talkedToRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn')}\nTilbud sendt: ${quotesSent.n}\n${linkListText(quotesSentRows, r => `quotes/tilbud/${r.id}`, r => r.job_name || 'Uden navn')}\nTilbud accepteret: ${quotesAccepted.n}\n${linkListText(quotesAcceptedRows, r => `quotes/tilbud/${r.id}`, r => r.job_name || 'Uden navn')}\n${selfRegRows.length ? '\nKunder der selv har oprettet sig (via /ny-kunde):\n' + linkListText(selfRegRows, r => `crmp-detail/opportunity/${r.id}`, r => r.name || 'Uden navn') + '\n' : ''}${overdueText}\nFeatures der ikke fungerer ordentligt:\n${issuesText}`;
   try {
     await sendMailUniversal({ to: QUOTE_ACCEPTED_NOTIFY_EMAIL, subject, html, text });
   } catch (e) {
@@ -18366,15 +18644,25 @@ app.post('/api/finance/dunning-send/:documentId', auth, panelAccess('finance'), 
   const companyName = settingsRows.rows[0]?.value || 'Gulv Master Enterprise ApS';
   const logRows = await pool.query('SELECT level FROM finance_dunning_log WHERE document_id=$1 AND status=$2', [inv.id, 'sent']);
   const sentLevels = logRows.rows.map(r => r.level);
-  const targetLevel = !sentLevels.includes(1) ? 1 : (!sentLevels.includes(2) ? 2 : null);
-  if (!targetLevel) return res.status(400).json({ error: 'Der er allerede sendt både rykker 1 og 2 for denne faktura' });
   // RUNDE H #316 — manuel afsendelse fra Tilbud & Faktura kan nu vælge en anden
   // skabelon og/eller modtager-mail end den faste standard, for netop denne ene
   // afsendelse (ligesom "Send til kunde" allerede tillader for tilbud/faktura).
+  // RUNDE (okt. 2026, Martin: "gør det muligt at vælge mellem rykker 1, 2 og
+  // 3 ... tilføje 100 kroner på den første rykker eller ikke") — body.level
+  // lader Martin selv VÆLGE niveauet i stedet for kun at kunne sende det
+  // automatisk udregnede "næste" niveau (fx sende rykker 2 igen, eller
+  // springe direkte til 3) — falder tilbage til den gamle auto-udregning
+  // hvis intet niveau er sendt med, så ældre frontend-kald stadig virker.
+  // body.charge_fee (default true) styrer om gebyret lægges til DENNE afsendelse.
   const body = req.body || {};
+  const requestedLevel = body.level ? Number(body.level) : null;
+  const targetLevel = (requestedLevel && [1, 2, 3].includes(requestedLevel)) ? requestedLevel
+    : (!sentLevels.includes(1) ? 1 : (!sentLevels.includes(2) ? 2 : (!sentLevels.includes(3) ? 3 : null)));
+  if (!targetLevel) return res.status(400).json({ error: 'Der er allerede sendt rykker 1, 2 og 3 for denne faktura' });
   const templateIdOverride = body.template_id !== undefined ? (body.template_id || null) : undefined;
   const toOverride = body.to ? String(body.to).trim() : null;
-  const result = await sendDunningEmailForInvoice(inv, targetLevel, settings, companyName, templateIdOverride, toOverride);
+  const chargeFee = body.charge_fee !== false;
+  const result = await sendDunningEmailForInvoice(inv, targetLevel, settings, companyName, { templateIdOverride, toEmailOverride: toOverride, chargeFee });
   if (!result.sent) return res.status(400).json({ error: result.reason });
   res.json({ ok: true, level: targetLevel, toEmail: result.toEmail });
 }));
@@ -18405,9 +18693,11 @@ app.get('/api/finance/dunning-settings', auth, panelAccess('finance'), asyncRout
 }));
 app.put('/api/finance/dunning-settings', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
+  // RUNDE (okt. 2026, Martin: "gør det muligt at vælge mellem rykker 1, 2 og
+  // 3. De kan sendes med 10 dages varsel") — days_rykker3 tilføjet.
   await pool.query(`
-    UPDATE finance_dunning_settings SET enabled=$1,days_rykker1=$2,days_rykker2=$3,fee_amount=$4,updated_at=${nowTextSQL()} WHERE id=1
-  `, [body.enabled ? 1 : 0, Number(body.days_rykker1) || 14, Number(body.days_rykker2) || 28, Number(body.fee_amount) || 100]);
+    UPDATE finance_dunning_settings SET enabled=$1,days_rykker1=$2,days_rykker2=$3,days_rykker3=$4,fee_amount=$5,updated_at=${nowTextSQL()} WHERE id=1
+  `, [body.enabled ? 1 : 0, Number(body.days_rykker1) || 14, Number(body.days_rykker2) || 28, Number(body.days_rykker3) || 30, Number(body.fee_amount) || 100]);
   res.json({ ok: true });
 }));
 app.get('/api/finance/dunning-log', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
@@ -22792,26 +23082,40 @@ ${portalHtml}
 // dokument-boks/CTA-knap, som ikke giver mening her. Indholdet kommer som
 // allerede-bygget HTML pr. sektion (overskrift + krop), så begge mails kan
 // beholde deres egen indholdslogik og bare aflevere pæne, ensartede kasser.
+// RUNDE (okt. 2026, Martin: "denne mail er heller ikke flot eller perfekt ...
+// Fiks dette så det bliver en smuk mail man skal læse hver dag") — denne
+// skal var hidtil en generisk indigo/lilla farve (#4F46E5) der ikke findes
+// noget sted i Gulv Masters egen visuelle identitet. Bygget om herunder efter
+// de RIGTIGE brand-tokens (skov-grøn #003509, varm off-white #F9F7F2, bløde
+// store-radius skygger — se gulvmaster-design-system-skillet), så den
+// daglige status-mail og kundebesøgs-påmindelsen rent faktisk ligner noget
+// fra Gulv Master, i stedet for et generisk SaaS-skabelon-udseende.
+// 'DM Sans'/'Barlow Condensed' hentes via Google Fonts i <head> som
+// progressiv forbedring — mailklienter der ignorerer det (de fleste gør,
+// det er velkendt i HTML-mails) falder pænt tilbage til Arial/-apple-system,
+// så layoutet aldrig knækker, uanset hvor godt klienten understøtter det.
 function renderInternalDigestEmailHtml(opts) {
   const company = opts.company;
   const logoHtml = company.logoUrl
-    ? `<img src="${escPublic(company.logoUrl)}" alt="${escPublic(company.name)}" style="max-height:34px;max-width:200px;display:block;border:0">`
-    : `<div style="font-size:16px;font-weight:800;color:#fff;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(company.name)}</div>`;
+    ? `<img src="${escPublic(company.logoUrl)}" alt="${escPublic(company.name)}" style="max-height:36px;max-width:200px;display:block;border:0">`
+    : `<div style="font-family:'Barlow Condensed',Arial,sans-serif;font-size:20px;font-weight:900;letter-spacing:-.01em;color:#fff">${escPublic(company.name)}</div>`;
   const sectionsHtml = (opts.sections || []).map(s => `
     <tr><td style="padding:0 32px 22px">
-      <div style="font-size:12px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(s.heading)}</div>
-      <div style="font-size:13.5px;color:#111318;line-height:1.6;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${s.bodyHtml}</div>
+      <div style="font-size:11.5px;font-weight:800;color:#6f7785;text-transform:uppercase;letter-spacing:.05em;margin-bottom:9px;font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(s.heading)}</div>
+      <div style="font-size:13.5px;color:#0a0a0a;line-height:1.6;font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif">${s.bodyHtml}</div>
     </td></tr>`).join('');
   const addrLine = [company.address, company.phone, company.email].filter(Boolean).join(' · ');
-  return `<!doctype html><html><body style="margin:0;padding:0;background:#F4F6FB;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F6FB;padding:32px 12px">
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@900&family=DM+Sans:wght@400;700;800&display=swap">
+</head><body style="margin:0;padding:0;background:#F9F7F2;font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F9F7F2;padding:32px 12px">
 <tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:580px;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(15,23,42,.06)">
-<tr><td style="background:#4F46E5;padding:20px 32px">${logoHtml}</td></tr>
-<tr><td style="padding:26px 32px 4px;font-size:17px;font-weight:800;color:#111318;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(opts.title)}</td></tr>
-${opts.subtitle ? `<tr><td style="padding:4px 32px 20px;font-size:13px;color:#6B7280;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(opts.subtitle)}</td></tr>` : '<tr><td style="padding:0 32px 10px"></td></tr>'}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:580px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 18px 45px rgba(0,0,0,.08)">
+<tr><td style="background:#003509;padding:22px 32px">${logoHtml}</td></tr>
+<tr><td style="padding:28px 32px 2px;font-family:'Barlow Condensed',Arial,sans-serif;font-size:26px;font-weight:900;letter-spacing:-.01em;color:#0a0a0a">${escPublic(opts.title)}</td></tr>
+${opts.subtitle ? `<tr><td style="padding:2px 32px 22px;font-size:13px;color:#6f7785;font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif">${escPublic(opts.subtitle)}</td></tr>` : '<tr><td style="padding:0 32px 12px"></td></tr>'}
 ${sectionsHtml}
-<tr><td style="padding:18px 32px;border-top:1px solid #EEF0F3;font-size:11.5px;color:#9CA3AF;line-height:1.6;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">Automatisk besked fra <b style="color:#374151">${escPublic(company.name)}</b>s interne system${addrLine ? '<br>' + escPublic(addrLine) : ''}</td></tr>
+<tr><td style="padding:18px 32px;border-top:1px solid rgba(0,53,9,.08);font-size:11.5px;color:#9a9fb0;line-height:1.6;font-family:'DM Sans',-apple-system,Segoe UI,Roboto,Arial,sans-serif">Automatisk besked fra <b style="color:#374151">${escPublic(company.name)}</b>s interne system${addrLine ? '<br>' + escPublic(addrLine) : ''}</td></tr>
 </table>
 </td></tr>
 </table>
@@ -22828,7 +23132,12 @@ const DOC_EMAIL_VARS = [
   // billed-URL/telefonnummer direkte i skabelonens HTML, som så ikke opdateres hvis
   // logo/telefon senere ændres i Indstillinger.
   ['{{logo}}', 'Firmaets logo (billed-URL — sæt som <img src="{{logo}}">)'],
-  ['{{telefon}}', 'Firmaets telefonnummer'], ['{{firma_email}}', 'Firmaets e-mailadresse']
+  ['{{telefon}}', 'Firmaets telefonnummer'], ['{{firma_email}}', 'Firmaets e-mailadresse'],
+  // RUNDE (okt. 2026, Martin: "gør det muligt at tilføje 100 kroner på den
+  // første rykker eller ikke") — kun relevant i rykker-skabeloner. Hel sætning
+  // i stedet for bare et beløb, fordi den skal kunne forsvinde helt (tom
+  // streng) når gebyret er slået fra for netop DENNE afsendelse.
+  ['{{rykkergebyr_note}}', 'Sætning om rykkergebyr (kun rykkere — tom hvis intet gebyr er tillagt denne gang)']
 ];
 
 // ── FASTE MAIL-SKABELON-KOBLINGER PR. HÆNDELSESTYPE ──
@@ -22836,7 +23145,13 @@ const DOC_EMAIL_VARS = [
 // bestemt mail-skabelon), men altid frit kunne ændre koblingen manuelt i Indstillinger.
 // Gemmes som almindelige app_settings-nøgler (email_tpl_event_<type>), så en admin altid
 // selv kan overskrive den ved at sende et eksplicit template_id ved selve afsendelsen.
-const DOC_EMAIL_EVENT_TYPES = ['quote', 'invoice', 'credit_note', 'dunning'];
+// RUNDE (okt. 2026, Martin: "lav alle 3 rykker til kunden forskellige") —
+// 'dunning' beholdes som ÆLDRE fælles standardkobling (bruges kun hvis en
+// faktura rammer et niveau der ikke selv har en kobling sat), og suppleres
+// med tre NYE, niveau-specifikke hændelsestyper, så Martin kan sætte en
+// anden standard-skabelon for hver af de tre rykkere, nøjagtigt samme UI
+// (Skabeloner → "Faste koblinger") som alle de andre hændelsestyper.
+const DOC_EMAIL_EVENT_TYPES = ['quote', 'invoice', 'credit_note', 'dunning', 'dunning_1', 'dunning_2', 'dunning_3'];
 async function getEmailTemplateAssignments() {
   const rows = await pool.query("SELECT key,value FROM app_settings WHERE key LIKE 'email_tpl_event_%'");
   const map = {}; DOC_EMAIL_EVENT_TYPES.forEach(evt => { map[evt] = null; });

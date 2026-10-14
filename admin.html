@@ -5375,11 +5375,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="fin-card" id="qz-dunning-settings-panel" style="display:none;margin-bottom:16px">
       <div class="fin-eyebrow">✉️ Automatiske rykker-mails</div>
-      <p class="fin-muted" style="margin:-4px 0 12px">Slået fra som standard. Sender kun rigtige mails til kunder, hvis den er slået til her. Skabeloner til rykker-mails oprettes samme sted som tilbud/faktura-skabeloner (Skabeloner → Mail).</p>
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="fin-dunning-enabled" style="width:18px;height:18px"> <b>Send automatiske rykkere</b></label>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
+      <p class="fin-muted" style="margin:-4px 0 12px">Slået fra som standard. Sender kun rigtige mails til kunder, hvis den er slået til her. Skabeloner til rykker-mails oprettes samme sted som tilbud/faktura-skabeloner (Skabeloner → Mail — tre forskellige som standard, én pr. niveau).</p>
+      <!-- RUNDE (okt. 2026, Martin: "jeg skal have en note email tilsendt
+           info@gulvmaster.dk når folk går over rykker tid") — gør det klart at
+           DENNE besked til Martin selv kører UANSET om fluebenet herunder er
+           sat, så han ikke tror han skal slå "Send automatiske rykkere" til
+           bare for at få noterne. -->
+      <p class="fin-muted" style="margin:-4px 0 12px">Uanset om I bruger automatisk afsendelse eller ej: I får altid en note på info@gulvmaster.dk når en faktura når et nyt rykker-stadie, så I selv kan nå at sende rykkeren manuelt fra fakturaen.</p>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="fin-dunning-enabled" style="width:18px;height:18px"> <b>Send automatiske rykkere til kunden</b></label>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
         <div><label class="form-label">Rykker 1 efter (dage)</label><input type="number" id="fin-dunning-days1" class="input"></div>
         <div><label class="form-label">Rykker 2 efter (dage)</label><input type="number" id="fin-dunning-days2" class="input"></div>
+        <div><label class="form-label">Rykker 3 efter (dage)</label><input type="number" id="fin-dunning-days3" class="input"></div>
         <div><label class="form-label">Rykkergebyr (kr.)</label><input type="number" id="fin-dunning-fee" class="input"></div>
       </div>
       <div style="display:flex;gap:8px">
@@ -5640,6 +5647,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
                  (d.project_id, se loadQuoteFull()). Modstykket til pd-quote-link
                  på selve sagen. -->
             <button type="button" class="filter-dropdown-item" id="qe-project-link-btn" style="display:none" title="Åbn den sag tilbuddet blev til">📁 Åbn sag</button>
+            <!-- RUNDE (okt. 2026, Martin: "Flyt Kundelink over under dokumenter
+                 og kald den kundeportal") — flyttet herind fra den tidligere
+                 "👤 Kunde ▾"-dropdown (se qe-customer-group i den gamle markup,
+                 nu fjernet) og omdøbt fra "🔗 Kundelink" til "🔗 Kundeportal".
+                 Samme id/samme click-handler (qeShareLink, se bind()) og samme
+                 show/hide-logik (loadQuoteFull/qeToolbarSyncGroupVisibility) —
+                 kun placering og navn er ændret. -->
+            <button type="button" class="filter-dropdown-item" id="qe-share-btn" style="display:none" title="Kopiér et link kunden selv kan bruge til at se og underskrive tilbuddet på — kundeportalen">🔗 Kundeportal</button>
             <!-- RUNDE CO (Martin: "kalde Materialeliste for prisforspørgelse
                  og sætte den under Dokumenter istedet for den nuværende
                  prisforspørgelse der er. Samt betalingsplan under
@@ -5656,19 +5671,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <button type="button" class="filter-dropdown-item" id="qe-payment-plan-btn" style="display:none" title="Lad AI forslå en betalingsplan (faser) for store tilbud, og generér en PDF">💳 Betalingsplan</button>
           </div>
         </div>
-        <div class="filter-dropdown qe-toolbar-dropdown" id="qe-customer-group">
-          <button type="button" class="bly-btn outline filter-dropdown-btn" data-action="filter-dropdown-toggle">👤 Kunde ▾</button>
-          <div class="filter-dropdown-menu">
-            <button type="button" class="filter-dropdown-item" id="qe-share-btn" style="display:none" title="Kopiér et link kunden kan underskrive tilbuddet på">🔗 Kundelink</button>
-            <button type="button" class="filter-dropdown-item" id="qe-send-btn" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📧 Send til kunde</button>
-          </div>
-        </div>
-        <div class="filter-dropdown qe-toolbar-dropdown" id="qe-billing-group">
-          <button type="button" class="bly-btn outline filter-dropdown-btn" data-action="filter-dropdown-toggle">💳 Fakturering ▾</button>
-          <div class="filter-dropdown-menu">
-            <button type="button" class="filter-dropdown-item" id="qe-convert-btn" style="display:none">➜ Konvertér til faktura</button>
-          </div>
-        </div>
+        <!-- RUNDE (okt. 2026, Martin: "Ændre Knappen Kunde til Send Tilbud -
+             så det kun er en 1 klik knappe") — den tidligere "👤 Kunde ▾"-
+             dropdown (med Kundelink + Send til kunde) er erstattet af denne
+             ÉNE knap. Kundelink/-portal flyttet op under Dokumenter (se
+             qe-share-btn ovenfor); "Send til kunde" er nu selve knappen her,
+             samme id/click-handler/show-hide-logik som før (se bind() og
+             loadQuoteFull()) — kun markup og tekst er ændret, ikke
+             funktionen (ét klik åbner stadig send-bekræftelsesvinduet, hvor
+             modtager/skabelon vælges, præcis som hidtil). -->
+        <button type="button" class="bly-btn outline" id="qe-send-btn" style="display:none" title="Send tilbuddet som mail med PDF vedhæftet og link til kundens portal">📤 Send Tilbud</button>
+        <!-- RUNDE (okt. 2026, Martin: "Ændre faktura til en kun 1 klik knappe
+             og kald den Lav faktura") — den tidligere "💳 Fakturering ▾"-
+             dropdown (med kun ét punkt, Konvertér til faktura) er erstattet
+             af denne ÉNE knap. Samme id/click-handler/show-hide-logik som
+             før (se bind() og renderQeInvoicingPanel()) — teksten skifter
+             fortsat dynamisk til "📄 Fakturér flere linjer" ved delfaktura,
+             se renderQeInvoicingPanel(). -->
+        <button type="button" class="bly-btn outline" id="qe-convert-btn" style="display:none">📄 Lav faktura</button>
         <!-- RUNDE H #306 (Martins ønske: "jeg kan lave en faktura men når [jeg]
              sætte[r] den som kladde [skal] den ikke automatisk [være] låst") —
              kun vist for en NY direkte faktura (endnu ikke gemt), se
@@ -6981,20 +7001,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
          ... kommer Leadsource som option ikke?") — denne hurtig-modal havde
          slet intet Lead Source-felt, i modsætning til "+ Ny kunde"-modalen på
          Kunder-siden (crmc-source-wrap). Samme valgmuligheder, samme skjul-ved-
-         opportunity-logik, se openCrmpNewModal()/crmpCreateNewItem(). -->
-    <div class="form-group" id="crmp-new-source-wrap"><label class="form-label">Lead Source</label>
-      <select id="crmp-new-source" class="input">
-        <option value="">Vælg…</option>
-        <option value="Website form">Website form</option>
-        <option value="Facebook/Instagram">Facebook/Instagram</option>
-        <option value="Telefon">Telefon</option>
-        <option value="Anbefaling">Anbefaling</option>
-        <option value="3byggetilbud">3byggetilbud</option>
-        <option value="E-mail">E-mail</option>
-        <option value="Andet">Andet…</option>
-      </select>
+         opportunity-logik, se openCrmpNewModal()/crmpCreateNewItem(). RUNDE
+         (okt. 2026, Martin: "Mine custom fields er ikke sat på Opret ny kunde
+         alle steder ... hvis jeg tilføjer noget i custom field ændre den det
+         alle steder") — valgmulighederne stod stadig hardkodet herinde, helt
+         uafhængigt af feltet under ⚙️ Indstillinger → Custom fields → Lead-
+         felter → Lead Source. Tegnes nu dynamisk af crmpNewFillSource(),
+         samme mønster som crmcFillSource() i "+ Ny kunde"-modalen. -->
+    <div class="form-group" id="crmp-new-source-wrap"><label class="form-label" id="crmp-new-source-label">Lead Source</label>
+      <select id="crmp-new-source" class="input"><option value="">Vælg…</option></select>
       <input id="crmp-new-source-other" class="input hidden" style="margin-top:6px" placeholder="Angiv kilde">
     </div>
+    <!-- RUNDE (okt. 2026, samme ønske) — denne hurtig-modal havde slet ingen
+         andre custom fields (heller ikke Projekttype) — kun navn/telefon/
+         email/pipeline/stage/kilde. ALLE custom fields for den valgte
+         pipelines entitetstype (lead/opportunity) tegnes nu automatisk herind
+         af crmpNewFillExtraFields(), samme genbrugte input-tegner som
+         kunde-/lead-/opportunity-detaljesiden (crmpxRenderCustomFieldInputs). -->
+    <div id="crmp-new-extra-fields"></div>
     <div class="modal-actions">
       <button class="btn" id="crmp-new-cancel">Annuller</button>
       <button class="btn primary" id="crmp-new-create">Opret</button>
@@ -7231,17 +7255,20 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div class="form-group"><label class="form-label">Stage</label><select id="crmc-stage" class="select"></select></div>
       </div>
       <div class="form-row">
-        <div class="form-group" id="crmc-source-wrap"><label class="form-label">Lead Source</label>
-          <select id="crmc-source" class="select">
-            <option value="">Vælg…</option>
-            <option value="Website form">Website form</option>
-            <option value="Facebook/Instagram">Facebook/Instagram</option>
-            <option value="Telefon">Telefon</option>
-            <option value="Anbefaling">Anbefaling</option>
-            <option value="3byggetilbud">3byggetilbud</option>
-            <option value="E-mail">E-mail</option>
-            <option value="Andet">Andet…</option>
-          </select>
+        <!-- RUNDE (okt. 2026, Martin: "Mine custom fields er ikke sat på Opret
+             ny kunde alle steder. Den skal være dynamisk så ... hvis jeg
+             tilføjer noget i custom field ændre den det alle steder") —
+             Lead Source stod før som FIRE hardkodede <option>-linjer i selve
+             HTML'en, helt uafhængigt af feltet under ⚙️ Indstillinger →
+             Custom fields → Lead-felter → Lead Source. Rettede/tilføjede/
+             slettede Martin en valgmulighed dér, skete der intet her. Tegnes
+             nu i stedet dynamisk af crmcFillSource() ud fra det RIGTIGE
+             custom field (samme key='lead_source', entity_type='lead' —
+             findes kun på leads), nøjagtig samme mønster som Projekttype
+             allerede brugte. "Andet…" er den eneste tilbageværende faste
+             valgmulighed (fri tekst i crmc-source-other, uændret opførsel). -->
+        <div class="form-group" id="crmc-source-wrap"><label class="form-label" id="crmc-source-label">Lead Source</label>
+          <select id="crmc-source" class="select"><option value="">Vælg…</option></select>
           <input id="crmc-source-other" class="input hidden" style="margin-top:6px" placeholder="Angiv kilde">
         </div>
         <!-- Projekttype er IKKE en selvstændig liste her. Den tegnes ud fra det
@@ -7255,6 +7282,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <select id="crmc-projekt-type" class="select"><option value="">Vælg…</option></select>
         </div>
       </div>
+      <!-- RUNDE (okt. 2026, samme ønske som ovenfor) — ALLE ANDRE custom fields
+           Martin opretter under ⚙️ Indstillinger (ud over Lead Source og
+           Projekttype, som har deres egne faste rækker ovenfor) tegnes
+           automatisk herind af crmcFillExtraFields(), for den entitetstype
+           (lead/opportunity) den valgte pipeline rent faktisk opretter. Samme
+           genbrugte input-tegner som kunde-/lead-/opportunity-detaljesiden
+           bruger (crmpxRenderCustomFieldInputs), så et nyt custom field dukker
+           op her uden at nogen skal røre HTML'en. -->
+      <div id="crmc-extra-fields"></div>
     </div>
     <div class="modal-actions">
       <button class="btn danger hidden" id="crmc-delete">Slet</button>
@@ -9746,6 +9782,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div class="modal-body-pad">
       <label class="form-label">Til e-mail</label>
       <input id="dunning-send-to" class="input" type="email" placeholder="kunde@eksempel.dk">
+      <!-- RUNDE (okt. 2026, Martin: "gør det muligt at vælge mellem rykker 1,
+           2 og 3") — niveauet var før hardlåst til det automatisk udregnede
+           "næste" niveau (se den gamle openDunningSendModal). Nu et frit valg
+           — fx til at sende rykker 2 igen, eller springe direkte til 3 hvis I
+           allerede har rykket kunden telefonisk. Skifter man niveau, skifter
+           skabelon-forslaget (dunningSendUpdatePreview) automatisk med, men
+           kan altid overstyres manuelt i dropdownen nedenfor. -->
+      <label class="form-label" style="margin-top:12px">Rykker-niveau</label>
+      <select id="dunning-send-level" class="select">
+        <option value="1">Rykker 1</option>
+        <option value="2">Rykker 2</option>
+        <option value="3">Rykker 3</option>
+      </select>
+      <!-- RUNDE (okt. 2026, Martin: "gør det muligt at tilføje 100 kroner på
+           den første rykker eller ikke. Det ikke altid jeg gider det første
+           gang") — valgfrit pr. afsendelse, default sat til (uændret
+           opførsel hvis man bare trykker Send uden at røre den). -->
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer"><input type="checkbox" id="dunning-send-fee" style="width:auto" checked> Tilføj rykkergebyr til denne afsendelse</label>
       <label class="form-label" style="margin-top:12px">Mail-skabelon</label>
       <select id="dunning-send-template" class="select"></select>
       <label class="form-label" style="margin-top:12px">Forhåndsvisning</label>
@@ -16128,35 +16182,59 @@ async function openDunningSendModal(invoiceId){
   var log=(await logP)||[];
   var settings=(await settingsP)||{fee_amount:100};
   var sentLevels=log.filter(function(l){return l.status==='sent';}).map(function(l){return l.level;});
-  var targetLevel=sentLevels.indexOf(1)===-1?1:(sentLevels.indexOf(2)===-1?2:null);
-  if(!targetLevel){toast('Der er allerede sendt både rykker 1 og 2 for denne faktura','⚠️');return;}
-  dunningSendCtx={invoiceId:invoiceId,level:targetLevel,remaining:Number(inv.remaining)||0,feeAmount:Number(settings.fee_amount)||0,jobName:inv.job_name,jobNumber:inv.job_number,invoiceNumber:inv.invoice_number};
-  document.getElementById('dunning-send-title').textContent='Send rykker '+targetLevel;
+  // RUNDE (okt. 2026, Martin: "gør det muligt at vælge mellem rykker 1, 2 og
+  // 3") — niveauet er nu et frit valg i #dunning-send-level, ikke længere
+  // hardlåst til "næste" niveau (og modalen blokerer heller ikke længere når
+  // alle tre er sendt — man kan altid vælge at resende et niveau manuelt,
+  // fx hvis kunden siger de ikke modtog den). Det udregnede niveau her er
+  // kun FORVALGET i dropdownen.
+  var defaultLevel=sentLevels.indexOf(1)===-1?1:(sentLevels.indexOf(2)===-1?2:(sentLevels.indexOf(3)===-1?3:3));
+  dunningSendCtx={invoiceId:invoiceId,remaining:Number(inv.remaining)||0,feeAmount:Number(settings.fee_amount)||0,jobName:inv.job_name,jobNumber:inv.job_number,invoiceNumber:inv.invoice_number,sentLevels:sentLevels};
+  document.getElementById('dunning-send-title').textContent='Send rykker';
   document.getElementById('dunning-send-sub').textContent=(inv.invoice_number||'')+' · '+(inv.job_name||'');
   document.getElementById('dunning-send-to').value=inv.customer_email||'';
+  document.getElementById('dunning-send-level').value=String(defaultLevel);
+  document.getElementById('dunning-send-fee').checked=true;
   var sel=document.getElementById('dunning-send-template');
   sel.innerHTML=['<option value="">Standard (uden skabelon)</option>'].concat(docMailTemplatesCache.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+'</option>';})).join('');
-  var assignments=await api('/api/settings/email-template-assignments')||{};
-  var defaultTplId=assignments.dunning||'';
-  sel.value=defaultTplId&&docMailTemplatesCache.some(function(t){return String(t.id)===String(defaultTplId);})?String(defaultTplId):'';
+  await dunningSendFillTemplateDefault();
   dunningSendUpdatePreview();
   document.getElementById('dunning-send-modal').classList.add('open');
 }
+// RUNDE (okt. 2026, samme ønske) — vælger den skabelon der er sat som
+// standard for DET VALGTE niveau (email_tpl_event_dunning_<level> — se
+// DOC_EMAIL_EVENT_TYPES i server.js — falder tilbage til den ældre fælles
+// 'dunning'-standard hvis intet niveau-specifikt er sat). Kaldes ved åbning
+// og hver gang niveauet skiftes i dropdownen.
+async function dunningSendFillTemplateDefault(){
+  var level=document.getElementById('dunning-send-level').value;
+  var assignments=await api('/api/settings/email-template-assignments')||{};
+  var defaultTplId=assignments['dunning_'+level]||assignments.dunning||'';
+  var sel=document.getElementById('dunning-send-template');
+  sel.value=defaultTplId&&docMailTemplatesCache.some(function(t){return String(t.id)===String(defaultTplId);})?String(defaultTplId):'';
+}
 function dunningSendUpdatePreview(){
   var ctx=dunningSendCtx;if(!ctx)return;
+  var level=Number(document.getElementById('dunning-send-level').value)||1;
+  // RUNDE (okt. 2026, Martin: "gør det muligt at tilføje 100 kroner på den
+  // første rykker eller ikke") — gebyret tæller kun med i forhåndsvisningen
+  // (og i selve afsendelsen) når fluebenet er sat.
+  var chargeFee=document.getElementById('dunning-send-fee').checked;
+  var feeAmount=chargeFee?ctx.feeAmount:0;
   var tplId=document.getElementById('dunning-send-template').value;
   var tpl=tplId?docMailTemplatesCache.find(function(t){return String(t.id)===String(tplId);}):null;
-  var totalWithFee=ctx.remaining+ctx.feeAmount;
+  var totalWithFee=ctx.remaining+feeAmount;
   var vars={
     kunde:ctx.jobName||'',dokument_nr:ctx.jobNumber||ctx.jobName||'',total:krFmt(ctx.remaining),
-    gyldig_til:'',forfald:'',restbeloeb:krFmt(totalWithFee),firma:settings.company_name||'',link:'',underskriv_link:''
+    gyldig_til:'',forfald:'',restbeloeb:krFmt(totalWithFee),firma:settings.company_name||'',link:'',underskriv_link:'',
+    rykkergebyr_note:chargeFee?('Der er tillagt et rykkergebyr på '+krFmt(feeAmount)+'.'):''
   };
   var subject,body;
   if(tpl){subject=fillDocEmailVarsClient(tpl.subject,vars);body=fillDocEmailVarsClient(tpl.body_html,vars);}
   else{
-    subject='Rykker '+ctx.level+' — '+vars.kunde+' — '+vars.firma;
+    subject='Rykker '+level+' — '+vars.kunde+' — '+vars.firma;
     body='<p>Hej,</p><p>Vi kan se at <b>'+esc(vars.kunde)+'</b> på <b>'+krFmt(ctx.remaining)+'</b> stadig ikke er betalt.</p>'
-      +'<p>Dette er rykker '+ctx.level+'. Der er tillagt et rykkergebyr på '+krFmt(ctx.feeAmount)+'.</p>'
+      +'<p>Dette er rykker '+level+'.'+(chargeFee?' Der er tillagt et rykkergebyr på '+krFmt(feeAmount)+'.':'')+'</p>'
       +'<p>Nyt beløb i alt: <b>'+krFmt(totalWithFee)+'</b>.</p><p>Betal venligst hurtigst muligt.</p>';
   }
   document.getElementById('dunning-send-preview').innerHTML='<div><b>Emne:</b> '+esc(subject)+'</div><hr style="margin:8px 0;border:none;border-top:1px solid var(--border2)">'+body;
@@ -16165,10 +16243,12 @@ async function confirmDunningSend(){
   var ctx=dunningSendCtx;if(!ctx)return;
   var to=document.getElementById('dunning-send-to').value.trim();
   if(!to){toast('Angiv en modtager-mail','⚠️');return;}
+  var level=Number(document.getElementById('dunning-send-level').value)||1;
+  var chargeFee=document.getElementById('dunning-send-fee').checked;
   var tplId=document.getElementById('dunning-send-template').value;
   var btn=document.getElementById('dunning-send-confirm-btn');
   btn.disabled=true;btn.textContent='Sender…';
-  var r=await api('/api/finance/dunning-send/'+ctx.invoiceId,{method:'POST',body:JSON.stringify({to:to,template_id:tplId||undefined})});
+  var r=await api('/api/finance/dunning-send/'+ctx.invoiceId,{method:'POST',body:JSON.stringify({to:to,level:level,charge_fee:chargeFee,template_id:tplId||undefined})});
   btn.disabled=false;btn.textContent='✉️ Send rykker';
   if(r&&r.ok){
     toast('Rykker '+r.level+' sendt ✓','✓');
@@ -16606,6 +16686,7 @@ function renderFinDunning(settings,log){
   document.getElementById('fin-dunning-enabled').checked=!!settings.enabled;
   document.getElementById('fin-dunning-days1').value=settings.days_rykker1;
   document.getElementById('fin-dunning-days2').value=settings.days_rykker2;
+  document.getElementById('fin-dunning-days3').value=settings.days_rykker3;
   document.getElementById('fin-dunning-fee').value=settings.fee_amount;
   document.getElementById('fin-dunning-log').innerHTML=log.length?('<div class="fin-eyebrow" style="margin-top:10px">Sidste rykkere sendt</div>'+log.slice(0,10).map(function(l){
     return '<div class="fin-row"><span>Rykker '+l.level+' · '+esc((l.sent_at||'').slice(0,16).replace('T',' '))+' · '+esc(l.to_email||'')+'</span><b class="'+(l.status==='sent'?'pos':'neg')+'">'+(l.status==='sent'?'✓ Sendt':'✕ Fejl')+'</b></div>';
@@ -16653,7 +16734,7 @@ function renderFinNoter(){
   });
 }
 document.getElementById('fin-dunning-save-btn').addEventListener('click',async function(){
-  var body={enabled:document.getElementById('fin-dunning-enabled').checked,days_rykker1:document.getElementById('fin-dunning-days1').value,days_rykker2:document.getElementById('fin-dunning-days2').value,fee_amount:document.getElementById('fin-dunning-fee').value};
+  var body={enabled:document.getElementById('fin-dunning-enabled').checked,days_rykker1:document.getElementById('fin-dunning-days1').value,days_rykker2:document.getElementById('fin-dunning-days2').value,days_rykker3:document.getElementById('fin-dunning-days3').value,fee_amount:document.getElementById('fin-dunning-fee').value};
   if(body.enabled&&!await gmConfirm('Er du sikker? Dette sender RIGTIGE rykker-mails automatisk hver dag til kunder med udestående fakturaer.'))return;
   api('/api/finance/dunning-settings',{method:'PUT',body:JSON.stringify(body)}).then(function(r){
     if(r&&r.ok)toast('Gemt ✓','✓');else if(r)toast(r.error||'Fejl','❌');
@@ -16664,7 +16745,7 @@ document.getElementById('fin-dunning-run-btn').addEventListener('click',async fu
   var btn=this;btn.disabled=true;btn.textContent='Kører…';
   api('/api/finance/dunning-run',{method:'POST'}).then(function(r){
     btn.disabled=false;btn.textContent='▶ Kør scan nu (test)';
-    if(r&&r.ran)toast('Sendt: '+r.sent1+' rykker 1, '+r.sent2+' rykker 2','✓');
+    if(r&&r.ran)toast('Sendt: '+r.sent1+' rykker 1, '+r.sent2+' rykker 2, '+r.sent3+' rykker 3 · '+r.notified+' ny(e) info@-notifikation(er)','✓');
     else if(r)toast(r.reason||'Kunne ikke køre','❌');
     loadFinance();
   });
@@ -21643,6 +21724,13 @@ async function bind(){
   document.getElementById('credit-note-send-template').addEventListener('change',creditNoteSendUpdatePreview);
   document.getElementById('dunning-send-confirm-btn').onclick=confirmDunningSend;
   document.getElementById('dunning-send-template').addEventListener('change',dunningSendUpdatePreview);
+  // RUNDE (okt. 2026, Martin: "gør det muligt at vælge mellem rykker 1, 2 og
+  // 3 ... tilføje 100 kroner på den første rykker eller ikke") — skifter man
+  // niveau, foreslås skabelonen for DET niveau automatisk (se
+  // dunningSendFillTemplateDefault), og forhåndsvisningen opdateres med det
+  // samme; gebyr-fluebenet opdaterer kun forhåndsvisningen.
+  document.getElementById('dunning-send-level').addEventListener('change',async function(){await dunningSendFillTemplateDefault();dunningSendUpdatePreview();});
+  document.getElementById('dunning-send-fee').addEventListener('change',dunningSendUpdatePreview);
   document.getElementById('close-email-send').onclick=function(){closeModal('email-send-modal');};
   document.getElementById('close-tpl-edit').onclick=function(){closeModal('tpl-edit-modal');};
   document.getElementById('save-tpl-edit').onclick=saveTemplateEditor;
@@ -24220,7 +24308,9 @@ function crmcOnPipelineChange(){
   crmcFillStages();
   var isOpp=crmcSelectedPipelineType()==='opportunity';
   document.getElementById('crmc-source-wrap').classList.toggle('hidden',isOpp);
+  crmcFillSource();
   crmcFillProjektType();
+  crmcFillExtraFields();
 }
 // Pipelines hentes ÉN gang pr. session og bor i crmpState — men "Ny kunde" og
 // kundedetaljesiden kan sagtens åbnes uden at man nogensinde har været inde på
@@ -24270,9 +24360,49 @@ async function openCrmModal(id){
     await crmpEnsurePipelinesLoaded();
     crmcFillPipelines();
     await crmpEnsureCustomFieldDefsLoaded();
+    crmcFillSource();
     crmcFillProjektType();
+    crmcFillExtraFields();
   }
   document.getElementById('crm-modal').classList.add('open');
+}
+// RUNDE (okt. 2026, Martin: "Mine custom fields er ikke sat på Opret ny kunde
+// alle steder ... hvis jeg tilføjer noget i custom field ændre den det alle
+// steder") — Lead Source var FIRE hardkodede <option>-linjer i HTML'en,
+// fuldstændig uafhængigt af feltet under ⚙️ Indstillinger → Custom fields →
+// Lead-felter → Lead Source (samme custom field, key='lead_source',
+// entity_type='lead' — findes kun på leads). Tegnes nu her i stedet, nøjagtig
+// samme mønster som crmcFillProjektType() nedenfor. "Andet…" er den eneste
+// faste valgmulighed der er tilbage (fri tekst i crmc-source-other, uændret).
+function crmcFillSource(){
+  var sel=document.getElementById('crmc-source');
+  var def=(crmpState.customFieldDefs.lead||[]).find(function(d){return d.key==='lead_source'&&d.field_type==='select';});
+  var opts=def&&Array.isArray(def.options)?def.options:[];
+  sel.innerHTML='<option value="">Vælg…</option>'+opts.map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join('')+'<option value="Andet">Andet…</option>';
+  document.getElementById('crmc-source-label').textContent=(def&&def.label)||'Lead Source';
+}
+// RUNDE (okt. 2026, samme ønske) — ALLE ANDRE custom fields Martin opretter
+// under ⚙️ Indstillinger (ud over Lead Source og Projekttype, som har deres
+// egne faste rækker) tegnes automatisk herind, for den entitetstype
+// (lead/opportunity) den valgte pipeline rent faktisk opretter. Samme
+// genbrugte input-tegner som kunde-/lead-/opportunity-detaljesiden bruger
+// (crmpxRenderCustomFieldInputs), så et nyt custom field dukker op her uden
+// at nogen rører HTML'en — og forsvinder herfra igen, slettes det.
+function crmcFillExtraFields(){
+  var wrap=document.getElementById('crmc-extra-fields');
+  var entityType=crmcSelectedPipelineType();
+  var defs=(crmpState.customFieldDefs[entityType]||[]).filter(function(d){return d.key!=='projekt_type'&&d.key!=='lead_source';});
+  wrap.innerHTML=crmpxRenderCustomFieldInputs(defs,{});
+}
+// Samler værdierne fra crmcFillExtraFields() op igen ved Gem — samme
+// data-cf-key-mønster som crmpxCollectCustomFieldValues() bruger på
+// kunde-/lead-/opportunity-detaljesiden, blot afgrænset til denne modal.
+function crmcCollectExtraFieldValues(){
+  var out={};
+  document.querySelectorAll('#crmc-extra-fields [data-cf-key]').forEach(function(el){
+    out[el.dataset.cfKey]=el.type==='checkbox'?(el.checked?'1':''):el.value;
+  });
+  return out;
 }
 // Projekttype-dropdownen i "Ny kunde" — ÉN kilde, nemlig custom field-defen
 // for projekt_type på den entitetstype den valgte pipeline faktisk opretter
@@ -27418,7 +27548,7 @@ function crmpNewFillStages(){
   sel.innerHTML=crmpSortedStages(p).map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
   sel.value=crmpDefaultNewStageId(p);
 }
-function openCrmpNewModal(){
+async function openCrmpNewModal(){
   var p=crmpCurrentPipeline();
   if(!p)return;
   document.getElementById('crmp-new-modal-title').textContent=p.type==='lead'?'Nyt lead':'Ny opportunity';
@@ -27436,7 +27566,41 @@ function openCrmpNewModal(){
   sel.innerHTML=crmpState.pipelines.filter(function(x){return x.type===p.type;}).map(function(x){return '<option value="'+x.id+'">'+esc(x.name)+'</option>';}).join('');
   sel.value=p.id;
   crmpNewFillStages();
+  // RUNDE (okt. 2026) — samme "er custom field-defs hentet"-guard som
+  // "+ Ny kunde"-modalen bruger (crmpEnsureCustomFieldDefsLoaded), så disse to
+  // felter også virker selvom boardet mod forventning ikke skulle have nået at
+  // hente dem endnu.
+  await crmpEnsureCustomFieldDefsLoaded();
+  crmpNewFillSource(p.type);
+  crmpNewFillExtraFields(p.type);
   document.getElementById('crmp-new-modal').classList.add('open');
+}
+// Samme mønster som crmcFillSource() i "+ Ny kunde"-modalen, se kommentaren der.
+function crmpNewFillSource(entityType){
+  var sel=document.getElementById('crmp-new-source');
+  var def=(crmpState.customFieldDefs.lead||[]).find(function(d){return d.key==='lead_source'&&d.field_type==='select';});
+  var opts=def&&Array.isArray(def.options)?def.options:[];
+  sel.innerHTML='<option value="">Vælg…</option>'+opts.map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join('')+'<option value="Andet">Andet…</option>';
+  document.getElementById('crmp-new-source-label').textContent=(def&&def.label)||'Lead Source';
+}
+// Samme mønster som crmcFillExtraFields() i "+ Ny kunde"-modalen, se kommentaren
+// der — men denne modal havde slet ingen af felterne fra før (heller ikke
+// Projekttype), så her tegnes ALLE custom fields for entitetstypen, Lead
+// Source undtaget (den har sin egen faste række ovenfor).
+function crmpNewFillExtraFields(entityType){
+  var wrap=document.getElementById('crmp-new-extra-fields');
+  var defs=(crmpState.customFieldDefs[entityType]||[]).filter(function(d){return d.key!=='lead_source';});
+  wrap.innerHTML=crmpxRenderCustomFieldInputs(defs,{});
+}
+// Samler crmpNewFillExtraFields()-værdierne op igen ved Opret — samme
+// data-cf-key-mønster som crmpxCollectCustomFieldValues()/
+// crmcCollectExtraFieldValues() bruger.
+function crmpNewCollectExtraFieldValues(){
+  var out={};
+  document.querySelectorAll('#crmp-new-extra-fields [data-cf-key]').forEach(function(el){
+    out[el.dataset.cfKey]=el.type==='checkbox'?(el.checked?'1':''):el.value;
+  });
+  return out;
 }
 async function crmpCreateNewItem(){
   var pid=Number(document.getElementById('crmp-new-pipeline').value);
@@ -27450,7 +27614,11 @@ async function crmpCreateNewItem(){
     if(!source){toast('Vælg en kilde','⚠️');flashFieldError('crmp-new-source');return;}
     if(source==='Andet'&&!sourceOther){toast('Angiv kilden under "Andet"','⚠️');flashFieldError('crmp-new-source-other');return;}
   }
-  var body={name:name,phone:document.getElementById('crmp-new-phone').value,email:document.getElementById('crmp-new-email').value,pipeline_id:p.id,stage_id:stageId};
+  // RUNDE (okt. 2026, Martin: "hvis jeg tilføjer noget i custom field ændre
+  // den det alle steder") — alle custom fields crmpNewFillExtraFields() tegnede
+  // op (Projekttype m.fl.) samles med op her, så de rent faktisk bliver gemt.
+  var extraFields=crmpNewCollectExtraFieldValues();
+  var body={name:name,phone:document.getElementById('crmp-new-phone').value,email:document.getElementById('crmp-new-email').value,pipeline_id:p.id,stage_id:stageId,custom_fields:extraFields};
   if(p.type==='lead')body.source=source==='Andet'?sourceOther:source;
   var endpoint=p.type==='lead'?'/api/crm/leads':'/api/crm/opportunities';
   if(p.type==='opportunity'){body.contact_name=name;body.contact_phone=body.phone;body.contact_email=body.email;}
@@ -28010,13 +28178,18 @@ async function saveCrmCustomer(){
     // serveren falder tilbage til præcis den gamle opførsel i stedet for at fejle.
     var pipelineId=Number(document.getElementById('crmc-pipeline').value)||null;
     var stageId=Number(document.getElementById('crmc-stage').value)||null;
+    // RUNDE (okt. 2026, Martin: "hvis jeg tilføjer noget i custom field ændre
+    // den det alle steder") — projekt_type var før den ENESTE custom field-
+    // værdi der blev sendt med. Alt hvad crmcFillExtraFields() tegnede op
+    // (ethvert andet custom field på entitetstypen) samles nu med op her.
+    var extraFields=crmcCollectExtraFieldValues();
     if(isOpp){
-      var oppBody={name:name,contact_name:name,contact_phone:phone,contact_email:email,pipeline_id:pipelineId,stage_id:stageId,custom_fields:{projekt_type:projektType}};
+      var oppBody={name:name,contact_name:name,contact_phone:phone,contact_email:email,pipeline_id:pipelineId,stage_id:stageId,custom_fields:Object.assign({projekt_type:projektType},extraFields)};
       var orr=await api('/api/crm/opportunities',{method:'POST',body:JSON.stringify(oppBody)});
       if(orr&&orr.ok){createdEntityId=orr.id;createdEntityType='opportunity';}
       else toast('Kunden blev oprettet, men opportunity kunne ikke oprettes: '+((orr&&orr.error)||'ukendt fejl'),'⚠️');
     } else {
-      var leadBody={name:name,phone:phone,email:email,address:address,source:source==='Andet'?sourceOther:source,pipeline_id:pipelineId,stage_id:stageId,custom_fields:{projekt_type:projektType}};
+      var leadBody={name:name,phone:phone,email:email,address:address,source:source==='Andet'?sourceOther:source,pipeline_id:pipelineId,stage_id:stageId,custom_fields:Object.assign({projekt_type:projektType},extraFields)};
       var lr=await api('/api/crm/leads',{method:'POST',body:JSON.stringify(leadBody)});
       if(lr&&lr.ok){createdEntityId=lr.id;createdEntityType='lead';}
       else toast('Kunden blev oprettet, men leadet kunne ikke oprettes: '+((lr&&lr.error)||'ukendt fejl'),'⚠️');
@@ -31113,9 +31286,13 @@ function qeSetLineButtonsLocked(locked){
 // åbne en dropdown der er helt tom. Kaldes overalt hvor en af knappernes
 // EGEN display sættes (loadQuoteFull() og renderQeInvoicingPanel() nedenfor).
 function qeToolbarSyncGroupVisibility(){
-  [['qe-docs-group',['qe-pdf-link','qe-duplicate-btn','qe-project-link-btn','qe-materials-list-btn','qe-payment-plan-btn']],
-   ['qe-customer-group',['qe-share-btn','qe-send-btn']],
-   ['qe-billing-group',['qe-convert-btn']]
+  /* RUNDE (okt. 2026, Martin: "Ændre Knappen Kunde til Send Tilbud ... /
+     Ændre faktura til en kun 1 klik knappe") — qe-customer-group og
+     qe-billing-group findes ikke længere som dropdown-wrappere (qe-send-btn
+     og qe-convert-btn er nu selvstændige 1-klik-knapper i selve
+     værktøjslinjen, se markup), så de to grupper er fjernet herfra.
+     qe-share-btn ("Kundeportal") er flyttet ind i qe-docs-group. */
+  [['qe-docs-group',['qe-pdf-link','qe-duplicate-btn','qe-project-link-btn','qe-share-btn','qe-materials-list-btn','qe-payment-plan-btn']]
   ].forEach(function(g){
     var anyVisible=g[1].some(function(id){var el=document.getElementById(id);return el&&el.style.display!=='none';});
     var wrap=document.getElementById(g[0]);
@@ -31130,7 +31307,7 @@ function renderQeInvoicingPanel(){
   qeSetLineButtonsLocked(hasInvoices);
   var remaining=st?(st.remaining_lines||[]):qeState.lines;
   document.getElementById('qe-convert-btn').style.display=remaining.length?'inline-flex':'none';
-  document.getElementById('qe-convert-btn').textContent=hasInvoices?'➜ Fakturér flere linjer':'➜ Konvertér til faktura';
+  document.getElementById('qe-convert-btn').textContent=hasInvoices?'📄 Fakturér flere linjer':'📄 Lav faktura';
   qeToolbarSyncGroupVisibility();
   if(!hasInvoices)return;
   var pct=st.quote_total>0?Math.min(100,Math.round(st.invoiced_total/st.quote_total*100)):0;
