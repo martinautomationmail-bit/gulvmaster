@@ -708,25 +708,6 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
 
-    -- RUNDE (okt. 2026, Martin: "Og så kan jeg under Økonomien Omsætning pr
-    -- fag også kun rykke kunden fremad. Men fx isabella er sat til December.
-    -- det også delvis korrekt men dele af hendes betalinger falder i Oktober
-    -- og november også så skal have mulighed for at opdele kunden sådan så
-    -- jeg får et retvisende billede af mit cashflow") — finance_job_month_
-    -- overrides ovenfor kan kun flytte HELE sagens beløb til ÉN måned. Denne
-    -- tabel lader et tilbud/en faktura i stedet deles over FLERE måneder med
-    -- hver sin delbeløb (fx 1/3 i oktober, 1/3 i november, 1/3 i december) —
-    -- se fetchFinanceJobsByMonth, som placerer én linje PR. RÆKKE her i stedet
-    -- for den normale ét-sted-placering, når en sag har rækker i denne tabel.
-    CREATE TABLE IF NOT EXISTS finance_job_splits (
-      id SERIAL PRIMARY KEY,
-      job_id TEXT NOT NULL,
-      month_key TEXT NOT NULL,
-      amount NUMERIC NOT NULL DEFAULT 0,
-      created_at TEXT DEFAULT ${nowTextSQL()},
-      UNIQUE (job_id, month_key)
-    );
-
     -- Husker hvilke bankposteringer der allerede er matchet og anvendt, så de ikke
     -- dukker op som "nye" igen næste gang samme (eller et overlappende) bankudtog
     -- uploades — svarer til Billys "Åbne / Afstemt"-faner. "kind" skelner mellem en
@@ -18062,16 +18043,6 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   const monthOverridesResult = await pool.query('SELECT * FROM finance_job_month_overrides');
   const monthOverrides = {};
   for (const row of monthOverridesResult.rows) monthOverrides[row.job_id] = row.month_key;
-  // RUNDE (okt. 2026, Martin: "skal have mulighed for at opdele kunden sådan
-  // så jeg får et retvisende billede af mit cashflow") — se finance_job_splits-
-  // kommentaren ved CREATE TABLE. En sag med rækker her har IKKE ét enkelt
-  // "job" mere i buckets-strukturen nedenfor — den optræder i stedet som flere
-  // delte linjer, én pr. måned den er opdelt over.
-  const splitsResult = await pool.query('SELECT * FROM finance_job_splits ORDER BY job_id, month_key');
-  const splitsByJob = {};
-  for (const row of splitsResult.rows) {
-    (splitsByJob[row.job_id] = splitsByJob[row.job_id] || []).push({ month_key: row.month_key, amount: Number(row.amount) || 0 });
-  }
 
   const monthKeys = [];
   for (let offset = -monthsBack; offset <= monthsForward; offset++) {
@@ -18081,26 +18052,9 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   // En sag der er flyttet til en måned uden for det normale vindue skal stadig kunne
   // ses — udvider derfor vinduet med den måned i stedet for stille at ignorere flytningen.
   for (const mk of Object.values(monthOverrides)) if (!monthKeys.includes(mk)) monthKeys.push(mk);
-  // Samme princip for en opdelt sags delmåneder.
-  for (const rows of Object.values(splitsByJob)) for (const s of rows) if (!monthKeys.includes(s.month_key)) monthKeys.push(s.month_key);
   monthKeys.sort();
   const buckets = {};
   for (const mk of monthKeys) buckets[mk] = {};
-  // Lægger én linje pr. delbeløb direkte i hver af dens egne måneder —
-  // bruges af både faktura- og tilbudsloopet nedenfor i stedet for den
-  // normale ét-sted-placering, når jobbet har rækker i splitsByJob.
-  function placeSplitEntries(key, splits, baseEntry) {
-    const total = splits.reduce((s, x) => s + (Number(x.amount) || 0), 0);
-    const monthList = splits.map(x => x.month_key);
-    for (const s of splits) {
-      if (!buckets[s.month_key]) continue;
-      buckets[s.month_key][key] = Object.assign({}, baseEntry, {
-        jobId: key, value: Number(s.amount) || 0, excluded: false, hasOverride: false,
-        monthMoved: false, split: true, splitTotal: total, splitMonths: monthList, splits,
-        placementReason: 'Opdelt manuelt over ' + splits.length + ' måneder (i alt ' + krFmtServer(total) + ').'
-      });
-    }
-  }
 
   // 1) RIGTIGE FAKTURAER — kun bagudgående måneder, tælles i den måned de faktisk er
   // udstedt. RUNDE H #306 — 'draft' udelukket her ligesom 'void': en kladde-faktura er
@@ -18115,17 +18069,6 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   for (const r of invRows) {
     const naturalMk = String(r.created_at).slice(0, 7);
     const key = 'faktura-' + r.id;
-    // RUNDE (okt. 2026) — se finance_job_splits-kommentaren: en opdelt faktura
-    // springer HELT den normale ét-sted-placering/bagudgående-regel over og
-    // placeres i stedet nøjagtigt i de måneder Martin selv har valgt.
-    if (splitsByJob[key]) {
-      placeSplitEntries(key, splitsByJob[key], {
-        name: r.project_name || r.job_name || r.job_number || ('Faktura #' + r.id),
-        fag: r.fag || 'Ukendt', startDate: r.created_at, naturalMonth: naturalMk,
-        valueSource: 'invoice', priceMismatch: false, projectId: r.project_id || null
-      });
-      continue;
-    }
     const manualMk = monthOverrides[key];
     const mk = manualMk || naturalMk;
     // RUNDE H #317 — fakturaer tæller ALDRIG i indeværende eller fremtidige måneder
@@ -18164,18 +18107,6 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   `)).rows;
   for (const r of quoteRows) {
     const key = 'tilbud-' + r.id;
-    // RUNDE (okt. 2026, Martin: "fx isabella er sat til December. det også
-    // delvis korrekt men dele af hendes betalinger falder i Oktober og
-    // november også") — se finance_job_splits-kommentaren: springer HELT den
-    // normale Gantt-dato/ét-sted-placering over.
-    if (splitsByJob[key]) {
-      placeSplitEntries(key, splitsByJob[key], {
-        name: r.project_name || r.job_name || r.job_number || ('Tilbud #' + r.id),
-        fag: r.fag || 'Ukendt', startDate: null, naturalMonth: currentMonthKey,
-        valueSource: 'quote', priceMismatch: false, projectId: r.project_id || null
-      });
-      continue;
-    }
     const hasGanttDate = r.gantt_end_date && /^\d{4}-\d{2}/.test(r.gantt_end_date);
     let naturalMk = hasGanttDate ? String(r.gantt_end_date).slice(0, 7) : currentMonthKey;
     // En overstået måned må aldrig få forecast-tal — klem ind i indeværende måned i stedet.
@@ -18210,9 +18141,7 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     // Ekstra sikkerhedsnet — bagudgående måneder skal aldrig kunne vise forecast-tal,
     // selvom der skulle snige sig en fejl ind ovenfor. Rammer ikke noget i praksis, da
     // fakturaer/tilbud allerede er delt op i hver sin side af `currentMonthKey` ovenfor.
-    // Undtagelse: en opdelt sag (j.split) er placeret helt bevidst af Martin selv, også
-    // selvom en del af et accepteret tilbud lægges i en allerede overstået måned.
-    if (mk < currentMonthKey) jobs = jobs.filter(j => j.valueSource === 'invoice' || j.split);
+    if (mk < currentMonthKey) jobs = jobs.filter(j => j.valueSource === 'invoice');
     const manualForMonth = manualRows.rows.filter(r => r.month_key === mk).map(r => ({ jobId: 'manual-' + r.id, manualId: r.id, name: r.name, fag: r.fag, value: r.amount, excluded: false, hasOverride: false, manual: true, placementReason: 'Tilføjet manuelt direkte i denne måned af dig.' }));
     const allJobs = jobs.concat(manualForMonth);
     const byFag = {};
@@ -18845,38 +18774,6 @@ app.put('/api/finance/job-month-override/:jobId', auth, panelAccess('finance'), 
     INSERT INTO finance_job_month_overrides (job_id,month_key,updated_at) VALUES ($1,$2,${nowTextSQL()})
     ON CONFLICT (job_id) DO UPDATE SET month_key=$2,updated_at=${nowTextSQL()}
   `, [req.params.jobId, monthKey]);
-  res.json({ ok: true });
-}));
-// RUNDE (okt. 2026, Martin: "skal have mulighed for at opdele kunden sådan
-// så jeg får et retvisende billede af mit cashflow") — se finance_job_splits-
-// kommentaren ved CREATE TABLE/fetchFinanceJobsByMonth. body.splits er en
-// liste af {month_key, amount} — erstatter HELE sagens nuværende opdeling
-// (slet-og-genskriv, enklest at holde synkroniseret med UI'ens modal, som
-// altid sender hele listen). En tom/udeladt liste rydder opdelingen helt,
-// så sagen falder tilbage til den normale ét-sted-placering igen.
-app.put('/api/finance/job-month-split/:jobId', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
-  const jobId = req.params.jobId;
-  if (!/^(faktura|tilbud)-\d+$/.test(jobId)) return res.status(400).json({ error: 'Ugyldigt sags-id' });
-  const splits = Array.isArray(req.body?.splits) ? req.body.splits : [];
-  const clean = [];
-  const seenMonths = new Set();
-  for (const s of splits) {
-    const mk = String(s?.month_key || '').trim();
-    const amount = Number(s?.amount);
-    if (!/^\d{4}-\d{2}$/.test(mk)) return res.status(400).json({ error: 'Ugyldig måned i opdelingen: ' + mk });
-    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'Ugyldigt beløb i opdelingen' });
-    if (seenMonths.has(mk)) return res.status(400).json({ error: 'Samme måned kan kun bruges én gang i opdelingen' });
-    seenMonths.add(mk);
-    if (amount > 0) clean.push({ month_key: mk, amount });
-  }
-  await pool.query('DELETE FROM finance_job_splits WHERE job_id=$1', [jobId]);
-  for (const s of clean) {
-    await pool.query('INSERT INTO finance_job_splits (job_id,month_key,amount) VALUES ($1,$2,$3)', [jobId, s.month_key, s.amount]);
-  }
-  res.json({ ok: true, cleared: clean.length === 0 });
-}));
-app.delete('/api/finance/job-month-split/:jobId', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
-  await pool.query('DELETE FROM finance_job_splits WHERE job_id=$1', [req.params.jobId]);
   res.json({ ok: true });
 }));
 app.get('/api/finance/job-status-marks', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
