@@ -4010,7 +4010,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <button class="sidebar-logout-btn" id="logout-btn" type="button" title="Log ud"><span class="stab-icon">🚪</span><span class="stab-label">Log ud</span></button>
   </div>
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build 2026-10-07.72</span></div>
+  <!-- RUNDE BT (Martin: "det virker stadig ikke med noten!") — denne streng var
+       ikke blevet opdateret siden 07-10, selvom adskillige versioner er
+       leveret og (formentlig) deployet siden. Opdateres nu ved hver levering,
+       så Martin med ét blik i venstre bund-hjørne kan se om det han kigger på
+       i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
+       ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
+       rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.26.0 · 2026-10-14</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -6327,6 +6334,27 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <button class="bly-btn" id="cd-newopp-btn" type="button">+ Ny handel</button>
     <button class="bly-btn outline" id="cd-newquote-btn" type="button">+ Lav tilbud</button>
     <button class="bly-btn outline" id="cd-newinvoice-btn" type="button">+ Lav faktura</button>
+  </div>
+  <!-- RUNDE BT (Martin: "Når man opretter en ny kunde i den ene eller anden
+       eller 3 pibeline skal alle custom fields komme ... under enten popuppen
+       fra + Ny knappen eller under kunden Opret ny kunde") — "+ Ny handel"
+       ovenfor havde INGEN custom fields overhovedet (hverken Projekttype eller
+       Lead Source, slet ikke andre), i modsætning til "+ Ny kunde"-modalen
+       (crmc-*) og Kanban-boardets "+ Ny"-hurtig-modal (crmp-new-*), som begge
+       allerede fik denne behandling i en tidligere runde. Samme mønster
+       genbruges nu her: en fast Projekttype-/Lead Source-række (skjules af
+       cdFillNewOppProjektType()/cdFillNewOppSource() alt efter om typen
+       ovenfor er Salg eller Lead) + alle ANDRE custom fields tegnet dynamisk
+       ind af cdFillNewOppExtraFields() (samme crmpxRenderCustomFieldInputs som
+       de to andre steder). Se cdCreateOpportunity() for hvordan værdierne
+       samles op og sendes med. -->
+  <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin:0 0 10px" id="cd-newopp-fields-row">
+    <div class="form-group" id="cd-newopp-projekt-type-wrap" style="margin:0"><label class="form-label" id="cd-newopp-projekt-type-label" style="font-size:10.5px">Projekttype</label><select id="cd-newopp-projekt-type" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px"></select></div>
+    <div class="form-group" id="cd-newopp-source-wrap" style="margin:0"><label class="form-label" id="cd-newopp-source-label" style="font-size:10.5px">Lead Source</label>
+      <select id="cd-newopp-source" class="select" style="width:auto;height:30px;padding:2px 8px;font-size:12px"><option value="">Vælg…</option></select>
+      <input id="cd-newopp-source-other" class="input hidden" style="margin-top:4px;width:auto;height:30px;padding:2px 8px;font-size:12px" placeholder="Angiv kilde">
+    </div>
+    <div id="cd-newopp-extra-fields" style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap"></div>
   </div>
   <div class="sub" style="margin:0 0 6px;font-weight:700">🤝 Opportunities (Salg)</div>
   <table class="bly-table">
@@ -25454,9 +25482,59 @@ function cdFillNewOppPipelines(){
   document.getElementById('cd-newopp-btn').style.display=has?'':'none';
   sel.style.display=has?'':'none';
   document.getElementById('cd-newopp-stage').style.display=has?'':'none';
+  // RUNDE BT (Martin: "skal alle custom fields komme ... under kunden Opret ny
+  // kunde") — Lead Source/Projekttype/alle andre custom fields følger nu også
+  // med her, samme mønster som crmc-/crmp-new-modalerne (se kommentaren ved
+  // #cd-newopp-fields-row i HTML'en).
+  cdFillNewOppSource();
+  cdFillNewOppProjektType();
+  cdFillNewOppExtraFields();
+  document.getElementById('cd-newopp-fields-row').style.display=has?'':'none';
+}
+// Lead Source findes kun på leads (se samme begrundelse ved crmcFillSource) —
+// skjules helt ved Salg.
+function cdFillNewOppSource(){
+  var type=document.getElementById('cd-newopp-type').value;
+  var wrap=document.getElementById('cd-newopp-source-wrap');
+  wrap.classList.toggle('hidden',type!=='lead');
+  if(type!=='lead')return;
+  var sel=document.getElementById('cd-newopp-source');
+  var def=(crmpState.customFieldDefs.lead||[]).find(function(d){return d.key==='lead_source'&&d.field_type==='select';});
+  var opts=def&&Array.isArray(def.options)?def.options:[];
+  sel.innerHTML='<option value="">Vælg…</option>'+opts.map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join('')+'<option value="Andet">Andet…</option>';
+  document.getElementById('cd-newopp-source-label').textContent=(def&&def.label)||'Lead Source';
+}
+// Samme mønster som crmcFillProjektType() i "+ Ny kunde"-modalen.
+function cdFillNewOppProjektType(){
+  var type=document.getElementById('cd-newopp-type').value;
+  var wrap=document.getElementById('cd-newopp-projekt-type-wrap');
+  var sel=document.getElementById('cd-newopp-projekt-type');
+  var def=(crmpState.customFieldDefs[type]||[]).find(function(d){return d.key==='projekt_type'&&d.field_type==='select';});
+  var opts=def&&Array.isArray(def.options)?def.options:[];
+  sel.innerHTML='<option value="">Vælg…</option>'+opts.map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join('');
+  document.getElementById('cd-newopp-projekt-type-label').textContent=(def&&def.label)||'Projekttype';
+  wrap.style.display=opts.length?'':'none';
+}
+// Samme mønster som crmcFillExtraFields() — ALLE custom fields for den valgte
+// type ud over Lead Source/Projekttype (som har deres egne faste felter ovenfor).
+function cdFillNewOppExtraFields(){
+  var wrap=document.getElementById('cd-newopp-extra-fields');
+  var type=document.getElementById('cd-newopp-type').value;
+  var defs=(crmpState.customFieldDefs[type]||[]).filter(function(d){return d.key!=='projekt_type'&&d.key!=='lead_source';});
+  wrap.innerHTML=crmpxRenderCustomFieldInputs(defs,{});
+}
+// Samler custom field-værdierne op igen ved "+ Ny handel" — samme data-cf-key-
+// mønster som crmcCollectExtraFieldValues()/crmpNewFillExtraFields() bruger.
+function cdCollectNewOppExtraFieldValues(){
+  var out={};
+  document.querySelectorAll('#cd-newopp-extra-fields [data-cf-key]').forEach(function(el){
+    out[el.dataset.cfKey]=el.type==='checkbox'?(el.checked?'1':''):el.value;
+  });
+  return out;
 }
 async function cdFillNewOppPickers(){
   await crmpEnsurePipelinesLoaded();
+  await crmpEnsureCustomFieldDefsLoaded();
   cdFillNewOppPipelines();
 }
 async function cdCreateOpportunity(){
@@ -25464,9 +25542,19 @@ async function cdCreateOpportunity(){
   var btn=document.getElementById('cd-newopp-btn');
   btn.disabled=true;
   var type=document.getElementById('cd-newopp-type').value; // 'opportunity' | 'lead'
+  var source=document.getElementById('cd-newopp-source').value,sourceOther=document.getElementById('cd-newopp-source-other').value.trim();
+  var projektType=document.getElementById('cd-newopp-projekt-type').value;
+  var extraFields=cdCollectNewOppExtraFieldValues();
+  var customFields=Object.assign({projekt_type:projektType},extraFields);
+  // RUNDE BT — "Lead Source" er (ligesom Projekttype) et custom field, IKKE
+  // den hardkodede crm_leads.source-kolonne POST .../customers/:id/leads altid
+  // sætter til "Oprettet på kundekort" (se server.js) — sendes derfor med i
+  // custom_fields, samme sted som Projekttype, ikke som en separat "source".
+  if(type==='lead')customFields.lead_source=source==='Andet'?sourceOther:source;
   var body={
     pipeline_id:Number(document.getElementById('cd-newopp-pipeline').value)||null,
-    stage_id:Number(document.getElementById('cd-newopp-stage').value)||null
+    stage_id:Number(document.getElementById('cd-newopp-stage').value)||null,
+    custom_fields:customFields
   };
   var endpoint='/api/crm/customers/'+cdCurrent.id+(type==='lead'?'/leads':'/opportunities');
   var r=await api(endpoint,{method:'POST',body:JSON.stringify(body)});
