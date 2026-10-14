@@ -626,11 +626,10 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
    sad som en smal søjle midt i en ellers bred side (modsat alle andre faneblade
    under Økonomi, der bare bruger hele den paddede bredde). Loftet er fjernet. */
 .om-months-center{width:100%}
-/* RUNDE BN — auto-fit i stedet for et fast repeat(2,1fr), så de ekstra måneds-
-   kort der nu er plads til (efter .om-months-center-loftet blev fjernet) rent
-   faktisk bruges, i stedet for to brede kolonner med masser af luft imellem. */
-#fin-revenue-months{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:24px;align-items:start}
-@media(max-width:860px){#fin-revenue-months{grid-template-columns:1fr}}
+/* RUNDE BQ (Martin: "Stræk hver måned så hver container for måneder står
+   ovenpå hinanden") — måneds-kortene stables nu i én kolonne ovenpå hinanden
+   i stedet for side om side (tidligere auto-fit-grid fra RUNDE BN). */
+#fin-revenue-months{display:flex;flex-direction:column;gap:24px}
 #page-finance #fintab-omsaetning .fin-month-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,23,42,.04);overflow:visible;padding:20px;margin-bottom:0}
 #page-finance #fintab-omsaetning .fin-month-card:last-child{margin-bottom:0}
 /* RUNDE BM (Martin: "Opgave poolen skal laves i siden ... ligesom i
@@ -670,8 +669,21 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #page-finance #fintab-omsaetning .fin-pool-card .fin-job-row:hover{background:#fff;border-color:var(--bly-accent)}
 #page-finance #fintab-omsaetning .fin-pool-card .fin-job-row.fin-job-status-marked{border-color:transparent}
 #page-finance #fintab-omsaetning .fin-pool-card .om-row-top{padding:14px 16px;gap:10px}
-#page-finance #fintab-omsaetning .fin-pool-card .om-row-bottom{background:#FAFAFB;border-top:1px dashed var(--bly-border);border-radius:0 0 var(--bly-r-md) var(--bly-r-md);padding:10px 16px;margin:0}
-#page-finance #fintab-omsaetning .fin-pool-card .om-row-controls{gap:8px}
+#page-finance #fintab-omsaetning .fin-pool-card .om-row-bottom{background:#FAFAFB;border-top:1px dashed var(--bly-border);border-radius:0 0 var(--bly-r-md) var(--bly-r-md);padding:10px 16px;margin:0;flex-direction:column;align-items:stretch}
+/* RUNDE BQ (Martin: "se i opgave pool ved hver opgave hvordan alle de her
+   knapper er opstillet helt subjekt og grimt") — kontrol-rækken (se
+   finJobRowHtml) er nu delt i to faste under-rækker i markup'et:
+   .om-row-controls-primary ("→ træk ind i..."-dropdownen alene, fuld bredde —
+   den vigtigste handling i Poolen) og .om-row-controls-icons (fag + de små
+   ikon-knapper, samlet pænt på én linje nedenunder) i stedet for ÉT langt
+   flex-wrap der brækkede tilfældigt over flere linjer i den smalle
+   360px-sidebar. Uden for Poolen (bredere månedskort) forbliver de to
+   under-rækker simple inline flex-elementer side om side — se den generelle
+   .om-row-controls-primary/-icons-regel nedenfor. */
+#page-finance #fintab-omsaetning .fin-pool-card .om-row-controls{display:flex;flex-direction:column;align-items:stretch;gap:8px;width:100%}
+#page-finance #fintab-omsaetning .fin-pool-card .om-row-controls-primary{width:100%}
+#page-finance #fintab-omsaetning .fin-pool-card .om-row-controls-primary .fin-move-month-select{width:100%}
+#page-finance #fintab-omsaetning .fin-pool-card .om-row-controls-icons .fin-type-select{flex:1;min-width:0;max-width:none}
 #page-finance #fintab-omsaetning .fin-month-head{background:none;padding:0 0 14px;border-bottom:1.5px solid var(--bly-border-soft);text-align:left;display:flex;align-items:center;justify-content:space-between;border-radius:0;margin-bottom:16px}
 #page-finance #fintab-omsaetning .fin-month-head-current{background:none}
 #page-finance #fintab-omsaetning .fin-month-name{font-size:19px;font-weight:800;color:var(--bly-ink)}
@@ -696,6 +708,11 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #page-finance #fintab-omsaetning .om-row-bottom{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
 #page-finance #fintab-omsaetning .om-reason-note{margin-left:8px;font-size:10.5px;font-weight:600;color:var(--bly-accent);cursor:help;border-bottom:1px dashed var(--bly-accent)}
 #page-finance #fintab-omsaetning .om-row-controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+/* RUNDE BQ — se den store kommentar ved .fin-pool-card .om-row-controls
+   nedenfor. Uden for Poolen (bredere kort) er de to under-rækker bare
+   almindelige inline flex-grupper, så selve layoutet reelt er uændret her. */
+#page-finance #fintab-omsaetning .om-row-controls-primary,
+#page-finance #fintab-omsaetning .om-row-controls-icons{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 #page-finance #fintab-omsaetning .fin-status-dots{gap:5px}
 #page-finance #fintab-omsaetning .fin-status-dot{width:13px;height:13px}
 #page-finance #fintab-omsaetning .fin-badge{margin:0}
@@ -2057,6 +2074,21 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    onclick på en enkelt lille ikon-knap. Dækker hele cellen, ikke kun teksten. */
 .bly-table .row-link{display:block;color:inherit;text-decoration:none;cursor:pointer}
 .bly-table .row-link:hover{color:inherit}
+/* RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design du
+   lavede Kundebesøg, Opfølgninger, Produkter og skabloner") — generisk
+   "kort-liste" i samme stil som Bankafstemningens .bly-txn-card og Omsætning
+   pr. fags .fin-job-row/.om-row-*: hvide, afrundede rækker med luft imellem i
+   stedet for en klassisk <table>. Bruges nu af Kundebesøg/kb, Opfølgninger/cpt
+   og Produkter+Skabeloner/qz, som alle tidligere brugte <table class="bly-table">. */
+.bly-rowcard-list{display:flex;flex-direction:column;gap:10px}
+.bly-rowcard{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:14px 16px;font-size:12.5px;box-shadow:0 1px 2px rgba(15,23,42,.03)}
+.bly-rowcard-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.bly-rowcard-name{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:13.5px;font-weight:700;color:var(--bly-ink);min-width:0}
+.bly-rowcard-value{font-weight:800;font-size:13.5px;white-space:nowrap;padding-top:1px}
+.bly-rowcard-bottom{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:9px;padding-top:9px;border-top:1px dashed var(--bly-border);color:var(--bly-sub);font-size:11.5px}
+.bly-rowcard-controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.bly-rowcard-empty{text-align:center;color:var(--bly-sub);padding:24px}
+.bly-rowcard input[type="checkbox"]{width:16px;height:16px;flex-shrink:0}
 /* Produkt-søgning: flervalg med afkrydsning på tværs af flere søgninger, i
    stedet for kun ét produkt ad gangen. */
 .qz-multiselect-bar{display:flex;flex-direction:column;gap:6px;padding:9px 10px;background:var(--bly-accent-soft);border-bottom:1px solid var(--bly-border-soft);font-size:11px;color:var(--bly-ink);line-height:1.5}
@@ -3048,6 +3080,14 @@ body.qz-overlay-open .page.active{display:none}
    liste-visning Modtaget/Sendt/Ulæste/Planlagt, og Signaturer). */
 .mailtabpage{display:none}
 .mailtabpage.active{display:block}
+/* RUNDE BQ (Martin: "Kan du ikke strække boksen til bunden så man kan se
+   flere ulæste på engang") — #mail-list arvede .dash-panel's generiske
+   max-height:420px (tænkt til små dashboard-widgets), så listen stoppede
+   langt fra skærmbunden med en masse tom luft under, uanset hvor høj skærmen
+   var. Samme calc(100vh - Xpx)-mønster som #plan-board-outer/#capacity-scroll
+   bruger til at strække et bräts/en liste ned til vinduets bund. */
+#mail-list.dash-panel{height:calc(100vh - 300px);min-height:420px;max-height:1400px}
+@media(max-width:1000px){#mail-list.dash-panel{height:calc(100vh - 360px);min-height:330px}}
 /* Én linje pr. mail i #mail-list (dash-panel). Ulæst = fed overskrift + en
    lille blå prik, samme visuelle "ulæst"-sprog som fx #requests-badge. */
 .mail-row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-bottom:1px solid var(--bly-border-soft,#EEF1F5);cursor:pointer}
@@ -4310,7 +4350,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
 
-  <div class="mailtabpage" id="mailtab-signaturer" style="display:none">
+  <!-- RUNDE BQ (Martin: "I mail programmet kan jeg ikke oprette signatur?") —
+       fundet root cause: denne div havde en INLINE style="display:none" ud over
+       den normale .mailtabpage{display:none}/.mailtabpage.active{display:block}
+       CSS-klasse-styring. switchMailTab() skifter kun selve "active"-klassen
+       (samme mønster som #mailtab-list), men en inline style vinder ALTID over
+       en CSS-klasse-regel, uanset specificitet — så fanen forblev usynlig,
+       uanset hvor mange gange man trykkede "Signaturer". Hele
+       toolbar'en/"+ Ny signatur"-knappen/listen har været der hele tiden, bare
+       usynlig. Inline style'n er simpelthen overflødig (CSS-klassen gør
+       præcis det samme) og derfor bare fjernet. -->
+  <div class="mailtabpage" id="mailtab-signaturer">
     <div class="bly-toolbar">
       <div class="bly-toolbar-left"><span class="bly-toolbar-title">✍️ Dine mail-signaturer</span></div>
       <div class="bly-toolbar-right"><button class="bly-btn" id="mail-sig-new-btn" type="button">+ Ny signatur</button></div>
@@ -5557,6 +5607,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
          Type er en fast liste (service/materialer), se QZ_TYPE_LABEL. -->
     <div class="bly-toolbar" id="qz-product-filter-bar" style="margin-bottom:10px">
       <div class="bly-toolbar-left" style="gap:8px;flex-wrap:wrap">
+        <!-- RUNDE BQ — flyttet hertil fra tabel-headerens checkbox (tabellen
+             er nu en kort-liste, se .bly-rowcard-list). Samme id, uændret JS. -->
+        <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--bly-sub);cursor:pointer"><input type="checkbox" id="qz-products-select-all" title="Markér alle"> Markér alle</label>
         <select class="bly-select bly-ctl" id="qz-product-filter-category"><option value="">Alle kategorier</option></select>
         <select class="bly-select bly-ctl" id="qz-product-filter-type"><option value="">Alle typer</option><option value="service">Service</option><option value="materialer">Materialer</option></select>
         <select class="bly-select bly-ctl" id="qz-product-filter-unit"><option value="">Alle enheder</option></select>
@@ -5565,7 +5618,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <!-- RUNDE BE (Martin: "kan du ikke gøre så jeg kan markere alle og masse
          opdatere felter herunder ... da der mange fejl i dem hurtigere") —
-         vises kun når mindst ét produkt er markeret i tabellen nedenfor. -->
+         vises kun når mindst ét produkt er markeret i listen nedenfor. -->
     <div class="bly-toolbar" id="qz-product-bulk-bar" style="display:none;background:var(--bly-accent-soft);border-radius:var(--bly-r-md);padding:8px 12px;margin-bottom:10px">
       <div class="bly-toolbar-left"><span id="qz-bulk-count" style="font-weight:600">0 valgt</span></div>
       <div class="bly-toolbar-right">
@@ -5573,10 +5626,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="bly-btn primary" id="qz-bulk-edit-btn" type="button">✎ Redigér valgte</button>
       </div>
     </div>
-    <table class="bly-table">
-      <thead><tr><th style="width:34px"><input type="checkbox" id="qz-products-select-all" title="Markér alle"></th><th>Navn</th><th>Type</th><th>Kategori</th><th>Enhed</th><th class="num">Cost-pris</th><th class="num">Salgspris</th><th class="num">Avance</th><th style="width:90px"></th></tr></thead>
-      <tbody id="qz-products-body"></tbody>
-    </table>
+    <!-- RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design
+         du lavede") — kort-liste (.bly-rowcard-list) i stedet for <table>, se
+         qzRenderProducts() i scriptet. -->
+    <div class="bly-rowcard-list" id="qz-products-body"></div>
   </section>
 
 <section class="page" id="page-qz-templates">
@@ -5588,10 +5641,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="bly-toolbar-left"><span class="bly-toolbar-title">Skabeloner</span><input type="text" id="qz-template-search" class="bly-search" placeholder="Søg i skabeloner..."></div>
       <div class="bly-toolbar-right"><button class="bly-btn" id="qz-new-template-btn" type="button">+ Ny skabelon</button></div>
     </div>
-    <table class="bly-table">
-      <thead><tr><th>Navn</th><th>Beskrivelse</th><th class="num">Linjer</th><th style="width:110px"></th></tr></thead>
-      <tbody id="qz-templates-body"></tbody>
-    </table>
+    <!-- RUNDE BQ — kort-liste i stedet for <table>, se qzRenderTemplates(). -->
+    <div class="bly-rowcard-list" id="qz-templates-body"></div>
   </section>
 
 <section class="page" id="page-qz-timetrack">
@@ -6803,10 +6854,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="cpt-count"></span></div>
   </div>
-  <table class="bly-table">
-    <thead><tr><th style="width:30px"></th><th style="width:24px"></th><th>Opgave</th><th>Lead / Sale</th><th style="width:170px">Ansvarlig</th><th style="width:130px">Dato</th><th style="width:44px"></th></tr></thead>
-    <tbody id="cpt-body"></tbody>
-  </table>
+  <!-- RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design
+       du lavede") — kort-liste (.bly-rowcard-list) i stedet for <table>, se
+       cptRender() i scriptet. -->
+  <div class="bly-rowcard-list" id="cpt-body"></div>
 </section>
 
 <!-- RETTELSE (okt. 2026, Martins ønske: "en moderne side hvor man kan se alle
@@ -6832,10 +6883,10 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
     <div class="bly-toolbar-right"><span class="bly-toolbar-count" id="kb-count"></span></div>
   </div>
-  <table class="bly-table">
-    <thead><tr><th style="width:130px">Dato / tid</th><th>Kunde</th><th>Adresse / telefon</th><th style="width:170px">Medarbejder</th><th style="width:150px"></th></tr></thead>
-    <tbody id="kb-body"></tbody>
-  </table>
+  <!-- RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design
+       du lavede") — kort-liste (.bly-rowcard-list) i stedet for <table>, se
+       kbRender() i scriptet. -->
+  <div class="bly-rowcard-list" id="kb-body"></div>
 </section>
 
 <!-- Book/opret kundebesøg MED medarbejder+dato med det samme (til forskel fra
@@ -14157,6 +14208,9 @@ function kbRender(){
   }
   rows.sort(function(a,b){return String(a.start_date||'').localeCompare(String(b.start_date||''))||String(a.start_time||'').localeCompare(String(b.start_time||''));});
   document.getElementById('kb-count').textContent=rows.length?rows.length+' kundebesøg':'';
+  // RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design du
+  // lavede") — .bly-rowcard i stedet for <tr>/<td>, samme kort-liste-stil som
+  // Bankafstemning/Omsætning pr. fag.
   document.getElementById('kb-body').innerHTML=rows.length?rows.map(function(v){
     var dateLabel=v.start_date?fmtDaDate(v.start_date)+(v.start_time?' · '+v.start_time:''):(v._unbooked?'Ikke planlagt':'');
     var addrPhone=[v.job_address,v.customer_phone].filter(Boolean).join(' · ')||'—';
@@ -14169,14 +14223,18 @@ function kbRender(){
     } else {
       actionHtml='<button type="button" class="qz-icon-btn" data-kb-done="'+v.id+'" title="Markér som færdig">✅ Færdig</button>';
     }
-    return '<tr>'
-      +'<td>'+esc(dateLabel)+'</td>'
-      +'<td>'+esc(v.job_name||v.customer_name||'(uden navn)')+(v.visit_notes?'<div class="sub" style="font-size:11px;margin-top:2px">'+esc(v.visit_notes)+'</div>':'')+'</td>'
-      +'<td>'+esc(addrPhone)+'</td>'
-      +'<td>'+empHtml+'</td>'
-      +'<td>'+actionHtml+'</td>'
-      +'</tr>';
-  }).join(''):'<tr><td colspan="5" class="sub" style="text-align:center;padding:24px">Ingen kundebesøg i denne kategori</td></tr>';
+    return '<div class="bly-rowcard">'+
+      '<div class="bly-rowcard-top">'+
+        '<div class="bly-rowcard-name">'+esc(v.job_name||v.customer_name||'(uden navn)')+'</div>'+
+        '<div class="bly-rowcard-value">'+esc(dateLabel)+'</div>'+
+      '</div>'+
+      (v.visit_notes?'<div class="sub" style="font-size:11px;margin-top:4px">'+esc(v.visit_notes)+'</div>':'')+
+      '<div class="bly-rowcard-bottom">'+
+        '<span>'+esc(addrPhone)+'</span>'+
+        '<div class="bly-rowcard-controls">'+empHtml+actionHtml+'</div>'+
+      '</div>'+
+    '</div>';
+  }).join(''):'<div class="bly-rowcard-empty">Ingen kundebesøg i denne kategori</div>';
 }
 async function kbMarkDone(bookingId){
   var r=await api('/api/assignments/'+bookingId+'/complete',{method:'PUT',body:JSON.stringify({completed:true})});
@@ -18420,6 +18478,13 @@ document.getElementById('finance-email-report-btn').onclick=async function(){
 
 var finFagFilter={};
 var finRevenueExpanded={};
+// RUNDE BQ (Martin: "lav alt dette så det er breakdown kun hvis jeg ønsker det
+// åben er det åbent") — fag-fordelingen/status-subtotalerne/Total-linjen på et
+// MÅNEDSKORT (samme blokke der nu er fjernet helt fra Poolen, se RUNDE BP) er
+// som udgangspunkt FOLDET SAMMEN; samme in-memory-mønster (nulstilles ved
+// genindlæsning, ikke localStorage) som finRevenueExpanded ovenfor bruger til
+// sagslisten — de to styrer hver sin, uafhængige del af kortet.
+var finBreakdownExpanded={};
 var finRevenueDateFrom=null,finRevenueDateTo=null,finRevenueStatusFilter='all';
 var finJobSearch={},finJobSearchFocus=null;
 // RUNDE H #317 (Martins ønske: "Skal den kunne collaps alle faktura på listen og alle
@@ -18752,6 +18817,28 @@ function renderFinRevenue(){
       // finFinanceDragWiring.
       var draggableRow=!!(j.jobId&&!j.manual&&!j.split);
       var dragAttrs=draggableRow?(' draggable="true" data-fin-drag-jobid="'+esc(j.jobId)+'" data-fin-drag-from="'+mk+'"'):'';
+      // RUNDE BQ (Martin: "se i opgave pool ved hver opgave hvordan alle de her
+      // knapper er opstillet helt subjekt og grimt ... du kan fjerne dette med
+      // farverne da det ikke er relavant her") — to rettelser:
+      // 1) Status-prikkerne (fin-status-dots, "farverne") giver ikke mening i
+      //    Poolen — en sag der slet ikke er placeret i en måned endnu har jo
+      //    ingen reel "færdig/faktureret/kørende"-status at markere. Skjules
+      //    derfor helt for Pool-rækker.
+      // 2) Kontrol-rækken var ÉN lang flex-wrap-liste (status-prikker + flyt +
+      //    fag + 🔗 + ✂ Opdel + ✏ + 🗑), som i den smalle Pool-sidebar (360px,
+      //    se #fin-pool-col) brækkede usymmetrisk over flere linjer. Delt op i
+      //    to faste rækker i stedet: "→ træk ind i..."-dropdownen for sig selv
+      //    øverst (den vigtigste handling, fortjener fuld bredde), og resten
+      //    (fag, ikoner) samlet i en pæn, ensartet linje nedenunder.
+      var statusDotsHtml=isPool?'':'<span class="fin-status-dots">'+dots+'</span>';
+      var iconRow=typeSelect+jtBtn+splitBtn+
+        // Et opdelt beløb har ikke ÉT enkelt tal/én enkelt plads at
+        // rette/udelukke mere — det styres udelukkende via "✂ Opdelt"-
+        // knappen ovenfor (se splitBtn), ellers ville ✏/🗑 her stille
+        // ikke gøre noget (backenden ignorerer finance_job_overrides for
+        // en opdelt sag, se fetchFinanceJobsByMonth i server.js).
+        (j.split?'':'<button class="fin-edit-btn fin-job-edit-btn" '+editAttrs+' title="Ret beløb">✏</button>'+
+        '<button class="fin-edit-btn fin-job-del-btn" '+editAttrs+' title="'+(j.manual?'Slet linjen':'Udeluk fra beregningen')+'" style="color:#B91C1C">🗑</button>');
       return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'"'+dragAttrs+' '+(stMeta?'style="background:'+stMeta.bg+'"':'')+'>'+
         '<div class="om-row-top" style="align-items:flex-start;gap:8px">'+checkbox+
           '<div class="om-row-name" style="flex:1"><b>'+esc(j.name)+'</b>'+badges+'</div>'+
@@ -18760,15 +18847,8 @@ function renderFinRevenue(){
         '<div class="om-row-bottom">'+
           '<div class="fin-muted">'+esc(j.fag)+(j.startDate?' · '+esc(j.startDate):'')+'</div>'+
           '<div class="om-row-controls">'+
-            '<span class="fin-status-dots">'+dots+'</span>'+
-            moveBtn+typeSelect+jtBtn+splitBtn+
-            // Et opdelt beløb har ikke ÉT enkelt tal/én enkelt plads at
-            // rette/udelukke mere — det styres udelukkende via "✂ Opdelt"-
-            // knappen ovenfor (se splitBtn), ellers ville ✏/🗑 her stille
-            // ikke gøre noget (backenden ignorerer finance_job_overrides for
-            // en opdelt sag, se fetchFinanceJobsByMonth i server.js).
-            (j.split?'':'<button class="fin-edit-btn fin-job-edit-btn" '+editAttrs+' title="Ret beløb">✏</button>'+
-            '<button class="fin-edit-btn fin-job-del-btn" '+editAttrs+' title="'+(j.manual?'Slet linjen':'Udeluk fra beregningen')+'" style="color:#B91C1C">🗑</button>')+
+            (moveBtn?'<div class="om-row-controls-primary">'+moveBtn+'</div>':'')+
+            '<div class="om-row-controls-icons">'+statusDotsHtml+iconRow+'</div>'+
           '</div>'+
         '</div></div>';
     }
@@ -18862,11 +18942,19 @@ function renderFinRevenue(){
     // kørende) er omsætnings-ANALYSE, ikke noget der hører til i Poolen — den
     // skal bare være en ren, hurtig liste af opgaver man trækker ud, uden
     // analyse-støj. Vises derfor KUN for rigtige måneder, aldrig for Poolen.
-    var bodyHtml=(isPool&&poolCollapsed)?'':('<div class="fin-month-body">'+
-      (isPool?'':('<div class="fin-fagbar-list">'+fagBars+'</div>'+
+    // RUNDE BQ — breakdown'en (fag-bjælker + status-subtotaler + Total-linjen)
+    // er som udgangspunkt foldet sammen, med kun en lille "📊 Vis fordeling"-
+    // knap synlig, der folder den ud på klik — se finBreakdownExpanded ovenfor.
+    var breakdownExpanded=!!finBreakdownExpanded[mk];
+    var breakdownHtml=isPool?'':(
+      '<button class="fin-add-btn" data-action="fin-breakdown-toggle" data-month="'+mk+'" style="width:100%;text-align:left">'+(breakdownExpanded?'▾':'▸')+' 📊 '+(breakdownExpanded?'Skjul':'Vis')+' fordeling pr. fag</button>'+
+      (breakdownExpanded?('<div class="fin-fagbar-list" style="margin-top:8px">'+fagBars+'</div>'+
         (statusBreakdown?'<div class="fin-status-totals">'+statusBreakdown+'</div>':'')+
-        '<div class="fin-fagbar-total"><span>Total</span><span>'+m.jobs.length+' sager · '+krFmt(m.total)+'</span></div>'+
-        '<button class="fin-add-btn" data-action="fin-add-manual-revenue" data-month="'+mk+'" style="width:100%;margin-top:6px">+ Tilføj sag manuelt</button>'))+
+        '<div class="fin-fagbar-total"><span>Total</span><span>'+m.jobs.length+' sager · '+krFmt(m.total)+'</span></div>'):'')
+    );
+    var bodyHtml=(isPool&&poolCollapsed)?'':('<div class="fin-month-body">'+
+      breakdownHtml+
+      (isPool?'':'<button class="fin-add-btn" data-action="fin-add-manual-revenue" data-month="'+mk+'" style="width:100%;margin-top:6px">+ Tilføj sag manuelt</button>')+
       '<div style="margin-top:12px">'+jobsSection+'</div></div>');
     return '<div class="fin-month-card'+(isPool?' fin-pool-card':'')+'" data-findrop="'+mk+'">'+headHtml+bodyHtml+'</div>';
   }
@@ -19124,6 +19212,17 @@ function renderFinRevenue(){
   el.querySelectorAll('[data-action="fin-pool-collapse-toggle"]').forEach(function(head){
     head.addEventListener('click',function(){
       finSetPoolCollapsed(!finPoolCollapsed());
+      renderFinRevenue();
+    });
+  });
+  // RUNDE BQ (Martin: "lav alt dette så det er breakdown kun hvis jeg ønsker det
+  // åben er det åbent") — klik på "Vis fordeling pr. fag" folder fag/status-
+  // breakdown ud for den enkelte måned, uafhængigt af de andre måneder.
+  el.querySelectorAll('[data-action="fin-breakdown-toggle"]').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var mk=btn.dataset.month;
+      finBreakdownExpanded[mk]=!finBreakdownExpanded[mk];
       renderFinRevenue();
     });
   });
@@ -24418,22 +24517,27 @@ function renderQzProducts(){
   document.getElementById('qz-product-filter-reset-btn').style.display=anyFilterActive?'':'none';
   var body=document.getElementById('qz-products-body');
   var anyActive=anyFilterActive||(document.getElementById('qz-product-search').value||'').trim();
-  if(!list.length){body.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--bly-sub);padding:24px">'+(anyActive?'Ingen produkter fundet':'Ingen produkter endnu — opret det første')+'</td></tr>';qzUpdateProductBulkBar();return;}
+  if(!list.length){body.innerHTML='<div class="bly-rowcard-empty">'+(anyActive?'Ingen produkter fundet':'Ingen produkter endnu — opret det første')+'</div>';qzUpdateProductBulkBar();return;}
+  // RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design du
+  // lavede") — .bly-rowcard i stedet for <tr>/<td>, samme kort-liste-stil som
+  // Bankafstemning/Omsætning pr. fag.
   body.innerHTML=list.map(function(p){
     var cost=Number(p.cost_price),sell=Number(p.sell_price);
     var pct=qzMarginPct(cost,sell);
     var checked=qzProductSelection.has(p.id);
-    return '<tr>'
-      +'<td><input type="checkbox" class="qz-product-row-check" data-pid="'+p.id+'"'+(checked?' checked':'')+'></td>'
-      +'<td>'+esc(p.name)+'</td>'
-      +'<td>'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+'</td>'
-      +'<td>'+esc(p.category||'–')+'</td>'
-      +'<td>'+esc(p.unit||'stk')+'</td>'
-      +'<td class="num">'+krFmt(cost)+'</td>'
-      +'<td class="num">'+krFmt(sell)+'</td>'
-      +'<td class="num"><span class="qz-margin '+qzMarginClass(pct)+'">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span></td>'
-      +'<td><div class="qz-row-actions"><button class="qz-icon-btn" onclick="openProductModal('+p.id+')" title="Redigér">✎</button></div></td>'
-      +'</tr>';
+    return '<div class="bly-rowcard">'
+      +'<div class="bly-rowcard-top">'
+      +'<div class="bly-rowcard-name" style="gap:8px">'
+      +'<input type="checkbox" class="qz-product-row-check" data-pid="'+p.id+'"'+(checked?' checked':'')+'>'
+      +esc(p.name)
+      +'</div>'
+      +'<div class="bly-rowcard-value"><span class="qz-margin '+qzMarginClass(pct)+'">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span> margin</div>'
+      +'</div>'
+      +'<div class="bly-rowcard-bottom">'
+      +'<span>'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+' · '+esc(p.category||'ingen kategori')+' · '+esc(p.unit||'stk')+' · cost '+krFmt(cost)+' · salg '+krFmt(sell)+'</span>'
+      +'<div class="bly-rowcard-controls"><button class="qz-icon-btn" onclick="openProductModal('+p.id+')" title="Redigér">✎</button></div>'
+      +'</div>'
+      +'</div>';
   }).join('');
   var allBtn=document.getElementById('qz-products-select-all');
   var selectedVisible=list.filter(function(p){return qzProductSelection.has(p.id);}).length;
@@ -28082,16 +28186,28 @@ function cptRender(){
     // datoen bagefter, uanset om opgaven står som færdig eller ej, så en
     // fejlagtig "færdig"-markering kan rettes helt: untryk, og sæt en ny dato.
     var overdue=!t.done&&t.due_date&&t.due_date<iso(new Date());
-    return '<tr class="'+(t.done?'done':'')+'" style="'+(t.done?'opacity:.55':'')+'">'
-      +'<td><input type="checkbox" data-task-id="'+t.id+'" data-action="cpt-toggle"'+(t.done?' checked':'')+'></td>'
-      +'<td>'+(t.priority?'⚡':'')+'</td>'
-      +'<td style="'+(t.done?'text-decoration:line-through':'')+'">'+esc(t.title)+'</td>'
-      +'<td><a href="#crmp-detail/'+t.entity_type+'/'+t.entity_id+'" onclick="openCrmpDetail(\''+t.entity_type+'\','+t.entity_id+');return false;">'+esc(t.entity_name||'(slettet)')+'</a></td>'
-      +'<td><select class="select" style="width:100%" data-task-id="'+t.id+'" data-action="cpt-assignee">'+assigneeOptions+'</select></td>'
-      +'<td><input type="date" class="input cpt-date-input'+(overdue?' overdue':'')+'" style="width:100%;padding:6px 7px;font-size:11.5px" data-task-id="'+t.id+'" data-action="cpt-due-date" value="'+(t.due_date||'')+'">'+(t.due_time?'<div class="sub" style="font-size:10px;margin-top:2px;white-space:nowrap">'+esc(t.due_time)+'</div>':'')+'</td>'
-      +'<td><button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="cpt-delete" title="Slet">🗑</button></td>'
-      +'</tr>';
-  }).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen opfølgninger fundet</td></tr>';
+    // RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design
+    // du lavede") — .bly-rowcard i stedet for <tr>/<td>, samme data-action-
+    // attributter bevaret så delegeringen nedenfor virker uændret.
+    return '<div class="bly-rowcard" style="'+(t.done?'opacity:.55':'')+'">'
+      +'<div class="bly-rowcard-top">'
+      +'<div class="bly-rowcard-name" style="gap:8px">'
+      +'<input type="checkbox" data-task-id="'+t.id+'" data-action="cpt-toggle"'+(t.done?' checked':'')+'>'
+      +(t.priority?'<span title="Høj prioritet">⚡</span>':'')
+      +'<span style="'+(t.done?'text-decoration:line-through':'')+'">'+esc(t.title)+'</span>'
+      +'</div>'
+      +'<button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="cpt-delete" title="Slet">🗑</button>'
+      +'</div>'
+      +'<div class="bly-rowcard-bottom">'
+      +'<a href="#crmp-detail/'+t.entity_type+'/'+t.entity_id+'" onclick="openCrmpDetail(\''+t.entity_type+'\','+t.entity_id+');return false;">'+esc(t.entity_name||'(slettet)')+'</a>'
+      +'<div class="bly-rowcard-controls">'
+      +'<select class="select" style="width:170px" data-task-id="'+t.id+'" data-action="cpt-assignee">'+assigneeOptions+'</select>'
+      +'<input type="date" class="input cpt-date-input'+(overdue?' overdue':'')+'" style="width:130px;padding:6px 7px;font-size:11.5px" data-task-id="'+t.id+'" data-action="cpt-due-date" value="'+(t.due_date||'')+'">'
+      +(t.due_time?'<span class="sub" style="font-size:10px;white-space:nowrap">'+esc(t.due_time)+'</span>':'')
+      +'</div>'
+      +'</div>'
+      +'</div>';
+  }).join(''):'<div class="bly-rowcard-empty">Ingen opfølgninger fundet</div>';
   document.querySelectorAll('[data-action="cpt-toggle"]').forEach(function(cb){
     cb.addEventListener('change',async function(){await api('/api/crm/tasks/'+cb.dataset.taskId,{method:'PUT',body:JSON.stringify({done:cb.checked})});cptLoad();});
   });
@@ -31189,18 +31305,24 @@ function renderQzTemplates(){
   // RUNDE W — samme søge-fejlrettelse som tilbud/fakturaer/produkter (se qzSearchHit).
   var list=qzTemplates.filter(function(t){return qzSearchHit(q,[t.name]);});
   var body=document.getElementById('qz-templates-body');
-  if(!list.length){body.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--bly-sub);padding:24px">'+(q?'Ingen skabeloner fundet':'Ingen skabeloner endnu — byg en herunder, eller gem et tilbud som skabelon')+'</td></tr>';return;}
+  if(!list.length){body.innerHTML='<div class="bly-rowcard-empty">'+(q?'Ingen skabeloner fundet':'Ingen skabeloner endnu — byg en herunder, eller gem et tilbud som skabelon')+'</div>';return;}
+  // RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design du
+  // lavede") — .bly-rowcard i stedet for <tr>/<td>.
   body.innerHTML=list.map(function(t){
-    return '<tr>'
-      +'<td>'+esc(t.name)+'</td>'
-      +'<td>'+esc(t.description||'–')+'</td>'
-      +'<td class="num">'+((t.lines||[]).length)+'</td>'
-      +'<td><div class="qz-row-actions">'
+    return '<div class="bly-rowcard">'
+      +'<div class="bly-rowcard-top">'
+      +'<div class="bly-rowcard-name">'+esc(t.name)+'</div>'
+      +'<div class="bly-rowcard-value">'+((t.lines||[]).length)+' linjer</div>'
+      +'</div>'
+      +'<div class="bly-rowcard-bottom">'
+      +'<span>'+esc(t.description||'Ingen beskrivelse')+'</span>'
+      +'<div class="bly-rowcard-controls">'
       +'<button class="qz-icon-btn" onclick="useTemplateForNewQuote('+t.id+')" title="Brug i nyt tilbud">➜</button>'
       +'<button class="qz-icon-btn" onclick="openTemplateModal('+t.id+')" title="Redigér">✎</button>'
       +'<button class="qz-icon-btn" onclick="deleteQzTemplate('+t.id+')" title="Slet">🗑</button>'
-      +'</div></td>'
-      +'</tr>';
+      +'</div>'
+      +'</div>'
+      +'</div>';
   }).join('');
 }
 function openTemplateModal(id){
