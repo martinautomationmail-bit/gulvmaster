@@ -28860,7 +28860,13 @@ async function saveCrmCustomer(){
     // i server.js.
     if(!phone&&!email){toast('Angiv telefon eller email — ellers kan det automatiske lead/opportunity ikke kobles til kunden','⚠️');flashFieldError('crmc-phone');return;}
   }
-  var body={name:name,phone:phone,email:email,address:address,notes:document.getElementById('crmc-notes').value.trim()||null,is_company:isCompany,cvr:isCompany?(document.getElementById('crmc-cvr').value.trim()||null):null};
+  // RUNDE BS (Martin, skærmbillede af "Louis Vincent": "oprettede lige en kunde
+  // og se noten kom ind men ikke begge steder") — noteVal gemmes её ÉN gang,
+  // så vi kan bruge den igen nedenfor til at spejle noten ind i det nyoprettede
+  // lead/opportunitys AKTIVITET-tidslinje (se kommentaren ved mirror-kaldet
+  // nedenfor for selve root cause-forklaringen).
+  var noteVal=document.getElementById('crmc-notes').value.trim()||null;
+  var body={name:name,phone:phone,email:email,address:address,notes:noteVal,is_company:isCompany,cvr:isCompany?(document.getElementById('crmc-cvr').value.trim()||null):null};
   var r=crmEditingId?await api('/api/crm/customers/'+crmEditingId,{method:'PUT',body:JSON.stringify(body)}):await api('/api/crm/customers',{method:'POST',body:JSON.stringify(body)});
   if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke gemme kunden','❌');return;}
   // Ny kunde: opret automatisk et lead ELLER en opportunity (efter hvilken pipeline
@@ -28893,6 +28899,26 @@ async function saveCrmCustomer(){
       if(lr&&lr.ok){createdEntityId=lr.id;createdEntityType='lead';}
       else toast('Kunden blev oprettet, men leadet kunne ikke oprettes: '+((lr&&lr.error)||'ukendt fejl'),'⚠️');
     }
+  }
+  // RUNDE BS (Martin, skærmbillede af "Louis Vincent": "oprettede lige en kunde
+  // og se noten kom ind men ikke begge steder") — root cause: denne modals note
+  // (crmc-notes/noteVal) bliver IKKE sendt med i leadBody/oppBody ovenfor (de har
+  // slet ingen note-felt), så den rammer kun customer_notes via POST .../customers
+  // (RUNDE BE, se server.js) — aldrig det nye lead/opportunitys egen AKTIVITET-
+  // tidslinje. Samme bug-klasse som RUNDE BR (POST /api/crm/leads' egen note-
+  // parameter), men her er fejlen at noten slet ikke blev sendt videre til
+  // lead/opportunity-oprettelsen. I stedet for at sende den med (hvilket ville
+  // duplikere den i customer_notes — den note findes jo allerede der) spejles
+  // den nu samme vej som RUNDE CR's crmpxAddCustomerNote: et ekstra kald til
+  // det rene note-endpoint (logger KUN i crm_activities, rører ikke customer_
+  // notes), lige efter lead/opportunity er oprettet. Fejler spejlingen stille —
+  // kunden/leadet/noten i Noter-fanen er allerede gemt korrekt, kun den ekstra
+  // synlighed i Aktivitet går tabt.
+  if(createdEntityId&&noteVal){
+    try{
+      var bsEndpoint=(createdEntityType==='lead'?'/api/crm/leads/':'/api/crm/opportunities/')+createdEntityId+'/notes';
+      await api(bsEndpoint,{method:'POST',body:JSON.stringify({body:noteVal})});
+    }catch(e){/* se kommentaren ovenfor — ikke kritisk */}
   }
   // RUNDE K (fortsat, sep. 2026, Martins ønske) — klikbar bekræftelse ind på det
   // lige oprettede lead/opportunity, samme mønster som crmpCreateNewItem(). Kun
