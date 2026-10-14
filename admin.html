@@ -627,10 +627,24 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 @media(max-width:860px){#fin-revenue-months{grid-template-columns:1fr}}
 #page-finance #fintab-omsaetning .fin-month-card{background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,23,42,.04);overflow:visible;padding:20px;margin-bottom:0}
 #page-finance #fintab-omsaetning .fin-month-card:last-child{margin-bottom:0}
-/* RUNDE BL — Poolen (uplacerede tilbud) spænder over begge kolonner som en bred bjælke
-   øverst, i stedet for at konkurrere om plads i én enkelt grid-celle ved siden af en
-   tilfældig måned — det er trods alt der Martin starter hver gang han skal placere nyt. */
-#page-finance #fintab-omsaetning .fin-pool-card{grid-column:1/-1;border:1.5px solid #6366F1}
+/* RUNDE BM (Martin: "Opgave poolen skal laves i siden ... ligesom i
+   Dagligplanlægning ... skal kunne kollaps opgavepoolen") — Poolen er nu en rigtig
+   sticky venstre sidebar-kolonne (#fin-pool-col i HTML'en), ikke en bred bjælke eller
+   en grid-celle blandt månederne. */
+#page-finance #fintab-omsaetning .fin-pool-card{border:1.5px solid #6366F1;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+@media(max-width:1100px){
+  #fin-revenue-layout{flex-direction:column}
+  #fin-pool-col{width:100%!important}
+  #page-finance #fintab-omsaetning .fin-pool-card{position:static;max-height:none}
+}
+/* RUNDE BM — ægte HTML5-træk/slip (samme visuelle sprog som Dagligplanlægnings
+   draggable-task/dragging/over-klasser), scopet til Omsætning pr. fag alene (se
+   finFinanceDragWiring) i stedet for at genbruge planlæggerens globale drag-system, som
+   er tæt koblet til dag/uge-celler og ikke månedsbaserede sager. */
+#page-finance #fintab-omsaetning .fin-job-row[draggable="true"]{cursor:grab}
+#page-finance #fintab-omsaetning .fin-job-row[draggable="true"]:active{cursor:grabbing}
+#page-finance #fintab-omsaetning .fin-job-row.fin-dragging{opacity:.4}
+#page-finance #fintab-omsaetning .fin-month-card.fin-drop-over{outline:2px dashed #6366F1;outline-offset:-2px;background:#EEF2FF}
 #page-finance #fintab-omsaetning .fin-month-head{background:none;padding:0 0 14px;border-bottom:1.5px solid var(--bly-border-soft);text-align:left;display:flex;align-items:center;justify-content:space-between;border-radius:0;margin-bottom:16px}
 #page-finance #fintab-omsaetning .fin-month-head-current{background:none}
 #page-finance #fintab-omsaetning .fin-month-name{font-size:19px;font-weight:800;color:var(--bly-ink)}
@@ -5149,7 +5163,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <option value="unmarked">Kun umarkerede</option>
       </select>
     </div>
-    <div id="fin-revenue-months"></div>
+    <!-- RUNDE BM (Martin: "Opgave poolen skal laves i siden ... ligesom i
+         Dagligplanlægning") — Poolen flyttet fra en bred bjælke øverst til en
+         rigtig venstre sidebar-kolonne (sticky), adskilt fra månedsgitteret, se
+         #fin-revenue-layout/#fin-pool-col CSS'en. -->
+    <div id="fin-revenue-layout" style="display:flex;gap:24px;align-items:flex-start">
+      <div id="fin-pool-col" style="width:360px;flex-shrink:0"></div>
+      <div id="fin-revenue-months" style="flex:1;min-width:0"></div>
+    </div>
    </div>
   </div>
 
@@ -18540,6 +18561,15 @@ document.getElementById('fin-split-save-btn').addEventListener('click',async fun
   if(r&&r.ok){toast('Opdeling gemt ✓','✓');closeModal('fin-split-modal');await loadFinance();}
   else if(r)toast(r.error||'Fejl','❌');
 });
+// RUNDE BM (Martin: "skal kunne kollaps opgavepoolen") — samme localStorage-mønster
+// som pbGroupCollapsed/pbSetGroupCollapsed i Privat budget, men kun én tilstand (der
+// er jo kun én Pool), ikke en pr-id ordbog.
+function finPoolCollapsed(){
+  try{return localStorage.getItem('gm_fin_pool_collapsed')==='1';}catch(e){return false;}
+}
+function finSetPoolCollapsed(collapsed){
+  try{localStorage.setItem('gm_fin_pool_collapsed',collapsed?'1':'0');}catch(e){}
+}
 function renderFinRevenue(){
   renderFinRevenueKpis();
   // RUNDE BL — holder flueben-dropdown'en synkroniseret med finRevenueVisibleMonths
@@ -18684,7 +18714,14 @@ function renderFinRevenue(){
       var badges=reasonBadge+splitBadge+poolSuggestBadge+(j.hasOverride?'<span class="fin-badge ok">rettet</span>':'')+(j.manual?'<span class="fin-badge ok">manuel</span>':'')+(j.monthMoved?'<span class="fin-badge" title="Flyttet fra '+esc(j.naturalMonth)+'">flyttet</span>':'')+(j.priceMismatch?'<span class="fin-badge" style="background:#FEF3C7;color:#92400E" title="Godkendt tilbud og faktura afviger mere end 15% — tjek om der blev lavet mere/mindre end aftalt">⚠ tilbud ≠ faktura</span>':'')+(stMeta?'<span class="fin-badge" style="background:'+stMeta.color+';color:#fff">'+stMeta.label+'</span>':'');
       var selForMonth=finJobSelected[mk]||{};
       var checkbox='<input type="checkbox" class="fin-job-select-cb" data-month="'+mk+'" data-jobid="'+esc(j.jobId)+'" style="width:15px;height:15px;margin-top:2px;flex-shrink:0;cursor:pointer" '+(selForMonth[j.jobId]?'checked':'')+'>';
-      return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'" '+(stMeta?'style="background:'+stMeta.bg+'"':'')+'>'+
+      // RUNDE BM (Martin: "skal jeg kunne trække tilbuddet over ligesom i
+      // Dagligplanlægning ... trække den tilbage eller videre over til en anden måned
+      // hurtig hurtig") — samme sager der kan "→ flyt" (ikke manuelle, ikke opdelte) kan
+      // nu også trækkes med musen direkte mellem Poolen og månedskortene, se
+      // finFinanceDragWiring.
+      var draggableRow=!!(j.jobId&&!j.manual&&!j.split);
+      var dragAttrs=draggableRow?(' draggable="true" data-fin-drag-jobid="'+esc(j.jobId)+'" data-fin-drag-from="'+mk+'"'):'';
+      return '<div class="fin-job-row'+(stMeta?' fin-job-status-marked':'')+'"'+dragAttrs+' '+(stMeta?'style="background:'+stMeta.bg+'"':'')+'>'+
         '<div class="om-row-top" style="align-items:flex-start;gap:8px">'+checkbox+
           '<div class="om-row-name" style="flex:1"><b>'+esc(j.name)+'</b>'+badges+'</div>'+
           '<div class="om-row-amount">'+(j.value===null?'<span class="fin-badge">intet budget</span>':'<span'+(srcLbl?' title="'+srcLbl+'"':'')+'>'+krFmt(j.value)+'</span>')+'</div>'+
@@ -18757,12 +18794,17 @@ function renderFinRevenue(){
       (jobsHeader+jobSearchBox+bulkToolbar+'<div class="fin-card" style="padding-top:8px;margin-top:4px">'+(jobRows||(jobSearchQ?'<div class="fin-empty">Ingen sager matcher "'+esc(finJobSearch[mk])+'"</div>':'<div class="fin-empty">Ingen sager</div>'))+'</div>'+
         (activeFag?'':'<button class="fin-add-btn" data-action="fin-toggle-jobs" data-month="'+mk+'" style="width:100%">▲ Skjul sagerne igen</button>')):
       '<button class="fin-add-btn" data-action="fin-toggle-jobs" data-month="'+mk+'" style="width:100%">▾ Vis '+m.jobs.length+' sag'+(m.jobs.length===1?'':'er')+' i detaljer</button>';
+    // RUNDE BM (Martin: "skal kunne kollaps opgavepoolen") — Poolen kan foldes helt
+    // sammen til kun sin titellinje (med total/antal stadig synligt), state huskes i
+    // localStorage ligesom gruppe-kollaps i Privat budget (pbGroupCollapsed-mønsteret).
+    var poolCollapsed=isPool&&finPoolCollapsed();
     // RUNDE BL — Poolen får sit eget, visuelt distinkte hoved i stedet for en måneds-
     // titel (den er jo netop IKKE en måned, se finCardHtml-kommentaren ovenfor).
     var headHtml;
     if(isPool){
-      headHtml='<div class="fin-month-head" style="background:#EEF2FF;border-bottom:2px solid #6366F1">'+
-        '<div class="fin-month-name">📥 Pool — tilbud der venter på at blive trukket ind</div>'+
+      headHtml='<div class="fin-month-head" style="background:#EEF2FF;border-bottom:2px solid #6366F1;cursor:pointer" data-action="fin-pool-collapse-toggle" title="Fold Poolen sammen/ud">'+
+        '<div class="fin-month-name">'+(poolCollapsed?'▸':'▾')+' 📥 Pool — tilbud der venter på at blive trukket ind</div>'+
+        '<span class="fin-month-badge" style="background:#6366F1">'+m.jobs.length+' · '+krFmt(m.total)+'</span>'+
         '</div>';
     }else{
       var isCur=mk===thisMonthKey;
@@ -18776,14 +18818,24 @@ function renderFinRevenue(){
     }
     // RUNDE BL — "+ Tilføj sag manuelt" giver ikke mening i Poolen (en manuel linje
     // oprettes jo direkte i den måned den hører til, den venter aldrig på placering).
-    return '<div class="fin-month-card'+(isPool?' fin-pool-card':'')+'">'+headHtml+'<div class="fin-month-body">'+
+    // RUNDE BM — data-findrop="<mk>" gør hele kortet til en drop-zone for det nye,
+    // scopede træk/slip-system (se finFinanceDragWiring nedenfor) — "__pool__" er et
+    // lige så gyldigt drop-mål som en rigtig måned (trækker sagen tilbage i Poolen).
+    var bodyHtml=(isPool&&poolCollapsed)?'':('<div class="fin-month-body">'+
       '<div class="fin-fagbar-list">'+fagBars+'</div>'+
       (statusBreakdown?'<div class="fin-status-totals">'+statusBreakdown+'</div>':'')+
       '<div class="fin-fagbar-total"><span>Total</span><span>'+m.jobs.length+' sager · '+krFmt(m.total)+'</span></div>'+
       (isPool?'':'<button class="fin-add-btn" data-action="fin-add-manual-revenue" data-month="'+mk+'" style="width:100%;margin-top:6px">+ Tilføj sag manuelt</button>')+
-      '<div style="margin-top:12px">'+jobsSection+'</div></div></div>';
+      '<div style="margin-top:12px">'+jobsSection+'</div></div>');
+    return '<div class="fin-month-card'+(isPool?' fin-pool-card':'')+'" data-findrop="'+mk+'">'+headHtml+bodyHtml+'</div>';
   }
-  el.innerHTML=finCardHtml('__pool__')+months.map(finCardHtml).join('');
+  document.getElementById('fin-pool-col').innerHTML=finCardHtml('__pool__');
+  el.innerHTML=months.map(finCardHtml).join('');
+  // RUNDE BM — Poolen flyttede ud i sin egen #fin-pool-col-sidebar (se HTML-kommentaren
+  // ved #fin-revenue-layout), så ALT event-wiring herfra og ned skal dække BEGGE
+  // beholdere, ikke kun #fin-revenue-months — "el" peger derfor nu på den fælles
+  // forælder (#fin-revenue-layout) for resten af funktionen.
+  el=document.getElementById('fin-revenue-layout');
   // Genskab fokus + markørposition i søgefeltet efter gentegning — ellers ville man
   // miste fokus efter hvert eneste tastetryk (samme mønster som bank-quicksearch).
   if(finJobSearchFocus){
@@ -19024,6 +19076,85 @@ function renderFinRevenue(){
       api('/api/finance/manual-revenue',{method:'POST',body:JSON.stringify({month_key:btn.dataset.month,name:name.trim(),fag:fag.trim(),amount:amount.trim()})}).then(function(r){
         if(r&&r.ok){toast('Tilføjet ✓','✓');loadFinance();}else if(r)toast(r.error||'Fejl','❌');
       });
+    });
+  });
+  // RUNDE BM (Martin: "skal kunne kollaps opgavepoolen") — klik på Poolens hoved
+  // folder den sammen/ud, uafhængigt af den enkelte fag-gruppes kollaps inde i kortet.
+  el.querySelectorAll('[data-action="fin-pool-collapse-toggle"]').forEach(function(head){
+    head.addEventListener('click',function(){
+      finSetPoolCollapsed(!finPoolCollapsed());
+      renderFinRevenue();
+    });
+  });
+  // RUNDE BM (Martin: "skal kunne trække tilbuddet over ligesom i Dagligplanlægning
+  // ... trække den tilbage eller videre over til en anden måned hurtig hurtig") —
+  // scopet træk/slip for Omsætning pr. fag, se finFinanceDragWiring.
+  finFinanceDragWiring(el);
+}
+// RUNDE BM — selvstændigt, scopet HTML5-træk/slip-system til Omsætning pr. fag.
+// Bevidst IKKE det globale planlægger-drag-system (beginDrag/handleDrop/dragPayload) —
+// det er tæt koblet til dag/uge-celler (zone.dataset.userId/date, p.kind
+// 'task'/'template'/'booking') og månedskort/sags-semantik passer ikke ind i det uden
+// risiko for at ødelægge noget i den langt mere kritiske daglige planlægning. I stedet
+// genbruges kun det VISUELLE sprog (draggable, grab/grabbing-cursor, dæmpet kilde,
+// stiplet ramme om mål) via sine egne klasser (.fin-dragging/.fin-drop-over) og sin
+// egen payload-variabel (finDragPayload), se CSS-kommentaren ved .fin-job-row[draggable].
+var finDragPayload=null;
+function finFinanceDragWiring(el){
+  el.querySelectorAll('.fin-job-row[draggable="true"]').forEach(function(row){
+    row.addEventListener('dragstart',function(e){
+      finDragPayload={jobId:row.dataset.finDragJobid,fromMonth:row.dataset.finDragFrom};
+      row.classList.add('fin-dragging');
+      try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',row.dataset.finDragJobid);}catch(err){}
+    });
+    row.addEventListener('dragend',function(){
+      row.classList.remove('fin-dragging');
+      finDragPayload=null;
+    });
+  });
+  el.querySelectorAll('[data-findrop]').forEach(function(card){
+    card.addEventListener('dragover',function(e){
+      if(!finDragPayload)return;
+      e.preventDefault();
+      if(card.dataset.findrop!==finDragPayload.fromMonth)card.classList.add('fin-drop-over');
+    });
+    card.addEventListener('dragleave',function(){
+      card.classList.remove('fin-drop-over');
+    });
+    card.addEventListener('drop',async function(e){
+      e.preventDefault();
+      card.classList.remove('fin-drop-over');
+      if(!finDragPayload)return;
+      var targetMk=card.dataset.findrop,jobId=finDragPayload.jobId,curMonth=finDragPayload.fromMonth;
+      finDragPayload=null;
+      if(!jobId||targetMk===curMonth)return;
+      if(targetMk==='__pool__'){
+        // Trækker en sag tilbage i Poolen — fjerner dens override (tom monthKey sletter
+        // rækken, se PUT /api/finance/job-month-override), og henter derefter poolens
+        // afledte felter (naturalMonth/placementReason) friskt med en fuld loadFinance(),
+        // i stedet for en lokal splice (de felter kender klienten ikke selv).
+        var r=await api('/api/finance/job-month-override/'+encodeURIComponent(jobId),{method:'PUT',body:JSON.stringify({monthKey:''})});
+        if(r&&r.ok){toast('Sag lagt tilbage i Poolen ✓','✓');await loadFinance();}
+        else if(r)toast(r.error||'Fejl','❌');
+        return;
+      }
+      // Målet er en rigtig måned — samme lokale splice/push som .fin-move-month-select
+      // (ingen fuld genindlæsning, så man ikke mister sin plads/åbne fag-filter).
+      var r2=await api('/api/finance/job-month-override/'+encodeURIComponent(jobId),{method:'PUT',body:JSON.stringify({monthKey:targetMk})});
+      if(r2&&r2.ok){
+        if(!finRevenue[targetMk])finRevenue[targetMk]={jobs:[]};
+        var srcJobs=finRevenue[curMonth]?finRevenue[curMonth].jobs:[];
+        var idx=srcJobs.findIndex(function(j){return j.jobId===jobId;});
+        if(idx>-1){
+          var job=srcJobs.splice(idx,1)[0];
+          job.monthMoved=true;
+          job.naturalMonth=job.naturalMonth||curMonth;
+          job.pool=false;job.hasOverride=job.hasOverride||false;
+          finRevenue[targetMk].jobs.push(job);
+        }
+        toast(curMonth==='__pool__'?'Sag trukket ind ✓':'Sag flyttet ✓','✓');
+        renderFinRevenue();
+      }else if(r2)toast(r2.error||'Fejl','❌');
     });
   });
 }
