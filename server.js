@@ -13850,6 +13850,19 @@ app.post('/api/crm/leads', auth, panelAccess('crmp_leads'), asyncRoute(async (re
   const linked = await crmFindOrCreateContactAndCustomer(leadName, b.email || null, b.phone || null, b.address || null, b.note || null);
   await pool.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
   await crmLogActivity('lead', r.id, 'linked', (linked.customerCreated ? 'Ny kunde oprettet automatisk: ' : 'Koblet til eksisterende kunde: ') + leadName, req.user.id);
+  // RUNDE BR (Martin, Noter(1)-skærmbillede: "Look why is this note, Not seen
+  // in activity?") — crmFindOrCreateContactAndCustomer() ovenfor gemmer en
+  // note skrevet ved OPRETTELSEN af leadet KUN i customer_notes (Noter-fanen,
+  // følger kunden). Den blev ALDRIG spejlet ind i leadets egen aktivitets-
+  // tidslinje (crm_activities), så "AKTIVITET" på selve lead-kortet viste
+  // "Lead oprettet"/"Koblet til ..." men ikke selve noten — stik modsat
+  // RUNDE CR-spejlingen nedenfor (crmpxAddCustomerNote), som allerede gør
+  // præcis dette når noten tilføjes BAGEFTER via "Noter"-fanen i UI'et. Samme
+  // spejling indføres nu HER, ved selve oprettelsen, så en note indtastet i
+  // "+ Ny lead"-modalen fra dag ét ses begge steder, ikke kun i Noter.
+  if (b.note && String(b.note).trim()) {
+    await crmLogActivity('lead', r.id, 'note', String(b.note).trim(), req.user.id);
+  }
   // RUNDE S — seeder primær kanal på selve leadet ved oprettelse (undgår at
   // skulle vente på næste serverstarts bagudkompatibilitets-fyldning).
   if (b.phone) await upsertPrimaryContactChannel('lead', r.id, 'phone', b.phone);
