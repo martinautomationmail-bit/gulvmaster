@@ -4027,7 +4027,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.28.0 · 2026-10-15</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.29.1 · 2026-10-15</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -16080,6 +16080,13 @@ async function loadAutomationSettings(){
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.url_elementor)+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.url_elementor)+'" title="Kopiér">📋</button></div></div>'
       +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Facebook Ads</div>'
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.url_facebook)+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.url_facebook)+'" title="Kopiér">📋</button></div></div>'
+      // RUNDE CW (okt. 2026) — prisberegnerne på gulvmaster.dk (WordPress-pluginnet
+      // "Gulv Master – Konfiguratorer") sender leads hertil. I WordPress
+      // indsættes portal-adressen + nøglen nedenfor under Konfiguratorer →
+      // Integration → "Gulv Master portal".
+      +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Prisberegnere på gulvmaster.dk (WordPress) — portal-adresse</div>'
+      +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.portal_base||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.portal_base||'')+'" title="Kopiér">📋</button></div>'
+      +'<div style="font-size:11px;color:var(--bly-sub,#6B7280);margin-top:3px">Indsæt adressen og nøglen herunder i WordPress → Konfiguratorer → Integration → Gulv Master portal.</div></div>'
       +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Nøgle (X-Webhook-Secret)</div>'
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.secret||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.secret||'')+'" title="Kopiér">📋</button><button class="btn small" id="automation-webhook-regen">Generér ny nøgle</button></div></div>'
       // RUNDE BI (Martin: "kan se facebook og make begge har et link burde
@@ -25458,6 +25465,15 @@ function ccToggleAddForLead(kind){
 window.ccToggleAddForLead=ccToggleAddForLead;
 
 var cdCurrent=null,cdInitialized=false,cdNotes=[],cdQuotes=[];
+// RUNDE CY (Martin: "Handler under kundens side viser ikke handler mere men 2
+// Bokse Projekt type og sags nummer") — #cd-newopp-fields-row (Projekttype/
+// Lead Source/øvrige custom fields til "+ Ny handel", RUNDE BT) stod hidtil
+// altid synlig, lige under "🤝 Handler"-overskriften og FØR selve
+// Opportunities/Leads-tabellerne — hvilket så ud som om handel-listen var
+// erstattet af de felter. Styres nu af denne flag: skjult som udgangspunkt,
+// vises først når man trykker "+ Ny handel" (se cdNewOppBtnClick), og lukkes
+// igen efter en oprettelse eller ved skift mellem Salg/Lead.
+var cdNewOppFieldsOpen=false;
 function initCustomerDetailModule(){
   if(cdInitialized)return;
   cdInitialized=true;
@@ -25468,7 +25484,7 @@ function initCustomerDetailModule(){
   document.getElementById('cd-notes-list').addEventListener('click',cdNotesListClick);
   document.getElementById('cd-newopp-type').addEventListener('change',cdFillNewOppPipelines);
   document.getElementById('cd-newopp-pipeline').addEventListener('change',cdFillNewOppStages);
-  document.getElementById('cd-newopp-btn').addEventListener('click',cdCreateOpportunity);
+  document.getElementById('cd-newopp-btn').addEventListener('click',cdNewOppBtnClick);
   // RUNDE I (sep. 2026, Martins ønske): "+ Lav tilbud"/"+ Lav faktura" ved siden
   // af "+ Ny handel" — samme prefillCustomer-mønster som crmpx-quote-btn bruger
   // fra en opportunity, se cdOpenQuote/cdOpenDirectInvoice nedenfor.
@@ -25634,7 +25650,9 @@ function cdFillNewOppPipelines(){
   cdFillNewOppSource();
   cdFillNewOppProjektType();
   cdFillNewOppExtraFields();
-  document.getElementById('cd-newopp-fields-row').style.display=has?'':'none';
+  // RUNDE CY — se kommentaren ved cdNewOppFieldsOpen. Rækken vises kun når
+  // den er åbnet via "+ Ny handel" (og der findes en pipeline at vælge).
+  document.getElementById('cd-newopp-fields-row').style.display=(has&&cdNewOppFieldsOpen)?'':'none';
 }
 // Lead Source findes kun på leads (se samme begrundelse ved crmcFillSource) —
 // skjules helt ved Salg.
@@ -25682,6 +25700,19 @@ async function cdFillNewOppPickers(){
   await crmpEnsureCustomFieldDefsLoaded();
   cdFillNewOppPipelines();
 }
+// RUNDE CY — "+ Ny handel" var hidtil ét klik = direkte oprettelse (med
+// Projekttype/Sagsnummer m.fl. altid synlige ved siden af). Nu klik #1 åbner
+// kun felterne (så "Handler"-overskriften ellers altid følges direkte af selve
+// handel-listen), klik #2 (med knappen nu kaldet "✓ Opret handel") opretter.
+function cdNewOppBtnClick(){
+  if(!cdNewOppFieldsOpen){
+    cdNewOppFieldsOpen=true;
+    document.getElementById('cd-newopp-fields-row').style.display='';
+    document.getElementById('cd-newopp-btn').textContent='✓ Opret handel';
+    return;
+  }
+  cdCreateOpportunity();
+}
 async function cdCreateOpportunity(){
   if(!cdCurrent)return;
   var btn=document.getElementById('cd-newopp-btn');
@@ -25718,6 +25749,11 @@ async function cdCreateOpportunity(){
   await cdReloadOpportunities(cdCurrent.id);
   await cdReloadLeads(cdCurrent.id);
   crmpState.cards=[];
+  // RUNDE CY — luk felterne igen efter oprettelse, så siden er klar til næste
+  // gang (samme skjulte udgangspunkt som ved sideindlæsning).
+  cdNewOppFieldsOpen=false;
+  document.getElementById('cd-newopp-fields-row').style.display='none';
+  document.getElementById('cd-newopp-btn').textContent='+ Ny handel';
 }
 // Kun Opportunities-tabellen — bruges både ved opslag af kunden og efter at
 // der er oprettet en ny handel, så de to steder ikke kan tegne forskelligt.
@@ -26015,6 +26051,11 @@ async function openCustomerDetail(id){
   await cdReloadLeads(id);
 
   initCustomerDetailModule();
+  // RUNDE CY — hver gang man åbner en kundeside (eller en ANDEN kunde),
+  // starter "+ Ny handel"-felterne skjulte igen, uanset om de stod åbne på en
+  // tidligere kunde i samme session.
+  cdNewOppFieldsOpen=false;
+  document.getElementById('cd-newopp-btn').textContent='+ Ny handel';
   // "+ Ny handel"-pickerne fyldes hver gang kundesiden åbnes — pipelines kan
   // være hentet (eller ændret under ⚙️ Indstillinger) siden sidst, og siden kan
   // sagtens være den FØRSTE CRM-side man rammer i en session.
@@ -32030,6 +32071,12 @@ function qeCombineCrmNote(d){
 // bevares), og kun hvis noten ikke allerede er sat ind (undgår dubletter hvis
 // man linker/afkobler/linker samme lead flere gange, eller linker igen efter en
 // genindlæsning af tilbuddet).
+// RUNDE CX (Martin: "Noten fra kundens handel kommer nu ind under tilbuddet i
+// Note i toppen") — funktionen herunder kaldes IKKE længere nogen steder (se
+// openQuoteEditor() og qePickCrmLink()). Noten fra handlen/kunden vises nu
+// kun i den gule referenceboks (qeRenderCrmNotePanel), ikke kopieret ind i
+// selve "Note i toppen". Funktionen er bevaret uændret, hvis den skal
+// genbruges en anden dag.
 function qeApplyCrmNoteToTopNote(note){
   if(!note||!String(note).trim())return;
   note=String(note).trim();
@@ -32220,7 +32267,14 @@ async function openQuoteEditor(id,prefillCustomer){
       qeState.crmEntityId=prefillCustomer.crmEntityId||null;
       qeState.crmEntityName=prefillCustomer.crmEntityName||null;
       qeRenderCrmNotePanel(prefillCustomer.note,prefillCustomer.crmEntityType,prefillCustomer.crmEntityName);
-      qeApplyCrmNoteToTopNote(prefillCustomer.note);
+      // RUNDE CX (Martin: "Noten fra kundens handel kommer nu ind under
+      // tilbuddet i Note i toppen") — qeApplyCrmNoteToTopNote() (RUNDE V/BO)
+      // kopierede BEVIDST handlens/kundens note ind i selve "Note i toppen"
+      // (det kunden ser på PDF'en), ud over at vise den i den gule
+      // referenceboks herover. Martin vil nu IKKE have den kopieret ind i
+      // selve feltet længere — kun vises i referenceboksen. Kaldet er derfor
+      // fjernet her (og i qePickCrmLink nedenfor, samme flow for en manuel
+      // kobling efter tilbuddet er startet).
     }
   }
   qeRenderCrmLinkChip();
@@ -33060,12 +33114,9 @@ async function qePickCrmLink(x){
   var full=await api('/api/crm/'+(x.type==='lead'?'leads':'opportunities')+'/'+x.id);
   var combinedNote=full&&!full.error?qeCombineCrmNote(full):'';
   qeRenderCrmNotePanel(combinedNote,x.type,x.name);
-  // RUNDE BO (Martin: "noten laves manuelt ved Ny kunde ... kommer ikke med
-  // ind under når jeg skal lave tilbud") — en manuel kobling HERFRA (efter
-  // tilbuddet allerede er startet via "Tilknyt til lead/handel" — Martins
-  // faktiske scenarie i skærmbilledet) skal opføre sig som den dedikerede
-  // "📝 Lav tilbud"-knap, se qeApplyCrmNoteToTopNote.
-  qeApplyCrmNoteToTopNote(combinedNote);
+  // RUNDE CX — se kommentaren ved qeApplyCrmNoteToTopNote-kaldet i
+  // openQuoteEditor(). Noten vises nu KUN i referenceboksen ovenover, ikke
+  // længere kopieret ind i selve "Note i toppen"-feltet.
   // RUNDE S — en manuel kobling til et lead/en handel her (efter tilbuddet er
   // startet) skal også tilbyde skift-dropdowns for DEN kobling, ikke kun for
   // den evt. tidligere valgte kunde.
