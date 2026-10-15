@@ -1559,6 +1559,37 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_outbound_emails_resend_id ON outbound_emails(resend_email_id);
     CREATE INDEX IF NOT EXISTS idx_outbound_emails_kind_ref ON outbound_emails(kind, ref_id);
+    -- RUNDE CV, Martin (med skærmbillede af et andet program han bruger):
+    -- "Kan du ikke bygge som i dette program [...] hvor vi kan se hvor mange
+    -- mails der sendes fra programmet dagligt. da jeg jo kun har 100 gratis
+    -- [...] Det skal også inkludere alle Automations emails [...] Så jeg ved
+    -- når jeg rammer 100 [...] kan jeg købe flere mails" — Resends gratis-plan
+    -- er netop 100 mails/dag, derfor de "100" Martin refererer til.
+    --
+    -- BEVIDST en HELT SEPARAT, minimal tabel — IKKE en udvidelse af
+    -- outbound_emails ovenfor. outbound_emails har sin egen semantik (ÉT
+    -- "kind"-mærket tilbuds-/faktura-/CRM-event pr. forretningshændelse, brugt
+    -- til CRM-automationshistorik, Resend-webhook-leveringsstatus m.m.) og
+    -- udfyldes i dag kun fra ca. 6 af de ca. 30 steder i koden der kalder
+    -- sendMailUniversal() — bl.a. rykker-mails, den daglige status-mail,
+    -- kundebesøg-/foto-påmindelser og automatiserings-reglerne (se
+    -- notification_rules/runAutomationRule) logger IKKE dertil i dag. Havde
+    -- jeg tilføjet tælling der, ville "automations-mails" (som Martin
+    -- eksplicit bad om at få talt med) stadig mangle, og at rette alle ca. 30
+    -- kaldssteder til selv at logge er både unødvendigt arbejde og en fælde
+    -- for enhver NY mail-kode, der uundgåeligt ville glemme det samme.
+    --
+    -- I stedet logges ÉN række her for hvert FAKTISK gennemført kald til
+    -- sendMailUniversal() — selve funktionen, det ene sted ALT udgående mail
+    -- (manuel som automatisk) går igennem, se logMailSendForQuota() lige
+    -- under den. Det gør optællingen total og vedligeholdelsesfri: al
+    -- fremtidig mail-kode tælles automatisk med, uden at skulle vide det.
+    CREATE TABLE IF NOT EXISTS mail_send_log (
+      id SERIAL PRIMARY KEY,
+      provider TEXT,
+      sent_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_mail_send_log_sent_at ON mail_send_log(sent_at);
     -- Samme leverance-status, men på selve den arkiverede tilbuds-VERSION (så en
     -- konkret gensendt version kan vise sin egen status, ikke kun den seneste
     -- generelle linje i aktivitets-tidslinjen) — udfyldes af webhooken sammen
@@ -2055,10 +2086,6 @@ async function initSchema() {
     -- Delvist unikt index (WHERE close_id IS NOT NULL) fordi almindelige, manuelt
     -- oprettede leads/opportunities ikke har nogen close_id.
     ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS close_id TEXT;
-    -- external_ref: idempotens-nøgle for leads fra eksterne systemer (fx
-    -- prisberegnerne på gulvmaster.dk), se lead-intake-ruten.
-    ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS external_ref TEXT;
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_external_ref ON crm_leads(external_ref) WHERE external_ref IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_close_id ON crm_leads(close_id) WHERE close_id IS NOT NULL;
     ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS close_id TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_opportunities_close_id ON crm_opportunities(close_id) WHERE close_id IS NOT NULL;
@@ -5481,7 +5508,12 @@ app.get('/api/settings', asyncRoute(async (req, res) => {
     // uafhængig af tilbuddets (se getCompanyInfo).
     invoice_top_note_default: map.invoice_top_note_default || '',
     invoice_bottom_note_default: map.invoice_bottom_note_default || '',
-    default_tax_rate: map.default_tax_rate || '25'
+    default_tax_rate: map.default_tax_rate || '25',
+    // RUNDE CV — Martins daglige mail-kvote (se mail-badgen i headeren/GET
+    // /api/mail/quota-today). Default 100, fordi det er Resends gratis-plan,
+    // men redigerbar herfra, da Martin selv siger han evt. "kan købe flere
+    // mails" — så loftet skal kunne følge med op uden en ny deploy.
+    mail_daily_quota: map.mail_daily_quota || '100'
   });
 }));
 
@@ -5504,6 +5536,10 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
   if (body.invoice_top_note_default !== undefined) entries.push(['invoice_top_note_default', sanitizeRichText(String(body.invoice_top_note_default).slice(0, 2000))]);
   if (body.invoice_bottom_note_default !== undefined) entries.push(['invoice_bottom_note_default', sanitizeRichText(String(body.invoice_bottom_note_default).slice(0, 2000))]);
   if (body.default_tax_rate !== undefined) entries.push(['default_tax_rate', String(Number(body.default_tax_rate) || 25)]);
+  // RUNDE CV — se mail_daily_quota i GET /api/settings ovenfor. Mindst 1, for
+  // at undgå en nulstillet/ugyldig kvote der ville få badgen til evigt at
+  // vise "over grænsen".
+  if (body.mail_daily_quota !== undefined) entries.push(['mail_daily_quota', String(Math.max(1, Number(body.mail_daily_quota) || 100))]);
   // completion_email_subject/completion_email_body er flyttet til det samlede
   // Skabeloner-center (PUT /api/system-email-templates/completion) — se
   // leveringsnoten om konsolideringen. Kun selve PDF-vedhæftningen bor stadig her.
@@ -5520,6 +5556,25 @@ app.put('/api/settings', auth, adminOnly, asyncRoute(async (req, res) => {
     `, [key, value]);
   }
   res.json({ ok: true });
+}));
+
+// RUNDE CV, Martin: "kan du ikke bygge som i [et andet program] hvor vi kan
+// se hvor mange mails der sendes fra programmet dagligt [...] så jeg ved når
+// jeg rammer 100". Tæller fra mail_send_log (se CREATE TABLE-kommentaren og
+// logMailSendForQuota() ved sendMailUniversal) — IKKE outbound_emails, som
+// ikke dækker alle mail-afsendelser (se samme kommentar for hvorfor).
+// "I dag" regnes i dansk lokaltid (Europe/Copenhagen), ikke UTC som
+// sent_at/nowTextSQL() ellers er gemt i, så badgen nulstiller sig ved dansk
+// midnat — der hvor Martin selv ville forvente "en ny dag" begynder, ikke kl.
+// 02 om natten (UTC+2 om sommeren/+1 om vinteren).
+app.get('/api/mail/quota-today', auth, asyncRoute(async (req, res) => {
+  const row = await pgOne(`
+    SELECT COUNT(*)::int AS n FROM mail_send_log
+    WHERE (sent_at::timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Copenhagen')::date
+        = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Copenhagen')::date
+  `);
+  const limitRow = await pgOne("SELECT value FROM app_settings WHERE key='mail_daily_quota'");
+  res.json({ sentToday: (row && row.n) || 0, limit: Number(limitRow && limitRow.value) || 100 });
 }));
 
 app.get('/api/settings/completion-email', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -6214,6 +6269,16 @@ function inlineBase64ImagesAsCid(html) {
   });
   return { html: newHtml, attachments };
 }
+// RUNDE CV — se den store forklaring ved CREATE TABLE mail_send_log
+// ovenfor. Bevidst et try/catch der ALDRIG kaster videre: fejler selve
+// logningen (fx en midlertidig DB-hikke), må det aldrig vælte en mail der
+// rent faktisk blev sendt korrekt — det ville være værre end en lidt
+// unøjagtig tæller.
+async function logMailSendForQuota(provider) {
+  try {
+    await pool.query('INSERT INTO mail_send_log (provider) VALUES ($1)', [provider]);
+  } catch (e) { console.error('Kunne ikke logge mail-afsendelse til dagstælleren (mail_send_log):', e.message); }
+}
 async function sendMailUniversal({ to, cc, subject, text, html, attachments, from }) {
   const toList = mailAddrList(to);
   const ccList = mailAddrList(cc);
@@ -6249,11 +6314,17 @@ async function sendMailUniversal({ to, cc, subject, text, html, attachments, fro
     if (!response.ok) {
       throw new Error(`Resend HTTP ${response.status}: ${raw.slice(0, 400)}`);
     }
+    // RUNDE CV — logges KUN her, EFTER response.ok, dvs. kun når mailen rent
+    // faktisk blev accepteret af Resend (og dermed tæller mod Martins
+    // 100/dag-kvote) — ikke ved en fejlet afsendelse (den throw'er ovenfor,
+    // før denne linje nås).
+    await logMailSendForQuota('resend');
     return { provider: 'resend', resendEmailId: (data && data.id) || null };
   }
   const transport = getMailTransport();
   if (!transport) throw new Error('Hverken RESEND_API_KEY eller SMTP er sat op');
   await transport.sendMail({ from: from || process.env.SMTP_FROM || process.env.SMTP_USER, to: toList.join(','), ...(ccList.length ? { cc: ccList.join(',') } : {}), subject, text, html: finalHtml, attachments: allAttachments });
+  await logMailSendForQuota('smtp');
   return { provider: 'smtp', resendEmailId: null };
 }
 
@@ -12472,7 +12543,7 @@ app.post('/api/webhooks/resend', asyncRoute(async (req, res) => {
 //           Kun "name" er påkrævet — map Elementor/Facebook-felterne til disse
 //           navne i et "Set variable"/"Compose"-trin i Make FØR I sender videre.
 // ══════════════════════════════════════════════════════════════
-const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'facebook-ads': 'Facebook Ads', 'prisberegner': 'Prisberegner (gulvmaster.dk)' };
+const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'facebook-ads': 'Facebook Ads' };
 // RUNDE CP (Martin: "Lead source tilvælges ikke når leadet kommer ind fra
 // facebook og website?") — crm_leads.source (sat ovenfor til sourceLabel)
 // er en FRI tekstkolonne og er ikke det samme som den synlige "Lead
@@ -12488,39 +12559,7 @@ const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'face
 // lead-oprettelsen. Et ukendt/fremtidigt :source-navn springes stille over
 // her (kan ikke gætte en passende dropdown-værdi) — kun source-kolonnen
 // sættes stadig, ligesom før.
-const LEAD_WEBHOOK_SOURCE_FIELD_VALUES = { 'elementor': 'Website form', 'facebook-ads': 'Facebook/Instagram', 'prisberegner': 'Website form' };
-// NYT (okt. 2026, Martin: "gør så leads der skriver sig op bliver oprettet
-// direkte i dette program som et korrekt kunde og lead i leadpipeline") —
-// prisberegnerne på gulvmaster.dk (WordPress-pluginnet "Gulv Master –
-// Konfiguratorer", v1.0.5+) sender nu hvert lead hertil via samme
-// lead-intake-rute som Elementor/Facebook, med :source = 'prisberegner'.
-// To ekstra, valgfrie felter i body'en håndteres her:
-//   projekt_type — sættes på leadets "Projekt Type"-felt. Findes værdien
-//     ikke i forvejen som valgmulighed (fx "Tømrer"), tilføjes den til
-//     dropdownen, så den kan ses/vælges i UI'et.
-//   external_ref — fx "gmc-fpc-123-ab12cd34" (konfigurator + WordPress-id).
-//     Idempotens-nøgle: trykker man "Send igen" i WordPress, oprettes der
-//     IKKE et dublet-lead, men det eksisterende id returneres.
-// Begge læses BEVIDST med eksakt nøgle (ikke leadIntakeField), da dennes
-// løse delstrengs-fallback (RUNDE CT) ellers kunne få et kort, tilfældigt
-// felt fra Make/Elementor til at ligne en external_ref.
-function leadIntakeExactField(body, names) {
-  for (const key of names) {
-    const value = body && body[key];
-    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
-  }
-  return '';
-}
-async function leadIntakeResolveSelectOption(entityType, key, value) {
-  const v = String(value || '').trim();
-  if (!v) return null;
-  const cache = await closeLoadFieldOptionCache(entityType, key);
-  if (!cache) return null; // feltet findes ikke (slettet i CRM-indstillinger) — spring over
-  const hit = cache.list.find(o => o.toLowerCase() === v.toLowerCase());
-  if (hit) return hit;
-  await closeEnsureOption(cache, v);
-  return v;
-}
+const LEAD_WEBHOOK_SOURCE_FIELD_VALUES = { 'elementor': 'Website form', 'facebook-ads': 'Facebook/Instagram' };
 async function verifyLeadWebhookSecret(req) {
   const provided = req.headers['x-webhook-secret'] || req.query.token || '';
   if (!provided) return false;
@@ -12686,16 +12725,6 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
   b.address = leadIntakeField(b, ['address', 'Address', 'adresse', 'street_address', 'street']) || null;
   b.note = leadIntakeField(b, ['note', 'Note', 'besked', 'message', 'comments', 'kommentar']) || null;
   const sourceLabel = LEAD_WEBHOOK_SOURCE_LABELS[req.params.source] || (req.params.source ? String(req.params.source) : 'Webhook');
-  const externalRef = leadIntakeExactField(b, ['external_ref']).slice(0, 120) || null;
-  if (externalRef) {
-    const existing = await pgOne('SELECT id FROM crm_leads WHERE external_ref=$1', [externalRef]);
-    if (existing) {
-      console.log('lead-intake webhook: external_ref ' + externalRef + ' findes allerede som lead #' + existing.id + ' — ingen dublet oprettet');
-      return res.json({ ok: true, id: existing.id, duplicate: true });
-    }
-  }
-  const projektTypeRaw = leadIntakeExactField(b, ['projekt_type', 'project_type']);
-  const projektType = projektTypeRaw ? await leadIntakeResolveSelectOption('lead', 'projekt_type', projektTypeRaw) : null;
 
   // RETTELSE (sep. 2026, Martins fejlrapport: "Alle mine facebook og make
   // leads når de oprettes i systemet som kunde er det mening der skal
@@ -12725,14 +12754,13 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
     const posRow = await one('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [stageId]);
 
     const r = await one(`
-      INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at,external_ref)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,${nowTextSQL()},$10) RETURNING id
-    `, [name, b.email || null, b.phone || null, b.address || null, sourceLabel, b.note || null, p.id, stageId, posRow.pos, externalRef]);
+      INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,${nowTextSQL()}) RETURNING id
+    `, [name, b.email || null, b.phone || null, b.address || null, sourceLabel, b.note || null, p.id, stageId, posRow.pos]);
     await crmLogActivity('lead', r.id, 'created', 'Lead modtaget automatisk via ' + sourceLabel, null, client);
     // RUNDE CP — se kommentaren ved LEAD_WEBHOOK_SOURCE_FIELD_VALUES ovenfor.
     const sourceFieldValue = LEAD_WEBHOOK_SOURCE_FIELD_VALUES[req.params.source];
     if (sourceFieldValue) await crmSetCustomFieldValues('lead', r.id, { lead_source: sourceFieldValue }, client);
-    if (projektType) await crmSetCustomFieldValues('lead', r.id, { projekt_type: projektType }, client);
 
     const linked = await crmFindOrCreateContactAndCustomer(name, b.email || null, b.phone || null, b.address || null, b.note || null, client);
     await client.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
@@ -12762,16 +12790,6 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
     .catch(e => console.error('SMS/email-automatik fejlede for webhook-lead #' + result.leadId + ':', e.message));
 
   res.json({ ok: true, id: result.leadId });
-}));
-
-// Forbindelsestest til WordPress-pluginnets "Test forbindelse"-knap (okt.
-// 2026) — tjekker kun nøglen og at der findes en lead-pipeline, opretter
-// INTET. Samme nøgle (X-Webhook-Secret) som selve lead-intake-ruten.
-app.get('/api/integrations/lead-intake-ping', asyncRoute(async (req, res) => {
-  if (!(await verifyLeadWebhookSecret(req))) return res.status(401).json({ ok: false, error: 'Ugyldig eller manglende nøgle (X-Webhook-Secret)' });
-  const p = await pgOne("SELECT id, name FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1");
-  if (!p) return res.status(400).json({ ok: false, error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
-  res.json({ ok: true, pipeline: p.name });
 }));
 
 // ══════════════════════════════════════════════════════════════
@@ -13659,8 +13677,6 @@ app.get('/api/crm/lead-webhook-info', auth, panelAccessAny(['customers','crmp_le
     secret: row && row.value,
     url_elementor: base + 'elementor',
     url_facebook: base + 'facebook-ads',
-    url_prisberegner: base + 'prisberegner',
-    portal_base: req.protocol + '://' + req.get('host'),
     external_api_key: extKeyRow && extKeyRow.value,
     external_api_base: req.protocol + '://' + req.get('host') + '/api/external/',
     // RUNDE BI (Martin: "kan se facebook og make begge har et link burde

@@ -2093,6 +2093,11 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
    som ikke virker på sider udenfor Økonomi-modulet (fx Fakturaer-siden her). */
 .bly-rowcard .pos{color:#15803D;font-weight:700}
 .bly-rowcard .neg{color:#B91C1C;font-weight:700}
+/* RUNDE CV — mail-kvote-badgen i headeren (#mail-quota-btn): neutral under
+   80% af dagens grænse, orange fra 80%, rød/fuld når grænsen er nået eller
+   overskredet — samme farvelogik som en almindelig forbrugsmåler. */
+.nav .nb.mail-quota-warn{background:#FEF3C7;border-color:#FDE68A;color:#92400E}
+.nav .nb.mail-quota-over{background:#FEF2F2;border-color:#FECACA;color:#B91C1C}
 .bly-rowcard input[type="checkbox"]{width:16px;height:16px;flex-shrink:0}
 /* Produkt-søgning: flervalg med afkrydsning på tværs af flere søgninger, i
    stedet for kun ét produkt ad gangen. */
@@ -4022,7 +4027,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.27.0 · 2026-10-15</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.28.0 · 2026-10-15</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4041,6 +4046,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="navdrop-menu" id="notifdrop-menu" style="width:340px;max-height:420px;overflow:auto"></div>
     </div>
     <button class="nb" id="note-widget-btn">📝 <span class="nb-label">Note</span></button>
+    <!-- RUNDE CV, Martin (skærmbillede af et andet program): "kan du ikke
+         bygge som i dette program [...] hvor vi kan se hvor mange mails der
+         sendes fra programmet dagligt. da jeg jo kun har 100 gratis [...]
+         det skal også inkludere alle Automations emails [...] så jeg ved
+         når jeg rammer 100 [...] kan jeg købe flere mails". Samme "X/100"-
+         badge-stil som i det program. Se refreshMailQuotaBadge()/GET
+         /api/mail/quota-today. Klik åbner en redigering af selve loftet
+         (kun admin, se klik-handleren) — fx når Martin opgraderer sin
+         mail-plan og loftet derfor skal hæves. -->
+    <button class="nb" id="mail-quota-btn" title="Mails sendt i dag (nulstiller ved midnat) — klik for at ændre den daglige grænse">✉️ <span class="nb-label" id="mail-quota-label">…</span></button>
   </div>
   <!-- RUNDE H #10 — søgefeltet centreret og forstørret (se .nav-center
        #global-search-input i CSS'en). -->
@@ -15766,6 +15781,41 @@ async function refreshNotifBell(){
 }
 
 // ══════════════════════════════════════════════════════════════
+// MAIL-KVOTE-BADGE (header) — RUNDE CV, se HTML-kommentaren ved
+// #mail-quota-btn for Martins ønske. Egen 90-sekunders rytme, samme mønster
+// som refreshNotifBell/refreshGlobalPriorityBanner ovenfor.
+// ══════════════════════════════════════════════════════════════
+async function refreshMailQuotaBadge(){
+  var r=await api('/api/mail/quota-today');
+  if(!r)return;
+  var btn=document.getElementById('mail-quota-btn');
+  var label=document.getElementById('mail-quota-label');
+  if(!btn||!label)return;
+  label.textContent=r.sentToday+'/'+r.limit+' mails i dag';
+  var ratio=r.limit>0?(r.sentToday/r.limit):0;
+  btn.classList.toggle('mail-quota-over',ratio>=1);
+  btn.classList.toggle('mail-quota-warn',ratio>=0.8&&ratio<1);
+}
+// Klik åbner en redigering af selve det daglige loft — kun relevant for
+// admin (PUT /api/settings kræver adminOnly server-side alligevel), så
+// almindelige medarbejdere ser kun tallet, uden et klik der bare ville fejle.
+document.addEventListener('DOMContentLoaded',function(){
+  var btn=document.getElementById('mail-quota-btn');
+  if(!btn)return;
+  btn.addEventListener('click',async function(){
+    if(!me||me.role!=='admin')return;
+    var current=await api('/api/mail/quota-today');
+    var val=await gmPrompt('Ny daglig mail-grænse (til badgen i headeren — fx når du opgraderer din mail-plan):',String((current&&current.limit)||100),'Daglig mail-grænse');
+    if(val===null||val===undefined)return;
+    var n=Number(val);
+    if(!n||n<1){toast('Angiv et gyldigt tal (mindst 1)','⚠️');return;}
+    var r=await api('/api/settings',{method:'PUT',body:JSON.stringify({mail_daily_quota:n})});
+    if(r&&r.ok){toast('Mail-grænse opdateret ✓','✓');refreshMailQuotaBadge();}
+    else toast('Kunne ikke gemme grænsen','❌');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
 // SKABELONER
 // ══════════════════════════════════════════════════════════════
 var templatesCache=[];
@@ -16030,13 +16080,6 @@ async function loadAutomationSettings(){
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.url_elementor)+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.url_elementor)+'" title="Kopiér">📋</button></div></div>'
       +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Facebook Ads</div>'
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.url_facebook)+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.url_facebook)+'" title="Kopiér">📋</button></div></div>'
-      // NYT (okt. 2026) — prisberegnerne på gulvmaster.dk (WordPress-pluginnet
-      // "Gulv Master – Konfiguratorer") sender leads hertil. I WordPress
-      // indsættes portal-adressen + nøglen nedenfor under Konfiguratorer →
-      // Integration → "Gulv Master portal".
-      +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Prisberegnere på gulvmaster.dk (WordPress) — portal-adresse</div>'
-      +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.portal_base||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.portal_base||'')+'" title="Kopiér">📋</button></div>'
-      +'<div style="font-size:11px;color:var(--bly-sub,#6B7280);margin-top:3px">Indsæt adressen og nøglen herunder i WordPress → Konfiguratorer → Integration → Gulv Master portal.</div></div>'
       +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Nøgle (X-Webhook-Secret)</div>'
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.secret||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.secret||'')+'" title="Kopiér">📋</button><button class="btn small" id="automation-webhook-regen">Generér ny nøgle</button></div></div>'
       // RUNDE BI (Martin: "kan se facebook og make begge har et link burde
@@ -22560,6 +22603,9 @@ async function bind(){
   // notifikations-klokken ovenfor). Pause ved museover, så man kan nå at
   // læse/klikke på den aktuelle sag før den skifter videre.
   setInterval(refreshGlobalPriorityBanner,90000);
+  // RUNDE CV — mail-kvote-badgen, samme 90-sekunders rytme som de to ovenfor.
+  refreshMailQuotaBadge();
+  setInterval(refreshMailQuotaBadge,90000);
   (function(){
     var box=document.getElementById('dash-priority-banner');
     if(box){
