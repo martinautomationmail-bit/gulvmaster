@@ -2088,6 +2088,11 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .bly-rowcard-bottom{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:9px;padding-top:9px;border-top:1px dashed var(--bly-border);color:var(--bly-sub);font-size:11.5px}
 .bly-rowcard-controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .bly-rowcard-empty{text-align:center;color:var(--bly-sub);padding:24px}
+/* RUNDE CU — små farvede status-tekster (fx "✓ Sendt"/"Ikke mailet endnu") inde
+   i en .bly-rowcard, uafhængigt af #page-finance's scopede .fin-row .pos/.neg,
+   som ikke virker på sider udenfor Økonomi-modulet (fx Fakturaer-siden her). */
+.bly-rowcard .pos{color:#15803D;font-weight:700}
+.bly-rowcard .neg{color:#B91C1C;font-weight:700}
 .bly-rowcard input[type="checkbox"]{width:16px;height:16px;flex-shrink:0}
 /* Produkt-søgning: flervalg med afkrydsning på tværs af flere søgninger, i
    stedet for kun ét produkt ad gangen. */
@@ -4017,7 +4022,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.26.1 · 2026-10-14</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.27.0 · 2026-10-15</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5512,6 +5517,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              — hele Rykker-modulet (indstillinger + log) bor nu her, som et
              udfoldeligt panel, i stedet for sin egen fane i Økonomi. -->
         <button class="bly-btn outline" id="qz-dunning-settings-toggle" type="button" title="Indstillinger for automatiske rykker-mails">✉️ Rykker-indstillinger</button>
+        <!-- RUNDE CU, Martin: "kan du ikke gøre så når en rykker er tilsendt,
+             så skal man kunne finde de rykker og kreditnotaer der er sendt,
+             så man kan dokumentere de er sendt?" — kreditnotaer kunne hidtil
+             KUN ses nede på den enkelte faktura, ingen samlet liste fandtes.
+             Samme fold-ud-mønster som Rykker-knappen ved siden af. -->
+        <button class="bly-btn outline" id="qz-creditnotes-toggle" type="button" title="Overblik over alle kreditnotaer — til dokumentation">📋 Kreditnotaer</button>
         <button class="bly-btn outline" id="qz-new-direct-invoice-btn" type="button" title="Til priser aftalt direkte/mundtligt med kunden, uden et forudgående tilbud">+ Ny faktura (uden tilbud)</button>
       </div>
     </div>
@@ -5535,7 +5546,25 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <button class="btn small primary" id="fin-dunning-save-btn">Gem indstillinger</button>
         <button class="btn small" id="fin-dunning-run-btn">▶ Kør scan nu (test)</button>
       </div>
-      <div id="fin-dunning-log" style="margin-top:14px"></div>
+      <!-- RUNDE CU — "Sidste rykkere sendt" var hidtil kun de seneste 10,
+           uden søgning og uden kundenavn (kun modtager-mail) — umuligt reelt
+           at bruge til at FINDE og dokumentere en bestemt rykker senere. Nu
+           en fuld, søgbar liste (se renderFinDunning()/GET
+           /api/finance/dunning-log i server.js, som nu leverer op til 500
+           rækker beriget med fakturanr./kundenavn). -->
+      <div class="fin-eyebrow" style="margin-top:14px">Rykker-historik — til dokumentation</div>
+      <input type="text" id="fin-dunning-search" class="bly-search" style="margin-bottom:10px;width:100%" placeholder="Søg — kunde, fakturanr. eller e-mail...">
+      <div class="bly-rowcard-list" id="fin-dunning-log"></div>
+    </div>
+    <!-- RUNDE CU, Martin: "kan du ikke gøre så når en rykker er tilsendt, så
+         skal man kunne finde de rykker og kreditnotaer der er sendt, så man
+         kan dokumentere de er sendt?" — globalt, søgbart overblik over ALLE
+         kreditnotaer på tværs af fakturaer, se GET /api/finance/credit-notes-log. -->
+    <div class="fin-card" id="qz-creditnotes-panel" style="display:none;margin-bottom:16px">
+      <div class="fin-eyebrow">📋 Kreditnotaer — til dokumentation</div>
+      <p class="fin-muted" style="margin:-4px 0 12px">Alle kreditnotaer oprettet på tværs af fakturaer. "Sendt"-linjen vises kun når kreditnotaen rent faktisk er mailet til kunden via Send-knappen på fakturaen — ikke bare oprettet. Klik en linje for at åbne den tilhørende faktura.</p>
+      <input type="text" id="qz-creditnotes-search" class="bly-search" style="margin-bottom:10px;width:100%" placeholder="Søg — kunde, fakturanr. eller kreditnotanr....">
+      <div class="bly-rowcard-list" id="qz-creditnotes-body"></div>
     </div>
     <div class="bly-kpi-row bly-kpi-row-tf" id="qz-invoices-status-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr))"></div>
     <!-- RETTELSE — samme flytning/forstørrelse af søgefeltet som Tilbud-siden,
@@ -16001,6 +16030,13 @@ async function loadAutomationSettings(){
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.url_elementor)+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.url_elementor)+'" title="Kopiér">📋</button></div></div>'
       +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Facebook Ads</div>'
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.url_facebook)+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.url_facebook)+'" title="Kopiér">📋</button></div></div>'
+      // NYT (okt. 2026) — prisberegnerne på gulvmaster.dk (WordPress-pluginnet
+      // "Gulv Master – Konfiguratorer") sender leads hertil. I WordPress
+      // indsættes portal-adressen + nøglen nedenfor under Konfiguratorer →
+      // Integration → "Gulv Master portal".
+      +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Prisberegnere på gulvmaster.dk (WordPress) — portal-adresse</div>'
+      +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.portal_base||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.portal_base||'')+'" title="Kopiér">📋</button></div>'
+      +'<div style="font-size:11px;color:var(--bly-sub,#6B7280);margin-top:3px">Indsæt adressen og nøglen herunder i WordPress → Konfiguratorer → Integration → Gulv Master portal.</div></div>'
       +'<div style="margin-bottom:8px"><div class="sub" style="margin-bottom:2px">Nøgle (X-Webhook-Secret)</div>'
       +'<div style="display:flex;gap:6px"><input class="input" readonly value="'+esc(info.secret||'')+'" style="flex:1;font-family:monospace;font-size:11.5px"><button class="qz-icon-btn" data-copy="'+esc(info.secret||'')+'" title="Kopiér">📋</button><button class="btn small" id="automation-webhook-regen">Generér ny nøgle</button></div></div>'
       // RUNDE BI (Martin: "kan se facebook og make begge har et link burde
@@ -16930,6 +16966,14 @@ async function applyFinPanelOrder(panel,containerId,boxSelector){
     if(el)container.appendChild(el);
   });
 }
+// RUNDE CU, Martin: "kan du ikke gøre så når en rykker er tilsendt, så skal
+// man kunne finde de rykker og kreditnotaer der er sendt, så man kan
+// dokumentere de er sendt?" — finDunningLogData holder HELE listen (op til
+// 500 rækker fra GET /api/finance/dunning-log, nu beriget med fakturanr./
+// kundenavn, se server.js), og renderFinDunningLogList() filtrerer/tegner den
+// ud fra søgefeltet — i stedet for før, hvor kun de seneste 10 rå rækker
+// (uden kundenavn, uden søgning) blev vist.
+var finDunningLogData=[];
 function renderFinDunning(settings,log){
   if(!settings)return;
   document.getElementById('fin-dunning-enabled').checked=!!settings.enabled;
@@ -16937,9 +16981,61 @@ function renderFinDunning(settings,log){
   document.getElementById('fin-dunning-days2').value=settings.days_rykker2;
   document.getElementById('fin-dunning-days3').value=settings.days_rykker3;
   document.getElementById('fin-dunning-fee').value=settings.fee_amount;
-  document.getElementById('fin-dunning-log').innerHTML=log.length?('<div class="fin-eyebrow" style="margin-top:10px">Sidste rykkere sendt</div>'+log.slice(0,10).map(function(l){
-    return '<div class="fin-row"><span>Rykker '+l.level+' · '+esc((l.sent_at||'').slice(0,16).replace('T',' '))+' · '+esc(l.to_email||'')+'</span><b class="'+(l.status==='sent'?'pos':'neg')+'">'+(l.status==='sent'?'✓ Sendt':'✕ Fejl')+'</b></div>';
-  }).join('')):'';
+  finDunningLogData=log||[];
+  renderFinDunningLogList();
+}
+function renderFinDunningLogList(){
+  var el=document.getElementById('fin-dunning-log');
+  if(!el)return;
+  var q=(document.getElementById('fin-dunning-search').value||'').trim().toLowerCase();
+  var rows=finDunningLogData.filter(function(l){
+    if(!q)return true;
+    return [l.customer_name,l.job_name,l.invoice_number,l.to_email].some(function(v){return v&&String(v).toLowerCase().indexOf(q)!==-1;});
+  });
+  if(!rows.length){el.innerHTML='<div class="bly-rowcard-empty">'+(q?'Ingen rykkere matcher søgningen.':'Ingen rykkere sendt endnu.')+'</div>';return;}
+  el.innerHTML=rows.map(function(l){
+    var custLabel=esc(l.customer_name||l.job_name||'Ukendt kunde');
+    var invLabel=l.invoice_number?(' <span style="font-weight:400;color:var(--bly-sub)">· '+esc(l.invoice_number)+'</span>'):'';
+    var clickable=l.document_id?' style="cursor:pointer" onclick="location.hash=\'#qz-invoices/faktura/'+esc(l.document_id)+'\'"':'';
+    return '<div class="bly-rowcard"'+clickable+'>'
+      +'<div class="bly-rowcard-top">'
+      +'<div class="bly-rowcard-name">Rykker '+esc(l.level)+' · '+custLabel+invLabel+'</div>'
+      +'<b class="'+(l.status==='sent'?'pos':'neg')+'">'+(l.status==='sent'?'✓ Sendt':'✕ Fejl')+'</b>'
+      +'</div>'
+      +'<div class="bly-rowcard-bottom"><span>'+esc((l.sent_at||'').slice(0,16).replace('T',' '))+' · til '+esc(l.to_email||'(ingen modtager)')+'</span></div>'
+      +'</div>';
+  }).join('');
+}
+// RUNDE CU — globalt kreditnota-overblik (se GET /api/finance/credit-notes-log),
+// samme søg-og-tegn-mønster som rykker-historikken ovenfor.
+var qzCreditNotesLogData=[];
+async function loadQzCreditNotesLog(){
+  qzCreditNotesLogData=(await api('/api/finance/credit-notes-log'))||[];
+  renderQzCreditNotesLog();
+}
+function renderQzCreditNotesLog(){
+  var el=document.getElementById('qz-creditnotes-body');
+  if(!el)return;
+  var q=(document.getElementById('qz-creditnotes-search').value||'').trim().toLowerCase();
+  var rows=qzCreditNotesLogData.filter(function(cn){
+    if(!q)return true;
+    return [cn.customer_name,cn.job_name,cn.invoice_number,cn.credit_note_number].some(function(v){return v&&String(v).toLowerCase().indexOf(q)!==-1;});
+  });
+  if(!rows.length){el.innerHTML='<div class="bly-rowcard-empty">'+(q?'Ingen kreditnotaer matcher søgningen.':'Ingen kreditnotaer oprettet endnu.')+'</div>';return;}
+  el.innerHTML=rows.map(function(cn){
+    var custLabel=esc(cn.customer_name||cn.job_name||'Ukendt kunde');
+    var invLabel=cn.invoice_number?(' <span style="font-weight:400;color:var(--bly-sub)">· '+esc(cn.invoice_number)+'</span>'):'';
+    var sentLine=cn.sent_at
+      ?('<span class="pos">✓ Sendt '+esc((cn.sent_at||'').slice(0,16).replace('T',' '))+'</span>'+(cn.sent_detail?' · '+esc(cn.sent_detail):''))
+      :'<span class="neg">Ikke mailet til kunden endnu</span>';
+    return '<div class="bly-rowcard" style="cursor:pointer" onclick="location.hash=\'#qz-invoices/faktura/'+cn.invoice_id+'\'">'
+      +'<div class="bly-rowcard-top">'
+      +'<div class="bly-rowcard-name">'+esc(cn.credit_note_number)+' · '+custLabel+invLabel+'</div>'
+      +'<span class="bly-rowcard-value">'+krFmt(cn.amount)+'</span>'
+      +'</div>'
+      +'<div class="bly-rowcard-bottom"><span>Oprettet '+esc((cn.created_at||'').slice(0,16).replace('T',' '))+(cn.reason?' · '+esc(cn.reason):'')+'</span><span>'+sentLine+'</span></div>'
+      +'</div>';
+  }).join('');
 }
 // NOTER & DATAKVALITET — samler advarsler ét sted i stedet for at de ligger spredt:
 // sager uden budget, uafklarede/uventede fakturaer, m.m. — samme idé som i det
@@ -23461,6 +23557,9 @@ async function initQuotesModule(){
   var dunningSettings=await api('/api/finance/dunning-settings');
   var dunningLog=await api('/api/finance/dunning-log');
   renderFinDunning(dunningSettings,dunningLog||[]);
+  // RUNDE CU — kreditnota-overbliksparen (se qz-creditnotes-panel) hentes/tegnes
+  // her, samme sted som rykker-historikken lige ovenfor.
+  loadQzCreditNotesLog();
 }
 // RUNDE M (sep. 2026, Martins presserende ønske) — se HTML-kommentaren ved
 // #qz-delivery-warning. Fejler kaldet (fx ældre server uden endpointet under
@@ -34640,6 +34739,13 @@ function bindQuotesModuleEvents(){
     var panel=document.getElementById('qz-dunning-settings-panel');
     panel.style.display=panel.style.display==='none'?'':'none';
   });
+  // RUNDE CU — "📋 Kreditnotaer"-panelet, samme fold-ud-mønster som Rykker-knappen.
+  document.getElementById('qz-creditnotes-toggle').addEventListener('click',function(){
+    var panel=document.getElementById('qz-creditnotes-panel');
+    panel.style.display=panel.style.display==='none'?'':'none';
+  });
+  document.getElementById('fin-dunning-search').addEventListener('input',renderFinDunningLogList);
+  document.getElementById('qz-creditnotes-search').addEventListener('input',renderQzCreditNotesLog);
   document.getElementById('qz-product-search').addEventListener('input',renderQzProducts);
   document.getElementById('qz-template-search').addEventListener('input',renderQzTemplates);
   document.getElementById('qz-quote-search').addEventListener('input',renderQzQuotes);

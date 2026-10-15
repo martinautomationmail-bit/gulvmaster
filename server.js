@@ -2055,6 +2055,10 @@ async function initSchema() {
     -- Delvist unikt index (WHERE close_id IS NOT NULL) fordi almindelige, manuelt
     -- oprettede leads/opportunities ikke har nogen close_id.
     ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS close_id TEXT;
+    -- external_ref: idempotens-nøgle for leads fra eksterne systemer (fx
+    -- prisberegnerne på gulvmaster.dk), se lead-intake-ruten.
+    ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS external_ref TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_external_ref ON crm_leads(external_ref) WHERE external_ref IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_close_id ON crm_leads(close_id) WHERE close_id IS NOT NULL;
     ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS close_id TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_opportunities_close_id ON crm_opportunities(close_id) WHERE close_id IS NOT NULL;
@@ -12468,7 +12472,7 @@ app.post('/api/webhooks/resend', asyncRoute(async (req, res) => {
 //           Kun "name" er påkrævet — map Elementor/Facebook-felterne til disse
 //           navne i et "Set variable"/"Compose"-trin i Make FØR I sender videre.
 // ══════════════════════════════════════════════════════════════
-const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'facebook-ads': 'Facebook Ads' };
+const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'facebook-ads': 'Facebook Ads', 'prisberegner': 'Prisberegner (gulvmaster.dk)' };
 // RUNDE CP (Martin: "Lead source tilvælges ikke når leadet kommer ind fra
 // facebook og website?") — crm_leads.source (sat ovenfor til sourceLabel)
 // er en FRI tekstkolonne og er ikke det samme som den synlige "Lead
@@ -12484,7 +12488,39 @@ const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'face
 // lead-oprettelsen. Et ukendt/fremtidigt :source-navn springes stille over
 // her (kan ikke gætte en passende dropdown-værdi) — kun source-kolonnen
 // sættes stadig, ligesom før.
-const LEAD_WEBHOOK_SOURCE_FIELD_VALUES = { 'elementor': 'Website form', 'facebook-ads': 'Facebook/Instagram' };
+const LEAD_WEBHOOK_SOURCE_FIELD_VALUES = { 'elementor': 'Website form', 'facebook-ads': 'Facebook/Instagram', 'prisberegner': 'Website form' };
+// NYT (okt. 2026, Martin: "gør så leads der skriver sig op bliver oprettet
+// direkte i dette program som et korrekt kunde og lead i leadpipeline") —
+// prisberegnerne på gulvmaster.dk (WordPress-pluginnet "Gulv Master –
+// Konfiguratorer", v1.0.5+) sender nu hvert lead hertil via samme
+// lead-intake-rute som Elementor/Facebook, med :source = 'prisberegner'.
+// To ekstra, valgfrie felter i body'en håndteres her:
+//   projekt_type — sættes på leadets "Projekt Type"-felt. Findes værdien
+//     ikke i forvejen som valgmulighed (fx "Tømrer"), tilføjes den til
+//     dropdownen, så den kan ses/vælges i UI'et.
+//   external_ref — fx "gmc-fpc-123-ab12cd34" (konfigurator + WordPress-id).
+//     Idempotens-nøgle: trykker man "Send igen" i WordPress, oprettes der
+//     IKKE et dublet-lead, men det eksisterende id returneres.
+// Begge læses BEVIDST med eksakt nøgle (ikke leadIntakeField), da dennes
+// løse delstrengs-fallback (RUNDE CT) ellers kunne få et kort, tilfældigt
+// felt fra Make/Elementor til at ligne en external_ref.
+function leadIntakeExactField(body, names) {
+  for (const key of names) {
+    const value = body && body[key];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+  }
+  return '';
+}
+async function leadIntakeResolveSelectOption(entityType, key, value) {
+  const v = String(value || '').trim();
+  if (!v) return null;
+  const cache = await closeLoadFieldOptionCache(entityType, key);
+  if (!cache) return null; // feltet findes ikke (slettet i CRM-indstillinger) — spring over
+  const hit = cache.list.find(o => o.toLowerCase() === v.toLowerCase());
+  if (hit) return hit;
+  await closeEnsureOption(cache, v);
+  return v;
+}
 async function verifyLeadWebhookSecret(req) {
   const provided = req.headers['x-webhook-secret'] || req.query.token || '';
   if (!provided) return false;
@@ -12582,10 +12618,44 @@ app.use('/api/integrations/lead-intake', (error, req, res, next) => {
 
 // Slår et felt op på tværs af de navne forskellige kilder bruger. Første
 // ikke-tomme værdi vinder; vores egne dokumenterede navne står altid først.
+//
+// RUNDE CT, Martin: "Kan se noten stadig ikke kommer med. så det gælder så
+// vidt nok for facebook også som elementor. Du kan se på den email jeg har
+// sendt der er en note med?"
+// Root cause: denne funktion matchede KUN hvis nøglen i den indkomne body var
+// 100% identisk (inkl. store/små bogstaver) med et af navnene i listen. Men
+// Make.com's HTTP-modul sender feltet under den overskrift Martin selv har
+// skrevet i "Body structure" (fx "Kundens besked"), ikke under et af vores
+// faste navne som "note" eller "besked" — så det blev aldrig fundet, og
+// b.note endte som '' for ALLE eksterne kilder, uanset hvad Martin kalder
+// feltet i Make. Rettet ved at tilføje et fallback-trin EFTER det eksakte
+// match: normaliser både den indkomne nøgle og vores kendte navne (små
+// bogstaver, fjern mellemrum/tegnsætning) og accepter også hvis den ene er
+// en delstreng af den anden — så "Kundens besked" matcher aliasset "besked",
+// "Telefonnummer (mobil)" matcher "telefon", osv. — uden at Martin behøver
+// ramme et nøjagtigt feltnavn i Make.
 function leadIntakeField(body, names) {
+  // 1) Eksakt nøgle-match (uændret adfærd — hurtig og forudsigelig).
   for (const key of names) {
     const value = body[key];
     if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+  }
+  // 2) Fallback: match uafhængigt af store/små bogstaver og tegnsætning, og
+  // tillader at den indkomne nøgle er en sætning der INDEHOLDER et af vores
+  // kendte navne (eller omvendt). Går igennem `names` i prioriteret orden,
+  // så vores egne foretrukne navne stadig vinder ved flere mulige match.
+  const normalize = (s) => String(s).toLowerCase().replace(/[^a-z0-9æøåÆØÅ]/gi, '');
+  for (const name of names) {
+    const normName = normalize(name);
+    if (!normName) continue;
+    for (const bodyKey of Object.keys(body || {})) {
+      const normKey = normalize(bodyKey);
+      if (!normKey) continue;
+      if (normKey === normName || normKey.includes(normName) || normName.includes(normKey)) {
+        const value = body[bodyKey];
+        if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+      }
+    }
   }
   return '';
 }
@@ -12616,6 +12686,16 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
   b.address = leadIntakeField(b, ['address', 'Address', 'adresse', 'street_address', 'street']) || null;
   b.note = leadIntakeField(b, ['note', 'Note', 'besked', 'message', 'comments', 'kommentar']) || null;
   const sourceLabel = LEAD_WEBHOOK_SOURCE_LABELS[req.params.source] || (req.params.source ? String(req.params.source) : 'Webhook');
+  const externalRef = leadIntakeExactField(b, ['external_ref']).slice(0, 120) || null;
+  if (externalRef) {
+    const existing = await pgOne('SELECT id FROM crm_leads WHERE external_ref=$1', [externalRef]);
+    if (existing) {
+      console.log('lead-intake webhook: external_ref ' + externalRef + ' findes allerede som lead #' + existing.id + ' — ingen dublet oprettet');
+      return res.json({ ok: true, id: existing.id, duplicate: true });
+    }
+  }
+  const projektTypeRaw = leadIntakeExactField(b, ['projekt_type', 'project_type']);
+  const projektType = projektTypeRaw ? await leadIntakeResolveSelectOption('lead', 'projekt_type', projektTypeRaw) : null;
 
   // RETTELSE (sep. 2026, Martins fejlrapport: "Alle mine facebook og make
   // leads når de oprettes i systemet som kunde er det mening der skal
@@ -12645,13 +12725,14 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
     const posRow = await one('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [stageId]);
 
     const r = await one(`
-      INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,${nowTextSQL()}) RETURNING id
-    `, [name, b.email || null, b.phone || null, b.address || null, sourceLabel, b.note || null, p.id, stageId, posRow.pos]);
+      INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at,external_ref)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,${nowTextSQL()},$10) RETURNING id
+    `, [name, b.email || null, b.phone || null, b.address || null, sourceLabel, b.note || null, p.id, stageId, posRow.pos, externalRef]);
     await crmLogActivity('lead', r.id, 'created', 'Lead modtaget automatisk via ' + sourceLabel, null, client);
     // RUNDE CP — se kommentaren ved LEAD_WEBHOOK_SOURCE_FIELD_VALUES ovenfor.
     const sourceFieldValue = LEAD_WEBHOOK_SOURCE_FIELD_VALUES[req.params.source];
     if (sourceFieldValue) await crmSetCustomFieldValues('lead', r.id, { lead_source: sourceFieldValue }, client);
+    if (projektType) await crmSetCustomFieldValues('lead', r.id, { projekt_type: projektType }, client);
 
     const linked = await crmFindOrCreateContactAndCustomer(name, b.email || null, b.phone || null, b.address || null, b.note || null, client);
     await client.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
@@ -12681,6 +12762,16 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
     .catch(e => console.error('SMS/email-automatik fejlede for webhook-lead #' + result.leadId + ':', e.message));
 
   res.json({ ok: true, id: result.leadId });
+}));
+
+// Forbindelsestest til WordPress-pluginnets "Test forbindelse"-knap (okt.
+// 2026) — tjekker kun nøglen og at der findes en lead-pipeline, opretter
+// INTET. Samme nøgle (X-Webhook-Secret) som selve lead-intake-ruten.
+app.get('/api/integrations/lead-intake-ping', asyncRoute(async (req, res) => {
+  if (!(await verifyLeadWebhookSecret(req))) return res.status(401).json({ ok: false, error: 'Ugyldig eller manglende nøgle (X-Webhook-Secret)' });
+  const p = await pgOne("SELECT id, name FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1");
+  if (!p) return res.status(400).json({ ok: false, error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
+  res.json({ ok: true, pipeline: p.name });
 }));
 
 // ══════════════════════════════════════════════════════════════
@@ -13568,6 +13659,8 @@ app.get('/api/crm/lead-webhook-info', auth, panelAccessAny(['customers','crmp_le
     secret: row && row.value,
     url_elementor: base + 'elementor',
     url_facebook: base + 'facebook-ads',
+    url_prisberegner: base + 'prisberegner',
+    portal_base: req.protocol + '://' + req.get('host'),
     external_api_key: extKeyRow && extKeyRow.value,
     external_api_base: req.protocol + '://' + req.get('host') + '/api/external/',
     // RUNDE BI (Martin: "kan se facebook og make begge har et link burde
@@ -18884,14 +18977,62 @@ app.put('/api/finance/dunning-settings', auth, panelAccess('finance'), asyncRout
 app.get('/api/finance/dunning-log', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   // RUNDE H #316 — valgfrit document_id-filter, så "Send rykker"-popuppen på en
   // enkelt faktura (openDunningSendModal) pålideligt kan se DEN fakturas allerede
-  // sendte niveauer, uafhængigt af hvor langt nede den ligger i den fælles log
-  // (den ufiltrerede liste herunder er stadig kun de seneste 100, til selve
-  // rykker-panelets historik-visning).
+  // sendte niveauer, uafhængigt af hvor langt nede den ligger i den fælles log.
+  //
+  // RUNDE CU, Martin: "kan du ikke gøre så når en rykker er tilsendt, så skal
+  // man kunne finde de rykker og kreditnotaer der er sendt, så man kan
+  // dokumentere de er sendt?" — den ufiltrerede liste gav hidtil kun rå
+  // level/to_email/status-rækker UDEN hvilken kunde/faktura det drejede sig
+  // om, og var hårdt begrænset til de seneste 100 — umuligt reelt at bruge til
+  // at "finde" og dokumentere noget med. LEFT JOIN'et herunder tilføjer
+  // fakturanr. og kundenavn (samme opslag som fetchFinanceInvoices()), og
+  // loftet er hævet til 500, så historik-panelet (se renderFinDunning() i
+  // admin.html) reelt kan søges igennem.
+  const enrichedSelect = `
+    SELECT l.*, i.invoice_number, COALESCE(c.name, i.job_name) AS customer_name, i.job_name
+    FROM finance_dunning_log l
+    LEFT JOIN invoices i ON i.id::text = l.document_id
+    LEFT JOIN customers c ON c.id = i.customer_id
+  `;
   if (req.query.document_id) {
-    const rows = await pool.query('SELECT * FROM finance_dunning_log WHERE document_id=$1 ORDER BY id DESC', [String(req.query.document_id)]);
+    const rows = await pool.query(enrichedSelect + ' WHERE l.document_id=$1 ORDER BY l.id DESC', [String(req.query.document_id)]);
     return res.json(rows.rows);
   }
-  const rows = await pool.query('SELECT * FROM finance_dunning_log ORDER BY id DESC LIMIT 100');
+  const rows = await pool.query(enrichedSelect + ' ORDER BY l.id DESC LIMIT 500');
+  res.json(rows.rows);
+}));
+// RUNDE CU, Martin: "kan du ikke gøre så når en rykker er tilsendt, så skal man
+// kunne finde de rykker og kreditnotaer der er sendt, så man kan dokumentere
+// de er sendt?" — kreditnotaer kunne hidtil KUN ses nede på den enkelte
+// faktura (se GET /api/invoices/:id/credit-notes), ingen samlet liste fandtes
+// nogen steder. Denne rute giver et globalt, søgbart overblik på tværs af
+// alle fakturaer — til "📋 Kreditnotaer"-panelet på Fakturaer-siden.
+// sent_at/sent_detail er bevidst et LEFT JOIN, ikke en kolonne på credit_notes
+// selv: en kreditnota kan være OPRETTET uden nogensinde at være MAILET til
+// kunden (fx en ren intern korrektion) — de to tidspunkter er forskellige
+// fakta, og Martin skal kunne se forskellen når han skal dokumentere om/
+// hvornår noget konkret er sendt. Matcher på "detail LIKE nummer || '%'" fordi
+// POST /api/credit-notes/:id/send logger præcis "<KN-nummer> til <email>" i
+// document_activity.detail (se linjen med logDocActivity(...'credit_note_sent'...)) —
+// der findes ingen anden kobling mellem de to tabeller.
+app.get('/api/finance/credit-notes-log', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const rows = await pool.query(`
+    SELECT cn.id, cn.credit_note_number, cn.amount, cn.reason, cn.created_at,
+           i.id AS invoice_id, i.invoice_number, i.job_name,
+           COALESCE(c.name, i.job_name) AS customer_name,
+           da.created_at AS sent_at, da.detail AS sent_detail
+    FROM credit_notes cn
+    JOIN invoices i ON i.id = cn.invoice_id
+    LEFT JOIN customers c ON c.id = i.customer_id
+    LEFT JOIN LATERAL (
+      SELECT created_at, detail FROM document_activity
+      WHERE doc_type = 'invoice' AND doc_id = cn.invoice_id AND event_type = 'credit_note_sent'
+        AND detail LIKE cn.credit_note_number || '%'
+      ORDER BY created_at DESC LIMIT 1
+    ) da ON true
+    ORDER BY cn.created_at DESC, cn.id DESC
+    LIMIT 500
+  `);
   res.json(rows.rows);
 }));
 app.post('/api/finance/dunning-run', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
