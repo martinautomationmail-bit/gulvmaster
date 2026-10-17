@@ -16841,6 +16841,42 @@ app.put('/api/projects/:id/tasks/reorder', auth, panelAccess('projects'), asyncR
   res.json({ ok: true });
 }));
 
+// RUNDE DD (Martin: "Når jeg rykker opgaverne sammen rykker de sig bare
+// tilbage igen?" — skærmbillede af 9 markerede opgaver i projekt-Gantt'et med
+// en "Opgaven blev ikke fundet"-fejltoast) — ruten herunder (RUNDE CZ'
+// bulk-flyt af flervalgte Gantt-bjælker) lå hidtil REGISTRERET EFTER den
+// generiske PUT .../tasks/:taskId-rute nedenfor. Nøjagtig samme fejl som
+// allerede er dokumenteret ved .../tasks/reorder-ruten ovenfor: Express
+// matcher ruter i registreringsrækkefølge, og ":taskId" er bare et param der
+// matcher den bogstavelige sti ".../tasks/bulk-dates" lige så gerne som en
+// rigtig opgave-id. Fordi :taskId-ruten lå FØRST, endte HVER bulk-flytning i
+// den i stedet — med taskId='bulk-dates' — som naturligvis aldrig findes i
+// gantt_tasks, og gav 404 "Opgaven blev ikke fundet" med det samme, FØR
+// bulk-dates-koden overhovedet blev kørt. Derfor virkede bulk-flytningen
+// aldrig: ingen opgaver blev opdateret server-side, og admin.html's
+// reloadPdCurrent() (kaldt uanset) hentede derfor de uændrede, oprindelige
+// datoer igen — hvilket så ud som om de 9 markerede bjælker "sprang tilbage".
+// Flyttet herop, FØR :taskId-ruten, løser det (samme fix-mønster som reorder).
+app.put('/api/projects/:id/tasks/bulk-dates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const ids = Array.isArray(b.ids) ? [...new Set(b.ids.map(x => String(x || '').trim()).filter(Boolean))] : [];
+  const deltaDays = Math.round(Number(b.delta_days));
+  if (!ids.length || !deltaDays) return res.status(400).json({ error: 'ids og delta_days mangler' });
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
+  const tasks = (await pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 AND id = ANY($2::text[])', [req.params.id, ids])).rows;
+  const updated = [];
+  for (const t of tasks) {
+    if (!validDate(t.start_date)) continue;
+    const newStart = addCalendarDays(t.start_date, deltaDays);
+    const newEnd = validDate(t.end_date) ? addCalendarDays(t.end_date, deltaDays) : newStart;
+    await pool.query(`UPDATE gantt_tasks SET start_date=$1, end_date=$2, synced_at=${nowTextSQL()} WHERE id=$3`, [newStart, newEnd, t.id]);
+    await mirrorProjectTaskToPool(t.id, project, { name: t.name, start_date: newStart, end_date: newEnd, description: t.description || '' });
+    updated.push(t.id);
+  }
+  res.json({ ok: true, updated });
+}));
+
 app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM gantt_tasks WHERE id=$1 AND project_id=$2', [req.params.taskId, req.params.id]);
   if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
@@ -16927,38 +16963,6 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
     }
   }
   res.json({ ok: true, cascaded });
-}));
-
-// RUNDE CZ (Martin: "i opgave kunne trykke på musen holde den inde og trække
-// den hen over alle de opgaver jeg vil så jeg kan flytte dem samtidig. Ellers
-// skal jeg side og manuelt rykke dem alle til december nu det helt sygt") —
-// træk-udvælg flere opgaver på én gang i Gantt-stripen (se
-// pdGanttStartSelect/pdGanttStartDrag i admin.html) og flyt dem ALLE med
-// samme antal dage i ét samlet kald, i stedet for ét PUT pr. opgave. Rører
-// BEVIDST kun de markerede opgaver — ingen kaskade til andre, ulinkede
-// opgaver via depends_on (modsat enkelt-opgave-ruten ovenfor, som tager
-// højde for afhængighedskæder): her har Martin allerede selv valgt præcis
-// hvilke opgaver der skal flyttes, så en ekstra kaskade ville kunne give en
-// dobbelt-forskydning af en opgave der både er markeret OG afhænger af en
-// anden markeret opgave.
-app.put('/api/projects/:id/tasks/bulk-dates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
-  const b = req.body || {};
-  const ids = Array.isArray(b.ids) ? [...new Set(b.ids.map(x => String(x || '').trim()).filter(Boolean))] : [];
-  const deltaDays = Math.round(Number(b.delta_days));
-  if (!ids.length || !deltaDays) return res.status(400).json({ error: 'ids og delta_days mangler' });
-  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
-  if (!project) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
-  const tasks = (await pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 AND id = ANY($2::text[])', [req.params.id, ids])).rows;
-  const updated = [];
-  for (const t of tasks) {
-    if (!validDate(t.start_date)) continue;
-    const newStart = addCalendarDays(t.start_date, deltaDays);
-    const newEnd = validDate(t.end_date) ? addCalendarDays(t.end_date, deltaDays) : newStart;
-    await pool.query(`UPDATE gantt_tasks SET start_date=$1, end_date=$2, synced_at=${nowTextSQL()} WHERE id=$3`, [newStart, newEnd, t.id]);
-    await mirrorProjectTaskToPool(t.id, project, { name: t.name, start_date: newStart, end_date: newEnd, description: t.description || '' });
-    updated.push(t.id);
-  }
-  res.json({ ok: true, updated });
 }));
 
 app.delete('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
