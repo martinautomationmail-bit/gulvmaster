@@ -1624,6 +1624,15 @@ async function initSchema() {
     ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS quote_id INTEGER REFERENCES quotes(id) ON DELETE SET NULL;
     ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS photo_urls JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS submitted_at TEXT;
+    -- RUNDE DA (Martin: "Lav en mulighed for at vælge Kvalitet kontrol/eftersyn ...
+    -- Den formel skal så fungere ligesom kundebesøget og ryge ind under kunden.
+    -- Under kundebesøg skal man så kunde skifte mellem Kundebesøg/Kvalitetskontrol")
+    -- — Martin rettede selv undervejs at det ikke er en prisformel, men en NY
+    -- besøgstype der skal udfylde PRÆCIS den samme besøgsrapport-form som et
+    -- kundebesøg (se employee.html openVisitReportModal, genbruges uændret for
+    -- begge typer). 'kundebesog' er default, så alle eksisterende rækker (booket
+    -- før denne kolonne fandtes) automatisk tæller som almindelige kundebesøg.
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS visit_type TEXT NOT NULL DEFAULT 'kundebesog';
     CREATE INDEX IF NOT EXISTS idx_customer_visits_customer ON customer_visits(customer_id);
     -- customer_photo_requests (RUNDE BK) — kundens svar-/billed-link (/svar/:token).
     -- Kunden kan uploade et vilkårligt antal billeder, UDEN at afhænge af at Gmail
@@ -2089,6 +2098,12 @@ async function initSchema() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_close_id ON crm_leads(close_id) WHERE close_id IS NOT NULL;
     ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS close_id TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_opportunities_close_id ON crm_opportunities(close_id) WHERE close_id IS NOT NULL;
+    -- RUNDE CW (okt. 2026, Martin: "gør så leads der skriver sig op bliver
+    -- oprettet direkte i dette program som et korrekt kunde og lead i
+    -- leadpipeline") — external_ref: idempotens-nøgle for leads fra eksterne
+    -- systemer (fx prisberegnerne på gulvmaster.dk), se lead-intake-ruten.
+    ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS external_ref TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_external_ref ON crm_leads(external_ref) WHERE external_ref IS NOT NULL;
     -- RETTELSE (sep. 2026) — SIKKERHEDSKRITISK: den ÆLDRE migration et par
     -- linjer ovenfor ("UPDATE crm_leads/crm_opportunities SET
     -- stage_changed_at=created_at WHERE stage_changed_at IS NULL") kører ved
@@ -6327,6 +6342,29 @@ async function sendMailUniversal({ to, cc, subject, text, html, attachments, fro
   await logMailSendForQuota('smtp');
   return { provider: 'smtp', resendEmailId: null };
 }
+// RUNDE DA (Martin: "fIks signatur i emil ... og hver medarbejder skal kunne
+// have deres" + bekræftet svar "Automatisk i alle mails (anbefalet)") —
+// hidtil blev en medarbejders signatur (mail_signatures, sat under ✍️
+// Signaturer i Mail) KUN indsat når man selv skrev en mail manuelt i "Skriv ny
+// mail" (klient-side, se mailBindSigModal/mailInsertSignature i admin.html).
+// De automatiske tilbuds-/faktura-/kreditnota-/rykker-mails fik derfor ALDRIG
+// nogen signatur, uanset hvad man havde sat op. Denne hjælpefunktion henter
+// AFSENDERENS (userId = den medarbejder der trykker "Send") egen
+// standard-signatur og sætter den ind for enden af mailens HTML-krop — samme
+// slutresultat som hvis man selv havde indsat den i "Skriv ny mail". Ingen
+// standard-signatur sat for den medarbejder → bodyHtml returneres fuldstændig
+// uændret (ingen tom boks, ingen fejl).
+async function appendUserSignature(bodyHtml, userId) {
+  if (!userId) return bodyHtml;
+  try {
+    const sig = await pgOne('SELECT body_html FROM mail_signatures WHERE user_id=$1 AND is_default=1', [userId]);
+    if (!sig || !sig.body_html || !String(sig.body_html).trim()) return bodyHtml;
+    return String(bodyHtml || '') + '<div style="margin-top:18px">' + sig.body_html + '</div>';
+  } catch (e) {
+    console.error('Kunne ikke indsætte afsenderens mail-signatur:', e.message);
+    return bodyHtml;
+  }
+}
 
 // RUNDE BJ (rettet i RUNDE BM til regnskab@ — Martin: "lavede en fejl kan du
 // lave den til regnskab@gulvmaster.dk?") — afsenderadresse/-navn for
@@ -9380,18 +9418,24 @@ app.post('/api/customer-visits/book', auth, panelAccess('plan'), asyncRoute(asyn
   // kundebasen og evt. vedhæfte et tilbud, den der skal ud kan se omfanget af.
   const customerId = body.customer_id ? Number(body.customer_id) || null : null;
   const quoteId = body.quote_id ? Number(body.quote_id) || null : null;
+  // RUNDE DA — se kommentaren ved ALTER TABLE customer_visits ... visit_type
+  // ovenfor i skemaet. Opgavens NAVN sættes efter typen, så den der skal ud
+  // kan se forskellen direkte i sin app (se employee.html's doneBtn/title, som
+  // bruger task_name uændret) — selve besøgsrapport-formen er den samme.
+  const visitType = body.visit_type === 'kvalitetskontrol' ? 'kvalitetskontrol' : 'kundebesog';
+  const taskName = visitType === 'kvalitetskontrol' ? 'Kvalitetskontrol/eftersyn' : 'Kundebesøg';
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query(`
       INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,is_visit,created_at)
-      VALUES ($1,'Kundebesøg',NULL,$2,$3,$4,$5,$5,'other',NULL,NULL,${nowTextSQL()},'manual',1,${nowTextSQL()})
-    `, [taskId, customerName, address, phone || null, body.date]);
+      VALUES ($1,$6,NULL,$2,$3,$4,$5,$5,'other',NULL,NULL,${nowTextSQL()},'manual',1,${nowTextSQL()})
+    `, [taskId, customerName, address, phone || null, body.date, taskName]);
     await client.query(`
-      INSERT INTO customer_visits (task_id,customer_name,address,phone,notes,customer_id,quote_id,created_at,updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()},${nowTextSQL()})
-    `, [taskId, customerName, address, phone, notes || null, customerId, quoteId]);
+      INSERT INTO customer_visits (task_id,customer_name,address,phone,notes,customer_id,quote_id,visit_type,created_at,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()},${nowTextSQL()})
+    `, [taskId, customerName, address, phone, notes || null, customerId, quoteId, visitType]);
     await client.query('COMMIT');
     res.json({ ok: true, task_id: taskId });
   } catch (error) {
@@ -9428,18 +9472,21 @@ app.post('/api/customer-visits/book-and-assign', auth, panelAccess('plan'), asyn
   const notes = body.notes ? String(body.notes).trim().slice(0, 500) : '';
   const customerId = body.customer_id ? Number(body.customer_id) || null : null;
   const quoteId = body.quote_id ? Number(body.quote_id) || null : null;
+  // RUNDE DA — se kommentaren ved samme linjer i /api/customer-visits/book ovenfor.
+  const visitType = body.visit_type === 'kvalitetskontrol' ? 'kvalitetskontrol' : 'kundebesog';
+  const taskName = visitType === 'kvalitetskontrol' ? 'Kvalitetskontrol/eftersyn' : 'Kundebesøg';
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query(`
       INSERT INTO jt_tasks (id,name,job_id,job_name,job_address,customer_phone,start_date,end_date,type_guess,raw_assignee_name,jt_url,synced_at,source,is_visit,created_at)
-      VALUES ($1,'Kundebesøg',NULL,$2,$3,$4,$5,$5,'other',NULL,NULL,${nowTextSQL()},'manual',1,${nowTextSQL()})
-    `, [taskId, customerName, address, phone || null, body.date]);
+      VALUES ($1,$6,NULL,$2,$3,$4,$5,$5,'other',NULL,NULL,${nowTextSQL()},'manual',1,${nowTextSQL()})
+    `, [taskId, customerName, address, phone || null, body.date, taskName]);
     await client.query(`
-      INSERT INTO customer_visits (task_id,customer_name,address,phone,notes,customer_id,quote_id,created_at,updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()},${nowTextSQL()})
-    `, [taskId, customerName, address, phone, notes || null, customerId, quoteId]);
+      INSERT INTO customer_visits (task_id,customer_name,address,phone,notes,customer_id,quote_id,visit_type,created_at,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()},${nowTextSQL()})
+    `, [taskId, customerName, address, phone, notes || null, customerId, quoteId, visitType]);
     await client.query('COMMIT');
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
@@ -9475,16 +9522,18 @@ app.get('/api/customer-visits/overview', auth, panelAccessAny(['plan', 'customer
     ORDER BY b.start_date ASC, b.start_time ASC NULLS LAST
   `));
   const visitExtras = await pool.query(`
-    SELECT task_id, notes AS visit_notes, customer_id, quote_id, submitted_at AS visit_submitted_at
+    SELECT task_id, notes AS visit_notes, customer_id, quote_id, submitted_at AS visit_submitted_at, visit_type
     FROM customer_visits WHERE task_id = ANY($1::text[])
   `, [booked.rows.map(r => r.task_id)]);
   const extraByTask = {};
   visitExtras.rows.forEach(r => { extraByTask[r.task_id] = r; });
   const bookedOut = booked.rows.map(r => Object.assign({}, r, extraByTask[r.task_id] || {}));
 
+  // RUNDE DA — visit_type tilføjet, så "Kundebesøg"-oversigtens nye
+  // Kundebesøg/Kvalitetskontrol-faneblade kan filtrere på den.
   const unbooked = await pool.query(`
     SELECT t.id AS task_id, t.job_name, t.job_address, t.customer_phone, t.start_date AS ref_date,
-           cv.notes AS visit_notes, cv.customer_id, cv.quote_id
+           cv.notes AS visit_notes, cv.customer_id, cv.quote_id, cv.visit_type
     FROM jt_tasks t
     LEFT JOIN customer_visits cv ON cv.task_id = t.id
     WHERE t.is_visit = 1 AND NOT EXISTS (SELECT 1 FROM planning_bookings b WHERE b.task_id = t.id)
@@ -10802,7 +10851,7 @@ app.get('/api/crm/customers/:id/summary', auth, panelAccessAny(['customers', 'cr
 app.get('/api/crm/customers/:id/visits', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
   const result = await pool.query(`
     SELECT v.id, v.task_id, v.room_size, v.floor_type_wanted, v.notes, v.recommended_solution,
-           v.estimated_price, v.photo_urls, v.submitted_at, v.updated_at, u.name AS filled_by_name
+           v.estimated_price, v.photo_urls, v.submitted_at, v.updated_at, v.visit_type, u.name AS filled_by_name
     FROM customer_visits v
     LEFT JOIN users u ON u.id = v.filled_by
     WHERE v.customer_id=$1 AND v.submitted_at IS NOT NULL
@@ -12543,7 +12592,7 @@ app.post('/api/webhooks/resend', asyncRoute(async (req, res) => {
 //           Kun "name" er påkrævet — map Elementor/Facebook-felterne til disse
 //           navne i et "Set variable"/"Compose"-trin i Make FØR I sender videre.
 // ══════════════════════════════════════════════════════════════
-const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'facebook-ads': 'Facebook Ads' };
+const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'facebook-ads': 'Facebook Ads', 'prisberegner': 'Prisberegner (gulvmaster.dk)' };
 // RUNDE CP (Martin: "Lead source tilvælges ikke når leadet kommer ind fra
 // facebook og website?") — crm_leads.source (sat ovenfor til sourceLabel)
 // er en FRI tekstkolonne og er ikke det samme som den synlige "Lead
@@ -12559,7 +12608,39 @@ const LEAD_WEBHOOK_SOURCE_LABELS = { 'elementor': 'Elementor (WordPress)', 'face
 // lead-oprettelsen. Et ukendt/fremtidigt :source-navn springes stille over
 // her (kan ikke gætte en passende dropdown-værdi) — kun source-kolonnen
 // sættes stadig, ligesom før.
-const LEAD_WEBHOOK_SOURCE_FIELD_VALUES = { 'elementor': 'Website form', 'facebook-ads': 'Facebook/Instagram' };
+const LEAD_WEBHOOK_SOURCE_FIELD_VALUES = { 'elementor': 'Website form', 'facebook-ads': 'Facebook/Instagram', 'prisberegner': 'Website form' };
+// RUNDE CW (okt. 2026, Martin: "gør så leads der skriver sig op bliver oprettet
+// direkte i dette program som et korrekt kunde og lead i leadpipeline") —
+// prisberegnerne på gulvmaster.dk (WordPress-pluginnet "Gulv Master –
+// Konfiguratorer", v1.0.5+) sender nu hvert lead hertil via samme
+// lead-intake-rute som Elementor/Facebook, med :source = 'prisberegner'.
+// To ekstra, valgfrie felter i body'en håndteres her:
+//   projekt_type — sættes på leadets "Projekt Type"-felt. Findes værdien
+//     ikke i forvejen som valgmulighed (fx "Tømrer"), tilføjes den til
+//     dropdownen, så den kan ses/vælges i UI'et.
+//   external_ref — fx "gmc-fpc-123-ab12cd34" (konfigurator + WordPress-id).
+//     Idempotens-nøgle: trykker man "Send igen" i WordPress, oprettes der
+//     IKKE et dublet-lead, men det eksisterende id returneres.
+// Begge læses BEVIDST med eksakt nøgle (ikke leadIntakeField), da dennes
+// løse delstrengs-fallback (RUNDE CT) ellers kunne få et kort, tilfældigt
+// felt fra Make/Elementor til at ligne en external_ref.
+function leadIntakeExactField(body, names) {
+  for (const key of names) {
+    const value = body && body[key];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+  }
+  return '';
+}
+async function leadIntakeResolveSelectOption(entityType, key, value) {
+  const v = String(value || '').trim();
+  if (!v) return null;
+  const cache = await closeLoadFieldOptionCache(entityType, key);
+  if (!cache) return null; // feltet findes ikke (slettet i CRM-indstillinger) — spring over
+  const hit = cache.list.find(o => o.toLowerCase() === v.toLowerCase());
+  if (hit) return hit;
+  await closeEnsureOption(cache, v);
+  return v;
+}
 async function verifyLeadWebhookSecret(req) {
   const provided = req.headers['x-webhook-secret'] || req.query.token || '';
   if (!provided) return false;
@@ -12725,6 +12806,17 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
   b.address = leadIntakeField(b, ['address', 'Address', 'adresse', 'street_address', 'street']) || null;
   b.note = leadIntakeField(b, ['note', 'Note', 'besked', 'message', 'comments', 'kommentar']) || null;
   const sourceLabel = LEAD_WEBHOOK_SOURCE_LABELS[req.params.source] || (req.params.source ? String(req.params.source) : 'Webhook');
+  // RUNDE CW — se kommentaren ved leadIntakeExactField ovenfor.
+  const externalRef = leadIntakeExactField(b, ['external_ref']).slice(0, 120) || null;
+  if (externalRef) {
+    const existing = await pgOne('SELECT id FROM crm_leads WHERE external_ref=$1', [externalRef]);
+    if (existing) {
+      console.log('lead-intake webhook: external_ref ' + externalRef + ' findes allerede som lead #' + existing.id + ' — ingen dublet oprettet');
+      return res.json({ ok: true, id: existing.id, duplicate: true });
+    }
+  }
+  const projektTypeRaw = leadIntakeExactField(b, ['projekt_type', 'project_type']);
+  const projektType = projektTypeRaw ? await leadIntakeResolveSelectOption('lead', 'projekt_type', projektTypeRaw) : null;
 
   // RETTELSE (sep. 2026, Martins fejlrapport: "Alle mine facebook og make
   // leads når de oprettes i systemet som kunde er det mening der skal
@@ -12754,13 +12846,15 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
     const posRow = await one('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM crm_leads WHERE stage_id=$1', [stageId]);
 
     const r = await one(`
-      INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,${nowTextSQL()}) RETURNING id
-    `, [name, b.email || null, b.phone || null, b.address || null, sourceLabel, b.note || null, p.id, stageId, posRow.pos]);
+      INSERT INTO crm_leads (name,email,phone,address,source,note,pipeline_id,stage_id,owner_id,position,stage_changed_at,external_ref)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,${nowTextSQL()},$10) RETURNING id
+    `, [name, b.email || null, b.phone || null, b.address || null, sourceLabel, b.note || null, p.id, stageId, posRow.pos, externalRef]);
     await crmLogActivity('lead', r.id, 'created', 'Lead modtaget automatisk via ' + sourceLabel, null, client);
     // RUNDE CP — se kommentaren ved LEAD_WEBHOOK_SOURCE_FIELD_VALUES ovenfor.
     const sourceFieldValue = LEAD_WEBHOOK_SOURCE_FIELD_VALUES[req.params.source];
     if (sourceFieldValue) await crmSetCustomFieldValues('lead', r.id, { lead_source: sourceFieldValue }, client);
+    // RUNDE CW — se kommentaren ved leadIntakeExactField ovenfor.
+    if (projektType) await crmSetCustomFieldValues('lead', r.id, { projekt_type: projektType }, client);
 
     const linked = await crmFindOrCreateContactAndCustomer(name, b.email || null, b.phone || null, b.address || null, b.note || null, client);
     await client.query('UPDATE crm_leads SET contact_id=$1 WHERE id=$2', [linked.contactId, r.id]);
@@ -12790,6 +12884,16 @@ app.post('/api/integrations/lead-intake/:source', leadIntakeParseBody, asyncRout
     .catch(e => console.error('SMS/email-automatik fejlede for webhook-lead #' + result.leadId + ':', e.message));
 
   res.json({ ok: true, id: result.leadId });
+}));
+
+// RUNDE CW — forbindelsestest til WordPress-pluginnets "Test forbindelse"-knap
+// (okt. 2026) — tjekker kun nøglen og at der findes en lead-pipeline, opretter
+// INTET. Samme nøgle (X-Webhook-Secret) som selve lead-intake-ruten.
+app.get('/api/integrations/lead-intake-ping', asyncRoute(async (req, res) => {
+  if (!(await verifyLeadWebhookSecret(req))) return res.status(401).json({ ok: false, error: 'Ugyldig eller manglende nøgle (X-Webhook-Secret)' });
+  const p = await pgOne("SELECT id, name FROM crm_pipelines WHERE type='lead' ORDER BY position ASC LIMIT 1");
+  if (!p) return res.status(400).json({ ok: false, error: 'Ingen lead-pipeline findes — opret én under CRM-indstillinger' });
+  res.json({ ok: true, pipeline: p.name });
 }));
 
 // ══════════════════════════════════════════════════════════════
@@ -13677,6 +13781,8 @@ app.get('/api/crm/lead-webhook-info', auth, panelAccessAny(['customers','crmp_le
     secret: row && row.value,
     url_elementor: base + 'elementor',
     url_facebook: base + 'facebook-ads',
+    url_prisberegner: base + 'prisberegner',
+    portal_base: req.protocol + '://' + req.get('host'),
     external_api_key: extKeyRow && extKeyRow.value,
     external_api_base: req.protocol + '://' + req.get('host') + '/api/external/',
     // RUNDE BI (Martin: "kan se facebook og make begge har et link burde
@@ -16773,6 +16879,38 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
   res.json({ ok: true, cascaded });
 }));
 
+// RUNDE CZ (Martin: "i opgave kunne trykke på musen holde den inde og trække
+// den hen over alle de opgaver jeg vil så jeg kan flytte dem samtidig. Ellers
+// skal jeg side og manuelt rykke dem alle til december nu det helt sygt") —
+// træk-udvælg flere opgaver på én gang i Gantt-stripen (se
+// pdGanttStartSelect/pdGanttStartDrag i admin.html) og flyt dem ALLE med
+// samme antal dage i ét samlet kald, i stedet for ét PUT pr. opgave. Rører
+// BEVIDST kun de markerede opgaver — ingen kaskade til andre, ulinkede
+// opgaver via depends_on (modsat enkelt-opgave-ruten ovenfor, som tager
+// højde for afhængighedskæder): her har Martin allerede selv valgt præcis
+// hvilke opgaver der skal flyttes, så en ekstra kaskade ville kunne give en
+// dobbelt-forskydning af en opgave der både er markeret OG afhænger af en
+// anden markeret opgave.
+app.put('/api/projects/:id/tasks/bulk-dates', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const ids = Array.isArray(b.ids) ? [...new Set(b.ids.map(x => String(x || '').trim()).filter(Boolean))] : [];
+  const deltaDays = Math.round(Number(b.delta_days));
+  if (!ids.length || !deltaDays) return res.status(400).json({ error: 'ids og delta_days mangler' });
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
+  const tasks = (await pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 AND id = ANY($2::text[])', [req.params.id, ids])).rows;
+  const updated = [];
+  for (const t of tasks) {
+    if (!validDate(t.start_date)) continue;
+    const newStart = addCalendarDays(t.start_date, deltaDays);
+    const newEnd = validDate(t.end_date) ? addCalendarDays(t.end_date, deltaDays) : newStart;
+    await pool.query(`UPDATE gantt_tasks SET start_date=$1, end_date=$2, synced_at=${nowTextSQL()} WHERE id=$3`, [newStart, newEnd, t.id]);
+    await mirrorProjectTaskToPool(t.id, project, { name: t.name, start_date: newStart, end_date: newEnd, description: t.description || '' });
+    updated.push(t.id);
+  }
+  res.json({ ok: true, updated });
+}));
+
 app.delete('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   // Rydder også op i poolen (og alt der peger på opgaven dér) — ellers ville en
   // slettet sags-opgave blive hængende som en "spøgelses"-opgave i Opgavepool/
@@ -18549,6 +18687,22 @@ async function sendDunningEmailForInvoice(inv, targetLevel, settings, companyNam
     const copy = dunningFallbackCopy(targetLevel, inv.fullName, owed, feeAmount, totalWithFee, companyName);
     subject = copy.subject; text = copy.text; html = copy.html;
   }
+  // RUNDE DA — kun ved en MANUEL afsendelse af ÉN bestemt rykker (se
+  // opts.senderUserId sat af POST .../dunning-send/:documentId nedenfor), hvor
+  // der rent faktisk ER en konkret medarbejder der trykkede "Send". Det
+  // automatiske daglige scan (runDunningScan) sender potentielt mange rykkere
+  // i træk uden nogen enkelt medarbejder bag det enkelte klik, og sætter
+  // derfor ikke opts.senderUserId — html/text forbliver uændret for dem.
+  if (opts.senderUserId) {
+    const htmlWithSig = await appendUserSignature(html, opts.senderUserId);
+    // Tilføjer KUN den rene tekst-udgave af selve det nye signatur-stykke til
+    // text-versionen (udregnet via string-længdeforskellen), i stedet for at
+    // genudregne hele text fra html — det ville for fallback-teksten
+    // (dunningFallbackCopy) erstatte en hånd-skrevet, pænere plaintext-udgave
+    // med en rå tag-strippet version af hele html'en.
+    if (htmlWithSig !== html) text = (text || '') + '\n\n' + stripHtmlToText(htmlWithSig.slice(html.length));
+    html = htmlWithSig;
+  }
   let status = 'sent', error = null;
   try {
     // RUNDE BJ — rykkere er samme "Bogholderiet"-korrespondance som selve
@@ -18952,7 +19106,7 @@ app.post('/api/finance/dunning-send/:documentId', auth, panelAccess('finance'), 
   const templateIdOverride = body.template_id !== undefined ? (body.template_id || null) : undefined;
   const toOverride = body.to ? String(body.to).trim() : null;
   const chargeFee = body.charge_fee !== false;
-  const result = await sendDunningEmailForInvoice(inv, targetLevel, settings, companyName, { templateIdOverride, toEmailOverride: toOverride, chargeFee });
+  const result = await sendDunningEmailForInvoice(inv, targetLevel, settings, companyName, { templateIdOverride, toEmailOverride: toOverride, chargeFee, senderUserId: req.user.id }); // RUNDE DA
   if (!result.sent) return res.status(400).json({ error: result.reason });
   res.json({ ok: true, level: targetLevel, toEmail: result.toEmail });
 }));
@@ -22090,6 +22244,7 @@ app.post('/api/credit-notes/:id/send', auth, panelAccess('quotes'), asyncRoute(a
       ctaUrl: portalLink, ctaLabel: 'Se dine dokumenter'
     });
   }
+  bodyHtml = await appendUserSignature(bodyHtml, req.user.id); // RUNDE DA
   cn.lines = (await pool.query('SELECT * FROM credit_note_lines WHERE credit_note_id=$1 ORDER BY position ASC, id ASC', [cn.id])).rows;
   const cnAttachmentRows = (await pool.query('SELECT * FROM document_attachments WHERE doc_type=$1 AND doc_id=$2 ORDER BY created_at ASC, id ASC', ['credit_note', cn.id])).rows;
   const cnAttachments = await fetchAttachmentImages(cnAttachmentRows);
@@ -23613,6 +23768,7 @@ app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (
       portalLink: portalLink !== signLink ? portalLink : null
     });
   }
+  bodyHtml = await appendUserSignature(bodyHtml, req.user.id); // RUNDE DA
   let pdfBuffer;
   // RUNDE AC — mailen kunden modtager skal have PRÆCIS samme PDF som
   // "Åbn PDF i nyt vindue"-knappen, inkl. evt. vedhæftede billeder.
@@ -23740,6 +23896,7 @@ app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async
       ctaUrl: portalLink, ctaLabel: 'Se faktura online'
     });
   }
+  bodyHtml = await appendUserSignature(bodyHtml, req.user.id); // RUNDE DA
   let pdfBuffer;
   // RUNDE AC — se tilsvarende kommentar ved tilbuddets sende-rute ovenfor.
   try {

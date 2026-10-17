@@ -2290,6 +2290,11 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .qe-crm-note-toggle{display:none;border:0;background:transparent;color:#92400E;cursor:pointer;font-size:11px;font-weight:600;padding:4px 0 0;margin:0}
 .qe-crm-note-toggle:hover{text-decoration:underline}
 .qe-crm-note-toggle.is-visible{display:inline-block}
+/* RUNDE DA — se #qe-visit-badge i HTML'en. Samme grønne "noget er gjort"-farve
+   som appens øvrige "Færdig"-mærker (se fx .fin-badge.ok/.status-pill.planned),
+   så den læses som en positiv/afsluttet status, ikke en advarsel. */
+.qe-visit-badge{display:inline-flex;align-items:center;gap:6px;background:#DCFCE7;color:#15803D;border:1px solid #86EFAC;border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:800;cursor:pointer;margin-top:10px}
+.qe-visit-badge:hover{background:#BBF7D0}
 /* RUNDE T (Martins ønske: se qe-crm-link-search ovenfor) — pillen der viser
    det lead/den handel tilbuddet er koblet til, med en lille ✕ for at fjerne
    koblingen igen. Samme visuelle familie som .fin-recon-match-chip. */
@@ -3410,6 +3415,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 #pd-gantt-strip .gantt-list-head{height:86px}
 #pd-gantt-strip .gantt-list-row,#pd-gantt-strip .gantt-row{height:72px}
 #pd-gantt-strip .gantt-bar{top:16px;height:40px;font-size:13px}
+/* RUNDE CZ (Martin: "trykke på musen holde den inde og trække den hen over
+   alle de opgaver jeg vil så jeg kan flytte dem samtidig") — træk-udvælg
+   flere opgavebjælker på én gang, se pdGanttSelected/bindPdGanttMarquee(). */
+.pd-gantt-marquee-box{position:absolute;border:1.5px dashed #5B8DEF;background:rgba(91,141,239,.12);border-radius:4px;pointer-events:none;z-index:5}
+#pd-gantt-strip .gantt-bar.selected{box-shadow:0 0 0 2.5px #F59E0B,0 2px 8px rgba(0,0,0,.18)}
+#pd-gantt-selection-bar{display:flex;align-items:center;gap:10px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:8px 14px;font-size:13px;margin-bottom:10px}
+#pd-gantt-selection-bar button{margin-left:auto}
 #pd-gantt-strip .gantt-bar-label{font-size:13px;font-weight:700;cursor:text}
 #pd-gantt-strip .gantt-bar-label[contenteditable="true"]{cursor:text;outline:2px solid rgba(255,255,255,.7);border-radius:4px;padding:0 3px}
 /* Venstre kolonne i sags-Gantt'et: navn, åbn og slet direkte på rækken, i stedet
@@ -4027,7 +4039,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.29.1 · 2026-10-15</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.0 · 2026-10-17</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5988,6 +6000,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="qe-crm-note-text collapsed" id="qe-crm-note-text"></div>
           <button type="button" class="qe-crm-note-toggle" id="qe-crm-note-toggle">Vis hele noten ▾</button>
         </div>
+        <!-- RUNDE DA (Martin: "når kundebesøg har været lavet at kunden ... så
+             kommer over i Lav tilbud igen og står som kundebesøg er fortaget,
+             lille knap som de andre") — lille klikbar badge, kun synlig når
+             kunden (qeState.customerId) har mindst én FÆRDIG besøgsrapport
+             (kundebesøg ELLER kvalitetskontrol, se qeLoadVisitBadge). Klik
+             åbner den samme store redigerbare besøgs-popup som Handel-
+             detaljesiden allerede bruger (crmpxOpenVisitModal). -->
+        <button type="button" id="qe-visit-badge" class="qe-visit-badge" style="display:none" onclick="qeOpenVisitBadge()"></button>
         <!-- RUNDE Y (Martins ønske: "vi har ikke brug for 2 af dem" — den store
              "🎤 AI-diktering af tilbud"-boks foroven dækker allerede diktering,
              så det lille ekstra mikrofon-ikon her var overflødigt/forvirrende.
@@ -6946,6 +6966,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     <div><h2>📅 Kundebesøg</h2><div class="sub">Alle bookede kundebesøg — hvem er ude hvornår</div></div>
     <button class="bly-btn" id="kb-new-btn" type="button">+ Nyt kundebesøg</button>
   </div>
+  <!-- RUNDE DA (Martin: "Under kundebesøg skal man så kunde skifte mellem
+       Kundebesøg/Kvalitetskontrol") — filtrerer hele siden (KPI-tal, liste,
+       "+ Nyt kundebesøg") til én type ad gangen, se kbTypeFilter/kbRender. -->
+  <div class="bly-segtabs" id="kb-type-filter-tabs" style="margin-bottom:14px">
+    <button class="bly-segtab active" data-visit-type="kundebesog" type="button">🏠 Kundebesøg</button>
+    <button class="bly-segtab" data-visit-type="kvalitetskontrol" type="button">🔍 Kvalitetskontrol/eftersyn</button>
+  </div>
   <div class="bly-kpi-row" id="kb-filter-row" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));margin-bottom:14px"></div>
   <div class="bly-toolbar">
     <div class="bly-toolbar-left" style="display:flex;align-items:center;gap:8px">
@@ -6991,6 +7018,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <input id="kb-address" class="input" placeholder="Gade, postnr, by">
       <label class="form-label" style="margin-top:12px">Note <span class="opt-tag">valgfrit</span></label>
       <input id="kb-notes" class="input" placeholder="Fx aftalt telefonisk, ring 15 min før">
+      <!-- RUNDE DA — se kommentaren ved #vb-type-tabs (samme type-valg, bare på
+           denne sides egen book+tildel-modal). -->
+      <label class="form-label" style="margin-top:12px">Type</label>
+      <div class="bly-segtabs" id="kb-type-tabs" style="margin:0 0 4px">
+        <button class="bly-segtab active" data-visit-type="kundebesog" type="button">🏠 Kundebesøg</button>
+        <button class="bly-segtab" data-visit-type="kvalitetskontrol" type="button">🔍 Kvalitetskontrol/eftersyn</button>
+      </div>
       <div id="kb-quote-picker-wrap" style="display:none;margin-top:12px">
         <label class="form-label">Vedhæft tilbud <span class="opt-tag">valgfrit</span></label>
         <select id="kb-quote-select" class="input"><option value="">Intet tilbud</option></select>
@@ -7650,6 +7684,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
             <button class="bly-btn outline" id="pd-gantt-pdf-btn" type="button" title="Download ganttkortet som PDF">📄 Download PDF</button>
             <button class="bly-btn" id="pd-new-task-btn" type="button">+ Ny opgave</button>
           </div>
+        </div>
+        <!-- RUNDE CZ (Martin: "trykke på musen holde den inde og trække den
+             hen over alle de opgaver jeg vil så jeg kan flytte dem samtidig.
+             Ellers skal jeg side og manuelt rykke dem alle til december nu
+             det helt sygt") — vist når man har træk-markeret flere
+             opgavebjælker (se pdGanttSelected/bindPdGanttMarquee() i
+             renderPdGanttStrip()). Selve flytningen sker ved at trække en af
+             de markerede bjælker — denne linje er bare status + en hurtig
+             "Ryd markering"-knap. -->
+        <div id="pd-gantt-selection-bar" class="hidden">
+          🔲 <b><span id="pd-gantt-selection-count">0</span> opgaver markeret</b> — træk en af dem for at flytte dem alle sammen
+          <button type="button" class="qz-icon-btn" id="pd-gantt-selection-clear" title="Ryd markering">✕ Ryd</button>
         </div>
         <div id="pd-gantt-strip" style="overflow-x:auto"></div>
       </div>
@@ -9000,6 +9046,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <input id="visit-address" class="input" placeholder="Gade, postnr, by">
       <label class="form-label" style="margin-top:12px">Note <span class="opt-tag">valgfrit</span></label>
       <input id="visit-notes" class="input" placeholder="Fx aftalt telefonisk, ring 15 min før">
+      <!-- RUNDE DA (Martin: "Lav en mulighed for at vælge Kvalitet kontrol/eftersyn
+           ... Under kundebesøg skal man så kunde skifte mellem Kundebesøg/
+           Kvalitetskontrol") — vælger hvilken type besøg der oprettes. Styrer KUN
+           opgavens navn server-side (se POST /api/customer-visits/book) — selve
+           besøgsrapport-formen medarbejderen udfylder er uændret og den samme for
+           begge typer, se vbVisitType. -->
+      <label class="form-label" style="margin-top:12px">Type</label>
+      <div class="bly-segtabs" id="vb-type-tabs" style="margin:0 0 4px">
+        <button class="bly-segtab active" data-visit-type="kundebesog" type="button">🏠 Kundebesøg</button>
+        <button class="bly-segtab" data-visit-type="kvalitetskontrol" type="button">🔍 Kvalitetskontrol/eftersyn</button>
+      </div>
       <!-- RUNDE L (Martins ønske) — dukker kun op når kunden er valgt fra kundebasen
            (vbSelectedCustomerId sat) OG kunden faktisk har tilbud at vælge imellem. -->
       <div id="vb-quote-picker-wrap" style="display:none;margin-top:12px">
@@ -10760,7 +10817,23 @@ function switchMailTab(name,skipHash){
   document.getElementById('mailtab-list').classList.toggle('active',name!=='signaturer');
   document.getElementById('mailtab-signaturer').classList.toggle('active',name==='signaturer');
   if(!skipHash)navPushHash('mail'+(name==='modtaget'?'':'/'+name));
-  if(name==='signaturer'){mailRenderSignatures();return;}
+  // RUNDE CZ (Martin: "jeg kan ikke lave dem nogle steder" — signaturer) —
+  // root cause: både hashchange-lytteren og "genskab siden ved genindlæsning"
+  // (se de to steder der kalder switchPage('mail') efterfulgt af
+  // switchMailTab(...,true)) kalder switchMailTab() SYNKRONT, lige efter
+  // switchPage('mail') har sat mailInit() i gang UDEN await — så denne gren
+  // nåede næsten altid at rendere #mail-sig-list FØR mailLoadSignatures()
+  // (inde i mailEnsureComposeReady()) var færdig med at hente fra serveren,
+  // med en permanent tom liste til følge (intet kaldte mailRenderSignatures()
+  // igen, når data så ankom). Går man direkte ind på #mail/signaturer (fx ved
+  // genindlæsning, eller det er den side browseren husker), ramte man dette
+  // HVER gang — fanen "åbnede", men stod for evigt tom. Samme problem hvis
+  // mailComposeBound allerede var sat (fx fra "Skriv mail" et andet sted i
+  // appen FØR man besøgte Mails-siden) — mailEnsureComposeReady() sprang så
+  // hele indlæsningen (inkl. mailLoadSignatures()) over næste gang.
+  // Henter og tegner nu altid listen friskt her, hver gang man skifter TIL
+  // signatur-fanen, uafhængigt af al den andel sekvens-timing ovenfor.
+  if(name==='signaturer'){mailLoadSignatures().then(mailRenderSignatures);return;}
   mailLoadList(true);
 }
 async function mailLoadFolders(){
@@ -14021,11 +14094,20 @@ async function deleteChecklistItem(id,containerId,taskId){
 // ligesom ved en almindelig manuel opgave) — medarbejder + endelig dato/tid vælges
 // først (og kun én gang) når opgaven trækkes ud på kalenderen.
 var vbSelectedCustomerId=null;
+// RUNDE DA — se kommentaren ved #vb-type-tabs i HTML'en. Nulstilles til
+// 'kundebesog' hver gang modalen åbnes helt forfra (samme mønster som de
+// andre felter herunder), vælges via klik på segtabs (se initListeners).
+var vbVisitType='kundebesog';
+function vbSetVisitType(t){
+  vbVisitType=t==='kvalitetskontrol'?'kvalitetskontrol':'kundebesog';
+  document.querySelectorAll('#vb-type-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.visitType===vbVisitType);});
+}
 function openVisitBookModal(){
   document.getElementById('visit-date').value=iso(new Date());
   ['visit-customer','visit-phone','visit-address','visit-notes'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('vb-customer-results').style.display='none';
   vbSelectedCustomerId=null;
+  vbSetVisitType('kundebesog');
   document.getElementById('vb-quote-picker-wrap').style.display='none';
   document.getElementById('vb-quote-select').innerHTML='<option value="">Intet tilbud</option>';
   document.getElementById('visit-book-modal').classList.add('open');
@@ -14092,7 +14174,8 @@ async function saveVisitBooking(){
     address:document.getElementById('visit-address').value.trim(),
     notes:document.getElementById('visit-notes').value.trim(),
     customer_id:vbSelectedCustomerId||null,
-    quote_id:document.getElementById('vb-quote-select').value||null
+    quote_id:document.getElementById('vb-quote-select').value||null,
+    visit_type:vbVisitType // RUNDE DA
   };
   var r=await api('/api/customer-visits/book',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
@@ -14187,9 +14270,24 @@ var kbFilter='today';
 var kbCustomDate=null;
 var kbSelectedCustomerId=null;
 var kbInitialized=false;
+// RUNDE DA (Martin: "Under kundebesøg skal man så kunde skifte mellem
+// Kundebesøg/Kvalitetskontrol") — hele oversigts-siden (KPI-tal, liste) vises
+// for ÉN type ad gangen, valgt via #kb-type-filter-tabs. Rækker uden visit_type
+// sat (ældre data fra før denne kolonne, eller en customer_visits-række der af
+// en eller anden grund ikke findes) regnes som 'kundebesog', samme default som
+// databasekolonnen selv — se kbRowVisitType.
+var kbTypeFilter='kundebesog';
+function kbRowVisitType(v){return v.visit_type==='kvalitetskontrol'?'kvalitetskontrol':'kundebesog';}
 function initKundebesogPage(){
   if(!kbInitialized){
     kbInitialized=true;
+    document.getElementById('kb-type-filter-tabs').addEventListener('click',function(e){
+      var b=e.target.closest('[data-visit-type]');
+      if(!b)return;
+      kbTypeFilter=b.dataset.visitType;
+      document.querySelectorAll('#kb-type-filter-tabs .bly-segtab').forEach(function(x){x.classList.toggle('active',x.dataset.visitType===kbTypeFilter);});
+      kbRender();
+    });
     document.getElementById('kb-filter-row').addEventListener('click',function(e){
       var b=e.target.closest('[data-kb-filter]');
       if(!b)return;
@@ -14248,9 +14346,11 @@ function kbBucketMatch(v,bucket){
   return true;
 }
 function kbAllRows(){
+  // RUNDE DA — filtreres til den aktive fane (kbTypeFilter) FØR noget andet,
+  // så KPI-tallene i kbRenderFilterRow også kun tæller den valgte type.
   return kbData.booked.map(function(v){return v;}).concat(kbData.unbooked.map(function(v){
     return Object.assign({},v,{_unbooked:true,start_date:v.ref_date});
-  }));
+  })).filter(function(v){return kbRowVisitType(v)===kbTypeFilter;});
 }
 function kbRenderFilterRow(){
   var box=document.getElementById('kb-filter-row');
@@ -14317,6 +14417,13 @@ async function kbMarkDone(bookingId){
 // ikke-planlagt besøg (allerede en jt_tasks/customer_visits-række, mangler
 // bare medarbejder+dato), og udeladt ved "+ Nyt kundebesøg" (helt tom).
 var kbPrefillTaskId=null;
+// RUNDE DA — se kommentaren ved vbVisitType ovenfor (samme mønster, denne
+// modals egen type-state).
+var kbVisitType='kundebesog';
+function kbSetVisitType(t){
+  kbVisitType=t==='kvalitetskontrol'?'kvalitetskontrol':'kundebesog';
+  document.querySelectorAll('#kb-type-tabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.visitType===kbVisitType);});
+}
 function openKbAssignModal(prefill){
   kbPrefillTaskId=(prefill&&prefill.task_id)||null;
   document.getElementById('kb-customer').value=(prefill&&(prefill.job_name||prefill.customer_name))||'';
@@ -14325,6 +14432,12 @@ function openKbAssignModal(prefill){
   document.getElementById('kb-notes').value=(prefill&&prefill.visit_notes)||'';
   document.getElementById('kb-date').value=(prefill&&prefill.ref_date)||iso(new Date());
   document.getElementById('kb-time').value='';
+  // RUNDE DA — et "📌 Book"-klik på et allerede oprettet (men ikke-planlagt)
+  // besøg skal beholde DEN TYPE det allerede har (prefill.visit_type); et helt
+  // nyt besøg ("+ Nyt kundebesøg") forudfyldes i stedet med den fane man står
+  // på i oversigten (kbTypeFilter), så man ikke skal vælge den igen for det
+  // typiske tilfælde.
+  kbSetVisitType((prefill&&prefill.visit_type)||kbTypeFilter);
   document.getElementById('kb-customer-results').style.display='none';
   kbSelectedCustomerId=(prefill&&prefill.customer_id)||null;
   document.getElementById('kb-quote-picker-wrap').style.display='none';
@@ -14390,7 +14503,8 @@ async function saveKbAssign(){
     address:document.getElementById('kb-address').value.trim(),
     notes:document.getElementById('kb-notes').value.trim(),
     customer_id:kbSelectedCustomerId||null,
-    quote_id:document.getElementById('kb-quote-select').value||null
+    quote_id:document.getElementById('kb-quote-select').value||null,
+    visit_type:kbVisitType // RUNDE DA
   };
   var r=await api('/api/customer-visits/book-and-assign',{method:'POST',body:JSON.stringify(body)});
   if(r&&r.ok){
@@ -22692,6 +22806,11 @@ async function bind(){
   document.getElementById('tld-checklist-new').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();if(tlDrawerTaskId)addChecklistItem('tld-checklist-items',tlDrawerTaskId,'tld-checklist-new');}});
   document.getElementById('close-visit-book').onclick=function(){closeModal('visit-book-modal');};
   document.getElementById('save-visit-book').onclick=saveVisitBooking;
+  // RUNDE DA — se #vb-type-tabs i HTML'en.
+  document.getElementById('vb-type-tabs').addEventListener('click',function(e){
+    var b=e.target.closest('[data-visit-type]');
+    if(b)vbSetVisitType(b.dataset.visitType);
+  });
   // RUNDE K (fortsat, sep. 2026, Martins ønske) — RETTET fra en tidligere fejlplacering:
   // sad først i initProjectsModule() (kun bundet efter man havde besøgt Projekter-siden),
   // men "Book kundebesøg" åbnes fra pool-dropdown'en der findes på ALLE sider — hører
@@ -22872,6 +22991,11 @@ async function bind(){
   document.getElementById('save-quick-task').onclick=saveQuickTask;
   document.getElementById('close-kb-assign').onclick=function(){closeModal('kb-assign-modal');};
   document.getElementById('save-kb-assign').onclick=saveKbAssign;
+  // RUNDE DA — se #kb-type-tabs i HTML'en.
+  document.getElementById('kb-type-tabs').addEventListener('click',function(e){
+    var b=e.target.closest('[data-visit-type]');
+    if(b)kbSetVisitType(b.dataset.visitType);
+  });
   document.getElementById('kb-customer').addEventListener('input',function(e){kbRunCustomerSearch(e.target.value.trim());});
   document.getElementById('close-tpldrop').onclick=function(){closeModal('tpldrop-modal');tpldropCtx=null;};
   document.getElementById('save-tpldrop').onclick=saveTemplateDrop;
@@ -28281,8 +28405,11 @@ async function crmpxLoadVisits(customerId,listElId,countElId){
     // hele kortet åbner nu i stedet den store redigerbare popup (se
     // crmpxOpenVisitModal), som selv viser billederne noget større.
     var photosHtml=photos.length?'<div class="crmpx-visit-photos">'+photos.map(function(url){return '<span class="crmpx-visit-thumb"><img src="'+esc(url)+'" loading="lazy"></span>';}).join('')+'</div>':'';
+    // RUNDE DA — lille type-mærke (Kundebesøg/Kvalitetskontrol), så man kan se
+    // forskellen i en liste der nu kan indeholde begge typer.
+    var typeTag=v.visit_type==='kvalitetskontrol'?'🔍 Kvalitetskontrol':'🏠 Kundebesøg';
     return '<div class="crmpx-visit-card" data-task-id="'+esc(v.task_id)+'" title="Klik for at se/rette besøgsrapporten">'
-      +'<div class="crmpx-visit-head"><span class="crmpx-visit-date">📅 '+esc(fmtDaDate((v.submitted_at||'').slice(0,10)))+'</span><span class="crmpx-visit-by">'+esc(v.filled_by_name||'')+'</span></div>'
+      +'<div class="crmpx-visit-head"><span class="crmpx-visit-date">📅 '+esc(fmtDaDate((v.submitted_at||'').slice(0,10)))+' · '+typeTag+'</span><span class="crmpx-visit-by">'+esc(v.filled_by_name||'')+'</span></div>'
       +kvHtml+noteHtml+photosHtml
       +(!kv.length&&!noteHtml&&!photosHtml?'<div class="crmpx-empty">Ingen detaljer udfyldt</div>':'')
       +'</div>';
@@ -28303,7 +28430,8 @@ function crmpxOpenVisitModal(taskId){
   var v=crmpxVisitsCache.find(function(x){return String(x.task_id)===String(taskId);});
   if(!v)return;
   crmpxVisitEditingTaskId=taskId;
-  document.getElementById('crmpx-visit-modal-date').textContent='· '+fmtDaDate((v.submitted_at||'').slice(0,10));
+  // RUNDE DA — se typeTag i crmpxLoadVisits ovenfor, samme mærke her i popup'en.
+  document.getElementById('crmpx-visit-modal-date').textContent='· '+fmtDaDate((v.submitted_at||'').slice(0,10))+' · '+(v.visit_type==='kvalitetskontrol'?'🔍 Kvalitetskontrol':'🏠 Kundebesøg');
   document.getElementById('crmpx-visit-modal-by').textContent=v.filled_by_name?('Udfyldt af '+v.filled_by_name):'';
   document.getElementById('crmpxv-room').value=v.room_size||'';
   document.getElementById('crmpxv-floortype').value=v.floor_type_wanted||'';
@@ -29290,6 +29418,12 @@ function initProjectsModule(){
     document.getElementById('pd-gantt-prev-btn').addEventListener('click',function(){pdGanttPan(-14);});
     document.getElementById('pd-gantt-next-btn').addEventListener('click',function(){pdGanttPan(14);});
     document.getElementById('pd-gantt-today-btn').addEventListener('click',pdGanttResetToToday);
+    // RUNDE CZ — se HTML-kommentaren ved #pd-gantt-selection-bar. Bundet ÉN
+    // gang her (knappen er en del af den FASTE sideopbygning, ikke en del af
+    // renderPdGanttStrip()'s innerHTML, som gentegnes ved hver ændring).
+    document.getElementById('pd-gantt-selection-clear').addEventListener('click',function(){
+      pdGanttSelected.clear();renderPdGanttSelectionVisual();updatePdGanttSelectionBar();
+    });
     // RUNDE BS (Martin: "kan jeg bytte rundt på rækken følgen af opgaver ved
     // at trække dem op og ned i venstre bjælke") — bundet ÉN gang her (ikke i
     // renderPdGanttStrip(), som kalder innerHTML og dermed ville nulstille
@@ -30134,6 +30268,13 @@ async function pdSendPortalLink(){
 // simplere end Daglig Plans mandags-anker (ren dage×dayWidth-regning).
 var PD_GANTT_DAYS_BACK_MAX=200,PD_GANTT_DAYS_FORWARD_MAX=400;
 var pdGanttState={dayWidth:38,autoStart:null,autoDays:null,daysBack:0,daysForward:0,renderedStart:null},pdGanttDrag=null,pdGanttLinkDrag=null,pdGanttSelectedDepKey=null;
+// RUNDE CZ — se HTML-kommentaren ved #pd-gantt-selection-bar. pdGanttSelected
+// er en Set af opgave-id'er markeret via træk-udvælg (marquee); overlever
+// bevidst re-renders (renderPdGanttStrip() nulstiller den IKKE), så en ny
+// dato hurtigt kan trækkes ind efter en reload uden at skulle markere igen.
+// pdGanttMarquee holder selve den igangværende træk-markering (null når man
+// ikke trækker en markeringsboks lige nu).
+var pdGanttSelected=new Set(),pdGanttMarquee=null;
 // RUNDE BS — hvilken opgave (id) der lige nu trækkes i venstre bjælke, se
 // makePdGanttDragHandler(). Modul-niveau (ikke lokal i funktionen), fordi
 // selve dragstart-lytteren bindes PR. RÆKKE i renderPdGanttStrip() (rækkerne
@@ -30296,6 +30437,10 @@ function renderPdGanttStrip(){
   // GET /api/projects/:id) — stabil, ændrer sig ikke af at sætte en dato.
   var tasks=pjCurrent.tasks||[];
   if(!tasks.length){el.innerHTML='<div class="sub" style="padding:16px 2px">Ingen opgaver endnu. Opret dem manuelt med "+ Ny opgave", eller tryk "Opret opgaver fra tilbud" hvis sagen har et tilknyttet tilbud.</div>';return;}
+  // RUNDE CZ — opgaver der er markeret men ikke længere findes (slettet,
+  // eller det er en helt anden sag) skal ikke blive hængende i udvalget.
+  var livingIds=new Set(tasks.map(function(t){return String(t.id);}));
+  pdGanttSelected.forEach(function(id){if(!livingIds.has(id))pdGanttSelected.delete(id);});
   var range=pdGanttCurrentRange();
   pdGanttState.renderedStart=range.start;
   var dw=pdGanttState.dayWidth,todayIso=iso(new Date());
@@ -30347,7 +30492,7 @@ function renderPdGanttStrip(){
     var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
     timelineRows+='<div class="gantt-row">'+
       '<div class="gantt-row-bg">'+bgCols+'</div>'+
-      '<div class="gantt-bar" data-pd-task-id="'+t.id+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(t.name)+' ('+(t.start_date||'?')+' – '+(t.end_date||'?')+') — træk for at flytte, træk i kanten for at ændre varighed">'+
+      '<div class="gantt-bar'+(pdGanttSelected.has(String(t.id))?' selected':'')+'" data-pd-task-id="'+t.id+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(t.name)+' ('+(t.start_date||'?')+' – '+(t.end_date||'?')+') — træk for at flytte, træk i kanten for at ændre varighed">'+
         '<div class="gantt-bar-progress" style="width:'+Math.round((t.progress||0)*100)+'%"></div>'+
         '<span class="gantt-bar-label">'+esc(t.name||'')+'</span>'+
         '<div class="gantt-bar-handle left" data-handle="left"></div>'+
@@ -30398,7 +30543,7 @@ function renderPdGanttStrip(){
     '<div class="gantt-timeline" style="width:'+(range.days*dw)+'px">'+
       '<div class="gantt-week-head">'+weekCols+'</div>'+
       '<div class="gantt-timeline-head">'+headCols+'</div>'+
-      '<div style="position:relative">'+timelineRows+
+      '<div id="pd-gantt-rows" style="position:relative">'+timelineRows+
         '<svg class="gantt-dep-svg" width="'+svgW+'" height="'+svgH+'"><defs>'+
           '<marker id="pdGanttArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8B5CF6"/></marker>'+
           '<marker id="pdGanttArrowSel" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#EF4444"/></marker>'+
@@ -30475,6 +30620,23 @@ function renderPdGanttStrip(){
     bar.addEventListener('mousedown',function(e){
       if(e.target.classList.contains('gantt-bar-handle'))return;
       if(e.target.isContentEditable)return;
+      // RUNDE CZ — Ctrl/Cmd/Shift-klik tilføjer/fjerner DENNE bjælke fra
+      // markeringen uden at trække den, til at markere opgaver der ikke er
+      // synlige side om side (hvor et enkelt træk-udvalg ikke kan ramme
+      // begge på én gang). Selve bulk-flytningen sker ved almindeligt
+      // museklik-og-træk i en AF de markerede bjælker (se startPdGanttDrag).
+      if(e.ctrlKey||e.metaKey||e.shiftKey){
+        e.preventDefault();
+        var tid=String(taskId);
+        if(pdGanttSelected.has(tid))pdGanttSelected.delete(tid);else pdGanttSelected.add(tid);
+        renderPdGanttSelectionVisual();updatePdGanttSelectionBar();
+        return;
+      }
+      // Trækker man i en bjælke der IKKE er del af en eksisterende
+      // flervalgs-markering, gælder trækket kun denne ene bjælke — en
+      // tidligere markering ryddes først, så den ikke ved et uheld bliver
+      // flyttet med.
+      if(!pdGanttSelected.has(String(taskId))&&pdGanttSelected.size){pdGanttSelected.clear();renderPdGanttSelectionVisual();updatePdGanttSelectionBar();}
       startPdGanttDrag(e,bar,taskId,'move');
     });
     bar.querySelectorAll('.gantt-bar-handle').forEach(function(h){
@@ -30512,6 +30674,8 @@ function renderPdGanttStrip(){
   });
   bindPdGanttScrollTracking();
   bindPdGanttDepInteractions();
+  bindPdGanttMarquee();
+  updatePdGanttSelectionBar();
 }
 function startGanttBarRename(label,taskId){
   var origName=label.textContent;
@@ -30536,7 +30700,17 @@ function startGanttBarRename(label,taskId){
 }
 function startPdGanttDrag(e,bar,taskId,mode){
   e.preventDefault();
-  pdGanttDrag={taskId:taskId,bar:bar,mode:mode,startX:e.clientX,origLeft:parseInt(bar.style.left),origWidth:parseInt(bar.style.width),moved:false};
+  // RUNDE CZ — er DENNE bjælke del af en flervalgs-markering (>1 opgave), og
+  // trækker man den (ikke i kant-håndtagene, kun mode==='move'), flyttes
+  // ALLE markerede bjælker visuelt med det samme dx, og der sendes ét samlet
+  // bulk-kald på slip (se onPdGanttDragEnd) — i stedet for kun denne ene.
+  var bulkIds=null,bulkBars=null,bulkOrigLeft=null;
+  if(mode==='move'&&pdGanttSelected.has(String(taskId))&&pdGanttSelected.size>1){
+    bulkIds=Array.from(pdGanttSelected);
+    bulkBars=bulkIds.map(function(id){return document.querySelector('#pd-gantt-strip .gantt-bar[data-pd-task-id="'+id+'"]');}).filter(Boolean);
+    bulkOrigLeft=bulkBars.map(function(b){return parseInt(b.style.left);});
+  }
+  pdGanttDrag={taskId:taskId,bar:bar,mode:mode,startX:e.clientX,origLeft:parseInt(bar.style.left),origWidth:parseInt(bar.style.width),moved:false,bulkIds:bulkIds,bulkBars:bulkBars,bulkOrigLeft:bulkOrigLeft};
   document.addEventListener('mousemove',onPdGanttDragMove);
   document.addEventListener('mouseup',onPdGanttDragEnd);
 }
@@ -30545,7 +30719,15 @@ function onPdGanttDragMove(e){
   var dx=e.clientX-pdGanttDrag.startX,dw=pdGanttState.dayWidth;
   if(Math.abs(dx)>4)pdGanttDrag.moved=true;
   var snapped=Math.round(dx/dw)*dw;
-  if(pdGanttDrag.mode==='move'){pdGanttDrag.bar.style.left=(pdGanttDrag.origLeft+snapped)+'px';}
+  if(pdGanttDrag.mode==='move'){
+    pdGanttDrag.bar.style.left=(pdGanttDrag.origLeft+snapped)+'px';
+    if(pdGanttDrag.bulkBars){
+      pdGanttDrag.bulkBars.forEach(function(b,i){
+        if(b===pdGanttDrag.bar)return;
+        b.style.left=(pdGanttDrag.bulkOrigLeft[i]+snapped)+'px';
+      });
+    }
+  }
   else if(pdGanttDrag.mode==='right'){pdGanttDrag.bar.style.width=Math.max(dw-4,pdGanttDrag.origWidth+snapped)+'px';}
   else if(pdGanttDrag.mode==='left'){
     var newLeft=pdGanttDrag.origLeft+snapped,newWidth=pdGanttDrag.origWidth-snapped;
@@ -30563,6 +30745,23 @@ async function onPdGanttDragEnd(){
     var clickedId=pdGanttDrag.taskId;pdGanttDrag=null;openPdTaskDetail(clickedId);return;
   }
   var dw=pdGanttState.dayWidth;
+  // RUNDE CZ — flere opgaver markeret og trukket samtidig: ét samlet
+  // bulk-kald med antal dage flyttet (ikke en absolut dato, som i
+  // enkelt-opgave-grenen nedenfor), så ALLE markerede opgaver rykker lige
+  // langt, uanset deres individuelle startdato.
+  if(pdGanttDrag.bulkIds&&pdGanttDrag.bulkIds.length>1){
+    var deltaDays=Math.round((parseInt(pdGanttDrag.bar.style.left)-pdGanttDrag.origLeft)/dw);
+    var bulkIds=pdGanttDrag.bulkIds;
+    pdGanttDrag=null;
+    if(!deltaDays){reloadPdCurrent();return;}
+    var rb=await api('/api/projects/'+pjCurrent.id+'/tasks/bulk-dates',{method:'PUT',body:JSON.stringify({ids:bulkIds,delta_days:deltaDays})});
+    if(rb&&rb.ok){
+      toast((rb.updated||[]).length+' opgaver flyttet '+(deltaDays>0?deltaDays+' dage frem':Math.abs(deltaDays)+' dage tilbage'),'✓');
+      pdGanttSelected.clear();
+    }else toast((rb&&rb.error)||'Kunne ikke flytte opgaverne','❌');
+    reloadPdCurrent();
+    return;
+  }
   var left=parseInt(pdGanttDrag.bar.style.left),width=parseInt(pdGanttDrag.bar.style.width);
   var startOffset=Math.round(left/dw),spanDays=Math.max(1,Math.round((width+4)/dw));
   var newStart=iso(add(pdGanttState.renderedStart,startOffset));
@@ -30574,6 +30773,79 @@ async function onPdGanttDragEnd(){
   // rykker de kædede opgaver automatisk med her.
   if(r&&r.ok&&r.cascaded&&r.cascaded.length)toast(r.cascaded.length+' kædet opgave(r) rykket med','✓');
   reloadPdCurrent();
+}
+// RUNDE CZ (Martin: "i opgave kunne trykke på musen holde den inde og trække
+// den hen over alle de opgaver jeg vil så jeg kan flytte dem samtidig. Ellers
+// skal jeg side og manuelt rykke dem alle til december nu det helt sygt") —
+// træk-udvælg (marquee) flere opgavebjælker på én gang ved at trykke og
+// trække hen over tom baggrund i Gantt-stripen, se bindPdGanttMarquee()
+// herunder. Selve flytningen sker bagefter ved almindeligt træk i én af de
+// nu markerede bjælker (se startPdGanttDrag/onPdGanttDragEnd ovenfor).
+function bindPdGanttMarquee(){
+  var rowsWrap=document.getElementById('pd-gantt-rows');
+  if(!rowsWrap)return;
+  rowsWrap.addEventListener('mousedown',function(e){
+    // Bjælker, deres håndtag og kæde-pilenes klikbare "hit"-linjer passer
+    // selv på deres eget mousedown (flyt/resize/kæd/vælg-kæde) — markering
+    // starter kun når man trykker på TOM baggrund mellem/under bjælkerne.
+    if(e.target.closest('.gantt-bar')||e.target.closest('.gantt-dep-hit'))return;
+    startPdGanttMarquee(e,rowsWrap);
+  });
+}
+function startPdGanttMarquee(e,rowsWrap){
+  e.preventDefault();
+  var rect=rowsWrap.getBoundingClientRect();
+  var box=document.createElement('div');
+  box.className='pd-gantt-marquee-box';
+  rowsWrap.appendChild(box);
+  pdGanttMarquee={rect:rect,box:box,startX:e.clientX-rect.left,startY:e.clientY-rect.top,moved:false,additive:e.shiftKey||e.ctrlKey||e.metaKey};
+  document.addEventListener('mousemove',onPdGanttMarqueeMove);
+  document.addEventListener('mouseup',onPdGanttMarqueeEnd);
+}
+function onPdGanttMarqueeMove(e){
+  if(!pdGanttMarquee)return;
+  var m=pdGanttMarquee;
+  var x=e.clientX-m.rect.left,y=e.clientY-m.rect.top;
+  if(Math.abs(x-m.startX)>3||Math.abs(y-m.startY)>3)m.moved=true;
+  m.box.style.left=Math.min(x,m.startX)+'px';
+  m.box.style.top=Math.min(y,m.startY)+'px';
+  m.box.style.width=Math.abs(x-m.startX)+'px';
+  m.box.style.height=Math.abs(y-m.startY)+'px';
+}
+function onPdGanttMarqueeEnd(){
+  if(!pdGanttMarquee)return;
+  document.removeEventListener('mousemove',onPdGanttMarqueeMove);
+  document.removeEventListener('mouseup',onPdGanttMarqueeEnd);
+  var m=pdGanttMarquee;pdGanttMarquee=null;
+  var boxRect=m.box.getBoundingClientRect();
+  m.box.remove();
+  if(!m.moved){
+    // Bare et klik på tom baggrund, ingen reel trækning — ryd markeringen
+    // (medmindre man holdt Shift/Ctrl/Cmd nede, hvor et enkelt klik typisk
+    // ikke er ment som "ryd alt").
+    if(!m.additive){pdGanttSelected.clear();renderPdGanttSelectionVisual();updatePdGanttSelectionBar();}
+    return;
+  }
+  if(!m.additive)pdGanttSelected.clear();
+  document.querySelectorAll('#pd-gantt-strip .gantt-bar[data-pd-task-id]').forEach(function(bar){
+    var r=bar.getBoundingClientRect();
+    var intersects=!(r.right<boxRect.left||r.left>boxRect.right||r.bottom<boxRect.top||r.top>boxRect.bottom);
+    if(intersects)pdGanttSelected.add(bar.dataset.pdTaskId);
+  });
+  renderPdGanttSelectionVisual();
+  updatePdGanttSelectionBar();
+}
+function renderPdGanttSelectionVisual(){
+  document.querySelectorAll('#pd-gantt-strip .gantt-bar[data-pd-task-id]').forEach(function(bar){
+    bar.classList.toggle('selected',pdGanttSelected.has(bar.dataset.pdTaskId));
+  });
+}
+function updatePdGanttSelectionBar(){
+  var wrap=document.getElementById('pd-gantt-selection-bar');
+  if(!wrap)return;
+  wrap.classList.toggle('hidden',pdGanttSelected.size===0);
+  var countEl=document.getElementById('pd-gantt-selection-count');
+  if(countEl)countEl.textContent=pdGanttSelected.size;
 }
 // RUNDE Q (Martins ønske) — "trække en pil fra en task til en anden så de rykker sig
 // sammen". Træk fra en bjælkes lille lilla håndtag (.gantt-bar-link-handle, i højre
@@ -32077,6 +32349,27 @@ function qeCombineCrmNote(d){
 // kun i den gule referenceboks (qeRenderCrmNotePanel), ikke kopieret ind i
 // selve "Note i toppen". Funktionen er bevaret uændret, hvis den skal
 // genbruges en anden dag.
+// RUNDE DA (Martin: se #qe-visit-badge i HTML'en) — henter kundens nyeste
+// FÆRDIGE besøgsrapport (kundebesøg ELLER kvalitetskontrol, se visit_type) og
+// viser den som en lille grøn badge, hvis der er en. Genbruger samme endpoint/
+// cache som Handel-/kunde-detaljesidens crmpxLoadVisits — men peger bevidst på
+// to id'er der ikke findes i DOM'en, så kaldet IKKE overskriver de synlige
+// besøgs-paneler på de andre sider (de genindlæser selv, hver gang de åbnes).
+async function qeLoadVisitBadge(customerId){
+  var badge=document.getElementById('qe-visit-badge');
+  if(!customerId){badge.style.display='none';badge.removeAttribute('data-task-id');return;}
+  await crmpxLoadVisits(customerId,'qe-visit-badge-noop-list','qe-visit-badge-noop-count');
+  var latest=(crmpxVisitsCache&&crmpxVisitsCache.length)?crmpxVisitsCache[0]:null;
+  if(!latest){badge.style.display='none';badge.removeAttribute('data-task-id');return;}
+  var label=latest.visit_type==='kvalitetskontrol'?'Kvalitetskontrol/eftersyn foretaget':'Kundebesøg foretaget';
+  badge.innerHTML='✓ '+esc(label)+' · '+esc(fmtDaDate((latest.submitted_at||'').slice(0,10)));
+  badge.dataset.taskId=latest.task_id;
+  badge.style.display='inline-flex';
+}
+function qeOpenVisitBadge(){
+  var badge=document.getElementById('qe-visit-badge');
+  if(badge.dataset.taskId)crmpxOpenVisitModal(badge.dataset.taskId);
+}
 function qeApplyCrmNoteToTopNote(note){
   if(!note||!String(note).trim())return;
   note=String(note).trim();
@@ -32176,6 +32469,7 @@ async function openQuoteEditor(id,prefillCustomer){
   document.getElementById('qe-activity-wrap').style.display=id?'':'none';
   document.getElementById('qe-versions-wrap').style.display='none';
   document.getElementById('qe-crm-note-panel').style.display='none';
+  document.getElementById('qe-visit-badge').style.display='none'; // RUNDE DA — sat igen nedenfor via qeLoadVisitBadge, hvis kunden har en.
   // RUNDE AC — vedhæftninger kræver at tilbuddet allerede har et ID (se den
   // store kommentar ved docAttachStateFor). Et helt NYT tilbud viser derfor
   // "Gem tilbuddet først" i stedet for upload-knapperne, indtil det er gemt
@@ -32284,6 +32578,7 @@ async function openQuoteEditor(id,prefillCustomer){
   // (helt nyt, tomt tilbud uden kobling) → funktionen skjuler bare eventuelle
   // dropdowns fra et tidligere åbnet tilbud i samme session.
   qeLoadContactSwitchers();
+  qeLoadVisitBadge(qeState.customerId); // RUNDE DA — samme begrundelse: dækker begge grene i ét kald.
   renderQeLines();
   qeRecalc();
   // Egen side (ikke popup) — se kommentaren ved #qz-detail-view i HTML'en.
@@ -33148,6 +33443,7 @@ function qePickCustomer(r){
   document.getElementById('qe-customer-results').style.display='none';
   qeState.customerId=r.customer_id||null;
   qeRecalc();
+  qeLoadVisitBadge(qeState.customerId); // RUNDE DA — kunden kan have skiftet, så badge skal opdateres med det samme.
   // RUNDE S — se kommentaren ved qe-customer-*-switch i HTML'en. Felterne
   // ovenfor er lige blevet sat til kundens PRIMÆRE tlf/email/adresse (det er
   // hvad customers.phone/email/address altid er, jf. contact_channels-synken)
@@ -35149,6 +35445,7 @@ function bindQuotesModuleEvents(){
     clearTimeout(qeCustomerSearchTimer);
     var q=e.target.value.trim();
     qeState.customerId=null; // gælder kun mens der skrives manuelt — genvælges hvis et forslag klikkes
+    document.getElementById('qe-visit-badge').style.display='none'; // RUNDE DA
     qeCustomerSearchTimer=setTimeout(function(){qeRunCustomerSearch(q);},150);
     qeRecalc();
   });
