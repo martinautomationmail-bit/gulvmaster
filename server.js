@@ -13672,10 +13672,62 @@ async function crmSyncPrimaryContactChannel(ownerType, ownerId, kind, value) {
 // hinanden (fx: redigér telefon via den gamle formular, men "+"-listen på
 // kundekortet viser stadig det gamle nummer). Kaldes KUN når feltet rent
 // faktisk indgik i requesten (value===undefined betyder "ikke rørt").
+// RUNDE DE (Martin: "kan vi ikke bare bruge make det er lettere" — og: "Vi
+// skal ikke have de nuværende ind bare alle fremtidige") — opkalds-ID på
+// firmatelefonen: hver gang et RIGTIGT, ÆNDRET telefonnummer bliver sat som
+// primær kanal på en kunde/kontakt/lead (se upsertPrimaryContactChannel
+// nedenfor, som ALLE kunde-/kontakt-/lead-formularer i programmet allerede
+// går igennem — "Ny kunde", redigér-kunde, CRM-kontakter, leads), sendes
+// navn+nummer videre til en Make-webhook, som Martin selv sætter op til at
+// oprette/opdatere en Google-kontakt (Make klarer selv Google-login, det
+// behøver vi ikke rode med her). Bevidst IKKE kørt for eksisterende rækker —
+// kun fremadrettet, fra det øjeblik webhook-URL'en er sat.
+// URL'en læses fra miljøvariablen MAKE_CONTACTS_WEBHOOK_URL (sættes i Render,
+// ligesom de andre nøgler) — er den ikke sat endnu, gør funktionen bevidst
+// ingenting, uden fejl. Fire-and-forget (ikke awaited af kalderen) så et
+// langsomt/nede Make ALDRIG kan bremse eller vælte selve kunde-gemningen —
+// fejler kaldet, logges det bare.
+function normalizePhoneForCallerId(raw) {
+  if (!raw) return '';
+  const p = String(raw).trim();
+  const hasPlus = p.startsWith('+');
+  const digits = p.replace(/\D/g, '');
+  if (!digits) return '';
+  if (hasPlus) return '+' + digits;
+  // Rene 8-cifrede danske numre uden landekode ville ALDRIG matche det
+  // indkommende opkalds nummer (som altid har +45 foran) — og opkalds-ID
+  // ville dermed aldrig virke. Antager dansk nummer som default (det er det
+  // Martin arbejder med); numre der allerede har en anden landekode rammes
+  // ikke af denne antagelse, kun rene 8-cifrede.
+  if (digits.length === 8) return '+45' + digits;
+  return '+' + digits;
+}
+async function pushContactPhoneToMakeWebhook(ownerType, ownerId, phone) {
+  const url = process.env.MAKE_CONTACTS_WEBHOOK_URL;
+  if (!url) return;
+  try {
+    const table = ownerType === 'customer' ? 'customers' : ownerType === 'lead' ? 'crm_leads' : ownerType === 'contact' ? 'crm_contacts' : null;
+    if (!table) return;
+    const row = await pgOne(`SELECT name FROM ${table} WHERE id=$1`, [ownerId]);
+    const normalizedPhone = normalizePhoneForCallerId(phone);
+    if (!normalizedPhone) return;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: (row && row.name) || '', phone: normalizedPhone, source: ownerType })
+    });
+  } catch (e) {
+    console.error('Kunne ikke sende kontakt til Make-webhook (opkalds-ID):', e.message);
+  }
+}
 async function upsertPrimaryContactChannel(ownerType, ownerId, kind, value) {
   if (value === undefined || !CONTACT_CHANNEL_KINDS.includes(kind)) return;
   const v = value ? String(value).trim() : '';
-  const existingPrimary = await pgOne('SELECT id FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3 AND is_primary=1', [ownerType, ownerId, kind]);
+  const existingPrimary = await pgOne('SELECT id, value FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3 AND is_primary=1', [ownerType, ownerId, kind]);
+  // RUNDE DE — bruges nedenfor til kun at sende til Make-webhooken når
+  // nummeret RENT FAKTISK er nyt/ændret, ikke hver gang kundekortet bare
+  // gemmes igen uændret (redigér-modalen sender altid alle felter med).
+  const valueChanged = !existingPrimary || String(existingPrimary.value || '') !== v;
   if (!v) {
     // Feltet er ryddet i den gamle formular — nulstil kun selve VÆRDIEN på en
     // evt. eksisterende primær kanal (rører ikke andre, ikke-primære kanaler).
@@ -13684,18 +13736,21 @@ async function upsertPrimaryContactChannel(ownerType, ownerId, kind, value) {
   }
   if (existingPrimary) {
     await pool.query('UPDATE contact_channels SET value=$1 WHERE id=$2', [v, existingPrimary.id]);
-    return;
-  }
-  // Ingen primær endnu — findes der allerede en (ikke-primær) kanal af samme
-  // slags fra opstarts-seedningen, gør DEN primær i stedet for at oprette en
-  // duplikat-række.
-  const existingAny = await pgOne('SELECT id FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3 ORDER BY position ASC, id ASC LIMIT 1', [ownerType, ownerId, kind]);
-  if (existingAny) {
-    await pool.query('UPDATE contact_channels SET is_primary=0 WHERE owner_type=$1 AND owner_id=$2 AND kind=$3', [ownerType, ownerId, kind]);
-    await pool.query('UPDATE contact_channels SET is_primary=1, value=$1 WHERE id=$2', [v, existingAny.id]);
   } else {
-    const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3', [ownerType, ownerId, kind]);
-    await pool.query('INSERT INTO contact_channels (owner_type,owner_id,kind,value,is_primary,position) VALUES ($1,$2,$3,$4,1,$5)', [ownerType, ownerId, kind, v, posRow.pos]);
+    // Ingen primær endnu — findes der allerede en (ikke-primær) kanal af samme
+    // slags fra opstarts-seedningen, gør DEN primær i stedet for at oprette en
+    // duplikat-række.
+    const existingAny = await pgOne('SELECT id FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3 ORDER BY position ASC, id ASC LIMIT 1', [ownerType, ownerId, kind]);
+    if (existingAny) {
+      await pool.query('UPDATE contact_channels SET is_primary=0 WHERE owner_type=$1 AND owner_id=$2 AND kind=$3', [ownerType, ownerId, kind]);
+      await pool.query('UPDATE contact_channels SET is_primary=1, value=$1 WHERE id=$2', [v, existingAny.id]);
+    } else {
+      const posRow = await pgOne('SELECT COALESCE(MAX(position),-1)+1 AS pos FROM contact_channels WHERE owner_type=$1 AND owner_id=$2 AND kind=$3', [ownerType, ownerId, kind]);
+      await pool.query('INSERT INTO contact_channels (owner_type,owner_id,kind,value,is_primary,position) VALUES ($1,$2,$3,$4,1,$5)', [ownerType, ownerId, kind, v, posRow.pos]);
+    }
+  }
+  if (kind === 'phone' && v && valueChanged) {
+    pushContactPhoneToMakeWebhook(ownerType, ownerId, v).catch(e => console.error('Kunne ikke sende kontakt til Make-webhook (opkalds-ID):', e.message));
   }
 }
 
