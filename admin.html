@@ -3729,6 +3729,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .rte-editable ul.arrow-list li{position:relative;padding-left:20px}
 .rte-editable ul.arrow-list li::before{content:'→';position:absolute;left:0;top:0;color:var(--bly-accent);font-weight:700}
 .rte-btn.active{border-color:var(--bly-accent);color:var(--bly-accent);background:var(--bly-accent-soft)}
+/* RUNDE DC (Martin: "Gør det muligt ved signatur at bruge HTML struktur") —
+   "</>"-knappen i makeMailComposeField() skifter boksen om til rå HTML-
+   kildekode. De øvrige værktøjsknapper (fed/link/lister/billede/smiley)
+   virker ikke i den tilstand (de opererer på den redigerbare boks, ikke
+   kildekode-tekstfeltet), så de skjules helt — kun "</>" selv (til at skifte
+   tilbage) forbliver synlig.
+   width:100% på htmlSource lader den fylde boksens fulde bredde ligesom
+   .rte-editable, min-height matcher den visuelle boks 1:1 så layoutet ikke
+   hopper ved skift. */
+.rte-wrap.rte-html-mode .rte-btn:not(.rte-html-btn){display:none}
+.rte-html-source{width:100%;min-height:200px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;resize:vertical;box-sizing:border-box}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--bly-border-soft)}
 .modal-actions .btn,.gd-modal .modal-actions .btn{height:38px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px;border-radius:var(--bly-r-pill);font-size:11.5px;white-space:nowrap}
@@ -4039,7 +4050,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.0 · 2026-10-17</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.2 · 2026-10-17</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -4497,7 +4508,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <div class="modal" style="max-width:600px">
     <h3 id="mail-sig-modal-title">✍️ Ny signatur</h3>
     <div class="form-group"><label class="form-label">Navn</label><input class="input" id="mail-sig-name" placeholder="Fx 'Standard' eller dit navn"></div>
-    <div class="form-group"><label class="form-label">Indhold</label><textarea class="input" id="mail-sig-body" rows="6"></textarea></div>
+    <div class="form-group"><label class="form-label">Indhold <span class="opt-tag">brug værktøjslinjens "&lt;/&gt;"-knap for at skrive/indsætte din egen HTML-struktur</span></label><textarea class="input" id="mail-sig-body" rows="6"></textarea></div>
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mail-sig-default-chk"> Brug som standard-signatur</label>
     <div class="modal-actions">
       <button class="btn danger hidden" id="mail-sig-delete-btn" type="button">Slet</button>
@@ -10633,6 +10644,17 @@ function makeMailComposeField(id){
   ta.style.display='none';
   var wrap=document.createElement('div');
   wrap.className='rte-wrap';
+  // RUNDE DC (Martin: "Gør det muligt ved signatur at bruge HTML struktur. For
+  // ellers kan jeg næsten ikke gøre noget") — værktøjslinjens knapper
+  // (fed/link/lister/billede/smiley) dækker kun det dokument.execCommand selv
+  // kan lave, ikke en opsat tabel-/kolonne-layout, specifikke farver/fonte,
+  // eller en helt FÆRDIG HTML-signatur Martin har fra et andet sted og bare
+  // vil sætte ind. "&lt;/&gt; HTML"-knappen herunder skifter boksen om til en
+  // rå kildekode-visning (almindelig textarea, INGEN fortolkning af tags) —
+  // det han skriver/indsætter dér gemmes BOGSTAVELIGT som body_html, kun
+  // begrænset af sanitizeMailBody()'s tilladte tag-liste server-side ved gem.
+  // Skifter man tilbage til den visuelle visning, tolkes kildekoden igen som
+  // HTML i den redigerbare boks, så man kan blande begge arbejdsmåder frit.
   wrap.innerHTML='<div class="rte-toolbar">'+
     '<button type="button" class="rte-btn" data-cmd="bold" title="Fed skrift"><b>F</b></button>'+
     '<button type="button" class="rte-btn" data-cmd="link" title="Indsæt link">🔗</button>'+
@@ -10642,6 +10664,7 @@ function makeMailComposeField(id){
     '<button type="button" class="rte-btn" data-cmd="outdent" title="Ryk ud">←</button>'+
     '<button type="button" class="rte-btn" data-cmd="image" title="Indsæt billede">🖼️</button>'+
     '<button type="button" class="rte-btn" data-cmd="emoji" title="Indsæt smiley">😀</button>'+
+    '<button type="button" class="rte-btn rte-html-btn" data-cmd="html" title="Skift til/fra rå HTML-kildekode — indsæt din egen HTML-struktur direkte">&lt;/&gt;</button>'+
     '</div>';
   var editable=document.createElement('div');
   editable.className='rte-editable input';
@@ -10649,15 +10672,32 @@ function makeMailComposeField(id){
   editable.contentEditable='true';
   if(ta.placeholder)editable.setAttribute('data-placeholder',ta.placeholder);
   wrap.appendChild(editable);
+  // Rå HTML-kildekode-boksen — samme plads som editable, men kun én af de to
+  // er synlig ad gangen (styret af wrap.classList 'rte-html-mode', se
+  // html-knappens klik-håndtering nedenfor).
+  var htmlSource=document.createElement('textarea');
+  htmlSource.className='rte-html-source input';
+  htmlSource.spellcheck=false;
+  htmlSource.style.display='none';
+  htmlSource.placeholder='<table><tr><td>Din egen HTML-signatur…</td></tr></table>';
+  wrap.appendChild(htmlSource);
   ta.parentNode.insertBefore(wrap,ta.nextSibling);
   var internal=seed;
   var syncingFromValue=false;
   Object.defineProperty(ta,'value',{
     get:function(){return internal;},
-    set:function(v){internal=v||'';syncingFromValue=true;editable.innerHTML=internal;syncingFromValue=false;},
+    set:function(v){
+      internal=v||'';syncingFromValue=true;
+      // Opdaterer BEGGE visninger, uanset hvilken der er synlig lige nu — ellers
+      // ville et programmatisk sat .value (fx mailOpenSigModal der genindlæser
+      // en anden signatur) kunne efterlade den skjulte visning med gammelt
+      // indhold, som så dukkede forkert op igen ved næste skift mellem dem.
+      editable.innerHTML=internal;htmlSource.value=internal;
+      syncingFromValue=false;
+    },
     configurable:true
   });
-  if(seed)editable.innerHTML=seed;
+  if(seed){editable.innerHTML=seed;htmlSource.value=seed;}
   editable.addEventListener('input',function(){
     if(syncingFromValue)return;
     internal=editable.innerHTML;
@@ -10667,6 +10707,12 @@ function makeMailComposeField(id){
   editable.addEventListener('keydown',function(){
     document.execCommand('defaultParagraphSeparator',false,'div');
   });
+  htmlSource.addEventListener('input',function(){
+    if(syncingFromValue)return;
+    internal=htmlSource.value;
+    ta.dispatchEvent(new Event('input'));
+  });
+  htmlSource.addEventListener('blur',function(){ta.dispatchEvent(new Event('change'));});
   // Indsætter rå HTML ved cursoren — bruges af signatur-/skabelon-indsæt-
   // dropdownene og af emoji-/billed-knapperne herunder, ikke kun af selve
   // værktøjslinjen.
@@ -10683,8 +10729,24 @@ function makeMailComposeField(id){
   toolbar.addEventListener('mousedown',function(e){e.preventDefault();});
   toolbar.addEventListener('click',function(e){
     var btn=e.target.closest('.rte-btn');if(!btn)return;
-    editable.focus();
     var cmd=btn.getAttribute('data-cmd');
+    // RUNDE DC — skifter visning FØR editable.focus() nedenfor rammer en
+    // skjult boks (contentEditable kan ikke modtage fokus mens den er
+    // display:none). Synkroniserer indholdet begge veje ved selve skiftet, så
+    // man altid ser det man sidst skrev, uanset hvilken visning man kommer fra.
+    if(cmd==='html'){
+      var toHtmlMode=!wrap.classList.contains('rte-html-mode');
+      if(toHtmlMode){htmlSource.value=editable.innerHTML;}
+      else{editable.innerHTML=htmlSource.value;internal=editable.innerHTML;ta.dispatchEvent(new Event('input'));}
+      wrap.classList.toggle('rte-html-mode',toHtmlMode);
+      editable.style.display=toHtmlMode?'none':'';
+      htmlSource.style.display=toHtmlMode?'':'none';
+      btn.classList.toggle('active',toHtmlMode);
+      (toHtmlMode?htmlSource:editable).focus();
+      return;
+    }
+    if(wrap.classList.contains('rte-html-mode'))return; // de øvrige knapper virker kun i den visuelle visning
+    editable.focus();
     if(cmd==='bold'){document.execCommand('bold');}
     else if(cmd==='link'){
       var url=window.prompt('Link-adresse (https://...)','https://');
@@ -10771,6 +10833,7 @@ async function mailEnsureComposeReady(){
   if(mailComposeBound)return;
   mailComposeBound=true;
   makeMailComposeField('mail-compose-body');
+  makeMailComposeField('mail-sig-body'); // RUNDE DC — se den store kommentar i funktionens toolbar-opsætning.
   mailBindComposeModal();
   mailBindFoldersModal();
   mailBindSigModal();

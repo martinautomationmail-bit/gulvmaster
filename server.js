@@ -22371,7 +22371,18 @@ function sanitizeMailBody(html) {
     return safe ? ` ${attr}="${v.replace(/"/g, '&quot;')}"` : '';
   });
   // Tilladte tags — resten af markeringen (ikke indholdet) fjernes, men teksten imellem beholdes.
-  s = s.replace(/<(?!\/?(p|br|b|strong|i|em|u|ul|ol|li|a|img|span|div|blockquote|table|tr|td|tbody)\b)[^>]*>/gi, '');
+  // RUNDE DC (Martin: "Gør det muligt ved signatur at bruge HTML struktur. For
+  // ellers kan jeg næsten ikke gøre noget") — udvidet med de resterende
+  // helt ufarlige tags (ingen af dem kan køre kode eller hente noget selv,
+  // samme begrundelse som de oprindelige) der typisk indgår i en FÆRDIG
+  // HTML-signatur hentet fra en signatur-generator eller indsat manuelt via
+  // den nye "</>"-kildekode-knap (se makeMailComposeField i admin.html):
+  // overskrifter (h1-h6) og vandret streg (hr) til at strukturere navn/titel,
+  // font/small/sub/sup til ældre/finere tekstformatering, thead/tfoot/colgroup/
+  // col som hører naturligt sammen med table/tr/td ovenfor, og pre/code til
+  // evt. formateret tekst. href/src-filtreringen og on*-fjernelsen ovenfor
+  // gælder stadig alle tags, inkl. disse nye.
+  s = s.replace(/<(?!\/?(p|br|b|strong|i|em|u|ul|ol|li|a|img|span|div|blockquote|table|tr|td|tbody|thead|tfoot|colgroup|col|h1|h2|h3|h4|h5|h6|hr|font|small|sub|sup|pre|code)\b)[^>]*>/gi, '');
   return s.trim();
 }
 // Ren tekst-udgave af en rig-tekst-note (bruges til højde-beregning og andre
