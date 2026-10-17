@@ -5076,6 +5076,52 @@ async function splitCapacityAcrossWeeks(userId, weeklyCapacity, startDate, total
   return segments;
 }
 
+// RUNDE DB (Martin: "Det var ikke det den skulle...den skulle lægges sig ind
+// i den uge jeg ber om og ikke andet...Hvis datoen som er valgt på tasken fx
+// går ind i den kommende uge så lægger de dage der er sig fra den næste uge
+// på den samme medarbejder i ugen efter...Ugen går fra Mandag til søndag og
+// ikke et fucking sekundt anderledes") — splitCapacityAcrossWeeks() ovenfor er
+// en KAPACITETS-HUNGER-algoritme: den leder uge for uge efter ledig plads og
+// propper kun så mange dage i en uge som der er "tilbage" dér, uanset hvor
+// langt ude i fremtiden den så skal lede for at få resten placeret. Det er
+// PRÆCIS den samme fejl som allerede blev fundet og rettet i
+// /api/tasks/manual-and-book og POST /api/capacity-reservations (se deres
+// "FEJL RETTET"-kommentarer) — men "📊 Book alt i Kapacitetsbordet" beholdt
+// den dengang bevidst, fordi den kan booke mange forskellige opgaver på én
+// gang og derfor skulle undgå at overbelaste én enkelt uge. Martin ramte nu
+// PRÆCIS samme symptom her: én enkelt opgave (Lægning af sildebensparket)
+// blev spredt ud over 6+ uger i 0,5-dages stumper, fordi medarbejderen i
+// forvejen var næsten fuldt booket hver uge fremover — booking fulgte altså
+// IKKE opgavens egen dato, men ledte sig vilkårligt langt frem i tiden efter
+// ledige smuler. Det er forkert, uanset hvor mange opgaver der bookes på én
+// gang: opgavens dage skal ALTID lægges i de(n) kalenderuge(r) dens egen
+// startdato+varighed rent faktisk falder i (mandag-søndag — splittes PRÆCIS
+// på den grænse, hvis varigheden går over en uge-skel), aldrig længere ud end
+// det. Er medarbejderen overbooket den uge, SKAL det kunne ses på
+// Kapacitetsbordet (de røde/overskredne tal, stadig korrekt udregnet af
+// weeklyLoadForUser ud fra hvad der rent faktisk ligger i databasen) — ikke
+// stille og roligt skubbes ud i en helt anden uge, hvor ingen leder efter det.
+function splitDaysAcrossCalendarWeeks(startDate, totalDays) {
+  const segments = [];
+  let remaining = Math.max(0.25, Number(totalDays) || 1);
+  let cursor = startDate;
+  let guard = 0;
+  while (remaining > 0.001 && guard < 60) { // sikkerhedsloft: maks ~60 dage/9 uger, matcher 60-dages loftet på totalDays
+    guard++;
+    const weekStart = mondayOfDate(cursor);
+    const sunday = addCalendarDays(weekStart, 6);
+    // Antal kalenderdage tilbage i DENNE uge, fra cursor til og med søndag —
+    // ALDRIG mere end det, uanset medarbejderens faktiske ledige kapacitet.
+    const daysLeftInWeek = Math.round((new Date(`${sunday}T12:00:00`) - new Date(`${cursor}T12:00:00`)) / 86400000) + 1;
+    const takeDays = Math.min(remaining, daysLeftInWeek);
+    const segmentEnd = addCalendarDays(cursor, takeDays - 1);
+    segments.push({ start_date: cursor, end_date: segmentEnd, capacity_days: Math.round(takeDays * 4) / 4, week_key: getWeekKey(weekStart) });
+    remaining -= takeDays;
+    cursor = addCalendarDays(segmentEnd, 1);
+  }
+  return segments.length ? segments : [{ start_date: startDate, end_date: startDate, capacity_days: Math.max(0.25, Number(totalDays) || 1), week_key: getWeekKey(startDate) }];
+}
+
 function cleanTaskType(type) {
   return ['lay', 'sand', 'paint', 'sub', 'other'].includes(type) ? type : 'other';
 }
@@ -16729,7 +16775,11 @@ app.post('/api/projects/:id/bulk-book-capacity', auth, panelAccess('capacity'), 
     const startDate = validDate(String(input.start_date || '')) ? String(input.start_date) : null;
     if (!startDate) { skipped++; continue; }
     const days = Math.max(0.25, Math.min(60, Number(input.days) || 1));
-    const segments = await splitCapacityAcrossWeeks(userId, weeklyCapacity, startDate, days);
+    // RUNDE DB — se den store kommentar ved splitDaysAcrossCalendarWeeks()
+    // ovenfor. Splitter nu STRENGT efter opgavens egen dato/varighed
+    // (mandag-søndag-uger), aldrig efter hvor meget ledig kapacitet
+    // medarbejderen tilfældigvis har i de kommende uger.
+    const segments = splitDaysAcrossCalendarWeeks(startDate, days);
     for (const seg of segments) {
       await pool.query(`
         INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,start_time,start_date,end_date,planning_mode,capacity_label,updated_at)
