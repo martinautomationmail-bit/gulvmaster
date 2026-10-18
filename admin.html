@@ -621,6 +621,34 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #page-finance #fintab-omsaetning .fin-kpi-sub{color:var(--bly-sub)}
 .bly-dash-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
 @media(max-width:860px){.bly-dash-grid{grid-template-columns:1fr}}
+/* RUNDE DH (Martin: "Faktura som det er nu. Måske du kan lave Dem i 3 cirkeler og så
+   de fylder hele deres container lidt pænere?") — 3 ring/meter-cirkler i stedet for
+   venstrestillede tal, flex:1 hver så de deler Fakturaer-kortets fulde bredde jævnt.
+   Ringen er bygget med conic-gradient (ingen ny afhængighed) — farvet bue = andelen af
+   de 3 beløb tilsammen, "hul" i midten er et ::before i kortets egen baggrundsfarve. */
+.fin-inv-rings{display:flex;gap:16px;justify-content:space-between}
+.fin-inv-ring-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
+.fin-inv-ring{position:relative;width:100%;max-width:120px;aspect-ratio:1/1;border-radius:50%;background:conic-gradient(var(--ring-color) var(--ring-pct),var(--ring-bg) 0)}
+.fin-inv-ring::before{content:'';position:absolute;inset:11px;border-radius:50%;background:#fff}
+.fin-inv-ring-n{position:absolute;top:-3px;right:6px;width:22px;height:22px;border-radius:50%;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;z-index:1;box-shadow:0 0 0 2px #fff}
+.fin-inv-ring-inner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 8px;z-index:1}
+.fin-inv-ring-amt{font-size:13.5px;font-weight:800;color:var(--bly-ink);line-height:1.15;word-break:break-word}
+.fin-inv-ring-label{font-size:11.5px;font-weight:600;color:var(--bly-sub)}
+@media(max-width:480px){.fin-inv-rings{flex-wrap:wrap}.fin-inv-ring-col{min-width:88px}}
+/* RUNDE DH — Omsætning pr. fag-kortet: to måneds-kolonner (indeværende/næste) side om
+   side, hver med en mini "bar i række"-liste pr. fag (farvet prik + navn + lille
+   proportionsbjælke + beløb), så det forbliver læsbart i et kort frem for et fuldt
+   cirkeldiagram, som ville være for trangt i denne størrelse. */
+.fin-fagrev-cols{display:flex;gap:22px;flex-wrap:wrap}
+.fin-fagrev-col{flex:1;min-width:170px}
+.fin-fagrev-head{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;font-weight:700;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.02em;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bly-border-soft)}
+.fin-fagrev-head b{font-size:14px;font-weight:800;color:var(--bly-ink);text-transform:none;letter-spacing:0}
+.fin-fagrev-row{display:flex;align-items:center;gap:7px;padding:5px 0;font-size:12px}
+.fin-fagrev-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.fin-fagrev-name{flex-shrink:0;max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--bly-ink);font-weight:600}
+.fin-fagrev-bar-track{flex:1;height:6px;border-radius:3px;background:var(--bly-border-soft);overflow:hidden;min-width:20px}
+.fin-fagrev-bar-fill{display:block;height:100%;border-radius:3px}
+.fin-fagrev-amt{flex-shrink:0;font-weight:700;color:var(--bly-ink);font-variant-numeric:tabular-nums;font-size:11.5px}
 /* RUNDE BN (Martin: "brug fuld wide på skærmen så der mere plads") — denne side
    havde sit eget 1180px-loft OVEN I #page-finance's egen 110px sidepadding, så den
    sad som en smal søjle midt i en ellers bred side (modsat alle andre faneblade
@@ -4050,7 +4078,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.5 · 2026-10-18</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.6 · 2026-10-18</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5217,11 +5245,21 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
            Udgifter denne måned), og Opgaver-kortet (som ikke er et øknomital, men en
            note-/opgaveliste) er flyttet ned i sin egen fulde bredde herunder, så det ikke
            længere optager en af de 4 pladser. -->
+      <!-- RUNDE DH (Martin: "Moms vil jeg gerne have rykket en ned da der skal
+           være Omsætning pr Fag den skal være dynamisk og altid tage den
+           aktuelle måned og måned efter og vise. Udgifter skal gøre det samme,
+           under skal moms være og og opgaver") — rækkefølgen er nu Fakturaer/
+           Bank (uændret øverst), Omsætning pr. fag/Udgifter (nyt kort/ny
+           visning, samme række), og Moms alene i sin egen række nedenunder
+           (grid'en er 2 kolonner, så et 5. kort automatisk lander alene på
+           næste linje) — Opgaver-kortet er allerede sin egen fulde bredde
+           længere nede, uændret. -->
       <div class="bly-dash-grid">
         <div class="bly-col" id="fin-card-fakturaer"></div>
         <div class="bly-col" id="fin-card-bank"></div>
-        <div class="bly-col" id="fin-card-moms"></div>
+        <div class="bly-col" id="fin-card-fagomsaetning"></div>
         <div class="bly-col" id="fin-card-udgifter"></div>
+        <div class="bly-col" id="fin-card-moms"></div>
       </div>
       <div class="bly-col" id="fin-card-todo" style="margin-top:20px"></div>
     </div>
@@ -17832,6 +17870,7 @@ function renderFinOverview(snapshots){
   renderFinResultChart();
   renderFinInvoiceCard();
   renderFinBankCard();
+  renderFinFagRevenueCard();
   renderFinMomsCard();
   renderFinExpenseCard();
   renderFinTodoCard();
@@ -17979,8 +18018,22 @@ async function renderFinResultChart(){
       }}}}}
   });
 }
-function finInvBoxHtml(color,bg,n,label,sum){
-  return '<div><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="width:18px;height:18px;border-radius:50%;background:'+bg+';color:'+color+';font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+n+'</span><span class="fin-muted" style="font-size:11.5px;font-weight:600">'+label+'</span></div><div style="font-size:19px;font-weight:800;color:var(--bly-ink)">'+krFmt(sum)+'</div></div>';
+// RUNDE DH (Martin: "Faktura som det er nu. Måske du kan lave Dem i 3
+// cirkeler og så de fylder hele deres container lidt pænere?") — de 3
+// stat-bokse (Udestående/Delvist betalt/Uafklaret) er nu 3 ringe/meter-cirkler
+// i stedet for venstrestillede tal, hver fyldt proportionalt med dens andel
+// af de 3 beløb tilsammen (conic-gradient — ingen ny afhængighed), og lagt i
+// en flex-række med flex:1 pr. ring, så de tre deler kortets fulde bredde
+// jævnt i stedet for at klumpe til venstre. Samme farver/semantik som før
+// (rød=udestående, gul=delvist, grå=uafklaret) — kun selve formen er ændret.
+function finInvRingHtml(color,bg,n,label,sum,pct){
+  return '<div class="fin-inv-ring-col">'
+    +'<div class="fin-inv-ring" style="--ring-color:'+color+';--ring-bg:'+bg+';--ring-pct:'+pct+'%">'
+      +'<span class="fin-inv-ring-n" style="background:'+bg+';color:'+color+'">'+n+'</span>'
+      +'<div class="fin-inv-ring-inner"><div class="fin-inv-ring-amt">'+krFmt(sum)+'</div></div>'
+    +'</div>'
+    +'<div class="fin-inv-ring-label">'+esc(label)+'</div>'
+  +'</div>';
 }
 function renderFinInvoiceCard(){
   var el=document.getElementById('fin-card-fakturaer');
@@ -17991,11 +18044,13 @@ function renderFinInvoiceCard(){
     else if(i.overrideStatus==='partial'){b.partial.n++;b.partial.sum+=(i.remaining!=null?i.remaining:((i.priceWithTax||0)-(i.paidAmount||0)));}
     else if(i.overrideStatus==='unclear'){b.unclear.n++;b.unclear.sum+=(i.priceWithTax||0);}
   });
+  var total=b.unpaid.sum+b.partial.sum+b.unclear.sum;
+  function pctOf(v){return total>0?Math.round(v/total*100):0;}
   el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Fakturaer</div><button class="bly-btn outline small" data-action="fin-goto-fakturaer">Opret faktura</button></div>'+
-    '<div style="display:flex;gap:28px;flex-wrap:wrap">'+
-    finInvBoxHtml('#DC2626','#FEF2F2',b.unpaid.n,'Udestående',b.unpaid.sum)+
-    finInvBoxHtml('#B45309','#FFFBEB',b.partial.n,'Delvist betalt',b.partial.sum)+
-    finInvBoxHtml('#6B7280','#F3F4F6',b.unclear.n,'Uafklaret',b.unclear.sum)+
+    '<div class="fin-inv-rings">'+
+    finInvRingHtml('#DC2626','#FEF2F2',b.unpaid.n,'Udestående',b.unpaid.sum,pctOf(b.unpaid.sum))+
+    finInvRingHtml('#B45309','#FFFBEB',b.partial.n,'Delvist betalt',b.partial.sum,pctOf(b.partial.sum))+
+    finInvRingHtml('#6B7280','#F3F4F6',b.unclear.n,'Uafklaret',b.unclear.sum,pctOf(b.unclear.sum))+
     '</div>';
   var btn=el.querySelector('[data-action="fin-goto-fakturaer"]');
   if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="fakturaer"]');if(t)t.click();});
@@ -18125,17 +18180,68 @@ async function renderFinMomsCard(){
 // Bruger samme rigtige per-måned udgiftstal som Resultat-grafen/Profit-analysen
 // (finExpenseTotalsByMonth, hentet i loadFinance — respekterer samme prioritet manuelt
 // tal > bank-CSV > udspecificeret sum), i stedet for at regne noget nyt ud selv.
+// RUNDE DH (Martin: "Udgifter skal gøre det samme" — som Omsætning pr. fag, dvs. vise
+// INDEVÆRENDE og NÆSTE måned, altid regnet ud fra dags dato) — udvidet fra ét tal til
+// to, side om side. Genbruger finLastTrendArgs.curKey/nextKey/udgForMonth, nøjagtig
+// samme to måneder og samme udregning som "+ Tilføj graf"-widget'erne og det nye
+// Omsætning pr. fag-kort allerede bruger, så alle tre matcher hinanden.
 function renderFinExpenseCard(){
   var el=document.getElementById('fin-card-udgifter');
   if(!el)return;
-  var mk=iso(new Date()).slice(0,7);
-  var monthLbl=UDG_MONTH_NAMES[+mk.slice(5,7)-1]+' '+mk.slice(0,4);
-  var amt=(finExpenseTotalsByMonth&&finExpenseTotalsByMonth[mk]!=null)?finExpenseTotalsByMonth[mk]:(mk===finExpenseMonth?finExpenseTotal():null);
+  var curKey=(finLastTrendArgs&&finLastTrendArgs.curKey)||iso(new Date()).slice(0,7);
+  var nextKey=finLastTrendArgs&&finLastTrendArgs.nextKey;
+  function amtFor(mk){
+    if(finLastTrendArgs&&finLastTrendArgs.udgForMonth)return finLastTrendArgs.udgForMonth(mk);
+    return (finExpenseTotalsByMonth&&finExpenseTotalsByMonth[mk]!=null)?finExpenseTotalsByMonth[mk]:(mk===finExpenseMonth?finExpenseTotal():null);
+  }
+  var curLbl=UDG_MONTH_NAMES[+curKey.slice(5,7)-1]+' '+curKey.slice(0,4);
+  var nextLbl=nextKey?(UDG_MONTH_NAMES[+nextKey.slice(5,7)-1]+' '+nextKey.slice(0,4)):null;
+  var curAmt=amtFor(curKey),nextAmt=nextKey?amtFor(nextKey):null;
   el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Udgifter</div><button class="bly-btn outline small" data-action="fin-goto-udgifter">Se detaljer</button></div>'+
-    '<div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+esc(monthLbl)+'</div>'+
-    '<div style="font-size:26px;font-weight:800;color:#DC2626">'+(amt!=null?('−'+krFmt(amt)):'–')+'</div>';
+    '<div style="display:flex;gap:28px;flex-wrap:wrap">'+
+    '<div><div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+esc(curLbl)+'</div><div style="font-size:22px;font-weight:800;color:#DC2626">'+(curAmt!=null?('−'+krFmt(curAmt)):'–')+'</div></div>'+
+    (nextLbl?('<div><div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+esc(nextLbl)+'</div><div style="font-size:22px;font-weight:800;color:'+(nextAmt?'#DC2626':'var(--bly-sub)')+'">'+(nextAmt!=null?('−'+krFmt(nextAmt)):'–')+'</div></div>'):'')+
+    '</div>';
   var btn=el.querySelector('[data-action="fin-goto-udgifter"]');
   if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="udgifter"]');if(t)t.click();});
+}
+// RUNDE DH (Martin: "Moms vil jeg gerne have rykket en ned da der skal være
+// Omsætning pr Fag den skal være dynamisk og altid tage den aktuelle måned og
+// måned efter og vise") — nyt fast kort på Oversigt, i den plads Moms havde
+// (Moms er flyttet ned i sin egen række, se HTML-kommentaren ved
+// #fin-card-moms). Viser omsætning pr. fag for INDEVÆRENDE og NÆSTE måned,
+// helt automatisk — "dynamisk" betyder her at den altid regner ud fra dags
+// dato (finLastTrendArgs.curKey/nextKey, nøjagtig de to måneder "+ Tilføj
+// graf"-widget'erne allerede bruger), ikke to hårdkodede måneder. Genbruger
+// finRevenue[key].byFag — samme datakilde som cirkeldiagram-widget'en
+// (renderFagPieWidget) og selve Omsætning pr. fag-fanen, så tallene her
+// altid stemmer overens med resten af siden.
+function finFagRevMonthBlockHtml(label,byFag){
+  var fags=Object.keys(byFag||{});
+  var total=fags.reduce(function(s,f){return s+(byFag[f].sum||0);},0);
+  var sorted=fags.slice().sort(function(a,b){return (byFag[b].sum||0)-(byFag[a].sum||0);});
+  var COLORS=['#1D4ED8','#15803D','#B45309','#7C3AED','#DC2626','#9AA3B2'];
+  var rows=sorted.length?sorted.map(function(f,i){
+    var sum=byFag[f].sum||0,pct=total>0?Math.round(sum/total*100):0;
+    return '<div class="fin-fagrev-row"><span class="fin-fagrev-dot" style="background:'+COLORS[i%COLORS.length]+'"></span>'
+      +'<span class="fin-fagrev-name" title="'+esc(f)+'">'+esc(f)+'</span>'
+      +'<span class="fin-fagrev-bar-track"><span class="fin-fagrev-bar-fill" style="width:'+pct+'%;background:'+COLORS[i%COLORS.length]+'"></span></span>'
+      +'<span class="fin-fagrev-amt">'+krFmt(sum)+'</span></div>';
+  }).join(''):'<div class="fin-muted" style="font-size:11.5px;padding:6px 0">Ingen planlagte sager endnu</div>';
+  return '<div class="fin-fagrev-col"><div class="fin-fagrev-head"><span>'+esc(label)+'</span><b>'+krFmt(total)+'</b></div>'+rows+'</div>';
+}
+function renderFinFagRevenueCard(){
+  var el=document.getElementById('fin-card-fagomsaetning');
+  if(!el||!finLastTrendArgs)return;
+  var curKey=finLastTrendArgs.curKey,nextKey=finLastTrendArgs.nextKey;
+  var curLbl=curKey?(UDG_MONTH_NAMES[+curKey.slice(5,7)-1]+' '+curKey.slice(0,4)):'Denne måned';
+  var nextLbl=nextKey?(UDG_MONTH_NAMES[+nextKey.slice(5,7)-1]+' '+nextKey.slice(0,4)):'Næste måned';
+  var curFag=(finRevenue&&curKey&&finRevenue[curKey]&&finRevenue[curKey].byFag)||{};
+  var nextFag=(finRevenue&&nextKey&&finRevenue[nextKey]&&finRevenue[nextKey].byFag)||{};
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Omsætning pr. fag</div><button class="bly-btn outline small" data-action="fin-goto-omsaetning">Se alle måneder</button></div>'
+    +'<div class="fin-fagrev-cols">'+finFagRevMonthBlockHtml(curLbl,curFag)+finFagRevMonthBlockHtml(nextLbl,nextFag)+'</div>';
+  var btn=el.querySelector('[data-action="fin-goto-omsaetning"]');
+  if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="omsaetning"]');if(t)t.click();});
 }
 async function renderFinTodoCard(){
   var el=document.getElementById('fin-card-todo');
