@@ -438,11 +438,12 @@ body.sidebar-collapsed .sidebar-logout-btn{justify-content:center;padding-left:0
 #page-finance select.fin-status.st-unpaid{background:#FEF2F2;color:#B91C1C;border-color:#FECACA}
 #page-finance select.fin-status.st-unclear{background:#FEF3C7;color:#92400E;border-color:#FDE68A}
 #page-finance select.fin-status.st-partial{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
-.fin-header-banner{display:flex;align-items:center;gap:16px;padding:20px 26px;background:linear-gradient(135deg,#003509,#00220a);border-radius:16px;color:#fff;margin-bottom:18px;box-shadow:0 10px 30px rgba(0,53,9,.18);flex-wrap:wrap}
-.fin-header-banner>div[style*="flex:1"]{min-width:180px}
-.fin-header-logo{width:42px;height:42px;border-radius:11px;background:#7BE495;color:#003509;display:grid;place-items:center;font-weight:900;font-size:16px;flex-shrink:0}
-.fin-header-title{font-size:21px;font-weight:800;line-height:1.2}
-.fin-header-sub{font-size:11.5px;color:rgba(255,255,255,.65);margin-top:3px}
+/* RUNDE DI (Martin: "Fjern Finansielt Dashboard i toppen den er grim") — den
+   mørkegrønne banner (.fin-header-banner/-logo/-title/-sub) er fjernet, både
+   her og i selve HTML'en (se #page-finance herunder) — ingen steder bruger
+   længere disse klasser. "Send rapport"/"Genindlæs tal"-knapperne banneret
+   også indeholdt er bevaret, bare flyttet op ved siden af fanebladene i
+   almindelig .bly-btn-stil i stedet for at stå i en farvet boks. */
 .fin-pill-tabs{display:flex;gap:6px;flex-wrap:wrap;background:#fff;padding:6px;border-radius:999px;box-shadow:0 4px 16px rgba(15,34,64,.06);width:fit-content}
 .fin-pill-tabs .tab-btn-sm{border:0;background:transparent;border-radius:999px;padding:9px 16px;margin:0}
 .fin-pill-tabs .tab-btn-sm.active{background:var(--navy);color:#fff}
@@ -635,20 +636,21 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .fin-inv-ring-amt{font-size:13.5px;font-weight:800;color:var(--bly-ink);line-height:1.15;word-break:break-word}
 .fin-inv-ring-label{font-size:11.5px;font-weight:600;color:var(--bly-sub)}
 @media(max-width:480px){.fin-inv-rings{flex-wrap:wrap}.fin-inv-ring-col{min-width:88px}}
-/* RUNDE DH — Omsætning pr. fag-kortet: to måneds-kolonner (indeværende/næste) side om
-   side, hver med en mini "bar i række"-liste pr. fag (farvet prik + navn + lille
-   proportionsbjælke + beløb), så det forbliver læsbart i et kort frem for et fuldt
-   cirkeldiagram, som ville være for trangt i denne størrelse. */
-.fin-fagrev-cols{display:flex;gap:22px;flex-wrap:wrap}
-.fin-fagrev-col{flex:1;min-width:170px}
-.fin-fagrev-head{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;font-weight:700;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.02em;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bly-border-soft)}
-.fin-fagrev-head b{font-size:14px;font-weight:800;color:var(--bly-ink);text-transform:none;letter-spacing:0}
-.fin-fagrev-row{display:flex;align-items:center;gap:7px;padding:5px 0;font-size:12px}
-.fin-fagrev-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.fin-fagrev-name{flex-shrink:0;max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--bly-ink);font-weight:600}
-.fin-fagrev-bar-track{flex:1;height:6px;border-radius:3px;background:var(--bly-border-soft);overflow:hidden;min-width:20px}
-.fin-fagrev-bar-fill{display:block;height:100%;border-radius:3px}
-.fin-fagrev-amt{flex-shrink:0;font-weight:700;color:var(--bly-ink);font-variant-numeric:tabular-nums;font-size:11.5px}
+/* RUNDE DJ (Martin: "Omsætning pr fag skal bare vise et samlet resultat og ikke i
+   breakdown med hver fag det bliver for kluderet bare en rund cirkel også, og så kan
+   den blive opdelt i farver hele vejen rundt og så bare inden i i midten af cirkel
+   totalt") — to ringe (indeværende/næste måned) side om side, samme conic-gradient-
+   opskrift som Fakturaer-kortets ringe (RUNDE DH), men farvet HELE vejen rundt i
+   proportionelle buer (én pr. fag) i stedet for én farve + lys bane — og med KUN
+   totalbeløbet i midten, ingen navne/enkelt-beløb. */
+.fin-fagrev-cols{display:flex;gap:18px;justify-content:space-between}
+.fin-fagrev-ringcol{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
+.fin-fagrev-ring{position:relative;width:100%;max-width:120px;aspect-ratio:1/1;border-radius:50%}
+.fin-fagrev-ring::before{content:'';position:absolute;inset:11px;border-radius:50%;background:#fff}
+.fin-fagrev-ring-inner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 8px;z-index:1}
+.fin-fagrev-ring-amt{font-size:15px;font-weight:800;color:var(--bly-ink);line-height:1.15;word-break:break-word}
+.fin-fagrev-ring-label{font-size:11.5px;font-weight:600;color:var(--bly-sub)}
+@media(max-width:480px){.fin-fagrev-cols{flex-wrap:wrap}.fin-fagrev-ringcol{min-width:88px}}
 /* RUNDE BN (Martin: "brug fuld wide på skærmen så der mere plads") — denne side
    havde sit eget 1180px-loft OVEN I #page-finance's egen 110px sidepadding, så den
    sad som en smal søjle midt i en ellers bred side (modsat alle andre faneblade
@@ -4078,7 +4080,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.6 · 2026-10-18</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.8 · 2026-10-18</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -5199,24 +5201,24 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 <!-- ØKONOMI (kun for is_finance_admin) -->
 <section class="page" id="page-finance">
-  <div class="fin-header-banner">
-    <div class="fin-header-logo">GM</div>
-    <div style="flex:1">
-      <div class="fin-header-title">Finansielt Dashboard</div>
-      <div class="fin-header-sub">Gulv Master Enterprise ApS · fra jeres egne tilbud, fakturaer og bankafstemning</div>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn small" id="finance-email-report-btn" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3)">📧 Send rapport</button>
-      <button class="btn small primary" id="finance-refresh-btn">🔄 Genindlæs tal</button>
-    </div>
-  </div>
-  <div class="tabs fin-pill-tabs" style="margin-bottom:16px">
+  <!-- RUNDE DI (Martin: "Fjern Finansielt Dashboard i toppen den er grim") —
+       den mørkegrønne banner med "GM"-logo/titel/undertekst er fjernet.
+       Knapperne banneret havde er bevaret (samme id'er, samme klik-funktion),
+       bare flyttet herned ved siden af fanebladene i almindelig .bly-btn-stil
+       i stedet for en farvet boks for sig selv. -->
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+  <div class="tabs fin-pill-tabs" style="margin-bottom:0">
     <a class="tab-btn-sm active" data-fintab="oversigt" href="#finance/oversigt">📊 Oversigt</a>
     <a class="tab-btn-sm" data-fintab="omsaetning" href="#finance/omsaetning">💰 Omsætning pr. fag</a>
     <a class="tab-btn-sm" data-fintab="bankafstemning" href="#finance/bankafstemning">🏦 Bankafstemning</a>
     <a class="tab-btn-sm" data-fintab="udgifter" href="#finance/udgifter">📖 Udgifter</a>
     <a class="tab-btn-sm" data-fintab="privatbudget" href="#finance/privatbudget">👤 Privat budget</a>
     <a class="tab-btn-sm" data-fintab="noter" href="#finance/noter">⚠️ Noter &amp; datakvalitet</a>
+  </div>
+  <div style="display:flex;gap:8px;flex-shrink:0">
+    <button class="bly-btn outline small" id="finance-email-report-btn">📧 Send rapport</button>
+    <button class="bly-btn small" id="finance-refresh-btn">🔄 Genindlæs tal</button>
+  </div>
   </div>
 
   <div class="fintabpage active" id="fintab-oversigt">
@@ -18216,19 +18218,37 @@ function renderFinExpenseCard(){
 // finRevenue[key].byFag — samme datakilde som cirkeldiagram-widget'en
 // (renderFagPieWidget) og selve Omsætning pr. fag-fanen, så tallene her
 // altid stemmer overens med resten af siden.
-function finFagRevMonthBlockHtml(label,byFag){
+// RUNDE DJ (Martin: "Omsætning pr fag skal bare vise et samlet resultat og
+// ikke i breakdown med hver fag det bliver for kluderet bare en rund cirkel
+// også, og så kan den blive opdelt i farver hele vejen rundt og så bare
+// inden i i midten af cirkel totalt") — erstatter den tekst-baserede
+// liste-pr-fag (navn+bjælke+beløb for hver fag) med PRÆCIS dette: én
+// cirkel/ring pr. måned, farvet hele vejen rundt i proportionelle buer (ét
+// farvesegment pr. fag, samme opskrift/palette som den eksisterende
+// cirkeldiagram-widget, renderFagPieWidget), og med KUN totalbeløbet inde i
+// midten — ingen navne, ingen enkelt-beløb, ingen forklarende liste.
+function finFagRevRingGradient(sorted,byFag,total){
+  if(!total||!sorted.length)return '#F3F4F6';
+  var COLORS=['#1D4ED8','#15803D','#B45309','#7C3AED','#DC2626','#9AA3B2'];
+  var acc=0,stops=[];
+  sorted.forEach(function(f,i){
+    var sum=byFag[f].sum||0,from=acc,to=acc+(sum/total*100);
+    stops.push(COLORS[i%COLORS.length]+' '+from.toFixed(2)+'% '+to.toFixed(2)+'%');
+    acc=to;
+  });
+  return 'conic-gradient('+stops.join(',')+')';
+}
+function finFagRevRingHtml(label,byFag){
   var fags=Object.keys(byFag||{});
   var total=fags.reduce(function(s,f){return s+(byFag[f].sum||0);},0);
   var sorted=fags.slice().sort(function(a,b){return (byFag[b].sum||0)-(byFag[a].sum||0);});
-  var COLORS=['#1D4ED8','#15803D','#B45309','#7C3AED','#DC2626','#9AA3B2'];
-  var rows=sorted.length?sorted.map(function(f,i){
-    var sum=byFag[f].sum||0,pct=total>0?Math.round(sum/total*100):0;
-    return '<div class="fin-fagrev-row"><span class="fin-fagrev-dot" style="background:'+COLORS[i%COLORS.length]+'"></span>'
-      +'<span class="fin-fagrev-name" title="'+esc(f)+'">'+esc(f)+'</span>'
-      +'<span class="fin-fagrev-bar-track"><span class="fin-fagrev-bar-fill" style="width:'+pct+'%;background:'+COLORS[i%COLORS.length]+'"></span></span>'
-      +'<span class="fin-fagrev-amt">'+krFmt(sum)+'</span></div>';
-  }).join(''):'<div class="fin-muted" style="font-size:11.5px;padding:6px 0">Ingen planlagte sager endnu</div>';
-  return '<div class="fin-fagrev-col"><div class="fin-fagrev-head"><span>'+esc(label)+'</span><b>'+krFmt(total)+'</b></div>'+rows+'</div>';
+  var gradient=finFagRevRingGradient(sorted,byFag,total);
+  return '<div class="fin-fagrev-ringcol">'
+    +'<div class="fin-fagrev-ring" style="background:'+gradient+'">'
+      +'<div class="fin-fagrev-ring-inner"><div class="fin-fagrev-ring-amt">'+krFmt(total)+'</div></div>'
+    +'</div>'
+    +'<div class="fin-fagrev-ring-label">'+esc(label)+'</div>'
+  +'</div>';
 }
 function renderFinFagRevenueCard(){
   var el=document.getElementById('fin-card-fagomsaetning');
@@ -18239,7 +18259,7 @@ function renderFinFagRevenueCard(){
   var curFag=(finRevenue&&curKey&&finRevenue[curKey]&&finRevenue[curKey].byFag)||{};
   var nextFag=(finRevenue&&nextKey&&finRevenue[nextKey]&&finRevenue[nextKey].byFag)||{};
   el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Omsætning pr. fag</div><button class="bly-btn outline small" data-action="fin-goto-omsaetning">Se alle måneder</button></div>'
-    +'<div class="fin-fagrev-cols">'+finFagRevMonthBlockHtml(curLbl,curFag)+finFagRevMonthBlockHtml(nextLbl,nextFag)+'</div>';
+    +'<div class="fin-fagrev-cols">'+finFagRevRingHtml(curLbl,curFag)+finFagRevRingHtml(nextLbl,nextFag)+'</div>';
   var btn=el.querySelector('[data-action="fin-goto-omsaetning"]');
   if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="omsaetning"]');if(t)t.click();});
 }
