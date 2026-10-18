@@ -4080,7 +4080,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.8 · 2026-10-18</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.9 · 2026-10-18</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -7483,18 +7483,12 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <span style="flex:1"></span>
         <span id="gantt-all-filters" style="display:none;gap:8px;align-items:center">
           <input id="gantt-search" class="input" placeholder="🔍 Søg opgave, sag eller sagsnr..." style="width:220px">
-          <!-- BEMÆRK: fag-filteret virker, men er reelt uden effekt på sags-
-               opgaver — fag (type_guess) blev kun udfyldt af JobTread-synken, og
-               sags-opgaver har det aldrig sat. Alt lander derfor under "Andet".
-               Filteret er bevidst bevaret (så gamle vaner/valg ikke forsvinder),
-               men skal have et rigtigt fag-felt på sagen for at blive nyttigt igen. -->
+          <!-- RUNDE DK: indholdet sættes nu dynamisk fra pjProjectTypes (samme
+               faggruppe-liste som Sagsoversigt/CRM, se populateGanttTradeFilter())
+               i stedet for de hårdkodede lay/sand/paint/sub/other-værdier, som
+               aldrig matchede noget rigtigt data. -->
           <select id="gantt-trade-filter" class="select" style="width:auto">
             <option value="all">🎨 Alle fag</option>
-            <option value="lay">Gulvlægning</option>
-            <option value="sand">Gulvslibning</option>
-            <option value="paint">Malerservice</option>
-            <option value="sub">Underleverandør</option>
-            <option value="other">Andet</option>
           </select>
           <select id="gantt-period-filter" class="select" style="width:auto">
             <option value="all">Hele perioden</option>
@@ -14729,6 +14723,20 @@ async function openGanttProject(projectId,projectName){
   ganttState.tasks=Array.isArray(r.tasks)?r.tasks:[];
   renderGanttChart();
 }
+// RUNDE DK — fylder "Alle fag"-dropdownen i "Se alle opgaver" med den rigtige,
+// dynamiske faggruppe-liste (samme kilde som Sagsoversigt/CRM bruger, se
+// pjProjectTypes/loadPjProjectTypes), i stedet for de gamle hårdkodede
+// lay/sand/paint/sub/other-værdier.
+async function populateGanttTradeFilter(){
+  if(!pjProjectTypes.length)await loadPjProjectTypes();
+  var sel=document.getElementById('gantt-trade-filter');
+  if(!sel)return;
+  var keep=ganttAllFilters.trade;
+  sel.innerHTML='<option value="all">🎨 Alle fag</option>'+pjProjectTypes.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join('');
+  if(keep!=='all'&&pjProjectTypes.indexOf(keep)===-1)keep='all';
+  sel.value=keep;
+  ganttAllFilters.trade=keep;
+}
 async function openGanttAllTasks(){
   ganttState.projectId=null;ganttState.projectName='Alle opgaver';ganttState.project=null;ganttState.allMode=true;
   document.getElementById('gantt-job-title').textContent='📊 Alle opgaver (alle sager)';
@@ -14737,6 +14745,7 @@ async function openGanttAllTasks(){
   document.getElementById('gantt-job-picker').style.display='none';
   document.getElementById('gantt-board-wrap').style.display='block';
   document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Henter opgaver på tværs af alle sager…</p>';
+  populateGanttTradeFilter();
   var r=await api('/api/gantt/all-tasks');
   if(!r||r.error){toast((r&&r.error)||'Kunne ikke hente opgaverne','❌');document.getElementById('gantt-chart').innerHTML='<p class="muted-sm" style="padding:20px">Kunne ikke hente data.</p>';return;}
   ganttState.tasks=r.tasks||[];
@@ -14762,7 +14771,10 @@ var ganttExpandedProjects={};
 function ganttFilteredTasks(){
   if(!ganttState.allMode)return ganttState.tasks;
   var list=ganttState.tasks;
-  if(ganttAllFilters.trade!=='all')list=list.filter(function(t){return (t.type_guess||'other')===ganttAllFilters.trade;});
+  // RUNDE DK — fag-filteret bruger nu sagens rigtige faggruppe (project_type,
+  // samme felt Sagsoversigt/CRM bruger), i stedet for type_guess (som sags-
+  // opgaver aldrig får sat, se kommentaren ved GET /api/gantt/all-tasks).
+  if(ganttAllFilters.trade!=='all')list=list.filter(function(t){return (t.project_type||'')===ganttAllFilters.trade;});
   if(ganttAllFilters.search.trim()){
     var q=ganttAllFilters.search.trim().toLowerCase();
     list=list.filter(function(t){return (t.name||'').toLowerCase().indexOf(q)>-1||(t.project_name||'').toLowerCase().indexOf(q)>-1||(t.job_number||'').toLowerCase().indexOf(q)>-1;});
@@ -17882,9 +17894,15 @@ function renderFinOverview(snapshots){
 // PROFIT-ANALYSE — fast måned-for-måned snapshot nederst i Oversigt (se
 // computeMonthlyProfitSnapshot/saveMonthlyProfitSnapshot i server.js). Viser udgifter,
 // bank-cash (seneste snapshot), fakturaer der reelt ER sendt denne måned, fakturaer der
-// ifølge Omsætning pr. fag-pipelinen stadig MANGLER at blive sendt, og bundlinjen af de
-// to sammenlagt minus udgifter. Snapshottet ændrer sig ikke bagefter, selvom nye
-// fakturaer/udgifter kommer til — det er pointen, så historikken er stabil.
+// ifølge Omsætning pr. fag-pipelinen stadig MANGLER at blive sendt, det forventede
+// moms-beløb for kvartalet, og Bundlinjen af det hele. Snapshottet ændrer sig ikke
+// bagefter, selvom nye fakturaer/udgifter kommer til — det er pointen, så historikken
+// er stabil.
+// RUNDE DK (Martin, ordret: "Udgifter er et minus Cash i banken er et plus Fakturaer
+// sendt er da et plus Skal sendes er da et plus Bundlinje viser det samlede resultat
+// og så minus Den moms der forventet skal betales skal også inkluderes i snapshot") —
+// Bundlinje = cash i banken + sendt + mangler at sende − udgifter − forventet moms
+// (se computeMonthlyProfitSnapshot i server.js for selve formlen).
 var MAANEDER_KORT=['jan.','feb.','mar.','apr.','maj','jun.','jul.','aug.','sep.','okt.','nov.','dec.'];
 function profitMonthLabel(mk){var p=mk.split('-');return MAANEDER_KORT[+p[1]-1]+' '+p[0];}
 async function loadProfitSnapshots(){
@@ -17902,6 +17920,7 @@ async function loadProfitSnapshots(){
     '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Cash i banken</th>'+
     '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Fakturaer sendt</th>'+
     '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Skal sendes</th>'+
+    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Moms (forventet)</th>'+
     '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Bundlinje</th>'+
     '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">vs. forrige mdr.</th>'+
     '<th style="padding:8px 10px;width:34px"></th>'+
@@ -17914,9 +17933,10 @@ async function loadProfitSnapshots(){
       return '<tr style="border-bottom:1px solid var(--bly-border-soft)">'+
         '<td style="padding:9px 10px;font-weight:700">'+profitMonthLabel(r.month_key)+'</td>'+
         '<td style="padding:9px 10px;text-align:right;color:#DC2626">−'+krFmt(r.expenses)+'</td>'+
-        '<td style="padding:9px 10px;text-align:right">'+(r.bank_cash!=null?krFmt(r.bank_cash):'–')+'</td>'+
+        '<td style="padding:9px 10px;text-align:right;color:#15803D">'+(r.bank_cash!=null?krFmt(r.bank_cash):'–')+'</td>'+
         '<td style="padding:9px 10px;text-align:right;color:#15803D">'+krFmt(r.invoices_sent)+'</td>'+
         '<td style="padding:9px 10px;text-align:right;color:#B45309">'+krFmt(r.invoices_pending)+'</td>'+
+        '<td style="padding:9px 10px;text-align:right;color:#DC2626">−'+krFmt(r.expected_moms||0)+'</td>'+
         '<td style="padding:9px 10px;text-align:right;font-weight:800">'+krFmt(r.bottom_line)+'</td>'+
         '<td style="padding:9px 10px;text-align:right">'+deltaHtml+'</td>'+
         '<td style="padding:9px 10px;text-align:right"><button type="button" class="bly-btn outline small" style="padding:4px 8px" title="Slet dette snapshot (f.eks. hvis det er lavet med forkerte tal)" onclick="deleteProfitSnapshot(\''+r.month_key+'\')">🗑</button></td>'+
@@ -17931,12 +17951,22 @@ async function deleteProfitSnapshot(monthKey){
   if(r&&r.ok){toast('Snapshot slettet','🗑');await loadProfitSnapshots();}
 }
 window.deleteProfitSnapshot=deleteProfitSnapshot;
+// RUNDE DK (Martins fejlrapport: "Gem snapsnot virker ikke") — try/catch/finally
+// tilføjet, så knappen ALTID nulstiller sig og viser en fejl-toast, selv hvis
+// noget uventet går galt undervejs, i stedet for at risikere at stå fast på
+// "Gemmer…" eller lade en fejl forsvinde i stilhed uden nogen reaktion.
 document.getElementById('fin-profit-save-now').addEventListener('click',async function(){
   var btn=this;btn.disabled=true;var origText=btn.textContent;btn.textContent='Gemmer…';
-  var r=await api('/api/finance/profit-snapshots/save-now',{method:'POST'});
-  btn.disabled=false;btn.textContent=origText;
-  if(r&&r.ok){toast('Snapshot gemt for '+profitMonthLabel(r.snapshot.monthKey),'💾');await loadProfitSnapshots();}
-  else if(r)toast(r.error||'Fejl','❌');
+  try{
+    var r=await api('/api/finance/profit-snapshots/save-now',{method:'POST'});
+    if(r&&r.ok){toast('Snapshot gemt for '+profitMonthLabel(r.snapshot.monthKey),'💾');await loadProfitSnapshots();}
+    else toast((r&&r.error)||'Fejl — snapshot blev ikke gemt','❌');
+  }catch(e){
+    console.error('Gem snapshot nu fejlede:',e);
+    toast('Fejl — snapshot blev ikke gemt','❌');
+  }finally{
+    btn.disabled=false;btn.textContent=origText;
+  }
 });
 // ══════════════════════════════════════════════════════════════
 // OVERSIGT — Billy-stil topsektion: samlet resultat-graf + de 4 faste

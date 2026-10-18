@@ -543,6 +543,7 @@ async function initSchema() {
       bank_cash DOUBLE PRECISION,
       invoices_sent DOUBLE PRECISION DEFAULT 0,
       invoices_pending DOUBLE PRECISION DEFAULT 0,
+      expected_moms DOUBLE PRECISION DEFAULT 0,
       bottom_line DOUBLE PRECISION DEFAULT 0,
       created_at TEXT DEFAULT ${nowTextSQL()},
       updated_at TEXT DEFAULT ${nowTextSQL()}
@@ -842,6 +843,10 @@ async function initSchema() {
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_address TEXT;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS type_guess TEXT;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS job_number TEXT;
+    -- RUNDE DK (Martin: "moms der forventet skal betales skal også inkluderes i
+    -- snapshot") — profit-snapshottets Bundlinje skal nu også trække det
+    -- forventede moms-beløb fra, se computeMonthlyProfitSnapshot.
+    ALTER TABLE profit_snapshots ADD COLUMN IF NOT EXISTS expected_moms DOUBLE PRECISION DEFAULT 0;
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS description TEXT;
     -- Contact columns are safe to add on an existing Render Postgres database.
     -- They let us keep a manual number protected from future JobTread syncs.
@@ -8101,13 +8106,20 @@ app.get('/api/gantt/projects', auth, asyncRoute(async (req, res) => {
 // i admin.html.
 //
 // type_guess er ALTID NULL på sags-opgaver (feltet blev kun udfyldt af
-// JobTread-synken). Fag-filteret i "Se alle opgaver" lander derfor alt under
-// "Andet" — bevidst accepteret begrænsning, ikke noget der gættes på her.
+// JobTread-synken) — IKKE brugt til fag-filteret her (se RUNDE DK).
+//
+// RUNDE DK (Martin: "duer filter alle fag heller ikke") — "Alle fag"-filteret i
+// "Se alle opgaver" brugte type_guess, som sags-opgaver aldrig får sat, så alt
+// landede under "Andet". Sagen selv HAR allerede et rigtigt faggruppe-felt
+// (projects.project_type — samme felt Sagsoversigt/CRM bruger, se
+// GET /api/project-types), bare aldrig spejlet herned. Nu følger p.project_type
+// med på hver opgave, og klientens filter (ganttFilteredTasks i admin.html)
+// bruger det i stedet for type_guess.
 app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT g.id, g.project_id, g.name, g.description, g.start_date, g.end_date,
            g.progress, g.is_group, g.parent_task_id, g.position, g.depends_on, g.type_guess,
-           p.name AS project_name, p.job_number, p.status AS project_status,
+           p.name AS project_name, p.job_number, p.status AS project_status, p.project_type,
            p.customer_address, p.customer_phone, p.customer_email
     FROM gantt_tasks g
     JOIN projects p ON p.id = g.project_id
@@ -8118,7 +8130,7 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
   res.json({
     tasks: rows.rows.map(r => ({
       id: r.id, project_id: r.project_id, project_name: r.project_name,
-      job_number: r.job_number, project_status: r.project_status,
+      job_number: r.job_number, project_status: r.project_status, project_type: r.project_type,
       name: r.name, description: r.description,
       start_date: r.start_date, end_date: r.end_date,
       progress: r.progress, is_group: !!r.is_group, parent_task_id: r.parent_task_id,
@@ -20335,12 +20347,21 @@ app.post('/api/finance/bank-snapshots', auth, panelAccess('finance'), asyncRoute
 }));
 
 // ── PROFIT-ANALYSE — månedligt snapshot til bunden af Oversigt-dashboardet ──
-// Samler fire tal for indeværende måned: udgifter, cash i banken (seneste snapshot),
-// fakturaer der REELT er sendt denne måned (rigtige JobTread-fakturaer), og fakturaer
+// Samler tallene for indeværende måned: udgifter, cash i banken (seneste snapshot),
+// fakturaer der REELT er sendt denne måned (rigtige JobTread-fakturaer), fakturaer
 // der ifølge Omsætning pr. fag-pipelinen STADIG mangler at blive sendt denne måned
-// (sager med et godkendt tilbud/budget, men endnu ingen godkendt faktura). Bundlinje
-// = (sendt + mangler at sende) − udgifter, altså den fulde forventede måned, ikke kun
-// det der allerede er faktureret.
+// (sager med et godkendt tilbud/budget, men endnu ingen godkendt faktura), og det
+// forventede moms-beløb for indeværende kvartal (samme 25%-af-faktureret-formel som
+// Moms-kortet, se renderFinMomsCard/vatQuarterInfo i admin.html).
+//
+// RUNDE DK (Martin, ordret om det daværende Bundlinje-tal: "Udgifter er et minus
+// Cash i banken er et plus Fakturaer sendt er da et plus Skal sendes er da et plus
+// Bundlinje viser det samlede resultat og så minus Den moms der forventet skal
+// betales skal også inkluderes i snapshot") — Bundlinje var hidtil KUN
+// (sendt + mangler at sende) − udgifter, uden cash i banken og uden moms. Nu:
+// Bundlinje = cash i banken + sendt + mangler at sende − udgifter − forventet moms,
+// altså et samlet "hvor står vi reelt" (det vi har liggende + det der er på vej ind,
+// minus det vi skylder ud og det vi skylder SKAT).
 async function computeMonthlyProfitSnapshot() {
   const monthKey = new Date().toISOString().slice(0, 7);
 
@@ -20361,18 +20382,31 @@ async function computeMonthlyProfitSnapshot() {
     .filter(j => j.valueSource !== 'invoice')
     .reduce((s, j) => s + (j.value || 0), 0);
 
-  const bottomLine = (invoicesSent + invoicesPending) - expenses;
+  // Forventet moms for det kvartal denne måned ligger i — 25% af alt faktureret
+  // (inkl. moms) i kvartalets måneder til dato. Samme formel som renderFinMomsCard,
+  // bevidst holdt identisk så Oversigt-kortet og snapshottet aldrig kan vise to
+  // forskellige moms-tal for samme periode.
+  const monthNum = Number(monthKey.slice(5, 7)) - 1; // 0-indekseret
+  const yearNum = Number(monthKey.slice(0, 4));
+  const quarterStartMonth = Math.floor(monthNum / 3) * 3;
+  const quarterMonthKeys = [0, 1, 2].map(i => `${yearNum}-${String(quarterStartMonth + i + 1).padStart(2, '0')}`);
+  const quarterTotal = invoices
+    .filter(i => i.createdAt && quarterMonthKeys.includes(i.createdAt.slice(0, 7)))
+    .reduce((s, i) => s + (i.priceWithTax || 0), 0);
+  const expectedMoms = quarterTotal * 0.25;
 
-  return { monthKey, expenses, bankCash, invoicesSent, invoicesPending, bottomLine };
+  const bottomLine = (bankCash || 0) + invoicesSent + invoicesPending - expenses - expectedMoms;
+
+  return { monthKey, expenses, bankCash, invoicesSent, invoicesPending, expectedMoms, bottomLine };
 }
 async function saveMonthlyProfitSnapshot() {
   const snap = await computeMonthlyProfitSnapshot();
   const today = new Date().toISOString().slice(0, 10);
   await pool.query(`
-    INSERT INTO profit_snapshots (month_key,snap_date,expenses,bank_cash,invoices_sent,invoices_pending,bottom_line,updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()})
-    ON CONFLICT (month_key) DO UPDATE SET snap_date=$2,expenses=$3,bank_cash=$4,invoices_sent=$5,invoices_pending=$6,bottom_line=$7,updated_at=${nowTextSQL()}
-  `, [snap.monthKey, today, snap.expenses, snap.bankCash, snap.invoicesSent, snap.invoicesPending, snap.bottomLine]);
+    INSERT INTO profit_snapshots (month_key,snap_date,expenses,bank_cash,invoices_sent,invoices_pending,expected_moms,bottom_line,updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()})
+    ON CONFLICT (month_key) DO UPDATE SET snap_date=$2,expenses=$3,bank_cash=$4,invoices_sent=$5,invoices_pending=$6,expected_moms=$7,bottom_line=$8,updated_at=${nowTextSQL()}
+  `, [snap.monthKey, today, snap.expenses, snap.bankCash, snap.invoicesSent, snap.invoicesPending, snap.expectedMoms, snap.bottomLine]);
   return snap;
 }
 app.get('/api/finance/profit-snapshots', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
