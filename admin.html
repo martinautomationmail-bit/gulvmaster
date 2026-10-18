@@ -4050,7 +4050,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.2 · 2026-10-17</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.5 · 2026-10-18</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -30331,6 +30331,9 @@ async function pdSendPortalLink(){
 // simplere end Daglig Plans mandags-anker (ren dage×dayWidth-regning).
 var PD_GANTT_DAYS_BACK_MAX=200,PD_GANTT_DAYS_FORWARD_MAX=400;
 var pdGanttState={dayWidth:38,autoStart:null,autoDays:null,daysBack:0,daysForward:0,renderedStart:null},pdGanttDrag=null,pdGanttLinkDrag=null,pdGanttSelectedDepKey=null;
+// RUNDE DF — timer-id for auto-scroll-ved-kant under et Gantt-bjælke-træk, se
+// pdGanttStartAutoScroll/pdGanttStopAutoScroll ved startPdGanttDrag nedenfor.
+var pdGanttAutoScrollTimer=null;
 // RUNDE CZ — se HTML-kommentaren ved #pd-gantt-selection-bar. pdGanttSelected
 // er en Set af opgave-id'er markeret via træk-udvælg (marquee); overlever
 // bevidst re-renders (renderPdGanttStrip() nulstiller den IKKE), så en ny
@@ -30773,13 +30776,31 @@ function startPdGanttDrag(e,bar,taskId,mode){
     bulkBars=bulkIds.map(function(id){return document.querySelector('#pd-gantt-strip .gantt-bar[data-pd-task-id="'+id+'"]');}).filter(Boolean);
     bulkOrigLeft=bulkBars.map(function(b){return parseInt(b.style.left);});
   }
-  pdGanttDrag={taskId:taskId,bar:bar,mode:mode,startX:e.clientX,origLeft:parseInt(bar.style.left),origWidth:parseInt(bar.style.width),moved:false,bulkIds:bulkIds,bulkBars:bulkBars,bulkOrigLeft:bulkOrigLeft};
+  pdGanttDrag={taskId:taskId,bar:bar,mode:mode,startX:e.clientX,lastClientX:e.clientX,autoScrollPx:0,origLeft:parseInt(bar.style.left),origWidth:parseInt(bar.style.width),moved:false,bulkIds:bulkIds,bulkBars:bulkBars,bulkOrigLeft:bulkOrigLeft};
   document.addEventListener('mousemove',onPdGanttDragMove);
   document.addEventListener('mouseup',onPdGanttDragEnd);
 }
-function onPdGanttDragMove(e){
+// RUNDE DF (Martin: "nÅR MAN MARKERE ALT ELLER OGSÅ SELVOM MAN KUN TRÆKKER
+// EN ... HVIS JEG TRÆKKER DET ENTEN TIL HØJRE ELLER VENSTRE OG HOLDER DEN
+// OVER MED HØJRE ELLER VENSTRE SKAL DEN SCROLLE I KALENDER VIEW SÅ JEG
+// HURTIG KAN FLYTTE DEM FREM AD I TIDEN") — holder man en bjælke (ÉN opgave
+// ELLER et flervalg, se bulkBars ovenfor — virker ens for begge) nær
+// venstre/højre kant af den synlige Gantt-rude MENS man trækker, skal
+// visningen selv blive ved med at rulle i den retning, så man kan flytte en
+// opgave langt frem/tilbage i tiden i ÉT samlet træk, i stedet for at skulle
+// slippe, rulle manuelt og trække igen.
+// pdGanttDrag.autoScrollPx akkumulerer hvor mange pixels der er rullet
+// AUTOMATISK (ikke ved selve musens bevægelse) og lægges oven i den
+// almindelige dx (museflytning siden trækstart) i applyPdGanttDragPosition()
+// — ellers ville bjælken bare rulle MED resten af indholdet uden reelt at
+// flytte sig i dage, fordi musen jo ikke selv bevæger sig mens auto-scrollet
+// kører. Selve rende-vinduet (daysBack/daysForward) udvides allerede
+// automatisk af bindPdGanttScrollTracking() når scrollLeft ændres (også når
+// det sker programmatisk, som her) — det skal vi altså ikke selv styre.
+var PD_GANTT_AUTOSCROLL_EDGE=56,PD_GANTT_AUTOSCROLL_MAXSPEED=22;
+function applyPdGanttDragPosition(){
   if(!pdGanttDrag)return;
-  var dx=e.clientX-pdGanttDrag.startX,dw=pdGanttState.dayWidth;
+  var dx=(pdGanttDrag.lastClientX-pdGanttDrag.startX)+pdGanttDrag.autoScrollPx,dw=pdGanttState.dayWidth;
   if(Math.abs(dx)>4)pdGanttDrag.moved=true;
   var snapped=Math.round(dx/dw)*dw;
   if(pdGanttDrag.mode==='move'){
@@ -30797,10 +30818,46 @@ function onPdGanttDragMove(e){
     if(newWidth>=dw-4){pdGanttDrag.bar.style.left=newLeft+'px';pdGanttDrag.bar.style.width=newWidth+'px';}
   }
 }
+// Kaldes hvert 30ms mens der trækkes (se pdGanttStartAutoScroll). Afstanden
+// måles til hele #pd-gantt-strip's synlige kant — går musen helt uden for
+// containeren (op til 200px), rulles der stadig med fuld fart, så det ikke
+// kræver pixel-præcision at ramme kanten.
+function pdGanttAutoScrollTick(){
+  if(!pdGanttDrag){pdGanttStopAutoScroll();return;}
+  var outer=document.getElementById('pd-gantt-strip');
+  if(!outer)return;
+  var rect=outer.getBoundingClientRect(),x=pdGanttDrag.lastClientX;
+  var distLeft=x-rect.left,distRight=rect.right-x,dir=0,speed=0;
+  if(distLeft<PD_GANTT_AUTOSCROLL_EDGE&&distLeft>=-200){dir=-1;speed=Math.round(PD_GANTT_AUTOSCROLL_MAXSPEED*(1-Math.max(0,distLeft)/PD_GANTT_AUTOSCROLL_EDGE));}
+  else if(distRight<PD_GANTT_AUTOSCROLL_EDGE&&distRight>=-200){dir=1;speed=Math.round(PD_GANTT_AUTOSCROLL_MAXSPEED*(1-Math.max(0,distRight)/PD_GANTT_AUTOSCROLL_EDGE));}
+  if(!dir||speed<=0)return;
+  var before=outer.scrollLeft;
+  outer.scrollLeft=before+dir*Math.max(4,speed);
+  var actual=outer.scrollLeft-before;
+  if(!actual)return;
+  pdGanttDrag.autoScrollPx+=actual;
+  applyPdGanttDragPosition();
+}
+function pdGanttStartAutoScroll(){
+  if(pdGanttAutoScrollTimer)return;
+  pdGanttAutoScrollTimer=setInterval(pdGanttAutoScrollTick,30);
+}
+function pdGanttStopAutoScroll(){
+  if(!pdGanttAutoScrollTimer)return;
+  clearInterval(pdGanttAutoScrollTimer);
+  pdGanttAutoScrollTimer=null;
+}
+function onPdGanttDragMove(e){
+  if(!pdGanttDrag)return;
+  pdGanttDrag.lastClientX=e.clientX;
+  applyPdGanttDragPosition();
+  pdGanttStartAutoScroll();
+}
 async function onPdGanttDragEnd(){
   if(!pdGanttDrag)return;
   document.removeEventListener('mousemove',onPdGanttDragMove);
   document.removeEventListener('mouseup',onPdGanttDragEnd);
+  pdGanttStopAutoScroll();
   if(!pdGanttDrag.moved){
     // Ingen reel træk-bevægelse — det var bare et klik på bjælken. I det
     // almindelige Gantt (siden "Gantt") åbner det opgavens detaljer, så det

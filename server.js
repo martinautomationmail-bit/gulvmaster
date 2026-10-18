@@ -16978,11 +16978,20 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
   if (project) await mirrorProjectTaskToPool(req.params.taskId, project, merged);
 
   // RUNDE P — hvis opgavens STARTDATO ændrede sig, og den (direkte eller via andre
-  // opgaver) er kædet sammen med andre opgaver i samme sag, rykkes hele den
-  // forbundne kæde med samme antal dage, så den indbyrdes afstand mellem opgaverne
-  // bevares. Kæden behandles bevidst som TOVEJS her (ikke kun "det der kommer
-  // efter") — det matcher Martins ønske om at hele sagen flytter sig sammen,
-  // uanset hvilken opgave i kæden man trækker i.
+  // opgaver) er kædet sammen med andre opgaver i samme sag, rykkes den forbundne
+  // kæde med samme antal dage, så den indbyrdes afstand mellem opgaverne bevares.
+  // RUNDE DG (Martin: "Når pilen er til ... hvis jeg rykker i en opgave midt inde
+  // i de 5-10 opgaver så skal den ikke rykke opgaverne bagud? ... oftest skal jeg
+  // strække eller rykke en opgave midt i for at forlænge eller tilpasse noget men
+  // så rykker den altid dem alle som en dynamisk gruppe") — kæden var hidtil
+  // TOVEJS (se den gamle adj/link-opbygning nedenfor, fjernet): at flytte/strække
+  // ÉN opgave midt i kæden trak BÅDE opgaverne før og efter den med, som ét stift
+  // bundt. I praksis bruger Martin det oftest til at justere ÉN opgave i midten —
+  // og de opgaver den SELV afhænger af (dem der ligger FØR/tidligere i kæden) skal
+  // IKKE rykkes bagud af det. Kun opgaver der afhænger AF den trukne opgave (dem
+  // der ligger EFTER — direkte eller via flere led) følger med, ligesom en
+  // almindelig forgænger/efterfølger-kæde i et Gantt-kort: revAdj er derfor nu
+  // RETTET (depId → de opgaver der afhænger af depId), og BFS'et går kun "fremad".
   let cascaded = [];
   const oldStart = validDate(current.start_date) ? current.start_date : null;
   const newStart = validDate(merged.start_date) ? merged.start_date : null;
@@ -16991,20 +17000,19 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
     if (deltaDays !== 0) {
       const allTasks = (await pool.query('SELECT id,start_date,end_date,depends_on FROM gantt_tasks WHERE project_id=$1', [req.params.id])).rows;
       const byId = new Map(allTasks.map(t => [t.id, t]));
-      const adj = new Map();
-      const link = (a, bb) => {
-        if (!adj.has(a)) adj.set(a, new Set());
-        if (!adj.has(bb)) adj.set(bb, new Set());
-        adj.get(a).add(bb); adj.get(bb).add(a);
-      };
+      const revAdj = new Map(); // depId -> Set(opgaver der afhænger af depId, dvs. kommer EFTER den)
       allTasks.forEach(t => {
-        (safeJsonParse(t.depends_on, []) || []).forEach(depId => { if (byId.has(depId)) link(t.id, depId); });
+        (safeJsonParse(t.depends_on, []) || []).forEach(depId => {
+          if (!byId.has(depId)) return;
+          if (!revAdj.has(depId)) revAdj.set(depId, new Set());
+          revAdj.get(depId).add(t.id);
+        });
       });
       const visited = new Set([req.params.taskId]);
       const queue = [req.params.taskId];
       while (queue.length) {
         const cur = queue.shift();
-        (adj.get(cur) || new Set()).forEach(n => { if (!visited.has(n)) { visited.add(n); queue.push(n); } });
+        (revAdj.get(cur) || new Set()).forEach(n => { if (!visited.has(n)) { visited.add(n); queue.push(n); } });
       }
       visited.delete(req.params.taskId);
       for (const tid of visited) {
