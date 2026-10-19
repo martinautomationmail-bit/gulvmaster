@@ -216,6 +216,12 @@
   <div id="tasks-container"><div class="empty"><div class="empty-icon">⏳</div><h3>Loading your tasks...</h3></div></div>
 </main>
 <div id="note-modal" class="modal-backdrop" onclick="closeNoteOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📝 Task note</div><button class="modal-close" onclick="closeNote()">Close</button></div><div class="modal-body"><div id="note-task" class="modal-task"></div><div id="note-text" class="modal-note"></div><div id="note-link-wrap" class="modal-note-link" style="display:none"><a id="note-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open link</a></div><div id="note-attachments" class="modal-note-attachments"></div><div id="note-task-photos" style="display:none;margin-top:12px"><div class="qn-title">📷 Reference photos &amp; files</div><div class="modal-note-attachments" id="note-task-photos-grid"></div></div><div id="note-quote-section" style="display:none;margin-top:12px"></div></div></div></div>
+<!-- RUNDE DM (Martin: "i deres kalender er der et markat i toppen eller et sted
+     de kan trykke på og komme og en popup kommer med tilbuddet de kan se uden
+     priser") — dedikeret, let popup til "📄 Tilbud"-mærket på opgavekortet
+     (adskilt fra note-modal'en ovenfor, som handler om noter/vedhæftninger).
+     Se openTaskQuoteModal(). -->
+<div id="quote-view-modal" class="modal-backdrop" onclick="closeQuoteViewOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📄 Tilbud</div><button class="modal-close" onclick="closeQuoteView()">Close</button></div><div class="modal-body"><div id="quote-view-body"></div></div></div></div>
 <!-- PROJEKTER — sager der er blevet til efter en kunde har underskrevet et
      tilbud. Herfra kan medarbejdere registrere tid (note + billede påkrævet),
      tilføje billeder til sagen, og udfylde KS-formularer. -->
@@ -540,6 +546,34 @@ async function loadNoteQuoteSection(x){
 }
 function closeNote(){document.getElementById('note-modal').classList.remove('open')}
 function closeNoteOnBackdrop(e){if(e.target===document.getElementById('note-modal'))closeNote()}
+
+// RUNDE DM (Martin, ordret: "Kan du ikke gøre så medarbejden kan se hvad tilbuddet
+// uden priser når jeg fx har booket en task på dem ... i deres kalender er der et
+// markat i toppen eller et sted de kan trykke på og komme og en popup kommer med
+// tilbuddet de kan se uden priser") — "📄 Tilbud"-mærket på opgavekortet (kun vist
+// når a.task_quote_id er sat, se render()) åbner denne dedikerede popup. Samme
+// garanti som loadNoteQuoteSection/RUNDE L: serveren (/quote-scope) sender ALDRIG
+// pris-felter, men vi renderer heller aldrig andet end description/unit/quantity
+// her, selv hvis noget andet skulle dukke op i svaret.
+function closeQuoteView(){document.getElementById('quote-view-modal').classList.remove('open')}
+function closeQuoteViewOnBackdrop(e){if(e.target===document.getElementById('quote-view-modal'))closeQuoteView()}
+async function openTaskQuoteModal(taskId){
+  document.getElementById('quote-view-modal').classList.add('open');
+  const body=document.getElementById('quote-view-body');
+  body.innerHTML='<p class="modal-empty">Henter tilbuddet…</p>';
+  const r=await api('/api/tasks/'+encodeURIComponent(taskId)+'/quote-scope');
+  const data=r&&r.ok?r.data:null;
+  if(!data||!data.quote_id||!data.lines||!data.lines.length){
+    body.innerHTML='<p class="modal-empty">Intet tilbud fundet på denne sag.</p>';
+    return;
+  }
+  const rows=data.lines.map(l=>{
+    if(l.line_type==='text')return `<div class="qn-line qn-line-heading">${esc(l.description||'')}</div>`;
+    const qty=(l.quantity!==undefined&&l.quantity!==null)?`${Number(l.quantity)} ${esc(l.unit||'')}`.trim():'';
+    return `<div class="qn-line"><span class="qn-line-desc">${esc(l.description||'')}</span>${qty?`<span class="qn-line-qty">${esc(qty)}</span>`:''}</div>`;
+  }).join('');
+  body.innerHTML=`<div class="qn-title">Tilbud ${esc(data.quote_number||'')} <span class="qn-note-price">(uden priser)</span></div><div class="qn-lines">${rows}</div>`;
+}
 
 
 // ══════════════════════════════════════════════════════════════
@@ -1573,6 +1607,12 @@ function render(){
       // den bruges stadig i confirmDocumentationAndComplete() og til 📁 Sag-mærket.
       const isCaseTask=!!a.task_project_id;
       const caseIcon=isCaseTask?`<span class="case-chip" style="background:#EEF2FF;color:#4F46E5;border-color:#C7D2FE" title="Denne opgave hører til en sag i dit eget program">📁 Sag</span>`:'';
+      // RUNDE DM (Martin: "i deres kalender er der et markat i toppen eller et
+      // sted de kan trykke på og komme og en popup kommer med tilbuddet de kan
+      // se uden priser") — vises kun når sagen opgaven hører til faktisk HAR et
+      // tilbud hæftet på sig (a.task_quote_id, se bookingSelect i server.js).
+      // Åbner popup'en via openTaskQuoteModal() — se den funktion.
+      const quoteIcon=a.task_quote_id?`<button type="button" class="case-chip" style="cursor:pointer" onclick="openTaskQuoteModal('${esc(a.task_id)}')" title="Se tilbuddet denne opgave hører til (uden priser)">📄 Tilbud</button>`:'';
       // RUNDE H #21 — Martin fjernede "Se sagen" og "Regler og lovgivning" fra
       // handlingerne (mindre rod, færre knapper der sjældent bruges). "Registrér tid"
       // er nu en fuld-bredde knap nederst, da tidsregistrering er den vigtigste
@@ -1606,7 +1646,7 @@ function render(){
       const timeButton=isCaseTask
         ?`<button class="action time" type="button" onclick="openTimeFormForTask(${a.task_project_id})" style="grid-column:1/-1">⏱ Registrér tid</button>`
         :`<button class="action time" type="button" onclick="openProjectsModal()" style="grid-column:1/-1">⏱ Registrér tid</button>`;
-      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}${caseIcon}</div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button>${caseActions}${timeButton}${doneBtn}</div></article>`;
+      out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}${caseIcon}${quoteIcon}</div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button>${caseActions}${timeButton}${doneBtn}</div></article>`;
     });}
     out+='</section>';});
   document.getElementById('tasks-container').innerHTML=total?out:'<div class="empty"><div class="empty-icon">📅</div><h3>No tasks in this view</h3><p>Choose another day or show the whole week.</p></div>';

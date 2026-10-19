@@ -9649,6 +9649,29 @@ app.get('/api/customer-visits/:taskId/quote-scope', auth, asyncRoute(async (req,
   res.json({ quote_id: quote.id, quote_number: quote.quote_number, lines: linesResult.rows });
 }));
 
+// RUNDE DM (Martin, ordret: "Kan du ikke gøre så medarbejden kan se hvad tilbuddet
+// uden priser når jeg fx har booket en task på dem ... i deres kalender er der et
+// markat ... en popup kommer med tilbuddet de kan se uden priser") — generaliseret
+// udgave af /api/customer-visits/:taskId/quote-scope (RUNDE L) ovenfor, til ALLE
+// bookede opgaver under en sag, ikke kun kundebesøg. Slår op via task_id -> sagens
+// project_id -> projects.quote_id (sat når sagen blev oprettet fra et accepteret
+// tilbud), i stedet for customer_visits.quote_id (som kun kundebesøg-bookinger
+// har). Samme garanti som RUNDE L: SELECT'en henter aldrig pris-/kostpris-/
+// rabat-felter, uanset hvad der ellers findes på quote_lines.
+app.get('/api/tasks/:taskId/quote-scope', auth, asyncRoute(async (req, res) => {
+  const task = await pgOne('SELECT project_id FROM jt_tasks WHERE id=$1', [req.params.taskId]);
+  if (!task || !task.project_id) return res.json({ quote_id: null, lines: [] });
+  const project = await pgOne('SELECT quote_id FROM projects WHERE id=$1', [task.project_id]);
+  if (!project || !project.quote_id) return res.json({ quote_id: null, lines: [] });
+  const quote = await pgOne('SELECT id, quote_number FROM quotes WHERE id=$1', [project.quote_id]);
+  if (!quote) return res.json({ quote_id: null, lines: [] });
+  const linesResult = await pool.query(`
+    SELECT description, unit, quantity, line_type, note
+    FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC
+  `, [project.quote_id]);
+  res.json({ quote_id: quote.id, quote_number: quote.quote_number, lines: linesResult.rows });
+}));
+
 app.put('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
   const body = req.body || {};
   const existing = await pgOne('SELECT * FROM customer_visits WHERE task_id=$1', [req.params.taskId]);
@@ -10060,7 +10083,14 @@ function bookingSelect(where = '') {
            -- så den har brug for statussen her for at kunne filtrere på
            -- igangværende/på hold/afsluttede sager. NULL når bookingen hænger på en
            -- opgave uden sag (manuel/kapacitet) — den skjules aldrig af filteret.
-           p.status AS task_project_status
+           p.status AS task_project_status,
+           -- RUNDE DM (Martin: "medarbejden kan se hvad tilbuddet uden priser når
+           -- jeg fx har booket en task på dem") — sat når sagen opgaven hører til
+           -- HAR et tilbud hæftet på sig. employee.html bruger den til at vise et
+           -- klikbart "📄 Tilbud"-mærke kun på de opgaver hvor der faktisk ER et
+           -- tilbud at vise (selve indholdet hentes uden priser via
+           -- GET /api/tasks/:taskId/quote-scope, se den route).
+           p.quote_id AS task_quote_id
     FROM planning_bookings b
     JOIN users u ON b.user_id=u.id
     JOIN jt_tasks t ON b.task_id=t.id
@@ -20346,13 +20376,40 @@ app.post('/api/finance/bank-snapshots', auth, panelAccess('finance'), asyncRoute
   res.json({ ok: true });
 }));
 
+// MOMS-PÅMINDELSE (server-side spejl af vatQuarterInfo/nextVatDeadline i admin.html,
+// se renderFinMomsCard) — dansk regel: fristen for et kvartal er den 1. i den måned
+// der ligger 3 måneder efter kvartalets udløb. Finder den NÆSTE ubetalte frist og det
+// kvartal den hører til. Holdt 1:1 i sync med klient-versionen med vilje, så Moms-
+// kortet øverst i Oversigt og profit-snapshottets "Moms (forventet)" ALDRIG kan vise
+// to forskellige tal for samme øjeblik (RUNDE DK, se computeMonthlyProfitSnapshot).
+function vatQuarterInfoServer(year, q) {
+  const endMonth = q * 3 + 2; // 0-indekseret (2=marts, 5=juni, 8=september, 11=december)
+  const deadlineMonth = (endMonth + 3) % 12;
+  const deadlineYear = year + Math.floor((endMonth + 3) / 12);
+  return { year, q, startMonth: q * 3, endMonth, deadline: new Date(deadlineYear, deadlineMonth, 1) };
+}
+function nextVatDeadlineServer() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const curQ = Math.floor(now.getMonth() / 3);
+  const candidates = [];
+  for (let i = -1; i <= 1; i++) {
+    let q = curQ + i, y = now.getFullYear();
+    while (q < 0) { q += 4; y -= 1; }
+    while (q > 3) { q -= 4; y += 1; }
+    candidates.push(vatQuarterInfoServer(y, q));
+  }
+  candidates.sort((a, b) => a.deadline - b.deadline);
+  for (const c of candidates) { if (c.deadline >= today) return c; }
+  return candidates[candidates.length - 1];
+}
+
 // ── PROFIT-ANALYSE — månedligt snapshot til bunden af Oversigt-dashboardet ──
 // Samler tallene for indeværende måned: udgifter, cash i banken (seneste snapshot),
 // fakturaer der REELT er sendt denne måned (rigtige JobTread-fakturaer), fakturaer
 // der ifølge Omsætning pr. fag-pipelinen STADIG mangler at blive sendt denne måned
 // (sager med et godkendt tilbud/budget, men endnu ingen godkendt faktura), og det
-// forventede moms-beløb for indeværende kvartal (samme 25%-af-faktureret-formel som
-// Moms-kortet, se renderFinMomsCard/vatQuarterInfo i admin.html).
+// forventede moms-beløb.
 //
 // RUNDE DK (Martin, ordret om det daværende Bundlinje-tal: "Udgifter er et minus
 // Cash i banken er et plus Fakturaer sendt er da et plus Skal sendes er da et plus
@@ -20362,6 +20419,14 @@ app.post('/api/finance/bank-snapshots', auth, panelAccess('finance'), asyncRoute
 // Bundlinje = cash i banken + sendt + mangler at sende − udgifter − forventet moms,
 // altså et samlet "hvor står vi reelt" (det vi har liggende + det der er på vej ind,
 // minus det vi skylder ud og det vi skylder SKAT).
+//
+// RUNDE DL (Martins rettelse: "Moms forventet skal altid være den samlede moms for
+// perioden som der står længere oppe i dashboardet") — moms-beløbet beregnede først
+// 25% af DEN MÅNEDS EGET kvartal til dato, hvilket for en måned midt i et kvartal gav
+// et andet (lavere) tal end Moms-kortet øverst på siden, som altid viser det NÆSTE
+// ubetalte kvartals fulde estimat. Nu genbruges nøjagtig samme "næste ubetalte
+// kvartal"-logik (nextVatDeadlineServer ovenfor), så tallet her altid matcher
+// Moms-kortet, uanset hvilken måneds snapshot der gemmes.
 async function computeMonthlyProfitSnapshot() {
   const monthKey = new Date().toISOString().slice(0, 7);
 
@@ -20382,14 +20447,11 @@ async function computeMonthlyProfitSnapshot() {
     .filter(j => j.valueSource !== 'invoice')
     .reduce((s, j) => s + (j.value || 0), 0);
 
-  // Forventet moms for det kvartal denne måned ligger i — 25% af alt faktureret
-  // (inkl. moms) i kvartalets måneder til dato. Samme formel som renderFinMomsCard,
-  // bevidst holdt identisk så Oversigt-kortet og snapshottet aldrig kan vise to
-  // forskellige moms-tal for samme periode.
-  const monthNum = Number(monthKey.slice(5, 7)) - 1; // 0-indekseret
-  const yearNum = Number(monthKey.slice(0, 4));
-  const quarterStartMonth = Math.floor(monthNum / 3) * 3;
-  const quarterMonthKeys = [0, 1, 2].map(i => `${yearNum}-${String(quarterStartMonth + i + 1).padStart(2, '0')}`);
+  // Forventet moms — nøjagtig samme kvartal og formel som Moms-kortet (se
+  // RUNDE DL-kommentaren ovenfor): det NÆSTE ubetalte kvartals fulde 25%-af-
+  // faktureret-estimat, ikke blot denne måneds eget kvartal til dato.
+  const vatInfo = nextVatDeadlineServer();
+  const quarterMonthKeys = [0, 1, 2].map(i => `${vatInfo.year}-${String(vatInfo.startMonth + i + 1).padStart(2, '0')}`);
   const quarterTotal = invoices
     .filter(i => i.createdAt && quarterMonthKeys.includes(i.createdAt.slice(0, 7)))
     .reduce((s, i) => s + (i.priceWithTax || 0), 0);
