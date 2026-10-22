@@ -1126,6 +1126,25 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
 
+    -- RUNDE DP (Martin: "under videncenter ... private noter hver bruger men
+    -- også en stor note fælles") — Videnscenter > Noter. De PRIVATE noter
+    -- genbruger bevidst den eksisterende note_tabs-tabel ovenfor (samme data
+    -- som den lille flydende note-widget allerede gemmer i, bare vist i en
+    -- langt større, rigere editor på sin egen side) — ingen grund til en
+    -- parallel privat-note-tabel der blot ville duplikere det samme. Den
+    -- FÆLLES note er derimod noget helt nyt: ÉN delt note, synlig/redigerbar
+    -- for alle med adgang til Videnscenter (ikke bundet til user_id). Holdt
+    -- som én fast række (id=1, se seed'en nedenfor) i stedet for en fri liste
+    -- af fælles-noter — Martins ønske var bevidst "en stor note", ental.
+    CREATE TABLE IF NOT EXISTS shared_notes (
+      id INTEGER PRIMARY KEY,
+      title TEXT DEFAULT 'Fælles note',
+      content TEXT DEFAULT '',
+      updated_at TEXT DEFAULT ${nowTextSQL()},
+      updated_by INTEGER
+    );
+    INSERT INTO shared_notes (id,title,content) VALUES (1,'Fælles note','') ON CONFLICT (id) DO NOTHING;
+
     -- Fag/faggrupper og deres farve — styrer opgave-farverne i Daglig plan/Ugeplan og på
     -- opgavekortene. Kapacitetsboardet bruger bevidst ÉN ensartet farve uanset fag.
     CREATE TABLE IF NOT EXISTS task_types (
@@ -9808,6 +9827,38 @@ app.put('/api/note-tabs/:id', auth, asyncRoute(async (req, res) => {
 app.delete('/api/note-tabs/:id', auth, asyncRoute(async (req, res) => {
   const result = await pool.query('DELETE FROM note_tabs WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Fanen blev ikke fundet' });
+  res.json({ ok: true });
+}));
+
+// ── VIDENSCENTER > NOTER — DEN FÆLLES NOTE (RUNDE DP) ────────
+// Se den store kommentar ved CREATE TABLE shared_notes. Kun ÉN række (id=1)
+// findes nogensinde — "en stor note fælles", ental, ikke en liste. Alle med
+// adgang til Videnscenter ('knowledge', samme nøgle som Lister/Dokumenter)
+// kan læse og redigere den; sidste redigering vinder (samme princip som
+// resten af appens tekstfelter), men svaret inkluderer hvem der sidst gemte
+// og hvornår, så en kollega kan se det er redigeret af en anden i mellemtiden.
+// Samme adgangsmønster som resten af Videnscenter (se kommentaren ved
+// /api/kb/lists ovenfor): GET er kun 'auth' (enhver logget ind må SE), PUT
+// kræver panelAccess('knowledge').
+app.get('/api/shared-note', auth, asyncRoute(async (req, res) => {
+  const row = await pgOne(`
+    SELECT sn.*, u.name AS updated_by_name
+    FROM shared_notes sn LEFT JOIN users u ON u.id = sn.updated_by
+    WHERE sn.id = 1
+  `);
+  res.json(row || { id: 1, title: 'Fælles note', content: '', updated_at: null, updated_by_name: null });
+}));
+
+app.put('/api/shared-note', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const title = body.title !== undefined ? String(body.title).slice(0, 120) || 'Fælles note' : undefined;
+  const content = String(body.content !== undefined ? body.content : '').slice(0, 300000);
+  await pool.query(`
+    INSERT INTO shared_notes (id,title,content,updated_at,updated_by)
+    VALUES (1,$1,$2,${nowTextSQL()},$3)
+    ON CONFLICT (id) DO UPDATE SET
+      title=COALESCE($1,shared_notes.title), content=$2, updated_at=${nowTextSQL()}, updated_by=$3
+  `, [title || null, content, req.user.id]);
   res.json({ ok: true });
 }));
 
