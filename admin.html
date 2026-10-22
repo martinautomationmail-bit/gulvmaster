@@ -4080,7 +4080,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.9 · 2026-10-18</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.13 · 2026-10-22</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -11447,7 +11447,20 @@ document.addEventListener('click',function(e){if(!e.target.closest('#ctx-menu'))
 // åbner en ny (eller viser browserens egen menu på et sted uden kontekstmenu),
 // så der aldrig kan stå to menuer/en forældet menu tilbage på skærmen.
 document.addEventListener('contextmenu',hideCtxMenu,true);
-document.addEventListener('scroll',hideCtxMenu,true);
+// RUNDE DN (Martins fejlrapport: "Når man trykker på templates og scroller ...
+// forsvinder den med det samme det ret træls") — capture:true er nødvendigt for
+// overhovedet at fange scroll inde i en nested scroll-boks (scroll-events bobler
+// ikke), fx den lange "Indsæt skabelon"-liste, som bevidst har sin egen
+// overflow-y:auto (se .ctx-menu i CSS'en). Men FØR lukkede DEN SLAGS scroll også
+// menuen med det samme — man kunne aldrig nå at scrolle ned i en lang liste, fordi
+// selve forsøget på at scrolle lukkede menuen i samme øjeblik. Luk nu kun når
+// scrollet IKKE kommer fra menuen selv (dvs. siden bagved rent faktisk scroller,
+// hvor det stadig giver mening at lukke, fx fordi knappen menuen hang på nu er
+// scrollet ud af syne).
+document.addEventListener('scroll',function(e){
+  if(e.target&&e.target.closest&&e.target.closest('#ctx-menu'))return;
+  hideCtxMenu();
+},true);
 window.addEventListener('resize',hideCtxMenu);
 // Generisk træk-for-at-omarrangere til alle "fin-resizable"-bokse — bruges af Privat
 // budget, Oversigt og Udgifter, så det ikke skal genopfindes hvert sted.
@@ -12841,9 +12854,54 @@ function capacityWeekOptions(selected){
   if(selected&&weeks.every(function(m){return iso(m)!==selected;}))weeks=[mon(date(selected))].concat(weeks);
   return weeks.map(function(m){var key=iso(m),label='Uge '+weekNo(m)+' · '+m.getDate()+'/'+(m.getMonth()+1)+' – '+add(m,4).getDate()+'/'+(add(m,4).getMonth()+1);return '<option value="'+key+'"'+(key===selected?' selected':'')+'>'+label+'</option>';}).join('');
 }
-function populateCapacityUsers(selectedUid){
-  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
-  document.getElementById('capacity-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'"'+(+u.id===+selectedUid?' selected':'')+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
+// RUNDE DO (Martin: "jeg tror nogle medarbejder er mere booket en andre" —
+// når Martin booker en opgave ind i Kapacitetsbordet, viste medarbejder-
+// vælgeren hidtil kun navn+fag, ingen info om hvor booket hver person allerede
+// er den uge — så valget reelt var et gæt. Viser nu hver persons aktuelle
+// belastning (kapacitetsdage booket / ugentlig kapacitet) FOR DEN KONKRETE
+// uge reservationen gælder, og sorterer internt-ansatte efter stigende
+// belastning (mindst booket først) i stedet for alfabetisk — et bevidst
+// NUDGE mod en jævnere fordeling, uden at fjerne det frie valg (se den store
+// kommentar ved #bulk-capacity-modal for hvorfor selve valget bevidst ikke er
+// automatiseret helt væk). weekIso er ISO-datoen for ugens mandag (eller en
+// vilkårlig dato i ugen — rundes selv ned via mon()).
+function capUserLoadLabel(u,weekMon){
+  var cap=+u.weekly_capacity||5,booked=weeklyLoad(u.id,weekMon);
+  return booked>0?(' · '+booked.toFixed(1)+'/'+cap+' d uge '+weekNo(weekMon)):(' · ledig uge '+weekNo(weekMon));
+}
+function capSortByLoad(workforce,weekMon){
+  return workforce.slice().sort(function(a,b){
+    var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;
+    if(av!==bv)return av-bv;
+    var al=weeklyLoad(a.id,weekMon)/(+a.weekly_capacity||5),bl=weeklyLoad(b.id,weekMon)/(+b.weekly_capacity||5);
+    if(al!==bl)return al-bl;
+    return a.name.localeCompare(b.name,'da');
+  });
+}
+// RUNDE DO (Martin: "inde på opgaven har jeg ændret tidsplanen men i mit
+// kapacitetsbord passer det ikke længere") — kaldes efter enhver PUT mod en
+// sags-opgaves dato (hurtig-dato-feltet, træk i sags-Gantt'et — enkelt eller
+// markeret flere ad gangen — og "Vælg periode"-feltet i opgave-detaljerne).
+// Serveren (se shiftTaskBookings()/PUT .../tasks/:taskId i server.js) rykker
+// nu selv eksisterende bookinger med når startdatoen flytter sig — denne
+// funktion gør det SYNLIGT for Martin at det skete, og flager de tilfælde
+// hvor en VARIGHEDSÆNDRING gør at en allerede booket reservation ikke
+// nødvendigvis passer længere (det rører serveren bevidst ikke automatisk ved,
+// se kommentaren der) — med et klik direkte ind i booking-redigeringen.
+function reportBookingSync(r,taskId){
+  if(!r)return;
+  if(r.booking_shift_days){
+    var n=Math.abs(r.booking_shift_days);
+    toast('📅 Booking i Kapacitetsbordet/Daglig plan rykket '+n+' dag'+(n===1?'':'e')+' med opgaven','📅');
+  }
+  if(r.booking_duration_mismatch&&taskId){
+    toast('⚠️ Opgavens varighed er ændret — tjek om bookingen i Kapacitetsbordet stadig passer','⚠️',function(){openCapacityModal({taskId:taskId});},6000);
+  }
+}
+function populateCapacityUsers(selectedUid,weekIso){
+  var weekMon=mon(date(weekIso||iso(new Date())));
+  var workforce=capSortByLoad(users.filter(function(u){return u.active&&u.role==='employee';}),weekMon);
+  document.getElementById('capacity-user').innerHTML=workforce.map(function(u){return '<option value="'+u.id+'"'+(+u.id===+selectedUid?' selected':'')+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+capUserLoadLabel(u,weekMon)+'</option>';}).join('');
 }
 // RUNDE V — se kommentaren ved capacity-label ovenfor. t.job_name er sagens/
 // kundens navn (typisk "Fornavn Efternavn", da sager altid oprettes med
@@ -12874,13 +12932,21 @@ function openCapacityModal(opts){
   capacityCtx={bookingId:b&&b.id||null,taskId:taskId};
   document.getElementById('capacity-title').textContent=b?'Rediger kapacitetsreservation':(t?'Reservér kapacitet for opgave':'Reservér kapacitet');
   document.getElementById('capacity-context').innerHTML=t?'📊 <span>Kapacitet for <strong>'+esc((t.job_name||'')+(t.name?' — '+t.name:''))+'</strong>. Den vises ikke i Daglig plan eller hos medarbejderen.</span>':'📊 <span>Denne reservation vises kun på kapacitetsboardet — ikke i Daglig plan eller hos medarbejderen.</span>';
-  populateCapacityUsers(b?b.user_id:opts.userId);
   // FEJL RETTET: "Startdato" var før et frit datofelt, så man kunne (ved en fejl)
   // reservere kapacitet til en bestemt UGEDAG — men Kapacitetsboardet analyserer og
   // viser altid kun på ugeniveau alligevel. Feltet er nu en uge-vælger, så det aldrig
   // kan blive en bestemt dag, kun "hvilken uge".
+  // RUNDE DO — ugen skal kendes FØR vi bygger medarbejder-listen, så den kan vise
+  // hver persons belastning for netop denne uge (se populateCapacityUsers).
   var weekVal=iso(mon(date((b&&b.start_date)||opts.weekStart||iso(new Date()))));
+  populateCapacityUsers(b?b.user_id:opts.userId,weekVal);
   document.getElementById('capacity-week').innerHTML=capacityWeekOptions(weekVal);
+  // RUNDE DO — skifter Martin ugen (fx fordi den først foreslåede uge er fuld),
+  // genindlæses belastningstallene for den NYE uge, så sammenligningen altid
+  // matcher den uge der rent faktisk bliver booket.
+  document.getElementById('capacity-week').onchange=function(e){
+    populateCapacityUsers(document.getElementById('capacity-user').value,e.target.value);
+  };
   document.getElementById('capacity-days').value=b?capDaysOf(b):1;
   // RUNDE V (Martins ønske: "skal den huske fornavnet på kunden og så opgave
   // beskrivelsen") — feltet startede FØR helt tomt når man bookede en sags-opgave
@@ -30795,6 +30861,7 @@ function renderPdGanttStrip(){
       var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+taskId,{method:'PUT',body:JSON.stringify({start_date:newStart,end_date:newEnd})});
       if(r&&r.ok){
         toast(r.cascaded&&r.cascaded.length?'Dato sat — '+r.cascaded.length+' kædet opgave(r) rykket med':'Dato sat','✓');
+        reportBookingSync(r,taskId);
         reloadPdCurrent();
       }else toast((r&&r.error)||'Kunne ikke sætte dato','❌');
     });
@@ -31033,6 +31100,9 @@ async function onPdGanttDragEnd(){
     var rb=await api('/api/projects/'+pjCurrent.id+'/tasks/bulk-dates',{method:'PUT',body:JSON.stringify({ids:bulkIds,delta_days:deltaDays})});
     if(rb&&rb.ok){
       toast((rb.updated||[]).length+' opgaver flyttet '+(deltaDays>0?deltaDays+' dage frem':Math.abs(deltaDays)+' dage tilbage'),'✓');
+      // RUNDE DO — se reportBookingSync()-kommentaren: her er det flere opgaver
+      // på én gang, så bare ét samlet tal i stedet for én toast pr. opgave.
+      if(rb.booking_shift_count)toast('📅 '+rb.booking_shift_count+' booking'+(rb.booking_shift_count===1?'':'er')+' i Kapacitetsbordet/Daglig plan rykket med','📅');
       pdGanttSelected.clear();
     }else toast((rb&&rb.error)||'Kunne ikke flytte opgaverne','❌');
     reloadPdCurrent();
@@ -31048,6 +31118,7 @@ async function onPdGanttDragEnd(){
   // RUNDE P — hvis opgaven er kædet sammen med andre (se .gantt-link-select),
   // rykker de kædede opgaver automatisk med her.
   if(r&&r.ok&&r.cascaded&&r.cascaded.length)toast(r.cascaded.length+' kædet opgave(r) rykket med','✓');
+  reportBookingSync(r,taskId);
   reloadPdCurrent();
 }
 // RUNDE CZ (Martin: "i opgave kunne trykke på musen holde den inde og trække
@@ -31457,7 +31528,12 @@ async function savePdTaskDetail(){
     subcontractor_note:document.getElementById('pdtd-subnote-input').value
   };
   var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+pdTaskDetailId,{method:'PUT',body:JSON.stringify(body)});
-  if(r&&r.ok){closeModal('pd-task-detail-modal');toast('Gemt ✓','✓');reloadPdCurrent();}
+  if(r&&r.ok){
+    closeModal('pd-task-detail-modal');
+    toast('Gemt ✓','✓');
+    reportBookingSync(r,pdTaskDetailId);
+    reloadPdCurrent();
+  }
   else toast((r&&r.error)||'Kunne ikke gemme','❌');
 }
 async function pdAddTaskRow(){
@@ -31555,15 +31631,24 @@ async function pdDownloadGanttPdf(){
 // sagen) og sin egen medarbejder (forudfyldt fra "Book alle hos", men frit
 // redigerbar pr. opgave via bcapUserOptionsHtml() nedenfor) — "spørger hvem
 // den skal bookes hos pr Opgave, eller alle hos en" fra Martins besked.
-function bcapUserOptionsHtml(workforce,selectedId){
-  return workforce.map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(selectedId)?' selected':'')+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+'</option>';}).join('');
+// RUNDE DO (Martin: "jeg tror nogle medarbejder er mere booket en andre") —
+// se den store kommentar ved populateCapacityUsers/capUserLoadLabel ovenfor —
+// samme idé her: hver medarbejder-option viser nu sin belastning FOR DEN UGE
+// den pågældende opgave rent faktisk bookes til (weekIso — opgavens egen
+// dato-felt i listen, forskellig pr. række), og internt-ansatte sorteres efter
+// stigende belastning i stedet for alfabetisk.
+function bcapUserOptionsHtml(workforce,selectedId,weekIso){
+  var weekMon=mon(date(weekIso||iso(new Date())));
+  var sorted=capSortByLoad(workforce,weekMon);
+  return sorted.map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(selectedId)?' selected':'')+'>'+esc(u.name)+(u.trade?' · '+esc(u.trade):'')+capUserLoadLabel(u,weekMon)+'</option>';}).join('');
 }
 function openBulkCapacityModal(){
   if(!pjCurrent||!Array.isArray(pjCurrent.tasks))return;
   var bookable=pjCurrent.tasks.filter(function(t){return !t.has_booking;});
-  var workforce=users.filter(function(u){return u.active&&u.role==='employee';}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});
-  var defaultUserId=workforce.length?workforce[0].id:'';
-  document.getElementById('bcap-user').innerHTML=bcapUserOptionsHtml(workforce,defaultUserId);
+  var workforce=users.filter(function(u){return u.active&&u.role==='employee';});
+  var todayMon=mon(new Date());
+  var defaultUserId=capSortByLoad(workforce,todayMon).length?capSortByLoad(workforce,todayMon)[0].id:'';
+  document.getElementById('bcap-user').innerHTML=bcapUserOptionsHtml(workforce,defaultUserId,iso(todayMon));
   var list=document.getElementById('bcap-task-list');
   document.getElementById('bcap-none-note').style.display=bookable.length?'none':'block';
   var skippedCount=pjCurrent.tasks.length-bookable.length;
@@ -31588,10 +31673,20 @@ function openBulkCapacityModal(){
       +'<div class="bcap-task-row-top"><span class="bcap-task-row-name">'+esc(t.name||'(uden navn)')+'</span><span class="bcap-task-row-planned">'+esc(plannedLabel)+'</span></div>'
       +'<div class="bcap-task-row-fields">'
       +'<input type="date" class="input bcap-task-date" data-task-id="'+esc(t.id)+'" value="'+esc(plannedDate)+'">'
-      +'<select class="select bcap-task-user" data-task-id="'+esc(t.id)+'">'+bcapUserOptionsHtml(workforce,defaultUserId)+'</select>'
+      +'<select class="select bcap-task-user" data-task-id="'+esc(t.id)+'">'+bcapUserOptionsHtml(workforce,defaultUserId,plannedDate)+'</select>'
       +'<input type="number" class="input bcap-task-days" min=".25" max="60" step=".25" value="'+defaultDays+'" data-task-id="'+esc(t.id)+'">'
       +'</div></div>';
   }).join('');
+  // RUNDE DO — retter Martin datoen på en række (fx fordi ugen han foreslog
+  // viste sig optaget), genindlæses den rækkes belastningstal for den NYE uge,
+  // uden at nulstille den medarbejder der allerede er valgt på rækken.
+  Array.prototype.forEach.call(list.querySelectorAll('.bcap-task-date'),function(inp){
+    inp.addEventListener('change',function(){
+      var row=inp.closest('.bcap-task-row');
+      var sel=row?row.querySelector('.bcap-task-user'):null;
+      if(sel)sel.innerHTML=bcapUserOptionsHtml(workforce,sel.value,inp.value);
+    });
+  });
   document.getElementById('save-bulk-capacity').disabled=!bookable.length;
   document.getElementById('bulk-capacity-modal').classList.add('open');
 }
@@ -35762,6 +35857,20 @@ function bindQuotesModuleEvents(){
     if(!inside)qzHideLineAutocomplete();
   });
   document.addEventListener('keydown',function(e){if(e.key==='Escape')qzHideLineAutocomplete();});
+  // RUNDE DN (Martins fejlrapport: "når man i søgefeltet ved et produkt søger og
+  // så scroller så er popuppen med dataen om produkterne den bliver på sin
+  // plads" — se de 2 skærmbilleder han sendte) — qzShowLineAutocomplete()
+  // positionerer boksen med position:fixed ud fra inputfeltets skærm-koordinater
+  // PÅ DET TIDSPUNKT den åbnes, men fulgte aldrig med hvis man scrollede bagefter
+  // — den blev hængende på sin oprindelige plads, løsrevet fra feltet/linjen den
+  // hørte til, og kunne ende med at dække helt andre felter længere nede.
+  // Simplest robuste rettelse, samme princip som #ctx-menu's egen scroll-lytter
+  // ovenfor: luk boksen ved scroll i stedet for at prøve at følge med live (som
+  // let bliver hakkende/forkert ved hurtig scroll).
+  document.addEventListener('scroll',function(e){
+    if(e.target&&e.target.closest&&e.target.closest('#qz-line-ac'))return;
+    qzHideLineAutocomplete();
+  },true);
 
   document.getElementById('iv-add-payment-btn').addEventListener('click',addIvPayment);
   document.getElementById('iv-mark-paid-btn').addEventListener('click',markIvFullyPaid);

@@ -4919,6 +4919,36 @@ function addCalendarDays(dateStr, days) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// RUNDE DO (Martin: "når jeg har en opgave der rykkes/forlænges jamen så har
+// jeg jo allerede i kapacitets bordet booket nogle, men de står jo der? ...
+// inde på opgaven har jeg ændret tidsplanen men i mit kapacitetsbord passer
+// det ikke længere") — planning_bookings fulgte hidtil ALDRIG med når en
+// sags-opgaves start/slutdato blev ændret (hverken ved træk i sags-Gantt'et,
+// "Vælg periode"-feltet, hurtig-dato-feltet eller kæde-kaskaden) — en allerede
+// booket reservation blev derfor hængende på sin GAMLE uge/dato, helt usynligt
+// for Martin, indtil han selv opdagede uoverensstemmelsen. Bruges nu fra PUT
+// /api/projects/:id/tasks/:taskId (både selve opgaven og hver kædet opgave)
+// og PUT /api/projects/:id/tasks/bulk-dates: når en opgaves STARTDATO flytter
+// sig X dage, flytter dens egne bookinger (kapacitet OG daglig plan, uanset
+// planning_mode) automatisk MED samme antal dage — en ren forskydning, ikke en
+// ny kapacitets-beslutning, så den er altid sikker at lave helt automatisk.
+async function shiftTaskBookings(taskId, deltaDays, exec) {
+  if (!deltaDays) return 0;
+  const rows = (await (exec || pool).query('SELECT id,start_date,end_date FROM planning_bookings WHERE task_id=$1', [taskId])).rows;
+  let shifted = 0;
+  for (const row of rows) {
+    if (!validDate(row.start_date)) continue;
+    const newStart = addCalendarDays(row.start_date, deltaDays);
+    const newEnd = validDate(row.end_date) ? addCalendarDays(row.end_date, deltaDays) : newStart;
+    await (exec || pool).query(
+      `UPDATE planning_bookings SET start_date=$1, end_date=$2, week_key=$3, updated_at=${nowTextSQL()} WHERE id=$4`,
+      [newStart, newEnd, getWeekKey(newStart), row.id]
+    );
+    shifted++;
+  }
+  return shifted;
+}
+
 // Capacity is planned by week, never by a meeting time or a particular day.
 // We still save the Monday/Friday internally so existing reporting remains compatible.
 function mondayOfDate(value) {
@@ -16963,15 +16993,19 @@ app.put('/api/projects/:id/tasks/bulk-dates', auth, panelAccess('projects'), asy
   if (!project) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
   const tasks = (await pool.query('SELECT * FROM gantt_tasks WHERE project_id=$1 AND id = ANY($2::text[])', [req.params.id, ids])).rows;
   const updated = [];
+  let bookingShiftCount = 0;
   for (const t of tasks) {
     if (!validDate(t.start_date)) continue;
     const newStart = addCalendarDays(t.start_date, deltaDays);
     const newEnd = validDate(t.end_date) ? addCalendarDays(t.end_date, deltaDays) : newStart;
     await pool.query(`UPDATE gantt_tasks SET start_date=$1, end_date=$2, synced_at=${nowTextSQL()} WHERE id=$3`, [newStart, newEnd, t.id]);
     await mirrorProjectTaskToPool(t.id, project, { name: t.name, start_date: newStart, end_date: newEnd, description: t.description || '' });
+    // RUNDE DO — se shiftTaskBookings()-kommentaren: markerede opgaver der
+    // trækkes samlet i sags-Gantt'et tager deres egne bookinger med.
+    bookingShiftCount += await shiftTaskBookings(t.id, deltaDays);
     updated.push(t.id);
   }
-  res.json({ ok: true, updated });
+  res.json({ ok: true, updated, booking_shift_count: bookingShiftCount });
 }));
 
 app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
@@ -17019,6 +17053,30 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
   `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, JSON.stringify(merged.depends_on), merged.subcontractor_cost, merged.subcontractor_note, req.params.taskId]);
   if (project) await mirrorProjectTaskToPool(req.params.taskId, project, merged);
 
+  // RUNDE DO — se shiftTaskBookings()-kommentaren ovenfor. Opgavens EGNE
+  // eksisterende bookinger flyttes automatisk med samme antal dage som selve
+  // opgavens startdato flyttede — en ren forskydning, ingen ny kapacitets-
+  // beslutning. Hvis kun VARIGHEDEN ændrede sig (forlænget/forkortet uden at
+  // starte en anden dag), rører vi IKKE automatisk ved bookingens egen
+  // længde — det ville kunne overfylde en uge usynligt for Martin — men
+  // flager det i svaret, så frontend'en kan vise en tydelig "tjek
+  // bookingen"-besked han selv kan handle på med ét klik (se
+  // reportBookingSync() i admin.html).
+  let bookingShiftDays = 0;
+  if (validDate(current.start_date) && validDate(merged.start_date) && current.start_date !== merged.start_date) {
+    bookingShiftDays = Math.round((new Date(`${merged.start_date}T12:00:00`) - new Date(`${current.start_date}T12:00:00`)) / 86400000);
+    if (bookingShiftDays) await shiftTaskBookings(req.params.taskId, bookingShiftDays);
+  }
+  let bookingDurationMismatch = false;
+  if (validDate(current.start_date) && validDate(current.end_date) && validDate(merged.start_date) && validDate(merged.end_date)) {
+    const oldDuration = Math.round((new Date(`${current.end_date}T12:00:00`) - new Date(`${current.start_date}T12:00:00`)) / 86400000);
+    const newDuration = Math.round((new Date(`${merged.end_date}T12:00:00`) - new Date(`${merged.start_date}T12:00:00`)) / 86400000);
+    if (oldDuration !== newDuration) {
+      const hasBooking = await pgOne('SELECT 1 FROM planning_bookings WHERE task_id=$1 LIMIT 1', [req.params.taskId]);
+      bookingDurationMismatch = !!hasBooking;
+    }
+  }
+
   // RUNDE P — hvis opgavens STARTDATO ændrede sig, og den (direkte eller via andre
   // opgaver) er kædet sammen med andre opgaver i samme sag, rykkes den forbundne
   // kæde med samme antal dage, så den indbyrdes afstand mellem opgaverne bevares.
@@ -17063,11 +17121,15 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
         const shiftedStart = addCalendarDays(t.start_date, deltaDays);
         const shiftedEnd = validDate(t.end_date) ? addCalendarDays(t.end_date, deltaDays) : shiftedStart;
         await pool.query(`UPDATE gantt_tasks SET start_date=$1, end_date=$2, synced_at=${nowTextSQL()} WHERE id=$3`, [shiftedStart, shiftedEnd, tid]);
+        // RUNDE DO — kædede opgaver rykker med, og deres EGNE bookinger (hvis
+        // de allerede er booket i Kapacitetsbordet/Daglig plan) følger nu med
+        // på samme måde som selve den redigerede opgaves egen booking ovenfor.
+        await shiftTaskBookings(tid, deltaDays);
         cascaded.push(tid);
       }
     }
   }
-  res.json({ ok: true, cascaded });
+  res.json({ ok: true, cascaded, booking_shift_days: bookingShiftDays, booking_duration_mismatch: bookingDurationMismatch });
 }));
 
 app.delete('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
