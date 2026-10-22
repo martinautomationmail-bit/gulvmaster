@@ -4125,7 +4125,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.14 · 2026-10-22</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.15 · 2026-10-22</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -11653,6 +11653,90 @@ async function api(path,opts){
   if(opts.body&&!h['Content-Type']&&!isFormData)h['Content-Type']='application/json';
   try{var r=await fetch(API+path,Object.assign({},opts,{headers:h}));var d=await r.json().catch(function(){return{error:'Ugyldigt svar'};});if(r.status===401){logout();return null;}return r.ok?d:Object.assign({ok:false},d);}
   catch(e){toast('Netværksfejl','❌');return null;}
+}
+
+// ══════════════════════════════════════════════════════════════
+// RUNDE DQ (Martin: "Templates navne under tilbud skal kunne ændre til engelsk
+// når man trykker på den engelsk knap i headeren også de noter og ting vi
+// skriver under kunderne skal samt ændre produkterne også til engelsk så når
+// man søger så kommer de frem på engelsk også, i tilbud og i produkt
+// database") — den eksisterende "Engelsk"-knap (se i18n-lang.js/i18n-runtime.js)
+// oversætter kun FAST UI-tekst fra en ordbog (knapper, labels, menupunkter) —
+// den springer BEVIDST brugernes egen data over (produktnavne, skabelon-navne,
+// kundenoter), for en fast ordbog kan ikke vide hvad en fritekst-note betyder.
+// Dette lag dækker præcis det: en lille klient-cache (abDynMem, gemt i
+// localStorage så den ikke skal genoversættes ved hvert besøg) + ét server-kald
+// (POST /api/i18n/translate-dynamic, som selv cacher globalt på serveren), der
+// oversætter en liste af frie tekststrenge til engelsk med AI, kun når "Engelsk"
+// rent faktisk er valgt. abDisplay(t) bruges INDE I en render-funktion (viser
+// dansk med det samme, skifter til engelsk når/hvis oversættelsen allerede er
+// cachet) — abDynTranslate(texts,cb) henter/cacher manglende oversættelser og
+// kalder cb(hadNew) så den kaldende render-funktion kan køre sig selv igen,
+// præcis én gang, hvis der kom noget NYT ind i cachen.
+function abIsEnglish(){try{return localStorage.getItem('ab_lang')==='en';}catch(e){return false;}}
+var AB_DYN_CACHE_KEY='ab_dyn_i18n_cache_v1';
+var abDynMem=(function(){try{return JSON.parse(localStorage.getItem(AB_DYN_CACHE_KEY))||{};}catch(e){return{};}})();
+var abDynSaveTimer=null;
+function abDynSave(){
+  // Debounceret — en hel liste produkter/noter kan sagtens trigge dusinvis af
+  // nye cache-poster i samme baggrunds-kald, ingen grund til at skrive til
+  // localStorage for hver enkelt.
+  if(abDynSaveTimer)return;
+  abDynSaveTimer=setTimeout(function(){abDynSaveTimer=null;try{localStorage.setItem(AB_DYN_CACHE_KEY,JSON.stringify(abDynMem));}catch(e){}},400);
+}
+// Viser den engelske tekst hvis vi allerede har den i cachen (synkront, ingen
+// visuel "flap" fra dansk til engelsk ved normal genrendering) — ellers dansk,
+// indtil abDynTranslate() nedenfor har hentet den og render-funktionen er kørt
+// igen. Altid dansk når "Engelsk" ikke er valgt.
+function abDisplay(t){
+  if(!abIsEnglish())return t;
+  var k=String(t==null?'':t).trim();
+  if(!k)return t;
+  var v=abDynMem[k];
+  return v!=null?v:t;
+}
+var abDynInFlight=Object.create(null);
+// Serveren (POST /api/i18n/translate-dynamic) tager højst 120 tekster pr. kald —
+// et stort produktkatalog/skabelon-sæt deles derfor op i flere kald i stedet for
+// stille at tabe resten (fx ved den indledende forudoversættelse i initQuotesModule).
+var AB_DYN_CHUNK=100;
+function abDynTranslateChunk(need,cb){
+  if(!need.length){cb(false);return;}
+  need.forEach(function(k){abDynInFlight[k]=true;});
+  api('/api/i18n/translate-dynamic',{method:'POST',body:JSON.stringify({texts:need})}).then(function(r){
+    var out=(r&&r.translations)||[];
+    var hadNew=false;
+    need.forEach(function(k,i){
+      delete abDynInFlight[k];
+      var en=out[i];
+      if(en!=null&&en!==''){abDynMem[k]=en;hadNew=true;}
+    });
+    if(hadNew)abDynSave();
+    cb(hadNew);
+  }).catch(function(){
+    need.forEach(function(k){delete abDynInFlight[k];});
+    cb(false);
+  });
+}
+function abDynTranslate(texts,cb){
+  if(!abIsEnglish()){if(cb)cb(false);return;}
+  var need=[];
+  (texts||[]).forEach(function(t){
+    var k=String(t==null?'':t).trim();
+    if(!k||abDynMem[k]!=null||abDynInFlight[k])return;
+    if(need.indexOf(k)===-1)need.push(k);
+  });
+  if(!need.length){if(cb)cb(false);return;}
+  var chunks=[];
+  for(var i=0;i<need.length;i+=AB_DYN_CHUNK)chunks.push(need.slice(i,i+AB_DYN_CHUNK));
+  var pending=chunks.length,anyNew=false;
+  chunks.forEach(function(chunk){
+    abDynTranslateChunk(chunk,function(hadNew){
+      if(hadNew)anyNew=true;
+      pending--;
+      if(pending===0&&cb)cb(anyNew);
+    });
+  });
 }
 
 // Working dates for a booking — bruges af KAPACITETSBORDET (weeklyLoad m.fl.),
@@ -24482,6 +24566,19 @@ async function initQuotesModule(){
   await Promise.all([loadQzProducts(),loadQzQuotes(),loadQzInvoices(),loadQzTemplates()]);
   renderQzProducts();renderQzQuotes();renderQzInvoices();renderQzTemplates();populateQeTemplatePicker();
   loadQzDeliveryWarning();
+  // RUNDE DQ (Martin: "produkterne også til engelsk så når man søger så kommer de
+  // frem på engelsk også, i tilbud og i produkt database") — forudoversætter HELE
+  // produkt-/skabelon-kataloget med det samme (ikke kun det der lige er synligt),
+  // så søgning på engelske ord matcher produkterne/skabelonerne fra første
+  // tastetryk, i stedet for kun efter man har haft listen fremme i synet først.
+  // Kun ét kald, kun når "Engelsk" rent faktisk er valgt — ingen effekt/omkostning
+  // for dansk-brugere.
+  if(abIsEnglish()){
+    var abPrefetch=[];
+    qzProducts.forEach(function(p){abPrefetch.push(p.name);if(p.category)abPrefetch.push(p.category);if(p.description)abPrefetch.push(p.description);});
+    qzTemplates.forEach(function(t){abPrefetch.push(t.name);if(t.description)abPrefetch.push(t.description);});
+    abDynTranslate(abPrefetch,function(hadNew){if(hadNew){renderQzProducts();renderQzTemplates();populateQeTemplatePicker();}});
+  }
   // RUNDE H #316 — Rykker-indstillinger/-log bor nu her (se qz-dunning-settings-panel)
   // i stedet for i Økonomi-modulet. renderFinDunning() selv er uændret — den virker
   // uanset hvor i DOM'en fin-dunning-*-elementerne befinder sig.
@@ -25476,13 +25573,22 @@ function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange)
   var q=inputEl.value.trim();
   if(!q){qzHideLineAutocomplete();return;}
   // RUNDE W — samme søge-fejlrettelse som qzRunProductSearch (se qzSearchHit).
-  var matches=qzProducts.filter(function(p){return qzSearchHit(q,[p.name,p.category,p.sku,p.description]);}).slice(0,8);
+  // RUNDE DQ — qzProductSearchFields(p) tilføjer de cachede engelske
+  // oversættelser som ekstra søgefelter (se kommentaren ved qzFilteredProducts).
+  var matches=qzProducts.filter(function(p){return qzSearchHit(q,qzProductSearchFields(p));}).slice(0,8);
   if(!matches.length){qzHideLineAutocomplete();return;}
   var box=qzGetLineAcBox();
+  // RUNDE DQ — produktnavn/kategori er fri tekst, se abDisplay-kommentaren.
   box.innerHTML=matches.map(function(p){
     var pct=qzMarginPct(Number(p.cost_price),Number(p.sell_price));
-    return '<div class="qe-customer-result" data-pid="'+p.id+'"><b>'+esc(p.name)+'</b> <span class="qz-margin '+qzMarginClass(pct)+'" style="float:right">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span><br><span style="color:var(--bly-sub)">'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+(p.category?' · '+esc(p.category):'')+' · '+krFmt(Number(p.sell_price))+'</span></div>';
+    return '<div class="qe-customer-result" data-pid="'+p.id+'"><b>'+esc(abDisplay(p.name))+'</b> <span class="qz-margin '+qzMarginClass(pct)+'" style="float:right">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span><br><span style="color:var(--bly-sub)">'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+(p.category?' · '+esc(abDisplay(p.category)):'')+' · '+krFmt(Number(p.sell_price))+'</span></div>';
   }).join('');
+  if(abIsEnglish()){
+    var texts=[];matches.forEach(function(p){texts.push(p.name);if(p.category)texts.push(p.category);});
+    // Genkør kun selve søgningen/visningen (ikke resten af linje-editoren) hvis
+    // en frisk oversættelse lander, og kun hvis boksen stadig er åben med samme felt.
+    abDynTranslate(texts,function(hadNew){if(hadNew&&box.style.display!=='none')qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange);});
+  }
   var r=inputEl.getBoundingClientRect();
   box.style.position='fixed';
   box.style.top=(r.bottom+4)+'px';
@@ -25546,8 +25652,25 @@ function qzFilteredProducts(){
     if(catF&&(p.category||'')!==catF)return false;
     if(typeF&&qzType(p.product_type)!==typeF)return false;
     if(unitF&&(p.unit||'stk')!==unitF)return false;
-    return qzSearchHit(q,[p.name,p.category,p.sku]);
+    // RUNDE DQ (Martin: "produkterne også til engelsk så når man søger så kommer
+    // de frem på engelsk også") — qzProductSearchFields(p) tilføjer de cachede
+    // engelske oversættelser (hvis vi har dem) som EKSTRA søgefelter, så en
+    // engelsk søgeord stadig finder produktet, selv om selve produktdataen
+    // (navn/kategori/sku) forbliver uændret dansk i databasen.
+    return qzSearchHit(q,qzProductSearchFields(p));
   });
+}
+// RUNDE DQ — fælles søgefelt-liste for produkter, brugt både i Produkter-siden
+// (qzFilteredProducts) og i linje-autocompleten i Tilbud (qzShowLineAutocomplete),
+// så "søg på engelsk" virker samme sted begge steder.
+function qzProductSearchFields(p){
+  var f=[p.name,p.category,p.sku,p.description];
+  if(abIsEnglish()){
+    f.push(abDynMem[String(p.name||'').trim()]);
+    f.push(abDynMem[String(p.category||'').trim()]);
+    f.push(abDynMem[String(p.description||'').trim()]);
+  }
+  return f;
 }
 // Udfylder Kategori/Enhed-dropdownsene med de værdier der reelt findes i
 // produktkataloget lige nu — kaldes hver gang produkter (gen)hentes fra
@@ -25579,6 +25702,7 @@ function renderQzProducts(){
   // RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design du
   // lavede") — .bly-rowcard i stedet for <tr>/<td>, samme kort-liste-stil som
   // Bankafstemning/Omsætning pr. fag.
+  // RUNDE DQ — produktnavn/kategori er fri tekst, se abDisplay-kommentaren.
   body.innerHTML=list.map(function(p){
     var cost=Number(p.cost_price),sell=Number(p.sell_price);
     var pct=qzMarginPct(cost,sell);
@@ -25587,12 +25711,12 @@ function renderQzProducts(){
       +'<div class="bly-rowcard-top">'
       +'<div class="bly-rowcard-name" style="gap:8px">'
       +'<input type="checkbox" class="qz-product-row-check" data-pid="'+p.id+'"'+(checked?' checked':'')+'>'
-      +esc(p.name)
+      +esc(abDisplay(p.name))
       +'</div>'
       +'<div class="bly-rowcard-value"><span class="qz-margin '+qzMarginClass(pct)+'">'+(pct===null?'–':pct.toFixed(0)+'%')+'</span> margin</div>'
       +'</div>'
       +'<div class="bly-rowcard-bottom">'
-      +'<span>'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+' · '+esc(p.category||'ingen kategori')+' · '+esc(p.unit||'stk')+' · cost '+krFmt(cost)+' · salg '+krFmt(sell)+'</span>'
+      +'<span>'+esc(QZ_TYPE_LABEL[qzType(p.product_type)])+' · '+esc(p.category?abDisplay(p.category):'ingen kategori')+' · '+esc(p.unit||'stk')+' · cost '+krFmt(cost)+' · salg '+krFmt(sell)+'</span>'
       +'<div class="bly-rowcard-controls"><button class="qz-icon-btn" onclick="openProductModal('+p.id+')" title="Redigér">✎</button></div>'
       +'</div>'
       +'</div>';
@@ -25602,6 +25726,10 @@ function renderQzProducts(){
   allBtn.checked=list.length>0&&selectedVisible===list.length;
   allBtn.indeterminate=selectedVisible>0&&selectedVisible<list.length;
   qzUpdateProductBulkBar();
+  if(abIsEnglish()){
+    var texts=[];list.forEach(function(p){texts.push(p.name);if(p.category)texts.push(p.category);});
+    abDynTranslate(texts,function(hadNew){if(hadNew)renderQzProducts();});
+  }
 }
 function qzUpdateProductBulkBar(){
   var bar=document.getElementById('qz-product-bulk-bar');
@@ -26674,12 +26802,19 @@ function cdRenderNotes(){
     // /api/public/photo-requests/:token/respond) er flagget is_customer_note=1 og
     // vises med 🙋-ikon + en lille "Kunden" -pille i stedet for medarbejderens navn.
     var isCustomer=!!n.is_customer_note;
+    // RUNDE DQ (Martin: "de noter ... vi skriver under kunderne skal samt ændre")
+    // — noteteksten er brugerens EGEN fritekst, som den almindelige ordbogs-
+    // oversætter bevidst springer over (se abDisplay-kommentaren). abDisplay(n.body)
+    // viser straks den engelske version hvis vi allerede har oversat den note
+    // før (cachet) — ellers dansk, indtil abDynTranslate() nedenfor har hentet
+    // oversættelsen og kørt cdRenderNotes() igen.
     return '<div class="cd-note-item" data-note-id="'+n.id+'">'
       +'<div class="cd-note-icon">'+(isCustomer?'🙋':'📝')+'</div>'
-      +'<div class="cd-note-body">'+esc(n.body)+'<div class="cd-note-meta">'+(isCustomer?'<span class="cd-note-customer-tag">Kunden</span>':esc(n.user_name||'System'))+' · '+esc(fmtDaDate(n.created_at))+(edited?' · <span class="cd-note-meta-edited">redigeret</span>':'')+'</div></div>'
+      +'<div class="cd-note-body">'+esc(abDisplay(n.body))+'<div class="cd-note-meta">'+(isCustomer?'<span class="cd-note-customer-tag">Kunden</span>':esc(n.user_name||'System'))+' · '+esc(fmtDaDate(n.created_at))+(edited?' · <span class="cd-note-meta-edited">redigeret</span>':'')+'</div></div>'
       +'<div class="cd-note-actions"><button class="qz-icon-btn" data-note-act="edit" type="button" title="Redigér">✎</button><button class="qz-icon-btn" data-note-act="delete" type="button" title="Slet">🗑</button></div>'
       +'</div>';
   }).join(''):'<div class="crmpx-empty">Ingen noter endnu — tilføj den første ovenfor</div>';
+  if(abIsEnglish())abDynTranslate(cdNotes.map(function(n){return n.body;}),function(hadNew){if(hadNew)cdRenderNotes();});
 }
 async function cdAddNote(){
   if(!cdCurrent)return;
@@ -32715,19 +32850,24 @@ async function deleteQaTemplate(){
 function renderQzTemplates(){
   var q=(document.getElementById('qz-template-search').value||'').trim();
   // RUNDE W — samme søge-fejlrettelse som tilbud/fakturaer/produkter (se qzSearchHit).
-  var list=qzTemplates.filter(function(t){return qzSearchHit(q,[t.name]);});
+  // RUNDE DQ — når "Engelsk" er valgt, søges der OGSÅ i den cachede engelske
+  // oversættelse af navnet (hvis vi har en), så en søgning på det engelske ord
+  // stadig finder skabelonen, selvom den rigtige, danske data ligger uændret.
+  var list=qzTemplates.filter(function(t){return qzSearchHit(q,[t.name,abIsEnglish()?abDynMem[String(t.name||'').trim()]:null]);});
   var body=document.getElementById('qz-templates-body');
   if(!list.length){body.innerHTML='<div class="bly-rowcard-empty">'+(q?'Ingen skabeloner fundet':'Ingen skabeloner endnu — byg en herunder, eller gem et tilbud som skabelon')+'</div>';return;}
   // RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design du
   // lavede") — .bly-rowcard i stedet for <tr>/<td>.
   body.innerHTML=list.map(function(t){
+    // RUNDE DQ (Martin: "Templates navne under tilbud skal kunne ændre til
+    // engelsk") — skabelon-navn/beskrivelse er fri tekst, se abDisplay-kommentaren.
     return '<div class="bly-rowcard">'
       +'<div class="bly-rowcard-top">'
-      +'<div class="bly-rowcard-name">'+esc(t.name)+'</div>'
+      +'<div class="bly-rowcard-name">'+esc(abDisplay(t.name))+'</div>'
       +'<div class="bly-rowcard-value">'+((t.lines||[]).length)+' linjer</div>'
       +'</div>'
       +'<div class="bly-rowcard-bottom">'
-      +'<span>'+esc(t.description||'Ingen beskrivelse')+'</span>'
+      +'<span>'+esc(t.description?abDisplay(t.description):'Ingen beskrivelse')+'</span>'
       +'<div class="bly-rowcard-controls">'
       +'<button class="qz-icon-btn" onclick="useTemplateForNewQuote('+t.id+')" title="Brug i nyt tilbud">➜</button>'
       +'<button class="qz-icon-btn" onclick="openTemplateModal('+t.id+')" title="Redigér">✎</button>'
@@ -32736,6 +32876,10 @@ function renderQzTemplates(){
       +'</div>'
       +'</div>';
   }).join('');
+  if(abIsEnglish()){
+    var texts=[];list.forEach(function(t){texts.push(t.name);if(t.description)texts.push(t.description);});
+    abDynTranslate(texts,function(hadNew){if(hadNew)renderQzTemplates();});
+  }
 }
 function openTemplateModal(id){
   var t=id?qzTemplates.find(function(x){return x.id===id;}):null;
@@ -32772,9 +32916,11 @@ async function deleteQzTemplate(id){
 function populateQeTemplatePicker(){
   var sel=document.getElementById('qe-template-picker');
   if(!sel)return;
+  // RUNDE DQ — samme skabelon-navn-oversættelse som renderQzTemplates ovenfor.
   sel.innerHTML='<option value="">Vælg en skabelon...</option>'+qzTemplates.map(function(t){
-    return '<option value="'+t.id+'">'+esc(t.name)+' ('+((t.lines||[]).length)+' linjer)</option>';
+    return '<option value="'+t.id+'">'+esc(abDisplay(t.name))+' ('+((t.lines||[]).length)+' linjer)</option>';
   }).join('');
+  if(abIsEnglish())abDynTranslate(qzTemplates.map(function(t){return t.name;}),function(hadNew){if(hadNew)populateQeTemplatePicker();});
 }
 async function useTemplateForNewQuote(id){
   var t=qzTemplates.find(function(x){return x.id===id;});
@@ -34684,9 +34830,11 @@ function qzOpenTemplateApplyPicker(templateId,onConfirm){
   if(!t)return;
   if(!(t.lines||[]).length){toast('Skabelonen har ingen linjer','⚠️');return;}
   qtaState={lines:(t.lines||[]).map(function(l){return Object.assign({},l);}),onConfirm:onConfirm};
-  document.getElementById('qta-title').textContent='Anvend "'+t.name+'"';
+  // RUNDE DQ — skabelon-navnet i modal-titlen er samme fri tekst som renderQzTemplates.
+  document.getElementById('qta-title').textContent='Anvend "'+abDisplay(t.name)+'"';
   renderQtaLines();
   document.getElementById('qz-template-apply-modal').classList.add('open');
+  if(abIsEnglish())abDynTranslate([t.name],function(hadNew){if(hadNew&&document.getElementById('qz-template-apply-modal').classList.contains('open'))document.getElementById('qta-title').textContent='Anvend "'+abDisplay(t.name)+'"';});
 }
 function renderQtaLines(){
   document.getElementById('qta-lines').innerHTML=qtaState.lines.map(function(l,idx){
@@ -35155,11 +35303,21 @@ function qeOpenTemplateMenu(e){
   // til et almindeligt venstreklik.
   e.stopPropagation();
   if(!qzTemplates.length){toast('Ingen skabeloner gemt endnu','ℹ️');return;}
+  // Rektanglet gemmes i en lokal variabel (IKKE genhentet fra e.currentTarget senere) —
+  // currentTarget er kun gyldig UNDER selve hændelsens dispatch, og abDynTranslate()'s
+  // callback nedenfor kører først efter et server-rundtur, hvor e.currentTarget ville
+  // være blevet nulstillet af browseren.
   var r=e.currentTarget.getBoundingClientRect();
-  var items=qzTemplates.map(function(t){
-    return {icon:'📥',text:t.name+' ('+((t.lines||[]).length)+' linjer)',onClick:function(){qeApplyTemplate(t.id);}};
-  });
-  showCtxMenu(r.left,r.bottom+4,items);
+  function draw(){
+    // RUNDE DQ — skabelon-navnet i denne menu er samme fri tekst som renderQzTemplates,
+    // se abDisplay-kommentaren. Gentegner menuen på samme plads hvis en oversættelse lander.
+    var items=qzTemplates.map(function(t){
+      return {icon:'📥',text:abDisplay(t.name)+' ('+((t.lines||[]).length)+' linjer)',onClick:function(){qeApplyTemplate(t.id);}};
+    });
+    showCtxMenu(r.left,r.bottom+4,items);
+  }
+  draw();
+  if(abIsEnglish())abDynTranslate(qzTemplates.map(function(t){return t.name;}),function(hadNew){if(hadNew&&document.getElementById('ctx-menu').style.display==='block')draw();});
 }
 
 // ── FAKTURAER + DELBETALINGER ────────────────────────────────

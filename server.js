@@ -1727,6 +1727,24 @@ async function initSchema() {
     -- dukker op i den almindelige Noter-liste, tydeligt mærket som kundens egen note.
     ALTER TABLE customer_notes ADD COLUMN IF NOT EXISTS is_customer_note INTEGER NOT NULL DEFAULT 0;
 
+    -- RUNDE DQ (Martin: "Templates navne under tilbud skal kunne ændre til engelsk
+    -- ... også de noter og ting vi skriver under kunderne skal samt ændre produkterne
+    -- også til engelsk så når man søger så kommer de frem på engelsk også, i tilbud
+    -- og i produkt database") — den eksisterende sprogknap (sprog.js/i18n-runtime.js)
+    -- oversætter KUN fast UI-tekst fra en ordbog, aldrig data brugerne selv har
+    -- skrevet (produktnavne, skabelon-navne, kundenoter) — en bevidst grænse i den
+    -- løsning. i18n_text_cache er det manglende lag: cacher en AI-oversættelse (se
+    -- POST /api/i18n/translate-dynamic nedenfor) af FRI tekst, nøglet på md5 af
+    -- kildeteksten, så den samme produktnavn/skabelon-navn/note aldrig oversættes
+    -- (og betales) to gange — uanset hvilken bruger der trykker "engelsk", og uanset
+    -- hvor i appen teksten dukker op.
+    CREATE TABLE IF NOT EXISTS i18n_text_cache (
+      hash TEXT PRIMARY KEY,
+      src TEXT NOT NULL,
+      en TEXT NOT NULL,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+
     -- ══════════════════════════════════════════════════════════════
     -- GMAIL-INTEGRATION — Martins ønske om at kunne se al mailkorrespondance
     -- med en kunde direkte på kundens kort. ÉN fælles firma-postkasse forbindes
@@ -21072,6 +21090,53 @@ async function callAnthropicJSONMulti(systemPrompt, messages) {
 async function callAnthropicJSON(systemPrompt, userPrompt) {
   return callAnthropicJSONMulti(systemPrompt, [{ role: 'user', content: userPrompt }]);
 }
+// RUNDE DQ (Martin, se i18n_text_cache-kommentaren ovenfor) — oversætter en liste af
+// FRIE danske tekststrenge (produktnavne/-beskrivelser, skabelon-navne, kundenoter)
+// til engelsk, til brug når Martin eller en medarbejder har trykket "Engelsk" i
+// headeren. Genbruger samme Anthropic-nøgle/kald som AI-diktering ovenfor — helt
+// almindelig baggrunds-visning, ALDRIG en bevidst brugerhandling, så enhver fejl
+// (manglende ANTHROPIC_API_KEY, netværksfejl, mv.) falder stille tilbage til den
+// danske originaltekst i stedet for en fejlende/blokerende visning.
+// Svaret har ALTID samme længde og rækkefølge som "texts" i request-body, så
+// klienten blot kan zippe texts[i] -> translations[i] — ingen deduplikering eller
+// filtrering synlig udenfor denne rute (den dedupliceres/cachens internt, men det
+// ændrer ikke kontrakten udad).
+app.post('/api/i18n/translate-dynamic', auth, asyncRoute(async (req, res) => {
+  const raw = Array.isArray(req.body && req.body.texts) ? req.body.texts : [];
+  const texts = raw.slice(0, 120).map(t => String(t == null ? '' : t).trim().slice(0, 2000));
+  if (!texts.length) return res.json({ translations: [] });
+  const hashOf = (s) => crypto.createHash('md5').update(s).digest('hex');
+  const toTranslate = Array.from(new Set(texts.filter(t => t && /[A-Za-zÆØÅæøå]/.test(t))));
+  const result = {};
+  for (const t of toTranslate) {
+    const row = await pgOne('SELECT en FROM i18n_text_cache WHERE hash=$1', [hashOf(t)]);
+    if (row) result[t] = row.en;
+  }
+  const missing = toTranslate.filter(t => result[t] == null);
+  if (missing.length) {
+    try {
+      const systemPrompt = 'Du oversætter korte danske tekster (produktnavne/-beskrivelser, '
+        + 'skabelon-navne, firma-interne kundenoter) til naturligt, professionelt engelsk, til '
+        + 'brug i det interne system hos et dansk gulv-/renoveringsfirma.\n'
+        + 'Du får en JSON-liste af danske tekststrenge. Svar KUN med gyldig JSON på formen '
+        + '{"translations":[...]} — SAMME antal elementer, i PRÆCIS samme rækkefølge som input, '
+        + 'én oversættelse pr. tekst, ingen forklaring, ingen kodeblok-hegn.\n'
+        + 'Behold tal, målinger (m2, stk, kr osv.), produktkoder/SKU og egennavne (personnavne, '
+        + 'firmanavne, vejnavne/adresser) uændret — oversæt kun selve det danske sprog naturligt.';
+      const userPrompt = JSON.stringify(missing);
+      const parsed = await callAnthropicJSON(systemPrompt, userPrompt);
+      const arr = Array.isArray(parsed && parsed.translations) ? parsed.translations : [];
+      for (let i = 0; i < missing.length; i++) {
+        const en = String(arr[i] != null ? arr[i] : missing[i]);
+        result[missing[i]] = en;
+        await pool.query('INSERT INTO i18n_text_cache (hash,src,en) VALUES ($1,$2,$3) ON CONFLICT (hash) DO NOTHING', [hashOf(missing[i]), missing[i], en]);
+      }
+    } catch (e) {
+      for (const t of missing) result[t] = t;
+    }
+  }
+  res.json({ translations: texts.map(t => (t && result[t] != null) ? result[t] : t) });
+}));
 app.post('/api/quotes/ai-parse-lines', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const transcript = String((req.body && req.body.transcript) || '').trim();
   if (!transcript) return res.status(400).json({ error: 'Ingen tale/tekst modtaget' });
