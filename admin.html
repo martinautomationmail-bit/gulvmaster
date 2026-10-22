@@ -4125,7 +4125,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.15 · 2026-10-22</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.16 · 2026-10-22</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -28748,13 +28748,24 @@ function crmpxRenderActivity(activities){
     // (email_html, se crmLogEmailActivity i server.js) får en "Se mail"-knap,
     // så Martin kan validere ORDRET hvad kunden fik, ikke kun emnelinjen.
     var hasMail=!!(a.email_html&&a.email_html.trim());
+    // RUNDE DQ (Martin: "de noter og ting vi skriver under kunderne skal samt
+    // ændre") — KUN rigtige noter (kind==='note', dem I selv skriver i
+    // Aktivitet-boksen) er brugerens egen fritekst og sendes til oversættelse.
+    // Resten af tidslinjen (stage-skift, automatik, "Email sendt: ...") er
+    // SYSTEM-genererede logtekster med indlejrede, altid-forskellige data
+    // (kundenavn/beløb/dato) — hver linje ville derfor være unik og ALDRIG ramme
+    // oversættelses-cachen, og gøres allerede delvist engelsk af den almindelige
+    // ordbogs-oversætter (fast UI-tekst). At sende dem til AI'en for hver visning
+    // ville koste på hver eneste sidevisning uden reel cache-gevinst.
+    var bodyText=a.kind==='note'?abDisplay(a.body||''):(a.body||'');
     return '<div class="crmpx-activity-item" data-activity-id="'+a.id+'">'
       +'<div class="crmpx-activity-icon">'+icon+'</div>'
-      +'<div class="crmpx-activity-body">'+esc(a.body||'')
+      +'<div class="crmpx-activity-body">'+esc(bodyText)
       +'<div class="crmpx-activity-meta">'+esc(a.user_name||'System')+' · '+esc(fmtDaDate(a.created_at))+(edited?' · <span class="crmpx-activity-meta-edited">redigeret</span>':'')+(hasMail?' · <button type="button" class="crmpx-task-more" data-crmpx-act="view-mail" style="display:inline">✉️ Se mail</button>':'')+'</div></div>'
       +(a.kind==='note'?'<div class="crmpx-activity-actions"><button class="qz-icon-btn" data-crmpx-act="edit" type="button" title="Redigér">✎</button><button class="qz-icon-btn" data-crmpx-act="delete" type="button" title="Slet">🗑</button></div>':'')
       +'</div>';
   }).join('')||'<div class="crmpx-empty">'+((crmpxActivities||[]).length?'Ingen aktivitet i denne gruppe':'Ingen aktivitet endnu')+'</div>';
+  if(abIsEnglish())abDynTranslate(shown.filter(function(a){return a.kind==='note';}).map(function(a){return a.body;}),function(hadNew){if(hadNew)crmpxRenderActivity();});
 }
 document.getElementById('crmpx-activity-filter').addEventListener('click',function(e){
   var btn=e.target.closest('[data-crmpxaf]');
@@ -33226,7 +33237,10 @@ function qeRenderCrmNotePanel(note,entityType,entityName){
   if(!note||!String(note).trim()){panel.style.display='none';return;}
   document.getElementById('qe-crm-note-entity-label').textContent=(entityType==='lead'?'lead':'handel')+' "'+(entityName||'')+'"';
   var txt=document.getElementById('qe-crm-note-text');
-  txt.textContent=note;
+  // RUNDE DQ — samme note-oversættelse som Aktivitet-tidslinjen (crmpxRenderActivity)
+  // og kundekortets noteliste (cdRenderNotes), se abDisplay-kommentaren.
+  txt.textContent=abDisplay(note);
+  if(abIsEnglish())abDynTranslate([note],function(hadNew){if(hadNew&&panel.style.display!=='none')txt.textContent=abDisplay(note);});
   // RUNDE X — starter altid kollapset ved (gen)render, fx når man skifter
   // mellem tilbud i editoren.
   //
