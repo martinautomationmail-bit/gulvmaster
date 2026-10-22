@@ -3634,7 +3634,19 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 /* VIDENSCENTER — DOKUMENTER */
 .kb-doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:14px}
-.kb-doc-card{background:#fff;border:1px solid var(--border2);border-radius:12px;padding:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px}
+.kb-doc-card{background:#fff;border:1px solid var(--border2);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+.kb-doc-body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:6px;flex:1}
+/* RUNDE DR (Martin: "Ved filerne her kan du ikke vise filen som i drive
+   istedet? det vil være federe") — kortet starter nu med en RIGTIG visuel
+   forhåndsvisning (Cloudinary-genereret JPG af selve PDF'ens/billedets
+   indhold, se kbCloudinaryThumb i JS), i stedet for kun et generisk
+   filtype-ikon — samme fornemmelse som Google Drives fil-kort. Linket udenom
+   gør hele forhåndsvisningen klikbar, ligesom i Drive. */
+.kb-doc-thumb-link{display:block;text-decoration:none}
+.kb-doc-thumb{position:relative;height:132px;background:linear-gradient(145deg,#F3F4F8,#E7E9F0);display:flex;align-items:center;justify-content:center;overflow:hidden;border-bottom:1px solid var(--border2)}
+.kb-doc-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.kb-doc-thumb-fallback-icon{font-size:38px;line-height:1;opacity:.55}
+.kb-doc-thumb-badge{position:absolute;right:7px;bottom:7px;background:rgba(15,23,42,.78);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.03em;padding:2px 6px;border-radius:5px;text-transform:uppercase}
 .kb-doc-icon{font-size:22px;line-height:1}
 .kb-doc-title{font-weight:700;font-size:13.5px;color:var(--ink)}
 .kb-doc-desc{font-size:12px;color:var(--muted);line-height:1.4;margin:0}
@@ -4125,7 +4137,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.16 · 2026-10-22</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.17 · 2026-10-22</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -21109,6 +21121,22 @@ function renderKbDocCatFilters(){
     }).join('')
     +'<button type="button" class="chip" id="kb-doc-add-cat-btn" title="Ny kategori">+ Ny kategori</button>';
 }
+// RUNDE DR (Martin: "Ved filerne her kan du ikke vise filen som i drive
+// istedet? det vil være federe") — filer uploades til Cloudinary (se
+// uploadPhotoToCloudinary i server.js), som KAN levere en JPG-forhåndsvisning
+// af selve indholdet on-the-fly via URL-transformationer, helt uden at vi
+// selv skal generere/gemme nogen thumbnail: man sætter blot nogle
+// transformations-parametre ind rett efter "/upload/" i den allerede gemte
+// Cloudinary-URL (w_/h_/c_fill=beskær til kortets størrelse, f_jpg=lever
+// altid som JPG uanset filtype, pg_1=brug PDF'ens FØRSTE side som billede).
+// Kun Cloudinary-URL'er (dvs. file_type 'pdf'/'image') kan få en thumbnail
+// på denne måde — et eksternt link (file_type 'link') er ikke hostet hos os,
+// og får derfor fortsat det almindelige ikon-kort.
+function kbCloudinaryThumb(url,isPdf){
+  var m=/^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)$/.exec(String(url||''));
+  if(!m)return null;
+  return m[1]+'w_400,h_260,c_fill,g_auto,f_jpg,q_auto'+(isPdf?',pg_1':'')+'/'+m[2];
+}
 function renderKbDocGrid(){
   var el=document.getElementById('kb-doc-grid');
   if(!el)return;
@@ -21118,8 +21146,20 @@ function renderKbDocGrid(){
   var catNameById={};
   kbDocCategories.forEach(function(c){catNameById[c.id]=c.name;});
   el.innerHTML=list.map(function(d){
+    var thumbUrl=(d.file_type==='pdf'||d.file_type==='image')?kbCloudinaryThumb(d.url,d.file_type==='pdf'):null;
+    // Lander vi på en fil Cloudinary (endnu) ikke kan levere en JPG af (fx en
+    // sjælden PDF-variant), falder kortet automatisk tilbage til det almindelige
+    // ikon — se den delegerede 'error'-lytter på .kb-doc-thumb-img nedenfor
+    // (capture:true, fordi almindelige 'error'-hændelser på <img> ikke bobler).
+    var thumbInner=thumbUrl
+      ?'<img class="kb-doc-thumb-img" src="'+esc(thumbUrl)+'" loading="lazy" alt="" data-fallback-icon="'+esc(typeIcon[d.file_type]||'📄')+'">'
+      :'<span class="kb-doc-thumb-fallback-icon">'+(typeIcon[d.file_type]||'📄')+'</span>';
+    var badge=d.file_type==='pdf'?'PDF':(d.file_type==='link'?'Link':(d.file_name?(d.file_name.split('.').pop()||'').slice(0,4):'Billede'));
     return '<div class="kb-doc-card">'
-      +'<div class="kb-doc-icon">'+(typeIcon[d.file_type]||'📄')+'</div>'
+      +'<a class="kb-doc-thumb-link" href="'+esc(d.url)+'" target="_blank" rel="noopener" title="Åbn '+esc(d.title)+'">'
+      +'<div class="kb-doc-thumb">'+thumbInner+(badge?'<span class="kb-doc-thumb-badge">'+esc(badge)+'</span>':'')+'</div>'
+      +'</a>'
+      +'<div class="kb-doc-body">'
       +'<div class="kb-doc-title">'+esc(d.title)+'</div>'
       +(d.description?'<p class="kb-doc-desc">'+esc(d.description)+'</p>':'')
       +'<div class="kb-doc-meta"><span>'+(d.category_id&&catNameById[d.category_id]?esc(catNameById[d.category_id]):'Ukategoriseret')+'</span><span>'+esc(fmtDaDate(d.created_at))+'</span></div>'
@@ -21127,7 +21167,7 @@ function renderKbDocGrid(){
       +'<a class="btn small outline" href="'+esc(d.url)+'" target="_blank" rel="noopener">'+(d.file_type==='link'?'🔗 Åbn':'⬇ Hent')+'</a>'
       +'<button type="button" class="btn small outline" data-action="kb-doc-edit" data-id="'+d.id+'">✎</button>'
       +'<button type="button" class="btn small danger" data-action="kb-doc-delete" data-id="'+d.id+'">🗑</button>'
-      +'</div></div>';
+      +'</div></div></div>';
   }).join('');
 }
 async function kbAddDocCategory(){
@@ -21221,6 +21261,19 @@ async function kbDeleteDoc(id){
   var r=await api('/api/kb/documents/'+id,{method:'DELETE'});
   if(r&&r.ok){toast('Slettet','🗑');await kbDocsInit();}else if(r)toast(r.error||'Fejl','❌');
 }
+// RUNDE DR — en <img>'s 'error'-hændelse BOBLER IKKE (i modsætning til 'click'),
+// så den skal fanges i CAPTURE-fasen (3. argument true) på document, i stedet
+// for den almindelige delegerede klik-lytter nedenfor. Rammer kun de
+// Cloudinary-genererede dokument-thumbnails (.kb-doc-thumb-img), og erstatter
+// det knækkede billede med samme ikon-fallback som dokumenter uden thumbnail.
+document.addEventListener('error',function(e){
+  var img=e.target;
+  if(!img||!img.classList||!img.classList.contains('kb-doc-thumb-img'))return;
+  var thumb=img.closest('.kb-doc-thumb');
+  if(!thumb)return;
+  var icon=img.dataset.fallbackIcon||'📄';
+  thumb.innerHTML='<span class="kb-doc-thumb-fallback-icon">'+esc(icon)+'</span>'+(thumb.querySelector('.kb-doc-thumb-badge')?thumb.querySelector('.kb-doc-thumb-badge').outerHTML:'');
+},true);
 
 // ── Ét delegeret klik-lag for hele Videnscenter-modulet (se forklaringen
 // øverst i blokken) — samme mønster som #ctx-menu's egen globale klik-lytter.
