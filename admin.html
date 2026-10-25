@@ -2963,6 +2963,12 @@ body.qz-overlay-open .page.active{display:none}
    ikke fylder i den i forvejen tætpakkede celle. */
 .cap-timeline-btn{position:absolute;top:3px;right:3px;width:20px;height:20px;border:1px solid var(--border2);background:#fff;color:var(--steel);border-radius:5px;font-size:10px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:.8;box-shadow:0 1px 2px rgba(15,34,64,.1);transition:.15s;z-index:2}
 .cap-timeline-btn:hover{opacity:1;background:var(--blue);color:#fff}
+/* RUNDE DS — se capBookingOutOfSync()-kommentaren i JS'en. */
+.cap-timeline-outofsync{border-color:#FCA5A5}
+.cap-timeline-outofsync::after{content:'';position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:#DC2626;border:1.5px solid #fff}
+.tl-bar-outofsync{outline:2px dashed #DC2626;outline-offset:-2px}
+.tl-bar-sync-btn{position:absolute;top:2px;right:2px;width:18px;height:18px;border:none;border-radius:4px;background:#DC2626;color:#fff;font-size:10px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:.9;z-index:3}
+.tl-bar-sync-btn:hover{opacity:1;background:#B91C1C}
 
 /* RUNDE H #26 — tidslinje-popup'ens indhold (genbruger .tl-bar/.tl-track-bg/
    .tl-weekrow/.tl-weekcell/.tl-bg-cell/.tl-todayline/.tl-empty fra Tidslinje-
@@ -4137,7 +4143,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.17 · 2026-10-22</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.19 · 2026-10-25</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -8089,6 +8095,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   <!-- Sagsstatus-bobler — samme fælles filter som på Dagligplanlægning/Tidslinje,
        se kommentaren ved #plan-projstatus-filter. -->
   <div class="bly-kpi-row" id="cap-projstatus-filter" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));margin-bottom:14px"></div>
+  <!-- RUNDE DS — se capBookingOutOfSync()-kommentaren i JS'en. Fyldes/vises
+       kun af renderCapacity() når mindst én reservation er ude af sync. -->
+  <div id="cap-outofsync-banner" style="display:none;margin-bottom:14px;padding:10px 14px;border-radius:10px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;font-size:12.5px;font-weight:600"></div>
   <div class="board-layout">
     <aside class="panel">
       <div class="panel-head">
@@ -11837,6 +11846,20 @@ function teamList(scope){
 }
 function allTrades(){var s={};users.filter(function(u){return u.active&&u.trade;}).forEach(function(u){s[u.trade]=1;});return Object.keys(s).sort();}
 function isCapacityBooking(b){return String(b.planning_mode||'daily')==='capacity';}
+// RUNDE DS (Martin, se backfillCapacitySync()-kommentaren i server.js) —
+// opdager en reservation hvis egne gemte datoer (b.start_date/b.end_date,
+// det hovedgitteret/weeklyLoad bruger) ligger i en HELT ANDEN periode end
+// opgavens LIVE planlagte datoer (b.task_start_date/b.task_end_date, altid
+// korrekte — det er dem Tidslinje-popup'en bruger). Flager KUN nul-overlap
+// (reservationen helt uden for opgavens periode) — delvist overlap (en
+// legitim delreservation på en flerugers-opgave) er bevidst IKKE en fejl.
+function capBookingOutOfSync(b){
+  if(!isCapacityBooking(b))return false;
+  if(!capTlValidDate(b.task_start_date))return false;
+  var bStart=String(b.start_date||'').slice(0,10),bEnd=String(b.end_date||b.start_date||'').slice(0,10);
+  var tStart=String(b.task_start_date).slice(0,10),tEnd=capTlValidDate(b.task_end_date)?String(b.task_end_date).slice(0,10):tStart;
+  return !(bStart<=tEnd&&bEnd>=tStart);
+}
 function dailyBookingsForTask(t){return bookings.filter(function(b){return b.task_id===t.id&&!isCapacityBooking(b);});}
 function taskIsCompleted(t){if(t.manually_completed_at)return true;var rows=dailyBookingsForTask(t);return rows.length>0&&rows.every(function(b){return !!b.completed_at;});}
 // En opgave regnes som "faktureret" når alle dens (færdiggjorte) bookinger er markeret faktureret.
@@ -12892,6 +12915,18 @@ function showPlanWeekToast(mondayDate){
 function capacityWeeks(){var out=[],m=add(mon(new Date()),-PLAN_WEEKS_BACK*7);for(var i=0;i<PLAN_WEEKS_BACK+PLAN_WEEKS_FORWARD;i++)out.push(add(m,i*7));return out;}
 function renderCapacity(){
   renderPool('capacity');teamFilterHTML('capacity');
+  // RUNDE DS — se capBookingOutOfSync()-kommentaren. Forudberegnes én gang her
+  // (ikke pr. celle) så både 📈-knappens rød-prik og det store banner kan
+  // bruge samme liste uden at gennemløbe bookings flere gange.
+  var capOutOfSyncUsers=new Set();
+  bookings.forEach(function(b){if(capBookingOutOfSync(b))capOutOfSyncUsers.add(+b.user_id);});
+  var outOfSyncBanner=document.getElementById('cap-outofsync-banner');
+  if(outOfSyncBanner){
+    if(capOutOfSyncUsers.size){
+      outOfSyncBanner.style.display='';
+      outOfSyncBanner.innerHTML='⚠️ '+capOutOfSyncUsers.size+' medarbejder(e) har en reservation der ikke matcher opgavens planlagte uge mere — klik på den røde prik ved 📈 for at se og synkronisere.';
+    } else outOfSyncBanner.style.display='none';
+  }
   var weeks=capacityWeeks();
   // Header
   var head='<tr><th>Medarbejder / undergruppe</th>';
@@ -13034,7 +13069,7 @@ function renderCapacity(){
 
       r+='<td class="cap-cell">'+
         '<div class="cap-drop '+(items.length?cc:'cap-free')+' draggable-task-target" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'">'+
-        '<button class="cap-timeline-btn" data-action="open-cap-timeline" data-user-id="'+u.id+'" data-date="'+iso(m)+'" title="Tidslinje/overlap for '+esc(u.name)+'">📈</button>'+
+        '<button class="cap-timeline-btn'+(capOutOfSyncUsers.has(+u.id)?' cap-timeline-outofsync':'')+'" data-action="open-cap-timeline" data-user-id="'+u.id+'" data-date="'+iso(m)+'" title="'+(capOutOfSyncUsers.has(+u.id)?'⚠️ Har en reservation ude af sync med sin opgave — ':'')+'Tidslinje/overlap for '+esc(u.name)+'">📈</button>'+
         offBadge+
         '<div class="cap-num '+(booked>0?cc:'cap-free')+'">'+( booked>0?booked.toFixed(1)+' / '+cap+' d':'✓ Ledig')+'</div>'+
         '<div class="cap-bar-wrap"><div class="cap-bar" style="width:'+pct+'%;background:'+barColor(booked,cap)+'"></div></div>'+
@@ -13420,9 +13455,16 @@ function renderCapTimeline(){
     // viste uge, i stedet for bare at se afskåret/mærkelig ud.
     var contL=capTlMode==='week'&&date(b._capTlStart)<rangeStart;
     var contR=capTlMode==='week'&&date(b._capTlEnd)>add(rangeStart,winEndIdx);
-    var dispLabel=(contL?'◀ ':'')+label+(contR?' ▶':'');
+    // RUNDE DS — se capBookingOutOfSync()-kommentaren. Denne bjælke er netop
+    // tegnet ud fra opgavens LIVE datoer (_capTlStart/_capTlEnd ovenfor) — men
+    // reservationens EGEN gemte dato (det hovedgitteret bruger) kan stadig
+    // pege et helt andet sted hen, usynligt for Martin indtil han åbner netop
+    // denne popup. Markeres derfor ekstra tydeligt her, med en ⚡-knap til at
+    // rette det med ét klik, uden at skulle forlade popup'en.
+    var outOfSync=capBookingOutOfSync(b);
+    var dispLabel=(outOfSync?'⚠️ ':'')+(contL?'◀ ':'')+label+(contR?' ▶':'');
     var basisTxt=b._capTlProjectBased?'sagens planlagte datoer':'den bookede kapacitetsuge';
-    var tip=label+' — '+capTlShortDate(b._capTlStart)+' til '+capTlShortDate(b._capTlEnd)+' ('+basisTxt+') · '+capDaysOf(b)+' d reserveret'+((contL||contR)?' · fortsætter uden for denne uge':'')+(b.task_project_id?' · højreklik for at åbne sagen':'');
+    var tip=label+' — '+capTlShortDate(b._capTlStart)+' til '+capTlShortDate(b._capTlEnd)+' ('+basisTxt+') · '+capDaysOf(b)+' d reserveret'+((contL||contR)?' · fortsætter uden for denne uge':'')+(b.task_project_id?' · højreklik for at åbne sagen':'')+(outOfSync?' · ⚠️ Reservationen selv står registreret i en anden uge ('+capTlShortDate(b.start_date)+'–'+capTlShortDate(b.end_date||b.start_date)+') end opgavens nuværende plan — derfor vises den måske ikke korrekt i selve kapacitetsgitteret. Tryk ⚡ for at rette.':'');
     // RETTET (okt. 2026, Martin: "gør så man kan højre klikke på tidslinjens
     // opgave og komme hen til opgaven hvis man vil") — når bjælken hører til
     // en rigtig sag (task_project_id, se bookingSelect() i server.js), er den
@@ -13436,7 +13478,8 @@ function renderCapTimeline(){
     // højreklik/"åbn i ny fane", aldrig ved almindeligt venstreklik.
     var tag=b.task_project_id?'a':'div';
     var hrefAttr=b.task_project_id?' href="#project-detail/'+b.task_project_id+'"':'';
-    return '<'+tag+' class="tl-bar" data-action="open-cap-from-timeline" data-booking-id="'+b.id+'"'+hrefAttr+' style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+(type.bar||'#94A3B8')+'" title="'+esc(tip)+'"><span class="tl-bar-label">'+esc(dispLabel)+'</span></'+tag+'>';
+    var syncBtn=outOfSync?'<button type="button" class="tl-bar-sync-btn" data-action="resync-cap-booking" data-booking-id="'+b.id+'" title="Flyt reservationen til opgavens planlagte uge">⚡</button>':'';
+    return '<'+tag+' class="tl-bar'+(outOfSync?' tl-bar-outofsync':'')+'" data-action="open-cap-from-timeline" data-booking-id="'+b.id+'"'+hrefAttr+' style="left:'+left+'px;width:'+width+'px;top:'+top+'px;background:'+(type.bar||'#94A3B8')+'" title="'+esc(tip)+'">'+syncBtn+'<span class="tl-bar-label">'+esc(dispLabel)+'</span></'+tag+'>';
   }).join('');
 
   var navHTML='<div class="captl-nav">';
@@ -24043,6 +24086,17 @@ async function bind(){
       // skal stadig åbne redigerings-modalen som altid, IKKE navigere væk —
       // derfor preventDefault() her, før selve navigationen når at ske.
       if(act==='open-cap-from-timeline'){e.preventDefault();e.stopPropagation();var ctlB=bookings.find(function(x){return +x.id===+a.dataset.bookingId;});closeCapTimelinePopup();if(ctlB)openCapacityModal({booking:ctlB});}
+      if(act==='resync-cap-booking'){
+        e.preventDefault();e.stopPropagation();
+        var rsId=+a.dataset.bookingId;
+        var rsRes=await api('/api/capacity-reservations/'+rsId+'/resync',{method:'PUT'});
+        if(rsRes&&rsRes.ok){
+          toast('Reservationen er flyttet til opgavens planlagte uge','✓');
+          var rsUid=capTlUser&&capTlUser.id,rsWeek=capTlWeekStart?iso(capTlWeekStart):null;
+          await loadAll();
+          if(rsUid)openCapTimelinePopup(rsUid,rsWeek);
+        }else toast((rsRes&&rsRes.error)||'Kunne ikke synkronisere reservationen','❌');
+      }
       if(act==='toggle-tt-row'){e.stopPropagation();ttExpanded[a.dataset.userId]=!ttExpanded[a.dataset.userId];renderTimetrackReport();}
       if(act==='tt-open-photos'){e.stopPropagation();ttOpenLightbox(a.dataset.entryId,+a.dataset.idx);}
       if(act==='tt-view'){ttSetView(a.dataset.ttView);}
@@ -35062,6 +35116,7 @@ async function qpOpenModal(){
     document.getElementById('qp-empty-hint').style.display='';
   }
   qpRecalcSummary();
+  qpSyncAiBtn();
 }
 // RUNDE CN (Martin: "når man arbejder i brødteksten under overskriften,
 // tænker det den der hedder milepæl, enten kan søge fra linjer i tilbuddet
@@ -35080,44 +35135,102 @@ async function qpOpenModal(){
 // inherit for) — uden det falder browseren tilbage til sin egen
 // standard-monospace-skrifttype for tekstfelter, hvilket var "robot
 // fonten". Rettet med font-family:inherit på qp-milestone-feltet herunder.
+// RUNDE DT (Martin: "kan man ikke få koblet betalingsplanen ind i fakture
+// delen?") — en fase der allerede er faktureret (phase.invoiced_in_invoice_id,
+// se POST .../payment-plan/invoice-phase i server.js) vises med en grøn
+// "✓ Faktureret"-badge, låses for redigering (samme filosofi som allerede-
+// fakturerede tilbudslinjer låses i selve tilbudseditoren) og mister
+// Fjern-knappen — i stedet får raden en "📄 Fakturér denne fase"-knap, som
+// ikke-fakturerede faser kan bruge til at oprette en faktura direkte for
+// netop den fases kr-beløb.
 function qpAddRow(phase){
   phase=phase||{};
+  var invoiced=!!phase.invoiced_in_invoice_id;
   var row=document.createElement('div');
-  row.className='qp-row';
-  row.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--bly-border-soft)';
+  row.className='qp-row'+(invoiced?' qp-row-invoiced':'');
+  if(invoiced){row.dataset.invoicedId=phase.invoiced_in_invoice_id;row.dataset.invoicedNumber=phase.invoiced_invoice_number||'';}
+  row.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--bly-border-soft)'+(invoiced?';opacity:.72;background:#F0FDF4;border-radius:8px;padding:6px 6px 8px':'');
   row.innerHTML=
     '<div style="flex:2">'+
       '<input class="qe-input qp-label" placeholder="Fase, fx Depositum ved underskrift">'+
       '<textarea class="qe-input qp-milestone" placeholder="Milepæl, fx Ved underskrift af tilbuddet — tryk Enter for linjeskift" rows="2" style="margin-top:4px;font-size:12px;font-family:inherit;line-height:1.4;resize:vertical;width:100%"></textarea>'+
-      '<select class="qe-input qp-insert-line" style="margin-top:4px;font-size:11px;width:100%"><option value="">+ Indsæt linje fra tilbuddet…</option></select>'+
+      (invoiced?'':'<select class="qe-input qp-insert-line" style="margin-top:4px;font-size:11px;width:100%"><option value="">+ Indsæt linje fra tilbuddet…</option></select>')+
+      (invoiced?'<div style="margin-top:4px;font-size:11px;font-weight:700;color:#15803D">✓ Faktureret ('+esc(phase.invoiced_invoice_number||'')+')</div>':
+        '<button type="button" class="bly-btn outline small qp-invoice-phase-btn" style="margin-top:4px;font-size:11px;padding:3px 8px" title="Opret en faktura direkte for denne fases beløb">📄 Fakturér denne fase</button>')+
     '</div>'+
     '<div style="flex:0 0 70px"><input class="qe-input qp-pct" type="number" min="0" max="100" step="0.5" style="text-align:right"></div>'+
     '<div style="flex:0 0 100px;text-align:right;padding-top:9px;font-weight:700;font-size:13px" class="qp-amount">0 kr</div>'+
-    '<button type="button" class="qz-icon-btn qp-remove" title="Fjern fase">✕</button>';
+    (invoiced?'':'<button type="button" class="qz-icon-btn qp-remove" title="Fjern fase">✕</button>');
   row.querySelector('.qp-label').value=phase.label||'';
   row.querySelector('.qp-milestone').value=phase.milestone||'';
   row.querySelector('.qp-pct').value=phase.pct!=null?phase.pct:'';
+  if(invoiced){
+    row.querySelector('.qp-label').disabled=true;
+    row.querySelector('.qp-milestone').disabled=true;
+    row.querySelector('.qp-pct').disabled=true;
+  }
   row.querySelector('.qp-pct').addEventListener('input',qpRecalcSummary);
-  row.querySelector('.qp-remove').addEventListener('click',function(){row.remove();qpRecalcSummary();});
+  var removeBtn=row.querySelector('.qp-remove');
+  if(removeBtn)removeBtn.addEventListener('click',function(){row.remove();qpRecalcSummary();});
+  var invoiceBtn=row.querySelector('.qp-invoice-phase-btn');
+  if(invoiceBtn)invoiceBtn.addEventListener('click',function(){qpInvoicePhase(row);});
   var insertSel=row.querySelector('.qp-insert-line');
-  (qeState.lines||[]).forEach(function(l,i){
-    if(!l.description)return;
-    var opt=document.createElement('option');
-    opt.value=String(i);
-    opt.textContent=l.description.length>60?l.description.slice(0,60)+'…':l.description;
-    insertSel.appendChild(opt);
-  });
-  insertSel.addEventListener('change',function(){
-    if(insertSel.value==='')return;
-    var line=(qeState.lines||[])[Number(insertSel.value)];
-    if(line&&line.description){
-      var ta=row.querySelector('.qp-milestone');
-      ta.value=ta.value?(ta.value.replace(/\s+$/,'')+'\n'+line.description):line.description;
-    }
-    insertSel.value='';
-  });
+  if(insertSel){
+    (qeState.lines||[]).forEach(function(l,i){
+      if(!l.description)return;
+      var opt=document.createElement('option');
+      opt.value=String(i);
+      opt.textContent=l.description.length>60?l.description.slice(0,60)+'…':l.description;
+      insertSel.appendChild(opt);
+    });
+    insertSel.addEventListener('change',function(){
+      if(insertSel.value==='')return;
+      var line=(qeState.lines||[])[Number(insertSel.value)];
+      if(line&&line.description){
+        var ta=row.querySelector('.qp-milestone');
+        ta.value=ta.value?(ta.value.replace(/\s+$/,'')+'\n'+line.description):line.description;
+      }
+      insertSel.value='';
+    });
+  }
   document.getElementById('qp-rows').appendChild(row);
   return row;
+}
+// Opretter en faktura direkte for ÉN faktureret fases kr-beløb (se den store
+// kommentar ved POST .../payment-plan/invoice-phase i server.js). Gemmer
+// ALTID planen først, så serverens fase-indeks er garanteret identisk med
+// browserens, uanset om Martin lige har rettet i en anden fase uden at
+// trykke "Gem betalingsplan" endnu.
+async function qpInvoicePhase(row){
+  if(!qpState.quoteId)return;
+  var rows=Array.prototype.slice.call(document.querySelectorAll('#qp-rows .qp-row'));
+  var idx=rows.indexOf(row);
+  if(idx<0)return;
+  var label=row.querySelector('.qp-label').value.trim()||'Fase '+(idx+1);
+  var amount=row.querySelector('.qp-amount').textContent;
+  if(!confirm('Opret en faktura på '+amount+' for fasen "'+label+'"?\n\nTilbuddets øvrige, (endnu) ufakturerede linjer/faser berøres ikke.'))return;
+  var phases=qpCollectPhases();
+  if(!phases.length){toast('Tilføj mindst én fase først','⚠️');return;}
+  var saveRes=await api('/api/quotes/'+qpState.quoteId+'/payment-plan',{method:'PUT',body:JSON.stringify({phases:phases})});
+  if(!saveRes||!saveRes.ok){toast((saveRes&&saveRes.error)||'Kunne ikke gemme betalingsplanen','❌');return;}
+  var r=await api('/api/quotes/'+qpState.quoteId+'/payment-plan/invoice-phase',{method:'POST',body:JSON.stringify({index:idx})});
+  if(r&&r.ok){
+    toast('Faktura '+r.invoice_number+' oprettet for fasen','✓');
+    qpState.total=Number(r.total)||qpState.total;
+    document.getElementById('qp-total-label').textContent=krFmt(qpState.total);
+    document.getElementById('qp-rows').innerHTML='';
+    (r.phases||[]).forEach(qpAddRow);
+    qpRecalcSummary();
+    qpSyncAiBtn();
+    // Faktureringsstatus-boksen i selve tilbuds-editoren (se
+    // renderQeInvoicingPanel) skal med det samme vise den nye faktura —
+    // uden dette ville den først opdatere sig selv, næste gang tilbuddet
+    // genindlæses fra bunden.
+    if(qpState.quoteId===qeState.id){
+      qeState.invStatus=await api('/api/quotes/'+qpState.quoteId+'/invoicing-status');
+      renderQeInvoicingPanel();
+    }
+  } else toast((r&&r.error)||'Kunne ikke oprette faktura for fasen','❌');
 }
 // Genberegner hver fases kr-beløb (ud fra qpState.total) og den samlede %-sum
 // — farves rød hvis summen ikke rammer 100%, så Martin ser det med det
@@ -35137,12 +35250,29 @@ function qpRecalcSummary(){
 }
 function qpCollectPhases(){
   return Array.prototype.slice.call(document.querySelectorAll('#qp-rows .qp-row')).map(function(row){
-    return {
+    var p={
       label: row.querySelector('.qp-label').value.trim(),
       milestone: row.querySelector('.qp-milestone').value.trim(),
       pct: Number(row.querySelector('.qp-pct').value)||0
     };
+    // RUNDE DT — se qpAddRow-kommentaren: skal følge med retur til serveren
+    // ved hvert Gem, ellers "glemmer" normalizePaymentPlanPhases at denne
+    // fase er faktureret.
+    if(row.dataset.invoicedId){p.invoiced_in_invoice_id=Number(row.dataset.invoicedId);p.invoiced_invoice_number=row.dataset.invoicedNumber||'';}
+    return p;
   }).filter(function(p){return p.label||p.pct;});
+}
+// RUNDE DT — "Generér forslag med AI" ERSTATTER hele fase-listen (se
+// serverens guard i POST .../ai-payment-plan), så knappen deaktiveres i
+// browseren så snart mindst én fase er faktureret, i stedet for at Martin
+// først opdager det ved en fejl-toast efter at have trykket på den.
+function qpSyncAiBtn(){
+  var btn=document.getElementById('qp-ai-btn');
+  if(!btn)return;
+  var anyInvoiced=!!document.querySelector('#qp-rows .qp-row-invoiced');
+  btn.disabled=anyInvoiced;
+  btn.title=anyInvoiced?'Kan ikke regenerere med AI når én eller flere faser allerede er faktureret — ret de øvrige faser manuelt i stedet':'';
+  btn.style.opacity=anyInvoiced?'.5':'';
 }
 async function qpGenerateAi(){
   if(!qpState.quoteId)return;
@@ -35157,6 +35287,7 @@ async function qpGenerateAi(){
     (r.phases||[]).forEach(qpAddRow);
     document.getElementById('qp-empty-hint').style.display='none';
     qpRecalcSummary();
+    qpSyncAiBtn();
     toast('AI-forslag indsat — tjek og juster efter behov','✓');
   } else toast((r&&r.error)||'AI-forslaget kunne ikke genereres','❌');
 }
@@ -35174,6 +35305,7 @@ async function qpSave(){
     document.getElementById('qp-rows').innerHTML='';
     (r.phases||[]).forEach(qpAddRow);
     qpRecalcSummary();
+    qpSyncAiBtn();
     document.getElementById('qp-pdf-link').style.display='inline-flex';
     document.getElementById('qp-pdf-link').href=qzPdfUrl('/api/quotes/'+qpState.quoteId+'/payment-plan/pdf');
     toast('Betalingsplan gemt','✓');

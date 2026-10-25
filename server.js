@@ -8931,6 +8931,27 @@ app.put('/api/capacity-reservations/:id', auth, panelAccess('capacity'), asyncRo
   res.json({ ok: true });
 }));
 
+// RUNDE DS (Martin, se backfillCapacitySync()-kommentaren) — 1-kliks manuel
+// resync for den enkelte reservation, brugt af ⚡-knappen i Tidslinje-
+// popup'en (admin.html) når en reservation vises som "ude af sync" med sin
+// opgaves live planlagte datoer.
+app.put('/api/capacity-reservations/:id/resync', auth, panelAccess('capacity'), asyncRoute(async (req, res) => {
+  const row = await pgOne(
+    `SELECT b.id, t.start_date AS task_start, t.end_date AS task_end
+     FROM planning_bookings b JOIN jt_tasks t ON b.task_id = t.id WHERE b.id = $1`,
+    [Number(req.params.id)]
+  );
+  if (!row) return res.status(404).json({ error: 'Reservationen (eller dens opgave) blev ikke fundet' });
+  if (!row.task_start) return res.status(400).json({ error: 'Opgaven har ingen planlagt dato at synkronisere til' });
+  const newStart = row.task_start;
+  const newEnd = (row.task_end && String(row.task_end).trim()) ? row.task_end : newStart;
+  await pool.query(
+    `UPDATE planning_bookings SET start_date=$1, end_date=$2, week_key=$3, updated_at=${nowTextSQL()} WHERE id=$4`,
+    [newStart, newEnd, getWeekKey(newStart), row.id]
+  );
+  res.json({ ok: true, start_date: newStart, end_date: newEnd });
+}));
+
 app.put('/api/tasks/:id/customer-contact', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const task = await pgOne('SELECT id, job_id FROM jt_tasks WHERE id=$1', [req.params.id]);
   if (!task) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
@@ -21315,7 +21336,20 @@ function normalizePaymentPlanPhases(rawPhases, total) {
     const label = String((p && p.label) || '').trim().slice(0, 200);
     const milestone = String((p && p.milestone) || '').trim().slice(0, 300);
     const pct = Math.max(0, Math.min(100, Number(p && p.pct) || 0));
-    return { label, milestone, pct };
+    const out = { label, milestone, pct };
+    // RUNDE DT (Martin: "kan man ikke få koblet betalingsplanen ind i
+    // faktura delen?") — se den store kommentar ved
+    // POST .../payment-plan/invoice-phase nedenfor. En fase der ER
+    // faktureret bærer sin fakturas id/nummer med — bevares her ved hvert
+    // Gem/AI-genforslag (klienten sender ALTID alle faser igen, se
+    // qpCollectPhases i admin.html), så en allerede faktureret fase aldrig
+    // "glemmer" sin kobling, selv når Martin efterfølgende retter i de
+    // ANDRE faser og gemmer igen.
+    if (p && p.invoiced_in_invoice_id) {
+      out.invoiced_in_invoice_id = Number(p.invoiced_in_invoice_id);
+      out.invoiced_invoice_number = String(p.invoiced_invoice_number || '').slice(0, 50);
+    }
+    return out;
   }).filter(p => p.label || p.pct);
   phases.forEach(p => { p.amount = Math.round(total * p.pct) / 100; });
   return phases;
@@ -21323,6 +21357,16 @@ function normalizePaymentPlanPhases(rawPhases, total) {
 app.post('/api/quotes/:id/ai-payment-plan', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  // RUNDE DT — en AI-genereret betalingsplan ERSTATTER hele fase-listen (se
+  // UPDATE nedenfor), hvilket ville slette fakturerings-koblingen på en fase
+  // der allerede er faktureret (se invoice-phase nedenfor) uden varsel.
+  // Blokeres derfor helt, ligesom quote_lines låses når tilbuddet har
+  // fakturaer — rettes i stedet manuelt i admin.html (tilføj/fjern/juster
+  // de ANDRE, stadig ufakturerede faser for hånd).
+  const existingPhases = (quote.payment_plan && Array.isArray(quote.payment_plan.phases)) ? quote.payment_plan.phases : [];
+  if (existingPhases.some(p => p.invoiced_in_invoice_id)) {
+    return res.status(400).json({ error: 'Kan ikke generere et nyt AI-forslag — én eller flere faser er allerede faktureret. Ret de resterende faser manuelt i stedet.' });
+  }
   const total = Number(quote.total) || 0;
   if (total <= 0) return res.status(400).json({ error: 'Tilbuddet har ingen linjer/total at dele op endnu — tilføj linjer og gem først' });
   const lineItems = (quote.lines || [])
@@ -21362,13 +21406,89 @@ app.post('/api/quotes/:id/ai-payment-plan', auth, panelAccess('quotes'), asyncRo
   res.json({ ok: true, phases, total });
 }));
 app.put('/api/quotes/:id/payment-plan', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
-  const quote = await pgOne('SELECT id, total FROM quotes WHERE id=$1', [req.params.id]);
+  const quote = await pgOne('SELECT id, total, payment_plan FROM quotes WHERE id=$1', [req.params.id]);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const total = Number(quote.total) || 0;
   const phases = normalizePaymentPlanPhases((req.body || {}).phases, total);
   if (!phases.length) return res.status(400).json({ error: 'Tilføj mindst én fase' });
+  // RUNDE DT — en manuel redigering (fjernet/omdøbt fase) kan ikke få en
+  // allerede faktureret fase til bare at "forsvinde" fra planen igen —
+  // fakturaen den repræsenterer findes stadig uanset, men planen skal blive
+  // ved med at vise sammenhængen. admin.html låser ganske vist allerede de
+  // inputs for en faktureret fase (se qpAddRow), men dette er et ekstra,
+  // server-side sikkerhedsnet mod fx en forældet klient.
+  const existingInvoicedIds = new Set(
+    ((quote.payment_plan && Array.isArray(quote.payment_plan.phases)) ? quote.payment_plan.phases : [])
+      .map(p => p.invoiced_in_invoice_id).filter(Boolean)
+  );
+  const incomingInvoicedIds = new Set(phases.map(p => p.invoiced_in_invoice_id).filter(Boolean));
+  for (const id of existingInvoicedIds) {
+    if (!incomingInvoicedIds.has(id)) return res.status(400).json({ error: 'En allerede faktureret fase mangler i den plan der skal gemmes — genindlæs betalingsplanen og prøv igen' });
+  }
   await pool.query(`UPDATE quotes SET payment_plan=$1, payment_plan_generated_at=${nowTextSQL()} WHERE id=$2`, [JSON.stringify({ phases }), quote.id]);
   res.json({ ok: true, phases, total });
+}));
+
+// RUNDE DT (Martin: "kan man ikke på en eller anden måde få koblet denne
+// betalingsplan ind i fakture delen?") — Betalingsplanen (ovenfor) var hidtil
+// RENT informativ: kun en %-opdeling + milepælstekst til en PDF, uden nogen
+// forbindelse til selve faktureringen (den fandtes allerede, helt separat,
+// se DELBETALINGER-kommentaren ved POST .../convert-to-invoice). Fordi en
+// fase kun er en procentdel af TOTALEN (ikke bestemte tilbudslinjer — der
+// er intet i datamodellen der siger "disse linjer udgør fase 2"), er den
+// mest robuste kobling IKKE at forsøge at gætte/matche linjer til fasen,
+// men i stedet at fakturere fasens kr-beløb direkte som sin egen énlinjes-
+// faktura (beskrivelse = fasens navn+milepæl, beløb = fasens andel af
+// totalen) — præcis sådan et depositum/rate typisk faktureres i branchen i
+// forvejen. Fasen markeres bagefter som faktureret (invoiced_in_invoice_id,
+// se normalizePaymentPlanPhases) og låses for redigering i admin.html.
+// Fakturaen tæller med i den almindelige faktureringsstatus-boks (den
+// summer blot ALLE fakturaer med quote_id, se GET .../invoicing-status) —
+// men rører IKKE quote_lines.invoiced_in_invoice_id, så Martin skal selv
+// vælge ÉN metode pr. tilbud (fase-fakturering ELLER linje-fakturering via
+// "Konvertér til faktura") og ikke blande de to for det samme arbejde,
+// ellers kan det samme arbejde komme til at blive faktureret dobbelt.
+app.post('/api/quotes/:id/payment-plan/invoice-phase', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const quote = await pgOne(
+    `SELECT id, quote_number, job_name, job_number, job_id, customer_address, customer_phone, customer_email, customer_id, tax_rate, total, payment_plan
+     FROM quotes WHERE id=$1`,
+    [req.params.id]
+  );
+  if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const phases = (quote.payment_plan && Array.isArray(quote.payment_plan.phases)) ? quote.payment_plan.phases.slice() : [];
+  const idx = Number(req.body && req.body.index);
+  const phase = phases[idx];
+  if (!phase) return res.status(404).json({ error: 'Fasen blev ikke fundet — betalingsplanen kan være ændret, genindlæs og prøv igen' });
+  if (phase.invoiced_in_invoice_id) return res.status(400).json({ error: 'Denne fase er allerede faktureret (' + (phase.invoiced_invoice_number || '') + ')' });
+  if (!(Number(phase.amount) > 0)) return res.status(400).json({ error: 'Fasen har intet beløb at fakturere' });
+  const company = await getCompanyInfo();
+  const invoiceNumber = await nextDocNumber('invoice', 'FAK');
+  const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 4);
+  const taxRate = Number(quote.tax_rate) || 0;
+  // phase.amount er en andel af tilbuddets total, som ALTID er inkl. moms
+  // (se computeTotals: total = subtotal + taxAmount) — regnes her tilbage
+  // til en ekskl.-moms salgspris, så fakturalinjen + moms lander nøjagtigt
+  // på phase.amount, ligesom en almindelig tilbudslinje gør.
+  const sellPriceExTax = taxRate > 0 ? Math.round((phase.amount / (1 + taxRate / 100)) * 100) / 100 : phase.amount;
+  const subtotal = sellPriceExTax;
+  const taxAmount = Math.round((phase.amount - subtotal) * 100) / 100;
+  const invoiceJobNumber = quote.job_number || await nextDocNumber('project', 'GM');
+  const description = phase.label + (phase.milestone ? ' — ' + String(phase.milestone).replace(/\n+/g, ' / ') : '');
+  const r = await pool.query(`
+    INSERT INTO invoices (invoice_number,job_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,customer_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'unpaid',$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
+  `, [invoiceNumber, invoiceJobNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, subtotal, taxRate, taxAmount, phase.amount, company.invoiceBottomNoteDefault || null, company.invoiceTopNoteDefault || null, dueDate.toISOString().slice(0, 10), quote.customer_id || null]);
+  const invoiceId = r.rows[0].id;
+  await pool.query(`
+    INSERT INTO invoice_lines (invoice_id,description,unit,quantity,cost_price,sell_price,position,product_type,line_type,show_sum)
+    VALUES ($1,$2,'stk',1,0,$3,0,'service','item',true)
+  `, [invoiceId, description.slice(0, 400), sellPriceExTax]);
+  phases[idx] = Object.assign({}, phase, { invoiced_in_invoice_id: invoiceId, invoiced_invoice_number: invoiceNumber });
+  await pool.query(`UPDATE quotes SET payment_plan=$1, status='converted', converted_invoice_id=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [JSON.stringify({ phases }), invoiceId, quote.id]);
+  await pool.query(`UPDATE projects SET invoice_id=$1, updated_at=${nowTextSQL()} WHERE quote_id=$2`, [invoiceId, quote.id]);
+  logDocActivity('quote', quote.id, 'converted', req.user.name, invoiceNumber + ' (betalingsplan-fase: ' + phase.label + ')');
+  logDocActivity('invoice', invoiceId, 'created', req.user.name, 'fra betalingsplan-fase på tilbud ' + quote.quote_number);
+  res.json({ ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber, phases, total: Number(quote.total) || 0 });
 }));
 
 // ══════════════════════════════════════════════════════════════
@@ -26174,6 +26294,45 @@ async function backfillProjectTaskMirrors() {
   if (rows.rowCount) console.log(`Efterudfyldte ${rows.rowCount} sags-opgave(r) i Opgavepoolen (oprettet før dette fandtes).`);
 }
 
+// RUNDE DS (Martin, to skærmbilleder af Kapacitetsbordet: "Hvorfor kan jeg
+// ikke se den DER OPGAVE med jeannette i uge 44 ved adrian. jeg kan på det
+// kort der popper op men ikke ved hans kapacitet?") — RODÅRSAG: Tidslinje-
+// popup'en (openCapTimelinePopup/renderCapTimeline) tegner altid ud fra
+// opgavens LIVE planlagte datoer (t.start_date/t.end_date, via
+// bookingSelect()'s JOIN til jt_tasks — se RUNDE H #33), men selve
+// hovedgitteret (renderCapacity()'s row(u)) og ugebelastningen (weeklyLoad,
+// "frie dage"/sortering) bruger i stedet RESERVATIONENS EGNE gemte datoer
+// (b.start_date/b.end_date på planning_bookings), som kun opdateres når en
+// opgaves datoer ændres via de specifikke ruter RUNDE DO patchede
+// (shiftTaskBookings i PUT /api/projects/:id/tasks/:taskId + bulk-dato-
+// ruten). Enhver ANDEN vej en opgaves dato kan ændres på efterlader
+// reservationens egne datoer forældede — usynlig i hovedgitteret (bookes
+// ind i en uge ingen kigger på), men stadig korrekt i Tidslinje-popup'en.
+// Løsningen Martin valgte (AskUserQuestion): synkronisér automatisk ved
+// opstart + vis en synlig advarsel/1-klik-resync fremover, så fremtidige
+// desyncs (fra en vej denne engangsoprydning ikke dækkede) aldrig bliver
+// usynlige igen — se capBookingOutOfSync()/#cap-outofsync-banner/
+// .tl-bar-sync-btn i admin.html og PUT /api/capacity-reservations/:id/resync
+// nedenfor.
+async function backfillCapacitySync() {
+  const rows = await pool.query(`
+    SELECT b.id, t.start_date AS task_start, t.end_date AS task_end
+    FROM planning_bookings b
+    JOIN jt_tasks t ON b.task_id = t.id
+    WHERE t.start_date IS NOT NULL AND t.start_date <> ''
+      AND NOT (b.start_date <= COALESCE(NULLIF(t.end_date, ''), t.start_date) AND b.end_date >= t.start_date)
+  `);
+  for (const r of rows.rows) {
+    const newStart = r.task_start;
+    const newEnd = (r.task_end && String(r.task_end).trim()) ? r.task_end : newStart;
+    await pool.query(
+      `UPDATE planning_bookings SET start_date=$1, end_date=$2, week_key=$3, updated_at=${nowTextSQL()} WHERE id=$4`,
+      [newStart, newEnd, getWeekKey(newStart), r.id]
+    );
+  }
+  if (rows.rowCount) console.log(`Synkroniserede ${rows.rowCount} kapacitetsreservation(er) der stod i en helt anden uge end deres opgave nu er planlagt til.`);
+}
+
 // ÉNGANGS-EFTERUDFYLDNING #1B (sep. 2026, Martins ønske: "Giv alle tilbud et
 // sags nummer ... Det betyder jeg kan søge på det i min email og finde alle
 // faktura tilknyttet den enkle sag") — se skema-kommentaren ved
@@ -26668,6 +26827,7 @@ async function start() {
   await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
   await backfillCaseNumbers().catch(error => console.error('Efterudfyldning af sagsnumre fejlede:', error.message));
   await backfillLegacyJobTaskProjectLinks().catch(error => console.error('Efterudfyldning af sags-kobling fejlede:', error.message));
+  await backfillCapacitySync().catch(error => console.error('Synkronisering af kapacitetsreservationer fejlede:', error.message));
   app.listen(PORT, () => {
     console.log(`Gulv Master PostgreSQL kører på port ${PORT}`);
     console.log('JobTread-synk er read-only: den kan aldrig ændre planning_bookings.');
