@@ -2655,6 +2655,42 @@ async function initSchema() {
     -- stadig kun kigger på den), og den nye flertals-liste her er den fulde
     -- sandhed fremover.
     ALTER TABLE project_materials ADD COLUMN IF NOT EXISTS receipt_photo_urls JSONB NOT NULL DEFAULT '[]';
+
+    -- ── KS-DAGBOG (RUNDE EB, Martin: "Yderliger vil jeg gerne have dig til at
+    -- forbedre projekter også Her skal der under kvalitetskontrol laves en
+    -- form for Dagbog her" — med et skærmbillede af dagbogen fra hans andet
+    -- program, Arkitekt & Boligrenovering, som forbillede) — én byggeplads-
+    -- dagbogsside PR. DATO pr. sag, under sagens 📋 Kvalitetssikring-fane.
+    -- Samme felter som i forbilledet (vejr/temperatur/mandskab/timer, udført
+    -- arbejde, leverancer, besøg, hændelser/aftaler, forsinkelser/forhindringer,
+    -- billeder) — UNDTAGEN "Hent vejret for adressen"-knappen, som i det andet
+    -- program slår op mod en ekstern vejr-API; det er bevidst ikke bygget med
+    -- her (ingen vejr-API var en del af denne runde), Martin/medarbejderen
+    -- taster selv vejr/temperatur som fri tekst i stedet. UNIQUE(project_id,
+    -- entry_date) — én dagbogsside pr. dag, ligesom forbilledets kalender-felt
+    -- antyder (vælger man en dato der allerede har en side, redigeres DEN i
+    -- stedet for at oprette en ny, se upsert-logikken i POST herunder).
+    CREATE TABLE IF NOT EXISTS project_qa_diary (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL,
+      entry_date TEXT NOT NULL,
+      weather TEXT,
+      temperature TEXT,
+      crew_count INTEGER,
+      hours_total NUMERIC,
+      work_performed TEXT,
+      deliveries TEXT,
+      visits TEXT,
+      events TEXT,
+      delays TEXT,
+      photo_urls JSONB NOT NULL DEFAULT '[]',
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()},
+      UNIQUE(project_id, entry_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_qa_diary_project ON project_qa_diary(project_id);
+
     CREATE TABLE IF NOT EXISTS project_photos (
       id SERIAL PRIMARY KEY,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -5284,6 +5320,26 @@ async function financeOnly(req, res, next) {
   try {
     const row = await pgOne('SELECT is_finance_admin FROM users WHERE id=$1 AND active=1', [req.user.id]);
     if (!row || !row.is_finance_admin) return res.status(403).json({ error: 'Ingen adgang til Økonomi' });
+    next();
+  } catch (error) {
+    res.status(500).json({ error: 'Kunne ikke tjekke adgang' });
+  }
+}
+
+// RUNDE EB (Martin: "Yderliger skal kontor medarbejder have adgang til
+// timetracking også det ikke kun admin") — bruges af GET /api/reports/
+// time-tracking (se den store kommentar ved selve routen), som hidtil var
+// rent adminOnly fordi rapporten viser alles timeløn på én gang. is_finance_
+// admin ER allerede appens betegnelse for "en betroet kontor-bruger, der må
+// se løn-/økonomital" (samme flag som financeOnly ovenfor og Løn & akkord-
+// visningen bruger) — så i stedet for at opfinde endnu et adgangsflag,
+// genbruges det samme her: en rigtig admin ELLER en bruger markeret som
+// finance-admin (typisk "Kontor"-rollen, se Roller & adgang) kan nu begge
+// hente rapporten. Almindelige medarbejdere er fortsat helt afskåret.
+async function adminOrFinanceOnly(req, res, next) {
+  try {
+    const row = await pgOne('SELECT role, is_finance_admin FROM users WHERE id=$1 AND active=1', [req.user.id]);
+    if (!row || (row.role !== 'admin' && !row.is_finance_admin)) return res.status(403).json({ error: 'Admin only' });
     next();
   } catch (error) {
     res.status(500).json({ error: 'Kunne ikke tjekke adgang' });
@@ -16390,7 +16446,7 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
 app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
-  const [tasks, photos, timeEntries, materials, qaSubmissions, contactSubmissions, quoteLines, qaTemplateIds] = await Promise.all([
+  const [tasks, photos, timeEntries, materials, qaSubmissions, contactSubmissions, quoteLines, qaTemplateIds, qaDiary] = await Promise.all([
     // RUNDE H #24 — has_booking bruges af "📊 Book alt i Kapacitetsbordet" (se
     // POST /api/projects/:id/bulk-book-capacity) til kun at tilbyde/vise
     // opgaver der IKKE allerede har en booking (kapacitet ELLER daglig plan),
@@ -16424,7 +16480,9 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
     project.quote_id
       ? pool.query('SELECT id, description FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id]).then(r => r.rows)
       : Promise.resolve([]),
-    pool.query('SELECT qa_template_id FROM project_qa_templates WHERE project_id=$1', [req.params.id]).then(r => r.rows.map(x => x.qa_template_id))
+    pool.query('SELECT qa_template_id FROM project_qa_templates WHERE project_id=$1', [req.params.id]).then(r => r.rows.map(x => x.qa_template_id)),
+    // RUNDE EB — KS-dagbog, se skema-kommentaren ved project_qa_diary ovenfor.
+    pool.query('SELECT d.*, u.name AS user_name FROM project_qa_diary d LEFT JOIN users u ON u.id = d.user_id WHERE d.project_id=$1 ORDER BY d.entry_date DESC', [req.params.id]).then(r => r.rows)
   ]);
   // RUNDE H #309 (Martins ønske: se den udførlige kommentar ved GET
   // /api/crm/leads|opportunities/:id/quotes ovenfor) — modstykket set fra
@@ -16443,7 +16501,7 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
       if (opp) crmEntity = { type: 'opportunity', id: opp.id, name: opp.name };
     }
   }
-  res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, crm_entity: crmEntity });
+  res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, qa_diary: qaDiary, crm_entity: crmEntity });
 }));
 
 // Projekt-budget (sep. 2026, Martins ønske #3 "Samlet budget visning under projekter"):
@@ -16557,14 +16615,18 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
 // tidsregistreringer på tværs af sager — samme løn-/akkord-regnestykke som
 // GET /api/projects/:id/budget ovenfor, bare uden WHERE project_id=$1.
 //
-// adminOnly (ikke kun panelAccess('quotes'), som resten af Tilbud & Faktura-
-// siden bruger) — timeløn/hourly_wage er bevidst IKKE en del af den brede
-// bruger-liste andre steder i appen (se kommentaren ved GET /api/users/:id/pay),
-// og denne rapport viser den for alle medarbejdere på én gang, så adgangen skal
-// være mindst lige så streng. Fanen i UI'en er stadig synlig for alle med
-// adgang til Tilbud & Faktura — men selve dataen (og dermed lønnen) kan kun
-// hentes af en rigtig admin; ikke-admins ser en tom rapport med en tydelig
-// besked i stedet for et rådt API-kald.
+// adminOrFinanceOnly (ikke kun panelAccess('quotes'), som resten af Tilbud &
+// Faktura-siden bruger) — timeløn/hourly_wage er bevidst IKKE en del af den
+// brede bruger-liste andre steder i appen (se kommentaren ved GET
+// /api/users/:id/pay), og denne rapport viser den for alle medarbejdere på
+// én gang, så adgangen skal fortsat være streng. Fanen i UI'en er stadig
+// synlig for alle med adgang til Tilbud & Faktura — men selve dataen (og
+// dermed lønnen) kan kun hentes af en rigtig admin ELLER en bruger markeret
+// som is_finance_admin (typisk "Kontor"-rollen, se Roller & adgang).
+// RETTET (Martin: "Yderliger skal kontor medarbejder have adgang til
+// timetracking også det ikke kun admin") — var tidligere ren adminOnly;
+// almindelige medarbejdere ser fortsat en tom rapport med en tydelig besked
+// i stedet for et råt API-kald.
 //
 // Henter ALT (ingen server-side dato-filtrering) og lader klienten filtrere,
 // ligesom Tilbud/Fakturaer-fanerne og den gamle "Timer"-side allerede gør
@@ -16572,7 +16634,7 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
 // affødt af at tabellen i praksis er lille nok til det for en virksomhed på
 // Gulv Masters størrelse. Bliver den på sigt for stor, er det her stedet at
 // lægge from/to-parametre ind i stedet.
-app.get('/api/reports/time-tracking', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/reports/time-tracking', auth, adminOrFinanceOnly, asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT te.id, te.project_id, te.minutes, te.note, te.entry_date, te.created_at,
            te.akkord_item_id, te.akkord_quantity, te.photo_url, te.photo_urls,
@@ -17498,6 +17560,42 @@ app.post('/api/projects/:id/materials', auth, asyncRoute(async (req, res) => {
 
 app.delete('/api/projects/:id/materials/:materialId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM project_materials WHERE id=$1 AND project_id=$2', [req.params.materialId, req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ── KS-DAGBOG (RUNDE EB) — se skema-kommentaren ved project_qa_diary i
+// initSchema() for baggrunden. Upsert på (project_id, entry_date): gemmer man
+// på en dato der allerede har en side, opdateres DEN i stedet for at oprette
+// en ny — matcher forbilledets kalenderfelt ("Dage"-listen i UI'en viser
+// derfor altid højst én linje pr. dato). Bevidst kun almindelig auth (ikke
+// panelAccess), ligesom materialer-POST ovenfor — alle med adgang til selve
+// sagen kan skrive i dagbogen.
+app.post('/api/projects/:id/qa-diary', auth, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const b = req.body || {};
+  const entryDate = validDate(String(b.entry_date || '')) ? String(b.entry_date) : null;
+  if (!entryDate) return res.status(400).json({ error: 'Angiv en gyldig dato' });
+  const photoUrls = Array.isArray(b.photo_urls) ? b.photo_urls.filter(Boolean).map(String).slice(0, 30) : [];
+  const crewCount = b.crew_count !== '' && b.crew_count != null ? Number(b.crew_count) : null;
+  const hoursTotal = b.hours_total !== '' && b.hours_total != null ? Number(b.hours_total) : null;
+  const r = await pool.query(`
+    INSERT INTO project_qa_diary
+      (project_id,user_id,entry_date,weather,temperature,crew_count,hours_total,work_performed,deliveries,visits,events,delays,photo_urls,updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,${nowTextSQL()})
+    ON CONFLICT (project_id, entry_date) DO UPDATE SET
+      user_id=EXCLUDED.user_id, weather=EXCLUDED.weather, temperature=EXCLUDED.temperature,
+      crew_count=EXCLUDED.crew_count, hours_total=EXCLUDED.hours_total, work_performed=EXCLUDED.work_performed,
+      deliveries=EXCLUDED.deliveries, visits=EXCLUDED.visits, events=EXCLUDED.events, delays=EXCLUDED.delays,
+      photo_urls=EXCLUDED.photo_urls, updated_at=${nowTextSQL()}
+    RETURNING id
+  `, [req.params.id, req.user.id, entryDate, b.weather || null, b.temperature || null, crewCount, hoursTotal,
+      b.work_performed || null, b.deliveries || null, b.visits || null, b.events || null, b.delays || null, JSON.stringify(photoUrls)]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.delete('/api/projects/:id/qa-diary/:entryId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM project_qa_diary WHERE id=$1 AND project_id=$2', [req.params.entryId, req.params.id]);
   res.json({ ok: true });
 }));
 
@@ -26256,6 +26354,20 @@ app.get('/sw.js', (req, res) => {
 app.get('/manifest.webmanifest', (req, res) => {
   res.set('Content-Type', 'application/manifest+json; charset=utf-8');
   res.sendFile(path.join(__dirname, 'manifest.webmanifest'));
+});
+// RUNDE EB (Martin: "Jeg skal kunne downloade den ned som en app til min
+// telefon. Og det Favicon du skal bruge er vores Hus, og så gerne en
+// mørkegrøn farve som baggrund") — admin-panelet havde hidtil IKKE sin egen
+// manifest (kun apple-touch-icon), så det kunne ikke installeres som en
+// "rigtig" app fra telefonen/skrivebordet. Egen fil (ikke genbrug af
+// manifest.webmanifest) fordi start_url skal pege på /admin i stedet for
+// /employee — ellers ville "Tilføj til startskærm" fra admin.html åbne
+// medarbejder-appen igen efter installation. Ikonerne (hus på mørkegrøn
+// baggrund, #003509 — selskabets brand-grønne, se gulvmaster-design-system)
+// deles med employee.html's manifest, se icon-192.png/icon-512.png.
+app.get('/manifest-admin.webmanifest', (req, res) => {
+  res.set('Content-Type', 'application/manifest+json; charset=utf-8');
+  res.sendFile(path.join(__dirname, 'manifest-admin.webmanifest'));
 });
 app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));
 app.get('/icon-512.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-512.png')));

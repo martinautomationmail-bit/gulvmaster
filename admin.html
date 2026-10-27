@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gulv Master — Planlægning</title>
+<!-- RUNDE EB (Martin: "Jeg skal kunne downloade den ned som en app til min
+     telefon. Og det Favicon du skal bruge er vores Hus, og så gerne en
+     mørkegrøn farve som baggrund da det er vores Color scheme") — admin.html
+     havde kun apple-touch-icon fra før (ingen manifest), så "Installér app"/
+     "Føj til startskærm" blev ikke tilbudt i browseren. Egen manifest (ikke
+     employee.html's) fordi start_url skal pege på /admin, se server.js. -->
+<link rel="manifest" href="/manifest-admin.webmanifest">
+<meta name="theme-color" content="#003509">
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
@@ -1875,6 +1883,73 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #pd-task-detail-modal #pdtd-progress-input::-moz-range-track{height:6px;border-radius:var(--bly-r-pill);background:var(--bly-border)}
 #pd-task-detail-modal #pdtd-progress-input::-moz-range-progress{height:6px;border-radius:var(--bly-r-pill);background:var(--bly-accent)}
 #pd-task-detail-modal .form-label{display:flex;align-items:center;gap:5px}
+/* RUNDE EB (Martin: "den popup der kommer den er meget kluderet og virkelig
+   grim ... Lav også Kundekortet meget pænere") — nye, lokalt-scopede klasser
+   til den omlagte modal: optional-markør på underleverandør-kortet, pænere
+   billed-tomtstand, "Booket på"-chips og det nye kundekort. Alt er scopet
+   under #pd-task-detail-modal, så det ikke rammer gantt-detail-modal, som
+   deler .pdtd-card/.gd-info-grid-navnene et par steder. */
+#pd-task-detail-modal .pdtd-card-optional-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9AA3B2;margin-bottom:10px}
+#pd-task-detail-modal .pdtd-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}
+#pd-task-detail-modal .pdtd-photos-empty{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:16px 10px;border:1.5px dashed #E2E8F0;border-radius:10px;color:#9AA3B2;font-size:11.5px;text-align:center}
+#pd-task-detail-modal .pdtd-booking-chips{display:flex;flex-wrap:wrap;gap:8px}
+#pd-task-detail-modal .pdtd-booking-chip{display:inline-flex;align-items:center;gap:7px;background:#EEF2FF;border:1px solid #E0E7FF;border-radius:999px;padding:5px 12px 5px 5px;font-size:12px;font-weight:600;color:#3730A3;line-height:1.3}
+#pd-task-detail-modal .pdtd-booking-chip-av{width:20px;height:20px;border-radius:50%;background:var(--bly-accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex-shrink:0}
+#pd-task-detail-modal .pdtd-booking-chip-period{color:#6366AE;font-weight:500}
+#pd-task-detail-modal .pdtd-kundekort{background:linear-gradient(180deg,#F8FAFF,#F4F6FB);border:1px solid #E7EAF3;border-radius:var(--bly-r-lg);padding:16px}
+#pd-task-detail-modal .pdtd-kundekort-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+#pd-task-detail-modal .pdtd-kundekort-avatar{width:38px;height:38px;border-radius:11px;background:#fff;border:1px solid #E7EAF3;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+#pd-task-detail-modal .pdtd-kundekort-title{font-size:13px;font-weight:800;color:var(--bly-ink)}
+#pd-task-detail-modal .pdtd-kundekort-sub{font-size:11px;font-weight:600;color:#8891A6;margin-top:1px}
+#pd-task-detail-modal .pdtd-kundekort-rows{display:flex;flex-direction:column}
+#pd-task-detail-modal .pdtd-kundekort-row{display:flex;align-items:flex-start;gap:11px;padding:9px 2px;border-top:1px solid #E9ECF3}
+#pd-task-detail-modal .pdtd-kundekort-row:first-child{border-top:none;padding-top:0}
+#pd-task-detail-modal .pdtd-kundekort-icon{width:28px;height:28px;border-radius:8px;background:#fff;border:1px solid #E7EAF3;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:1px}
+#pd-task-detail-modal .pdtd-kundekort-row-body{flex:1;min-width:0}
+#pd-task-detail-modal .pdtd-kundekort-row-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9AA3B2;margin-bottom:2px}
+#pd-task-detail-modal .pdtd-kundekort-row-value{font-size:12.5px;font-weight:600;color:#334155;line-height:1.4;word-break:break-word}
+#pd-task-detail-modal .pdtd-kundekort-row-value a{color:#1d4ed8;font-weight:600;text-decoration:none}
+#pd-task-detail-modal .pdtd-kundekort-row-value a:hover{text-decoration:underline}
+
+/* RUNDE EB — KS-dagbog (Projekter → sag → 📋 Kvalitetssikring → Dagbog). To
+   spalter: formular til venstre, liste over tidligere dage til højre —
+   samme idé som forbilledet Martin viste (Arkitekt & Boligrenovering).
+   Stables i én spalte på smalle skærme. */
+.pdqd-wrap{display:grid;grid-template-columns:1fr 280px;gap:18px;align-items:start}
+@media(max-width:860px){.pdqd-wrap{grid-template-columns:1fr}}
+.pdqd-form{background:#F8FAFC;border:1px solid #F0F2F5;border-radius:var(--bly-r-md);padding:18px}
+.pdqd-days{background:#F8FAFC;border:1px solid #F0F2F5;border-radius:var(--bly-r-md);padding:14px;max-height:600px;overflow:auto}
+.pdqd-days-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--bly-sub);margin-bottom:10px}
+.pdqd-day-row{display:flex;align-items:center;gap:9px;padding:9px 8px;border-radius:9px;cursor:pointer;transition:background .12s;border:1px solid transparent}
+.pdqd-day-row:hover{background:#fff;border-color:var(--bly-border-soft)}
+.pdqd-day-row.active{background:var(--bly-accent-soft);border-color:var(--bly-accent)}
+.pdqd-day-row-dot{width:7px;height:7px;border-radius:50%;background:var(--bly-accent);flex-shrink:0}
+.pdqd-day-row-body{flex:1;min-width:0}
+.pdqd-day-row-date{font-size:12.5px;font-weight:700;color:var(--bly-ink)}
+.pdqd-day-row-sub{font-size:10.5px;color:var(--bly-sub);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdqd-days-empty{font-size:11.5px;color:var(--bly-sub);padding:6px 2px}
+.pdqd-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px}
+.pdqd-photos-empty{grid-column:1/-1;font-size:11.5px;color:#9AA3B2;padding:4px 2px}
+
+/* RUNDE EB — indsendte KS-formularer (Projekter → sag → Kvalitetssikring),
+   samme "rigtigt kort i stedet for løse linjer"-oprydning som resten af
+   runden. */
+.pdqa-sub-card{border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:14px 16px;margin-bottom:10px;background:#fff}
+.pdqa-sub-head{display:flex;align-items:center;gap:11px;margin-bottom:10px}
+.pdqa-sub-icon{width:32px;height:32px;border-radius:9px;background:var(--bly-accent-soft);color:var(--bly-accent);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.pdqa-sub-head-text{flex:1;min-width:0}
+.pdqa-sub-title{font-size:13.5px;font-weight:700;color:var(--bly-ink)}
+.pdqa-sub-meta{font-size:11px;color:var(--bly-sub);margin-top:1px}
+.pdqa-sub-rows{display:flex;flex-direction:column}
+.pdqa-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--bly-border-soft);font-size:12.5px}
+.pdqa-row:first-child{border-top:none}
+.pdqa-row-label{color:var(--bly-sub);font-weight:600}
+.pdqa-row-text{color:var(--bly-ink);font-weight:600;text-align:right}
+.pdqa-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;border-radius:999px;padding:3px 10px}
+.pdqa-chip-yes{background:#DCFCE7;color:#15803D}
+.pdqa-chip-no{background:#FEF2F2;color:#B91C1C}
+.pdqa-photo-thumb{display:block;width:44px;height:44px;border-radius:8px;overflow:hidden;border:1px solid var(--bly-border-soft);flex-shrink:0}
+.pdqa-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 
 /* ══════════════════════════════════════════════════════════════
    LEDIGHEDSOVERSIGT — samme Billy-behandling, scoped til
@@ -1979,9 +2054,27 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .bly-bank-topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .bly-account-pill{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-sm);padding:10px 14px;font-size:13.5px;font-weight:700;color:var(--bly-ink)}
 .bly-account-pill .dim{color:var(--bly-sub);font-weight:500}
-.bly-segtabs{display:flex;gap:22px;border-bottom:1px solid var(--bly-border-soft);margin-bottom:14px}
-.bly-segtab{border:0;background:transparent;padding:0 0 11px;font-size:13px;font-weight:700;color:var(--bly-sub);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+/* RUNDE EB (Martin: "forbedre respensivtitet i Projekter se min kollegas
+   computer hvordan knapperne ser ud") — denne fanerække bruges flere steder
+   (Projekter/Indstillinger/Opgaveliste m.fl.), ofte inde i et kort med
+   overflow:hidden. Den ombrød aldrig og kunne derfor blive klippet usynlig
+   i stedet for bare trang på en smal skærm — ruller nu vandret i stedet,
+   ligesom en app-bruger kender det fra mobilen. */
+.bly-segtabs{display:flex;gap:22px;border-bottom:1px solid var(--bly-border-soft);margin-bottom:14px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.bly-segtab{border:0;background:transparent;padding:0 0 11px;font-size:13px;font-weight:700;color:var(--bly-sub);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;flex-shrink:0}
 .bly-segtab.active{color:var(--bly-ink);border-bottom-color:var(--bly-ink)}
+/* RUNDE EB — projekt-sidens hoved (titel + knaprække) og selve knaprækken.
+   Ombryder pænt til flere linjer frem for at blive klemt eller løbe ud over
+   kortkanten, og stables helt under titlen på rigtigt smalle skærme. */
+.pd-head-bar{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px}
+.pd-head-title-wrap{min-width:0;flex:1 1 220px}
+.pd-head-title-wrap #pd-title,.pd-head-title-wrap #pd-subtitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pd-head-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;min-width:0}
+@media(max-width:760px){
+  .pd-head-bar{flex-direction:column;align-items:stretch}
+  .pd-head-actions{justify-content:flex-start}
+  .pd-head-title-wrap #pd-title,.pd-head-title-wrap #pd-subtitle{white-space:normal}
+}
 .qz-more-drop{position:relative;margin-bottom:-11px}
 .qz-more-caret{font-size:9px}
 .qz-more-menu{display:none;position:absolute;top:calc(100% + 8px);left:0;background:#fff;border:1px solid var(--bly-border);border-radius:var(--bly-r-lg);box-shadow:0 12px 32px rgba(15,17,24,.14);padding:6px;min-width:190px;z-index:40}
@@ -4143,7 +4236,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.19 · 2026-10-25</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.22 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -7705,12 +7798,25 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
     </div>
   </div>
   <div class="pd-page-card" style="background:#fff;border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,17,24,.08);overflow:hidden">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--bly-border-soft)">
-      <div>
+    <!-- RUNDE EB (Martin: "forbedre respensivtitet i Projekter se min
+         kollegas computer hvordan knapperne ser ud") — denne hoved-bjælke
+         (titel + de 6-7 knapper) og fanerækken herunder (#pd-tabs) var begge
+         et rent, ikke-ombrydende flex-display UDEN noget overflow-fald-
+         tilbage — og selve .pd-page-card ovenfor har bevidst overflow:hidden
+         (for at runde hjørnerne pænt). På en smallere skærm end Martins egen
+         betød det i praksis at knapperne enten blev klemt helt sammen eller
+         at de sidste knapper/faner simpelthen blev usynlige/uklikbare,
+         klippet væk af kortets egen overflow:hidden — ikke bare "trangt".
+         Løsning: hoved-bjælken kan nu ombryde (.pd-head-bar/.pd-head-actions,
+         se CSS'en ved disse klasser), og selve fanerækken
+         (.bly-segtabs, bruges flere steder i appen) kan nu rulle vandret i
+         stedet for at blive klippet, når den er bredere end skærmen. -->
+    <div class="pd-head-bar" style="padding:16px 22px;border-bottom:1px solid var(--bly-border-soft)">
+      <div class="pd-head-title-wrap">
         <div style="font-size:19px;font-weight:800;color:var(--bly-ink)" id="pd-title">Projekt</div>
         <div class="sub" id="pd-subtitle" style="font-size:12px;margin-top:2px"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
+      <div class="pd-head-actions">
         <!-- RUNDE R — indhold sat dynamisk fra pjStages (Martins egne stadier) i
              openProjectDetail(), ikke længere disse 4 hårdkodede <option>er. -->
         <!-- RUNDE T (Martins ønske: "Alle projekter skal have en faggruppe") —
@@ -7955,6 +8061,51 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         <div id="pd-qa-assign-body" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px"></div>
         <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Indsendte KS-formularer</span></div></div>
         <div id="pd-qa-body"></div>
+        <!-- RUNDE EB (Martin: "Her skal der under kvalitetskontrol laves en
+             form for Dagbog her" — med et skærmbillede af dagbogsfanen i hans
+             andet program, Arkitekt & Boligrenovering, som forbillede) —
+             byggepladsdagbog, én side pr. dato. Samme felter som forbilledet,
+             UNDTAGEN "Hent vejret for adressen"-knappen (ingen vejr-API i
+             denne runde, se skema-kommentaren ved project_qa_diary i
+             server.js) — vejr/temperatur tastes i stedet som fri tekst. -->
+        <div class="bly-toolbar" style="margin-top:28px"><div class="bly-toolbar-left"><span class="bly-toolbar-title">📔 Dagbog</span></div></div>
+        <div class="sub" style="margin-bottom:14px">Byggepladsdagbog — én side pr. dato. Vælg en dato for at se eller redigere dagens side, eller start en ny.</div>
+        <div class="pdqd-wrap">
+          <div class="pdqd-form">
+            <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
+              <div class="form-group"><label class="form-label">📅 Dato</label><input id="pdqd-date" type="date" class="input"></div>
+              <div class="form-group"><label class="form-label">☀️ Vejr</label><input id="pdqd-weather" class="input" placeholder="Fx Sol, let overskyet"></div>
+              <div class="form-group"><label class="form-label">🌡️ Temperatur</label><input id="pdqd-temperature" class="input" placeholder="Fx 8-12 °C"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">👷 Mandskab (antal)</label><input id="pdqd-crew" type="number" min="0" class="input" placeholder="Fx 3"></div>
+              <div class="form-group"><label class="form-label">⏱ Timer i alt</label><input id="pdqd-hours" type="number" min="0" step="0.5" class="input" placeholder="Fx 7,5"></div>
+            </div>
+            <div class="form-group"><label class="form-label">🛠 Udført arbejde</label><textarea id="pdqd-work" class="input" rows="4" placeholder="Hvad er lavet på pladsen i dag..."></textarea></div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">🚚 Leverancer</label><textarea id="pdqd-deliveries" class="input" rows="2" placeholder="Fx materialer leveret i dag"></textarea></div>
+              <div class="form-group"><label class="form-label">🧑‍💼 Besøg (bygherre, rådgivere, myndighed)</label><textarea id="pdqd-visits" class="input" rows="2"></textarea></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label">📌 Hændelser og aftaler</label><textarea id="pdqd-events" class="input" rows="2"></textarea></div>
+              <div class="form-group"><label class="form-label">⛔ Forsinkelser og forhindringer</label><textarea id="pdqd-delays" class="input" rows="2"></textarea></div>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">📷 Fotos</label>
+              <div id="pdqd-photos-grid" class="pdqd-photos-grid" style="margin-bottom:8px"></div>
+              <input id="pdqd-photo-input" type="file" accept="image/*" multiple style="display:none">
+              <button class="btn small" type="button" id="pdqd-add-photo-btn">📷 Tilføj fotos</button>
+            </div>
+            <div class="modal-actions" style="padding:16px 0 0;margin-top:14px">
+              <button class="btn" type="button" id="pdqd-delete-btn" style="display:none">🗑 Slet siden</button>
+              <button class="btn primary" type="button" id="pdqd-save-btn">Gem dagbogsside</button>
+            </div>
+          </div>
+          <div class="pdqd-days">
+            <div class="pdqd-days-title">Dage (<span id="pdqd-days-count">0</span>)</div>
+            <div id="pdqd-days-list"></div>
+          </div>
+        </div>
       </div>
       <div class="pdtabpage" id="pdtab-contact" style="display:none">
         <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Indsendte kontaktformularer</span></div></div>
@@ -8381,28 +8532,48 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
         </div>
       </div>
       </div>
-      <div class="form-group" style="margin-top:14px"><label class="form-label">📝 Note</label><textarea id="pdtd-note-input" class="input" rows="3" placeholder="Fx særlige forhold på pladsen, adgang, aftaler med kunden..."></textarea></div>
+      <!-- RUNDE EB (Martin: "den popup der kommer den er meget kluderet og
+           virkelig grim ... Fjern som minimum alt tekst der unødvendig
+           herunder 'Ingen billeder eller filer valgt endnu — medarbejderen
+           får ingenting med når opgaven bookes' og status på alle den er
+           booket på, Det er fin data at have men fin en anden måde der
+           pænere. Lav også Kundekortet meget pænere") — hele resten af
+           modalen er lagt om fra løse form-groups, der "flød sammen" (se
+           den gamle note øverst om det), til SAMME .pdtd-card-gruppering
+           som Status/Periode/Fremdrift allerede havde — nu er ALLE
+           sektioner ensartede kort med luft imellem. Tomme tekster er
+           skåret ned til et par ord i et diskret, stiplet-kant "tomt"-felt
+           i stedet for en hel sætning, "Booket på" er lavet om fra en flad
+           liste til pæne små chips med initial-cirkel, og Kundekontakt er
+           helt gentænkt som et rigtigt "kundekort" nederst (se
+           .pdtd-kundekort-* herunder og i CSS'en ved #pd-task-detail-modal). -->
+      <div class="pdtd-card">
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">📝 Note</label><textarea id="pdtd-note-input" class="input" rows="3" placeholder="Fx særlige forhold på pladsen, adgang, aftaler med kunden..."></textarea></div>
+      </div>
       <!-- RUNDE S (Martins ønske: "hvis en underleverandør har lavet opgave at
            lægge deres faktura ind på opgaven ... i stedet for den bruger
            medarbejdernes timer") — bruges kun hvis opgaven er lavet af en
            underleverandør i stedet for egne folk; beløbet trækkes fra avancen i
            stedet for de normale løn-timer, se renderPdBudget(). -->
-      <div class="pdtd-card" style="margin-top:14px">
+      <div class="pdtd-card pdtd-card-optional">
+        <div class="pdtd-card-optional-label">Kun ved underentreprise</div>
         <div class="form-group" style="margin-bottom:10px">
           <label class="form-label">🧾 Underleverandør-faktura</label>
-          <input id="pdtd-subcost-input" class="input" type="number" min="0" step="0.01" placeholder="Beløb i kr., fx 4500 — udfyld kun hvis en underleverandør har lavet opgaven">
+          <input id="pdtd-subcost-input" class="input" type="number" min="0" step="0.01" placeholder="Beløb i kr., fx 4500">
         </div>
-        <div class="form-group">
+        <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Note til fakturaen</label>
           <input id="pdtd-subnote-input" class="input" placeholder="Fx fakturanr. eller firmanavn">
         </div>
       </div>
-      <div class="form-group" style="margin-top:14px">
-        <label class="form-label">☑ Tjekpunkter</label>
-        <div id="pdtd-checklist-items" style="margin-bottom:8px"></div>
-        <div style="display:flex;gap:8px">
-          <input id="pdtd-checklist-new" class="input" placeholder="Fx Tag billede før opstart" style="flex:1">
-          <button class="btn small" type="button" id="pdtd-checklist-add-btn">+ Tilføj</button>
+      <div class="pdtd-card">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">☑ Tjekpunkter</label>
+          <div id="pdtd-checklist-items" style="margin-bottom:8px"></div>
+          <div style="display:flex;gap:8px">
+            <input id="pdtd-checklist-new" class="input" placeholder="Fx Tag billede før opstart" style="flex:1">
+            <button class="btn small" type="button" id="pdtd-checklist-add-btn">+ Tilføj</button>
+          </div>
         </div>
       </div>
       <!-- RUNDE BR (Martin: "Gør det muligt her at inkludere billeder fra
@@ -8416,33 +8587,46 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
            så et kundebesøgsbillede er lige så let at vælge som et sagsbillede.
            Medarbejderen ser de valgte billeder i sin note, når opgaven bookes
            (se openBookingNote/loadNoteTaskPhotos i employee.html). -->
-      <div class="form-group" style="margin-top:14px">
-        <label class="form-label">📷 Billeder til medarbejderen</label>
-        <div id="pdtd-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;margin-bottom:8px"></div>
-        <button class="btn small" type="button" id="pdtd-add-photo-btn">📷 Vælg billede fra sagen</button>
+      <div class="pdtd-card">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">📷 Billeder til medarbejderen</label>
+          <div id="pdtd-photos-grid" class="pdtd-photos-grid"></div>
+          <button class="btn small" type="button" id="pdtd-add-photo-btn" style="margin-top:8px">📷 Vælg billede fra sagen</button>
+        </div>
       </div>
       <!-- RUNDE L (Martins ønske #1 "flere data oplysninger") — hvem opgaven
            allerede er booket på i Kapacitetsbordet, hvis nogen. Skjult helt
-           når opgaven slet ikke er booket endnu. -->
-      <div class="form-group" id="pdtd-bookings-wrap" style="margin-top:14px;display:none">
-        <label class="form-label">👤 Booket på</label>
-        <div id="pdtd-bookings-list" class="gd-info-value"></div>
+           når opgaven slet ikke er booket endnu. RUNDE EB — vist som pæne
+           chips med initial-cirkel og periode i stedet for en flad liste. -->
+      <div class="pdtd-card" id="pdtd-bookings-wrap" style="display:none">
+        <label class="form-label" style="margin-bottom:8px">👤 Booket på</label>
+        <div id="pdtd-bookings-list" class="pdtd-booking-chips"></div>
       </div>
-      <div class="gd-info-grid" style="margin-top:22px">
-        <div style="grid-column:1/-1;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Kundekontakt</div>
-        <!-- RUNDE BS (Martin: "kan jeg se om kundens adresse er korrekt så når
-             den bookes i Opgavepool så har den alt dataen") — adressen ER
-             allerede med i Opgavepool-spejlingen (mirrorProjectTaskToPool
-             sætter job_address=project.customer_address), problemet var
-             udelukkende at man ikke kunne SE/tjekke den herfra før man
-             booker. Linker til Google Maps (samme mønster som
-             medarbejderens egen "📍"-adresselink i employee.html) — et hurtigt
-             visuelt tjek af om nålen rammer det rigtige sted er den bedste
-             måde at "se om adressen er korrekt" på. -->
-        <div style="grid-column:1/-1"><div class="gd-info-label">📍 Adresse</div><div id="pdtd-address" class="gd-info-value"></div></div>
-        <div><div class="gd-info-label">📞 Kundetelefon</div><div id="pdtd-phone" class="gd-info-value"></div></div>
-        <div><div class="gd-info-label">✉️ Kunde-mail</div><div id="pdtd-email" class="gd-info-value"></div></div>
-        <div><div class="gd-info-label">🔢 Sagsnummer</div><div id="pdtd-jobnumber" class="gd-info-value"></div></div>
+      <!-- RUNDE EB — "Kundekontakt" (gd-info-grid) erstattet af et rigtigt,
+           visuelt kundekort. RUNDE BS's Google Maps-link på adressen er
+           bevaret uændret. -->
+      <div class="pdtd-kundekort">
+        <div class="pdtd-kundekort-head">
+          <span class="pdtd-kundekort-avatar">🧑‍💼</span>
+          <div>
+            <div class="pdtd-kundekort-title">Kundekort</div>
+            <div class="pdtd-kundekort-sub" id="pdtd-jobnumber">Intet sagsnummer</div>
+          </div>
+        </div>
+        <div class="pdtd-kundekort-rows">
+          <div class="pdtd-kundekort-row">
+            <span class="pdtd-kundekort-icon">📍</span>
+            <div class="pdtd-kundekort-row-body"><div class="pdtd-kundekort-row-label">Adresse</div><div class="pdtd-kundekort-row-value" id="pdtd-address"></div></div>
+          </div>
+          <div class="pdtd-kundekort-row">
+            <span class="pdtd-kundekort-icon">📞</span>
+            <div class="pdtd-kundekort-row-body"><div class="pdtd-kundekort-row-label">Telefon</div><div class="pdtd-kundekort-row-value" id="pdtd-phone"></div></div>
+          </div>
+          <div class="pdtd-kundekort-row">
+            <span class="pdtd-kundekort-icon">✉️</span>
+            <div class="pdtd-kundekort-row-body"><div class="pdtd-kundekort-row-label">E-mail</div><div class="pdtd-kundekort-row-value" id="pdtd-email"></div></div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-actions">
@@ -22307,7 +22491,12 @@ function renderTimetrackReport(){
   theadEl.innerHTML=ttViewMode==='chrono'?TT_THEAD_CHRONO:TT_THEAD_GROUPED;
   if(ttData.error){
     kpiEl.innerHTML='';
-    var msg=ttData.error==='Admin only'?'🔒 Kun administratorer kan se timetracking-rapporten (den viser alles timeløn).':esc(ttData.error);
+    // RUNDE EB (Martin: "kontor medarbejder have adgang til timetracking
+    // også det ikke kun admin") — server.js tillader nu admin ELLER
+    // is_finance_admin (adminOrFinanceOnly); beskeden her er opdateret til
+    // at nævne begge, så den stadig er korrekt for den sjældne medarbejder
+    // der rammer den.
+    var msg=ttData.error==='Admin only'?'🔒 Kun administratorer og kontor-brugere kan se timetracking-rapporten (den viser alles timeløn).':esc(ttData.error);
     bodyEl.innerHTML='<tr><td colspan="'+colspan+'" style="text-align:center;color:var(--bly-sub);padding:32px">'+msg+'</td></tr>';
     return;
   }
@@ -30449,6 +30638,12 @@ function initProjectsModule(){
     document.getElementById('pdt-user').addEventListener('change',pdtToggleAkkordRow);
     document.getElementById('pdt-photo-input').addEventListener('change',pdtHandlePhotoFiles);
     document.getElementById('pd-qa-assign-save-btn').addEventListener('click',savePdQaAssign);
+    // RUNDE EB — KS-dagbog.
+    document.getElementById('pdqd-date').addEventListener('change',function(){pdqdLoadDate(this.value);});
+    document.getElementById('pdqd-add-photo-btn').addEventListener('click',function(){document.getElementById('pdqd-photo-input').click();});
+    document.getElementById('pdqd-photo-input').addEventListener('change',pdqdHandlePhotoFiles);
+    document.getElementById('pdqd-save-btn').addEventListener('click',savePdQaDiary);
+    document.getElementById('pdqd-delete-btn').addEventListener('click',deletePdQaDiary);
     document.getElementById('pd-lightbox-close-btn').addEventListener('click',function(){closeModal('pd-photo-lightbox');});
     document.getElementById('pd-lightbox-prev-btn').addEventListener('click',function(){pdLightboxIdx--;renderPdLightbox();});
     document.getElementById('pd-lightbox-next-btn').addEventListener('click',function(){pdLightboxIdx++;renderPdLightbox();});
@@ -30729,7 +30924,7 @@ async function openProjectDetail(id){
     crmBtn.onclick=function(){openCrmpDetail(d.crm_entity.type,d.crm_entity.id);};
   } else crmBtn.style.display='none';
   switchPdTab('tasks');
-  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
+  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdQaDiary();renderPdContact();
   // Genindlæs den delte opgavepool (tasks-variablen) her, så "Tilføj til
   // Kapacitetsbordet" og tjekpunkter på en netop oprettet/redigeret sags-opgave
   // altid har den friske spejl-række fra jt_tasks at slå op i.
@@ -30749,7 +30944,7 @@ async function reloadPdCurrent(){
   var ilink=document.getElementById('pd-invoice-link');
   if(d.invoice_id){ilink.style.display='inline-flex';ilink.href=qzPdfUrl('/api/invoices/'+d.invoice_id+'/pdf');ilink.onclick=function(e){e.preventDefault();qzOpenPdf('/api/invoices/'+d.invoice_id+'/pdf');};}
   else ilink.style.display='none';
-  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdContact();
+  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdQaDiary();renderPdContact();
   await loadPjProjects();renderPjProjects();
   loadAll();
 }
@@ -32050,7 +32245,9 @@ function openPdTaskDetail(taskId){
   document.getElementById('pdtd-address').innerHTML=address?'<a href="https://maps.google.com/?q='+encodeURIComponent(address)+'" target="_blank" rel="noopener noreferrer">'+esc(address)+' ↗</a>':'<span class="muted-sm">Ingen adresse registreret</span>';
   document.getElementById('pdtd-phone').innerHTML=phone?'<a href="tel:'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
   document.getElementById('pdtd-email').innerHTML=email?'<a href="mailto:'+esc(email)+'">'+esc(email)+'</a>':'<span class="muted-sm">Ikke registreret</span>';
-  document.getElementById('pdtd-jobnumber').innerHTML=pjCurrent.job_number?esc(pjCurrent.job_number):'<span class="muted-sm">Intet sagsnummer</span>';
+  // RUNDE EB — jobnummeret er nu kundekortets undertitel (ren tekst, styling
+  // kommer fra .pdtd-kundekort-sub) i stedet for en separat grid-celle.
+  document.getElementById('pdtd-jobnumber').textContent=pjCurrent.job_number?('Sag '+pjCurrent.job_number):'Intet sagsnummer';
   document.getElementById('pdtd-note-input').value=t.description||'';
   // RUNDE S — underleverandør-fakturabeløb/-note for denne opgave, se skema-
   // kommentaren ved gantt_tasks.subcontractor_cost i server.js.
@@ -32069,11 +32266,16 @@ function openPdTaskDetail(taskId){
   document.getElementById('pdtd-status-dot').style.background=statusMeta.dot;
   document.getElementById('pdtd-status-label').textContent=statusMeta.label;
   // "Booket på" — se bookings-aggregeringen i GET /api/projects/:id (server.js).
+  // RUNDE EB (Martin: "status på alle den er booket på, Det er fin data at
+  // have men fin en anden måde der pænere") — samme data som før, bare vist
+  // som små chips med en initial-cirkel i stedet for en flad liste af linjer.
   var bookings=t.bookings||[];
   document.getElementById('pdtd-bookings-wrap').style.display=bookings.length?'':'none';
   document.getElementById('pdtd-bookings-list').innerHTML=bookings.map(function(b){
     var period=b.start_date===b.end_date?fmtDaDate(b.start_date):(fmtDaDate(b.start_date)+' – '+fmtDaDate(b.end_date));
-    return '<div>'+esc(b.user_name||'Ukendt medarbejder')+' <span class="muted-sm">· '+esc(period)+'</span></div>';
+    var name=b.user_name||'Ukendt medarbejder';
+    var initials=name.trim().split(/\s+/).map(function(w){return w.charAt(0);}).slice(0,2).join('').toUpperCase()||'?';
+    return '<span class="pdtd-booking-chip"><span class="pdtd-booking-chip-av">'+esc(initials)+'</span>'+esc(name)+' <span class="pdtd-booking-chip-period">'+esc(period)+'</span></span>';
   }).join('');
   renderPdtdPhotos();
   document.getElementById('pd-task-detail-modal').classList.add('open');
@@ -32087,7 +32289,12 @@ function renderPdtdPhotos(){
   var grid=document.getElementById('pdtd-photos-grid');
   var t=(pjCurrent.tasks||[]).find(function(x){return x.id===pdTaskDetailId;});
   var photos=(t&&t.photos)||[];
-  if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder eller filer valgt endnu — medarbejderen får ingenting med når opgaven bookes.</div>';return;}
+  // RUNDE EB (Martin: "Fjern som minimum alt tekst der unødvendig herunder
+  // 'Ingen billeder eller filer valgt endnu — medarbejderen får ingenting
+  // med når opgaven bookes'") — kortet selv ("Billeder til medarbejderen")
+  // gør allerede klart hvad feltet er til, så den tomme tilstand er nu kun
+  // et par ord i et diskret, stiplet-kant felt (.pdtd-photos-empty).
+  if(!photos.length){grid.innerHTML='<div class="pdtd-photos-empty">📷<br>Ingen billeder endnu</div>';return;}
   grid.innerHTML=photos.map(function(p){
     var isPdf=pdIsPdfUrl(p.url);
     var inner=isPdf
@@ -32789,6 +32996,13 @@ async function savePdQaAssign(){
   if(r&&r.ok)toast('KS-skabeloner opdateret ✓','✓');
   else toast((r&&r.error)||'Kunne ikke gemme','❌');
 }
+// RUNDE EB (Martin: "Se også hvad du ellers kan forbedre af kvaltiet kontrol
+// formen og andre ting") — samme oprydning som resten af runden: de rå
+// label/værdi-linjer er lagt om til et rigtigt kort med et ikon-hoved,
+// Ja/Nej vises som farvede mærker i stedet for ren tekst, og et
+// billede-svar vises nu som en rigtig klikbar thumbnail i stedet for en
+// tekstlænke "📷 Se billede" — hurtigere at tjekke en masse KS-formularer
+// igennem visuelt.
 function renderPdQa(){
   var box=document.getElementById('pd-qa-body');
   var subs=pjCurrent.qa_submissions||[];
@@ -32796,15 +33010,25 @@ function renderPdQa(){
   box.innerHTML=subs.map(function(s){
     var answers=(typeof s.answers==='string'?JSON.parse(s.answers):s.answers)||[];
     var rows=answers.map(function(a){
-      var val=a.type==='photo'&&a.value?('<a href="'+esc(a.value)+'" target="_blank">📷 Se billede</a>'):esc(a.value===true?'Ja':a.value===false?'Nej':(a.value||'–'));
-      return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px"><span>'+esc(a.label)+'</span><span>'+val+'</span></div>';
+      var val;
+      if(a.type==='photo'&&a.value){
+        val='<a href="'+esc(a.value)+'" target="_blank" rel="noopener noreferrer" class="pdqa-photo-thumb"><img src="'+esc(a.value)+'" loading="lazy"></a>';
+      }else if(a.value===true){
+        val='<span class="pdqa-chip pdqa-chip-yes">✓ Ja</span>';
+      }else if(a.value===false){
+        val='<span class="pdqa-chip pdqa-chip-no">✕ Nej</span>';
+      }else{
+        val='<span class="pdqa-row-text">'+esc(a.value||'–')+'</span>';
+      }
+      return '<div class="pdqa-row"><span class="pdqa-row-label">'+esc(a.label)+'</span>'+val+'</div>';
     }).join('');
     var subUname=(users.find(function(x){return +x.id===+s.submitted_by;})||{}).name||'–';
-    return '<div style="border:1px solid var(--bly-border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-      +'<div style="font-weight:700">'+esc(s.template_name||'KS-formular')+' <span class="sub" style="font-weight:400">· '+esc(String(s.submitted_at||'').slice(0,16).replace('T',' '))+' af '+esc(subUname)+'</span></div>'
+    return '<div class="pdqa-sub-card">'
+      +'<div class="pdqa-sub-head">'
+      +'<span class="pdqa-sub-icon">📋</span>'
+      +'<div class="pdqa-sub-head-text"><div class="pdqa-sub-title">'+esc(s.template_name||'KS-formular')+'</div><div class="pdqa-sub-meta">'+esc(String(s.submitted_at||'').slice(0,16).replace('T',' '))+' · '+esc(subUname)+'</div></div>'
       +'<button class="qz-icon-btn" data-action="pd-qa-delete" data-id="'+s.id+'" title="Slet">🗑</button>'
-      +'</div>'+rows+'</div>';
+      +'</div><div class="pdqa-sub-rows">'+rows+'</div></div>';
   }).join('');
   Array.prototype.forEach.call(box.querySelectorAll('[data-action="pd-qa-delete"]'),function(btn){
     btn.onclick=async function(){
@@ -32813,6 +33037,117 @@ function renderPdQa(){
       reloadPdCurrent();
     };
   });
+}
+// ── KS-DAGBOG (RUNDE EB) — se skema-kommentaren ved project_qa_diary i
+// server.js for baggrunden. Én side pr. dato (pjCurrent.qa_diary, nyeste
+// først); formularen til venstre redigerer ÉN dato ad gangen, listen til
+// højre ("Dage") skifter hvilken. pdqdEditId holder styr på om den dato der
+// står i formularen allerede findes (så Gem opdaterer den i stedet for at
+// oprette en ny — selve upsert'en sker dog reelt server-side på
+// project_id+entry_date, dette er kun til at vise/skjule "Slet siden").
+var pdqdEditId=null,pdqdPhotoUrls=[],pdqdLoadedProjectId=null;
+function renderPdQaDiary(){
+  // RUNDE EB — modalens/siden-elementerne genbruges på tværs af sager (samme
+  // DOM, nyt pjCurrent hver gang man åbner en anden sag), så formularen skal
+  // nulstilles til "i dag" NÅR MAN SKIFTER SAG — men IKKE hver gang denne
+  // kaldes af andre, urelaterede gem-handlinger på samme sag (fx en ny
+  // tidsregistrering), hvor en evt. igangværende, endnu ugemt dagbogs-kladde
+  // ellers ville blive overskrevet uden varsel. pdqdLoadedProjectId holder
+  // styr på hvilken sag formularen aktuelt viser.
+  if(pdqdLoadedProjectId!==pjCurrent.id){
+    pdqdLoadedProjectId=pjCurrent.id;
+    document.getElementById('pdqd-date').value='';
+    pdqdLoadDate(iso(new Date()));
+  }else{
+    renderPdQaDiaryDaysList();
+  }
+}
+function renderPdQaDiaryDaysList(){
+  var list=document.getElementById('pdqd-days-list');
+  var days=pjCurrent.qa_diary||[];
+  document.getElementById('pdqd-days-count').textContent=days.length;
+  var selected=document.getElementById('pdqd-date').value;
+  if(!days.length){list.innerHTML='<div class="pdqd-days-empty">Ingen dage endnu. Medarbejderne kan ikke skrive i dagbogen fra app'+"'"+'en — kun herfra.</div>';return;}
+  list.innerHTML=days.map(function(d){
+    var dateStr=(d.entry_date||'').slice(0,10);
+    var sub=d.work_performed?String(d.work_performed).slice(0,46)+(d.work_performed.length>46?'…':''):(d.weather||d.temperature?[d.weather,d.temperature].filter(Boolean).join(' · '):'Ikke udfyldt');
+    return '<div class="pdqd-day-row'+(dateStr===selected?' active':'')+'" data-date="'+esc(dateStr)+'"><span class="pdqd-day-row-dot"></span><div class="pdqd-day-row-body"><div class="pdqd-day-row-date">'+esc(fmtDaDate(dateStr))+'</div><div class="pdqd-day-row-sub">'+esc(sub)+'</div></div></div>';
+  }).join('');
+  Array.prototype.forEach.call(list.querySelectorAll('.pdqd-day-row'),function(row){
+    row.onclick=function(){pdqdLoadDate(row.dataset.date);};
+  });
+}
+function pdqdLoadDate(dateStr){
+  var entry=(pjCurrent.qa_diary||[]).find(function(d){return (d.entry_date||'').slice(0,10)===dateStr;});
+  pdqdEditId=entry?entry.id:null;
+  document.getElementById('pdqd-date').value=dateStr;
+  document.getElementById('pdqd-weather').value=entry?(entry.weather||''):'';
+  document.getElementById('pdqd-temperature').value=entry?(entry.temperature||''):'';
+  document.getElementById('pdqd-crew').value=entry&&entry.crew_count!=null?entry.crew_count:'';
+  document.getElementById('pdqd-hours').value=entry&&entry.hours_total!=null?entry.hours_total:'';
+  document.getElementById('pdqd-work').value=entry?(entry.work_performed||''):'';
+  document.getElementById('pdqd-deliveries').value=entry?(entry.deliveries||''):'';
+  document.getElementById('pdqd-visits').value=entry?(entry.visits||''):'';
+  document.getElementById('pdqd-events').value=entry?(entry.events||''):'';
+  document.getElementById('pdqd-delays').value=entry?(entry.delays||''):'';
+  pdqdPhotoUrls=(entry&&Array.isArray(entry.photo_urls))?entry.photo_urls.slice():[];
+  document.getElementById('pdqd-delete-btn').style.display=entry?'':'none';
+  renderPdqdPhotos();
+  renderPdQaDiaryDaysList();
+}
+function renderPdqdPhotos(){
+  var grid=document.getElementById('pdqd-photos-grid');
+  if(!pdqdPhotoUrls.length){grid.innerHTML='<div class="pdqd-photos-empty">Ingen fotos endnu</div>';return;}
+  grid.innerHTML=pdqdPhotoUrls.map(function(u,i){
+    return '<div class="pd-photo-thumb"><img src="'+esc(u)+'" loading="lazy"><button type="button" class="pd-photo-del" data-idx="'+i+'" title="Fjern">✕</button></div>';
+  }).join('');
+  Array.prototype.forEach.call(grid.querySelectorAll('.pd-photo-del'),function(btn){
+    btn.onclick=function(){pdqdPhotoUrls.splice(+btn.dataset.idx,1);renderPdqdPhotos();};
+  });
+}
+async function pdqdHandlePhotoFiles(e){
+  var files=Array.prototype.slice.call(e.target.files||[]);
+  if(!files.length)return;
+  e.target.value='';
+  toast('Uploader '+files.length+' billede(r)…','⏳');
+  for(var i=0;i<files.length;i++){
+    try{
+      var dataUrl=await pdReadFileAsDataUrl(files[i]);
+      var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pjCurrent.id+'/qa-diary'})});
+      if(up&&up.ok)pdqdPhotoUrls.push(up.url);
+    }catch(err){}
+  }
+  renderPdqdPhotos();
+}
+async function savePdQaDiary(){
+  var dateStr=document.getElementById('pdqd-date').value;
+  if(!dateStr){toast('Vælg en dato','⚠');return;}
+  var body={
+    entry_date:dateStr,
+    weather:document.getElementById('pdqd-weather').value.trim()||null,
+    temperature:document.getElementById('pdqd-temperature').value.trim()||null,
+    crew_count:document.getElementById('pdqd-crew').value||'',
+    hours_total:document.getElementById('pdqd-hours').value||'',
+    work_performed:document.getElementById('pdqd-work').value.trim()||null,
+    deliveries:document.getElementById('pdqd-deliveries').value.trim()||null,
+    visits:document.getElementById('pdqd-visits').value.trim()||null,
+    events:document.getElementById('pdqd-events').value.trim()||null,
+    delays:document.getElementById('pdqd-delays').value.trim()||null,
+    photo_urls:pdqdPhotoUrls
+  };
+  var r=await api('/api/projects/'+pjCurrent.id+'/qa-diary',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){
+    toast('Dagbogsside gemt ✓','✓');
+    await reloadPdCurrent();
+    pdqdLoadDate(dateStr);
+  }else toast((r&&r.error)||'Kunne ikke gemme dagbogssiden','❌');
+}
+async function deletePdQaDiary(){
+  if(!pdqdEditId)return;
+  if(!await gmConfirm('Slet denne dagbogsside?'))return;
+  await api('/api/projects/'+pjCurrent.id+'/qa-diary/'+pdqdEditId,{method:'DELETE'});
+  await reloadPdCurrent();
+  pdqdLoadDate(iso(new Date()));
 }
 function renderPdContact(){
   var box=document.getElementById('pd-contact-body');
@@ -36825,6 +37160,21 @@ loadSettings();
 loadPjStages();
 loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmailTemplates();return loadAll();}).then(function(){checkPendingTimeOffPopup();refreshGlobalPriorityBanner();});
 })();
+</script>
+<!-- RUNDE EB (Martin: "Jeg skal kunne downloade den ned som en app til min
+     telefon") — browseren tilbyder kun "Installér app"/"Føj til startskærm"
+     når siden både har en manifest (lige tilføjet ovenfor i <head>) OG en
+     aktiv service worker. sw.js findes allerede (bruges af employee.html til
+     push-notifikationer) og har bevidst ingen offline-caching, kun push — helt
+     harmløst at genbruge her, admin.html beder bare ikke om nogen
+     push-tilladelse selv. Best-effort: fejler registreringen (fx meget gamle
+     browsere), er resten af admin.html upåvirket. -->
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('/sw.js').catch(function(){});
+  });
+}
 </script>
 </body>
 </html>
