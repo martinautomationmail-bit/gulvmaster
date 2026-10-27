@@ -2283,6 +2283,11 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 }
 .qz-more-item.active{background:var(--bly-accent-soft);color:var(--bly-accent)}
 .pd-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+/* RUNDE FF — træk-og-slip af mange billeder på sagens Billeder & filer */
+.pd-photos-drop{position:relative;border-radius:12px;min-height:60px}
+.pd-photos-drop-hint{display:none;position:absolute;inset:0;border:2px dashed var(--bly-accent);border-radius:12px;background:rgba(238,242,255,.92);color:var(--bly-accent);font-weight:700;font-size:14px;align-items:center;justify-content:center;z-index:2;pointer-events:none}
+.pd-photos-drop.dragover .pd-photos-drop-hint{display:flex}
+#pd-photo-progress{margin-right:8px;font-weight:600;color:var(--bly-accent)}
 .pd-photo-thumb{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bly-border-soft);aspect-ratio:1/1;background:#F4F6FB}
 .pd-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .pd-photo-thumb .pd-photo-del{position:absolute;top:4px;right:4px;background:rgba(17,19,24,.65);color:#fff;border:0;border-radius:6px;width:22px;height:22px;font-size:11px;cursor:pointer}
@@ -4400,7 +4405,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.33.1 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.33.2 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -8315,9 +8320,9 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
              (ellers knækket) <img>-thumbnail for PDF'er. -->
         <div class="bly-toolbar">
           <div class="bly-toolbar-left"><span class="bly-toolbar-title">Billeder &amp; filer</span></div>
-          <div class="bly-toolbar-right"><label class="bly-btn outline small" style="cursor:pointer">+ Tilføj billede/fil<input type="file" accept="image/*,application/pdf" id="pd-photo-input" style="display:none"></label></div>
+          <div class="bly-toolbar-right"><span class="sub" id="pd-photo-progress" style="display:none"></span><label class="bly-btn outline small" style="cursor:pointer" title="Vælg gerne mange billeder på én gang — eller træk dem ind her fra computeren">+ Tilføj billeder/filer<input type="file" accept="image/*,application/pdf" id="pd-photo-input" multiple style="display:none"></label></div>
         </div>
-        <div id="pd-photos-grid" class="pd-photos-grid"></div>
+        <div id="pd-photos-drop" class="pd-photos-drop"><div id="pd-photos-grid" class="pd-photos-grid"></div><div class="pd-photos-drop-hint">Slip billederne her for at uploade</div></div>
         <!-- RUNDE BR (Martin: "billeder taget ved kundebesøg også kommer ind
              under filer og så kan jeg bare tage dem derfra") — read-only
              oversigt over billeder sagen HAR, men som ikke er uploadet direkte
@@ -31465,6 +31470,7 @@ function initProjectsModule(){
     document.getElementById('bcap-apply-all-btn').addEventListener('click',bcapApplyUserToAll);
     document.getElementById('pd-new-task-btn').addEventListener('click',function(){pdAddTaskRow();});
     document.getElementById('pd-photo-input').addEventListener('change',pdUploadPhoto);
+    pdInitPhotoDrop();
     document.getElementById('pd-time-add-btn').addEventListener('click',function(){openPdTimeModal(null);});
     document.getElementById('pd-budget-toggle-btn').addEventListener('click',function(){pdBudgetHidden=!pdBudgetHidden;renderPdBudget();});
     document.getElementById('pdt-close-btn').addEventListener('click',function(){closeModal('pd-time-modal');});
@@ -31878,9 +31884,21 @@ var pdPipelineDragId=null;
 // (" - " — mellemrum, bindestreg, mellemrum, aldrig midt i et ord som
 // "fodpaneler-lim"). Findes delimiteren ikke, er navnet allerede kort, og
 // hele det returneres uændret.
+// RUNDE FF (Martin: "overskriften skal slet ikke være så lang, sæt et maks
+// på måske 15 bogstaver") — navne uden " - " (fx "Finish- og afslutnings-
+// arbejde Inkluderer …") slap igennem i fuld længde. Nu: kort navn før
+// " - "/"Inkluderer"/"Note:"/punktum, og derefter maks 15 tegn (klippet ved
+// et mellemrum hvis muligt) + "…". Fuld tekst vises ved museover og ved klik.
+var PD_PIPELINE_NAME_MAX=15;
 function pdPipelineShortName(name){
-  var idx=name.indexOf(' - ');
-  return (idx>-1?name.slice(0,idx):name).trim()||name;
+  var n=String(name||'');
+  var idx=n.indexOf(' - ');
+  if(idx>-1)n=n.slice(0,idx);
+  n=n.split(/\s+(?:Inkluderer|Inkl\.|Note:|Bemærk|Ekskl\.)\b/i)[0].split(/[.:]\s/)[0].trim()||String(name||'');
+  if(n.length<=PD_PIPELINE_NAME_MAX)return n;
+  var cut=n.slice(0,PD_PIPELINE_NAME_MAX+1).lastIndexOf(' ');
+  var short=(cut>=12?n.slice(0,cut):n.slice(0,PD_PIPELINE_NAME_MAX)).replace(/[\s,;:–-]+$/,'');
+  return short+'…';
 }
 function pdPipelineCardHtml(t){
   var sd=t.start_date?fmtDaDate(t.start_date):'?',ed=t.end_date?fmtDaDate(t.end_date):sd;
@@ -33641,24 +33659,80 @@ function pdReadFileAsDataUrl(file){
     reader.readAsDataURL(file);
   });
 }
+// RUNDE FF (Martin: "gør så man kan uploade mange billeder fra computer/
+// telefon på én gang") — input'et har nu "multiple", og filerne uploades to
+// ad gangen med fremdrift ("Uploader 3/12…"). Billeder formindskes i
+// browseren til maks 2400 px (JPEG 85 %) før upload, så 10+ telefonbilleder
+// på 5-8 MB ikke tager evigheder eller sprænger forbindelsen; PDF'er og
+// billeder der allerede er små sendes uændret. Fejler ét billede, fortsætter
+// resten, og man får at vide hvor mange der fejlede.
+function pdShrinkImage(file){
+  return new Promise(function(resolve){
+    var isImg=/^image\//.test(file.type||'')&&!/gif|svg/i.test(file.type);
+    if(!isImg||file.size<700*1024){pdReadFileAsDataUrl(file).then(resolve,function(){resolve(null);});return;}
+    var url=URL.createObjectURL(file),img=new Image();
+    img.onload=function(){
+      try{
+        var max=2400,w=img.naturalWidth,h=img.naturalHeight,sc=Math.min(1,max/Math.max(w,h));
+        var c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
+        c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg',0.85));
+      }catch(e){URL.revokeObjectURL(url);pdReadFileAsDataUrl(file).then(resolve,function(){resolve(null);});}
+    };
+    img.onerror=function(){URL.revokeObjectURL(url);pdReadFileAsDataUrl(file).then(resolve,function(){resolve(null);});};
+    img.src=url;
+  });
+}
+var pdUploading=false;
+async function pdUploadFiles(files){
+  files=Array.prototype.slice.call(files||[]).filter(function(f){return /^image\//.test(f.type||'')||f.type==='application/pdf'||/\.(pdf|jpe?g|png|heic|heif|webp)$/i.test(f.name||'');});
+  if(!files.length){toast('Kun billeder og PDF-filer kan uploades her','⚠️');return;}
+  if(pdUploading){toast('Vent til den igangværende upload er færdig','⏳');return;}
+  if(!pjCurrent)return;
+  pdUploading=true;
+  var projectId=pjCurrent.id,total=files.length,done=0,failed=0,next=0;
+  var prog=document.getElementById('pd-photo-progress');
+  function show(){if(prog){prog.style.display='';prog.textContent='Uploader '+Math.min(done+failed+1,total)+'/'+total+'…';}}
+  show();
+  async function worker(){
+    while(next<files.length){
+      var file=files[next++];
+      try{
+        var dataUrl=await pdShrinkImage(file);
+        if(!dataUrl)throw new Error('read');
+        var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+projectId})});
+        if(!up||!up.ok)throw new Error((up&&up.error)||'upload');
+        // caption = filnavnet, så en PDF kan genkendes (se renderPdPhotos).
+        var r=await api('/api/projects/'+projectId+'/photos',{method:'POST',body:JSON.stringify({url:up.url,caption:file.name||null})});
+        if(!r||!r.ok)throw new Error('save');
+        done++;
+      }catch(err){failed++;}
+      show();
+    }
+  }
+  await Promise.all([worker(),worker()]);
+  pdUploading=false;
+  if(prog){prog.style.display='none';prog.textContent='';}
+  if(failed)toast(done+' af '+total+' uploadet — '+failed+' fejlede, prøv dem igen','⚠️');
+  else toast(total===1?'Uploadet ✓':total+' filer uploadet ✓','✓');
+  if(done&&pjCurrent&&pjCurrent.id===projectId)reloadPdCurrent();
+}
 async function pdUploadPhoto(e){
-  var file=e.target.files&&e.target.files[0];
-  if(!file)return;
+  var files=Array.prototype.slice.call((e.target&&e.target.files)||[]);
   e.target.value='';
-  var isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name||'');
-  toast(isPdf?'Uploader fil…':'Uploader billede…','⏳');
-  try{
-    var dataUrl=await pdReadFileAsDataUrl(file);
-    var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pjCurrent.id})});
-    if(!up||!up.ok){toast((up&&up.error)||(isPdf?'Kunne ikke uploade filen':'Kunne ikke uploade billedet'),'❌');return;}
-    // RETTELSE (okt. 2026) — caption sendes nu med (filnavnet), så en PDF kan
-    // vises/genkendes med et meningsfuldt navn i stedet for bare "PDF-fil"
-    // (se pdIsPdfUrl-grenen i renderPdPhotos/pdtdOpenPhotoPicker). Harmløst
-    // for almindelige billeder — captionen vises der ikke i dag, men er klar
-    // hvis det bliver relevant senere.
-    var r=await api('/api/projects/'+pjCurrent.id+'/photos',{method:'POST',body:JSON.stringify({url:up.url,caption:file.name||null})});
-    if(r&&r.ok){toast(isPdf?'Fil tilføjet ✓':'Billede tilføjet ✓','✓');reloadPdCurrent();}
-  }catch(err){toast(isPdf?'Kunne ikke uploade filen':'Kunne ikke uploade billedet','❌');}
+  if(files.length)await pdUploadFiles(files);
+}
+function pdInitPhotoDrop(){
+  var zone=document.getElementById('pd-photos-drop');
+  if(!zone||zone._pdDropInit)return;
+  zone._pdDropInit=true;
+  var depth=0;
+  function hasFiles(e){return e.dataTransfer&&Array.prototype.indexOf.call(e.dataTransfer.types||[],'Files')>-1;}
+  zone.addEventListener('dragenter',function(e){if(!hasFiles(e))return;e.preventDefault();depth++;zone.classList.add('dragover');});
+  zone.addEventListener('dragover',function(e){if(!hasFiles(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';});
+  zone.addEventListener('dragleave',function(e){if(!hasFiles(e))return;depth=Math.max(0,depth-1);if(!depth)zone.classList.remove('dragover');});
+  zone.addEventListener('drop',function(e){if(!hasFiles(e))return;e.preventDefault();depth=0;zone.classList.remove('dragover');pdUploadFiles(e.dataTransfer.files);});
 }
 function renderPdTime(){
   var body=document.getElementById('pd-time-body');
