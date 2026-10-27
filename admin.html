@@ -1676,6 +1676,12 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .crmp-card:hover{box-shadow:0 4px 14px rgba(15,17,24,.1)}
 .crmp-card.dragging{opacity:.4}
 .crmp-card-name{font-size:13px;font-weight:800;color:var(--bly-ink);margin-bottom:4px}
+/* RUNDE ED (Martin: "i pibeline tager den hele tilbudslinjensnavn og
+   undertekster ... maks en linje så kan man trykke på den hvis man vil læse
+   mere") — scopet til kun selve sagens Pipeline-fane (#pd-pipeline-board),
+   IKKE .crmp-card-name generelt, som også bruges af CRM'ets egen kanban
+   andre steder, hvor navnene typisk er korte i forvejen og ikke skal klippes. */
+#pd-pipeline-board .crmp-card-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crmp-card-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--bly-sub);margin-top:3px}
 .crmp-card-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .crmp-card-badge{background:var(--bly-accent-soft);color:var(--bly-accent);font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px}
@@ -4249,7 +4255,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.23 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.24 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -31081,8 +31087,20 @@ var pdPipelineDragId=null;
 function pdPipelineCardHtml(t){
   var sd=t.start_date?fmtDaDate(t.start_date):'?',ed=t.end_date?fmtDaDate(t.end_date):sd;
   var progressPct=Math.round((Number(t.progress)||0)*100);
+  var name=t.name||'(uden navn)';
+  // RUNDE ED (Martin: "i pibeline tager den hele tilbudslinjensnavn og
+  // undertekster. det ser dumt ud maks en linje så kan man trykke på den
+  // hvis man vil læse mere") — opgaver oprettet fra "Opret opgaver fra
+  // tilbud" arver tilbudslinjens FULDE beskrivelse (ofte flere afsnit) som
+  // navn, hvilket kunne fylde hele kortet ud. Klippes nu til én linje med
+  // "…" (se #pd-pipeline-board .crmp-card-name i CSS'en — scopet kun til
+  // selve Pipeline-fanen, rører ikke CRM'ets egen kanban, som deler samme
+  // .crmp-card-klasse). "Læs mere": hele kortet er allerede klikbart og
+  // åbner opgavens fulde detaljer (openPdTaskDetail, se klik-lytteren i
+  // renderPdPipeline) — title-attributten giver desuden den fulde tekst som
+  // tooltip ved hover, uden at skulle klikke.
   return '<div class="crmp-card" draggable="true" data-id="'+esc(t.id)+'">'
-    +'<div class="crmp-card-name">'+esc(t.name||'(uden navn)')+'</div>'
+    +'<div class="crmp-card-name" title="'+esc(name)+'">'+esc(name)+'</div>'
     +'<div class="crmp-card-row">'+esc(sd)+' – '+esc(ed)+'</div>'
     +'<div class="crmp-card-row" style="align-items:center">'
     +'<div class="pd-pipeline-progress-bar"><div class="pd-pipeline-progress-fill" style="width:'+progressPct+'%"></div></div>'
