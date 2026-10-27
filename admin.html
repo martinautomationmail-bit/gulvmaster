@@ -4400,7 +4400,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.32.1 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.33.0 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -4510,6 +4510,28 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
 @keyframes ai-spin{to{transform:rotate(360deg)}}
 @keyframes ai-nudge{0%,100%{translate:0 0}50%{translate:0 -4px}}
 .ai-busy-note{align-self:center;font-size:11px;color:var(--bly-sub);margin-top:-4px}
+.ai-steps{display:flex;flex-direction:column;gap:2px}
+.ai-step-done{font-size:11px;color:#15803D}
+.ai-secs{font-size:10.5px;color:#9CA3AF;margin-left:4px}
+.ai-typing{max-width:92%}
+.ai-src.muted{background:#F3F4F6;color:var(--bly-sub)}
+.ai-mini.on{color:var(--bly-accent);font-weight:700}
+.ai-mini.danger:hover{background:#FEF2F2;color:#B91C1C}
+.ai-corr{align-self:stretch;border:1px solid #C7D2FE;background:#F5F7FF;border-radius:12px;padding:10px 12px;margin-top:-4px}
+.ai-corr-title{font-size:12px;font-weight:700;color:var(--bly-ink);margin-bottom:6px}
+.ai-corr textarea,.ai-learn-add textarea{width:100%;box-sizing:border-box;border:1px solid var(--bly-border);border-radius:8px;padding:8px 10px;font:inherit;font-size:12.5px;resize:vertical;background:#fff}
+.ai-corr-hint{font-size:10.5px;color:var(--bly-sub);margin-top:4px}
+.ai-corr-btns{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+.ai-corr-save{border:0;background:#111318;color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.ai-corr-save:disabled{opacity:.5}
+.ai-learn h4{margin:10px 0 2px;font-size:14px;font-weight:800}
+.ai-learn p{margin:0 0 10px;font-size:12px;color:var(--bly-sub)}
+.ai-learn-add{display:flex;gap:6px;align-items:flex-end;margin-bottom:12px}
+.ai-learn-item{background:#fff;border:1px solid var(--bly-border-soft);border-radius:10px;padding:9px 12px;margin-bottom:8px;position:relative}
+.ai-learn-text{font-size:12.5px;color:var(--bly-ink);padding-right:44px;line-height:1.45}
+.ai-learn-meta{font-size:10.5px;color:var(--bly-sub);margin-top:4px}
+.ai-learn-item .ai-mini{position:absolute;top:6px;right:6px}
+.ai-learn-empty{font-size:12px;color:var(--bly-sub);padding:12px 0}
 @media(max-width:640px){
   #ai-panel.ai-placed,#ai-panel.ai-placed.wide{left:0!important;top:0!important;bottom:0!important}
   .ai-head{cursor:default}
@@ -38118,26 +38140,79 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
     if(p==='kundebesog')return ['Hvilke kundebesøg mangler stadig en rapport?','Hvor mange kundebesøg har vi haft denne måned vs. sidste måned?','Hvem har flest kundebesøg de næste 14 dage?'];
     return ['Hvor mange leads fik vi denne uge vs. sidste uge?','Hvor mange dage tager gulvslibning af 60 m²?','Hvilke tilbud er sendt men ikke accepteret de sidste 30 dage?','Hvem er booket i morgen, og hvor?'];
   }
+  // RUNDE FD — samtalen kører som et baggrundsjob på serveren; her vises
+  // trinene live (aiSteps), og job-id'et gemmes så svaret også kan hentes
+  // efter en genindlæsning. "👎 Ret" gemmer en rettelse som assistenten
+  // bruger i alle fremtidige samtaler (aiView='learnings' viser listen).
+  var aiSteps=[],aiStartedAt=0,aiTick=null,aiCorrIdx=-1,aiView='chat',aiLearnings=null;
+  function jobKey(){return 'gm_ai_job_v1_'+((typeof me!=='undefined'&&me&&me.id)||'x');}
+  function aiTypingHtml(){
+    var secs=aiStartedAt?Math.round((Date.now()-aiStartedAt)/1000):0;
+    var cur=aiSteps.length?aiSteps[aiSteps.length-1]:'Starter';
+    var seen={},done=aiSteps.slice(0,-1).filter(function(s){if(s==='Tænker'||s==='Vurderer resultaterne'||s===cur||seen[s])return false;seen[s]=1;return true;});
+    return '<div class="ai-typing" id="ai-typing"><div style="display:flex;flex-direction:column;gap:5px;min-width:0">'
+      +(done.length?'<div class="ai-steps">'+done.slice(-5).map(function(s){return '<div class="ai-step-done">✓ '+aiEsc(s)+'</div>';}).join('')+'</div>':'')
+      +'<div style="display:flex;align-items:center;gap:10px"><span class="ai-dots"><i></i><i></i><i></i></span><span id="ai-typing-text">'+aiEsc(cur)+'…</span><span class="ai-secs">'+secs+' sek.</span></div>'
+      +'</div></div><div class="ai-busy-note">Du kan godt lukke panelet — svaret kommer i baggrunden</div>';
+  }
   function aiRender(){
     var body=document.getElementById('ai-body');
+    if(aiView==='learnings'){aiRenderLearnings();return;}
     if(!aiMsgs.length){
       var name=(typeof me!=='undefined'&&me&&me.name)?me.name.split(' ')[0]:'';
-      body.innerHTML='<div class="ai-welcome"><h4>Hej'+(name?' '+aiEsc(name):'')+' 👋</h4><p>Jeg kan slå op i alt i programmet: tidskataloget, tidligere tilbud og deres dage, leads, tilbud, kundebesøg og planlægning. Jeg kan kun læse — jeg ændrer aldrig noget.</p><div class="ai-suggest">'
+      body.innerHTML='<div class="ai-welcome"><h4>Hej'+(name?' '+aiEsc(name):'')+' 👋</h4><p>Jeg kan slå op i alt i programmet: tidskataloget, tidligere tilbud og hvor mange dage I faktisk brugte, leads, tilbud, kundebesøg og planlægning. Nævn gerne et tilbudsnummer, fx TIL-2026-0381. Jeg kan kun læse — jeg ændrer aldrig noget.</p><div class="ai-suggest">'
         +aiSuggestions().map(function(s){return '<button type="button" class="ai-sug" data-ai-sug="'+aiEsc(s)+'">'+aiEsc(s)+'</button>';}).join('')+'</div></div>';
     } else {
       body.innerHTML=aiMsgs.map(function(m,i){
         if(m.role==='user')return '<div class="ai-msg user">'+aiEsc(m.content)+'</div>';
-        var src=(m.sources&&m.sources.length)?'<div class="ai-sources">'+m.sources.map(function(s){return '<span class="ai-src">'+aiEsc(s)+'</span>';}).join('')+'</div>':'';
-        return '<div class="ai-msg bot'+(m.error?' err':'')+'">'+(m.error?aiEsc(m.content):aiMd(m.content))+src+'</div>'
-          +(m.error?'<div class="ai-msg-actions"><button class="ai-mini" type="button" data-ai-retry="'+i+'">↻ Prøv igen</button></div>':'<div class="ai-msg-actions"><button class="ai-mini" type="button" data-ai-copy="'+i+'">Kopiér</button></div>');
+        var src=(m.sources&&m.sources.length)?'<div class="ai-sources">'+m.sources.map(function(s){return '<span class="ai-src">'+aiEsc(s)+'</span>';}).join('')+(m.secs?'<span class="ai-src muted">'+m.secs+' sek.</span>':'')+'</div>':'';
+        var actions;
+        if(m.error)actions='<button class="ai-mini" type="button" data-ai-retry="'+i+'">↻ Prøv igen</button>';
+        else actions='<button class="ai-mini" type="button" data-ai-copy="'+i+'">Kopiér</button>'
+          +'<button class="ai-mini'+(m.rating==='up'?' on':'')+'" type="button" data-ai-up="'+i+'" title="Godt svar">👍</button>'
+          +(m.corrected?'<span class="ai-mini on">✓ Rettelse gemt</span><button class="ai-mini" type="button" data-ai-reask="'+i+'">↻ Svar igen</button>'
+            :'<button class="ai-mini" type="button" data-ai-corr="'+i+'" title="Forkert svar — ret det, så jeg husker det næste gang">👎 Ret</button>');
+        var corr=aiCorrIdx===i?'<div class="ai-corr"><div class="ai-corr-title">Hvad var forkert — og hvad er det rigtige?</div><textarea id="ai-corr-text" rows="3" placeholder="Fx: Slibning af 60 m² inkl. lak tager os 3 dage, ikke 5. Fugning lægger 1 dag oven i."></textarea><div class="ai-corr-hint">Jeg husker det og bruger det i alle fremtidige svar (for hele teamet).</div><div class="ai-corr-btns"><button type="button" class="ai-mini" data-ai-corr-cancel="1">Annuller</button><button type="button" class="ai-corr-save" data-ai-corr-save="'+i+'">Gem rettelse</button></div></div>':'';
+        return '<div class="ai-msg bot'+(m.error?' err':'')+'">'+(m.error?aiEsc(m.content):aiMd(m.content))+src+'</div><div class="ai-msg-actions">'+actions+'</div>'+corr;
       }).join('');
     }
-    if(aiBusy)body.insertAdjacentHTML('beforeend','<div class="ai-typing" id="ai-typing"><span class="ai-dots"><i></i><i></i><i></i></span><span id="ai-typing-text">Tænker…</span></div><div class="ai-busy-note">Du kan godt lukke panelet — svaret kommer i baggrunden</div>');
-    body.scrollTop=body.scrollHeight;
+    if(aiBusy)body.insertAdjacentHTML('beforeend',aiTypingHtml());
+    if(aiCorrIdx<0)body.scrollTop=body.scrollHeight;
     var lbl=aiCtxLabel();
     document.getElementById('ai-ctx').classList.toggle('show',!!lbl);
     document.getElementById('ai-ctx-text').textContent=lbl;
     document.getElementById('ai-send-btn').disabled=aiBusy;
+  }
+  function aiRenderTyping(){
+    var t=document.getElementById('ai-typing');
+    if(!t){aiRender();return;}
+    var note=t.nextElementSibling;
+    var wrap=document.createElement('div');wrap.innerHTML=aiTypingHtml();
+    t.replaceWith(wrap.firstChild);
+    if(note&&note.classList.contains('ai-busy-note'))note.remove();
+    var nt=document.getElementById('ai-typing');if(nt)nt.insertAdjacentHTML('afterend','<div class="ai-busy-note">Du kan godt lukke panelet — svaret kommer i baggrunden</div>');
+    var body=document.getElementById('ai-body');body.scrollTop=body.scrollHeight;
+  }
+  async function aiLoadLearnings(){
+    var r=await api('/api/ai/assistant/learnings');
+    aiLearnings=(r&&r.ok)?r.learnings:[];
+    if(aiStatus)aiStatus.learnings_count=aiLearnings.length;
+    aiRenderFoot();
+  }
+  function aiRenderLearnings(){
+    var body=document.getElementById('ai-body');
+    var list=aiLearnings||[];
+    body.innerHTML='<div class="ai-learn">'
+      +'<button type="button" class="ai-mini" data-ai-back="1">← Tilbage til samtalen</button>'
+      +'<h4>Rettelser og regler</h4><p>Det her har I lært assistenten. Det sendes med i hvert spørgsmål og vejer tungere end kataloget.</p>'
+      +'<div class="ai-learn-add"><textarea id="ai-learn-new" rows="2" placeholder="Ny regel, fx: Sildeben fuldlimet tager altid mindst 2 dage uanset størrelse."></textarea><button type="button" class="ai-corr-save" data-ai-learn-add="1">Tilføj</button></div>'
+      +(aiLearnings===null?'<div class="ai-learn-empty">Henter…</div>':(list.length?list.map(function(l){
+        var d=l.at?new Date(l.at).toLocaleDateString('da-DK',{day:'numeric',month:'short'}):'';
+        return '<div class="ai-learn-item"><div class="ai-learn-text">'+aiEsc(l.text)+'</div>'
+          +'<div class="ai-learn-meta">'+aiEsc(l.by||'')+(d?' · '+d:'')+(l.question?' · ved: “'+aiEsc(l.question.slice(0,80))+'”':'')+'</div>'
+          +(l.can_delete?'<button type="button" class="ai-mini danger" data-ai-learn-del="'+aiEsc(l.id)+'">Slet</button>':'')+'</div>';
+      }).join(''):'<div class="ai-learn-empty">Ingen rettelser endnu. Tryk 👎 Ret under et svar, eller tilføj en regel her.</div>'))
+      +'</div>';
   }
   function aiRenderFoot(){
     var f=document.getElementById('ai-foot');
@@ -38146,11 +38221,12 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
     var c=aiStatus.catalog||{},parts=[];
     if(c.fetched_at){
       var d=new Date(c.fetched_at);
-      parts.push('<span'+(c.error?' class="warn" title="'+aiEsc(c.error)+'"':'')+'>Tidskatalog '+(c.error?'(gemt kopi) ':'')+d.toLocaleString('da-DK',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' · '+(c.sheets||[]).length+' ark</span>');
-    } else if(c.error){parts.push('<span class="warn" title="'+aiEsc(c.error)+'">Tidskatalog kunne ikke hentes</span>');}
-    else parts.push('<span>Tidskatalog hentes ved første spørgsmål</span>');
-    parts.push('<button type="button" id="ai-cat-refresh">Opdater nu</button>');
+      parts.push('<span'+(c.error?' class="warn" title="'+aiEsc(c.error)+'"':'')+'>Katalog '+(c.error?'(gemt kopi) ':'')+d.toLocaleString('da-DK',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'</span>');
+    } else if(c.error){parts.push('<span class="warn" title="'+aiEsc(c.error)+'">Katalog kunne ikke hentes</span>');}
+    else parts.push('<span>Katalog hentes ved første spørgsmål</span>');
+    parts.push('<button type="button" id="ai-cat-refresh">Opdater</button>');
     if(aiStatus.can_admin)parts.push('<span class="sep">·</span><button type="button" id="ai-cat-link">Skift link</button>');
+    parts.push('<span class="sep">·</span><button type="button" id="ai-learn-open">Rettelser ('+(aiStatus.learnings_count||0)+')</button>');
     f.innerHTML=parts.join(' ');
   }
   async function aiLoadStatus(){
@@ -38166,24 +38242,16 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
     } else if(r&&r.error)toast(r.error,'❌');
     aiRenderFoot();
   }
-  async function aiSend(text){
-    text=String(text||'').trim();
-    if(!text||aiBusy)return;
-    aiMsgs.push({role:'user',content:text});
-    aiBusy=true;document.body.classList.add('ai-busy');aiFabLabel();aiRender();aiSaveHistory();
-    var slow=setTimeout(function(){var t=document.getElementById('ai-typing-text');if(t)t.textContent='Slår op i data…';},2500);
-    var slower=setTimeout(function(){var t=document.getElementById('ai-typing-text');if(t)t.textContent='Sammenligner og regner…';},9000);
-    var history=aiMsgs.filter(function(m){return !m.error;}).slice(-20).map(function(m){return {role:m.role,content:m.content};});
-    var r=null;
-    try{
-      var resp=await fetch(API+'/api/ai/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({messages:history,page_context:aiPageContext()})});
-      r=await resp.json().catch(function(){return {error:'Ugyldigt svar fra serveren'};});
-      if(resp.status===401){logout();return;}
-    }catch(e){r={error:'Netværksfejl — tjek forbindelsen og prøv igen'};}
-    clearTimeout(slow);clearTimeout(slower);
-    aiBusy=false;document.body.classList.remove('ai-busy');
+  function aiSetBusy(on){
+    aiBusy=on;document.body.classList.toggle('ai-busy',on);aiFabLabel();
+    clearInterval(aiTick);aiTick=null;
+    if(on)aiTick=setInterval(function(){if(document.body.classList.contains('ai-open')&&aiView==='chat'){var s=document.querySelector('#ai-typing .ai-secs');if(s)s.textContent=Math.round((Date.now()-aiStartedAt)/1000)+' sek.';}},1000);
+  }
+  function aiFinish(r,secs){
+    aiSetBusy(false);
+    try{localStorage.removeItem(jobKey());}catch(e){}
     var wasClosed=!document.body.classList.contains('ai-open');
-    if(r&&r.ok)aiMsgs.push({role:'assistant',content:r.reply,sources:r.sources||[]});
+    if(r&&r.ok)aiMsgs.push({role:'assistant',content:r.reply,sources:r.sources||[],secs:secs});
     else aiMsgs.push({role:'assistant',content:(r&&r.error)||'Noget gik galt',error:true});
     aiSaveHistory();aiRender();
     // Panelet blev lukket mens AI'en arbejdede — svaret er gemt i samtalen;
@@ -38191,6 +38259,50 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
     if(wasClosed){document.body.classList.add('ai-has-reply');toast(r&&r.ok?'AI har svaret — klik på knappen for at se det':'AI-svaret fejlede — åbn panelet for at prøve igen',r&&r.ok?'✨':'⚠️');}
     aiFabLabel();
     if(!aiStatus||!aiStatus.catalog||!aiStatus.catalog.fetched_at)aiLoadStatus();
+  }
+  async function aiPoll(jobId){
+    var misses=0;
+    while(true){
+      await new Promise(function(res){setTimeout(res,900);});
+      var r=null;
+      try{
+        var resp=await fetch(API+'/api/ai/assistant/jobs/'+encodeURIComponent(jobId),{headers:{'Authorization':'Bearer '+token}});
+        if(resp.status===401){logout();return;}
+        r=await resp.json().catch(function(){return null;});
+        if(resp.status===404){aiFinish({error:(r&&r.error)||'Svaret gik tabt (serveren blev genstartet) — stil spørgsmålet igen'});return;}
+      }catch(e){r=null;}
+      if(!r||!r.ok){if(++misses>20){aiFinish({error:'Mistede forbindelsen til serveren — prøv igen'});return;}continue;}
+      misses=0;
+      if(Array.isArray(r.steps)&&r.steps.length!==aiSteps.length){aiSteps=r.steps;if(document.body.classList.contains('ai-open')&&aiView==='chat')aiRenderTyping();}
+      if(r.status==='done'){aiFinish({ok:true,reply:r.reply,sources:r.sources},r.seconds);return;}
+      if(r.status==='error'){aiFinish({error:r.error||'Noget gik galt'});return;}
+    }
+  }
+  async function aiSend(text){
+    text=String(text||'').trim();
+    if(!text||aiBusy)return;
+    aiView='chat';aiCorrIdx=-1;
+    aiMsgs.push({role:'user',content:text});
+    aiSteps=[];aiStartedAt=Date.now();
+    aiSetBusy(true);aiRender();aiSaveHistory();
+    var history=aiMsgs.filter(function(m){return !m.error;}).slice(-20).map(function(m){return {role:m.role,content:m.content};});
+    var r=null;
+    try{
+      var resp=await fetch(API+'/api/ai/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({messages:history,page_context:aiPageContext()})});
+      if(resp.status===401){logout();return;}
+      r=await resp.json().catch(function(){return {error:'Ugyldigt svar fra serveren'};});
+    }catch(e){r={error:'Netværksfejl — tjek forbindelsen og prøv igen'};}
+    if(!r||!r.ok||!r.job_id){aiFinish(r);return;}
+    try{localStorage.setItem(jobKey(),JSON.stringify({id:r.job_id,at:aiStartedAt}));}catch(e){}
+    aiPoll(r.job_id);
+  }
+  // Et spørgsmål der stadig var i gang da siden blev genindlæst, hentes færdigt.
+  function aiResume(){
+    var j=null;try{j=JSON.parse(localStorage.getItem(jobKey())||'null');}catch(e){}
+    if(!j||!j.id)return;
+    if(Date.now()-(j.at||0)>25*60*1000){try{localStorage.removeItem(jobKey());}catch(e){}return;}
+    aiSteps=[];aiStartedAt=j.at||Date.now();aiSetBusy(true);
+    aiPoll(j.id);
   }
   function aiFabLabel(){
     var l=document.querySelector('#ai-fab .ai-fab-label');if(!l)return;
@@ -38282,6 +38394,7 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
     if(/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent||'')){var kb=document.querySelector('#ai-fab kbd');if(kb)kb.textContent='⌘J';document.getElementById('ai-fab').title='Spørg Gulv Master AI (⌘J)';}
     if(!(window.SpeechRecognition||window.webkitSpeechRecognition))document.getElementById('ai-mic-btn').style.display='none';
     aiLoadPos();
+    aiResume();
     var fabEl=document.getElementById('ai-fab'),panelEl=document.getElementById('ai-panel');
     if(aiPos.fab)requestAnimationFrame(function(){aiPlace(fabEl,aiPos.fab);});
     aiMakeDraggable(fabEl,fabEl,'fab');
@@ -38297,7 +38410,7 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
     fabEl.addEventListener('click',function(){if(fabEl._aiJustDragged)return;aiOpen();});
     document.getElementById('ai-close-btn').addEventListener('click',aiClose);
     document.getElementById('ai-expand-btn').addEventListener('click',function(){document.getElementById('ai-panel').classList.toggle('wide');aiApplyPanelPos();});
-    document.getElementById('ai-new-btn').addEventListener('click',function(){if(aiBusy)return;aiMsgs=[];aiSaveHistory();aiRender();document.getElementById('ai-text').focus();});
+    document.getElementById('ai-new-btn').addEventListener('click',function(){if(aiBusy)return;aiView='chat';aiCorrIdx=-1;aiMsgs=[];aiSaveHistory();aiRender();document.getElementById('ai-text').focus();});
     document.getElementById('ai-send-btn').addEventListener('click',function(){var t=document.getElementById('ai-text');var v=t.value;t.value='';aiAutosize();aiStopRec();aiSend(v);});
     document.getElementById('ai-mic-btn').addEventListener('click',aiToggleRec);
     var ta=document.getElementById('ai-text');
@@ -38310,11 +38423,40 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
       var s=e.target.closest('[data-ai-sug]');if(s){aiSend(s.dataset.aiSug);return;}
       var c=e.target.closest('[data-ai-copy]');
       if(c){var m=aiMsgs[Number(c.dataset.aiCopy)];if(m&&navigator.clipboard){navigator.clipboard.writeText(m.content).then(function(){toast('Kopieret','✓');});}return;}
+      var up=e.target.closest('[data-ai-up]');
+      if(up){var mu=aiMsgs[Number(up.dataset.aiUp)];if(mu){mu.rating=mu.rating==='up'?null:'up';aiSaveHistory();aiRender();}return;}
+      var co=e.target.closest('[data-ai-corr]');
+      if(co){aiCorrIdx=Number(co.dataset.aiCorr);aiRender();var ta2=document.getElementById('ai-corr-text');if(ta2){ta2.focus();ta2.scrollIntoView({block:'nearest'});}return;}
+      if(e.target.closest('[data-ai-corr-cancel]')){aiCorrIdx=-1;aiRender();return;}
+      var cs=e.target.closest('[data-ai-corr-save]');
+      if(cs){
+        var idx2=Number(cs.dataset.aiCorrSave),txt=(document.getElementById('ai-corr-text').value||'').trim();
+        if(txt.length<4){toast('Skriv hvad der var forkert','⚠️');return;}
+        var qMsg=null;for(var k=idx2-1;k>=0;k--){if(aiMsgs[k].role==='user'){qMsg=aiMsgs[k];break;}}
+        cs.disabled=true;
+        api('/api/ai/assistant/learnings',{method:'POST',body:JSON.stringify({text:txt,question:qMsg?qMsg.content:''})}).then(function(res){
+          if(res&&res.ok){aiMsgs[idx2].corrected=true;aiCorrIdx=-1;aiSaveHistory();if(aiStatus)aiStatus.learnings_count=res.count;aiLearnings=null;aiRenderFoot();aiRender();toast('Rettelse gemt — jeg bruger den fremover','✓');}
+          else{cs.disabled=false;toast((res&&res.error)||'Kunne ikke gemme','❌');}
+        });
+        return;
+      }
+      var ra=e.target.closest('[data-ai-reask]');
+      if(ra){var j2=Number(ra.dataset.aiReask);for(var k2=j2-1;k2>=0;k2--){if(aiMsgs[k2].role==='user'){aiSend(aiMsgs[k2].content);break;}}return;}
+      if(e.target.closest('[data-ai-back]')){aiView='chat';aiRender();return;}
+      if(e.target.closest('[data-ai-learn-add]')){
+        var nt=(document.getElementById('ai-learn-new').value||'').trim();
+        if(nt.length<4){toast('Skriv reglen først','⚠️');return;}
+        api('/api/ai/assistant/learnings',{method:'POST',body:JSON.stringify({text:nt})}).then(function(res){if(res&&res.ok){toast('Regel gemt','✓');aiLoadLearnings().then(aiRender);}else toast((res&&res.error)||'Kunne ikke gemme','❌');});
+        return;
+      }
+      var ld=e.target.closest('[data-ai-learn-del]');
+      if(ld){if(!confirm('Slet denne rettelse?'))return;api('/api/ai/assistant/learnings/'+encodeURIComponent(ld.dataset.aiLearnDel),{method:'DELETE'}).then(function(res){if(res&&res.ok){aiLoadLearnings().then(aiRender);}else toast((res&&res.error)||'Kunne ikke slette','❌');});return;}
       var r=e.target.closest('[data-ai-retry]');
       if(r){var idx=Number(r.dataset.aiRetry);var q=aiMsgs[idx-1];aiMsgs.splice(idx-1,2);aiRender();if(q&&q.role==='user')aiSend(q.content);}
     });
     document.getElementById('ai-foot').addEventListener('click',function(e){
       if(e.target.id==='ai-cat-refresh')aiRefreshCatalog();
+      if(e.target.id==='ai-learn-open'){aiView='learnings';aiLearnings=null;aiRender();aiLoadLearnings().then(function(){if(aiView==='learnings')aiRender();});}
       if(e.target.id==='ai-cat-link'){
         var cur=(aiStatus&&aiStatus.catalog&&aiStatus.catalog.url)||'';
         var u=prompt('Link til tidskataloget (Google Sheets/Drive).\nArket skal være delt med "Alle med linket kan se".',cur);
