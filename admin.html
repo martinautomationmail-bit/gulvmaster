@@ -1261,8 +1261,9 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #page-plan .week-bar .btn:hover{background:var(--bly-hover)}
 #page-plan .week-bar .btn.primary{background:var(--bly-ink);color:#fff}
 /* ══ RUNDE FH — Daglig planlægning: Tabel / Ressource / Dagskort ══ */
-.plan-viewswitch{display:inline-flex;gap:2px;background:#fff;border:1px solid var(--bly-border);border-radius:999px;padding:4px;margin:0 0 10px}
-.plan-viewswitch button{border:0;background:transparent;border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:700;color:var(--bly-sub);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.plan-page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.plan-viewswitch{display:inline-flex;gap:3px;background:#fff;border:1px solid var(--bly-border);border-radius:999px;padding:5px;margin:0;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+.plan-viewswitch button{border:0;background:transparent;border-radius:999px;padding:9px 18px;font-size:13.5px;font-weight:700;color:var(--bly-sub);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .plan-viewswitch button:hover{color:var(--bly-ink);background:var(--bly-hover)}
 .plan-viewswitch button.active{background:var(--bly-ink);color:#fff}
 .plan-viewswitch button svg{width:14px;height:14px}
@@ -4547,7 +4548,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.35.0 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.35.1 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -8684,10 +8685,16 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
        RUNDE H #24 (sep. 2026) — de 6 KPI-kort (#stats/renderStats) er fjernet
        herfra på Martins ønske ("ikke brugbare") — se også renderStats-kaldet i
        loadAll() og selve funktionsdefinitionen, som er fjernet samme sted. -->
-  <div class="page-head">
+  <div class="page-head plan-page-head">
     <div>
       <div class="page-title">Daglig planlægning</div>
     </div>
+    <!-- RUNDE FH — visningsskift (Tabel/Ressource/Dagskort), se planSetView(). -->
+      <div class="plan-viewswitch" id="plan-viewswitch" role="tablist">
+        <button type="button" data-plan-view="classic" title="Den klassiske tabel med alle uger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>Tabel</button>
+        <button type="button" data-plan-view="resource" title="Én linje pr. medarbejder hen over ugen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M3 12h16M3 18h7"/></svg>Ressource</button>
+        <button type="button" data-plan-view="cards" title="Én kolonne pr. dag med store kort"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg>Dagskort</button>
+      </div>
   </div>
   <!-- Sagsstatus-bobler (sep. 2026, Martins ønske) — samme .bly-kpi-card/"Billy"-
        komponent og samme grid-opsætning som status-boblerne på Projekter-siden
@@ -8770,12 +8777,6 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
       </div>
     </aside>
     <section>
-      <!-- RUNDE FH — visningsskift (Tabel/Ressource/Dagskort), se planSetView(). -->
-      <div class="plan-viewswitch" id="plan-viewswitch" role="tablist">
-        <button type="button" data-plan-view="classic" title="Den klassiske tabel med alle uger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>Tabel</button>
-        <button type="button" data-plan-view="resource" title="Én linje pr. medarbejder hen over ugen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M3 12h16M3 18h7"/></svg>Ressource</button>
-        <button type="button" data-plan-view="cards" title="Én kolonne pr. dag med store kort"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg>Dagskort</button>
-      </div>
       <div class="week-bar">
         <button class="btn small" id="plan-prev">← Forrige</button>
         <strong class="week-label" id="plan-label"></strong>
