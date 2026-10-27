@@ -1658,6 +1658,19 @@ async function initSchema() {
     -- før denne kolonne fandtes) automatisk tæller som almindelige kundebesøg.
     ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS visit_type TEXT NOT NULL DEFAULT 'kundebesog';
     CREATE INDEX IF NOT EXISTS idx_customer_visits_customer ON customer_visits(customer_id);
+    -- RUNDE EH (Martin: "gøre lige sådan at jeg kan lave om i de spørgsmål,
+    -- felter osv som tilføjes til et kundebesøg formel pt tror jeg ikke det
+    -- muligt") — besøgsrapportens 5 indbyggede felter (room_size m.fl.) blev
+    -- indtil nu, bogstaveligt talt, hårdkodet ind i både employee.html og
+    -- admin.html. Martin kan nu selv redigere/omdøbe/skjule dem OG tilføje
+    -- helt nye felter (se GET/PUT /api/visit-report-fields og app_settings-
+    -- nøglen 'visit_report_fields') — men de 5 originale felter har hver sin
+    -- egen kolonne (room_size osv.), af hensyn til al eksisterende data og
+    -- de steder i appen der allerede læser dem direkte (CRM-kundekort,
+    -- Kundebesøg-listen). Et NYT felt Martin selv opretter har INGEN egen
+    -- kolonne — her, i stedet, som en fri {felt-nøgle: svar}-liste, samme
+    -- princip som qa_submissions.answers.
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS custom_fields JSONB NOT NULL DEFAULT '{}';
     -- customer_photo_requests (RUNDE BK) — kundens svar-/billed-link (/svar/:token).
     -- Kunden kan uploade et vilkårligt antal billeder, UDEN at afhænge af at Gmail
     -- rent faktisk fanger dem korrekt (se gmailWalkPayload-rettelsen, RUNDE BG) —
@@ -9834,6 +9847,19 @@ app.put('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
     // som andre billed-lister i appen (se time_entries.photo_urls).
     photo_urls: Array.isArray(body.photo_urls) ? body.photo_urls.filter(Boolean).map(String).slice(0, 20) : (existing?.photo_urls || [])
   };
+  // RUNDE EH — svar på Martins egne, selvtilføjede felter (se /api/visit-report-fields).
+  // Fri {felt-nøgle: tekst}-liste, IKKE de 5 indbyggede felter ovenfor (dem har deres
+  // egen kolonne). Luk ned på et simpelt, fladt object af strenge — samme defensive
+  // grænser som andre fritekstfelter i denne rute (maks 40 felter, 2000 tegn pr. svar).
+  const customFields = {};
+  if (body.custom_fields && typeof body.custom_fields === 'object' && !Array.isArray(body.custom_fields)) {
+    Object.keys(body.custom_fields).slice(0, 40).forEach(k => {
+      const key = String(k).trim().slice(0, 60);
+      if (!key) return;
+      customFields[key] = String(body.custom_fields[k] ?? '').slice(0, 2000);
+    });
+  }
+  const finalCustomFields = body.custom_fields !== undefined ? customFields : (existing?.custom_fields || {});
   // submitted_at sættes første gang formularen gemmes og ændres ikke bagefter
   // (COALESCE nedenfor) — bruges til at afgøre om besøget vises i CRM og om det
   // obligatoriske krav ved "Markér som færdig" i medarbejder-appen er opfyldt.
@@ -9848,18 +9874,94 @@ app.put('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
   // filled_by sættes derfor kun ÉN gang, ved selve oprettelsen.
   if (existing) {
     await pool.query(`
-      UPDATE customer_visits SET customer_name=$1,address=$2,phone=$3,email=$4,room_size=$5,floor_type_wanted=$6,notes=$7,recommended_solution=$8,estimated_price=$9,photo_urls=$10,submitted_at=COALESCE(submitted_at,${nowTextSQL()}),updated_at=${nowTextSQL()}
-      WHERE task_id=$11
-    `, [fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, JSON.stringify(fields.photo_urls), req.params.taskId]);
+      UPDATE customer_visits SET customer_name=$1,address=$2,phone=$3,email=$4,room_size=$5,floor_type_wanted=$6,notes=$7,recommended_solution=$8,estimated_price=$9,photo_urls=$10,custom_fields=$11,submitted_at=COALESCE(submitted_at,${nowTextSQL()}),updated_at=${nowTextSQL()}
+      WHERE task_id=$12
+    `, [fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, JSON.stringify(fields.photo_urls), JSON.stringify(finalCustomFields), req.params.taskId]);
   } else {
     await pool.query(`
-      INSERT INTO customer_visits (task_id,customer_name,address,phone,email,room_size,floor_type_wanted,notes,recommended_solution,estimated_price,filled_by,photo_urls,submitted_at,created_at,updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()},${nowTextSQL()},${nowTextSQL()})
-    `, [req.params.taskId, fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, req.user.id, JSON.stringify(fields.photo_urls)]);
+      INSERT INTO customer_visits (task_id,customer_name,address,phone,email,room_size,floor_type_wanted,notes,recommended_solution,estimated_price,filled_by,photo_urls,custom_fields,submitted_at,created_at,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,${nowTextSQL()},${nowTextSQL()},${nowTextSQL()})
+    `, [req.params.taskId, fields.customer_name, fields.address, fields.phone, fields.email, fields.room_size, fields.floor_type_wanted, fields.notes, fields.recommended_solution, fields.estimated_price, req.user.id, JSON.stringify(fields.photo_urls), JSON.stringify(finalCustomFields)]);
   }
   // Hold også selve opgaven (jt_tasks) opdateret, så navn/adresse/telefon følger med overalt i appen.
   await pool.query(`UPDATE jt_tasks SET job_name=$1, job_address=$2, customer_phone=$3 WHERE id=$4 AND is_visit=1`, [fields.customer_name, fields.address, fields.phone || null, req.params.taskId]);
   res.json({ ok: true });
+}));
+
+// RUNDE EH (Martin: "gøre lige sådan at jeg kan lave om i de spørgsmål, felter
+// osv som tilføjes til et kundebesøg formel pt tror jeg ikke det muligt") —
+// besøgsrapportens feltliste, delt af employee.html's "Besøgsrapport"-popup OG
+// admin.html's "crmpx-visit-modal", begge nu bygget dynamisk ud fra denne i
+// stedet for hårdkodede <input>-felter. Gemt som ÉN JSON-liste under
+// app_settings-nøglen 'visit_report_fields' (samme nøgle/værdi-mønster som
+// resten af appens indstillinger, se /api/settings) — der er kun ÉN
+// besøgsrapport-form i hele appen, delt af både Kundebesøg og Kvalitetskontrol/
+// eftersyn (se ALTER TABLE ... visit_type-kommentaren), så et separat
+// skabelon-system (som qa_templates, flere forskellige formularer) ville være
+// overbygning uden reelt behov lige nu.
+//
+// De 5 "builtin"-felter har hver sin egen kolonne i customer_visits (se PUT
+// ovenfor) og kan IKKE slettes — kun omdøbes, skjules (active:false) og
+// omrokeres. Et nyt felt Martin selv opretter her får en genereret nøgle og
+// lander i customer_visits.custom_fields i stedet.
+const VISIT_REPORT_BUILTIN_FIELDS = [
+  { key: 'room_size', label: 'Rummets størrelse', type: 'text', builtin: true, active: true },
+  { key: 'floor_type_wanted', label: 'Ønsket gulvtype', type: 'text', builtin: true, active: true },
+  { key: 'notes', label: 'Observationer / noter fra besøget', type: 'textarea', builtin: true, active: true },
+  { key: 'recommended_solution', label: 'Anbefalet løsning', type: 'textarea', builtin: true, active: true },
+  { key: 'estimated_price', label: 'Estimeret pris', type: 'text', builtin: true, active: true }
+];
+function sanitizeVisitReportFields(raw) {
+  // Starter altid fra de 5 builtins (så et felt der mangler i en gemt, ældre
+  // liste ikke bare forsvinder fra formularen) og lader en evt. gemt kopi
+  // overskrive label/type/active/sort — men ALDRIG key/builtin selv.
+  const byKey = {};
+  VISIT_REPORT_BUILTIN_FIELDS.forEach(f => { byKey[f.key] = Object.assign({}, f); });
+  const customOut = [];
+  (Array.isArray(raw) ? raw : []).forEach(f => {
+    if (!f || typeof f !== 'object') return;
+    const key = String(f.key || '').trim().slice(0, 60);
+    if (!key) return;
+    const label = String(f.label || '').trim().slice(0, 100) || key;
+    const type = ['text', 'textarea', 'number'].includes(f.type) ? f.type : 'text';
+    const active = f.active !== false;
+    if (byKey[key]) {
+      // Kun label/active kan ændres for et builtin-felt — IKKE dets type (fx
+      // skal 'notes' blive ved at være en textarea), kun omdøbes/skjules.
+      byKey[key].label = label || byKey[key].label;
+      byKey[key].active = key === 'notes' ? true : active; // 'notes' er selve kernen af rapporten — kan ikke skjules
+    } else {
+      customOut.push({ key, label, type, builtin: false, active });
+    }
+  });
+  // Rækkefølgen i den GEMTE liste (raw) bestemmer visningsrækkefølgen, for
+  // både builtins og custom-felter — falder tilbage til builtin-rækkefølgen
+  // ovenfor for felter der slet ikke er nævnt i raw (fx en frisk installation).
+  const orderedKeys = (Array.isArray(raw) && raw.length ? raw.map(f => f && f.key).filter(Boolean) : []);
+  VISIT_REPORT_BUILTIN_FIELDS.forEach(f => { if (!orderedKeys.includes(f.key)) orderedKeys.push(f.key); });
+  customOut.forEach(f => { if (!orderedKeys.includes(f.key)) orderedKeys.push(f.key); });
+  const all = Object.assign({}, byKey, Object.fromEntries(customOut.map(f => [f.key, f])));
+  return orderedKeys.map(k => all[k]).filter(Boolean).slice(0, 40);
+}
+app.get('/api/visit-report-fields', auth, asyncRoute(async (req, res) => {
+  const row = await pgOne("SELECT value FROM app_settings WHERE key='visit_report_fields'");
+  const saved = row ? safeJsonParse(row.value, []) : [];
+  res.json({ fields: sanitizeVisitReportFields(saved) });
+}));
+app.put('/api/visit-report-fields', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const fields = sanitizeVisitReportFields(Array.isArray(b.fields) ? b.fields.map((f, i) => {
+    // Et NYT felt fra editoren (se vfOpenEditor i admin.html) har endnu ingen
+    // nøgle — genererer én her (tidsstempel + index, kollisionsfri nok til
+    // dette formål) i stedet for at kræve det af klienten.
+    if (f && !f.key) f.key = 'custom_' + Date.now().toString(36) + '_' + i;
+    return f;
+  }) : []);
+  await pool.query(`
+    INSERT INTO app_settings (key, value) VALUES ('visit_report_fields', $1)
+    ON CONFLICT (key) DO UPDATE SET value=$1
+  `, [JSON.stringify(fields)]);
+  res.json({ ok: true, fields });
 }));
 
 // ── FLYDENDE NOTE-BLOK (personlig scratch-pad, gemmes pr. bruger) ──
@@ -11114,8 +11216,9 @@ app.get('/api/crm/customers/:id/summary', auth, panelAccessAny(['customers', 'cr
 // en tom besøgs-række der kun blev oprettet ved booking skal ikke stå som en "rapport".
 app.get('/api/crm/customers/:id/visits', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
   const result = await pool.query(`
-    SELECT v.id, v.task_id, v.room_size, v.floor_type_wanted, v.notes, v.recommended_solution,
-           v.estimated_price, v.photo_urls, v.submitted_at, v.updated_at, v.visit_type, u.name AS filled_by_name
+    SELECT v.id, v.task_id, v.customer_name, v.address, v.phone, v.room_size, v.floor_type_wanted, v.notes,
+           v.recommended_solution, v.estimated_price, v.photo_urls, v.custom_fields, v.submitted_at,
+           v.updated_at, v.visit_type, u.name AS filled_by_name
     FROM customer_visits v
     LEFT JOIN users u ON u.id = v.filled_by
     WHERE v.customer_id=$1 AND v.submitted_at IS NOT NULL

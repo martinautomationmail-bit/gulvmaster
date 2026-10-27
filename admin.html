@@ -1540,6 +1540,37 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .crmpx-visit-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
 .crmpx-visit-thumb{border-radius:8px;overflow:hidden;border:1px solid var(--bly-border-soft);aspect-ratio:1/1;background:#fff;display:block}
 .crmpx-visit-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+/* RUNDE EH — "hvem gælder besøget"-linjen øverst i crmpx-visit-modal (se
+   #crmpxv-who), og en lille fjern-knap der overlejrer et billede i
+   #crmpxv-photos (samme grid som ovenfor, men redigerbart her — se
+   crmpxVisitRenderPhotos()). */
+.crmpxv-who{display:flex;align-items:center;gap:10px;background:var(--bly-border-soft);border-radius:var(--bly-r-md);padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--bly-ink)}
+.crmpxv-who b{font-weight:800}
+.crmpxv-who .sub{display:block;margin-top:1px}
+.crmpxv-photo-item{position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--bly-border-soft);aspect-ratio:1/1;background:#fff}
+.crmpxv-photo-item img{width:100%;height:100%;object-fit:cover;display:block}
+.crmpxv-photo-remove{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(15,17,24,.65);color:#fff;border:none;cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center}
+.crmpxv-photo-remove:hover{background:#DC2626}
+/* RUNDE EH — felt-editoren (#visit-fields-modal). Hver .vf-row er ét felt;
+   et builtin-felt (room_size m.fl.) kan ikke få type ændret eller slettes,
+   kun omdøbes/skjules — se VISIT_REPORT_BUILTIN_FIELDS i server.js. */
+.vf-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--bly-border-soft)}
+.vf-row:last-child{border-bottom:0}
+.vf-row-handle{color:var(--bly-sub);font-size:11px;display:flex;flex-direction:column;gap:1px}
+.vf-row-handle button{border:1px solid var(--bly-border);background:#fff;border-radius:5px;width:20px;height:16px;cursor:pointer;font-size:9px;line-height:1;color:var(--bly-sub)}
+.vf-row-handle button:hover{background:var(--bly-hover)}
+.vf-row-handle button:disabled{opacity:.3;cursor:default}
+.vf-row-label{flex:1 1 auto;min-width:0}
+.vf-row-type{width:118px;flex:0 0 auto}
+.vf-row-builtin-tag{font-size:9.5px;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.02em;flex:0 0 auto;width:58px}
+.vf-row-active{flex:0 0 auto;display:flex;align-items:center;gap:5px;font-size:11px;color:var(--bly-sub);width:70px}
+.vf-row-del{flex:0 0 auto}
+/* RUNDE EH — status-mærke på et Kundebesøg-kort (udfyldt/mangler rapport),
+   og den nu afkortede note-forhåndsvisning (se kbRender()). */
+.kb-status{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.kb-status-done{background:#DCFCE7;color:#15803D}
+.kb-status-missing{background:#FEF3C7;color:#92570A}
+.kb-note-preview{font-size:11px;color:var(--bly-sub);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .crmpx-activity-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--bly-border-soft)}
 .crmpx-activity-item:last-child{border-bottom:0}
 .crmpx-activity-icon{width:26px;height:26px;border-radius:50%;background:var(--bly-border-soft);display:grid;place-items:center;flex-shrink:0;font-size:12px}
@@ -4268,7 +4299,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.26 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.28 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -7203,7 +7234,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 <section class="page" id="page-kundebesog">
   <div class="bly-pagehead">
     <div><h2>📅 Kundebesøg</h2><div class="sub">Alle bookede kundebesøg — hvem er ude hvornår</div></div>
-    <button class="bly-btn" id="kb-new-btn" type="button">+ Nyt kundebesøg</button>
+    <!-- RUNDE EH (Martin: "gøre lige sådan at jeg kan lave om i de spørgsmål,
+         felter osv som tilføjes til et kundebesøg formel") — åbner
+         #visit-fields-modal, se vfOpen() i scriptet. -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="bly-btn outline" id="kb-fields-btn" type="button">⚙️ Rediger besøgsrapport-formular</button>
+      <button class="bly-btn" id="kb-new-btn" type="button">+ Nyt kundebesøg</button>
+    </div>
   </div>
   <!-- RUNDE DA (Martin: "Under kundebesøg skal man så kunde skifte mellem
        Kundebesøg/Kvalitetskontrol") — filtrerer hele siden (KPI-tal, liste,
@@ -7348,32 +7385,55 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      note hvis man vil og få den ud i en stor popup så man kan se billederne
      der tilføjet og teksten mm") — stor redigerbar visning af ÉN
      besøgsrapport, åbnet ved klik på et besøgskort i Handel-detaljens højre
-     kolonne (se crmpxOpenVisitModal/crmpxSaveVisitEdit). Gemmer via den
-     samme PUT /api/customer-visits/:taskId som medarbejder-appen selv bruger
-     — "Udfyldt af" ændres bevidst IKKE ved en admin-redigering her (se
-     serverkommentar ved den rute), så æren for selve besøget bliver stående. -->
+     kolonne (se crmpxOpenVisitModal/crmpxSaveVisitEdit), OG (RUNDE EH) fra
+     selve Kundebesøg-listen (se kbOpenVisitReport) — for DÉR også at kunne
+     udfylde en rapport der slet ikke er startet endnu, ikke kun rette en
+     eksisterende. Gemmer via den samme PUT /api/customer-visits/:taskId som
+     medarbejder-appen selv bruger — "Udfyldt af" ændres bevidst IKKE ved en
+     admin-redigering her (se serverkommentar ved den rute), så æren for
+     selve besøget bliver stående.
+     RUNDE EH — felterne herunder (#crmpxv-fields-body) bygges nu dynamisk ud
+     fra /api/visit-report-fields i stedet for de 5 hårdkodede <input>-felter
+     der plejede at stå her, se crmpxRenderVisitFields(). -->
 <div class="mo" id="crmpx-visit-modal">
   <div class="modal" style="max-width:min(760px,94vw);max-height:92vh;overflow:auto">
     <h3 style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
       <span>📅 Besøgsrapport <span class="sub" id="crmpx-visit-modal-date"></span></span>
       <span class="sub" id="crmpx-visit-modal-by"></span>
     </h3>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Rummets størrelse</label><input id="crmpxv-room" class="input"></div>
-      <div class="form-group"><label class="form-label">Ønsket gulvtype</label><input id="crmpxv-floortype" class="input"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Anbefalet løsning</label><input id="crmpxv-solution" class="input"></div>
-      <div class="form-group"><label class="form-label">Estimeret pris</label><input id="crmpxv-price" class="input"></div>
-    </div>
-    <div class="form-group"><label class="form-label">Note</label><textarea id="crmpxv-notes" class="input" rows="5" style="resize:vertical"></textarea></div>
+    <!-- RUNDE EH — selve rapport-popup'en viste før INTET om hvem besøget
+         gjaldt (kun dato+udfyldt-af) — tilføjet her, så popup'en giver mening
+         på egen hånd når den åbnes direkte fra Kundebesøg-listen. -->
+    <div class="crmpxv-who" id="crmpxv-who" style="display:none"></div>
+    <div id="crmpxv-fields-body"></div>
     <div class="form-group">
-      <label class="form-label">Billeder</label>
-      <div id="crmpxv-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px"></div>
+      <label class="form-label">📷 Billeder</label>
+      <div id="crmpxv-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:8px"></div>
+      <input type="file" accept="image/*" multiple id="crmpxv-photo-input" style="display:none">
+      <button type="button" class="bly-btn outline small" id="crmpxv-add-photo-btn">📷 Tilføj billede(r)</button>
     </div>
     <div class="modal-actions">
       <button class="btn" type="button" onclick="closeModal('crmpx-visit-modal')">Annuller</button>
       <button class="btn primary" type="button" id="crmpxv-save-btn">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- RUNDE EH (Martin: "gøre lige sådan at jeg kan lave om i de spørgsmål,
+     felter osv som tilføjes til et kundebesøg formel pt tror jeg ikke det
+     muligt") — editor til selve FELTLISTEN på besøgsrapporten (ikke en
+     konkret rapport, men skabelonen alle rapporter bruger, delt af
+     Kundebesøg OG Kvalitetskontrol/eftersyn). Se vfOpen()/vfRender()/vfSave()
+     i scriptet, og GET/PUT /api/visit-report-fields i server.js. -->
+<div class="mo" id="visit-fields-modal">
+  <div class="modal" style="max-width:min(640px,94vw);max-height:88vh;overflow:auto">
+    <h3>⚙️ Besøgsrapport — felter</h3>
+    <div class="sub" style="margin-top:-8px;margin-bottom:14px">Dette er felterne på selve besøgsrapporten, som medarbejderne udfylder ude hos kunden (og som I også kan udfylde herfra). De 5 første kan omdøbes og skjules, men ikke slettes. Tilføj gerne jeres egne.</div>
+    <div id="vf-list"></div>
+    <button class="bly-btn outline small" id="vf-add-btn" type="button" style="margin-top:4px">+ Tilføj felt</button>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="closeModal('visit-fields-modal')">Annuller</button>
+      <button class="btn primary" type="button" id="vf-save-btn">Gem</button>
     </div>
   </div>
 </div>
@@ -14954,6 +15014,14 @@ var kbInitialized=false;
 var kbTypeFilter='kundebesog';
 function kbRowVisitType(v){return v.visit_type==='kvalitetskontrol'?'kvalitetskontrol':'kundebesog';}
 function initKundebesogPage(){
+  // RUNDE EH — "Udfyld rapport"/"⚙️ Rediger besøgsrapport-formular" (se
+  // kbOpenVisitReport/vfOpen) bruger #crmpx-visit-modal og dets knapper, hvis
+  // click-listeners normalt først bindes af crmpxInitOnce() når man åbner en
+  // Handel-detaljeside. Kundebesøg-siden kan nu bruges helt uden at have
+  // besøgt CRM-detaljesiden først, så init'et skal også ske her — funktionen
+  // har sin egen "kun én gang"-vagt (crmpState.detailInitialized), så dette
+  // kald er harmløst selv når crmpxInitOnce() allerede er kørt.
+  crmpxInitOnce();
   if(!kbInitialized){
     kbInitialized=true;
     document.getElementById('kb-type-filter-tabs').addEventListener('click',function(e){
@@ -14989,6 +15057,17 @@ function initKundebesogPage(){
       if(doneBtn){kbMarkDone(doneBtn.dataset.kbDone);return;}
       var bookBtn=e.target.closest('[data-kb-book-task]');
       if(bookBtn){openKbAssignModal(kbData.unbooked.find(function(u){return u.task_id===bookBtn.dataset.kbBookTask;}));return;}
+      // RUNDE EH — "📋 Rapport"/"📝 Udfyld rapport", se kbOpenVisitReport.
+      var reportBtn=e.target.closest('[data-kb-report]');
+      if(reportBtn){
+        kbOpenVisitReport(reportBtn.dataset.kbReport,{
+          name:reportBtn.dataset.kbName,
+          address:reportBtn.dataset.kbAddress,
+          phone:reportBtn.dataset.kbPhone,
+          visitType:reportBtn.dataset.kbVisitType
+        });
+        return;
+      }
     });
   }
   kbLoad();
@@ -15060,7 +15139,6 @@ function kbRender(){
   // Bankafstemning/Omsætning pr. fag.
   document.getElementById('kb-body').innerHTML=rows.length?rows.map(function(v){
     var dateLabel=v.start_date?fmtDaDate(v.start_date)+(v.start_time?' · '+v.start_time:''):(v._unbooked?'Ikke planlagt':'');
-    var addrPhone=[v.job_address,v.customer_phone].filter(Boolean).join(' · ')||'—';
     var empHtml=v._unbooked?'<span style="color:var(--bly-sub)">—</span>':('<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(v.user_color||'#9CA3AF')+';margin-right:5px"></span>'+esc(v.user_name||'—'));
     var actionHtml;
     if(v._unbooked){
@@ -15070,15 +15148,30 @@ function kbRender(){
     } else {
       actionHtml='<button type="button" class="qz-icon-btn" data-kb-done="'+v.id+'" title="Markér som færdig">✅ Færdig</button>';
     }
+    // RUNDE EH (Martin: "Gør så jeg kan udfylde rapporten fra computeren også.
+    // Pt kan du kun fra medarbejder appen") — "📋 Rapport"-knappen åbner samme
+    // store popup som CRM-Handel bruger (se kbOpenVisitReport), og virker
+    // UANSET om rapporten findes endnu — kun relevante for et rigtigt besøg
+    // (ikke "Ikke planlagt", som jo endnu ikke har en dato/medarbejder).
+    // Statusmærket (udfyldt/mangler) bruger visit_submitted_at fra overview-
+    // kaldet (se /api/customer-visits/overview i server.js).
+    var reportHtml='';
+    if(!v._unbooked){
+      var hasReport=!!v.visit_submitted_at;
+      reportHtml='<button type="button" class="qz-icon-btn" data-kb-report="'+esc(v.task_id)+'" data-kb-name="'+esc(v.job_name||v.customer_name||'')+'" data-kb-address="'+esc(v.job_address||'')+'" data-kb-phone="'+esc(v.customer_phone||'')+'" data-kb-visit-type="'+esc(v.visit_type||kbTypeFilter)+'" title="'+(hasReport?'Se/rediger besøgsrapporten':'Udfyld besøgsrapporten')+'">'+(hasReport?'📋 Rapport':'📝 Udfyld rapport')+'</button>';
+    }
+    var statusHtml=!v._unbooked?('<span class="kb-status '+(v.visit_submitted_at?'kb-status-done':'kb-status-missing')+'">'+(v.visit_submitted_at?'✅ Rapport udfyldt':'📝 Mangler rapport')+'</span>'):'';
+    var addrLine=v.job_address?'<span>📍 '+esc(v.job_address)+'</span>':'';
+    var phoneLine=v.customer_phone?'<span>📞 '+esc(v.customer_phone)+'</span>':'';
     return '<div class="bly-rowcard">'+
       '<div class="bly-rowcard-top">'+
-        '<div class="bly-rowcard-name">'+esc(v.job_name||v.customer_name||'(uden navn)')+'</div>'+
+        '<div class="bly-rowcard-name">'+esc(v.job_name||v.customer_name||'(uden navn)')+' '+statusHtml+'</div>'+
         '<div class="bly-rowcard-value">'+esc(dateLabel)+'</div>'+
       '</div>'+
-      (v.visit_notes?'<div class="sub" style="font-size:11px;margin-top:4px">'+esc(v.visit_notes)+'</div>':'')+
+      (v.visit_notes?'<div class="kb-note-preview" title="'+esc(v.visit_notes)+'">💬 '+esc(v.visit_notes)+'</div>':'')+
       '<div class="bly-rowcard-bottom">'+
-        '<span>'+esc(addrPhone)+'</span>'+
-        '<div class="bly-rowcard-controls">'+empHtml+actionHtml+'</div>'+
+        '<span style="display:flex;gap:10px;flex-wrap:wrap">'+(addrLine||phoneLine?addrLine+phoneLine:'<span>—</span>')+'</span>'+
+        '<div class="bly-rowcard-controls">'+empHtml+reportHtml+actionHtml+'</div>'+
       '</div>'+
     '</div>';
   }).join(''):'<div class="bly-rowcard-empty">Ingen kundebesøg i denne kategori</div>';
@@ -24686,6 +24779,12 @@ var qzProducts=[],qzQuotes=[],qzInvoices=[],qzTemplates=[],qzActiveTab='quotes',
 var qzProductModalLinkTarget=null;
 // Se qzLineAcSuppressFieldEvents-brugen i qzShowLineAutocomplete's valg-håndtering.
 var qzLineAcSuppressFieldEvents=false;
+// RUNDE EG (Martin: "Det der kommer op når man søger er SÅ sentativ når musen
+// lige kommer ud fra feltet eller man scroller lidt så er den bare væk på 1
+// sek og det sker hele tiden") — husker hvilket inputfelt #qz-line-ac (se
+// qzShowLineAutocomplete) aktuelt hænger på, så document-scroll-lytteren
+// nedenfor kan FLYTTE boksen i stedet for at lukke den, se kommentaren der.
+var qzLineAcAnchorEl=null;
 var qzQuoteStatusFilter='all',qzInvoiceStatusFilter='all';
 var qzQuotePeriodFilter=null,qzInvoicePeriodFilter=null;
 // Genanvendelig Billy-stil dato-filter (Måned/Kvartal/Regnskabsår/Alt tid + frit
@@ -25922,6 +26021,7 @@ function qzGetLineAcBox(){
 function qzHideLineAutocomplete(){
   var box=document.getElementById('qz-line-ac');
   if(box){box.style.display='none';box.innerHTML='';}
+  qzLineAcAnchorEl=null; // RUNDE EG
 }
 function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange){
   var q=inputEl.value.trim();
@@ -25943,6 +26043,7 @@ function qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange)
     // en frisk oversættelse lander, og kun hvis boksen stadig er åben med samme felt.
     abDynTranslate(texts,function(hadNew){if(hadNew&&box.style.display!=='none')qzShowLineAutocomplete(inputEl,lines,idx,prefix,renderLinesFn,onChange);});
   }
+  qzLineAcAnchorEl=inputEl; // RUNDE EG — se document-scroll-lytteren nedenfor.
   var r=inputEl.getBoundingClientRect();
   box.style.position='fixed';
   box.style.top=(r.bottom+4)+'px';
@@ -28141,6 +28242,30 @@ function crmpxInitOnce(){
   document.getElementById('crmpx-note-add-btn').addEventListener('click',crmpxAddNote);
   // RUNDE BG — "Gem" i den store besøgsrapport-popup (se crmpxOpenVisitModal).
   document.getElementById('crmpxv-save-btn').addEventListener('click',crmpxSaveVisitEdit);
+  // RUNDE EH — nu kan man også TILFØJE billeder til en besøgsrapport herfra
+  // (før var popup'en kun en visning af medarbejder-appens billeder).
+  document.getElementById('crmpxv-add-photo-btn').addEventListener('click',function(){document.getElementById('crmpxv-photo-input').click();});
+  document.getElementById('crmpxv-photo-input').addEventListener('change',crmpxVisitAddPhotos);
+  document.getElementById('crmpxv-photos').addEventListener('click',function(e){
+    var btn=e.target.closest('[data-photo-idx]');
+    if(!btn)return;
+    e.preventDefault();
+    crmpxVisitPhotos.splice(Number(btn.dataset.photoIdx),1);
+    crmpxRenderVisitPhotos();
+  });
+  // RUNDE EH — feltlisten-editoren (⚙️ Rediger besøgsrapport-formular på
+  // Kundebesøg-siden), se vfOpen()/vfSave() nedenfor.
+  document.getElementById('kb-fields-btn').addEventListener('click',vfOpen);
+  document.getElementById('vf-add-btn').addEventListener('click',vfAddField);
+  document.getElementById('vf-save-btn').addEventListener('click',vfSave);
+  document.getElementById('vf-list').addEventListener('click',function(e){
+    var del=e.target.closest('[data-vf-del]');
+    if(del){vfDeleteField(Number(del.dataset.vfDel));return;}
+    var up=e.target.closest('[data-vf-up]');
+    if(up){vfMoveField(Number(up.dataset.vfUp),-1);return;}
+    var down=e.target.closest('[data-vf-down]');
+    if(down){vfMoveField(Number(down.dataset.vfDown),1);return;}
+  });
   // RUNDE V — note-diktering på CRM-aktivitetsnoten (se noteDictToggle).
   document.getElementById('crmpx-note-new-mic-btn').addEventListener('click',function(){noteDictToggle('crmpx-note-new','crmpx-note-new-mic-btn');});
   document.getElementById('crmpx-task-add-btn').addEventListener('click',crmpxAddTask);
@@ -29626,12 +29751,31 @@ async function crmpxLoadTasks(){
     assigneeSel.value=keepVal||(me&&me.id)||'';
   }
 }
+// RUNDE EH — felt-listen bag besøgsrapporten (se /api/visit-report-fields i
+// server.js), hentet/cachet lazily. null = ikke hentet endnu; brug altid
+// loadVisitReportFields() (aldrig cachen direkte), så den hentes automatisk
+// første gang den bruges, uanset om man starter på Kundebesøg-siden,
+// CRM-Handel eller fra kunde-detaljesiden.
+var visitReportFieldsCache=null;
+async function loadVisitReportFields(force){
+  if(visitReportFieldsCache&&!force)return visitReportFieldsCache;
+  var r=await api('/api/visit-report-fields');
+  visitReportFieldsCache=(r&&r.fields)||[];
+  return visitReportFieldsCache;
+}
 // BESØGSRAPPORT — RUNDE L (Martins ønske: "kommer ind på kunden i mit CRM system").
 // Viser svar+billeder fra medarbejderens obligatoriske besøgsformular. Kun besøg
 // der faktisk er udfyldt (server-siden filtrerer på submitted_at IS NOT NULL).
 // RUNDE BG: den fulde besøgsliste holdes her, så et klik på et kort (se
 // crmpxOpenVisitModal) kan slå besøget op uden at hente det igen.
 var crmpxVisitsCache=[],crmpxVisitEditingTaskId=null;
+// RUNDE EH — hvilken liste skal genindlæses efter "Gem" i popup'en ('crmp'
+// fra Handel-detaljesiden/kunde-detaljesiden som før, 'kb' fra selve
+// Kundebesøg-listen, se kbOpenVisitReport) + identitets-felterne (navn/
+// adresse/telefon) for DEN rapport der redigeres lige nu — vises read-only i
+// #crmpxv-who, og sendes med ved Gem så et helt NYT besøg (udfyldt første
+// gang fra admin, ikke medarbejder-appen) også får dem gemt med det samme.
+var crmpxVisitModalSource='crmp',crmpxVisitCurrentWho=null,crmpxVisitPhotos=[];
 async function crmpxLoadVisits(customerId,listElId,countElId){
   // RUNDE AT (okt. 2026) — listElId/countElId tilføjet så funktionen også kan
   // genbruges af den klassiske kunde-detaljeside (cd-visits-list/cd-visits-count,
@@ -29672,57 +29816,213 @@ async function crmpxLoadVisits(customerId,listElId,countElId){
 document.addEventListener('click',function(e){
   var card=e.target.closest('.crmpx-visit-card');
   if(!card)return;
+  crmpxVisitModalSource='crmp';
   crmpxOpenVisitModal(card.dataset.taskId);
 });
 // RUNDE BG (Martin: "Gør så man under handler kan rette i en kundebesøgs
 // note hvis man vil og få den ud i en stor popup så man kan se billederne
 // der tilføjet og teksten mm") — forudfylder den store popup med ALT hvad
-// besøgsrapporten indeholder (både tekstfelter og billeder), klar til at
-// rette til og gemme. Billederne selv redigeres ikke herfra (det er stadig
-// medarbejder-appens jobs at tilføje dem) — kun tekstfelterne.
+// besøgsrapporten indeholder, klar til at rette til og gemme. Kaldt fra
+// Handel-detaljesiden/kunde-detaljesiden, hvor rapporten allerede findes i
+// crmpxVisitsCache (altid udfyldt — se server-filteret submitted_at IS NOT
+// NULL i /api/crm/customers/:id/visits).
 function crmpxOpenVisitModal(taskId){
   var v=crmpxVisitsCache.find(function(x){return String(x.task_id)===String(taskId);});
   if(!v)return;
+  crmpxOpenVisitModalWithData(taskId,v);
+}
+// RUNDE EH — ny indgang, brugt fra selve Kundebesøg-listen (se kbRender):
+// henter rapporten direkte på task_id'et, UANSET om den overhovedet er
+// udfyldt endnu (modsat crmpxOpenVisitModal ovenfor, som kun kender til
+// allerede-udfyldte rapporter via crmpxVisitsCache) — det er netop pointen,
+// Martin skal kunne UDFYLDE en helt tom rapport fra computeren, ikke kun
+// rette en eksisterende. who{name,address,phone,visitType} kommer fra selve
+// besøgs-/booking-rækken (kbData), og bruges kun som fallback hvis rapporten
+// (endnu) ikke selv har gemt de felter.
+async function kbOpenVisitReport(taskId,who){
+  crmpxVisitModalSource='kb';
+  var v=await api('/api/customer-visits/'+encodeURIComponent(taskId))||{};
+  v=Object.assign({},v);
+  v.task_id=taskId;
+  v.customer_name=v.customer_name||(who&&who.name)||'';
+  v.address=v.address||(who&&who.address)||'';
+  v.phone=v.phone||(who&&who.phone)||'';
+  v.visit_type=v.visit_type||(who&&who.visitType)||'kundebesog';
+  await crmpxOpenVisitModalWithData(taskId,v);
+}
+async function crmpxOpenVisitModalWithData(taskId,v){
   crmpxVisitEditingTaskId=taskId;
+  crmpxVisitCurrentWho={customer_name:v.customer_name||'',address:v.address||'',phone:v.phone||''};
+  await loadVisitReportFields();
   // RUNDE DA — se typeTag i crmpxLoadVisits ovenfor, samme mærke her i popup'en.
-  document.getElementById('crmpx-visit-modal-date').textContent='· '+fmtDaDate((v.submitted_at||'').slice(0,10))+' · '+(v.visit_type==='kvalitetskontrol'?'🔍 Kvalitetskontrol':'🏠 Kundebesøg');
+  var typeTag=v.visit_type==='kvalitetskontrol'?'🔍 Kvalitetskontrol':'🏠 Kundebesøg';
+  document.getElementById('crmpx-visit-modal-date').textContent=v.submitted_at?('· '+fmtDaDate((v.submitted_at||'').slice(0,10))+' · '+typeTag):('· Endnu ikke udfyldt · '+typeTag);
   document.getElementById('crmpx-visit-modal-by').textContent=v.filled_by_name?('Udfyldt af '+v.filled_by_name):'';
-  document.getElementById('crmpxv-room').value=v.room_size||'';
-  document.getElementById('crmpxv-floortype').value=v.floor_type_wanted||'';
-  document.getElementById('crmpxv-solution').value=v.recommended_solution||'';
-  document.getElementById('crmpxv-price').value=v.estimated_price||'';
-  document.getElementById('crmpxv-notes').value=v.notes||'';
-  var photos=Array.isArray(v.photo_urls)?v.photo_urls:[];
-  var photosBox=document.getElementById('crmpxv-photos');
-  photosBox.innerHTML=photos.length?photos.map(function(url){
-    return '<a href="'+esc(url)+'" target="_blank" rel="noopener" style="display:block;border-radius:8px;overflow:hidden;border:1px solid var(--bly-border-soft);aspect-ratio:1/1"><img src="'+esc(url)+'" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy"></a>';
-  }).join(''):'<div class="crmpx-empty">Ingen billeder</div>';
+  // RUNDE EH — "hvem gælder besøget"-linjen (se CSS .crmpxv-who).
+  var whoBox=document.getElementById('crmpxv-who');
+  if(v.customer_name||v.address||v.phone){
+    whoBox.style.display='';
+    whoBox.innerHTML='<span style="font-size:20px">🧑‍💼</span><span><b>'+esc(v.customer_name||'(uden navn)')+'</b>'+([v.address,v.phone].filter(Boolean).length?'<span class="sub">'+esc([v.address,v.phone].filter(Boolean).join(' · '))+'</span>':'')+'</span>';
+  } else whoBox.style.display='none';
+  crmpxRenderVisitFields(v);
+  crmpxVisitPhotos=Array.isArray(v.photo_urls)?v.photo_urls.slice():[];
+  crmpxRenderVisitPhotos();
   document.getElementById('crmpx-visit-modal').classList.add('open');
+}
+// RUNDE EH — bygger selve formular-felterne (#crmpxv-fields-body) dynamisk ud
+// fra visitReportFieldsCache i stedet for de 5 hårdkodede <input>-felter der
+// plejede at stå direkte i HTML'en. Et builtin-felt (data-builtin="1") læser/
+// skriver sin egen kolonne på customer_visits (room_size osv.) — et
+// Martin-oprettet felt læser/skriver v.custom_fields[key] i stedet, se
+// crmpxSaveVisitEdit.
+function crmpxRenderVisitFields(v){
+  var body=document.getElementById('crmpxv-fields-body');
+  var fields=(visitReportFieldsCache||[]).filter(function(f){return f.active;});
+  var customVals=(v.custom_fields&&typeof v.custom_fields==='object')?v.custom_fields:{};
+  body.innerHTML=fields.length?fields.map(function(f){
+    var val=f.builtin?(v[f.key]||''):(customVals[f.key]||'');
+    var common='id="crmpxv-f-'+esc(f.key)+'" class="input" data-field-key="'+esc(f.key)+'" data-builtin="'+(f.builtin?1:0)+'"';
+    var inputHtml=f.type==='textarea'
+      ?'<textarea '+common+' rows="4" style="resize:vertical">'+esc(val)+'</textarea>'
+      :'<input '+common+' type="'+(f.type==='number'?'number':'text')+'" value="'+esc(val)+'">';
+    return '<div class="form-group"><label class="form-label">'+esc(f.label)+'</label>'+inputHtml+'</div>';
+  }).join(''):'<div class="crmpx-empty">Ingen aktive felter — se ⚙️ Rediger besøgsrapport-formular på Kundebesøg-siden.</div>';
+}
+function crmpxRenderVisitPhotos(){
+  var box=document.getElementById('crmpxv-photos');
+  box.innerHTML=crmpxVisitPhotos.length?crmpxVisitPhotos.map(function(url,i){
+    return '<div class="crmpxv-photo-item"><a href="'+esc(url)+'" target="_blank" rel="noopener"><img src="'+esc(url)+'" loading="lazy"></a><button type="button" class="crmpxv-photo-remove" data-photo-idx="'+i+'" title="Fjern billede">✕</button></div>';
+  }).join(''):'<div class="crmpx-empty">Ingen billeder endnu</div>';
+}
+// RUNDE EH — nu kan billeder tilføjes til en besøgsrapport fra admin selv (før
+// var popup'en ren visning af medarbejder-appens billeder). Ét ad gangen,
+// samme mønster som pdUploadPhoto/pdqd-tilføj-foto ovenfor.
+async function crmpxVisitAddPhotos(e){
+  var files=Array.prototype.slice.call(e.target.files||[]);
+  e.target.value='';
+  for(var i=0;i<files.length;i++){
+    toast('Uploader billede '+(i+1)+'/'+files.length+'…','⏳');
+    try{
+      var dataUrl=await pdReadFileAsDataUrl(files[i]);
+      var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'visits/'+(crmpxVisitEditingTaskId||'ukendt')})});
+      if(up&&up.ok){crmpxVisitPhotos.push(up.url);crmpxRenderVisitPhotos();}
+      else toast((up&&up.error)||'Kunne ikke uploade billedet','❌');
+    }catch(err){toast('Kunne ikke uploade billedet','❌');}
+  }
 }
 async function crmpxSaveVisitEdit(){
   if(!crmpxVisitEditingTaskId)return;
   var btn=document.getElementById('crmpxv-save-btn');var origText=btn.textContent;
   btn.disabled=true;btn.textContent='Gemmer…';
-  var body={
-    room_size:document.getElementById('crmpxv-room').value,
-    floor_type_wanted:document.getElementById('crmpxv-floortype').value,
-    recommended_solution:document.getElementById('crmpxv-solution').value,
-    estimated_price:document.getElementById('crmpxv-price').value,
-    notes:document.getElementById('crmpxv-notes').value
-  };
+  var body={photo_urls:crmpxVisitPhotos,custom_fields:{}};
+  if(crmpxVisitCurrentWho){
+    body.customer_name=crmpxVisitCurrentWho.customer_name;
+    body.address=crmpxVisitCurrentWho.address;
+    body.phone=crmpxVisitCurrentWho.phone;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#crmpxv-fields-body [data-field-key]'),function(el){
+    if(el.dataset.builtin==='1')body[el.dataset.fieldKey]=el.value;
+    else body.custom_fields[el.dataset.fieldKey]=el.value;
+  });
   var r=await api('/api/customer-visits/'+crmpxVisitEditingTaskId,{method:'PUT',body:JSON.stringify(body)});
   btn.disabled=false;btn.textContent=origText;
   if(r&&r.ok){
     toast('Besøgsrapport gemt','✓');
     closeModal('crmpx-visit-modal');
-    // RUNDE AT — denne modal kan nu åbnes fra TO steder (Handler-detaljesiden
-    // OG den klassiske kunde-detaljeside, se cd-visits-panel) — genopfrisk
-    // begge paneler, hvis de er relevante, i stedet for kun crmpx-siden.
+    // RUNDE AT/EH — denne modal kan nu åbnes fra TRE steder (Handel-
+    // detaljesiden, kunde-detaljesiden OG selve Kundebesøg-listen) —
+    // genopfrisk kun det/de paneler der rent faktisk er relevante lige nu.
     if(crmpxCurrentCustomerId)crmpxLoadVisits(crmpxCurrentCustomerId);
     if(cdCurrent&&cdCurrent.id)crmpxLoadVisits(cdCurrent.id,'cd-visits-list','cd-visits-count');
+    if(crmpxVisitModalSource==='kb'&&typeof kbLoad==='function')kbLoad();
   } else {
     toast((r&&r.error)||'Kunne ikke gemme','❌');
   }
+}
+// RUNDE EH (Martin: "gøre lige sådan at jeg kan lave om i de spørgsmål,
+// felter osv som tilføjes til et kundebesøg formel pt tror jeg ikke det
+// muligt") — editor til selve FELTLISTEN (#visit-fields-modal), åbnet fra
+// "⚙️ Rediger besøgsrapport-formular" på Kundebesøg-siden. vfWorkingFields er
+// en lokal, redigerbar kopi — intet gemmes før "Gem" trykkes. Rækkefølgen
+// styres med ▲/▼ i stedet for drag/drop (simplere, ingen risiko for et
+// fejlplaceret drop midt i en lang liste).
+var vfWorkingFields=[];
+async function vfOpen(){
+  await loadVisitReportFields(true); // tving frisk hentning — en anden fane kan have ændret den
+  vfWorkingFields=(visitReportFieldsCache||[]).map(function(f){return Object.assign({},f);});
+  vfRenderList();
+  document.getElementById('visit-fields-modal').classList.add('open');
+}
+function vfRenderList(){
+  var box=document.getElementById('vf-list');
+  box.innerHTML=vfWorkingFields.length?vfWorkingFields.map(function(f,i){
+    var typeLabel=f.type==='textarea'?'Lang tekst':(f.type==='number'?'Tal':'Kort tekst');
+    var typeHtml=f.builtin
+      ?'<span class="vf-row-builtin-tag">'+esc(typeLabel)+'</span>'
+      :'<select class="select vf-row-type" data-vf-type="'+i+'">'
+        +'<option value="text"'+(f.type==='text'?' selected':'')+'>Kort tekst</option>'
+        +'<option value="textarea"'+(f.type==='textarea'?' selected':'')+'>Lang tekst</option>'
+        +'<option value="number"'+(f.type==='number'?' selected':'')+'>Tal</option>'
+        +'</select>';
+    // RUNDE EH — 'notes' (Observationer/noter) er selve kernen af rapporten og
+    // vises altid, uanset indstilling — server-siden håndhæver det samme
+    // (sanitizeVisitReportFields), så dette er kun UI-spejling af den regel.
+    var activeHtml=f.key==='notes'
+      ?'<span class="vf-row-active" style="opacity:.55">Altid med</span>'
+      :'<label class="vf-row-active"><input type="checkbox" data-vf-active="'+i+'"'+(f.active?' checked':'')+'> Vist</label>';
+    var delHtml=f.builtin?'<span class="vf-row-del"></span>':'<button type="button" class="qz-icon-btn vf-row-del" data-vf-del="'+i+'" title="Slet felt">🗑</button>';
+    return '<div class="vf-row">'
+      +'<div class="vf-row-handle"><button type="button" data-vf-up="'+i+'"'+(i===0?' disabled':'')+'>▲</button><button type="button" data-vf-down="'+i+'"'+(i===vfWorkingFields.length-1?' disabled':'')+'>▼</button></div>'
+      +'<div class="vf-row-label"><input class="input" data-vf-label="'+i+'" value="'+esc(f.label)+'"></div>'
+      +typeHtml+activeHtml+delHtml
+      +'</div>';
+  }).join(''):'<div class="crmpx-empty">Ingen felter</div>';
+}
+// Læser de aktuelt viste rækkers input-værdier TILBAGE i vfWorkingFields —
+// kaldes før enhver handling der gentegner listen (flyt/slet/tilføj) eller
+// gemmer, så en igangværende rettelse (fx et nyt label man lige har skrevet)
+// aldrig går tabt undervejs.
+function vfSyncFromDom(){
+  vfWorkingFields.forEach(function(f,i){
+    var labelEl=document.querySelector('#vf-list [data-vf-label="'+i+'"]');
+    if(labelEl)f.label=labelEl.value;
+    var typeEl=document.querySelector('#vf-list [data-vf-type="'+i+'"]');
+    if(typeEl)f.type=typeEl.value;
+    var activeEl=document.querySelector('#vf-list [data-vf-active="'+i+'"]');
+    if(activeEl)f.active=activeEl.checked;
+  });
+}
+function vfMoveField(i,dir){
+  vfSyncFromDom();
+  var j=i+dir;
+  if(j<0||j>=vfWorkingFields.length)return;
+  var tmp=vfWorkingFields[i];vfWorkingFields[i]=vfWorkingFields[j];vfWorkingFields[j]=tmp;
+  vfRenderList();
+}
+function vfDeleteField(i){
+  vfSyncFromDom();
+  if(vfWorkingFields[i]&&vfWorkingFields[i].builtin)return; // UI viser aldrig en slet-knap for builtins — ekstra sikkerhedsnet
+  vfWorkingFields.splice(i,1);
+  vfRenderList();
+}
+function vfAddField(){
+  vfSyncFromDom();
+  // key sættes IKKE her — serveren genererer en unik nøgle ved Gem (se
+  // sanitizeVisitReportFields/PUT /api/visit-report-fields i server.js).
+  vfWorkingFields.push({key:'',label:'Nyt felt',type:'text',builtin:false,active:true});
+  vfRenderList();
+}
+async function vfSave(){
+  vfSyncFromDom();
+  var btn=document.getElementById('vf-save-btn');var orig=btn.textContent;
+  btn.disabled=true;btn.textContent='Gemmer…';
+  var r=await api('/api/visit-report-fields',{method:'PUT',body:JSON.stringify({fields:vfWorkingFields})});
+  btn.disabled=false;btn.textContent=orig;
+  if(r&&r.ok){
+    visitReportFieldsCache=r.fields||vfWorkingFields;
+    toast('Formular gemt ✓','✓');
+    closeModal('visit-fields-modal');
+  } else toast((r&&r.error)||'Kunne ikke gemme','❌');
 }
 async function crmpxAddTask(){
   var ent=crmpDetailEntity;
@@ -37132,12 +37432,33 @@ function bindQuotesModuleEvents(){
   // PÅ DET TIDSPUNKT den åbnes, men fulgte aldrig med hvis man scrollede bagefter
   // — den blev hængende på sin oprindelige plads, løsrevet fra feltet/linjen den
   // hørte til, og kunne ende med at dække helt andre felter længere nede.
-  // Simplest robuste rettelse, samme princip som #ctx-menu's egen scroll-lytter
-  // ovenfor: luk boksen ved scroll i stedet for at prøve at følge med live (som
-  // let bliver hakkende/forkert ved hurtig scroll).
+  // Dengang var "simplest robuste rettelse" at lukke boksen ved scroll i stedet
+  // for at følge med live — men det viste sig for groft, se RUNDE EG nedenfor.
+  //
+  // RUNDE EG (Martin: "Det der kommer op når man søger er SÅ sentativ når musen
+  // lige kommer ud fra feltet eller man scroller lidt så er den bare væk på 1
+  // sek og det sker hele tiden") — ovenstående DN-rettelse lukkede boksen ved
+  // ALT scroll der bobler op til document (capture:true er netop der for at
+  // fange scroll i nestede scroll-bokse — se kommentaren oven for #ctx-menu's
+  // egen scroll-lytter), dvs. selv en ubetydelig/utilsigtet scroll et helt
+  // andet sted på siden lukkede boksen med det samme. Nu FLYTTES boksen i
+  // stedet (samme udregning som ved åbning i qzShowLineAutocomplete, ud fra
+  // qzLineAcAnchorEl's getBoundingClientRect() PÅ scroll-tidspunktet) — det var
+  // jo det Martin bad om i RUNDE DN i forvejen ("den bliver på sin plads"),
+  // blot ikke løst dengang. Lukkes nu kun hvis ankerfeltet er helt væk fra DOM'en
+  // (fx linjen slettet mens boksen var åben) eller ikke-synligt (0×0, skjult
+  // forælder) — IKKE længere bare fordi der blev scrollet.
   document.addEventListener('scroll',function(e){
     if(e.target&&e.target.closest&&e.target.closest('#qz-line-ac'))return;
-    qzHideLineAutocomplete();
+    if(!qzLineAcAnchorEl)return;
+    if(!document.body.contains(qzLineAcAnchorEl)){qzHideLineAutocomplete();return;}
+    var r=qzLineAcAnchorEl.getBoundingClientRect();
+    if(r.width===0&&r.height===0){qzHideLineAutocomplete();return;}
+    var box=document.getElementById('qz-line-ac');
+    if(!box||box.style.display==='none')return;
+    box.style.top=(r.bottom+4)+'px';
+    box.style.left=r.left+'px';
+    box.style.width=Math.max(r.width,240)+'px';
   },true);
 
   document.getElementById('iv-add-payment-btn').addEventListener('click',addIvPayment);

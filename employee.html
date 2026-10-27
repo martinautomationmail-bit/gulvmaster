@@ -321,19 +321,15 @@
     <div class="modal-head req-head"><div class="modal-title"><span class="req-icon">📋</span> Besøgsrapport</div><button class="modal-close" onclick="closeVisitReportModal()">Luk</button></div>
     <div class="modal-body">
       <p class="req-intro">Udfyld besøgsrapporten før opgaven kan markeres som færdig — den lander direkte på kunden i CRM.</p>
-      <label class="req-label">Rummets størrelse</label>
-      <input id="vr-room-size" class="req-input" placeholder="Fx 24 m²">
-      <label class="req-label" style="margin-top:10px">Ønsket gulvtype</label>
-      <input id="vr-floor-type" class="req-input" placeholder="Fx eg plankegulv, olieret">
-      <div class="req-label-row" style="margin-top:10px">
-        <label class="req-label" style="margin:0">Observationer / noter fra besøget</label>
-        <button type="button" class="vr-mic-btn" id="vr-notes-mic-btn" onclick="toggleVoiceNote('vr-notes')" title="Indtal noten i stedet for at skrive — du kan altid rette i teksten bagefter"><span class="vr-mic-icon">🎤</span> Indtal</button>
-      </div>
-      <textarea id="vr-notes" class="req-textarea" rows="3" placeholder="Fx underlagets stand, fugt, niveauforskelle, adgangsforhold"></textarea>
-      <label class="req-label" style="margin-top:10px">Anbefalet løsning</label>
-      <textarea id="vr-solution" class="req-textarea" rows="2" placeholder="Hvad anbefaler du kunden?"></textarea>
-      <label class="req-label" style="margin-top:10px">Estimeret pris <span style="opacity:.6;font-weight:500">(valgfrit)</span></label>
-      <input id="vr-price" class="req-input" placeholder="Fx 18.000 - 22.000 kr.">
+      <!-- RUNDE EH (Martin: "gøre lige sådan at jeg kan lave om i de
+           spørgsmål, felter osv som tilføjes til et kundebesøg formel") —
+           felterne herunder var før 5 hårdkodede <input>/<textarea> direkte i
+           denne HTML. De bygges nu dynamisk af vrRenderFields() ud fra
+           GET /api/visit-report-fields (samme liste kontoret redigerer under
+           Kundebesøg → ⚙️ Rediger besøgsrapport-formular i admin). 'notes'
+           (Observationer/noter) er særbehandlet herunder, så mikrofon-
+           optagelsen (🎤 Indtal) stadig virker uændret på netop det felt. -->
+      <div id="vr-fields-body"></div>
       <label class="req-label" style="margin-top:10px">Billeder</label>
       <div id="vr-photo-grid" class="vr-photo-grid"></div>
       <input type="file" accept="image/*" multiple id="vr-photo-input" style="display:none" onchange="vrAddPhotos(event)">
@@ -1391,6 +1387,43 @@ let vrNewPhotoFiles=[],vrNewPhotoPreviewUrls=[];
 // id = planning_bookings.id (bruges til toggleTaskDone), taskId = jt_tasks.id
 // (den "visit-..." tekst-id customer_visits/quote-scope er nøglet på — IKKE
 // samme værdi som id, se bookingSelect).
+// RUNDE EH — fælles feltliste for besøgsrapporten, cachet lazily (samme
+// app_settings-nøgle 'visit_report_fields' som admin.html's ⚙️-editor
+// skriver til under Kundebesøg-siden). Genindlæses IKKE automatisk mens
+// appen er åben — en medarbejder der har den åben hele dagen får den
+// opdaterede liste næste gang appen genindlæses, helt fint for noget der
+// ændres sjældent.
+let visitReportFields=[],visitReportFieldsLoaded=false;
+async function loadVisitReportFieldsEmp(){
+  if(visitReportFieldsLoaded)return visitReportFields;
+  const r=await api('/api/visit-report-fields');
+  visitReportFields=(r&&r.ok&&r.data&&r.data.fields)||[];
+  visitReportFieldsLoaded=true;
+  return visitReportFields;
+}
+// RUNDE EH — bygger #vr-fields-body dynamisk ud fra visitReportFields i
+// stedet for de 5 hårdkodede felter der plejede at stå direkte i HTML'en.
+// 'notes' særbehandles så 🎤 Indtal-knappen (toggleVoiceNote) stadig virker
+// uændret — den er altid med (se sanitizeVisitReportFields i server.js).
+function vrRenderFields(existing){
+  const body=document.getElementById('vr-fields-body');
+  const fields=(visitReportFields||[]).filter(f=>f.active);
+  const customVals=(existing&&existing.custom_fields&&typeof existing.custom_fields==='object')?existing.custom_fields:{};
+  body.innerHTML=fields.map(f=>{
+    const val=esc(f.builtin?((existing&&existing[f.key])||''):(customVals[f.key]||''));
+    if(f.key==='notes'){
+      // RUNDE EH — mikrofon-knappen udelades helt når browseren ikke
+      // understøtter Web Speech API (samme regel som hideUnsupportedMicButtons
+      // brugte før, dengang knappen altid fandtes i den statiske HTML).
+      const micBtn=SpeechRecognitionCtor?`<button type="button" class="vr-mic-btn" id="vr-notes-mic-btn" onclick="toggleVoiceNote('vr-notes')" title="Indtal noten i stedet for at skrive — du kan altid rette i teksten bagefter"><span class="vr-mic-icon">🎤</span> Indtal</button>`:'';
+      return `<div class="req-label-row" style="margin-top:10px"><label class="req-label" style="margin:0">${esc(f.label)}</label>${micBtn}</div>`
+        +`<textarea id="vr-notes" class="req-textarea" rows="3" placeholder="Fx underlagets stand, fugt, niveauforskelle, adgangsforhold" data-field-key="notes" data-builtin="1">${val}</textarea>`;
+    }
+    const common=`data-field-key="${esc(f.key)}" data-builtin="${f.builtin?1:0}"`;
+    if(f.type==='textarea')return `<label class="req-label" style="margin-top:10px">${esc(f.label)}</label><textarea class="req-textarea" rows="2" ${common}>${val}</textarea>`;
+    return `<label class="req-label" style="margin-top:10px">${esc(f.label)}</label><input class="req-input" type="${f.type==='number'?'number':'text'}" ${common} value="${val}">`;
+  }).join('')||'<p class="req-intro">Ingen felter på besøgsrapporten lige nu.</p>';
+}
 async function openVisitReportModal(id,taskId){
   visitReportAssignmentId=id;
   visitReportTaskId=taskId;
@@ -1398,16 +1431,12 @@ async function openVisitReportModal(id,taskId){
   vrNewPhotoFiles.length=0;
   vrNewPhotoPreviewUrls.forEach(u=>{try{URL.revokeObjectURL(u);}catch(e){}});
   vrNewPhotoPreviewUrls.length=0;
-  ['vr-room-size','vr-floor-type','vr-notes','vr-solution','vr-price'].forEach(fid=>{document.getElementById(fid).value='';});
   document.getElementById('vr-feedback').className='req-feedback';
+  await loadVisitReportFieldsEmp();
   const r=await api('/api/customer-visits/'+encodeURIComponent(taskId));
   const existing=r&&r.ok?r.data:null;
+  vrRenderFields(existing);
   if(existing){
-    document.getElementById('vr-room-size').value=existing.room_size||'';
-    document.getElementById('vr-floor-type').value=existing.floor_type_wanted||'';
-    document.getElementById('vr-notes').value=existing.notes||'';
-    document.getElementById('vr-solution').value=existing.recommended_solution||'';
-    document.getElementById('vr-price').value=existing.estimated_price||'';
     visitReportPhotos=Array.isArray(existing.photo_urls)?existing.photo_urls.slice():[];
   }
   vrRenderPhotoGrid();
@@ -1512,12 +1541,19 @@ function vrAddPhotos(e){
 }
 async function submitVisitReportAndComplete(){
   const feedback=document.getElementById('vr-feedback');
-  const roomSize=document.getElementById('vr-room-size').value.trim();
-  const floorType=document.getElementById('vr-floor-type').value.trim();
-  const notes=document.getElementById('vr-notes').value;
-  const solution=document.getElementById('vr-solution').value;
-  const price=document.getElementById('vr-price').value.trim();
-  const hasContent=roomSize||floorType||notes||solution||price||visitReportPhotos.length||vrNewPhotoFiles.length;
+  // RUNDE EH — læser nu alle (dynamiske) felter i #vr-fields-body i stedet
+  // for de 5 faste felt-id'er — se vrRenderFields. Et builtin-felt (sin egen
+  // kolonne på customer_visits) går i builtinVals, et Martin-oprettet felt i
+  // customVals (gemmes i customer_visits.custom_fields).
+  const builtinVals={},customVals={};
+  let hasText=false;
+  document.querySelectorAll('#vr-fields-body [data-field-key]').forEach(el=>{
+    const val=el.value;
+    if(val&&val.trim())hasText=true;
+    if(el.dataset.builtin==='1')builtinVals[el.dataset.fieldKey]=val;
+    else customVals[el.dataset.fieldKey]=val;
+  });
+  const hasContent=hasText||visitReportPhotos.length||vrNewPhotoFiles.length;
   if(!hasContent){
     feedback.textContent='Udfyld mindst ét felt eller tilføj et billede, før du fortsætter';
     feedback.className='req-feedback show error';
@@ -1552,10 +1588,7 @@ async function submitVisitReportAndComplete(){
       uploadedUrls.push(up.data.url);
     }
     setBtnText('Gemmer…');
-    const body={
-      room_size:roomSize,floor_type_wanted:floorType,notes,recommended_solution:solution,
-      estimated_price:price,photo_urls:visitReportPhotos.concat(uploadedUrls)
-    };
+    const body=Object.assign({photo_urls:visitReportPhotos.concat(uploadedUrls),custom_fields:customVals},builtinVals);
     const r=await api('/api/customer-visits/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify(body)});
     if(!r||!r.ok){
       feedback.textContent=(r&&r.data&&r.data.error)||'Kunne ikke gemme — prøv igen';
