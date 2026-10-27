@@ -1896,6 +1896,11 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #pd-task-detail-modal .pdtd-booking-chip{display:inline-flex;align-items:center;gap:7px;background:#EEF2FF;border:1px solid #E0E7FF;border-radius:999px;padding:5px 12px 5px 5px;font-size:12px;font-weight:600;color:#3730A3;line-height:1.3}
 #pd-task-detail-modal .pdtd-booking-chip-av{width:20px;height:20px;border-radius:50%;background:var(--bly-accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex-shrink:0}
 #pd-task-detail-modal .pdtd-booking-chip-period{color:#6366AE;font-weight:500}
+/* RUNDE EC — "Vis alle/Vis færre"-chippen: samme chip-form som de rigtige
+   booking-chips, men som en klikbar <button> i en lidt mere neutral farve,
+   så den tydeligt skiller sig ud som en handling, ikke en person. */
+#pd-task-detail-modal .pdtd-booking-chip-toggle{background:#F1F5F9;border:1px dashed #CBD5E1;color:#475569;cursor:pointer;font-family:inherit;padding-left:12px}
+#pd-task-detail-modal .pdtd-booking-chip-toggle:hover{background:#E2E8F0}
 #pd-task-detail-modal .pdtd-kundekort{background:linear-gradient(180deg,#F8FAFF,#F4F6FB);border:1px solid #E7EAF3;border-radius:var(--bly-r-lg);padding:16px}
 #pd-task-detail-modal .pdtd-kundekort-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
 #pd-task-detail-modal .pdtd-kundekort-avatar{width:38px;height:38px;border-radius:11px;background:#fff;border:1px solid #E7EAF3;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
@@ -1950,6 +1955,14 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .pdqa-chip-no{background:#FEF2F2;color:#B91C1C}
 .pdqa-photo-thumb{display:block;width:44px;height:44px;border-radius:8px;overflow:hidden;border:1px solid var(--bly-border-soft);flex-shrink:0}
 .pdqa-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+/* RUNDE EC (Martin: "Det her layout under kvalitetskontrol er forvirrende og
+   grimt byg det langt pænere og mere moderne") — rammen om hver af de tre
+   underfaner (Skabeloner/Formularer/Dagbog-fanebjælken selv sidder i
+   markup'en, se #pdqa-subtabs). Samme kort-sprog som resten af runden. */
+.pdqa-section-card{background:#F8FAFC;border:1px solid #F0F2F5;border-radius:var(--bly-r-lg);padding:18px}
+.pdqa-section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+.pdqa-section-title{font-size:13.5px;font-weight:800;color:var(--bly-ink)}
+.pdqa-template-pills{display:flex;flex-wrap:wrap;gap:8px}
 
 /* ══════════════════════════════════════════════════════════════
    LEDIGHEDSOVERSIGT — samme Billy-behandling, scoped til
@@ -4236,7 +4249,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.22 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.23 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -8052,15 +8065,35 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <tbody id="pd-materials-body"></tbody>
         </table>
       </div>
+      <!-- RUNDE EC (Martin: "Det her layout under kvalitetskontrol er
+           forvirrende og grimt byg det langt pænere og mere moderne") —
+           de tre sektioner (Skabeloner/Formularer/Dagbog) stod før som én
+           lang, stablet side, der alle væltede ud over hinanden på én gang.
+           Lagt om til tre rigtige underfaner (samme .bly-segtabs/.bly-segtab-
+           mønster som selve sags-siden og Indstillinger bruger — ikke noget
+           nyt system), så man kun ser ÉN ting ad gangen, ligesom forbilledet
+           (Byggestyring-fanerne) Martin viste tidligere. Se switchPdQaSubTab(). -->
       <div class="pdtabpage" id="pdtab-qa" style="display:none">
-        <div class="bly-toolbar">
-          <div class="bly-toolbar-left"><span class="bly-toolbar-title">Tilladte KS-skabeloner på denne sag</span></div>
-          <div class="bly-toolbar-right"><button class="bly-btn outline small" id="pd-qa-assign-save-btn" type="button">Gem valg</button></div>
+        <div class="bly-segtabs" id="pdqa-subtabs" style="margin-bottom:18px">
+          <button class="bly-segtab active" data-qasub="templates" type="button">📋 Skabeloner</button>
+          <button class="bly-segtab" data-qasub="submissions" type="button">✅ Formularer</button>
+          <button class="bly-segtab" data-qasub="diary" type="button">📔 Dagbog</button>
         </div>
-        <div class="sub" style="margin-bottom:10px">Vælges ingen, kan medarbejderen udfylde alle skabeloner (bagudkompatibelt).</div>
-        <div id="pd-qa-assign-body" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px"></div>
-        <div class="bly-toolbar"><div class="bly-toolbar-left"><span class="bly-toolbar-title">Indsendte KS-formularer</span></div></div>
-        <div id="pd-qa-body"></div>
+        <div class="pdqa-subpage" id="pdqa-sub-templates">
+          <div class="pdqa-section-card">
+            <div class="pdqa-section-head">
+              <div><div class="pdqa-section-title">Tilladte KS-skabeloner på denne sag</div><div class="sub" style="margin-top:2px">Vælges ingen, kan medarbejderen udfylde alle skabeloner (bagudkompatibelt).</div></div>
+              <button class="bly-btn outline small" id="pd-qa-assign-save-btn" type="button">Gem valg</button>
+            </div>
+            <div id="pd-qa-assign-body" class="pdqa-template-pills"></div>
+          </div>
+        </div>
+        <div class="pdqa-subpage" id="pdqa-sub-submissions" style="display:none">
+          <div class="pdqa-section-card">
+            <div class="pdqa-section-head"><div class="pdqa-section-title">Indsendte KS-formularer</div></div>
+            <div id="pd-qa-body"></div>
+          </div>
+        </div>
         <!-- RUNDE EB (Martin: "Her skal der under kvalitetskontrol laves en
              form for Dagbog her" — med et skærmbillede af dagbogsfanen i hans
              andet program, Arkitekt & Boligrenovering, som forbillede) —
@@ -8068,42 +8101,43 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
              UNDTAGEN "Hent vejret for adressen"-knappen (ingen vejr-API i
              denne runde, se skema-kommentaren ved project_qa_diary i
              server.js) — vejr/temperatur tastes i stedet som fri tekst. -->
-        <div class="bly-toolbar" style="margin-top:28px"><div class="bly-toolbar-left"><span class="bly-toolbar-title">📔 Dagbog</span></div></div>
-        <div class="sub" style="margin-bottom:14px">Byggepladsdagbog — én side pr. dato. Vælg en dato for at se eller redigere dagens side, eller start en ny.</div>
-        <div class="pdqd-wrap">
-          <div class="pdqd-form">
-            <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
-              <div class="form-group"><label class="form-label">📅 Dato</label><input id="pdqd-date" type="date" class="input"></div>
-              <div class="form-group"><label class="form-label">☀️ Vejr</label><input id="pdqd-weather" class="input" placeholder="Fx Sol, let overskyet"></div>
-              <div class="form-group"><label class="form-label">🌡️ Temperatur</label><input id="pdqd-temperature" class="input" placeholder="Fx 8-12 °C"></div>
+        <div class="pdqa-subpage" id="pdqa-sub-diary" style="display:none">
+          <div class="sub" style="margin-bottom:14px">Byggepladsdagbog — én side pr. dato. Vælg en dato for at se eller redigere dagens side, eller start en ny.</div>
+          <div class="pdqd-wrap">
+            <div class="pdqd-form">
+              <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
+                <div class="form-group"><label class="form-label">📅 Dato</label><input id="pdqd-date" type="date" class="input"></div>
+                <div class="form-group"><label class="form-label">☀️ Vejr</label><input id="pdqd-weather" class="input" placeholder="Fx Sol, let overskyet"></div>
+                <div class="form-group"><label class="form-label">🌡️ Temperatur</label><input id="pdqd-temperature" class="input" placeholder="Fx 8-12 °C"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">👷 Mandskab (antal)</label><input id="pdqd-crew" type="number" min="0" class="input" placeholder="Fx 3"></div>
+                <div class="form-group"><label class="form-label">⏱ Timer i alt</label><input id="pdqd-hours" type="number" min="0" step="0.5" class="input" placeholder="Fx 7,5"></div>
+              </div>
+              <div class="form-group"><label class="form-label">🛠 Udført arbejde</label><textarea id="pdqd-work" class="input" rows="4" placeholder="Hvad er lavet på pladsen i dag..."></textarea></div>
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">🚚 Leverancer</label><textarea id="pdqd-deliveries" class="input" rows="2" placeholder="Fx materialer leveret i dag"></textarea></div>
+                <div class="form-group"><label class="form-label">🧑‍💼 Besøg (bygherre, rådgivere, myndighed)</label><textarea id="pdqd-visits" class="input" rows="2"></textarea></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">📌 Hændelser og aftaler</label><textarea id="pdqd-events" class="input" rows="2"></textarea></div>
+                <div class="form-group"><label class="form-label">⛔ Forsinkelser og forhindringer</label><textarea id="pdqd-delays" class="input" rows="2"></textarea></div>
+              </div>
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">📷 Fotos</label>
+                <div id="pdqd-photos-grid" class="pdqd-photos-grid" style="margin-bottom:8px"></div>
+                <input id="pdqd-photo-input" type="file" accept="image/*" multiple style="display:none">
+                <button class="btn small" type="button" id="pdqd-add-photo-btn">📷 Tilføj fotos</button>
+              </div>
+              <div class="modal-actions" style="padding:16px 0 0;margin-top:14px">
+                <button class="btn" type="button" id="pdqd-delete-btn" style="display:none">🗑 Slet siden</button>
+                <button class="btn primary" type="button" id="pdqd-save-btn">Gem dagbogsside</button>
+              </div>
             </div>
-            <div class="form-row">
-              <div class="form-group"><label class="form-label">👷 Mandskab (antal)</label><input id="pdqd-crew" type="number" min="0" class="input" placeholder="Fx 3"></div>
-              <div class="form-group"><label class="form-label">⏱ Timer i alt</label><input id="pdqd-hours" type="number" min="0" step="0.5" class="input" placeholder="Fx 7,5"></div>
+            <div class="pdqd-days">
+              <div class="pdqd-days-title">Dage (<span id="pdqd-days-count">0</span>)</div>
+              <div id="pdqd-days-list"></div>
             </div>
-            <div class="form-group"><label class="form-label">🛠 Udført arbejde</label><textarea id="pdqd-work" class="input" rows="4" placeholder="Hvad er lavet på pladsen i dag..."></textarea></div>
-            <div class="form-row">
-              <div class="form-group"><label class="form-label">🚚 Leverancer</label><textarea id="pdqd-deliveries" class="input" rows="2" placeholder="Fx materialer leveret i dag"></textarea></div>
-              <div class="form-group"><label class="form-label">🧑‍💼 Besøg (bygherre, rådgivere, myndighed)</label><textarea id="pdqd-visits" class="input" rows="2"></textarea></div>
-            </div>
-            <div class="form-row">
-              <div class="form-group"><label class="form-label">📌 Hændelser og aftaler</label><textarea id="pdqd-events" class="input" rows="2"></textarea></div>
-              <div class="form-group"><label class="form-label">⛔ Forsinkelser og forhindringer</label><textarea id="pdqd-delays" class="input" rows="2"></textarea></div>
-            </div>
-            <div class="form-group" style="margin-bottom:0">
-              <label class="form-label">📷 Fotos</label>
-              <div id="pdqd-photos-grid" class="pdqd-photos-grid" style="margin-bottom:8px"></div>
-              <input id="pdqd-photo-input" type="file" accept="image/*" multiple style="display:none">
-              <button class="btn small" type="button" id="pdqd-add-photo-btn">📷 Tilføj fotos</button>
-            </div>
-            <div class="modal-actions" style="padding:16px 0 0;margin-top:14px">
-              <button class="btn" type="button" id="pdqd-delete-btn" style="display:none">🗑 Slet siden</button>
-              <button class="btn primary" type="button" id="pdqd-save-btn">Gem dagbogsside</button>
-            </div>
-          </div>
-          <div class="pdqd-days">
-            <div class="pdqd-days-title">Dage (<span id="pdqd-days-count">0</span>)</div>
-            <div id="pdqd-days-list"></div>
           </div>
         </div>
       </div>
@@ -8597,9 +8631,14 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <!-- RUNDE L (Martins ønske #1 "flere data oplysninger") — hvem opgaven
            allerede er booket på i Kapacitetsbordet, hvis nogen. Skjult helt
            når opgaven slet ikke er booket endnu. RUNDE EB — vist som pæne
-           chips med initial-cirkel og periode i stedet for en flad liste. -->
+           chips med initial-cirkel og periode i stedet for en flad liste.
+           RUNDE EC (Martin: "kan du ikke gøre Booket På så den er Croped
+           altså man skal trykke på noget så den folder ud?") — foldet sammen
+           til de første PDTD_BOOKINGS_COLLAPSED_COUNT som standard ved mange
+           bookinger, med en "Vis alle (N) ▾"-chip til at folde resten ud, se
+           renderPdtdBookings(). -->
       <div class="pdtd-card" id="pdtd-bookings-wrap" style="display:none">
-        <label class="form-label" style="margin-bottom:8px">👤 Booket på</label>
+        <label class="form-label" style="margin-bottom:8px">👤 Booket på (<span id="pdtd-bookings-count">0</span>)</label>
         <div id="pdtd-bookings-list" class="pdtd-booking-chips"></div>
       </div>
       <!-- RUNDE EB — "Kundekontakt" (gd-info-grid) erstattet af et rigtigt,
@@ -30649,6 +30688,7 @@ function initProjectsModule(){
     document.getElementById('pd-lightbox-next-btn').addEventListener('click',function(){pdLightboxIdx++;renderPdLightbox();});
     document.getElementById('pd-lightbox-delete-btn').addEventListener('click',deletePdLightboxPhoto);
     document.querySelectorAll('#pd-tabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){switchPdTab(b.dataset.pdtab);});});
+    document.querySelectorAll('#pdqa-subtabs .bly-segtab').forEach(function(b){b.addEventListener('click',function(){switchPdQaSubTab(b.dataset.qasub);});});
     document.getElementById('pdtd-close-btn').addEventListener('click',function(){closeModal('pd-task-detail-modal');});
     document.getElementById('pdtd-daterange-btn').addEventListener('click',function(e){e.stopPropagation();togglePdtdCalendar();});
     document.addEventListener('click',function(e){
@@ -31015,6 +31055,15 @@ function switchPdTab(name){
   // faktisk klikker ind på fanen (fx efter at have redigeret en opgave på
   // Opgaver-fanen lige inden).
   if(name==='pipeline')renderPdPipeline();
+}
+// RUNDE EC (Martin: "Det her layout under kvalitetskontrol er forvirrende og
+// grimt byg det langt pænere og mere moderne") — samme mønster som
+// switchPdTab ovenfor, bare én fane-bjælke "ned" (for Kvalitetssikrings tre
+// underfaner: Skabeloner/Formularer/Dagbog). Ingen data genindlæses ved
+// skift — alt er allerede renderet fra pjCurrent, kun synligheden skifter.
+function switchPdQaSubTab(name){
+  document.querySelectorAll('#pdqa-subtabs .bly-segtab').forEach(function(b){b.classList.toggle('active',b.dataset.qasub===name);});
+  ['templates','submissions','diary'].forEach(function(t){document.getElementById('pdqa-sub-'+t).style.display=t===name?'':'none';});
 }
 // ── OPGAVE-PIPELINE (RUNDE L, Martins ønske #2 og #3) ──────────────────────
 // Sagens egne opgaver som et kanban med 4 faste faser (gantt_tasks.status),
@@ -32266,19 +32315,42 @@ function openPdTaskDetail(taskId){
   document.getElementById('pdtd-status-dot').style.background=statusMeta.dot;
   document.getElementById('pdtd-status-label').textContent=statusMeta.label;
   // "Booket på" — se bookings-aggregeringen i GET /api/projects/:id (server.js).
-  // RUNDE EB (Martin: "status på alle den er booket på, Det er fin data at
-  // have men fin en anden måde der pænere") — samme data som før, bare vist
-  // som små chips med en initial-cirkel i stedet for en flad liste af linjer.
-  var bookings=t.bookings||[];
-  document.getElementById('pdtd-bookings-wrap').style.display=bookings.length?'':'none';
-  document.getElementById('pdtd-bookings-list').innerHTML=bookings.map(function(b){
-    var period=b.start_date===b.end_date?fmtDaDate(b.start_date):(fmtDaDate(b.start_date)+' – '+fmtDaDate(b.end_date));
-    var name=b.user_name||'Ukendt medarbejder';
-    var initials=name.trim().split(/\s+/).map(function(w){return w.charAt(0);}).slice(0,2).join('').toUpperCase()||'?';
-    return '<span class="pdtd-booking-chip"><span class="pdtd-booking-chip-av">'+esc(initials)+'</span>'+esc(name)+' <span class="pdtd-booking-chip-period">'+esc(period)+'</span></span>';
-  }).join('');
+  // RUNDE EC — foldet sammen som standard hver gang en ny opgave åbnes, se
+  // renderPdtdBookings().
+  pdtdBookings=t.bookings||[];
+  pdtdBookingsExpanded=false;
+  renderPdtdBookings();
   renderPdtdPhotos();
   document.getElementById('pd-task-detail-modal').classList.add('open');
+}
+// RUNDE EC (Martin: "kan du ikke gøre Booket På så den er Croped altså man
+// skal trykke på noget så den folder ud?") — en opgave booket på mange
+// medarbejder/perioder (set hos Martin: 12 bookinger) fyldte hele popup'en
+// ud. Viser nu kun de første PDTD_BOOKINGS_COLLAPSED_COUNT chips som
+// standard, med en klikbar "Vis alle (N) ▾"-chip sidst i rækken — klikker
+// man den, foldes resten ud og chippen bliver til "Vis færre ▴" i stedet.
+var PDTD_BOOKINGS_COLLAPSED_COUNT=4;
+var pdtdBookings=[],pdtdBookingsExpanded=false;
+function pdtdBookingChipHtml(b){
+  var period=b.start_date===b.end_date?fmtDaDate(b.start_date):(fmtDaDate(b.start_date)+' – '+fmtDaDate(b.end_date));
+  var name=b.user_name||'Ukendt medarbejder';
+  var initials=name.trim().split(/\s+/).map(function(w){return w.charAt(0);}).slice(0,2).join('').toUpperCase()||'?';
+  return '<span class="pdtd-booking-chip"><span class="pdtd-booking-chip-av">'+esc(initials)+'</span>'+esc(name)+' <span class="pdtd-booking-chip-period">'+esc(period)+'</span></span>';
+}
+function renderPdtdBookings(){
+  document.getElementById('pdtd-bookings-wrap').style.display=pdtdBookings.length?'':'none';
+  document.getElementById('pdtd-bookings-count').textContent=pdtdBookings.length;
+  var shown=pdtdBookingsExpanded?pdtdBookings:pdtdBookings.slice(0,PDTD_BOOKINGS_COLLAPSED_COUNT);
+  var hiddenCount=pdtdBookings.length-shown.length;
+  var html=shown.map(pdtdBookingChipHtml).join('');
+  if(hiddenCount>0){
+    html+='<button type="button" class="pdtd-booking-chip pdtd-booking-chip-toggle" id="pdtd-bookings-toggle">+'+hiddenCount+' mere ▾</button>';
+  }else if(pdtdBookingsExpanded&&pdtdBookings.length>PDTD_BOOKINGS_COLLAPSED_COUNT){
+    html+='<button type="button" class="pdtd-booking-chip pdtd-booking-chip-toggle" id="pdtd-bookings-toggle">Vis færre ▴</button>';
+  }
+  document.getElementById('pdtd-bookings-list').innerHTML=html;
+  var toggle=document.getElementById('pdtd-bookings-toggle');
+  if(toggle)toggle.onclick=function(){pdtdBookingsExpanded=!pdtdBookingsExpanded;renderPdtdBookings();};
 }
 // RUNDE BR — de billeder Martin selv har valgt til DENNE opgave (task_photos,
 // spejlet ind på hver opgave af GET /api/projects/:id, se t.photos). Genbruger
