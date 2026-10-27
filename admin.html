@@ -4255,7 +4255,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.24 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.25 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -8111,15 +8111,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
           <div class="sub" style="margin-bottom:14px">Byggepladsdagbog — én side pr. dato. Vælg en dato for at se eller redigere dagens side, eller start en ny.</div>
           <div class="pdqd-wrap">
             <div class="pdqd-form">
-              <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
-                <div class="form-group"><label class="form-label">📅 Dato</label><input id="pdqd-date" type="date" class="input"></div>
-                <div class="form-group"><label class="form-label">☀️ Vejr</label><input id="pdqd-weather" class="input" placeholder="Fx Sol, let overskyet"></div>
-                <div class="form-group"><label class="form-label">🌡️ Temperatur</label><input id="pdqd-temperature" class="input" placeholder="Fx 8-12 °C"></div>
-              </div>
-              <div class="form-row">
-                <div class="form-group"><label class="form-label">👷 Mandskab (antal)</label><input id="pdqd-crew" type="number" min="0" class="input" placeholder="Fx 3"></div>
-                <div class="form-group"><label class="form-label">⏱ Timer i alt</label><input id="pdqd-hours" type="number" min="0" step="0.5" class="input" placeholder="Fx 7,5"></div>
-              </div>
+              <!-- RUNDE EE (Martin: "Vi skal ikke bruge vejr, temperatur,
+                   mandskab og timer") — de fire felter er fjernet fra
+                   formularen igen. Kolonnerne (weather/temperature/
+                   crew_count/hours_total) er bevidst BEHOLDT i
+                   project_qa_diary (server.js) i stedet for en migration der
+                   sletter dem — de sendes nu bare aldrig fra klienten længere
+                   (se savePdQaDiary), så de forbliver altid tomme/null uden
+                   at det kræver en skemaændring, hvis Martin skifter mening. -->
+              <div class="form-group" style="max-width:220px"><label class="form-label">📅 Dato</label><input id="pdqd-date" type="date" class="input"></div>
               <div class="form-group"><label class="form-label">🛠 Udført arbejde</label><textarea id="pdqd-work" class="input" rows="4" placeholder="Hvad er lavet på pladsen i dag..."></textarea></div>
               <div class="form-row">
                 <div class="form-group"><label class="form-label">🚚 Leverancer</label><textarea id="pdqd-deliveries" class="input" rows="2" placeholder="Fx materialer leveret i dag"></textarea></div>
@@ -33160,7 +33160,7 @@ function renderPdQaDiaryDaysList(){
   if(!days.length){list.innerHTML='<div class="pdqd-days-empty">Ingen dage endnu. Medarbejderne kan ikke skrive i dagbogen fra app'+"'"+'en — kun herfra.</div>';return;}
   list.innerHTML=days.map(function(d){
     var dateStr=(d.entry_date||'').slice(0,10);
-    var sub=d.work_performed?String(d.work_performed).slice(0,46)+(d.work_performed.length>46?'…':''):(d.weather||d.temperature?[d.weather,d.temperature].filter(Boolean).join(' · '):'Ikke udfyldt');
+    var sub=d.work_performed?String(d.work_performed).slice(0,46)+(d.work_performed.length>46?'…':''):'Ikke udfyldt';
     return '<div class="pdqd-day-row'+(dateStr===selected?' active':'')+'" data-date="'+esc(dateStr)+'"><span class="pdqd-day-row-dot"></span><div class="pdqd-day-row-body"><div class="pdqd-day-row-date">'+esc(fmtDaDate(dateStr))+'</div><div class="pdqd-day-row-sub">'+esc(sub)+'</div></div></div>';
   }).join('');
   Array.prototype.forEach.call(list.querySelectorAll('.pdqd-day-row'),function(row){
@@ -33171,10 +33171,6 @@ function pdqdLoadDate(dateStr){
   var entry=(pjCurrent.qa_diary||[]).find(function(d){return (d.entry_date||'').slice(0,10)===dateStr;});
   pdqdEditId=entry?entry.id:null;
   document.getElementById('pdqd-date').value=dateStr;
-  document.getElementById('pdqd-weather').value=entry?(entry.weather||''):'';
-  document.getElementById('pdqd-temperature').value=entry?(entry.temperature||''):'';
-  document.getElementById('pdqd-crew').value=entry&&entry.crew_count!=null?entry.crew_count:'';
-  document.getElementById('pdqd-hours').value=entry&&entry.hours_total!=null?entry.hours_total:'';
   document.getElementById('pdqd-work').value=entry?(entry.work_performed||''):'';
   document.getElementById('pdqd-deliveries').value=entry?(entry.deliveries||''):'';
   document.getElementById('pdqd-visits').value=entry?(entry.visits||''):'';
@@ -33214,10 +33210,6 @@ async function savePdQaDiary(){
   if(!dateStr){toast('Vælg en dato','⚠');return;}
   var body={
     entry_date:dateStr,
-    weather:document.getElementById('pdqd-weather').value.trim()||null,
-    temperature:document.getElementById('pdqd-temperature').value.trim()||null,
-    crew_count:document.getElementById('pdqd-crew').value||'',
-    hours_total:document.getElementById('pdqd-hours').value||'',
     work_performed:document.getElementById('pdqd-work').value.trim()||null,
     deliveries:document.getElementById('pdqd-deliveries').value.trim()||null,
     visits:document.getElementById('pdqd-visits').value.trim()||null,
