@@ -4400,7 +4400,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.32.0 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.32.1 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -4488,14 +4488,41 @@ body.ai-open #ai-panel{display:flex;animation:ai-pop .18s cubic-bezier(.2,.9,.3,
   #ai-panel,#ai-panel.wide{left:0!important;right:0;bottom:0;top:0;width:auto;height:auto;border-radius:0;border:0}
   #ai-expand-btn{display:none}
 }
+/* RUNDE FC (Martin: "gøre så jeg kan flytte den rundt og så jeg kan lukke
+   den ned mens den tænker") — panelet trækkes i topbjælken og knappen kan
+   trækkes direkte; .ai-placed = brugeren har selv placeret den (left/top i
+   inline-style, husket i localStorage). Mens AI'en arbejder med panelet
+   lukket viser knappen en spinner, og et grønt prik når svaret er klar. */
+.ai-head{cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none}
+.ai-head.dragging{cursor:grabbing}
+.ai-head .ai-hbtn{cursor:pointer}
+#ai-panel.ai-placed,#ai-fab.ai-placed{bottom:auto;right:auto;transition:box-shadow .15s}
+body.ai-dragging,body.ai-dragging *{user-select:none!important;-webkit-user-select:none!important}
+#ai-fab{touch-action:none}
+#ai-fab.dragging{cursor:grabbing;box-shadow:0 16px 36px rgba(49,46,129,.45)}
+#ai-panel.dragging{box-shadow:0 30px 80px rgba(15,17,24,.3),0 4px 14px rgba(15,17,24,.1)}
+.ai-fab-spin{display:none;width:16px;height:16px;box-sizing:border-box;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:ai-spin .8s linear infinite}
+body.ai-busy #ai-fab .ai-fab-spin{display:block}
+body.ai-busy #ai-fab .ai-fab-star{display:none}
+.ai-fab-badge{display:none;position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:#22C55E;border:2px solid #fff;box-sizing:border-box}
+body.ai-has-reply #ai-fab .ai-fab-badge{display:block}
+body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
+@keyframes ai-spin{to{transform:rotate(360deg)}}
+@keyframes ai-nudge{0%,100%{translate:0 0}50%{translate:0 -4px}}
+.ai-busy-note{align-self:center;font-size:11px;color:var(--bly-sub);margin-top:-4px}
+@media(max-width:640px){
+  #ai-panel.ai-placed,#ai-panel.ai-placed.wide{left:0!important;top:0!important;bottom:0!important}
+  .ai-head{cursor:default}
+}
 @media print{#ai-fab,#ai-panel{display:none!important}}
 </style>
-<button id="ai-fab" type="button" title="Spørg Gulv Master AI (Ctrl+J)" aria-label="Åbn AI-assistent">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+<button id="ai-fab" type="button" title="Spørg Gulv Master AI (Ctrl+J) — træk for at flytte" aria-label="Åbn AI-assistent">
+  <span class="ai-fab-badge"></span><span class="ai-fab-spin"></span>
+  <svg class="ai-fab-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
   <span class="ai-fab-label">Spørg AI</span><kbd>Ctrl J</kbd>
 </button>
 <div id="ai-panel" role="dialog" aria-label="Gulv Master AI">
-  <div class="ai-head">
+  <div class="ai-head" id="ai-head" title="Træk for at flytte · dobbeltklik for at sætte tilbage i hjørnet">
     <div class="ai-head-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></div>
     <div><div class="ai-head-title">Gulv Master AI</div><div class="ai-head-sub">Spørg om tilbud, tid, leads, planlægning…</div></div>
     <div class="ai-head-btns">
@@ -38105,7 +38132,7 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
           +(m.error?'<div class="ai-msg-actions"><button class="ai-mini" type="button" data-ai-retry="'+i+'">↻ Prøv igen</button></div>':'<div class="ai-msg-actions"><button class="ai-mini" type="button" data-ai-copy="'+i+'">Kopiér</button></div>');
       }).join('');
     }
-    if(aiBusy)body.insertAdjacentHTML('beforeend','<div class="ai-typing" id="ai-typing"><span class="ai-dots"><i></i><i></i><i></i></span><span id="ai-typing-text">Tænker…</span></div>');
+    if(aiBusy)body.insertAdjacentHTML('beforeend','<div class="ai-typing" id="ai-typing"><span class="ai-dots"><i></i><i></i><i></i></span><span id="ai-typing-text">Tænker…</span></div><div class="ai-busy-note">Du kan godt lukke panelet — svaret kommer i baggrunden</div>');
     body.scrollTop=body.scrollHeight;
     var lbl=aiCtxLabel();
     document.getElementById('ai-ctx').classList.toggle('show',!!lbl);
@@ -38143,7 +38170,7 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
     text=String(text||'').trim();
     if(!text||aiBusy)return;
     aiMsgs.push({role:'user',content:text});
-    aiBusy=true;aiRender();aiSaveHistory();
+    aiBusy=true;document.body.classList.add('ai-busy');aiFabLabel();aiRender();aiSaveHistory();
     var slow=setTimeout(function(){var t=document.getElementById('ai-typing-text');if(t)t.textContent='Slår op i data…';},2500);
     var slower=setTimeout(function(){var t=document.getElementById('ai-typing-text');if(t)t.textContent='Sammenligner og regner…';},9000);
     var history=aiMsgs.filter(function(m){return !m.error;}).slice(-20).map(function(m){return {role:m.role,content:m.content};});
@@ -38154,14 +38181,81 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
       if(resp.status===401){logout();return;}
     }catch(e){r={error:'Netværksfejl — tjek forbindelsen og prøv igen'};}
     clearTimeout(slow);clearTimeout(slower);
-    aiBusy=false;
+    aiBusy=false;document.body.classList.remove('ai-busy');
+    var wasClosed=!document.body.classList.contains('ai-open');
     if(r&&r.ok)aiMsgs.push({role:'assistant',content:r.reply,sources:r.sources||[]});
     else aiMsgs.push({role:'assistant',content:(r&&r.error)||'Noget gik galt',error:true});
     aiSaveHistory();aiRender();
+    // Panelet blev lukket mens AI'en arbejdede — svaret er gemt i samtalen;
+    // vis det på knappen + en kort besked, så man ved det er klar.
+    if(wasClosed){document.body.classList.add('ai-has-reply');toast(r&&r.ok?'AI har svaret — klik på knappen for at se det':'AI-svaret fejlede — åbn panelet for at prøve igen',r&&r.ok?'✨':'⚠️');}
+    aiFabLabel();
     if(!aiStatus||!aiStatus.catalog||!aiStatus.catalog.fetched_at)aiLoadStatus();
+  }
+  function aiFabLabel(){
+    var l=document.querySelector('#ai-fab .ai-fab-label');if(!l)return;
+    l.textContent=document.body.classList.contains('ai-busy')?'Tænker…':(document.body.classList.contains('ai-has-reply')?'Svar klar':'Spørg AI');
+  }
+  // ── Flytbart panel/knap ──
+  var aiPos={panel:null,fab:null};
+  function aiLoadPos(){try{var p=JSON.parse(localStorage.getItem('gm_ai_pos_v1')||'{}');aiPos={panel:p.panel||null,fab:p.fab||null};}catch(e){}}
+  function aiSavePos(){try{localStorage.setItem('gm_ai_pos_v1',JSON.stringify(aiPos));}catch(e){}}
+  function aiClamp(el,x,y){
+    var w=el.offsetWidth||0,h=el.offsetHeight||0,m=8;
+    x=Math.min(Math.max(m,x),Math.max(m,window.innerWidth-w-m));
+    y=Math.min(Math.max(m,y),Math.max(m,window.innerHeight-h-m));
+    return {x:Math.round(x),y:Math.round(y)};
+  }
+  function aiPlace(el,pos){
+    if(!pos){el.classList.remove('ai-placed');el.style.left='';el.style.top='';return;}
+    el.classList.add('ai-placed');
+    var c=aiClamp(el,pos.x,pos.y);
+    el.style.left=c.x+'px';el.style.top=c.y+'px';
+  }
+  function aiApplyPanelPos(){
+    var panel=document.getElementById('ai-panel'),fab=document.getElementById('ai-fab');
+    if(window.innerWidth<=640){aiPlace(panel,null);return;}
+    if(aiPos.panel){aiPlace(panel,aiPos.panel);return;}
+    // Ingen egen placering, men knappen er flyttet: åbn panelet ved knappen.
+    if(aiPos.fab){var fr=fab.getBoundingClientRect();aiPlace(panel,{x:fr.left,y:fr.bottom-panel.offsetHeight});return;}
+    aiPlace(panel,null);
+  }
+  function aiMakeDraggable(handle,el,key,onDrop){
+    var st=null;
+    handle.addEventListener('pointerdown',function(e){
+      if(e.button!==0)return;
+      if(key==='panel'&&(e.target.closest('button')||window.innerWidth<=640))return;
+      var r=el.getBoundingClientRect();
+      st={sx:e.clientX,sy:e.clientY,ox:r.left,oy:r.top,moved:false,id:e.pointerId};
+    });
+    handle.addEventListener('pointermove',function(e){
+      if(!st||e.pointerId!==st.id)return;
+      var dx=e.clientX-st.sx,dy=e.clientY-st.sy;
+      if(!st.moved){
+        if(Math.abs(dx)+Math.abs(dy)<6)return;
+        st.moved=true;
+        try{handle.setPointerCapture(st.id);}catch(_){}
+        handle.classList.add('dragging');el.classList.add('dragging');document.body.classList.add('ai-dragging');
+      }
+      aiPlace(el,{x:st.ox+dx,y:st.oy+dy});
+    });
+    function end(e){
+      if(!st||(e&&e.pointerId!==st.id))return;
+      var moved=st.moved;st=null;
+      handle.classList.remove('dragging');el.classList.remove('dragging');document.body.classList.remove('ai-dragging');
+      if(moved){
+        aiPos[key]={x:parseInt(el.style.left,10),y:parseInt(el.style.top,10)};aiSavePos();
+        el._aiJustDragged=true;setTimeout(function(){el._aiJustDragged=false;},0);
+        if(onDrop)onDrop();
+      }
+    }
+    handle.addEventListener('pointerup',end);
+    handle.addEventListener('pointercancel',end);
   }
   function aiOpen(){
     document.body.classList.add('ai-open');
+    document.body.classList.remove('ai-has-reply');aiFabLabel();
+    aiApplyPanelPos();
     aiRender();
     if(!aiStatus)aiLoadStatus();
     setTimeout(function(){var t=document.getElementById('ai-text');if(t)t.focus();},60);
@@ -38187,9 +38281,22 @@ loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmail
     aiLoadHistory();
     if(/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent||'')){var kb=document.querySelector('#ai-fab kbd');if(kb)kb.textContent='⌘J';document.getElementById('ai-fab').title='Spørg Gulv Master AI (⌘J)';}
     if(!(window.SpeechRecognition||window.webkitSpeechRecognition))document.getElementById('ai-mic-btn').style.display='none';
-    document.getElementById('ai-fab').addEventListener('click',aiOpen);
+    aiLoadPos();
+    var fabEl=document.getElementById('ai-fab'),panelEl=document.getElementById('ai-panel');
+    if(aiPos.fab)requestAnimationFrame(function(){aiPlace(fabEl,aiPos.fab);});
+    aiMakeDraggable(fabEl,fabEl,'fab');
+    aiMakeDraggable(document.getElementById('ai-head'),panelEl,'panel');
+    document.getElementById('ai-head').addEventListener('dblclick',function(e){
+      if(e.target.closest('button'))return;
+      aiPos.panel=null;aiPos.fab=null;aiSavePos();aiPlace(fabEl,null);aiApplyPanelPos();
+    });
+    window.addEventListener('resize',function(){
+      if(aiPos.fab)aiPlace(fabEl,aiPos.fab);
+      if(document.body.classList.contains('ai-open'))aiApplyPanelPos();
+    });
+    fabEl.addEventListener('click',function(){if(fabEl._aiJustDragged)return;aiOpen();});
     document.getElementById('ai-close-btn').addEventListener('click',aiClose);
-    document.getElementById('ai-expand-btn').addEventListener('click',function(){document.getElementById('ai-panel').classList.toggle('wide');});
+    document.getElementById('ai-expand-btn').addEventListener('click',function(){document.getElementById('ai-panel').classList.toggle('wide');aiApplyPanelPos();});
     document.getElementById('ai-new-btn').addEventListener('click',function(){if(aiBusy)return;aiMsgs=[];aiSaveHistory();aiRender();document.getElementById('ai-text').focus();});
     document.getElementById('ai-send-btn').addEventListener('click',function(){var t=document.getElementById('ai-text');var v=t.value;t.value='';aiAutosize();aiStopRec();aiSend(v);});
     document.getElementById('ai-mic-btn').addEventListener('click',aiToggleRec);
