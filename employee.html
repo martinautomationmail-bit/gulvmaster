@@ -591,7 +591,53 @@ function openProjectsModal(){
 function closeProjectsModal(){document.getElementById('projects-modal').classList.remove('open')}
 function closeProjectsOnBackdrop(e){if(e.target===document.getElementById('projects-modal'))closeProjectsModal()}
 function pmFeedback(id,msg,ok){const el=document.getElementById(id);el.textContent=msg;el.className='req-feedback show '+(ok?'success':'error')}
-function pmReadFileAsDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
+// RUNDE DU (Martin: skærmbillede af "Netværksfejl — prøv igen" i Rafaels
+// "Registrér tid" — "Min medarbejder Rafael får denne fejl hver gang han
+// prøver at uploade sine timer?") — RODÅRSAG: et foto fra en telefonkamera
+// blev hidtil altid uploadet i sin FULDE, uskalerede original-størrelse
+// (typisk 3-15 MB) som base64 midt i selve JSON-requesten, uden nogen
+// komprimering undervejs. Ude på en byggeplads med svagt mobilsignal kan
+// selve det tunge upload simpelthen afbrydes midtvejs — det ser fetch() som
+// en ren forbindelsesfejl (afviser med en generisk netværks-exception), som
+// så vises som "Netværksfejl — prøv igen" i alle de steder der kalder denne
+// funktion (tidsregistrering, materialefoto, enkelt-foto, KS-formular,
+// kontaktformular, besøgsrapport — se alle kaldene af pmReadFileAsDataUrl).
+// LØSNING: et billede skaleres/komprimeres nu ALTID klient-side via et
+// skjult <canvas> før upload (maks. 1600px på den lange led, JPEG kvalitet
+// 0.75) — typisk 5-15x mindre payload, uden synlig forskel på en
+// telefonskærm/i en rapport. Video kan IKKE komprimeres på samme måde i
+// browseren, så en videofil sendes stadig uændret igennem, men afvises nu
+// tydeligt FØR upload hvis den er urealistisk stor, i stedet for først at
+// fejle bagefter med en forvirrende "netværksfejl". Falder desuden tilbage
+// til den rå original (akkurat som hidtil) hvis komprimeringen af en eller
+// anden grund skulle fejle (fx et sjældent billedformat browseren ikke selv
+// kan afkode) — så et upload aldrig blokeres af selve komprimerings-forsøget.
+function pmReadFileAsDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const rawFallback=()=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)};
+    if(!file.type||file.type.indexOf('image/')!==0){
+      if(file.size>25*1024*1024){const err=new Error('Videoen er '+(file.size/1024/1024).toFixed(1)+' MB — det er for stort til at uploade pålideligt over mobilt netværk. Optag en kortere video, eller send den til kontoret på anden vis.');err.pmFriendly=true;reject(err);return}
+      rawFallback();return;
+    }
+    const img=new Image();
+    const objUrl=URL.createObjectURL(file);
+    img.onload=()=>{
+      URL.revokeObjectURL(objUrl);
+      try{
+        const maxDim=1600;
+        const w=img.naturalWidth,h=img.naturalHeight;
+        const scale=Math.min(1,maxDim/Math.max(w,h));
+        const cw=Math.max(1,Math.round(w*scale)),ch=Math.max(1,Math.round(h*scale));
+        const canvas=document.createElement('canvas');
+        canvas.width=cw;canvas.height=ch;
+        canvas.getContext('2d').drawImage(img,0,0,cw,ch);
+        resolve(canvas.toDataURL('image/jpeg',0.75));
+      }catch(e){rawFallback()}
+    };
+    img.onerror=()=>{URL.revokeObjectURL(objUrl);rawFallback()};
+    img.src=objUrl;
+  });
+}
 function fmtPmDate(d){if(!d)return '';const parts=String(d).slice(0,10).split('-');return parts.length===3?parts[2]+'/'+parts[1]:d}
 async function pmLoadList(){
   const body=document.getElementById('pm-body');
@@ -744,7 +790,7 @@ async function pmSubmitMaterials(){
     const r=await api('/api/projects/'+pmState.current.id+'/materials',{method:'POST',body:JSON.stringify({price,store,note:note||null,receipt_photo_urls:photoUrls})});
     if(r&&r.ok){toast('Materiale gemt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmm-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem materiale'}
-  }catch(e){pmFeedback('pmm-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem materiale'}
+  }catch(e){pmFeedback('pmm-feedback',(e&&e.pmFriendly)?e.message:'Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem materiale'}
 }
 let pmtPhotoFiles=[],pmtPhotoPreviewUrls=[];
 // RUNDE H #30 — Martin har sat nogle medarbejdere til akkord (stykpris pr.
@@ -931,7 +977,7 @@ async function pmSubmitTime(){
       if(!r||!r.ok){pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
     }
     toast('Tid registreret ✓');await pmOpenProject(pmState.current.id)
-  }catch(e){pmFeedback('pmt-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
+  }catch(e){pmFeedback('pmt-feedback',(e&&e.pmFriendly)?e.message:'Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
 }
 function pmOpenPhotoForm(){
   pmState.view='photo-form';
@@ -958,7 +1004,7 @@ async function pmSubmitPhoto(){
     const r=await api('/api/projects/'+pmState.current.id+'/photos',{method:'POST',body:JSON.stringify({url:up.data.url,caption:caption||null})});
     if(r&&r.ok){toast('Billede tilføjet ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmp-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Upload billede'}
-  }catch(e){pmFeedback('pmp-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Upload billede'}
+  }catch(e){pmFeedback('pmp-feedback',(e&&e.pmFriendly)?e.message:'Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Upload billede'}
 }
 async function pmOpenQaPicker(){
   pmState.view='qa-picker';
@@ -1013,7 +1059,7 @@ async function pmSubmitQa(){
     const r=await api('/api/projects/'+pmState.current.id+'/qa-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers})});
     if(r&&r.ok){toast('KS-formular indsendt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmq-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
-  }catch(e){pmFeedback('pmq-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
+  }catch(e){pmFeedback('pmq-feedback',(e&&e.pmFriendly)?e.message:'Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend KS-formular'}
 }
 async function pmOpenContactPicker(){
   pmState.view='contact-picker';
@@ -1068,7 +1114,7 @@ async function pmSubmitContact(){
     const r=await api('/api/projects/'+pmState.current.id+'/contact-form-submissions',{method:'POST',body:JSON.stringify({template_id:t.id,template_name:t.name,answers})});
     if(r&&r.ok){toast('Kontaktformular indsendt ✓');await pmOpenProject(pmState.current.id)}
     else{pmFeedback('pmc-feedback',(r&&r.data&&r.data.error)||'Kunne ikke indsende',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
-  }catch(e){pmFeedback('pmc-feedback','Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
+  }catch(e){pmFeedback('pmc-feedback',(e&&e.pmFriendly)?e.message:'Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Indsend kontaktformular'}
 }
 // ══════════════════════════════════════════════════════════════
 // GENVEJE INDE FRA EN DAGS-OPGAVE og direkte ind i sags-modulet ovenfor.
@@ -1496,7 +1542,7 @@ async function submitVisitReportAndComplete(){
     closeVisitReportModal();
     await toggleTaskDone(assignmentId,true,true,'Besøgsrapport udfyldt');
   }catch(err){
-    feedback.textContent='Ingen forbindelse — prøv igen';
+    feedback.textContent=(err&&err.pmFriendly)?err.message:'Ingen forbindelse — prøv igen';
     feedback.className='req-feedback show error';
     console.error('Visit report save error:',err);
   }finally{
