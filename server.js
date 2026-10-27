@@ -2547,6 +2547,10 @@ async function initSchema() {
     -- createProjectFromAcceptedQuote nedenfor) — ellers skal Martin vælge den
     -- manuelt (almindeligt tekstfelt, ingen FK, ligesom projects.status).
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type TEXT;
+    -- RUNDE FG (Martin: "custom stages under hvert projekt") — sagens egne
+    -- pipeline-faser [{key,label,color}]. NULL = brug standardfaserne
+    -- (app_settings 'default_pipeline_stages', ellers de 4 indbyggede).
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS pipeline_stages JSONB;
 
     -- ── KVALITETSSIKRING: Martin bygger skabeloner (ordnet liste af felter),
     -- medarbejdere udfylder dem pr. projekt. ────────────────────────────
@@ -16578,6 +16582,53 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
   res.json(rows.rows);
 }));
 
+// ── RUNDE FG — pipeline-faser pr. projekt ──
+// gantt_tasks.status gemmer fasens key. De 4 indbyggede keys beholdes som
+// standard, så alle eksisterende opgaver passer uden migrering. En slettet
+// fases opgaver flyttes til første fase.
+const BUILTIN_PIPELINE_STAGES = [
+  { key: 'todo', label: '📝 Ikke startet', color: '#94A3B8' },
+  { key: 'in_progress', label: '🔨 I gang', color: '#3B82F6' },
+  { key: 'waiting', label: '⏳ Afventer', color: '#F59E0B' },
+  { key: 'done', label: '✅ Færdig', color: '#22C55E' }
+];
+function sanitizePipelineStages(raw) {
+  const out = []; const seen = new Set();
+  (Array.isArray(raw) ? raw : []).slice(0, 15).forEach((st, i) => {
+    if (!st || typeof st !== 'object') return;
+    const label = String(st.label || '').trim().slice(0, 40);
+    if (!label) return;
+    let key = String(st.key || '').trim().slice(0, 40).replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!key || seen.has(key)) key = 'st_' + Date.now().toString(36) + i;
+    seen.add(key);
+    const color = /^#[0-9a-fA-F]{6}$/.test(st.color || '') ? st.color : '#94A3B8';
+    out.push({ key, label, color });
+  });
+  return out;
+}
+async function getDefaultPipelineStages() {
+  const row = await pgOne("SELECT value FROM app_settings WHERE key='default_pipeline_stages'");
+  const saved = row ? sanitizePipelineStages(safeJsonParse(row.value, [])) : [];
+  return saved.length ? saved : BUILTIN_PIPELINE_STAGES;
+}
+async function getProjectPipelineStages(project) {
+  const own = project && project.pipeline_stages ? sanitizePipelineStages(typeof project.pipeline_stages === 'string' ? safeJsonParse(project.pipeline_stages, []) : project.pipeline_stages) : [];
+  return own.length ? own : await getDefaultPipelineStages();
+}
+app.put('/api/projects/:id/pipeline-stages', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id, pipeline_stages FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const stages = sanitizePipelineStages(req.body && req.body.stages);
+  if (!stages.length) return res.status(400).json({ error: 'Der skal være mindst én fase' });
+  const keys = stages.map(st => st.key);
+  // Opgaver i en fase der ikke findes længere → første fase.
+  const moved = await pool.query('UPDATE gantt_tasks SET status=$1 WHERE project_id=$2 AND NOT (status = ANY($3::text[]))', [keys[0], req.params.id, keys]);
+  await pool.query('UPDATE projects SET pipeline_stages=$1 WHERE id=$2', [JSON.stringify(stages), req.params.id]);
+  if (req.body && req.body.save_as_default) {
+    await pool.query(`INSERT INTO app_settings (key, value) VALUES ('default_pipeline_stages', $1) ON CONFLICT (key) DO UPDATE SET value=$1`, [JSON.stringify(stages)]);
+  }
+  res.json({ ok: true, stages, moved_tasks: moved.rowCount || 0 });
+}));
 app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
@@ -16636,7 +16687,7 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
       if (opp) crmEntity = { type: 'opportunity', id: opp.id, name: opp.name };
     }
   }
-  res.json({ ...project, tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, qa_diary: qaDiary, crm_entity: crmEntity });
+  res.json({ ...project, pipeline_stages: await getProjectPipelineStages(project), pipeline_stages_custom: !!(project.pipeline_stages && sanitizePipelineStages(project.pipeline_stages).length), tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, qa_diary: qaDiary, crm_entity: crmEntity });
 }));
 
 // Projekt-budget (sep. 2026, Martins ønske #3 "Samlet budget visning under projekter"):
@@ -17300,7 +17351,8 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
   if (!current) return res.status(404).json({ error: 'Opgaven blev ikke fundet' });
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   const b = req.body || {};
-  const GANTT_TASK_STATUSES = ['todo', 'in_progress', 'waiting', 'done'];
+  // RUNDE FG — gyldige faser er nu sagens egne (se getProjectPipelineStages).
+  const GANTT_TASK_STATUSES = (await getProjectPipelineStages(project)).map(st => st.key);
   const merged = {
     name: b.name !== undefined ? String(b.name).trim() : current.name,
     start_date: b.start_date !== undefined ? b.start_date : current.start_date,

@@ -1151,6 +1151,27 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
   .note-widget{max-width:calc(100vw - 16px);max-height:calc(100vh - 16px)}
 }
 
+/* RUNDE FG (Martin: "Headeren på mobil versionen ser helt forkert ud") —
+   1fr/auto/1fr-griddet med søgefeltet i midten var for bredt til en
+   telefon: søgefeltet blev klippet og ☰-menuen skubbet ud over højre kant.
+   På mobil nu to rækker: knapperne (mail-tæller, DA/EN, ☰) øverst og
+   søgefeltet i fuld bredde nedenunder. Dropdowns låses under headeren. */
+@media(max-width:760px){
+  .app-header-sticky .nav{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"left right" "center center";height:auto;row-gap:8px;column-gap:8px;padding:8px 12px 10px}
+  .nav-left{grid-area:left;min-width:0;flex-wrap:nowrap;overflow:hidden}
+  .nav-right{grid-area:right;min-width:0}
+  .nav-center{grid-area:center;min-width:0;width:100%;justify-content:stretch}
+  .nav-center #globalsearch{width:100%}
+  .nav-center #global-search-input{width:100%!important;max-width:none!important;box-sizing:border-box;padding:10px 16px;font-size:14px}
+  .nav .nb{padding:7px 11px;font-size:12px;white-space:nowrap}
+  #mail-quota-btn{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .nav-left .ab-lang{margin-left:0;flex:none}
+  #notifdrop-menu,#global-search-results{top:108px!important;max-height:calc(100vh - 124px)!important}
+}
+@media(max-width:380px){
+  #mail-quota-btn .nb-label{font-size:11px}
+}
+
 /* ══════════════════════════════════════════════════════════════
    GLOBAL SØGNING — dropdown-resultater. Redesignet efter Martins ønske om
    "pænere/mere moderne data og dropdown-boks" i samme stil som Billy: rene
@@ -1827,6 +1848,19 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
    faldgrube: et flex-barn vil ellers aldrig blive smallere end sit eget
    indhold, medmindre min-width eksplicit sættes til 0). */
 #pd-pipeline-board .crmp-card{min-width:0}
+/* RUNDE FG — fase-editoren (#pd-stages-modal) */
+.pdst-list{display:flex;flex-direction:column;gap:8px}
+.pdst-row{display:flex;align-items:center;gap:8px;border:1px solid var(--bly-border-soft);border-radius:10px;padding:8px 10px;background:#fff}
+.pdst-move{display:flex;flex-direction:column;gap:2px}
+.pdst-move button{border:1px solid var(--bly-border);background:#fff;border-radius:5px;width:22px;height:15px;cursor:pointer;font-size:8px;line-height:1;color:var(--bly-sub);padding:0}
+.pdst-move button:disabled{opacity:.3;cursor:default}
+.pdst-color{width:34px;height:34px;border:1px solid var(--bly-border);border-radius:8px;padding:2px;background:#fff;cursor:pointer;flex:0 0 auto}
+.pdst-row .input{flex:1;min-width:0;margin:0;height:34px;padding:6px 10px}
+.pdst-count{font-size:11px;color:var(--bly-sub);white-space:nowrap;flex:0 0 auto}
+.pdst-del{width:32px;height:32px;border:1px solid var(--bly-border);border-radius:8px;background:#fff;cursor:pointer;color:var(--bly-sub);flex:0 0 auto}
+.pdst-del:hover{background:#FEF2F2;color:#B91C1C;border-color:#FECACA}
+.pdst-default{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-top:14px;cursor:pointer}
+.pdst-default input{width:16px;height:16px;margin:0}
 .crmp-card-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--bly-sub);margin-top:3px}
 .crmp-card-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .crmp-card-badge{background:var(--bly-accent-soft);color:var(--bly-accent);font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px}
@@ -4405,7 +4439,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.33.2 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.34.0 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -7726,6 +7760,23 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   </div>
 </div>
 
+<!-- RUNDE FG (Martin: "custom stages under hvert projekt") — sagens egne
+     pipeline-faser, se pdStagesOpen()/pdStagesSave() og PUT
+     /api/projects/:id/pipeline-stages i server.js. -->
+<div class="mo" id="pd-stages-modal">
+  <div class="modal" style="width:520px;max-width:96vw;max-height:88vh;overflow:auto">
+    <h3>⚙️ Faser i denne sag</h3>
+    <div class="sub" style="margin-top:-8px;margin-bottom:14px">Navngiv, farv og sorter sagens kolonner i pipelinen. Opgaver i en fase du sletter, flyttes til den første fase.</div>
+    <div id="pd-stages-list" class="pdst-list"></div>
+    <button type="button" class="bly-btn outline small" id="pd-stages-add" style="margin-top:10px">+ Tilføj fase</button>
+    <label class="pdst-default"><input type="checkbox" id="pd-stages-default"> Brug også disse faser som standard for nye sager</label>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="closeModal('pd-stages-modal')">Annuller</button>
+      <button class="btn primary" type="button" id="pd-stages-save">Gem faser</button>
+    </div>
+  </div>
+</div>
+
 <!-- OPGAVE-DETALJER — RETTELSE (Martins fejlrapport om for lang opgavetekst i
      den smalle opgave-række): fuld opgavetekst + metadata i en popup, åbnet
      via "Læs mere"-knappen som crmpxTaskRowHtml sætter på når titlen er
@@ -8304,6 +8355,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
       <div class="pdtabpage" id="pdtab-pipeline" style="display:none">
         <div class="bly-toolbar">
           <div class="bly-toolbar-left"><span class="bly-toolbar-title">Opgave-pipeline</span><span class="sub">Træk et kort til en anden fase for at ændre status</span></div>
+          <div class="bly-toolbar-right"><button type="button" class="bly-btn outline small" id="pd-stages-btn" title="Tilføj, omdøb, farv og sorter denne sags faser">⚙️ Rediger faser</button></div>
         </div>
         <div class="crmp-board" id="pd-pipeline-board"></div>
       </div>
@@ -31509,7 +31561,7 @@ function initProjectsModule(){
     // RUNDE L (#1) — status-prikken/-teksten i hovedet opdateres straks ved valg,
     // så man ser farven skifte med det samme, ikke først efter Gem.
     document.getElementById('pdtd-status-select').addEventListener('change',function(){
-      var meta=PD_PIPELINE_STATUS_META[this.value]||PD_PIPELINE_STATUS_META.todo;
+      var meta=pdStageMeta(this.value);
       document.getElementById('pdtd-status-dot').style.background=meta.dot;
       document.getElementById('pdtd-status-label').textContent=meta.label;
     });
@@ -31871,13 +31923,18 @@ function switchPdQaSubTab(name){
 // man kan trække imellem — farven følger med, se PD_PIPELINE_STATUS_META.
 // Genbruger samme .crmp-board/.crmp-col/.crmp-card-klasser som CRM- og
 // projekt-Kanban'erne (se renderPjKanban ovenfor) for et ensartet udseende.
-var PD_PIPELINE_STATUS_META={
-  todo:{dot:'#94A3B8',label:'📝 Ikke startet'},
-  in_progress:{dot:'#3B82F6',label:'🔨 I gang'},
-  waiting:{dot:'#F59E0B',label:'⏳ Afventer'},
-  done:{dot:'#22C55E',label:'✅ Færdig'}
-};
-var PD_PIPELINE_STATUS_ORDER=['todo','in_progress','waiting','done'];
+// RUNDE FG — faserne er nu sagens egne (pjCurrent.pipeline_stages, sendt
+// med fra GET /api/projects/:id); de 4 nedenfor er kun reserve.
+var PD_BUILTIN_STAGES=[
+  {key:'todo',label:'📝 Ikke startet',color:'#94A3B8'},
+  {key:'in_progress',label:'🔨 I gang',color:'#3B82F6'},
+  {key:'waiting',label:'⏳ Afventer',color:'#F59E0B'},
+  {key:'done',label:'✅ Færdig',color:'#22C55E'}
+];
+function pdStages(){return (pjCurrent&&Array.isArray(pjCurrent.pipeline_stages)&&pjCurrent.pipeline_stages.length)?pjCurrent.pipeline_stages:PD_BUILTIN_STAGES;}
+function pdStageMeta(key){var all=pdStages();var st=all.find(function(x){return x.key===key;})||all[0];return {key:st.key,dot:st.color,label:st.label};}
+// En opgave hvis fase ikke (længere) findes, vises i første fase.
+function pdTaskStageKey(t){var k=t.status||'todo';return pdStages().some(function(x){return x.key===k;})?k:pdStages()[0].key;}
 var pdPipelineDragId=null;
 // RUNDE EF — se den udførlige kommentar i pdPipelineCardHtml() nedenfor.
 // Tilbudslinje-afledte opgavenavne er altid formet "<kort navn> - <uddybning>"
@@ -31933,9 +31990,10 @@ function renderPdPipeline(){
   var board=document.getElementById('pd-pipeline-board');
   if(!board||!pjCurrent)return;
   var tasks=pjCurrent.tasks||[];
-  board.innerHTML=PD_PIPELINE_STATUS_ORDER.map(function(status){
-    var cards=tasks.filter(function(t){return (t.status||'todo')===status;});
-    var meta=PD_PIPELINE_STATUS_META[status];
+  board.innerHTML=pdStages().map(function(st){
+    var status=st.key;
+    var cards=tasks.filter(function(t){return pdTaskStageKey(t)===status;});
+    var meta=pdStageMeta(status);
     return '<div class="crmp-col" data-status="'+status+'">'
       +'<div class="crmp-col-head"><div class="crmp-col-headrow"><div class="crmp-col-title" style="flex:1;min-width:0">'
       +'<span class="crmp-col-dot" style="background:'+meta.dot+'"></span>'+meta.label+'<span class="crmp-col-count">'+cards.length+'</span>'
@@ -31968,7 +32026,7 @@ function renderPdPipeline(){
       var id=pdPipelineDragId;
       if(!id)return;
       var task=tasks.find(function(t){return t.id===id;});
-      if(task&&task.status===status)return; // droppet i samme kolonne — intet at gøre
+      if(task&&pdTaskStageKey(task)===status)return; // droppet i samme kolonne — intet at gøre
       if(task)task.status=status; // optimistisk, så kortet ikke "hopper tilbage" mens kaldet er undervejs
       renderPdPipeline();
       var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+id,{method:'PUT',body:JSON.stringify({status:status})});
@@ -31976,6 +32034,65 @@ function renderPdPipeline(){
     });
   });
 }
+// ── RUNDE FG — fase-editor pr. sag ──
+var pdStagesWork=[];
+function pdStagesOpen(){
+  if(!pjCurrent)return;
+  pdStagesWork=pdStages().map(function(st){return {key:st.key,label:st.label,color:st.color};});
+  document.getElementById('pd-stages-default').checked=false;
+  pdStagesRender();
+  document.getElementById('pd-stages-modal').classList.add('open');
+}
+function pdStagesRender(){
+  var counts={};(pjCurrent.tasks||[]).forEach(function(t){var k=pdTaskStageKey(t);counts[k]=(counts[k]||0)+1;});
+  var n=pdStagesWork.length;
+  document.getElementById('pd-stages-list').innerHTML=pdStagesWork.map(function(st,i){
+    return '<div class="pdst-row">'
+      +'<div class="pdst-move"><button type="button" data-pdst-up="'+i+'"'+(i===0?' disabled':'')+'>▲</button><button type="button" data-pdst-down="'+i+'"'+(i===n-1?' disabled':'')+'>▼</button></div>'
+      +'<input type="color" class="pdst-color" data-pdst-color="'+i+'" value="'+esc(st.color||'#94A3B8')+'" title="Farve">'
+      +'<input class="input" data-pdst-label="'+i+'" value="'+esc(st.label)+'" maxlength="40" placeholder="Fx Opmåling">'
+      +'<span class="pdst-count">'+(st.key&&counts[st.key]?counts[st.key]+' opg.':'')+'</span>'
+      +'<button type="button" class="pdst-del" data-pdst-del="'+i+'" title="Slet fase"'+(n<=1?' disabled':'')+'>🗑</button>'
+      +'</div>';
+  }).join('');
+}
+async function pdStagesSave(){
+  var stages=pdStagesWork.map(function(st){return {key:st.key,label:String(st.label||'').trim(),color:st.color};}).filter(function(st){return st.label;});
+  if(!stages.length){toast('Der skal være mindst én fase med et navn','⚠️');return;}
+  var btn=document.getElementById('pd-stages-save');btn.disabled=true;
+  var r=await api('/api/projects/'+pjCurrent.id+'/pipeline-stages',{method:'PUT',body:JSON.stringify({stages:stages,save_as_default:document.getElementById('pd-stages-default').checked})});
+  btn.disabled=false;
+  if(r&&r.ok){
+    closeModal('pd-stages-modal');
+    toast('Faser gemt'+(r.moved_tasks?' — '+r.moved_tasks+' opgave(r) flyttet til "'+r.stages[0].label+'"':''),'✓');
+    await reloadPdCurrent();
+  } else toast((r&&r.error)||'Kunne ikke gemme faserne','❌');
+}
+(function(){
+  function init(){
+    var btn=document.getElementById('pd-stages-btn');if(!btn)return;
+    btn.addEventListener('click',pdStagesOpen);
+    document.getElementById('pd-stages-add').addEventListener('click',function(){
+      var palette=['#8B5CF6','#EC4899','#14B8A6','#F97316','#0EA5E9','#84CC16','#EF4444'];
+      pdStagesWork.push({key:'',label:'',color:palette[pdStagesWork.length%palette.length]});
+      pdStagesRender();
+      var inputs=document.querySelectorAll('#pd-stages-list [data-pdst-label]');var last=inputs[inputs.length-1];if(last)last.focus();
+    });
+    document.getElementById('pd-stages-save').addEventListener('click',pdStagesSave);
+    var list=document.getElementById('pd-stages-list');
+    list.addEventListener('input',function(e){
+      var l=e.target.closest('[data-pdst-label]');if(l){pdStagesWork[+l.dataset.pdstLabel].label=l.value;return;}
+      var c=e.target.closest('[data-pdst-color]');if(c){pdStagesWork[+c.dataset.pdstColor].color=c.value;}
+    });
+    list.addEventListener('click',function(e){
+      var up=e.target.closest('[data-pdst-up]'),down=e.target.closest('[data-pdst-down]'),del=e.target.closest('[data-pdst-del]');
+      var i,j,tmp;
+      if(up||down){i=+(up||down).dataset[up?'pdstUp':'pdstDown'];j=i+(up?-1:1);if(j<0||j>=pdStagesWork.length)return;tmp=pdStagesWork[i];pdStagesWork[i]=pdStagesWork[j];pdStagesWork[j]=tmp;pdStagesRender();return;}
+      if(del){if(pdStagesWork.length<=1)return;pdStagesWork.splice(+del.dataset.pdstDel,1);pdStagesRender();}
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
 async function savePjRowStatus(id,status){
   var r=await api('/api/projects/'+id,{method:'PUT',body:JSON.stringify({status:status})});
   if(r&&r.ok){
@@ -33147,7 +33264,9 @@ function openPdTaskDetail(taskId){
   renderChecklistItems('pdtd-checklist-items',taskId);
   // RUNDE L (Martins ønske #1) — status-farve i hovedet + status-select, samme
   // vokabular som den nye Pipeline-fane (PD_PIPELINE_STATUS_META).
-  var status=t.status||'todo',statusMeta=PD_PIPELINE_STATUS_META[status]||PD_PIPELINE_STATUS_META.todo;
+  var status=pdTaskStageKey(t),statusMeta=pdStageMeta(status);
+  // RUNDE FG — valgmulighederne følger sagens egne faser.
+  document.getElementById('pdtd-status-select').innerHTML=pdStages().map(function(st){return '<option value="'+esc(st.key)+'">'+esc(st.label)+'</option>';}).join('');
   document.getElementById('pdtd-status-select').value=status;
   document.getElementById('pdtd-status-dot').style.background=statusMeta.dot;
   document.getElementById('pdtd-status-label').textContent=statusMeta.label;
