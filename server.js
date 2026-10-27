@@ -18899,11 +18899,11 @@ async function aiEstimate(input, access) {
       scored.push({ sim, hasDays, q, act });
     });
     scored.sort((a, b) => (b.hasDays - a.hasDays) || (b.sim - a.sim));
-    similar = scored.filter(x => x.sim >= 0.12).slice(0, 10).map(x => ({
+    similar = scored.filter(x => x.sim >= 0.12).slice(0, 8).map(x => ({
       lighed: Math.round(x.sim * 100) + '%', tilbud: x.q.quote_number, sag: x.q.job_name || '', status: x.q.status,
       areal_m2: x.q._area || undefined, dage_naevnt: x.q._days.map(d => ({ fra: d.fra, til: d.til, uddrag: d.uddrag })),
       faktisk_planlagt: x.act || undefined,
-      linjer: x.q.lines.filter(l => l.type !== 'text' && l.t).slice(0, 10).map(l => [l.t, l.n != null ? Number(l.n) : null, l.u].filter(v => v != null && v !== '').join(' · ').slice(0, 120))
+      linjer: x.q.lines.filter(l => l.type !== 'text' && l.t).slice(0, 8).map(l => [l.t, l.n != null ? Number(l.n) : null, l.u].filter(v => v != null && v !== '').join(' · ').slice(0, 120))
     }));
   }
   return {
@@ -19171,7 +19171,12 @@ async function aiCallModelWithTools(system, messages, tools, toolChoice) {
     const err = new Error('AI er ikke aktiveret på serveren endnu — ANTHROPIC_API_KEY mangler i Render-miljøvariablerne.');
     err.isConfig = true; throw err;
   }
-  const body = { model: ANTHROPIC_MODEL, max_tokens: 3000, system, messages, tools };
+  // RUNDE FE — 3000 tokens var for lidt: modellen kan bruge en stor del på
+  // intern tænkning ("thinking"-blokke) over det store estimat-grundlag og
+  // ramte loftet FØR den skrev selve svaret → tomt svar. Loftet koster kun
+  // det der faktisk bruges.
+  const body = { model: ANTHROPIC_MODEL, max_tokens: 16000, system, messages };
+  if (tools && tools.length) body.tools = tools;
   if (toolChoice) body.tool_choice = toolChoice;
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -19285,7 +19290,7 @@ async function aiRunConversation(job, access, messages, pageContext) {
   // tilbudsnummer, hentes det med det samme, og ligner spørgsmålet et
   // tidsestimat, køres hele estimat-grundlaget også — så modellen typisk
   // kan svare i FØRSTE runde i stedet for at søge sig frem.
-  let prepared = '';
+  let prepared = '', preparedEst = null;
   const refs = aiFindQuoteRefs(lastUser);
   const pageQuote = pageContext && pageContext.aabent_tilbud;
   const wantsDuration = /\bdag(e|ene)?\b|varighed|lang tid|tidsforbrug|hvor længe|spænd|estim|mandedag|arbejdsdag|tage\b/i.test(lastUser);
@@ -19295,8 +19300,8 @@ async function aiRunConversation(job, access, messages, pageContext) {
       if (wantsDuration) {
         const est = await aiEstimate({ tilbud: refs[0] }, access);
         if (!est.fejl) { ctx.used.add(est.tilbud ? est.tilbud.tilbud : refs[0]); ctx.used.add('Tidskatalog'); if (est.lignende_tidligere_tilbud.length) ctx.used.add(est.lignende_tidligere_tilbud.length + ' lignende tilbud'); step('Matchede linjerne mod tidskataloget og ' + est.lignende_tidligere_tilbud.length + ' lignende sager'); }
-        const q = est.fejl ? null : await aiGetQuote(refs[0]);
-        prepared = 'FORBEREDT DATA (allerede hentet for dig):\n' + JSON.stringify({ tilbud: q || { fejl: est.fejl }, estimat_grundlag: est.fejl ? undefined : est });
+        preparedEst = est.fejl ? null : est;
+        prepared = 'FORBEREDT DATA (allerede hentet for dig — svar direkte ud fra det, uden flere opslag medmindre noget afgørende mangler):\n' + JSON.stringify(est);
       } else {
         const qs = [];
         for (const r of refs) qs.push((await aiGetQuote(r)) || { fejl: 'Fandt ikke ' + r });
@@ -19307,7 +19312,8 @@ async function aiRunConversation(job, access, messages, pageContext) {
       step('Matcher det åbne tilbud mod tidskataloget');
       const est = await aiEstimate(pageQuote.nummer && access.quotes ? { tilbud: pageQuote.nummer } : { linjer: pageQuote.linjer.filter(l => l.tekst) }, access);
       if (!est.fejl) { ctx.used.add('Tidskatalog'); if (est.lignende_tidligere_tilbud.length) ctx.used.add(est.lignende_tidligere_tilbud.length + ' lignende tilbud'); }
-      prepared = 'FORBEREDT DATA (estimat-grundlag for det åbne tilbud):\n' + JSON.stringify(est);
+      preparedEst = est.fejl ? null : est;
+      prepared = 'FORBEREDT DATA (estimat-grundlag for det åbne tilbud — svar direkte ud fra det):\n' + JSON.stringify(est);
     }
   } catch (e) {
     prepared = 'Forberedelse fejlede (' + e.message + ') — brug værktøjerne selv.';
@@ -19328,7 +19334,8 @@ async function aiRunConversation(job, access, messages, pageContext) {
     prepared
   ].filter(Boolean).join('\n\n');
   let convo = messages.slice();
-  let finalText = '';
+  let finalText = '', lastText = '';
+  const debug = job.debug = [];
   const MAX_ROUNDS = 6;
   for (let round = 0; round <= MAX_ROUNDS; round++) {
     // Sidste runde: tving et svar ud fra det der er hentet (ingen flere opslag),
@@ -19339,6 +19346,8 @@ async function aiRunConversation(job, access, messages, pageContext) {
     const content = Array.isArray(data.content) ? data.content : [];
     const toolUses = content.filter(c => c.type === 'tool_use');
     const text = content.filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
+    debug.push({ runde: round, stop_reason: data.stop_reason, blokke: content.map(c => c.type).join(','), tekst: text.length, tokens: data.usage ? data.usage.output_tokens : null });
+    if (text) lastText = text;
     if (data.stop_reason !== 'tool_use' || !toolUses.length || force) { finalText = text; break; }
     convo.push({ role: 'assistant', content });
     toolUses.forEach(tu => step(aiToolStepLabel(tu.name, tu.input)));
@@ -19354,7 +19363,56 @@ async function aiRunConversation(job, access, messages, pageContext) {
     }));
     convo.push({ role: 'user', content: results });
   }
-  return { reply: finalText || 'Jeg fandt ikke nok data til et sikkert svar. Prøv at nævne tilbudsnummeret eller opgaven mere præcist.', sources: Array.from(ctx.used) };
+  // RUNDE FE — tomt svar må aldrig nå brugeren. 1) Nyt, enkelt kald UDEN
+  // værktøjer med alt det hentede som tekst. 2) Lykkes det heller ikke, og der
+  // er et estimat-grundlag, beregnes et svar direkte ud fra dataene. Årsagen
+  // logges i systemloggen, så den kan findes.
+  if (!finalText) {
+    step('Skriver svaret');
+    try {
+      const gathered = convo.filter(m => Array.isArray(m.content)).flatMap(m => m.content.filter(c => c.type === 'tool_result').map(c => c.content)).join('\n').slice(0, 40000);
+      const rescue = await aiCallModelWithTools(system, [{ role: 'user', content: lastUser + (gathered ? '\n\nData hentet til spørgsmålet:\n' + gathered : '') + '\n\nSvar nu direkte, kort og konkret på dansk ud fra dataene. Ingen flere opslag.' }], null);
+      const rc = Array.isArray(rescue.content) ? rescue.content : [];
+      finalText = rc.filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
+      debug.push({ runde: 'redning', stop_reason: rescue.stop_reason, blokke: rc.map(c => c.type).join(','), tekst: finalText.length, tokens: rescue.usage ? rescue.usage.output_tokens : null });
+    } catch (e) { debug.push({ runde: 'redning', fejl: e.message }); }
+  }
+  if (!finalText && lastText) finalText = lastText;
+  if (!finalText && preparedEst) finalText = aiEstimateFallbackText(preparedEst);
+  if (debug.some(d => d.runde === 'redning')) {
+    await logSystemEvent('ai_assistant', finalText ? 'warn' : 'error', 'AI-assistent gav tomt svar (model ' + ANTHROPIC_MODEL + '): ' + JSON.stringify(debug).slice(0, 1500)).catch(() => {});
+  }
+  if (!finalText) {
+    const d = debug[debug.length - 1] || {};
+    finalText = 'Jeg kunne ikke formulere et svar denne gang. Prøv igen om lidt.\n\n_Teknisk: ' + (d.fejl || ('stop_reason=' + d.stop_reason + ', blokke=' + d.blokke)) + '_';
+  }
+  return { reply: finalText, sources: Array.from(ctx.used) };
+}
+// Sidste udvej: et estimat regnet direkte ud fra katalog og tidligere sager,
+// uden AI. Bedste katalogrække pr. linje (passer_omfang først); "pr N m²"-
+// rækker skaleres efter antal. Klart markeret som beregnet.
+function aiDk(n) { return String(Math.round(Number(n) * 100) / 100).replace('.', ','); }
+function aiEstimateFallbackText(est) {
+  const rows = [];
+  let lo = 0, hi = 0, missing = [];
+  (est.linjer_matchet_mod_tidskatalog || []).forEach(l => {
+    const c = (l.katalog || [])[0];
+    const qty = Number((String(l.linje).match(/·\s*([\d.,]+)/) || [])[1] || 0);
+    if (!c || c.dage_fra == null) { missing.push(l.linje); return; }
+    let f = 1;
+    const per = String(c.opgave || '').match(/pr\.?\s*(\d+)\s*m/i);
+    if (per && qty) f = Math.max(1, Math.ceil(qty / Number(per[1]) * 2) / 2);
+    const a = Number(c.dage_fra) * f, b = Number(c.dage_til != null ? c.dage_til : c.dage_fra) * f;
+    lo += a; hi += b;
+    rows.push('| ' + l.linje + ' | ' + c.opgave + (f !== 1 ? ' (×' + aiDk(f) + ')' : '') + ' | ' + aiDk(a) + '–' + aiDk(b) + ' |');
+  });
+  const r1 = x => aiDk(Math.round(x * 2) / 2);
+  const sim = (est.lignende_tidligere_tilbud || []).filter(q => (q.dage_naevnt && q.dage_naevnt.length) || q.faktisk_planlagt).slice(0, 4).map(q =>
+    '- **' + q.tilbud + '** · ' + q.sag + (q.dage_naevnt && q.dage_naevnt.length ? ' → note: ' + q.dage_naevnt.map(d => d.fra === d.til ? d.fra : d.fra + '–' + d.til).join(', ') + ' dage' : '') + (q.faktisk_planlagt ? ' · planlagt: ' + q.faktisk_planlagt.arbejdsdage + ' arbejdsdage / ' + q.faktisk_planlagt.mandedage + ' mandedage' : ''));
+  return '**Ca. ' + r1(lo) + '–' + r1(hi) + ' arbejdsdage** (beregnet direkte fra tidskataloget — AI-vurderingen kunne ikke gennemføres denne gang)\n\n'
+    + (rows.length ? '| Linje | Katalog | Dage |\n|---|---|---|\n' + rows.join('\n') + '\n\n' : '')
+    + (missing.length ? 'Ikke fundet i kataloget: ' + missing.join('; ') + '\n\n' : '')
+    + (sim.length ? '#### Lignende tidligere sager\n' + sim.join('\n') : '');
 }
 app.post('/api/ai/assistant/chat', auth, asyncRoute(async (req, res) => {
   const access = await aiAssistantAccess(req.user.id);
