@@ -4400,9 +4400,123 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.31.0 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.32.0 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
+<!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
+     programmet hele tiden"). Knappen sidder fast nederst til venstre i selve
+     indholdsområdet (lige til højre for sidebaren), så den aldrig dækker
+     menuen. Se aiToggle()/aiSend() i scriptet og /api/ai/assistant/* i
+     server.js. -->
+<style>
+#ai-fab{position:fixed;left:calc(var(--sidebar-w) + 18px);bottom:18px;z-index:150;display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 18px 0 14px;border:0;border-radius:999px;background:linear-gradient(135deg,#111318 0%,#312E81 100%);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 8px 24px rgba(49,46,129,.35),0 2px 6px rgba(15,17,24,.2);transition:transform .15s,box-shadow .15s,left .15s}
+#ai-fab:hover{transform:translateY(-1px);box-shadow:0 12px 28px rgba(49,46,129,.42),0 2px 6px rgba(15,17,24,.2)}
+#ai-fab svg{width:18px;height:18px}
+#ai-fab kbd{font-family:inherit;font-size:10px;font-weight:600;line-height:1;opacity:.6;border:1px solid rgba(255,255,255,.3);border-radius:4px;padding:2px 4px;margin-left:2px}
+body.sidebar-collapsed #ai-fab,body.sidebar-collapsed #ai-panel{left:calc(var(--sidebar-w-collapsed) + 14px)}
+body.ai-open #ai-fab{opacity:0;pointer-events:none;transform:scale(.9)}
+#ai-panel{position:fixed;left:calc(var(--sidebar-w) + 18px);bottom:18px;z-index:160;width:430px;height:min(660px,calc(100vh - 40px));display:none;flex-direction:column;background:#fff;border:1px solid var(--bly-border);border-radius:18px;box-shadow:0 24px 64px rgba(15,17,24,.22),0 4px 14px rgba(15,17,24,.08);overflow:hidden;transition:left .15s}
+body.ai-open #ai-panel{display:flex;animation:ai-pop .18s cubic-bezier(.2,.9,.3,1.2)}
+#ai-panel.wide{width:min(780px,calc(100vw - var(--sidebar-w) - 40px));height:calc(100vh - 40px)}
+@keyframes ai-pop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.ai-head{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;background:linear-gradient(135deg,#111318 0%,#312E81 100%);color:#fff;flex:0 0 auto}
+.ai-head-icon{width:32px;height:32px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.ai-head-icon svg{width:18px;height:18px}
+.ai-head-title{font-size:14px;font-weight:800;line-height:1.2}
+.ai-head-sub{font-size:11px;opacity:.7;margin-top:1px}
+.ai-head-btns{margin-left:auto;display:flex;gap:4px}
+.ai-hbtn{width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:#fff;opacity:.75;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ai-hbtn:hover{opacity:1;background:rgba(255,255,255,.12)}
+.ai-hbtn svg{width:16px;height:16px}
+.ai-body{flex:1 1 auto;overflow-y:auto;padding:16px;background:#FAFAFB;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+.ai-welcome{padding:6px 2px}
+.ai-welcome h4{margin:0 0 4px;font-size:15px;font-weight:800;color:var(--bly-ink)}
+.ai-welcome p{margin:0 0 14px;font-size:12.5px;color:var(--bly-sub);line-height:1.5}
+.ai-suggest{display:flex;flex-direction:column;gap:6px}
+.ai-sug{text-align:left;border:1px solid var(--bly-border);background:#fff;border-radius:10px;padding:9px 12px;font-size:12.5px;color:var(--bly-ink);cursor:pointer;line-height:1.35;transition:border-color .15s,background .15s}
+.ai-sug:hover{border-color:var(--bly-accent);background:var(--bly-accent-soft)}
+.ai-msg{max-width:92%;font-size:13px;line-height:1.55;word-wrap:break-word}
+.ai-msg.user{align-self:flex-end;background:#111318;color:#fff;border-radius:14px 14px 4px 14px;padding:9px 13px;white-space:pre-wrap}
+.ai-msg.bot{align-self:flex-start;background:#fff;border:1px solid var(--bly-border-soft);border-radius:14px 14px 14px 4px;padding:11px 14px;color:var(--bly-ink);box-shadow:0 1px 2px rgba(15,23,42,.03)}
+.ai-msg.bot.err{border-color:#FECACA;background:#FEF2F2;color:#991B1B}
+.ai-msg.bot p{margin:0 0 8px}.ai-msg.bot p:last-child{margin-bottom:0}
+.ai-msg.bot h4{margin:10px 0 6px;font-size:13px;font-weight:800}.ai-msg.bot h4:first-child{margin-top:0}
+.ai-msg.bot ul,.ai-msg.bot ol{margin:0 0 8px;padding-left:20px}.ai-msg.bot li{margin:2px 0}
+.ai-msg.bot code{background:#F3F4F6;border-radius:4px;padding:1px 5px;font-size:12px}
+.ai-msg.bot .ai-tbl{overflow-x:auto;margin:6px 0 8px}
+.ai-msg.bot table{border-collapse:collapse;font-size:12px;width:100%}
+.ai-msg.bot th,.ai-msg.bot td{border-bottom:1px solid var(--bly-border-soft);padding:5px 8px;text-align:left;white-space:nowrap}
+.ai-msg.bot th{font-weight:700;color:var(--bly-sub);font-size:11px;text-transform:uppercase;letter-spacing:.02em}
+.ai-sources{display:flex;flex-wrap:wrap;gap:4px;margin-top:9px;padding-top:8px;border-top:1px dashed var(--bly-border)}
+.ai-src{font-size:10.5px;font-weight:600;color:var(--bly-accent);background:var(--bly-accent-soft);border-radius:999px;padding:2px 8px}
+.ai-msg-actions{display:flex;gap:4px;margin-top:6px}
+.ai-mini{border:0;background:none;color:var(--bly-sub);font-size:11px;cursor:pointer;padding:2px 4px;border-radius:5px}
+.ai-mini:hover{background:#F3F4F6;color:var(--bly-ink)}
+.ai-typing{align-self:flex-start;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--bly-border-soft);border-radius:14px 14px 14px 4px;padding:11px 14px;font-size:12px;color:var(--bly-sub)}
+.ai-dots{display:inline-flex;gap:3px}
+.ai-dots i{width:6px;height:6px;border-radius:50%;background:#A5B4FC;animation:ai-bounce 1.2s infinite}
+.ai-dots i:nth-child(2){animation-delay:.15s}.ai-dots i:nth-child(3){animation-delay:.3s}
+@keyframes ai-bounce{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+.ai-ctx{display:none;align-items:center;gap:6px;margin:0 12px;padding:6px 10px;border-radius:8px;background:var(--bly-accent-soft);color:var(--bly-accent);font-size:11px;font-weight:600}
+.ai-ctx.show{display:flex}
+.ai-ctx svg{width:12px;height:12px;flex:0 0 auto}
+.ai-ctx span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ai-input{flex:0 0 auto;padding:10px 12px 12px;border-top:1px solid var(--bly-border-soft);background:#fff}
+.ai-input-row{display:flex;align-items:flex-end;gap:6px;border:1.5px solid var(--bly-border);border-radius:14px;padding:6px 6px 6px 12px;transition:border-color .15s,box-shadow .15s}
+.ai-input-row:focus-within{border-color:#818CF8;box-shadow:0 0 0 3px rgba(129,140,248,.18)}
+#ai-text{flex:1;border:0;outline:0;resize:none;font:inherit;font-size:13px;line-height:1.45;max-height:140px;min-height:22px;padding:5px 0;background:transparent;color:var(--bly-ink)}
+.ai-ibtn{width:34px;height:34px;border:0;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;background:transparent;color:var(--bly-sub)}
+.ai-ibtn:hover{background:#F3F4F6;color:var(--bly-ink)}
+.ai-ibtn svg{width:17px;height:17px}
+.ai-ibtn.send{background:#111318;color:#fff}
+.ai-ibtn.send:hover{background:#000}
+.ai-ibtn.send:disabled{background:#D1D5DB;cursor:default}
+.ai-ibtn.rec{background:#FEF2F2;color:#B91C1C;animation:ai-rec 1.4s ease-in-out infinite}
+@keyframes ai-rec{50%{box-shadow:0 0 0 4px rgba(248,113,113,.25)}}
+.ai-foot{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:10.5px;color:var(--bly-sub);min-height:16px}
+.ai-foot .warn{color:#B45309}
+.ai-foot button{border:0;background:none;color:var(--bly-accent);font-size:10.5px;font-weight:600;cursor:pointer;padding:0}
+.ai-foot button:hover{text-decoration:underline}
+.ai-foot .sep{opacity:.4}
+@media(max-width:900px){
+  #ai-fab,#ai-panel{left:calc(var(--sidebar-w-collapsed) + 12px)}
+  #ai-fab kbd{display:none}
+}
+@media(max-width:640px){
+  #ai-fab{height:48px;width:48px;padding:0;justify-content:center;bottom:14px}
+  #ai-fab .ai-fab-label{display:none}
+  #ai-panel,#ai-panel.wide{left:0!important;right:0;bottom:0;top:0;width:auto;height:auto;border-radius:0;border:0}
+  #ai-expand-btn{display:none}
+}
+@media print{#ai-fab,#ai-panel{display:none!important}}
+</style>
+<button id="ai-fab" type="button" title="Spørg Gulv Master AI (Ctrl+J)" aria-label="Åbn AI-assistent">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+  <span class="ai-fab-label">Spørg AI</span><kbd>Ctrl J</kbd>
+</button>
+<div id="ai-panel" role="dialog" aria-label="Gulv Master AI">
+  <div class="ai-head">
+    <div class="ai-head-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></div>
+    <div><div class="ai-head-title">Gulv Master AI</div><div class="ai-head-sub">Spørg om tilbud, tid, leads, planlægning…</div></div>
+    <div class="ai-head-btns">
+      <button class="ai-hbtn" type="button" id="ai-new-btn" title="Ny samtale"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+      <button class="ai-hbtn" type="button" id="ai-expand-btn" title="Større vindue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+      <button class="ai-hbtn" type="button" id="ai-close-btn" title="Luk (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+  </div>
+  <div class="ai-body" id="ai-body"></div>
+  <div class="ai-ctx" id="ai-ctx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg><span id="ai-ctx-text"></span></div>
+  <div class="ai-input">
+    <div class="ai-input-row">
+      <textarea id="ai-text" rows="1" placeholder="Spørg om alt i programmet…"></textarea>
+      <button class="ai-ibtn" type="button" id="ai-mic-btn" title="Indtal spørgsmålet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
+      <button class="ai-ibtn send" type="button" id="ai-send-btn" title="Send (Enter)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+    <div class="ai-foot" id="ai-foot"></div>
+  </div>
+</div>
+
+
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
      siden (position:sticky sad tidligere direkte på .nav) — både selve
      navigations-linjen OG prioritets-sliderern herunder er nu barn af DENNE
@@ -37900,6 +38014,212 @@ loadSettings();
 // nogensinde har været inde på selve Projekter-siden i denne session.
 loadPjStages();
 loadTaskTypes().then(function(){renderTaskTypesAdmin();loadTemplates();loadEmailTemplates();return loadAll();}).then(function(){checkPendingTimeOffPopup();refreshGlobalPriorityBanner();});
+// ── RUNDE FB — AI-assistenten (panel nederst til venstre), se markup/CSS ved #ai-fab ──
+(function(){
+  // RUNDE FB — AI-assistenten. Samtalen gemmes kun i denne browser (pr.
+  // bruger), og hvert spørgsmål sendes med de seneste beskeder + hvad der
+  // står på skærmen lige nu (fx det åbne tilbuds linjer), så man kan spørge
+  // "hvor mange dage burde dette tilbud tage?" uden at forklare hvilket.
+  var aiMsgs=[],aiBusy=false,aiStatus=null,aiRec=null;
+  function storeKey(){return 'gm_ai_chat_v1_'+((typeof me!=='undefined'&&me&&me.id)||'x');}
+  function aiLoadHistory(){try{var s=JSON.parse(localStorage.getItem(storeKey())||'[]');aiMsgs=Array.isArray(s)?s:[];}catch(e){aiMsgs=[];}}
+  function aiSaveHistory(){try{localStorage.setItem(storeKey(),JSON.stringify(aiMsgs.slice(-40)));}catch(e){}}
+  function aiEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  // Lille, sikker markdown → HTML (escape først): overskrifter, lister,
+  // tabeller, **fed**, *kursiv*, `kode`.
+  function aiInline(s){
+    return s.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/(^|[\s(])\*([^*\s][^*]*)\*/g,'$1<i>$2</i>');
+  }
+  function aiMd(text){
+    var lines=aiEsc(text).split('\n'),out=[],para=[],i=0;
+    function flush(){if(para.length){out.push('<p>'+aiInline(para.join('<br>'))+'</p>');para=[];}}
+    while(i<lines.length){
+      var l=lines[i];
+      if(/^\s*\|.*\|\s*$/.test(l)&&i+1<lines.length&&/^\s*\|?\s*:?-{2,}/.test(lines[i+1])){
+        flush();
+        var cells=function(r){return r.trim().replace(/^\||\|$/g,'').split('|').map(function(c){return aiInline(c.trim());});};
+        var head=cells(l),rows=[];i+=2;
+        while(i<lines.length&&/^\s*\|/.test(lines[i])){rows.push(cells(lines[i]));i++;}
+        out.push('<div class="ai-tbl"><table><thead><tr>'+head.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead><tbody>'+rows.map(function(r){return '<tr>'+r.map(function(c){return '<td>'+c+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>');
+        continue;
+      }
+      var h=l.match(/^#{1,4}\s+(.*)$/);
+      if(h){flush();out.push('<h4>'+aiInline(h[1])+'</h4>');i++;continue;}
+      if(/^\s*[-*•]\s+/.test(l)||/^\s*\d+[.)]\s+/.test(l)){
+        flush();var ordered=/^\s*\d+[.)]\s+/.test(l),items=[];
+        while(i<lines.length&&(ordered?/^\s*\d+[.)]\s+/:/^\s*[-*•]\s+/).test(lines[i])){items.push(lines[i].replace(/^\s*(?:[-*•]|\d+[.)])\s+/,''));i++;}
+        out.push((ordered?'<ol>':'<ul>')+items.map(function(t){return '<li>'+aiInline(t)+'</li>';}).join('')+(ordered?'</ol>':'</ul>'));
+        continue;
+      }
+      if(!l.trim()){flush();i++;continue;}
+      para.push(l);i++;
+    }
+    flush();
+    return out.join('');
+  }
+  function aiActivePage(){var a=document.querySelector('.page.active');return a&&a.id?a.id.replace(/^page-/,''):'';}
+  function aiQuoteOpen(){var ed=document.querySelector('.qe-editor');return !!(ed&&ed.offsetParent&&typeof qeState!=='undefined'&&qeState);}
+  function aiVal(id){var el=document.getElementById(id);return el&&el.value?el.value:'';}
+  function aiPageContext(){
+    var ctx={side:aiActivePage()};
+    var act=document.querySelector('.page.active h2');if(act)ctx.overskrift=act.textContent.trim().slice(0,80);
+    if(aiQuoteOpen()){
+      ctx.aabent_tilbud={
+        id:qeState.id||null,nummer:qeState.quoteNumber||null,sag:qeState.jobName||'',status:qeState.lastStatus||'',
+        linjer:(qeState.lines||[]).filter(function(l){return l&&(l.description||'').trim();}).slice(0,60).map(function(l){
+          return l.line_type==='text'?{overskrift:l.description}:{tekst:String(l.description).slice(0,200),antal:Number(l.quantity)||0,enhed:l.unit||'',note:(l.note||'').slice(0,200)||undefined};
+        }),
+        kunde_note:aiVal('qe-notes').slice(0,1500)||undefined,
+        intern_note:aiVal('qe-internal-note').slice(0,1500)||undefined
+      };
+    }
+    try{if(ctx.side==='crmp-detail'&&typeof crmpDetailEntity!=='undefined'&&crmpDetailEntity)ctx.aaben_crm={type:crmpDetailEntity.type,id:crmpDetailEntity.id,navn:crmpDetailEntity.data&&crmpDetailEntity.data.name};}catch(e){}
+    try{if(ctx.side==='customer-detail'&&typeof cdCurrent!=='undefined'&&cdCurrent)ctx.aaben_kunde={id:cdCurrent.id,navn:cdCurrent.name};}catch(e){}
+    return ctx;
+  }
+  function aiCtxLabel(){
+    if(aiQuoteOpen()){var n=(qeState.lines||[]).filter(function(l){return l&&l.line_type!=='text'&&(l.description||'').trim();}).length;return 'Ser det åbne tilbud'+(qeState.jobName?' · '+qeState.jobName:'')+' ('+n+' linjer)';}
+    var p=aiActivePage();
+    try{if(p==='crmp-detail'&&crmpDetailEntity&&crmpDetailEntity.data)return 'Ser '+(crmpDetailEntity.type==='lead'?'leadet':'sagen')+' · '+crmpDetailEntity.data.name;}catch(e){}
+    try{if(p==='customer-detail'&&cdCurrent)return 'Ser kunden · '+cdCurrent.name;}catch(e){}
+    return '';
+  }
+  function aiSuggestions(){
+    if(aiQuoteOpen())return ['Hvor mange dage burde dette tilbud tage?','Sammenlign med lignende tidligere tilbud — hvor mange dage skrev vi dér?','Hvilke forbehold fra tidskataloget bør stå i dette tilbud?','Er der mindstepriser i kataloget der gælder her?'];
+    var p=aiActivePage();
+    if(/^crmp/.test(p))return ['Hvor mange leads er kontaktet denne uge vs. sidste uge?','Hvilke kilder giver flest leads de sidste 30 dage?','Hvor mange leads er blevet til salgsmuligheder denne måned?','Hvilke leads har ikke haft aktivitet i over 7 dage?'];
+    if(p==='kundebesog')return ['Hvilke kundebesøg mangler stadig en rapport?','Hvor mange kundebesøg har vi haft denne måned vs. sidste måned?','Hvem har flest kundebesøg de næste 14 dage?'];
+    return ['Hvor mange leads fik vi denne uge vs. sidste uge?','Hvor mange dage tager gulvslibning af 60 m²?','Hvilke tilbud er sendt men ikke accepteret de sidste 30 dage?','Hvem er booket i morgen, og hvor?'];
+  }
+  function aiRender(){
+    var body=document.getElementById('ai-body');
+    if(!aiMsgs.length){
+      var name=(typeof me!=='undefined'&&me&&me.name)?me.name.split(' ')[0]:'';
+      body.innerHTML='<div class="ai-welcome"><h4>Hej'+(name?' '+aiEsc(name):'')+' 👋</h4><p>Jeg kan slå op i alt i programmet: tidskataloget, tidligere tilbud og deres dage, leads, tilbud, kundebesøg og planlægning. Jeg kan kun læse — jeg ændrer aldrig noget.</p><div class="ai-suggest">'
+        +aiSuggestions().map(function(s){return '<button type="button" class="ai-sug" data-ai-sug="'+aiEsc(s)+'">'+aiEsc(s)+'</button>';}).join('')+'</div></div>';
+    } else {
+      body.innerHTML=aiMsgs.map(function(m,i){
+        if(m.role==='user')return '<div class="ai-msg user">'+aiEsc(m.content)+'</div>';
+        var src=(m.sources&&m.sources.length)?'<div class="ai-sources">'+m.sources.map(function(s){return '<span class="ai-src">'+aiEsc(s)+'</span>';}).join('')+'</div>':'';
+        return '<div class="ai-msg bot'+(m.error?' err':'')+'">'+(m.error?aiEsc(m.content):aiMd(m.content))+src+'</div>'
+          +(m.error?'<div class="ai-msg-actions"><button class="ai-mini" type="button" data-ai-retry="'+i+'">↻ Prøv igen</button></div>':'<div class="ai-msg-actions"><button class="ai-mini" type="button" data-ai-copy="'+i+'">Kopiér</button></div>');
+      }).join('');
+    }
+    if(aiBusy)body.insertAdjacentHTML('beforeend','<div class="ai-typing" id="ai-typing"><span class="ai-dots"><i></i><i></i><i></i></span><span id="ai-typing-text">Tænker…</span></div>');
+    body.scrollTop=body.scrollHeight;
+    var lbl=aiCtxLabel();
+    document.getElementById('ai-ctx').classList.toggle('show',!!lbl);
+    document.getElementById('ai-ctx-text').textContent=lbl;
+    document.getElementById('ai-send-btn').disabled=aiBusy;
+  }
+  function aiRenderFoot(){
+    var f=document.getElementById('ai-foot');
+    if(!aiStatus){f.innerHTML='';return;}
+    if(!aiStatus.ai_configured){f.innerHTML='<span class="warn">AI er ikke slået til på serveren endnu (ANTHROPIC_API_KEY mangler i Render).</span>';return;}
+    var c=aiStatus.catalog||{},parts=[];
+    if(c.fetched_at){
+      var d=new Date(c.fetched_at);
+      parts.push('<span'+(c.error?' class="warn" title="'+aiEsc(c.error)+'"':'')+'>Tidskatalog '+(c.error?'(gemt kopi) ':'')+d.toLocaleString('da-DK',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' · '+(c.sheets||[]).length+' ark</span>');
+    } else if(c.error){parts.push('<span class="warn" title="'+aiEsc(c.error)+'">Tidskatalog kunne ikke hentes</span>');}
+    else parts.push('<span>Tidskatalog hentes ved første spørgsmål</span>');
+    parts.push('<button type="button" id="ai-cat-refresh">Opdater nu</button>');
+    if(aiStatus.can_admin)parts.push('<span class="sep">·</span><button type="button" id="ai-cat-link">Skift link</button>');
+    f.innerHTML=parts.join(' ');
+  }
+  async function aiLoadStatus(){
+    var r=await api('/api/ai/assistant/status');
+    if(r&&r.ok){aiStatus=r;aiRenderFoot();}
+  }
+  async function aiRefreshCatalog(url){
+    var f=document.getElementById('ai-foot');f.innerHTML='<span>Henter tidskataloget fra Google…</span>';
+    var r=await api('/api/ai/assistant/catalog/refresh',{method:'POST',body:JSON.stringify(url?{url:url}:{})});
+    if(r&&r.catalog){
+      aiStatus=Object.assign({},aiStatus||{},{catalog:r.catalog});
+      if(r.catalog.error)toast(r.catalog.error,'⚠️');else toast('Tidskatalog opdateret · '+r.catalog.sheets.length+' ark','✓');
+    } else if(r&&r.error)toast(r.error,'❌');
+    aiRenderFoot();
+  }
+  async function aiSend(text){
+    text=String(text||'').trim();
+    if(!text||aiBusy)return;
+    aiMsgs.push({role:'user',content:text});
+    aiBusy=true;aiRender();aiSaveHistory();
+    var slow=setTimeout(function(){var t=document.getElementById('ai-typing-text');if(t)t.textContent='Slår op i data…';},2500);
+    var slower=setTimeout(function(){var t=document.getElementById('ai-typing-text');if(t)t.textContent='Sammenligner og regner…';},9000);
+    var history=aiMsgs.filter(function(m){return !m.error;}).slice(-20).map(function(m){return {role:m.role,content:m.content};});
+    var r=null;
+    try{
+      var resp=await fetch(API+'/api/ai/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({messages:history,page_context:aiPageContext()})});
+      r=await resp.json().catch(function(){return {error:'Ugyldigt svar fra serveren'};});
+      if(resp.status===401){logout();return;}
+    }catch(e){r={error:'Netværksfejl — tjek forbindelsen og prøv igen'};}
+    clearTimeout(slow);clearTimeout(slower);
+    aiBusy=false;
+    if(r&&r.ok)aiMsgs.push({role:'assistant',content:r.reply,sources:r.sources||[]});
+    else aiMsgs.push({role:'assistant',content:(r&&r.error)||'Noget gik galt',error:true});
+    aiSaveHistory();aiRender();
+    if(!aiStatus||!aiStatus.catalog||!aiStatus.catalog.fetched_at)aiLoadStatus();
+  }
+  function aiOpen(){
+    document.body.classList.add('ai-open');
+    aiRender();
+    if(!aiStatus)aiLoadStatus();
+    setTimeout(function(){var t=document.getElementById('ai-text');if(t)t.focus();},60);
+  }
+  function aiClose(){document.body.classList.remove('ai-open');aiStopRec();}
+  window.aiToggle=function(){document.body.classList.contains('ai-open')?aiClose():aiOpen();};
+  window.aiAsk=function(q){aiOpen();aiSend(q);};
+  function aiAutosize(){var t=document.getElementById('ai-text');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,140)+'px';}
+  function aiStopRec(){if(aiRec){try{aiRec.stop();}catch(e){}}}
+  function aiToggleRec(){
+    var Ctor=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!Ctor)return;
+    if(aiRec){aiStopRec();return;}
+    var t=document.getElementById('ai-text'),btn=document.getElementById('ai-mic-btn'),base=t.value?t.value.replace(/\s*$/,' '):'';
+    aiRec=new Ctor();aiRec.lang='da-DK';aiRec.interimResults=true;aiRec.continuous=false;
+    aiRec.onresult=function(e){var s='';for(var i=0;i<e.results.length;i++)s+=e.results[i][0].transcript;t.value=base+s;aiAutosize();};
+    aiRec.onend=function(){aiRec=null;btn.classList.remove('rec');t.focus();};
+    aiRec.onerror=function(){aiRec=null;btn.classList.remove('rec');};
+    btn.classList.add('rec');
+    try{aiRec.start();}catch(e){aiRec=null;btn.classList.remove('rec');}
+  }
+  function init(){
+    aiLoadHistory();
+    if(/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent||'')){var kb=document.querySelector('#ai-fab kbd');if(kb)kb.textContent='⌘J';document.getElementById('ai-fab').title='Spørg Gulv Master AI (⌘J)';}
+    if(!(window.SpeechRecognition||window.webkitSpeechRecognition))document.getElementById('ai-mic-btn').style.display='none';
+    document.getElementById('ai-fab').addEventListener('click',aiOpen);
+    document.getElementById('ai-close-btn').addEventListener('click',aiClose);
+    document.getElementById('ai-expand-btn').addEventListener('click',function(){document.getElementById('ai-panel').classList.toggle('wide');});
+    document.getElementById('ai-new-btn').addEventListener('click',function(){if(aiBusy)return;aiMsgs=[];aiSaveHistory();aiRender();document.getElementById('ai-text').focus();});
+    document.getElementById('ai-send-btn').addEventListener('click',function(){var t=document.getElementById('ai-text');var v=t.value;t.value='';aiAutosize();aiStopRec();aiSend(v);});
+    document.getElementById('ai-mic-btn').addEventListener('click',aiToggleRec);
+    var ta=document.getElementById('ai-text');
+    ta.addEventListener('input',aiAutosize);
+    ta.addEventListener('keydown',function(e){
+      if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();document.getElementById('ai-send-btn').click();}
+    });
+    document.getElementById('ai-panel').addEventListener('keydown',function(e){if(e.key==='Escape'){e.stopPropagation();aiClose();}});
+    document.getElementById('ai-body').addEventListener('click',function(e){
+      var s=e.target.closest('[data-ai-sug]');if(s){aiSend(s.dataset.aiSug);return;}
+      var c=e.target.closest('[data-ai-copy]');
+      if(c){var m=aiMsgs[Number(c.dataset.aiCopy)];if(m&&navigator.clipboard){navigator.clipboard.writeText(m.content).then(function(){toast('Kopieret','✓');});}return;}
+      var r=e.target.closest('[data-ai-retry]');
+      if(r){var idx=Number(r.dataset.aiRetry);var q=aiMsgs[idx-1];aiMsgs.splice(idx-1,2);aiRender();if(q&&q.role==='user')aiSend(q.content);}
+    });
+    document.getElementById('ai-foot').addEventListener('click',function(e){
+      if(e.target.id==='ai-cat-refresh')aiRefreshCatalog();
+      if(e.target.id==='ai-cat-link'){
+        var cur=(aiStatus&&aiStatus.catalog&&aiStatus.catalog.url)||'';
+        var u=prompt('Link til tidskataloget (Google Sheets/Drive).\nArket skal være delt med "Alle med linket kan se".',cur);
+        if(u&&u.trim()&&u.trim()!==cur)aiRefreshCatalog(u.trim());
+      }
+    });
+    document.addEventListener('keydown',function(e){
+      if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&(e.key==='j'||e.key==='J')){e.preventDefault();window.aiToggle();}
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
 })();
 </script>
 <!-- RUNDE EB (Martin: "Jeg skal kunne downloade den ned som en app til min
