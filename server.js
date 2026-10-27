@@ -20844,6 +20844,15 @@ app.post('/api/photos/upload', auth, asyncRoute(async (req, res) => {
     const url = await uploadPhotoToCloudinary(b.image, b.folder);
     res.json({ ok: true, url });
   } catch (e) {
+    // RETTET (2026-10-27, Martins fejlrapport om "Netværksfejl" ved foto-
+    // /videoupload) — fejlen her blev hidtil ALDRIG logget server-side, kun
+    // sendt tilbage til klienten. Gjorde det umuligt at se i Render-loggen
+    // om et fejlet upload reelt nåede serveren (og fejlede her, fx hos
+    // Cloudinary) eller aldrig nåede frem (ren mobilnetværksfejl, afbrudt
+    // før den ramte serveren — hvilket undersøgelsen af denne sag endte med
+    // at bekræfte var det faktiske billede: Render havde INGEN requests
+    // overhovedet på denne rute i dagene hvor problemet blev rapporteret).
+    console.error('Foto/video-upload fejlede (' + (b.folder || 'uden mappe') + '):', e.message);
     res.status(400).json({ error: 'Kunne ikke uploade billedet: ' + e.message });
   }
 }));
@@ -26308,12 +26317,22 @@ async function backfillProjectTaskMirrors() {
 // ruten). Enhver ANDEN vej en opgaves dato kan ændres på efterlader
 // reservationens egne datoer forældede — usynlig i hovedgitteret (bookes
 // ind i en uge ingen kigger på), men stadig korrekt i Tidslinje-popup'en.
-// Løsningen Martin valgte (AskUserQuestion): synkronisér automatisk ved
-// opstart + vis en synlig advarsel/1-klik-resync fremover, så fremtidige
-// desyncs (fra en vej denne engangsoprydning ikke dækkede) aldrig bliver
-// usynlige igen — se capBookingOutOfSync()/#cap-outofsync-banner/
-// .tl-bar-sync-btn i admin.html og PUT /api/capacity-reservations/:id/resync
-// nedenfor.
+// Løsningen Martin oprindeligt valgte (AskUserQuestion): synkronisér
+// automatisk ved opstart + vis en synlig advarsel/1-klik-resync fremover.
+// RETTET (2026-10-27, se den store kommentar i start() hvor denne funktion
+// IKKE længere kaldes) — "automatisk ved opstart" viste sig at være
+// skadeligt i praksis: Render genstarter serveren ved hvert deploy (ofte
+// flere gange dagligt), og hver genstart kørte denne funktion igen og
+// tvang ALLE kapacitetsreservationer til at matche deres opgaves dato,
+// selvom en reservation der ikke overlapper sin opgaves dato ofte er helt
+// bevidst (Kapacitetsbordet og Daglig planlægning bruges som delvist
+// uafhængige lag) — det ødelagde Martins kalender ved næsten hvert deploy.
+// Funktionen køres derfor IKKE længere automatisk — kun den synlige,
+// Martin-styrede del (advarselsbanner/rød prik/⚡-knappen, se
+// capBookingOutOfSync()/#cap-outofsync-banner/.tl-bar-sync-btn i
+// admin.html og PUT /api/capacity-reservations/:id/resync nedenfor) er
+// stadig aktiv. Funktionen her findes fortsat i koden, men er bevidst
+// IKKE i brug — rør den ikke uden at spørge Martin først.
 async function backfillCapacitySync() {
   const rows = await pool.query(`
     SELECT b.id, t.start_date AS task_start, t.end_date AS task_end
@@ -26827,7 +26846,34 @@ async function start() {
   await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
   await backfillCaseNumbers().catch(error => console.error('Efterudfyldning af sagsnumre fejlede:', error.message));
   await backfillLegacyJobTaskProjectLinks().catch(error => console.error('Efterudfyldning af sags-kobling fejlede:', error.message));
-  await backfillCapacitySync().catch(error => console.error('Synkronisering af kapacitetsreservationer fejlede:', error.message));
+  // RETTET (Martin, 2026-10-27: "Vi har 2 store problemer i appen der skal
+  // løses nu ... 1. KÆMPE problem ... Daglig planlægning ... total off,
+  // folk havde fået andre steder de skulle gå hen end dem der enlig var
+  // booket") — ALVORLIG FEJL fundet og rettet: backfillCapacitySync() (se
+  // kommentaren ved selve funktionen) blev hidtil kørt ved HVER ENESTE
+  // serverstart, ikke kun én gang. Render genstarter denne service ved
+  // hvert deploy (hver gang en ny zip uploades til GitHub — ofte flere
+  // gange samme dag, bekræftet i Render-logs/deploy-historik) — og HVER
+  // genstart gennemløb på ny ALLE kapacitetsreservationer og tvang dem til
+  // at matche deres opgaves nuværende planlagte dato, uden varsel og uden
+  // at spørge. Kapacitetsbordet og Daglig planlægning bruges i praksis som
+  // delvist UAFHÆNGIGE lag (en kapacitetsreservation for en hel uge laves
+  // ofte bevidst, før/uden at opgavens præcise dag-for-dag-dato i Daglig
+  // planlægning er helt på plads endnu) — derfor ramte denne "auto-
+  // korrektion" ofte reservationer der reelt var sat helt korrekt, og
+  // flyttede dem et forkert sted hen hver gang serveren genstartede. Det er
+  // den mest sandsynlige årsag til at kalenderen "pludselig var total off"
+  // efter hver ny levering/deploy, uden at nogen havde rørt ved den manuelt.
+  // LØSNING: det automatiske engangs-opryd (som allerede nåede at køre
+  // færdigt dengang det blev indført) fjernes herfra og kører IKKE længere
+  // ved serverstart. Den sikre, synlige del af RUNDE DS-løsningen
+  // (advarselsbanner + rød prik + ⚡-knappen i Tidslinje-popup'en) er
+  // BEVARET uændret — Martin/teamet ser stadig straks hvis en konkret
+  // reservation er ude af sync, men IKKE noget bliver rettet automatisk
+  // eller i baggrunden uden at nogen aktivt trykker på ⚡ for netop dén
+  // reservation. backfillCapacitySync()-funktionen findes stadig i koden
+  // (uændret, til evt. fremtidig brug som en bevidst, manuelt udløst
+  // engangsoprydning — ikke noget der bør køre automatisk igen).
   app.listen(PORT, () => {
     console.log(`Gulv Master PostgreSQL kører på port ${PORT}`);
     console.log('JobTread-synk er read-only: den kan aldrig ændre planning_bookings.');

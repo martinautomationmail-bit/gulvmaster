@@ -638,6 +638,26 @@ function pmReadFileAsDataUrl(file){
     img.src=objUrl;
   });
 }
+// RUNDE DU (fortsat, Martin: "det virker ikke") — selve uploadet til
+// Cloudinary prøves nu automatisk op til 3 gange (med en kort, stigende
+// pause imellem) før det reelt vises som en fejl. Et enkelt kort udfald i
+// mobildækningen (meget almindeligt på en byggeplads) skal ikke kræve at
+// medarbejderen selv opdager "Netværksfejl" og trykker Gem/Upload igen —
+// appen forsøger nu selv først. At uploade det samme billede to gange ved
+// et genforsøg er helt harmløst (det ender bare som to ens filer hos
+// Cloudinary, intet gemmes dobbelt i selve tidsregistreringen/rapporten).
+async function pmUploadPhoto(dataUrl,folder){
+  let lastErr;
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      return await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:folder})});
+    }catch(e){
+      lastErr=e;
+      if(attempt<3)await new Promise(r=>setTimeout(r,1200*attempt));
+    }
+  }
+  throw lastErr;
+}
 function fmtPmDate(d){if(!d)return '';const parts=String(d).slice(0,10).split('-');return parts.length===3?parts[2]+'/'+parts[1]:d}
 async function pmLoadList(){
   const body=document.getElementById('pm-body');
@@ -783,7 +803,7 @@ async function pmSubmitMaterials(){
     const photoUrls=[];
     for(const f of pmmPhotoFiles){
       const dataUrl=await pmReadFileAsDataUrl(f);
-      const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
+      const up=await pmUploadPhoto(dataUrl,'projects/'+pmState.current.id);
       if(!up||!up.ok){pmFeedback('pmm-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade billedet/videoen',false);btn.disabled=false;btn.textContent='Gem materiale';return}
       photoUrls.push(up.data.url);
     }
@@ -947,7 +967,7 @@ async function pmSubmitTime(){
     for(let i=0;i<pmtPhotoFiles.length;i++){
       if(pmtPhotoFiles.length>1)btn.textContent='Uploader billede '+(i+1)+'/'+pmtPhotoFiles.length+'…';
       const dataUrl=await pmReadFileAsDataUrl(pmtPhotoFiles[i]);
-      const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
+      const up=await pmUploadPhoto(dataUrl,'projects/'+pmState.current.id);
       if(!up||!up.ok){pmFeedback('pmt-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade et billede',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
       photoUrls.push(up.data.url);
     }
@@ -999,7 +1019,7 @@ async function pmSubmitPhoto(){
   const btn=document.getElementById('pmp-submit');btn.disabled=true;btn.textContent='Uploader…';
   try{
     const dataUrl=await pmReadFileAsDataUrl(file);
-    const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'projects/'+pmState.current.id})});
+    const up=await pmUploadPhoto(dataUrl,'projects/'+pmState.current.id);
     if(!up||!up.ok){pmFeedback('pmp-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade billedet',false);btn.disabled=false;btn.textContent='Upload billede';return}
     const r=await api('/api/projects/'+pmState.current.id+'/photos',{method:'POST',body:JSON.stringify({url:up.data.url,caption:caption||null})});
     if(r&&r.ok){toast('Billede tilføjet ✓');await pmOpenProject(pmState.current.id)}
@@ -1050,7 +1070,7 @@ async function pmSubmitQa(){
         const file=el.files[0];
         if(file){
           const dataUrl=await pmReadFileAsDataUrl(file);
-          const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'qa/'+pmState.current.id})});
+          const up=await pmUploadPhoto(dataUrl,'qa/'+pmState.current.id);
           value=(up&&up.ok)?up.data.url:null;
         }
       } else value=el.value;
@@ -1105,7 +1125,7 @@ async function pmSubmitContact(){
         const file=el.files[0];
         if(file){
           const dataUrl=await pmReadFileAsDataUrl(file);
-          const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'contact/'+pmState.current.id})});
+          const up=await pmUploadPhoto(dataUrl,'contact/'+pmState.current.id);
           value=(up&&up.ok)?up.data.url:null;
         }
       } else value=el.value;
@@ -1509,7 +1529,7 @@ async function submitVisitReportAndComplete(){
     for(let i=0;i<vrNewPhotoFiles.length;i++){
       setBtnText('Uploader billede '+(i+1)+'/'+vrNewPhotoFiles.length+'…');
       const dataUrl=await pmReadFileAsDataUrl(vrNewPhotoFiles[i]);
-      const up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:dataUrl,folder:'visits/'+taskId})});
+      const up=await pmUploadPhoto(dataUrl,'visits/'+taskId);
       if(!up||!up.ok){
         feedback.textContent=(up&&up.data&&up.data.error)||'Kunne ikke uploade et billede — prøv igen';
         feedback.className='req-feedback show error';
