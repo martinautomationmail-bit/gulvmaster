@@ -176,6 +176,21 @@
 .req-input,.req-textarea{width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;box-sizing:border-box;transition:.15s;background:#fcfcfd}
 .req-input:focus,.req-textarea:focus{outline:none;border-color:var(--navy);background:#fff;box-shadow:0 0 0 3px rgba(17,19,24,.08)}
 .req-textarea{resize:vertical}
+/* RUNDE FA — nye felttyper på besøgsrapporten (ja/nej, flere valg, enhed, sektion, påkrævet) */
+.vrf-help{font-size:11.5px;color:var(--muted);margin:-1px 0 6px;line-height:1.35}
+.vrf-req{color:#DC2626;margin-left:3px}
+.vrf-unit-wrap{display:flex}
+.vrf-unit-wrap .req-input{border-top-right-radius:0;border-bottom-right-radius:0;flex:1;min-width:0}
+.vrf-unit{display:flex;align-items:center;padding:0 12px;border:1.5px solid var(--border);border-left:0;border-radius:0 9px 9px 0;background:#F3F4F6;font-size:13px;color:var(--muted);white-space:nowrap}
+.vrf-choices{display:flex;flex-wrap:wrap;gap:6px}
+.vrf-choice{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--border);border-radius:9px;padding:9px 13px;font-size:13px;background:#fcfcfd;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.vrf-choice input{margin:0;width:16px;height:16px;accent-color:var(--accent)}
+.vrf-choice:has(input:checked){border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:700}
+.vrf-yesno .vrf-choice{min-width:76px;justify-content:center}
+.vrf-heading{margin:18px 0 4px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.vrf-heading h4{margin:0;font-size:14px;font-weight:800;color:var(--ink)}
+.vrf-heading p{margin:3px 0 0;font-size:11.5px;color:var(--muted)}
+.vrf-field.missing .req-input,.vrf-field.missing .req-textarea,.vrf-field.missing .vrf-choice,.vrf-field.missing .vrf-unit{border-color:#F87171}
 .req-submit{width:100%;margin-top:16px;padding:12px;border:0;border-radius:10px;background:var(--ink);color:#fff;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 1px 2px rgba(17,19,24,.15);transition:.15s}
 .req-submit:hover{transform:translateY(-1px);background:#000}
 .req-submit:active{transform:translateY(0)}
@@ -1395,9 +1410,12 @@ let vrNewPhotoFiles=[],vrNewPhotoPreviewUrls=[];
 // ændres sjældent.
 let visitReportFields=[],visitReportFieldsLoaded=false;
 async function loadVisitReportFieldsEmp(){
-  if(visitReportFieldsLoaded)return visitReportFields;
+  // RUNDE FA — hentes hver gang rapporten åbnes (lille kald), så en ændring
+  // i formularen fra kontoret slår igennem uden at appen skal genindlæses.
+  // Fejler kaldet (dårlig dækning), bruges den sidst hentede liste.
   const r=await api('/api/visit-report-fields');
-  visitReportFields=(r&&r.ok&&r.data&&r.data.fields)||[];
+  if(r&&r.ok&&r.data&&Array.isArray(r.data.fields))visitReportFields=r.data.fields;
+  else if(visitReportFieldsLoaded)return visitReportFields;
   visitReportFieldsLoaded=true;
   return visitReportFields;
 }
@@ -1405,23 +1423,59 @@ async function loadVisitReportFieldsEmp(){
 // stedet for de 5 hårdkodede felter der plejede at stå direkte i HTML'en.
 // 'notes' særbehandles så 🎤 Indtal-knappen (toggleVoiceNote) stadig virker
 // uændret — den er altid med (se sanitizeVisitReportFields i server.js).
+let vrCurrentCustom={};
+function vrFieldHtml(f,rawVal){
+  const val=rawVal==null?'':String(rawVal);
+  if(f.type==='heading')return `<div class="vrf-heading"><h4>${esc(f.label)}</h4>${f.help?`<p>${esc(f.help)}</p>`:''}</div>`;
+  const id='vrf-'+String(f.key).replace(/[^a-zA-Z0-9_-]/g,'');
+  const ph=f.placeholder?` placeholder="${esc(f.placeholder)}"`:'';
+  const req=f.required?'<span class="vrf-req">*</span>':'';
+  const help=f.help?`<div class="vrf-help">${esc(f.help)}</div>`:'';
+  let input='';
+  if(f.type==='textarea')input=`<textarea id="${id}" class="req-textarea vrf-input" rows="2"${ph}>${esc(val)}</textarea>`;
+  else if(f.type==='number'){
+    const num=`<input id="${id}" class="req-input vrf-input" type="text" inputmode="decimal"${ph} value="${esc(val)}">`;
+    input=f.unit?`<div class="vrf-unit-wrap">${num}<span class="vrf-unit">${esc(f.unit)}</span></div>`:num;
+  } else if(f.type==='date')input=`<input id="${id}" class="req-input vrf-input" type="date" value="${esc(val)}">`;
+  else if(f.type==='select'){
+    const opts=(f.options||[]).slice();if(val&&!opts.includes(val))opts.push(val);
+    input=`<select id="${id}" class="req-input vrf-input"><option value="">${esc(f.placeholder||'Vælg…')}</option>${opts.map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  } else if(f.type==='checkboxes'){
+    const picked=val.split(';').map(x=>x.trim()).filter(Boolean);
+    const all=(f.options||[]).slice();picked.forEach(p=>{if(!all.includes(p))all.push(p);});
+    input=`<div class="vrf-choices">${all.map(o=>`<label class="vrf-choice"><input type="checkbox" value="${esc(o)}"${picked.includes(o)?' checked':''}>${esc(o)}</label>`).join('')}</div>`;
+  } else if(f.type==='yesno'){
+    input=`<div class="vrf-choices vrf-yesno">${['Ja','Nej'].map(o=>`<label class="vrf-choice"><input type="radio" name="${id}" value="${o}"${val===o?' checked':''}>${o}</label>`).join('')}</div>`;
+  } else input=`<input id="${id}" class="req-input vrf-input" type="text"${ph} value="${esc(val)}">`;
+  return `<div class="vrf-field" data-field-key="${esc(f.key)}" data-builtin="${f.builtin?1:0}" data-type="${esc(f.type)}" data-required="${f.required?1:0}" data-label="${esc(f.label)}"><label class="req-label" for="${id}" style="margin-top:12px">${esc(f.label)}${req}</label>${help}${input}</div>`;
+}
+function vrReadValue(w){
+  const t=w.dataset.type;
+  if(t==='checkboxes')return Array.from(w.querySelectorAll('input[type="checkbox"]:checked')).map(c=>c.value).join('; ');
+  if(t==='yesno'){const r=w.querySelector('input[type="radio"]:checked');return r?r.value:'';}
+  const el=w.querySelector('.vrf-input');return el?el.value:'';
+}
+// RUNDE EH/FA — bygger #vr-fields-body ud fra visitReportFields, filtreret
+// på besøgets type (Kundebesøg/Kvalitetskontrol, se "Gælder for" i
+// formular-editoren). 'notes' særbehandles så 🎤 Indtal-knappen
+// (toggleVoiceNote) virker uændret — den er altid med.
 function vrRenderFields(existing){
   const body=document.getElementById('vr-fields-body');
-  const fields=(visitReportFields||[]).filter(f=>f.active);
+  const vt=(existing&&existing.visit_type)==='kvalitetskontrol'?'kvalitetskontrol':'kundebesog';
+  const fields=(visitReportFields||[]).filter(f=>f.active&&(!f.applies_to||f.applies_to==='both'||f.applies_to===vt));
   const customVals=(existing&&existing.custom_fields&&typeof existing.custom_fields==='object')?existing.custom_fields:{};
+  vrCurrentCustom=Object.assign({},customVals);
   body.innerHTML=fields.map(f=>{
-    const val=esc(f.builtin?((existing&&existing[f.key])||''):(customVals[f.key]||''));
+    const raw=f.builtin?((existing&&existing[f.key])||''):(customVals[f.key]||'');
     if(f.key==='notes'){
       // RUNDE EH — mikrofon-knappen udelades helt når browseren ikke
-      // understøtter Web Speech API (samme regel som hideUnsupportedMicButtons
-      // brugte før, dengang knappen altid fandtes i den statiske HTML).
+      // understøtter Web Speech API.
       const micBtn=SpeechRecognitionCtor?`<button type="button" class="vr-mic-btn" id="vr-notes-mic-btn" onclick="toggleVoiceNote('vr-notes')" title="Indtal noten i stedet for at skrive — du kan altid rette i teksten bagefter"><span class="vr-mic-icon">🎤</span> Indtal</button>`:'';
-      return `<div class="req-label-row" style="margin-top:10px"><label class="req-label" style="margin:0">${esc(f.label)}</label>${micBtn}</div>`
-        +`<textarea id="vr-notes" class="req-textarea" rows="3" placeholder="Fx underlagets stand, fugt, niveauforskelle, adgangsforhold" data-field-key="notes" data-builtin="1">${val}</textarea>`;
+      return `<div class="vrf-field" data-field-key="notes" data-builtin="1" data-type="textarea" data-required="${f.required?1:0}" data-label="${esc(f.label)}"><div class="req-label-row" style="margin-top:12px"><label class="req-label" style="margin:0">${esc(f.label)}${f.required?'<span class="vrf-req">*</span>':''}</label>${micBtn}</div>`
+        +(f.help?`<div class="vrf-help">${esc(f.help)}</div>`:'')
+        +`<textarea id="vr-notes" class="req-textarea vrf-input" rows="3" placeholder="${esc(f.placeholder||'Fx underlagets stand, fugt, niveauforskelle, adgangsforhold')}">${esc(raw)}</textarea></div>`;
     }
-    const common=`data-field-key="${esc(f.key)}" data-builtin="${f.builtin?1:0}"`;
-    if(f.type==='textarea')return `<label class="req-label" style="margin-top:10px">${esc(f.label)}</label><textarea class="req-textarea" rows="2" ${common}>${val}</textarea>`;
-    return `<label class="req-label" style="margin-top:10px">${esc(f.label)}</label><input class="req-input" type="${f.type==='number'?'number':'text'}" ${common} value="${val}">`;
+    return vrFieldHtml(f,raw);
   }).join('')||'<p class="req-intro">Ingen felter på besøgsrapporten lige nu.</p>';
 }
 async function openVisitReportModal(id,taskId){
@@ -1545,14 +1599,29 @@ async function submitVisitReportAndComplete(){
   // for de 5 faste felt-id'er — se vrRenderFields. Et builtin-felt (sin egen
   // kolonne på customer_visits) går i builtinVals, et Martin-oprettet felt i
   // customVals (gemmes i customer_visits.custom_fields).
-  const builtinVals={},customVals={};
+  const builtinVals={};
+  // Start fra rapportens eksisterende custom-svar, så svar på felter der er
+  // skjult lige nu (fx kun for den anden besøgstype) ikke slettes.
+  const customVals=Object.assign({},vrCurrentCustom);
   let hasText=false;
-  document.querySelectorAll('#vr-fields-body [data-field-key]').forEach(el=>{
-    const val=el.value;
-    if(val&&val.trim())hasText=true;
-    if(el.dataset.builtin==='1')builtinVals[el.dataset.fieldKey]=val;
-    else customVals[el.dataset.fieldKey]=val;
+  const missing=[];
+  document.querySelectorAll('#vr-fields-body .vrf-field').forEach(w=>{
+    const val=vrReadValue(w);
+    const empty=!String(val).trim();
+    if(!empty)hasText=true;
+    const isMissing=w.dataset.required==='1'&&empty;
+    w.classList.toggle('missing',isMissing);
+    if(isMissing)missing.push(w.dataset.label);
+    if(w.dataset.builtin==='1')builtinVals[w.dataset.fieldKey]=val;
+    else customVals[w.dataset.fieldKey]=val;
   });
+  if(missing.length){
+    feedback.textContent='Udfyld de påkrævede felter: '+missing.join(', ');
+    feedback.className='req-feedback show error';
+    const first=document.querySelector('#vr-fields-body .vrf-field.missing');
+    if(first)first.scrollIntoView({block:'center',behavior:'smooth'});
+    return;
+  }
   const hasContent=hasText||visitReportPhotos.length||vrNewPhotoFiles.length;
   if(!hasContent){
     feedback.textContent='Udfyld mindst ét felt eller tilføj et billede, før du fortsætter';

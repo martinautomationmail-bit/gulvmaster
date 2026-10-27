@@ -1551,26 +1551,127 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .crmpxv-photo-item img{width:100%;height:100%;object-fit:cover;display:block}
 .crmpxv-photo-remove{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(15,17,24,.65);color:#fff;border:none;cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center}
 .crmpxv-photo-remove:hover{background:#DC2626}
-/* RUNDE EH — felt-editoren (#visit-fields-modal). Hver .vf-row er ét felt;
-   et builtin-felt (room_size m.fl.) kan ikke få type ændret eller slettes,
-   kun omdøbes/skjules — se VISIT_REPORT_BUILTIN_FIELDS i server.js. */
-.vf-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--bly-border-soft)}
-.vf-row:last-child{border-bottom:0}
-.vf-row-handle{color:var(--bly-sub);font-size:11px;display:flex;flex-direction:column;gap:1px}
-.vf-row-handle button{border:1px solid var(--bly-border);background:#fff;border-radius:5px;width:20px;height:16px;cursor:pointer;font-size:9px;line-height:1;color:var(--bly-sub)}
-.vf-row-handle button:hover{background:var(--bly-hover)}
-.vf-row-handle button:disabled{opacity:.3;cursor:default}
-.vf-row-label{flex:1 1 auto;min-width:0}
-.vf-row-type{width:118px;flex:0 0 auto}
-.vf-row-builtin-tag{font-size:9.5px;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.02em;flex:0 0 auto;width:58px}
-.vf-row-active{flex:0 0 auto;display:flex;align-items:center;gap:5px;font-size:11px;color:var(--bly-sub);width:70px}
-.vf-row-del{flex:0 0 auto}
-/* RUNDE EH — status-mærke på et Kundebesøg-kort (udfyldt/mangler rapport),
-   og den nu afkortede note-forhåndsvisning (se kbRender()). */
-.kb-status{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+/* RUNDE FA (Martin: "ret knappen til højre og alt der sker under kundebesøg
+   det ser helt kluderet ud — iconer og tekster går ind over linjer") —
+   Kundebesøg-kortet har nu sin egen to-kolonne opbygning (.kb-card) i stedet
+   for den generiske .bly-rowcard, og knapperne er rigtige tekst-knapper
+   (.kb-act) i stedet for .qz-icon-btn, som er låst til 28×28 px og derfor
+   lod "📋 Rapport"/"✅ Færdig" flyde ud over kanten. */
+.kb-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 24px;background:#fff;border:1px solid var(--bly-border-soft);border-radius:var(--bly-r-md);padding:14px 16px;box-shadow:0 1px 2px rgba(15,23,42,.03);transition:border-color .15s,box-shadow .15s}
+.kb-card:hover{border-color:var(--bly-border);box-shadow:0 2px 8px rgba(15,23,42,.06)}
+.kb-card-main{min-width:0;display:flex;flex-direction:column;gap:6px}
+.kb-card-title{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
+.kb-card-name{font-size:14px;font-weight:700;color:var(--bly-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.kb-card-note{font-size:12px;line-height:1.45;color:#4B5563;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.kb-card-meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--bly-sub);margin-top:2px}
+.kb-meta{display:inline-flex;align-items:center;gap:5px;min-width:0;max-width:100%}
+.kb-meta svg{width:13px;height:13px;flex:0 0 auto;opacity:.75}
+.kb-meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kb-card-side{display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;gap:8px;min-width:0}
+.kb-card-when{display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:0}
+.kb-card-date{font-size:13.5px;font-weight:800;color:var(--bly-ink);white-space:nowrap;text-align:right}
+.kb-card-date small{display:block;font-size:11px;font-weight:600;color:var(--bly-sub);margin-top:1px}
+.kb-card-date small.warn{color:#B91C1C}
+.kb-card-emp{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#374151;max-width:220px}
+.kb-card-emp i{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.kb-card-emp span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kb-card-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px}
+.kb-act{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--bly-border);background:#fff;color:var(--bly-ink);font-size:12px;font-weight:600;line-height:1;white-space:nowrap;cursor:pointer;transition:background .15s,border-color .15s}
+.kb-act:hover{background:var(--bly-hover);border-color:#C7CBD1}
+.kb-act svg{width:14px;height:14px;flex:0 0 auto}
+.kb-act.primary{background:var(--bly-ink);border-color:var(--bly-ink);color:#fff}
+.kb-act.primary:hover{background:#000}
+.kb-act.success{color:#15803D;border-color:#BBF7D0;background:#F0FDF4}
+.kb-act.success:hover{background:#DCFCE7;border-color:#86EFAC}
+.kb-done-chip{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px;border-radius:8px;background:#F0FDF4;color:#15803D;font-size:12px;font-weight:700;white-space:nowrap}
+.kb-done-chip svg{width:13px;height:13px}
+.kb-status{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;line-height:1.2}
+.kb-status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .kb-status-done{background:#DCFCE7;color:#15803D}
 .kb-status-missing{background:#FEF3C7;color:#92570A}
-.kb-note-preview{font-size:11px;color:var(--bly-sub);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:760px){
+  .kb-card{grid-template-columns:1fr}
+  .kb-card-side{flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;border-top:1px dashed var(--bly-border);padding-top:10px}
+  .kb-card-when{flex-direction:row;align-items:center;flex-wrap:wrap;gap:6px 14px}
+  .kb-card-date{text-align:left}
+  .kb-card-date small{display:inline;margin:0 0 0 6px}
+  .kb-card-actions{width:100%;justify-content:flex-start}
+}
+/* RUNDE FA — felt-editoren (#visit-fields-modal), nu med fold-ud detaljer pr.
+   felt (hjælpetekst, påkrævet, valgmuligheder, enhed, gælder for) + en
+   forhåndsvisning. Et builtin-felt kan stadig ikke skifte type eller slettes. */
+#visit-fields-modal .modal{width:780px;max-width:96vw!important}
+/* Rapport-popup'en (kundebesøg) var også låst til .modal's 420 px */
+#crmpx-visit-modal .modal{width:700px;max-width:96vw!important}
+.vf-tabs{display:flex;gap:4px;border-bottom:1px solid var(--bly-border-soft);margin:0 0 14px}
+.vf-tab{border:0;background:none;padding:9px 12px;font-size:12.5px;font-weight:600;color:var(--bly-sub);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.vf-tab.active{color:var(--bly-ink);border-bottom-color:var(--bly-ink)}
+.vf-list{display:flex;flex-direction:column;gap:8px}
+.vf-card{border:1px solid var(--bly-border-soft);border-radius:10px;background:#fff;transition:border-color .15s,box-shadow .15s}
+.vf-card.open{border-color:#C7D2FE;box-shadow:0 2px 10px rgba(79,70,229,.08)}
+.vf-card.inactive .vf-head{opacity:.55}
+.vf-card.is-heading{background:#FAFAFB}
+.vf-head{display:grid;grid-template-columns:auto minmax(0,1fr) 172px auto auto auto;align-items:center;gap:8px;padding:8px 10px}
+.vf-move{display:flex;flex-direction:column;gap:2px}
+.vf-move button{border:1px solid var(--bly-border);background:#fff;border-radius:5px;width:22px;height:15px;cursor:pointer;font-size:8px;line-height:1;color:var(--bly-sub);padding:0}
+.vf-move button:hover:not(:disabled){background:var(--bly-hover)}
+.vf-move button:disabled{opacity:.3;cursor:default}
+.vf-head .input,.vf-head .select{box-sizing:border-box;height:34px;padding:6px 10px;font-size:12.5px;margin:0;width:100%;min-width:0}
+.vf-switch{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--bly-sub);white-space:nowrap;cursor:pointer;user-select:none}
+.vf-switch input{width:15px;height:15px;margin:0}
+.vf-switch.locked{cursor:default;opacity:.6}
+.vf-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--bly-border);background:#fff;cursor:pointer;color:var(--bly-sub);padding:0}
+.vf-icon-btn:hover{background:var(--bly-hover);color:var(--bly-ink)}
+.vf-icon-btn svg{width:15px;height:15px}
+.vf-icon-btn.danger:hover{background:#FEF2F2;color:#B91C1C;border-color:#FECACA}
+.vf-icon-btn.spacer{visibility:hidden}
+.vf-card.open .vf-toggle svg{transform:rotate(180deg)}
+.vf-badges{display:flex;flex-wrap:wrap;gap:5px;padding:0 10px 8px 40px}
+.vf-badges:empty{display:none}
+.vf-badge{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;background:#F3F4F6;color:#4B5563;white-space:nowrap}
+.vf-badge.req{background:#FEF2F2;color:#B91C1C}
+.vf-badge.type{background:var(--bly-accent-soft);color:var(--bly-accent)}
+.vf-details{display:none;padding:12px 14px 14px 40px;border-top:1px solid var(--bly-border-soft);background:#FCFCFD;border-radius:0 0 10px 10px}
+.vf-card.open .vf-details{display:block}
+.vf-details-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 16px}
+.vf-details-grid>div{min-width:0}
+.vf-details-grid .full{grid-column:1/-1}
+.vf-details label.vf-lbl{display:block;white-space:nowrap;font-size:11px;font-weight:700;color:var(--bly-sub);margin:0 0 4px;text-transform:uppercase;letter-spacing:.03em}
+.vf-details .input,.vf-details .select,.vf-details textarea{width:100%;max-width:100%;min-width:0;box-sizing:border-box;margin:0;font-size:12.5px}
+.vf-details textarea{min-height:84px;resize:vertical;font-family:inherit}
+.vf-hint{font-size:11px;color:var(--bly-sub);margin-top:4px}
+.vf-add-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+.vf-suggest{margin-top:14px;padding:12px;border:1px dashed var(--bly-border);border-radius:10px}
+.vf-suggest-title{font-size:11px;font-weight:700;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px}
+.vf-chips{display:flex;flex-wrap:wrap;gap:6px}
+.vf-chip{border:1px solid var(--bly-border);background:#fff;border-radius:999px;padding:5px 11px;font-size:11.5px;cursor:pointer;color:var(--bly-ink)}
+.vf-chip:hover{background:var(--bly-hover);border-color:var(--bly-accent)}
+.vf-preview{border:1px solid var(--bly-border-soft);border-radius:12px;padding:16px;background:#FCFCFD;max-height:56vh;overflow:auto}
+@media (max-width:640px){
+  .vf-head{grid-template-columns:auto minmax(0,1fr) auto auto;grid-template-areas:"move label toggle del" "move type active active"}
+  .vf-head .vf-move{grid-area:move}.vf-head .vf-label{grid-area:label}.vf-head .vf-type{grid-area:type}
+  .vf-head .vf-switch{grid-area:active}.vf-head .vf-toggle{grid-area:toggle}.vf-head .vf-del{grid-area:del}
+  .vf-details{padding-left:14px}.vf-details-grid{grid-template-columns:1fr}.vf-badges{padding-left:10px}
+}
+/* RUNDE FA — selve rapport-felterne (admin-popup'en + forhåndsvisningen):
+   ja/nej-knapper, flere-valg-afkrydsning, enhed efter tal, sektion-overskrift. */
+.vrf-field{margin-bottom:14px}
+.vrf-field.missing .input,.vrf-field.missing .select,.vrf-field.missing .vrf-choice{border-color:#F87171!important}
+.vrf-label{display:flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;color:var(--bly-ink);margin-bottom:5px}
+.vrf-req{color:#DC2626}
+.vrf-help{font-size:11.5px;color:var(--bly-sub);margin:-2px 0 6px}
+.vrf-unit-wrap{display:flex;align-items:stretch}
+.vrf-unit-wrap .input{border-top-right-radius:0;border-bottom-right-radius:0;flex:1;min-width:0}
+.vrf-unit{display:flex;align-items:center;padding:0 12px;border:1px solid var(--bly-border);border-left:0;border-radius:0 8px 8px 0;background:#F9FAFB;font-size:12.5px;color:var(--bly-sub);white-space:nowrap}
+.vrf-yesno{display:inline-flex;gap:6px}
+.vrf-choice{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--bly-border);border-radius:8px;padding:7px 12px;font-size:12.5px;background:#fff;cursor:pointer;user-select:none}
+.vrf-choice input{margin:0;width:15px;height:15px}
+.vrf-choice:has(input:checked){border-color:var(--bly-accent);background:var(--bly-accent-soft);color:var(--bly-accent);font-weight:600}
+.vrf-checks{display:flex;flex-wrap:wrap;gap:6px}
+.vrf-heading{margin:20px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--bly-border-soft)}
+.vrf-heading:first-child{margin-top:0}
+.vrf-heading h4{margin:0;font-size:13.5px;font-weight:800;color:var(--bly-ink)}
+.vrf-heading p{margin:3px 0 0;font-size:11.5px;color:var(--bly-sub)}
 .crmpx-activity-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--bly-border-soft)}
 .crmpx-activity-item:last-child{border-bottom:0}
 .crmpx-activity-icon{width:26px;height:26px;border-radius:50%;background:var(--bly-border-soft);display:grid;place-items:center;flex-shrink:0;font-size:12px}
@@ -4299,7 +4400,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.28 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.31.0 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -7426,14 +7527,33 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
      Kundebesøg OG Kvalitetskontrol/eftersyn). Se vfOpen()/vfRender()/vfSave()
      i scriptet, og GET/PUT /api/visit-report-fields i server.js. -->
 <div class="mo" id="visit-fields-modal">
-  <div class="modal" style="max-width:min(640px,94vw);max-height:88vh;overflow:auto">
-    <h3>⚙️ Besøgsrapport — felter</h3>
-    <div class="sub" style="margin-top:-8px;margin-bottom:14px">Dette er felterne på selve besøgsrapporten, som medarbejderne udfylder ude hos kunden (og som I også kan udfylde herfra). De 5 første kan omdøbes og skjules, men ikke slettes. Tilføj gerne jeres egne.</div>
-    <div id="vf-list"></div>
-    <button class="bly-btn outline small" id="vf-add-btn" type="button" style="margin-top:4px">+ Tilføj felt</button>
+  <div class="modal" style="max-height:90vh;overflow:auto">
+    <h3>⚙️ Besøgsrapport — formular</h3>
+    <div class="sub" style="margin-top:-8px;margin-bottom:12px">Felterne medarbejderne udfylder ude hos kunden (og som I også kan udfylde herfra). Fold et felt ud for hjælpetekst, påkrævet, valgmuligheder, enhed og hvilken besøgstype det gælder for. De indbyggede felter kan omdøbes og skjules, men ikke slettes.</div>
+    <div class="vf-tabs">
+      <button class="vf-tab active" type="button" data-vf-tab="edit">Felter</button>
+      <button class="vf-tab" type="button" data-vf-tab="preview">Forhåndsvisning</button>
+    </div>
+    <div id="vf-pane-edit">
+      <div id="vf-list" class="vf-list"></div>
+      <div class="vf-add-row">
+        <button class="bly-btn outline small" id="vf-add-btn" type="button">+ Tilføj felt</button>
+        <button class="bly-btn outline small" id="vf-add-heading-btn" type="button">+ Tilføj sektion-overskrift</button>
+      </div>
+      <div class="vf-suggest" id="vf-suggest"></div>
+      <datalist id="vf-unit-list"><option value="m²"><option value="m"><option value="mm"><option value="cm"><option value="%"><option value="kr."><option value="stk."><option value="timer"></datalist>
+    </div>
+    <div id="vf-pane-preview" style="display:none">
+      <div class="bly-segtabs" id="vf-preview-type" style="margin-bottom:12px">
+        <button class="bly-segtab active" type="button" data-vf-preview-type="kundebesog">🏠 Kundebesøg</button>
+        <button class="bly-segtab" type="button" data-vf-preview-type="kvalitetskontrol">🔍 Kvalitetskontrol/eftersyn</button>
+      </div>
+      <div class="vf-preview" id="vf-preview"></div>
+      <div class="vf-hint" style="margin-top:8px">Sådan ser formularen ud for medarbejderen. Ændringerne er ikke gemt før du trykker Gem.</div>
+    </div>
     <div class="modal-actions">
       <button class="btn" type="button" onclick="closeModal('visit-fields-modal')">Annuller</button>
-      <button class="btn primary" type="button" id="vf-save-btn">Gem</button>
+      <button class="btn primary" type="button" id="vf-save-btn">Gem formular</button>
     </div>
   </div>
 </div>
@@ -15134,48 +15254,59 @@ function kbRender(){
   }
   rows.sort(function(a,b){return String(a.start_date||'').localeCompare(String(b.start_date||''))||String(a.start_time||'').localeCompare(String(b.start_time||''));});
   document.getElementById('kb-count').textContent=rows.length?rows.length+' kundebesøg':'';
-  // RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design du
-  // lavede") — .bly-rowcard i stedet for <tr>/<td>, samme kort-liste-stil som
-  // Bankafstemning/Omsætning pr. fag.
+  // RUNDE FA (Martin: "ret knappen til højre og alt der sker under
+  // kundebesøg — iconer og tekster går ind over linjer") — eget .kb-card-
+  // layout: venstre kolonne = navn/status, note (maks 2 linjer), adresse/
+  // telefon; højre kolonne = dato/tid, medarbejder og knapper. Knapperne er
+  // rigtige tekst-knapper (.kb-act) i stedet for de 28×28 px .qz-icon-btn,
+  // som teksten flød ud af. Samme data-attributter som før, så click-
+  // håndteringen i initKundebesogPage er uændret.
   document.getElementById('kb-body').innerHTML=rows.length?rows.map(function(v){
-    var dateLabel=v.start_date?fmtDaDate(v.start_date)+(v.start_time?' · '+v.start_time:''):(v._unbooked?'Ikke planlagt':'');
-    var empHtml=v._unbooked?'<span style="color:var(--bly-sub)">—</span>':('<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(v.user_color||'#9CA3AF')+';margin-right:5px"></span>'+esc(v.user_name||'—'));
-    var actionHtml;
+    var name=v.job_name||v.customer_name||'(uden navn)';
+    var dateMain=v.start_date?fmtDaDate(v.start_date):'';
+    var dateSub=v._unbooked?'<small class="warn">Ikke planlagt</small>':(v.start_time?'<small>kl. '+esc(v.start_time)+'</small>':'');
+    var dateHtml=(dateMain||dateSub)?'<div class="kb-card-date">'+esc(dateMain||'—')+dateSub+'</div>':'';
+    var empHtml=v._unbooked?'':'<div class="kb-card-emp" title="'+esc(v.user_name||'')+'"><i style="background:'+esc(v.user_color||'#9CA3AF')+'"></i><span>'+esc(v.user_name||'Ingen medarbejder')+'</span></div>';
+    var hasReport=!!v.visit_submitted_at;
+    var statusHtml=v._unbooked?'':'<span class="kb-status '+(hasReport?'kb-status-done':'kb-status-missing')+'">'+(hasReport?'Rapport udfyldt':'Mangler rapport')+'</span>';
+    var actions=[];
     if(v._unbooked){
-      actionHtml='<button type="button" class="qz-icon-btn" data-kb-book-task="'+esc(v.task_id)+'" title="Book på medarbejder/dato">📌 Book</button>';
-    } else if(v.completed_at){
-      actionHtml='<span class="sub" style="color:var(--bly-dot-paid)">✓ Færdig</span>';
+      actions.push('<button type="button" class="kb-act primary" data-kb-book-task="'+esc(v.task_id)+'" title="Book på medarbejder/dato">'+KB_ICONS.pin+'Book besøg</button>');
     } else {
-      actionHtml='<button type="button" class="qz-icon-btn" data-kb-done="'+v.id+'" title="Markér som færdig">✅ Færdig</button>';
+      // "Rapport"/"Udfyld rapport" — åbner samme store popup som CRM-Handel
+      // (se kbOpenVisitReport), uanset om rapporten findes endnu.
+      actions.push('<button type="button" class="kb-act" data-kb-report="'+esc(v.task_id)+'" data-kb-name="'+esc(v.job_name||v.customer_name||'')+'" data-kb-address="'+esc(v.job_address||'')+'" data-kb-phone="'+esc(v.customer_phone||'')+'" data-kb-visit-type="'+esc(v.visit_type||kbTypeFilter)+'" title="'+(hasReport?'Se/rediger besøgsrapporten':'Udfyld besøgsrapporten')+'">'+(hasReport?KB_ICONS.doc+'Se rapport':KB_ICONS.edit+'Udfyld rapport')+'</button>');
+      if(v.completed_at)actions.push('<span class="kb-done-chip">'+KB_ICONS.check+'Færdig</span>');
+      else actions.push('<button type="button" class="kb-act success" data-kb-done="'+v.id+'" title="Markér besøget som færdigt">'+KB_ICONS.check+'Markér færdig</button>');
     }
-    // RUNDE EH (Martin: "Gør så jeg kan udfylde rapporten fra computeren også.
-    // Pt kan du kun fra medarbejder appen") — "📋 Rapport"-knappen åbner samme
-    // store popup som CRM-Handel bruger (se kbOpenVisitReport), og virker
-    // UANSET om rapporten findes endnu — kun relevante for et rigtigt besøg
-    // (ikke "Ikke planlagt", som jo endnu ikke har en dato/medarbejder).
-    // Statusmærket (udfyldt/mangler) bruger visit_submitted_at fra overview-
-    // kaldet (se /api/customer-visits/overview i server.js).
-    var reportHtml='';
-    if(!v._unbooked){
-      var hasReport=!!v.visit_submitted_at;
-      reportHtml='<button type="button" class="qz-icon-btn" data-kb-report="'+esc(v.task_id)+'" data-kb-name="'+esc(v.job_name||v.customer_name||'')+'" data-kb-address="'+esc(v.job_address||'')+'" data-kb-phone="'+esc(v.customer_phone||'')+'" data-kb-visit-type="'+esc(v.visit_type||kbTypeFilter)+'" title="'+(hasReport?'Se/rediger besøgsrapporten':'Udfyld besøgsrapporten')+'">'+(hasReport?'📋 Rapport':'📝 Udfyld rapport')+'</button>';
-    }
-    var statusHtml=!v._unbooked?('<span class="kb-status '+(v.visit_submitted_at?'kb-status-done':'kb-status-missing')+'">'+(v.visit_submitted_at?'✅ Rapport udfyldt':'📝 Mangler rapport')+'</span>'):'';
-    var addrLine=v.job_address?'<span>📍 '+esc(v.job_address)+'</span>':'';
-    var phoneLine=v.customer_phone?'<span>📞 '+esc(v.customer_phone)+'</span>':'';
-    return '<div class="bly-rowcard">'+
-      '<div class="bly-rowcard-top">'+
-        '<div class="bly-rowcard-name">'+esc(v.job_name||v.customer_name||'(uden navn)')+' '+statusHtml+'</div>'+
-        '<div class="bly-rowcard-value">'+esc(dateLabel)+'</div>'+
-      '</div>'+
-      (v.visit_notes?'<div class="kb-note-preview" title="'+esc(v.visit_notes)+'">💬 '+esc(v.visit_notes)+'</div>':'')+
-      '<div class="bly-rowcard-bottom">'+
-        '<span style="display:flex;gap:10px;flex-wrap:wrap">'+(addrLine||phoneLine?addrLine+phoneLine:'<span>—</span>')+'</span>'+
-        '<div class="bly-rowcard-controls">'+empHtml+reportHtml+actionHtml+'</div>'+
-      '</div>'+
-    '</div>';
+    var meta=[];
+    if(v.job_address)meta.push('<span class="kb-meta" title="'+esc(v.job_address)+'">'+KB_ICONS.map+'<span>'+esc(v.job_address)+'</span></span>');
+    if(v.customer_phone)meta.push('<a class="kb-meta" href="tel:'+esc(String(v.customer_phone).replace(/\s+/g,''))+'" style="color:inherit;text-decoration:none">'+KB_ICONS.phone+'<span>'+esc(v.customer_phone)+'</span></a>');
+    return '<div class="kb-card">'
+      +'<div class="kb-card-main">'
+        +'<div class="kb-card-title"><span class="kb-card-name" title="'+esc(name)+'">'+esc(name)+'</span>'+statusHtml+'</div>'
+        +(v.visit_notes?'<div class="kb-card-note" title="'+esc(v.visit_notes)+'">'+esc(v.visit_notes)+'</div>':'')
+        +(meta.length?'<div class="kb-card-meta">'+meta.join('')+'</div>':'')
+      +'</div>'
+      +'<div class="kb-card-side">'
+        +'<div class="kb-card-when">'+dateHtml+empHtml+'</div>'
+        +'<div class="kb-card-actions">'+actions.join('')+'</div>'
+      +'</div>'
+    +'</div>';
   }).join(''):'<div class="bly-rowcard-empty">Ingen kundebesøg i denne kategori</div>';
 }
+// RUNDE FA — små stregikoner til Kundebesøg-kortene (arver tekstfarven).
+var KB_ICONS=(function(){
+  function svg(d){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+d+'</svg>';}
+  return {
+    map:svg('<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'),
+    phone:svg('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>'),
+    doc:svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/>'),
+    edit:svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+    check:svg('<path d="M20 6 9 17l-5-5"/>'),
+    pin:svg('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M12 13v5M9.5 15.5h5"/>')
+  };
+})();
 async function kbMarkDone(bookingId){
   var r=await api('/api/assignments/'+bookingId+'/complete',{method:'PUT',body:JSON.stringify({completed:true})});
   if(r&&r.ok){toast('Kundebesøg markeret som færdigt ✓','✅');await kbLoad();}
@@ -28256,16 +28387,6 @@ function crmpxInitOnce(){
   // RUNDE EH — feltlisten-editoren (⚙️ Rediger besøgsrapport-formular på
   // Kundebesøg-siden), se vfOpen()/vfSave() nedenfor.
   document.getElementById('kb-fields-btn').addEventListener('click',vfOpen);
-  document.getElementById('vf-add-btn').addEventListener('click',vfAddField);
-  document.getElementById('vf-save-btn').addEventListener('click',vfSave);
-  document.getElementById('vf-list').addEventListener('click',function(e){
-    var del=e.target.closest('[data-vf-del]');
-    if(del){vfDeleteField(Number(del.dataset.vfDel));return;}
-    var up=e.target.closest('[data-vf-up]');
-    if(up){vfMoveField(Number(up.dataset.vfUp),-1);return;}
-    var down=e.target.closest('[data-vf-down]');
-    if(down){vfMoveField(Number(down.dataset.vfDown),1);return;}
-  });
   // RUNDE V — note-diktering på CRM-aktivitetsnoten (se noteDictToggle).
   document.getElementById('crmpx-note-new-mic-btn').addEventListener('click',function(){noteDictToggle('crmpx-note-new','crmpx-note-new-mic-btn');});
   document.getElementById('crmpx-task-add-btn').addEventListener('click',crmpxAddTask);
@@ -29785,17 +29906,18 @@ async function crmpxLoadVisits(customerId,listElId,countElId){
   var list=document.getElementById(listElId||'crmpx-visits-list');
   var countEl=document.getElementById(countElId||'crmpx-visits-count');
   var visits=await api('/api/crm/customers/'+customerId+'/visits')||[];
+  // RUNDE FA — feltlisten bestemmer navne/rækkefølge på det der vises, så også
+  // Martins egne felter (custom_fields) kommer med på kortet, ikke kun de 4 faste.
+  var vrFields=await loadVisitReportFields();
   crmpxVisitsCache=visits;
   if(countEl)countEl.textContent=visits.length?'('+visits.length+')':'';
   if(!list)return;
   if(!visits.length){list.innerHTML='<div class="crmpx-empty">Ingen besøgsrapporter endnu</div>';return;}
   list.innerHTML=visits.map(function(v){
-    var kv=[
-      {l:'Rummets størrelse',val:v.room_size},
-      {l:'Ønsket gulvtype',val:v.floor_type_wanted},
-      {l:'Anbefalet løsning',val:v.recommended_solution},
-      {l:'Estimeret pris',val:v.estimated_price}
-    ].filter(function(x){return x.val;});
+    var cv=(v.custom_fields&&typeof v.custom_fields==='object')?v.custom_fields:{};
+    var kv=(vrFields||[]).filter(function(f){return f.key!=='notes'&&f.type!=='heading';}).map(function(f){
+      return {l:f.label,val:vrfDisplayValue(f,f.builtin?v[f.key]:cv[f.key])};
+    }).filter(function(x){return x.val;});
     var kvHtml=kv.length?'<div class="crmpx-visit-kv">'+kv.map(function(x){return '<div class="crmpx-visit-kv-item"><span>'+esc(x.l)+'</span><b>'+esc(x.val)+'</b></div>';}).join('')+'</div>':'';
     var noteHtml=v.notes?'<div class="crmpx-visit-note">'+esc(v.notes).replace(/\n/g,'<br>')+'</div>':'';
     var photos=Array.isArray(v.photo_urls)?v.photo_urls:[];
@@ -29869,23 +29991,117 @@ async function crmpxOpenVisitModalWithData(taskId,v){
   crmpxRenderVisitPhotos();
   document.getElementById('crmpx-visit-modal').classList.add('open');
 }
-// RUNDE EH — bygger selve formular-felterne (#crmpxv-fields-body) dynamisk ud
-// fra visitReportFieldsCache i stedet for de 5 hårdkodede <input>-felter der
-// plejede at stå direkte i HTML'en. Et builtin-felt (data-builtin="1") læser/
-// skriver sin egen kolonne på customer_visits (room_size osv.) — et
-// Martin-oprettet felt læser/skriver v.custom_fields[key] i stedet, se
-// crmpxSaveVisitEdit.
+// ─── RUNDE FA — BESØGSRAPPORT-FELTER (Martin: "lav Besøgsrapport felter
+// option mere dybdegående og detaljeret") ───────────────────────────────
+// Fælles byggeklodser for rapport-felterne, brugt af selve rapport-popup'en
+// (crmpxRenderVisitFields/crmpxSaveVisitEdit) OG editorens forhåndsvisning.
+// Felttyper og indstillinger valideres server-side i
+// sanitizeVisitReportFields (server.js). Alle svar gemmes som strenge —
+// "flere valg" samles med "; " (serveren fjerner ";" fra selve valgmulig-
+// hederne, så opdelingen altid er entydig).
+var VRF_TYPES=[
+  {v:'text',l:'Kort tekst'},
+  {v:'textarea',l:'Lang tekst'},
+  {v:'number',l:'Tal'},
+  {v:'date',l:'Dato'},
+  {v:'select',l:'Dropdown (ét valg)'},
+  {v:'checkboxes',l:'Flere valg'},
+  {v:'yesno',l:'Ja / Nej'},
+  {v:'heading',l:'Sektion-overskrift'}
+];
+var VRF_APPLIES={both:'Begge typer',kundebesog:'Kun kundebesøg',kvalitetskontrol:'Kun kvalitetskontrol'};
+var VRF_MULTI_SEP='; ';
+function vrfTypeLabel(t){var x=VRF_TYPES.find(function(y){return y.v===t;});return x?x.l:'Kort tekst';}
+function vrfSplitMulti(val){return String(val||'').split(';').map(function(s){return s.trim();}).filter(Boolean);}
+// Felter der skal vises for en given besøgstype (aktive + "gælder for").
+function vrfFieldsFor(fields,visitType){
+  var t=visitType==='kvalitetskontrol'?'kvalitetskontrol':'kundebesog';
+  return (fields||[]).filter(function(f){return f.active&&(!f.applies_to||f.applies_to==='both'||f.applies_to===t);});
+}
+function vrfFieldHtml(f,val,uid){
+  val=val==null?'':String(val);
+  if(f.type==='heading'){
+    return '<div class="vrf-heading"><h4>'+esc(f.label)+'</h4>'+(f.help?'<p>'+esc(f.help)+'</p>':'')+'</div>';
+  }
+  var id='vrf-'+uid+'-'+String(f.key).replace(/[^a-zA-Z0-9_-]/g,'');
+  var ph=f.placeholder?' placeholder="'+esc(f.placeholder)+'"':'';
+  var input='';
+  if(f.type==='textarea'){
+    input='<textarea id="'+id+'" class="input vrf-input" rows="4" style="resize:vertical"'+ph+'>'+esc(val)+'</textarea>';
+  } else if(f.type==='number'){
+    var num='<input id="'+id+'" class="input vrf-input" type="text" inputmode="decimal"'+ph+' value="'+esc(val)+'">';
+    input=f.unit?'<div class="vrf-unit-wrap">'+num+'<span class="vrf-unit">'+esc(f.unit)+'</span></div>':num;
+  } else if(f.type==='date'){
+    input='<input id="'+id+'" class="input vrf-input" type="date" value="'+esc(val)+'" style="max-width:220px">';
+  } else if(f.type==='select'){
+    var opts=(f.options||[]).slice();
+    if(val&&opts.indexOf(val)<0)opts.push(val); // behold et ældre svar, selvom valget er fjernet siden
+    input='<select id="'+id+'" class="select vrf-input"><option value="">'+esc(f.placeholder||'Vælg…')+'</option>'
+      +opts.map(function(o){return '<option value="'+esc(o)+'"'+(o===val?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>';
+  } else if(f.type==='checkboxes'){
+    var picked=vrfSplitMulti(val);
+    var all=(f.options||[]).slice();
+    picked.forEach(function(p){if(all.indexOf(p)<0)all.push(p);});
+    input='<div class="vrf-checks">'+(all.length?all.map(function(o){
+      return '<label class="vrf-choice"><input type="checkbox" value="'+esc(o)+'"'+(picked.indexOf(o)>=0?' checked':'')+'>'+esc(o)+'</label>';
+    }).join(''):'<span class="sub">Ingen valgmuligheder sat op endnu</span>')+'</div>';
+  } else if(f.type==='yesno'){
+    input='<div class="vrf-yesno">'+['Ja','Nej'].map(function(o){
+      return '<label class="vrf-choice"><input type="radio" name="'+id+'" value="'+o+'"'+(val===o?' checked':'')+'>'+o+'</label>';
+    }).join('')+'</div>';
+  } else {
+    input='<input id="'+id+'" class="input vrf-input" type="text"'+ph+' value="'+esc(val)+'">';
+  }
+  return '<div class="vrf-field" data-field-key="'+esc(f.key)+'" data-builtin="'+(f.builtin?1:0)+'" data-type="'+esc(f.type)+'" data-required="'+(f.required?1:0)+'" data-label="'+esc(f.label)+'">'
+    +'<label class="vrf-label" for="'+id+'">'+esc(f.label)+(f.required?'<span class="vrf-req" title="Påkrævet">*</span>':'')+'</label>'
+    +(f.help?'<div class="vrf-help">'+esc(f.help)+'</div>':'')
+    +input+'</div>';
+}
+function vrfReadValue(wrap){
+  var t=wrap.dataset.type;
+  if(t==='checkboxes'){
+    return Array.prototype.map.call(wrap.querySelectorAll('input[type="checkbox"]:checked'),function(c){return c.value;}).join(VRF_MULTI_SEP);
+  }
+  if(t==='yesno'){var r=wrap.querySelector('input[type="radio"]:checked');return r?r.value:'';}
+  var el=wrap.querySelector('.vrf-input');
+  return el?el.value:'';
+}
+// Læser alle viste felter i en container. missing = labels på påkrævede
+// felter der står tomme (og markerer dem rødt).
+function vrfCollect(container){
+  var out={builtin:{},custom:{},missing:[]};
+  Array.prototype.forEach.call(container.querySelectorAll('.vrf-field'),function(w){
+    var val=vrfReadValue(w);
+    var empty=!String(val).trim();
+    w.classList.toggle('missing',w.dataset.required==='1'&&empty);
+    if(w.dataset.required==='1'&&empty)out.missing.push(w.dataset.label);
+    if(w.dataset.builtin==='1')out.builtin[w.dataset.fieldKey]=val;
+    else out.custom[w.dataset.fieldKey]=val;
+  });
+  return out;
+}
+// Visningsværdi til lister/kort (tal med enhed, flere valg med komma).
+function vrfDisplayValue(f,val){
+  if(val==null||!String(val).trim())return '';
+  if(f&&f.type==='checkboxes')return vrfSplitMulti(val).join(', ');
+  if(f&&f.type==='date'&&/^\d{4}-\d{2}-\d{2}$/.test(val))return fmtDaDate(val);
+  if(f&&f.type==='number'&&f.unit)return val+' '+f.unit;
+  return String(val);
+}
+
+// RUNDE EH/FA — bygger selve formular-felterne (#crmpxv-fields-body) ud fra
+// visitReportFieldsCache, filtreret på besøgets type (Kundebesøg/
+// Kvalitetskontrol). Et builtin-felt læser/skriver sin egen kolonne på
+// customer_visits (room_size osv.) — et Martin-oprettet felt læser/skriver
+// v.custom_fields[key].
+var crmpxVisitCurrentCustom={};
 function crmpxRenderVisitFields(v){
   var body=document.getElementById('crmpxv-fields-body');
-  var fields=(visitReportFieldsCache||[]).filter(function(f){return f.active;});
+  var fields=vrfFieldsFor(visitReportFieldsCache,v.visit_type);
   var customVals=(v.custom_fields&&typeof v.custom_fields==='object')?v.custom_fields:{};
+  crmpxVisitCurrentCustom=Object.assign({},customVals);
   body.innerHTML=fields.length?fields.map(function(f){
-    var val=f.builtin?(v[f.key]||''):(customVals[f.key]||'');
-    var common='id="crmpxv-f-'+esc(f.key)+'" class="input" data-field-key="'+esc(f.key)+'" data-builtin="'+(f.builtin?1:0)+'"';
-    var inputHtml=f.type==='textarea'
-      ?'<textarea '+common+' rows="4" style="resize:vertical">'+esc(val)+'</textarea>'
-      :'<input '+common+' type="'+(f.type==='number'?'number':'text')+'" value="'+esc(val)+'">';
-    return '<div class="form-group"><label class="form-label">'+esc(f.label)+'</label>'+inputHtml+'</div>';
+    return vrfFieldHtml(f,f.builtin?(v[f.key]||''):(customVals[f.key]||''),'crmpxv');
   }).join(''):'<div class="crmpx-empty">Ingen aktive felter — se ⚙️ Rediger besøgsrapport-formular på Kundebesøg-siden.</div>';
 }
 function crmpxRenderVisitPhotos(){
@@ -29912,24 +30128,27 @@ async function crmpxVisitAddPhotos(e){
 }
 async function crmpxSaveVisitEdit(){
   if(!crmpxVisitEditingTaskId)return;
+  var collected=vrfCollect(document.getElementById('crmpxv-fields-body'));
+  // RUNDE FA — påkrævede felter: fra kontoret må man gerne gemme en halvt
+  // udfyldt rapport (fx rette en ældre rapport fra før feltet blev påkrævet),
+  // men man får en tydelig advarsel først. Medarbejder-appen blokerer.
+  if(collected.missing.length&&!confirm('Disse påkrævede felter er tomme:\n\n• '+collected.missing.join('\n• ')+'\n\nGem alligevel?'))return;
   var btn=document.getElementById('crmpxv-save-btn');var origText=btn.textContent;
   btn.disabled=true;btn.textContent='Gemmer…';
-  var body={photo_urls:crmpxVisitPhotos,custom_fields:{}};
+  // Start fra rapportens eksisterende custom-svar, så svar på felter der er
+  // skjult lige nu (inaktive eller kun for den anden besøgstype) ikke slettes.
+  var body=Object.assign({photo_urls:crmpxVisitPhotos,custom_fields:Object.assign({},crmpxVisitCurrentCustom,collected.custom)},collected.builtin);
   if(crmpxVisitCurrentWho){
     body.customer_name=crmpxVisitCurrentWho.customer_name;
     body.address=crmpxVisitCurrentWho.address;
     body.phone=crmpxVisitCurrentWho.phone;
   }
-  Array.prototype.forEach.call(document.querySelectorAll('#crmpxv-fields-body [data-field-key]'),function(el){
-    if(el.dataset.builtin==='1')body[el.dataset.fieldKey]=el.value;
-    else body.custom_fields[el.dataset.fieldKey]=el.value;
-  });
   var r=await api('/api/customer-visits/'+crmpxVisitEditingTaskId,{method:'PUT',body:JSON.stringify(body)});
   btn.disabled=false;btn.textContent=origText;
   if(r&&r.ok){
     toast('Besøgsrapport gemt','✓');
     closeModal('crmpx-visit-modal');
-    // RUNDE AT/EH — denne modal kan nu åbnes fra TRE steder (Handel-
+    // RUNDE AT/EH — denne modal kan åbnes fra TRE steder (Handel-
     // detaljesiden, kunde-detaljesiden OG selve Kundebesøg-listen) —
     // genopfrisk kun det/de paneler der rent faktisk er relevante lige nu.
     if(crmpxCurrentCustomerId)crmpxLoadVisits(crmpxCurrentCustomerId);
@@ -29939,87 +30158,181 @@ async function crmpxSaveVisitEdit(){
     toast((r&&r.error)||'Kunne ikke gemme','❌');
   }
 }
-// RUNDE EH (Martin: "gøre lige sådan at jeg kan lave om i de spørgsmål,
-// felter osv som tilføjes til et kundebesøg formel pt tror jeg ikke det
-// muligt") — editor til selve FELTLISTEN (#visit-fields-modal), åbnet fra
-// "⚙️ Rediger besøgsrapport-formular" på Kundebesøg-siden. vfWorkingFields er
-// en lokal, redigerbar kopi — intet gemmes før "Gem" trykkes. Rækkefølgen
-// styres med ▲/▼ i stedet for drag/drop (simplere, ingen risiko for et
-// fejlplaceret drop midt i en lang liste).
-var vfWorkingFields=[];
+
+// ─── RUNDE FA — FELT-EDITOREN (#visit-fields-modal) ─────────────────────
+// Hvert felt er et kort med en kompakt topbjælke (flyt, navn, type, vist,
+// detaljer, slet) og en fold-ud med detaljerne. Input skriver direkte i
+// vfWorkingFields (data-vf-idx + data-vf-prop), så intet går tabt når listen
+// gentegnes. Intet gemmes før "Gem". Builtin-felter kan ikke skifte type
+// eller slettes (server-reglen spejles her).
+var vfWorkingFields=[],vfOpenKeys={},vfUidSeq=0,vfPreviewType='kundebesog',vfInited=false;
+var VF_ICONS={
+  chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>'
+};
+// Typiske felter for et gulvfirma — ét klik tilføjer et færdigt felt.
+var VF_SUGGESTIONS=[
+  {label:'Areal',type:'number',unit:'m²',help:'Samlet gulvareal der skal behandles'},
+  {label:'Fugtmåling undergulv',type:'number',unit:'%',help:'Mål med fugtmåler og noter den højeste måling'},
+  {label:'Undergulv',type:'select',options:['Beton','Anhydrit','Træ/spånplade','Eksisterende gulv','Andet']},
+  {label:'Eksisterende belægning',type:'select',options:['Trægulv/parket','Laminat','Vinyl/LVT','Linoleum','Fliser','Tæppe','Ingen']},
+  {label:'Ønsket behandling',type:'checkboxes',options:['Slibning','Lak','Olie','Hvidpigmentering','Reparation','Nye fodlister']},
+  {label:'Gulvvarme',type:'yesno'},
+  {label:'Niveauforskelle',type:'number',unit:'mm',help:'Største målte forskel'},
+  {label:'Møbler skal flyttes',type:'yesno'},
+  {label:'Etage / elevator',type:'text',placeholder:'Fx 3. sal, ingen elevator'},
+  {label:'Adgangsforhold og parkering',type:'textarea'},
+  {label:'Ønsket startdato',type:'date'},
+  {label:'Kundens budget',type:'number',unit:'kr.'},
+  {label:'Fundne fejl / mangler',type:'textarea',applies_to:'kvalitetskontrol'},
+  {label:'Kunden er tilfreds med arbejdet',type:'yesno',applies_to:'kvalitetskontrol'}
+];
+function vfNormalize(f){
+  return Object.assign({help:'',placeholder:'',required:false,applies_to:'both',unit:'',options:[]},f,{_uid:'f'+(++vfUidSeq)});
+}
 async function vfOpen(){
+  vfInitOnce();
   await loadVisitReportFields(true); // tving frisk hentning — en anden fane kan have ændret den
-  vfWorkingFields=(visitReportFieldsCache||[]).map(function(f){return Object.assign({},f);});
+  vfWorkingFields=(visitReportFieldsCache||[]).map(vfNormalize);
+  vfOpenKeys={};
+  vfSetTab('edit');
   vfRenderList();
   document.getElementById('visit-fields-modal').classList.add('open');
 }
+function vfInitOnce(){
+  if(vfInited)return;vfInited=true;
+  var modal=document.getElementById('visit-fields-modal');
+  document.getElementById('vf-add-btn').addEventListener('click',function(){vfAddField({label:'Nyt felt',type:'text'},true);});
+  document.getElementById('vf-add-heading-btn').addEventListener('click',function(){vfAddField({label:'Ny sektion',type:'heading'},true);});
+  document.getElementById('vf-save-btn').addEventListener('click',vfSave);
+  modal.addEventListener('click',function(e){
+    var tab=e.target.closest('[data-vf-tab]');if(tab){vfSetTab(tab.dataset.vfTab);return;}
+    var pt=e.target.closest('[data-vf-preview-type]');if(pt){vfPreviewType=pt.dataset.vfPreviewType;vfRenderPreview();return;}
+    var sug=e.target.closest('[data-vf-suggest]');if(sug){vfAddField(VF_SUGGESTIONS[Number(sug.dataset.vfSuggest)],false);return;}
+    var t=e.target.closest('[data-vf-act]');if(!t)return;
+    var i=Number(t.dataset.vfIdx),act=t.dataset.vfAct;
+    if(act==='up'||act==='down'){
+      var j=i+(act==='up'?-1:1);
+      if(j<0||j>=vfWorkingFields.length)return;
+      var tmp=vfWorkingFields[i];vfWorkingFields[i]=vfWorkingFields[j];vfWorkingFields[j]=tmp;
+      vfRenderList();
+    } else if(act==='toggle'){
+      var uid=vfWorkingFields[i]._uid;vfOpenKeys[uid]=!vfOpenKeys[uid];
+      t.closest('.vf-card').classList.toggle('open',!!vfOpenKeys[uid]);
+    } else if(act==='del'){
+      var f=vfWorkingFields[i];
+      if(!f||f.builtin)return; // UI viser aldrig en slet-knap for builtins — ekstra sikkerhedsnet
+      if(f.key&&!confirm('Slet feltet "'+f.label+'"?\n\nTidligere svar på feltet bliver liggende på de gamle rapporter, men vises ikke længere i formularen.'))return;
+      vfWorkingFields.splice(i,1);vfRenderList();
+    }
+  });
+  var onEdit=function(e){
+    var el=e.target.closest('[data-vf-prop]');if(!el)return;
+    var f=vfWorkingFields[Number(el.dataset.vfIdx)];if(!f)return;
+    var p=el.dataset.vfProp;
+    if(p==='active'||p==='required')f[p]=el.checked;
+    else if(p==='options')f.options=el.value.split('\n').map(function(s){return s.trim();}).filter(Boolean);
+    else f[p]=el.value;
+    // Typeskift ændrer hvilke detaljer der giver mening → gentegn kortet.
+    if(p==='type'&&e.type==='change'){
+      if((f.type==='select'||f.type==='checkboxes')&&!(f.options||[]).length)f.options=['Valgmulighed 1','Valgmulighed 2'];
+      vfOpenKeys[f._uid]=true;vfRenderList();return;
+    }
+    if(p==='active'){el.closest('.vf-card').classList.toggle('inactive',!f.active);}
+    vfRenderBadges(Number(el.dataset.vfIdx));
+  };
+  modal.addEventListener('input',onEdit);
+  modal.addEventListener('change',onEdit);
+}
+function vfSetTab(tab){
+  document.querySelectorAll('#visit-fields-modal [data-vf-tab]').forEach(function(b){b.classList.toggle('active',b.dataset.vfTab===tab);});
+  document.getElementById('vf-pane-edit').style.display=tab==='edit'?'':'none';
+  document.getElementById('vf-pane-preview').style.display=tab==='preview'?'':'none';
+  if(tab==='preview')vfRenderPreview();
+}
+function vfBadgesHtml(f){
+  var b=[];
+  if(f.builtin)b.push('<span class="vf-badge">Indbygget</span>');
+  if(f.required)b.push('<span class="vf-badge req">Påkrævet</span>');
+  if(f.applies_to&&f.applies_to!=='both')b.push('<span class="vf-badge type">'+esc(VRF_APPLIES[f.applies_to])+'</span>');
+  if((f.type==='select'||f.type==='checkboxes'))b.push('<span class="vf-badge">'+(f.options||[]).length+' valgmuligheder</span>');
+  if(f.type==='number'&&f.unit)b.push('<span class="vf-badge">Enhed: '+esc(f.unit)+'</span>');
+  if(f.help)b.push('<span class="vf-badge">Hjælpetekst</span>');
+  if(!f.active)b.push('<span class="vf-badge">Skjult</span>');
+  return b.join('');
+}
+function vfRenderBadges(i){
+  var el=document.querySelector('#vf-list [data-vf-badges="'+i+'"]');
+  if(el&&vfWorkingFields[i])el.innerHTML=vfBadgesHtml(vfWorkingFields[i]);
+}
 function vfRenderList(){
   var box=document.getElementById('vf-list');
-  box.innerHTML=vfWorkingFields.length?vfWorkingFields.map(function(f,i){
-    var typeLabel=f.type==='textarea'?'Lang tekst':(f.type==='number'?'Tal':'Kort tekst');
-    var typeHtml=f.builtin
-      ?'<span class="vf-row-builtin-tag">'+esc(typeLabel)+'</span>'
-      :'<select class="select vf-row-type" data-vf-type="'+i+'">'
-        +'<option value="text"'+(f.type==='text'?' selected':'')+'>Kort tekst</option>'
-        +'<option value="textarea"'+(f.type==='textarea'?' selected':'')+'>Lang tekst</option>'
-        +'<option value="number"'+(f.type==='number'?' selected':'')+'>Tal</option>'
-        +'</select>';
-    // RUNDE EH — 'notes' (Observationer/noter) er selve kernen af rapporten og
-    // vises altid, uanset indstilling — server-siden håndhæver det samme
-    // (sanitizeVisitReportFields), så dette er kun UI-spejling af den regel.
-    var activeHtml=f.key==='notes'
-      ?'<span class="vf-row-active" style="opacity:.55">Altid med</span>'
-      :'<label class="vf-row-active"><input type="checkbox" data-vf-active="'+i+'"'+(f.active?' checked':'')+'> Vist</label>';
-    var delHtml=f.builtin?'<span class="vf-row-del"></span>':'<button type="button" class="qz-icon-btn vf-row-del" data-vf-del="'+i+'" title="Slet felt">🗑</button>';
-    return '<div class="vf-row">'
-      +'<div class="vf-row-handle"><button type="button" data-vf-up="'+i+'"'+(i===0?' disabled':'')+'>▲</button><button type="button" data-vf-down="'+i+'"'+(i===vfWorkingFields.length-1?' disabled':'')+'>▼</button></div>'
-      +'<div class="vf-row-label"><input class="input" data-vf-label="'+i+'" value="'+esc(f.label)+'"></div>'
-      +typeHtml+activeHtml+delHtml
-      +'</div>';
+  var n=vfWorkingFields.length;
+  box.innerHTML=n?vfWorkingFields.map(function(f,i){
+    var isNotes=f.key==='notes',isHeading=f.type==='heading';
+    var typeHtml='<select class="select vf-type" data-vf-idx="'+i+'" data-vf-prop="type"'+(f.builtin?' disabled title="Indbyggede felter kan ikke skifte type"':'')+'>'
+      +VRF_TYPES.filter(function(t){return !f.builtin||t.v===f.type;}).map(function(t){return '<option value="'+t.v+'"'+(t.v===f.type?' selected':'')+'>'+t.l+'</option>';}).join('')+'</select>';
+    var activeHtml=isNotes
+      ?'<span class="vf-switch locked" title="Noterne er selve kernen af rapporten og vises altid"><input type="checkbox" checked disabled> Altid vist</span>'
+      :'<label class="vf-switch"><input type="checkbox" data-vf-idx="'+i+'" data-vf-prop="active"'+(f.active?' checked':'')+'> Vist</label>';
+    var delHtml=f.builtin?'<span class="vf-icon-btn spacer"></span>':'<button type="button" class="vf-icon-btn danger vf-del" data-vf-act="del" data-vf-idx="'+i+'" title="Slet felt">'+VF_ICONS.trash+'</button>';
+    var d=[];
+    d.push('<div class="full"><label class="vf-lbl">Hjælpetekst</label><input class="input" data-vf-idx="'+i+'" data-vf-prop="help" value="'+esc(f.help||'')+'" placeholder="'+(isHeading?'Kort forklaring under overskriften':'Vises under feltet — fx hvordan man måler')+'"></div>');
+    if(!isHeading){
+      if(['text','textarea','number','select'].indexOf(f.type)>=0)d.push('<div><label class="vf-lbl">'+(f.type==='select'?'Tekst før valg':'Eksempel i feltet')+'</label><input class="input" data-vf-idx="'+i+'" data-vf-prop="placeholder" value="'+esc(f.placeholder||'')+'" placeholder="'+(f.type==='select'?'Vælg…':'Valgfrit — fx et eksempel på svar')+'"></div>');
+      if(f.type==='number')d.push('<div><label class="vf-lbl">Enhed</label><input class="input" data-vf-idx="'+i+'" data-vf-prop="unit" list="vf-unit-list" value="'+esc(f.unit||'')+'" placeholder="Fx m², mm, %, kr."></div>');
+      if(f.type==='select'||f.type==='checkboxes')d.push('<div class="full"><label class="vf-lbl">Valgmuligheder</label><textarea data-vf-idx="'+i+'" data-vf-prop="options" class="input" placeholder="Én pr. linje">'+esc((f.options||[]).join('\n'))+'</textarea><div class="vf-hint">Én valgmulighed pr. linje. '+(f.type==='checkboxes'?'Medarbejderen kan sætte flere kryds.':'Medarbejderen vælger én.')+'</div></div>');
+    }
+    d.push('<div><label class="vf-lbl">Gælder for</label><select class="select" data-vf-idx="'+i+'" data-vf-prop="applies_to"'+(isNotes?' disabled':'')+'>'
+      +Object.keys(VRF_APPLIES).map(function(k){return '<option value="'+k+'"'+((f.applies_to||'both')===k?' selected':'')+'>'+VRF_APPLIES[k]+'</option>';}).join('')+'</select></div>');
+    if(!isHeading)d.push('<div style="display:flex;align-items:flex-end"><label class="vf-switch" style="color:var(--bly-ink);font-size:12.5px;height:36px"><input type="checkbox" data-vf-idx="'+i+'" data-vf-prop="required"'+(f.required?' checked':'')+'> Påkrævet — skal udfyldes før besøget kan afsluttes</label></div>');
+    return '<div class="vf-card'+(vfOpenKeys[f._uid]?' open':'')+(f.active?'':' inactive')+(isHeading?' is-heading':'')+'">'
+      +'<div class="vf-head">'
+        +'<div class="vf-move"><button type="button" data-vf-act="up" data-vf-idx="'+i+'"'+(i===0?' disabled':'')+' title="Flyt op">▲</button><button type="button" data-vf-act="down" data-vf-idx="'+i+'"'+(i===n-1?' disabled':'')+' title="Flyt ned">▼</button></div>'
+        +'<input class="input vf-label" data-vf-idx="'+i+'" data-vf-prop="label" value="'+esc(f.label)+'" placeholder="Feltets navn" style="'+(isHeading?'font-weight:700':'')+'">'
+        +typeHtml+activeHtml
+        +'<button type="button" class="vf-icon-btn vf-toggle" data-vf-act="toggle" data-vf-idx="'+i+'" title="Flere indstillinger">'+VF_ICONS.chev+'</button>'
+        +delHtml
+      +'</div>'
+      +'<div class="vf-badges" data-vf-badges="'+i+'">'+vfBadgesHtml(f)+'</div>'
+      +'<div class="vf-details"><div class="vf-details-grid">'+d.join('')+'</div></div>'
+    +'</div>';
   }).join(''):'<div class="crmpx-empty">Ingen felter</div>';
+  vfRenderSuggestions();
 }
-// Læser de aktuelt viste rækkers input-værdier TILBAGE i vfWorkingFields —
-// kaldes før enhver handling der gentegner listen (flyt/slet/tilføj) eller
-// gemmer, så en igangværende rettelse (fx et nyt label man lige har skrevet)
-// aldrig går tabt undervejs.
-function vfSyncFromDom(){
-  vfWorkingFields.forEach(function(f,i){
-    var labelEl=document.querySelector('#vf-list [data-vf-label="'+i+'"]');
-    if(labelEl)f.label=labelEl.value;
-    var typeEl=document.querySelector('#vf-list [data-vf-type="'+i+'"]');
-    if(typeEl)f.type=typeEl.value;
-    var activeEl=document.querySelector('#vf-list [data-vf-active="'+i+'"]');
-    if(activeEl)f.active=activeEl.checked;
-  });
+function vfRenderSuggestions(){
+  var have={};vfWorkingFields.forEach(function(f){have[String(f.label||'').trim().toLowerCase()]=1;});
+  var chips=VF_SUGGESTIONS.map(function(s,i){return have[s.label.toLowerCase()]?'':'<button type="button" class="vf-chip" data-vf-suggest="'+i+'" title="'+esc(vrfTypeLabel(s.type))+(s.unit?' ('+esc(s.unit)+')':'')+'">+ '+esc(s.label)+'</button>';}).join('');
+  var box=document.getElementById('vf-suggest');
+  box.style.display=chips?'':'none';
+  box.innerHTML='<div class="vf-suggest-title">Forslag til felter — klik for at tilføje</div><div class="vf-chips">'+chips+'</div>';
 }
-function vfMoveField(i,dir){
-  vfSyncFromDom();
-  var j=i+dir;
-  if(j<0||j>=vfWorkingFields.length)return;
-  var tmp=vfWorkingFields[i];vfWorkingFields[i]=vfWorkingFields[j];vfWorkingFields[j]=tmp;
-  vfRenderList();
-}
-function vfDeleteField(i){
-  vfSyncFromDom();
-  if(vfWorkingFields[i]&&vfWorkingFields[i].builtin)return; // UI viser aldrig en slet-knap for builtins — ekstra sikkerhedsnet
-  vfWorkingFields.splice(i,1);
-  vfRenderList();
-}
-function vfAddField(){
-  vfSyncFromDom();
+function vfAddField(tpl,openIt){
   // key sættes IKKE her — serveren genererer en unik nøgle ved Gem (se
   // sanitizeVisitReportFields/PUT /api/visit-report-fields i server.js).
-  vfWorkingFields.push({key:'',label:'Nyt felt',type:'text',builtin:false,active:true});
+  var f=vfNormalize(Object.assign({key:'',builtin:false,active:true},JSON.parse(JSON.stringify(tpl))));
+  vfWorkingFields.push(f);
+  if(openIt)vfOpenKeys[f._uid]=true;
   vfRenderList();
+  var cards=document.querySelectorAll('#vf-list .vf-card');
+  var last=cards[cards.length-1];
+  if(last){last.scrollIntoView({block:'nearest',behavior:'smooth'});if(openIt){var inp=last.querySelector('.vf-label');if(inp){inp.focus();inp.select();}}}
+}
+function vfRenderPreview(){
+  document.querySelectorAll('#vf-preview-type [data-vf-preview-type]').forEach(function(b){b.classList.toggle('active',b.dataset.vfPreviewType===vfPreviewType);});
+  var fields=vrfFieldsFor(vfWorkingFields,vfPreviewType);
+  document.getElementById('vf-preview').innerHTML=fields.length?fields.map(function(f){return vrfFieldHtml(f,'','vfp');}).join(''):'<div class="crmpx-empty">Ingen felter vises for denne type</div>';
 }
 async function vfSave(){
-  vfSyncFromDom();
+  var bad=vfWorkingFields.find(function(f){return (f.type==='select'||f.type==='checkboxes')&&!(f.options||[]).length;});
+  if(bad){toast('"'+bad.label+'" mangler valgmuligheder','⚠️');vfOpenKeys[bad._uid]=true;vfSetTab('edit');vfRenderList();return;}
   var btn=document.getElementById('vf-save-btn');var orig=btn.textContent;
   btn.disabled=true;btn.textContent='Gemmer…';
-  var r=await api('/api/visit-report-fields',{method:'PUT',body:JSON.stringify({fields:vfWorkingFields})});
+  var payload=vfWorkingFields.map(function(f){var c=Object.assign({},f);delete c._uid;return c;});
+  var r=await api('/api/visit-report-fields',{method:'PUT',body:JSON.stringify({fields:payload})});
   btn.disabled=false;btn.textContent=orig;
   if(r&&r.ok){
-    visitReportFieldsCache=r.fields||vfWorkingFields;
+    visitReportFieldsCache=r.fields||payload;
     toast('Formular gemt ✓','✓');
     closeModal('visit-fields-modal');
   } else toast((r&&r.error)||'Kunne ikke gemme','❌');

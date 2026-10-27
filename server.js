@@ -9853,7 +9853,7 @@ app.put('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
   // grænser som andre fritekstfelter i denne rute (maks 40 felter, 2000 tegn pr. svar).
   const customFields = {};
   if (body.custom_fields && typeof body.custom_fields === 'object' && !Array.isArray(body.custom_fields)) {
-    Object.keys(body.custom_fields).slice(0, 40).forEach(k => {
+    Object.keys(body.custom_fields).slice(0, 60).forEach(k => {
       const key = String(k).trim().slice(0, 60);
       if (!key) return;
       customFields[key] = String(body.custom_fields[k] ?? '').slice(0, 2000);
@@ -9911,27 +9911,59 @@ const VISIT_REPORT_BUILTIN_FIELDS = [
   { key: 'recommended_solution', label: 'Anbefalet løsning', type: 'textarea', builtin: true, active: true },
   { key: 'estimated_price', label: 'Estimeret pris', type: 'text', builtin: true, active: true }
 ];
+// RUNDE FA (Martin: "lav Besøgsrapport felter option mere dybdegående og
+// detaljeret") — et felt kan nu også være dato, dropdown (ét valg), flere
+// valg (afkrydsning), ja/nej eller en sektion-overskrift (ingen værdi), og
+// har ekstra indstillinger: påkrævet, hjælpetekst, pladsholder, enhed (kun
+// tal), valgmuligheder (dropdown/flere valg) og "gælder for" (begge typer,
+// kun Kundebesøg eller kun Kvalitetskontrol). Svarene gemmes stadig som
+// almindelige strenge (flere valg samles med "; "), så customer_visits og
+// alt der viser en rapport er uændret. Ældre gemte lister uden de nye
+// nøgler får bare standardværdierne.
+const VISIT_REPORT_FIELD_TYPES = ['text', 'textarea', 'number', 'date', 'select', 'checkboxes', 'yesno', 'heading'];
+const VISIT_REPORT_APPLIES_TO = ['both', 'kundebesog', 'kvalitetskontrol'];
+function sanitizeVisitReportFieldDetails(f, target, type) {
+  target.help = String(f.help || '').trim().slice(0, 300);
+  target.placeholder = type === 'heading' ? '' : String(f.placeholder || '').trim().slice(0, 120);
+  target.required = type === 'heading' ? false : f.required === true;
+  target.applies_to = VISIT_REPORT_APPLIES_TO.includes(f.applies_to) ? f.applies_to : 'both';
+  target.unit = type === 'number' ? String(f.unit || '').trim().slice(0, 15) : '';
+  if (type === 'select' || type === 'checkboxes') {
+    const seen = new Set();
+    target.options = (Array.isArray(f.options) ? f.options : String(f.options || '').split('\n'))
+      .map(o => String(o || '').replace(/;/g, ',').trim().slice(0, 100))
+      .filter(o => o && !seen.has(o.toLowerCase()) && seen.add(o.toLowerCase()))
+      .slice(0, 30);
+  } else {
+    target.options = [];
+  }
+  return target;
+}
 function sanitizeVisitReportFields(raw) {
   // Starter altid fra de 5 builtins (så et felt der mangler i en gemt, ældre
   // liste ikke bare forsvinder fra formularen) og lader en evt. gemt kopi
-  // overskrive label/type/active/sort — men ALDRIG key/builtin selv.
+  // overskrive label/active/detaljer/sort — men ALDRIG key/builtin/type selv.
   const byKey = {};
-  VISIT_REPORT_BUILTIN_FIELDS.forEach(f => { byKey[f.key] = Object.assign({}, f); });
+  VISIT_REPORT_BUILTIN_FIELDS.forEach(f => { byKey[f.key] = sanitizeVisitReportFieldDetails({}, Object.assign({}, f), f.type); });
   const customOut = [];
   (Array.isArray(raw) ? raw : []).forEach(f => {
     if (!f || typeof f !== 'object') return;
     const key = String(f.key || '').trim().slice(0, 60);
     if (!key) return;
     const label = String(f.label || '').trim().slice(0, 100) || key;
-    const type = ['text', 'textarea', 'number'].includes(f.type) ? f.type : 'text';
+    const type = VISIT_REPORT_FIELD_TYPES.includes(f.type) ? f.type : 'text';
     const active = f.active !== false;
     if (byKey[key]) {
-      // Kun label/active kan ændres for et builtin-felt — IKKE dets type (fx
-      // skal 'notes' blive ved at være en textarea), kun omdøbes/skjules.
-      byKey[key].label = label || byKey[key].label;
-      byKey[key].active = key === 'notes' ? true : active; // 'notes' er selve kernen af rapporten — kan ikke skjules
+      // Et builtin-felt kan omdøbes, skjules og have detaljer (hjælpetekst,
+      // påkrævet osv.) — men IKKE skifte type (fx skal 'notes' blive ved at
+      // være en textarea).
+      const b = byKey[key];
+      b.label = label || b.label;
+      b.active = key === 'notes' ? true : active; // 'notes' er selve kernen af rapporten — kan ikke skjules
+      sanitizeVisitReportFieldDetails(f, b, b.type);
+      if (key === 'notes') b.applies_to = 'both';
     } else {
-      customOut.push({ key, label, type, builtin: false, active });
+      customOut.push(sanitizeVisitReportFieldDetails(f, { key, label, type, builtin: false, active }, type));
     }
   });
   // Rækkefølgen i den GEMTE liste (raw) bestemmer visningsrækkefølgen, for
@@ -9941,7 +9973,7 @@ function sanitizeVisitReportFields(raw) {
   VISIT_REPORT_BUILTIN_FIELDS.forEach(f => { if (!orderedKeys.includes(f.key)) orderedKeys.push(f.key); });
   customOut.forEach(f => { if (!orderedKeys.includes(f.key)) orderedKeys.push(f.key); });
   const all = Object.assign({}, byKey, Object.fromEntries(customOut.map(f => [f.key, f])));
-  return orderedKeys.map(k => all[k]).filter(Boolean).slice(0, 40);
+  return orderedKeys.map(k => all[k]).filter(Boolean).slice(0, 60);
 }
 app.get('/api/visit-report-fields', auth, asyncRoute(async (req, res) => {
   const row = await pgOne("SELECT value FROM app_settings WHERE key='visit_report_fields'");
