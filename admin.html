@@ -11,7 +11,14 @@
      "Føj til startskærm" blev ikke tilbudt i browseren. Egen manifest (ikke
      employee.html's) fordi start_url skal pege på /admin, se server.js. -->
 <link rel="manifest" href="/manifest-admin.webmanifest">
-<meta name="theme-color" content="#003509">
+<!-- RUNDE EF (Martin: "ifavcion og app symbol skal du bruge huset fra mit
+     faktisk logo Som dette også denne grønne farve" — med sit rigtige logo
+     vedhæftet) — ikonerne (icon-192/512.png) er nu Martins eget logo-billede
+     i stedet for en selvtegnet tilnærmelse, og farven herunder er sampled
+     direkte fra baggrunden i det billede han sendte (#2D4831), ikke
+     gulvmaster-design-system-skillets --gm-green (#003509) fra hjemmesiden —
+     Martin pegede specifikt på DENNE grønne, så den vinder. -->
+<meta name="theme-color" content="#2D4831">
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
@@ -1682,6 +1689,12 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
    IKKE .crmp-card-name generelt, som også bruges af CRM'ets egen kanban
    andre steder, hvor navnene typisk er korte i forvejen og ikke skal klippes. */
 #pd-pipeline-board .crmp-card-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Ekstra sikkerhedsnet oveni pdPipelineShortName()'s tekst-afkortning i selve
+   JS'en (RUNDE EF) — min-width:0 forhindrer at et langt, ubrudt ord i det
+   korte navn presser selve kortet bredere end kolonnen (klassisk flexbox-
+   faldgrube: et flex-barn vil ellers aldrig blive smallere end sit eget
+   indhold, medmindre min-width eksplicit sættes til 0). */
+#pd-pipeline-board .crmp-card{min-width:0}
 .crmp-card-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--bly-sub);margin-top:3px}
 .crmp-card-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .crmp-card-badge{background:var(--bly-accent-soft);color:var(--bly-accent);font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px}
@@ -4255,7 +4268,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.25 · 2026-10-27</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.30.26 · 2026-10-27</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE H #223b: .app-header-sticky er wrapperen der klæber til toppen af
@@ -31084,23 +31097,35 @@ var PD_PIPELINE_STATUS_META={
 };
 var PD_PIPELINE_STATUS_ORDER=['todo','in_progress','waiting','done'];
 var pdPipelineDragId=null;
+// RUNDE EF — se den udførlige kommentar i pdPipelineCardHtml() nedenfor.
+// Tilbudslinje-afledte opgavenavne er altid formet "<kort navn> - <uddybning>"
+// (" - " — mellemrum, bindestreg, mellemrum, aldrig midt i et ord som
+// "fodpaneler-lim"). Findes delimiteren ikke, er navnet allerede kort, og
+// hele det returneres uændret.
+function pdPipelineShortName(name){
+  var idx=name.indexOf(' - ');
+  return (idx>-1?name.slice(0,idx):name).trim()||name;
+}
 function pdPipelineCardHtml(t){
   var sd=t.start_date?fmtDaDate(t.start_date):'?',ed=t.end_date?fmtDaDate(t.end_date):sd;
   var progressPct=Math.round((Number(t.progress)||0)*100);
-  var name=t.name||'(uden navn)';
-  // RUNDE ED (Martin: "i pibeline tager den hele tilbudslinjensnavn og
-  // undertekster. det ser dumt ud maks en linje så kan man trykke på den
-  // hvis man vil læse mere") — opgaver oprettet fra "Opret opgaver fra
-  // tilbud" arver tilbudslinjens FULDE beskrivelse (ofte flere afsnit) som
-  // navn, hvilket kunne fylde hele kortet ud. Klippes nu til én linje med
-  // "…" (se #pd-pipeline-board .crmp-card-name i CSS'en — scopet kun til
-  // selve Pipeline-fanen, rører ikke CRM'ets egen kanban, som deler samme
-  // .crmp-card-klasse). "Læs mere": hele kortet er allerede klikbart og
-  // åbner opgavens fulde detaljer (openPdTaskDetail, se klik-lytteren i
-  // renderPdPipeline) — title-attributten giver desuden den fulde tekst som
-  // tooltip ved hover, uden at skulle klikke.
+  var fullName=t.name||'(uden navn)';
+  // RUNDE EF (Martin, opfølgning på RUNDE ED: "Den skulle da stoppe efter
+  // slibning og ldubehandling resten af teksten er irrelavant") — den
+  // rene CSS-afkortning (ellipsis) var ikke nok i sig selv; Martin vil
+  // slet ikke have resten af teksten med overhovedet, heller ikke skåret
+  // midt i et ord. Opgaver oprettet fra "Opret opgaver fra tilbud" arver
+  // tilbudslinjens fulde beskrivelse som navn, og den følger ALTID samme
+  // opbygning: "<kort navn> - Inkluderer ..."/"<kort navn> - Note: ..." —
+  // kort navn, så " - ", så uddybningen. pdPipelineShortName() tager kun
+  // det første stykke før " - ", som er den del Martin rent faktisk vil
+  // se på kortet; resten (inkluderet-tekst, forbehold, noter) vises IKKE
+  // mere, hverken synligt eller forkortet — kun ved klik på kortet (åbner
+  // opgavens fulde detaljer, se openPdTaskDetail) eller ved at holde musen
+  // over kortet (title-attributten, uændret fra RUNDE ED).
+  var name=pdPipelineShortName(fullName);
   return '<div class="crmp-card" draggable="true" data-id="'+esc(t.id)+'">'
-    +'<div class="crmp-card-name" title="'+esc(name)+'">'+esc(name)+'</div>'
+    +'<div class="crmp-card-name" title="'+esc(fullName)+'">'+esc(name)+'</div>'
     +'<div class="crmp-card-row">'+esc(sd)+' – '+esc(ed)+'</div>'
     +'<div class="crmp-card-row" style="align-items:center">'
     +'<div class="pd-pipeline-progress-bar"><div class="pd-pipeline-progress-fill" style="width:'+progressPct+'%"></div></div>'
