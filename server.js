@@ -27466,6 +27466,18 @@ app.get('/manifest-admin.webmanifest', (req, res) => {
 });
 app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));
 app.get('/icon-512.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-512.png')));
+// RUNDE FJ (Martin: "favicon ligner bare en grøn firkant, man kan slet ikke se
+// logoet") — favicon.svg er en forenklet, kraftigere udgave af hus+gulv-logoet
+// der kan læses i en 16 px browserfane; favicon.ico (16/32/48) til ældre
+// browsere og /favicon.ico-opslag (faldt før igennem til login-siden);
+// apple-touch-icon.png er det rigtige logo forstørret til iPhone-startskærmen.
+// Caches 1 dag, så et nyt ikon slår igennem uden at blive hentet ved hvert kald.
+const ICON_FILES = { '/favicon.svg': 'image/svg+xml', '/favicon.ico': 'image/x-icon', '/apple-touch-icon.png': 'image/png', '/apple-touch-icon-precomposed.png': 'image/png' };
+Object.keys(ICON_FILES).forEach(route => app.get(route, (req, res) => {
+  res.set('Content-Type', ICON_FILES[route]);
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.sendFile(path.join(__dirname, route === '/apple-touch-icon-precomposed.png' ? 'apple-touch-icon.png' : route.slice(1)));
+}));
 // RUNDE AD (Martins ønske: "brug vores rigtige logo, gerne i hvid" til
 // "Vundet"-mailen) — beskåret direkte fra Martins egen hvide logo-fil (huset
 // + selve logo-teksten som billede, ikke gentegnet med en skrifttype).
