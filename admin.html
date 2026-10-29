@@ -4848,7 +4848,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.48.1 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.48.2 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14648,7 +14648,7 @@ function capOpenHeatPop(cell){
     store=document.createElement('div');store.innerHTML=html;
   }
   var uid=+cell.dataset.userId,ds=cell.dataset.date,u=users.find(function(x){return +x.id===uid;})||{name:''};
-  var m=date(ds),cap=+u.weekly_capacity||5,booked=weeklyLoad(uid,m),free=cap-booked;
+  var m=date(ds),cap=capEffCap(u,m),booked=weeklyLoad(uid,m),free=cap-booked;
   var hc=capHeatClass(booked,cap);
   var col={'h-free':'#047857','h-low':'#166534','h-mid':'#166534','h-full':'#92400E','h-over':'#B91C1C'}[hc];
   var status=booked<=0?'Ledig hele ugen':free<-0.01?capFmt(-free)+' dag'+(Math.abs(free+1)<.01?'':'e')+' overbooket':free<0.01?'Fuldt booket':capFmt(free)+' dag'+(Math.abs(free-1)<.01?'':'e')+' ledig';
@@ -14719,6 +14719,10 @@ function capLabelParts(b){
   return {name:i>-1?label.slice(0,i):label,desc:i>-1?label.slice(i+3):'',task:linkedTask,full:label};
 }
 // ── RUNDE FW — foldbare fag-grupper + højreklik-menu i Kapacitet ──
+// RUNDE FY (Martin: "varmekortet skal inkludere ferie") — ugens reelle
+// kapacitet = ugekapacitet minus ferie/fri-dage (man–fre) for medarbejderen.
+function capOffDaysInWeek(uid,m){var n=0;for(var i=0;i<5;i++)if(timeOffFor(uid,iso(add(m,i))))n++;return n;}
+function capEffCap(u,m){var c=+u.weekly_capacity||5;return Math.max(0,c-capOffDaysInWeek(u.id,m)*c/5);}
 function capTradeLabel(u){return u.trade?String(u.trade):'Kontor';}
 function capSortByTrade(list){
   return list.map(function(u,i){return {u:u,i:i};}).sort(function(a,b){
@@ -14885,9 +14889,9 @@ function renderCapTimelineBoard(weeks,oosUsers){
     // rød kun når ugen er overbooket. Tomme uger er bare tomme.
     var heatRow=weeks.map(function(m,i){
       if(load[i]<=0)return '';
-      var r=load[i]/cap,over=r>1.01;
-      return '<div class="ctl-heat'+(over?' over':'')+'" data-user-id="'+u.id+'" data-date="'+iso(m)+'"'+(offN[i]?' data-has-off="1"':'')+' style="grid-column:'+(i+1)+';grid-row:1" title="'+capFmt(load[i])+' af '+capFmt(cap)+' dage booket — klik for ugens opgaver">'
-        +'<span class="ctl-heat-n">'+capFmt(load[i])+'<small> / '+capFmt(cap)+'</small></span><span class="ctl-heat-bar"><i style="width:'+Math.min(100,Math.round(r*100))+'%"></i></span></div>';
+      var ec=Math.max(0,cap-offN[i]*cap/5),r=ec?load[i]/ec:9,over=r>1.01;
+      return '<div class="ctl-heat'+(over?' over':'')+'" data-user-id="'+u.id+'" data-date="'+iso(m)+'"'+(offN[i]?' data-has-off="1"':'')+' style="grid-column:'+(i+1)+';grid-row:1" title="'+capFmt(load[i])+' af '+capFmt(ec)+' dage booket'+(offN[i]?' ('+offN[i]+' feriedag(e) trukket fra)':'')+' — klik for ugens opgaver">'
+        +'<span class="ctl-heat-n">'+capFmt(load[i])+'<small> / '+capFmt(ec)+'</small></span><span class="ctl-heat-bar"><i style="width:'+Math.min(100,Math.round(r*100))+'%"></i></span></div>';
     }).join('');
     // Venstre kolonne
     var next4=0;for(var q=curIdx;q<Math.min(N,curIdx+4);q++)next4+=load[q];
@@ -14970,7 +14974,7 @@ function renderCapacity(){
       var members=users.filter(function(u){return u.active&&u.role==='employee'&&u.trade===trade;});
       var free=0,cap=0;
       monthWeeks.forEach(function(m){
-        var wCap=members.reduce(function(n,u){return n+(+u.weekly_capacity||5);},0);
+        var wCap=members.reduce(function(n,u){return n+capEffCap(u,m);},0);
         var wBooked=members.reduce(function(n,u){return n+weeklyLoad(u.id,m);},0);
         cap+=wCap;
         free+=Math.max(0,wCap-wBooked);
@@ -15000,12 +15004,13 @@ function renderCapacity(){
         '<div><div class="staff-name">'+esc(label)+'</div><div class="staff-role">'+members.length+' medarbejder'+(members.length!==1?'e':'')+'</div></div></div>'+
         '</td>';
       weeks.forEach(function(m){
-        var cap=members.reduce(function(n,u){return n+(+u.weekly_capacity||5);},0);
+        var cap=members.reduce(function(n,u){return n+capEffCap(u,m);},0);
+        var offN=members.reduce(function(n,u){return n+capOffDaysInWeek(u.id,m);},0);
         var booked=members.reduce(function(n,u){return n+weeklyLoad(u.id,m);},0);
         var free=Math.max(0,cap-booked);
         var pct=cap?Math.min(booked/cap*100,100):0;
         var cc=capClass(booked,cap);
-        if(heat){row+='<td class="cap-cell">'+capHeatBox(booked,cap)+'</td>';return;}
+        if(heat){row+='<td class="cap-cell" title="'+(offN?offN+' feriedag(e) trukket fra kapaciteten':'')+'">'+capHeatBox(booked,cap,offN?'<span class="cap-heat-off">🏖'+offN+'</span>':'')+'</td>';return;}
         row+='<td class="cap-cell"><div class="cap-drop '+(free<=0?cc:'cap-free')+'">'+
           '<div class="cap-num '+(free<=0?cc:'cap-free')+'">'+(free<=0?'Fuldt':free.toFixed(1)+' d fri')+'</div>'+
           '<div class="muted-sm" style="text-align:center;margin-top:2px">'+booked.toFixed(1)+' / '+cap+' d booket</div>'+
@@ -15049,7 +15054,7 @@ function renderCapacity(){
       '<div><div class="staff-name">'+esc(u.name)+'</div><div class="staff-role">'+(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbej.'))+' · '+(+u.weekly_capacity||5)+' d</div></div>'+
       '</div></td>';
     weeks.forEach(function(m){
-      var cap=+u.weekly_capacity||5,booked=weeklyLoad(u.id,m),end=add(m,6);
+      var cap=capEffCap(u,m),booked=weeklyLoad(u.id,m),end=add(m,6);
       var pct=cap?Math.min(booked/cap*100,100):0;
       var cc=capClass(booked,cap);
       var items=bookings.filter(function(b){return isCapacityBooking(b)&&+b.user_id===+u.id&&workDates(b).some(function(ds){var q=date(ds);return q>=m&&q<=end;});});
@@ -15141,7 +15146,7 @@ function renderCapacity(){
       ' <button class="btn small" data-action="add-subgroup" data-group="'+esc(g)+'" style="margin-left:6px">+ Tilføj</button>'+
       '</td>';
     weeks.forEach(function(m){
-      var cap=arr.reduce(function(n,u){return n+(+u.weekly_capacity||5);},0);
+      var cap=arr.reduce(function(n,u){return n+capEffCap(u,m);},0);
       var booked=arr.reduce(function(n,u){return n+weeklyLoad(u.id,m);},0);
       var pct=cap?Math.min(booked/cap*100,100):0;
       var cc=capClass(booked,cap);
@@ -15332,7 +15337,7 @@ function capmUpdateLoad(){
   var u=users.find(function(x){return +x.id===uid;});
   document.querySelectorAll('#capm-quick [data-capm-days]').forEach(function(bn){bn.classList.toggle('on',Math.abs(+bn.dataset.capmDays-days)<.01);});
   if(!u||!wk){el.innerHTML='';return;}
-  var m=date(wk),cap=+u.weekly_capacity||5,load=weeklyLoad(uid,m);
+  var m=date(wk),cap=capEffCap(u,m),load=weeklyLoad(uid,m);
   // Rediger: træk reservationens egen andel ud, så tallet viser "efter gem".
   if(capacityCtx&&capacityCtx.bookingId){var bb=bookings.find(function(x){return +x.id===+capacityCtx.bookingId;});if(bb&&+bb.user_id===uid){var wd=workDates(bb),n=wd.filter(function(d){var q=date(d);return q>=m&&q<=add(m,6);}).length;load-=capDaysOf(bb)/Math.max(1,wd.length)*n;}}
   load=Math.max(0,load);
