@@ -1474,6 +1474,11 @@ body.plan-alt-dragging .prv-bar.dragging,body.plan-alt-dragging .pcv-card.draggi
 #cap-body .capacity-reservation{background:#F5F3FF!important;border-left-color:#7C3AED!important;color:#4C1D95!important}
 #cap-body .cap-timeoff-badge{background:#FEF3C7;color:#92400E;border-radius:var(--bly-r-sm)}
 #page-capacity .cap-add-btn{border:1.5px dashed var(--bly-border);border-radius:var(--bly-r-sm);color:var(--bly-sub);font-weight:700}
+.qz-qtitle{display:block;margin-top:3px;font-size:11.5px;font-weight:600;color:#4338CA;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
+.qe-qtitle-in{border:1px dashed #D1D5DB;background:#fff;border-radius:8px;padding:5px 10px;font:600 13px Inter,system-ui,sans-serif;color:#4338CA;min-width:230px;max-width:360px;outline:none}
+.qe-qtitle-in::placeholder{color:#9CA3AF;font-weight:500}
+.qe-qtitle-in:not(:placeholder-shown){border-style:solid;border-color:#C7D2FE;background:#EEF2FF}
+.qe-qtitle-in:focus{border-style:solid;border-color:#818CF8;box-shadow:0 0 0 3px #EEF2FF;background:#fff}
 /* ── RUNDE FT — top-forslag C: minimal top + Overblik-panel ── */
 .page-head.gmx-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
 .gmx-tl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;flex:1}
@@ -4829,7 +4834,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.45.0 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.46.0 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -6773,7 +6778,11 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   <div class="qe-page-card" style="background:#fff;border-radius:var(--bly-r-lg);box-shadow:0 1px 3px rgba(15,17,24,.08)">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-bottom:1px solid var(--bly-border-soft);flex-wrap:wrap;gap:10px">
       <div>
-        <div style="font-size:18px;font-weight:800;color:var(--bly-ink)" id="qe-title">Nyt tilbud</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="font-size:18px;font-weight:800;color:var(--bly-ink)" id="qe-title">Nyt tilbud</div>
+          <!-- RUNDE FU — valgfrit internt navn (vises i alle tilbudslister, ikke for kunden) -->
+          <input id="qe-quote-title" class="qe-qtitle-in" maxlength="80" placeholder="＋ Giv tilbuddet et navn" title="Internt navn — så I kan kende tilbuddene fra hinanden i listerne. Kunden ser det ikke.">
+        </div>
         <div class="sub" id="qe-subtitle" style="font-size:12px;margin-top:2px"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -28845,7 +28854,7 @@ function cdRenderQuotes(){
     var crmName=x.crm_lead_id?x.crm_lead_name:x.crm_opportunity_name;
     return '<tr style="cursor:pointer" onclick="openQuoteEditorSafe('+x.id+')">'
       +'<td>'+esc(x.quote_number||'–')+'</td>'
-      +'<td>'+esc(x.job_name||'–')+'</td>'
+      +'<td>'+esc(x.job_name||'–')+qzQuoteTitleHTML(x)+'</td>'
       +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
       +'<td class="num">'+krFmt(x.total)+'</td>'
       +'<td>'+esc(fmtDaDate(x.created_at))+'</td>'
@@ -30225,6 +30234,25 @@ function crmpxSwitchView(view){
 // ikke blandes ind når man sidder på ÉN bestemt sag. Filtreres derfor nu på
 // selve lead'et/opportunityen (crmpDetailEntity — samme entitet som resten af
 // siden, fx crmpxOpenQuote), via de nye /api/crm/leads|opportunities/:id/quotes.
+// RUNDE FU — internt tilbudsnavn: vises under kunden i alle tilbudslister.
+function qzQuoteTitleHTML(x){return x&&x.quote_title?'<div class="qz-qtitle" title="Tilbuddets navn">🏷 '+esc(x.quote_title)+'</div>':'';}
+(function(){
+  function init(){
+    var inp=document.getElementById('qe-quote-title');if(!inp)return;
+    var last=null;
+    function save(){
+      if(typeof qeState==='undefined'||!qeState.id||qeState.directInvoice)return;
+      var v=inp.value.trim();if(v===last)return;last=v;
+      api('/api/quotes/'+qeState.id+'/title',{method:'PUT',body:JSON.stringify({quote_title:v})}).then(function(r){
+        if(r&&r.ok){var q=(typeof qzQuotes!=='undefined'&&qzQuotes||[]).find(function(x){return +x.id===+qeState.id;});if(q)q.quote_title=r.quote_title;toast(v?'Navn gemt':'Navn fjernet','🏷');}
+      });
+    }
+    inp.addEventListener('focus',function(){last=inp.value.trim();});
+    inp.addEventListener('blur',save);
+    inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();inp.blur();}});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
 async function crmpxLoadQuotes(){
   var ent=crmpDetailEntity;
   if(!ent)return;
@@ -30245,7 +30273,7 @@ async function crmpxLoadQuotes(){
     +quotes.map(function(x){
       return '<tr style="cursor:pointer" onclick="openQuoteEditorSafe('+x.id+')">'
         +'<td>'+esc(x.quote_number||'–')+'</td>'
-        +'<td>'+esc(x.job_name||'–')+'</td>'
+        +'<td>'+esc(x.job_name||'–')+qzQuoteTitleHTML(x)+'</td>'
         +'<td>'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+'</td>'
         +'<td class="num">'+krFmt(x.total)+'</td>'
         +'<td>'+esc(fmtDaDate(x.created_at))+'</td>'
@@ -33894,7 +33922,7 @@ function pjaqRunSearch(q){
     // guarden i PUT /api/projects/:id/attach-quote.
     var rows=all.filter(function(x){return (x.quote_number||'').toLowerCase().indexOf(ql)>-1||(x.job_name||'').toLowerCase().indexOf(ql)>-1;}).slice(0,15);
     if(!rows.length){box.style.display='block';box.innerHTML='<div class="qe-customer-result" style="color:var(--bly-sub)">Ingen ledige tilbud matcher</div>';return;}
-    box.innerHTML=rows.map(function(r,i){return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+esc(r.quote_number)+'</b> — '+esc(r.job_name||'')+'<br><span style="color:var(--bly-sub)">'+krFmt(Number(r.total))+' · '+esc(QZ_QUOTE_STATUS&&QZ_QUOTE_STATUS[r.status]?QZ_QUOTE_STATUS[r.status].label:r.status)+'</span></div>';}).join('');
+    box.innerHTML=rows.map(function(r,i){return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+esc(r.quote_number)+'</b> — '+esc(r.job_name||'')+(r.quote_title?' · <span style="color:#4338CA;font-weight:600">'+esc(r.quote_title)+'</span>':'')+'<br><span style="color:var(--bly-sub)">'+krFmt(Number(r.total))+' · '+esc(QZ_QUOTE_STATUS&&QZ_QUOTE_STATUS[r.status]?QZ_QUOTE_STATUS[r.status].label:r.status)+'</span></div>';}).join('');
     box.style.display='block';
     Array.prototype.forEach.call(box.querySelectorAll('.qe-customer-result[data-idx]'),function(elx,i){
       elx.onclick=function(){pjaqAttach(rows[i].id);};
@@ -36063,7 +36091,7 @@ function renderQzQuotes(){
   var qDigits=q.replace(/\s+/g,'');
   var list=qzQuotes.filter(function(x){
     if(q){
-      var hit=qzSearchHit(q,[x.job_name,x.quote_number,
+      var hit=qzSearchHit(q,[x.job_name,x.quote_number,x.quote_title,
         // FEJLRETTELSE (Martins ønske: "Giv alle tilbud et sags nummer. Så man
         // kan søge efter det") — sagsnummeret (delt med projektet/opgaverne/
         // fakturaerne for samme sag) er nu også søgbart her.
@@ -36083,7 +36111,7 @@ function renderQzQuotes(){
     var a=function(inner){return '<a class="row-link" href="'+href+'">'+inner+'</a>';};
     return '<tr oncontextmenu="qzQuoteCtxMenu(event,'+x.id+')">'
       +'<td>'+a(esc(x.quote_number||'–'))+'</td>'
-      +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':''))+'</td>'
+      +'<td>'+a(esc(x.job_name||'–')+(x.job_number?' <span class="tag" title="Sagsnummer">#'+esc(x.job_number)+'</span>':'')+qzQuoteTitleHTML(x))+'</td>'
       +'<td>'+a(esc(String(x.created_at||'').slice(0,10)))+'</td>'
       +'<td>'+a(qzStatusDot(QZ_QUOTE_STATUS,x.status))+'</td>'
       +'<td class="num">'+a(krFmt(Number(x.total)))+'</td>'
@@ -36569,6 +36597,7 @@ async function openQuoteEditor(id,prefillCustomer){
     loadDocActivity('quote',id,'qe-activity-list');
     loadQeVersions(id);
     document.getElementById('qe-title').textContent=qd.quote_number;
+    document.getElementById('qe-quote-title').value=qd.quote_title||'';document.getElementById('qe-quote-title').style.display='';
     // Sagsnummer (se skema-kommentaren ved quotes.job_number, Martins ønske) —
     // vist her så det er synligt allerede mens man arbejder i tilbuddet, ikke
     // kun i listen/på PDF'en/i mailen.
@@ -36592,6 +36621,7 @@ async function openQuoteEditor(id,prefillCustomer){
     renderQeInvoicingPanel();
   } else {
     document.getElementById('qe-title').textContent='Nyt tilbud';
+    document.getElementById('qe-quote-title').value='';document.getElementById('qe-quote-title').style.display='';
     document.getElementById('qe-subtitle').textContent='';
     setAppTitle((prefillCustomer&&prefillCustomer.name)||'Nyt tilbud');
     qePopulateStatusSelect('draft');
@@ -36677,6 +36707,7 @@ async function openDirectInvoiceEditor(prefillCustomer){
   await openQuoteEditor(null,prefillCustomer);
   qeState.directInvoice=true;
   document.getElementById('qe-title').textContent='Ny direkte faktura';
+  document.getElementById('qe-quote-title').value='';document.getElementById('qe-quote-title').style.display='none';
   document.getElementById('qe-subtitle').textContent='Uden forudgående tilbud — forfalder 4 dage efter oprettelse';
   document.getElementById('qe-status-select').style.display='none';
   document.getElementById('qe-valid-until').parentElement.style.display='none';
@@ -37592,6 +37623,7 @@ function qeBuildSaveBody(){
     valid_until:document.getElementById('qe-valid-until').value||null,
     notes:document.getElementById('qe-notes').value.trim()||null,
     top_note:document.getElementById('qe-top-note').value.trim()||null,
+    quote_title:(document.getElementById('qe-quote-title').value||'').trim(),
     internal_note:document.getElementById('qe-internal-note').value.trim()||null,
     tax_rate:qeState.taxRate,
     discount_pct:Number(document.getElementById('qe-doc-discount').value)||0,

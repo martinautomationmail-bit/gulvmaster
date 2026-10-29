@@ -1276,6 +1276,9 @@ async function initSchema() {
     -- Intern note — vises KUN i admin (team), aldrig på PDF/kunde-side/mails.
     -- Til forskel fra "notes" som er kunde-synlig.
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS internal_note TEXT;
+    -- RUNDE FU (Martin): valgfrit internt navn på tilbuddet, så man kan skelne
+    -- 5-8 tilbud til samme kunde fra hinanden i listerne. Vises ikke for kunden.
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS quote_title TEXT;
     -- RUNDE CC (Martin: "under tilbud ... en knap hvor AI ud fra tilbuddet kan
     -- tilføje en betalingsplan ... så store tilbud får en betalingsplan man kan
     -- faktuere efter") — ÉN betalingsplan pr. tilbud (overskrives ved ny AI-
@@ -9872,7 +9875,7 @@ app.get('/api/customer-visits/customer/:customerId/quotes', auth, panelAccess('p
   const name = String(req.query.name || '').trim();
   const phone = String(req.query.phone || '').trim();
   const result = await pool.query(`
-    SELECT id, quote_number, status, total, created_at
+    SELECT id, quote_number, quote_title, status, total, created_at
     FROM quotes
     WHERE customer_id=$1
        OR (customer_id IS NULL AND $2<>'' AND job_name ILIKE $2)
@@ -11270,7 +11273,7 @@ app.get('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
     // kun ét lead/én handel — en kunde kan sagtens have haft flere handler over
     // tid, så "Handel"-kolonnen viser hver enkelt tilbuds EGEN kobling.
     pool.query(`
-      SELECT q.id, q.quote_number, q.job_name, q.status, q.total, q.created_at, q.updated_at,
+      SELECT q.id, q.quote_number, q.quote_title, q.job_name, q.status, q.total, q.created_at, q.updated_at,
              p.id AS project_id, p.job_number AS project_job_number,
              q.crm_lead_id, q.crm_opportunity_id,
              cl.name AS crm_lead_name, co.name AS crm_opportunity_name
@@ -14715,7 +14718,7 @@ app.get('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async 
 // med, uden yderligere synkronisering.
 app.get('/api/crm/leads/:id/quotes', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   const rows = await pool.query(`
-    SELECT q.id, q.quote_number, q.job_name, q.status, q.total, q.created_at, p.id AS project_id, p.job_number AS project_job_number
+    SELECT q.id, q.quote_number, q.quote_title, q.job_name, q.status, q.total, q.created_at, p.id AS project_id, p.job_number AS project_job_number
     FROM quotes q LEFT JOIN projects p ON p.quote_id = q.id
     WHERE q.crm_lead_id=$1 ORDER BY q.created_at DESC
   `, [req.params.id]);
@@ -15023,7 +15026,7 @@ app.get('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRout
 // ovenfor, samme begrundelse og samme LEFT JOIN-mønster for opportunities.
 app.get('/api/crm/opportunities/:id/quotes', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   const rows = await pool.query(`
-    SELECT q.id, q.quote_number, q.job_name, q.status, q.total, q.created_at, p.id AS project_id, p.job_number AS project_job_number
+    SELECT q.id, q.quote_number, q.quote_title, q.job_name, q.status, q.total, q.created_at, p.id AS project_id, p.job_number AS project_job_number
     FROM quotes q LEFT JOIN projects p ON p.quote_id = q.id
     WHERE q.crm_opportunity_id=$1 ORDER BY q.created_at DESC
   `, [req.params.id]);
@@ -19005,7 +19008,7 @@ let aiQuotesCache = null;
 async function aiLoadQuotes() {
   if (aiQuotesCache && Date.now() - aiQuotesCache.at < 60000) return aiQuotesCache.rows;
   const rows = (await pool.query(`
-    SELECT q.id, q.quote_number, q.job_number, q.job_name, q.customer_address, q.status, q.total, q.created_at, q.signed_at,
+    SELECT q.id, q.quote_number, q.quote_title, q.job_number, q.job_name, q.customer_address, q.status, q.total, q.created_at, q.signed_at,
            q.notes, q.internal_note, q.top_note,
            COALESCE(json_agg(json_build_object('t', l.description, 'n', l.quantity, 'u', l.unit, 'note', l.note, 'type', l.line_type) ORDER BY l.position)
              FILTER (WHERE l.id IS NOT NULL), '[]') AS lines
@@ -23295,7 +23298,7 @@ app.get('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) 
 // LEFT JOIN — ændrer intet ved selve udvælgelsen/sorteringen af tilbud.
 app.get('/api/quotes/pending-invoicing', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
   const rows = await pool.query(`
-    SELECT q.id, q.quote_number, q.job_name, q.job_number, q.status, q.total::float AS total,
+    SELECT q.id, q.quote_number, q.quote_title, q.job_name, q.job_number, q.status, q.total::float AS total,
            c.name AS customer_name, q.customer_email,
            p.id AS project_id, p.status AS project_status,
            COALESCE(inv.invoiced_total,0)::float AS invoiced_total,
@@ -23414,6 +23417,7 @@ app.post('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING id
   `, [quoteNumber, jobNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken, crmLeadId, crmOpportunityId, createdVia, aiChatTranscript]);
   await saveQuoteLines(r.rows[0].id, b.lines);
+  if (b.quote_title) await pool.query('UPDATE quotes SET quote_title=$1 WHERE id=$2', [String(b.quote_title).trim().slice(0, 80) || null, r.rows[0].id]);
   logDocActivity('quote', r.rows[0].id, 'created', req.user.name, null);
   crmSyncOpportunityValueFromQuote({ id: r.rows[0].id, total: totals.total, crm_opportunity_id: crmOpportunityId, quote_number: quoteNumber });
   res.json({ ok: true, id: r.rows[0].id, quote_number: quoteNumber, job_number: jobNumber });
@@ -23451,6 +23455,7 @@ app.post('/api/quotes/:id/duplicate', auth, panelAccess('quotes'), asyncRoute(as
     src.valid_until, req.user.id, src.discount_pct, src.discount_type, acceptToken, src.crm_lead_id, src.crm_opportunity_id
   ]);
   const newId = r.rows[0].id;
+  if (src.quote_title) await pool.query('UPDATE quotes SET quote_title=$1 WHERE id=$2', [src.quote_title, newId]);
   await saveQuoteLines(newId, lines.rows.map(l => ({
     product_id: l.product_id, description: l.description, unit: l.unit, quantity: l.quantity,
     cost_price: l.cost_price, sell_price: l.sell_price, product_type: l.product_type,
@@ -23514,9 +23519,18 @@ app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, r
     req.params.id
   ]);
   if (b.lines !== undefined) await saveQuoteLines(req.params.id, b.lines);
+  if (b.quote_title !== undefined) await pool.query('UPDATE quotes SET quote_title=$1 WHERE id=$2', [String(b.quote_title || '').trim().slice(0, 80) || null, req.params.id]);
   logDocActivity('quote', req.params.id, 'edited', req.user.name, null);
   crmSyncOpportunityValueFromQuote({ id: req.params.id, total: totals.total, crm_opportunity_id: crmOpportunityId, quote_number: current.quote_number });
   res.json({ ok: true });
+}));
+
+// RUNDE FU — gem kun tilbuddets interne navn (bruges fra listen og editorens top).
+app.put('/api/quotes/:id/title', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const title = String((req.body || {}).quote_title || '').trim().slice(0, 80) || null;
+  const r = await pool.query(`UPDATE quotes SET quote_title=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [title, req.params.id]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  res.json({ ok: true, quote_title: title });
 }));
 
 app.put('/api/quotes/:id/status', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
