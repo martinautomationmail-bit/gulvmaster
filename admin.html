@@ -4564,7 +4564,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.36.2 · 2026-10-28</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.36.3 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -23416,6 +23416,11 @@ function ttFilteredEntries(){
 }
 function ttFmtHours(minutes){return (minutes/60).toFixed(1).replace('.',',');}
 function ttFmtKr(n){return Math.round(n).toLocaleString('da-DK')+' kr';}
+// RUNDE FK — lønnen vises kun når serveren sender den (admin, økonomi-adgang
+// eller rollen har "Timetracking: vis lønomkostning"). Ellers skjules
+// kolonnen, KPI'en og CSV-feltet helt i stedet for at vise 0 kr.
+function ttShowPay(){return !(ttData&&ttData.can_see_pay===false);}
+function ttNoPayHead(h){return ttShowPay()?h:h.replace(/<th class="num">Estimeret løn<\/th>/,'');}
 // RUNDE H #29 — Martins ønske om to visninger: "Efter medarbejder" (grupperet,
 // til løn/estimering — det oprindelige) og "Kronologisk" (flad liste, nyeste
 // først, med dato/billeder/note synligt uden at folde noget ud — til det
@@ -23482,8 +23487,8 @@ var TT_THEAD_CHRONO='<tr><th>Dato</th><th>Medarbejder</th><th>Sag</th><th>Fag</t
 function renderTimetrackReport(){
   if(!ttData){ttEnsureData(renderTimetrackReport);return;}
   var kpiEl=document.getElementById('tt-kpi-row'),bodyEl=document.getElementById('tt-body'),theadEl=document.getElementById('tt-thead');
-  var colspan=ttViewMode==='chrono'?8:7;
-  theadEl.innerHTML=ttViewMode==='chrono'?TT_THEAD_CHRONO:TT_THEAD_GROUPED;
+  var colspan=(ttViewMode==='chrono'?8:7)-(ttData&&!ttData.error&&!ttShowPay()?1:0);
+  theadEl.innerHTML=ttNoPayHead(ttViewMode==='chrono'?TT_THEAD_CHRONO:TT_THEAD_GROUPED);
   if(ttData.error){
     kpiEl.innerHTML='';
     // RUNDE EB (Martin: "kontor medarbejder have adgang til timetracking
@@ -23491,7 +23496,7 @@ function renderTimetrackReport(){
     // is_finance_admin (adminOrFinanceOnly); beskeden her er opdateret til
     // at nævne begge, så den stadig er korrekt for den sjældne medarbejder
     // der rammer den.
-    var msg=ttData.error==='Admin only'?'🔒 Kun administratorer og kontor-brugere kan se timetracking-rapporten (den viser alles timeløn).':esc(ttData.error);
+    var msg=ttData.error==='Admin only'?'🔒 Din rolle har ikke adgang til timetracking. En administrator kan give adgang under Indstillinger → Roller &amp; adgang → "Timetracking".':esc(ttData.error);
     bodyEl.innerHTML='<tr><td colspan="'+colspan+'" style="text-align:center;color:var(--bly-sub);padding:32px">'+msg+'</td></tr>';
     return;
   }
@@ -23501,11 +23506,11 @@ function renderTimetrackReport(){
   filtered.forEach(function(e){totalMinutes+=e.minutes;totalCost+=e.cost;activeSet[e.user_id]=1;});
   var kpis=[
     {label:'Total timer',value:ttFmtHours(totalMinutes)+' t'},
-    {label:'Estimeret løn',value:ttFmtKr(totalCost)},
+    ttShowPay()?{label:'Estimeret løn',value:ttFmtKr(totalCost)}:null,
     {label:'Registreringer',value:filtered.length},
     {label:'Medarbejdere i perioden',value:Object.keys(activeSet).length}
   ];
-  kpiEl.innerHTML=kpis.map(function(k){
+  kpiEl.innerHTML=kpis.filter(Boolean).map(function(k){
     return '<div class="bly-kpi-card" style="cursor:default"><div class="bly-kpi-label"><span class="bly-kpi-dot" style="background:var(--bly-accent)"></span>'+esc(k.label)+'</div><div class="bly-kpi-value">'+k.value+'</div></div>';
   }).join('');
   if(!filtered.length){
@@ -23530,7 +23535,7 @@ function renderTimetrackReport(){
         '<td class="num" style="white-space:nowrap">'+sub+'</td>'+
         '<td>'+(ttThumbsHtml(e)||'<span class="tt-no-photo">–</span>')+'</td>'+
         '<td>'+(e.note?'<div class="tt-chrono-note">'+esc(e.note)+'</div>':'<span class="tt-no-photo">–</span>')+'</td>'+
-        '<td class="num">'+ttFmtKr(e.cost)+'</td>'+
+        (ttShowPay()?'<td class="num">'+ttFmtKr(e.cost)+'</td>':'')+
         '</tr>';
     }).join('');
     return;
@@ -23560,7 +23565,7 @@ function renderTimetrackReport(){
       '<td>'+payLabel+'</td>'+
       '<td class="num">'+ttFmtHours(g.minutes)+' t</td>'+
       '<td class="num">'+g.count+'</td>'+
-      '<td class="num">'+ttFmtKr(g.cost)+'</td>'+
+      (ttShowPay()?'<td class="num">'+ttFmtKr(g.cost)+'</td>':'')+
       '</tr>';
     var detailRow='';
     if(open){
@@ -23571,9 +23576,9 @@ function renderTimetrackReport(){
           (e.note?'<div class="tt-detail-note">'+esc(e.note)+'</div>':'')+'</div>'+
           '<div>'+ttThumbsHtml(e)+'</div>'+
           '<div class="tt-detail-sub">'+sub+'</div>'+
-          '<div class="tt-detail-cost">'+ttFmtKr(e.cost)+'</div></div>';
+          (ttShowPay()?'<div class="tt-detail-cost">'+ttFmtKr(e.cost)+'</div>':'')+'</div>';
       }).join('');
-      detailRow='<tr class="tt-detail-wrap"><td colspan="7"><div class="tt-detail-list">'+rows+'</div></td></tr>';
+      detailRow='<tr class="tt-detail-wrap"><td colspan="'+(ttShowPay()?7:6)+'"><div class="tt-detail-list">'+rows+'</div></td></tr>';
     }
     return mainRow+detailRow;
   }).join('');
@@ -23581,7 +23586,7 @@ function renderTimetrackReport(){
 function ttExportCsv(){
   var filtered=ttFilteredEntries();
   if(!filtered.length){toast('Ingen registreringer at eksportere','⚠');return;}
-  var header=['Dato','Medarbejder','Fag','Løntype','Sag','Kunde','Timer','Akkord-post','Akkord-antal','Note','Billeder','Estimeret løn (kr)'];
+  var header=['Dato','Medarbejder','Fag','Løntype','Sag','Kunde','Timer','Akkord-post','Akkord-antal','Note','Billeder'].concat(ttShowPay()?['Estimeret løn (kr)']:[]);
   var lines=[header.join(';')];
   filtered.slice().sort(function(a,b){return String(a.entry_date).localeCompare(String(b.entry_date));}).forEach(function(e){
     var cells=[
@@ -23593,9 +23598,8 @@ function ttExportCsv(){
       e.is_akkord?(e.akkord_name||''):'',
       e.is_akkord?String(e.akkord_quantity).replace('.',','):'',
       (e.note||'').replace(/[\r\n;]+/g,' '),
-      (e.photos&&e.photos.length)||0,
-      Math.round(e.cost)
-    ];
+      (e.photos&&e.photos.length)||0
+    ].concat(ttShowPay()?[Math.round(e.cost)]:[]);
     lines.push(cells.map(function(c){var s=String(c==null?'':c);return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(';'));
   });
   // BOM foran, så Excel på dansk Windows læser æ/ø/å korrekt uden manuel import.

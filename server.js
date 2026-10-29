@@ -5397,6 +5397,13 @@ const PANEL_PAGES = [
   { key: 'crmp_sales', label: 'CRM: Sales', group: 'CRM' },
   { key: 'crmp_tasks', label: 'CRM: Opfølgninger', group: 'CRM' },
   { key: 'quotes', label: 'Tilbud & Faktura', group: 'Tilbud & Faktura' },
+  // RUNDE FK (Martin: "jeg kan ikke give min kontormedarbejder adgang til
+  // Timetracking — de kan se siden men ikke medarbejderne, der står kun
+  // admin") — rapporten krævede is_finance_admin, som kun kan gives til
+  // admin-konti. Nu to selvstændige afkrydsninger: se registreringerne
+  // (hvem/hvornår/sag/billeder/noter) og, separat, se lønomkostningen i kr.
+  { key: 'timetrack', label: 'Timetracking (se medarbejdernes registrerede tid)', group: 'Tilbud & Faktura' },
+  { key: 'timetrack_pay', label: 'Timetracking: vis lønomkostning (kr.)', group: 'Tilbud & Faktura' },
   // RUNDE CU — ny top-niveau side "✉️ Mails" (eget compose/indbakke-modul,
   // se GET/POST /api/mail/*). Egen gruppe, så den ikke drukner inde under CRM
   // eller Tilbud & Faktura — den bruges fra begge (og fra Kundeliste).
@@ -5424,6 +5431,20 @@ const PANEL_PAGES = [
   { key: 'timer', label: 'Timer', group: 'Min side' },
 ];
 const PANEL_PAGE_KEYS = new Set(PANEL_PAGES.map(p => p.key));
+// RUNDE FK — engangs: roller der allerede har "Tilbud & Faktura" (og dermed
+// kunne se Timetracking-siden) får 'timetrack' med, så Kontor virker med det
+// samme. Lønnen ('timetrack_pay') gives IKKE automatisk.
+async function migrateTimetrackPanelPage() {
+  try {
+    const name = 'panel_timetrack_from_quotes_20261029';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const r = await pool.query(`INSERT INTO panel_role_pages (role_id, page_key)
+      SELECT DISTINCT role_id, 'timetrack' FROM panel_role_pages p
+      WHERE page_key='quotes' AND NOT EXISTS (SELECT 1 FROM panel_role_pages q WHERE q.role_id=p.role_id AND q.page_key='timetrack')`);
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ roles: r.rowCount || 0 })]);
+    console.log('Timetracking-adgang tilføjet til ' + (r.rowCount || 0) + ' rolle(r) med Tilbud & Faktura.');
+  } catch (e) { console.error('migrateTimetrackPanelPage fejlede:', e.message); }
+}
 
 // Bagudkompatibilitet: is_finance_admin=1 (det gamle, brede "Økonomi-adgang"-
 // flueben på en bruger) dækkede indtil nu præcis disse sider i sidebaren (se
@@ -16820,7 +16841,15 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
 // affødt af at tabellen i praksis er lille nok til det for en virksomhed på
 // Gulv Masters størrelse. Bliver den på sigt for stor, er det her stedet at
 // lægge from/to-parametre ind i stedet.
-app.get('/api/reports/time-tracking', auth, adminOrFinanceOnly, asyncRoute(async (req, res) => {
+app.get('/api/reports/time-tracking', auth, asyncRoute(async (req, res) => {
+  // RUNDE FK — admin/finance som før, ELLER en rolle med 'timetrack'. Lønnen
+  // (cost/akkord-sats) sendes kun til admin/finance eller 'timetrack_pay'.
+  const u = await pgOne('SELECT id, role, active, is_finance_admin, panel_role_id FROM users WHERE id=$1', [req.user.id]);
+  if (!u || !u.active) return res.status(403).json({ error: 'Admin only' });
+  const fullAccess = u.role === 'admin' || !!u.is_finance_admin;
+  const pages = fullAccess ? [] : await computeUserPanelPages(u);
+  if (!fullAccess && !pages.includes('timetrack')) return res.status(403).json({ error: 'Admin only' });
+  const canSeePay = fullAccess || pages.includes('timetrack_pay');
   const rows = await pool.query(`
     SELECT te.id, te.project_id, te.minutes, te.note, te.entry_date, te.created_at,
            te.akkord_item_id, te.akkord_quantity, te.photo_url, te.photo_urls,
@@ -16872,10 +16901,11 @@ app.get('/api/reports/time-tracking', auth, adminOrFinanceOnly, asyncRoute(async
       akkord_quantity: isAkkord ? Number(row.akkord_quantity) || 0 : 0,
       akkord_rate: isAkkord ? Number(row.akkord_rate) || 0 : 0,
       photos,
-      cost
+      cost: canSeePay ? cost : null
     };
   });
-  res.json({ entries });
+  if (!canSeePay) entries.forEach(e => { e.akkord_rate = 0; });
+  res.json({ entries, can_see_pay: canSeePay });
 }));
 
 // Kontoret vælger hvilke KS-skabeloner der er tilgængelige for medarbejderen på DENNE
@@ -28062,6 +28092,7 @@ async function start() {
   await pool.query('SELECT 1 AS connected');
   await initSchema();
   await sprog.initSchema();
+  await migrateTimetrackPanelPage();
   await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
   await backfillCaseNumbers().catch(error => console.error('Efterudfyldning af sagsnumre fejlede:', error.message));
   await backfillLegacyJobTaskProjectLinks().catch(error => console.error('Efterudfyldning af sags-kobling fejlede:', error.message));
