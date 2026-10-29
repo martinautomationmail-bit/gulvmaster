@@ -9034,6 +9034,64 @@ app.put('/api/capacity-reservations/:id', auth, panelAccess('capacity'), asyncRo
   res.json({ ok: true });
 }));
 
+// RUNDE FS (Martin: "strække i den [bjælken i Kapacitet] og så spørger den hvor
+// mange dage over hver uge den skal blokere") — fordeler én reservation ud på
+// flere uger med et selvvalgt antal dage pr. uge. Den oprindelige række bliver
+// til den første uge; de øvrige uger oprettes som nye rækker med samme opgave,
+// titel, note og medarbejder. Hver række holdes inde i sin egen uge
+// (slutdato = højst fredag), så dagene tælles præcis i den uge de er valgt til.
+app.put('/api/capacity-reservations/:id/spread', auth, panelAccess('capacity'), asyncRoute(async (req, res) => {
+  const current = await pgOne("SELECT * FROM planning_bookings WHERE id=$1 AND COALESCE(planning_mode,'daily')='capacity'", [Number(req.params.id)]);
+  if (!current) return res.status(404).json({ error: 'Kapacitetsreservationen blev ikke fundet' });
+  const weeks = Array.isArray(req.body && req.body.weeks) ? req.body.weeks : [];
+  const clean = [];
+  const seen = new Set();
+  for (const w of weeks) {
+    const raw = String(w && w.week_start || '');
+    if (!validDate(raw)) continue;
+    const monday = mondayOfDate(raw) || raw;
+    const days = Math.round(Math.max(0, Math.min(30, Number(w.days) || 0)) * 4) / 4;
+    if (days <= 0 || seen.has(monday)) continue;
+    seen.add(monday);
+    clean.push({ monday, days });
+  }
+  if (!clean.length) return res.status(400).json({ error: 'Angiv mindst én uge med dage' });
+  if (clean.length > 26) return res.status(400).json({ error: 'Højst 26 uger ad gangen' });
+  clean.sort((a, b) => a.monday.localeCompare(b.monday));
+  const userId = Number(req.body.user_id || current.user_id);
+  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [userId]);
+  if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
+  const endOf = (monday, days) => addWorkingDays(monday, Math.min(5, Math.max(1, Math.ceil(days))));
+  const client = await pool.connect();
+  const ids = [];
+  try {
+    await client.query('BEGIN');
+    const first = clean[0];
+    await client.query(
+      `UPDATE planning_bookings SET user_id=$1,week_key=$2,capacity_days=$3,start_date=$4,end_date=$5,updated_at=${nowTextSQL()} WHERE id=$6`,
+      [user.id, getWeekKey(first.monday), first.days, first.monday, endOf(first.monday, first.days), current.id]
+    );
+    ids.push(current.id);
+    const skip = new Set(['id', 'public_token', 'created_at', 'updated_at', 'scheduled_email_sent_at', 'reminder_email_sent_at', 'sms_reminder_sent_at', 'reminder_today_email_sent_at']);
+    const cols = Object.keys(current).filter(k => !skip.has(k));
+    for (const w of clean.slice(1)) {
+      const row = Object.assign({}, current, {
+        user_id: user.id, week_key: getWeekKey(w.monday), capacity_days: w.days,
+        start_date: w.monday, end_date: endOf(w.monday, w.days)
+      });
+      const vals = cols.map(k => row[k]);
+      const ph = cols.map((_, i) => '$' + (i + 1)).join(',');
+      const ins = await client.query(`INSERT INTO planning_bookings (${cols.map(c => '"' + c + '"').join(',')}) VALUES (${ph}) RETURNING id`, vals);
+      ids.push(ins.rows[0].id);
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally { client.release(); }
+  res.json({ ok: true, ids });
+}));
+
 // RUNDE DS (Martin, se backfillCapacitySync()-kommentaren) — 1-kliks manuel
 // resync for den enkelte reservation, brugt af ⚡-knappen i Tidslinje-
 // popup'en (admin.html) når en reservation vises som "ude af sync" med sin

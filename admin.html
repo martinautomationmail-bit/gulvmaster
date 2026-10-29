@@ -1474,6 +1474,67 @@ body.plan-alt-dragging .prv-bar.dragging,body.plan-alt-dragging .pcv-card.draggi
 #cap-body .capacity-reservation{background:#F5F3FF!important;border-left-color:#7C3AED!important;color:#4C1D95!important}
 #cap-body .cap-timeoff-badge{background:#FEF3C7;color:#92400E;border-radius:var(--bly-r-sm)}
 #page-capacity .cap-add-btn{border:1.5px dashed var(--bly-border);border-radius:var(--bly-r-sm);color:var(--bly-sub);font-weight:700}
+/* ── RUNDE FS — moderne kapacitets-popup + fordel over uger ── */
+.modal.capm{width:min(460px,100%);padding:0;border-radius:18px;overflow:hidden;box-shadow:0 24px 60px rgba(15,23,42,.28);border:1px solid #E5E7EB}
+.capm-head{display:flex;gap:12px;align-items:flex-start;padding:18px 20px 14px;border-bottom:1px solid #F1F2F5}
+.capm-ic{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:17px;font-weight:800;flex:none;background:#EEF2FF;color:#4338CA}
+.capm-ht{flex:1;min-width:0}
+.capm-kicker{font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin:0}
+.capm-name{font-size:17px;font-weight:800;color:#111318;line-height:1.25;margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.capm-sub{font-size:12.5px;color:#6B7280;margin-top:3px;line-height:1.35}
+.capm-x{border:0;background:#F3F4F6;width:30px;height:30px;border-radius:9px;font-size:18px;line-height:1;color:#6B7280;cursor:pointer;flex:none}
+.capm-x:hover{background:#E5E7EB;color:#111318}
+.capm-body{padding:14px 20px 6px;max-height:min(70vh,620px);overflow:auto}
+.capm-l{display:block;font-size:11.5px;font-weight:700;color:#374151;margin:12px 0 6px}
+.capm-in{width:100%;box-sizing:border-box;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;font:500 13px Inter,system-ui,sans-serif;color:#111318;background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
+.capm-in:focus{border-color:#818CF8;box-shadow:0 0 0 3px #EEF2FF}
+.capm-grid{display:grid;grid-template-columns:1fr 150px;gap:10px}
+.capm-step{display:flex;align-items:stretch;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;background:#fff}
+.capm-step:focus-within{border-color:#818CF8;box-shadow:0 0 0 3px #EEF2FF}
+.capm-step button{border:0;background:#F9FAFB;width:38px;font-size:16px;font-weight:700;color:#374151;cursor:pointer}
+.capm-step button:hover{background:#EEF2FF;color:#4338CA}
+.capm-step input{flex:1;min-width:0;border:0;text-align:center;font:700 14px Inter,system-ui,sans-serif;color:#111318;outline:none;-moz-appearance:textfield}
+.capm-step input::-webkit-outer-spin-button,.capm-step input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.capm-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.capm-quick button{border:1px solid #E5E7EB;background:#fff;border-radius:999px;padding:5px 11px;font:600 11.5px Inter,system-ui,sans-serif;color:#374151;cursor:pointer}
+.capm-quick button:hover,.capm-quick button.on{border-color:#818CF8;background:#EEF2FF;color:#4338CA}
+.capm-load{margin-top:12px;border-radius:12px;background:#F8FAFC;border:1px solid #F1F5F9;padding:10px 12px;font-size:12.5px;color:#374151;line-height:1.45}
+.capm-load b{color:#111318}
+.capm-load .over{color:#DC2626;font-weight:700}
+.capm-load .bar{height:5px;border-radius:5px;background:#E5E7EB;overflow:hidden;margin-top:7px;display:flex}
+.capm-load .bar i{display:block;height:100%}
+.capm-dates{border-radius:12px;background:#F5F3FF;border:1px solid #EDE9FE;padding:9px 12px;font-size:12.5px;color:#4C1D95}
+.capm-dates strong{color:#2E1065}
+.capm-dates .capacity-date-prominent{all:unset}
+.capm-hint{margin-top:8px;border-radius:12px;background:#FFFBEB;border:1px solid #FDE68A;padding:9px 12px;font-size:12px;color:#92400E;display:flex;gap:8px;align-items:center;justify-content:space-between}
+.capm-hint .btn{white-space:nowrap}
+.capm-more{margin-top:12px;border-top:1px solid #F1F2F5;padding-top:8px}
+.capm-more summary{cursor:pointer;font-size:12px;font-weight:700;color:#4F46E5;list-style:none;padding:4px 0}
+.capm-more summary::-webkit-details-marker{display:none}
+.capm-more summary::before{content:"▸ ";color:#9CA3AF}
+.capm-more[open] summary::before{content:"▾ "}
+.capm-context{margin-top:10px;font-size:11px;color:#9CA3AF}
+.capm-context strong{font-weight:600;color:#6B7280}
+.capm-foot{display:flex;align-items:center;gap:8px;padding:14px 20px 18px;border-top:1px solid #F1F2F5;margin-top:10px}
+.capm-btn{border:1px solid #E5E7EB;background:#fff;border-radius:10px;padding:9px 16px;font:700 12.5px Inter,system-ui,sans-serif;color:#111318;cursor:pointer}
+.capm-btn:hover{background:#F9FAFB}
+.capm-btn.pr{background:#111318;border-color:#111318;color:#fff}
+.capm-btn.pr:hover{background:#000}
+.capm-del{border:0;background:none;color:#DC2626;font:700 12px Inter,system-ui,sans-serif;cursor:pointer;padding:6px 0}
+.capm-del:hover{text-decoration:underline}
+.capm-del.hidden{display:none}
+.capsp-row{display:grid;grid-template-columns:1fr 132px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #F3F4F6}
+.capsp-row:last-child{border-bottom:0}
+.capsp-row .wk b{display:block;font-size:13px;color:#111318}
+.capsp-row .wk small{font-size:11px;color:#9CA3AF}
+.capsp-row .wk small.over{color:#DC2626;font-weight:600}
+/* stræk-håndtag på kapacitetsbjælker */
+#cap-tl .ctl-h{position:absolute;top:0;bottom:0;width:10px;cursor:ew-resize;z-index:3;touch-action:none}
+#cap-tl .ctl-h.left{left:-2px}#cap-tl .ctl-h.right{right:-2px}
+#cap-tl .ctl-h::after{content:"";position:absolute;top:7px;bottom:7px;width:3px;border-radius:3px;background:#CBD5E1;opacity:0;transition:opacity .12s}
+#cap-tl .ctl-h.left::after{left:4px}#cap-tl .ctl-h.right::after{right:4px}
+#cap-tl .ctl-bar:hover .ctl-h::after{opacity:1}
+#cap-tl .ctl-bar.resizing{box-shadow:0 0 0 2px #818CF8!important;z-index:4}
 /* ── RUNDE FP/FQ — Opgavepool (rolig udgave) ── */
 .pool-drag-ghost{position:fixed;top:-200px;left:-400px;max-width:280px;padding:8px 12px;border-radius:9px;background:#fff;border:1px solid #C7D2FE;border-left:3px solid #4F46E5;box-shadow:0 8px 20px rgba(15,23,42,.18);font:600 12px Inter,system-ui,sans-serif;color:#111318;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:-1}
 .task-card.psc{-webkit-user-select:none;user-select:none}
@@ -1566,7 +1627,7 @@ body.plan-alt-dragging #cap-tl .ctl-bar,body.plan-alt-dragging .ctl-gap,body.pla
 .ctl-heat:hover .ctl-heat-n{color:var(--bly-accent)}
 .ctl-cell{position:relative}
 .ctl-cell.now{background:rgba(238,242,255,.45)}
-.ctl-add{position:absolute;right:5px;bottom:5px;width:22px;height:22px;border-radius:6px;border:1px solid #E5E7EB;background:#fff;color:#9CA3AF;font-size:13px;line-height:1;cursor:pointer;opacity:0;transition:opacity .12s;z-index:2;font-family:inherit}
+.ctl-add{position:absolute;right:5px;bottom:5px;width:22px;height:22px;border-radius:6px;border:1px solid #E5E7EB;background:#fff;color:#9CA3AF;font-size:13px;line-height:1;cursor:pointer;opacity:0;transition:opacity .12s;z-index:0;font-family:inherit}
 .ctl-cell:hover .ctl-add{opacity:1}
 .ctl-add:hover{color:var(--bly-accent);border-color:var(--bly-accent)}
 body.plan-alt-dragging .ctl-add{display:none}
@@ -4720,7 +4781,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.43.1 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.44.0 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -9940,28 +10001,69 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
 
 <!-- CAPACITY-ONLY MODAL -->
 <div class="mo" id="capacity-modal">
-  <div class="modal">
-    <h3 id="capacity-title">Reservér kapacitet</h3>
-    <div class="capacity-context" id="capacity-context">📊 Denne reservation vises kun på kapacitetsboardet — ikke i Daglig plan eller hos medarbejderen.</div>
-    <div class="form-group">
-      <label class="form-label">Medarbejder / hold</label>
-      <select id="capacity-user" class="select"></select>
+  <div class="modal capm">
+    <div class="capm-head">
+      <div class="capm-ic" id="capm-ic">📊</div>
+      <div class="capm-ht">
+        <div class="capm-kicker" id="capacity-title">Reservér kapacitet</div>
+        <div class="capm-name" id="capm-name">Kapacitetsreservation</div>
+        <div class="capm-sub" id="capm-sub"></div>
+      </div>
+      <button type="button" class="capm-x" id="capm-x" title="Luk">×</button>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Uge <span style="opacity:.6;font-weight:500">(kapacitet planlægges pr. uge, ikke en bestemt ugedag)</span></label><select id="capacity-week" class="select"></select></div>
-      <div class="form-group"><label class="form-label">Kapacitetsdage <span style="opacity:.6;font-weight:500">(kan strække sig over flere uger)</span></label><input id="capacity-days" type="number" min=".25" max="60" step=".25" class="input" value="1"></div>
+    <div class="capm-body">
+      <div id="capacity-jt-date-info" class="capm-dates" style="display:none"></div>
+      <div id="capacity-jt-date-hint" class="capm-hint" style="display:none"></div>
+      <label class="capm-l">Medarbejder</label>
+      <select id="capacity-user" class="capm-in"></select>
+      <div class="capm-grid">
+        <div><label class="capm-l">Uge</label><select id="capacity-week" class="capm-in"></select></div>
+        <div><label class="capm-l">Dage</label>
+          <div class="capm-step"><button type="button" data-capm-step="-0.5">−</button><input id="capacity-days" type="number" min=".25" max="60" step=".25" value="1"><button type="button" data-capm-step="0.5">+</button></div>
+        </div>
+      </div>
+      <div class="capm-quick" id="capm-quick"><button type="button" data-capm-days="0.5">½</button><button type="button" data-capm-days="1">1</button><button type="button" data-capm-days="2">2</button><button type="button" data-capm-days="3">3</button><button type="button" data-capm-days="5">Hel uge</button></div>
+      <div class="capm-load" id="capm-load"></div>
+      <details class="capm-more" id="capm-more">
+        <summary>Titel og note</summary>
+        <label class="capm-l">Titel</label>
+        <input id="capacity-label" class="capm-in" placeholder="Fx Reserveret til opstart / intern opgave">
+        <label class="capm-l">Intern note</label>
+        <input id="capacity-note" class="capm-in" placeholder="Fx afventer kundens endelige dato">
+      </details>
+      <div class="capm-context" id="capacity-context"></div>
     </div>
-    <div id="capacity-jt-date-hint" class="capacity-jt-hint" style="display:none"></div>
-    <div id="capacity-jt-date-info" class="capacity-modal-note" style="display:none"></div>
-    <div class="form-group">
-      <label class="form-label">Titel <span class="opt-tag">valgfrit</span></label>
-      <input id="capacity-label" class="input" placeholder="Fx Reserveret til opstart / intern opgave">
+    <div class="capm-foot">
+      <button class="capm-del hidden" id="delete-capacity">Fjern reservation</button>
+      <span style="flex:1"></span>
+      <button class="capm-btn" id="close-capacity">Annuller</button>
+      <button class="capm-btn pr" id="save-capacity">Gem</button>
     </div>
-    <div class="form-group"><label class="form-label">Intern note <span class="opt-tag">valgfrit</span></label><input id="capacity-note" class="input" placeholder="Fx afventer kundens endelige dato"></div>
-    <div class="modal-actions">
-      <button class="btn danger hidden" id="delete-capacity">Fjern reservation</button>
-      <button class="btn" id="close-capacity">Annuller</button>
-      <button class="btn primary" id="save-capacity">Gem kapacitet</button>
+  </div>
+</div>
+
+<!-- RUNDE FS — fordel en reservation over flere uger (efter stræk i Kapacitet) -->
+<div class="mo" id="cap-spread-modal">
+  <div class="modal capm">
+    <div class="capm-head">
+      <div class="capm-ic" id="capsp-ic">↔</div>
+      <div class="capm-ht">
+        <div class="capm-kicker">Fordel over uger</div>
+        <div class="capm-name" id="capsp-name"></div>
+        <div class="capm-sub" id="capsp-sub"></div>
+      </div>
+      <button type="button" class="capm-x" data-capsp-close title="Luk">×</button>
+    </div>
+    <div class="capm-body">
+      <div class="capm-l" style="margin-top:0">Hvor mange dage skal der blokeres i hver uge?</div>
+      <div id="capsp-rows"></div>
+      <div class="capm-quick"><button type="button" data-capsp-fill="even">Fordel ligeligt</button><button type="button" data-capsp-fill="full">Fuld kapacitet</button></div>
+      <div class="capm-load" id="capsp-total"></div>
+    </div>
+    <div class="capm-foot">
+      <span style="flex:1"></span>
+      <button class="capm-btn" data-capsp-close>Annuller</button>
+      <button class="capm-btn pr" id="capsp-save">Gem fordeling</button>
     </div>
   </div>
 </div>
@@ -14550,8 +14652,9 @@ function renderCapTimelineBoard(weeks,oosUsers){
     var bars=segs.map(function(sg){
       var b=sg.b,lp=capLabelParts(b),col=planAltColor(lp.task?Object.assign({},b,{type_guess:lp.task.type_guess||b.type_guess}):b);
       var oos=capBookingOutOfSync(b);
-      return '<div class="cap-job ctl-bar'+(lp.task?'':' res')+(oos?' oos':'')+'" draggable="true" data-booking-id="'+b.id+'" style="grid-column:'+(sg.s+1)+' / span '+(sg.e-sg.s+1)+';grid-row:'+(sg.lane+2)+';--c:'+col+'" title="'+esc(lp.full)+' — '+capDaysOf(b)+' d i alt'+(oos?'\n⚠ Ude af sync med opgavens planlagte uge — åbn 📈 for at synkronisere':'')+'\nKlik for at rette · træk for at flytte">'
-        +'<span class="ctl-bn">'+(oos?'⚠ ':'')+esc(lp.name)+(lp.desc&&sg.e>sg.s?'<span class="ctl-bdesc"> · '+esc(lp.desc)+'</span>':'')+'</span><span class="ctl-bd">'+capFmt(capDaysOf(b))+' d</span></div>';
+      return '<div class="cap-job ctl-bar'+(lp.task?'':' res')+(oos?' oos':'')+'" draggable="true" data-booking-id="'+b.id+'" data-seg-s="'+sg.s+'" data-seg-e="'+sg.e+'" style="grid-column:'+(sg.s+1)+' / span '+(sg.e-sg.s+1)+';grid-row:'+(sg.lane+2)+';--c:'+col+'" title="'+esc(lp.full)+' — '+capDaysOf(b)+' d i alt'+(oos?'\n⚠ Ude af sync med opgavens planlagte uge — åbn 📈 for at synkronisere':'')+'\nKlik for at rette · træk for at flytte">'
+        +'<span class="ctl-h left" data-ctl-edge="left" title="Træk for at strække til flere uger"></span><span class="ctl-h right" data-ctl-edge="right" title="Træk for at strække til flere uger"></span>'
+      +'<span class="ctl-bn">'+(oos?'⚠ ':'')+esc(lp.name)+(lp.desc&&sg.e>sg.s?'<span class="ctl-bdesc"> · '+esc(lp.desc)+'</span>':'')+'</span><span class="ctl-bd">'+capFmt(capDaysOf(b))+' d</span></div>';
     }).join('');
     var vacHtml=vacs.map(function(v){
       return '<div class="ctl-vac" data-action="edit-timeoff-day" data-user-id="'+u.id+'" data-off-id="'+v.off.id+'" style="grid-column:'+(v.s+1)+' / span '+(v.e-v.s+1)+';grid-row:'+(v.lane+2)+'" title="Klik for at redigere">'+esc(timeOffLabel(v.off))+' · '+v.days+'d</div>';
@@ -14959,7 +15062,7 @@ function openCapacityModal(opts){
   var jtDate=t&&t.start_date?String(t.start_date).slice(0,10):null;
   var jtWeekVal=jtDate?iso(mon(date(jtDate))):null;
   if(jtWeekVal&&jtWeekVal!==weekVal){
-    jtHint.style.display='flex';
+    jtHint.style.display='flex';jtHint.className='capm-hint';
     jtHint.innerHTML='<span>📅 Opgaven er planlagt til at starte <strong>'+esc(jtDate.slice(8,10)+'/'+jtDate.slice(5,7)+'-'+jtDate.slice(0,4))+'</strong> — reservationen står til en anden uge.</span><button type="button" class="btn small" id="capacity-use-jt-date">Brug den planlagte uge</button>';
     document.getElementById('capacity-use-jt-date').onclick=function(){document.getElementById('capacity-week').value=jtWeekVal;jtHint.style.display='none';};
   }else{
@@ -14982,12 +15085,151 @@ function openCapacityModal(opts){
     var jtSameDay=jtS&&jtE&&iso(jtS)===iso(jtE);
     var jtSLbl=jtS?(DAYS[jtS.getDay()]+' '+jtS.getDate()+'/'+(jtS.getMonth()+1)):'?';
     var jtELbl=(!jtSameDay&&jtE)?(DAYS[jtE.getDay()]+' '+jtE.getDate()+'/'+(jtE.getMonth()+1)):null;
-    jtInfo.innerHTML='<div class="capacity-date-prominent">📅 Opgaven starter <strong>'+esc(jtSLbl)+'</strong>'+(jtELbl?' og slutter <strong>'+esc(jtELbl)+'</strong>':'')+'</div>';
+    jtInfo.innerHTML='📅 Opgaven: <strong>'+esc(jtSLbl)+'</strong>'+(jtELbl?' → <strong>'+esc(jtELbl)+'</strong>':'');
   }else{
     jtInfo.style.display='none';
   }
+  capmDecorate(b,t);
   document.getElementById('capacity-modal').classList.add('open');
 }
+// ── RUNDE FS — moderne popup: overskrift, dage-stepper og live belastning ──
+function capmDecorate(b,t){
+  var type=t?(TYPE[t.type_guess]||TYPE.other):null,c=(type&&type.bar)||'#6366F1';
+  var ic=document.getElementById('capm-ic');
+  ic.style.background=c+'22';ic.style.color=c;
+  ic.textContent=t?String((t.job_name||'?').trim()[0]||'?').toUpperCase():'📊';
+  var lp=b?capLabelParts(b):null;
+  document.getElementById('capm-name').textContent=t?String(t.job_name||'Opgave').replace(/\s+-\s*$/,''):(lp?lp.name:'Kapacitetsreservation');
+  document.getElementById('capm-sub').textContent=t?((t.name&&t.name!==t.job_name?t.name:(type?type.label:''))+(t.job_number?' · #'+t.job_number:'')):(lp&&lp.desc?lp.desc:'Fri reservation uden opgave');
+  document.getElementById('capacity-context').innerHTML='Vises kun på Kapacitetsboardet — ikke i Daglig plan eller hos medarbejderen.';
+  var more=document.getElementById('capm-more');if(more)more.open=!t;
+  capmUpdateLoad();
+}
+function capmUpdateLoad(){
+  var el=document.getElementById('capm-load');if(!el||!document.getElementById('capacity-modal'))return;
+  var uid=+document.getElementById('capacity-user').value,wk=document.getElementById('capacity-week').value;
+  var days=Math.max(0,+document.getElementById('capacity-days').value||0);
+  var u=users.find(function(x){return +x.id===uid;});
+  document.querySelectorAll('#capm-quick [data-capm-days]').forEach(function(bn){bn.classList.toggle('on',Math.abs(+bn.dataset.capmDays-days)<.01);});
+  if(!u||!wk){el.innerHTML='';return;}
+  var m=date(wk),cap=+u.weekly_capacity||5,load=weeklyLoad(uid,m);
+  // Rediger: træk reservationens egen andel ud, så tallet viser "efter gem".
+  if(capacityCtx&&capacityCtx.bookingId){var bb=bookings.find(function(x){return +x.id===+capacityCtx.bookingId;});if(bb&&+bb.user_id===uid){var wd=workDates(bb),n=wd.filter(function(d){var q=date(d);return q>=m&&q<=add(m,6);}).length;load-=capDaysOf(bb)/Math.max(1,wd.length)*n;}}
+  load=Math.max(0,load);
+  // Kun den del der lander i DENNE uge (dage ud over 5 arbejdsdage fortsætter i næste uge).
+  var span=Math.max(1,Math.ceil(days)),inWeek=days>0?days/span*Math.min(5,span):0;
+  var after=load+inWeek,over=after>cap+0.01;
+  var pctA=Math.min(100,load/cap*100),pctB=Math.max(0,Math.min(100-pctA,inWeek/cap*100));
+  el.innerHTML='<b>'+esc(u.name.split(' ')[0])+'</b> i uge '+weekNo(m)+': '+capFmt(load)+' d booket + <b>'+capFmt(inWeek)+' d</b> = <span class="'+(over?'over':'')+'">'+capFmt(after)+' / '+capFmt(cap)+' d</span>'+(over?' <span class="over">· overbooket</span>':'')
+    +(inWeek<days-0.01?'<div style="margin-top:4px;font-size:11.5px;color:#6B7280">De sidste '+capFmt(days-inWeek)+' d fortsætter i de næste uger — træk i bjælkens kant for at fordele selv.</div>':'')
+    +'<div class="bar"><i style="width:'+pctA+'%;background:#94A3B8"></i><i style="width:'+pctB+'%;background:'+(over?'#EF4444':'#6366F1')+'"></i></div>';
+}
+(function(){
+  function init(){
+    var mo=document.getElementById('capacity-modal');if(!mo)return;
+    mo.addEventListener('click',function(e){
+      var st=e.target.closest('[data-capm-step]');
+      if(st){var inp=document.getElementById('capacity-days');inp.value=Math.max(.25,Math.round(((+inp.value||0)+(+st.dataset.capmStep))*4)/4);capmUpdateLoad();return;}
+      var q=e.target.closest('[data-capm-days]');
+      if(q){var u=users.find(function(x){return +x.id===+document.getElementById('capacity-user').value;});var v=q.dataset.capmDays==='5'&&u?(+u.weekly_capacity||5):+q.dataset.capmDays;document.getElementById('capacity-days').value=v;capmUpdateLoad();return;}
+      if(e.target.closest('#capm-x')){closeModal('capacity-modal');capacityCtx=null;}
+    });
+    ['capacity-days','capacity-user','capacity-week'].forEach(function(id){var el=document.getElementById(id);el.addEventListener('input',capmUpdateLoad);el.addEventListener('change',function(){setTimeout(capmUpdateLoad,0);});});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+// ── RUNDE FS — stræk en kapacitetsbjælke over flere uger ──
+var ctlResize=null,capSpreadCtx=null;
+document.addEventListener('pointerdown',function(e){
+  var h=e.target.closest('#cap-tl .ctl-h');
+  if(!h||e.button!==0)return;
+  var bar=h.closest('.ctl-bar'),lane=bar.parentElement;
+  var b=bookings.find(function(x){return +x.id===+bar.dataset.bookingId;});if(!b)return;
+  e.preventDefault();e.stopPropagation();
+  suppressClick=Date.now()+600;
+  bar.setAttribute('draggable','false');bar.classList.add('resizing');
+  try{h.setPointerCapture(e.pointerId);}catch(_){}
+  var cell=lane.querySelector('.ctl-cell'),colW=cell?cell.getBoundingClientRect().width:118;
+  ctlResize={bar:bar,b:b,edge:h.dataset.ctlEdge,x0:e.clientX,colW:colW,s:+bar.dataset.segS,e:+bar.dataset.segE,ns:+bar.dataset.segS,ne:+bar.dataset.segE,lane:lane};
+});
+document.addEventListener('pointermove',function(e){
+  if(!ctlResize)return;
+  var r=ctlResize,d=Math.round((e.clientX-r.x0)/r.colW);
+  if(r.edge==='left')r.ns=Math.max(0,Math.min(r.e,r.s+d));else r.ne=Math.max(r.s,r.e+d);
+  r.ne=Math.min(r.ne,r.ns+25);
+  var row=r.bar.style.gridRow;
+  r.bar.style.gridColumn=(r.ns+1)+' / span '+(r.ne-r.ns+1);r.bar.style.gridRow=row;
+});
+document.addEventListener('pointerup',function(){
+  if(!ctlResize)return;
+  var r=ctlResize;ctlResize=null;
+  r.bar.classList.remove('resizing');r.bar.setAttribute('draggable','true');
+  suppressClick=Date.now()+400;
+  if(r.ns===r.s&&r.ne===r.e)return;
+  var weeks=capacityWeeks(),list=[];
+  for(var i=r.ns;i<=r.ne;i++)if(weeks[i])list.push(iso(weeks[i]));
+  openCapSpreadModal(r.b,list);
+});
+function openCapSpreadModal(b,weekIsos){
+  var u=users.find(function(x){return +x.id===+b.user_id;})||{name:'',weekly_capacity:5};
+  var lp=capLabelParts(b),cap=+u.weekly_capacity||5,total=capDaysOf(b);
+  // Udgangspunkt: de dage reservationen allerede har i hver uge; nye uger får resten ligeligt.
+  var wd=workDates(b),per=total/Math.max(1,wd.length),cur={};
+  wd.forEach(function(d){var k=iso(mon(date(d)));cur[k]=(cur[k]||0)+per;});
+  var newWeeks=weekIsos.filter(function(w){return !cur[w];}),keptSum=weekIsos.reduce(function(n,w){return n+(cur[w]||0);},0);
+  var fillNew=newWeeks.length?Math.max(.5,Math.round(Math.max(total-keptSum,cap/2)/newWeeks.length*2)/2):0;
+  capSpreadCtx={b:b,u:u,cap:cap,weeks:weekIsos};
+  var c=(planAltColor(lp.task?Object.assign({},b,{type_guess:lp.task.type_guess||b.type_guess}):b));
+  var ic=document.getElementById('capsp-ic');ic.style.background=c+'22';ic.style.color=c;
+  document.getElementById('capsp-name').textContent=lp.name;
+  document.getElementById('capsp-sub').textContent=u.name+' · uge '+weekNo(date(weekIsos[0]))+(weekIsos.length>1?'–'+weekNo(date(weekIsos[weekIsos.length-1])):'')+' · '+capFmt(cap)+' d/uge';
+  document.getElementById('capsp-rows').innerHTML=weekIsos.map(function(w){
+    var m=date(w),own=cur[w]||0,other=Math.max(0,weeklyLoad(u.id,m)-own);
+    var v=cur[w]?Math.round(cur[w]*4)/4:fillNew;
+    return '<div class="capsp-row" data-week="'+w+'"><div class="wk"><b>Uge '+weekNo(m)+' · '+m.getDate()+'/'+(m.getMonth()+1)+'</b><small data-capsp-info>'+capFmt(other)+' d andet booket</small></div>'
+      +'<div class="capm-step"><button type="button" data-capsp-step="-0.5">−</button><input type="number" min="0" max="30" step=".25" value="'+v+'" data-other="'+other+'"><button type="button" data-capsp-step="0.5">+</button></div></div>';
+  }).join('');
+  capSpreadUpdate();
+  document.getElementById('cap-spread-modal').classList.add('open');
+}
+function capSpreadUpdate(){
+  if(!capSpreadCtx)return;
+  var sum=0,overW=0;
+  document.querySelectorAll('#capsp-rows .capsp-row').forEach(function(row){
+    var inp=row.querySelector('input'),v=Math.max(0,+inp.value||0),other=+inp.dataset.other||0;sum+=v;
+    var info=row.querySelector('[data-capsp-info]'),tot=other+v,over=tot>capSpreadCtx.cap+0.01;if(over)overW++;
+    info.className=over?'over':'';info.textContent=capFmt(other)+' d andet booket → '+capFmt(tot)+' / '+capFmt(capSpreadCtx.cap)+' d'+(over?' (overbooket)':'');
+  });
+  document.getElementById('capsp-total').innerHTML='I alt <b>'+capFmt(sum)+' dage</b> fordelt på '+document.querySelectorAll('#capsp-rows .capsp-row').length+' uger'+(overW?' · <span class="over">'+overW+' uge'+(overW>1?'r':'')+' overbooket</span>':'')+'<div style="margin-top:4px;font-size:11.5px;color:#6B7280">Uger med 0 dage bliver sprunget over.</div>';
+}
+(function(){
+  function init(){
+    var mo=document.getElementById('cap-spread-modal');if(!mo)return;
+    mo.addEventListener('click',async function(e){
+      if(e.target===mo||e.target.closest('[data-capsp-close]')){mo.classList.remove('open');capSpreadCtx=null;renderCapacity();return;}
+      var st=e.target.closest('[data-capsp-step]');
+      if(st){var inp=st.parentElement.querySelector('input');inp.value=Math.max(0,Math.round(((+inp.value||0)+(+st.dataset.capspStep))*4)/4);capSpreadUpdate();return;}
+      var f=e.target.closest('[data-capsp-fill]');
+      if(f&&capSpreadCtx){
+        var rows=[].slice.call(document.querySelectorAll('#capsp-rows input'));
+        if(f.dataset.capspFill==='full')rows.forEach(function(i){i.value=Math.max(0,Math.round((capSpreadCtx.cap-(+i.dataset.other||0))*4)/4);});
+        else{var tot=rows.reduce(function(n,i){return n+(+i.value||0);},0)||capDaysOf(capSpreadCtx.b);rows.forEach(function(i){i.value=Math.round(tot/rows.length*4)/4;});}
+        capSpreadUpdate();return;
+      }
+      if(e.target.closest('#capsp-save')&&capSpreadCtx){
+        var weeks=[].slice.call(document.querySelectorAll('#capsp-rows .capsp-row')).map(function(r){return {week_start:r.dataset.week,days:+r.querySelector('input').value||0};}).filter(function(w){return w.days>0;});
+        if(!weeks.length){toast('Angiv dage i mindst én uge','⚠');return;}
+        var btn=document.getElementById('capsp-save');btn.disabled=true;btn.textContent='Gemmer…';
+        var r=await api('/api/capacity-reservations/'+capSpreadCtx.b.id+'/spread',{method:'PUT',body:JSON.stringify({weeks:weeks})});
+        btn.disabled=false;btn.textContent='Gem fordeling';
+        if(r&&r.ok){mo.classList.remove('open');capSpreadCtx=null;toast('Fordelt over '+weeks.length+' uge'+(weeks.length>1?'r':''),'↔');await loadAll();}
+        else toast((r&&r.error)||'Kunne ikke gemme fordelingen','❌');
+      }
+    });
+    mo.addEventListener('input',function(e){if(e.target.matches('#capsp-rows input'))capSpreadUpdate();});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
 async function saveCapacityReservation(){
   if(!capacityCtx)return;
   var body={user_id:+document.getElementById('capacity-user').value,week_start:document.getElementById('capacity-week').value,capacity_days:+document.getElementById('capacity-days').value||1,label:document.getElementById('capacity-label').value.trim(),notes:document.getElementById('capacity-note').value.trim()||null};
