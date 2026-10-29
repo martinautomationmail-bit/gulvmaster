@@ -1474,6 +1474,38 @@ body.plan-alt-dragging .prv-bar.dragging,body.plan-alt-dragging .pcv-card.draggi
 #cap-body .capacity-reservation{background:#F5F3FF!important;border-left-color:#7C3AED!important;color:#4C1D95!important}
 #cap-body .cap-timeoff-badge{background:#FEF3C7;color:#92400E;border-radius:var(--bly-r-sm)}
 #page-capacity .cap-add-btn{border:1.5px dashed var(--bly-border);border-radius:var(--bly-r-sm);color:var(--bly-sub);font-weight:700}
+/* ── RUNDE FP — Opgavepool "Smart forslag" ── */
+.psc-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0 0 10px}
+.psc-sum div{border-radius:10px;padding:8px 9px;background:#F1F3F8;font-size:10.5px;color:#6B7280;font-weight:700;line-height:1.25}
+.psc-sum b{display:block;font-size:17px;color:#111318;font-weight:800}
+.psc-sum .r{background:#FEF2F2;color:#B91C1C}.psc-sum .r b{color:#B91C1C}
+.task-card.psc{padding:0!important;border:1px solid #E7E9F0!important;border-radius:12px!important;overflow:hidden;margin-bottom:9px;background:#fff;box-shadow:none}
+.task-card.psc:hover{border-color:#C7D2FE!important;box-shadow:0 0 0 3px #EEF2FF}
+.task-card.psc.psc-over{border-color:#FECACA!important}
+.psc-h{display:flex;gap:9px;align-items:flex-start;padding:10px 11px 9px}
+.psc-h .pool-select-cb{margin-top:10px}
+.psc-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-weight:800;font-size:11.5px;flex:none;background:color-mix(in srgb,var(--c) 18%,#fff);color:color-mix(in srgb,var(--c) 75%,#000)}
+.psc-t{flex:1;min-width:0}
+.psc-n{font-weight:800;font-size:12.5px;color:#111318;line-height:1.25;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.psc-task{font-size:11px;color:#374151;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.psc-sub{font-size:11px;color:#6B7280;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.psc-warn{color:#DC2626;font-weight:700}
+.psc-d{text-align:right;font-weight:800;font-size:15px;color:#111318;line-height:1;flex:none}
+.psc-d small{display:block;font-size:10px;color:#6B7280;font-weight:600;margin-top:2px}
+.psc-sug{display:flex;align-items:center;gap:8px;padding:8px 11px;background:linear-gradient(90deg,#EEF2FF,#F5F3FF);border-top:1px solid #E0E7FF}
+.psc-sug.none{font-size:11px;color:#6B7280;background:#F8FAFC;border-top-color:#F1F5F9;display:block}
+.psc-sug-tx{flex:1;font-size:11px;color:#3730A3;font-weight:600;line-height:1.3;min-width:0}
+.psc-sug-tx b{color:#1E1B4B}
+.psc-go{border:0;background:#4F46E5;color:#fff;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;flex:none}
+.psc-go:hover{background:#4338CA}
+.psc-more{font-size:10.5px;color:#6B7280;padding:0 11px 8px;background:linear-gradient(90deg,#EEF2FF,#F5F3FF)}
+.psc-more button{border:0;background:none;padding:0;color:#4F46E5;font-weight:700;font-size:10.5px;cursor:pointer;font-family:inherit}
+.psc-more button:hover{text-decoration:underline}
+.psc-planned{font-size:11px;font-weight:700;color:#166534;background:#F0FDF4;padding:7px 11px;border-top:1px solid #DCFCE7}
+.psc-acts{display:flex;gap:5px;align-items:center;padding:7px 11px 9px;border-top:1px solid #F3F4F6}
+.psc-acts .btn{padding:4px 8px!important;font-size:10.5px!important;margin:0!important;width:auto!important;border-radius:7px!important;white-space:nowrap;flex:none}
+.psc-no{margin-left:auto;font-size:10px;color:#9CA3AF;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#page-capacity .task-card.psc:hover{border-color:#C7D2FE!important}
 /* ── RUNDE FN — Kapacitet som tidslinje med ledige huller (Martin valgte B) ── */
 #cap-tl{--wk:118px;min-width:max-content}
 #capacity-scroll.cap-tl-mode .capacity-board{display:none}
@@ -4661,7 +4693,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.41.0 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.42.0 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -13032,9 +13064,123 @@ function templateCard(t){
     '<div class="task-drag-hint">⠿ Træk ud på en dag — du bliver spurgt om kunden</div>'+
     '</article>';
 }
+// ── RUNDE FP — Opgavepool "Smart forslag" (Martin valgte forslag C) ──
+// Bruges i både Dagligplanlægning og Kapacitet. Hvert kort foreslår selv hvem
+// der er ledig og hvornår: medarbejdere med samme fag som opgaven, første uge
+// (fra i dag, eller opgavens startuge hvis den ligger senere) med mindst én
+// fri dag, og så mange sammenhængende frie dage frem som opgaven kræver.
+// Belastningen er den STØRSTE af kapacitetsreservationer og daglige bookinger
+// i ugen, minus ferie — så forslaget passer både til Kapacitet og Dagsplan.
+var POOL_SUGGEST_WEEKS=16;
+function poolSuggestCtx(){
+  var wk0=mon(new Date()),weeks=[];for(var i=0;i<POOL_SUGGEST_WEEKS+26;i++)weeks.push(iso(add(wk0,i*7)));
+  var widx={};weeks.forEach(function(w,i){widx[w]=i;});
+  var cap={},daily={};
+  bookings.forEach(function(b){
+    var uid=+b.user_id;if(!uid)return;
+    var isCap=isCapacityBooking(b),wds=isCap?workDates(b):planWorkDates(b);if(!wds.length)return;
+    var per=(isCap?capDaysOf(b):(+b.days||1))/wds.length,tgt=isCap?cap:daily;
+    wds.forEach(function(ds){var w=iso(mon(date(ds)));if(widx[w]===undefined)return;var k=uid+':'+w;tgt[k]=(tgt[k]||0)+per;});
+  });
+  var people=users.filter(function(u){return u.active&&u.role==='employee'&&u.worker_type!=='vendor';});
+  var freeMemo={};
+  function free(u,w){
+    var k=u.id+':'+w;if(freeMemo[k]!==undefined)return freeMemo[k];
+    var c=+u.weekly_capacity||5,m=date(w),off=0;
+    for(var d=0;d<5;d++)if(timeOffFor(u.id,iso(add(m,d))))off++;
+    return freeMemo[k]=Math.max(0,c-off*c/5-Math.max(cap[k]||0,daily[k]||0));
+  }
+  return {weeks:weeks,widx:widx,people:people,free:free};
+}
+function poolSuggest(t,ctx){
+  var typeLabel=String((TYPE[t.type_guess]||{}).label||'').toLowerCase();
+  // Fag matches løst ("Maler" ↔ "Malerservice", "Gulvslibning" ↔ "Gulvslib.").
+  var cands=ctx.people.filter(function(u){var tr=String(u.trade||'').toLowerCase().trim();return typeLabel&&tr&&(tr===typeLabel||tr.indexOf(typeLabel.slice(0,5))===0||typeLabel.indexOf(tr.slice(0,5))===0);});
+  if(!cands.length)cands=ctx.people;
+  var need=suggestedCapacityDays(t);
+  var start=0;
+  if(t.start_date){var sw=iso(mon(date(String(t.start_date).slice(0,10))));if(ctx.widx[sw]>0)start=ctx.widx[sw];}
+  var out=[];
+  cands.forEach(function(u){
+    for(var i=start;i<Math.min(ctx.weeks.length,start+POOL_SUGGEST_WEEKS);i++){
+      var f=ctx.free(u,ctx.weeks[i]);if(f<1)continue;
+      var j=i,sum=0;while(j<ctx.weeks.length&&ctx.free(u,ctx.weeks[j])>=0.5&&sum<need){sum+=ctx.free(u,ctx.weeks[j]);j++;}
+      out.push({u:u,i:i,j:j-1,free:sum,fits:sum>=need-0.01});return;
+    }
+  });
+  out.sort(function(a,b){return (b.fits-a.fits)||(a.i-b.i)||(b.free-a.free);});
+  return out.slice(0,3);
+}
+function poolSuggestLabel(sg,ctx){
+  var a=weekNo(date(ctx.weeks[sg.i])),b=weekNo(date(ctx.weeks[sg.j]));
+  var wk=sg.i===sg.j?'uge '+a:'uge '+a+'–'+b;
+  var nm=sg.u.name.split(' ')[0];
+  return {short:nm+' '+wk,long:'<b>'+esc(sg.u.name)+'</b> er ledig '+wk+' ('+capFmt(sg.free)+' dag'+(Math.abs(sg.free-1)<.01?'':'e')+')'+(sg.fits?'':' — ikke hele opgaven')};
+}
+function poolShortAddr(a){
+  a=String(a||'').replace(/,\s*Denmark$/i,'').replace(/,\s*Danmark$/i,'');
+  var parts=a.split(',').map(function(x){return x.trim();}).filter(Boolean);
+  var last=parts.length>1?parts[parts.length-1]:parts[0]||'';
+  return last.replace(/^\d{4}\s+/,'');
+}
+function poolSummaryHTML(list){
+  var today=iso(new Date()),wk0=mon(new Date()),wk1=iso(add(wk0,6)),over=0,thisWeek=0,unplannedDays=0;
+  list.forEach(function(t){
+    if(taskIsCompleted(t))return;
+    var planned=+t.assignment_count>0,sd=t.start_date?String(t.start_date).slice(0,10):'';
+    if(!planned){unplannedDays+=suggestedCapacityDays(t);if(sd&&sd<today)over++;else if(sd&&sd<=wk1)thisWeek++;}
+  });
+  return '<div class="psc-sum"><div class="r"><b>'+over+'</b>Overskredet</div><div><b>'+thisWeek+'</b>Starter denne uge</div><div><b>'+capFmt(Math.round(unplannedDays))+' d</b>Ikke planlagt</div></div>';
+}
+function taskCardSmart(t,scope,ctx){
+  var type=TYPE[t.type_guess]||TYPE.other,planned=+t.assignment_count>0;
+  var sd=t.start_date?String(t.start_date).slice(0,10):'',overdue=!planned&&sd&&sd<iso(new Date());
+  var initials=({sand:'GS',lay:'GL',paint:'MA',sub:'UL',other:'AN'})[t.type_guess]||String(type.label||'??').slice(0,2).toUpperCase();
+  var c=type.bar||'#94A3B8',need=suggestedCapacityDays(t),addr=poolShortAddr(t.job_address);
+  var sub=(sd?(overdue?'<span class="psc-warn">⚠ Start '+date(sd).getDate()+'/'+(date(sd).getMonth()+1)+'</span>':'Start '+date(sd).getDate()+'/'+(date(sd).getMonth()+1)):'Ingen startdato')+(addr?' · <span title="'+esc(t.job_address)+'">'+esc(addr)+'</span>':'');
+  var showBulkCb=scope==='plan';
+  var html='<article class="task-card draggable-task psc'+(overdue?' psc-over':'')+'" draggable="true" data-task-id="'+esc(t.id)+'" style="--c:'+c+'" title="Træk ud på '+(scope==='capacity'?'en uge':'en dag')+' — eller brug forslaget">'
+    +'<div class="psc-h">'
+      +(showBulkCb?'<input type="checkbox" class="pool-select-cb" data-task-id="'+esc(t.id)+'" '+(poolSelected[t.id]?'checked':'')+'>':'')
+      +'<div class="psc-ic">'+esc(initials)+'</div>'
+      +'<div class="psc-t"><div class="psc-n">'+esc(t.job_name||'Uden kunde')+'</div>'
+        +(t.name&&t.name!==t.job_name?'<div class="psc-task">'+esc(t.name)+'</div>':'')
+        +'<div class="psc-sub">'+sub+'</div></div>'
+      +'<div class="psc-d">'+capFmt(need)+'<small>dag'+(Math.abs(need-1)<.01?'':'e')+'</small></div>'
+    +'</div>';
+  if(planned){
+    html+='<div class="psc-planned">✓ Planlagt '+t.assignment_count+'× — træk igen for flere dage</div>';
+  }else{
+    var sugs=poolSuggest(t,ctx);
+    if(sugs.length){
+      var s0=sugs[0],l0=poolSuggestLabel(s0,ctx);
+      html+='<div class="psc-sug">'+planAltAvatar(s0.u,24)+'<div class="psc-sug-tx">'+l0.long+'</div>'
+        +'<button type="button" class="psc-go" data-pool-book="1" data-task-id="'+esc(t.id)+'" data-user-id="'+s0.u.id+'" data-week="'+ctx.weeks[s0.i]+'">Book</button></div>';
+      if(sugs.length>1)html+='<div class="psc-more">Andre: '+sugs.slice(1).map(function(sg){return '<button type="button" data-pool-book="1" data-task-id="'+esc(t.id)+'" data-user-id="'+sg.u.id+'" data-week="'+ctx.weeks[sg.i]+'">'+esc(poolSuggestLabel(sg,ctx).short)+'</button>';}).join(' · ')+'</div>';
+    }else html+='<div class="psc-sug none">Ingen med '+esc(type.label)+' er ledige de næste '+POOL_SUGGEST_WEEKS+' uger — træk den selv ud.</div>';
+  }
+  html+='<div class="psc-acts">'
+    +(t.is_visit?'<button class="btn small" data-action="open-visit-form" data-task-id="'+esc(t.id)+'">📋 Besøg</button>':'')
+    +'<button class="btn small" data-action="open-checklist" data-task-id="'+esc(t.id)+'">☑ Tjek</button>'
+    +(t.project_id?'<button class="btn small" data-action="pool-open-project" data-project-id="'+esc(t.project_id)+'">🔗 Sagen</button>':'')
+    +(t.customer_phone?'<a class="btn small" href="'+phoneHref(t.customer_phone)+'" title="Ring '+esc(t.customer_phone)+'">📞</a>':'')
+    +(t.job_number?'<span class="psc-no">#'+esc(t.job_number)+'</span>':'')
+    +'</div></article>';
+  return html;
+}
+function poolBookFromSuggestion(btn,scope,evt){
+  var t=tasks.find(function(x){return String(x.id)===String(btn.dataset.taskId);});if(!t)return;
+  var uid=+btn.dataset.userId,w=btn.dataset.week;
+  if(scope==='capacity'){openCapacityDropPop(t,uid,w,evt);return;}
+  // Dagsplan: første hverdag i ugen, men ikke før i dag.
+  var d=date(w),today=date(iso(new Date()));
+  if(d<today)d=today;
+  for(var g=0;g<14&&(d.getDay()===0||d.getDay()===6||timeOffFor(uid,iso(d)));g++)d=add(d,1);
+  openQuickPop(t.id,uid,iso(d),evt);
+}
 // RUNDE I #318: timeline (Tidslinjens opgavepool) grupperer nu også pr. kunde,
 // ligesom Dagligplanlægning — Kapacitet er bevidst uændret.
-var poolGroupedMode={plan:true,capacity:false,timeline:true};
+var poolGroupedMode={plan:false,capacity:false,timeline:true};
 var poolGroupExpanded={};
 function renderPool(scope){
   filtersHTML(scope);
@@ -13052,6 +13198,12 @@ function renderPool(scope){
     el.innerHTML='<div style="padding:14px 4px;text-align:center;color:var(--muted);font-size:11px">Ingen opgaver matcher.</div>';
   }else if(poolGroupedMode[scope]){
     el.innerHTML=section+renderPoolGrouped(list,scope);
+  }else if(scope==='plan'||scope==='capacity'){
+    var sctx=poolSuggestCtx();
+    el.innerHTML=(filters[scope].status==='completed'?'':poolSummaryHTML(list))+section+list.map(function(t){return taskIsCompleted(t)?taskCard(t,scope):taskCardSmart(t,scope,sctx);}).join('');
+    el.querySelectorAll('[data-pool-book]').forEach(function(btn){
+      btn.addEventListener('click',function(e){e.stopPropagation();poolBookFromSuggestion(btn,scope,e);});
+    });
   }else{
     el.innerHTML=section+list.map(function(t){return taskCard(t,scope);}).join('');
   }
@@ -25391,7 +25543,7 @@ async function bind(){
   // RUNDE H #24 — "📋/👥"-fladliste-skiftet er fjernet fra UI'en efter Martins
   // ønske (poolen viser nu ALTID gruppering pr. kunde). poolGroupedMode.plan
   // sættes derfor fast til true her i stedet for at kunne slås til/fra.
-  poolGroupedMode.plan=true;
+  poolGroupedMode.plan=false; // RUNDE FP: "Smart forslag"-kortene (forslag C) er flade kort pr. opgave.
   document.getElementById('pool-bulk-assign-btn').addEventListener('click',function(){
     if(!Object.keys(poolSelected).length)return;
     openPoolBulkAssignModal();
