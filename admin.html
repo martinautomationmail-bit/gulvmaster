@@ -1996,6 +1996,14 @@ body.plan-alt-dragging .ctl-add{display:none}
 .kb-act.primary:hover{background:#000}
 .kb-act.success{color:#15803D;border-color:#BBF7D0;background:#F0FDF4}
 .kb-act.success:hover{background:#DCFCE7;border-color:#86EFAC}
+.kb-group{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#6B7280;margin:14px 2px 2px;padding-top:2px}
+.kb-group:first-child{margin-top:2px}
+.kb-qg .kb-box{width:12px;height:12px;border:1.5px solid #9CA3AF;border-radius:3px;display:inline-block}
+.kb-qg.on{background:#EEF2FF;border-color:#C7D2FE;color:#3730A3}
+.crmpx-qg{display:inline-flex;align-items:center;gap:7px;margin-top:10px;padding:6px 10px;border:1px solid #E5E7EB;border-radius:8px;font-size:12px;font-weight:600;color:#374151;cursor:pointer;background:#fff}
+.crmpx-qg input{margin:0;pointer-events:none}
+.crmpx-qg.on{background:#EEF2FF;border-color:#C7D2FE;color:#3730A3}
+.crmpx-qg span{color:#6B7280;font-weight:500}
 .kb-done-chip{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px;border-radius:8px;background:#F0FDF4;color:#15803D;font-size:12px;font-weight:700;white-space:nowrap}
 .kb-done-chip svg{width:13px;height:13px}
 .kb-status{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;line-height:1.2}
@@ -4834,7 +4842,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.46.0 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.47.0 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -7953,8 +7961,9 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   </div>
   <div class="bly-kpi-row" id="kb-filter-row" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));margin-bottom:14px"></div>
   <div class="bly-toolbar">
-    <div class="bly-toolbar-left" style="display:flex;align-items:center;gap:8px">
-      <label for="kb-custom-date" style="font-size:12.5px;color:var(--bly-sub)">Eller vælg en bestemt dato:</label>
+    <div class="bly-toolbar-left" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <input type="text" id="kb-search" class="bly-search" placeholder="Søg — kunde, adresse, telefon eller medarbejder" style="min-width:300px">
+      <label for="kb-custom-date" style="font-size:12.5px;color:var(--bly-sub)">Dato:</label>
       <input type="date" id="kb-custom-date" class="select" style="width:auto">
       <button class="qz-link-btn" id="kb-custom-date-clear" type="button" style="display:none">✕ Ryd</button>
     </div>
@@ -16825,7 +16834,7 @@ async function saveQuickTask(){
 // "📅 Book kundebesøg", endnu ikke trukket ud på en medarbejder/dag) —
 // "Ikke planlagt"-bucket'en dækker de sidste.
 var kbData={booked:[],unbooked:[]};
-var kbFilter='today';
+var kbFilter='upcoming',kbSearch='';
 var kbCustomDate=null;
 var kbSelectedCustomerId=null;
 var kbInitialized=false;
@@ -16876,7 +16885,10 @@ function initKundebesogPage(){
       kbRender();
     });
     document.getElementById('kb-new-btn').addEventListener('click',function(){openKbAssignModal();});
+    document.getElementById('kb-search').addEventListener('input',function(e){kbSearch=e.target.value.trim().toLowerCase();kbRender();});
     document.getElementById('kb-body').addEventListener('click',function(e){
+      var qg=e.target.closest('[data-kb-quote-given]');
+      if(qg){kbToggleQuoteGiven(qg.dataset.kbQuoteGiven,qg.dataset.given!=='1');return;}
       var doneBtn=e.target.closest('[data-kb-done]');
       if(doneBtn){kbMarkDone(doneBtn.dataset.kbDone);return;}
       var bookBtn=e.target.closest('[data-kb-book-task]');
@@ -16905,9 +16917,13 @@ async function kbLoad(){
 // tidsrum (dag/uge/måned) og "unbooked" (endnu ikke lagt på en medarbejder).
 function kbBucketMatch(v,bucket){
   var today=iso(new Date());
+  // RUNDE FV — "Kommende" = alt der ikke er foretaget endnu (også ikke-planlagte).
+  if(bucket==='upcoming')return !v.completed_at;
   if(bucket==='unbooked')return !!v._unbooked;
   if(v._unbooked)return false; // et ikke-planlagt besøg hører kun til "Ikke planlagt"
   if(bucket==='done')return !!v.completed_at;
+  if(bucket==='done_noquote')return !!v.completed_at&&!v.quote_given_at;
+  if(bucket==='done_quote')return !!v.completed_at&&!!v.quote_given_at;
   if(v.completed_at)return false;
   if(bucket==='all')return true;
   var d=String(v.start_date||'').slice(0,10);
@@ -16934,11 +16950,12 @@ function kbRenderFilterRow(){
   var box=document.getElementById('kb-filter-row');
   var rows=kbAllRows();
   var buckets=[
+    {key:'upcoming',dot:'var(--bly-dot-total)',label:'Kommende'},
     {key:'today',dot:'var(--bly-dot-unpaid)',label:'I dag'},
-    {key:'week',dot:'var(--bly-dot-draft)',label:'Denne uge'},
-    {key:'month',dot:'var(--bly-dot-total)',label:'Denne måned'},
+    {key:'week',dot:'var(--bly-dot-draft)',label:'Næste 7 dage'},
     {key:'unbooked',dot:'var(--bly-dot-overdue)',label:'Ikke planlagt'},
-    {key:'done',dot:'var(--bly-dot-paid)',label:'Færdige'}
+    {key:'done_noquote',dot:'#F59E0B',label:'Færdig · mangler tilbud'},
+    {key:'done_quote',dot:'var(--bly-dot-paid)',label:'Færdig · tilbud givet'}
   ];
   box.innerHTML=buckets.map(function(b){
     var n=rows.filter(function(v){return kbBucketMatch(v,b.key);}).length;
@@ -16951,13 +16968,25 @@ function kbRenderFilterRow(){
 function kbRender(){
   kbRenderFilterRow();
   var rows=kbAllRows();
-  if(kbCustomDate){
+  if(kbSearch){
+    // RUNDE FV — søgning går på tværs af alle kategorier.
+    rows=rows.filter(function(v){
+      var txt=[v.job_name,v.customer_name,v.job_address,v.customer_phone,v.user_name,v.visit_notes,v.job_number].join(' ').toLowerCase();
+      return txt.indexOf(kbSearch)>-1||(kbSearch.replace(/\s+/g,'')&&String(v.customer_phone||'').replace(/\s+/g,'').indexOf(kbSearch.replace(/\s+/g,''))>-1);
+    });
+  }else if(kbCustomDate){
     rows=rows.filter(function(v){return !v._unbooked&&String(v.start_date||'').slice(0,10)===kbCustomDate;});
   } else {
     rows=rows.filter(function(v){return kbBucketMatch(v,kbFilter);});
   }
-  rows.sort(function(a,b){return String(a.start_date||'').localeCompare(String(b.start_date||''))||String(a.start_time||'').localeCompare(String(b.start_time||''));});
-  document.getElementById('kb-count').textContent=rows.length?rows.length+' kundebesøg':'';
+  var doneView=!kbSearch&&!kbCustomDate&&String(kbFilter).indexOf('done')===0;
+  rows.sort(function(a,b){
+    if(!!a._unbooked!==!!b._unbooked)return a._unbooked?1:-1; // ikke planlagte til sidst
+    var c=String(a.start_date||'').localeCompare(String(b.start_date||''))||String(a.start_time||'').localeCompare(String(b.start_time||''));
+    return doneView?-c:c; // færdige: nyeste først
+  });
+  document.getElementById('kb-count').textContent=rows.length?rows.length+' kundebesøg'+(kbSearch?' · søger i alle':''):'';
+  var lastGroup=null;
   // RUNDE FA (Martin: "ret knappen til højre og alt der sker under
   // kundebesøg — iconer og tekster går ind over linjer") — eget .kb-card-
   // layout: venstre kolonne = navn/status, note (maks 2 linjer), adresse/
@@ -16966,6 +16995,8 @@ function kbRender(){
   // som teksten flød ud af. Samme data-attributter som før, så click-
   // håndteringen i initKundebesogPage er uændret.
   document.getElementById('kb-body').innerHTML=rows.length?rows.map(function(v){
+    var grp=kbGroupLabel(v),grpHtml='';
+    if(grp!==lastGroup){lastGroup=grp;grpHtml='<div class="kb-group">'+esc(grp)+'</div>';}
     var name=v.job_name||v.customer_name||'(uden navn)';
     var dateMain=v.start_date?fmtDaDate(v.start_date):'';
     var dateSub=v._unbooked?'<small class="warn">Ikke planlagt</small>':(v.start_time?'<small>kl. '+esc(v.start_time)+'</small>':'');
@@ -16980,13 +17011,18 @@ function kbRender(){
       // "Rapport"/"Udfyld rapport" — åbner samme store popup som CRM-Handel
       // (se kbOpenVisitReport), uanset om rapporten findes endnu.
       actions.push('<button type="button" class="kb-act" data-kb-report="'+esc(v.task_id)+'" data-kb-name="'+esc(v.job_name||v.customer_name||'')+'" data-kb-address="'+esc(v.job_address||'')+'" data-kb-phone="'+esc(v.customer_phone||'')+'" data-kb-visit-type="'+esc(v.visit_type||kbTypeFilter)+'" title="'+(hasReport?'Se/rediger besøgsrapporten':'Udfyld besøgsrapporten')+'">'+(hasReport?KB_ICONS.doc+'Se rapport':KB_ICONS.edit+'Udfyld rapport')+'</button>');
-      if(v.completed_at)actions.push('<span class="kb-done-chip">'+KB_ICONS.check+'Færdig</span>');
+      if(v.completed_at){
+        actions.push('<span class="kb-done-chip">'+KB_ICONS.check+'Færdig</span>');
+        actions.push(v.quote_given_at
+          ?'<button type="button" class="kb-act kb-qg on" data-kb-quote-given="'+esc(v.task_id)+'" data-given="1" title="Klik for at fjerne markeringen">'+KB_ICONS.check+'Tilbud givet '+esc(fmtDaDate(String(v.quote_given_at).slice(0,10)))+'</button>'
+          :'<button type="button" class="kb-act kb-qg" data-kb-quote-given="'+esc(v.task_id)+'" data-given="0" title="Kunden har fået et opdateret tilbud efter besøget"><span class="kb-box"></span>Tilbud givet</button>');
+      }
       else actions.push('<button type="button" class="kb-act success" data-kb-done="'+v.id+'" title="Markér besøget som færdigt">'+KB_ICONS.check+'Markér færdig</button>');
     }
     var meta=[];
     if(v.job_address)meta.push('<span class="kb-meta" title="'+esc(v.job_address)+'">'+KB_ICONS.map+'<span>'+esc(v.job_address)+'</span></span>');
     if(v.customer_phone)meta.push('<a class="kb-meta" href="tel:'+esc(String(v.customer_phone).replace(/\s+/g,''))+'" style="color:inherit;text-decoration:none">'+KB_ICONS.phone+'<span>'+esc(v.customer_phone)+'</span></a>');
-    return '<div class="kb-card">'
+    return grpHtml+'<div class="kb-card">'
       +'<div class="kb-card-main">'
         +'<div class="kb-card-title"><span class="kb-card-name" title="'+esc(name)+'">'+esc(name)+'</span>'+statusHtml+'</div>'
         +(v.visit_notes?'<div class="kb-card-note" title="'+esc(v.visit_notes)+'">'+esc(v.visit_notes)+'</div>':'')
@@ -16998,6 +17034,30 @@ function kbRender(){
       +'</div>'
     +'</div>';
   }).join(''):'<div class="bly-rowcard-empty">Ingen kundebesøg i denne kategori</div>';
+}
+// RUNDE FV — dato-overskrifter i Kundebesøg-listen.
+function kbGroupLabel(v){
+  if(v._unbooked)return 'Ikke planlagt';
+  var d=String(v.start_date||'').slice(0,10);if(!d)return 'Uden dato';
+  var today=iso(new Date()),tom=iso(add(new Date(),1)),yest=iso(add(new Date(),-1));
+  var dt=date(d),lbl=DAYS_LONG_DA[dt.getDay()]+' '+dt.getDate()+'. '+dt.toLocaleDateString('da-DK',{month:'long'})+(dt.getFullYear()!==new Date().getFullYear()?' '+dt.getFullYear():'');
+  if(!v.completed_at&&d<today)return 'Overskredet — ikke markeret færdig';
+  if(d===today)return 'I dag · '+lbl;
+  if(d===tom)return 'I morgen · '+lbl;
+  if(d===yest)return 'I går · '+lbl;
+  return lbl.charAt(0).toUpperCase()+lbl.slice(1);
+}
+var DAYS_LONG_DA=['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
+async function kbToggleQuoteGiven(taskId,given){
+  var r=await api('/api/customer-visits/'+encodeURIComponent(taskId)+'/quote-given',{method:'PUT',body:JSON.stringify({given:given})});
+  if(r&&r.ok){
+    kbData.booked.concat(kbData.unbooked).forEach(function(v){if(String(v.task_id)===String(taskId))v.quote_given_at=r.quote_given_at;});
+    (crmpxVisitsCache||[]).forEach(function(v){if(String(v.task_id)===String(taskId))v.quote_given_at=r.quote_given_at;});
+    toast(given?'Markeret: opdateret tilbud givet':'Markering fjernet','✓');
+    if(document.getElementById('page-kundebesog').classList.contains('active'))kbRender();
+    return r;
+  }
+  toast((r&&r.error)||'Kunne ikke gemme','❌');return null;
 }
 // RUNDE FA — små stregikoner til Kundebesøg-kortene (arver tekstfarven).
 var KB_ICONS=(function(){
@@ -31687,10 +31747,19 @@ async function crmpxLoadVisits(customerId,listElId,countElId){
       +'<div class="crmpx-visit-head"><span class="crmpx-visit-date">📅 '+esc(fmtDaDate((v.submitted_at||'').slice(0,10)))+' · '+typeTag+'</span><span class="crmpx-visit-by">'+esc(v.filled_by_name||'')+'</span></div>'
       +kvHtml+noteHtml+photosHtml
       +(!kv.length&&!noteHtml&&!photosHtml?'<div class="crmpx-empty">Ingen detaljer udfyldt</div>':'')
+      +'<label class="crmpx-qg'+(v.quote_given_at?' on':'')+'" data-crmpx-qg="'+esc(v.task_id)+'" title="Kryds af når kunden har fået et opdateret tilbud efter besøget"><input type="checkbox"'+(v.quote_given_at?' checked':'')+'> Opdateret tilbud givet'+(v.quote_given_at?' <span>· '+esc(fmtDaDate(String(v.quote_given_at).slice(0,10)))+'</span>':'')+'</label>'
       +'</div>';
   }).join('');
 }
-document.addEventListener('click',function(e){
+document.addEventListener('click',async function(e){
+  var qg=e.target.closest('[data-crmpx-qg]');
+  if(qg){
+    e.preventDefault();e.stopPropagation();
+    var on=!qg.classList.contains('on');
+    var r=await kbToggleQuoteGiven(qg.dataset.crmpxQg,on);
+    if(r){qg.classList.toggle('on',on);qg.querySelector('input').checked=on;var sp=qg.querySelector('span');if(sp)sp.remove();if(on)qg.insertAdjacentHTML('beforeend',' <span>· '+esc(fmtDaDate(String(r.quote_given_at).slice(0,10)))+'</span>');}
+    return;
+  }
   var card=e.target.closest('.crmpx-visit-card');
   if(!card)return;
   crmpxVisitModalSource='crmp';

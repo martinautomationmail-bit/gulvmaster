@@ -1681,6 +1681,10 @@ async function initSchema() {
     -- kolonne — her, i stedet, som en fri {felt-nøgle: svar}-liste, samme
     -- princip som qa_submissions.answers.
     ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS custom_fields JSONB NOT NULL DEFAULT '{}';
+    -- RUNDE FV (Martin): krydses af på Handel/Kundebesøg når kunden har fået et
+    -- opdateret tilbud efter besøget — deler "Færdige" i "mangler tilbud"/"tilbud givet".
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS quote_given_at TEXT;
+    ALTER TABLE customer_visits ADD COLUMN IF NOT EXISTS quote_given_by INTEGER;
     -- customer_photo_requests (RUNDE BK) — kundens svar-/billed-link (/svar/:token).
     -- Kunden kan uploade et vilkårligt antal billeder, UDEN at afhænge af at Gmail
     -- rent faktisk fanger dem korrekt (se gmailWalkPayload-rettelsen, RUNDE BG) —
@@ -9832,7 +9836,7 @@ app.get('/api/customer-visits/overview', auth, panelAccessAny(['plan', 'customer
     ORDER BY b.start_date ASC, b.start_time ASC NULLS LAST
   `));
   const visitExtras = await pool.query(`
-    SELECT task_id, notes AS visit_notes, customer_id, quote_id, submitted_at AS visit_submitted_at, visit_type
+    SELECT task_id, notes AS visit_notes, customer_id, quote_id, submitted_at AS visit_submitted_at, visit_type, quote_given_at
     FROM customer_visits WHERE task_id = ANY($1::text[])
   `, [booked.rows.map(r => r.task_id)]);
   const extraByTask = {};
@@ -9843,7 +9847,7 @@ app.get('/api/customer-visits/overview', auth, panelAccessAny(['plan', 'customer
   // Kundebesøg/Kvalitetskontrol-faneblade kan filtrere på den.
   const unbooked = await pool.query(`
     SELECT t.id AS task_id, t.job_name, t.job_address, t.customer_phone, t.start_date AS ref_date,
-           cv.notes AS visit_notes, cv.customer_id, cv.quote_id, cv.visit_type
+           cv.notes AS visit_notes, cv.customer_id, cv.quote_id, cv.visit_type, cv.quote_given_at
     FROM jt_tasks t
     LEFT JOIN customer_visits cv ON cv.task_id = t.id
     WHERE t.is_visit = 1 AND NOT EXISTS (SELECT 1 FROM planning_bookings b WHERE b.task_id = t.id)
@@ -9922,6 +9926,17 @@ app.get('/api/tasks/:taskId/quote-scope', auth, asyncRoute(async (req, res) => {
     FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC
   `, [project.quote_id]);
   res.json({ quote_id: quote.id, quote_number: quote.quote_number, lines: linesResult.rows });
+}));
+
+// RUNDE FV — "Opdateret tilbud givet" efter besøget (sæt/fjern).
+app.put('/api/customer-visits/:taskId/quote-given', auth, panelAccessAny(['plan', 'customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const given = !!(req.body && req.body.given);
+  const task = await pgOne('SELECT id FROM jt_tasks WHERE id=$1', [req.params.taskId]);
+  if (!task) return res.status(404).json({ error: 'Besøget blev ikke fundet' });
+  const stamp = given ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null;
+  const r = await pool.query(`UPDATE customer_visits SET quote_given_at=$1, quote_given_by=$2, updated_at=${nowTextSQL()} WHERE task_id=$3`, [stamp, given ? req.user.id : null, req.params.taskId]);
+  if (!r.rowCount) await pool.query('INSERT INTO customer_visits (task_id, quote_given_at, quote_given_by) VALUES ($1,$2,$3)', [req.params.taskId, stamp, given ? req.user.id : null]);
+  res.json({ ok: true, quote_given_at: stamp });
 }));
 
 app.put('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
@@ -11362,7 +11377,7 @@ app.get('/api/crm/customers/:id/visits', auth, panelAccessAny(['customers', 'crm
   const result = await pool.query(`
     SELECT v.id, v.task_id, v.customer_name, v.address, v.phone, v.room_size, v.floor_type_wanted, v.notes,
            v.recommended_solution, v.estimated_price, v.photo_urls, v.custom_fields, v.submitted_at,
-           v.updated_at, v.visit_type, u.name AS filled_by_name
+           v.updated_at, v.visit_type, v.quote_given_at, u.name AS filled_by_name
     FROM customer_visits v
     LEFT JOIN users u ON u.id = v.filled_by
     WHERE v.customer_id=$1 AND v.submitted_at IS NOT NULL
