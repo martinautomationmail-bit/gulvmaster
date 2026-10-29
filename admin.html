@@ -1502,8 +1502,10 @@ body.plan-alt-dragging .prv-bar.dragging,body.plan-alt-dragging .pcv-card.draggi
 .ctl-gap{position:relative;z-index:1;margin:2px 3px;height:26px;border-radius:7px;border:1.5px dashed #6EE7B7;background:#ECFDF5;color:#047857;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:flex-start;padding-left:10px!important;cursor:pointer;white-space:nowrap;overflow:hidden;padding:0 6px}
 .ctl-gap:hover{background:#D1FAE5;border-color:#10B981}
 .ctl-vac{position:relative;z-index:1;margin:2px 3px;height:26px;border-radius:7px;background:repeating-linear-gradient(135deg,#FEF3C7 0 6px,#FDE68A 6px 12px);color:#92400E;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer;white-space:nowrap;overflow:hidden}
-.ctl-load{height:24px;width:100%;display:block;pointer-events:none;position:relative;z-index:1}
-body.plan-alt-dragging #cap-tl .ctl-bar,body.plan-alt-dragging .ctl-gap,body.plan-alt-dragging .ctl-vac{pointer-events:none}
+.ctl-heat{position:relative;z-index:1;margin:2px 3px 2px;cursor:pointer}
+.ctl-heat .cap-heat{padding:5px 8px;font-size:11.5px}
+.ctl-heat:hover .cap-heat{box-shadow:0 0 0 2px var(--bly-accent)}
+body.plan-alt-dragging #cap-tl .ctl-bar,body.plan-alt-dragging .ctl-gap,body.plan-alt-dragging .ctl-vac,body.plan-alt-dragging .ctl-heat{pointer-events:none}
 #cap-tl .ctl-bar.dragging{opacity:.4}
 .ctl-grp{display:flex;border-top:1px solid var(--bly-border-soft);background:#FAFBFD}
 .ctl-grp>div:first-child{position:sticky;left:0;width:230px;flex:none;padding:9px 14px 6px;font-size:11.5px;font-weight:800;color:var(--bly-sub);background:#FAFBFD;display:flex;align-items:center;gap:7px}
@@ -4659,7 +4661,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.40.0 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.41.0 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -8802,7 +8804,6 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
     </div>
     <!-- RUNDE FH — visningsskift (Tabel/Ressource/Dagskort), se planSetView(). -->
       <div class="plan-viewswitch" id="plan-viewswitch" role="tablist">
-        <button type="button" data-plan-view="classic" title="Den klassiske tabel med alle uger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>Tabel</button>
         <button type="button" data-plan-view="resource" title="Én linje pr. medarbejder hen over ugen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M3 12h16M3 18h7"/></svg>Ressource</button>
         <button type="button" data-plan-view="cards" title="Én kolonne pr. dag med store kort"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg>Dagskort</button>
       </div>
@@ -8978,9 +8979,10 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
       <div class="cap-tl-legend" id="cap-tl-legend">
         <span><i style="background:#ECFDF5;border:1.5px dashed #6EE7B7"></i>Ledigt hul — klik for at reservere, eller træk en opgave ind</span>
         <span><i style="background:repeating-linear-gradient(135deg,#FEF3C7 0 4px,#FDE68A 4px 8px)"></i>Ferie/fri</span>
-        <span><i style="background:#FEE2E2"></i>Overbooket uge</span>
-        <span>〰 Belægning (stiplet = 100 %)</span>
-        <span class="cap-heat-legend-hint">Træk en bjælke til en anden uge eller medarbejder · klik for at rette</span>
+        <span><i style="background:#BBF7D0"></i>Booket under 85 %</span>
+        <span><i style="background:#FEF3C7"></i>Fuld</span>
+        <span><i style="background:#FEE2E2"></i>Overbooket</span>
+        <span class="cap-heat-legend-hint">Klik på ugens tal for opgaverne · træk en bjælke for at flytte</span>
       </div>
       <div class="cap-heat-pop" id="cap-heat-pop" hidden></div>
     </section>
@@ -13458,10 +13460,12 @@ function renderPlan(){
 // data-action="add-booking", ferie = add/edit-timeoff-day, og træk-og-slip
 // via data-drop="day" + den fælles handleDrop().
 // ══════════════════════════════════════════════════════════════
-var planView=(function(){try{var v=localStorage.getItem('gm_plan_view');return v==='resource'||v==='cards'?v:'classic';}catch(e){return 'classic';}})();
+// RUNDE FO (Martin: "fjern Tabel og lav Ressource den primære") — Tabel er
+// taget ud af skifteren; alt der ikke er Dagskort vises som Ressource.
+var planView=(function(){try{var v=localStorage.getItem('gm_plan_view');return v==='cards'?'cards':'resource';}catch(e){return 'resource';}})();
 var planCardsUser=null;
 function planSetView(v){
-  planView=v==='resource'||v==='cards'?v:'classic';
+  planView=v==='cards'?'cards':'resource';
   try{localStorage.setItem('gm_plan_view',planView);}catch(e){}
   if(planView==='classic'){
     // Tabellen placerer sig selv på indeværende uge første gang den tegnes.
@@ -14191,6 +14195,16 @@ function capCloseHeatPop(){var pop=document.getElementById('cap-heat-pop');if(po
 function capOpenHeatPop(cell){
   var pop=document.getElementById('cap-heat-pop');if(!pop)return;
   var store=cell.querySelector('.cap-heat-store');
+  if(!store){
+    // Tidslinje-visningen har ingen skjult liste i cellen — byg den her.
+    var mm=date(cell.dataset.date),ee=add(mm,6),uu=+cell.dataset.userId;
+    var html=bookings.filter(function(b){return isCapacityBooking(b)&&+b.user_id===uu&&workDates(b).some(function(d){var q=date(d);return q>=mm&&q<=ee;});}).map(function(b){
+      var lp=capLabelParts(b),wd=workDates(b),n=wd.filter(function(d){var q=date(d);return q>=mm&&q<=ee;}).length;
+      var dw=Math.round((capDaysOf(b)/wd.length)*n*4)/4;
+      return '<div class="cap-job capacity-reservation" draggable="true" data-booking-id="'+b.id+'" title="Klik for at rette · træk for at flytte"><div class="cap-job-top"><span class="cap-job-name">◌ '+esc(lp.name)+'</span><span class="cap-job-days">'+dw+'d</span><button class="cap-job-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></div>'+(lp.desc?'<div class="cap-job-desc">'+esc(lp.desc)+'</div>':'')+'</div>';
+    }).join('');
+    store=document.createElement('div');store.innerHTML=html;
+  }
   var uid=+cell.dataset.userId,ds=cell.dataset.date,u=users.find(function(x){return +x.id===uid;})||{name:''};
   var m=date(ds),cap=+u.weekly_capacity||5,booked=weeklyLoad(uid,m),free=cap-booked;
   var hc=capHeatClass(booked,cap);
@@ -14217,6 +14231,13 @@ function capOpenHeatPop(cell){
       capView=b.dataset.capView;try{localStorage.setItem('gm_cap_view2',capView);}catch(_){}
       renderCapacity();setTimeout(function(){scrollToWeek(weekKey(new Date()));},60);
     });
+    document.getElementById('cap-tl').addEventListener('click',function(e){
+      var c=e.target.closest('.ctl-heat');if(!c)return;
+      e.stopPropagation();
+      var pop=document.getElementById('cap-heat-pop'),key=c.dataset.userId+':'+c.dataset.date;
+      if(!pop.hidden&&pop.dataset.key===key){capCloseHeatPop();return;}
+      capOpenHeatPop(c);pop.dataset.key=key;
+    });
     document.getElementById('cap-body').addEventListener('click',function(e){
       if(capView!=='heat')return;
       if(e.target.closest('[data-action],button,a'))return;
@@ -14229,7 +14250,7 @@ function capOpenHeatPop(cell){
     document.addEventListener('click',function(e){
       var pop=document.getElementById('cap-heat-pop');if(!pop||pop.hidden)return;
       if(e.target.closest('[data-cap-pop-close]')){capCloseHeatPop();return;}
-      if(!e.target.closest('#cap-heat-pop,.cap-heat-drop'))capCloseHeatPop();
+      if(!e.target.closest('#cap-heat-pop,.cap-heat-drop,.ctl-heat'))capCloseHeatPop();
       // En handling i popup'en (reservér, ferie, tidslinje, rediger) åbner sin egen dialog.
       else if(e.target.closest('#cap-heat-pop [data-action],#cap-heat-pop .cap-job'))setTimeout(capCloseHeatPop,0);
     });
@@ -14307,25 +14328,28 @@ function renderCapTimelineBoard(weeks,oosUsers){
     gaps.forEach(function(x){x.lane=place(x.s,x.e);});
     var lanes=Math.max(1,laneEnds.length);
     var cells=weeks.map(function(m,i){
-      return '<div class="ctl-cell'+(i===curIdx?' now':'')+(load[i]>cap+0.01?' over-load':'')+'" style="grid-column:'+(i+1)+';grid-row:1 / '+(lanes+2)+'" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'"></div>';
+      return '<div class="ctl-cell'+(i===curIdx?' now':'')+(load[i]>cap+0.01?' over-load':'')+'" style="grid-column:'+(i+1)+';grid-row:1 / '+(lanes+3)+'" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'"></div>';
     }).join('');
     var bars=segs.map(function(sg){
       var b=sg.b,lp=capLabelParts(b),col=planAltColor(lp.task?Object.assign({},b,{type_guess:lp.task.type_guess||b.type_guess}):b);
       var oos=capBookingOutOfSync(b);
-      return '<div class="cap-job ctl-bar'+(lp.task?'':' res')+(oos?' oos':'')+'" draggable="true" data-booking-id="'+b.id+'" style="grid-column:'+(sg.s+1)+' / span '+(sg.e-sg.s+1)+';grid-row:'+(sg.lane+1)+';--c:'+col+'" title="'+esc(lp.full)+' — '+capDaysOf(b)+' d i alt'+(oos?'\n⚠ Ude af sync med opgavens planlagte uge — åbn 📈 for at synkronisere':'')+'\nKlik for at rette · træk for at flytte">'
+      return '<div class="cap-job ctl-bar'+(lp.task?'':' res')+(oos?' oos':'')+'" draggable="true" data-booking-id="'+b.id+'" style="grid-column:'+(sg.s+1)+' / span '+(sg.e-sg.s+1)+';grid-row:'+(sg.lane+2)+';--c:'+col+'" title="'+esc(lp.full)+' — '+capDaysOf(b)+' d i alt'+(oos?'\n⚠ Ude af sync med opgavens planlagte uge — åbn 📈 for at synkronisere':'')+'\nKlik for at rette · træk for at flytte">'
         +'<span class="ctl-bn">'+(oos?'⚠ ':'')+esc(lp.name)+(lp.desc&&sg.e>sg.s?' · '+esc(lp.desc):'')+'</span><span class="ctl-bd">'+capFmt(capDaysOf(b))+'d</span></div>';
     }).join('');
     var vacHtml=vacs.map(function(v){
-      return '<div class="ctl-vac" data-action="edit-timeoff-day" data-user-id="'+u.id+'" data-off-id="'+v.off.id+'" style="grid-column:'+(v.s+1)+' / span '+(v.e-v.s+1)+';grid-row:'+(v.lane+1)+'" title="Klik for at redigere">'+esc(timeOffLabel(v.off))+' · '+v.days+'d</div>';
+      return '<div class="ctl-vac" data-action="edit-timeoff-day" data-user-id="'+u.id+'" data-off-id="'+v.off.id+'" style="grid-column:'+(v.s+1)+' / span '+(v.e-v.s+1)+';grid-row:'+(v.lane+2)+'" title="Klik for at redigere">'+esc(timeOffLabel(v.off))+' · '+v.days+'d</div>';
     }).join('');
     var gapHtml=gaps.map(function(x){
       var span=x.e-x.s+1,lbl=x.e===N-1&&span>2?'Ledig fra uge '+weekNo(weeks[x.s]):capFmt(x.free)+' ledig'+(Math.abs(x.free-1)<.01?' dag':'e dage');
-      return '<div class="ctl-gap" data-action="add-capacity" data-user-id="'+u.id+'" data-date="'+iso(weeks[x.s])+'" style="grid-column:'+(x.s+1)+' / span '+span+';grid-row:'+(x.lane+1)+'" title="Klik for at reservere · eller træk en opgave fra poolen herind">＋ '+lbl+'</div>';
+      return '<div class="ctl-gap" data-action="add-capacity" data-user-id="'+u.id+'" data-date="'+iso(weeks[x.s])+'" style="grid-column:'+(x.s+1)+' / span '+span+';grid-row:'+(x.lane+2)+'" title="Klik for at reservere · eller træk en opgave fra poolen herind">＋ '+lbl+'</div>';
     }).join('');
-    // Belægningskurve
-    var W=N*100,pts=load.map(function(l,i){var r=Math.min(1.3,l/cap);return (i*100+50)+','+(22-r*15).toFixed(1);}).join(' ');
-    var dots=load.map(function(l,i){return l>cap+0.01?'<circle cx="'+(i*100+50)+'" cy="'+(22-Math.min(1.3,l/cap)*15).toFixed(1)+'" r="3.5" fill="#EF4444" vector-effect="non-scaling-stroke"/>':'';}).join('');
-    var curve='<svg class="ctl-load" style="grid-column:1 / span '+N+';grid-row:'+(lanes+1)+'" viewBox="0 0 '+W+' 24" preserveAspectRatio="none"><line x1="0" x2="'+W+'" y1="7" y2="7" stroke="#CBD5E1" stroke-dasharray="6 6" vector-effect="non-scaling-stroke"/><polyline points="'+pts+'" fill="none" stroke="'+(u.color||'#4F46E5')+'" stroke-width="2" vector-effect="non-scaling-stroke"/>'+dots+'</svg>';
+    // RUNDE FO (Martin: "kombination af A og tidslinjen", uden kurven) —
+    // øverst i rækken en varmekort-boks pr. uge (booket/kapacitet, farvet
+    // efter belægning). Klik på den åbner ugens opgaver.
+    var heatRow=weeks.map(function(m,i){
+      return '<div class="ctl-heat" data-user-id="'+u.id+'" data-date="'+iso(m)+'"'+(offN[i]?' data-has-off="1"':'')+' style="grid-column:'+(i+1)+';grid-row:1" title="Klik for ugens opgaver">'
+        +capHeatBox(load[i],cap,offN[i]?'<span class="cap-heat-off">🏖'+offN[i]+'</span>':'')+'</div>';
+    }).join('');
     // Venstre kolonne
     var next4=0;for(var q=curIdx;q<Math.min(N,curIdx+4);q++)next4+=load[q];
     var cap4=cap*Math.min(4,N-curIdx),pct=cap4?Math.round(next4/cap4*100):0;
@@ -14334,7 +14358,7 @@ function renderCapTimelineBoard(weeks,oosUsers){
       +'<span class="ctl-chip'+(pct>100?' over':'')+'" title="Booket de næste 4 uger">'+pct+' % næste 4 uger</span>'
       +(hasOos?' <button type="button" class="ctl-chip over" style="border:0;cursor:pointer" data-action="open-cap-timeline" data-user-id="'+u.id+'" data-date="'+iso(weeks[curIdx])+'" title="En reservation er ude af sync med sin opgave">⚠ sync</button>':'')
       +'</div></div>';
-    return '<div class="ctl-row">'+who+'<div class="ctl-lane" style="grid-template-rows:repeat('+lanes+',30px) 26px">'+cells+gapHtml+vacHtml+bars+curve+'</div></div>';
+    return '<div class="ctl-row">'+who+'<div class="ctl-lane" style="grid-template-rows:34px repeat('+lanes+',30px) 6px">'+cells+heatRow+gapHtml+vacHtml+bars+'</div></div>';
   }
   var grouped=teamList('capacity'),html='';
   var byTrade=grouped.internal.map(function(u,i){return {u:u,i:i};}).sort(function(a,c){return String(a.u.trade||'~').localeCompare(String(c.u.trade||'~'),'da')||a.i-c.i;});
