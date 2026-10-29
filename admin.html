@@ -1312,7 +1312,8 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .prv-bar.is-done{opacity:.6}
 .prv-bar-name{font-size:12px;font-weight:700;color:color-mix(in srgb,var(--c) 70%,#111318);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prv-bar-sub{font-size:10.5px;color:color-mix(in srgb,var(--c) 55%,#4B5563);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
-body.plan-alt-dragging .prv-bar,body.plan-alt-dragging .pcv-card{pointer-events:none}
+body.plan-alt-dragging .prv-bar,body.plan-alt-dragging .pcv-card,body.plan-alt-dragging .drop-zone .assignment{pointer-events:none}
+.pcv-chip.over{border-color:var(--bly-accent);transform:scale(1.12)}
 /* RUNDE FI — stræk-håndtag og højreklik-menu */
 .prv-h{position:absolute;top:0;bottom:0;width:9px;cursor:ew-resize;z-index:3;touch-action:none}
 .prv-h.left{left:-3px}
@@ -4573,7 +4574,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.38.0 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.38.1 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -13491,7 +13492,7 @@ function planCardsHtml(){
   if(planCardsUser&&!peopleById[planCardsUser])planCardsUser=null;
   var dailyIndex=indexDailyBookings(bookings);
   var rail='<div class="pcv-rail"><button type="button" class="pcv-chip all'+(planCardsUser?'':' active')+'" data-plan-cards-user="" title="Alle medarbejdere">Alle</button>'
-    +people.map(function(u){return '<button type="button" class="pcv-chip'+(+planCardsUser===+u.id?' active':'')+'" data-plan-cards-user="'+u.id+'" title="'+esc(u.name)+'">'+planAltAvatar(u,34)+'</button>';}).join('')
+    +people.map(function(u){return '<button type="button" class="pcv-chip'+(+planCardsUser===+u.id?' active':'')+'" data-plan-cards-user="'+u.id+'" data-drop="day" data-chip="1" data-user-id="'+u.id+'" data-date="" title="'+esc(u.name)+' — slip en opgave her for at give den til '+esc(u.name.split(' ')[0])+'">'+planAltAvatar(u,34)+'</button>';}).join('')
     +(pp.vendorCount?'<button type="button" class="pcv-chip vend" data-action="toggle-plan-vendors" title="'+(pp.vendorsOpen?'Skjul':'Vis')+' vendors">🧰</button>':'')
     +'</div>';
   var sel=planCardsUser?peopleById[planCardsUser]:null;
@@ -13550,7 +13551,7 @@ function planCardsHtml(){
       +'<div class="pcv-col-foot">'+addBtn+'</div>'
       +'</div>';
   }).join('');
-  var hint=sel?'Viser kun <b>'+esc(sel.name)+'</b> — træk opgaver fra poolen ind på en dag':'Vælg en medarbejder for at filtrere — eller træk et kort til en anden dag';
+  var hint=sel?'Viser kun <b>'+esc(sel.name)+'</b> — træk opgaver fra poolen ind på en dag, eller slip et kort på en anden medarbejder til venstre':'Træk et kort til en anden dag — eller slip det på en medarbejder til venstre for at give opgaven videre';
   return '<div class="pcv"><div class="pcv-hint">'+hint+'</div><div class="pcv-wrap">'+rail+'<div class="pcv-cols">'+cols+'</div></div></div>'+planAltLegend();
 }
 // ── RUNDE FI (Martin: "gør så jeg kan højreklikke og kopiere den, eller
@@ -13673,6 +13674,13 @@ document.addEventListener('pointerup',async function(){
     // trækkes til en anden dag beholder sin egen medarbejder. Fra poolen skal
     // man først vælge en medarbejder i skinnen.
     alt.addEventListener('drop',function(e){
+      var chip=e.target.closest('.pcv-chip[data-chip]');
+      if(chip){
+        var bb=dragPayload&&dragPayload.kind==='booking'&&bookings.find(function(x){return +x.id===+dragPayload.bookingId;});
+        if(bb){chip.dataset.date=dragPayload.originDate||String(bb.start_date).slice(0,10);}
+        else{e.preventDefault();e.stopPropagation();chip.classList.remove('over');toast('Træk opgaven ind på en dag i stedet','👉');}
+        return;
+      }
       var z=e.target.closest('[data-cards-any="1"]');
       if(!z)return;
       if(dragPayload&&dragPayload.kind==='booking'){
@@ -13684,7 +13692,10 @@ document.addEventListener('pointerup',async function(){
       }
     },true);
     // Bjælkerne skal ikke "stjæle" et drop fra cellerne under dem.
-    document.addEventListener('dragstart',function(){if(planView!=='classic')document.body.classList.add('plan-alt-dragging');});
+    // FEJL RETTET (Martin: "kan stadig ikke trække opgaverne"): klassen sætter
+    // pointer-events:none på selve bjælken/kortet. Sat SYNKRONT i dragstart
+    // afbryder Chrome trækket med det samme — derfor først efter et øjeblik.
+    document.addEventListener('dragstart',function(){setTimeout(function(){if(dragPayload)document.body.classList.add('plan-alt-dragging');},30);});
     document.addEventListener('dragend',function(){document.body.classList.remove('plan-alt-dragging');});
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
@@ -15466,10 +15477,15 @@ function planReorderPlan(e,zone,draggedId){
   var order=others.slice();order.splice(idx,0,+draggedId);
   return {order:order,before:uniq,marker:marker,after:after};
 }
-function planReorderApplies(b,zone){
+function planReorderApplies(b,zone,origin){
   if(!b||isCapacityBooking(b))return false;
   if(document.getElementById('page-timeline').classList.contains('active'))return false;
-  var ds=zone.dataset.date;if(!ds||planWorkDates(b).indexOf(ds)<0)return false;
+  if(zone.dataset.chip)return false;
+  var ds=zone.dataset.date,wds=planWorkDates(b);if(!ds||wds.indexOf(ds)<0)return false;
+  // FEJL RETTET: kun den dag man greb fat i er "samme plads". Før blev en
+  // flerdages opgave sluppet på en af sine ANDRE dage tolket som ny
+  // rækkefølge, så den ikke kunne flyttes fra dag til dag.
+  if(ds!==((origin&&wds.indexOf(origin)>-1)?origin:wds[0]))return false;
   var any=zone.dataset.cardsAny==='1';
   return any||+zone.dataset.userId===+b.user_id;
 }
@@ -15479,7 +15495,7 @@ document.addEventListener('dragover',function(e){
   planClearReorderMarks();
   if(!z||!dragPayload||dragPayload.kind!=='booking')return;
   var b=bookings.find(function(x){return +x.id===+dragPayload.bookingId;});
-  if(!planReorderApplies(b,z))return;
+  if(!planReorderApplies(b,z,dragPayload.originDate))return;
   var plan=planReorderPlan(e,z,b.id);
   if(plan&&plan.marker&&plan.order.join()!==plan.before.join())plan.marker.classList.add(plan.after?'reorder-after':'reorder-before');
 });
@@ -15514,7 +15530,7 @@ async function handleDrop(e,zone){
     }else if(p.kind==='booking'){
       var b=bookings.find(function(x){return +x.id===+p.bookingId;});
       // RUNDE FL — sluppet i samme dag hos samme person = ny rækkefølge.
-      if(b&&zone.dataset.drop==='day'&&planReorderApplies(b,zone)){await planReorderDrop(e,zone,b);return;}
+      if(b&&zone.dataset.drop==='day'&&planReorderApplies(b,zone,p.originDate)){await planReorderDrop(e,zone,b);return;}
       if(!b||( +b.user_id===uid&&b.start_date===ds))return;
       var onTimeline=document.getElementById('page-timeline').classList.contains('active');
       // FEJL RETTET — se den store kommentar ved dragstart-lytteren ovenfor.
