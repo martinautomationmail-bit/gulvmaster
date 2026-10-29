@@ -80,6 +80,13 @@ app.disable('x-powered-by');
 // filen) — Close signerer den originale byte-for-byte body, ikke den
 // genparsede/genserialiserede JSON, så den skal fanges her inden parsing.
 app.use(express.json({ limit: '40mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
+// RUNDE FM — ændres en sags tidslinje (opgaver oprettet/flyttet/slettet),
+// placeres sagen i den rigtige automatiske Kanban-kolonne med det samme.
+app.use((req, res, next) => {
+  const m = req.method !== 'GET' && /^\/api\/projects\/(\d+)\/tasks/.exec(req.path);
+  if (m) res.on('finish', () => { if (res.statusCode < 400) recomputeProjectStatuses({ projectId: Number(m[1]) }).catch(() => {}); });
+  next();
+});
 app.use(express.urlencoded({ extended: false }));
 
 const upload = multer({
@@ -2477,6 +2484,7 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+    -- RUNDE FM — stadier med auto_rule styres af sagens tidslinje (se recomputeProjectStatuses).
     -- RUNDE R (Martins ønske: "gør så jeg selv kan ændre/tilføje stadier") —
     -- projekt-Kanban'ets faser var hidtil 4 hårdkodede værdier i selve koden
     -- (active/on_hold/done/archived). De er nu rækker i denne tabel i stedet,
@@ -2507,6 +2515,7 @@ async function initSchema() {
       ('done','Afsluttet','#15803D',2,1),
       ('archived','Arkiveret','#6B7280',3,1)
     ON CONFLICT (key) DO NOTHING;
+    ALTER TABLE project_stages ADD COLUMN IF NOT EXISTS auto_rule TEXT;
     -- Sagsnummer (GM-ÅÅÅÅ-NNNN) — tildeles automatisk når sagen oprettes (se
     -- nextDocNumber('project','GM') ved INSERT INTO projects), men er et helt
     -- almindeligt tekstfelt bagefter, så det evt. kan rettes manuelt ligesom de
@@ -16596,7 +16605,120 @@ app.get('/api/project-types', auth, asyncRoute(async (req, res) => {
   if (!options.length) options.push('Gulvslibning', 'Gulvlægning', 'Maler', 'Enterprise');
   res.json(options);
 }));
+// ══════════════════════════════════════════════════════════════
+// RUNDE FM — AUTOMATISKE SAGS-STADIER (Martin: "kan vi gøre noget smart så
+// sagerne selv lægger sig korrekt baseret på opstartsdatoen i deres
+// tidslinje og rykker sig i Kanban?").
+// Et stadie med auto_rule styres af sagens tidslinje (Gantt-opgavernes
+// første start / sidste slut; bookinger som reserve). Manuelle stadier (På
+// hold, Afsluttet, Faktureret, Arkiveret og alle Martins egne) røres aldrig —
+// undtagen at en sag der er Afsluttet eller over slutdato rykker til
+// Faktureret, når tilbuddet på sagen er fuldt faktureret. En sag der er
+// faktureret på forhånd (før arbejdet) bliver i sin dato-kolonne med et
+// "Faktureret"-mærke, så den ikke forsvinder fra de kommende sager.
+// Køres ved opstart, hvert 10. minut, når Projekter hentes (maks hvert 20.
+// sek.) og straks når en sag/tidslinje ændres.
+// ══════════════════════════════════════════════════════════════
+const AUTO_STAGE_RULES = ['next_year', 'this_year', 'next_week', 'this_week', 'running', 'overdue'];
+async function migrateAutoProjectStages() {
+  const name = 'auto_project_stages_20261029';
+  try {
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const defs = [
+      { key: 'kommende_naeste_aar', label: 'Kommende – næste år', color: '#94A3B8', rule: 'next_year' },
+      { key: 'kommende_sag', label: 'Kommende – i år', color: '#6366F1', rule: 'this_year' },
+      { key: 'naeste_uge', label: 'Næste uge', color: '#8B5CF6', rule: 'next_week' },
+      { key: 'denne_uge', label: 'Denne uge', color: '#0EA5E9', rule: 'this_week' },
+      { key: 'active', label: 'Igangværende', color: '#2563EB', rule: 'running' },
+      { key: 'over_slutdato', label: 'Over slutdato – mangler afslutning', color: '#DC2626', rule: 'overdue' }
+    ];
+    const tail = ['on_hold', 'done', 'faktureret', 'archived'];
+    let pos = 0;
+    for (const d of defs) {
+      await pool.query(`INSERT INTO project_stages (key,label,color,position,is_system,auto_rule) VALUES ($1,$2,$3,$4,0,$5)
+        ON CONFLICT (key) DO UPDATE SET label=EXCLUDED.label, position=EXCLUDED.position, auto_rule=EXCLUDED.auto_rule`, [d.key, d.label, d.color, pos++, d.rule]);
+    }
+    for (const k of tail) await pool.query('UPDATE project_stages SET position=$1 WHERE key=$2', [pos++, k]);
+    // "Næste måned" erstattes af Næste uge/Denne uge; flyttes kun hvis den er tom.
+    const nm = await pgOne("SELECT COUNT(*)::int AS n FROM projects WHERE status='naste_maned'");
+    if (nm && nm.n === 0) await pool.query("DELETE FROM project_stages WHERE key='naste_maned'");
+    else await pool.query("UPDATE projects SET status='kommende_sag' WHERE status='naste_maned'");
+    await pool.query("DELETE FROM project_stages WHERE key='naste_maned'");
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ stages: defs.length })]);
+    console.log('Automatiske sags-stadier oprettet.');
+  } catch (e) { console.error('migrateAutoProjectStages fejlede:', e.message); }
+}
+function copenhagenTodayIso() {
+  const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return p; // YYYY-MM-DD
+}
+function isoAddDays(iso, n) { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+// Ren funktion (testbar): hvilken auto-regel passer til en sag ud fra dens datoer?
+function projectAutoRule(start, end, today) {
+  if (!start) return null;
+  const dow = (new Date(today + 'T12:00:00Z').getUTCDay() + 6) % 7; // 0 = mandag
+  const monday = isoAddDays(today, -dow), nextMonday = isoAddDays(monday, 7), weekAfter = isoAddDays(monday, 14);
+  const last = end && end >= start ? end : start;
+  if (start >= monday && start < nextMonday) return 'this_week';
+  if (start >= nextMonday && start < weekAfter) return 'next_week';
+  if (start >= weekAfter) return start.slice(0, 4) > today.slice(0, 4) ? 'next_year' : 'this_year';
+  return last >= today ? 'running' : 'overdue';
+}
+let autoStageLastRun = 0, autoStageRunning = null;
+async function recomputeProjectStatuses(opts) {
+  opts = opts || {};
+  if (!opts.force && !opts.projectId && Date.now() - autoStageLastRun < 20000) return { changed: 0, skipped: true };
+  if (autoStageRunning && !opts.projectId) return autoStageRunning;
+  const run = (async () => {
+    const stages = (await pool.query('SELECT key, auto_rule FROM project_stages')).rows;
+    const ruleToKey = {}, autoKeys = new Set();
+    stages.forEach(s => { if (s.auto_rule && AUTO_STAGE_RULES.includes(s.auto_rule)) { ruleToKey[s.auto_rule] = s.key; autoKeys.add(s.key); } });
+    if (!autoKeys.size) return { changed: 0 };
+    const hasFaktureret = stages.some(s => s.key === 'faktureret');
+    const params = [];
+    let where = '';
+    if (opts.projectId) { params.push(opts.projectId); where = 'WHERE p.id=$1'; }
+    const rows = (await pool.query(`
+      SELECT p.id, p.status, p.quote_id,
+        g.s AS g_start, g.e AS g_end, bk.s AS b_start, bk.e AS b_end,
+        ql.items, ql.inv_lines
+      FROM projects p
+      LEFT JOIN (SELECT project_id, MIN(substr(start_date,1,10)) s, MAX(substr(COALESCE(NULLIF(end_date,''),start_date),1,10)) e
+                 FROM gantt_tasks WHERE project_id IS NOT NULL AND start_date IS NOT NULL AND start_date<>'' GROUP BY project_id) g ON g.project_id=p.id
+      LEFT JOIN (SELECT t.project_id, MIN(substr(b.start_date,1,10)) s, MAX(substr(COALESCE(b.end_date,b.start_date),1,10)) e
+                 FROM planning_bookings b JOIN jt_tasks t ON t.id=b.task_id
+                 WHERE t.project_id IS NOT NULL AND COALESCE(t.is_visit,0)=0 AND COALESCE(b.planning_mode,'daily')='daily' GROUP BY t.project_id) bk ON bk.project_id=p.id
+      LEFT JOIN (SELECT quote_id, COUNT(*) FILTER (WHERE COALESCE(line_type,'item')<>'text')::int items,
+                        COUNT(*) FILTER (WHERE COALESCE(line_type,'item')<>'text' AND invoiced_in_invoice_id IS NOT NULL)::int inv_lines
+                 FROM quote_lines GROUP BY quote_id) ql ON ql.quote_id=p.quote_id
+      ${where}`, params)).rows;
+    const today = copenhagenTodayIso();
+    let changed = 0;
+    const moves = [];
+    for (const r of rows) {
+      const fullyInvoiced = r.items > 0 && r.inv_lines === r.items;
+      let next = r.status;
+      if (autoKeys.has(r.status) || !stages.some(s => s.key === r.status)) {
+        const rule = projectAutoRule(r.g_start || r.b_start, r.g_end || r.b_end, today);
+        if (rule && ruleToKey[rule]) next = ruleToKey[rule];
+        if (rule === 'overdue' && fullyInvoiced && hasFaktureret) next = 'faktureret';
+      } else if (r.status === 'done' && fullyInvoiced && hasFaktureret) {
+        next = 'faktureret';
+      }
+      if (next !== r.status) { moves.push([next, r.id]); }
+    }
+    for (const [status, id] of moves) {
+      await pool.query(`UPDATE projects SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [status, id]);
+      changed++;
+    }
+    autoStageLastRun = Date.now();
+    return { changed };
+  })();
+  if (!opts.projectId) autoStageRunning = run;
+  try { return await run; } finally { if (!opts.projectId) autoStageRunning = null; }
+}
 app.get('/api/projects', auth, asyncRoute(async (req, res) => {
+  await recomputeProjectStatuses().catch(e => console.error('Auto-stadier fejlede:', e.message));
   // Pris/tilbudsbeløb sendes KUN med til kontor/økonomi-brugere (til søgning/visning
   // i admin.html's Projekter-liste) — aldrig til employee/employee-demo, som deler
   // dette samme endpoint til deres sagsliste og ikke må se priser.
@@ -16613,7 +16735,12 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
       -- oprettet i september med arbejde planlagt i december dukkede derfor forkert
       -- op under "sep 2026". Her hentes den tidligste planlagte Gantt-startdato pr.
       -- sag, så frontenden kan filtrere på DEN i stedet for oprettelsesdatoen.
-      (SELECT MIN(start_date) FROM gantt_tasks WHERE project_id=p.id AND start_date IS NOT NULL AND start_date<>'') AS gantt_start
+      (SELECT MIN(start_date) FROM gantt_tasks WHERE project_id=p.id AND start_date IS NOT NULL AND start_date<>'') AS gantt_start,
+      -- RUNDE FM — slutdato og "tilbuddet er fuldt faktureret" til Kanban-kortene.
+      (SELECT MAX(COALESCE(NULLIF(end_date,''),start_date)) FROM gantt_tasks WHERE project_id=p.id AND start_date IS NOT NULL AND start_date<>'') AS gantt_end,
+      (SELECT COUNT(*) FILTER (WHERE COALESCE(line_type,'item')<>'text') > 0
+              AND COUNT(*) FILTER (WHERE COALESCE(line_type,'item')<>'text' AND invoiced_in_invoice_id IS NULL) = 0
+         FROM quote_lines WHERE quote_id=p.quote_id) AS fully_invoiced
     FROM projects p LEFT JOIN quotes q ON q.id = p.quote_id${includePrice ? ' LEFT JOIN invoices i ON i.id = p.invoice_id' : ''}
     ORDER BY p.created_at DESC
   `);
@@ -17004,6 +17131,7 @@ app.delete('/api/project-stages/:id', auth, panelAccess('projects'), asyncRoute(
   const current = await pgOne('SELECT * FROM project_stages WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Stadiet blev ikke fundet' });
   if (current.is_system) return res.status(400).json({ error: 'Dette er et af de indbyggede stadier og kan ikke slettes — det kan godt omdøbes og flyttes.' });
+  if (current.auto_rule) return res.status(400).json({ error: 'Dette stadie styres automatisk af sagernes datoer og kan ikke slettes — det kan godt omdøbes, farves og flyttes.' });
   const inUse = await pgOne('SELECT COUNT(*)::int AS n FROM projects WHERE status=$1', [current.key]);
   if (inUse && inUse.n > 0) return res.status(400).json({ error: 'Stadiet bruges stadig af ' + inUse.n + ' sag(er) — flyt dem til et andet stadie først' });
   await pool.query('DELETE FROM project_stages WHERE id=$1', [req.params.id]);
@@ -17066,7 +17194,17 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
     b.project_type !== undefined ? (b.project_type || null) : current.project_type,
     req.params.id
   ]);
-  res.json({ ok: true });
+  // RUNDE FM — trækkes sagen til et automatisk stadie, placeres den straks
+  // efter sine datoer (kan altså lande i en anden auto-kolonne end den man slap i).
+  let finalStatus = newStatus;
+  if (b.status !== undefined) {
+    try {
+      await recomputeProjectStatuses({ projectId: Number(req.params.id) });
+      const after = await pgOne('SELECT status FROM projects WHERE id=$1', [req.params.id]);
+      if (after) finalStatus = after.status;
+    } catch (e) { console.error('Auto-stadie for sag fejlede:', e.message); }
+  }
+  res.json({ ok: true, status: finalStatus });
 
   // RUNDE H #315 (Martins ønske: "opgaver i opgavepool får kundens adresse og
   // tlf ikke med ind og i toppen af popuppen kan jeg ikke se kundens navn som
@@ -28110,6 +28248,8 @@ async function start() {
   await initSchema();
   await sprog.initSchema();
   await migrateTimetrackPanelPage();
+  await migrateAutoProjectStages();
+  await recomputeProjectStatuses({ force: true }).then(r => console.log('Auto-stadier: ' + r.changed + ' sag(er) flyttet.')).catch(e => console.error('Auto-stadier fejlede:', e.message));
   await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
   await backfillCaseNumbers().catch(error => console.error('Efterudfyldning af sagsnumre fejlede:', error.message));
   await backfillLegacyJobTaskProjectLinks().catch(error => console.error('Efterudfyldning af sags-kobling fejlede:', error.message));
@@ -28219,6 +28359,8 @@ async function start() {
   // kun når admin selv trykker på knappen (se POST /api/customer-emails/send-reminders
   // nedenfor). Notifikationsscanneren kører stadig automatisk, det er intern info,
   // ikke noget der går ud til kunder.
+  // RUNDE FM — sager rykker selv kolonne efterhånden som datoerne nærmer sig.
+  cron.schedule('*/10 * * * *', () => recomputeProjectStatuses({ force: true }).catch(e => console.error('Auto-stadier fejlede:', e.message)));
   cron.schedule('15 * * * *', () => runNotificationScan().catch(e => { console.error('Notifikationsscan fejlede:', e.message); logSystemEvent('notification_scan', 'error', 'Notifikationsscan fejlede: ' + e.message); }));
   // Rykker-scan kl. 10 hver dag — runDunningScan tjekker selv om det er slået til.
   cron.schedule('0 10 * * *', () => runDunningScan(false).catch(e => { console.error('Rykker-scan fejlede:', e.message); logSystemEvent('dunning_scan', 'error', 'Rykker-scan fejlede: ' + e.message); }));

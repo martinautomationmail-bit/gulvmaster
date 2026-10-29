@@ -1989,6 +1989,12 @@ body.plan-alt-dragging .prv-bar.dragging,body.plan-alt-dragging .pcv-card.draggi
 .pdst-del:hover{background:#FEF2F2;color:#B91C1C;border-color:#FECACA}
 .pdst-default{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-top:14px;cursor:pointer}
 .pdst-default input{width:16px;height:16px;margin:0}
+.pjk-chips{display:flex;flex-wrap:wrap;gap:4px;margin:5px 0 2px}
+.pjk-date{font-size:10.5px;font-weight:700;color:#374151;background:#F3F4F6;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.pjk-date.over{background:#FEF2F2;color:#B91C1C}
+.pjk-date.muted{color:#9CA3AF;font-weight:600}
+.pjk-inv{font-size:10.5px;font-weight:700;color:#6D28D9;background:#F5F3FF;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.pjk-auto{font-size:11px;margin-left:5px;opacity:.75;cursor:help}
 .crmp-card-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--bly-sub);margin-top:3px}
 .crmp-card-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .crmp-card-badge{background:var(--bly-accent-soft);color:var(--bly-accent);font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px}
@@ -4567,7 +4573,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.37.0 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.38.0 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -32664,10 +32670,13 @@ async function pdStagesSave(){
 async function savePjRowStatus(id,status){
   var r=await api('/api/projects/'+id,{method:'PUT',body:JSON.stringify({status:status})});
   if(r&&r.ok){
+    var finalStatus=r.status||status;
     var row=pjProjects.find(function(p){return +p.id===+id;});
-    if(row)row.status=status;
-    if(pjCurrent&&+pjCurrent.id===+id)pjCurrent.status=status;
-    toast('Status opdateret','✓');
+    if(row)row.status=finalStatus;
+    if(pjCurrent&&+pjCurrent.id===+id)pjCurrent.status=finalStatus;
+    // RUNDE FM — en automatisk kolonne placerer selv sagen efter datoen.
+    if(finalStatus!==status){var fs=pjStages.find(function(x){return x.key===finalStatus;});toast('Placeret automatisk efter tidslinjen: '+(fs?fs.label:finalStatus),'⚡');}
+    else toast('Status opdateret','✓');
     renderPjProjects();
   }else{toast((r&&r.error)||'Kunne ikke opdatere status','❌');await loadPjProjects();renderPjProjects();}
 }
@@ -32760,9 +32769,22 @@ function pjKanbanCardHtml(p){
     // kun fallback for rene direkte-fakturaer UDEN noget tilbud overhovedet.
     var price=p.quote_total!=null?p.quote_total:p.invoice_total;
   var contact=[p.customer_address,p.customer_phone].filter(Boolean).join(' · ');
+  // RUNDE FM — tidslinjens datoer på kortet + "Faktureret"-mærke når tilbuddet
+  // allerede er faktureret, men sagen endnu ikke er færdig (forudbetalt).
+  var st=pjStages.find(function(x){return x.key===p.status;})||{};
+  var ds=String(p.gantt_start||'').slice(0,10),de=String(p.gantt_end||'').slice(0,10);
+  function dd(x){var d=date(x);return d.getDate()+'/'+(d.getMonth()+1)+(d.getFullYear()!==new Date().getFullYear()?'-'+String(d.getFullYear()).slice(2):'');}
+  var dateChip='';
+  if(ds){
+    if(st.auto_rule==='overdue')dateChip='<span class="pjk-date over" title="Tidslinjen sluttede '+esc(de)+' — sæt sagen til Afsluttet, eller ret datoerne">⚠ Slut '+dd(de)+'</span>';
+    else if(st.auto_rule==='running')dateChip='<span class="pjk-date" title="Startede '+esc(ds)+'">▶ Til '+dd(de||ds)+'</span>';
+    else dateChip='<span class="pjk-date" title="Planlagt start">📅 Start '+dd(ds)+(de&&de!==ds?' → '+dd(de):'')+'</span>';
+  }else dateChip='<span class="pjk-date muted" title="Sagen har ingen datoer på tidslinjen endnu">Ingen datoer</span>';
+  var invBadge=p.fully_invoiced&&p.status!=='faktureret'?'<span class="pjk-inv" title="Tilbuddet på sagen er fuldt faktureret">✓ Faktureret</span>':'';
   return '<div class="crmp-card" draggable="true" data-id="'+p.id+'">'
     +'<div class="crmp-card-name">'+esc(p.name)+(p.job_number?' <span class="tag" title="Sagsnummer" style="font-weight:600">#'+esc(p.job_number)+'</span>':'')+(p.project_type?' <span class="tag" title="Faggruppe" style="background:var(--bly-accent-soft);color:var(--bly-accent);font-weight:600">🏷️ '+esc(p.project_type)+'</span>':'')+'</div>'
     +(contact?'<div class="crmp-card-row">'+esc(contact)+'</div>':'')
+    +'<div class="pjk-chips">'+dateChip+invBadge+'</div>'
     +'<div class="crmp-card-foot">'
     +'<span class="crmp-card-value">'+(price!=null?krFmt(price):'–')+'</span>'
     +'<span class="sub">'+(p.task_count||0)+' opg.</span>'
@@ -32772,11 +32794,21 @@ function pjKanbanCardHtml(p){
     +'<button type="button" class="qz-icon-btn" data-action="pj-kanban-delete" data-id="'+p.id+'" title="Slet sagen" style="margin-left:auto">🗑</button>'
     +'</div></div>';
 }
+var PJ_AUTO_RULE_HELP={
+  next_year:'Automatisk: sager hvis tidslinje starter næste år eller senere',
+  this_year:'Automatisk: sager der starter senere i år (efter næste uge)',
+  next_week:'Automatisk: sager der starter i næste uge',
+  this_week:'Automatisk: sager der starter i denne uge',
+  running:'Automatisk: sager der er startet og hvis tidslinje ikke er slut endnu',
+  overdue:'Automatisk: tidslinjen er slut, men sagen er ikke sat til Afsluttet. Afslut sagen eller ret datoerne.'
+};
 function renderPjKanban(list){
   var board=document.getElementById('proj-kanban-board');
   var stages=pjShowArchived?pjAllStagesSorted():pjNonArchivedStages();
   board.innerHTML=stages.map(function(s){
     var cards=list.filter(function(p){return p.status===s.key;});
+    // RUNDE FM — automatiske kolonner sorteres efter startdato (tidligst øverst).
+    if(s.auto_rule)cards=cards.slice().sort(function(a,b){return String(a.gantt_start||'9999').localeCompare(String(b.gantt_start||'9999'));});
     // RUNDE H #313 (Martins fejlrapport: "Nej Kanban skal have over hver
     // stage hvor meget. Og så også pænere en det du har lavet der?") — En
     // enkelt sum i toppen af HELE boardet (forrige forsøg, RUNDE H #308) var
@@ -32789,7 +32821,9 @@ function renderPjKanban(list){
     var sum=cards.reduce(function(s2,p){var price=p.quote_total!=null?p.quote_total:p.invoice_total;return s2+(Number(price)||0);},0);
     return '<div class="crmp-col" data-status="'+esc(s.key)+'">'
       +'<div class="crmp-col-head"><div class="crmp-col-headrow"><div class="crmp-col-title" style="flex:1;min-width:0">'
-      +'<span class="crmp-col-dot" style="background:'+esc(s.color)+'"></span>'+esc(s.label)+'<span class="crmp-col-count">'+cards.length+'</span>'
+      +'<span class="crmp-col-dot" style="background:'+esc(s.color)+'"></span>'+esc(s.label)
+      +(s.auto_rule?'<span class="pjk-auto" title="'+esc(PJ_AUTO_RULE_HELP[s.auto_rule]||'Styres automatisk af sagens tidslinje')+'">⚡</span>':'')
+      +'<span class="crmp-col-count">'+cards.length+'</span>'
       +'</div></div>'
       +'<div class="crmp-col-sum" title="Samlet pris af sagerne i dette stadie"><span class="crmp-col-sum-label">I alt</span><span class="crmp-col-sum-value">'+krFmt(sum)+'</span></div>'
       +'</div>'
@@ -32965,10 +32999,10 @@ function pjRenderStagesList(){
     return '<div class="crmp-set-stage-row" data-stage-id="'+s.id+'">'
       +'<input type="color" value="'+esc(s.color)+'" data-action="stage-color" style="width:32px;height:28px;padding:1px;border-radius:6px;border:1px solid var(--bly-border)">'
       +'<input class="input" data-action="stage-name" value="'+esc(s.label)+'" style="flex:1">'
-      +(s.is_system?'<span class="sub" title="Indbygget stadie — kan omdøbes/omfarves/flyttes, men ikke slettes" style="white-space:nowrap">🔒 indbygget</span>':'')
+      +(s.auto_rule?'<span class="sub" title="'+esc(PJ_AUTO_RULE_HELP[s.auto_rule]||'')+'" style="white-space:nowrap">⚡ automatisk</span>':(s.is_system?'<span class="sub" title="Indbygget stadie — kan omdøbes/omfarves/flyttes, men ikke slettes" style="white-space:nowrap">🔒 indbygget</span>':''))
       +'<button class="qz-icon-btn" data-action="stage-up" title="Flyt op" '+(i===0?'disabled':'')+'>↑</button>'
       +'<button class="qz-icon-btn" data-action="stage-down" title="Flyt ned" '+(i===stages.length-1?'disabled':'')+'>↓</button>'
-      +(s.is_system?'':'<button class="qz-icon-btn" data-action="stage-delete" title="Slet">🗑</button>')
+      +(s.is_system||s.auto_rule?'':'<button class="qz-icon-btn" data-action="stage-delete" title="Slet">🗑</button>')
       +'</div>';
   }).join('');
   list.querySelectorAll('.crmp-set-stage-row').forEach(function(row){
