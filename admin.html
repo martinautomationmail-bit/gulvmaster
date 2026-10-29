@@ -1527,6 +1527,11 @@ body.plan-alt-dragging .prv-bar.dragging,body.plan-alt-dragging .pcv-card.draggi
 .gmx-head .plan-viewswitch button.active{background:#fff;color:#111318;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .gmx-head .cap-viewswitch button{height:28px;padding:0 12px}
 @media(max-width:760px){.gmx-overview{grid-template-columns:1fr}.gmx-tools{justify-content:flex-start;width:100%}.gmx-wk{font-size:13px}.gmx-head .plan-viewswitch{width:auto}}
+.cap-grp-btn{border:0;background:none;padding:0;cursor:pointer;display:inline-flex;align-items:center;gap:7px;font:800 10.5px Inter,system-ui,sans-serif;color:#6B7280;text-transform:uppercase;letter-spacing:.05em}
+.cap-grp-btn:hover{color:#111318}
+.cap-grp-btn i{display:inline-block;width:8px;height:8px;border-radius:2px}
+.cap-grp-btn em{font-style:normal;font-weight:700;color:#9CA3AF;letter-spacing:0}
+.cap-grp-car{width:10px;color:#9CA3AF}
 /* ── RUNDE FS — moderne kapacitets-popup + fordel over uger ── */
 .modal.capm{width:min(460px,100%);padding:0;border-radius:18px;overflow:hidden;box-shadow:0 24px 60px rgba(15,23,42,.28);border:1px solid #E5E7EB}
 .capm-head{display:flex;gap:12px;align-items:flex-start;padding:18px 20px 14px;border-bottom:1px solid #F1F2F5}
@@ -4842,7 +4847,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.47.0 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.48.0 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14692,6 +14697,97 @@ function capLabelParts(b){
   var i=label.indexOf(' — ');
   return {name:i>-1?label.slice(0,i):label,desc:i>-1?label.slice(i+3):'',task:linkedTask,full:label};
 }
+// ── RUNDE FW — foldbare fag-grupper + højreklik-menu i Kapacitet ──
+function capTradeLabel(u){return u.trade?String(u.trade):'Kontor';}
+function capSortByTrade(list){
+  return list.map(function(u,i){return {u:u,i:i};}).sort(function(a,b){
+    var ta=a.u.trade?String(a.u.trade):'',tb=b.u.trade?String(b.u.trade):'';
+    if(!ta!==!tb)return ta?-1:1; // Kontor (uden fag) sidst
+    return ta.localeCompare(tb,'da')||a.i-b.i;
+  }).map(function(x){return x.u;});
+}
+function capGrpCollapsed(){try{return JSON.parse(localStorage.getItem('gm_cap_collapsed')||'{}')||{};}catch(e){return {};}}
+function capGrpHeadHTML(t,n,collapsed){
+  var tt=(taskTypesList||[]).find(function(y){return String(y.label||'').toLowerCase()===String(t).toLowerCase();});
+  var c=t==='Kontor'?'#64748B':((tt&&tt.color)||'#94A3B8');
+  return '<button type="button" class="cap-grp-btn" data-cap-grp="'+esc(t)+'" title="'+(collapsed[t]?'Fold ud':'Fold sammen')+'"><span class="cap-grp-car">'+(collapsed[t]?'▸':'▾')+'</span><i style="background:'+c+'"></i>'+esc(t)+' <em>'+n+'</em></button>';
+}
+document.addEventListener('click',function(e){
+  var g=e.target.closest('[data-cap-grp]');if(!g)return;
+  var c=capGrpCollapsed(),k=g.dataset.capGrp;
+  if(c[k])delete c[k];else c[k]=1;
+  try{localStorage.setItem('gm_cap_collapsed',JSON.stringify(c));}catch(_){}
+  renderCapacity();
+});
+function capCtxClose(){var m=document.getElementById('cap-ctx-menu');if(m)m.remove();}
+function capCtxShow(e,title,items,onPick){
+  capCtxClose();
+  var m=document.createElement('div');m.id='cap-ctx-menu';m.className='plan-ctx';
+  m.innerHTML='<div class="plan-ctx-title">'+esc(title)+'</div>'+items.map(function(it){
+    if(it==='sep')return '<div class="plan-ctx-sep"></div>';
+    return '<button type="button" class="plan-ctx-item'+(it[3]?' '+it[3]:'')+'" data-ctx="'+it[0]+'"><span>'+it[1]+'</span>'+esc(it[2])+'</button>';
+  }).join('');
+  document.body.appendChild(m);
+  var w=m.offsetWidth,h=m.offsetHeight;
+  m.style.left=Math.min(e.clientX,window.innerWidth-w-8)+'px';
+  m.style.top=Math.min(e.clientY,window.innerHeight-h-8)+'px';
+  m.addEventListener('click',function(ev){var it=ev.target.closest('[data-ctx]');if(!it)return;ev.stopPropagation();capCtxClose();onPick(it.dataset.ctx);});
+}
+document.addEventListener('click',function(e){if(!e.target.closest('#cap-ctx-menu'))capCtxClose();},true);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')capCtxClose();});
+window.addEventListener('scroll',capCtxClose,true);
+document.addEventListener('contextmenu',function(e){
+  var pg=document.getElementById('page-capacity');if(!pg||!pg.classList.contains('active'))return;
+  var bar=e.target.closest('#page-capacity .cap-job,#cap-heat-pop .cap-job');
+  if(bar){
+    var b=bookings.find(function(x){return +x.id===+bar.dataset.bookingId;});if(!b||!isCapacityBooking(b))return;
+    e.preventDefault();capCloseHeatPop();
+    var lp=capLabelParts(b),wk=iso(mon(date(b.start_date))),next=iso(add(date(wk),7)),prev=iso(add(date(wk),-7));
+    var oos=capBookingOutOfSync(b),proj=lp.task&&lp.task.project_id;
+    capCtxShow(e,lp.full,[
+      ['edit','✏️','Rediger reservation'],
+      ['copynext','⧉','Kopiér til næste uge'],
+      ['copyto','⧉','Kopiér til en anden uge / medarbejder…'],
+      ['movenext','→','Flyt 1 uge frem'],
+      ['moveprev','←','Flyt 1 uge tilbage'],
+      ['spread','↔','Fordel over flere uger…'],
+      oos?['resync','🔄','Synkronisér med opgavens planlagte uge']:null,
+      'sep',
+      ['timeline','📈','Tidslinje for medarbejderen'],
+      proj?['project','📁','Åbn sagen']:null,
+      ['copytext','📋','Kopiér kunde og opgave'],
+      'sep',
+      ['del','🗑','Slet reservation','danger']
+    ].filter(Boolean),async function(a){
+      var base={user_id:b.user_id,capacity_days:capDaysOf(b),label:b.capacity_label||lp.full,notes:b.notes||null};
+      if(a==='edit')openCapacityModal({booking:b});
+      else if(a==='copynext'){var r=await createCapacityReservation(b.task_id,b.user_id,next,capDaysOf(b),b.capacity_label||'',b.notes||null);if(r&&r.ok){toast('Kopieret til uge '+weekNo(date(next)),'⧉');await loadAll();}else if(r)toast(r.error||'Kunne ikke kopiere','❌');}
+      else if(a==='copyto'){openCapacityModal({taskId:String(b.task_id).indexOf('capacity-')===0?null:b.task_id,userId:b.user_id,weekStart:next});document.getElementById('capacity-days').value=capDaysOf(b);document.getElementById('capacity-label').value=b.capacity_label||'';if(typeof capmUpdateLoad==='function')capmUpdateLoad();}
+      else if(a==='movenext'||a==='moveprev'){var to=a==='movenext'?next:prev;var r2=await api('/api/capacity-reservations/'+b.id,{method:'PUT',body:JSON.stringify(Object.assign({},base,{week_start:to}))});if(r2&&r2.ok){toast('Flyttet til uge '+weekNo(date(to)),a==='movenext'?'→':'←');await loadAll();}else if(r2)toast(r2.error||'Kunne ikke flytte','❌');}
+      else if(a==='spread')openCapSpreadModal(b,[wk,next]);
+      else if(a==='resync'){var r3=await api('/api/capacity-reservations/'+b.id+'/resync',{method:'PUT'});if(r3&&r3.ok){toast('Flyttet til opgavens planlagte uge','✓');await loadAll();}else if(r3)toast(r3.error||'Fejl','❌');}
+      else if(a==='timeline')openCapTimelinePopup(+b.user_id,wk);
+      else if(a==='project')openProjectDetail(proj);
+      else if(a==='copytext'){try{await navigator.clipboard.writeText([lp.name,lp.desc,lp.task&&lp.task.job_address,lp.task&&lp.task.customer_phone?'Tlf. '+lp.task.customer_phone:''].filter(Boolean).join('\n'));toast('Kopieret','📋');}catch(err){toast('Kunne ikke kopiere','❌');}}
+      else if(a==='del'){if(await gmConfirm('Slet reservationen "'+lp.name+'"?')){var r4=await api('/api/assignments/'+b.id,{method:'DELETE'});if(r4&&r4.ok){toast('Reservation slettet','🗑');await loadAll();}else if(r4)toast(r4.error||'Fejl','❌');}}
+    });
+    return;
+  }
+  var cell=e.target.closest('#cap-tl .ctl-cell,#page-capacity .cap-drop[data-drop="week"],#cap-tl .ctl-heat');
+  if(cell&&cell.dataset.userId&&cell.dataset.date){
+    e.preventDefault();
+    var uid=+cell.dataset.userId,ws=cell.dataset.date,u=users.find(function(x){return +x.id===uid;})||{name:''};
+    capCtxShow(e,u.name+' · uge '+weekNo(date(ws)),[
+      ['add','＋','Reservér i denne uge'],
+      ['off','🏖','Registrér ferie/fri'],
+      ['timeline','📈','Tidslinje for medarbejderen']
+    ],function(a){
+      if(a==='add')openCapacityModal({userId:uid,weekStart:ws});
+      else if(a==='off')openTimeOffModal(uid,ws,null,iso(add(date(ws),4)));
+      else if(a==='timeline')openCapTimelinePopup(uid,ws);
+    });
+  }
+});
 function renderCapTimelineBoard(weeks,oosUsers){
   var box=document.getElementById('cap-tl');if(!box)return;
   var N=weeks.length,wkKeys=weeks.map(function(m){return iso(m);}),curKey=weekKey(new Date()),curIdx=-1;
@@ -14776,20 +14872,23 @@ function renderCapTimelineBoard(weeks,oosUsers){
     var next4=0;for(var q=curIdx;q<Math.min(N,curIdx+4);q++)next4+=load[q];
     var cap4=cap*Math.min(4,N-curIdx),pct=cap4?Math.round(next4/cap4*100):0;
     var hasOos=oosUsers&&oosUsers.has(+u.id);
-    var who='<div class="ctl-who">'+planAltAvatar(u,32)+'<div style="min-width:0"><div class="ctl-nm" title="'+esc(u.name)+'">'+esc(u.name)+'</div><small>'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+' · '+capFmt(cap)+' d/uge</small>'
+    var who='<div class="ctl-who">'+planAltAvatar(u,32)+'<div style="min-width:0"><div class="ctl-nm" title="'+esc(u.name)+'">'+esc(u.name)+'</div><small>'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Kontor'))+' · '+capFmt(cap)+' d/uge</small>'
       +'<small class="ctl-pct'+(pct>100?' over':'')+'" title="Booket de næste 4 uger">'+pct+' % booket de næste 4 uger</small>'
       +(hasOos?' <button type="button" class="ctl-chip over" style="border:0;cursor:pointer" data-action="open-cap-timeline" data-user-id="'+u.id+'" data-date="'+iso(weeks[curIdx])+'" title="En reservation er ude af sync med sin opgave">⚠ sync</button>':'')
       +'</div></div>';
     return '<div class="ctl-row">'+who+'<div class="ctl-lane" style="grid-template-rows:26px repeat('+lanes+',30px) 8px">'+cells+heatRow+vacHtml+bars+'</div></div>';
   }
   var grouped=teamList('capacity'),html='';
-  var byTrade=grouped.internal.map(function(u,i){return {u:u,i:i};}).sort(function(a,c){return String(a.u.trade||'~').localeCompare(String(c.u.trade||'~'),'da')||a.i-c.i;});
-  var last=null;
-  byTrade.forEach(function(x){
-    var t=x.u.trade||'Uden fag';
-    if(t!==last){last=t;var tt=(taskTypesList||[]).find(function(y){return String(y.label||'').toLowerCase()===String(t).toLowerCase();});
-      html+='<div class="ctl-grp"><div><i style="background:'+((tt&&tt.color)||'#94A3B8')+'"></i>'+esc(t)+'</div></div>';}
-    html+=lane(x.u);
+  // RUNDE FW — grupper kan foldes sammen (klik på overskriften); medarbejdere
+  // uden fag hedder "Kontor" og står sidst.
+  var byTrade=capSortByTrade(grouped.internal);
+  var last=null,collapsed=capGrpCollapsed();
+  byTrade.forEach(function(u){
+    var t=capTradeLabel(u);
+    if(t!==last){last=t;
+      var n=byTrade.filter(function(x){return capTradeLabel(x)===t;}).length;
+      html+='<div class="ctl-grp"><div>'+capGrpHeadHTML(t,n,collapsed)+'</div></div>';}
+    if(!collapsed[t])html+=lane(u);
   });
   Object.keys(grouped.groups).sort().forEach(function(g){
     var arr=grouped.groups[g];
@@ -14999,13 +15098,14 @@ function renderCapacity(){
   // Internal first (always)
   if(heat){
     // Varmekort: interne grupperet efter fag med en lille overskrift (stabil sortering).
-    var byTrade=grouped.internal.map(function(u,i){return {u:u,i:i};}).sort(function(a,b){return String(a.u.trade||'~').localeCompare(String(b.u.trade||'~'),'da')||a.i-b.i;});
-    var lastTrade=null;
-    byTrade.forEach(function(x){
-      var t=x.u.trade||'Uden fag';
-      if(t!==lastTrade){lastTrade=t;var tt=(taskTypesList||[]).find(function(y){return String(y.label||'').toLowerCase()===String(t).toLowerCase();});
-        html+='<tr class="cap-heat-trade"><td class="staff-cell"><i style="background:'+((tt&&tt.color)||'#94A3B8')+'"></i>'+esc(t)+'</td><td colspan="'+weeks.length+'"></td></tr>';}
-      html+=row(x.u);
+    var byTrade=capSortByTrade(grouped.internal);
+    var lastTrade=null,collapsedH=capGrpCollapsed();
+    byTrade.forEach(function(u){
+      var t=capTradeLabel(u);
+      if(t!==lastTrade){lastTrade=t;
+        var n=byTrade.filter(function(x){return capTradeLabel(x)===t;}).length;
+        html+='<tr class="cap-heat-trade"><td class="staff-cell">'+capGrpHeadHTML(t,n,collapsedH)+'</td><td colspan="'+weeks.length+'"></td></tr>';}
+      if(!collapsedH[t])html+=row(u);
     });
   }else grouped.internal.forEach(function(u){html+=row(u);});
   // Then vendor groups
