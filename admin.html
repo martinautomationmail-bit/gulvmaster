@@ -1474,6 +1474,46 @@ body.plan-alt-dragging .prv-bar.dragging,body.plan-alt-dragging .pcv-card.draggi
 #cap-body .capacity-reservation{background:#F5F3FF!important;border-left-color:#7C3AED!important;color:#4C1D95!important}
 #cap-body .cap-timeoff-badge{background:#FEF3C7;color:#92400E;border-radius:var(--bly-r-sm)}
 #page-capacity .cap-add-btn{border:1.5px dashed var(--bly-border);border-radius:var(--bly-r-sm);color:var(--bly-sub);font-weight:700}
+/* ── RUNDE FN — Kapacitet som tidslinje med ledige huller (Martin valgte B) ── */
+#cap-tl{--wk:118px;min-width:max-content}
+#capacity-scroll.cap-tl-mode .capacity-board{display:none}
+.ctl-head{display:flex;position:sticky;top:0;z-index:9;background:var(--bly-border-soft);box-shadow:0 2px 0 rgba(15,34,64,.06)}
+.ctl-corner{position:sticky;left:0;z-index:2;width:230px;flex:none;background:#fff;border-right:1px solid var(--bly-border-soft);padding:10px 14px;font-weight:800;font-size:11px;color:var(--bly-sub);display:flex;align-items:center}
+.ctl-wh{width:var(--wk);flex:none;text-align:center;padding:9px 0;font-weight:800;font-size:12px;color:var(--bly-ink);border-left:1px solid var(--bly-border-soft)}
+.ctl-wh small{display:block;font-weight:600;color:var(--bly-sub);font-size:10.5px}
+.ctl-wh.now{background:var(--bly-accent-soft);color:var(--bly-accent)}
+.ctl-row{display:flex;border-top:1px solid var(--bly-border-soft)}
+.ctl-who{position:sticky;left:0;z-index:5;width:230px;flex:none;background:#fff;border-right:1px solid var(--bly-border-soft);display:flex;gap:10px;align-items:center;padding:10px 14px}
+.ctl-who .ctl-nm{font-weight:700;font-size:13px;color:var(--bly-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctl-who small{display:block;color:var(--bly-sub);font-size:11px}
+.ctl-who .ctl-chip{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--bly-border-soft);color:var(--bly-ink)}
+.ctl-who .ctl-chip.over{background:#FEE2E2;color:#B91C1C}
+.ctl-lane{display:grid;grid-auto-columns:var(--wk);position:relative;padding:6px 0 0}
+.ctl-cell{border-left:1px solid var(--bly-border-soft);margin-top:-6px;transition:background .12s}
+.ctl-cell.now{background:rgba(238,242,255,.6)}
+.ctl-cell.over-load{background:#FEF2F2}
+.ctl-cell.over{background:var(--bly-accent-soft)!important;outline:2px dashed var(--bly-accent);outline-offset:-3px}
+#cap-tl .ctl-bar{position:relative;z-index:1;margin:2px 3px;height:26px;border-radius:7px;padding:0 8px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;cursor:grab;border:1px solid color-mix(in srgb,var(--c) 38%,#fff);background:color-mix(in srgb,var(--c) 13%,#fff);color:color-mix(in srgb,var(--c) 72%,#000);border-left:3px solid var(--c)}
+#cap-tl .ctl-bar:hover{box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 30%,transparent)}
+#cap-tl .ctl-bar .ctl-bn{overflow:hidden;text-overflow:ellipsis;min-width:0}
+#cap-tl .ctl-bar .ctl-bd{margin-left:auto;font-size:10px;opacity:.75;flex:none}
+#cap-tl .ctl-bar.res{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.5) 0 4px,transparent 4px 8px)}
+#cap-tl .ctl-bar.oos{border-color:#EF4444;border-style:dashed}
+.ctl-gap{position:relative;z-index:1;margin:2px 3px;height:26px;border-radius:7px;border:1.5px dashed #6EE7B7;background:#ECFDF5;color:#047857;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:flex-start;padding-left:10px!important;cursor:pointer;white-space:nowrap;overflow:hidden;padding:0 6px}
+.ctl-gap:hover{background:#D1FAE5;border-color:#10B981}
+.ctl-vac{position:relative;z-index:1;margin:2px 3px;height:26px;border-radius:7px;background:repeating-linear-gradient(135deg,#FEF3C7 0 6px,#FDE68A 6px 12px);color:#92400E;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer;white-space:nowrap;overflow:hidden}
+.ctl-load{height:24px;width:100%;display:block;pointer-events:none;position:relative;z-index:1}
+body.plan-alt-dragging #cap-tl .ctl-bar,body.plan-alt-dragging .ctl-gap,body.plan-alt-dragging .ctl-vac{pointer-events:none}
+#cap-tl .ctl-bar.dragging{opacity:.4}
+.ctl-grp{display:flex;border-top:1px solid var(--bly-border-soft);background:#FAFBFD}
+.ctl-grp>div:first-child{position:sticky;left:0;width:230px;flex:none;padding:9px 14px 6px;font-size:11.5px;font-weight:800;color:var(--bly-sub);background:#FAFBFD;display:flex;align-items:center;gap:7px}
+.ctl-grp i{display:inline-block;width:8px;height:8px;border-radius:2px}
+.ctl-grp .group-toggle{font-weight:800}
+.cap-tl-legend{display:none;gap:14px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--bly-sub);margin-top:10px}
+.cap-tl-legend span{display:inline-flex;align-items:center;gap:5px}
+.cap-tl-legend i{width:22px;height:10px;border-radius:3px;display:inline-block}
+.cap-tl-legend .cap-heat-legend-hint{margin-left:auto}
+#page-capacity.cap-tl-on .cap-tl-legend{display:flex}
 /* ── RUNDE FM — Kapacitet som varmekort (Martin valgte forslag A) ── */
 .cap-viewswitch{display:inline-flex;background:var(--bly-border-soft);border-radius:10px;padding:3px}
 .cap-viewswitch button{border:0;background:none;padding:7px 12px;border-radius:8px;font-weight:700;font-size:12px;color:var(--bly-sub);cursor:pointer;font-family:inherit}
@@ -4449,7 +4489,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       <div class="navdrop-menu">
         <a class="navdrop-item" href="#qz-invoices" data-page="qz-invoices">🧾 Fakturaer</a>
         <a class="navdrop-item" href="#quotes" data-page="quotes">📝 Tilbud</a>
-        <a class="navdrop-item" href="#qz-pending-invoicing" data-page="qz-pending-invoicing">💰 Skal faktureres</a>
         <a class="navdrop-item" href="#qz-products" data-page="qz-products">📦 Produkter</a>
         <a class="navdrop-item" href="#qz-templates" data-page="qz-templates">📑 Skabeloner</a>
         <a class="navdrop-item" href="#qz-timetrack" data-page="qz-timetrack">⏱️ Timetracking</a>
@@ -4467,8 +4506,6 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
       </div>
       <div class="navdrop-menu">
         <a class="navdrop-item" href="#capacity" data-page="capacity">📊 Kapacitet</a>
-        <a class="navdrop-item" href="#availability" data-page="availability">🟢 Ledighedsoversigt</a>
-        <a class="navdrop-item" href="#timeline" data-page="timeline">🕒 Tidslinje</a>
         <!-- RUNDE BP (Martin: "Ryk kundebesøg ned i Dagligplanlægning") — flyttet
              hertil fra CRM-dropdown'en (lå der fra den oprindelige "hvem er ude
              hvornår"-tilføjelse). data-page/href uændret, kun placeringen i
@@ -4622,7 +4659,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.39.0 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.40.0 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -5598,8 +5635,8 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   <table class="doc-table">
     <tr><th>Menugruppe</th><th>Indeholder</th><th>Bruges til</th></tr>
     <tr><td><b>CRM</b></td><td>Kunder, Leads, Sales, Opfølgninger</td><td>Salgspipeline — fra første henvendelse til vundet kunde</td></tr>
-    <tr><td><b>Tilbud &amp; Faktura</b></td><td>Fakturaer, Tilbud, Skal faktureres, Produkter, Skabeloner, Timetracking</td><td>Alt omkring tilbud, fakturering og produktkatalog</td></tr>
-    <tr><td><b>Dagligplanlægning</b></td><td>Plan, Kapacitet, Ledighedsoversigt, Tidslinje</td><td>Booking af medarbejdere/vendors på konkrete dage og opgaver</td></tr>
+    <tr><td><b>Tilbud &amp; Faktura</b></td><td>Fakturaer, Tilbud, Produkter, Skabeloner, Timetracking</td><td>Alt omkring tilbud, fakturering og produktkatalog</td></tr>
+    <tr><td><b>Dagligplanlægning</b></td><td>Plan, Kapacitet, Kundebesøg</td><td>Booking af medarbejdere/vendors på konkrete dage og opgaver</td></tr>
     <tr><td><b>Projekter</b></td><td>Sagsoversigt, Gantt, KS-skabeloner, Kontaktformularer</td><td>Selve sagerne (projekterne) — tid, budget, billeder, kvalitetssikring</td></tr>
     <tr><td><b>Økonomi</b></td><td>Oversigt, Omsætning pr. fag, Bankafstemning, Udgifter, Privat budget, Noter</td><td>Det økonomiske overblik og rapportering</td></tr>
     <tr><td><b>Videnscenter</b></td><td>Lister, Dokumenter</td><td>Interne opslagslister og et bibliotek af filer/vejledninger</td></tr>
@@ -8882,6 +8919,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <div class="cap-viewswitch" id="cap-viewswitch" role="tablist">
+      <button type="button" data-cap-view="timeline">▬ Tidslinje</button>
       <button type="button" data-cap-view="heat">🟩 Varmekort</button>
       <button type="button" data-cap-view="detail">☰ Detaljer</button>
     </div>
@@ -8927,6 +8965,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
           <thead id="cap-head"></thead>
           <tbody id="cap-body"></tbody>
         </table>
+        <div id="cap-tl" hidden></div>
       </div>
       <div class="cap-heat-legend" id="cap-heat-legend">Belægning:
         <span><i style="background:#F8FAFC;border:1px solid #E2E8F0"></i>Ledig</span>
@@ -8935,6 +8974,13 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
         <span><i style="background:#FEF3C7"></i>Fuld</span>
         <span><i style="background:#FEE2E2"></i>Overbooket</span>
         <span class="cap-heat-legend-hint">Klik på en uge for opgaverne · træk fra poolen direkte ind på en uge</span>
+      </div>
+      <div class="cap-tl-legend" id="cap-tl-legend">
+        <span><i style="background:#ECFDF5;border:1.5px dashed #6EE7B7"></i>Ledigt hul — klik for at reservere, eller træk en opgave ind</span>
+        <span><i style="background:repeating-linear-gradient(135deg,#FEF3C7 0 4px,#FDE68A 4px 8px)"></i>Ferie/fri</span>
+        <span><i style="background:#FEE2E2"></i>Overbooket uge</span>
+        <span>〰 Belægning (stiplet = 100 %)</span>
+        <span class="cap-heat-legend-hint">Træk en bjælke til en anden uge eller medarbejder · klik for at rette</span>
       </div>
       <div class="cap-heat-pop" id="cap-heat-pop" hidden></div>
     </section>
@@ -13758,7 +13804,7 @@ document.addEventListener('pointerup',async function(){
     // FEJL RETTET (Martin: "kan stadig ikke trække opgaverne"): klassen sætter
     // pointer-events:none på selve bjælken/kortet. Sat SYNKRONT i dragstart
     // afbryder Chrome trækket med det samme — derfor først efter et øjeblik.
-    document.addEventListener('dragstart',function(){setTimeout(function(){if(dragPayload)document.body.classList.add('plan-alt-dragging');},30);});
+    document.addEventListener('dragstart',function(){setTimeout(function(){if(dragPayload)document.body.classList.add('plan-alt-dragging');},0);});
     document.addEventListener('dragend',function(){document.body.classList.remove('plan-alt-dragging');});
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
@@ -14135,7 +14181,7 @@ function capacityWeeks(){var out=[],m=add(mon(new Date()),-PLAN_WEEKS_BACK*7);fo
 // "heat" = kompakt varmekort (standard), "detail" = det gamle board med alle
 // reservationer synlige i cellerne. Begge bruger præcis de samme data,
 // slip-zoner og handlinger — kun visningen af cellen er forskellig.
-var capView=(function(){try{return localStorage.getItem('gm_cap_view')==='detail'?'detail':'heat';}catch(e){return 'heat';}})();
+var capView=(function(){try{var v=localStorage.getItem('gm_cap_view2');return v==='detail'||v==='heat'?v:'timeline';}catch(e){return 'timeline';}})();
 function capHeatClass(booked,cap){var r=cap?booked/cap:0;if(booked<=0)return 'h-free';if(r<.5)return 'h-low';if(r<.85)return 'h-mid';if(r<=1.01)return 'h-full';return 'h-over';}
 function capFmt(n){return String(Math.round(n*10)/10).replace('.',',');}
 function capHeatBox(booked,cap,extra){
@@ -14168,7 +14214,7 @@ function capOpenHeatPop(cell){
     var sw=document.getElementById('cap-viewswitch');if(!sw)return;
     sw.addEventListener('click',function(e){
       var b=e.target.closest('[data-cap-view]');if(!b||b.dataset.capView===capView)return;
-      capView=b.dataset.capView;try{localStorage.setItem('gm_cap_view',capView);}catch(_){}
+      capView=b.dataset.capView;try{localStorage.setItem('gm_cap_view2',capView);}catch(_){}
       renderCapacity();setTimeout(function(){scrollToWeek(weekKey(new Date()));},60);
     });
     document.getElementById('cap-body').addEventListener('click',function(e){
@@ -14196,14 +14242,128 @@ function capOpenHeatPop(cell){
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
+// ── RUNDE FN — Kapacitet som tidslinje (forslag B) ──
+// Hver medarbejder er én bane hen over ugerne. Reservationer er bjælker der
+// spænder over deres uger, ledige uger fra i dag og frem er grønne "huller"
+// man kan klikke på eller trække opgaver ind i, ferie er gule felter, og en
+// tynd kurve nederst viser belægningen uge for uge. Selve ugecellerne er de
+// samme slip-zoner (data-drop="week") som det gamle board, så træk fra
+// poolen og flyt mellem uger/medarbejdere bruger handleCapacityDrop uændret.
+function capLabelParts(b){
+  var linkedTask=tasks.find(function(x){return String(x.id)===String(b.task_id);});
+  var label=linkedTask?qeCapacityDefaultLabel(linkedTask):(b.capacity_label||b.task_name||'Kapacitetsreservation');
+  var i=label.indexOf(' — ');
+  return {name:i>-1?label.slice(0,i):label,desc:i>-1?label.slice(i+3):'',task:linkedTask,full:label};
+}
+function renderCapTimelineBoard(weeks,oosUsers){
+  var box=document.getElementById('cap-tl');if(!box)return;
+  var N=weeks.length,wkKeys=weeks.map(function(m){return iso(m);}),curKey=weekKey(new Date()),curIdx=-1;
+  weeks.forEach(function(m,i){if(weekKey(m)===curKey)curIdx=i;});
+  if(curIdx<0)curIdx=0;
+  function weekIdxOf(ds){var d=mon(date(ds));var k=iso(d);return wkKeys.indexOf(k);}
+  var head='<div class="ctl-head"><div class="ctl-corner">Medarbejder</div>'+weeks.map(function(m,i){
+    return '<div class="ctl-wh'+(i===curIdx?' now':'')+'" data-week-key="'+weekKey(m)+'">Uge '+weekNo(m)+'<small>'+m.getDate()+'/'+(m.getMonth()+1)+'</small></div>';}).join('')+'</div>';
+  function lane(u){
+    var cap=+u.weekly_capacity||5;
+    // Reservationer → segmenter i uge-indeks
+    var segs=[];
+    bookings.forEach(function(b){
+      if(!isCapacityBooking(b)||+b.user_id!==+u.id)return;
+      var idx=[];workDates(b).forEach(function(ds){var i=weekIdxOf(ds);if(i>-1&&idx.indexOf(i)<0)idx.push(i);});
+      if(!idx.length)return;idx.sort(function(a,c){return a-c;});
+      segs.push({b:b,s:idx[0],e:idx[idx.length-1]});
+    });
+    segs.sort(function(a,c){return a.s-c.s||(c.e-c.s)-(a.e-a.s)||(+a.b.id-+c.b.id);});
+    var laneEnds=[];
+    // Første bane hvor ugerne s..e er helt frie (ikke kun "efter sidste bjælke"),
+    // så et hul/ferie før en senere bjælke kan ligge i den øverste bane.
+    var occ=[];
+    function place(s,e){
+      for(var l=0;;l++){
+        if(!occ[l]){occ[l]=[];laneEnds[l]=-1;}
+        var ok=true;for(var k=s;k<=e;k++)if(occ[l][k]){ok=false;break;}
+        if(ok){for(var k2=s;k2<=e;k2++)occ[l][k2]=1;laneEnds[l]=Math.max(laneEnds[l],e);return l;}
+      }
+    }
+    segs.forEach(function(sg){sg.lane=place(sg.s,sg.e);});
+    // Belastning, fri tid og ferie pr. uge
+    var load=[],offN=[],offRef=[];
+    weeks.forEach(function(m,i){
+      load[i]=weeklyLoad(u.id,m);
+      var od=[];for(var k=0;k<5;k++){var ds=iso(add(m,k));if(timeOffFor(u.id,ds))od.push(ds);}
+      offN[i]=od.length;offRef[i]=od.length?timeOffFor(u.id,od[0]):null;
+    });
+    // Ferie-felter (sammenhængende uger med fri)
+    var vacs=[];
+    for(var i=0;i<N;i++){if(!offN[i])continue;var j=i,days=0;while(j<N&&offN[j]){days+=offN[j];j++;}vacs.push({s:i,e:j-1,days:days,off:offRef[i]});i=j-1;}
+    vacs.forEach(function(v){v.lane=place(v.s,v.e);});
+    // Ledige huller fra denne uge og frem: uger med mindst 1 fri dag
+    var gaps=[];
+    for(var g=curIdx;g<N;g++){
+      var free=cap-load[g]-offN[g]*(cap/5);if(free<1)continue;
+      var h=g,sum=0;while(h<N&&(cap-load[h]-offN[h]*(cap/5))>=1){sum+=cap-load[h]-offN[h]*(cap/5);h++;}
+      gaps.push({s:g,e:h-1,free:sum});g=h-1;
+    }
+    gaps.forEach(function(x){x.lane=place(x.s,x.e);});
+    var lanes=Math.max(1,laneEnds.length);
+    var cells=weeks.map(function(m,i){
+      return '<div class="ctl-cell'+(i===curIdx?' now':'')+(load[i]>cap+0.01?' over-load':'')+'" style="grid-column:'+(i+1)+';grid-row:1 / '+(lanes+2)+'" data-drop="week" data-user-id="'+u.id+'" data-date="'+iso(m)+'"></div>';
+    }).join('');
+    var bars=segs.map(function(sg){
+      var b=sg.b,lp=capLabelParts(b),col=planAltColor(lp.task?Object.assign({},b,{type_guess:lp.task.type_guess||b.type_guess}):b);
+      var oos=capBookingOutOfSync(b);
+      return '<div class="cap-job ctl-bar'+(lp.task?'':' res')+(oos?' oos':'')+'" draggable="true" data-booking-id="'+b.id+'" style="grid-column:'+(sg.s+1)+' / span '+(sg.e-sg.s+1)+';grid-row:'+(sg.lane+1)+';--c:'+col+'" title="'+esc(lp.full)+' — '+capDaysOf(b)+' d i alt'+(oos?'\n⚠ Ude af sync med opgavens planlagte uge — åbn 📈 for at synkronisere':'')+'\nKlik for at rette · træk for at flytte">'
+        +'<span class="ctl-bn">'+(oos?'⚠ ':'')+esc(lp.name)+(lp.desc&&sg.e>sg.s?' · '+esc(lp.desc):'')+'</span><span class="ctl-bd">'+capFmt(capDaysOf(b))+'d</span></div>';
+    }).join('');
+    var vacHtml=vacs.map(function(v){
+      return '<div class="ctl-vac" data-action="edit-timeoff-day" data-user-id="'+u.id+'" data-off-id="'+v.off.id+'" style="grid-column:'+(v.s+1)+' / span '+(v.e-v.s+1)+';grid-row:'+(v.lane+1)+'" title="Klik for at redigere">'+esc(timeOffLabel(v.off))+' · '+v.days+'d</div>';
+    }).join('');
+    var gapHtml=gaps.map(function(x){
+      var span=x.e-x.s+1,lbl=x.e===N-1&&span>2?'Ledig fra uge '+weekNo(weeks[x.s]):capFmt(x.free)+' ledig'+(Math.abs(x.free-1)<.01?' dag':'e dage');
+      return '<div class="ctl-gap" data-action="add-capacity" data-user-id="'+u.id+'" data-date="'+iso(weeks[x.s])+'" style="grid-column:'+(x.s+1)+' / span '+span+';grid-row:'+(x.lane+1)+'" title="Klik for at reservere · eller træk en opgave fra poolen herind">＋ '+lbl+'</div>';
+    }).join('');
+    // Belægningskurve
+    var W=N*100,pts=load.map(function(l,i){var r=Math.min(1.3,l/cap);return (i*100+50)+','+(22-r*15).toFixed(1);}).join(' ');
+    var dots=load.map(function(l,i){return l>cap+0.01?'<circle cx="'+(i*100+50)+'" cy="'+(22-Math.min(1.3,l/cap)*15).toFixed(1)+'" r="3.5" fill="#EF4444" vector-effect="non-scaling-stroke"/>':'';}).join('');
+    var curve='<svg class="ctl-load" style="grid-column:1 / span '+N+';grid-row:'+(lanes+1)+'" viewBox="0 0 '+W+' 24" preserveAspectRatio="none"><line x1="0" x2="'+W+'" y1="7" y2="7" stroke="#CBD5E1" stroke-dasharray="6 6" vector-effect="non-scaling-stroke"/><polyline points="'+pts+'" fill="none" stroke="'+(u.color||'#4F46E5')+'" stroke-width="2" vector-effect="non-scaling-stroke"/>'+dots+'</svg>';
+    // Venstre kolonne
+    var next4=0;for(var q=curIdx;q<Math.min(N,curIdx+4);q++)next4+=load[q];
+    var cap4=cap*Math.min(4,N-curIdx),pct=cap4?Math.round(next4/cap4*100):0;
+    var hasOos=oosUsers&&oosUsers.has(+u.id);
+    var who='<div class="ctl-who">'+planAltAvatar(u,32)+'<div style="min-width:0"><div class="ctl-nm" title="'+esc(u.name)+'">'+esc(u.name)+'</div><small>'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+' · '+capFmt(cap)+' d/uge</small>'
+      +'<span class="ctl-chip'+(pct>100?' over':'')+'" title="Booket de næste 4 uger">'+pct+' % næste 4 uger</span>'
+      +(hasOos?' <button type="button" class="ctl-chip over" style="border:0;cursor:pointer" data-action="open-cap-timeline" data-user-id="'+u.id+'" data-date="'+iso(weeks[curIdx])+'" title="En reservation er ude af sync med sin opgave">⚠ sync</button>':'')
+      +'</div></div>';
+    return '<div class="ctl-row">'+who+'<div class="ctl-lane" style="grid-template-rows:repeat('+lanes+',30px) 26px">'+cells+gapHtml+vacHtml+bars+curve+'</div></div>';
+  }
+  var grouped=teamList('capacity'),html='';
+  var byTrade=grouped.internal.map(function(u,i){return {u:u,i:i};}).sort(function(a,c){return String(a.u.trade||'~').localeCompare(String(c.u.trade||'~'),'da')||a.i-c.i;});
+  var last=null;
+  byTrade.forEach(function(x){
+    var t=x.u.trade||'Uden fag';
+    if(t!==last){last=t;var tt=(taskTypesList||[]).find(function(y){return String(y.label||'').toLowerCase()===String(t).toLowerCase();});
+      html+='<div class="ctl-grp"><div><i style="background:'+((tt&&tt.color)||'#94A3B8')+'"></i>'+esc(t)+'</div></div>';}
+    html+=lane(x.u);
+  });
+  Object.keys(grouped.groups).sort().forEach(function(g){
+    var arr=grouped.groups[g];
+    var forceOpen=filters.capacity.team==='vendors'||filters.capacity.team.indexOf('trade:')===0;
+    var open=vendorExpanded[g]===true||(forceOpen&&vendorExpanded[g]!==false);
+    html+='<div class="ctl-grp"><div><button class="group-toggle" data-action="toggle-vendor" data-group="'+esc(g)+'">'+(open?'▾':'▸')+' 🧰 '+esc(g)+'</button> · '+arr.length+'</div></div>';
+    if(open)arr.forEach(function(u){html+=lane(u);});
+  });
+  box.innerHTML=head+(html||'<div style="padding:18px;color:var(--muted)">Ingen aktive hold.</div>');
+}
 function renderCapacity(){
   renderPool('capacity');teamFilterHTML('capacity');
-  var heat=capView==='heat';
+  var heat=capView==='heat'||(capView==='timeline'&&capacityGroupBy==='trade');
   capCloseHeatPop();
   (function(){
     var sc=document.getElementById('capacity-scroll'),pg=document.getElementById('page-capacity');
-    if(sc)sc.classList.toggle('cap-heat-mode',heat);
-    if(pg)pg.classList.toggle('cap-heat-on',heat);
+    var tlOn=capView==='timeline'&&capacityGroupBy!=='trade';
+    if(sc){sc.classList.toggle('cap-heat-mode',heat||(capView==='timeline'&&!tlOn));sc.classList.toggle('cap-tl-mode',tlOn);}
+    if(pg){pg.classList.toggle('cap-heat-on',heat);pg.classList.toggle('cap-tl-on',tlOn);}
+    var tlBox=document.getElementById('cap-tl');if(tlBox){tlBox.hidden=!tlOn;if(!tlOn)tlBox.innerHTML='';}
     document.querySelectorAll('#cap-viewswitch [data-cap-view]').forEach(function(b){b.classList.toggle('on',b.dataset.capView===capView);});
   })();
   // RUNDE DS — se capBookingOutOfSync()-kommentaren. Forudberegnes én gang her
@@ -14257,6 +14417,11 @@ function renderCapacity(){
     }).join(''):'<div class="stat"><div class="stat-label">Fag</div><div class="stat-value" style="font-size:13px">Ingen fag sat endnu</div><div class="stat-sub">Sæt "Fag" på medarbejdere i Hold & vendors</div></div>';
   }
   // Body
+  if(capView==='timeline'&&capacityGroupBy!=='trade'){
+    document.getElementById('cap-body').innerHTML='';
+    renderCapTimelineBoard(weeks,capOutOfSyncUsers);
+    return;
+  }
   if(capacityGroupBy==='trade'){
     var html2='';
     function renderGroupRow(label,members,isVendor){
@@ -23916,7 +24081,12 @@ function renderMailLog(){
       '</tr>';
   }).join('')||'<tr><td colspan="5" style="padding:14px;text-align:center;color:var(--muted)">Ingen mails logget endnu.</td></tr>';
 }
-function scrollToWeek(wk){var scroller=document.getElementById('capacity-scroll'),h=document.querySelector('#cap-head th[data-week-key="'+wk+'"]');if(scroller&&h)scroller.scrollTo({left:Math.max(0,h.offsetLeft-185),behavior:'smooth'});}
+function scrollToWeek(wk){
+  var scroller=document.getElementById('capacity-scroll');if(!scroller)return;
+  var tl=scroller.classList.contains('cap-tl-mode')&&document.querySelector('#cap-tl .ctl-wh[data-week-key="'+wk+'"]');
+  if(tl){scroller.scrollTo({left:Math.max(0,tl.offsetLeft-230-8),behavior:'smooth'});return;}
+  var h=document.querySelector('#cap-head th[data-week-key="'+wk+'"]');if(h)scroller.scrollTo({left:Math.max(0,h.offsetLeft-185),behavior:'smooth'});
+}
 
 // FILE → base64 data-URI (bruges til logo/avatar da der ikke er permanent fil-lager på Render)
 function fileToDataURL(file){return new Promise(function(resolve,reject){var r=new FileReader();r.onload=function(){resolve(r.result);};r.onerror=reject;r.readAsDataURL(file);});}
@@ -24246,6 +24416,10 @@ var DETAIL_PAGES_KEEP_TITLE=['customer-detail','project-detail','crmp-detail'];
 // via window.renderSearchResultsPage nedenfor) når switchPage('search-results') kaldes.
 var lastSearchQuery='';
 function switchPage(page,skipHash){
+  // RUNDE FN (Martin: "fjern Ledighedsoversigt og Tidslinje … og Skal faktureres")
+  // — siderne er taget ud af menuen; gamle links/bogmærker sendes videre.
+  if(page==='availability'||page==='timeline'){switchPage('capacity',skipHash);return;}
+  if(page==='qz-pending-invoicing'){switchPage('quotes',skipHash);return;}
   // Gantt er ikke længere sin egen side — den bor nu som en fane under Projekter.
   // Gamle links/bogmærker til #gantt sendes videre dertil i stedet for at falde
   // tilbage til forsiden.
