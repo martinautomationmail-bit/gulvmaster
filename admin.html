@@ -1334,6 +1334,7 @@ body.plan-alt-dragging .prv-bar,body.plan-alt-dragging .pcv-card,body.plan-alt-d
 .plan-ctx-item.danger:hover{background:#FEF2F2}
 .plan-ctx-sep{height:1px;background:var(--bly-border-soft);margin:4px 6px}
 body.plan-alt-dragging .prv-bar.dragging,body.plan-alt-dragging .pcv-card.dragging{opacity:.4}
+.prv-tgrp{padding:9px 14px 6px;border-top:1px solid var(--bly-border-soft);background:#FAFBFD}
 .prv-group{padding:10px 14px;font-size:12px;color:var(--bly-sub);border-top:1px solid var(--bly-border-soft);background:#FAFAFB}
 /* Dagskort */
 .pcv-hint{font-size:12px;color:var(--bly-sub);margin:0 0 8px 2px}
@@ -4847,7 +4848,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.48.0 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.48.1 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -13909,6 +13910,14 @@ function planAltToday(){planCurrentWeekStart=mon(new Date());planRenderAlt();}
 function planAltDays(){var m=planCurrentWeekStart||mon(new Date());var out=[];for(var i=0;i<7;i++)out.push(add(m,i));return out;}
 // Medarbejdere i samme rækkefølge/filtrering som tabellen; vendors kun når
 // "🧰 Vendors" er foldet ud (eller hold-filteret selv peger på vendors).
+function planGrpCollapsed(){try{return JSON.parse(localStorage.getItem('gm_plan_collapsed')||'{}')||{};}catch(e){return {};}}
+document.addEventListener('click',function(e){
+  var g=e.target.closest('[data-plan-grp]');if(!g)return;
+  var c=planGrpCollapsed(),k=g.dataset.planGrp;
+  if(c[k])delete c[k];else c[k]=1;
+  try{localStorage.setItem('gm_plan_collapsed',JSON.stringify(c));}catch(_){}
+  planRenderAlt();
+});
 function planAltPeople(){
   var t=teamList('plan'),out=t.internal.slice();
   var keys=Object.keys(t.groups).sort();
@@ -14008,12 +14017,24 @@ function planResourceHtml(){
       +'<div class="prv-staff">'+planAltAvatar(u,34)
         +'<div class="prv-staff-info"><div class="prv-staff-name">'+esc(u.name)
           +' <button type="button" class="wnote-btn'+(hasNote?' has':'')+'" title="Ugenote" data-action="weekly-note" data-user-id="'+u.id+'">🗒</button></div>'
-        +'<div class="prv-staff-sub">'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+' · <span class="'+(over?'over':'')+'">'+(Math.round(booked*10)/10).toString().replace('.',',')+'/'+cap+' d</span></div></div>'
+        +'<div class="prv-staff-sub">'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Kontor'))+' · <span class="'+(over?'over':'')+'">'+(Math.round(booked*10)/10).toString().replace('.',',')+'/'+cap+' d</span></div></div>'
       +'</div>'
       +'<div class="prv-track" style="grid-template-rows:repeat('+lanes+',minmax(46px,auto))">'+cells+bars+'</div>'
       +'</div>';
   }
-  var body=pp.people.map(row).join('');
+  // RUNDE FX (Martin: "lav den inddeling med fag og breakdown ved
+  // dagligplanlægning også") — interne medarbejdere grupperet pr. fag med
+  // foldbare overskrifter (samme regler som Kapacitet: uden fag = Kontor, sidst).
+  var internal=pp.people.filter(function(u){return u.worker_type!=='vendor';});
+  var vendorsShown=pp.people.filter(function(u){return u.worker_type==='vendor';});
+  var pcol=planGrpCollapsed(),sorted=capSortByTrade(internal),lastT=null,body='';
+  sorted.forEach(function(u){
+    var t=capTradeLabel(u);
+    if(t!==lastT){lastT=t;var n=sorted.filter(function(x){return capTradeLabel(x)===t;}).length;
+      body+='<div class="prv-tgrp">'+capGrpHeadHTML(t,n,pcol).replace('data-cap-grp=','data-plan-grp=')+'</div>';}
+    if(!pcol[t])body+=row(u);
+  });
+  body+=vendorsShown.map(row).join('');
   if(pp.vendorCount)body+='<div class="prv-group"><button type="button" class="group-toggle" data-action="toggle-plan-vendors">'+(pp.vendorsOpen?'▾':'▸')+' 🧰 Vendors</button> · '+pp.vendorCount+'</div>';
   if(!pp.people.length)body='<div class="pa-empty">Opret medarbejdere under Hold & vendors.</div>'+body;
   return '<div class="prv-scroll"><div class="prv">'+head+body+'</div></div>'+planAltLegend();
