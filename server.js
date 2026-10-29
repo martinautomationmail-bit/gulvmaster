@@ -10251,6 +10251,23 @@ app.put('/api/tasks/:id/manual-complete', auth, panelAccess('plan'), asyncRoute(
   res.json({ ok: true });
 }));
 
+// RUNDE FL (Martin: "kan du gøre så man med musen kan rykke opgaver op og
+// ned") — træk-og-slip-rækkefølge i Tabel/Ressource/Dagskort. Klienten
+// sender den ønskede rækkefølge for de bookinger der står i samme dag/celle;
+// de får sort_order 10, 20, 30 … Mødetidspunkt sorterer stadig først (samme
+// regel som før), så rækkefølgen afgør opgaver uden tid og opgaver med samme tid.
+app.put('/api/assignments/reorder', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.map(Number).filter(n => Number.isInteger(n) && n > 0) : [];
+  if (!ids.length || ids.length > 200) return res.status(400).json({ error: 'Ingen bookinger at sortere' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (let i = 0; i < ids.length; i++) await client.query('UPDATE planning_bookings SET sort_order=$1 WHERE id=$2', [(i + 1) * 10, ids[i]]);
+    await client.query('COMMIT');
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+  res.json({ ok: true });
+}));
+
 // En booking kan flyttes manuelt op/ned i rækkefølgen for én bestemt dag. Bruges når
 // admin selv vil bestemme rækkefølgen medarbejderen ser opgaverne i den dag — uafhængigt
 // af mødetidspunkt. Sætter man et mødetidspunkt (start_time), tager visningen automatisk

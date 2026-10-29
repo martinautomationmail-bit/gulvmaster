@@ -1320,6 +1320,9 @@ body.plan-alt-dragging .prv-bar,body.plan-alt-dragging .pcv-card{pointer-events:
 .prv-h::after{content:"";position:absolute;top:50%;transform:translateY(-50%);width:3px;height:16px;border-radius:2px;background:var(--c);opacity:0;transition:opacity .12s}
 .prv-h.left::after{left:3px}.prv-h.right::after{right:3px}
 .prv-bar:hover .prv-h::after,.prv-bar.resizing .prv-h::after{opacity:.75}
+/* RUNDE FL — blå streg der viser hvor en opgave lander ved træk op/ned */
+.reorder-before{box-shadow:0 -3px 0 0 var(--bly-accent),0 -3px 10px rgba(79,70,229,.35)!important}
+.reorder-after{box-shadow:0 3px 0 0 var(--bly-accent),0 3px 10px rgba(79,70,229,.35)!important}
 .prv-bar.resizing{box-shadow:0 0 0 2px var(--c),0 6px 16px rgba(15,23,42,.15);transform:none;z-index:4}
 .plan-ctx{position:fixed;z-index:400;min-width:220px;max-width:300px;background:#fff;border:1px solid var(--bly-border);border-radius:12px;box-shadow:0 14px 36px rgba(15,17,24,.18);padding:6px;animation:gm-pop .12s ease-out}
 .plan-ctx-title{font-size:11px;font-weight:800;color:var(--bly-sub);padding:6px 10px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.03em}
@@ -4564,7 +4567,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.36.3 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.37.0 · 2026-10-29</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -13246,7 +13249,7 @@ function renderPlan(){
       // Rækkefølge: opgaver MED mødetidspunkt vises altid i klokkeslæt-orden først;
       // opgaver uden tidspunkt beholder den rækkefølge du selv har sat med ▲▼.
       items.sort(function(a,b){
-        if(a.start_time&&b.start_time)return a.start_time.localeCompare(b.start_time);
+        if(a.start_time&&b.start_time&&a.start_time!==b.start_time)return a.start_time.localeCompare(b.start_time);
         if(a.start_time&&!b.start_time)return -1;
         if(!a.start_time&&b.start_time)return 1;
         return (+a.sort_order||0)-(+b.sort_order||0)||(+a.id-+b.id);
@@ -13424,7 +13427,7 @@ function planResourceHtml(){
       if(!idx.length)return;
       segs.push({b:b,s:idx[0],e:idx[idx.length-1],firstIdx:wds.indexOf(dayIso[idx[0]]),cont:wds[0]<dayIso[idx[0]],more:wds[wds.length-1]>dayIso[idx[idx.length-1]]});
     });
-    segs.sort(function(a,b){return a.s-b.s||String(a.b.start_time||'99').localeCompare(String(b.b.start_time||'99'))||(b.e-b.s)-(a.e-a.s);});
+    segs.sort(function(a,b){return a.s-b.s||String(a.b.start_time||'99').localeCompare(String(b.b.start_time||'99'))||(+a.b.sort_order||0)-(+b.b.sort_order||0)||(b.e-b.s)-(a.e-a.s)||(+a.b.id-+b.b.id);});
     var laneEnds=[];
     segs.forEach(function(sg){
       var lane=laneEnds.findIndex(function(end){return end<sg.s;});
@@ -13495,10 +13498,10 @@ function planCardsHtml(){
     // Weekenden vises kun når der faktisk er noget booket den dag.
     if(wkend&&!items.length)return '';
     items.sort(function(a,b){
-      if(a.start_time&&b.start_time)return a.start_time.localeCompare(b.start_time)||(a.user_name||'').localeCompare(b.user_name||'','da');
+      if(a.start_time&&b.start_time&&a.start_time!==b.start_time)return a.start_time.localeCompare(b.start_time);
       if(a.start_time&&!b.start_time)return -1;
       if(!a.start_time&&b.start_time)return 1;
-      return (a.user_name||'').localeCompare(b.user_name||'','da')||(+a.sort_order||0)-(+b.sort_order||0);
+      return (+a.sort_order||0)-(+b.sort_order||0)||(a.user_name||'').localeCompare(b.user_name||'','da')||(+a.id-+b.id);
     });
     // Belægning: bookede dage / kapacitet for de viste medarbejdere den dag.
     var capSum=0,bookedSum=0;
@@ -15430,6 +15433,67 @@ async function handleCapacityDrop(p,uid,ds,evt){
     else if(copied)toast(copied.error||'Kunne ikke kopiere til kapacitet','❌');
   }
 }
+// ── RUNDE FL — træk opgaver op/ned (Tabel, Ressource, Dagskort) ──
+// Finder de booking-elementer der står i samme dag/celle som slip-zonen, i
+// den rækkefølge de vises, og regner ud hvor den trukne booking skal ind ud
+// fra musens lodrette position.
+function planReorderEls(zone){
+  if(zone.classList.contains('prv-cell')){
+    var track=zone.parentElement,col=parseInt(zone.style.gridColumn,10)-1;
+    return Array.prototype.filter.call(track.querySelectorAll('.prv-bar'),function(el){return +el.dataset.segS<=col&&col<=+el.dataset.segE;});
+  }
+  return Array.prototype.slice.call(zone.querySelectorAll('.draggable-assignment'));
+}
+function planReorderPlan(e,zone,draggedId){
+  var els=planReorderEls(zone).filter(function(el){return el.offsetParent!==null||el.getClientRects().length;});
+  if(!els.length)return null;
+  els.sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;});
+  var ids=els.map(function(el){return +el.dataset.bookingId;});
+  var uniq=[];ids.forEach(function(id){if(uniq.indexOf(id)<0)uniq.push(id);});
+  var others=uniq.filter(function(id){return id!==+draggedId;});
+  var idx=others.length,marker=null,after=true;
+  for(var i=0;i<others.length;i++){
+    var el=els.filter(function(x){return +x.dataset.bookingId===others[i];})[0],r=el.getBoundingClientRect();
+    if(e.clientY<r.top+r.height/2){idx=i;marker=el;after=false;break;}
+    marker=el;after=true;
+  }
+  var order=others.slice();order.splice(idx,0,+draggedId);
+  return {order:order,before:uniq,marker:marker,after:after};
+}
+function planReorderApplies(b,zone){
+  if(!b||isCapacityBooking(b))return false;
+  if(document.getElementById('page-timeline').classList.contains('active'))return false;
+  var ds=zone.dataset.date;if(!ds||planWorkDates(b).indexOf(ds)<0)return false;
+  var any=zone.dataset.cardsAny==='1';
+  return any||+zone.dataset.userId===+b.user_id;
+}
+function planClearReorderMarks(){document.querySelectorAll('.reorder-before,.reorder-after').forEach(function(x){x.classList.remove('reorder-before','reorder-after');});}
+document.addEventListener('dragover',function(e){
+  var z=e.target.closest('[data-drop="day"]');
+  planClearReorderMarks();
+  if(!z||!dragPayload||dragPayload.kind!=='booking')return;
+  var b=bookings.find(function(x){return +x.id===+dragPayload.bookingId;});
+  if(!planReorderApplies(b,z))return;
+  var plan=planReorderPlan(e,z,b.id);
+  if(plan&&plan.marker&&plan.order.join()!==plan.before.join())plan.marker.classList.add(plan.after?'reorder-after':'reorder-before');
+});
+document.addEventListener('dragend',planClearReorderMarks);
+async function planReorderDrop(e,zone,b){
+  planClearReorderMarks();
+  var plan=planReorderPlan(e,zone,b.id);
+  if(!plan||plan.order.join()===plan.before.join())return true; // samme plads
+  // Lokal opdatering først, så kortet ikke hopper tilbage mens vi gemmer.
+  plan.order.forEach(function(id,i){var x=bookings.find(function(y){return +y.id===id;});if(x)x.sort_order=(i+1)*10;});
+  var timed=plan.order.map(function(id){var x=bookings.find(function(y){return +y.id===id;});return x&&x.start_time||'';});
+  var clash=timed.some(function(t,i){return t&&timed.slice(0,i).some(function(p){return p&&p>t;});});
+  renderPlan();
+  var r=await api('/api/assignments/reorder',{method:'PUT',body:JSON.stringify({ids:plan.order})});
+  if(r&&r.ok){
+    if(clash)toast('Gemt — men opgaver med mødetidspunkt står altid i klokkeslæt-rækkefølge. Ret tidspunktet for at flytte dem forbi hinanden.','⏰');
+    else toast('Rækkefølge gemt','↕');
+  }else{toast((r&&r.error)||'Kunne ikke gemme rækkefølgen','❌');await loadAll();}
+  return true;
+}
 async function handleDrop(e,zone){
   if(dropBusy)return;dropBusy=true;
   try{
@@ -15443,6 +15507,8 @@ async function handleDrop(e,zone){
       openTemplateDropModal(p.templateId,uid,ds);
     }else if(p.kind==='booking'){
       var b=bookings.find(function(x){return +x.id===+p.bookingId;});
+      // RUNDE FL — sluppet i samme dag hos samme person = ny rækkefølge.
+      if(b&&zone.dataset.drop==='day'&&planReorderApplies(b,zone)){await planReorderDrop(e,zone,b);return;}
       if(!b||( +b.user_id===uid&&b.start_date===ds))return;
       var onTimeline=document.getElementById('page-timeline').classList.contains('active');
       // FEJL RETTET — se den store kommentar ved dragstart-lytteren ovenfor.

@@ -400,10 +400,12 @@ function weekNumber(d){let x=new Date(d);let day=x.getDay()||7;x.setDate(x.getDa
 const TYPES={lay:['Flooring','#dbeafe','#4F46E5'],sand:['Floor sanding','#dcfce7','#15803d'],paint:['Painting','#fef9c3','#92570a'],sub:['Subcontractor','#ede9fe','#5b21b6'],other:['Other','#f1f5f9','#475569']};
 function tasksFor(date){return assignments.filter(a=>date>=String(a.start_date).slice(0,10)&&date<=String(a.end_date||a.start_date).slice(0,10)).sort((a,b)=>{
   const ta=String(a.start_time||'').trim(),tb=String(b.start_time||'').trim();
-  if(ta&&tb)return ta.localeCompare(tb);
+  // RUNDE FL — samme regel som admin: mødetid først, derefter kontorets
+  // manuelle rækkefølge (træk op/ned i Dagligplanlægning).
+  if(ta&&tb&&ta!==tb)return ta.localeCompare(tb);
   if(ta&&!tb)return -1;
   if(!ta&&tb)return 1;
-  return 0;
+  return (Number(a.sort_order)||0)-(Number(b.sort_order)||0)||(Number(a.id)||0)-(Number(b.id)||0);
 })}
 // FLERDAGES-TIDSLINJE — se CSS-kommentaren ved .task-timeline for hvorfor. Returnerer
 // tom streng for enkeltdags-opgaver (intet forløb at vise). For meget lange forløb
