@@ -21463,7 +21463,7 @@ async function fetchFinanceTimeline(fromMk, toMk) {
   const splits = {}; splitsR.rows.forEach(r => { (splits[r.job_id] = splits[r.job_id] || []).push({ month_key: r.month_key, amount: Number(r.amount) || 0 }); });
 
   const quotes = (await pool.query(`
-    SELECT q.id, q.job_number, q.job_name, q.total, q.status,
+    SELECT q.id, q.job_number, q.job_name, q.total, q.status, q.tax_amount,
            pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag, pr.status AS project_status,
            (SELECT COALESCE(SUM(i.total),0) FROM invoices i WHERE i.quote_id = q.id AND i.status NOT IN ('void','draft')) AS invoiced,
            (SELECT json_agg(json_build_object('m', substr(i.created_at,1,7), 'a', i.total)) FROM invoices i WHERE i.quote_id = q.id AND i.status NOT IN ('void','draft')) AS inv_list
@@ -21512,12 +21512,13 @@ async function fetchFinanceTimeline(fromMk, toMk) {
       key, kind: 'quote', quoteId: q.id, projectId: q.project_id || null,
       name: q.project_name || q.job_name || q.job_number || ('Tilbud #' + q.id), jobNumber: q.job_number || '',
       fag: q.fag || 'Ukendt', value, invoiced: Number(q.invoiced) || 0, amountEdited: !!(ov && ov.amount !== null && ov.amount !== undefined),
-      start: days[0] || null, end: days[days.length - 1] || null, workDays: days.length, mode, months
+      start: days[0] || null, end: days[days.length - 1] || null, workDays: days.length, mode, months,
+      netRatio: Number(q.total) > 0 ? Math.max(0, (Number(q.total) - (Number(q.tax_amount) || 0)) / Number(q.total)) : 0.8
     });
   }
   // Fakturaer uden tilbud (direkte fakturaer).
   const direct = (await pool.query(`
-    SELECT i.id, i.invoice_number, i.job_name, i.job_number, i.total, substr(i.created_at,1,10) AS d,
+    SELECT i.id, i.invoice_number, i.job_name, i.job_number, i.total, i.tax_amount, substr(i.created_at,1,10) AS d,
            pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag
     FROM invoices i LEFT JOIN projects pr ON pr.job_number = i.job_number
     WHERE i.quote_id IS NULL AND i.status NOT IN ('void','draft')
@@ -21530,10 +21531,11 @@ async function fetchFinanceTimeline(fromMk, toMk) {
     const invMonths = {};
     if (splits[key]) splits[key].forEach(sp => { invMonths[sp.month_key] = (invMonths[sp.month_key] || 0) + Math.round(sp.amount); }); else invMonths[mk] = Math.round(value);
     jobs.push({ key, kind: 'invoice', projectId: i.project_id || null, name: (i.project_name || i.job_name || i.invoice_number) , jobNumber: i.job_number || '',
-      fag: i.fag || 'Ukendt', value, invoiced: value, start: i.d, end: i.d, workDays: 0, mode: splits[key] ? 'manual' : 'invoice', months: invMonths });
+      fag: i.fag || 'Ukendt', value, invoiced: value, start: i.d, end: i.d, workDays: 0, mode: splits[key] ? 'manual' : 'invoice', months: invMonths,
+      netRatio: Number(i.total) > 0 ? Math.max(0, (Number(i.total) - (Number(i.tax_amount) || 0)) / Number(i.total)) : 0.8 });
   }
   const manual = (await pool.query('SELECT * FROM finance_manual_revenue')).rows;
-  for (const m of manual) jobs.push({ key: 'manual-' + m.id, kind: 'manual', manualId: m.id, name: m.name, fag: m.fag || 'Ukendt', value: Number(m.amount) || 0, invoiced: 0, start: null, end: null, workDays: 0, mode: 'manual-line', months: { [m.month_key]: Math.round(Number(m.amount) || 0) } });
+  for (const m of manual) jobs.push({ key: 'manual-' + m.id, kind: 'manual', manualId: m.id, name: m.name, fag: m.fag || 'Ukendt', value: Number(m.amount) || 0, invoiced: 0, start: null, end: null, workDays: 0, mode: 'manual-line', months: { [m.month_key]: Math.round(Number(m.amount) || 0) }, netRatio: 0.8 });
 
   // Kun sager der rammer det valgte vindue.
   const inWin = mk => mk >= fromMk && mk <= toMk;
