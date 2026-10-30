@@ -20548,9 +20548,12 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     }
     const manualMk = monthOverrides[key];
     const mk = manualMk || naturalMk;
-    // RUNDE H #317 — fakturaer tæller ALDRIG i indeværende eller fremtidige måneder
-    // mere, heller ikke via en manuel flytning derhen (se kommentar ved funktionen).
-    if (mk >= currentMonthKey) continue;
+    // v2.59.1 — fakturaer udstedt i INDEVÆRENDE måned tæller nu med (før forsvandt
+    // de helt: måneden var "forecast" og tilbuddet var blevet 'converted', så hverken
+    // faktura eller tilbud kom med — fx ~30 oktober-fakturaer). Kun fremtidige
+    // måneder er stadig lukket for fakturaer. Dobbelttælling undgås ved at tilbuddet
+    // nedenfor kun tæller med sin ikke-fakturerede rest.
+    if (mk > currentMonthKey) continue;
     if (!buckets[mk]) continue;
     const override = overrides[key];
     let value = Number(r.total) || 0, excluded = false;
@@ -20575,12 +20578,13 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   // (ISO-formaterede datoer sorterer/MAX'er korrekt som tekst, samme antagelse som resten
   // af koden bruger for datoer af denne type).
   const quoteRows = (await pool.query(`
-    SELECT q.id, q.job_number, q.job_name, q.total,
+    SELECT q.id, q.job_number, q.job_name, q.total, q.status,
            pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag,
-           (SELECT MAX(gt.end_date) FROM gantt_tasks gt WHERE gt.project_id = pr.id) AS gantt_end_date
+           (SELECT MAX(gt.end_date) FROM gantt_tasks gt WHERE gt.project_id = pr.id) AS gantt_end_date,
+           (SELECT COALESCE(SUM(i.total),0) FROM invoices i WHERE i.quote_id = q.id AND i.status NOT IN ('void','draft')) AS invoiced
     FROM quotes q
     LEFT JOIN projects pr ON pr.job_number = q.job_number
-    WHERE q.status = 'accepted'
+    WHERE q.status IN ('accepted','converted')
   `)).rows;
   const poolJobs = [];
   for (const r of quoteRows) {
@@ -20597,6 +20601,16 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
       });
       continue;
     }
+    // v2.59.1 — et tilbud der er (delvist) faktureret tæller kun med sin REST.
+    // Fuldt fakturerede tilbud ('converted' uden rest) springes over — de står
+    // allerede som fakturaer. Fx Isabella: tilbud 1.174.350, faktureret 235.692 →
+    // resten 938.658 vises stadig som forventet omsætning.
+    const invoiced = Number(r.invoiced) || 0;
+    const remaining = Math.max(0, (Number(r.total) || 0) - invoiced);
+    if (invoiced > 0 && remaining < 1) continue;
+    if (r.status === 'converted' && invoiced <= 0 && !monthOverrides[key] && !overrides[key]) continue;
+    r.total = remaining;
+    const restNote = invoiced > 0 ? ' Rest efter fakturering (' + krFmtServer(invoiced) + ' er allerede faktureret).' : '';
     const hasGanttDate = r.gantt_end_date && /^\d{4}-\d{2}/.test(r.gantt_end_date);
     let naturalMk = hasGanttDate ? String(r.gantt_end_date).slice(0, 7) : currentMonthKey;
     // En overstået måned må aldrig få forecast-tal som FORSLAG — klem forslaget ind i
@@ -20615,20 +20629,21 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     if (!manualMk) {
       if (excluded) continue;
       poolJobs.push({
-        jobId: key, name: r.project_name || r.job_name || r.job_number || ('Tilbud #' + r.id),
+        jobId: key, name: (r.project_name || r.job_name || r.job_number || ('Tilbud #' + r.id)) + (invoiced > 0 ? ' (rest)' : ''),
         fag: r.fag || 'Ukendt', value, excluded: false, hasOverride: !!override,
         startDate: hasGanttDate ? r.gantt_end_date : null, monthMoved: false, naturalMonth: naturalMk,
         valueSource: 'quote', priceMismatch: false, projectId: r.project_id || null, pool: true,
         placementReason: hasGanttDate
-          ? ('Forslag: ' + naturalMk + ' (seneste Gantt-slutdato ' + String(r.gantt_end_date).slice(0, 10) + ') — træk sagen ind i den rigtige måned for at bekræfte.')
-          : 'Tilbud accepteret af kunden, endnu ikke faktureret. Ingen Gantt-slutdato — træk sagen ind i den rigtige måned.'
+          ? ('Forslag: ' + naturalMk + ' (seneste Gantt-slutdato ' + String(r.gantt_end_date).slice(0, 10) + ') — træk sagen ind i den rigtige måned for at bekræfte.' + restNote)
+          : ('Tilbud accepteret af kunden, endnu ikke faktureret. Ingen Gantt-slutdato — træk sagen ind i den rigtige måned.' + restNote),
+        partiallyInvoiced: invoiced > 0, invoicedAmount: invoiced
       });
       continue;
     }
     const mk = manualMk;
     if (!buckets[mk]) continue;
     buckets[mk][key] = {
-      jobId: key, name: r.project_name || r.job_name || r.job_number || ('Tilbud #' + r.id),
+      jobId: key, name: (r.project_name || r.job_name || r.job_number || ('Tilbud #' + r.id)) + (invoiced > 0 ? ' (rest)' : ''),
       fag: r.fag || 'Ukendt', value, excluded, hasOverride: !!override,
       // RUNDE BL — pulledFromPool (adskilt fra hasOverride, som fortsat KUN betyder
       // "beløbet er rettet" og styrer "rettet"-badgen) markerer at MÅNEDEN er valgt
@@ -20637,7 +20652,8 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
       pulledFromPool: true,
       startDate: hasGanttDate ? r.gantt_end_date : null, monthMoved: mk !== naturalMk, naturalMonth: naturalMk,
       valueSource: 'quote', priceMismatch: false, projectId: r.project_id || null,
-      placementReason: 'Trukket ind i denne måned af dig.' + (hasGanttDate ? ' (Forslået måned ud fra Gantt-slutdato: ' + naturalMk + '.)' : '')
+      placementReason: 'Trukket ind i denne måned af dig.' + (hasGanttDate ? ' (Forslået måned ud fra Gantt-slutdato: ' + naturalMk + '.)' : '') + restNote,
+      partiallyInvoiced: invoiced > 0, invoicedAmount: invoiced
     };
   }
 
