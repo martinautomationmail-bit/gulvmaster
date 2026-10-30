@@ -10319,6 +10319,7 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
     );
   }
   res.json({ ok: true });
+  syncTaskPipelineFromBookings(current.task_id);
   // RUNDE H: denne rute sender IKKE længere selv en kunde-mail. At markere en
   // enkelt booking/opgave som færdig her er ren intern registrering (bl.a. til
   // fakturering) — en sag har typisk flere bookinger, og kunden skal kun have
@@ -16751,6 +16752,9 @@ function projectAutoRule(start, end, today) {
   const dow = (new Date(today + 'T12:00:00Z').getUTCDay() + 6) % 7; // 0 = mandag
   const monday = isoAddDays(today, -dow), nextMonday = isoAddDays(monday, 7), weekAfter = isoAddDays(monday, 14);
   const last = end && end >= start ? end : start;
+  // RUNDE GB — en sag der startede i denne uge men hvis tidslinje allerede er
+  // slut, hører ikke til under "Denne uge" resten af ugen.
+  if (start <= today && last < today) return 'overdue';
   if (start >= monday && start < nextMonday) return 'this_week';
   if (start >= nextMonday && start < weekAfter) return 'next_week';
   if (start >= weekAfter) return start.slice(0, 4) > today.slice(0, 4) ? 'next_year' : 'this_year';
@@ -16872,6 +16876,45 @@ async function getProjectPipelineStages(project) {
   const own = project && project.pipeline_stages ? sanitizePipelineStages(typeof project.pipeline_stages === 'string' ? safeJsonParse(project.pipeline_stages, []) : project.pipeline_stages) : [];
   return own.length ? own : await getDefaultPipelineStages();
 }
+// RUNDE GB (Martin: "Adrian har markeret Mette done, men opgaven er ikke
+// skubbet til Færdig — burde det ikke køre i ét flow?") — når en medarbejder
+// markerer en booking færdig, følger opgavens fase i sagens Pipeline med:
+// alle dage færdige → "Færdig" (100 %), nogle færdige → "I gang" (x %),
+// ingen færdige igen → tilbage til første fase. Herefter genberegnes sagens
+// Kanban-kolonne. Kunde-mailen sendes stadig først når SAGEN afsluttes.
+async function syncTaskPipelineFromBookings(taskId) {
+  try {
+    const cnt = await pgOne(`SELECT COUNT(*)::int AS total, COUNT(completed_at)::int AS done FROM planning_bookings
+      WHERE task_id=$1 AND COALESCE(planning_mode,'daily') <> 'capacity'`, [taskId]);
+    if (!cnt || !cnt.total) return;
+    const task = await pgOne('SELECT id, status, project_id FROM gantt_tasks WHERE id=$1', [taskId]);
+    if (!task) return;
+    const project = task.project_id ? await pgOne('SELECT id, pipeline_stages FROM projects WHERE id=$1', [task.project_id]) : null;
+    const stages = (await getProjectPipelineStages(project)).map(st => st.key);
+    if (!stages.length) return;
+    const doneKey = stages.includes('done') ? 'done' : stages[stages.length - 1];
+    const firstKey = stages[0];
+    const progKey = stages.includes('in_progress') ? 'in_progress' : null;
+    let status = task.status, progress = Math.round(cnt.done / cnt.total * 100);
+    if (cnt.done === cnt.total) status = doneKey;
+    else if (cnt.done > 0) { if ((status === firstKey || status === doneKey) && progKey) status = progKey; else if (status === doneKey) status = firstKey; }
+    else if (status === doneKey || status === progKey) status = firstKey;
+    await pool.query('UPDATE gantt_tasks SET status=$1, progress=$2 WHERE id=$3', [status, progress, taskId]);
+    if (task.project_id && typeof recomputeProjectStatuses === 'function') await recomputeProjectStatuses({ projectId: task.project_id });
+  } catch (e) { console.error('syncTaskPipelineFromBookings fejlede:', e.message); }
+}
+async function backfillTaskPipelineFromBookings() {
+  const name = 'task_pipeline_from_bookings_20261030';
+  try {
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const rows = await pool.query(`SELECT DISTINCT b.task_id FROM planning_bookings b JOIN gantt_tasks g ON g.id=b.task_id
+      WHERE COALESCE(b.planning_mode,'daily') <> 'capacity' AND b.completed_at IS NOT NULL`);
+    for (const r of rows.rows) await syncTaskPipelineFromBookings(r.task_id);
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ tasks: rows.rows.length })]);
+    console.log('Pipeline-faser synkroniseret fra bookinger:', rows.rows.length);
+  } catch (e) { console.error('backfillTaskPipelineFromBookings fejlede:', e.message); }
+}
+
 app.put('/api/projects/:id/pipeline-stages', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT id, pipeline_stages FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
@@ -17353,6 +17396,11 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
       UPDATE jt_tasks SET manually_completed_at=${nowTextSQL()}
       WHERE project_id=$1 AND manually_completed_at IS NULL
     `, [current.id]).catch(e => console.error('Kunne ikke markere sagens ubookede opgaver som færdige:', e.message));
+    // RUNDE GB — og sagens Pipeline-opgaver sættes til Færdig.
+    getProjectPipelineStages(current).then(st => {
+      const keys = st.map(x => x.key); const doneKey = keys.includes('done') ? 'done' : keys[keys.length - 1];
+      return pool.query('UPDATE gantt_tasks SET status=$1, progress=100 WHERE project_id=$2', [doneKey, current.id]);
+    }).catch(e => console.error('Kunne ikke sætte sagens pipeline-opgaver til Færdig:', e.message));
 
     if (!current.completion_email_sent_at) {
       const updated = { ...current, name: b.name !== undefined ? String(b.name).trim() : current.name, status: newStatus,
@@ -28353,6 +28401,7 @@ async function start() {
   await migrateTimetrackPanelPage();
   await migrateAutoProjectStages();
   await migrateNotPerformedStage();
+  await backfillTaskPipelineFromBookings();
   await recomputeProjectStatuses({ force: true }).then(r => console.log('Auto-stadier: ' + r.changed + ' sag(er) flyttet.')).catch(e => console.error('Auto-stadier fejlede:', e.message));
   await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
   await backfillCaseNumbers().catch(error => console.error('Efterudfyldning af sagsnumre fejlede:', error.message));
