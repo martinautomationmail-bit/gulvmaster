@@ -1485,6 +1485,31 @@ async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_credit_notes_invoice ON credit_notes(invoice_id);
 
+    -- v2.55.0 — revisor-adgang (Martin: "lave et hold/adgang til en kunde der
+    -- er revisor og skal ind og hente alle faktura og kreditnoter ... pr måned,
+    -- pr kvartal eller pr år"). Et hemmeligt link + en 6-cifret kode; kun
+    -- læseadgang til fakturaer/kreditnotaer, intet login i selve programmet.
+    CREATE TABLE IF NOT EXISTS accountant_access (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT,
+      token TEXT UNIQUE NOT NULL,
+      code TEXT NOT NULL,
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      revoked_at TEXT,
+      last_used_at TEXT,
+      use_count INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS accountant_access_log (
+      id SERIAL PRIMARY KEY,
+      access_id INTEGER NOT NULL REFERENCES accountant_access(id) ON DELETE CASCADE,
+      action TEXT NOT NULL,
+      details TEXT,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_accountant_access_log ON accountant_access_log(access_id, created_at);
+
     -- RUNDE AA (Martins ønske: "Når du laver en kreditnote og du vælger
     -- direkte poster du kreditere. I den kreditnote faktura du laver, skal du
     -- skrive de poster ind. Yderligere når du trykker vælg selv poster skal
@@ -27964,6 +27989,298 @@ function sendPage(filename) {
     res.sendFile(path.join(__dirname, filename));
   };
 }
+
+// ══════════════════════════════════════════════════════════════
+// v2.55.0 — REVISOR-ADGANG
+// Martin opretter en adgang (navn/e-mail) under Fakturaer → "Revisor-adgang".
+// Revisoren får et link (/revisor/<token>) og en 6-cifret kode. Efter koden
+// får browseren en kortlivet session-token signeret med en SEPARAT nøgle
+// (JWT_SECRET + ':revisor'), så den aldrig kan bruges mod resten af API'et.
+// Kun læsning: liste, PDF'er, Excel-oversigt og ZIP pr. periode.
+// ══════════════════════════════════════════════════════════════
+const REVISOR_SECRET = JWT_SECRET + ':revisor';
+const revisorFailedLogins = new Map(); // token -> {n, until}
+function revisorAuth(req, res, next) {
+  const header = req.headers.authorization;
+  const raw = header ? header.replace(/^Bearer\s+/i, '') : (req.query.t || null);
+  if (!raw) return res.status(401).json({ error: 'Log ind med koden igen' });
+  try {
+    const p = jwt.verify(raw, REVISOR_SECRET);
+    if (!p || !p.rev) throw new Error('bad');
+    pgOne('SELECT id, name, revoked_at FROM accountant_access WHERE id=$1', [p.rev]).then(a => {
+      if (!a || a.revoked_at) return res.status(401).json({ error: 'Adgangen er lukket' });
+      req.revisor = a; next();
+    }).catch(next);
+  } catch (e) { return res.status(401).json({ error: 'Sessionen er udløbet — indtast koden igen' }); }
+}
+async function revisorLog(accessId, action, details) {
+  try { await pool.query('INSERT INTO accountant_access_log (access_id, action, details) VALUES ($1,$2,$3)', [accessId, action, details ? JSON.stringify(details) : null]); } catch (e) {}
+}
+function revisorRange(q) {
+  const re = /^\d{4}-\d{2}-\d{2}$/;
+  const from = re.test(String(q.from || '')) ? String(q.from) : '2000-01-01';
+  const to = re.test(String(q.to || '')) ? String(q.to) : '2999-12-31';
+  return { from, to };
+}
+async function revisorDocs(from, to) {
+  const inv = (await pool.query(`
+    SELECT i.id, i.invoice_number, substr(i.created_at,1,10) AS date, i.job_name, i.job_number, i.customer_address,
+           i.status, i.subtotal, i.tax_rate, i.tax_amount, i.total, i.due_date,
+           COALESCE((SELECT SUM(amount) FROM invoice_payments p WHERE p.invoice_id=i.id),0) AS paid,
+           COALESCE((SELECT SUM(amount) FROM credit_notes c WHERE c.invoice_id=i.id),0) AS credited
+    FROM invoices i WHERE substr(i.created_at,1,10) BETWEEN $1 AND $2
+    ORDER BY i.created_at ASC, i.id ASC`, [from, to])).rows;
+  const cns = (await pool.query(`
+    SELECT c.id, c.credit_note_number, substr(c.created_at,1,10) AS date, c.amount, c.reason,
+           i.id AS invoice_id, i.invoice_number, i.job_name, i.job_number, i.tax_rate
+    FROM credit_notes c JOIN invoices i ON i.id=c.invoice_id
+    WHERE substr(c.created_at,1,10) BETWEEN $1 AND $2
+    ORDER BY c.created_at ASC, c.id ASC`, [from, to])).rows;
+  const r2 = n => Math.round(Number(n || 0) * 100) / 100;
+  const invoices = inv.map(i => {
+    const total = Number(i.total) || 0, tax = Number(i.tax_amount) || 0;
+    return { id: i.id, number: i.invoice_number, date: i.date, customer: i.job_name || '', job_number: i.job_number || '',
+      status: i.status, net: r2(total - tax), vat: r2(tax), total: r2(total), paid: r2(i.paid), credited: r2(i.credited),
+      due_date: i.due_date || '', void: i.status === 'void' };
+  });
+  const credit_notes = cns.map(c => {
+    const total = Number(c.amount) || 0, rate = Number(c.tax_rate);
+    const net = total / (1 + ((isNaN(rate) ? 25 : rate) / 100));
+    return { id: c.id, number: c.credit_note_number, date: c.date, customer: c.job_name || '', job_number: c.job_number || '',
+      invoice_id: c.invoice_id, invoice_number: c.invoice_number, reason: c.reason || '', net: r2(net), vat: r2(total - net), total: r2(total) };
+  });
+  const live = invoices.filter(i => !i.void);
+  const sum = (arr, k) => r2(arr.reduce((s, x) => s + (Number(x[k]) || 0), 0));
+  const summary = {
+    invoices: live.length, invoices_void: invoices.length - live.length, credit_notes: credit_notes.length,
+    inv_net: sum(live, 'net'), inv_vat: sum(live, 'vat'), inv_total: sum(live, 'total'),
+    cn_net: sum(credit_notes, 'net'), cn_vat: sum(credit_notes, 'vat'), cn_total: sum(credit_notes, 'total'),
+  };
+  summary.net = r2(summary.inv_net - summary.cn_net);
+  summary.vat = r2(summary.inv_vat - summary.cn_vat);
+  summary.total = r2(summary.inv_total - summary.cn_total);
+  return { invoices, credit_notes, summary };
+}
+function pdfToBuffer(draw) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+    registerBrandFonts(doc);
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    try { draw(doc); doc.end(); } catch (e) { reject(e); }
+  });
+}
+async function revisorInvoicePdf(id) {
+  const invoice = await loadInvoiceFull(id);
+  if (!invoice) return null;
+  const company = await getCompanyInfo();
+  const att = await fetchAttachmentImages(invoice.attachments);
+  return { name: invoice.invoice_number, buf: await pdfToBuffer(doc => drawDocumentPdf(doc, 'invoice', invoice, company, att)) };
+}
+async function revisorCreditNotePdf(id) {
+  const cn = await pgOne('SELECT * FROM credit_notes WHERE id=$1', [id]);
+  if (!cn) return null;
+  const invoice = await loadInvoiceFull(cn.invoice_id);
+  const company = await getCompanyInfo();
+  cn.lines = (await pool.query('SELECT * FROM credit_note_lines WHERE credit_note_id=$1 ORDER BY position ASC, id ASC', [cn.id])).rows;
+  const attRows = (await pool.query('SELECT * FROM document_attachments WHERE doc_type=$1 AND doc_id=$2 ORDER BY created_at ASC, id ASC', ['credit_note', cn.id])).rows;
+  const att = await fetchAttachmentImages(attRows);
+  return { name: cn.credit_note_number, buf: await pdfToBuffer(doc => drawCreditNotePdf(doc, cn, invoice, company, att)) };
+}
+// Lille ZIP-skriver (deflate) uden ekstra afhængighed — Node har zlib.crc32.
+function buildZip(files) {
+  const zlib = require('zlib');
+  const parts = [], central = [];
+  let offset = 0;
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  for (const f of files) {
+    const name = Buffer.from(f.name, 'utf8');
+    const data = Buffer.isBuffer(f.data) ? f.data : Buffer.from(f.data);
+    const comp = zlib.deflateRawSync(data);
+    const crc = zlib.crc32(data) >>> 0;
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0x0800, 6); lh.writeUInt16LE(8, 8);
+    lh.writeUInt16LE(dosTime, 10); lh.writeUInt16LE(dosDate, 12); lh.writeUInt32LE(crc, 14);
+    lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(data.length, 22); lh.writeUInt16LE(name.length, 26); lh.writeUInt16LE(0, 28);
+    parts.push(lh, name, comp);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(0x0800, 8); ch.writeUInt16LE(8, 10);
+    ch.writeUInt16LE(dosTime, 12); ch.writeUInt16LE(dosDate, 14); ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(comp.length, 20);
+    ch.writeUInt32LE(data.length, 24); ch.writeUInt16LE(name.length, 28); ch.writeUInt32LE(offset, 42);
+    central.push(ch, name);
+    offset += lh.length + name.length + comp.length;
+  }
+  const cd = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, cd, end]);
+}
+const REVISOR_STATUS = { unpaid: 'Ubetalt', partial: 'Delvist betalt', paid: 'Betalt', void: 'Annulleret' };
+function revisorWorkbook(data, from, to) {
+  if (!XLSX) throw new Error('Excel-eksport er ikke tilgængelig på serveren');
+  const wb = XLSX.utils.book_new();
+  const s = data.summary;
+  const ov = [
+    ['Gulv Master — bilagsoversigt'], ['Periode', from === '2000-01-01' ? 'Alt' : from + ' til ' + to], [],
+    ['', 'Antal', 'Ekskl. moms', 'Moms', 'Inkl. moms'],
+    ['Fakturaer', s.invoices, s.inv_net, s.inv_vat, s.inv_total],
+    ['Kreditnotaer', s.credit_notes, -s.cn_net, -s.cn_vat, -s.cn_total],
+    ['I alt (netto)', '', s.net, s.vat, s.total],
+  ];
+  if (s.invoices_void) ov.push([], ['Annullerede fakturaer (ikke med i tallene)', s.invoices_void]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ov), 'Oversigt');
+  const inv = [['Fakturanr.', 'Dato', 'Kunde', 'Sagsnr.', 'Ekskl. moms', 'Moms', 'Inkl. moms', 'Betalt', 'Krediteret', 'Forfald', 'Status']]
+    .concat(data.invoices.map(i => [i.number, i.date, i.customer, i.job_number, i.net, i.vat, i.total, i.paid, i.credited, i.due_date, REVISOR_STATUS[i.status] || i.status]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(inv), 'Fakturaer');
+  const cn = [['Kreditnotanr.', 'Dato', 'Vedr. faktura', 'Kunde', 'Sagsnr.', 'Ekskl. moms', 'Moms', 'Inkl. moms', 'Begrundelse']]
+    .concat(data.credit_notes.map(c => [c.number, c.date, c.invoice_number, c.customer, c.job_number, c.net, c.vat, c.total, c.reason]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cn), 'Kreditnotaer');
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+}
+function revisorFileLabel(from, to) {
+  if (from === '2000-01-01') return 'alle';
+  return from === to ? from : from + '_til_' + to;
+}
+
+// --- Admin: administrér adgange (kun admin) ---
+function adminRoleOnly(req, res, next) {
+  pgOne('SELECT role, active FROM users WHERE id=$1', [req.user.id]).then(u => {
+    if (!u || !u.active || u.role !== 'admin') return res.status(403).json({ error: 'Kun administrator kan styre revisor-adgang' });
+    next();
+  }).catch(next);
+}
+function revisorLinkFor(token) { return PUBLIC_APP_URL.replace(/\/$/, '') + '/revisor/' + token; }
+app.get('/api/accountant-access', auth, adminRoleOnly, asyncRoute(async (req, res) => {
+  const rows = (await pool.query(`SELECT a.*, (SELECT COUNT(*)::int FROM accountant_access_log l WHERE l.access_id=a.id AND l.action IN ('zip','xlsx','pdf')) AS downloads
+    FROM accountant_access a ORDER BY a.revoked_at IS NOT NULL, a.created_at DESC`)).rows;
+  res.json(rows.map(r => ({ ...r, link: revisorLinkFor(r.token) })));
+}));
+app.post('/api/accountant-access', auth, adminRoleOnly, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim().slice(0, 120);
+  if (!name) return res.status(400).json({ error: 'Skriv revisorens navn eller firma' });
+  const email = String(b.email || '').trim().slice(0, 200) || null;
+  const token = crypto.randomBytes(24).toString('base64url');
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  const row = await pgOne('INSERT INTO accountant_access (name, email, token, code, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [name, email, token, code, req.user.id]);
+  res.json({ ...row, link: revisorLinkFor(token) });
+}));
+app.post('/api/accountant-access/:id/new-code', auth, adminRoleOnly, asyncRoute(async (req, res) => {
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  const row = await pgOne('UPDATE accountant_access SET code=$1 WHERE id=$2 RETURNING *', [code, req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Ikke fundet' });
+  res.json({ ...row, link: revisorLinkFor(row.token) });
+}));
+app.post('/api/accountant-access/:id/revoke', auth, adminRoleOnly, asyncRoute(async (req, res) => {
+  const on = !(req.body && req.body.reopen);
+  const row = await pgOne(`UPDATE accountant_access SET revoked_at=${on ? nowTextSQL() : 'NULL'} WHERE id=$1 RETURNING *`, [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Ikke fundet' });
+  res.json({ ...row, link: revisorLinkFor(row.token) });
+}));
+app.delete('/api/accountant-access/:id', auth, adminRoleOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM accountant_access WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+app.get('/api/accountant-access/:id/log', auth, adminRoleOnly, asyncRoute(async (req, res) => {
+  res.json((await pool.query('SELECT action, details, created_at FROM accountant_access_log WHERE access_id=$1 ORDER BY created_at DESC LIMIT 100', [req.params.id])).rows);
+}));
+app.post('/api/accountant-access/:id/send', auth, adminRoleOnly, asyncRoute(async (req, res) => {
+  const a = await pgOne('SELECT * FROM accountant_access WHERE id=$1', [req.params.id]);
+  if (!a) return res.status(404).json({ error: 'Ikke fundet' });
+  const to = String((req.body && req.body.to) || a.email || '').trim();
+  if (!to) return res.status(400).json({ error: 'Ingen e-mail på adgangen' });
+  if (!mailIsConfigured()) return res.status(400).json({ error: 'E-mail er ikke konfigureret på serveren' });
+  const company = await getCompanyInfo();
+  const link = revisorLinkFor(a.token);
+  const cname = (company && (company.name || company.company_name)) || 'Gulv Master';
+  const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#111318;line-height:1.55">
+    <p>Hej ${escPublic(a.name)},</p>
+    <p>Her er dit link til ${escPublic(cname)}s fakturaer og kreditnotaer. Du kan vælge måned, kvartal eller år og hente alle bilag som PDF'er i én ZIP-fil eller en samlet Excel-oversigt.</p>
+    <p><a href="${link}" style="display:inline-block;background:#111318;color:#fff;text-decoration:none;padding:11px 18px;border-radius:8px;font-weight:bold">Åbn bilagsoversigten</a></p>
+    <p style="color:#6B7280">Du skal bruge en 6-cifret kode for at logge ind. Den får du direkte af os.</p>
+    <p>Venlig hilsen<br>${escPublic(cname)}</p></div>`;
+  await sendMailUniversal({ to, subject: `Adgang til bilag — ${cname}`, html, text: `Hej ${a.name}\n\nDit link til fakturaer og kreditnotaer: ${link}\nDu skal bruge en 6-cifret kode, som du får direkte af os.\n\nVenlig hilsen\n${cname}` });
+  await revisorLog(a.id, 'mail_sent', { to });
+  res.json({ ok: true });
+}));
+
+// --- Revisoren selv ---
+app.get('/revisor/:token', sendPage('revisor.html'));
+app.post('/api/revisor/:token/login', asyncRoute(async (req, res) => {
+  const token = String(req.params.token || '');
+  const f = revisorFailedLogins.get(token);
+  if (f && f.until > Date.now()) return res.status(429).json({ error: 'For mange forkerte forsøg — prøv igen om 15 minutter' });
+  const a = await pgOne('SELECT * FROM accountant_access WHERE token=$1', [token]);
+  if (!a) return res.status(404).json({ error: 'Linket er ikke gyldigt' });
+  if (a.revoked_at) return res.status(403).json({ error: 'Adgangen er lukket. Kontakt Gulv Master.' });
+  const code = String((req.body && req.body.code) || '').replace(/\D/g, '');
+  const ok = code.length === a.code.length && crypto.timingSafeEqual(Buffer.from(code), Buffer.from(a.code));
+  if (!ok) {
+    const n = (f && f.until <= Date.now() ? 0 : (f ? f.n : 0)) + 1;
+    revisorFailedLogins.set(token, { n, until: n >= 8 ? Date.now() + 15 * 60000 : 0 });
+    await revisorLog(a.id, 'login_failed', null);
+    return res.status(401).json({ error: 'Forkert kode' });
+  }
+  revisorFailedLogins.delete(token);
+  await pool.query(`UPDATE accountant_access SET last_used_at=${nowTextSQL()}, use_count=use_count+1 WHERE id=$1`, [a.id]);
+  await revisorLog(a.id, 'login', null);
+  const company = await getCompanyInfo();
+  res.json({ session: jwt.sign({ rev: a.id }, REVISOR_SECRET, { expiresIn: '12h' }), name: a.name, company: (company && (company.name || company.company_name)) || 'Gulv Master' });
+}));
+app.get('/api/revisor/data', revisorAuth, asyncRoute(async (req, res) => {
+  const { from, to } = revisorRange(req.query);
+  const data = await revisorDocs(from, to);
+  const years = (await pool.query(`SELECT DISTINCT substr(created_at,1,4) AS y FROM invoices WHERE created_at IS NOT NULL
+    UNION SELECT DISTINCT substr(created_at,1,4) FROM credit_notes WHERE created_at IS NOT NULL ORDER BY 1 DESC`)).rows.map(r => r.y).filter(Boolean);
+  res.json({ ...data, years, from, to, name: req.revisor.name });
+}));
+app.get('/api/revisor/invoice/:id/pdf', revisorAuth, asyncRoute(async (req, res) => {
+  const f = await revisorInvoicePdf(req.params.id);
+  if (!f) return res.status(404).json({ error: 'Ikke fundet' });
+  await revisorLog(req.revisor.id, 'pdf', { invoice: f.name });
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `${req.query.dl ? 'attachment' : 'inline'}; filename="${f.name}.pdf"`);
+  res.send(f.buf);
+}));
+app.get('/api/revisor/credit-note/:id/pdf', revisorAuth, asyncRoute(async (req, res) => {
+  const f = await revisorCreditNotePdf(req.params.id);
+  if (!f) return res.status(404).json({ error: 'Ikke fundet' });
+  await revisorLog(req.revisor.id, 'pdf', { credit_note: f.name });
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `${req.query.dl ? 'attachment' : 'inline'}; filename="${f.name}.pdf"`);
+  res.send(f.buf);
+}));
+app.get('/api/revisor/export.xlsx', revisorAuth, asyncRoute(async (req, res) => {
+  const { from, to } = revisorRange(req.query);
+  const buf = revisorWorkbook(await revisorDocs(from, to), from, to);
+  await revisorLog(req.revisor.id, 'xlsx', { from, to });
+  res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.set('Content-Disposition', `attachment; filename="bilag_${revisorFileLabel(from, to)}.xlsx"`);
+  res.send(buf);
+}));
+app.get('/api/revisor/export.zip', revisorAuth, asyncRoute(async (req, res) => {
+  const { from, to } = revisorRange(req.query);
+  const data = await revisorDocs(from, to);
+  const want = String(req.query.what || 'all'); // all | invoices | credit_notes
+  const files = [{ name: `Oversigt_${revisorFileLabel(from, to)}.xlsx`, data: revisorWorkbook(data, from, to) }];
+  const safe = s => String(s || '').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80);
+  if (want !== 'credit_notes') for (const i of data.invoices) {
+    try { const f = await revisorInvoicePdf(i.id); if (f) files.push({ name: `Fakturaer/${safe(i.date)} ${safe(f.name)}${i.void ? ' (annulleret)' : ''}.pdf`, data: f.buf }); } catch (e) { console.error('revisor zip faktura', i.id, e.message); }
+  }
+  if (want !== 'invoices') for (const c of data.credit_notes) {
+    try { const f = await revisorCreditNotePdf(c.id); if (f) files.push({ name: `Kreditnotaer/${safe(c.date)} ${safe(f.name)}.pdf`, data: f.buf }); } catch (e) { console.error('revisor zip kreditnota', c.id, e.message); }
+  }
+  await revisorLog(req.revisor.id, 'zip', { from, to, what: want, files: files.length });
+  res.set('Content-Type', 'application/zip');
+  res.set('Content-Disposition', `attachment; filename="bilag_${revisorFileLabel(from, to)}.zip"`);
+  res.send(buildZip(files));
+}));
+
 app.get('/migrate', sendPage('migrate.html'));
 app.get('/set-password', sendPage('set-password.html'));
 app.get('/admin', sendPage('admin.html'));
