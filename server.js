@@ -1037,6 +1037,9 @@ async function initSchema() {
     -- de enkelte dage af en flerdages booking der er meldt færdige (JSON-liste
     -- af ISO-datoer). Når alle bookingens dage er med, sættes completed_at også.
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS done_dates TEXT;
+    -- v2.57.0 — mødetid pr. dag på flerdages-bookinger: JSON {"YYYY-MM-DD":"HH:MM"}.
+    -- Dage uden nøgle bruger start_time (Martin: "Joris møder tirsdag et andet sted før").
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS day_times TEXT;
     -- RUNDE GD — sættes KUN af "🏁 Opgaven er løst og slut" (PUT /api/tasks/:id/finish).
     -- Den automatiske sags-afslutning + kunde-mail kræver at ALLE sagens opgaver har den.
     ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS finished_at TEXT;
@@ -10789,6 +10792,29 @@ app.post('/api/assignments', auth, panelAccess('plan'), asyncRoute(async (req, r
   }
 }));
 
+
+// v2.57.0 — mødetid for ÉN dag i en flerdages-booking (resten af dagene
+// beholder bookingens start_time). time tom/null = brug standardtiden igen.
+app.put('/api/assignments/:id/day-time', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const b = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [Number(req.params.id)]);
+  if (!b) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  const day = String((req.body && req.body.date) || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: 'Ugyldig dato' });
+  const start = String(b.start_date || '').slice(0, 10), end = String(b.end_date || b.start_date || '').slice(0, 10);
+  if (day < start || day > end) return res.status(400).json({ error: 'Datoen ligger ikke i bookingen' });
+  const raw = String((req.body && req.body.time) || '').trim();
+  const time = /^\d{1,2}:\d{2}$/.test(raw) ? raw.padStart(5, '0') : '';
+  const map = safeJsonParse(b.day_times, {}) || {};
+  // Ryd nøgler uden for bookingens periode (efter flyt/stræk).
+  Object.keys(map).forEach(k => { if (k < start || k > end) delete map[k]; });
+  if (!time || time === String(b.start_time || '')) delete map[day]; else map[day] = time;
+  const val = Object.keys(map).length ? JSON.stringify(map) : null;
+  await pool.query(`UPDATE planning_bookings SET day_times=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [val, b.id]);
+  if (String(b.planning_mode || 'daily') !== 'capacity' && isTodayOrTomorrow(day)) {
+    notifyEmployee(b.user_id, 'Din plan er ændret', `Din mødetid ${dayLabelForNotif(day)} er ${time ? 'nu kl. ' + time : 'ændret tilbage til kl. ' + (b.start_time || '?')}.`, '#plan').catch(() => {});
+  }
+  res.json({ ok: true, day_times: val });
+}));
 app.put('/api/assignments/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [Number(req.params.id)]);
   if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
@@ -10893,6 +10919,7 @@ app.put('/api/assignments/:id/move-day', auth, panelAccess('plan'), asyncRoute(a
             INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_attachments,start_time,start_date,end_date,planning_mode,updated_at)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()})
           `, [row.task_id, row.user_id, getWeekKey(after[0]), Math.round(after.length * perDay * 4) / 4, row.capacity_days, row.notes, row.note_link, row.note_attachments, row.start_time, after[0], after[after.length - 1], row.planning_mode || 'daily']);
+          if (row.day_times) await client.query('UPDATE planning_bookings SET day_times=$1 WHERE id=(SELECT MAX(id) FROM planning_bookings WHERE task_id=$2 AND user_id=$3 AND start_date=$4)', [row.day_times, row.task_id, row.user_id, after[0]]);
         } else {
           await client.query(
             `UPDATE planning_bookings SET start_date=$1, week_key=$2, days=$3, updated_at=${nowTextSQL()} WHERE id=$4`,
@@ -10910,7 +10937,7 @@ app.put('/api/assignments/:id/move-day', auth, panelAccess('plan'), asyncRoute(a
       const result = await client.query(`
         INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_attachments,start_time,start_date,end_date,planning_mode,updated_at)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${nowTextSQL()}) RETURNING id
-      `, [row.task_id, newUserId, getWeekKey(newStartDate), movedDays, row.capacity_days, row.notes, row.note_link, row.note_attachments, row.start_time, newStartDate, movedEnd, row.planning_mode || 'daily']);
+      `, [row.task_id, newUserId, getWeekKey(newStartDate), movedDays, row.capacity_days, row.notes, row.note_link, row.note_attachments, (safeJsonParse(row.day_times, {}) || {})[originDate] || row.start_time, newStartDate, movedEnd, row.planning_mode || 'daily']);
       movedId = result.rows[0].id;
     }
     await client.query('COMMIT');

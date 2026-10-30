@@ -406,7 +406,9 @@ function getWeekDays(off){let m=monday(new Date());m.setDate(m.getDate()+off*7);
 function sameDay(d){let n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate()}
 function weekNumber(d){let x=new Date(d);let day=x.getDay()||7;x.setDate(x.getDate()+4-day);let y=new Date(Date.UTC(x.getFullYear(),0,1));return Math.ceil((((x-y)/86400000)+1)/7)}
 const TYPES={lay:['Flooring','#dbeafe','#4F46E5'],sand:['Floor sanding','#dcfce7','#15803d'],paint:['Painting','#fef9c3','#92570a'],sub:['Subcontractor','#ede9fe','#5b21b6'],other:['Other','#f1f5f9','#475569']};
-function tasksFor(date){return assignments.filter(a=>date>=String(a.start_date).slice(0,10)&&date<=String(a.end_date||a.start_date).slice(0,10)).sort((a,b)=>{
+// v2.57.0 — en flerdages-booking kan have en anden mødetid enkelte dage (day_times).
+function empDayTime(a,date){if(!a||!a.day_times)return null;try{const m=typeof a.day_times==='object'?a.day_times:JSON.parse(a.day_times);return (m&&m[date])||null;}catch(e){return null;}}
+function tasksFor(date){return assignments.filter(a=>date>=String(a.start_date).slice(0,10)&&date<=String(a.end_date||a.start_date).slice(0,10)).map(a=>{const t=empDayTime(a,date);return t?Object.assign({},a,{start_time:t}):a;}).sort((a,b)=>{
   const ta=String(a.start_time||'').trim(),tb=String(b.start_time||'').trim();
   // RUNDE FL — samme regel som admin: mødetid først, derefter kontorets
   // manuelle rækkefølge (træk op/ned i Dagligplanlægning).
