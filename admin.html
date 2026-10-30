@@ -4698,6 +4698,30 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .ftl-bar:hover{opacity:1;box-shadow:0 0 0 2px #111318}
 .ftl-bar.m-manual{background:repeating-linear-gradient(135deg,var(--c),var(--c) 6px,color-mix(in srgb,var(--c) 80%,#000) 6px,color-mix(in srgb,var(--c) 80%,#000) 12px)}
 .ftl-bar.m-single,.ftl-bar.m-invoice,.ftl-bar.m-manual-line{background:#fff;color:var(--c);box-shadow:inset 0 0 0 2px var(--c);border-radius:8px;left:8%!important;right:8%!important;justify-content:center}
+.ftl-grow{background:#FAFAFB;cursor:pointer;border-bottom:1px solid #EEF0F3}
+.ftl-grow:hover{background:#F3F4F6}
+.ftl-grow .ftl-name b{display:flex;align-items:center;gap:7px;font-size:13px}
+.ftl-grow .ftl-name em{font-style:normal;font-weight:500;color:#9CA3AF;font-size:12px}
+.ftl-caret{color:#9CA3AF;font-size:11px;width:10px}
+.ftl-gdot{width:10px;height:10px;border-radius:3px;background:var(--c)}
+.ftl-gc{padding:10px 6px;font:700 12px Inter,system-ui,sans-serif;color:#374151;border-left:1px dashed #EEF0F3}
+.ftl-gc.now{background:#EEF2FF}
+.ftl-c.ftl-drop{background:#E0E7FF!important;box-shadow:inset 0 0 0 2px #6366F1}
+.ftl-dragrow{background:#FAFAFF}
+.ftl-pop{position:fixed;z-index:100001;background:#fff;border:1px solid #E5E7EB;border-radius:14px;box-shadow:0 22px 55px rgba(15,23,42,.22);padding:14px;width:290px}
+.ftl-pop-h{font:800 14px Inter,system-ui,sans-serif}
+.ftl-pop-s{font-size:12px;color:#6B7280;margin:2px 0 10px}
+.ftl-pop-l{display:block;font:700 11.5px Inter,system-ui,sans-serif;color:#374151;margin:8px 0 4px}
+.ftl-pop-amt{display:flex;align-items:center;border:1.5px solid #E5E7EB;border-radius:10px;padding:0 12px}
+.ftl-pop-amt:focus-within{border-color:#6366F1;box-shadow:0 0 0 4px rgba(99,102,241,.12)}
+.ftl-pop-amt input{flex:1;border:0;outline:0;font:800 20px Inter,system-ui,sans-serif;padding:8px 0;min-width:0}
+.ftl-pop-amt em{font-style:normal;color:#9CA3AF;font-weight:700}
+.ftl-pop-sel{width:100%;border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 10px;font:600 13px Inter,system-ui,sans-serif;background:#fff}
+.ftl-pop-f{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:6px}
+.ftl-pop-f>div{display:flex;gap:6px}
+.ftl-pop-reset,.ftl-pop-all{border:0;background:transparent;font:600 12px Inter,system-ui,sans-serif;color:#4338CA;cursor:pointer;padding:6px 4px}
+.ftl-pop-reset{color:#B45309}
+.ftl-pop-ok{border:0;background:#111318;color:#fff;border-radius:9px;padding:8px 14px;font:700 12.5px Inter,system-ui,sans-serif;cursor:pointer}
 .ftl-trow{border-top:2px solid #111318;border-bottom:0}
 .ftl-tc{padding:10px 6px;border-left:1px dashed #EEF0F3}
 .ftl-tc.now{background:#EEF2FF;border-radius:0 0 8px 8px}
@@ -5196,7 +5220,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.60.0 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.60.1 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -6567,7 +6591,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
        "Omsætning pr. fag" bliver stående ved siden af, indtil den nye er testet. -->
   <div class="fintabpage" id="fintab-tidslinje" style="display:none">
     <div class="ftl-head">
-      <div><h3>Omsætning over tid</h3><div class="ftl-sub">Hver sag fordeles automatisk på månederne ud fra sagens tidsplan (arbejdsdage). Klik på en sag for at fordele den selv.</div></div>
+      <div><h3>Omsætning over tid</h3><div class="ftl-sub">Hver sag fordeles automatisk på månederne ud fra sagens tidsplan (arbejdsdage). Klik på et beløb for at rette det, eller træk det til en anden måned. Klik på en faggruppe for at folde den sammen.</div></div>
       <div class="ftl-nav"><button type="button" id="ftl-prev" title="Tidligere">‹</button><span id="ftl-range"></span><button type="button" id="ftl-next" title="Senere">›</button><button type="button" id="ftl-today" class="ftl-todaybtn">I dag</button></div>
     </div>
     <div class="ftl-kpis" id="ftl-kpis"></div>
@@ -20446,24 +20470,34 @@ function ftlRender(){
   var cols='minmax(220px,1.4fr) repeat('+M.length+',minmax(92px,1fr))';
   var h='<div class="ftl-row ftl-hrow" style="grid-template-columns:'+cols+'"><div class="ftl-name">Sag</div>'+M.map(function(mk){return '<div class="ftl-mh'+(mk===cur?' now':'')+(mk<cur?' past':'')+'">'+ftlMonLabel(mk)+'</div>';}).join('')+'</div>';
   if(!jobs.length)h+='<div class="ftl-empty">Ingen sager i perioden</div>';
-  h+=jobs.map(function(j){
+  // v2.60.1 — grupperet pr. fag, hver gruppe kan foldes sammen (huskes i browseren).
+  var coll=ftlCollapsed();
+  var groups={};jobs.forEach(function(j){(groups[j.fag]=groups[j.fag]||[]).push(j);});
+  var gOrder=Object.keys(groups).sort(function(a,b){return (a==='Ukendt')-(b==='Ukendt')||groups[b].reduce(function(s,x){return s+x.value;},0)-groups[a].reduce(function(s,x){return s+x.value;},0);});
+  h+=gOrder.map(function(f){
+    var list=groups[f],c=ftlColor(f),closed=!!coll[f];
+    var gsum={};M.forEach(function(mk){gsum[mk]=0;});list.forEach(function(j){Object.keys(j.months).forEach(function(mk){if(gsum[mk]!==undefined)gsum[mk]+=j.months[mk];});});
+    var head='<div class="ftl-row ftl-grow'+(closed?' closed':'')+'" style="grid-template-columns:'+cols+';--c:'+c+'" data-ftl-group="'+esc(f)+'"><div class="ftl-name"><b><span class="ftl-caret">'+(closed?'▸':'▾')+'</span><i class="ftl-gdot"></i>'+esc(f)+' <em>'+list.length+' sag'+(list.length===1?'':'er')+'</em></b></div>'
+      +M.map(function(mk){return '<div class="ftl-gc'+(mk===cur?' now':'')+'">'+(gsum[mk]?ftlK(gsum[mk]):'')+'</div>';}).join('')+'</div>';
+    if(closed)return head;
+    return head+list.map(function(j){
     var c=ftlColor(j.fag);
     var keys=Object.keys(j.months).filter(function(mk){return M.indexOf(mk)>-1;});
     var first=keys[0],last=keys[keys.length-1];
     var invPct=j.value>0?Math.min(100,Math.round(j.invoiced/j.value*100)):0;
-    var sub=esc(j.fag)+' · '+krFmt(j.value)+(j.kind==='quote'&&j.invoiced>0?' · '+invPct+' % faktureret':'')+(j.kind==='invoice'?' · faktura uden tilbud':'')+(j.kind==='manual'?' · manuel linje':'');
+    var sub=krFmt(j.value)+(j.kind==='quote'&&j.invoiced>0?' · '+invPct+' % faktureret':'')+(j.kind==='invoice'?' · faktura uden tilbud':'')+(j.kind==='manual'?' · manuel linje':'')+(j.mode==='manual'?' · fordelt af dig':'');
     var name=j.projectId?'<a href="#project-detail/'+j.projectId+'" target="_blank" rel="noopener">'+esc(j.name)+'</a>':esc(j.name);
-    return '<div class="ftl-row" style="grid-template-columns:'+cols+'"><div class="ftl-name"><b>'+name+'</b><span>'+sub+'</span></div>'
+    return '<div class="ftl-row" style="grid-template-columns:'+cols+'" data-ftl-row="'+esc(j.key)+'"><div class="ftl-name"><b>'+name+'</b><span>'+sub+'</span></div>'
       +M.map(function(mk){
         var v=j.months[mk];
-        if(!v)return '<div class="ftl-c'+(mk===cur?' now':'')+'"></div>';
+        if(!v)return '<div class="ftl-c'+(mk===cur?' now':'')+'" data-ftl-mk="'+mk+'"></div>';
         var lc=mk===first,rc=mk===last;
-        // Bjælkens start/slut inde i måneden ud fra datoerne (kun for automatisk fordelte sager).
         var l=0,rr=0;
         if(j.mode==='auto'&&j.start&&mk===j.start.slice(0,7))l=Math.min(70,Math.round((+j.start.slice(8,10)-1)/31*100));
         if(j.mode==='auto'&&j.end&&mk===j.end.slice(0,7))rr=Math.min(70-l,Math.round((31-+j.end.slice(8,10))/31*100));
-        return '<div class="ftl-c'+(mk===cur?' now':'')+'"><button type="button" class="ftl-bar m-'+j.mode+(lc?' lc':'')+(rc?' rc':'')+'" style="--c:'+c+';left:'+l+'%;right:'+rr+'%" data-ftl-job="'+esc(j.key)+'" title="'+esc(j.name+' · '+ftlMonLabel(mk,true)+': '+krFmt(v)+(j.mode==='auto'?' (fordelt efter '+j.workDays+' arbejdsdage '+(j.start||'')+' → '+(j.end||'')+')':j.mode==='manual'?' (fordelt af dig)':''))+'">'+ftlK(v)+'</button></div>';
+        return '<div class="ftl-c'+(mk===cur?' now':'')+'" data-ftl-mk="'+mk+'"><button type="button" draggable="true" class="ftl-bar m-'+j.mode+(lc?' lc':'')+(rc?' rc':'')+'" style="--c:'+c+';left:'+l+'%;right:'+rr+'%" data-ftl-job="'+esc(j.key)+'" data-ftl-from="'+mk+'" title="'+esc(j.name+' · '+ftlMonLabel(mk,true)+': '+krFmt(v)+' — klik for at rette beløbet, træk for at flytte til en anden måned')+'">'+ftlK(v)+'</button></div>';
       }).join('')+'</div>';
+    }).join('');
   }).join('');
   h+='<div class="ftl-row ftl-trow" style="grid-template-columns:'+cols+'"><div class="ftl-name"><b>I alt pr. måned</b></div>'+M.map(function(mk){
     var t=tot[mk].t;
@@ -20478,15 +20512,68 @@ function ftlBind(){
   document.getElementById('ftl-next').addEventListener('click',function(){ftlOffset+=3;ftlLoad();});
   document.getElementById('ftl-today').addEventListener('click',function(){ftlOffset=0;ftlLoad();});
   document.getElementById('ftl-filters').addEventListener('click',function(e){var b=e.target.closest('[data-ftl-fag]');if(!b)return;ftlFag=b.dataset.ftlFag;ftlRender();});
-  document.getElementById('ftl-grid').addEventListener('click',function(e){
+  var grid=document.getElementById('ftl-grid');
+  grid.addEventListener('click',function(e){
+    var g=e.target.closest('[data-ftl-group]');
+    if(g&&!e.target.closest('a')){var c=ftlCollapsed();c[g.dataset.ftlGroup]=!c[g.dataset.ftlGroup];try{localStorage.setItem('gm_ftl_collapsed',JSON.stringify(c));}catch(x){}ftlRender();return;}
     var b=e.target.closest('[data-ftl-job]');if(!b||!ftlData)return;
     var j=ftlData.jobs.find(function(x){return x.key===b.dataset.ftlJob;});if(!j)return;
-    if(j.kind==='manual'){toast('Manuelle linjer rettes under Omsætning pr. fag','ℹ️');return;}
-    var rows=Object.keys(j.months).sort().map(function(mk){return {month_key:mk,amount:j.months[mk]};});
-    openFinSplitModal(j.key,j.name,j.value,ftlData.currentMonth,j.mode==='manual'?rows:rows);
-    // Ved automatisk fordeling vises forslaget, men "Fjern opdeling" skjules (der er ingen at fjerne).
-    var clr=document.getElementById('fin-split-clear-btn');if(clr)clr.style.display=j.mode==='manual'?'':'none';
+    ftlEditPop(j,b.dataset.ftlFrom,b);
   });
+  // Træk et beløb til en anden måned (samme sag).
+  var drag=null;
+  grid.addEventListener('dragstart',function(e){var b=e.target.closest('[data-ftl-job]');if(!b)return;drag={key:b.dataset.ftlJob,from:b.dataset.ftlFrom};e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',drag.key);}catch(x){}var row=b.closest('[data-ftl-row]');setTimeout(function(){if(row)row.classList.add('ftl-dragrow');},0);});
+  grid.addEventListener('dragend',function(){drag=null;grid.querySelectorAll('.ftl-dragrow,.ftl-drop').forEach(function(x){x.classList.remove('ftl-dragrow','ftl-drop');});});
+  grid.addEventListener('dragover',function(e){if(!drag)return;var c=e.target.closest('[data-ftl-mk]');var row=c&&c.closest('[data-ftl-row]');if(!c||!row||row.dataset.ftlRow!==drag.key)return;e.preventDefault();grid.querySelectorAll('.ftl-drop').forEach(function(x){if(x!==c)x.classList.remove('ftl-drop');});c.classList.add('ftl-drop');});
+  grid.addEventListener('drop',function(e){
+    if(!drag)return;var c=e.target.closest('[data-ftl-mk]');var row=c&&c.closest('[data-ftl-row]');if(!c||!row||row.dataset.ftlRow!==drag.key)return;e.preventDefault();
+    var to=c.dataset.ftlMk,d=drag;drag=null;if(to===d.from)return;
+    var j=ftlData.jobs.find(function(x){return x.key===d.key;});if(!j)return;
+    var m=Object.assign({},j.months),amt=m[d.from]||0;delete m[d.from];m[to]=(m[to]||0)+amt;
+    ftlSaveMonths(j,m,'Flyttet '+krFmt(amt)+' til '+ftlMonLabel(to,true));
+  });
+}
+function ftlCollapsed(){try{return JSON.parse(localStorage.getItem('gm_ftl_collapsed')||'{}')||{};}catch(e){return {};}}
+// Gemmer en sags månedsbeløb. Tilbud/fakturaer → manuel opdeling (finance_job_splits),
+// manuelle linjer → linjens egen måned/beløb.
+async function ftlSaveMonths(j,months,msg){
+  var r;
+  if(j.kind==='manual'){
+    var mks=Object.keys(months).filter(function(k){return months[k]>0;});
+    if(mks.length>1){toast('En manuel linje kan kun ligge i én måned','⚠');return;}
+    r=await api('/api/finance/manual-revenue/'+j.manualId,{method:'PUT',body:JSON.stringify({name:j.name,fag:j.fag,amount:mks.length?months[mks[0]]:0,month_key:mks[0]||null})});
+  }else{
+    var splits=Object.keys(months).sort().filter(function(k){return Math.round(months[k])>0;}).map(function(k){return {month_key:k,amount:Math.round(months[k])};});
+    if(!splits.length){toast('Sagen skal have et beløb i mindst én måned','⚠');return;}
+    r=await api('/api/finance/job-month-split/'+encodeURIComponent(j.key),{method:'PUT',body:JSON.stringify({splits:splits})});
+  }
+  if(r&&r.ok){toast(msg||'Gemt','✓');ftlLoad();}else toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+function ftlEditPop(j,mk,anchor){
+  var old=document.getElementById('ftl-pop');if(old)old.remove();
+  var v=j.months[mk]||0;
+  var pop=document.createElement('div');pop.id='ftl-pop';pop.className='ftl-pop';
+  pop.innerHTML='<div class="ftl-pop-h">'+esc(j.name)+'</div><div class="ftl-pop-s">'+esc(ftlMonLabel(mk,true))+' · sagen i alt '+krFmt(Object.keys(j.months).reduce(function(s,k){return s+j.months[k];},0))+'</div>'
+    +'<label class="ftl-pop-l">Beløb i '+esc(ftlMonLabel(mk,true).toLowerCase())+'</label><div class="ftl-pop-amt"><input type="text" inputmode="decimal" value="'+Math.round(v)+'"><em>kr</em></div>'
+    +'<label class="ftl-pop-l">Flyt til måned</label><select class="ftl-pop-sel">'+finYearMonthOptions().map(function(o){return '<option value="'+o+'"'+(o===mk?' selected':'')+'>'+esc(ftlMonLabel(o,true))+'</option>';}).join('')+'</select>'
+    +'<div class="ftl-pop-f">'+(j.mode==='manual'&&j.kind==='quote'?'<button type="button" class="ftl-pop-reset">Nulstil til automatisk</button>':'<span></span>')+'<div>'+(j.kind!=='manual'?'<button type="button" class="ftl-pop-all">Fordel alle måneder…</button>':'')+'<button type="button" class="ftl-pop-ok">Gem</button></div></div>';
+  document.body.appendChild(pop);
+  var r=anchor.getBoundingClientRect();
+  pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-pop.offsetWidth-8))+'px';
+  pop.style.top=(r.bottom+6+pop.offsetHeight>window.innerHeight?Math.max(8,r.top-pop.offsetHeight-6):r.bottom+6)+'px';
+  var inp=pop.querySelector('input'),sel=pop.querySelector('select');setTimeout(function(){inp.focus();inp.select();},20);
+  function close(){pop.remove();document.removeEventListener('mousedown',out,true);}
+  function out(e){if(!pop.contains(e.target))close();}
+  setTimeout(function(){document.addEventListener('mousedown',out,true);},0);
+  function save(){
+    var nv=Math.max(0,Math.round(Number(String(inp.value).replace(/\s/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',','.'))||0));
+    var to=sel.value,m=Object.assign({},j.months);delete m[mk];if(nv>0)m[to]=(m[to]||0)+nv;
+    close();ftlSaveMonths(j,m,to!==mk?'Flyttet til '+ftlMonLabel(to,true):'Beløb rettet');
+  }
+  pop.querySelector('.ftl-pop-ok').addEventListener('click',save);
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter')save();if(e.key==='Escape')close();});
+  var all=pop.querySelector('.ftl-pop-all');if(all)all.addEventListener('click',function(){close();var rows=Object.keys(j.months).sort().map(function(k){return {month_key:k,amount:j.months[k]};});openFinSplitModal(j.key,j.name,j.value,ftlData.currentMonth,rows);var clr=document.getElementById('fin-split-clear-btn');if(clr)clr.style.display=j.mode==='manual'?'':'none';});
+  var rs=pop.querySelector('.ftl-pop-reset');if(rs)rs.addEventListener('click',async function(){close();var x=await api('/api/finance/job-month-split/'+encodeURIComponent(j.key),{method:'DELETE'});if(x&&x.ok!==false){toast('Fordeles automatisk igen','✓');ftlLoad();}});
 }
 function switchFintab(name){
   var btn=document.querySelector('[data-fintab="'+name+'"]');

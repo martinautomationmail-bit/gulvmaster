@@ -21366,6 +21366,7 @@ app.post('/api/finance/manual-revenue', auth, panelAccess('finance'), asyncRoute
 app.put('/api/finance/manual-revenue/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   await pool.query(`UPDATE finance_manual_revenue SET name=$1,fag=$2,amount=$3,updated_at=${nowTextSQL()} WHERE id=$4`, [String(body.name || '').slice(0, 200), body.fag || 'Ukendt', Number(body.amount) || 0, req.params.id]);
+  if (/^\d{4}-\d{2}$/.test(String(body.month_key || ''))) await pool.query('UPDATE finance_manual_revenue SET month_key=$1 WHERE id=$2', [body.month_key, req.params.id]);
   res.json({ ok: true });
 }));
 app.delete('/api/finance/manual-revenue/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
@@ -21526,8 +21527,10 @@ async function fetchFinanceTimeline(fromMk, toMk) {
     if (ov && ov.excluded) continue;
     const value = ov && ov.amount !== null && ov.amount !== undefined ? Number(ov.amount) : (Number(i.total) || 0);
     const mk = monthOv[key] || String(i.d).slice(0, 7);
+    const invMonths = {};
+    if (splits[key]) splits[key].forEach(sp => { invMonths[sp.month_key] = (invMonths[sp.month_key] || 0) + Math.round(sp.amount); }); else invMonths[mk] = Math.round(value);
     jobs.push({ key, kind: 'invoice', projectId: i.project_id || null, name: (i.project_name || i.job_name || i.invoice_number) , jobNumber: i.job_number || '',
-      fag: i.fag || 'Ukendt', value, invoiced: value, start: i.d, end: i.d, workDays: 0, mode: 'invoice', months: { [mk]: Math.round(value) } });
+      fag: i.fag || 'Ukendt', value, invoiced: value, start: i.d, end: i.d, workDays: 0, mode: splits[key] ? 'manual' : 'invoice', months: invMonths });
   }
   const manual = (await pool.query('SELECT * FROM finance_manual_revenue')).rows;
   for (const m of manual) jobs.push({ key: 'manual-' + m.id, kind: 'manual', manualId: m.id, name: m.name, fag: m.fag || 'Ukendt', value: Number(m.amount) || 0, invoiced: 0, start: null, end: null, workDays: 0, mode: 'manual-line', months: { [m.month_key]: Math.round(Number(m.amount) || 0) } });
