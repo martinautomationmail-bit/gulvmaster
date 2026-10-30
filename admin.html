@@ -4795,6 +4795,8 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .revc-log div{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
 @media(max-width:600px){.revm-new{grid-template-columns:1fr}.revc-grid{grid-template-columns:1fr}}
 /* v2.54.0 — rig note-editor */
+.kbn-add-shared{width:100%;border:1.5px dashed #E5E7EB;background:transparent;border-radius:9px;padding:7px;font:600 12px Inter,system-ui,sans-serif;color:#6B7280;cursor:pointer;margin:4px 0 6px}
+.kbn-add-shared:hover{border-color:#A5B4FC;color:#4338CA}
 .rte-notewrap{border:1.5px solid #E5E7EB;border-radius:12px;background:#fff;overflow:hidden;transition:border-color .15s,box-shadow .15s}
 .rte-notewrap:focus-within{border-color:#6366F1;box-shadow:0 0 0 4px rgba(99,102,241,.12)}
 .rte-notewrap .rte-ntb{display:flex;align-items:center;gap:2px;margin:0;padding:5px 6px;border-bottom:1px solid #F0F1F3;background:#FAFAFB;flex-wrap:wrap}
@@ -5141,7 +5143,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.58.1 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.59.0 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -10133,7 +10135,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   <div class="page-head">
     <div>
       <div class="page-title">📝 Videnscenter — Noter</div>
-      <div class="page-sub">Dine egne private noter, og én fælles note alle med adgang kan skrive i sammen.</div>
+      <div class="page-sub">Fælles noter som alle med adgang kan skrive i sammen, og dine egne private noter.</div>
     </div>
   </div>
   <div class="kb-shell">
@@ -24242,10 +24244,12 @@ document.addEventListener('click',function(e){
   if(docModeBtn){kbDocModeSwitch(docModeBtn.dataset.value);return;}
   // RUNDE DP — Noter-fanens rail (se kbNotes*-blokken længere nede).
   var kbnMenuBtn=t.closest('[data-action="kbn-menu"]');
-  if(kbnMenuBtn){e.stopPropagation();var kbnR=kbnMenuBtn.getBoundingClientRect();kbnShowMenu(kbnR.left,kbnR.bottom+4,Number(kbnMenuBtn.dataset.id));return;}
+  if(kbnMenuBtn){e.stopPropagation();var kbnR=kbnMenuBtn.getBoundingClientRect();(kbnMenuBtn.dataset.kind==='shared'?kbnShowSharedMenu:kbnShowMenu)(kbnR.left,kbnR.bottom+4,Number(kbnMenuBtn.dataset.id));return;}
   var kbnPrivItem=t.closest('[data-action="kbn-select-private"]');
   if(kbnPrivItem){kbnSelectPrivate(Number(kbnPrivItem.dataset.id));return;}
-  if(t.closest('[data-action="kbn-select-shared"]')){kbnSelectShared();return;}
+  var kbnShItem=t.closest('[data-action="kbn-select-shared"]');
+  if(kbnShItem){kbnSelectShared(Number(kbnShItem.dataset.id));return;}
+  if(t.closest('[data-action="kbn-add-shared"]')){kbnAddShared();return;}
   if(t.closest('#kbn-add-btn')){kbnAddPrivate();return;}
 });
 document.addEventListener('change',function(e){
@@ -24278,16 +24282,18 @@ document.addEventListener('change',function(e){
 // saveNoteWidgetSoon), og flushes STRAKS når man skifter note eller forlader
 // siden (se kbNotesFlushNow, kaldt fra switchPage), så intet går tabt.
 // ══════════════════════════════════════════════════════════════════════════
-var kbnPrivateNotes=[],kbnShared=null,kbnActive=null,kbnSaveTimer=null,kbnBound=false;
+var kbnPrivateNotes=[],kbnShared=null,kbnSharedNotes=[],kbnActive=null,kbnSaveTimer=null,kbnBound=false;
 var KBN_TEXT_COLORS=['#111827','#DC2626','#EA580C','#CA8A04','#16A34A','#2563EB','#7C3AED','#DB2777'];
 var KBN_HL_COLORS=['#FEF08A','#FED7AA','#FECACA','#BBF7D0','#BFDBFE','#E9D5FF','#FBCFE8'];
 
 async function kbNotesInit(){
-  var r=await Promise.all([api('/api/note-tabs'),api('/api/shared-note')]);
+  var r=await Promise.all([api('/api/note-tabs'),api('/api/shared-notes')]);
   kbnPrivateNotes=r[0]||[];
-  kbnShared=r[1]||{id:1,title:'Fælles note',content:'',updated_at:null,updated_by_name:null};
+  kbnSharedNotes=Array.isArray(r[1])?r[1]:[];
   if(kbnActive&&kbnActive.type==='private'&&!kbnPrivateNotes.some(function(n){return n.id===kbnActive.id;}))kbnActive=null;
-  if(!kbnActive)kbnActive=kbnPrivateNotes.length?{type:'private',id:kbnPrivateNotes[0].id}:{type:'shared'};
+  if(kbnActive&&kbnActive.type==='shared'&&!kbnSharedNotes.some(function(n){return n.id===kbnActive.id;}))kbnActive=null;
+  if(!kbnActive)kbnActive=kbnSharedNotes.length?{type:'shared',id:kbnSharedNotes[0].id}:(kbnPrivateNotes.length?{type:'private',id:kbnPrivateNotes[0].id}:null);
+  kbnShared=kbnActive&&kbnActive.type==='shared'?kbnSharedNotes.find(function(n){return n.id===kbnActive.id;}):null;
   renderKbnRail();
   kbnLoadActiveContent();
   kbnBindToolbarOnce();
@@ -24295,9 +24301,14 @@ async function kbNotesInit(){
 function renderKbnRail(){
   var el=document.getElementById('kbn-rail');
   if(!el)return;
-  var sharedActive=kbnActive&&kbnActive.type==='shared';
-  var html='<div class="kb-list-item kbn-shared'+(sharedActive?' active':'')+'" data-action="kbn-select-shared">'
-    +'<span>🌐</span><span class="kb-list-name">'+esc(kbnShared.title||'Fælles note')+'</span></div>'
+  var html='<div class="kbn-rail-section-label">Fælles noter</div>'
+    +kbnSharedNotes.map(function(n){
+      var active=kbnActive&&kbnActive.type==='shared'&&kbnActive.id===n.id;
+      return '<div class="kb-list-item kbn-shared'+(active?' active':'')+'" data-id="'+n.id+'" data-action="kbn-select-shared">'
+        +'<span>🌐</span><span class="kb-list-name">'+esc(n.title||'Fælles note')+'</span>'
+        +'<button type="button" class="qz-icon-btn kb-list-menu-btn" data-action="kbn-menu" data-kind="shared" data-id="'+n.id+'" title="Redigér note">⋮</button></div>';
+    }).join('')
+    +'<button type="button" class="kbn-add-shared" data-action="kbn-add-shared">+ Ny fælles note</button>'
     +'<div class="kbn-rail-section-label">Mine private noter</div>';
   html+=kbnPrivateNotes.length?kbnPrivateNotes.map(function(n){
     var active=kbnActive&&kbnActive.type==='private'&&kbnActive.id===n.id;
@@ -24325,7 +24336,9 @@ function kbnLoadActiveContent(){
   var body=document.getElementById('kbn-editor');
   var metaEl=document.getElementById('kbn-shared-meta');
   if(!body)return;
+  if(!kbnActive){body.innerHTML='';metaEl.style.display='none';return;}
   if(kbnActive.type==='shared'){
+    kbnShared=kbnSharedNotes.find(function(x){return x.id===kbnActive.id;})||{content:''};
     body.innerHTML=kbnShared.content||'';
     if(kbnShared.updated_at){
       metaEl.style.display='block';
@@ -24352,8 +24365,10 @@ function kbnSaveActiveNow(){
   var html=bodyEl.innerHTML;
   kbnSetSaveStatus('Gemmer…');
   if(kbnActive.type==='shared'){
-    kbnShared.content=html;
-    return api('/api/shared-note',{method:'PUT',body:JSON.stringify({content:html})}).then(function(r){
+    var sid=kbnActive.id,sn=kbnSharedNotes.find(function(x){return x.id===sid;});
+    if(sn)sn.content=html;
+    return api('/api/shared-notes/'+sid,{method:'PUT',body:JSON.stringify({content:html})}).then(function(r){
+      if(sn&&r&&r.updated_at){sn.updated_at=r.updated_at;sn.updated_by_name=(me&&me.name)||sn.updated_by_name;}
       kbnSetSaveStatus('Gemt ✓');
       return r;
     });
@@ -24385,10 +24400,10 @@ function kbnSelectPrivate(id){
   renderKbnRail();
   kbnLoadActiveContent();
 }
-function kbnSelectShared(){
-  if(kbnActive&&kbnActive.type==='shared')return;
+function kbnSelectShared(id){
+  if(kbnActive&&kbnActive.type==='shared'&&kbnActive.id===id)return;
   kbNotesFlushNow();
-  kbnActive={type:'shared'};
+  kbnActive={type:'shared',id:id};
   renderKbnRail();
   kbnLoadActiveContent();
 }
@@ -24402,6 +24417,21 @@ async function kbnAddPrivate(){
     kbnLoadActiveContent();
     document.getElementById('kbn-editor').focus();
   }
+}
+async function kbnAddShared(){
+  var title=await gmPrompt('Navn på den fælles note:','','Ny fælles note');
+  if(title===null)return;
+  var n=await api('/api/shared-notes',{method:'POST',body:JSON.stringify({title:title})});
+  if(n&&n.id){kbNotesFlushNow();kbnSharedNotes.push(n);kbnActive={type:'shared',id:n.id};renderKbnRail();kbnLoadActiveContent();document.getElementById('kbn-editor').focus();}
+  else toast((n&&n.error)||'Kunne ikke oprette','❌');
+}
+function kbnShowSharedMenu(x,y,id){
+  var note=kbnSharedNotes.find(function(n){return n.id===id;});if(!note)return;
+  showCtxMenu(x,y,[
+    {text:'Omdøb note',icon:'✎',onClick:async function(){var t=await gmPrompt('Nyt navn:',note.title,'Omdøb note');if(!t||t===note.title)return;var r=await api('/api/shared-notes/'+note.id,{method:'PUT',body:JSON.stringify({title:t})});if(r&&r.ok){note.title=t;renderKbnRail();}else if(r)toast(r.error||'Fejl','❌');}},
+    {sep:true},
+    {text:'Slet fælles note',icon:'🗑',danger:true,onClick:async function(){if(!await gmConfirm('Slet den fælles note "'+note.title+'" for alle? Kan ikke fortrydes.'))return;var r=await api('/api/shared-notes/'+note.id,{method:'DELETE'});if(r&&r.ok){kbnSharedNotes=kbnSharedNotes.filter(function(n){return n.id!==note.id;});if(kbnActive&&kbnActive.type==='shared'&&kbnActive.id===note.id){kbnActive=kbnSharedNotes.length?{type:'shared',id:kbnSharedNotes[0].id}:(kbnPrivateNotes.length?{type:'private',id:kbnPrivateNotes[0].id}:null);}renderKbnRail();kbnLoadActiveContent();toast('Note slettet','🗑');}else if(r)toast(r.error||'Fejl','❌');}}
+  ]);
 }
 function kbnShowMenu(x,y,id){
   var note=kbnPrivateNotes.find(function(n){return n.id===id;});
@@ -24424,7 +24454,7 @@ async function kbnDelete(note){
   if(r&&r.ok){
     kbnPrivateNotes=kbnPrivateNotes.filter(function(n){return n.id!==note.id;});
     if(kbnActive&&kbnActive.type==='private'&&kbnActive.id===note.id){
-      kbnActive=kbnPrivateNotes.length?{type:'private',id:kbnPrivateNotes[0].id}:{type:'shared'};
+      kbnActive=kbnPrivateNotes.length?{type:'private',id:kbnPrivateNotes[0].id}:(kbnSharedNotes.length?{type:'shared',id:kbnSharedNotes[0].id}:null);
     }
     renderKbnRail();
     kbnLoadActiveContent();

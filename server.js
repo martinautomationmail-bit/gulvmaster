@@ -1161,6 +1161,10 @@ async function initSchema() {
       updated_by INTEGER
     );
     INSERT INTO shared_notes (id,title,content) VALUES (1,'Fælles note','') ON CONFLICT (id) DO NOTHING;
+    -- v2.59.0 — flere fælles noter (Martin: "lave flere noter ... fælles man kan lave").
+    ALTER TABLE shared_notes ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE shared_notes ADD COLUMN IF NOT EXISTS created_by INTEGER;
+    ALTER TABLE shared_notes ADD COLUMN IF NOT EXISTS created_at TEXT;
 
     -- Fag/faggrupper og deres farve — styrer opgave-farverne i Daglig plan/Ugeplan og på
     -- opgavekortene. Kapacitetsboardet bruger bevidst ÉN ensartet farve uanset fag.
@@ -10257,6 +10261,34 @@ app.put('/api/shared-note', auth, panelAccess('knowledge'), asyncRoute(async (re
     ON CONFLICT (id) DO UPDATE SET
       title=COALESCE($1,shared_notes.title), content=$2, updated_at=${nowTextSQL()}, updated_by=$3
   `, [title || null, content, req.user.id]);
+  res.json({ ok: true });
+}));
+
+// v2.59.0 — FLERE FÆLLES NOTER. Samme adgang som den oprindelige: alle der er
+// logget ind kan se, 'knowledge' kræves for at oprette/rette/slette.
+app.get('/api/shared-notes', auth, asyncRoute(async (req, res) => {
+  const rows = (await pool.query(`SELECT sn.*, u.name AS updated_by_name FROM shared_notes sn
+    LEFT JOIN users u ON u.id = sn.updated_by ORDER BY sn.sort_order ASC, sn.id ASC`)).rows;
+  res.json(rows);
+}));
+app.post('/api/shared-notes', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const title = String((req.body || {}).title || '').trim().slice(0, 120) || 'Ny fælles note';
+  const row = await pgOne(`INSERT INTO shared_notes (id, title, content, sort_order, created_by, created_at, updated_at, updated_by)
+    VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM shared_notes), $1, '', (SELECT COALESCE(MAX(sort_order),0)+1 FROM shared_notes), $2, ${nowTextSQL()}, ${nowTextSQL()}, $2)
+    RETURNING *`, [title, req.user.id]);
+  res.json(row);
+}));
+app.put('/api/shared-notes/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  const cur = await pgOne('SELECT * FROM shared_notes WHERE id=$1', [Number(req.params.id)]);
+  if (!cur) return res.status(404).json({ error: 'Noten blev ikke fundet' });
+  const b = req.body || {};
+  const title = b.title !== undefined ? (String(b.title).trim().slice(0, 120) || cur.title) : cur.title;
+  const content = b.content !== undefined ? String(b.content).slice(0, 300000) : cur.content;
+  const row = await pgOne(`UPDATE shared_notes SET title=$1, content=$2, updated_at=${nowTextSQL()}, updated_by=$3 WHERE id=$4 RETURNING updated_at`, [title, content, req.user.id, cur.id]);
+  res.json({ ok: true, updated_at: row && row.updated_at });
+}));
+app.delete('/api/shared-notes/:id', auth, panelAccess('knowledge'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM shared_notes WHERE id=$1', [Number(req.params.id)]);
   res.json({ ok: true });
 }));
 
