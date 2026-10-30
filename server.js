@@ -2584,6 +2584,25 @@ async function initSchema() {
     -- her i stedet, og trækkes fra avancen ligesom løn-/materialeomkostning.
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS subcontractor_cost NUMERIC;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS subcontractor_note TEXT;
+    -- v2.56.0 (Martin: "flytte dette med underleverandør faktura under budget
+    -- ... hvor man kan tilføje de underleverandør udgifter der er ... så man
+    -- kan se det på hele sagen") — udgifter registreres nu pr. SAG under
+    -- Budget, evt. koblet til en opgave. Gamle gantt_tasks.subcontractor_*
+    -- flyttes hertil én gang (migrateSubcontractorCosts) og bruges ikke mere.
+    CREATE TABLE IF NOT EXISTS project_subcontractor_costs (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL,
+      supplier TEXT,
+      description TEXT,
+      invoice_number TEXT,
+      invoice_date TEXT,
+      amount NUMERIC NOT NULL DEFAULT 0,
+      task_id TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_subcontractor_costs ON project_subcontractor_costs(project_id);
     -- RUNDE H: Færdig-mailen til kunden sendes nu automatisk når SAGEN sættes til
     -- "Afsluttet" (status='done'), ikke længere manuelt pr. opgave i Opgavepool.
     -- Dette felt forhindrer at samme sag udløser mailen mere end én gang, selvom
@@ -16811,6 +16830,17 @@ async function migrateAutoProjectStages() {
 // RUNDE GA (Martin: "mangler kun en kolonne for dem der siger at det alligevel
 // ikke blev udført") — manuel kolonne efter Faktureret. Ingen auto_rule, så
 // recomputeProjectStatuses() rører aldrig sager der ligger her.
+async function migrateSubcontractorCosts() {
+  try {
+    const name = 'subcontractor_costs_to_project_20261030';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const r = await pool.query(`INSERT INTO project_subcontractor_costs (project_id, supplier, description, invoice_date, amount, task_id)
+      SELECT project_id, NULL, COALESCE(NULLIF(subcontractor_note,''), name), substr(COALESCE(end_date, start_date),1,10), subcontractor_cost, id
+      FROM gantt_tasks WHERE project_id IS NOT NULL AND subcontractor_cost IS NOT NULL AND subcontractor_cost > 0`);
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ moved: r.rowCount || 0 })]);
+    console.log('Underleverandør-udgifter flyttet til sagsniveau: ' + (r.rowCount || 0));
+  } catch (e) { console.error('migrateSubcontractorCosts fejlede:', e.message); }
+}
 async function migrateNotPerformedStage() {
   const name = 'stage_ikke_udfoert_20261030';
   try {
@@ -17135,6 +17165,39 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
 // Margin — samme opbygning som JobTread-billedet Martin sendte. adminOnly, fordi svaret
 // afslører løn- og akkord-omkostninger pr. medarbejder, som ikke skal ses bredt af alle
 // der har adgang til projekter-panelet.
+
+// v2.56.0 — underleverandør-udgifter pr. sag (Budget-fanen).
+function subCostFields(b) {
+  const amount = typeof b.amount === 'number' ? b.amount : Number(String(b.amount ?? '').trim().replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+  return {
+    supplier: String(b.supplier || '').trim().slice(0, 200) || null,
+    description: String(b.description || '').trim().slice(0, 1000) || null,
+    invoice_number: String(b.invoice_number || '').trim().slice(0, 100) || null,
+    invoice_date: /^\d{4}-\d{2}-\d{2}$/.test(String(b.invoice_date || '')) ? String(b.invoice_date) : null,
+    amount: isFinite(amount) ? Math.max(0, Math.round(amount * 100) / 100) : NaN,
+    task_id: b.task_id ? String(b.task_id).slice(0, 100) : null,
+  };
+}
+app.post('/api/projects/:id/subcontractor-costs', auth, adminOnly, asyncRoute(async (req, res) => {
+  const f = subCostFields(req.body || {});
+  if (!(f.amount > 0)) return res.status(400).json({ error: 'Skriv et beløb' });
+  if (!f.supplier && !f.description) return res.status(400).json({ error: 'Skriv hvem underleverandøren er' });
+  const row = await pgOne(`INSERT INTO project_subcontractor_costs (project_id, supplier, description, invoice_number, invoice_date, amount, task_id, created_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [req.params.id, f.supplier, f.description, f.invoice_number, f.invoice_date, f.amount, f.task_id, req.user.id]);
+  res.json(row);
+}));
+app.put('/api/projects/:id/subcontractor-costs/:costId', auth, adminOnly, asyncRoute(async (req, res) => {
+  const f = subCostFields(req.body || {});
+  if (!(f.amount > 0)) return res.status(400).json({ error: 'Skriv et beløb' });
+  const row = await pgOne(`UPDATE project_subcontractor_costs SET supplier=$1, description=$2, invoice_number=$3, invoice_date=$4, amount=$5, task_id=$6, updated_at=${nowTextSQL()}
+    WHERE id=$7 AND project_id=$8 RETURNING *`, [f.supplier, f.description, f.invoice_number, f.invoice_date, f.amount, f.task_id, req.params.costId, req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Ikke fundet' });
+  res.json(row);
+}));
+app.delete('/api/projects/:id/subcontractor-costs/:costId', auth, adminOnly, asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM project_subcontractor_costs WHERE id=$1 AND project_id=$2', [req.params.costId, req.params.id]);
+  res.json({ ok: true });
+}));
 app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT id, quote_id, invoice_id FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
@@ -17211,11 +17274,14 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   // timeregistreringer at regne løn-omkostningen ud fra ovenfor (laborRows),
   // så den reelle omkostning trækkes fra avancen her i stedet, sat direkte pr.
   // opgave (gantt_tasks.subcontractor_cost, se opgave-detaljerne).
+  // v2.56.0 — udgifterne ligger nu pr. sag (project_subcontractor_costs).
   const subRows = await pool.query(
-    `SELECT id, name, subcontractor_cost, subcontractor_note FROM gantt_tasks WHERE project_id=$1 AND subcontractor_cost IS NOT NULL AND subcontractor_cost > 0`,
+    `SELECT c.*, g.name AS task_name FROM project_subcontractor_costs c
+     LEFT JOIN gantt_tasks g ON g.id = c.task_id
+     WHERE c.project_id=$1 ORDER BY COALESCE(c.invoice_date, c.created_at) ASC, c.id ASC`,
     [req.params.id]
   ).then(r => r.rows);
-  const subcontractorTotal = subRows.reduce((sum, r) => sum + (Number(r.subcontractor_cost) || 0), 0);
+  const subcontractorTotal = subRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
   const profit = approved - costToComplete - laborTotal - subcontractorTotal;
   const margin = approved > 0 ? (profit / approved) * 100 : 0;
@@ -17227,7 +17293,7 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     cost_to_complete: costToComplete,
     labor_cost: laborTotal,
     subcontractor_cost: subcontractorTotal,
-    subcontractor_tasks: subRows.map(r => ({ task_id: r.id, name: r.name, cost: Number(r.subcontractor_cost) || 0, note: r.subcontractor_note || '' })),
+    subcontractor_costs: subRows.map(r => ({ id: r.id, supplier: r.supplier || '', description: r.description || '', invoice_number: r.invoice_number || '', invoice_date: r.invoice_date || '', amount: Number(r.amount) || 0, task_id: r.task_id || null, task_name: r.task_name || '' })),
     projected_profit: profit,
     projected_margin: margin,
     employees: [...byEmployee.values()]
@@ -28918,6 +28984,7 @@ async function start() {
   await migrateTimetrackPanelPage();
   await migrateAutoProjectStages();
   await migrateNotPerformedStage();
+  await migrateSubcontractorCosts();
   await backfillTaskPipelineFromBookings();
   await recomputeProjectStatuses({ force: true }).then(r => console.log('Auto-stadier: ' + r.changed + ' sag(er) flyttet.')).catch(e => console.error('Auto-stadier fejlede:', e.message));
   await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
